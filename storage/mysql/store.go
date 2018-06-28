@@ -349,7 +349,13 @@ func (m *Store) GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID
 
 // CreateTaskRuntime creates a task runtime for a peloton job
 // TODO: remove this in favor of CreateTaskRuntimes
-func (m *Store) CreateTaskRuntime(ctx context.Context, id *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo, createdBy string) error {
+func (m *Store) CreateTaskRuntime(
+	ctx context.Context,
+	id *peloton.JobID,
+	instanceID uint32,
+	runtime *task.RuntimeInfo,
+	createdBy string,
+	jobType job.JobType) error {
 	// TODO: discuss on whether taskID should be part of the taskInfo instead of runtime
 	taskInfo := &task.TaskInfo{
 		InstanceId: instanceID,
@@ -557,7 +563,12 @@ func (m *Store) GetTaskRuntime(ctx context.Context, jobID *peloton.JobID, instan
 }
 
 // UpdateTaskRuntime updates a task for a peloton job
-func (m *Store) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error {
+func (m *Store) UpdateTaskRuntime(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	instanceID uint32,
+	runtime *task.RuntimeInfo,
+	jobType job.JobType) error {
 	rowKey := fmt.Sprintf("%s-%d", jobID.GetValue(), instanceID)
 	taskinfo := &task.TaskInfo{
 		InstanceId: instanceID,

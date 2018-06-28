@@ -67,6 +67,11 @@ func TestParseRunID(t *testing.T) {
 	runID, err = ParseRunID(mesosTaskID)
 	assert.Equal(t, runID, 1)
 	assert.NoError(t, err)
+
+	mesosTaskID = ""
+	runID, err = ParseRunID(mesosTaskID)
+	assert.Equal(t, runID, -1)
+	assert.NoError(t, err)
 }
 
 func TestParseTaskID(t *testing.T) {

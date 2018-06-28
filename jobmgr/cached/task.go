@@ -400,8 +400,20 @@ func (t *task) CreateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, o
 	t.Lock()
 	defer t.Unlock()
 
+	// fetch job configuration to get job type
+	jobConfig, err := t.jobFactory.GetJob(t.JobID()).GetConfig(ctx)
+	if err != nil {
+		return err
+	}
+
 	// First create the runtime in DB and then store in the cache if DB create is successful
-	err := t.jobFactory.taskStore.CreateTaskRuntime(ctx, t.jobID, t.id, runtime, owner)
+	err = t.jobFactory.taskStore.CreateTaskRuntime(
+		ctx,
+		t.jobID,
+		t.id,
+		runtime,
+		owner,
+		jobConfig.GetType())
 	if err != nil {
 		t.runtime = nil
 		return err
@@ -479,7 +491,17 @@ func (t *task) PatchRuntime(ctx context.Context, diff map[string]interface{}) er
 
 	t.updateRevision()
 
-	err := t.jobFactory.taskStore.UpdateTaskRuntime(ctx, t.jobID, t.id, newRuntimePtr)
+	jobConfig, err := t.jobFactory.GetJob(t.JobID()).GetConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = t.jobFactory.taskStore.UpdateTaskRuntime(
+		ctx,
+		t.jobID,
+		t.id,
+		newRuntimePtr,
+		jobConfig.GetType())
 	if err != nil {
 		// clean the runtime in cache on DB write failure
 		t.runtime = nil
@@ -560,9 +582,19 @@ func (t *task) UpdateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, r
 		}
 	}
 
+	jobConfig, err := t.jobFactory.GetJob(t.JobID()).GetConfig(ctx)
+	if err != nil {
+		return err
+	}
+
 	if req == UpdateCacheAndDB {
 		// First update the runtime in DB
-		err := t.jobFactory.taskStore.UpdateTaskRuntime(ctx, t.jobID, t.id, newRuntime)
+		err := t.jobFactory.taskStore.UpdateTaskRuntime(
+			ctx,
+			t.jobID,
+			t.id,
+			newRuntime,
+			jobConfig.GetType())
 		if err != nil {
 			// clean the runtime in cache on DB write failure
 			t.runtime = nil

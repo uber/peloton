@@ -72,13 +72,24 @@ type JobStore interface {
 // TaskStore is the interface to store task states
 type TaskStore interface {
 	// CreateTaskRuntime creates the runtime of a given task
-	CreateTaskRuntime(ctx context.Context, id *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo, createdBy string) error
+	CreateTaskRuntime(
+		ctx context.Context,
+		id *peloton.JobID,
+		instanceID uint32,
+		runtime *task.RuntimeInfo,
+		createdBy string,
+		jobType job.JobType) error
 	// CreateTaskRuntimes creates the runtimes by running multiple parallel go routines, each of which do batching as well
 	CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo, createdBy string) error
 	// GetTaskRuntime gets the runtime of a given task
 	GetTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32) (*task.RuntimeInfo, error)
 	// UpdateTaskRuntime updates the runtime of a given task
-	UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error
+	UpdateTaskRuntime(
+		ctx context.Context,
+		jobID *peloton.JobID,
+		instanceID uint32,
+		runtime *task.RuntimeInfo,
+		jobType job.JobType) error
 	// UpdateTaskRuntimes updates the runtimes by running multiple parallel go routines, each of which do batching as well
 	UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo) error
 

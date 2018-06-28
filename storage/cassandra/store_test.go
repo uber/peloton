@@ -1158,9 +1158,20 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 			taskInfo := createTaskInfo(jobConfig, &jobID, j)
 			taskInfo.Runtime.State = task.TaskState(j)
 			taskInfo.Runtime.ConfigVersion = jobConfig.GetChangeLog().GetVersion()
-			err = taskStore.CreateTaskRuntime(context.Background(), &jobID, j, taskInfo.Runtime, "test")
+			err = taskStore.CreateTaskRuntime(
+				context.Background(),
+				&jobID,
+				j,
+				taskInfo.Runtime,
+				"test",
+				jobConfig.GetType())
 			suite.NoError(err)
-			err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, j, taskInfo.Runtime)
+			err = taskStore.UpdateTaskRuntime(
+				context.Background(),
+				&jobID,
+				j,
+				taskInfo.Runtime,
+				jobConfig.GetType())
 			suite.NoError(err)
 		}
 	}
@@ -1185,7 +1196,12 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 		suite.Equal(len(tasks), 3)
 		for _, task := range tasks {
 			task.Runtime.Host = fmt.Sprintf("compute_%d", i)
-			err = taskStore.UpdateTaskRuntime(context.Background(), task.JobId, task.InstanceId, task.Runtime)
+			err = taskStore.UpdateTaskRuntime(
+				context.Background(),
+				task.JobId,
+				task.InstanceId,
+				task.Runtime,
+				job.JobType_BATCH)
 			suite.NoError(err)
 		}
 	}
@@ -1287,7 +1303,12 @@ func (suite *CassandraStoreTestSuite) TestTaskVersionMigration() {
 		Version:   1,
 		UpdatedAt: uint64(time.Now().UnixNano()),
 	}
-	suite.NoError(store.UpdateTaskRuntime(context.Background(), jobID, 0, info.Runtime))
+	suite.NoError(store.UpdateTaskRuntime(
+		context.Background(),
+		jobID,
+		0,
+		info.Runtime,
+		job.JobType_BATCH))
 
 	info, err = store.getTask(context.Background(), jobID.GetValue(), 0)
 	suite.NoError(err)
@@ -1410,38 +1431,74 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateChanges() {
 	suite.NoError(err)
 
 	taskInfo := createTaskInfo(jobConfig, &jobID, 0)
-	err = taskStore.CreateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime, "test")
+	err = taskStore.CreateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		"test",
+		jobConfig.GetType())
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_PENDING
-	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	err = taskStore.UpdateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		jobConfig.GetType())
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_RUNNING
 	taskInfo.Runtime.Host = host1
-	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	err = taskStore.UpdateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		jobConfig.GetType())
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_PREEMPTING
 	taskInfo.Runtime.Host = ""
-	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	err = taskStore.UpdateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		jobConfig.GetType())
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_RUNNING
 	taskInfo.Runtime.Host = host2
-	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	err = taskStore.UpdateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		jobConfig.GetType())
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_SUCCEEDED
 	taskInfo.Runtime.Host = host2
-	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	err = taskStore.UpdateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		jobConfig.GetType())
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_LOST
 	taskInfo.Runtime.Host = host2
 	taskInfo.Runtime.Reason = "Reconciliation reason"
 	taskInfo.Runtime.Message = "Reconciliation message"
-	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, taskInfo.InstanceId, taskInfo.Runtime)
+	err = taskStore.UpdateTaskRuntime(
+		context.Background(),
+		&jobID,
+		taskInfo.InstanceId,
+		taskInfo.Runtime,
+		jobConfig.GetType())
 	suite.NoError(err)
 
 	stateRecords, err := store.GetTaskStateChanges(context.Background(), &jobID, 0)
@@ -1485,37 +1542,73 @@ func (suite *CassandraStoreTestSuite) TestGetTaskEvents() {
 	suite.NoError(err)
 
 	taskInfo := createTaskInfo(jobConfig, &jobID, 0)
-	err = taskStore.CreateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime, "test")
+	err = taskStore.CreateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		"test",
+		jobConfig.GetType())
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_PENDING
-	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	err = taskStore.UpdateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		jobConfig.GetType())
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_RUNNING
 	taskInfo.Runtime.Host = host1
-	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	err = taskStore.UpdateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		jobConfig.GetType())
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_PREEMPTING
 	taskInfo.Runtime.Host = ""
-	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	err = taskStore.UpdateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		jobConfig.GetType())
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_RUNNING
 	taskInfo.Runtime.Host = host2
-	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	err = taskStore.UpdateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		jobConfig.GetType())
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_SUCCEEDED
 	taskInfo.Runtime.Host = host2
-	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	err = taskStore.UpdateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		jobConfig.GetType())
 
 	taskInfo.Runtime.State = task.TaskState_LOST
 	taskInfo.Runtime.Host = host2
 	taskInfo.Runtime.Reason = "Reconciliation reason"
 	taskInfo.Runtime.Message = "Reconciliation message"
-	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	err = taskStore.UpdateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		jobConfig.GetType())
 	suite.NoError(err)
 
 	events, err := store.GetTaskEvents(context.Background(), &jobID, 0)
@@ -1574,10 +1667,21 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateSummary() {
 
 	for i := uint32(0); i < uint32(2*len(task.TaskState_name)); i++ {
 		taskInfo := createTaskInfo(jobConfig, &jobID, i)
-		err := taskStore.CreateTaskRuntime(context.Background(), &jobID, i, taskInfo.Runtime, "user1")
+		err := taskStore.CreateTaskRuntime(
+			context.Background(),
+			&jobID,
+			i,
+			taskInfo.Runtime,
+			"user1",
+			jobConfig.GetType())
 		suite.Nil(err)
 		taskInfo.Runtime.State = task.TaskState(i / 2)
-		err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, i, taskInfo.Runtime)
+		err = taskStore.UpdateTaskRuntime(
+			context.Background(),
+			&jobID,
+			i,
+			taskInfo.Runtime,
+			jobConfig.GetType())
 		suite.Nil(err)
 	}
 
@@ -1600,7 +1704,13 @@ func (suite *CassandraStoreTestSuite) TestGetTaskByRange() {
 
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		taskInfo := createTaskInfo(jobConfig, &jobID, i)
-		err := taskStore.CreateTaskRuntime(context.Background(), &jobID, i, taskInfo.Runtime, "user1")
+		err := taskStore.CreateTaskRuntime(
+			context.Background(),
+			&jobID,
+			i,
+			taskInfo.Runtime,
+			"user1",
+			jobConfig.GetType())
 		suite.Nil(err)
 	}
 	suite.validateRange(&jobID, 0, 30)
@@ -2057,7 +2167,13 @@ func (suite *CassandraStoreTestSuite) TestGetTaskRuntime() {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 
 	suite.NoError(store.createTaskConfig(context.Background(), jobID, 0, &task.TaskConfig{}, 0))
-	suite.NoError(store.CreateTaskRuntime(context.Background(), jobID, 0, &task.RuntimeInfo{}, ""))
+	suite.NoError(store.CreateTaskRuntime(
+		context.Background(),
+		jobID,
+		0,
+		&task.RuntimeInfo{},
+		"",
+		job.JobType_BATCH))
 
 	info, err := store.getTask(context.Background(), jobID.GetValue(), 0)
 	suite.NoError(err)
@@ -2168,7 +2284,13 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		taskInfo := createTaskInfo(jobConfig, &jobID, i)
 		taskInfo.Runtime.ConfigVersion = jobConfig.GetChangeLog().GetVersion()
-		err := taskStore.CreateTaskRuntime(context.Background(), &jobID, i, taskInfo.Runtime, "user1")
+		err := taskStore.CreateTaskRuntime(
+			context.Background(),
+			&jobID,
+			i,
+			taskInfo.Runtime,
+			"user1",
+			jobConfig.GetType())
 		suite.Nil(err)
 
 		taskInfo.Runtime.State = task.TaskState(i)
@@ -2267,6 +2389,82 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 
 }
 
+func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
+	hostName := "mesos-slave-01"
+	testTable := []struct {
+		mesosTaskID     string
+		prevMesosTaskID string
+		actualState     task.TaskState
+		goalState       task.TaskState
+		jobID           peloton.JobID
+	}{
+		{
+			mesosTaskID:     "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
+			prevMesosTaskID: "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1a37d6ee-5da1-4d7a-9e91-91185990fbb1",
+			actualState:     task.TaskState_PENDING,
+			goalState:       task.TaskState_RUNNING,
+			jobID:           peloton.JobID{Value: uuid.NewRandom().String()},
+		},
+		{
+			mesosTaskID:     "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-test",
+			prevMesosTaskID: "",
+			actualState:     task.TaskState_PENDING,
+			goalState:       task.TaskState_RUNNING,
+			jobID:           peloton.JobID{Value: uuid.NewRandom().String()},
+		},
+		{
+			mesosTaskID:     "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
+			prevMesosTaskID: "",
+			actualState:     task.TaskState_PENDING,
+			goalState:       task.TaskState_RUNNING,
+			jobID:           peloton.JobID{Value: "incorrect-jobID"},
+		},
+	}
+
+	for _, tt := range testTable {
+		runtime := &task.RuntimeInfo{
+			StartTime:      time.Now().String(),
+			CompletionTime: time.Now().String(),
+			State:          tt.actualState,
+			GoalState:      tt.goalState,
+			Host:           hostName,
+			MesosTaskId: &mesos.TaskID{
+				Value: &tt.mesosTaskID,
+			},
+			PrevMesosTaskId: &mesos.TaskID{
+				Value: &tt.prevMesosTaskID,
+			},
+		}
+		err := store.addPodEvent(context.Background(), &tt.jobID, 0, runtime)
+		suite.Error(err)
+	}
+
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+	mesosTaskID := "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-2"
+	prevMesosTaskID := "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1"
+	runtime := &task.RuntimeInfo{
+		StartTime:      time.Now().String(),
+		CompletionTime: time.Now().String(),
+		State:          task.TaskState_RUNNING,
+		GoalState:      task.TaskState_SUCCEEDED,
+		Host:           "mesos-slave-01",
+		Message:        "",
+		Reason:         "",
+		MesosTaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
+		},
+		PrevMesosTaskId: &mesos.TaskID{
+			Value: &prevMesosTaskID,
+		},
+		ConfigVersion:        3,
+		DesiredConfigVersion: 4,
+	}
+	store.addPodEvent(context.Background(), jobID, 0, runtime)
+	count, err := store.getPodEvents(context.Background(), jobID.GetValue(), 0)
+	suite.Equal(count, 1)
+	suite.NoError(err)
+}
+
 func TestLess(t *testing.T) {
 	// testing sort by state
 	stateOrder := query.OrderBy{
@@ -2302,5 +2500,4 @@ func TestLess(t *testing.T) {
 	taskInfo2.Runtime.State = task.TaskState_RUNNING
 	orderByList = []*query.OrderBy{&stateOrder, &timeOrder}
 	assert.Equal(t, Less(orderByList, taskInfo1, taskInfo2), false)
-
 }

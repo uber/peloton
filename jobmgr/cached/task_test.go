@@ -7,6 +7,7 @@ import (
 	"time"
 
 	mesosv1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
@@ -28,8 +29,17 @@ func initializeTask(taskStore *storemocks.MockTaskStore, jobID *peloton.JobID, i
 			mtx:       NewMetrics(tally.NoopScope),
 			taskStore: taskStore,
 			running:   true,
+			jobs:      map[string]*job{},
 		},
 	}
+	config := &cachedConfig{
+		jobType: pbjob.JobType_BATCH,
+	}
+	job := &job{
+		id:     jobID,
+		config: config,
+	}
+	tt.jobFactory.jobs[jobID.GetValue()] = job
 	return tt
 }
 
@@ -275,8 +285,18 @@ func (suite *TaskTestSuite) TestTaskUpdateRuntime() {
 	}
 
 	suite.taskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
-		Do(func(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pbtask.RuntimeInfo) {
+		UpdateTaskRuntime(
+			gomock.Any(),
+			suite.jobID,
+			suite.instanceID,
+			gomock.Any(),
+			gomock.Any()).
+		Do(func(
+			ctx context.Context,
+			jobID *peloton.JobID,
+			instanceID uint32,
+			runtime *pbtask.RuntimeInfo,
+			jobType pbjob.JobType) {
 			suite.Equal(runtime.GetState(), pbtask.TaskState_RUNNING)
 			suite.Equal(runtime.Revision.Version, uint64(3))
 			suite.Equal(runtime.GetGoalState(), pbtask.TaskState_SUCCEEDED)
@@ -302,8 +322,18 @@ func (suite *TaskTestSuite) TestTaskUpdateRuntimeWithNoRuntimeInCache() {
 		GetTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).Return(runtime, nil)
 
 	suite.taskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
-		Do(func(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pbtask.RuntimeInfo) {
+		UpdateTaskRuntime(
+			gomock.Any(),
+			suite.jobID,
+			suite.instanceID,
+			gomock.Any(),
+			gomock.Any()).
+		Do(func(
+			ctx context.Context,
+			jobID *peloton.JobID,
+			instanceID uint32,
+			runtime *pbtask.RuntimeInfo,
+			jobType pbjob.JobType) {
 			suite.Equal(runtime.GetState(), pbtask.TaskState_RUNNING)
 			suite.Equal(runtime.Revision.Version, uint64(3))
 			suite.Equal(runtime.GetGoalState(), pbtask.TaskState_SUCCEEDED)
@@ -325,7 +355,12 @@ func (suite *TaskTestSuite) TestTaskUpdateRuntimeDBError() {
 	}
 
 	suite.taskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		UpdateTaskRuntime(
+			gomock.Any(),
+			suite.jobID,
+			suite.instanceID,
+			gomock.Any(),
+			gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
 
 	err := tt.UpdateRuntime(context.Background(), newRuntime, UpdateCacheAndDB)
@@ -343,8 +378,18 @@ func (suite *TaskTestSuite) TestPatchRuntime() {
 	}
 
 	suite.taskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
-		Do(func(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pbtask.RuntimeInfo) {
+		UpdateTaskRuntime(
+			gomock.Any(),
+			suite.jobID,
+			suite.instanceID,
+			gomock.Any(),
+			gomock.Any()).
+		Do(func(
+			ctx context.Context,
+			jobID *peloton.JobID,
+			instanceID uint32,
+			runtime *pbtask.RuntimeInfo,
+			jobType pbjob.JobType) {
 			suite.Equal(runtime.GetState(), pbtask.TaskState_RUNNING)
 			suite.Equal(runtime.Revision.Version, uint64(3))
 			suite.Equal(runtime.GetGoalState(), pbtask.TaskState_SUCCEEDED)
@@ -374,8 +419,18 @@ func (suite *TaskTestSuite) TestPatchRuntime_WithInitializedState() {
 	}
 
 	suite.taskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
-		Do(func(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pbtask.RuntimeInfo) {
+		UpdateTaskRuntime(
+			gomock.Any(),
+			suite.jobID,
+			suite.instanceID,
+			gomock.Any(),
+			gomock.Any()).
+		Do(func(
+			ctx context.Context,
+			jobID *peloton.JobID,
+			instanceID uint32,
+			runtime *pbtask.RuntimeInfo,
+			jobType pbjob.JobType) {
 			suite.Equal(runtime.GetState(), pbtask.TaskState_INITIALIZED)
 			suite.Equal(uint64(runtime.Revision.Version), uint64(3))
 			suite.Equal(runtime.GetGoalState(), pbtask.TaskState_SUCCEEDED)
@@ -398,8 +453,18 @@ func (suite *TaskTestSuite) TestPatchRuntime_KillInitializedTask() {
 	}
 
 	suite.taskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
-		Do(func(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pbtask.RuntimeInfo) {
+		UpdateTaskRuntime(
+			gomock.Any(),
+			suite.jobID,
+			suite.instanceID,
+			gomock.Any(),
+			gomock.Any()).
+		Do(func(
+			ctx context.Context,
+			jobID *peloton.JobID,
+			instanceID uint32,
+			runtime *pbtask.RuntimeInfo,
+			jobType pbjob.JobType) {
 			suite.Equal(runtime.GetState(), pbtask.TaskState_INITIALIZED)
 			suite.Equal(runtime.Revision.Version, uint64(3))
 			suite.Equal(runtime.GetGoalState(), pbtask.TaskState_KILLED)
@@ -425,10 +490,17 @@ func (suite *TaskTestSuite) TestPatchRuntime_NoRuntimeInCache() {
 		GetTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).Return(runtime, nil)
 
 	suite.taskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		UpdateTaskRuntime(
+			gomock.Any(),
+			suite.jobID,
+			suite.instanceID,
+			gomock.Any(),
+			gomock.Any()).
 		Do(func(ctx context.Context,
-			jobID *peloton.JobID, instanceID uint32,
-			runtime *pbtask.RuntimeInfo) {
+			jobID *peloton.JobID,
+			instanceID uint32,
+			runtime *pbtask.RuntimeInfo,
+			jobType pbjob.JobType) {
 			suite.Equal(runtime.GetState(), pbtask.TaskState_RUNNING)
 			suite.Equal(runtime.Revision.Version, uint64(3))
 			suite.Equal(runtime.GetGoalState(), pbtask.TaskState_SUCCEEDED)
@@ -450,7 +522,12 @@ func (suite *TaskTestSuite) TestPatchRuntime_DBError() {
 	}
 
 	suite.taskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		UpdateTaskRuntime(
+			gomock.Any(),
+			suite.jobID,
+			suite.instanceID,
+			gomock.Any(),
+			gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
 
 	err := tt.PatchRuntime(context.Background(), diff)

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/cassandra"
@@ -178,7 +179,13 @@ func createTask(taskStore storage.TaskStore, jobIDVal string, instance uint32, r
 		Host:        fmt.Sprintf("host-%v", instance),
 	}
 	t := time.Now()
-	err := taskStore.CreateTaskRuntime(context.Background(), jobID, instance, runtime, "test")
+	err := taskStore.CreateTaskRuntime(
+		context.Background(),
+		jobID,
+		instance,
+		runtime,
+		"test",
+		job.JobType_BATCH)
 	d := time.Since(t)
 	rootScope.Timer("CreateTask").Record(d)
 	if err != nil {
@@ -200,7 +207,12 @@ func updateTaskState(taskStore storage.TaskStore, jobIDVal string, instance uint
 	}
 	taskInfo[instance].GetRuntime().State = state
 	t = time.Now()
-	err = taskStore.UpdateTaskRuntime(context.Background(), &peloton.JobID{Value: jobIDVal}, instance, taskInfo[instance].Runtime)
+	err = taskStore.UpdateTaskRuntime(
+		context.Background(),
+		&peloton.JobID{Value: jobIDVal},
+		instance,
+		taskInfo[instance].Runtime,
+		job.JobType_BATCH)
 	d = time.Since(t)
 	rootScope.Timer("UpdateTask").Record(d)
 	if err != nil {

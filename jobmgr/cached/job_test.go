@@ -1046,8 +1046,20 @@ func (suite *JobTestSuite) TestJobCreateTasks() {
 
 	for i := uint32(0); i < instanceCount; i++ {
 		suite.taskStore.EXPECT().
-			CreateTaskRuntime(gomock.Any(), suite.jobID, i, gomock.Any(), "peloton").
-			Do(func(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pbtask.RuntimeInfo, owner string) {
+			CreateTaskRuntime(
+				gomock.Any(),
+				suite.jobID,
+				i,
+				gomock.Any(),
+				"peloton",
+				gomock.Any()).
+			Do(func(
+				ctx context.Context,
+				jobID *peloton.JobID,
+				instanceID uint32,
+				runtime *pbtask.RuntimeInfo,
+				owner string,
+				jobType pbjob.JobType) {
 				suite.Equal(pbtask.TaskState_INITIALIZED, runtime.GetState())
 				suite.Equal(uint64(1), runtime.GetRevision().GetVersion())
 			}).Return(nil)
@@ -1074,7 +1086,12 @@ func (suite *JobTestSuite) TestJobCreateTasksWithDBError() {
 	runtimes := initializeRuntimes(instanceCount, pbtask.TaskState_INITIALIZED)
 	for i := uint32(0); i < instanceCount; i++ {
 		suite.taskStore.EXPECT().
-			CreateTaskRuntime(gomock.Any(), suite.jobID, i, gomock.Any(), "peloton").
+			CreateTaskRuntime(gomock.Any(),
+				suite.jobID,
+				i,
+				gomock.Any(),
+				"peloton",
+				pbjob.JobType_BATCH).
 			Return(fmt.Errorf("fake db error"))
 	}
 
@@ -1132,7 +1149,12 @@ func (suite *JobTestSuite) TestTasksUpdateInDB() {
 		suite.taskStore.EXPECT().
 			GetTaskRuntime(gomock.Any(), suite.jobID, i).Return(oldRuntime, nil)
 		suite.taskStore.EXPECT().
-			UpdateTaskRuntime(gomock.Any(), suite.jobID, i, gomock.Any()).Return(nil)
+			UpdateTaskRuntime(
+				gomock.Any(),
+				suite.jobID,
+				i,
+				gomock.Any(),
+				gomock.Any()).Return(nil)
 	}
 
 	// Update task runtimes in DB and cache
@@ -1167,7 +1189,12 @@ func (suite *JobTestSuite) TestTasksUpdateDBError() {
 		runtimes[i] = runtime
 		// Simulate fake DB error
 		suite.taskStore.EXPECT().
-			UpdateTaskRuntime(gomock.Any(), suite.jobID, i, gomock.Any()).
+			UpdateTaskRuntime(
+				gomock.Any(),
+				suite.jobID,
+				i,
+				gomock.Any(),
+				gomock.Any()).
 			Return(fmt.Errorf("fake db error"))
 	}
 	err := suite.job.UpdateTasks(context.Background(), runtimes, UpdateCacheAndDB)
@@ -1185,7 +1212,12 @@ func (suite *JobTestSuite) TestTasksUpdateRuntimeSingleTask() {
 
 	// Update task runtime of only one task
 	suite.taskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		UpdateTaskRuntime(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any()).
 		Return(nil)
 	err := suite.job.UpdateTasks(context.Background(), map[uint32]*pbtask.RuntimeInfo{0: runtime}, UpdateCacheAndDB)
 	suite.NoError(err)
@@ -1228,7 +1260,12 @@ func (suite *JobTestSuite) TestPatchTasks_SetGetTasksSingle() {
 	}
 
 	suite.taskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		UpdateTaskRuntime(
+			gomock.Any(),
+			suite.jobID,
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any()).
 		Return(nil).Times(int(instanceCount))
 	suite.taskStore.EXPECT().
 		GetTaskRuntime(gomock.Any(), suite.jobID, gomock.Any()).
@@ -1278,7 +1315,12 @@ func (suite *JobTestSuite) TestPatchTasks_SetGetTasksMultiple() {
 		suite.taskStore.EXPECT().
 			GetTaskRuntime(gomock.Any(), suite.jobID, i).Return(oldRuntime, nil)
 		suite.taskStore.EXPECT().
-			UpdateTaskRuntime(gomock.Any(), suite.jobID, i, gomock.Any()).Return(nil)
+			UpdateTaskRuntime(
+				gomock.Any(),
+				suite.jobID,
+				i,
+				gomock.Any(),
+				gomock.Any()).Return(nil)
 	}
 
 	err := suite.job.PatchTasks(context.Background(), diffs)
@@ -1307,7 +1349,12 @@ func (suite *JobTestSuite) TestPatchTasks_DBError() {
 		}
 		// Simulate fake DB error
 		suite.taskStore.EXPECT().
-			UpdateTaskRuntime(gomock.Any(), suite.jobID, i, gomock.Any()).
+			UpdateTaskRuntime(
+				gomock.Any(),
+				suite.jobID,
+				i,
+				gomock.Any(),
+				gomock.Any()).
 			Return(fmt.Errorf("fake db error"))
 	}
 	err := suite.job.PatchTasks(context.Background(), diffs)
@@ -1323,7 +1370,12 @@ func (suite *JobTestSuite) TestPatchTasks_SingleTask() {
 
 	// Update task runtime of only one task
 	suite.taskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		UpdateTaskRuntime(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any()).
 		Return(nil)
 	err := suite.job.PatchTasks(context.Background(), diffs)
 	suite.NoError(err)

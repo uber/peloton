@@ -108,7 +108,13 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 				InstanceId: uint32(j),
 				JobId:      jobID,
 			}
-			err = suite.store.CreateTaskRuntime(context.Background(), jobID, j, taskInfo.Runtime, "test")
+			err = suite.store.CreateTaskRuntime(
+				context.Background(),
+				jobID,
+				j,
+				taskInfo.Runtime,
+				"test",
+				jobConfig.GetType())
 			suite.NoError(err)
 		}
 	}
@@ -139,7 +145,12 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 		suite.Equal(len(tasks), nTasks)
 		for _, task := range tasks {
 			task.Runtime.Host = fmt.Sprintf("compute-%d", i)
-			err := suite.store.UpdateTaskRuntime(context.Background(), task.JobId, task.InstanceId, task.Runtime)
+			err := suite.store.UpdateTaskRuntime(
+				context.Background(),
+				task.JobId,
+				task.InstanceId,
+				task.Runtime,
+				job.JobType_BATCH)
 			suite.NoError(err)
 		}
 	}
@@ -196,7 +207,11 @@ func (suite *mySQLStoreTestSuite) TestCreateTasks() {
 			}
 			runtimes[uint32(j)] = &runtime
 		}
-		err = suite.store.CreateTaskRuntimes(context.Background(), &jobID, runtimes, "test")
+		err = suite.store.CreateTaskRuntimes(
+			context.Background(),
+			&jobID,
+			runtimes,
+			"test")
 		suite.NoError(err)
 	}
 

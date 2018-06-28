@@ -52,6 +52,7 @@ const (
 	taskConfigTable       = "task_config"
 	taskRuntimeTable      = "task_runtime"
 	taskStateChangesTable = "task_state_changes"
+	podEventsTable        = "pod_events"
 	updatesTable          = "update_info"
 	frameworksTable       = "frameworks"
 	taskJobStateView      = "mv_task_by_state"
@@ -915,7 +916,13 @@ func (s *Store) GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, er
 }
 
 // CreateTaskRuntime creates a task runtime for a peloton job
-func (s *Store) CreateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo, owner string) error {
+func (s *Store) CreateTaskRuntime(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	instanceID uint32,
+	runtime *task.RuntimeInfo,
+	owner string,
+	jobType job.JobType) error {
 	runtimeBuffer, err := proto.Marshal(runtime)
 	if err != nil {
 		log.WithField("job_id", jobID.GetValue()).
@@ -953,8 +960,11 @@ func (s *Store) CreateTaskRuntime(ctx context.Context, jobID *peloton.JobID, ins
 		return err
 	}
 	s.metrics.TaskMetrics.TaskCreate.Inc(1)
-	// Track the task events
-	err = s.logTaskStateChange(ctx, jobID, instanceID, runtime)
+	if jobType == job.JobType_BATCH {
+		err = s.logTaskStateChange(ctx, jobID, instanceID, runtime)
+	} else if jobType == job.JobType_SERVICE {
+		err = s.addPodEvent(ctx, jobID, instanceID, runtime)
+	}
 	if err != nil {
 		log.Errorf("Unable to log task state changes for job ID %v instance %v, error = %v", jobID.GetValue(), instanceID, err)
 		return err
@@ -1105,6 +1115,115 @@ func (s *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 		Infof("Wrote all %d tasks for %v to Cassandra in %v", nTasks, jobID, time.Since(timeStart))
 	return nil
 
+}
+
+// addPodEvent upserts single pod state change for a Job -> Instance -> Run.
+// Task state events are sorted by reverse chronological run_id and time of event.
+func (s *Store) addPodEvent(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	instanceID uint32,
+	runtime *task.RuntimeInfo) error {
+	var runID, prevRunID int
+	var podStatus []byte
+	var err, errMessage error
+
+	errLog := false
+	if runID, err = util.ParseRunID(
+		runtime.GetMesosTaskId().GetValue()); err != nil {
+		errLog = true
+		errMessage = err
+	}
+	if prevRunID, err = util.ParseRunID(
+		runtime.GetPrevMesosTaskId().GetValue()); err != nil {
+		errLog = true
+		errMessage = err
+	}
+	if podStatus, err = proto.Marshal(runtime); err != nil {
+		errLog = true
+		errMessage = err
+	}
+	if errLog {
+		log.WithFields(log.Fields{
+			"job_id":                 jobID.GetValue(),
+			"instance_id":            instanceID,
+			"mesos_task_id":          runtime.GetMesosTaskId().GetValue(),
+			"previous_mesos_task_id": runtime.GetPrevMesosTaskId().GetValue(),
+			"actual_state":           runtime.GetState().String(),
+			"goal_state":             runtime.GetGoalState().String(),
+		}).WithError(errMessage).
+			Info("pre-validation for upsert pod event failed")
+		s.metrics.TaskMetrics.TaskLogStateFail.Inc(1)
+		return errMessage
+	}
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(podEventsTable).
+		Columns(
+			"job_id",
+			"instance_id",
+			"run_id",
+			"previous_run_id",
+			"update_time",
+			"actual_state",
+			"goal_state",
+			"hostname",
+			"agent_id",
+			"config_version",
+			"desired_config_version",
+			"volumeID",
+			"message",
+			"reason",
+			"pod_status").
+		Values(
+			jobID.GetValue(),
+			instanceID,
+			runID,
+			prevRunID,
+			qb.UUID{UUID: gocql.UUIDFromTime(time.Now())},
+			runtime.GetState().String(),
+			runtime.GetGoalState().String(),
+			runtime.GetHost(),
+			runtime.GetAgentID().GetValue(),
+			runtime.GetConfigVersion(),
+			runtime.GetDesiredConfigVersion(),
+			runtime.GetVolumeID().GetValue(),
+			runtime.GetMessage(),
+			runtime.GetReason(),
+			podStatus).Into(podEventsTable)
+
+	err = s.applyStatement(ctx, stmt, runtime.GetMesosTaskId().GetValue())
+	if err != nil {
+		log.WithFields(log.Fields{
+			"job_id":          jobID.GetValue(),
+			"instance_id":     instanceID,
+			"run_id":          runtime.GetMesosTaskId().GetValue(),
+			"previous_run_id": runtime.GetPrevMesosTaskId().GetValue(),
+			"actual_state":    runtime.GetState().String(),
+			"goal_state":      runtime.GetGoalState().String(),
+		}).WithError(err).Error("adding a pod event failed")
+		s.metrics.TaskMetrics.TaskLogStateFail.Inc(1)
+		return err
+	}
+	s.metrics.TaskMetrics.TaskLogState.Inc(1)
+	return nil
+}
+
+// getPodEvents test method to read pod events for test validation
+// TODO: update method to return pod events result set for CLI, UI & sandbox.
+func (s *Store) getPodEvents(
+	ctx context.Context,
+	jobID string,
+	instanceID int) (int, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("*").From(podEventsTable).
+		Where(qb.Eq{"job_id": jobID, "instance_id": instanceID})
+	allResults, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		log.Error(err)
+		return -1, err
+	}
+	return len(allResults), nil
 }
 
 // logTaskStateChange logs the task state change events
@@ -1858,7 +1977,12 @@ func (s *Store) GetTaskRuntime(ctx context.Context, jobID *peloton.JobID, instan
 }
 
 // UpdateTaskRuntime updates a task for a peloton job
-func (s *Store) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error {
+func (s *Store) UpdateTaskRuntime(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	instanceID uint32,
+	runtime *task.RuntimeInfo,
+	jobType job.JobType) error {
 	runtimeBuffer, err := proto.Marshal(runtime)
 	if err != nil {
 		s.metrics.TaskMetrics.TaskUpdateFail.Inc(1)
@@ -1879,7 +2003,11 @@ func (s *Store) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, ins
 	}
 
 	s.metrics.TaskMetrics.TaskUpdate.Inc(1)
-	s.logTaskStateChange(ctx, jobID, instanceID, runtime)
+	if jobType == job.JobType_BATCH {
+		s.logTaskStateChange(ctx, jobID, instanceID, runtime)
+	} else if jobType == job.JobType_SERVICE {
+		s.addPodEvent(ctx, jobID, instanceID, runtime)
+	}
 	return nil
 }
 
