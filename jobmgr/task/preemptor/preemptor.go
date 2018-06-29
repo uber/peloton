@@ -156,9 +156,9 @@ func (p *preemptor) preemptTasks(ctx context.Context, preemptionCandidates []*re
 
 		// set goal state to TaskState_PREEMPTING
 		runtimeDiff := cached.RuntimeDiff{
-			cached.StateField:   pb_task.TaskState_PREEMPTING,
-			cached.MessageField: "Preempting running task",
-			cached.ReasonField:  task.Reason.String(),
+			cached.GoalStateField: pb_task.TaskState_PREEMPTING,
+			cached.MessageField:   "Preempting running task",
+			cached.ReasonField:    task.Reason.String(),
 		}
 
 		// update the task in cache and enqueue to goal state engine

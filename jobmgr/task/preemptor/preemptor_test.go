@@ -118,7 +118,7 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		Do(func(ctx context.Context,
 			runtimeDiffs map[uint32]cached.RuntimeDiff) {
 			suite.Equal(peloton_task.TaskState_PREEMPTING,
-				runtimeDiffs[runningTaskInfo.InstanceId][cached.StateField])
+				runtimeDiffs[runningTaskInfo.InstanceId][cached.GoalStateField])
 		}).
 		Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return()
