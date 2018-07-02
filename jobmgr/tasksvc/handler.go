@@ -174,7 +174,8 @@ func (m *serviceHandler) Get(
 		}, nil
 	}
 
-	eventList, err := m.taskStore.GetTaskEvents(ctx, body.GetJobId(), body.GetInstanceId())
+	eventList, err := m.getTaskEvents(
+		ctx, body.GetJobId(), body.GetInstanceId(), cachedConfig.GetType())
 	if err != nil {
 		m.metrics.TaskGetFail.Inc(1)
 		return &task.GetResponse{
@@ -198,7 +199,24 @@ func (m *serviceHandler) GetEvents(
 	ctx context.Context,
 	body *task.GetEventsRequest) (*task.GetEventsResponse, error) {
 	m.metrics.TaskAPIGetEvents.Inc(1)
-	result, err := m.taskStore.GetTaskEvents(ctx, body.GetJobId(), body.GetInstanceId())
+	cachedJob := m.jobFactory.AddJob(body.JobId)
+	cachedConfig, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", body.GetJobId()).
+			Debug("Failed to get job config cache")
+		m.metrics.TaskGetEventsFail.Inc(1)
+		return &task.GetEventsResponse{
+			Error: &task.GetEventsResponse_Error{
+				EventError: &task.TaskEventsError{
+					Message: fmt.Sprintf("error: %v", err),
+				},
+			},
+		}, nil
+	}
+
+	result, err := m.getTaskEvents(
+		ctx, body.GetJobId(), body.GetInstanceId(), cachedConfig.GetType())
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", body.GetJobId()).
@@ -803,10 +821,11 @@ func (m *serviceHandler) getHostInfoWithTaskID(
 	ctx context.Context,
 	jobID *peloton.JobID,
 	instanceID uint32,
-	taskID string) (hostname string, agentID string, err error) {
+	taskID string,
+	jobType pb_job.JobType) (hostname string, agentID string, err error) {
 	var taskEventsList []*task.TaskEvent
 
-	events, err := m.taskStore.GetTaskEvents(ctx, jobID, instanceID)
+	events, err := m.getTaskEvents(ctx, jobID, instanceID, jobType)
 	if err != nil {
 		return "", "", err
 	}
@@ -863,14 +882,16 @@ func (m *serviceHandler) getHostInfoCurrentTask(
 // getSandboxPathInfo - return details such as hostname, agentID, frameworkID and taskID to create sandbox path.
 func (m *serviceHandler) getSandboxPathInfo(ctx context.Context,
 	instanceCount uint32,
-	req *task.BrowseSandboxRequest) (hostname, agentID, taskID, frameworkID string, resp *task.BrowseSandboxResponse) {
+	req *task.BrowseSandboxRequest,
+	jobType pb_job.JobType) (hostname, agentID, taskID, frameworkID string, resp *task.BrowseSandboxResponse) {
 	var host string
 	var agentid string
 	taskid := req.GetTaskId()
 
 	var err error
 	if len(taskid) > 0 {
-		host, agentid, err = m.getHostInfoWithTaskID(ctx, req.JobId, req.InstanceId, taskid)
+		host, agentid, err = m.getHostInfoWithTaskID(
+			ctx, req.JobId, req.InstanceId, taskid, jobType)
 	} else {
 		host, agentid, taskid, err = m.getHostInfoCurrentTask(ctx, req.JobId, req.InstanceId)
 	}
@@ -941,7 +962,8 @@ func (m *serviceHandler) BrowseSandbox(
 	}
 
 	hostname, agentID, taskID, frameworkID, resp :=
-		m.getSandboxPathInfo(ctx, cachedConfig.GetInstanceCount(), req)
+		m.getSandboxPathInfo(
+			ctx, cachedConfig.GetInstanceCount(), req, cachedConfig.GetType())
 	if resp != nil {
 		return resp, nil
 	}
@@ -1062,6 +1084,18 @@ func (m *serviceHandler) getFrameworkID(ctx context.Context) (string, error) {
 		return frameworkIDVal, errEmptyFrameworkID
 	}
 	return frameworkIDVal, nil
+}
+
+// TODO: handle STATELESS job correctly
+func (m *serviceHandler) getTaskEvents(
+	ctx context.Context,
+	id *peloton.JobID,
+	instanceID uint32,
+	jobType pb_job.JobType) ([]*task.TaskEvent, error) {
+	if jobType == pb_job.JobType_BATCH {
+		return m.taskStore.GetTaskEvents(ctx, id, instanceID)
+	}
+	return nil, nil
 }
 
 // getEventsResponseResult returns []*GetEventsResponse_Events which is a list

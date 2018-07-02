@@ -276,13 +276,14 @@ func (suite *TaskHandlerTestSuite) createTaskEventForGetTasks(instanceID uint32,
 	return events, getReturnEvents
 }
 
-func (suite *TaskHandlerTestSuite) TestGetTasks() {
+func (suite *TaskHandlerTestSuite) TestGetTasks_Batch_Job() {
 	instanceID := uint32(0)
 	taskRuns := uint32(3)
 	lastTaskInfo := suite.createTestTaskInfo(task.TaskState_FAILED, instanceID)
 	taskInfoMap := make(map[uint32]*task.TaskInfo)
 	taskInfoMap[instanceID] = lastTaskInfo
 	events, _ := suite.createTaskEventForGetTasks(instanceID, taskRuns)
+	suite.testJobConfig.Type = job.JobType_BATCH
 
 	gomock.InOrder(
 		suite.mockedJobFactory.EXPECT().AddJob(suite.testJobID).Return(suite.mockedCachedJob),
@@ -303,6 +304,35 @@ func (suite *TaskHandlerTestSuite) TestGetTasks() {
 	resp, err := suite.handler.Get(context.Background(), req)
 	suite.NoError(err)
 	suite.Equal(uint32(len(resp.Results)), taskRuns)
+	for _, result := range resp.Results {
+		suite.Equal(result.GetRuntime().GetState(), task.TaskState_FAILED)
+	}
+}
+
+func (suite *TaskHandlerTestSuite) TestGetTasks_Service_Job() {
+	instanceID := uint32(0)
+	lastTaskInfo := suite.createTestTaskInfo(task.TaskState_FAILED, instanceID)
+	taskInfoMap := make(map[uint32]*task.TaskInfo)
+	taskInfoMap[instanceID] = lastTaskInfo
+	suite.testJobConfig.Type = job.JobType_SERVICE
+
+	gomock.InOrder(
+		suite.mockedJobFactory.EXPECT().AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+		suite.mockedCachedJob.EXPECT().
+			GetConfig(gomock.Any()).
+			Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
+		suite.mockedTaskStore.EXPECT().
+			GetTaskForJob(gomock.Any(), suite.testJobID, instanceID).Return(taskInfoMap, nil),
+	)
+
+	var req = &task.GetRequest{
+		JobId:      suite.testJobID,
+		InstanceId: instanceID,
+	}
+
+	resp, err := suite.handler.Get(context.Background(), req)
+	suite.NoError(err)
+	suite.Len(resp.Results, 0)
 	for _, result := range resp.Results {
 		suite.Equal(result.GetRuntime().GetState(), task.TaskState_FAILED)
 	}
@@ -696,8 +726,13 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 
 func (suite *TaskHandlerTestSuite) TestGetEvents() {
 	taskEvents := suite.createTestTaskEvents()
+	suite.testJobConfig.Type = job.JobType_BATCH
 
 	gomock.InOrder(
+		suite.mockedJobFactory.EXPECT().
+			AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+		suite.mockedCachedJob.EXPECT().
+			GetConfig(gomock.Any()).Return(suite.testJobConfig, nil),
 		suite.mockedTaskStore.EXPECT().
 			GetTaskEvents(gomock.Any(), gomock.Any(), gomock.Any()).Return(taskEvents, nil),
 	)
@@ -751,6 +786,29 @@ func (suite *TaskHandlerTestSuite) TestGetEvents() {
 		},
 	}
 	suite.Equal(task1Events, expectedTask1Events)
+}
+
+func (suite *TaskHandlerTestSuite) TestGetEvents_Service_Job() {
+	suite.testJobConfig.Type = job.JobType_SERVICE
+
+	gomock.InOrder(
+		suite.mockedJobFactory.EXPECT().
+			AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+		suite.mockedCachedJob.EXPECT().
+			GetConfig(gomock.Any()).Return(suite.testJobConfig, nil),
+	)
+	var request = &task.GetEventsRequest{
+		JobId:      suite.testJobID,
+		InstanceId: 0,
+	}
+	resp, err := suite.handler.GetEvents(
+		context.Background(),
+		request,
+	)
+	suite.NoError(err)
+	suite.Nil(resp.GetError())
+	eventsList := resp.GetResult()
+	suite.Len(eventsList, 0)
 }
 
 func (suite *TaskHandlerTestSuite) TestStartTasksWithInvalidRanges() {
