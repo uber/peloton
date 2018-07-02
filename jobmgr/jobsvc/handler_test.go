@@ -515,7 +515,6 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 		gomock.Any(), gomock.Any(), jobID).Return(nil)
 	suite.mockedCachedJob.EXPECT().Create(
 		gomock.Any(), jobConfig, "peloton").Return(nil)
-
 	secret := &peloton.Secret{
 		Path: testSecretPath,
 		Value: &peloton.Secret_Value{
@@ -536,6 +535,25 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 	suite.NotNil(resp)
 	suite.Equal(jobID, resp.GetJobId())
 
+	// Create job where one instance is using docker containerizer.
+	// The create should still succeed and this instance will be
+	// launched without secrets because container info in default
+	// config is overridden.
+	_ = jobmgrtask.RemoveSecretVolumesFromConfig(jobConfig)
+	jobConfig.InstanceConfig[10].Container =
+		&mesos.ContainerInfo{Type: &dockerContainerizer}
+	req = &job.CreateRequest{
+		Id:      jobID,
+		Config:  jobConfig,
+		Secrets: []*peloton.Secret{secret},
+	}
+	suite.mockedSecretStore.EXPECT().CreateSecret(
+		gomock.Any(), gomock.Any(), jobID).Return(nil)
+	suite.mockedCachedJob.EXPECT().Create(
+		gomock.Any(), jobConfig, "peloton").Return(nil)
+	resp, err = suite.handler.Create(suite.context, req)
+	suite.Nil(err)
+
 	// Negative tests begin
 
 	// Now because the way test is setup, after Create succeeds, jobConfig will
@@ -554,17 +572,6 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 	suite.mockedSecretStore.EXPECT().CreateSecret(
 		gomock.Any(), gomock.Any(), jobID).
 		Return(errors.New("DB error"))
-	resp, err = suite.handler.Create(suite.context, req)
-	suite.Error(err)
-
-	// Create job where one instance is using docker containerizer.
-	jobConfig.InstanceConfig[10].Container =
-		&mesos.ContainerInfo{Type: &dockerContainerizer}
-	req = &job.CreateRequest{
-		Id:      jobID,
-		Config:  jobConfig,
-		Secrets: []*peloton.Secret{secret},
-	}
 	resp, err = suite.handler.Create(suite.context, req)
 	suite.Error(err)
 
