@@ -625,6 +625,27 @@ func (h *serviceHandler) validateSecretsAndConfig(
 	return nil
 }
 
+// validateMesosContainerizerForSecrets returns error if default config doesn't
+// use mesos containerizer. Secrets will be common for all instances in a job.
+// They will be a part of default container config. This means that if a job is
+// created with secrets, we will ensure that the job also has a default config
+// with mesos containerizer. The secrets will be used by all tasks in that job
+// and all tasks must use mesos containerizer for processing secrets.
+// We will not enforce that instance config has mesos containerizer and let
+// instance config override this to keep with existing convention.
+func validateMesosContainerizerForSecrets(jobConfig *job.JobConfig) error {
+	// make sure that default config uses mesos containerizer
+	if jobConfig.GetDefaultConfig().GetContainer().GetType() !=
+		mesos.ContainerInfo_MESOS {
+		return yarpcerrors.InvalidArgumentErrorf(
+			fmt.Sprintf("container type %v does not match %v",
+				jobConfig.GetDefaultConfig().GetContainer().GetType(),
+				mesos.ContainerInfo_MESOS),
+		)
+	}
+	return nil
+}
+
 // handleCreateSecrets handles secrets to be added at the time of creating a job
 func (h *serviceHandler) handleCreateSecrets(
 	ctx context.Context, jobID *peloton.JobID,
@@ -635,9 +656,8 @@ func (h *serviceHandler) handleCreateSecrets(
 	if len(secrets) == 0 {
 		return nil
 	}
-	// Make sure that the config is using Mesos containerizer for
-	// default config as well as instance configs.
-	if err := jobmgrtask.ValidateMesosContainerizer(config); err != nil {
+	// Make sure that the default config is using Mesos containerizer
+	if err := validateMesosContainerizerForSecrets(config); err != nil {
 		return err
 	}
 	// for each secret, store it in DB and add a secret volume to defaultconfig

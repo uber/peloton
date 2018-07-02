@@ -14,7 +14,6 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
-	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -160,37 +159,6 @@ func CreateSecretVolume(secretPath string, secretStr string) *mesos_v1.Volume {
 			},
 		},
 	}
-}
-
-// ValidateMesosContainerizer returns error if either of default config or
-// instance config don't use mesos containerizer. Secrets will be common for all
-// instances in a job. They will be a part of default container config.
-// This means that if a job is created with secrets, we will ensure that the job
-// also has a default config with mesos containerizer. The secrets will be used
-// by all tasks in that job and all tasks must use mesos containerizer for
-// processing secrets.
-func ValidateMesosContainerizer(jobConfig *job.JobConfig) error {
-	// make sure the config uses mesos containerizer
-	if jobConfig.GetDefaultConfig().GetContainer().GetType() !=
-		mesos_v1.ContainerInfo_MESOS {
-		return yarpcerrors.InvalidArgumentErrorf(
-			fmt.Sprintf("container type %v does not match %v",
-				jobConfig.GetDefaultConfig().GetContainer().GetType(),
-				mesos_v1.ContainerInfo_MESOS),
-		)
-	}
-	// Go through each instance config and make sure they are
-	// using mesos containerizer
-	for _, taskConfig := range jobConfig.GetInstanceConfig() {
-		if taskConfig.GetContainer().GetType() != mesos_v1.ContainerInfo_MESOS {
-			return yarpcerrors.InvalidArgumentErrorf(
-				fmt.Sprintf("container type %v does not match %v",
-					taskConfig.GetContainer().GetType(),
-					mesos_v1.ContainerInfo_MESOS),
-			)
-		}
-	}
-	return nil
 }
 
 // CreateSecretsFromVolumes creates secret proto message list from the given
