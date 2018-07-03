@@ -157,6 +157,20 @@ def long_running_job(request):
     return job
 
 
+@pytest.fixture
+def stateless_job(request):
+    job = Job(job_file='test_stateless_job.yaml')
+
+    # teardown
+    def kill_stateless_job():
+        print "\nstopping stateless job"
+        job.stop()
+
+    request.addfinalizer(kill_stateless_job)
+
+    return job
+
+
 """
 Setup fixture for getting a dict of job objects per state
 """
