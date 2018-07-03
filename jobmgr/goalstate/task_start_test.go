@@ -17,6 +17,7 @@ import (
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	mocks2 "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
 	"code.uber.internal/infra/peloton/storage"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -146,7 +147,12 @@ func (suite *TaskStartTestSuite) TestTaskStartStateless() {
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(nil)
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			suite.Equal(runtimeDiffs[suite.instanceID], cached.RuntimeDiff{
+				cached.StateField:   pbtask.TaskState_PENDING,
+				cached.MessageField: "Task sent for placement",
+			})
+		}).Return(nil)
 
 	err := TaskStart(context.Background(), suite.taskEnt)
 	suite.NoError(err)
@@ -234,7 +240,11 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
-		).Return(taskInfos, nil)
+		).Return(map[string]*launcher.LaunchableTask{
+		taskID: {
+			RuntimeDiff: cached.RuntimeDiff{},
+		},
+	}, nil)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -245,8 +255,10 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
 		Return(suite.cachedTask)
 
 	suite.cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Return(nil)
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			suite.Equal(runtimeDiffs[suite.instanceID], cached.RuntimeDiff{})
+		}).Return(nil)
 
 	suite.cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).
@@ -315,7 +327,11 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeDBError() {
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
-		).Return(taskInfos, nil)
+		).Return(map[string]*launcher.LaunchableTask{
+		taskID: {
+			RuntimeDiff: cached.RuntimeDiff{},
+		},
+	}, nil)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -326,7 +342,10 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeDBError() {
 		Return(suite.cachedTask)
 
 	suite.cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			suite.Equal(runtimeDiffs[suite.instanceID], cached.RuntimeDiff{})
+		}).
 		Return(fmt.Errorf("fake db write error"))
 
 	err := TaskStart(context.Background(), suite.taskEnt)
@@ -398,6 +417,12 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithoutVolume() {
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			suite.Equal(runtimeDiffs[suite.instanceID], cached.RuntimeDiff{
+				cached.StateField:   pbtask.TaskState_PENDING,
+				cached.MessageField: "Task sent for placement",
+			})
+		}).
 		Return(nil)
 
 	err := TaskStart(context.Background(), suite.taskEnt)

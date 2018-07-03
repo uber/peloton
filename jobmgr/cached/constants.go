@@ -72,6 +72,7 @@ const (
 	CompletionTimeField  = "CompletionTime"
 	FailureCountField    = "FailureCount"
 	GoalStateField       = "GoalState"
+	HostField            = "Host"
 	MesosTaskIDField     = "MesosTaskId"
 	MessageField         = "Message"
 	PortsField           = "Ports"
@@ -80,4 +81,5 @@ const (
 	RevisionField        = "Revision"
 	StartTimeField       = "StartTime"
 	StateField           = "State"
+	VolumeIDField        = "VolumeID"
 )

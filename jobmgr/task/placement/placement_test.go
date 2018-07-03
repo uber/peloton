@@ -20,11 +20,12 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
-
-	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	launcher_mocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
+
+	"code.uber.internal/infra/peloton/jobmgr/cached"
+	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -53,32 +54,38 @@ var (
 	lock = sync.RWMutex{}
 )
 
-func createTestTask(instanceID int) *task.TaskInfo {
+func createTestTask(instanceID int) (*task.TaskInfo, cached.RuntimeDiff) {
 	var tid = fmt.Sprintf(taskIDFmt, instanceID, uuid.NewUUID().String())
+	mesosID := &mesos.TaskID{
+		Value: &tid,
+	}
 
 	return &task.TaskInfo{
-		JobId: &peloton.JobID{
-			Value: _testJobID,
-		},
-		InstanceId: uint32(instanceID),
-		Config: &task.TaskConfig{
-			Name:     _testJobID,
-			Resource: &_defaultResourceConfig,
-			Ports: []*task.PortConfig{
-				{
-					Name:    "port",
-					EnvName: "PORT",
+			JobId: &peloton.JobID{
+				Value: _testJobID,
+			},
+			InstanceId: uint32(instanceID),
+			Config: &task.TaskConfig{
+				Name:     _testJobID,
+				Resource: &_defaultResourceConfig,
+				Ports: []*task.PortConfig{
+					{
+						Name:    "port",
+						EnvName: "PORT",
+					},
 				},
 			},
-		},
-		Runtime: &task.RuntimeInfo{
-			MesosTaskId: &mesos.TaskID{
-				Value: &tid,
+			Runtime: &task.RuntimeInfo{
+				MesosTaskId: mesosID,
+				State:       task.TaskState_PENDING,
+				GoalState:   task.TaskState_SUCCEEDED,
 			},
-			State:     task.TaskState_PENDING,
-			GoalState: task.TaskState_SUCCEEDED,
 		},
-	}
+		cached.RuntimeDiff{
+			cached.MesosTaskIDField: mesosID,
+			cached.StateField:       task.TaskState_PENDING,
+			cached.GoalStateField:   task.TaskState_SUCCEEDED,
+		}
 }
 
 func createResources(defaultMultiplier float64) []*mesos.Resource {
@@ -123,7 +130,7 @@ func TestMultipleTasksPlacements(t *testing.T) {
 	testTasks := make([]*task.TaskInfo, numTasks)
 	placements := make([]*resmgr.Placement, numTasks)
 	for i := 0; i < numTasks; i++ {
-		tmp := createTestTask(i)
+		tmp, _ := createTestTask(i)
 		testTasks[i] = tmp
 	}
 
@@ -183,7 +190,7 @@ func TestTaskPlacementNoError(t *testing.T) {
 		goalStateDriver: goalStateDriver,
 	}
 
-	testTask := createTestTask(0) // taskinfo
+	testTask, testRuntimeDiff := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
 	p := createPlacements(testTask, hostOffer)
@@ -191,12 +198,18 @@ func TestTaskPlacementNoError(t *testing.T) {
 	taskID := &peloton.TaskID{
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
-	taskInfo := make(map[string]*task.TaskInfo)
-	taskInfo[taskID.Value] = testTask
 
 	gomock.InOrder(
 		mockTaskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
+			Return(
+				map[string]*launcher.LaunchableTask{
+					taskID.Value: {
+						RuntimeDiff: testRuntimeDiff,
+						Config:      testTask.Config,
+					},
+				},
+				nil),
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
@@ -204,7 +217,7 @@ func TestTaskPlacementNoError(t *testing.T) {
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		cachedJob.EXPECT().
-			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
+			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		mockTaskLauncher.EXPECT().
@@ -243,20 +256,15 @@ func TestTaskPlacementGetTaskError(t *testing.T) {
 		taskLauncher: mockTaskLauncher,
 	}
 
-	testTask := createTestTask(0) // taskinfo
+	testTask, _ := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
 	p := createPlacements(testTask, hostOffer)
 
-	taskID := &peloton.TaskID{
-		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
-	}
-	taskInfo := make(map[string]*task.TaskInfo)
-	taskInfo[taskID.Value] = testTask
-
 	gomock.InOrder(
 		mockTaskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, fmt.Errorf("fake launch error")),
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
+			Return(nil, fmt.Errorf("fake launch error")),
 		mockTaskLauncher.EXPECT().
 			TryReturnOffers(gomock.Any(), gomock.Any(), p).Return(nil),
 	)
@@ -288,22 +296,28 @@ func TestTaskPlacementKilledTask(t *testing.T) {
 		goalStateDriver: goalStateDriver,
 	}
 
-	testTask := createTestTask(0) // taskinfo
+	testTask, runtimeDiff := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
 	p := createPlacements(testTask, hostOffer)
-	testTask.Runtime.GoalState = task.TaskState_KILLED
 	testTask.Runtime.State = task.TaskState_KILLED
+	testTask.Runtime.GoalState = task.TaskState_KILLED
 
 	taskID := &peloton.TaskID{
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
-	taskInfo := make(map[string]*task.TaskInfo)
-	taskInfo[taskID.Value] = testTask
 
 	gomock.InOrder(
 		mockTaskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
+			Return(
+				map[string]*launcher.LaunchableTask{
+					taskID.Value: {
+						RuntimeDiff: runtimeDiff,
+						Config:      testTask.Config,
+					},
+				},
+				nil),
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
@@ -339,7 +353,7 @@ func TestTaskPlacementKilledRunningTask(t *testing.T) {
 		goalStateDriver: goalStateDriver,
 	}
 
-	testTask := createTestTask(0) // taskinfo
+	testTask, runtimeDiff := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
 	p := createPlacements(testTask, hostOffer)
@@ -348,15 +362,21 @@ func TestTaskPlacementKilledRunningTask(t *testing.T) {
 	taskID := &peloton.TaskID{
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
-	taskInfo := make(map[string]*task.TaskInfo)
-	taskInfo[taskID.Value] = testTask
 
 	expectedRuntime := make(map[uint32]*task.RuntimeInfo)
 	expectedRuntime[testTask.InstanceId] = testTask.Runtime
 
 	gomock.InOrder(
 		mockTaskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
+			Return(
+				map[string]*launcher.LaunchableTask{
+					taskID.Value: {
+						RuntimeDiff: runtimeDiff,
+						Config:      testTask.Config,
+					},
+				},
+				nil),
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
@@ -394,7 +414,7 @@ func TestTaskPlacementDBError(t *testing.T) {
 		goalStateDriver: goalStateDriver,
 	}
 
-	testTask := createTestTask(0) // taskinfo
+	testTask, runtimeDiff := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
 	p := createPlacements(testTask, hostOffer)
@@ -402,12 +422,18 @@ func TestTaskPlacementDBError(t *testing.T) {
 	taskID := &peloton.TaskID{
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
-	taskInfo := make(map[string]*task.TaskInfo)
-	taskInfo[taskID.Value] = testTask
 
 	gomock.InOrder(
 		mockTaskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
+			Return(
+				map[string]*launcher.LaunchableTask{
+					taskID.Value: {
+						RuntimeDiff: runtimeDiff,
+						Config:      testTask.Config,
+					},
+				},
+				nil),
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
@@ -415,7 +441,7 @@ func TestTaskPlacementDBError(t *testing.T) {
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		cachedJob.EXPECT().
-			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(fmt.Errorf("fake db error")),
+			PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake db error")),
 	)
 
 	pp.ProcessPlacement(context.Background(), p)
@@ -445,7 +471,7 @@ func TestTaskPlacementError(t *testing.T) {
 		goalStateDriver: goalStateDriver,
 	}
 
-	testTask := createTestTask(0) // taskinfo
+	testTask, runtimeDiff := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
 	p := createPlacements(testTask, hostOffer)
@@ -453,12 +479,18 @@ func TestTaskPlacementError(t *testing.T) {
 	taskID := &peloton.TaskID{
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
-	taskInfo := make(map[string]*task.TaskInfo)
-	taskInfo[taskID.Value] = testTask
 
 	gomock.InOrder(
 		mockTaskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
+			Return(
+				map[string]*launcher.LaunchableTask{
+					taskID.Value: {
+						RuntimeDiff: runtimeDiff,
+						Config:      testTask.Config,
+					},
+				},
+				nil),
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
@@ -466,7 +498,7 @@ func TestTaskPlacementError(t *testing.T) {
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		cachedJob.EXPECT().
-			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
+			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		mockTaskLauncher.EXPECT().
@@ -514,7 +546,7 @@ func TestTaskPlacementPlacementResMgrError(t *testing.T) {
 		goalStateDriver: goalStateDriver,
 	}
 
-	testTask := createTestTask(0) // taskinfo
+	testTask, runtimeDiff := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
 	p := createPlacements(testTask, hostOffer)
@@ -522,12 +554,18 @@ func TestTaskPlacementPlacementResMgrError(t *testing.T) {
 	taskID := &peloton.TaskID{
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
-	taskInfo := make(map[string]*task.TaskInfo)
-	taskInfo[taskID.Value] = testTask
 
 	gomock.InOrder(
 		mockTaskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
+			Return(
+				map[string]*launcher.LaunchableTask{
+					taskID.Value: {
+						RuntimeDiff: runtimeDiff,
+						Config:      testTask.Config,
+					},
+				},
+				nil),
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
@@ -535,7 +573,7 @@ func TestTaskPlacementPlacementResMgrError(t *testing.T) {
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		cachedJob.EXPECT().
-			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
+			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		mockTaskLauncher.EXPECT().

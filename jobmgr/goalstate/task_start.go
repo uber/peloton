@@ -41,7 +41,7 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		Value: taskEnt.GetID(),
 	}
 
-	taskInfos, err := goalStateDriver.taskLauncher.GetLaunchableTasks(
+	launchableTasks, err := goalStateDriver.taskLauncher.GetLaunchableTasks(
 		ctx,
 		[]*peloton.TaskID{pelotonTaskID},
 		taskInfo.GetRuntime().GetHost(),
@@ -56,8 +56,8 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		return err
 	}
 
-	// GetLaunchableTasks have updated the task runtime to LAUNCHED state and
-	// the placement operation. So update the runtime in cache and DB.
+	// update the runtime in cache and DB with runtimeDiff returned by
+	// GetLaunchableTasks
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
 	if cachedJob == nil {
 		return nil
@@ -72,7 +72,19 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		return nil
 	}
 
-	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: taskInfos[pelotonTaskID.Value].GetRuntime()}, cached.UpdateCacheAndDB)
+	launchableTask := launchableTasks[pelotonTaskID.Value]
+	// safety check, should not happen
+	if launchableTask == nil {
+		log.WithFields(log.Fields{
+			"job_id":      taskEnt.jobID.Value,
+			"instance_id": taskEnt.instanceID,
+		}).Error("unexpected nil launchableTask")
+		return nil
+	}
+
+	err = cachedJob.PatchTasks(ctx, map[uint32]cached.RuntimeDiff{
+		taskEnt.instanceID: launchableTask.RuntimeDiff,
+	})
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", taskEnt.jobID).
@@ -81,7 +93,7 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		return err
 	}
 
-	taskInfos[pelotonTaskID.Value].Runtime, err = cachedTask.GetRunTime(ctx)
+	newRuntime, err := cachedTask.GetRunTime(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", taskEnt.jobID).
@@ -90,15 +102,25 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		return err
 	}
 
+	taskInfos := map[string]*task.TaskInfo{
+		pelotonTaskID.Value: {
+			Runtime:    newRuntime,
+			Config:     launchableTask.Config,
+			JobId:      taskEnt.jobID,
+			InstanceId: taskEnt.instanceID,
+		},
+	}
+
 	// ignoring skippedTaskInfo for now since this is stateful task
-	launchableTasks, _ := goalStateDriver.taskLauncher.CreateLaunchableTasks(ctx, taskInfos)
+	tasksToBeLaunched, _ :=
+		goalStateDriver.taskLauncher.CreateLaunchableTasks(ctx, taskInfos)
 	var selectedPorts []uint32
 	runtimePorts := taskInfo.GetRuntime().GetPorts()
 	for _, port := range runtimePorts {
 		selectedPorts = append(selectedPorts, port)
 	}
 
-	return goalStateDriver.taskLauncher.LaunchStatefulTasks(ctx, launchableTasks, taskInfo.GetRuntime().GetHost(), selectedPorts, false /* checkVolume */)
+	return goalStateDriver.taskLauncher.LaunchStatefulTasks(ctx, tasksToBeLaunched, taskInfo.GetRuntime().GetHost(), selectedPorts, false /* checkVolume */)
 }
 
 // TaskStart sends the task to resource manager for placement and changes the state to PENDING.

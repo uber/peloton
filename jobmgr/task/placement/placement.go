@@ -131,7 +131,7 @@ func (p *processor) Start() error {
 
 func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Placement) {
 	tasks := placement.GetTasks()
-	taskInfos, err := p.taskLauncher.GetLaunchableTasks(
+	lauchableTasks, err := p.taskLauncher.GetLaunchableTasks(
 		ctx,
 		placement.GetTasks(),
 		placement.GetHostname(),
@@ -148,13 +148,13 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 		return
 	}
 
-	for taskID, taskInfo := range taskInfos {
+	taskInfos := make(map[string]*task.TaskInfo)
+	for taskID, launchableTask := range lauchableTasks {
 		id, instanceID, err := util.ParseTaskID(taskID)
 		if err != nil {
 			continue
 		}
 		jobID := &peloton.JobID{Value: id}
-		runtime := taskInfo.GetRuntime()
 		cachedJob := p.jobFactory.AddJob(jobID)
 		cachedTask := cachedJob.AddTask(uint32(instanceID))
 
@@ -174,13 +174,21 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 
 			// Skip launching of deleted tasks.
 			log.WithField("task_id", taskID).Info("skipping launch of killed task")
-			delete(taskInfos, taskID)
 		} else {
 			retry := 0
 			for retry < maxRetryCount {
-				err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{uint32(instanceID): runtime}, cached.UpdateCacheAndDB)
+				err = cachedJob.PatchTasks(ctx,
+					map[uint32]cached.RuntimeDiff{
+						uint32(instanceID): launchableTask.RuntimeDiff,
+					})
 				if err == nil {
-					taskInfo.Runtime, _ = cachedTask.GetRunTime(ctx)
+					runtime, _ := cachedTask.GetRunTime(ctx)
+					taskInfos[taskID] = &task.TaskInfo{
+						Runtime:    runtime,
+						Config:     launchableTask.Config,
+						InstanceId: uint32(instanceID),
+						JobId:      jobID,
+					}
 					break
 				}
 				if common.IsTransientError(err) {

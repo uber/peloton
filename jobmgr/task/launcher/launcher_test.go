@@ -156,12 +156,15 @@ func TestGetLaunchableTasks(t *testing.T) {
 			GetRunTime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
 	}
 
-	taskInfos, err := taskLauncher.GetLaunchableTasks(context.Background(), tasks, hostOffer.Hostname, hostOffer.AgentId, selectedPorts)
+	launchableTasks, err := taskLauncher.GetLaunchableTasks(
+		context.Background(), tasks, hostOffer.Hostname,
+		hostOffer.AgentId, selectedPorts)
 	assert.NoError(t, err)
-	for _, taskInfo := range taskInfos {
-		assert.Equal(t, task.TaskState_LAUNCHED, taskInfo.GetRuntime().GetState())
-		assert.Equal(t, hostOffer.Hostname, taskInfo.GetRuntime().GetHost())
-		assert.Equal(t, hostOffer.AgentId, taskInfo.GetRuntime().GetAgentID())
+	for _, launchableTask := range launchableTasks {
+		runtimeDiff := launchableTask.RuntimeDiff
+		assert.Equal(t, task.TaskState_LAUNCHED, runtimeDiff[cached.StateField])
+		assert.Equal(t, hostOffer.Hostname, runtimeDiff[cached.HostField])
+		assert.Equal(t, hostOffer.AgentId, runtimeDiff[cached.AgentIDField])
 	}
 }
 
@@ -220,13 +223,16 @@ func TestGetLaunchableTasksStateful(t *testing.T) {
 			GetRunTime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
 	}
 
-	taskInfos, err := taskLauncher.GetLaunchableTasks(context.Background(), tasks, hostOffer.Hostname, hostOffer.AgentId, selectedPorts)
+	launchableTasks, err := taskLauncher.GetLaunchableTasks(
+		context.Background(), tasks, hostOffer.Hostname,
+		hostOffer.AgentId, selectedPorts)
 	assert.NoError(t, err)
-	for _, taskInfo := range taskInfos {
-		assert.Equal(t, task.TaskState_LAUNCHED, taskInfo.GetRuntime().GetState())
-		assert.Equal(t, hostOffer.Hostname, taskInfo.GetRuntime().GetHost())
-		assert.Equal(t, hostOffer.AgentId, taskInfo.GetRuntime().GetAgentID())
-		assert.NotNil(t, taskInfo.GetRuntime().GetVolumeID(), "Volume ID should not be null")
+	for _, launchableTask := range launchableTasks {
+		runtimeDiff := launchableTask.RuntimeDiff
+		assert.Equal(t, task.TaskState_LAUNCHED, runtimeDiff[cached.StateField])
+		assert.Equal(t, hostOffer.Hostname, runtimeDiff[cached.HostField])
+		assert.Equal(t, hostOffer.AgentId, runtimeDiff[cached.AgentIDField])
+		assert.NotNil(t, runtimeDiff[cached.VolumeIDField], "Volume ID should not be null")
 	}
 }
 

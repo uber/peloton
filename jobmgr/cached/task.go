@@ -454,12 +454,13 @@ func (t *task) validateAndMergeRuntime(runtime *pbtask.RuntimeInfo) *pbtask.Runt
 // TODO(zhixin): replace UpdateRuntime with UpdateCacheAndDB.
 func (t *task) PatchRuntime(ctx context.Context, diff RuntimeDiff) error {
 	if diff == nil {
-		return nil
+		return yarpcerrors.InvalidArgumentErrorf(
+			"unexpected nil diff")
 	}
 
 	if _, ok := diff[RevisionField]; ok {
 		return yarpcerrors.InvalidArgumentErrorf(
-			"Unexpected Revision field in diff")
+			"unexpected Revision field in diff")
 	}
 
 	t.Lock()

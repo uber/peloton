@@ -28,6 +28,17 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
+// LaunchableTask contains the changes to the task runtime, expressed as the
+// map RuntimeDiff, to make the task launchable and the configuration of
+// the task
+type LaunchableTask struct {
+	// RuntimeDiff is the diff to be applied to the task runtime,
+	// before launch it
+	RuntimeDiff cached.RuntimeDiff
+	// Config is the task config of the task to be launched
+	Config *task.TaskConfig
+}
+
 // Launcher defines the interface of task launcher which launches
 // tasks from the placed queues of resource pool
 type Launcher interface {
@@ -35,8 +46,13 @@ type Launcher interface {
 	ProcessPlacement(ctx context.Context, tasks []*hostsvc.LaunchableTask, placement *resmgr.Placement) error
 	// LaunchStatefulTasks launches stateful task with reserved resource to hostmgr directly.
 	LaunchStatefulTasks(ctx context.Context, selectedTasks []*hostsvc.LaunchableTask, hostname string, selectedPorts []uint32, checkVolume bool) error
-	// GetLaunchableTasks returns launchable tasks after updating their runtime state with the placement information
-	GetLaunchableTasks(ctx context.Context, tasks []*peloton.TaskID, hostname string, agentID *mesos.AgentID, selectedPorts []uint32) (map[string]*task.TaskInfo, error)
+	// GetLaunchableTasks returns current task configuration and
+	// the runtime diff which needs to be patched onto existing runtime for
+	// each launchable task.
+	GetLaunchableTasks(
+		ctx context.Context, tasks []*peloton.TaskID,
+		hostname string, agentID *mesos.AgentID, selectedPorts []uint32) (
+		map[string]*LaunchableTask, error)
 	// CreateLaunchableTasks generates list of hostsvc.LaunchableTask and a map
 	// of skipped TaskInfo from map of TaskInfo
 	CreateLaunchableTasks(
@@ -138,17 +154,18 @@ func (l *launcher) isLauncherRetryableError(err error) bool {
 	return true
 }
 
-// The taskinfo being returned contains the current task configuration and
-// the new runtime which needs to be updated into the DB for each launchable task.
+// GetLaunchableTasks returns current task configuration and
+// the runtime diff which needs to be patched onto existing runtime for
+// each launchable task.
 func (l *launcher) GetLaunchableTasks(
 	ctx context.Context,
 	tasks []*peloton.TaskID,
 	hostname string,
 	agentID *mesos.AgentID,
-	selectedPorts []uint32) (map[string]*task.TaskInfo, error) {
+	selectedPorts []uint32) (map[string]*LaunchableTask, error) {
 	portsIndex := 0
 
-	tasksInfo := make(map[string]*task.TaskInfo)
+	launchableTasks := make(map[string]*LaunchableTask)
 	getTaskInfoStart := time.Now()
 
 	for _, taskID := range tasks {
@@ -180,7 +197,7 @@ func (l *launcher) GetLaunchableTasks(
 			continue
 		}
 
-		runtime := &task.RuntimeInfo{}
+		runtimeDiff := make(cached.RuntimeDiff)
 
 		// Generate volume ID if not set for stateful task.
 		if taskConfig.GetVolume() != nil {
@@ -195,19 +212,19 @@ func (l *launcher) GetLaunchableTasks(
 				}).Info("generates new volume id for task")
 				// Generates volume ID if first time launch the stateful task,
 				// OR task is being launched to a different host.
-				runtime.VolumeID = newVolumeID
+				runtimeDiff[cached.VolumeIDField] = newVolumeID
 			}
 		}
 
 		if cachedRuntime.GetGoalState() != task.TaskState_KILLED {
-			runtime.Host = hostname
-			runtime.AgentID = agentID
-			runtime.State = task.TaskState_LAUNCHED
+			runtimeDiff[cached.HostField] = hostname
+			runtimeDiff[cached.AgentIDField] = agentID
+			runtimeDiff[cached.StateField] = task.TaskState_LAUNCHED
 		}
 
 		if selectedPorts != nil {
 			// Reset runtime ports to get new ports assignment if placement has ports.
-			runtime.Ports = make(map[string]uint32)
+			ports := make(map[string]uint32)
 			// Assign selected dynamic port to task per port config.
 			for _, portConfig := range taskConfig.GetPorts() {
 				if portConfig.GetValue() != 0 {
@@ -222,24 +239,22 @@ func (l *launcher) GetLaunchableTasks(
 					}).Error("placement contains less selected ports than required.")
 					return nil, errors.New("invalid placement")
 				}
-				runtime.Ports[portConfig.GetName()] = selectedPorts[portsIndex]
+				ports[portConfig.GetName()] = selectedPorts[portsIndex]
 				portsIndex++
 			}
+			runtimeDiff[cached.PortsField] = ports
 		}
 
-		runtime.Message = "Add hostname and ports"
-		runtime.Reason = "REASON_UPDATE_OFFER"
+		runtimeDiff[cached.MessageField] = "Add hostname and ports"
+		runtimeDiff[cached.ReasonField] = "REASON_UPDATE_OFFER"
 
-		taskInfo := &task.TaskInfo{
-			InstanceId: uint32(instanceID),
-			JobId:      jobID,
-			Config:     taskConfig,
-			Runtime:    runtime,
+		launchableTasks[taskID.GetValue()] = &LaunchableTask{
+			RuntimeDiff: runtimeDiff,
+			Config:      taskConfig,
 		}
-		tasksInfo[taskID.GetValue()] = taskInfo
 	}
 
-	if len(tasksInfo) == 0 {
+	if len(launchableTasks) == 0 {
 		return nil, errEmptyTasks
 	}
 
@@ -252,7 +267,7 @@ func (l *launcher) GetLaunchableTasks(
 
 	l.metrics.GetDBTaskInfo.Record(getTaskInfoDuration)
 
-	return tasksInfo, nil
+	return launchableTasks, nil
 }
 
 // updateTaskRuntime updates task runtime with goalstate, reason and message
