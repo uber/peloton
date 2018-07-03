@@ -40,15 +40,7 @@ var (
 	_mesosTaskID   = fmt.Sprintf("%s-%d-%s", _jobID, _instanceID, _uuidStr)
 	_mesosReason   = mesos.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED
 	_pelotonTaskID = fmt.Sprintf("%s-%d", _jobID, _instanceID)
-	_sla           = &job.SlaConfig{
-		Preemptible: false,
-	}
-	_jobConfig = &job.JobConfig{
-		Name:          _jobID,
-		SLA:           _sla,
-		InstanceCount: 1,
-	}
-	_pelotonJobID = &peloton.JobID{
+	_pelotonJobID  = &peloton.JobID{
 		Value: _jobID,
 	}
 	_failureMsg  = "testFailure"

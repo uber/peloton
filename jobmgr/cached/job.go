@@ -20,12 +20,6 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-// writeTaskRuntimeToDB defines the interface of a function which will be used
-// to write task runtimes to DB in parallel
-type writeTaskRuntimeToDB func(ctx context.Context, instanceID uint32,
-	runtime *pbtask.RuntimeInfo, req UpdateRequest,
-	owner string) error
-
 type singleTask func(id uint32) error
 
 // RuntimeDiff to be applied to the runtime struct.
@@ -44,11 +38,6 @@ type Job interface {
 	// Create and Update need to be different functions as the backing
 	// storage calls are different.
 	CreateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, owner string) error
-
-	// UpdateTasks updates all tasks with the new runtime info. If the request
-	// is to update both DB and cache, it first attempts to persist it in storage,
-	// and then storing it in the cache. If the attempt to persist fails, the local cache is cleaned up.
-	UpdateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req UpdateRequest) error
 
 	// PatchTasks patch runtime diff to the existing task cache. runtimeDiffs
 	// is a kv map with key as the instance_id of the task to be updated.
@@ -194,125 +183,6 @@ func (j *job) AddTask(id uint32) Task {
 	return t
 }
 
-// updateTasksInParallel runs go routines which will create/update tasks
-// in parallel to improve performance.
-func (j *job) updateTasksInParallel(
-	ctx context.Context,
-	runtimes map[uint32]*pbtask.RuntimeInfo,
-	owner string, req UpdateRequest,
-	write writeTaskRuntimeToDB) error {
-
-	var instanceIDList []uint32
-	var transientError int32
-
-	nTasks := uint32(len(runtimes))
-	transientError = 0 // indicates if the runtime create/update hit a transient error
-
-	for instanceID := range runtimes {
-		instanceIDList = append(instanceIDList, instanceID)
-	}
-
-	// how many tasks failed to update due to errors
-	tasksNotUpdated := uint32(0)
-
-	// Each go routine will update at least (nTasks / _defaultMaxParallelBatches)
-	// number of tasks. In addition if nTasks % _defaultMaxParallelBatches > 0,
-	// the first increment number of go routines are going to run
-	// one additional task.
-	increment := nTasks % _defaultMaxParallelBatches
-
-	timeStart := time.Now()
-	wg := new(sync.WaitGroup)
-	prevEnd := uint32(0)
-
-	// run the parallel batches
-	for i := uint32(0); i < _defaultMaxParallelBatches; i++ {
-		// start of the batch
-		updateStart := prevEnd
-		// end of the batch
-		updateEnd := updateStart + (nTasks / _defaultMaxParallelBatches)
-		if increment > 0 {
-			updateEnd++
-			increment--
-		}
-
-		if updateEnd > nTasks {
-			updateEnd = nTasks
-		}
-		prevEnd = updateEnd
-		if updateStart == updateEnd {
-			continue
-		}
-		wg.Add(1)
-
-		// Start a go routine to update all tasks in a batch
-		go func() {
-			defer wg.Done()
-			for k := updateStart; k < updateEnd; k++ {
-				instanceID := instanceIDList[k]
-				runtime := runtimes[instanceID]
-				if runtime == nil {
-					continue
-				}
-
-				err := write(ctx, instanceID, runtimes[instanceID], req, owner)
-				if err != nil {
-					log.WithError(err).
-						WithFields(log.Fields{
-							"job_id":      j.ID().GetValue(),
-							"instance_id": instanceID,
-						}).Info("failed to write task runtime")
-					atomic.AddUint32(&tasksNotUpdated, 1)
-					if common.IsTransientError(err) {
-						atomic.StoreInt32(&transientError, 1)
-					}
-					return
-				}
-			}
-		}()
-	}
-	// wait for all batches to complete
-	wg.Wait()
-
-	if tasksNotUpdated != 0 {
-		msg := fmt.Sprintf(
-			"Updated %d task runtimes for %v, and was unable to write %d tasks in %v",
-			nTasks-tasksNotUpdated,
-			j.ID(),
-			tasksNotUpdated,
-			time.Since(timeStart))
-		if transientError > 0 {
-			// return a transient error if a transient error is encountered
-			// while creating.updating any task
-			return yarpcerrors.AbortedErrorf(msg)
-		}
-		return yarpcerrors.InternalErrorf(msg)
-	}
-	return nil
-}
-
-// createSingleTask is a helper function to crate a single task
-func (j *job) createSingleTask(
-	ctx context.Context,
-	instanceID uint32,
-	runtime *pbtask.RuntimeInfo,
-	req UpdateRequest,
-	owner string) error {
-	now := time.Now().UTC()
-	runtime.Revision = &peloton.ChangeLog{
-		CreatedAt: uint64(now.UnixNano()),
-		UpdatedAt: uint64(now.UnixNano()),
-		Version:   1,
-	}
-
-	if j.GetTask(instanceID) != nil {
-		return yarpcerrors.InvalidArgumentErrorf("task %d already exists", instanceID)
-	}
-
-	t := j.AddTask(instanceID)
-	return t.CreateRuntime(ctx, runtime, owner)
-}
-
 func (j *job) CreateTasks(
 	ctx context.Context,
 	runtimes map[uint32]*pbtask.RuntimeInfo,
@@ -336,26 +206,6 @@ func (j *job) CreateTasks(
 	return j.runInParallel(getIdsFromRuntimeMap(runtimes), createSingleTask)
 }
 
-// updateSingleTask is a helper function to update a single task
-func (j *job) updateSingleTask(
-	ctx context.Context,
-	instanceID uint32,
-	runtime *pbtask.RuntimeInfo,
-	req UpdateRequest,
-	owner string) error {
-	t := j.AddTask(instanceID)
-	return t.UpdateRuntime(ctx, runtime, req)
-}
-
-func (j *job) UpdateTasks(
-	ctx context.Context,
-	runtimes map[uint32]*pbtask.RuntimeInfo,
-	req UpdateRequest) error {
-	return j.updateTasksInParallel(ctx, runtimes, "", req, j.updateSingleTask)
-}
-
-// PatchTasks replace UpdateTasks with UpdateCacheAndDB
-// TODO(zhixin): replace UpdateTasks
 func (j *job) PatchTasks(
 	ctx context.Context,
 	runtimeDiffs map[uint32]RuntimeDiff) error {
@@ -381,7 +231,6 @@ func (j *job) ReplaceTasks(
 }
 
 // runInParallel runs go routines which will create/update tasks
-// TODO(zhixin): updateTasksInParallel
 func (j *job) runInParallel(idList []uint32, task singleTask) error {
 	var transientError int32
 

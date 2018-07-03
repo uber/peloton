@@ -17,7 +17,6 @@ func TestRegenerateMesosTaskIDDiff(t *testing.T) {
 	testTable := []struct {
 		jobID           string
 		instanceID      uint32
-		runID           string
 		prevMesosTaskID string
 		mesosTaskID     string
 	}{

@@ -16,7 +16,6 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
@@ -45,15 +44,6 @@ var (
 		MemLimitMb:  10,
 		DiskLimitMb: 10,
 		FdLimit:     10,
-	}
-	_jobID = uuid.NewUUID().String()
-	_sla   = &job.SlaConfig{
-		Preemptible: false,
-	}
-	_jobConfig = &job.JobConfig{
-		Name:          _jobID,
-		SLA:           _sla,
-		InstanceCount: 1,
 	}
 	lock = sync.RWMutex{}
 )

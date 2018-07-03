@@ -21,11 +21,6 @@ const (
 
 type HostOperationTestSuite struct {
 	suite.Suite
-
-	launchOperation   *hostsvc.OfferOperation
-	reserveOperation  *hostsvc.OfferOperation
-	createOperation   *hostsvc.OfferOperation
-	reservedResources []*mesos.Resource
 }
 
 func (suite *HostOperationTestSuite) SetupTest() {

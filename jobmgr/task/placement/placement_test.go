@@ -3,7 +3,6 @@ package placement
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -42,16 +41,6 @@ var (
 		DiskLimitMb: 10,
 		FdLimit:     10,
 	}
-	_jobID = uuid.NewUUID().String()
-	_sla   = &job.SlaConfig{
-		Preemptible: false,
-	}
-	_jobConfig = &job.JobConfig{
-		Name:          _jobID,
-		SLA:           _sla,
-		InstanceCount: 1,
-	}
-	lock = sync.RWMutex{}
 )
 
 func createTestTask(instanceID int) (*task.TaskInfo, cached.RuntimeDiff) {

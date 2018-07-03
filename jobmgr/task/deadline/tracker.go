@@ -47,7 +47,6 @@ type Tracker interface {
 type tracker struct {
 	lock            sync.Mutex
 	runningState    int32
-	shutdown        int32
 	jobStore        storage.JobStore
 	taskStore       storage.TaskStore
 	stopChan        chan struct{}

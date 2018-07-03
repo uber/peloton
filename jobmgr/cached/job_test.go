@@ -25,7 +25,6 @@ type JobTestSuite struct {
 	taskStore *storemocks.MockTaskStore
 	jobID     *peloton.JobID
 	job       *job
-	runtimes  map[uint32]*pbtask.RuntimeInfo
 }
 
 func TestJob(t *testing.T) {
@@ -1136,97 +1135,6 @@ func (suite *JobTestSuite) TestSetGetTasksInJobInCacheBlock() {
 		actRuntime, _ := tt.GetRunTime(context.Background())
 		suite.Equal(runtime, actRuntime)
 	}
-}
-
-// TestTasksUpdateInDB tests updating task runtimes in DB.
-func (suite *JobTestSuite) TestTasksUpdateInDB() {
-	instanceCount := uint32(10)
-
-	runtimes := initializeRuntimes(instanceCount, pbtask.TaskState_RUNNING)
-
-	for i := uint32(0); i < instanceCount; i++ {
-		oldRuntime := initializeCurrentRuntime(pbtask.TaskState_LAUNCHED)
-		suite.taskStore.EXPECT().
-			GetTaskRuntime(gomock.Any(), suite.jobID, i).Return(oldRuntime, nil)
-		suite.taskStore.EXPECT().
-			UpdateTaskRuntime(
-				gomock.Any(),
-				suite.jobID,
-				i,
-				gomock.Any(),
-				gomock.Any()).Return(nil)
-	}
-
-	// Update task runtimes in DB and cache
-	err := suite.job.UpdateTasks(context.Background(), runtimes, UpdateCacheAndDB)
-	suite.NoError(err)
-
-	// Validate the state of the tasks in cache is correct
-	for instID := range runtimes {
-		tt := suite.job.GetTask(instID)
-		suite.NotNil(tt)
-		actRuntime, _ := tt.GetRunTime(context.Background())
-		suite.NotNil(actRuntime)
-		suite.Equal(pbtask.TaskState_RUNNING, actRuntime.GetState())
-		suite.Equal(uint64(2), actRuntime.GetRevision().GetVersion())
-	}
-}
-
-// TestTasksUpdateDBError tests getting DB error during update task runtimes.
-func (suite *JobTestSuite) TestTasksUpdateDBError() {
-	instanceCount := uint32(10)
-	runtime := &pbtask.RuntimeInfo{
-		State: pbtask.TaskState_RUNNING,
-	}
-	oldRuntime := &pbtask.RuntimeInfo{
-		State: pbtask.TaskState_LAUNCHED,
-	}
-	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-
-	for i := uint32(0); i < instanceCount; i++ {
-		tt := suite.job.AddTask(i).(*task)
-		tt.runtime = oldRuntime
-		runtimes[i] = runtime
-		// Simulate fake DB error
-		suite.taskStore.EXPECT().
-			UpdateTaskRuntime(
-				gomock.Any(),
-				suite.jobID,
-				i,
-				gomock.Any(),
-				gomock.Any()).
-			Return(fmt.Errorf("fake db error"))
-	}
-	err := suite.job.UpdateTasks(context.Background(), runtimes, UpdateCacheAndDB)
-	suite.Error(err)
-}
-
-// TestTasksUpdateRuntimeSingleTask tests updating task runtime of a single task in DB.
-func (suite *JobTestSuite) TestTasksUpdateRuntimeSingleTask() {
-	runtime := &pbtask.RuntimeInfo{
-		State: pbtask.TaskState_RUNNING,
-	}
-	oldRuntime := initializeCurrentRuntime(pbtask.TaskState_LAUNCHED)
-	tt := suite.job.AddTask(0).(*task)
-	tt.runtime = oldRuntime
-
-	// Update task runtime of only one task
-	suite.taskStore.EXPECT().
-		UpdateTaskRuntime(
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any()).
-		Return(nil)
-	err := suite.job.UpdateTasks(context.Background(), map[uint32]*pbtask.RuntimeInfo{0: runtime}, UpdateCacheAndDB)
-	suite.NoError(err)
-
-	// Validate the state of the task in cache is correct
-	att := suite.job.GetTask(0)
-	actRuntime, _ := att.GetRunTime(context.Background())
-	suite.Equal(pbtask.TaskState_RUNNING, actRuntime.GetState())
-	suite.Equal(uint64(2), actRuntime.GetRevision().GetVersion())
 }
 
 // TestTasksGetAllTasks tests getting all tasks.

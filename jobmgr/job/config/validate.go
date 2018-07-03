@@ -20,7 +20,7 @@ var (
 	errPortNameMissing    = errors.New("port name is missing")
 	errPortEnvNameMissing = errors.New("env name is missing for dynamic port")
 	errMaxInstancesTooBig = errors.New("job specified MaximumRunningInstances > InstanceCount")
-	errMInInstancesTooBig = errors.New("job specified MinimumRunningInstances > MaximumRunningInstances")
+	errMinInstancesTooBig = errors.New("job specified MinimumRunningInstances > MaximumRunningInstances")
 )
 
 // ValidateTaskConfig checks whether the task configs in a job config
@@ -166,7 +166,7 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 	}
 	minRunningInstances := jobConfig.GetSLA().GetMinimumRunningInstances()
 	if minRunningInstances > maxRunningInstances {
-		return errMaxInstancesTooBig
+		return errMinInstancesTooBig
 	}
 
 	return nil
