@@ -3,6 +3,11 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.1.2
+------------------
+* 2018-07-03    Don't enforce instance config to use mesos containerizer for secrets                   adityacb@uber.com
+* 2018-07-03    Base64 decode data before launching task                                               adityacb@uber.com
+
 0.7.1.1
 ------------------
 * 2018-06-20    Set Mesos Task Labels for JobID, InstanceID, TaskID                                    rcharles@uber.com
