@@ -2,10 +2,12 @@ package jobconfig
 
 import (
 	"fmt"
+	"io/ioutil"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+	"gopkg.in/yaml.v2"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
@@ -341,8 +343,8 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigWithInvalidFieldType() {
 }
 
 func (suite *TaskConfigTestSuite) TestValidateInvalidUpdateConfig() {
-	oldConfig := getConfig(oldConfig, suite.T())
-	invalidNewConfig := getConfig(invalidNewConfig, suite.T())
+	oldConfig := getConfig(oldConfig, suite.Suite)
+	invalidNewConfig := getConfig(invalidNewConfig, suite.Suite)
 	err := ValidateUpdatedConfig(oldConfig, invalidNewConfig, maxTasksPerJob)
 	suite.Error(err)
 	expectedErrors := `7 errors occurred:
@@ -358,19 +360,28 @@ func (suite *TaskConfigTestSuite) TestValidateInvalidUpdateConfig() {
 }
 
 func (suite *TaskConfigTestSuite) TestValidateValidUpdateConfig() {
-	oldConfig := getConfig(oldConfig, suite.T())
-	validNewConfig := getConfig(newConfig, suite.T())
+	oldConfig := getConfig(oldConfig, suite.Suite)
+	validNewConfig := getConfig(newConfig, suite.Suite)
 	err := ValidateUpdatedConfig(oldConfig, validNewConfig, maxTasksPerJob)
 	suite.NoError(err)
 }
 
 func (suite *TaskConfigTestSuite) TestValdiateInvalidUpdateConfigWithoutCmd() {
-	oldConfig := getConfig(oldConfigWithoutDefaultCmd, suite.T())
-	invalidNewConfig := getConfig(invalidNewConfigWithouDefaultCmd, suite.T())
+	oldConfig := getConfig(oldConfigWithoutDefaultCmd, suite.Suite)
+	invalidNewConfig := getConfig(invalidNewConfigWithouDefaultCmd, suite.Suite)
 	err := ValidateUpdatedConfig(oldConfig, invalidNewConfig, maxTasksPerJob)
 	suite.Error(err)
 	expectedErrors := `1 error occurred:
 
 * missing command info for instance 3`
 	suite.Equal(err.Error(), expectedErrors)
+}
+
+func getConfig(config string, suite suite.Suite) *job.JobConfig {
+	var jobConfig job.JobConfig
+	buffer, err := ioutil.ReadFile(config)
+	suite.NoError(err)
+	err = yaml.Unmarshal(buffer, &jobConfig)
+	suite.NoError(err)
+	return &jobConfig
 }

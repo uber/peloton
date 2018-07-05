@@ -818,15 +818,8 @@ func (suite *JobHandlerTestSuite) TestJobUpdateFailure() {
 	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(&job.RuntimeInfo{State: job.JobState_FAILED}, nil)
 	resp, err = suite.handler.Update(suite.context, req)
-	suite.NoError(err)
-	suite.NotNil(resp)
-	expectedErr := &job.UpdateResponse_Error{
-		InvalidJobId: &job.InvalidJobId{
-			Id:      jobID,
-			Message: "Job is in a terminal state:FAILED",
-		},
-	}
-	suite.Equal(expectedErr, resp.GetError())
+	suite.Error(err)
+	suite.Nil(resp)
 
 	// simulate GetJobConfig failure
 	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
@@ -852,18 +845,8 @@ func (suite *JobHandlerTestSuite) TestJobUpdateFailure() {
 			OwningTeam: "team-change",
 		},
 	})
-	suite.NoError(err)
-	suite.NotNil(resp)
-
-	expectedErr = &job.UpdateResponse_Error{
-		InvalidConfig: &job.InvalidJobConfig{
-			Id: jobID,
-			Message: `1 error occurred:
-
-* updating OwningTeam not supported`,
-		},
-	}
-	suite.Equal(expectedErr, resp.GetError())
+	suite.Error(err)
+	suite.Nil(resp)
 
 	// simulate cachedJob Update failure
 	suite.mockedJobStore.EXPECT().
@@ -882,40 +865,8 @@ func (suite *JobHandlerTestSuite) TestJobUpdateFailure() {
 			DefaultConfig: defaultConfig,
 		},
 	})
-	suite.NoError(err)
-	suite.NotNil(resp)
-	expectedErr = &job.UpdateResponse_Error{
-		InvalidConfig: &job.InvalidJobConfig{
-			Id:      jobID,
-			Message: "random error",
-		},
-	}
-	suite.Equal(expectedErr, resp.GetError())
-
-	// simulate failure for CreateTaskConfigs
-	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).
-		Return(&job.JobConfig{
-			RespoolID:     respoolID,
-			DefaultConfig: defaultConfig,
-		}, nil)
-	suite.mockedCachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Return(nil)
-	suite.mockedTaskStore.EXPECT().
-		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
-		Return(errors.New("random error")).AnyTimes()
-
-	resp, err = suite.handler.Update(suite.context, &job.UpdateRequest{
-		Id: jobID,
-		Config: &job.JobConfig{
-			InstanceCount: 1,
-			DefaultConfig: defaultConfig,
-		},
-	})
 	suite.Error(err)
 	suite.Nil(resp)
-	suite.Equal(err.Error(), "random error")
 }
 
 // TestGetJob tests success scenarios for Job Get API

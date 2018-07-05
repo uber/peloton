@@ -12,7 +12,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
@@ -224,14 +223,7 @@ func (h *serviceHandler) Update(
 	if util.IsPelotonJobStateTerminal(jobRuntime.State) {
 		msg := fmt.Sprintf("Job is in a terminal state:%s", jobRuntime.State)
 		h.metrics.JobUpdateFail.Inc(1)
-		return &job.UpdateResponse{
-			Error: &job.UpdateResponse_Error{
-				InvalidJobId: &job.InvalidJobId{
-					Id:      req.Id,
-					Message: msg,
-				},
-			},
-		}, nil
+		return nil, yarpcerrors.InvalidArgumentErrorf(msg)
 	}
 
 	newConfig := req.GetConfig()
@@ -256,31 +248,25 @@ func (h *serviceHandler) Update(
 
 	// check secrets and new config for input sanity
 	if err := h.validateSecretsAndConfig(newConfig, req.GetSecrets()); err != nil {
-		return &job.UpdateResponse{}, err
+		return nil, err
 	}
 	err = jobconfig.ValidateUpdatedConfig(oldConfig, newConfig, h.jobSvcCfg.MaxTasksPerJob)
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
-		return &job.UpdateResponse{
-			Error: &job.UpdateResponse_Error{
-				InvalidConfig: &job.InvalidJobConfig{
-					Id:      jobID,
-					Message: err.Error(),
-				},
-			},
-		}, nil
+		return nil, err
 	}
 
 	if err = h.handleUpdateSecrets(ctx, jobID, existingSecretVolumes, newConfig,
 		req.GetSecrets()); err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
-		return &job.UpdateResponse{}, err
+		return nil, err
 	}
 
-	diff := jobconfig.CalculateJobDiff(jobID, oldConfig, newConfig)
+	instancesToAdd := newConfig.GetInstanceCount() -
+		oldConfig.GetInstanceCount()
 	// You could just update secrets of a job without changing instance count.
 	// In that case, do not treat this Update as NOOP.
-	if diff.IsNoop() && len(req.GetSecrets()) == 0 {
+	if instancesToAdd <= 0 && len(req.GetSecrets()) == 0 {
 		log.WithField("job_id", jobID.GetValue()).
 			Info("update is a noop")
 		return nil, nil
@@ -291,51 +277,23 @@ func (h *serviceHandler) Update(
 	}, cached.UpdateCacheAndDB)
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
-		return &job.UpdateResponse{
-			Error: &job.UpdateResponse_Error{
-				InvalidConfig: &job.InvalidJobConfig{
-					Id:      jobID,
-					Message: err.Error(),
-				},
-			},
-		}, nil
-	}
-
-	log.WithField("job_id", jobID.GetValue()).
-		Infof("adding %d instances", len(diff.InstancesToAdd))
-
-	if err := h.taskStore.CreateTaskConfigs(ctx, jobID, newConfig); err != nil {
-		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
 	}
 
-	for id, runtime := range diff.InstancesToAdd {
-		runtime.ConfigVersion = newConfig.GetChangeLog().GetVersion()
-		runtime.DesiredConfigVersion = newConfig.GetChangeLog().GetVersion()
-		runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-		runtimes[id] = runtime
-		if err := cachedJob.CreateTasks(ctx, runtimes, "peloton"); err != nil {
-			log.WithError(err).WithField("job_id", jobID.GetValue()).Error("Failed to create task for job")
-			h.metrics.TaskCreateFail.Inc(1)
-			h.metrics.JobUpdateFail.Inc(1)
-			return nil, err
-		}
-		h.metrics.TaskCreate.Inc(1)
-		h.goalStateDriver.EnqueueTask(jobID, id, time.Now())
-	}
-
-	goalstate.EnqueueJobWithDefaultDelay(jobID, h.goalStateDriver, cachedJob)
-
+	err = cachedJob.Update(ctx, &job.JobInfo{
+		Runtime: &job.RuntimeInfo{
+			State: job.JobState_INITIALIZED,
+		},
+	}, cached.UpdateCacheAndDB)
 	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			Error("Failed to update job runtime")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
 	}
+
+	h.goalStateDriver.EnqueueJob(jobID, time.Now())
 
 	h.metrics.JobUpdate.Inc(1)
-	msg := fmt.Sprintf("added %d instances", len(diff.InstancesToAdd))
+	msg := fmt.Sprintf("added %d instances", instancesToAdd)
 	return &job.UpdateResponse{
 		Id:      jobID,
 		Message: msg,
