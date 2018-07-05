@@ -286,7 +286,7 @@ func (suite *TaskHandlerTestSuite) TestGetTasks_Batch_Job() {
 	suite.testJobConfig.Type = job.JobType_BATCH
 
 	gomock.InOrder(
-		suite.mockedJobFactory.EXPECT().AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+		suite.mockedJobFactory.EXPECT().GetJob(suite.testJobID).Return(suite.mockedCachedJob),
 		suite.mockedCachedJob.EXPECT().
 			GetConfig(gomock.Any()).
 			Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
@@ -317,7 +317,7 @@ func (suite *TaskHandlerTestSuite) TestGetTasks_Service_Job() {
 	suite.testJobConfig.Type = job.JobType_SERVICE
 
 	gomock.InOrder(
-		suite.mockedJobFactory.EXPECT().AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+		suite.mockedJobFactory.EXPECT().GetJob(suite.testJobID).Return(suite.mockedCachedJob),
 		suite.mockedCachedJob.EXPECT().
 			GetConfig(gomock.Any()).
 			Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
@@ -730,7 +730,7 @@ func (suite *TaskHandlerTestSuite) TestGetEvents() {
 
 	gomock.InOrder(
 		suite.mockedJobFactory.EXPECT().
-			AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+			GetJob(suite.testJobID).Return(suite.mockedCachedJob),
 		suite.mockedCachedJob.EXPECT().
 			GetConfig(gomock.Any()).Return(suite.testJobConfig, nil),
 		suite.mockedTaskStore.EXPECT().
@@ -793,7 +793,7 @@ func (suite *TaskHandlerTestSuite) TestGetEvents_Service_Job() {
 
 	gomock.InOrder(
 		suite.mockedJobFactory.EXPECT().
-			AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+			GetJob(suite.testJobID).Return(suite.mockedCachedJob),
 		suite.mockedCachedJob.EXPECT().
 			GetConfig(gomock.Any()).Return(suite.testJobConfig, nil),
 	)
@@ -941,7 +941,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxPreviousTaskRun() {
 
 	gomock.InOrder(
 		suite.mockedJobFactory.EXPECT().
-			AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+			GetJob(suite.testJobID).Return(suite.mockedCachedJob),
 		suite.mockedCachedJob.EXPECT().
 			GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedTaskStore.EXPECT().
@@ -964,7 +964,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxWithoutHostname() {
 
 	gomock.InOrder(
 		suite.mockedJobFactory.EXPECT().
-			AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+			GetJob(suite.testJobID).Return(suite.mockedCachedJob),
 		suite.mockedCachedJob.EXPECT().
 			GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedTaskStore.EXPECT().
@@ -990,7 +990,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxWithEmptyFrameworkID() {
 
 	gomock.InOrder(
 		suite.mockedJobFactory.EXPECT().
-			AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+			GetJob(suite.testJobID).Return(suite.mockedCachedJob),
 		suite.mockedCachedJob.EXPECT().
 			GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedTaskStore.EXPECT().
@@ -1025,7 +1025,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListSandboxFileFailure() {
 	}
 
 	gomock.InOrder(
-		suite.mockedJobFactory.EXPECT().AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+		suite.mockedJobFactory.EXPECT().GetJob(suite.testJobID).Return(suite.mockedCachedJob),
 		suite.mockedCachedJob.EXPECT().GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedTaskStore.EXPECT().GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).Return(events, nil),
 		suite.mockedFrameworkInfoStore.EXPECT().GetFrameworkID(gomock.Any(), _frameworkName).Return(frameworkID, nil),
@@ -1096,7 +1096,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccess() {
 	}
 
 	gomock.InOrder(
-		suite.mockedJobFactory.EXPECT().AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+		suite.mockedJobFactory.EXPECT().GetJob(suite.testJobID).Return(suite.mockedCachedJob),
 		suite.mockedCachedJob.EXPECT().GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedTaskStore.EXPECT().GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).Return(events, nil),
 		suite.mockedFrameworkInfoStore.EXPECT().GetFrameworkID(gomock.Any(), _frameworkName).Return(frameworkID, nil),
@@ -1345,8 +1345,11 @@ func (suite *TaskHandlerTestSuite) TestQueryTask() {
 		}
 	}
 
-	suite.mockedJobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.testJobID).
+	suite.mockedJobFactory.EXPECT().
+		GetJob(suite.testJobID).
+		Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
 		Return(suite.testJobRuntime, nil)
 	suite.mockedTaskStore.EXPECT().
 		QueryTasks(gomock.Any(), suite.testJobID, nil).
@@ -1379,8 +1382,11 @@ func (suite *TaskHandlerTestSuite) TestQueryTask() {
 }
 
 func (suite *TaskHandlerTestSuite) TestQueryTaskQueryJobErr() {
-	suite.mockedJobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.testJobID).
+	suite.mockedJobFactory.EXPECT().
+		GetJob(suite.testJobID).
+		Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
 		Return(suite.testJobRuntime, errors.New("test error"))
 	suite.mockedTaskStore.EXPECT()
 	_, err := suite.handler.Query(context.Background(), &task.QueryRequest{
@@ -1392,8 +1398,11 @@ func (suite *TaskHandlerTestSuite) TestQueryTaskQueryJobErr() {
 func (suite *TaskHandlerTestSuite) TestQueryTaskQueryTaskErr() {
 	taskInfos := make([]*task.TaskInfo, testInstanceCount)
 
-	suite.mockedJobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.testJobID).
+	suite.mockedJobFactory.EXPECT().
+		GetJob(suite.testJobID).
+		Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
 		Return(suite.testJobRuntime, nil)
 	suite.mockedTaskStore.EXPECT().
 		QueryTasks(gomock.Any(), suite.testJobID, nil).

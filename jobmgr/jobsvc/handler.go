@@ -16,11 +16,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
-
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/job/config"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/util/handler"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -372,8 +372,8 @@ func (h *serviceHandler) Get(
 	// proto message.
 	secretVolumes := jobmgrtask.RemoveSecretVolumesFromConfig(jobConfig)
 
-	cachedJob := h.jobFactory.AddJob(req.GetId())
-	jobRuntime, err := cachedJob.GetRuntime(ctx)
+	jobRuntime, err := handler.GetJobRuntimeWithoutFillingCache(
+		ctx, req.Id, h.jobFactory, h.jobStore)
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
@@ -488,8 +488,8 @@ func (h *serviceHandler) Delete(
 
 	h.metrics.JobAPIDelete.Inc(1)
 
-	cachedJob := h.jobFactory.AddJob(req.Id)
-	jobRuntime, err := cachedJob.GetRuntime(ctx)
+	jobRuntime, err := handler.GetJobRuntimeWithoutFillingCache(
+		ctx, req.Id, h.jobFactory, h.jobStore)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", req.GetId().GetValue()).

@@ -29,6 +29,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/task/event/statechanges"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
+	"code.uber.internal/infra/peloton/jobmgr/util/handler"
 	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
@@ -142,8 +143,8 @@ func (m *serviceHandler) Get(
 	body *task.GetRequest) (*task.GetResponse, error) {
 
 	m.metrics.TaskAPIGet.Inc(1)
-	cachedJob := m.jobFactory.AddJob(body.JobId)
-	cachedConfig, err := cachedJob.GetConfig(ctx)
+	jobConfig, err := handler.GetJobConfigWithoutFillingCache(
+		ctx, body.JobId, m.jobFactory, m.jobStore)
 	if err != nil {
 		log.WithField("job_id", body.JobId.Value).
 			WithError(err).
@@ -169,19 +170,19 @@ func (m *serviceHandler) Get(
 		return &task.GetResponse{
 			OutOfRange: &task.InstanceIdOutOfRange{
 				JobId:         body.JobId,
-				InstanceCount: cachedConfig.GetInstanceCount(),
+				InstanceCount: jobConfig.GetInstanceCount(),
 			},
 		}, nil
 	}
 
 	eventList, err := m.getTaskEvents(
-		ctx, body.GetJobId(), body.GetInstanceId(), cachedConfig.GetType())
+		ctx, body.GetJobId(), body.GetInstanceId(), jobConfig.GetType())
 	if err != nil {
 		m.metrics.TaskGetFail.Inc(1)
 		return &task.GetResponse{
 			OutOfRange: &task.InstanceIdOutOfRange{
 				JobId:         body.JobId,
-				InstanceCount: cachedConfig.GetInstanceCount(),
+				InstanceCount: jobConfig.GetInstanceCount(),
 			},
 		}, nil
 	}
@@ -199,8 +200,8 @@ func (m *serviceHandler) GetEvents(
 	ctx context.Context,
 	body *task.GetEventsRequest) (*task.GetEventsResponse, error) {
 	m.metrics.TaskAPIGetEvents.Inc(1)
-	cachedJob := m.jobFactory.AddJob(body.JobId)
-	cachedConfig, err := cachedJob.GetConfig(ctx)
+	jobConfig, err := handler.GetJobConfigWithoutFillingCache(
+		ctx, body.JobId, m.jobFactory, m.jobStore)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", body.GetJobId()).
@@ -216,7 +217,7 @@ func (m *serviceHandler) GetEvents(
 	}
 
 	result, err := m.getTaskEvents(
-		ctx, body.GetJobId(), body.GetInstanceId(), cachedConfig.GetType())
+		ctx, body.GetJobId(), body.GetInstanceId(), jobConfig.GetType())
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", body.GetJobId()).
@@ -249,30 +250,17 @@ func (m *serviceHandler) List(
 	var instanceCount uint32
 	var err error
 
-	cachedJob := m.jobFactory.GetJob(body.GetJobId())
-	if cachedJob == nil {
-		dbJobConfig, err := m.jobStore.GetJobConfig(ctx, body.GetJobId())
-		if err != nil {
-			return &task.ListResponse{
-				NotFound: &pb_errors.JobNotFound{
-					Id:      body.GetJobId(),
-					Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.GetJobId(), err),
-				},
-			}, nil
-		}
-		instanceCount = dbJobConfig.GetInstanceCount()
-	} else {
-		cachedJobConfig, err := cachedJob.GetConfig(ctx)
-		if err != nil {
-			return &task.ListResponse{
-				NotFound: &pb_errors.JobNotFound{
-					Id:      body.GetJobId(),
-					Message: fmt.Sprintf("Job with id %v has no config, err=%v", body.GetJobId(), err),
-				},
-			}, nil
-		}
-		instanceCount = cachedJobConfig.GetInstanceCount()
+	jobConfig, err := handler.GetJobConfigWithoutFillingCache(
+		ctx, body.JobId, m.jobFactory, m.jobStore)
+	if err != nil {
+		return &task.ListResponse{
+			NotFound: &pb_errors.JobNotFound{
+				Id:      body.GetJobId(),
+				Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.GetJobId(), err),
+			},
+		}, nil
 	}
+	instanceCount = jobConfig.GetInstanceCount()
 
 	var result map[uint32]*task.TaskInfo
 	if body.Range == nil {
@@ -748,7 +736,8 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 	m.metrics.TaskAPIQuery.Inc(1)
 	callStart := time.Now()
 
-	_, err := m.jobStore.GetJobRuntime(ctx, req.JobId)
+	_, err := handler.GetJobRuntimeWithoutFillingCache(
+		ctx, req.JobId, m.jobFactory, m.jobStore)
 	if err != nil {
 		log.Debug("Failed to find job with id %v, err=%v", req.JobId, err)
 		m.metrics.TaskQueryFail.Inc(1)
@@ -944,8 +933,8 @@ func (m *serviceHandler) BrowseSandbox(
 	log.WithField("req", req).Debug("TaskSVC.BrowseSandbox called")
 	m.metrics.TaskAPIListLogs.Inc(1)
 
-	cachedJob := m.jobFactory.AddJob(req.JobId)
-	cachedConfig, err := cachedJob.GetConfig(ctx)
+	jobConfig, err := handler.GetJobConfigWithoutFillingCache(
+		ctx, req.JobId, m.jobFactory, m.jobStore)
 	if err != nil {
 		log.WithField("job_id", req.JobId.Value).
 			WithError(err).
@@ -963,7 +952,7 @@ func (m *serviceHandler) BrowseSandbox(
 
 	hostname, agentID, taskID, frameworkID, resp :=
 		m.getSandboxPathInfo(
-			ctx, cachedConfig.GetInstanceCount(), req, cachedConfig.GetType())
+			ctx, jobConfig.GetInstanceCount(), req, jobConfig.GetType())
 	if resp != nil {
 		return resp, nil
 	}

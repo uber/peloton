@@ -935,8 +935,9 @@ func (suite *JobHandlerTestSuite) TestGetJob() {
 
 	// setup mocks
 	suite.setupMocks(jobID, respoolID)
-
 	// setup mocks specific to test
+	suite.mockedJobFactory.EXPECT().GetJob(jobID).
+		Return(suite.mockedCachedJob).AnyTimes()
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).Return(jobConfig, nil)
 
@@ -994,7 +995,7 @@ func (suite *JobHandlerTestSuite) TestGetJobFailure() {
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(gomock.Any(), gomock.Any()).
 		Return(&job.JobConfig{}, nil)
-	suite.mockedJobFactory.EXPECT().AddJob(jobID).
+	suite.mockedJobFactory.EXPECT().GetJob(jobID).
 		Return(suite.mockedCachedJob)
 	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(nil, errors.New("random error"))
@@ -1360,7 +1361,7 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 		Value: "my-job",
 	}
 
-	suite.mockedJobFactory.EXPECT().AddJob(id).
+	suite.mockedJobFactory.EXPECT().GetJob(id).
 		Return(suite.mockedCachedJob)
 
 	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
@@ -1372,7 +1373,7 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 	suite.Equal(&job.DeleteResponse{}, res)
 	suite.NoError(err)
 
-	suite.mockedJobFactory.EXPECT().AddJob(id).
+	suite.mockedJobFactory.EXPECT().GetJob(id).
 		Return(suite.mockedCachedJob)
 
 	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
@@ -1384,7 +1385,7 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 	expectedErr := yarpcerrors.InternalErrorf("Job is not in a terminal state: PENDING")
 	suite.Equal(expectedErr, err)
 
-	suite.mockedJobFactory.EXPECT().AddJob(id).
+	suite.mockedJobFactory.EXPECT().GetJob(id).
 		Return(suite.mockedCachedJob)
 
 	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
@@ -1396,7 +1397,7 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 	expectedErr = yarpcerrors.NotFoundErrorf("job not found")
 	suite.Equal(expectedErr, err)
 
-	suite.mockedJobFactory.EXPECT().AddJob(id).
+	suite.mockedJobFactory.EXPECT().GetJob(id).
 		Return(suite.mockedCachedJob)
 
 	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
