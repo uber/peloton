@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
@@ -31,6 +32,7 @@ func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *
 		jobID.GetValue(),
 		instanceID,
 		1)
+
 	runtime := &task.RuntimeInfo{
 		MesosTaskId: &mesos.TaskID{
 			Value: &mesosTaskID,
@@ -39,6 +41,7 @@ func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *
 		ConfigVersion:        jobConfig.GetChangeLog().GetVersion(),
 		DesiredConfigVersion: jobConfig.GetChangeLog().GetVersion(),
 		GoalState:            GetDefaultTaskGoalState(jobConfig.GetType()),
+		ResourceUsage:        CreateEmptyResourceUsageMap(),
 	}
 	return runtime
 }
@@ -179,4 +182,52 @@ func CreateSecretProto(id, path string, data []byte) *peloton.Secret {
 			Data: data,
 		},
 	}
+}
+
+// CreateEmptyResourceUsageMap creates a resource usage map with usage stats
+// initialized to 0
+func CreateEmptyResourceUsageMap() map[string]float64 {
+	return map[string]float64{
+		common.CPU:    float64(0),
+		common.GPU:    float64(0),
+		common.MEMORY: float64(0),
+	}
+}
+
+// CreateResourceUsageMap creates a resource usage map with usage stats
+// calculated as resource limit * duration
+func CreateResourceUsageMap(
+	resourceConfig *task.ResourceConfig,
+	startTimeStr, completionTimeStr string) (map[string]float64, error) {
+	cpulimit := resourceConfig.GetCpuLimit()
+	gpulimit := resourceConfig.GetGpuLimit()
+	memlimit := resourceConfig.GetMemLimitMb()
+	resourceUsage := CreateEmptyResourceUsageMap()
+
+	// if start time is "", it means the task did not start so resource usage
+	// should be 0 for all resources
+	if startTimeStr == "" {
+		return resourceUsage, nil
+	}
+
+	startTime, err := time.Parse(time.RFC3339Nano, startTimeStr)
+	if err != nil {
+		return nil, err
+	}
+	completionTime, err := time.Parse(time.RFC3339Nano, completionTimeStr)
+	if err != nil {
+		return nil, err
+	}
+
+	startTimeUnix := float64(startTime.UnixNano()) /
+		float64(time.Second/time.Nanosecond)
+	completionTimeUnix := float64(completionTime.UnixNano()) /
+		float64(time.Second/time.Nanosecond)
+
+	// update the resource usage map for CPU, GPU and memory usage
+	resourceUsage[common.CPU] = (completionTimeUnix - startTimeUnix) * cpulimit
+	resourceUsage[common.GPU] = (completionTimeUnix - startTimeUnix) * gpulimit
+	resourceUsage[common.MEMORY] =
+		(completionTimeUnix - startTimeUnix) * memlimit
+	return resourceUsage, nil
 }

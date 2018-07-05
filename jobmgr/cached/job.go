@@ -99,6 +99,13 @@ type Job interface {
 
 	// GetLastTaskUpdateTime gets the last task update time
 	GetLastTaskUpdateTime() float64
+
+	// UpdateResourceUsage adds the task resource usage from a terminal task
+	// to the resource usage map for this job
+	UpdateResourceUsage(taskResourceUsage map[string]float64)
+
+	// GetResourceUsage gets the resource usage map for this job
+	GetResourceUsage() map[string]float64
 }
 
 // JobConfig stores the job configurations in cache which is fetched multiple
@@ -141,6 +148,11 @@ func newJob(id *peloton.JobID, jobFactory *jobFactory) *job {
 		// which are private variables and not available to other packages.
 		jobFactory: jobFactory,
 		tasks:      map[uint32]*task{},
+		resourceUsage: map[string]float64{
+			common.CPU:    float64(0),
+			common.GPU:    float64(0),
+			common.MEMORY: float64(0),
+		},
 	}
 }
 
@@ -174,6 +186,12 @@ type job struct {
 	firstTaskUpdateTime float64
 	// time at which the last mesos task update was received (helps determine when job completes)
 	lastTaskUpdateTime float64
+
+	// The resource usage for this job. The map key is each resource kind
+	// in string format and the map value is the number of unit-seconds
+	// of that resource used by the job. Example: if a job has one task that
+	// uses 1 CPU and finishes in 10 seconds, this map will contain <"cpu":10>
+	resourceUsage map[string]float64
 }
 
 func (j *job) ID() *peloton.JobID {
@@ -396,6 +414,11 @@ func (j *job) createJobRuntime(ctx context.Context, config *pbjob.JobConfig) err
 			Version:   1,
 		},
 		ConfigurationVersion: config.GetChangeLog().GetVersion(),
+		ResourceUsage: map[string]float64{
+			common.CPU:    float64(0),
+			common.GPU:    float64(0),
+			common.MEMORY: float64(0),
+		},
 	}
 	// Init the task stats to reflect that all tasks are in initialized state
 	initialJobRuntime.TaskStats[pbtask.TaskState_INITIALIZED.String()] = config.InstanceCount
@@ -687,6 +710,10 @@ func (j *job) mergeRuntime(newRuntime *pbjob.RuntimeInfo) *pbjob.RuntimeInfo {
 		runtime.TaskStats = newRuntime.GetTaskStats()
 	}
 
+	if len(newRuntime.GetResourceUsage()) > 0 {
+		runtime.ResourceUsage = newRuntime.GetResourceUsage()
+	}
+
 	if newRuntime.GetConfigVersion() > 0 {
 		runtime.ConfigVersion = newRuntime.GetConfigVersion()
 	}
@@ -872,4 +899,24 @@ func getIdsFromDiffs(input map[uint32]RuntimeDiff) []uint32 {
 		result = append(result, k)
 	}
 	return result
+}
+
+// UpdateResourceUsage updates the resource usage of a job by adding the task
+// resource usage numbers to it. UpdateResourceUsage is called every time a
+// task enters a terminal state.
+func (j *job) UpdateResourceUsage(taskResourceUsage map[string]float64) {
+	j.Lock()
+	defer j.Unlock()
+
+	for k, v := range taskResourceUsage {
+		j.resourceUsage[k] += v
+	}
+}
+
+// GetResourceUsage returns the resource usage of a job
+func (j *job) GetResourceUsage() map[string]float64 {
+	j.RLock()
+	defer j.RUnlock()
+
+	return j.resourceUsage
 }

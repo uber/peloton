@@ -11,6 +11,8 @@ import (
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	"code.uber.internal/infra/peloton/common"
+
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
@@ -1205,4 +1207,24 @@ func (suite *JobTestSuite) TestPatchTasks_SingleTask() {
 	actRuntime, _ := att.GetRunTime(context.Background())
 	suite.Equal(pbtask.TaskState_RUNNING, actRuntime.GetState())
 	suite.Equal(uint64(2), actRuntime.GetRevision().GetVersion())
+}
+
+// TestJobUpdateResourceUsage tests updating the resource usage for job
+func (suite *JobTestSuite) TestJobUpdateResourceUsage() {
+	taskResourceUsage := map[string]float64{
+		common.CPU:    float64(1),
+		common.GPU:    float64(0),
+		common.MEMORY: float64(1)}
+
+	suite.job.resourceUsage = map[string]float64{
+		common.CPU:    float64(10),
+		common.GPU:    float64(2),
+		common.MEMORY: float64(10)}
+
+	suite.job.UpdateResourceUsage(taskResourceUsage)
+	updatedResourceUsage := map[string]float64{
+		common.CPU:    float64(11),
+		common.GPU:    float64(2),
+		common.MEMORY: float64(11)}
+	suite.Equal(updatedResourceUsage, suite.job.GetResourceUsage())
 }

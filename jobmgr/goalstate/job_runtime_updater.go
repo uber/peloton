@@ -500,6 +500,8 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	}
 	jobRuntimeUpdate.TaskStats = stateCounts
 
+	jobRuntimeUpdate.ResourceUsage = cachedJob.GetResourceUsage()
+
 	// Update the job runtime
 	err = cachedJob.Update(ctx, &job.JobInfo{
 		Runtime: jobRuntimeUpdate,

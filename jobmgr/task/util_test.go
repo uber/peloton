@@ -13,6 +13,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/mock/gomock"
@@ -25,6 +27,10 @@ const (
 	testSecretStr  = "top-secret-token"
 
 	randomErrorStr = "random error"
+
+	// task completes in 1 minute for the sake of this test
+	taskStartTime      = "2017-01-02T15:04:00.456789016Z"
+	taskCompletionTime = "2017-01-02T15:05:00.456789016Z"
 )
 
 type JobmgrTaskUtilTestSuite struct {
@@ -278,4 +284,59 @@ func (suite *JobmgrTaskUtilTestSuite) TestCreateSecretsFromVolumes() {
 	suite.Equal(secrets[0].GetPath(), testSecretPath)
 	suite.Nil(secrets[0].GetValue().GetData())
 	suite.Equal(secrets[0].GetId().GetValue(), id)
+}
+
+// TestCreateEmptyResourceUsageMap tests creating empty resource usage map
+func (suite *JobmgrTaskUtilTestSuite) TestCreateEmptyResourceUsageMap() {
+	suite.Equal(map[string]float64{
+		common.CPU:    float64(0),
+		common.GPU:    float64(0),
+		common.MEMORY: float64(0)}, CreateEmptyResourceUsageMap())
+}
+
+// TestCreateResourceUsageMap tests creating resource usage stats map
+func (suite *JobmgrTaskUtilTestSuite) TestCreateResourceUsageMap() {
+	resourceConfig := &task.ResourceConfig{
+		CpuLimit:   float64(0.1),
+		MemLimitMb: float64(0.2),
+		GpuLimit:   float64(0),
+	}
+
+	// Task completes in 1 minute as per our test.
+	// So the CPU usage should be 0.1 x 60 = 6,
+	// GPU usage should be 0 x 60 = 0 and Memory usage should be 0.2 x 60 = 12
+	rMap, err := CreateResourceUsageMap(
+		resourceConfig, taskStartTime, taskCompletionTime)
+	suite.Nil(err)
+	suite.Equal(map[string]float64{
+		common.CPU:    float64(6),
+		common.GPU:    float64(0),
+		common.MEMORY: float64(12)}, rMap)
+}
+
+// TestCreateResourceUsageMapError tests error cases in CreateResourceUsageMap
+func (suite *JobmgrTaskUtilTestSuite) TestCreateResourceUsageMapError() {
+	resourceConfig := &task.ResourceConfig{
+		CpuLimit:   float64(0.1),
+		MemLimitMb: float64(0.2),
+		GpuLimit:   float64(0),
+	}
+
+	// startTime is "", the resource map should have 0 value for all resources
+	rMap, err := CreateResourceUsageMap(
+		resourceConfig, "", taskCompletionTime)
+	suite.Nil(err)
+	suite.Equal(CreateEmptyResourceUsageMap(), rMap)
+
+	// start time is not valid
+	rMap, err = CreateResourceUsageMap(
+		resourceConfig, "not-valid-time", taskCompletionTime)
+	suite.Error(err)
+	suite.Nil(rMap)
+
+	//	completion time is not valid
+	rMap, err = CreateResourceUsageMap(
+		resourceConfig, taskStartTime, "not-valid-time")
+	suite.Error(err)
+	suite.Nil(rMap)
 }

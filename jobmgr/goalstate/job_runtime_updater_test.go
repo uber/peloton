@@ -16,6 +16,7 @@ import (
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -84,6 +85,9 @@ func (suite *JobRuntimeUpdaterTestSuite) SetupTest() {
 	}
 
 	suite.goalStateDriver.cfg.normalize()
+	suite.cachedJob.EXPECT().
+		GetResourceUsage().Return(
+		jobmgrtask.CreateEmptyResourceUsageMap()).AnyTimes()
 }
 
 func (suite *JobRuntimeUpdaterTestSuite) TearDownTest() {

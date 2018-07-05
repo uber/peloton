@@ -75,6 +75,7 @@ const (
 	PortsField                = "Ports"
 	PrevMesosTaskIDField      = "PrevMesosTaskId"
 	ReasonField               = "Reason"
+	ResourceUsageField        = "ResourceUsage"
 	RevisionField             = "Revision"
 	StartTimeField            = "StartTime"
 	StateField                = "State"

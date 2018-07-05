@@ -24,6 +24,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	event_mocks "code.uber.internal/infra/peloton/jobmgr/task/event/mocks"
 	"code.uber.internal/infra/peloton/storage"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -120,9 +121,10 @@ func createTestTaskUpdateEvent(state mesos.TaskState) *pb_eventstream.Event {
 func createTestTaskInfo(state task.TaskState) *task.TaskInfo {
 	taskInfo := &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			MesosTaskId: &mesos.TaskID{Value: &_mesosTaskID},
-			State:       state,
-			GoalState:   task.TaskState_SUCCEEDED,
+			MesosTaskId:   &mesos.TaskID{Value: &_mesosTaskID},
+			State:         state,
+			GoalState:     task.TaskState_SUCCEEDED,
+			ResourceUsage: jobmgrtask.CreateEmptyResourceUsageMap(),
 		},
 		Config: &task.TaskConfig{
 			Name: _jobID,
@@ -168,6 +170,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
 		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
+		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
 	)
 
 	now = nowMock
@@ -231,6 +234,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdate() {
 		}).
 		Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
+	cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return()
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	suite.goalStateDriver.EXPECT().
 		JobRuntimeDuration(job.JobType_BATCH).
@@ -275,6 +279,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 		}).
 		Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
+	cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return()
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	suite.goalStateDriver.EXPECT().
 		JobRuntimeDuration(job.JobType_BATCH).
@@ -351,6 +356,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateNoRetryForStat
 		}).
 		Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
+	cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return()
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	suite.goalStateDriver.EXPECT().
 		JobRuntimeDuration(job.JobType_BATCH).
@@ -377,6 +383,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 		cached.ReasonField:         failureReason.String(),
 		cached.MessageField:        "Stopped task LOST event: " + _failureMsg,
 		cached.CompletionTimeField: _currentTime,
+		cached.ResourceUsageField:  jobmgrtask.CreateEmptyResourceUsageMap(),
 	}
 	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
@@ -398,10 +405,57 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
 		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
+		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
 	)
 
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 	time.Sleep(_waitTime)
+}
+
+// Test processing task status update failure because of error in resource usage calculation.
+func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateResourceUsageError() {
+	defer suite.ctrl.Finish()
+
+	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
+	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+	taskInfo.Runtime.GoalState = task.TaskState_SUCCEEDED
+	taskInfo.Runtime.StartTime = "not-valid"
+
+	// LOST task has different code path to update resource usage than rest of
+	// terminal states. So test for both LOST and FINISHED states
+	states := []mesos.TaskState{
+		mesos.TaskState_TASK_LOST,
+		mesos.TaskState_TASK_FINISHED,
+	}
+	for _, state := range states {
+		event := createTestTaskUpdateEvent(state)
+
+		gomock.InOrder(
+			suite.mockTaskStore.EXPECT().
+				GetTaskByID(context.Background(), _pelotonTaskID).
+				Return(taskInfo, nil),
+			suite.jobFactory.EXPECT().
+				AddJob(_pelotonJobID).Return(cachedJob),
+			cachedJob.EXPECT().
+				SetTaskUpdateTime(gomock.Any()).Return(),
+			cachedJob.EXPECT().
+				PatchTasks(context.Background(), gomock.Any()).
+				Return(nil),
+			suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
+			cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
+			suite.goalStateDriver.EXPECT().
+				JobRuntimeDuration(job.JobType_BATCH).
+				Return(1*time.Second),
+			suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
+			cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
+		)
+
+		// simulate error in CreateResourceUsageMap due to invalid start time
+		// This should be only logged and ProcessStatusUpdate should still
+		// succeed
+		suite.NoError(suite.updater.ProcessStatusUpdate(
+			context.Background(), event))
+	}
 }
 
 // Test processing orphan RUNNING task status update.
@@ -512,6 +566,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessPreemptedTaskStatusUpdate() {
 			}).
 			Return(nil)
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
+		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return()
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 		suite.goalStateDriver.EXPECT().
 			JobRuntimeDuration(job.JobType_BATCH).
@@ -569,6 +624,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
 			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
 		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
+		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
 	)
 
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
@@ -622,6 +678,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
 		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
+		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
 	)
 
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
@@ -659,6 +716,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessFailedTaskRunningStatusUpdate() {
 		}).
 		Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
+	cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return()
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	suite.goalStateDriver.EXPECT().
 		JobRuntimeDuration(job.JobType_BATCH).

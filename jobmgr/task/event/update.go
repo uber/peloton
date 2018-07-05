@@ -121,6 +121,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	var state pb_task.TaskState
 	var reason mesos_v1.TaskStatus_Reason
 	var statusMsg string
+	var currTaskResourceUsage map[string]float64
 	isMesosStatus := false
 
 	if event.Type == pb_eventstream.Event_MESOS_TASK_STATUS {
@@ -291,6 +292,13 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		runtimeDiff[cached.MessageField] = "Rescheduled due to task LOST: " + statusMsg
 		runtimeDiff[cached.ReasonField] = event.GetMesosTaskStatus().GetReason().String()
 
+		// Calculate resource usage for TaskState_LOST using time.Now() as
+		// completion time
+		currTaskResourceUsage = getCurrTaskResourceUsage(
+			taskID, state, taskInfo.GetConfig().GetResource(),
+			runtime.GetStartTime(),
+			now().UTC().Format(time.RFC3339Nano))
+
 	default:
 		runtimeDiff[cached.StateField] = state
 	}
@@ -306,9 +314,24 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	case pb_task.TaskState_SUCCEEDED,
 		pb_task.TaskState_FAILED,
 		pb_task.TaskState_KILLED:
-		runtimeDiff[cached.CompletionTimeField] = now().UTC().Format(time.RFC3339Nano)
+
+		completionTime := now().UTC().Format(time.RFC3339Nano)
+		runtimeDiff[cached.CompletionTimeField] = completionTime
+
+		currTaskResourceUsage = getCurrTaskResourceUsage(
+			taskID, state, taskInfo.GetConfig().GetResource(),
+			runtime.GetStartTime(), completionTime)
 	}
 
+	if len(currTaskResourceUsage) > 0 {
+		// current task resource usage was updated by this event, so we should
+		// add it to aggregated resource usage for the task and update runtime
+		aggregateTaskResourceUsage := runtime.GetResourceUsage()
+		for k, v := range currTaskResourceUsage {
+			aggregateTaskResourceUsage[k] += v
+		}
+		runtimeDiff[cached.ResourceUsageField] = aggregateTaskResourceUsage
+	}
 	// Update the task update times in job cache and then update the task runtime in cache and DB
 	cachedJob := p.jobFactory.AddJob(taskInfo.GetJobId())
 	cachedJob.SetTaskUpdateTime(event.MesosTaskStatus.Timestamp)
@@ -334,6 +357,13 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	goalstate.EnqueueJobWithDefaultDelay(
 		taskInfo.GetJobId(), p.goalStateDriver, cachedJob)
 
+	// Update job's resource usage with the current task resource usage.
+	// This is a noop in case currTaskResourceUsage is nil
+	// This operation is not idempotent. So we will update job resource usage
+	// in cache only after successfully updating task resource usage in DB
+	// In case of errors in PatchTasks(), ProcessStatusUpdate will be retried
+	// indefinitely until errors are resolved.
+	cachedJob.UpdateResourceUsage(currTaskResourceUsage)
 	return nil
 }
 
@@ -395,4 +425,21 @@ func (p *statusUpdate) Stop() {
 	for _, listener := range p.listeners {
 		listener.Stop()
 	}
+}
+
+func getCurrTaskResourceUsage(taskID string, state pb_task.TaskState,
+	resourceCfg *pb_task.ResourceConfig,
+	startTime, completionTime string) map[string]float64 {
+	currTaskResourceUsage, err := jobmgr_task.CreateResourceUsageMap(
+		resourceCfg, startTime, completionTime)
+	if err != nil {
+		// only log the error here and continue processing the event
+		// in this case resource usage map will be nil
+		log.WithError(err).
+			WithFields(log.Fields{
+				"task_id": taskID,
+				"state":   state}).
+			Error("failed to calculate resource usage")
+	}
+	return currTaskResourceUsage
 }

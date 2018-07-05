@@ -19,8 +19,10 @@ import (
 
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	eventsmocks "code.uber.internal/infra/peloton/jobmgr/task/event/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
+
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
@@ -64,6 +66,7 @@ func (suite *BucketEventProcessorTestSuite) TearDownTest() {
 
 func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_MesosEvents() {
 	var offset uint64
+
 	applier := newBucketEventProcessor(suite.handler, 15, 100)
 	n := uint32(243)
 
@@ -72,16 +75,19 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_MesosEvents
 		pelotonTaskID := fmt.Sprintf("%s-%d", jobID.GetValue(), i)
 		taskInfo := &task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
-				MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
+				MesosTaskId:   &mesos.TaskID{Value: &mesosTaskID},
+				ResourceUsage: jobmgrtask.CreateEmptyResourceUsageMap(),
 			},
 			InstanceId: i,
 			JobId:      jobID,
 		}
-		suite.taskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil).Times(3)
+		suite.taskStore.EXPECT().GetTaskByID(
+			context.Background(), pelotonTaskID).Return(taskInfo, nil).Times(3)
 		suite.jobFactory.EXPECT().AddJob(jobID).Return(suite.cachedJob).Times(3)
 		suite.cachedJob.EXPECT().SetTaskUpdateTime(gomock.Any()).Return().Times(3)
 		suite.cachedJob.EXPECT().PatchTasks(context.Background(), gomock.Any()).Return(nil).Times(3)
 		suite.goalStateDriver.EXPECT().EnqueueTask(jobID, i, gomock.Any()).Return().Times(3)
+		suite.cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return().Times(3)
 		suite.cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).Times(3)
 		suite.goalStateDriver.EXPECT().
 			JobRuntimeDuration(job.JobType_BATCH).
