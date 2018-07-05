@@ -171,31 +171,31 @@ func TestEngineSuggestActionGoalKilled(t *testing.T) {
 		{
 			currentState:         pbtask.TaskState_RUNNING,
 			configVersion:        10,
-			desiredConfigVersion: cached.UnknownVersion,
+			desiredConfigVersion: 10,
 			action:               StopAction,
 		},
 		{
 			currentState:         pbtask.TaskState_STARTING,
 			configVersion:        10,
-			desiredConfigVersion: cached.UnknownVersion,
+			desiredConfigVersion: 10,
 			action:               StopAction,
 		},
 		{
 			currentState:         pbtask.TaskState_LAUNCHED,
 			configVersion:        10,
-			desiredConfigVersion: cached.UnknownVersion,
+			desiredConfigVersion: 10,
 			action:               StopAction,
 		},
 		{
 			currentState:         pbtask.TaskState_KILLING,
 			configVersion:        10,
-			desiredConfigVersion: cached.UnknownVersion,
+			desiredConfigVersion: 10,
 			action:               ExecutorShutdownAction,
 		},
 		{
 			currentState:         pbtask.TaskState_PREEMPTING,
 			configVersion:        10,
-			desiredConfigVersion: cached.UnknownVersion,
+			desiredConfigVersion: 10,
 			action:               TaskStateInvalidAction,
 		},
 		{
@@ -271,7 +271,7 @@ func TestEngineSuggestActionGoalRunning(t *testing.T) {
 		},
 		{
 			currentState:         pbtask.TaskState_INITIALIZED,
-			configVersion:        cached.UnknownVersion,
+			configVersion:        0,
 			desiredConfigVersion: 0,
 			action:               StartAction,
 		},

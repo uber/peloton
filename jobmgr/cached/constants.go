@@ -1,7 +1,6 @@
 package cached
 
 import (
-	"math"
 	"time"
 
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -19,10 +18,6 @@ const (
 
 	// time duration at which cache metrics are computed
 	_defaultMetricsUpdateTick = 10 * time.Second
-
-	// UnknownVersion is used by the goalstate engine, when either the current
-	// or desired config version is unknown.
-	UnknownVersion = math.MaxUint64
 
 	// UpdateCacheOnly updates only the cache. It should be used only during
 	// recovery. Also, it requires passing the complete runtime information.
@@ -68,20 +63,20 @@ var (
 // Name of the fields in pbtask.RuntimeInfo, which is used by job/task cache
 // update request. This list is maintained in sorted order.
 const (
-	AgentIDField         = "AgentID"
-	CompletionTimeField  = "CompletionTime"
+	AgentIDField              = "AgentID"
+	CompletionTimeField       = "CompletionTime"
 	ConfigVersionField        = "ConfigVersion"
 	DesiredConfigVersionField = "DesiredConfigVersion"
-	FailureCountField    = "FailureCount"
-	GoalStateField       = "GoalState"
-	HostField            = "Host"
-	MesosTaskIDField     = "MesosTaskId"
-	MessageField         = "Message"
-	PortsField           = "Ports"
-	PrevMesosTaskIDField = "PrevMesosTaskId"
-	ReasonField          = "Reason"
-	RevisionField        = "Revision"
-	StartTimeField       = "StartTime"
-	StateField           = "State"
-	VolumeIDField        = "VolumeID"
+	FailureCountField         = "FailureCount"
+	GoalStateField            = "GoalState"
+	HostField                 = "Host"
+	MesosTaskIDField          = "MesosTaskId"
+	MessageField              = "Message"
+	PortsField                = "Ports"
+	PrevMesosTaskIDField      = "PrevMesosTaskId"
+	ReasonField               = "Reason"
+	RevisionField             = "Revision"
+	StartTimeField            = "StartTime"
+	StateField                = "State"
+	VolumeIDField             = "VolumeID"
 )

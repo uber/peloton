@@ -232,11 +232,6 @@ func (t *taskEntity) suggestTaskAction(
 	if currentState.ConfigVersion != goalState.ConfigVersion &&
 		!util.IsPelotonStateTerminal(goalState.State) {
 		switch {
-		// TBD UnknownVersion is not used anywhere, so should be cleaned up.
-		case currentState.ConfigVersion == cached.UnknownVersion,
-			goalState.ConfigVersion == cached.UnknownVersion:
-			// Ignore versions if version is unknown.
-
 		case util.IsPelotonStateTerminal(currentState.State):
 			return InitializeAction
 
