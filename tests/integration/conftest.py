@@ -171,6 +171,13 @@ def stateless_job(request):
     return job
 
 
+# For unit tests running with test_job, it would be tested with both
+# long_running_job and stateless_job
+@pytest.fixture(params=[long_running_job, stateless_job])
+def test_job(request):
+    return request.param(request)
+
+
 """
 Setup fixture for getting a dict of job objects per state
 """

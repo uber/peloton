@@ -9,48 +9,51 @@ pytestmark = [pytest.mark.default, pytest.mark.task]
 
 
 @pytest.mark.smoketest
-def test__stop_start_all_tasks_kills_tasks_and_job(long_running_job):
-    long_running_job.create()
-    long_running_job.wait_for_state(goal_state='RUNNING')
+@pytest.mark.stateless
+def test__stop_start_all_tasks_kills_tasks_and_job(test_job):
+    test_job.create()
+    test_job.wait_for_state(goal_state='RUNNING')
 
-    long_running_job.stop()
-    long_running_job.wait_for_state(goal_state='KILLED')
+    test_job.stop()
+    test_job.wait_for_state(goal_state='KILLED')
 
-    long_running_job.start()
-    long_running_job.wait_for_state(goal_state='RUNNING')
+    test_job.start()
+    test_job.wait_for_state(goal_state='RUNNING')
 
 
-def test__stop_start_partial_tests_with_single_range(long_running_job):
-    long_running_job.create()
-    long_running_job.wait_for_state(goal_state='RUNNING')
+@pytest.mark.stateless
+def test__stop_start_partial_tests_with_single_range(test_job):
+    test_job.create()
+    test_job.wait_for_state(goal_state='RUNNING')
 
-    long_running_job.stop()
-    long_running_job.wait_for_state(goal_state='KILLED')
+    test_job.stop()
+    test_job.wait_for_state(goal_state='KILLED')
 
     range = task_pb2.InstanceRange(to=1)
     setattr(range, 'from', 0)
 
     def wait_for_instance_to_run():
-        tasks = long_running_job.list_tasks().value
+        tasks = test_job.list_tasks().value
         return (tasks[0].runtime.state ==
                 task_pb2.TaskState.Value('RUNNING') and
                 tasks[1].runtime.state ==
                 task_pb2.TaskState.Value('KILLED') and
                 tasks[2].runtime.state ==
                 task_pb2.TaskState.Value('KILLED'))
-    long_running_job.start(ranges=[range])
-    long_running_job.wait_for_condition(wait_for_instance_to_run)
+    test_job.start(ranges=[range])
+    test_job.wait_for_condition(wait_for_instance_to_run)
 
-    long_running_job.stop(ranges=[range])
-    long_running_job.wait_for_state(goal_state='KILLED')
+    test_job.stop(ranges=[range])
+    test_job.wait_for_state(goal_state='KILLED')
 
 
-def test__stop_start_partial_tests_with_multiple_ranges(long_running_job):
-    long_running_job.create()
-    long_running_job.wait_for_state(goal_state='RUNNING')
+@pytest.mark.stateless
+def test__stop_start_partial_tests_with_multiple_ranges(test_job):
+    test_job.create()
+    test_job.wait_for_state(goal_state='RUNNING')
 
-    long_running_job.stop()
-    long_running_job.wait_for_state(goal_state='KILLED')
+    test_job.stop()
+    test_job.wait_for_state(goal_state='KILLED')
 
     range1 = task_pb2.InstanceRange(to=1)
     setattr(range1, 'from', 0)
@@ -58,18 +61,18 @@ def test__stop_start_partial_tests_with_multiple_ranges(long_running_job):
     setattr(range2, 'from', 1)
 
     def wait_for_instance_to_run():
-        tasks = long_running_job.list_tasks().value
+        tasks = test_job.list_tasks().value
         return (tasks[0].runtime.state ==
                 task_pb2.TaskState.Value('RUNNING') and
                 tasks[1].runtime.state ==
                 task_pb2.TaskState.Value('RUNNING') and
                 tasks[2].runtime.state ==
                 task_pb2.TaskState.Value('KILLED'))
-    long_running_job.start(ranges=[range1, range2])
-    long_running_job.wait_for_condition(wait_for_instance_to_run)
+    test_job.start(ranges=[range1, range2])
+    test_job.wait_for_condition(wait_for_instance_to_run)
 
-    long_running_job.stop(ranges=[range1, range2])
-    long_running_job.wait_for_state(goal_state='KILLED')
+    test_job.stop(ranges=[range1, range2])
+    test_job.wait_for_state(goal_state='KILLED')
 
 
 def test__start_stop_task_without_job_id():
