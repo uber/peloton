@@ -377,6 +377,12 @@ message RuntimeInfo {
 
   // The mesos task id of the previous task run of the instance.
   mesos.v1.TaskID prevMesosTaskId = 16;
+
+  // The resource usage for this task. The map key is each resource kind
+  // in string format and the map value is the number of unit-seconds
+  // of that resource used by the job. Example: if a task that uses 1 CPU
+  // and finishes in 10 seconds, this map will contain <"cpu":10>
+  map<string, double> resourceUsage = 17;
 }
 
 
