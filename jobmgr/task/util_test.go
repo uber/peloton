@@ -9,11 +9,17 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/stretchr/testify/suite"
+)
+
+const (
+	testSecretPath = "/tmp/secret"
+	testSecretStr  = "top-secret-token"
 )
 
 type KillOrphanTaskTestSuite struct {
@@ -106,4 +112,42 @@ func (suite *KillOrphanTaskTestSuite) TestKillStateful() {
 	suite.mockHostMgr.EXPECT()
 	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, &suite.taskInfo)
 	assert.NotNil(suite.T(), err)
+}
+
+// createTaskConfigWithSecret creates TaskConfig with a test secret volume.
+func createTaskConfigWithSecret() *task.TaskConfig {
+	mesosContainerizer := mesos.ContainerInfo_MESOS
+	return &task.TaskConfig{
+		Container: &mesos.ContainerInfo{
+			Type: &mesosContainerizer,
+			Volumes: []*mesos.Volume{
+				CreateSecretVolume(testSecretPath, testSecretStr),
+			},
+		},
+	}
+}
+
+// TestRemoveSecretVolumesFromJobConfig tests separating secret volumes from
+// jobconfig
+func (suite *TaskUtilTestSuite) TestRemoveSecretVolumesFromJobConfig() {
+	secretVolumes := RemoveSecretVolumesFromJobConfig(&job.JobConfig{})
+	suite.Equal(len(secretVolumes), 0)
+
+	jobConfig := &job.JobConfig{
+		DefaultConfig: createTaskConfigWithSecret(),
+	}
+	// add a non-secret container volume to default config
+	volumeMode := mesos.Volume_RO
+	testPath := "/test"
+	volume := &mesos.Volume{
+		Mode:          &volumeMode,
+		ContainerPath: &testPath,
+	}
+	jobConfig.GetDefaultConfig().GetContainer().Volumes =
+		append(jobConfig.GetDefaultConfig().GetContainer().Volumes, volume)
+	secretVolumes = RemoveSecretVolumesFromJobConfig(jobConfig)
+	suite.False(ConfigHasSecretVolumes(jobConfig.GetDefaultConfig()))
+	suite.Equal(len(secretVolumes), 1)
+	suite.Equal([]byte(testSecretStr),
+		secretVolumes[0].GetSource().GetSecret().GetValue().GetData())
 }

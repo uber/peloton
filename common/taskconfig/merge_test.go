@@ -5,7 +5,9 @@ import (
 
 	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/util"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -86,4 +88,52 @@ func TestMergeWithExistingEnviron(t *testing.T) {
 			},
 		},
 	}, Merge(defaultConfig, nil).Command.Environment)
+}
+
+// TestRetainBaseSecretsInInstanceConfig tests if instance config that contains
+// overriding container info still retains the secret volumes from the default
+// config's container info.
+func TestRetainBaseSecretsInInstanceConfig(t *testing.T) {
+	mesosContainerizer := mesos_v1.ContainerInfo_MESOS
+	defaultConfig := &task.TaskConfig{
+		Container: &mesos_v1.ContainerInfo{
+			Type: &mesosContainerizer,
+			Volumes: []*mesos_v1.Volume{
+				jobmgrtask.CreateSecretVolume("/tmp/secret", "data"),
+			}}}
+	imageType := mesos_v1.Image_DOCKER
+	imageName := "sparkdocker"
+	instanceConfig := &task.TaskConfig{
+		Container: &mesos_v1.ContainerInfo{
+			Type: &mesosContainerizer,
+			Mesos: &mesos_v1.ContainerInfo_MesosInfo{
+				Image: &mesos_v1.Image{
+					Type:   &imageType,
+					Docker: &mesos_v1.Image_Docker{Name: &imageName},
+				}}}}
+
+	// default config is empty. there should be no change in returned cfg
+	// and instance config
+	cfg := RetainBaseSecretsInInstanceConfig(&task.TaskConfig{}, instanceConfig)
+	assert.Equal(t, cfg, instanceConfig)
+
+	// default config contains secret volume. returned instance config should
+	// contain same secret volumes as part of its new container info.
+	cfg = RetainBaseSecretsInInstanceConfig(defaultConfig, instanceConfig)
+	assert.Equal(t, cfg.GetContainer().GetMesos(),
+		instanceConfig.GetContainer().GetMesos())
+	assert.NotEqual(t, defaultConfig.GetContainer().GetMesos(),
+		instanceConfig.GetContainer().GetMesos())
+	assert.Equal(t, defaultConfig.GetContainer().GetVolumes(),
+		instanceConfig.GetContainer().GetVolumes())
+
+	// instance config contains non secret volumes, returned instance config
+	// should contain existing plus secret volumes
+	volumeMode := mesos_v1.Volume_RO
+	testPath := "/test"
+	instanceConfig.GetContainer().Volumes = []*mesos_v1.Volume{&mesos_v1.Volume{
+		Mode: &volumeMode, ContainerPath: &testPath,
+	}}
+	cfg = RetainBaseSecretsInInstanceConfig(defaultConfig, instanceConfig)
+	assert.Equal(t, len(cfg.GetContainer().GetVolumes()), 2)
 }

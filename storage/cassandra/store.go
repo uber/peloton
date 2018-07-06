@@ -337,6 +337,8 @@ func (s *Store) CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobCon
 
 	for instanceID, cfg := range jobConfig.GetInstanceConfig() {
 		merged := taskconfig.Merge(jobConfig.GetDefaultConfig(), cfg)
+		merged = taskconfig.RetainBaseSecretsInInstanceConfig(
+			jobConfig.GetDefaultConfig(), merged)
 		// TODO set correct version
 		if err := s.createTaskConfig(ctx, id, int64(instanceID), merged, version); err != nil {
 			return err
