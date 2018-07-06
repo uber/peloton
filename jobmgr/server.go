@@ -26,6 +26,7 @@ type Server struct {
 	role string
 
 	jobFactory         cached.JobFactory
+	updateFactory      cached.UpdateFactory
 	taskPreemptor      preemptor.Preemptor
 	goalstateDriver    goalstate.Driver
 	deadlineTracker    deadline.Tracker
@@ -38,6 +39,7 @@ type Server struct {
 func NewServer(
 	httpPort, grpcPort int,
 	jobFactory cached.JobFactory,
+	updateFactory cached.UpdateFactory,
 	goalstateDriver goalstate.Driver,
 	taskPreemptor preemptor.Preemptor,
 	deadlineTracker deadline.Tracker,
@@ -50,6 +52,7 @@ func NewServer(
 		ID:                 leader.NewID(httpPort, grpcPort),
 		role:               common.JobManagerRole,
 		jobFactory:         jobFactory,
+		updateFactory:      updateFactory,
 		taskPreemptor:      taskPreemptor,
 		goalstateDriver:    goalstateDriver,
 		deadlineTracker:    deadlineTracker,
@@ -66,6 +69,7 @@ func (s *Server) GainedLeadershipCallback() error {
 	log.WithFields(log.Fields{"role": s.role}).Info("Gained leadership")
 
 	s.jobFactory.Start()
+	s.updateFactory.Start()
 	s.taskPreemptor.Start()
 	s.goalstateDriver.Start()
 	s.placementProcessor.Start()
@@ -82,13 +86,15 @@ func (s *Server) LostLeadershipCallback() error {
 
 	log.WithField("role", s.role).Info("Lost leadership")
 
-	s.jobFactory.Stop()
+	s.goalstateDriver.Stop()
 	s.statusUpdate.Stop()
 	s.placementProcessor.Stop()
 	s.taskPreemptor.Stop()
-	s.goalstateDriver.Stop()
 	s.deadlineTracker.Stop()
 	s.backgroundManager.Stop()
+	s.updateFactory.Stop()
+	s.jobFactory.Stop()
+
 	return nil
 }
 
@@ -97,12 +103,14 @@ func (s *Server) ShutDownCallback() error {
 
 	log.WithFields(log.Fields{"role": s.role}).Info("Quitting election")
 
-	s.jobFactory.Stop()
+	s.goalstateDriver.Stop()
 	s.statusUpdate.Stop()
 	s.placementProcessor.Stop()
 	s.taskPreemptor.Stop()
-	s.goalstateDriver.Stop()
 	s.deadlineTracker.Stop()
+	s.backgroundManager.Stop()
+	s.updateFactory.Stop()
+	s.jobFactory.Stop()
 
 	return nil
 }

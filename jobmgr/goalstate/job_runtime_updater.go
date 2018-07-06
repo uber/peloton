@@ -426,6 +426,12 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
+	// if an update is running for this job, enqueue it as well
+	// TODO change this to use watch functionality from the cache
+	if jobRuntime.GetUpdateID() != nil {
+		goalStateDriver.EnqueueUpdate(jobRuntime.GetUpdateID(), time.Now())
+	}
+
 	// Evaluate this job immediately when
 	// 1. job state is terminal and no more task updates will arrive, or
 	// 2. job is partially created and need to create additional tasks

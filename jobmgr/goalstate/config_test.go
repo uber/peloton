@@ -19,4 +19,5 @@ func TestConfigNormalize(t *testing.T) {
 	assert.Equal(t, _defaultJobRuntimeUpdateInterval, c.JobServiceRuntimeUpdateInterval)
 	assert.Equal(t, _defaultJobWorkerThreads, c.NumWorkerJobThreads)
 	assert.Equal(t, _defaultTaskWorkerThreads, c.NumWorkerTaskThreads)
+	assert.Equal(t, _defaultUpdateWorkerThreads, c.NumWorkerUpdateThreads)
 }

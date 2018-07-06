@@ -27,8 +27,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	pb_volume "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	"code.uber.internal/infra/peloton/storage"
 )
@@ -1006,13 +1006,7 @@ func (m *Store) GetJobsByRespoolID(ctx context.Context, respoolID *peloton.Resou
 // if the update already exists.
 func (m *Store) CreateUpdate(
 	ctx context.Context,
-	id *peloton.UpdateID,
-	jobID *peloton.JobID,
-	updateConfig *update.UpdateConfig,
-	jobConfigVersion uint64,
-	prevJobConfigVersion uint64,
-	state update.State,
-	instancesTotal uint32,
+	updateInfo *models.UpdateModel,
 ) error {
 	return errors.New("Not implemented")
 }
@@ -1029,28 +1023,15 @@ func (m *Store) DeleteUpdate(
 
 // GetUpdate fetches the job update stored in the DB
 func (m *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
-	jobID *peloton.JobID,
-	updateConfig *update.UpdateConfig,
-	jobConfigVersion uint64,
-	prevJobConfigVersion uint64,
-	state update.State,
-	instancesTotal uint32,
-	instancesDone uint32,
-	instanceCurrent []uint32,
-	creationTime time.Time,
-	updateTime time.Time,
-	err error) {
-	err = errors.New("Not implemented")
-	return
+	*models.UpdateModel,
+	error) {
+	return nil, errors.New("Not implemented")
 }
 
 // WriteUpdateProgress writes the progress of the job update to the DB
 func (m *Store) WriteUpdateProgress(
 	ctx context.Context,
-	id *peloton.UpdateID,
-	state update.State,
-	instancesDone uint32,
-	instancesCurrent []uint32) error {
+	updateInfo *models.UpdateModel) error {
 	return errors.New("Not implemented")
 }
 
@@ -1058,14 +1039,9 @@ func (m *Store) WriteUpdateProgress(
 // instances already updated, instances being updated and the current
 // state of the update.
 func (m *Store) GetUpdateProgress(ctx context.Context, id *peloton.UpdateID) (
-	state update.State,
-	instancesDone uint32,
-	instancesTotal uint32,
-	instanceCurrent []uint32,
-	updateTime time.Time,
-	err error) {
-	err = errors.New("Not implemented")
-	return
+	*models.UpdateModel,
+	error) {
+	return nil, errors.New("Not implemented")
 }
 
 // GetUpdatesForJob returns the list of job updates created for a given job

@@ -132,6 +132,7 @@ func (suite *JobTestSuite) TestJobSetAndFetchConfigAndRuntime() {
 	jobRuntime := &pbjob.RuntimeInfo{
 		State:     pbjob.JobState_RUNNING,
 		GoalState: pbjob.JobState_SUCCEEDED,
+		UpdateID:  &peloton.UpdateID{Value: uuid.NewRandom().String()},
 	}
 	jobConfig := &pbjob.JobConfig{
 		SLA: &pbjob.SlaConfig{
@@ -163,6 +164,7 @@ func (suite *JobTestSuite) TestJobSetAndFetchConfigAndRuntime() {
 	suite.Equal(maxRunningTime, actJobConfig.GetSLA().GetMaxRunningTime())
 	suite.Equal(pbjob.JobType_BATCH, actJobConfig.GetType())
 	suite.Equal(jobConfig.RespoolID.Value, actJobConfig.GetRespoolID().Value)
+	suite.Equal(jobRuntime.UpdateID.Value, actJobRuntime.GetUpdateID().Value)
 }
 
 // TestJobDBError tests DB errors during job operations.
@@ -971,7 +973,7 @@ func (suite *JobTestSuite) TestJobCreate() {
 	suite.NoError(err)
 	suite.Equal(config.GetInstanceCount(), uint32(10))
 	suite.Equal(config.GetChangeLog().Version, uint64(1))
-	suite.Equal(suite.job.GetJobType(), pbjob.JobType_BATCH)
+	suite.Equal(config.GetType(), pbjob.JobType_BATCH)
 	runtime, err := suite.job.GetRuntime(context.Background())
 	suite.NoError(err)
 	suite.Equal(runtime.GetRevision().GetVersion(), uint64(1))

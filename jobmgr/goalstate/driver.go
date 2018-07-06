@@ -67,10 +67,16 @@ type Driver interface {
 	// the instance identifier and the time at which the task should be evaluated by the
 	// goal state engine as inputs.
 	EnqueueTask(jobID *peloton.JobID, instanceID uint32, deadline time.Time)
+	// EnqueueUpdate is used to enqueue a job update into the goal state. As
+	// its input, it takes the update identifier, and the time at which the
+	// job update should be evaluated by the goal state engine.
+	EnqueueUpdate(updateID *peloton.UpdateID, deadline time.Time)
 	// DeleteJob deletes the job state from the goal state engine.
 	DeleteJob(jobID *peloton.JobID)
 	// DeleteTask deletes the task state from the goal state engine.
 	DeleteTask(jobID *peloton.JobID, instanceID uint32)
+	// DeleteUpdate deletes the job update state from the goal state engine.
+	DeleteUpdate(updateID *peloton.UpdateID)
 	// IsScheduledTask is a helper function to check if a given task is scheduled
 	// for evaluation in the goal state engine.
 	IsScheduledTask(jobID *peloton.JobID, instanceID uint32) bool
@@ -90,6 +96,7 @@ func NewDriver(
 	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
 	jobFactory cached.JobFactory,
+	updateFactory cached.UpdateFactory,
 	taskLauncher launcher.Launcher,
 	parentScope tally.Scope,
 	cfg Config) Driver {
@@ -99,14 +106,30 @@ func NewDriver(
 	taskScope := scope.SubScope("task")
 
 	return &driver{
-		jobEngine:     goalstate.NewEngine(cfg.NumWorkerJobThreads, cfg.FailureRetryDelay, cfg.MaxRetryDelay, jobScope),
-		taskEngine:    goalstate.NewEngine(cfg.NumWorkerTaskThreads, cfg.FailureRetryDelay, cfg.MaxRetryDelay, taskScope),
-		hostmgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
-		resmgrClient:  resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
+		jobEngine: goalstate.NewEngine(
+			cfg.NumWorkerJobThreads,
+			cfg.FailureRetryDelay,
+			cfg.MaxRetryDelay,
+			jobScope),
+		taskEngine: goalstate.NewEngine(
+			cfg.NumWorkerTaskThreads,
+			cfg.FailureRetryDelay,
+			cfg.MaxRetryDelay,
+			taskScope),
+		updateEngine: goalstate.NewEngine(
+			cfg.NumWorkerUpdateThreads,
+			cfg.FailureRetryDelay,
+			cfg.MaxRetryDelay,
+			jobScope),
+		hostmgrClient: hostsvc.NewInternalHostServiceYARPCClient(
+			d.ClientConfig(common.PelotonHostManager)),
+		resmgrClient: resmgrsvc.NewResourceManagerServiceYARPCClient(
+			d.ClientConfig(common.PelotonResourceManager)),
 		jobStore:      jobStore,
 		taskStore:     taskStore,
 		volumeStore:   volumeStore,
 		jobFactory:    jobFactory,
+		updateFactory: updateFactory,
 		taskLauncher:  taskLauncher,
 		mtx:           NewMetrics(scope),
 		cfg:           &cfg,
@@ -141,8 +164,9 @@ type driver struct {
 	// job starvation as well as not being able to run multiple tasks in parallel slowing
 	// down the entire goal state engine processing. If the value is too large, then if all
 	// the items scheduled are jobs, that can bring down Cassandra.
-	jobEngine  goalstate.Engine
-	taskEngine goalstate.Engine
+	jobEngine    goalstate.Engine
+	taskEngine   goalstate.Engine
+	updateEngine goalstate.Engine
 
 	// hostmgrClient and resmgrClient are the host manager and resource manager clients.
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient
@@ -153,8 +177,10 @@ type driver struct {
 	taskStore   storage.TaskStore
 	volumeStore storage.PersistentVolumeStore
 
-	// jobFactory is the in-memory cache object
+	// jobFactory is the in-memory cache object fpr jobs and tasks
 	jobFactory cached.JobFactory
+	// updateFactory is the in-memory cache object for updates
+	updateFactory cached.UpdateFactory
 
 	// taskLauncher is used to launch tasks to host manager
 	taskLauncher launcher.Launcher
@@ -182,6 +208,15 @@ func (d *driver) EnqueueTask(jobID *peloton.JobID, instanceID uint32, deadline t
 	d.taskEngine.Enqueue(taskEntity, deadline)
 }
 
+func (d *driver) EnqueueUpdate(updateID *peloton.UpdateID, deadline time.Time) {
+	updateEntity := NewUpdateEntity(updateID, d)
+
+	d.RLock()
+	defer d.RUnlock()
+
+	d.updateEngine.Enqueue(updateEntity, deadline)
+}
+
 func (d *driver) DeleteJob(jobID *peloton.JobID) {
 	jobEntity := NewJobEntity(jobID, d)
 
@@ -198,6 +233,15 @@ func (d *driver) DeleteTask(jobID *peloton.JobID, instanceID uint32) {
 	defer d.RUnlock()
 
 	d.taskEngine.Delete(taskEntity)
+}
+
+func (d *driver) DeleteUpdate(updateID *peloton.UpdateID) {
+	updateEntity := NewUpdateEntity(updateID, d)
+
+	d.RLock()
+	defer d.RUnlock()
+
+	d.updateEngine.Delete(updateEntity)
 }
 
 func (d *driver) IsScheduledTask(jobID *peloton.JobID, instanceID uint32) bool {
@@ -307,6 +351,7 @@ func (d *driver) Start() {
 	d.Lock()
 	d.jobEngine.Start()
 	d.taskEngine.Start()
+	d.updateEngine.Start()
 	d.Unlock()
 
 	if err := d.syncFromDB(context.Background()); err != nil {
@@ -328,11 +373,18 @@ func (d *driver) Stop() {
 	}
 
 	d.Lock()
+	d.updateEngine.Stop()
 	d.taskEngine.Stop()
 	d.jobEngine.Stop()
 	d.Unlock()
 
-	// Cleanup tasks and jobs from the goal state machine
+	// Cleanup all updates from the goal state engine
+	updates := d.updateFactory.GetAllUpdates()
+	for updateID := range updates {
+		d.DeleteUpdate(&peloton.UpdateID{Value: updateID})
+	}
+
+	// Cleanup tasks and jobs from the goal state engine
 	jobs := d.jobFactory.GetAllJobs()
 	for jobID, cachedJob := range jobs {
 		tasks := cachedJob.GetAllTasks()

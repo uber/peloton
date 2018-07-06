@@ -17,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	"code.uber.internal/infra/peloton/storage"
 	qb "code.uber.internal/infra/peloton/storage/querybuilder"
@@ -2107,7 +2108,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	instancesTotal := uint32(60)
 
 	// get a non-existent update
-	_, _, _, _, _, _, _, _, _, _, err := store.GetUpdate(
+	_, err := store.GetUpdate(
 		context.Background(),
 		updateID,
 	)
@@ -2115,7 +2116,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.True(yarpcerrors.IsInvalidArgument(err))
 
 	// get progress of a non-existent update
-	_, _, _, _, _, err = store.GetUpdateProgress(
+	_, err = store.GetUpdateProgress(
 		context.Background(),
 		updateID,
 	)
@@ -2130,78 +2131,72 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	// create a new update
 	suite.NoError(store.CreateUpdate(
 		context.Background(),
-		updateID,
-		jobID,
-		updateConfig,
-		jobVersion,
-		jobPrevVersion,
-		state,
-		instancesTotal,
+		&models.UpdateModel{
+			UpdateID:             updateID,
+			JobID:                jobID,
+			UpdateConfig:         updateConfig,
+			JobConfigVersion:     jobVersion,
+			PrevJobConfigVersion: jobPrevVersion,
+			State:                state,
+			InstancesTotal:       instancesTotal,
+		},
 	))
 
 	// create an update with bad updateConfig
 	suite.Error(store.CreateUpdate(
 		context.Background(),
-		updateID,
-		jobID,
-		nil,
-		jobVersion,
-		jobPrevVersion,
-		state,
-		instancesTotal,
+		&models.UpdateModel{
+			UpdateID:             updateID,
+			JobID:                jobID,
+			UpdateConfig:         nil,
+			JobConfigVersion:     jobVersion,
+			PrevJobConfigVersion: jobPrevVersion,
+			State:                state,
+			InstancesTotal:       instancesTotal,
+		},
 	))
 
 	// creating same update again should fail
 	err = store.CreateUpdate(
 		context.Background(),
-		updateID,
-		jobID,
-		updateConfig,
-		jobVersion,
-		jobPrevVersion,
-		state,
-		instancesTotal,
+		&models.UpdateModel{
+			UpdateID:             updateID,
+			JobID:                jobID,
+			UpdateConfig:         updateConfig,
+			JobConfigVersion:     jobVersion,
+			PrevJobConfigVersion: jobPrevVersion,
+			State:                state,
+			InstancesTotal:       instancesTotal,
+		},
 	)
 	suite.Error(err)
 	suite.True(yarpcerrors.IsAlreadyExists(err))
 
 	// get the same update
-	nJobID,
-		nUpdateConfig,
-		nconfigVersion,
-		nPrevConfigVersion,
-		nState,
-		nTotal,
-		nDone,
-		nCurrent,
-		_, _, err := store.GetUpdate(
+	updateInfo, err := store.GetUpdate(
 		context.Background(),
 		updateID,
 	)
 	suite.NoError(err)
-	suite.Equal(nJobID.GetValue(), jobID.GetValue())
-	suite.Equal(nUpdateConfig.GetBatchSize(), updateConfig.GetBatchSize())
-	suite.Equal(nconfigVersion, jobVersion)
-	suite.Equal(nPrevConfigVersion, jobPrevVersion)
-	suite.Equal(nState, state)
-	suite.Equal(nTotal, instancesTotal)
-	suite.Equal(nDone, uint32(0))
-	suite.Equal(len(nCurrent), 0)
+	suite.Equal(updateInfo.GetJobID().GetValue(), jobID.GetValue())
+	suite.Equal(updateInfo.GetUpdateConfig().GetBatchSize(), updateConfig.GetBatchSize())
+	suite.Equal(updateInfo.GetJobConfigVersion(), jobVersion)
+	suite.Equal(updateInfo.GetPrevJobConfigVersion(), jobPrevVersion)
+	suite.Equal(updateInfo.GetState(), state)
+	suite.Equal(updateInfo.GetInstancesTotal(), instancesTotal)
+	suite.Equal(updateInfo.GetInstancesDone(), uint32(0))
+	suite.Equal(len(updateInfo.GetInstancesCurrent()), 0)
 
 	// get the progress
-	nState,
-		nDone,
-		nTotal,
-		nCurrent,
-		_, err = store.GetUpdateProgress(
+	updateInfo, err = store.GetUpdateProgress(
 		context.Background(),
 		updateID,
 	)
 	suite.NoError(err)
-	suite.Equal(nState, state)
-	suite.Equal(nTotal, instancesTotal)
-	suite.Equal(nDone, uint32(0))
-	suite.Equal(len(nCurrent), 0)
+	suite.Equal(updateInfo.GetState(), state)
+	suite.Equal(updateInfo.GetInstancesTotal(), instancesTotal)
+	suite.Equal(updateInfo.GetInstancesDone(), uint32(0))
+	suite.Equal(len(updateInfo.GetInstancesCurrent()), 0)
 
 	// write new progress
 	state = update.State_ROLLING_FORWARD
@@ -2209,50 +2204,40 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	instanceCurrent := []uint32{5, 6, 7, 8}
 	err = store.WriteUpdateProgress(
 		context.Background(),
-		updateID,
-		state,
-		instancesDone,
-		instanceCurrent,
+		&models.UpdateModel{
+			UpdateID:         updateID,
+			State:            state,
+			InstancesDone:    instancesDone,
+			InstancesCurrent: instanceCurrent,
+		},
 	)
 	suite.NoError(err)
 
 	// get the update
-	nJobID,
-		nUpdateConfig,
-		nconfigVersion,
-		nPrevConfigVersion,
-		nState,
-		nTotal,
-		nDone,
-		nCurrent,
-		_, _, err = store.GetUpdate(
+	updateInfo, err = store.GetUpdate(
 		context.Background(),
 		updateID,
 	)
 	suite.NoError(err)
-	suite.Equal(nJobID.GetValue(), jobID.GetValue())
-	suite.Equal(nUpdateConfig.GetBatchSize(), updateConfig.GetBatchSize())
-	suite.Equal(nconfigVersion, jobVersion)
-	suite.Equal(nPrevConfigVersion, jobPrevVersion)
-	suite.Equal(nState, state)
-	suite.Equal(nTotal, instancesTotal)
-	suite.Equal(nDone, instancesDone)
-	suite.Equal(nCurrent, instanceCurrent)
+	suite.Equal(updateInfo.GetJobID().GetValue(), jobID.GetValue())
+	suite.Equal(updateInfo.GetUpdateConfig().GetBatchSize(), updateConfig.GetBatchSize())
+	suite.Equal(updateInfo.GetJobConfigVersion(), jobVersion)
+	suite.Equal(updateInfo.GetPrevJobConfigVersion(), jobPrevVersion)
+	suite.Equal(updateInfo.GetState(), state)
+	suite.Equal(updateInfo.GetInstancesTotal(), instancesTotal)
+	suite.Equal(updateInfo.GetInstancesDone(), instancesDone)
+	suite.Equal(updateInfo.GetInstancesCurrent(), instanceCurrent)
 
 	// get the progress
-	nState,
-		nDone,
-		nTotal,
-		nCurrent,
-		_, err = store.GetUpdateProgress(
+	updateInfo, err = store.GetUpdateProgress(
 		context.Background(),
 		updateID,
 	)
 	suite.NoError(err)
-	suite.Equal(nState, state)
-	suite.Equal(nTotal, instancesTotal)
-	suite.Equal(nDone, instancesDone)
-	suite.Equal(nCurrent, instanceCurrent)
+	suite.Equal(updateInfo.GetState(), state)
+	suite.Equal(updateInfo.GetInstancesTotal(), instancesTotal)
+	suite.Equal(updateInfo.GetInstancesDone(), instancesDone)
+	suite.Equal(updateInfo.GetInstancesCurrent(), instanceCurrent)
 
 	// fetch update for job
 	updateList, err = store.GetUpdatesForJob(context.Background(), jobID)
@@ -2268,13 +2253,15 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 		}
 		suite.NoError(store.CreateUpdate(
 			context.Background(),
-			id,
-			jobID,
-			updateConfig,
-			jobVersion,
-			jobPrevVersion,
-			state,
-			instancesTotal,
+			&models.UpdateModel{
+				UpdateID:             id,
+				JobID:                jobID,
+				UpdateConfig:         updateConfig,
+				JobConfigVersion:     jobVersion,
+				PrevJobConfigVersion: jobPrevVersion,
+				State:                state,
+				InstancesTotal:       instancesTotal,
+			},
 		))
 	}
 
@@ -2286,14 +2273,14 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	store.DeleteJob(context.Background(), jobID)
 
 	// make sure update is not found
-	_, _, _, _, _, _, _, _, _, _, err = store.GetUpdate(
+	_, err = store.GetUpdate(
 		context.Background(),
 		updateID,
 	)
 	suite.Error(err)
 	suite.True(yarpcerrors.IsInvalidArgument(err))
 
-	_, _, _, _, _, err = store.GetUpdateProgress(
+	_, err = store.GetUpdateProgress(
 		context.Background(),
 		updateID,
 	)

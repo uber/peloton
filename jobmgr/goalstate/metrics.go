@@ -33,11 +33,25 @@ type TaskMetrics struct {
 	RetryFailedTasksTotal  tally.Counter
 }
 
+// UpdateMetrics contains all counters to track
+// update metrics in the goal state.
+type UpdateMetrics struct {
+	UpdateReload       tally.Counter
+	UpdateComplete     tally.Counter
+	UpdateCompleteFail tally.Counter
+	UpdateUntrack      tally.Counter
+	UpdateStart        tally.Counter
+	UpdateStartFail    tally.Counter
+	UpdateRun          tally.Counter
+	UpdateRunFail      tally.Counter
+}
+
 // Metrics is the struct containing all the counters that track job and task
 // metrics in goal state.
 type Metrics struct {
-	jobMetrics  *JobMetrics
-	taskMetrics *TaskMetrics
+	jobMetrics    *JobMetrics
+	taskMetrics   *TaskMetrics
+	updateMetrics *UpdateMetrics
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
@@ -45,6 +59,7 @@ type Metrics struct {
 func NewMetrics(scope tally.Scope) *Metrics {
 	jobScope := scope.SubScope("job")
 	taskScope := scope.SubScope("task")
+	updateScope := scope.SubScope("update")
 
 	jobMetrics := &JobMetrics{
 		JobCreate:                        jobScope.Counter("recovered"),
@@ -71,8 +86,20 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		RetryFailedTasksTotal:  taskScope.Counter("retry_failed_total"),
 	}
 
+	updateMetrics := &UpdateMetrics{
+		UpdateReload:       updateScope.Counter("reload"),
+		UpdateComplete:     updateScope.Counter("complete"),
+		UpdateCompleteFail: updateScope.Counter("complete_fail"),
+		UpdateUntrack:      updateScope.Counter("untrack"),
+		UpdateStart:        updateScope.Counter("start"),
+		UpdateStartFail:    updateScope.Counter("start_fail"),
+		UpdateRun:          updateScope.Counter("run"),
+		UpdateRunFail:      updateScope.Counter("run_fail"),
+	}
+
 	return &Metrics{
-		jobMetrics:  jobMetrics,
-		taskMetrics: taskMetrics,
+		jobMetrics:    jobMetrics,
+		taskMetrics:   taskMetrics,
+		updateMetrics: updateMetrics,
 	}
 }

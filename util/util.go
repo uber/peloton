@@ -360,6 +360,28 @@ func CreateHostInfo(hostname string, agentInfo *mesos.AgentInfo) *hostsvc.HostIn
 	}
 }
 
+// CreateSecretVolume builds a mesos volume of type secret
+// from the given secret path and secret value string
+// This volume will be added to the job's default config
+func CreateSecretVolume(secretPath string, secretStr string) *mesos.Volume {
+	volumeMode := mesos.Volume_RO
+	volumeSourceType := mesos.Volume_Source_SECRET
+	secretType := mesos.Secret_VALUE
+	return &mesos.Volume{
+		Mode:          &volumeMode,
+		ContainerPath: &secretPath,
+		Source: &mesos.Volume_Source{
+			Type: &volumeSourceType,
+			Secret: &mesos.Secret{
+				Type: &secretType,
+				Value: &mesos.Secret_Value{
+					Data: []byte(secretStr),
+				},
+			},
+		},
+	}
+}
+
 // IsSecretVolume returns true if the given volume is of type secret
 func IsSecretVolume(volume *mesos.Volume) bool {
 	return volume.GetSource().GetType() == mesos.Volume_Source_SECRET
@@ -399,6 +421,21 @@ func RemoveSecretVolumesFromConfig(config *task.TaskConfig) []*mesos.Volume {
 	config.GetContainer().Volumes = nil
 	if len(volumes) > 0 {
 		config.GetContainer().Volumes = volumes
+	}
+	return secretVolumes
+}
+
+// RemoveSecretVolumesFromJobConfig removes secret volumes from the default
+// config as well as instance config in place and returns the secret volumes
+func RemoveSecretVolumesFromJobConfig(cfg *job.JobConfig) []*mesos.Volume {
+	// remove secret volumes if present from default config
+	secretVolumes := RemoveSecretVolumesFromConfig(cfg.GetDefaultConfig())
+
+	// remove secret volumes if present from instance config
+	for _, config := range cfg.GetInstanceConfig() {
+		// instance config contains the same secret volumes as default config,
+		// so no need to operate on them
+		_ = RemoveSecretVolumesFromConfig(config)
 	}
 	return secretVolumes
 }

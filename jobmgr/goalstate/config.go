@@ -15,6 +15,9 @@ const (
 	// Setting it to 50 based on experiments in production.
 	_defaultJobWorkerThreads  = 50
 	_defaultTaskWorkerThreads = 1000
+	// TODO determine the correct value of the number of
+	// parallel threads to run job updates.
+	_defaultUpdateWorkerThreads = 100
 )
 
 // Config for the goalstate engine.
@@ -50,6 +53,11 @@ type Config struct {
 	// serving the task goal state engine. This number indicates the maximum
 	// number of tasks which can be parallely processed by the goal state engine.
 	NumWorkerTaskThreads int `yaml:"task_worker_thread_count"`
+	// NumWorkerJobThreads is the number of worker threads in the pool
+	// serving the job update goal state engine. This number indicates
+	// the maximum number of job updates which can be parallely processed
+	// by the goal state engine.
+	NumWorkerUpdateThreads int `yaml:"update_worker_thread_count"`
 }
 
 // normalize configuration by setting unassigned fields to default values.
@@ -81,5 +89,8 @@ func (c *Config) normalize() {
 	}
 	if c.NumWorkerTaskThreads == 0 {
 		c.NumWorkerTaskThreads = _defaultTaskWorkerThreads
+	}
+	if c.NumWorkerUpdateThreads == 0 {
+		c.NumWorkerUpdateThreads = _defaultUpdateWorkerThreads
 	}
 }

@@ -12,11 +12,14 @@ import (
 	"github.com/uber-go/tally"
 )
 
+// TestInitJobFactory tests initialization of the job factory
 func TestInitJobFactory(t *testing.T) {
 	f := InitJobFactory(nil, nil, nil, tally.NoopScope)
 	assert.NotNil(t, f)
 }
 
+// TestAddAndGetAndClearJob tests adding, getting and
+// clearing of a job in the factory.
 func TestAddAndGetAndClearJob(t *testing.T) {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 
@@ -39,6 +42,7 @@ func TestAddAndGetAndClearJob(t *testing.T) {
 	assert.Nil(t, f.GetJob(jobID))
 }
 
+// TestStartStop tests starting and then stopping the factory.
 func TestStartStop(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -65,6 +69,7 @@ func TestStartStop(t *testing.T) {
 	assert.Nil(t, f.GetJob(jobID))
 }
 
+// TestPublishMetrics tests publishing metrics from the job factory.
 func TestPublishMetrics(t *testing.T) {
 	f := &jobFactory{
 		jobs:    map[string]*job{},

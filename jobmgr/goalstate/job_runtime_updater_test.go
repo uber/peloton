@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
+	"code.uber.internal/infra/peloton/common/goalstate"
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
@@ -31,19 +32,20 @@ const (
 type JobRuntimeUpdaterTestSuite struct {
 	suite.Suite
 
-	ctrl                *gomock.Controller
-	jobStore            *storemocks.MockJobStore
-	taskStore           *storemocks.MockTaskStore
-	jobGoalStateEngine  *goalstatemocks.MockEngine
-	taskGoalStateEngine *goalstatemocks.MockEngine
-	jobFactory          *cachedmocks.MockJobFactory
-	cachedJob           *cachedmocks.MockJob
-	cachedConfig        *cachedmocks.MockJobConfig
-	cachedTask          *cachedmocks.MockTask
-	goalStateDriver     *driver
-	resmgrClient        *resmocks.MockResourceManagerServiceYARPCClient
-	jobID               *peloton.JobID
-	jobEnt              *jobEntity
+	ctrl                  *gomock.Controller
+	jobStore              *storemocks.MockJobStore
+	taskStore             *storemocks.MockTaskStore
+	jobGoalStateEngine    *goalstatemocks.MockEngine
+	taskGoalStateEngine   *goalstatemocks.MockEngine
+	updateGoalStateEngine *goalstatemocks.MockEngine
+	jobFactory            *cachedmocks.MockJobFactory
+	cachedJob             *cachedmocks.MockJob
+	cachedConfig          *cachedmocks.MockJobConfig
+	cachedTask            *cachedmocks.MockTask
+	goalStateDriver       *driver
+	resmgrClient          *resmocks.MockResourceManagerServiceYARPCClient
+	jobID                 *peloton.JobID
+	jobEnt                *jobEntity
 }
 
 func TestJobRuntimeUpdater(t *testing.T) {
@@ -58,6 +60,7 @@ func (suite *JobRuntimeUpdaterTestSuite) SetupTest() {
 	suite.resmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.updateGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
@@ -65,6 +68,7 @@ func (suite *JobRuntimeUpdaterTestSuite) SetupTest() {
 	suite.goalStateDriver = &driver{
 		jobEngine:    suite.jobGoalStateEngine,
 		taskEngine:   suite.taskGoalStateEngine,
+		updateEngine: suite.updateGoalStateEngine,
 		jobStore:     suite.jobStore,
 		taskStore:    suite.taskStore,
 		jobFactory:   suite.jobFactory,
@@ -149,9 +153,11 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobCompletionTimeNotEmpty() {
 
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_RUNNING() {
 	instanceCount := uint32(100)
+	updateID := &peloton.UpdateID{Value: uuid.NewRandom().String()}
 	jobRuntime := pbjob.RuntimeInfo{
 		State:     pbjob.JobState_PENDING,
 		GoalState: pbjob.JobState_SUCCEEDED,
+		UpdateID:  updateID,
 	}
 	suite.cachedConfig.EXPECT().
 		GetInstanceCount().
@@ -204,6 +210,12 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_RUNNING() {
 			suite.Equal(jobInfo.Runtime.TaskStats[pbtask.TaskState_SUCCEEDED.String()], instanceCount/4)
 		}).
 		Return(nil)
+
+	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Do(func(updateEntity goalstate.Entity, deadline time.Time) {
+			suite.Equal(updateID.GetValue(), updateEntity.GetID())
+		})
 
 	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)

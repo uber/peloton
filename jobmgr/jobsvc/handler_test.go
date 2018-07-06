@@ -25,6 +25,7 @@ import (
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
+	"code.uber.internal/infra/peloton/util"
 	taskutil "code.uber.internal/infra/peloton/util/task"
 
 	"github.com/golang/mock/gomock"
@@ -539,7 +540,7 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 	// The create should still succeed and this instance will be
 	// launched without secrets because container info in default
 	// config is overridden.
-	_ = jobmgrtask.RemoveSecretVolumesFromJobConfig(jobConfig)
+	_ = util.RemoveSecretVolumesFromJobConfig(jobConfig)
 	jobConfig.InstanceConfig[10].Container =
 		&mesos.ContainerInfo{Type: &dockerContainerizer}
 	req = &job.CreateRequest{
@@ -906,7 +907,7 @@ func (suite *JobHandlerTestSuite) TestGetJob() {
 			Command: &mesos.CommandInfo{Value: &testCmd},
 			Container: &mesos.ContainerInfo{
 				Type: &mesosContainerizer,
-				Volumes: []*mesos.Volume{jobmgrtask.CreateSecretVolume(
+				Volumes: []*mesos.Volume{util.CreateSecretVolume(
 					testSecretPath, secretID.GetValue())},
 			},
 		},
@@ -1035,7 +1036,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	suite.Equal("added 0 instances", resp.GetMessage())
 	// Check if new secret volume is present in config and matches the secret
 	// supplied in the request
-	secretVolumes := jobmgrtask.RemoveSecretVolumesFromJobConfig(newJobConfig)
+	secretVolumes := util.RemoveSecretVolumesFromJobConfig(newJobConfig)
 	suite.Equal(len(secretVolumes), 1)
 	suite.Equal(secretID.GetValue(),
 		string(secretVolumes[0].GetSource().GetSecret().GetValue().GetData()))
@@ -1052,7 +1053,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 		},
 	}
 	oldJobConfig.GetDefaultConfig().GetContainer().Volumes = []*mesos.Volume{
-		jobmgrtask.CreateSecretVolume(testSecretPath, secretID.GetValue())}
+		util.CreateSecretVolume(testSecretPath, secretID.GetValue())}
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
 	// request contains secret with same path, different data and empty ID
@@ -1080,7 +1081,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	}
 	req.Config = newJobConfig
 	oldJobConfig.GetDefaultConfig().GetContainer().Volumes = []*mesos.Volume{
-		jobmgrtask.CreateSecretVolume(testSecretPath, secretID.GetValue())}
+		util.CreateSecretVolume(testSecretPath, secretID.GetValue())}
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
 	// request contains one updated and one added secret
@@ -1098,7 +1099,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	suite.Equal("added 0 instances", resp.GetMessage())
 	// Check if new secret volume is present in config and matches the secret
 	// supplied in the request
-	secretVolumes = jobmgrtask.RemoveSecretVolumesFromJobConfig(newJobConfig)
+	secretVolumes = util.RemoveSecretVolumesFromJobConfig(newJobConfig)
 	suite.Equal(len(secretVolumes), 2)
 	for _, volume := range secretVolumes {
 		// since secret volumes may not be in the same order, still not totally
@@ -1139,7 +1140,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 			Command: &mesos.CommandInfo{Value: &testCmd},
 			Container: &mesos.ContainerInfo{
 				Type: &mesosContainerizer,
-				Volumes: []*mesos.Volume{jobmgrtask.CreateSecretVolume(
+				Volumes: []*mesos.Volume{util.CreateSecretVolume(
 					testSecretPath, secretID.GetValue())},
 			},
 		},
@@ -1174,10 +1175,10 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	oldJobConfig.GetDefaultConfig().GetContainer().Volumes = []*mesos.Volume{
 		// insert non-secret volumes, will be ignored
 		getVolume(),
-		jobmgrtask.CreateSecretVolume(testSecretPath, addedSecretID.GetValue()),
+		util.CreateSecretVolume(testSecretPath, addedSecretID.GetValue()),
 		// insert non-secret volumes, will be ignored
 		getVolume(),
-		jobmgrtask.CreateSecretVolume(testSecretPath, secretID.GetValue()),
+		util.CreateSecretVolume(testSecretPath, secretID.GetValue()),
 	}
 	req.Config = &job.JobConfig{
 		DefaultConfig: &task.TaskConfig{
@@ -1200,7 +1201,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 
 	// request contains secret that doesn't match existing secret
 	oldJobConfig.GetDefaultConfig().GetContainer().Volumes = []*mesos.Volume{
-		jobmgrtask.CreateSecretVolume(testSecretPathNew, addedSecretID.GetValue()),
+		util.CreateSecretVolume(testSecretPathNew, addedSecretID.GetValue()),
 	}
 	req.Config = &job.JobConfig{
 		DefaultConfig: &task.TaskConfig{
@@ -1220,7 +1221,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 
 	// test UpdateSecret failure
 	oldJobConfig.GetDefaultConfig().GetContainer().Volumes = []*mesos.Volume{
-		jobmgrtask.CreateSecretVolume(testSecretPath, addedSecretID.GetValue()),
+		util.CreateSecretVolume(testSecretPath, addedSecretID.GetValue()),
 	}
 	req.Config = &job.JobConfig{
 		DefaultConfig: &task.TaskConfig{

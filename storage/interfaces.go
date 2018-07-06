@@ -3,14 +3,13 @@ package storage
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 )
 
 // TaskNotFoundError indicates that task is not found
@@ -135,13 +134,7 @@ type UpdateStore interface {
 	// if the update already exists.
 	CreateUpdate(
 		ctx context.Context,
-		id *peloton.UpdateID,
-		jobID *peloton.JobID,
-		updateConfig *update.UpdateConfig,
-		jobConfigVersion uint64,
-		prevJobConfigVersion uint64,
-		state update.State,
-		instancesTotal uint32,
+		updateInfo *models.UpdateModel,
 	) error
 
 	// DeleteUpdate deletes the update from the update_info table and deletes all
@@ -155,38 +148,22 @@ type UpdateStore interface {
 
 	// GetUpdate fetches the job update stored in the DB
 	GetUpdate(ctx context.Context, id *peloton.UpdateID) (
-		jobID *peloton.JobID,
-		updateConfig *update.UpdateConfig,
-		jobConfigVersion uint64,
-		prevJobConfigVersion uint64,
-		state update.State,
-		instancesTotal uint32,
-		instancesDone uint32,
-		instanceCurrent []uint32,
-		creationTime time.Time,
-		updateTime time.Time,
-		err error,
+		*models.UpdateModel,
+		error,
 	)
 
 	// WriteUpdateProgress writes the progress of the job update to the DB
 	WriteUpdateProgress(
 		ctx context.Context,
-		id *peloton.UpdateID,
-		state update.State,
-		instancesDone uint32,
-		instancesCurrent []uint32,
+		updateInfo *models.UpdateModel,
 	) error
 
 	// GetUpdateProgess fetches the job update progress, which includes the
 	// instances already updated, instances being updated and the current
 	// state of the update.
 	GetUpdateProgress(ctx context.Context, id *peloton.UpdateID) (
-		state update.State,
-		instancesDone uint32,
-		instancesTotal uint32,
-		instanceCurrent []uint32,
-		updateTime time.Time,
-		err error,
+		*models.UpdateModel,
+		error,
 	)
 
 	// GetUpdatesForJob returns the list of job updates created for a given job

@@ -319,6 +319,13 @@ func main() {
 		store, // store implements VolumeStore
 		rootScope)
 
+	updateFactory := cached.InitUpdateFactory(
+		store, // store implements JobStore
+		store, // store implements TaskStore
+		store, // store implements VolumeStore
+		jobFactory,
+		rootScope)
+
 	// TODO: We need to cleanup the client names
 	launcher.InitTaskLauncher(
 		dispatcher,
@@ -336,6 +343,7 @@ func main() {
 		store, // store implements TaskStore
 		store, // store implements VolumeStore
 		jobFactory,
+		updateFactory,
 		launcher.GetLauncher(),
 		rootScope,
 		cfg.JobManager.GoalState,
@@ -391,6 +399,7 @@ func main() {
 		cfg.JobManager.HTTPPort,
 		cfg.JobManager.GRPCPort,
 		jobFactory,
+		updateFactory,
 		goalStateDriver,
 		taskPreemptor,
 		deadlineTracker,

@@ -10,7 +10,14 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+)
+
+const (
+	testSecretPath = "/tmp/secret"
+	testSecretStr  = "top-secret-token"
 )
 
 func TestGetOfferScalarResourceSummary(t *testing.T) {
@@ -293,4 +300,42 @@ func TestCreateHostInfo(t *testing.T) {
 	assert.NotNil(t, res)
 	// Validating host name
 	assert.Equal(t, res.Hostname, hostname)
+}
+
+// createTaskConfigWithSecret creates TaskConfig with a test secret volume.
+func createTaskConfigWithSecret() *task.TaskConfig {
+	mesosContainerizer := mesos.ContainerInfo_MESOS
+	return &task.TaskConfig{
+		Container: &mesos.ContainerInfo{
+			Type: &mesosContainerizer,
+			Volumes: []*mesos.Volume{
+				CreateSecretVolume(testSecretPath, testSecretStr),
+			},
+		},
+	}
+}
+
+// TestRemoveSecretVolumesFromJobConfig tests separating secret volumes from
+// jobconfig
+func TestRemoveSecretVolumesFromJobConfig(t *testing.T) {
+	secretVolumes := RemoveSecretVolumesFromJobConfig(&job.JobConfig{})
+	assert.Equal(t, len(secretVolumes), 0)
+
+	jobConfig := &job.JobConfig{
+		DefaultConfig: createTaskConfigWithSecret(),
+	}
+	// add a non-secret container volume to default config
+	volumeMode := mesos.Volume_RO
+	testPath := "/test"
+	volume := &mesos.Volume{
+		Mode:          &volumeMode,
+		ContainerPath: &testPath,
+	}
+	jobConfig.GetDefaultConfig().GetContainer().Volumes =
+		append(jobConfig.GetDefaultConfig().GetContainer().Volumes, volume)
+	secretVolumes = RemoveSecretVolumesFromJobConfig(jobConfig)
+	assert.False(t, ConfigHasSecretVolumes(jobConfig.GetDefaultConfig()))
+	assert.Equal(t, len(secretVolumes), 1)
+	assert.Equal(t, []byte(testSecretStr),
+		secretVolumes[0].GetSource().GetSecret().GetValue().GetData())
 }

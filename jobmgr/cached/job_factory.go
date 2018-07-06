@@ -15,16 +15,18 @@ import (
 // JobFactory is the entrypoint object into the cache which stores job and tasks.
 // This only runs in the job manager leader.
 type JobFactory interface {
-	// AddJob will create a Job if not present in cache, else returns the current cached Job.
+	// AddJob will create a Job if not present in cache,
+	// else returns the current cached Job.
 	AddJob(id *peloton.JobID) Job
 
-	// ClearJob cleans up the job from the cache
+	// ClearJob cleans up the job from the cache.
 	ClearJob(jobID *peloton.JobID)
 
-	// GetJob will return the current cached Job, and nil if currently not in cache.
+	// GetJob will return the current cached Job,
+	// and nil if currently not in cache.
 	GetJob(id *peloton.JobID) Job
 
-	// GetAllJobs returns the list of all jobs in cache
+	// GetAllJobs returns the list of all jobs in cache.
 	GetAllJobs() map[string]Job
 
 	// Start emitting metrics.
@@ -37,16 +39,18 @@ type JobFactory interface {
 type jobFactory struct {
 	sync.RWMutex //  Mutex to acquire before accessing any variables in the job factory object
 
-	jobs        map[string]*job               // map of active jobs (job identifier -> cache job object) in the system
+	// map of active jobs (job identifier -> cache job object) in the system
+	jobs        map[string]*job
 	running     bool                          // whether job factory is running
 	jobStore    storage.JobStore              // storage job store object
 	taskStore   storage.TaskStore             // storage task store object
 	volumeStore storage.PersistentVolumeStore // storage volume store object
 	mtx         *Metrics                      // cache metrics
-	stopChan    chan struct{}                 // channel to indicate that the job factory needs to stop
+	// channel to indicate that the job factory needs to stop
+	stopChan chan struct{}
 }
 
-// InitJobFactory initializes the singleton job factory object.
+// InitJobFactory initializes the job factory object.
 func InitJobFactory(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,

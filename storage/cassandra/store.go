@@ -21,6 +21,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	pb_volume "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/backoff"
@@ -2907,19 +2908,13 @@ func (s *Store) DeletePersistentVolume(ctx context.Context, volumeID *peloton.Vo
 // If it already exists, the create will return an error.
 func (s *Store) CreateUpdate(
 	ctx context.Context,
-	id *peloton.UpdateID,
-	jobID *peloton.JobID,
-	updateConfig *update.UpdateConfig,
-	jobConfigVersion uint64,
-	prevJobConfigVersion uint64,
-	state update.State,
-	instancesTotal uint32,
+	updateInfo *models.UpdateModel,
 ) error {
-	updateConfigBuffer, err := proto.Marshal(updateConfig)
+	updateConfigBuffer, err := proto.Marshal(updateInfo.GetUpdateConfig())
 	if err != nil {
 		log.WithError(err).
-			WithField("update_id", id.GetValue()).
-			WithField("job_id", jobID.GetValue()).
+			WithField("update_id", updateInfo.GetUpdateID().GetValue()).
+			WithField("job_id", updateInfo.GetJobID().GetValue()).
 			Error("failed to marshal update config")
 		s.metrics.UpdateMetrics.UpdateCreateFail.Inc(1)
 		return err
@@ -2941,22 +2936,25 @@ func (s *Store) CreateUpdate(
 			"job_config_prev_version",
 			"creation_time").
 		Values(
-			id.GetValue(),
+			updateInfo.GetUpdateID().GetValue(),
 			updateConfigBuffer,
-			state.String(),
-			instancesTotal,
+			updateInfo.GetState().String(),
+			updateInfo.GetInstancesTotal(),
 			0,
 			[]int{},
-			jobID.GetValue(),
-			jobConfigVersion,
-			prevJobConfigVersion,
+			updateInfo.GetJobID().GetValue(),
+			updateInfo.GetJobConfigVersion(),
+			updateInfo.GetPrevJobConfigVersion(),
 			time.Now()).
 		IfNotExist()
 
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+	if err := s.applyStatement(
+		ctx,
+		stmt,
+		updateInfo.GetUpdateID().GetValue()); err != nil {
 		log.WithError(err).
-			WithField("update_id", id.GetValue()).
-			WithField("job_id", jobID.GetValue()).
+			WithField("update_id", updateInfo.GetUpdateID().GetValue()).
+			WithField("job_id", updateInfo.GetJobID().GetValue()).
 			Info("create update in DB failed")
 		s.metrics.UpdateMetrics.UpdateCreateFail.Inc(1)
 		return err
@@ -2964,9 +2962,11 @@ func (s *Store) CreateUpdate(
 
 	// best effort to clean up previous updates for the job
 	go func() {
-		if err := s.cleanupPreviousUpdatesForJob(ctx, jobID); err != nil {
+		if err := s.cleanupPreviousUpdatesForJob(
+			ctx,
+			updateInfo.GetJobID()); err != nil {
 			log.WithError(err).
-				WithField("job_id", jobID.GetValue()).
+				WithField("job_id", updateInfo.GetJobID().GetValue()).
 				Info("failed to clean up previous updates")
 		}
 	}()
@@ -3057,29 +3057,18 @@ func (s *Store) DeleteUpdate(
 
 // GetUpdate fetches the job update stored in the DB.
 func (s *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
-	jobID *peloton.JobID,
-	updateConfig *update.UpdateConfig,
-	jobConfigVersion uint64,
-	prevJobConfigVersion uint64,
-	state update.State,
-	instancesTotal uint32,
-	instancesDone uint32,
-	instanceCurrent []uint32,
-	creationTime time.Time,
-	updateTime time.Time,
-	err error) {
-	var allResults []map[string]interface{}
-
+	*models.UpdateModel,
+	error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(updatesTable).
 		Where(qb.Eq{"update_id": id.GetValue()})
-	allResults, err = s.executeRead(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
 			WithField("update_id", id.GetValue()).
 			Info("failed to get job update")
 		s.metrics.UpdateMetrics.UpdateGetFail.Inc(1)
-		return
+		return nil, err
 	}
 
 	for _, value := range allResults {
@@ -3087,32 +3076,34 @@ func (s *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
 		if err = FillObject(value, &record,
 			reflect.TypeOf(record)); err != nil {
 			s.metrics.UpdateMetrics.UpdateGetFail.Inc(1)
-			return
+			return nil, err
 		}
 
-		updateConfig, err = record.GetUpdateConfig()
+		updateConfig, err := record.GetUpdateConfig()
 		if err != nil {
 			s.metrics.UpdateMetrics.UpdateGetFail.Inc(1)
-			return
+			return nil, err
 		}
 
-		jobID = &peloton.JobID{Value: record.JobID.String()}
-		jobConfigVersion = uint64(record.JobConfigVersion)
-		prevJobConfigVersion = uint64(record.PrevJobConfigVersion)
-		state = update.State(update.State_value[record.State])
-		instancesTotal = uint32(record.InstancesTotal)
-		instancesDone = uint32(record.InstancesDone)
-		instanceCurrent = record.GetProcessingInstances()
-		creationTime = record.CreationTime
-		updateTime = record.UpdateTime
+		updateInfo := &models.UpdateModel{
+			UpdateID:             id,
+			UpdateConfig:         updateConfig,
+			JobID:                &peloton.JobID{Value: record.JobID.String()},
+			JobConfigVersion:     uint64(record.JobConfigVersion),
+			PrevJobConfigVersion: uint64(record.PrevJobConfigVersion),
+			State:                update.State(update.State_value[record.State]),
+			InstancesTotal:       uint32(record.InstancesTotal),
+			InstancesDone:        uint32(record.InstancesDone),
+			InstancesCurrent:     record.GetProcessingInstances(),
+			CreationTime:         record.CreationTime.Format(time.RFC3339Nano),
+			UpdateTime:           record.UpdateTime.Format(time.RFC3339Nano),
+		}
 		s.metrics.UpdateMetrics.UpdateGet.Inc(1)
-		return
+		return updateInfo, nil
 	}
 
 	s.metrics.UpdateMetrics.UpdateGetFail.Inc(1)
-	err = yarpcerrors.InvalidArgumentErrorf(
-		"update not found")
-	return
+	return nil, yarpcerrors.InvalidArgumentErrorf("update not found")
 }
 
 // deleteSingleUpdate deletes a given update from the update_info table.
@@ -3169,25 +3160,25 @@ func (s *Store) deleteJobConfigVersion(
 // The inputs to this function are the only mutable fields in update.
 func (s *Store) WriteUpdateProgress(
 	ctx context.Context,
-	id *peloton.UpdateID,
-	state update.State,
-	instancesDone uint32,
-	instancesCurrent []uint32) error {
+	updateInfo *models.UpdateModel) error {
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(updatesTable).
-		Set("update_state", state.String()).
-		Set("instances_done", instancesDone).
-		Set("instances_current", instancesCurrent).
+		Set("update_state", updateInfo.GetState().String()).
+		Set("instances_done", updateInfo.GetInstancesDone()).
+		Set("instances_current", updateInfo.GetInstancesCurrent()).
 		Set("update_time", time.Now().UTC()).
-		Where(qb.Eq{"update_id": id.GetValue()})
+		Where(qb.Eq{"update_id": updateInfo.GetUpdateID().GetValue()})
 
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+	if err := s.applyStatement(
+		ctx,
+		stmt,
+		updateInfo.GetUpdateID().GetValue()); err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{
-				"update_id":             id.GetValue(),
-				"update_state":          state.String(),
-				"update_instances_done": instancesDone,
+				"update_id":             updateInfo.GetUpdateID().GetValue(),
+				"update_state":          updateInfo.GetState().String(),
+				"update_instances_done": updateInfo.GetInstancesDone(),
 			}).Info("write update progress in DB failed")
 		s.metrics.UpdateMetrics.UpdateWriteProgressFail.Inc(1)
 		return err
@@ -3201,46 +3192,42 @@ func (s *Store) WriteUpdateProgress(
 // instances already updated, instances being updated and the current
 // state of the update.
 func (s *Store) GetUpdateProgress(ctx context.Context, id *peloton.UpdateID) (
-	state update.State,
-	instancesDone uint32,
-	instancesTotal uint32,
-	instanceCurrent []uint32,
-	updateTime time.Time,
-	err error) {
-	var allResults []map[string]interface{}
-
+	*models.UpdateModel,
+	error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(updatesTable).
 		Where(qb.Eq{"update_id": id.GetValue()})
-	allResults, err = s.executeRead(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
 			WithField("update_id", id.GetValue()).
 			Info("failed to get job update")
 		s.metrics.UpdateMetrics.UpdateGetProgessFail.Inc(1)
-		return
+		return nil, err
 	}
 
 	for _, value := range allResults {
 		var record UpdateRecord
 		if err = FillObject(value, &record, reflect.TypeOf(record)); err != nil {
 			s.metrics.UpdateMetrics.UpdateGetProgessFail.Inc(1)
-			return
+			return nil, err
 		}
 
-		state = update.State(update.State_value[record.State])
-		instancesDone = uint32(record.InstancesDone)
-		instancesTotal = uint32(record.InstancesTotal)
-		instanceCurrent = record.GetProcessingInstances()
-		updateTime = record.UpdateTime
+		updateInfo := &models.UpdateModel{
+			UpdateID:         id,
+			State:            update.State(update.State_value[record.State]),
+			InstancesTotal:   uint32(record.InstancesTotal),
+			InstancesDone:    uint32(record.InstancesDone),
+			InstancesCurrent: record.GetProcessingInstances(),
+			UpdateTime:       record.UpdateTime.Format(time.RFC3339Nano),
+		}
+
 		s.metrics.UpdateMetrics.UpdateGetProgess.Inc(1)
-		return
+		return updateInfo, nil
 	}
 
 	s.metrics.UpdateMetrics.UpdateGetProgessFail.Inc(1)
-	err = yarpcerrors.InvalidArgumentErrorf(
-		"cannot find update with ID %v", id.GetValue())
-	return
+	return nil, yarpcerrors.InvalidArgumentErrorf("update not found")
 }
 
 // GetUpdatesForJob returns the list of job updates created for a given job.

@@ -716,7 +716,7 @@ func TestCreateLaunchableTasks(t *testing.T) {
 				Type: &mesosContainerizer,
 			}
 			tmp.GetConfig().GetContainer().Volumes = []*mesos.Volume{
-				jobmgrtask.CreateSecretVolume(testSecretPath, idStr)}
+				util.CreateSecretVolume(testSecretPath, idStr)}
 			mockSecretStore.EXPECT().
 				GetSecret(gomock.Any(), &peloton.SecretID{Value: idStr}).
 				Return(secret, nil)
@@ -755,7 +755,7 @@ func TestCreateLaunchableTasks(t *testing.T) {
 		// simulate GetSecret failure for these tasks
 		if i%2 == 0 {
 			tmp.GetConfig().GetContainer().Volumes = []*mesos.Volume{
-				jobmgrtask.CreateSecretVolume(testSecretPath, idStr),
+				util.CreateSecretVolume(testSecretPath, idStr),
 			}
 			mockSecretStore.EXPECT().
 				GetSecret(gomock.Any(), &peloton.SecretID{Value: idStr}).
@@ -787,7 +787,7 @@ func TestCreateLaunchableTasks(t *testing.T) {
 		Type: &mesosContainerizer,
 	}
 	tmp.GetConfig().GetContainer().Volumes = []*mesos.Volume{
-		jobmgrtask.CreateSecretVolume(testSecretPath, idStr),
+		util.CreateSecretVolume(testSecretPath, idStr),
 	}
 	jobFactory.EXPECT().GetJob(tmp.JobId).Return(cachedJob)
 	cachedJob.EXPECT().

@@ -244,7 +244,7 @@ func (h *serviceHandler) Update(
 	// peloton at the time of secret creation. We will add them to new config
 	// after validating the new config at the time of handling secrets. If we
 	// keep these volumes in oldConfig, ValidateUpdatedConfig will fail.
-	existingSecretVolumes := jobmgrtask.RemoveSecretVolumesFromJobConfig(oldConfig)
+	existingSecretVolumes := util.RemoveSecretVolumesFromJobConfig(oldConfig)
 
 	// check secrets and new config for input sanity
 	if err := h.validateSecretsAndConfig(newConfig, req.GetSecrets()); err != nil {
@@ -328,7 +328,7 @@ func (h *serviceHandler) Get(
 	// handleSecrets. They should remain internal to peloton logic.
 	// Secret ID and Path should be returned using the peloton.Secret
 	// proto message.
-	secretVolumes := jobmgrtask.RemoveSecretVolumesFromJobConfig(jobConfig)
+	secretVolumes := util.RemoveSecretVolumesFromJobConfig(jobConfig)
 
 	jobRuntime, err := handler.GetJobRuntimeWithoutFillingCache(
 		ctx, req.Id, h.jobFactory, h.jobStore)
@@ -682,7 +682,7 @@ func (h *serviceHandler) addSecretsToDBAndConfig(
 		// secret by secret-id and replace it by secret data.
 		jobConfig.GetDefaultConfig().GetContainer().Volumes =
 			append(jobConfig.GetDefaultConfig().GetContainer().Volumes,
-				jobmgrtask.CreateSecretVolume(secret.GetPath(),
+				util.CreateSecretVolume(secret.GetPath(),
 					secret.GetId().GetValue()),
 			)
 	}

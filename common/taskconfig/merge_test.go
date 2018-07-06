@@ -5,7 +5,6 @@ import (
 
 	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/stretchr/testify/assert"
@@ -99,7 +98,7 @@ func TestRetainBaseSecretsInInstanceConfig(t *testing.T) {
 		Container: &mesos_v1.ContainerInfo{
 			Type: &mesosContainerizer,
 			Volumes: []*mesos_v1.Volume{
-				jobmgrtask.CreateSecretVolume("/tmp/secret", "data"),
+				util.CreateSecretVolume("/tmp/secret", "data"),
 			}}}
 	imageType := mesos_v1.Image_DOCKER
 	imageName := "sparkdocker"

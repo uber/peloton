@@ -689,6 +689,10 @@ func (j *job) mergeRuntime(newRuntime *pbjob.RuntimeInfo) *pbjob.RuntimeInfo {
 		runtime.GoalState = newRuntime.GetGoalState()
 	}
 
+	if newRuntime.GetUpdateID() != nil {
+		runtime.UpdateID = newRuntime.GetUpdateID()
+	}
+
 	if runtime.Revision == nil {
 		// should never enter here
 		log.WithField("job_id", j.id.GetValue()).

@@ -8,7 +8,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/common"
-	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/util"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -50,7 +50,7 @@ func TestLaunchableTasksFormatting(t *testing.T) {
 		Config: &task.TaskConfig{
 			Container: &mesos.ContainerInfo{
 				Volumes: []*mesos.Volume{
-					jobmgrtask.CreateSecretVolume(testPath, testSecretStr),
+					util.CreateSecretVolume(testPath, testSecretStr),
 				},
 			},
 		},

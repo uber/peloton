@@ -151,28 +151,6 @@ func ShutdownMesosExecutor(
 	return nil
 }
 
-// CreateSecretVolume builds a mesos volume of type secret
-// from the given secret path and secret value string
-// This volume will be added to the job's default config
-func CreateSecretVolume(secretPath string, secretStr string) *mesos_v1.Volume {
-	volumeMode := mesos_v1.Volume_RO
-	volumeSourceType := mesos_v1.Volume_Source_SECRET
-	secretType := mesos_v1.Secret_VALUE
-	return &mesos_v1.Volume{
-		Mode:          &volumeMode,
-		ContainerPath: &secretPath,
-		Source: &mesos_v1.Volume_Source{
-			Type: &volumeSourceType,
-			Secret: &mesos_v1.Secret{
-				Type: &secretType,
-				Value: &mesos_v1.Secret_Value{
-					Data: []byte(secretStr),
-				},
-			},
-		},
-	}
-}
-
 // CreateSecretsFromVolumes creates secret proto message list from the given
 // list of secret volumes.
 func CreateSecretsFromVolumes(
@@ -201,19 +179,4 @@ func CreateSecretProto(id, path string, data []byte) *peloton.Secret {
 			Data: data,
 		},
 	}
-}
-
-// RemoveSecretVolumesFromJobConfig removes secret volumes from the default
-// config as well as instance config in place and returns the secret volumes
-func RemoveSecretVolumesFromJobConfig(cfg *job.JobConfig) []*mesos_v1.Volume {
-	// remove secret volumes if present from default config
-	secretVolumes := util.RemoveSecretVolumesFromConfig(cfg.GetDefaultConfig())
-
-	// remove secret volumes if present from instance config
-	for _, config := range cfg.GetInstanceConfig() {
-		// instance config contains the same secret volumes as default config,
-		// so no need to operate on them
-		_ = util.RemoveSecretVolumesFromConfig(config)
-	}
-	return secretVolumes
 }
