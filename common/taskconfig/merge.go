@@ -4,6 +4,9 @@ import (
 	"reflect"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
+
+	"github.com/gogo/protobuf/proto"
 )
 
 // Merge returns the merged task config between a base and an override. The
@@ -49,6 +52,37 @@ func Merge(base *task.TaskConfig, override *task.TaskConfig) *task.TaskConfig {
 			}
 		}
 	}
-
 	return merged
+}
+
+// RetainBaseSecretsInInstanceConfig ensures that instance config retains all
+// secrets from default config. We store secrets as secret volumes at the
+// default config level for the job as part of container info.
+// This works if instance config does not override the container info.
+// However in some cases there is a use case for this override (ex: controller
+// job and executor job use different images). In case where instance config
+// overrides container info, the "merge" will blindly override the containerinfo
+// in default config. So the instance which has container info in the instance
+// config will never get secrets. This function ensures that even if the
+// instance config overrides container info, it will still retain secrets if any
+// from the default config.
+func RetainBaseSecretsInInstanceConfig(defaultConfig *task.TaskConfig,
+	instanceConfig *task.TaskConfig) *task.TaskConfig {
+	// if default config doesn't have secrets, just return
+	if defaultConfig == nil ||
+		!jobmgrtask.ConfigHasSecretVolumes(defaultConfig) {
+		return instanceConfig
+	}
+	clonedDefaultConfig := proto.Clone(defaultConfig).(*task.TaskConfig)
+	secretVolumes := jobmgrtask.RemoveSecretVolumesFromConfig(
+		clonedDefaultConfig)
+	if instanceConfig.GetContainer().GetVolumes() != nil {
+		for _, secretVolume := range secretVolumes {
+			instanceConfig.GetContainer().Volumes = append(
+				instanceConfig.GetContainer().Volumes, secretVolume)
+		}
+		return instanceConfig
+	}
+	instanceConfig.GetContainer().Volumes = secretVolumes
+	return instanceConfig
 }

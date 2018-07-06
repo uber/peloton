@@ -209,8 +209,8 @@ func IsSecretVolume(volume *mesos_v1.Volume) bool {
 }
 
 // ConfigHasSecretVolumes returns true if config contains secret volumes
-func ConfigHasSecretVolumes(jobConfig *job.JobConfig) bool {
-	for _, v := range jobConfig.GetDefaultConfig().GetContainer().GetVolumes() {
+func ConfigHasSecretVolumes(config *task.TaskConfig) bool {
+	for _, v := range config.GetContainer().GetVolumes() {
 		if ok := IsSecretVolume(v); ok {
 			return true
 		}
@@ -218,31 +218,45 @@ func ConfigHasSecretVolumes(jobConfig *job.JobConfig) bool {
 	return false
 }
 
-// RemoveSecretVolumesFromConfig removes secret volumes from the jobconfig
+// RemoveSecretVolumesFromConfig removes secret volumes from the task config
 // in place and returns the secret volumes
 // Secret volumes are added internally at the time of creating a job with
 // secrets by handleSecrets method. They are not supplied in the config in
 // job create/update requests. Consequently, they should not be displayed
 // as part of Job Get API response. This is necessary to achieve the broader
 // goal of using the secrets proto message in Job Create/Update/Get API to
-// describe secrets and not allow users to checkin secrets as part of job config
-func RemoveSecretVolumesFromConfig(jobConfig *job.JobConfig) []*mesos_v1.Volume {
-	if jobConfig.GetDefaultConfig().GetContainer().GetVolumes() == nil {
+// describe secrets and not allow users to checkin secrets as part of config
+func RemoveSecretVolumesFromConfig(config *task.TaskConfig) []*mesos_v1.Volume {
+	if config.GetContainer().GetVolumes() == nil {
 		return nil
 	}
 	secretVolumes := []*mesos_v1.Volume{}
 	volumes := []*mesos_v1.Volume{}
-	for _, volume := range jobConfig.GetDefaultConfig().
-		GetContainer().GetVolumes() {
+	for _, volume := range config.GetContainer().GetVolumes() {
 		if ok := IsSecretVolume(volume); ok {
 			secretVolumes = append(secretVolumes, volume)
 		} else {
 			volumes = append(volumes, volume)
 		}
 	}
-	jobConfig.GetDefaultConfig().GetContainer().Volumes = nil
+	config.GetContainer().Volumes = nil
 	if len(volumes) > 0 {
-		jobConfig.GetDefaultConfig().GetContainer().Volumes = volumes
+		config.GetContainer().Volumes = volumes
+	}
+	return secretVolumes
+}
+
+// RemoveSecretVolumesFromJobConfig removes secret volumes from the default
+// config as well as instance config in place and returns the secret volumes
+func RemoveSecretVolumesFromJobConfig(cfg *job.JobConfig) []*mesos_v1.Volume {
+	// remove secret volumes if present from default config
+	secretVolumes := RemoveSecretVolumesFromConfig(cfg.GetDefaultConfig())
+
+	// remove secret volumes if present from instance config
+	for _, config := range cfg.GetInstanceConfig() {
+		// instance config contains the same secret volumes as default config,
+		// so no need to operate on them
+		_ = RemoveSecretVolumesFromConfig(config)
 	}
 	return secretVolumes
 }

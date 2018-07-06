@@ -539,7 +539,7 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 	// The create should still succeed and this instance will be
 	// launched without secrets because container info in default
 	// config is overridden.
-	_ = jobmgrtask.RemoveSecretVolumesFromConfig(jobConfig)
+	_ = jobmgrtask.RemoveSecretVolumesFromJobConfig(jobConfig)
 	jobConfig.InstanceConfig[10].Container =
 		&mesos.ContainerInfo{Type: &dockerContainerizer}
 	req = &job.CreateRequest{
@@ -1035,7 +1035,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	suite.Equal("added 0 instances", resp.GetMessage())
 	// Check if new secret volume is present in config and matches the secret
 	// supplied in the request
-	secretVolumes := jobmgrtask.RemoveSecretVolumesFromConfig(newJobConfig)
+	secretVolumes := jobmgrtask.RemoveSecretVolumesFromJobConfig(newJobConfig)
 	suite.Equal(len(secretVolumes), 1)
 	suite.Equal(secretID.GetValue(),
 		string(secretVolumes[0].GetSource().GetSecret().GetValue().GetData()))
@@ -1098,7 +1098,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	suite.Equal("added 0 instances", resp.GetMessage())
 	// Check if new secret volume is present in config and matches the secret
 	// supplied in the request
-	secretVolumes = jobmgrtask.RemoveSecretVolumesFromConfig(newJobConfig)
+	secretVolumes = jobmgrtask.RemoveSecretVolumesFromJobConfig(newJobConfig)
 	suite.Equal(len(secretVolumes), 2)
 	for _, volume := range secretVolumes {
 		// since secret volumes may not be in the same order, still not totally

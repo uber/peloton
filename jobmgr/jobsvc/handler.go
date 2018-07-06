@@ -244,7 +244,7 @@ func (h *serviceHandler) Update(
 	// peloton at the time of secret creation. We will add them to new config
 	// after validating the new config at the time of handling secrets. If we
 	// keep these volumes in oldConfig, ValidateUpdatedConfig will fail.
-	existingSecretVolumes := jobmgrtask.RemoveSecretVolumesFromConfig(oldConfig)
+	existingSecretVolumes := jobmgrtask.RemoveSecretVolumesFromJobConfig(oldConfig)
 
 	// check secrets and new config for input sanity
 	if err := h.validateSecretsAndConfig(newConfig, req.GetSecrets()); err != nil {
@@ -328,7 +328,7 @@ func (h *serviceHandler) Get(
 	// handleSecrets. They should remain internal to peloton logic.
 	// Secret ID and Path should be returned using the peloton.Secret
 	// proto message.
-	secretVolumes := jobmgrtask.RemoveSecretVolumesFromConfig(jobConfig)
+	secretVolumes := jobmgrtask.RemoveSecretVolumesFromJobConfig(jobConfig)
 
 	jobRuntime, err := handler.GetJobRuntimeWithoutFillingCache(
 		ctx, req.Id, h.jobFactory, h.jobStore)
@@ -553,7 +553,7 @@ func (h *serviceHandler) validateResourcePool(
 func (h *serviceHandler) validateSecretsAndConfig(
 	config *job.JobConfig, secrets []*peloton.Secret) error {
 	// make sure that config doesn't have any secret volumes
-	if jobmgrtask.ConfigHasSecretVolumes(config) {
+	if jobmgrtask.ConfigHasSecretVolumes(config.GetDefaultConfig()) {
 		return yarpcerrors.InvalidArgumentErrorf(
 			"adding secret volumes directly in config is not allowed",
 		)
