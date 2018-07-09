@@ -3,6 +3,11 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.1.3
+------------------
+* 2018-07-09    Instance config should retain secrets from defaultconfig                               adityacb@uber.com
+* 2018-07-09    [API] Add resourceUsage map to RuntimeInfo proto                                       adityacb@uber.com
+
 0.7.1.2
 ------------------
 * 2018-07-03    Don't enforce instance config to use mesos containerizer for secrets                   adityacb@uber.com
