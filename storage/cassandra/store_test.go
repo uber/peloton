@@ -1083,7 +1083,7 @@ func (suite *CassandraStoreTestSuite) TestSecrets() {
 	// If the results list has zero rows, this will fail
 	_, err = store.createSecretFromResults(secretID,
 		[]map[string]interface{}{
-		// zero rows mapping to same secret id
+			// zero rows mapping to same secret id
 		})
 	suite.Error(err)
 

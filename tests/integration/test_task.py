@@ -98,47 +98,50 @@ def test__start_stop_task_with_nonexistent_job_id():
     assert resp.error.HasField('notFound')
 
 
+@pytest.mark.stateless
 def test__stop_start_tasks_when_mesos_master_down_kills_tasks_when_started(
-        long_running_job, mesos_master):
-    long_running_job.create()
-    long_running_job.wait_for_state(goal_state='RUNNING')
+        test_job, mesos_master):
+    test_job.create()
+    test_job.wait_for_state(goal_state='RUNNING')
 
     mesos_master.stop()
-    long_running_job.stop()
+    test_job.stop()
     mesos_master.start()
-    long_running_job.wait_for_state(goal_state='KILLED')
+    test_job.wait_for_state(goal_state='KILLED')
 
     mesos_master.stop()
-    long_running_job.start()
+    test_job.start()
     mesos_master.start()
-    long_running_job.wait_for_state(goal_state='RUNNING')
+    test_job.wait_for_state(goal_state='RUNNING')
 
 
+@pytest.mark.stateless
 def test__stop_start_tasks_when_mesos_master_down_and_jobmgr_restarts(
-        long_running_job, mesos_master, jobmgr):
-    long_running_job.create()
-    long_running_job.wait_for_state(goal_state='RUNNING')
+        test_job, mesos_master, jobmgr):
+    test_job.create()
+    test_job.wait_for_state(goal_state='RUNNING')
 
     mesos_master.stop()
-    long_running_job.stop()
+    test_job.stop()
     jobmgr.restart()
     mesos_master.start()
-    long_running_job.wait_for_state(goal_state='KILLED')
+    test_job.wait_for_state(goal_state='KILLED')
 
     mesos_master.stop()
-    long_running_job.start()
+    test_job.start()
     jobmgr.restart()
     mesos_master.start()
-    long_running_job.wait_for_state(goal_state='RUNNING')
+    test_job.wait_for_state(goal_state='RUNNING')
 
 
-def test__kill_mesos_agent_makes_task_resume(long_running_job, mesos_agent):
-    long_running_job.create()
-    long_running_job.wait_for_state(goal_state='RUNNING')
+@pytest.mark.stateless
+def test__kill_mesos_agent_makes_task_resume(test_job, mesos_agent):
+    test_job.create()
+    test_job.wait_for_state(goal_state='RUNNING')
 
     mesos_agent.restart()
 
-    long_running_job.wait_for_state(goal_state='RUNNING')
+    test_job.wait_for_state(goal_state='RUNNING')
 
 
 def test_controller_task_limit():

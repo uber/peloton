@@ -5,11 +5,13 @@ from tests.integration.job import IntegrationTestConfig, Job
 pytestmark = [pytest.mark.default, pytest.mark.stateless]
 
 
+@pytest.mark.smoketest
 def test__create_job(stateless_job):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state='RUNNING')
 
 
+@pytest.mark.smoketest
 def test__stop_stateless_job(stateless_job):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state='RUNNING')

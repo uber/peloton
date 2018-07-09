@@ -186,6 +186,104 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 	return sendTasksToResMgr(ctx, jobID, tasks, jobConfig, goalStateDriver)
 }
 
+// jobStateDeterminer determines job state given the current job runtime
+type jobStateDeterminer interface {
+	getState(jobRuntime *job.RuntimeInfo) job.JobState
+}
+
+func jobStateDeterminerFactory(
+	stateCounts map[string]uint32,
+	cachedJob cached.Job,
+	config cached.JobConfig) jobStateDeterminer {
+	totalInstanceCount := getTotalInstanceCount(stateCounts)
+	if totalInstanceCount < config.GetInstanceCount() &&
+		cachedJob.IsPartiallyCreated(config) {
+		return &partiallyCreatedJobStateDeterminer{}
+	}
+	if config.GetType() == job.JobType_SERVICE {
+		return &serviceJobStateDeterminer{
+			stateCounts: stateCounts,
+		}
+	}
+	return &batchJobStateDeterminer{
+		stateCounts: stateCounts,
+	}
+}
+
+type batchJobStateDeterminer struct {
+	stateCounts map[string]uint32
+}
+
+func (d *batchJobStateDeterminer) getState(
+	jobRuntime *job.RuntimeInfo,
+) job.JobState {
+	// use totalInstanceCount instead of config.GetInstanceCount,
+	// because totalInstanceCount can be larger than config.GetInstanceCount
+	// due to a race condition bug. Although the bug is fixed, the change is
+	// needed to unblock affected jobs.
+	// Also if in the future, similar bug occur again, using totalInstanceCount
+	// would ensure the bug would not make a job stuck.
+	totalInstanceCount := getTotalInstanceCount(d.stateCounts)
+	if d.stateCounts[task.TaskState_SUCCEEDED.String()] == totalInstanceCount {
+		return job.JobState_SUCCEEDED
+	} else if d.stateCounts[task.TaskState_SUCCEEDED.String()]+
+		d.stateCounts[task.TaskState_FAILED.String()] == totalInstanceCount {
+		return job.JobState_FAILED
+	} else if d.stateCounts[task.TaskState_KILLED.String()] > 0 &&
+		(d.stateCounts[task.TaskState_SUCCEEDED.String()]+
+			d.stateCounts[task.TaskState_FAILED.String()]+
+			d.stateCounts[task.TaskState_KILLED.String()] == totalInstanceCount) {
+		return job.JobState_KILLED
+	} else if jobRuntime.State == job.JobState_KILLING {
+		// jobState is set to KILLING in JobKill to avoid materialized view delay,
+		// should keep the state to be KILLING unless job transits to terminal state
+		return job.JobState_KILLING
+	} else if d.stateCounts[task.TaskState_RUNNING.String()] > 0 {
+		return job.JobState_RUNNING
+	}
+	return job.JobState_PENDING
+
+}
+
+type serviceJobStateDeterminer struct {
+	stateCounts map[string]uint32
+}
+
+func (d *serviceJobStateDeterminer) getState(
+	jobRuntime *job.RuntimeInfo,
+) job.JobState {
+	// use totalInstanceCount instead of config.GetInstanceCount,
+	// because totalInstanceCount can be larger than config.GetInstanceCount
+	// due to a race condition bug. Although the bug is fixed, the change is
+	// needed to unblock affected jobs.
+	// Also if in the future, similar bug occur again, using totalInstanceCount
+	// would ensure the bug would not make a job stuck.
+	totalInstanceCount := getTotalInstanceCount(d.stateCounts)
+	// For tasks of service job, SUCCEEDED and FAILED states are transient
+	// states. Task with these states would move to INITIALIZED shortly.
+	// Therefore, service jobs should never enter SUCCEEDED/FAILED state,
+	// since they should never be terminal unless KILLED.
+	if d.stateCounts[task.TaskState_KILLED.String()] == totalInstanceCount {
+		return job.JobState_KILLED
+	} else if jobRuntime.State == job.JobState_KILLING {
+		// jobState is set to KILLING in JobKill to avoid materialized view delay,
+		// should keep the state to be KILLING unless job transits to terminal state
+		return job.JobState_KILLING
+	} else if d.stateCounts[task.TaskState_RUNNING.String()] > 0 {
+		return job.JobState_RUNNING
+	}
+	return job.JobState_PENDING
+
+}
+
+type partiallyCreatedJobStateDeterminer struct{}
+
+func (d *partiallyCreatedJobStateDeterminer) getState(
+	jobRuntime *job.RuntimeInfo,
+) job.JobState {
+	return job.JobState_INITIALIZED
+}
+
 // determineJobRuntimeState determines the job state based on current
 // job runtime state and task state counts.
 // This function is not expected to be called when
@@ -195,42 +293,17 @@ func determineJobRuntimeState(jobRuntime *job.RuntimeInfo,
 	config cached.JobConfig,
 	goalStateDriver *driver,
 	cachedJob cached.Job) job.JobState {
-	var jobState job.JobState
-
-	// use totalInstanceCount instead of config.GetInstanceCount,
-	// because totalInstanceCount can be larger than config.GetInstanceCount
-	// due to a race condition bug. Although the bug is fixed, the change is
-	// needed to unblock affected jobs.
-	// Also if in the future, similar bug occur again, using totalInstanceCount
-	// would ensure the bug would not make a job stuck.
-	totalInstanceCount := getTotalInstanceCount(stateCounts)
-	if totalInstanceCount < config.GetInstanceCount() &&
-		cachedJob.IsPartiallyCreated(config) {
-		// do not do any thing as all tasks have not been created yet
-		jobState = job.JobState_INITIALIZED
-	} else if stateCounts[task.TaskState_SUCCEEDED.String()] == totalInstanceCount {
-		jobState = job.JobState_SUCCEEDED
+	jobStateDeterminer := jobStateDeterminerFactory(stateCounts, cachedJob, config)
+	jobState := jobStateDeterminer.getState(jobRuntime)
+	switch jobState {
+	case job.JobState_SUCCEEDED:
 		goalStateDriver.mtx.jobMetrics.JobSucceeded.Inc(1)
-	} else if stateCounts[task.TaskState_SUCCEEDED.String()]+
-		stateCounts[task.TaskState_FAILED.String()] == totalInstanceCount {
-		jobState = job.JobState_FAILED
+	case job.JobState_FAILED:
 		goalStateDriver.mtx.jobMetrics.JobFailed.Inc(1)
-	} else if stateCounts[task.TaskState_KILLED.String()] > 0 &&
-		(stateCounts[task.TaskState_SUCCEEDED.String()]+
-			stateCounts[task.TaskState_FAILED.String()]+
-			stateCounts[task.TaskState_KILLED.String()] == totalInstanceCount) {
-		jobState = job.JobState_KILLED
+	case job.JobState_KILLED:
 		goalStateDriver.mtx.jobMetrics.JobKilled.Inc(1)
-	} else if jobRuntime.State == job.JobState_KILLING {
-		// jobState is set to KILLING in JobKill to avoid materialized view delay,
-		// should keep the state to be KILLING unless job transits to terminal state
-		jobState = job.JobState_KILLING
-	} else if stateCounts[task.TaskState_RUNNING.String()] > 0 {
-		jobState = job.JobState_RUNNING
-	} else {
-		jobState = job.JobState_PENDING
-	}
 
+	}
 	return jobState
 }
 
