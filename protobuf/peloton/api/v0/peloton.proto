@@ -51,6 +51,13 @@ message SecretID {
   string value = 1;
 }
 
+/**
+ *  A unique ID assigned to a update.
+ */
+message UpdateID {
+  string value = 1;
+}
+
 
 /**
  *  Change log of an entity info, such as Job config etc.
