@@ -52,10 +52,10 @@ func Merge(base *task.TaskConfig, override *task.TaskConfig) *task.TaskConfig {
 			}
 		}
 	}
-	return merged
+	return retainBaseSecretsInInstanceConfig(base, merged)
 }
 
-// RetainBaseSecretsInInstanceConfig ensures that instance config retains all
+// retainBaseSecretsInInstanceConfig ensures that instance config retains all
 // secrets from default config. We store secrets as secret volumes at the
 // default config level for the job as part of container info.
 // This works if instance config does not override the container info.
@@ -66,7 +66,7 @@ func Merge(base *task.TaskConfig, override *task.TaskConfig) *task.TaskConfig {
 // config will never get secrets. This function ensures that even if the
 // instance config overrides container info, it will still retain secrets if any
 // from the default config.
-func RetainBaseSecretsInInstanceConfig(defaultConfig *task.TaskConfig,
+func retainBaseSecretsInInstanceConfig(defaultConfig *task.TaskConfig,
 	instanceConfig *task.TaskConfig) *task.TaskConfig {
 	// if default config doesn't have secrets, just return
 	if defaultConfig == nil ||

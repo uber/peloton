@@ -113,12 +113,12 @@ func TestRetainBaseSecretsInInstanceConfig(t *testing.T) {
 
 	// default config is empty. there should be no change in returned cfg
 	// and instance config
-	cfg := RetainBaseSecretsInInstanceConfig(&task.TaskConfig{}, instanceConfig)
+	cfg := retainBaseSecretsInInstanceConfig(&task.TaskConfig{}, instanceConfig)
 	assert.Equal(t, cfg, instanceConfig)
 
 	// default config contains secret volume. returned instance config should
 	// contain same secret volumes as part of its new container info.
-	cfg = RetainBaseSecretsInInstanceConfig(defaultConfig, instanceConfig)
+	cfg = retainBaseSecretsInInstanceConfig(defaultConfig, instanceConfig)
 	assert.Equal(t, cfg.GetContainer().GetMesos(),
 		instanceConfig.GetContainer().GetMesos())
 	assert.NotEqual(t, defaultConfig.GetContainer().GetMesos(),
@@ -133,6 +133,6 @@ func TestRetainBaseSecretsInInstanceConfig(t *testing.T) {
 	instanceConfig.GetContainer().Volumes = []*mesos_v1.Volume{{
 		Mode: &volumeMode, ContainerPath: &testPath,
 	}}
-	cfg = RetainBaseSecretsInInstanceConfig(defaultConfig, instanceConfig)
+	cfg = retainBaseSecretsInInstanceConfig(defaultConfig, instanceConfig)
 	assert.Equal(t, len(cfg.GetContainer().GetVolumes()), 2)
 }
