@@ -21,12 +21,15 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/constraints"
 	"code.uber.internal/infra/peloton/common/reservation"
+	"code.uber.internal/infra/peloton/hostmgr/config"
 	"code.uber.internal/infra/peloton/hostmgr/factory/operation"
 	"code.uber.internal/infra/peloton/hostmgr/factory/task"
 	"code.uber.internal/infra/peloton/hostmgr/host"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
+	"code.uber.internal/infra/peloton/hostmgr/metrics"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
+	"code.uber.internal/infra/peloton/hostmgr/reserver"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
 	"code.uber.internal/infra/peloton/storage"
@@ -38,12 +41,14 @@ import (
 type serviceHandler struct {
 	schedulerClient       mpb.SchedulerClient
 	operatorMasterClient  mpb.MasterOperatorClient
-	metrics               *Metrics
+	metrics               *metrics.Metrics
 	offerPool             offerpool.Pool
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
 	volumeStore           storage.PersistentVolumeStore
 	roleName              string
 	mesosDetector         hostmgr_mesos.MasterDetector
+	reserver              reserver.Reserver
+	hmConfig              config.Config
 }
 
 // InitServiceHandler initialize serviceHandler.
@@ -55,19 +60,24 @@ func InitServiceHandler(
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
 	volumeStore storage.PersistentVolumeStore,
 	mesosConfig hostmgr_mesos.Config,
-	mesosDetector hostmgr_mesos.MasterDetector) {
+	mesosDetector hostmgr_mesos.MasterDetector,
+	hmConfig *config.Config) {
 
 	handler := &serviceHandler{
 		schedulerClient:       schedulerClient,
 		operatorMasterClient:  masterOperatorClient,
-		metrics:               NewMetrics(parent),
+		metrics:               metrics.NewMetrics(parent),
 		offerPool:             offer.GetEventHandler().GetOfferPool(),
 		frameworkInfoProvider: frameworkInfoProvider,
 		volumeStore:           volumeStore,
 		roleName:              mesosConfig.Framework.Role,
 		mesosDetector:         mesosDetector,
 	}
-
+	// Creating Reserver object for handler
+	handler.reserver = reserver.NewReserver(
+		handler.metrics,
+		hmConfig,
+		handler.offerPool)
 	d.Register(hostsvc.BuildInternalHostServiceYARPCProcedures(handler))
 }
 
@@ -1001,7 +1011,7 @@ func (h *serviceHandler) ClusterCapacity(
 		},
 	}
 
-	h.metrics.refreshClusterCapacityGauges(clusterCapacityResponse)
+	h.metrics.RefreshClusterCapacityGauges(clusterCapacityResponse)
 	return clusterCapacityResponse, nil
 }
 
@@ -1020,4 +1030,40 @@ func (h *serviceHandler) GetMesosMasterHostPort(
 	}
 
 	return mesosMasterHostPortResponse, nil
+}
+
+/*
+* ReserveHosts reserves the host for a specified task in the request.
+* Host Manager will keep the host offers to itself till the time
+* it does not have enough offers to itself and once that's fulfilled
+* it will return the reservation with the offer to placement engine.
+* till the time reservation is fulfilled or reservation timeout ,
+* offers from that host will not be given to any other placement engine.
+ */
+func (h *serviceHandler) ReserveHosts(
+	ctx context.Context,
+	req *hostsvc.ReserveHostsRequest,
+) (*hostsvc.ReserveHostsResponse, error) {
+
+	log.WithField("request", req).Debug("ReserveHosts called.")
+	if req.GetReservation() == nil {
+		return &hostsvc.ReserveHostsResponse{
+			Error: &hostsvc.ReserveHostsResponse_Error{
+				Failed: &hostsvc.ReservationFailed{
+					Message: "reservation is nil",
+				},
+			},
+		}, nil
+	}
+	err := h.reserver.EnqueueReservation(ctx, req.Reservation)
+	if err != nil {
+		return &hostsvc.ReserveHostsResponse{
+			Error: &hostsvc.ReserveHostsResponse_Error{
+				Failed: &hostsvc.ReservationFailed{
+					Message: "reservation could not be made",
+				},
+			},
+		}, nil
+	}
+	return &hostsvc.ReserveHostsResponse{}, nil
 }

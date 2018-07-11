@@ -22,31 +22,33 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
-// InvalidCacheStatus is returned when expected status on a hostSummary
+// InvalidHostStatus is returned when expected status on a hostSummary
 // does not match actual value.
-type InvalidCacheStatus struct {
-	status CacheStatus
+type InvalidHostStatus struct {
+	status HostStatus
 }
 
 // Error implements error.Error.
-func (e InvalidCacheStatus) Error() string {
+func (e InvalidHostStatus) Error() string {
 	return fmt.Sprintf("Invalid status %v", e.status)
 }
 
-// CacheStatus represents status (Ready/Placing) of the host in offer pool's cache (host -> offers).
-type CacheStatus int
+// HostStatus represents status (Ready/Placing/Reserved) of the host in offer pool's cache (host -> offers).
+type HostStatus int
 
 // OfferType represents the type of offer in the host summary such as reserved, unreserved, or All.
 type OfferType int
 
 const (
-	// ReadyOffer represents an offer ready to be used.
-	ReadyOffer CacheStatus = iota + 1
-	// PlacingOffer represents an offer being used by placement engine.
-	PlacingOffer
+	// ReadyHost represents an host ready to be used.
+	ReadyHost HostStatus = iota + 1
+	// PlacingHost represents an host being used by placement engine.
+	PlacingHost
+	// ReservedHost represents an host is reserved for tasks
+	ReservedHost
 
 	// hostPlacingOfferStatusTimeout is a timeout for resetting
-	// PlacingOffer status back to ReadOffer status.
+	// PlacingHost status back to ReadHost status.
 	hostPlacingOfferStatusTimeout time.Duration = 5 * time.Minute
 )
 
@@ -78,14 +80,14 @@ type HostSummary interface {
 		evaluator constraints.Evaluator) (hostsvc.HostFilterResult, []*mesos.Offer)
 
 	// AddMesosOffer adds a Mesos offer to the current HostSummary.
-	AddMesosOffer(ctx context.Context, offer *mesos.Offer) CacheStatus
+	AddMesosOffer(ctx context.Context, offer *mesos.Offer) HostStatus
 
 	// AddMesosOffer adds a Mesos offers to the current HostSummary.
-	AddMesosOffers(ctx context.Context, offer []*mesos.Offer) CacheStatus
+	AddMesosOffers(ctx context.Context, offer []*mesos.Offer) HostStatus
 
 	// RemoveMesosOffer removes the given Mesos offer by its id, and returns
 	// CacheStatus and possibly removed offer for tracking purpose.
-	RemoveMesosOffer(offerID, reason string) (CacheStatus, *mesos.Offer)
+	RemoveMesosOffer(offerID, reason string) (HostStatus, *mesos.Offer)
 
 	// ClaimForLaunch releases unreserved offers for task launch.
 	ClaimForLaunch() (map[string]*mesos.Offer, error)
@@ -95,11 +97,11 @@ type HostSummary interface {
 
 	// CasStatus atomically sets the status to new value if current value is old,
 	// otherwise returns error.
-	CasStatus(old, new CacheStatus) error
+	CasStatus(old, new HostStatus) error
 
 	// UnreservedAmount tells us unreserved resources amount and status for
 	// report purpose.
-	UnreservedAmount() (scalar.Resources, CacheStatus)
+	UnreservedAmount() (scalar.Resources, HostStatus)
 
 	// ResetExpiredPlacingOfferStatus resets a hostSummary status from PlacingOffer
 	// to ReadyOffer if the PlacingOffer status has expired, and returns
@@ -112,6 +114,9 @@ type HostSummary interface {
 
 	// GetAgentID returns the Mesos Agent ID of this host summary.
 	GetAgentID() *mesos.AgentID
+
+	// GetHostStatus returns the HostStatus of the host
+	GetHostStatus() HostStatus
 }
 
 // hostSummary is a data struct holding offers on a particular host.
@@ -130,7 +135,7 @@ type hostSummary struct {
 	// offerID -> reserved offer
 	reservedOffers map[string]*mesos.Offer
 
-	status                       CacheStatus
+	status                       HostStatus
 	statusPlacingOfferExpiration time.Time
 
 	readyCount atomic.Int32
@@ -149,7 +154,7 @@ func New(
 
 		scarceResourceTypes: scarceResourceTypes,
 
-		status: ReadyOffer,
+		status: ReadyHost,
 
 		volumeStore: volumeStore,
 	}
@@ -263,7 +268,7 @@ func (a *hostSummary) TryMatch(
 	a.Lock()
 	defer a.Unlock()
 
-	if a.status != ReadyOffer {
+	if a.status != ReadyHost {
 		return hostsvc.HostFilterResult_MISMATCH_STATUS, nil
 	}
 
@@ -282,17 +287,16 @@ func (a *hostSummary) TryMatch(
 		for _, offer := range a.unreservedOffers {
 			result = append(result, offer)
 		}
-
-		// Setting status to `PlacingOffer`: this ensures proper state
+		// Setting status to `PlacingHost`: this ensures proper state
 		// tracking of resources on the host and also ensures offers on
 		// this host will not be sent to another `AcquireHostOffers`
 		// call before released.
-		a.status = PlacingOffer
-		a.statusPlacingOfferExpiration = time.Now().Add(hostPlacingOfferStatusTimeout)
-		a.readyCount.Store(0)
+		err := a.casStatusLockFree(ReadyHost, PlacingHost)
+		if err != nil {
+			return hostsvc.HostFilterResult_NO_OFFER, nil
+		}
 		return match, result
 	}
-
 	return match, nil
 }
 
@@ -301,7 +305,7 @@ func (a *hostSummary) addMesosOffer(offer *mesos.Offer) {
 	offerID := offer.GetId().GetValue()
 	if !reservation.HasLabeledReservedResources(offer) {
 		a.unreservedOffers[offerID] = offer
-		if a.status == ReadyOffer {
+		if a.status == ReadyHost {
 			a.readyCount.Inc()
 		}
 	} else {
@@ -315,7 +319,7 @@ func (a *hostSummary) addMesosOffer(offer *mesos.Offer) {
 
 // AddMesosOffer adds a Mesos offer to the current hostSummary and returns
 // its status for tracking purpose.
-func (a *hostSummary) AddMesosOffer(ctx context.Context, offer *mesos.Offer) CacheStatus {
+func (a *hostSummary) AddMesosOffer(ctx context.Context, offer *mesos.Offer) HostStatus {
 	a.Lock()
 	defer a.Unlock()
 
@@ -326,7 +330,7 @@ func (a *hostSummary) AddMesosOffer(ctx context.Context, offer *mesos.Offer) Cac
 
 // AddMesosOffers adds a Mesos offers to the current hostSummary and returns
 // its status for tracking purpose.
-func (a *hostSummary) AddMesosOffers(ctx context.Context, offers []*mesos.Offer) CacheStatus {
+func (a *hostSummary) AddMesosOffers(ctx context.Context, offers []*mesos.Offer) HostStatus {
 	a.Lock()
 	defer a.Unlock()
 
@@ -344,7 +348,7 @@ func (a *hostSummary) ClaimForLaunch() (map[string]*mesos.Offer, error) {
 	a.Lock()
 	defer a.Unlock()
 
-	if a.status != PlacingOffer {
+	if a.status != PlacingHost {
 		return nil, errors.New("Host status is not Placing")
 	}
 
@@ -353,7 +357,7 @@ func (a *hostSummary) ClaimForLaunch() (map[string]*mesos.Offer, error) {
 
 	// Reset status to ready so any future offer on the host is considered
 	// as ready.
-	a.status = ReadyOffer
+	a.status = ReadyHost
 	a.readyCount.Store(0)
 	return result, nil
 }
@@ -372,7 +376,7 @@ func (a *hostSummary) ClaimReservedOffersForLaunch() (map[string]*mesos.Offer, e
 
 // RemoveMesosOffer removes the given Mesos offer by its id, and returns
 // CacheStatus and possibly removed offer for tracking purpose.
-func (a *hostSummary) RemoveMesosOffer(offerID, reason string) (CacheStatus, *mesos.Offer) {
+func (a *hostSummary) RemoveMesosOffer(offerID, reason string) (HostStatus, *mesos.Offer) {
 	a.Lock()
 	defer a.Unlock()
 
@@ -393,7 +397,7 @@ func (a *hostSummary) RemoveMesosOffer(offerID, reason string) (CacheStatus, *me
 	}
 
 	switch a.status {
-	case ReadyOffer:
+	case ReadyHost:
 		log.WithFields(log.Fields{
 			"offer":  offerID,
 			"reason": reason,
@@ -414,7 +418,7 @@ func (a *hostSummary) RemoveMesosOffer(offerID, reason string) (CacheStatus, *me
 
 // CasStatus atomically sets the status to new value if current value is old,
 // otherwise returns error.
-func (a *hostSummary) CasStatus(old, new CacheStatus) error {
+func (a *hostSummary) CasStatus(old, new HostStatus) error {
 	a.Lock()
 	defer a.Unlock()
 	return a.casStatusLockFree(old, new)
@@ -423,20 +427,24 @@ func (a *hostSummary) CasStatus(old, new CacheStatus) error {
 // casStatus atomically and lock-freely sets the status to new value
 // if current value is old, otherwise returns error. This should wrapped
 // around locking
-func (a *hostSummary) casStatusLockFree(old, new CacheStatus) error {
+func (a *hostSummary) casStatusLockFree(old, new HostStatus) error {
 	if a.status != old {
-		return InvalidCacheStatus{a.status}
+		return InvalidHostStatus{a.status}
 	}
 	a.status = new
-	if a.status == ReadyOffer {
-		a.readyCount.Store(int32(len(a.unreservedOffers)))
-	}
 
+	switch a.status {
+	case ReadyHost:
+		a.readyCount.Store(int32(len(a.unreservedOffers)))
+	case PlacingHost:
+		a.statusPlacingOfferExpiration = time.Now().Add(hostPlacingOfferStatusTimeout)
+		a.readyCount.Store(0)
+	}
 	return nil
 }
 
 // UnreservedAmount returns the amount of unreserved resources.
-func (a *hostSummary) UnreservedAmount() (scalar.Resources, CacheStatus) {
+func (a *hostSummary) UnreservedAmount() (scalar.Resources, HostStatus) {
 	a.Lock()
 	defer a.Unlock()
 
@@ -451,7 +459,7 @@ func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) (bool, scala
 	defer a.Unlock()
 
 	if !a.HasOffer() &&
-		a.status == PlacingOffer &&
+		a.status == PlacingHost &&
 		now.After(a.statusPlacingOfferExpiration) {
 
 		var offers []*mesos.Offer
@@ -465,7 +473,7 @@ func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) (bool, scala
 			"offers":      offers,
 		}).Warn("reset host from placing to ready after timeout")
 
-		a.casStatusLockFree(PlacingOffer, ReadyOffer)
+		a.casStatusLockFree(PlacingHost, ReadyHost)
 		return true, scalar.FromOfferMap(a.unreservedOffers)
 	}
 	return false, scalar.Resources{}
@@ -502,4 +510,11 @@ func (a *hostSummary) GetOffers(offertype OfferType) map[string]*mesos.Offer {
 // GetAgentID returns the Mesos Agent ID of this host summary.
 func (a *hostSummary) GetAgentID() *mesos.AgentID {
 	return a.agentID
+}
+
+// GetHostStatus returns the HostStatus of the host
+func (a *hostSummary) GetHostStatus() HostStatus {
+	a.Lock()
+	defer a.Unlock()
+	return a.status
 }

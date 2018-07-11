@@ -24,9 +24,12 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common/reservation"
+	"code.uber.internal/infra/peloton/hostmgr/config"
 	"code.uber.internal/infra/peloton/hostmgr/host"
 	hostmgr_mesos_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
+	"code.uber.internal/infra/peloton/hostmgr/metrics"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
+	"code.uber.internal/infra/peloton/hostmgr/reserver"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 	mpb_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
@@ -136,6 +139,7 @@ type HostMgrHandlerTestSuite struct {
 	handler              *serviceHandler
 	frameworkID          *mesos.FrameworkID
 	mesosDetector        *hostmgr_mesos_mocks.MockMasterDetector
+	reserver             reserver.Reserver
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupTest() {
@@ -167,12 +171,16 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	suite.handler = &serviceHandler{
 		schedulerClient:       suite.schedulerClient,
 		operatorMasterClient:  suite.masterOperatorClient,
-		metrics:               NewMetrics(suite.testScope),
+		metrics:               metrics.NewMetrics(suite.testScope),
 		offerPool:             suite.pool,
 		frameworkInfoProvider: suite.provider,
 		volumeStore:           suite.volumeStore,
 		mesosDetector:         suite.mesosDetector,
 	}
+	suite.handler.reserver = reserver.NewReserver(
+		metrics.NewMetrics(suite.testScope),
+		&config.Config{},
+		suite.pool)
 }
 
 func (suite *HostMgrHandlerTestSuite) TearDownTest() {
@@ -1650,6 +1658,31 @@ func (suite *HostMgrHandlerTestSuite) TestGetHostsInvalidFilters() {
 	// Error message should be compared if that's the right error
 	suite.Equal(acquiredResp.GetError().Failure.Message,
 		"could not return matching hosts INSUFFICIENT_RESOURCES")
+}
+
+// TestReserveHosts tests to reserve the hosts
+func (suite *HostMgrHandlerTestSuite) TestReserveHosts() {
+	defer suite.ctrl.Finish()
+	reserveReq := &hostsvc.ReserveHostsRequest{
+		Reservation: &hostsvc.Reservation{
+			Task:  nil,
+			Hosts: nil,
+		},
+	}
+	resp, err := suite.handler.ReserveHosts(context.Background(), reserveReq)
+	suite.NoError(err)
+	suite.Nil(resp.Error)
+}
+
+// TestReserveHosts tests to reserve the hosts
+func (suite *HostMgrHandlerTestSuite) TestReserveHostsError() {
+	defer suite.ctrl.Finish()
+	reserveReq := &hostsvc.ReserveHostsRequest{
+		Reservation: nil,
+	}
+	resp, err := suite.handler.ReserveHosts(context.Background(), reserveReq)
+	suite.NoError(err)
+	suite.Equal(resp.Error.Failed.Message, "reservation is nil")
 }
 
 func TestHostManagerTestSuite(t *testing.T) {

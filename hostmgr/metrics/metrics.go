@@ -1,4 +1,4 @@
-package hostmgr
+package metrics
 
 import (
 	"github.com/uber-go/tally"
@@ -95,7 +95,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	}
 }
 
-func (m *Metrics) refreshClusterCapacityGauges(response *hostsvc.ClusterCapacityResponse) {
+// RefreshClusterCapacityGauges refreshes all the cluster capacity gauges
+func (m *Metrics) RefreshClusterCapacityGauges(response *hostsvc.ClusterCapacityResponse) {
 	for _, resource := range response.GetResources() {
 		if len(resource.GetKind()) == 0 {
 			continue

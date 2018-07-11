@@ -12,6 +12,7 @@ option go_package = "peloton/private/hostmgr/hostsvc";
 import "mesos/v1/mesos.proto";
 import "peloton/api/v0/peloton.proto";
 import "peloton/api/v0/task/task.proto";
+import "peloton/private/resmgr/resmgr.proto";
 
 
 /**
@@ -40,6 +41,37 @@ message HostInfo {
     repeated mesos.v1.Attribute attributes = 4;
 }
 
+/**
+ * Reservation is the messege between placement engine
+ * and host manager where placement engine asks
+ * hostmanager to reserve one host from certain hosts
+ * In the return host manager reserves the host and once
+ * resources are fulfilled , it fills the messege with
+ * valid offers
+ */
+message Reservation {
+    // List of hosts which needs to be reserved
+    repeated HostInfo hosts = 1;
+    // resmgr task for which we need to reserve
+    resmgr.Task task = 2;
+}
+
+/**
+ * CompleteReservation is the messege between placement engine
+ * and host manager host manager.
+ * hostmanager will reserve one host from and once reservation
+ * is fulfilled it will send the completed reservation to
+ * placement engine
+ */
+message CompletedReservation {
+    // List of hosts which needs to be reserved
+    HostInfo host = 1;
+    // resmgr task for which we need to reserve
+    resmgr.Task task = 2;
+    // list of offers which needs to be filled
+    // once reservation is fulfilled
+    repeated HostOffer hostOffers = 3;
+}
 
 /**
  *  LaunchableTask describes the task to be launched by host manager including Mesos
@@ -280,6 +312,16 @@ service InternalHostService
    *  on any host.
    */
   rpc GetHosts(GetHostsRequest) returns (GetHostsResponse);
+
+  /*
+   * ReserveHosts reserves the host for a specified task in the request.
+   * Host Manager will keep the host offers to itself till the time
+   * it does not have enough offers to itself and once that's fulfilled
+   * it will return the reservation with the offer to placement engine.
+   * till the time reservation is fulfilled or reservation timeout ,
+   * offers from that host will not be given to any other placement engine.
+   */
+  rpc ReserveHosts(ReserveHostsRequest) returns (ReserveHostsResponse);
 
   /**
    *  Release unused host offers to the host manager.
@@ -600,4 +642,64 @@ message ClusterCapacityResponse {
 
   // Resources for total physical capacity.
   repeated Resource physicalResources = 3;
+}
+
+/*
+ * ReserveHostsRequest is the request for making reservation for the task
+ */
+message ReserveHostsRequest{
+    // reservation object for the host reservation
+    Reservation reservation = 1;
+}
+
+/*
+ * ReservationFailed is the failed reservation
+ */
+message ReservationFailed {
+    // message for the failed reason
+    string message = 1;
+}
+
+/*
+ * ReservationAlreadyExist error , when reservation already exist
+ */
+message ReservationAlreadyExist {
+    // message for the failed reason
+    string message = 1;
+}
+
+/*
+ * HostUnavailable error , when host is unavailable for reservation
+ */
+message HostUnavailable {
+    // message for the failed reason
+    string message = 1;
+}
+
+/*
+ * HostAlreadyReserved error , when host is already reserved
+ */
+message HostAlreadyReserved {
+    // message for the failed reason
+    string message = 1;
+}
+
+/*
+ * ReserveHostsResponse is the response for the reservation request
+ */
+message ReserveHostsResponse{
+    message Error {
+        // Failed reservation for the request
+        ReservationFailed failed = 1;
+        // Error when reservation already exist
+        ReservationAlreadyExist alreadyExist = 2;
+        // Host is unavailable for the request
+        HostUnavailable hostUnavailable = 3;
+        // Host is already reserved
+        HostAlreadyReserved hostAlreadyReserved = 4;
+    }
+    // Error message if reservation request failed
+    Error error = 1;
+    // Host info which host is reserved
+    HostInfo host = 2;
 }

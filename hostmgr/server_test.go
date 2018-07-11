@@ -13,6 +13,7 @@ import (
 
 	backgound_mocks "code.uber.internal/infra/peloton/common/background/mocks"
 	hm_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
+	"code.uber.internal/infra/peloton/hostmgr/metrics"
 	recovery_mocks "code.uber.internal/infra/peloton/hostmgr/mocks"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	offer_mocks "code.uber.internal/infra/peloton/hostmgr/offer/mocks"
@@ -79,7 +80,7 @@ func (suite *ServerTestSuite) SetupTest() {
 		minBackoff: _minBackoff,
 		maxBackoff: _maxBackoff,
 
-		metrics: NewMetrics(suite.testScope),
+		metrics: metrics.NewMetrics(suite.testScope),
 	}
 }
 

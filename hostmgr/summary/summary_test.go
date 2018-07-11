@@ -525,8 +525,8 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 		evaluateRes constraints.EvaluateResult
 		evaluateErr error
 
-		initialStatus CacheStatus
-		afterStatus   CacheStatus
+		initialStatus HostStatus
+		afterStatus   HostStatus
 		noMock        bool
 
 		initialOffers []*mesos.Offer
@@ -535,50 +535,50 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 			match:          hostsvc.HostFilterResult_MATCH,
 			expectedOffers: offers,
 			evaluateRes:    constraints.EvaluateResultMatch,
-			initialStatus:  ReadyOffer,
-			afterStatus:    PlacingOffer,
+			initialStatus:  ReadyHost,
+			afterStatus:    PlacingHost,
 			initialOffers:  offers,
 		},
 		"matched-not-applicable": {
 			match:          hostsvc.HostFilterResult_MATCH,
 			expectedOffers: []*mesos.Offer{offer},
 			evaluateRes:    constraints.EvaluateResultNotApplicable,
-			initialStatus:  ReadyOffer,
-			afterStatus:    PlacingOffer,
+			initialStatus:  ReadyHost,
+			afterStatus:    PlacingHost,
 			initialOffers:  []*mesos.Offer{offer},
 		},
 		"mismatched-constraint": {
 			match:         hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
 			evaluateRes:   constraints.EvaluateResultMismatch,
-			initialStatus: ReadyOffer,
-			afterStatus:   ReadyOffer,
+			initialStatus: ReadyHost,
+			afterStatus:   ReadyHost,
 			initialOffers: []*mesos.Offer{offer},
 		},
 		"mismatched-error": {
 			match:         hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
 			evaluateErr:   errors.New("some error"),
-			initialStatus: ReadyOffer,
-			afterStatus:   ReadyOffer,
+			initialStatus: ReadyHost,
+			afterStatus:   ReadyHost,
 			initialOffers: []*mesos.Offer{offer},
 		},
 		"mismatched-no-offer-placing-status": {
 			match:         hostsvc.HostFilterResult_MISMATCH_STATUS,
-			initialStatus: PlacingOffer,
-			afterStatus:   PlacingOffer,
+			initialStatus: PlacingHost,
+			afterStatus:   PlacingHost,
 			noMock:        true, // mockEvaluator should not be called in this case.
 			initialOffers: []*mesos.Offer{},
 		},
 		"mismatched-no-offer-ready-status": {
 			match:         hostsvc.HostFilterResult_NO_OFFER,
-			initialStatus: ReadyOffer,
-			afterStatus:   ReadyOffer,
+			initialStatus: ReadyHost,
+			afterStatus:   ReadyHost,
 			noMock:        true, // mockEvaluator should not be called in this case.
 			initialOffers: []*mesos.Offer{},
 		},
 		"mismatched-mismatch-status": {
 			match:         hostsvc.HostFilterResult_MISMATCH_STATUS,
-			initialStatus: PlacingOffer,
-			afterStatus:   PlacingOffer,
+			initialStatus: PlacingHost,
+			afterStatus:   PlacingHost,
 			noMock:        true, // mockEvaluator should not be called in this case.
 			initialOffers: []*mesos.Offer{offer},
 		},
@@ -640,7 +640,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 
 	// Try to remove non-existent offer.
 	status, offer := hybridSummary.RemoveMesosOffer(_dummyOfferID, "Offer is expired")
-	suite.Equal(status, ReadyOffer)
+	suite.Equal(status, ReadyHost)
 	suite.Nil(offer)
 
 	var offers []*mesos.Offer
@@ -669,7 +669,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 			defer wg.Done()
 
 			status := hybridSummary.AddMesosOffer(context.Background(), offer)
-			suite.Equal(ReadyOffer, status)
+			suite.Equal(ReadyHost, status)
 		}(offer)
 	}
 	wg.Wait()
@@ -688,7 +688,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	suite.Equal(5.0, unreservedAmount.Disk)
 	suite.Equal(5.0, unreservedAmount.GPU)
 
-	suite.Equal(ReadyOffer, status)
+	suite.Equal(ReadyHost, status)
 
 	// Remove offer concurrently.
 	wg = sync.WaitGroup{}
@@ -698,7 +698,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 			defer wg.Done()
 
 			status, offer := hybridSummary.RemoveMesosOffer(*offer.Id.Value, "Offer is rescinded")
-			suite.Equal(ReadyOffer, status)
+			suite.Equal(ReadyHost, status)
 			suite.NotNil(offer)
 		}(offer)
 	}
@@ -708,7 +708,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	suite.Empty(hybridSummary.reservedOffers)
 	suite.Empty(hybridSummary.unreservedOffers)
 	suite.Equal(hybridSummary.readyCount.Load(), int32(0))
-	suite.Equal(ReadyOffer, hybridSummary.status)
+	suite.Equal(ReadyHost, hybridSummary.status)
 
 	hybridSummary.AddMesosOffers(context.Background(), offers)
 
@@ -732,7 +732,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	summaryOffers = hybridSummary.GetOffers(All)
 	suite.Equal(len(summaryOffers), 10)
 
-	suite.Equal(ReadyOffer, status)
+	suite.Equal(ReadyHost, status)
 }
 
 func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
@@ -742,28 +742,28 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 	offers := suite.createUnreservedMesosOffers(5)
 
 	testTable := []struct {
-		initialStatus                CacheStatus
+		initialStatus                HostStatus
 		statusPlacingOfferExpiration time.Time
 		resetExpected                bool
 		readyCount                   int
 		msg                          string
 	}{
 		{
-			initialStatus:                ReadyOffer,
+			initialStatus:                ReadyHost,
 			statusPlacingOfferExpiration: now,
 			resetExpected:                false,
 			readyCount:                   5,
 			msg:                          "HostSummary in ReadyOffer status",
 		},
 		{
-			initialStatus:                PlacingOffer,
+			initialStatus:                PlacingHost,
 			statusPlacingOfferExpiration: now.Add(10 * time.Minute),
 			resetExpected:                false,
 			readyCount:                   0,
 			msg:                          "HostSummary in PlacingOffer status, has not timed out",
 		},
 		{
-			initialStatus:                PlacingOffer,
+			initialStatus:                PlacingHost,
 			statusPlacingOfferExpiration: now.Add(-10 * time.Minute),
 			resetExpected:                true,
 			readyCount:                   5,
@@ -785,15 +785,17 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 	s := New(suite.mockVolumeStore, nil).(*hostSummary)
 	s.AddMesosOffers(context.Background(), offers)
 	s.statusPlacingOfferExpiration = now.Add(-10 * time.Minute)
-	invalidCacheStatus := s.CasStatus(PlacingOffer, ReadyOffer)
+	invalidCacheStatus := s.CasStatus(PlacingHost, ReadyHost)
 	suite.NotNil(invalidCacheStatus)
 
 	// Setting placing offers, without resetting readyCount (represents outstanding unreserved offers) to zero
-	s.CasStatus(s.status, PlacingOffer)
-	suite.Equal(s.readyCount.Load(), int32(5))
-
+	s.CasStatus(s.status, PlacingHost)
+	suite.Equal(s.readyCount.Load(), int32(0))
+	s.readyCount.Store(int32(5))
 	reset, _ := s.ResetExpiredPlacingOfferStatus(now)
-	suite.Equal(false, reset, "This is negative test, were time has elapsed but Cache Status for Host Summary is not reset from Placing -> Ready")
+	suite.Equal(false, reset,
+		"This is negative test, were time has elapsed but Cache Status "+
+			"for Host Summary is not reset from Placing -> Ready")
 }
 
 func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() {
@@ -802,20 +804,20 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() 
 	offers = append(offers, suite.createReservedMesosOffer("reserved-offerid-1", false))
 
 	testTable := []struct {
-		initialStatus      CacheStatus
-		afterStatus        CacheStatus
+		initialStatus      HostStatus
+		afterStatus        HostStatus
 		expectedReadyCount int32
 		err                error
 	}{
 		{
-			initialStatus:      ReadyOffer,
-			afterStatus:        ReadyOffer,
+			initialStatus:      ReadyHost,
+			afterStatus:        ReadyHost,
 			expectedReadyCount: 5,
 			err:                errors.New("Host status is not Placing"),
 		},
 		{
-			initialStatus:      PlacingOffer,
-			afterStatus:        ReadyOffer,
+			initialStatus:      PlacingHost,
+			afterStatus:        ReadyHost,
 			expectedReadyCount: 0,
 			err:                nil,
 		},
@@ -851,7 +853,7 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForReservedOffersForLaunch() {
 	suite.Equal(int(s.readyCount.Load()), 1)
 
 	s.ClaimReservedOffersForLaunch()
-	suite.Equal(s.status, ReadyOffer)
+	suite.Equal(s.GetHostStatus(), ReadyHost)
 	suite.Equal(int(s.readyCount.Load()), 1)
 	summaryOffers := s.GetOffers(Reserved)
 	suite.Equal(len(summaryOffers), 0)

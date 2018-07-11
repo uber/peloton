@@ -424,6 +424,7 @@ func main() {
 		store, // store implements VolumeStore
 		cfg.Mesos,
 		mesosMasterDetector,
+		&cfg.HostManager,
 	)
 
 	hostsvc.InitServiceHandler(

@@ -69,7 +69,8 @@ type Pool interface {
 	// and returns the hostnames which got reset
 	ResetExpiredHostSummaries(now time.Time) []string
 
-	// GetOffers returns hostname -> map(offerid -> offer) & #offers for reserved, unreserved or all offer type.
+	// GetOffers returns hostOffers : map[hostname] -> map(offerid -> offers
+	// & #offers for reserved, unreserved or all offer type.
 	GetOffers(offerType summary.OfferType) (map[string]map[string]*mesos.Offer, int)
 
 	// RemoveReservedOffers removes given offerID from given host.
@@ -77,6 +78,9 @@ type Pool interface {
 
 	// RefreshGaugeMaps refreshes ready/placing metrics from all hosts.
 	RefreshGaugeMaps()
+
+	// GetHostSummary returns the host summary object for the given host name
+	GetHostSummary(hostName string) (summary.HostSummary, error)
 }
 
 const (
@@ -447,7 +451,7 @@ func (p *offerPool) ReturnUnusedOffers(hostname string) error {
 		return nil
 	}
 
-	err := hostOffers.CasStatus(summary.PlacingOffer, summary.ReadyOffer)
+	err := hostOffers.CasStatus(summary.PlacingHost, summary.ReadyHost)
 	if err != nil {
 		return err
 	}
@@ -499,6 +503,7 @@ func (p *offerPool) RemoveReservedOffer(hostname string, offerID string) {
 }
 
 // getOffersByType is a helper method to get hostoffers by offer type
+// hostOffers : map[hostname] -> map(offerid -> offers
 func (p *offerPool) getOffersByType(
 	offerType summary.OfferType) (map[string]map[string]*mesos.Offer, int) {
 	hostOffers := make(map[string]map[string]*mesos.Offer)
@@ -512,7 +517,7 @@ func (p *offerPool) getOffersByType(
 	return hostOffers, offersCount
 }
 
-// GetOffers returns hostname -> map(offerid -> offer)
+// GetOffers returns hostOffers : map[hostname] -> map(offerid -> offers
 // and #offers for reserved, unreserved or all offer types.
 func (p *offerPool) GetOffers(
 	offerType summary.OfferType) (map[string]map[string]*mesos.Offer, int) {
@@ -553,9 +558,9 @@ func (p *offerPool) RefreshGaugeMaps() {
 	for _, h := range p.hostOfferIndex {
 		amount, status := h.UnreservedAmount()
 		switch status {
-		case summary.ReadyOffer:
+		case summary.ReadyHost:
 			ready = ready.Add(amount)
-		case summary.PlacingOffer:
+		case summary.PlacingHost:
 			placing = placing.Add(amount)
 		}
 	}
@@ -569,4 +574,14 @@ func (p *offerPool) RefreshGaugeMaps() {
 	}).Debug("offer pool usage metrics refreshed")
 
 	stopWatch.Stop()
+}
+
+// GetHostSummary returns the host summary object for the given host name
+func (p *offerPool) GetHostSummary(hostname string) (summary.HostSummary, error) {
+	p.RLock()
+	defer p.RUnlock()
+	if _, ok := p.hostOfferIndex[hostname]; !ok {
+		return nil, errors.Errorf("hostname %s does not have any offers ", hostname)
+	}
+	return p.hostOfferIndex[hostname], nil
 }

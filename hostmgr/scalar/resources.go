@@ -159,6 +159,16 @@ func FromMesosResources(resources []*mesos.Resource) (r Resources) {
 	return r
 }
 
+// FromTaskResources takes the task resource config and returns
+// the scalar.Resource object
+func FromTaskResources(taskResource *task.ResourceConfig) (r Resources) {
+	r.CPU = taskResource.GetCpuLimit()
+	r.GPU = taskResource.GetGpuLimit()
+	r.Disk = taskResource.GetDiskLimitMb()
+	r.Mem = taskResource.GetMemLimitMb()
+	return r
+}
+
 // FromOffer returns the scalar Resources from an offer.
 func FromOffer(offer *mesos.Offer) Resources {
 	if offer == nil {

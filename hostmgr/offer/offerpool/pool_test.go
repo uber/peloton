@@ -597,7 +597,7 @@ func (suite *OfferPoolTestSuite) TestAddGetRemoveOffers() {
 
 	// Remove Expired Offers,
 	_, status := suite.pool.hostOfferIndex[_testAgent2].UnreservedAmount()
-	suite.Equal(status, summary.PlacingOffer)
+	suite.Equal(status, summary.PlacingHost)
 	suite.pool.RemoveExpiredOffers()
 	suite.Equal(suite.pool.hostOfferIndex[_testAgent2].HasOffer(), false)
 
@@ -737,6 +737,15 @@ func (suite *OfferPoolTestSuite) TestDeclineOffers() {
 	// Decline a valid and non-valid offer.
 	suite.pool.DeclineOffers(context.Background(), []*mesos.OfferID{offer1.Id})
 	suite.Equal(suite.GetTimedOfferLen(), 2)
+}
+
+func (suite *OfferPoolTestSuite) TestGetHostSummary() {
+	_, err := suite.pool.GetHostSummary(_dummyTestAgent)
+	suite.Error(err)
+	suite.Contains(err.Error(), "does not have any offers")
+	suite.pool.AddOffers(context.Background(), suite.agent1Offers)
+	_, err = suite.pool.GetHostSummary(_testAgent1)
+	suite.NoError(err)
 }
 
 func TestOfferPoolTestSuite(t *testing.T) {

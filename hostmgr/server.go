@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/background"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
+	"code.uber.internal/infra/peloton/hostmgr/metrics"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
@@ -56,7 +57,7 @@ type Server struct {
 
 	recoveryHandler RecoveryHandler
 
-	metrics *Metrics
+	metrics *metrics.Metrics
 }
 
 // NewServer creates a host manager Server instance.
@@ -85,7 +86,7 @@ func NewServer(
 
 		recoveryHandler: recoveryHandler,
 
-		metrics: NewMetrics(parent),
+		metrics: metrics.NewMetrics(parent),
 	}
 
 	t := time.NewTicker(s.minBackoff)

@@ -3,6 +3,7 @@ package hostmgr
 import (
 	"sync"
 
+	"code.uber.internal/infra/peloton/hostmgr/metrics"
 	maintenance_queue "code.uber.internal/infra/peloton/hostmgr/queue"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
@@ -21,7 +22,7 @@ type RecoveryHandler interface {
 // from Mesos Maintenance Status
 type recoveryHandler struct {
 	sync.Mutex
-	metrics              *Metrics
+	metrics              *metrics.Metrics
 	maintenanceQueue     maintenance_queue.MaintenanceQueue
 	operatorMasterClient mpb.MasterOperatorClient
 }
@@ -31,7 +32,7 @@ func NewRecoveryHandler(parent tally.Scope,
 	operatorMasterClient mpb.MasterOperatorClient,
 	maintenanceQueue maintenance_queue.MaintenanceQueue) RecoveryHandler {
 	recovery := &recoveryHandler{
-		metrics:              NewMetrics(parent),
+		metrics:              metrics.NewMetrics(parent),
 		maintenanceQueue:     maintenanceQueue,
 		operatorMasterClient: operatorMasterClient,
 	}

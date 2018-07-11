@@ -261,3 +261,16 @@ func TestScarceResourceType(t *testing.T) {
 		}
 	}
 }
+
+func TestFromTaskResources(t *testing.T) {
+	r := FromTaskResources(&task.ResourceConfig{
+		CpuLimit:    1,
+		DiskLimitMb: 1,
+		GpuLimit:    1,
+		MemLimitMb:  1,
+	})
+	assert.Equal(t, r.CPU, 1.0)
+	assert.Equal(t, r.Mem, 1.0)
+	assert.Equal(t, r.Disk, 1.0)
+	assert.Equal(t, r.GPU, 1.0)
+}

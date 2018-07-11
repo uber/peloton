@@ -1,4 +1,4 @@
-package hostmgr
+package config
 
 import (
 	"time"
