@@ -359,3 +359,46 @@ func CreateHostInfo(hostname string, agentInfo *mesos.AgentInfo) *hostsvc.HostIn
 		Resources:  agentInfo.Resources,
 	}
 }
+
+// IsSecretVolume returns true if the given volume is of type secret
+func IsSecretVolume(volume *mesos.Volume) bool {
+	return volume.GetSource().GetType() == mesos.Volume_Source_SECRET
+}
+
+// ConfigHasSecretVolumes returns true if config contains secret volumes
+func ConfigHasSecretVolumes(config *task.TaskConfig) bool {
+	for _, v := range config.GetContainer().GetVolumes() {
+		if ok := IsSecretVolume(v); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// RemoveSecretVolumesFromConfig removes secret volumes from the task config
+// in place and returns the secret volumes
+// Secret volumes are added internally at the time of creating a job with
+// secrets by handleSecrets method. They are not supplied in the config in
+// job create/update requests. Consequently, they should not be displayed
+// as part of Job Get API response. This is necessary to achieve the broader
+// goal of using the secrets proto message in Job Create/Update/Get API to
+// describe secrets and not allow users to checkin secrets as part of config
+func RemoveSecretVolumesFromConfig(config *task.TaskConfig) []*mesos.Volume {
+	if config.GetContainer().GetVolumes() == nil {
+		return nil
+	}
+	secretVolumes := []*mesos.Volume{}
+	volumes := []*mesos.Volume{}
+	for _, volume := range config.GetContainer().GetVolumes() {
+		if ok := IsSecretVolume(volume); ok {
+			secretVolumes = append(secretVolumes, volume)
+		} else {
+			volumes = append(volumes, volume)
+		}
+	}
+	config.GetContainer().Volumes = nil
+	if len(volumes) > 0 {
+		config.GetContainer().Volumes = volumes
+	}
+	return secretVolumes
+}

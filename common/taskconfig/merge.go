@@ -4,7 +4,7 @@ import (
 	"reflect"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/util"
 
 	"github.com/gogo/protobuf/proto"
 )
@@ -70,11 +70,11 @@ func RetainBaseSecretsInInstanceConfig(defaultConfig *task.TaskConfig,
 	instanceConfig *task.TaskConfig) *task.TaskConfig {
 	// if default config doesn't have secrets, just return
 	if defaultConfig == nil ||
-		!jobmgrtask.ConfigHasSecretVolumes(defaultConfig) {
+		!util.ConfigHasSecretVolumes(defaultConfig) {
 		return instanceConfig
 	}
 	clonedDefaultConfig := proto.Clone(defaultConfig).(*task.TaskConfig)
-	secretVolumes := jobmgrtask.RemoveSecretVolumesFromConfig(
+	secretVolumes := util.RemoveSecretVolumesFromConfig(
 		clonedDefaultConfig)
 	if instanceConfig.GetContainer().GetVolumes() != nil {
 		for _, secretVolume := range secretVolumes {

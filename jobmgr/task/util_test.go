@@ -16,6 +16,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+
+	"code.uber.internal/infra/peloton/util"
 )
 
 const (
@@ -147,7 +149,7 @@ func (suite *TaskUtilTestSuite) TestRemoveSecretVolumesFromJobConfig() {
 	jobConfig.GetDefaultConfig().GetContainer().Volumes =
 		append(jobConfig.GetDefaultConfig().GetContainer().Volumes, volume)
 	secretVolumes = RemoveSecretVolumesFromJobConfig(jobConfig)
-	suite.False(ConfigHasSecretVolumes(jobConfig.GetDefaultConfig()))
+	suite.False(util.ConfigHasSecretVolumes(jobConfig.GetDefaultConfig()))
 	suite.Equal(len(secretVolumes), 1)
 	suite.Equal([]byte(testSecretStr),
 		secretVolumes[0].GetSource().GetSecret().GetValue().GetData())

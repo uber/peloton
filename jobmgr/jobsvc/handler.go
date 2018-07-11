@@ -553,7 +553,7 @@ func (h *serviceHandler) validateResourcePool(
 func (h *serviceHandler) validateSecretsAndConfig(
 	config *job.JobConfig, secrets []*peloton.Secret) error {
 	// make sure that config doesn't have any secret volumes
-	if jobmgrtask.ConfigHasSecretVolumes(config.GetDefaultConfig()) {
+	if util.ConfigHasSecretVolumes(config.GetDefaultConfig()) {
 		return yarpcerrors.InvalidArgumentErrorf(
 			"adding secret volumes directly in config is not allowed",
 		)
