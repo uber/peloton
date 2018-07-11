@@ -2712,18 +2712,6 @@ func Less(orderByList []*query.OrderBy, t1 *task.TaskInfo, t2 *task.TaskInfo) bo
 			if err1 != nil || err2 != nil {
 				// if the start time of the task can't get parsed (or not exist)
 				// we skip the comparision
-				if err1 != nil {
-					log.WithError(err1).
-						WithField("job_id", t1.JobId).
-						WithField("instance_id", t1.InstanceId).
-						Error("Invalid StartTime")
-				}
-				if err1 != nil {
-					log.WithError(err2).
-						WithField("job_id", t2.JobId).
-						WithField("instance_id", t2.InstanceId).
-						Error("Invalid StartTime")
-				}
 				continue
 			}
 			// return result if not equal, otherwise goto next loop
