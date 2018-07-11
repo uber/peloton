@@ -29,15 +29,13 @@ import (
 type EntitlementCalculatorTestSuite struct {
 	sync.RWMutex
 	suite.Suite
-	resTree     respool.Tree
-	calculator  *calculator
-	mockCtrl    *gomock.Controller
-	mockHostMgr *host_mocks.MockInternalHostServiceYARPCClient
+	resTree    respool.Tree
+	calculator *calculator
+	mockCtrl   *gomock.Controller
 }
 
 func (s *EntitlementCalculatorTestSuite) SetupTest() {
 	s.mockCtrl = gomock.NewController(s.T())
-	s.mockHostMgr = host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
 
 	s.calculator = &calculator{
 		resPoolTree:       s.resTree,
@@ -45,7 +43,6 @@ func (s *EntitlementCalculatorTestSuite) SetupTest() {
 		calculationPeriod: 10 * time.Millisecond,
 		stopChan:          make(chan struct{}, 1),
 		clusterCapacity:   make(map[string]float64),
-		hostMgrClient:     s.mockHostMgr,
 		metrics:           NewMetrics(tally.NoopScope),
 	}
 	s.initRespoolTree()
@@ -84,8 +81,8 @@ func TestEntitlementCalculator(t *testing.T) {
 func (s *EntitlementCalculatorTestSuite) TestPeriodicCalculationWhenStarted() {
 	var wg sync.WaitGroup
 	wg.Add(5)
-
-	s.mockHostMgr.EXPECT().
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
+	mockHostMgr.EXPECT().
 		ClusterCapacity(
 			gomock.Any(),
 			gomock.Any()).
@@ -94,7 +91,7 @@ func (s *EntitlementCalculatorTestSuite) TestPeriodicCalculationWhenStarted() {
 		}).
 		Return(&hostsvc.ClusterCapacityResponse{}, nil).
 		Times(5)
-
+	s.calculator.hostMgrClient = mockHostMgr
 	s.NoError(s.calculator.Start())
 
 	// Wait for 5 calculations, and then stop.
@@ -282,8 +279,9 @@ func (s *EntitlementCalculatorTestSuite) getStaticResPools() map[string]*pb_resp
 
 func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 	// Mock LaunchTasks call.
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
 	gomock.InOrder(
-		s.mockHostMgr.EXPECT().
+		mockHostMgr.EXPECT().
 			ClusterCapacity(
 				gomock.Any(),
 				gomock.Any()).
@@ -292,6 +290,7 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 			}, nil).
 			AnyTimes(),
 	)
+	s.calculator.hostMgrClient = mockHostMgr
 	resPool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool11"})
 	s.NoError(err)
 	demand := &scalar.Resources{
@@ -378,14 +377,15 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 
 func (s *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 	// Mock LaunchTasks call.
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
 	gomock.InOrder(
-		s.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
+		mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
 				PhysicalResources: s.createClusterCapacity(),
 			}, nil).
 			Times(1),
 
-		s.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
+		mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
 				PhysicalResources: []*hostsvc.Resource{
 					{
@@ -408,6 +408,7 @@ func (s *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 			}, nil).
 			Times(1),
 	)
+	s.calculator.hostMgrClient = mockHostMgr
 
 	rootres, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
 	s.NoError(err)
@@ -445,8 +446,9 @@ func (s *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 
 func (s *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 	// Mock LaunchTasks call.
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
 	gomock.InOrder(
-		s.mockHostMgr.EXPECT().
+		mockHostMgr.EXPECT().
 			ClusterCapacity(
 				gomock.Any(),
 				gomock.Any()).
@@ -455,6 +457,8 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 			}, nil).
 			AnyTimes(),
 	)
+	s.calculator.hostMgrClient = mockHostMgr
+
 	ResPoolRoot, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
 	s.NoError(err)
 
@@ -523,6 +527,7 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 func (s *EntitlementCalculatorTestSuite) TestInitCalculator() {
 	// This test initializes the entitlement calculation
 	// and check if calculator is not nil
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:      common.PelotonResourceManager,
 		Inbounds:  nil,
@@ -536,7 +541,7 @@ func (s *EntitlementCalculatorTestSuite) TestInitCalculator() {
 		dispatcher,
 		10*time.Millisecond,
 		tally.NoopScope,
-		s.mockHostMgr,
+		mockHostMgr,
 	)
 	calc := GetCalculator()
 	s.NotNil(calc)
@@ -547,7 +552,7 @@ func (s *EntitlementCalculatorTestSuite) TestInitCalculator() {
 		dispatcher,
 		10*time.Millisecond,
 		tally.NoopScope,
-		s.mockHostMgr,
+		mockHostMgr,
 	)
 	newCalc := GetCalculator()
 	s.Equal(newCalc, calc)
@@ -558,13 +563,14 @@ func (s *EntitlementCalculatorTestSuite) TestStartCalculatorMultipleTimes() {
 	// This test covers if we start entitlement calculation
 	// multiple times it will not start the other one if
 	// previous is running
-
-	s.mockHostMgr.EXPECT().
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
+	mockHostMgr.EXPECT().
 		ClusterCapacity(
 			gomock.Any(),
 			gomock.Any()).
 		Return(&hostsvc.ClusterCapacityResponse{}, nil).
 		Times(1)
+	s.calculator.hostMgrClient = mockHostMgr
 
 	s.NoError(s.calculator.Start())
 	s.NoError(s.calculator.Start())
@@ -574,11 +580,13 @@ func (s *EntitlementCalculatorTestSuite) TestStartCalculatorMultipleTimes() {
 
 func (s *EntitlementCalculatorTestSuite) TestUpdateCapacityError() {
 	// If hostmgr returns error, checking Entitlement fails
-	s.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
+	mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
 		Return(&hostsvc.ClusterCapacityResponse{
 			PhysicalResources: nil,
 		}, errors.New("Capacity Unavailable")).
 		Times(1)
+	s.calculator.hostMgrClient = mockHostMgr
 	err := s.calculator.calculateEntitlement(context.Background())
 	s.Error(err)
 }
@@ -639,6 +647,8 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 			}, nil).
 			AnyTimes(),
 	)
+	s.calculator.hostMgrClient = mockHostMgr
+
 	resPool, err := resTree.Get(&peloton.ResourcePoolID{Value: "respool11s"})
 	s.NoError(err)
 	demand := &scalar.Resources{
