@@ -232,6 +232,19 @@ var (
 	resPoolDeletePath = resPoolDelete.Arg("respool", "complete path of the "+
 		"resource pool starting from the root").Required().String()
 
+	// Top level host manager command
+	host            = app.Command("host", "manage hosts")
+	hostMaintenance = host.Command("maintenance", "host maintenance")
+
+	hostMaintenanceStart           = hostMaintenance.Command("start", "start host maintenance on a list of hosts")
+	hostMaintenanceStartMachineIDs = hostMaintenanceStart.Arg("machineIDs", "comma separated MachineIDs <hostname:IP>").Required().String()
+
+	hostMaintenanceComplete           = hostMaintenance.Command("complete", "complete host maintenance on a list of hosts")
+	hostMaintenanceCompleteMachineIDs = hostMaintenanceComplete.Arg("machineIDs", "comma separated MachineIDs <hostname:IP>").Required().String()
+
+	hostQuery       = host.Command("query", "query hosts by state(s)")
+	hostQueryStates = hostQuery.Flag("states", "host states").Default("").Short('s').String()
+
 	// Top level volume command
 	volume = app.Command("volume", "manage persistent volume")
 
@@ -427,6 +440,12 @@ func main() {
 			*taskStopInstanceRanges)
 	case taskRestart.FullCommand():
 		err = client.TaskRestartAction(*taskRestartJobName, *taskRestartInstanceRanges)
+	case hostMaintenanceStart.FullCommand():
+		err = client.HostMaintenanceStartAction(*hostMaintenanceStartMachineIDs)
+	case hostMaintenanceComplete.FullCommand():
+		err = client.HostMaintenanceCompleteAction(*hostMaintenanceCompleteMachineIDs)
+	case hostQuery.FullCommand():
+		err = client.HostQueryAction(*hostQueryStates)
 	case resMgrActiveTasks.FullCommand():
 		err = client.ResMgrGetActiveTasks(*resMgrActiveTasksGetJobName, *resMgrActiveTasksGetRespoolID, *resMgrActiveTasksGetStates)
 	case resMgrPendingTasks.FullCommand():

@@ -9,12 +9,13 @@ import (
 	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/transport/http"
 
+	hostsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	updatesvc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc"
 	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume/svc"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	hostmgr_svc "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
@@ -29,7 +30,8 @@ type Client struct {
 	resMgrClient  resmgrsvc.ResourceManagerServiceYARPCClient
 	updateClient  updatesvc.UpdateServiceYARPCClient
 	volumeClient  volume_svc.VolumeServiceYARPCClient
-	hostMgrClient hostsvc.InternalHostServiceYARPCClient
+	hostMgrClient hostmgr_svc.InternalHostServiceYARPCClient
+	hostClient    hostsvc.HostServiceYARPCClient
 	dispatcher    *yarpc.Dispatcher
 	ctx           context.Context
 	cancelFunc    context.CancelFunc
@@ -99,7 +101,10 @@ func New(
 		volumeClient: volume_svc.NewVolumeServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonJobManager),
 		),
-		hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(
+		hostMgrClient: hostmgr_svc.NewInternalHostServiceYARPCClient(
+			dispatcher.ClientConfig(common.PelotonHostManager),
+		),
+		hostClient: hostsvc.NewHostServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonHostManager),
 		),
 		dispatcher: dispatcher,
