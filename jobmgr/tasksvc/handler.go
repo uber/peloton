@@ -168,24 +168,24 @@ func (m *serviceHandler) Get(
 			},
 		}, nil
 	}
+	/*
+			eventList, err := m.taskStore.GetTaskEvents(ctx, body.GetJobId(), body.GetInstanceId())
+			if err != nil {
+				m.metrics.TaskGetFail.Inc(1)
+				return &task.GetResponse{
+					OutOfRange: &task.InstanceIdOutOfRange{
+						JobId:         body.JobId,
+						InstanceCount: jobConfig.InstanceCount,
+					},
+				}, nil
+			}
 
-	eventList, err := m.taskStore.GetTaskEvents(ctx, body.GetJobId(), body.GetInstanceId())
-	if err != nil {
-		m.metrics.TaskGetFail.Inc(1)
-		return &task.GetResponse{
-			OutOfRange: &task.InstanceIdOutOfRange{
-				JobId:         body.JobId,
-				InstanceCount: jobConfig.InstanceCount,
-			},
-		}, nil
-	}
-
-	taskInfos := m.getTerminalEvents(eventList, lastTaskInfo)
-
+		taskInfos := m.getTerminalEvents(eventList, lastTaskInfo)
+	*/
 	m.metrics.TaskGet.Inc(1)
 	return &task.GetResponse{
-		Result:  lastTaskInfo,
-		Results: taskInfos,
+		Result: lastTaskInfo,
+		//Results: result,
 	}, nil
 }
 
