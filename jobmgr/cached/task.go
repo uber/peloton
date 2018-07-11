@@ -218,14 +218,17 @@ func (t *task) validateState(newRuntime *pbtask.RuntimeInfo) bool {
 }
 
 func (t *task) CreateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, owner string) error {
-	t.Lock()
-	defer t.Unlock()
-
+	// get jobConfig first to avoid deadlock
+	// (lock is in the sequence of jobFactory -> job -> task)
+	// TODO: figure out long term fix
 	// fetch job configuration to get job type
 	jobConfig, err := t.jobFactory.GetJob(t.JobID()).GetConfig(ctx)
 	if err != nil {
 		return err
 	}
+
+	t.Lock()
+	defer t.Unlock()
 
 	// First create the runtime in DB and then store in the cache if DB create is successful
 	err = t.jobFactory.taskStore.CreateTaskRuntime(
@@ -258,6 +261,15 @@ func (t *task) PatchRuntime(ctx context.Context, diff RuntimeDiff) error {
 			"unexpected Revision field in diff")
 	}
 
+	// get jobConfig first to avoid deadlock
+	// (lock is in the sequence of jobFactory -> job -> task)
+	// TODO: figure out long term fix
+	// fetch job configuration to get job type
+	jobConfig, err := t.jobFactory.GetJob(t.JobID()).GetConfig(ctx)
+	if err != nil {
+		return err
+	}
+
 	t.Lock()
 	defer t.Unlock()
 
@@ -286,11 +298,6 @@ func (t *task) PatchRuntime(ctx context.Context, diff RuntimeDiff) error {
 	}
 
 	t.updateRevision()
-
-	jobConfig, err := t.jobFactory.GetJob(t.JobID()).GetConfig(ctx)
-	if err != nil {
-		return err
-	}
 
 	err = t.jobFactory.taskStore.UpdateTaskRuntime(
 		ctx,
