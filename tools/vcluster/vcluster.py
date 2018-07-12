@@ -169,6 +169,7 @@ class VCluster(object):
             print_okblue('Creating peloton application: %s' % app)
             dynamic_env_master = {
                 'APP': app,
+                'ENVIRONMENT': 'production',
                 'ELECTION_ZK_SERVERS': virtual_zookeeper,
                 'MESOS_ZK_PATH': 'zk://%s/mesos' % virtual_zookeeper,
                 'CASSANDRA_STORE': self.label_name,

@@ -26,4 +26,4 @@ job_manager:
     deadline_tracking_period: 60s
   job_service:
     enable_secrets: true
-  active_task_update_period: 10s
+  active_task_update_period: 100s

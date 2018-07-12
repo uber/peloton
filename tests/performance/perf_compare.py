@@ -1,12 +1,42 @@
 #!/usr/bin/env python
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 import pandas as pd
+import smtplib
 from tabulate import tabulate
 import sys
 
-PERF_DIR = "tests/performance/PERF_RES"
+PERF_DIR = 'tests/performance/PERF_RES'
+
+SERVER = 'localhost'
+FROM = 'peloton.performance@uber.com'
+TO = 'peloton-internal-group@uber.com '
+
+HTML_TEMPLATE = """
+<html>
+  <head>
+    Peloton Performance Report
+  </head>
+  <body>
+    <h1>
+        Peloton Performance Report
+    </h1>
+    <p>
+        Environment: vCluster <br>
+        CPU per Node: 1 <br>
+        Memory per Node: 32 MB <br>
+        Disk per Node: 32 MB <br>
+        Respool size: 900 Nodes <br>
+    </p>
+    <p>
+     %s
+    </p>
+  </body>
+</html>
+"""
 
 
 def parse_arguments(args):
@@ -49,6 +79,23 @@ def perf_compare(df1, df2):
     return merge_table
 
 
+def send_email(html_msg):
+    """
+    type html: string
+    """
+    message = MIMEMultipart('peloton_performance')
+    message['Subject'] = "Peloton Performance"
+    message['From'] = FROM
+    message['To'] = TO
+
+    html = MIMEText(html_msg, 'html')
+    message.attach(html)
+
+    s = smtplib.SMTP('localhost')
+    s.sendmail(FROM, [TO], message.as_string())
+    s.quit()
+
+
 def main():
     args = parse_arguments(sys.argv[1:])
 
@@ -60,6 +107,11 @@ def main():
     merge_table = perf_compare(df1, df2)
     print tabulate(merge_table, headers='keys', tablefmt='orgtbl')
     merge_table.to_csv('compare.csv', sep='\t')
+
+    table_html = merge_table.to_html()
+    msg = HTML_TEMPLATE % table_html
+
+    send_email(msg)
 
 
 if __name__ == "__main__":
