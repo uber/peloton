@@ -68,15 +68,20 @@ type Driver interface {
 	// goal state engine as inputs.
 	EnqueueTask(jobID *peloton.JobID, instanceID uint32, deadline time.Time)
 	// EnqueueUpdate is used to enqueue a job update into the goal state. As
-	// its input, it takes the update identifier, and the time at which the
-	// job update should be evaluated by the goal state engine.
-	EnqueueUpdate(updateID *peloton.UpdateID, deadline time.Time)
+	// its input, it takes the job identifier, update identifier, and the
+	// time at which the job update should be evaluated by the
+	// goal state engine.
+	EnqueueUpdate(
+		jobID *peloton.JobID,
+		updateID *peloton.UpdateID,
+		deadline time.Time,
+	)
 	// DeleteJob deletes the job state from the goal state engine.
 	DeleteJob(jobID *peloton.JobID)
 	// DeleteTask deletes the task state from the goal state engine.
 	DeleteTask(jobID *peloton.JobID, instanceID uint32)
 	// DeleteUpdate deletes the job update state from the goal state engine.
-	DeleteUpdate(updateID *peloton.UpdateID)
+	DeleteUpdate(jobID *peloton.JobID, updateID *peloton.UpdateID)
 	// IsScheduledTask is a helper function to check if a given task is scheduled
 	// for evaluation in the goal state engine.
 	IsScheduledTask(jobID *peloton.JobID, instanceID uint32) bool
@@ -95,6 +100,7 @@ func NewDriver(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
+	updateStore storage.UpdateStore,
 	jobFactory cached.JobFactory,
 	updateFactory cached.UpdateFactory,
 	taskLauncher launcher.Launcher,
@@ -128,6 +134,7 @@ func NewDriver(
 		jobStore:      jobStore,
 		taskStore:     taskStore,
 		volumeStore:   volumeStore,
+		updateStore:   updateStore,
 		jobFactory:    jobFactory,
 		updateFactory: updateFactory,
 		taskLauncher:  taskLauncher,
@@ -176,6 +183,7 @@ type driver struct {
 	jobStore    storage.JobStore
 	taskStore   storage.TaskStore
 	volumeStore storage.PersistentVolumeStore
+	updateStore storage.UpdateStore
 
 	// jobFactory is the in-memory cache object fpr jobs and tasks
 	jobFactory cached.JobFactory
@@ -208,8 +216,11 @@ func (d *driver) EnqueueTask(jobID *peloton.JobID, instanceID uint32, deadline t
 	d.taskEngine.Enqueue(taskEntity, deadline)
 }
 
-func (d *driver) EnqueueUpdate(updateID *peloton.UpdateID, deadline time.Time) {
-	updateEntity := NewUpdateEntity(updateID, d)
+func (d *driver) EnqueueUpdate(
+	jobID *peloton.JobID,
+	updateID *peloton.UpdateID,
+	deadline time.Time) {
+	updateEntity := NewUpdateEntity(updateID, jobID, d)
 
 	d.RLock()
 	defer d.RUnlock()
@@ -235,8 +246,8 @@ func (d *driver) DeleteTask(jobID *peloton.JobID, instanceID uint32) {
 	d.taskEngine.Delete(taskEntity)
 }
 
-func (d *driver) DeleteUpdate(updateID *peloton.UpdateID) {
-	updateEntity := NewUpdateEntity(updateID, d)
+func (d *driver) DeleteUpdate(jobID *peloton.JobID, updateID *peloton.UpdateID) {
+	updateEntity := NewUpdateEntity(updateID, jobID, d)
 
 	d.RLock()
 	defer d.RUnlock()
@@ -380,8 +391,11 @@ func (d *driver) Stop() {
 
 	// Cleanup all updates from the goal state engine
 	updates := d.updateFactory.GetAllUpdates()
-	for updateID := range updates {
-		d.DeleteUpdate(&peloton.UpdateID{Value: updateID})
+	for updateID, cachedUpdate := range updates {
+		d.DeleteUpdate(
+			cachedUpdate.JobID(),
+			&peloton.UpdateID{Value: updateID},
+		)
 	}
 
 	// Cleanup tasks and jobs from the goal state engine

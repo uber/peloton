@@ -137,7 +137,7 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 		Return(nil)
 
 	suite.goalStateDriver.EXPECT().
-		EnqueueUpdate(gomock.Any(), gomock.Any())
+		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
 
 	_, err := suite.h.CreateUpdate(
 		context.Background(),
@@ -460,7 +460,7 @@ func (suite *UpdateSvcTestSuite) TestCreateAddUpdateFail() {
 		Return(fmt.Errorf("fake db error"))
 
 	suite.goalStateDriver.EXPECT().
-		EnqueueUpdate(gomock.Any(), gomock.Any())
+		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
 
 	_, err := suite.h.CreateUpdate(
 		context.Background(),
@@ -507,12 +507,6 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccessWithExistingUpdate() {
 		Cancel(gomock.Any()).
 		Return(nil)
 
-	suite.goalStateDriver.EXPECT().
-		EnqueueUpdate(gomock.Any(), gomock.Any()).
-		Do(func(updateID *peloton.UpdateID, _ time.Time) {
-			suite.Equal(oldUpdateID.GetValue(), updateID.GetValue())
-		})
-
 	suite.updateFactory.EXPECT().
 		AddUpdate(gomock.Any()).
 		Return(suite.cachedUpdate)
@@ -524,8 +518,9 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccessWithExistingUpdate() {
 		Return(nil)
 
 	suite.goalStateDriver.EXPECT().
-		EnqueueUpdate(gomock.Any(), gomock.Any()).
-		Do(func(updateID *peloton.UpdateID, _ time.Time) {
+		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any()).
+		Do(func(jobID *peloton.JobID, updateID *peloton.UpdateID, _ time.Time) {
+			suite.Equal(suite.jobID.GetValue(), jobID.GetValue())
 			suite.NotEqual(oldUpdateID.GetValue(), updateID.GetValue())
 		})
 

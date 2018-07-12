@@ -83,6 +83,7 @@ func (suite *UpdateStartTestSuite) SetupTest() {
 	suite.updateID = &peloton.UpdateID{Value: uuid.NewRandom().String()}
 	suite.updateEnt = &updateEntity{
 		id:     suite.updateID,
+		jobID:  suite.jobID,
 		driver: suite.goalStateDriver,
 	}
 
@@ -136,7 +137,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStartCacheJobGetFail() {
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Do(func(updateEntity goalstate.Entity, deadline time.Time) {
-			suite.Equal(suite.updateID.GetValue(), updateEntity.GetID())
+			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
 		})
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
@@ -619,8 +620,10 @@ func (suite *UpdateStartTestSuite) TestUpdateStartAddInstances() {
 
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
-		Do(func(updateEntity goalstate.Entity, deadline time.Time) {
-			suite.Equal(suite.updateID.GetValue(), updateEntity.GetID())
+		Do(func(entity goalstate.Entity, deadline time.Time) {
+			suite.Equal(suite.jobID.GetValue(), entity.GetID())
+			updateEnt := entity.(*updateEntity)
+			suite.Equal(suite.updateID.GetValue(), updateEnt.id.GetValue())
 		})
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
@@ -755,7 +758,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStartNoChange() {
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Do(func(updateEntity goalstate.Entity, deadline time.Time) {
-			suite.Equal(suite.updateID.GetValue(), updateEntity.GetID())
+			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
 		})
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
@@ -905,7 +908,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStartUpdateInstances() {
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Do(func(updateEntity goalstate.Entity, deadline time.Time) {
-			suite.Equal(suite.updateID.GetValue(), updateEntity.GetID())
+			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
 		})
 
 	err := UpdateStart(context.Background(), suite.updateEnt)

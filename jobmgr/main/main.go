@@ -344,6 +344,7 @@ func main() {
 		store, // store implements JobStore
 		store, // store implements TaskStore
 		store, // store implements VolumeStore
+		store, // store implements UpdateStore
 		jobFactory,
 		updateFactory,
 		launcher.GetLauncher(),

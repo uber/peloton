@@ -10,7 +10,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -21,12 +20,12 @@ import (
 type UpdateJobUtilTestSuite struct {
 	suite.Suite
 
-	ctrl            *gomock.Controller
-	updateStore     *storemocks.MockUpdateStore
-	updateFactory   *cachedmocks.MockUpdateFactory
-	goalStateDriver *goalstatemocks.MockDriver
-	cachedUpdate    *cachedmocks.MockUpdate
-	updateID        *peloton.UpdateID
+	ctrl          *gomock.Controller
+	updateStore   *storemocks.MockUpdateStore
+	updateFactory *cachedmocks.MockUpdateFactory
+	cachedUpdate  *cachedmocks.MockUpdate
+	jobID         *peloton.JobID
+	updateID      *peloton.UpdateID
 }
 
 func TestUpdateJobUtil(t *testing.T) {
@@ -37,7 +36,6 @@ func (suite *UpdateJobUtilTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
 	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
-	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
 	suite.cachedUpdate = cachedmocks.NewMockUpdate(suite.ctrl)
 	suite.updateID = &peloton.UpdateID{Value: uuid.NewRandom().String()}
 }
@@ -53,12 +51,11 @@ func (suite *UpdateJobUtilTestSuite) TestAbortGetProgressFail() {
 		GetUpdateProgress(gomock.Any(), suite.updateID).
 		Return(nil, fmt.Errorf("fake db error"))
 
-	err := AbortPreviousJobUpdate(
+	err := AbortJobUpdate(
 		context.Background(),
 		suite.updateID,
 		suite.updateStore,
 		suite.updateFactory,
-		suite.goalStateDriver,
 	)
 	suite.EqualError(err, "fake db error")
 }
@@ -73,12 +70,11 @@ func (suite *UpdateJobUtilTestSuite) TestAbortUpdateStateTerminal() {
 		GetUpdateProgress(gomock.Any(), suite.updateID).
 		Return(updateModel, nil)
 
-	err := AbortPreviousJobUpdate(
+	err := AbortJobUpdate(
 		context.Background(),
 		suite.updateID,
 		suite.updateStore,
 		suite.updateFactory,
-		suite.goalStateDriver,
 	)
 	suite.NoError(err)
 }
@@ -106,12 +102,11 @@ func (suite *UpdateJobUtilTestSuite) TestAbortRecoverFail() {
 		Recover(gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
 
-	err := AbortPreviousJobUpdate(
+	err := AbortJobUpdate(
 		context.Background(),
 		suite.updateID,
 		suite.updateStore,
 		suite.updateFactory,
-		suite.goalStateDriver,
 	)
 	suite.EqualError(err, "fake db error")
 }
@@ -143,12 +138,11 @@ func (suite *UpdateJobUtilTestSuite) TestAbortCancelFail() {
 		Cancel(gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
 
-	err := AbortPreviousJobUpdate(
+	err := AbortJobUpdate(
 		context.Background(),
 		suite.updateID,
 		suite.updateStore,
 		suite.updateFactory,
-		suite.goalStateDriver,
 	)
 	suite.EqualError(err, "fake db error")
 }
@@ -179,15 +173,11 @@ func (suite *UpdateJobUtilTestSuite) TestAbortSuccess() {
 		Cancel(gomock.Any()).
 		Return(nil)
 
-	suite.goalStateDriver.EXPECT().
-		EnqueueUpdate(suite.updateID, gomock.Any())
-
-	err := AbortPreviousJobUpdate(
+	err := AbortJobUpdate(
 		context.Background(),
 		suite.updateID,
 		suite.updateStore,
 		suite.updateFactory,
-		suite.goalStateDriver,
 	)
 	suite.NoError(err)
 }

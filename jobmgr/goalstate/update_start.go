@@ -44,7 +44,7 @@ func fetchUpdateAndJobFromCache(
 			}).Info("job has been deleted, so canceling the update as well")
 		err = cachedUpdate.Cancel(ctx)
 		if err == nil {
-			goalStateDriver.EnqueueUpdate(updateID, time.Now())
+			goalStateDriver.EnqueueUpdate(jobID, updateID, time.Now())
 		}
 	}
 	return
@@ -296,7 +296,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 	// enqueue to goal state immediately once.
 	// TODO this can be used with rolling update to move starting the update
 	// of existing instances to update from start.
-	goalStateDriver.EnqueueUpdate(updateEnt.id, time.Now())
+	goalStateDriver.EnqueueUpdate(jobID, updateEnt.id, time.Now())
 
 	goalStateDriver.mtx.updateMetrics.UpdateStart.Inc(1)
 	return nil

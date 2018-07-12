@@ -162,13 +162,13 @@ func (h *serviceHandler) CreateUpdate(
 		return nil, err
 	}
 
-	if jobRuntime.GetUpdateID() != nil {
-		if err = updateutil.AbortPreviousJobUpdate(
+	if jobRuntime.GetUpdateID() != nil &&
+		len(jobRuntime.GetUpdateID().GetValue()) > 0 {
+		if err = updateutil.AbortJobUpdate(
 			ctx,
 			jobRuntime.GetUpdateID(),
 			h.updateStore,
 			h.updateFactory,
-			h.goalStateDriver,
 		); err != nil {
 			h.metrics.UpdateCreateFail.Inc(1)
 			return nil, err
@@ -195,13 +195,11 @@ func (h *serviceHandler) CreateUpdate(
 		// the goal state. If the update ID got persisted, update should
 		// start running, else, it should be aborted. Enqueueing it into
 		// the goal state will ensure both.
-		// TBD fix aborting the update in goal state in case job runtime does
-		// not point to itself.
 		h.metrics.UpdateCreateFail.Inc(1)
 	}
 
 	// Add update to goal state engine to start it
-	h.goalStateDriver.EnqueueUpdate(id, time.Now())
+	h.goalStateDriver.EnqueueUpdate(jobID, id, time.Now())
 	return &svc.CreateUpdateResponse{
 		UpdateID: id,
 	}, err

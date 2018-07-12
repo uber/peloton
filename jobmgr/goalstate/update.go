@@ -28,6 +28,8 @@ const (
 	CompleteUpdateAction UpdateAction = "complete"
 	// ClearUpdateAction clears the update
 	ClearUpdateAction UpdateAction = "update_clear"
+	// CheckForAbortAction checks if the update needs to be aborted
+	CheckForAbortAction UpdateAction = "check_for_abort"
 )
 
 // _updateActionsMaps maps the UpdateAction string to the Action function.
@@ -56,21 +58,27 @@ var (
 )
 
 // NewUpdateEntity implements the goal state Entity interface for job updates.
-func NewUpdateEntity(id *peloton.UpdateID, driver *driver) goalstate.Entity {
+func NewUpdateEntity(
+	id *peloton.UpdateID,
+	jobID *peloton.JobID,
+	driver *driver) goalstate.Entity {
 	return &updateEntity{
 		id:     id,
+		jobID:  jobID,
 		driver: driver,
 	}
 }
 
 type updateEntity struct {
+	jobID  *peloton.JobID    // peloton job identifier
 	id     *peloton.UpdateID // peloton update identifier
 	driver *driver           // the goal state driver
 }
 
 func (u *updateEntity) GetID() string {
-	// return update identifier
-	return u.id.GetValue()
+	// return job identifier; this ensures that only update for a
+	// given job is running at a given time.
+	return u.jobID.GetValue()
 }
 
 func (u *updateEntity) GetState() interface{} {
@@ -105,6 +113,13 @@ func (u *updateEntity) GetActionList(
 			"instances_done":  len(updateState.Instances),
 			"update_action":   actionStr,
 		}).Info("running update action")
+
+	if actionStr != ClearUpdateAction {
+		actions = append(actions, goalstate.Action{
+			Name:    string(CheckForAbortAction),
+			Execute: UpdateAbortIfNeeded,
+		})
+	}
 
 	if action != nil {
 		actions = append(actions, goalstate.Action{

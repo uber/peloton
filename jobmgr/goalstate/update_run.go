@@ -52,7 +52,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 		if cachedTask == nil {
 			// just requeue the task and update again
 			goalStateDriver.EnqueueTask(jobID, instID, time.Now())
-			goalStateDriver.EnqueueUpdate(updateEnt.id, time.Now().Add(
+			goalStateDriver.EnqueueUpdate(jobID, updateEnt.id, time.Now().Add(
 				goalStateDriver.JobRuntimeDuration(cachedJob.GetJobType())))
 			instancesCurrent = append(instancesCurrent, instID)
 			continue
@@ -91,7 +91,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	if len(instancesTotal) == len(instancesDone) {
-		goalStateDriver.EnqueueUpdate(updateEnt.id, time.Now())
+		goalStateDriver.EnqueueUpdate(jobID, updateEnt.id, time.Now())
 	}
 	goalStateDriver.mtx.updateMetrics.UpdateRun.Inc(1)
 	return nil

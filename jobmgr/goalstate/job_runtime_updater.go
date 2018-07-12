@@ -514,8 +514,9 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 
 	// if an update is running for this job, enqueue it as well
 	// TODO change this to use watch functionality from the cache
-	if jobRuntime.GetUpdateID() != nil {
-		goalStateDriver.EnqueueUpdate(jobRuntime.GetUpdateID(), time.Now())
+	if jobRuntime.GetUpdateID() != nil &&
+		len(jobRuntime.GetUpdateID().GetValue()) > 0 {
+		goalStateDriver.EnqueueUpdate(jobID, jobRuntime.GetUpdateID(), time.Now())
 	}
 
 	// Evaluate this job immediately when

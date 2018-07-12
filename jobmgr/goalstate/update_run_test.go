@@ -62,6 +62,7 @@ func (suite *UpdateRunTestSuite) SetupTest() {
 	suite.updateID = &peloton.UpdateID{Value: uuid.NewRandom().String()}
 	suite.updateEnt = &updateEntity{
 		id:     suite.updateID,
+		jobID:  suite.jobID,
 		driver: suite.goalStateDriver,
 	}
 
@@ -207,8 +208,10 @@ func (suite *UpdateRunTestSuite) TestCompletedUpdate() {
 
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
-		Do(func(updateEntity goalstate.Entity, deadline time.Time) {
-			suite.Equal(suite.updateID.GetValue(), updateEntity.GetID())
+		Do(func(entity goalstate.Entity, deadline time.Time) {
+			suite.Equal(suite.jobID.GetValue(), entity.GetID())
+			updateEnt := entity.(*updateEntity)
+			suite.Equal(suite.updateID.GetValue(), updateEnt.id.GetValue())
 		})
 
 	err := UpdateRun(context.Background(), suite.updateEnt)
@@ -261,7 +264,7 @@ func (suite *UpdateRunTestSuite) TestUpdateFailGetTask() {
 		suite.updateGoalStateEngine.EXPECT().
 			Enqueue(gomock.Any(), gomock.Any()).
 			Do(func(updateEntity goalstate.Entity, deadline time.Time) {
-				suite.Equal(suite.updateID.GetValue(), updateEntity.GetID())
+				suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
 			})
 	}
 

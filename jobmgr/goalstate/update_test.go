@@ -20,6 +20,7 @@ type UpdateGoalStateTestSuite struct {
 	ctrl            *gomock.Controller
 	updateFactory   *cachedmocks.MockUpdateFactory
 	goalStateDriver *driver
+	jobID           *peloton.JobID
 	updateID        *peloton.UpdateID
 	updateEnt       *updateEntity
 }
@@ -37,9 +38,11 @@ func (suite *UpdateGoalStateTestSuite) SetupTest() {
 		cfg:           &Config{},
 	}
 	suite.goalStateDriver.cfg.normalize()
+	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
 	suite.updateID = &peloton.UpdateID{Value: uuid.NewRandom().String()}
 	suite.updateEnt = &updateEntity{
 		id:     suite.updateID,
+		jobID:  suite.jobID,
 		driver: suite.goalStateDriver,
 	}
 }
@@ -54,7 +57,7 @@ func (suite *UpdateGoalStateTestSuite) TestUpdateStateAndGoalState() {
 	cachedUpdate := cachedmocks.NewMockUpdate(suite.ctrl)
 
 	// Test fetching the entity ID
-	suite.Equal(suite.updateID.GetValue(), suite.updateEnt.GetID())
+	suite.Equal(suite.jobID.GetValue(), suite.updateEnt.GetID())
 
 	// Test fetching the entity state
 	updateState := &cached.UpdateStateVector{
@@ -111,11 +114,15 @@ func (suite *UpdateGoalStateTestSuite) TestUpdateGetActionList() {
 	}{
 		{
 			state:        update.State_ROLLING_FORWARD,
-			lengthAction: 1,
+			lengthAction: 2,
 		},
 		{
 			state:        update.State_PAUSED,
-			lengthAction: 0,
+			lengthAction: 1,
+		},
+		{
+			state:        update.State_ABORTED,
+			lengthAction: 1,
 		},
 	}
 

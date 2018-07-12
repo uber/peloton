@@ -223,7 +223,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_RUNNING() {
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Do(func(updateEntity goalstate.Entity, deadline time.Time) {
-			suite.Equal(updateID.GetValue(), updateEntity.GetID())
+			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
 		})
 
 	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)

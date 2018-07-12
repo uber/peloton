@@ -102,11 +102,13 @@ func (suite *DriverTestSuite) TestEnqueueTask() {
 func (suite *DriverTestSuite) TestEnqueueUpdate() {
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
-		Do(func(updateEntity goalstate.Entity, deadline time.Time) {
-			suite.Equal(suite.updateID.GetValue(), updateEntity.GetID())
+		Do(func(entity goalstate.Entity, deadline time.Time) {
+			suite.Equal(suite.jobID.GetValue(), entity.GetID())
+			updateEnt := entity.(*updateEntity)
+			suite.Equal(suite.updateID.GetValue(), updateEnt.id.GetValue())
 		})
 
-	suite.goalStateDriver.EnqueueUpdate(suite.updateID, time.Now())
+	suite.goalStateDriver.EnqueueUpdate(suite.jobID, suite.updateID, time.Now())
 }
 
 // TestDeleteJob tests deleting job from goal state engine.
@@ -138,10 +140,10 @@ func (suite *DriverTestSuite) TestDeleteUpdate() {
 	suite.updateGoalStateEngine.EXPECT().
 		Delete(gomock.Any()).
 		Do(func(updateEntity goalstate.Entity) {
-			suite.Equal(suite.updateID.GetValue(), updateEntity.GetID())
+			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
 		})
 
-	suite.goalStateDriver.DeleteUpdate(suite.updateID)
+	suite.goalStateDriver.DeleteUpdate(suite.jobID, suite.updateID)
 }
 
 // TestIsScheduledTask tests determination oif whether a task
@@ -417,6 +419,7 @@ func (suite *DriverTestSuite) TestEngineStartStop() {
 	suite.taskGoalStateEngine.EXPECT().Stop()
 	suite.updateGoalStateEngine.EXPECT().Stop()
 	suite.updateFactory.EXPECT().GetAllUpdates().Return(updateMap)
+	cachedUpdate.EXPECT().JobID().Return(suite.jobID)
 	suite.updateGoalStateEngine.EXPECT().Delete(gomock.Any())
 	suite.jobFactory.EXPECT().GetAllJobs().Return(jobMap)
 	suite.cachedJob.EXPECT().GetAllTasks().Return(taskMap)
