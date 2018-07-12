@@ -31,7 +31,6 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/peer"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/uber-go/atomic"
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
@@ -303,6 +302,8 @@ func main() {
 
 	// Register UpdateActiveTasks function
 	activeJobCache := activermtask.NewActiveRMTasks(dispatcher, rootScope)
+
+	/* Disable this background worker until the deadlock in ResMgr is fixed
 	backgroundManager.RegisterWorks(
 		background.Work{
 			Name: "ActiveCacheJob",
@@ -312,6 +313,7 @@ func main() {
 			Period: time.Duration(cfg.JobManager.ActiveTaskUpdatePeriod),
 		},
 	)
+	*/
 
 	jobFactory := cached.InitJobFactory(
 		store, // store implements JobStore
