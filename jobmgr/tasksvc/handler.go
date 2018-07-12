@@ -32,6 +32,7 @@ import (
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/util/handler"
 	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
+
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -52,8 +53,10 @@ func InitServiceHandler(
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
+	updateStore storage.UpdateStore,
 	frameworkInfoStore storage.FrameworkInfoStore,
 	jobFactory cached.JobFactory,
+	updateFactory cached.UpdateFactory,
 	goalStateDriver goalstate.Driver,
 	candidate leader.Candidate,
 	mesosAgentWorkDir string,
@@ -64,11 +67,13 @@ func InitServiceHandler(
 	handler := &serviceHandler{
 		taskStore:          taskStore,
 		jobStore:           jobStore,
+		updateStore:        updateStore,
 		frameworkInfoStore: frameworkInfoStore,
 		metrics:            NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 		resmgrClient:       resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		taskLauncher:       launcher.GetLauncher(),
 		jobFactory:         jobFactory,
+		updateFactory:      updateFactory,
 		goalStateDriver:    goalStateDriver,
 		candidate:          candidate,
 		mesosAgentWorkDir:  mesosAgentWorkDir,
@@ -83,11 +88,13 @@ func InitServiceHandler(
 type serviceHandler struct {
 	taskStore          storage.TaskStore
 	jobStore           storage.JobStore
+	updateStore        storage.UpdateStore
 	frameworkInfoStore storage.FrameworkInfoStore
 	metrics            *Metrics
 	resmgrClient       resmgrsvc.ResourceManagerServiceYARPCClient
 	taskLauncher       launcher.Launcher
 	jobFactory         cached.JobFactory
+	updateFactory      cached.UpdateFactory
 	goalStateDriver    goalstate.Driver
 	candidate          leader.Candidate
 	mesosAgentWorkDir  string

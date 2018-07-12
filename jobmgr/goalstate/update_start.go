@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/task"
+	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -67,6 +68,22 @@ func addInstancesInUpdate(
 		return nil
 	}
 
+	// move job goal state from KILLED to RUNNING
+	runtime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		return err
+	}
+
+	if runtime.GetGoalState() == job.JobState_KILLED {
+		err = cachedJob.Update(ctx, &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				GoalState: goalstateutil.GetDefaultJobGoalState(job.JobType_SERVICE)},
+		}, cached.UpdateCacheAndDB)
+		if err != nil {
+			return err
+		}
+	}
+
 	// now lets add the new instances
 	for _, instID := range instancesAdded {
 		// make sure that instance is not already been created
@@ -74,7 +91,20 @@ func addInstancesInUpdate(
 		if t != nil {
 			r, err := t.GetRunTime(ctx)
 			if err == nil && r != nil {
-				// task has already been created, just move on
+				// task has already been created, if not already sent to
+				// resource manager, then add to be sent to
+				// resource manager
+				if r.GetState() == pbtask.TaskState_INITIALIZED {
+					taskInfo := &pbtask.TaskInfo{
+						JobId:      jobID,
+						InstanceId: instID,
+						Runtime:    r,
+						Config: taskconfig.Merge(
+							jobConfig.GetDefaultConfig(),
+							jobConfig.GetInstanceConfig()[instID]),
+					}
+					tasks = append(tasks, taskInfo)
+				}
 				continue
 			}
 		}
@@ -101,10 +131,10 @@ func addInstancesInUpdate(
 		if err := cachedJob.CreateTasks(ctx, runtimes, "peloton"); err != nil {
 			return err
 		}
-		return sendTasksToResMgr(ctx, jobID, tasks, jobConfig, goalStateDriver)
 	}
 
-	return nil
+	// send to resource manager
+	return sendTasksToResMgr(ctx, jobID, tasks, jobConfig, goalStateDriver)
 }
 
 // handleUnchangedInstancesInUpdate updates the runtime state of the
@@ -262,11 +292,11 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	if len(cachedUpdate.GetGoalState().Instances) == 0 {
-		// There is no instance to upgrade, so will receive no
-		// task updates, just enqueue to goal state to complete the update.
-		goalStateDriver.EnqueueUpdate(updateEnt.id, time.Now())
-	}
+	// In case there are no instances to upgrade or all instances are stopped,
+	// enqueue to goal state immediately once.
+	// TODO this can be used with rolling update to move starting the update
+	// of existing instances to update from start.
+	goalStateDriver.EnqueueUpdate(updateEnt.id, time.Now())
 
 	goalStateDriver.mtx.updateMetrics.UpdateStart.Inc(1)
 	return nil

@@ -6,6 +6,8 @@ import (
 
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/common/goalstate"
+
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // UpdateReload reloads the update from the DB.
@@ -15,7 +17,11 @@ func UpdateReload(ctx context.Context, entity goalstate.Entity) error {
 	cachedUpdate := goalStateDriver.updateFactory.AddUpdate(updateEnt.id)
 	goalStateDriver.mtx.updateMetrics.UpdateReload.Inc(1)
 	if err := cachedUpdate.Recover(ctx); err != nil {
-		return err
+		if !yarpcerrors.IsNotFound(err) {
+			return err
+		}
+		// update not found in DB, just clean up from cache and goal state
+		return UpdateUntrack(ctx, entity)
 	}
 	goalStateDriver.EnqueueUpdate(updateEnt.id, time.Now())
 	return nil

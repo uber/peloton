@@ -3101,7 +3101,7 @@ func (s *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
 	}
 
 	s.metrics.UpdateMetrics.UpdateGetFail.Inc(1)
-	return nil, yarpcerrors.InvalidArgumentErrorf("update not found")
+	return nil, yarpcerrors.NotFoundErrorf("update not found")
 }
 
 // deleteSingleUpdate deletes a given update from the update_info table.
@@ -3225,7 +3225,7 @@ func (s *Store) GetUpdateProgress(ctx context.Context, id *peloton.UpdateID) (
 	}
 
 	s.metrics.UpdateMetrics.UpdateGetProgessFail.Inc(1)
-	return nil, yarpcerrors.InvalidArgumentErrorf("update not found")
+	return nil, yarpcerrors.NotFoundErrorf("update not found")
 }
 
 // GetUpdatesForJob returns the list of job updates created for a given job.

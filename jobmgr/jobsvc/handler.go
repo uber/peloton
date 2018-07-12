@@ -236,6 +236,11 @@ func (h *serviceHandler) Update(
 		return nil, err
 	}
 
+	if oldConfig.GetType() != job.JobType_BATCH {
+		return nil, yarpcerrors.InvalidArgumentErrorf(
+			"job update is only supported for batch jobs")
+	}
+
 	if newConfig.GetRespoolID() == nil {
 		newConfig.RespoolID = oldConfig.GetRespoolID()
 	}

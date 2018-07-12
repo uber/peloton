@@ -2113,7 +2113,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 		updateID,
 	)
 	suite.Error(err)
-	suite.True(yarpcerrors.IsInvalidArgument(err))
+	suite.True(yarpcerrors.IsNotFound(err))
 
 	// get progress of a non-existent update
 	_, err = store.GetUpdateProgress(
@@ -2121,7 +2121,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 		updateID,
 	)
 	suite.Error(err)
-	suite.True(yarpcerrors.IsInvalidArgument(err))
+	suite.True(yarpcerrors.IsNotFound(err))
 
 	// make sure job has no updates
 	updateList, err := store.GetUpdatesForJob(context.Background(), jobID)
@@ -2278,14 +2278,14 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 		updateID,
 	)
 	suite.Error(err)
-	suite.True(yarpcerrors.IsInvalidArgument(err))
+	suite.True(yarpcerrors.IsNotFound(err))
 
 	_, err = store.GetUpdateProgress(
 		context.Background(),
 		updateID,
 	)
 	suite.Error(err)
-	suite.True(yarpcerrors.IsInvalidArgument(err))
+	suite.True(yarpcerrors.IsNotFound(err))
 }
 
 func createJobConfig() *job.JobConfig {

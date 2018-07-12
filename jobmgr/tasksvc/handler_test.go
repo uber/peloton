@@ -54,6 +54,7 @@ type TaskHandlerTestSuite struct {
 	mockedGoalStateDrive     *goalstatemocks.MockDriver
 	mockedJobStore           *storemocks.MockJobStore
 	mockedTaskStore          *storemocks.MockTaskStore
+	mockedUpdateStore        *storemocks.MockUpdateStore
 	mockedFrameworkInfoStore *storemocks.MockFrameworkInfoStore
 	mockedLogManager         *logmanagermocks.MockLogManager
 	mockedHostMgr            *hostmocks.MockInternalHostServiceYARPCClient
@@ -92,6 +93,7 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 	suite.mockedResmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 	suite.mockedCandidate = leadermocks.NewMockCandidate(suite.ctrl)
 	suite.mockedTaskStore = storemocks.NewMockTaskStore(suite.ctrl)
+	suite.mockedUpdateStore = storemocks.NewMockUpdateStore(suite.ctrl)
 	suite.mockedFrameworkInfoStore = storemocks.NewMockFrameworkInfoStore(suite.ctrl)
 	suite.mockedLogManager = logmanagermocks.NewMockLogManager(suite.ctrl)
 	suite.mockedHostMgr = hostmocks.NewMockInternalHostServiceYARPCClient(suite.ctrl)
@@ -100,6 +102,7 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 
 	suite.handler.jobStore = suite.mockedJobStore
 	suite.handler.taskStore = suite.mockedTaskStore
+	suite.handler.updateStore = suite.mockedUpdateStore
 	suite.handler.jobFactory = suite.mockedJobFactory
 	suite.handler.goalStateDriver = suite.mockedGoalStateDrive
 	suite.handler.resmgrClient = suite.mockedResmgrClient

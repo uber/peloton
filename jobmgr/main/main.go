@@ -324,7 +324,7 @@ func main() {
 	updateFactory := cached.InitUpdateFactory(
 		store, // store implements JobStore
 		store, // store implements TaskStore
-		store, // store implements VolumeStore
+		store, // store implements UpdateStore
 		jobFactory,
 		rootScope)
 
@@ -438,8 +438,10 @@ func main() {
 		rootScope,
 		store, // store implements JobStore
 		store, // store implements TaskStore
+		store, // store implements UpdateStore
 		store, // store implements FrameworkInfoStore
 		jobFactory,
+		updateFactory,
 		goalStateDriver,
 		candidate,
 		*mesosAgentWorkDir,
@@ -456,9 +458,14 @@ func main() {
 		store, // store implements VolumeStore
 	)
 
-	updatesvc.InitServiceHandler(dispatcher,
+	updatesvc.InitServiceHandler(
+		dispatcher,
+		rootScope,
 		store, // store implements JobStore
 		store, // store implements UpdateStore
+		goalStateDriver,
+		jobFactory,
+		updateFactory,
 	)
 
 	// Start dispatch loop

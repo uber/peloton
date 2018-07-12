@@ -924,6 +924,40 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	suite.Equal("added 1 instances", resp.Message)
 }
 
+// TestJobUpdateServiceJob tests updating a service job should fail
+func (suite *JobHandlerTestSuite) TestJobUpdateServiceJob() {
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+
+	oldJobConfig := &job.JobConfig{
+		OwningTeam:    "team6",
+		LdapGroups:    []string{"team1", "team2", "team3"},
+		InstanceCount: 5,
+		Type:          job.JobType_SERVICE,
+	}
+
+	newJobConfig := &job.JobConfig{
+		OwningTeam:    "team6",
+		LdapGroups:    []string{"team1", "team2", "team3"},
+		InstanceCount: 5,
+		Type:          job.JobType_BATCH,
+	}
+
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
+	suite.mockedJobFactory.EXPECT().AddJob(jobID).
+		Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{State: job.JobState_RUNNING}, nil)
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	req := &job.UpdateRequest{Id: jobID, Config: newJobConfig}
+	_, err := suite.handler.Update(suite.context, req)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+	suite.Equal(yarpcerrors.ErrorMessage(err),
+		"job update is only supported for batch jobs")
+}
+
 // TestJobUpdateFailure tests failure scenarios for Job Update API
 func (suite *JobHandlerTestSuite) TestJobUpdateFailure() {
 	jobID := &peloton.JobID{

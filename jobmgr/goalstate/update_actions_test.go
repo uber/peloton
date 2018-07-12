@@ -18,6 +18,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 type UpdateActionsTestSuite struct {
@@ -74,6 +75,28 @@ func (suite *UpdateActionsTestSuite) TestUpdateReload() {
 		Do(func(updateEntity goalstate.Entity, deadline time.Time) {
 			suite.Equal(suite.updateID.GetValue(), updateEntity.GetID())
 		})
+
+	err := UpdateReload(context.Background(), suite.updateEnt)
+	suite.NoError(err)
+}
+
+func (suite *UpdateActionsTestSuite) TestUpdateReloadNotExists() {
+	suite.updateFactory.EXPECT().
+		AddUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		Recover(gomock.Any()).
+		Return(yarpcerrors.NotFoundErrorf("update not found"))
+
+	suite.updateGoalStateEngine.EXPECT().
+		Delete(gomock.Any()).
+		Do(func(updateEntity goalstate.Entity) {
+			suite.Equal(suite.updateID.GetValue(), updateEntity.GetID())
+		})
+
+	suite.updateFactory.EXPECT().
+		ClearUpdate(suite.updateID)
 
 	err := UpdateReload(context.Background(), suite.updateEnt)
 	suite.NoError(err)

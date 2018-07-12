@@ -241,6 +241,27 @@ var (
 	volumeDelete         = volume.Command("delete", "delete a volume")
 	volumeDeleteVolumeID = volumeDelete.Arg("volume", "volume identifier").Required().String()
 
+	// Top level job update command
+	update = app.Command("update", "manage job updates")
+
+	// command to create a new job update
+	updateCreate       = update.Command("create", "create a new job update")
+	updateJobID        = updateCreate.Arg("job", "job identifier").Required().String()
+	updateCreateConfig = updateCreate.Arg("config", "YAML job configuration").Required().ExistingFile()
+	updateBatchSize    = updateCreate.Arg("batch-size", "batch size for the update").Required().Uint32()
+
+	// command to fetch the status of a job update
+	updateGet   = update.Command("get", "get status of a job update")
+	updateGetID = updateGet.Arg("update-id", "update identifier").Required().String()
+
+	// command to fetch the status of job updates for a given job
+	updateList      = update.Command("list", "list status of all updates for a given job")
+	updateListJobID = updateList.Arg("job", "job identifier").Required().String()
+
+	// command to fetch the update information in the cache
+	updateCache   = update.Command("cache", "get update information in  the cache")
+	updateCacheID = updateCache.Arg("update-id", "update identifier").Required().String()
+
 	// top level command for offers
 	offers = app.Command("offers", "get outstanding offers")
 
@@ -417,6 +438,14 @@ func main() {
 		err = client.VolumeListAction(*volumeListJobName)
 	case volumeDelete.FullCommand():
 		err = client.VolumeDeleteAction(*volumeDeleteVolumeID)
+	case updateCreate.FullCommand():
+		err = client.UpdateCreateAction(*updateJobID, *updateCreateConfig, *updateBatchSize)
+	case updateGet.FullCommand():
+		err = client.UpdateGetAction(*updateGetID)
+	case updateList.FullCommand():
+		err = client.UpdateListAction(*updateListJobID)
+	case updateCache.FullCommand():
+		err = client.UpdateGetCacheAction(*updateCacheID)
 	case offersList.FullCommand():
 		err = client.OffersGetAction()
 	default:
