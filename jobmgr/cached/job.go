@@ -13,6 +13,7 @@ import (
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/taskconfig"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	stringsutil "code.uber.internal/infra/peloton/util/strings"
 
@@ -100,7 +101,7 @@ type Job interface {
 	GetLastTaskUpdateTime() float64
 }
 
-//JobConfig stores the job configurations in cache which is fetched multiple
+// JobConfig stores the job configurations in cache which is fetched multiple
 // times during normal job/task operations.
 // JobConfig makes the job interface cleaner by having the caller request
 // for the configuration first (which can fail due to Cassandra errors
@@ -124,6 +125,13 @@ type JobConfig interface {
 	GetChangeLog() *peloton.ChangeLog
 }
 
+// JobConfigCache is a union of JobConfig
+// and helper methods only available for cached config
+type JobConfigCache interface {
+	JobConfig
+	HasControllerTask() bool
+}
+
 // newJob creates a new cache job object
 func newJob(id *peloton.JobID, jobFactory *jobFactory) *job {
 	return &job{
@@ -138,11 +146,12 @@ func newJob(id *peloton.JobID, jobFactory *jobFactory) *job {
 
 // cachedConfig structure holds the config fields need to be cached
 type cachedConfig struct {
-	instanceCount uint32                  // Instance count in the job configuration
-	sla           *pbjob.SlaConfig        // SLA configuration in the job configuration
-	jobType       pbjob.JobType           // Job type (batch or service) in the job configuration
-	changeLog     *peloton.ChangeLog      // ChangeLog in the job configuration
-	respoolID     *peloton.ResourcePoolID // Resource Pool ID in the job configuration
+	instanceCount     uint32                  // Instance count in the job configuration
+	sla               *pbjob.SlaConfig        // SLA configuration in the job configuration
+	jobType           pbjob.JobType           // Job type (batch or service) in the job configuration
+	changeLog         *peloton.ChangeLog      // ChangeLog in the job configuration
+	respoolID         *peloton.ResourcePoolID // Resource Pool ID in the job configuration
+	hasControllerTask bool                    // if the job contains any task which is controller task
 }
 
 // job structure holds the information about a given active job
@@ -575,6 +584,8 @@ func (j *job) populateJobConfigCache(config *pbjob.JobConfig) {
 		j.config.respoolID = config.GetRespoolID()
 	}
 
+	j.config.hasControllerTask = hasControllerTask(config)
+
 	j.config.jobType = config.GetType()
 }
 
@@ -826,6 +837,26 @@ func (c *cachedConfig) GetSLA() *pbjob.SlaConfig {
 	}
 	tmpSLA := *c.sla
 	return &tmpSLA
+}
+
+func (c *cachedConfig) HasControllerTask() bool {
+	return c.hasControllerTask
+}
+
+// HasControllerTask returns if a job has controller task in it,
+// it can accept both cachedConfig and full JobConfig
+func HasControllerTask(config JobConfig) bool {
+	if castedCachedConfig, ok := config.(JobConfigCache); ok {
+		return castedCachedConfig.HasControllerTask()
+	}
+
+	return hasControllerTask(config.(*pbjob.JobConfig))
+}
+
+func hasControllerTask(config *pbjob.JobConfig) bool {
+	return taskconfig.Merge(
+		config.GetDefaultConfig(),
+		config.GetInstanceConfig()[0]).GetController()
 }
 
 func getIdsFromRuntimeMap(input map[uint32]*pbtask.RuntimeInfo) []uint32 {

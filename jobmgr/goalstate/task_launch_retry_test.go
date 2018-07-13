@@ -37,7 +37,7 @@ type TestTaskLaunchRetrySuite struct {
 	cachedJob           *cachedmocks.MockJob
 	cachedTask          *cachedmocks.MockTask
 	mockHostMgr         *hostmocks.MockInternalHostServiceYARPCClient
-	jobConfig           *cachedmocks.MockJobConfig
+	jobConfig           *cachedmocks.MockJobConfigCache
 	goalStateDriver     *driver
 	resmgrClient        *res_mocks.MockResourceManagerServiceYARPCClient
 	jobID               *peloton.JobID
@@ -56,7 +56,7 @@ func (suite *TestTaskLaunchRetrySuite) SetupTest() {
 	suite.cachedJob = cachedmocks.NewMockJob(suite.mockCtrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.mockCtrl)
 	suite.resmgrClient = res_mocks.NewMockResourceManagerServiceYARPCClient(suite.mockCtrl)
-	suite.jobConfig = cachedmocks.NewMockJobConfig(suite.mockCtrl)
+	suite.jobConfig = cachedmocks.NewMockJobConfigCache(suite.mockCtrl)
 	suite.mockHostMgr = hostmocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
 
 	suite.goalStateDriver = &driver{

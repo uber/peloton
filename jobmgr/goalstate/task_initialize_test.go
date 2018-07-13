@@ -31,7 +31,7 @@ func TestTaskInitialize(t *testing.T) {
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	cachedTask := cachedmocks.NewMockTask(ctrl)
-	cachedConfig := cachedmocks.NewMockJobConfig(ctrl)
+	cachedConfig := cachedmocks.NewMockJobConfigCache(ctrl)
 
 	goalStateDriver := &driver{
 		jobEngine:  jobGoalStateEngine,

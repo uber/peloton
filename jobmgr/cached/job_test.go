@@ -1031,6 +1031,41 @@ func (suite *JobTestSuite) TestJobGetConfig() {
 	suite.Nil(config.GetSLA())
 }
 
+func (suite *JobTestSuite) TestJobIsControllerTask() {
+	tests := []struct {
+		config         *pbjob.JobConfig
+		expectedResult bool
+	}{
+		{&pbjob.JobConfig{
+			DefaultConfig: &pbtask.TaskConfig{Controller: false},
+		},
+			false},
+		{&pbjob.JobConfig{
+			DefaultConfig: &pbtask.TaskConfig{Controller: true},
+		},
+			true},
+		{&pbjob.JobConfig{
+			DefaultConfig: &pbtask.TaskConfig{Controller: false},
+			InstanceConfig: map[uint32]*pbtask.TaskConfig{
+				0: {Controller: true},
+			},
+		},
+			true},
+	}
+
+	for index, test := range tests {
+		suite.job.config = nil
+
+		suite.jobStore.EXPECT().
+			GetJobConfig(gomock.Any(), suite.jobID).
+			Return(test.config, nil)
+
+		config, err := suite.job.GetConfig(context.Background())
+		suite.NoError(err)
+		suite.Equal(HasControllerTask(config), test.expectedResult, "test:%d fails", index)
+	}
+}
+
 // TestJobSetJobUpdateTime tests update the task update time coming from mesos.
 func (suite *JobTestSuite) TestJobSetJobUpdateTime() {
 	// Test setting and fetching job update time

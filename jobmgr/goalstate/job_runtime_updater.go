@@ -188,7 +188,7 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 
 // jobStateDeterminer determines job state given the current job runtime
 type jobStateDeterminer interface {
-	getState(jobRuntime *job.RuntimeInfo) job.JobState
+	getState(ctx context.Context, jobRuntime *job.RuntimeInfo) (job.JobState, error)
 }
 
 func jobStateDeterminerFactory(
@@ -198,13 +198,23 @@ func jobStateDeterminerFactory(
 	totalInstanceCount := getTotalInstanceCount(stateCounts)
 	if totalInstanceCount < config.GetInstanceCount() &&
 		cachedJob.IsPartiallyCreated(config) {
-		return &partiallyCreatedJobStateDeterminer{}
+		return newPartiallyCreatedJobStateDeterminer()
 	}
+
+	if cached.HasControllerTask(config) {
+		return newControllerTaskJobStateDeterminer(
+			cachedJob, stateCounts)
+	}
+
 	if config.GetType() == job.JobType_SERVICE {
-		return &serviceJobStateDeterminer{
-			stateCounts: stateCounts,
-		}
+		return newServiceJobStateDeterminer(stateCounts)
 	}
+	return newBatchJobStateDeterminer(stateCounts)
+}
+
+func newBatchJobStateDeterminer(
+	stateCounts map[string]uint32,
+) *batchJobStateDeterminer {
 	return &batchJobStateDeterminer{
 		stateCounts: stateCounts,
 	}
@@ -215,8 +225,9 @@ type batchJobStateDeterminer struct {
 }
 
 func (d *batchJobStateDeterminer) getState(
+	ctx context.Context,
 	jobRuntime *job.RuntimeInfo,
-) job.JobState {
+) (job.JobState, error) {
 	// use totalInstanceCount instead of config.GetInstanceCount,
 	// because totalInstanceCount can be larger than config.GetInstanceCount
 	// due to a race condition bug. Although the bug is fixed, the change is
@@ -225,24 +236,32 @@ func (d *batchJobStateDeterminer) getState(
 	// would ensure the bug would not make a job stuck.
 	totalInstanceCount := getTotalInstanceCount(d.stateCounts)
 	if d.stateCounts[task.TaskState_SUCCEEDED.String()] == totalInstanceCount {
-		return job.JobState_SUCCEEDED
+		return job.JobState_SUCCEEDED, nil
 	} else if d.stateCounts[task.TaskState_SUCCEEDED.String()]+
 		d.stateCounts[task.TaskState_FAILED.String()] == totalInstanceCount {
-		return job.JobState_FAILED
+		return job.JobState_FAILED, nil
 	} else if d.stateCounts[task.TaskState_KILLED.String()] > 0 &&
 		(d.stateCounts[task.TaskState_SUCCEEDED.String()]+
 			d.stateCounts[task.TaskState_FAILED.String()]+
 			d.stateCounts[task.TaskState_KILLED.String()] == totalInstanceCount) {
-		return job.JobState_KILLED
+		return job.JobState_KILLED, nil
 	} else if jobRuntime.State == job.JobState_KILLING {
 		// jobState is set to KILLING in JobKill to avoid materialized view delay,
 		// should keep the state to be KILLING unless job transits to terminal state
-		return job.JobState_KILLING
+		return job.JobState_KILLING, nil
 	} else if d.stateCounts[task.TaskState_RUNNING.String()] > 0 {
-		return job.JobState_RUNNING
+		return job.JobState_RUNNING, nil
 	}
-	return job.JobState_PENDING
+	return job.JobState_PENDING, nil
 
+}
+
+func newServiceJobStateDeterminer(
+	stateCounts map[string]uint32,
+) *serviceJobStateDeterminer {
+	return &serviceJobStateDeterminer{
+		stateCounts: stateCounts,
+	}
 }
 
 type serviceJobStateDeterminer struct {
@@ -250,8 +269,9 @@ type serviceJobStateDeterminer struct {
 }
 
 func (d *serviceJobStateDeterminer) getState(
+	ctx context.Context,
 	jobRuntime *job.RuntimeInfo,
-) job.JobState {
+) (job.JobState, error) {
 	// use totalInstanceCount instead of config.GetInstanceCount,
 	// because totalInstanceCount can be larger than config.GetInstanceCount
 	// due to a race condition bug. Although the bug is fixed, the change is
@@ -264,37 +284,97 @@ func (d *serviceJobStateDeterminer) getState(
 	// Therefore, service jobs should never enter SUCCEEDED/FAILED state,
 	// since they should never be terminal unless KILLED.
 	if d.stateCounts[task.TaskState_KILLED.String()] == totalInstanceCount {
-		return job.JobState_KILLED
+		return job.JobState_KILLED, nil
 	} else if jobRuntime.State == job.JobState_KILLING {
 		// jobState is set to KILLING in JobKill to avoid materialized view delay,
 		// should keep the state to be KILLING unless job transits to terminal state
-		return job.JobState_KILLING
+		return job.JobState_KILLING, nil
 	} else if d.stateCounts[task.TaskState_RUNNING.String()] > 0 {
-		return job.JobState_RUNNING
+		return job.JobState_RUNNING, nil
 	}
-	return job.JobState_PENDING
+	return job.JobState_PENDING, nil
 
+}
+
+func newPartiallyCreatedJobStateDeterminer() *partiallyCreatedJobStateDeterminer {
+	return &partiallyCreatedJobStateDeterminer{}
 }
 
 type partiallyCreatedJobStateDeterminer struct{}
 
 func (d *partiallyCreatedJobStateDeterminer) getState(
+	ctx context.Context,
 	jobRuntime *job.RuntimeInfo,
-) job.JobState {
-	return job.JobState_INITIALIZED
+) (job.JobState, error) {
+	return job.JobState_INITIALIZED, nil
+}
+
+func newControllerTaskJobStateDeterminer(
+	cachedJob cached.Job,
+	stateCounts map[string]uint32,
+) *controllerTaskJobStateDeterminer {
+	return &controllerTaskJobStateDeterminer{
+		cachedJob:       cachedJob,
+		batchDeterminer: newBatchJobStateDeterminer(stateCounts),
+	}
+}
+
+type controllerTaskJobStateDeterminer struct {
+	cachedJob       cached.Job
+	batchDeterminer *batchJobStateDeterminer
+}
+
+// If the job will be in terminal state, state of task would be determined by
+// controller task. Otherwise it would be de
+func (d *controllerTaskJobStateDeterminer) getState(
+	ctx context.Context,
+	jobRuntime *job.RuntimeInfo,
+) (job.JobState, error) {
+	jobState, err := d.batchDeterminer.getState(ctx, jobRuntime)
+	if err != nil {
+		return job.JobState_UNKNOWN, err
+	}
+	if !util.IsPelotonJobStateTerminal(jobState) {
+		return jobState, nil
+	}
+
+	// In job config validation, it makes sure controller
+	// task would be the first task
+	controllerTask := d.cachedJob.AddTask(0)
+	controllerTaskRuntime, err := controllerTask.GetRunTime(ctx)
+	if err != nil {
+		return job.JobState_UNKNOWN, err
+	}
+	switch controllerTaskRuntime.GetState() {
+	case task.TaskState_SUCCEEDED:
+		return job.JobState_SUCCEEDED, nil
+	case task.TaskState_FAILED:
+		return job.JobState_FAILED, nil
+	default:
+		// only terminal state would enter switch statement,
+		// so the state left must be KILLED
+		return job.JobState_KILLED, nil
+	}
 }
 
 // determineJobRuntimeState determines the job state based on current
 // job runtime state and task state counts.
 // This function is not expected to be called when
-// totalInstanceCount < config.GetInstanceCount
-func determineJobRuntimeState(jobRuntime *job.RuntimeInfo,
+// totalInstanceCount < config.GetInstanceCount.
+// UNKNOWN state would be returned if no enough info is presented in
+// cache. Caller should retry later after cache is filled in.
+func determineJobRuntimeState(
+	ctx context.Context,
+	jobRuntime *job.RuntimeInfo,
 	stateCounts map[string]uint32,
 	config cached.JobConfig,
 	goalStateDriver *driver,
-	cachedJob cached.Job) job.JobState {
+	cachedJob cached.Job) (job.JobState, error) {
 	jobStateDeterminer := jobStateDeterminerFactory(stateCounts, cachedJob, config)
-	jobState := jobStateDeterminer.getState(jobRuntime)
+	jobState, err := jobStateDeterminer.getState(ctx, jobRuntime)
+	if err != nil {
+		return job.JobState_UNKNOWN, err
+	}
 	switch jobState {
 	case job.JobState_SUCCEEDED:
 		goalStateDriver.mtx.jobMetrics.JobSucceeded.Inc(1)
@@ -304,7 +384,7 @@ func determineJobRuntimeState(jobRuntime *job.RuntimeInfo,
 		goalStateDriver.mtx.jobMetrics.JobKilled.Inc(1)
 
 	}
-	return jobState
+	return jobState, nil
 }
 
 // JobRuntimeUpdater updates the job runtime.
@@ -374,8 +454,14 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 
 		// case totalInstanceCount > config.GetInstanceCount is handled
 		// by determineJobRuntimeState
-		jobState = determineJobRuntimeState(jobRuntime, stateCounts,
+		jobState, err = determineJobRuntimeState(
+			ctx,
+			jobRuntime, stateCounts,
 			config, goalStateDriver, cachedJob)
+
+		if err != nil {
+			return err
+		}
 
 		if jobRuntime.GetTaskStats() != nil &&
 			reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) &&

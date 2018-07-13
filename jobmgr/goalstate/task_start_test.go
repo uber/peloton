@@ -39,7 +39,7 @@ type TaskStartTestSuite struct {
 	taskGoalStateEngine *goalstatemocks.MockEngine
 	jobFactory          *cachedmocks.MockJobFactory
 	cachedJob           *cachedmocks.MockJob
-	cachedConfig        *cachedmocks.MockJobConfig
+	cachedConfig        *cachedmocks.MockJobConfigCache
 	cachedTask          *cachedmocks.MockTask
 	mockTaskLauncher    *mocks2.MockLauncher
 	mockVolumeStore     *storemocks.MockPersistentVolumeStore
@@ -64,7 +64,7 @@ func (suite *TaskStartTestSuite) SetupTest() {
 	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
-	suite.cachedConfig = cachedmocks.NewMockJobConfig(suite.ctrl)
+	suite.cachedConfig = cachedmocks.NewMockJobConfigCache(suite.ctrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 	suite.mockTaskLauncher = mocks2.NewMockLauncher(suite.ctrl)
 	suite.mockVolumeStore = storemocks.NewMockPersistentVolumeStore(suite.ctrl)

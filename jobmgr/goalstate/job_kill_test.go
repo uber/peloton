@@ -28,7 +28,7 @@ type JobKillTestSuite struct {
 	taskGoalStateEngine *goalstatemocks.MockEngine
 	jobFactory          *cachedmocks.MockJobFactory
 	cachedJob           *cachedmocks.MockJob
-	cachedConfig        *cachedmocks.MockJobConfig
+	cachedConfig        *cachedmocks.MockJobConfigCache
 	goalStateDriver     *driver
 	jobID               *peloton.JobID
 	jobEnt              *jobEntity
@@ -45,7 +45,7 @@ func (suite *JobKillTestSuite) SetupTest() {
 	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
-	suite.cachedConfig = cachedmocks.NewMockJobConfig(suite.ctrl)
+	suite.cachedConfig = cachedmocks.NewMockJobConfigCache(suite.ctrl)
 
 	suite.goalStateDriver = &driver{
 		jobEngine:  suite.jobGoalStateEngine,

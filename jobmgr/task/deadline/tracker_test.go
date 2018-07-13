@@ -68,7 +68,7 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 
 	job := cachedmocks.NewMockJob(suite.mockCtrl)
 	task := cachedmocks.NewMockTask(suite.mockCtrl)
-	jobConfig := cachedmocks.NewMockJobConfig(suite.mockCtrl)
+	jobConfig := cachedmocks.NewMockJobConfigCache(suite.mockCtrl)
 	jobs := make(map[string]cached.Job)
 	jobs[jobID.Value] = job
 	tasks := make(map[uint32]cached.Task)

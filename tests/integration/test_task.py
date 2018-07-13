@@ -217,3 +217,15 @@ def test_controller_task_limit_executor_can_run():
     job.wait_for_state(goal_state='SUCCEEDED')
 
     kill_jobs([cjob1, cjob2])
+
+
+def test_job_succeeds_if_controller_task_succeeds():
+    # only controller task in cjob would succeed.
+    # other tasks would fail, but only controller task should determine
+    # job terminal state
+    cjob = Job(job_file='test_job_succecced_controller_task.yaml')
+
+    cjob.create()
+    cjob.wait_for_state(goal_state='SUCCEEDED')
+
+    kill_jobs([cjob])
