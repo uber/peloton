@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
+	"code.uber.internal/infra/peloton/util"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -69,7 +70,7 @@ type Tracker interface {
 // tracker is the rmtask tracker
 // map[taskid]*rmtask
 type tracker struct {
-	sync.RWMutex
+	lock sync.RWMutex
 
 	// Map of peloton task ID to the resource manager task
 	tasks map[string]*RMTask
@@ -133,8 +134,8 @@ func (tr *tracker) AddTask(
 		return err
 	}
 
-	tr.Lock()
-	defer tr.Unlock()
+	tr.lock.Lock()
+	defer tr.lock.Unlock()
 
 	tr.tasks[rmTask.task.Id.Value] = rmTask
 	if rmTask.task.Hostname != "" {
@@ -147,8 +148,8 @@ func (tr *tracker) AddTask(
 // GetTask gets the RM task for taskID
 // this locks the tracker and get the Task
 func (tr *tracker) GetTask(t *peloton.TaskID) *RMTask {
-	tr.RLock()
-	defer tr.RUnlock()
+	tr.lock.RLock()
+	defer tr.lock.RUnlock()
 	return tr.getTask(t)
 }
 
@@ -196,15 +197,15 @@ func (tr *tracker) clearPlacement(rmTask *RMTask) {
 
 // SetPlacement will set the hostname that the task is currently placed on.
 func (tr *tracker) SetPlacement(t *peloton.TaskID, hostname string) {
-	tr.Lock()
-	defer tr.Unlock()
+	tr.lock.Lock()
+	defer tr.lock.Unlock()
 	tr.setPlacement(t, hostname)
 }
 
 // SetPlacementHost will set the hostname that the task is currently placed on.
 func (tr *tracker) SetPlacementHost(placement *resmgr.Placement, hostname string) {
-	tr.Lock()
-	defer tr.Unlock()
+	tr.lock.Lock()
+	defer tr.lock.Unlock()
 	for _, t := range placement.GetTasks() {
 		tr.setPlacement(t, hostname)
 	}
@@ -213,8 +214,8 @@ func (tr *tracker) SetPlacementHost(placement *resmgr.Placement, hostname string
 // DeleteTask deletes the task from the map after
 // locking the tracker , this is interface call
 func (tr *tracker) DeleteTask(t *peloton.TaskID) {
-	tr.Lock()
-	defer tr.Unlock()
+	tr.lock.Lock()
+	defer tr.lock.Unlock()
 	tr.deleteTask(t)
 }
 
@@ -234,8 +235,8 @@ func (tr *tracker) deleteTask(t *peloton.TaskID) {
 func (tr *tracker) MarkItDone(
 	tID *peloton.TaskID,
 	mesosTaskID string) error {
-	tr.Lock()
-	defer tr.Unlock()
+	tr.lock.Lock()
+	defer tr.lock.Unlock()
 
 	t := tr.getTask(tID)
 	if t == nil {
@@ -247,8 +248,8 @@ func (tr *tracker) MarkItDone(
 // MarkItInvalid marks the task done and invalidate them
 // in to respool by that they can be removed from the queue
 func (tr *tracker) MarkItInvalid(tID *peloton.TaskID, mesosTaskID string) error {
-	tr.Lock()
-	defer tr.Unlock()
+	tr.lock.Lock()
+	defer tr.lock.Unlock()
 
 	t := tr.getTask(tID)
 	if t == nil {
@@ -346,8 +347,9 @@ func (tr *tracker) GetSize() int64 {
 
 // Clear cleans the tracker with all the existing tasks
 func (tr *tracker) Clear() {
-	tr.Lock()
-	defer tr.Unlock()
+	tr.lock.Lock()
+	defer tr.lock.Unlock()
+
 	// Cleaning the tasks
 	for k := range tr.tasks {
 		delete(tr.tasks, k)
@@ -358,47 +360,41 @@ func (tr *tracker) Clear() {
 	}
 }
 
-func (tr *tracker) isStateInRequest(state string, reqStates []string) bool {
-	for _, req := range reqStates {
-		if state == req {
-			return true
-		}
-	}
-	return false
-}
-
 // GetActiveTasks returns task to states map, if jobID or respoolID is provided,
 // only tasks for that job or respool will be returned
-func (tr *tracker) GetActiveTasks(jobID string, respoolID string, states []string) map[string][]*RMTask {
-	tr.RLock()
-	defer tr.RUnlock()
-
+func (tr *tracker) GetActiveTasks(
+	jobID string,
+	respoolID string,
+	states []string) map[string][]*RMTask {
 	taskStates := make(map[string][]*RMTask)
 
+	tr.lock.RLock()
+	defer tr.lock.RUnlock()
+
 	for _, t := range tr.tasks {
+		// filter by jobID
+		if jobID != "" && t.Task().GetJobId().GetValue() != jobID {
+			continue
+		}
+
+		// filter by resource pool ID
+		if respoolID != "" && t.Respool().ID() != respoolID {
+			continue
+		}
+
 		taskState := t.GetCurrentState().String()
-		if jobID != "" || respoolID != "" || len(states) != 0 {
-			if jobID != "" && t.Task().GetJobId().GetValue() != jobID {
-				continue
-			}
-
-			if respoolID != "" && t.Respool().ID() != respoolID {
-				continue
-			}
-
-			if len(states) > 0 && !tr.isStateInRequest(taskState, states) {
-				continue
-			}
+		// filter by task states
+		if len(states) > 0 && !util.Contains(states, taskState) {
+			continue
 		}
-		if _, ok := taskStates[taskState]; !ok {
-			taskStates[taskState] = []*RMTask{}
-		}
+
 		taskStates[taskState] = append(taskStates[taskState], t)
 	}
 	return taskStates
 }
 
-// UpdateCounters updates the counters for each state
+// UpdateCounters updates the counters for each state. This can be called from
+// multiple goroutines.
 func (tr *tracker) UpdateCounters(from task.TaskState, to task.TaskState) {
 	tr.cMutex.Lock()
 	defer tr.cMutex.Unlock()

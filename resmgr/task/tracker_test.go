@@ -14,9 +14,12 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
+	"code.uber.internal/infra/peloton/common/statemachine/mocks"
 	rc "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
+
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -438,4 +441,116 @@ func (suite *TrackerTestSuite) TestInitializeError() {
 	rmTask := suite.tracker.GetTask(t)
 	suite.NotNil(rmTask)
 	suite.tracker.Clear()
+}
+
+/*
+Tests the following scenario to check it doesn't result in a deadlock
+1. A RMTask state machine is rolling back
+   1.1 This acquires a write lock in the state machine
+2. GetActiveTask is called.
+   2.1 This acquires RLock on Tracker
+   2.2 This acquires RLock on state machine(GetCurrentState).
+3. SetPlacementHost is called which tries to acquire write lock on the
+   tracker (subsequent requests to acquire RLock on the tracker will be put in
+   a  queue).
+4. The rollback(1) continues and tries to acquire RLock on the tracker but
+   should not be blocked.
+
+This test should complete if there is no deadlock
+*/
+func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
+	testTracker := &tracker{
+		tasks:      make(map[string]*RMTask),
+		placements: map[string]map[resmgr.TaskType]map[string]*RMTask{},
+		metrics:    NewMetrics(tally.NoopScope),
+		counters:   make(map[task.TaskState]float64),
+	}
+
+	testTracker.AddTask(
+		suite.createTask(1),
+		suite.eventStreamHandler,
+		suite.respool, &Config{
+			PolicyName: ExponentialBackOffPolicy,
+		})
+
+	// channels to coordinate the deadlock behaviour
+	startSetPlacement := make(chan struct{})
+	continueGATask := make(chan struct{})
+	resumeSMRollback := make(chan struct{})
+	startSMRollBack := make(chan struct{})
+	defer func() {
+		close(startSetPlacement)
+		close(continueGATask)
+		close(resumeSMRollback)
+		close(startSMRollBack)
+	}()
+
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	// mock the GetCurrentState
+	smLock := sync.RWMutex{}
+	mSm := mocks.NewMockStateMachine(ctrl)
+	mSm.EXPECT().GetCurrentState().Do(func() {
+		defer smLock.RUnlock()
+
+		startSMRollBack <- struct{}{}
+		<-continueGATask
+		fmt.Println("acquiring statemachine read lock")
+		// see 2.2 in test comments
+		smLock.RLock()
+		fmt.Println("statemachine read lock acquired")
+	})
+
+	// set the mock state machine for the task
+	tesTask := testTracker.GetTask(&peloton.TaskID{Value: "job1-1"})
+	tesTask.stateMachine = mSm
+
+	wg := sync.WaitGroup{}
+	wg.Add(3)
+
+	// simulate state machine rollback for a task which acquires a write lock
+	// on the statemachine.
+	go func() {
+		defer wg.Done()
+		defer smLock.Unlock()
+
+		<-startSMRollBack
+		// acquire write lock on state machine (see 1.1 in test comments)
+		fmt.Println("acquiring statemachine write lock")
+		smLock.Lock()
+		fmt.Println("statemachine write lock acquired")
+
+		continueGATask <- struct{}{}
+
+		// signal to call SetPlacement
+		startSetPlacement <- struct{}{}
+	}()
+
+	// simulate calling GetActiveTasks which acquires a read lock on the
+	// tracker and a read lock on the statemachine.
+	go func() {
+		defer wg.Done()
+
+		// call GetActiveTasks which acquires RLock on tracker(see #2.1
+		// in test comments)
+		fmt.Println("calling GetActiveTasks")
+		testTracker.GetActiveTasks("", "", []string{})
+		fmt.Println("GetActiveTasks returned")
+	}()
+
+	// simulate calling SetPlacement which acquires a write lock on the tracker.
+	go func() {
+		defer wg.Done()
+
+		<-startSetPlacement
+		fmt.Println("calling SetPlacement")
+		// call SetPlacement which acquires Lock on tracker(see #3
+		// in test comments)
+		testTracker.SetPlacement(&peloton.TaskID{Value: "job1-1"}, "hostname")
+		fmt.Println("SetPlacement returned")
+	}()
+
+	// a deadlock would cause this to wait indefinitely
+	wg.Wait()
 }

@@ -877,7 +877,8 @@ func (h *ServiceHandler) acknowledgeEvent(offset uint64) {
 	}
 }
 
-func (h *ServiceHandler) fillTaskEntry(task *rmtask.RMTask) *resmgrsvc.GetActiveTasksResponse_TaskEntry {
+func (h *ServiceHandler) fillTaskEntry(task *rmtask.RMTask,
+) *resmgrsvc.GetActiveTasksResponse_TaskEntry {
 	taskEntry := &resmgrsvc.GetActiveTasksResponse_TaskEntry{
 		TaskID:         task.Task().GetId().GetValue(),
 		TaskState:      task.GetCurrentState().String(),
@@ -887,15 +888,20 @@ func (h *ServiceHandler) fillTaskEntry(task *rmtask.RMTask) *resmgrsvc.GetActive
 	return taskEntry
 }
 
-// GetActiveTasks returns state to task entry map.
-// The map can be filtered based on job id, respool id and task states.
+// GetActiveTasks returns the active tasks in the scheduler based on the filters
+// The filters can be particular task states, job ID or resource pool ID.
 func (h *ServiceHandler) GetActiveTasks(
 	ctx context.Context,
 	req *resmgrsvc.GetActiveTasksRequest,
 ) (*resmgrsvc.GetActiveTasksResponse, error) {
 	var taskStates = map[string]*resmgrsvc.GetActiveTasksResponse_TaskEntries{}
+	log.WithField("req", req).Info("GetActiveTasks called")
 
-	taskStateMap := h.rmTracker.GetActiveTasks(req.GetJobID(), req.GetRespoolID(), req.GetStates())
+	taskStateMap := h.rmTracker.GetActiveTasks(
+		req.GetJobID(),
+		req.GetRespoolID(),
+		req.GetStates(),
+	)
 	for state, tasks := range taskStateMap {
 		for _, task := range tasks {
 			taskEntry := h.fillTaskEntry(task)
@@ -903,11 +909,17 @@ func (h *ServiceHandler) GetActiveTasks(
 				var taskList resmgrsvc.GetActiveTasksResponse_TaskEntries
 				taskStates[state] = &taskList
 			}
-			taskStates[state].TaskEntry = append(taskStates[state].GetTaskEntry(), taskEntry)
+			taskStates[state].TaskEntry = append(
+				taskStates[state].GetTaskEntry(),
+				taskEntry,
+			)
 		}
 	}
 
-	return &resmgrsvc.GetActiveTasksResponse{TasksByState: taskStates}, nil
+	log.Info("GetActiveTasks returned")
+	return &resmgrsvc.GetActiveTasksResponse{
+		TasksByState: taskStates,
+	}, nil
 }
 
 // GetPendingTasks returns the pending tasks from a resource pool in the

@@ -40,8 +40,7 @@ instanceconfig:
       shell: true
       value: 'echo Hello instance 0 && sleep 100'
   1:
-    name: controller1
-    controller: true
+    name: instance1
     command:
       shell: true
       value: 'echo Hello instance 0 && sleep 15'

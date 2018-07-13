@@ -560,3 +560,32 @@ func (s *RMTaskTestSuite) TestAddBackOffError() {
 	err = rmTask.AddBackoff()
 	s.EqualError(err, "could not add backoff to task job1-1")
 }
+
+func (s *RMTaskTestSuite) TestRMTaskCallBackNilChecks() {
+	var rmTask *RMTask
+	tt := []struct {
+		f   statemachine.Callback
+		err error
+	}{
+		{
+			rmTask.transitionCallBack,
+			errTaskIsNotPresent,
+		},
+		{
+			rmTask.timeoutCallbackFromPlacing,
+			errTaskIsNotPresent,
+		},
+		{
+			rmTask.timeoutCallbackFromLaunching,
+			errTaskIsNotPresent,
+		},
+		{
+			rmTask.preTimeoutCallback,
+			errTaskIsNotPresent,
+		},
+	}
+
+	for _, t := range tt {
+		s.Error(t.f(nil), t.err.Error())
+	}
+}
