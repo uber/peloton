@@ -76,7 +76,7 @@ func (suite *TestActiveRMTasks) TestGetActiveTasks() {
 func (suite *TestActiveRMTasks) TestUpdateActiveTasks() {
 
 	taskEntries := []*resmgrsvc.GetActiveTasksResponse_TaskEntry{
-		&resmgrsvc.GetActiveTasksResponse_TaskEntry{
+		{
 			TaskID: "TASK_RESMGR",
 			Reason: "REASON_RESMGR",
 		},

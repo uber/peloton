@@ -446,6 +446,141 @@ func (suite *JobHandlerTestSuite) TestCreateJob_RootRespoolFail() {
 	suite.Equal(expectedErr, resp.GetError())
 }
 
+// Test create job with one controller task as task 0
+func (suite *JobHandlerTestSuite) TestCreateJob_ControllerTaskSucceed() {
+	// setup job config
+	testCmd := "echo test"
+	// set controller task by defaultConfig
+	defaultConfig := &task.TaskConfig{
+		Command:    &mesos.CommandInfo{Value: &testCmd},
+		Controller: true,
+	}
+	jobConfig := &job.JobConfig{
+		DefaultConfig: defaultConfig,
+		RespoolID:     suite.testRespoolID,
+	}
+
+	suite.setupMocks(suite.testJobID, suite.testRespoolID)
+	// setup specific mocks throughout the test
+	suite.mockedCachedJob.EXPECT().Create(gomock.Any(), jobConfig, "peloton").
+		Return(nil)
+
+	req := &job.CreateRequest{
+		Id:     suite.testJobID,
+		Config: jobConfig,
+	}
+	// Job Create API for this request should pass
+	resp, err := suite.handler.Create(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(suite.testJobID, resp.GetJobId())
+
+	// set controller task by instance config
+	defaultConfig = &task.TaskConfig{
+		Command: &mesos.CommandInfo{Value: &testCmd},
+	}
+	jobConfig = &job.JobConfig{
+		DefaultConfig: defaultConfig,
+		InstanceCount: 3,
+		RespoolID:     suite.testRespoolID,
+		InstanceConfig: map[uint32]*task.TaskConfig{
+			0: {
+				Controller: true,
+			},
+		},
+	}
+
+	suite.setupMocks(suite.testJobID, suite.testRespoolID)
+	// setup specific mocks throughout the test
+	suite.mockedCachedJob.EXPECT().Create(gomock.Any(), jobConfig, "peloton").
+		Return(nil)
+
+	req = &job.CreateRequest{
+		Id:     suite.testJobID,
+		Config: jobConfig,
+	}
+	// Job Create API for this request should pass
+	resp, err = suite.handler.Create(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(suite.testJobID, resp.GetJobId())
+}
+
+// Test create job with more than one controller task
+func (suite *JobHandlerTestSuite) TestCreateJob_MoreThanOneControllerTask() {
+	// setup job config
+	testCmd := "echo test"
+	// set multiple controller task by defaultConfig
+	defaultConfig := &task.TaskConfig{
+		Command:    &mesos.CommandInfo{Value: &testCmd},
+		Controller: true,
+	}
+	jobConfig := &job.JobConfig{
+		DefaultConfig: defaultConfig,
+		RespoolID:     suite.testRespoolID,
+		InstanceCount: 3,
+	}
+
+	suite.setupMocks(suite.testJobID, suite.testRespoolID)
+
+	req := &job.CreateRequest{
+		Id:     suite.testJobID,
+		Config: jobConfig,
+	}
+	// Job Create API for this request should fail
+	resp, err := suite.handler.Create(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr := &job.CreateResponse_Error{
+		InvalidConfig: &job.InvalidJobConfig{
+			Id:      req.Id,
+			Message: "only task 0 can be controller task",
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+}
+
+// Test create job with controller task not as task 0
+func (suite *JobHandlerTestSuite) TestCreateJob_ControllerTaskAtNonZeroPosition() {
+	// setup job config
+	testCmd := "echo test"
+	// set multiple controller task by defaultConfig
+	defaultConfig := &task.TaskConfig{
+		Command: &mesos.CommandInfo{Value: &testCmd},
+	}
+	jobConfig := &job.JobConfig{
+		DefaultConfig: defaultConfig,
+		RespoolID:     suite.testRespoolID,
+		InstanceCount: 3,
+		InstanceConfig: map[uint32]*task.TaskConfig{
+			0: {
+				Controller: false,
+			},
+			1: {
+				Controller: true,
+			},
+		},
+	}
+
+	suite.setupMocks(suite.testJobID, suite.testRespoolID)
+
+	req := &job.CreateRequest{
+		Id:     suite.testJobID,
+		Config: jobConfig,
+	}
+	// Job Create API for this request should fail
+	resp, err := suite.handler.Create(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr := &job.CreateResponse_Error{
+		InvalidConfig: &job.InvalidJobConfig{
+			Id:      req.Id,
+			Message: "only task 0 can be controller task",
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+}
+
 // Test Job Create/Update/Refresh going to non-leader
 func (suite *JobHandlerTestSuite) TestNonLeader() {
 	// setup the non-leader case

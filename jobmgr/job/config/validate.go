@@ -7,6 +7,9 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+
+	"code.uber.internal/infra/peloton/common/taskconfig"
+
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -120,22 +123,21 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 	// to prevent such large partitions. After changing the data model we can tweak
 	// this limit from the job service config or decide to remove the limit altogether.
 	if jobConfig.InstanceCount > maxTasksPerJob {
-		err := fmt.Errorf("Requested tasks: %v for job is greater than supported: %v tasks/job",
+		err := fmt.Errorf(
+			"Requested tasks: %v for job is greater than supported: %v tasks/job",
 			jobConfig.InstanceCount, maxTasksPerJob)
 		return err
 	}
 
 	for i := from; i < to; i++ {
-		taskConfig := jobConfig.GetInstanceConfig()[i]
-		if taskConfig == nil && defaultConfig == nil {
+		taskConfig := taskconfig.Merge(
+			defaultConfig, jobConfig.GetInstanceConfig()[i])
+		if taskConfig == nil {
 			err := fmt.Errorf("missing task config for instance %v", i)
 			return err
 		}
 
-		restartPolicy := defaultConfig.GetRestartPolicy()
-		if taskConfig.GetRestartPolicy() != nil {
-			restartPolicy = taskConfig.GetRestartPolicy()
-		}
+		restartPolicy := taskConfig.GetRestartPolicy()
 		if restartPolicy.GetMaxFailures() > _maxTaskRetries {
 			restartPolicy.MaxFailures = _maxTaskRetries
 		}
@@ -146,12 +148,13 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 		}
 
 		// Validate command info
-		cmd := defaultConfig.GetCommand()
-		if taskConfig.GetCommand() != nil {
-			cmd = taskConfig.GetCommand()
-		}
-		if cmd == nil {
+		if taskConfig.GetCommand() == nil {
 			err := fmt.Errorf("missing command info for instance %v", i)
+			return err
+		}
+
+		if taskConfig.GetController() && i != 0 {
+			err := fmt.Errorf("only task 0 can be controller task")
 			return err
 		}
 	}
