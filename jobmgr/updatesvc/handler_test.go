@@ -35,7 +35,7 @@ type UpdateSvcTestSuite struct {
 	goalStateDriver *goalstatemocks.MockDriver
 	h               *serviceHandler
 
-	cachedJobConfig *cachedmocks.MockJobConfig
+	cachedJobConfig *cachedmocks.MockJobConfigCache
 	cachedJob       *cachedmocks.MockJob
 	cachedUpdate    *cachedmocks.MockUpdate
 
@@ -63,7 +63,7 @@ func (suite *UpdateSvcTestSuite) SetupTest() {
 	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
 	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
 
-	suite.cachedJobConfig = cachedmocks.NewMockJobConfig(suite.ctrl)
+	suite.cachedJobConfig = cachedmocks.NewMockJobConfigCache(suite.ctrl)
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.cachedUpdate = cachedmocks.NewMockUpdate(suite.ctrl)
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
@@ -846,9 +846,9 @@ func (suite *UpdateSvcTestSuite) TestListGetUpdateFail() {
 	}
 
 	updates := []*peloton.UpdateID{
-		&peloton.UpdateID{Value: uuid.NewRandom().String()},
-		&peloton.UpdateID{Value: uuid.NewRandom().String()},
-		&peloton.UpdateID{Value: uuid.NewRandom().String()},
+		{Value: uuid.NewRandom().String()},
+		{Value: uuid.NewRandom().String()},
+		{Value: uuid.NewRandom().String()},
 	}
 
 	suite.updateStore.EXPECT().
@@ -881,9 +881,9 @@ func (suite *UpdateSvcTestSuite) TestList() {
 	}
 
 	updates := []*peloton.UpdateID{
-		&peloton.UpdateID{Value: uuid.NewRandom().String()},
-		&peloton.UpdateID{Value: uuid.NewRandom().String()},
-		&peloton.UpdateID{Value: uuid.NewRandom().String()},
+		{Value: uuid.NewRandom().String()},
+		{Value: uuid.NewRandom().String()},
+		{Value: uuid.NewRandom().String()},
 	}
 
 	suite.updateStore.EXPECT().
