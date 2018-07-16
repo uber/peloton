@@ -3,6 +3,80 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.2
+------------------
+* 2018-07-16    Change MockJobConfig to MockJobConfigCache                                             zhixin@uber.com
+* 2018-07-13    Add update service handler and CLI to interact with it                                 apoorvaj@uber.com
+* 2018-07-13    Controller job decides terminal state with controller task state                       zhixin@uber.com
+* 2018-07-13    Validate controller task config                                                        zhixin@uber.com
+* 2018-07-12    Disable the periodic GetActiveTask call from JobMgr to ResMgr                          chunyang.shen@uber.com
+* 2018-07-12    Move retain base secrets code into task config Merge                                   adityacb@uber.com
+* 2018-07-11    Script to send a report Email after performance test                                   chunyang.shen@uber.com
+* 2018-07-11    Add cache and goal state engine for job updates                                        apoorvaj@uber.com
+* 2018-07-11    Adding Reserver in HostManager which can reserve the hosts for specified tasks         mabansal@uber.com
+* 2018-07-11    Fix flaky TestPeriodicCalculationWhenStarted                                           avyas@uber.com
+* 2018-07-11    Remove Invalid StartTime log                                                           chunyang.shen@uber.com
+* 2018-07-11    Quick fix of cache deadlock                                                            zhixin@uber.com
+* 2018-07-11    Move secrets related stuff used in common from jobmanager to util                      apoorvaj@uber.com
+* 2018-07-10    Enable GetActiveTasks() in job manager through a in-memory DB                          chunyang.shen@uber.com
+* 2018-07-10    Increase test coverage for rmtask                                                      avyas@uber.com
+* 2018-07-09    Service job cannot be in FAILED/SUCCEED state                                          zhixin@uber.com
+* 2018-07-09    Changelog for 0.7.1.3                                                                  adityacb@uber.com
+* 2018-07-09    Instance config should retain secrets from defaultconfig                               adityacb@uber.com
+* 2018-07-06    Share integration test cases between stateless and batch job                           zhixin@uber.com
+* 2018-07-05    [API] Add resourceUsage map to RuntimeInfo proto                                       adityacb@uber.com
+* 2018-07-05    Goal state engine handles job update                                                   zhixin@uber.com
+* 2018-07-05    JobMgr Read API stops refilling cache                                                  zhixin@uber.com
+* 2018-07-05    Add DB read and write operations for job updates                                       apoorvaj@uber.com
+* 2018-07-05    Remove unused cached.UnknownVersion                                                    apoorvaj@uber.com
+* 2018-07-05    Add support for upgrading a task in the task goal state engine                         apoorvaj@uber.com
+* 2018-07-05    Clean up jobmgr code                                                                   zhixin@uber.com
+* 2018-07-03    Replace UpdateTasks with PatchTasks                                                    zhixin@uber.com
+* 2018-07-03    Add task actions for stateless jobs                                                    zhixin@uber.com
+* 2018-07-03    Add changelog for 0.7.1.2 release                                                      adityacb@uber.com
+* 2018-07-02    Don't enforce instance config to use mesos containerizer for secrets                   adityacb@uber.com
+* 2018-07-02    Stateless jobs do not call taskStore.GetTaskEvents                                     zhixin@uber.com
+* 2018-07-02    Set goalstate to PREEMPTING for tasks to be preempted                                  zhixin@uber.com
+* 2018-06-28    Fix peloton-client library in vcluster                                                 chunyang.shen@uber.com
+* 2018-06-28    [API] Fix APIs for supporting job updates                                              apoorvaj@uber.com
+* 2018-06-28    Define RuntimeDiff to replace map[string]interface{} in runtime update                 zhixin@uber.com
+* 2018-06-28    Add set API for pod events.                                                            varung@uber.com
+* 2018-06-28    Handle job runtime update when more instances running than expected                    zhixin@uber.com
+* 2018-06-28    Remove GetJobConfig from GetTasksByQuerySpec                                           chunyang.shen@uber.com
+* 2018-06-28    Base64 decode data before launching task                                               adityacb@uber.com
+* 2018-06-27    Add incremental run id                                                                 varung@uber.com
+* 2018-06-27    Clean job upon create failure only if job does not exist before                        zhixin@uber.com
+* 2018-06-27    Add stateless PE to deploy script                                                      zhixin@uber.com
+* 2018-06-26    Adding Test Cases for Tree as well remove duplicate code                               mabansal@uber.com
+* 2018-06-25    Use PatchTasks in place of UpdateTasks for simple cases                                zhixin@uber.com
+* 2018-06-25    Add stateless PE to pcluster                                                           zhixin@uber.com
+* 2018-06-25    set TaskType to STATELESS for stateless service                                        zhixin@uber.com
+* 2018-06-25    Revert "Add stateless PE to pcluster"                                                  zhixin@uber.com
+* 2018-06-25    Add stateless PE to pcluster                                                           zhixin@uber.com
+* 2018-06-25    Refactoring respool handler , add more tests as well as remove duplicate code          mabansal@uber.com
+* 2018-06-25    Add task.RuntimeInfo as blob, and update runID as bigint datatype                      varung@uber.com
+* 2018-06-25    use SLA instead of Sla                                                                 zhixin@uber.com
+* 2018-06-21    Fix TaskList crash when job is not in the cache                                        chunyang.shen@uber.com
+* 2018-06-21    Ignore scarce_resource_tpyes if empty                                                  varung@uber.com
+* 2018-06-21    Adding Interface for MultiLevel List as well add tests in queue package                mabansal@uber.com
+* 2018-06-21    Adding tests for scalar package as well as remove duplicate code from tests            mabansal@uber.com
+* 2018-06-21    set env variable ENABLE_SECRETS by reading from cluster config                         adityacb@uber.com
+* 2018-06-21    Use ReplaceTasks in place of UpdateTasks with UpdateCacheOnly                          zhixin@uber.com
+* 2018-06-21    Implement PatchTasks and ReplaceTasks                                                  zhixin@uber.com
+* 2018-06-21    Implement PatchRuntime and ReplaceRuntime                                              zhixin@uber.com
+* 2018-06-21    Fix integ and perf tests to use 0.7.1 py client                                        adityacb@uber.com
+* 2018-06-20    Add changelog for 0.7.1.1                                                              rcharles@uber.com
+* 2018-06-20    Remove duplication from test code as well as separating test case.                     mabansal@uber.com
+* 2018-06-18    Change datatype from timestamp to timeuuid                                             varung@uber.com
+* 2018-06-18    Add scarce_resource_types to prevent CPU only task to launch on GPU machines           varung@uber.com
+* 2018-06-18    Set Mesos Task Labels for JobID, InstanceID, TaskID                                    rcharles@uber.com
+* 2018-06-18    Changing resource manager api from MarkTasksLaunched to UpdateTasksState for updating any state into Resourcemanager mabansal@uber.com
+* 2018-06-16    Improve unit test coverage for jobsvc                                                  adityacb@uber.com
+* 2018-06-15    Add task events table                                                                  varung@uber.com
+* 2018-06-15    Add unit tests for async processor                                                     zhixin@uber.com
+* 2018-06-14    Reject offers if Unavailability set after maintainence start time                      varung@uber.com
+* 2018-06-14    Restrict Max Retries on Task Failures.                                                 varung@uber.com
+
 0.7.1.3
 ------------------
 * 2018-07-09    Instance config should retain secrets from defaultconfig                               adityacb@uber.com
