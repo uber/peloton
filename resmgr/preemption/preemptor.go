@@ -13,6 +13,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/common/statemachine"
+	"code.uber.internal/infra/peloton/common/stringset"
 	"code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
@@ -42,7 +43,7 @@ type Preemptor interface {
 }
 
 type preemptor struct {
-	lock                         sync.Mutex
+	sync.Mutex
 	enabled                      bool
 	runningState                 int32
 	resTree                      respool.Tree
@@ -53,6 +54,7 @@ type preemptor struct {
 	ranker                       ranker
 	tracker                      task.Tracker
 	preemptionQueue              queue.Queue
+	taskSet                      stringset.StringSet // Set containing tasks which are currently in the PreemptionQueue
 	scope                        tally.Scope
 	m                            map[string]*Metrics
 }
@@ -76,6 +78,7 @@ func InitPreemptor(
 				reflect.TypeOf(resmgr.PreemptionCandidate{}),
 				maxPreemptionQueueSize,
 			),
+			taskSet:      stringset.New(),
 			respoolState: make(map[string]int),
 			ranker:       newStatePriorityRuntimeRanker(tracker),
 			tracker:      tracker,
@@ -107,8 +110,8 @@ func (p *preemptor) metrics(pool respool.ResPool) *Metrics {
 
 // Start starts Task Preemptor process
 func (p *preemptor) Start() error {
-	defer p.lock.Unlock()
-	p.lock.Lock()
+	defer p.Unlock()
+	p.Lock()
 
 	if !p.enabled {
 		log.Infof("Task preemptor is not enabled to run")
@@ -143,8 +146,8 @@ func (p *preemptor) Start() error {
 
 // Stop stops Task Preemptor process
 func (p *preemptor) Stop() error {
-	defer p.lock.Unlock()
-	p.lock.Lock()
+	defer p.Unlock()
+	p.Lock()
 
 	if p.runningState == common.RunningStateNotStarted {
 		log.Warn("Task preemptor is already stopped, no action will be performed")
@@ -180,6 +183,8 @@ func (p *preemptor) DequeueTask(maxWaitTime time.Duration) (
 		return nil, err
 	}
 	taskID := item.(*resmgr.PreemptionCandidate)
+	// Remove task from taskSet
+	p.taskSet.Remove(taskID.GetId().GetValue())
 	return taskID, nil
 }
 
@@ -247,6 +252,15 @@ func (p *preemptor) processResourcePool(respoolID string) error {
 	for _, t := range tasks {
 		switch t.GetCurrentState() {
 		case peloton_task.TaskState_RUNNING:
+			// Do not add to preemption queue if it already has an entry for this Peloton task
+			if p.taskSet.Contains(t.Task().GetId().GetValue()) {
+				log.
+					WithField("task_id", t.Task().Id.Value).
+					WithField("respool_id", respoolID).
+					Debug("Skipping enqueue. Task already present in preemption queue.")
+				continue
+			}
+			// Add to preemption queue
 			log.
 				WithField("task_id", t.Task().Id.Value).
 				WithField("respool_id", respoolID).
@@ -265,6 +279,8 @@ func (p *preemptor) processResourcePool(respoolID string) error {
 				p.metrics(resourcePool).TasksFailedPreemption.Inc(int64(1))
 				continue
 			}
+			// Add task to taskSet
+			p.taskSet.Add(preemptionCandidate.GetId().GetValue())
 			p.metrics(resourcePool).RunningTasksPreempted.Inc(int64(1))
 		default:
 			// For all non running tasks

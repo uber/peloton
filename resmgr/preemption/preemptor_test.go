@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/common/queue"
+	"code.uber.internal/infra/peloton/common/stringset"
 	res_common "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/respool/mocks"
@@ -71,6 +72,7 @@ func (suite *PreemptorTestSuite) SetupSuite() {
 			reflect.TypeOf(resmgr.PreemptionCandidate{}),
 			10000,
 		),
+		taskSet:      stringset.New(),
 		respoolState: make(map[string]int),
 		ranker:       newStatePriorityRuntimeRanker(rm_task.GetTracker()),
 		tracker:      rm_task.GetTracker(),
@@ -433,6 +435,103 @@ func (suite *PreemptorTestSuite) TestPreemptor_Init() {
 		SustainedOverAllocationCount: 100,
 	}, suite.tracker)
 	suite.NotNil(GetPreemptor())
+}
+
+func (suite *PreemptorTestSuite) TestPreemptionQueue_DuplicateTasks() {
+	mockResTree := mocks.NewMockTree(suite.mockCtrl)
+	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
+
+	// Mocks
+	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
+	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
+	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
+		CPU:    20,
+		MEMORY: 200,
+		DISK:   2000,
+		GPU:    1,
+	}).AnyTimes()
+	allocation := &scalar.Resources{
+		CPU:    25,
+		MEMORY: 500,
+		DISK:   2450,
+		GPU:    1,
+	}
+	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation).AnyTimes()
+	mockResPool.EXPECT().GetPath().Return("/respool-1")
+
+	numRunningTasks := 1
+	tasks := suite.createTasks(numRunningTasks, mockResPool)
+	for _, t := range tasks {
+		suite.transitToRunning(t.Id)
+	}
+
+	suite.preemptor.resTree = mockResTree
+	suite.preemptor.ranker = suite.getMockRanker(tasks)
+
+	// Check allocation > entitlement before
+	suite.False(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
+
+	err := suite.preemptor.processResourcePool("respool-1")
+	suite.NoError(err)
+
+	//there should be 'numRunningTasks' in the preemption queue
+	suite.Equal(numRunningTasks, suite.preemptor.preemptionQueue.Length())
+
+	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
+	mockResPool.EXPECT().GetPath().Return("/respool-1")
+	err = suite.preemptor.processResourcePool("respool-1")
+	suite.NoError(err)
+
+	//there should still be 'numRunningTasks' in the preemption queue
+	suite.Equal(numRunningTasks, suite.preemptor.preemptionQueue.Length())
+}
+
+func (suite *PreemptorTestSuite) TestPreemptor_DequeueTask() {
+	mockResTree := mocks.NewMockTree(suite.mockCtrl)
+	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
+
+	// Mocks
+	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
+	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
+	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
+		CPU:    20,
+		MEMORY: 200,
+		DISK:   2000,
+		GPU:    1,
+	}).AnyTimes()
+	allocation := &scalar.Resources{
+		CPU:    25,
+		MEMORY: 500,
+		DISK:   2450,
+		GPU:    1,
+	}
+	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation).AnyTimes()
+	mockResPool.EXPECT().GetPath().Return("/respool-1")
+
+	numRunningTasks := 1
+	tasks := suite.createTasks(numRunningTasks, mockResPool)
+	for _, t := range tasks {
+		suite.transitToRunning(t.Id)
+	}
+
+	suite.preemptor.resTree = mockResTree
+	suite.preemptor.ranker = suite.getMockRanker(tasks)
+
+	// Check allocation > entitlement before
+	suite.False(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
+
+	err := suite.preemptor.processResourcePool("respool-1")
+	suite.NoError(err)
+
+	//there should be 'numRunningTasks' in the preemption queue
+	suite.Equal(numRunningTasks, suite.preemptor.preemptionQueue.Length())
+
+	_, err = suite.preemptor.DequeueTask(1 * time.Second)
+	suite.NoError(err)
+
+	// Time-out error
+	_, err = suite.preemptor.DequeueTask(1 * time.Second)
+	suite.Error(err)
 }
 
 func TestPreemptor(t *testing.T) {
