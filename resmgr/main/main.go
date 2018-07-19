@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/resmgr"
 	"code.uber.internal/infra/peloton/resmgr/entitlement"
+	maintenance "code.uber.internal/infra/peloton/resmgr/host"
 	"code.uber.internal/infra/peloton/resmgr/preemption"
 	respoolsvc "code.uber.internal/infra/peloton/resmgr/respool/respoolsvc"
 	"code.uber.internal/infra/peloton/resmgr/task"
@@ -234,6 +235,11 @@ func main() {
 		},
 	})
 
+	hostmgrClient := hostsvc.NewInternalHostServiceYARPCClient(
+		dispatcher.ClientConfig(
+			common.PelotonHostManager),
+	)
+
 	// Initialize resource pool service handlers
 	respoolsvc.InitServiceHandler(
 		dispatcher,
@@ -245,7 +251,7 @@ func main() {
 	)
 
 	// Initializing the resmgr state machine
-	task.InitTaskTracker(rootScope, cfg.ResManager.RmTaskConfig)
+	task.InitTaskTracker(rootScope, cfg.ResManager.RmTaskConfig, hostmgrClient)
 
 	// Initializing the task scheduler
 	task.InitScheduler(rootScope, cfg.ResManager.TaskSchedulingPeriod,
@@ -256,9 +262,7 @@ func main() {
 		dispatcher,
 		cfg.ResManager.EntitlementCaculationPeriod,
 		rootScope,
-		hostsvc.NewInternalHostServiceYARPCClient(
-			dispatcher.ClientConfig(
-				common.PelotonHostManager)),
+		hostmgrClient,
 	)
 
 	// Initializing the task reconciler
@@ -271,6 +275,13 @@ func main() {
 
 	// Initializing the task preemptor
 	preemption.InitPreemptor(rootScope, cfg.ResManager.PreemptionConfig, task.GetTracker())
+
+	//Initiailizing the host drainer
+	drainer := maintenance.NewDrainer(rootScope,
+		hostmgrClient,
+		cfg.ResManager.HostDrainerPeriod,
+		task.GetTracker(),
+		preemption.GetPreemptor())
 
 	// Initialize resource manager service handlers
 	serviceHandler := resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker(), preemption.GetPreemptor(), cfg.ResManager)
@@ -288,6 +299,7 @@ func main() {
 		rootScope,
 		cfg.ResManager.HTTPPort,
 		cfg.ResManager.GRPCPort,
+		drainer,
 	)
 
 	candidate, err := leader.NewCandidate(

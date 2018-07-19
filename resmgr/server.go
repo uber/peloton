@@ -6,8 +6,9 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/resmgr/entitlement"
+	"code.uber.internal/infra/peloton/resmgr/host"
 	"code.uber.internal/infra/peloton/resmgr/preemption"
-	respoolsvc "code.uber.internal/infra/peloton/resmgr/respool/respoolsvc"
+	"code.uber.internal/infra/peloton/resmgr/respool/respoolsvc"
 	"code.uber.internal/infra/peloton/resmgr/task"
 
 	log "github.com/sirupsen/logrus"
@@ -26,10 +27,11 @@ type Server struct {
 	getRecoveryHandler       func() RecoveryHandler
 	getReconciler            func() task.Reconciler
 	getPreemptor             func() preemption.Preemptor
+	drainer                  *host.Drainer
 }
 
 // NewServer will create the elect handle object
-func NewServer(parent tally.Scope, httpPort, grpcPort int) *Server {
+func NewServer(parent tally.Scope, httpPort, grpcPort int, drainer *host.Drainer) *Server {
 	server := Server{
 		ID:                       leader.NewID(httpPort, grpcPort),
 		role:                     common.ResourceManagerRole,
@@ -39,6 +41,7 @@ func NewServer(parent tally.Scope, httpPort, grpcPort int) *Server {
 		getRecoveryHandler:       GetRecoveryHandler,
 		getReconciler:            task.GetReconciler,
 		getPreemptor:             preemption.GetPreemptor,
+		drainer:                  drainer,
 		metrics:                  NewMetrics(parent),
 	}
 	return &server
@@ -91,6 +94,12 @@ func (s *Server) GainedLeadershipCallback() error {
 		return err
 	}
 
+	err = s.drainer.Start()
+	if err != nil {
+		log.Errorf("Failed to start host drainer")
+		return err
+	}
+
 	return nil
 }
 
@@ -137,6 +146,12 @@ func (s *Server) LostLeadershipCallback() error {
 	err = s.getPreemptor().Stop()
 	if err != nil {
 		log.Errorf("Failed to stop task preemptor")
+		return err
+	}
+
+	err = s.drainer.Stop()
+	if err != nil {
+		log.Errorf("Failed to stop host drainer")
 		return err
 	}
 

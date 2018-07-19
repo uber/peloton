@@ -29,4 +29,7 @@ type Config struct {
 
 	// Config for task preemption
 	PreemptionConfig *common.PreemptionConfig `yaml:"preemption"`
+
+	// Period to run host drainer
+	HostDrainerPeriod time.Duration `yaml:"host_drainer_period"`
 }

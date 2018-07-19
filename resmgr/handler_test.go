@@ -12,6 +12,7 @@ import (
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -48,6 +49,7 @@ type HandlerTestSuite struct {
 	ctrl          *gomock.Controller
 	rmTaskTracker rm_task.Tracker
 	cfg           rc.PreemptionConfig
+	hostMgrClient *host_mocks.MockInternalHostServiceYARPCClient
 }
 
 func (s *HandlerTestSuite) SetupSuite() {
@@ -66,8 +68,11 @@ func (s *HandlerTestSuite) SetupSuite() {
 		mockTaskStore, s.cfg)
 
 	s.resTree = respool.GetTree()
+
+	s.hostMgrClient = host_mocks.NewMockInternalHostServiceYARPCClient(s.ctrl)
 	// Initializing the resmgr state machine
-	rm_task.InitTaskTracker(tally.NoopScope, tasktestutil.CreateTaskConfig())
+	rm_task.InitTaskTracker(tally.NoopScope, tasktestutil.CreateTaskConfig(), s.hostMgrClient)
+
 	s.rmTaskTracker = rm_task.GetTracker()
 	rm_task.InitScheduler(tally.NoopScope, 1*time.Second, s.rmTaskTracker)
 	s.taskScheduler = rm_task.GetScheduler()
@@ -1045,14 +1050,13 @@ func (s *HandlerTestSuite) createUpdateTasksStateRequest(
 
 func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 	var c uint64
-	rm_task.InitTaskTracker(tally.NoopScope, tasktestutil.CreateTaskConfig())
+	rm_task.InitTaskTracker(tally.NoopScope, tasktestutil.CreateTaskConfig(), s.hostMgrClient)
 	handler := &ServiceHandler{
 		metrics:   NewMetrics(tally.NoopScope),
 		maxOffset: &c,
 		rmTracker: rm_task.GetTracker(),
 	}
 	jobID := "test"
-	rm_task.InitTaskTracker(tally.NoopScope, tasktestutil.CreateTaskConfig())
 	uuidStr := uuid.NewUUID().String()
 	var events []*pb_eventstream.Event
 	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil,

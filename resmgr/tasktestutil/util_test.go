@@ -8,12 +8,15 @@ import (
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -53,7 +56,9 @@ func (suite *TestUtilTestSuite) TestValidateResources() {
 
 // TestValidateTransitions validates the transitions
 func (suite *TestUtilTestSuite) TestValidateTransitions() {
-	rm_task.InitTaskTracker(tally.NoopScope, CreateTaskConfig())
+	mockHostmgr := mocks.NewMockInternalHostServiceYARPCClient(gomock.NewController(suite.T()))
+	mockHostmgr.EXPECT().MarkHostDrained(gomock.Any(), gomock.Any()).Return(&hostsvc.MarkHostDrainedResponse{}, nil).AnyTimes()
+	rm_task.InitTaskTracker(tally.NoopScope, CreateTaskConfig(), mockHostmgr)
 	rmTaskTracker := rm_task.GetTracker()
 	rmTaskTracker.AddTask(
 		suite.pendingGang0().Tasks[0],

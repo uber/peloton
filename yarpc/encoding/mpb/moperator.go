@@ -298,8 +298,8 @@ func (mo *masterOperatorClient) GetMaintenanceStatus() (*mesos_master.Response_G
 
 // StartMaintenance brings 'DOWN' the specified machines by un-registering, from Mesos
 // Master, the agents running on these machines. Any agents on machines in maintenance
-// are also prevented from reregistering with the master in the future (until
-// maintenance is completed and the machine is brought back up).
+// are also prevented from reregistering with the master in the future until
+// maintenance is completed and the machine is brought back up (by StopMaintenance).
 func (mo *masterOperatorClient) StartMaintenance(machines []*mesos.MachineID) error {
 	// Set the CALL TYPE
 	callType := mesos_master.Call_START_MAINTENANCE

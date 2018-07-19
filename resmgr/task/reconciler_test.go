@@ -9,6 +9,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	resp "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common"
@@ -35,12 +37,16 @@ type ReconcilerTestSuite struct {
 	task               *resmgr.Task
 	respool            respool.ResPool
 	hostname           string
+	mockHostmgr        *host_mocks.MockInternalHostServiceYARPCClient
 }
 
 func (suite *ReconcilerTestSuite) SetupTest() {
+	suite.mockCtrl = gomock.NewController(suite.T())
+	suite.mockHostmgr = host_mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
 	InitTaskTracker(tally.NoopScope, &Config{
 		EnablePlacementBackoff: true,
-	})
+	}, suite.mockHostmgr)
+	suite.mockHostmgr.EXPECT().MarkHostDrained(gomock.Any(), gomock.Any()).Return(&hostsvc.MarkHostDrainedResponse{}, nil).AnyTimes()
 	suite.tracker = GetTracker()
 
 	suite.mockCtrl = gomock.NewController(suite.T())

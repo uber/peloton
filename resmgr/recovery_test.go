@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -58,7 +59,8 @@ func (suite *recoveryTestSuite) SetupSuite() {
 	// Initializing the resmgr state machine
 	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{
 		EnablePlacementBackoff: true,
-	})
+	}, host_mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl))
+
 	suite.rmTaskTracker = rm_task.GetTracker()
 	rm_task.InitScheduler(tally.NoopScope, 100*time.Second, suite.rmTaskTracker)
 	suite.taskScheduler = rm_task.GetScheduler()

@@ -32,6 +32,8 @@ type MaintenanceQueue interface {
 	Enqueue(hostnames []string) error
 	// Dequeue dequeues a hostname from the maintenance queue
 	Dequeue(maxWaitTime time.Duration) (string, error)
+	// Length returns the length of maintenance queue at any time
+	Length() int
 }
 
 // NewMaintenanceQueue returns an instance of the maintenance queue
@@ -77,4 +79,9 @@ func (mq *maintenanceQueue) Dequeue(maxWaitTime time.Duration) (string, error) {
 
 	host := item.(string)
 	return host, nil
+}
+
+// Length returns the length of maintenance queue at any time
+func (mq *maintenanceQueue) Length() int {
+	return mq.queue.Length()
 }

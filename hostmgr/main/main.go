@@ -425,6 +425,7 @@ func main() {
 		cfg.Mesos,
 		mesosMasterDetector,
 		&cfg.HostManager,
+		maintenanceQueue,
 	)
 
 	hostsvc.InitServiceHandler(

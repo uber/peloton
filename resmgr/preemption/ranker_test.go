@@ -8,6 +8,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	peloton_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common"
@@ -36,7 +37,7 @@ type RankerTestSuite struct {
 func (suite *RankerTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 
-	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{})
+	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{}, mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl))
 	suite.tracker = rm_task.GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,

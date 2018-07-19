@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"code.uber.internal/infra/peloton/hostmgr/metrics"
-	maintenance_queue "code.uber.internal/infra/peloton/hostmgr/queue"
+	"code.uber.internal/infra/peloton/hostmgr/queue"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
 	log "github.com/sirupsen/logrus"
@@ -23,14 +23,14 @@ type RecoveryHandler interface {
 type recoveryHandler struct {
 	sync.Mutex
 	metrics              *metrics.Metrics
-	maintenanceQueue     maintenance_queue.MaintenanceQueue
+	maintenanceQueue     queue.MaintenanceQueue
 	operatorMasterClient mpb.MasterOperatorClient
 }
 
 // NewRecoveryHandler creates a recoveryHandler
 func NewRecoveryHandler(parent tally.Scope,
 	operatorMasterClient mpb.MasterOperatorClient,
-	maintenanceQueue maintenance_queue.MaintenanceQueue) RecoveryHandler {
+	maintenanceQueue queue.MaintenanceQueue) RecoveryHandler {
 	recovery := &recoveryHandler{
 		metrics:              metrics.NewMetrics(parent),
 		maintenanceQueue:     maintenanceQueue,

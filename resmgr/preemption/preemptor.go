@@ -40,6 +40,7 @@ type Preemptor interface {
 	Start() error
 	Stop() error
 	DequeueTask(maxWaitTime time.Duration) (*resmgr.PreemptionCandidate, error)
+	EnqueueTasks(tasks []*task.RMTask, event resmgr.PreemptionReason) error
 }
 
 type preemptor struct {
@@ -168,6 +169,41 @@ func (p *preemptor) DequeueTask(maxWaitTime time.Duration) (
 	// Remove task from taskSet
 	p.taskSet.Remove(taskID.GetId().GetValue())
 	return taskID, nil
+}
+
+// EnqueueTasks enqueues the tasks into preemption queue
+func (p *preemptor) EnqueueTasks(tasks []*task.RMTask, reason resmgr.PreemptionReason) error {
+	var errs error
+
+	for _, t := range tasks {
+		switch t.GetCurrentState() {
+		case peloton_task.TaskState_RUNNING:
+			preemptionCandidate := &resmgr.PreemptionCandidate{
+				Id:     t.Task().Id,
+				Reason: reason,
+			}
+			err := p.preemptionQueue.Enqueue(preemptionCandidate)
+			if err != nil {
+				// add error and metrics and move to the next task
+				errs = multierr.Append(errs, errors.Wrapf(err,
+					"unable to add RUNNING task to preemption queue task ID:%s",
+					t.Task().GetId().Value))
+				continue
+			}
+		default:
+			// For all non running tasks
+			err := p.evictNonRunningTask(t)
+			if err != nil {
+				// add error and metrics and move to the next task
+				errs = multierr.Append(errs,
+					errors.Wrapf(err, "unable to evict task:%s with "+
+						"state:%s",
+						t.Task().GetId().Value, t.GetCurrentState().String()))
+				continue
+			}
+		}
+	}
+	return errs
 }
 
 func (p *preemptor) preemptTasks() error {

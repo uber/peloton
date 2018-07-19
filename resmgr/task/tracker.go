@@ -1,10 +1,13 @@
 package task
 
 import (
+	"context"
 	"sync"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common/eventstream"
@@ -84,22 +87,26 @@ type tracker struct {
 	cMutex sync.Mutex
 	// map of task state to the count of tasks in the tracker
 	counters map[task.TaskState]float64
+
+	// host manager client
+	hostMgrClient hostsvc.InternalHostServiceYARPCClient
 }
 
 // singleton object
 var rmtracker *tracker
 
 // InitTaskTracker initialize the task tracker
-func InitTaskTracker(parent tally.Scope, config *Config) {
+func InitTaskTracker(parent tally.Scope, config *Config, hostMgrClient hostsvc.InternalHostServiceYARPCClient) {
 	if rmtracker != nil {
 		log.Info("Resource Manager Tracker is already initialized")
 		return
 	}
 	rmtracker = &tracker{
-		tasks:      make(map[string]*RMTask),
-		placements: map[string]map[resmgr.TaskType]map[string]*RMTask{},
-		metrics:    NewMetrics(parent.SubScope("tracker")),
-		counters:   make(map[task.TaskState]float64),
+		tasks:         make(map[string]*RMTask),
+		placements:    map[string]map[resmgr.TaskType]map[string]*RMTask{},
+		metrics:       NewMetrics(parent.SubScope("tracker")),
+		counters:      make(map[task.TaskState]float64),
+		hostMgrClient: hostMgrClient,
 	}
 
 	// Checking placement back off is enabled , if yes then initialize
@@ -192,6 +199,15 @@ func (tr *tracker) clearPlacement(rmTask *RMTask) {
 	}
 	if len(tr.placements[rmTask.task.Hostname]) == 0 {
 		delete(tr.placements, rmTask.task.Hostname)
+		log.WithField("host", rmTask.task.Hostname).Debug("No tasks on host")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_, err := tr.hostMgrClient.MarkHostDrained(ctx, &hostsvc.MarkHostDrainedRequest{
+			Hostname: rmTask.task.Hostname,
+		})
+		if err != nil {
+			log.Warnf(err.Error(), "Failed to 'down' some hosts")
+		}
 	}
 }
 

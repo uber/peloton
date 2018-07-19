@@ -1,4 +1,4 @@
-/**
+    /**
  *  Internal Host Service API
  */
 
@@ -361,6 +361,14 @@ service InternalHostService
 
   // Return all the outstanding offers present in offer pool.
   rpc GetOutstandingOffers(GetOutstandingOffersRequest) returns (GetOutstandingOffersResponse);
+
+  // Get the hosts in DRAINING state. This method is called by Resource Manager to get hosts which are to be drained.
+  //TODO: (sachins) Need to have a state machine in hostmgr to re-queue the DRAINING hosts after certain timeout
+  rpc GetDrainingHosts (GetDrainingHostsRequest) returns (GetDrainingHostsResponse);
+
+  // Mark the host as drained. This method is called by Resource Manager when a host is drained of tasks. The Host Manager
+  // checks if any action is to taken on the host (e.g. put the host into maintenance) and takes action accordingly.
+  rpc MarkHostDrained (MarkHostDrainedRequest) returns (MarkHostDrainedResponse);
 }
 
 /**
@@ -703,3 +711,34 @@ message ReserveHostsResponse{
     // Host info which host is reserved
     HostInfo host = 2;
 }
+
+/*
+ * GetDrainingHostsRequest is the request message for InternalHostService.GetDrainingHosts
+ */
+message GetDrainingHostsRequest {
+    // Max number of draining hosts to dequeue
+    uint32 limit = 1;
+    // Timeout in milliseconds if no hosts are draining
+    uint32 timeout = 2;
+}
+
+/*
+* GetDrainingHostsResponse is the response message for InternalHostService.GetDrainingHosts
+*/
+message GetDrainingHostsResponse {
+    // List of hostnames of the hosts dequeued
+    repeated string hostnames = 1;
+}
+
+/*
+* MarkHostDrainedRequest is the request message for InternalHostService.MarkHostsDrained
+*/
+message MarkHostDrainedRequest {
+    // Hostname of the host to be marked as drained
+    string hostname = 1;
+}
+
+/*
+* MarkHostDrainedResponse is the response message for InternalHostService.MarkHostsDrained
+*/
+message MarkHostDrainedResponse {}

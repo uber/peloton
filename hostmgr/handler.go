@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -20,6 +21,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/constraints"
+	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/common/reservation"
 	"code.uber.internal/infra/peloton/hostmgr/config"
 	"code.uber.internal/infra/peloton/hostmgr/factory/operation"
@@ -29,6 +31,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/metrics"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
+	mqueue "code.uber.internal/infra/peloton/hostmgr/queue"
 	"code.uber.internal/infra/peloton/hostmgr/reserver"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
@@ -49,6 +52,7 @@ type serviceHandler struct {
 	mesosDetector         hostmgr_mesos.MasterDetector
 	reserver              reserver.Reserver
 	hmConfig              config.Config
+	maintenanceQueue      mqueue.MaintenanceQueue // queue containing the machineIDs of the machines to be put into maintenance
 }
 
 // InitServiceHandler initialize serviceHandler.
@@ -61,7 +65,8 @@ func InitServiceHandler(
 	volumeStore storage.PersistentVolumeStore,
 	mesosConfig hostmgr_mesos.Config,
 	mesosDetector hostmgr_mesos.MasterDetector,
-	hmConfig *config.Config) {
+	hmConfig *config.Config,
+	maintenanceQueue mqueue.MaintenanceQueue) {
 
 	handler := &serviceHandler{
 		schedulerClient:       schedulerClient,
@@ -72,6 +77,7 @@ func InitServiceHandler(
 		volumeStore:           volumeStore,
 		roleName:              mesosConfig.Framework.Role,
 		mesosDetector:         mesosDetector,
+		maintenanceQueue:      maintenanceQueue,
 	}
 	// Creating Reserver object for handler
 	handler.reserver = reserver.NewReserver(
@@ -1067,4 +1073,71 @@ func (h *serviceHandler) ReserveHosts(
 		}, nil
 	}
 	return &hostsvc.ReserveHostsResponse{}, nil
+}
+
+// GetDrainingHosts implements InternalHostService.GetDrainingHosts
+func (h *serviceHandler) GetDrainingHosts(ctx context.Context, request *hostsvc.GetDrainingHostsRequest) (*hostsvc.GetDrainingHostsResponse, error) {
+	timeout := time.Duration(request.GetTimeout())
+	var hostnames []string
+	limit := request.GetLimit()
+	// If request.limit is not specified, set limit to length of maintenance queue
+	if limit == 0 {
+		limit = uint32(h.maintenanceQueue.Length())
+	}
+	for i := uint32(0); i < limit; i++ {
+		hostname, err := h.maintenanceQueue.Dequeue(timeout * time.Millisecond)
+		if err != nil {
+			if _, isTimeout := err.(queue.DequeueTimeOutError); !isTimeout {
+				// error is not due to timeout so we log the error
+				log.WithError(err).
+					Error("unable to dequeue task from maintenance queue")
+				h.metrics.GetDrainingHostsFail.Inc(1)
+				return nil, err
+			}
+			break
+		}
+		hostnames = append(hostnames, hostname)
+		h.metrics.GetDrainingHosts.Inc(1)
+	}
+	log.WithField("hosts", hostnames).Debug("Maintenance Queue - Dequeued hosts")
+
+	return &hostsvc.GetDrainingHostsResponse{
+		Hostnames: hostnames,
+	}, nil
+}
+
+// MarkHostDrained implements InternalHostService.MarkHostDrained
+func (h *serviceHandler) MarkHostDrained(ctx context.Context, request *hostsvc.MarkHostDrainedRequest) (*hostsvc.MarkHostDrainedResponse, error) {
+	response, err := h.operatorMasterClient.GetMaintenanceStatus()
+	if err != nil {
+		log.WithError(err).Error("Error getting maintenance status")
+		h.metrics.MarkHostDrainedFail.Inc(1)
+		return nil, err
+	}
+	status := response.GetStatus()
+	isHostDraining := false
+	var machineID *mesos.MachineID
+	for _, clusterStatusDrainingMachine := range status.GetDrainingMachines() {
+		if clusterStatusDrainingMachine.GetId().GetHostname() == request.GetHostname() {
+			isHostDraining = true
+			machineID = clusterStatusDrainingMachine.GetId()
+			break
+		}
+	}
+
+	if isHostDraining {
+		// If the host is currently in 'DRAINING' state, then start maintenance
+		// on the host by posting to /machine/down endpoint of the Mesos Master
+		err = h.operatorMasterClient.StartMaintenance([]*mesos.MachineID{machineID})
+		if err != nil {
+			log.WithError(err).Error("failed to down host: " + request.GetHostname())
+			h.metrics.MarkHostDrainedFail.Inc(1)
+			return nil, err
+		}
+	} else {
+		log.Info("Host " + request.GetHostname() + " not in draining state")
+	}
+
+	h.metrics.MarkHostDrained.Inc(1)
+	return &hostsvc.MarkHostDrainedResponse{}, nil
 }

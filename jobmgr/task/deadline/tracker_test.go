@@ -2,6 +2,7 @@ package deadline
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -15,7 +16,6 @@ import (
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
-	"fmt"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"

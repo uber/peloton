@@ -10,12 +10,15 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -25,8 +28,6 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-
-	"github.com/stretchr/testify/assert"
 )
 
 type SchedulerTestSuite struct {
@@ -37,6 +38,7 @@ type SchedulerTestSuite struct {
 	mockCtrl           *gomock.Controller
 	rmTaskTracker      Tracker
 	eventStreamHandler *eventstream.Handler
+	mockHostmgr        *mocks.MockInternalHostServiceYARPCClient
 }
 
 func (suite *SchedulerTestSuite) SetupSuite() {
@@ -57,8 +59,11 @@ func (suite *SchedulerTestSuite) SetupSuite() {
 
 	suite.resTree = respool.GetTree()
 	suite.readyQueue = queue.NewMultiLevelList("ready-queue", maxReadyQueueSize)
+	suite.mockHostmgr = mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
+	suite.mockHostmgr.EXPECT().MarkHostDrained(gomock.Any(), gomock.Any()).Return(&hostsvc.MarkHostDrainedResponse{}, nil).AnyTimes()
+
 	// Initializing the resmgr state machine
-	InitTaskTracker(tally.NoopScope, &Config{})
+	InitTaskTracker(tally.NoopScope, &Config{}, suite.mockHostmgr)
 	suite.rmTaskTracker = GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,
@@ -82,6 +87,7 @@ func (suite *SchedulerTestSuite) SetupSuite() {
 
 func (suite *SchedulerTestSuite) TearDownSuite() {
 	suite.mockCtrl.Finish()
+	suite.rmTaskTracker.Clear()
 }
 
 func (suite *SchedulerTestSuite) SetupTest() {
@@ -97,7 +103,6 @@ func (suite *SchedulerTestSuite) TearDownTest() {
 	suite.NoError(err)
 	err = suite.taskSched.Stop()
 	suite.NoError(err)
-	suite.rmTaskTracker.Clear()
 }
 
 func TestTaskScheduler(t *testing.T) {
