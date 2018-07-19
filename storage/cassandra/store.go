@@ -2722,8 +2722,15 @@ func Less(orderByList []*query.OrderBy, t1 *task.TaskInfo, t2 *task.TaskInfo) bo
 			time1, err1 := time.Parse(time.RFC3339, t1.GetRuntime().GetStartTime())
 			time2, err2 := time.Parse(time.RFC3339, t2.GetRuntime().GetStartTime())
 			if err1 != nil || err2 != nil {
-				// if the start time of the task can't get parsed (or not exist)
-				// we skip the comparision
+				// if any StartTime of two tasks can't get parsed (or not exist)
+				// task with a valid StartTime is less
+				if err1 == nil {
+					return !desc
+				} else if err2 == nil {
+					return desc
+				}
+
+				// both tasks have invalid StartTime, goto next loop
 				continue
 			}
 			// return result if not equal, otherwise goto next loop

@@ -2706,14 +2706,14 @@ func TestLess(t *testing.T) {
 	orderByList := []*query.OrderBy{&stateOrder}
 
 	jobConfig := createJobConfig()
-	taskInfo1 := createTaskInfo(jobConfig, &peloton.JobID{Value: uuid.New()}, 1)
+	taskInfo0 := createTaskInfo(jobConfig, &peloton.JobID{Value: uuid.New()}, 0)
 	taskInfo2 := createTaskInfo(jobConfig, &peloton.JobID{Value: uuid.New()}, 2)
 
-	taskInfo1.Runtime.State = task.TaskState_RUNNING
-	taskInfo1.Runtime.StartTime = "2018-04-24T01:50:38Z"
+	taskInfo0.Runtime.State = task.TaskState_RUNNING
+	taskInfo0.Runtime.StartTime = "2018-04-24T01:50:38Z"
 	taskInfo2.Runtime.StartTime = "2018-04-24T01:40:38Z"
 
-	assert.Equal(t, true, Less(orderByList, taskInfo1, taskInfo2))
+	assert.Equal(t, true, Less(orderByList, taskInfo0, taskInfo2))
 
 	// testing sort by creation_time
 	timeOrder := query.OrderBy{
@@ -2723,10 +2723,24 @@ func TestLess(t *testing.T) {
 		},
 	}
 	orderByList = []*query.OrderBy{&timeOrder}
-	assert.Equal(t, Less(orderByList, taskInfo1, taskInfo2), false)
+	assert.Equal(t, Less(orderByList, taskInfo0, taskInfo2), false)
 
 	// testing first sort by state, then creation_time
 	taskInfo2.Runtime.State = task.TaskState_RUNNING
 	orderByList = []*query.OrderBy{&stateOrder, &timeOrder}
+	assert.Equal(t, Less(orderByList, taskInfo0, taskInfo2), false)
+
+	/*
+		| 	 			|  A  | B 	| C   |
+		| id 			|  0  | 1 	| 2   |
+		| creation_time | '2' | '' 	| '1' |
+		Test this case to make sure
+		Less(A,B)=True, Less(B,C)=False and Less(A,C)=False
+	*/
+	taskInfo1 := createTaskInfo(jobConfig, &peloton.JobID{Value: uuid.New()}, 1)
+	taskInfo1.Runtime.StartTime = ""
+	orderByList = []*query.OrderBy{&timeOrder}
+	assert.Equal(t, Less(orderByList, taskInfo0, taskInfo1), true)
 	assert.Equal(t, Less(orderByList, taskInfo1, taskInfo2), false)
+	assert.Equal(t, Less(orderByList, taskInfo0, taskInfo2), false)
 }
