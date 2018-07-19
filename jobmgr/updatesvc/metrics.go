@@ -7,18 +7,25 @@ import (
 // Metrics is the struct containing all the counters that track
 // internal state of the update service
 type Metrics struct {
-	UpdateAPICreate    tally.Counter
-	UpdateCreate       tally.Counter
-	UpdateCreateFail   tally.Counter
-	UpdateAPIGet       tally.Counter
-	UpdateGet          tally.Counter
-	UpdateGetFail      tally.Counter
-	UpdateAPIList      tally.Counter
-	UpdateList         tally.Counter
-	UpdateListFail     tally.Counter
+	UpdateAPICreate  tally.Counter
+	UpdateCreate     tally.Counter
+	UpdateCreateFail tally.Counter
+
+	UpdateAPIGet  tally.Counter
+	UpdateGet     tally.Counter
+	UpdateGetFail tally.Counter
+
+	UpdateAPIList  tally.Counter
+	UpdateList     tally.Counter
+	UpdateListFail tally.Counter
+
 	UpdateAPIGetCache  tally.Counter
 	UpdateGetCache     tally.Counter
 	UpdateGetCacheFail tally.Counter
+
+	UpdateAPIAbort  tally.Counter
+	UpdateAbort     tally.Counter
+	UpdateAbortFail tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
@@ -29,17 +36,24 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	UpdateAPIScope := scope.SubScope("api")
 
 	return &Metrics{
-		UpdateAPICreate:    UpdateAPIScope.Counter("create"),
-		UpdateCreate:       UpdateSuccessScope.Counter("create"),
-		UpdateCreateFail:   UpdateFailScope.Counter("create"),
-		UpdateAPIGet:       UpdateAPIScope.Counter("get"),
-		UpdateGet:          UpdateSuccessScope.Counter("get"),
-		UpdateGetFail:      UpdateFailScope.Counter("get"),
-		UpdateAPIList:      UpdateAPIScope.Counter("list"),
-		UpdateList:         UpdateSuccessScope.Counter("list"),
-		UpdateListFail:     UpdateFailScope.Counter("list"),
+		UpdateAPICreate:  UpdateAPIScope.Counter("create"),
+		UpdateCreate:     UpdateSuccessScope.Counter("create"),
+		UpdateCreateFail: UpdateFailScope.Counter("create"),
+
+		UpdateAPIGet:  UpdateAPIScope.Counter("get"),
+		UpdateGet:     UpdateSuccessScope.Counter("get"),
+		UpdateGetFail: UpdateFailScope.Counter("get"),
+
+		UpdateAPIList:  UpdateAPIScope.Counter("list"),
+		UpdateList:     UpdateSuccessScope.Counter("list"),
+		UpdateListFail: UpdateFailScope.Counter("list"),
+
 		UpdateAPIGetCache:  UpdateAPIScope.Counter("cache_get"),
 		UpdateGetCache:     UpdateSuccessScope.Counter("cache_get"),
 		UpdateGetCacheFail: UpdateFailScope.Counter("cache_get"),
+
+		UpdateAPIAbort:  UpdateAPIScope.Counter("abort"),
+		UpdateAbort:     UpdateSuccessScope.Counter("abort"),
+		UpdateAbortFail: UpdateFailScope.Counter("abort"),
 	}
 }

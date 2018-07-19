@@ -335,8 +335,24 @@ func (h *serviceHandler) ListUpdates(ctx context.Context,
 
 func (h *serviceHandler) AbortUpdate(ctx context.Context,
 	req *svc.AbortUpdateRequest) (*svc.AbortUpdateResponse, error) {
-	return nil, yarpcerrors.UnimplementedErrorf(
-		"UpdateService.AbortUpdate is not implemented")
+	h.metrics.UpdateAPIAbort.Inc(1)
+	updateID := req.GetUpdateId()
+
+	err := updateutil.AbortJobUpdate(
+		ctx,
+		updateID,
+		h.updateStore,
+		h.updateFactory,
+	)
+	if err != nil {
+		h.metrics.UpdateAbortFail.Inc(1)
+	} else {
+		h.metrics.UpdateAbort.Inc(1)
+	}
+
+	cachedUpdate := h.updateFactory.GetUpdate(updateID)
+	h.goalStateDriver.EnqueueUpdate(cachedUpdate.JobID(), updateID, time.Now())
+	return &svc.AbortUpdateResponse{}, err
 }
 
 func (h *serviceHandler) RollbackUpdate(ctx context.Context,

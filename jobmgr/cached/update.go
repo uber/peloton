@@ -404,6 +404,11 @@ func (u *update) Cancel(ctx context.Context) error {
 	u.Lock()
 	defer u.Unlock()
 
+	// ignore canceling terminated updates
+	if IsUpdateStateTerminal(u.state) {
+		return nil
+	}
+
 	err := u.updateFactory.updateStore.WriteUpdateProgress(
 		ctx,
 		&models.UpdateModel{

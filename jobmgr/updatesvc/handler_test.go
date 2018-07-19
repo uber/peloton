@@ -828,3 +828,67 @@ func (suite *UpdateSvcTestSuite) TestList() {
 			update.GetPrevConfigVersion())
 	}
 }
+
+// TestAbortFail tests getting a DB error while aborting an update
+func (suite *UpdateSvcTestSuite) TestAbortFail() {
+	suite.updateStore.EXPECT().
+		GetUpdateProgress(gomock.Any(), suite.updateID).
+		Return(nil, fmt.Errorf("fake db error"))
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID)
+
+	suite.goalStateDriver.EXPECT().
+		EnqueueUpdate(suite.jobID, suite.updateID, gomock.Any()).
+		Return()
+
+	_, err := suite.h.AbortUpdate(
+		context.Background(),
+		&svc.AbortUpdateRequest{UpdateId: suite.updateID},
+	)
+	suite.EqualError(err, "fake db error")
+}
+
+// TestAbort tests successfully aborting an update
+func (suite *UpdateSvcTestSuite) TestAbort() {
+	updateModel := &models.UpdateModel{
+		JobID:                suite.jobID,
+		UpdateConfig:         suite.updateConfig,
+		JobConfigVersion:     suite.newJobConfig.ChangeLog.Version,
+		PrevJobConfigVersion: suite.jobConfig.ChangeLog.Version,
+		State:                update.State_ROLLING_FORWARD,
+		InstancesTotal:       suite.newJobConfig.InstanceCount,
+		InstancesDone:        uint32(5),
+	}
+
+	suite.updateStore.EXPECT().
+		GetUpdateProgress(gomock.Any(), suite.updateID).
+		Return(updateModel, nil)
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate).Times(2)
+
+	suite.cachedUpdate.EXPECT().
+		Cancel(gomock.Any()).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID)
+
+	suite.goalStateDriver.EXPECT().
+		EnqueueUpdate(suite.jobID, suite.updateID, gomock.Any()).
+		Return()
+
+	_, err := suite.h.AbortUpdate(
+		context.Background(),
+		&svc.AbortUpdateRequest{UpdateId: suite.updateID},
+	)
+	suite.NoError(err)
+}

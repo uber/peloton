@@ -262,6 +262,10 @@ var (
 	updateCache   = update.Command("cache", "get update information in  the cache")
 	updateCacheID = updateCache.Arg("update-id", "update identifier").Required().String()
 
+	// command to abort an update
+	updateAbort   = update.Command("abort", "abort a job update")
+	updateAbortID = updateAbort.Arg("update-id", "update identifier").Required().String()
+
 	// top level command for offers
 	offers = app.Command("offers", "get outstanding offers")
 
@@ -446,6 +450,8 @@ func main() {
 		err = client.UpdateListAction(*updateListJobID)
 	case updateCache.FullCommand():
 		err = client.UpdateGetCacheAction(*updateCacheID)
+	case updateAbort.FullCommand():
+		err = client.UpdateAbortAction(*updateAbortID)
 	case offersList.FullCommand():
 		err = client.OffersGetAction()
 	default:

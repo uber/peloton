@@ -175,3 +175,24 @@ func (suite *updateActionsTestSuite) TestClientUpdateGetCache() {
 	err := c.UpdateGetCacheAction(suite.updateID.GetValue())
 	suite.NoError(err)
 }
+
+// TestClientUpdateAbort tests aborting a job update
+func (suite *updateActionsTestSuite) TestClientUpdateAbort() {
+	c := Client{
+		Debug:        false,
+		updateClient: suite.mockUpdate,
+		dispatcher:   nil,
+		ctx:          suite.ctx,
+	}
+
+	resp := &svc.AbortUpdateResponse{}
+	suite.mockUpdate.EXPECT().
+		AbortUpdate(context.Background(), gomock.Any()).
+		Do(func(_ context.Context, req *svc.AbortUpdateRequest) {
+			suite.Equal(suite.updateID.GetValue(), req.GetUpdateId().GetValue())
+		}).
+		Return(resp, nil)
+
+	err := c.UpdateAbortAction(suite.updateID.GetValue())
+	suite.NoError(err)
+}

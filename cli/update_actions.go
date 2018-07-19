@@ -102,6 +102,21 @@ func (c *Client) UpdateGetCacheAction(updateID string) error {
 	return nil
 }
 
+// UpdateAbortAction aborts a given update
+func (c *Client) UpdateAbortAction(updateID string) error {
+	var request = &updatesvc.AbortUpdateRequest{
+		UpdateId: &peloton.UpdateID{
+			Value: updateID,
+		},
+	}
+
+	_, err := c.updateClient.AbortUpdate(c.ctx, request)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // printUpdateCreateResponse prints the update identifier returned in the
 // create job update response.
 func printUpdateCreateResponse(resp *updatesvc.CreateUpdateResponse, debug bool) {

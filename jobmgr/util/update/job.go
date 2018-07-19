@@ -11,7 +11,7 @@ import (
 
 // AbortJobUpdate is a helper function to abort a given job update.
 // It is primarily used to abort previous updates when a new update
-// overwrites the previous one.
+// overwrites the previous one or aborting a given update.
 func AbortJobUpdate(
 	ctx context.Context,
 	updateID *peloton.UpdateID,
@@ -28,17 +28,17 @@ func AbortJobUpdate(
 	}
 
 	// abort the previous non-terminal update
-	prevUpdate := updateFactory.GetUpdate(updateID)
+	cachedUpdate := updateFactory.GetUpdate(updateID)
 
-	if prevUpdate == nil {
-		prevUpdate = updateFactory.AddUpdate(updateID)
-		if err = prevUpdate.Recover(ctx); err != nil {
+	if cachedUpdate == nil {
+		cachedUpdate = updateFactory.AddUpdate(updateID)
+		if err = cachedUpdate.Recover(ctx); err != nil {
 			// failed to recover previous update, fail this create request
 			return err
 		}
 	}
 
-	if err = prevUpdate.Cancel(ctx); err != nil {
+	if err = cachedUpdate.Cancel(ctx); err != nil {
 		// failed to cancel the previous update, since cannot run two
 		// updates on the same job, fail this create request
 		return err

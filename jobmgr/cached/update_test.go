@@ -705,6 +705,14 @@ func (suite *UpdateTestSuite) TestCancelDBError() {
 	suite.Equal(pbupdate.State_INITIALIZED, suite.update.state)
 }
 
+// TestCancelTerminatedUpdate tests canceling a terminated update
+func (suite *UpdateTestSuite) TestCancelTerminatedUpdate() {
+	suite.update.state = pbupdate.State_SUCCEEDED
+
+	err := suite.update.Cancel(context.Background())
+	suite.NoError(err)
+}
+
 // TestUpdateGetState tests getting state of a job update
 func (suite *UpdateTestSuite) TestUpdateGetState() {
 	suite.update.instancesDone = []uint32{1, 2, 3, 4, 5}
