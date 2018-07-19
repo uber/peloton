@@ -11,6 +11,7 @@ import (
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	resp "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	hostsvc_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -22,7 +23,6 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
-	mocks2 "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -57,7 +57,7 @@ func (s *RMTaskTestSuite) SetupSuite() {
 	s.resTree = respool.GetTree()
 	InitTaskTracker(tally.NoopScope, &Config{
 		EnablePlacementBackoff: true,
-	}, mocks2.NewMockInternalHostServiceYARPCClient(s.ctrl))
+	}, hostsvc_mocks.NewMockInternalHostServiceYARPCClient(s.ctrl))
 	s.tracker = GetTracker()
 	InitScheduler(tally.NoopScope, 1*time.Second, s.tracker)
 	s.taskScheduler = GetScheduler()
