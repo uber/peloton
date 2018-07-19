@@ -2,7 +2,7 @@ package placement
 
 import (
 	"context"
-	"reflect"
+	"errors"
 	"strings"
 	"time"
 
@@ -39,8 +39,6 @@ const (
 	_failedToPlaceTaskAfterTimeout = "failed to place task after timeout"
 	// represents the max size of the preemption queue
 	_maxReservationQueueSize = 10000
-	// reservation queue name
-	_reservationQueue = "reservatiom-queue"
 )
 
 // Engine represents a placement engine that can be started and stopped.
@@ -108,11 +106,7 @@ func NewEngine(
 		hostsService: hostsService,
 	}
 	result.daemon = async.NewDaemon("Placement Engine", result)
-	result.reservationQueue = queue.NewQueue(
-		_reservationQueue,
-		reflect.TypeOf(resmgr.Task{}), _maxReservationQueueSize)
-	result.reserver = reserver.NewReserver(scope, config, hostsService, result.reservationQueue)
-
+	result.reserver = reserver.NewReserver(scope, config, hostsService)
 	return result
 }
 
@@ -183,7 +177,42 @@ func (e *engine) Place(ctx context.Context) time.Duration {
 		e.pool.WaitUntilProcessed()
 	}
 
+	// We need to process the completed reservations
+	err := e.processCompletedReservations(ctx)
+	if err != nil {
+		log.WithError(err).Info("error in processing completed reservations")
+	}
 	return time.Duration(0)
+}
+
+// processCompletedReservations will be processing completed reservations
+// and it will set the placements in resmgr
+func (e *engine) processCompletedReservations(ctx context.Context) error {
+	reservations, err := e.reserver.GetCompletetedReservation(ctx)
+	if err != nil {
+		return err
+	}
+	if len(reservations) == 0 {
+		return errors.New("no valid reservations")
+	}
+
+	placements := make([]*resmgr.Placement, len(reservations))
+	for _, res := range reservations {
+		selectedPorts := e.assignPorts(
+			&models.HostOffers{Offer: res.HostOffers[0]},
+			[]*models.Task{{Task: res.Task}})
+		placement := &resmgr.Placement{
+			Hostname: res.HostOffers[0].Hostname,
+			Tasks:    []*peloton.TaskID{res.GetTask().GetId()},
+			Type:     e.config.TaskType,
+			AgentId:  res.HostOffers[0].AgentId,
+			Ports:    selectedPorts,
+		}
+		placements = append(placements, placement)
+	}
+
+	e.taskService.SetPlacements(ctx, placements)
+	return nil
 }
 
 func (e *engine) placeAssignmentGroup(

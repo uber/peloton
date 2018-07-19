@@ -3,15 +3,15 @@ package reserver
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 
+	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
-	"code.uber.internal/infra/peloton/common/queue"
+	queue_mocks "code.uber.internal/infra/peloton/common/queue/mocks"
 	"code.uber.internal/infra/peloton/placement/config"
 	hosts_mock "code.uber.internal/infra/peloton/placement/hosts/mocks"
 	"code.uber.internal/infra/peloton/placement/metrics"
@@ -20,11 +20,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
-)
-
-const (
-	// represents the max size of the preemption queue
-	_maxReservationQueueSize = 10000
 )
 
 type ReserverTestSuite struct {
@@ -44,15 +39,10 @@ func (suite *ReserverTestSuite) SetupTest() {
 	suite.hostService = hosts_mock.NewMockService(suite.mockCtrl)
 	config := &config.PlacementConfig{}
 
-	reservationQueue := queue.NewQueue(
-		"reservatiom-queue",
-		reflect.TypeOf(resmgr.Task{}), _maxReservationQueueSize)
-
 	suite.reserver = NewReserver(
 		metrics,
 		config,
 		suite.hostService,
-		reservationQueue,
 	)
 }
 
@@ -145,6 +135,132 @@ func (suite *ReserverTestSuite) TestReservationErrorInReservation() {
 	suite.Equal(delay.Seconds(), _noHostsTimeoutPenalty.Seconds())
 	suite.Error(err)
 	suite.Contains(err.Error(), "error in reserve hosts")
+}
+
+// TestGetCompletetedReservation tests the completed reservation call
+func (suite *ReserverTestSuite) TestGetCompletetedReservation() {
+	reserver, _, completedQueue := suite.getReserver()
+	// Testing if queue returns error
+	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(nil, errors.New("error"))
+	_, err := reserver.GetCompletetedReservation(context.Background())
+	suite.Error(err)
+	suite.Equal(err.Error(), "error")
+
+	// testing if queue have a valid completed reservation
+	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(suite.getCompletedReservation(), nil)
+	res, err := reserver.GetCompletetedReservation(context.Background())
+	suite.NoError(err)
+	suite.Equal(len(res), 1)
+
+	// testing if queue have a invalid item.
+	var item interface{}
+	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(item, nil)
+	res, err = reserver.GetCompletetedReservation(context.Background())
+	suite.NoError(err)
+	suite.Equal(len(res), 0)
+}
+
+// TestFindCompletedReservation tests the completed reservation
+func (suite *ReserverTestSuite) TestFindCompletedReservation() {
+	// testing hostservice completed reservation have error
+	reserver, _, completedQueue := suite.getReserver()
+	suite.hostService.EXPECT().GetCompletedReservation(gomock.Any()).Return(nil, errors.New("error"))
+	err := reserver.findCompletedReservation(context.Background())
+	suite.Error(err)
+	suite.Equal(err.Error(), "error")
+
+	// testing hostservice completed reservation return no reservations
+	var res []*hostsvc.CompletedReservation
+	suite.hostService.EXPECT().GetCompletedReservation(gomock.Any()).Return(res, nil)
+	err = reserver.findCompletedReservation(context.Background())
+	suite.Error(err)
+	suite.Equal(err.Error(), "no completed reservations found")
+
+	// testing the valid completed reservation
+	res = append(res, suite.getCompletedReservation())
+	suite.hostService.EXPECT().GetCompletedReservation(gomock.Any()).Return(res, nil)
+	completedQueue.EXPECT().Enqueue(gomock.Any()).Return(nil)
+	err = reserver.findCompletedReservation(context.Background())
+	suite.NoError(err)
+
+	// testing error in completed queue enqueue operation
+	suite.hostService.EXPECT().GetCompletedReservation(gomock.Any()).Return(res, nil)
+	completedQueue.EXPECT().Enqueue(gomock.Any()).Return(errors.New("error"))
+	err = reserver.findCompletedReservation(context.Background())
+	suite.NoError(err)
+}
+
+// testing requeue when reservation failed.
+func (suite *ReserverTestSuite) TestReserveAgain() {
+	reserver, reserveQueue, _ := suite.getReserver()
+	// testing the valid completed reservation
+	var res []*hostsvc.CompletedReservation
+	res = append(res, suite.getCompletedReservation())
+	res[0].HostOffers = []*hostsvc.HostOffer{}
+	suite.hostService.EXPECT().GetCompletedReservation(gomock.Any()).Return(res, nil)
+	reserveQueue.EXPECT().Enqueue(gomock.Any()).Return(nil)
+	err := reserver.findCompletedReservation(context.Background())
+	suite.NoError(err)
+
+	// Testing requeue have error
+	suite.hostService.EXPECT().GetCompletedReservation(gomock.Any()).Return(res, nil)
+	reserveQueue.EXPECT().Enqueue(gomock.Any()).Return(errors.New("error"))
+	err = reserver.findCompletedReservation(context.Background())
+	suite.NoError(err)
+}
+
+// TestEnqueueReservation tests the enqueue reservation
+func (suite *ReserverTestSuite) TestEnqueueReservation() {
+	reserver, reserveQueue, _ := suite.getReserver()
+	err := reserver.EnqueueReservation(nil)
+	suite.Error(err)
+	suite.Equal(err.Error(), "invalid reservation")
+
+	reserveQueue.EXPECT().Enqueue(gomock.Any()).Return(errors.New("error"))
+	err = reserver.EnqueueReservation(&hostsvc.Reservation{})
+	suite.Error(err)
+	suite.Equal(err.Error(), "error")
+
+	reserveQueue.EXPECT().Enqueue(gomock.Any()).Return(nil)
+	err = reserver.EnqueueReservation(&hostsvc.Reservation{})
+	suite.NoError(err)
+}
+
+func (suite *ReserverTestSuite) getReserver() (*reserver, *queue_mocks.MockQueue, *queue_mocks.MockQueue) {
+	reserverQueue := queue_mocks.NewMockQueue(suite.mockCtrl)
+	completedQueue := queue_mocks.NewMockQueue(suite.mockCtrl)
+	metrics := metrics.NewMetrics(tally.NoopScope)
+
+	suite.hostService = hosts_mock.NewMockService(suite.mockCtrl)
+	config := &config.PlacementConfig{}
+	return &reserver{
+		metrics:                   metrics,
+		config:                    config,
+		hostService:               suite.hostService,
+		reservationQueue:          reserverQueue,
+		completedReservationQueue: completedQueue,
+		reservations:              make(map[string][]*models.Host),
+		tasks:                     make(map[string]*resmgr.Task),
+	}, reserverQueue, completedQueue
+}
+
+func (suite *ReserverTestSuite) getCompletedReservation() *hostsvc.CompletedReservation {
+	host := "host"
+	return &hostsvc.CompletedReservation{
+		HostOffers: []*hostsvc.HostOffer{
+			{
+				Hostname: host,
+				AgentId: &mesos_v1.AgentID{
+					Value: &host,
+				},
+			},
+		},
+		Task: &resmgr.Task{
+			Id: &peloton.TaskID{
+				Value: "task1",
+			},
+		},
+	}
 }
 
 // TestTaskLen tests the TaskLen function which gets the

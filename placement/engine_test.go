@@ -2,6 +2,7 @@ package placement
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"sync"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	offers_mock "code.uber.internal/infra/peloton/placement/offers/mocks"
 	"code.uber.internal/infra/peloton/placement/plugins/batch"
 	"code.uber.internal/infra/peloton/placement/plugins/mocks"
+	reserver_mocks "code.uber.internal/infra/peloton/placement/reserver/mocks"
 	tasks_mock "code.uber.internal/infra/peloton/placement/tasks/mocks"
 	"code.uber.internal/infra/peloton/placement/testutil"
 	"github.com/golang/mock/gomock"
@@ -573,4 +575,60 @@ func TestEngineFindUnusedOffers(t *testing.T) {
 	unused := engine.findUnusedHosts(assignments, retryable, offers)
 	assert.Equal(t, 1, len(unused))
 	assert.Equal(t, host2, unused[0])
+}
+
+// TestProcessCompletedReservations tests the process completed reservations
+// functions.
+func TestProcessCompletedReservations(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	metrics := metrics.NewMetrics(tally.NoopScope)
+	mockOfferService := offers_mock.NewMockService(ctrl)
+	mockTaskService := tasks_mock.NewMockService(ctrl)
+	mockStrategy := mocks.NewMockStrategy(ctrl)
+	mockReserver := reserver_mocks.NewMockReserver(ctrl)
+	config := &config.PlacementConfig{
+		Strategy: config.Batch,
+	}
+	engine := &engine{
+		config:       config,
+		metrics:      metrics,
+		offerService: mockOfferService,
+		taskService:  mockTaskService,
+		strategy:     mockStrategy,
+		reserver:     mockReserver,
+	}
+	// Testing the scenario where GetCompletetedReservation returns error
+	mockReserver.EXPECT().GetCompletetedReservation(gomock.Any()).Return(nil, errors.New("error"))
+	err := engine.processCompletedReservations(context.Background())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error")
+
+	// Testing the scenario where GetCompletetedReservation returns with no reservations
+	var reservations []*hostsvc.CompletedReservation
+	mockReserver.EXPECT().GetCompletetedReservation(gomock.Any()).Return(reservations, nil)
+	err = engine.processCompletedReservations(context.Background())
+	assert.Contains(t, err.Error(), "no valid reservations")
+
+	// Testing the scenario where GetCompletetedReservation returns with valid reservations
+	host := "host"
+	reservations = append(reservations, &hostsvc.CompletedReservation{
+		HostOffers: []*hostsvc.HostOffer{
+			{
+				Hostname: host,
+				AgentId: &mesos_v1.AgentID{
+					Value: &host,
+				},
+			},
+		},
+		Task: &resmgr.Task{
+			Id: &peloton.TaskID{
+				Value: "task1",
+			},
+		},
+	})
+	mockReserver.EXPECT().GetCompletetedReservation(gomock.Any()).Return(reservations, nil)
+	mockTaskService.EXPECT().SetPlacements(gomock.Any(), gomock.Any())
+	err = engine.processCompletedReservations(context.Background())
+	assert.NoError(t, err)
 }

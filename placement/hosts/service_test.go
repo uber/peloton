@@ -112,6 +112,15 @@ func (suite *ServiceTestSuite) TestHostsService_ReserveHosts() {
 	suite.Equal(err.Error(), _notImplemented)
 }
 
+// TestHostsService_GetCompletedReservation tests the GetCompletedReservation call
+func (suite *ServiceTestSuite) TestHostsService_GetCompletedReservation() {
+	defer suite.mockCtrl.Finish()
+	ctx := context.Background()
+	_, err := suite.hostService.GetCompletedReservation(ctx)
+	suite.Error(err)
+	suite.Equal(err.Error(), _notImplemented)
+}
+
 // TestHostsService_ErrorInGetTasks is testing the error in GetTasks()
 // call of resource manager client
 func (suite *ServiceTestSuite) TestHostsService_ErrorInGetTasks() {

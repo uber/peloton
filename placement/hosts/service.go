@@ -27,7 +27,10 @@ type Service interface {
 	GetHosts(ctx context.Context, task *resmgr.Task, filter *hostsvc.HostFilter) (hosts []*models.Host, err error)
 
 	// ReserveHosts Makes reservation for the host in hostmanager.
-	ReserveHost(ctx context.Context, host *models.Host, task *resmgr.Task) (err error)
+	ReserveHost(ctx context.Context, host []*models.Host, task *resmgr.Task) (err error)
+
+	// GetCompletedReservation gets the completed reservation from host manager
+	GetCompletedReservation(ctx context.Context) ([]*hostsvc.CompletedReservation, error)
 }
 
 // service is implementing Service interface
@@ -135,6 +138,12 @@ func (s *service) getTasks(
 }
 
 // ReserveHost reserves the given host for the given task in Host Manager
-func (s *service) ReserveHost(ctx context.Context, host *models.Host, task *resmgr.Task) error {
+func (s *service) ReserveHost(ctx context.Context, hosts []*models.Host, task *resmgr.Task) error {
 	return errors.New(_notImplemented)
+}
+
+// GetCompletedReservation gets the completed reservation from host manager
+func (s *service) GetCompletedReservation(ctx context.Context,
+) ([]*hostsvc.CompletedReservation, error) {
+	return nil, errors.New(_notImplemented)
 }
