@@ -277,6 +277,7 @@ func (h *serviceHandler) Update(
 		return nil, nil
 	}
 
+	// first persist the configuration
 	err = cachedJob.Update(ctx, &job.JobInfo{
 		Config: newConfig,
 	}, cached.UpdateCacheAndDB)
@@ -285,9 +286,16 @@ func (h *serviceHandler) Update(
 		return nil, err
 	}
 
+	newUpdatedConfig, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// next persist the runtime state and the new configuration version
 	err = cachedJob.Update(ctx, &job.JobInfo{
 		Runtime: &job.RuntimeInfo{
-			State: job.JobState_INITIALIZED,
+			ConfigurationVersion: newUpdatedConfig.GetChangeLog().GetVersion(),
+			State:                job.JobState_INITIALIZED,
 		},
 	}, cached.UpdateCacheAndDB)
 	if err != nil {

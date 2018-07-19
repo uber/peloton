@@ -226,7 +226,7 @@ func (suite *UpdateTestSuite) TestValidCreateUpdate() {
 	version := uint64(2)
 	prevJobConfig, newJobConfig, updateConfig, jobRuntime :=
 		initializeUpdateTest(
-			instanceCount, version, instanceCount+1, version+1)
+			instanceCount, version, instanceCount+1, version)
 
 	taskConfig0 := initializeTaskConfig()
 	taskCommand0 := "run.sh"
@@ -282,7 +282,22 @@ func (suite *UpdateTestSuite) TestValidCreateUpdate() {
 		Return(jobRuntime, nil)
 
 	suite.jobStore.EXPECT().
-		UpdateJobConfig(gomock.Any(), suite.jobID, newJobConfig).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(prevJobConfig.ChangeLog.Version, nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
+			suite.Equal(
+				newJobConfig.DefaultConfig.Command.Value,
+				config.DefaultConfig.Command.Value,
+			)
+			suite.Equal(
+				newJobConfig.ChangeLog.Version+1,
+				config.ChangeLog.Version,
+			)
+		}).
 		Return(nil)
 
 	suite.jobStore.EXPECT().
@@ -322,7 +337,7 @@ func (suite *UpdateTestSuite) TestCreateUpdateWithLabelsChange() {
 	version := uint64(2)
 	prevJobConfig, newJobConfig, updateConfig, jobRuntime :=
 		initializeUpdateTest(
-			instanceCount, version, instanceCount, version+1)
+			instanceCount, version, instanceCount, version)
 
 	// ensure that only labels have changed
 	newJobConfig.DefaultConfig.Command.Value =
@@ -352,12 +367,27 @@ func (suite *UpdateTestSuite) TestCreateUpdateWithLabelsChange() {
 		Return(prevJobConfig, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
-		Return(jobRuntime, nil)
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(prevJobConfig.ChangeLog.Version, nil)
 
 	suite.jobStore.EXPECT().
-		UpdateJobConfig(gomock.Any(), suite.jobID, newJobConfig).
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
+			suite.Equal(
+				newJobConfig.DefaultConfig.Command.Value,
+				config.DefaultConfig.Command.Value,
+			)
+			suite.Equal(
+				newJobConfig.ChangeLog.Version+1,
+				config.ChangeLog.Version,
+			)
+		}).
 		Return(nil)
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.jobID).
+		Return(jobRuntime, nil)
 
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
@@ -393,7 +423,7 @@ func (suite *UpdateTestSuite) TestCreateUpdateTaskRuntimeGetFail() {
 	version := uint64(2)
 	prevJobConfig, newJobConfig, updateConfig, _ :=
 		initializeUpdateTest(
-			instanceCount, version, instanceCount, version+1)
+			instanceCount, version, instanceCount, version)
 
 	for i := uint32(0); i < instanceCount-1; i++ {
 		suite.taskStore.EXPECT().
@@ -431,7 +461,7 @@ func (suite *UpdateTestSuite) TestCreateUpdateTaskConfigGetFail() {
 	version := uint64(2)
 	prevJobConfig, newJobConfig, updateConfig, _ :=
 		initializeUpdateTest(
-			instanceCount, version, instanceCount, version+1)
+			instanceCount, version, instanceCount, version)
 
 	for i := uint32(0); i < instanceCount-1; i++ {
 		suite.taskStore.EXPECT().
@@ -468,13 +498,13 @@ func (suite *UpdateTestSuite) TestCreateUpdateTaskConfigGetFail() {
 	suite.EqualError(err, "fake db error")
 }
 
-// TestValidCreateUpdate tests failing to persist the job update in database
+// TestCreateUpdateDBError tests failing to persist the job update in database
 func (suite *UpdateTestSuite) TestCreateUpdateDBError() {
 	instanceCount := uint32(10)
 	version := uint64(2)
 	prevJobConfig, newJobConfig, updateConfig, _ :=
 		initializeUpdateTest(
-			instanceCount, version, instanceCount, version+1)
+			instanceCount, version, instanceCount, version)
 
 	for i := uint32(0); i < instanceCount; i++ {
 		suite.taskStore.EXPECT().
@@ -490,6 +520,29 @@ func (suite *UpdateTestSuite) TestCreateUpdateDBError() {
 				prevJobConfig.InstanceConfig[i],
 			), nil)
 	}
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(prevJobConfig, nil)
+
+	suite.jobStore.EXPECT().
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(prevJobConfig.ChangeLog.Version, nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
+			suite.Equal(
+				newJobConfig.DefaultConfig.Command.Value,
+				config.DefaultConfig.Command.Value,
+			)
+			suite.Equal(
+				newJobConfig.ChangeLog.Version+1,
+				config.ChangeLog.Version,
+			)
+		}).
+		Return(nil)
 
 	suite.updateStore.EXPECT().
 		CreateUpdate(gomock.Any(), gomock.Any()).
@@ -505,14 +558,14 @@ func (suite *UpdateTestSuite) TestCreateUpdateDBError() {
 	suite.EqualError(err, "fake db error")
 }
 
-// TestValidCreateUpdate tests failing to persist the new job
+// TestCreateUpdateJobConfigDBError tests failing to persist the new job
 // configuration in database
 func (suite *UpdateTestSuite) TestCreateUpdateJobConfigDBError() {
 	instanceCount := uint32(10)
 	version := uint64(2)
-	prevJobConfig, newJobConfig, updateConfig, jobRuntime :=
+	prevJobConfig, newJobConfig, updateConfig, _ :=
 		initializeUpdateTest(
-			instanceCount, version, instanceCount, version+1)
+			instanceCount, version, instanceCount, version)
 
 	for i := uint32(0); i < instanceCount; i++ {
 		suite.taskStore.EXPECT().
@@ -529,20 +582,27 @@ func (suite *UpdateTestSuite) TestCreateUpdateJobConfigDBError() {
 			), nil)
 	}
 
-	suite.updateStore.EXPECT().
-		CreateUpdate(gomock.Any(), gomock.Any()).
-		Return(nil)
-
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(prevJobConfig, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
-		Return(jobRuntime, nil)
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(prevJobConfig.ChangeLog.Version, nil)
 
 	suite.jobStore.EXPECT().
-		UpdateJobConfig(gomock.Any(), suite.jobID, newJobConfig).
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
+			suite.Equal(
+				newJobConfig.DefaultConfig.Command.Value,
+				config.DefaultConfig.Command.Value,
+			)
+			suite.Equal(
+				newJobConfig.ChangeLog.Version+1,
+				config.ChangeLog.Version,
+			)
+		}).
 		Return(fmt.Errorf("fake db error"))
 
 	err := suite.update.Create(

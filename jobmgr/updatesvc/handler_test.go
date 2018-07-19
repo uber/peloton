@@ -122,10 +122,6 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, nil)
 
-	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig.ChangeLog.Version, nil)
-
 	suite.updateFactory.EXPECT().
 		AddUpdate(gomock.Any()).
 		Return(suite.cachedUpdate)
@@ -282,63 +278,6 @@ func (suite *UpdateSvcTestSuite) TestCreateMissingChangeLog() {
 		"code:invalid-argument message:missing changelog in job configuration")
 }
 
-// TestCreateMaxVersionFetchFail tests failing to get the maximum job
-// configuration version in DB during job update creations
-func (suite *UpdateSvcTestSuite) TestCreateMaxVersionFetchFail() {
-	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
-		Return(suite.jobRuntime, nil)
-
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig, nil)
-
-	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
-		Return(uint64(0), fmt.Errorf("fake db error"))
-
-	_, err := suite.h.CreateUpdate(
-		context.Background(),
-		&svc.CreateUpdateRequest{
-			JobId:        suite.jobID,
-			JobConfig:    suite.newJobConfig,
-			UpdateConfig: suite.updateConfig,
-		},
-	)
-	suite.EqualError(err, "fake db error")
-}
-
-// TestCreateIncorrectChangeLogVersion tests creating a job update with an
-// older changelog version in the new job configuration
-func (suite *UpdateSvcTestSuite) TestCreateIncorrectChangeLogVersion() {
-	suite.newJobConfig.ChangeLog.Version = suite.jobConfig.ChangeLog.Version
-
-	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
-		Return(suite.jobRuntime, nil)
-
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig, nil)
-
-	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig.ChangeLog.Version, nil)
-
-	_, err := suite.h.CreateUpdate(
-		context.Background(),
-		&svc.CreateUpdateRequest{
-			JobId:        suite.jobID,
-			JobConfig:    suite.newJobConfig,
-			UpdateConfig: suite.updateConfig,
-		},
-	)
-
-	suite.True(yarpcerrors.IsInvalidArgument(err))
-	suite.EqualError(err,
-		"code:invalid-argument message:job version needs to be greater than 2")
-}
-
 // TestCreateChangeJobType tests creating a job update with job type set to
 // BATCH in the new job configuration
 func (suite *UpdateSvcTestSuite) TestCreateChangeJobType() {
@@ -351,10 +290,6 @@ func (suite *UpdateSvcTestSuite) TestCreateChangeJobType() {
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, nil)
-
-	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig.ChangeLog.Version, nil)
 
 	_, err := suite.h.CreateUpdate(
 		context.Background(),
@@ -382,10 +317,6 @@ func (suite *UpdateSvcTestSuite) TestCreateReduceInstanceCount() {
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, nil)
-
-	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig.ChangeLog.Version, nil)
 
 	_, err := suite.h.CreateUpdate(
 		context.Background(),
@@ -416,10 +347,6 @@ func (suite *UpdateSvcTestSuite) TestCreateChangeRespoolID() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, nil)
 
-	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig.ChangeLog.Version, nil)
-
 	_, err := suite.h.CreateUpdate(
 		context.Background(),
 		&svc.CreateUpdateRequest{
@@ -444,10 +371,6 @@ func (suite *UpdateSvcTestSuite) TestCreateAddUpdateFail() {
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, nil)
-
-	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig.ChangeLog.Version, nil)
 
 	suite.updateFactory.EXPECT().
 		AddUpdate(gomock.Any()).
@@ -490,10 +413,6 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccessWithExistingUpdate() {
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, nil)
-
-	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig.ChangeLog.Version, nil)
 
 	suite.updateStore.EXPECT().
 		GetUpdateProgress(gomock.Any(), oldUpdateID).
@@ -552,10 +471,6 @@ func (suite *UpdateSvcTestSuite) TestCreateExistingUpdateCancelFail() {
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, nil)
-
-	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig.ChangeLog.Version, nil)
 
 	suite.updateStore.EXPECT().
 		GetUpdateProgress(gomock.Any(), oldUpdateID).

@@ -2,7 +2,6 @@ package updatesvc
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
@@ -64,19 +63,6 @@ func (h *serviceHandler) validateJobConfigUpdate(
 	if newJobConfig.GetChangeLog() == nil {
 		return yarpcerrors.InvalidArgumentErrorf(
 			"missing changelog in job configuration")
-	}
-
-	// Ensure that the changelog version is greater than the maximum
-	// version stored in the DB.
-	maxVersion, err := h.jobStore.GetMaxJobConfigVersion(ctx, jobID)
-	if err != nil {
-		return err
-	}
-
-	if newJobConfig.GetChangeLog().GetVersion() <= maxVersion {
-		msg := fmt.Sprintf(
-			"job version needs to be greater than %d", maxVersion)
-		return yarpcerrors.InvalidArgumentErrorf(msg)
 	}
 
 	// job type is immutable

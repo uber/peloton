@@ -279,8 +279,25 @@ func (u *update) Create(
 		return err
 	}
 
+	// Store the new job configuration
+	cachedJob := u.jobFactory.AddJob(jobID)
+	if err = cachedJob.Update(
+		ctx,
+		&pbjob.JobInfo{
+			Config: jobConfig,
+		},
+		UpdateCacheAndDB,
+	); err != nil {
+		return err
+	}
+
+	newConfig, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		return err
+	}
+
 	// store the previous and current job configuration versions
-	u.jobVersion = jobConfig.GetChangeLog().GetVersion()
+	u.jobVersion = newConfig.GetChangeLog().GetVersion()
 	u.jobPrevVersion = prevJobConfig.GetChangeLog().GetVersion()
 
 	// Store the new update in DB
@@ -290,7 +307,7 @@ func (u *update) Create(
 			UpdateID:             u.id,
 			JobID:                u.jobID,
 			UpdateConfig:         updateConfig,
-			JobConfigVersion:     jobConfig.GetChangeLog().GetVersion(),
+			JobConfigVersion:     newConfig.GetChangeLog().GetVersion(),
 			PrevJobConfigVersion: prevJobConfig.GetChangeLog().GetVersion(),
 			State:                u.state,
 			InstancesTotal:       uint32(len(u.instancesTotal)),
@@ -298,15 +315,13 @@ func (u *update) Create(
 		return err
 	}
 
-	// store the new job configuration
-	cachedJob := u.jobFactory.AddJob(jobID)
+	// store the update identifier and new configuration version in the job runtime
 	if err = cachedJob.Update(
 		ctx,
 		&pbjob.JobInfo{
-			Config: jobConfig,
 			Runtime: &pbjob.RuntimeInfo{
 				UpdateID:             u.id,
-				ConfigurationVersion: jobConfig.GetChangeLog().GetVersion(),
+				ConfigurationVersion: newConfig.GetChangeLog().GetVersion(),
 			},
 		},
 		UpdateCacheAndDB,

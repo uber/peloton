@@ -418,22 +418,26 @@ func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, req UpdateRequ
 	var updatedConfig *pbjob.JobConfig
 	var err error
 	if jobInfo.GetConfig() != nil {
-		updatedConfig, err = j.getUpdatedJobConfigCache(ctx, jobInfo.GetConfig(), req)
-		if err != nil {
-			j.invalidateCache()
-			return err
-		}
-		if updatedConfig != nil {
-			j.populateJobConfigCache(updatedConfig)
-
-			// if changeLog revision is not nil, config is recovered instead of
-			// updated. No need to update ConfigurationVersion, when config is recovered
-			if jobInfo.GetConfig().GetChangeLog() == nil {
-				// update runtime Configuration version with changeLog revision
-				if jobInfo.GetRuntime() == nil {
-					jobInfo.Runtime = &pbjob.RuntimeInfo{}
+		if req == UpdateCacheOnly {
+			// overwrite the cache after validating that
+			// version is either the same or increasing
+			if j.config == nil || j.config.changeLog.GetVersion() <=
+				jobInfo.GetConfig().GetChangeLog().GetVersion() {
+				j.populateJobConfigCache(jobInfo.GetConfig())
+			}
+		} else {
+			updatedConfig, err = j.getUpdatedJobConfigCache(
+				ctx, jobInfo.GetConfig(), req)
+			if err != nil {
+				// invalidate cache if error not from validation failure
+				if !yarpcerrors.IsInvalidArgument(err) {
+					j.invalidateCache()
 				}
-				jobInfo.Runtime.ConfigurationVersion = updatedConfig.GetChangeLog().GetVersion()
+				return err
+			}
+
+			if updatedConfig != nil {
+				j.populateJobConfigCache(updatedConfig)
 			}
 		}
 	}
@@ -510,54 +514,49 @@ func (j *job) validateAndMergeConfig(
 	ctx context.Context,
 	config *pbjob.JobConfig,
 ) (*pbjob.JobConfig, error) {
-	if !j.validateConfig(config) {
-		log.WithField("current_revision", j.config.GetChangeLog().GetVersion()).
-			WithField("new_revision", config.GetChangeLog().GetVersion()).
-			WithField("job_id", j.id.Value).
+	if err := j.validateConfig(config); err != nil {
+		log.WithError(err).
+			WithFields(log.Fields{
+				"current_revision": j.config.GetChangeLog().GetVersion(),
+				"new_revision":     config.GetChangeLog().GetVersion(),
+				"job_id":           j.id.Value}).
 			Info("failed job config validation")
-		return nil, nil
+		return nil, err
 	}
 
 	newConfig := *config
-	// ChangeLog is nil when update the config,
-	if newConfig.ChangeLog == nil {
-		maxVersion, err := j.jobFactory.jobStore.GetMaxJobConfigVersion(ctx, j.id)
-		if err != nil {
-			return nil, err
-		}
-
-		currentChangeLog := *j.config.changeLog
-		newConfig.ChangeLog = &currentChangeLog
-		// update version to maxVersion + 1,
-		// instead of config.ChangeLog.Version + 1
-		// If config update succeed and runtime update
-		// fails, runtime would still points to the old config.
-		// If user tries to update the config again, job manager will
-		// read the old config version and update based on
-		// the old config would cause a 'config already exists' error
-		newConfig.ChangeLog.Version = maxVersion + 1
-		newConfig.ChangeLog.UpdatedAt = uint64(time.Now().UnixNano())
+	maxVersion, err := j.jobFactory.jobStore.GetMaxJobConfigVersion(ctx, j.id)
+	if err != nil {
+		return nil, err
 	}
+
+	currentChangeLog := *j.config.changeLog
+	newConfig.ChangeLog = &currentChangeLog
+	newConfig.ChangeLog.Version = maxVersion + 1
+	newConfig.ChangeLog.UpdatedAt = uint64(time.Now().UnixNano())
 	return &newConfig, nil
 }
 
 // validateConfig validates whether the input config is valid
 // to update the exisiting config cache
-func (j *job) validateConfig(newConfig *pbjob.JobConfig) bool {
+func (j *job) validateConfig(newConfig *pbjob.JobConfig) error {
 	currentConfig := j.config
 
 	if newConfig == nil {
-		return false
+		return yarpcerrors.InvalidArgumentErrorf(
+			"no job configuration provided")
 	}
 
-	// changeLog is not nil, newConfig is from db
+	// changeLog is not nil, the version in the new config should
+	// match the current config version
 	if newConfig.GetChangeLog() != nil {
 		// Make sure that not overwriting with old or same version
-		if newConfig.GetChangeLog().GetVersion() <= currentConfig.GetChangeLog().GetVersion() {
-			return false
+		if newConfig.GetChangeLog().GetVersion() != currentConfig.GetChangeLog().GetVersion() {
+			return yarpcerrors.InvalidArgumentErrorf(
+				"invalid job configuration version")
 		}
 	}
-	return true
+	return nil
 }
 
 // populateJobConfigCache update the cache in job cache

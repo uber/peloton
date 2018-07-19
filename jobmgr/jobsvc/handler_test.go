@@ -913,6 +913,13 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil).
 		AnyTimes()
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			ChangeLog: &peloton.ChangeLog{
+				Version: 2,
+			},
+		}, nil)
 	req := &job.UpdateRequest{
 		Id:     jobID,
 		Config: newJobConfig,
@@ -1186,6 +1193,13 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	}
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			ChangeLog: &peloton.ChangeLog{
+				Version: 2,
+			},
+		}, nil)
 	resp, err := suite.handler.Update(suite.context, req)
 	suite.NoError(err)
 	suite.Nil(resp)
@@ -1198,6 +1212,13 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 		gomock.Any(), secret, jobID).Return(nil)
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			ChangeLog: &peloton.ChangeLog{
+				Version: 2,
+			},
+		}, nil)
 	resp, err = suite.handler.Update(suite.context, req)
 	suite.NoError(err)
 	suite.NotNil(resp)
@@ -1225,6 +1246,13 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 		util.CreateSecretVolume(testSecretPath, secretID.GetValue())}
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			ChangeLog: &peloton.ChangeLog{
+				Version: 2,
+			},
+		}, nil)
 	// request contains secret with same path, different data and empty ID
 	req.Secrets = []*peloton.Secret{jobmgrtask.CreateSecretProto("",
 		testSecretPath, []byte(testSecretStrUpdated))}
@@ -1292,6 +1320,13 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 			Command:   &mesos.CommandInfo{Value: &testCmd},
 			Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
 		}}, nil)
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			ChangeLog: &peloton.ChangeLog{
+				Version: 2,
+			},
+		}, nil)
 	suite.mockedSecretStore.EXPECT().CreateSecret(
 		gomock.Any(), gomock.Any(), jobID).Return(nil)
 	resp, err = suite.handler.Update(suite.context, req)
