@@ -1072,3 +1072,11 @@ func (m *Store) GetMaxJobConfigVersion(
 ) (uint64, error) {
 	return 0, yarpcerrors.UnimplementedErrorf("GetMaxJobConfigVersion is not implemented")
 }
+
+// GetJobConfigWithVersion is not implemented
+func (m *Store) GetJobConfigWithVersion(ctx context.Context,
+	id *peloton.JobID,
+	version uint64,
+) (*job.JobConfig, error) {
+	return nil, yarpcerrors.UnimplementedErrorf("GetJobConfigWithVersion is not implemented")
+}

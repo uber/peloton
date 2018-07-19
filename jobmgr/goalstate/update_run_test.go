@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
@@ -123,7 +122,7 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 
 	for _, instID := range instancesTotal {
 		suite.cachedJob.EXPECT().
-			GetTask(instID).
+			AddTask(instID).
 			Return(suite.cachedTask)
 
 		if instID == instancesTotal[0] {
@@ -190,7 +189,7 @@ func (suite *UpdateRunTestSuite) TestCompletedUpdate() {
 
 	for _, instID := range instancesTotal {
 		suite.cachedJob.EXPECT().
-			GetTask(instID).
+			AddTask(instID).
 			Return(suite.cachedTask)
 
 		suite.cachedTask.EXPECT().
@@ -213,68 +212,6 @@ func (suite *UpdateRunTestSuite) TestCompletedUpdate() {
 			updateEnt := entity.(*updateEntity)
 			suite.Equal(suite.updateID.GetValue(), updateEnt.id.GetValue())
 		})
-
-	err := UpdateRun(context.Background(), suite.updateEnt)
-	suite.NoError(err)
-}
-
-func (suite *UpdateRunTestSuite) TestUpdateFailGetTask() {
-	var instancesDone []uint32
-	instancesTotal := []uint32{2, 3, 4, 5}
-
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).
-		Return(suite.cachedJob)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
-		GetGoalState().
-		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
-
-	for _, instID := range instancesTotal {
-		taskID := fmt.Sprintf("%s-%d", suite.jobID.GetValue(), instID)
-
-		suite.cachedJob.EXPECT().
-			GetTask(instID).
-			Return(nil)
-
-		suite.taskGoalStateEngine.EXPECT().
-			Enqueue(gomock.Any(), gomock.Any()).
-			Do(func(taskEntity goalstate.Entity, deadline time.Time) {
-				suite.Equal(taskID, taskEntity.GetID())
-			})
-
-		suite.cachedJob.EXPECT().
-			GetJobType().
-			Return(pbjob.JobType_BATCH)
-
-		suite.updateGoalStateEngine.EXPECT().
-			Enqueue(gomock.Any(), gomock.Any()).
-			Do(func(updateEntity goalstate.Entity, deadline time.Time) {
-				suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
-			})
-	}
-
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
-			gomock.Any(),
-			pbupdate.State_ROLLING_FORWARD,
-			instancesDone,
-			[]uint32{2, 3, 4, 5},
-		).Return(nil)
 
 	err := UpdateRun(context.Background(), suite.updateEnt)
 	suite.NoError(err)
@@ -336,7 +273,7 @@ func (suite *UpdateRunTestSuite) TestUpdateTaskRuntimeGetFail() {
 		})
 
 	suite.cachedJob.EXPECT().
-		GetTask(gomock.Any()).
+		AddTask(gomock.Any()).
 		Return(suite.cachedTask)
 
 	suite.cachedTask.EXPECT().
@@ -381,7 +318,7 @@ func (suite *UpdateRunTestSuite) TestUpdateProgressDBError() {
 
 	for _, instID := range instancesTotal {
 		suite.cachedJob.EXPECT().
-			GetTask(instID).
+			AddTask(instID).
 			Return(suite.cachedTask)
 
 		suite.cachedTask.EXPECT().

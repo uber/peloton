@@ -11,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	"code.uber.internal/infra/peloton/common/taskconfig"
+	"code.uber.internal/infra/peloton/util"
 
 	"github.com/gogo/protobuf/proto"
 	log "github.com/sirupsen/logrus"
@@ -350,11 +351,37 @@ func (u *update) WriteProgress(
 	return nil
 }
 
-// TODO implement this
 func (u *update) Recover(ctx context.Context) error {
 	u.Lock()
 	defer u.Unlock()
 
+	// update is already recovered
+	if u.state != pbupdate.State_INVALID {
+		return nil
+	}
+
+	updateModel, err := u.updateFactory.updateStore.GetUpdate(ctx, u.id)
+	if err != nil {
+		return err
+	}
+
+	u.populateCache(updateModel)
+
+	// Skip recovering terminated update for performance
+	if IsUpdateStateTerminal(updateModel.State) {
+		log.WithFields(log.Fields{
+			"update_id": u.id.GetValue(),
+			"job_id":    u.jobID.GetValue(),
+			"state":     u.state,
+		}).Debug("skip recover upgrade progress for terminated upgrade")
+		return nil
+	}
+
+	err = u.recoverUpdateProgress(ctx)
+	if err != nil {
+		u.clearCache()
+		return err
+	}
 	return nil
 }
 
@@ -382,6 +409,15 @@ func (u *update) GetState() *UpdateStateVector {
 	u.RLock()
 	defer u.RUnlock()
 
+	if IsUpdateStateTerminal(u.state) {
+		log.WithFields(log.Fields{
+			"update_id": u.id.GetValue(),
+			"job_id":    u.jobID.GetValue(),
+			"state":     u.state,
+			"field":     "instancesDone",
+		}).Debug("accessing fields in terminated upgrade which can be stale")
+	}
+
 	instances := make([]uint32, len(u.instancesDone))
 	copy(instances, u.instancesDone)
 
@@ -395,6 +431,15 @@ func (u *update) GetGoalState() *UpdateStateVector {
 	u.RLock()
 	defer u.RUnlock()
 
+	if IsUpdateStateTerminal(u.state) {
+		log.WithFields(log.Fields{
+			"update_id": u.id.GetValue(),
+			"job_id":    u.jobID.GetValue(),
+			"state":     u.state,
+			"field":     "instancesTotal",
+		}).Debug("accessing fields in terminated upgrade which can be stale")
+	}
+
 	instances := make([]uint32, len(u.instancesTotal))
 	copy(instances, u.instancesTotal)
 
@@ -407,6 +452,15 @@ func (u *update) GetInstancesAdded() []uint32 {
 	u.RLock()
 	defer u.RUnlock()
 
+	if IsUpdateStateTerminal(u.state) {
+		log.WithFields(log.Fields{
+			"update_id": u.id.GetValue(),
+			"job_id":    u.jobID.GetValue(),
+			"state":     u.state,
+			"field":     "instancesAdded",
+		}).Warn("accessing fields in terminated upgrade which can be stale")
+	}
+
 	instances := make([]uint32, len(u.instancesAdded))
 	copy(instances, u.instancesAdded)
 	return instances
@@ -415,6 +469,15 @@ func (u *update) GetInstancesAdded() []uint32 {
 func (u *update) GetInstancesUpdated() []uint32 {
 	u.RLock()
 	defer u.RUnlock()
+
+	if IsUpdateStateTerminal(u.state) {
+		log.WithFields(log.Fields{
+			"update_id": u.id.GetValue(),
+			"job_id":    u.jobID.GetValue(),
+			"state":     u.state,
+			"field":     "instancesUpdated",
+		}).Warn("accessing fields in terminated upgrade which can be stale")
+	}
 
 	instances := make([]uint32, len(u.instancesUpdated))
 	copy(instances, u.instancesUpdated)
@@ -428,4 +491,79 @@ func (u *update) GetInstancesCurrent() []uint32 {
 	instances := make([]uint32, len(u.instancesCurrent))
 	copy(instances, u.instancesCurrent)
 	return instances
+}
+
+// populate info in updateModel into update
+func (u *update) populateCache(updateModel *models.UpdateModel) {
+	u.updateConfig = updateModel.GetUpdateConfig()
+	u.state = updateModel.GetState()
+	u.jobID = updateModel.GetJobID()
+	u.instancesCurrent = updateModel.GetInstancesCurrent()
+	u.jobVersion = updateModel.GetJobConfigVersion()
+	u.jobPrevVersion = updateModel.GetPrevJobConfigVersion()
+}
+
+func (u *update) recoverUpdateProgress(ctx context.Context) error {
+	jobConfig, err := u.updateFactory.jobStore.GetJobConfigWithVersion(
+		ctx, u.jobID, u.jobVersion)
+	if err != nil {
+		return err
+	}
+
+	prevJobConfig, err := u.updateFactory.jobStore.GetJobConfigWithVersion(
+		ctx, u.jobID, u.jobPrevVersion)
+	if err != nil {
+		return err
+	}
+
+	// determine the instances being updated with this update
+	if u.instancesTotal, u.instancesAdded, u.instancesUpdated, err =
+		u.diffConfig(ctx, prevJobConfig, jobConfig); err != nil {
+		return err
+	}
+
+	cachedJob := u.jobFactory.AddJob(u.jobID)
+	u.instancesCurrent, u.instancesDone, err =
+		GetUpdateProgress(ctx, cachedJob, u.instancesTotal)
+	return err
+}
+
+func (u *update) clearCache() {
+	u.state = pbupdate.State_INVALID
+	u.instancesTotal = nil
+	u.instancesDone = nil
+	u.instancesCurrent = nil
+	u.instancesAdded = nil
+	u.instancesUpdated = nil
+}
+
+// GetUpdateProgress iterates through all tasks and check if they are running and
+// their current config version is the same as the desired config version.
+// TODO: find the right place to put the func
+// TODO: fix instancesCurrent for rolling upgrade
+func GetUpdateProgress(
+	ctx context.Context,
+	cachedJob Job,
+	instancesTotal []uint32,
+) (instancesCurrent []uint32, instancesDone []uint32, err error) {
+	for _, instID := range instancesTotal {
+		cachedTask := cachedJob.AddTask(instID)
+		runtime, err := cachedTask.GetRunTime(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		if (runtime.GetState() == pbtask.TaskState_RUNNING &&
+			runtime.GetConfigVersion() == runtime.GetDesiredConfigVersion()) ||
+			util.IsPelotonStateTerminal(runtime.GetGoalState()) {
+			// Either instance has been updated, or instance is in terminal
+			// goal state, so it will not be updated anyways => add to
+			// instancesDone.
+			instancesDone = append(instancesDone, instID)
+		} else {
+			// instance not updated yet, copy to instancesCurrent
+			instancesCurrent = append(instancesCurrent, instID)
+		}
+	}
+	return instancesCurrent, instancesDone, err
 }

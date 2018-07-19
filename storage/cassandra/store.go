@@ -460,10 +460,19 @@ func (s *Store) GetJobConfig(
 		r.ConfigurationVersion = uint64(r.ConfigVersion)
 	}
 
+	return s.GetJobConfigWithVersion(ctx, id, r.GetConfigurationVersion())
+}
+
+// GetJobConfigWithVersion fetches the job configuration for a given
+// job of a given version
+func (s *Store) GetJobConfigWithVersion(ctx context.Context,
+	id *peloton.JobID,
+	version uint64,
+) (*job.JobConfig, error) {
 	jobID := id.GetValue()
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("config").From(jobConfigTable).
-		Where(qb.Eq{"job_id": jobID, "version": r.ConfigurationVersion})
+		Where(qb.Eq{"job_id": jobID, "version": version})
 	stmtString, _, _ := stmt.ToSQL()
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
@@ -474,7 +483,10 @@ func (s *Store) GetJobConfig(
 
 	if len(allResults) > 1 {
 		s.metrics.JobMetrics.JobGetFail.Inc(1)
-		return nil, fmt.Errorf("found %d jobs %v for job id %v", len(allResults), allResults, jobID)
+		return nil,
+			yarpcerrors.FailedPreconditionErrorf(
+				"found %d jobs %v for job id %v",
+				len(allResults), allResults, jobID)
 	}
 	for _, value := range allResults {
 		var record JobConfigRecord
@@ -509,7 +521,8 @@ func (s *Store) GetJobConfig(
 		return jobConfig, nil
 	}
 	s.metrics.JobMetrics.JobNotFound.Inc(1)
-	return nil, fmt.Errorf("Cannot find job wth jobID %v", jobID)
+	return nil, yarpcerrors.NotFoundErrorf(
+		"cannot find job wth jobID %v", jobID)
 }
 
 // WithTimeRangeFilter will take timerange and time_field (creation_time|completion_time) as

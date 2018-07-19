@@ -21,6 +21,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 type UpdateTestSuite struct {
@@ -50,7 +51,6 @@ func (suite *UpdateTestSuite) SetupTest() {
 		suite.jobStore,
 		suite.taskStore,
 		suite.updateStore,
-		suite.jobID,
 		suite.updateID,
 	)
 }
@@ -64,7 +64,6 @@ func initializeUpdate(
 	jobStore *storemocks.MockJobStore,
 	taskStore *storemocks.MockTaskStore,
 	updateStore *storemocks.MockUpdateStore,
-	jobID *peloton.JobID,
 	updateID *peloton.UpdateID) *update {
 	jobFactory := &jobFactory{
 		mtx:       NewMetrics(tally.NoopScope),
@@ -688,4 +687,278 @@ func (suite *UpdateTestSuite) TestUpdateGetInstancesCurrent() {
 
 	instances := suite.update.GetInstancesCurrent()
 	suite.True(reflect.DeepEqual(instances, suite.update.instancesCurrent))
+}
+
+func (suite *UpdateTestSuite) TestUpdateRecover_RollingForward() {
+	instancesTotal := []uint32{0, 1, 2, 3, 4}
+	instancesDone := []uint32{0, 1}
+	instancesCurrent := []uint32{2, 3, 4}
+	instanceCount := uint32(len(instancesTotal))
+	preJobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 0,
+		},
+		InstanceCount: instanceCount,
+	}
+	newJobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 1,
+		},
+		InstanceCount: instanceCount,
+		Labels:        []*peloton.Label{{"test-key", "test-value"}},
+	}
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			JobID:                suite.jobID,
+			InstancesTotal:       uint32(len(instancesTotal)),
+			InstancesDone:        uint32(len(instancesDone)),
+			InstancesCurrent:     instancesCurrent,
+			PrevJobConfigVersion: preJobConfig.GetChangeLog().GetVersion(),
+			JobConfigVersion:     newJobConfig.GetChangeLog().GetVersion(),
+			State:                pbupdate.State_ROLLING_FORWARD,
+		}, nil)
+
+	suite.jobStore.EXPECT().GetJobConfigWithVersion(
+		gomock.Any(),
+		suite.jobID,
+		preJobConfig.GetChangeLog().GetVersion()).
+		Return(preJobConfig, nil)
+
+	suite.jobStore.EXPECT().GetJobConfigWithVersion(
+		gomock.Any(),
+		suite.jobID,
+		newJobConfig.GetChangeLog().GetVersion()).
+		Return(newJobConfig, nil)
+
+	for i := uint32(0); i < instanceCount; i++ {
+		taskRuntime := &pbtask.RuntimeInfo{
+			State: pbtask.TaskState_RUNNING,
+		}
+		if contains(i, instancesCurrent) {
+			taskRuntime.DesiredConfigVersion = newJobConfig.GetChangeLog().GetVersion()
+			taskRuntime.ConfigVersion = preJobConfig.GetChangeLog().GetVersion()
+		} else if contains(i, instancesDone) {
+			taskRuntime.DesiredConfigVersion = newJobConfig.GetChangeLog().GetVersion()
+			taskRuntime.ConfigVersion = newJobConfig.GetChangeLog().GetVersion()
+		} else {
+			taskRuntime.DesiredConfigVersion = preJobConfig.GetChangeLog().GetVersion()
+			taskRuntime.ConfigVersion = preJobConfig.GetChangeLog().GetVersion()
+		}
+
+		suite.taskStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), suite.jobID, i).
+			Return(taskRuntime, nil)
+	}
+
+	err := suite.update.Recover(context.Background())
+	suite.NoError(err)
+
+	suite.Equal(suite.update.instancesDone, instancesDone)
+	suite.Equal(suite.update.instancesCurrent, instancesCurrent)
+	suite.Equal(suite.update.instancesTotal, instancesTotal)
+	suite.Equal(suite.update.state, pbupdate.State_ROLLING_FORWARD)
+}
+
+func (suite *UpdateTestSuite) TestUpdateRecover_Succeeded() {
+	var instancesCurrent []uint32
+	instancesTotal := []uint32{0, 1, 2, 3, 4}
+	instancesDone := instancesTotal
+
+	instanceCount := uint32(len(instancesTotal))
+	preJobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 0,
+		},
+		InstanceCount: instanceCount,
+	}
+	newJobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 1,
+		},
+		InstanceCount: instanceCount,
+		Labels:        []*peloton.Label{{"test-key", "test-value"}},
+	}
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			JobID:                suite.jobID,
+			InstancesTotal:       uint32(len(instancesTotal)),
+			InstancesDone:        uint32(len(instancesDone)),
+			InstancesCurrent:     instancesCurrent,
+			PrevJobConfigVersion: preJobConfig.GetChangeLog().GetVersion(),
+			JobConfigVersion:     newJobConfig.GetChangeLog().GetVersion(),
+			State:                pbupdate.State_SUCCEEDED,
+		}, nil)
+
+	err := suite.update.Recover(context.Background())
+	suite.NoError(err)
+
+	suite.Empty(suite.update.instancesDone)
+	suite.Equal(suite.update.instancesCurrent, instancesCurrent)
+	suite.Empty(suite.update.instancesTotal)
+	suite.Equal(suite.update.state, pbupdate.State_SUCCEEDED)
+}
+
+func (suite *UpdateTestSuite) TestUpdateRecover_Initialized() {
+	instancesTotal := []uint32{0, 1, 2, 3, 4}
+	instancesCurrent := []uint32{0, 1, 2, 3, 4}
+	var instancesDone []uint32
+	instanceCount := uint32(len(instancesTotal))
+	preJobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 0,
+		},
+		InstanceCount: instanceCount,
+	}
+	newJobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 1,
+		},
+		InstanceCount: instanceCount,
+		Labels:        []*peloton.Label{{"test-key", "test-value"}},
+	}
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			JobID:                suite.jobID,
+			InstancesTotal:       uint32(len(instancesTotal)),
+			InstancesDone:        uint32(len(instancesDone)),
+			InstancesCurrent:     instancesCurrent,
+			PrevJobConfigVersion: preJobConfig.GetChangeLog().GetVersion(),
+			JobConfigVersion:     newJobConfig.GetChangeLog().GetVersion(),
+			State:                pbupdate.State_INITIALIZED,
+		}, nil)
+
+	suite.jobStore.EXPECT().GetJobConfigWithVersion(
+		gomock.Any(),
+		suite.jobID,
+		preJobConfig.GetChangeLog().GetVersion()).
+		Return(preJobConfig, nil)
+
+	suite.jobStore.EXPECT().GetJobConfigWithVersion(
+		gomock.Any(),
+		suite.jobID,
+		newJobConfig.GetChangeLog().GetVersion()).
+		Return(newJobConfig, nil)
+
+	for i := uint32(0); i < instanceCount; i++ {
+		taskRuntime := &pbtask.RuntimeInfo{
+			State: pbtask.TaskState_RUNNING,
+		}
+		if contains(i, instancesCurrent) {
+			taskRuntime.DesiredConfigVersion = newJobConfig.GetChangeLog().GetVersion()
+			taskRuntime.ConfigVersion = preJobConfig.GetChangeLog().GetVersion()
+		} else if contains(i, instancesDone) {
+			taskRuntime.DesiredConfigVersion = newJobConfig.GetChangeLog().GetVersion()
+			taskRuntime.ConfigVersion = newJobConfig.GetChangeLog().GetVersion()
+		} else {
+			taskRuntime.DesiredConfigVersion = preJobConfig.GetChangeLog().GetVersion()
+			taskRuntime.ConfigVersion = preJobConfig.GetChangeLog().GetVersion()
+		}
+
+		suite.taskStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), suite.jobID, i).
+			Return(taskRuntime, nil)
+	}
+
+	err := suite.update.Recover(context.Background())
+	suite.NoError(err)
+
+	suite.Equal(suite.update.instancesDone, instancesDone)
+	suite.Equal(suite.update.instancesCurrent, instancesCurrent)
+	suite.Equal(suite.update.instancesTotal, instancesTotal)
+	suite.Equal(suite.update.state, pbupdate.State_INITIALIZED)
+}
+
+func (suite *UpdateTestSuite) TestUpdateRecover_UpdateStoreErr() {
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(nil, yarpcerrors.UnavailableErrorf("test error"))
+
+	err := suite.update.Recover(context.Background())
+	suite.Error(err)
+
+	suite.Empty(suite.update.instancesDone)
+	suite.Empty(suite.update.instancesCurrent)
+	suite.Empty(suite.update.instancesTotal)
+	suite.Equal(suite.update.state, pbupdate.State_INVALID)
+}
+
+func (suite *UpdateTestSuite) TestUpdateRecover_JobStoreErr() {
+	instancesTotal := []uint32{0, 1, 2, 3, 4}
+	instancesCurrent := []uint32{0, 1, 2, 3, 4}
+	var instancesDone []uint32
+	instanceCount := uint32(len(instancesTotal))
+	preJobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 0,
+		},
+		InstanceCount: instanceCount,
+	}
+	newJobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 1,
+		},
+		InstanceCount: instanceCount,
+		Labels:        []*peloton.Label{{"test-key", "test-value"}},
+	}
+
+	updateModel := &models.UpdateModel{
+		JobID:                suite.jobID,
+		InstancesTotal:       uint32(len(instancesTotal)),
+		InstancesDone:        uint32(len(instancesDone)),
+		InstancesCurrent:     instancesCurrent,
+		PrevJobConfigVersion: preJobConfig.GetChangeLog().GetVersion(),
+		JobConfigVersion:     newJobConfig.GetChangeLog().GetVersion(),
+		State:                pbupdate.State_INITIALIZED,
+	}
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(updateModel, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID, newJobConfig.GetChangeLog().GetVersion()).
+		Return(nil, yarpcerrors.UnavailableErrorf("test error"))
+
+	err := suite.update.Recover(context.Background())
+	suite.Error(err)
+
+	suite.Empty(suite.update.instancesDone)
+	suite.Empty(suite.update.instancesCurrent)
+	suite.Empty(suite.update.instancesTotal)
+	suite.Equal(suite.update.state, pbupdate.State_INVALID)
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(updateModel, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID, newJobConfig.GetChangeLog().GetVersion()).
+		Return(&pbjob.JobConfig{}, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID, preJobConfig.GetChangeLog().GetVersion()).
+		Return(nil, yarpcerrors.UnavailableErrorf("test error"))
+
+	err = suite.update.Recover(context.Background())
+	suite.Error(err)
+
+	suite.Empty(suite.update.instancesDone)
+	suite.Empty(suite.update.instancesCurrent)
+	suite.Empty(suite.update.instancesTotal)
+	suite.Equal(suite.update.state, pbupdate.State_INVALID)
+}
+
+func contains(element uint32, slice []uint32) bool {
+	for _, v := range slice {
+		if v == element {
+			return true
+		}
+	}
+	return false
 }

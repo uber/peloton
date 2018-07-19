@@ -4,11 +4,10 @@ import (
 	"context"
 	"time"
 
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
-	"code.uber.internal/infra/peloton/util"
+	"code.uber.internal/infra/peloton/jobmgr/cached"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -44,37 +43,16 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 
 	jobID := cachedUpdate.JobID()
 
-	// iterate through all tasks and check if they are running and
-	// their current config version is the same as the desired config version.
 	instancesTotal := cachedUpdate.GetGoalState().Instances
-	for _, instID := range instancesTotal {
-		cachedTask := cachedJob.GetTask(instID)
-		if cachedTask == nil {
-			// just requeue the task and update again
-			goalStateDriver.EnqueueTask(jobID, instID, time.Now())
-			goalStateDriver.EnqueueUpdate(jobID, updateEnt.id, time.Now().Add(
-				goalStateDriver.JobRuntimeDuration(cachedJob.GetJobType())))
-			instancesCurrent = append(instancesCurrent, instID)
-			continue
-		}
+	instancesCurrent, instancesDone, err = cached.GetUpdateProgress(
+		ctx,
+		cachedJob,
+		instancesTotal,
+	)
 
-		runtime, err := cachedTask.GetRunTime(ctx)
-		if err != nil {
-			goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
-			return err
-		}
-
-		if (runtime.GetState() == pbtask.TaskState_RUNNING &&
-			runtime.GetConfigVersion() == runtime.GetDesiredConfigVersion()) ||
-			util.IsPelotonStateTerminal(runtime.GetGoalState()) {
-			// Either instance has been updated, or instance is in terminal
-			// goal state, so it will not be updated anyways => add to
-			// instancesDone.
-			instancesDone = append(instancesDone, instID)
-		} else {
-			// instance not updated yet, copy to instancesCurrent
-			instancesCurrent = append(instancesCurrent, instID)
-		}
+	if err != nil {
+		goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
+		return err
 	}
 
 	state := pbupdate.State_ROLLING_FORWARD

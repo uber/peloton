@@ -2014,6 +2014,43 @@ func (suite *CassandraStoreTestSuite) TestJobConfig() {
 	suite.Equal(uint32(newInstanceCount), jobConfig.InstanceCount)
 }
 
+func (suite *CassandraStoreTestSuite) TestGetJobConfigOfDifferentVersions() {
+	var jobStore = store
+	oldInstanceCount := 20
+	newInstanceCount := 50
+
+	// CreateJob should create the default job runtime
+	var jobID = peloton.JobID{Value: uuid.New()}
+	jobConfig := createJobConfig()
+	jobConfig.InstanceCount = uint32(oldInstanceCount)
+	jobConfig.ChangeLog = &peloton.ChangeLog{
+		Version: 0,
+	}
+	err := jobStore.CreateJobConfig(
+		context.Background(),
+		&jobID, jobConfig,
+		jobConfig.GetChangeLog().GetVersion(),
+		"test-owner")
+	suite.NoError(err)
+
+	jobConfig.ChangeLog.Version = 1
+	jobConfig.InstanceCount = uint32(newInstanceCount)
+	err = jobStore.CreateJobConfig(
+		context.Background(),
+		&jobID, jobConfig,
+		jobConfig.GetChangeLog().GetVersion(),
+		"test-owner")
+	suite.NoError(err)
+
+	jobConfig, err = jobStore.GetJobConfigWithVersion(context.Background(), &jobID, 0)
+	suite.NoError(err)
+	suite.Equal(uint32(oldInstanceCount), jobConfig.InstanceCount)
+
+	jobConfig, err = jobStore.GetJobConfigWithVersion(context.Background(), &jobID, 1)
+	suite.NoError(err)
+	suite.Equal(uint32(newInstanceCount), jobConfig.InstanceCount)
+}
+
 func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	var volumeStore storage.PersistentVolumeStore
 	volumeStore = store

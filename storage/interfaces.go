@@ -50,6 +50,8 @@ type JobStore interface {
 	CreateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobID, initialRuntime *job.RuntimeInfo, config *job.JobConfig) error
 	// GetJobConfig fetches the job configuration for a given job
 	GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error)
+	// GetJobConfigWithVersion fetches the job configuration for a given job of a given version
+	GetJobConfigWithVersion(ctx context.Context, id *peloton.JobID, version uint64) (*job.JobConfig, error)
 	// QueryJobs queries for all jobs which match the query in the QuerySpec
 	QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec, summaryOnly bool) ([]*job.JobInfo, []*job.JobSummary, uint32, error)
 	// UpdateJobConfig updates the job configuration of an existing job
