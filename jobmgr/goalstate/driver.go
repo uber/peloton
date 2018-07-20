@@ -322,6 +322,15 @@ func (d *driver) recoverTasks(ctx context.Context, id string, jobConfig *job.Job
 		}
 	}
 
+	// recover update if the job has an update,
+	// and update is not already in cache.
+	updateID := jobRuntime.GetUpdateID()
+	if len(updateID.GetValue()) > 0 {
+		d.EnqueueUpdate(
+			jobID,
+			updateID,
+			time.Now().Add(d.JobRuntimeDuration(jobConfig.GetType())))
+	}
 	return
 }
 

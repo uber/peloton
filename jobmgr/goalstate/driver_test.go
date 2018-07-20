@@ -388,6 +388,88 @@ func (suite *DriverTestSuite) TestInitializedJobSyncFromDB() {
 	suite.goalStateDriver.syncFromDB(context.Background())
 }
 
+// TestSyncFromDBRecoverUpgrade tests syncing job manager with jobs and and upgrades
+func (suite *DriverTestSuite) TestSyncFromDBRecoverUpgrade() {
+	updateID := &peloton.UpdateID{Value: uuid.New()}
+	instanceID1 := uint32(0)
+	instanceID2 := uint32(1)
+	var jobIDList []peloton.JobID
+	jobIDList = append(jobIDList, *suite.jobID)
+
+	jobConfig := &job.JobConfig{
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
+		InstanceCount: 2,
+		SLA: &job.SlaConfig{
+			MaximumRunningInstances: 1,
+		},
+	}
+
+	suite.jobStore.EXPECT().
+		GetJobsByStates(gomock.Any(), gomock.Any()).
+		Return(jobIDList, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.jobID).
+		Return(&job.RuntimeInfo{
+			State:     job.JobState_RUNNING,
+			GoalState: job.JobState_SUCCEEDED,
+			UpdateID:  updateID,
+		}, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(jobConfig, nil)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(nil)
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		Return(nil)
+
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
+		Return(map[uint32]*task.RuntimeInfo{
+			instanceID1: {
+				GoalState:            task.TaskState_RUNNING,
+				DesiredConfigVersion: 42,
+				ConfigVersion:        42,
+			},
+			instanceID2: {
+				GoalState:            task.TaskState_INITIALIZED,
+				DesiredConfigVersion: 42,
+				ConfigVersion:        42,
+			},
+		}, nil)
+
+	suite.cachedJob.EXPECT().
+		GetTask(instanceID1).Return(nil)
+
+	suite.cachedJob.EXPECT().
+		GetTask(instanceID2).Return(nil)
+
+	suite.cachedJob.EXPECT().
+		ReplaceTasks(gomock.Any(), false).Return(nil).Times(2)
+
+	suite.taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return().Times(2)
+
+	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).Return()
+
+	suite.goalStateDriver.syncFromDB(context.Background())
+}
+
 // TestEngineStartStop tests start and stop of goal state driver.
 func (suite *DriverTestSuite) TestEngineStartStop() {
 	cachedTask := cachedmocks.NewMockTask(suite.ctrl)

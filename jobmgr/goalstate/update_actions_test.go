@@ -31,6 +31,7 @@ type UpdateActionsTestSuite struct {
 	jobFactory            *cachedmocks.MockJobFactory
 	updateFactory         *cachedmocks.MockUpdateFactory
 	updateGoalStateEngine *goalstatemocks.MockEngine
+	jobGoalStateEngine    *goalstatemocks.MockEngine
 	goalStateDriver       *driver
 	jobID                 *peloton.JobID
 	updateID              *peloton.UpdateID
@@ -49,11 +50,13 @@ func (suite *UpdateActionsTestSuite) SetupTest() {
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
 	suite.updateGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.goalStateDriver = &driver{
 		updateStore:   suite.updateStore,
 		jobFactory:    suite.jobFactory,
 		updateFactory: suite.updateFactory,
 		updateEngine:  suite.updateGoalStateEngine,
+		jobEngine:     suite.jobGoalStateEngine,
 		mtx:           NewMetrics(tally.NoopScope),
 		cfg:           &Config{},
 	}
@@ -383,6 +386,64 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrack() {
 		GetUpdateProgress(gomock.Any(), gomock.Any()).
 		Return(updateInfo, nil)
 	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any())
+
+	err := UpdateUntrack(context.Background(), suite.updateEnt)
+	suite.NoError(err)
+}
+
+// TestUpdateUntrack_TerminalJob tests untracking an update would untrack
+// a terminated job
+func (suite *UpdateActionsTestSuite) TestUpdateUntrack_TerminatedJob() {
+	jobRuntime := &pbjob.RuntimeInfo{
+		UpdateID: suite.updateID,
+		State:    pbjob.JobState_KILLED,
+	}
+	updateInfo := &models.UpdateModel{
+		State: pbupdate.State_INITIALIZED,
+	}
+
+	prevUpdateIDs := []*peloton.UpdateID{
+		{Value: uuid.NewRandom().String()},
+		{Value: uuid.NewRandom().String()},
+	}
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context, jobInfo *pbjob.JobInfo,
+			_ cached.UpdateRequest) {
+			suite.Equal("", jobInfo.GetRuntime().GetUpdateID().GetValue())
+		}).
+		Return(nil)
+
+	suite.updateGoalStateEngine.EXPECT().
+		Delete(gomock.Any()).
+		Do(func(updateEntity goalstate.Entity) {
+			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
+		})
+
+	suite.updateFactory.EXPECT().
+		ClearUpdate(suite.updateID)
+
+	suite.updateStore.EXPECT().
+		GetUpdatesForJob(gomock.Any(), suite.jobID).
+		Return(prevUpdateIDs, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdateProgress(gomock.Any(), gomock.Any()).
+		Return(updateInfo, nil)
+	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any())
+
+	suite.jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any())
 
 	err := UpdateUntrack(context.Background(), suite.updateEnt)

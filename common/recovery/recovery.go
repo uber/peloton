@@ -96,7 +96,7 @@ func recoverJob(
 	jobConfig *job.JobConfig,
 	jobRuntime *job.RuntimeInfo,
 	f RecoverBatchTasks) error {
-	finished := make(chan bool, 1)
+	finished := make(chan bool)
 	errChan := make(chan error, 1)
 
 	taskBatches := createTaskBatches(jobConfig)
@@ -157,15 +157,10 @@ func recoverJobsBatch(
 			continue
 		}
 
-		// Do not process batch jobs in terminal state
-		if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) && util.IsPelotonJobStateTerminal(jobRuntime.GetGoalState()) {
-			continue
-		}
-
-		// Do not process terminated jobs with unknown goal state.
-		// Older batch jobs created with code which did not set the goal
-		// state will have goal state to be JobState_UNKNOWN.
-		if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) && jobRuntime.GetGoalState() == job.JobState_UNKNOWN {
+		// Do not process jobs in terminal state and have no update
+		if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) &&
+			util.IsPelotonJobStateTerminal(jobRuntime.GetGoalState()) &&
+			len(jobRuntime.GetUpdateID().GetValue()) == 0 {
 			continue
 		}
 

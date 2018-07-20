@@ -11,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	updateutil "code.uber.internal/infra/peloton/jobmgr/util/update"
+	"code.uber.internal/infra/peloton/util"
 
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -141,6 +142,12 @@ func UpdateUntrack(ctx context.Context, entity goalstate.Entity) error {
 		runtime.GetUpdateID().GetValue() != updateEnt.id.GetValue() {
 		goalStateDriver.EnqueueUpdate(jobID, runtime.GetUpdateID(), time.Now())
 		return nil
+	}
+
+	// update can be applied to a terminated job,
+	// need to remove job from cache upon completion
+	if util.IsPelotonJobStateTerminal(runtime.GetState()) {
+		goalStateDriver.EnqueueJob(jobID, time.Now())
 	}
 
 	// No more job update to run, so use the time to clean up any old

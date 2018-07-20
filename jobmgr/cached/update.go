@@ -387,7 +387,7 @@ func (u *update) Recover(ctx context.Context) error {
 		log.WithFields(log.Fields{
 			"update_id": u.id.GetValue(),
 			"job_id":    u.jobID.GetValue(),
-			"state":     u.state,
+			"state":     u.state.String(),
 		}).Debug("skip recover upgrade progress for terminated upgrade")
 		return nil
 	}
@@ -433,7 +433,7 @@ func (u *update) GetState() *UpdateStateVector {
 		log.WithFields(log.Fields{
 			"update_id": u.id.GetValue(),
 			"job_id":    u.jobID.GetValue(),
-			"state":     u.state,
+			"state":     u.state.String(),
 			"field":     "instancesDone",
 		}).Debug("accessing fields in terminated upgrade which can be stale")
 	}
@@ -455,7 +455,7 @@ func (u *update) GetGoalState() *UpdateStateVector {
 		log.WithFields(log.Fields{
 			"update_id": u.id.GetValue(),
 			"job_id":    u.jobID.GetValue(),
-			"state":     u.state,
+			"state":     u.state.String(),
 			"field":     "instancesTotal",
 		}).Debug("accessing fields in terminated upgrade which can be stale")
 	}
@@ -476,7 +476,7 @@ func (u *update) GetInstancesAdded() []uint32 {
 		log.WithFields(log.Fields{
 			"update_id": u.id.GetValue(),
 			"job_id":    u.jobID.GetValue(),
-			"state":     u.state,
+			"state":     u.state.String(),
 			"field":     "instancesAdded",
 		}).Warn("accessing fields in terminated upgrade which can be stale")
 	}
@@ -494,7 +494,7 @@ func (u *update) GetInstancesUpdated() []uint32 {
 		log.WithFields(log.Fields{
 			"update_id": u.id.GetValue(),
 			"job_id":    u.jobID.GetValue(),
-			"state":     u.state,
+			"state":     u.state.String(),
 			"field":     "instancesUpdated",
 		}).Warn("accessing fields in terminated upgrade which can be stale")
 	}

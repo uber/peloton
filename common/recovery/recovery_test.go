@@ -185,10 +185,6 @@ func TestJobRecoveryWithStore(t *testing.T) {
 	_, err = createJob(ctx, pb_job.JobState_FAILED, pb_job.JobState_SUCCEEDED)
 	assert.NoError(t, err)
 
-	// this job should not be recovered
-	_, err = createJob(ctx, pb_job.JobState_FAILED, pb_job.JobState_UNKNOWN)
-	assert.NoError(t, err)
-
 	err = RecoverJobsByState(ctx, csStore, jobStatesPending, recoverPendingTask)
 	assert.NoError(t, err)
 	err = RecoverJobsByState(ctx, csStore, jobStatesRunning, recoverRunningTask)
