@@ -249,6 +249,8 @@ var (
 	updateJobID        = updateCreate.Arg("job", "job identifier").Required().String()
 	updateCreateConfig = updateCreate.Arg("config", "YAML job configuration").Required().ExistingFile()
 	updateBatchSize    = updateCreate.Arg("batch-size", "batch size for the update").Required().Uint32()
+	updateResPoolPath  = updateCreate.Arg("respool", "complete path of the "+
+		"resource pool starting from the root").Required().String()
 
 	// command to fetch the status of a job update
 	updateGet   = update.Command("get", "get status of a job update")
@@ -443,7 +445,7 @@ func main() {
 	case volumeDelete.FullCommand():
 		err = client.VolumeDeleteAction(*volumeDeleteVolumeID)
 	case updateCreate.FullCommand():
-		err = client.UpdateCreateAction(*updateJobID, *updateCreateConfig, *updateBatchSize)
+		err = client.UpdateCreateAction(*updateJobID, *updateCreateConfig, *updateBatchSize, *updateResPoolPath)
 	case updateGet.FullCommand():
 		err = client.UpdateGetAction(*updateGetID)
 	case updateList.FullCommand():

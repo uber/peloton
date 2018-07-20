@@ -20,9 +20,10 @@ const (
 
 // UpdateCreateAction will create a new job update.
 func (c *Client) UpdateCreateAction(
-	jobID string, cfg string, batchSize uint32) error {
+	jobID string, cfg string, batchSize uint32, respoolPath string) error {
 	var jobConfig job.JobConfig
 
+	// read the job configuration
 	buffer, err := ioutil.ReadFile(cfg)
 	if err != nil {
 		return fmt.Errorf("unable to open file %s: %v", cfg, err)
@@ -30,6 +31,19 @@ func (c *Client) UpdateCreateAction(
 	if err := yaml.Unmarshal(buffer, &jobConfig); err != nil {
 		return fmt.Errorf("unable to parse file %s: %v", cfg, err)
 	}
+
+	// fetch the resource pool id
+	respoolID, err := c.LookupResourcePoolID(respoolPath)
+	if err != nil {
+		return err
+	}
+	if respoolID == nil {
+		return fmt.Errorf("unable to find resource pool ID for "+
+			":%s", respoolPath)
+	}
+
+	// set the resource pool id
+	jobConfig.RespoolID = respoolID
 
 	var request = &updatesvc.CreateUpdateRequest{
 		JobId: &peloton.JobID{

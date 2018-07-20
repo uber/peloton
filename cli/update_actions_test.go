@@ -7,6 +7,8 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	respoolmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc"
 	updatesvcmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc/mocks"
@@ -24,16 +26,18 @@ const (
 
 type updateActionsTestSuite struct {
 	suite.Suite
-	mockCtrl   *gomock.Controller
-	mockUpdate *updatesvcmocks.MockUpdateServiceYARPCClient
-	jobID      *peloton.JobID
-	updateID   *peloton.UpdateID
-	ctx        context.Context
+	mockCtrl    *gomock.Controller
+	mockUpdate  *updatesvcmocks.MockUpdateServiceYARPCClient
+	mockRespool *respoolmocks.MockResourceManagerYARPCClient
+	jobID       *peloton.JobID
+	updateID    *peloton.UpdateID
+	ctx         context.Context
 }
 
 func (suite *updateActionsTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mockUpdate = updatesvcmocks.NewMockUpdateServiceYARPCClient(suite.mockCtrl)
+	suite.mockRespool = respoolmocks.NewMockResourceManagerYARPCClient(suite.mockCtrl)
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
 	suite.updateID = &peloton.UpdateID{Value: uuid.NewRandom().String()}
 	suite.ctx = context.Background()
@@ -63,6 +67,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 	c := Client{
 		Debug:        false,
 		updateClient: suite.mockUpdate,
+		resClient:    suite.mockRespool,
 		dispatcher:   nil,
 		ctx:          suite.ctx,
 	}
@@ -70,9 +75,23 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 	jobConfig := suite.getConfig()
 	batchSize := uint32(2)
 
+	respoolPath := "/DefaultResPool"
+	respoolID := &peloton.ResourcePoolID{Value: uuid.NewRandom().String()}
+	respoolLookUpResponse := &respool.LookupResponse{
+		Id: respoolID,
+	}
+	jobConfig.RespoolID = respoolID
+
 	resp := &svc.CreateUpdateResponse{
 		UpdateID: suite.updateID,
 	}
+
+	suite.mockRespool.EXPECT().
+		LookupResourcePoolID(context.Background(), gomock.Any()).
+		Do(func(_ context.Context, req *respool.LookupRequest) {
+			suite.Equal(req.GetPath().GetValue(), respoolPath)
+		}).
+		Return(respoolLookUpResponse, nil)
 
 	suite.mockUpdate.EXPECT().
 		CreateUpdate(context.Background(), gomock.Any()).
@@ -83,7 +102,12 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 		}).
 		Return(resp, nil)
 
-	err := c.UpdateCreateAction(suite.jobID.GetValue(), testJobUpdateConfig, batchSize)
+	err := c.UpdateCreateAction(
+		suite.jobID.GetValue(),
+		testJobUpdateConfig,
+		batchSize,
+		respoolPath,
+	)
 	suite.NoError(err)
 }
 
