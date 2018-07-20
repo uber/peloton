@@ -24,7 +24,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	rm "code.uber.internal/infra/peloton/resmgr/respool/mocks"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
-	"code.uber.internal/infra/peloton/resmgr/testutil"
+	"code.uber.internal/infra/peloton/resmgr/tasktestutil"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -67,7 +67,7 @@ func (s *HandlerTestSuite) SetupSuite() {
 
 	s.resTree = respool.GetTree()
 	// Initializing the resmgr state machine
-	rm_task.InitTaskTracker(tally.NoopScope, testutil.CreateTaskConfig())
+	rm_task.InitTaskTracker(tally.NoopScope, tasktestutil.CreateTaskConfig())
 	s.rmTaskTracker = rm_task.GetTracker()
 	rm_task.InitScheduler(tally.NoopScope, 1*time.Second, s.rmTaskTracker)
 	s.taskScheduler = rm_task.GetScheduler()
@@ -82,7 +82,7 @@ func (s *HandlerTestSuite) SetupSuite() {
 		),
 		rmTracker: s.rmTaskTracker,
 		config: Config{
-			RmTaskConfig: testutil.CreateTaskConfig(),
+			RmTaskConfig: tasktestutil.CreateTaskConfig(),
 		},
 	}
 	s.handler.eventStreamHandler = eventstream.NewEventStreamHandler(
@@ -497,12 +497,12 @@ func (s *HandlerTestSuite) TestRequeue() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		testutil.CreateTaskConfig())
+		tasktestutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
+	tasktestutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED,
@@ -558,12 +558,12 @@ func (s *HandlerTestSuite) TestRequeueTaskNotPresent() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		testutil.CreateTaskConfig())
+		tasktestutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
+	tasktestutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED,
@@ -587,12 +587,12 @@ func (s *HandlerTestSuite) TestRequeueFailures() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		testutil.CreateTaskConfig())
+		tasktestutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
+	tasktestutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED,
@@ -610,7 +610,7 @@ func (s *HandlerTestSuite) TestRequeueFailures() {
 	enqReq.Gangs[0].Tasks[0].TaskId = &mesos_v1.TaskID{
 		Value: &mesosTaskID,
 	}
-	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
+	tasktestutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_RUNNING,
 		task.TaskState_SUCCEEDED})
 	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
@@ -628,12 +628,12 @@ func (s *HandlerTestSuite) TestAddingToPendingQueue() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		testutil.CreateTaskConfig())
+		tasktestutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
+	tasktestutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED})
@@ -650,12 +650,12 @@ func (s *HandlerTestSuite) TestAddingToPendingQueueFailure() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		testutil.CreateTaskConfig())
+		tasktestutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
+	tasktestutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED})
@@ -673,12 +673,12 @@ func (s *HandlerTestSuite) TestRequeuePlacementFailure() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		testutil.CreateTaskConfig())
+		tasktestutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
+	tasktestutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED})
@@ -727,7 +727,7 @@ func (s *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 			tasks = append(tasks, task)
 			s.rmTaskTracker.AddTask(&resmgr.Task{
 				Id: task,
-			}, nil, resp, testutil.CreateTaskConfig())
+			}, nil, resp, tasktestutil.CreateTaskConfig())
 		}
 
 		placement := &resmgr.Placement{
@@ -758,7 +758,7 @@ func (s *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	for _, placement := range setReq.Placements {
 		for _, taskID := range placement.Tasks {
 			rmTask := handler.rmTracker.GetTask(taskID)
-			testutil.ValidateStateTransitions(rmTask, []task.TaskState{
+			tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
 				task.TaskState_PENDING,
 				task.TaskState_READY,
 				task.TaskState_PLACING})
@@ -787,7 +787,7 @@ func (s *HandlerTestSuite) TestGetTasksByHosts() {
 		hostnames = append(hostnames, placement.Hostname)
 		for _, taskID := range placement.Tasks {
 			rmTask := s.handler.rmTracker.GetTask(taskID)
-			testutil.ValidateStateTransitions(rmTask, []task.TaskState{
+			tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
 				task.TaskState_PENDING,
 				task.TaskState_READY,
 				task.TaskState_PLACING})
@@ -875,7 +875,7 @@ func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
 			},
 		}
 		s.rmTaskTracker.AddTask(rmTask, nil, resp,
-			testutil.CreateTaskConfig())
+			tasktestutil.CreateTaskConfig())
 		rmTasks = append(rmTasks, rmTask)
 	}
 	return rmTasks, tasks
@@ -1045,14 +1045,14 @@ func (s *HandlerTestSuite) createUpdateTasksStateRequest(
 
 func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 	var c uint64
-	rm_task.InitTaskTracker(tally.NoopScope, testutil.CreateTaskConfig())
+	rm_task.InitTaskTracker(tally.NoopScope, tasktestutil.CreateTaskConfig())
 	handler := &ServiceHandler{
 		metrics:   NewMetrics(tally.NoopScope),
 		maxOffset: &c,
 		rmTracker: rm_task.GetTracker(),
 	}
 	jobID := "test"
-	rm_task.InitTaskTracker(tally.NoopScope, testutil.CreateTaskConfig())
+	rm_task.InitTaskTracker(tally.NoopScope, tasktestutil.CreateTaskConfig())
 	uuidStr := uuid.NewUUID().String()
 	var events []*pb_eventstream.Event
 	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil,
@@ -1091,7 +1091,7 @@ func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 			TaskId: &mesos_v1.TaskID{
 				Value: &mesosTaskID,
 			},
-		}, nil, resp, testutil.CreateTaskConfig())
+		}, nil, resp, tasktestutil.CreateTaskConfig())
 	}
 	req := &resmgrsvc.NotifyTaskUpdatesRequest{
 		Events: events,
@@ -1117,7 +1117,7 @@ func (s *HandlerTestSuite) TestGetActiveTasks() {
 	for _, placement := range setReq.Placements {
 		for _, taskID := range placement.Tasks {
 			rmTask := s.handler.rmTracker.GetTask(taskID)
-			testutil.ValidateStateTransitions(rmTask, []task.TaskState{
+			tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
 				task.TaskState_PENDING,
 				task.TaskState_READY,
 				task.TaskState_PLACING})
@@ -1158,9 +1158,9 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 		s.rmTaskTracker.AddTask(&resmgr.Task{
 			Id: taskID,
 		}, nil, resp,
-			testutil.CreateTaskConfig())
+			tasktestutil.CreateTaskConfig())
 		rmTask := s.handler.rmTracker.GetTask(taskID)
-		testutil.ValidateStateTransitions(rmTask, []task.TaskState{
+		tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
 			task.TaskState_PENDING,
 			task.TaskState_READY,
 			task.TaskState_PLACING,
@@ -1202,12 +1202,12 @@ func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		testutil.CreateTaskConfig())
+		tasktestutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
+	tasktestutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED,
@@ -1288,7 +1288,7 @@ func (s *HandlerTestSuite) TestGetPendingTasks() {
 		),
 		rmTracker: s.rmTaskTracker,
 		config: Config{
-			RmTaskConfig: testutil.CreateTaskConfig(),
+			RmTaskConfig: tasktestutil.CreateTaskConfig(),
 		},
 	}
 

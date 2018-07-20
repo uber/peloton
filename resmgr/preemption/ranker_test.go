@@ -16,7 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
-	"code.uber.internal/infra/peloton/resmgr/testutil"
+	"code.uber.internal/infra/peloton/resmgr/tasktestutil"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -165,19 +165,19 @@ func (suite *RankerTestSuite) addTasks() {
 
 func (suite *RankerTestSuite) transitToPending(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
-	testutil.ValidateStateTransitions(rmTask,
+	tasktestutil.ValidateStateTransitions(rmTask,
 		[]task.TaskState{task.TaskState_PENDING})
 }
 
 func (suite *RankerTestSuite) transitToReady(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
-	testutil.ValidateStateTransitions(rmTask,
+	tasktestutil.ValidateStateTransitions(rmTask,
 		[]task.TaskState{task.TaskState_PENDING, task.TaskState_READY})
 }
 
 func (suite *RankerTestSuite) transitToRunning(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
-	testutil.ValidateStateTransitions(rmTask,
+	tasktestutil.ValidateStateTransitions(rmTask,
 		[]task.TaskState{
 			task.TaskState_PENDING,
 			task.TaskState_PLACED,
@@ -189,7 +189,7 @@ func (suite *RankerTestSuite) transitToRunning(taskID *peloton.TaskID) {
 func (suite *RankerTestSuite) transitToPlacing(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
 	suite.NotNil(rmTask)
-	testutil.ValidateStateTransitions(rmTask,
+	tasktestutil.ValidateStateTransitions(rmTask,
 		[]task.TaskState{
 			task.TaskState_PENDING,
 			task.TaskState_READY,

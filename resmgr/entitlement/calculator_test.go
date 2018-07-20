@@ -20,7 +20,7 @@ import (
 	res_common "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
-	"code.uber.internal/infra/peloton/resmgr/testutil"
+	"code.uber.internal/infra/peloton/resmgr/tasktestutil"
 
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -303,13 +303,13 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 	s.calculator.calculateEntitlement(context.Background())
 
 	res := resPool.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}))
 
 	ResPool12, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool12"})
 	res = ResPool12.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 13, "GPU": 0, "MEMORY": 133, "DISK": 0}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 13, "GPU": 0, "MEMORY": 133, "DISK": 0}))
 
 	ResPool21, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool21"})
 	s.NoError(err)
@@ -318,16 +318,16 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 	s.calculator.calculateEntitlement(context.Background())
 
 	res = resPool.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 30, "GPU": 0, "MEMORY": 300, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 30, "GPU": 0, "MEMORY": 300, "DISK": 1000}))
 
 	res = ResPool12.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 10, "GPU": 0, "MEMORY": 100, "DISK": 0}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 10, "GPU": 0, "MEMORY": 100, "DISK": 0}))
 
 	res = ResPool21.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 30, "GPU": 0, "MEMORY": 300, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 30, "GPU": 0, "MEMORY": 300, "DISK": 1000}))
 
 	ResPool22, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool22"})
 	s.NoError(err)
@@ -335,44 +335,44 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 	s.calculator.calculateEntitlement(context.Background())
 
 	res = resPool.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 26, "GPU": 0, "MEMORY": 266, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 26, "GPU": 0, "MEMORY": 266, "DISK": 1000}))
 
 	res = ResPool21.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 26, "GPU": 0, "MEMORY": 266, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 26, "GPU": 0, "MEMORY": 266, "DISK": 1000}))
 
 	res = ResPool22.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 26, "GPU": 0, "MEMORY": 266, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 26, "GPU": 0, "MEMORY": 266, "DISK": 1000}))
 
 	ResPool2, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool2"})
 	s.NoError(err)
 
 	res = ResPool2.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 53, "GPU": 0, "MEMORY": 533, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 53, "GPU": 0, "MEMORY": 533, "DISK": 1000}))
 
 	ResPool3, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
 
 	res = ResPool3.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 13, "GPU": 0, "MEMORY": 133, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 13, "GPU": 0, "MEMORY": 133, "DISK": 1000}))
 
 	ResPool1, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool1"})
 	s.NoError(err)
 
 	res = ResPool1.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}))
 
 	ResPoolRoot, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
 	s.NoError(err)
 
 	res = ResPoolRoot.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 100, "GPU": 0, "MEMORY": 1000, "DISK": 6000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 100, "GPU": 0, "MEMORY": 1000, "DISK": 6000}))
 }
 
 func (s *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
@@ -492,36 +492,36 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 	s.calculator.calculateEntitlement(context.Background())
 
 	res := ResPoolRoot.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 100, "GPU": 0, "MEMORY": 1000, "DISK": 6000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 100, "GPU": 0, "MEMORY": 1000, "DISK": 6000}))
 
 	res = ResPool1.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}))
 
 	res = ResPool2.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}))
 
 	res = ResPool3.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}))
 
 	res = ResPool11.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 16, "GPU": 0, "MEMORY": 166, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 16, "GPU": 0, "MEMORY": 166, "DISK": 1000}))
 
 	res = ResPool12.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 16, "GPU": 0, "MEMORY": 166, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 16, "GPU": 0, "MEMORY": 166, "DISK": 1000}))
 
 	res = ResPool21.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 16, "GPU": 0, "MEMORY": 166, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 16, "GPU": 0, "MEMORY": 166, "DISK": 1000}))
 
 	res = ResPool22.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 16, "GPU": 0, "MEMORY": 166, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 16, "GPU": 0, "MEMORY": 166, "DISK": 1000}))
 }
 
 func (s *EntitlementCalculatorTestSuite) TestInitCalculator() {
@@ -660,8 +660,8 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 	resPool.AddToDemand(demand)
 	calculator.calculateEntitlement(context.Background())
 	res := resPool.GetEntitlement()
-	s.Equal(testutil.ValidateResources(res,
-		map[string]int64{"CPU": 28, "GPU": 1, "MEMORY": 283, "DISK": 1000}), true)
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 28, "GPU": 1, "MEMORY": 283, "DISK": 1000}))
 
 	err = resTree.Stop()
 	s.NoError(err)

@@ -22,7 +22,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool/mocks"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
-	"code.uber.internal/infra/peloton/resmgr/testutil"
+	"code.uber.internal/infra/peloton/resmgr/tasktestutil"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -50,7 +50,7 @@ var (
 
 func (suite *PreemptorTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	rm_task.InitTaskTracker(tally.NoopScope, testutil.CreateTaskConfig())
+	rm_task.InitTaskTracker(tally.NoopScope, tasktestutil.CreateTaskConfig())
 	suite.tracker = rm_task.GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,
@@ -600,7 +600,7 @@ func (suite *PreemptorTestSuite) createTasks(numTasks int,
 		t := suite.createTask(i, uint32(i))
 		tasks = append(tasks, t)
 		suite.tracker.AddTask(t, suite.eventStreamHandler, mockResPool,
-			testutil.CreateTaskConfig())
+			tasktestutil.CreateTaskConfig())
 	}
 	return tasks
 }
@@ -644,7 +644,7 @@ func (suite *PreemptorTestSuite) getMockRanker(tasks []*resmgr.Task) ranker {
 func (suite *PreemptorTestSuite) transitToPlacing(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
 	suite.NotNil(rmTask)
-	testutil.ValidateStateTransitions(rmTask,
+	tasktestutil.ValidateStateTransitions(rmTask,
 		[]task.TaskState{
 			task.TaskState_PENDING,
 			task.TaskState_READY,
@@ -655,7 +655,7 @@ func (suite *PreemptorTestSuite) transitToPlacing(taskID *peloton.TaskID) {
 func (suite *PreemptorTestSuite) transitToReady(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
 	suite.NotNil(rmTask)
-	testutil.ValidateStateTransitions(rmTask,
+	tasktestutil.ValidateStateTransitions(rmTask,
 		[]task.TaskState{
 			task.TaskState_PENDING,
 			task.TaskState_READY,
@@ -665,7 +665,7 @@ func (suite *PreemptorTestSuite) transitToReady(taskID *peloton.TaskID) {
 func (suite *PreemptorTestSuite) transitToRunning(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
 	suite.NotNil(rmTask)
-	testutil.ValidateStateTransitions(rmTask,
+	tasktestutil.ValidateStateTransitions(rmTask,
 		[]task.TaskState{
 			task.TaskState_PENDING,
 			task.TaskState_PLACED,

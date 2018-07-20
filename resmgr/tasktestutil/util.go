@@ -1,4 +1,4 @@
-package testutil
+package tasktestutil
 
 import (
 	"testing"
@@ -44,11 +44,8 @@ func CreateTaskConfig() *rm_task.Config {
 // ValidateResources validates the resources and the values passed
 // if anything differs it returns false else true
 func ValidateResources(resources *scalar.Resources, values map[string]int64) bool {
-	if int64(resources.CPU) != values["CPU"] ||
-		int64(resources.GPU) != values["GPU"] ||
-		int64(resources.MEMORY) != values["MEMORY"] ||
-		int64(resources.DISK) != values["DISK"] {
-		return false
-	}
-	return true
+	return int64(resources.CPU) == values["CPU"] &&
+		int64(resources.GPU) == values["GPU"] &&
+		int64(resources.MEMORY) == values["MEMORY"] &&
+		int64(resources.DISK) == values["DISK"]
 }
