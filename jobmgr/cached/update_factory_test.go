@@ -47,7 +47,7 @@ func (suite *UpdateFactoryTestSuite) TestAddAndGetAndClearUpdate() {
 		lifeCycle: lifecycle.NewLifeCycle(),
 	}
 
-	suite.Nil(f.GetUpdate(updateID))
+	suite.True(f.GetUpdate(updateID) == nil)
 
 	u := f.AddUpdate(updateID)
 	suite.NotNil(u)
@@ -56,7 +56,7 @@ func (suite *UpdateFactoryTestSuite) TestAddAndGetAndClearUpdate() {
 	suite.Equal(u, f.AddUpdate(updateID))
 
 	f.ClearUpdate(updateID)
-	suite.Nil(f.GetUpdate(updateID))
+	suite.True(f.GetUpdate(updateID) == nil)
 }
 
 // TestStartStop tests starting and then stopping the factory.

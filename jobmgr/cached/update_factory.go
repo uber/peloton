@@ -99,7 +99,10 @@ func (f *updateFactory) GetUpdate(id *peloton.UpdateID) Update {
 	f.RLock()
 	defer f.RUnlock()
 
-	return f.updates[id.GetValue()]
+	if update, ok := f.updates[id.GetValue()]; ok {
+		return update
+	}
+	return nil
 }
 
 func (f *updateFactory) GetAllUpdates() map[string]Update {
