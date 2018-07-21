@@ -3,16 +3,15 @@ package task
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
+	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	"code.uber.internal/infra/peloton/storage"
 
-	"code.uber.internal/infra/peloton/resmgr/common"
 	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -41,13 +40,11 @@ type Reconciler interface {
 // reconciler implements Reconciler
 // It goes through all the tasks in tracker and compares them with the state in the database
 type reconciler struct {
-	sync.Mutex
-	runningState         int32
-	stopChan             chan struct{}
 	taskStore            storage.TaskStore
 	tracker              Tracker
 	reconciliationPeriod time.Duration
 	metrics              *Metrics
+	lifeCycle            lifecycle.LifeCycle // lifecycle manager
 }
 
 // InitReconciler initializes the instance
@@ -56,12 +53,11 @@ func InitReconciler(tracker Tracker, taskStore storage.TaskStore,
 ) {
 	once.Do(func() {
 		instance = &reconciler{
-			runningState:         common.RunningStateNotStarted,
 			tracker:              tracker,
 			taskStore:            taskStore,
-			stopChan:             make(chan struct{}, 1),
 			reconciliationPeriod: reconciliationPeriod,
 			metrics:              NewMetrics(parent.SubScope("instance")),
+			lifeCycle:            lifecycle.NewLifeCycle(),
 		}
 	})
 }
@@ -75,10 +71,7 @@ func GetReconciler() Reconciler {
 }
 
 func (t *reconciler) Start() error {
-	t.Lock()
-	defer t.Unlock()
-
-	if t.runningState == common.RunningStateRunning {
+	if !t.lifeCycle.Start() {
 		log.Warn("Task Reconciler is already running, no action will be " +
 			"performed")
 		return nil
@@ -86,18 +79,17 @@ func (t *reconciler) Start() error {
 
 	started := make(chan int, 1)
 	go func() {
-		defer atomic.StoreInt32(&t.runningState, common.RunningStateNotStarted)
-		atomic.StoreInt32(&t.runningState, common.RunningStateRunning)
+		defer t.lifeCycle.StopComplete()
 
 		ticker := time.NewTicker(t.reconciliationPeriod)
 		defer ticker.Stop()
 
 		log.Infof("Starting Task Reconciler")
-		started <- 0
+		close(started)
 
 		for {
 			select {
-			case <-t.stopChan:
+			case <-t.lifeCycle.StopCh():
 				log.Info("Exiting Task Reconciler")
 				return
 			case <-ticker.C:
@@ -119,27 +111,14 @@ func (t *reconciler) Start() error {
 }
 
 func (t *reconciler) Stop() error {
-	t.Lock()
-	defer t.Unlock()
-
-	if t.runningState == common.RunningStateNotStarted {
+	if !t.lifeCycle.Stop() {
 		log.Warn("Task Reconciler is already stopped, no" +
 			" action will be performed")
 		return nil
 	}
 
-	log.Info("Stopping Task Reconciler")
-	t.stopChan <- struct{}{}
-
 	// Wait for task instance to be stopped
-	for {
-		runningState := atomic.LoadInt32(&t.runningState)
-		if runningState == common.RunningStateRunning {
-			time.Sleep(10 * time.Millisecond)
-		} else {
-			break
-		}
-	}
+	t.lifeCycle.Wait()
 	log.Info("Task Reconciler Stopped")
 	return nil
 }

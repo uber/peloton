@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
+	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
@@ -51,7 +52,8 @@ func (suite *PreemptorTestSuite) SetupSuite() {
 			PreemptionDequeueLimit:   10,
 			DequeuePreemptionTimeout: 100,
 		},
-		metrics: NewMetrics(tally.NoopScope),
+		metrics:   NewMetrics(tally.NoopScope),
+		lifeCycle: lifecycle.NewLifeCycle(),
 	}
 }
 
@@ -130,16 +132,48 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 
 	err := suite.preemptor.performPreemptionCycle()
 	suite.NoError(err)
+
+	// Test GetPreemptibleTasks error
+	suite.mockResmgr.EXPECT().GetPreemptibleTasks(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("Fake GetPreemptibleTasks error"))
+	err = suite.preemptor.performPreemptionCycle()
+	suite.Error(err)
+
+	// Test GetRunTime and PatchTasks error
+	suite.mockResmgr.EXPECT().GetPreemptibleTasks(gomock.Any(), gomock.Any()).Return(
+		&resmgrsvc.GetPreemptibleTasksResponse{
+			PreemptionCandidates: []*resmgr.PreemptionCandidate{
+				{
+					Id:     runningTask.Id,
+					Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
+				},
+			},
+		}, nil,
+	)
+	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(cachedJob)
+	cachedJob.EXPECT().AddTask(uint32(0)).Return(runningCachedTask)
+	runningCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(nil, fmt.Errorf("Fake GetRunTime error"))
+	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("Fake PatchTasks error"))
+	err = suite.preemptor.performPreemptionCycle()
+	suite.Error(err)
 }
 
 func (suite *PreemptorTestSuite) TestReconciler_StartStop() {
 	defer func() {
 		suite.preemptor.Stop()
-		suite.False(suite.preemptor.isRunning())
+		_, ok := <-suite.preemptor.lifeCycle.StopCh()
+		suite.False(ok)
+
+		// Stopping preemptor again should be no-op
+		err := suite.preemptor.Stop()
+		suite.NoError(err)
 	}()
 	err := suite.preemptor.Start()
 	suite.NoError(err)
-	suite.True(suite.preemptor.isRunning())
+	suite.NotNil(suite.preemptor.lifeCycle.StopCh())
+
+	// Starting preemptor again should be no-op
+	err = suite.preemptor.Start()
+	suite.NoError(err)
 }
 
 func TestPreemptor(t *testing.T) {

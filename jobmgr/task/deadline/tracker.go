@@ -3,13 +3,12 @@ package deadline
 import (
 	"context"
 	"fmt"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
+	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/storage"
@@ -45,15 +44,13 @@ type Tracker interface {
 
 // tracker implements the Tracker interface
 type tracker struct {
-	lock            sync.Mutex
-	runningState    int32
 	jobStore        storage.JobStore
 	taskStore       storage.TaskStore
-	stopChan        chan struct{}
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
 	config          *Config
 	metrics         *Metrics
+	lifeCycle       lifecycle.LifeCycle // lifecycle manager
 }
 
 // New creates a deadline tracker
@@ -69,24 +66,19 @@ func New(
 	return &tracker{
 		jobStore:        jobStore,
 		taskStore:       taskStore,
-		runningState:    RunningStateNotStarted,
 		jobFactory:      jobFactory,
 		goalStateDriver: goalStateDriver,
 		config:          config,
 		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
+		lifeCycle:       lifecycle.NewLifeCycle(),
 	}
 }
 
 // Start starts Task Deadline Tracker process
 func (t *tracker) Start() error {
-	defer t.lock.Unlock()
-	t.lock.Lock()
-
-	t.stopChan = make(chan struct{}, 1)
-
-	if atomic.CompareAndSwapInt32(&t.runningState, RunningStateNotStarted, RunningStateRunning) {
+	if t.lifeCycle.Start() {
 		go func() {
-			defer atomic.StoreInt32(&t.runningState, RunningStateNotStarted)
+			defer t.lifeCycle.StopComplete()
 
 			ticker := time.NewTicker(t.config.DeadlineTrackingPeriod)
 			defer ticker.Stop()
@@ -95,14 +87,11 @@ func (t *tracker) Start() error {
 
 			for {
 				select {
-				case <-t.stopChan:
+				case <-t.lifeCycle.StopCh():
 					log.Info("Exiting Deadline Tracker")
 					return
 				case <-ticker.C:
-					err := t.trackDeadline()
-					if err != nil {
-						log.WithError(err).Warn("Deadline Tracker failed")
-					}
+					t.trackDeadline()
 				}
 			}
 		}()
@@ -112,33 +101,21 @@ func (t *tracker) Start() error {
 
 // Stop stops Task Deadline Tracker process
 func (t *tracker) Stop() error {
-	defer t.lock.Unlock()
-	t.lock.Lock()
-
-	if t.runningState == RunningStateNotStarted {
+	if !t.lifeCycle.Stop() {
 		log.Warn("Deadline tracker is already stopped, no action will be performed")
 		return nil
 	}
 
 	log.Info("Stopping Deadline tracker")
 
-	close(t.stopChan)
-
 	// Wait for tracker to be stopped
-	for {
-		runningState := atomic.LoadInt32(&t.runningState)
-		if runningState == RunningStateRunning {
-			time.Sleep(10 * time.Millisecond)
-		} else {
-			break
-		}
-	}
+	t.lifeCycle.Wait()
 	log.Info("Deadline tracker Stopped")
 	return nil
 }
 
 // trackDeadline functions keeps track of the deadline of each task
-func (t *tracker) trackDeadline() error {
+func (t *tracker) trackDeadline() {
 	jobs := t.jobFactory.GetAllJobs()
 
 	for id, cachedJob := range jobs {
@@ -202,7 +179,6 @@ func (t *tracker) trackDeadline() error {
 
 		}
 	}
-	return nil
 }
 
 //stopTask makes the state of the task to be killed
@@ -233,9 +209,4 @@ func (t *tracker) stopTask(ctx context.Context, task *peloton.TaskID) error {
 	t.goalStateDriver.EnqueueTask(jobID, uint32(instanceID), time.Now())
 	goalstate.EnqueueJobWithDefaultDelay(jobID, t.goalStateDriver, cachedJob)
 	return nil
-}
-
-func (t *tracker) isRunning() bool {
-	status := atomic.LoadInt32(&t.runningState)
-	return status == RunningStateRunning
 }

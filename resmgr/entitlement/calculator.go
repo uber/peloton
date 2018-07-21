@@ -102,7 +102,7 @@ func (c *calculator) Start() error {
 		atomic.StoreInt32(&c.runningState, res_common.RunningStateRunning)
 
 		log.Info("Starting Entitlement Calculation")
-		started <- 0
+		close(started)
 
 		ticker := time.NewTicker(c.calculationPeriod)
 		defer ticker.Stop()

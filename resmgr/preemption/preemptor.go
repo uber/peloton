@@ -3,7 +3,6 @@ package preemption
 import (
 	"reflect"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -11,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/common/statemachine"
 	"code.uber.internal/infra/peloton/common/stringset"
@@ -43,13 +43,10 @@ type Preemptor interface {
 }
 
 type preemptor struct {
-	sync.Mutex
 	enabled                      bool
-	runningState                 int32
 	resTree                      respool.Tree
 	preemptionPeriod             time.Duration
 	sustainedOverAllocationCount int
-	stopChan                     chan struct{}
 	respoolState                 map[string]int
 	ranker                       ranker
 	tracker                      task.Tracker
@@ -57,6 +54,7 @@ type preemptor struct {
 	taskSet                      stringset.StringSet // Set containing tasks which are currently in the PreemptionQueue
 	scope                        tally.Scope
 	m                            map[string]*Metrics
+	lifeCycle                    lifecycle.LifeCycle // lifecycle manager
 }
 
 // InitPreemptor initializes the task preemptor
@@ -68,11 +66,9 @@ func InitPreemptor(
 	once.Do(func() {
 		p = &preemptor{
 			resTree:                      respool.GetTree(),
-			runningState:                 common.RunningStateNotStarted,
 			preemptionPeriod:             cfg.TaskPreemptionPeriod,
 			sustainedOverAllocationCount: cfg.SustainedOverAllocationCount,
-			enabled:  cfg.Enabled,
-			stopChan: make(chan struct{}, 1),
+			enabled: cfg.Enabled,
 			preemptionQueue: queue.NewQueue(
 				"preemption-queue",
 				reflect.TypeOf(resmgr.PreemptionCandidate{}),
@@ -84,6 +80,7 @@ func InitPreemptor(
 			tracker:      tracker,
 			scope:        parent.SubScope("preemption"),
 			m:            make(map[string]*Metrics),
+			lifeCycle:    lifecycle.NewLifeCycle(),
 		}
 	})
 }
@@ -110,17 +107,14 @@ func (p *preemptor) metrics(pool respool.ResPool) *Metrics {
 
 // Start starts Task Preemptor process
 func (p *preemptor) Start() error {
-	defer p.Unlock()
-	p.Lock()
-
 	if !p.enabled {
 		log.Infof("Task preemptor is not enabled to run")
 		return nil
 	}
 
-	if atomic.CompareAndSwapInt32(&p.runningState, common.RunningStateNotStarted, common.RunningStateRunning) {
+	if p.lifeCycle.Start() {
 		go func() {
-			defer atomic.StoreInt32(&p.runningState, common.RunningStateNotStarted)
+			defer p.lifeCycle.StopComplete()
 
 			ticker := time.NewTicker(p.preemptionPeriod)
 			defer ticker.Stop()
@@ -129,7 +123,7 @@ func (p *preemptor) Start() error {
 
 			for {
 				select {
-				case <-p.stopChan:
+				case <-p.lifeCycle.StopCh():
 					log.Info("Exiting Task Preemptor")
 					return
 				case <-ticker.C:
@@ -146,26 +140,14 @@ func (p *preemptor) Start() error {
 
 // Stop stops Task Preemptor process
 func (p *preemptor) Stop() error {
-	defer p.Unlock()
-	p.Lock()
-
-	if p.runningState == common.RunningStateNotStarted {
+	if !p.lifeCycle.Stop() {
 		log.Warn("Task preemptor is already stopped, no action will be performed")
 		return nil
 	}
-
 	log.Info("Stopping Task preemptor")
-	close(p.stopChan)
 
 	// Wait for task preemptor to be stopped
-	for {
-		runningState := atomic.LoadInt32(&p.runningState)
-		if runningState == common.RunningStateRunning {
-			time.Sleep(10 * time.Millisecond)
-		} else {
-			break
-		}
-	}
+	p.lifeCycle.Wait()
 	log.Info("Task Preemptor Stopped")
 	return nil
 }

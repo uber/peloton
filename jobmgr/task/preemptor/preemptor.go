@@ -2,8 +2,6 @@ package preemptor
 
 import (
 	"context"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -11,6 +9,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/storage"
@@ -48,15 +47,13 @@ type Preemptor interface {
 
 // preemptor implements the Preemptor interface
 type preemptor struct {
-	sync.Mutex
-
 	resMgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
-	started         int32
 	taskStore       storage.TaskStore
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
 	config          *Config
 	metrics         *Metrics
+	lifeCycle       lifecycle.LifeCycle // lifecycle manager
 }
 
 var _timeoutFunctionCall = 120 * time.Second
@@ -79,21 +76,32 @@ func New(
 		goalStateDriver: goalStateDriver,
 		config:          config,
 		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
+		lifeCycle:       lifecycle.NewLifeCycle(),
 	}
 }
 
 // Start starts Task Preemptor
 func (p *preemptor) Start() error {
-	if atomic.CompareAndSwapInt32(&p.started, 0, 1) {
-		log.Info("Starting Task Preemptor")
-		go func() {
-			ticker := time.NewTicker(p.config.PreemptionPeriod)
-			defer ticker.Stop()
+	if !p.lifeCycle.Start() {
+		log.Warn("Task Preemptor is already running, no action will be " +
+			"performed")
+		return nil
+	}
 
-			for range ticker.C {
-				if !p.isRunning() {
-					break
-				}
+	started := make(chan int, 1)
+	go func() {
+		defer p.lifeCycle.StopComplete()
+
+		ticker := time.NewTicker(p.config.PreemptionPeriod)
+		defer ticker.Stop()
+
+		log.Info("Starting Task Preemptor")
+		close(started)
+		for {
+			select {
+			case <-p.lifeCycle.StopCh():
+				return
+			case <-ticker.C:
 				err := p.performPreemptionCycle()
 				if err != nil {
 					p.metrics.TaskPreemptFail.Inc(1)
@@ -102,8 +110,9 @@ func (p *preemptor) Start() error {
 				}
 				p.metrics.TaskPreemptSuccess.Inc(1)
 			}
-		}()
-	}
+		}
+	}()
+	<-started
 	log.Info("Task Preemptor started")
 	return nil
 }
@@ -210,29 +219,15 @@ func (p *preemptor) getTasks() ([]*resmgr.PreemptionCandidate, error) {
 
 // Stop stops Task Preemptor process
 func (p *preemptor) Stop() error {
-	defer p.Unlock()
-	p.Lock()
-
-	if !(p.isRunning()) {
+	if !p.lifeCycle.Stop() {
 		log.Warn("Task Preemptor is already stopped, no action will be performed")
 		return nil
 	}
 
 	log.Info("Stopping Task Preemptor")
-	atomic.StoreInt32(&p.started, 0)
+
 	// Wait for task preemptor to be stopped
-	for {
-		if p.isRunning() {
-			time.Sleep(10 * time.Millisecond)
-		} else {
-			break
-		}
-	}
+	p.lifeCycle.Wait()
 	log.Info("Task Preemptor Stopped")
 	return nil
-}
-
-func (p *preemptor) isRunning() bool {
-	status := atomic.LoadInt32(&p.started)
-	return status == 1
 }

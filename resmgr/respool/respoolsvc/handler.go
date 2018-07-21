@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"sync/atomic"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/lifecycle"
 	rc "code.uber.internal/infra/peloton/resmgr/common"
 	res "code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
@@ -49,8 +49,6 @@ type serviceHandler struct {
 
 	cfg rc.PreemptionConfig
 
-	runningState int32
-
 	store      storage.ResourcePoolStore
 	metrics    *res.Metrics
 	dispatcher *yarpc.Dispatcher
@@ -60,6 +58,9 @@ type serviceHandler struct {
 
 	jobStore  storage.JobStore
 	taskStore storage.TaskStore
+
+	// lifecycle manager
+	lifeCycle lifecycle.LifeCycle
 }
 
 // Singleton service handler for ResourcePoolService.
@@ -103,11 +104,11 @@ func InitServiceHandler(
 		store:                  store,
 		metrics:                metrics,
 		dispatcher:             d,
-		runningState:           rc.RunningStateNotStarted,
 		resPoolTree:            res.GetTree(),
 		resPoolConfigValidator: resPoolConfigValidator,
 		jobStore:               jobStore,
 		taskStore:              taskStore,
+		lifeCycle:              lifecycle.NewLifeCycle(),
 	}
 	log.Info("ResourcePoolService handler created")
 }
@@ -653,11 +654,9 @@ func (h *serviceHandler) registerProcs(d *yarpc.Dispatcher) {
 
 // Start will start resource manager.
 func (h *serviceHandler) Start() error {
-	if h.runningState == rc.RunningStateRunning {
+	if !h.lifeCycle.Start() {
 		return ErrServiceHandlerAlreadyStarted
 	}
-
-	atomic.StoreInt32(&h.runningState, rc.RunningStateRunning)
 
 	log.Info("Registering the respool procedures")
 	h.registerProcs(h.dispatcher)
@@ -668,9 +667,8 @@ func (h *serviceHandler) Start() error {
 
 // Stop will stop resource manager.
 func (h *serviceHandler) Stop() error {
-	if h.runningState == rc.RunningStateNotStarted {
+	if !h.lifeCycle.Stop() {
 		return ErrServiceHandlerAlreadyStopped
 	}
-	atomic.StoreInt32(&h.runningState, rc.RunningStateNotStarted)
 	return nil
 }

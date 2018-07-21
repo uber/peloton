@@ -13,10 +13,11 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
+	"code.uber.internal/infra/peloton/common/lifecycle"
+	res_common "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
-	res_common "code.uber.internal/infra/peloton/resmgr/common"
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
@@ -46,12 +47,11 @@ func (suite *ReconcilerTestSuite) SetupTest() {
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.mockCtrl)
 
 	suite.reconciler = &reconciler{
-		runningState:         res_common.RunningStateNotStarted,
 		tracker:              suite.tracker,
 		taskStore:            suite.mockTaskStore,
 		reconciliationPeriod: time.Hour * 1,
-		stopChan:             make(chan struct{}, 1),
 		metrics:              NewMetrics(tally.NoopScope),
+		lifeCycle:            lifecycle.NewLifeCycle(),
 	}
 
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
@@ -228,8 +228,18 @@ func (suite *ReconcilerTestSuite) TearDownTest() {
 }
 
 func (suite *ReconcilerTestSuite) TestReconciler_Start() {
-	defer suite.reconciler.Stop()
+	defer func() {
+		suite.reconciler.Stop()
+
+		//Stopping reconciler again. Should be no-op
+		err := suite.reconciler.Stop()
+		suite.NoError(err)
+	}()
 	err := suite.reconciler.Start()
 	suite.NoError(err)
-	suite.Equal(suite.reconciler.runningState, int32(res_common.RunningStateRunning))
+	suite.NotNil(suite.reconciler.lifeCycle.StopCh())
+
+	// Starting reconciler again. Should be no-op
+	err = suite.reconciler.Start()
+	suite.NoError(err)
 }

@@ -15,6 +15,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
+	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/common/stringset"
 	res_common "code.uber.internal/infra/peloton/resmgr/common"
@@ -63,10 +64,8 @@ func (suite *PreemptorTestSuite) SetupSuite() {
 
 	suite.preemptor = preemptor{
 		resTree:                      nil,
-		runningState:                 res_common.RunningStateNotStarted,
 		preemptionPeriod:             1 * time.Second,
 		sustainedOverAllocationCount: 5,
-		stopChan:                     make(chan struct{}, 1),
 		preemptionQueue: queue.NewQueue(
 			"preemption-queue",
 			reflect.TypeOf(resmgr.PreemptionCandidate{}),
@@ -78,6 +77,7 @@ func (suite *PreemptorTestSuite) SetupSuite() {
 		tracker:      rm_task.GetTracker(),
 		scope:        tally.NoopScope,
 		m:            make(map[string]*Metrics),
+		lifeCycle:    lifecycle.NewLifeCycle(),
 	}
 }
 
@@ -90,7 +90,7 @@ func (suite *PreemptorTestSuite) TestPreemptor_StartEnabled() {
 	suite.preemptor.enabled = true
 	err := suite.preemptor.Start()
 	suite.NoError(err)
-	suite.Equal(suite.preemptor.runningState, int32(res_common.RunningStateRunning))
+	suite.NotNil(suite.preemptor.lifeCycle.StopCh())
 }
 
 func (suite *PreemptorTestSuite) TestPreemptor_StartDisabled() {
@@ -98,7 +98,8 @@ func (suite *PreemptorTestSuite) TestPreemptor_StartDisabled() {
 	suite.preemptor.enabled = false
 	err := suite.preemptor.Start()
 	suite.NoError(err)
-	suite.Equal(suite.preemptor.runningState, int32(res_common.RunningStateNotStarted))
+	_, ok := <-suite.preemptor.lifeCycle.StopCh()
+	suite.False(ok)
 }
 
 func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState() {
@@ -297,7 +298,7 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForRunningTask
 	suite.Equal(0, p.respoolState["respool-1"])
 }
 
-func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForReadyTasks() {
+func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForReadyTasks() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
@@ -361,7 +362,7 @@ func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForReadyTasks
 	}, demand)
 }
 
-func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForPlacingTasks() {
+func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForPlacingTasks() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
@@ -425,6 +426,69 @@ func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForPlacingTas
 		DISK:   _taskResources.DiskLimitMb * float64(numReadyTasks),
 		GPU:    _taskResources.GpuLimit * float64(numReadyTasks),
 	}, demand)
+}
+
+func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolErrors() {
+	mockResTree := mocks.NewMockTree(suite.mockCtrl)
+	suite.preemptor.resTree = mockResTree
+	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
+
+	// Test Respool Get error
+	mockResTree.EXPECT().Get(gomock.Any()).Return(nil, fmt.Errorf("Fake Get error"))
+	err := suite.preemptor.processResourcePool("respool-1")
+	suite.Error(err)
+
+	// Test EnqueueGang error
+	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
+	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
+	entitlement := scalar.Resources{
+		CPU:    20,
+		MEMORY: 200,
+		DISK:   2000,
+		GPU:    1,
+	}
+	mockResPool.EXPECT().GetEntitlement().Return(&entitlement).AnyTimes()
+	allocation := &scalar.Allocation{
+		Value: map[scalar.AllocationType]*scalar.Resources{
+			scalar.TotalAllocation: {
+				CPU:    25,
+				MEMORY: 500,
+				DISK:   2450,
+				GPU:    1,
+			}}}
+	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation.
+		GetByType(scalar.TotalAllocation)).AnyTimes()
+	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
+		func(res *scalar.Allocation) {
+			allocation = allocation.Subtract(res)
+		}).Return(nil).AnyTimes()
+	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(fmt.Errorf("Fake EnqueueGang error"))
+	numReadyTasks := 1
+	tasks := suite.createTasks(numReadyTasks, mockResPool)
+	suite.preemptor.ranker = suite.getMockRanker(tasks)
+	for _, t := range tasks {
+		suite.transitToReady(t.Id)
+	}
+	err = suite.preemptor.processResourcePool("respool-1")
+	suite.Error(err)
+
+	// Test AddToDemand error
+	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
+	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
+	mockResPool.EXPECT().GetEntitlement().Return(&entitlement).AnyTimes()
+	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation.
+		GetByType(scalar.TotalAllocation)).AnyTimes()
+	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
+		func(res *scalar.Allocation) {
+			allocation = allocation.Subtract(res)
+		}).Return(nil).AnyTimes()
+	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil)
+	mockResPool.EXPECT().AddToDemand(gomock.Any()).Return(fmt.Errorf("Fake AddToDemand error"))
+	for _, t := range tasks {
+		suite.transitToReady(t.Id)
+	}
+	err = suite.preemptor.processResourcePool("respool-1")
+	suite.Error(err)
 }
 
 func (suite *PreemptorTestSuite) TestPreemptor_Init() {

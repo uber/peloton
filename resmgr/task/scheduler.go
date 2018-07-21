@@ -111,7 +111,7 @@ func (s *scheduler) Start() error {
 		defer ticker.Stop()
 
 		log.Info("Starting Task Scheduler")
-		started <- 0
+		close(started)
 
 		for {
 			// TODO: we need to remove ticker and use chanel for signaling

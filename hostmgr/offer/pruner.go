@@ -2,11 +2,11 @@ package offer
 
 import (
 	"context"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+
+	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
 
 	log "github.com/sirupsen/logrus"
@@ -31,47 +31,38 @@ func NewOfferPruner(
 ) Pruner {
 	pruner := &offerPruner{
 		pool:               pool,
-		runningState:       runningStateNotStarted,
 		offerPruningPeriod: offerPruningPeriod,
-		stopPrunerChan:     make(chan struct{}, 1),
 		metrics:            metrics,
+		lifeCycle:          lifecycle.NewLifeCycle(),
 	}
 	return pruner
 }
 
 // offerPruner implements OfferPruner
 type offerPruner struct {
-	sync.Mutex
-
-	runningState       int32
 	pool               offerpool.Pool
 	offerPruningPeriod time.Duration
-	stopPrunerChan     chan struct{}
 	metrics            *offerpool.Metrics
+	lifeCycle          lifecycle.LifeCycle // lifecycle manager
 }
 
 // Start starts offer pruning process
 func (p *offerPruner) Start() {
-	defer p.Unlock()
-	p.Lock()
-
-	if p.runningState == runningStateRunning {
+	if !p.lifeCycle.Start() {
 		log.Warn("Offer prunner is already running, no action will be performed")
 		return
 	}
-
 	started := make(chan int, 1)
 	go func() {
-		defer atomic.StoreInt32(&p.runningState, runningStateNotStarted)
-		atomic.StoreInt32(&p.runningState, runningStateRunning)
+		defer p.lifeCycle.StopComplete()
 
 		log.Info("Starting offer pruning loop")
-		started <- 0
+		close(started)
 
 		for {
 			timer := time.NewTimer(p.offerPruningPeriod)
 			select {
-			case <-p.stopPrunerChan:
+			case <-p.lifeCycle.StopCh():
 				log.Info("Exiting the offer pruning loop")
 				return
 			case <-timer.C:
@@ -104,26 +95,14 @@ func (p *offerPruner) Start() {
 
 // Stop stops offer pruning process
 func (p *offerPruner) Stop() {
-	defer p.Unlock()
-	p.Lock()
-
-	if p.runningState == runningStateNotStarted {
+	if !p.lifeCycle.Stop() {
 		log.Warn("Offer prunner is already stopped, no action will be performed")
 		return
 	}
 
 	log.Info("Stopping offer pruner")
-	p.stopPrunerChan <- struct{}{}
-
 	// Wait for pruner to be stopped, should happen pretty quickly
-	for {
-		runningState := atomic.LoadInt32(&p.runningState)
-		if runningState == runningStateRunning {
-			time.Sleep(10 * time.Millisecond)
-		} else {
-			break
-		}
-	}
+	p.lifeCycle.Wait()
 
 	log.Info("Offer pruner stopped")
 }

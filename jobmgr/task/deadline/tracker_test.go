@@ -9,11 +9,13 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	peloton_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
+	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	"fmt"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -43,8 +45,8 @@ func (suite *DeadlineTrackerTestSuite) SetupSuite() {
 		config: &Config{
 			DeadlineTrackingPeriod: 10 * time.Second,
 		},
-		stopChan: make(chan struct{}),
-		metrics:  NewMetrics(tally.NoopScope),
+		metrics:   NewMetrics(tally.NoopScope),
+		lifeCycle: lifecycle.NewLifeCycle(),
 	}
 }
 
@@ -96,18 +98,61 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 		Return(1 * time.Second)
 	suite.goalStateDriver.EXPECT().EnqueueJob(gomock.Any(), gomock.Any())
 
-	err := suite.tracker.trackDeadline()
-	suite.NoError(err)
+	suite.tracker.trackDeadline()
+
+	// Test GetConfig error
+	suite.jobFactory.EXPECT().GetAllJobs().Return(jobs)
+	job.EXPECT().GetConfig(gomock.Any()).Return(nil, fmt.Errorf("Fake GetConfig error"))
+	suite.tracker.trackDeadline()
+
+	// Test GetSLA error
+	suite.jobFactory.EXPECT().GetAllJobs().Return(jobs)
+	job.EXPECT().GetConfig(gomock.Any()).Return(jobConfig, nil)
+	jobConfig.EXPECT().GetSLA().Return(nil)
+	suite.tracker.trackDeadline()
+
+	// Test GetRunTime error
+	jobConfig.EXPECT().GetSLA().
+		Return(&peloton_job.SlaConfig{
+			MaxRunningTime: 5,
+		})
+	suite.jobFactory.EXPECT().GetAllJobs().Return(jobs)
+	job.EXPECT().GetConfig(gomock.Any()).Return(jobConfig, nil)
+	job.EXPECT().GetAllTasks().Return(tasks)
+	task.EXPECT().GetRunTime(gomock.Any()).Return(nil, fmt.Errorf("Fake RunTime error"))
+	suite.tracker.trackDeadline()
+
+	// Test PatchTasks error
+	jobConfig.EXPECT().GetSLA().
+		Return(&peloton_job.SlaConfig{
+			MaxRunningTime: 5,
+		}).Times(3)
+	suite.jobFactory.EXPECT().GetAllJobs().Return(jobs)
+	job.EXPECT().GetConfig(gomock.Any()).Return(jobConfig, nil)
+	job.EXPECT().GetAllTasks().Return(tasks)
+	task.EXPECT().GetRunTime(gomock.Any()).Return(taskInfo.Runtime, nil)
+	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(job)
+	job.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("Fake PatchTasks error"))
+	suite.tracker.trackDeadline()
 }
 
 func (suite *DeadlineTrackerTestSuite) TestTracker_StartStop() {
 	defer func() {
 		suite.tracker.Stop()
-		suite.False(suite.tracker.isRunning())
+		_, ok := <-suite.tracker.lifeCycle.StopCh()
+		suite.False(ok)
+
+		// Stopping tracker again should be no-op
+		err := suite.tracker.Stop()
+		suite.NoError(err)
 	}()
 	err := suite.tracker.Start()
 	suite.NoError(err)
-	suite.True(suite.tracker.isRunning())
+	suite.NotNil(suite.tracker.lifeCycle.StopCh())
+
+	// Starting tracker again should be no-op
+	err = suite.tracker.Start()
+	suite.NoError(err)
 }
 
 func TestDeadlineTracker(t *testing.T) {

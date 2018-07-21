@@ -8,12 +8,13 @@ import (
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/lifecycle"
 	rc "code.uber.internal/infra/peloton/resmgr/common"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-
 	res "code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/respool/mocks"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
@@ -64,12 +65,12 @@ func (s *resPoolHandlerTestSuite) SetupTest() {
 	})
 
 	s.handler = &serviceHandler{
-		resPoolTree:            s.resourceTree,
-		dispatcher:             dispatcher,
-		metrics:                res.NewMetrics(tally.NoopScope),
-		store:                  s.mockResPoolStore,
-		runningState:           rc.RunningStateNotStarted,
+		resPoolTree: s.resourceTree,
+		dispatcher:  dispatcher,
+		metrics:     res.NewMetrics(tally.NoopScope),
+		store:       s.mockResPoolStore,
 		resPoolConfigValidator: s.resourcePoolConfigValidator,
+		lifeCycle:              lifecycle.NewLifeCycle(),
 	}
 	err := s.handler.Start()
 	s.NoError(err)
@@ -558,12 +559,12 @@ func (s *resPoolHandlerTestSuite) TestUpsertError() {
 func (s *resPoolHandlerTestSuite) getMockHandlerWithResTreeAndRespool() (*serviceHandler, *mocks.MockTree, *mocks.MockResPool) {
 	resTree := mocks.NewMockTree(s.mockCtrl)
 	return &serviceHandler{
-		resPoolTree:            resTree,
-		dispatcher:             nil,
-		metrics:                res.NewMetrics(tally.NoopScope),
-		store:                  s.mockResPoolStore,
-		runningState:           rc.RunningStateNotStarted,
+		resPoolTree: resTree,
+		dispatcher:  nil,
+		metrics:     res.NewMetrics(tally.NoopScope),
+		store:       s.mockResPoolStore,
 		resPoolConfigValidator: s.resourcePoolConfigValidator,
+		lifeCycle:              lifecycle.NewLifeCycle(),
 	}, resTree, mocks.NewMockResPool(s.mockCtrl)
 }
 
@@ -861,12 +862,12 @@ func (s *resPoolHandlerTestSuite) TestDeleteblahblah() {
 		respool := mocks.NewMockResPool(s.mockCtrl)
 
 		handler = &serviceHandler{
-			resPoolTree:            resTree,
-			dispatcher:             nil,
-			metrics:                res.NewMetrics(tally.NoopScope),
-			store:                  s.mockResPoolStore,
-			runningState:           rc.RunningStateNotStarted,
+			resPoolTree: resTree,
+			dispatcher:  nil,
+			metrics:     res.NewMetrics(tally.NoopScope),
+			store:       s.mockResPoolStore,
 			resPoolConfigValidator: s.resourcePoolConfigValidator,
+			lifeCycle:              lifecycle.NewLifeCycle(),
 		}
 		t.expectedFunctions(resTree, respool)
 
