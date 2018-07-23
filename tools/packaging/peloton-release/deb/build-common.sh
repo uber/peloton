@@ -3,12 +3,12 @@ INSTALL_DIR="$(mktemp -d)"
 OUTPUT_DIR=/output
 SRC_DIR="${SRC_DIR:-/peloton}"
 PROTOC_VERSION="3.5.1"
-GO_VERSION="1.8"
+GO_VERSION="1.10"
 
 install_golang() {
     echo 'start installing golang '$GO_VERSION
     curl -O https://storage.googleapis.com/golang/go$GO_VERSION.linux-amd64.tar.gz
-    tar -xvf go$GO_VERSION.linux-amd64.tar.gz
+    tar -xzf go$GO_VERSION.linux-amd64.tar.gz
     mv go /usr/local
     export GOROOT=/usr/local/go
     export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
