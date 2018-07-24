@@ -20,6 +20,10 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
+var (
+	dbError error = yarpcerrors.UnavailableErrorf("db error")
+)
+
 type JobTestSuite struct {
 	suite.Suite
 
@@ -180,7 +184,7 @@ func (suite *JobTestSuite) TestJobDBError() {
 	// Test db error in fetching job runtime
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
-		Return(nil, fmt.Errorf("fake db error"))
+		Return(nil, dbError)
 	actJobRuntime, err := suite.job.GetRuntime(context.Background())
 	suite.Error(err)
 
@@ -208,7 +212,7 @@ func (suite *JobTestSuite) TestJobDBError() {
 	// Test error in DB while update job runtime
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
-		Return(fmt.Errorf("fake db error"))
+		Return(dbError)
 	jobRuntime.State = pbjob.JobState_SUCCEEDED
 	err = suite.job.Update(context.Background(), &pbjob.JobInfo{Runtime: jobRuntime}, UpdateCacheAndDB)
 	suite.Error(err)
@@ -1005,7 +1009,7 @@ func (suite *JobTestSuite) TestJobCreateTasksWithDBError() {
 				gomock.Any(),
 				"peloton",
 				pbjob.JobType_BATCH).
-			Return(fmt.Errorf("fake db error"))
+			Return(dbError)
 	}
 
 	err := suite.job.CreateTasks(context.Background(), runtimes, "peloton")
@@ -1177,7 +1181,7 @@ func (suite *JobTestSuite) TestPatchTasks_DBError() {
 				i,
 				gomock.Any(),
 				gomock.Any()).
-			Return(fmt.Errorf("fake db error"))
+			Return(dbError)
 	}
 	err := suite.job.PatchTasks(context.Background(), diffs)
 	suite.Error(err)
@@ -1227,4 +1231,68 @@ func (suite *JobTestSuite) TestJobUpdateResourceUsage() {
 		common.GPU:    float64(2),
 		common.MEMORY: float64(11)}
 	suite.Equal(updatedResourceUsage, suite.job.GetResourceUsage())
+}
+
+// TestRecalculateResourceUsage tests recalculating the resource usage for job
+// on recovery
+func (suite *JobTestSuite) TestRecalculateResourceUsage() {
+	var oldRuntime *pbtask.RuntimeInfo
+
+	instanceCount := uint32(5)
+	initialResourceMap := map[string]float64{
+		common.CPU:    float64(5),
+		common.GPU:    float64(0),
+		common.MEMORY: float64(5)}
+
+	// Make sure initial resource map points to expected values
+	suite.job.resourceUsage = initialResourceMap
+	suite.Equal(initialResourceMap, suite.job.GetResourceUsage())
+
+	// Add 5 tasks to the job of which 2 are terminal and have valid
+	// resource usage.
+	for i := uint32(0); i < instanceCount; i++ {
+		if i%2 == 0 {
+			// initialize two terminal tasks
+			oldRuntime = initializeCurrentRuntime(pbtask.TaskState_RUNNING)
+		} else {
+			oldRuntime = initializeCurrentRuntime(pbtask.TaskState_SUCCEEDED)
+			oldRuntime.ResourceUsage = map[string]float64{
+				common.CPU:    float64(3),
+				common.GPU:    float64(0),
+				common.MEMORY: float64(3)}
+		}
+		suite.job.AddTask(i)
+		suite.taskStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), suite.jobID, i).Return(oldRuntime, nil)
+	}
+	suite.job.RecalculateResourceUsage(context.Background())
+
+	// initial resource map for this job should be reset and recalculated
+	// by adding resource usage of the two terminal tasks
+	updatedResourceUsage := map[string]float64{
+		common.CPU:    float64(6),
+		common.GPU:    float64(0),
+		common.MEMORY: float64(6)}
+	suite.Equal(updatedResourceUsage, suite.job.GetResourceUsage())
+}
+
+// TestRecalculateResourceUsageError tests DB error in recalculating the
+// resource usage for job on recovery
+func (suite *JobTestSuite) TestRecalculateResourceUsageError() {
+	initialResourceMap := map[string]float64{
+		common.CPU:    float64(5),
+		common.GPU:    float64(0),
+		common.MEMORY: float64(5)}
+	suite.job.resourceUsage = initialResourceMap
+
+	suite.job.AddTask(uint32(0))
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, uint32(0)).
+		Return(nil, dbError)
+
+	// This will reset the resource usage map to 0 and try to update it with
+	// terminal task resource usage. But on getting error in GetTaskRuntime,
+	// it will log the error and move on. So the resource usage will stay at 0.
+	suite.job.RecalculateResourceUsage(context.Background())
+	suite.Equal(createEmptyResourceUsageMap(), suite.job.GetResourceUsage())
 }

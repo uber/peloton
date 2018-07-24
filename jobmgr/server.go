@@ -71,9 +71,17 @@ func (s *Server) GainedLeadershipCallback() error {
 	s.jobFactory.Start()
 	s.updateFactory.Start()
 	s.taskPreemptor.Start()
+
+	// goalstateDriver will perform recovery of jobs from DB as part of startup
 	s.goalstateDriver.Start()
 	s.placementProcessor.Start()
 	s.deadlineTracker.Start()
+
+	// statusUpdate.Start() must be called after goalstateDriver.Start().
+	// Always start processing event stream after goalstate driver finishes
+	// revovery of jobs from DB. The assumption is that jobmgr goalstate engine
+	// would have the baseline state of all jobs recovered from DB before
+	// handling new task events which will modify this state.
 	s.statusUpdate.Start()
 	s.backgroundManager.Start()
 

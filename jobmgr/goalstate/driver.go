@@ -322,6 +322,11 @@ func (d *driver) recoverTasks(ctx context.Context, id string, jobConfig *job.Job
 		}
 	}
 
+	// Recalculate the job resourceusage. Do this after recovering every task to
+	// avoid getting into inconsistent state in case jobmgr restarts while a job
+	// is partially recovered.
+	cachedJob.RecalculateResourceUsage(ctx)
+
 	// recover update if the job has an update,
 	// and update is not already in cache.
 	updateID := jobRuntime.GetUpdateID()

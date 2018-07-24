@@ -246,6 +246,9 @@ func (suite *DriverTestSuite) TestSyncFromDB() {
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
+	suite.cachedJob.EXPECT().
+		RecalculateResourceUsage(gomock.Any())
+
 	suite.goalStateDriver.syncFromDB(context.Background())
 }
 
@@ -323,6 +326,9 @@ func (suite *DriverTestSuite) TestSyncFromDBWithMaxRunningInstancesSLA() {
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return().Times(2)
 
+	suite.cachedJob.EXPECT().
+		RecalculateResourceUsage(gomock.Any())
+
 	suite.goalStateDriver.syncFromDB(context.Background())
 }
 
@@ -384,6 +390,9 @@ func (suite *DriverTestSuite) TestInitializedJobSyncFromDB() {
 
 	suite.cachedJob.EXPECT().
 		ReplaceTasks(gomock.Any(), false).Return(nil)
+
+	suite.cachedJob.EXPECT().
+		RecalculateResourceUsage(gomock.Any())
 
 	suite.goalStateDriver.syncFromDB(context.Background())
 }
@@ -466,6 +475,9 @@ func (suite *DriverTestSuite) TestSyncFromDBRecoverUpgrade() {
 
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).Return()
+
+	suite.cachedJob.EXPECT().
+		RecalculateResourceUsage(gomock.Any())
 
 	suite.goalStateDriver.syncFromDB(context.Background())
 }

@@ -106,6 +106,10 @@ type Job interface {
 
 	// GetResourceUsage gets the resource usage map for this job
 	GetResourceUsage() map[string]float64
+
+	// RecalculateResourceUsage recalculates the resource usage of a job
+	// by adding together resource usage of all terminal tasks of this job.
+	RecalculateResourceUsage(ctx context.Context)
 }
 
 // JobConfig stores the job configurations in cache which is fetched multiple
@@ -146,13 +150,9 @@ func newJob(id *peloton.JobID, jobFactory *jobFactory) *job {
 		// jobFactory is stored in the job instead of using the singleton object
 		// because job needs access to the different stores in the job factory
 		// which are private variables and not available to other packages.
-		jobFactory: jobFactory,
-		tasks:      map[uint32]*task{},
-		resourceUsage: map[string]float64{
-			common.CPU:    float64(0),
-			common.GPU:    float64(0),
-			common.MEMORY: float64(0),
-		},
+		jobFactory:    jobFactory,
+		tasks:         map[uint32]*task{},
+		resourceUsage: createEmptyResourceUsageMap(),
 	}
 }
 
@@ -414,11 +414,7 @@ func (j *job) createJobRuntime(ctx context.Context, config *pbjob.JobConfig) err
 			Version:   1,
 		},
 		ConfigurationVersion: config.GetChangeLog().GetVersion(),
-		ResourceUsage: map[string]float64{
-			common.CPU:    float64(0),
-			common.GPU:    float64(0),
-			common.MEMORY: float64(0),
-		},
+		ResourceUsage:        createEmptyResourceUsageMap(),
 	}
 	// Init the task stats to reflect that all tasks are in initialized state
 	initialJobRuntime.TaskStats[pbtask.TaskState_INITIALIZED.String()] = config.InstanceCount
@@ -919,4 +915,41 @@ func (j *job) GetResourceUsage() map[string]float64 {
 	defer j.RUnlock()
 
 	return j.resourceUsage
+}
+
+// RecalculateResourceUsage recalculates the resource usage of a job by adding
+// together resource usage numbers of all terminal tasks of this job.
+// RecalculateResourceUsage should be called ONLY during job recovery to
+// initialize the job runtime with a correct baseline resource usage.
+// It is not safe to call this for a running job except from recovery code when
+// the event stream has not started and the task resource usages will not be
+// updated.
+func (j *job) RecalculateResourceUsage(ctx context.Context) {
+	j.Lock()
+	defer j.Unlock()
+
+	// start with resource usage set to an empty map with 0 values for CPU, GPU
+	// and memory
+	j.resourceUsage = createEmptyResourceUsageMap()
+	for id, task := range j.tasks {
+		if runtime, err := task.GetRunTime(ctx); err == nil {
+			for k, v := range runtime.GetResourceUsage() {
+				j.resourceUsage[k] += v
+			}
+		} else {
+			log.WithError(err).
+				WithFields(log.Fields{
+					"job_id":      j.id.GetValue(),
+					"instance_id": id}).
+				Error("error adding task resource usage to job")
+		}
+	}
+}
+
+func createEmptyResourceUsageMap() map[string]float64 {
+	return map[string]float64{
+		common.CPU:    float64(0),
+		common.GPU:    float64(0),
+		common.MEMORY: float64(0),
+	}
 }
