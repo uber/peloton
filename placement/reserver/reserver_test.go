@@ -18,6 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/placement/models"
 
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -76,7 +77,7 @@ func (suite *ReserverTestSuite) TestReservation() {
 	suite.reserver.GetReservationQueue().Enqueue(task)
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), float64(0))
-	suite.Nil(err)
+	suite.NoError(err)
 }
 
 // TestReservationNoTasks tests if there is no task in the queue
@@ -86,7 +87,7 @@ func (suite *ReserverTestSuite) TestReservationNoTasks() {
 	suite.hostService.EXPECT().GetHosts(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), _noTasksTimeoutPenalty.Seconds())
-	suite.Error(err)
+	require.Error(suite.T(), err)
 	suite.Contains(err.Error(), "No items in reservation queue")
 }
 
@@ -98,7 +99,7 @@ func (suite *ReserverTestSuite) TestReservationInvalidTask() {
 	suite.reserver.GetReservationQueue().Enqueue(task)
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), _noTasksTimeoutPenalty.Seconds())
-	suite.Error(err)
+	require.Error(suite.T(), err)
 	suite.Contains(err.Error(), "Not a valid task")
 }
 
@@ -113,7 +114,7 @@ func (suite *ReserverTestSuite) TestReservationErrorinAcquire() {
 	suite.reserver.GetReservationQueue().Enqueue(task)
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), _noHostsTimeoutPenalty.Seconds())
-	suite.Error(err)
+	require.Error(suite.T(), err)
 	suite.Contains(err.Error(), "error in acquire hosts")
 }
 
@@ -133,7 +134,7 @@ func (suite *ReserverTestSuite) TestReservationErrorInReservation() {
 	suite.reserver.GetReservationQueue().Enqueue(task)
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), _noHostsTimeoutPenalty.Seconds())
-	suite.Error(err)
+	require.Error(suite.T(), err)
 	suite.Contains(err.Error(), "error in reserve hosts")
 }
 

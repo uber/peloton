@@ -234,14 +234,15 @@ func (h *serviceHandler) processGetHostsFailure(err interface{}) *hostsvc.GetHos
 	resp := &hostsvc.GetHostsResponse{
 		Error: &hostsvc.GetHostsResponse_Error{},
 	}
+	h.metrics.GetHostsInvalid.Inc(1)
 	if filter, ok := err.(*hostsvc.InvalidHostFilter); ok {
 		log.WithField("error", filter.Message).Warn("no matching hosts")
 		resp.Error.InvalidHostFilter = filter
-	} else if hostFailure, ok := err.(*hostsvc.GetHostsFailure); ok {
+	}
+	if hostFailure, ok := err.(*hostsvc.GetHostsFailure); ok {
 		log.WithField("error", hostFailure.Message).Warn("no matching hosts")
 		resp.Error.Failure = hostFailure
 	}
-	h.metrics.GetHostsInvalid.Inc(1)
 	return resp
 }
 

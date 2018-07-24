@@ -49,7 +49,7 @@ func (m *Matcher) GetMatchingHosts() (map[string]*mesos.AgentInfo, *hostsvc.GetH
 		return m.resultHosts, nil
 	}
 	return nil, &hostsvc.GetHostsFailure{
-		Message: fmt.Sprintf("could not return matching hosts %s", result.String()),
+		Message: fmt.Sprintf("could not return matching hosts %s", result),
 	}
 }
 

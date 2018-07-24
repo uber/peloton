@@ -181,8 +181,7 @@ func (r *reserver) Reserve(ctx context.Context) (time.Duration, error) {
 	// choose one random host from the list
 	hostToReserve = append(hostToReserve, r.findHost(hosts))
 	// reserve the host in host manager
-	err = r.hostService.ReserveHost(ctx, hostToReserve, task)
-	if err != nil {
+	if err := r.hostService.ReserveHost(ctx, hostToReserve, task); err != nil {
 		log.WithFields(log.Fields{
 			"host": hostToReserve[0].GetHost().Hostname,
 			"task": task.Id.Value,

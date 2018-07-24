@@ -18,7 +18,7 @@ func NewHosts(hostInfo *hostsvc.HostInfo, tasks []*resmgr.Task) *Host {
 // Host represents a Peloton hostinfo from hostmanager and the tasks running on it.
 type Host struct {
 	// mutex
-	sync.Mutex
+	lock sync.Mutex
 
 	// host info from host manager
 	Host *hostsvc.HostInfo `json:"hostinfo"`
@@ -28,14 +28,14 @@ type Host struct {
 
 // GetHost returns the host info of the host.
 func (h *Host) GetHost() *hostsvc.HostInfo {
-	h.Lock()
-	defer h.Unlock()
+	h.lock.Lock()
+	defer h.lock.Unlock()
 	return h.Host
 }
 
 // GetTasks returns the tasks of the host.
 func (h *Host) GetTasks() []*resmgr.Task {
-	h.Lock()
-	defer h.Unlock()
+	h.lock.Lock()
+	defer h.lock.Unlock()
 	return h.Tasks
 }

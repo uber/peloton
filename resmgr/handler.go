@@ -1148,7 +1148,8 @@ func (h *ServiceHandler) GetPreemptibleTasks(
 // by that resource manager can stop timer for launching state. Similarly if
 // task is been failed to be launched in host manager due to valid failure then
 // job manager will tell resource manager about the task to be killed by that
-// can be removed from resource manager and relevant resource accounting can be done.
+// resource manager can remove the task from the tracker and relevant
+// resource accounting can be done.
 func (h *ServiceHandler) UpdateTasksState(
 	ctx context.Context,
 	req *resmgrsvc.UpdateTasksStateRequest) (*resmgrsvc.UpdateTasksStateResponse, error) {
@@ -1163,20 +1164,20 @@ func (h *ServiceHandler) UpdateTasksState(
 	h.metrics.APILaunchedTasks.Inc(1)
 
 	for _, updateEntry := range taskStateList {
-		ID := updateEntry.GetTask()
+		id := updateEntry.GetTask()
 		// Checking if the task is present in tracker, if not
 		// drop that task to be updated
-		task := h.rmTracker.GetTask(ID)
+		task := h.rmTracker.GetTask(id)
 		if task == nil {
 			continue
 		}
 
 		// Checking if the state for the task is in terminal state
 		if util.IsPelotonStateTerminal(updateEntry.GetState()) {
-			err := h.rmTracker.MarkItDone(ID, *updateEntry.MesosTaskId.Value)
+			err := h.rmTracker.MarkItDone(id, *updateEntry.MesosTaskId.Value)
 			if err != nil {
 				log.WithError(err).WithFields(log.Fields{
-					"task_id":      ID,
+					"task_id":      id,
 					"update_entry": updateEntry,
 				}).Error("could not update task")
 			}
@@ -1195,7 +1196,7 @@ func (h *ServiceHandler) UpdateTasksState(
 		if err != nil {
 			log.WithError(err).
 				WithFields(log.Fields{
-					"task_id":  ID,
+					"task_id":  id,
 					"to_state": updateEntry.GetState().String(),
 				}).Info("failed to transit")
 			continue

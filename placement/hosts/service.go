@@ -15,10 +15,13 @@ import (
 )
 
 const (
-	_failedToAcquireHosts      = "failed to acquire hosts"
 	_failedToFetchTasksOnHosts = "failed to fetch tasks on hosts"
 	_timeout                   = 10 * time.Second
-	_notImplemented            = "Not Implemented"
+)
+
+var (
+	errfailedToAcquireHosts = errors.New("failed to acquire hosts")
+	errnotImplemented       = errors.New("Not Implemented")
 )
 
 // Service will manage hosts used to get hosts and reserve hosts.
@@ -67,7 +70,7 @@ func (s *service) GetHosts(
 	res, err := s.hostManager.GetHosts(ctx, req)
 	if err != nil {
 		s.metrics.HostGetFail.Inc(1)
-		return nil, errors.New(_failedToAcquireHosts)
+		return nil, errfailedToAcquireHosts
 	}
 	if respErr := res.GetError(); respErr != nil {
 		s.metrics.HostGetFail.Inc(1)
@@ -139,11 +142,11 @@ func (s *service) getTasks(
 
 // ReserveHost reserves the given host for the given task in Host Manager
 func (s *service) ReserveHost(ctx context.Context, hosts []*models.Host, task *resmgr.Task) error {
-	return errors.New(_notImplemented)
+	return errors.New(errnotImplemented.Error())
 }
 
 // GetCompletedReservation gets the completed reservation from host manager
 func (s *service) GetCompletedReservation(ctx context.Context,
 ) ([]*hostsvc.CompletedReservation, error) {
-	return nil, errors.New(_notImplemented)
+	return nil, errors.New(errnotImplemented.Error())
 }

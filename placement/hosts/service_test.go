@@ -19,8 +19,11 @@ import (
 )
 
 const (
-	_error    = "error"
 	_hostname = "hostname"
+)
+
+var (
+	errReturn = errors.New("error")
 )
 
 // ServiceTestSuite for testing the hosts service
@@ -109,7 +112,7 @@ func (suite *ServiceTestSuite) TestHostsService_ReserveHosts() {
 	ctx := context.Background()
 	err := suite.hostService.ReserveHost(ctx, nil, nil)
 	suite.Error(err)
-	suite.Equal(err.Error(), _notImplemented)
+	suite.Equal(err.Error(), errnotImplemented.Error())
 }
 
 // TestHostsService_GetCompletedReservation tests the GetCompletedReservation call
@@ -118,7 +121,7 @@ func (suite *ServiceTestSuite) TestHostsService_GetCompletedReservation() {
 	ctx := context.Background()
 	_, err := suite.hostService.GetCompletedReservation(ctx)
 	suite.Error(err)
-	suite.Equal(err.Error(), _notImplemented)
+	suite.Equal(err.Error(), errnotImplemented.Error())
 }
 
 // TestHostsService_ErrorInGetTasks is testing the error in GetTasks()
@@ -149,13 +152,13 @@ func (suite *ServiceTestSuite) TestHostsService_ErrorInGetTasks() {
 					Hostnames: []string{_hostname},
 				},
 			).Return(
-			nil, errors.New(_error)),
+			nil, errReturn),
 	)
 	hostsRet, err := suite.hostService.GetHosts(ctx, createResMgrTask(), filter)
 	suite.Error(err)
 	suite.Nil(hostsRet)
 	// validating the same error been passed
-	suite.Equal(err.Error(), _error)
+	suite.Equal(err.Error(), errReturn.Error())
 }
 
 // TestHostsService_ErrorInGetHosts tests the error in GetHosts call from
@@ -170,12 +173,12 @@ func (suite *ServiceTestSuite) TestHostsService_ErrorInGetHosts() {
 			GetHosts(
 				gomock.Any(),
 				getHostRequest(filter),
-			).Return(nil, errors.New(_error)),
+			).Return(nil, errReturn),
 	)
 	hostsRet, err := suite.hostService.GetHosts(ctx, createResMgrTask(), filter)
 	suite.Error(err)
 	suite.Nil(hostsRet)
-	suite.Equal(err.Error(), _failedToAcquireHosts)
+	suite.Equal(err.Error(), errfailedToAcquireHosts.Error())
 }
 
 // TestHostsService_ErrorResponseInGetHosts tests the error in response
