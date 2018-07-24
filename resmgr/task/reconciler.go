@@ -2,10 +2,8 @@ package task
 
 import (
 	"context"
-	"sync"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"code.uber.internal/infra/peloton/common/lifecycle"
@@ -25,92 +23,113 @@ var (
 		task.TaskState_KILLED:    true,
 		task.TaskState_SUCCEEDED: true,
 	}
-	// singleton
-	instance *reconciler
-	once     sync.Once
 )
 
-// Reconciler is the interface for reconciling tasks between
-// the database and the task tracker
-type Reconciler interface {
-	Start() error
-	Stop() error
+// activeTasksTracker gets the active tasks in the scheduler
+type activeTasksTracker interface {
+	// GetActiveTasks returns task states map
+	GetActiveTasks(
+		jobID string,
+		respoolID string,
+		states []string) map[string][]*RMTask
 }
 
-// reconciler implements Reconciler
-// It goes through all the tasks in tracker and compares them with the state in the database
-type reconciler struct {
+// applier applies the operation to the tasks which need reconciliation
+type applier interface {
+	apply(map[string]string) error
+}
+
+// right now the resource manager only logs the tasks which are found to be
+// in an inconsistent state with the store.
+// TODO do something useful with this
+type logApplier struct{}
+
+func (l *logApplier) apply(tasks map[string]string) error {
+	log.WithField("tasks_to_reconcile", tasks).
+		WithField("num_tasks", len(tasks)).
+		Infof("Completed task reconciliation")
+	return nil
+}
+
+// Reconciler reconciles the tasks between the tracker and the store
+type Reconciler struct {
+	lifeCycle            lifecycle.LifeCycle
 	taskStore            storage.TaskStore
-	tracker              Tracker
+	tracker              activeTasksTracker
+	applier              applier
 	reconciliationPeriod time.Duration
 	metrics              *Metrics
-	lifeCycle            lifecycle.LifeCycle // lifecycle manager
 }
 
-// InitReconciler initializes the instance
-func InitReconciler(tracker Tracker, taskStore storage.TaskStore,
-	parent tally.Scope, reconciliationPeriod time.Duration,
-) {
-	once.Do(func() {
-		instance = &reconciler{
-			tracker:              tracker,
-			taskStore:            taskStore,
-			reconciliationPeriod: reconciliationPeriod,
-			metrics:              NewMetrics(parent.SubScope("instance")),
-			lifeCycle:            lifecycle.NewLifeCycle(),
-		}
-	})
-}
-
-// GetReconciler returns the instance instance
-func GetReconciler() Reconciler {
-	if instance == nil {
-		log.Error("Task Reconciler is not initialized")
+// NewReconciler returns a new reconciler
+func NewReconciler(
+	tracker activeTasksTracker,
+	taskStore storage.TaskStore,
+	parent tally.Scope,
+	reconciliationPeriod time.Duration,
+) *Reconciler {
+	return &Reconciler{
+		tracker:              tracker,
+		taskStore:            taskStore,
+		reconciliationPeriod: reconciliationPeriod,
+		metrics:              NewMetrics(parent.SubScope("instance")),
+		lifeCycle:            lifecycle.NewLifeCycle(),
+		applier:              new(logApplier),
 	}
-	return instance
 }
 
-func (t *reconciler) Start() error {
+// Start starts the reconciler
+func (t *Reconciler) Start() error {
 	if !t.lifeCycle.Start() {
-		log.Warn("Task Reconciler is already running, no action will be " +
-			"performed")
+		log.Warn(
+			"Task Reconciler is already running, no action will be performed")
 		return nil
 	}
 
-	started := make(chan int, 1)
 	go func() {
 		defer t.lifeCycle.StopComplete()
 
 		ticker := time.NewTicker(t.reconciliationPeriod)
 		defer ticker.Stop()
 
-		log.Infof("Starting Task Reconciler")
-		close(started)
-
+		log.Info("Starting Task Reconciler")
 		for {
 			select {
 			case <-t.lifeCycle.StopCh():
 				log.Info("Exiting Task Reconciler")
 				return
 			case <-ticker.C:
-				tasksToReconcile, err := t.getTasksToReconcile()
-				if err != nil {
-					t.metrics.ReconciliationFail.Inc(1)
-					log.WithError(err).Error("failed task reconciliation")
-				} else {
-					t.metrics.ReconciliationSuccess.Inc(1)
-					log.WithField("tasks_to_reconcile", tasksToReconcile).
-						WithField("number_tasks", len(tasksToReconcile)).
-						Infof("completed task reconciliation")
-				}
 			}
+
+			if err := t.run(); err != nil {
+				t.metrics.ReconciliationFail.Inc(1)
+				log.WithError(err).Error("failed task reconciliation")
+				continue
+			}
+			t.metrics.ReconciliationSuccess.Inc(1)
 		}
 	}()
-	<-started
 	return nil
 }
 
-func (t *reconciler) Stop() error {
+func (t *Reconciler) run() error {
+	tasks, err := t.getTasksToReconcile(
+		// get all active tasks in the scheduler
+		t.tracker.GetActiveTasks(
+			"",
+			"",
+			nil,
+		),
+	)
+	if err != nil {
+		return err
+	}
+
+	return t.applier.apply(tasks)
+}
+
+// Stop stops the reconciler
+func (t *Reconciler) Stop() error {
 	if !t.lifeCycle.Stop() {
 		log.Warn("Task Reconciler is already stopped, no" +
 			" action will be performed")
@@ -123,47 +142,54 @@ func (t *reconciler) Stop() error {
 	return nil
 }
 
-// getTasksToReconcile goes through all the tasks in the tracker and compares
-// the tracker's view of the task vs whats in the database. A task in terminal
-// state in the database but active in the tracker is considered as a leak
-func (t *reconciler) getTasksToReconcile() (map[string]string, error) {
-	log.Infof("performing task reconciliation")
+// goes through the active tasks to return a map of peloton_task_id
+// ->mesos_task_id of tasks which have different states between the scheduler
+// and the store.
+func (t *Reconciler) getTasksToReconcile(activeTasks map[string][]*RMTask) (
+	map[string]string, error) {
+	log.Info("performing task reconciliation")
 	errs := new(multierror.Error)
 
 	// map of pelotonTaskID->MesosTaskID
 	tasksToReconcile := make(map[string]string)
-
-	activeTasks := t.tracker.GetActiveTasks("", "", nil)
-	for rmtrackerState, pelotonTasks := range activeTasks {
+	for trackerState, pelotonTasks := range activeTasks {
 		for _, pelotonTask := range pelotonTasks {
-			pelotonTaskID := pelotonTask.task.Id.Value
-			taskInfo, err := t.taskStore.GetTaskByID(context.Background(), pelotonTaskID)
+			pelotonTaskID := pelotonTask.Task().GetId().GetValue()
 
+			taskInfo, err := t.taskStore.GetTaskByID(
+				context.Background(),
+				pelotonTaskID,
+			)
 			if err != nil {
-				errs = multierror.Append(errs, errors.Errorf("unable to get task:%s from the "+
-					"database", pelotonTaskID))
+				errs = multierror.Append(
+					errs,
+					errors.Errorf(
+						"unable to get task:%s from the database",
+						pelotonTaskID))
 				continue
 			}
-			actualState := taskInfo.GetRuntime().GetState()
-			if _, ok := terminalTaskStates[actualState]; ok {
-				rmTask := t.tracker.GetTask(&peloton.TaskID{
-					Value: pelotonTaskID,
-				})
-				if rmTask == nil {
-					errs = multierror.Append(errs, errors.Errorf("unable to get rm task:%s "+
-						"from tracker", pelotonTaskID))
-				} else if rmTask.Task().GetTaskId().GetValue() ==
-					taskInfo.Runtime.GetMesosTaskId().GetValue() &&
-					actualState.String() != rmtrackerState {
-					// The task state in the database is terminal but in the tracker it is not
-					// we have a leak!
-					tasksToReconcile[pelotonTaskID] = rmTask.Task().GetTaskId().GetValue()
 
-					// update metrics
-					leakedResources := scalar.ConvertToResmgrResource(
-						rmTask.task.GetResource())
-					t.metrics.LeakedResources.Update(leakedResources)
-				}
+			actualState := taskInfo.GetRuntime().GetState()
+
+			if !terminalTaskStates[actualState] {
+				continue
+			}
+
+			if pelotonTask.Task().GetTaskId().GetValue() ==
+				taskInfo.Runtime.GetMesosTaskId().GetValue() &&
+				actualState.String() != trackerState {
+
+				// The task state in the database is terminal but in the
+				// tracker it is not. We an inconsistent task!
+				tasksToReconcile[pelotonTaskID] =
+					pelotonTask.Task().GetTaskId().GetValue()
+
+				// update metrics
+				t.metrics.LeakedResources.Update(
+					scalar.ConvertToResmgrResource(
+						pelotonTask.task.GetResource(),
+					),
+				)
 			}
 		}
 	}

@@ -7,149 +7,47 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	resp "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/eventstream"
-	"code.uber.internal/infra/peloton/common/lifecycle"
-	res_common "code.uber.internal/infra/peloton/resmgr/common"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
-	"github.com/stretchr/testify/suite"
+	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 )
 
-type ReconcilerTestSuite struct {
-	suite.Suite
-	mockCtrl *gomock.Controller
+// fake ActiveTasksTracker
+type fakeActiveTasksTracker struct{ tasks map[string][]*RMTask }
 
-	reconciler         *reconciler
-	tracker            Tracker
-	mockTaskStore      *store_mocks.MockTaskStore
-	eventStreamHandler *eventstream.Handler
-	task               *resmgr.Task
-	respool            respool.ResPool
-	hostname           string
-	mockHostmgr        *host_mocks.MockInternalHostServiceYARPCClient
+func (f *fakeActiveTasksTracker) GetActiveTasks(
+	jobID string,
+	respoolID string,
+	states []string) map[string][]*RMTask {
+	return f.tasks
 }
 
-func (suite *ReconcilerTestSuite) SetupTest() {
-	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockHostmgr = host_mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
-	InitTaskTracker(tally.NoopScope, &Config{
-		EnablePlacementBackoff: true,
-	}, suite.mockHostmgr)
-	suite.mockHostmgr.EXPECT().MarkHostDrained(gomock.Any(), gomock.Any()).Return(&hostsvc.MarkHostDrainedResponse{}, nil).AnyTimes()
-	suite.tracker = GetTracker()
+// fake applier
+type fakeApplier struct{ tasks map[string]string }
 
-	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.mockCtrl)
-
-	suite.reconciler = &reconciler{
-		tracker:              suite.tracker,
-		taskStore:            suite.mockTaskStore,
-		reconciliationPeriod: time.Hour * 1,
-		metrics:              NewMetrics(tally.NoopScope),
-		lifeCycle:            lifecycle.NewLifeCycle(),
-	}
-
-	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
-		1000,
-		[]string{
-			common.PelotonJobManager,
-			common.PelotonResourceManager,
-		},
-		nil,
-		tally.Scope(tally.NoopScope))
-
-	suite.hostname = "hostname"
+func (fa *fakeApplier) apply(tasks map[string]string) error {
+	fa.tasks = tasks
+	return nil
+}
+func (fa *fakeApplier) getTasks() map[string]string {
+	return fa.tasks
 }
 
-func (suite *ReconcilerTestSuite) addTaskToTracker(pelotonTaskID string, trackerMesosTaskID string) {
-	rmTask := suite.createTask(pelotonTaskID, trackerMesosTaskID)
-	rootID := peloton.ResourcePoolID{Value: common.RootResPoolID}
-	policy := resp.SchedulingPolicy_PriorityFIFO
-	respoolConfig := &resp.ResourcePoolConfig{
-		Name:      "respool-1",
-		Parent:    &rootID,
-		Resources: suite.getResourceConfig(),
-		Policy:    policy,
-	}
+func TestNewReconciler(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	suite.respool, _ = respool.NewRespool(tally.NoopScope, "respool-1",
-		nil, respoolConfig, res_common.PreemptionConfig{Enabled: false})
-	suite.tracker.AddTask(rmTask, suite.eventStreamHandler, suite.respool, &Config{
-		PolicyName: ExponentialBackOffPolicy,
-	})
-}
+	pelotonTaskID := uuid.NewRandom().String()
+	mesosTaskID := uuid.NewRandom().String()
 
-// Returns resource configs
-func (suite *ReconcilerTestSuite) getResourceConfig() []*resp.ResourceConfig {
-
-	resConfigs := []*resp.ResourceConfig{
-		{
-			Share:       1,
-			Kind:        "cpu",
-			Reservation: 100,
-			Limit:       1000,
-		},
-		{
-			Share:       1,
-			Kind:        "memory",
-			Reservation: 1000,
-			Limit:       1000,
-		},
-		{
-			Share:       1,
-			Kind:        "disk",
-			Reservation: 100,
-			Limit:       1000,
-		},
-		{
-			Share:       1,
-			Kind:        "gpu",
-			Reservation: 2,
-			Limit:       4,
-		},
-	}
-	return resConfigs
-}
-
-func (suite *ReconcilerTestSuite) createTask(pelotonTaskID string, mesosTaskID string) *resmgr.Task {
-	return &resmgr.Task{
-		Name:     pelotonTaskID,
-		Priority: 0,
-		JobId:    &peloton.JobID{Value: "job1"},
-		Id:       &peloton.TaskID{Value: pelotonTaskID},
-		TaskId: &mesos_v1.TaskID{
-			Value: &mesosTaskID,
-		},
-		Hostname: suite.hostname,
-		Resource: &task.ResourceConfig{
-			CpuLimit:    1,
-			DiskLimitMb: 10,
-			GpuLimit:    0,
-			MemLimitMb:  100,
-		},
-	}
-}
-
-func TestReconciler(t *testing.T) {
-	suite.Run(t, new(ReconcilerTestSuite))
-}
-
-func (suite *ReconcilerTestSuite) TestReconcile() {
-	pelotonTaskID := "testPelotonTaskID"
-	mesosTaskID := "testMesosTaskID"
-
-	reconcilerTests := []struct {
+	rtt := []struct {
 		dbMesosTaskID            string
 		trackerMesosTaskID       string
 		pelotonTaskID            string
@@ -198,14 +96,17 @@ func (suite *ReconcilerTestSuite) TestReconcile() {
 			stateInDB:                task.TaskState_INITIALIZED,
 			stateInTracker:           task.TaskState_INITIALIZED,
 			expectedTasksToReconcile: map[string]string{},
-			expectedError: errors.Errorf("1 error occurred:\n\n* unable to get "+
-				"task:%s from the database", pelotonTaskID),
+			expectedError: errors.Errorf(
+				"1 error occurred:\n\n* unable to get "+
+					"task:%s from the database", pelotonTaskID),
 		},
 	}
 
-	for _, tt := range reconcilerTests {
+	for _, tt := range rtt {
+		// setup the reconciler
+		mockStore := mocks.NewMockTaskStore(ctrl)
 		gomock.InOrder(
-			suite.mockTaskStore.EXPECT().GetTaskByID(context.Background(), tt.pelotonTaskID).Return(
+			mockStore.EXPECT().GetTaskByID(context.Background(), tt.pelotonTaskID).Return(
 				&task.TaskInfo{
 					Runtime: &task.RuntimeInfo{
 						State: tt.stateInDB,
@@ -215,37 +116,63 @@ func (suite *ReconcilerTestSuite) TestReconcile() {
 					},
 				},
 				tt.expectedError))
-		suite.addTaskToTracker(tt.pelotonTaskID, tt.trackerMesosTaskID)
 
-		actualTasksToReconcile, err := suite.reconciler.getTasksToReconcile()
-		if tt.expectedError == nil {
-			suite.NoError(err)
-		} else {
-			suite.Equal(tt.expectedError.Error(), err.Error())
+		ft := &fakeActiveTasksTracker{
+			tasks: map[string][]*RMTask{tt.stateInTracker.String(): {
+				{
+					task: &resmgr.Task{
+						Id: &peloton.TaskID{Value: tt.pelotonTaskID},
+						TaskId: &mesos_v1.TaskID{Value: &tt.
+							trackerMesosTaskID},
+					},
+				},
+			}}}
+		r := NewReconciler(
+			ft,
+			mockStore,
+			tally.NoopScope,
+			1*time.Minute,
+		)
+		fa := &fakeApplier{
+			tasks: make(map[string]string),
 		}
+		r.applier = fa
 
-		suite.Equal(tt.expectedTasksToReconcile, actualTasksToReconcile)
+		// Run the actual test
+		err := r.run()
+		if tt.expectedError == nil {
+			assert.NoError(t, err)
+			continue
+		}
+		assert.Equal(t, tt.expectedError.Error(), err.Error())
+
+		actualTasksToReconcile := fa.getTasks()
+		assert.Equal(t, tt.expectedTasksToReconcile, actualTasksToReconcile)
 	}
 }
 
-func (suite *ReconcilerTestSuite) TearDownTest() {
-	suite.tracker.Clear()
-	suite.mockCtrl.Finish()
-}
+func TestReconciler_Start(t *testing.T) {
+	r := NewReconciler(
+		&fakeActiveTasksTracker{},
+		nil,
+		tally.NoopScope,
+		1*time.Minute,
+	)
 
-func (suite *ReconcilerTestSuite) TestReconciler_Start() {
 	defer func() {
-		suite.reconciler.Stop()
-
+		r.Stop()
 		//Stopping reconciler again. Should be no-op
-		err := suite.reconciler.Stop()
-		suite.NoError(err)
+		assert.NoError(t, r.Stop())
 	}()
-	err := suite.reconciler.Start()
-	suite.NoError(err)
-	suite.NotNil(suite.reconciler.lifeCycle.StopCh())
+
+	assert.NoError(t, r.Start())
+	assert.NotNil(t, r.lifeCycle.StopCh())
 
 	// Starting reconciler again. Should be no-op
-	err = suite.reconciler.Start()
-	suite.NoError(err)
+	assert.NoError(t, r.Start())
+}
+
+func TestReconciler_LogApplier(t *testing.T) {
+	l := new(logApplier)
+	assert.NoError(t, l.apply(map[string]string{"": ""}))
 }

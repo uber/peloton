@@ -54,8 +54,8 @@ type ServiceHandler struct {
 	config             Config
 }
 
-// InitServiceHandler initializes the handler for ResourceManagerService
-func InitServiceHandler(
+// NewServiceHandler initializes the handler for ResourceManagerService
+func NewServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	rmTracker rmtask.Tracker,

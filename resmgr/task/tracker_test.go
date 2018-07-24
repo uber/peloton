@@ -45,7 +45,15 @@ func (suite *TrackerTestSuite) SetupTest() {
 }
 
 func (suite *TrackerTestSuite) setup(conf *Config, invalid bool) {
-	suite.mockHostmgr.EXPECT().MarkHostDrained(gomock.Any(), gomock.Any()).Return(&hostsvc.MarkHostDrainedResponse{}, nil).AnyTimes()
+	suite.mockHostmgr.
+		EXPECT().
+		MarkHostDrained(
+			gomock.Any(),
+			gomock.Any()).
+		Return(
+			&hostsvc.MarkHostDrainedResponse{},
+			nil).
+		AnyTimes()
 	InitTaskTracker(tally.NoopScope, conf, suite.mockHostmgr)
 	suite.tracker = GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
@@ -71,7 +79,8 @@ func (suite *TrackerTestSuite) setup(conf *Config, invalid bool) {
 
 func (suite *TrackerTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockHostmgr = hostsvc_mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
+	suite.mockHostmgr = hostsvc_mocks.NewMockInternalHostServiceYARPCClient(
+		suite.mockCtrl)
 }
 
 func (suite *TrackerTestSuite) addTaskToTracker(task *resmgr.Task) {
@@ -389,8 +398,9 @@ func (suite *TrackerTestSuite) TestMarkItInvalid() {
 	suite.NoError(err)
 }
 
-// TestAddDeleteTasks tests the concurrency issues between add task and delete task from tracker
-// this happens when add tasks and MarkItDone been called at the same time
+// TestAddDeleteTasks tests the concurrency issues between add task and delete
+// task from tracker this happens when add tasks and MarkItDone been called at
+// the same time
 func (suite *TrackerTestSuite) TestAddDeleteTasks() {
 	suite.tracker.Clear()
 	var wg sync.WaitGroup
@@ -477,8 +487,6 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 		hostMgrClient: suite.mockHostmgr,
 		parentScope:   tally.NoopScope,
 	}
-
-	suite.mockHostmgr.EXPECT().MarkHostDrained(gomock.Any(), gomock.Any()).Return(&hostsvc.MarkHostDrainedResponse{}, nil).AnyTimes()
 	testTracker.AddTask(
 		suite.createTask(1),
 		suite.eventStreamHandler,

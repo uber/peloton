@@ -193,23 +193,36 @@ func (tr *tracker) setPlacement(t *peloton.TaskID, hostname string) {
 
 // clearPlacement will remove the task from the placements map.
 func (tr *tracker) clearPlacement(rmTask *RMTask) {
-	if rmTask.task.Hostname == "" {
+	hostName := rmTask.task.Hostname
+	if hostName == "" {
 		return
 	}
-	delete(tr.placements[rmTask.task.Hostname][rmTask.task.Type], rmTask.task.Id.Value)
-	if len(tr.placements[rmTask.task.Hostname][rmTask.task.Type]) == 0 {
-		delete(tr.placements[rmTask.task.Hostname], rmTask.task.Type)
+
+	placements := tr.placements[hostName]
+	taskType := rmTask.task.Type
+
+	delete(placements[taskType], rmTask.task.Id.Value)
+	if len(placements[taskType]) == 0 {
+		delete(placements, taskType)
 	}
-	if len(tr.placements[rmTask.task.Hostname]) == 0 {
-		delete(tr.placements, rmTask.task.Hostname)
-		log.WithField("host", rmTask.task.Hostname).Debug("No tasks on host")
+
+	if len(placements) == 0 {
+		delete(tr.placements, hostName)
+		log.
+			WithField("host", hostName).
+			Debug("No tasks on host")
+
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_, err := tr.hostMgrClient.MarkHostDrained(ctx, &hostsvc.MarkHostDrainedRequest{
-			Hostname: rmTask.task.Hostname,
-		})
-		if err != nil {
-			log.Warnf(err.Error(), "Failed to 'down' some hosts")
+		if _, err := tr.hostMgrClient.MarkHostDrained(
+			ctx,
+			&hostsvc.MarkHostDrainedRequest{
+				Hostname: hostName,
+			}); err != nil {
+			log.
+				WithError(err).
+				WithField("hostname", hostName).
+				Error("Failed to 'down' some hosts")
 		}
 	}
 }

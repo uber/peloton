@@ -52,12 +52,6 @@ var (
 		Required().
 		ExistingFiles()
 
-	dbHost = app.Flag(
-		"db-host",
-		"Database host (db.host override) (set $DB_HOST to override)").
-		Envar("DB_HOST").
-		String()
-
 	electionZkServers = app.Flag(
 		"election-zk-server",
 		"Election Zookeeper servers. Specify multiple times for multiple servers "+
@@ -113,6 +107,53 @@ var (
 		Bool()
 )
 
+func getConfig(cfgFiles ...string) Config {
+	log.WithField("files", cfgFiles).
+		Info("Loading Resource Manager config")
+
+	var cfg Config
+	if err := config.Parse(&cfg, cfgFiles...); err != nil {
+		log.WithError(err).Fatal("Cannot parse yaml config")
+	}
+	if *enableSentry {
+		logging.ConfigureSentry(&cfg.SentryConfig)
+	}
+
+	// now, override any CLI flags in the loaded config.Config
+	if len(*electionZkServers) > 0 {
+		cfg.Election.ZKServers = *electionZkServers
+	}
+	if *httpPort != 0 {
+		cfg.ResManager.HTTPPort = *httpPort
+	}
+	if *grpcPort != 0 {
+		cfg.ResManager.GRPCPort = *grpcPort
+	}
+	if !*useCassandra {
+		cfg.Storage.UseCassandra = false
+	}
+	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
+		cfg.Storage.Cassandra.CassandraConn.ContactPoints = *cassandraHosts
+	}
+	if *cassandraStore != "" {
+		cfg.Storage.Cassandra.StoreName = *cassandraStore
+	}
+	if *cassandraPort != 0 {
+		cfg.Storage.Cassandra.CassandraConn.Port = *cassandraPort
+	}
+	if *datacenter != "" {
+		cfg.Storage.Cassandra.CassandraConn.DataCenter = *datacenter
+	}
+	if *enablePreemption {
+		cfg.ResManager.PreemptionConfig.Enabled = *enablePreemption
+	}
+
+	log.
+		WithField("config", cfg).
+		Info("Loaded Resource Manager config")
+	return cfg
+}
+
 func main() {
 	app.Version(version)
 	app.HelpFlag.Short('h')
@@ -126,53 +167,7 @@ func main() {
 	}
 	log.SetLevel(initialLevel)
 
-	log.WithField("files", *cfgFiles).Info("Loading Resource Manager config")
-	var cfg Config
-	if err := config.Parse(&cfg, *cfgFiles...); err != nil {
-		log.WithError(err).Fatal("Cannot parse yaml config")
-	}
-
-	if *enableSentry {
-		logging.ConfigureSentry(&cfg.SentryConfig)
-	}
-
-	if len(*electionZkServers) > 0 {
-		cfg.Election.ZKServers = *electionZkServers
-	}
-
-	if *httpPort != 0 {
-		cfg.ResManager.HTTPPort = *httpPort
-	}
-
-	if *grpcPort != 0 {
-		cfg.ResManager.GRPCPort = *grpcPort
-	}
-
-	if !*useCassandra {
-		cfg.Storage.UseCassandra = false
-	}
-
-	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
-		cfg.Storage.Cassandra.CassandraConn.ContactPoints = *cassandraHosts
-	}
-
-	if *cassandraStore != "" {
-		cfg.Storage.Cassandra.StoreName = *cassandraStore
-	}
-
-	if *cassandraPort != 0 {
-		cfg.Storage.Cassandra.CassandraConn.Port = *cassandraPort
-	}
-
-	if *datacenter != "" {
-		cfg.Storage.Cassandra.CassandraConn.DataCenter = *datacenter
-	}
-
-	if *enablePreemption {
-		cfg.ResManager.PreemptionConfig.Enabled = *enablePreemption
-	}
-
-	log.WithField("config", cfg).Info("Loaded Resource Manager config")
+	cfg := getConfig(*cfgFiles...)
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,
@@ -246,11 +241,18 @@ func main() {
 	)
 
 	// Initializing the resmgr state machine
-	task.InitTaskTracker(rootScope, cfg.ResManager.RmTaskConfig, hostmgrClient)
+	task.InitTaskTracker(
+		rootScope,
+		cfg.ResManager.RmTaskConfig,
+		hostmgrClient,
+	)
 
 	// Initializing the task scheduler
-	task.InitScheduler(rootScope, cfg.ResManager.TaskSchedulingPeriod,
-		task.GetTracker())
+	task.InitScheduler(
+		rootScope,
+		cfg.ResManager.TaskSchedulingPeriod,
+		task.GetTracker(),
+	)
 
 	// Initializing the entitlement calculator
 	entitlement.InitCalculator(
@@ -261,7 +263,7 @@ func main() {
 	)
 
 	// Initializing the task reconciler
-	task.InitReconciler(
+	reconciler := task.NewReconciler(
 		task.GetTracker(),
 		store, // store implements TaskStore
 		rootScope,
@@ -269,17 +271,29 @@ func main() {
 	)
 
 	// Initializing the task preemptor
-	preemption.InitPreemptor(rootScope, cfg.ResManager.PreemptionConfig, task.GetTracker())
+	preemption.InitPreemptor(
+		rootScope,
+		cfg.ResManager.PreemptionConfig,
+		task.GetTracker(),
+	)
 
-	//Initiailizing the host drainer
-	drainer := maintenance.NewDrainer(rootScope,
+	// Initializing the host drainer
+	drainer := maintenance.NewDrainer(
+		rootScope,
 		hostmgrClient,
 		cfg.ResManager.HostDrainerPeriod,
 		task.GetTracker(),
-		preemption.GetPreemptor())
+		preemption.GetPreemptor(),
+	)
 
 	// Initialize resource manager service handlers
-	serviceHandler := resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker(), preemption.GetPreemptor(), cfg.ResManager)
+	serviceHandler := resmgr.NewServiceHandler(
+		dispatcher,
+		rootScope,
+		task.GetTracker(),
+		preemption.GetPreemptor(),
+		cfg.ResManager,
+	)
 
 	// Initialize recovery
 	resmgr.InitRecovery(
@@ -295,6 +309,7 @@ func main() {
 		cfg.ResManager.HTTPPort,
 		cfg.ResManager.GRPCPort,
 		drainer,
+		reconciler,
 	)
 
 	candidate, err := leader.NewCandidate(
@@ -307,20 +322,20 @@ func main() {
 	if err != nil {
 		log.Fatalf("Unable to create leader candidate: %v", err)
 	}
-	err = candidate.Start()
-	if err != nil {
+
+	if err = candidate.Start(); err != nil {
 		log.Fatalf("Unable to start leader candidate: %v", err)
 	}
 	defer candidate.Stop()
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
-		log.Fatalf("Could not start rpc server: %v", err)
+		log.Fatalf("Unable to start rpc server: %v", err)
 	}
 
 	log.WithFields(log.Fields{
-		"httpPort": cfg.ResManager.HTTPPort,
-		"grpcPort": cfg.ResManager.GRPCPort,
+		"http_port": cfg.ResManager.HTTPPort,
+		"grpc_port": cfg.ResManager.GRPCPort,
 	}).Info("Started resource manager")
 
 	// we can *honestly* say the server is booted up now
