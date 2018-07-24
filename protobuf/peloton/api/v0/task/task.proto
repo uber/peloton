@@ -317,6 +317,15 @@ enum TaskState {
   KILLED      = 14;
 }
 
+enum HealthState {
+  // Health Check has no result.
+  INVALID     = 0;
+  // The task is healthy
+  HEALTHY     = 1;
+  // The task is unhealthy
+  UNHEALTHY   = 2;
+}
+
 /**
  *  Runtime info of an task instance in a Job
  */
@@ -383,6 +392,10 @@ message RuntimeInfo {
   // of that resource used by the job. Example: if a task that uses 1 CPU
   // and finishes in 10 seconds, this map will contain <"cpu":10>
   map<string, double> resourceUsage = 17;
+
+  // The result of the health check
+  HealthState healthy = 18;
+
 }
 
 
@@ -482,6 +495,9 @@ message TaskEvent {
 
   // The previous mesos task ID of the task event.
   peloton.TaskID prevTaskId = 9;
+
+  // The health check result of the task
+  HealthState healthy = 10;
 }
 
 // DEPRECATED by peloton.api.v0.task.svc.TaskService.

@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	taskListFormatHeader = "Instance\tName\tState\tStart Time\tRun Time\t" +
+	taskListFormatHeader = "Instance\tName\tState\tHealthy\tStart Time\tRun Time\t" +
 		"Host\tMessage\tReason\t\n"
-	taskListFormatBody     = "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
-	taskEventsFormatHeader = "Mesos Task Id\tState\tEvent Time\tHost\tMessage\tReason\t\n"
-	taskEventsFormatBody   = "%s\t%s\t%s\t%s\t%s\t%s\t\n"
+	taskListFormatBody     = "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
+	taskEventsFormatHeader = "Mesos Task Id\tState\tHealthy\tEvent Time\tHost\tMessage\tReason\t\n"
+	taskEventsFormatBody   = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
 )
 
 // sortedTaskInfoList makes TaskInfo implement sortable interface
@@ -334,6 +334,7 @@ func printTask(t *task.TaskInfo) {
 		t.GetInstanceId(),
 		cfg.GetName(),
 		runtime.GetState().String(),
+		runtime.GetHealthy().String(),
 		startTimeStr,
 		durationStr,
 		runtime.GetHost(),
@@ -352,6 +353,7 @@ func printTaskEvents(eventsList []*task.GetEventsResponse_Events) {
 				taskEventsFormatBody,
 				event.GetTaskId().GetValue(),
 				event.GetState(),
+				event.GetHealthy(),
 				event.GetTimestamp(),
 				event.GetHostname(),
 				event.GetMessage(),

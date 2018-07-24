@@ -207,7 +207,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		return jobmgr_task.KillOrphanTask(ctx, p.hostmgrClient, taskInfo)
 	}
 
-	if state == runtime.GetState() {
+	// Skip non-RUNNING event with duplicate state
+	if state == runtime.GetState() && state != pb_task.TaskState_RUNNING {
 		log.WithFields(log.Fields{
 			"db_task_runtime":   taskInfo.GetRuntime(),
 			"task_status_event": event.GetMesosTaskStatus(),
@@ -227,6 +228,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	// Persist the reason and message for mesos updates
 	runtimeDiff[cached.MessageField] = statusMsg
 	runtimeDiff[cached.ReasonField] = ""
+	// healthy field will be overwrite if it is a `RUNNING health check` event
+	runtimeDiff[cached.HealthyField] = pb_task.HealthState_INVALID
 
 	switch state {
 	case pb_task.TaskState_KILLED:
@@ -298,6 +301,22 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			taskID, state, taskInfo.GetConfig().GetResource(),
 			runtime.GetStartTime(),
 			now().UTC().Format(time.RFC3339Nano))
+	case pb_task.TaskState_RUNNING:
+		// Only record the health check result health check is enabled
+		// and the reason for the event is TASK_HEALTH_CHECK_STATUS_UPDATED
+		reason := event.GetMesosTaskStatus().GetReason()
+		if taskInfo.GetConfig().GetHealthCheck() != nil &&
+			reason == mesos_v1.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED {
+			if event.GetMesosTaskStatus().GetHealthy() {
+				runtimeDiff[cached.HealthyField] = pb_task.HealthState_HEALTHY
+			} else {
+				runtimeDiff[cached.HealthyField] = pb_task.HealthState_UNHEALTHY
+			}
+			runtimeDiff[cached.ReasonField] = reason.String()
+		} else {
+			runtimeDiff[cached.HealthyField] = pb_task.HealthState_INVALID
+		}
+		runtimeDiff[cached.StateField] = state
 
 	default:
 		runtimeDiff[cached.StateField] = state
@@ -306,11 +325,14 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	// Update task start and completion timestamps
 	switch runtimeDiff[cached.StateField] {
 	case pb_task.TaskState_RUNNING:
+		// StartTime is set at the time of first RUNNING event
 		// CompletionTime may have been set (e.g. task has been set),
 		// which could make StartTime larger than CompletionTime.
 		// Reset CompletionTime every time a task transits to RUNNING state.
-		runtimeDiff[cached.StartTimeField] = now().UTC().Format(time.RFC3339Nano)
-		runtimeDiff[cached.CompletionTimeField] = ""
+		if state != runtime.GetState() {
+			runtimeDiff[cached.StartTimeField] = now().UTC().Format(time.RFC3339Nano)
+			runtimeDiff[cached.CompletionTimeField] = ""
+		}
 	case pb_task.TaskState_SUCCEEDED,
 		pb_task.TaskState_FAILED,
 		pb_task.TaskState_KILLED:

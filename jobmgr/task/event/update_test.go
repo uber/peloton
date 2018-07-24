@@ -36,12 +36,13 @@ const (
 )
 
 var (
-	_jobID         = uuid.NewUUID().String()
-	_uuidStr       = uuid.NewUUID().String()
-	_mesosTaskID   = fmt.Sprintf("%s-%d-%s", _jobID, _instanceID, _uuidStr)
-	_mesosReason   = mesos.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED
-	_pelotonTaskID = fmt.Sprintf("%s-%d", _jobID, _instanceID)
-	_pelotonJobID  = &peloton.JobID{
+	_jobID             = uuid.NewUUID().String()
+	_uuidStr           = uuid.NewUUID().String()
+	_mesosTaskID       = fmt.Sprintf("%s-%d-%s", _jobID, _instanceID, _uuidStr)
+	_mesosReason       = mesos.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED
+	_healthCheckReason = mesos.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED
+	_pelotonTaskID     = fmt.Sprintf("%s-%d", _jobID, _instanceID)
+	_pelotonJobID      = &peloton.JobID{
 		Value: _jobID,
 	}
 	_failureMsg  = "testFailure"
@@ -118,6 +119,24 @@ func createTestTaskUpdateEvent(state mesos.TaskState) *pb_eventstream.Event {
 	return event
 }
 
+func createTestTaskUpdateHealthCheckEvent(healthy bool) *pb_eventstream.Event {
+	state := mesos.TaskState_TASK_RUNNING
+	taskStatus := &mesos.TaskStatus{
+		TaskId: &mesos.TaskID{
+			Value: &_mesosTaskID,
+		},
+		State:   &state,
+		Healthy: &healthy,
+		Reason:  &_healthCheckReason,
+		Message: &_failureMsg,
+	}
+	event := &pb_eventstream.Event{
+		MesosTaskStatus: taskStatus,
+		Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+	}
+	return event
+}
+
 func createTestTaskInfo(state task.TaskState) *task.TaskInfo {
 	taskInfo := &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
@@ -130,6 +149,12 @@ func createTestTaskInfo(state task.TaskState) *task.TaskInfo {
 			Name: _jobID,
 			RestartPolicy: &task.RestartPolicy{
 				MaxFailures: 3,
+			},
+			HealthCheck: &task.HealthCheckConfig{
+				InitialIntervalSecs:    10,
+				IntervalSecs:           10,
+				MaxConsecutiveFailures: 5,
+				TimeoutSecs:            5,
 			},
 		},
 		InstanceId: uint32(_instanceID),
@@ -153,6 +178,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 		cached.StateField:          task.TaskState_RUNNING,
 		cached.StartTimeField:      _currentTime,
 		cached.ReasonField:         "",
+		cached.HealthyField:        task.HealthState_INVALID,
 	}
 	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
@@ -181,11 +207,63 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 		suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
 }
 
+// Test processing Health check event
+func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateHealthy() {
+	defer suite.ctrl.Finish()
+
+	tt := []struct {
+		health      bool
+		healthState task.HealthState
+	}{
+		{
+			health:      true,
+			healthState: task.HealthState_HEALTHY,
+		},
+		{
+			health:      false,
+			healthState: task.HealthState_UNHEALTHY,
+		},
+	}
+
+	for _, t := range tt {
+		cachedJob := cachedmocks.NewMockJob(suite.ctrl)
+		event := createTestTaskUpdateHealthCheckEvent(t.health)
+		timeNow := float64(time.Now().UnixNano())
+		event.MesosTaskStatus.Timestamp = &timeNow
+		taskInfo := createTestTaskInfo(task.TaskState_INITIALIZED)
+
+		gomock.InOrder(
+			suite.mockTaskStore.EXPECT().
+				GetTaskByID(context.Background(), _pelotonTaskID).
+				Return(taskInfo, nil),
+			suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob),
+			cachedJob.EXPECT().SetTaskUpdateTime(event.MesosTaskStatus.Timestamp).Return(),
+			cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
+				func(_ context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+					for _, runtimeDiff := range runtimeDiffs {
+						suite.Equal(t.healthState, runtimeDiff[cached.HealthyField])
+					}
+				}).Return(nil),
+
+			suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
+			cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
+			suite.goalStateDriver.EXPECT().
+				JobRuntimeDuration(job.JobType_BATCH).
+				Return(1*time.Second),
+			suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
+			cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
+		)
+
+		now = nowMock
+		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	}
+}
+
 func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipSameState() {
 	defer suite.ctrl.Finish()
 
-	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
-	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_STARTING)
+	taskInfo := createTestTaskInfo(task.TaskState_STARTING)
 
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
@@ -196,7 +274,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipSameState() {
 	now = nowMock
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 	suite.Equal(
-		int64(1),
+		int64(0),
 		suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
 }
 
@@ -384,6 +462,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 		cached.MessageField:        "Stopped task LOST event: " + _failureMsg,
 		cached.CompletionTimeField: _currentTime,
 		cached.ResourceUsageField:  jobmgrtask.CreateEmptyResourceUsageMap(),
+		cached.HealthyField:        task.HealthState_INVALID,
 	}
 	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
@@ -593,6 +672,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
 		cached.MessageField:        "testFailure",
 		cached.CompletionTimeField: "",
 		cached.ReasonField:         "",
+		cached.HealthyField:        task.HealthState_INVALID,
 	}
 	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
@@ -650,6 +730,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 		cached.MessageField:        "testFailure",
 		cached.CompletionTimeField: "",
 		cached.ReasonField:         "",
+		cached.HealthyField:        task.HealthState_INVALID,
 	}
 	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff

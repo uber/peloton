@@ -27,6 +27,7 @@ func TestTaskRuntimeInfoFieldNames(t *testing.T) {
 		HostField,
 		ConfigVersionField,
 		DesiredConfigVersionField,
+		HealthyField,
 	}
 
 	taskRuntimeType := reflect.TypeOf(pbtask.RuntimeInfo{})

@@ -91,6 +91,7 @@ type TaskStateChangeRecord struct {
 	InstanceID      uint32 `cql:"instance_id"`
 	MesosTaskID     string `cql:"mesos_task_id"`
 	Message         string `cql:"message"`
+	Healthy         string `cql:"healthy"`
 	Reason          string `cql:"reason"`
 	AgentID         string `cql:"agent_id"`
 	PrevMesosTaskID string `cql:"prev_mesos_task_id"`

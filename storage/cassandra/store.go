@@ -1255,6 +1255,7 @@ func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, in
 		TaskHost:        runtime.GetHost(),
 		EventTime:       time.Now().UTC().Format(time.RFC3339),
 		Reason:          runtime.GetReason(),
+		Healthy:         runtime.GetHealthy().String(),
 		Message:         runtime.GetMessage(),
 		PrevMesosTaskID: runtime.GetPrevMesosTaskId().GetValue(),
 	}
@@ -1304,6 +1305,7 @@ func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskRuntimes ma
 			MesosTaskID:     runtime.GetMesosTaskId().GetValue(),
 			AgentID:         runtime.GetAgentID().GetValue(),
 			Reason:          runtime.GetReason(),
+			Healthy:         runtime.GetHealthy().String(),
 			Message:         runtime.GetMessage(),
 			PrevMesosTaskID: runtime.GetPrevMesosTaskId().GetValue(),
 		}
@@ -1405,6 +1407,7 @@ func (s *Store) GetTaskEvents(ctx context.Context, jobID *peloton.JobID, instanc
 				Timestamp: record.EventTime,
 				Message:   record.Message,
 				Reason:    record.Reason,
+				Healthy:   task.HealthState(task.HealthState_value[record.Healthy]),
 				Hostname:  record.TaskHost,
 				// TaskId here will contain Mesos TaskId
 				TaskId: &peloton.TaskID{

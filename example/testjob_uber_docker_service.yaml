@@ -21,16 +21,26 @@ sla:
   preemptible: false
 defaultconfig:
   resource:
-    cpulimit: 0.1
+    cpulimit: 1.0
     memlimitmb: 128.0
     disklimitmb: 128
     fdlimit: 10
-  healthcheck: null
-  ports: []
+  healthcheck:
+    enable: true
+    initialIntervalSecs: 30
+    intervalSecs: 15
+    maxConsecutiveFailures: 5
+    timeoutSecs: 10
+    type: 1
+    commandCheck:
+      command: "bash /home/udocker/test-uber-docker-service/udeploy/health_check.sh"
+  ports: 
+    - name: "http"
+      envname: "UBER_HTTP_PORT"
   container:
     type: 1
     docker:
-      image: "127.0.0.1:15055/uber-usi/test-uber-docker-service:sjc1-produ-0000000591"
+      image: "docker-registry.pit-irn-1.uberatc.net/uber-usi/test-uber-docker-service:dca1-produ-0000000333"
       parameters:
         - key: env
           value: UBER_CLUSTER=dca1-devel01
