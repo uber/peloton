@@ -31,13 +31,14 @@ func (e TaskEventByTime) Less(i, j int) bool {
 	}
 
 	// This should never fail, but we don't want to crash, so catch the error here
+	// We assume an invalid time is infinity large
 	tsj, err := time.Parse(time.RFC3339, ej.GetTimestamp())
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			"event_i": ei,
 			"event_j": ej,
 		}).Error("failed to parse timestamp")
-		return false
+		return true
 	}
 
 	return tsi.Before(tsj)
@@ -74,13 +75,14 @@ func (e TaskEventListByTime) Less(i, j int) bool {
 	}
 
 	// This should never fail, but we don't want to crash, so catch the error here
+	// We assume an invalid time is infinity large
 	tsj, err := time.Parse(time.RFC3339, ej[0].GetTimestamp())
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			"events_list_i": ei,
 			"events_list_j": ej,
 		}).Error("failed to parse timestamp")
-		return false
+		return true
 	}
 
 	return tsi.Before(tsj)
