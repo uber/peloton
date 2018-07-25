@@ -339,7 +339,7 @@ func (m *Store) GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo,
 	}
 	// No record found
 	log.WithField("task_id", taskID).Warn("Task not found")
-	return nil, &storage.TaskNotFoundError{TaskID: taskID}
+	return nil, yarpcerrors.NotFoundErrorf("task:%s not found", taskID)
 }
 
 // GetTaskForJob returns the tasks (tasks.TaskInfo) for a peloton job

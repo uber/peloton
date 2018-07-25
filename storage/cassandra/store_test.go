@@ -1008,7 +1008,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
-		suite.EqualError(err, fmt.Sprintf("Cannot find job wth jobID %s", jobID.GetValue()))
+		suite.True(yarpcerrors.IsNotFound(err))
 		suite.Nil(jobconf)
 
 		var jobRuntime *job.RuntimeInfo
@@ -1019,7 +1019,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
-		suite.EqualError(err, fmt.Sprintf("Cannot find job wth jobID %s", jobID.GetValue()))
+		suite.True(yarpcerrors.IsNotFound(err))
 		suite.Nil(jobRuntime)
 
 		tasks, err := store.GetTasksForJob(context.Background(), &jobID)

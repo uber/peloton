@@ -11,6 +11,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
@@ -26,7 +27,6 @@ import (
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	event_mocks "code.uber.internal/infra/peloton/jobmgr/task/event/mocks"
-	"code.uber.internal/infra/peloton/storage"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 )
 
@@ -589,7 +589,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessMissingTaskStatusUpdate() {
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
-		Return(nil, &storage.TaskNotFoundError{TaskID: _pelotonTaskID})
+		Return(nil, yarpcerrors.NotFoundErrorf("task:%s not found", _pelotonTaskID))
 	suite.Error(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 

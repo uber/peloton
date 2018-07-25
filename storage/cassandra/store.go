@@ -522,7 +522,7 @@ func (s *Store) GetJobConfigWithVersion(ctx context.Context,
 	}
 	s.metrics.JobMetrics.JobNotFound.Inc(1)
 	return nil, yarpcerrors.NotFoundErrorf(
-		"cannot find job wth jobID %v", jobID)
+		"job:%s not found", jobID)
 }
 
 // WithTimeRangeFilter will take timerange and time_field (creation_time|completion_time) as
@@ -1510,7 +1510,7 @@ func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
 	taskID := fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID))
 
 	if len(allResults) == 0 {
-		return nil, &storage.TaskNotFoundError{TaskID: taskID}
+		return nil, yarpcerrors.NotFoundErrorf("task:%s not found", taskID)
 	}
 
 	// Use last result (the most specific).
@@ -2286,7 +2286,7 @@ func (s *Store) getTaskRuntimeRecord(ctx context.Context, jobID string, instance
 		return &record, nil
 	}
 	s.metrics.TaskMetrics.TaskNotFound.Inc(1)
-	return nil, &storage.TaskNotFoundError{TaskID: taskID}
+	return nil, yarpcerrors.NotFoundErrorf("task:%s not found", taskID)
 }
 
 //SetMesosStreamID stores the mesos framework id for a framework name
@@ -2591,7 +2591,8 @@ func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 		return runtime, nil
 	}
 	s.metrics.JobMetrics.JobNotFound.Inc(1)
-	return nil, fmt.Errorf("Cannot find job wth jobID %v", id.GetValue())
+	return nil, yarpcerrors.NotFoundErrorf(
+		"job:%s not found", id.GetValue())
 }
 
 // updateJobIndex updates the job index table with job runtime

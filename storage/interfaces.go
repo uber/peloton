@@ -12,15 +12,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 )
 
-// TaskNotFoundError indicates that task is not found
-type TaskNotFoundError struct {
-	TaskID string
-}
-
-func (e *TaskNotFoundError) Error() string {
-	return fmt.Sprintf("%v is not found", e.TaskID)
-}
-
 // VolumeNotFoundError indicates that persistent volume is not found
 type VolumeNotFoundError struct {
 	VolumeID *peloton.VolumeID
