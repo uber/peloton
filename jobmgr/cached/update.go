@@ -15,6 +15,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // Update of a job being stored in the cache.
@@ -58,12 +59,18 @@ type Update interface {
 
 	// GetInstancesCurrent returns the current set of instances being updated
 	GetInstancesCurrent() []uint32
+
+	GetUpdateConfig() *pbupdate.UpdateConfig
 }
 
 // UpdateStateVector is used to the represent the state and goal state
 // of an update to the goal state engine.
 type UpdateStateVector struct {
-	State pbupdate.State // current update state
+	// current update state
+	State pbupdate.State
+	// for state, it will be the old job config version
+	// for goal state, it will be the desired job config version
+	JobVersion uint64
 	// For state, it will store the instances which have already been updated,
 	// and for goal state, it will store all the instances which
 	// need to be updated.
@@ -105,6 +112,7 @@ type update struct {
 	updateFactory *updateFactory // Pointer to the parent update factory object
 
 	state pbupdate.State // current update state
+
 	// the update configuration provided in the create request
 	updateConfig *pbupdate.UpdateConfig
 
@@ -442,8 +450,9 @@ func (u *update) GetState() *UpdateStateVector {
 	copy(instances, u.instancesDone)
 
 	return &UpdateStateVector{
-		State:     u.state,
-		Instances: instances,
+		State:      u.state,
+		Instances:  instances,
+		JobVersion: u.jobPrevVersion,
 	}
 }
 
@@ -464,7 +473,8 @@ func (u *update) GetGoalState() *UpdateStateVector {
 	copy(instances, u.instancesTotal)
 
 	return &UpdateStateVector{
-		Instances: instances,
+		Instances:  instances,
+		JobVersion: u.jobVersion,
 	}
 }
 
@@ -513,6 +523,17 @@ func (u *update) GetInstancesCurrent() []uint32 {
 	return instances
 }
 
+func (u *update) GetUpdateConfig() *pbupdate.UpdateConfig {
+	u.RLock()
+	defer u.RUnlock()
+
+	if u.updateConfig == nil {
+		return nil
+	}
+	updateConfig := *u.updateConfig
+	return &updateConfig
+}
+
 // populate info in updateModel into update
 func (u *update) populateCache(updateModel *models.UpdateModel) {
 	u.updateConfig = updateModel.GetUpdateConfig()
@@ -544,7 +565,7 @@ func (u *update) recoverUpdateProgress(ctx context.Context) error {
 
 	cachedJob := u.jobFactory.AddJob(u.jobID)
 	u.instancesCurrent, u.instancesDone, err =
-		GetUpdateProgress(ctx, cachedJob, u.instancesTotal)
+		GetUpdateProgress(ctx, cachedJob, u.jobVersion, u.instancesTotal)
 	return err
 }
 
@@ -557,33 +578,72 @@ func (u *update) clearCache() {
 	u.instancesUpdated = nil
 }
 
-// GetUpdateProgress iterates through all tasks and check if they are running and
+// GetUpdateProgress iterates through instancesToCheck and check if they are running and
 // their current config version is the same as the desired config version.
 // TODO: find the right place to put the func
-// TODO: fix instancesCurrent for rolling upgrade
 func GetUpdateProgress(
 	ctx context.Context,
 	cachedJob Job,
-	instancesTotal []uint32,
+	desiredConfigVersion uint64,
+	instancesToCheck []uint32,
 ) (instancesCurrent []uint32, instancesDone []uint32, err error) {
-	for _, instID := range instancesTotal {
+	for _, instID := range instancesToCheck {
 		cachedTask := cachedJob.AddTask(instID)
 		runtime, err := cachedTask.GetRunTime(ctx)
+
+		// task is not created, this can happen when an update
+		// adds more instances
+		if yarpcerrors.IsNotFound(err) {
+			// TODO: figure out a more sensible way to handle task not found case.
+			// because add task would be added in cachedJob in the above call,
+			// and prevent further cachedJob.CreateTasks()
+			cachedJob.RemoveTask(instID)
+			continue
+		}
+
 		if err != nil {
 			return nil, nil, err
 		}
 
-		if (runtime.GetState() == pbtask.TaskState_RUNNING &&
-			runtime.GetConfigVersion() == runtime.GetDesiredConfigVersion()) ||
-			util.IsPelotonStateTerminal(runtime.GetGoalState()) {
-			// Either instance has been updated, or instance is in terminal
-			// goal state, so it will not be updated anyways => add to
-			// instancesDone.
+		if isUpdateComplete(desiredConfigVersion, runtime) {
 			instancesDone = append(instancesDone, instID)
-		} else {
-			// instance not updated yet, copy to instancesCurrent
+		} else if isUpdateInProgress(desiredConfigVersion, runtime) {
+			// instances set to desired configuration, but has not entered RUNNING state
 			instancesCurrent = append(instancesCurrent, instID)
 		}
 	}
-	return instancesCurrent, instancesDone, err
+	return instancesCurrent, instancesDone, nil
+}
+
+func isUpdateComplete(desiredConfigVersion uint64, runtime *pbtask.RuntimeInfo) bool {
+	// a task is upgraded if:
+	// 1. runtime desired version is set to update goal job version
+	// 2. configuration version is set to desired
+	// 3. task is running, or
+	//    task is in terminated state, and its goal state is terminated
+
+	if runtime.GetDesiredConfigVersion() != desiredConfigVersion {
+		return false
+	}
+
+	if runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
+		return false
+	}
+
+	if runtime.GetState() == pbtask.TaskState_RUNNING {
+		return true
+	}
+
+	if util.IsPelotonStateTerminal(runtime.GetState()) &&
+		util.IsPelotonStateTerminal(runtime.GetGoalState()) {
+		return true
+	}
+	return false
+}
+
+func isUpdateInProgress(desiredConfigVersion uint64, runtime *pbtask.RuntimeInfo) bool {
+	// runtime desired config version has been set to the desired,
+	// but update has not completed
+	return runtime.GetDesiredConfigVersion() == desiredConfigVersion &&
+		!isUpdateComplete(desiredConfigVersion, runtime)
 }

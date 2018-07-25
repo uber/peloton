@@ -208,7 +208,7 @@ test: $(GOCOV) pbgens mockgens test-containers
 
 test_pkg: $(GOCOV) $(PBGENS) mockgens test-containers
 	echo 'Running tests for package $(TEST_PKG)'
-	gocov test -race `echo $(ALL_PKGS) | tr ' ' '\n' | grep $(TEST_PKG)` | gocov report
+	gocov test -race `echo $(ALL_PKGS) | tr ' ' '\n' | grep $(TEST_PKG)` | gocov-html > coverage.html
 
 unit-test: $(GOCOV) $(PBGENS) mockgens
 	gocov test $(ALL_PKGS) --tags "unit" | gocov report

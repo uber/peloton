@@ -1296,3 +1296,10 @@ func (suite *JobTestSuite) TestRecalculateResourceUsageError() {
 	suite.job.RecalculateResourceUsage(context.Background())
 	suite.Equal(createEmptyResourceUsageMap(), suite.job.GetResourceUsage())
 }
+
+func (suite *JobTestSuite) TestJobRemoveTask() {
+	suite.job.AddTask(0)
+	suite.NotNil(suite.job.GetTask(0))
+	suite.job.RemoveTask(0)
+	suite.Nil(suite.job.GetTask(0))
+}

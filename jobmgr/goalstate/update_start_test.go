@@ -8,9 +8,7 @@ import (
 
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
@@ -23,6 +21,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 type UpdateStartTestSuite struct {
@@ -182,8 +181,15 @@ func (suite *UpdateStartTestSuite) TestUpdateStartJobConfigGetFail() {
 		JobID().
 		Return(suite.jobID)
 
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			JobVersion: suite.jobConfig.ChangeLog.Version,
+		}).AnyTimes()
+
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
 		Return(nil, fmt.Errorf("fake db error"))
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
@@ -207,232 +213,31 @@ func (suite *UpdateStartTestSuite) TestUpdateStartTaskConfigCreateFail() {
 		JobID().
 		Return(suite.jobID)
 
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			JobVersion: suite.jobConfig.ChangeLog.Version,
+		}).AnyTimes()
+
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, nil)
 
 	suite.taskStore.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
-
-	err := UpdateStart(context.Background(), suite.updateEnt)
-	suite.EqualError(err, "fake db error")
-}
-
-func (suite *UpdateStartTestSuite) TestUpdateStartAddInstancesRuntimeGetFail() {
-	instancesAdded := []uint32{6, 7, 8, 9}
-
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).
-		Return(suite.cachedJob)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig, nil)
-
-	suite.taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any()).
-		Return(nil)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesAdded().
-		Return(instancesAdded)
-
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(nil, fmt.Errorf("fake db error"))
-
-	err := UpdateStart(context.Background(), suite.updateEnt)
-	suite.EqualError(err, "fake db error")
-}
-
-func (suite *UpdateStartTestSuite) TestUpdateStartAddInstancesRuntimeSetFail() {
-	instancesAdded := []uint32{6, 7, 8, 9}
-	suite.jobRuntime.GoalState = pbjob.JobState_KILLED
-
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).
-		Return(suite.cachedJob)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig, nil)
-
-	suite.taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any()).
-		Return(nil)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesAdded().
-		Return(instancesAdded)
-
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(suite.jobRuntime, nil)
-
-	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pbjob.JobInfo, _ cached.UpdateRequest) {
-			suite.Equal(pbjob.JobState_RUNNING, jobInfo.GetRuntime().GetGoalState())
-		}).Return(fmt.Errorf("fake db error"))
-
-	err := UpdateStart(context.Background(), suite.updateEnt)
-	suite.EqualError(err, "fake db error")
-}
-
-func (suite *UpdateStartTestSuite) TestUpdateStartAddInstCreateTaskFail() {
-	instancesAdded := []uint32{6, 7, 8, 9}
-
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).
-		Return(suite.cachedJob)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig, nil)
-
-	suite.taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any()).
-		Return(nil)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesAdded().
-		Return(instancesAdded)
-
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(suite.jobRuntime, nil)
-
-	for _, instID := range instancesAdded {
-		suite.cachedJob.EXPECT().
-			GetTask(instID).
-			Return(nil)
-	}
-
-	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(fmt.Errorf("fake db error"))
-
-	err := UpdateStart(context.Background(), suite.updateEnt)
-	suite.EqualError(err, "fake db error")
-}
-
-func (suite *UpdateStartTestSuite) TestUpdateStartAddInstEnqueueFail() {
-	instancesAdded := []uint32{6, 7, 8, 9}
-
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).
-		Return(suite.cachedJob)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig, nil)
-
-	suite.taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any()).
-		Return(nil)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesAdded().
-		Return(instancesAdded)
-
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(suite.jobRuntime, nil)
-
-	for _, instID := range instancesAdded {
-		suite.cachedJob.EXPECT().
-			GetTask(instID).
-			Return(nil)
-	}
-
-	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil)
-
-	suite.resmgrClient.EXPECT().
-		EnqueueGangs(gomock.Any(), gomock.Any()).
-		Return(&resmgrsvc.EnqueueGangsResponse{}, fmt.Errorf("fake db error"))
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
 	suite.EqualError(err, "fake db error")
 }
 
 func (suite *UpdateStartTestSuite) TestUpdateStartWriteProgressFail() {
-	instancesAdded := []uint32{6, 7, 8, 9}
 	instancesTotal := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -440,10 +245,12 @@ func (suite *UpdateStartTestSuite) TestUpdateStartWriteProgressFail() {
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
-		Return(suite.jobID)
+		Return(suite.jobID).
+		AnyTimes()
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, nil)
 
 	suite.taskStore.EXPECT().
@@ -451,78 +258,32 @@ func (suite *UpdateStartTestSuite) TestUpdateStartWriteProgressFail() {
 		Return(nil)
 
 	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesAdded().
-		Return(instancesAdded)
-
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(suite.jobRuntime, nil)
-
-	for _, instID := range instancesAdded {
-		suite.cachedJob.EXPECT().
-			GetTask(instID).
-			Return(nil)
-	}
-
-	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil)
-
-	suite.resmgrClient.EXPECT().
-		EnqueueGangs(gomock.Any(), gomock.Any()).
-		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
-
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).
-		Return(suite.cachedJob)
-
-	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(nil)
-
-	suite.cachedUpdate.EXPECT().
 		GetGoalState().
 		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesUpdated().
-		Return([]uint32{})
-
-	suite.cachedUpdate.EXPECT().
-		GetGoalState().
-		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
+			Instances:  instancesTotal,
+			JobVersion: suite.jobConfig.ChangeLog.Version,
+		}).AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		WriteProgress(
 			gomock.Any(),
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{},
-			instancesTotal,
+			[]uint32{},
 		).Return(fmt.Errorf("fake db error"))
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
 	suite.EqualError(err, "fake db error")
 }
 
-func (suite *UpdateStartTestSuite) TestUpdateStartAddInstances() {
-	instancesAdded := []uint32{6, 7, 8, 9}
-	instancesTotal := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+// TestUpdateContainsUnchangedInstance test the situation update
+// contains unchanged instance
+func (suite *UpdateStartTestSuite) TestUpdateContainsUnchangedInstance() {
+	instancesTotal := []uint32{0}
 
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -530,10 +291,12 @@ func (suite *UpdateStartTestSuite) TestUpdateStartAddInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
-		Return(suite.jobID)
+		Return(suite.jobID).
+		AnyTimes()
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, nil)
 
 	suite.taskStore.EXPECT().
@@ -541,241 +304,50 @@ func (suite *UpdateStartTestSuite) TestUpdateStartAddInstances() {
 		Return(nil)
 
 	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesAdded().
-		Return(instancesAdded)
-
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(suite.jobRuntime, nil)
-
-	for _, instID := range instancesAdded {
-		if instID == 6 {
-			suite.cachedJob.EXPECT().
-				GetTask(instID).
-				Return(suite.cachedTask)
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(&pbtask.RuntimeInfo{
-					State: pbtask.TaskState_RUNNING,
-				}, nil)
-		} else if instID == 7 {
-			suite.cachedJob.EXPECT().
-				GetTask(instID).
-				Return(suite.cachedTask)
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(&pbtask.RuntimeInfo{
-					State: pbtask.TaskState_INITIALIZED,
-				}, nil)
-		} else {
-			suite.cachedJob.EXPECT().
-				GetTask(instID).
-				Return(nil)
-		}
-	}
-
-	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil)
-
-	suite.resmgrClient.EXPECT().
-		EnqueueGangs(gomock.Any(), gomock.Any()).
-		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
-
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).
-		Return(suite.cachedJob)
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			Instances:  instancesTotal,
+			JobVersion: suite.jobConfig.ChangeLog.Version,
+		}).AnyTimes()
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(nil)
-
-	suite.cachedUpdate.EXPECT().
-		GetGoalState().
-		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesUpdated().
-		Return([]uint32{})
-
-	suite.cachedUpdate.EXPECT().
-		GetGoalState().
-		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
-
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
-			gomock.Any(),
-			pbupdate.State_ROLLING_FORWARD,
-			[]uint32{},
-			instancesTotal,
-		).Return(nil)
-
-	suite.updateGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Do(func(entity goalstate.Entity, deadline time.Time) {
-			suite.Equal(suite.jobID.GetValue(), entity.GetID())
-			updateEnt := entity.(*updateEntity)
-			suite.Equal(suite.updateID.GetValue(), updateEnt.id.GetValue())
-		})
-
-	err := UpdateStart(context.Background(), suite.updateEnt)
-	suite.NoError(err)
-}
-
-func (suite *UpdateStartTestSuite) TestUpdateStartNoChangeFail() {
-	instancesTotal := []uint32{}
-
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).
-		Return(suite.cachedJob)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig, nil)
-
-	suite.taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any()).
-		Return(nil)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesAdded().
-		Return([]uint32{})
-
-	suite.cachedUpdate.EXPECT().
-		GetGoalState().
-		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
-
-	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(fmt.Errorf("fake db error"))
-
-	err := UpdateStart(context.Background(), suite.updateEnt)
-	suite.EqualError(err, "fake db error")
-}
-
-func (suite *UpdateStartTestSuite) TestUpdateStartNoChange() {
-	instancesTotal := []uint32{}
-
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).
-		Return(suite.cachedJob)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig, nil)
-
-	suite.taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any()).
-		Return(nil)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesAdded().
-		Return([]uint32{})
-
-	suite.cachedUpdate.EXPECT().
-		GetGoalState().
-		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
-
-	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(
-			_ context.Context,
-			runtimes map[uint32]cached.RuntimeDiff) {
-			for _, runtimeDiff := range runtimes {
-				suite.Equal(
-					suite.jobConfig.ChangeLog.Version,
-					runtimeDiff[cached.ConfigVersionField])
-				suite.Equal(
-					suite.jobConfig.ChangeLog.Version,
-					runtimeDiff[cached.DesiredConfigVersionField],
-				)
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			for i := uint32(len(instancesTotal)); i < suite.jobConfig.GetInstanceCount(); i++ {
+				runtimeDiff := runtimeDiffs[i]
+				suite.NotNil(runtimeDiff)
+				suite.Equal(runtimeDiff[cached.DesiredConfigVersionField],
+					suite.jobConfig.GetChangeLog().Version)
+				suite.Equal(runtimeDiff[cached.ConfigVersionField],
+					suite.jobConfig.GetChangeLog().Version)
 			}
 		}).
 		Return(nil)
 
 	suite.cachedUpdate.EXPECT().
-		GetInstancesUpdated().
-		Return([]uint32{})
-
-	suite.cachedUpdate.EXPECT().
-		GetGoalState().
-		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
-
-	suite.cachedUpdate.EXPECT().
 		WriteProgress(
 			gomock.Any(),
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{},
-			instancesTotal,
+			[]uint32{},
 		).Return(nil)
 
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
-		Do(func(updateEntity goalstate.Entity, deadline time.Time) {
-			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
-		})
+		Return()
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
 	suite.NoError(err)
 }
 
-func (suite *UpdateStartTestSuite) TestUpdateStartUpdateInstancesDBError() {
-	instancesUpdated := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-	instancesTotal := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+// TestUpdateStart_ContainsUnchangedInstance_PatchTasksFail test the situation update
+// contains unchanged instance
+func (suite *UpdateStartTestSuite) TestUpdateStart_ContainsUnchangedInstance_PatchTasksFail() {
+	instancesTotal := []uint32{0}
 
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -783,10 +355,12 @@ func (suite *UpdateStartTestSuite) TestUpdateStartUpdateInstancesDBError() {
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
-		Return(suite.jobID)
+		Return(suite.jobID).
+		AnyTimes()
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, nil)
 
 	suite.taskStore.EXPECT().
@@ -794,42 +368,31 @@ func (suite *UpdateStartTestSuite) TestUpdateStartUpdateInstancesDBError() {
 		Return(nil)
 
 	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesAdded().
-		Return([]uint32{})
-
-	suite.cachedUpdate.EXPECT().
 		GetGoalState().
 		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesUpdated().
-		Return(instancesUpdated)
+			Instances:  instancesTotal,
+			JobVersion: suite.jobConfig.ChangeLog.Version,
+		}).AnyTimes()
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(fmt.Errorf("fake db error"))
+		Return(yarpcerrors.UnavailableErrorf("test error"))
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
-	suite.EqualError(err, "fake db error")
+	suite.Error(err)
 }
 
-func (suite *UpdateStartTestSuite) TestUpdateStartUpdateInstances() {
-	instancesUpdated := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-	instancesTotal := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+// TestUpdateStart_NoUnchangedInstance test the situation update
+// contains no unchanged instance
+func (suite *UpdateStartTestSuite) TestUpdateStart_NoUnchangedInstance() {
+	var instancesTotal []uint32
+	for i := uint32(0); i < suite.jobConfig.GetInstanceCount(); i++ {
+		instancesTotal = append(instancesTotal, i)
+	}
 
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -837,10 +400,12 @@ func (suite *UpdateStartTestSuite) TestUpdateStartUpdateInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
-		Return(suite.jobID)
+		Return(suite.jobID).
+		AnyTimes()
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, nil)
 
 	suite.taskStore.EXPECT().
@@ -848,68 +413,23 @@ func (suite *UpdateStartTestSuite) TestUpdateStartUpdateInstances() {
 		Return(nil)
 
 	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesAdded().
-		Return([]uint32{})
-
-	suite.cachedUpdate.EXPECT().
 		GetGoalState().
 		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesUpdated().
-		Return(instancesUpdated)
-
-	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(
-			_ context.Context,
-			runtimes map[uint32]cached.RuntimeDiff) {
-			for _, runtimeDiff := range runtimes {
-				suite.Equal(
-					suite.jobConfig.ChangeLog.Version,
-					runtimeDiff[cached.DesiredConfigVersionField],
-				)
-			}
-		}).
-		Return(nil)
-
-	for _, instID := range instancesUpdated {
-		taskID := fmt.Sprintf("%s-%d", suite.jobID.GetValue(), instID)
-		suite.cachedJob.EXPECT().
-			ID().
-			Return(suite.jobID)
-		suite.taskGoalStateEngine.EXPECT().
-			Enqueue(gomock.Any(), gomock.Any()).
-			Do(func(taskEntity goalstate.Entity, deadline time.Time) {
-				suite.Equal(taskID, taskEntity.GetID())
-			})
-	}
-
-	suite.cachedUpdate.EXPECT().
-		GetGoalState().
-		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
+			Instances:  instancesTotal,
+			JobVersion: suite.jobConfig.ChangeLog.Version,
+		}).AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		WriteProgress(
 			gomock.Any(),
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{},
-			instancesTotal,
+			[]uint32{},
 		).Return(nil)
 
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
-		Do(func(updateEntity goalstate.Entity, deadline time.Time) {
-			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
-		})
+		Return()
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
 	suite.NoError(err)

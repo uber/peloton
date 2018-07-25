@@ -469,6 +469,13 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 			log.WithField("job_id", id).
 				WithField("task_stats", stateCounts).
 				Debug("Task stats did not change, return")
+
+			// if an update is running for this job, enqueue it as well
+			// TODO change this to use watch functionality from the cache
+			if jobRuntime.GetUpdateID() != nil &&
+				len(jobRuntime.GetUpdateID().GetValue()) > 0 {
+				goalStateDriver.EnqueueUpdate(jobID, jobRuntime.GetUpdateID(), time.Now())
+			}
 			return nil
 		}
 	}

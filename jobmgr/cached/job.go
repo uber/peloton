@@ -60,6 +60,9 @@ type Job interface {
 	// GetTask from the task id.
 	GetTask(id uint32) Task
 
+	// RemoveTask clear task out of cache.
+	RemoveTask(id uint32)
+
 	// GetAllTasks returns all tasks for the job
 	GetAllTasks() map[uint32]Task
 
@@ -224,7 +227,7 @@ func (j *job) CreateTasks(
 		}
 
 		if j.GetTask(id) != nil {
-			return yarpcerrors.InvalidArgumentErrorf("task %d already exists", id)
+			return yarpcerrors.AlreadyExistsErrorf("task %d already exists", id)
 		}
 
 		t := j.AddTask(id)
@@ -348,6 +351,13 @@ func (j *job) GetTask(id uint32) Task {
 	}
 
 	return nil
+}
+
+func (j *job) RemoveTask(id uint32) {
+	j.Lock()
+	defer j.Unlock()
+
+	delete(j.tasks, id)
 }
 
 func (j *job) GetAllTasks() map[uint32]Task {

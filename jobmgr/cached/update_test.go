@@ -723,6 +723,16 @@ func (suite *UpdateTestSuite) TestUpdateGetState() {
 	suite.True(reflect.DeepEqual(state.Instances, suite.update.instancesDone))
 }
 
+// TestUpdateGetState tests getting upgrade config
+func (suite *UpdateTestSuite) TestUpdateGetConfig() {
+	batchSize := uint32(5)
+	suite.update.updateConfig = &pbupdate.UpdateConfig{
+		BatchSize: batchSize,
+	}
+
+	suite.Equal(suite.update.GetUpdateConfig().GetBatchSize(), batchSize)
+}
+
 // TestUpdateGetGoalState tests getting goal state of a job update
 func (suite *UpdateTestSuite) TestUpdateGetGoalState() {
 	suite.update.instancesTotal = []uint32{1, 2, 3, 4, 5}
