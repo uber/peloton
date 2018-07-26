@@ -40,6 +40,12 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 )
 
+const (
+	// This is the number of completed reservations which
+	// will be fetched in one call from the reserver.
+	_completedReservationLimit = 10
+)
+
 // serviceHandler implements peloton.private.hostmgr.InternalHostService.
 type serviceHandler struct {
 	schedulerClient       mpb.SchedulerClient
@@ -282,6 +288,7 @@ var (
 	errOfferOperationNotSupported        = errors.New("offer operation not supported")
 	errInvalidOfferOperation             = errors.New("invalid offer operation")
 	errHostnameMissing                   = errors.New("hostname is required")
+	errReservationNotFound               = errors.New("reservation could not be made")
 )
 
 // validateOfferOperation ensures offer operations sequences are valid.
@@ -1067,12 +1074,39 @@ func (h *serviceHandler) ReserveHosts(
 		return &hostsvc.ReserveHostsResponse{
 			Error: &hostsvc.ReserveHostsResponse_Error{
 				Failed: &hostsvc.ReservationFailed{
-					Message: "reservation could not be made",
+					Message: errReservationNotFound.Error(),
 				},
 			},
 		}, nil
 	}
+	log.Debug("ReserveHosts returned.")
 	return &hostsvc.ReserveHostsResponse{}, nil
+}
+
+/*
+ * GetCompletedReservations gets the completed host reservations from
+ * reserver. Based on the reserver it returns the list of completed
+ * Reservations (hostsvc.CompletedReservation) or return the NoFound Error.
+ */
+func (h *serviceHandler) GetCompletedReservations(
+	ctx context.Context,
+	req *hostsvc.GetCompletedReservationRequest,
+) (*hostsvc.GetCompletedReservationResponse, error) {
+	log.WithField("request", req).Debug("GetCompletedReservations called.")
+	completedReservations, err := h.reserver.DequeueCompletedReservation(ctx, _completedReservationLimit)
+	if err != nil {
+		return &hostsvc.GetCompletedReservationResponse{
+			Error: &hostsvc.GetCompletedReservationResponse_Error{
+				NotFound: &hostsvc.NotFound{
+					Message: err.Error(),
+				},
+			},
+		}, nil
+	}
+	log.Debug("GetCompletedReservations returned.")
+	return &hostsvc.GetCompletedReservationResponse{
+		CompletedReservations: completedReservations,
+	}, nil
 }
 
 // GetDrainingHosts implements InternalHostService.GetDrainingHosts

@@ -323,6 +323,13 @@ service InternalHostService
    */
   rpc ReserveHosts(ReserveHostsRequest) returns (ReserveHostsResponse);
 
+  /*
+   * GetCompletedReservations gets the completed host reservations from
+   * reserver. Based on the reserver it returns the list of completed
+   * Reservations (hostsvc.CompletedReservation) or return the NoFound Error.
+   */
+  rpc GetCompletedReservations(GetCompletedReservationRequest) returns (GetCompletedReservationResponse);
+
   /**
    *  Release unused host offers to the host manager.
    */
@@ -711,6 +718,32 @@ message ReserveHostsResponse{
     // Host info which host is reserved
     HostInfo host = 2;
 }
+
+/*
+ * GetCompletedReservationRequest is the request for GetCompletedReservation
+ */
+message GetCompletedReservationRequest{}
+
+/*
+ * GetCompletedReservationResponse is the response for GetCompletedReservation
+ */
+message GetCompletedReservationResponse{
+    // Error message for GetCompletedReservationResponse
+    message Error{
+        // No completed reservations found
+        NotFound notFound = 1;
+    }
+    Error error = 1;
+    // list of completed reservations
+    repeated CompletedReservation completedReservations = 2;
+}
+
+// NotFound is error message for not valid completed reservation found
+message NotFound {
+    // message for the failed reason
+    string message = 1;
+}
+
 
 /*
  * GetDrainingHostsRequest is the request message for InternalHostService.GetDrainingHosts

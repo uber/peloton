@@ -36,6 +36,10 @@ const (
 	_maxwaitTime = 1 * time.Second
 )
 
+var (
+	errNoCompletedReservation = errors.New("no completed reservation found")
+)
+
 // Reserver represents a host manager's reservation module.
 // It gets a list of hosts and resmgr task for which we need
 // reservation on the particular host. Reserver will make the
@@ -67,9 +71,9 @@ type Reserver interface {
 	// EnqueueReservations enqueues the reservation in the reserver queue
 	EnqueueReservation(ctx context.Context, reservation *hostsvc.Reservation) error
 
-	// DequeueCompletedReservation dequeues the completed reservation
-	// from the completed Reservation queue
-	DequeueCompletedReservation(ctx context.Context) (*hostsvc.CompletedReservation, error)
+	// DequeueCompletedReservation dequeues the completed reservations equal to
+	// limit from the completed Reservation queue
+	DequeueCompletedReservation(ctx context.Context, limit int) ([]*hostsvc.CompletedReservation, error)
 }
 
 // reserver is the struct which impelements Reserver interface
@@ -168,13 +172,20 @@ func (r *reserver) EnqueueReservation(
 
 // DequeueCompletedReservation dequeues the completed reservation
 // from the completed Reservation queue
-func (r *reserver) DequeueCompletedReservation(ctx context.Context,
-) (*hostsvc.CompletedReservation, error) {
-	item, err := r.GetCompletedReservationQueue().Dequeue(_maxwaitTime)
-	if err != nil {
-		return nil, err
+func (r *reserver) DequeueCompletedReservation(ctx context.Context, limit int,
+) ([]*hostsvc.CompletedReservation, error) {
+	var completedReservations []*hostsvc.CompletedReservation
+	for i := 0; i < limit; i++ {
+		item, err := r.GetCompletedReservationQueue().Dequeue(_maxwaitTime)
+		if err != nil {
+			break
+		}
+		completedReservations = append(completedReservations, item.(*hostsvc.CompletedReservation))
 	}
-	return item.(*hostsvc.CompletedReservation), nil
+	if len(completedReservations) == 0 {
+		return nil, errNoCompletedReservation
+	}
+	return completedReservations, nil
 }
 
 // Reserve method is being called from Run method

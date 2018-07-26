@@ -20,6 +20,7 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -184,9 +185,20 @@ func (suite *ReserverTestSuite) TestFindCompletedReservations() {
 	suite.NoError(err)
 	failed := suite.reserver.FindCompletedReservations(context.Background())
 	suite.Equal(len(failed), 0)
-	item, err := suite.reserver.DequeueCompletedReservation(context.Background())
+	item, err := suite.reserver.DequeueCompletedReservation(
+		context.Background(),
+		1)
 	suite.NoError(err)
 	suite.NotNil(item)
+}
+
+func (suite *ReserverTestSuite) TestDequeueCompletedReservations() {
+	_, err := suite.reserver.DequeueCompletedReservation(
+		context.Background(),
+		1)
+	require.Error(suite.T(), err)
+	suite.Equal(err.Error(), errNoCompletedReservation.Error())
+
 }
 
 // Testing to find the completed reservation however gets the error in reservation

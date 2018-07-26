@@ -32,6 +32,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
 	"code.uber.internal/infra/peloton/hostmgr/queue/mocks"
 	"code.uber.internal/infra/peloton/hostmgr/reserver"
+	reserver_mocks "code.uber.internal/infra/peloton/hostmgr/reserver/mocks"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 	mpb_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
@@ -1766,6 +1767,26 @@ func (suite *HostMgrHandlerTestSuite) TestReserveHostsError() {
 	suite.Equal(resp.Error.Failed.Message, "reservation is nil")
 }
 
+// TestEnqueueReservationError tests to reserve the hosts
+// And check the error case
+func (suite *HostMgrHandlerTestSuite) TestEnqueueReservationError() {
+	ctrl := gomock.NewController(suite.T())
+	handler := &serviceHandler{}
+	mockReserver := reserver_mocks.NewMockReserver(ctrl)
+	handler.reserver = mockReserver
+	mockReserver.EXPECT().EnqueueReservation(gomock.Any(), gomock.Any()).
+		Return(errors.New("error"))
+	reservations, err := handler.ReserveHosts(
+		context.Background(),
+		&hostsvc.ReserveHostsRequest{
+			Reservation: &hostsvc.Reservation{},
+		})
+	suite.NoError(err)
+	suite.NotNil(reservations.GetError().GetFailed())
+	suite.Equal(reservations.GetError().GetFailed().GetMessage(),
+		errReservationNotFound.Error())
+}
+
 func TestHostManagerTestSuite(t *testing.T) {
 	suite.Run(t, new(HostMgrHandlerTestSuite))
 }
@@ -1781,4 +1802,38 @@ func (suite *HostMgrHandlerTestSuite) InitializeHosts(numAgents int) {
 		suite.masterOperatorClient.EXPECT().Agents().Return(response, nil),
 	)
 	loader.Load(nil)
+}
+
+// TestGetCompletedReservations tests the completed reservations
+func (suite *HostMgrHandlerTestSuite) TestGetCompletedReservations() {
+	ctrl := gomock.NewController(suite.T())
+	handler := &serviceHandler{}
+	mockReserver := reserver_mocks.NewMockReserver(ctrl)
+	handler.reserver = mockReserver
+	mockReserver.EXPECT().DequeueCompletedReservation(
+		gomock.Any(), gomock.Any()).Return(
+		[]*hostsvc.CompletedReservation{
+			{},
+		}, nil)
+	reservations, err := handler.GetCompletedReservations(
+		context.Background(),
+		&hostsvc.GetCompletedReservationRequest{})
+	suite.NoError(err)
+	suite.NotNil(reservations.CompletedReservations)
+	suite.Equal(len(reservations.CompletedReservations), 1)
+}
+
+// TestGetCompletedReservationsError tests the error condition
+// in completed reservations
+func (suite *HostMgrHandlerTestSuite) TestGetCompletedReservationsError() {
+	ctrl := gomock.NewController(suite.T())
+	handler := &serviceHandler{}
+	mockReserver := reserver_mocks.NewMockReserver(ctrl)
+	handler.reserver = mockReserver
+	mockReserver.EXPECT().DequeueCompletedReservation(gomock.Any(), gomock.Any()).Return(
+		nil, errors.New("error"))
+	reservations, err := handler.GetCompletedReservations(context.Background(), &hostsvc.GetCompletedReservationRequest{})
+	suite.NoError(err)
+	suite.Nil(reservations.CompletedReservations)
+	suite.Equal(reservations.GetError().GetNotFound().Message, "error")
 }

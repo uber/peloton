@@ -22,6 +22,8 @@ const (
 var (
 	errfailedToAcquireHosts = errors.New("failed to acquire hosts")
 	errnotImplemented       = errors.New("Not Implemented")
+	errNoValidHosts         = errors.New("no valid hosts for reservation")
+	errNoValidTask          = errors.New("no valid task for reservation")
 )
 
 // Service will manage hosts used to get hosts and reserve hosts.
@@ -141,12 +143,54 @@ func (s *service) getTasks(
 }
 
 // ReserveHost reserves the given host for the given task in Host Manager
-func (s *service) ReserveHost(ctx context.Context, hosts []*models.Host, task *resmgr.Task) error {
-	return errors.New(errnotImplemented.Error())
+func (s *service) ReserveHost(ctx context.Context,
+	hosts []*models.Host,
+	task *resmgr.Task) error {
+	if len(hosts) <= 0 {
+		return errNoValidHosts
+	}
+	if task == nil {
+		return errNoValidTask
+	}
+	req := &hostsvc.ReserveHostsRequest{
+		Reservation: &hostsvc.Reservation{
+			Task:  task,
+			Hosts: HostInfoToHostModel(hosts),
+		},
+	}
+	resp, err := s.hostManager.ReserveHosts(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if resp.GetError() != nil {
+		return errors.New(resp.GetError().String())
+	}
+	return nil
+}
+
+// HostInfoToHostModel returns the array of models.Host to hostsvc.HostInfo
+func HostInfoToHostModel(hostModels []*models.Host) []*hostsvc.HostInfo {
+	hInfos := make([]*hostsvc.HostInfo, len(hostModels))
+	for _, hModel := range hostModels {
+		hInfos = append(hInfos, hModel.Host)
+	}
+	return hInfos
 }
 
 // GetCompletedReservation gets the completed reservation from host manager
 func (s *service) GetCompletedReservation(ctx context.Context,
 ) ([]*hostsvc.CompletedReservation, error) {
-	return nil, errors.New(errnotImplemented.Error())
+
+	completedResp, err := s.hostManager.GetCompletedReservations(
+		ctx,
+		&hostsvc.GetCompletedReservationRequest{},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if completedResp.GetError() != nil {
+		return nil, errors.New(completedResp.GetError().GetNotFound().GetMessage())
+	}
+	return completedResp.GetCompletedReservations(), nil
 }

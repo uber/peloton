@@ -12,8 +12,10 @@ import (
 	resource_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	"code.uber.internal/infra/peloton/placement/metrics"
+	"code.uber.internal/infra/peloton/placement/models"
 
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -110,18 +112,92 @@ func (suite *ServiceTestSuite) TestHostsService_AcquireHosts() {
 func (suite *ServiceTestSuite) TestHostsService_ReserveHosts() {
 	defer suite.mockCtrl.Finish()
 	ctx := context.Background()
+
 	err := suite.hostService.ReserveHost(ctx, nil, nil)
-	suite.Error(err)
-	suite.Equal(err.Error(), errnotImplemented.Error())
+	require.Error(suite.T(), err)
+	suite.Equal(err.Error(), errNoValidHosts.Error())
+
+	err = suite.hostService.ReserveHost(
+		ctx,
+		[]*models.Host{{Host: &hostsvc.HostInfo{}}},
+		nil)
+	require.Error(suite.T(), err)
+	suite.Equal(err.Error(), errNoValidTask.Error())
+
+	suite.hostMgrClient.EXPECT().ReserveHosts(
+		gomock.Any(), gomock.Any()).
+		Return(nil, errReturn)
+	err = suite.hostService.ReserveHost(
+		ctx,
+		[]*models.Host{{Host: &hostsvc.HostInfo{}}},
+		&resmgr.Task{})
+	require.Error(suite.T(), err)
+	suite.Equal(err.Error(), errReturn.Error())
+
+	suite.hostMgrClient.EXPECT().ReserveHosts(
+		gomock.Any(), gomock.Any()).
+		Return(
+			&hostsvc.ReserveHostsResponse{
+				Error: &hostsvc.ReserveHostsResponse_Error{
+					Failed: &hostsvc.ReservationFailed{
+						Message: "failed",
+					},
+				},
+			}, nil,
+		)
+	err = suite.hostService.ReserveHost(
+		ctx,
+		[]*models.Host{{Host: &hostsvc.HostInfo{}}},
+		&resmgr.Task{})
+	require.Error(suite.T(), err)
+
+	suite.hostMgrClient.EXPECT().ReserveHosts(
+		gomock.Any(), gomock.Any()).
+		Return(
+			&hostsvc.ReserveHostsResponse{}, nil,
+		)
+	err = suite.hostService.ReserveHost(
+		ctx,
+		[]*models.Host{{Host: &hostsvc.HostInfo{}}},
+		&resmgr.Task{})
+	require.NoError(suite.T(), err)
 }
 
 // TestHostsService_GetCompletedReservation tests the GetCompletedReservation call
 func (suite *ServiceTestSuite) TestHostsService_GetCompletedReservation() {
 	defer suite.mockCtrl.Finish()
 	ctx := context.Background()
+
+	suite.hostMgrClient.EXPECT().GetCompletedReservations(
+		gomock.Any(), gomock.Any()).
+		Return(nil, errReturn)
 	_, err := suite.hostService.GetCompletedReservation(ctx)
-	suite.Error(err)
-	suite.Equal(err.Error(), errnotImplemented.Error())
+	require.Error(suite.T(), err)
+	suite.Equal(err.Error(), errReturn.Error())
+
+	suite.hostMgrClient.EXPECT().GetCompletedReservations(
+		gomock.Any(), gomock.Any()).
+		Return(&hostsvc.GetCompletedReservationResponse{
+			Error: &hostsvc.GetCompletedReservationResponse_Error{
+				NotFound: &hostsvc.NotFound{
+					Message: "not found",
+				},
+			},
+		}, nil)
+	_, err = suite.hostService.GetCompletedReservation(ctx)
+	require.Error(suite.T(), err)
+	suite.Equal(err.Error(), "not found")
+
+	suite.hostMgrClient.EXPECT().GetCompletedReservations(
+		gomock.Any(), gomock.Any()).
+		Return(&hostsvc.GetCompletedReservationResponse{
+			CompletedReservations: []*hostsvc.CompletedReservation{
+				{Host: &hostsvc.HostInfo{}}},
+		}, nil)
+
+	reservations, err := suite.hostService.GetCompletedReservation(ctx)
+	require.NoError(suite.T(), err)
+	suite.Equal(len(reservations), 1)
 }
 
 // TestHostsService_ErrorInGetTasks is testing the error in GetTasks()
