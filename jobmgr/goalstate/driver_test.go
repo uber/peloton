@@ -2,6 +2,7 @@ package goalstate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -10,16 +11,21 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/goalstate"
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	launchermocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/api/transport"
+	"go.uber.org/yarpc/transport/http"
 )
 
 type DriverTestSuite struct {
@@ -68,6 +74,42 @@ func (suite *DriverTestSuite) SetupTest() {
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
 	suite.updateID = &peloton.UpdateID{Value: uuid.NewRandom().String()}
 	suite.instanceID = uint32(0)
+}
+
+// Test constructor
+func (suite *DriverTestSuite) TestNewDriver() {
+	volumeStore := storemocks.NewMockPersistentVolumeStore(suite.ctrl)
+	updateStore := storemocks.NewMockUpdateStore(suite.ctrl)
+	taskLauncher := launchermocks.NewMockLauncher(suite.ctrl)
+	dispatcher := yarpc.NewDispatcher(yarpc.Config{
+		Name: common.PelotonJobManager,
+		Outbounds: yarpc.Outbounds{
+			common.PelotonResourceManager: transport.Outbounds{
+				Unary: http.NewTransport().NewSingleOutbound(""),
+			},
+			common.PelotonHostManager: transport.Outbounds{
+				Unary: http.NewTransport().NewSingleOutbound(""),
+			},
+		},
+	})
+	config := Config{
+		NumWorkerJobThreads:    4,
+		NumWorkerTaskThreads:   5,
+		NumWorkerUpdateThreads: 6,
+	}
+	driver := NewDriver(
+		dispatcher,
+		suite.jobStore,
+		suite.taskStore,
+		volumeStore,
+		updateStore,
+		suite.jobFactory,
+		suite.updateFactory,
+		taskLauncher,
+		tally.NoopScope,
+		config,
+	)
+	suite.NotNil(driver)
 }
 
 func (suite *DriverTestSuite) TearDownTest() {
@@ -185,8 +227,7 @@ func (suite *DriverTestSuite) TestRecoverJobStates() {
 	}
 }
 
-// TestSyncFromDB tests syncing job manager with jobs and tasks in DB.
-func (suite *DriverTestSuite) TestSyncFromDB() {
+func (suite *DriverTestSuite) prepareTestSyncDB() {
 	var jobIDList []peloton.JobID
 	jobIDList = append(jobIDList, *suite.jobID)
 
@@ -225,7 +266,19 @@ func (suite *DriverTestSuite) TestSyncFromDB() {
 	suite.jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
+}
 
+func (suite *DriverTestSuite) TestSyncFromDBFailed() {
+	suite.prepareTestSyncDB()
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
+		Return(nil, errors.New(""))
+	suite.goalStateDriver.syncFromDB(context.Background())
+}
+
+// TestSyncFromDB tests syncing job manager with jobs and tasks in DB.
+func (suite *DriverTestSuite) TestSyncFromDB() {
+	suite.prepareTestSyncDB()
 	suite.taskStore.EXPECT().
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(map[uint32]*task.RuntimeInfo{

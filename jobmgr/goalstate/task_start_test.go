@@ -2,6 +2,7 @@ package goalstate
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"fmt"
@@ -190,8 +191,8 @@ func (suite *TaskStartTestSuite) TestTaskStartWithSlaMaxRunningInstances() {
 	suite.NoError(err)
 }
 
-func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
-	runtime := &pbtask.RuntimeInfo{
+func (suite *TaskStartTestSuite) generateRuntime() *pbtask.RuntimeInfo {
+	return &pbtask.RuntimeInfo{
 		MesosTaskId: &mesos_v1.TaskID{
 			Value: &[]string{"3c8a3c3e-71e3-49c5-9aed-2929823f595c-1-3c8a3c3e-71e3-49c5-9aed-2929823f5957"}[0],
 		},
@@ -199,14 +200,22 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
 			Value: "my-volume-id",
 		},
 	}
+}
 
-	taskInfo := &pbtask.TaskInfo{
+func (suite *TaskStartTestSuite) generateTaskInfo(
+	runtime *pbtask.RuntimeInfo) *pbtask.TaskInfo {
+	return &pbtask.TaskInfo{
 		InstanceId: suite.instanceID,
 		Config: &pbtask.TaskConfig{
 			Volume: &pbtask.PersistentVolumeConfig{},
 		},
 		Runtime: runtime,
 	}
+}
+
+func (suite *TaskStartTestSuite) prepareTest() {
+	runtime := suite.generateRuntime()
+	taskInfo := suite.generateTaskInfo(runtime)
 
 	taskID := fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)
 	taskInfos := make(map[string]*pbtask.TaskInfo)
@@ -232,7 +241,54 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
 		GetPersistentVolume(gomock.Any(), runtime.VolumeID).Return(&volume.PersistentVolumeInfo{
 		State: volume.VolumeState_CREATED,
 	}, nil)
+}
 
+func (suite *TaskStartTestSuite) TestTaskStartNoJob() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(nil)
+	err := TaskStart(context.Background(), suite.taskEnt)
+	suite.Nil(err)
+}
+
+func (suite *TaskStartTestSuite) TestTaskStartNoConfig() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(nil, errors.New(""))
+	err := TaskStart(context.Background(), suite.taskEnt)
+	suite.Error(err)
+}
+
+func (suite *TaskStartTestSuite) TestTaskStartNoTaskInfo() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
+
+	suite.cachedConfig.EXPECT().
+		GetSLA().
+		Return(&job2.SlaConfig{})
+
+	suite.taskStore.EXPECT().
+		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)).
+		Return(nil, errors.New(""))
+
+	err := TaskStart(context.Background(), suite.taskEnt)
+	suite.Error(err)
+
+}
+
+func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
+
+	suite.prepareTest()
+	taskID := fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)
+	runtime := suite.generateRuntime()
 	suite.mockTaskLauncher.EXPECT().
 		GetLaunchableTasks(
 			gomock.Any(),
@@ -274,6 +330,97 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
 
 	err := TaskStart(context.Background(), suite.taskEnt)
 	suite.NoError(err)
+}
+
+func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeFailed() {
+	suite.prepareTest()
+	suite.mockTaskLauncher.EXPECT().
+		GetLaunchableTasks(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Return(nil, errors.New(""))
+
+	err := TaskStart(context.Background(), suite.taskEnt)
+	suite.Error(err)
+}
+
+func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeNoLaunch() {
+	suite.prepareTest()
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).
+		Return(suite.cachedTask)
+	suite.mockTaskLauncher.EXPECT().
+		GetLaunchableTasks(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Return(nil, nil)
+	err := TaskStart(context.Background(), suite.taskEnt)
+	suite.Nil(err)
+}
+
+func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeGetTaskFailed() {
+	suite.prepareTest()
+	taskID := fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)
+	suite.mockTaskLauncher.EXPECT().
+		GetLaunchableTasks(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Return(map[string]*launcher.LaunchableTask{
+		taskID: {
+			RuntimeDiff: cached.RuntimeDiff{},
+		},
+	}, nil)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).
+		Return(nil)
+
+	err := TaskStart(context.Background(), suite.taskEnt)
+	suite.Nil(err)
+}
+
+func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeGetConfigFailed() {
+	suite.prepareTest()
+	taskID := fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)
+	suite.mockTaskLauncher.EXPECT().
+		GetLaunchableTasks(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Return(map[string]*launcher.LaunchableTask{
+		taskID: {
+			RuntimeDiff: cached.RuntimeDiff{},
+		},
+	}, nil)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).
+		Return(nil)
+
+	err := TaskStart(context.Background(), suite.taskEnt)
+	suite.Nil(err)
 }
 
 func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeDBError() {

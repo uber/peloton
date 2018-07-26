@@ -2,6 +2,7 @@ package goalstate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -92,6 +93,46 @@ func (suite *JobRuntimeUpdaterTestSuite) SetupTest() {
 
 func (suite *JobRuntimeUpdaterTestSuite) TearDownTest() {
 	suite.ctrl.Finish()
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstancesSLANoConfig() {
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(nil, errors.New(""))
+	err := JobEvaluateMaxRunningInstancesSLA(context.Background(), suite.jobEnt)
+	suite.Error(err)
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdaterNoRunTime() {
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(nil, errors.New(""))
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	suite.Error(err)
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdaterNoConfig() {
+	jobRuntime := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_KILLED,
+		GoalState: pbjob.JobState_SUCCEEDED,
+	}
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&jobRuntime, nil)
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(nil, errors.New(""))
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	suite.Error(err)
 }
 
 // Verify that completion time of a completed job shouldn't be empty.

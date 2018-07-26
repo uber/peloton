@@ -2,6 +2,7 @@ package goalstate
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -14,118 +15,149 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
 
-func TestTaskReloadRuntime(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+type TaskActionTestSuite struct {
+	suite.Suite
 
-	taskStore := storemocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
+	ctrl        *gomock.Controller
+	jobStore    *storemocks.MockJobStore
+	taskStore   *storemocks.MockTaskStore
+	updateStore *storemocks.MockUpdateStore
 
-	goalStateDriver := &driver{
-		taskStore:  taskStore,
-		jobEngine:  jobGoalStateEngine,
-		taskEngine: taskGoalStateEngine,
-		jobFactory: jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
-	}
-	goalStateDriver.cfg.normalize()
-
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
-
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-		driver:     goalStateDriver,
-	}
-
-	runtime := &pbtask.RuntimeInfo{}
-
-	jobFactory.EXPECT().
-		GetJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		AddTask(instanceID).
-		Return(cachedTask)
-
-	taskStore.EXPECT().
-		GetTaskRuntime(gomock.Any(), jobID, instanceID).
-		Return(runtime, nil)
-
-	cachedTask.EXPECT().
-		ReplaceRuntime(gomock.Any(), gomock.Any())
-
-	taskGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-
-	err := TaskReloadRuntime(context.Background(), taskEnt)
-	assert.NoError(t, err)
+	jobGoalStateEngine  *goalstatemocks.MockEngine
+	taskGoalStateEngine *goalstatemocks.MockEngine
+	jobFactory          *cachedmocks.MockJobFactory
+	cachedJob           *cachedmocks.MockJob
+	cachedTask          *cachedmocks.MockTask
+	goalStateDriver     *driver
+	taskEnt             *taskEntity
+	jobID               *peloton.JobID
+	instanceID          uint32
 }
 
-func TestTaskStateInvalidAction(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+func TestTaskAction(t *testing.T) {
+	suite.Run(t, new(TaskActionTestSuite))
+}
 
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
+func (suite *TaskActionTestSuite) SetupTest() {
+	suite.ctrl = gomock.NewController(suite.T())
+	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
+	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
+	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
+	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 
-	goalStateDriver := &driver{
-		jobFactory: jobFactory,
+	suite.goalStateDriver = &driver{
+		taskStore:  suite.taskStore,
+		jobEngine:  suite.jobGoalStateEngine,
+		taskEngine: suite.taskGoalStateEngine,
+		jobFactory: suite.jobFactory,
 		mtx:        NewMetrics(tally.NoopScope),
 		cfg:        &Config{},
 	}
-	goalStateDriver.cfg.normalize()
+	suite.goalStateDriver.cfg.normalize()
 
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
+	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
+	suite.instanceID = uint32(0)
 
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-		driver:     goalStateDriver,
+	suite.taskEnt = &taskEntity{
+		jobID:      suite.jobID,
+		instanceID: suite.instanceID,
+		driver:     suite.goalStateDriver,
 	}
+}
 
+func (suite *TaskActionTestSuite) TestTaskReloadRuntime() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		AddTask(suite.instanceID).
+		Return(suite.cachedTask)
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
+		Return(&pbtask.RuntimeInfo{}, nil)
+	suite.cachedTask.EXPECT().
+		ReplaceRuntime(gomock.Any(), gomock.Any())
+	suite.taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+	err := TaskReloadRuntime(context.Background(), suite.taskEnt)
+	suite.NoError(err)
+}
+
+func (suite *TaskActionTestSuite) prepareTest() {
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).
+		Return(suite.cachedTask)
+	suite.cachedTask.EXPECT().
+		CurrentState().Return(
+		cached.TaskStateVector{
+			State: pbtask.TaskState_UNKNOWN,
+		})
+}
+
+func (suite *TaskActionTestSuite) TestTaskPreempt() {
+	taskConfig := &pbtask.TaskConfig{
+		PreemptionPolicy: &pbtask.PreemptionPolicy{
+			KillOnPreempt: true,
+		},
+	}
+	suite.prepareTest()
+	suite.taskStore.EXPECT().GetTaskConfig(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+	).Return(taskConfig, nil)
+	err := TaskPreempt(context.Background(), suite.taskEnt)
+	suite.NoError(err)
+}
+
+func (suite *TaskActionTestSuite) TestTaskPreemptFailed() {
+	suite.prepareTest()
+	suite.taskStore.EXPECT().GetTaskConfig(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+	).Return(nil, errors.New(""))
+	err := TaskPreempt(context.Background(), suite.taskEnt)
+	suite.Error(err)
+}
+
+func (suite *TaskActionTestSuite) TestTaskStateInvalidAction() {
 	newRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
 	newRuntimes[0] = &pbtask.RuntimeInfo{
 		State: pbtask.TaskState_FAILED,
 	}
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetTask(instanceID).
-		Return(cachedTask)
-
-	cachedTask.EXPECT().
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).
+		Return(suite.cachedTask)
+	suite.cachedTask.EXPECT().
 		CurrentState().
 		Return(cached.TaskStateVector{
 			State: pbtask.TaskState_RUNNING,
 		})
-
-	cachedTask.EXPECT().
+	suite.cachedTask.EXPECT().
 		GoalState().
 		Return(cached.TaskStateVector{
 			State: pbtask.TaskState_KILLING,
 		})
-
-	cachedTask.EXPECT().
+	suite.cachedTask.EXPECT().
 		ID().
-		Return(instanceID)
-
-	err := TaskStateInvalid(context.Background(), taskEnt)
-	assert.NoError(t, err)
+		Return(suite.instanceID)
+	err := TaskStateInvalid(context.Background(), suite.taskEnt)
+	suite.NoError(err)
 }
