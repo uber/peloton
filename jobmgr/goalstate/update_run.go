@@ -55,6 +55,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 		ctx,
 		cachedJob,
 		cachedUpdate,
+		instancesCurrent,
 		instancesToAdd,
 		instancesToUpdate,
 		goalStateDriver,
@@ -153,9 +154,20 @@ func processUpgrade(
 	ctx context.Context,
 	cachedJob cached.Job,
 	cachedUpdate cached.Update,
+	instancesCurrent []uint32,
 	instancesToAdd []uint32,
 	instancesToUpdate []uint32,
 	goalStateDriver *driver) error {
+	err := processInitializedTasksBeingUpdated(
+		ctx,
+		cachedJob,
+		instancesCurrent,
+		goalStateDriver,
+	)
+	if err != nil {
+		return err
+	}
+
 	if len(instancesToUpdate)+len(instancesToAdd) == 0 {
 		return nil
 	}
@@ -186,6 +198,32 @@ func processUpgrade(
 		goalStateDriver,
 	)
 	return err
+}
+
+// for task being updated, it can be in INITIALIZED state (e.g.
+// task is created in update but fails in db write and is not sent
+// to ResMgr). JobMgr need to enqueue such tasks into goal state engine,
+// otherwise those tasks would be stuck and cannot move on.
+func processInitializedTasksBeingUpdated(
+	ctx context.Context,
+	cachedJob cached.Job,
+	instancesCurrent []uint32,
+	goalStateDriver *driver) error {
+	for _, instanceID := range instancesCurrent {
+		cachedTask := cachedJob.GetTask(instanceID)
+		if cachedTask == nil {
+			continue
+		}
+
+		runtime, err := cachedTask.GetRunTime(ctx)
+		if err != nil {
+			return err
+		}
+		if runtime.GetState() == pbtask.TaskState_INITIALIZED {
+			goalStateDriver.EnqueueTask(cachedJob.ID(), instanceID, time.Now())
+		}
+	}
+	return nil
 }
 
 // addInstancesInUpdate will add instances specified in instancesToAdd

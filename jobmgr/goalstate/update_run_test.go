@@ -87,7 +87,7 @@ func (suite *UpdateRunTestSuite) TearDownTest() {
 }
 
 func (suite *UpdateRunTestSuite) TestRunningUpdate() {
-	instancesTotal := []uint32{2, 3, 4, 5}
+	instancesTotal := []uint32{2, 3, 4, 5, 6}
 
 	runtimeDone := &pbtask.RuntimeInfo{
 		State:                pbtask.TaskState_RUNNING,
@@ -110,6 +110,13 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 		DesiredConfigVersion: uint64(4),
 	}
 
+	runtimeInitialized := &pbtask.RuntimeInfo{
+		State:                pbtask.TaskState_INITIALIZED,
+		GoalState:            pbtask.TaskState_RUNNING,
+		ConfigVersion:        uint64(4),
+		DesiredConfigVersion: uint64(4),
+	}
+
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
@@ -120,6 +127,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
+		Return(suite.jobID)
+
+	suite.cachedJob.EXPECT().
+		ID().
 		Return(suite.jobID)
 
 	suite.cachedUpdate.EXPECT().
@@ -159,6 +170,11 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 			suite.cachedTask.EXPECT().
 				GetRunTime(gomock.Any()).
 				Return(runtimeTerminated, nil)
+		} else if instID == instancesTotal[2] {
+			// only 1 task is in initialized state
+			suite.cachedTask.EXPECT().
+				GetRunTime(gomock.Any()).
+				Return(runtimeInitialized, nil)
 		} else {
 			// rest are updated
 			suite.cachedTask.EXPECT().
@@ -167,12 +183,40 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 		}
 	}
 
+	suite.cachedJob.EXPECT().
+		GetTask(instancesTotal[0]).
+		Return(suite.cachedTask)
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeRunning, nil)
+
+	suite.cachedJob.EXPECT().
+		GetTask(instancesTotal[1]).
+		Return(suite.cachedTask)
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeTerminated, nil)
+
+	suite.cachedJob.EXPECT().
+		GetTask(instancesTotal[2]).
+		Return(suite.cachedTask)
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeInitialized, nil)
+
+	suite.taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
 	suite.cachedUpdate.EXPECT().
 		WriteProgress(
 			gomock.Any(),
 			pbupdate.State_ROLLING_FORWARD,
-			[]uint32{4, 5},
-			[]uint32{2, 3},
+			[]uint32{5, 6},
+			[]uint32{2, 3, 4},
 		).Return(nil)
 
 	err := UpdateRun(context.Background(), suite.updateEnt)
