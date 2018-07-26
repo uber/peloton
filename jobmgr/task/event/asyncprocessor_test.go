@@ -68,6 +68,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_MesosEvents
 	var offset uint64
 
 	applier := newBucketEventProcessor(suite.handler, 15, 100)
+	applier.start()
 	n := uint32(243)
 
 	for i := uint32(0); i < n; i++ {
@@ -167,6 +168,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_GetEventPro
 		Return(nil).AnyTimes()
 
 	applier := newBucketEventProcessor(suite.statusProcessor, 15, 100)
+	applier.start()
 
 	for i := uint32(0); i < n; i++ {
 
@@ -202,6 +204,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_TransientEr
 		Return(nil)
 
 	applier := newBucketEventProcessor(suite.statusProcessor, 15, 100)
+	applier.start()
 
 	applier.addEvent(&pbeventstream.Event{
 		Type: pbeventstream.Event_MESOS_TASK_STATUS,
@@ -226,6 +229,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_NonTransien
 		Return(fmt.Errorf("non-transient error"))
 
 	applier := newBucketEventProcessor(suite.statusProcessor, 15, 100)
+	applier.start()
 
 	applier.addEvent(&pbeventstream.Event{
 		Type: pbeventstream.Event_PELOTON_TASK_EVENT,
@@ -244,6 +248,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_NonTransien
 func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_AddEventFails() {
 	corruptedID := "corrupted-id"
 	applier := newBucketEventProcessor(suite.statusProcessor, 15, 100)
+	applier.start()
 	err := applier.addEvent(&pbeventstream.Event{
 		Type: pbeventstream.Event_MESOS_TASK_STATUS,
 		MesosTaskStatus: &mesos.TaskStatus{
@@ -263,4 +268,43 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_AddEventFai
 		},
 	})
 	suite.Error(err)
+}
+
+// TestBucketEventProcessor_StartStop tests that events can be processed
+// after a start-stop-start sequence
+func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_StartStop() {
+	var offset uint64
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), 0, uuidStr)
+
+	suite.statusProcessor.EXPECT().ProcessListeners(
+		gomock.Any()).Return().AnyTimes()
+	suite.statusProcessor.EXPECT().
+		ProcessStatusUpdate(gomock.Any(), gomock.Any()).
+		Return(nil).AnyTimes()
+
+	applier := newBucketEventProcessor(suite.statusProcessor, 15, 100)
+	addEvents := func() {
+		for i := 0; i < 8; i++ {
+			offset++
+			applier.addEvent(&pbeventstream.Event{
+				Offset: offset,
+				Type:   pbeventstream.Event_MESOS_TASK_STATUS,
+				MesosTaskStatus: &mesos.TaskStatus{
+					TaskId: &mesos.TaskID{
+						Value: &mesosTaskID,
+					},
+				},
+			})
+		}
+	}
+	applier.start()
+	addEvents()
+	applier.drainAndShutdown()
+	suite.Equal(applier.GetEventProgress(), offset)
+
+	addEvents()
+	applier.start()
+	addEvents()
+	applier.drainAndShutdown()
+	suite.Equal(applier.GetEventProgress(), offset)
 }

@@ -429,6 +429,7 @@ func (p *statusUpdate) OnEvents(events []*pb_eventstream.Event) {}
 
 // Start starts processing status update events
 func (p *statusUpdate) Start() {
+	p.applier.start()
 	for _, client := range p.eventClients {
 		client.Start()
 	}
@@ -447,6 +448,7 @@ func (p *statusUpdate) Stop() {
 	for _, listener := range p.listeners {
 		listener.Stop()
 	}
+	p.applier.drainAndShutdown()
 }
 
 func getCurrTaskResourceUsage(taskID string, state pb_task.TaskState,

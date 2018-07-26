@@ -8,6 +8,7 @@ import (
 
 	pbeventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/lifecycle"
 
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/sirupsen/logrus"
@@ -28,64 +29,79 @@ type StatusProcessor interface {
 	ProcessListeners(event *pbeventstream.Event)
 }
 
-// asyncEventProcessor maps events to a list of buckets; and each bucket would be consumed by a single go routine
-// in which the task updates are processed. This would allow quick response to mesos for those status updates; while
+// asyncEventProcessor maps events to a list of buckets; and each bucket would
+// be consumed by a single go routine in which the task updates are processed.
+// This would allow quick response to mesos for those status updates; while
 // for each individual task, the events are processed in order
 type asyncEventProcessor struct {
 	sync.RWMutex
+	lifecycle      lifecycle.LifeCycle
+	eventProcessor StatusProcessor
+	// the buckets for events. Note that this slice is
+	// set only when the object is created, so it is accessed
+	// without using locks
 	eventBuckets []*eventBucket
+	// waitgroup for bucket goroutines
+	bucketsWg sync.WaitGroup
 }
 
-// eventBucket is a bucket of task updates. All updates for one task would end up in one bucket in order; a bucket
-// can hold status updates for multiple tasks.
+// eventBucket is a bucket of task updates. All updates for one task would end
+// up in one bucket in order; a bucket can hold status updates for multiple
+// tasks.
 type eventBucket struct {
 	eventCh chan *pbeventstream.Event
 	// index is used to identify the bucket in eventBuckets
 	index           int
 	processedCount  *int32
 	processedOffset *uint64
-
-	// channel to indicate the eventBucket should stop
-	shutdownCh chan struct{}
-	// channel to indicate drainAndShutdown is complete
-	shutdownCompleteCh chan struct{}
 }
 
+// Creates a new event bucket of specified size
 func newEventBucket(size int, index int) *eventBucket {
 	updates := make(chan *pbeventstream.Event, size)
 	var processedCount int32
 	var processedOffset uint64
 	return &eventBucket{
-		eventCh:            updates,
-		shutdownCh:         make(chan struct{}),
-		shutdownCompleteCh: make(chan struct{}),
-		index:              index,
-		processedCount:     &processedCount,
-		processedOffset:    &processedOffset,
+		eventCh:         updates,
+		index:           index,
+		processedCount:  &processedCount,
+		processedOffset: &processedOffset,
 	}
 }
 
-func (t *eventBucket) drainAndShutdown() {
-	log.WithField("bucket_index", t.index).Info("waiting for events in bucket to finish")
+// Wait for all queued up events in the bucket to be processed.
+// Note that there is no guarantee that the event queue will be
+// empty after calling this function because addEvent() does not
+// reject events during/after drain.
+func (t *eventBucket) drain() {
+	log.WithField("bucket_index", t.index).Info(
+		"waiting for events in bucket to finish")
 	for len(t.eventCh) > 0 {
 		time.Sleep(_waitForDrainingEventBucket)
 	}
-	log.WithField("bucket_index", t.index).Info("shutting down bucket")
-	close(t.shutdownCh)
-	<-t.shutdownCompleteCh
 }
 
+// Returns the number of events processed by this bucket
 func (t *eventBucket) getProcessedCount() int32 {
 	return atomic.LoadInt32(t.processedCount)
 }
 
-func dequeuEventsFromBucket(t StatusProcessor, bucket *eventBucket) {
+// Returns the event offset of the last processed event
+func (t *eventBucket) getProcessedOffset() uint64 {
+	return atomic.LoadUint64(t.processedOffset)
+}
+
+// Loop to process events queued up in a bucket. Terminates when
+// stopCh is notified/closed.
+func dequeuEventsFromBucket(t StatusProcessor, bucket *eventBucket,
+	stopCh <-chan struct{}) {
 	for {
 		select {
 		case event := <-bucket.eventCh:
 			for {
 				// Retry while getting AlreadyExists error.
-				if err := t.ProcessStatusUpdate(context.Background(), event); err == nil {
+				if err := t.ProcessStatusUpdate(
+					context.Background(), event); err == nil {
 					break
 				} else if !common.IsTransientError(err) {
 					log.WithError(err).
@@ -94,7 +110,8 @@ func dequeuEventsFromBucket(t StatusProcessor, bucket *eventBucket) {
 						Error("Error applying taskStatus")
 					break
 				}
-				// sleep for a small duration to wait for the error to clear up before retrying
+				// sleep for a small duration to wait for the error to
+				// clear up before retrying
 				time.Sleep(_waitForTransientErrorBeforeRetry)
 			}
 
@@ -103,26 +120,30 @@ func dequeuEventsFromBucket(t StatusProcessor, bucket *eventBucket) {
 
 			atomic.AddInt32(bucket.processedCount, 1)
 			atomic.StoreUint64(bucket.processedOffset, event.Offset)
-		case <-bucket.shutdownCh:
-			log.WithField("bucket_num", bucket.index).Info("bucket is shutdownCh")
-			bucket.shutdownCompleteCh <- struct{}{}
+		case <-stopCh:
+			log.WithField("bucket_num", bucket.index).Info(
+				"Received bucket shutdown")
 			return
 		}
 	}
 }
 
-func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *asyncEventProcessor {
+// Creates the event processor
+func newBucketEventProcessor(t StatusProcessor, bucketNum int,
+	chanSize int) *asyncEventProcessor {
 	var buckets []*eventBucket
 	for i := 0; i < bucketNum; i++ {
 		bucket := newEventBucket(chanSize, i)
 		buckets = append(buckets, bucket)
-		go dequeuEventsFromBucket(t, bucket)
 	}
 	return &asyncEventProcessor{
-		eventBuckets: buckets,
+		lifecycle:      lifecycle.NewLifeCycle(),
+		eventProcessor: t,
+		eventBuckets:   buckets,
 	}
 }
 
+// Enqueue an event for asynchronous processing
 func (t *asyncEventProcessor) addEvent(event *pbeventstream.Event) error {
 	var taskID string
 	var err error
@@ -153,23 +174,40 @@ func (t *asyncEventProcessor) addEvent(event *pbeventstream.Event) error {
 	return nil
 }
 
-func (t *asyncEventProcessor) drainAndShutdown() {
-	t.RLock()
-	defer t.RUnlock()
+// Starts the event processor. Launches goroutines to process events for
+// each bucket.
+func (t *asyncEventProcessor) start() {
+	if !t.lifecycle.Start() {
+		return
+	}
+	stopCh := t.lifecycle.StopCh()
 	for _, bucket := range t.eventBuckets {
-		bucket.drainAndShutdown()
+		t.bucketsWg.Add(1)
+		go func(b *eventBucket) {
+			dequeuEventsFromBucket(t.eventProcessor, b, stopCh)
+			t.bucketsWg.Done()
+		}(bucket)
+	}
+}
+
+// Completes processing events and terminates the processing loop
+// for each bucket.
+func (t *asyncEventProcessor) drainAndShutdown() {
+	for _, bucket := range t.eventBuckets {
+		bucket.drain()
+	}
+	if t.lifecycle.Stop() {
+		t.bucketsWg.Wait()
 	}
 }
 
 // GetEventProgress returns the current max progress among all buckets
 // This value is used to purge data on the event stream server side.
 func (t *asyncEventProcessor) GetEventProgress() uint64 {
-	t.RLock()
-	defer t.RUnlock()
 	var maxOffset uint64
 	maxOffset = uint64(0)
 	for _, bucket := range t.eventBuckets {
-		offset := atomic.LoadUint64(bucket.processedOffset)
+		offset := bucket.getProcessedOffset()
 		if offset > maxOffset {
 			maxOffset = offset
 		}

@@ -93,6 +93,7 @@ func (suite *TaskUpdaterTestSuite) SetupTest() {
 		metrics:         NewMetrics(suite.testScope.SubScope("status_updater")),
 		hostmgrClient:   suite.mockHostMgrClient,
 	}
+	suite.updater.applier = newBucketEventProcessor(suite.updater, 10, 10)
 }
 
 func (suite *TaskUpdaterTestSuite) TearDownTest() {
@@ -815,11 +816,16 @@ func (suite *TaskUpdaterTestSuite) TestUpdaterProcessListeners() {
 	suite.updater.ProcessListeners(nil)
 }
 
-func (suite *TaskUpdaterTestSuite) TestUpdaterStart() {
+func (suite *TaskUpdaterTestSuite) TestUpdaterStartStop() {
 	defer suite.ctrl.Finish()
 
 	suite.mockListener1.EXPECT().Start()
 	suite.mockListener2.EXPECT().Start()
 
 	suite.updater.Start()
+
+	suite.mockListener1.EXPECT().Stop()
+	suite.mockListener2.EXPECT().Stop()
+
+	suite.updater.Stop()
 }
