@@ -3,6 +3,7 @@ package offers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -29,6 +30,42 @@ func TestOfferService_Dequeue(t *testing.T) {
 
 	ctx := context.Background()
 	filter := &hostsvc.HostFilter{}
+
+	// Acquire Host Offers API call failed.
+	mockHostManager.EXPECT().
+		AcquireHostOffers(
+			gomock.Any(),
+			&hostsvc.AcquireHostOffersRequest{Filter: filter}).
+		Return(nil, errors.New("acquire host offers failed"))
+	hosts, reason := service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	assert.Equal(t, reason, _failedToAcquireHostOffers)
+
+	// Acquire Host Offers API response has error
+	mockHostManager.EXPECT().
+		AcquireHostOffers(
+			gomock.Any(),
+			&hostsvc.AcquireHostOffersRequest{Filter: filter}).
+		Return(&hostsvc.AcquireHostOffersResponse{
+			Error: &hostsvc.AcquireHostOffersResponse_Error{
+				Failure: &hostsvc.AcquireHostOffersFailure{
+					Message: "acquire host offers response err",
+				},
+			}}, nil)
+	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	assert.Equal(t, reason, _failedToAcquireHostOffers)
+
+	// Acquire Host Offers does not return any offer
+	mockHostManager.EXPECT().
+		AcquireHostOffers(
+			gomock.Any(),
+			&hostsvc.AcquireHostOffersRequest{Filter: filter}).
+		Return(&hostsvc.AcquireHostOffersResponse{
+			HostOffers: nil,
+		}, nil)
+	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	assert.Equal(t, reason, _failedToAcquireHostOffers)
+
+	// Acquire Host Offers get tasks failure
 	filterResult := map[string]uint32{
 		"MISMATCH_CONSTRAINTS": 3,
 		"MISMATCH_GPU":         5,
@@ -42,6 +79,26 @@ func TestOfferService_Dequeue(t *testing.T) {
 		},
 		FilterResultCounts: filterResult,
 	}
+
+	tasksRequest := &resmgrsvc.GetTasksByHostsRequest{
+		Type:      resmgr.TaskType_UNKNOWN,
+		Hostnames: []string{"hostname"},
+	}
+
+	gomock.InOrder(
+		mockHostManager.EXPECT().
+			AcquireHostOffers(
+				gomock.Any(),
+				&hostsvc.AcquireHostOffersRequest{
+					Filter: filter,
+				},
+			).Return(hostOffers, nil),
+		mockResourceManager.EXPECT().GetTasksByHosts(gomock.Any(), tasksRequest).
+			Return(nil, errors.New("get tasks by host failed")),
+	)
+	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+
+	// Acquire Host Offers successful call
 	gomock.InOrder(
 		mockHostManager.EXPECT().
 			AcquireHostOffers(
@@ -71,7 +128,7 @@ func TestOfferService_Dequeue(t *testing.T) {
 				Error: nil,
 			}, nil),
 	)
-	hosts, reason := service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
 	assert.Equal(t, string(filterResultStr), reason)
 	assert.Equal(t, 1, len(hosts))
 	assert.Equal(t, "hostname", hosts[0].GetOffer().Hostname)
@@ -85,7 +142,7 @@ func TestOfferService_Return(t *testing.T) {
 	mockHostManager := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	metrics := metrics.NewMetrics(tally.NoopScope)
 	service := NewService(mockHostManager, mockResourceManager, metrics)
-
+	ctx := context.Background()
 	hostOffer := &hostsvc.HostOffer{
 		Hostname: "hostname",
 	}
@@ -95,6 +152,40 @@ func TestOfferService_Return(t *testing.T) {
 	offers := []*models.HostOffers{
 		models.NewHostOffers(hostOffer, nil, time.Now()),
 	}
+
+	// Test empty host offers
+	service.Release(ctx, nil)
+
+	// Release Host Offers error
+	mockHostManager.EXPECT().
+		ReleaseHostOffers(
+			gomock.Any(),
+			&hostsvc.ReleaseHostOffersRequest{
+				HostOffers: hostOffers,
+			},
+		).
+		Return(
+			&hostsvc.ReleaseHostOffersResponse{},
+			errors.New("release host offers api error"))
+	service.Release(ctx, offers)
+
+	// Release Host Offers API error
+	mockHostManager.EXPECT().
+		ReleaseHostOffers(
+			gomock.Any(),
+			&hostsvc.ReleaseHostOffersRequest{
+				HostOffers: hostOffers,
+			},
+		).
+		Return(
+			&hostsvc.ReleaseHostOffersResponse{
+				Error: &hostsvc.ReleaseHostOffersResponse_Error{},
+			},
+			nil,
+		)
+	service.Release(ctx, offers)
+
+	// Release Host Offers successful call
 	gomock.InOrder(
 		mockHostManager.EXPECT().
 			ReleaseHostOffers(
@@ -109,6 +200,5 @@ func TestOfferService_Return(t *testing.T) {
 			),
 	)
 
-	ctx := context.Background()
 	service.Release(ctx, offers)
 }
