@@ -406,17 +406,20 @@ func (n *resPool) dequeue(qt QueueType, limit int) ([]*resmgrsvc.Gang,
 	return gangList, err
 }
 
-// AggregatedChildrenReservations returns aggregated child reservations by resource kind
+// AggregatedChildrenReservations returns aggregated child reservations by
+// resource kind
 func (n *resPool) AggregatedChildrenReservations() (map[string]float64, error) {
 	totalReservation := make(map[string]float64)
 	n.RLock()
 	defer n.RUnlock()
-	nodes := n.Children()
+
+	nodes := n.children
 	// We need to find out the total reservation
 	for e := nodes.Front(); e != nil; e = e.Next() {
 		n, ok := e.Value.(ResPool)
 		if !ok {
-			return totalReservation, errors.Errorf("failed to type assert child resource pool %v",
+			return totalReservation, errors.Errorf(
+				"failed to type assert child resource pool %v",
 				e.Value)
 		}
 		resources := n.Resources()
