@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -47,16 +48,67 @@ func setupService(t *testing.T) (Service, *resource_mocks.MockResourceManagerSer
 func TestTaskService_Dequeue(t *testing.T) {
 	service, mockResourceManager, ctrl := setupService(t)
 	defer ctrl.Finish()
+	ctx := context.Background()
 
+	request := &resmgrsvc.DequeueGangsRequest{
+		Limit:   10,
+		Type:    resmgr.TaskType_UNKNOWN,
+		Timeout: 100,
+	}
+
+	// Placement engine dequeue, resource manager dequeue gangs api failure
+	response := &resmgrsvc.DequeueGangsResponse{
+		Error: &resmgrsvc.DequeueGangsResponse_Error{},
+	}
+	mockResourceManager.EXPECT().
+		DequeueGangs(
+			gomock.Any(),
+			request,
+		).Return(
+		response,
+		nil,
+	)
+	assignments := service.Dequeue(ctx, resmgr.TaskType_UNKNOWN, 10, 100)
+	assert.Nil(t, assignments)
+
+	mockResourceManager.EXPECT().
+		DequeueGangs(
+			gomock.Any(),
+			request,
+		).Return(
+		nil,
+		errors.New("dequeue gangs request failed"),
+	)
+	assignments = service.Dequeue(ctx, resmgr.TaskType_UNKNOWN, 10, 100)
+	assert.Nil(t, assignments)
+
+	// Placement engine dequeue gangs with nil task
 	gomock.InOrder(
 		mockResourceManager.EXPECT().
 			DequeueGangs(
 				gomock.Any(),
-				&resmgrsvc.DequeueGangsRequest{
-					Limit:   10,
-					Type:    resmgr.TaskType_UNKNOWN,
-					Timeout: 100,
+				request,
+			).Return(
+			&resmgrsvc.DequeueGangsResponse{
+				Gangs: []*resmgrsvc.Gang{
+					{
+						Tasks: nil,
+					},
 				},
+			},
+			nil,
+		),
+	)
+
+	assignments = service.Dequeue(ctx, resmgr.TaskType_UNKNOWN, 10, 100)
+	assert.Nil(t, assignments)
+
+	// Placement engine dequeue success call
+	gomock.InOrder(
+		mockResourceManager.EXPECT().
+			DequeueGangs(
+				gomock.Any(),
+				request,
 			).Return(
 			&resmgrsvc.DequeueGangsResponse{
 				Gangs: []*resmgrsvc.Gang{
@@ -72,9 +124,8 @@ func TestTaskService_Dequeue(t *testing.T) {
 			nil,
 		),
 	)
-	ctx := context.Background()
-	assignments := service.Dequeue(ctx, resmgr.TaskType_UNKNOWN, 10, 100)
 
+	assignments = service.Dequeue(ctx, resmgr.TaskType_UNKNOWN, 10, 100)
 	assert.NotNil(t, assignments)
 	assert.Equal(t, 1, len(assignments))
 }
@@ -94,6 +145,53 @@ func TestTaskService_SetPlacements(t *testing.T) {
 			},
 		},
 	}
+	request := &resmgrsvc.SetPlacementsRequest{
+		Placements: placements,
+	}
+
+	// Placement engine with empty placements
+	service.SetPlacements(ctx, nil)
+
+	// Placement engine, resource manager set placements request failed
+	mockResourceManager.EXPECT().
+		SetPlacements(
+			gomock.Any(),
+			request,
+		).
+		Return(
+			&resmgrsvc.SetPlacementsResponse{
+				Error: &resmgrsvc.SetPlacementsResponse_Error{},
+			},
+			nil,
+		)
+	service.SetPlacements(ctx, placements)
+
+	mockResourceManager.EXPECT().
+		SetPlacements(
+			gomock.Any(),
+			request,
+		).
+		Return(
+			&resmgrsvc.SetPlacementsResponse{
+				Error: &resmgrsvc.SetPlacementsResponse_Error{
+					Failure: &resmgrsvc.SetPlacementsFailure{},
+				},
+			},
+			nil,
+		)
+	service.SetPlacements(ctx, placements)
+
+	mockResourceManager.EXPECT().
+		SetPlacements(
+			gomock.Any(),
+			request,
+		).
+		Return(
+			nil,
+			errors.New("resource manager set placements request failed"),
+		)
+	service.SetPlacements(ctx, placements)
+
 	gomock.InOrder(
 		mockResourceManager.EXPECT().
 			SetPlacements(
@@ -107,14 +205,13 @@ func TestTaskService_SetPlacements(t *testing.T) {
 				nil,
 			),
 	)
-
 	service.SetPlacements(ctx, placements)
 }
 
 func TestTaskService_Enqueue(t *testing.T) {
 	service, mockResourceManager, ctrl := setupService(t)
 	defer ctrl.Finish()
-
+	ctx := context.Background()
 	request := &resmgrsvc.EnqueueGangsRequest{
 		Gangs: []*resmgrsvc.Gang{
 			{
@@ -136,12 +233,31 @@ func TestTaskService_Enqueue(t *testing.T) {
 	task := models.NewTask(gang, rmTask, time.Now().Add(10*time.Second), 1)
 	assignments := []*models.Assignment{models.NewAssignment(task)}
 
+	// Placement engine enqueue nil assignments
+	service.Enqueue(ctx, nil, _testReason)
+
+	// Placement engine enqueue resmgr enqueue gangs request errors
+	mockResourceManager.EXPECT().EnqueueGangs(
+		gomock.Any(),
+		request,
+	).Return(nil, errors.New("enqueue gangs request failed"))
+	service.Enqueue(ctx, assignments, _testReason)
+
+	response := &resmgrsvc.EnqueueGangsResponse{
+		Error: &resmgrsvc.EnqueueGangsResponse_Error{},
+	}
+	mockResourceManager.EXPECT().EnqueueGangs(
+		gomock.Any(),
+		request,
+	).Return(response, nil)
+	service.Enqueue(ctx, assignments, _testReason)
+
+	// Placement engine enqueue success case
 	gomock.InOrder(
 		mockResourceManager.EXPECT().EnqueueGangs(
 			gomock.Any(),
 			request,
 		),
 	)
-	ctx := context.Background()
 	service.Enqueue(ctx, assignments, _testReason)
 }
