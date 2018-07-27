@@ -220,3 +220,24 @@ func (suite *updateActionsTestSuite) TestClientUpdateAbort() {
 	err := c.UpdateAbortAction(suite.updateID.GetValue())
 	suite.NoError(err)
 }
+
+// TestClientUpdatePause tests pausing a job update
+func (suite *updateActionsTestSuite) TestClientUpdatePause() {
+	c := Client{
+		Debug:        false,
+		updateClient: suite.mockUpdate,
+		dispatcher:   nil,
+		ctx:          suite.ctx,
+	}
+
+	resp := &svc.PauseUpdateResponse{}
+	suite.mockUpdate.EXPECT().
+		PauseUpdate(context.Background(), gomock.Any()).
+		Do(func(_ context.Context, req *svc.PauseUpdateRequest) {
+			suite.Equal(suite.updateID.GetValue(), req.GetUpdateId().GetValue())
+		}).
+		Return(resp, nil)
+
+	err := c.UpdatePauseAction(suite.updateID.GetValue())
+	suite.NoError(err)
+}

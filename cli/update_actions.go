@@ -131,6 +131,21 @@ func (c *Client) UpdateAbortAction(updateID string) error {
 	return nil
 }
 
+// UpdatePauseAction pauses a given update
+func (c *Client) UpdatePauseAction(updateID string) error {
+	var request = &updatesvc.PauseUpdateRequest{
+		UpdateId: &peloton.UpdateID{
+			Value: updateID,
+		},
+	}
+
+	_, err := c.updateClient.PauseUpdate(c.ctx, request)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // printUpdateCreateResponse prints the update identifier returned in the
 // create job update response.
 func printUpdateCreateResponse(resp *updatesvc.CreateUpdateResponse, debug bool) {
