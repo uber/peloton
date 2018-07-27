@@ -58,7 +58,7 @@ import:
   version: ^0.2.2
   repo: https://github.com/craimbert/libkv.git
 - package: github.com/gocql/gocql
-  version: 09f0498f9ab5ca0267e3b451483a368648de2158
+  version: 56a164ee9f3135e9cfe725a6d25939f24cb2d044
 - package: github.com/alecthomas/template
 - package: github.com/alecthomas/units
 - package: github.com/gogo/protobuf

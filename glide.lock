@@ -1,5 +1,5 @@
-hash: 24daaf69bae733b225e92855d72fe85ee4b9f7e162e12683d7069a5d39bc3f81
-updated: 2018-05-07T13:38:22.886077441-07:00
+hash: bc55f97cbcddd6020c8ff77c785ce66a8e46b7f99a9e3735d2c52ad353848bff
+updated: 2018-07-26T19:08:23.019117-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -8,7 +8,7 @@ imports:
 - name: github.com/alecthomas/units
   version: 2efee857e7cfd4f3d0138cc3cbb1b4966962b93a
 - name: github.com/apache/thrift
-  version: 9549b25c77587b29be4e0b5c258221a4ed85d37a
+  version: b2a4d4ae21c789b689dd162deb819665567f481c
   subpackages:
   - lib/go/thrift
 - name: github.com/beorn7/perks
@@ -36,9 +36,7 @@ imports:
   - store/mock
   - store/zookeeper
 - name: github.com/evalphobia/logrus_sentry
-  version: 57846a82817615f185b10cc40de8dc60c1ca5ae1
-- name: github.com/facebookgo/clock
-  version: 600d898af40aa09a7a93ecb9265d87b0504b6f03
+  version: b78b27461c8163c45abf4ab3a8330d2b1ee9456a
 - name: github.com/gemnasium/migrate
   version: 603c58f2c1d0882d7d5b24791e6e5af5ab392e44
   subpackages:
@@ -54,7 +52,7 @@ imports:
 - name: github.com/go-sql-driver/mysql
   version: 2e00b5cd70399450106cec6431c2e2ce3cae5034
 - name: github.com/gocql/gocql
-  version: 09f0498f9ab5ca0267e3b451483a368648de2158
+  version: 56a164ee9f3135e9cfe725a6d25939f24cb2d044
   subpackages:
   - internal/lru
   - internal/murmur
@@ -97,6 +95,23 @@ imports:
   version: f22ce00fd9394014049dad11c244859432bd6820
 - name: github.com/lann/ps
   version: 62de8c46ede02a7675c4c79c84883eb164cb71e3
+- name: github.com/m3db/prometheus_client_golang
+  version: 8ae269d24972b8695572fa6b2e3718b5ea82d6b4
+  subpackages:
+  - prometheus
+  - prometheus/promhttp
+- name: github.com/m3db/prometheus_client_model
+  version: 8b2299a4bf7d7fc10835527021716d4b4a6e8700
+  subpackages:
+  - go
+- name: github.com/m3db/prometheus_common
+  version: 25aaa3dff79bb48116615ebe1dea6a494b74ce77
+  subpackages:
+  - expfmt
+  - internal/bitbucket.org/ww/goautoneg
+  - model
+- name: github.com/m3db/prometheus_procfs
+  version: 1878d9fbb537119d24b21ca07effd591627cd160
 - name: github.com/mattn/go-colorable
   version: efa589957cd060542a26d2dd7832fd6a6c6c3ade
 - name: github.com/mattn/go-isatty
@@ -156,8 +171,6 @@ imports:
   version: 8841a0f8e7ca869284ccb29c08a14cf3f4310f46
 - name: github.com/uber-go/atomic
   version: 1ea20fb1cbb1cc08cbd0d913a96dead89aa18289
-  subpackages:
-  - utils
 - name: github.com/uber-go/automaxprocs
   version: 946a8391268aea0a60a86403988ff3ab4b604a83
 - name: github.com/uber-go/mapdecode
@@ -165,7 +178,7 @@ imports:
   subpackages:
   - internal/mapstructure
 - name: github.com/uber-go/tally
-  version: 522328b48efad0c6034dba92bf39228694e9d31f
+  version: ff17f3c43c065c3c2991f571e740eee43ea3a14a
   subpackages:
   - m3
   - m3/customtransports
@@ -175,7 +188,7 @@ imports:
   - prometheus
   - statsd
 - name: github.com/uber/tchannel-go
-  version: cc0c40929b0dbdb755b727a8c253de2b5d4af46b
+  version: 7f5c12c66261f3ac3c5dde959d65eed59e3b63af
   subpackages:
   - internal/argreader
   - relay
@@ -188,7 +201,6 @@ imports:
 - name: go.uber.org/automaxprocs
   version: 6fecebd30e89df4ebcb6ca6dc1d0a5c8d2aa10a0
   subpackages:
-  - internal/cgroups
   - internal/runtime
   - maxprocs
 - name: go.uber.org/multierr
@@ -200,7 +212,7 @@ imports:
   - push
   - tallypush
 - name: go.uber.org/thriftrw
-  version: 43dfafd7bb1c99f0460d645a1959b73f6dfa536f
+  version: fb439a9a7f5a388d8606aae1c1ff6654b8b67fbe
   subpackages:
   - version
 - name: go.uber.org/yarpc
@@ -239,7 +251,7 @@ imports:
   - yarpcconfig
   - yarpcerrors
 - name: go.uber.org/zap
-  version: eeedf312bc6c57391d84767a4cd413f02a917974
+  version: 4d45f9617f7d90f7a663ff21c7a4321dbe78098b
   subpackages:
   - buffer
   - internal/bufferpool
@@ -247,7 +259,7 @@ imports:
   - internal/exit
   - zapcore
 - name: golang.org/x/net
-  version: d11bb6cd8e3c4e60239c9cb20ef68586d74500d0
+  version: 3673e40ba22529d22c3fd7c93e97b0ce50fa7bdd
   repo: https://github.com/golang/net
   subpackages:
   - bpf
@@ -279,7 +291,7 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: d11072e7ca9811b1100b80ca0269ac831f06d024
+  version: 168a6198bcb0ef175f7dacec0b8691fc141dc9b8
   repo: https://github.com/grpc/grpc-go
   subpackages:
   - balancer
@@ -290,9 +302,11 @@ imports:
   - credentials
   - encoding
   - encoding/proto
-  - grpclb/grpc_lb_v1/messages
   - grpclog
   - internal
+  - internal/backoff
+  - internal/channelz
+  - internal/grpcrand
   - keepalive
   - metadata
   - naming
