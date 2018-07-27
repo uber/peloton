@@ -46,6 +46,42 @@ func (suite *LogManagerTestSuite) TestListTaskLogFiles() {
 	suite.Equal(filePaths, []string{"/var/lib/path1", "/var/lib/path2"})
 }
 
+func (suite *LogManagerTestSuite) TestListTaskLogFilesNoClient() {
+	ts := httptest.NewServer(slaveMux())
+	defer ts.Close()
+
+	_, err := listTaskLogFiles(&http.Client{
+		Timeout: 10 * time.Second,
+	}, "UnexistFile")
+
+	suite.Error(err)
+
+	_, err = listTaskLogFiles(&http.Client{
+		Timeout: 10 * time.Second,
+	}, ts.URL+"/failed")
+	suite.Error(err)
+
+	_, err = listTaskLogFiles(&http.Client{
+		Timeout: 10 * time.Second,
+	}, ts.URL+"/nonjson")
+	suite.Error(err)
+}
+
+func (suite *LogManagerTestSuite) TestListSandboxFilesPaths() {
+	lm := &logManager{
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
+	_, err := lm.ListSandboxFilesPaths(
+		"/var/lib/mesos/agent",
+		_testFrameworkID,
+		_testHostname,
+		_testAgentID,
+		_testTaskID)
+	suite.Error(err)
+}
+
 func (suite *LogManagerTestSuite) TestGetSlaveFileBrowseEndpointURL() {
 	sandboxDir := getSlaveFileBrowseEndpointURL("/var/lib/mesos/agent", _testFrameworkID, _testHostname, _testAgentID, _testTaskID)
 	suite.Equal(
@@ -55,6 +91,7 @@ func (suite *LogManagerTestSuite) TestGetSlaveFileBrowseEndpointURL() {
 
 var (
 	_slaveFileBrowseStr = `[{"path": "/var/lib/path1"}, {"path": "/var/lib/path2"}]`
+	_NonJSONResponse    = `error`
 )
 
 func slaveMux() *http.ServeMux {
@@ -63,6 +100,17 @@ func slaveMux() *http.ServeMux {
 	mux.HandleFunc("/files/browse", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, _slaveFileBrowseStr)
+		return
+	})
+
+	mux.HandleFunc("/failed", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	})
+
+	mux.HandleFunc("/nonjson", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, _NonJSONResponse)
 		return
 	})
 
