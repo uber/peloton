@@ -931,6 +931,64 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	suite.Equal("added 1 instances", resp.Message)
 }
 
+// TestJobUpdateControllerJob tests updated job config should contain both
+// existing and new instance config
+func (suite *JobHandlerTestSuite) TestJobUpdateInstanceConfig() {
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+
+	oldJobConfig := &job.JobConfig{
+		OwningTeam:    "team6",
+		InstanceCount: 1,
+		Type:          job.JobType_BATCH,
+		InstanceConfig: map[uint32]*task.TaskConfig{
+			0: {Command: &mesos.CommandInfo{}, Controller: true},
+		},
+		ChangeLog: &peloton.ChangeLog{Version: 1},
+	}
+
+	newJobConfig := &job.JobConfig{
+		OwningTeam:    "team6",
+		InstanceCount: 2,
+		Type:          job.JobType_BATCH,
+		InstanceConfig: map[uint32]*task.TaskConfig{
+			1: {Command: &mesos.CommandInfo{}, Controller: false},
+		},
+		ChangeLog: &peloton.ChangeLog{Version: 2},
+	}
+
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
+	suite.mockedJobFactory.EXPECT().AddJob(jobID).
+		Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{State: job.JobState_RUNNING}, nil)
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	suite.mockedCachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context, jobInfo *job.JobInfo, _ cached.UpdateRequest) {
+			suite.NotNil(jobInfo.GetConfig().GetInstanceConfig()[0])
+			suite.True(jobInfo.GetConfig().GetInstanceConfig()[0].Controller)
+			suite.NotNil(jobInfo.GetConfig().GetInstanceConfig()[1])
+		}).
+		Return(nil)
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			ChangeLog: &peloton.ChangeLog{Version: 2},
+		}, nil)
+	suite.mockedCachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Return(nil)
+	suite.mockedGoalStateDriver.EXPECT().
+		EnqueueJob(gomock.Any(), gomock.Any()).
+		Return()
+	req := &job.UpdateRequest{Id: jobID, Config: newJobConfig}
+	_, err := suite.handler.Update(suite.context, req)
+	suite.NoError(err)
+}
+
 // TestJobUpdateServiceJob tests updating a service job should fail
 func (suite *JobHandlerTestSuite) TestJobUpdateServiceJob() {
 	jobID := &peloton.JobID{

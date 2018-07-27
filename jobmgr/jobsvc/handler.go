@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
@@ -279,7 +280,7 @@ func (h *serviceHandler) Update(
 
 	// first persist the configuration
 	err = cachedJob.Update(ctx, &job.JobInfo{
-		Config: newConfig,
+		Config: mergeInstanceConfig(oldConfig, newConfig),
 	}, cached.UpdateCacheAndDB)
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
@@ -777,4 +778,22 @@ func (h *serviceHandler) validateExistingSecretVolumes(
 		addSecrets = append(addSecrets, secret)
 	}
 	return addSecrets, updateSecrets, nil
+}
+
+// In batch job update, instancesConfig of newConfig only need to include the config
+// for the additional instances. If a job config is directly updated to newConfig,
+// JobMgr would lose the track of previous instance config. As a result, JobMgr has
+// to use the merged result of instanceConfig in oldConfig and newConfig.
+// configs passed in mergeInstanceConfig must have been validated.
+func mergeInstanceConfig(oldConfig *job.JobConfig, newConfig *job.JobConfig) *job.JobConfig {
+	result := *newConfig
+	newInstanceConfig := make(map[uint32]*task.TaskConfig)
+	for instanceID, instanceConfig := range oldConfig.InstanceConfig {
+		newInstanceConfig[instanceID] = instanceConfig
+	}
+	for instanceID, instanceConfig := range newConfig.InstanceConfig {
+		newInstanceConfig[instanceID] = instanceConfig
+	}
+	result.InstanceConfig = newInstanceConfig
+	return &result
 }
