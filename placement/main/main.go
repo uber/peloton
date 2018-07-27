@@ -4,8 +4,10 @@ import (
 	"os"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/mimir-lib/algorithms"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/async"
 	common_config "code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
@@ -13,8 +15,17 @@ import (
 	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/placement"
 	"code.uber.internal/infra/peloton/placement/config"
-	"code.uber.internal/infra/peloton/storage/stores"
+	"code.uber.internal/infra/peloton/placement/hosts"
+	tally_metrics "code.uber.internal/infra/peloton/placement/metrics"
+	"code.uber.internal/infra/peloton/placement/offers"
+	"code.uber.internal/infra/peloton/placement/plugins"
+	"code.uber.internal/infra/peloton/placement/plugins/batch"
+	mimir_strategy "code.uber.internal/infra/peloton/placement/plugins/mimir"
+	"code.uber.internal/infra/peloton/placement/tasks"
 	"code.uber.internal/infra/peloton/yarpc/peer"
+
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	resmgrsvc "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	log "github.com/sirupsen/logrus"
 	_ "go.uber.org/automaxprocs"
@@ -265,16 +276,35 @@ func main() {
 	}
 	defer dispatcher.Stop()
 
-	log.Info("Connect to the TaskStore")
-	store := stores.MustCreateStore(&cfg.Storage, rootScope)
+	tallyMetrics := tally_metrics.NewMetrics(rootScope.SubScope("placement"))
+	resourceManager := resmgrsvc.NewResourceManagerServiceYARPCClient(dispatcher.ClientConfig(common.PelotonResourceManager))
+	hostManager := hostsvc.NewInternalHostServiceYARPCClient(dispatcher.ClientConfig(common.PelotonHostManager))
+	offerService := offers.NewService(hostManager, resourceManager, tallyMetrics)
+	taskService := tasks.NewService(resourceManager, &cfg.Placement, tallyMetrics)
+	hostsService := hosts.NewService(hostManager, resourceManager, tallyMetrics)
+
+	var strategy plugins.Strategy
+	switch cfg.Placement.Strategy {
+	case config.Batch:
+		strategy = batch.New()
+	case config.Mimir:
+		cfg.Placement.Concurrency = 1
+		placer := algorithms.NewPlacer()
+		strategy = mimir_strategy.New(placer, &cfg.Placement)
+	}
+
+	pool := async.NewPool(async.PoolOptions{
+		MaxWorkers: cfg.Placement.Concurrency,
+	})
 
 	engine := placement.New(
-		dispatcher,
 		rootScope,
 		&cfg.Placement,
-		common.PelotonResourceManager,
-		common.PelotonHostManager,
-		store, // store implements TaskStore
+		offerService,
+		taskService,
+		hostsService,
+		strategy,
+		pool,
 	)
 	log.Info("Start the PlacementEngine")
 	engine.Start()

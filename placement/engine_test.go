@@ -38,7 +38,6 @@ func setupEngine(t *testing.T) (
 	*mocks.MockStrategy) {
 	ctrl := gomock.NewController(t)
 
-	metrics := metrics.NewMetrics(tally.NoopScope)
 	mockOfferService := offers_mock.NewMockService(ctrl)
 	mockTaskService := tasks_mock.NewMockService(ctrl)
 	mockStrategy := mocks.NewMockStrategy(ctrl)
@@ -66,13 +65,16 @@ func setupEngine(t *testing.T) (
 			Stateful:  25 * time.Second,
 		},
 	}
-	e := NewEngine(
+
+	e := New(
+		tally.NoopScope,
 		config,
 		mockOfferService,
 		mockTaskService,
+		nil,
 		mockStrategy,
 		async.NewPool(async.PoolOptions{}),
-		metrics, nil)
+	)
 
 	return ctrl, e.(*engine), mockOfferService, mockTaskService, mockStrategy
 }

@@ -7,27 +7,21 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/placement/plugins"
-	"code.uber.internal/infra/peloton/placement/plugins/batch"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/common/async"
 	"code.uber.internal/infra/peloton/common/queue"
-	"code.uber.internal/infra/peloton/mimir-lib/algorithms"
 	"code.uber.internal/infra/peloton/placement/config"
 	"code.uber.internal/infra/peloton/placement/hosts"
 	tally_metrics "code.uber.internal/infra/peloton/placement/metrics"
 	"code.uber.internal/infra/peloton/placement/models"
 	"code.uber.internal/infra/peloton/placement/offers"
-	mimir_strategy "code.uber.internal/infra/peloton/placement/plugins/mimir"
 	"code.uber.internal/infra/peloton/placement/reserver"
 	"code.uber.internal/infra/peloton/placement/tasks"
-	"code.uber.internal/infra/peloton/storage"
 )
 
 const (
@@ -49,38 +43,22 @@ type Engine interface {
 
 // New creates a new placement engine having one dedicated coordinator per task type.
 func New(
-	dispatcher *yarpc.Dispatcher,
 	parent tally.Scope,
 	cfg *config.PlacementConfig,
-	resMgrClientName string,
-	hostMgrClientName string,
-	taskStore storage.TaskStore) Engine {
-	resourceManager := resmgrsvc.NewResourceManagerServiceYARPCClient(dispatcher.ClientConfig(resMgrClientName))
-	hostManager := hostsvc.NewInternalHostServiceYARPCClient(dispatcher.ClientConfig(hostMgrClientName))
-	tallyMetrics := tally_metrics.NewMetrics(parent.SubScope("placement"))
-	offerService := offers.NewService(hostManager, resourceManager, tallyMetrics)
-	taskService := tasks.NewService(resourceManager, cfg, tallyMetrics)
-	hostsService := hosts.NewService(hostManager, resourceManager, tallyMetrics)
-	scope := tally_metrics.NewMetrics(parent.SubScope(strings.ToLower(cfg.TaskType.String())))
-
-	var strategy plugins.Strategy
-	switch cfg.Strategy {
-	case config.Batch:
-		strategy = batch.New()
-	case config.Mimir:
-		cfg.Concurrency = 1
-		placer := algorithms.NewPlacer()
-		strategy = mimir_strategy.New(placer, cfg)
-	}
+	offerService offers.Service,
+	taskService tasks.Service,
+	hostsService hosts.Service,
+	strategy plugins.Strategy,
+	pool *async.Pool) Engine {
+	scope := tally_metrics.NewMetrics(
+		parent.SubScope(strings.ToLower(cfg.TaskType.String())))
 
 	engine := NewEngine(
 		cfg,
 		offerService,
 		taskService,
 		strategy,
-		async.NewPool(async.PoolOptions{
-			MaxWorkers: cfg.Concurrency,
-		}),
+		pool,
 		scope,
 		hostsService)
 
