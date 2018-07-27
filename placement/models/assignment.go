@@ -1,7 +1,7 @@
 package models
 
-// Assignment represents the assignment of a task to an host. Note that the same host can be used in multiple
-// different assignment instances.
+// Assignment represents the assignment of a task to a host.
+// One host can be used in multiple assignments.
 type Assignment struct {
 	HostOffers *HostOffers `json:"host"`
 	Task       *Task       `json:"task"`

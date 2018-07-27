@@ -11,7 +11,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func setupAssignmentVariables() (*hostsvc.HostOffer, *resmgrsvc.Gang, *resmgr.Task, *HostOffers, *Task, *Assignment) {
+func setupAssignmentVariables() (
+	*hostsvc.HostOffer,
+	*resmgrsvc.Gang,
+	*resmgr.Task,
+	*HostOffers,
+	*Task,
+	*Assignment) {
 	resmgrTask := &resmgr.Task{
 		Name: "task",
 	}
@@ -33,6 +39,10 @@ func setupAssignmentVariables() (*hostsvc.HostOffer, *resmgrsvc.Gang, *resmgr.Ta
 func TestAssignment_Task(t *testing.T) {
 	_, _, _, _, task, assignment := setupAssignmentVariables()
 	assert.Equal(t, task, assignment.GetTask())
+
+	task.SetMaxRounds(5)
+	assignment.SetTask(task)
+	assert.Equal(t, 5, assignment.GetTask().GetMaxRounds())
 }
 
 func TestAssignment_Offer(t *testing.T) {

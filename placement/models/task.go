@@ -8,8 +8,13 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 )
 
-// NewTask will create a new placement task from a resource manager task and the gang it belongs to.
-func NewTask(gang *resmgrsvc.Gang, task *resmgr.Task, deadline time.Time, maxRounds int) *Task {
+// NewTask will create a new placement task from a resource manager task,
+// and the gang it belongs to.
+func NewTask(
+	gang *resmgrsvc.Gang,
+	task *resmgr.Task,
+	deadline time.Time,
+	maxRounds int) *Task {
 	return &Task{
 		Gang:      gang,
 		Task:      task,
@@ -18,7 +23,7 @@ func NewTask(gang *resmgrsvc.Gang, task *resmgr.Task, deadline time.Time, maxRou
 	}
 }
 
-// Task represents a Peloton task, a Mimir placement entity can also be obtained from it.
+// Task represents a Placement task, a Mimir placement entity can also be obtained from it.
 type Task struct {
 	Gang *resmgrsvc.Gang `json:"gang"`
 	Task *resmgr.Task    `json:"task"`
