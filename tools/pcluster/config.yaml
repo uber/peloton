@@ -40,17 +40,6 @@ qos_correction_interval_min: 5secs
 oversubscribed_resources_interval: 1mins
 
 
-# Mysql configs
-mysql_image: percona:5.7.17
-default_mysql_port: 3306
-local_mysql_port: 8193
-mysql_root_password: peloton-root
-mysql_database: peloton
-mysql_user: peloton
-mysql_password: peloton
-mysql_container: peloton-mysql
-
-
 # Cassandra configs
 cassandra_image: cassandra:3.9
 cassandra_container: peloton-cassandra

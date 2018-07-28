@@ -30,9 +30,5 @@ mesos:
   zk_path: "zk://zookeeper-mesos-devel01-dca1.uber.internal:2181/mesos"
 
 storage:
-  mysql:
-    # TODO: read db from zk
-    host: compute841-dca1
-    port: 3306
   db_write_concurrency: 400
   auto_migrate: false

@@ -182,10 +182,6 @@ func main() {
 		cfg.JobManager.GRPCPort = *grpcPort
 	}
 
-	if *dbHost != "" {
-		cfg.Storage.MySQL.Host = *dbHost
-	}
-
 	if len(*electionZkServers) > 0 {
 		cfg.Election.ZKServers = *electionZkServers
 	}

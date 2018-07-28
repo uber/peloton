@@ -1358,7 +1358,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskConfigs() {
 	}
 }
 
-// TestCreateTasks ensures mysql task create batching works as expected.
+// TestCreateTasks ensures task create batching works as expected.
 func (suite *CassandraStoreTestSuite) TestCreateTasks() {
 	jobTasks := map[string]int{
 		uuid.New(): 10,

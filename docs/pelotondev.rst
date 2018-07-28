@@ -107,7 +107,7 @@ Configurations are stored in `/etc/peloton/$APP/`, and by default we will pass t
 arguments: `-c "/etc/peloton/${APP}/base.yaml" -c "/etc/peloton/${APP}/${ENVIRONMENT}.yaml"`
 
 NOTE: you need to make sure the container has access to all the dependencies it needs, like mesos-master,
-zookeeper, mysql, cassandra, etc. Check your configs!
+zookeeper, cassandra, etc. Check your configs!
 
 Master with pcluster
 --------------------
@@ -115,7 +115,7 @@ Master with pcluster
 Master with pcluster::
 
 	$ make pcluster
-	$ docker run --rm --name peloton -it -e APP=master -e ENVIRONMENT=development --link peloton-mesos-master:mesos-master --link peloton-zk:zookeeper --link peloton-mysql:mysql --link peloton-cassandra:cassandra peloton
+	$ docker run --rm --name peloton -it -e APP=master -e ENVIRONMENT=development --link peloton-mesos-master:mesos-master --link peloton-zk:zookeeper --link peloton-cassandra:cassandra peloton
 
 Client
 ------
@@ -196,5 +196,5 @@ bin/dbpressure -s peloton_pressure -t 1000 -w 200 -h ms-3162c292.pit-irn-1.ubera
 
 Also need to make sure to have the schema migration files under storage/cassandra/migrations
 
-After running the load into C*, one can check the C* dashboard, for example 
+After running the load into C*, one can check the C* dashboard, for example
 https://graphite.uberinternal.com/grafana2/dashboard/db/cassandra-mesos-irn

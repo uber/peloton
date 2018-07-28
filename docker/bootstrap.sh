@@ -83,13 +83,4 @@ for ((i=0; i<$NUM_AGENTS; i++)); do
      /scripts/run_mesos_slave.sh
 done
 
-# run mysql
-echo "run mysql container"
-$docker_cmd run --name $MYSQL_CONTAINER -p $LOCAL_MYSQL_PORT:$DEFAULT_MYSQL_PORT -d \
-   -e MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD \
-   -e MYSQL_DATABASE=$MYSQL_DATABASE \
-   -e MYSQL_USER=$MYSQL_USER \
-   -e MYSQL_PASSWORD=$MYSQL_PASSWORD \
-   mysql/mysql-server:$MYSQL_VERSION
-
 echo "All containers are running now."

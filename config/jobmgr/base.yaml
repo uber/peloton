@@ -1,17 +1,4 @@
 storage:
-  mysql:
-    user: peloton
-    password: peloton
-    database: peloton
-    host: 127.0.0.1
-    port: 8193
-    migrations: storage/mysql/migrations/
-    # max_batch_size_rows controls how many tasks are created/updated in 1
-    # insert statement. Increasing this will improve startup times for high task
-    # count jobs. WARNING: tuning this up beyond the threshold of MYSQL_PACKET_SIZE
-    # may result in failed task creations
-    max_batch_size_rows: 500
-    conn_lifetime: 30s
   cassandra:
     # FIXME: need to increase batch size limit dynamically in cassandra (T968823)
     max_batch_size_rows: 1
@@ -44,7 +31,7 @@ job_manager:
     preemption_dequeue_limit: 100
     preemption_dequeue_timeout_ms: 100
   deadline:
-    deadline_tracking_period: 30m 
+    deadline_tracking_period: 30m
   job_service:
     # TODO (adityacb): Adjust this limit once we fix T1689063 and T1689077
     # and have a better data model

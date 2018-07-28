@@ -6,7 +6,7 @@ source config
 
 # it's okay if stop/rm command fail when there is no peloton related conainer
 ./stop.sh
-$docker_cmd rm -f $ZK_CONTAINER $MESOS_MASTER_CONTAINER $MYSQL_CONTAINER
+$docker_cmd rm -f $ZK_CONTAINER $MESOS_MASTER_CONTAINER
 
 # rm mesos slave containers
 for ((i=0; i<$NUM_AGENTS; i++)); do

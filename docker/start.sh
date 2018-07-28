@@ -6,7 +6,6 @@ source config
 
 $docker_cmd start $ZK_CONTAINER
 $docker_cmd start $MESOS_MASTER_CONTAINER
-$docker_cmd start $MYSQL_CONTAINER
 
 # start mesos slave containers
 for ((i=0; i<$NUM_AGENTS; i++)); do

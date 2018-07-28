@@ -3,7 +3,7 @@
  -- Locally run and manage a personal cluster in containers.
 
 This script can be used to manage (setup, teardown) a personal
-Mesos cluster and Mysql etc in containers, optionally Peloton
+Mesos cluster etc in containers, optionally Peloton
 master or apps can be specified to run in containers as well.
 
 @copyright:  2017 Uber Compute Platform. All rights reserved.
@@ -252,37 +252,6 @@ def run_mesos():
 
 
 #
-# Run mysql
-#
-def run_mysql():
-    # Run mysql
-    remove_existing_container(config['mysql_container'])
-    cli.pull(config['mysql_image'])
-    container = cli.create_container(
-        name=config['mysql_container'],
-        hostname=config['mysql_container'],
-        host_config=cli.create_host_config(
-            port_bindings={
-                config['default_mysql_port']: config['local_mysql_port']
-            }
-        ),
-        environment=[
-            'MYSQL_ROOT_PASSWORD=' + config['mysql_root_password'],
-            'MYSQL_DATABASE=' + config['mysql_database'],
-            'MYSQL_USER=' + config['mysql_user'],
-            'MYSQL_PASSWORD=' + config['mysql_password'],
-        ],
-        image=config['mysql_image'],
-        detach=True,
-    )
-    cli.start(container=container.get('Id'))
-    print_okgreen('started container %s' % config['mysql_container'])
-
-    print_okblue('sleep 10 secs for mysql to come up')
-    time.sleep(10)
-
-
-#
 # Run cassandra cluster
 #
 def run_cassandra():
@@ -523,7 +492,6 @@ def wait_for_up(app, port):
 #
 def setup(applications={}, enable_peloton=False):
     run_cassandra()
-    run_mysql()
     run_mesos()
 
     if enable_peloton:
@@ -563,8 +531,6 @@ def teardown():
         remove_existing_container(name)
 
     teardown_mesos()
-
-    remove_existing_container(config['mysql_container'])
 
     remove_existing_container(config['cassandra_container'])
 

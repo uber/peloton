@@ -176,10 +176,6 @@ func main() {
 		cfg.Mesos.ZkPath = *zkPath
 	}
 
-	if *dbHost != "" {
-		cfg.Storage.MySQL.Host = *dbHost
-	}
-
 	if len(*electionZkServers) > 0 {
 		cfg.Election.ZKServers = *electionZkServers
 	}

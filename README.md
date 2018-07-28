@@ -162,13 +162,13 @@ Configurations are stored in `/etc/peloton/$APP/`, and by default we will pass t
 arguments: `-c "/etc/peloton/${APP}/base.yaml" -c "/etc/peloton/${APP}/${ENVIRONMENT}.yaml"`
 
 NOTE: you need to make sure the container has access to all the dependencies it needs, like mesos-master,
-zookeeper, mysql, cassandra, etc. Check your configs!
+zookeeper, cassandra, etc. Check your configs!
 
 #### Master with pcluster
 
 ```
 $ make pcluster
-$ docker run --rm --name peloton -it -e APP=master -e ENVIRONMENT=development --link peloton-mesos-master:mesos-master --link peloton-zk:zookeeper --link peloton-mysql:mysql --link peloton-cassandra:cassandra peloton
+$ docker run --rm --name peloton -it -e APP=master -e ENVIRONMENT=development --link peloton-mesos-master:mesos-master --link peloton-zk:zookeeper --link peloton-cassandra:cassandra peloton
 ```
 
 #### Client
@@ -263,6 +263,6 @@ Flags:
   -w, --workers=WORKERS  number of workers
   -s, --store=STORE      store
   -t, --batch=BATCH      task batch size per worker
-  
-After running the load into C*, one can check the C* dashboard, for example 
+
+After running the load into C*, one can check the C* dashboard, for example
 https://graphite.uberinternal.com/grafana2/dashboard/db/cassandra-mesos-irn

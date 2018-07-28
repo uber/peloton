@@ -136,11 +136,6 @@ func main() {
 		logging.ConfigureSentry(&cfg.SentryConfig)
 	}
 
-	// now, override any CLI flags in the loaded config.Config
-	if *dbHost != "" {
-		cfg.Storage.MySQL.Host = *dbHost
-	}
-
 	if len(*electionZkServers) > 0 {
 		cfg.Election.ZKServers = *electionZkServers
 	}

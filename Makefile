@@ -201,7 +201,6 @@ mockgens: build-mockgen pbgens $(GOMOCK)
 
 # launch the test containers to run integration tests and so-on
 test-containers:
-	bash docker/run_test_mysql.sh
 	bash docker/run_test_cassandra.sh
 
 test: $(GOCOV) pbgens mockgens test-containers

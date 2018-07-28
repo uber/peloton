@@ -33,12 +33,6 @@ election:
 # TODO: remove storage and mesos config when we
 # completely switch to hostMgr launch task api
 storage:
-  mysql:
-    user: peloton
-    password: peloton
-    database: peloton
-    host: mysql
-    port: 3306
 
 mesos:
   host_port: "mesos-master:5050"
