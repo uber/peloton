@@ -3,8 +3,53 @@
 0.8.0 (unreleased)
 ------------------
 
-0.7.2
+0.7.3
 ------------------
+* 2018-07-30    Add tests for hostmgr/task                                                             varung@uber.com
+* 2018-07-30    Enqueue initialized tasks being updated into goal state engine                         zhixin@uber.com
+* 2018-07-30    Reenqueue update if any task updated in UpdateRun is KILLED                            zhixin@uber.com
+* 2018-07-30    Add tests for peloton/placement                                                        varung@uber.com
+* 2018-07-30    Stop asyncEventProcessor on statusUpdate stop                                          amitbose@uber.com
+* 2018-07-28    Add test cover for jobmgr/task/event/statechanges                                      chunyang.shen@uber.com
+* 2018-07-28    Add test cover for  jobmgr/logmanager                                                  chunyang.shen@uber.com
+* 2018-07-28    Remove MySQL as Storage for interim                                                    varung@uber.com
+* 2018-07-27    Add tests for placement/tasks                                                          varung@uber.com
+* 2018-07-27    Add tests for placement/models                                                         varung@uber.com
+* 2018-07-27    Merge instance config when update config                                               zhixin@uber.com
+* 2018-07-27    Add tests for placement/offers                                                         varung@uber.com
+* 2018-07-26    Change gocql version in glide.yaml                                                     adityacb@uber.com
+* 2018-07-26    Add host related CLI commands                                                          sachins@uber.com
+* 2018-07-26    Implement update with batch size                                                       zhixin@uber.com
+* 2018-07-26    Fix potential deadlock case in `AggregatedChildrenReservations`                        avyas@uber.com
+* 2018-07-26    Implementing Host Manager's ReserveHosts and GetCompletedReservations api's in placement engine mabansal@uber.com
+* 2018-07-26    Add test cover for jobmgr/task/deadline                                                chunyang.shen@uber.com
+* 2018-07-26    Add test cover for jobmgr/goalstate                                                    chunyang.shen@uber.com
+* 2018-07-25    Add Drainer to reschedule tasks placed on draining hosts                               sachins@uber.com
+* 2018-07-25    Add Drainer to reschedule tasks placed on draining hosts                               sachins@uber.com
+* 2018-07-25    Handle resource usage calculation during jobmgr recovery                               adityacb@uber.com
+* 2018-07-25    Task and job return yarpc not found error in store                                     zhixin@uber.com
+* 2018-07-24    Fix the deadlock in task state machine and tracker                                     avyas@uber.com
+* 2018-07-24    Modify Start() and Stop() to use common/lifecycle                                      sachins@uber.com
+* 2018-07-24    Fixing errors, consistent locking in code cleanup in placement engine, resmgr and Hostmanager mabansal@uber.com
+* 2018-07-24    Fix building Peloton-CLI debian package                                                chunyang.shen@uber.com
+* 2018-07-24    Persist the health check result into the task runtime                                  chunyang.shen@uber.com
+* 2018-07-23    Add resource usage stats to job and task runtime info                                  adityacb@uber.com
+* 2018-07-23    Revert "Record state transition durations for RMTask"                                  avyas@uber.com
+* 2018-07-23    Adding support in placement engine for processing completed reservation and create placements mabansal@uber.com
+* 2018-07-20    Fix `Less` function in task sorting by `creation_time`                                 chunyang.shen@uber.com
+* 2018-07-20    Add unit tests for jobmgr task util                                                    adityacb@uber.com
+* 2018-07-20    Refactor testutil package and add tests for it                                         mabansal@uber.com
+* 2018-07-20    Recover Update upon JobMgr restart                                                     zhixin@uber.com
+* 2018-07-20    Allow providing resource pool path in update create CLI                                apoorvaj@uber.com
+* 2018-07-19    Add support for AbortUpdate API                                                        apoorvaj@uber.com
+* 2018-07-19    Move the changelog version increment and validation to the cache                       apoorvaj@uber.com
+* 2018-07-19    Fix nil panic when update cache is not found                                           zhixin@uber.com
+* 2018-07-19    Implement update.Recover                                                               zhixin@uber.com
+* 2018-07-17    Ensure that previous uncompleted job updates are aborted correctly                     apoorvaj@uber.com
+* 2018-07-17    Prevent duplicate entries for same Peloton task in Preemption Queue                    sachins@uber.com
+
+0.7.2
+	------------------
 * 2018-07-16    Change MockJobConfig to MockJobConfigCache                                             zhixin@uber.com
 * 2018-07-13    Add update service handler and CLI to interact with it                                 apoorvaj@uber.com
 * 2018-07-13    Controller job decides terminal state with controller task state                       zhixin@uber.com
