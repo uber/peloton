@@ -251,6 +251,10 @@ func (suite *UpdateRunTestSuite) TestCompletedUpdate() {
 			instancesRemaining,
 		).Return(nil)
 
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Do(func(entity goalstate.Entity, deadline time.Time) {
@@ -581,6 +585,132 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_FullyRunning_UpgradeInstances() {
 				newSlice(0, batchSize))
 			suite.Empty(instancesDone)
 		}).Return(nil)
+
+	for _, instID := range newSlice(0, batchSize) {
+		suite.cachedJob.EXPECT().
+			GetTask(instID).
+			Return(suite.cachedTask)
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_RUNNING,
+				ConfigVersion:        jobVersion,
+				DesiredConfigVersion: jobVersion,
+			}, nil)
+	}
+
+	err := UpdateRun(context.Background(), suite.updateEnt)
+	suite.NoError(err)
+}
+
+// TestUpdateRun_ContainsKilledTask_UpgradeInstances tests the case to upgrade
+// a job with killed tasks
+func (suite *UpdateRunTestSuite) TestUpdateRun_ContainsKilledTask_UpgradeInstances() {
+	instanceNumber := uint32(10)
+	batchSize := uint32(5)
+	jobVersion := uint64(3)
+	newJobVersion := uint64(4)
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID)
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			Instances:  newSlice(0, instanceNumber),
+			JobVersion: newJobVersion,
+		}).AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesUpdated().
+		Return(newSlice(0, instanceNumber))
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesAdded().
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetUpdateConfig().
+		Return(&pbupdate.UpdateConfig{
+			BatchSize: batchSize,
+		}).AnyTimes()
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(gomock.Any(), gomock.Any(), newJobVersion).
+		Return(&pbjob.JobConfig{
+			ChangeLog: &peloton.ChangeLog{Version: newJobVersion},
+		}, nil)
+
+	for _, instID := range newSlice(0, instanceNumber) {
+		suite.cachedJob.EXPECT().
+			AddTask(instID).
+			Return(suite.cachedTask)
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_KILLED,
+				ConfigVersion:        jobVersion,
+				DesiredConfigVersion: jobVersion,
+			}, nil)
+	}
+
+	suite.taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return().
+		Times(int(batchSize))
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		WriteProgress(
+			gomock.Any(),
+			pbupdate.State_ROLLING_FORWARD,
+			gomock.Any(),
+			gomock.Any()).
+		Do(func(_ context.Context, _ pbupdate.State,
+			instancesDone []uint32, instancesCurrent []uint32) {
+			suite.EqualValues(instancesCurrent,
+				newSlice(0, batchSize))
+			suite.Empty(instancesDone)
+		}).Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.cachedJob.EXPECT().
+		GetTask(uint32(0)).
+		Return(suite.cachedTask)
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(&pbtask.RuntimeInfo{
+			State:                pbtask.TaskState_KILLED,
+			GoalState:            pbtask.TaskState_KILLED,
+			ConfigVersion:        jobVersion,
+			DesiredConfigVersion: jobVersion,
+		}, nil)
+
+	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
 
 	err := UpdateRun(context.Background(), suite.updateEnt)
 	suite.NoError(err)

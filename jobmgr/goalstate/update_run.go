@@ -77,10 +77,55 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	if len(cachedUpdate.GetGoalState().Instances) == len(instancesDone) {
-		goalStateDriver.EnqueueUpdate(cachedJob.ID(), updateEnt.id, time.Now())
+	err = postUpdateAction(
+		ctx,
+		cachedJob,
+		cachedUpdate,
+		instancesToUpdate,
+		instancesDone,
+		goalStateDriver)
+	if err != nil {
+		goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
+		return err
 	}
+
 	goalStateDriver.mtx.updateMetrics.UpdateRun.Inc(1)
+	return nil
+}
+
+func postUpdateAction(
+	ctx context.Context,
+	cachedJob cached.Job,
+	cachedUpdate cached.Update,
+	instancesUpdatedInCurrentRun []uint32,
+	instancesDone []uint32,
+	goalStateDriver Driver,
+) error {
+	// update finishes, reenqueue the update
+	if len(cachedUpdate.GetGoalState().Instances) == len(instancesDone) {
+		goalStateDriver.EnqueueUpdate(cachedJob.ID(), cachedUpdate.ID(), time.Now())
+		return nil
+	}
+
+	// if any of the task updated in this round is a killed task,
+	// reenqueue the update, because more instances can be updated
+	// without receiving task event.
+	for _, instanceID := range instancesUpdatedInCurrentRun {
+		cachedTask := cachedJob.GetTask(instanceID)
+		if cachedTask == nil {
+			continue
+		}
+		runtime, err := cachedTask.GetRunTime(ctx)
+		if err != nil {
+			return err
+		}
+		if runtime.GetGoalState() == pbtask.TaskState_KILLED &&
+			runtime.GetState() == pbtask.TaskState_KILLED {
+			goalStateDriver.EnqueueUpdate(cachedJob.ID(), cachedUpdate.ID(), time.Now())
+			return nil
+		}
+	}
+
 	return nil
 }
 
