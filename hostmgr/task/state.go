@@ -8,6 +8,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	uatomic "github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
@@ -23,58 +24,42 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 )
 
-var errorWaitInterval = 10 * time.Second
+const (
+	_errorWaitInterval = 10 * time.Second
+)
 
-// InitTaskStateManager init the task state manager
-func InitTaskStateManager(
-	d *yarpc.Dispatcher,
-	updateBufferSize int,
-	updateAckConcurrency int,
-	eventDestinationRole string,
-	parentScope tally.Scope) {
+// StateManager is the interface for mesos task status updates stream.
+type StateManager interface {
+	// Update is the mesos callback to framework to notify mesos task status update change.
+	Update(ctx context.Context, body *sched.Event) error
 
-	var taskUpdateCount int64
-	var prevUpdateCount int64
-	var taskUpdateAckCount int64
-	var prevTaskUpdateAckCount int64
-	var taskUpdateDBWrittenCount int64
-	var prevTaskUpdateDBWrittenCount int64
-	var statusChannelCount int32
+	// UpdateCounters manages counters of task status update & ack counts.
+	UpdateCounters(_ *uatomic.Bool)
 
-	handler := taskStateManager{
-		schedulerclient: mpb.NewSchedulerClient(
-			d.ClientConfig(common.MesosMasterScheduler),
-			mpb.ContentTypeProtobuf,
-		),
-		updateAckConcurrency: updateAckConcurrency,
-		ackChannel:           make(chan *mesos.TaskStatus, updateBufferSize),
-		taskUpdateCount:      &taskUpdateCount,
-		prevUpdateCount:      &prevUpdateCount,
-		taskAckCount:         &taskUpdateAckCount,
-		prevAckCount:         &prevTaskUpdateAckCount,
-		dBWrittenCount:       &taskUpdateDBWrittenCount,
-		prevDBWrittenCount:   &prevTaskUpdateDBWrittenCount,
-		statusChannelCount:   &statusChannelCount,
-		scope:                parentScope.SubScope("taskStateManager"),
-	}
-	procedures := map[sched.Event_Type]interface{}{
-		sched.Event_UPDATE: handler.Update,
-	}
-	for typ, hdl := range procedures {
-		name := typ.String()
-		mpb.Register(d, hostmgr_mesos.ServiceName, mpb.Procedure(name, hdl))
-	}
-	handler.startAsyncProcessTaskUpdates()
-	handler.eventStreamHandler = initEventStreamHandler(
-		d,
-		&handler,
-		updateBufferSize,
-		handler.scope.SubScope("EventStreamHandler"))
-	// initialize the status update event forwarder for resmgr
-	initResMgrEventForwarder(d,
-		handler.eventStreamHandler,
-		eventDestinationRole,
-		handler.scope.SubScope("ResourceManagerClient"))
+	// EventPurged is for implementing PurgedEventsProcessor interface.
+	EventPurged(events []*cirbuf.CircularBufferItem)
+}
+
+type stateManager struct {
+	schedulerclient mpb.SchedulerClient
+
+	updateAckConcurrency int
+	ackChannel           chan *mesos.TaskStatus // Buffers the mesos task status updates to be acknowledged
+
+	taskUpdateCount *int64 // mesos task status update received
+	prevUpdateCount *int64 // mesos task status update count to get difference/sec
+	taskAckCount    *int64 // mesos task status update acknowledged
+	prevAckCount    *int64 // mesos task status update ack count to get difference/sec
+
+	// TODO: move DB written counts into jobmgr
+	dBWrittenCount     *int64
+	prevDBWrittenCount *int64
+
+	statusChannelCount *int32 // #mesos task status update present in channel
+
+	lastPrintTime      time.Time
+	eventStreamHandler *eventstream.Handler
+	scope              tally.Scope
 }
 
 // eventForwarder is the struct to forward status update events to
@@ -87,12 +72,99 @@ type eventForwarder struct {
 	progress *uint64
 }
 
-func newEventForwarder(d *yarpc.Dispatcher, eventDestinationRole string) eventstream.EventHandler {
+// initResMgrEventForwarder, creates an event stream client to push
+// mesos task status update events to Resource Manager from Host Manager.
+func initResMgrEventForwarder(
+	eventStreamHandler *eventstream.Handler,
+	client resmgrsvc.ResourceManagerServiceYARPCClient,
+	scope tally.Scope) {
 	var progress uint64
-	return &eventForwarder{
-		client:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(eventDestinationRole)),
+	eventForwarder := &eventForwarder{
+		client:   client,
 		progress: &progress,
 	}
+	eventstream.NewLocalEventStreamClient(
+		common.PelotonResourceManager,
+		eventStreamHandler,
+		eventForwarder,
+		scope,
+	)
+}
+
+// initEventStreamHandler initializes two event streams for communicating
+// task status updates with Job Manager & Resource Manager.
+// Job Manager: pulls task status update events from event stream.
+// Resource Manager: Host Manager call event stream client
+// to push task status update events.
+func initEventStreamHandler(
+	d *yarpc.Dispatcher,
+	purgedEventProcessor eventstream.PurgedEventsProcessor,
+	bufferSize int,
+	scope tally.Scope) *eventstream.Handler {
+	eventStreamHandler := eventstream.NewEventStreamHandler(
+		bufferSize,
+		[]string{common.PelotonJobManager, common.PelotonResourceManager},
+		purgedEventProcessor,
+		scope,
+	)
+
+	d.Register(pb_eventstream.BuildEventStreamServiceYARPCProcedures(eventStreamHandler))
+
+	return eventStreamHandler
+}
+
+// NewStateManager init the task state manager by setting up input stream
+// to receive mesos task status update, and outgoing event stream
+// for Job Manager & Resource Manager for consumption of these task status updates.
+func NewStateManager(
+	d *yarpc.Dispatcher,
+	schedulerClient mpb.SchedulerClient,
+	updateBufferSize int,
+	updateAckConcurrency int,
+	resmgrClient resmgrsvc.ResourceManagerServiceYARPCClient,
+	parentScope tally.Scope) StateManager {
+
+	var taskUpdateCount int64
+	var prevUpdateCount int64
+	var taskUpdateAckCount int64
+	var prevTaskUpdateAckCount int64
+	var taskUpdateDBWrittenCount int64
+	var prevTaskUpdateDBWrittenCount int64
+	var statusChannelCount int32
+
+	handler := &stateManager{
+		schedulerclient:      schedulerClient,
+		updateAckConcurrency: updateAckConcurrency,
+		ackChannel:           make(chan *mesos.TaskStatus, updateBufferSize),
+		taskUpdateCount:      &taskUpdateCount,
+		prevUpdateCount:      &prevUpdateCount,
+		taskAckCount:         &taskUpdateAckCount,
+		prevAckCount:         &prevTaskUpdateAckCount,
+		dBWrittenCount:       &taskUpdateDBWrittenCount,
+		prevDBWrittenCount:   &prevTaskUpdateDBWrittenCount,
+		statusChannelCount:   &statusChannelCount,
+		scope:                parentScope.SubScope("taskStateManager"),
+	}
+	mpb.Register(
+		d,
+		hostmgr_mesos.ServiceName,
+		mpb.Procedure(sched.Event_UPDATE.String(), handler.Update))
+	handler.startAsyncProcessTaskUpdates()
+	handler.eventStreamHandler = initEventStreamHandler(
+		d,
+		handler,
+		updateBufferSize,
+		handler.scope.SubScope("EventStreamHandler"))
+	initResMgrEventForwarder(
+		handler.eventStreamHandler,
+		resmgrClient,
+		handler.scope.SubScope("ResourceManagerClient"))
+	return handler
+}
+
+// GetEventProgress returns the event forward progress
+func (f *eventForwarder) GetEventProgress() uint64 {
+	return atomic.LoadUint64(f.progress)
 }
 
 // OnEvent callback
@@ -117,7 +189,7 @@ func (f *eventForwarder) OnEvents(events []*pb_eventstream.Event) {
 			} else {
 				log.WithError(err).WithField("progress", events[0].Offset).
 					Error("Failed to call ResourceManager.NotifyTaskUpdate")
-				time.Sleep(errorWaitInterval)
+				time.Sleep(_errorWaitInterval)
 			}
 		}
 		if response.PurgeOffset > 0 {
@@ -138,62 +210,13 @@ func (f *eventForwarder) notifyResourceManager(
 	return f.client.NotifyTaskUpdates(ctx, request)
 }
 
-// GetEventProgress returns the event forward progress
-func (f *eventForwarder) GetEventProgress() uint64 {
-	return atomic.LoadUint64(f.progress)
-}
-
-func initResMgrEventForwarder(
-	d *yarpc.Dispatcher,
-	eventStreamHandler *eventstream.Handler,
-	eventDestinationRole string,
-	scope tally.Scope) {
-	eventstream.NewLocalEventStreamClient(
-		common.PelotonResourceManager,
-		eventStreamHandler,
-		newEventForwarder(d, eventDestinationRole),
-		scope,
-	)
-}
-
-func initEventStreamHandler(d *yarpc.Dispatcher,
-	purgedEventProcessor eventstream.PurgedEventsProcessor,
-	bufferSize int,
-	scope tally.Scope) *eventstream.Handler {
-	eventStreamHandler := eventstream.NewEventStreamHandler(
-		bufferSize,
-		[]string{common.PelotonJobManager, common.PelotonResourceManager},
-		purgedEventProcessor,
-		scope,
-	)
-
-	d.Register(pb_eventstream.BuildEventStreamServiceYARPCProcedures(eventStreamHandler))
-
-	return eventStreamHandler
-}
-
-type taskStateManager struct {
-	schedulerclient      mpb.SchedulerClient
-	updateAckConcurrency int
-	// Buffers the status updates to ack
-	ackChannel chan *mesos.TaskStatus
-
-	taskUpdateCount *int64
-	prevUpdateCount *int64
-	taskAckCount    *int64
-	prevAckCount    *int64
-	// TODO: move DB written counts into jobmgr
-	dBWrittenCount     *int64
-	prevDBWrittenCount *int64
-	statusChannelCount *int32
-
-	lastPrintTime      time.Time
-	eventStreamHandler *eventstream.Handler
-	scope              tally.Scope
+// getTaskUpdateCount is to get total mesos task status updates notified.
+func (m *stateManager) getTaskUpdateCount() int64 {
+	return *m.taskUpdateCount
 }
 
 // Update is the Mesos callback on mesos state updates
-func (m *taskStateManager) Update(ctx context.Context, body *sched.Event) error {
+func (m *stateManager) Update(ctx context.Context, body *sched.Event) error {
 	var err error
 	taskUpdate := body.GetUpdate()
 	log.WithField("task_update", taskUpdate).
@@ -209,54 +232,61 @@ func (m *taskStateManager) Update(ctx context.Context, body *sched.Event) error 
 			WithField("status_update", taskUpdate.GetStatus()).
 			Error("Cannot add status update")
 	}
-	m.updateCounters()
+
 	// If buffer is full, AddStatusUpdate would fail and peloton would not
 	// ack the status update and mesos master would resend the status update.
 	// Return nil otherwise the framework would disconnect with the mesos master
 	return nil
 }
 
-func (m *taskStateManager) updateCounters() {
+// UpdateCounters tracks the count for task status update & ack count.
+func (m *stateManager) UpdateCounters(_ *uatomic.Bool) {
 	atomic.AddInt32(m.statusChannelCount, 1)
 	atomic.AddInt64(m.taskUpdateCount, 1)
-	if time.Since(m.lastPrintTime).Seconds() > 1.0 {
-		m.lastPrintTime = time.Now()
-		updateCount := atomic.LoadInt64(m.taskUpdateCount)
-		prevCount := atomic.LoadInt64(m.prevUpdateCount)
-		log.WithFields(log.Fields{
-			"TaskUpdateCount": updateCount,
-			"delta":           updateCount - prevCount,
-		}).Info("Task updates received")
-		atomic.StoreInt64(m.prevUpdateCount, updateCount)
+	m.lastPrintTime = time.Now()
+	updateCount := atomic.LoadInt64(m.taskUpdateCount)
+	prevCount := atomic.LoadInt64(m.prevUpdateCount)
+	log.WithFields(log.Fields{
+		"task_update_count": updateCount,
+		"delta":             updateCount - prevCount,
+	}).Info("Task updates received")
+	atomic.StoreInt64(m.prevUpdateCount, updateCount)
 
-		ackCount := atomic.LoadInt64(m.taskAckCount)
-		prevAckCount := atomic.LoadInt64(m.prevAckCount)
-		log.WithFields(log.Fields{
-			"TaskAckCount": ackCount,
-			"delta":        ackCount - prevAckCount,
-		}).Info("Task updates acked")
-		atomic.StoreInt64(m.prevAckCount, ackCount)
+	ackCount := atomic.LoadInt64(m.taskAckCount)
+	prevAckCount := atomic.LoadInt64(m.prevAckCount)
+	log.WithFields(log.Fields{
+		"task_ack_count": ackCount,
+		"delta":          ackCount - prevAckCount,
+	}).Info("Task updates acked")
+	atomic.StoreInt64(m.prevAckCount, ackCount)
 
-		writtenCount := atomic.LoadInt64(m.dBWrittenCount)
-		prevWrittenCount := atomic.LoadInt64(m.prevDBWrittenCount)
-		log.WithFields(log.Fields{
-			"TaskWrittenCount": writtenCount,
-			"delta":            writtenCount - prevWrittenCount,
-		}).Info("Task db persisted")
-		atomic.StoreInt64(m.prevDBWrittenCount, writtenCount)
+	writtenCount := atomic.LoadInt64(m.dBWrittenCount)
+	prevWrittenCount := atomic.LoadInt64(m.prevDBWrittenCount)
+	log.WithFields(log.Fields{
+		"task_written_count": writtenCount,
+		"delta":              writtenCount - prevWrittenCount,
+	}).Debug("Task db persisted")
+	atomic.StoreInt64(m.prevDBWrittenCount, writtenCount)
 
-		log.WithField("TaskUpdateChannelCount", atomic.LoadInt32(m.statusChannelCount)).Info("TaskUpdate channel size")
-	}
+	log.WithField("task_update_channel_count",
+		atomic.LoadInt32(m.statusChannelCount)).
+		Info("TaskUpdate channel size")
 }
 
-func (m *taskStateManager) startAsyncProcessTaskUpdates() {
+// startAsyncProcessTaskUpdates concurrently process task status update events
+// ready to ACK iff uuid is not nil.
+func (m *stateManager) startAsyncProcessTaskUpdates() {
 	for i := 0; i < m.updateAckConcurrency; i++ {
 		go func() {
 			for taskStatus := range m.ackChannel {
 				if len(taskStatus.GetUuid()) == 0 {
-					log.WithField("status_update", taskStatus).Debug("Skipping acknowledging update with empty uuid")
+					log.WithField("status_update", taskStatus).
+						Debug("Skip acknowledging update with empty uuid")
 				} else {
-					err := m.acknowledgeTaskUpdate(context.Background(), taskStatus)
+					// TODO (varung): Add retry for acknowledging status update
+					err := m.acknowledgeTaskUpdate(
+						context.Background(),
+						taskStatus)
 					if err != nil {
 						log.WithField("task_status", *taskStatus).
 							WithError(err).
@@ -268,7 +298,11 @@ func (m *taskStateManager) startAsyncProcessTaskUpdates() {
 	}
 }
 
-func (m *taskStateManager) acknowledgeTaskUpdate(ctx context.Context, taskStatus *mesos.TaskStatus) error {
+// acknowledgeTaskUpdate, ACK task status update events
+// thru POST scheduler client call to Mesos Master.
+func (m *stateManager) acknowledgeTaskUpdate(
+	ctx context.Context,
+	taskStatus *mesos.TaskStatus) error {
 	atomic.AddInt64(m.taskAckCount, 1)
 	atomic.AddInt32(m.statusChannelCount, -1)
 	callType := sched.Call_ACKNOWLEDGE
@@ -289,12 +323,13 @@ func (m *taskStateManager) acknowledgeTaskUpdate(ctx context.Context, taskStatus
 			Error("Failed to ack task update")
 		return err
 	}
-	log.WithField("task_status", *taskStatus).Debug("Acked task update")
+	log.WithField("task_status", *taskStatus).
+		Debug("Acked task update")
 	return nil
 }
 
-// EventPurged function is for implementing PurgedEventsProcessor interface
-func (m *taskStateManager) EventPurged(events []*cirbuf.CircularBufferItem) {
+// EventPurged is for implementing PurgedEventsProcessor interface.
+func (m *stateManager) EventPurged(events []*cirbuf.CircularBufferItem) {
 	for _, e := range events {
 		event, ok := e.Value.(*pb_eventstream.Event)
 		if ok {

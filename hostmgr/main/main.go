@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/common/backoff"
 
 	"code.uber.internal/infra/peloton/common"
@@ -436,12 +437,24 @@ func main() {
 	// temporary. Eventually we should create proper API protocol for
 	// `WaitTaskStatusUpdate` and allow RM/JM to retrieve this
 	// separately.
-	task.InitTaskStateManager(
+	taskStateManager := task.NewStateManager(
 		dispatcher,
+		schedulerClient,
 		cfg.HostManager.TaskUpdateBufferSize,
 		cfg.HostManager.TaskUpdateAckConcurrency,
-		common.PelotonResourceManager,
+		resmgrsvc.NewResourceManagerServiceYARPCClient(
+			dispatcher.ClientConfig(common.PelotonResourceManager)),
 		rootScope,
+	)
+
+	// Register background worker to start mesos task status update counter.
+	backgroundManager.RegisterWorks(
+		background.Work{
+			Name:         "mesostaskstatusupdatecounter",
+			Func:         taskStateManager.UpdateCounters,
+			Period:       time.Duration(1) * time.Second,
+			InitialDelay: time.Duration(1) * time.Second,
+		},
 	)
 
 	recoveryHandler := hostmgr.NewRecoveryHandler(rootScope, masterOperatorClient, maintenanceQueue)

@@ -76,7 +76,8 @@ type HostSummary interface {
 
 	// TryMatch atomically tries to match offers from the current host with given
 	// constraint.
-	TryMatch(hostFilter *hostsvc.HostFilter,
+	TryMatch(
+		hostFilter *hostsvc.HostFilter,
 		evaluator constraints.Evaluator) (hostsvc.HostFilterResult, []*mesos.Offer)
 
 	// AddMesosOffer adds a Mesos offer to the current HostSummary.

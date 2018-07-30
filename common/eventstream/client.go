@@ -283,7 +283,6 @@ func (c *Client) Start() {
 				c.waitEventsLoop(stopCh)
 			}
 		}
-
 	}()
 	c.log.Info("Event stream client started")
 }

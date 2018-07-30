@@ -37,7 +37,8 @@ type Matcher struct {
 // If properly matched, the offers will be kept in Matcher for later return,
 // otherwise they are untouched.
 func (m *Matcher) tryMatch(
-	hostname string, s summary.HostSummary) {
+	hostname string,
+	s summary.HostSummary) {
 	result := m.tryMatchImpl(hostname, s)
 	if name, ok := hostsvc.HostFilterResult_name[int32(result)]; !ok {
 		log.WithField("value", result).
@@ -48,7 +49,8 @@ func (m *Matcher) tryMatch(
 }
 
 func (m *Matcher) tryMatchImpl(
-	hostname string, s summary.HostSummary) hostsvc.HostFilterResult {
+	hostname string,
+	s summary.HostSummary) hostsvc.HostFilterResult {
 	if m.HasEnoughHosts() {
 		return hostsvc.HostFilterResult_MISMATCH_MAX_HOST_LIMIT
 	}
