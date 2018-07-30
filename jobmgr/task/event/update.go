@@ -228,10 +228,12 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	// Persist the reason and message for mesos updates
 	runtimeDiff[cached.MessageField] = statusMsg
 	runtimeDiff[cached.ReasonField] = ""
-	// healthy field will be overwrite if it is a `RUNNING health check` event
-	runtimeDiff[cached.HealthyField] = pb_task.HealthState_INVALID
 
 	switch state {
+	case pb_task.TaskState_SUCCEEDED:
+		runtimeDiff[cached.StateField] = state
+		runtimeDiff[cached.HealthyField] = pb_task.HealthState_INVALID
+
 	case pb_task.TaskState_KILLED:
 		if runtime.GetGoalState() == pb_task.TaskState_PREEMPTING {
 			runtimeDiff[cached.ReasonField] = "Task preempted"
@@ -242,18 +244,22 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			}
 		}
 		runtimeDiff[cached.StateField] = state
+		runtimeDiff[cached.HealthyField] = pb_task.HealthState_INVALID
 
 	case pb_task.TaskState_FAILED:
-		if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_TASK_INVALID && strings.Contains(event.GetMesosTaskStatus().GetMessage(), "Task has duplicate ID") {
+		if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_TASK_INVALID &&
+			strings.Contains(event.GetMesosTaskStatus().GetMessage(), "Task has duplicate ID") {
 			log.WithField("task_id", taskID).
 				Info("ignoring duplicate task id failure")
 			return nil
 		}
 		runtimeDiff[cached.ReasonField] = event.GetMesosTaskStatus().GetReason().String()
+		runtimeDiff[cached.HealthyField] = pb_task.HealthState_INVALID
 		runtimeDiff[cached.StateField] = state
 
 	case pb_task.TaskState_LOST:
 		runtimeDiff[cached.ReasonField] = event.GetMesosTaskStatus().GetReason().String()
+		runtimeDiff[cached.HealthyField] = pb_task.HealthState_INVALID
 		if util.IsPelotonStateTerminal(runtime.GetState()) {
 			// Skip LOST status update if current state is terminal state.
 			log.WithFields(log.Fields{
@@ -302,22 +308,17 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			runtime.GetStartTime(),
 			now().UTC().Format(time.RFC3339Nano))
 	case pb_task.TaskState_RUNNING:
-		// Only record the health check result health check is enabled
-		// and the reason for the event is TASK_HEALTH_CHECK_STATUS_UPDATED
+		// Only record the health check result when
+		// the reason for the event is TASK_HEALTH_CHECK_STATUS_UPDATED
 		reason := event.GetMesosTaskStatus().GetReason()
-		if taskInfo.GetConfig().GetHealthCheck() != nil &&
-			reason == mesos_v1.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED {
+		if reason == mesos_v1.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED {
 			if event.GetMesosTaskStatus().GetHealthy() {
 				runtimeDiff[cached.HealthyField] = pb_task.HealthState_HEALTHY
 			} else {
 				runtimeDiff[cached.HealthyField] = pb_task.HealthState_UNHEALTHY
 			}
-			runtimeDiff[cached.ReasonField] = reason.String()
-		} else {
-			runtimeDiff[cached.HealthyField] = pb_task.HealthState_INVALID
 		}
 		runtimeDiff[cached.StateField] = state
-
 	default:
 		runtimeDiff[cached.StateField] = state
 	}

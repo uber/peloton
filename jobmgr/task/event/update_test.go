@@ -151,12 +151,6 @@ func createTestTaskInfo(state task.TaskState) *task.TaskInfo {
 			RestartPolicy: &task.RestartPolicy{
 				MaxFailures: 3,
 			},
-			HealthCheck: &task.HealthCheckConfig{
-				InitialIntervalSecs:    10,
-				IntervalSecs:           10,
-				MaxConsecutiveFailures: 5,
-				TimeoutSecs:            5,
-			},
 		},
 		InstanceId: uint32(_instanceID),
 		JobId:      _pelotonJobID,
@@ -179,7 +173,6 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 		cached.StateField:          task.TaskState_RUNNING,
 		cached.StartTimeField:      _currentTime,
 		cached.ReasonField:         "",
-		cached.HealthyField:        task.HealthState_INVALID,
 	}
 	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
@@ -710,7 +703,6 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
 		cached.MessageField:        "testFailure",
 		cached.CompletionTimeField: "",
 		cached.ReasonField:         "",
-		cached.HealthyField:        task.HealthState_INVALID,
 	}
 	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
@@ -768,7 +760,6 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 		cached.MessageField:        "testFailure",
 		cached.CompletionTimeField: "",
 		cached.ReasonField:         "",
-		cached.HealthyField:        task.HealthState_INVALID,
 	}
 	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
