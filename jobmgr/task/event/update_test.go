@@ -538,6 +538,43 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateResourceUsageError() {
 	}
 }
 
+// Test processing task status update when there is a task with resource usage
+// map as nil. This could happen for in-flight tasks created before the feature
+// was introduced
+func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateResourceUsageNil() {
+	defer suite.ctrl.Finish()
+
+	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
+	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+	taskInfo.Runtime.GoalState = task.TaskState_SUCCEEDED
+	taskInfo.Runtime.ResourceUsage = nil
+
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
+
+	gomock.InOrder(
+		suite.mockTaskStore.EXPECT().
+			GetTaskByID(context.Background(), _pelotonTaskID).
+			Return(taskInfo, nil),
+		suite.jobFactory.EXPECT().
+			AddJob(_pelotonJobID).Return(cachedJob),
+		cachedJob.EXPECT().
+			SetTaskUpdateTime(gomock.Any()).Return(),
+		cachedJob.EXPECT().
+			PatchTasks(context.Background(), gomock.Any()).
+			Return(nil),
+		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
+		suite.goalStateDriver.EXPECT().
+			JobRuntimeDuration(job.JobType_BATCH).
+			Return(1*time.Second),
+		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
+		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
+	)
+
+	suite.NoError(suite.updater.ProcessStatusUpdate(
+		context.Background(), event))
+}
+
 // Test processing orphan RUNNING task status update.
 func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskRunningStatusUpdate() {
 	defer suite.ctrl.Finish()
