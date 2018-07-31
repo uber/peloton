@@ -3,6 +3,10 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.3.1
+------------------
+* 2018-07-31    Fix resource usage map panic for older tasks                                           adityacb@uber.com
+
 0.7.3
 ------------------
 * 2018-07-30    Add tests for hostmgr/task                                                             varung@uber.com
