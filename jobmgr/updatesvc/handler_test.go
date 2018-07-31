@@ -892,3 +892,82 @@ func (suite *UpdateSvcTestSuite) TestAbort() {
 	)
 	suite.NoError(err)
 }
+
+// TestPauseUpdateSuccess tests the success case of pause an update
+func (suite *UpdateSvcTestSuite) TestPauseUpdateSuccess() {
+	suite.updateStore.EXPECT().
+		GetUpdateProgress(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			State: update.State_ROLLING_FORWARD,
+		}, nil)
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{State: update.State_ROLLING_FORWARD})
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesCurrent().
+		Return([]uint32{})
+
+	suite.cachedUpdate.EXPECT().
+		WriteProgress(gomock.Any(), update.State_PAUSED, gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	_, err := suite.h.PauseUpdate(
+		context.Background(),
+		&svc.PauseUpdateRequest{UpdateId: suite.updateID},
+	)
+	suite.NoError(err)
+}
+
+// TestPauseUpdateCacheMiss tests the failure case of pause an update
+// due to cache miss
+func (suite *UpdateSvcTestSuite) TestPauseUpdateCacheMiss() {
+	suite.updateStore.EXPECT().
+		GetUpdateProgress(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			State: update.State_ROLLING_FORWARD,
+		}, nil)
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(nil)
+
+	_, err := suite.h.PauseUpdate(
+		context.Background(),
+		&svc.PauseUpdateRequest{UpdateId: suite.updateID},
+	)
+	suite.Error(err)
+}
+
+// TestPauseUpdateIncorrectState tests the failure case of pause
+// due to invalid update state
+func (suite *UpdateSvcTestSuite) TestPauseUpdateIncorrectState() {
+	suite.updateStore.EXPECT().
+		GetUpdateProgress(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			State: update.State_PAUSED,
+		}, nil)
+
+	_, err := suite.h.PauseUpdate(
+		context.Background(),
+		&svc.PauseUpdateRequest{UpdateId: suite.updateID},
+	)
+	suite.Error(err)
+
+	suite.updateStore.EXPECT().
+		GetUpdateProgress(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			State: update.State_ABORTED,
+		}, nil)
+
+	_, err = suite.h.PauseUpdate(
+		context.Background(),
+		&svc.PauseUpdateRequest{UpdateId: suite.updateID},
+	)
+	suite.Error(err)
+}

@@ -30,17 +30,20 @@ const (
 	ClearUpdateAction UpdateAction = "update_clear"
 	// CheckForAbortAction checks if the update needs to be aborted
 	CheckForAbortAction UpdateAction = "check_for_abort"
+	// WriteProgressUpdateAction writes the latest update progress
+	WriteProgressUpdateAction UpdateAction = "write_progress"
 )
 
 // _updateActionsMaps maps the UpdateAction string to the Action function.
 var (
 	_updateActionsMaps = map[UpdateAction]goalstate.ActionExecute{
-		NoUpdateAction:       nil,
-		ReloadUpdateAction:   UpdateReload,
-		StartUpdateAction:    UpdateStart,
-		RunUpdateAction:      UpdateRun,
-		CompleteUpdateAction: UpdateComplete,
-		ClearUpdateAction:    UpdateUntrack,
+		NoUpdateAction:            nil,
+		ReloadUpdateAction:        UpdateReload,
+		StartUpdateAction:         UpdateStart,
+		RunUpdateAction:           UpdateRun,
+		CompleteUpdateAction:      UpdateComplete,
+		ClearUpdateAction:         UpdateUntrack,
+		WriteProgressUpdateAction: UpdateWriteProgress,
 	}
 )
 
@@ -54,6 +57,9 @@ var (
 		update.State_SUCCEEDED: ClearUpdateAction,
 		// update is complete, clean it up from the cache and goal state
 		update.State_ABORTED: ClearUpdateAction,
+		// update is paused, write the upgrade progress if there is
+		// any instances under upgrade when pause is called
+		update.State_PAUSED: WriteProgressUpdateAction,
 	}
 )
 

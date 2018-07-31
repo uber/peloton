@@ -37,6 +37,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
+	// TODO: check instances under update only
 	instancesCurrent, instancesDone, err = cached.GetUpdateProgress(
 		ctx,
 		cachedJob,

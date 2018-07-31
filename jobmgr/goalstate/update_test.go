@@ -118,7 +118,7 @@ func (suite *UpdateGoalStateTestSuite) TestUpdateGetActionList() {
 		},
 		{
 			state:        update.State_PAUSED,
-			lengthAction: 1,
+			lengthAction: 2,
 		},
 		{
 			state:        update.State_ABORTED,

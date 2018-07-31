@@ -36,14 +36,16 @@ type TaskMetrics struct {
 // UpdateMetrics contains all counters to track
 // update metrics in the goal state.
 type UpdateMetrics struct {
-	UpdateReload       tally.Counter
-	UpdateComplete     tally.Counter
-	UpdateCompleteFail tally.Counter
-	UpdateUntrack      tally.Counter
-	UpdateStart        tally.Counter
-	UpdateStartFail    tally.Counter
-	UpdateRun          tally.Counter
-	UpdateRunFail      tally.Counter
+	UpdateReload            tally.Counter
+	UpdateComplete          tally.Counter
+	UpdateCompleteFail      tally.Counter
+	UpdateUntrack           tally.Counter
+	UpdateStart             tally.Counter
+	UpdateStartFail         tally.Counter
+	UpdateRun               tally.Counter
+	UpdateRunFail           tally.Counter
+	UpdateWriteProgress     tally.Counter
+	UpdateWriteProgressFail tally.Counter
 }
 
 // Metrics is the struct containing all the counters that track job and task
@@ -87,14 +89,16 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	}
 
 	updateMetrics := &UpdateMetrics{
-		UpdateReload:       updateScope.Counter("reload"),
-		UpdateComplete:     updateScope.Counter("complete"),
-		UpdateCompleteFail: updateScope.Counter("complete_fail"),
-		UpdateUntrack:      updateScope.Counter("untrack"),
-		UpdateStart:        updateScope.Counter("start"),
-		UpdateStartFail:    updateScope.Counter("start_fail"),
-		UpdateRun:          updateScope.Counter("run"),
-		UpdateRunFail:      updateScope.Counter("run_fail"),
+		UpdateReload:            updateScope.Counter("reload"),
+		UpdateComplete:          updateScope.Counter("complete"),
+		UpdateCompleteFail:      updateScope.Counter("complete_fail"),
+		UpdateUntrack:           updateScope.Counter("untrack"),
+		UpdateStart:             updateScope.Counter("start"),
+		UpdateStartFail:         updateScope.Counter("start_fail"),
+		UpdateRun:               updateScope.Counter("run"),
+		UpdateRunFail:           updateScope.Counter("run_fail"),
+		UpdateWriteProgress:     updateScope.Counter("write_progress"),
+		UpdateWriteProgressFail: updateScope.Counter("write_progress_fail"),
 	}
 
 	return &Metrics{

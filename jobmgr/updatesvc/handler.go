@@ -250,16 +250,9 @@ func (h *serviceHandler) GetUpdate(ctx context.Context, req *svc.GetUpdateReques
 func (h *serviceHandler) GetUpdateCache(ctx context.Context,
 	req *svc.GetUpdateCacheRequest) (*svc.GetUpdateCacheResponse, error) {
 	h.metrics.UpdateAPIGetCache.Inc(1)
-	updateID := req.GetUpdateId()
-	if updateID == nil {
-		h.metrics.UpdateGetCacheFail.Inc(1)
-		return nil, yarpcerrors.InvalidArgumentErrorf("no update ID provided")
-	}
-
-	u := h.updateFactory.GetUpdate(updateID)
-	if u == nil {
-		h.metrics.UpdateGetCacheFail.Inc(1)
-		return nil, yarpcerrors.NotFoundErrorf("update not found")
+	u, err := h.getCachedUpdate(req.GetUpdateId())
+	if err != nil {
+		return nil, err
 	}
 
 	h.metrics.UpdateGetCache.Inc(1)
@@ -277,8 +270,39 @@ func (h *serviceHandler) GetUpdateCache(ctx context.Context,
 
 func (h *serviceHandler) PauseUpdate(ctx context.Context,
 	req *svc.PauseUpdateRequest) (*svc.PauseUpdateResponse, error) {
-	return nil, yarpcerrors.UnimplementedErrorf(
-		"UpdateService.PauseUpdate is not implemented")
+	h.metrics.UpdateAPIGetCache.Inc(1)
+
+	updateModel, err := h.updateStore.GetUpdateProgress(ctx, req.GetUpdateId())
+	if err != nil {
+		return nil, err
+	}
+
+	if updateModel.GetState() == update.State_PAUSED {
+		return nil, yarpcerrors.InvalidArgumentErrorf(
+			"update already paused")
+	}
+
+	if cached.IsUpdateStateTerminal(updateModel.GetState()) {
+		return nil, yarpcerrors.InvalidArgumentErrorf(
+			"update already terminated")
+	}
+
+	cachedUpdate, err := h.getCachedUpdate(req.GetUpdateId())
+	if err != nil {
+		return nil, err
+	}
+
+	err = cachedUpdate.WriteProgress(
+		ctx,
+		update.State_PAUSED,
+		cachedUpdate.GetState().Instances,
+		cachedUpdate.GetInstancesCurrent(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &svc.PauseUpdateResponse{}, nil
 }
 
 func (h *serviceHandler) ResumeUpdate(ctx context.Context,
@@ -359,4 +383,18 @@ func (h *serviceHandler) RollbackUpdate(ctx context.Context,
 	req *svc.RollbackUpdateRequest) (*svc.RollbackUpdateResponse, error) {
 	return nil, yarpcerrors.UnimplementedErrorf(
 		"UpdateService.RollbackUpdate is not implemented")
+}
+
+func (h *serviceHandler) getCachedUpdate(updateID *peloton.UpdateID) (cached.Update, error) {
+	if updateID == nil {
+		h.metrics.UpdateGetCacheFail.Inc(1)
+		return nil, yarpcerrors.InvalidArgumentErrorf("no update ID provided")
+	}
+
+	u := h.updateFactory.GetUpdate(updateID)
+	if u == nil {
+		h.metrics.UpdateGetCacheFail.Inc(1)
+		return nil, yarpcerrors.NotFoundErrorf("update not found")
+	}
+	return u, nil
 }

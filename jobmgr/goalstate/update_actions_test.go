@@ -8,6 +8,7 @@ import (
 
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
@@ -38,6 +39,7 @@ type UpdateActionsTestSuite struct {
 	updateEnt             *updateEntity
 	cachedJob             *cachedmocks.MockJob
 	cachedUpdate          *cachedmocks.MockUpdate
+	cachedTask            *cachedmocks.MockTask
 }
 
 func TestUpdateActions(t *testing.T) {
@@ -72,6 +74,7 @@ func (suite *UpdateActionsTestSuite) SetupTest() {
 
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.cachedUpdate = cachedmocks.NewMockUpdate(suite.ctrl)
+	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 }
 
 func (suite *UpdateActionsTestSuite) TearDownTest() {
@@ -484,5 +487,132 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrackNewUpdate() {
 		})
 
 	err := UpdateUntrack(context.Background(), suite.updateEnt)
+	suite.NoError(err)
+}
+
+// TestUpdateWriteProgressSuccess test the success case of UpdateWriteProgress
+func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
+	instancesCurrent := []uint32{0, 1, 2}
+	instancesDone := []uint32{3, 4, 5}
+	oldJobVersion := uint64(1)
+	newJobVersion := uint64(2)
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID)
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesCurrent().
+		Return(instancesCurrent)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			JobVersion: newJobVersion,
+		})
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesCurrent().
+		Return(instancesCurrent)
+
+	for i, instanceID := range instancesCurrent {
+		suite.cachedJob.EXPECT().
+			AddTask(instanceID).
+			Return(suite.cachedTask)
+
+		// the first instance has finished update,
+		// rest is still updating
+		if i == 0 {
+			suite.cachedTask.EXPECT().
+				GetRunTime(gomock.Any()).
+				Return(&pbtask.RuntimeInfo{
+					State:                pbtask.TaskState_RUNNING,
+					ConfigVersion:        newJobVersion,
+					DesiredConfigVersion: newJobVersion,
+				}, nil)
+		} else {
+			suite.cachedTask.EXPECT().
+				GetRunTime(gomock.Any()).
+				Return(&pbtask.RuntimeInfo{
+					State:                pbtask.TaskState_RUNNING,
+					ConfigVersion:        oldJobVersion,
+					DesiredConfigVersion: newJobVersion,
+				}, nil)
+		}
+	}
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State:     pbupdate.State_PAUSED,
+			Instances: instancesDone,
+		})
+
+	suite.cachedUpdate.EXPECT().
+		WriteProgress(
+			gomock.Any(),
+			pbupdate.State_PAUSED,
+			gomock.Any(),
+			gomock.Any()).
+		Do(func(_ context.Context, _ pbupdate.State,
+			instancesDone []uint32, instancesCurrent []uint32) {
+			suite.Equal(instancesDone, []uint32{3, 4, 5, 0})
+			suite.Equal(instancesCurrent, []uint32{1, 2})
+		}).Return(nil)
+
+	err := UpdateWriteProgress(context.Background(), suite.updateEnt)
+	suite.NoError(err)
+}
+
+// TestUpdateWriteProgressMissingCache test the failure case of UpdateWriteProgress
+// because of missing cache
+func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressMissingCache() {
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(nil)
+
+	err := UpdateWriteProgress(context.Background(), suite.updateEnt)
+	suite.NoError(err)
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID)
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesCurrent().
+		Return([]uint32{0, 1, 2})
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(nil)
+
+	err = UpdateWriteProgress(context.Background(), suite.updateEnt)
+	suite.NoError(err)
+}
+
+// TestUpdateWriteProgressNoUpdatingInstance test the case that there is no instance
+// in update
+func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressNoUpdatingInstance() {
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesCurrent().
+		Return([]uint32{})
+
+	err := UpdateWriteProgress(context.Background(), suite.updateEnt)
 	suite.NoError(err)
 }

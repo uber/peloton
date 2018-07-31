@@ -171,3 +171,53 @@ func UpdateUntrack(ctx context.Context, entity goalstate.Entity) error {
 	}
 	return nil
 }
+
+// UpdateWriteProgress write the current progress of update
+func UpdateWriteProgress(ctx context.Context, entity goalstate.Entity) error {
+	updateEnt := entity.(*updateEntity)
+	goalStateDriver := updateEnt.driver
+	cachedUpdate := goalStateDriver.updateFactory.GetUpdate(updateEnt.id)
+	if cachedUpdate == nil {
+		goalStateDriver.mtx.updateMetrics.UpdateWriteProgressFail.Inc(1)
+		return nil
+	}
+
+	// all the instances being updated are finished, nothing new to update
+	if len(cachedUpdate.GetInstancesCurrent()) == 0 {
+		goalStateDriver.mtx.updateMetrics.UpdateWriteProgress.Inc(1)
+		return nil
+	}
+
+	cachedJob := goalStateDriver.jobFactory.GetJob(cachedUpdate.JobID())
+	if cachedJob == nil {
+		goalStateDriver.mtx.updateMetrics.UpdateWriteProgressFail.Inc(1)
+		return nil
+	}
+
+	instancesCurrent, instancesDone, err := cached.GetUpdateProgress(
+		ctx,
+		cachedJob,
+		cachedUpdate.GetGoalState().JobVersion,
+		cachedUpdate.GetInstancesCurrent(),
+	)
+	if err != nil {
+		goalStateDriver.mtx.updateMetrics.UpdateWriteProgressFail.Inc(1)
+		return err
+	}
+
+	currentState := cachedUpdate.GetState()
+	err = cachedUpdate.WriteProgress(
+		ctx,
+		currentState.State,
+		append(currentState.Instances, instancesDone...),
+		instancesCurrent,
+	)
+	if err != nil {
+		goalStateDriver.mtx.updateMetrics.UpdateWriteProgressFail.Inc(1)
+		return err
+	}
+
+	goalStateDriver.mtx.updateMetrics.UpdateWriteProgress.Inc(1)
+	return nil
+
+}
