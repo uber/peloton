@@ -349,10 +349,12 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		// current task resource usage was updated by this event, so we should
 		// add it to aggregated resource usage for the task and update runtime
 		aggregateTaskResourceUsage := runtime.GetResourceUsage()
-		for k, v := range currTaskResourceUsage {
-			aggregateTaskResourceUsage[k] += v
+		if len(aggregateTaskResourceUsage) > 0 {
+			for k, v := range currTaskResourceUsage {
+				aggregateTaskResourceUsage[k] += v
+			}
+			runtimeDiff[cached.ResourceUsageField] = aggregateTaskResourceUsage
 		}
-		runtimeDiff[cached.ResourceUsageField] = aggregateTaskResourceUsage
 	}
 	// Update the task update times in job cache and then update the task runtime in cache and DB
 	cachedJob := p.jobFactory.AddJob(taskInfo.GetJobId())
