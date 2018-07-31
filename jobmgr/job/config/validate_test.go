@@ -121,6 +121,37 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMaxTasksPerJob() 
 	suite.Error(err)
 }
 
+func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailurebStateless() {
+	jobConfig := job.JobConfig{
+		Name:          fmt.Sprintf("TestJob_1"),
+		Type:          job.JobType_SERVICE,
+		InstanceCount: 10,
+		DefaultConfig: &task.TaskConfig{},
+		SLA: &job.SlaConfig{
+			MaxRunningTime: 1,
+		},
+	}
+	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
+	suite.Error(err)
+}
+
+func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureBatch() {
+	jobConfig := job.JobConfig{
+		Name:          fmt.Sprintf("TestJob_1"),
+		InstanceCount: 10,
+		DefaultConfig: &task.TaskConfig{
+			HealthCheck: &task.HealthCheckConfig{
+				Enabled: true,
+			},
+			Command: &mesos.CommandInfo{
+				Value: util.PtrPrintf("echo Hello"),
+			},
+		},
+	}
+	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
+	suite.Error(err)
+}
+
 func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMaxInstances() {
 	// No error if there is a default task config
 	taskConfig := task.TaskConfig{
@@ -384,4 +415,80 @@ func getConfig(config string, suite suite.Suite) *job.JobConfig {
 	err = yaml.Unmarshal(buffer, &jobConfig)
 	suite.NoError(err)
 	return &jobConfig
+}
+
+func (suite *TaskConfigTestSuite) TestValidateStatelessJobConfig() {
+	testMap := map[job.SlaConfig]error{
+		job.SlaConfig{
+			MaximumRunningInstances: 1,
+		}: errIncorrectMaxInstancesSLA,
+		job.SlaConfig{
+			MinimumRunningInstances: 1,
+		}: errIncorrectMinInstancesSLA,
+		job.SlaConfig{
+			MaxRunningTime: 1,
+		}: errIncorrectMaxRunningTimeSLA,
+		job.SlaConfig{}: nil,
+	}
+	for slaConfig, errExp := range testMap {
+		jobConfig := job.JobConfig{
+			Name:          fmt.Sprintf("TestJob_1"),
+			InstanceCount: 10,
+			DefaultConfig: &task.TaskConfig{},
+			SLA:           &slaConfig,
+		}
+		err := validateStatelessJobConfig(&jobConfig)
+		suite.Equal(err, errExp)
+	}
+
+}
+
+func (suite *TaskConfigTestSuite) TestValidateStatelessTaskConfig() {
+	testMap := map[task.PreemptionPolicy]error{
+		task.PreemptionPolicy{
+			KillOnPreempt: true,
+		}: errKillOnPreemptNotFalse,
+		task.PreemptionPolicy{
+			KillOnPreempt: false,
+		}: nil,
+	}
+	for pp, errExp := range testMap {
+		taskConfig := task.TaskConfig{
+			PreemptionPolicy: &pp,
+		}
+		err := validateStatelessTaskConfig(&taskConfig)
+		suite.Equal(err, errExp)
+	}
+}
+
+func (suite *TaskConfigTestSuite) TestValidateBatchTaskConfig() {
+	testMap := map[task.HealthCheckConfig]error{
+		task.HealthCheckConfig{
+			Enabled: true,
+		}: errIncorrectHealthCheck,
+	}
+	for hc, errExp := range testMap {
+		taskConfig := task.TaskConfig{
+			HealthCheck: &hc,
+		}
+		err := validateBatchTaskConfig(&taskConfig)
+		suite.Equal(err, errExp)
+	}
+}
+
+func TestValidateTaskConfigFailureStateless(t *testing.T) {
+	jobConfig := job.JobConfig{
+		Name:          fmt.Sprintf("TestJob_1"),
+		InstanceCount: 10,
+		DefaultConfig: &task.TaskConfig{
+			HealthCheck: &task.HealthCheckConfig{
+				Enabled: true,
+			},
+			Command: &mesos.CommandInfo{
+				Value: util.PtrPrintf("echo Hello"),
+			},
+		},
+	}
+	ValidateTaskConfig(&jobConfig, maxTasksPerJob)
+	//suite.Error(err)
 }

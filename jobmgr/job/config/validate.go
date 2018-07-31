@@ -20,10 +20,34 @@ const (
 )
 
 var (
-	errPortNameMissing    = errors.New("port name is missing")
-	errPortEnvNameMissing = errors.New("env name is missing for dynamic port")
-	errMaxInstancesTooBig = errors.New("job specified MaximumRunningInstances > InstanceCount")
-	errMinInstancesTooBig = errors.New("job specified MinimumRunningInstances > MaximumRunningInstances")
+	errPortNameMissing = errors.New(
+		"Port name is missing")
+	errPortEnvNameMissing = errors.New(
+		"Env name is missing for dynamic port")
+	errMaxInstancesTooBig = errors.New(
+		"Job specified MaximumRunningInstances > InstanceCount")
+	errIncorrectMaxInstancesSLA = errors.New(
+		"MaximumRunningInstances should be 0 for stateless job")
+	errMinInstancesTooBig = errors.New(
+		"Job specified MinimumRunningInstances > MaximumRunningInstances")
+	errIncorrectMinInstancesSLA = errors.New(
+		"MinimumRunningInstances should be 0 for stateless job")
+	errIncorrectMaxRunningTimeSLA = errors.New(
+		"MaxRunningTime should be 0 for stateless job")
+	errKillOnPreemptNotFalse = errors.New(
+		"Task preemption policy should be false for stateless job")
+	errIncorrectHealthCheck = errors.New(
+		"Batch job task should not set health check ")
+
+	_jobTypeTaskValidate = map[job.JobType]func(*task.TaskConfig) error{
+		job.JobType_BATCH:   validateBatchTaskConfig,
+		job.JobType_SERVICE: validateStatelessTaskConfig,
+	}
+
+	_jobTypeJobValidate = map[job.JobType]func(*job.JobConfig) error{
+		job.JobType_BATCH:   validateBatchJobConfig,
+		job.JobType_SERVICE: validateStatelessJobConfig,
+	}
 )
 
 // ValidateTaskConfig checks whether the task configs in a job config
@@ -129,6 +153,11 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 		return err
 	}
 
+	jobType := jobConfig.GetType()
+	if err := _jobTypeJobValidate[jobType](jobConfig); err != nil {
+		return err
+	}
+
 	for i := from; i < to; i++ {
 		taskConfig := taskconfig.Merge(
 			defaultConfig, jobConfig.GetInstanceConfig()[i])
@@ -144,7 +173,7 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 
 		// Validate port config
 		if err := validatePortConfig(taskConfig.GetPorts()); err != nil {
-			return err
+			return instanceConfigErrorGenerate(i, err)
 		}
 
 		// Validate command info
@@ -156,6 +185,10 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 		if taskConfig.GetController() && i != 0 {
 			err := fmt.Errorf("only task 0 can be controller task")
 			return err
+		}
+
+		if err := _jobTypeTaskValidate[jobType](taskConfig); err != nil {
+			return instanceConfigErrorGenerate(i, err)
 		}
 	}
 
@@ -175,6 +208,11 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 	return nil
 }
 
+func instanceConfigErrorGenerate(instanceID uint32, err error) error {
+	return fmt.Errorf(
+		"Invalid config for instance %v, %v", instanceID, err)
+}
+
 // validatePortConfig checks port name and port env name exists for dynamic port.
 func validatePortConfig(portConfigs []*task.PortConfig) error {
 	for _, port := range portConfigs {
@@ -185,5 +223,50 @@ func validatePortConfig(portConfigs []*task.PortConfig) error {
 			return errPortEnvNameMissing
 		}
 	}
+	return nil
+}
+
+// validateBatchJobConfig validate task config for batch job
+func validateBatchTaskConfig(taskConfig *task.TaskConfig) error {
+	// Healthy field should not be set for batch job
+	if taskConfig.GetHealthCheck() != nil {
+		return errIncorrectHealthCheck
+	}
+	return nil
+}
+
+// validateBatchJobConfig validate jobconfig for batch job
+func validateBatchJobConfig(jobConfig *job.JobConfig) error {
+	return nil
+}
+
+// validateStatelessTaskConfig validate task config for stateless job
+func validateStatelessTaskConfig(taskConfig *task.TaskConfig) error {
+	// KillOnPreempt should be false for stateless task config
+	if taskConfig.GetPreemptionPolicy().GetKillOnPreempt() != false {
+		return errKillOnPreemptNotFalse
+	}
+	return nil
+}
+
+// validateStatelessJobConfig validate jobconfig for stateless job
+func validateStatelessJobConfig(jobConfig *job.JobConfig) error {
+	configSLA := jobConfig.GetSLA()
+
+	// stateless job should not set MaximumRunningInstances
+	if configSLA.GetMaximumRunningInstances() != 0 {
+		return errIncorrectMaxInstancesSLA
+	}
+
+	// stateless job should not set MinimumRunningInstances
+	if configSLA.GetMinimumRunningInstances() != 0 {
+		return errIncorrectMinInstancesSLA
+	}
+
+	// stateless job should not set MaxRunningTime
+	if configSLA.GetMaxRunningTime() != 0 {
+		return errIncorrectMaxRunningTimeSLA
+	}
+
 	return nil
 }
