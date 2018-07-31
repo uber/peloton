@@ -382,6 +382,10 @@ func (suite *UpdateSvcTestSuite) TestCreateAddUpdateFail() {
 			suite.jobConfig, suite.updateConfig).
 		Return(fmt.Errorf("fake db error"))
 
+	suite.updateFactory.EXPECT().
+		ClearUpdate(gomock.Any()).
+		Return()
+
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
 

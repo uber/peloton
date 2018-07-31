@@ -180,7 +180,10 @@ func (h *serviceHandler) CreateUpdate(
 		// persisted with the update ID or not, enqueue the update to
 		// the goal state. If the update ID got persisted, update should
 		// start running, else, it should be aborted. Enqueueing it into
-		// the goal state will ensure both.
+		// the goal state will ensure both. In case the update was not
+		// persisted, clear the cache as well so that it is reloaded
+		// from DB and cleaned up.
+		h.updateFactory.ClearUpdate(id)
 		h.metrics.UpdateCreateFail.Inc(1)
 	}
 

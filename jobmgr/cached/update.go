@@ -272,24 +272,23 @@ func (u *update) Create(
 	jobConfig *pbjob.JobConfig,
 	prevJobConfig *pbjob.JobConfig,
 	updateConfig *pbupdate.UpdateConfig) error {
-	var err error
 
 	u.Lock()
 	defer u.Unlock()
 
-	u.state = pbupdate.State_INITIALIZED
+	state := pbupdate.State_INITIALIZED
 	u.jobID = jobID
-	u.updateConfig = updateConfig
 
 	// determine the instances being updated with this update
-	if u.instancesTotal, u.instancesAdded, u.instancesUpdated, err =
-		u.diffConfig(ctx, prevJobConfig, jobConfig); err != nil {
+	instancesTotal, instancesAdded, instancesUpdated, err :=
+		u.diffConfig(ctx, prevJobConfig, jobConfig)
+	if err != nil {
 		return err
 	}
 
 	// Store the new job configuration
 	cachedJob := u.jobFactory.AddJob(jobID)
-	if err = cachedJob.Update(
+	if err := cachedJob.Update(
 		ctx,
 		&pbjob.JobInfo{
 			Config: jobConfig,
@@ -304,12 +303,8 @@ func (u *update) Create(
 		return err
 	}
 
-	// store the previous and current job configuration versions
-	u.jobVersion = newConfig.GetChangeLog().GetVersion()
-	u.jobPrevVersion = prevJobConfig.GetChangeLog().GetVersion()
-
 	// Store the new update in DB
-	if err = u.updateFactory.updateStore.CreateUpdate(
+	if err := u.updateFactory.updateStore.CreateUpdate(
 		ctx,
 		&models.UpdateModel{
 			UpdateID:             u.id,
@@ -317,14 +312,25 @@ func (u *update) Create(
 			UpdateConfig:         updateConfig,
 			JobConfigVersion:     newConfig.GetChangeLog().GetVersion(),
 			PrevJobConfigVersion: prevJobConfig.GetChangeLog().GetVersion(),
-			State:                u.state,
-			InstancesTotal:       uint32(len(u.instancesTotal)),
+			State:                state,
+			InstancesTotal:       uint32(len(instancesTotal)),
 		}); err != nil {
 		return err
 	}
 
+	// populate the cache
+	u.state = state
+	u.updateConfig = updateConfig
+	u.instancesTotal = instancesTotal
+	u.instancesAdded = instancesAdded
+	u.instancesUpdated = instancesUpdated
+
+	// store the previous and current job configuration versions
+	u.jobVersion = newConfig.GetChangeLog().GetVersion()
+	u.jobPrevVersion = prevJobConfig.GetChangeLog().GetVersion()
+
 	// store the update identifier and new configuration version in the job runtime
-	if err = cachedJob.Update(
+	if err := cachedJob.Update(
 		ctx,
 		&pbjob.JobInfo{
 			Runtime: &pbjob.RuntimeInfo{
@@ -344,7 +350,7 @@ func (u *update) Create(
 		WithField("instances_added", len(u.instancesAdded)).
 		WithField("instance_updated", len(u.instancesUpdated)).
 		WithField("update_state", u.state.String()).
-		Info("update is created")
+		Debug("update is created")
 
 	return nil
 }

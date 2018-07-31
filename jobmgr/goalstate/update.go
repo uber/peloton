@@ -120,7 +120,7 @@ func (u *updateEntity) GetActionList(
 			"update_action":   actionStr,
 		}).Info("running update action")
 
-	if actionStr != ClearUpdateAction {
+	if actionStr != ClearUpdateAction && actionStr != ReloadUpdateAction {
 		actions = append(actions, goalstate.Action{
 			Name:    string(CheckForAbortAction),
 			Execute: UpdateAbortIfNeeded,
