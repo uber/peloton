@@ -70,18 +70,17 @@ func (s *Server) GainedLeadershipCallback() error {
 
 	s.jobFactory.Start()
 	s.updateFactory.Start()
-	s.taskPreemptor.Start()
 
-	// goalstateDriver will perform recovery of jobs from DB as part of startup
+	// goalstateDriver will perform recovery of jobs from DB as
+	// part of startup. Other than cache initialization and start
+	// of API handlers, recovery is the first thing which should
+	// be completed before any other routines start. This ensures
+	// job manager cache has the baseline state of all jobs recovered
+	// from DB before handling any events which can modify this state.
 	s.goalstateDriver.Start()
+	s.taskPreemptor.Start()
 	s.placementProcessor.Start()
 	s.deadlineTracker.Start()
-
-	// statusUpdate.Start() must be called after goalstateDriver.Start().
-	// Always start processing event stream after goalstate driver finishes
-	// revovery of jobs from DB. The assumption is that jobmgr goalstate engine
-	// would have the baseline state of all jobs recovered from DB before
-	// handling new task events which will modify this state.
 	s.statusUpdate.Start()
 	s.backgroundManager.Start()
 
@@ -94,12 +93,12 @@ func (s *Server) LostLeadershipCallback() error {
 
 	log.WithField("role", s.role).Info("Lost leadership")
 
-	s.goalstateDriver.Stop()
 	s.statusUpdate.Stop()
 	s.placementProcessor.Stop()
 	s.taskPreemptor.Stop()
 	s.deadlineTracker.Stop()
 	s.backgroundManager.Stop()
+	s.goalstateDriver.Stop()
 	s.updateFactory.Stop()
 	s.jobFactory.Stop()
 
@@ -111,12 +110,12 @@ func (s *Server) ShutDownCallback() error {
 
 	log.WithFields(log.Fields{"role": s.role}).Info("Quitting election")
 
-	s.goalstateDriver.Stop()
 	s.statusUpdate.Stop()
 	s.placementProcessor.Stop()
 	s.taskPreemptor.Stop()
 	s.deadlineTracker.Stop()
 	s.backgroundManager.Stop()
+	s.goalstateDriver.Stop()
 	s.updateFactory.Stop()
 	s.jobFactory.Stop()
 

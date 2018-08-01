@@ -373,16 +373,16 @@ func (d *driver) Start() {
 		time.Sleep(_sleepRetryCheckRunningState)
 	}
 
+	if err := d.syncFromDB(context.Background()); err != nil {
+		log.WithError(err).
+			Fatal("failed to sync job manager with DB")
+	}
+
 	d.Lock()
 	d.jobEngine.Start()
 	d.taskEngine.Start()
 	d.updateEngine.Start()
 	d.Unlock()
-
-	if err := d.syncFromDB(context.Background()); err != nil {
-		log.WithError(err).
-			Fatal("failed to sync job manager with DB")
-	}
 
 	atomic.StoreInt32(&d.running, int32(running))
 	log.Info("goalstate driver started")
