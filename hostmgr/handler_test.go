@@ -229,6 +229,36 @@ func (suite *HostMgrHandlerTestSuite) checkResourcesGauges(
 	suite.assertGaugeValues(values)
 }
 
+func (suite *HostMgrHandlerTestSuite) acquireHostOffers(numOffers int) (
+	*hostsvc.AcquireHostOffersResponse,
+	error) {
+	suite.pool.AddOffers(context.Background(), generateOffers(numOffers))
+
+	// TODO: Add check for number of HostOffers in placing state.
+	suite.checkResourcesGauges(numOffers, "ready")
+	suite.checkResourcesGauges(0, "placing")
+
+	// Matching constraint.
+	acquireReq := &hostsvc.AcquireHostOffersRequest{
+		Filter: &hostsvc.HostFilter{
+			Quantity: &hostsvc.QuantityControl{
+				MaxHosts: uint32(1),
+			},
+			ResourceConstraint: &hostsvc.ResourceConstraint{
+				Minimum: &task.ResourceConfig{
+					CpuLimit:    _perHostCPU,
+					MemLimitMb:  _perHostMem,
+					DiskLimitMb: _perHostDisk,
+				},
+			},
+		},
+	}
+	return suite.handler.AcquireHostOffers(
+		rootCtx,
+		acquireReq,
+	)
+}
+
 func (suite *HostMgrHandlerTestSuite) TestGetOutstandingOffers() {
 	defer suite.ctrl.Finish()
 
@@ -361,32 +391,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 
 	// only create one host offer in this test.
 	numHosts := 1
-	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
-
-	// TODO: Add check for number of HostOffers in placing state.
-	suite.checkResourcesGauges(numHosts, "ready")
-	suite.checkResourcesGauges(0, "placing")
-
-	// Matching constraint.
-	acquireReq := &hostsvc.AcquireHostOffersRequest{
-		Filter: &hostsvc.HostFilter{
-			Quantity: &hostsvc.QuantityControl{
-				MaxHosts: uint32(1),
-			},
-			ResourceConstraint: &hostsvc.ResourceConstraint{
-				Minimum: &task.ResourceConfig{
-					CpuLimit:    _perHostCPU,
-					MemLimitMb:  _perHostMem,
-					DiskLimitMb: _perHostDisk,
-				},
-			},
-		},
-	}
-	acquiredResp, err := suite.handler.AcquireHostOffers(
-		rootCtx,
-		acquireReq,
-	)
-
+	acquiredResp, err := suite.acquireHostOffers(numHosts)
 	suite.NoError(err)
 	suite.Nil(acquiredResp.GetError())
 	acquiredHostOffers := acquiredResp.GetHostOffers()
@@ -481,31 +486,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOperation() {
 
 	// only create one host offer in this test.
 	numHosts := 1
-	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
-
-	// TODO: Add check for number of HostOffers in placing state.
-	suite.checkResourcesGauges(numHosts, "ready")
-	suite.checkResourcesGauges(0, "placing")
-
-	// Matching constraint.
-	acquireReq := &hostsvc.AcquireHostOffersRequest{
-		Filter: &hostsvc.HostFilter{
-			Quantity: &hostsvc.QuantityControl{
-				MaxHosts: uint32(1),
-			},
-			ResourceConstraint: &hostsvc.ResourceConstraint{
-				Minimum: &task.ResourceConfig{
-					CpuLimit:    _perHostCPU,
-					MemLimitMb:  _perHostMem,
-					DiskLimitMb: _perHostDisk,
-				},
-			},
-		},
-	}
-	acquiredResp, err := suite.handler.AcquireHostOffers(
-		rootCtx,
-		acquireReq,
-	)
+	acquiredResp, err := suite.acquireHostOffers(numHosts)
 
 	suite.NoError(err)
 	suite.Nil(acquiredResp.GetError())
@@ -1830,10 +1811,129 @@ func (suite *HostMgrHandlerTestSuite) TestGetCompletedReservationsError() {
 	handler := &serviceHandler{}
 	mockReserver := reserver_mocks.NewMockReserver(ctrl)
 	handler.reserver = mockReserver
-	mockReserver.EXPECT().DequeueCompletedReservation(gomock.Any(), gomock.Any()).Return(
-		nil, errors.New("error"))
-	reservations, err := handler.GetCompletedReservations(context.Background(), &hostsvc.GetCompletedReservationRequest{})
+	mockReserver.EXPECT().DequeueCompletedReservation(gomock.Any(),
+		gomock.Any()).
+		Return(nil, errors.New("error"))
+	reservations, err := handler.GetCompletedReservations(context.Background(),
+		&hostsvc.GetCompletedReservationRequest{})
 	suite.NoError(err)
 	suite.Nil(reservations.CompletedReservations)
 	suite.Equal(reservations.GetError().GetNotFound().Message, "error")
+}
+
+// Test OfferOperations errors
+func (suite *HostMgrHandlerTestSuite) TestOfferOperationsError() {
+	launchOperation := &hostsvc.OfferOperation{
+		Type: hostsvc.OfferOperation_LAUNCH,
+		Launch: &hostsvc.OfferOperation_Launch{
+			Tasks: generateLaunchableTasks(1),
+		},
+	}
+
+	// Test offer pool ClaimForLaunch error
+	hostname := "test-host"
+	operationReq := &hostsvc.OfferOperationsRequest{
+		Hostname: hostname,
+		Operations: []*hostsvc.OfferOperation{
+			launchOperation,
+		},
+	}
+
+	operationResp, err := suite.handler.OfferOperations(
+		rootCtx,
+		operationReq,
+	)
+	suite.NotNil(operationResp.GetError().GetInvalidOffers())
+	suite.Nil(err)
+
+	// Test scheduler Call error
+	numHosts := 1
+	acquiredResp, err := suite.acquireHostOffers(numHosts)
+
+	suite.NoError(err)
+	suite.Nil(acquiredResp.GetError())
+	acquiredHostOffers := acquiredResp.GetHostOffers()
+	suite.Equal(1, len(acquiredHostOffers))
+
+	suite.Equal(
+		int64(1),
+		suite.testScope.Snapshot().Counters()["acquire_host_offers+"].Value())
+
+	suite.checkResourcesGauges(0, "ready")
+	suite.checkResourcesGauges(numHosts, "placing")
+
+	operationReq.Hostname = acquiredHostOffers[0].GetHostname()
+	gomock.InOrder(
+		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
+			suite.frameworkID),
+		suite.provider.EXPECT().GetMesosStreamID(context.Background()).
+			Return(_streamID),
+		suite.schedulerClient.EXPECT().
+			Call(
+				gomock.Eq(_streamID),
+				gomock.Any(),
+			).Return(fmt.Errorf("Fake scheduler call error")),
+	)
+
+	operationResp, err = suite.handler.OfferOperations(
+		rootCtx,
+		operationReq,
+	)
+	suite.NoError(err)
+	suite.NotNil(operationResp.GetError().GetFailure())
+}
+
+// Test LaunchTasks errors
+func (suite *HostMgrHandlerTestSuite) TestLaunchTasksError() {
+	numHosts := 1
+	acquiredResp, err := suite.acquireHostOffers(numHosts)
+
+	suite.NoError(err)
+	suite.Nil(acquiredResp.GetError())
+	acquiredHostOffers := acquiredResp.GetHostOffers()
+	suite.Equal(1, len(acquiredHostOffers))
+
+	suite.Equal(
+		int64(1),
+		suite.testScope.Snapshot().Counters()["acquire_host_offers+"].Value())
+
+	suite.checkResourcesGauges(0, "ready")
+	suite.checkResourcesGauges(numHosts, "placing")
+
+	launchReq := &hostsvc.LaunchTasksRequest{
+		Hostname: "test-host",
+		AgentId:  acquiredHostOffers[0].GetAgentId(),
+		Tasks:    generateLaunchableTasks(1),
+	}
+
+	// Test InvalidOffer error
+	launchResp, err := suite.handler.LaunchTasks(
+		rootCtx,
+		launchReq,
+	)
+	suite.NoError(err)
+	suite.NotNil(launchResp.GetError().GetInvalidOffers())
+
+	launchReq.Hostname = acquiredHostOffers[0].GetHostname()
+	gomock.InOrder(
+		// Set expectations on provider
+		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
+			suite.frameworkID),
+		// Set expectations on provider
+		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
+		// Set expectations on scheduler schedulerClient
+		suite.schedulerClient.EXPECT().
+			Call(
+				gomock.Eq(_streamID),
+				gomock.Any(),
+			).Return(fmt.Errorf("Fake scheduler call error")),
+	)
+
+	launchResp, err = suite.handler.LaunchTasks(
+		rootCtx,
+		launchReq,
+	)
+
+	suite.NoError(err)
+	suite.NotNil(launchResp.GetError().GetLaunchFailure())
 }

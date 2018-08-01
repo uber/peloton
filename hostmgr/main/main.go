@@ -470,6 +470,7 @@ func main() {
 		reconciler,
 		recoveryHandler,
 	)
+	server.Start()
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {

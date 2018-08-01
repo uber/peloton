@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/api/transport"
 
 	backgound_mocks "code.uber.internal/infra/peloton/common/background/mocks"
 	hm_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
@@ -82,10 +83,46 @@ func (suite *ServerTestSuite) SetupTest() {
 
 		metrics: metrics.NewMetrics(suite.testScope),
 	}
+	suite.server.Start()
 }
 
 func (suite *ServerTestSuite) TearDownTest() {
 	log.Debug("tearing down")
+	suite.server.Stop()
+}
+
+// Test new server creation
+func (suite *ServerTestSuite) TestNewServer() {
+	s := NewServer(
+		suite.testScope,
+		suite.backgroundManager,
+		0,
+		0,
+		suite.detector,
+		suite.mInbound,
+		transport.Outbounds{},
+		suite.reconciler,
+		suite.recoveryHandler,
+	)
+	suite.ctrl.Finish()
+	suite.NotNil(s)
+}
+
+// Test gained leadership callback
+func (suite *ServerTestSuite) TestGainedLeadershipCallback() {
+	suite.mInbound.EXPECT().IsRunning().Return(true).AnyTimes()
+	suite.server.GainedLeadershipCallback()
+	suite.ctrl.Finish()
+	suite.True(suite.server.elected.Load())
+}
+
+// Test gained leadership callback
+func (suite *ServerTestSuite) TestLostLeadershipCallback() {
+	suite.mInbound.EXPECT().IsRunning().Return(false).AnyTimes()
+	suite.server.handlersRunning.Store(false)
+	suite.server.LostLeadershipCallback()
+	suite.ctrl.Finish()
+	suite.False(suite.server.elected.Load())
 }
 
 // Tests that if unelected and things are stopped, doing nothing.
@@ -116,6 +153,14 @@ func (suite *ServerTestSuite) TestUnelectedStopConnection() {
 	suite.Zero(suite.server.currentBackoffNano.Load())
 	suite.False(suite.server.elected.Load())
 	suite.False(suite.server.handlersRunning.Load())
+}
+
+// Test mesos detector host port error
+func (suite *ServerTestSuite) TestMesosDetectorHostPortError() {
+	suite.detector.EXPECT().HostPort().Return("")
+	backoff := suite.server.reconnect(context.Background())
+	suite.ctrl.Finish()
+	suite.False(backoff)
 }
 
 // Tests that if unelected but seeing handlers running, calling stop on them.

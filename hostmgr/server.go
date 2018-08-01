@@ -58,6 +58,9 @@ type Server struct {
 	recoveryHandler RecoveryHandler
 
 	metrics *metrics.Metrics
+
+	// ticker controls connection state check loop
+	ticker *time.Ticker
 }
 
 // NewServer creates a host manager Server instance.
@@ -88,13 +91,19 @@ func NewServer(
 
 		metrics: metrics.NewMetrics(parent),
 	}
-
-	t := time.NewTicker(s.minBackoff)
-	go s.ensureStateLoop(t.C)
-
 	log.Info("Hostmgr server started.")
-
 	return s
+}
+
+// Start starts the ticker
+func (s *Server) Start() {
+	s.ticker = time.NewTicker(s.minBackoff)
+	go s.ensureStateLoop(s.ticker.C)
+}
+
+// Stop stops the ticker
+func (s *Server) Stop() {
+	s.ticker.Stop()
 }
 
 // GainedLeadershipCallback is the callback when the current node
