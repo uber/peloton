@@ -18,7 +18,6 @@ import (
 
 var (
 	errVolumeNotFound = yarpcerrors.NotFoundErrorf("volume not found")
-	errTaskNotFound   = yarpcerrors.NotFoundErrorf("task not found")
 	errJobNotFound    = yarpcerrors.NotFoundErrorf("job not found")
 	errVolumeInUse    = yarpcerrors.InternalErrorf("volume is being used")
 	errVolumeUpdate   = yarpcerrors.InternalErrorf("failed to update volume goalstate")
@@ -77,7 +76,7 @@ func (h *serviceHandler) DeleteVolume(
 		log.WithError(err).WithField("volume_info", pv).
 			Error("Failed to get task runtime")
 		h.metrics.DeleteVolumeFail.Inc(1)
-		return &volume_svc.DeleteVolumeResponse{}, errTaskNotFound
+		return &volume_svc.DeleteVolumeResponse{}, err
 	}
 
 	if taskRuntime.GetVolumeID().GetValue() == req.GetId().GetValue() &&

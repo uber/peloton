@@ -1,14 +1,15 @@
 package volumesvc
 
 import (
+	"context"
+	"fmt"
 	"testing"
-
-	"golang.org/x/net/context"
 
 	"github.com/golang/mock/gomock"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -29,6 +30,7 @@ type VolumeHandlerTestSuite struct {
 
 	ctrl        *gomock.Controller
 	testScope   tally.TestScope
+	jobStore    *storage_mocks.MockJobStore
 	taskStore   *storage_mocks.MockTaskStore
 	volumeStore *storage_mocks.MockPersistentVolumeStore
 	handler     *serviceHandler
@@ -39,6 +41,7 @@ func (suite *VolumeHandlerTestSuite) SetupTest() {
 	suite.testScope = tally.NewTestScope("", map[string]string{})
 	suite.volumeStore = storage_mocks.NewMockPersistentVolumeStore(suite.ctrl)
 	suite.taskStore = storage_mocks.NewMockTaskStore(suite.ctrl)
+	suite.jobStore = storage_mocks.NewMockJobStore(suite.ctrl)
 
 	suite.handler = &serviceHandler{
 		metrics:     NewMetrics(suite.testScope),
@@ -48,6 +51,7 @@ func (suite *VolumeHandlerTestSuite) SetupTest() {
 }
 
 func (suite *VolumeHandlerTestSuite) TearDownTest() {
+	suite.ctrl.Finish()
 	log.Debug("tearing down")
 }
 
@@ -56,8 +60,6 @@ func TestVolumeHandlerTestSuite(t *testing.T) {
 }
 
 func (suite *VolumeHandlerTestSuite) TestGetVolume() {
-	defer suite.ctrl.Finish()
-
 	testPelotonVolumeID := &peloton.VolumeID{
 		Value: _testVolumeID,
 	}
@@ -78,8 +80,6 @@ func (suite *VolumeHandlerTestSuite) TestGetVolume() {
 }
 
 func (suite *VolumeHandlerTestSuite) TestGetVolumeNotFound() {
-	defer suite.ctrl.Finish()
-
 	testPelotonVolumeID := &peloton.VolumeID{
 		Value: _testVolumeID,
 	}
@@ -98,8 +98,6 @@ func (suite *VolumeHandlerTestSuite) TestGetVolumeNotFound() {
 }
 
 func (suite *VolumeHandlerTestSuite) TestListVolumes() {
-	defer suite.ctrl.Finish()
-
 	testPelotonVolumeID1 := &peloton.VolumeID{
 		Value: _testVolumeID,
 	}
@@ -160,8 +158,6 @@ func (suite *VolumeHandlerTestSuite) TestListVolumes() {
 }
 
 func (suite *VolumeHandlerTestSuite) TestListVolumesDBError() {
-	defer suite.ctrl.Finish()
-
 	testPelotonVolumeID1 := &peloton.VolumeID{
 		Value: _testVolumeID,
 	}
@@ -193,8 +189,6 @@ func (suite *VolumeHandlerTestSuite) TestListVolumesDBError() {
 }
 
 func (suite *VolumeHandlerTestSuite) TestDeleteVolume() {
-	defer suite.ctrl.Finish()
-
 	testPelotonVolumeID1 := &peloton.VolumeID{
 		Value: _testVolumeID,
 	}
@@ -238,8 +232,6 @@ func (suite *VolumeHandlerTestSuite) TestDeleteVolume() {
 }
 
 func (suite *VolumeHandlerTestSuite) TestDeleteVolumeInUse() {
-	defer suite.ctrl.Finish()
-
 	testPelotonVolumeID1 := &peloton.VolumeID{
 		Value: _testVolumeID,
 	}
@@ -274,6 +266,118 @@ func (suite *VolumeHandlerTestSuite) TestDeleteVolumeInUse() {
 		context.Background(),
 		&volume_svc.DeleteVolumeRequest{
 			Id: testPelotonVolumeID1,
+		},
+	)
+	suite.Error(err)
+}
+
+func (suite *VolumeHandlerTestSuite) TestInitServiceHandler() {
+	dispatcher := yarpc.NewDispatcher(yarpc.Config{
+		Name: "test-service",
+	})
+
+	InitServiceHandler(
+		dispatcher,
+		suite.testScope,
+		suite.jobStore,
+		suite.taskStore,
+		suite.volumeStore,
+	)
+}
+
+func (suite *VolumeHandlerTestSuite) TestDeleteVolumeNoVolumeID() {
+	_, err := suite.handler.DeleteVolume(context.Background(),
+		&volume_svc.DeleteVolumeRequest{})
+	suite.Error(err)
+}
+
+func (suite *VolumeHandlerTestSuite) TestDeleteVolumeGetVolumeFailure() {
+	testPelotonVolumeID := &peloton.VolumeID{
+		Value: _testVolumeID,
+	}
+	suite.volumeStore.EXPECT().
+		GetPersistentVolume(gomock.Any(), testPelotonVolumeID).
+		Return(nil, fmt.Errorf("test error"))
+	_, err := suite.handler.DeleteVolume(context.Background(),
+		&volume_svc.DeleteVolumeRequest{Id: testPelotonVolumeID})
+	suite.Error(err)
+}
+
+func (suite *VolumeHandlerTestSuite) TestDeleteVolumeGetTaskRuntimeFailure() {
+	testPelotonVolumeID := &peloton.VolumeID{
+		Value: _testVolumeID,
+	}
+	jobID := &peloton.JobID{Value: _testJobID}
+	suite.volumeStore.EXPECT().
+		GetPersistentVolume(gomock.Any(), testPelotonVolumeID).
+		Return(&volume.PersistentVolumeInfo{
+			JobId:      jobID,
+			InstanceId: 0,
+		}, nil)
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), jobID, uint32(0)).
+		Return(nil, fmt.Errorf("test error"))
+	_, err := suite.handler.DeleteVolume(context.Background(),
+		&volume_svc.DeleteVolumeRequest{Id: testPelotonVolumeID})
+	suite.Error(err)
+}
+
+func (suite *VolumeHandlerTestSuite) TestDeleteVolumeUpdateVolumeFailure() {
+	testPelotonVolumeID1 := &peloton.VolumeID{
+		Value: _testVolumeID,
+	}
+	testJobID := &peloton.JobID{
+		Value: _testJobID,
+	}
+	taskInfos := make(map[uint32]*task.TaskInfo)
+	taskInfos[1] = &task.TaskInfo{
+		Runtime: &task.RuntimeInfo{
+			VolumeID:  testPelotonVolumeID1,
+			State:     task.TaskState_KILLED,
+			GoalState: task.TaskState_KILLED,
+		},
+	}
+
+	volumeInfo1 := &volume.PersistentVolumeInfo{
+		Id:         testPelotonVolumeID1,
+		JobId:      testJobID,
+		InstanceId: 1,
+	}
+
+	gomock.InOrder(
+		suite.volumeStore.EXPECT().
+			GetPersistentVolume(context.Background(), testPelotonVolumeID1).
+			Return(volumeInfo1, nil),
+		suite.taskStore.EXPECT().
+			GetTaskRuntime(context.Background(), testJobID, uint32(1)).
+			Return(taskInfos[1].Runtime, nil),
+		suite.volumeStore.EXPECT().
+			UpdatePersistentVolume(context.Background(), volumeInfo1).
+			Return(fmt.Errorf("test err")),
+	)
+
+	_, err := suite.handler.DeleteVolume(
+		context.Background(),
+		&volume_svc.DeleteVolumeRequest{
+			Id: testPelotonVolumeID1,
+		},
+	)
+	suite.Error(err)
+}
+
+func (suite *VolumeHandlerTestSuite) TestListVolumesGetTasksFailure() {
+	testJobID := &peloton.JobID{
+		Value: _testJobID,
+	}
+
+	suite.taskStore.EXPECT().
+		GetTasksForJob(context.Background(), testJobID).
+		Return(nil, fmt.Errorf("test error"))
+
+	_, err := suite.handler.ListVolumes(
+		context.Background(),
+		&volume_svc.ListVolumesRequest{
+			JobId: testJobID,
 		},
 	)
 	suite.Error(err)
