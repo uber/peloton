@@ -369,7 +369,8 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigWithInvalidFieldType() {
 	for i := 0; i < val.NumField(); i++ {
 		kind := val.Field(i).Kind()
 		suite.True(kind == reflect.String || kind == reflect.
-			Ptr || kind == reflect.Slice || kind == reflect.Bool)
+			Ptr || kind == reflect.Slice || kind == reflect.
+			Bool || kind == reflect.Uint32)
 	}
 }
 

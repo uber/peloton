@@ -259,6 +259,12 @@ message TaskConfig {
   // which controls other tasks inside a job. E.g. spark driver tasks in a spark
   // job will be a controller task.
   bool controller = 12;
+
+  // This is used to set the amount of time between when the executor sends the
+  // SIGTERM message to gracefully terminate a task and when it kills it by
+  // sending SIGKILL. If you do not set the grace period duration the default is
+  // 30 seconds.
+  uint32 killGracePeriodSeconds = 13;
 }
 
 /**

@@ -34,6 +34,14 @@ func Merge(base *task.TaskConfig, override *task.TaskConfig) *task.TaskConfig {
 		case reflect.Bool:
 			// override bool
 			mergedVal.Field(i).Set(overrideVal.Field(i))
+		case reflect.Uint32:
+			if field.Uint() == 0 {
+				// set to base config value if the override is 0
+				mergedVal.Field(i).Set(baseVal.Field(i))
+			} else {
+				// merged config should have the overridden value
+				mergedVal.Field(i).Set(overrideVal.Field(i))
+			}
 		case reflect.String:
 			if field.String() == "" {
 				// set to base config value if the string is empty

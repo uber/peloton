@@ -39,6 +39,7 @@ instanceconfig:
     command:
       shell: true
       value: 'echo Hello instance 0 && sleep 100'
+    killgraceperiodseconds: 40
   1:
     name: instance1
     command:

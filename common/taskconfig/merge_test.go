@@ -64,6 +64,24 @@ func TestMergeInstanceOverride(t *testing.T) {
 		instanceConfig).Controller)
 }
 
+// TestMergeInstanceOverrideGracePeriod tests if the merged
+// task config reflects the expected killgraceperiodseconds
+func TestMergeInstanceOverrideGracePeriod(t *testing.T) {
+	// check override works when override config has non-zero
+	// grace period
+	cfg := Merge(
+		&task.TaskConfig{KillGracePeriodSeconds: uint32(20)},
+		&task.TaskConfig{KillGracePeriodSeconds: uint32(30)})
+	assert.Equal(t, uint32(30), cfg.GetKillGracePeriodSeconds())
+
+	// check if we retain base config when override config
+	// grace period is not set
+	cfg = Merge(
+		&task.TaskConfig{KillGracePeriodSeconds: uint32(20)},
+		&task.TaskConfig{KillGracePeriodSeconds: uint32(0)})
+	assert.Equal(t, uint32(20), cfg.GetKillGracePeriodSeconds())
+}
+
 func TestMergeWithExistingEnviron(t *testing.T) {
 	defaultConfig := &task.TaskConfig{
 		Command: &mesos_v1.CommandInfo{

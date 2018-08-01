@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 
@@ -622,6 +623,31 @@ func (suite *BuilderTestSuite) TestPopulateLabels() {
 		builder.populateLabels(mesosTask, test.pelotonTaskLabels, jobID, instanceID)
 		suite.Equal(test.mesosTaskLabels, mesosTask.Labels)
 	}
+}
+
+// TestPopulateKillPolicy tests setting the kill policy of tasks with a grace
+// period
+func (suite *BuilderTestSuite) TestPopulateKillPolicy() {
+	numTasks := 1
+	resources := suite.getResources(numTasks)
+	builder := NewBuilder(resources)
+	taskConfig := createTestTaskConfigs(numTasks)[0]
+
+	mesosTask := &mesos.TaskInfo{}
+	builder.populateKillPolicy(
+		mesosTask, taskConfig.GetKillGracePeriodSeconds())
+
+	// Verify default grace period
+	suite.Equal(mesosTask.GetKillPolicy().GetGracePeriod().GetNanoseconds(),
+		_defaultTaskKillGracePeriod.Nanoseconds())
+
+	taskConfig.KillGracePeriodSeconds = 100
+	builder.populateKillPolicy(
+		mesosTask, taskConfig.GetKillGracePeriodSeconds())
+
+	expectedGracePeriod := 100 * time.Second
+	suite.Equal(mesosTask.GetKillPolicy().GetGracePeriod().GetNanoseconds(),
+		expectedGracePeriod.Nanoseconds())
 }
 
 func TestBuilderTestSuite(t *testing.T) {

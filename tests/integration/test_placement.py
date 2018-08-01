@@ -1,7 +1,7 @@
 import pytest
 import time
 
-from job import IntegrationTestConfig, Job
+from job import IntegrationTestConfig, Job, kill_jobs
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 
@@ -31,8 +31,7 @@ def test__create_a_stateful_job_with_3_tasks_on_3_different_hosts():
         task_info = task.get_info()
         hosts = hosts.union(set({task_info.runtime.host}))
 
-    job.stop()
-    job.wait_for_state(goal_state='KILLED')
+    kill_jobs([job])
 
     # ToDo: Clean up persistent volumes from the test.
 
@@ -95,9 +94,7 @@ def test__create_2_stateful_jobs_with_task_to_task_anti_affinity_between_jobs():
             task_info = task.get_info()
             hosts = hosts.union(set({task_info.runtime.host}))
 
-    for job in jobs:
-        job.stop()
-        job.wait_for_state(goal_state='KILLED')
+    kill_jobs(jobs)
 
     # ToDo: Clean up persistent volumes from the test.
 

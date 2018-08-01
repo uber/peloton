@@ -2,6 +2,7 @@ package task
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
@@ -24,6 +25,9 @@ const (
 	PelotonInstanceIDLabelKey = "peloton.instance_id"
 	// PelotonTaskIDLabelKey is the task label key for task ID
 	PelotonTaskIDLabelKey = "peloton.task_id"
+
+	// Set default task kill grace period to 30 seconds
+	_defaultTaskKillGracePeriod = 30 * time.Second
 )
 
 var (
@@ -216,6 +220,7 @@ func (tb *Builder) Build(
 		Resources: lres,
 	}
 
+	tb.populateKillPolicy(mesosTask, taskConfig.GetKillGracePeriodSeconds())
 	tb.populateDiscoveryInfo(mesosTask, pick.selectedPorts, jobID)
 	tb.populateCommandInfo(
 		mesosTask,
@@ -378,6 +383,24 @@ func (tb *Builder) populateLabels(
 
 	mesosTask.Labels = &mesos.Labels{
 		Labels: mesosLabels.Labels,
+	}
+}
+
+// populateKillPolicy populates the `KillPolicy` field of the task with the
+// default or custom task kill grace period.
+func (tb *Builder) populateKillPolicy(mesosTask *mesos.TaskInfo,
+	taskKillGracePeriodSecs uint32) {
+	// set grace period to default value
+	gracePeriodNsec := int64(_defaultTaskKillGracePeriod.Nanoseconds())
+
+	if taskKillGracePeriodSecs > 0 {
+		gracePeriod := time.Duration(taskKillGracePeriodSecs) * time.Second
+		gracePeriodNsec = int64(gracePeriod.Nanoseconds())
+	}
+	mesosTask.KillPolicy = &mesos.KillPolicy{
+		GracePeriod: &mesos.DurationInfo{
+			Nanoseconds: &gracePeriodNsec,
+		},
 	}
 }
 
