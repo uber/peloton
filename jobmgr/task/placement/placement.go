@@ -2,7 +2,6 @@ package placement
 
 import (
 	"context"
-	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -18,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
@@ -51,7 +51,7 @@ type processor struct {
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
 	taskLauncher    launcher.Launcher
-	running         int32
+	lifeCycle       lifecycle.LifeCycle
 	config          *Config
 	metrics         *Metrics
 }
@@ -82,54 +82,70 @@ func InitProcessor(
 		taskLauncher:    taskLauncher,
 		config:          config,
 		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
+		lifeCycle:       lifecycle.NewLifeCycle(),
 	}
 }
 
 // Start starts Processor
 func (p *processor) Start() error {
-	if p.isRunning() {
+	if !p.lifeCycle.Start() {
 		// already running
 		log.Warn("placement processor is already running, no action will be performed")
 		return nil
 	}
-
 	log.Info("starting placement processor")
-	atomic.StoreInt32(&p.running, 1)
-	go func() {
-		for p.isRunning() {
-			placements, err := p.getPlacements()
-			if err != nil {
-				log.WithError(err).Error("jobmgr failed to dequeue placements")
-				continue
-			}
 
-			if !p.isRunning() {
-				// placement dequeued but not processed
-				log.WithField("placements", placements).
-					Warn("ignoring placement after dequeue due to lost leadership")
-				break
-			}
+	go p.run()
 
-			if len(placements) == 0 {
-				// log a debug to make it not verbose
-				log.Debug("No placements")
-				continue
-			}
-
-			ctx := context.Background()
-
-			// Getting and launching placements in different go routine
-			log.WithField("placements", placements).Debug("Start processing placements")
-			for _, placement := range placements {
-				go p.ProcessPlacement(ctx, placement)
-			}
-		}
-	}()
 	log.Info("placement processor started")
 	return nil
 }
 
-func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Placement) {
+func (p *processor) run() {
+	for {
+		select {
+		case <-p.lifeCycle.StopCh():
+			p.lifeCycle.StopComplete()
+			return
+		default:
+			p.process()
+		}
+	}
+}
+
+func (p *processor) process() {
+	placements, err := p.getPlacements()
+	if err != nil {
+		log.WithError(err).Error("jobmgr failed to dequeue placements")
+		return
+	}
+
+	select {
+	case <-p.lifeCycle.StopCh():
+		// placement dequeued but not processed
+		log.WithField("placements", placements).
+			Warn("ignoring placement after dequeue due to lost leadership")
+		return
+	default:
+		break
+	}
+
+	if len(placements) == 0 {
+		// log a debug to make it not verbose
+		log.Debug("No placements")
+		return
+	}
+
+	ctx := context.Background()
+
+	// Getting and launching placements in different go routine
+	log.WithField("placements", placements).Debug("Start processing placements")
+	for _, placement := range placements {
+		go p.processPlacement(ctx, placement)
+	}
+}
+
+func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Placement) {
 	tasks := placement.GetTasks()
 	lauchableTasks, err := p.taskLauncher.GetLaunchableTasks(
 		ctx,
@@ -148,6 +164,58 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 		return
 	}
 
+	taskInfos := p.createTaskInfos(ctx, lauchableTasks)
+
+	if len(taskInfos) == 0 {
+		// nothing to launch
+		return
+	}
+
+	// CreateLaunchableTasks returns a list of launchableTasks and taskInfo map
+	// of tasks that could not be launched because of transient error in getting
+	// secrets.
+	launchableTasks, skippedTaskInfos := p.taskLauncher.CreateLaunchableTasks(ctx, taskInfos)
+	// enqueue skipped tasks back to resmgr to launch again, instead of waiting
+	// for resmgr timeout
+	p.enqueueTasksToResMgr(ctx, skippedTaskInfos)
+
+	if err = p.taskLauncher.ProcessPlacement(ctx, launchableTasks, placement); err != nil {
+		p.enqueueTasksToResMgr(ctx, taskInfos)
+		return
+	}
+
+	// Finally, enqueue tasks into goalstate
+	p.enqueueTaskToGoalState(taskInfos)
+
+}
+
+func (p *processor) enqueueTaskToGoalState(taskInfos map[string]*task.TaskInfo) {
+	for id := range taskInfos {
+		jobID, instanceID, err := util.ParseTaskID(id)
+		if err != nil {
+			log.WithError(err).
+				WithField("task_id", id).
+				Error("failed to parse the task id in placement processor")
+			continue
+		}
+
+		p.goalStateDriver.EnqueueTask(
+			&peloton.JobID{Value: jobID},
+			uint32(instanceID),
+			time.Now())
+
+		cachedJob := p.jobFactory.AddJob(&peloton.JobID{Value: jobID})
+		goalstate.EnqueueJobWithDefaultDelay(
+			&peloton.JobID{Value: jobID},
+			p.goalStateDriver,
+			cachedJob)
+	}
+}
+
+func (p *processor) createTaskInfos(
+	ctx context.Context,
+	lauchableTasks map[string]*launcher.LaunchableTask,
+) map[string]*task.TaskInfo {
 	taskInfos := make(map[string]*task.TaskInfo)
 	for taskID, launchableTask := range lauchableTasks {
 		id, instanceID, err := util.ParseTaskID(taskID)
@@ -209,64 +277,7 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 			}
 		}
 	}
-
-	if len(taskInfos) == 0 {
-		// nothing to launch
-		return
-	}
-
-	// CreateLaunchableTasks returns a list of launchableTasks and taskInfo map
-	// of tasks that could not be launched because of transient error in getting
-	// secrets.
-	launchableTasks, skippedTaskInfos := p.taskLauncher.CreateLaunchableTasks(ctx, taskInfos)
-	// enqueue skipped tasks back to resmgr to launch again, instead of waiting
-	// for resmgr timeout
-	if err = p.enqueueTasks(ctx, skippedTaskInfos); err != nil {
-		var taskIDs []string
-		for taskID := range skippedTaskInfos {
-			taskIDs = append(taskIDs, taskID)
-		}
-		// log error and move on to process launchableTasks
-		log.WithError(err).WithFields(log.Fields{
-			"task_ids":    taskIDs,
-			"tasks_total": len(skippedTaskInfos),
-		}).Error("failed to enqueue skipped tasks back to resmgr")
-	}
-	if err = p.taskLauncher.ProcessPlacement(ctx, launchableTasks, placement); err != nil {
-		if err = p.enqueueTasks(ctx, taskInfos); err != nil {
-			var taskIDs []string
-			for taskID := range taskInfos {
-				taskIDs = append(taskIDs, taskID)
-			}
-			log.WithError(err).WithFields(log.Fields{
-				"task_ids":    taskIDs,
-				"tasks_total": len(taskInfos),
-			}).Error("failed to enqueue tasks back to resmgr")
-		}
-		return
-	}
-
-	// Finally, enqueue tasks into goalstate
-	for id := range taskInfos {
-		jobID, instanceID, err := util.ParseTaskID(id)
-		if err != nil {
-			log.WithError(err).
-				WithField("task_id", id).
-				Error("failed to parse the task id in placement processor")
-			continue
-		}
-
-		p.goalStateDriver.EnqueueTask(
-			&peloton.JobID{Value: jobID},
-			uint32(instanceID),
-			time.Now())
-
-		cachedJob := p.jobFactory.AddJob(&peloton.JobID{Value: jobID})
-		goalstate.EnqueueJobWithDefaultDelay(
-			&peloton.JobID{Value: jobID},
-			p.goalStateDriver,
-			cachedJob)
-	}
+	return taskInfos
 }
 
 func (p *processor) getPlacements() ([]*resmgr.Placement, error) {
@@ -307,12 +318,25 @@ func (p *processor) getPlacements() ([]*resmgr.Placement, error) {
 }
 
 // enqueueTask enqueues given task to resmgr to launch again.
-func (p *processor) enqueueTasks(ctx context.Context, tasks map[string]*task.TaskInfo) error {
+func (p *processor) enqueueTasksToResMgr(ctx context.Context, tasks map[string]*task.TaskInfo) (err error) {
+	defer func() {
+		if err == nil {
+			return
+		}
+		var taskIDs []string
+		for taskID := range tasks {
+			taskIDs = append(taskIDs, taskID)
+		}
+		log.WithError(err).WithFields(log.Fields{
+			"task_ids":    taskIDs,
+			"tasks_total": len(tasks),
+		}).Error("failed to enqueue tasks to resmgr")
+	}()
+
 	if len(tasks) == 0 {
 		return nil
 	}
 
-	var err error
 	for _, t := range tasks {
 		runtimeDiff := taskutil.RegenerateMesosTaskIDDiff(
 			t.JobId, t.InstanceId, t.GetRuntime().GetMesosTaskId())
@@ -347,19 +371,14 @@ func (p *processor) enqueueTasks(ctx context.Context, tasks map[string]*task.Tas
 	return err
 }
 
-func (p *processor) isRunning() bool {
-	running := atomic.LoadInt32(&p.running)
-	return running == 1
-}
-
 // Stop stops placement processor
 func (p *processor) Stop() error {
-	if !(p.isRunning()) {
+	if !(p.lifeCycle.Stop()) {
 		log.Warn("placement processor is already stopped, no action will be performed")
 		return nil
 	}
 
-	atomic.StoreInt32(&p.running, 0)
+	p.lifeCycle.Wait()
 	log.Info("placement processor stopped")
 	return nil
 }

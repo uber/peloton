@@ -3,13 +3,16 @@ package placement
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/api/transport"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
@@ -18,11 +21,13 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
-	launcher_mocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
+	launchermocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
 
+	"code.uber.internal/infra/peloton/common/lifecycle"
+	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/util"
@@ -98,22 +103,58 @@ func createHostOffer(hostID int, resources []*mesos.Resource) *hostsvc.HostOffer
 	}
 }
 
-// This test ensures that multiple placements returned from resmgr can be properly placed by hostmgr
-func TestMultipleTasksPlacements(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+type PlacementTestSuite struct {
+	suite.Suite
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	testScope := tally.NewTestScope("", map[string]string{})
-	metrics := NewMetrics(testScope)
-	pp := processor{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient: mockRes,
-		metrics:      metrics,
+	ctrl            *gomock.Controller
+	resMgrClient    *resmocks.MockResourceManagerServiceYARPCClient
+	pp              *processor
+	taskLauncher    *launchermocks.MockLauncher
+	jobFactory      *cachedmocks.MockJobFactory
+	goalStateDriver *goalstatemocks.MockDriver
+	cachedJob       *cachedmocks.MockJob
+	cachedTask      *cachedmocks.MockTask
+	config          *Config
+	metrics         *Metrics
+	scope           tally.Scope
+}
+
+func (suite *PlacementTestSuite) SetupTest() {
+	suite.scope = tally.NewTestScope("", map[string]string{})
+	suite.metrics = NewMetrics(suite.scope)
+	suite.ctrl = gomock.NewController(suite.T())
+	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
+	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
+	suite.resMgrClient =
+		resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
+	suite.taskLauncher = launchermocks.NewMockLauncher(suite.ctrl)
+	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
+	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
+	suite.config = &Config{
+		PlacementDequeueLimit: 100,
+	}
+	suite.pp = &processor{
+		config:          suite.config,
+		resMgrClient:    suite.resMgrClient,
+		metrics:         suite.metrics,
+		taskLauncher:    suite.taskLauncher,
+		jobFactory:      suite.jobFactory,
+		goalStateDriver: suite.goalStateDriver,
+		lifeCycle:       lifecycle.NewLifeCycle(),
 	}
 
+}
+
+func (suite *PlacementTestSuite) TearDownTest() {
+	suite.ctrl.Finish()
+}
+
+func TestPlacementTestSuite(t *testing.T) {
+	suite.Run(t, new(PlacementTestSuite))
+}
+
+// This test ensures that multiple placements returned from resmgr can be properly placed by hostmgr
+func (suite *PlacementTestSuite) TestMultipleTasksPlacements() {
 	// generate 25 test tasks
 	numTasks := 25
 	testTasks := make([]*task.TaskInfo, numTasks)
@@ -138,47 +179,24 @@ func TestMultipleTasksPlacements(t *testing.T) {
 	}
 
 	gomock.InOrder(
-		mockRes.EXPECT().
+		suite.resMgrClient.EXPECT().
 			GetPlacements(
 				gomock.Any(),
 				gomock.Any()).
 			Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil),
 	)
 
-	gPlacements, err := pp.getPlacements()
+	gPlacements, err := suite.pp.getPlacements()
 
 	if err != nil {
-		assert.Error(t, err)
+		suite.Error(err)
 	}
-	assert.Equal(t, placements, gPlacements)
+	suite.Equal(placements, gPlacements)
 }
 
 // This test ensures placement engine, one start can dequeue placements, and
 // then call launcher to launch the placements.
-func TestTaskPlacementNoError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
-	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
-	testScope := tally.NewTestScope("", map[string]string{})
-	metrics := NewMetrics(testScope)
-
-	pp := processor{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient:    mockRes,
-		metrics:         metrics,
-		taskLauncher:    mockTaskLauncher,
-		jobFactory:      jobFactory,
-		goalStateDriver: goalStateDriver,
-	}
-
+func (suite *PlacementTestSuite) TestTaskPlacementNoError() {
 	testTask, testRuntimeDiff := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
@@ -189,7 +207,7 @@ func TestTaskPlacementNoError(t *testing.T) {
 	}
 
 	gomock.InOrder(
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
 			Return(
 				map[string]*launcher.LaunchableTask{
@@ -199,92 +217,53 @@ func TestTaskPlacementNoError(t *testing.T) {
 					},
 				},
 				nil),
-		jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(cachedJob),
-		cachedJob.EXPECT().
-			AddTask(uint32(0)).Return(cachedTask),
-		cachedTask.EXPECT().
+		suite.jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().
+			AddTask(uint32(0)).Return(suite.cachedTask),
+		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
-		cachedJob.EXPECT().
+		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
-		cachedTask.EXPECT().
+		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			CreateLaunchableTasks(gomock.Any(), gomock.Any()).Return(nil, nil),
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-		goalStateDriver.EXPECT().
+		suite.goalStateDriver.EXPECT().
 			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
-		jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(cachedJob),
-		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
-		goalStateDriver.EXPECT().
+		suite.jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
+		suite.goalStateDriver.EXPECT().
 			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
-		goalStateDriver.EXPECT().
+		suite.goalStateDriver.EXPECT().
 			EnqueueJob(testTask.JobId, gomock.Any()).Return(),
 	)
 
-	pp.ProcessPlacement(context.Background(), p)
+	suite.pp.processPlacement(context.Background(), p)
 }
 
-func TestTaskPlacementGetTaskError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	testScope := tally.NewTestScope("", map[string]string{})
-	metrics := NewMetrics(testScope)
-	pp := processor{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient: mockRes,
-		metrics:      metrics,
-		taskLauncher: mockTaskLauncher,
-	}
-
+func (suite *PlacementTestSuite) TestTaskPlacementGetTaskError() {
 	testTask, _ := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
 	p := createPlacements(testTask, hostOffer)
 
 	gomock.InOrder(
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
 			Return(nil, fmt.Errorf("fake launch error")),
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			TryReturnOffers(gomock.Any(), gomock.Any(), p).Return(nil),
 	)
 
-	pp.ProcessPlacement(context.Background(), p)
+	suite.pp.processPlacement(context.Background(), p)
 }
 
-func TestTaskPlacementKilledTask(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
-	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
-	testScope := tally.NewTestScope("", map[string]string{})
-	metrics := NewMetrics(testScope)
-
-	pp := processor{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient:    mockRes,
-		metrics:         metrics,
-		taskLauncher:    mockTaskLauncher,
-		jobFactory:      jobFactory,
-		goalStateDriver: goalStateDriver,
-	}
-
+func (suite *PlacementTestSuite) TestTaskPlacementKilledTask() {
 	testTask, runtimeDiff := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
@@ -297,7 +276,7 @@ func TestTaskPlacementKilledTask(t *testing.T) {
 	}
 
 	gomock.InOrder(
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
 			Return(
 				map[string]*launcher.LaunchableTask{
@@ -307,41 +286,18 @@ func TestTaskPlacementKilledTask(t *testing.T) {
 					},
 				},
 				nil),
-		jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(cachedJob),
-		cachedJob.EXPECT().
-			AddTask(uint32(0)).Return(cachedTask),
-		cachedTask.EXPECT().
+		suite.jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().
+			AddTask(uint32(0)).Return(suite.cachedTask),
+		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 	)
 
-	pp.ProcessPlacement(context.Background(), p)
+	suite.pp.processPlacement(context.Background(), p)
 }
 
-func TestTaskPlacementKilledRunningTask(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
-	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
-	testScope := tally.NewTestScope("", map[string]string{})
-	metrics := NewMetrics(testScope)
-
-	pp := processor{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient:    mockRes,
-		metrics:         metrics,
-		taskLauncher:    mockTaskLauncher,
-		jobFactory:      jobFactory,
-		goalStateDriver: goalStateDriver,
-	}
-
+func (suite *PlacementTestSuite) TestTaskPlacementKilledRunningTask() {
 	testTask, runtimeDiff := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
@@ -356,7 +312,7 @@ func TestTaskPlacementKilledRunningTask(t *testing.T) {
 	expectedRuntime[testTask.InstanceId] = testTask.Runtime
 
 	gomock.InOrder(
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
 			Return(
 				map[string]*launcher.LaunchableTask{
@@ -366,43 +322,20 @@ func TestTaskPlacementKilledRunningTask(t *testing.T) {
 					},
 				},
 				nil),
-		jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(cachedJob),
-		cachedJob.EXPECT().
-			AddTask(uint32(0)).Return(cachedTask),
-		cachedTask.EXPECT().
+		suite.jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().
+			AddTask(uint32(0)).Return(suite.cachedTask),
+		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
-		goalStateDriver.EXPECT().
+		suite.goalStateDriver.EXPECT().
 			EnqueueTask(testTask.JobId, gomock.Any(), gomock.Any()).Return(),
 	)
 
-	pp.ProcessPlacement(context.Background(), p)
+	suite.pp.processPlacement(context.Background(), p)
 }
 
-func TestTaskPlacementDBError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
-	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
-	testScope := tally.NewTestScope("", map[string]string{})
-	metrics := NewMetrics(testScope)
-
-	pp := processor{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient:    mockRes,
-		metrics:         metrics,
-		taskLauncher:    mockTaskLauncher,
-		jobFactory:      jobFactory,
-		goalStateDriver: goalStateDriver,
-	}
-
+func (suite *PlacementTestSuite) TestTaskPlacementDBError() {
 	testTask, runtimeDiff := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
@@ -413,7 +346,7 @@ func TestTaskPlacementDBError(t *testing.T) {
 	}
 
 	gomock.InOrder(
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
 			Return(
 				map[string]*launcher.LaunchableTask{
@@ -423,43 +356,20 @@ func TestTaskPlacementDBError(t *testing.T) {
 					},
 				},
 				nil),
-		jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(cachedJob),
-		cachedJob.EXPECT().
-			AddTask(uint32(0)).Return(cachedTask),
-		cachedTask.EXPECT().
+		suite.jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().
+			AddTask(uint32(0)).Return(suite.cachedTask),
+		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
-		cachedJob.EXPECT().
+		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake db error")),
 	)
 
-	pp.ProcessPlacement(context.Background(), p)
+	suite.pp.processPlacement(context.Background(), p)
 }
 
-func TestTaskPlacementError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
-	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
-	testScope := tally.NewTestScope("", map[string]string{})
-	metrics := NewMetrics(testScope)
-
-	pp := processor{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient:    mockRes,
-		metrics:         metrics,
-		taskLauncher:    mockTaskLauncher,
-		jobFactory:      jobFactory,
-		goalStateDriver: goalStateDriver,
-	}
-
+func (suite *PlacementTestSuite) TestTaskPlacementError() {
 	testTask, runtimeDiff := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
@@ -470,7 +380,7 @@ func TestTaskPlacementError(t *testing.T) {
 	}
 
 	gomock.InOrder(
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
 			Return(
 				map[string]*launcher.LaunchableTask{
@@ -480,61 +390,38 @@ func TestTaskPlacementError(t *testing.T) {
 					},
 				},
 				nil),
-		jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(cachedJob),
-		cachedJob.EXPECT().
-			AddTask(uint32(0)).Return(cachedTask),
-		cachedTask.EXPECT().
+		suite.jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().
+			AddTask(uint32(0)).Return(suite.cachedTask),
+		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
-		cachedJob.EXPECT().
+		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
-		cachedTask.EXPECT().
+		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			CreateLaunchableTasks(gomock.Any(), gomock.Any()).Return(nil, nil),
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake launch error")),
-		jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(cachedJob),
-		cachedJob.EXPECT().
+		suite.jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
-		goalStateDriver.EXPECT().
+		suite.goalStateDriver.EXPECT().
 			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
-		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
-		goalStateDriver.EXPECT().
+		suite.cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
+		suite.goalStateDriver.EXPECT().
 			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
-		goalStateDriver.EXPECT().
+		suite.goalStateDriver.EXPECT().
 			EnqueueJob(testTask.JobId, gomock.Any()).Return(),
 	)
 
-	pp.ProcessPlacement(context.Background(), p)
+	suite.pp.processPlacement(context.Background(), p)
 }
 
-func TestTaskPlacementPlacementResMgrError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
-	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
-	testScope := tally.NewTestScope("", map[string]string{})
-	metrics := NewMetrics(testScope)
-
-	pp := processor{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient:    mockRes,
-		metrics:         metrics,
-		taskLauncher:    mockTaskLauncher,
-		jobFactory:      jobFactory,
-		goalStateDriver: goalStateDriver,
-	}
-
+func (suite *PlacementTestSuite) TestTaskPlacementPlacementResMgrError() {
 	testTask, runtimeDiff := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
@@ -545,7 +432,7 @@ func TestTaskPlacementPlacementResMgrError(t *testing.T) {
 	}
 
 	gomock.InOrder(
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
 			Return(
 				map[string]*launcher.LaunchableTask{
@@ -555,27 +442,181 @@ func TestTaskPlacementPlacementResMgrError(t *testing.T) {
 					},
 				},
 				nil),
-		jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(cachedJob),
-		cachedJob.EXPECT().
-			AddTask(uint32(0)).Return(cachedTask),
-		cachedTask.EXPECT().
+		suite.jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().
+			AddTask(uint32(0)).Return(suite.cachedTask),
+		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
-		cachedJob.EXPECT().
+		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
-		cachedTask.EXPECT().
+		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			CreateLaunchableTasks(gomock.Any(), gomock.Any()).Return(nil, nil),
-		mockTaskLauncher.EXPECT().
+		suite.taskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake launch error")),
-		jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(cachedJob),
-		cachedJob.EXPECT().
+		suite.jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake db error")),
 	)
 
-	pp.ProcessPlacement(context.Background(), p)
+	suite.pp.processPlacement(context.Background(), p)
+}
+
+// TestTaskPlacementProcessorStartAndStop tests for normal start and stop
+func (suite *PlacementTestSuite) TestTaskPlacementProcessorStartAndStop() {
+	suite.resMgrClient.EXPECT().
+		GetPlacements(gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("test error")).
+		AnyTimes()
+	suite.NoError(suite.pp.Start())
+	suite.NoError(suite.pp.Stop())
+}
+
+// TestTaskPlacementProcessorMultipleStart tests multiple starts in a row
+func (suite *PlacementTestSuite) TestTaskPlacementProcessorMultipleStart() {
+	suite.resMgrClient.EXPECT().
+		GetPlacements(gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("test error")).
+		AnyTimes()
+	suite.NoError(suite.pp.Start())
+	suite.NoError(suite.pp.Start())
+}
+
+// TestTaskPlacementProcessorMultipleStop tests multiple stop in a row
+func (suite *PlacementTestSuite) TestTaskPlacementProcessorMultipleStop() {
+	suite.NoError(suite.pp.Stop())
+	suite.NoError(suite.pp.Stop())
+}
+
+// TestTaskPlacementProcessorStopRun tests stop does make run() return
+func (suite *PlacementTestSuite) TestTaskPlacementProcessorStopRun() {
+	suite.resMgrClient.EXPECT().
+		GetPlacements(gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("test error")).
+		AnyTimes()
+
+	var runwg sync.WaitGroup
+	runwg.Add(1)
+	go func() {
+		suite.pp.run()
+		runwg.Done()
+
+	}()
+
+	suite.NoError(suite.pp.Stop())
+	runwg.Wait()
+}
+
+// TestTaskPlacementProcessorProcessReturnUpOnStop test that process()
+// would not process placement if stop is called.
+func (suite *PlacementTestSuite) TestTaskPlacementProcessorProcessReturnUpOnStop() {
+	numTasks := 1
+	testTasks := make([]*task.TaskInfo, numTasks)
+	placements := make([]*resmgr.Placement, numTasks)
+	for i := 0; i < numTasks; i++ {
+		tmp, _ := createTestTask(i)
+		testTasks[i] = tmp
+	}
+
+	// generate 25 host offer, each can hold 1 tasks.
+	numHostOffers := numTasks
+	rs := createResources(float64(numHostOffers))
+	var hostOffers []*hostsvc.HostOffer
+	for i := 0; i < numHostOffers; i++ {
+		hostOffers = append(hostOffers, createHostOffer(i, rs))
+	}
+
+	// Generate Placements per host offer
+	for i := 0; i < numHostOffers; i++ {
+		p := createPlacements(testTasks[i], hostOffers[i])
+		placements[i] = p
+	}
+
+	// start the lifeCycle only, otherwise other methods in
+	// pp.Start would also be called and make test hard
+	suite.pp.lifeCycle.Start()
+	go suite.pp.lifeCycle.StopComplete()
+	suite.pp.Stop()
+	suite.resMgrClient.EXPECT().
+		GetPlacements(gomock.Any(), gomock.Any()).
+		Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil)
+	suite.pp.process()
+}
+
+// TestTaskPlacementProcessorProcessNormal tests the normal case of process call
+func (suite *PlacementTestSuite) TestTaskPlacementProcessorProcessNormal() {
+	numTasks := 1
+	testTasks := make([]*task.TaskInfo, numTasks)
+	placements := make([]*resmgr.Placement, numTasks)
+	for i := 0; i < numTasks; i++ {
+		tmp, _ := createTestTask(i)
+		testTasks[i] = tmp
+	}
+
+	// generate 25 host offer, each can hold 1 tasks.
+	numHostOffers := numTasks
+	rs := createResources(float64(numHostOffers))
+	var hostOffers []*hostsvc.HostOffer
+	for i := 0; i < numHostOffers; i++ {
+		hostOffers = append(hostOffers, createHostOffer(i, rs))
+	}
+
+	// Generate Placements per host offer
+	for i := 0; i < numHostOffers; i++ {
+		p := createPlacements(testTasks[i], hostOffers[i])
+		placements[i] = p
+	}
+
+	// start the lifeCycle only, otherwise other methods in
+	// pp.Start would also be called and make test hard
+	suite.pp.lifeCycle.Start()
+	suite.resMgrClient.EXPECT().
+		GetPlacements(gomock.Any(), gomock.Any()).
+		Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil)
+	suite.taskLauncher.EXPECT().
+		GetLaunchableTasks(gomock.Any(), gomock.Any(),
+			gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("test err"))
+	suite.taskLauncher.EXPECT().
+		TryReturnOffers(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(fmt.Errorf("test err"))
+	suite.pp.process()
+	// wait for all work to be done
+	time.Sleep(time.Second)
+}
+
+func (suite *PlacementTestSuite) TestInitPlacementProcessor() {
+	t := rpc.NewTransport()
+	outbounds := yarpc.Outbounds{
+		"testClient": transport.Outbounds{
+			Unary: t.NewSingleOutbound("localhost"),
+		},
+	}
+
+	dispatcher := yarpc.NewDispatcher(yarpc.Config{
+		Name:      "test-service",
+		Outbounds: outbounds,
+	})
+
+	pp := InitProcessor(
+		dispatcher,
+		"testClient",
+		suite.jobFactory,
+		suite.goalStateDriver,
+		suite.taskLauncher,
+		suite.config,
+		suite.scope,
+	).(*processor)
+	suite.Equal(suite.jobFactory, pp.jobFactory)
+	suite.Equal(suite.goalStateDriver, pp.goalStateDriver)
+	suite.Equal(suite.taskLauncher, pp.taskLauncher)
+	suite.Equal(suite.config, pp.config)
+	suite.NotNil(pp.metrics)
+	suite.NotNil(pp.lifeCycle)
+	suite.NotNil(pp.resMgrClient)
 }
 
 // createPlacements creates the placement
