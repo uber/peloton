@@ -1269,6 +1269,76 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskRun
 	suite.NoError(err)
 }
 
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInstancesToJob() {
+	instanceCount := uint32(100)
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
+
+	startTime, _ := time.Parse(time.RFC3339Nano, jobStartTime)
+	startTimeUnix := float64(startTime.UnixNano()) / float64(time.Second/time.Nanosecond)
+
+	// sum of each state is smaller than instanceCount
+	// simulate partially created job
+	stateCounts := make(map[string]uint32)
+	stateCounts[pbtask.TaskState_PENDING.String()] = instanceCount/2 - 1
+	stateCounts[pbtask.TaskState_RUNNING.String()] = instanceCount/2 - 1
+
+	jobRuntime := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_PENDING,
+		GoalState: pbjob.JobState_SUCCEEDED,
+		TaskStats: stateCounts,
+		UpdateID:  &peloton.UpdateID{Value: uuid.New()},
+	}
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
+		Return(stateCounts, nil)
+
+	suite.cachedConfig.EXPECT().
+		HasControllerTask().
+		Return(false)
+
+	suite.cachedConfig.EXPECT().
+		GetType().
+		Return(pbjob.JobType_SERVICE)
+
+	suite.cachedJob.EXPECT().
+		IsPartiallyCreated(gomock.Any()).
+		Return(true).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetFirstTaskUpdateTime().
+		Return(startTimeUnix)
+
+	suite.cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context, jobInfo *pbjob.JobInfo, _ cached.UpdateRequest) {
+			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_RUNNING)
+		}).Return(nil)
+
+	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	suite.NoError(err)
+}
+
 func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 	var instanceCount uint32 = 100
 	tests := []struct {

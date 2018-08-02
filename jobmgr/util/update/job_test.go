@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
@@ -180,4 +181,23 @@ func (suite *UpdateJobUtilTestSuite) TestAbortSuccess() {
 		suite.updateFactory,
 	)
 	suite.NoError(err)
+}
+
+func (suite *UpdateJobUtilTestSuite) TestHasUpdate() {
+	hasUpdateTests := []struct {
+		*job.RuntimeInfo
+		result bool
+	}{
+		{nil, false},
+		{&job.RuntimeInfo{}, false},
+		{&job.RuntimeInfo{UpdateID: &peloton.UpdateID{}}, false},
+		{&job.RuntimeInfo{UpdateID: &peloton.UpdateID{
+			Value: "update-id",
+		}}, true},
+	}
+
+	for i, test := range hasUpdateTests {
+		suite.Equal(HasUpdate(test.RuntimeInfo), test.result,
+			"test %d fails", i)
+	}
 }

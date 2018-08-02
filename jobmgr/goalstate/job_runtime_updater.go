@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	updateutil "code.uber.internal/infra/peloton/jobmgr/util/update"
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
@@ -192,12 +193,17 @@ type jobStateDeterminer interface {
 }
 
 func jobStateDeterminerFactory(
+	jobRuntime *job.RuntimeInfo,
 	stateCounts map[string]uint32,
 	cachedJob cached.Job,
 	config cached.JobConfig) jobStateDeterminer {
 	totalInstanceCount := getTotalInstanceCount(stateCounts)
+	// a job is partially created if:
+	// 1. number of total instance count is smaller than configured
+	// 2. there is no update going on
 	if totalInstanceCount < config.GetInstanceCount() &&
-		cachedJob.IsPartiallyCreated(config) {
+		cachedJob.IsPartiallyCreated(config) &&
+		!updateutil.HasUpdate(jobRuntime) {
 		return newPartiallyCreatedJobStateDeterminer()
 	}
 
@@ -370,7 +376,7 @@ func determineJobRuntimeState(
 	config cached.JobConfig,
 	goalStateDriver *driver,
 	cachedJob cached.Job) (job.JobState, error) {
-	jobStateDeterminer := jobStateDeterminerFactory(stateCounts, cachedJob, config)
+	jobStateDeterminer := jobStateDeterminerFactory(jobRuntime, stateCounts, cachedJob, config)
 	jobState, err := jobStateDeterminer.getState(ctx, jobRuntime)
 	if err != nil {
 		return job.JobState_UNKNOWN, err
@@ -436,75 +442,59 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 			// Job already killed, do not do anything
 			return nil
 		}
-		// Either MV view has not caught up or all instances have not been created
-		if cachedJob.IsPartiallyCreated(config) {
-			// all instances have not been created, trigger recovery
-			jobState = job.JobState_INITIALIZED
-		} else {
+
+		if !cachedJob.IsPartiallyCreated(config) {
 			// MV has not caught up, wait for it to catch up before doing anything
 			return fmt.Errorf("dbs are not in sync")
 		}
-	} else {
-		if totalInstanceCount > config.GetInstanceCount() {
-			log.WithField("job_id", id).
-				WithField("total_instance_count", totalInstanceCount).
-				WithField("instances", config.GetInstanceCount()).
-				Error("total instance count is greater than expected")
-		}
-
-		// case totalInstanceCount > config.GetInstanceCount is handled
-		// by determineJobRuntimeState
-		jobState, err = determineJobRuntimeState(
-			ctx,
-			jobRuntime, stateCounts,
-			config, goalStateDriver, cachedJob)
-
-		if err != nil {
-			return err
-		}
-
-		if jobRuntime.GetTaskStats() != nil &&
-			reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) &&
-			jobRuntime.GetState() == jobState {
-			log.WithField("job_id", id).
-				WithField("task_stats", stateCounts).
-				Debug("Task stats did not change, return")
-
-			// if an update is running for this job, enqueue it as well
-			// TODO change this to use watch functionality from the cache
-			if jobRuntime.GetUpdateID() != nil &&
-				len(jobRuntime.GetUpdateID().GetValue()) > 0 {
-				goalStateDriver.EnqueueUpdate(jobID, jobRuntime.GetUpdateID(), time.Now())
-			}
-			return nil
-		}
+	} else if totalInstanceCount > config.GetInstanceCount() {
+		log.WithField("job_id", id).
+			WithField("total_instance_count", totalInstanceCount).
+			WithField("instances", config.GetInstanceCount()).
+			Error("total instance count is greater than expected")
 	}
 
-	getFirstTaskUpdateTime := cachedJob.GetFirstTaskUpdateTime()
-	if getFirstTaskUpdateTime != 0 && jobRuntime.StartTime == "" {
-		count := uint32(0)
-		for _, state := range taskStatesAfterStart {
-			count += stateCounts[state.String()]
-		}
-
-		if count > 0 {
-			jobRuntimeUpdate.StartTime = formatTime(getFirstTaskUpdateTime, time.RFC3339Nano)
-		}
+	// determineJobRuntimeState would handle both
+	// totalInstanceCount > config.GetInstanceCount() and
+	// partially created job
+	jobState, err = determineJobRuntimeState(
+		ctx,
+		jobRuntime, stateCounts,
+		config, goalStateDriver, cachedJob)
+	if err != nil {
+		return err
 	}
+
+	if jobRuntime.GetTaskStats() != nil &&
+		reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) &&
+		jobRuntime.GetState() == jobState {
+		log.WithField("job_id", id).
+			WithField("task_stats", stateCounts).
+			Debug("Task stats did not change, return")
+
+		// if an update is running for this job, enqueue it as well
+		// TODO change this to use watch functionality from the cache
+		if updateutil.HasUpdate(jobRuntime) {
+			goalStateDriver.EnqueueUpdate(jobID, jobRuntime.GetUpdateID(), time.Now())
+		}
+		return nil
+	}
+
+	jobRuntimeUpdate = setStartTime(
+		cachedJob,
+		jobRuntime,
+		stateCounts,
+		jobRuntimeUpdate,
+	)
 
 	jobRuntimeUpdate.State = jobState
-	if util.IsPelotonJobStateTerminal(jobState) {
-		// In case a job moved from PENDING/INITIALIZED to KILLED state,
-		// the lastTaskUpdateTime will be 0. In this case, we will use
-		// time.Now() as default completion time since a job in terminal
-		// state should always have a completion time
-		completionTime := time.Now().UTC().Format(time.RFC3339Nano)
-		lastTaskUpdateTime := cachedJob.GetLastTaskUpdateTime()
-		if lastTaskUpdateTime != 0 {
-			completionTime = formatTime(lastTaskUpdateTime, time.RFC3339Nano)
-		}
-		jobRuntimeUpdate.CompletionTime = completionTime
-	}
+
+	jobRuntimeUpdate = setCompletionTime(
+		cachedJob,
+		jobState,
+		jobRuntimeUpdate,
+	)
+
 	jobRuntimeUpdate.TaskStats = stateCounts
 
 	jobRuntimeUpdate.ResourceUsage = cachedJob.GetResourceUsage()
@@ -523,8 +513,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 
 	// if an update is running for this job, enqueue it as well
 	// TODO change this to use watch functionality from the cache
-	if jobRuntime.GetUpdateID() != nil &&
-		len(jobRuntime.GetUpdateID().GetValue()) > 0 {
+	if updateutil.HasUpdate(jobRuntime) {
 		goalStateDriver.EnqueueUpdate(jobID, jobRuntime.GetUpdateID(), time.Now())
 	}
 
@@ -534,7 +523,8 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	// (we may have no additional tasks coming in when job is
 	// partially created)
 	if util.IsPelotonJobStateTerminal(jobRuntimeUpdate.GetState()) ||
-		cachedJob.IsPartiallyCreated(config) {
+		(cachedJob.IsPartiallyCreated(config) &&
+			!updateutil.HasUpdate(jobRuntime)) {
 		goalStateDriver.EnqueueJob(jobID, time.Now())
 	}
 
@@ -552,4 +542,46 @@ func getTotalInstanceCount(stateCounts map[string]uint32) uint32 {
 		totalInstanceCount += stateCounts[state]
 	}
 	return totalInstanceCount
+}
+
+// setStartTime adds start time to jobRuntimeUpdate, if the job
+// first starts. It returns the updated jobRuntimeUpdate.
+func setStartTime(
+	cachedJob cached.Job,
+	jobRuntime *job.RuntimeInfo,
+	stateCounts map[string]uint32,
+	jobRuntimeUpdate *job.RuntimeInfo) *job.RuntimeInfo {
+	getFirstTaskUpdateTime := cachedJob.GetFirstTaskUpdateTime()
+	if getFirstTaskUpdateTime != 0 && jobRuntime.StartTime == "" {
+		count := uint32(0)
+		for _, state := range taskStatesAfterStart {
+			count += stateCounts[state.String()]
+		}
+
+		if count > 0 {
+			jobRuntimeUpdate.StartTime = formatTime(getFirstTaskUpdateTime, time.RFC3339Nano)
+		}
+	}
+	return jobRuntimeUpdate
+}
+
+// setCompletionTime adds completion time to jobRuntimeUpdate, if the job
+// completes. It returns the updated jobRuntimeUpdate.
+func setCompletionTime(
+	cachedJob cached.Job,
+	jobState job.JobState,
+	jobRuntimeUpdate *job.RuntimeInfo) *job.RuntimeInfo {
+	if util.IsPelotonJobStateTerminal(jobState) {
+		// In case a job moved from PENDING/INITIALIZED to KILLED state,
+		// the lastTaskUpdateTime will be 0. In this case, we will use
+		// time.Now() as default completion time since a job in terminal
+		// state should always have a completion time
+		completionTime := time.Now().UTC().Format(time.RFC3339Nano)
+		lastTaskUpdateTime := cachedJob.GetLastTaskUpdateTime()
+		if lastTaskUpdateTime != 0 {
+			completionTime = formatTime(lastTaskUpdateTime, time.RFC3339Nano)
+		}
+		jobRuntimeUpdate.CompletionTime = completionTime
+	}
+	return jobRuntimeUpdate
 }

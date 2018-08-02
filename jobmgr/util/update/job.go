@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 
 	"code.uber.internal/infra/peloton/jobmgr/cached"
@@ -45,4 +46,10 @@ func AbortJobUpdate(
 	}
 
 	return nil
+}
+
+// HasUpdate returns if a job has any update going
+func HasUpdate(jobRuntime *pbjob.RuntimeInfo) bool {
+	return jobRuntime.GetUpdateID() != nil &&
+		len(jobRuntime.GetUpdateID().GetValue()) > 0
 }
