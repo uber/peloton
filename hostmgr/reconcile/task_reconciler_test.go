@@ -119,6 +119,7 @@ func (suite *TaskReconcilerTestSuite) SetupTest() {
 
 func (suite *TaskReconcilerTestSuite) TearDownTest() {
 	log.Debug("tearing down")
+	suite.ctrl.Finish()
 }
 
 func (suite *TaskReconcilerTestSuite) createTestTaskInfo(
@@ -145,8 +146,22 @@ func TestTaskReconcilerTestSuite(t *testing.T) {
 	suite.Run(t, new(TaskReconcilerTestSuite))
 }
 
+func (suite *TaskReconcilerTestSuite) TestNewTaskReconciler() {
+	reconciler := NewTaskReconciler(
+		suite.schedulerClient,
+		suite.testScope,
+		&mockFrameworkInfoProvider{},
+		suite.mockJobStore,
+		suite.mockTaskStore,
+		&TaskReconcilerConfig{
+			ExplicitReconcileBatchIntervalSec: int(explicitReconcileBatchInterval / time.Millisecond),
+			ExplicitReconcileBatchSize:        testBatchSize,
+		},
+	)
+	suite.NotNil(reconciler)
+}
+
 func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
-	defer suite.ctrl.Finish()
 	// need to sync the goroutine created by taskReconciler.Reconcile
 	// and the test goroutine to avoid data race in test
 	finishCh := make(chan struct{}, 1)
@@ -226,7 +241,6 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 }
 
 func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
-	defer suite.ctrl.Finish()
 	// need to sync the goroutine created by taskReconciler.Reconcile
 	// and the test goroutine to avoid data race in test
 	finishCh := make(chan struct{}, 1)
@@ -270,7 +284,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 				suite.Equal(0, len(call.GetReconcile().GetTasks()))
 				finishCh <- struct{}{}
 			}).
-			Return(nil),
+			Return(fmt.Errorf("fake error")),
 	)
 
 	suite.running.Store(true)
@@ -289,7 +303,6 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 }
 
 func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
-	defer suite.ctrl.Finish()
 	// need to sync the goroutine created by taskReconciler.Reconcile
 	// and the test goroutine to avoid data race in test
 	finishCh := make(chan struct{}, 1)
@@ -333,6 +346,8 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), true)
+	// Another call to explicit reconcile should be a no-op
+	suite.reconciler.reconcileExplicitly(context.Background(), &suite.running)
 
 	suite.running.Store(false)
 	time.Sleep(oneExplicitReconcileRunDelay)
@@ -342,7 +357,6 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 }
 
 func (suite *TaskReconcilerTestSuite) TestTaskReconcilationWithStatingStates() {
-	defer suite.ctrl.Finish()
 	// need to sync the goroutine created by taskReconciler.Reconcile
 	// and the test goroutine to avoid data race in test
 	finishCh := make(chan struct{}, 1)
@@ -422,9 +436,48 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationWithStatingStates() {
 }
 
 func (suite *TaskReconcilerTestSuite) TestTaskReconciliationExplicitTurnTurn() {
-	defer suite.ctrl.Finish()
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 
 	suite.reconciler.SetExplicitReconcileTurn(false)
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
+}
+
+func (suite *TaskReconcilerTestSuite) TestTaskReconcilerGetJobsByStatesError() {
+	suite.mockJobStore.EXPECT().
+		GetJobsByStates(context.Background(), _nonTerminalJobStates).
+		Return(nil, fmt.Errorf("Fake GetJobsByStates error"))
+
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	suite.running.Store(true)
+	suite.reconciler.Reconcile(&suite.running)
+	time.Sleep(explicitReconcileBatchInterval)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+}
+
+func (suite *TaskReconcilerTestSuite) TestTaskReconcilerGetTasksForJobAndStates() {
+	gomock.InOrder(
+		suite.mockJobStore.EXPECT().
+			GetJobsByStates(context.Background(), _nonTerminalJobStates).
+			Return([]peloton.JobID{*suite.testJobID}, nil),
+		suite.mockTaskStore.EXPECT().
+			GetTasksForJobAndStates(
+				context.Background(),
+				suite.testJobID,
+				[]task.TaskState{
+					task.TaskState_LAUNCHED,
+					task.TaskState_STARTING,
+					task.TaskState_RUNNING,
+					task.TaskState_KILLING,
+				}).
+			Return(nil, fmt.Errorf("Fake GetTasksForJobAndStates error")),
+	)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	suite.running.Store(true)
+	suite.reconciler.Reconcile(&suite.running)
+	time.Sleep(explicitReconcileBatchInterval)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
 }

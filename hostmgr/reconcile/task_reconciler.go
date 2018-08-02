@@ -105,7 +105,9 @@ func (r *taskReconciler) reconcileImplicitly(ctx context.Context) {
 	log.Info("Reconcile tasks implicitly returned.")
 }
 
-func (r *taskReconciler) reconcileExplicitly(ctx context.Context, running *atomic.Bool) {
+func (r *taskReconciler) reconcileExplicitly(
+	ctx context.Context,
+	running *atomic.Bool) {
 	log.Info("Reconcile tasks explicitly called.")
 	if r.isExplicitReconcileRunning.Swap(true) {
 		log.Warn("Reconcile tasks explicit is already running, no-op.")
