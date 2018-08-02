@@ -137,6 +137,14 @@ var (
 	jobGetCache     = job.Command("cache", "get a job cache")
 	jobGetCacheName = jobGetCache.Arg("job", "job identifier").Required().String()
 
+	// Top level pod command
+	pod = app.Command("pod", "CLI reflects pod(s) actions, such as get pod details, create/restart/update a pod...")
+
+	podGetEvents           = pod.Command("events", "get pod events in reverse chronological order.")
+	podGetEventsJobName    = podGetEvents.Arg("job", "job identifier").Required().String()
+	podGetEventsInstanceID = podGetEvents.Arg("instance", "job instance id").Required().Uint32()
+	podGetEventsLimit      = podGetEvents.Flag("limit", "number of events to return, default value 100").Short('l').Uint64()
+
 	// Top level task command
 	task = app.Command("task", "manage tasks")
 
@@ -429,6 +437,8 @@ func main() {
 		err = client.TaskGetCacheAction(*taskGetCacheName, *taskGetCacheInstanceID)
 	case taskGetEvents.FullCommand():
 		err = client.TaskGetEventsAction(*taskGetEventsJobName, *taskGetEventsInstanceID)
+	case podGetEvents.FullCommand():
+		err = client.PodGetEventsAction(*podGetEventsJobName, *podGetEventsInstanceID, *podGetEventsLimit)
 	case taskLogsGet.FullCommand():
 		err = client.TaskLogsGetAction(*taskLogsGetFileName, *taskLogsGetJobName, *taskLogsGetInstanceID, *taskLogsGetTaskID)
 	case taskList.FullCommand():

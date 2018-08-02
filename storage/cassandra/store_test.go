@@ -2668,7 +2668,15 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 		suite.Error(err)
 	}
 
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+	dummyJobID := &peloton.JobID{Value: "dummy id"}
+	_, err := store.GetPodEvents(
+		context.Background(),
+		dummyJobID,
+		0,
+		0)
+	suite.Error(err)
+
+	jobID := &peloton.JobID{Value: "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06"}
 	mesosTaskID := "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-2"
 	prevMesosTaskID := "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1"
 	runtime := &task.RuntimeInfo{
@@ -2688,9 +2696,14 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 		ConfigVersion:        3,
 		DesiredConfigVersion: 4,
 	}
+
 	store.addPodEvent(context.Background(), jobID, 0, runtime)
-	count, err := store.getPodEvents(context.Background(), jobID.GetValue(), 0)
-	suite.Equal(count, 1)
+	podEvents, err := store.GetPodEvents(
+		context.Background(),
+		jobID,
+		0,
+		_defaultPodEventsLimit)
+	suite.Equal(len(podEvents), 1)
 	suite.NoError(err)
 }
 

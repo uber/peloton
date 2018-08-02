@@ -20,6 +20,8 @@ const (
 	taskListFormatBody     = "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
 	taskEventsFormatHeader = "Mesos Task Id\tState\tHealthy\tEvent Time\tHost\tMessage\tReason\t\n"
 	taskEventsFormatBody   = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
+	podEventsFormatHeader  = "Mesos Task Id\tActual State\tGoal State\tConfig Version\tDesired Config Version\tHost\tMessage\tReason\tUpdate Time\t\n"
+	podEventsFormatBody    = "%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t\n"
 )
 
 // sortedTaskInfoList makes TaskInfo implement sortable interface
@@ -130,6 +132,26 @@ func (c *Client) TaskGetEventsAction(jobID string, instanceID uint32) error {
 		return err
 	}
 	printTaskGetEventsResponse(response, c.Debug)
+	return nil
+}
+
+// PodGetEventsAction returns pod events in reverse chronological order.
+func (c *Client) PodGetEventsAction(
+	jobID string,
+	instanceID uint32,
+	limit uint64) error {
+	var request = &task.GetPodEventsRequest{
+		JobId: &peloton.JobID{
+			Value: jobID,
+		},
+		InstanceId: instanceID,
+		Limit:      limit,
+	}
+	response, err := c.taskClient.GetPodEvents(c.ctx, request)
+	if err != nil {
+		return err
+	}
+	printPodGetEventsResponse(response, c.Debug)
 	return nil
 }
 
@@ -415,6 +437,39 @@ func printTaskGetEventsResponse(r *task.GetEventsResponse, debug bool) {
 	}
 
 	fmt.Fprintf(tabWriter, "Unexpected error %v\n", err)
+}
+
+func printPodGetEventsResponse(r *task.GetPodEventsResponse, debug bool) {
+	defer tabWriter.Flush()
+
+	if debug {
+		printResponseJSON(r)
+		return
+	}
+
+	err := r.GetError()
+	if err != nil {
+		fmt.Fprintf(tabWriter,
+			"Got event error: %s\n", err.GetMessage())
+		return
+	}
+
+	fmt.Fprint(tabWriter, podEventsFormatHeader)
+	for _, event := range r.GetResult() {
+		fmt.Fprintf(
+			tabWriter,
+			podEventsFormatBody,
+			event.GetTaskId().GetValue(),
+			event.GetActualState(),
+			event.GetGoalState(),
+			event.GetConfigVersion(),
+			event.GetDesiredConfigVersion(),
+			event.GetHostname(),
+			event.GetMessage(),
+			event.GetReason(),
+			event.GetTimestamp(),
+		)
+	}
 }
 
 func printTaskListResponse(r *task.ListResponse, debug bool) {

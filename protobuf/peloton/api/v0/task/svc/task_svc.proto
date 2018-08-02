@@ -59,6 +59,10 @@ service TaskService
 
   // Debug only method. Get the cache of a task stored in Peloton.
   rpc GetTaskCache(GetTaskCacheRequest) returns(GetTaskCacheResponse);
+
+  // GetPodEvents returns pod events (state transition for a pod),
+  // in reverse chronological order. pod is singular instance of a Peloton job.
+  rpc GetPodEvents(GetPodEventsRequest) returns (GetPodEventsResponse);
 }
 
 
@@ -309,6 +313,75 @@ message GetEventsResponse {
 
   message Error {
     TaskEventsError eventError = 1;
+  }
+
+  Error error = 2;
+}
+
+/**
+ *  Pod event of a Peloton pod instance.
+ */
+message PodEvent {
+  // The task ID of the task event.
+  peloton.TaskID taskId = 1;
+
+  // Actual state of an instance
+  string actualState = 2;
+
+  // Goal State of an instance
+  string goalState = 3;
+
+  // The time when the event was created. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string timestamp = 4;
+
+  // The config version currently used by the runtime.
+  uint64 configVersion = 5;
+
+  // The desired config version that should be used by the runtime.
+  uint64 desiredConfigVersion = 6;
+
+  // The agentID for the task
+  string agentID = 7;
+
+  // The host on which the task is running
+  string hostname = 8;
+
+  // Short human friendly message explaining state.
+  string message = 9;
+
+  // The short reason for the task event
+  string reason = 10;
+
+  // The previous task ID of the pod event.
+  peloton.TaskID prevTaskId = 11;
+}
+
+/**
+ *  Request message for TaskService.GetPodEvents method.
+ */
+message GetPodEventsRequest {
+  // The job ID of the task
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task
+  uint32 instanceId = 2;
+
+  // Limit of events
+  uint64 limit = 3;
+}
+
+/**
+ *  Response message for TaskService.GetPodEvents method.
+ *
+ *  Return errors:
+ *    INTERNAL:      if failed to get pod events for internal errors.
+ */
+message GetPodEventsResponse {
+  repeated PodEvent result = 1;
+
+  message Error {
+    string message = 1;
   }
 
   Error error = 2;

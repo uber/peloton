@@ -82,6 +82,8 @@ const (
 	jobIndexTimeFormat        = "20060102150405"
 	jobQueryDefaultSpanInDays = 7
 	jobQueryJitter            = time.Second * 30
+
+	_defaultPodEventsLimit = 100
 )
 
 // Config is the config for cassandra Store
@@ -244,7 +246,9 @@ func (s *Store) executeWrite(ctx context.Context, stmt api.Statement) (api.Resul
 	}
 }
 
-func (s *Store) executeRead(ctx context.Context, stmt api.Statement) ([]map[string]interface{}, error) {
+func (s *Store) executeRead(
+	ctx context.Context,
+	stmt api.Statement) ([]map[string]interface{}, error) {
 	p := backoff.NewRetrier(s.retryPolicy)
 	for {
 		result, err := s.DataStore.Execute(ctx, stmt)
@@ -1213,12 +1217,12 @@ func (s *Store) addPodEvent(
 	err = s.applyStatement(ctx, stmt, runtime.GetMesosTaskId().GetValue())
 	if err != nil {
 		log.WithFields(log.Fields{
-			"job_id":          jobID.GetValue(),
-			"instance_id":     instanceID,
-			"run_id":          runtime.GetMesosTaskId().GetValue(),
-			"previous_run_id": runtime.GetPrevMesosTaskId().GetValue(),
-			"actual_state":    runtime.GetState().String(),
-			"goal_state":      runtime.GetGoalState().String(),
+			"job_id":                 jobID.GetValue(),
+			"instance_id":            instanceID,
+			"mesos_task_id":          runtime.GetMesosTaskId().GetValue(),
+			"previous_mesos_task_id": runtime.GetPrevMesosTaskId().GetValue(),
+			"actual_state":           runtime.GetState().String(),
+			"goal_state":             runtime.GetGoalState().String(),
 		}).WithError(err).Error("adding a pod event failed")
 		s.metrics.TaskMetrics.TaskLogStateFail.Inc(1)
 		return err
@@ -1227,21 +1231,64 @@ func (s *Store) addPodEvent(
 	return nil
 }
 
-// getPodEvents test method to read pod events for test validation
-// TODO: update method to return pod events result set for CLI, UI & sandbox.
-func (s *Store) getPodEvents(
+// GetPodEvents returns pod events for a Job + Instance.
+// Primary usecase for pod events is for CLI, UI & create sandbox directory path.
+func (s *Store) GetPodEvents(
 	ctx context.Context,
-	jobID string,
-	instanceID int) (int, error) {
+	jobID *peloton.JobID,
+	instanceID uint32,
+	limit uint64) ([]*task.PodEvent, error) {
+	if limit == 0 {
+		limit = _defaultPodEventsLimit
+	}
+
+	// Events are sorted by RunID and then update time.
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(podEventsTable).
-		Where(qb.Eq{"job_id": jobID, "instance_id": instanceID})
+		Where(qb.Eq{"job_id": jobID.GetValue(), "instance_id": instanceID}).
+		Limit(limit)
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
-		log.Error(err)
-		return -1, err
+		log.WithFields(log.Fields{
+			"job_id":      jobID,
+			"instance_id": instanceID}).
+			WithError(err).Info("failed to get pod events")
+		return nil, err
 	}
-	return len(allResults), nil
+
+	var podEvents []*task.PodEvent
+	for _, value := range allResults {
+		podEvent := &task.PodEvent{}
+
+		// Set podEvent fields
+		podEvent.TaskId = &peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d-%d",
+				value["job_id"].(qb.UUID),
+				value["instance_id"].(int),
+				value["run_id"].(int64)),
+		}
+		podEvent.PrevTaskId = &peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d-%d",
+				value["job_id"].(qb.UUID),
+				value["instance_id"].(int),
+				value["previous_run_id"].(int64)),
+		}
+		podEvent.Timestamp =
+			value["update_time"].(qb.UUID).Time().Format(time.RFC3339)
+		podEvent.ConfigVersion = uint64(value["config_version"].(int64))
+		podEvent.DesiredConfigVersion =
+			uint64(value["desired_config_version"].(int64))
+		podEvent.ActualState = value["actual_state"].(string)
+		podEvent.GoalState = value["goal_state"].(string)
+		podEvent.Message = value["message"].(string)
+		podEvent.Reason = value["reason"].(string)
+		podEvent.AgentID = value["agent_id"].(string)
+		podEvent.Hostname = value["hostname"].(string)
+
+		podEvents = append(podEvents, podEvent)
+	}
+
+	return podEvents, nil
 }
 
 // logTaskStateChange logs the task state change events

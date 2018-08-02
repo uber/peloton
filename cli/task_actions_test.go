@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	task_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task/mocks"
@@ -10,7 +11,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/errors"
+	pb_err "code.uber.internal/infra/peloton/.gen/peloton/api/v0/errors"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -132,7 +133,7 @@ func (suite *taskActionsTestSuite) TestClient_TaskListAction() {
 			},
 			taskListResponse: &task.ListResponse{
 				Result: nil,
-				NotFound: &errors.JobNotFound{
+				NotFound: &pb_err.JobNotFound{
 					Id:      jobID,
 					Message: "Job not found",
 				},
@@ -217,6 +218,59 @@ func (suite *taskActionsTestSuite) getQueryResult(
 	return result
 }
 
+func (suite *taskActionsTestSuite) TestGetPodEvents() {
+	c := Client{
+		Debug:      false,
+		taskClient: suite.mockTask,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+	req := &task.GetPodEventsRequest{
+		JobId:      jobID,
+		InstanceId: 0,
+		Limit:      5,
+	}
+
+	suite.mockTask.EXPECT().GetPodEvents(context.Background(), req).
+		Return(nil, errors.New("get pod events request failed"))
+	err := c.PodGetEventsAction(jobID.GetValue(), 0, 5)
+	suite.Error(err)
+
+	podEvent := &task.PodEvent{
+		TaskId: &peloton.TaskID{
+			Value: "taskid",
+		},
+		PrevTaskId: &peloton.TaskID{
+			Value: "taskid",
+		},
+		ActualState: "PENDING",
+		GoalState:   "RUNNING",
+	}
+	var podEvents []*task.PodEvent
+	podEvents = append(podEvents, podEvent)
+	response := &task.GetPodEventsResponse{
+		Result: podEvents,
+	}
+	suite.mockTask.EXPECT().GetPodEvents(context.Background(), req).
+		Return(response, nil)
+	err = c.PodGetEventsAction(jobID.GetValue(), 0, 5)
+	suite.NoError(err)
+
+	response = &task.GetPodEventsResponse{
+		Result: nil,
+		Error: &task.GetPodEventsResponse_Error{
+			Message: "get pod events read failed"},
+	}
+	suite.mockTask.EXPECT().GetPodEvents(context.Background(), req).
+		Return(response, nil)
+	err = c.PodGetEventsAction(jobID.GetValue(), 0, 5)
+	suite.NoError(err)
+}
+
 func (suite *taskActionsTestSuite) TestClient_TaskQueryAction() {
 	c := Client{
 		Debug:      false,
@@ -289,7 +343,7 @@ func (suite *taskActionsTestSuite) TestClient_TaskQueryAction() {
 			taskQueryResponse: &task.QueryResponse{
 				Records: nil,
 				Error: &task.QueryResponse_Error{
-					NotFound: &errors.JobNotFound{
+					NotFound: &pb_err.JobNotFound{
 						Id:      jobID,
 						Message: "Job not found",
 					},

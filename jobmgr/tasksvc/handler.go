@@ -249,6 +249,24 @@ func (m *serviceHandler) GetEvents(
 	}, nil
 }
 
+// GetPodEvents returns a chronological order of state transition events
+// for a pod (a job's instance).
+func (m *serviceHandler) GetPodEvents(
+	ctx context.Context,
+	body *task.GetPodEventsRequest) (*task.GetPodEventsResponse, error) {
+	podEvents, err := m.taskStore.GetPodEvents(
+		ctx,
+		body.GetJobId(),
+		body.GetInstanceId(),
+		body.GetLimit())
+	if err != nil {
+		return nil, err
+	}
+	return &task.GetPodEventsResponse{
+		Result: podEvents,
+	}, nil
+}
+
 // List/Query API should not use cachedJob
 // because we would not clean up the cache for untracked job
 func (m *serviceHandler) List(
