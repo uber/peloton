@@ -25,30 +25,12 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 	if cachedJob == nil {
 		return nil
 	}
-	tasks := cachedJob.GetAllTasks()
 
 	// Update task runtimes in DB and cache to kill task
-	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
-	for instanceID, cachedTask := range tasks {
-		runtime, err := cachedTask.GetRunTime(ctx)
-		if err != nil {
-			log.WithError(err).
-				WithField("job_id", id).
-				WithField("instance_id", instanceID).
-				Info("failed to fetch task runtime to kill a job")
-			return err
-		}
-
-		if runtime.GetGoalState() == task.TaskState_KILLED || util.IsPelotonStateTerminal(runtime.GetState()) {
-			continue
-		}
-
-		runtimeDiff := cached.RuntimeDiff{
-			cached.GoalStateField: task.TaskState_KILLED,
-			cached.MessageField:   "Task stop API request",
-			cached.ReasonField:    "",
-		}
-		runtimeDiffs[instanceID] = runtimeDiff
+	runtimeDiffNonTerminatedTasks, _, runtimeDiffAll, err :=
+		createRuntimeDiffForKill(ctx, cachedJob)
+	if err != nil {
+		return err
 	}
 
 	config, err := cachedJob.GetConfig(ctx)
@@ -59,7 +41,16 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	err = cachedJob.PatchTasks(ctx, runtimeDiffs)
+	err = cachedJob.PatchTasks(ctx, runtimeDiffAll)
+
+	// Schedule non terminated tasks in goal state engine.
+	// This should happen even if PatchTasks fail, so if part of
+	// the tasks are updated successfully, those tasks can be
+	// terminated. Otherwise, those tasks would not be enqueued
+	// into goal state engine in JobKill retry.
+	for instanceID := range runtimeDiffNonTerminatedTasks {
+		goalStateDriver.EnqueueTask(jobID, instanceID, time.Now())
+	}
 
 	if err != nil {
 		log.WithError(err).
@@ -68,14 +59,9 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	// Schedule all tasks in goal state engine
-	for instanceID := range runtimeDiffs {
-		goalStateDriver.EnqueueTask(jobID, instanceID, time.Now())
-	}
-
 	// Only enqueue the job into goal state if any of the
-	// tasks need to be killed.
-	if len(runtimeDiffs) > 0 {
+	// non terminated tasks need to be killed.
+	if len(runtimeDiffNonTerminatedTasks) > 0 {
 		EnqueueJobWithDefaultDelay(jobID, goalStateDriver, cachedJob)
 	}
 
@@ -87,23 +73,14 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 			Error("failed to get job runtime during job kill")
 		return err
 	}
-	jobState := job.JobState_KILLING
 
-	// If not all instances have been created, and all created instances are already killed,
-	// then directly update the job state to KILLED.
-	if len(runtimeDiffs) == 0 &&
-		jobRuntime.GetState() == job.JobState_INITIALIZED &&
-		cachedJob.IsPartiallyCreated(config) {
-		jobState = job.JobState_KILLED
-		for _, cachedTask := range tasks {
-			runtime, err := cachedTask.GetRunTime(ctx)
-			if err != nil || !util.IsPelotonStateTerminal(runtime.GetState()) {
-				jobState = job.JobState_KILLING
-				break
-			}
-		}
-	}
-
+	jobState := calculateJobState(
+		ctx,
+		cachedJob,
+		config,
+		jobRuntime,
+		runtimeDiffNonTerminatedTasks,
+	)
 	err = cachedJob.Update(ctx, &job.JobInfo{
 		Runtime: &job.RuntimeInfo{State: jobState},
 	}, cached.UpdateCacheAndDB)
@@ -117,4 +94,80 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 	log.WithField("job_id", id).
 		Info("initiated kill of all tasks in the job")
 	return nil
+}
+
+// createRuntimeDiffForKill creates the runtime diffs to kill the tasks in job.
+// it returns:
+// runtimeDiffNonTerminatedTasks which is used to kill non-terminated tasks,
+// runtimeDiffTerminatedTasks which is used to kill tasks already terminal
+// state (to prevent restart),
+// runtimeDiffAll which is a union of runtimeDiffNonTerminatedTasks and
+// runtimeDiffTerminatedTasks
+func createRuntimeDiffForKill(ctx context.Context, cachedJob cached.Job) (
+	runtimeDiffNonTerminatedTasks map[uint32]cached.RuntimeDiff,
+	runtimeDiffTerminatedTasks map[uint32]cached.RuntimeDiff,
+	runtimeDiffAll map[uint32]cached.RuntimeDiff,
+	err error,
+) {
+	runtimeDiffNonTerminatedTasks = make(map[uint32]cached.RuntimeDiff)
+	runtimeDiffTerminatedTasks = make(map[uint32]cached.RuntimeDiff)
+	runtimeDiffAll = make(map[uint32]cached.RuntimeDiff)
+
+	tasks := cachedJob.GetAllTasks()
+	for instanceID, cachedTask := range tasks {
+		runtime, err := cachedTask.GetRunTime(ctx)
+		if err != nil {
+			log.WithError(err).
+				WithField("job_id", cachedJob.ID().Value).
+				WithField("instance_id", instanceID).
+				Info("failed to fetch task runtime to kill a job")
+			return nil, nil, nil, err
+		}
+
+		// A task in terminal state can be running later due to failure
+		// retry (batch job) or task restart (stateless job), so it is
+		// necessary to kill a task even if it is in terminal state as
+		// long as the goal state is not KILLED.
+		if runtime.GetGoalState() == task.TaskState_KILLED {
+			continue
+		}
+
+		runtimeDiff := cached.RuntimeDiff{
+			cached.GoalStateField: task.TaskState_KILLED,
+			cached.MessageField:   "Task stop API request",
+			cached.ReasonField:    "",
+		}
+		runtimeDiffAll[instanceID] = runtimeDiff
+		if util.IsPelotonStateTerminal(runtime.GetState()) {
+			runtimeDiffTerminatedTasks[instanceID] = runtimeDiff
+		} else {
+			runtimeDiffNonTerminatedTasks[instanceID] = runtimeDiff
+		}
+	}
+	return runtimeDiffNonTerminatedTasks, runtimeDiffTerminatedTasks, runtimeDiffAll, nil
+}
+
+// calculateJobState calculates if the job to be killed is
+// in KILLING state or KILLED state
+func calculateJobState(
+	ctx context.Context,
+	cachedJob cached.Job,
+	config cached.JobConfig,
+	jobRuntime *job.RuntimeInfo,
+	runtimeDiffNonTerminatedTasks map[uint32]cached.RuntimeDiff) job.JobState {
+	// If not all instances have been created,
+	// and all instances to be killed are already in terminal state,
+	// then directly update the job state to KILLED.
+	if len(runtimeDiffNonTerminatedTasks) == 0 &&
+		jobRuntime.GetState() == job.JobState_INITIALIZED &&
+		cachedJob.IsPartiallyCreated(config) {
+		for _, cachedTask := range cachedJob.GetAllTasks() {
+			runtime, err := cachedTask.GetRunTime(ctx)
+			if err != nil || !util.IsPelotonStateTerminal(runtime.GetState()) {
+				return job.JobState_KILLING
+			}
+		}
+		return job.JobState_KILLED
+	}
+	return job.JobState_KILLING
 }
