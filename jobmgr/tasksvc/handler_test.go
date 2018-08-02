@@ -795,6 +795,50 @@ func (suite *TaskHandlerTestSuite) TestGetEvents() {
 	suite.Equal(task1Events, expectedTask1Events)
 }
 
+func (suite *TaskHandlerTestSuite) TestGetEvents_GetJobConfigFailure() {
+	suite.testJobConfig.Type = job.JobType_BATCH
+
+	gomock.InOrder(
+		suite.mockedJobFactory.EXPECT().
+			GetJob(suite.testJobID).Return(suite.mockedCachedJob),
+		suite.mockedCachedJob.EXPECT().
+			GetConfig(gomock.Any()).Return(nil, fmt.Errorf("test error")),
+	)
+	var request = &task.GetEventsRequest{
+		JobId:      suite.testJobID,
+		InstanceId: 0,
+	}
+	resp, err := suite.handler.GetEvents(
+		context.Background(),
+		request,
+	)
+	suite.NoError(err)
+	suite.NotNil(resp.GetError())
+}
+
+func (suite *TaskHandlerTestSuite) TestGetEvents_GetEventsFailure() {
+	suite.testJobConfig.Type = job.JobType_BATCH
+
+	gomock.InOrder(
+		suite.mockedJobFactory.EXPECT().
+			GetJob(suite.testJobID).Return(suite.mockedCachedJob),
+		suite.mockedCachedJob.EXPECT().
+			GetConfig(gomock.Any()).Return(suite.testJobConfig, nil),
+		suite.mockedTaskStore.EXPECT().
+			GetTaskEvents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("test error")),
+	)
+	var request = &task.GetEventsRequest{
+		JobId:      suite.testJobID,
+		InstanceId: 0,
+	}
+	resp, err := suite.handler.GetEvents(
+		context.Background(),
+		request,
+	)
+	suite.Nil(err)
+	suite.NotNil(resp.GetError())
+}
+
 func (suite *TaskHandlerTestSuite) TestGetEvents_Service_Job() {
 	suite.testJobConfig.Type = job.JobType_SERVICE
 
