@@ -81,7 +81,8 @@ type tracker struct {
 	// Maps hostname -> task type -> task id -> rm task
 	placements map[string]map[resmgr.TaskType]map[string]*RMTask
 
-	metrics *Metrics
+	parentScope tally.Scope
+	metrics     *Metrics
 
 	// mutex for the state counters
 	cMutex sync.Mutex
@@ -105,6 +106,7 @@ func InitTaskTracker(parent tally.Scope, config *Config, hostMgrClient hostsvc.I
 		tasks:         make(map[string]*RMTask),
 		placements:    map[string]map[resmgr.TaskType]map[string]*RMTask{},
 		metrics:       NewMetrics(parent.SubScope("tracker")),
+		parentScope:   parent,
 		counters:      make(map[task.TaskState]float64),
 		hostMgrClient: hostMgrClient,
 	}
@@ -136,7 +138,8 @@ func (tr *tracker) AddTask(
 	respool respool.ResPool,
 	config *Config) error {
 
-	rmTask, err := CreateRMTask(t, handler, respool, config)
+	rmTask, err := CreateRMTask(t, handler, respool,
+		NewTransitionObserver(WithTallyRecorder(tr.parentScope)), config)
 	if err != nil {
 		return err
 	}
@@ -292,6 +295,8 @@ func (tr *tracker) MarkItInvalid(tID *peloton.TaskID, mesosTaskID string) error 
 func (tr *tracker) markItDone(t *RMTask, mesosTaskID string) error {
 	// Checking mesos ID again if thats not changed
 	tID := t.Task().GetId()
+
+	// Checking mesos ID again if that has not changed
 	if *t.Task().TaskId.Value != mesosTaskID {
 		return errors.Errorf("for task %s: mesos id %s in tracker is different id %s from event",
 			tID.Value, *t.Task().TaskId.Value, mesosTaskID)

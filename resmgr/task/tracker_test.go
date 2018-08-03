@@ -475,6 +475,7 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 		metrics:       NewMetrics(tally.NoopScope),
 		counters:      make(map[task.TaskState]float64),
 		hostMgrClient: suite.mockHostmgr,
+		parentScope:   tally.NoopScope,
 	}
 
 	suite.mockHostmgr.EXPECT().MarkHostDrained(gomock.Any(), gomock.Any()).Return(&hostsvc.MarkHostDrainedResponse{}, nil).AnyTimes()

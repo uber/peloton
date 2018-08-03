@@ -478,6 +478,7 @@ func (s *RMTaskTestSuite) TestPushTaskForReadmissionError() {
 		rmTask, err := CreateRMTask(s.createTask(1),
 			nil,
 			mnode,
+			nil,
 			&Config{
 				LaunchingTimeout:      2 * time.Second,
 				PlacingTimeout:        2 * time.Second,
@@ -523,6 +524,7 @@ func (s *RMTaskTestSuite) TestRMTaskTransitToError() {
 	rmTask, err := CreateRMTask(s.createTask(1),
 		nil,
 		node,
+		nil,
 		&Config{
 			LaunchingTimeout:      2 * time.Second,
 			PlacingTimeout:        2 * time.Second,
@@ -547,6 +549,7 @@ func (s *RMTaskTestSuite) TestAddBackOffError() {
 	rmTask, err := CreateRMTask(s.createTask(1),
 		nil,
 		node,
+		nil,
 		&Config{
 			LaunchingTimeout:       2 * time.Second,
 			PlacingTimeout:         2 * time.Second,
