@@ -4,7 +4,6 @@ import os
 from retry import retry
 import json
 
-from config_generator import config
 from peloton_helper import (
     PelotonClientHelper,
     create_respool_for_new_peloton,
@@ -24,27 +23,34 @@ from modules import (
 
 
 @retry(tries=3, delay=10)
-def cassandra_operation(keyspace, create=True):
+def cassandra_operation(config, keyspace, create=True):
     """
     rtype: bool
     """
     cli = config.get('cassandra').get('cli')
     host = config.get('cassandra').get('host')
-    migrate_cli = config.get('cassandra').get('migrate_cli') % os.environ[
-        'GOPATH']
-    migrate_cmd = config.get('cassandra').get('cmd').get('migrate') % (
-                    host, keyspace)
+    port = config.get('cassandra').get('port', '9042')
+    migrate_cli = config.get('cassandra').get('migrate_cli') \
+        % os.environ['GOPATH']
+    migrate_cmd = config.get('cassandra').get('cmd').get('migrate').format(
+                    host=host,
+                    port=port,
+                    keyspace=keyspace,
+    )
     path = config.get('cassandra').get('path')
 
     version = config.get('cassandra').get('version')
     if create:
         # Create DB
         create_script = config.get('cassandra').get('cmd').get(
-            'create') % keyspace
-        cmd_create = [cli, host, "-e", create_script, version]
+            'create').format(keyspace=keyspace)
+        cmd_create = [cli, version, "-e", create_script, host, port]
         print_okgreen(
-            "Step: creating Cassandra keyspace %s on host %s" % (
-                keyspace, host
+            "Step: creating Cassandra keyspace {keyspace} on "
+            "{host}:{port}".format(
+                host=host,
+                port=port,
+                keyspace=keyspace,
             )
         )
         return_create = subprocess.call(cmd_create)
@@ -65,13 +71,17 @@ def cassandra_operation(keyspace, create=True):
         if return_create != 0 | return_migrate != 0:
             raise Exception("Cassandra DB migration failed")
     else:
-        cmd = config.get('cassandra').get('cmd').get('drop') % keyspace
+        cmd = config.get('cassandra').get('cmd').get(
+            'drop').format(keyspace=keyspace)
         print_okgreen(
-            "Step: drop Cassandra keyspace %s on host %s" % (
-                keyspace, host
+            "Step: drop Cassandra keyspace {keyspace} "
+            "on {host}:{port}".format(
+                host=host,
+                port=port,
+                keyspace=keyspace,
             )
         )
-        if subprocess.call([cli, host, "-e", cmd, version]) != 0:
+        if subprocess.call([cli, version, "-e", cmd, host, port]) != 0:
             raise Exception("Cassandra DB drop failed")
 
 
@@ -79,28 +89,35 @@ class VCluster(object):
 
     APP_ORDER = ['hostmgr', 'resmgr', 'placement', 'jobmgr']
 
-    def __init__(self, label_name, zk_server, respool_path):
+    def __init__(self, config, label_name, zk_server, respool_path):
         """
+        param config: vcluster configuration
         param label_name: label of the virtual cluster
         param zk_server: DNS address of the physical zookeeper server
         param respool_path: the path of the resource pool
 
+        type config: dict
         type label_name: str
         type zk_server: str
         type respool: str
         """
+        self.config = config
         self.label_name = label_name
         self.zk_server = zk_server
         self.respool_path = respool_path
 
         self.peloton_helper = PelotonClientHelper(zk_server, respool_path)
 
-        self.zookeeper = Zookeeper(self.label_name, self.peloton_helper)
-        self.mesos_master = MesosMaster(self.label_name, self.peloton_helper)
-        self.mesos_slave = MesosSlave(self.label_name, self.peloton_helper)
+        self.zookeeper = Zookeeper(self.label_name, self.config,
+                                   self.peloton_helper)
+        self.mesos_master = MesosMaster(self.label_name, self.config,
+                                        self.peloton_helper)
+        self.mesos_slave = MesosSlave(self.label_name, self.config,
+                                      self.peloton_helper)
 
         # Optionally includes Peloton apps
-        self.peloton = Peloton(self.label_name, self.peloton_helper)
+        self.peloton = Peloton(self.label_name, self.config,
+                               self.peloton_helper)
 
         self.virtual_zookeeper = ''
 
@@ -126,7 +143,8 @@ class VCluster(object):
         # setup the VCluster on a physical Peloton cluster
         # create zookeeper
         print_okgreen('Step: creating virtual zookeeper with 1 instance')
-        zookeeper_count = int(config.get('zookeeper').get('instance_count'))
+        zookeeper_count = int(self.config.get('zookeeper').get(
+            'instance_count'))
         self.zookeeper.setup({}, zookeeper_count)
 
         # Get zookeeper tasks info
@@ -157,8 +175,9 @@ class VCluster(object):
         type zk_port: str
         """
         # DB Migration
-        cassandra_operation(keyspace=self.label_name, create=True)
-        host = config.get('cassandra').get('host')
+        cassandra_operation(self.config, keyspace=self.label_name,
+                            create=True)
+        host = self.config.get('cassandra').get('host')
         time.sleep(10)
         print_okblue("DB migration finished")
 
@@ -173,16 +192,18 @@ class VCluster(object):
                 'ELECTION_ZK_SERVERS': virtual_zookeeper,
                 'MESOS_ZK_PATH': 'zk://%s/mesos' % virtual_zookeeper,
                 'CASSANDRA_STORE': self.label_name,
-                'CASSANDRA_HOSTS': host
+                'CASSANDRA_HOSTS': host,
+                'CASSANDRA_PORT': self.config.get('cassandra').get(
+                    'port', '9042'),
             }
             if app == 'hostmgr':
                 srt = 'scarce_resource_types'
                 scarce_resource = ','.join(
-                    config.get('peloton').get(app).get(srt))
+                    self.config.get('peloton').get(app).get(srt))
                 dynamic_env_master['SCARCE_RESOURCE_TYPES'] = scarce_resource
 
             peloton_app_count = int(
-                config.get('peloton').get(app).get('instance_count'))
+                self.config.get('peloton').get(app).get('instance_count'))
             self.peloton.setup(
                 dynamic_env_master, peloton_app_count,
                 self.label_name + '_' + 'peloton-' + app,
@@ -195,6 +216,7 @@ class VCluster(object):
 
         # create a default resource pool
         create_respool_for_new_peloton(
+            self.config,
             zk_server=virtual_zookeeper,
             agent_num=agent_num,
         )
@@ -217,9 +239,10 @@ class VCluster(object):
         zk_address = 'zk://%s/mesos' % virtual_zookeeper
         print_okgreen('Step: creating virtual Mesos-master with 3 instance')
         dynamic_env_master = {
-            config.get('mesos-master').get('dynamic_env'): zk_address,
+            self.config.get('mesos-master').get('dynamic_env'): zk_address,
         }
-        mesos_count = int(config.get('mesos-master').get('instance_count'))
+        mesos_count = int(
+            self.config.get('mesos-master').get('instance_count'))
         self.mesos_master.setup(dynamic_env_master, mesos_count)
         print_okgreen('Mesos-master created successfully.')
 
@@ -230,7 +253,7 @@ class VCluster(object):
             'Step: creating virtual Mesos-slave with %s instance' % agent_num
         )
         dynamic_env_slave = {
-            config.get('mesos-slave').get('dynamic_env'): zk_address,
+            self.config.get('mesos-slave').get('dynamic_env'): zk_address,
         }
         self.mesos_slave.setup(dynamic_env_slave, agent_num)
         print_okgreen('Mesos-slave created successfully.')
@@ -245,7 +268,8 @@ class VCluster(object):
             self.peloton.teardown(self.label_name + '_' + 'peloton-' + app)
 
         print_okgreen('Step: drop the cassandra keyspace')
-        cassandra_operation(keyspace=self.label_name, create=False)
+        cassandra_operation(self.config, keyspace=self.label_name,
+                            create=False)
 
         try:
             os.remove(self.config_name)

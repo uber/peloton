@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
+import os
 
+from config_generator import load_config
 from vcluster import (
     VCluster,
     cassandra_operation,
@@ -24,6 +26,13 @@ def parse_arguments():
     parser = ArgumentParser(
         description=program_license,
         formatter_class=RawDescriptionHelpFormatter)
+
+    parser.add_argument(
+        '-c',
+        '--config-file',
+        dest='config_file',
+        help='Path to vcluster config file. Default is config/default.yaml',
+    )
 
     parser.add_argument(
         '-z',
@@ -173,7 +182,14 @@ def parse_arguments():
 
 def main():
     args = parse_arguments()
+    if not args.config_file:
+        args.config_file = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            'config', 'default.yaml')
+    config = load_config(args.config_file)
+
     vcluster = VCluster(
+        config,
         args.label_name,
         args.zookeeper_server,
         args.respool_path
@@ -223,10 +239,10 @@ def main():
         option = args.option
         if option == 'up':
             cassandra_operation(
-                create=True, keyspace=args.label_name)
+                config, create=True, keyspace=args.label_name)
         elif option == 'drop':
             cassandra_operation(
-                create=False, keyspace=args.label_name)
+                config, create=False, keyspace=args.label_name)
 
 
 if __name__ == "__main__":

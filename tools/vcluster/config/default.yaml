@@ -101,19 +101,20 @@ mesos-slave:
 cassandra:
   cli: 'cqlsh'
   host: 'ms-82ef95a4.pit-irn-1.uberatc.net'
+#  port: '9042'
   version: '--cqlversion=3.4.0'
   migrate_cli: '%s/bin/migrate'
   path: 'storage/cassandra/migrations'
   cmd:
-    create: "CREATE KEYSPACE IF NOT EXISTS %s with replication={ 'class' : 'SimpleStrategy', 'replication_factor' : 1 };"
-    drop: "DROP KEYSPACE IF EXISTS %s"
-    migrate: "cassandra://%s/%s?protocol=4&consistency=all&disable_init_host_lookup"
+    create: "CREATE KEYSPACE IF NOT EXISTS {keyspace} with replication={{ 'class' : 'SimpleStrategy', 'replication_factor' : 1 }};"
+    drop: "DROP KEYSPACE IF EXISTS {keyspace}"
+    migrate: "cassandra://{host}:{port}/{keyspace}?protocol=4&consistency=all&disable_init_host_lookup"
 
 
 peloton:
   docker_registry: docker-registry.pit-irn-1.uberatc.net
   image_path: vendor/peloton
-  version: 0.6.7
+  version: 0.7.2
   ports:
     - HTTP_PORT
     - GRPC_PORT

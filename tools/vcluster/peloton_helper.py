@@ -11,7 +11,6 @@ from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 from peloton_client.pbgen.peloton.api.v0.respool import respool_pb2 as respool
 
 from config_generator import (
-    config,
     create_pool_config,
 )
 
@@ -26,11 +25,13 @@ RESPOOL_PATH = 'DefaultResPool'
 
 
 def create_respool_for_new_peloton(
+        config,
         zk_server,
         agent_num,
         repool_name=RESPOOL_PATH):
     """
     Create A respool for a cluster according the cluster size
+    type config: dict
     type zk_server: string
     type agent_num: int
     type respool_name: string

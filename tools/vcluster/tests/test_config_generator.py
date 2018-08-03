@@ -1,10 +1,12 @@
+import os
 import unittest
 
 from peloton_client.pbgen.mesos.v1 import mesos_pb2 as mesos
-from peloton_client.pbgen.peloton.v0.api.task import task_pb2 as task
-from peloton_client.pbgen.peloton.v0.api.respool import respool_pb2 as respool
-from peloton_client.pbgen.peloton.v0.api import peloton_pb2 as peloton
+from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
+from peloton_client.pbgen.peloton.api.v0.respool import respool_pb2 as respool
+from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 from tools.vcluster.config_generator import (
+    load_config,
     create_mesos_task_config,
     create_pool_config,
 )
@@ -16,7 +18,12 @@ class ConfigGeneratorTest(unittest.TestCase):
         dynamic_env_master = {
             'APP': 'hostmgr',
         }
+        config_file = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            '..', 'config', 'default.yaml')
+        config = load_config(config_file)
         got = create_mesos_task_config(
+            config,
             module='peloton',
             dynamic_env=dynamic_env_master,
             version='1.0.0')

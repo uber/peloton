@@ -26,20 +26,23 @@ class ModuleLaunchFailedException(Exception):
 
 
 class Module(object):
-    def __init__(self, module_name, label_name, peloton_helper):
+    def __init__(self, module_name, label_name, config, peloton_helper):
         """
         param module_name: the name of the job
         param label_name: the label of the job
+        param config: vcluster config
         param peloton_helper: instance of PelotonClientHelper
 
         type module_name: str
         type label_name: str
+        type config: dict
         type peloton_helper: PelotonClientHelper
 
         """
         self.name = module_name
         self.label = label_name
 
+        self.config = config
         self.peloton_helper = peloton_helper
         self.job_id = ''
         self.version = ''
@@ -57,7 +60,8 @@ class Module(object):
         """
         if not job_name:
             job_name = self.label + '_' + self.name
-        task_config = create_mesos_task_config(self.name,
+        task_config = create_mesos_task_config(self.config,
+                                               self.name,
                                                dynamic_env,
                                                version)
         if version:
@@ -91,13 +95,14 @@ class Module(object):
 
 
 class Zookeeper(Module):
-    def __init__(self, label_name, peloton_helper):
+    def __init__(self, label_name, config, peloton_helper):
         """
         type param label_name: str
+        type config: dict
         type peloton_helper: PelotonClientHelper
         """
         super(Zookeeper, self).__init__(
-            'zookeeper', label_name, peloton_helper
+            'zookeeper', label_name, config, peloton_helper
         )
 
     def get_host_port(self):
@@ -123,13 +128,14 @@ class Zookeeper(Module):
 
 
 class MesosMaster(Module):
-    def __init__(self, label_name, peloton_helper):
+    def __init__(self, label_name, config, peloton_helper):
         """
         type param label_name: str
+        type config: dict
         type peloton_helper: PelotonClientHelper
         """
         super(MesosMaster, self).__init__(
-            'mesos-master', label_name, peloton_helper
+            'mesos-master', label_name, config, peloton_helper
         )
 
     def find_leader(self, zk_host):
@@ -146,13 +152,14 @@ class MesosMaster(Module):
 
 
 class MesosSlave(Module):
-    def __init__(self, label_name, peloton_helper):
+    def __init__(self, label_name, config, peloton_helper):
         """
         type param label_name: str
+        type config: dict
         type peloton_helper: PelotonClientHelper
         """
         super(MesosSlave, self).__init__(
-            'mesos-slave', label_name, peloton_helper
+            'mesos-slave', label_name, config, peloton_helper
         )
 
     def setup(self, dynamic_env, instance_number,
@@ -179,7 +186,8 @@ class MesosSlave(Module):
                 [self.label, self.name, str(i), str(uuid.uuid4())]
             )
             instance_config.update(
-                {i: create_mesos_task_config(self.name,
+                {i: create_mesos_task_config(self.config,
+                                             self.name,
                                              dynamic_env,
                                              version)
                  }
@@ -200,22 +208,24 @@ class MesosSlave(Module):
 
 
 class Cassandra(Module):
-    def __init__(self, label_name, peloton_helper):
+    def __init__(self, label_name, config, peloton_helper):
         """
         type param label_name: str
+        type config: dict
         type peloton_helper: PelotonClientHelper
         """
         super(Cassandra, self).__init__(
-            'cassandra', label_name, peloton_helper
+            'cassandra', label_name, config, peloton_helper
         )
 
 
 class Peloton(Module):
-    def __init__(self, label_name, peloton_helper):
+    def __init__(self, label_name, config, peloton_helper):
         """
         type param label_name: str
+        type config: dict
         type peloton_helper: PelotonClientHelper
         """
         super(Peloton, self).__init__(
-            'peloton', label_name, peloton_helper
+            'peloton', label_name, config, peloton_helper
         )
