@@ -71,8 +71,8 @@ func (suite *DeadlineTrackerTestSuite) TearDownSuite() {
 	suite.mockCtrl.Finish()
 }
 
+// TestDeadlineTrackingCycle tests the happy case of trackDeadline
 func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
-
 	taskInfo := &peloton_task.TaskInfo{
 		InstanceId: 1,
 		Runtime: &peloton_task.RuntimeInfo{
@@ -104,19 +104,25 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 	suite.goalStateDriver.EXPECT().EnqueueJob(gomock.Any(), gomock.Any())
 
 	suite.tracker.trackDeadline()
+}
 
-	// Test GetConfig error
+// TestDeadlineTrackingCycle_GetConfigErr tests trackDeadline when GetConfig has error
+func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle_GetConfigErr() {
 	suite.jobFactory.EXPECT().GetAllJobs().Return(suite.mockJobs)
 	suite.mockJob.EXPECT().GetConfig(gomock.Any()).Return(nil, fmt.Errorf("Fake GetConfig error"))
 	suite.tracker.trackDeadline()
+}
 
-	// Test GetSLA error
+// TestDeadlineTrackingCycle_GetConfigErr tests trackDeadline when GetSLA has error
+func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle_GetSLAErr() {
 	suite.jobFactory.EXPECT().GetAllJobs().Return(suite.mockJobs)
 	suite.mockJob.EXPECT().GetConfig(gomock.Any()).Return(suite.mockJobConfig, nil)
 	suite.mockJobConfig.EXPECT().GetSLA().Return(nil)
 	suite.tracker.trackDeadline()
+}
 
-	// Test GetRunTime error
+// TestDeadlineTrackingCycle_GetRunTime tests trackDeadline when GetRunTime has error
+func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle_GetRunTimeErr() {
 	suite.mockJobConfig.EXPECT().GetSLA().
 		Return(&peloton_job.SlaConfig{
 			MaxRunningTime: 5,
@@ -126,8 +132,17 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 	suite.mockJob.EXPECT().GetAllTasks().Return(suite.mockTasks)
 	suite.mockTask.EXPECT().GetRunTime(gomock.Any()).Return(nil, fmt.Errorf("Fake RunTime error"))
 	suite.tracker.trackDeadline()
+}
 
-	// Test PatchTasks error
+// TestDeadlineTrackingCycle_GetRunTime tests trackDeadline when PatchTasks has error
+func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle_PatchTasksErr() {
+	taskInfo := &peloton_task.TaskInfo{
+		InstanceId: 1,
+		Runtime: &peloton_task.RuntimeInfo{
+			State:     peloton_task.TaskState_RUNNING,
+			StartTime: time.Now().AddDate(0, 0, -1).UTC().Format(time.RFC3339Nano),
+		},
+	}
 	suite.mockJobConfig.EXPECT().GetSLA().
 		Return(&peloton_job.SlaConfig{
 			MaxRunningTime: 5,
@@ -141,6 +156,7 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 	suite.tracker.trackDeadline()
 }
 
+// TestTracker_StartStop tests tracker start
 func (suite *DeadlineTrackerTestSuite) TestTracker_StartStop() {
 	defer func() {
 		suite.tracker.Stop()

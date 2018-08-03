@@ -95,6 +95,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TearDownTest() {
 	suite.ctrl.Finish()
 }
 
+// TestJobEvaluateMaxRunningInstancesSLANoConfi tests when getting config failed
 func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstancesSLANoConfig() {
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -106,6 +107,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstancesSLANo
 	suite.Error(err)
 }
 
+// TestJobRuntimeUpdaterNoRunTime tests when geting runtime failed
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdaterNoRunTime() {
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -117,6 +119,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdaterNoRunTime() {
 	suite.Error(err)
 }
 
+// TestJobRuntimeUpdaterNoConfig tests getting jobConfig failed
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdaterNoConfig() {
 	jobRuntime := pbjob.RuntimeInfo{
 		State:     pbjob.JobState_KILLED,
@@ -201,6 +204,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobCompletionTimeNotEmpty() {
 	suite.NoError(err)
 }
 
+//TestJobRuntimeUpdater_Batch_RUNNING tests updating a RUNNING batch job
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_RUNNING() {
 	instanceCount := uint32(100)
 	updateID := &peloton.UpdateID{Value: uuid.NewRandom().String()}
@@ -275,6 +279,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_RUNNING() {
 	suite.NoError(err)
 }
 
+// TestJobRuntimeUpdater_Batch_RUNNING tests updating a SUCCEED batch job
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_SUCCEED() {
 	instanceCount := uint32(100)
 	jobRuntime := pbjob.RuntimeInfo{
@@ -351,6 +356,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_SUCCEED() {
 	suite.NoError(err)
 }
 
+// TestJobRuntimeUpdater_Batch_PENDING test updating a PENDING batch job
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_PENDING() {
 	instanceCount := uint32(100)
 	jobRuntime := pbjob.RuntimeInfo{
@@ -416,6 +422,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_PENDING() {
 	suite.NoError(err)
 }
 
+// TestJobRuntimeUpdater_Batch_FAILED tests updating a failed batch job
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_FAILED() {
 	instanceCount := uint32(100)
 	jobRuntime := pbjob.RuntimeInfo{
@@ -487,6 +494,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_FAILED() {
 	suite.NoError(err)
 }
 
+// TestJobRuntimeUpdater_Batch_KILLING tests update a KILLING batch job
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_KILLING() {
 	instanceCount := uint32(100)
 	jobRuntime := pbjob.RuntimeInfo{
@@ -553,6 +561,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_KILLING() {
 	suite.NoError(err)
 }
 
+// TestJobRuntimeUpdater_Batch_KILLED tests updating a KILLED batch job
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_KILLED() {
 	instanceCount := uint32(100)
 	jobRuntime := pbjob.RuntimeInfo{
@@ -626,6 +635,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_KILLED() {
 	suite.NoError(err)
 }
 
+// TestJobRuntimeUpdater_DBError tests when updating meets DB error
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_DBError() {
 	instanceCount := uint32(100)
 	jobRuntime := pbjob.RuntimeInfo{
@@ -691,6 +701,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_DBError() {
 	suite.Error(err)
 }
 
+// TestJobRuntimeUpdater_IncorrectState tests when uodating job with incorrect states
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_IncorrectState() {
 	instanceCount := uint32(100)
 
@@ -759,6 +770,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_IncorrectState() 
 	suite.NoError(err)
 }
 
+// TestJobRuntimeUpdater_KILLEDWithNoTask tests updating a KILLED job with no tasks
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_KILLEDWithNoTask() {
 	instanceCount := uint32(100)
 
@@ -795,6 +807,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_KILLEDWithNoTask(
 	suite.NoError(err)
 }
 
+// TestJobRuntimeUpdater_PartiallyCreatedJob testing updating a partially created job
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PartiallyCreatedJob() {
 	instanceCount := uint32(100)
 	suite.cachedConfig.EXPECT().
@@ -856,6 +869,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PartiallyCreatedJ
 	suite.NoError(err)
 }
 
+// TestJobRuntimeUpdater_InitializedJobWithMoreTasksThanConfigured tests
+// INITIALIZED job with more tasks than configured
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_InitializedJobWithMoreTasksThanConfigured() {
 	instanceCount := uint32(100)
 	suite.cachedConfig.EXPECT().
@@ -925,6 +940,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_InitializedJobWit
 	suite.NoError(err)
 }
 
+// TestJobRuntimeUpdater_PendingJobWithMoreTasksThanConfigured
+// tests updating a PENDING job with more tasks than configured
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PendingJobWithMoreTasksThanConfigured() {
 	instanceCount := uint32(100)
 	suite.cachedConfig.EXPECT().
@@ -998,6 +1015,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PendingJobWithMor
 	suite.NoError(err)
 }
 
+// TestJobRuntimeUpdater_ControllerTaskSucceeded tests
+// updating a job with controller task succeeded
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskSucceeded() {
 	instanceCount := uint32(100)
 	suite.cachedConfig.EXPECT().
@@ -1076,6 +1095,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskSuc
 	suite.NoError(err)
 }
 
+// TestJobRuntimeUpdater_ControllerTaskFailToGetRuntime tests
+// updating a job when controller task failed to get runtime
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskFailToGetRuntime() {
 	instanceCount := uint32(100)
 	suite.cachedConfig.EXPECT().
@@ -1130,6 +1151,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskFai
 	suite.Error(err)
 }
 
+// TestJobRuntimeUpdater_ControllerTaskFailed tests
+// updating a job  when the controller task failed
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskFailed() {
 	instanceCount := uint32(100)
 	suite.cachedConfig.EXPECT().
@@ -1208,6 +1231,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskFai
 	suite.NoError(err)
 }
 
+// TestJobRuntimeUpdater_ControllerTaskRunning tests
+// updating a job with controller task running
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskRunning() {
 	instanceCount := uint32(100)
 	suite.cachedConfig.EXPECT().
@@ -1339,6 +1364,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInsta
 	suite.NoError(err)
 }
 
+// TestDetermineJobRuntimeState tests determining JobRuntimeState
 func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 	var instanceCount uint32 = 100
 	tests := []struct {
@@ -1557,6 +1583,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 	}
 }
 
+// TestJobEvaluateMaxRunningInstances tests
+// evaluating max running instances
 func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 	instanceCount := uint32(100)
 	maxRunningInstances := uint32(10)

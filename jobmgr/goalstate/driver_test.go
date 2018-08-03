@@ -268,12 +268,13 @@ func (suite *DriverTestSuite) prepareTestSyncDB() {
 		Return()
 }
 
+// TestSyncFromDBFailed tests SyncFromDB when GetTaskRuntimesForJobByRange failed
 func (suite *DriverTestSuite) TestSyncFromDBFailed() {
 	suite.prepareTestSyncDB()
 	suite.taskStore.EXPECT().
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(nil, errors.New(""))
-	suite.goalStateDriver.syncFromDB(context.Background())
+	suite.Error(suite.goalStateDriver.syncFromDB(context.Background()))
 }
 
 // TestSyncFromDB tests syncing job manager with jobs and tasks in DB.
@@ -302,7 +303,7 @@ func (suite *DriverTestSuite) TestSyncFromDB() {
 	suite.cachedJob.EXPECT().
 		RecalculateResourceUsage(gomock.Any())
 
-	suite.goalStateDriver.syncFromDB(context.Background())
+	suite.NoError(suite.goalStateDriver.syncFromDB(context.Background()))
 }
 
 // TestSyncFromDB tests syncing job manager with jobs and tasks in DB.

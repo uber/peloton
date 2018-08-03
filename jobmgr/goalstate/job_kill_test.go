@@ -185,6 +185,7 @@ func (suite JobKillTestSuite) TestJobKill() {
 	suite.NoError(err)
 }
 
+// TestJobKillNoJob tests when job is not exist
 func (suite JobKillTestSuite) TestJobKillNoJob() {
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -193,7 +194,8 @@ func (suite JobKillTestSuite) TestJobKillNoJob() {
 	suite.NoError(err)
 }
 
-func (suite JobKillTestSuite) TestJobKillNoTasks() {
+// TestJobKillNoTasks tests when a job has no tasks and GetConfig failed
+func (suite JobKillTestSuite) TestJobKillNoTasksAndGetConfigErr() {
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob).AnyTimes()
@@ -207,6 +209,7 @@ func (suite JobKillTestSuite) TestJobKillNoTasks() {
 	suite.Error(err)
 }
 
+// TestJobKillNoRumtimes tests when task doesn't has runtime
 func (suite JobKillTestSuite) TestJobKillNoRumtimes() {
 	cachedTasks := make(map[uint32]cached.Task)
 	cachedTask := cachedmocks.NewMockTask(suite.ctrl)
@@ -230,6 +233,7 @@ func (suite JobKillTestSuite) TestJobKillNoRumtimes() {
 	suite.Error(err)
 }
 
+// TestJobKillPatchFailed tests failure case when patching the runtime
 func (suite JobKillTestSuite) TestJobKillPatchFailed() {
 	cachedTasks := make(map[uint32]cached.Task)
 	cachedTask0 := cachedmocks.NewMockTask(suite.ctrl)
@@ -273,6 +277,7 @@ func (suite JobKillTestSuite) TestJobKillPatchFailed() {
 	suite.Error(err)
 }
 
+// TestJobKillNoRumtimes tests when job doesn't has runtime
 func (suite JobKillTestSuite) TestJobKillNoJobRuntime() {
 	cachedTasks := make(map[uint32]cached.Task)
 	cachedTask := cachedmocks.NewMockTask(suite.ctrl)
