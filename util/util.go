@@ -295,27 +295,16 @@ func ParseJobAndInstanceID(mesosTaskID string) (string, int, error) {
 }
 
 // UnmarshalToType unmarshal a string to a typed interface{}
-func UnmarshalToType(jsonString string, resultType reflect.Type) (interface{}, error) {
+func UnmarshalToType(jsonString string, resultType reflect.Type) (interface{},
+	error) {
 	result := reflect.New(resultType)
 	err := json.Unmarshal([]byte(jsonString), result.Interface())
 	if err != nil {
-		log.Errorf("Unmarshal failed with error %v, type %v, jsonString %v", err, resultType, jsonString)
-		return nil, nil
+		log.Errorf("Unmarshal failed with error %v, type %v, jsonString %v",
+			err, resultType, jsonString)
+		return nil, err
 	}
 	return result.Interface(), nil
-}
-
-// UnmarshalStringArray unmarshal a string array to a typed array, in interface{}
-func UnmarshalStringArray(jsonStrings []string, resultType reflect.Type) ([]interface{}, error) {
-	var results []interface{}
-	for _, jsonString := range jsonStrings {
-		result, err := UnmarshalToType(jsonString, resultType)
-		if err != nil {
-			return nil, nil
-		}
-		results = append(results, result)
-	}
-	return results, nil
 }
 
 // ConvertLabels will convert Peloton labels to Mesos labels.
@@ -344,7 +333,8 @@ func Contains(list []string, item string) bool {
 }
 
 // CreateHostInfo takes the agent Info and create the hostsvc.HostInfo
-func CreateHostInfo(hostname string, agentInfo *mesos.AgentInfo) *hostsvc.HostInfo {
+func CreateHostInfo(hostname string,
+	agentInfo *mesos.AgentInfo) *hostsvc.HostInfo {
 	// if agentInfo is nil , return nil HostInfo
 	if agentInfo == nil {
 		log.WithField("host", hostname).

@@ -113,3 +113,25 @@ func getPortSet(ranges ...uint32) map[uint32]bool {
 
 	return result
 }
+
+// Tests converting port-to-role map to Mesos resources
+func TestCreatePortResources(t *testing.T) {
+	ps := map[uint32]string{
+		2000: "role1",
+		3000: "role2",
+		4000: "role3",
+	}
+
+	result := CreatePortResources(ps)
+	assert.Equal(t, len(ps), len(result))
+	for _, res := range result {
+		assert.Equal(t, "ports", res.GetName())
+		assert.Equal(t, mesos_v1.Value_RANGES, res.GetType())
+		assert.Equal(t, 1, len(res.Ranges.Range))
+		port := uint32(*res.Ranges.Range[0].Begin)
+		assert.Equal(t, port, uint32(*res.Ranges.Range[0].End))
+		role, ok := ps[port]
+		assert.True(t, ok)
+		assert.Equal(t, role, res.GetRole())
+	}
+}

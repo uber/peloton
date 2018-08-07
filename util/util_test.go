@@ -1,8 +1,10 @@
 package util
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/pborman/uuid"
@@ -356,4 +358,97 @@ func TestConfigHasSecretVolumes(t *testing.T) {
 
 	assert.True(t, ConfigHasSecretVolumes(cfgWithSecret))
 	assert.False(t, ConfigHasSecretVolumes(cfgWithoutSecret))
+}
+
+// Test PtrPrintf
+func TestPtrPrintf(t *testing.T) {
+	assert.Equal(t,
+		"Thi$ test is 1ame",
+		*PtrPrintf("Thi%s %v is %dame", "$", "test", 1))
+}
+
+// Test Max/Min for uint32s
+func TestMaxMinUint32(t *testing.T) {
+	min := uint32(15)
+	max := uint32(25)
+	testTable := []struct {
+		value    uint32
+		minValue uint32
+		maxValue uint32
+	}{
+		{value: 10, minValue: 10, maxValue: 25},
+		{value: 15, minValue: 15, maxValue: 25},
+		{value: 20, minValue: 15, maxValue: 25},
+		{value: 25, minValue: 15, maxValue: 25},
+		{value: 30, minValue: 15, maxValue: 30},
+	}
+	for _, tst := range testTable {
+		assert.Equal(t, tst.minValue, Min(tst.value, min))
+		assert.Equal(t, tst.maxValue, Max(tst.value, max))
+	}
+}
+
+// Test mesos to Peloton task state translation
+func TestMesosStateToPelotonState(t *testing.T) {
+	testTable := []struct {
+		m mesos.TaskState
+		p task.TaskState
+	}{
+		{m: mesos.TaskState_TASK_STAGING, p: task.TaskState_LAUNCHED},
+		{m: mesos.TaskState_TASK_STARTING, p: task.TaskState_STARTING},
+		{m: mesos.TaskState_TASK_RUNNING, p: task.TaskState_RUNNING},
+		{m: mesos.TaskState_TASK_KILLING, p: task.TaskState_RUNNING},
+		{m: mesos.TaskState_TASK_FINISHED, p: task.TaskState_SUCCEEDED},
+		{m: mesos.TaskState_TASK_FAILED, p: task.TaskState_FAILED},
+		{m: mesos.TaskState_TASK_KILLED, p: task.TaskState_KILLED},
+		{m: mesos.TaskState_TASK_LOST, p: task.TaskState_LOST},
+		{m: mesos.TaskState_TASK_ERROR, p: task.TaskState_FAILED},
+		{m: 10345, p: task.TaskState_INITIALIZED},
+	}
+	for _, tst := range testTable {
+		assert.Equal(t, tst.p, MesosStateToPelotonState(tst.m))
+	}
+}
+
+// Test JSON deserialization wrapper
+func TestUnmarshalToType(t *testing.T) {
+	type Foo struct {
+		Field1 string
+		Field2 []int
+	}
+	obj := Foo{Field1: "abc", Field2: []int{1, 2, 3}}
+	str, _ := json.Marshal(obj)
+	result, err := UnmarshalToType(string(str), reflect.TypeOf(obj))
+	assert.NoError(t, err)
+	assert.Equal(t, &obj, result)
+
+	_, err = UnmarshalToType(string(str), reflect.TypeOf(true))
+	assert.Error(t, err)
+}
+
+// Test check for job state being terminal
+func TestJobTerminalState(t *testing.T) {
+	jobTerminalStates := map[job.JobState]bool{
+		job.JobState_FAILED:    true,
+		job.JobState_KILLED:    true,
+		job.JobState_SUCCEEDED: true,
+	}
+	for s := range job.JobState_name {
+		_, isTerm := jobTerminalStates[job.JobState(s)]
+		assert.Equal(t, isTerm, IsPelotonJobStateTerminal(job.JobState(s)))
+	}
+}
+
+// Test check for task state being terminal
+func TestTaskTerminalState(t *testing.T) {
+	taskTerminalStates := map[task.TaskState]bool{
+		task.TaskState_FAILED:    true,
+		task.TaskState_KILLED:    true,
+		task.TaskState_SUCCEEDED: true,
+		task.TaskState_LOST:      true,
+	}
+	for s := range task.TaskState_name {
+		_, isTerm := taskTerminalStates[task.TaskState(s)]
+		assert.Equal(t, isTerm, IsPelotonStateTerminal(task.TaskState(s)))
+	}
 }
