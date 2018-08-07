@@ -62,3 +62,80 @@ func (suite *WorkManagerTestSuite) TestMultipleWorksStartStop() {
 	suite.Equal(stop1, v1.Load())
 	suite.Equal(stop2, v2.Load())
 }
+
+// TestRegisterWorks_BadWork registers invalid work items
+func (suite *WorkManagerTestSuite) TestRegisterWorks_BadWork() {
+	manager := NewManager()
+
+	// Empty name
+	empty := Work{}
+	suite.Error(manager.RegisterWorks(empty))
+
+	// duplicates
+	w := Work{Name: "w"}
+	suite.NoError(manager.RegisterWorks(w))
+	suite.Error(manager.RegisterWorks(w))
+}
+
+// TestStopBeforeInitialDelay stops the manager before initial delay expires
+func (suite *WorkManagerTestSuite) TestStopBeforeInitialDelay() {
+	v1 := atomic.Int64{}
+	v2 := atomic.Int64{}
+
+	manager := NewManager()
+	err := manager.RegisterWorks(
+		Work{
+			Name:   "TestStopBeforeInitialDelay_1",
+			Period: time.Millisecond,
+			Func: func(_ *atomic.Bool) {
+				v1.Inc()
+			},
+		},
+		Work{
+			Name:   "TestStopBeforeInitialDelay_2",
+			Period: time.Millisecond,
+			Func: func(_ *atomic.Bool) {
+				v2.Inc()
+			},
+			InitialDelay: time.Millisecond * 100,
+		},
+	)
+	suite.NoError(err)
+	manager.Start()
+	time.Sleep(time.Millisecond * 20)
+	manager.Stop()
+	suite.NotZero(v1.Load())
+	suite.Zero(v2.Load())
+}
+
+// Test repeated start (stop) without a stop (start) on between
+func (suite *WorkManagerTestSuite) TestRepeatedStartStop() {
+	v1 := atomic.Int64{}
+	testMgr := NewManager()
+	err := testMgr.RegisterWorks(
+		Work{
+			Name:   "TestRepeatedStartStop",
+			Period: time.Millisecond * 2,
+			Func: func(_ *atomic.Bool) {
+				v1.Inc()
+			},
+		},
+	)
+	suite.NoError(err)
+	testMgr.Start()
+	time.Sleep(time.Millisecond * 15)
+	suite.NotZero(v1.Load())
+
+	// second start
+	testMgr.Start()
+	time.Sleep(time.Millisecond * 15)
+	suite.True(v1.Load() < 20)
+
+	testMgr.Stop()
+	runner := testMgr.(*manager).runners["TestRepeatedStartStop"]
+	suite.False(runner.running.Load())
+	// stop again
+	testMgr.Stop()
+	suite.False(runner.running.Load())
+	suite.Zero(len(runner.stopChan))
+}
