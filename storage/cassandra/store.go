@@ -1189,6 +1189,7 @@ func (s *Store) addPodEvent(
 			"update_time",
 			"actual_state",
 			"goal_state",
+			"healthy",
 			"hostname",
 			"agent_id",
 			"config_version",
@@ -1205,6 +1206,7 @@ func (s *Store) addPodEvent(
 			qb.UUID{UUID: gocql.UUIDFromTime(time.Now())},
 			runtime.GetState().String(),
 			runtime.GetGoalState().String(),
+			runtime.GetHealthy().String(),
 			runtime.GetHost(),
 			runtime.GetAgentID().GetValue(),
 			runtime.GetConfigVersion(),
@@ -1284,6 +1286,7 @@ func (s *Store) GetPodEvents(
 		podEvent.Reason = value["reason"].(string)
 		podEvent.AgentID = value["agent_id"].(string)
 		podEvent.Hostname = value["hostname"].(string)
+		podEvent.Healthy = value["healthy"].(string)
 
 		podEvents = append(podEvents, podEvent)
 	}

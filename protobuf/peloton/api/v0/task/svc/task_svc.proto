@@ -355,6 +355,9 @@ message PodEvent {
 
   // The previous task ID of the pod event.
   peloton.TaskID prevTaskId = 11;
+
+  // The health check state of the task 
+  string healthy = 12;
 }
 
 /**

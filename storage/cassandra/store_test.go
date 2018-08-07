@@ -2626,6 +2626,7 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 		actualState     task.TaskState
 		goalState       task.TaskState
 		jobID           peloton.JobID
+		healthy         task.HealthState
 	}{
 		{
 			mesosTaskID:     "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
@@ -2633,6 +2634,7 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 			actualState:     task.TaskState_PENDING,
 			goalState:       task.TaskState_RUNNING,
 			jobID:           peloton.JobID{Value: uuid.NewRandom().String()},
+			healthy:         task.HealthState_DISABLED,
 		},
 		{
 			mesosTaskID:     "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-test",
@@ -2640,6 +2642,7 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 			actualState:     task.TaskState_PENDING,
 			goalState:       task.TaskState_RUNNING,
 			jobID:           peloton.JobID{Value: uuid.NewRandom().String()},
+			healthy:         task.HealthState_HEALTH_UNKNOWN,
 		},
 		{
 			mesosTaskID:     "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
@@ -2647,6 +2650,15 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 			actualState:     task.TaskState_PENDING,
 			goalState:       task.TaskState_RUNNING,
 			jobID:           peloton.JobID{Value: "incorrect-jobID"},
+			healthy:         task.HealthState_HEALTH_UNKNOWN,
+		},
+		{
+			mesosTaskID:     "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-2",
+			prevMesosTaskID: "",
+			actualState:     task.TaskState_RUNNING,
+			goalState:       task.TaskState_RUNNING,
+			jobID:           peloton.JobID{Value: "incorrect-jobID"},
+			healthy:         task.HealthState_HEALTHY,
 		},
 	}
 
@@ -2656,6 +2668,7 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 			CompletionTime: time.Now().String(),
 			State:          tt.actualState,
 			GoalState:      tt.goalState,
+			Healthy:        tt.healthy,
 			Host:           hostName,
 			MesosTaskId: &mesos.TaskID{
 				Value: &tt.mesosTaskID,
@@ -2684,6 +2697,7 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 		CompletionTime: time.Now().String(),
 		State:          task.TaskState_RUNNING,
 		GoalState:      task.TaskState_SUCCEEDED,
+		Healthy:        task.HealthState_HEALTHY,
 		Host:           "mesos-slave-01",
 		Message:        "",
 		Reason:         "",

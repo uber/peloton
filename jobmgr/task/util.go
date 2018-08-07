@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
@@ -33,6 +34,21 @@ func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *
 		instanceID,
 		1)
 
+	// Get the health check config
+	healthCheckConfig := taskconfig.Merge(
+		jobConfig.GetDefaultConfig(),
+		jobConfig.GetInstanceConfig()[instanceID]).GetHealthCheck()
+
+	var healthState task.HealthState
+
+	// The initial health state is UNKNOWN or DISABLED
+	// depends on health check is enabled or  not
+	if healthCheckConfig != nil {
+		healthState = task.HealthState_HEALTH_UNKNOWN
+	} else {
+		healthState = task.HealthState_DISABLED
+	}
+
 	runtime := &task.RuntimeInfo{
 		MesosTaskId: &mesos.TaskID{
 			Value: &mesosTaskID,
@@ -42,6 +58,7 @@ func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *
 		DesiredConfigVersion: jobConfig.GetChangeLog().GetVersion(),
 		GoalState:            GetDefaultTaskGoalState(jobConfig.GetType()),
 		ResourceUsage:        CreateEmptyResourceUsageMap(),
+		Healthy:              healthState,
 	}
 	return runtime
 }

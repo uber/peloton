@@ -158,6 +158,32 @@ func createTestTaskInfo(state task.TaskState) *task.TaskInfo {
 	return taskInfo
 }
 
+func createTestTaskInfoWithHealth(state task.TaskState) *task.TaskInfo {
+	taskInfo := &task.TaskInfo{
+		Runtime: &task.RuntimeInfo{
+			MesosTaskId:   &mesos.TaskID{Value: &_mesosTaskID},
+			State:         state,
+			GoalState:     task.TaskState_SUCCEEDED,
+			ResourceUsage: jobmgrtask.CreateEmptyResourceUsageMap(),
+		},
+		Config: &task.TaskConfig{
+			Name: _jobID,
+			RestartPolicy: &task.RestartPolicy{
+				MaxFailures: 3,
+			},
+			HealthCheck: &task.HealthCheckConfig{
+				InitialIntervalSecs:    10,
+				IntervalSecs:           10,
+				MaxConsecutiveFailures: 5,
+				TimeoutSecs:            5,
+			},
+		},
+		InstanceId: uint32(_instanceID),
+		JobId:      _pelotonJobID,
+	}
+	return taskInfo
+}
+
 // Test happy case of processing status update.
 func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 	defer suite.ctrl.Finish()
@@ -224,7 +250,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateHealthy() {
 		event := createTestTaskUpdateHealthCheckEvent(t.health)
 		timeNow := float64(time.Now().UnixNano())
 		event.MesosTaskStatus.Timestamp = &timeNow
-		taskInfo := createTestTaskInfo(task.TaskState_INITIALIZED)
+		taskInfo := createTestTaskInfoWithHealth(task.TaskState_INITIALIZED)
 
 		gomock.InOrder(
 			suite.mockTaskStore.EXPECT().
@@ -447,7 +473,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 	failureReason := mesos.TaskStatus_REASON_RECONCILIATION
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
 	event.MesosTaskStatus.Reason = &failureReason
-	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+	taskInfo := createTestTaskInfoWithHealth(task.TaskState_RUNNING)
 	taskInfo.Runtime.GoalState = task.TaskState_KILLED
 
 	runtimeDiff := cached.RuntimeDiff{

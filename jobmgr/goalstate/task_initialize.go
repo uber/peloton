@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
@@ -20,6 +22,7 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 	taskEnt := entity.(*taskEntity)
 	goalStateDriver := taskEnt.driver
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
+
 	if cachedJob == nil {
 		return nil
 	}
@@ -54,6 +57,10 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 	runtimeDiff[cached.CompletionTimeField] = ""
 	runtimeDiff[cached.MessageField] = "Initialize task"
 	runtimeDiff[cached.ReasonField] = ""
+
+	if runtime.GetHealthy() != task.HealthState_DISABLED {
+		runtimeDiff[cached.HealthyField] = task.HealthState_HEALTH_UNKNOWN
+	}
 
 	// If the task is being upgraded, then move the configuration version to
 	// the desired configuration version.

@@ -35,13 +35,14 @@ const (
 
 type JobmgrTaskUtilTestSuite struct {
 	suite.Suite
-	ctrl        *gomock.Controller
-	ctx         context.Context
-	mockHostMgr *host_mocks.MockInternalHostServiceYARPCClient
-	jobID       string
-	instanceID  int32
-	mesosTaskID string
-	taskInfo    *task.TaskInfo
+	ctrl               *gomock.Controller
+	ctx                context.Context
+	mockHostMgr        *host_mocks.MockInternalHostServiceYARPCClient
+	jobID              string
+	instanceID         int32
+	mesosTaskID        string
+	taskInfo           *task.TaskInfo
+	taskInfoWithHealth *task.TaskInfo
 }
 
 func (suite *JobmgrTaskUtilTestSuite) TearDownTest() {
@@ -252,6 +253,23 @@ func (suite *JobmgrTaskUtilTestSuite) TestCreateInitializingTask() {
 		uint32(suite.instanceID), &job.JobConfig{})
 	suite.Equal(runtime.GetState(), task.TaskState_INITIALIZED)
 	suite.Equal(runtime.GetGoalState(), task.TaskState_SUCCEEDED)
+}
+
+func (suite *JobmgrTaskUtilTestSuite) TestCreateInitializingTaskWithHealthCheck() {
+	taskConfigWithHealth := task.TaskConfig{
+		HealthCheck: &task.HealthCheckConfig{
+			InitialIntervalSecs:    10,
+			IntervalSecs:           10,
+			MaxConsecutiveFailures: 5,
+			TimeoutSecs:            5,
+		},
+	}
+	jobConfig := job.JobConfig{
+		DefaultConfig: &taskConfigWithHealth,
+	}
+	runtime := CreateInitializingTask(&peloton.JobID{Value: suite.jobID},
+		uint32(suite.instanceID), &jobConfig)
+	suite.Equal(runtime.GetHealthy(), task.HealthState_HEALTH_UNKNOWN)
 }
 
 // TestGetDefaultTaskGoalState tests GetDefaultTaskGoalState

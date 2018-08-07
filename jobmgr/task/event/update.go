@@ -225,15 +225,18 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		}
 	}
 
+	// Persist healthy field if health check is enabled
+	if taskInfo.GetConfig().GetHealthCheck() != nil {
+		reason := event.GetMesosTaskStatus().GetReason()
+		healthy := event.GetMesosTaskStatus().GetHealthy()
+		persistHealthyField(state, reason, healthy, runtimeDiff)
+	}
+
 	// Persist the reason and message for mesos updates
 	runtimeDiff[cached.MessageField] = statusMsg
 	runtimeDiff[cached.ReasonField] = ""
 
 	switch state {
-	case pb_task.TaskState_SUCCEEDED:
-		runtimeDiff[cached.StateField] = state
-		runtimeDiff[cached.HealthyField] = pb_task.HealthState_INVALID
-
 	case pb_task.TaskState_KILLED:
 		if runtime.GetGoalState() == pb_task.TaskState_PREEMPTING {
 			runtimeDiff[cached.ReasonField] = "Task preempted"
@@ -244,7 +247,6 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			}
 		}
 		runtimeDiff[cached.StateField] = state
-		runtimeDiff[cached.HealthyField] = pb_task.HealthState_INVALID
 
 	case pb_task.TaskState_FAILED:
 		if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_TASK_INVALID &&
@@ -254,12 +256,10 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			return nil
 		}
 		runtimeDiff[cached.ReasonField] = event.GetMesosTaskStatus().GetReason().String()
-		runtimeDiff[cached.HealthyField] = pb_task.HealthState_INVALID
 		runtimeDiff[cached.StateField] = state
 
 	case pb_task.TaskState_LOST:
 		runtimeDiff[cached.ReasonField] = event.GetMesosTaskStatus().GetReason().String()
-		runtimeDiff[cached.HealthyField] = pb_task.HealthState_INVALID
 		if util.IsPelotonStateTerminal(runtime.GetState()) {
 			// Skip LOST status update if current state is terminal state.
 			log.WithFields(log.Fields{
@@ -307,18 +307,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			taskID, state, taskInfo.GetConfig().GetResource(),
 			runtime.GetStartTime(),
 			now().UTC().Format(time.RFC3339Nano))
-	case pb_task.TaskState_RUNNING:
-		// Only record the health check result when
-		// the reason for the event is TASK_HEALTH_CHECK_STATUS_UPDATED
-		reason := event.GetMesosTaskStatus().GetReason()
-		if reason == mesos_v1.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED {
-			if event.GetMesosTaskStatus().GetHealthy() {
-				runtimeDiff[cached.HealthyField] = pb_task.HealthState_HEALTHY
-			} else {
-				runtimeDiff[cached.HealthyField] = pb_task.HealthState_UNHEALTHY
-			}
-		}
-		runtimeDiff[cached.StateField] = state
+
 	default:
 		runtimeDiff[cached.StateField] = state
 	}
@@ -469,4 +458,29 @@ func getCurrTaskResourceUsage(taskID string, state pb_task.TaskState,
 			Error("failed to calculate resource usage")
 	}
 	return currTaskResourceUsage
+}
+
+// persistHealthyField update the healthy field in runtimeDiff
+func persistHealthyField(
+	state pb_task.TaskState,
+	reason mesos_v1.TaskStatus_Reason,
+	healthy bool,
+	runtimeDiff map[string]interface{}) {
+
+	switch {
+	case util.IsPelotonStateTerminal(state):
+		// Set healthy to INVALID for all terminal state
+		runtimeDiff[cached.HealthyField] = pb_task.HealthState_INVALID
+	case state == pb_task.TaskState_RUNNING:
+		// Only record the health check result when
+		// the reason for the event is TASK_HEALTH_CHECK_STATUS_UPDATED
+		if reason == mesos_v1.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED {
+			runtimeDiff[cached.ReasonField] = reason
+			if healthy {
+				runtimeDiff[cached.HealthyField] = pb_task.HealthState_HEALTHY
+			} else {
+				runtimeDiff[cached.HealthyField] = pb_task.HealthState_UNHEALTHY
+			}
+		}
+	}
 }
