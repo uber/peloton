@@ -7,37 +7,35 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
 	"code.uber.internal/infra/peloton/common"
 	res_common "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	"code.uber.internal/infra/peloton/resmgr/tasktestutil"
-
-	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 )
 
 type EntitlementCalculatorTestSuite struct {
 	sync.RWMutex
 	suite.Suite
 	resTree    respool.Tree
-	calculator *calculator
+	calculator *Calculator
 	mockCtrl   *gomock.Controller
 }
 
 func (s *EntitlementCalculatorTestSuite) SetupTest() {
 	s.mockCtrl = gomock.NewController(s.T())
 
-	s.calculator = &calculator{
+	s.calculator = &Calculator{
 		resPoolTree:       s.resTree,
 		runningState:      res_common.RunningStateNotStarted,
 		calculationPeriod: 10 * time.Millisecond,
@@ -524,39 +522,16 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 		map[string]int64{"CPU": 16, "GPU": 0, "MEMORY": 166, "DISK": 1000}))
 }
 
-func (s *EntitlementCalculatorTestSuite) TestInitCalculator() {
+func (s *EntitlementCalculatorTestSuite) TestNewCalculator() {
 	// This test initializes the entitlement calculation
-	// and check if calculator is not nil
+	// and check if Calculator is not nil
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
-	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:      common.PelotonResourceManager,
-		Inbounds:  nil,
-		Outbounds: nil,
-		Metrics: yarpc.MetricsConfig{
-			Tally: tally.NoopScope,
-		},
-	})
-
-	InitCalculator(
-		dispatcher,
+	calc := NewCalculator(
 		10*time.Millisecond,
 		tally.NoopScope,
 		mockHostMgr,
 	)
-	calc := GetCalculator()
 	s.NotNil(calc)
-	// Now initializing the calculator again
-	// which should not cause any thing as
-	// it should have the same object
-	InitCalculator(
-		dispatcher,
-		10*time.Millisecond,
-		tally.NoopScope,
-		mockHostMgr,
-	)
-	newCalc := GetCalculator()
-	s.Equal(newCalc, calc)
-
 }
 
 func (s *EntitlementCalculatorTestSuite) TestStartCalculatorMultipleTimes() {
@@ -623,8 +598,8 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 
 	resTree := respool.GetTree()
 
-	// Creating local calculator object
-	calculator := &calculator{
+	// Creating local Calculator object
+	calculator := &Calculator{
 		resPoolTree:       resTree,
 		runningState:      res_common.RunningStateNotStarted,
 		calculationPeriod: 10 * time.Millisecond,

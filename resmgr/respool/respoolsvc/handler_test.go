@@ -30,7 +30,7 @@ type resPoolHandlerTestSuite struct {
 	context                     context.Context
 	resourceTree                res.Tree
 	mockCtrl                    *gomock.Controller
-	handler                     *serviceHandler
+	handler                     *ServiceHandler
 	mockResPoolStore            *store_mocks.MockResourcePoolStore
 	resourcePoolConfigValidator res.Validator
 }
@@ -64,7 +64,7 @@ func (s *resPoolHandlerTestSuite) SetupTest() {
 		},
 	})
 
-	s.handler = &serviceHandler{
+	s.handler = &ServiceHandler{
 		resPoolTree: s.resourceTree,
 		dispatcher:  dispatcher,
 		metrics:     res.NewMetrics(tally.NoopScope),
@@ -76,19 +76,12 @@ func (s *resPoolHandlerTestSuite) SetupTest() {
 	s.NoError(err)
 }
 
-func (s *resPoolHandlerTestSuite) TestStartError() {
-	err := s.handler.Start()
-	s.Error(err)
-}
-
 func (s *resPoolHandlerTestSuite) TearDownTest() {
 	log.Info("tearing down")
 	err := s.resourceTree.Stop()
 	s.NoError(err)
 	err = s.handler.Stop()
 	s.NoError(err)
-	err = s.handler.Stop()
-	s.Error(err)
 }
 
 // Returns resource configs
@@ -220,10 +213,10 @@ func (s *resPoolHandlerTestSuite) getResPools() map[string]*pb_respool.ResourceP
 	}
 }
 
-func (s *resPoolHandlerTestSuite) TestInitServiceHandler() {
-	InitServiceHandler(nil, tally.NoopScope, s.mockResPoolStore, nil, nil, rc.PreemptionConfig{Enabled: false})
-	h := GetServiceHandler()
-	s.NotNil(h)
+func (s *resPoolHandlerTestSuite) TestNewServiceHandler() {
+	handler := NewServiceHandler(nil, tally.NoopScope, s.mockResPoolStore,
+		nil, nil, rc.PreemptionConfig{Enabled: false})
+	s.NotNil(handler)
 }
 
 func (s *resPoolHandlerTestSuite) TestGetResourcePoolEmptyID() {
@@ -304,8 +297,7 @@ func (s *resPoolHandlerTestSuite) TestGetResourcePoolError() {
 	s.NotNil(getResp)
 	s.NotNil(getResp.Error)
 
-	expectedMsg := "Resource pool not found"
-	s.Equal(expectedMsg, getResp.Error.NotFound.Message)
+	s.Equal(resPoolNotFoundErrString, getResp.Error.NotFound.Message)
 }
 
 func (s *resPoolHandlerTestSuite) TestCreateResourcePool() {
@@ -556,9 +548,9 @@ func (s *resPoolHandlerTestSuite) TestUpsertError() {
 	s.Equal(err.Error(), "Error")
 }
 
-func (s *resPoolHandlerTestSuite) getMockHandlerWithResTreeAndRespool() (*serviceHandler, *mocks.MockTree, *mocks.MockResPool) {
+func (s *resPoolHandlerTestSuite) getMockHandlerWithResTreeAndRespool() (*ServiceHandler, *mocks.MockTree, *mocks.MockResPool) {
 	resTree := mocks.NewMockTree(s.mockCtrl)
-	return &serviceHandler{
+	return &ServiceHandler{
 		resPoolTree: resTree,
 		dispatcher:  nil,
 		metrics:     res.NewMetrics(tally.NoopScope),
@@ -796,7 +788,7 @@ func (s *resPoolHandlerTestSuite) TestDeleteResourcePoolIsNotLeaf() {
 
 	s.NoError(err)
 	s.NotNil(deleteResp)
-	s.Equal("Resource Pool is not leaf", deleteResp.Error.IsNotLeaf.Message)
+	s.Equal(resPoolIsNotLeafErrString, deleteResp.Error.IsNotLeaf.Message)
 }
 
 func (s *resPoolHandlerTestSuite) TestDeleteResourcePoolNotExistant() {
@@ -815,7 +807,7 @@ func (s *resPoolHandlerTestSuite) TestDeleteResourcePoolNotExistant() {
 
 	s.NoError(err)
 	s.NotNil(deleteResp)
-	s.Equal("Resource pool not found", deleteResp.GetError().GetNotFound().GetMessage())
+	s.Equal(resPoolNotFoundErrString, deleteResp.GetError().GetNotFound().GetMessage())
 }
 
 func (s *resPoolHandlerTestSuite) TestDeleteblahblah() {
@@ -841,7 +833,7 @@ func (s *resPoolHandlerTestSuite) TestDeleteblahblah() {
 			msg:               "respool is busy",
 			expectedFunctions: s.DeleteResourceAllocationIsLess,
 			err:               nil,
-			respError:         resPoolIsBusy,
+			respError:         resPoolIsBusyErrString,
 		},
 		{
 			msg:               "respool not deleted",
@@ -861,7 +853,7 @@ func (s *resPoolHandlerTestSuite) TestDeleteblahblah() {
 		resTree := mocks.NewMockTree(s.mockCtrl)
 		respool := mocks.NewMockResPool(s.mockCtrl)
 
-		handler = &serviceHandler{
+		handler := &ServiceHandler{
 			resPoolTree: resTree,
 			dispatcher:  nil,
 			metrics:     res.NewMetrics(tally.NoopScope),
@@ -891,7 +883,7 @@ func (s *resPoolHandlerTestSuite) TestDeleteblahblah() {
 			switch t.respError {
 			case resPoolNotFoundErrString:
 				s.Contains(deleteResp.GetError().GetNotFound().Message, t.respError, t.msg)
-			case resPoolIsBusy:
+			case resPoolIsBusyErrString:
 				s.Contains(deleteResp.GetError().GetIsBusy().GetMessage(), t.respError, t.msg)
 			case resPoolDeleteErrString:
 				s.Contains(deleteResp.GetError().GetNotDeleted().GetMessage(), t.respError, t.msg)

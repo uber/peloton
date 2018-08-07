@@ -340,14 +340,15 @@ func (p *preemptor) evictNonRunningTask(rmTask *task.RMTask) error {
 	}
 
 	// Transit task to PENDING
-	if err := trackedTask.TransitTo(peloton_task.TaskState_PENDING.String(), statemachine.WithReason("non-running task evicted")); err != nil {
-		// The task could have transited to another state
+	if err := trackedTask.TransitTo(peloton_task.TaskState_PENDING.String(),
+		statemachine.WithReason("non-running task evicted")); err != nil {
 		log.
 			WithField("task_id", t.Id.Value).
 			WithField("respool_id", resPool.ID()).
 			WithField("state", rmTask.GetCurrentState()).
-			Debugf("Unable to transit non-running task to PENDING for" +
+			Debug("Unable to transit non-running task to PENDING for" +
 				" preemption")
+		// The task could have transited to another state
 		return nil
 	}
 

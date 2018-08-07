@@ -5,9 +5,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/leader"
-	"code.uber.internal/infra/peloton/resmgr/entitlement"
 	"code.uber.internal/infra/peloton/resmgr/preemption"
-	"code.uber.internal/infra/peloton/resmgr/respool/respoolsvc"
 	"code.uber.internal/infra/peloton/resmgr/task"
 
 	log "github.com/sirupsen/logrus"
@@ -16,7 +14,6 @@ import (
 
 // ServerProcess is the interface for a process inside a server which starts and
 // stops based on the leadership delegation of the server
-// TODO move all processes to use this interface
 type ServerProcess interface {
 	Start() error
 	Stop() error
@@ -25,16 +22,22 @@ type ServerProcess interface {
 // Server struct for handling the zk election
 type Server struct {
 	sync.Mutex
-	ID                       string
-	role                     string
-	metrics                  *Metrics
-	getResPoolHandler        func() respoolsvc.ServiceHandler
-	getTaskScheduler         func() task.Scheduler
-	getEntitlementCalculator func() entitlement.Calculator
-	getRecoveryHandler       func() RecoveryHandler
-	reconciler               ServerProcess
-	getPreemptor             func() preemption.Preemptor
-	drainer                  ServerProcess
+
+	ID   string // The peloton resource manager master address
+	role string // The role of the server
+
+	metrics *Metrics
+
+	// the processes which need to start with the leader
+	resPoolHandler        ServerProcess
+	entitlementCalculator ServerProcess
+	recoveryHandler       ServerProcess
+	reconciler            ServerProcess
+	drainer               ServerProcess
+
+	// TODO move these to use ServerProcess
+	getPreemptor     func() preemption.Preemptor
+	getTaskScheduler func() task.Scheduler
 }
 
 // NewServer will create the elect handle object
@@ -42,21 +45,23 @@ func NewServer(
 	parent tally.Scope,
 	httpPort,
 	grpcPort int,
+	resPoolHandler ServerProcess,
+	entitlementCalculator ServerProcess,
+	recoveryHandler ServerProcess,
 	drainer ServerProcess,
 	reconciler ServerProcess) *Server {
-	server := Server{
-		ID:                       leader.NewID(httpPort, grpcPort),
-		role:                     common.ResourceManagerRole,
-		getResPoolHandler:        respoolsvc.GetServiceHandler,
-		getTaskScheduler:         task.GetScheduler,
-		getEntitlementCalculator: entitlement.GetCalculator,
-		getRecoveryHandler:       GetRecoveryHandler,
-		reconciler:               reconciler,
-		getPreemptor:             preemption.GetPreemptor,
-		drainer:                  drainer,
-		metrics:                  NewMetrics(parent),
+	return &Server{
+		ID:                    leader.NewID(httpPort, grpcPort),
+		role:                  common.ResourceManagerRole,
+		resPoolHandler:        resPoolHandler,
+		getTaskScheduler:      task.GetScheduler,
+		entitlementCalculator: entitlementCalculator,
+		recoveryHandler:       recoveryHandler,
+		reconciler:            reconciler,
+		getPreemptor:          preemption.GetPreemptor,
+		drainer:               drainer,
+		metrics:               NewMetrics(parent),
 	}
-	return &server
 }
 
 // GainedLeadershipCallback is the callback when the current node
@@ -69,41 +74,49 @@ func (s *Server) GainedLeadershipCallback() error {
 		Info("Gained leadership")
 	s.metrics.Elected.Update(1.0)
 
-	if err := s.getResPoolHandler().Start(); err != nil {
-		log.WithError(err).Error("Failed to start respool service handler")
-		if err != respoolsvc.ErrServiceHandlerAlreadyStarted {
-			return err
-		}
+	if err := s.resPoolHandler.Start(); err != nil {
+		log.
+			WithError(err).
+			Error("Failed to start respool service handler")
+		return err
 	}
 
-	if err := s.getRecoveryHandler().Start(); err != nil {
+	if err := s.recoveryHandler.Start(); err != nil {
 		// If we can not recover then we need to do suicide
-		log.WithError(err).Fatal("Failed to start recovery handler")
+		log.
+			WithError(err).
+			Error("Failed to start recovery handler")
 		return err
 	}
 
 	if err := s.getTaskScheduler().Start(); err != nil {
-		log.Errorf("Failed to start task scheduler")
+		log.
+			WithError(err).
+			Error("Failed to start task scheduler")
 		return err
 	}
 
-	if err := s.getEntitlementCalculator().Start(); err != nil {
-		log.Errorf("Failed to start entitlement calculator")
+	if err := s.entitlementCalculator.Start(); err != nil {
+		log.WithError(err).
+			Error("Failed to start entitlement calculator")
 		return err
 	}
 
 	if err := s.reconciler.Start(); err != nil {
-		log.Errorf("Failed to start task reconciler")
+		log.WithError(err).
+			Error("Failed to start task reconciler")
 		return err
 	}
 
 	if err := s.getPreemptor().Start(); err != nil {
-		log.Errorf("Failed to start task preemptor")
+		log.WithError(err).
+			Error("Failed to start task preemptor")
 		return err
 	}
 
 	if err := s.drainer.Start(); err != nil {
-		log.Errorf("Failed to start host drainer")
+		log.WithError(err).
+			Error("Failed to start host drainer")
 		return err
 	}
 
@@ -115,17 +128,15 @@ func (s *Server) LostLeadershipCallback() error {
 	s.Lock()
 	defer s.Unlock()
 
-	log.WithFields(log.Fields{"role": s.role}).Info("Lost leadership")
+	log.WithField("role", s.role).Info("Lost leadership")
 	s.metrics.Elected.Update(0.0)
 
-	if err := s.getResPoolHandler().Stop(); err != nil {
+	if err := s.resPoolHandler.Stop(); err != nil {
 		log.WithError(err).Error("Failed to stop respool service handler")
-		if err != respoolsvc.ErrServiceHandlerAlreadyStopped {
-			return err
-		}
+		return err
 	}
 
-	if err := s.getRecoveryHandler().Stop(); err != nil {
+	if err := s.recoveryHandler.Stop(); err != nil {
 		log.Errorf("Failed to stop recovery handler")
 		return err
 	}
@@ -135,7 +146,7 @@ func (s *Server) LostLeadershipCallback() error {
 		return err
 	}
 
-	if err := s.getEntitlementCalculator().Stop(); err != nil {
+	if err := s.entitlementCalculator.Stop(); err != nil {
 		log.Errorf("Failed to stop entitlement calculator")
 		return err
 	}

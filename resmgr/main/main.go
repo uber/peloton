@@ -231,7 +231,7 @@ func main() {
 	)
 
 	// Initialize resource pool service handlers
-	respoolsvc.InitServiceHandler(
+	respoolHandler := respoolsvc.NewServiceHandler(
 		dispatcher,
 		rootScope,
 		store, // store implements RespoolStore
@@ -255,8 +255,7 @@ func main() {
 	)
 
 	// Initializing the entitlement calculator
-	entitlement.InitCalculator(
-		dispatcher,
+	calculator := entitlement.NewCalculator(
 		cfg.ResManager.EntitlementCaculationPeriod,
 		rootScope,
 		hostmgrClient,
@@ -296,7 +295,7 @@ func main() {
 	)
 
 	// Initialize recovery
-	resmgr.InitRecovery(
+	recoveryHandler := resmgr.NewRecovery(
 		rootScope,
 		store, // store implements JobStore
 		store, // store implements TaskStore
@@ -308,6 +307,9 @@ func main() {
 		rootScope,
 		cfg.ResManager.HTTPPort,
 		cfg.ResManager.GRPCPort,
+		respoolHandler,
+		calculator,
+		recoveryHandler,
 		drainer,
 		reconciler,
 	)

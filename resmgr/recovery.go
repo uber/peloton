@@ -23,9 +23,6 @@ import (
 )
 
 var (
-	once     sync.Once
-	recovery *recoveryHandler
-
 	// jobStates represents the job states which need recovery
 	jobStates = []job.JobState{
 		job.JobState_INITIALIZED,
@@ -43,15 +40,8 @@ var (
 	}
 )
 
-// RecoveryHandler defines the interface to
-// be called by leader election callbacks.
-type RecoveryHandler interface {
-	Start() error
-	Stop() error
-}
-
 /*
-recoveryHandler performs recovery of jobs which are in non-terminated
+RecoveryHandler performs recovery of jobs which are in non-terminated
 states and re-queues the tasks in the pending queue.
 
 This is performed in 2 phases when the resource manager gains leadership
@@ -69,7 +59,7 @@ Phase 2 - This phase is performed in the background and involves recovery of
 non-running tasks by the re-enqueueing them resource manager.
 Failure in this phase is non-fatal.
 */
-type recoveryHandler struct {
+type RecoveryHandler struct {
 	sync.Mutex
 	metrics         *Metrics
 	jobStore        storage.JobStore
@@ -80,38 +70,26 @@ type recoveryHandler struct {
 	finished        chan bool //used for testing
 }
 
-// InitRecovery initializes the recoveryHandler
-func InitRecovery(
+// NewRecovery initializes the RecoveryHandler
+func NewRecovery(
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	handler *ServiceHandler,
 	config Config,
-) {
-	once.Do(func() {
-		recovery = &recoveryHandler{
-			jobStore:  jobStore,
-			taskStore: taskStore,
-			handler:   handler,
-			metrics:   NewMetrics(parent),
-			config:    config,
-			finished:  make(chan bool),
-		}
-	})
-}
-
-// GetRecoveryHandler returns the recovery handler
-func GetRecoveryHandler() RecoveryHandler {
-	if recovery == nil {
-		log.Fatal(
-			"Recovery handler is not initialized",
-		)
+) *RecoveryHandler {
+	return &RecoveryHandler{
+		jobStore:  jobStore,
+		taskStore: taskStore,
+		handler:   handler,
+		metrics:   NewMetrics(parent),
+		config:    config,
+		finished:  make(chan bool),
 	}
-	return recovery
 }
 
 // Stop is a no-op for recovery handler
-func (r *recoveryHandler) Stop() error {
+func (r *RecoveryHandler) Stop() error {
 	//no-op
 	log.Info("Stopping recovery")
 	return nil
@@ -119,7 +97,7 @@ func (r *recoveryHandler) Stop() error {
 
 // Start loads all the jobs and tasks which are not in terminal state
 // and requeue them
-func (r *recoveryHandler) Start() error {
+func (r *RecoveryHandler) Start() error {
 	r.Lock()
 	defer r.Unlock()
 
@@ -128,7 +106,12 @@ func (r *recoveryHandler) Start() error {
 
 	defer r.metrics.RecoveryTimer.Start().Stop()
 
-	err := cmn_recovery.RecoverJobsByState(ctx, r.jobStore, jobStates, r.requeueTasksInRange)
+	err := cmn_recovery.RecoverJobsByState(
+		ctx,
+		r.jobStore,
+		jobStates,
+		r.requeueTasksInRange,
+	)
 	if err != nil {
 		r.metrics.RecoveryFail.Inc(1)
 		log.WithError(err).Error("failed to recover running tasks")
@@ -147,7 +130,7 @@ func (r *recoveryHandler) Start() error {
 
 // performs recovery of non-running tasks by enqueueing them in the resource
 // manager handler
-func (r *recoveryHandler) recoverNonRunningTasks() {
+func (r *RecoveryHandler) recoverNonRunningTasks() {
 	defer close(r.finished)
 
 	ctx := context.Background()
@@ -191,7 +174,7 @@ func (r *recoveryHandler) recoverNonRunningTasks() {
 	log.Info("Recovery of non running tasks completed")
 }
 
-func (r *recoveryHandler) requeueTasksInRange(ctx context.Context,
+func (r *RecoveryHandler) requeueTasksInRange(ctx context.Context,
 	jobID string, jobConfig *job.JobConfig, jobRuntime *job.RuntimeInfo,
 	batch cmn_recovery.TasksBatch, errChan chan<- error) {
 	nonRunningTasks, runningTasks, err := r.loadTasksInRange(ctx, jobID,
@@ -223,7 +206,7 @@ func (r *recoveryHandler) requeueTasksInRange(ctx context.Context,
 	return
 }
 
-func (r *recoveryHandler) addNonRunningTasks(notRunningTasks []*task.TaskInfo,
+func (r *RecoveryHandler) addNonRunningTasks(notRunningTasks []*task.TaskInfo,
 	jobConfig *job.JobConfig) {
 	if len(notRunningTasks) == 0 {
 		return
@@ -236,7 +219,7 @@ func (r *recoveryHandler) addNonRunningTasks(notRunningTasks []*task.TaskInfo,
 	r.nonRunningTasks = append(r.nonRunningTasks, request)
 }
 
-func (r *recoveryHandler) addRunningTasks(
+func (r *RecoveryHandler) addRunningTasks(
 	tasks []*task.TaskInfo,
 	config *job.JobConfig) (int, error) {
 
@@ -265,7 +248,7 @@ func (r *recoveryHandler) addRunningTasks(
 	return runningTasksAdded, nil
 }
 
-func (r *recoveryHandler) addTaskToTracker(
+func (r *RecoveryHandler) addTaskToTracker(
 	taskInfo *task.TaskInfo,
 	config *job.JobConfig,
 	respool respool.ResPool) error {
@@ -296,7 +279,7 @@ func (r *recoveryHandler) addTaskToTracker(
 	return nil
 }
 
-func (r *recoveryHandler) loadTasksInRange(
+func (r *RecoveryHandler) loadTasksInRange(
 	ctx context.Context,
 	jobID string,
 	from, to uint32) ([]*task.TaskInfo, []*task.TaskInfo, error) {

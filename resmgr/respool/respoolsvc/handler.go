@@ -2,7 +2,6 @@ package respoolsvc
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -22,29 +21,14 @@ import (
 )
 
 const (
-	resPoolNotFoundErrString = "Resource pool not found"
-	resPoolDeleteErrString   = "Resource pool could not be deleted"
-	resPoolIsBusy            = "Resource Pool is busy"
+	resPoolNotFoundErrString  = "resource pool not found"
+	resPoolDeleteErrString    = "resource pool could not be deleted"
+	resPoolIsBusyErrString    = "resource pool is busy"
+	resPoolIsNotLeafErrString = "resource pool is not leaf"
 )
 
-var (
-	// ErrServiceHandlerAlreadyStarted error messege if handler is started
-	ErrServiceHandlerAlreadyStarted = errors.New(
-		"Resource pool service is already running")
-	// ErrServiceHandlerAlreadyStopped error messege if handler is stopped
-	ErrServiceHandlerAlreadyStopped = errors.New(
-		"Resource Manager is already stopped, no action will be performed")
-)
-
-// ServiceHandler defines the interface of respool service handler to
-// be called by leader election callbacks.
-type ServiceHandler interface {
-	Start() error
-	Stop() error
-}
-
-// serviceHandler implements peloton.api.respool.ResourcePoolService
-type serviceHandler struct {
+// ServiceHandler implements peloton.api.respool.ResourcePoolService
+type ServiceHandler struct {
 	sync.Mutex
 
 	cfg rc.PreemptionConfig
@@ -63,25 +47,14 @@ type serviceHandler struct {
 	lifeCycle lifecycle.LifeCycle
 }
 
-// Singleton service handler for ResourcePoolService.
-var handler *serviceHandler
-
-// InitServiceHandler initializes the handler for ResourcePoolService.
-func InitServiceHandler(
+// NewServiceHandler returns a new handler for ResourcePoolService.
+func NewServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	store storage.ResourcePoolStore,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	cfg rc.PreemptionConfig) {
-
-	if handler != nil {
-		log.Warning(
-			`Resource pool service handler has already
-			been initialized`,
-		)
-		return
-	}
+	cfg rc.PreemptionConfig) *ServiceHandler {
 
 	scope := parent.SubScope("respool")
 	metrics := res.NewMetrics(scope)
@@ -100,7 +73,7 @@ func InitServiceHandler(
 		)
 	}
 
-	handler = &serviceHandler{
+	return &ServiceHandler{
 		store:                  store,
 		metrics:                metrics,
 		dispatcher:             d,
@@ -110,23 +83,10 @@ func InitServiceHandler(
 		taskStore:              taskStore,
 		lifeCycle:              lifecycle.NewLifeCycle(),
 	}
-	log.Info("ResourcePoolService handler created")
-}
-
-// GetServiceHandler returns the handler of ResourcePoolService. This
-// function assumes the handler has been initialized as part of the
-// InitEventHandler function.
-func GetServiceHandler() ServiceHandler {
-	if handler == nil {
-		log.Fatal(
-			"ResourcePoolService handler is not initialized",
-		)
-	}
-	return handler
 }
 
 // CreateResourcePool will create resource pool.
-func (h *serviceHandler) CreateResourcePool(
+func (h *ServiceHandler) CreateResourcePool(
 	ctx context.Context,
 	req *respool.CreateRequest) (
 	*respool.CreateResponse,
@@ -172,7 +132,7 @@ func (h *serviceHandler) CreateResourcePool(
 		}, nil
 	}
 
-	// TODO T808419 - handle parent of the new_resource_pool_config
+	// TODO Handle parent of the new_resource_pool_config
 	// already has tasks added running, drain, distinguish?
 
 	// insert persistent store.
@@ -220,7 +180,7 @@ func (h *serviceHandler) CreateResourcePool(
 }
 
 // GetResourcePool will get resource pool.
-func (h *serviceHandler) GetResourcePool(
+func (h *ServiceHandler) GetResourcePool(
 	ctx context.Context,
 	req *respool.GetRequest) (*respool.GetResponse, error) {
 
@@ -290,7 +250,7 @@ func (h *serviceHandler) GetResourcePool(
 }
 
 // DeleteResourcePool will delete resource pool.
-func (h *serviceHandler) DeleteResourcePool(
+func (h *ServiceHandler) DeleteResourcePool(
 	ctx context.Context,
 	req *respool.DeleteRequest) (
 	*respool.DeleteResponse,
@@ -385,14 +345,14 @@ func (h *serviceHandler) DeleteResourcePool(
 }
 
 // getDeleteResponse returns the empty respool DeleteResponse
-func (h *serviceHandler) getDeleteResponse() *respool.DeleteResponse {
+func (h *ServiceHandler) getDeleteResponse() *respool.DeleteResponse {
 	return &respool.DeleteResponse{
 		Error: &respool.DeleteResponse_Error{},
 	}
 }
 
 // getResPoolNotFoundError returns the repool not found error
-func (h *serviceHandler) getResPoolNotFoundError(path string,
+func (h *ServiceHandler) getResPoolNotFoundError(path string,
 ) *respool.ResourcePoolPathNotFound {
 	return &respool.ResourcePoolPathNotFound{
 		Path: &respool.ResourcePoolPath{
@@ -403,25 +363,25 @@ func (h *serviceHandler) getResPoolNotFoundError(path string,
 }
 
 // getResPoolNotLeafError returns the ResPoolNotLeafError
-func (h *serviceHandler) getResPoolNotLeafError(resPoolID *peloton.ResourcePoolID,
+func (h *ServiceHandler) getResPoolNotLeafError(resPoolID *peloton.ResourcePoolID,
 ) *respool.ResourcePoolIsNotLeaf {
 	return &respool.ResourcePoolIsNotLeaf{
 		Id:      resPoolID,
-		Message: "Resource Pool is not leaf",
+		Message: resPoolIsNotLeafErrString,
 	}
 }
 
 // getResPoolIsBusyError returns the ResPoolIsBusyError
-func (h *serviceHandler) getResPoolIsBusyError(resPoolID *peloton.ResourcePoolID,
+func (h *ServiceHandler) getResPoolIsBusyError(resPoolID *peloton.ResourcePoolID,
 ) *respool.ResourcePoolIsBusy {
 	return &respool.ResourcePoolIsBusy{
 		Id:      resPoolID,
-		Message: "Resource Pool is busy",
+		Message: resPoolIsBusyErrString,
 	}
 }
 
 // getResPoolNotDeletedError returns ResPoolNotDeletedError
-func (h *serviceHandler) getResPoolNotDeletedError(resPoolID *peloton.ResourcePoolID,
+func (h *ServiceHandler) getResPoolNotDeletedError(resPoolID *peloton.ResourcePoolID,
 	err error) *respool.ResourcePoolNotDeleted {
 	return &respool.ResourcePoolNotDeleted{
 		Id:      resPoolID,
@@ -430,7 +390,7 @@ func (h *serviceHandler) getResPoolNotDeletedError(resPoolID *peloton.ResourcePo
 }
 
 // UpdateResourcePool will update resource pool.
-func (h *serviceHandler) UpdateResourcePool(
+func (h *ServiceHandler) UpdateResourcePool(
 	ctx context.Context,
 	req *respool.UpdateRequest) (
 	*respool.UpdateResponse,
@@ -542,7 +502,7 @@ func (h *serviceHandler) UpdateResourcePool(
 
 // LookupResourcePoolID returns the resource pool ID for a given resource pool
 // path.
-func (h *serviceHandler) LookupResourcePoolID(ctx context.Context,
+func (h *ServiceHandler) LookupResourcePoolID(ctx context.Context,
 	req *respool.LookupRequest) (
 	*respool.LookupResponse,
 	error) {
@@ -613,7 +573,7 @@ func (h *serviceHandler) LookupResourcePoolID(ctx context.Context,
 }
 
 // Query returns the matching resource pools by default returns all.
-func (h *serviceHandler) Query(
+func (h *ServiceHandler) Query(
 	ctx context.Context,
 	req *respool.QueryRequest) (
 	*respool.QueryResponse,
@@ -648,27 +608,31 @@ func (h *serviceHandler) Query(
 }
 
 // registerProcs will register all API's for end points.
-func (h *serviceHandler) registerProcs(d *yarpc.Dispatcher) {
+func (h *ServiceHandler) registerProcs(d *yarpc.Dispatcher) {
 	d.Register(respool.BuildResourceManagerYARPCProcedures(h))
 }
 
 // Start will start resource manager.
-func (h *serviceHandler) Start() error {
+func (h *ServiceHandler) Start() error {
 	if !h.lifeCycle.Start() {
-		return ErrServiceHandlerAlreadyStarted
+		log.Warn("Resource pool handler is already started, no" +
+			" action will be performed")
+		return nil
 	}
 
 	log.Info("Registering the respool procedures")
 	h.registerProcs(h.dispatcher)
-
-	err := h.resPoolTree.Start()
-	return err
+	return h.resPoolTree.Start()
 }
 
 // Stop will stop resource manager.
-func (h *serviceHandler) Stop() error {
+func (h *ServiceHandler) Stop() error {
 	if !h.lifeCycle.Stop() {
-		return ErrServiceHandlerAlreadyStopped
+		log.Warn("Resource pool handler is already stopped, no" +
+			" action will be performed")
+		return nil
 	}
+
+	log.Info("Resource pool handler Stopped")
 	return nil
 }

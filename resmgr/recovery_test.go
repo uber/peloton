@@ -35,7 +35,7 @@ type recoveryTestSuite struct {
 	rmTaskTracker    rm_task.Tracker
 	handler          *ServiceHandler
 	taskScheduler    rm_task.Scheduler
-	recovery         recoveryHandler
+	recovery         RecoveryHandler
 	mockCtrl         *gomock.Controller
 	mockResPoolStore *store_mocks.MockResourcePoolStore
 	mockJobStore     *store_mocks.MockJobStore
@@ -386,7 +386,8 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		Return(suite.createTasks(&jobs[3], 9, task.TaskState_LAUNCHED), nil)
 
 	// Perform recovery
-	InitRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore, suite.handler,
+	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
+		suite.handler,
 		Config{
 			RmTaskConfig: &rm_task.Config{
 				LaunchingTimeout: 1 * time.Minute,
@@ -395,7 +396,6 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 			},
 		})
 
-	rh := GetRecoveryHandler().(*recoveryHandler)
 	rh.Start()
 	<-rh.finished
 

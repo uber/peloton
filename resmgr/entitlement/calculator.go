@@ -7,13 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-	uat "github.com/uber-go/atomic"
-	"github.com/uber-go/tally"
-
-	"go.uber.org/yarpc"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pb_res "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
@@ -23,74 +16,60 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	"code.uber.internal/infra/peloton/util"
+
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	uat "github.com/uber-go/atomic"
+	"github.com/uber-go/tally"
 )
 
-// Calculator defines the interface of Entitlement calculator
-type Calculator interface {
-	// Start starts the entitlement calculator goroutines
-	Start() error
-	// Stop stops the entitlement calculator goroutines
-	Stop() error
-}
+// Calculator is responsible for calculating the entitlements for all the
+// leaf resource pools based on the demand, free resources and share.
+type Calculator struct {
+	lock sync.Mutex
 
-// calculator implements the Calculator interface
-type calculator struct {
-	sync.Mutex
-	runningState      int32
-	resPoolTree       respool.Tree
+	// stores the current state of the calculation
+	runningState int32
+	// the hierarchy of resource pools
+	resPoolTree respool.Tree
+	// calculationPeriod defines how often to calculate the entitlements
 	calculationPeriod time.Duration
-	stopChan          chan struct{}
-	hostMgrClient     hostsvc.InternalHostServiceYARPCClient
-	clusterCapacity   map[string]float64
+	// chan to stop the calculation
+	stopChan chan struct{}
+	// client to get the cluster capacity
+	hostMgrClient hostsvc.InternalHostServiceYARPCClient
+	// map of cluster capacity keyed by the resource type
+	clusterCapacity map[string]float64
 	// This atomic boolean helps to identify if previous run is
 	// complete or still not done
 	isRunning uat.Bool
 	metrics   *Metrics
 }
 
-// Singleton object for calculator
-var calc *calculator
-
-// InitCalculator initializes the entitlement calculator
-func InitCalculator(
-	d *yarpc.Dispatcher,
+// NewCalculator initializes the entitlement Calculator
+func NewCalculator(
 	calculationPeriod time.Duration,
 	parent tally.Scope,
-	hostMgrClient hostsvc.InternalHostServiceYARPCClient) {
+	hostMgrClient hostsvc.InternalHostServiceYARPCClient) *Calculator {
 
-	if calc != nil {
-		log.Warning("entitlement calculator has already " +
-			"been initialized")
-		return
-	}
-
-	calc = &calculator{
+	return &Calculator{
 		resPoolTree:       respool.GetTree(),
 		runningState:      res_common.RunningStateNotStarted,
 		calculationPeriod: calculationPeriod,
 		stopChan:          make(chan struct{}, 1),
 		hostMgrClient:     hostMgrClient,
 		clusterCapacity:   make(map[string]float64),
-		metrics:           NewMetrics(parent.SubScope("calculator")),
+		metrics:           NewMetrics(parent.SubScope("Calculator")),
 	}
-	log.Info("entitlement calculator is initialized")
-}
-
-// GetCalculator returns the Calculator instance
-func GetCalculator() Calculator {
-	if calc == nil {
-		log.Fatalf("Entitlement Calculator is not initialized")
-	}
-	return calc
 }
 
 // Start starts the entitlement calculation in a goroutine
-func (c *calculator) Start() error {
-	c.Lock()
-	defer c.Unlock()
+func (c *Calculator) Start() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
 	if c.runningState == res_common.RunningStateRunning {
-		log.Warn("Entitlement calculator is already running, " +
+		log.Warn("Entitlement Calculator is already running, " +
 			"no action will be performed")
 		c.metrics.EntitlementCalculationMissed.Inc(1)
 		return nil
@@ -113,7 +92,7 @@ func (c *calculator) Start() error {
 
 			select {
 			case <-c.stopChan:
-				log.Info("Exiting Entitlement calculator")
+				log.Info("Exiting Entitlement Calculator")
 				return
 			case <-ticker.C:
 			case <-c.resPoolTree.UpdatedChannel():
@@ -126,21 +105,21 @@ func (c *calculator) Start() error {
 }
 
 // calculateEntitlement calculates the entitlement
-func (c *calculator) calculateEntitlement(ctx context.Context) error {
+func (c *Calculator) calculateEntitlement(ctx context.Context) error {
 	log.Info("calculating entitlement")
 	// Checking is previous transitions are complete
 	isRunning := c.isRunning.Load()
 	if isRunning {
 		log.Debug("previous instance of entitlement " +
-			"calculator is running, skipping this run")
+			"Calculator is running, skipping this run")
 		return errors.New("previous instance of entitlement " +
-			"calculator is running, skipping this run")
+			"Calculator is running, skipping this run")
 	}
 
 	// Changing value by that we block rest
 	// of the runs
 	c.isRunning.Swap(true)
-	// Making calculator done
+	// Making Calculator done
 	defer c.isRunning.Swap(false)
 
 	rootResPool, err := c.resPoolTree.Get(&peloton.ResourcePoolID{
@@ -153,8 +132,7 @@ func (c *calculator) calculateEntitlement(ctx context.Context) error {
 	}
 
 	// Updating cluster capacity
-	err = c.updateClusterCapacity(ctx, rootResPool)
-	if err != nil {
+	if err = c.updateClusterCapacity(ctx, rootResPool); err != nil {
 		return err
 	}
 	// Invoking the demand calculation
@@ -167,7 +145,7 @@ func (c *calculator) calculateEntitlement(ctx context.Context) error {
 	return nil
 }
 
-func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
+func (c *Calculator) setEntitlementForChildren(resp respool.ResPool) {
 	if resp == nil {
 		return
 	}
@@ -187,15 +165,31 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 	// 3. Once the demand is zero , distribute remaining based on share
 
 	// This is the first phase for assignment
-	c.calculateAssignmentsFromReservation(resp, demands, entitlement, assignments, totalShare)
+	c.calculateAssignmentsFromReservation(
+		resp,
+		demands,
+		entitlement,
+		assignments,
+		totalShare,
+	)
 
 	// This is second phase for distributing remaining resources
-	c.distributeRemainingResources(resp, demands, entitlement, assignments, totalShare)
+	c.distributeRemainingResources(
+		resp,
+		demands,
+		entitlement,
+		assignments,
+		totalShare,
+	)
 
 	// This is the third phase for the entitlement cycle. here after all the
 	// assigmenets based on demand, rest of the resources are being
 	// distributed in all the resource pools.
-	c.distributeUnclaimedResources(resp, entitlement, assignments)
+	c.distributeUnclaimedResources(
+		resp,
+		entitlement,
+		assignments,
+	)
 
 	// Now setting entitlement for all the children and call
 	// for their children recursively
@@ -219,7 +213,7 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 // calculateAssignmentsFromReservation calculates assigments
 // based on demand and reservation
 // as well as return the remaining entitlement for redistribution
-func (c *calculator) calculateAssignmentsFromReservation(resp respool.ResPool,
+func (c *Calculator) calculateAssignmentsFromReservation(resp respool.ResPool,
 	demands map[string]*scalar.Resources,
 	entitlement *scalar.Resources,
 	assignments map[string]*scalar.Resources,
@@ -284,7 +278,7 @@ func (c *calculator) calculateAssignmentsFromReservation(resp respool.ResPool,
 // tasks waiting in the queue as well as current allocation.
 // This also caps the demand based on the limit of the resource pool
 // for that type of resource
-func (c *calculator) calculateDemandForRespool(n respool.ResPool,
+func (c *Calculator) calculateDemandForRespool(n respool.ResPool,
 	demands map[string]*scalar.Resources,
 ) {
 	// Demand is pending tasks + already allocated
@@ -322,7 +316,7 @@ func (c *calculator) calculateDemandForRespool(n respool.ResPool,
 
 // distributeRemainingResources distributes the remianing entitlement based
 // on demand and share of the resourcepool.
-func (c *calculator) distributeRemainingResources(resp respool.ResPool,
+func (c *Calculator) distributeRemainingResources(resp respool.ResPool,
 	demands map[string]*scalar.Resources,
 	entitlement *scalar.Resources,
 	assignments map[string]*scalar.Resources,
@@ -341,8 +335,11 @@ func (c *calculator) distributeRemainingResources(resp respool.ResPool,
 		// higher demand than the reservation.
 		// It will also cap the fair share to demand and redistribute the
 		// rest of the entitlement to others.
-		for remaining.Get(kind) > util.ResourceEpsilon && c.demandExist(demands, kind) {
-			log.WithField("remaining", remaining.Get(kind)).Debug("Remaining resources")
+		for remaining.Get(kind) > util.ResourceEpsilon &&
+			c.demandExist(demands, kind) {
+			log.
+				WithField("remaining", remaining.Get(kind)).
+				Debug("Remaining resources")
 			remainingShare := totalShare[kind]
 			for e := childs.Front(); e != nil; e = e.Next() {
 				n := e.Value.(respool.ResPool)
@@ -383,7 +380,9 @@ func (c *calculator) distributeRemainingResources(resp respool.ResPool,
 					value = remaining.Get(kind)
 					remaining.Set(kind, float64(0))
 				}
-				log.WithField("value", value).Debug(" value after evaluation ")
+				log.
+					WithField("value", value).
+					Debug(" value after evaluation ")
 				value += assignments[n.ID()].Get(kind)
 				assignments[n.ID()].Set(kind, value)
 				log.WithFields(log.Fields{
@@ -403,7 +402,7 @@ func (c *calculator) distributeRemainingResources(resp respool.ResPool,
 // distribution to all the resource pools which had demand.
 // This is in anticipation of respools can get some more workloads
 // in between two entitlement cycles
-func (c *calculator) distributeUnclaimedResources(
+func (c *Calculator) distributeUnclaimedResources(
 	resp respool.ResPool,
 	entitlement *scalar.Resources,
 	assignments map[string]*scalar.Resources,
@@ -427,7 +426,10 @@ func (c *calculator) distributeUnclaimedResources(
 				// We need to cap the limit here for free resources
 				// as we can not give more then limit to resource pool
 				if value > n.Resources()[kind].GetLimit() {
-					assignments[n.ID()].Set(kind, n.Resources()[kind].GetLimit())
+					assignments[n.ID()].Set(
+						kind,
+						n.Resources()[kind].GetLimit(),
+					)
 				} else {
 					assignments[n.ID()].Set(kind, value)
 				}
@@ -437,7 +439,7 @@ func (c *calculator) distributeUnclaimedResources(
 }
 
 // getChildShare returns the combined share of the childrens
-func (c *calculator) getChildShare(resp respool.ResPool, kind string) float64 {
+func (c *Calculator) getChildShare(resp respool.ResPool, kind string) float64 {
 	if resp == nil {
 		return 0
 	}
@@ -453,7 +455,7 @@ func (c *calculator) getChildShare(resp respool.ResPool, kind string) float64 {
 }
 
 // demandExist returns true if demand exists for any resource kind
-func (c *calculator) demandExist(
+func (c *Calculator) demandExist(
 	demands map[string]*scalar.Resources,
 	kind string) bool {
 	for _, resource := range demands {
@@ -464,7 +466,10 @@ func (c *calculator) demandExist(
 	return false
 }
 
-func (c *calculator) updateClusterCapacity(ctx context.Context, rootResPool respool.ResPool) error {
+func (c *Calculator) updateClusterCapacity(
+	ctx context.Context,
+	rootResPool respool.ResPool,
+) error {
 	// Calling the hostmgr for getting total capacity of the cluster
 	totalResources, err := c.getTotalCapacity(ctx)
 	if err != nil {
@@ -485,7 +490,9 @@ func (c *calculator) updateClusterCapacity(ctx context.Context, rootResPool resp
 
 	rootres := rootResourcePoolConfig.Resources
 	if rootres == nil {
-		log.WithField("root", rootResPool).Info("res pool have nil resource config")
+		log.
+			WithField("root", rootResPool).
+			Info("res pool have nil resource config")
 		rootres = []*pb_res.ResourceConfig{
 			{
 				Kind:        common.CPU,
@@ -520,12 +527,16 @@ func (c *calculator) updateClusterCapacity(ctx context.Context, rootResPool resp
 	}
 	rootResPool.SetResourcePoolConfig(rootResourcePoolConfig)
 	rootResPool.SetEntitlement(c.clusterCapacity)
-	log.WithField(" root resource ", rootres).Info("Updating root resources")
+	log.
+		WithField(" root resource ", rootres).
+		Info("Updating root resources")
 	return nil
 }
 
 // getTotalCapacity returns the total capacity if the cluster
-func (c *calculator) getTotalCapacity(ctx context.Context) ([]*hostsvc.Resource, error) {
+func (c *Calculator) getTotalCapacity(
+	ctx context.Context,
+) ([]*hostsvc.Resource, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -533,26 +544,32 @@ func (c *calculator) getTotalCapacity(ctx context.Context) ([]*hostsvc.Resource,
 
 	response, err := c.hostMgrClient.ClusterCapacity(ctx, request)
 	if err != nil {
-		log.WithField("error", err).Error("ClusterCapacity failed")
+		log.
+			WithField("error", err).
+			Error("ClusterCapacity failed")
 		return nil, err
 	}
 
-	log.WithField("response", response).Debug("ClusterCapacity returned")
+	log.
+		WithField("response", response).
+		Debug("ClusterCapacity returned")
 
 	if respErr := response.GetError(); respErr != nil {
-		log.WithField("error", respErr).Error("ClusterCapacity error")
+		log.
+			WithField("error", respErr).
+			Error("ClusterCapacity error")
 		return nil, errors.New(respErr.String())
 	}
 	return response.PhysicalResources, nil
 }
 
 // Stop stops Entitlement process
-func (c *calculator) Stop() error {
-	c.Lock()
-	defer c.Unlock()
+func (c *Calculator) Stop() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
 	if c.runningState == res_common.RunningStateNotStarted {
-		log.Warn("Entitlement calculator is already stopped, no" +
+		log.Warn("Entitlement Calculator is already stopped, no" +
 			" action will be performed")
 		return nil
 	}
@@ -560,7 +577,7 @@ func (c *calculator) Stop() error {
 	log.Info("Stopping Entitlement Calculator")
 	c.stopChan <- struct{}{}
 
-	// Wait for entitlement calculator to be stopped
+	// Wait for entitlement Calculator to be stopped
 	for {
 		runningState := atomic.LoadInt32(&c.runningState)
 		if runningState == res_common.RunningStateRunning {
@@ -569,6 +586,6 @@ func (c *calculator) Stop() error {
 			break
 		}
 	}
-	log.Info("Entitlement calculator Stopped")
+	log.Info("Entitlement Calculator Stopped")
 	return nil
 }

@@ -419,16 +419,16 @@ func getConfig(config string, suite suite.Suite) *job.JobConfig {
 
 func (suite *TaskConfigTestSuite) TestValidateStatelessJobConfig() {
 	testMap := map[job.SlaConfig]error{
-		job.SlaConfig{
+		{
 			MaximumRunningInstances: 1,
 		}: errIncorrectMaxInstancesSLA,
-		job.SlaConfig{
+		{
 			MinimumRunningInstances: 1,
 		}: errIncorrectMinInstancesSLA,
-		job.SlaConfig{
+		{
 			MaxRunningTime: 1,
 		}: errIncorrectMaxRunningTimeSLA,
-		job.SlaConfig{}: nil,
+		{}: nil,
 	}
 	for slaConfig, errExp := range testMap {
 		jobConfig := job.JobConfig{
@@ -445,10 +445,10 @@ func (suite *TaskConfigTestSuite) TestValidateStatelessJobConfig() {
 
 func (suite *TaskConfigTestSuite) TestValidateStatelessTaskConfig() {
 	testMap := map[task.PreemptionPolicy]error{
-		task.PreemptionPolicy{
+		{
 			KillOnPreempt: true,
 		}: errKillOnPreemptNotFalse,
-		task.PreemptionPolicy{
+		{
 			KillOnPreempt: false,
 		}: nil,
 	}
@@ -463,7 +463,7 @@ func (suite *TaskConfigTestSuite) TestValidateStatelessTaskConfig() {
 
 func (suite *TaskConfigTestSuite) TestValidateBatchTaskConfig() {
 	testMap := map[task.HealthCheckConfig]error{
-		task.HealthCheckConfig{
+		{
 			Enabled: true,
 		}: errIncorrectHealthCheck,
 	}
