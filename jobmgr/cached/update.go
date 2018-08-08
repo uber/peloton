@@ -622,28 +622,23 @@ func GetUpdateProgress(
 }
 
 func isUpdateComplete(desiredConfigVersion uint64, runtime *pbtask.RuntimeInfo) bool {
-	// a task is upgraded if:
-	// 1. runtime desired version is set to update goal job version
-	// 2. configuration version is set to desired
-	// 3. task is running, or
-	//    task is in terminated state, and its goal state is terminated
-
-	if runtime.GetDesiredConfigVersion() != desiredConfigVersion {
-		return false
-	}
-
-	if runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
-		return false
-	}
-
+	// for a running task, update is completed if:
+	// 1. runtime desired configuration is set to desiredConfigVersion
+	// 2. runtime configuration is set to desired configuration
 	if runtime.GetState() == pbtask.TaskState_RUNNING {
-		return true
+		return runtime.GetDesiredConfigVersion() == desiredConfigVersion &&
+			runtime.GetConfigVersion() == runtime.GetDesiredConfigVersion()
 	}
 
+	// for a terminated task, update is completed if:
+	// 1. runtime desired configuration is set to desiredConfigVersion
+	// runtime configuration does not matter as it will be set to
+	// runtime desired configuration  when it starts
 	if util.IsPelotonStateTerminal(runtime.GetState()) &&
 		util.IsPelotonStateTerminal(runtime.GetGoalState()) {
-		return true
+		return runtime.GetDesiredConfigVersion() == desiredConfigVersion
 	}
+
 	return false
 }
 

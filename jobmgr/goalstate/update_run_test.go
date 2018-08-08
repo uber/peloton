@@ -129,10 +129,6 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 		JobID().
 		Return(suite.jobID)
 
-	suite.cachedJob.EXPECT().
-		ID().
-		Return(suite.jobID)
-
 	suite.cachedUpdate.EXPECT().
 		GetGoalState().
 		Return(&cached.UpdateStateVector{
@@ -191,10 +187,6 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 		GetRunTime(gomock.Any()).
 		Return(runtimeRunning, nil)
 
-	suite.cachedJob.EXPECT().
-		GetTask(instancesTotal[1]).
-		Return(suite.cachedTask)
-
 	suite.cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).
 		Return(runtimeTerminated, nil)
@@ -203,20 +195,12 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 		GetTask(instancesTotal[2]).
 		Return(suite.cachedTask)
 
-	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
-		Return(runtimeInitialized, nil)
-
-	suite.taskGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-
 	suite.cachedUpdate.EXPECT().
 		WriteProgress(
 			gomock.Any(),
 			pbupdate.State_ROLLING_FORWARD,
-			[]uint32{5, 6},
-			[]uint32{2, 3, 4},
+			[]uint32{3, 5, 6},
+			[]uint32{2, 4},
 		).Return(nil)
 
 	err := UpdateRun(context.Background(), suite.updateEnt)

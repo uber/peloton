@@ -1032,6 +1032,71 @@ func (suite *UpdateTestSuite) TestUpdateRecover_JobStoreErr() {
 	suite.Equal(suite.update.state, pbupdate.State_INVALID)
 }
 
+func (suite *UpdateTestSuite) TestIsUpdateComplete() {
+	tests := []struct {
+		taskRuntime          *pbtask.RuntimeInfo
+		desiredConfigVersion uint64
+		completed            bool
+	}{
+		{
+			taskRuntime: &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_RUNNING,
+				GoalState:            pbtask.TaskState_RUNNING,
+				ConfigVersion:        1,
+				DesiredConfigVersion: 2,
+			},
+			desiredConfigVersion: 2,
+			completed:            false,
+		},
+		{
+			taskRuntime: &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_RUNNING,
+				GoalState:            pbtask.TaskState_RUNNING,
+				ConfigVersion:        2,
+				DesiredConfigVersion: 2,
+			},
+			desiredConfigVersion: 2,
+			completed:            true,
+		},
+		{
+			taskRuntime: &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_PENDING,
+				GoalState:            pbtask.TaskState_RUNNING,
+				ConfigVersion:        2,
+				DesiredConfigVersion: 2,
+			},
+			desiredConfigVersion: 2,
+			completed:            false,
+		},
+		{
+			taskRuntime: &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_KILLED,
+				GoalState:            pbtask.TaskState_KILLED,
+				ConfigVersion:        2,
+				DesiredConfigVersion: 2,
+			},
+			desiredConfigVersion: 2,
+			completed:            true,
+		},
+		{
+			taskRuntime: &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_KILLED,
+				GoalState:            pbtask.TaskState_KILLED,
+				ConfigVersion:        1,
+				DesiredConfigVersion: 2,
+			},
+			desiredConfigVersion: 2,
+			completed:            true,
+		},
+	}
+
+	for _, test := range tests {
+		suite.Equal(
+			isUpdateComplete(test.desiredConfigVersion, test.taskRuntime),
+			test.completed)
+	}
+}
+
 func contains(element uint32, slice []uint32) bool {
 	for _, v := range slice {
 		if v == element {
