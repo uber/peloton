@@ -91,6 +91,7 @@ func ConvertTaskToResMgrTask(
 		Type:         getTaskType(taskInfo.GetConfig(), jobConfig.GetType()),
 		Labels:       util.ConvertLabels(taskInfo.GetConfig().GetLabels()),
 		Controller:   taskInfo.GetConfig().GetController(),
+		Hostname:     taskInfo.GetRuntime().GetHost(),
 	}
 }
 

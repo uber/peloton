@@ -14,31 +14,31 @@ import (
 
 func TestGetTaskType(t *testing.T) {
 	tt := []struct {
-		cfg     *task.TaskConfig
-		jobType job.JobType
-		tt      resmgr.TaskType
+		cfg      *task.TaskConfig
+		jobType  job.JobType
+		taskType resmgr.TaskType
 	}{
 		{
 			cfg: &task.TaskConfig{
 				Volume: &task.PersistentVolumeConfig{},
 			},
-			jobType: job.JobType_SERVICE,
-			tt:      resmgr.TaskType_STATEFUL,
+			jobType:  job.JobType_SERVICE,
+			taskType: resmgr.TaskType_STATEFUL,
 		},
 		{
-			cfg:     &task.TaskConfig{},
-			jobType: job.JobType_BATCH,
-			tt:      resmgr.TaskType_BATCH,
+			cfg:      &task.TaskConfig{},
+			jobType:  job.JobType_BATCH,
+			taskType: resmgr.TaskType_BATCH,
 		},
 		{
-			cfg:     &task.TaskConfig{},
-			jobType: job.JobType_SERVICE,
-			tt:      resmgr.TaskType_STATELESS,
+			cfg:      &task.TaskConfig{},
+			jobType:  job.JobType_SERVICE,
+			taskType: resmgr.TaskType_STATELESS,
 		},
 	}
 
 	for _, test := range tt {
-		assert.Equal(t, test.tt, getTaskType(test.cfg, test.jobType))
+		assert.Equal(t, test.taskType, getTaskType(test.cfg, test.jobType))
 	}
 }
 
@@ -51,6 +51,7 @@ func TestConvertTaskToResMgrTask(t *testing.T) {
 		},
 		Runtime: &task.RuntimeInfo{
 			State: task.TaskState_RUNNING,
+			Host:  "hostname",
 		},
 	}
 
@@ -58,8 +59,9 @@ func TestConvertTaskToResMgrTask(t *testing.T) {
 		SLA: &job.SlaConfig{},
 	}
 	rmTask := ConvertTaskToResMgrTask(taskInfo, jobConfig)
-	assert.Equal(t, rmTask.JobId.Value, taskInfo.JobId.Value)
-	assert.Equal(t, rmTask.NumPorts, uint32(len(taskInfo.Config.Ports)))
+	assert.Equal(t, taskInfo.JobId.Value, rmTask.JobId.Value)
+	assert.Equal(t, uint32(len(taskInfo.Config.Ports)), rmTask.NumPorts)
+	assert.Equal(t, taskInfo.GetRuntime().GetHost(), rmTask.GetHostname())
 }
 
 func TestConvertToResMgrGangs(t *testing.T) {
