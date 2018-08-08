@@ -2076,6 +2076,7 @@ func (s *Store) UpdateTaskRuntime(
 	s.metrics.TaskMetrics.TaskUpdate.Inc(1)
 	if jobType == job.JobType_BATCH {
 		s.logTaskStateChange(ctx, jobID, instanceID, runtime)
+		s.addPodEvent(ctx, jobID, instanceID, runtime)
 	} else if jobType == job.JobType_SERVICE {
 		s.addPodEvent(ctx, jobID, instanceID, runtime)
 	}
