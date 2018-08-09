@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
@@ -222,22 +223,32 @@ func (t *task) CreateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, o
 	// (lock is in the sequence of jobFactory -> job -> task)
 	// TODO: figure out long term fix
 	// fetch job configuration to get job type
-	jobConfig, err := t.jobFactory.GetJob(t.JobID()).GetConfig(ctx)
-	if err != nil {
-		return err
+	var jobType pbjob.JobType
+	cachedJob := t.jobFactory.GetJob(t.JobID())
+	if cachedJob != nil {
+		jobConfig, err := cachedJob.GetConfig(ctx)
+		if err != nil {
+			return err
+		}
+		jobType = jobConfig.GetType()
+	} else {
+		log.WithFields(log.Fields{
+			"job_id":      t.jobID.Value,
+			"instance_id": t.id,
+		}).Warn("create task runtime when job is nil in cache")
 	}
 
 	t.Lock()
 	defer t.Unlock()
 
 	// First create the runtime in DB and then store in the cache if DB create is successful
-	err = t.jobFactory.taskStore.CreateTaskRuntime(
+	err := t.jobFactory.taskStore.CreateTaskRuntime(
 		ctx,
 		t.jobID,
 		t.id,
 		runtime,
 		owner,
-		jobConfig.GetType())
+		jobType)
 	if err != nil {
 		t.runtime = nil
 		return err
@@ -265,9 +276,19 @@ func (t *task) PatchRuntime(ctx context.Context, diff RuntimeDiff) error {
 	// (lock is in the sequence of jobFactory -> job -> task)
 	// TODO: figure out long term fix
 	// fetch job configuration to get job type
-	jobConfig, err := t.jobFactory.GetJob(t.JobID()).GetConfig(ctx)
-	if err != nil {
-		return err
+	var jobType pbjob.JobType
+	cachedJob := t.jobFactory.GetJob(t.JobID())
+	if cachedJob != nil {
+		jobConfig, err := cachedJob.GetConfig(ctx)
+		if err != nil {
+			return err
+		}
+		jobType = jobConfig.GetType()
+	} else {
+		log.WithFields(log.Fields{
+			"job_id":      t.jobID.Value,
+			"instance_id": t.id,
+		}).Warn("patch task runtime when job is nil in cache")
 	}
 
 	t.Lock()
@@ -299,12 +320,12 @@ func (t *task) PatchRuntime(ctx context.Context, diff RuntimeDiff) error {
 
 	t.updateRevision()
 
-	err = t.jobFactory.taskStore.UpdateTaskRuntime(
+	err := t.jobFactory.taskStore.UpdateTaskRuntime(
 		ctx,
 		t.jobID,
 		t.id,
 		newRuntimePtr,
-		jobConfig.GetType())
+		jobType)
 	if err != nil {
 		// clean the runtime in cache on DB write failure
 		t.runtime = nil
