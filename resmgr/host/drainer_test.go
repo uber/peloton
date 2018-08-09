@@ -104,51 +104,132 @@ func (suite *DrainerTestSuite) TestDrainCycle() {
 		Hostname: hostname,
 	}
 
-	suite.mockHostmgr.EXPECT().MarkHostDrained(gomock.Any(), gomock.Any()).Return(&hostsvc.MarkHostDrainedResponse{}, nil)
-	suite.tracker.AddTask(t, suite.eventStreamHandler, res_mocks.NewMockResPool(suite.mockCtrl), &rm_task.Config{})
+	mockResPool := res_mocks.NewMockResPool(suite.mockCtrl)
+	mockResPool.EXPECT().
+		GetPath().
+		Return("/mock/path")
+	suite.mockHostmgr.EXPECT().
+		MarkHostDrained(
+			gomock.Any(),
+			gomock.Any()).
+		Return(
+			&hostsvc.MarkHostDrainedResponse{},
+			nil,
+		)
+	suite.tracker.AddTask(
+		t,
+		suite.eventStreamHandler,
+		mockResPool,
+		&rm_task.Config{},
+	)
 
 	hostnames := []string{hostname}
 
 	//Test Enqueue error
-	suite.mockHostmgr.EXPECT().GetDrainingHosts(gomock.Any(), gomock.Any()).Return(&hostsvc.GetDrainingHostsResponse{
-		Hostnames: hostnames,
-	}, nil)
-	suite.preemptor.EXPECT().EnqueueTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake Enqueue error"))
+	suite.mockHostmgr.EXPECT().
+		GetDrainingHosts(
+			gomock.Any(),
+			gomock.Any()).
+		Return(
+			&hostsvc.GetDrainingHostsResponse{
+				Hostnames: hostnames,
+			}, nil,
+		)
+	suite.preemptor.EXPECT().
+		EnqueueTasks(
+			gomock.Any(),
+			gomock.Any()).
+		Return(
+			fmt.Errorf("fake Enqueue error"),
+		)
 	err := suite.drainer.performDrainCycle()
 	suite.Error(err)
 
 	// Test success
-	suite.mockHostmgr.EXPECT().GetDrainingHosts(gomock.Any(), gomock.Any()).Return(&hostsvc.GetDrainingHostsResponse{
-		Hostnames: hostnames,
-	}, nil)
-	suite.preemptor.EXPECT().EnqueueTasks(gomock.Any(), gomock.Any()).Return(nil)
+	suite.mockHostmgr.EXPECT().
+		GetDrainingHosts(
+			gomock.Any(),
+			gomock.Any()).
+		Return(
+			&hostsvc.GetDrainingHostsResponse{
+				Hostnames: hostnames,
+			}, nil,
+		)
+	suite.preemptor.EXPECT().
+		EnqueueTasks(
+			gomock.Any(),
+			gomock.Any()).
+		Return(nil)
 	err = suite.drainer.performDrainCycle()
 	suite.NoError(err)
 
 	// Test empty GetDrainingHostsResponse
-	suite.mockHostmgr.EXPECT().GetDrainingHosts(gomock.Any(), gomock.Any()).Return(&hostsvc.GetDrainingHostsResponse{}, nil)
+	suite.mockHostmgr.EXPECT().
+		GetDrainingHosts(
+			gomock.Any(),
+			gomock.Any()).
+		Return(
+			&hostsvc.GetDrainingHostsResponse{},
+			nil,
+		)
 	err = suite.drainer.performDrainCycle()
 	suite.NoError(err)
 
 	// Test GetDrainingHosts error
-	suite.mockHostmgr.EXPECT().GetDrainingHosts(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("fake GetDrainingHosts error"))
+	suite.mockHostmgr.EXPECT().
+		GetDrainingHosts(
+			gomock.Any(),
+			gomock.Any()).
+		Return(
+			nil,
+			fmt.Errorf("fake GetDrainingHosts error"),
+		)
 	err = suite.drainer.performDrainCycle()
 	suite.Error(err)
 
 	// Test MarkHostDrained call
-	suite.mockHostmgr.EXPECT().GetDrainingHosts(gomock.Any(), gomock.Any()).Return(&hostsvc.GetDrainingHostsResponse{
-		Hostnames: []string{"dummyhost"},
-	}, nil)
-	suite.mockHostmgr.EXPECT().MarkHostDrained(gomock.Any(), gomock.Any()).Return(&hostsvc.MarkHostDrainedResponse{}, nil)
+	suite.mockHostmgr.EXPECT().
+		GetDrainingHosts(
+			gomock.Any(),
+			gomock.Any()).
+		Return(
+			&hostsvc.GetDrainingHostsResponse{
+				Hostnames: []string{"dummyhost"},
+			}, nil,
+		)
+	suite.mockHostmgr.EXPECT().
+		MarkHostDrained(
+			gomock.Any(),
+			gomock.Any()).
+		Return(
+			&hostsvc.MarkHostDrainedResponse{},
+			nil)
 	err = suite.drainer.performDrainCycle()
 	suite.NoError(err)
 
 	// Test MarkHostDrained error
-	suite.mockHostmgr.EXPECT().GetDrainingHosts(gomock.Any(), gomock.Any()).Return(&hostsvc.GetDrainingHostsResponse{
-		Hostnames: []string{"dummyhost"},
-	}, nil)
-	suite.mockHostmgr.EXPECT().MarkHostDrained(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("fake MarkHostDrained error"))
-	suite.preemptor.EXPECT().EnqueueTasks(gomock.Any(), gomock.Any()).Return(nil)
+	suite.mockHostmgr.EXPECT().
+		GetDrainingHosts(
+			gomock.Any(),
+			gomock.Any()).
+		Return(
+			&hostsvc.GetDrainingHostsResponse{
+				Hostnames: []string{"dummyhost"},
+			},
+			nil,
+		)
+	suite.mockHostmgr.EXPECT().
+		MarkHostDrained(
+			gomock.Any(),
+			gomock.Any()).
+		Return(
+			nil,
+			fmt.Errorf("fake MarkHostDrained error"),
+		)
+	suite.preemptor.EXPECT().
+		EnqueueTasks(
+			gomock.Any(),
+			gomock.Any()).Return(nil)
 	err = suite.drainer.performDrainCycle()
 	suite.Error(err)
 }

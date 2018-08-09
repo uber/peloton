@@ -722,7 +722,14 @@ func (s *HandlerTestSuite) TestEnqueueGangsFailure() {
 
 func (s *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 	var placements []*resmgr.Placement
-	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil, nil, s.cfg)
+	resp, err := respool.NewRespool(tally.NoopScope, "respool-1", nil, &pb_respool.ResourcePoolConfig{
+		Name:      "respool-1",
+		Parent:    nil,
+		Resources: s.getResourceConfig(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	},
+		s.cfg)
+	s.NoError(err)
 	for i := 0; i < 10; i++ {
 		var tasks []*peloton.TaskID
 		for j := 0; j < 5; j++ {
@@ -1150,7 +1157,12 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 
 	// Mock tasks in RUNNING state
 	resp, _ := respool.NewRespool(
-		tally.NoopScope, "respool-1", nil, nil, s.cfg)
+		tally.NoopScope, "respool-1", nil, &pb_respool.ResourcePoolConfig{
+			Name:      "respool-1",
+			Parent:    nil,
+			Resources: s.getResourceConfig(),
+			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+		}, s.cfg)
 	var expectedTasks []*resmgr.Task
 	for j := 1; j <= 5; j++ {
 		taskID := &peloton.TaskID{

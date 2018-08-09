@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	rmock "code.uber.internal/infra/peloton/resmgr/respool/mocks"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
 
@@ -56,16 +57,30 @@ func (suite *TestUtilTestSuite) TestValidateResources() {
 
 // TestValidateTransitions validates the transitions
 func (suite *TestUtilTestSuite) TestValidateTransitions() {
-	mockHostmgr := mocks.NewMockInternalHostServiceYARPCClient(gomock.NewController(suite.T()))
-	mockHostmgr.EXPECT().MarkHostDrained(gomock.Any(), gomock.Any()).Return(&hostsvc.MarkHostDrainedResponse{}, nil).AnyTimes()
+	mockCtrl := gomock.NewController(suite.T())
+	mockHostmgr := mocks.NewMockInternalHostServiceYARPCClient(
+		mockCtrl)
+	mockHostmgr.EXPECT().
+		MarkHostDrained(
+			gomock.Any(),
+			gomock.Any()).
+		Return(
+			&hostsvc.MarkHostDrainedResponse{},
+			nil,
+		).
+		AnyTimes()
 	rm_task.InitTaskTracker(tally.NoopScope, CreateTaskConfig(), mockHostmgr)
 	rmTaskTracker := rm_task.GetTracker()
+	mockResPool := rmock.NewMockResPool(mockCtrl)
+	mockResPool.EXPECT().GetPath().Return("/mock/path")
+
 	rmTaskTracker.AddTask(
 		suite.pendingGang0().Tasks[0],
 		nil,
-		nil,
+		mockResPool,
 		CreateTaskConfig())
 	rmtask := rmTaskTracker.GetTask(suite.pendingGang0().Tasks[0].Id)
+
 	err := rmtask.TransitTo(task.TaskState_PENDING.String())
 	suite.NoError(err)
 	ValidateStateTransitions(rmtask, []task.TaskState{

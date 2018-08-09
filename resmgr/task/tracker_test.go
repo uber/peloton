@@ -22,6 +22,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 
 	"github.com/golang/mock/gomock"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -52,7 +53,9 @@ func (suite *TrackerTestSuite) setup(conf *Config, invalid bool) {
 			gomock.Any()).
 		Return(
 			&hostsvc.MarkHostDrainedResponse{},
-			nil).
+
+			nil,
+		).
 		AnyTimes()
 	InitTaskTracker(tally.NoopScope, conf, suite.mockHostmgr)
 	suite.tracker = GetTracker()
@@ -484,8 +487,8 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 		placements:    map[string]map[resmgr.TaskType]map[string]*RMTask{},
 		metrics:       NewMetrics(tally.NoopScope),
 		counters:      make(map[task.TaskState]float64),
-		hostMgrClient: suite.mockHostmgr,
 		parentScope:   tally.NoopScope,
+		hostMgrClient: suite.mockHostmgr,
 	}
 	testTracker.AddTask(
 		suite.createTask(1),
@@ -517,10 +520,10 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 
 		startSMRollBack <- struct{}{}
 		<-continueGATask
-		fmt.Println("acquiring statemachine read lock")
+		log.Info("acquiring statemachine read lock")
 		// see 2.2 in test comments
 		smLock.RLock()
-		fmt.Println("statemachine read lock acquired")
+		log.Info("statemachine read lock acquired")
 	})
 
 	// set the mock state machine for the task
@@ -538,9 +541,9 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 
 		<-startSMRollBack
 		// acquire write lock on state machine (see 1.1 in test comments)
-		fmt.Println("acquiring statemachine write lock")
+		log.Info("acquiring statemachine write lock")
 		smLock.Lock()
-		fmt.Println("statemachine write lock acquired")
+		log.Info("statemachine write lock acquired")
 
 		continueGATask <- struct{}{}
 
@@ -555,9 +558,9 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 
 		// call GetActiveTasks which acquires RLock on tracker(see #2.1
 		// in test comments)
-		fmt.Println("calling GetActiveTasks")
+		log.Info("calling GetActiveTasks")
 		testTracker.GetActiveTasks("", "", []string{})
-		fmt.Println("GetActiveTasks returned")
+		log.Info("GetActiveTasks returned")
 	}()
 
 	// simulate calling SetPlacement which acquires a write lock on the tracker.
@@ -565,11 +568,11 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 		defer wg.Done()
 
 		<-startSetPlacement
-		fmt.Println("calling SetPlacement")
+		log.Info("calling SetPlacement")
 		// call SetPlacement which acquires Lock on tracker(see #3
 		// in test comments)
 		testTracker.SetPlacement(&peloton.TaskID{Value: "job1-1"}, "hostname")
-		fmt.Println("SetPlacement returned")
+		log.Info("SetPlacement returned")
 	}()
 
 	// a deadlock would cause this to wait indefinitely

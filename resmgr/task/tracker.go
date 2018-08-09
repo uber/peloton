@@ -97,7 +97,10 @@ type tracker struct {
 var rmtracker *tracker
 
 // InitTaskTracker initialize the task tracker
-func InitTaskTracker(parent tally.Scope, config *Config, hostMgrClient hostsvc.InternalHostServiceYARPCClient) {
+func InitTaskTracker(
+	parentScope tally.Scope,
+	config *Config,
+	hostMgrClient hostsvc.InternalHostServiceYARPCClient) {
 	if rmtracker != nil {
 		log.Info("Resource Manager Tracker is already initialized")
 		return
@@ -105,8 +108,8 @@ func InitTaskTracker(parent tally.Scope, config *Config, hostMgrClient hostsvc.I
 	rmtracker = &tracker{
 		tasks:         make(map[string]*RMTask),
 		placements:    map[string]map[resmgr.TaskType]map[string]*RMTask{},
-		metrics:       NewMetrics(parent.SubScope("tracker")),
-		parentScope:   parent,
+		metrics:       NewMetrics(parentScope.SubScope("tracker")),
+		parentScope:   parentScope,
 		counters:      make(map[task.TaskState]float64),
 		hostMgrClient: hostMgrClient,
 	}
@@ -138,8 +141,7 @@ func (tr *tracker) AddTask(
 	respool respool.ResPool,
 	config *Config) error {
 
-	rmTask, err := CreateRMTask(t, handler, respool,
-		NewTransitionObserver(WithTallyRecorder(tr.parentScope)), config)
+	rmTask, err := CreateRMTask(t, handler, respool, tr.parentScope, config)
 	if err != nil {
 		return err
 	}

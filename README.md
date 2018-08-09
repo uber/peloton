@@ -18,7 +18,7 @@ stateful and daemon jobs. All those workloads can be colocated on a
 shared cluster so that we can improve the overall cluster utilization
 while provide resource isolation for different workloads.
 
-3. Support hierachical resource pools for elastic resource sharing
+3. Support hierarchical resource pools for elastic resource sharing
 among organizations in a shared cluster. The resource pools in Peloton
 provide hierarchical max-min fairness guarantees for organizations.
 
