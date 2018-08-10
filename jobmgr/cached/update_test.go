@@ -812,7 +812,8 @@ func (suite *UpdateTestSuite) TestUpdateRecover_RollingForward() {
 
 	for i := uint32(0); i < instanceCount; i++ {
 		taskRuntime := &pbtask.RuntimeInfo{
-			State: pbtask.TaskState_RUNNING,
+			State:   pbtask.TaskState_RUNNING,
+			Healthy: pbtask.HealthState_DISABLED,
 		}
 		if contains(i, instancesCurrent) {
 			taskRuntime.DesiredConfigVersion = newJobConfig.GetChangeLog().GetVersion()
@@ -1044,6 +1045,7 @@ func (suite *UpdateTestSuite) TestIsUpdateComplete() {
 				GoalState:            pbtask.TaskState_RUNNING,
 				ConfigVersion:        1,
 				DesiredConfigVersion: 2,
+				Healthy:              pbtask.HealthState_HEALTHY,
 			},
 			desiredConfigVersion: 2,
 			completed:            false,
@@ -1054,6 +1056,29 @@ func (suite *UpdateTestSuite) TestIsUpdateComplete() {
 				GoalState:            pbtask.TaskState_RUNNING,
 				ConfigVersion:        2,
 				DesiredConfigVersion: 2,
+				Healthy:              pbtask.HealthState_DISABLED,
+			},
+			desiredConfigVersion: 2,
+			completed:            true,
+		},
+		{
+			taskRuntime: &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_RUNNING,
+				GoalState:            pbtask.TaskState_RUNNING,
+				ConfigVersion:        2,
+				DesiredConfigVersion: 2,
+				Healthy:              pbtask.HealthState_UNHEALTHY,
+			},
+			desiredConfigVersion: 2,
+			completed:            false,
+		},
+		{
+			taskRuntime: &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_RUNNING,
+				GoalState:            pbtask.TaskState_RUNNING,
+				ConfigVersion:        2,
+				DesiredConfigVersion: 2,
+				Healthy:              pbtask.HealthState_HEALTHY,
 			},
 			desiredConfigVersion: 2,
 			completed:            true,

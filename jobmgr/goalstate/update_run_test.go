@@ -92,6 +92,7 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 	runtimeDone := &pbtask.RuntimeInfo{
 		State:                pbtask.TaskState_RUNNING,
 		GoalState:            pbtask.TaskState_RUNNING,
+		Healthy:              pbtask.HealthState_HEALTHY,
 		ConfigVersion:        uint64(4),
 		DesiredConfigVersion: uint64(4),
 	}
@@ -99,6 +100,7 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 	runtimeRunning := &pbtask.RuntimeInfo{
 		State:                pbtask.TaskState_RUNNING,
 		GoalState:            pbtask.TaskState_RUNNING,
+		Healthy:              pbtask.HealthState_HEALTHY,
 		ConfigVersion:        uint64(3),
 		DesiredConfigVersion: uint64(4),
 	}
@@ -106,6 +108,7 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 	runtimeTerminated := &pbtask.RuntimeInfo{
 		State:                pbtask.TaskState_KILLED,
 		GoalState:            pbtask.TaskState_KILLED,
+		Healthy:              pbtask.HealthState_INVALID,
 		ConfigVersion:        uint64(3),
 		DesiredConfigVersion: uint64(4),
 	}
@@ -113,6 +116,15 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 	runtimeInitialized := &pbtask.RuntimeInfo{
 		State:                pbtask.TaskState_INITIALIZED,
 		GoalState:            pbtask.TaskState_RUNNING,
+		Healthy:              pbtask.HealthState_HEALTH_UNKNOWN,
+		ConfigVersion:        uint64(4),
+		DesiredConfigVersion: uint64(4),
+	}
+
+	runtimenNotReady := &pbtask.RuntimeInfo{
+		State:                pbtask.TaskState_RUNNING,
+		GoalState:            pbtask.TaskState_RUNNING,
+		Healthy:              pbtask.HealthState_HEALTH_UNKNOWN,
 		ConfigVersion:        uint64(4),
 		DesiredConfigVersion: uint64(4),
 	}
@@ -180,6 +192,11 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 			suite.cachedTask.EXPECT().
 				GetRunTime(gomock.Any()).
 				Return(runtimeInitialized, nil)
+		} else if instID == instancesTotal[3] {
+			// only 1 task is in initialized state
+			suite.cachedTask.EXPECT().
+				GetRunTime(gomock.Any()).
+				Return(runtimenNotReady, nil)
 		} else {
 			// rest are updated
 			suite.cachedTask.EXPECT().
@@ -192,8 +209,8 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 		WriteProgress(
 			gomock.Any(),
 			pbupdate.State_ROLLING_FORWARD,
-			[]uint32{3, 5, 6},
-			[]uint32{2, 4},
+			[]uint32{3, 6},
+			[]uint32{2, 4, 5},
 		).Return(nil)
 
 	err := UpdateRun(context.Background(), suite.updateEnt)
@@ -205,6 +222,7 @@ func (suite *UpdateRunTestSuite) TestCompletedUpdate() {
 	instancesTotal := []uint32{2, 3, 4, 5}
 	runtime := &pbtask.RuntimeInfo{
 		State:                pbtask.TaskState_RUNNING,
+		Healthy:              pbtask.HealthState_HEALTHY,
 		GoalState:            pbtask.TaskState_RUNNING,
 		ConfigVersion:        uint64(3),
 		DesiredConfigVersion: uint64(3),
@@ -363,6 +381,7 @@ func (suite *UpdateRunTestSuite) TestUpdateProgressDBError() {
 	runtime := &pbtask.RuntimeInfo{
 		State:                pbtask.TaskState_RUNNING,
 		GoalState:            pbtask.TaskState_RUNNING,
+		Healthy:              pbtask.HealthState_HEALTHY,
 		ConfigVersion:        uint64(3),
 		DesiredConfigVersion: uint64(3),
 	}

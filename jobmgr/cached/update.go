@@ -625,9 +625,12 @@ func isUpdateComplete(desiredConfigVersion uint64, runtime *pbtask.RuntimeInfo) 
 	// for a running task, update is completed if:
 	// 1. runtime desired configuration is set to desiredConfigVersion
 	// 2. runtime configuration is set to desired configuration
+	// 3. healthy state is DISABLED or HEALTHY
 	if runtime.GetState() == pbtask.TaskState_RUNNING {
 		return runtime.GetDesiredConfigVersion() == desiredConfigVersion &&
-			runtime.GetConfigVersion() == runtime.GetDesiredConfigVersion()
+			runtime.GetConfigVersion() == runtime.GetDesiredConfigVersion() &&
+			(runtime.GetHealthy() == pbtask.HealthState_DISABLED ||
+				runtime.GetHealthy() == pbtask.HealthState_HEALTHY)
 	}
 
 	// for a terminated task, update is completed if:

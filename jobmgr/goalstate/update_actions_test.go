@@ -535,6 +535,7 @@ func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 				GetRunTime(gomock.Any()).
 				Return(&pbtask.RuntimeInfo{
 					State:                pbtask.TaskState_RUNNING,
+					Healthy:              pbtask.HealthState_HEALTHY,
 					ConfigVersion:        newJobVersion,
 					DesiredConfigVersion: newJobVersion,
 				}, nil)
