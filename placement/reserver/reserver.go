@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"reflect"
 	"sync"
@@ -34,9 +35,13 @@ const (
 	// represents the max size of the preemption queue
 	_maxReservationQueueSize = 10000
 	// reservation queue name
-	_reservationQueue = "reservatiom-queue"
+	_reservationQueue = "reservation-queue"
 	// number of completed reservations to process
 	_completedReservations = 1
+)
+
+var (
+	errNoValidCompletedReservation = errors.New("no valid completed reservations found")
 )
 
 // Reserver represents a placement engine's reservation module
@@ -141,7 +146,7 @@ func (r *reserver) Run(ctx context.Context) error {
 	}
 }
 
-// Stop methis will stop the daemon process.
+// Stop method will stop the daemon process.
 func (r *reserver) Stop() {
 	r.daemon.Stop()
 	r.metrics.Running.Update(0)
@@ -194,14 +199,13 @@ func (r *reserver) Reserve(ctx context.Context) (time.Duration, error) {
 }
 
 // findHost randomly chooses the number of hosts and then
-// out of those hosts choose the one which have lowest numbeer
+// out of those hosts choose the one which have lowest number
 // of tasks running
 func (r *reserver) findHost(hosts []*models.Host) *models.Host {
-	lenRandomHosts := _randomizedHosts
 	lenHosts := len(hosts)
-	if lenRandomHosts > lenHosts {
-		lenRandomHosts = lenHosts
-	}
+	lenRandomHosts := int(math.Min(
+		float64(_randomizedHosts), float64(lenHosts)))
+
 	randomHosts := make([]*models.Host, lenRandomHosts)
 	for i := 0; i < lenRandomHosts; i++ {
 		randomHosts[i] = hosts[random(0, lenHosts)+0]
@@ -253,12 +257,11 @@ func (r *reserver) GetReservationQueue() queue.Queue {
 	return r.reservationQueue
 }
 
-func (r *reserver) GetCompletetedReservation(ctx context.Context) ([]*hostsvc.CompletedReservation, error) {
+func (r *reserver) GetCompletetedReservation(ctx context.Context,
+) ([]*hostsvc.CompletedReservation, error) {
 	var reservations []*hostsvc.CompletedReservation
-	var err error
-	var item interface{}
 	for i := 0; i < _completedReservations; i++ {
-		item, err = r.completedReservationQueue.Dequeue(100 * time.Millisecond)
+		item, err := r.completedReservationQueue.Dequeue(100 * time.Millisecond)
 		if err != nil {
 			break
 		}
@@ -268,7 +271,10 @@ func (r *reserver) GetCompletetedReservation(ctx context.Context) ([]*hostsvc.Co
 		}
 		reservations = append(reservations, res)
 	}
-	return reservations, err
+	if len(reservations) == 0 {
+		return nil, errNoValidCompletedReservation
+	}
+	return reservations, nil
 }
 
 // findCompletedReservation finds out the completed reservations from

@@ -44,6 +44,7 @@ const (
 	// This is the number of completed reservations which
 	// will be fetched in one call from the reserver.
 	_completedReservationLimit = 10
+	_errNilReservation         = "reservation is nil"
 )
 
 // serviceHandler implements peloton.private.hostmgr.InternalHostService.
@@ -1064,7 +1065,7 @@ func (h *serviceHandler) ReserveHosts(
 		return &hostsvc.ReserveHostsResponse{
 			Error: &hostsvc.ReserveHostsResponse_Error{
 				Failed: &hostsvc.ReservationFailed{
-					Message: "reservation is nil",
+					Message: _errNilReservation,
 				},
 			},
 		}, nil

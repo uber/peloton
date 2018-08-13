@@ -51,12 +51,6 @@ type Reserver interface {
 	// Adding daemon interface for Reserver
 	async.Daemon
 
-	// GetReservationQueue returns the reservation queue
-	GetReservationQueue() queue.Queue
-
-	// GetCompletedReservationQueue returns the completedReservation Queue
-	GetCompletedReservationQueue() queue.Queue
-
 	// Reserve reserves the task to host in hostmanager
 	Reserve(ctx context.Context) (time.Duration, error)
 
@@ -163,7 +157,7 @@ func (r *reserver) Stop() {
 func (r *reserver) EnqueueReservation(
 	ctx context.Context,
 	reservation *hostsvc.Reservation) error {
-	err := r.GetReservationQueue().Enqueue(reservation)
+	err := r.reserveQueue.Enqueue(reservation)
 	if err != nil {
 		return err
 	}
@@ -176,7 +170,7 @@ func (r *reserver) DequeueCompletedReservation(ctx context.Context, limit int,
 ) ([]*hostsvc.CompletedReservation, error) {
 	var completedReservations []*hostsvc.CompletedReservation
 	for i := 0; i < limit; i++ {
-		item, err := r.GetCompletedReservationQueue().Dequeue(_maxwaitTime)
+		item, err := r.completedReservationQueue.Dequeue(_maxwaitTime)
 		if err != nil {
 			break
 		}
@@ -214,7 +208,7 @@ func (r *reserver) Reserve(ctx context.Context) (time.Duration, error) {
 
 	if hsummary == nil && hInfo == nil {
 		// we need to add this reservation as failed reservation
-		err := r.GetCompletedReservationQueue().Enqueue(reservation)
+		err := r.completedReservationQueue.Enqueue(reservation)
 		if err != nil {
 			log.WithError(err).WithField("reservation", reservation).
 				Errorf("couldn't enqueue failed reservation")
@@ -283,16 +277,6 @@ func (r *reserver) removeFailedReservedHosts(hosts []*hostsvc.HostInfo,
 		remainingHosts = append(remainingHosts, h)
 	}
 	return remainingHosts
-}
-
-// GetReservationQueue gets the reservation queue
-func (r *reserver) GetReservationQueue() queue.Queue {
-	return r.reserveQueue
-}
-
-// GetCompletedReservationQueue gets the completed reservation queue
-func (r *reserver) GetCompletedReservationQueue() queue.Queue {
-	return r.completedReservationQueue
 }
 
 // FindCompletedReservations looks into current reservations and
@@ -374,7 +358,7 @@ func (r *reserver) CancelReservations(
 	defer r.lock.Unlock()
 	var err error
 	for host, res := range reservations {
-		err := r.makeHostAvailable(host)
+		err = r.makeHostAvailable(host)
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"reservation": res,

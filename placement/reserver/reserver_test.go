@@ -145,7 +145,7 @@ func (suite *ReserverTestSuite) TestGetCompletetedReservation() {
 	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(nil, errors.New("error"))
 	_, err := reserver.GetCompletetedReservation(context.Background())
 	suite.Error(err)
-	suite.Equal(err.Error(), "error")
+	suite.Equal(err.Error(), errNoValidCompletedReservation.Error())
 
 	// testing if queue have a valid completed reservation
 	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(suite.getCompletedReservation(), nil)
@@ -157,7 +157,8 @@ func (suite *ReserverTestSuite) TestGetCompletetedReservation() {
 	var item interface{}
 	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(item, nil)
 	res, err = reserver.GetCompletetedReservation(context.Background())
-	suite.NoError(err)
+	suite.Error(err)
+	suite.Equal(err.Error(), errNoValidCompletedReservation.Error())
 	suite.Equal(len(res), 0)
 }
 

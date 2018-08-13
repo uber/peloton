@@ -1745,7 +1745,7 @@ func (suite *HostMgrHandlerTestSuite) TestReserveHostsError() {
 	}
 	resp, err := suite.handler.ReserveHosts(context.Background(), reserveReq)
 	suite.NoError(err)
-	suite.Equal(resp.Error.Failed.Message, "reservation is nil")
+	suite.Equal(resp.Error.Failed.Message, _errNilReservation)
 }
 
 // TestEnqueueReservationError tests to reserve the hosts

@@ -31,11 +31,13 @@ type Service interface {
 	// GetHosts fetches a batch of hosts from the host manager matching filter.
 	GetHosts(ctx context.Context, task *resmgr.Task, filter *hostsvc.HostFilter) (hosts []*models.Host, err error)
 
-	// ReserveHosts Makes reservation for the host in hostmanager.
+	// ReserveHost Makes reservation for the host in hostmanager.
 	ReserveHost(ctx context.Context, host []*models.Host, task *resmgr.Task) (err error)
 
-	// GetCompletedReservation gets the completed reservation from host manager
-	GetCompletedReservation(ctx context.Context) ([]*hostsvc.CompletedReservation, error)
+	// GetCompletedReservation gets the completed reservation
+	// from host manager
+	GetCompletedReservation(
+		ctx context.Context) ([]*hostsvc.CompletedReservation, error)
 }
 
 // service is implementing Service interface

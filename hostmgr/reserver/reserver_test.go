@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
+	queue_mocks "code.uber.internal/infra/peloton/common/queue/mocks"
 	"code.uber.internal/infra/peloton/hostmgr/config"
 	"code.uber.internal/infra/peloton/hostmgr/metrics"
 	offerpool_mocks "code.uber.internal/infra/peloton/hostmgr/offer/offerpool/mocks"
@@ -86,9 +87,10 @@ func TestReserver(t *testing.T) {
 // TestReserverStart tests the start for the Reserver
 func (suite *ReserverTestSuite) TestReserverStart() {
 	reservation := createReservation()
-	suite.reserver.GetReservationQueue().Enqueue(reservation)
+	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	gomock.InOrder(
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(nil, errors.New("error")),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(nil, errors.New("error")),
 	)
 	suite.reserver.Start()
 }
@@ -109,7 +111,7 @@ func (suite *ReserverTestSuite) TestReservationWithNoTasks() {
 func (suite *ReserverTestSuite) TestReservationWithNilTasks() {
 	reservation := createReservation()
 	reservation.Task = nil
-	suite.reserver.GetReservationQueue().Enqueue(reservation)
+	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), _noTasksTimeoutPenalty.Seconds())
 	suite.Error(err)
@@ -125,9 +127,12 @@ func (suite *ReserverTestSuite) TestReservation() {
 	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
 	gomock.InOrder(
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetHostStatus().Return(sum.ReadyHost).Times(2),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(nil),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReadyHost).Times(2),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(nil),
 	)
 	_, err = suite.reserver.Reserve(context.Background())
 	suite.NoError(err)
@@ -139,12 +144,15 @@ func (suite *ReserverTestSuite) TestNoHostReservation() {
 	_, err := suite.reserver.Reserve(context.Background())
 	suite.Error(err)
 
-	suite.reserver.GetReservationQueue().Enqueue(reservation)
+	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
 	gomock.InOrder(
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetHostStatus().Return(sum.ReadyHost).Times(2),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(errors.New("error")),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReadyHost).Times(2),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(errors.New("error")),
 	)
 	_, err = suite.reserver.Reserve(context.Background())
 	suite.Error(err)
@@ -157,9 +165,10 @@ func (suite *ReserverTestSuite) TestHostSummaryReservationError() {
 	_, err := suite.reserver.Reserve(context.Background())
 	suite.Error(err)
 
-	suite.reserver.GetReservationQueue().Enqueue(reservation)
+	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	gomock.InOrder(
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(nil, errors.New("Error")),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(nil, errors.New("Error")),
 	)
 	_, err = suite.reserver.Reserve(context.Background())
 	suite.Error(err)
@@ -169,17 +178,25 @@ func (suite *ReserverTestSuite) TestHostSummaryReservationError() {
 // Testing to find the completed reservation if that succeeds
 func (suite *ReserverTestSuite) TestFindCompletedReservations() {
 	reservation := createReservation()
-	suite.reserver.GetReservationQueue().Enqueue(reservation)
+	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
 	gomock.InOrder(
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetHostStatus().Return(sum.ReadyHost).Times(2),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(nil),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetOffers(gomock.Any()).Return(suite.createUnreservedMesosOffers(2)),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(nil),
-		summary.EXPECT().GetOffers(gomock.Any()).Return(suite.createUnreservedMesosOffers(2)),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReadyHost).Times(2),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(nil),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetOffers(gomock.Any()).
+			Return(suite.createUnreservedMesosOffers(2)),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(nil),
+		summary.EXPECT().GetOffers(gomock.Any()).
+			Return(suite.createUnreservedMesosOffers(2)),
 	)
 	_, err := suite.reserver.Reserve(context.Background())
 	suite.NoError(err)
@@ -204,15 +221,21 @@ func (suite *ReserverTestSuite) TestDequeueCompletedReservations() {
 // Testing to find the completed reservation however gets the error in reservation
 func (suite *ReserverTestSuite) TestFindCompletedReservationsError() {
 	reservation := createReservation()
-	suite.reserver.GetReservationQueue().Enqueue(reservation)
+	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
 	gomock.InOrder(
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetHostStatus().Return(sum.ReadyHost).Times(2),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(nil),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetOffers(gomock.Any()).Return(suite.createUnreservedMesosOffers(2)),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(nil, errors.New("error")).Times(1),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReadyHost).Times(2),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(nil),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetOffers(gomock.Any()).
+			Return(suite.createUnreservedMesosOffers(2)),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(nil, errors.New("error")).Times(1),
 	)
 	_, err := suite.reserver.Reserve(context.Background())
 	suite.NoError(err)
@@ -224,16 +247,23 @@ func (suite *ReserverTestSuite) TestFindCompletedReservationsError() {
 // testing the completed reservation  while get status of host has error
 func (suite *ReserverTestSuite) TestFindCompletedReservationsCasError() {
 	reservation := createReservation()
-	suite.reserver.GetReservationQueue().Enqueue(reservation)
+	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
 	gomock.InOrder(
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetHostStatus().Return(sum.ReadyHost).Times(2),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(nil),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetOffers(gomock.Any()).Return(suite.createUnreservedMesosOffers(2)),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(errors.New("error")),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReadyHost).Times(2),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(nil),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetOffers(gomock.Any()).
+			Return(suite.createUnreservedMesosOffers(2)),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(errors.New("error")),
 	)
 	_, err := suite.reserver.Reserve(context.Background())
 	suite.NoError(err)
@@ -245,19 +275,29 @@ func (suite *ReserverTestSuite) TestFindCompletedReservationsCasError() {
 // Testing the successful reservation
 func (suite *ReserverTestSuite) TestCancelReservation() {
 	reservation := createReservation()
-	suite.reserver.GetReservationQueue().Enqueue(reservation)
+	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
 	gomock.InOrder(
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetHostStatus().Return(sum.ReadyHost).Times(2),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(nil),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetOffers(gomock.Any()).Return(suite.createUnreservedMesosOffers(2)),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(errors.New("error")),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(nil),
-		summary.EXPECT().GetHostStatus().Return(sum.ReservedHost).Times(1),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReadyHost).Times(2),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(nil),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetOffers(gomock.Any()).
+			Return(suite.createUnreservedMesosOffers(2)),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(errors.New("error")),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(nil),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReservedHost).Times(1),
 	)
 	_, err := suite.reserver.Reserve(context.Background())
 	suite.NoError(err)
@@ -271,19 +311,29 @@ func (suite *ReserverTestSuite) TestCancelReservation() {
 // Testing if cancel reservation failed with no host error
 func (suite *ReserverTestSuite) TestCancelReservationError() {
 	reservation := createReservation()
-	suite.reserver.GetReservationQueue().Enqueue(reservation)
+	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
 	gomock.InOrder(
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetHostStatus().Return(sum.ReadyHost).Times(2),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(nil),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetOffers(gomock.Any()).Return(suite.createUnreservedMesosOffers(2)),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(errors.New("error")),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(nil, errors.New("error")).Times(1),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(errors.New("error")),
-		summary.EXPECT().GetHostStatus().Return(sum.ReservedHost).Times(1),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReadyHost).Times(2),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(nil),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetOffers(gomock.Any()).
+			Return(suite.createUnreservedMesosOffers(2)),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(errors.New("error")),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(nil, errors.New("error")).Times(1),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(errors.New("error")),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReservedHost).Times(1),
 	)
 	_, err := suite.reserver.Reserve(context.Background())
 	suite.NoError(err)
@@ -297,19 +347,29 @@ func (suite *ReserverTestSuite) TestCancelReservationError() {
 // Testing if cancel reservation fails
 func (suite *ReserverTestSuite) TestCancelReservationNil() {
 	reservation := createReservation()
-	suite.reserver.GetReservationQueue().Enqueue(reservation)
+	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
 	gomock.InOrder(
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetHostStatus().Return(sum.ReadyHost).Times(2),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(nil),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetOffers(gomock.Any()).Return(suite.createUnreservedMesosOffers(2)),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(errors.New("error")),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(nil, errors.New("error")).Times(1),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(errors.New("error")),
-		summary.EXPECT().GetHostStatus().Return(sum.ReservedHost).Times(1),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReadyHost).Times(2),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(nil),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetOffers(gomock.Any()).
+			Return(suite.createUnreservedMesosOffers(2)),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(errors.New("error")),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(nil, errors.New("error")).Times(1),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(errors.New("error")),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReservedHost).Times(1),
 	)
 	_, err := suite.reserver.Reserve(context.Background())
 	suite.NoError(err)
@@ -324,19 +384,29 @@ func (suite *ReserverTestSuite) TestCancelReservationNil() {
 // This tests when we could not update the status of the host to placing
 func (suite *ReserverTestSuite) TestMakeHostAvailableError() {
 	reservation := createReservation()
-	suite.reserver.GetReservationQueue().Enqueue(reservation)
+	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
 	gomock.InOrder(
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetHostStatus().Return(sum.ReadyHost).Times(2),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(nil),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetOffers(gomock.Any()).Return(suite.createUnreservedMesosOffers(2)),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(errors.New("error")),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(errors.New("error")),
-		summary.EXPECT().GetHostStatus().Return(sum.ReservedHost).Times(1),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReadyHost).Times(2),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(nil),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetOffers(gomock.Any()).
+			Return(suite.createUnreservedMesosOffers(2)),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(errors.New("error")),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(errors.New("error")),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReservedHost).Times(1),
 	)
 	_, err := suite.reserver.Reserve(context.Background())
 	suite.NoError(err)
@@ -348,16 +418,68 @@ func (suite *ReserverTestSuite) TestMakeHostAvailableError() {
 	suite.NoError(err)
 }
 
+// This tests when we could not update the status of the host to placing
+// and cancel reservation returns the error while enqueuing completed
+// reservation.
+func (suite *ReserverTestSuite) TestCompleteHostReservationError() {
+	reserver, reserverQueue, completedQueue := suite.getReserver()
+	reservation := createReservation()
+	reserverQueue.EXPECT().Enqueue(gomock.Any()).Return(errors.New("error"))
+	err := reserver.EnqueueReservation(context.Background(), reservation)
+	suite.Error(err)
+	reserverQueue.EXPECT().Enqueue(gomock.Any()).Return(nil)
+	err = reserver.EnqueueReservation(context.Background(), reservation)
+	suite.NoError(err)
+	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
+	gomock.InOrder(
+		reserverQueue.EXPECT().Dequeue(gomock.Any()).Return(reservation, nil),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReadyHost).Times(2),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(nil),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetOffers(gomock.Any()).
+			Return(suite.createUnreservedMesosOffers(2)),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(errors.New("error")),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(errors.New("error")),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReservedHost).Times(1),
+		completedQueue.EXPECT().Enqueue(gomock.Any()).
+			Return(errors.New("error")),
+	)
+	_, err = reserver.Reserve(context.Background())
+	suite.NoError(err)
+	failed := reserver.FindCompletedReservations(context.Background())
+	suite.NotNil(failed)
+	suite.Equal(len(failed), 1)
+	failed["host1"] = nil
+	err = reserver.CancelReservations(failed)
+	suite.Error(err)
+}
+
 // Testing the scenario when getting resources from host offers failed
 func (suite *ReserverTestSuite) TestgetResourcesFromHostOffersFailed() {
 	reservation := createReservation()
-	suite.reserver.GetReservationQueue().Enqueue(reservation)
+	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
 	gomock.InOrder(
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
-		summary.EXPECT().GetHostStatus().Return(sum.ReadyHost).Times(2),
-		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(nil),
-		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(nil, errors.New("error")).Times(1),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil).Times(1),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReadyHost).Times(2),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(nil),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(nil, errors.New("error")).Times(1),
 	)
 	_, err := suite.reserver.Reserve(context.Background())
 	suite.NoError(err)
@@ -445,4 +567,22 @@ func createResMgrTask() *resmgr.Task {
 			CpuLimit:    1,
 		},
 	}
+}
+
+func (suite *ReserverTestSuite) getReserver() (
+	*reserver, *queue_mocks.MockQueue, *queue_mocks.MockQueue) {
+	reserverQueue := queue_mocks.NewMockQueue(suite.mockCtrl)
+	completedQueue := queue_mocks.NewMockQueue(suite.mockCtrl)
+	metrics := metrics.NewMetrics(tally.NoopScope)
+	config := &config.Config{}
+
+	reserver := &reserver{
+		config:       config,
+		metrics:      metrics,
+		offerPool:    suite.mockPool,
+		reservations: make(map[string]*hostsvc.Reservation),
+	}
+	reserver.reserveQueue = reserverQueue
+	reserver.completedReservationQueue = completedQueue
+	return reserver, reserverQueue, completedQueue
 }
