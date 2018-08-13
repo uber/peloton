@@ -1,4 +1,4 @@
-.PHONY: all placement executor install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers db-pressure archiver
+.PHONY: all placement install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers db-pressure archiver
 .DEFAULT_GOAL := all
 
 PROJECT_ROOT  = code.uber.internal/infra/peloton
@@ -41,7 +41,7 @@ endif
 
 .PRECIOUS: $(PBGENS) $(LOCAL_MOCKS) $(VENDOR_MOCKS) mockgens
 
-all: pbgens placement executor cli hostmgr resmgr jobmgr archiver
+all: pbgens placement cli hostmgr resmgr jobmgr archiver
 
 jobmgr:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-jobmgr jobmgr/main/*.go
@@ -54,9 +54,6 @@ placement:
 
 resmgr:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-resmgr resmgr/main/*.go
-
-executor:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-executor executor/*.go
 
 db-pressure:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/dbpressure storage/pressuretest/main/*.go
@@ -196,8 +193,6 @@ mockgens: build-mockgen pbgens $(GOMOCK)
 	$(call local_mockgen,storage,JobStore;TaskStore;UpdateStore;FrameworkInfoStore;ResourcePoolStore;PersistentVolumeStore;SecretStore)
 	$(call local_mockgen,yarpc/encoding/mpb,SchedulerClient;MasterOperatorClient)
 	$(call local_mockgen,yarpc/transport/mhttp,Inbound)
-	$(call local_mockgen,executor/mesos-client,EventHandler;HTTPDoer)
-	$(call local_mockgen,executor,MesosClient;Task)
 	$(call vendor_mockgen,go.uber.org/yarpc/encoding/json/outbound.go)
 
 # launch the test containers to run integration tests and so-on
