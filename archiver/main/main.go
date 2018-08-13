@@ -10,6 +10,8 @@ import (
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
+	"code.uber.internal/infra/peloton/common/rpc"
+	"code.uber.internal/infra/peloton/leader"
 
 	log "github.com/sirupsen/logrus"
 	_ "go.uber.org/automaxprocs"
@@ -63,6 +65,12 @@ var (
 		"enable-archiver", "enable Archiver").
 		Default("false").
 		Envar("ENABLE_ARCHIVER").
+		Bool()
+
+	streamOnlyMode = app.Flag(
+		"stream-only-mode", "Archiver streams jobs without deleting them").
+		Default("true").
+		Envar("STREAM_ONLY_MODE").
 		Bool()
 
 	archiveInterval = app.Flag(
@@ -125,6 +133,10 @@ func main() {
 		cfg.Archiver.Enable = *enableArchiver
 	}
 
+	if *streamOnlyMode {
+		cfg.Archiver.StreamOnlyMode = *streamOnlyMode
+	}
+
 	if *archiveInterval != "" {
 		cfg.Archiver.ArchiveInterval, err = time.ParseDuration(*archiveInterval)
 		if err != nil {
@@ -173,7 +185,20 @@ func main() {
 		logging.LevelOverwriteHandler(initialLevel),
 	)
 
-	archiverEngine, err := engine.New(cfg, rootScope, mux)
+	inbounds := rpc.NewInbounds(
+		cfg.Archiver.HTTPPort,
+		cfg.Archiver.GRPCPort,
+		mux,
+	)
+
+	discovery, err := leader.NewZkServiceDiscovery(
+		cfg.Election.ZKServers, cfg.Election.Root)
+	if err != nil {
+		log.WithError(err).
+			Fatal("Could not create zk service discovery")
+	}
+
+	archiverEngine, err := engine.New(cfg, rootScope, mux, discovery, inbounds)
 	if err != nil {
 		log.WithError(err).
 			WithField("zkservers", cfg.Election.ZKServers).

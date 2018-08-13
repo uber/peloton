@@ -79,6 +79,10 @@ type ArchiverConfig struct {
 	// Delay for archiver bootstrapping to account for
 	// not overloading jobmgr during recovery
 	BootstrapDelay time.Duration `yaml:"bootstrap_delay"`
+
+	// Only stream the jobs to external storage if this is set
+	// Do not delete the jobs from local storage
+	StreamOnlyMode bool `yaml:"stream_only_mode"`
 }
 
 // Normalize configuration by setting unassigned fields to default values.
@@ -97,9 +101,6 @@ func (c *ArchiverConfig) Normalize() {
 	}
 	if c.ArchiveStepSize == 0 {
 		c.ArchiveStepSize = _defaultArchiveStepSize
-	}
-	if c.PelotonClientTimeout == 0 {
-		c.PelotonClientTimeout = _defaultPelotonClientTimeout
 	}
 	if c.MaxRetryAttemptsJobQuery == 0 {
 		c.MaxRetryAttemptsJobQuery = _defaultMaxRetryAttemptsJobQuery

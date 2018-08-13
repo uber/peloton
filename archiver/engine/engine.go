@@ -13,7 +13,6 @@ import (
 	"code.uber.internal/infra/peloton/archiver/config"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/backoff"
-	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/leader"
 
 	"github.com/golang/protobuf/ptypes"
@@ -33,6 +32,15 @@ const (
 	// in case we add more archiver instances in future.
 	// Keep default max jitter to 100ms
 	jitterMax = 100
+
+	// The string "completed_job" will be used to tag the logs that contain
+	// job summary. This will be used by logstash and streamed using a heatpipe
+	// kafka topic to Hive table
+	completedJobTag = "completed_job"
+
+	// archiver summary map keys
+	archiverSuccessKey = "SUCCESS"
+	archiverFailureKey = "FAILURE"
 )
 
 // Engine defines the interface used to query a peloton component
@@ -64,27 +72,13 @@ func New(
 	cfg config.Config,
 	scope tally.Scope,
 	mux *nethttp.ServeMux,
+	discovery leader.Discovery,
+	inbounds []transport.Inbound,
 ) (Engine, error) {
 	cfg.Archiver.Normalize()
 
-	inbounds := rpc.NewInbounds(
-		cfg.Archiver.HTTPPort,
-		cfg.Archiver.GRPCPort,
-		mux,
-	)
-
-	discovery, err := leader.NewZkServiceDiscovery(
-		cfg.Election.ZKServers, cfg.Election.Root)
-	if err != nil {
-		log.WithError(err).
-			Error("Could not create zk service discovery")
-		return nil, err
-	}
-
 	jobmgrURL, err := discovery.GetAppURL(common.JobManagerRole)
 	if err != nil {
-		log.WithError(err).
-			Error("Could not get jobmgr url")
 		return nil, err
 	}
 
@@ -186,7 +180,7 @@ func (e *engine) queryJobs(ctx context.Context,
 
 func (e *engine) archiveJobs(ctx context.Context,
 	results []*job.JobSummary) map[string]int {
-	archiveSummary := make(map[string]int)
+	archiveSummary := map[string]int{archiverFailureKey: 0, archiverSuccessKey: 0}
 	for _, summary := range results {
 		// Archive only BATCH jobs
 		if summary.GetType() != job.JobType_BATCH {
@@ -194,8 +188,17 @@ func (e *engine) archiveJobs(ctx context.Context,
 		}
 		// Sleep between consecutive Job Delete requests
 		time.Sleep(delayDelete)
-		// TODO: log job summary to file using a custom log level and LFS hook.
-		// This data will be sent out to kafka by filebeat
+
+		// The log event for completedJobTag will be logged to Archiver stdout
+		// Filebeat configured on the Peloton host will ship this log out to
+		// logstash. Logstash will be configured to stream this specific log
+		// event to Hive via a heatpipe topic.
+		log.WithField(completedJobTag, summary).Info("completed job")
+
+		if e.config.Archiver.StreamOnlyMode {
+			continue
+		}
+
 		log.WithFields(
 			log.Fields{
 				"job_id": summary.GetId().GetValue(),
@@ -207,6 +210,7 @@ func (e *engine) archiveJobs(ctx context.Context,
 		}
 		ctx, cancel := context.WithTimeout(ctx,
 			e.config.Archiver.PelotonClientTimeout)
+		defer cancel()
 		_, err := e.jobClient.Delete(ctx, deleteReq)
 		if err != nil {
 			// TODO: have a reasonable threshold for tolerating such failures
@@ -215,14 +219,11 @@ func (e *engine) archiveJobs(ctx context.Context,
 				summary.GetId().GetValue()).
 				Error("job delete failed")
 			e.metrics.ArchiverJobDeleteFail.Inc(1)
-			archiveSummary["FAILED"]++
+			archiveSummary[archiverFailureKey]++
 		} else {
 			e.metrics.ArchiverJobDeleteSuccess.Inc(1)
-			archiveSummary["SUCCEEDED"]++
+			archiveSummary[archiverSuccessKey]++
 		}
-		// Explicitly call cancel() here. Since we are making
-		// API requests in a loop, defer will not be useful.
-		cancel()
 	}
 	return archiveSummary
 }
@@ -265,8 +266,8 @@ func (e *engine) runArchiver(errChan chan<- error) {
 
 		if len(results) > 0 {
 			archiveSummary := e.archiveJobs(context.Background(), results)
-			succeededCount, _ := archiveSummary["SUCCEEDED"]
-			failedCount, _ := archiveSummary["FAILED"]
+			succeededCount, _ := archiveSummary[archiverSuccessKey]
+			failedCount, _ := archiveSummary[archiverFailureKey]
 			log.WithFields(log.Fields{
 				"total":     len(results),
 				"succeeded": succeededCount,
