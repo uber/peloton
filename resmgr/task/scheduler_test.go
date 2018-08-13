@@ -17,7 +17,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -59,11 +58,9 @@ func (suite *SchedulerTestSuite) SetupSuite() {
 
 	suite.resTree = respool.GetTree()
 	suite.readyQueue = queue.NewMultiLevelList("ready-queue", maxReadyQueueSize)
-	suite.mockHostmgr = mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
-	suite.mockHostmgr.EXPECT().MarkHostDrained(gomock.Any(), gomock.Any()).Return(&hostsvc.MarkHostDrainedResponse{}, nil).AnyTimes()
 
 	// Initializing the resmgr state machine
-	InitTaskTracker(tally.NoopScope, &Config{}, suite.mockHostmgr)
+	InitTaskTracker(tally.NoopScope, &Config{})
 	suite.rmTaskTracker = GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,

@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	cmn_recovery "code.uber.internal/infra/peloton/common/recovery"
@@ -20,6 +22,10 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+)
+
+const (
+	hostmgrBackoffRetryInterval = 100 * time.Millisecond
 )
 
 var (
@@ -66,9 +72,11 @@ type RecoveryHandler struct {
 	taskStore       storage.TaskStore
 	handler         *ServiceHandler
 	config          Config
+	hostmgrClient   hostsvc.InternalHostServiceYARPCClient
 	nonRunningTasks []*resmgrsvc.EnqueueGangsRequest
 	finished        chan bool //used for testing
 	tracker         rmtask.Tracker
+	stopChan        chan bool
 }
 
 // NewRecovery initializes the RecoveryHandler
@@ -78,22 +86,25 @@ func NewRecovery(
 	taskStore storage.TaskStore,
 	handler *ServiceHandler,
 	config Config,
+	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
 ) *RecoveryHandler {
 	return &RecoveryHandler{
-		jobStore:  jobStore,
-		taskStore: taskStore,
-		handler:   handler,
-		metrics:   NewMetrics(parent),
-		config:    config,
-		finished:  make(chan bool),
-		tracker:   rmtask.GetTracker(),
+		jobStore:      jobStore,
+		taskStore:     taskStore,
+		handler:       handler,
+		metrics:       NewMetrics(parent),
+		config:        config,
+		hostmgrClient: hostmgrClient,
+		finished:      make(chan bool),
+		tracker:       rmtask.GetTracker(),
+		stopChan:      make(chan bool),
 	}
 }
 
-// Stop is a no-op for recovery handler
+// Stop stops the recovery handler
 func (r *RecoveryHandler) Stop() error {
-	//no-op
 	log.Info("Stopping recovery")
+	close(r.stopChan)
 	return nil
 }
 
@@ -102,6 +113,10 @@ func (r *RecoveryHandler) Stop() error {
 func (r *RecoveryHandler) Start() error {
 	r.Lock()
 	defer r.Unlock()
+
+	// Instantiate the channel here to prevent closing of already closed channel.
+	// Eg. Resmgr instance gains leadership after losing it.
+	r.stopChan = make(chan bool)
 
 	ctx := context.Background()
 	log.Info("Starting jobs recovery on startup")
@@ -121,12 +136,15 @@ func (r *RecoveryHandler) Start() error {
 	}
 
 	log.Info("Recovery completed successfully for running tasks")
-	r.metrics.RecoverySuccess.Inc(1)
+
+	// Restart draining process in background
+	go r.restartDrainingProcess(ctx)
 
 	// We can start the recovery of non-running tasks now in the background
 	log.Info("Recovery starting for non-running tasks")
 	go r.recoverNonRunningTasks()
 
+	r.metrics.RecoverySuccess.Inc(1)
 	return nil
 }
 
@@ -325,4 +343,25 @@ func (r *RecoveryHandler) loadTasksInRange(
 		}
 	}
 	return nonRunningTasks, runningTasks, err
+}
+
+func (r *RecoveryHandler) restartDrainingProcess(ctx context.Context) {
+	ticker := time.NewTicker(time.Duration(hostmgrBackoffRetryInterval))
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.stopChan:
+			return
+		case <-ticker.C:
+			_, err := r.hostmgrClient.RestoreMaintenanceQueue(
+				ctx,
+				&hostsvc.RestoreMaintenanceQueueRequest{})
+			if err != nil {
+				log.WithError(err).Warn("RestoreMaintenanceQueue call failed")
+				continue
+			}
+			return
+		}
+	}
 }

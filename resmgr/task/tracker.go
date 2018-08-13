@@ -1,9 +1,7 @@
 package task
 
 import (
-	"context"
 	"sync"
-	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -98,20 +96,18 @@ var rmtracker *tracker
 
 // InitTaskTracker initialize the task tracker
 func InitTaskTracker(
-	parentScope tally.Scope,
-	config *Config,
-	hostMgrClient hostsvc.InternalHostServiceYARPCClient) {
+	parent tally.Scope,
+	config *Config) {
 	if rmtracker != nil {
 		log.Info("Resource Manager Tracker is already initialized")
 		return
 	}
 	rmtracker = &tracker{
-		tasks:         make(map[string]*RMTask),
-		placements:    map[string]map[resmgr.TaskType]map[string]*RMTask{},
-		metrics:       NewMetrics(parentScope.SubScope("tracker")),
-		parentScope:   parentScope,
-		counters:      make(map[task.TaskState]float64),
-		hostMgrClient: hostMgrClient,
+		tasks:       make(map[string]*RMTask),
+		placements:  map[string]map[resmgr.TaskType]map[string]*RMTask{},
+		metrics:     NewMetrics(parent.SubScope("tracker")),
+		parentScope: parent,
+		counters:    make(map[task.TaskState]float64),
 	}
 
 	// Checking placement back off is enabled , if yes then initialize
@@ -208,24 +204,8 @@ func (tr *tracker) clearPlacement(rmTask *RMTask) {
 		delete(placements, taskType)
 	}
 
-	if len(placements) == 0 {
-		delete(tr.placements, hostName)
-		log.
-			WithField("host", hostName).
-			Debug("No tasks on host")
-
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if _, err := tr.hostMgrClient.MarkHostDrained(
-			ctx,
-			&hostsvc.MarkHostDrainedRequest{
-				Hostname: hostName,
-			}); err != nil {
-			log.
-				WithError(err).
-				WithField("hostname", hostName).
-				Error("Failed to 'down' some hosts")
-		}
+	if len(tr.placements[rmTask.task.Hostname]) == 0 {
+		delete(tr.placements, rmTask.task.Hostname)
 	}
 }
 

@@ -11,8 +11,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common"
@@ -40,7 +38,6 @@ type PreemptorTestSuite struct {
 	preemptor          preemptor
 	tracker            rm_task.Tracker
 	eventStreamHandler *eventstream.Handler
-	mockHostmgr        *host_mocks.MockInternalHostServiceYARPCClient
 }
 
 var (
@@ -54,8 +51,9 @@ var (
 
 func (suite *PreemptorTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockHostmgr = host_mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
-	rm_task.InitTaskTracker(tally.NoopScope, tasktestutil.CreateTaskConfig(), suite.mockHostmgr)
+	rm_task.InitTaskTracker(
+		tally.NoopScope,
+		tasktestutil.CreateTaskConfig())
 	suite.tracker = rm_task.GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,
@@ -671,7 +669,6 @@ func (suite *PreemptorTestSuite) createTasks(numTasks int,
 	for i := 0; i < numTasks; i++ {
 		t := suite.createTask(i, uint32(i))
 		tasks = append(tasks, t)
-		suite.mockHostmgr.EXPECT().MarkHostDrained(gomock.Any(), gomock.Any()).Return(&hostsvc.MarkHostDrainedResponse{}, nil)
 		suite.tracker.AddTask(t, suite.eventStreamHandler, mockResPool,
 			tasktestutil.CreateTaskConfig())
 	}

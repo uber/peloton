@@ -10,8 +10,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	resp "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	hostsvc_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common"
@@ -36,7 +34,6 @@ type TrackerTestSuite struct {
 	task               *resmgr.Task
 	respool            respool.ResPool
 	hostname           string
-	mockHostmgr        *hostsvc_mocks.MockInternalHostServiceYARPCClient
 }
 
 func (suite *TrackerTestSuite) SetupTest() {
@@ -46,18 +43,7 @@ func (suite *TrackerTestSuite) SetupTest() {
 }
 
 func (suite *TrackerTestSuite) setup(conf *Config, invalid bool) {
-	suite.mockHostmgr.
-		EXPECT().
-		MarkHostDrained(
-			gomock.Any(),
-			gomock.Any()).
-		Return(
-			&hostsvc.MarkHostDrainedResponse{},
-
-			nil,
-		).
-		AnyTimes()
-	InitTaskTracker(tally.NoopScope, conf, suite.mockHostmgr)
+	InitTaskTracker(tally.NoopScope, conf)
 	suite.tracker = GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,
@@ -82,8 +68,6 @@ func (suite *TrackerTestSuite) setup(conf *Config, invalid bool) {
 
 func (suite *TrackerTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockHostmgr = hostsvc_mocks.NewMockInternalHostServiceYARPCClient(
-		suite.mockCtrl)
 }
 
 func (suite *TrackerTestSuite) addTaskToTracker(task *resmgr.Task) {
@@ -483,12 +467,11 @@ This test should complete if there is no deadlock
 */
 func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 	testTracker := &tracker{
-		tasks:         make(map[string]*RMTask),
-		placements:    map[string]map[resmgr.TaskType]map[string]*RMTask{},
-		metrics:       NewMetrics(tally.NoopScope),
-		counters:      make(map[task.TaskState]float64),
-		parentScope:   tally.NoopScope,
-		hostMgrClient: suite.mockHostmgr,
+		tasks:       make(map[string]*RMTask),
+		placements:  map[string]map[resmgr.TaskType]map[string]*RMTask{},
+		metrics:     NewMetrics(tally.NoopScope),
+		counters:    make(map[task.TaskState]float64),
+		parentScope: tally.NoopScope,
 	}
 	testTracker.AddTask(
 		suite.createTask(1),

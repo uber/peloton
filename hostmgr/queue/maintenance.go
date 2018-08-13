@@ -15,14 +15,11 @@ import (
 const (
 	maintenanceQueueName    = "maintenance-queue"
 	maxMaintenanceQueueSize = 10000
-)
-
-var (
-	mq *maintenanceQueue
+	defaultDequeueTimeout   = 100 * time.Millisecond
 )
 
 type maintenanceQueue struct {
-	sync.Mutex
+	lock  sync.RWMutex
 	queue queue.Queue
 }
 
@@ -34,23 +31,24 @@ type MaintenanceQueue interface {
 	Dequeue(maxWaitTime time.Duration) (string, error)
 	// Length returns the length of maintenance queue at any time
 	Length() int
+	// Clear contents of maintenance queue
+	Clear()
 }
 
 // NewMaintenanceQueue returns an instance of the maintenance queue
 func NewMaintenanceQueue() MaintenanceQueue {
-	mq = &maintenanceQueue{
+	return &maintenanceQueue{
 		queue: queue.NewQueue(
 			maintenanceQueueName,
 			reflect.TypeOf(""),
 			maxMaintenanceQueueSize),
 	}
-	return mq
 }
 
 // Enqueue enqueues a list of hostnames into the maintenance queue
 func (mq *maintenanceQueue) Enqueue(hostnames []string) error {
-	mq.Lock()
-	defer mq.Unlock()
+	mq.lock.Lock()
+	defer mq.lock.Unlock()
 
 	var errs error
 	for _, host := range hostnames {
@@ -64,8 +62,8 @@ func (mq *maintenanceQueue) Enqueue(hostnames []string) error {
 
 // Dequeue dequeues a hostname from the maintenance queue
 func (mq *maintenanceQueue) Dequeue(maxWaitTime time.Duration) (string, error) {
-	mq.Lock()
-	defer mq.Unlock()
+	mq.lock.Lock()
+	defer mq.lock.Unlock()
 
 	item, err := mq.queue.Dequeue(maxWaitTime)
 	if err != nil {
@@ -83,5 +81,23 @@ func (mq *maintenanceQueue) Dequeue(maxWaitTime time.Duration) (string, error) {
 
 // Length returns the length of maintenance queue at any time
 func (mq *maintenanceQueue) Length() int {
+	mq.lock.RLock()
+	defer mq.lock.RUnlock()
+
 	return mq.queue.Length()
+}
+
+// Clear clears the contents of the maintenance queue
+func (mq *maintenanceQueue) Clear() {
+	mq.lock.Lock()
+	defer mq.lock.Unlock()
+
+	for len := mq.queue.Length(); len > 0; len-- {
+		_, err := mq.queue.Dequeue(defaultDequeueTimeout)
+		if err != nil {
+			log.WithError(err).
+				Error("unable to dequeue task from maintenance queue")
+		}
+	}
+	log.Info("Maintenance queue cleared")
 }

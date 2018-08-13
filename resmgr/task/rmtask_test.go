@@ -12,7 +12,6 @@ import (
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	resp "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	hostsvc_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -24,7 +23,6 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
@@ -62,20 +60,10 @@ func (s *RMTaskTestSuite) SetupSuite() {
 			Enabled: false,
 		})
 	s.resTree = respool.GetTree()
-	mockHostMgrClient := hostsvc_mocks.
-		NewMockInternalHostServiceYARPCClient(s.ctrl)
-	mockHostMgrClient.
-		EXPECT().
-		MarkHostDrained(
-			gomock.Any(),
-			gomock.Any()).Return(
-		&hostsvc.MarkHostDrainedResponse{},
-		nil,
-	).
-		AnyTimes()
+
 	InitTaskTracker(tally.NoopScope, &Config{
 		EnablePlacementBackoff: true,
-	}, mockHostMgrClient)
+	})
 	s.tracker = GetTracker()
 
 	InitScheduler(tally.NoopScope, 1*time.Second, s.tracker)

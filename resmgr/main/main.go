@@ -16,7 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/entitlement"
 	maintenance "code.uber.internal/infra/peloton/resmgr/host"
 	"code.uber.internal/infra/peloton/resmgr/preemption"
-	respoolsvc "code.uber.internal/infra/peloton/resmgr/respool/respoolsvc"
+	"code.uber.internal/infra/peloton/resmgr/respool/respoolsvc"
 	"code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
@@ -244,7 +244,6 @@ func main() {
 	task.InitTaskTracker(
 		rootScope,
 		cfg.ResManager.RmTaskConfig,
-		hostmgrClient,
 	)
 
 	// Initializing the task scheduler
@@ -282,8 +281,7 @@ func main() {
 		hostmgrClient,
 		cfg.ResManager.HostDrainerPeriod,
 		task.GetTracker(),
-		preemption.GetPreemptor(),
-	)
+		preemption.GetPreemptor())
 
 	// Initialize resource manager service handlers
 	serviceHandler := resmgr.NewServiceHandler(
@@ -301,6 +299,7 @@ func main() {
 		store, // store implements TaskStore
 		serviceHandler,
 		cfg.ResManager,
+		hostmgrClient,
 	)
 
 	server := resmgr.NewServer(

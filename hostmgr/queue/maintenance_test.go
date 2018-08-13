@@ -69,3 +69,25 @@ func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueue_QueueErrors() {
 	suite.Error(err)
 	suite.Equal("", hostname)
 }
+
+func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueue_Clear() {
+	queue := mocks.NewMockQueue(suite.mockCtrl)
+	maintenanceQueue := &maintenanceQueue{
+		queue: queue,
+	}
+
+	queue.EXPECT().Length().Return(len(suite.testHostnames))
+	queue.EXPECT().
+		Dequeue(gomock.Any()).
+		Return(gomock.Any(), nil).
+		Times(len(suite.testHostnames))
+	maintenanceQueue.Clear()
+
+	// Test Dequeue error
+	queue.EXPECT().Length().Return(len(suite.testHostnames))
+	queue.EXPECT().
+		Dequeue(gomock.Any()).
+		Return(gomock.Any(), fmt.Errorf("fake dequeue error")).
+		Times(len(suite.testHostnames))
+	maintenanceQueue.Clear()
+}

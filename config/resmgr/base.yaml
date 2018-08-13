@@ -41,7 +41,7 @@ resmgr:
     task_preemption_period: 60s
     sustained_over_allocation_count: 5
     enabled: true
-  host_drainer_period: 1800s
+  host_drainer_period: 300s
 
 election:
   root: "/peloton"

@@ -26,6 +26,7 @@ import (
 	task_mocks "code.uber.internal/infra/peloton/resmgr/task/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -33,15 +34,16 @@ import (
 
 type recoveryTestSuite struct {
 	suite.Suite
-	resourceTree     rp.Tree
-	rmTaskTracker    rm_task.Tracker
-	handler          *ServiceHandler
-	taskScheduler    rm_task.Scheduler
-	recovery         RecoveryHandler
-	mockCtrl         *gomock.Controller
-	mockResPoolStore *store_mocks.MockResourcePoolStore
-	mockJobStore     *store_mocks.MockJobStore
-	mockTaskStore    *store_mocks.MockTaskStore
+	resourceTree      rp.Tree
+	rmTaskTracker     rm_task.Tracker
+	handler           *ServiceHandler
+	taskScheduler     rm_task.Scheduler
+	recovery          RecoveryHandler
+	mockCtrl          *gomock.Controller
+	mockResPoolStore  *store_mocks.MockResourcePoolStore
+	mockJobStore      *store_mocks.MockJobStore
+	mockTaskStore     *store_mocks.MockTaskStore
+	mockHostmgrClient *host_mocks.MockInternalHostServiceYARPCClient
 }
 
 func (suite *recoveryTestSuite) SetupSuite() {
@@ -51,6 +53,7 @@ func (suite *recoveryTestSuite) SetupSuite() {
 		Return(suite.getResPools(), nil).AnyTimes()
 	suite.mockJobStore = store_mocks.NewMockJobStore(suite.mockCtrl)
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.mockCtrl)
+	suite.mockHostmgrClient = host_mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
 
 	rp.InitTree(tally.NoopScope, suite.mockResPoolStore, suite.mockJobStore,
 		suite.mockTaskStore,
@@ -61,7 +64,7 @@ func (suite *recoveryTestSuite) SetupSuite() {
 	// Initializing the resmgr state machine
 	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{
 		EnablePlacementBackoff: true,
-	}, host_mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl))
+	})
 
 	suite.rmTaskTracker = rm_task.GetTracker()
 	rm_task.InitScheduler(tally.NoopScope, 100*time.Second, suite.rmTaskTracker)
@@ -385,6 +388,9 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 			To:   10,
 		}).
 		Return(suite.createTasks(&jobs[3], 9, task.TaskState_LAUNCHED), nil)
+	suite.mockHostmgrClient.EXPECT().
+		RestoreMaintenanceQueue(gomock.Any(), gomock.Any()).
+		Return(&hostsvc.RestoreMaintenanceQueueResponse{}, nil)
 
 	// Perform recovery
 	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
@@ -395,10 +401,11 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 				PlacingTimeout:   1 * time.Minute,
 				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			},
-		})
+		}, suite.mockHostmgrClient)
 
 	rh.Start()
 	<-rh.finished
+	time.Sleep(2 * time.Duration(hostmgrBackoffRetryInterval))
 
 	// 2. check the queue content
 	var resPoolID peloton.ResourcePoolID
@@ -456,6 +463,10 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 			From: 0,
 			To:   10,
 		}).Return(suite.createTasks(&jobs[0], 10, task.TaskState_PENDING), nil)
+
+	suite.mockHostmgrClient.EXPECT().
+		RestoreMaintenanceQueue(gomock.Any(), gomock.Any()).
+		Return(&hostsvc.RestoreMaintenanceQueueResponse{}, nil)
 	// Perform recovery
 	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
 		suite.handler,
@@ -465,10 +476,11 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 				PlacingTimeout:   1 * time.Minute,
 				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			},
-		})
+		}, suite.mockHostmgrClient)
 
 	rh.Start()
 	<-rh.finished
+	time.Sleep(2 * time.Duration(hostmgrBackoffRetryInterval))
 
 	// 2. check the queue content
 	var resPoolID peloton.ResourcePoolID
@@ -505,7 +517,7 @@ func (suite *recoveryTestSuite) TestAddRunningTasksError() {
 				PlacingTimeout:   1 * time.Minute,
 				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			},
-		})
+		}, suite.mockHostmgrClient)
 
 	for _, info := range tasks {
 		taskInfos = append(taskInfos, info)
@@ -537,7 +549,7 @@ func (suite *recoveryTestSuite) TestAddRunningTasks() {
 				PlacingTimeout:   1 * time.Minute,
 				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			},
-		})
+		}, suite.mockHostmgrClient)
 
 	for _, info := range tasks {
 		taskInfos = append(taskInfos, info)
@@ -601,12 +613,34 @@ func (suite *recoveryTestSuite) TestLoadTasksInRangeError() {
 				PlacingTimeout:   1 * time.Minute,
 				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			},
-		})
+		}, suite.mockHostmgrClient)
+
 	_, _, err := rh.loadTasksInRange(context.Background(), "", 100, 0)
 	suite.Error(err)
 	suite.Contains(err.Error(), "invalid job instance range")
 	_, _, err = rh.loadTasksInRange(context.Background(), "", 100, 100)
 	suite.NoError(err)
+}
+
+func (suite *recoveryTestSuite) TestRestartDrainingProcess_Error() {
+	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
+		suite.handler,
+		Config{
+			RmTaskConfig: &rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+				PolicyName:       rm_task.ExponentialBackOffPolicy,
+			},
+		}, suite.mockHostmgrClient)
+
+	suite.mockHostmgrClient.EXPECT().
+		RestoreMaintenanceQueue(gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("Fake RestoreMaintenanceQueue error"))
+	suite.mockHostmgrClient.EXPECT().
+		RestoreMaintenanceQueue(gomock.Any(), gomock.Any()).
+		Return(&hostsvc.RestoreMaintenanceQueueResponse{}, nil)
+	rh.restartDrainingProcess(context.Background())
+	close(rh.stopChan)
 }
 
 func TestResmgrRecovery(t *testing.T) {

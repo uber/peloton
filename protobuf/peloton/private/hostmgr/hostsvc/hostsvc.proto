@@ -369,13 +369,17 @@ service InternalHostService
   // Return all the outstanding offers present in offer pool.
   rpc GetOutstandingOffers(GetOutstandingOffersRequest) returns (GetOutstandingOffersResponse);
 
-  // Get the hosts in DRAINING state. This method is called by Resource Manager to get hosts which are to be drained.
-  //TODO: (sachins) Need to have a state machine in hostmgr to re-queue the DRAINING hosts after certain timeout
+  // Get the hosts in DRAINING state. This method is called by Resource Manager
+  // to get hosts which are to be drained.
   rpc GetDrainingHosts (GetDrainingHostsRequest) returns (GetDrainingHostsResponse);
 
-  // Mark the host as drained. This method is called by Resource Manager when a host is drained of tasks. The Host Manager
-  // checks if any action is to taken on the host (e.g. put the host into maintenance) and takes action accordingly.
-  rpc MarkHostDrained (MarkHostDrainedRequest) returns (MarkHostDrainedResponse);
+  // Mark the hosts as drained. This method is called by Resource Manager  to
+  // notify Host Manager that specified DRAINING hosts are cleared of all tasks.
+  rpc MarkHostsDrained (MarkHostsDrainedRequest) returns (MarkHostsDrainedResponse);
+
+  // Restore contents of maintenance queue from Mesos Maintenance Status.
+  // This call is made by Resource Manager on recovery.
+  rpc RestoreMaintenanceQueue (RestoreMaintenanceQueueRequest) returns (RestoreMaintenanceQueueResponse);
 }
 
 /**
@@ -759,19 +763,32 @@ message GetDrainingHostsRequest {
 * GetDrainingHostsResponse is the response message for InternalHostService.GetDrainingHosts
 */
 message GetDrainingHostsResponse {
-    // List of hostnames of the hosts dequeued
+    // Hostnames of the hosts dequeued
     repeated string hostnames = 1;
 }
 
 /*
-* MarkHostDrainedRequest is the request message for InternalHostService.MarkHostsDrained
+* MarkHostsDrainedRequest is the request message for InternalHostService.MarkHostsDrained
 */
-message MarkHostDrainedRequest {
-    // Hostname of the host to be marked as drained
-    string hostname = 1;
+message MarkHostsDrainedRequest {
+    // Hostnames of the hosts to be marked as drained
+    repeated string hostnames = 1;
 }
 
 /*
-* MarkHostDrainedResponse is the response message for InternalHostService.MarkHostsDrained
+* MarkHostsDrainedResponse is the response message for InternalHostService.MarkHostsDrained
 */
-message MarkHostDrainedResponse {}
+message MarkHostsDrainedResponse {
+    // Hostnames of the hosts successfully marked as drained
+    repeated string marked_hosts = 1;
+}
+
+/*
+* RestoreMaintenanceQueueRequest is the request message for InternalHostService.RestorehMaintenanceQueue
+*/
+message RestoreMaintenanceQueueRequest {}
+
+/*
+* RestoreMaintenanceQueueResponse is the response message for InternalHostService.RestoreMaintenanceQueue
+*/
+message RestoreMaintenanceQueueResponse {}

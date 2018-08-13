@@ -49,8 +49,8 @@ type Metrics struct {
 	GetDrainingHosts     tally.Counter
 	GetDrainingHostsFail tally.Counter
 
-	MarkHostDrained     tally.Counter
-	MarkHostDrainedFail tally.Counter
+	MarkHostsDrained     tally.Counter
+	MarkHostsDrainedFail tally.Counter
 
 	scope tally.Scope
 }
@@ -100,8 +100,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		GetDrainingHosts:     scope.Counter("get_hosts_to_drain"),
 		GetDrainingHostsFail: scope.Counter("get_hosts_to_drain_fail"),
 
-		MarkHostDrained:     scope.Counter("down_host_if_draining"),
-		MarkHostDrainedFail: scope.Counter("down_host_if_draining_fail"),
+		MarkHostsDrained:     scope.Counter("mark_hosts_draining"),
+		MarkHostsDrainedFail: scope.Counter("mark_hosts_draining_fail"),
 
 		scope: scope,
 	}

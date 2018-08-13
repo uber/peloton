@@ -8,10 +8,6 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
-
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -23,6 +19,7 @@ import (
 	"code.uber.internal/infra/peloton/common/constraints"
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/common/reservation"
+	"code.uber.internal/infra/peloton/common/stringset"
 	"code.uber.internal/infra/peloton/hostmgr/config"
 	"code.uber.internal/infra/peloton/hostmgr/factory/operation"
 	"code.uber.internal/infra/peloton/hostmgr/factory/task"
@@ -38,6 +35,11 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
+	"go.uber.org/multierr"
+	"go.uber.org/yarpc"
 )
 
 const (
@@ -47,8 +49,8 @@ const (
 	_errNilReservation         = "reservation is nil"
 )
 
-// serviceHandler implements peloton.private.hostmgr.InternalHostService.
-type serviceHandler struct {
+// ServiceHandler implements peloton.private.hostmgr.InternalHostService.
+type ServiceHandler struct {
 	schedulerClient       mpb.SchedulerClient
 	operatorMasterClient  mpb.MasterOperatorClient
 	metrics               *metrics.Metrics
@@ -59,11 +61,11 @@ type serviceHandler struct {
 	mesosDetector         hostmgr_mesos.MasterDetector
 	reserver              reserver.Reserver
 	hmConfig              config.Config
-	maintenanceQueue      mqueue.MaintenanceQueue // queue containing the machineIDs of the machines to be put into maintenance
+	maintenanceQueue      mqueue.MaintenanceQueue // queue containing machineIDs of the machines to be put into maintenance
 }
 
-// InitServiceHandler initialize serviceHandler.
-func InitServiceHandler(
+// NewServiceHandler creates a new ServiceHandler.
+func NewServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	schedulerClient mpb.SchedulerClient,
@@ -73,9 +75,9 @@ func InitServiceHandler(
 	mesosConfig hostmgr_mesos.Config,
 	mesosDetector hostmgr_mesos.MasterDetector,
 	hmConfig *config.Config,
-	maintenanceQueue mqueue.MaintenanceQueue) {
+	maintenanceQueue mqueue.MaintenanceQueue) *ServiceHandler {
 
-	handler := &serviceHandler{
+	handler := &ServiceHandler{
 		schedulerClient:       schedulerClient,
 		operatorMasterClient:  masterOperatorClient,
 		metrics:               metrics.NewMetrics(parent),
@@ -92,6 +94,8 @@ func InitServiceHandler(
 		hmConfig,
 		handler.offerPool)
 	d.Register(hostsvc.BuildInternalHostServiceYARPCProcedures(handler))
+
+	return handler
 }
 
 // validateHostFilter validates the host filter passed to
@@ -107,9 +111,10 @@ func validateHostFilter(
 }
 
 // GetOutstandingOffers returns all the offers present in offer pool.
-func (h *serviceHandler) GetOutstandingOffers(
+func (h *ServiceHandler) GetOutstandingOffers(
 	ctx context.Context,
-	body *hostsvc.GetOutstandingOffersRequest) (*hostsvc.GetOutstandingOffersResponse, error) {
+	body *hostsvc.GetOutstandingOffersRequest,
+) (*hostsvc.GetOutstandingOffersResponse, error) {
 
 	hostOffers, count := h.offerPool.GetOffers(summary.All)
 	if count == 0 {
@@ -136,9 +141,10 @@ func (h *serviceHandler) GetOutstandingOffers(
 }
 
 // AcquireHostOffers implements InternalHostService.AcquireHostOffers.
-func (h *serviceHandler) AcquireHostOffers(
+func (h *ServiceHandler) AcquireHostOffers(
 	ctx context.Context,
-	body *hostsvc.AcquireHostOffersRequest) (*hostsvc.AcquireHostOffersResponse, error) {
+	body *hostsvc.AcquireHostOffersRequest,
+) (*hostsvc.AcquireHostOffersResponse, error) {
 
 	log.WithField("request", body).Debug("AcquireHostOffers called.")
 
@@ -203,7 +209,7 @@ func (h *serviceHandler) AcquireHostOffers(
 // GetHosts implements InternalHostService.GetHosts.
 // This function gets the hosts based on resource requirements
 // and constraints passed in the request through hostsvc.HostFilter
-func (h *serviceHandler) GetHosts(
+func (h *ServiceHandler) GetHosts(
 	ctx context.Context,
 	body *hostsvc.GetHostsRequest) (*hostsvc.GetHostsResponse, error) {
 	log.WithField("request", body).Debug("GetHosts called.")
@@ -243,7 +249,9 @@ func (h *serviceHandler) GetHosts(
 
 // processGetHostsFailure process the GetHostsFailure and returns the
 // error in respose otherwise with empty error
-func (h *serviceHandler) processGetHostsFailure(err interface{}) *hostsvc.GetHostsResponse {
+func (h *ServiceHandler) processGetHostsFailure(
+	err interface{},
+) *hostsvc.GetHostsResponse {
 	resp := &hostsvc.GetHostsResponse{
 		Error: &hostsvc.GetHostsResponse_Error{},
 	}
@@ -260,7 +268,7 @@ func (h *serviceHandler) processGetHostsFailure(err interface{}) *hostsvc.GetHos
 }
 
 // ReleaseHostOffers implements InternalHostService.ReleaseHostOffers.
-func (h *serviceHandler) ReleaseHostOffers(
+func (h *ServiceHandler) ReleaseHostOffers(
 	ctx context.Context,
 	body *hostsvc.ReleaseHostOffersRequest) (
 	*hostsvc.ReleaseHostOffersResponse, error) {
@@ -328,7 +336,9 @@ func validateOfferOperationsRequest(
 
 // extractReserveationLabels checks if operations on reserved offers, if yes,
 // returns reservation labels, otherwise nil.
-func (h *serviceHandler) extractReserveationLabels(req *hostsvc.OfferOperationsRequest) *mesos.Labels {
+func (h *ServiceHandler) extractReserveationLabels(
+	req *hostsvc.OfferOperationsRequest,
+) *mesos.Labels {
 	reqOps := req.GetOperations()
 	if len(reqOps) == 1 &&
 		reqOps[0].GetType() == hostsvc.OfferOperation_LAUNCH {
@@ -345,7 +355,7 @@ func (h *serviceHandler) extractReserveationLabels(req *hostsvc.OfferOperationsR
 }
 
 // OfferOperations implements InternalHostService.OfferOperations.
-func (h *serviceHandler) OfferOperations(
+func (h *ServiceHandler) OfferOperations(
 	ctx context.Context,
 	req *hostsvc.OfferOperationsRequest) (
 	*hostsvc.OfferOperationsResponse,
@@ -476,7 +486,7 @@ func (h *serviceHandler) OfferOperations(
 }
 
 // persistVolumeInfo write volume information into db.
-func (h *serviceHandler) persistVolumeInfo(
+func (h *ServiceHandler) persistVolumeInfo(
 	ctx context.Context,
 	offerOperations []*mesos.Offer_Operation,
 	hostname string) error {
@@ -537,7 +547,7 @@ func (h *serviceHandler) persistVolumeInfo(
 }
 
 // LaunchTasks implements InternalHostService.LaunchTasks.
-func (h *serviceHandler) LaunchTasks(
+func (h *ServiceHandler) LaunchTasks(
 	ctx context.Context,
 	body *hostsvc.LaunchTasksRequest) (
 	*hostsvc.LaunchTasksResponse,
@@ -717,7 +727,7 @@ func validateShutdownExecutors(request *hostsvc.ShutdownExecutorsRequest) error 
 }
 
 // ShutdownExecutors implements InternalHostService.ShutdownExecutors.
-func (h *serviceHandler) ShutdownExecutors(
+func (h *ServiceHandler) ShutdownExecutors(
 	ctx context.Context,
 	body *hostsvc.ShutdownExecutorsRequest) (
 	*hostsvc.ShutdownExecutorsResponse, error) {
@@ -791,7 +801,7 @@ func (h *serviceHandler) ShutdownExecutors(
 }
 
 // KillTasks implements InternalHostService.KillTasks.
-func (h *serviceHandler) KillTasks(
+func (h *ServiceHandler) KillTasks(
 	ctx context.Context,
 	body *hostsvc.KillTasksRequest) (
 	*hostsvc.KillTasksResponse, error) {
@@ -863,7 +873,7 @@ func (h *serviceHandler) KillTasks(
 }
 
 // ReserveResources implements InternalHostService.ReserveResources.
-func (h *serviceHandler) ReserveResources(
+func (h *ServiceHandler) ReserveResources(
 	ctx context.Context,
 	body *hostsvc.ReserveResourcesRequest) (
 	*hostsvc.ReserveResourcesResponse, error) {
@@ -873,7 +883,7 @@ func (h *serviceHandler) ReserveResources(
 }
 
 // UnreserveResources implements InternalHostService.UnreserveResources.
-func (h *serviceHandler) UnreserveResources(
+func (h *ServiceHandler) UnreserveResources(
 	ctx context.Context,
 	body *hostsvc.UnreserveResourcesRequest) (
 	*hostsvc.UnreserveResourcesResponse, error) {
@@ -883,7 +893,7 @@ func (h *serviceHandler) UnreserveResources(
 }
 
 // CreateVolumes implements InternalHostService.CreateVolumes.
-func (h *serviceHandler) CreateVolumes(
+func (h *ServiceHandler) CreateVolumes(
 	ctx context.Context,
 	body *hostsvc.CreateVolumesRequest) (
 	*hostsvc.CreateVolumesResponse, error) {
@@ -893,7 +903,7 @@ func (h *serviceHandler) CreateVolumes(
 }
 
 // DestroyVolumes implements InternalHostService.DestroyVolumes.
-func (h *serviceHandler) DestroyVolumes(
+func (h *ServiceHandler) DestroyVolumes(
 	ctx context.Context,
 	body *hostsvc.DestroyVolumesRequest) (
 	*hostsvc.DestroyVolumesResponse, error) {
@@ -903,7 +913,7 @@ func (h *serviceHandler) DestroyVolumes(
 }
 
 // ClusterCapacity fetches the allocated resources to the framework
-func (h *serviceHandler) ClusterCapacity(
+func (h *ServiceHandler) ClusterCapacity(
 	ctx context.Context,
 	body *hostsvc.ClusterCapacityRequest) (
 	*hostsvc.ClusterCapacityResponse, error) {
@@ -1031,7 +1041,7 @@ func (h *serviceHandler) ClusterCapacity(
 }
 
 // GetMesosMasterHostPort returns the Leader Mesos Master hostname and port.
-func (h *serviceHandler) GetMesosMasterHostPort(
+func (h *ServiceHandler) GetMesosMasterHostPort(
 	ctx context.Context,
 	body *hostsvc.MesosMasterHostPortRequest) (*hostsvc.MesosMasterHostPortResponse, error) {
 
@@ -1047,15 +1057,13 @@ func (h *serviceHandler) GetMesosMasterHostPort(
 	return mesosMasterHostPortResponse, nil
 }
 
-/*
-* ReserveHosts reserves the host for a specified task in the request.
-* Host Manager will keep the host offers to itself till the time
-* it does not have enough offers to itself and once that's fulfilled
-* it will return the reservation with the offer to placement engine.
-* till the time reservation is fulfilled or reservation timeout ,
-* offers from that host will not be given to any other placement engine.
- */
-func (h *serviceHandler) ReserveHosts(
+// ReserveHosts reserves the host for a specified task in the request.
+// Host Manager will keep the host offers to itself till the time
+// it does not have enough offers to itself and once that's fulfilled
+// it will return the reservation with the offer to placement engine.
+// till the time reservation is fulfilled or reservation timeout ,
+// offers from that host will not be given to any other placement engine.
+func (h *ServiceHandler) ReserveHosts(
 	ctx context.Context,
 	req *hostsvc.ReserveHostsRequest,
 ) (*hostsvc.ReserveHostsResponse, error) {
@@ -1084,17 +1092,17 @@ func (h *serviceHandler) ReserveHosts(
 	return &hostsvc.ReserveHostsResponse{}, nil
 }
 
-/*
- * GetCompletedReservations gets the completed host reservations from
- * reserver. Based on the reserver it returns the list of completed
- * Reservations (hostsvc.CompletedReservation) or return the NoFound Error.
- */
-func (h *serviceHandler) GetCompletedReservations(
+// GetCompletedReservations gets the completed host reservations from
+// reserver. Based on the reserver it returns the list of completed
+// Reservations (hostsvc.CompletedReservation) or return the NoFound Error.
+func (h *ServiceHandler) GetCompletedReservations(
 	ctx context.Context,
 	req *hostsvc.GetCompletedReservationRequest,
 ) (*hostsvc.GetCompletedReservationResponse, error) {
 	log.WithField("request", req).Debug("GetCompletedReservations called.")
-	completedReservations, err := h.reserver.DequeueCompletedReservation(ctx, _completedReservationLimit)
+	completedReservations, err := h.reserver.DequeueCompletedReservation(
+		ctx,
+		_completedReservationLimit)
 	if err != nil {
 		return &hostsvc.GetCompletedReservationResponse{
 			Error: &hostsvc.GetCompletedReservationResponse_Error{
@@ -1111,11 +1119,14 @@ func (h *serviceHandler) GetCompletedReservations(
 }
 
 // GetDrainingHosts implements InternalHostService.GetDrainingHosts
-func (h *serviceHandler) GetDrainingHosts(ctx context.Context, request *hostsvc.GetDrainingHostsRequest) (*hostsvc.GetDrainingHostsResponse, error) {
+func (h *ServiceHandler) GetDrainingHosts(
+	ctx context.Context,
+	request *hostsvc.GetDrainingHostsRequest,
+) (*hostsvc.GetDrainingHostsResponse, error) {
 	timeout := time.Duration(request.GetTimeout())
 	var hostnames []string
 	limit := request.GetLimit()
-	// If request.limit is not specified, set limit to length of maintenance queue
+	// If limit is not specified, set limit to length of maintenance queue
 	if limit == 0 {
 		limit = uint32(h.maintenanceQueue.Length())
 	}
@@ -1134,45 +1145,95 @@ func (h *serviceHandler) GetDrainingHosts(ctx context.Context, request *hostsvc.
 		hostnames = append(hostnames, hostname)
 		h.metrics.GetDrainingHosts.Inc(1)
 	}
-	log.WithField("hosts", hostnames).Debug("Maintenance Queue - Dequeued hosts")
-
+	log.WithField("hosts", hostnames).
+		Debug("Maintenance Queue - Dequeued hosts")
 	return &hostsvc.GetDrainingHostsResponse{
 		Hostnames: hostnames,
 	}, nil
 }
 
-// MarkHostDrained implements InternalHostService.MarkHostDrained
-func (h *serviceHandler) MarkHostDrained(ctx context.Context, request *hostsvc.MarkHostDrainedRequest) (*hostsvc.MarkHostDrainedResponse, error) {
+// MarkHostsDrained implements InternalHostService.MarkHostsDrained
+// Mark the host as drained. This method is called by Resource Manager Drainer
+// when there are no tasks on the DRAINING hosts
+func (h *ServiceHandler) MarkHostsDrained(
+	ctx context.Context,
+	request *hostsvc.MarkHostsDrainedRequest,
+) (*hostsvc.MarkHostsDrainedResponse, error) {
 	response, err := h.operatorMasterClient.GetMaintenanceStatus()
 	if err != nil {
 		log.WithError(err).Error("Error getting maintenance status")
-		h.metrics.MarkHostDrainedFail.Inc(1)
 		return nil, err
 	}
 	status := response.GetStatus()
-	isHostDraining := false
-	var machineID *mesos.MachineID
-	for _, clusterStatusDrainingMachine := range status.GetDrainingMachines() {
-		if clusterStatusDrainingMachine.GetId().GetHostname() == request.GetHostname() {
-			isHostDraining = true
-			machineID = clusterStatusDrainingMachine.GetId()
-			break
+	hostSet := stringset.New()
+	for _, host := range request.GetHostnames() {
+		hostSet.Add(host)
+	}
+	var machineIDs []*mesos.MachineID
+	for _, drainingMachine := range status.GetDrainingMachines() {
+		if hostSet.Contains(drainingMachine.GetId().GetHostname()) {
+			machineIDs = append(machineIDs, drainingMachine.GetId())
 		}
 	}
-
-	if isHostDraining {
-		// If the host is currently in 'DRAINING' state, then start maintenance
-		// on the host by posting to /machine/down endpoint of the Mesos Master
+	// No-op if none of the hosts in the request are 'DRAINING'
+	if len(machineIDs) == 0 {
+		return &hostsvc.MarkHostsDrainedResponse{}, nil
+	}
+	var downedHosts []string
+	var errs error
+	for _, machineID := range machineIDs {
+		// Start maintenance on the host by posting to
+		// /machine/down endpoint of the Mesos Master
 		err = h.operatorMasterClient.StartMaintenance([]*mesos.MachineID{machineID})
 		if err != nil {
-			log.WithError(err).Error("failed to down host: " + request.GetHostname())
-			h.metrics.MarkHostDrainedFail.Inc(1)
-			return nil, err
+			errs = multierr.Append(errs, err)
+			log.WithError(err).
+				WithField("machine", machineID).
+				Error(fmt.Sprintf("failed to down host"))
+			h.metrics.MarkHostsDrainedFail.Inc(1)
+			continue
 		}
-	} else {
-		log.Info("Host " + request.GetHostname() + " not in draining state")
+		downedHosts = append(downedHosts, machineID.GetHostname())
+	}
+	h.metrics.MarkHostsDrained.Inc(int64(len(downedHosts)))
+	return &hostsvc.MarkHostsDrainedResponse{
+		MarkedHosts: downedHosts,
+	}, errs
+}
+
+// RestoreMaintenanceQueue implements InternalHostService.RestoreMaintenanceQueue
+// Restore contents of maintenance queue from Mesos Maintenance Status
+func (h *ServiceHandler) RestoreMaintenanceQueue(
+	ctx context.Context,
+	request *hostsvc.RestoreMaintenanceQueueRequest,
+) (*hostsvc.RestoreMaintenanceQueueResponse, error) {
+	// Clear contents of maintenance queue before
+	// enqueuing, to ensure removal of stale data
+	h.maintenanceQueue.Clear()
+
+	// Get Maintenance Status from Mesos Master
+	response, err := h.operatorMasterClient.GetMaintenanceStatus()
+	if err != nil {
+		return nil, err
 	}
 
-	h.metrics.MarkHostDrained.Inc(1)
-	return &hostsvc.MarkHostDrainedResponse{}, nil
+	clusterStatus := response.GetStatus()
+	if clusterStatus == nil {
+		log.Info("Empty maintenance status received")
+		return &hostsvc.RestoreMaintenanceQueueResponse{}, nil
+	}
+
+	// Extract hostnames of draining machines
+	var drainingHosts []string
+	for _, drainingMachine := range clusterStatus.DrainingMachines {
+		drainingHosts = append(drainingHosts, drainingMachine.GetId().GetHostname())
+	}
+
+	// Enqueue hostnames
+	err = h.maintenanceQueue.Enqueue(drainingHosts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &hostsvc.RestoreMaintenanceQueueResponse{}, nil
 }

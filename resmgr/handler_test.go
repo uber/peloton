@@ -71,7 +71,9 @@ func (s *HandlerTestSuite) SetupSuite() {
 
 	s.hostMgrClient = host_mocks.NewMockInternalHostServiceYARPCClient(s.ctrl)
 	// Initializing the resmgr state machine
-	rm_task.InitTaskTracker(tally.NoopScope, tasktestutil.CreateTaskConfig(), s.hostMgrClient)
+	rm_task.InitTaskTracker(
+		tally.NoopScope,
+		tasktestutil.CreateTaskConfig())
 
 	s.rmTaskTracker = rm_task.GetTracker()
 	rm_task.InitScheduler(tally.NoopScope, 1*time.Second, s.rmTaskTracker)
@@ -1057,7 +1059,9 @@ func (s *HandlerTestSuite) createUpdateTasksStateRequest(
 
 func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 	var c uint64
-	rm_task.InitTaskTracker(tally.NoopScope, tasktestutil.CreateTaskConfig(), s.hostMgrClient)
+	rm_task.InitTaskTracker(
+		tally.NoopScope,
+		tasktestutil.CreateTaskConfig())
 	handler := &ServiceHandler{
 		metrics:   NewMetrics(tally.NoopScope),
 		maxOffset: &c,

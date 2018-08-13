@@ -7,7 +7,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
+	"code.uber.internal/infra/peloton/common/backoff"
 	"code.uber.internal/infra/peloton/common/lifecycle"
+	"code.uber.internal/infra/peloton/common/stringset"
 	"code.uber.internal/infra/peloton/resmgr/preemption"
 	rmtask "code.uber.internal/infra/peloton/resmgr/task"
 
@@ -17,9 +19,11 @@ import (
 )
 
 const (
-	contextTimeout      = 10 * time.Second
-	hostsToDrainLimit   = 100  // Maximum number of hosts to be polled from Maintenance Queue
-	hostsToDrainTimeout = 1000 // Maintenance Queue poll timeout
+	contextTimeout                      = 10 * time.Second
+	drainingHostsLimit                  = 100                    // Maximum number of hosts to be polled from Maintenance Queue
+	drainingHostsTimeout                = 1000                   // Maintenance Queue poll timeout
+	markHostDrainedBackoffRetryCount    = 3                      // Retry count to mark host drained
+	markHostDrainedBackoffRetryInterval = 100 * time.Millisecond // Retry interval to mark host drained
 )
 
 // Drainer defines the host drainer which drains
@@ -32,6 +36,7 @@ type Drainer struct {
 	drainerPeriod time.Duration        // Period to run host drainer
 	preemptor     preemption.Preemptor // Task Preemptor
 	lifecycle     lifecycle.LifeCycle  // Lifecycle manager
+	drainingHosts stringset.StringSet  // Set of hosts currently being drained
 }
 
 // NewDrainer creates a new Drainer
@@ -49,6 +54,7 @@ func NewDrainer(
 		preemptor:     preemptor,
 		drainerPeriod: drainerPeriod,
 		lifecycle:     lifecycle.NewLifeCycle(),
+		drainingHosts: stringset.New(),
 	}
 }
 
@@ -95,14 +101,16 @@ func (d *Drainer) Stop() error {
 	log.Info("Stopping Host Drainer")
 	// Wait for drainer to be stopped
 	d.lifecycle.Wait()
+	// Clear the set
+	d.drainingHosts.Clear()
 	log.Info("Host Drainer Stopped")
 	return nil
 }
 
 func (d *Drainer) performDrainCycle() error {
 	request := &hostsvc.GetDrainingHostsRequest{
-		Limit:   hostsToDrainLimit,
-		Timeout: hostsToDrainTimeout,
+		Limit:   drainingHostsLimit,
+		Timeout: drainingHostsTimeout,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 	defer cancel()
@@ -112,44 +120,70 @@ func (d *Drainer) performDrainCycle() error {
 		return err
 	}
 
-	hosts := response.GetHostnames()
-	if len(hosts) == 0 {
-		return nil
+	for _, host := range response.GetHostnames() {
+		d.drainingHosts.Add(host)
 	}
-
-	err = d.drainHosts(hosts)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return d.drainHosts()
 }
 
-func (d *Drainer) drainHosts(hosts []string) error {
-	errs := new(multierror.Error)
+func (d *Drainer) drainHosts() error {
+	var errs error
 
-	log.WithField("hosts", hosts).Info("Draining hosts")
-	tasksByHost := d.rmTracker.TasksByHosts(hosts, resmgr.TaskType_UNKNOWN)
-	for _, host := range hosts {
+	log.WithField("hosts", d.drainingHosts).Info("Draining hosts")
+	drainingHosts := d.drainingHosts.ToSlice()
+	// No-op if there are no hosts to drain
+	if len(drainingHosts) == 0 {
+		return nil
+	}
+	// Get all tasks on the DRAINING hosts
+	tasksByHost := d.rmTracker.TasksByHosts(drainingHosts, resmgr.TaskType_UNKNOWN)
+	var drainedHosts []string
+	for _, host := range drainingHosts {
 		if _, ok := tasksByHost[host]; !ok {
-			ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
-			defer cancel()
-
-			_, err := d.hostMgrClient.MarkHostDrained(ctx, &hostsvc.MarkHostDrainedRequest{
-				Hostname: host,
-			})
-			if err != nil {
-				log.WithError(err).Error("Error while downing host: " + host)
-				errs = multierror.Append(errs, err)
-			}
+			drainedHosts = append(drainedHosts, host)
 			continue
 		}
-		err := d.preemptor.EnqueueTasks(tasksByHost[host], resmgr.PreemptionReason_PREEMPTION_REASON_HOST_MAINTENANCE)
+		err := d.preemptor.EnqueueTasks(
+			tasksByHost[host],
+			resmgr.PreemptionReason_PREEMPTION_REASON_HOST_MAINTENANCE)
 		if err != nil {
-			log.WithError(err).Error("Failed to enqueue some tasks")
+			log.WithField("host", host).
+				WithError(err).
+				Error("Failed to enqueue some tasks")
 			errs = multierror.Append(errs, err)
 		}
 	}
+	if len(drainedHosts) != 0 {
+		err := d.markHostsDrained(drainedHosts)
+		if err != nil {
+			errs = multierror.Append(err, errs)
+		}
+	}
+	return errs
+}
 
-	return errs.ErrorOrNil()
+func (d *Drainer) markHostsDrained(hosts []string) error {
+	err := backoff.Retry(
+		func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			response, err := d.hostMgrClient.MarkHostsDrained(
+				ctx,
+				&hostsvc.MarkHostsDrainedRequest{
+					Hostnames: hosts,
+				})
+			for _, host := range response.GetMarkedHosts() {
+				d.drainingHosts.Remove(host)
+			}
+			return err
+		},
+		backoff.NewRetryPolicy(
+			markHostDrainedBackoffRetryCount,
+			time.Duration(markHostDrainedBackoffRetryInterval),
+		),
+		func(error) bool {
+			return true
+		},
+	)
+	return err
 }

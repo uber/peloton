@@ -139,11 +139,32 @@ type HostMgrHandlerTestSuite struct {
 	provider             *hostmgr_mesos_mocks.MockFrameworkInfoProvider
 	volumeStore          *storage_mocks.MockPersistentVolumeStore
 	pool                 offerpool.Pool
-	handler              *serviceHandler
+	handler              *ServiceHandler
 	frameworkID          *mesos.FrameworkID
 	mesosDetector        *hostmgr_mesos_mocks.MockMasterDetector
 	reserver             reserver.Reserver
 	maintenanceQueue     *mocks.MockMaintenanceQueue
+	drainingMachines     []*mesos.MachineID
+	downMachines         []*mesos.MachineID
+}
+
+func (suite *HostMgrHandlerTestSuite) SetupSuite() {
+	drainingHostname := "draininghost"
+	drainingIP := "172.17.0.6"
+	drainingMachine := &mesos.MachineID{
+		Hostname: &drainingHostname,
+		Ip:       &drainingIP,
+	}
+	suite.drainingMachines = append(suite.drainingMachines, drainingMachine)
+
+	downHostname := "downhost"
+	downIP := "172.17.0.7"
+	downMachine := &mesos.MachineID{
+		Hostname: &downHostname,
+		Ip:       &downIP,
+	}
+
+	suite.downMachines = append(suite.downMachines, downMachine)
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupTest() {
@@ -174,7 +195,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 
 	suite.maintenanceQueue = mocks.NewMockMaintenanceQueue(suite.ctrl)
 
-	suite.handler = &serviceHandler{
+	suite.handler = &ServiceHandler{
 		schedulerClient:       suite.schedulerClient,
 		operatorMasterClient:  suite.masterOperatorClient,
 		metrics:               metrics.NewMetrics(suite.testScope),
@@ -1464,64 +1485,92 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerGetDrainingHosts() {
 	suite.Equal(testHost, resp.GetHostnames()[0])
 	suite.NoError(err)
 
-	suite.maintenanceQueue.EXPECT().Dequeue(gomock.Any()).Return("", fmt.Errorf("fake Dequeue error"))
+	suite.maintenanceQueue.EXPECT().
+		Dequeue(gomock.Any()).
+		Return("", fmt.Errorf("fake Dequeue error"))
 	resp, err = suite.handler.GetDrainingHosts(context.Background(), req)
 	suite.Error(err)
 	suite.Nil(resp)
 }
 
-func (suite *HostMgrHandlerTestSuite) TestServiceHandlerMarkHostDrained() {
+func (suite *HostMgrHandlerTestSuite) TestServiceHandlerMarkHostsDrained() {
 	defer suite.ctrl.Finish()
 
-	hostname := "testhost"
-	machineID := &mesos.MachineID{
-		Hostname: &hostname,
-	}
+	hostnames := []string{"testhost"}
+
 	var drainingMachines []*mesos_maintenance.ClusterStatus_DrainingMachine
-	drainingMachines = append(drainingMachines, &mesos_maintenance.ClusterStatus_DrainingMachine{
-		Id: machineID,
-	})
+	for i := range hostnames {
+		machineID := &mesos.MachineID{
+			Hostname: &hostnames[i],
+		}
+		drainingMachines = append(drainingMachines,
+			&mesos_maintenance.ClusterStatus_DrainingMachine{
+				Id: machineID,
+			})
+	}
 	status := &mesos_maintenance.ClusterStatus{
 		DrainingMachines: drainingMachines,
 	}
-	suite.masterOperatorClient.EXPECT().GetMaintenanceStatus().Return(&mesos_master.Response_GetMaintenanceStatus{
-		Status: status,
-	}, nil)
-	suite.masterOperatorClient.EXPECT().StartMaintenance(gomock.Any()).Return(nil).Do(func(machineIds []*mesos.MachineID) {
-		suite.Exactly(machineID, machineIds[0])
-	})
-	resp, err := suite.handler.MarkHostDrained(context.Background(), &hostsvc.MarkHostDrainedRequest{
-		Hostname: hostname,
-	})
+	suite.masterOperatorClient.EXPECT().
+		GetMaintenanceStatus().
+		Return(&mesos_master.Response_GetMaintenanceStatus{
+			Status: status,
+		}, nil)
+	suite.masterOperatorClient.EXPECT().
+		StartMaintenance(gomock.Any()).
+		Return(nil).
+		Do(func(machineIds []*mesos.MachineID) {
+			for i := range drainingMachines {
+				suite.Exactly(drainingMachines[i].Id, machineIds[i])
+			}
+		})
+	resp, err := suite.handler.MarkHostsDrained(
+		context.Background(),
+		&hostsvc.MarkHostsDrainedRequest{
+			Hostnames: hostnames,
+		})
 	suite.NoError(err)
 	suite.NotNil(resp)
 
 	// Test host-not-DRAINING
-	suite.masterOperatorClient.EXPECT().GetMaintenanceStatus().Return(&mesos_master.Response_GetMaintenanceStatus{}, nil)
-	resp, err = suite.handler.MarkHostDrained(context.Background(), &hostsvc.MarkHostDrainedRequest{
-		Hostname: hostname,
-	})
-	suite.NoError(err)
-	suite.NotNil(resp)
+	suite.masterOperatorClient.EXPECT().
+		GetMaintenanceStatus().
+		Return(&mesos_master.Response_GetMaintenanceStatus{}, nil)
+	resp, err = suite.handler.MarkHostsDrained(
+		context.Background(),
+		&hostsvc.MarkHostsDrainedRequest{
+			Hostnames: hostnames,
+		})
+	suite.Nil(resp.GetMarkedHosts())
 
 	// Test GetMaintenanceStatus error
-	suite.masterOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, fmt.Errorf("fake GetMaintenanceStatus error"))
-	resp, err = suite.handler.MarkHostDrained(context.Background(), &hostsvc.MarkHostDrainedRequest{
-		Hostname: hostname,
-	})
+	suite.masterOperatorClient.EXPECT().
+		GetMaintenanceStatus().
+		Return(nil, fmt.Errorf("fake GetMaintenanceStatus error"))
+	resp, err = suite.handler.MarkHostsDrained(
+		context.Background(),
+		&hostsvc.MarkHostsDrainedRequest{
+			Hostnames: hostnames,
+		})
 	suite.Error(err)
 	suite.Nil(resp)
 
 	// Test StartMaintenance error
-	suite.masterOperatorClient.EXPECT().GetMaintenanceStatus().Return(&mesos_master.Response_GetMaintenanceStatus{
-		Status: status,
-	}, nil)
-	suite.masterOperatorClient.EXPECT().StartMaintenance(gomock.Any()).Return(fmt.Errorf("fake StartMaintenance error"))
-	resp, err = suite.handler.MarkHostDrained(context.Background(), &hostsvc.MarkHostDrainedRequest{
-		Hostname: hostname,
-	})
+	suite.masterOperatorClient.EXPECT().
+		GetMaintenanceStatus().
+		Return(&mesos_master.Response_GetMaintenanceStatus{
+			Status: status,
+		}, nil)
+	suite.masterOperatorClient.EXPECT().
+		StartMaintenance(gomock.Any()).
+		Return(fmt.Errorf("fake StartMaintenance error"))
+	resp, err = suite.handler.MarkHostsDrained(
+		context.Background(),
+		&hostsvc.MarkHostsDrainedRequest{
+			Hostnames: hostnames,
+		})
 	suite.Error(err)
-	suite.Nil(resp)
+	suite.Nil(resp.GetMarkedHosts())
 }
 
 func getAcquireHostOffersRequest() *hostsvc.AcquireHostOffersRequest {
@@ -1752,7 +1801,7 @@ func (suite *HostMgrHandlerTestSuite) TestReserveHostsError() {
 // And check the error case
 func (suite *HostMgrHandlerTestSuite) TestEnqueueReservationError() {
 	ctrl := gomock.NewController(suite.T())
-	handler := &serviceHandler{}
+	handler := &ServiceHandler{}
 	mockReserver := reserver_mocks.NewMockReserver(ctrl)
 	handler.reserver = mockReserver
 	mockReserver.EXPECT().EnqueueReservation(gomock.Any(), gomock.Any()).
@@ -1788,7 +1837,7 @@ func (suite *HostMgrHandlerTestSuite) InitializeHosts(numAgents int) {
 // TestGetCompletedReservations tests the completed reservations
 func (suite *HostMgrHandlerTestSuite) TestGetCompletedReservations() {
 	ctrl := gomock.NewController(suite.T())
-	handler := &serviceHandler{}
+	handler := &ServiceHandler{}
 	mockReserver := reserver_mocks.NewMockReserver(ctrl)
 	handler.reserver = mockReserver
 	mockReserver.EXPECT().DequeueCompletedReservation(
@@ -1808,7 +1857,7 @@ func (suite *HostMgrHandlerTestSuite) TestGetCompletedReservations() {
 // in completed reservations
 func (suite *HostMgrHandlerTestSuite) TestGetCompletedReservationsError() {
 	ctrl := gomock.NewController(suite.T())
-	handler := &serviceHandler{}
+	handler := &ServiceHandler{}
 	mockReserver := reserver_mocks.NewMockReserver(ctrl)
 	handler.reserver = mockReserver
 	mockReserver.EXPECT().DequeueCompletedReservation(gomock.Any(),
@@ -1936,4 +1985,86 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchTasksError() {
 
 	suite.NoError(err)
 	suite.NotNil(launchResp.GetError().GetLaunchFailure())
+}
+
+// Test RestoreMaintenanceQueue
+func (suite *HostMgrHandlerTestSuite) TestRestoreMaintenanceQueue() {
+	var clusterDrainingMachines []*mesos_maintenance.ClusterStatus_DrainingMachine
+	for _, drainingMachine := range suite.drainingMachines {
+		clusterDrainingMachines = append(clusterDrainingMachines, &mesos_maintenance.ClusterStatus_DrainingMachine{
+			Id: drainingMachine,
+		})
+	}
+
+	clusterStatus := &mesos_maintenance.ClusterStatus{
+		DrainingMachines: clusterDrainingMachines,
+		DownMachines:     suite.downMachines,
+	}
+
+	suite.maintenanceQueue.EXPECT().Clear()
+	suite.masterOperatorClient.EXPECT().GetMaintenanceStatus().Return(&mesos_master.Response_GetMaintenanceStatus{
+		Status: clusterStatus,
+	}, nil)
+
+	var drainingHostnames []string
+	for _, machine := range suite.drainingMachines {
+		drainingHostnames = append(drainingHostnames, machine.GetHostname())
+	}
+	suite.maintenanceQueue.EXPECT().Enqueue(gomock.Any()).Return(nil).Do(func(hostnames []string) {
+		suite.EqualValues(drainingHostnames, hostnames)
+	})
+
+	resp, err := suite.handler.RestoreMaintenanceQueue(rootCtx, &hostsvc.RestoreMaintenanceQueueRequest{})
+	suite.NotNil(resp)
+	suite.NoError(err)
+}
+
+// Test RestoreMaintenanceQueue error while getting maintenance status
+func (suite *HostMgrHandlerTestSuite) TestRestoreMaintenanceQueue_GetMaintenanceStatusError() {
+	suite.maintenanceQueue.EXPECT().Clear()
+	suite.masterOperatorClient.EXPECT().
+		GetMaintenanceStatus().
+		Return(nil, fmt.Errorf("fake GetMaintenanceStatus error"))
+	resp, err := suite.handler.RestoreMaintenanceQueue(rootCtx, &hostsvc.RestoreMaintenanceQueueRequest{})
+	suite.Nil(resp)
+	suite.Error(err)
+}
+
+// Test RestoreMaintenanceQueue - empty maintenance status
+func (suite *HostMgrHandlerTestSuite) TestRestoreMaintenanceQueue_EmptyMaintenanceStatus() {
+	suite.maintenanceQueue.EXPECT().Clear()
+	suite.masterOperatorClient.EXPECT().
+		GetMaintenanceStatus().
+		Return(&mesos_master.Response_GetMaintenanceStatus{}, nil)
+	resp, err := suite.handler.RestoreMaintenanceQueue(rootCtx, &hostsvc.RestoreMaintenanceQueueRequest{})
+	suite.NotNil(resp)
+	suite.NoError(err)
+}
+
+// Test RestoreMaintenanceQueue error while enqueuing into maintenance queue
+func (suite *HostMgrHandlerTestSuite) TestRestoreMaintenanceQueue_EnqueueError() {
+	var clusterDrainingMachines []*mesos_maintenance.ClusterStatus_DrainingMachine
+	for _, drainingMachine := range suite.drainingMachines {
+		clusterDrainingMachines = append(clusterDrainingMachines,
+			&mesos_maintenance.ClusterStatus_DrainingMachine{
+				Id: drainingMachine,
+			})
+	}
+
+	clusterStatus := &mesos_maintenance.ClusterStatus{
+		DrainingMachines: clusterDrainingMachines,
+		DownMachines:     suite.downMachines,
+	}
+	suite.maintenanceQueue.EXPECT().Clear()
+	suite.masterOperatorClient.EXPECT().
+		GetMaintenanceStatus().
+		Return(&mesos_master.Response_GetMaintenanceStatus{
+			Status: clusterStatus,
+		}, nil)
+	suite.maintenanceQueue.EXPECT().
+		Enqueue(gomock.Any()).
+		Return(fmt.Errorf("fake Enqueue error"))
+	resp, err := suite.handler.RestoreMaintenanceQueue(rootCtx, &hostsvc.RestoreMaintenanceQueueRequest{})
+	suite.Nil(resp)
+	suite.Error(err)
 }

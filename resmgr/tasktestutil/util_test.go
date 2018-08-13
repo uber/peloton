@@ -8,8 +8,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -58,18 +56,7 @@ func (suite *TestUtilTestSuite) TestValidateResources() {
 // TestValidateTransitions validates the transitions
 func (suite *TestUtilTestSuite) TestValidateTransitions() {
 	mockCtrl := gomock.NewController(suite.T())
-	mockHostmgr := mocks.NewMockInternalHostServiceYARPCClient(
-		mockCtrl)
-	mockHostmgr.EXPECT().
-		MarkHostDrained(
-			gomock.Any(),
-			gomock.Any()).
-		Return(
-			&hostsvc.MarkHostDrainedResponse{},
-			nil,
-		).
-		AnyTimes()
-	rm_task.InitTaskTracker(tally.NoopScope, CreateTaskConfig(), mockHostmgr)
+	rm_task.InitTaskTracker(tally.NoopScope, CreateTaskConfig())
 	rmTaskTracker := rm_task.GetTracker()
 	mockResPool := rmock.NewMockResPool(mockCtrl)
 	mockResPool.EXPECT().GetPath().Return("/mock/path")
