@@ -43,25 +43,39 @@ func TestGetTaskType(t *testing.T) {
 }
 
 func TestConvertTaskToResMgrTask(t *testing.T) {
-	taskInfo := &task.TaskInfo{
-		InstanceId: 0,
-		JobId:      &peloton.JobID{Value: uuid.New()},
-		Config: &task.TaskConfig{
-			Ports: []*task.PortConfig{{Name: "http", Value: 0}},
+	taskInfos := []*task.TaskInfo{
+		{
+			InstanceId: 0,
+			JobId:      &peloton.JobID{Value: uuid.New()},
+			Config: &task.TaskConfig{
+				Ports: []*task.PortConfig{{Name: "http", Value: 0}},
+			},
+			Runtime: &task.RuntimeInfo{
+				State: task.TaskState_RUNNING,
+				Host:  "hostname",
+			},
 		},
-		Runtime: &task.RuntimeInfo{
-			State: task.TaskState_RUNNING,
-			Host:  "hostname",
+		{
+			InstanceId: 1,
+			JobId:      &peloton.JobID{Value: uuid.New()},
+			Config: &task.TaskConfig{
+				Ports: []*task.PortConfig{{Name: "http", Value: 0}},
+			},
+			Runtime: &task.RuntimeInfo{
+				State: task.TaskState_INITIALIZED,
+			},
 		},
 	}
 
 	jobConfig := &job.JobConfig{
 		SLA: &job.SlaConfig{},
 	}
-	rmTask := ConvertTaskToResMgrTask(taskInfo, jobConfig)
-	assert.Equal(t, taskInfo.JobId.Value, rmTask.JobId.Value)
-	assert.Equal(t, uint32(len(taskInfo.Config.Ports)), rmTask.NumPorts)
-	assert.Equal(t, taskInfo.GetRuntime().GetHost(), rmTask.GetHostname())
+	for _, taskInfo := range taskInfos {
+		rmTask := ConvertTaskToResMgrTask(taskInfo, jobConfig)
+		assert.Equal(t, taskInfo.JobId.Value, rmTask.JobId.Value)
+		assert.Equal(t, uint32(len(taskInfo.Config.Ports)), rmTask.NumPorts)
+		assert.Equal(t, taskInfo.GetRuntime().GetHost(), rmTask.GetHostname())
+	}
 }
 
 func TestConvertToResMgrGangs(t *testing.T) {
