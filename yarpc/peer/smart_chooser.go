@@ -63,6 +63,7 @@ func (c *smartChooser) Start() error {
 	}
 	log.WithFields(log.Fields{"role": c.role}).Debug("Starting peer chooser")
 	c.running = true
+	c.chooser.Start()
 	c.observer.Start()
 	return nil
 }
@@ -77,6 +78,7 @@ func (c *smartChooser) Stop() error {
 	}
 	log.WithFields(log.Fields{"role": c.role}).Debug("Stopping peer chooser")
 	c.running = false
+	c.chooser.Stop()
 	c.observer.Stop()
 	return nil
 }
@@ -85,7 +87,7 @@ func (c *smartChooser) Stop() error {
 func (c *smartChooser) IsRunning() bool {
 	c.Lock()
 	defer c.Unlock()
-	return c.running
+	return c.running && c.chooser.IsRunning()
 }
 
 // Choose is called when a request is sent. See
