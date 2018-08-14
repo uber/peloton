@@ -1,5 +1,5 @@
-hash: bc55f97cbcddd6020c8ff77c785ce66a8e46b7f99a9e3735d2c52ad353848bff
-updated: 2018-07-26T19:08:23.019117-07:00
+hash: 31118f046bcee63a16a53edd0aebafe2fc5e047e61a553bf6eefc751e5b8ee1f
+updated: 2018-08-14T13:04:28.433772427-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -42,15 +42,12 @@ imports:
   subpackages:
   - driver
   - driver/cassandra
-  - driver/mysql
   - file
   - migrate
   - migrate/direction
   - pipe
 - name: github.com/getsentry/raven-go
   version: d175f85701dfbf44cb0510114c9943e665e60907
-- name: github.com/go-sql-driver/mysql
-  version: 2e00b5cd70399450106cec6431c2e2ce3cae5034
 - name: github.com/gocql/gocql
   version: 56a164ee9f3135e9cfe725a6d25939f24cb2d044
   subpackages:
@@ -89,8 +86,6 @@ imports:
   version: ed905158d87462226a13fe39ddf685ea65f1c11f
 - name: github.com/jmoiron/sqlx
   version: cac998c4f0959c19c638c523e374fa8e4e0bcfe3
-  subpackages:
-  - reflectx
 - name: github.com/lann/builder
   version: f22ce00fd9394014049dad11c244859432bd6820
 - name: github.com/lann/ps
@@ -157,7 +152,7 @@ imports:
   subpackages:
   - zk
 - name: github.com/sirupsen/logrus
-  version: ba1b36c82c5e05c4f912a88eab0dcd91a171688f
+  version: 3e01752db0189b9157070a0e1668a620f9a85da2
 - name: github.com/stretchr/objx
   version: 1a9d0bb9f541897e62256577b352fdbc1fb4fd94
 - name: github.com/stretchr/testify
@@ -201,6 +196,7 @@ imports:
 - name: go.uber.org/automaxprocs
   version: 6fecebd30e89df4ebcb6ca6dc1d0a5c8d2aa10a0
   subpackages:
+  - internal/cgroups
   - internal/runtime
   - maxprocs
 - name: go.uber.org/multierr
@@ -251,15 +247,19 @@ imports:
   - yarpcconfig
   - yarpcerrors
 - name: go.uber.org/zap
-  version: 4d45f9617f7d90f7a663ff21c7a4321dbe78098b
+  version: ff33455a0e382e8a81d14dd7c922020b6b5e7982
   subpackages:
   - buffer
   - internal/bufferpool
   - internal/color
   - internal/exit
   - zapcore
+- name: golang.org/x/crypto
+  version: 96846453c37f0876340a66a47f3f75b1f3a6cd2d
+  subpackages:
+  - ssh/terminal
 - name: golang.org/x/net
-  version: 3673e40ba22529d22c3fd7c93e97b0ce50fa7bdd
+  version: d11bb6cd8e3c4e60239c9cb20ef68586d74500d0
   repo: https://github.com/golang/net
   subpackages:
   - bpf
@@ -276,7 +276,7 @@ imports:
   - ipv6
   - trace
 - name: golang.org/x/sys
-  version: 8f0908ab3b2457e2e15403d3697c9ef5cb4b57a9
+  version: 4e1fef5609515ec7a2cee7b5de30ba6d9b438cbf
   subpackages:
   - unix
 - name: golang.org/x/text
@@ -291,7 +291,7 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: 168a6198bcb0ef175f7dacec0b8691fc141dc9b8
+  version: 32fb0ac620c32ba40a4626ddf94d90d12cce3455
   repo: https://github.com/grpc/grpc-go
   subpackages:
   - balancer
@@ -306,7 +306,9 @@ imports:
   - internal
   - internal/backoff
   - internal/channelz
+  - internal/envconfig
   - internal/grpcrand
+  - internal/transport
   - keepalive
   - metadata
   - naming
@@ -317,7 +319,6 @@ imports:
   - stats
   - status
   - tap
-  - transport
 - name: gopkg.in/alecthomas/kingpin.v2
   version: 947dcec5ba9c011838740e680966fd7087a71d0d
 - name: gopkg.in/cheggaaa/pb.v1
