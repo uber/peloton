@@ -14,7 +14,7 @@ metrics:
     tags:
         cluster: peloton-default
   prometheus:
-    enable: true
+    enable: false
   # statsd:
   #   hostPort: 127.0.0.1:4744
   #   prefix: peloton

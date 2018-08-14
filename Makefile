@@ -79,7 +79,7 @@ install:
 	@if [ ! -d "$(VENDOR)" ]; then \
 		echo "Fetching dependencies"; \
 		glide --version || go get -u github.com/Masterminds/glide; \
-		rm -rf vendor && glide install; \
+		rm -rf vendor && glide cc && glide install; \
 	fi
 	@if [ ! -d "env" ]; then \
 		which virtualenv || pip install virtualenv ; \
