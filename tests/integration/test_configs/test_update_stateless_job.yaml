@@ -6,7 +6,7 @@ ldapGroups:
 - team6
 - otto
 type: 1
-description: "A dummy test stateless job for Peloton integration test"
+description: "A dummy test stateless job for Peloton update integration test"
 labels:
 - key: testKey0
   value: testVal0
@@ -35,6 +35,4 @@ defaultConfig:
   ports: []
   command:
     shell: true
-    value: 'while :; do echo running; sleep 10; done'
-changeLog:
-  version: 1
+    value: 'while :; do echo updated; sleep 10; done'
