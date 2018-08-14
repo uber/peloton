@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	task_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -240,12 +241,15 @@ func (suite *taskActionsTestSuite) TestGetPodEvents() {
 	err := c.PodGetEventsAction(jobID.GetValue(), 0, 5)
 	suite.Error(err)
 
+	runID := "taskid"
+	prevRunID := "prevtaskid"
+
 	podEvent := &task.PodEvent{
-		TaskId: &peloton.TaskID{
-			Value: "taskid",
+		TaskId: &mesos.TaskID{
+			Value: &runID,
 		},
-		PrevTaskId: &peloton.TaskID{
-			Value: "taskid",
+		PrevTaskId: &mesos.TaskID{
+			Value: &prevRunID,
 		},
 		ActualState: "PENDING",
 		GoalState:   "RUNNING",

@@ -337,13 +337,13 @@ enum HealthState {
   // If the health check config is enabled in the task config,
   // the initial value of the health state is HEALTH_UNKNOWN.
   HEALTH_UNKNOWN = 2;
- 
-  // In a Mesos event, If the healthy field is true and 
+
+  // In a Mesos event, If the healthy field is true and
   // the reason field is REASON_TASK_HEALTH_CHECK_STATUS_UPDATED
   // the health state of the task is HEALTHY
   HEALTHY     = 3;
 
-  // In a Mesos event, If the healthy field is false and 
+  // In a Mesos event, If the healthy field is false and
   // the reason field is REASON_TASK_HEALTH_CHECK_STATUS_UPDATED
   // the health state of the task is UNHEALTHY
   UNHEALTHY   = 4;
@@ -528,7 +528,7 @@ message TaskEvent {
  */
 message PodEvent {
   // The task ID of the task event.
-  peloton.TaskID taskId = 1;
+  mesos.v1.TaskID taskId = 1;
 
   // Actual state of an instance
   string actualState = 2;
@@ -559,7 +559,7 @@ message PodEvent {
   string reason = 10;
 
   // The previous task ID of the pod event.
-  peloton.TaskID prevTaskId = 11;
+  mesos.v1.TaskID prevTaskId = 11;
 
   // The health check result of the task
   string healthy = 12;

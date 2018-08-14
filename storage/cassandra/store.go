@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
@@ -1262,18 +1263,22 @@ func (s *Store) GetPodEvents(
 	for _, value := range allResults {
 		podEvent := &task.PodEvent{}
 
+		runID := fmt.Sprintf("%s-%d-%d",
+			value["job_id"].(qb.UUID),
+			value["instance_id"].(int),
+			value["run_id"].(int64))
+
+		prevRunID := fmt.Sprintf("%s-%d-%d",
+			value["job_id"].(qb.UUID),
+			value["instance_id"].(int),
+			value["previous_run_id"].(int64))
+
 		// Set podEvent fields
-		podEvent.TaskId = &peloton.TaskID{
-			Value: fmt.Sprintf("%s-%d-%d",
-				value["job_id"].(qb.UUID),
-				value["instance_id"].(int),
-				value["run_id"].(int64)),
+		podEvent.TaskId = &mesos.TaskID{
+			Value: &runID,
 		}
-		podEvent.PrevTaskId = &peloton.TaskID{
-			Value: fmt.Sprintf("%s-%d-%d",
-				value["job_id"].(qb.UUID),
-				value["instance_id"].(int),
-				value["previous_run_id"].(int64)),
+		podEvent.PrevTaskId = &mesos.TaskID{
+			Value: &prevRunID,
 		}
 		podEvent.Timestamp =
 			value["update_time"].(qb.UUID).Time().Format(time.RFC3339)
