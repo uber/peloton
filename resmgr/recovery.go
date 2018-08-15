@@ -64,6 +64,8 @@ incoming requests.
 Phase 2 - This phase is performed in the background and involves recovery of
 non-running tasks by the re-enqueueing them resource manager.
 Failure in this phase is non-fatal.
+
+Recovery of maintenance queue is performed
 */
 type RecoveryHandler struct {
 	sync.Mutex
@@ -76,7 +78,7 @@ type RecoveryHandler struct {
 	nonRunningTasks []*resmgrsvc.EnqueueGangsRequest
 	finished        chan bool //used for testing
 	tracker         rmtask.Tracker
-	stopChan        chan bool
+	drainerStopChan chan bool
 }
 
 // NewRecovery initializes the RecoveryHandler
@@ -89,22 +91,22 @@ func NewRecovery(
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
 ) *RecoveryHandler {
 	return &RecoveryHandler{
-		jobStore:      jobStore,
-		taskStore:     taskStore,
-		handler:       handler,
-		metrics:       NewMetrics(parent),
-		config:        config,
-		hostmgrClient: hostmgrClient,
-		finished:      make(chan bool),
-		tracker:       rmtask.GetTracker(),
-		stopChan:      make(chan bool),
+		jobStore:        jobStore,
+		taskStore:       taskStore,
+		handler:         handler,
+		metrics:         NewMetrics(parent),
+		config:          config,
+		hostmgrClient:   hostmgrClient,
+		tracker:         rmtask.GetTracker(),
+		finished:        make(chan bool),
+		drainerStopChan: make(chan bool),
 	}
 }
 
 // Stop stops the recovery handler
 func (r *RecoveryHandler) Stop() error {
 	log.Info("Stopping recovery")
-	close(r.stopChan)
+	close(r.drainerStopChan)
 	return nil
 }
 
@@ -113,10 +115,6 @@ func (r *RecoveryHandler) Stop() error {
 func (r *RecoveryHandler) Start() error {
 	r.Lock()
 	defer r.Unlock()
-
-	// Instantiate the channel here to prevent closing of already closed channel.
-	// Eg. Resmgr instance gains leadership after losing it.
-	r.stopChan = make(chan bool)
 
 	ctx := context.Background()
 	log.Info("Starting jobs recovery on startup")
@@ -134,14 +132,16 @@ func (r *RecoveryHandler) Start() error {
 		log.WithError(err).Error("failed to recover running tasks")
 		return err
 	}
-
 	log.Info("Recovery completed successfully for running tasks")
 
+	// Instantiate the channel here to prevent closing of already closed channel.
+	// Eg. Resmgr instance gains leadership after losing it.
+	r.drainerStopChan = make(chan bool)
 	// Restart draining process in background
 	go r.restartDrainingProcess(ctx)
 
 	// We can start the recovery of non-running tasks now in the background
-	log.Info("Recovery starting for non-running tasks")
+	r.finished = make(chan bool)
 	go r.recoverNonRunningTasks()
 
 	r.metrics.RecoverySuccess.Inc(1)
@@ -152,6 +152,7 @@ func (r *RecoveryHandler) Start() error {
 // manager handler
 func (r *RecoveryHandler) recoverNonRunningTasks() {
 	defer close(r.finished)
+	log.Info("Recovery starting for non-running tasks")
 
 	ctx := context.Background()
 	successTasks, failedTasks := 0, 0
@@ -348,10 +349,11 @@ func (r *RecoveryHandler) loadTasksInRange(
 func (r *RecoveryHandler) restartDrainingProcess(ctx context.Context) {
 	ticker := time.NewTicker(time.Duration(hostmgrBackoffRetryInterval))
 	defer ticker.Stop()
+	log.Info("Recovery starting for maintenance queue")
 
 	for {
 		select {
-		case <-r.stopChan:
+		case <-r.drainerStopChan:
 			return
 		case <-ticker.C:
 			_, err := r.hostmgrClient.RestoreMaintenanceQueue(

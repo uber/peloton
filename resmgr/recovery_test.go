@@ -640,7 +640,7 @@ func (suite *recoveryTestSuite) TestRestartDrainingProcess_Error() {
 		RestoreMaintenanceQueue(gomock.Any(), gomock.Any()).
 		Return(&hostsvc.RestoreMaintenanceQueueResponse{}, nil)
 	rh.restartDrainingProcess(context.Background())
-	close(rh.stopChan)
+	close(rh.drainerStopChan)
 }
 
 func TestResmgrRecovery(t *testing.T) {
