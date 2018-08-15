@@ -2,6 +2,7 @@ package resmgr
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -22,6 +23,7 @@ import (
 	rc "code.uber.internal/infra/peloton/resmgr/common"
 	rp "code.uber.internal/infra/peloton/resmgr/respool"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
+	task_mocks "code.uber.internal/infra/peloton/resmgr/task/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -309,7 +311,6 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	}
 
 	// create 4 jobs ( 2 JobState_RUNNING, 2 JobState_PENDING)
-	fmt.Println(suite.mockJobStore, suite.mockCtrl)
 	suite.mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Eq([]job.JobState{
 		job.JobState_INITIALIZED,
 		job.JobState_PENDING,
@@ -420,6 +421,192 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	// Checking total number of tasks in the tracker(9*3=27)
 	// This includes tasks from TestJob_2 which are not re queued but are inserted in the tracker
 	suite.Equal(suite.rmTaskTracker.GetSize(), int64(27))
+}
+
+func (suite *recoveryTestSuite) TestNonRunningJobError() {
+	// Create jobs. each with different number of tasks
+	jobs := make([]peloton.JobID, 1)
+	for i := 0; i < 1; i++ {
+		jobs[i] = peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
+	}
+	suite.mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Eq([]job.JobState{
+		job.JobState_INITIALIZED,
+		job.JobState_PENDING,
+		job.JobState_RUNNING,
+		job.JobState_UNKNOWN,
+	})).Return(jobs, nil)
+
+	suite.mockJobStore.EXPECT().
+		GetJobRuntime(context.Background(), &jobs[0]).
+		Return(&job.RuntimeInfo{
+			State:     job.JobState_PENDING,
+			GoalState: job.JobState_SUCCEEDED,
+		}, nil)
+
+	jobConfig := suite.createJob(&jobs[0], 10, 1)
+	// Adding the invalid resource pool ID to simulate failure
+	jobConfig.RespoolID = &peloton.ResourcePoolID{Value: "respool10"}
+
+	suite.mockJobStore.EXPECT().
+		GetJobConfig(context.Background(), &jobs[0]).
+		Return(jobConfig, nil)
+
+	suite.mockTaskStore.EXPECT().
+		GetTasksForJobByRange(context.Background(), &jobs[0], &task.InstanceRange{
+			From: 0,
+			To:   10,
+		}).Return(suite.createTasks(&jobs[0], 10, task.TaskState_PENDING), nil)
+	// Perform recovery
+	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
+		suite.handler,
+		Config{
+			RmTaskConfig: &rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+				PolicyName:       rm_task.ExponentialBackOffPolicy,
+			},
+		})
+
+	rh.Start()
+	<-rh.finished
+
+	// 2. check the queue content
+	var resPoolID peloton.ResourcePoolID
+	resPoolID.Value = "respool21"
+	gangsSummary := suite.getQueueContent(resPoolID)
+
+	// Job0 should not be recovered
+	gangs := gangsSummary["TestJob_0"]
+	suite.Equal(0, len(gangs))
+
+	// stoping handler
+	suite.Nil(rh.Stop())
+}
+
+func (suite *recoveryTestSuite) TestAddRunningTasksError() {
+	// Create jobs. each with different number of tasks
+	jobs := make([]peloton.JobID, 1)
+	for i := 0; i < 1; i++ {
+		jobs[i] = peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
+	}
+
+	jobConfig := suite.createJob(&jobs[0], 10, 1)
+	// Adding the invalid resource pool ID to simulate failure
+	jobConfig.RespoolID = &peloton.ResourcePoolID{Value: "respool10"}
+
+	tasks := suite.createTasks(&jobs[0], 10, task.TaskState_PENDING)
+	var taskInfos []*task.TaskInfo
+	// Perform recovery
+	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
+		suite.handler,
+		Config{
+			RmTaskConfig: &rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+				PolicyName:       rm_task.ExponentialBackOffPolicy,
+			},
+		})
+
+	for _, info := range tasks {
+		taskInfos = append(taskInfos, info)
+	}
+
+	val, err := rh.addRunningTasks(taskInfos, jobConfig)
+	suite.Error(err)
+	suite.EqualError(err, "respool respool10 does not exist")
+	suite.Equal(val, 0)
+}
+
+func (suite *recoveryTestSuite) TestAddRunningTasks() {
+	// Create jobs. each with different number of tasks
+	jobs := make([]peloton.JobID, 1)
+	for i := 0; i < 1; i++ {
+		jobs[i] = peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
+	}
+
+	jobConfig := suite.createJob(&jobs[0], 10, 1)
+
+	tasks := suite.createTasks(&jobs[0], 10, task.TaskState_RUNNING)
+	var taskInfos []*task.TaskInfo
+	// Perform recovery
+	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
+		suite.handler,
+		Config{
+			RmTaskConfig: &rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+				PolicyName:       rm_task.ExponentialBackOffPolicy,
+			},
+		})
+
+	for _, info := range tasks {
+		taskInfos = append(taskInfos, info)
+	}
+
+	tracker := task_mocks.NewMockTracker(suite.mockCtrl)
+	tracker.EXPECT().AddTask(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any()).
+		Return(errors.New("error"))
+	rh.tracker = tracker
+
+	val, err := rh.addRunningTasks(taskInfos, jobConfig)
+	suite.Error(err)
+	suite.EqualError(err, "unable to add running task to tracker: error")
+	suite.Equal(val, 0)
+
+	tracker.EXPECT().AddTask(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any()).
+		Return(nil)
+	tracker.EXPECT().AddResources(gomock.Any()).
+		Return(errors.New("error")).Times(1)
+	val, err = rh.addRunningTasks(taskInfos, jobConfig)
+	suite.Error(err)
+	suite.EqualError(err, "could not add resources: error")
+	suite.Equal(val, 0)
+
+	node, err := suite.resourceTree.Get(&peloton.ResourcePoolID{Value: "respool21"})
+	rmTask, err := rm_task.CreateRMTask(&resmgr.Task{}, nil, node, tally.NoopScope,
+		&rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
+		},
+	)
+	tracker.EXPECT().AddTask(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any()).
+		Return(nil).AnyTimes()
+	tracker.EXPECT().AddResources(gomock.Any()).Return(nil).AnyTimes()
+	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask).AnyTimes()
+	val, err = rh.addRunningTasks(taskInfos, jobConfig)
+	suite.Error(err)
+	suite.Contains(err.Error(), "transition failed in task state machine")
+	suite.Equal(val, 1)
+}
+
+func (suite *recoveryTestSuite) TestLoadTasksInRangeError() {
+	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
+		suite.handler,
+		Config{
+			RmTaskConfig: &rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+				PolicyName:       rm_task.ExponentialBackOffPolicy,
+			},
+		})
+	_, _, err := rh.loadTasksInRange(context.Background(), "", 100, 0)
+	suite.Error(err)
+	suite.Contains(err.Error(), "invalid job instance range")
+	_, _, err = rh.loadTasksInRange(context.Background(), "", 100, 100)
+	suite.NoError(err)
 }
 
 func TestResmgrRecovery(t *testing.T) {

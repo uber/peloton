@@ -68,6 +68,7 @@ type RecoveryHandler struct {
 	config          Config
 	nonRunningTasks []*resmgrsvc.EnqueueGangsRequest
 	finished        chan bool //used for testing
+	tracker         rmtask.Tracker
 }
 
 // NewRecovery initializes the RecoveryHandler
@@ -85,6 +86,7 @@ func NewRecovery(
 		metrics:   NewMetrics(parent),
 		config:    config,
 		finished:  make(chan bool),
+		tracker:   rmtask.GetTracker(),
 	}
 }
 
@@ -253,7 +255,7 @@ func (r *RecoveryHandler) addTaskToTracker(
 	config *job.JobConfig,
 	respool respool.ResPool) error {
 	rmTask := taskutil.ConvertTaskToResMgrTask(taskInfo, config)
-	err := rmtask.GetTracker().AddTask(
+	err := r.tracker.AddTask(
 		rmTask,
 		r.handler.GetStreamHandler(),
 		respool,
@@ -262,15 +264,15 @@ func (r *RecoveryHandler) addTaskToTracker(
 		return errors.Wrap(err, "unable to add running task to tracker")
 	}
 
-	if err = rmtask.GetTracker().AddResources(rmTask.Id); err != nil {
+	if err = r.tracker.AddResources(rmTask.Id); err != nil {
 		return errors.Wrap(err, "could not add resources")
 	}
 
 	if taskInfo.GetRuntime().GetState() == task.TaskState_RUNNING {
-		err = rmtask.GetTracker().GetTask(rmTask.Id).
+		err = r.tracker.GetTask(rmTask.Id).
 			TransitTo(task.TaskState_RUNNING.String(), statemachine.WithReason("task recovered into running state"))
 	} else if taskInfo.GetRuntime().GetState() == task.TaskState_LAUNCHED {
-		err = rmtask.GetTracker().GetTask(rmTask.Id).
+		err = r.tracker.GetTask(rmTask.Id).
 			TransitTo(task.TaskState_LAUNCHED.String(), statemachine.WithReason("task recovered into launched state"))
 	}
 	if err != nil {
