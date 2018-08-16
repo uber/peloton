@@ -448,10 +448,12 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 			return fmt.Errorf("dbs are not in sync")
 		}
 	} else if totalInstanceCount > config.GetInstanceCount() {
+		// this branch can be hit due to MV delay under normal situation.
+		// keep the debug log in case of real bug.
 		log.WithField("job_id", id).
 			WithField("total_instance_count", totalInstanceCount).
 			WithField("instances", config.GetInstanceCount()).
-			Error("total instance count is greater than expected")
+			Debug("total instance count is greater than expected")
 	}
 
 	// determineJobRuntimeState would handle both
