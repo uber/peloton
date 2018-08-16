@@ -296,7 +296,7 @@ func (c *Client) TaskStopAction(jobID string,
 	if len(response.GetInvalidInstanceIds()) > 0 {
 		fmt.Fprint(
 			tabWriter,
-			"Retrying failed tasks",
+			"Retrying failed tasks\n",
 		)
 		response, err = c.taskClient.Stop(c.ctx, request)
 		if err != nil {
@@ -594,7 +594,7 @@ func printTaskStopResponse(r *task.StopResponse, debug bool) {
 
 		fmt.Fprintf(
 			tabWriter,
-			"Some tasks failed to stop, failed_instance_ids:%v",
+			"Some tasks failed to stop, failed_instance_ids:%v\n",
 			r.GetInvalidInstanceIds(),
 		)
 		return

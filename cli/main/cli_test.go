@@ -78,6 +78,14 @@ func TestRangeParsing(t *testing.T) {
 	}
 }
 
+func TestRangeParsingError(t *testing.T) {
+	expected := []string{"55:56:57", "try:56", "56:try"}
+	for _, s := range expected {
+		_, err := parseRangeFromString(s)
+		assert.NotNil(t, err)
+	}
+}
+
 func TestParseTaskStartWithRanges(t *testing.T) {
 	job := "foojobid"
 	expected := []*pt.InstanceRange{

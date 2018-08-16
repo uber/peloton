@@ -5,7 +5,7 @@ import (
 	"io/ioutil"
 	"testing"
 
-	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
+	respoolmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
@@ -22,13 +22,13 @@ const _defaultResPoolConfig = "../example/default_respool.yaml"
 type resPoolActions struct {
 	suite.Suite
 	mockCtrl    *gomock.Controller
-	mockRespool *respool_mocks.MockResourceManagerYARPCClient
+	mockRespool *respoolmocks.MockResourceManagerYARPCClient
 	ctx         context.Context
 }
 
 func (suite *resPoolActions) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockRespool = respool_mocks.NewMockResourceManagerYARPCClient(suite.mockCtrl)
+	suite.mockRespool = respoolmocks.NewMockResourceManagerYARPCClient(suite.mockCtrl)
 	suite.ctx = context.Background()
 }
 
@@ -94,7 +94,7 @@ func (suite *resPoolActions) getRespoolInfos() []*respool.ResourcePoolInfo {
 	}
 }
 
-func (suite *resPoolActions) TestClient_ResPoolDumpAction() {
+func (suite *resPoolActions) TestClientResPoolDumpAction() {
 	client := Client{
 		Debug:      false,
 		resClient:  suite.mockRespool,
@@ -103,12 +103,14 @@ func (suite *resPoolActions) TestClient_ResPoolDumpAction() {
 	}
 
 	for _, tt := range []struct {
+		debug    bool
 		request  *respool.QueryRequest
 		response *respool.QueryResponse
 		format   string
 		err      error
 	}{
 		{
+			// happy path
 			request: &respool.QueryRequest{},
 			response: &respool.QueryResponse{
 				ResourcePools: suite.getRespoolInfos(),
@@ -118,6 +120,38 @@ func (suite *resPoolActions) TestClient_ResPoolDumpAction() {
 			err:    nil,
 		},
 		{
+			// json
+			debug:   true,
+			request: &respool.QueryRequest{},
+			response: &respool.QueryResponse{
+				ResourcePools: suite.getRespoolInfos(),
+				Error:         nil,
+			},
+			format: "yaml",
+			err:    nil,
+		},
+		{
+			// query error
+			request: &respool.QueryRequest{},
+			response: &respool.QueryResponse{
+				ResourcePools: nil,
+				Error:         &respool.QueryResponse_Error{},
+			},
+			format: "yaml",
+			err:    nil,
+		},
+		{
+			// wrong format
+			request: &respool.QueryRequest{},
+			response: &respool.QueryResponse{
+				ResourcePools: suite.getRespoolInfos(),
+				Error:         nil,
+			},
+			format: "binary",
+			err:    nil,
+		},
+		{
+			// error
 			request: &respool.QueryRequest{},
 			response: &respool.QueryResponse{
 				Error: &respool.QueryResponse_Error{},
@@ -126,6 +160,7 @@ func (suite *resPoolActions) TestClient_ResPoolDumpAction() {
 			err:    errors.New("error dumping resource pools"),
 		},
 	} {
+		client.Debug = tt.debug
 		// Set expectations
 		suite.mockRespool.EXPECT().Query(
 			suite.ctx,
@@ -135,6 +170,8 @@ func (suite *resPoolActions) TestClient_ResPoolDumpAction() {
 		err := client.ResPoolDumpAction(tt.format)
 		if tt.err != nil {
 			suite.EqualError(err, tt.err.Error())
+		} else if tt.response.Error != nil || tt.format == "binary" {
+			suite.Error(err)
 		} else {
 			suite.NoError(err)
 		}
@@ -150,7 +187,7 @@ func (suite *resPoolActions) getConfig() *respool.ResourcePoolConfig {
 	return &config
 }
 
-func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
+func (suite *resPoolActions) TestClientResPoolCreateAction() {
 	c := Client{
 		Debug:      false,
 		resClient:  suite.mockRespool,
@@ -166,11 +203,13 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 	}
 
 	tt := []struct {
+		debug          bool
 		createRequest  *respool.CreateRequest
 		createResponse *respool.CreateResponse
 		lookupRequest  *respool.LookupRequest
 		lookupResponse *respool.LookupResponse
 		err            error
+		lookUpErr      error
 	}{
 		{
 			createRequest: &respool.CreateRequest{
@@ -179,6 +218,77 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 			createResponse: &respool.CreateResponse{
 				Result: &peloton.ResourcePoolID{
 					Value: ID,
+				},
+			},
+			lookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			lookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+		},
+		{
+			debug: true,
+			createRequest: &respool.CreateRequest{
+				Config: config,
+			},
+			createResponse: &respool.CreateResponse{
+				Result: &peloton.ResourcePoolID{
+					Value: ID,
+				},
+			},
+			lookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			lookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+		},
+		{
+			createRequest: &respool.CreateRequest{
+				Config: config,
+			},
+			createResponse: &respool.CreateResponse{
+				Error: &respool.CreateResponse_Error{
+					AlreadyExists: &respool.ResourcePoolAlreadyExists{
+						Id: &peloton.ResourcePoolID{
+							Value: parentID,
+						},
+						Message: "respool already exists",
+					},
+				},
+			},
+			lookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			lookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+		},
+		{
+			createRequest: &respool.CreateRequest{
+				Config: config,
+			},
+			createResponse: &respool.CreateResponse{
+				Error: &respool.CreateResponse_Error{
+					InvalidResourcePoolConfig: &respool.InvalidResourcePoolConfig{
+						Id: &peloton.ResourcePoolID{
+							Value: parentID,
+						},
+						Message: "respool config is invalid",
+					},
 				},
 			},
 			lookupRequest: &respool.LookupRequest{
@@ -213,6 +323,30 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 			},
 			err: errors.New("cannot create root resource pool"),
 		},
+		{
+			lookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			lookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+			lookUpErr: errors.New("cannot lookup root resource pool"),
+		},
+		{
+			lookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			lookupResponse: &respool.LookupResponse{
+				Id: nil,
+			},
+			lookUpErr: nil,
+		},
 	}
 
 	withMockCreateResponse := func(
@@ -226,18 +360,26 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 	}
 
 	for _, t := range tt {
-		suite.withMockResourcePoolLookup(t.lookupRequest, t.lookupResponse)
-		withMockCreateResponse(t.createRequest, t.createResponse, t.err)
+		c.Debug = t.debug
+		suite.withMockResourcePoolLookup(
+			t.lookupRequest, t.lookupResponse, t.lookUpErr)
+		if t.lookUpErr == nil && t.lookupResponse.Id != nil {
+			withMockCreateResponse(t.createRequest, t.createResponse, t.err)
+		}
 		err := c.ResPoolCreateAction(path, _defaultResPoolConfig)
 		if t.err != nil {
 			suite.EqualError(err, t.err.Error())
+		} else if t.lookUpErr != nil {
+			suite.EqualError(err, t.lookUpErr.Error())
+		} else if t.lookupResponse.Id == nil {
+			suite.Error(err)
 		} else {
 			suite.NoError(err)
 		}
 	}
 }
 
-func (suite *resPoolActions) TestClient_ResPoolUpdateAction() {
+func (suite *resPoolActions) TestClientResPoolUpdateAction() {
 	c := Client{
 		Debug:      false,
 		resClient:  suite.mockRespool,
@@ -254,6 +396,7 @@ func (suite *resPoolActions) TestClient_ResPoolUpdateAction() {
 	}
 
 	tt := []struct {
+		debug                 bool
 		updateRequest         *respool.UpdateRequest
 		updateResponse        *respool.UpdateResponse
 		parentLookupRequest   *respool.LookupRequest
@@ -270,6 +413,112 @@ func (suite *resPoolActions) TestClient_ResPoolUpdateAction() {
 				Config: config,
 			},
 			updateResponse: &respool.UpdateResponse{},
+			parentLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			parentLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+			resPoolLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			resPoolLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: respoolID,
+				},
+			},
+		},
+		{
+			debug: true,
+			updateRequest: &respool.UpdateRequest{
+				Id: &peloton.ResourcePoolID{
+					Value: respoolID,
+				},
+				Config: config,
+			},
+			updateResponse: &respool.UpdateResponse{},
+			parentLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			parentLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+			resPoolLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			resPoolLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: respoolID,
+				},
+			},
+		},
+		{
+			updateRequest: &respool.UpdateRequest{
+				Id: &peloton.ResourcePoolID{
+					Value: respoolID,
+				},
+				Config: config,
+			},
+			updateResponse: &respool.UpdateResponse{
+				Error: &respool.UpdateResponse_Error{
+					NotFound: &respool.ResourcePoolNotFound{
+						Id: &peloton.ResourcePoolID{
+							Value: respoolID,
+						},
+						Message: "path not found",
+					},
+				},
+			},
+			parentLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			parentLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+			resPoolLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			resPoolLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: respoolID,
+				},
+			},
+		},
+		{
+			updateRequest: &respool.UpdateRequest{
+				Id: &peloton.ResourcePoolID{
+					Value: respoolID,
+				},
+				Config: config,
+			},
+			updateResponse: &respool.UpdateResponse{
+				Error: &respool.UpdateResponse_Error{
+					InvalidResourcePoolConfig: &respool.InvalidResourcePoolConfig{
+						Id: &peloton.ResourcePoolID{
+							Value: respoolID,
+						},
+						Message: "invalid configuration",
+					},
+				},
+			},
 			parentLookupRequest: &respool.LookupRequest{
 				Path: &respool.ResourcePoolPath{
 					Value: "/",
@@ -334,8 +583,11 @@ func (suite *resPoolActions) TestClient_ResPoolUpdateAction() {
 	}
 
 	for _, t := range tt {
-		suite.withMockResourcePoolLookup(t.parentLookupRequest, t.parentLookupResponse)
-		suite.withMockResourcePoolLookup(t.resPoolLookupRequest, t.resPoolLookupResponse)
+		c.Debug = t.debug
+		suite.withMockResourcePoolLookup(
+			t.parentLookupRequest, t.parentLookupResponse, nil)
+		suite.withMockResourcePoolLookup(
+			t.resPoolLookupRequest, t.resPoolLookupResponse, nil)
 		withMockUpdateResponse(t.updateRequest, t.updateResponse, t.err)
 		err := c.ResPoolUpdateAction(path, _defaultResPoolConfig)
 		if t.err != nil {
@@ -346,7 +598,148 @@ func (suite *resPoolActions) TestClient_ResPoolUpdateAction() {
 	}
 }
 
-func (suite *resPoolActions) TestClient_ResPoolDeleteAction() {
+func (suite *resPoolActions) TestClientResPoolUpdateLookupErrors() {
+	c := Client{
+		Debug:      false,
+		resClient:  suite.mockRespool,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	respoolID := uuid.New()
+	parentID := uuid.New()
+	path := "/DefaultResPool"
+
+	tt := []struct {
+		parentLookupRequest   *respool.LookupRequest
+		parentLookupResponse  *respool.LookupResponse
+		resPoolLookupRequest  *respool.LookupRequest
+		resPoolLookupResponse *respool.LookupResponse
+		err                   error
+	}{
+		{
+			parentLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			parentLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+			resPoolLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			resPoolLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: respoolID,
+				},
+			},
+			err: errors.New("cannot find resource pool"),
+		},
+		{
+			parentLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			parentLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+			resPoolLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			resPoolLookupResponse: &respool.LookupResponse{
+				Id: nil,
+			},
+			err: nil,
+		},
+	}
+
+	for _, t := range tt {
+		suite.withMockResourcePoolLookup(
+			t.parentLookupRequest, t.parentLookupResponse, nil)
+		suite.withMockResourcePoolLookup(
+			t.resPoolLookupRequest, t.resPoolLookupResponse, t.err)
+		err := c.ResPoolUpdateAction(path, _defaultResPoolConfig)
+		if t.err != nil {
+			suite.EqualError(err, t.err.Error())
+		} else if t.resPoolLookupResponse.Id == nil {
+			suite.Error(err)
+		} else {
+			suite.NoError(err)
+		}
+	}
+}
+
+func (suite *resPoolActions) TestClientResPoolUpdateParentErrors() {
+	c := Client{
+		Debug:      false,
+		resClient:  suite.mockRespool,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+	parentID := uuid.New()
+
+	tt := []struct {
+		path                 string
+		parentLookupRequest  *respool.LookupRequest
+		parentLookupResponse *respool.LookupResponse
+		err                  error
+	}{
+		{
+			path: "/",
+			err:  nil,
+		},
+		{
+			path: "/DefaultPool",
+			err:  nil,
+		},
+		{
+			path: "/DefaultResPool",
+			parentLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			parentLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+			err: errors.New("cannot find parent resource pool"),
+		},
+		{
+			path: "/DefaultResPool",
+			parentLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			parentLookupResponse: &respool.LookupResponse{
+				Id: nil,
+			},
+			err: nil,
+		},
+	}
+
+	for _, t := range tt {
+		if t.parentLookupRequest != nil {
+			suite.withMockResourcePoolLookup(
+				t.parentLookupRequest, t.parentLookupResponse, t.err)
+		}
+		suite.Error(c.ResPoolUpdateAction(t.path, _defaultResPoolConfig))
+	}
+}
+
+func (suite *resPoolActions) TestClientResPoolDeleteAction() {
 	c := Client{
 		Debug:      false,
 		resClient:  suite.mockRespool,
@@ -357,6 +750,7 @@ func (suite *resPoolActions) TestClient_ResPoolDeleteAction() {
 	path := "/DefaultResPool"
 
 	testCases := []struct {
+		debug          bool
 		deleteRequest  *respool.DeleteRequest
 		deleteResponse *respool.DeleteResponse
 		err            error
@@ -370,6 +764,66 @@ func (suite *resPoolActions) TestClient_ResPoolDeleteAction() {
 			deleteResponse: &respool.DeleteResponse{},
 		},
 		{
+			debug: true,
+			deleteRequest: &respool.DeleteRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			deleteResponse: &respool.DeleteResponse{},
+		},
+		{
+			deleteRequest: &respool.DeleteRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			deleteResponse: &respool.DeleteResponse{
+				Error: &respool.DeleteResponse_Error{
+					NotFound: &respool.ResourcePoolPathNotFound{
+						Path: &respool.ResourcePoolPath{
+							Value: path,
+						},
+						Message: "path not found",
+					},
+				},
+			},
+		},
+		{
+			deleteRequest: &respool.DeleteRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			deleteResponse: &respool.DeleteResponse{
+				Error: &respool.DeleteResponse_Error{
+					IsBusy: &respool.ResourcePoolIsBusy{
+						Id: &peloton.ResourcePoolID{
+							Value: path,
+						},
+						Message: "path is busy",
+					},
+				},
+			},
+		},
+		{
+			deleteRequest: &respool.DeleteRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			deleteResponse: &respool.DeleteResponse{
+				Error: &respool.DeleteResponse_Error{
+					IsNotLeaf: &respool.ResourcePoolIsNotLeaf{
+						Id: &peloton.ResourcePoolID{
+							Value: path,
+						},
+						Message: "non-leaf node",
+					},
+				},
+			},
+		},
+		{
 			deleteRequest: &respool.DeleteRequest{
 				Path: &respool.ResourcePoolPath{
 					Value: path,
@@ -381,6 +835,7 @@ func (suite *resPoolActions) TestClient_ResPoolDeleteAction() {
 	}
 
 	for _, t := range testCases {
+		c.Debug = t.debug
 		suite.withMockDeleteResponse(t.deleteRequest, t.deleteResponse, t.err)
 		err := c.ResPoolDeleteAction(path)
 		if t.err != nil {
@@ -389,6 +844,18 @@ func (suite *resPoolActions) TestClient_ResPoolDeleteAction() {
 			suite.NoError(err)
 		}
 	}
+}
+
+func (suite *resPoolActions) TestClientResPoolDeleteRoot() {
+	c := Client{
+		Debug:      false,
+		resClient:  suite.mockRespool,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	path := "/"
+	suite.Error(c.ResPoolDeleteAction(path))
 }
 
 func (suite *resPoolActions) withMockUpdateResponse(
@@ -424,10 +891,11 @@ func (suite *resPoolActions) withMockDeleteResponse(
 func (suite *resPoolActions) withMockResourcePoolLookup(
 	req *respool.LookupRequest,
 	resp *respool.LookupResponse,
+	err error,
 ) {
 	suite.mockRespool.EXPECT().
 		LookupResourcePoolID(suite.ctx, gomock.Eq(req)).
-		Return(resp, nil)
+		Return(resp, err)
 }
 
 func (suite *resPoolActions) TestParseResourcePath() {

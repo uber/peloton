@@ -35,7 +35,7 @@ func (suite *resmgrActionsTestSuite) TearDownSuite() {
 	suite.ctx.Done()
 }
 
-func (suite *resmgrActionsTestSuite) TestClient_GetActiveTasks() {
+func (suite *resmgrActionsTestSuite) TestClientGetActiveTasks() {
 	c := Client{
 		Debug:        false,
 		resMgrClient: suite.mockRes,
@@ -54,26 +54,51 @@ func (suite *resmgrActionsTestSuite) TestClient_GetActiveTasks() {
 	taskEntries[task.TaskState_PENDING.String()] = pendingTasks
 	taskEntries[task.TaskState_RUNNING.String()] = runningTasks
 
-	resp := &resmgrsvc.GetActiveTasksResponse{
-		TasksByState: taskEntries,
+	tt := []struct {
+		debug bool
+		resp  *resmgrsvc.GetActiveTasksResponse
+		err   error
+	}{
+		{
+			resp: &resmgrsvc.GetActiveTasksResponse{
+				TasksByState: taskEntries,
+			},
+			err: nil,
+		},
+		{
+			resp: &resmgrsvc.GetActiveTasksResponse{
+				Error: &resmgrsvc.GetActiveTasksResponse_Error{
+					Message: "cannot fetch tasks",
+				},
+			},
+		},
+		{
+			resp: nil,
+			err:  fmt.Errorf("fake res error"),
+		},
+		{
+			debug: true,
+			resp: &resmgrsvc.GetActiveTasksResponse{
+				TasksByState: taskEntries,
+			},
+			err: nil,
+		},
 	}
 
-	suite.mockRes.EXPECT().
-		GetActiveTasks(gomock.Any(), gomock.Any()).
-		Return(resp, nil)
-
-	err := c.ResMgrGetActiveTasks("", "", "")
-	suite.NoError(err)
-
-	suite.mockRes.EXPECT().
-		GetActiveTasks(gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("fake res error"))
-
-	err = c.ResMgrGetActiveTasks("", "", "")
-	suite.Error(err)
+	for _, t := range tt {
+		c.Debug = t.debug
+		suite.mockRes.EXPECT().
+			GetActiveTasks(gomock.Any(), gomock.Any()).
+			Return(t.resp, t.err)
+		if t.err != nil {
+			suite.Error(c.ResMgrGetActiveTasks("", "", ""))
+		} else {
+			suite.NoError(c.ResMgrGetActiveTasks("", "", "SUCCEEDED,FAILED"))
+		}
+	}
 }
 
-func (suite *resmgrActionsTestSuite) TestClient_GetPendingTasks() {
+func (suite *resmgrActionsTestSuite) TestClientGetPendingTasks() {
 	c := Client{
 		Debug:        false,
 		resMgrClient: suite.mockRes,
@@ -122,4 +147,11 @@ func (suite *resmgrActionsTestSuite) TestClient_GetPendingTasks() {
 
 	err = c.ResMgrGetPendingTasks("respool-1", 10)
 	suite.Error(err)
+
+	c.Debug = true
+	suite.mockRes.EXPECT().
+		GetPendingTasks(gomock.Any(), gomock.Any()).
+		Return(resp, nil)
+	err = c.ResMgrGetPendingTasks("respool-1", 10)
+	suite.NoError(err)
 }

@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
-	host_svc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc"
-	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc/mocks"
+	hostsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc"
+	hostmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -16,7 +16,7 @@ import (
 type hostmgrActionsTestSuite struct {
 	suite.Suite
 	mockCtrl    *gomock.Controller
-	mockHostmgr *host_mocks.MockHostServiceYARPCClient
+	mockHostmgr *hostmocks.MockHostServiceYARPCClient
 	ctx         context.Context
 }
 
@@ -26,7 +26,7 @@ func TestHostmgrActions(t *testing.T) {
 
 func (suite *hostmgrActionsTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockHostmgr = host_mocks.NewMockHostServiceYARPCClient(suite.mockCtrl)
+	suite.mockHostmgr = hostmocks.NewMockHostServiceYARPCClient(suite.mockCtrl)
 	suite.ctx = context.Background()
 }
 
@@ -35,7 +35,7 @@ func (suite *hostmgrActionsTestSuite) TearDownSuite() {
 	suite.ctx.Done()
 }
 
-func (suite *hostmgrActionsTestSuite) TestClient_HostMaintenanceStartAction() {
+func (suite *hostmgrActionsTestSuite) TestClientHostMaintenanceStartAction() {
 	c := Client{
 		Debug:      false,
 		hostClient: suite.mockHostmgr,
@@ -43,7 +43,7 @@ func (suite *hostmgrActionsTestSuite) TestClient_HostMaintenanceStartAction() {
 		ctx:        suite.ctx,
 	}
 
-	resp := &host_svc.StartMaintenanceResponse{}
+	resp := &hostsvc.StartMaintenanceResponse{}
 
 	suite.mockHostmgr.EXPECT().
 		StartMaintenance(gomock.Any(), gomock.Any()).
@@ -71,7 +71,7 @@ func (suite *hostmgrActionsTestSuite) TestClient_HostMaintenanceStartAction() {
 	suite.Error(err)
 }
 
-func (suite *hostmgrActionsTestSuite) TestClient_HostMaintenanceCompleteAction() {
+func (suite *hostmgrActionsTestSuite) TestClientHostMaintenanceCompleteAction() {
 	c := Client{
 		Debug:      false,
 		hostClient: suite.mockHostmgr,
@@ -79,7 +79,7 @@ func (suite *hostmgrActionsTestSuite) TestClient_HostMaintenanceCompleteAction()
 		ctx:        suite.ctx,
 	}
 
-	resp := &host_svc.CompleteMaintenanceResponse{}
+	resp := &hostsvc.CompleteMaintenanceResponse{}
 
 	suite.mockHostmgr.EXPECT().
 		CompleteMaintenance(gomock.Any(), gomock.Any()).
@@ -107,7 +107,7 @@ func (suite *hostmgrActionsTestSuite) TestClient_HostMaintenanceCompleteAction()
 	suite.Error(err)
 }
 
-func (suite *hostmgrActionsTestSuite) TestClient_HostQueryAction() {
+func (suite *hostmgrActionsTestSuite) TestClientHostQueryAction() {
 	c := Client{
 		Debug:      false,
 		hostClient: suite.mockHostmgr,
@@ -115,19 +115,45 @@ func (suite *hostmgrActionsTestSuite) TestClient_HostQueryAction() {
 		ctx:        suite.ctx,
 	}
 
-	resp := &host_svc.QueryHostsResponse{
-		HostInfos: make([]*host.HostInfo, 1),
+	tt := []struct {
+		debug bool
+		resp  *hostsvc.QueryHostsResponse
+		err   error
+	}{
+		{
+			resp: &hostsvc.QueryHostsResponse{
+				HostInfos: make([]*host.HostInfo, 1),
+			},
+			err: nil,
+		},
+		{
+			debug: true,
+			resp: &hostsvc.QueryHostsResponse{
+				HostInfos: make([]*host.HostInfo, 1),
+			},
+			err: nil,
+		},
+		{
+			resp: &hostsvc.QueryHostsResponse{
+				HostInfos: []*host.HostInfo{},
+			},
+			err: nil,
+		},
+		{
+			resp: nil,
+			err:  fmt.Errorf("fake QueryHosts error"),
+		},
 	}
 
-	suite.mockHostmgr.EXPECT().
-		QueryHosts(gomock.Any(), gomock.Any()).
-		Return(resp, nil)
-	err := c.HostQueryAction("HOST_STATE_DRAINING")
-	suite.NoError(err)
-
-	suite.mockHostmgr.EXPECT().
-		QueryHosts(gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("fake QueryHosts error"))
-	err = c.HostQueryAction("")
-	suite.Error(err)
+	for _, t := range tt {
+		c.Debug = t.debug
+		suite.mockHostmgr.EXPECT().
+			QueryHosts(gomock.Any(), gomock.Any()).
+			Return(t.resp, t.err)
+		if t.err != nil {
+			suite.Error(c.HostQueryAction(""))
+		} else {
+			suite.NoError(c.HostQueryAction("HOST_STATE_DRAINING"))
+		}
+	}
 }
