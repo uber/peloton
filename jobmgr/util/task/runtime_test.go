@@ -19,6 +19,7 @@ func TestRegenerateMesosTaskIDDiff(t *testing.T) {
 		curMesosTaskID     string
 		desiredMesosTaskID string
 		newMesosTaskID     string
+		initHealthState    task.HealthState
 	}{
 		{
 			jobID:              "b64fd26b-0e39-41b7-b22a-205b69f247bd",
@@ -26,6 +27,7 @@ func TestRegenerateMesosTaskIDDiff(t *testing.T) {
 			curMesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1690f7cf-9691-42ea-8fd3-7e417246b830",
 			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
 			newMesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			initHealthState:    task.HealthState_DISABLED,
 		},
 		{
 			jobID:              "b64fd26b-0e39-41b7-b22a-205b69f247bd",
@@ -33,6 +35,7 @@ func TestRegenerateMesosTaskIDDiff(t *testing.T) {
 			curMesosTaskID:     "",
 			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
 			newMesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			initHealthState:    task.HealthState_HEALTH_UNKNOWN,
 		},
 		{
 			jobID:              "b64fd26b-0e39-41b7-b22a-205b69f247bd",
@@ -40,6 +43,7 @@ func TestRegenerateMesosTaskIDDiff(t *testing.T) {
 			curMesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2",
 			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2",
 			newMesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-3",
+			initHealthState:    task.HealthState_HEALTH_UNKNOWN,
 		},
 	}
 
@@ -52,6 +56,7 @@ func TestRegenerateMesosTaskIDDiff(t *testing.T) {
 			&peloton.JobID{Value: tt.jobID},
 			tt.instanceID,
 			runtime,
+			tt.initHealthState,
 		)
 
 		assert.Equal(t, diff[cached.StateField], task.TaskState_INITIALIZED)
@@ -61,5 +66,34 @@ func TestRegenerateMesosTaskIDDiff(t *testing.T) {
 			tt.newMesosTaskID)
 		assert.Equal(t, *diff[cached.DesiredMesosTaskIDField].(*mesos.TaskID).Value,
 			tt.newMesosTaskID)
+		assert.Equal(t, diff[cached.HealthyField], tt.initHealthState)
+	}
+}
+
+func TestGetInitialHealthState(t *testing.T) {
+	testTable := []struct {
+		taskConfig  *task.TaskConfig
+		healthState task.HealthState
+	}{
+		{
+			taskConfig: &task.TaskConfig{
+				HealthCheck: &task.HealthCheckConfig{
+					InitialIntervalSecs:    10,
+					MaxConsecutiveFailures: 5,
+					IntervalSecs:           10,
+					TimeoutSecs:            5,
+				},
+			},
+			healthState: task.HealthState_HEALTH_UNKNOWN,
+		},
+		{
+			taskConfig:  &task.TaskConfig{},
+			healthState: task.HealthState_DISABLED,
+		},
+	}
+
+	for _, tt := range testTable {
+		healthState := GetInitialHealthState(tt.taskConfig)
+		assert.Equal(t, healthState, tt.healthState)
 	}
 }

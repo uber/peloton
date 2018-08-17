@@ -487,16 +487,17 @@ func (m *serviceHandler) Start(
 	for _, taskInfo := range taskInfos {
 		runtimeDiff := make(cached.RuntimeDiff)
 		taskState := taskInfo.GetRuntime().GetState()
-
+		healthState := taskutil.GetInitialHealthState(taskInfo.GetConfig())
 		if taskState == task.TaskState_INITIALIZED || taskState == task.TaskState_PENDING ||
 			(taskInfo.GetConfig().GetVolume() != nil && len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0) {
 			// Do not regenerate mesos task ID if task is known that not in mesos yet OR stateful task.
 			runtimeDiff[cached.StateField] = task.TaskState_INITIALIZED
+			runtimeDiff[cached.HealthyField] = healthState
 		} else {
 			// Kill the old Mesos task and regenerate a new ID
 			jobmgr_task.KillOrphanTask(ctx, m.hostMgrClient, taskInfo)
 			runtimeDiff = taskutil.RegenerateMesosTaskIDDiff(
-				taskInfo.JobId, taskInfo.InstanceId, taskInfo.GetRuntime())
+				taskInfo.JobId, taskInfo.InstanceId, taskInfo.GetRuntime(), healthState)
 		}
 
 		// Change the goalstate.

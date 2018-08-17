@@ -285,8 +285,10 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			"task_status_event": event.GetMesosTaskStatus(),
 		}).Info("reschedule lost task")
 		p.metrics.RetryLostTasksTotal.Inc(1)
+
+		healthState := taskutil.GetInitialHealthState(taskInfo.GetConfig())
 		runtimeDiff = taskutil.RegenerateMesosTaskIDDiff(
-			taskInfo.JobId, taskInfo.InstanceId, taskInfo.GetRuntime())
+			taskInfo.JobId, taskInfo.InstanceId, taskInfo.GetRuntime(), healthState)
 		runtimeDiff[cached.MessageField] = "Rescheduled due to task LOST: " + statusMsg
 		runtimeDiff[cached.ReasonField] = event.GetMesosTaskStatus().GetReason().String()
 

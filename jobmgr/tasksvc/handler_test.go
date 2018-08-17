@@ -760,6 +760,7 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 			Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 				for _, runtimeDiff := range runtimeDiffs {
 					suite.Equal(runtimeDiff[cached.StateField], task.TaskState_INITIALIZED)
+					suite.Equal(runtimeDiff[cached.HealthyField], task.HealthState_DISABLED)
 				}
 			}).Return(nil),
 	)

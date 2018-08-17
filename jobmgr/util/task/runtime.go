@@ -9,13 +9,24 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
+// GetInitialHealthState returns the initial health State
+// The initial health state is UNKNOWN or DISABLED
+// depends on health check is enabled or not
+func GetInitialHealthState(taskConfig *task.TaskConfig) task.HealthState {
+	if taskConfig.GetHealthCheck() != nil {
+		return task.HealthState_HEALTH_UNKNOWN
+	}
+	return task.HealthState_DISABLED
+}
+
 // RegenerateMesosTaskIDDiff returns a diff for patch with the previous mesos
-// task id set to the current mesos task id, a regenerated mesos task id
-// and state set to INITIALIZED.
+// task id set to the current mesos task id, a regenerated mesos task id, a
+// proper initial health state, and task state set to INITIALIZED.
 func RegenerateMesosTaskIDDiff(
 	jobID *peloton.JobID,
 	instanceID uint32,
-	taskRuntime *task.RuntimeInfo) map[string]interface{} {
+	taskRuntime *task.RuntimeInfo,
+	initHealthyField task.HealthState) map[string]interface{} {
 	mesosTaskID := getMesosTaskID(jobID, instanceID, taskRuntime)
 
 	return map[string]interface{}{
@@ -23,6 +34,7 @@ func RegenerateMesosTaskIDDiff(
 		cached.StateField:              task.TaskState_INITIALIZED,
 		cached.MesosTaskIDField:        mesosTaskID,
 		cached.DesiredMesosTaskIDField: mesosTaskID,
+		cached.HealthyField:            initHealthyField,
 	}
 }
 

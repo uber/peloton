@@ -150,6 +150,7 @@ func TestTaskFailRetry(t *testing.T) {
 			assert.True(t, runtimeDiff[cached.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != mesosTaskID)
 			assert.True(t, runtimeDiff[cached.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == mesosTaskID)
 			assert.True(t, runtimeDiff[cached.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
+			assert.True(t, runtimeDiff[cached.HealthyField].(pbtask.HealthState) == pbtask.HealthState_DISABLED)
 		}).
 		Return(nil)
 

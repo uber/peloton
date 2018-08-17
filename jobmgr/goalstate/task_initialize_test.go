@@ -2,6 +2,7 @@ package goalstate
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -16,104 +17,233 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
 
-func TestTaskInitialize(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+type TestTaskInitializeSuite struct {
+	suite.Suite
+	mockCtrl            *gomock.Controller
+	jobStore            *store_mocks.MockJobStore
+	taskStore           *store_mocks.MockTaskStore
+	jobGoalStateEngine  *goalstatemocks.MockEngine
+	taskGoalStateEngine *goalstatemocks.MockEngine
+	jobFactory          *cachedmocks.MockJobFactory
+	cachedJob           *cachedmocks.MockJob
+	cachedTask          *cachedmocks.MockTask
+	jobConfig           *cachedmocks.MockJobConfigCache
+	cachedConfig        *cachedmocks.MockJobConfigCache
+	goalStateDriver     *driver
+	jobID               *peloton.JobID
+	instanceID          uint32
+	newConfigVersion    uint64
+	oldMesosTaskID      string
+	taskEnt             *taskEntity
+	runtime             *pbtask.RuntimeInfo
+}
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
-	cachedConfig := cachedmocks.NewMockJobConfigCache(ctrl)
+func TestTaskInitializeRun(t *testing.T) {
+	suite.Run(t, new(TestTaskInitializeSuite))
+}
 
-	goalStateDriver := &driver{
-		jobEngine:  jobGoalStateEngine,
-		taskEngine: taskGoalStateEngine,
-		jobStore:   jobStore,
-		taskStore:  taskStore,
-		jobFactory: jobFactory,
+func (suite *TestTaskInitializeSuite) SetupTest() {
+	suite.mockCtrl = gomock.NewController(suite.T())
+	defer suite.mockCtrl.Finish()
+
+	suite.jobStore = store_mocks.NewMockJobStore(suite.mockCtrl)
+	suite.taskStore = store_mocks.NewMockTaskStore(suite.mockCtrl)
+	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.mockCtrl)
+	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.mockCtrl)
+	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.mockCtrl)
+	suite.cachedJob = cachedmocks.NewMockJob(suite.mockCtrl)
+	suite.cachedTask = cachedmocks.NewMockTask(suite.mockCtrl)
+	suite.jobConfig = cachedmocks.NewMockJobConfigCache(suite.mockCtrl)
+	suite.cachedConfig = cachedmocks.NewMockJobConfigCache(suite.mockCtrl)
+
+	suite.goalStateDriver = &driver{
+		jobEngine:  suite.jobGoalStateEngine,
+		taskEngine: suite.taskGoalStateEngine,
+		jobStore:   suite.jobStore,
+		taskStore:  suite.taskStore,
+		jobFactory: suite.jobFactory,
 		mtx:        NewMetrics(tally.NoopScope),
 		cfg:        &Config{},
 	}
-	goalStateDriver.cfg.normalize()
+	suite.goalStateDriver.cfg.normalize()
+	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
+	suite.instanceID = uint32(0)
 
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
-
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-		driver:     goalStateDriver,
+	suite.taskEnt = &taskEntity{
+		jobID:      suite.jobID,
+		instanceID: suite.instanceID,
+		driver:     suite.goalStateDriver,
 	}
 
-	newConfigVersion := uint64(2)
+	suite.newConfigVersion = uint64(2)
+	suite.oldMesosTaskID = uuid.New()
 
-	oldMesosTaskID := uuid.New()
-	runtime := &pbtask.RuntimeInfo{
+	suite.runtime = &pbtask.RuntimeInfo{
 		State: pbtask.TaskState_KILLED,
 		MesosTaskId: &mesos_v1.TaskID{
-			Value: &oldMesosTaskID,
+			Value: &suite.oldMesosTaskID,
 		},
-		ConfigVersion:        newConfigVersion - 1,
-		DesiredConfigVersion: newConfigVersion,
+		ConfigVersion:        suite.newConfigVersion - 1,
+		DesiredConfigVersion: suite.newConfigVersion,
 	}
-	newRuntime := runtime
+}
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+// Test TaskInitialize in  happy case
+func (suite *TestTaskInitializeSuite) TestTaskInitialize() {
+	testTable := []struct {
+		taskConfig  *pbtask.TaskConfig
+		healthState pbtask.HealthState
+	}{
+		{
+			taskConfig:  &pbtask.TaskConfig{},
+			healthState: pbtask.HealthState_DISABLED,
+		},
+		{
+			taskConfig: &pbtask.TaskConfig{
+				HealthCheck: &pbtask.HealthCheckConfig{
+					InitialIntervalSecs:    10,
+					IntervalSecs:           10,
+					MaxConsecutiveFailures: 10,
+					TimeoutSecs:            10,
+				},
+			},
+			healthState: pbtask.HealthState_HEALTH_UNKNOWN,
+		},
+	}
 
-	cachedJob.EXPECT().
-		GetTask(instanceID).Return(cachedTask)
+	for _, tt := range testTable {
+		newRuntime := suite.runtime
 
-	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		suite.jobFactory.EXPECT().
+			GetJob(suite.jobID).Return(suite.cachedJob)
 
-	cachedJob.EXPECT().GetConfig(gomock.Any()).Return(cachedConfig, nil)
+		suite.cachedJob.EXPECT().
+			GetTask(suite.instanceID).Return(suite.cachedTask)
 
-	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
-		func(_ context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
-			for _, runtimeDiff := range runtimeDiffs {
-				assert.Equal(
-					t,
-					pbtask.TaskState_INITIALIZED,
-					runtimeDiff[cached.StateField],
-				)
-				assert.Equal(
-					t,
-					pbtask.TaskState_SUCCEEDED,
-					runtimeDiff[cached.GoalStateField],
-				)
-				assert.Equal(
-					t,
-					newConfigVersion,
-					runtimeDiff[cached.ConfigVersionField],
-				)
-			}
-		}).Return(nil)
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(suite.runtime, nil)
 
-	cachedConfig.EXPECT().
-		GetType().Return(pb_job.JobType_BATCH)
+		suite.cachedJob.EXPECT().GetConfig(gomock.Any()).Return(suite.cachedConfig, nil)
 
-	cachedJob.EXPECT().
-		GetJobType().Return(pb_job.JobType_BATCH)
+		suite.taskStore.EXPECT().GetTaskConfig(
+			gomock.Any(), suite.jobID, suite.instanceID, uint64(1)).Return(tt.taskConfig, nil)
 
-	taskGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
+		suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
+			func(_ context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+				for _, runtimeDiff := range runtimeDiffs {
+					suite.Equal(
+						pbtask.TaskState_INITIALIZED,
+						runtimeDiff[cached.StateField],
+					)
+					suite.Equal(
+						pbtask.TaskState_SUCCEEDED,
+						runtimeDiff[cached.GoalStateField],
+					)
+					suite.Equal(
+						suite.newConfigVersion,
+						runtimeDiff[cached.ConfigVersionField],
+					)
+					suite.Equal(
+						tt.healthState,
+						runtimeDiff[cached.HealthyField],
+					)
 
-	jobGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
+				}
+			}).Return(nil)
 
-	err := TaskInitialize(context.Background(), taskEnt)
-	assert.NoError(t, err)
-	assert.NotEqual(t, oldMesosTaskID, newRuntime.MesosTaskId)
+		suite.cachedConfig.EXPECT().
+			GetType().Return(pb_job.JobType_BATCH)
 
+		suite.cachedJob.EXPECT().
+			GetJobType().Return(pb_job.JobType_BATCH)
+
+		suite.taskGoalStateEngine.EXPECT().
+			Enqueue(gomock.Any(), gomock.Any()).
+			Return()
+
+		suite.jobGoalStateEngine.EXPECT().
+			Enqueue(gomock.Any(), gomock.Any()).
+			Return()
+
+		err := TaskInitialize(context.Background(), suite.taskEnt)
+		suite.NoError(err)
+		suite.NotEqual(suite.oldMesosTaskID, newRuntime.MesosTaskId)
+	}
+}
+
+// Test TaskInitialize with no cached job
+func (suite *TestTaskInitializeSuite) TestTaskInitializeNoJob() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(nil)
+
+	err := TaskInitialize(context.Background(), suite.taskEnt)
+	suite.NoError(err)
+}
+
+// Test TaskInitialize with no cached task
+func (suite *TestTaskInitializeSuite) TestTaskInitializeNoTask() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(nil)
+
+	err := TaskInitialize(context.Background(), suite.taskEnt)
+	suite.NoError(err)
+}
+
+// Test TaskInitialize when no task runtime exist
+func (suite *TestTaskInitializeSuite) TestTaskInitializeNoTaskRuntime() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(suite.cachedTask)
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(nil, errors.New(""))
+
+	err := TaskInitialize(context.Background(), suite.taskEnt)
+	suite.Error(err)
+}
+
+// Test TaskInitialize when no job config exist
+func (suite *TestTaskInitializeSuite) TestTaskInitializeNoJobConfig() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(suite.cachedTask)
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(suite.runtime, nil)
+
+	suite.cachedJob.EXPECT().GetConfig(gomock.Any()).Return(nil, errors.New(""))
+
+	err := TaskInitialize(context.Background(), suite.taskEnt)
+	suite.Error(err)
+}
+
+// Test TaskInitialize when task config exist
+func (suite *TestTaskInitializeSuite) TestTaskInitializeNoTaskConfig() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(suite.cachedTask)
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(suite.runtime, nil)
+
+	suite.cachedJob.EXPECT().GetConfig(gomock.Any()).Return(suite.cachedConfig, nil)
+
+	suite.taskStore.EXPECT().GetTaskConfig(
+		gomock.Any(), suite.jobID, suite.instanceID, uint64(1)).Return(nil, errors.New(""))
+
+	err := TaskInitialize(context.Background(), suite.taskEnt)
+	suite.Error(err)
 }

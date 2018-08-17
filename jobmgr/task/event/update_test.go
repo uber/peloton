@@ -11,6 +11,9 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/api/transport"
+	"go.uber.org/yarpc/transport/http"
 	"go.uber.org/yarpc/yarpcerrors"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -22,6 +25,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
@@ -102,6 +106,31 @@ func (suite *TaskUpdaterTestSuite) TearDownTest() {
 
 func TestPelotonTaskUpdater(t *testing.T) {
 	suite.Run(t, new(TaskUpdaterTestSuite))
+}
+
+func (suite *TaskUpdaterTestSuite) TestNewTaskStatusUpdate() {
+	dispatcher := yarpc.NewDispatcher(yarpc.Config{
+		Name: common.PelotonJobManager,
+		Outbounds: yarpc.Outbounds{
+			common.PelotonResourceManager: transport.Outbounds{
+				Unary: http.NewTransport().NewSingleOutbound(""),
+			},
+			common.PelotonHostManager: transport.Outbounds{
+				Unary: http.NewTransport().NewSingleOutbound(""),
+			},
+		},
+	})
+	statusUpdater := NewTaskStatusUpdate(
+		dispatcher,
+		suite.mockJobStore,
+		suite.mockTaskStore,
+		suite.mockVolumeStore,
+		suite.jobFactory,
+		suite.goalStateDriver,
+		[]Listener{},
+		tally.NoopScope,
+	)
+	suite.NotNil(statusUpdater)
 }
 
 func createTestTaskUpdateEvent(state mesos.TaskState) *pb_eventstream.Event {
@@ -373,6 +402,10 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 			suite.Equal(
 				runtimeDiff[cached.MessageField],
 				rescheduleMsg,
+			)
+			suite.Equal(
+				runtimeDiff[cached.HealthyField],
+				task.HealthState_DISABLED,
 			)
 		}).
 		Return(nil)

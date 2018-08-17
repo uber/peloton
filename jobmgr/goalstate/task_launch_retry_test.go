@@ -142,10 +142,11 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskLaunchTimeout() {
 
 		if i == 0 {
 			// test happy case
-			suite.taskStore.EXPECT().GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(config, nil)
+			suite.taskStore.EXPECT().GetTaskConfig(
+				gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(config, nil).AnyTimes()
 			suite.mockHostMgr.EXPECT().KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
 				TaskIds: []*mesos_v1.TaskID{oldMesosTaskID},
-			})
+			}).AnyTimes()
 		} else {
 			// test skip task kill
 			suite.taskStore.EXPECT().GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New(""))
@@ -234,7 +235,8 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeout() {
 	suite.cachedJob.EXPECT().
 		GetTask(suite.instanceID).Return(suite.cachedTask)
 
-	suite.taskStore.EXPECT().GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(config, nil)
+	suite.taskStore.EXPECT().GetTaskConfig(
+		gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(config, nil).Times(2)
 
 	suite.cachedTask.EXPECT().
 		GetLastRuntimeUpdateTime().Return(time.Now().Add(-suite.goalStateDriver.cfg.LaunchTimeout))
