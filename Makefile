@@ -1,4 +1,4 @@
-.PHONY: all placement install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers db-pressure archiver
+.PHONY: all placement install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers archiver
 .DEFAULT_GOAL := all
 
 PROJECT_ROOT  = code.uber.internal/infra/peloton
@@ -54,9 +54,6 @@ placement:
 
 resmgr:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-resmgr resmgr/main/*.go
-
-db-pressure:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/dbpressure storage/pressuretest/main/*.go
 
 archiver:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-archiver archiver/main/*.go

@@ -4,14 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -271,24 +268,6 @@ func (s *Store) executeRead(
 				s.metrics.ErrorMetrics.NotTransient.Inc(1)
 			}
 			return nil, err
-		}
-	}
-}
-
-func (s *Store) executeBatch(ctx context.Context, stmts []api.Statement) error {
-	p := backoff.NewRetrier(s.retryPolicy)
-	for {
-		err := s.DataStore.ExecuteBatch(ctx, stmts)
-		if err == nil {
-			return err
-		}
-		err = s.handleDataStoreError(err, p)
-
-		if err != nil {
-			if !common.IsTransientError(err) {
-				s.metrics.ErrorMetrics.NotTransient.Inc(1)
-			}
-			return err
 		}
 	}
 }
@@ -995,151 +974,6 @@ func (s *Store) CreateTaskRuntime(
 	return nil
 }
 
-// CreateTaskRuntimes creates task runtimes for the given slice of task runtimes, instances 0..n
-func (s *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo, owner string) error {
-	var instanceIDList []uint32
-
-	maxBatchSize := uint32(s.Conf.MaxBatchSize)
-	maxParallelBatches := uint32(s.Conf.MaxParallelBatches)
-	if maxBatchSize == 0 {
-		maxBatchSize = math.MaxUint32
-	}
-	jobID := id.GetValue()
-	for instanceID := range runtimes {
-		instanceIDList = append(instanceIDList, instanceID)
-	}
-	nTasks := uint32(len(runtimes))
-
-	tasksNotCreated := uint32(0)
-	timeStart := time.Now()
-	nBatches := nTasks / maxBatchSize
-	if (nTasks % maxBatchSize) > 0 {
-		nBatches = nBatches + 1
-	}
-	increment := uint32(0)
-	if (nBatches % maxParallelBatches) > 0 {
-		increment = 1
-	}
-
-	wg := new(sync.WaitGroup)
-	prevEnd := uint32(0)
-	log.WithField("batches", nBatches).
-		WithField("tasks", nTasks).
-		Debug("Creating tasks")
-
-	for i := uint32(0); i < maxParallelBatches; i++ {
-		batchStart := prevEnd
-		batchEnd := batchStart + (nBatches / maxParallelBatches) + increment
-		if batchEnd > nTasks {
-			batchEnd = nTasks
-		}
-		prevEnd = batchEnd
-		if batchStart == batchEnd {
-			continue
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for batch := batchStart; batch < batchEnd; batch++ {
-				// do batching by rows, up to s.Conf.MaxBatchSize
-				start := batch * maxBatchSize // the starting instance ID
-				end := nTasks                 // the end bounds (noninclusive)
-				if nTasks >= (batch+1)*maxBatchSize {
-					end = (batch + 1) * maxBatchSize
-				}
-				batchSize := end - start // how many tasks in this batch
-				if batchSize < 1 {
-					// skip if it overflows
-					continue
-				}
-				batchTimeStart := time.Now()
-				insertStatements := []api.Statement{}
-				idsToTaskRuntimes := map[string]*task.RuntimeInfo{}
-				log.WithField("id", id.GetValue()).
-					WithField("start", start).
-					WithField("end", end).
-					Debug("creating tasks")
-				for k := start; k < end; k++ {
-					instanceID := instanceIDList[k]
-					runtime := runtimes[instanceID]
-					if runtime == nil {
-						continue
-					}
-
-					taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
-					idsToTaskRuntimes[taskID] = runtime
-
-					runtimeBuffer, err := proto.Marshal(runtime)
-					if err != nil {
-						log.WithField("job_id", id.GetValue()).
-							WithField("instance_id", instanceID).
-							WithError(err).
-							Error("Failed to create task runtime")
-						atomic.AddUint32(&tasksNotCreated, batchSize)
-						return
-					}
-
-					queryBuilder := s.DataStore.NewQuery()
-					stmt := queryBuilder.Insert(taskRuntimeTable).
-						Columns(
-							"job_id",
-							"instance_id",
-							"version",
-							"update_time",
-							"state",
-							"runtime_info").
-						Values(
-							jobID,
-							instanceID,
-							runtime.GetRevision().GetVersion(),
-							time.Now().UTC(),
-							runtime.GetState().String(),
-							runtimeBuffer)
-
-					// IfNotExist() will cause Writing 20 tasks (0:19) for TestJob2 to Cassandra failed in 8.756852ms with
-					// Batch with conditions cannot span multiple partitions. For now, drop the IfNotExist()
-
-					insertStatements = append(insertStatements, stmt)
-				}
-				err := s.applyStatements(ctx, insertStatements, jobID)
-				if err != nil {
-					log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
-						Errorf("Writing %d tasks (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.GetValue(), time.Since(batchTimeStart), err)
-					atomic.AddUint32(&tasksNotCreated, batchSize)
-					return
-				}
-				log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
-					Debugf("Wrote %d tasks (%d:%d) for %v to Cassandra in %v", batchSize, start, end-1, id.GetValue(), time.Since(batchTimeStart))
-				err = s.logTaskStateChanges(ctx, idsToTaskRuntimes)
-				if err != nil {
-					log.Errorf("Unable to log task state changes for job ID %v range(%d:%d), error = %v", jobID, start, end-1, err)
-				}
-			}
-		}()
-	}
-	wg.Wait()
-
-	if tasksNotCreated != 0 {
-		s.metrics.TaskMetrics.TaskCreateFail.Inc(int64(tasksNotCreated))
-		s.metrics.TaskMetrics.TaskCreate.Inc(int64(nTasks - tasksNotCreated))
-		msg := fmt.Sprintf(
-			"Wrote %d tasks for %v, and was unable to write %d tasks to Cassandra in %v",
-			nTasks-tasksNotCreated,
-			jobID,
-			tasksNotCreated,
-			time.Since(timeStart))
-		log.Errorf(msg)
-		return fmt.Errorf(msg)
-	}
-
-	s.metrics.TaskMetrics.TaskCreate.Inc(int64(nTasks))
-
-	log.WithField("duration_s", time.Since(timeStart).Seconds()).
-		Infof("Wrote all %d tasks for %v to Cassandra in %v", nTasks, jobID, time.Since(timeStart))
-	return nil
-
-}
-
 // addPodEvent upserts single pod state change for a Job -> Instance -> Run.
 // Task state events are sorted by reverse chronological run_id and time of event.
 func (s *Store) addPodEvent(
@@ -1335,55 +1169,6 @@ func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, in
 		return err
 	}
 	s.metrics.TaskMetrics.TaskLogState.Inc(1)
-	return nil
-}
-
-// logTaskStateChanges logs multiple task state change events in a batch operation (one RPC, separate statements)
-// taskIDToTaskInfos is a map of task ID to task info
-func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskRuntimes map[string]*task.RuntimeInfo) error {
-	statements := []api.Statement{}
-	nTasks := int64(0)
-	for taskID, runtime := range taskIDToTaskRuntimes {
-		jobID, instanceID, err := util.ParseTaskID(taskID)
-		if err != nil {
-			log.WithError(err).
-				WithField("task_id", taskID).
-				Error("Invalid task id")
-			return err
-		}
-		stateChange := TaskStateChangeRecord{
-			JobID:           jobID,
-			InstanceID:      uint32(instanceID),
-			TaskState:       runtime.GetState().String(),
-			TaskHost:        runtime.GetHost(),
-			EventTime:       time.Now().UTC().Format(time.RFC3339),
-			MesosTaskID:     runtime.GetMesosTaskId().GetValue(),
-			AgentID:         runtime.GetAgentID().GetValue(),
-			Reason:          runtime.GetReason(),
-			Healthy:         runtime.GetHealthy().String(),
-			Message:         runtime.GetMessage(),
-			PrevMesosTaskID: runtime.GetPrevMesosTaskId().GetValue(),
-		}
-		buffer, err := json.Marshal(stateChange)
-		if err != nil {
-			log.Errorf("Failed to marshal stateChange for task %v, error = %v", taskID, err)
-			return err
-		}
-		stateChangePart := []string{string(buffer)}
-		queryBuilder := s.DataStore.NewQuery()
-		stmt := queryBuilder.Update(taskStateChangesTable).
-			Add("events", stateChangePart).
-			Where(qb.Eq{"job_id": jobID, "instance_id": instanceID})
-		statements = append(statements, stmt)
-		nTasks++
-	}
-	err := s.executeBatch(ctx, statements)
-	if err != nil {
-		log.Errorf("Fail to logTaskStateChanges for %d tasks, err=%v", len(taskIDToTaskRuntimes), err)
-		s.metrics.TaskMetrics.TaskLogStateFail.Inc(nTasks)
-		return err
-	}
-	s.metrics.TaskMetrics.TaskLogState.Inc(nTasks)
 	return nil
 }
 
@@ -2088,141 +1873,6 @@ func (s *Store) UpdateTaskRuntime(
 	return nil
 }
 
-// UpdateTaskRuntimes updates task runtimes for the given task instance-ids
-func (s *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo) error {
-	var instanceIDList []uint32
-
-	// TODO the batching used in this function needs to be abstracted to a common
-	// routine to be used by any storage API which needs to batch
-	maxBatchSize := uint32(s.Conf.MaxBatchSize)
-	maxParallelBatches := uint32(s.Conf.MaxParallelBatches)
-	if maxBatchSize == 0 {
-		maxBatchSize = math.MaxUint32
-	}
-	jobID := id.GetValue()
-	for instanceID := range runtimes {
-		instanceIDList = append(instanceIDList, instanceID)
-	}
-	nTasks := uint32(len(runtimes))
-
-	tasksNotUpdated := uint32(0)
-	timeStart := time.Now()
-	nBatches := nTasks / maxBatchSize
-	if (nTasks % maxBatchSize) > 0 {
-		nBatches = nBatches + 1
-	}
-	increment := uint32(0)
-	if (nBatches % maxParallelBatches) > 0 {
-		increment = 1
-	}
-
-	wg := new(sync.WaitGroup)
-	prevEnd := uint32(0)
-	log.WithField("batches", nBatches).
-		WithField("tasks", nTasks).
-		WithField("job_id", jobID).
-		Debug("updating task runtimes")
-
-	for i := uint32(0); i < maxParallelBatches; i++ {
-		batchStart := prevEnd
-		batchEnd := batchStart + (nBatches / maxParallelBatches) + increment
-		if batchEnd > nTasks {
-			batchEnd = nTasks
-		}
-		prevEnd = batchEnd
-		if batchStart == batchEnd {
-			continue
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for batch := batchStart; batch < batchEnd; batch++ {
-				// do batching by rows, up to s.Conf.MaxBatchSize
-				start := batch * maxBatchSize // the starting instance ID
-				end := nTasks                 // the end bounds (noninclusive)
-				if nTasks >= (batch+1)*maxBatchSize {
-					end = (batch + 1) * maxBatchSize
-				}
-				batchSize := end - start // how many tasks in this batch
-				if batchSize < 1 {
-					// skip if it overflows
-					continue
-				}
-				batchTimeStart := time.Now()
-				insertStatements := []api.Statement{}
-				idsToTaskRuntimes := map[string]*task.RuntimeInfo{}
-				log.WithField("id", id.GetValue()).
-					WithField("start", start).
-					WithField("end", end).
-					Debug("updating task runtimes")
-				for k := start; k < end; k++ {
-					instanceID := instanceIDList[k]
-					runtime := runtimes[instanceID]
-					if runtime == nil {
-						continue
-					}
-
-					taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
-					idsToTaskRuntimes[taskID] = runtime
-
-					runtimeBuffer, err := proto.Marshal(runtime)
-					if err != nil {
-						log.WithField("job_id", id.GetValue()).
-							WithField("instance_id", instanceID).
-							WithError(err).
-							Error("failed to update task runtime")
-						atomic.AddUint32(&tasksNotUpdated, batchSize)
-						return
-					}
-
-					queryBuilder := s.DataStore.NewQuery()
-					stmt := queryBuilder.Update(taskRuntimeTable).
-						Set("version", runtime.Revision.Version).
-						Set("update_time", time.Now().UTC()).
-						Set("state", runtime.GetState().String()).
-						Set("runtime_info", runtimeBuffer).
-						Where(qb.Eq{"job_id": id.GetValue(), "instance_id": instanceID})
-					insertStatements = append(insertStatements, stmt)
-				}
-				err := s.applyStatements(ctx, insertStatements, jobID)
-				if err != nil {
-					log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
-						Errorf("Updating %d task runtimes (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.GetValue(), time.Since(batchTimeStart), err)
-					atomic.AddUint32(&tasksNotUpdated, batchSize)
-					return
-				}
-				log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
-					Debugf("updated %d task runtimes (%d:%d) for %v to Cassandra in %v", batchSize, start, end-1, id.GetValue(), time.Since(batchTimeStart))
-				err = s.logTaskStateChanges(ctx, idsToTaskRuntimes)
-				if err != nil {
-					log.Errorf("Unable to log task state changes for job ID %v range(%d:%d), error = %v", jobID, start, end-1, err)
-				}
-			}
-		}()
-	}
-	wg.Wait()
-
-	if tasksNotUpdated != 0 {
-		s.metrics.TaskMetrics.TaskUpdateFail.Inc(int64(tasksNotUpdated))
-		s.metrics.TaskMetrics.TaskUpdate.Inc(int64(nTasks - tasksNotUpdated))
-		msg := fmt.Sprintf(
-			"Updated %d task runtimes for %v, and was unable to write %d tasks to Cassandra in %v",
-			nTasks-tasksNotUpdated,
-			jobID,
-			tasksNotUpdated,
-			time.Since(timeStart))
-		log.Errorf(msg)
-		return fmt.Errorf(msg)
-	}
-
-	s.metrics.TaskMetrics.TaskUpdate.Inc(int64(nTasks))
-
-	log.WithField("duration_s", time.Since(timeStart).Seconds()).
-		Debug("updated all %d task runtimes for %v to Cassandra in %v", nTasks, jobID, time.Since(timeStart))
-	return nil
-
-}
-
 // GetTaskForJob returns a task by jobID and instanceID
 func (s *Store) GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
 	taskID := fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID))
@@ -2428,15 +2078,6 @@ func (s *Store) getFrameworkInfo(ctx context.Context, frameworkName string) (*Fr
 	return nil, fmt.Errorf("FrameworkInfo not found for framework %v", frameworkName)
 }
 
-func (s *Store) applyStatements(ctx context.Context, stmts []api.Statement, jobID string) error {
-	err := s.executeBatch(ctx, stmts)
-	if err != nil {
-		log.Errorf("Fail to execute %d insert statements for job %v, err=%v", len(stmts), jobID, err)
-		return err
-	}
-	return nil
-}
-
 func (s *Store) applyStatement(ctx context.Context, stmt api.Statement, itemName string) error {
 	stmtString, _, _ := stmt.ToSQL()
 	// Use common.DBStmtLogField to log CQL queries here. Log formatter will use
@@ -2486,11 +2127,6 @@ func (s *Store) CreateResourcePool(ctx context.Context, id *peloton.ResourcePool
 	}
 	s.metrics.ResourcePoolMetrics.ResourcePoolCreate.Inc(1)
 	return nil
-}
-
-// GetResourcePool gets a resource pool info object
-func (s *Store) GetResourcePool(ctx context.Context, id *peloton.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
-	return nil, errors.New("unimplemented")
 }
 
 // DeleteResourcePool Deletes the resource pool
@@ -2965,21 +2601,6 @@ func (s *Store) GetPersistentVolume(ctx context.Context, volumeID *peloton.Volum
 	}
 	s.metrics.VolumeMetrics.VolumeGetFail.Inc(1)
 	return nil, &storage.VolumeNotFoundError{VolumeID: volumeID}
-}
-
-// DeletePersistentVolume delete persistent volume entry.
-func (s *Store) DeletePersistentVolume(ctx context.Context, volumeID *peloton.VolumeID) error {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Delete(volumeTable).Where(qb.Eq{"volume_id": volumeID.GetValue()})
-
-	err := s.applyStatement(ctx, stmt, volumeID.GetValue())
-	if err != nil {
-		s.metrics.VolumeMetrics.VolumeDeleteFail.Inc(1)
-		return err
-	}
-
-	s.metrics.VolumeMetrics.VolumeDelete.Inc(1)
-	return nil
 }
 
 // CreateUpdate creates a new update entry in DB.

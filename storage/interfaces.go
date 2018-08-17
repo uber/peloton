@@ -72,8 +72,6 @@ type TaskStore interface {
 		runtime *task.RuntimeInfo,
 		createdBy string,
 		jobType job.JobType) error
-	// CreateTaskRuntimes creates the runtimes by running multiple parallel go routines, each of which do batching as well
-	CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo, createdBy string) error
 	// GetTaskRuntime gets the runtime of a given task
 	GetTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32) (*task.RuntimeInfo, error)
 	// UpdateTaskRuntime updates the runtime of a given task
@@ -83,8 +81,6 @@ type TaskStore interface {
 		instanceID uint32,
 		runtime *task.RuntimeInfo,
 		jobType job.JobType) error
-	// UpdateTaskRuntimes updates the runtimes by running multiple parallel go routines, each of which do batching as well
-	UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo) error
 
 	// CreateTaskConfigs creates the configuration of all tasks
 	CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error
@@ -178,7 +174,6 @@ type FrameworkInfoStore interface {
 // ResourcePoolStore is the interface to store all the resource pool information
 type ResourcePoolStore interface {
 	CreateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, Config *respool.ResourcePoolConfig, createdBy string) error
-	GetResourcePool(ctx context.Context, id *peloton.ResourcePoolID) (*respool.ResourcePoolInfo, error)
 	DeleteResourcePool(ctx context.Context, id *peloton.ResourcePoolID) error
 	UpdateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, Config *respool.ResourcePoolConfig) error
 	// TODO change to return ResourcePoolInfo
@@ -191,7 +186,6 @@ type PersistentVolumeStore interface {
 	CreatePersistentVolume(ctx context.Context, volumeInfo *volume.PersistentVolumeInfo) error
 	UpdatePersistentVolume(ctx context.Context, volumeInfo *volume.PersistentVolumeInfo) error
 	GetPersistentVolume(ctx context.Context, volumeID *peloton.VolumeID) (*volume.PersistentVolumeInfo, error)
-	DeletePersistentVolume(ctx context.Context, volumeID *peloton.VolumeID) error
 }
 
 // SecretStore is the interface to store job secrets.

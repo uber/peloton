@@ -19,9 +19,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
+	"code.uber.internal/infra/peloton/common/backoff"
 	"code.uber.internal/infra/peloton/storage"
 	qb "code.uber.internal/infra/peloton/storage/querybuilder"
 
+	"github.com/gocql/gocql"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
@@ -64,7 +66,6 @@ func init() {
 func TestCassandraStore(t *testing.T) {
 	suite.Run(t, new(CassandraStoreTestSuite))
 	assert.True(t, testScope.Snapshot().Counters()["execute.execute+result=success,store=peloton_test"].Value() > 0)
-	assert.True(t, testScope.Snapshot().Counters()["executeBatch.executeBatch+result=success,store=peloton_test"].Value() > 0)
 }
 
 func (suite *CassandraStoreTestSuite) createJob(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
@@ -1358,68 +1359,6 @@ func (suite *CassandraStoreTestSuite) TestGetTaskConfigs() {
 	}
 }
 
-// TestCreateTasks ensures task create batching works as expected.
-func (suite *CassandraStoreTestSuite) TestCreateTasks() {
-	jobTasks := map[string]int{
-		uuid.New(): 10,
-		uuid.New(): store.Conf.MaxBatchSize,
-		uuid.New(): store.Conf.MaxBatchSize*3 + 10,
-		uuid.New(): store.Conf.MaxParallelBatches*store.Conf.MaxBatchSize + 4,
-		uuid.New(): store.Conf.MaxParallelBatches*store.Conf.MaxBatchSize - 4,
-		uuid.New(): store.Conf.MaxParallelBatches * store.Conf.MaxBatchSize,
-	}
-	for jobID, nTasks := range jobTasks {
-		var jobID = peloton.JobID{Value: jobID}
-		var sla = job.SlaConfig{
-			Priority:                22,
-			MaximumRunningInstances: 3,
-			Preemptible:             false,
-		}
-		var taskConfig = task.TaskConfig{
-			Resource: &task.ResourceConfig{
-				CpuLimit:    0.8,
-				MemLimitMb:  800,
-				DiskLimitMb: 1500,
-				FdLimit:     1000,
-			},
-		}
-		var jobConfig = job.JobConfig{
-			Name:          jobID.GetValue(),
-			OwningTeam:    "team6",
-			LdapGroups:    []string{"money", "team6", "otto"},
-			SLA:           &sla,
-			DefaultConfig: &taskConfig,
-		}
-		err := suite.createJob(context.Background(), &jobID, &jobConfig, "uber")
-		suite.NoError(err)
-
-		// now, create a mess of tasks
-		taskRuntimes := make(map[uint32]*task.RuntimeInfo)
-		for j := 0; j < nTasks; j++ {
-			tID := fmt.Sprintf("%s-%d", jobID.GetValue(), j)
-			var runtime = &task.RuntimeInfo{
-				MesosTaskId: &mesos.TaskID{Value: &tID},
-				State:       task.TaskState(j),
-			}
-			taskRuntimes[uint32(j)] = runtime
-		}
-		err = store.CreateTaskRuntimes(context.Background(), &jobID, taskRuntimes, "test")
-		suite.NoError(err)
-	}
-
-	// List all tasks by job, ensure they were created properly, and
-	// have the right parent
-	for jobID, nTasks := range jobTasks {
-		job := peloton.JobID{Value: jobID}
-		tasks, err := store.GetTasksForJob(context.Background(), &job)
-		suite.NoError(err)
-		suite.Equal(nTasks, len(tasks))
-		for _, task := range tasks {
-			suite.Equal(jobID, task.JobId.Value)
-		}
-	}
-}
-
 func (suite *CassandraStoreTestSuite) TestGetTaskStateChanges() {
 	var taskStore storage.TaskStore
 	taskStore = store
@@ -1812,7 +1751,8 @@ func (suite *CassandraStoreTestSuite) TestCreateGetResourcePoolConfig() {
 	}
 
 	for _, tc := range testCases {
-		actualErr := resourcePoolStore.CreateResourcePool(context.Background(), &peloton.ResourcePoolID{Value: tc.resourcePoolID},
+		actualErr := resourcePoolStore.CreateResourcePool(context.Background(),
+			&peloton.ResourcePoolID{Value: tc.resourcePoolID},
 			tc.config, tc.owner)
 		if tc.expectedErr == nil {
 			suite.Nil(actualErr, tc.msg)
@@ -1820,47 +1760,73 @@ func (suite *CassandraStoreTestSuite) TestCreateGetResourcePoolConfig() {
 			suite.EqualError(actualErr, tc.expectedErr.Error(), tc.msg)
 		}
 	}
+
+	// cleanup respools
+	for _, tc := range testCases {
+		if tc.expectedErr == nil {
+			err := resourcePoolStore.DeleteResourcePool(context.Background(),
+				&peloton.ResourcePoolID{Value: tc.resourcePoolID})
+			suite.NoError(err)
+		}
+	}
 }
 
-func (suite *CassandraStoreTestSuite) GetAllResourcePools() {
+// TestGetAllResourcePools tests getting all resource pools from store
+func (suite *CassandraStoreTestSuite) TestGetAllResourcePools() {
 	var resourcePoolStore storage.ResourcePoolStore
 	resourcePoolStore = store
 	nResourcePools := 2
 
 	// todo move to setup once ^^^ issue resolves
 	for i := 0; i < nResourcePools; i++ {
-		resourcePoolID := &peloton.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
+		resourcePoolID := &peloton.ResourcePoolID{
+			Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
 		resourcePoolConfig := createResourcePoolConfig()
 		resourcePoolConfig.Name = resourcePoolID.Value
-		err := resourcePoolStore.CreateResourcePool(context.Background(), resourcePoolID, resourcePoolConfig, _resPoolOwner)
-		suite.Nil(err)
+		err := resourcePoolStore.CreateResourcePool(context.Background(),
+			resourcePoolID, resourcePoolConfig, _resPoolOwner)
+		suite.NoError(err)
 	}
 
-	resourcePools, actualErr := resourcePoolStore.GetAllResourcePools(context.Background())
-	suite.NoError(actualErr)
+	resourcePools, err := resourcePoolStore.GetAllResourcePools(
+		context.Background())
+	suite.NoError(err)
 	suite.Len(resourcePools, nResourcePools)
+
+	// cleanup created resource pools
+	for i := 0; i < nResourcePools; i++ {
+		resourcePoolID := &peloton.ResourcePoolID{
+			Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
+		err := resourcePoolStore.DeleteResourcePool(
+			context.Background(), resourcePoolID)
+		suite.NoError(err)
+	}
 }
 
-func (suite *CassandraStoreTestSuite) GetAllResourcePoolsEmptyResourcePool() {
+// TestGetAllResourcePoolsEmptyResourcePool tests getting empty resource pool
+func (suite *CassandraStoreTestSuite) TestGetAllResourcePoolsEmptyResourcePool() {
 	var resourcePoolStore storage.ResourcePoolStore
 	resourcePoolStore = store
-	nResourcePools := 0
-	resourcePools, actualErr := resourcePoolStore.GetAllResourcePools(context.Background())
-	suite.NoError(actualErr)
-	suite.Len(resourcePools, nResourcePools)
+	resourcePools, err := resourcePoolStore.GetAllResourcePools(context.Background())
+	suite.NoError(err)
+	suite.Len(resourcePools, 0)
 }
 
+// TestGetResourcePoolsByOwner tests getting resource pools by owner
 func (suite *CassandraStoreTestSuite) TestGetResourcePoolsByOwner() {
 	var resourcePoolStore storage.ResourcePoolStore
 	resourcePoolStore = store
 	nResourcePools := 2
+	owner := "test-owner"
 
 	// todo move to setup once ^^^ issue resolves
 	for i := 0; i < nResourcePools; i++ {
-		resourcePoolID := &peloton.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
+		resourcePoolID := &peloton.ResourcePoolID{
+			Value: fmt.Sprintf("%s%d", owner, i)}
 		resourcePoolConfig := createResourcePoolConfig()
 		resourcePoolConfig.Name = resourcePoolID.Value
-		err := resourcePoolStore.CreateResourcePool(context.Background(), resourcePoolID, resourcePoolConfig, _resPoolOwner)
+		err := resourcePoolStore.CreateResourcePool(context.Background(),
+			resourcePoolID, resourcePoolConfig, owner)
 		suite.Nil(err)
 	}
 
@@ -1878,20 +1844,30 @@ func (suite *CassandraStoreTestSuite) TestGetResourcePoolsByOwner() {
 		},
 		{
 			expectedErr:    nil,
-			owner:          _resPoolOwner,
+			owner:          owner,
 			nResourcePools: nResourcePools,
 			msg:            "testcase: fetch resource pools owner",
 		},
 	}
 
 	for _, tc := range testCases {
-		resourcePools, actualErr := resourcePoolStore.GetResourcePoolsByOwner(context.Background(), tc.owner)
+		resourcePools, actualErr := resourcePoolStore.GetResourcePoolsByOwner(
+			context.Background(), tc.owner)
 		if tc.expectedErr == nil {
 			suite.Nil(actualErr, tc.msg)
 			suite.Len(resourcePools, tc.nResourcePools, tc.msg)
 		} else {
 			suite.EqualError(actualErr, tc.expectedErr.Error(), tc.msg)
 		}
+	}
+
+	// cleanup resource pools
+	for i := 0; i < nResourcePools; i++ {
+		resourcePoolID := &peloton.ResourcePoolID{
+			Value: fmt.Sprintf("%s%d", owner, i)}
+		err := resourcePoolStore.DeleteResourcePool(
+			context.Background(), resourcePoolID)
+		suite.NoError(err)
 	}
 }
 
@@ -1916,6 +1892,11 @@ func (suite *CassandraStoreTestSuite) TestUpdateResourcePool() {
 		"Update")
 	suite.NoError(err)
 	suite.Equal("Updated description", resourcePools[resourcePoolID.Value].Description)
+
+	// cleanup resource pool
+	err = resourcePoolStore.DeleteResourcePool(
+		context.Background(), resourcePoolID)
+	suite.NoError(err)
 }
 
 func (suite *CassandraStoreTestSuite) TestDeleteResourcePool() {
@@ -2107,13 +2088,6 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	suite.Equal(rpv.Hostname, "host")
 	suite.Equal(rpv.SizeMB, uint32(10))
 	suite.Equal(rpv.ContainerPath, "testpath")
-
-	err = volumeStore.DeletePersistentVolume(context.Background(), volumeID1)
-	suite.NoError(err)
-
-	// Verify volume has been deleted.
-	_, err = volumeStore.GetPersistentVolume(context.Background(), volumeID1)
-	suite.Error(err)
 }
 
 // TestUpdate tests all job update related APIs by writing and reading
@@ -2438,10 +2412,10 @@ func (suite *CassandraStoreTestSuite) TestTaskQueryFilter() {
 
 	for i := 0; i < 100; i++ {
 		runtimes[uint32(i)].ConfigVersion = jobConfig.GetChangeLog().GetVersion()
+		err = taskStore.CreateTaskRuntime(context.Background(),
+			&jobID, uint32(i), runtimes[uint32(i)], "test", jobConfig.GetType())
+		suite.NoError(err)
 	}
-
-	err = taskStore.CreateTaskRuntimes(context.Background(), &jobID, runtimes, "user1")
-	suite.Nil(err)
 
 	// testing filtering on state
 	tasks, _, err := taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
@@ -2525,7 +2499,9 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 		taskInfo.Runtime.State = task.TaskState(i)
 		taskInfo.Runtime.StartTime = time.Now().Add(time.Duration(i) * time.Minute).Format(time.RFC3339)
 		runtimes[i] = taskInfo.Runtime
-		err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+		err = taskStore.UpdateTaskRuntime(
+			context.Background(), &jobID, i,
+			runtimes[i], jobConfig.GetType())
 		suite.NoError(err)
 	}
 
@@ -2770,4 +2746,67 @@ func TestLess(t *testing.T) {
 	assert.Equal(t, Less(orderByList, taskInfo0, taskInfo1), true)
 	assert.Equal(t, Less(orderByList, taskInfo1, taskInfo2), false)
 	assert.Equal(t, Less(orderByList, taskInfo0, taskInfo2), false)
+}
+
+// TestSortedTaskInfoList tests sort functions for SortedTaskInfoList
+func (suite *CassandraStoreTestSuite) TestSortedTaskInfoList() {
+	l := SortedTaskInfoList{
+		&task.TaskInfo{
+			InstanceId: uint32(0),
+		},
+		&task.TaskInfo{
+			InstanceId: uint32(1),
+		},
+	}
+
+	suite.Equal(l.Len(), 2)
+	suite.True(l.Less(0, 1))
+	l.Swap(0, 1)
+	suite.Equal(l[0].InstanceId, uint32(1))
+}
+
+// TestSortedUpdateList tests sort functions for SortedUpdateList
+func (suite *CassandraStoreTestSuite) TestSortedUpdateList() {
+	l := SortedUpdateList{
+		&SortUpdateInfo{
+			jobConfigVersion: uint64(0),
+		},
+		&SortUpdateInfo{
+			jobConfigVersion: uint64(1),
+		},
+	}
+
+	suite.Equal(l.Len(), 2)
+	suite.True(l.Less(0, 1))
+	l.Swap(0, 1)
+	suite.Equal(l[0].jobConfigVersion, uint64(1))
+}
+
+// TestHandleDataStoreError tests data store error handling
+func (suite *CassandraStoreTestSuite) TestHandleDataStoreError() {
+	policy := backoff.NewRetryPolicy(5, 5*time.Millisecond)
+
+	nonRetryableErrs := []error{
+		gocql.RequestErrReadFailure{},
+		gocql.RequestErrWriteFailure{},
+		gocql.RequestErrAlreadyExists{},
+		gocql.RequestErrReadTimeout{},
+		gocql.RequestErrWriteTimeout{},
+		gocql.ErrTooManyTimeouts,
+	}
+	for _, nErr := range nonRetryableErrs {
+		suite.Error(store.handleDataStoreError(nErr, backoff.NewRetrier(policy)))
+	}
+
+	retryableErrs := []error{
+		gocql.ErrUnavailable,
+		gocql.ErrSessionClosed,
+		gocql.ErrNoConnections,
+		gocql.ErrConnectionClosed,
+		gocql.ErrNoStreams,
+	}
+	for _, nErr := range retryableErrs {
+		suite.NoError(store.handleDataStoreError(nErr, backoff.NewRetrier(policy)))
+	}
+
 }
