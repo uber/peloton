@@ -120,7 +120,7 @@ peloton:
     - GRPC_PORT
   resource:
     cpuLimit: 2.0
-    memLimitMb: 2048
+    memLimitMb: 4096
     diskLimitMb: 2048
   dynamic_env:
     - APP
