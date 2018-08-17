@@ -1,4 +1,6 @@
-changelog: null
+changelog:
+  version: 0
+type: 1
 name: TestPelotonUberDockerServiceJob
 owningteam: compute
 ldapgroups:
@@ -36,7 +38,7 @@ defaultconfig:
       command: "bash /home/udocker/test-uber-docker-service/udeploy/health_check.sh"
   ports: 
     - name: "http"
-      envname: "UBER_HTTP_PORT"
+      envname: "UBER_PORT_HTTP"
   container:
     type: 1
     docker:
