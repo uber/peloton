@@ -25,7 +25,8 @@ import (
 )
 
 const (
-	hostmgrBackoffRetryInterval = 100 * time.Millisecond
+	restoreMaintenaceQueueTimeout = 10 * time.Second
+	hostmgrBackoffRetryInterval   = 100 * time.Millisecond
 )
 
 var (
@@ -347,6 +348,10 @@ func (r *RecoveryHandler) loadTasksInRange(
 }
 
 func (r *RecoveryHandler) restartDrainingProcess(ctx context.Context) {
+	contextWithTimeout, cancel := context.WithTimeout(
+		ctx,
+		restoreMaintenaceQueueTimeout)
+	defer cancel()
 	ticker := time.NewTicker(time.Duration(hostmgrBackoffRetryInterval))
 	defer ticker.Stop()
 	log.Info("Recovery starting for maintenance queue")
@@ -357,7 +362,7 @@ func (r *RecoveryHandler) restartDrainingProcess(ctx context.Context) {
 			return
 		case <-ticker.C:
 			_, err := r.hostmgrClient.RestoreMaintenanceQueue(
-				ctx,
+				contextWithTimeout,
 				&hostsvc.RestoreMaintenanceQueueRequest{})
 			if err != nil {
 				log.WithError(err).Warn("RestoreMaintenanceQueue call failed")
