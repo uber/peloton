@@ -3,6 +3,63 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.4
+------------------
+
+* 2018-08-20    Fix 'context' of RestoreMaintenanceQueue call in resmgr/recovery.go                    sachins@uber.com
+* 2018-08-20    Instantiate `finished` channel outside of `NewRecovery`                                avyas@uber.com
+* 2018-08-20    Allow to disable Prometheus while maintaining metric name format                       rcharles@uber.com
+* 2018-08-20    Integrate health check with update process                                             chunyang.shen@uber.com
+* 2018-08-17    Increase the memlimit for peloton apps on vcluster                                     avyas@uber.com
+* 2018-08-16    Change "total instance count is greater than expected" to debug                        zhixin@uber.com
+* 2018-08-16    Fix update integration test                                                            zhixin@uber.com
+* 2018-08-15    Make `MarkHostsDrained` API call only for 'DRAINING' hosts                             sachins@uber.com
+* 2018-08-15    Unit tests for yarpc/peer                                                              amitbose
+* 2018-08-14    Remove executor code from peloton because it is not used                               adityacb@uber.com
+* 2018-08-14    Update PodEvent protobuf to use mesosTaskID rather pelotonTaskID                       varung@uber.com
+* 2018-08-14    Adding tests for resource manager recovery                                             mabansal@uber.com
+* 2018-08-14    Update logrus version to `^1.0.0`                                                      avyas@uber.com
+* 2018-08-14    Disable prometheus reporting for resource manager                                      avyas@uber.com
+* 2018-08-14    Add integration test for update                                                        zhixin@uber.com
+* 2018-08-13    Enable archiver streaming only mode, add unit tests                                    adityacb@uber.com
+* 2018-08-13    Removing interfaces from hostmanager reserver and cleanup code                         mabansal@uber.com
+* 2018-08-13    [API] Set task kill grace period per each task                                         adityacb@uber.com
+* 2018-08-13    UpdateRun only checks currently updating instances                                     zhixin@uber.com
+* 2018-08-13    Restore host->tasks map on resmgr recovery                                             sachins@uber.com
+* 2018-08-12    Dual write state transitions to pod_events and task_events for batch jobs              varung@uber.com
+* 2018-08-10    Check nil for cached job                                                               zhixin@uber.com
+* 2018-08-09    Measure resource pool SLA at a more granular level                                     avyas@uber.com
+* 2018-08-09    Add UNKNOWN and DISABLED into health state and persist health state into pod_events table chunyang.shen@uber.com
+* 2018-08-09    Add unit-tests for package util                                                        amitbose
+* 2018-08-09    Add unit-tests for package common/background                                           amitbose
+* 2018-08-09    Terminated task with correct desired configuration is update complete                  zhixin@uber.com
+* 2018-08-08    Restore host->tasks map on resmgr recovery                                             sachins@uber.com
+* 2018-08-08    Add tests for `resmgr/server.go`                                                       avyas@uber.com
+* 2018-08-06    Improve code coverage for common/logging                                               varung@uber.com
+* 2018-08-06    Update the task healthy field only when event reason is REASON_TASK_HEALTH_CHECK_STATUS_UPDATED chunyang.shen@uber.com
+* 2018-08-06    Make vcluster run on dca1-preprod01                                                    amitbose
+* 2018-08-06    Add unit test for tasksvc start and stop                                               zhixin@uber.com
+* 2018-08-03    Add tests for reconciler                                                               avyas@uber.com
+* 2018-08-03    Revert "Revert "Record state transition durations for RMTask""                         avyas@uber.com
+* 2018-08-03    Add comments for test coverage of JobMgr                                               chunyang.shen@uber.com
+* 2018-08-03    Add job configuration validation for different type of job                             chunyang.shen@uber.com
+* 2018-08-02    Add CLI to get Pod Events                                                              varung@uber.com
+* 2018-08-02    Increase code coverage for hostmgr/reconcile                                           sachins@uber.com
+* 2018-08-02    JobRuntimeUpdater treats job with update as non-paritally-created job                  zhixin@uber.com
+* 2018-08-02    Set task goal state to KILLED for terminated task                                      zhixin@uber.com
+* 2018-08-02    Handle errors during update create                                                     apoorvaj@uber.com
+* 2018-08-02    Add unit test for tasksvc get                                                          zhixin@uber.com
+* 2018-08-02    Add unit test for jobmgr/tak/placement                                                 zhixin@uber.com
+* 2018-08-02    Add unit test for volumesvc                                                            zhixin@uber.com
+* 2018-08-02    Add unit test for tasksvc get events                                                   zhixin@uber.com
+* 2018-08-02    Increase code coverage for hostmgr/                                                    sachins@uber.com
+* 2018-08-01    Increase code coverage for hostmgr/hostsvc                                             sachins@uber.com
+* 2018-08-01    Increase code coverage for hostmgr/queue                                               sachins@uber.com
+* 2018-08-01    Implement update pause on server side                                                  zhixin@uber.com
+* 2018-08-01    Do not start goal state engines and preemptor before recovery is complete              apoorvaj@uber.com
+* 2018-07-31    Fix resource usage map panic for older tasks                                           adityacb@uber.com
+* 2018-07-31    Add update pause in cli                                                                zhixin@uber.com
+
 0.7.3
 ------------------
 * 2018-07-30    Add tests for hostmgr/task                                                             varung@uber.com
