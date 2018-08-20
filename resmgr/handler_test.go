@@ -2,6 +2,7 @@ package resmgr
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	rm "code.uber.internal/infra/peloton/resmgr/respool/mocks"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
+	task_mocks "code.uber.internal/infra/peloton/resmgr/task/mocks"
 	"code.uber.internal/infra/peloton/resmgr/tasktestutil"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
@@ -34,6 +36,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
 )
 
 const (
@@ -374,6 +377,26 @@ func (s *HandlerTestSuite) expectedGangs() []*resmgrsvc.Gang {
 	gangs[1] = s.pendingGang1()
 	gangs[2] = s.pendingGang0()
 	return gangs
+}
+
+func (s *HandlerTestSuite) TestNewServiceHandler() {
+	dispatcher := yarpc.NewDispatcher(yarpc.Config{
+		Name:      common.PelotonResourceManager,
+		Inbounds:  nil,
+		Outbounds: nil,
+		Metrics: yarpc.MetricsConfig{
+			Tally: tally.NoopScope,
+		},
+	})
+
+	tracker := task_mocks.NewMockTracker(s.ctrl)
+	mockPreemptor := mocks.NewMockPreemptor(s.ctrl)
+	handler := NewServiceHandler(dispatcher, tally.NoopScope, tracker,
+		mockPreemptor, Config{})
+	s.NotNil(handler)
+
+	streamHandler := s.handler.GetStreamHandler()
+	s.NotNil(streamHandler)
 }
 
 func (s *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
@@ -792,6 +815,69 @@ func (s *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	s.Equal(s.getPlacements(), getResp.GetPlacements())
 }
 
+func (s *HandlerTestSuite) TestTransitTasksInPlacement() {
+
+	tracker := task_mocks.NewMockTracker(s.ctrl)
+	s.handler.rmTracker = tracker
+
+	placements := s.getPlacements()
+
+	tracker.EXPECT().GetTask(gomock.Any()).Return(nil).Times(5)
+
+	p := s.handler.transitTasksInPlacement(placements[0],
+		task.TaskState_PLACED,
+		task.TaskState_LAUNCHING,
+		"placement dequeued, waiting for launch")
+
+	s.EqualValues(len(p.Tasks), 0)
+
+	resp, err := respool.NewRespool(tally.NoopScope, "respool-1", nil, &pb_respool.ResourcePoolConfig{
+		Name:      "respool-1",
+		Parent:    nil,
+		Resources: s.getResourceConfig(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	},
+		s.cfg)
+	uuidStr := uuid.NewUUID().String()
+	rmTask, err := rm_task.CreateRMTask(&resmgr.Task{
+		Id: &peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", uuidStr, 0),
+		},
+	}, nil, resp, tally.NoopScope,
+		&rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
+		},
+	)
+	s.NoError(err)
+	tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
+		task.TaskState_PENDING,
+		task.TaskState_READY,
+		task.TaskState_PLACING,
+		task.TaskState_PLACED,
+	})
+
+	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask).Times(5)
+	placements = s.getPlacements()
+	p = s.handler.transitTasksInPlacement(placements[0],
+		task.TaskState_RUNNING,
+		task.TaskState_LAUNCHING,
+		"placement dequeued, waiting for launch")
+	s.EqualValues(len(p.Tasks), 0)
+
+	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask).Times(5)
+	placements = s.getPlacements()
+	p = s.handler.transitTasksInPlacement(placements[0],
+		task.TaskState_PLACED,
+		task.TaskState_RUNNING,
+		"placement dequeued, waiting for launch")
+	s.EqualValues(len(p.Tasks), 0)
+
+	s.handler.rmTracker = rm_task.GetTracker()
+	s.rmTaskTracker.Clear()
+}
+
 func (s *HandlerTestSuite) TestGetTasksByHosts() {
 	setReq := &resmgrsvc.SetPlacementsRequest{
 		Placements: s.getPlacements(),
@@ -1116,6 +1202,190 @@ func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 	assert.Nil(s.T(), response.Error)
 }
 
+func (s *HandlerTestSuite) TestHandleEventError() {
+	tracker := task_mocks.NewMockTracker(s.ctrl)
+	s.handler.rmTracker = tracker
+
+	var c uint64
+	s.handler.maxOffset = &c
+
+	uuidStr := uuid.NewUUID().String()
+	var events []*pb_eventstream.Event
+
+	for i := 0; i < 1; i++ {
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", uuidStr, i, uuidStr)
+		state := mesos_v1.TaskState_TASK_FINISHED
+		status := &mesos_v1.TaskStatus{
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
+			},
+			State: &state,
+		}
+		event := pb_eventstream.Event{
+			Offset:          uint64(1000 + i),
+			MesosTaskStatus: status,
+		}
+		events = append(events, &event)
+	}
+
+	req := &resmgrsvc.NotifyTaskUpdatesRequest{}
+	// testing empty events
+	response, err := s.handler.NotifyTaskUpdates(context.Background(), req)
+	s.NoError(err)
+
+	req = &resmgrsvc.NotifyTaskUpdatesRequest{
+		Events: events,
+	}
+
+	tracker.EXPECT().GetTask(gomock.Any()).Return(nil)
+	response, _ = s.handler.NotifyTaskUpdates(context.Background(), req)
+
+	s.EqualValues(uint64(1000), response.PurgeOffset)
+	s.Nil(response.Error)
+
+	resp, _ := respool.NewRespool(
+		tally.NoopScope, "respool-1", nil, &pb_respool.ResourcePoolConfig{
+			Name:      "respool-1",
+			Parent:    nil,
+			Resources: s.getResourceConfig(),
+			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+		}, s.cfg)
+
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", uuidStr, 0, uuidStr)
+
+	rmTask, err := rm_task.CreateRMTask(&resmgr.Task{
+		Id: &peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", uuidStr, 0),
+		},
+		TaskId: &mesos_v1.TaskID{
+			Value: &mesosTaskID,
+		},
+	}, nil, resp, tally.NoopScope,
+		&rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
+		},
+	)
+	s.NoError(err)
+
+	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask)
+	tracker.EXPECT().MarkItDone(gomock.Any(), gomock.Any()).Return(nil)
+	response, _ = s.handler.NotifyTaskUpdates(context.Background(), req)
+	s.EqualValues(uint64(1000), response.PurgeOffset)
+	s.Nil(response.Error)
+
+	// Testing wrong mesos task id
+	wmesosTaskID := fmt.Sprintf("%s-%d-%s", "job1", 0, uuidStr)
+
+	wrmTask, err := rm_task.CreateRMTask(&resmgr.Task{
+		Id: &peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", uuidStr, 0),
+		},
+		TaskId: &mesos_v1.TaskID{
+			Value: &wmesosTaskID,
+		},
+	}, nil, resp, tally.NoopScope,
+		&rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
+		},
+	)
+	s.NoError(err)
+
+	tracker.EXPECT().GetTask(gomock.Any()).Return(wrmTask)
+	response, _ = s.handler.NotifyTaskUpdates(context.Background(), req)
+	s.EqualValues(uint64(1000), response.PurgeOffset)
+	s.Nil(response.Error)
+
+	// Testing with markitdone error
+	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask)
+	tracker.EXPECT().MarkItDone(gomock.Any(), gomock.Any()).Return(errors.New("error"))
+	response, _ = s.handler.NotifyTaskUpdates(context.Background(), req)
+	s.EqualValues(uint64(1000), response.PurgeOffset)
+	s.Nil(response.Error)
+
+	s.handler.rmTracker = rm_task.GetTracker()
+}
+
+func (s *HandlerTestSuite) TestHandleRunningEventError() {
+	tracker := task_mocks.NewMockTracker(s.ctrl)
+	s.handler.rmTracker = tracker
+
+	var c uint64
+	s.handler.maxOffset = &c
+
+	uuidStr := uuid.NewUUID().String()
+	var events []*pb_eventstream.Event
+
+	for i := 0; i < 1; i++ {
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", uuidStr, i, uuidStr)
+		state := mesos_v1.TaskState_TASK_RUNNING
+		status := &mesos_v1.TaskStatus{
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
+			},
+			State: &state,
+		}
+		event := pb_eventstream.Event{
+			Offset:          uint64(1000 + i),
+			MesosTaskStatus: status,
+		}
+		events = append(events, &event)
+	}
+
+	req := &resmgrsvc.NotifyTaskUpdatesRequest{}
+
+	req = &resmgrsvc.NotifyTaskUpdatesRequest{
+		Events: events,
+	}
+
+	// Testing with task state running
+	resp, _ := respool.NewRespool(
+		tally.NoopScope, "respool-1", nil, &pb_respool.ResourcePoolConfig{
+			Name:      "respool-1",
+			Parent:    nil,
+			Resources: s.getResourceConfig(),
+			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+		}, s.cfg)
+
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", uuidStr, 0, uuidStr)
+
+	rmTask, err := rm_task.CreateRMTask(&resmgr.Task{
+		Id: &peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", uuidStr, 0),
+		},
+		TaskId: &mesos_v1.TaskID{
+			Value: &mesosTaskID,
+		},
+	}, nil, resp, tally.NoopScope,
+		&rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
+		},
+	)
+	s.NoError(err)
+	tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
+		task.TaskState_PENDING,
+		task.TaskState_READY,
+		task.TaskState_PLACING,
+		task.TaskState_PLACED,
+		task.TaskState_LAUNCHING,
+		task.TaskState_RUNNING,
+	})
+
+	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask)
+	response, _ := s.handler.NotifyTaskUpdates(context.Background(), req)
+
+	s.EqualValues(uint64(1000), response.PurgeOffset)
+	s.Nil(response.Error)
+
+	s.handler.rmTracker = rm_task.GetTracker()
+
+}
+
 func (s *HandlerTestSuite) getEntitlement() map[string]float64 {
 	mapEntitlement := make(map[string]float64)
 	mapEntitlement[common.CPU] = float64(100)
@@ -1208,6 +1478,119 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 	s.NoError(err)
 	s.NotNil(res)
 	s.Equal(5, len(res.PreemptionCandidates))
+}
+
+func (s *HandlerTestSuite) TestGetPreemptibleTasksError() {
+	tracker := task_mocks.NewMockTracker(s.ctrl)
+	mockPreemptor := mocks.NewMockPreemptor(s.ctrl)
+	s.handler.preemptor = mockPreemptor
+	s.handler.rmTracker = tracker
+
+	// Mock tasks in RUNNING state
+	resp, _ := respool.NewRespool(
+		tally.NoopScope, "respool-1", nil, &pb_respool.ResourcePoolConfig{
+			Name:      "respool-1",
+			Parent:    nil,
+			Resources: s.getResourceConfig(),
+			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+		}, s.cfg)
+
+	rmTask, err := rm_task.CreateRMTask(&resmgr.Task{}, nil, resp, tally.NoopScope,
+		&rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
+		},
+	)
+
+	s.NoError(err)
+	tracker.EXPECT().AddTask(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any()).
+		Return(nil)
+
+	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask)
+
+	var expectedTasks []*resmgr.Task
+	for j := 1; j <= 1; j++ {
+		taskID := &peloton.TaskID{
+			Value: fmt.Sprintf("task-test-dequque-preempt-%d-%d", j, j),
+		}
+		expectedTasks = append(expectedTasks, &resmgr.Task{
+			Id: taskID,
+		})
+		tracker.AddTask(&resmgr.Task{
+			Id: taskID,
+		}, nil, resp,
+			tasktestutil.CreateTaskConfig())
+		rmTask := tracker.GetTask(taskID)
+		tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
+			task.TaskState_PENDING,
+			task.TaskState_READY,
+			task.TaskState_PLACING,
+			task.TaskState_PLACED,
+			task.TaskState_LAUNCHING,
+		})
+	}
+
+	mockPreemptor.EXPECT().DequeueTask(gomock.Any()).Return(nil, errors.New("error"))
+
+	// Make RPC request
+	req := &resmgrsvc.GetPreemptibleTasksRequest{
+		Timeout: 100,
+		Limit:   1,
+	}
+	res, err := s.handler.GetPreemptibleTasks(context.Background(), req)
+	s.NoError(err)
+	s.NotNil(res)
+	s.Equal(0, len(res.PreemptionCandidates))
+
+	mockPreemptor.EXPECT().DequeueTask(gomock.Any()).Return(&resmgr.PreemptionCandidate{
+		Id:     expectedTasks[0].Id,
+		Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
+	}, nil)
+	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask)
+	res, err = s.handler.GetPreemptibleTasks(context.Background(), req)
+	s.NoError(err)
+	s.NotNil(res)
+	s.Equal(0, len(res.PreemptionCandidates))
+
+	mockPreemptor.EXPECT().DequeueTask(gomock.Any()).Return(&resmgr.PreemptionCandidate{
+		Id:     expectedTasks[0].Id,
+		Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
+	}, nil)
+	tracker.EXPECT().GetTask(gomock.Any()).Return(nil)
+	res, err = s.handler.GetPreemptibleTasks(context.Background(), req)
+	s.NoError(err)
+	s.NotNil(res)
+	s.Equal(0, len(res.PreemptionCandidates))
+	s.handler.rmTracker = rm_task.GetTracker()
+}
+
+func (s *HandlerTestSuite) TestAddTaskError() {
+	tracker := task_mocks.NewMockTracker(s.ctrl)
+	s.handler.rmTracker = tracker
+
+	tracker.EXPECT().AddTask(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any()).
+		Return(errors.New("error"))
+	resp, _ := respool.NewRespool(
+		tally.NoopScope, "respool-1", nil, &pb_respool.ResourcePoolConfig{
+			Name:      "respool-1",
+			Parent:    nil,
+			Resources: s.getResourceConfig(),
+			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+		}, s.cfg)
+
+	response, err := s.handler.addTask(&resmgr.Task{}, resp)
+	s.Error(err)
+	s.Equal(response.Message, "error")
+	s.handler.rmTracker = rm_task.GetTracker()
 }
 
 func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {

@@ -89,13 +89,22 @@ func (s *EntitlementCalculatorTestSuite) TestPeriodicCalculationWhenStarted() {
 		}).
 		Return(&hostsvc.ClusterCapacityResponse{}, nil).
 		Times(5)
-	s.calculator.hostMgrClient = mockHostMgr
-	s.NoError(s.calculator.Start())
+	calculator := &Calculator{
+		resPoolTree:       s.resTree,
+		runningState:      res_common.RunningStateNotStarted,
+		calculationPeriod: 10 * time.Millisecond,
+		stopChan:          make(chan struct{}, 1),
+		clusterCapacity:   make(map[string]float64),
+		metrics:           NewMetrics(tally.NoopScope),
+		hostMgrClient:     mockHostMgr,
+	}
+	calculator.hostMgrClient = mockHostMgr
+	s.NoError(calculator.Start())
 
 	// Wait for 5 calculations, and then stop.
 	wg.Wait()
 
-	s.NoError(s.calculator.Stop())
+	s.NoError(calculator.Stop())
 }
 
 func (s *EntitlementCalculatorTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
