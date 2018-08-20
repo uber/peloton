@@ -590,6 +590,11 @@ func (suite *recoveryTestSuite) TestAddRunningTasks() {
 			PolicyName:       rm_task.ExponentialBackOffPolicy,
 		},
 	)
+	// Transitioning rmtask to RUNNING , by that it will not move to
+	// RUNNING state again in test
+	err = rmTask.TransitTo(task.TaskState_RUNNING.String())
+	suite.NoError(err)
+
 	tracker.EXPECT().AddTask(
 		gomock.Any(),
 		gomock.Any(),
@@ -601,7 +606,7 @@ func (suite *recoveryTestSuite) TestAddRunningTasks() {
 	val, err = rh.addRunningTasks(taskInfos, jobConfig)
 	suite.Error(err)
 	suite.Contains(err.Error(), "transition failed in task state machine")
-	suite.Equal(val, 1)
+	suite.Equal(val, 0)
 }
 
 func (suite *recoveryTestSuite) TestLoadTasksInRangeError() {
