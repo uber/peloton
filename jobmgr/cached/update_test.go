@@ -645,6 +645,25 @@ func (suite *UpdateTestSuite) TestValidWriteProgress() {
 	suite.Equal(instancesDone, suite.update.instancesDone)
 }
 
+// TestWriteProgressAbortedUpdate tests WriteProgress invalidates
+// progress update after it reaches terminated state
+func (suite *UpdateTestSuite) TestWriteProgressAbortedUpdate() {
+	suite.update.state = pbupdate.State_ABORTED
+	state := pbupdate.State_ROLLING_FORWARD
+	instancesDone := []uint32{0, 1, 2, 3}
+	instancesCurrent := []uint32{4, 5}
+
+	err := suite.update.WriteProgress(
+		context.Background(),
+		state,
+		instancesDone,
+		instancesCurrent,
+	)
+
+	suite.NoError(err)
+	suite.Equal(suite.update.state, pbupdate.State_ABORTED)
+}
+
 // TestValidWriteProgress tests failing to persist the status
 // of an update into the DB.
 func (suite *UpdateTestSuite) TestWriteProgressDBError() {

@@ -363,6 +363,12 @@ func (u *update) WriteProgress(
 	u.Lock()
 	defer u.Unlock()
 
+	// once an update is in terminal state, it should
+	// not have any more state change
+	if IsUpdateStateTerminal(u.state) {
+		return nil
+	}
+
 	if err := u.updateFactory.updateStore.WriteUpdateProgress(
 		ctx,
 		&models.UpdateModel{
