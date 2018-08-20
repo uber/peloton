@@ -9,6 +9,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	updatesvc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc"
 
+	"go.uber.org/yarpc/yarpcerrors"
 	"gopkg.in/yaml.v2"
 )
 
@@ -16,12 +17,18 @@ const (
 	updateListFormatHeader = "Update-ID\tState\tNumberTasksCompleted\t" +
 		"NumberTasksRemaining\n"
 	updateListFormatBody = "%s\t%s\t%d\t%d\n"
+	invalidVersionError  = "invalid job configuration version"
 )
 
 // UpdateCreateAction will create a new job update.
 func (c *Client) UpdateCreateAction(
-	jobID string, cfg string, batchSize uint32, respoolPath string) error {
+	jobID string,
+	cfg string,
+	batchSize uint32,
+	respoolPath string,
+	override bool) error {
 	var jobConfig job.JobConfig
+	var response *updatesvc.CreateUpdateResponse
 
 	// read the job configuration
 	buffer, err := ioutil.ReadFile(cfg)
@@ -45,19 +52,60 @@ func (c *Client) UpdateCreateAction(
 	// set the resource pool id
 	jobConfig.RespoolID = respoolID
 
-	var request = &updatesvc.CreateUpdateRequest{
-		JobId: &peloton.JobID{
-			Value: jobID,
-		},
-		JobConfig: &jobConfig,
-		UpdateConfig: &update.UpdateConfig{
-			BatchSize: batchSize,
-		},
-	}
+	for {
+		// first fetch the job runtime
+		var jobGetRequest = &job.GetRequest{
+			Id: &peloton.JobID{
+				Value: jobID,
+			},
+		}
+		jobGetResponse, err := c.jobClient.Get(c.ctx, jobGetRequest)
+		if err != nil {
+			return err
+		}
 
-	response, err := c.updateClient.CreateUpdate(c.ctx, request)
-	if err != nil {
-		return err
+		// check if there is another update going on
+		jobRuntime := jobGetResponse.GetJobInfo().GetRuntime()
+		if jobRuntime == nil {
+			return fmt.Errorf("unable to find the job to update")
+		}
+
+		if jobRuntime.GetUpdateID() != nil &&
+			len(jobRuntime.GetUpdateID().GetValue()) > 0 {
+			if override {
+				fmt.Fprintf(tabWriter, "going to override existing update: %v\n",
+					jobRuntime.GetUpdateID().GetValue())
+				tabWriter.Flush()
+			} else {
+				return fmt.Errorf(
+					"cannot create a new update as another update is already running")
+			}
+		}
+
+		// set the configuration version
+		jobConfig.ChangeLog = &peloton.ChangeLog{
+			Version: jobRuntime.GetConfigurationVersion(),
+		}
+
+		var request = &updatesvc.CreateUpdateRequest{
+			JobId: &peloton.JobID{
+				Value: jobID,
+			},
+			JobConfig: &jobConfig,
+			UpdateConfig: &update.UpdateConfig{
+				BatchSize: batchSize,
+			},
+		}
+
+		response, err = c.updateClient.CreateUpdate(c.ctx, request)
+		if err != nil {
+			if yarpcerrors.IsInvalidArgument(err) &&
+				yarpcerrors.ErrorMessage(err) == invalidVersionError {
+				continue
+			}
+			return err
+		}
+		break
 	}
 
 	printUpdateCreateResponse(response, c.Debug)

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	jobmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	respoolmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
@@ -18,6 +19,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/yarpc/yarpcerrors"
 	"gopkg.in/yaml.v2"
 )
 
@@ -30,6 +32,7 @@ type updateActionsTestSuite struct {
 	mockCtrl    *gomock.Controller
 	mockUpdate  *updatesvcmocks.MockUpdateServiceYARPCClient
 	mockRespool *respoolmocks.MockResourceManagerYARPCClient
+	mockJob     *jobmocks.MockJobManagerYARPCClient
 	jobID       *peloton.JobID
 	updateID    *peloton.UpdateID
 	ctx         context.Context
@@ -39,6 +42,7 @@ func (suite *updateActionsTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mockUpdate = updatesvcmocks.NewMockUpdateServiceYARPCClient(suite.mockCtrl)
 	suite.mockRespool = respoolmocks.NewMockResourceManagerYARPCClient(suite.mockCtrl)
+	suite.mockJob = jobmocks.NewMockJobManagerYARPCClient(suite.mockCtrl)
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
 	suite.updateID = &peloton.UpdateID{Value: uuid.NewRandom().String()}
 	suite.ctx = context.Background()
@@ -69,12 +73,14 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 		Debug:        false,
 		updateClient: suite.mockUpdate,
 		resClient:    suite.mockRespool,
+		jobClient:    suite.mockJob,
 		dispatcher:   nil,
 		ctx:          suite.ctx,
 	}
 
 	jobConfig := suite.getConfig()
 	batchSize := uint32(2)
+	version := uint64(3)
 
 	respoolPath := "/DefaultResPool"
 	respoolID := &peloton.ResourcePoolID{Value: uuid.NewRandom().String()}
@@ -82,17 +88,44 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 		Id: respoolID,
 	}
 	jobConfig.RespoolID = respoolID
+	jobConfig.ChangeLog = &peloton.ChangeLog{
+		Version: version,
+	}
+
+	jobGetResponse := &job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				ConfigurationVersion: version,
+			},
+		},
+	}
+
+	jobGetResponseWithUpdate := &job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				UpdateID: &peloton.UpdateID{
+					Value: "abc",
+				},
+				ConfigurationVersion: version,
+			},
+		},
+	}
 
 	resp := &svc.CreateUpdateResponse{
 		UpdateID: suite.updateID,
 	}
 
 	tt := []struct {
-		debug bool
-		err   error
+		debug    bool
+		override bool
+		err      error
 	}{
 		{
 			err: nil,
+		},
+		{
+			override: true,
+			err:      nil,
 		},
 		{
 			debug: true,
@@ -112,6 +145,22 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 			}).
 			Return(respoolLookUpResponse, nil)
 
+		if t.override == false {
+			suite.mockJob.EXPECT().
+				Get(gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *job.GetRequest) {
+					suite.Equal(suite.jobID.GetValue(), req.GetId().GetValue())
+				}).
+				Return(jobGetResponse, nil)
+		} else {
+			suite.mockJob.EXPECT().
+				Get(gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, req *job.GetRequest) {
+					suite.Equal(suite.jobID.GetValue(), req.GetId().GetValue())
+				}).
+				Return(jobGetResponseWithUpdate, nil)
+		}
+
 		suite.mockUpdate.EXPECT().
 			CreateUpdate(context.Background(), gomock.Any()).
 			Do(func(_ context.Context, req *svc.CreateUpdateRequest) {
@@ -126,6 +175,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 			testJobUpdateConfig,
 			batchSize,
 			respoolPath,
+			t.override,
 		)
 
 		if t.err != nil {
@@ -136,13 +186,14 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 	}
 }
 
-// TestClientUpdateCreate tests successfully creating a new update
-// with errors in resource pool lookup
+// TestClientUpdateCreate tests failing to create a new update
+// due to errors in resource pool lookup
 func (suite *updateActionsTestSuite) TestClientUpdateCreateResPoolErrors() {
 	c := Client{
 		Debug:        false,
 		updateClient: suite.mockUpdate,
 		resClient:    suite.mockRespool,
+		jobClient:    suite.mockJob,
 		dispatcher:   nil,
 		ctx:          suite.ctx,
 	}
@@ -180,9 +231,187 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateResPoolErrors() {
 			testJobUpdateConfig,
 			batchSize,
 			respoolPath,
+			false,
 		)
 		suite.Error(err)
 	}
+}
+
+// TestClientUpdateCreateJobGetErrors tests failing to create a new update
+// due to errors in job get or existing update
+func (suite *updateActionsTestSuite) TestClientUpdateCreateJobGetErrors() {
+	c := Client{
+		Debug:        false,
+		updateClient: suite.mockUpdate,
+		resClient:    suite.mockRespool,
+		jobClient:    suite.mockJob,
+		dispatcher:   nil,
+		ctx:          suite.ctx,
+	}
+
+	batchSize := uint32(2)
+	version := uint64(3)
+
+	respoolPath := "/DefaultResPool"
+	respoolID := &peloton.ResourcePoolID{Value: uuid.NewRandom().String()}
+	respoolLookUpResponse := &respool.LookupResponse{
+		Id: respoolID,
+	}
+
+	jobGetResponse := &job.GetResponse{
+		JobInfo: &job.JobInfo{},
+	}
+
+	jobGetResponseWithUpdate := &job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				UpdateID: &peloton.UpdateID{
+					Value: "abc",
+				},
+				ConfigurationVersion: version,
+			},
+		},
+	}
+
+	tt := []struct {
+		resp *job.GetResponse
+		err  error
+	}{
+		{
+			resp: jobGetResponseWithUpdate,
+			err:  nil,
+		},
+		{
+			resp: nil,
+			err:  errors.New("cannot get job"),
+		},
+		{
+			resp: jobGetResponse,
+			err:  nil,
+		},
+	}
+
+	for _, t := range tt {
+		suite.mockRespool.EXPECT().
+			LookupResourcePoolID(context.Background(), gomock.Any()).
+			Do(func(_ context.Context, req *respool.LookupRequest) {
+				suite.Equal(req.GetPath().GetValue(), respoolPath)
+			}).
+			Return(respoolLookUpResponse, nil)
+
+		suite.mockJob.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, req *job.GetRequest) {
+				suite.Equal(suite.jobID.GetValue(), req.GetId().GetValue())
+			}).
+			Return(t.resp, t.err)
+
+		err := c.UpdateCreateAction(
+			suite.jobID.GetValue(),
+			testJobUpdateConfig,
+			batchSize,
+			respoolPath,
+			false,
+		)
+		suite.Error(err)
+	}
+}
+
+// TestClientUpdateCreate tests creating a new update
+// with retry due to invalid version
+func (suite *updateActionsTestSuite) TestClientUpdateCreateRetry() {
+	c := Client{
+		Debug:        false,
+		updateClient: suite.mockUpdate,
+		resClient:    suite.mockRespool,
+		jobClient:    suite.mockJob,
+		dispatcher:   nil,
+		ctx:          suite.ctx,
+	}
+
+	jobConfig := suite.getConfig()
+	batchSize := uint32(2)
+	version := uint64(3)
+
+	respoolPath := "/DefaultResPool"
+	respoolID := &peloton.ResourcePoolID{Value: uuid.NewRandom().String()}
+	respoolLookUpResponse := &respool.LookupResponse{
+		Id: respoolID,
+	}
+	jobConfig.RespoolID = respoolID
+	jobConfig.ChangeLog = &peloton.ChangeLog{
+		Version: version,
+	}
+
+	jobGetResponseBadVersion := &job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				ConfigurationVersion: version - 1,
+			},
+		},
+	}
+
+	jobGetResponse := &job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				ConfigurationVersion: version,
+			},
+		},
+	}
+
+	resp := &svc.CreateUpdateResponse{
+		UpdateID: suite.updateID,
+	}
+
+	gomock.InOrder(
+		suite.mockRespool.EXPECT().
+			LookupResourcePoolID(context.Background(), gomock.Any()).
+			Do(func(_ context.Context, req *respool.LookupRequest) {
+				suite.Equal(req.GetPath().GetValue(), respoolPath)
+			}).
+			Return(respoolLookUpResponse, nil),
+
+		suite.mockJob.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, req *job.GetRequest) {
+				suite.Equal(suite.jobID.GetValue(), req.GetId().GetValue())
+			}).
+			Return(jobGetResponseBadVersion, nil),
+
+		suite.mockUpdate.EXPECT().
+			CreateUpdate(context.Background(), gomock.Any()).
+			Do(func(_ context.Context, req *svc.CreateUpdateRequest) {
+				suite.Equal(suite.jobID.GetValue(), req.JobId.GetValue())
+				suite.Equal(batchSize, req.UpdateConfig.BatchSize)
+			}).
+			Return(nil, yarpcerrors.InvalidArgumentErrorf(
+				"invalid job configuration version")),
+
+		suite.mockJob.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, req *job.GetRequest) {
+				suite.Equal(suite.jobID.GetValue(), req.GetId().GetValue())
+			}).
+			Return(jobGetResponse, nil),
+
+		suite.mockUpdate.EXPECT().
+			CreateUpdate(context.Background(), gomock.Any()).
+			Do(func(_ context.Context, req *svc.CreateUpdateRequest) {
+				suite.Equal(suite.jobID.GetValue(), req.JobId.GetValue())
+				suite.True(proto.Equal(jobConfig, req.JobConfig))
+				suite.Equal(batchSize, req.UpdateConfig.BatchSize)
+			}).
+			Return(resp, nil),
+	)
+
+	err := c.UpdateCreateAction(
+		suite.jobID.GetValue(),
+		testJobUpdateConfig,
+		batchSize,
+		respoolPath,
+		false,
+	)
+	suite.NoError(err)
 }
 
 // TestClientUpdateGet tests fetching status of a given update
