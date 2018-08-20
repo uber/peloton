@@ -9,10 +9,8 @@ metrics:
   m3:
     hostPort: 127.0.0.1:9052
     service: peloton
-    env: staging
+    env: production
     includeHost: true
-    tags:
-        cluster: peloton-default
   prometheus:
     enable: true
   # statsd:

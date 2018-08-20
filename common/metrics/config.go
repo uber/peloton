@@ -68,8 +68,9 @@ func InitMetricScope(
 		var m3Reporter tallym3.Reporter
 		var promReporter tallyprom.Reporter
 
+		metricSeparator = "_"
+
 		if cfg.Prometheus != nil && cfg.Prometheus.Enable {
-			metricSeparator = "_"
 			promReporter = tallyprom.NewReporter(tallyprom.Options{})
 			promHandler := promReporter.HTTPHandler()
 
@@ -195,6 +196,9 @@ func loadM3Configs(cfg *tallym3.Configuration) {
 	if v := os.Getenv(m3Cluster); v != "" {
 		log.WithField("tag.cluster", v).
 			Info("Load m3 config")
+		if cfg.CommonTags == nil {
+			cfg.CommonTags = make(map[string]string)
+		}
 		cfg.CommonTags[strings.ToLower(m3Cluster)] = v
 	}
 }
