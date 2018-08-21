@@ -3,7 +3,6 @@ package resmgr
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
@@ -12,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	"code.uber.internal/infra/peloton/common/lifecycle"
 	cmn_recovery "code.uber.internal/infra/peloton/common/recovery"
 	"code.uber.internal/infra/peloton/common/statemachine"
 	"code.uber.internal/infra/peloton/resmgr/respool"
@@ -69,7 +69,6 @@ Failure in this phase is non-fatal.
 Recovery of maintenance queue is performed
 */
 type RecoveryHandler struct {
-	sync.Mutex
 	metrics         *Metrics
 	jobStore        storage.JobStore
 	taskStore       storage.TaskStore
@@ -79,7 +78,7 @@ type RecoveryHandler struct {
 	nonRunningTasks []*resmgrsvc.EnqueueGangsRequest
 	finished        chan bool //used for testing
 	tracker         rmtask.Tracker
-	drainerStopChan chan bool
+	lifecycle       lifecycle.LifeCycle // Lifecycle manager
 }
 
 // NewRecovery initializes the RecoveryHandler
@@ -92,30 +91,41 @@ func NewRecovery(
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
 ) *RecoveryHandler {
 	return &RecoveryHandler{
-		jobStore:        jobStore,
-		taskStore:       taskStore,
-		handler:         handler,
-		metrics:         NewMetrics(parent),
-		config:          config,
-		hostmgrClient:   hostmgrClient,
-		tracker:         rmtask.GetTracker(),
-		finished:        make(chan bool),
-		drainerStopChan: make(chan bool),
+		jobStore:      jobStore,
+		taskStore:     taskStore,
+		handler:       handler,
+		metrics:       NewMetrics(parent),
+		config:        config,
+		hostmgrClient: hostmgrClient,
+		tracker:       rmtask.GetTracker(),
+		finished:      make(chan bool),
+		lifecycle:     lifecycle.NewLifeCycle(),
 	}
 }
 
 // Stop stops the recovery handler
 func (r *RecoveryHandler) Stop() error {
+	if !r.lifecycle.Stop() {
+		log.Warn("Recovery handler is already stopped, no" +
+			" action will be performed")
+		return nil
+	}
 	log.Info("Stopping recovery")
-	close(r.drainerStopChan)
+
+	// Wait for recoveryHandler to be stopped
+	r.lifecycle.Wait()
+
 	return nil
 }
 
 // Start loads all the jobs and tasks which are not in terminal state
 // and requeue them
 func (r *RecoveryHandler) Start() error {
-	r.Lock()
-	defer r.Unlock()
+	if !r.lifecycle.Start() {
+		log.Warn("Recovery handler is already started, no" +
+			" action will be performed")
+		return nil
+	}
 
 	ctx := context.Background()
 	log.Info("Starting jobs recovery on startup")
@@ -135,9 +145,6 @@ func (r *RecoveryHandler) Start() error {
 	}
 	log.Info("Recovery completed successfully for running tasks")
 
-	// Instantiate the channel here to prevent closing of already closed channel.
-	// Eg. Resmgr instance gains leadership after losing it.
-	r.drainerStopChan = make(chan bool)
 	// Restart draining process in background
 	go r.restartDrainingProcess(ctx)
 
@@ -155,39 +162,46 @@ func (r *RecoveryHandler) recoverNonRunningTasks() {
 	defer close(r.finished)
 	log.Info("Recovery starting for non-running tasks")
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	successTasks, failedTasks := 0, 0
+
 	for _, nr := range r.nonRunningTasks {
-		resp, err := r.handler.EnqueueGangs(ctx, nr)
-		if resp.GetError() != nil {
-			if resp.GetError().GetFailure() != nil &&
-				resp.GetError().GetFailure().GetFailed() != nil {
-				for _, fail := range resp.GetError().GetFailure().GetFailed() {
+		select {
+		case <-r.lifecycle.StopCh():
+			return
+		default:
+			resp, err := r.handler.EnqueueGangs(ctx, nr)
+			if resp.GetError() != nil {
+				if resp.GetError().GetFailure() != nil &&
+					resp.GetError().GetFailure().GetFailed() != nil {
+					for _, fail := range resp.GetError().GetFailure().GetFailed() {
+						log.WithFields(log.Fields{
+							"task_id ": fail.Task.Id.Value,
+							"error":    fail.GetMessage(),
+						}).Error("Failed to enqueue gang in recovery")
+						failedTasks++
+					}
+				} else {
 					log.WithFields(log.Fields{
-						"task_id ": fail.Task.Id.Value,
-						"error":    fail.GetMessage(),
+						"gangs": nr.Gangs,
+						"error": resp.GetError().String(),
 					}).Error("Failed to enqueue gang in recovery")
-					failedTasks++
+					failedTasks += len(nr.Gangs)
 				}
-			} else {
+			}
+
+			if err != nil {
 				log.WithFields(log.Fields{
 					"gangs": nr.Gangs,
-					"error": resp.GetError().String(),
+					"error": err.Error(),
 				}).Error("Failed to enqueue gang in recovery")
 				failedTasks += len(nr.Gangs)
 			}
-		}
 
-		if err != nil {
-			log.WithFields(log.Fields{
-				"gangs": nr.Gangs,
-				"error": err.Error(),
-			}).Error("Failed to enqueue gang in recovery")
-			failedTasks += len(nr.Gangs)
-		}
-
-		if err == nil && resp.GetError() == nil {
-			successTasks += len(nr.Gangs)
+			if err == nil && resp.GetError() == nil {
+				successTasks += len(nr.Gangs)
+			}
 		}
 	}
 
@@ -348,6 +362,8 @@ func (r *RecoveryHandler) loadTasksInRange(
 }
 
 func (r *RecoveryHandler) restartDrainingProcess(ctx context.Context) {
+	defer r.lifecycle.StopComplete()
+
 	contextWithTimeout, cancel := context.WithTimeout(
 		ctx,
 		restoreMaintenaceQueueTimeout)
@@ -358,7 +374,7 @@ func (r *RecoveryHandler) restartDrainingProcess(ctx context.Context) {
 
 	for {
 		select {
-		case <-r.drainerStopChan:
+		case <-r.lifecycle.StopCh():
 			return
 		case <-ticker.C:
 			_, err := r.hostmgrClient.RestoreMaintenanceQueue(

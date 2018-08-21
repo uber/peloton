@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -26,7 +27,6 @@ import (
 	task_mocks "code.uber.internal/infra/peloton/resmgr/task/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -38,7 +38,7 @@ type recoveryTestSuite struct {
 	rmTaskTracker     rm_task.Tracker
 	handler           *ServiceHandler
 	taskScheduler     rm_task.Scheduler
-	recovery          RecoveryHandler
+	recovery          *RecoveryHandler
 	mockCtrl          *gomock.Controller
 	mockResPoolStore  *store_mocks.MockResourcePoolStore
 	mockJobStore      *store_mocks.MockJobStore
@@ -98,6 +98,16 @@ func (suite *recoveryTestSuite) SetupSuite() {
 }
 
 func (suite *recoveryTestSuite) SetupTest() {
+	suite.recovery = NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
+		suite.handler,
+		Config{
+			RmTaskConfig: &rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+				PolicyName:       rm_task.ExponentialBackOffPolicy,
+			},
+		}, suite.mockHostmgrClient)
+
 	err := suite.resourceTree.Start()
 	suite.NoError(err)
 
@@ -392,19 +402,8 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		RestoreMaintenanceQueue(gomock.Any(), gomock.Any()).
 		Return(&hostsvc.RestoreMaintenanceQueueResponse{}, nil)
 
-	// Perform recovery
-	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
-		suite.handler,
-		Config{
-			RmTaskConfig: &rm_task.Config{
-				LaunchingTimeout: 1 * time.Minute,
-				PlacingTimeout:   1 * time.Minute,
-				PolicyName:       rm_task.ExponentialBackOffPolicy,
-			},
-		}, suite.mockHostmgrClient)
-
-	rh.Start()
-	<-rh.finished
+	suite.recovery.Start()
+	<-suite.recovery.finished
 	time.Sleep(2 * time.Duration(hostmgrBackoffRetryInterval))
 
 	// 2. check the queue content
@@ -467,19 +466,10 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 	suite.mockHostmgrClient.EXPECT().
 		RestoreMaintenanceQueue(gomock.Any(), gomock.Any()).
 		Return(&hostsvc.RestoreMaintenanceQueueResponse{}, nil)
-	// Perform recovery
-	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
-		suite.handler,
-		Config{
-			RmTaskConfig: &rm_task.Config{
-				LaunchingTimeout: 1 * time.Minute,
-				PlacingTimeout:   1 * time.Minute,
-				PolicyName:       rm_task.ExponentialBackOffPolicy,
-			},
-		}, suite.mockHostmgrClient)
 
-	rh.Start()
-	<-rh.finished
+	suite.recovery.Start()
+	<-suite.recovery.finished
+
 	time.Sleep(2 * time.Duration(hostmgrBackoffRetryInterval))
 
 	// 2. check the queue content
@@ -491,8 +481,8 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 	gangs := gangsSummary["TestJob_0"]
 	suite.Equal(0, len(gangs))
 
-	// stoping handler
-	suite.Nil(rh.Stop())
+	// stopping handler
+	suite.Nil(suite.recovery.Stop())
 }
 
 func (suite *recoveryTestSuite) TestAddRunningTasksError() {
@@ -508,22 +498,12 @@ func (suite *recoveryTestSuite) TestAddRunningTasksError() {
 
 	tasks := suite.createTasks(&jobs[0], 10, task.TaskState_PENDING)
 	var taskInfos []*task.TaskInfo
-	// Perform recovery
-	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
-		suite.handler,
-		Config{
-			RmTaskConfig: &rm_task.Config{
-				LaunchingTimeout: 1 * time.Minute,
-				PlacingTimeout:   1 * time.Minute,
-				PolicyName:       rm_task.ExponentialBackOffPolicy,
-			},
-		}, suite.mockHostmgrClient)
 
 	for _, info := range tasks {
 		taskInfos = append(taskInfos, info)
 	}
 
-	val, err := rh.addRunningTasks(taskInfos, jobConfig)
+	val, err := suite.recovery.addRunningTasks(taskInfos, jobConfig)
 	suite.Error(err)
 	suite.EqualError(err, "respool respool10 does not exist")
 	suite.Equal(val, 0)
@@ -540,16 +520,6 @@ func (suite *recoveryTestSuite) TestAddRunningTasks() {
 
 	tasks := suite.createTasks(&jobs[0], 10, task.TaskState_RUNNING)
 	var taskInfos []*task.TaskInfo
-	// Perform recovery
-	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
-		suite.handler,
-		Config{
-			RmTaskConfig: &rm_task.Config{
-				LaunchingTimeout: 1 * time.Minute,
-				PlacingTimeout:   1 * time.Minute,
-				PolicyName:       rm_task.ExponentialBackOffPolicy,
-			},
-		}, suite.mockHostmgrClient)
 
 	for _, info := range tasks {
 		taskInfos = append(taskInfos, info)
@@ -562,9 +532,9 @@ func (suite *recoveryTestSuite) TestAddRunningTasks() {
 		gomock.Any(),
 		gomock.Any()).
 		Return(errors.New("error"))
-	rh.tracker = tracker
+	suite.recovery.tracker = tracker
 
-	val, err := rh.addRunningTasks(taskInfos, jobConfig)
+	val, err := suite.recovery.addRunningTasks(taskInfos, jobConfig)
 	suite.Error(err)
 	suite.EqualError(err, "unable to add running task to tracker: error")
 	suite.Equal(val, 0)
@@ -577,7 +547,7 @@ func (suite *recoveryTestSuite) TestAddRunningTasks() {
 		Return(nil)
 	tracker.EXPECT().AddResources(gomock.Any()).
 		Return(errors.New("error")).Times(1)
-	val, err = rh.addRunningTasks(taskInfos, jobConfig)
+	val, err = suite.recovery.addRunningTasks(taskInfos, jobConfig)
 	suite.Error(err)
 	suite.EqualError(err, "could not add resources: error")
 	suite.Equal(val, 0)
@@ -603,40 +573,26 @@ func (suite *recoveryTestSuite) TestAddRunningTasks() {
 		Return(nil).AnyTimes()
 	tracker.EXPECT().AddResources(gomock.Any()).Return(nil).AnyTimes()
 	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask).AnyTimes()
-	val, err = rh.addRunningTasks(taskInfos, jobConfig)
+	val, err = suite.recovery.addRunningTasks(taskInfos, jobConfig)
 	suite.Error(err)
 	suite.Contains(err.Error(), "transition failed in task state machine")
 	suite.Equal(val, 0)
 }
 
 func (suite *recoveryTestSuite) TestLoadTasksInRangeError() {
-	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
-		suite.handler,
-		Config{
-			RmTaskConfig: &rm_task.Config{
-				LaunchingTimeout: 1 * time.Minute,
-				PlacingTimeout:   1 * time.Minute,
-				PolicyName:       rm_task.ExponentialBackOffPolicy,
-			},
-		}, suite.mockHostmgrClient)
-
-	_, _, err := rh.loadTasksInRange(context.Background(), "", 100, 0)
+	_, _, err := suite.recovery.loadTasksInRange(context.Background(), "", 100, 0)
 	suite.Error(err)
 	suite.Contains(err.Error(), "invalid job instance range")
-	_, _, err = rh.loadTasksInRange(context.Background(), "", 100, 100)
+	_, _, err = suite.recovery.loadTasksInRange(context.Background(), "", 100, 100)
 	suite.NoError(err)
 }
 
 func (suite *recoveryTestSuite) TestRestartDrainingProcess_Error() {
-	rh := NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
-		suite.handler,
-		Config{
-			RmTaskConfig: &rm_task.Config{
-				LaunchingTimeout: 1 * time.Minute,
-				PlacingTimeout:   1 * time.Minute,
-				PolicyName:       rm_task.ExponentialBackOffPolicy,
-			},
-		}, suite.mockHostmgrClient)
+	// No RestoreMaintenanceQueue call since channel is closed
+	suite.recovery.restartDrainingProcess(context.Background())
+
+	// Start lifecycle manager
+	suite.recovery.lifecycle.Start()
 
 	suite.mockHostmgrClient.EXPECT().
 		RestoreMaintenanceQueue(gomock.Any(), gomock.Any()).
@@ -644,8 +600,31 @@ func (suite *recoveryTestSuite) TestRestartDrainingProcess_Error() {
 	suite.mockHostmgrClient.EXPECT().
 		RestoreMaintenanceQueue(gomock.Any(), gomock.Any()).
 		Return(&hostsvc.RestoreMaintenanceQueueResponse{}, nil)
-	rh.restartDrainingProcess(context.Background())
-	close(rh.drainerStopChan)
+	suite.recovery.restartDrainingProcess(context.Background())
+}
+
+func (suite *recoveryTestSuite) TestStartStop() {
+	suite.True(suite.recovery.lifecycle.Start())
+	// Starting recovery handler should be no-op since
+	// lifecycle manager is already started
+	suite.Nil(suite.recovery.Start())
+
+	suite.True(suite.recovery.lifecycle.Stop())
+	// Stopping recovery handler should be no-op since
+	// lifecycle manager is already stopped
+	suite.Nil(suite.recovery.Stop())
+}
+
+func (suite *recoveryTestSuite) TestRecoverNonRunningTasks_Stop() {
+	// Add dummy EnqueueGangsRequest to recovery.nonRunningTasks
+	suite.recovery.nonRunningTasks = []*resmgrsvc.EnqueueGangsRequest{
+		{},
+	}
+
+	// Call to recoverNonRunningTasks should be no-op
+	// since lifecycle.StopCh() is closed
+	suite.recovery.recoverNonRunningTasks()
+	<-suite.recovery.finished
 }
 
 func TestResmgrRecovery(t *testing.T) {
