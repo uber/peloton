@@ -300,12 +300,6 @@ func TestEngineSuggestActionGoalRunning(t *testing.T) {
 			desiredConfigVersion: 0,
 			action:               TaskStateInvalidAction,
 		},
-		{
-			currentState:         pbtask.TaskState_KILLING,
-			configVersion:        0,
-			desiredConfigVersion: 0,
-			action:               TaskStateInvalidAction,
-		},
 	}
 
 	for i, test := range tt {

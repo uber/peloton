@@ -81,7 +81,6 @@ var (
 			task.TaskState_FAILED:      InitializeAction,
 			task.TaskState_KILLED:      InitializeAction,
 			task.TaskState_PREEMPTING:  TaskStateInvalidAction,
-			task.TaskState_KILLING:     TaskStateInvalidAction,
 			task.TaskState_LOST:        InitializeAction,
 		},
 		task.TaskState_SUCCEEDED: {
@@ -91,7 +90,6 @@ var (
 			task.TaskState_FAILED:      FailRetryAction,
 			task.TaskState_KILLED:      FailRetryAction,
 			task.TaskState_PREEMPTING:  TaskStateInvalidAction,
-			task.TaskState_KILLING:     TaskStateInvalidAction,
 			task.TaskState_LOST:        InitializeAction,
 		},
 		task.TaskState_KILLED: {
