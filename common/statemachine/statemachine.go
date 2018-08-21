@@ -192,10 +192,11 @@ func (sm *statemachine) addRules(rules map[State]*Rule) error {
 func (sm *statemachine) validateRule(rule *Rule) error {
 	sources := make(map[State]bool)
 	for _, s := range rule.To {
-		if val, ok := sources[s]; ok {
-			log.WithField("Source ", val).Error("Already exists, duplicate entry")
-			return errors.New("invalid rule to be applied, duplicate sources")
+		if _, ok := sources[s]; ok {
+			return fmt.Errorf("invalid rule to be applied,"+
+				" duplicate source %s", s)
 		}
+		sources[s] = true
 	}
 	return nil
 }
@@ -441,17 +442,6 @@ func (sm *statemachine) rollbackState() error {
 				"meta_info_noindex": sm.GetMetaInfo(),
 			}).Info("pre call back did not return to_state")
 			return errors.New("pre call back failed")
-		}
-
-		if err != nil || t.To == "" {
-			log.WithError(err).WithFields(log.Fields{
-				"task_id":           sm.name,
-				"rule_from":         t.From,
-				"rule_to":           t.To,
-				"current_state":     sm.current,
-				"meta_info_noindex": sm.GetMetaInfo(),
-			}).Error("error in pre call back")
-			return err
 		}
 	}
 

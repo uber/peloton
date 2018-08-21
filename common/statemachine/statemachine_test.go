@@ -20,6 +20,10 @@ type StateMachineTestSuite struct {
 	stateMachine StateMachine
 }
 
+var (
+	errTest = errors.New("error")
+)
+
 func (suite *StateMachineTestSuite) SetupTest() {
 	suite.task = new(StateMachineTask)
 	suite.task.state = "initialized"
@@ -244,4 +248,161 @@ func (suite *StateMachineTestSuite) TestMetaInfo() {
 	err := suite.stateMachine.TransitTo("placing", WithInfo("key1", "value1"))
 	suite.NoError(err)
 	suite.Equal(suite.stateMachine.GetMetaInfo()["key1"], "value1")
+}
+
+// TestRollbackStateError tests the errors in rollback
+func (suite *StateMachineTestSuite) TestRollbackStateError() {
+	tt := []struct {
+		timeoutRule *TimeoutRule
+		msg         string
+		err         error
+		updateTime  time.Time
+	}{
+		{
+			msg:         "timeout rule is nil",
+			timeoutRule: nil,
+			err:         nil,
+		},
+		{
+			msg: "testing with timeout rule but current state" +
+				" is different",
+			timeoutRule: &TimeoutRule{
+				From:        "launching",
+				To:          []State{"ready"},
+				Timeout:     2 * time.Hour,
+				PreCallback: suite.preCallbackTimeoutError,
+			},
+			err: nil,
+		},
+		{
+			msg: "testing with timeout rule however long timeout",
+			timeoutRule: &TimeoutRule{
+				From:        "initialized",
+				To:          []State{"ready"},
+				Timeout:     2 * time.Hour,
+				PreCallback: suite.preCallbackTimeoutError,
+			},
+			err:        nil,
+			updateTime: time.Now(),
+		},
+	}
+
+	sm := &statemachine{
+		name:    "sm1",
+		current: "initialized",
+	}
+
+	for _, t := range tt {
+		if t.timeoutRule != nil {
+			sm.timeoutRules = make(map[State]*TimeoutRule)
+			sm.timeoutRules[t.timeoutRule.From] = t.timeoutRule
+			suite.Equal(len(sm.GetTimeOutRules()), 1)
+		}
+		sm.lastUpdatedTime = t.updateTime
+		err := sm.rollbackState()
+		if t.err != nil {
+			suite.EqualError(err, t.err.Error())
+		} else {
+			suite.NoError(err)
+		}
+		if !t.updateTime.IsZero() {
+			suite.EqualValues(t.updateTime, sm.GetLastUpdateTime())
+		}
+	}
+}
+
+// TestRollbackPreCallBackError tests if there is error in precallback
+func (suite *StateMachineTestSuite) TestRollbackPreCallBackError() {
+	sm := &statemachine{
+		name:         "sm1",
+		current:      "launching",
+		timeoutRules: make(map[State]*TimeoutRule),
+	}
+	timeoutRule := &TimeoutRule{
+		From:        "launching",
+		To:          []State{"ready"},
+		Timeout:     1 * time.Millisecond,
+		PreCallback: suite.preCallbackError,
+	}
+	sm.timeoutRules["launching"] = timeoutRule
+	err := sm.rollbackState()
+	suite.Error(err)
+	suite.EqualError(err, errTest.Error())
+}
+
+func (suite *StateMachineTestSuite) preCallbackError(t *Transition) error {
+	return errTest
+}
+
+// TestRollbackCallBackError tests if there is error in timeout callback
+func (suite *StateMachineTestSuite) TestRollbackCallBackError() {
+	sm := &statemachine{
+		name:         "sm1",
+		current:      "launching",
+		timeoutRules: make(map[State]*TimeoutRule),
+	}
+	timeoutRule := &TimeoutRule{
+		From:     "launching",
+		To:       []State{"ready"},
+		Timeout:  1 * time.Millisecond,
+		Callback: suite.callbackError,
+	}
+	sm.timeoutRules["launching"] = timeoutRule
+	err := sm.rollbackState()
+	suite.Error(err)
+	suite.EqualError(err, errTest.Error())
+}
+
+func (suite *StateMachineTestSuite) callbackError(t *Transition) error {
+	return errTest
+}
+
+// TestRollbackTransitionCallBackError tests if there is error
+// in transition callback
+func (suite *StateMachineTestSuite) TestRollbackTransitionCallBackError() {
+	sm := &statemachine{
+		name:         "sm1",
+		current:      "launching",
+		timeoutRules: make(map[State]*TimeoutRule),
+	}
+	sm.transitionCallback = suite.TransitionCallBackError
+
+	timeoutRule := &TimeoutRule{
+		From:    "launching",
+		To:      []State{"ready"},
+		Timeout: 1 * time.Millisecond,
+	}
+	sm.timeoutRules["launching"] = timeoutRule
+	err := sm.rollbackState()
+	suite.Error(err)
+	suite.EqualError(err, errTest.Error())
+}
+func (suite *StateMachineTestSuite) TransitionCallBackError(t *Transition) error {
+	return errTest
+}
+
+// TestValidateRules tests if the rules are invalid
+func (suite *StateMachineTestSuite) TestValidateRules() {
+	stateMachine, err := NewBuilder().
+		WithName("task1").
+		WithCurrentState("initialized").
+		WithTransitionCallback(suite.TransitionCallBack).
+		AddRule(
+			&Rule{
+				From: "initialized",
+				To:   []State{"running", "killed", "running", "placing", "launching"},
+				Callback: func(t *Transition) error {
+					switch t.To {
+					case "running":
+						return suite.callbackRunning(t)
+					case "killed":
+						return suite.callbackKilledFromInit(t)
+					default:
+						return nil
+					}
+				},
+			}).
+		Build()
+	suite.Error(err)
+	suite.Nil(stateMachine)
 }

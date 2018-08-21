@@ -16,4 +16,6 @@ func TestIsTransientError(t *testing.T) {
 	assert.False(t, IsTransientError(context.DeadlineExceeded))
 	assert.False(t, IsTransientError(context.Canceled))
 	assert.False(t, IsTransientError(nil))
+	assert.True(t, IsTransientError(yarpcerrors.AbortedErrorf("aborted")))
+	assert.True(t, IsTransientError(yarpcerrors.UnavailableErrorf("Unavailable")))
 }
