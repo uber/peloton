@@ -85,7 +85,7 @@ func TaskFailRetry(ctx context.Context, entity goalstate.Entity) error {
 	// reschedule the task
 	goalStateDriver.mtx.taskMetrics.RetryFailedTasksTotal.Inc(1)
 	runtimeDiff := taskutil.RegenerateMesosTaskIDDiff(
-		taskEnt.jobID, taskEnt.instanceID, runtime.GetMesosTaskId())
+		taskEnt.jobID, taskEnt.instanceID, runtime)
 	runtimeDiff[cached.FailureCountField] = runtime.GetFailureCount() + 1
 	runtimeDiff[cached.MessageField] = "Rescheduled after task failure"
 	log.WithField("job_id", taskEnt.jobID).

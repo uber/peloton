@@ -23,6 +23,7 @@ import (
 const (
 	// timeout for the orphan task kill call
 	_defaultKillTaskActionTimeout = 5 * time.Second
+	_initialRunID                 = 1
 )
 
 // CreateInitializingTask for insertion into the storage layer, before being
@@ -32,7 +33,7 @@ func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *
 		"%s-%d-%d",
 		jobID.GetValue(),
 		instanceID,
-		1)
+		_initialRunID)
 
 	// Get the health check config
 	healthCheckConfig := taskconfig.Merge(
@@ -51,6 +52,9 @@ func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *
 
 	runtime := &task.RuntimeInfo{
 		MesosTaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
+		},
+		DesiredMesosTaskId: &mesos.TaskID{
 			Value: &mesosTaskID,
 		},
 		State:                task.TaskState_INITIALIZED,

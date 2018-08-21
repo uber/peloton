@@ -49,7 +49,7 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	runtimeDiff := taskutil.RegenerateMesosTaskIDDiff(
-		taskEnt.jobID, taskEnt.instanceID, runtime.GetMesosTaskId())
+		taskEnt.jobID, taskEnt.instanceID, runtime)
 
 	// update task runtime
 	runtimeDiff[cached.GoalStateField] = jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())

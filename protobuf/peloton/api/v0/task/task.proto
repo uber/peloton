@@ -419,6 +419,8 @@ message RuntimeInfo {
   // The result of the health check
   HealthState healthy = 18;
 
+  // The desired mesos task ID for this instance
+  mesos.v1.TaskID desiredMesosTaskId = 19;
 }
 
 

@@ -339,7 +339,7 @@ func (p *processor) enqueueTasksToResMgr(ctx context.Context, tasks map[string]*
 
 	for _, t := range tasks {
 		runtimeDiff := taskutil.RegenerateMesosTaskIDDiff(
-			t.JobId, t.InstanceId, t.GetRuntime().GetMesosTaskId())
+			t.JobId, t.InstanceId, t.GetRuntime())
 		runtimeDiff[cached.MessageField] = "Regenerate placement"
 		runtimeDiff[cached.ReasonField] = "REASON_HOST_REJECT_OFFER"
 		runtimeDiff[cached.AgentIDField] = &mesosv1.AgentID{}

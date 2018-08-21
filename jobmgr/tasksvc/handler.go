@@ -513,7 +513,7 @@ func (m *serviceHandler) Start(
 			// Kill the old Mesos task and regenerate a new ID
 			jobmgr_task.KillOrphanTask(ctx, m.hostMgrClient, taskInfo)
 			runtimeDiff = taskutil.RegenerateMesosTaskIDDiff(
-				taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime.MesosTaskId)
+				taskInfo.JobId, taskInfo.InstanceId, taskInfo.GetRuntime())
 		}
 
 		// Change the goalstate.

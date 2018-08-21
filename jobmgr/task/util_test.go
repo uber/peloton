@@ -253,6 +253,9 @@ func (suite *JobmgrTaskUtilTestSuite) TestCreateInitializingTask() {
 		uint32(suite.instanceID), &job.JobConfig{})
 	suite.Equal(runtime.GetState(), task.TaskState_INITIALIZED)
 	suite.Equal(runtime.GetGoalState(), task.TaskState_SUCCEEDED)
+	suite.Equal(runtime.GetMesosTaskId(), runtime.GetDesiredMesosTaskId())
+	suite.NotEmpty(runtime.GetMesosTaskId())
+	suite.NotEmpty(runtime.GetDesiredMesosTaskId())
 }
 
 func (suite *JobmgrTaskUtilTestSuite) TestCreateInitializingTaskWithHealthCheck() {
@@ -270,6 +273,9 @@ func (suite *JobmgrTaskUtilTestSuite) TestCreateInitializingTaskWithHealthCheck(
 	runtime := CreateInitializingTask(&peloton.JobID{Value: suite.jobID},
 		uint32(suite.instanceID), &jobConfig)
 	suite.Equal(runtime.GetHealthy(), task.HealthState_HEALTH_UNKNOWN)
+	suite.Equal(runtime.GetMesosTaskId(), runtime.GetDesiredMesosTaskId())
+	suite.NotEmpty(runtime.GetMesosTaskId())
+	suite.NotEmpty(runtime.GetDesiredMesosTaskId())
 }
 
 // TestGetDefaultTaskGoalState tests GetDefaultTaskGoalState

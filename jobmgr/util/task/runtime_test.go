@@ -13,44 +13,53 @@ import (
 )
 
 func TestRegenerateMesosTaskIDDiff(t *testing.T) {
-
 	testTable := []struct {
-		jobID           string
-		instanceID      uint32
-		prevMesosTaskID string
-		mesosTaskID     string
+		jobID              string
+		instanceID         uint32
+		curMesosTaskID     string
+		desiredMesosTaskID string
+		newMesosTaskID     string
 	}{
 		{
-			jobID:           "b64fd26b-0e39-41b7-b22a-205b69f247bd",
-			instanceID:      0,
-			prevMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1690f7cf-9691-42ea-8fd3-7e417246b830",
-			mesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			jobID:              "b64fd26b-0e39-41b7-b22a-205b69f247bd",
+			instanceID:         0,
+			curMesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1690f7cf-9691-42ea-8fd3-7e417246b830",
+			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			newMesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
 		},
 		{
-			jobID:           "b64fd26b-0e39-41b7-b22a-205b69f247bd",
-			instanceID:      0,
-			prevMesosTaskID: "",
-			mesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			jobID:              "b64fd26b-0e39-41b7-b22a-205b69f247bd",
+			instanceID:         0,
+			curMesosTaskID:     "",
+			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			newMesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
 		},
 		{
-			jobID:           "b64fd26b-0e39-41b7-b22a-205b69f247bd",
-			instanceID:      0,
-			prevMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2",
-			mesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-3",
+			jobID:              "b64fd26b-0e39-41b7-b22a-205b69f247bd",
+			instanceID:         0,
+			curMesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2",
+			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2",
+			newMesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-3",
 		},
 	}
 
 	for _, tt := range testTable {
+		runtime := &task.RuntimeInfo{
+			MesosTaskId:        &mesos.TaskID{Value: &tt.curMesosTaskID},
+			DesiredMesosTaskId: &mesos.TaskID{Value: &tt.desiredMesosTaskID},
+		}
 		diff := RegenerateMesosTaskIDDiff(
 			&peloton.JobID{Value: tt.jobID},
 			tt.instanceID,
-			&mesos.TaskID{Value: &tt.prevMesosTaskID},
+			runtime,
 		)
 
 		assert.Equal(t, diff[cached.StateField], task.TaskState_INITIALIZED)
 		assert.Equal(t, *diff[cached.PrevMesosTaskIDField].(*mesos.TaskID).Value,
-			tt.prevMesosTaskID)
+			tt.curMesosTaskID)
 		assert.Equal(t, *diff[cached.MesosTaskIDField].(*mesos.TaskID).Value,
-			tt.mesosTaskID)
+			tt.newMesosTaskID)
+		assert.Equal(t, *diff[cached.DesiredMesosTaskIDField].(*mesos.TaskID).Value,
+			tt.newMesosTaskID)
 	}
 }

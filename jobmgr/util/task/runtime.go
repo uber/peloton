@@ -2,14 +2,13 @@ package task
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	"code.uber.internal/infra/peloton/util"
 )
 
 // RegenerateMesosTaskIDDiff returns a diff for patch with the previous mesos
@@ -18,31 +17,46 @@ import (
 func RegenerateMesosTaskIDDiff(
 	jobID *peloton.JobID,
 	instanceID uint32,
-	prevMesosTaskID *mesos.TaskID) map[string]interface{} {
-	// TODO: deprecate the check once mesos task id migration is complete from
-	// uuid-int-uuid -> uuid(job ID)-int(instance ID)-int(monotonically incremental)
-	// If uuid has all digits from uuid-int-uuid then it will increment from
-	// that value and not default to 1.
-	var runID = 0
-	splitPrevMesosTaskID := strings.Split(prevMesosTaskID.GetValue(), "-")
-	if len(splitPrevMesosTaskID) > 0 {
-		var err error
-		if runID, err = strconv.Atoi(
-			splitPrevMesosTaskID[len(splitPrevMesosTaskID)-1]); err != nil {
-			runID = 0
-		}
+	taskRuntime *task.RuntimeInfo) map[string]interface{} {
+	mesosTaskID := getMesosTaskID(jobID, instanceID, taskRuntime)
+
+	return map[string]interface{}{
+		cached.PrevMesosTaskIDField:    taskRuntime.GetMesosTaskId(),
+		cached.StateField:              task.TaskState_INITIALIZED,
+		cached.MesosTaskIDField:        mesosTaskID,
+		cached.DesiredMesosTaskIDField: mesosTaskID,
+	}
+}
+
+func getMesosTaskID(
+	jobID *peloton.JobID,
+	instanceID uint32,
+	taskRuntime *task.RuntimeInfo) *mesos.TaskID {
+	// desired mesos task id is not equal to current mesos task id,
+	// update current mesos task id to desired mesos task id.
+	// This is used for task restart in which case desired mesos task id
+	// is changed.
+	if taskRuntime.GetMesosTaskId().GetValue() !=
+		taskRuntime.GetDesiredMesosTaskId().GetValue() {
+		return taskRuntime.GetDesiredMesosTaskId()
+	}
+
+	// desired mesos task id is equal to current mesos task id,
+	// increment the runID part of mesos task id.
+	// This is used for task restart such as failure retry,
+	// in which case expected runID is not changed
+	// TODO: deprecate the check once mesos task id migration is complete
+	// and every task has runID populated
+	prevRunID, err := util.ParseRunID(taskRuntime.GetMesosTaskId().GetValue())
+	if err != nil || prevRunID < 0 {
+		prevRunID = 0
 	}
 	mesosTaskID := fmt.Sprintf(
 		"%s-%d-%d",
 		jobID.GetValue(),
 		instanceID,
-		runID+1)
-
-	return map[string]interface{}{
-		cached.PrevMesosTaskIDField: prevMesosTaskID,
-		cached.StateField:           task.TaskState_INITIALIZED,
-		cached.MesosTaskIDField: &mesos.TaskID{
-			Value: &mesosTaskID,
-		},
+		prevRunID+1)
+	return &mesos.TaskID{
+		Value: &mesosTaskID,
 	}
 }

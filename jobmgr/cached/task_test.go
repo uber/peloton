@@ -303,6 +303,94 @@ func (suite *TaskTestSuite) TestReplaceRuntime_StaleRuntime() {
 	suite.Equal(tt.runtime.GetState(), pbtask.TaskState_LAUNCHED)
 }
 
+func (suite *TaskTestSuite) TestValidateState() {
+	mesosIDWithRunID1 := "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1"
+	mesosIDWithRunID2 := "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2"
+
+	tt := []struct {
+		curRuntime     *pbtask.RuntimeInfo
+		newRuntime     *pbtask.RuntimeInfo
+		expectedResult bool
+		message        string
+	}{
+		{
+			curRuntime:     &pbtask.RuntimeInfo{},
+			newRuntime:     nil,
+			expectedResult: false,
+			message:        "nil new runtime should fail validation",
+		},
+		{
+			curRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_RUNNING},
+			newRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_RUNNING},
+			expectedResult: true,
+			message:        "state has no change, validate should succeed",
+		},
+		{
+			curRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_SUCCEEDED},
+			newRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_RUNNING},
+			expectedResult: false,
+			message:        "current state is in terminal, no state change allowed",
+		},
+		{
+			curRuntime: &pbtask.RuntimeInfo{
+				MesosTaskId: &mesosv1.TaskID{Value: &mesosIDWithRunID2},
+			},
+			newRuntime: &pbtask.RuntimeInfo{
+				MesosTaskId: &mesosv1.TaskID{Value: &mesosIDWithRunID1},
+			},
+			expectedResult: false,
+			message:        "runID in mesos id cannot decrease",
+		},
+		{
+			curRuntime: &pbtask.RuntimeInfo{
+				DesiredMesosTaskId: &mesosv1.TaskID{Value: &mesosIDWithRunID2},
+			},
+			newRuntime: &pbtask.RuntimeInfo{
+				DesiredMesosTaskId: &mesosv1.TaskID{Value: &mesosIDWithRunID1},
+			},
+			expectedResult: false,
+			message:        "runID in desired mesos id cannot decrease",
+		},
+		{
+			curRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_PENDING},
+			newRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_PLACING},
+			expectedResult: true,
+			message:        "state can change between resmgr state change",
+		},
+		{
+			curRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_INITIALIZED},
+			newRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_PENDING},
+			expectedResult: true,
+			message:        "state can change from INITIALIZED to resmgr state ",
+		},
+		{
+			curRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_PENDING},
+			newRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_KILLING},
+			expectedResult: true,
+			message:        "any state can change to KILLING state",
+		},
+		{
+			curRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_RUNNING},
+			newRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_PENDING},
+			expectedResult: false,
+			message:        "invalid sate transition from RUNNING to PENDING",
+		},
+		{
+			curRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_KILLING},
+			newRuntime:     &pbtask.RuntimeInfo{State: pbtask.TaskState_RUNNING},
+			expectedResult: false,
+			message:        "KILLING can only transit to terminal state",
+		},
+	}
+
+	for i, t := range tt {
+		task := initializeTask(
+			suite.taskStore, suite.jobID, suite.instanceID, t.curRuntime)
+		suite.Equal(task.validateState(t.newRuntime), t.expectedResult,
+			"test %d fails. message: %s", i, t.message)
+	}
+}
+
 // TestGetResourceManagerProcessingStates tests
 // whether GetResourceManagerProcessingStates returns right states
 func TestGetResourceManagerProcessingStates(t *testing.T) {

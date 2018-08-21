@@ -110,9 +110,9 @@ func (t *task) JobID() *peloton.JobID {
 	return t.jobID
 }
 
-// validateRunID validates whether newRunID is greater than current runID,
+// validateMesosTaskID validates whether newRunID is greater than current runID,
 // since each restart/upgrade for a task's runID is monotonically incremented.
-func validateRunID(mesosTaskID, prevMesosTaskID string) bool {
+func validateMesosTaskID(mesosTaskID, prevMesosTaskID string) bool {
 	// TODO: remove this check, post mesostaskID migration.
 	if len(mesosTaskID) > 2*uuidLength && len(prevMesosTaskID) > 2*uuidLength {
 		return true
@@ -128,7 +128,7 @@ func validateRunID(mesosTaskID, prevMesosTaskID string) bool {
 	if currentRunID, err = util.ParseRunID(prevMesosTaskID); err != nil {
 		return len(prevMesosTaskID) > 2*uuidLength || false
 	}
-	return newRunID > currentRunID
+	return newRunID >= currentRunID
 }
 
 // validateState returns true if the state transition from the previous
@@ -145,10 +145,11 @@ func (t *task) validateState(newRuntime *pbtask.RuntimeInfo) bool {
 		if currentRuntime.GetMesosTaskId().GetValue() !=
 			newRuntime.GetMesosTaskId().GetValue() {
 			// Validate post migration, new runid is greater than previous one
-			if !validateRunID(newRuntime.GetMesosTaskId().GetValue(),
+			if !validateMesosTaskID(newRuntime.GetMesosTaskId().GetValue(),
 				currentRuntime.GetMesosTaskId().GetValue()) {
 				return false
 			}
+
 			// mesos task id has changed
 			if newRuntime.GetState() == pbtask.TaskState_INITIALIZED {
 				return true
@@ -157,7 +158,13 @@ func (t *task) validateState(newRuntime *pbtask.RuntimeInfo) bool {
 		}
 	}
 
-	// mesos task id remains the same as before
+	// desired mesos task id should not have runID decrease at
+	// any time
+	if newRuntime.GetDesiredMesosTaskId() != nil &&
+		!validateMesosTaskID(newRuntime.GetDesiredMesosTaskId().GetValue(),
+			currentRuntime.GetDesiredMesosTaskId().GetValue()) {
+		return false
+	}
 
 	// if state update is not requested, then return true
 	if newRuntime.GetState() == currentRuntime.GetState() {
