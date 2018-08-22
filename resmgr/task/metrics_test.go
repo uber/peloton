@@ -24,7 +24,7 @@ func TestTransObs_Observe(t *testing.T) {
 	fr := &fakeRecorder{
 		doneRecording: make(chan struct{}),
 	}
-	tobs := newTransitionObserverWithOptions(withLocalRecorder(fr))
+	tobs := NewTransitionObserver(withLocalRecorder(fr))
 
 	assert.Equal(t, fr.duration, time.Duration(0))
 
@@ -59,68 +59,5 @@ func TestTransObs_Observe(t *testing.T) {
 			assert.Equal(t, fr.duration, time.Duration(0),
 				"duration should be equal to zero")
 		}
-	}
-}
-
-// Test parsing the first 8 characters from a job uuid
-func TestParseJobUUIDPrefix(t *testing.T) {
-	tt := []struct {
-		uuid       string
-		firstEight string
-	}{
-		{
-			uuid:       "46014e1e-4aa1-4fcc-b22b-e1d58f02ba99",
-			firstEight: "46014e1e",
-		},
-		{
-			uuid:       "",
-			firstEight: "",
-		},
-	}
-
-	for _, test := range tt {
-		assert.Equal(t, test.firstEight, getJobUUIDPrefix(test.uuid))
-	}
-}
-
-// Tests parsing the runid from the mesos task ID
-func TestParseRunIDPrefix(t *testing.T) {
-	tt := []struct {
-		uuid  string
-		runID string
-	}{
-		{
-			uuid:  "46014e1e-4aa1-4fcc-b22b-e1d58f02ba99-0-1",
-			runID: "1",
-		},
-		{
-			uuid:  "46014e1e-4aa1-4fcc-b22b-e1d58f02ba99-0-46014e1e-4aa1-4fcc-b22b-e1d58f02ba99",
-			runID: "46014e1e",
-		},
-	}
-
-	for _, test := range tt {
-		assert.Equal(t, test.runID, getRunIDPrefix(test.uuid))
-	}
-}
-
-func TestParseInstanceID(t *testing.T) {
-	tt := []struct {
-		uuid       string
-		instanceID string
-	}{
-		{
-			uuid:       "46014e1e-4aa1-4fcc-b22b-e1d58f02ba99-0-1",
-			instanceID: "0",
-		},
-		{
-			uuid: "46014e1e-4aa1-4fcc-b22b-e1d58f02ba99-1-46014e1e-4aa1" +
-				"-4fcc-b22b-e1d58f02ba99",
-			instanceID: "1",
-		},
-	}
-
-	for _, test := range tt {
-		assert.Equal(t, test.instanceID, getInstanceID(test.uuid))
 	}
 }

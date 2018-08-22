@@ -545,7 +545,7 @@ func (suite *recoveryTestSuite) TestAddRunningTasks() {
 	suite.Equal(val, 0)
 
 	node, err := suite.resourceTree.Get(&peloton.ResourcePoolID{Value: "respool21"})
-	rmTask, err := rm_task.CreateRMTask(&resmgr.Task{}, nil, node, tally.NoopScope,
+	rmTask, err := rm_task.CreateRMTask(&resmgr.Task{}, nil, node, rm_task.NewTransitionObserver(),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,

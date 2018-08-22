@@ -278,7 +278,7 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForRunningTask
 		GPU:    1,
 	}
 	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation).AnyTimes()
-	mockResPool.EXPECT().GetPath().Return("/respool-1").AnyTimes()
+	mockResPool.EXPECT().GetPath().Return("/respool-1")
 
 	numRunningTasks := 3
 	tasks := suite.createTasks(numRunningTasks, mockResPool)
@@ -307,7 +307,6 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForReadyTasks(
 	// Mocks
 	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
-	mockResPool.EXPECT().GetPath().Return("/respool-1").AnyTimes()
 	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
 		CPU:    20,
 		MEMORY: 200,
@@ -372,7 +371,6 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForPlacingTask
 	// Mocks
 	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
-	mockResPool.EXPECT().GetPath().Return("/respool-1").AnyTimes()
 	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
 		CPU:    20,
 		MEMORY: 200,
@@ -451,7 +449,6 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolErrors() {
 		DISK:   2000,
 		GPU:    1,
 	}
-	mockResPool.EXPECT().GetPath().Return("/respool-1/respool-1").AnyTimes()
 	mockResPool.EXPECT().GetEntitlement().Return(&entitlement).AnyTimes()
 	allocation := &scalar.Allocation{
 		Value: map[scalar.AllocationType]*scalar.Resources{
@@ -511,8 +508,7 @@ func (suite *PreemptorTestSuite) TestPreemptionQueue_DuplicateTasks() {
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
 	// Mocks
-	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).
-		Return(mockResPool, nil)
+	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
 	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
 		CPU:    20,
@@ -527,7 +523,7 @@ func (suite *PreemptorTestSuite) TestPreemptionQueue_DuplicateTasks() {
 		GPU:    1,
 	}
 	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation).AnyTimes()
-	mockResPool.EXPECT().GetPath().Return("/respool-1").AnyTimes()
+	mockResPool.EXPECT().GetPath().Return("/respool-1")
 
 	numRunningTasks := 1
 	tasks := suite.createTasks(numRunningTasks, mockResPool)

@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	resp "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	hostsvc_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common"
@@ -20,7 +21,6 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 
 	"github.com/golang/mock/gomock"
-	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -34,6 +34,7 @@ type TrackerTestSuite struct {
 	task               *resmgr.Task
 	respool            respool.ResPool
 	hostname           string
+	mockHostmgr        *hostsvc_mocks.MockInternalHostServiceYARPCClient
 }
 
 func (suite *TrackerTestSuite) SetupTest() {
@@ -467,11 +468,12 @@ This test should complete if there is no deadlock
 */
 func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 	testTracker := &tracker{
-		tasks:       make(map[string]*RMTask),
-		placements:  map[string]map[resmgr.TaskType]map[string]*RMTask{},
-		metrics:     NewMetrics(tally.NoopScope),
-		counters:    make(map[task.TaskState]float64),
-		parentScope: tally.NoopScope,
+		tasks:         make(map[string]*RMTask),
+		placements:    map[string]map[resmgr.TaskType]map[string]*RMTask{},
+		metrics:       NewMetrics(tally.NoopScope),
+		counters:      make(map[task.TaskState]float64),
+		hostMgrClient: suite.mockHostmgr,
+		parentScope:   tally.NoopScope,
 	}
 	testTracker.AddTask(
 		suite.createTask(1),
@@ -503,10 +505,10 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 
 		startSMRollBack <- struct{}{}
 		<-continueGATask
-		log.Info("acquiring statemachine read lock")
+		fmt.Println("acquiring statemachine read lock")
 		// see 2.2 in test comments
 		smLock.RLock()
-		log.Info("statemachine read lock acquired")
+		fmt.Println("statemachine read lock acquired")
 	})
 
 	// set the mock state machine for the task
@@ -524,9 +526,9 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 
 		<-startSMRollBack
 		// acquire write lock on state machine (see 1.1 in test comments)
-		log.Info("acquiring statemachine write lock")
+		fmt.Println("acquiring statemachine write lock")
 		smLock.Lock()
-		log.Info("statemachine write lock acquired")
+		fmt.Println("statemachine write lock acquired")
 
 		continueGATask <- struct{}{}
 
@@ -541,9 +543,9 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 
 		// call GetActiveTasks which acquires RLock on tracker(see #2.1
 		// in test comments)
-		log.Info("calling GetActiveTasks")
+		fmt.Println("calling GetActiveTasks")
 		testTracker.GetActiveTasks("", "", []string{})
-		log.Info("GetActiveTasks returned")
+		fmt.Println("GetActiveTasks returned")
 	}()
 
 	// simulate calling SetPlacement which acquires a write lock on the tracker.
@@ -551,11 +553,11 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 		defer wg.Done()
 
 		<-startSetPlacement
-		log.Info("calling SetPlacement")
+		fmt.Println("calling SetPlacement")
 		// call SetPlacement which acquires Lock on tracker(see #3
 		// in test comments)
 		testTracker.SetPlacement(&peloton.TaskID{Value: "job1-1"}, "hostname")
-		log.Info("SetPlacement returned")
+		fmt.Println("SetPlacement returned")
 	}()
 
 	// a deadlock would cause this to wait indefinitely

@@ -137,7 +137,8 @@ func (tr *tracker) AddTask(
 	respool respool.ResPool,
 	config *Config) error {
 
-	rmTask, err := CreateRMTask(t, handler, respool, tr.parentScope, config)
+	rmTask, err := CreateRMTask(t, handler, respool,
+		NewTransitionObserver(WithTallyRecorder(tr.parentScope)), config)
 	if err != nil {
 		return err
 	}

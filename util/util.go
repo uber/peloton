@@ -9,14 +9,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pborman/uuid"
+	log "github.com/sirupsen/logrus"
+
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
-	"github.com/pborman/uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -25,13 +25,11 @@ const (
 	// slaveIPSeparator is the separator for slave id and IP address
 	slaveIPSeparator = "@"
 	// ResourceEpsilon is the minimum epsilon mesos resource;
-	// This is because Mesos internally uses a fixed point precision.
-	// See MESOS-4687 for details.
+	// This is because Mesos internally uses a fixed point precision. See MESOS-4687 for details.
 	ResourceEpsilon = 0.0009
 )
 
-// UUIDLength returns the length of a version 4 UUID
-var UUIDLength = len(uuid.New())
+var uuidLength = len(uuid.New())
 
 // Min returns the minimum value of x, y
 func Min(x, y uint32) uint32 {
@@ -255,7 +253,7 @@ func ParseRunID(mesosTaskID string) (uint32, error) {
 // ParseTaskID parses the jobID and instanceID from peloton taskID
 func ParseTaskID(taskID string) (string, int, error) {
 	pos := strings.LastIndex(taskID, "-")
-	if len(taskID) < UUIDLength || pos == -1 {
+	if len(taskID) < uuidLength || pos == -1 {
 		return "", -1, fmt.Errorf("invalid pelotonTaskID %v", taskID)
 	}
 	jobID := taskID[0:pos]
@@ -278,7 +276,7 @@ func ParseTaskID(taskID string) (string, int, error) {
 // ParseTaskIDFromMesosTaskID parses the taskID from mesosTaskID
 func ParseTaskIDFromMesosTaskID(mesosTaskID string) (string, error) {
 	// mesos task id would be "(jobID)-(instanceID)-(runID)" form
-	if len(mesosTaskID) < UUIDLength+1 {
+	if len(mesosTaskID) < uuidLength+1 {
 		return "", fmt.Errorf("invalid mesostaskID %v", mesosTaskID)
 	}
 
@@ -287,8 +285,8 @@ func ParseTaskIDFromMesosTaskID(mesosTaskID string) (string, error) {
 	// If uuid has all digits from uuid-int-uuid then it will increment from
 	// that value and not default to 1.
 	var pelotonTaskID string
-	if len(mesosTaskID) > 2*UUIDLength {
-		pelotonTaskID = mesosTaskID[:len(mesosTaskID)-(UUIDLength+1)]
+	if len(mesosTaskID) > 2*uuidLength {
+		pelotonTaskID = mesosTaskID[:len(mesosTaskID)-(uuidLength+1)]
 	} else {
 		pelotonTaskID = mesosTaskID[:strings.LastIndex(mesosTaskID, "-")]
 	}

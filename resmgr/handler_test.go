@@ -747,14 +747,7 @@ func (s *HandlerTestSuite) TestEnqueueGangsFailure() {
 
 func (s *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 	var placements []*resmgr.Placement
-	resp, err := respool.NewRespool(tally.NoopScope, "respool-1", nil, &pb_respool.ResourcePoolConfig{
-		Name:      "respool-1",
-		Parent:    nil,
-		Resources: s.getResourceConfig(),
-		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
-	},
-		s.cfg)
-	s.NoError(err)
+	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil, nil, s.cfg)
 	for i := 0; i < 10; i++ {
 		var tasks []*peloton.TaskID
 		for j := 0; j < 5; j++ {
@@ -843,7 +836,9 @@ func (s *HandlerTestSuite) TestTransitTasksInPlacement() {
 		Id: &peloton.TaskID{
 			Value: fmt.Sprintf("%s-%d", uuidStr, 0),
 		},
-	}, nil, resp, tally.NoopScope,
+	}, nil,
+		resp,
+		rm_task.NewTransitionObserver(rm_task.WithTallyRecorder(tally.NoopScope)),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
@@ -1260,7 +1255,9 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 		TaskId: &mesos_v1.TaskID{
 			Value: &mesosTaskID,
 		},
-	}, nil, resp, tally.NoopScope,
+	}, nil,
+		resp,
+		rm_task.NewTransitionObserver(rm_task.WithTallyRecorder(tally.NoopScope)),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
@@ -1285,7 +1282,9 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 		TaskId: &mesos_v1.TaskID{
 			Value: &wmesosTaskID,
 		},
-	}, nil, resp, tally.NoopScope,
+	}, nil,
+		resp,
+		rm_task.NewTransitionObserver(rm_task.WithTallyRecorder(tally.NoopScope)),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
@@ -1359,7 +1358,10 @@ func (s *HandlerTestSuite) TestHandleRunningEventError() {
 		TaskId: &mesos_v1.TaskID{
 			Value: &mesosTaskID,
 		},
-	}, nil, resp, tally.NoopScope,
+	},
+		nil,
+		resp,
+		rm_task.NewTransitionObserver(rm_task.WithTallyRecorder(tally.NoopScope)),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
@@ -1431,12 +1433,7 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 
 	// Mock tasks in RUNNING state
 	resp, _ := respool.NewRespool(
-		tally.NoopScope, "respool-1", nil, &pb_respool.ResourcePoolConfig{
-			Name:      "respool-1",
-			Parent:    nil,
-			Resources: s.getResourceConfig(),
-			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
-		}, s.cfg)
+		tally.NoopScope, "respool-1", nil, nil, s.cfg)
 	var expectedTasks []*resmgr.Task
 	for j := 1; j <= 5; j++ {
 		taskID := &peloton.TaskID{
@@ -1494,8 +1491,10 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasksError() {
 			Resources: s.getResourceConfig(),
 			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 		}, s.cfg)
-
-	rmTask, err := rm_task.CreateRMTask(&resmgr.Task{}, nil, resp, tally.NoopScope,
+	rmTask, err := rm_task.CreateRMTask(&resmgr.Task{},
+		nil,
+		resp,
+		rm_task.NewTransitionObserver(rm_task.WithTallyRecorder(tally.NoopScope)),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,

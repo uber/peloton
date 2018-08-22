@@ -15,7 +15,6 @@ import (
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
-	"github.com/uber-go/tally"
 )
 
 var errTaskNotPresent = errors.New("task is not present in the tracker")
@@ -49,7 +48,7 @@ func CreateRMTask(
 	t *resmgr.Task,
 	handler *eventstream.Handler,
 	respool respool.ResPool,
-	parentScope tally.Scope,
+	transitionObserver TransitionObserver,
 	config *Config) (*RMTask, error) {
 
 	r := &RMTask{
@@ -60,7 +59,7 @@ func CreateRMTask(
 		runTimeStats: &RunTimeStats{
 			StartTime: time.Time{},
 		},
-		transitionObserver: DefaultTransitionObserver(parentScope, t, respool),
+		transitionObserver: transitionObserver,
 	}
 
 	err := r.initStateMachine()
@@ -251,14 +250,12 @@ func (rmTask *RMTask) initStateMachine() error {
 
 // TransitTo transitions to the target state
 func (rmTask *RMTask) TransitTo(stateTo string, options ...state.Option) error {
-	if err := rmTask.stateMachine.TransitTo(state.State(stateTo),
-		options...); err != nil {
-		return err
+	err := rmTask.stateMachine.TransitTo(state.State(stateTo), options...)
+	if err == nil {
+		GetTracker().UpdateCounters(rmTask.GetCurrentState(),
+			task.TaskState(task.TaskState_value[stateTo]))
 	}
-
-	GetTracker().UpdateCounters(rmTask.GetCurrentState(),
-		task.TaskState(task.TaskState_value[stateTo]))
-	return nil
+	return err
 }
 
 // Task returns the task of the RMTask.

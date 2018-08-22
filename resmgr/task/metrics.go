@@ -1,17 +1,12 @@
 package task
 
 import (
-	"strconv"
-	"strings"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common/scalar"
 	"code.uber.internal/infra/peloton/common/statemachine"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	"code.uber.internal/infra/peloton/util"
 
 	"github.com/uber-go/tally"
 )
@@ -55,14 +50,12 @@ type Option func(obs *TransObs)
 // WithTallyRecorder uses timer to record the transition
 func WithTallyRecorder(scope tally.Scope) Option {
 	return func(obs *TransObs) {
+		scope = scope.SubScope("state_transition")
 		recorders := make(map[recorderKey]recorder)
 		for from, tos := range obs.rules {
 			for _, to := range tos {
 				tk := getRecorderKey(from, to)
-				recorders[tk] = scope.Tagged(
-					map[string]string{
-						"states": string(tk)}).
-					Timer("duration")
+				recorders[tk] = scope.Timer(string(tk))
 			}
 		}
 		obs.recorders = recorders
@@ -83,26 +76,8 @@ func withLocalRecorder(r recorder) Option {
 	}
 }
 
-// DefaultTransitionObserver returns the default observers for the respool and
-// the task tagged with the relevant tags
-func DefaultTransitionObserver(scope tally.Scope, t *resmgr.Task,
-	respool respool.ResPool) TransitionObserver {
-	return newTransitionObserverWithOptions(WithTallyRecorder(
-		scope.SubScope("state_transition").Tagged(
-			map[string]string{
-				"respool_path": respool.GetPath(),
-				"job_uuid_prefix": getJobUUIDPrefix(
-					t.GetJobId().GetValue()),
-				"instance_id": getInstanceID(t.GetTaskId().GetValue()),
-				"run_id": getRunIDPrefix(
-					t.GetTaskId().GetValue()),
-			},
-		),
-	))
-}
-
-// newTransitionObserverWithOptions returns a new transition observer based on the scope.
-func newTransitionObserverWithOptions(options ...Option) *TransObs {
+// NewTransitionObserver returns a new transition observer based on the scope.
+func NewTransitionObserver(options ...Option) *TransObs {
 	to := &TransObs{
 		inProgress: make(map[statemachine.State][]timeRecord),
 		recorders:  make(map[recorderKey]recorder),
@@ -137,36 +112,6 @@ func newTransitionObserverWithOptions(options ...Option) *TransObs {
 	}
 
 	return to
-}
-
-// The first 8 chars of the UUID are used to control the cardinality of metrics
-func getJobUUIDPrefix(uuid string) string {
-	if len(uuid) >= util.UUIDLength {
-		return uuid[0:8]
-	}
-	return ""
-}
-
-// The instance id of the task
-func getInstanceID(mesosTaskID string) string {
-	_, id, err := util.ParseJobAndInstanceID(mesosTaskID)
-	if err != nil {
-		return "-1"
-	}
-	return strconv.Itoa(id)
-}
-
-// TODO: Update this once mesos task id migration is complete from
-// uuid-int-uuid -> uuid(job ID)-int(instance ID)-int(monotonically incremental)
-func getRunIDPrefix(mesosTaskID string) string {
-	if len(mesosTaskID) > 2*util.UUIDLength {
-		// uuid-int-uuid
-		// The first 8 chars of the UUID are used to control the cardinality of
-		// metrics
-		return mesosTaskID[39:47]
-	}
-	// uuid-int-int
-	return mesosTaskID[strings.LastIndex(mesosTaskID, "-")+1:]
 }
 
 // Observe implements TransitionObserver
