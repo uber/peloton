@@ -272,8 +272,10 @@ var (
 	updateBatchSize    = updateCreate.Arg("batch-size", "batch size for the update").Required().Uint32()
 	updateResPoolPath  = updateCreate.Arg("respool", "complete path of the "+
 		"resource pool starting from the root").Required().String()
+	updateConfigVersion = updateCreate.Flag("configuration-version",
+		"current configuration version").Default("0").Short('c').Uint64()
 	updateOverride = updateCreate.Flag("override",
-		"override the existing update").Default("false").Bool()
+		"override the existing update").Default("false").Short('o').Bool()
 
 	// command to fetch the status of a job update
 	updateGet   = update.Command("get", "get status of a job update")
@@ -486,7 +488,14 @@ func main() {
 	case volumeDelete.FullCommand():
 		err = client.VolumeDeleteAction(*volumeDeleteVolumeID)
 	case updateCreate.FullCommand():
-		err = client.UpdateCreateAction(*updateJobID, *updateCreateConfig, *updateBatchSize, *updateResPoolPath, *updateOverride)
+		err = client.UpdateCreateAction(
+			*updateJobID,
+			*updateCreateConfig,
+			*updateBatchSize,
+			*updateResPoolPath,
+			*updateConfigVersion,
+			*updateOverride,
+		)
 	case updateGet.FullCommand():
 		err = client.UpdateGetAction(*updateGetID)
 	case updateList.FullCommand():

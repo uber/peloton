@@ -26,6 +26,7 @@ func (c *Client) UpdateCreateAction(
 	cfg string,
 	batchSize uint32,
 	respoolPath string,
+	configVersion uint64,
 	override bool) error {
 	var jobConfig job.JobConfig
 	var response *updatesvc.CreateUpdateResponse
@@ -68,6 +69,14 @@ func (c *Client) UpdateCreateAction(
 		jobRuntime := jobGetResponse.GetJobInfo().GetRuntime()
 		if jobRuntime == nil {
 			return fmt.Errorf("unable to find the job to update")
+		}
+
+		if configVersion > 0 {
+			if jobRuntime.GetConfigurationVersion() != configVersion {
+				return fmt.Errorf(
+					"invalid input configuration version current %v provided %v",
+					jobRuntime.GetConfigurationVersion(), configVersion)
+			}
 		}
 
 		if jobRuntime.GetUpdateID() != nil &&

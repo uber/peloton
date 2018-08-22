@@ -175,6 +175,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 			testJobUpdateConfig,
 			batchSize,
 			respoolPath,
+			uint64(0),
 			t.override,
 		)
 
@@ -231,6 +232,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateResPoolErrors() {
 			testJobUpdateConfig,
 			batchSize,
 			respoolPath,
+			uint64(0),
 			false,
 		)
 		suite.Error(err)
@@ -274,12 +276,18 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateJobGetErrors() {
 	}
 
 	tt := []struct {
-		resp *job.GetResponse
-		err  error
+		resp          *job.GetResponse
+		configVersion uint64
+		err           error
 	}{
 		{
 			resp: jobGetResponseWithUpdate,
 			err:  nil,
+		},
+		{
+			resp:          jobGetResponseWithUpdate,
+			configVersion: version - 1,
+			err:           nil,
 		},
 		{
 			resp: nil,
@@ -311,6 +319,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateJobGetErrors() {
 			testJobUpdateConfig,
 			batchSize,
 			respoolPath,
+			t.configVersion,
 			false,
 		)
 		suite.Error(err)
@@ -409,6 +418,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateRetry() {
 		testJobUpdateConfig,
 		batchSize,
 		respoolPath,
+		uint64(0),
 		false,
 	)
 	suite.NoError(err)
