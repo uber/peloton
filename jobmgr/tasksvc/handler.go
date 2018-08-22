@@ -3,6 +3,7 @@ package tasksvc
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -276,33 +277,13 @@ func (m *serviceHandler) List(
 	log.WithField("request", body).Debug("TaskSVC.List called")
 
 	m.metrics.TaskAPIList.Inc(1)
-	var instanceCount uint32
-	var err error
 
-	jobConfig, err := handler.GetJobConfigWithoutFillingCache(
-		ctx, body.JobId, m.jobFactory, m.jobStore)
-	if err != nil {
-		return &task.ListResponse{
-			NotFound: &pb_errors.JobNotFound{
-				Id:      body.GetJobId(),
-				Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.GetJobId(), err),
-			},
-		}, nil
+	var instanceRanges []*task.InstanceRange
+	if body.GetRange() != nil {
+		instanceRanges = append(instanceRanges, body.GetRange())
 	}
-	instanceCount = jobConfig.GetInstanceCount()
-
-	var result map[uint32]*task.TaskInfo
-	if body.Range == nil {
-		result, err = m.taskStore.GetTasksForJob(ctx, body.JobId)
-	} else {
-		// Need to do this check as the CLI may send default instance Range (0, MaxUnit32)
-		// and  C* store would error out if it cannot find a instance id. A separate
-		// task is filed on the CLI side.
-		if body.Range.To > instanceCount {
-			body.Range.To = instanceCount
-		}
-		result, err = m.taskStore.GetTasksForJobByRange(ctx, body.JobId, body.Range)
-	}
+	result, err := m.getTaskInfosByRangesFromDB(
+		ctx, body.GetJobId(), instanceRanges)
 	if err != nil || len(result) == 0 {
 		m.metrics.TaskListFail.Inc(1)
 		return &task.ListResponse{
@@ -392,8 +373,7 @@ func (m *serviceHandler) Refresh(ctx context.Context, req *task.RefreshRequest) 
 func (m *serviceHandler) getTaskInfosByRangesFromDB(
 	ctx context.Context,
 	jobID *peloton.JobID,
-	ranges []*task.InstanceRange,
-	instanceCount uint32) (map[uint32]*task.TaskInfo, error) {
+	ranges []*task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
 
 	taskInfos := make(map[uint32]*task.TaskInfo)
 	var err error
@@ -403,13 +383,16 @@ func (m *serviceHandler) getTaskInfosByRangesFromDB(
 	} else {
 		var tmpTaskInfos map[uint32]*task.TaskInfo
 		for _, taskRange := range ranges {
-			// Need to do this check as the CLI may send default instance Range (0, MaxUnit32)
-			// and  C* store would error out if it cannot find a instance id. A separate
-			// task is filed on the CLI side.
-			if taskRange.GetTo() > instanceCount {
-				taskRange.To = instanceCount
+			// Need to do this check as instance_id is of type int32. When the
+			// range goes beyond MaxInt32, C* would not return any result.
+			// Theoretically, taskStore should return an error, but now
+			// it is not the case. Remove this check, once figure out
+			// what is going wrong in taskStore.
+			if taskRange.GetTo() > math.MaxInt32 {
+				taskRange.To = math.MaxInt32
 			}
-			tmpTaskInfos, err = m.taskStore.GetTasksForJobByRange(ctx, jobID, taskRange)
+			tmpTaskInfos, err = m.taskStore.GetTasksForJobByRange(
+				ctx, jobID, taskRange)
 			if err != nil {
 				return taskInfos, err
 			}
@@ -481,7 +464,7 @@ func (m *serviceHandler) Start(
 	}
 
 	taskInfos, err := m.getTaskInfosByRangesFromDB(
-		ctx, body.GetJobId(), body.GetRanges(), cachedConfig.GetInstanceCount())
+		ctx, body.GetJobId(), body.GetRanges())
 	if err != nil {
 		log.WithField("job", body.JobId).
 			WithError(err).
@@ -676,7 +659,7 @@ func (m *serviceHandler) Stop(
 	}
 
 	taskInfos, err := m.getTaskInfosByRangesFromDB(
-		ctx, body.GetJobId(), taskRange, cachedConfig.GetInstanceCount())
+		ctx, body.GetJobId(), taskRange)
 	if err != nil {
 		log.WithField("job", body.JobId).
 			WithError(err).
@@ -770,14 +753,8 @@ func (m *serviceHandler) Restart(
 	defer cancelFunc()
 
 	cachedJob := m.jobFactory.AddJob(req.JobId)
-	cachedConfig, err := cachedJob.GetConfig(ctx)
-	if err != nil {
-		m.metrics.TaskRestartFail.Inc(1)
-		return nil, err
-	}
 	runtimeDiffs, err := m.getRuntimeDiffsForRestart(ctx,
 		cachedJob,
-		cachedConfig.GetInstanceCount(),
 		req.GetRanges())
 	if err != nil {
 		m.metrics.TaskRestartFail.Inc(1)
@@ -800,11 +777,10 @@ func (m *serviceHandler) Restart(
 func (m *serviceHandler) getRuntimeDiffsForRestart(
 	ctx context.Context,
 	cachedJob cached.Job,
-	instanceCount uint32,
 	instanceRanges []*task.InstanceRange) (map[uint32]cached.RuntimeDiff, error) {
 	result := make(map[uint32]cached.RuntimeDiff)
 	taskInfos, err := m.getTaskInfosByRangesFromDB(
-		ctx, cachedJob.ID(), instanceRanges, instanceCount)
+		ctx, cachedJob.ID(), instanceRanges)
 	if err != nil {
 		return nil, err
 	}

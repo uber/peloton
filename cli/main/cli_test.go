@@ -52,7 +52,7 @@ func TestParseTaskList(t *testing.T) {
 	assert.Equal(t, taskList.FullCommand(), cmd)
 	assert.Equal(t, *taskListJobName, job)
 	assert.Equal(t, uint32(0), taskListInstanceRange.From)
-	assert.Equal(t, uint32(math.MaxUint32), taskListInstanceRange.To)
+	assert.Equal(t, uint32(math.MaxInt32), taskListInstanceRange.To)
 }
 
 func TestParseTaskListWithRange(t *testing.T) {
@@ -66,9 +66,9 @@ func TestParseTaskListWithRange(t *testing.T) {
 
 func TestRangeParsing(t *testing.T) {
 	expected := map[string]pt.InstanceRange{
-		":":     {From: uint32(0), To: uint32(math.MaxUint32)},
+		":":     {From: uint32(0), To: uint32(math.MaxInt32)},
 		":100":  {From: uint32(0), To: uint32(100)},
-		"5:":    {From: uint32(5), To: uint32(math.MaxUint32)},
+		"5:":    {From: uint32(5), To: uint32(math.MaxInt32)},
 		"55:99": {From: uint32(55), To: uint32(99)},
 	}
 	for s, expect := range expected {
@@ -79,7 +79,7 @@ func TestRangeParsing(t *testing.T) {
 }
 
 func TestRangeParsingError(t *testing.T) {
-	expected := []string{"55:56:57", "try:56", "56:try"}
+	expected := []string{"55:56:57", "try:56", "56:try", "-1:1", "1:-1"}
 	for _, s := range expected {
 		_, err := parseRangeFromString(s)
 		assert.NotNil(t, err)
@@ -91,7 +91,7 @@ func TestParseTaskStartWithRanges(t *testing.T) {
 	expected := []*pt.InstanceRange{
 		{uint32(3), uint32(6)},
 		{uint32(0), uint32(50)},
-		{uint32(5), uint32(math.MaxUint32)},
+		{uint32(5), uint32(math.MaxInt32)},
 	}
 	cmd, err := app.Parse([]string{"task", "start", job, "-r", "3:6", "-r", ":50", "-r", "5:"})
 	assert.Nil(t, err)

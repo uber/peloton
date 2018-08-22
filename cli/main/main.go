@@ -310,7 +310,7 @@ type TaskRangeListValue struct {
 }
 
 func parseRangeFromString(s string) (ir pt.InstanceRange, err error) {
-	// A default value of ":" yields from:0 to:MaxUint32. Specifying either side of the range
+	// A default value of ":" yields from:0 to:MaxInt32. Specifying either side of the range
 	// will only set that side, leaving the other default. i.e. ":200" will show the first 200 tasks, and
 	// "50:" will show the tasks from 50 till the end
 	parts := strings.SplitN(s, ":", 2)
@@ -318,20 +318,26 @@ func parseRangeFromString(s string) (ir pt.InstanceRange, err error) {
 		return ir, fmt.Errorf("expected FROM:TO got '%s'", s)
 	}
 	from := uint32(0)
-	to := uint32(math.MaxUint32)
+	to := uint32(math.MaxInt32)
 	if parts[0] != "" {
-		parsedFrom, err := strconv.ParseUint(parts[0], 10, 32)
+		parsedFrom, err := strconv.ParseInt(parts[0], 10, 32)
 		if err != nil {
 			return ir, err
+		}
+		if parsedFrom < 0 {
+			return ir, fmt.Errorf("unexpected negative FROM %d", parsedFrom)
 		}
 		from = uint32(parsedFrom)
 	}
 	ir.From = from
 
 	if parts[1] != "" {
-		parsedTo, err := strconv.ParseUint(parts[1], 10, 32)
+		parsedTo, err := strconv.ParseInt(parts[1], 10, 32)
 		if err != nil {
 			return ir, err
+		}
+		if parsedTo < 0 {
+			return ir, fmt.Errorf("unexpected negative TO %d", parsedTo)
 		}
 		to = uint32(parsedTo)
 	}

@@ -3,6 +3,7 @@ package tasksvc
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -205,7 +206,7 @@ func (suite *TaskHandlerTestSuite) TestGetTaskInfosByRangesFromDBReturnsError() 
 	jobID := &peloton.JobID{}
 
 	suite.mockedTaskStore.EXPECT().GetTasksForJob(gomock.Any(), jobID).Return(nil, errors.New("my-error"))
-	_, err := suite.handler.getTaskInfosByRangesFromDB(context.Background(), jobID, nil, 0)
+	_, err := suite.handler.getTaskInfosByRangesFromDB(context.Background(), jobID, nil)
 
 	suite.EqualError(err, "my-error")
 }
@@ -573,12 +574,12 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidRanges() {
 		},
 		{
 			From: 5,
-			To:   testInstanceCount + 1,
+			To:   math.MaxInt32 + 1, // To should not go beyond MaxInt32
 		},
 	}
 	correctedRange := &task.InstanceRange{
 		From: 5,
-		To:   testInstanceCount,
+		To:   math.MaxInt32,
 	}
 
 	gomock.InOrder(
@@ -1140,12 +1141,13 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithInvalidRanges() {
 		},
 		{
 			From: 3,
-			To:   testInstanceCount + 1,
+			To:   math.MaxInt32 + 1, // To should not go beyond MaxInt32
 		},
 	}
-	correctedTaskRange := &task.InstanceRange{
+
+	correctRange := &task.InstanceRange{
 		From: 3,
-		To:   testInstanceCount,
+		To:   math.MaxInt32,
 	}
 
 	gomock.InOrder(
@@ -1165,7 +1167,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithInvalidRanges() {
 		suite.mockedTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		suite.mockedTaskStore.EXPECT().
-			GetTasksForJobByRange(gomock.Any(), suite.testJobID, correctedTaskRange).
+			GetTasksForJobByRange(gomock.Any(), suite.testJobID, correctRange).
 			Return(emptyTaskInfo, errors.New("test error")),
 	)
 
@@ -1513,11 +1515,6 @@ func (suite *TaskHandlerTestSuite) TestListTask() {
 	pendingTasks := uint32(testInstanceCount) - runningTasks
 	taskInfos := suite.initTestTaskInfo(runningTasks, pendingTasks)
 
-	suite.mockedJobFactory.EXPECT().
-		GetJob(suite.testJobID).Return(suite.mockedCachedJob)
-	suite.mockedCachedJob.EXPECT().
-		GetConfig(gomock.Any()).
-		Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil)
 	suite.mockedTaskStore.EXPECT().
 		GetTasksForJob(gomock.Any(), suite.testJobID).
 		Return(taskInfos, nil)
@@ -1551,11 +1548,6 @@ func (suite *TaskHandlerTestSuite) TestListTaskQueryByRange() {
 	taskInfos := suite.initTestTaskInfo(runningTasks, pendingTasks)
 
 	// test Query by range
-	suite.mockedJobFactory.EXPECT().
-		GetJob(suite.testJobID).Return(suite.mockedCachedJob)
-	suite.mockedCachedJob.EXPECT().
-		GetConfig(gomock.Any()).
-		Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil)
 	suite.mockedTaskStore.EXPECT().
 		GetTasksForJobByRange(gomock.Any(), suite.testJobID, gomock.Any()).
 		Return(taskInfos, nil)
@@ -1577,11 +1569,6 @@ func (suite *TaskHandlerTestSuite) TestListTaskQueryByRange() {
 }
 
 func (suite *TaskHandlerTestSuite) TestListTaskNoTaskInDB() {
-	suite.mockedJobFactory.EXPECT().
-		GetJob(suite.testJobID).Return(suite.mockedCachedJob)
-	suite.mockedCachedJob.EXPECT().
-		GetConfig(gomock.Any()).
-		Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil)
 	emptyTaskInfos := make(map[uint32]*task.TaskInfo)
 	suite.mockedTaskStore.EXPECT().
 		GetTasksForJobByRange(gomock.Any(), suite.testJobID, gomock.Any()).
@@ -1601,12 +1588,6 @@ func (suite *TaskHandlerTestSuite) TestListTaskNoTaskInCache() {
 	pendingTasks := uint32(testInstanceCount) - runningTasks
 	taskInfos := suite.initTestTaskInfo(runningTasks, pendingTasks)
 
-	suite.mockedJobFactory.EXPECT().
-		GetJob(suite.testJobID).Return(nil)
-
-	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID).
-		Return(suite.testJobConfig, nil)
 	suite.mockedTaskStore.EXPECT().
 		GetTasksForJob(gomock.Any(), suite.testJobID).
 		Return(taskInfos, nil)
@@ -1616,33 +1597,6 @@ func (suite *TaskHandlerTestSuite) TestListTaskNoTaskInCache() {
 			Reason: "TEST_REASON",
 		}).Times(2)
 
-	_, err := suite.handler.List(context.Background(), &task.ListRequest{
-		JobId: suite.testJobID,
-	})
-	suite.NoError(err)
-}
-
-func (suite *TaskHandlerTestSuite) TestListTaskNoJobConfigInDB() {
-	suite.mockedJobFactory.EXPECT().
-		GetJob(suite.testJobID).Return(nil)
-
-	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID).
-		Return(nil, errors.New("No JobConfig"))
-	suite.mockedTaskStore.EXPECT()
-
-	_, err := suite.handler.List(context.Background(), &task.ListRequest{
-		JobId: suite.testJobID,
-	})
-	suite.NoError(err)
-}
-
-func (suite *TaskHandlerTestSuite) TestListTaskNoCachedJobConfig() {
-	suite.mockedJobFactory.EXPECT().
-		GetJob(suite.testJobID).Return(suite.mockedCachedJob)
-	suite.mockedCachedJob.EXPECT().
-		GetConfig(gomock.Any()).
-		Return(nil, errors.New("No JobConfig"))
 	_, err := suite.handler.List(context.Background(), &task.ListRequest{
 		JobId: suite.testJobID,
 	})
@@ -1812,8 +1766,8 @@ func (suite *TaskHandlerTestSuite) TestRestartNonLeader() {
 	suite.Nil(resp)
 }
 
-// TestRestartStartAllTasks tests retart all tasks
-func (suite *TaskHandlerTestSuite) TestRestartStartAllTasks() {
+// TestRestartAllTasks tests restart all tasks
+func (suite *TaskHandlerTestSuite) TestRestartAllTasks() {
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
 		expectedTaskIds[taskInfo.GetRuntime().GetMesosTaskId()] = true
@@ -1831,8 +1785,6 @@ func (suite *TaskHandlerTestSuite) TestRestartStartAllTasks() {
 		suite.mockedCandidate.EXPECT().IsLeader().Return(true),
 		suite.mockedJobFactory.EXPECT().
 			AddJob(suite.testJobID).Return(suite.mockedCachedJob),
-		suite.mockedCachedJob.EXPECT().
-			GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedCachedJob.EXPECT().
 			ID().Return(suite.testJobID),
 		suite.mockedTaskStore.EXPECT().
