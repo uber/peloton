@@ -58,10 +58,9 @@ class Update(object):
         self.updated_job_config.respoolID.value = respool_id
 
         while True:
-            if config_version is None:
-                job_config_version = self.job.get_runtime().configurationVersion
-                self.updated_job_config.changeLog.version = config_version or \
-                    job_config_version
+            job_config_version = self.job.get_runtime().configurationVersion
+            self.updated_job_config.changeLog.version = config_version or \
+                job_config_version
 
             request = update_svc.CreateUpdateRequest(
                 jobId=peloton.JobID(value=self.job.job_id),
@@ -90,6 +89,20 @@ class Update(object):
         assert resp.updateID.value
         self.update_id = resp.updateID.value
         log.info('created update %s', self.update_id)
+
+    def abort(self):
+        """
+        aborts the given update
+        """
+        request = update_svc.AbortUpdateRequest(
+            updateId=peloton.UpdateID(value=self.update_id),
+        )
+        resp = self.client.update_svc.AbortUpdate(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        return resp
 
     def wait_for_state(self, goal_state='SUCCEEDED', failed_state='ABORTED'):
         """
