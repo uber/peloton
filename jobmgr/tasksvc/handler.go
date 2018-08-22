@@ -751,11 +751,84 @@ func (m *serviceHandler) Stop(
 
 func (m *serviceHandler) Restart(
 	ctx context.Context,
-	body *task.RestartRequest) (*task.RestartResponse, error) {
+	req *task.RestartRequest) (*task.RestartResponse, error) {
+	log.WithField("request", req).Debug("TaskSVC.Restart called")
 
 	m.metrics.TaskAPIRestart.Inc(1)
+
+	if !m.candidate.IsLeader() {
+		m.metrics.TaskRestartFail.Inc(1)
+		return nil,
+			yarpcerrors.UnavailableErrorf(
+				"Task Restart API not supported on non-leader")
+	}
+
+	ctx, cancelFunc := context.WithTimeout(
+		ctx,
+		_rpcTimeout,
+	)
+	defer cancelFunc()
+
+	cachedJob := m.jobFactory.AddJob(req.JobId)
+	cachedConfig, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		m.metrics.TaskRestartFail.Inc(1)
+		return nil, err
+	}
+	runtimeDiffs, err := m.getRuntimeDiffsForRestart(ctx,
+		cachedJob,
+		cachedConfig.GetInstanceCount(),
+		req.GetRanges())
+	if err != nil {
+		m.metrics.TaskRestartFail.Inc(1)
+		return nil, err
+	}
+	if err := cachedJob.PatchTasks(ctx, runtimeDiffs); err != nil {
+		m.metrics.TaskRestartFail.Inc(1)
+		return nil, err
+	}
+
+	for instanceID := range runtimeDiffs {
+		m.goalStateDriver.EnqueueTask(req.JobId, instanceID, time.Now())
+	}
 	m.metrics.TaskRestart.Inc(1)
 	return &task.RestartResponse{}, nil
+}
+
+// getRuntimeDiffsForRestart returns runtimeDiffs to be applied to task to be
+// restarted. It updates the DesiredMesosTaskID field of task runtime.
+func (m *serviceHandler) getRuntimeDiffsForRestart(
+	ctx context.Context,
+	cachedJob cached.Job,
+	instanceCount uint32,
+	instanceRanges []*task.InstanceRange) (map[uint32]cached.RuntimeDiff, error) {
+	result := make(map[uint32]cached.RuntimeDiff)
+	taskInfos, err := m.getTaskInfosByRangesFromDB(
+		ctx, cachedJob.ID(), instanceRanges, instanceCount)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, taskInfo := range taskInfos {
+		runID, err :=
+			util.ParseRunID(taskInfo.GetRuntime().GetMesosTaskId().GetValue())
+		if err != nil || runID < 0 {
+			runID = 0
+		}
+
+		mesosID := fmt.Sprintf(
+			"%s-%d-%d",
+			cachedJob.ID(),
+			taskInfo.InstanceId,
+			runID+1)
+		result[taskInfo.InstanceId] = cached.RuntimeDiff{
+			cached.DesiredMesosTaskIDField: &mesos_v1.TaskID{
+				Value: &mesosID,
+			},
+		}
+	}
+
+	return result, nil
 }
 
 // List/Query API should not use cachedJob

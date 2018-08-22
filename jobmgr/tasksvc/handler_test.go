@@ -1796,3 +1796,63 @@ func (suite *TaskHandlerTestSuite) TestGetCache_SUCCESS() {
 	suite.NoError(err)
 	suite.Equal(resp.Runtime.State, task.TaskState_RUNNING)
 }
+
+// TestRestartNonLeader tests restart call on a non leader jobmgr
+func (suite *TaskHandlerTestSuite) TestRestartNonLeader() {
+	suite.mockedCandidate.EXPECT().IsLeader().Return(false)
+	var request = &task.RestartRequest{
+		JobId: suite.testJobID,
+	}
+	resp, err := suite.handler.Restart(
+		context.Background(),
+		request,
+	)
+
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestRestartStartAllTasks tests retart all tasks
+func (suite *TaskHandlerTestSuite) TestRestartStartAllTasks() {
+	expectedTaskIds := make(map[*mesos.TaskID]bool)
+	for _, taskInfo := range suite.taskInfos {
+		expectedTaskIds[taskInfo.GetRuntime().GetMesosTaskId()] = true
+	}
+
+	var taskInfos = make(map[uint32]*task.TaskInfo)
+	var tasksInfoList []*task.TaskInfo
+	for i := uint32(0); i < testInstanceCount; i++ {
+		taskInfos[i] = suite.createTestTaskInfo(
+			task.TaskState_RUNNING, i)
+		tasksInfoList = append(tasksInfoList, taskInfos[i])
+	}
+
+	gomock.InOrder(
+		suite.mockedCandidate.EXPECT().IsLeader().Return(true),
+		suite.mockedJobFactory.EXPECT().
+			AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+		suite.mockedCachedJob.EXPECT().
+			GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
+		suite.mockedCachedJob.EXPECT().
+			ID().Return(suite.testJobID),
+		suite.mockedTaskStore.EXPECT().
+			GetTasksForJob(gomock.Any(), suite.testJobID).Return(taskInfos, nil),
+		suite.mockedCachedJob.EXPECT().
+			ID().Return(suite.testJobID).Times(len(taskInfos)),
+		suite.mockedCachedJob.EXPECT().
+			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
+		suite.mockedGoalStateDrive.EXPECT().
+			EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return().AnyTimes(),
+	)
+
+	var request = &task.RestartRequest{
+		JobId: suite.testJobID,
+	}
+	resp, err := suite.handler.Restart(
+		context.Background(),
+		request,
+	)
+
+	suite.NoError(err)
+	suite.NotNil(resp)
+}

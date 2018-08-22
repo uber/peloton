@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -75,6 +76,7 @@ type Task interface {
 type TaskStateVector struct {
 	State         pbtask.TaskState
 	ConfigVersion uint64
+	MesosTaskID   *mesos.TaskID
 }
 
 // newTask creates a new cache task object
@@ -415,6 +417,7 @@ func (t *task) CurrentState() TaskStateVector {
 	return TaskStateVector{
 		State:         t.runtime.GetState(),
 		ConfigVersion: t.runtime.GetConfigVersion(),
+		MesosTaskID:   t.runtime.GetMesosTaskId(),
 	}
 }
 
@@ -425,6 +428,7 @@ func (t *task) GoalState() TaskStateVector {
 	return TaskStateVector{
 		State:         t.runtime.GetGoalState(),
 		ConfigVersion: t.runtime.GetDesiredConfigVersion(),
+		MesosTaskID:   t.runtime.GetDesiredMesosTaskId(),
 	}
 }
 

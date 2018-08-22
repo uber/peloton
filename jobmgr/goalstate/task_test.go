@@ -7,6 +7,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
+	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 
@@ -408,4 +409,67 @@ func TestEngineSuggestActionGoalFailed(t *testing.T) {
 		assert.Equal(t, TaskStateInvalidAction, a, "test %d fails", i)
 	}
 
+}
+
+// TestEngineSuggestActionRestart tests task action suggestion
+// given mesos id and desired mesos id
+func TestEngineSuggestActionRestart(t *testing.T) {
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+	instanceID := uint32(0)
+
+	taskEnt := &taskEntity{
+		jobID:      jobID,
+		instanceID: instanceID,
+	}
+
+	tt := []struct {
+		currentState       pbtask.TaskState
+		desiredState       pbtask.TaskState
+		mesosTaskID        string
+		desiredMesosTaskID string
+		action             TaskAction
+	}{
+		{
+			currentState:       pbtask.TaskState_KILLING,
+			desiredState:       pbtask.TaskState_KILLED,
+			mesosTaskID:        "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			action:             ExecutorShutdownAction,
+		},
+		{
+			currentState:       pbtask.TaskState_RUNNING,
+			desiredState:       pbtask.TaskState_RUNNING,
+			mesosTaskID:        "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2",
+			action:             StopAction,
+		},
+		{
+			currentState:       pbtask.TaskState_KILLED,
+			desiredState:       pbtask.TaskState_KILLED,
+			mesosTaskID:        "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2",
+			action:             InitializeAction,
+		},
+		{
+			currentState:       pbtask.TaskState_KILLED,
+			desiredState:       pbtask.TaskState_KILLED,
+			mesosTaskID:        "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			action:             NoTaskAction,
+		},
+	}
+
+	for i, test := range tt {
+		a := taskEnt.suggestTaskAction(
+			cached.TaskStateVector{
+				State:       test.currentState,
+				MesosTaskID: &mesos_v1.TaskID{Value: &test.mesosTaskID},
+			},
+			cached.TaskStateVector{
+				State:       test.desiredState,
+				MesosTaskID: &mesos_v1.TaskID{Value: &test.desiredMesosTaskID},
+			},
+		)
+		assert.Equal(t, test.action, a, "test %d fails", i)
+	}
 }

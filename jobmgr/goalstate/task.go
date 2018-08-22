@@ -223,14 +223,8 @@ func (t *taskEntity) GetActionList(
 func (t *taskEntity) suggestTaskAction(
 	currentState cached.TaskStateVector,
 	goalState cached.TaskStateVector) TaskAction {
-	// First check if the current configuration version of a task is the same
-	// as the desired configuration version. If it is not, then upgrade
-	// workflow for the task needs to be triggered. The upgrade workflow
-	// needs to be run for tasks which do not have non-terminal
-	// goal states to avoid trying to upgrade a batch task or a task
-	// which is going to be killed anyways.
-	if currentState.ConfigVersion != goalState.ConfigVersion &&
-		!util.IsPelotonStateTerminal(goalState.State) {
+	if requireUpdate(currentState, goalState) ||
+		requireRestart(currentState, goalState) {
 		switch {
 		case util.IsPelotonStateTerminal(currentState.State):
 			return InitializeAction
@@ -249,4 +243,28 @@ func (t *taskEntity) suggestTaskAction(
 	}
 
 	return NoTaskAction
+}
+
+// check if the current configuration version of a task is the same
+// as the desired configuration version. If it is not, then upgrade
+// workflow for the task needs to be triggered. The upgrade workflow
+// needs to be run for tasks which do not have non-terminal
+// goal states to avoid trying to upgrade a batch task or a task
+// which is going to be killed anyways.
+func requireUpdate(currentState cached.TaskStateVector,
+	goalState cached.TaskStateVector) bool {
+	return currentState.ConfigVersion != goalState.ConfigVersion &&
+		!util.IsPelotonStateTerminal(goalState.State)
+}
+
+// Then check if current state and goal state runID are different.
+// if goalState runID is zero, it means it is an old task without
+// expected runID set.
+// TODO: remove goalState.MesosTaskID check after all tasks
+// have desired mesos task id
+func requireRestart(currentState cached.TaskStateVector,
+	goalState cached.TaskStateVector) bool {
+	return currentState.MesosTaskID.GetValue() !=
+		goalState.MesosTaskID.GetValue() &&
+		goalState.MesosTaskID.GetValue() != ""
 }
