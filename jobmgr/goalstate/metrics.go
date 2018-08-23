@@ -64,8 +64,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	updateScope := scope.SubScope("update")
 
 	jobMetrics := &JobMetrics{
-		JobCreate:                        jobScope.Counter("recovered"),
-		JobCreateFailed:                  jobScope.Counter("recover_failed"),
+		JobCreate:                        jobScope.Counter("create"),
+		JobCreateFailed:                  jobScope.Counter("create_failed"),
 		JobRecoveryDuration:              jobScope.Gauge("recovery_duration"),
 		JobSucceeded:                     jobScope.Counter("job_succeeded"),
 		JobKilled:                        jobScope.Counter("job_killed"),
