@@ -30,7 +30,7 @@ class Job(object):
 
         self.config = config or IntegrationTestConfig()
         self.client = client or Client()
-        self.pool = pool or Pool(self.config)
+        self.pool = pool or Pool(self.config, self.client)
         self.job_id = None
         if job_config is None:
             job_config_dump = load_test_config(job_file)

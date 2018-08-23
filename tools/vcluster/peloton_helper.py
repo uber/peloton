@@ -263,6 +263,28 @@ class PelotonClientHelper(object):
             print_fail('Exception calling List Tasks :%s' % str(e))
             raise
 
+    def delete_job(self, job_id):
+        """
+        param job_id: id of the job
+        type job_id: str
+
+        rtype: job.DeleteResponse
+        """
+        request = job.DeleteRequest(
+            id=peloton.JobID(value=job_id),
+        )
+        try:
+            print_okblue("Deleting job %s" % job_id)
+            resp = self.client.job_svc.Delete(
+                request,
+                metadata=self.client.jobmgr_metadata,
+                timeout=default_timeout,
+            )
+            return resp
+        except Exception, e:
+            print_fail('Exception calling delete job :%s' % str(e))
+            raise
+
     def get_tasks(self, job_id):
         """
         param job_id: id of the job
@@ -282,6 +304,60 @@ class PelotonClientHelper(object):
             return resp
         except Exception, e:
             print_fail('Exception calling List Tasks :%s' % str(e))
+            raise
+
+    def start_task(self, job_id, instance_id):
+        """
+        param job_id: id of the job
+        param instance_id: instance id of the task to start
+
+        type job_id: str
+        type instance_id: int
+
+        rtype: task.StartResponse
+        """
+        rng = task.InstanceRange(to=instance_id + 1)
+        setattr(rng, 'from', instance_id)
+        request = task.StartRequest(
+            jobId=peloton.JobID(value=job_id),
+            ranges=[rng])
+        try:
+            print_okblue("Starting task %d of Job %s" % (instance_id, job_id))
+            resp = self.client.task_svc.Start(
+                request,
+                metadata=self.client.jobmgr_metadata,
+                timeout=default_timeout,
+            )
+            return resp
+        except Exception, e:
+            print_fail('Exception calling Start Tasks :%s' % str(e))
+            raise
+
+    def stop_task(self, job_id, instance_id):
+        """
+        param job_id: id of the job
+        param instance_id: instance id of the task to stop
+
+        type job_id: str
+        type instance_id: int
+
+        rtype: task.StopResponse
+        """
+        rng = task.InstanceRange(to=instance_id + 1)
+        setattr(rng, 'from', instance_id)
+        request = task.StopRequest(
+            jobId=peloton.JobID(value=job_id),
+            ranges=[rng])
+        try:
+            print_okblue("Stopping task %d of Job %s" % (instance_id, job_id))
+            resp = self.client.task_svc.Stop(
+                request,
+                metadata=self.client.jobmgr_metadata,
+                timeout=default_timeout,
+            )
+            return resp
+        except Exception, e:
+            print_fail('Exception calling Stop Tasks :%s' % str(e))
             raise
 
     def monitering(self, job_id, target_status, stable_timeout=600):

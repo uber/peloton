@@ -356,6 +356,8 @@ def start_and_wait(application_name, container_name, ports, extra_env=None):
         'AUTO_MIGRATE': config['auto_migrate'],
         'CLUSTER': 'pcluster',
     }
+    if len(ports) > 1:
+        env['GRPC_PORT'] = ports[1]
     if extra_env:
         env.update(extra_env)
     environment = []

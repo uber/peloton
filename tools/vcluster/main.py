@@ -123,6 +123,19 @@ def parse_arguments():
         help='the number of Mesos agent in the vcluster',
     )
 
+    parser_setup.add_argument(
+        '--no-respool',
+        action='store_true',
+        dest='skip_respool',
+        help='If set, default resource-pool will not be created',
+    )
+    parser_setup.add_argument(
+        '--clean',
+        action='store_true',
+        dest='clean_setup',
+        help='Clean up old instance(s) of vcluster before creating a new one',
+    )
+
     # Subparser for the 'teardown' command
     parser_teardown = subparsers.add_parser(
         'teardown',
@@ -133,6 +146,12 @@ def parse_arguments():
         '--option',
         dest='option',
         help='option of action',
+    )
+    parser_teardown.add_argument(
+        '--remove',
+        action='store_true',
+        dest='remove',
+        help='Delete Peloton jobs as part of tearing down vcluster',
     )
     # Subparser for the 'peloton' command
     parser_peloton = subparsers.add_parser(
@@ -224,16 +243,19 @@ def main():
     elif command == 'setup':
         agent_number = args.agent_number
         peloton_version = args.peloton_version
-        vcluster.start_all(agent_number, peloton_version)
+        if args.clean_setup:
+            vcluster.teardown(remove=True)
+        vcluster.start_all(agent_number, peloton_version,
+                           skip_respool=args.skip_respool)
 
     elif command == 'teardown':
         option = args.option
         if option == 'slave':
-            vcluster.teardown_slave()
+            vcluster.teardown_slave(remove=args.remove)
         elif option == 'peloton':
-            vcluster.teardown_peloton()
+            vcluster.teardown_peloton(remove=args.remove)
         else:
-            vcluster.teardown()
+            vcluster.teardown(remove=args.remove)
 
     elif command == 'cassandra':
         option = args.option

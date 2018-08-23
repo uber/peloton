@@ -124,7 +124,13 @@ class VCluster(object):
         # vcluster is the config can be loaded for launching benchmark test
         # it can be dump into a file
         # the config filename starts with 'CONF_' and the label name
-        self.vcluster_config = {}
+        self.vcluster_config = {
+            'label_name': self.label_name,
+            'config': self.config,
+            'base_zk_server': self.zk_server,
+            'base_respool_path': self.respool_path,
+            'job_info': {}
+        }
         self.config_name = 'CONF_' + label_name
 
     def output_vcluster_data(self):
@@ -145,7 +151,8 @@ class VCluster(object):
         print_okgreen('Step: creating virtual zookeeper with 1 instance')
         zookeeper_count = int(self.config.get('zookeeper').get(
             'instance_count'))
-        self.zookeeper.setup({}, zookeeper_count)
+        self.vcluster_config['job_info']['zookeeper'] = (
+            self.zookeeper.setup({}, zookeeper_count))
 
         # Get zookeeper tasks info
         host, port = self.zookeeper.get_host_port()
@@ -169,7 +176,8 @@ class VCluster(object):
         })
         return host, port
 
-    def start_peloton(self, virtual_zookeeper, agent_num, version=None):
+    def start_peloton(self, virtual_zookeeper, agent_num, version=None,
+                      skip_respool=False):
         """
         type zk_host: str
         type zk_port: str
@@ -217,31 +225,34 @@ class VCluster(object):
 
             peloton_app_count = int(
                 self.config.get('peloton').get(app).get('instance_count'))
-            self.peloton.setup(
-                dynamic_env_master, peloton_app_count,
-                self.label_name + '_' + 'peloton-' + app,
-                version
-            )
+            self.vcluster_config['job_info'][app] = (
+                self.peloton.setup(
+                    dynamic_env_master, peloton_app_count,
+                    self.label_name + '_' + 'peloton-' + app,
+                    version
+                ))
 
         self.vcluster_config.update({
             'Peloton Version': version,
         })
 
         # create a default resource pool
-        create_respool_for_new_peloton(
-            self.config,
-            zk_server=virtual_zookeeper,
-            agent_num=agent_num,
-        )
+        if not skip_respool:
+            create_respool_for_new_peloton(
+                self.config,
+                zk_server=virtual_zookeeper,
+                agent_num=agent_num,
+            )
 
-    def start_all(self, agent_num, peloton_version):
+    def start_all(self, agent_num, peloton_version, skip_respool=False):
         """
         type agent_num: int
         """
         try:
             host, port = self.start_mesos(agent_num)
             virtual_zookeeper = '%s:%s' % (host, port)
-            self.start_peloton(virtual_zookeeper, agent_num, peloton_version)
+            self.start_peloton(virtual_zookeeper, agent_num, peloton_version,
+                               skip_respool=skip_respool)
             self.output_vcluster_data()
         except ModuleLaunchFailedException as e:
             print 'vcluster launch faild: %s' % e
@@ -256,7 +267,8 @@ class VCluster(object):
         }
         mesos_count = int(
             self.config.get('mesos-master').get('instance_count'))
-        self.mesos_master.setup(dynamic_env_master, mesos_count)
+        self.vcluster_config['job_info']['mesos-master'] = (
+            self.mesos_master.setup(dynamic_env_master, mesos_count))
         print_okgreen('Mesos-master created successfully.')
 
     def start_mesos_slave(self, virtual_zookeeper, agent_num):
@@ -268,17 +280,19 @@ class VCluster(object):
         dynamic_env_slave = {
             self.config.get('mesos-slave').get('dynamic_env'): zk_address,
         }
-        self.mesos_slave.setup(dynamic_env_slave, agent_num)
+        self.vcluster_config['job_info']['mesos-slave'] = (
+            self.mesos_slave.setup(dynamic_env_slave, agent_num))
         print_okgreen('Mesos-slave created successfully.')
 
-    def teardown_slave(self):
-        self.mesos_slave.teardown()
+    def teardown_slave(self, remove=False):
+        self.mesos_slave.teardown(remove=remove)
 
-    def teardown_peloton(self):
+    def teardown_peloton(self, remove=False):
         print_okgreen('Step: stopping all peloton applications')
         for app in reversed(self.APP_ORDER):
             print_okblue('Stopping peloton application: %s' % app)
-            self.peloton.teardown(self.label_name + '_' + 'peloton-' + app)
+            self.peloton.teardown(self.label_name + '_' + 'peloton-' + app,
+                                  remove=remove)
 
         print_okgreen('Step: drop the cassandra keyspace')
         cassandra_operation(self.config, keyspace=self.label_name,
@@ -289,17 +303,17 @@ class VCluster(object):
         except OSError:
             pass
 
-    def teardown(self):
-        self.teardown_peloton()
+    def teardown(self, remove=False):
+        self.teardown_peloton(remove=remove)
 
         print_okgreen('Step: stopping all virtual Mesos-slaves')
-        self.teardown_slave()
+        self.teardown_slave(remove=remove)
 
         print_okgreen('Step: stopping all virtual Mesos-master')
-        self.mesos_master.teardown()
+        self.mesos_master.teardown(remove=remove)
 
         print_okgreen('Step: stopping all virtual Zookeeper')
-        self.zookeeper.teardown()
+        self.zookeeper.teardown(remove=remove)
 
     def get_vitual_zookeeper(self):
         if self.virtual_zookeeper:
@@ -312,3 +326,15 @@ class VCluster(object):
         zk_server = self.get_vitual_zookeeper()
         host, port = self.mesos_master.find_leader(zk_server)
         return '%s:%s' % (host, port)
+
+
+def vcluster_from_conf(conf_file):
+    with open(conf_file, 'r') as infile:
+        conf = json.load(infile)
+        vc = VCluster(conf["config"],
+                      conf["label_name"],
+                      conf["base_zk_server"],
+                      conf["base_respool_path"])
+        vc.virtual_zookeeper = conf["Zookeeper"]
+        vc.vcluster_config['job_info'].update(conf['job_info'])
+        return vc

@@ -56,7 +56,7 @@ class Module(object):
         type dynamic: dict
         type instance_number: int
 
-        rtype: job.CreateResponse
+        return: job-id
         """
         if not job_name:
             job_name = self.label + '_' + self.name
@@ -78,20 +78,26 @@ class Module(object):
         if not self.peloton_helper.monitering(self.job_id,
                                               RUNNING_TARGET_STATUS):
             raise ModuleLaunchFailedException("%s can not launch" % self.name)
+        return self.job_id
 
-    def teardown(self, job_name=None):
+    def teardown(self, job_name=None, remove=False):
         """
         param job_name: name of the job so specify
         type job_name: str
         """
         if not job_name:
             job_name = self.label + '_' + self.name
+        states = [] if remove else ['RUNNING']
         ids = self.peloton_helper.get_jobs_by_label(
-            self.label, job_name, ['RUNNING']
-        )
+            self.label, job_name, states)
         for id in ids:
             self.peloton_helper.stop_job(id)
             self.peloton_helper.monitering(id, KILLED_TARGET_STATUS)
+        if remove:
+            NOT_IN_KILLING_STATE = {'KILLING': (float('-inf'), 0)}
+            for id in ids:
+                self.peloton_helper.monitering(id, NOT_IN_KILLING_STATE)
+                self.peloton_helper.delete_job(id)
 
 
 class Zookeeper(Module):
@@ -171,7 +177,7 @@ class MesosSlave(Module):
         type dynamic: dict
         type instance_number: int
 
-        rtype: job.CreateResponse
+        return: job-id
         """
         if not job_name:
             job_name = self.label + '_' + self.name
@@ -205,6 +211,7 @@ class MesosSlave(Module):
         if not self.peloton_helper.monitering(self.job_id,
                                               RUNNING_TARGET_STATUS):
             raise ModuleLaunchFailedException("%s can not launch" % self.name)
+        return self.job_id
 
 
 class Cassandra(Module):

@@ -1,4 +1,4 @@
-.PHONY: all placement install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers archiver
+.PHONY: all placement install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers archiver failure-test-pcluster failure-test-vcluster
 .DEFAULT_GOAL := all
 
 PROJECT_ROOT  = code.uber.internal/infra/peloton
@@ -33,6 +33,8 @@ GOMOCK = $(go get github.com/golang/mock/gomock github.com/golang/mock/mockgen)
 PHAB_COMMENT = .phabricator-comment
 # See https://golang.org/doc/gdb for details of the flags
 GO_FLAGS = -gcflags '-N -l' -ldflags "-X main.version=$(PACKAGE_VERSION)"
+
+THIS_FILE := $(lastword $(MAKEFILE_LIST))
 
 ifeq ($(shell uname),Linux)
   SED := sed -i -e
@@ -285,6 +287,14 @@ ifndef IMAGE
 else
 	@./tools/packaging/docker-push.sh $(IMAGE)
 endif
+
+failure-test-pcluster:
+	IMAGE=uber/peloton $(MAKE) -f $(THIS_FILE) docker
+	@./tests/run-failure-tests.sh pcluster
+
+failure-test-vcluster:
+	IMAGE= $(MAKE) -f $(THIS_FILE) docker docker-push
+	@./tests/run-failure-tests.sh vcluster
 
 # Jenkins related tasks
 
