@@ -130,8 +130,6 @@ func printHostQueryResponse(r *host_svc.QueryHostsResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
-		// TODO: Remove the following print statement once QueryHosts API can query by all host states
-		fmt.Fprintf(tabWriter, "WARN: Current implementation supports querying of hosts in following states only - HOST_STATE_DRAINING, HOST_STATE_DOWN\n")
 		if len(r.GetHostInfos()) == 0 {
 			fmt.Fprintf(tabWriter, "No hosts found\n")
 			return
