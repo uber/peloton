@@ -523,6 +523,9 @@ message TaskEvent {
 
   // The health check result of the task
   HealthState healthy = 10;
+
+  // The desired mesos task ID of the task event.
+  peloton.TaskID desiredTaskId = 11;
 }
 
 /**
@@ -565,6 +568,9 @@ message PodEvent {
 
   // The health check result of the task
   string healthy = 12;
+
+  // The desired mesos task ID of the task event.
+  mesos.v1.TaskID desriedTaskId = 13;
 }
 
 // DEPRECATED by peloton.api.v0.task.svc.TaskService.

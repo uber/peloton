@@ -2597,44 +2597,49 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 	hostName := "mesos-slave-01"
 	testTable := []struct {
-		mesosTaskID     string
-		prevMesosTaskID string
-		actualState     task.TaskState
-		goalState       task.TaskState
-		jobID           peloton.JobID
-		healthy         task.HealthState
+		mesosTaskID        string
+		prevMesosTaskID    string
+		desiredMesosTaskID string
+		actualState        task.TaskState
+		goalState          task.TaskState
+		jobID              peloton.JobID
+		healthy            task.HealthState
 	}{
 		{
-			mesosTaskID:     "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
-			prevMesosTaskID: "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1a37d6ee-5da1-4d7a-9e91-91185990fbb1",
-			actualState:     task.TaskState_PENDING,
-			goalState:       task.TaskState_RUNNING,
-			jobID:           peloton.JobID{Value: uuid.NewRandom().String()},
-			healthy:         task.HealthState_DISABLED,
+			mesosTaskID:        "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
+			prevMesosTaskID:    "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1a37d6ee-5da1-4d7a-9e91-91185990fbb1",
+			desiredMesosTaskID: "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
+			actualState:        task.TaskState_PENDING,
+			goalState:          task.TaskState_RUNNING,
+			jobID:              peloton.JobID{Value: uuid.NewRandom().String()},
+			healthy:            task.HealthState_DISABLED,
 		},
 		{
-			mesosTaskID:     "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-test",
-			prevMesosTaskID: "",
-			actualState:     task.TaskState_PENDING,
-			goalState:       task.TaskState_RUNNING,
-			jobID:           peloton.JobID{Value: uuid.NewRandom().String()},
-			healthy:         task.HealthState_HEALTH_UNKNOWN,
+			mesosTaskID:        "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-test",
+			prevMesosTaskID:    "",
+			desiredMesosTaskID: "",
+			actualState:        task.TaskState_PENDING,
+			goalState:          task.TaskState_RUNNING,
+			jobID:              peloton.JobID{Value: uuid.NewRandom().String()},
+			healthy:            task.HealthState_HEALTH_UNKNOWN,
 		},
 		{
-			mesosTaskID:     "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
-			prevMesosTaskID: "",
-			actualState:     task.TaskState_PENDING,
-			goalState:       task.TaskState_RUNNING,
-			jobID:           peloton.JobID{Value: "incorrect-jobID"},
-			healthy:         task.HealthState_HEALTH_UNKNOWN,
+			mesosTaskID:        "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
+			prevMesosTaskID:    "",
+			desiredMesosTaskID: "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
+			actualState:        task.TaskState_PENDING,
+			goalState:          task.TaskState_RUNNING,
+			jobID:              peloton.JobID{Value: "incorrect-jobID"},
+			healthy:            task.HealthState_HEALTH_UNKNOWN,
 		},
 		{
-			mesosTaskID:     "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-2",
-			prevMesosTaskID: "",
-			actualState:     task.TaskState_RUNNING,
-			goalState:       task.TaskState_RUNNING,
-			jobID:           peloton.JobID{Value: "incorrect-jobID"},
-			healthy:         task.HealthState_HEALTHY,
+			mesosTaskID:        "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-2",
+			prevMesosTaskID:    "",
+			desiredMesosTaskID: "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-2",
+			actualState:        task.TaskState_RUNNING,
+			goalState:          task.TaskState_RUNNING,
+			jobID:              peloton.JobID{Value: "incorrect-jobID"},
+			healthy:            task.HealthState_HEALTHY,
 		},
 	}
 
@@ -2652,6 +2657,9 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 			PrevMesosTaskId: &mesos.TaskID{
 				Value: &tt.prevMesosTaskID,
 			},
+			DesiredMesosTaskId: &mesos.TaskID{
+				Value: &tt.desiredMesosTaskID,
+			},
 		}
 		err := store.addPodEvent(context.Background(), &tt.jobID, 0, runtime)
 		suite.Error(err)
@@ -2668,6 +2676,7 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 	jobID := &peloton.JobID{Value: "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06"}
 	mesosTaskID := "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-2"
 	prevMesosTaskID := "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1"
+	desiredMesosTaskID := "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-2"
 	runtime := &task.RuntimeInfo{
 		StartTime:      time.Now().String(),
 		CompletionTime: time.Now().String(),
@@ -2682,6 +2691,9 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 		},
 		PrevMesosTaskId: &mesos.TaskID{
 			Value: &prevMesosTaskID,
+		},
+		DesiredMesosTaskId: &mesos.TaskID{
+			Value: &desiredMesosTaskID,
 		},
 		ConfigVersion:        3,
 		DesiredConfigVersion: 4,

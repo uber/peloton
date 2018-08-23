@@ -981,7 +981,7 @@ func (s *Store) addPodEvent(
 	jobID *peloton.JobID,
 	instanceID uint32,
 	runtime *task.RuntimeInfo) error {
-	var runID, prevRunID int
+	var runID, prevRunID, desiredRunID int
 	var podStatus []byte
 	var err, errMessage error
 
@@ -993,6 +993,11 @@ func (s *Store) addPodEvent(
 	}
 	if prevRunID, err = util.ParseRunID(
 		runtime.GetPrevMesosTaskId().GetValue()); err != nil {
+		errLog = true
+		errMessage = err
+	}
+	if desiredRunID, err = util.ParseRunID(
+		runtime.GetDesiredMesosTaskId().GetValue()); err != nil {
 		errLog = true
 		errMessage = err
 	}
@@ -1020,6 +1025,7 @@ func (s *Store) addPodEvent(
 			"job_id",
 			"instance_id",
 			"run_id",
+			"desired_run_id",
 			"previous_run_id",
 			"update_time",
 			"actual_state",
@@ -1037,6 +1043,7 @@ func (s *Store) addPodEvent(
 			jobID.GetValue(),
 			instanceID,
 			runID,
+			desiredRunID,
 			prevRunID,
 			qb.UUID{UUID: gocql.UUIDFromTime(time.Now())},
 			runtime.GetState().String(),
@@ -1097,22 +1104,30 @@ func (s *Store) GetPodEvents(
 	for _, value := range allResults {
 		podEvent := &task.PodEvent{}
 
-		runID := fmt.Sprintf("%s-%d-%d",
+		taskID := fmt.Sprintf("%s-%d-%d",
 			value["job_id"].(qb.UUID),
 			value["instance_id"].(int),
 			value["run_id"].(int64))
 
-		prevRunID := fmt.Sprintf("%s-%d-%d",
+		prevTaskID := fmt.Sprintf("%s-%d-%d",
 			value["job_id"].(qb.UUID),
 			value["instance_id"].(int),
 			value["previous_run_id"].(int64))
 
+		desiredTaskID := fmt.Sprintf("%s-%d-%d",
+			value["job_id"].(qb.UUID),
+			value["instance_id"].(int),
+			value["desired_run_id"].(int64))
+
 		// Set podEvent fields
 		podEvent.TaskId = &mesos.TaskID{
-			Value: &runID,
+			Value: &taskID,
 		}
 		podEvent.PrevTaskId = &mesos.TaskID{
-			Value: &prevRunID,
+			Value: &prevTaskID,
+		}
+		podEvent.DesriedTaskId = &mesos.TaskID{
+			Value: &desiredTaskID,
 		}
 		podEvent.Timestamp =
 			value["update_time"].(qb.UUID).Time().Format(time.RFC3339)
@@ -1136,17 +1151,18 @@ func (s *Store) GetPodEvents(
 // logTaskStateChange logs the task state change events
 func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error {
 	var stateChange = TaskStateChangeRecord{
-		JobID:           jobID.GetValue(),
-		InstanceID:      instanceID,
-		MesosTaskID:     runtime.GetMesosTaskId().GetValue(),
-		AgentID:         runtime.GetAgentID().GetValue(),
-		TaskState:       runtime.GetState().String(),
-		TaskHost:        runtime.GetHost(),
-		EventTime:       time.Now().UTC().Format(time.RFC3339),
-		Reason:          runtime.GetReason(),
-		Healthy:         runtime.GetHealthy().String(),
-		Message:         runtime.GetMessage(),
-		PrevMesosTaskID: runtime.GetPrevMesosTaskId().GetValue(),
+		JobID:              jobID.GetValue(),
+		InstanceID:         instanceID,
+		MesosTaskID:        runtime.GetMesosTaskId().GetValue(),
+		AgentID:            runtime.GetAgentID().GetValue(),
+		TaskState:          runtime.GetState().String(),
+		TaskHost:           runtime.GetHost(),
+		EventTime:          time.Now().UTC().Format(time.RFC3339),
+		Reason:             runtime.GetReason(),
+		Healthy:            runtime.GetHealthy().String(),
+		Message:            runtime.GetMessage(),
+		PrevMesosTaskID:    runtime.GetPrevMesosTaskId().GetValue(),
+		DesiredMesosTaskID: runtime.GetDesiredMesosTaskId().GetValue(),
 	}
 	buffer, err := json.Marshal(stateChange)
 	if err != nil {
@@ -1256,6 +1272,9 @@ func (s *Store) GetTaskEvents(ctx context.Context, jobID *peloton.JobID, instanc
 				AgentId: record.AgentID,
 				PrevTaskId: &peloton.TaskID{
 					Value: record.PrevMesosTaskID,
+				},
+				DesiredTaskId: &peloton.TaskID{
+					Value: record.DesiredMesosTaskID,
 				},
 			}
 			result = append(result, rec)

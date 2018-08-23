@@ -18,10 +18,10 @@ const (
 	taskListFormatHeader = "Instance\tName\tState\tHealthy\tStart Time\tRun Time\t" +
 		"Host\tMessage\tReason\t\n"
 	taskListFormatBody     = "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
-	taskEventsFormatHeader = "Mesos Task Id\tState\tEvent Time\tHost\tMessage\tReason\t\n"
-	taskEventsFormatBody   = "%s\t%s\t%s\t%s\t%s\t%s\t\n"
-	podEventsFormatHeader  = "Mesos Task Id\tActual State\tGoal State\tConfig Version\tDesired Config Version\tHealthy\tHost\tMessage\tReason\tUpdate Time\t\n"
-	podEventsFormatBody    = "%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t\n"
+	taskEventsFormatHeader = "Mesos Task Id\tDesired Mesos Task Id\tState\tEvent Time\tHost\tMessage\tReason\t\n"
+	taskEventsFormatBody   = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
+	podEventsFormatHeader  = "Mesos Task Id\tDesired Mesos Task Id\tActual State\tGoal State\tConfig Version\tDesired Config Version\tHealthy\tHost\tMessage\tReason\tUpdate Time\t\n"
+	podEventsFormatBody    = "%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t\n"
 )
 
 // sortedTaskInfoList makes TaskInfo implement sortable interface
@@ -374,6 +374,7 @@ func printTaskEvents(eventsList []*task.GetEventsResponse_Events) {
 				tabWriter,
 				taskEventsFormatBody,
 				event.GetTaskId().GetValue(),
+				event.GetDesiredTaskId().GetValue(),
 				event.GetState(),
 				event.GetTimestamp(),
 				event.GetHostname(),
@@ -459,6 +460,7 @@ func printPodGetEventsResponse(r *task.GetPodEventsResponse, debug bool) {
 			tabWriter,
 			podEventsFormatBody,
 			event.GetTaskId().GetValue(),
+			event.GetDesriedTaskId().GetValue(),
 			event.GetActualState(),
 			event.GetGoalState(),
 			event.GetConfigVersion(),
