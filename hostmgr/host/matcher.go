@@ -21,7 +21,7 @@ type Matcher struct {
 	// agentMap is the map of the agent id -> resources
 	agentMap map[string]scalar.Resources
 	// agentInfoMap is the Host -> AgentInfo
-	agentInfoMap *AgentInfoMap
+	agentInfoMap *AgentMap
 	// Its the GetHosts result stored in the matcher object
 	resultHosts map[string]*mesos.AgentInfo
 }
@@ -62,7 +62,7 @@ func (m *Matcher) matchHostFilter(
 	resource scalar.Resources,
 	c *hostsvc.HostFilter,
 	evaluator constraints.Evaluator,
-	agentInfoMap *AgentInfoMap) hostsvc.HostFilterResult {
+	agentMap *AgentMap) hostsvc.HostFilterResult {
 	// tries to get the resource requirement from the host filter
 	if min := c.GetResourceConstraint().GetMinimum(); min != nil {
 		// Checks if the resources in the host are enough for the
@@ -74,10 +74,11 @@ func (m *Matcher) matchHostFilter(
 
 	// tries to get the constraints from the host filter
 	if hc := c.GetSchedulingConstraint(); hc != nil {
-		hostname := agentInfoMap.RegisteredAgents[agentID].GetHostname()
+		agent := agentMap.RegisteredAgents[agentID].GetAgentInfo()
+		hostname := agent.GetHostname()
 		lv := constraints.GetHostLabelValues(
 			hostname,
-			agentInfoMap.RegisteredAgents[agentID].GetAttributes(),
+			agent.GetAttributes(),
 		)
 		// evaluate the constraints
 		result, err := evaluator.Evaluate(hc, lv)
@@ -116,20 +117,26 @@ func (m *Matcher) matchHostsFilter(
 	agentMap map[string]scalar.Resources,
 	c *hostsvc.HostFilter,
 	evaluator constraints.Evaluator,
-	agentInfoMap *AgentInfoMap) hostsvc.HostFilterResult {
+	agentInfoMap *AgentMap) hostsvc.HostFilterResult {
 
 	if agentMap == nil || agentInfoMap == nil {
 		return hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES
 	}
 
 	// going through the list of nodes
-	for agentID, agentInfo := range agentInfoMap.RegisteredAgents {
+	for agentID, agent := range agentInfoMap.RegisteredAgents {
 		// matching the host with hostfilter
-		if result := m.matchHostFilter(agentID, agentMap[agentID], c, evaluator, agentInfoMap); result != hostsvc.HostFilterResult_MATCH {
+		result := m.matchHostFilter(
+			agentID,
+			agentMap[agentID],
+			c,
+			evaluator,
+			agentInfoMap)
+		if result != hostsvc.HostFilterResult_MATCH {
 			continue
 		}
 		// adding matched host to list of returning hosts
-		m.resultHosts[agentID] = agentInfo
+		m.resultHosts[agentID] = agent.GetAgentInfo()
 	}
 	if len(m.resultHosts) > 0 {
 		return hostsvc.HostFilterResult_MATCH
@@ -138,16 +145,17 @@ func (m *Matcher) matchHostsFilter(
 	return hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES
 }
 
-// createAgentResourceMap takes the AgentInfoMap and returs the host to resource map
-func createAgentResourceMap(hostMap *AgentInfoMap) map[string]scalar.Resources {
+// createAgentResourceMap takes the AgentMap and returs the host to resource map
+func createAgentResourceMap(hostMap *AgentMap) map[string]scalar.Resources {
 	// host map is nil, return nil
 	if hostMap == nil || len(hostMap.RegisteredAgents) <= 0 {
 		return nil
 	}
 	agentResourceMap := make(map[string]scalar.Resources)
 	// going through each agent and calculate resources
-	for agentID, agentInfo := range hostMap.RegisteredAgents {
-		agentResourceMap[agentID] = scalar.FromMesosResources(agentInfo.GetResources())
+	for agentID, agent := range hostMap.RegisteredAgents {
+		info := agent.GetAgentInfo()
+		agentResourceMap[agentID] = scalar.FromMesosResources(info.GetResources())
 	}
 	return agentResourceMap
 }
