@@ -19,6 +19,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	// staleJobStateDurationThreshold is the duration after which we recalculate
+	// the job state for a job which has been in the same active state for this
+	// time duration.
+	staleJobStateDurationThreshold = 24 * time.Hour
+)
+
 // taskStatesAfterStart is the set of Peloton task states which
 // indicate a task is being or has already been started.
 var taskStatesAfterStart = []task.TaskState{
@@ -376,11 +383,21 @@ func determineJobRuntimeState(
 	config cached.JobConfig,
 	goalStateDriver *driver,
 	cachedJob cached.Job) (job.JobState, error) {
-	jobStateDeterminer := jobStateDeterminerFactory(jobRuntime, stateCounts, cachedJob, config)
+	jobStateDeterminer := jobStateDeterminerFactory(
+		jobRuntime, stateCounts, cachedJob, config)
 	jobState, err := jobStateDeterminer.getState(ctx, jobRuntime)
 	if err != nil {
 		return job.JobState_UNKNOWN, err
 	}
+
+	// Check if a batch job is active for a very long time which may indicate
+	// that the mv_task_by_state for some of the tasks might be out of sync
+	// Recalculate job state from cache if this is the case.
+	if shouldRecalculateJobState(cachedJob, config.GetType(), jobState) {
+		jobState, err = recalculateJobStateFromCache(
+			ctx, jobRuntime, cachedJob, jobState, config)
+	}
+
 	switch jobState {
 	case job.JobState_SUCCEEDED:
 		goalStateDriver.mtx.jobMetrics.JobSucceeded.Inc(1)
@@ -438,7 +455,8 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	// if job is partially created: set job to INITIALIZED and enqueue the job
 	// else: return error and reschedule the job
 	if totalInstanceCount < config.GetInstanceCount() {
-		if jobRuntime.GetState() == job.JobState_KILLED && jobRuntime.GetGoalState() == job.JobState_KILLED {
+		if jobRuntime.GetState() == job.JobState_KILLED &&
+			jobRuntime.GetGoalState() == job.JobState_KILLED {
 			// Job already killed, do not do anything
 			return nil
 		}
@@ -460,9 +478,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	// totalInstanceCount > config.GetInstanceCount() and
 	// partially created job
 	jobState, err = determineJobRuntimeState(
-		ctx,
-		jobRuntime, stateCounts,
-		config, goalStateDriver, cachedJob)
+		ctx, jobRuntime, stateCounts, config, goalStateDriver, cachedJob)
 	if err != nil {
 		return err
 	}
@@ -586,4 +602,58 @@ func setCompletionTime(
 		jobRuntimeUpdate.CompletionTime = completionTime
 	}
 	return jobRuntimeUpdate
+}
+
+// recalculateJobStateFromCache gets the state counts from cached tasks instead
+// of materialized view. We don't do this all the time because this requires
+// walking through the list of ALL tasks of the job one by one and in acquiring
+// the lock for each task once when fetching the current state. It is not
+// desirable to do this all the time because this has potential to slow down
+// event handling for these tasks.
+func recalculateJobStateFromCache(
+	ctx context.Context, jobRuntime *job.RuntimeInfo, cachedJob cached.Job,
+	jobState job.JobState, config cached.JobConfig) (job.JobState, error) {
+
+	tasks := cachedJob.GetAllTasks()
+	stateCountsFromCache := make(map[string]uint32)
+	for _, task := range tasks {
+		state := task.CurrentState().State.String()
+		if _, ok := stateCountsFromCache[state]; ok {
+			stateCountsFromCache[state]++
+		} else {
+			stateCountsFromCache[state] = 1
+		}
+	}
+
+	// in case we have a task with state unknown, it means that the task was not
+	// present in cache. In this case, return the original state
+	if _, ok := stateCountsFromCache[task.TaskState_UNKNOWN.String()]; ok {
+		return jobState, nil
+	}
+
+	// recalculate jobState based on the new task state count
+	jobStateDeterminer := jobStateDeterminerFactory(
+		jobRuntime, stateCountsFromCache, cachedJob, config)
+	jobState, err := jobStateDeterminer.getState(ctx, jobRuntime)
+	return jobState, err
+}
+
+// shouldRecalculateJobState is true if the job state needs to be recalculated
+func shouldRecalculateJobState(
+	cachedJob cached.Job, jobType job.JobType, jobState job.JobState) bool {
+	return jobType == job.JobType_BATCH &&
+		!util.IsPelotonJobStateTerminal(jobState) &&
+		isJobStateStale(cachedJob, staleJobStateDurationThreshold)
+}
+
+// isJobStateStale returns true if the job is in active state for more than the
+// threshold duration
+func isJobStateStale(cachedJob cached.Job, threshold time.Duration) bool {
+	lastTaskUpdateTime := cachedJob.GetLastTaskUpdateTime()
+	durationInCurrState := int64(
+		float64(time.Now().UnixNano()) - lastTaskUpdateTime)
+	if durationInCurrState >= threshold.Nanoseconds() {
+		return true
+	}
+	return false
 }

@@ -49,6 +49,7 @@ type JobRuntimeUpdaterTestSuite struct {
 	resmgrClient          *resmocks.MockResourceManagerServiceYARPCClient
 	jobID                 *peloton.JobID
 	jobEnt                *jobEntity
+	lastUpdateTs          float64
 }
 
 func TestJobRuntimeUpdater(t *testing.T) {
@@ -84,7 +85,8 @@ func (suite *JobRuntimeUpdaterTestSuite) SetupTest() {
 		id:     suite.jobID,
 		driver: suite.goalStateDriver,
 	}
-
+	suite.lastUpdateTs = float64(
+		time.Now().Add(time.Duration(-1) * time.Hour).UnixNano())
 	suite.goalStateDriver.cfg.normalize()
 	suite.cachedJob.EXPECT().
 		GetResourceUsage().Return(
@@ -171,7 +173,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobCompletionTimeNotEmpty() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_BATCH).Times(2)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -243,7 +245,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_RUNNING() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_BATCH).Times(2)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -252,6 +254,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_RUNNING() {
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
 		Return(float64(0))
+
+	suite.cachedJob.EXPECT().
+		GetLastTaskUpdateTime().
+		Return(suite.lastUpdateTs)
 
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
@@ -318,7 +324,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_SUCCEED() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_BATCH).Times(2)
 
 	suite.cachedConfig.EXPECT().
 		GetInstanceCount().
@@ -399,7 +405,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_PENDING() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_BATCH).Times(2)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -408,6 +414,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_PENDING() {
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
 		Return(startTimeUnix)
+
+	suite.cachedJob.EXPECT().
+		GetLastTaskUpdateTime().
+		Return(suite.lastUpdateTs)
 
 	suite.cachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
@@ -463,7 +473,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_FAILED() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_BATCH).Times(2)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -537,7 +547,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_KILLING() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_BATCH).Times(2)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -546,6 +556,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_KILLING() {
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
 		Return(startTimeUnix)
+
+	suite.cachedJob.EXPECT().
+		GetLastTaskUpdateTime().
+		Return(suite.lastUpdateTs)
 
 	suite.cachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
@@ -603,7 +617,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_KILLED() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_BATCH).Times(2)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -675,7 +689,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_DBError() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_BATCH).Times(2)
 
 	suite.cachedConfig.EXPECT().
 		HasControllerTask().
@@ -742,7 +756,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_IncorrectState() 
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_BATCH).Times(2)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -842,6 +856,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PartiallyCreatedJ
 		GetConfig(gomock.Any()).
 		Return(suite.cachedConfig, nil)
 
+	suite.cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH)
+
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
 		Return(stateCounts, nil)
@@ -854,6 +870,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PartiallyCreatedJ
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
 		Return(startTimeUnix)
+
+	suite.cachedJob.EXPECT().
+		GetLastTaskUpdateTime().
+		Return(suite.lastUpdateTs)
 
 	suite.cachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
@@ -911,7 +931,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_InitializedJobWit
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_BATCH).Times(2)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -925,6 +945,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_InitializedJobWit
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
 		Return(startTimeUnix)
+
+	suite.cachedJob.EXPECT().
+		GetLastTaskUpdateTime().
+		Return(suite.lastUpdateTs)
 
 	suite.cachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
@@ -982,7 +1006,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PendingJobWithMor
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_BATCH).Times(2)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -1048,6 +1072,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskSuc
 	suite.cachedJob.EXPECT().
 		GetConfig(gomock.Any()).
 		Return(suite.cachedConfig, nil)
+
+	suite.cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH)
 
 	suite.cachedConfig.EXPECT().
 		HasControllerTask().
@@ -1186,6 +1212,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskFai
 		Return(suite.cachedConfig, nil)
 
 	suite.cachedConfig.EXPECT().
+		GetType().
+		Return(pbjob.JobType_BATCH)
+
+	suite.cachedConfig.EXPECT().
 		HasControllerTask().
 		Return(true)
 
@@ -1214,7 +1244,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskFai
 
 	suite.cachedJob.EXPECT().
 		GetLastTaskUpdateTime().
-		Return(float64(0))
+		Return(suite.lastUpdateTs)
 
 	// as long as controller task failed, job state is failed
 	suite.cachedJob.EXPECT().
@@ -1266,6 +1296,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskRun
 		Return(suite.cachedConfig, nil)
 
 	suite.cachedConfig.EXPECT().
+		GetType().
+		Return(pbjob.JobType_BATCH)
+
+	suite.cachedConfig.EXPECT().
 		HasControllerTask().
 		Return(true)
 
@@ -1281,6 +1315,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskRun
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
 		Return(startTimeUnix)
+
+	suite.cachedJob.EXPECT().
+		GetLastTaskUpdateTime().
+		Return(suite.lastUpdateTs)
 
 	// even if controller task finishes, still wait for all tasks
 	// finish before entering terminal state
@@ -1339,7 +1377,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInsta
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_SERVICE)
+		Return(pbjob.JobType_SERVICE).Times(2)
 
 	suite.cachedJob.EXPECT().
 		IsPartiallyCreated(gomock.Any()).
@@ -1362,6 +1400,68 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInsta
 
 	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
+}
+
+// TestDetermineJobRuntimeStateStaleJob tests determining job runtime state
+// for a stale active job with out of sync materialized view
+func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeStateStaleJob() {
+	instanceCount := uint32(10)
+
+	// State count from MV shows that half of jobs are in RUNNING state
+	stateCounts := map[string]uint32{
+		pbtask.TaskState_SUCCEEDED.String(): instanceCount / 2,
+		pbtask.TaskState_RUNNING.String():   instanceCount / 2,
+	}
+
+	cachedTasks := make(map[uint32]cached.Task)
+	mockTasks := make(map[uint32]*cachedmocks.MockTask)
+	for i := uint32(0); i < instanceCount; i++ {
+		cachedTask := cachedmocks.NewMockTask(suite.ctrl)
+		mockTasks[i] = cachedTask
+		cachedTasks[i] = cachedTask
+	}
+
+	// Simulate that MV is out of sync with base table by setting ALL of cached
+	// tasks to SUCCEEDED state
+	suite.cachedJob.EXPECT().GetAllTasks().Return(cachedTasks)
+	for i := uint32(0); i < instanceCount; i++ {
+		mockTasks[i].EXPECT().CurrentState().Return(cached.TaskStateVector{
+			State: pbtask.TaskState_SUCCEEDED,
+		})
+	}
+
+	// Set the current job state to RUNNING
+	jobRuntime := &pbjob.RuntimeInfo{
+		State: pbjob.JobState_RUNNING,
+	}
+	suite.cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH).AnyTimes()
+	suite.cachedConfig.EXPECT().GetInstanceCount().
+		Return(instanceCount).AnyTimes()
+	suite.cachedConfig.EXPECT().HasControllerTask().Return(false).AnyTimes()
+	suite.cachedJob.EXPECT().IsPartiallyCreated(false).AnyTimes()
+	suite.cachedJob.EXPECT().GetLastTaskUpdateTime().
+		Return(float64(time.Now().AddDate(0, 0, -2).UnixNano())).AnyTimes()
+
+	jobState, err := determineJobRuntimeState(
+		context.Background(), jobRuntime, stateCounts, suite.cachedConfig,
+		suite.goalStateDriver, suite.cachedJob)
+	suite.NoError(err)
+	suite.Equal(jobState, pbjob.JobState_SUCCEEDED)
+
+	// Simulate that some of cached tasks have UNKNOWN state, in this case
+	// the original RUNNING state should be returned
+	suite.cachedJob.EXPECT().GetAllTasks().Return(cachedTasks)
+	for i := uint32(0); i < instanceCount; i++ {
+		mockTasks[i].EXPECT().CurrentState().Return(cached.TaskStateVector{
+			State: pbtask.TaskState_UNKNOWN,
+		})
+	}
+
+	jobState, err = determineJobRuntimeState(
+		context.Background(), jobRuntime, stateCounts, suite.cachedConfig,
+		suite.goalStateDriver, suite.cachedJob)
+	suite.NoError(err)
+	suite.Equal(jobState, pbjob.JobState_RUNNING)
 }
 
 // TestDetermineJobRuntimeState tests determining JobRuntimeState
@@ -1547,26 +1647,18 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 		cachedConfig := cachedmocks.NewMockJobConfigCache(ctrl)
 		cachedJob := cachedmocks.NewMockJob(ctrl)
 
-		cachedConfig.EXPECT().
-			GetType().
-			Return(test.jobType).
-			AnyTimes()
+		cachedConfig.EXPECT().GetType().Return(test.jobType).AnyTimes()
 
-		cachedConfig.EXPECT().
-			GetInstanceCount().
-			Return(test.configuredInstanceCount).
-			AnyTimes()
+		cachedConfig.EXPECT().GetInstanceCount().
+			Return(test.configuredInstanceCount).AnyTimes()
 
-		cachedConfig.EXPECT().
-			HasControllerTask().
-			Return(false).
-			AnyTimes()
+		cachedConfig.EXPECT().HasControllerTask().Return(false).AnyTimes()
 
-		cachedJob.EXPECT().
-			IsPartiallyCreated(gomock.Any()).
+		cachedJob.EXPECT().IsPartiallyCreated(gomock.Any()).
 			Return(getTotalInstanceCount(test.stateCounts) <
-				test.configuredInstanceCount).
-			AnyTimes()
+				test.configuredInstanceCount).AnyTimes()
+		cachedJob.EXPECT().GetLastTaskUpdateTime().
+			Return(suite.lastUpdateTs).AnyTimes()
 
 		jobState, _ := determineJobRuntimeState(
 			context.Background(),
@@ -1718,4 +1810,32 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 
 	err = JobEvaluateMaxRunningInstancesSLA(context.Background(), suite.jobEnt)
 	suite.NoError(err)
+}
+
+// TestShouldRecalculateJobStateNonBatch tests shouldRecalculateJobState
+// function for a service job
+func (suite *JobRuntimeUpdaterTestSuite) TestShouldRecalculateJobStateNonBatch() {
+	suite.False(shouldRecalculateJobState(
+		suite.cachedJob, pbjob.JobType_SERVICE, pbjob.JobState_RUNNING))
+}
+
+// TestshouldRecalculateJobStateTerminalJob tests shouldRecalculateJobState
+// function for a terminal job
+func (suite *JobRuntimeUpdaterTestSuite) TestshouldRecalculateJobStateTerminalJob() {
+	suite.False(shouldRecalculateJobState(
+		suite.cachedJob, pbjob.JobType_BATCH, pbjob.JobState_SUCCEEDED))
+}
+
+// TestShouldRecalculateJobState tests shouldRecalculateJobState function to
+// determine if the job state is stale and needs to be recalculated
+func (suite *JobRuntimeUpdaterTestSuite) TestShouldRecalculateJobState() {
+	// assume last update to the job state was 2 days ago
+	lastUpdateTs := float64(time.Now().AddDate(0, 0, -2).UnixNano())
+	suite.cachedJob.EXPECT().GetLastTaskUpdateTime().Return(lastUpdateTs)
+	suite.True(shouldRecalculateJobState(
+		suite.cachedJob, pbjob.JobType_BATCH, pbjob.JobState_PENDING))
+
+	suite.cachedJob.EXPECT().GetLastTaskUpdateTime().Return(suite.lastUpdateTs)
+	suite.False(shouldRecalculateJobState(
+		suite.cachedJob, pbjob.JobType_BATCH, pbjob.JobState_PENDING))
 }
