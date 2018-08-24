@@ -1200,3 +1200,33 @@ func (h *ServiceHandler) MarkHostsDrained(
 		MarkedHosts: downedHosts,
 	}, errs
 }
+
+// GetMesosAgentInfo implements InternalHostService.GetMesosAgentInfo
+// Returns Mesos agent info for a single agent or all agents.
+func (h *ServiceHandler) GetMesosAgentInfo(
+	ctx context.Context,
+	request *hostsvc.GetMesosAgentInfoRequest,
+) (*hostsvc.GetMesosAgentInfoResponse, error) {
+	r := &hostsvc.GetMesosAgentInfoResponse{}
+	hostname := request.GetHostname()
+
+	agentMap := host.GetAgentMap()
+	if agentMap != nil {
+		if hostname != "" {
+			if info, ok := agentMap.RegisteredAgents[hostname]; ok {
+				r.Agents = append(r.Agents, info)
+			} else {
+				r.Error = &hostsvc.GetMesosAgentInfoResponse_Error{
+					HostNotFound: &hostsvc.HostNotFound{
+						Message: "host not found",
+					},
+				}
+			}
+		} else {
+			for _, info := range agentMap.RegisteredAgents {
+				r.Agents = append(r.Agents, info)
+			}
+		}
+	}
+	return r, nil
+}

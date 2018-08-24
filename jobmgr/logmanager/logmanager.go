@@ -8,7 +8,7 @@ import (
 
 const (
 	_slaveSandboxDir    = "%s/slaves/%s/frameworks/%s/executors/%s/runs/latest"
-	_slaveFileBrowseURL = "http://%s:5051/files/browse?path=%s"
+	_slaveFileBrowseURL = "http://%s:%s/files/browse?path=%s"
 )
 
 // TODO: (varung) Move this component to HostManger
@@ -18,7 +18,12 @@ const (
 type LogManager interface {
 
 	// ListSandboxFilesPaths lists all the sandbox files in the mesos agent executor run directory.
-	ListSandboxFilesPaths(mesosAgentWorDir, frameworkID, hostname, agentID, taskID string) ([]string, error)
+	ListSandboxFilesPaths(mesosAgentWorDir,
+		frameworkID,
+		hostname,
+		port,
+		agentID,
+		taskID string) ([]string, error)
 }
 
 // logManager is a wrapper to collect logs location by talking to mesos agents.
@@ -39,8 +44,10 @@ type filePath struct {
 
 // ListSandboxFilesPaths returns the list of logs url under sandbox directory for given task.
 func (l *logManager) ListSandboxFilesPaths(
-	mesosAgentWorDir, frameworkID, hostname, agentID, taskID string) ([]string, error) {
-	slaveBrowseURL := getSlaveFileBrowseEndpointURL(mesosAgentWorDir, frameworkID, hostname, agentID, taskID)
+	mesosAgentWorDir, frameworkID, hostname, port,
+	agentID, taskID string) ([]string, error) {
+	slaveBrowseURL := getSlaveFileBrowseEndpointURL(mesosAgentWorDir,
+		frameworkID, hostname, port, agentID, taskID)
 
 	result, err := listTaskLogFiles(l.client, slaveBrowseURL)
 	if err != nil {
@@ -50,9 +57,11 @@ func (l *logManager) ListSandboxFilesPaths(
 	return result, nil
 }
 
-func getSlaveFileBrowseEndpointURL(mesosAgentWorDir, frameworkID, hostname, agentID, taskID string) string {
-	sandboxDir := fmt.Sprintf(_slaveSandboxDir, mesosAgentWorDir, agentID, frameworkID, taskID)
-	return fmt.Sprintf(_slaveFileBrowseURL, hostname, sandboxDir)
+func getSlaveFileBrowseEndpointURL(mesosAgentWorDir, frameworkID,
+	hostname, port, agentID, taskID string) string {
+	sandboxDir := fmt.Sprintf(_slaveSandboxDir, mesosAgentWorDir,
+		agentID, frameworkID, taskID)
+	return fmt.Sprintf(_slaveFileBrowseURL, hostname, port, sandboxDir)
 }
 
 // listTaskLogFiles list logs files paths under given sandbox directory.
@@ -66,12 +75,13 @@ func listTaskLogFiles(client *http.Client, fileURL string) ([]string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return result, fmt.Errorf("slave filesbrowse response not ok: %v", resp)
+		return result, fmt.Errorf("HTTP GET failed for %s: %v", fileURL, resp)
 	}
 
 	var slaveResp []filePath
 	if err = json.NewDecoder(resp.Body).Decode(&slaveResp); err != nil {
-		return result, fmt.Errorf("slave filesbrowse response decode failure: %v", resp)
+		return result,
+			fmt.Errorf("Failed to decode response for %s: %v", fileURL, resp)
 	}
 
 	for _, file := range slaveResp {

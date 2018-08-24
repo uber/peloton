@@ -424,7 +424,8 @@ def run_peloton_jobmgr():
         ports = [port + i * 10 for port in config['peloton_jobmgr_ports']]
         name = config['peloton_jobmgr_container'] + repr(i)
         remove_existing_container(name)
-        start_and_wait('jobmgr', name, ports)
+        start_and_wait('jobmgr', name, ports,
+                       extra_env={'MESOS_AGENT_WORK_DIR': config['work_dir']})
 
 
 #

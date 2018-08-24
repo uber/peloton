@@ -3,6 +3,7 @@ package hostmgr
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -1983,4 +1984,75 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchTasksError() {
 
 	suite.NoError(err)
 	suite.NotNil(launchResp.GetError().GetLaunchFailure())
+}
+
+// Helper type to implement sorting on the slice
+type AgentSlice []*mesos_master.Response_GetAgents_Agent
+
+// Needed to use Sort() on AgentSlice
+func (a AgentSlice) Len() int {
+	return len(a)
+}
+
+// Needed to use Sort() on AgentSlice
+func (a AgentSlice) Less(i, j int) bool {
+	return *a[i].AgentInfo.Hostname < *a[j].AgentInfo.Hostname
+}
+
+// Needed to use Sort() on AgentSlice
+func (a AgentSlice) Swap(i, j int) {
+	a[i], a[j] = a[j], a[i]
+}
+
+// Test GetMesosAgentInfo with and without hostname specified
+func (suite *HostMgrHandlerTestSuite) TestGetMesosAgentInfo() {
+
+	agents := makeAgentsResponse(3)
+	agentInfo := AgentSlice(agents.GetAgents())
+	sort.Sort(agentInfo)
+	suite.masterOperatorClient.EXPECT().Agents().Return(agents, nil)
+	loader := &host.Loader{
+		OperatorClient: suite.masterOperatorClient,
+		Scope:          suite.testScope,
+	}
+	loader.Load(nil)
+
+	testcases := []struct {
+		name     string
+		hostname string
+		result   []*mesos_master.Response_GetAgents_Agent
+		err      *hostsvc.GetMesosAgentInfoResponse_Error
+	}{
+		{
+			name:     "specific agent",
+			hostname: "id-0",
+			result:   agentInfo[0:1],
+		},
+		{
+			name:   "all agents",
+			result: agentInfo,
+		},
+		{
+			name:     "unknown agent",
+			hostname: "foo",
+			err: &hostsvc.GetMesosAgentInfoResponse_Error{
+				HostNotFound: &hostsvc.HostNotFound{
+					Message: "host not found",
+				},
+			},
+		},
+	}
+	for _, tc := range testcases {
+		resp, err := suite.handler.GetMesosAgentInfo(rootCtx,
+			&hostsvc.GetMesosAgentInfoRequest{Hostname: tc.hostname})
+		suite.NoError(err, tc.name)
+		if tc.err == nil {
+			suite.Nil(resp.GetError(), tc.name)
+			actualAgentInfo := AgentSlice(resp.GetAgents())
+			sort.Sort(actualAgentInfo)
+			suite.EqualValues(tc.result, actualAgentInfo, tc.name)
+		} else {
+			suite.Equal(tc.err, resp.GetError(), tc.name)
+		}
+	}
 }

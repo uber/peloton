@@ -196,6 +196,14 @@ class VCluster(object):
                 'CASSANDRA_PORT': self.config.get('cassandra').get(
                     'port', '9042'),
             }
+            mesos_slave_config = self.config.get('mesos-slave', {})
+            mesos_work_dir = [
+                kv['value']
+                for kv in mesos_slave_config.get('static_env', [])
+                if kv.get('name') == 'MESOS_WORK_DIR']
+            if mesos_work_dir:
+                dynamic_env_master['MESOS_AGENT_WORK_DIR'] = mesos_work_dir[0]
+
             if app == 'hostmgr':
                 srt = 'scarce_resource_types'
                 scarce_resource = ','.join(

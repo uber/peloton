@@ -240,7 +240,8 @@ func buildHostInfoForRegisteredAgents() (map[string]*host.HostInfo, error) {
 	upHosts := make(map[string]*host.HostInfo)
 	for _, agent := range agentMap.RegisteredAgents {
 		hostname := agent.GetAgentInfo().GetHostname()
-		agentIP, err := util.ExtractIPFromMesosAgentPID(agent.Pid)
+		agentIP, _, err := util.ExtractIPAndPortFromMesosAgentPID(
+			agent.GetPid())
 		if err != nil {
 			return nil, err
 		}
@@ -268,8 +269,8 @@ func buildMachineIDsForHosts(
 		if _, ok := agentMap.RegisteredAgents[hostname]; !ok {
 			return nil, fmt.Errorf("unknown host %s", hostname)
 		}
-		pid := agentMap.RegisteredAgents[hostname].Pid
-		ip, err := util.ExtractIPFromMesosAgentPID(pid)
+		pid := agentMap.RegisteredAgents[hostname].GetPid()
+		ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(pid)
 		if err != nil {
 			return nil, err
 		}

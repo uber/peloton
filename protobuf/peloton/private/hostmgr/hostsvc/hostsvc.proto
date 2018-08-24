@@ -10,6 +10,7 @@ package peloton.private.hostmgr.hostsvc;
 option go_package = "peloton/private/hostmgr/hostsvc";
 
 import "mesos/v1/mesos.proto";
+import "mesos/v1/master/master.proto";
 import "peloton/api/v0/peloton.proto";
 import "peloton/api/v0/task/task.proto";
 import "peloton/private/resmgr/resmgr.proto";
@@ -376,6 +377,10 @@ service InternalHostService
   // Mark the hosts as drained. This method is called by Resource Manager  to
   // notify Host Manager that specified DRAINING hosts are cleared of all tasks.
   rpc MarkHostsDrained (MarkHostsDrainedRequest) returns (MarkHostsDrainedResponse);
+
+  // Return Mesos agent info
+  rpc GetMesosAgentInfo(GetMesosAgentInfoRequest)
+  returns (GetMesosAgentInfoResponse);
 }
 
 /**
@@ -777,4 +782,32 @@ message MarkHostsDrainedRequest {
 message MarkHostsDrainedResponse {
     // Hostnames of the hosts successfully marked as drained
     repeated string marked_hosts = 1;
+}
+
+/**
+ * Request for Mesos agent's information as reported by Mesos.
+ */
+message GetMesosAgentInfoRequest {
+  // Hostname of the agent whose information is being requested.
+  // If not provided, information about all agents will be returned.
+  string hostname = 1;
+}
+
+// HostNotFound is an error message for GetMesosAgentInfo
+message HostNotFound {
+    // Failure message.
+    string message = 1;
+}
+
+/**
+ * Response containing Mesos agents' information.
+ */
+message GetMesosAgentInfoResponse {
+  // Error message for GetMesosAgentInfo
+  message Error{
+      // No information found for host
+      HostNotFound hostNotFound = 1;
+  }
+  Error error = 1;
+  repeated mesos.v1.master.Response.GetAgents.Agent agents = 2;
 }

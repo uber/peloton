@@ -12,10 +12,12 @@ import (
 )
 
 const (
-	_testFrameworkID = "test-framework-id"
-	_testAgentID     = "test-agent-id"
-	_testTaskID      = "test-task-id"
-	_testHostname    = "test-hostname"
+	_testFrameworkID  = "test-framework-id"
+	_testAgentID      = "test-agent-id"
+	_testTaskID       = "test-task-id"
+	_testHostname     = "test-hostname"
+	_testPort         = "31002"
+	_testMesosWorkDir = "/var/lib/mesos/agent"
 )
 
 type LogManagerTestSuite struct {
@@ -74,19 +76,24 @@ func (suite *LogManagerTestSuite) TestListSandboxFilesPaths() {
 		},
 	}
 	_, err := lm.ListSandboxFilesPaths(
-		"/var/lib/mesos/agent",
+		_testMesosWorkDir,
 		_testFrameworkID,
 		_testHostname,
+		_testPort,
 		_testAgentID,
 		_testTaskID)
 	suite.Error(err)
 }
 
 func (suite *LogManagerTestSuite) TestGetSlaveFileBrowseEndpointURL() {
-	sandboxDir := getSlaveFileBrowseEndpointURL("/var/lib/mesos/agent", _testFrameworkID, _testHostname, _testAgentID, _testTaskID)
+	sandboxDir := getSlaveFileBrowseEndpointURL(
+		_testMesosWorkDir, _testFrameworkID, _testHostname, _testPort,
+		_testAgentID, _testTaskID)
 	suite.Equal(
-		sandboxDir,
-		"http://test-hostname:5051/files/browse?path=/var/lib/mesos/agent/slaves/test-agent-id/frameworks/test-framework-id/executors/test-task-id/runs/latest")
+		"http://test-hostname:31002/files/browse?path="+
+			"/var/lib/mesos/agent/slaves/test-agent-id/frameworks"+
+			"/test-framework-id/executors/test-task-id/runs/latest",
+		sandboxDir)
 }
 
 var (

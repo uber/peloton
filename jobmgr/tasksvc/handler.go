@@ -1029,16 +1029,46 @@ func (m *serviceHandler) BrowseSandbox(
 		return resp, nil
 	}
 
-	fmt.Println(hostname, agentID, taskID, frameworkID)
+	// Extract the IP address + port of the agent, if possible,
+	// because the hostname may not be resolvable on the network
+	agentIP := hostname
+	agentPort := "5051"
+	agentResponse, err := m.hostMgrClient.GetMesosAgentInfo(ctx,
+		&hostsvc.GetMesosAgentInfoRequest{Hostname: hostname})
+	if err == nil && len(agentResponse.Agents) > 0 {
+		ip, port, err := util.ExtractIPAndPortFromMesosAgentPID(
+			agentResponse.Agents[0].GetPid())
+		if err == nil {
+			agentIP = ip
+			if port != "" {
+				agentPort = port
+			}
+		}
+	} else {
+		log.WithField("hostname", hostname).Info(
+			"Could not get Mesos agent info")
+	}
+
+	log.WithFields(log.Fields{
+		"hostname":     hostname,
+		"ip_address":   agentIP,
+		"port":         agentPort,
+		"agent_id":     agentID,
+		"task_id":      taskID,
+		"framework_id": frameworkID,
+	}).Debug("Listing sandbox files")
 
 	var logPaths []string
-	logPaths, err = m.logManager.ListSandboxFilesPaths(m.mesosAgentWorkDir, frameworkID, hostname, agentID, taskID)
+	logPaths, err = m.logManager.ListSandboxFilesPaths(m.mesosAgentWorkDir,
+		frameworkID, agentIP, agentPort, agentID, taskID)
 
 	if err != nil {
 		m.metrics.TaskListLogsFail.Inc(1)
 		log.WithError(err).WithFields(log.Fields{
 			"req":          req,
 			"hostname":     hostname,
+			"ip_address":   agentIP,
+			"port":         agentPort,
 			"framework_id": frameworkID,
 			"agent_id":     agentID,
 		}).Error("failed to list slave logs files paths")
@@ -1078,8 +1108,8 @@ func (m *serviceHandler) BrowseSandbox(
 
 	m.metrics.TaskListLogs.Inc(1)
 	resp = &task.BrowseSandboxResponse{
-		Hostname:            hostname,
-		Port:                "5051",
+		Hostname:            agentIP,
+		Port:                agentPort,
 		Paths:               logPaths,
 		MesosMasterHostname: mesosMasterHostPortRespose.Hostname,
 		MesosMasterPort:     mesosMasterHostPortRespose.Port,
