@@ -302,7 +302,8 @@ func (p *offerPool) AddOffers(ctx context.Context, offers []*mesos.Offer) []*mes
 		if !ok {
 			p.hostOfferIndex[hostname] = summary.New(
 				p.volumeStore,
-				p.scarceResourceTypes)
+				p.scarceResourceTypes,
+				hostname)
 		}
 
 		if !p.hostOfferIndex[hostname].HasAnyOffer() {

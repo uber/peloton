@@ -18,9 +18,9 @@ type Matcher struct {
 	hostFilter *hostsvc.HostFilter
 	// evaluator is evaluator for the constraints
 	evaluator constraints.Evaluator
-	// agentMap is the map of the agent id -> resources
+	// agentMap is the map of the hostname -> resources
 	agentMap map[string]scalar.Resources
-	// agentInfoMap is the Host -> AgentInfo
+	// agentInfoMap is the map of hostname -> agent info
 	agentInfoMap *AgentMap
 	// Its the GetHosts result stored in the matcher object
 	resultHosts map[string]*mesos.AgentInfo
@@ -41,7 +41,7 @@ func NewMatcher(
 }
 
 // GetMatchingHosts tries to match the hosts through Host filter
-// and it returns the agentId-> AgentInfo for the matched hosts.
+// and it returns the hostname-> AgentInfo for the matched hosts.
 // If the filter does not match, it returns the error
 func (m *Matcher) GetMatchingHosts() (map[string]*mesos.AgentInfo, *hostsvc.GetHostsFailure) {
 	result := m.matchHostsFilter(m.agentMap, m.hostFilter, m.evaluator, m.agentInfoMap)
@@ -58,7 +58,7 @@ func (m *Matcher) GetMatchingHosts() (map[string]*mesos.AgentInfo, *hostsvc.GetH
 // specified host. It returns the reason as part of
 // hostsvc.HostFilterResult if it matches ot not.
 func (m *Matcher) matchHostFilter(
-	agentID string,
+	hostname string,
 	resource scalar.Resources,
 	c *hostsvc.HostFilter,
 	evaluator constraints.Evaluator,
@@ -74,8 +74,7 @@ func (m *Matcher) matchHostFilter(
 
 	// tries to get the constraints from the host filter
 	if hc := c.GetSchedulingConstraint(); hc != nil {
-		agent := agentMap.RegisteredAgents[agentID].GetAgentInfo()
-		hostname := agent.GetHostname()
+		agent := agentMap.RegisteredAgents[hostname].GetAgentInfo()
 		lv := constraints.GetHostLabelValues(
 			hostname,
 			agent.GetAttributes(),
@@ -124,11 +123,11 @@ func (m *Matcher) matchHostsFilter(
 	}
 
 	// going through the list of nodes
-	for agentID, agent := range agentInfoMap.RegisteredAgents {
+	for hostname, agent := range agentInfoMap.RegisteredAgents {
 		// matching the host with hostfilter
 		result := m.matchHostFilter(
-			agentID,
-			agentMap[agentID],
+			hostname,
+			agentMap[hostname],
 			c,
 			evaluator,
 			agentInfoMap)
@@ -136,7 +135,7 @@ func (m *Matcher) matchHostsFilter(
 			continue
 		}
 		// adding matched host to list of returning hosts
-		m.resultHosts[agentID] = agent.GetAgentInfo()
+		m.resultHosts[hostname] = agent.GetAgentInfo()
 	}
 	if len(m.resultHosts) > 0 {
 		return hostsvc.HostFilterResult_MATCH
@@ -153,9 +152,9 @@ func createAgentResourceMap(hostMap *AgentMap) map[string]scalar.Resources {
 	}
 	agentResourceMap := make(map[string]scalar.Resources)
 	// going through each agent and calculate resources
-	for agentID, agent := range hostMap.RegisteredAgents {
+	for hostname, agent := range hostMap.RegisteredAgents {
 		info := agent.GetAgentInfo()
-		agentResourceMap[agentID] = scalar.FromMesosResources(info.GetResources())
+		agentResourceMap[hostname] = scalar.FromMesosResources(info.GetResources())
 	}
 	return agentResourceMap
 }

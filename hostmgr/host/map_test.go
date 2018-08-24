@@ -65,9 +65,7 @@ func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
 		}
 		getAgent := &mesos_master.Response_GetAgents_Agent{
 			AgentInfo: &mesos.AgentInfo{
-				Id: &mesos.AgentID{
-					Value: &tmpID,
-				},
+				Hostname:  &tmpID,
 				Resources: resources,
 			},
 		}
@@ -97,9 +95,9 @@ func (suite *HostMapTestSuite) TestRefresh() {
 
 	id1 := "id-1"
 	id2 := "id-2"
-	a1 := GetAgentInfo(&mesos.AgentID{Value: &id1})
+	a1 := GetAgentInfo(id1)
 	suite.NotEmpty(a1.Resources)
-	a2 := GetAgentInfo(&mesos.AgentID{Value: &id2})
+	a2 := GetAgentInfo(id2)
 	suite.Nil(a2)
 
 	gauges := suite.testScope.Snapshot().Gauges()

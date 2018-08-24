@@ -37,13 +37,13 @@ func (a *AgentMap) ReportCapacityMetrics(scope tally.Scope) {
 var agentInfoMap atomic.Value
 
 // GetAgentInfo return agent info from global map.
-func GetAgentInfo(agentID *mesos.AgentID) *mesos.AgentInfo {
+func GetAgentInfo(hostname string) *mesos.AgentInfo {
 	m := GetAgentMap()
 	if m == nil {
 		return nil
 	}
 
-	return m.RegisteredAgents[agentID.GetValue()].GetAgentInfo()
+	return m.RegisteredAgents[hostname].GetAgentInfo()
 }
 
 // GetAgentMap returns a full map of all registered agents. Note that caller
@@ -83,8 +83,8 @@ func (loader *Loader) Load(_ *uatomic.Bool) {
 
 	for _, agent := range agents.GetAgents() {
 		info := agent.GetAgentInfo()
-		id := info.GetId().GetValue()
-		m.RegisteredAgents[id] = agent
+		hostname := info.GetHostname()
+		m.RegisteredAgents[hostname] = agent
 		resources := scalar.FromMesosResources(info.GetResources())
 		m.Capacity = m.Capacity.Add(resources)
 	}

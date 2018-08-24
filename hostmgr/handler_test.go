@@ -1676,9 +1676,7 @@ func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
 		}
 		getAgent := &mesos_master.Response_GetAgents_Agent{
 			AgentInfo: &mesos.AgentInfo{
-				Id: &mesos.AgentID{
-					Value: &tmpID,
-				},
+				Hostname:  &tmpID,
 				Resources: resources,
 			},
 		}

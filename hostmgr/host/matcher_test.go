@@ -55,9 +55,9 @@ func (suite *MatcherTestSuite) InitializeHosts() {
 }
 
 // getAgentResponse generates the agent response
-func getAgentResponse(id string, resval float64) *mesos_master.Response_GetAgents_Agent {
+func getAgentResponse(hostname string, resval float64) *mesos_master.Response_GetAgents_Agent {
 	resVal := resval
-	tmpID := id
+	tmpID := hostname
 	resources := []*mesos.Resource{
 		util.NewMesosResourceBuilder().
 			WithName(_cpuName).
@@ -78,9 +78,7 @@ func getAgentResponse(id string, resval float64) *mesos_master.Response_GetAgent
 	}
 	return &mesos_master.Response_GetAgents_Agent{
 		AgentInfo: &mesos.AgentInfo{
-			Id: &mesos.AgentID{
-				Value: &tmpID,
-			},
+			Hostname:  &tmpID,
 			Resources: resources,
 		},
 	}
@@ -114,11 +112,11 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 		},
 	}
 	matcher := NewMatcher(filter, nil)
-	agentID := *suite.response.Agents[0].AgentInfo.Id.Value
+	hostname := suite.response.Agents[0].AgentInfo.GetHostname()
 	resources := scalar.FromMesosResources(suite.response.Agents[0].AgentInfo.Resources)
 
 	testTable := []struct {
-		agentID   string
+		hostname  string
 		resources scalar.Resources
 		expected  hostsvc.HostFilterResult
 		filter    *hostsvc.HostFilter
@@ -127,7 +125,7 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 		{
 			msg:       "Enough resource with GPU",
 			expected:  hostsvc.HostFilterResult_MATCH,
-			agentID:   agentID,
+			hostname:  hostname,
 			resources: resources,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
@@ -147,7 +145,7 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 		{
 			msg:       "Not Enough CPU Resources.",
 			expected:  hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES,
-			agentID:   agentID,
+			hostname:  hostname,
 			resources: resources,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
@@ -167,7 +165,7 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 		{
 			msg:       "Not enough memory",
 			expected:  hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES,
-			agentID:   agentID,
+			hostname:  hostname,
 			resources: resources,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
@@ -186,7 +184,7 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 		{
 			msg:       "Enough resource without GPU",
 			expected:  hostsvc.HostFilterResult_MATCH,
-			agentID:   agentID,
+			hostname:  hostname,
 			resources: resources,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
@@ -207,7 +205,7 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 		suite.Equal(
 			tt.expected,
 			matcher.matchHostFilter(
-				tt.agentID,
+				tt.hostname,
 				tt.resources,
 				tt.filter,
 				nil,
@@ -262,7 +260,7 @@ func (suite *MatcherTestSuite) TestHostConstraints() {
 				gomock.Eq(lv)).
 			Return(tt.evaluateRes, tt.evaluateErr)
 		matcher := NewMatcher(filter, mockEvaluator)
-		result := matcher.matchHostFilter(*suite.response.Agents[0].AgentInfo.Id.Value,
+		result := matcher.matchHostFilter(suite.response.Agents[0].AgentInfo.GetHostname(),
 			scalar.FromMesosResources(suite.response.Agents[0].AgentInfo.Resources), filter, mockEvaluator, GetAgentMap())
 		suite.Equal(result, tt.match, "test case is %s", ttName)
 	}
@@ -304,7 +302,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilter() {
 }
 
 // TestMatchHostsFilterWithDifferentosts tests with different kind of hosts
-func (suite *MatcherTestSuite) TestMatchHostsFilterWithDifferentosts() {
+func (suite *MatcherTestSuite) TestMatchHostsFilterWithDifferentHosts() {
 	// Creating different resources hosts in the host map
 	loader := &Loader{
 		OperatorClient: suite.operatorClient,

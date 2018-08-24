@@ -588,7 +588,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 		ctrl := gomock.NewController(suite.T())
 		mockEvaluator := constraint_mocks.NewMockEvaluator(ctrl)
 
-		s := New(suite.mockVolumeStore, nil).(*hostSummary)
+		s := New(suite.mockVolumeStore, nil, offer.GetHostname()).(*hostSummary)
 		s.status = tt.initialStatus
 		for _, initialOffer := range tt.initialOffers {
 			suite.Equal(tt.initialStatus, s.AddMesosOffer(context.Background(), initialOffer))
@@ -632,7 +632,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	wg := sync.WaitGroup{}
 	wg.Add(nOffers)
 
-	hybridSummary := New(suite.mockVolumeStore, nil).(*hostSummary)
+	hybridSummary := New(suite.mockVolumeStore, nil, _testAgent).(*hostSummary)
 
 	suite.False(hybridSummary.HasOffer())
 	suite.False(hybridSummary.HasAnyOffer())
@@ -740,6 +740,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 
 	now := time.Now()
 	offers := suite.createUnreservedMesosOffers(5)
+	hostname := offers[0].GetHostname()
 
 	testTable := []struct {
 		initialStatus                HostStatus
@@ -772,7 +773,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 	}
 
 	for _, tt := range testTable {
-		s := New(suite.mockVolumeStore, nil).(*hostSummary)
+		s := New(suite.mockVolumeStore, nil, hostname).(*hostSummary)
 		s.status = tt.initialStatus
 		s.statusPlacingOfferExpiration = tt.statusPlacingOfferExpiration
 		s.AddMesosOffers(context.Background(), offers)
@@ -782,7 +783,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 		suite.Equal(s.readyCount.Load(), int32(tt.readyCount), tt.msg)
 	}
 
-	s := New(suite.mockVolumeStore, nil).(*hostSummary)
+	s := New(suite.mockVolumeStore, nil, hostname).(*hostSummary)
 	s.AddMesosOffers(context.Background(), offers)
 	s.statusPlacingOfferExpiration = now.Add(-10 * time.Minute)
 	invalidCacheStatus := s.CasStatus(PlacingHost, ReadyHost)
@@ -824,7 +825,7 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() 
 	}
 
 	for _, tt := range testTable {
-		s := New(suite.mockVolumeStore, nil).(*hostSummary)
+		s := New(suite.mockVolumeStore, nil, offers[0].GetHostname()).(*hostSummary)
 		s.AddMesosOffers(context.Background(), offers)
 		suite.Equal(s.readyCount.Load(), int32(len(offers)-1))
 		s.status = tt.initialStatus
@@ -848,7 +849,7 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForReservedOffersForLaunch() {
 	offers := suite.createReservedMesosOffers(5, true)
 	offers = append(offers, suite.createUnreservedMesosOffer("unreserved-offerid-1"))
 
-	s := New(suite.mockVolumeStore, nil).(*hostSummary)
+	s := New(suite.mockVolumeStore, nil, offers[0].GetHostname()).(*hostSummary)
 	s.AddMesosOffers(context.Background(), offers)
 	suite.Equal(int(s.readyCount.Load()), 1)
 

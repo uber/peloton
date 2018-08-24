@@ -113,8 +113,8 @@ type HostSummary interface {
 	// Returns map of offerid -> offer
 	GetOffers(OfferType) map[string]*mesos.Offer
 
-	// GetAgentID returns the Mesos Agent ID of this host summary.
-	GetAgentID() *mesos.AgentID
+	// GetHostname returns the hostname of the host
+	GetHostname() string
 
 	// GetHostStatus returns the HostStatus of the host
 	GetHostStatus() HostStatus
@@ -124,8 +124,8 @@ type HostSummary interface {
 type hostSummary struct {
 	sync.Mutex
 
-	// Mesos Agent ID
-	agentID *mesos.AgentID
+	// hostname of the host
+	hostname string
 
 	// scarceResourceTypes are resources, which are exclusively reserved for specific task requirements,
 	// and to prevent every task to schedule on those hosts such as GPU.
@@ -148,7 +148,8 @@ type hostSummary struct {
 // New returns a zero initialized hostSummary
 func New(
 	volumeStore storage.PersistentVolumeStore,
-	scarceResourceTypes []string) HostSummary {
+	scarceResourceTypes []string,
+	hostname string) HostSummary {
 	return &hostSummary{
 		unreservedOffers: make(map[string]*mesos.Offer),
 		reservedOffers:   make(map[string]*mesos.Offer),
@@ -158,6 +159,8 @@ func New(
 		status: ReadyHost,
 
 		volumeStore: volumeStore,
+
+		hostname: hostname,
 	}
 }
 
@@ -281,7 +284,7 @@ func (a *hostSummary) TryMatch(
 		a.unreservedOffers,
 		filter,
 		evaluator,
-		scalar.FromMesosResources(host.GetAgentInfo(a.GetAgentID()).GetResources()),
+		scalar.FromMesosResources(host.GetAgentInfo(a.GetHostname()).GetResources()),
 		a.scarceResourceTypes)
 	if match == hostsvc.HostFilterResult_MATCH {
 		var result []*mesos.Offer
@@ -312,10 +315,6 @@ func (a *hostSummary) addMesosOffer(offer *mesos.Offer) {
 	} else {
 		a.reservedOffers[offerID] = offer
 	}
-	// Update Mesos Agent ID, at each offer because host name can be same, where as Mesos Agent ID,
-	// changes on restart.
-	// TODO: find an alternative were agent id does not need to be updated each time.
-	a.agentID = offer.GetAgentId()
 }
 
 // AddMesosOffer adds a Mesos offer to the current hostSummary and returns
@@ -508,9 +507,9 @@ func (a *hostSummary) GetOffers(offertype OfferType) map[string]*mesos.Offer {
 	return offers
 }
 
-// GetAgentID returns the Mesos Agent ID of this host summary.
-func (a *hostSummary) GetAgentID() *mesos.AgentID {
-	return a.agentID
+// GetHostname returns the hostname of the host
+func (a *hostSummary) GetHostname() string {
+	return a.hostname
 }
 
 // GetHostStatus returns the HostStatus of the host
