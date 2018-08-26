@@ -20,6 +20,10 @@ import (
 )
 
 const (
+	// ipPortSeparator is the separator for IP address and Port
+	ipPortSeparator = ":"
+	// slaveIPSeparator is the separator for slave id and IP address
+	slaveIPSeparator = "@"
 	// ResourceEpsilon is the minimum epsilon mesos resource;
 	// This is because Mesos internally uses a fixed point precision.
 	// See MESOS-4687 for details.
@@ -430,4 +434,14 @@ func RemoveSecretVolumesFromJobConfig(cfg *job.JobConfig) []*mesos.Volume {
 		_ = RemoveSecretVolumesFromConfig(config)
 	}
 	return secretVolumes
+}
+
+// ExtractIPFromMesosAgentPID extracts the agent IP address from its PID
+func ExtractIPFromMesosAgentPID(pid *string) (string, error) {
+	// pid is of the form slave<id>@<ip>:<port>
+	pidParts := strings.Split(*pid, slaveIPSeparator)
+	if len(pidParts) != 2 {
+		return "", fmt.Errorf("Invalid Agent PID: %s", *pid)
+	}
+	return strings.Split(pidParts[1], ipPortSeparator)[0], nil
 }

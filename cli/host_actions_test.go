@@ -48,26 +48,26 @@ func (suite *hostmgrActionsTestSuite) TestClientHostMaintenanceStartAction() {
 	suite.mockHostmgr.EXPECT().
 		StartMaintenance(gomock.Any(), gomock.Any()).
 		Return(resp, nil)
-	err := c.HostMaintenanceStartAction("hostname:0.0.0.0")
+	err := c.HostMaintenanceStartAction("hostname")
 	suite.NoError(err)
 
 	// Test StartMaintenance error
 	suite.mockHostmgr.EXPECT().
 		StartMaintenance(gomock.Any(), gomock.Any()).
 		Return(nil, fmt.Errorf("fake StartMaintenance error"))
-	err = c.HostMaintenanceStartAction("hostname:0.0.0.0")
+	err = c.HostMaintenanceStartAction("hostname")
 	suite.Error(err)
 
-	// Test empty machine error
+	// Test empty hostname error
 	err = c.HostMaintenanceStartAction("")
 	suite.Error(err)
 
-	//Test duplicate machineID error
-	err = c.HostMaintenanceStartAction("hostname:0.0.0.0, hostname:0.0.0.0")
+	//Test duplicate hostname error
+	err = c.HostMaintenanceStartAction("hostname, hostname")
 	suite.Error(err)
 
 	// Test invalid input error
-	err = c.HostMaintenanceStartAction("Invalid")
+	err = c.HostMaintenanceStartAction("hostname,,")
 	suite.Error(err)
 }
 
@@ -84,26 +84,26 @@ func (suite *hostmgrActionsTestSuite) TestClientHostMaintenanceCompleteAction() 
 	suite.mockHostmgr.EXPECT().
 		CompleteMaintenance(gomock.Any(), gomock.Any()).
 		Return(resp, nil)
-	err := c.HostMaintenanceCompleteAction("hostname:0.0.0.0")
+	err := c.HostMaintenanceCompleteAction("hostname")
 	suite.NoError(err)
 
 	//Test CompleteMaintenance error
 	suite.mockHostmgr.EXPECT().
 		CompleteMaintenance(gomock.Any(), gomock.Any()).
 		Return(nil, fmt.Errorf("fake CompleteMaintenance error"))
-	err = c.HostMaintenanceCompleteAction("hostname:0.0.0.0")
+	err = c.HostMaintenanceCompleteAction("hostname")
 	suite.Error(err)
 
-	// Test empty machineID error
+	// Test empty hostname error
 	err = c.HostMaintenanceCompleteAction("")
 	suite.Error(err)
 
-	//Test duplicate machineID error
-	err = c.HostMaintenanceCompleteAction("hostname:0.0.0.0, hostname:0.0.0.0")
+	//Test duplicate hostname error
+	err = c.HostMaintenanceCompleteAction("hostname, hostname")
 	suite.Error(err)
 
 	// Test invalid input error
-	err = c.HostMaintenanceStartAction("Invalid")
+	err = c.HostMaintenanceStartAction("hostname,,")
 	suite.Error(err)
 }
 

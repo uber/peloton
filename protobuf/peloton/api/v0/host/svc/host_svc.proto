@@ -32,8 +32,8 @@ message QueryHostsResponse {
  *  Request message for HostService.StartMaintenance method.
  */
 message StartMaintenanceRequest {
-    // List of machine IDs to be put into maintenance
-    repeated mesos.v1.MachineID machine_ids = 1;
+    // List of hosts to be put into maintenance
+    repeated string hostnames = 1;
 }
 
 /**
@@ -45,8 +45,8 @@ message StartMaintenanceResponse {}
  *  Request message for HostService.CompleteMaintenance method.
  */
 message CompleteMaintenanceRequest {
-    // List of machine IDs put be brought back up
-    repeated mesos.v1.MachineID machine_ids = 1;
+    // List of hosts put be brought back up
+    repeated string hostnames = 1;
 }
 
 /**

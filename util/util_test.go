@@ -452,3 +452,18 @@ func TestTaskTerminalState(t *testing.T) {
 		assert.Equal(t, isTerm, IsPelotonStateTerminal(task.TaskState(s)))
 	}
 }
+
+// Test extraction of IP from Agent PID
+func TestExtractIPFromMesosAgentPID(t *testing.T) {
+	testIP := "0.0.0.0"
+	pid := "slave(1)@" + testIP + ":1234"
+	invalidPid := "invalid"
+	ip, err := ExtractIPFromMesosAgentPID(&pid)
+	assert.NoError(t, err)
+	assert.Equal(t, testIP, ip)
+
+	// Test invalid pid error
+	ip, err = ExtractIPFromMesosAgentPID(&invalidPid)
+	assert.Error(t, err)
+	assert.Empty(t, ip)
+}

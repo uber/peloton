@@ -430,7 +430,6 @@ func main() {
 		rootScope,
 		masterOperatorClient,
 		maintenanceQueue,
-		host.GetAgentMap(),
 	)
 
 	// Initializing TaskStateManager will start to record task status
