@@ -5,20 +5,20 @@ import (
 	"sync"
 	"time"
 
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/background"
+	"code.uber.internal/infra/peloton/hostmgr/host"
+	"code.uber.internal/infra/peloton/hostmgr/mesos"
+	"code.uber.internal/infra/peloton/hostmgr/metrics"
+	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/hostmgr/reconcile"
+	"code.uber.internal/infra/peloton/leader"
+	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/atomic"
 	"go.uber.org/yarpc/api/transport"
-
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/background"
-	"code.uber.internal/infra/peloton/hostmgr/mesos"
-	"code.uber.internal/infra/peloton/hostmgr/metrics"
-	"code.uber.internal/infra/peloton/hostmgr/offer"
-	"code.uber.internal/infra/peloton/leader"
-	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 )
 
 const (
@@ -57,6 +57,8 @@ type Server struct {
 
 	recoveryHandler RecoveryHandler
 
+	drainer host.Drainer
+
 	metrics *metrics.Metrics
 
 	// ticker controls connection state check loop
@@ -72,7 +74,8 @@ func NewServer(
 	mesosInbound mhttp.Inbound,
 	mesosOutbound transport.Outbounds,
 	reconciler reconcile.TaskReconciler,
-	recoveryHandler RecoveryHandler) *Server {
+	recoveryHandler RecoveryHandler,
+	drainer host.Drainer) *Server {
 
 	s := &Server{
 		ID:                   leader.NewID(httpPort, grpcPort),
@@ -83,13 +86,11 @@ func NewServer(
 		mesosInbound:         mesosInbound,
 		mesosOutbound:        mesosOutbound,
 		reconciler:           reconciler,
-
-		minBackoff: _minBackoff,
-		maxBackoff: _maxBackoff,
-
-		recoveryHandler: recoveryHandler,
-
-		metrics: metrics.NewMetrics(parent),
+		minBackoff:           _minBackoff,
+		maxBackoff:           _maxBackoff,
+		recoveryHandler:      recoveryHandler,
+		drainer:              drainer,
+		metrics:              metrics.NewMetrics(parent),
 	}
 	log.Info("Hostmgr server started.")
 	return s
@@ -253,6 +254,7 @@ func (s *Server) stopHandlers() {
 		s.backgroundManager.Stop()
 		s.getOfferEventHandler().Stop()
 		s.recoveryHandler.Stop()
+		s.drainer.Stop()
 	}
 }
 
@@ -269,6 +271,7 @@ func (s *Server) startHandlers() {
 		s.backgroundManager.Start()
 		s.getOfferEventHandler().Start()
 		s.recoveryHandler.Start()
+		s.drainer.Start()
 	}
 }
 

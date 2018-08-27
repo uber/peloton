@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/common/queue/mocks"
+	"code.uber.internal/infra/peloton/common/stringset"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -28,7 +29,7 @@ func TestMaintenanceQueue(t *testing.T) {
 	suite.Run(t, new(MaintenanceQueueTestSuite))
 }
 
-func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueue_EnqueueDequeue() {
+func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueueEnqueueDequeue() {
 	maintenanceQueue := NewMaintenanceQueue()
 	err := maintenanceQueue.Enqueue(suite.testHostnames)
 	suite.NoError(err)
@@ -36,23 +37,26 @@ func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueue_EnqueueDequeue() {
 	// Check length
 	suite.Equal(len(suite.testHostnames), maintenanceQueue.Length())
 
-	hostnameMap := make(map[string]bool)
+	// Test enqueuing duplicates
+	err = maintenanceQueue.Enqueue(suite.testHostnames)
+	suite.NoError(err)
+
+	// Length should remain the same
+	suite.Equal(len(suite.testHostnames), maintenanceQueue.Length())
+
 	for _, hostname := range suite.testHostnames {
-		hostnameMap[hostname] = true
-	}
-	for range suite.testHostnames {
 		h, err := maintenanceQueue.Dequeue(suite.maxWaitTime * time.Second)
 		suite.NoError(err)
-		suite.True(hostnameMap[h])
-		delete(hostnameMap, h)
+		suite.Equal(hostname, h)
 	}
-	suite.Equal(0, len(hostnameMap))
+
 }
 
-func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueue_QueueErrors() {
+func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueueErrors() {
 	queue := mocks.NewMockQueue(suite.mockCtrl)
 	maintenanceQueue := &maintenanceQueue{
-		queue: queue,
+		queue:   queue,
+		hostSet: stringset.New(),
 	}
 	// Test Enqueue error
 	queue.EXPECT().Enqueue(gomock.Any()).
@@ -70,7 +74,7 @@ func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueue_QueueErrors() {
 	suite.Equal("", hostname)
 }
 
-func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueue_Clear() {
+func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueueClear() {
 	queue := mocks.NewMockQueue(suite.mockCtrl)
 	maintenanceQueue := &maintenanceQueue{
 		queue: queue,

@@ -13,7 +13,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -398,9 +397,6 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 			To:   10,
 		}).
 		Return(suite.createTasks(&jobs[3], 9, task.TaskState_LAUNCHED), nil)
-	suite.mockHostmgrClient.EXPECT().
-		RestoreMaintenanceQueue(gomock.Any(), gomock.Any()).
-		Return(&hostsvc.RestoreMaintenanceQueueResponse{}, nil)
 
 	suite.recovery.Start()
 	<-suite.recovery.finished
@@ -462,10 +458,6 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 			From: 0,
 			To:   10,
 		}).Return(suite.createTasks(&jobs[0], 10, task.TaskState_PENDING), nil)
-
-	suite.mockHostmgrClient.EXPECT().
-		RestoreMaintenanceQueue(gomock.Any(), gomock.Any()).
-		Return(&hostsvc.RestoreMaintenanceQueueResponse{}, nil)
 
 	suite.recovery.Start()
 	<-suite.recovery.finished
@@ -585,22 +577,6 @@ func (suite *recoveryTestSuite) TestLoadTasksInRangeError() {
 	suite.Contains(err.Error(), "invalid job instance range")
 	_, _, err = suite.recovery.loadTasksInRange(context.Background(), "", 100, 100)
 	suite.NoError(err)
-}
-
-func (suite *recoveryTestSuite) TestRestartDrainingProcess_Error() {
-	// No RestoreMaintenanceQueue call since channel is closed
-	suite.recovery.restartDrainingProcess(context.Background())
-
-	// Start lifecycle manager
-	suite.recovery.lifecycle.Start()
-
-	suite.mockHostmgrClient.EXPECT().
-		RestoreMaintenanceQueue(gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("Fake RestoreMaintenanceQueue error"))
-	suite.mockHostmgrClient.EXPECT().
-		RestoreMaintenanceQueue(gomock.Any(), gomock.Any()).
-		Return(&hostsvc.RestoreMaintenanceQueueResponse{}, nil)
-	suite.recovery.restartDrainingProcess(context.Background())
 }
 
 func (suite *recoveryTestSuite) TestStartStop() {

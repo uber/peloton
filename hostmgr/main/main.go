@@ -412,7 +412,7 @@ func main() {
 	maintenanceQueue := queue.NewMaintenanceQueue()
 
 	// Create new hostmgr internal service handler.
-	serviceHandler := hostmgr.NewServiceHandler(
+	hostmgr.NewServiceHandler(
 		dispatcher,
 		rootScope,
 		schedulerClient,
@@ -457,7 +457,17 @@ func main() {
 		},
 	)
 
-	recoveryHandler := hostmgr.NewRecoveryHandler(rootScope, serviceHandler)
+	recoveryHandler := hostmgr.NewRecoveryHandler(
+		rootScope,
+		maintenanceQueue,
+		masterOperatorClient,
+	)
+
+	drainer := host.NewDrainer(
+		cfg.HostManager.HostDrainerPeriod,
+		masterOperatorClient,
+		maintenanceQueue,
+	)
 
 	server := hostmgr.NewServer(
 		rootScope,
@@ -469,6 +479,7 @@ func main() {
 		mOutbound,
 		reconciler,
 		recoveryHandler,
+		drainer,
 	)
 	server.Start()
 

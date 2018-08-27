@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/common/queue"
+	"code.uber.internal/infra/peloton/common/stringset"
 
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/multierr"
@@ -19,8 +20,9 @@ const (
 )
 
 type maintenanceQueue struct {
-	lock  sync.RWMutex
-	queue queue.Queue
+	lock    sync.RWMutex
+	queue   queue.Queue
+	hostSet stringset.StringSet // Set containing hosts currently in maintenance queue
 }
 
 // MaintenanceQueue is the interface for maintenance queue.
@@ -42,6 +44,7 @@ func NewMaintenanceQueue() MaintenanceQueue {
 			maintenanceQueueName,
 			reflect.TypeOf(""),
 			maxMaintenanceQueueSize),
+		hostSet: stringset.New(),
 	}
 }
 
@@ -52,10 +55,18 @@ func (mq *maintenanceQueue) Enqueue(hostnames []string) error {
 
 	var errs error
 	for _, host := range hostnames {
+		if mq.hostSet.Contains(host) {
+			log.
+				WithField("host", host).
+				Debug("Skipping enqueue. Host already present in maintenance queue.")
+			continue
+		}
 		err := mq.queue.Enqueue(host)
 		if err != nil {
 			errs = multierr.Append(errs, err)
+			continue
 		}
+		mq.hostSet.Add(host)
 	}
 	return errs
 }
@@ -76,6 +87,7 @@ func (mq *maintenanceQueue) Dequeue(maxWaitTime time.Duration) (string, error) {
 	}
 
 	host := item.(string)
+	mq.hostSet.Remove(host)
 	return host, nil
 }
 

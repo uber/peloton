@@ -376,10 +376,6 @@ service InternalHostService
   // Mark the hosts as drained. This method is called by Resource Manager  to
   // notify Host Manager that specified DRAINING hosts are cleared of all tasks.
   rpc MarkHostsDrained (MarkHostsDrainedRequest) returns (MarkHostsDrainedResponse);
-
-  // Restore contents of maintenance queue from Mesos Maintenance Status.
-  // This call is made by Resource Manager on recovery.
-  rpc RestoreMaintenanceQueue (RestoreMaintenanceQueueRequest) returns (RestoreMaintenanceQueueResponse);
 }
 
 /**
@@ -782,13 +778,3 @@ message MarkHostsDrainedResponse {
     // Hostnames of the hosts successfully marked as drained
     repeated string marked_hosts = 1;
 }
-
-/*
-* RestoreMaintenanceQueueRequest is the request message for InternalHostService.RestorehMaintenanceQueue
-*/
-message RestoreMaintenanceQueueRequest {}
-
-/*
-* RestoreMaintenanceQueueResponse is the response message for InternalHostService.RestoreMaintenanceQueue
-*/
-message RestoreMaintenanceQueueResponse {}

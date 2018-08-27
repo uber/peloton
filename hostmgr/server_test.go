@@ -6,13 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc/api/transport"
-
 	backgound_mocks "code.uber.internal/infra/peloton/common/background/mocks"
+	host_mocks "code.uber.internal/infra/peloton/hostmgr/host/mocks"
 	hm_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
 	"code.uber.internal/infra/peloton/hostmgr/metrics"
 	recovery_mocks "code.uber.internal/infra/peloton/hostmgr/mocks"
@@ -20,6 +15,12 @@ import (
 	offer_mocks "code.uber.internal/infra/peloton/hostmgr/offer/mocks"
 	reconciler_mocks "code.uber.internal/infra/peloton/hostmgr/reconcile/mocks"
 	mhttp_mocks "code.uber.internal/infra/peloton/yarpc/transport/mhttp/mocks"
+
+	"github.com/golang/mock/gomock"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/api/transport"
 )
 
 const (
@@ -47,6 +48,7 @@ type ServerTestSuite struct {
 	recoveryHandler   *recovery_mocks.MockRecoveryHandler
 
 	reconciler *reconciler_mocks.MockTaskReconciler
+	drainer    *host_mocks.MockDrainer
 
 	server *Server
 }
@@ -60,6 +62,7 @@ func (suite *ServerTestSuite) SetupTest() {
 	suite.mInbound = mhttp_mocks.NewMockInbound(suite.ctrl)
 	suite.reconciler = reconciler_mocks.NewMockTaskReconciler(suite.ctrl)
 	suite.recoveryHandler = recovery_mocks.NewMockRecoveryHandler(suite.ctrl)
+	suite.drainer = host_mocks.NewMockDrainer(suite.ctrl)
 
 	suite.server = &Server{
 		ID:   _ID,
@@ -74,6 +77,7 @@ func (suite *ServerTestSuite) SetupTest() {
 		mesosDetector:   suite.detector,
 		mesosInbound:    suite.mInbound,
 		recoveryHandler: suite.recoveryHandler,
+		drainer:         suite.drainer,
 		// Add outbound when we need it.
 
 		reconciler: suite.reconciler,
@@ -103,6 +107,7 @@ func (suite *ServerTestSuite) TestNewServer() {
 		transport.Outbounds{},
 		suite.reconciler,
 		suite.recoveryHandler,
+		suite.drainer,
 	)
 	suite.ctrl.Finish()
 	suite.NotNil(s)
@@ -172,6 +177,7 @@ func (suite *ServerTestSuite) TestUnelectedStopHandler() {
 		suite.backgroundManager.EXPECT().Stop(),
 		suite.eventHandler.EXPECT().Stop(),
 		suite.recoveryHandler.EXPECT().Stop(),
+		suite.drainer.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false),
 	)
 	suite.server.ensureStateRound()
@@ -191,6 +197,7 @@ func (suite *ServerTestSuite) TestUnelectedStopConnectionAndHandler() {
 		suite.backgroundManager.EXPECT().Stop(),
 		suite.eventHandler.EXPECT().Stop(),
 		suite.recoveryHandler.EXPECT().Stop(),
+		suite.drainer.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false),
 	)
 	suite.server.ensureStateRound()
@@ -226,6 +233,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 		suite.backgroundManager.EXPECT().Stop(),
 		suite.eventHandler.EXPECT().Stop(),
 		suite.recoveryHandler.EXPECT().Stop(),
+		suite.drainer.EXPECT().Stop(),
 
 		// Detect leader and start loop successfully.
 		suite.detector.EXPECT().HostPort().Return(_hostPort),
@@ -241,6 +249,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
 		suite.recoveryHandler.EXPECT().Start(),
+		suite.drainer.EXPECT().Start(),
 
 		// Last check for connected, used in gauge reporting.
 		suite.mInbound.EXPECT().IsRunning().Return(true),
@@ -262,6 +271,7 @@ func (suite *ServerTestSuite) TestElectedRestartHandlers() {
 		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
 		suite.recoveryHandler.EXPECT().Start(),
+		suite.drainer.EXPECT().Start(),
 		suite.mInbound.EXPECT().IsRunning().Return(true),
 	)
 	suite.server.ensureStateRound()
@@ -294,6 +304,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnectionAndHandler() {
 		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
 		suite.recoveryHandler.EXPECT().Start(),
+		suite.drainer.EXPECT().Start(),
 
 		// Last check for connected, used in gauge reporting.
 		suite.mInbound.EXPECT().IsRunning().Return(true),

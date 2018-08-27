@@ -23,7 +23,6 @@ type RecoveryTestSuite struct {
 	recoveryHandler          RecoveryHandler
 	mockMaintenanceQueue     *mocks.MockMaintenanceQueue
 	mockMasterOperatorClient *mpb_mocks.MockMasterOperatorClient
-	serviceHandler           *ServiceHandler
 	drainingMachines         []*mesos.MachineID
 	downMachines             []*mesos.MachineID
 }
@@ -52,12 +51,10 @@ func (suite *RecoveryTestSuite) SetupTest() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mockMaintenanceQueue = mocks.NewMockMaintenanceQueue(suite.mockCtrl)
 	suite.mockMasterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.mockCtrl)
-	suite.serviceHandler = &ServiceHandler{
-		operatorMasterClient: suite.mockMasterOperatorClient,
-		maintenanceQueue:     suite.mockMaintenanceQueue,
-	}
 
-	suite.recoveryHandler = NewRecoveryHandler(tally.NoopScope, suite.serviceHandler)
+	suite.recoveryHandler = NewRecoveryHandler(tally.NoopScope,
+		suite.mockMaintenanceQueue,
+		suite.mockMasterOperatorClient)
 }
 
 func (suite *RecoveryTestSuite) TearDownTest() {

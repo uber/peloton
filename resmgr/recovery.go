@@ -25,8 +25,7 @@ import (
 )
 
 const (
-	restoreMaintenaceQueueTimeout = 10 * time.Second
-	hostmgrBackoffRetryInterval   = 100 * time.Millisecond
+	hostmgrBackoffRetryInterval = 100 * time.Millisecond
 )
 
 var (
@@ -112,9 +111,6 @@ func (r *RecoveryHandler) Stop() error {
 	}
 	log.Info("Stopping recovery")
 
-	// Wait for recoveryHandler to be stopped
-	r.lifecycle.Wait()
-
 	return nil
 }
 
@@ -144,9 +140,6 @@ func (r *RecoveryHandler) Start() error {
 		return err
 	}
 	log.Info("Recovery completed successfully for running tasks")
-
-	// Restart draining process in background
-	go r.restartDrainingProcess(ctx)
 
 	// We can start the recovery of non-running tasks now in the background
 	r.finished = make(chan bool)
@@ -359,32 +352,4 @@ func (r *RecoveryHandler) loadTasksInRange(
 		}
 	}
 	return nonRunningTasks, runningTasks, err
-}
-
-func (r *RecoveryHandler) restartDrainingProcess(ctx context.Context) {
-	defer r.lifecycle.StopComplete()
-
-	contextWithTimeout, cancel := context.WithTimeout(
-		ctx,
-		restoreMaintenaceQueueTimeout)
-	defer cancel()
-	ticker := time.NewTicker(time.Duration(hostmgrBackoffRetryInterval))
-	defer ticker.Stop()
-	log.Info("Recovery starting for maintenance queue")
-
-	for {
-		select {
-		case <-r.lifecycle.StopCh():
-			return
-		case <-ticker.C:
-			_, err := r.hostmgrClient.RestoreMaintenanceQueue(
-				contextWithTimeout,
-				&hostsvc.RestoreMaintenanceQueueRequest{})
-			if err != nil {
-				log.WithError(err).Warn("RestoreMaintenanceQueue call failed")
-				continue
-			}
-			return
-		}
-	}
 }

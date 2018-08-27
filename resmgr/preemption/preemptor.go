@@ -178,6 +178,13 @@ func (p *preemptor) EnqueueTasks(tasks []*task.RMTask, reason resmgr.PreemptionR
 	for _, t := range tasks {
 		switch t.GetCurrentState() {
 		case peloton_task.TaskState_RUNNING:
+			// Do not add to preemption queue if it already has an entry for this Peloton task
+			if p.taskSet.Contains(t.Task().GetId().GetValue()) {
+				log.
+					WithField("task_id", t.Task().Id.Value).
+					Debug("Skipping enqueue. Task already present in preemption queue.")
+				continue
+			}
 			preemptionCandidate := &resmgr.PreemptionCandidate{
 				Id:     t.Task().Id,
 				Reason: reason,
@@ -190,6 +197,8 @@ func (p *preemptor) EnqueueTasks(tasks []*task.RMTask, reason resmgr.PreemptionR
 					t.Task().GetId().Value))
 				continue
 			}
+			// Add task to taskSet
+			p.taskSet.Add(preemptionCandidate.GetId().GetValue())
 		default:
 			// For all non running tasks
 			err := p.evictNonRunningTask(t)

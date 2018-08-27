@@ -33,6 +33,7 @@ host_manager:
   host_pruning_period_sec: 600s
   hostmgr_backoff_retry_count: 3
   hostmgr_backoff_retry_interval_sec: 15
+  host_drainer_period: 900s
   # scarce_resource_types are resources, which are exclusively reserved for specific task requirements,
   # and to prevent every task to schedule on those hosts such as GPU.
   # Resource Types are case sensitive, supported resource types are "CPU", "GPU", "Mem" and "Disk"
