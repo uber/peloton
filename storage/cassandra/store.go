@@ -981,7 +981,7 @@ func (s *Store) addPodEvent(
 	jobID *peloton.JobID,
 	instanceID uint32,
 	runtime *task.RuntimeInfo) error {
-	var runID, prevRunID, desiredRunID int
+	var runID, prevRunID, desiredRunID uint32
 	var podStatus []byte
 	var err, errMessage error
 

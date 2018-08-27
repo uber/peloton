@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -29,12 +28,7 @@ const (
 // CreateInitializingTask for insertion into the storage layer, before being
 // enqueued.
 func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *job.JobConfig) *task.RuntimeInfo {
-	mesosTaskID := fmt.Sprintf(
-		"%s-%d-%d",
-		jobID.GetValue(),
-		instanceID,
-		_initialRunID)
-
+	mesosTaskID := util.CreateMesosTaskID(jobID, instanceID, _initialRunID)
 	// Get the health check config
 	healthCheckConfig := taskconfig.Merge(
 		jobConfig.GetDefaultConfig(),
@@ -51,12 +45,8 @@ func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *
 	}
 
 	runtime := &task.RuntimeInfo{
-		MesosTaskId: &mesos.TaskID{
-			Value: &mesosTaskID,
-		},
-		DesiredMesosTaskId: &mesos.TaskID{
-			Value: &mesosTaskID,
-		},
+		MesosTaskId:          mesosTaskID,
+		DesiredMesosTaskId:   mesosTaskID,
 		State:                task.TaskState_INITIALIZED,
 		ConfigVersion:        jobConfig.GetChangeLog().GetVersion(),
 		DesiredConfigVersion: jobConfig.GetChangeLog().GetVersion(),

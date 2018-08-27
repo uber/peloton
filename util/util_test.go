@@ -64,23 +64,23 @@ func TestConvertLabels(t *testing.T) {
 func TestParseRunID(t *testing.T) {
 	mesosTaskID := uuid.New() + "-1-" + uuid.New()
 	runID, err := ParseRunID(mesosTaskID)
-	assert.Equal(t, runID, -1)
+	assert.Equal(t, runID, uint32(0))
 	assert.Error(t, err)
 
 	mesosTaskID = uuid.New() + "-1-abc"
 	runID, err = ParseRunID(mesosTaskID)
-	assert.Equal(t, runID, -1)
+	assert.Equal(t, runID, uint32(0))
 	assert.Error(t, err)
 
 	mesosTaskID = uuid.New() + "-1-1"
 	runID, err = ParseRunID(mesosTaskID)
-	assert.Equal(t, runID, 1)
+	assert.Equal(t, runID, uint32(1))
 	assert.NoError(t, err)
 
 	mesosTaskID = ""
 	runID, err = ParseRunID(mesosTaskID)
-	assert.Equal(t, runID, -1)
-	assert.NoError(t, err)
+	assert.Equal(t, runID, uint32(0))
+	assert.Error(t, err)
 }
 
 func TestParseTaskID(t *testing.T) {
@@ -466,4 +466,41 @@ func TestExtractIPFromMesosAgentPID(t *testing.T) {
 	ip, err = ExtractIPFromMesosAgentPID(&invalidPid)
 	assert.Error(t, err)
 	assert.Empty(t, ip)
+}
+
+// TestCreateMesosTaskID tests CreateMesosTaskID
+func TestCreateMesosTaskID(t *testing.T) {
+	tests := []struct {
+		jobID      string
+		instanceID uint32
+		runID      uint32
+		result     string
+	}{{
+		jobID:      "5f9b61a6-b290-49ef-899e-6e42dc5aabd3",
+		instanceID: 0,
+		runID:      1,
+		result:     "5f9b61a6-b290-49ef-899e-6e42dc5aabd3-0-1",
+	},
+		{
+			jobID:      "5f9b61a6-b290-49ef-899e-6e42dc5aabd3",
+			instanceID: 3,
+			runID:      1,
+			result:     "5f9b61a6-b290-49ef-899e-6e42dc5aabd3-3-1",
+		},
+
+		{
+			jobID:      "5f9b61a6-b290-49ef-899e-6e42dc5aabd3",
+			instanceID: 3,
+			runID:      3,
+			result:     "5f9b61a6-b290-49ef-899e-6e42dc5aabd3-3-3",
+		},
+	}
+
+	for _, test := range tests {
+		mesosTaskID := CreateMesosTaskID(
+			&peloton.JobID{Value: test.jobID},
+			test.instanceID,
+			test.runID)
+		assert.Equal(t, mesosTaskID.GetValue(), test.result)
+	}
 }

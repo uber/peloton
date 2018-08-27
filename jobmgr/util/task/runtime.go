@@ -1,8 +1,6 @@
 package task
 
 import (
-	"fmt"
-
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -48,15 +46,8 @@ func getMesosTaskID(
 	// TODO: deprecate the check once mesos task id migration is complete
 	// and every task has runID populated
 	prevRunID, err := util.ParseRunID(taskRuntime.GetMesosTaskId().GetValue())
-	if err != nil || prevRunID < 0 {
+	if err != nil {
 		prevRunID = 0
 	}
-	mesosTaskID := fmt.Sprintf(
-		"%s-%d-%d",
-		jobID.GetValue(),
-		instanceID,
-		prevRunID+1)
-	return &mesos.TaskID{
-		Value: &mesosTaskID,
-	}
+	return util.CreateMesosTaskID(jobID, instanceID, prevRunID+1)
 }

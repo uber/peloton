@@ -225,19 +225,31 @@ func IsTaskHasValidVolume(taskInfo *task.TaskInfo) bool {
 	return false
 }
 
+// CreateMesosTaskID creates mesos task id given jobID, instanceID and runID
+func CreateMesosTaskID(jobID *peloton.JobID,
+	instanceID uint32,
+	runID uint32) *mesos.TaskID {
+	mesosID := fmt.Sprintf(
+		"%s-%d-%d",
+		jobID.GetValue(),
+		instanceID,
+		runID)
+	return &mesos.TaskID{Value: &mesosID}
+}
+
 // ParseRunID parse the runID from mesosTaskID
-func ParseRunID(mesosTaskID string) (int, error) {
+func ParseRunID(mesosTaskID string) (uint32, error) {
 	splitMesosTaskID := strings.Split(mesosTaskID, "-")
 	if len(mesosTaskID) == 0 { // prev mesos task id is nil
-		return -1, nil
+		return 0, errors.New("mesosTaskID provided is empty")
 	} else if len(splitMesosTaskID) > 0 {
-		if runID, err := strconv.Atoi(
-			splitMesosTaskID[len(splitMesosTaskID)-1]); err == nil {
-			return runID, nil
+		if runID, err := strconv.ParseUint(
+			splitMesosTaskID[len(splitMesosTaskID)-1], 10, 32); err == nil {
+			return uint32(runID), nil
 		}
 	}
 
-	return -1, errors.New("unable to parse mesos task id: " + mesosTaskID)
+	return 0, errors.New("unable to parse mesos task id: " + mesosTaskID)
 }
 
 // ParseTaskID parses the jobID and instanceID from peloton taskID
