@@ -17,20 +17,6 @@ type ReservedResources struct {
 	Volumes []string
 }
 
-// GetReservationLabelsWithoutVolume returns reservation labels for resources that
-// need to reconciled, i.e. unreserve the resource contains no persistent volume resources.
-// returns map of labels -> true if need to be reconciled.
-func GetReservationLabelsWithoutVolume(resources []*mesos.Resource) map[string]bool {
-	reservedResources := GetLabeledReservedResourcesFromResources(resources)
-	result := make(map[string]bool)
-	for labels, res := range reservedResources {
-		if len(res.Volumes) == 0 {
-			result[labels] = true
-		}
-	}
-	return result
-}
-
 // GetLabeledReservedResources extracts reserved resources from given list of
 // offers, returns map from reservationLabelID -> ReservedResources.
 func GetLabeledReservedResources(
