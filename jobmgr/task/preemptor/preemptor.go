@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -157,18 +157,23 @@ func (p *preemptor) preemptTasks(ctx context.Context, preemptionCandidates []*re
 		runtime, err := cachedTask.GetRunTime(ctx)
 		if err != nil {
 			errs = multierror.Append(errs, err)
-		}
-
-		if runtime.GetGoalState() == pb_task.TaskState_KILLED {
 			continue
 		}
 
-		// set goal state to TaskState_PREEMPTING
-		runtimeDiff := cached.RuntimeDiff{
-			cached.GoalStateField: pb_task.TaskState_PREEMPTING,
-			cached.MessageField:   "Preempting running task",
-			cached.ReasonField:    task.Reason.String(),
+		if runtime.GetGoalState() == pbtask.TaskState_KILLED {
+			continue
 		}
+
+		preemptPolicy, err := p.getTaskPreemptionPolicy(
+			ctx, jobID, uint32(instanceID), runtime.GetConfigVersion())
+		if err != nil {
+			errs = multierror.Append(errs, err)
+			continue
+		}
+
+		runtimeDiff := getRuntimeDiffForPreempt(
+			jobID, uint32(instanceID), runtime, preemptPolicy)
+		runtimeDiff[cached.ReasonField] = task.GetReason().String()
 
 		// update the task in cache and enqueue to goal state engine
 		err = cachedJob.PatchTasks(ctx, map[uint32]cached.RuntimeDiff{uint32(instanceID): runtimeDiff})
@@ -230,4 +235,47 @@ func (p *preemptor) Stop() error {
 	p.lifeCycle.Wait()
 	log.Info("Task Preemptor Stopped")
 	return nil
+}
+
+// getTaskPreemptionPolicy returns the preempt policy config of a task
+func (p *preemptor) getTaskPreemptionPolicy(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	instanceID uint32,
+	configVersion uint64) (*pbtask.PreemptionPolicy, error) {
+	config, err := p.taskStore.GetTaskConfig(
+		ctx,
+		jobID,
+		instanceID,
+		configVersion)
+	if err != nil {
+		return nil, err
+	}
+	return config.GetPreemptionPolicy(), nil
+}
+
+// getRuntimeDiffForPreempt returns the RuntimeDiff to preempt a task.
+// Given the preempt policy it decides whether the task should be killed
+// or restarted
+func getRuntimeDiffForPreempt(
+	jobID *peloton.JobID,
+	instanceID uint32,
+	taskRuntime *pbtask.RuntimeInfo,
+	preemptPolicy *pbtask.PreemptionPolicy) cached.RuntimeDiff {
+	runtimeDiff := cached.RuntimeDiff{
+		cached.MessageField: "Preempting running task",
+	}
+
+	// kill the task if GetKillOnPreempt is true
+	if preemptPolicy != nil && preemptPolicy.GetKillOnPreempt() {
+		runtimeDiff[cached.GoalStateField] = pbtask.TaskState_KILLED
+	} else {
+		// otherwise restart the task
+		prevRunID, err := util.ParseRunID(taskRuntime.GetMesosTaskId().GetValue())
+		if err != nil {
+			prevRunID = 0
+		}
+		runtimeDiff[cached.DesiredMesosTaskIDField] = util.CreateMesosTaskID(jobID, instanceID, prevRunID+1)
+	}
+	return runtimeDiff
 }

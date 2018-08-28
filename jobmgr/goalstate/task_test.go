@@ -194,12 +194,6 @@ func TestEngineSuggestActionGoalKilled(t *testing.T) {
 			action:               ExecutorShutdownAction,
 		},
 		{
-			currentState:         pbtask.TaskState_PREEMPTING,
-			configVersion:        10,
-			desiredConfigVersion: 10,
-			action:               TaskStateInvalidAction,
-		},
-		{
 			currentState:         pbtask.TaskState_KILLED,
 			configVersion:        10,
 			desiredConfigVersion: 11,
@@ -294,12 +288,6 @@ func TestEngineSuggestActionGoalRunning(t *testing.T) {
 			desiredConfigVersion: 0,
 			action:               LaunchRetryAction,
 		},
-		{
-			currentState:         pbtask.TaskState_PREEMPTING,
-			configVersion:        0,
-			desiredConfigVersion: 0,
-			action:               TaskStateInvalidAction,
-		},
 	}
 
 	for i, test := range tt {
@@ -313,61 +301,6 @@ func TestEngineSuggestActionGoalRunning(t *testing.T) {
 				ConfigVersion: test.desiredConfigVersion,
 			},
 		)
-		assert.Equal(t, test.action, a, "test %d fails", i)
-	}
-}
-
-func TestEngineSuggestActionGoalPreempting(t *testing.T) {
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
-
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-	}
-
-	tt := []struct {
-		currentState pbtask.TaskState
-		action       TaskAction
-	}{
-		{
-			currentState: pbtask.TaskState_INITIALIZED,
-			action:       StopAction,
-		},
-		{
-			currentState: pbtask.TaskState_LAUNCHED,
-			action:       StopAction,
-		},
-		{
-			currentState: pbtask.TaskState_STARTING,
-			action:       StopAction,
-		},
-		{
-			currentState: pbtask.TaskState_RUNNING,
-			action:       StopAction,
-		},
-		{
-			currentState: pbtask.TaskState_LOST,
-			action:       PreemptAction,
-		},
-		{
-			currentState: pbtask.TaskState_KILLED,
-			action:       PreemptAction,
-		},
-		{
-			currentState: pbtask.TaskState_KILLING,
-			action:       ExecutorShutdownAction,
-		},
-		{
-			currentState: pbtask.TaskState_PREEMPTING,
-			action:       TaskStateInvalidAction,
-		},
-	}
-
-	for i, test := range tt {
-		a := taskEnt.suggestTaskAction(
-			cached.TaskStateVector{State: test.currentState, ConfigVersion: 0},
-			cached.TaskStateVector{State: pbtask.TaskState_PREEMPTING, ConfigVersion: 0})
 		assert.Equal(t, test.action, a, "test %d fails", i)
 	}
 }
@@ -391,7 +324,6 @@ func TestEngineSuggestActionGoalFailed(t *testing.T) {
 		pbtask.TaskState_SUCCEEDED,
 		pbtask.TaskState_FAILED,
 		pbtask.TaskState_LOST,
-		pbtask.TaskState_PREEMPTING,
 		pbtask.TaskState_KILLING,
 		pbtask.TaskState_KILLED,
 	}

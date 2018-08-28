@@ -2,7 +2,6 @@ package goalstate
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -102,35 +101,6 @@ func (suite *TaskActionTestSuite) prepareTest() {
 		cached.TaskStateVector{
 			State: pbtask.TaskState_UNKNOWN,
 		})
-}
-
-func (suite *TaskActionTestSuite) TestTaskPreempt() {
-	taskConfig := &pbtask.TaskConfig{
-		PreemptionPolicy: &pbtask.PreemptionPolicy{
-			KillOnPreempt: true,
-		},
-	}
-	suite.prepareTest()
-	suite.taskStore.EXPECT().GetTaskConfig(
-		gomock.Any(),
-		gomock.Any(),
-		gomock.Any(),
-		gomock.Any(),
-	).Return(taskConfig, nil)
-	err := TaskPreempt(context.Background(), suite.taskEnt)
-	suite.NoError(err)
-}
-
-func (suite *TaskActionTestSuite) TestTaskPreemptFailed() {
-	suite.prepareTest()
-	suite.taskStore.EXPECT().GetTaskConfig(
-		gomock.Any(),
-		gomock.Any(),
-		gomock.Any(),
-		gomock.Any(),
-	).Return(nil, errors.New(""))
-	err := TaskPreempt(context.Background(), suite.taskEnt)
-	suite.Error(err)
 }
 
 func (suite *TaskActionTestSuite) TestTaskStateInvalidAction() {

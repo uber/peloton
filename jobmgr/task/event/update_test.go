@@ -650,68 +650,6 @@ func (suite *TaskUpdaterTestSuite) TestProcessMissingTaskStatusUpdate() {
 	suite.Error(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
-// Test processing task KILL by PREEMPTION
-func (suite *TaskUpdaterTestSuite) TestProcessPreemptedTaskStatusUpdate() {
-	defer suite.ctrl.Finish()
-
-	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
-	tt := []struct {
-		killOnPreempt  bool
-		preemptMessage string
-	}{
-		{
-			killOnPreempt:  false,
-			preemptMessage: "Task will be rescheduled",
-		},
-		{
-			killOnPreempt:  true,
-			preemptMessage: "Task will not be rescheduled",
-		},
-	}
-
-	for _, t := range tt {
-		event := createTestTaskUpdateEvent(mesos.TaskState_TASK_KILLED)
-		taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
-		taskInfo.Runtime.GoalState = task.TaskState_PREEMPTING
-
-		taskInfo.Config.PreemptionPolicy = &task.PreemptionPolicy{
-			KillOnPreempt: t.killOnPreempt,
-		}
-		preemptMessage := t.preemptMessage
-
-		preemptReason := "Task preempted"
-		suite.mockTaskStore.EXPECT().
-			GetTaskByID(context.Background(), _pelotonTaskID).
-			Return(taskInfo, nil)
-		suite.jobFactory.EXPECT().
-			AddJob(_pelotonJobID).Return(cachedJob)
-		cachedJob.EXPECT().
-			SetTaskUpdateTime(gomock.Any()).Return()
-		cachedJob.EXPECT().
-			PatchTasks(context.Background(), gomock.Any()).
-			Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
-				runtimeDiff := runtimeDiffs[_instanceID]
-				suite.Equal(
-					preemptMessage,
-					runtimeDiff[cached.MessageField],
-				)
-				suite.Equal(
-					preemptReason,
-					runtimeDiff[cached.ReasonField],
-				)
-			}).
-			Return(nil)
-		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
-		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return()
-		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
-		suite.goalStateDriver.EXPECT().
-			JobRuntimeDuration(job.JobType_BATCH).
-			Return(1 * time.Second)
-		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return()
-		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
-	}
-}
-
 func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
 	defer suite.ctrl.Finish()
 

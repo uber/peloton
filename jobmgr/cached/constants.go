@@ -35,17 +35,17 @@ var (
 		pbtask.TaskState_INITIALIZED: true,
 		pbtask.TaskState_LAUNCHED:    true,
 		pbtask.TaskState_KILLING:     true,
-		pbtask.TaskState_PREEMPTING:  true,
 	}
 
 	// resMgrOwnedTaskStates are task states which indicate that the
 	// task is either waiting for admission or being placed or being preempted.
 	resMgrOwnedTaskStates = map[pbtask.TaskState]bool{
-		pbtask.TaskState_PENDING:   true,
-		pbtask.TaskState_READY:     true,
-		pbtask.TaskState_PLACING:   true,
-		pbtask.TaskState_PLACED:    true,
-		pbtask.TaskState_LAUNCHING: true,
+		pbtask.TaskState_PENDING:    true,
+		pbtask.TaskState_READY:      true,
+		pbtask.TaskState_PLACING:    true,
+		pbtask.TaskState_PLACED:     true,
+		pbtask.TaskState_LAUNCHING:  true,
+		pbtask.TaskState_PREEMPTING: true,
 	}
 
 	// mesosOwnedTaskStates are task states to which a task is transitioned through

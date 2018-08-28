@@ -237,17 +237,6 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	runtimeDiff[cached.ReasonField] = ""
 
 	switch state {
-	case pb_task.TaskState_KILLED:
-		if runtime.GetGoalState() == pb_task.TaskState_PREEMPTING {
-			runtimeDiff[cached.ReasonField] = "Task preempted"
-			runtimeDiff[cached.MessageField] = "Task will not be rescheduled"
-			pp := taskInfo.GetConfig().GetPreemptionPolicy()
-			if pp == nil || !pp.GetKillOnPreempt() {
-				runtimeDiff[cached.MessageField] = "Task will be rescheduled"
-			}
-		}
-		runtimeDiff[cached.StateField] = state
-
 	case pb_task.TaskState_FAILED:
 		if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_TASK_INVALID &&
 			strings.Contains(event.GetMesosTaskStatus().GetMessage(), "Task has duplicate ID") {

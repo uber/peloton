@@ -1400,7 +1400,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateChanges() {
 		jobConfig.GetType())
 	suite.NoError(err)
 
-	taskInfo.Runtime.State = task.TaskState_PREEMPTING
+	taskInfo.Runtime.State = task.TaskState_FAILED
 	taskInfo.Runtime.Host = ""
 	err = taskStore.UpdateTaskRuntime(
 		context.Background(),
@@ -1448,7 +1448,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateChanges() {
 	suite.Equal(stateRecords[0].TaskState, task.TaskState_INITIALIZED.String())
 	suite.Equal(stateRecords[1].TaskState, task.TaskState_PENDING.String())
 	suite.Equal(stateRecords[2].TaskState, task.TaskState_RUNNING.String())
-	suite.Equal(stateRecords[3].TaskState, task.TaskState_PREEMPTING.String())
+	suite.Equal(stateRecords[3].TaskState, task.TaskState_FAILED.String())
 	suite.Equal(stateRecords[4].TaskState, task.TaskState_RUNNING.String())
 	suite.Equal(stateRecords[5].TaskState, task.TaskState_SUCCEEDED.String())
 	suite.Equal(stateRecords[6].TaskState, task.TaskState_LOST.String())
@@ -1511,7 +1511,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskEvents() {
 		jobConfig.GetType())
 	suite.NoError(err)
 
-	taskInfo.Runtime.State = task.TaskState_PREEMPTING
+	taskInfo.Runtime.State = task.TaskState_FAILED
 	taskInfo.Runtime.Host = ""
 	err = taskStore.UpdateTaskRuntime(
 		context.Background(),
@@ -1558,7 +1558,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskEvents() {
 	suite.Equal(events[0].State, task.TaskState_INITIALIZED)
 	suite.Equal(events[1].State, task.TaskState_PENDING)
 	suite.Equal(events[2].State, task.TaskState_RUNNING)
-	suite.Equal(events[3].State, task.TaskState_PREEMPTING)
+	suite.Equal(events[3].State, task.TaskState_FAILED)
 	suite.Equal(events[4].State, task.TaskState_RUNNING)
 	suite.Equal(events[5].State, task.TaskState_SUCCEEDED)
 	suite.Equal(events[6].State, task.TaskState_LOST)

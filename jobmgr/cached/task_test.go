@@ -400,6 +400,7 @@ func TestGetResourceManagerProcessingStates(t *testing.T) {
 		pbtask.TaskState_READY.String(),
 		pbtask.TaskState_PLACING.String(),
 		pbtask.TaskState_PLACED.String(),
+		pbtask.TaskState_PREEMPTING.String(),
 	}
 	states := GetResourceManagerProcessingStates()
 	sort.Strings(expect)

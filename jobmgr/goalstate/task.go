@@ -32,8 +32,6 @@ const (
 	StopAction TaskAction = "stop_task"
 	// ExecutorShutdownAction shuts down executor directly after StopAction timeout
 	ExecutorShutdownAction TaskAction = "executor_shutdown"
-	// PreemptAction preempts the task
-	PreemptAction TaskAction = "preempt_action"
 	// InitializeAction re-initializes the task and regenerates the mesos task id
 	InitializeAction TaskAction = "initialize_task"
 	// ReloadTaskRuntime reload the task runtime into cache
@@ -54,7 +52,6 @@ var (
 		NoTaskAction:           nil,
 		StartAction:            TaskStart,
 		StopAction:             TaskStop,
-		PreemptAction:          TaskPreempt,
 		InitializeAction:       TaskInitialize,
 		ReloadTaskRuntime:      TaskReloadRuntime,
 		LaunchRetryAction:      TaskLaunchRetry,
@@ -80,7 +77,6 @@ var (
 			task.TaskState_SUCCEEDED:   InitializeAction,
 			task.TaskState_FAILED:      InitializeAction,
 			task.TaskState_KILLED:      InitializeAction,
-			task.TaskState_PREEMPTING:  TaskStateInvalidAction,
 			task.TaskState_LOST:        InitializeAction,
 		},
 		task.TaskState_SUCCEEDED: {
@@ -89,7 +85,6 @@ var (
 			task.TaskState_STARTING:    LaunchRetryAction,
 			task.TaskState_FAILED:      FailRetryAction,
 			task.TaskState_KILLED:      FailRetryAction,
-			task.TaskState_PREEMPTING:  TaskStateInvalidAction,
 			task.TaskState_LOST:        InitializeAction,
 		},
 		task.TaskState_KILLED: {
@@ -99,7 +94,6 @@ var (
 			task.TaskState_STARTING:    StopAction,
 			task.TaskState_RUNNING:     StopAction,
 			task.TaskState_LOST:        NoTaskAction,
-			task.TaskState_PREEMPTING:  TaskStateInvalidAction,
 			task.TaskState_KILLING:     ExecutorShutdownAction,
 		},
 		task.TaskState_FAILED: {
@@ -112,20 +106,8 @@ var (
 			task.TaskState_SUCCEEDED:   TaskStateInvalidAction,
 			task.TaskState_FAILED:      TaskStateInvalidAction,
 			task.TaskState_LOST:        TaskStateInvalidAction,
-			task.TaskState_PREEMPTING:  TaskStateInvalidAction,
 			task.TaskState_KILLING:     TaskStateInvalidAction,
 			task.TaskState_KILLED:      TaskStateInvalidAction,
-		},
-		task.TaskState_PREEMPTING: {
-			task.TaskState_INITIALIZED: StopAction,
-			task.TaskState_PENDING:     StopAction,
-			task.TaskState_LAUNCHED:    StopAction,
-			task.TaskState_STARTING:    StopAction,
-			task.TaskState_RUNNING:     StopAction,
-			task.TaskState_LOST:        PreemptAction,
-			task.TaskState_PREEMPTING:  TaskStateInvalidAction,
-			task.TaskState_KILLING:     ExecutorShutdownAction,
-			task.TaskState_KILLED:      PreemptAction,
 		},
 	}
 )
