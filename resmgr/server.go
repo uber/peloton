@@ -5,7 +5,6 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/leader"
-	"code.uber.internal/infra/peloton/resmgr/preemption"
 	"code.uber.internal/infra/peloton/resmgr/task"
 
 	log "github.com/sirupsen/logrus"
@@ -34,9 +33,9 @@ type Server struct {
 	recoveryHandler       ServerProcess
 	reconciler            ServerProcess
 	drainer               ServerProcess
+	preemptor             ServerProcess
 
 	// TODO move these to use ServerProcess
-	getPreemptor     func() preemption.Preemptor
 	getTaskScheduler func() task.Scheduler
 }
 
@@ -49,7 +48,8 @@ func NewServer(
 	entitlementCalculator ServerProcess,
 	recoveryHandler ServerProcess,
 	drainer ServerProcess,
-	reconciler ServerProcess) *Server {
+	reconciler ServerProcess,
+	preemptor ServerProcess) *Server {
 	return &Server{
 		ID:                    leader.NewID(httpPort, grpcPort),
 		role:                  common.ResourceManagerRole,
@@ -58,7 +58,7 @@ func NewServer(
 		entitlementCalculator: entitlementCalculator,
 		recoveryHandler:       recoveryHandler,
 		reconciler:            reconciler,
-		getPreemptor:          preemption.GetPreemptor,
+		preemptor:             preemptor,
 		drainer:               drainer,
 		metrics:               NewMetrics(parent),
 	}
@@ -108,7 +108,7 @@ func (s *Server) GainedLeadershipCallback() error {
 		return err
 	}
 
-	if err := s.getPreemptor().Start(); err != nil {
+	if err := s.preemptor.Start(); err != nil {
 		log.WithError(err).
 			Error("Failed to start task preemptor")
 		return err
@@ -156,7 +156,7 @@ func (s *Server) LostLeadershipCallback() error {
 		return err
 	}
 
-	if err := s.getPreemptor().Stop(); err != nil {
+	if err := s.preemptor.Stop(); err != nil {
 		log.Errorf("Failed to stop task preemptor")
 		return err
 	}

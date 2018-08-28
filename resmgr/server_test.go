@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"code.uber.internal/infra/peloton/leader"
-	"code.uber.internal/infra/peloton/resmgr/preemption"
-	pmocks "code.uber.internal/infra/peloton/resmgr/preemption/mocks"
 	"code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/resmgr/task/mocks"
 
@@ -30,16 +28,6 @@ func mockSchedulerWithErr(err error, t *testing.T) func() task.Scheduler {
 	mScheduler.EXPECT().Stop().Return(err).AnyTimes()
 	return func() task.Scheduler {
 		return mScheduler
-	}
-}
-
-func mockPreemptorWithErr(err error, t *testing.T) func() preemption.Preemptor {
-	ctrl := gomock.NewController(t)
-	mPreemptor := pmocks.NewMockPreemptor(ctrl)
-	mPreemptor.EXPECT().Start().Return(err).AnyTimes()
-	mPreemptor.EXPECT().Stop().Return(err).AnyTimes()
-	return func() preemption.Preemptor {
-		return mPreemptor
 	}
 }
 
@@ -108,7 +96,7 @@ func TestServer_GainedLeadershipCallback(t *testing.T) {
 				getTaskScheduler:      mockSchedulerWithErr(nil, t),
 				entitlementCalculator: &FakeServerProcess{nil},
 				reconciler:            &FakeServerProcess{nil},
-				getPreemptor:          mockPreemptorWithErr(errFake, t),
+				preemptor:             &FakeServerProcess{errFake},
 			},
 			err: errFake,
 		},
@@ -121,7 +109,7 @@ func TestServer_GainedLeadershipCallback(t *testing.T) {
 				getTaskScheduler:      mockSchedulerWithErr(nil, t),
 				entitlementCalculator: &FakeServerProcess{nil},
 				reconciler:            &FakeServerProcess{nil},
-				getPreemptor:          mockPreemptorWithErr(nil, t),
+				preemptor:             &FakeServerProcess{nil},
 				drainer:               &FakeServerProcess{errFake},
 			},
 			err: errFake,
@@ -135,7 +123,7 @@ func TestServer_GainedLeadershipCallback(t *testing.T) {
 				getTaskScheduler:      mockSchedulerWithErr(nil, t),
 				entitlementCalculator: &FakeServerProcess{nil},
 				reconciler:            &FakeServerProcess{nil},
-				getPreemptor:          mockPreemptorWithErr(nil, t),
+				preemptor:             &FakeServerProcess{nil},
 				drainer:               &FakeServerProcess{nil},
 			},
 			err: nil,
@@ -216,7 +204,7 @@ func TestServer_LostLeadershipCallback(t *testing.T) {
 				getTaskScheduler:      mockSchedulerWithErr(nil, t),
 				entitlementCalculator: &FakeServerProcess{nil},
 				reconciler:            &FakeServerProcess{nil},
-				getPreemptor:          mockPreemptorWithErr(errFake, t),
+				preemptor:             &FakeServerProcess{errFake},
 			},
 			err: errFake,
 		},
@@ -229,7 +217,7 @@ func TestServer_LostLeadershipCallback(t *testing.T) {
 				getTaskScheduler:      mockSchedulerWithErr(nil, t),
 				entitlementCalculator: &FakeServerProcess{nil},
 				reconciler:            &FakeServerProcess{nil},
-				getPreemptor:          mockPreemptorWithErr(nil, t),
+				preemptor:             &FakeServerProcess{nil},
 				drainer:               &FakeServerProcess{errFake},
 			},
 			err: errFake,
@@ -243,7 +231,7 @@ func TestServer_LostLeadershipCallback(t *testing.T) {
 				getTaskScheduler:      mockSchedulerWithErr(nil, t),
 				entitlementCalculator: &FakeServerProcess{nil},
 				reconciler:            &FakeServerProcess{nil},
-				getPreemptor:          mockPreemptorWithErr(nil, t),
+				preemptor:             &FakeServerProcess{nil},
 				drainer:               &FakeServerProcess{nil},
 			},
 			err: nil,
@@ -268,6 +256,7 @@ func TestServer_GetID(t *testing.T) {
 		&FakeServerProcess{nil},
 		&FakeServerProcess{nil},
 		&FakeServerProcess{nil},
+		&FakeServerProcess{nil},
 		&FakeServerProcess{nil})
 
 	assert.NotNil(t, s)
@@ -286,6 +275,7 @@ func TestServer_ShutDownCallback(t *testing.T) {
 		tally.NoopScope,
 		80,
 		5290,
+		&FakeServerProcess{nil},
 		&FakeServerProcess{nil},
 		&FakeServerProcess{nil},
 		&FakeServerProcess{nil},

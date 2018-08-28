@@ -49,7 +49,7 @@ type ServiceHandler struct {
 	placements         queue.Queue
 	eventStreamHandler *eventstream.Handler
 	rmTracker          rmtask.Tracker
-	preemptor          preemption.Preemptor
+	preemptionQueue    preemption.Queue
 	maxOffset          *uint64
 	config             Config
 }
@@ -59,7 +59,7 @@ func NewServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	rmTracker rmtask.Tracker,
-	preemptor preemption.Preemptor,
+	preemptionQueue preemption.Queue,
 	conf Config) *ServiceHandler {
 
 	var maxOffset uint64
@@ -71,10 +71,10 @@ func NewServiceHandler(
 			reflect.TypeOf(resmgr.Placement{}),
 			maxPlacementQueueSize,
 		),
-		rmTracker: rmTracker,
-		preemptor: preemptor,
-		maxOffset: &maxOffset,
-		config:    conf,
+		rmTracker:       rmTracker,
+		preemptionQueue: preemptionQueue,
+		maxOffset:       &maxOffset,
+		config:          conf,
 	}
 	// TODO: move eventStreamHandler buffer size into config
 	handler.eventStreamHandler = initEventStreamHandler(d, 1000, parent.SubScope("resmgr"))
@@ -1118,7 +1118,7 @@ func (h *ServiceHandler) GetPreemptibleTasks(
 	timeout := time.Duration(req.GetTimeout())
 	var preemptionCandidates []*resmgr.PreemptionCandidate
 	for i := 0; i < int(limit); i++ {
-		preemptionCandidate, err := h.preemptor.DequeueTask(timeout * time.Millisecond)
+		preemptionCandidate, err := h.preemptionQueue.DequeueTask(timeout * time.Millisecond)
 		if err != nil {
 			// no more tasks
 			h.metrics.GetPreemptibleTasksTimeout.Inc(1)

@@ -390,9 +390,9 @@ func (s *HandlerTestSuite) TestNewServiceHandler() {
 	})
 
 	tracker := task_mocks.NewMockTracker(s.ctrl)
-	mockPreemptor := mocks.NewMockPreemptor(s.ctrl)
+	mockPreemptionQueue := mocks.NewMockQueue(s.ctrl)
 	handler := NewServiceHandler(dispatcher, tally.NoopScope, tracker,
-		mockPreemptor, Config{})
+		mockPreemptionQueue, Config{})
 	s.NotNil(handler)
 
 	streamHandler := s.handler.GetStreamHandler()
@@ -1428,8 +1428,8 @@ func (s *HandlerTestSuite) TestGetActiveTasks() {
 func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 	defer s.handler.rmTracker.Clear()
 
-	mockPreemptor := mocks.NewMockPreemptor(s.ctrl)
-	s.handler.preemptor = mockPreemptor
+	mockPreemptionQueue := mocks.NewMockQueue(s.ctrl)
+	s.handler.preemptionQueue = mockPreemptionQueue
 
 	// Mock tasks in RUNNING state
 	resp, _ := respool.NewRespool(
@@ -1459,10 +1459,13 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 
 	var calls []*gomock.Call
 	for _, et := range expectedTasks {
-		calls = append(calls, mockPreemptor.EXPECT().DequeueTask(gomock.Any()).Return(&resmgr.PreemptionCandidate{
-			Id:     et.Id,
-			Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
-		}, nil))
+		calls = append(calls, mockPreemptionQueue.
+			EXPECT().
+			DequeueTask(gomock.Any()).
+			Return(&resmgr.PreemptionCandidate{
+				Id:     et.Id,
+				Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
+			}, nil))
 	}
 	gomock.InOrder(calls...)
 
@@ -1479,8 +1482,8 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 
 func (s *HandlerTestSuite) TestGetPreemptibleTasksError() {
 	tracker := task_mocks.NewMockTracker(s.ctrl)
-	mockPreemptor := mocks.NewMockPreemptor(s.ctrl)
-	s.handler.preemptor = mockPreemptor
+	mockPreemptionQueue := mocks.NewMockQueue(s.ctrl)
+	s.handler.preemptionQueue = mockPreemptionQueue
 	s.handler.rmTracker = tracker
 
 	// Mock tasks in RUNNING state
@@ -1534,7 +1537,7 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasksError() {
 		})
 	}
 
-	mockPreemptor.EXPECT().DequeueTask(gomock.Any()).Return(nil, errors.New("error"))
+	mockPreemptionQueue.EXPECT().DequeueTask(gomock.Any()).Return(nil, errors.New("error"))
 
 	// Make RPC request
 	req := &resmgrsvc.GetPreemptibleTasksRequest{
@@ -1546,7 +1549,7 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasksError() {
 	s.NotNil(res)
 	s.Equal(0, len(res.PreemptionCandidates))
 
-	mockPreemptor.EXPECT().DequeueTask(gomock.Any()).Return(&resmgr.PreemptionCandidate{
+	mockPreemptionQueue.EXPECT().DequeueTask(gomock.Any()).Return(&resmgr.PreemptionCandidate{
 		Id:     expectedTasks[0].Id,
 		Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
 	}, nil)
@@ -1556,7 +1559,7 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasksError() {
 	s.NotNil(res)
 	s.Equal(0, len(res.PreemptionCandidates))
 
-	mockPreemptor.EXPECT().DequeueTask(gomock.Any()).Return(&resmgr.PreemptionCandidate{
+	mockPreemptionQueue.EXPECT().DequeueTask(gomock.Any()).Return(&resmgr.PreemptionCandidate{
 		Id:     expectedTasks[0].Id,
 		Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
 	}, nil)

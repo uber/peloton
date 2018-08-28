@@ -34,7 +34,7 @@ type DrainerTestSuite struct {
 	mockCtrl           *gomock.Controller
 	tracker            rm_task.Tracker
 	drainer            Drainer
-	preemptor          *preemption_mocks.MockPreemptor
+	preemptor          *preemption_mocks.MockQueue
 	mockHostmgr        *host_mocks.MockInternalHostServiceYARPCClient
 	eventStreamHandler *eventstream.Handler
 	hostnames          []string
@@ -58,15 +58,15 @@ func (suite *DrainerTestSuite) SetupTest() {
 		nil,
 		tally.Scope(tally.NoopScope))
 
-	suite.preemptor = preemption_mocks.NewMockPreemptor(suite.mockCtrl)
+	suite.preemptor = preemption_mocks.NewMockQueue(suite.mockCtrl)
 
 	suite.drainer = Drainer{
-		drainerPeriod: drainerPeriod,
-		hostMgrClient: suite.mockHostmgr,
-		preemptor:     suite.preemptor,
-		rmTracker:     suite.tracker,
-		lifecycle:     lifecycle.NewLifeCycle(),
-		drainingHosts: stringset.New(),
+		drainerPeriod:   drainerPeriod,
+		hostMgrClient:   suite.mockHostmgr,
+		preemptionQueue: suite.preemptor,
+		rmTracker:       suite.tracker,
+		lifecycle:       lifecycle.NewLifeCycle(),
+		drainingHosts:   stringset.New(),
 	}
 
 	t := &resmgr.Task{

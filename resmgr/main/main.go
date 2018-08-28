@@ -269,7 +269,7 @@ func main() {
 	)
 
 	// Initializing the task preemptor
-	preemption.InitPreemptor(
+	preemptor := preemption.NewPreemptor(
 		rootScope,
 		cfg.ResManager.PreemptionConfig,
 		task.GetTracker(),
@@ -281,14 +281,14 @@ func main() {
 		hostmgrClient,
 		cfg.ResManager.HostDrainerPeriod,
 		task.GetTracker(),
-		preemption.GetPreemptor())
+		preemptor)
 
 	// Initialize resource manager service handlers
 	serviceHandler := resmgr.NewServiceHandler(
 		dispatcher,
 		rootScope,
 		task.GetTracker(),
-		preemption.GetPreemptor(),
+		preemptor,
 		cfg.ResManager,
 	)
 
@@ -311,6 +311,7 @@ func main() {
 		recoveryHandler,
 		drainer,
 		reconciler,
+		preemptor,
 	)
 
 	candidate, err := leader.NewCandidate(

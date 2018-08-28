@@ -2,7 +2,6 @@ package preemption
 
 import (
 	"reflect"
-	"sync"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -28,74 +27,85 @@ import (
 // represents the max size of the preemption queue
 const maxPreemptionQueueSize = 10000
 
-var (
-	once sync.Once
-	p    *preemptor
-)
-
-// Preemptor is the interface for the task preemptor which preempts tasks from
-// resource pools whose allocation is more than the entitlement for than a
-// given number of cycles
-type Preemptor interface {
-	Start() error
-	Stop() error
+// Queue exposes APIs to interact with the preemption queue.
+type Queue interface {
+	// DequeueTask dequeues the RUNNING tasks from the preemption queue.
+	// These tasks are then picked up by the jobmanager to be preempted.
 	DequeueTask(maxWaitTime time.Duration) (*resmgr.PreemptionCandidate, error)
+	// EnqueueTasks enqueues tasks either into the preemption queue for
+	// RUNNING tasks or to the pending queue for NON_RUNNING tasks.
+	// This API can be used by a caller whp is making a the decision to
+	// preempt certain tasks outside of the preemptor.
+	// This can include cases where a host is being taken down for maintenance.
 	EnqueueTasks(tasks []*task.RMTask, event resmgr.PreemptionReason) error
 }
 
-type preemptor struct {
-	enabled                      bool
-	resTree                      respool.Tree
-	preemptionPeriod             time.Duration
+// Preemptor preempts tasks based on either resource pool allocation or
+// external sources eg host maintenance.
+type Preemptor struct {
+	// lifecycle manager
+	lifeCycle lifecycle.LifeCycle
+
+	// preemption can be enabled per cluster
+	enabled bool
+	// Defines how often does the preemptor run
+	preemptionPeriod time.Duration
+	// the number of consecutive cycles after which the resource pool is
+	// considered for preemption,
+	// eg if set to 3 then for 3 consecutive cycles the resource pool's
+	// allocation should be greater than it entitlement.
 	sustainedOverAllocationCount int
-	respoolState                 map[string]int
-	ranker                       ranker
-	tracker                      task.Tracker
-	preemptionQueue              queue.Queue
-	taskSet                      stringset.StringSet // Set containing tasks which are currently in the PreemptionQueue
-	scope                        tally.Scope
-	m                            map[string]*Metrics
-	lifeCycle                    lifecycle.LifeCycle // lifecycle manager
+
+	// The resource pool tree
+	resTree respool.Tree
+	// The map of respool-id -> over allocation count
+	respoolState map[string]int
+
+	// The set of tasks in the preemption queue
+	taskSet stringset.StringSet // Set containing tasks which are currently in the PreemptionQueue
+	// The queue of tasks to be preempted
+	preemptionQueue queue.Queue
+
+	// the ranker ranks the tasks in the resource pool to be preempted
+	ranker ranker
+	// The task tracker
+	tracker task.Tracker
+
+	// The metrics scope
+	scope tally.Scope
+	// lazily populated map keyed by the resource pool ID
+	m map[string]*Metrics
 }
 
-// InitPreemptor initializes the task preemptor
-func InitPreemptor(
+// NewPreemptor creates a new preemptor and returns it
+func NewPreemptor(
 	parent tally.Scope,
 	cfg *common.PreemptionConfig,
 	tracker task.Tracker,
-) {
-	once.Do(func() {
-		p = &preemptor{
-			resTree:                      respool.GetTree(),
-			preemptionPeriod:             cfg.TaskPreemptionPeriod,
-			sustainedOverAllocationCount: cfg.SustainedOverAllocationCount,
-			enabled: cfg.Enabled,
-			preemptionQueue: queue.NewQueue(
-				"preemption-queue",
-				reflect.TypeOf(resmgr.PreemptionCandidate{}),
-				maxPreemptionQueueSize,
-			),
-			taskSet:      stringset.New(),
-			respoolState: make(map[string]int),
-			ranker:       newStatePriorityRuntimeRanker(tracker),
-			tracker:      tracker,
-			scope:        parent.SubScope("preemption"),
-			m:            make(map[string]*Metrics),
-			lifeCycle:    lifecycle.NewLifeCycle(),
-		}
-	})
-}
+) *Preemptor {
 
-// GetPreemptor returns the task scheduler instance
-func GetPreemptor() Preemptor {
-	if p == nil {
-		log.Fatalf("Task preemptor is not initialized")
+	return &Preemptor{
+		lifeCycle:                    lifecycle.NewLifeCycle(),
+		enabled:                      cfg.Enabled,
+		preemptionPeriod:             cfg.TaskPreemptionPeriod,
+		sustainedOverAllocationCount: cfg.SustainedOverAllocationCount,
+		resTree:      respool.GetTree(),
+		respoolState: make(map[string]int),
+		taskSet:      stringset.New(),
+		preemptionQueue: queue.NewQueue(
+			"preemption-queue",
+			reflect.TypeOf(resmgr.PreemptionCandidate{}),
+			maxPreemptionQueueSize,
+		),
+		ranker:  newStatePriorityRuntimeRanker(tracker),
+		tracker: tracker,
+		scope:   parent.SubScope("preemption"),
+		m:       make(map[string]*Metrics),
 	}
-	return p
 }
 
 // returns per resource pool tagged metrics
-func (p *preemptor) metrics(pool respool.ResPool) *Metrics {
+func (p *Preemptor) metrics(pool respool.ResPool) *Metrics {
 	metric, ok := p.m[pool.ID()]
 	if !ok {
 		metric = NewMetrics(p.scope.Tagged(map[string]string{
@@ -107,9 +117,9 @@ func (p *preemptor) metrics(pool respool.ResPool) *Metrics {
 }
 
 // Start starts Task Preemptor process
-func (p *preemptor) Start() error {
+func (p *Preemptor) Start() error {
 	if !p.enabled {
-		log.Infof("Task preemptor is not enabled to run")
+		log.Infof("Task Preemptor is not enabled to run")
 		return nil
 	}
 
@@ -128,9 +138,9 @@ func (p *preemptor) Start() error {
 					log.Info("Exiting Task Preemptor")
 					return
 				case <-ticker.C:
-					err := p.preemptTasks()
+					err := p.preemptOnce()
 					if err != nil {
-						log.WithError(err).Warn("Task preemption unsuccessful")
+						log.WithError(err).Warn("Preemption cycle failed")
 					}
 				}
 			}
@@ -140,21 +150,21 @@ func (p *preemptor) Start() error {
 }
 
 // Stop stops Task Preemptor process
-func (p *preemptor) Stop() error {
+func (p *Preemptor) Stop() error {
 	if !p.lifeCycle.Stop() {
-		log.Warn("Task preemptor is already stopped, no action will be performed")
+		log.Warn("Task Preemptor is already stopped, no action will be performed")
 		return nil
 	}
-	log.Info("Stopping Task preemptor")
+	log.Info("Stopping Task Preemptor")
 
-	// Wait for task preemptor to be stopped
+	// Wait for task Preemptor to be stopped
 	p.lifeCycle.Wait()
 	log.Info("Task Preemptor Stopped")
 	return nil
 }
 
-// DequeueTask dequeues a task from the preemption queue
-func (p *preemptor) DequeueTask(maxWaitTime time.Duration) (
+// DequeueTask dequeues a running task from the preemption queue
+func (p *Preemptor) DequeueTask(maxWaitTime time.Duration) (
 	*resmgr.PreemptionCandidate, error) {
 	item, err := p.preemptionQueue.Dequeue(maxWaitTime)
 	if err != nil {
@@ -171,51 +181,15 @@ func (p *preemptor) DequeueTask(maxWaitTime time.Duration) (
 	return taskID, nil
 }
 
-// EnqueueTasks enqueues the tasks into preemption queue
-func (p *preemptor) EnqueueTasks(tasks []*task.RMTask, reason resmgr.PreemptionReason) error {
-	var errs error
-
-	for _, t := range tasks {
-		switch t.GetCurrentState() {
-		case peloton_task.TaskState_RUNNING:
-			// Do not add to preemption queue if it already has an entry for this Peloton task
-			if p.taskSet.Contains(t.Task().GetId().GetValue()) {
-				log.
-					WithField("task_id", t.Task().Id.Value).
-					Debug("Skipping enqueue. Task already present in preemption queue.")
-				continue
-			}
-			preemptionCandidate := &resmgr.PreemptionCandidate{
-				Id:     t.Task().Id,
-				Reason: reason,
-			}
-			err := p.preemptionQueue.Enqueue(preemptionCandidate)
-			if err != nil {
-				// add error and metrics and move to the next task
-				errs = multierr.Append(errs, errors.Wrapf(err,
-					"unable to add RUNNING task to preemption queue task ID:%s",
-					t.Task().GetId().Value))
-				continue
-			}
-			// Add task to taskSet
-			p.taskSet.Add(preemptionCandidate.GetId().GetValue())
-		default:
-			// For all non running tasks
-			err := p.evictNonRunningTask(t)
-			if err != nil {
-				// add error and metrics and move to the next task
-				errs = multierr.Append(errs,
-					errors.Wrapf(err, "unable to evict task:%s with "+
-						"state:%s",
-						t.Task().GetId().Value, t.GetCurrentState().String()))
-				continue
-			}
-		}
-	}
-	return errs
+// EnqueueTasks enqueues tasks to be preempted
+func (p *Preemptor) EnqueueTasks(
+	tasks []*task.RMTask,
+	reason resmgr.PreemptionReason,
+) error {
+	return p.processTasks(tasks, reason)
 }
 
-func (p *preemptor) preemptTasks() error {
+func (p *Preemptor) preemptOnce() error {
 	// collect resource allocation from all resource pools
 	p.updateResourcePoolsState()
 
@@ -232,9 +206,21 @@ func (p *preemptor) preemptTasks() error {
 	return combinedErr
 }
 
+// returns those resource pools which are eligible for preemption
+func (p *Preemptor) getEligibleResPools() (resPools []string) {
+	for respoolID, count := range p.respoolState {
+		if count >= p.sustainedOverAllocationCount {
+			resPools = append(resPools, respoolID)
+		}
+	}
+	log.WithField("pools", resPools).Info(
+		"Eligible resource pools for preemption")
+	return resPools
+}
+
 // Loop through all the leaf nodes and set the count to the number consecutive of times
 // the  allocation > entitlement; reset to zero otherwise
-func (p *preemptor) updateResourcePoolsState() {
+func (p *Preemptor) updateResourcePoolsState() {
 	nodes := p.resTree.GetAllNodes(true)
 	for e := nodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
@@ -251,14 +237,9 @@ func (p *preemptor) updateResourcePoolsState() {
 	}
 }
 
-// Resets the state of the resource pool
-func (p *preemptor) markProcessed(respoolID string) {
-	p.respoolState[respoolID] = 0
-}
-
 // processResourcePool takes a resource pool ID and performs actions
 // on the tasks based on their current state
-func (p *preemptor) processResourcePool(respoolID string) error {
+func (p *Preemptor) processResourcePool(respoolID string) error {
 	resourcePool, err := p.resTree.Get(&peloton.ResourcePoolID{Value: respoolID})
 	if err != nil {
 		return errors.Wrap(err, "unable to get resource pool")
@@ -275,66 +256,88 @@ func (p *preemptor) processResourcePool(respoolID string) error {
 		WithField("respool_id", respoolID).
 		Debug("Tasks to evict from resource pool")
 
+	// we've processed the pool
+	p.markProcessed(respoolID)
+	return p.processTasks(
+		tasks,
+		resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
+	)
+}
+
+// processes the tasks for preemption with the specified reason
+func (p *Preemptor) processTasks(
+	tasks []*task.RMTask, reason resmgr.PreemptionReason) error {
+
 	var errs error
 	for _, t := range tasks {
 		switch t.GetCurrentState() {
 		case peloton_task.TaskState_RUNNING:
-			// Do not add to preemption queue if it already has an entry for this Peloton task
-			if p.taskSet.Contains(t.Task().GetId().GetValue()) {
-				log.
-					WithField("task_id", t.Task().Id.Value).
-					WithField("respool_id", respoolID).
-					Debug("Skipping enqueue. Task already present in preemption queue.")
-				continue
-			}
-			// Add to preemption queue
-			log.
-				WithField("task_id", t.Task().Id.Value).
-				WithField("respool_id", respoolID).
-				Debug("Adding task to preemption queue")
-			preemptionCandidate := &resmgr.PreemptionCandidate{
-				Id:     t.Task().Id,
-				Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
-			}
-			err := p.preemptionQueue.Enqueue(preemptionCandidate)
+			err := p.processRunningTask(t, reason)
 			if err != nil {
-				// add error and metrics and move to the next task
-				errs = multierr.Append(errs,
-					errors.Wrapf(err, "unable to add RUNNING task to "+
-						"preemption queue task ID:%s",
+				errs = multierr.Append(
+					errs,
+					errors.Wrapf(err,
+						"failed to process running task:%s",
 						t.Task().GetId().Value))
-				p.metrics(resourcePool).TasksFailedPreemption.Inc(int64(1))
-				continue
 			}
-			// Add task to taskSet
-			p.taskSet.Add(preemptionCandidate.GetId().GetValue())
-			p.metrics(resourcePool).RunningTasksPreempted.Inc(int64(1))
 		default:
 			// For all non running tasks
-			err := p.evictNonRunningTask(t)
+			err := p.processNonRunningTask(t, reason)
 			if err != nil {
-				// add error and metrics and move to the next task
-				errs = multierr.Append(errs,
-					errors.Wrapf(err, "unable to evict task:%s with "+
-						"state:%s",
+				errs = multierr.Append(
+					errs, errors.Wrapf(err,
+						"failed to process non-running task:%s with "+
+							"state:%s",
 						t.Task().GetId().Value, t.GetCurrentState().String()))
-				p.metrics(resourcePool).TasksFailedPreemption.Inc(int64(1))
-				continue
 			}
-			p.metrics(resourcePool).NonRunningTasksPreempted.Inc(int64(1))
 		}
-		// update resource freed metric
-		// NB: This can also include resource for running tasks which will
-		// technically will be freed once the task is preempted by job manager
-		p.metrics(resourcePool).ResourcesFreed.Update(
-			scalar.ConvertToResmgrResource(t.Task().Resource))
 	}
-	// we've processed the pool
-	p.markProcessed(respoolID)
 	return errs
 }
 
-func (p *preemptor) evictNonRunningTask(rmTask *task.RMTask) error {
+func (p *Preemptor) processRunningTask(
+	t *task.RMTask, reason resmgr.PreemptionReason,
+) error {
+	// Do not add to preemption queue if it already has an entry for this
+	// Peloton task
+	if p.taskSet.Contains(t.Task().GetId().GetValue()) {
+		log.
+			WithField("task_id", t.Task().Id.Value).
+			Debug("Skipping enqueue. Task already present in " +
+				"preemption queue.")
+		return nil
+	}
+
+	log.
+		WithField("task_id", t.Task().Id.Value).
+		Debug("Adding task to preemption queue")
+	preemptionCandidate := &resmgr.PreemptionCandidate{
+		Id:     t.Task().Id,
+		Reason: reason,
+	}
+
+	// Add to preemption queue
+	err := p.preemptionQueue.Enqueue(preemptionCandidate)
+	if err != nil {
+		return errors.Wrapf(err, "unable to add task to "+
+			"preemption queue task ID:%s",
+			t.Task().GetId().Value)
+	}
+
+	// Add task to taskSet
+	p.taskSet.Add(preemptionCandidate.GetId().GetValue())
+	return nil
+}
+
+// 1) Moves the state to PENDING state
+// 2) Moves the task back to the pending queue
+// 3) Add the task resources back to demand
+// 4) Subtract the task resources from the resource pool allocation
+// The task should be scheduled again at a later time.
+func (p *Preemptor) processNonRunningTask(
+	rmTask *task.RMTask,
+	reason resmgr.PreemptionReason,
+) error {
 	t := rmTask.Task()
 	resPool := rmTask.Respool()
 	log.
@@ -343,14 +346,9 @@ func (p *preemptor) evictNonRunningTask(rmTask *task.RMTask) error {
 		WithField("state", rmTask.GetCurrentState()).
 		Infof("Evicting non-running task from resource pool")
 
-	trackedTask := p.tracker.GetTask(t.Id)
-	if trackedTask == nil {
-		return errors.Errorf("task not found in tracker ID:%s", t.Id.Value)
-	}
-
 	// Transit task to PENDING
-	if err := trackedTask.TransitTo(peloton_task.TaskState_PENDING.String(),
-		statemachine.WithReason("non-running task evicted")); err != nil {
+	if err := rmTask.TransitTo(peloton_task.TaskState_PENDING.String(),
+		statemachine.WithReason(reason.String())); err != nil {
 		log.
 			WithField("task_id", t.Id.Value).
 			WithField("respool_id", resPool.ID()).
@@ -394,14 +392,7 @@ func (p *preemptor) evictNonRunningTask(rmTask *task.RMTask) error {
 	return nil
 }
 
-// returns those resource pools which are eligible for preemption
-func (p *preemptor) getEligibleResPools() (resPools []string) {
-	for respoolID, count := range p.respoolState {
-		if count >= p.sustainedOverAllocationCount {
-			resPools = append(resPools, respoolID)
-		}
-	}
-	log.WithField("pools", resPools).Info(
-		"Eligible resource pools for preemption")
-	return resPools
+// Resets the state of the resource pool
+func (p *Preemptor) markProcessed(respoolID string) {
+	p.respoolState[respoolID] = 0
 }

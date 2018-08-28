@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/common/queue"
+	qmock "code.uber.internal/infra/peloton/common/queue/mocks"
 	"code.uber.internal/infra/peloton/common/stringset"
 	res_common "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
@@ -27,6 +29,7 @@ import (
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -35,7 +38,7 @@ type PreemptorTestSuite struct {
 	suite.Suite
 	mockCtrl *gomock.Controller
 
-	preemptor          preemptor
+	preemptor          Preemptor
 	tracker            rm_task.Tracker
 	eventStreamHandler *eventstream.Handler
 }
@@ -51,6 +54,7 @@ var (
 
 func (suite *PreemptorTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
+
 	rm_task.InitTaskTracker(
 		tally.NoopScope,
 		tasktestutil.CreateTaskConfig())
@@ -64,7 +68,7 @@ func (suite *PreemptorTestSuite) SetupSuite() {
 		nil,
 		tally.Scope(tally.NoopScope))
 
-	suite.preemptor = preemptor{
+	suite.preemptor = Preemptor{
 		resTree:                      nil,
 		preemptionPeriod:             1 * time.Second,
 		sustainedOverAllocationCount: 5,
@@ -87,7 +91,7 @@ func (suite *PreemptorTestSuite) TearDownTest() {
 	suite.tracker.Clear()
 }
 
-func (suite *PreemptorTestSuite) TestPreemptor_StartEnabled() {
+func (suite *PreemptorTestSuite) TestPreemptorStartEnabled() {
 	defer suite.preemptor.Stop()
 	suite.preemptor.enabled = true
 	err := suite.preemptor.Start()
@@ -95,7 +99,7 @@ func (suite *PreemptorTestSuite) TestPreemptor_StartEnabled() {
 	suite.NotNil(suite.preemptor.lifeCycle.StopCh())
 }
 
-func (suite *PreemptorTestSuite) TestPreemptor_StartDisabled() {
+func (suite *PreemptorTestSuite) TestPreemptorStartDisabled() {
 	defer suite.preemptor.Stop()
 	suite.preemptor.enabled = false
 	err := suite.preemptor.Start()
@@ -161,12 +165,16 @@ func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState() {
 	}
 
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
+	mockResPool.EXPECT().GetPath().Return("/respool-1").AnyTimes()
+
 	l := list.New()
 	l.PushBack(mockResPool)
+
 	mockResTree.EXPECT().GetAllNodes(true).Return(
 		l,
 	).AnyTimes()
 	suite.preemptor.resTree = mockResTree
+
 	suite.preemptor.sustainedOverAllocationCount = 5
 
 	for _, t := range tt {
@@ -187,14 +195,7 @@ func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState() {
 	}
 }
 
-func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState_MarkProcessed() {
-	respoolID := "respool-1"
-	p.respoolState[respoolID] = 1
-	p.markProcessed(respoolID)
-	suite.Equal(0, p.respoolState[respoolID])
-}
-
-func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState_Reset() {
+func (suite *PreemptorTestSuite) TestUpdateResourcePoolsStateReset() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
@@ -209,34 +210,39 @@ func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState_Reset() {
 
 	// mock allocation going down on compared to the entitlement once
 	gomock.InOrder(
-		mockResPool.EXPECT().GetTotalAllocatedResources().Return(&scalar.Resources{
-			CPU:    20,
-			MEMORY: 200,
-			DISK:   2000,
-			GPU:    0,
-		}), mockResPool.EXPECT().GetTotalAllocatedResources().Return(&scalar.Resources{
-			CPU:    20,
-			MEMORY: 200,
-			DISK:   2000,
-			GPU:    0,
-		}), mockResPool.EXPECT().GetTotalAllocatedResources().Return(&scalar.Resources{
-			CPU:    20,
-			MEMORY: 200,
-			DISK:   2000,
-			GPU:    0,
-		}), mockResPool.EXPECT().GetTotalAllocatedResources().Return(&scalar.Resources{
-			CPU:    20,
-			MEMORY: 200,
-			DISK:   2000,
-			GPU:    0,
-		}),
+		mockResPool.EXPECT().GetTotalAllocatedResources().Return(
+			&scalar.Resources{
+				CPU:    20,
+				MEMORY: 200,
+				DISK:   2000,
+				GPU:    0,
+			}), mockResPool.EXPECT().GetTotalAllocatedResources().Return(
+			&scalar.Resources{
+				CPU:    20,
+				MEMORY: 200,
+				DISK:   2000,
+				GPU:    0,
+			}), mockResPool.EXPECT().GetTotalAllocatedResources().Return(
+			&scalar.Resources{
+				CPU:    20,
+				MEMORY: 200,
+				DISK:   2000,
+				GPU:    0,
+			}), mockResPool.EXPECT().GetTotalAllocatedResources().Return(
+			&scalar.Resources{
+				CPU:    20,
+				MEMORY: 200,
+				DISK:   2000,
+				GPU:    0,
+			}),
 		// allocation goes down
-		mockResPool.EXPECT().GetTotalAllocatedResources().Return(&scalar.Resources{
-			CPU:    10,
-			MEMORY: 100,
-			DISK:   1000,
-			GPU:    0,
-		}),
+		mockResPool.EXPECT().GetTotalAllocatedResources().Return(
+			&scalar.Resources{
+				CPU:    10,
+				MEMORY: 100,
+				DISK:   1000,
+				GPU:    0,
+			}),
 	)
 
 	mockResPools := list.New()
@@ -258,12 +264,13 @@ func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState_Reset() {
 	suite.Equal(0, len(respools))
 }
 
-func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForRunningTasks() {
+func (suite *PreemptorTestSuite) TestProcessResourcePoolForRunningTasks() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
 	// Mocks
-	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
+	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).
+		Return(mockResPool, nil)
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
 	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
 		CPU:    20,
@@ -277,7 +284,8 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForRunningTask
 		DISK:   2450,
 		GPU:    1,
 	}
-	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation).AnyTimes()
+	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation).
+		AnyTimes()
 	mockResPool.EXPECT().GetPath().Return("/respool-1")
 
 	numRunningTasks := 3
@@ -297,15 +305,16 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForRunningTask
 	// there should be 3 tasks in the preemption queue
 	suite.Equal(numRunningTasks, suite.preemptor.preemptionQueue.Length())
 
-	suite.Equal(0, p.respoolState["respool-1"])
+	suite.Equal(0, suite.preemptor.respoolState["respool-1"])
 }
 
-func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForReadyTasks() {
+func (suite *PreemptorTestSuite) TestProcessResourcePoolForReadyTasks() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
 	// Mocks
-	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
+	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).
+		Return(mockResPool, nil)
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
 	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
 		CPU:    20,
@@ -364,7 +373,7 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForReadyTasks(
 	}, demand)
 }
 
-func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForPlacingTasks() {
+func (suite *PreemptorTestSuite) TestProcessResourcePoolForPlacingTasks() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
@@ -430,80 +439,273 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForPlacingTask
 	}, demand)
 }
 
-func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolErrors() {
-	mockResTree := mocks.NewMockTree(suite.mockCtrl)
+func (suite *PreemptorTestSuite) TestProcessResourceGetError() {
+	ctr := gomock.NewController(suite.T())
+	defer ctr.Finish()
+
+	fakeGetError := fmt.Errorf("fake Get error")
+
+	mockResTree := mocks.NewMockTree(ctr)
+	mockResTree.
+		EXPECT().
+		Get(gomock.Any()).
+		Return(nil, fakeGetError)
 	suite.preemptor.resTree = mockResTree
-	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
 	// Test Respool Get error
-	mockResTree.EXPECT().Get(gomock.Any()).Return(nil, fmt.Errorf("Fake Get error"))
 	err := suite.preemptor.processResourcePool("respool-1")
-	suite.Error(err)
+	suite.NotNil(err)
+	suite.True(strings.Contains(err.Error(), fakeGetError.Error()))
+}
 
-	// Test EnqueueGang error
-	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
-	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
-	entitlement := scalar.Resources{
+var (
+	_entitlement = &scalar.Resources{
 		CPU:    20,
 		MEMORY: 200,
 		DISK:   2000,
 		GPU:    1,
 	}
-	mockResPool.EXPECT().GetEntitlement().Return(&entitlement).AnyTimes()
-	allocation := &scalar.Allocation{
+
+	_allocation = &scalar.Allocation{
 		Value: map[scalar.AllocationType]*scalar.Resources{
 			scalar.TotalAllocation: {
 				CPU:    25,
 				MEMORY: 500,
 				DISK:   2450,
 				GPU:    1,
-			}}}
-	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation.
-		GetByType(scalar.TotalAllocation)).AnyTimes()
-	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
-		func(res *scalar.Allocation) {
-			allocation = allocation.Subtract(res)
-		}).Return(nil).AnyTimes()
-	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(fmt.Errorf("Fake EnqueueGang error"))
+			},
+		},
+	}
+)
+
+func (suite *PreemptorTestSuite) TestProcessRunningTaskEnqueueError() {
+	ctr := gomock.NewController(suite.T())
+	defer ctr.Finish()
+
+	fakeEnqueueError := fmt.Errorf("fake EnqueueGang error")
+
+	mockPQueue := qmock.NewMockQueue(ctr)
+	mockPQueue.
+		EXPECT().
+		Enqueue(gomock.Any()).
+		Return(fakeEnqueueError)
+	suite.preemptor.preemptionQueue = mockPQueue
+
+	mockResPool := mocks.NewMockResPool(ctr)
+	// Add 1 task in the tracker with id job1-0
+	tasks := suite.createTasks(1, mockResPool)
+	for _, t := range tasks {
+		suite.transitToRunning(t.Id)
+	}
+
+	// Get the added RMTask
+	t := suite.tracker.GetTask(&peloton.TaskID{Value: "job1-0"})
+	suite.preemptor.taskSet.Clear()
+
+	err := suite.preemptor.processRunningTask(
+		t,
+		resmgr.PreemptionReason_PREEMPTION_REASON_HOST_MAINTENANCE,
+	)
+	suite.NotNil(err)
+	suite.True(strings.Contains(err.Error(), fakeEnqueueError.Error()))
+	suite.Equal(0, len(suite.preemptor.taskSet.ToSlice()))
+}
+
+func (suite *PreemptorTestSuite) TestProcessResourcePoolEnqueueGangError() {
+	ctr := gomock.NewController(suite.T())
+	defer ctr.Finish()
+
+	// Test EnqueueGang error
+	fakeEnqueueError := fmt.Errorf("fake EnqueueGang error")
+
+	//Mock resource pool
+	mockResPool := mocks.NewMockResPool(ctr)
+	mockResPool.
+		EXPECT().
+		ID().
+		Return("respool-1")
+	mockResPool.
+		EXPECT().
+		GetEntitlement().
+		Return(_entitlement)
+	mockResPool.
+		EXPECT().
+		GetTotalAllocatedResources().
+		Return(_allocation.GetByType(scalar.TotalAllocation))
+	mockResPool.
+		EXPECT().
+		EnqueueGang(gomock.Any()).
+		Return(fakeEnqueueError)
+
+		// Mock resource pool tree
+	mockResTree := mocks.NewMockTree(ctr)
+	mockResTree.
+		EXPECT().
+		Get(&peloton.ResourcePoolID{Value: "respool-1"}).
+		Return(mockResPool, nil)
+	suite.preemptor.resTree = mockResTree
+
+	// Add tasks in the tracker in READY state
 	numReadyTasks := 1
 	tasks := suite.createTasks(numReadyTasks, mockResPool)
 	suite.preemptor.ranker = suite.getMockRanker(tasks)
 	for _, t := range tasks {
 		suite.transitToReady(t.Id)
 	}
-	err = suite.preemptor.processResourcePool("respool-1")
-	suite.Error(err)
+	defer suite.tracker.Clear()
+
+	err := suite.preemptor.processResourcePool("respool-1")
+	suite.NotNil(err)
+	suite.True(strings.Contains(err.Error(), fakeEnqueueError.Error()))
+}
+
+func (suite *PreemptorTestSuite) TestProcessResourcePoolAddDemandError() {
+	ctr := gomock.NewController(suite.T())
+	defer ctr.Finish()
 
 	// Test AddToDemand error
-	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
-	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
-	mockResPool.EXPECT().GetEntitlement().Return(&entitlement).AnyTimes()
-	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation.
-		GetByType(scalar.TotalAllocation)).AnyTimes()
-	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
-		func(res *scalar.Allocation) {
-			allocation = allocation.Subtract(res)
-		}).Return(nil).AnyTimes()
-	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil)
-	mockResPool.EXPECT().AddToDemand(gomock.Any()).Return(fmt.Errorf("Fake AddToDemand error"))
+	fakeDemandError := fmt.Errorf("fake AddToDemand error")
+
+	//Mock resource pool
+	mockResPool := mocks.NewMockResPool(ctr)
+	mockResPool.
+		EXPECT().
+		ID().
+		Return("respool-1").
+		AnyTimes()
+	mockResPool.
+		EXPECT().
+		GetEntitlement().
+		Return(_entitlement)
+	mockResPool.
+		EXPECT().
+		GetTotalAllocatedResources().
+		Return(_allocation.GetByType(scalar.TotalAllocation))
+	mockResPool.
+		EXPECT().
+		EnqueueGang(gomock.Any()).
+		Return(nil)
+	mockResPool.
+		EXPECT().
+		AddToDemand(gomock.Any()).
+		Return(fakeDemandError)
+
+		// Mock resource pool tree
+	mockResTree := mocks.NewMockTree(ctr)
+	mockResTree.
+		EXPECT().
+		Get(&peloton.ResourcePoolID{Value: "respool-1"}).
+		Return(mockResPool, nil)
+	suite.preemptor.resTree = mockResTree
+
+	// Add tasks in the tracker in READY state
+	numReadyTasks := 1
+	tasks := suite.createTasks(numReadyTasks, mockResPool)
+	suite.preemptor.ranker = suite.getMockRanker(tasks)
 	for _, t := range tasks {
 		suite.transitToReady(t.Id)
 	}
-	err = suite.preemptor.processResourcePool("respool-1")
-	suite.Error(err)
+	defer suite.tracker.Clear()
+
+	err := suite.preemptor.processResourcePool("respool-1")
+	suite.NotNil(err)
+	suite.True(strings.Contains(err.Error(), fakeDemandError.Error()))
 }
 
-func (suite *PreemptorTestSuite) TestPreemptor_Init() {
+func (suite *PreemptorTestSuite) TestProcessResourcePoolSubtractAllocationError() {
+	ctr := gomock.NewController(suite.T())
+	defer ctr.Finish()
+
+	fakeAllocationError := fmt.Errorf("fake AddToDemand error")
+
+	//Mock resource pool
+	mockResPool := mocks.NewMockResPool(ctr)
+	mockResPool.
+		EXPECT().
+		ID().
+		Return("respool-1").
+		AnyTimes()
+	mockResPool.
+		EXPECT().
+		GetEntitlement().
+		Return(_entitlement).AnyTimes()
+	mockResPool.
+		EXPECT().
+		GetTotalAllocatedResources().
+		Return(
+			_allocation.GetByType(scalar.TotalAllocation)).
+		AnyTimes()
+	mockResPool.
+		EXPECT().
+		SubtractFromAllocation(gomock.Any()).
+		Return(fakeAllocationError)
+	mockResPool.
+		EXPECT().
+		AddToDemand(gomock.Any()).
+		Return(nil)
+	mockResPool.
+		EXPECT().
+		EnqueueGang(gomock.Any()).
+		Return(nil)
+
+	// Mock resource pool tree
+	mockResTree := mocks.NewMockTree(ctr)
+	mockResTree.
+		EXPECT().
+		Get(&peloton.ResourcePoolID{Value: "respool-1"}).
+		Return(mockResPool, nil)
+	suite.preemptor.resTree = mockResTree
+
+	// Add tasks in the tracker in READY state
+	numReadyTasks := 1
+	tasks := suite.createTasks(numReadyTasks, mockResPool)
+	suite.preemptor.ranker = suite.getMockRanker(tasks)
+	for _, t := range tasks {
+		suite.transitToReady(t.Id)
+	}
+	defer suite.tracker.Clear()
+
+	// Test Allocation error
+	err := suite.preemptor.processResourcePool("respool-1")
+	suite.True(strings.Contains(err.Error(), fakeAllocationError.Error()))
+}
+
+func (suite *PreemptorTestSuite) TestPreemptorEnqueue() {
+	ctr := gomock.NewController(suite.T())
+	defer ctr.Finish()
+
+	mockResPool := mocks.NewMockResPool(ctr)
+	// Add 1 task in the tracker with id job1-0
+	tasks := suite.createTasks(1, mockResPool)
+	for _, t := range tasks {
+		suite.transitToRunning(t.Id)
+	}
+
+	// clear the task set before the test
+	suite.preemptor.taskSet.Clear()
+
+	// get the task from the tracker
+	t := suite.tracker.GetTask(&peloton.TaskID{Value: "job1-0"})
+
+	err := suite.preemptor.EnqueueTasks(
+		[]*rm_task.RMTask{t},
+		resmgr.PreemptionReason_PREEMPTION_REASON_HOST_MAINTENANCE,
+	)
+	suite.NoError(err)
+	suite.Equal(1, len(suite.preemptor.taskSet.ToSlice()))
+}
+
+func (suite *PreemptorTestSuite) TestNewPreemptor() {
 	suite.initResourceTree()
-	InitPreemptor(tally.NoopScope, &res_common.PreemptionConfig{
+	p := NewPreemptor(tally.NoopScope, &res_common.PreemptionConfig{
 		Enabled:                      true,
 		TaskPreemptionPeriod:         100 * time.Hour,
 		SustainedOverAllocationCount: 100,
 	}, suite.tracker)
-	suite.NotNil(GetPreemptor())
+	suite.NotNil(p)
 }
 
-func (suite *PreemptorTestSuite) TestPreemptionQueue_DuplicateTasks() {
+func (suite *PreemptorTestSuite) TestPreemptionQueueDuplicateTasks() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
@@ -552,7 +754,7 @@ func (suite *PreemptorTestSuite) TestPreemptionQueue_DuplicateTasks() {
 	suite.Equal(numRunningTasks, suite.preemptor.preemptionQueue.Length())
 }
 
-func (suite *PreemptorTestSuite) TestPreemptor_DequeueTask() {
+func (suite *PreemptorTestSuite) TestPreemptorDequeueTask() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
@@ -600,10 +802,40 @@ func (suite *PreemptorTestSuite) TestPreemptor_DequeueTask() {
 	suite.Error(err)
 }
 
+func (suite *PreemptorTestSuite) TestPreemptorDequeueTaskError() {
+	fakeErr := errors.New("fake error")
+
+	tt := []struct {
+		wantErr error
+	}{
+		{
+			wantErr: queue.DequeueTimeOutError{},
+		},
+		{
+			wantErr: fakeErr,
+		},
+	}
+
+	for _, t := range tt {
+		mockQ := qmock.NewMockQueue(suite.mockCtrl)
+		mockQ.EXPECT().Dequeue(gomock.Any()).Return(nil,
+			t.wantErr)
+
+		p := &Preemptor{
+			preemptionQueue: mockQ,
+		}
+
+		i, err := p.DequeueTask(1 * time.Second)
+		suite.EqualError(t.wantErr, err.Error(), "unexpected error")
+		suite.Nil(i)
+	}
+}
+
 func TestPreemptor(t *testing.T) {
 	suite.Run(t, new(PreemptorTestSuite))
 }
 
+// Have to do this because the preemptor depends on the resTree
 func (suite *PreemptorTestSuite) initResourceTree() {
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
 	gomock.InOrder(

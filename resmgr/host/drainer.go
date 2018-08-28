@@ -29,14 +29,14 @@ const (
 // Drainer defines the host drainer which drains
 // the hosts which are to be put into maintenance
 type Drainer struct {
-	hostMgrClient hostsvc.InternalHostServiceYARPCClient // Host Manager client
-	metrics       *Metrics
-	rmTracker     rmtask.Tracker       // Task Tracker
-	started       int32                // State of the host drainer
-	drainerPeriod time.Duration        // Period to run host drainer
-	preemptor     preemption.Preemptor // Task Preemptor
-	lifecycle     lifecycle.LifeCycle  // Lifecycle manager
-	drainingHosts stringset.StringSet  // Set of hosts currently being drained
+	hostMgrClient   hostsvc.InternalHostServiceYARPCClient // Host Manager client
+	metrics         *Metrics
+	rmTracker       rmtask.Tracker      // Task Tracker
+	started         int32               // State of the host drainer
+	drainerPeriod   time.Duration       // Period to run host drainer
+	preemptionQueue preemption.Queue    // Preemption Queue
+	lifecycle       lifecycle.LifeCycle // Lifecycle manager
+	drainingHosts   stringset.StringSet // Set of hosts currently being drained
 }
 
 // NewDrainer creates a new Drainer
@@ -45,16 +45,16 @@ func NewDrainer(
 	hostMgrClient hostsvc.InternalHostServiceYARPCClient,
 	drainerPeriod time.Duration,
 	rmTracker rmtask.Tracker,
-	preemptor preemption.Preemptor) *Drainer {
+	preemptionQueue preemption.Queue) *Drainer {
 
 	return &Drainer{
-		hostMgrClient: hostMgrClient,
-		metrics:       NewMetrics(parent.SubScope("drainer")),
-		rmTracker:     rmTracker,
-		preemptor:     preemptor,
-		drainerPeriod: drainerPeriod,
-		lifecycle:     lifecycle.NewLifeCycle(),
-		drainingHosts: stringset.New(),
+		hostMgrClient:   hostMgrClient,
+		metrics:         NewMetrics(parent.SubScope("drainer")),
+		rmTracker:       rmTracker,
+		preemptionQueue: preemptionQueue,
+		drainerPeriod:   drainerPeriod,
+		lifecycle:       lifecycle.NewLifeCycle(),
+		drainingHosts:   stringset.New(),
 	}
 }
 
@@ -143,7 +143,7 @@ func (d *Drainer) drainHosts() error {
 			drainedHosts = append(drainedHosts, host)
 			continue
 		}
-		err := d.preemptor.EnqueueTasks(
+		err := d.preemptionQueue.EnqueueTasks(
 			tasksByHost[host],
 			resmgr.PreemptionReason_PREEMPTION_REASON_HOST_MAINTENANCE)
 		if err != nil {

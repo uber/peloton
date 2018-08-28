@@ -150,6 +150,8 @@ func (t *Reconciler) getTasksToReconcile(activeTasks map[string][]*RMTask) (
 	log.Info("performing task reconciliation")
 	errs := new(multierror.Error)
 
+	leakedResource := scalar.ZeroResource
+
 	// map of pelotonTaskID->MesosTaskID
 	tasksToReconcile := make(map[string]string)
 	for trackerState, pelotonTasks := range activeTasks {
@@ -184,14 +186,14 @@ func (t *Reconciler) getTasksToReconcile(activeTasks map[string][]*RMTask) (
 				tasksToReconcile[pelotonTaskID] =
 					pelotonTask.Task().GetTaskId().GetValue()
 
-				// update metrics
-				t.metrics.LeakedResources.Update(
-					scalar.ConvertToResmgrResource(
-						pelotonTask.task.GetResource(),
-					),
-				)
+				// update leaked resources
+				leakedResource.Add(scalar.ConvertToResmgrResource(
+					pelotonTask.task.GetResource(),
+				))
 			}
 		}
 	}
+
+	t.metrics.LeakedResources.Update(leakedResource)
 	return tasksToReconcile, errs.ErrorOrNil()
 }
