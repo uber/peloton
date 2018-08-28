@@ -1680,7 +1680,7 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 
 	suite.Equal(to-from, len(taskInRange))
 	for i := from; i < to; i++ {
-		tID := fmt.Sprintf("%s-%d", jobID.GetValue(), i)
+		tID := fmt.Sprintf("%s-%d-%d", jobID.GetValue(), i, 1)
 		suite.Equal(tID, *(taskInRange[uint32(i)].Runtime.MesosTaskId.Value))
 	}
 
@@ -1695,7 +1695,7 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 	suite.Equal(n, jobConfig.InstanceCount)
 
 	for i := from; i < to; i++ {
-		tID := fmt.Sprintf("%s-%d", jobID.GetValue(), i)
+		tID := fmt.Sprintf("%s-%d-%d", jobID.GetValue(), i, 1)
 		suite.Equal(tID, *(tasks[uint32(i-from)].Runtime.MesosTaskId.Value))
 	}
 
@@ -1705,7 +1705,7 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 	suite.Equal(int(_defaultQueryLimit), len(tasks))
 
 	for i, t := range tasks {
-		tID := fmt.Sprintf("%s-%d", jobID.GetValue(), i)
+		tID := fmt.Sprintf("%s-%d-%d", jobID.GetValue(), i, 1)
 		suite.Equal(tID, *(t.Runtime.MesosTaskId.Value))
 	}
 }
@@ -2318,7 +2318,7 @@ func createJobConfig() *job.JobConfig {
 func createTaskInfo(
 	jobConfig *job.JobConfig, jobID *peloton.JobID, i uint32) *task.TaskInfo {
 
-	var tID = fmt.Sprintf("%s-%d", jobID.GetValue(), i)
+	var tID = fmt.Sprintf("%s-%d-%d", jobID.GetValue(), i, 1)
 	var taskInfo = task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
 			MesosTaskId: &mesos.TaskID{Value: &tID},
@@ -2820,5 +2820,27 @@ func (suite *CassandraStoreTestSuite) TestHandleDataStoreError() {
 	for _, nErr := range retryableErrs {
 		suite.NoError(store.handleDataStoreError(nErr, backoff.NewRetrier(policy)))
 	}
+
+}
+
+func (suite *CassandraStoreTestSuite) TestCreateTaskRuntimeForServiceJob() {
+	taskStore := store
+	var jobID = peloton.JobID{Value: uuid.New()}
+	jobConfig := createJobConfig()
+	jobConfig.InstanceCount = 1
+	jobConfig.Type = job.JobType_SERVICE
+	err := suite.createJob(context.Background(), &jobID, jobConfig, "uber")
+	suite.NoError(err)
+
+	taskInfo := createTaskInfo(jobConfig, &jobID, 0)
+	taskInfo.Runtime.DesiredMesosTaskId = taskInfo.Runtime.MesosTaskId
+	err = taskStore.CreateTaskRuntime(
+		context.Background(),
+		&jobID,
+		0,
+		taskInfo.Runtime,
+		"test",
+		jobConfig.GetType())
+	suite.NoError(err)
 
 }

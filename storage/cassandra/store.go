@@ -991,7 +991,11 @@ func (s *Store) addPodEvent(
 		errLog = true
 		errMessage = err
 	}
-	if prevRunID, err = util.ParseRunID(
+	// when creating a task, GetPrevMesosTaskId is empty,
+	// set prevRunID to 0
+	if len(runtime.GetPrevMesosTaskId().GetValue()) == 0 {
+		prevRunID = 0
+	} else if prevRunID, err = util.ParseRunID(
 		runtime.GetPrevMesosTaskId().GetValue()); err != nil {
 		errLog = true
 		errMessage = err
