@@ -244,11 +244,11 @@ var (
 	host            = app.Command("host", "manage hosts")
 	hostMaintenance = host.Command("maintenance", "host maintenance")
 
-	hostMaintenanceStart           = hostMaintenance.Command("start", "start host maintenance on a list of hosts")
-	hostMaintenanceStartMachineIDs = hostMaintenanceStart.Arg("machineIDs", "comma separated MachineIDs <hostname:IP>").Required().String()
+	hostMaintenanceStart          = hostMaintenance.Command("start", "start host maintenance on a list of hosts")
+	hostMaintenanceStartHostnames = hostMaintenanceStart.Arg("hostnames", "comma separated hostnames").Required().String()
 
-	hostMaintenanceComplete           = hostMaintenance.Command("complete", "complete host maintenance on a list of hosts")
-	hostMaintenanceCompleteMachineIDs = hostMaintenanceComplete.Arg("machineIDs", "comma separated MachineIDs <hostname:IP>").Required().String()
+	hostMaintenanceComplete          = hostMaintenance.Command("complete", "complete host maintenance on a list of hosts")
+	hostMaintenanceCompleteHostnames = hostMaintenanceComplete.Arg("hostnames", "comma separated hostnames").Required().String()
 
 	hostQuery       = host.Command("query", "query hosts by state(s)")
 	hostQueryStates = hostQuery.Flag("states", "host states").Default("").Short('s').String()
@@ -465,9 +465,9 @@ func main() {
 	case taskRestart.FullCommand():
 		err = client.TaskRestartAction(*taskRestartJobName, *taskRestartInstanceRanges)
 	case hostMaintenanceStart.FullCommand():
-		err = client.HostMaintenanceStartAction(*hostMaintenanceStartMachineIDs)
+		err = client.HostMaintenanceStartAction(*hostMaintenanceStartHostnames)
 	case hostMaintenanceComplete.FullCommand():
-		err = client.HostMaintenanceCompleteAction(*hostMaintenanceCompleteMachineIDs)
+		err = client.HostMaintenanceCompleteAction(*hostMaintenanceCompleteHostnames)
 	case hostQuery.FullCommand():
 		err = client.HostQueryAction(*hostQueryStates)
 	case resMgrActiveTasks.FullCommand():
