@@ -77,18 +77,21 @@ func TestEntitlementCalculator(t *testing.T) {
 }
 
 func (s *EntitlementCalculatorTestSuite) TestPeriodicCalculationWhenStarted() {
-	var wg sync.WaitGroup
-	wg.Add(5)
+	ch := make(chan int, 5)
+	i := 0
+
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
 	mockHostMgr.EXPECT().
 		ClusterCapacity(
 			gomock.Any(),
 			gomock.Any()).
 		Do(func(_, _ interface{}) {
-			wg.Done()
+			i = i + 1
+			ch <- i
 		}).
 		Return(&hostsvc.ClusterCapacityResponse{}, nil).
-		Times(5)
+		MinTimes(5)
+
 	calculator := &Calculator{
 		resPoolTree:       s.resTree,
 		runningState:      res_common.RunningStateNotStarted,
@@ -98,11 +101,18 @@ func (s *EntitlementCalculatorTestSuite) TestPeriodicCalculationWhenStarted() {
 		metrics:           NewMetrics(tally.NoopScope),
 		hostMgrClient:     mockHostMgr,
 	}
-	calculator.hostMgrClient = mockHostMgr
 	s.NoError(calculator.Start())
 
-	// Wait for 5 calculations, and then stop.
-	wg.Wait()
+	// Wait for at least 5 calculations, and then stop.
+out:
+	for {
+		select {
+		case x := <-ch:
+			if x == 5 {
+				break out
+			}
+		}
+	}
 
 	s.NoError(calculator.Stop())
 }
