@@ -12,6 +12,7 @@ option java_package = "peloton.api.v0.job.svc";
 import "peloton/api/v0/peloton.proto";
 import "peloton/api/v0/query/query.proto";
 import "peloton/api/v0/job/job.proto";
+import "peloton/api/v0/task/task.proto";
 import "peloton/api/v0/respool/respool.proto";
 
 
@@ -38,6 +39,10 @@ service JobService {
   // existing job. It will be deprecated when the UpgradeService API
   // is implemented.
   rpc UpdateJob(UpdateJobRequest) returns (UpdateJobResponse);
+
+  // Restart the tasks specified in restart request
+  // Experimental only
+  rpc RestartJob(RestartJobRequest) returns (RestartJobResponse);
 
   // Debug only method. Allows user to load job runtime state from DB
   // and re-execute the action associated with current state.
@@ -186,6 +191,32 @@ message UpdateJobRequest {
 message UpdateJobResponse {
 }
 
+/**
+ *  Request message for JobService.RestartJob method.
+ */
+message RestartJobRequest {
+  // The job to restart
+  peloton.JobID id = 1;
+  // The instances to restart, default to all
+  repeated task.InstanceRange ranges = 2;
+  // The resourceVersion received from last job operation
+  // call for concurrency control
+  uint64 resourceVersion = 3;
+}
+
+/**
+ *  Response message for JobService.RestartJob method.
+ *
+ *  Return errors:
+ *    INVALID_ARGUMENT:  if the job ID or job resourceVersion is invalid.
+ *    NOT_FOUND:         if the job ID is not found.
+ */
+message RestartJobResponse {
+  // The new resourceVersion after the operation
+  uint64 resourceVersion = 1;
+  // updateID associated with the restart
+  peloton.UpdateID updateID = 2;
+}
 
 /**
  *  Request message for JobService.RefreshJob method.

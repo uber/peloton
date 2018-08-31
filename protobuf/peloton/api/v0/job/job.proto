@@ -324,6 +324,10 @@ service JobManager {
   // Update a Job entity with a new config
   rpc Update(UpdateRequest) returns (UpdateResponse);
 
+  // Restart the tasks specified in restart request
+  // Experimental only
+  rpc Restart(RestartRequest) returns (RestartResponse);
+
   // Debug only method. Allows user to load job runtime state from DB
   // and re-execute the action associated with current state.
   rpc Refresh(RefreshRequest) returns (RefreshResponse);
@@ -495,4 +499,23 @@ message GetCacheResponse {
 
   // The job runtime in cache of the matching job.
   RuntimeInfo runtime = 2;
+}
+
+// DEPRECATED by peloton.api.job.svc.RestartJobRequest
+message RestartRequest {
+  // The job to restart
+  peloton.JobID id = 1;
+  // The instances to restart, default to all
+  repeated task.InstanceRange ranges = 2;
+  // The resourceVersion received from last job operation
+  // call for concurrency control
+  uint64 resourceVersion = 3;
+}
+
+// DEPRECATED by peloton.api.job.svc.RestartJobResponse
+message RestartResponse {
+  // The new resourceVersion after the operation
+  uint64 resourceVersion = 1;
+  // updateID associated with the restart
+  peloton.UpdateID updateID = 2;
 }

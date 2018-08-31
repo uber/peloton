@@ -486,6 +486,15 @@ func (h *serviceHandler) Delete(
 	return &job.DeleteResponse{}, nil
 }
 
+func (h *serviceHandler) Restart(
+	context.Context,
+	*job.RestartRequest) (*job.RestartResponse, error) {
+	h.metrics.JobAPIRestart.Inc(1)
+	h.metrics.JobRestartFail.Inc(1)
+	return &job.RestartResponse{},
+		yarpcerrors.UnimplementedErrorf("restart not implemented")
+}
+
 func (h *serviceHandler) GetCache(
 	ctx context.Context,
 	req *job.GetCacheRequest) (*job.GetCacheResponse, error) {

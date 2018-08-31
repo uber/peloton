@@ -353,6 +353,29 @@ func (c *Client) JobStopAction(jobID string, showProgress bool) error {
 	return nil
 }
 
+// JobRestartAction is the action for restarting a job
+func (c *Client) JobRestartAction(
+	jobID string,
+	resourceVersion uint64,
+	instanceRanges []*task.InstanceRange,
+) error {
+	id := &peloton.JobID{
+		Value: jobID,
+	}
+
+	request := &job.RestartRequest{
+		Id:              id,
+		Ranges:          instanceRanges,
+		ResourceVersion: resourceVersion,
+	}
+	response, err := c.jobClient.Restart(c.ctx, request)
+	if err != nil {
+		return err
+	}
+	printResponseJSON(response)
+	return nil
+}
+
 func (c *Client) pollStatusWithTimeout(id *peloton.JobID) error {
 	// get the status
 	total, terminated, err := c.tasksTerminated(id)

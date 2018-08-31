@@ -1624,3 +1624,50 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionIterError() {
 
 	suite.Error(c.JobStopAction(testJobID, false))
 }
+
+// TestClientJobRestartActionSuccess tests restarting successfully
+func (suite *jobActionsTestSuite) TestClientJobRestartActionSuccess() {
+	c := Client{
+		Debug:      false,
+		jobClient:  suite.mockJob,
+		taskClient: suite.mockTask,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	restartResponse := &job.RestartResponse{
+		ResourceVersion: 2,
+		UpdateID:        &peloton.UpdateID{Value: uuid.NewRandom().String()},
+	}
+
+	suite.mockJob.EXPECT().Restart(gomock.Any(), &job.RestartRequest{
+		Id: &peloton.JobID{
+			Value: testJobID,
+		},
+		ResourceVersion: 1,
+	}).Return(restartResponse, nil)
+
+	suite.NoError(c.JobRestartAction(testJobID, 1, nil))
+}
+
+// TestClientJobRestartActionSuccess tests restarting fails with error
+func (suite *jobActionsTestSuite) TestClientJobRestartActionError() {
+	c := Client{
+		Debug:      false,
+		jobClient:  suite.mockJob,
+		taskClient: suite.mockTask,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	restartResponse := &job.RestartResponse{}
+
+	suite.mockJob.EXPECT().Restart(gomock.Any(), &job.RestartRequest{
+		Id: &peloton.JobID{
+			Value: testJobID,
+		},
+		ResourceVersion: 1,
+	}).Return(restartResponse, errors.New("test error"))
+
+	suite.Error(c.JobRestartAction(testJobID, 1, nil))
+}

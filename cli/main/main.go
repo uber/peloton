@@ -134,6 +134,11 @@ var (
 	jobUpdateSecretPath = jobUpdate.Flag("secret-path", "secret mount path").Default("").String()
 	jobUpdateSecret     = jobUpdate.Flag("secret-data", "secret data string").Default("").String()
 
+	jobRestart                = job.Command("restart", "restart instances in a job")
+	jobRestartName            = jobRestart.Arg("job", "job identifier").Required().String()
+	jobRestartResourceVersion = jobRestart.Arg("resourceVersion", "resource version of the job for concurrency control").Required().Uint64()
+	jobRestartInstanceRanges  = taskRangeListFlag(jobRestart.Flag("range", "restart range of instances (specify multiple times) (from:to syntax, default ALL)").Default(":").Short('r'))
+
 	jobGetCache     = job.Command("cache", "get a job cache")
 	jobGetCacheName = jobGetCache.Arg("job", "job identifier").Required().String()
 
@@ -439,6 +444,8 @@ func main() {
 	case jobUpdate.FullCommand():
 		err = client.JobUpdateAction(*jobUpdateID, *jobUpdateConfig,
 			*jobUpdateSecretPath, []byte(*jobUpdateSecret))
+	case jobRestart.FullCommand():
+		err = client.JobRestartAction(*jobRestartName, *jobRestartResourceVersion, *jobRestartInstanceRanges)
 	case jobGetCache.FullCommand():
 		err = client.JobGetCacheAction(*jobGetCacheName)
 	case taskGet.FullCommand():
