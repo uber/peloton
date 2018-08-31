@@ -52,6 +52,7 @@ type ServiceHandler struct {
 	preemptionQueue    preemption.Queue
 	maxOffset          *uint64
 	config             Config
+	scope              tally.Scope
 }
 
 // NewServiceHandler initializes the handler for ResourceManagerService
@@ -75,6 +76,7 @@ func NewServiceHandler(
 		preemptionQueue: preemptionQueue,
 		maxOffset:       &maxOffset,
 		config:          conf,
+		scope:           parent,
 	}
 	// TODO: move eventStreamHandler buffer size into config
 	handler.eventStreamHandler = initEventStreamHandler(d, 1000, parent.SubScope("resmgr"))

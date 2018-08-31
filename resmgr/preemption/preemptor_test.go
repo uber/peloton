@@ -272,6 +272,7 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForRunningTasks() {
 	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).
 		Return(mockResPool, nil)
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
+	mockResPool.EXPECT().GetPath().Return("/respool-1").AnyTimes()
 	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
 		CPU:    20,
 		MEMORY: 200,
@@ -316,6 +317,7 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForReadyTasks() {
 	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).
 		Return(mockResPool, nil)
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
+	mockResPool.EXPECT().GetPath().Return("/respool-1").AnyTimes()
 	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
 		CPU:    20,
 		MEMORY: 200,
@@ -380,6 +382,11 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForPlacingTasks() {
 	// Mocks
 	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
+	mockResPool.
+		EXPECT().
+		GetPath().
+		Return("/respool-1").
+		AnyTimes()
 	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
 		CPU:    20,
 		MEMORY: 200,
@@ -492,6 +499,11 @@ func (suite *PreemptorTestSuite) TestProcessRunningTaskEnqueueError() {
 	suite.preemptor.preemptionQueue = mockPQueue
 
 	mockResPool := mocks.NewMockResPool(ctr)
+	mockResPool.
+		EXPECT().
+		GetPath().
+		Return("/path").
+		AnyTimes()
 	// Add 1 task in the tracker with id job1-0
 	tasks := suite.createTasks(1, mockResPool)
 	for _, t := range tasks {
@@ -524,6 +536,11 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolEnqueueGangError() {
 		EXPECT().
 		ID().
 		Return("respool-1")
+	mockResPool.
+		EXPECT().
+		GetPath().
+		Return("/respool-1").
+		AnyTimes()
 	mockResPool.
 		EXPECT().
 		GetEntitlement().
@@ -572,6 +589,11 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolAddDemandError() {
 		EXPECT().
 		ID().
 		Return("respool-1").
+		AnyTimes()
+	mockResPool.
+		EXPECT().
+		GetPath().
+		Return("/respool-1").
 		AnyTimes()
 	mockResPool.
 		EXPECT().
@@ -627,6 +649,11 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolSubtractAllocationError(
 		AnyTimes()
 	mockResPool.
 		EXPECT().
+		GetPath().
+		Return("/respool-1").
+		AnyTimes()
+	mockResPool.
+		EXPECT().
 		GetEntitlement().
 		Return(_entitlement).AnyTimes()
 	mockResPool.
@@ -675,6 +702,11 @@ func (suite *PreemptorTestSuite) TestPreemptorEnqueue() {
 	defer ctr.Finish()
 
 	mockResPool := mocks.NewMockResPool(ctr)
+	mockResPool.
+		EXPECT().
+		GetPath().
+		Return("/respool-1").
+		AnyTimes()
 	// Add 1 task in the tracker with id job1-0
 	tasks := suite.createTasks(1, mockResPool)
 	for _, t := range tasks {

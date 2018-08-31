@@ -473,7 +473,7 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 		metrics:       NewMetrics(tally.NoopScope),
 		counters:      make(map[task.TaskState]float64),
 		hostMgrClient: suite.mockHostmgr,
-		parentScope:   tally.NoopScope,
+		scope:         tally.NoopScope,
 	}
 	testTracker.AddTask(
 		suite.createTask(1),

@@ -79,8 +79,8 @@ type tracker struct {
 	// Maps hostname -> task type -> task id -> rm task
 	placements map[string]map[resmgr.TaskType]map[string]*RMTask
 
-	parentScope tally.Scope
-	metrics     *Metrics
+	scope   tally.Scope
+	metrics *Metrics
 
 	// mutex for the state counters
 	cMutex sync.Mutex
@@ -102,12 +102,14 @@ func InitTaskTracker(
 		log.Info("Resource Manager Tracker is already initialized")
 		return
 	}
+
+	scope := parent.SubScope("tracker")
 	rmtracker = &tracker{
-		tasks:       make(map[string]*RMTask),
-		placements:  map[string]map[resmgr.TaskType]map[string]*RMTask{},
-		metrics:     NewMetrics(parent.SubScope("tracker")),
-		parentScope: parent,
-		counters:    make(map[task.TaskState]float64),
+		tasks:      make(map[string]*RMTask),
+		placements: map[string]map[resmgr.TaskType]map[string]*RMTask{},
+		metrics:    NewMetrics(scope),
+		scope:      scope,
+		counters:   make(map[task.TaskState]float64),
 	}
 
 	// Checking placement back off is enabled , if yes then initialize
@@ -135,10 +137,15 @@ func (tr *tracker) AddTask(
 	t *resmgr.Task,
 	handler *eventstream.Handler,
 	respool respool.ResPool,
-	config *Config) error {
+	config *Config,
+) error {
 
-	rmTask, err := CreateRMTask(t, handler, respool,
-		NewTransitionObserver(WithTallyRecorder(tr.parentScope)), config)
+	rmTask, err := CreateRMTask(
+		t,
+		handler,
+		respool,
+		DefaultTransitionObserver(tr.scope, t, respool),
+		config)
 	if err != nil {
 		return err
 	}

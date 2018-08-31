@@ -181,7 +181,7 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailSystemFailure() {
 	suite.taskRuntime.Reason = mesosv1.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED.String()
 
 	testTable := []*pbtask.RuntimeInfo{
-		&pbtask.RuntimeInfo{
+		{
 			MesosTaskId:   &mesosv1.TaskID{Value: &suite.mesosTaskID},
 			State:         pbtask.TaskState_FAILED,
 			GoalState:     pbtask.TaskState_SUCCEEDED,
@@ -189,7 +189,7 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailSystemFailure() {
 			Message:       "testFailure",
 			Reason:        mesosv1.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED.String(),
 		},
-		&pbtask.RuntimeInfo{
+		{
 			MesosTaskId:   &mesosv1.TaskID{Value: &suite.mesosTaskID},
 			State:         pbtask.TaskState_FAILED,
 			GoalState:     pbtask.TaskState_SUCCEEDED,
