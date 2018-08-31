@@ -3,6 +3,37 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.5
+------------------
+* 2018-08-29    Remove unused function in reservation                                                  mu@uber.com
+* 2018-08-28    Use desiredMesosTaskID to replace PREEMPTING state for task preemption                 zhixin@uber.com
+* 2018-08-28    Update CLI help text for host maintenance commands                                     sachins@uber.com
+* 2018-08-28    Fix flaky `TestPeriodicCalculationWhenStarted`                                         avyas@uber.com
+* 2018-08-28    addPodEvent set prevRunID to 0 when PrevMesosTaskId not provided                       zhixin@uber.com
+* 2018-08-27    Revert "Measure resource pool SLA at a more granular level"                            avyas@uber.com
+* 2018-08-27    Allow user to provide configuration version when creating a job update in CLI          apoorvaj@uber.com
+* 2018-08-27    Auto-refresh maintenance queue periodically                                            sachins@uber.com
+* 2018-08-27    Refactor mesos task ID generation to CreateMesosTaskID                                 zhixin@uber.com
+* 2018-08-27    Specify only hostname (no IP) for host maintenance                                     sachins@uber.com
+* 2018-08-24    Add desired mesos task id for task and pod events                                      zhixin@uber.com
+* 2018-08-24    Add support to query hosts in UP state                                                 sachins@uber.com
+* 2018-08-24    Modify AgentMap to have hostname as the key instead of AgentId                         sachins@uber.com
+* 2018-08-23    Modify AgentInfoMap to contain more information about the Agent                        sachins@uber.com
+* 2018-08-23    Fix job metrics name typo                                                              zhixin@uber.com
+* 2018-08-23    CLI default range.To to MaxInt32                                                       zhixin@uber.com
+* 2018-08-23    KILLING state with SUCCEEDED/RUNNING goal state is valid                               zhixin@uber.com
+* 2018-08-22    Implement task level restart                                                           zhixin@uber.com
+* 2018-08-22    Add desired mesos task id in task runtime                                              zhixin@uber.com
+* 2018-08-22    Automatically set the configuration version during job update                          apoorvaj@uber.com
+* 2018-08-21    Fix resmgr recovery                                                                    sachins@uber.com
+* 2018-08-21    Cleanup unused storage code, add tests                                                 adityacb@uber.com
+* 2018-08-21    WriteProgress validates state change                                                   zhixin@uber.com
+* 2018-08-21    Adding unit tests in common and statemachine package                                   mabansal@uber.com
+* 2018-08-20    Fixing flaky unit test                                                                 mabansal@uber.com
+* 2018-08-21    Adding unit tests for peloton/cli                                                      apoorvaj@uber.com
+* 2018-08-20    Adding unit tests for resource manager handlers                                        mabansal@uber.com
+* 2018-08-20    Fix testjob_uber_docker_service                                                        chunyang.shen@uber.com
+
 0.7.4
 ------------------
 
