@@ -1440,7 +1440,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeStateStaleJob() 
 	suite.cachedConfig.EXPECT().HasControllerTask().Return(false).AnyTimes()
 	suite.cachedJob.EXPECT().IsPartiallyCreated(false).AnyTimes()
 	suite.cachedJob.EXPECT().GetLastTaskUpdateTime().
-		Return(float64(time.Now().AddDate(0, 0, -2).UnixNano())).AnyTimes()
+		Return(float64(time.Now().AddDate(0, 0, -5).UnixNano())).AnyTimes()
 
 	jobState, err := determineJobRuntimeState(
 		context.Background(), jobRuntime, stateCounts, suite.cachedConfig,
@@ -1829,8 +1829,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestshouldRecalculateJobStateTerminalJo
 // TestShouldRecalculateJobState tests shouldRecalculateJobState function to
 // determine if the job state is stale and needs to be recalculated
 func (suite *JobRuntimeUpdaterTestSuite) TestShouldRecalculateJobState() {
-	// assume last update to the job state was 2 days ago
-	lastUpdateTs := float64(time.Now().AddDate(0, 0, -2).UnixNano())
+	// assume last update to the job state was 5 days ago
+	lastUpdateTs := float64(time.Now().AddDate(0, 0, -5).UnixNano())
 	suite.cachedJob.EXPECT().GetLastTaskUpdateTime().Return(lastUpdateTs)
 	suite.True(shouldRecalculateJobState(
 		suite.cachedJob, pbjob.JobType_BATCH, pbjob.JobState_PENDING))

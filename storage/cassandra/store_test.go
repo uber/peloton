@@ -4,6 +4,7 @@ package cassandra
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"testing"
@@ -271,6 +272,86 @@ func (suite *CassandraStoreTestSuite) queryJobs(
 	return result, summary
 }
 
+func (suite *CassandraStoreTestSuite) TestJobQueryStaleLuceneIndex() {
+	var jobStore storage.JobStore
+	jobStore = store
+	jobID := peloton.JobID{Value: uuid.New()}
+	var jobConfig = job.JobConfig{
+		Name:        "StaleLuceneIndex",
+		OwningTeam:  "owner",
+		Type:        job.JobType_BATCH,
+		Description: fmt.Sprintf("get jobs summary"),
+	}
+	err := suite.createJob(context.Background(), &jobID, &jobConfig, "uber")
+	suite.NoError(err)
+
+	runtime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
+	suite.NoError(err)
+
+	// set job creation time to two days ago
+	creationTime := time.Now().AddDate(0, 0, -5).UTC().Format(time.RFC3339Nano)
+	runtime.CreationTime = creationTime
+	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
+	suite.NoError(err)
+	suite.refreshLuceneIndex()
+
+	jobStates := []job.JobState{
+		job.JobState_PENDING, job.JobState_RUNNING, job.JobState_INITIALIZED}
+	spec := &job.QuerySpec{
+		Name:      "StaleLuceneIndex",
+		JobStates: jobStates,
+	}
+	_, summary := suite.queryJobs(spec, 1, 1)
+	suite.Equal(creationTime, summary[0].GetRuntime().GetCreationTime())
+
+	// set runtime state to succeeded
+	runtime.State = job.JobState_SUCCEEDED
+	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
+	suite.NoError(err)
+
+	// Force error by updating job index to active state. This way the lucene
+	// index will be stale and will show that the job is active for more than 24
+	// hours. In this case, the reconciliation logic should kick in and read the
+	// job summary from config instead of lucene index.
+	runtime.State = job.JobState_PENDING
+	runtimeBuffer, _ := json.Marshal(runtime)
+	queryBuilder := store.DataStore.NewQuery()
+	updateStmt := queryBuilder.Update(jobIndexTable).
+		Set("runtime_info", runtimeBuffer).
+		Where(qb.Eq{"job_id": jobID.GetValue()})
+	_, err = store.executeWrite(context.Background(), updateStmt)
+	suite.NoError(err)
+	// This will make lucene index entry pending
+	suite.refreshLuceneIndex()
+
+	// Now set back job_index base table entry to SUCCEEDED and don't refresh
+	// lucene index entry. This achieves lucene index inconsistency.
+	runtime.State = job.JobState_SUCCEEDED
+	runtimeBuffer, _ = json.Marshal(runtime)
+	updateStmt = queryBuilder.Update(jobIndexTable).
+		Set("runtime_info", runtimeBuffer).
+		Where(qb.Eq{"job_id": jobID.GetValue()})
+	_, err = store.executeWrite(context.Background(), updateStmt)
+	suite.NoError(err)
+
+	// This job should no longer show up in active jobs list because the index
+	// has it in PENDING state for > 100hrs but it is actually terminal.
+	_, summary = suite.queryJobs(spec, 0, 0)
+
+	// Query for both succeeded and pending jobs. this query should return the
+	// job summary read from job config table because we did query for succeeded
+	// jobs along with pending.
+	jobStates = []job.JobState{
+		job.JobState_PENDING, job.JobState_SUCCEEDED,
+	}
+	spec = &job.QuerySpec{
+		Name:      "StaleLuceneIndex",
+		JobStates: jobStates,
+	}
+	_, summary = suite.queryJobs(spec, 1, 1)
+	suite.Equal(job.JobState_SUCCEEDED, summary[0].GetRuntime().GetState())
+}
+
 func (suite *CassandraStoreTestSuite) TestGetJobSummaryByTimeRange() {
 	var jobStore storage.JobStore
 	jobStore = store
@@ -533,13 +614,16 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
 	stmt = stmt.Where(where)
 	allResults, err := store.executeRead(context.Background(), stmt)
 	suite.NoError(err)
+	suite.Equal(1, len(allResults))
 
-	summaryResultFromLucene, err := store.getJobSummaryFromLuceneResult(context.Background(), allResults)
+	summaryResultFromLucene, err := store.getJobSummaryFromResultMap(
+		context.Background(), allResults)
 	suite.NoError(err)
 
 	// tamper allResults to make name "" and force summary to be retrieved from jobconfig
 	allResults[0]["name"] = ""
-	summaryResultFromJobConfig, err := store.getJobSummaryFromLuceneResult(context.Background(), allResults)
+	summaryResultFromJobConfig, err := store.getJobSummaryFromResultMap(
+		context.Background(), allResults)
 	suite.NoError(err)
 
 	suite.Equal(1, len(summaryResultFromLucene))
@@ -555,7 +639,8 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
 
 	// tamper allResults to make job_id not UUID and look for error.
 	allResults[0]["job_id"] = "junk"
-	_, err = store.getJobSummaryFromLuceneResult(context.Background(), allResults)
+	_, err = store.getJobSummaryFromResultMap(
+		context.Background(), allResults)
 	suite.Error(err)
 
 	// QueryJobs with summaryOnly = true. result1 should be nil

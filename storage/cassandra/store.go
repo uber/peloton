@@ -771,16 +771,17 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	}
 	allResults = allResults[:end]
 
-	summaryResults, err := s.getJobSummaryFromLuceneResult(ctx, allResults)
+	summaryResults, err := s.getJobSummaryFromResultMap(ctx, allResults)
 	if summaryOnly {
 		if err != nil {
-			// Process error if caller requested only job summary
-			uql, args, _, _ := stmt.ToUql()
-			log.WithField("uql", uql).
-				WithField("args", args).
-				WithField("labels", spec.GetLabels()).
-				WithError(err).
-				Error("Failed to get JobSummary")
+			s.metrics.JobMetrics.JobQueryFail.Inc(1)
+			return nil, nil, 0, err
+		}
+		// Lucene index entry for some batch jobs may be out of sync with the
+		// base job_index table. Scrub such jobs from the summary list.
+		summaryResults, err := s.reconcileStaleBatchJobsFromJobSummaryList(
+			ctx, summaryResults, queryTerminalStates)
+		if err != nil {
 			s.metrics.JobMetrics.JobQueryFail.Inc(1)
 			return nil, nil, 0, err
 		}
@@ -792,12 +793,6 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	for _, value := range allResults {
 		id, ok := value["job_id"].(qb.UUID)
 		if !ok {
-			uql, args, _, _ := stmt.ToUql()
-			log.WithField("uql", uql).
-				WithField("args", args).
-				WithField("labels", spec.GetLabels()).
-				WithField("job_id", value).
-				Error("fail to find job_id in query result")
 			s.metrics.JobMetrics.JobQueryFail.Inc(1)
 			return nil, nil, 0, fmt.Errorf("got invalid response from cassandra")
 		}
@@ -2387,6 +2382,36 @@ func (s *Store) updateJobIndex(
 	return nil
 }
 
+// getJobSummaryFromIndex gets the job summary from job index table
+func (s *Store) getJobSummaryFromIndex(
+	ctx context.Context, id *peloton.JobID) (*job.JobSummary, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select(
+		"name",
+		"owner",
+		"job_type",
+		"respool_id",
+		"instance_count",
+		"labels",
+		"runtime_info").
+		From(jobIndexTable).
+		Where(qb.Eq{"job_id": id.GetValue()})
+
+	allResults, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := s.getJobSummaryFromResultMap(ctx, allResults)
+	if err != nil {
+		return nil, err
+	}
+	if len(summary) != 1 {
+		return nil, yarpcerrors.FailedPreconditionErrorf(
+			"found %d jobs %v for job id %v", len(allResults), allResults, id)
+	}
+	return summary[0], nil
+}
+
 // UpdateJobRuntime updates the job runtime info
 func (s *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error {
 	return s.updateJobRuntimeWithConfig(ctx, id, runtime, nil)
@@ -3005,107 +3030,102 @@ func parseTime(v string) time.Time {
 	return r
 }
 
-func (s *Store) getJobSummaryFromLuceneResult(ctx context.Context, allResults []map[string]interface{}) ([]*job.JobSummary, error) {
+// If a BATCH job is in active state for more than a threshold of time, it is
+// possible that the lucene index is out of sync with the job_index table so we
+// can read job summary from job_index table for such jobs. This function goes
+// through a list of job summary and looks for such stale jobs. If the query is
+// for only active jobs, the stale jobs are skipped from the job summary list
+// and a new list is returned.
+func (s *Store) reconcileStaleBatchJobsFromJobSummaryList(
+	ctx context.Context, summaryList []*job.JobSummary,
+	queryTerminalStates bool) ([]*job.JobSummary, error) {
+	newSummaryList := []*job.JobSummary{}
+	var err error
+	for _, summary := range summaryList {
+		if summary.GetType() == job.JobType_BATCH &&
+			!util.IsPelotonJobStateTerminal(summary.GetRuntime().GetState()) &&
+			time.Since(
+				parseTime(summary.GetRuntime().GetCreationTime()),
+			) > common.StaleJobStateDurationThreshold {
+			// get job summary from DB table instead of index
+			summary, err = s.getJobSummaryFromIndex(ctx, summary.Id)
+			if err != nil {
+				return nil, err
+			}
+			if util.IsPelotonJobStateTerminal(
+				summary.GetRuntime().GetState()) &&
+				!queryTerminalStates {
+				// Since now the job shows up as terminal, we can conclude
+				// that lucene index entry for this job is stale. Because
+				// the query is for getting active jobs only, we can skip
+				// this job entry.
+				continue
+			}
+		}
+		newSummaryList = append(newSummaryList, summary)
+	}
+	return newSummaryList, nil
+}
+
+func (s *Store) getJobSummaryFromResultMap(
+	ctx context.Context, allResults []map[string]interface{},
+) ([]*job.JobSummary, error) {
 	var summaryResults []*job.JobSummary
 	for _, value := range allResults {
 		summary := &job.JobSummary{}
 		id, ok := value["job_id"].(qb.UUID)
 		if !ok {
-			log.WithField("job_id", value).
-				Error("fail to find job_id in query result")
-			return nil, fmt.Errorf("got invalid response from cassandra")
+			return nil, yarpcerrors.InternalErrorf(
+				"invalid job_id %v", value["job_id"])
 		}
-		summary.Id = &peloton.JobID{
-			Value: id.String(),
-		}
-
-		name, ok := value["name"].(string)
-		if !ok {
-			log.WithField("name", value["name"]).
-				Info("failed to cast name to string")
-		}
-		if name == "" {
-			// In case of an older job, the "name" column is not populated
-			// in jobIndexTable. This is a rudimentary assumption,
-			// unfortunately because jobIndexTable doesn't have versioning.
-			// In this case, get summary from jobconfig
-			// and move on to the next job entry.
-			// TODO (adityacb): remove this code block when we
-			// start archiving older jobs and no longer hit this case.
-			log.WithField("job_id", id).
-				Debug("empty name in job_index, get job summary from job config")
-			summary, err := s.getJobSummaryFromConfig(ctx, summary.Id)
-			if err != nil {
-				log.WithError(err).
-					WithField("job_id", id).
-					Error("failed to get job summary from job config")
-				return nil, fmt.Errorf("failed to get job summary from job config")
+		summary.Id = &peloton.JobID{Value: id.String()}
+		if name, ok := value["name"].(string); ok {
+			if name == "" {
+				// In case of an older job, the "name" column is not populated
+				// in jobIndexTable. This is a rudimentary assumption,
+				// unfortunately because jobIndexTable doesn't have versioning.
+				// In this case, get summary from jobconfig
+				// and move on to the next job entry.
+				// TODO (adityacb): remove this code block when we
+				// start archiving older jobs and no longer hit this case.
+				summary, err := s.getJobSummaryFromConfig(ctx, summary.Id)
+				if err != nil {
+					return nil, err
+				}
+				summaryResults = append(summaryResults, summary)
+				continue
 			}
-			summaryResults = append(summaryResults, summary)
-			continue
-		} else {
 			summary.Name = name
 		}
-
-		runtimeInfo, ok := value["runtime_info"].(string)
-		if ok {
+		if runtimeInfo, ok := value["runtime_info"].(string); ok {
 			err := json.Unmarshal([]byte(runtimeInfo), &summary.Runtime)
 			if err != nil {
 				log.WithError(err).
 					WithField("runtime_info", runtimeInfo).
 					Info("failed to unmarshal runtime info")
 			}
-		} else {
-			log.WithField("runtime_info", value["runtime_info"]).
-				Info("failed to cast runtime_info to string")
 		}
-
-		summary.OwningTeam, ok = value["owner"].(string)
-		if !ok {
-			log.WithField("owner", value["owner"]).
-				Info("failed to cast owner to string")
+		if owningTeam, ok := value["owner"].(string); ok {
+			summary.Owner = owningTeam
+			summary.OwningTeam = owningTeam
 		}
-		summary.Owner = summary.OwningTeam
-
-		instcnt, ok := value["instance_count"].(int)
-		if !ok {
-			log.WithField("instance_count", value["instance_count"]).
-				Info("failed to cast instance_count to uint32")
-		} else {
+		if instcnt, ok := value["instance_count"].(int); ok {
 			summary.InstanceCount = uint32(instcnt)
 		}
-
-		jobType, ok := value["job_type"].(int)
-		if !ok {
-			log.WithField("job_type", value["job_type"]).
-				Info("failed to cast job_type to uint32")
-		} else {
+		if jobType, ok := value["job_type"].(int); ok {
 			summary.Type = job.JobType(jobType)
 		}
-
-		respoolIDStr, ok := value["respool_id"].(string)
-		if !ok {
-			log.WithField("respool_id", value["respool_id"]).
-				Info("failed to cast respool_id to string")
-		} else {
-			summary.RespoolID = &peloton.ResourcePoolID{
-				Value: respoolIDStr,
-			}
+		if respoolIDStr, ok := value["respool_id"].(string); ok {
+			summary.RespoolID = &peloton.ResourcePoolID{Value: respoolIDStr}
 		}
-
-		labelBuffer, ok := value["labels"].(string)
-		if ok {
+		if labelBuffer, ok := value["labels"].(string); ok {
 			err := json.Unmarshal([]byte(labelBuffer), &summary.Labels)
 			if err != nil {
 				log.WithError(err).
 					WithField("labels", labelBuffer).
 					Info("failed to unmarshal labels")
 			}
-		} else {
-			log.WithField("labels", value["labels"]).
-				Info("failed to cast labels to string")
 		}
-
 		summaryResults = append(summaryResults, summary)
 	}
 	return summaryResults, nil

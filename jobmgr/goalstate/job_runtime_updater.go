@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
@@ -17,13 +18,6 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
-)
-
-const (
-	// staleJobStateDurationThreshold is the duration after which we recalculate
-	// the job state for a job which has been in the same active state for this
-	// time duration.
-	staleJobStateDurationThreshold = 24 * time.Hour
 )
 
 // taskStatesAfterStart is the set of Peloton task states which
@@ -643,7 +637,7 @@ func shouldRecalculateJobState(
 	cachedJob cached.Job, jobType job.JobType, jobState job.JobState) bool {
 	return jobType == job.JobType_BATCH &&
 		!util.IsPelotonJobStateTerminal(jobState) &&
-		isJobStateStale(cachedJob, staleJobStateDurationThreshold)
+		isJobStateStale(cachedJob, common.StaleJobStateDurationThreshold)
 }
 
 // isJobStateStale returns true if the job is in active state for more than the

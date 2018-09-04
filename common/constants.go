@@ -1,5 +1,9 @@
 package common
 
+import (
+	"time"
+)
+
 const (
 	// MesosMasterScheduler service name
 	MesosMasterScheduler = "mesos-master-scheduler"
@@ -59,4 +63,9 @@ const (
 	// It is also used by SecretsFormatter to redact DB statements
 	// related to secret_info table
 	DBArgsLogField = "db_args"
+
+	// StaleJobStateDurationThreshold is the duration after which we recalculate
+	// the job state for a job which has been in the same active state for this
+	// time duration
+	StaleJobStateDurationThreshold = 100 * time.Hour
 )
