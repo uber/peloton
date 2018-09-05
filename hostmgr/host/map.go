@@ -87,12 +87,19 @@ func (loader *Loader) Load(_ *uatomic.Bool) {
 		SlackCapacity:    scalar.Resources{},
 	}
 
+	outchan := make(chan func() (scalar.Resources, scalar.Resources))
+
 	for _, agent := range agents.GetAgents() {
 		m.RegisteredAgents[agent.GetAgentInfo().GetHostname()] = agent
 
-		revocable, nonRevocable := getResourcesByType(
+		go getResourcesByType(
 			agent.GetTotalResources(),
+			outchan,
 			loader.SlackResourceTypes)
+	}
+
+	for i := 0; i < len(agents.GetAgents()); i++ {
+		revocable, nonRevocable := (<-outchan)()
 		m.SlackCapacity = m.SlackCapacity.Add(revocable)
 		m.Capacity = m.Capacity.Add(nonRevocable)
 	}
@@ -105,7 +112,8 @@ func (loader *Loader) Load(_ *uatomic.Bool) {
 // and non-revocable physical resources for an agent.
 func getResourcesByType(
 	agentResources []*mesos.Resource,
-	slackResourceTypes []string) (scalar.Resources, scalar.Resources) {
+	outchan chan func() (scalar.Resources, scalar.Resources),
+	slackResourceTypes []string) {
 	agentRes, _ := scalar.FilterMesosResources(
 		agentResources,
 		func(r *mesos.Resource) bool {
@@ -118,5 +126,9 @@ func getResourcesByType(
 	revRes, nonrevRes := scalar.FilterRevocableMesosResources(agentRes)
 	revocable := scalar.FromMesosResources(revRes)
 	nonRevocable := scalar.FromMesosResources(nonrevRes)
-	return revocable, nonRevocable
+	outchan <- (func() (
+		scalar.Resources,
+		scalar.Resources) {
+		return revocable, nonRevocable
+	})
 }
