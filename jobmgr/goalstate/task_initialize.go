@@ -66,7 +66,7 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 	runtimeDiff[cached.MessageField] = "Initialize task"
 	runtimeDiff[cached.ReasonField] = ""
 
-	// If the task is being upgraded, then move the configuration version to
+	// If the task is being updated, then move the configuration version to
 	// the desired configuration version.
 	if runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
 		// TBD should the failure count be cleaned up as well?

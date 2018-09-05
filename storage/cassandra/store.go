@@ -2648,9 +2648,12 @@ func (s *Store) CreateUpdate(
 	stmt := queryBuilder.Insert(updatesTable).
 		Columns(
 			"update_id",
+			"update_type",
 			"update_options",
 			"update_state",
 			"instances_total",
+			"instances_added",
+			"instances_updated",
 			"instances_done",
 			"instances_current",
 			"job_id",
@@ -2659,9 +2662,12 @@ func (s *Store) CreateUpdate(
 			"creation_time").
 		Values(
 			updateInfo.GetUpdateID().GetValue(),
+			updateInfo.GetType().String(),
 			updateConfigBuffer,
 			updateInfo.GetState().String(),
 			updateInfo.GetInstancesTotal(),
+			updateInfo.GetInstancesAdded(),
+			updateInfo.GetInstancesUpdated(),
 			0,
 			[]int{},
 			updateInfo.GetJobID().GetValue(),
@@ -2814,7 +2820,10 @@ func (s *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
 			JobConfigVersion:     uint64(record.JobConfigVersion),
 			PrevJobConfigVersion: uint64(record.PrevJobConfigVersion),
 			State:                update.State(update.State_value[record.State]),
+			Type:                 models.WorkflowType(models.WorkflowType_value[record.Type]),
 			InstancesTotal:       uint32(record.InstancesTotal),
+			InstancesAdded:       record.GetInstancesAdded(),
+			InstancesUpdated:     record.GetInstancesUpdated(),
 			InstancesDone:        uint32(record.InstancesDone),
 			InstancesCurrent:     record.GetProcessingInstances(),
 			CreationTime:         record.CreationTime.Format(time.RFC3339Nano),

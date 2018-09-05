@@ -451,8 +451,8 @@ func (suite *DriverTestSuite) TestInitializedJobSyncFromDB() {
 	suite.goalStateDriver.syncFromDB(context.Background())
 }
 
-// TestSyncFromDBRecoverUpgrade tests syncing job manager with jobs and and upgrades
-func (suite *DriverTestSuite) TestSyncFromDBRecoverUpgrade() {
+// TestSyncFromDBRecoverUpdate tests syncing job manager with jobs and and updates
+func (suite *DriverTestSuite) TestSyncFromDBRecoverUpdate() {
 	updateID := &peloton.UpdateID{Value: uuid.New()}
 	instanceID1 := uint32(0)
 	instanceID2 := uint32(1)

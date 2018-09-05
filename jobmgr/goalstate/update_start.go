@@ -135,7 +135,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	// then, update the configuration and desired configuration version of
-	// all instances which do not need to be upgraded
+	// all instances which do not need to be updated
 	if err = handleUnchangedInstancesInUpdate(
 		ctx, cachedUpdate, cachedJob, jobConfig); err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)

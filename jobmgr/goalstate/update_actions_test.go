@@ -531,22 +531,37 @@ func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 		// the first instance has finished update,
 		// rest is still updating
 		if i == 0 {
+			runtime := &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_RUNNING,
+				Healthy:              pbtask.HealthState_HEALTHY,
+				ConfigVersion:        newJobVersion,
+				DesiredConfigVersion: newJobVersion,
+			}
 			suite.cachedTask.EXPECT().
 				GetRunTime(gomock.Any()).
-				Return(&pbtask.RuntimeInfo{
-					State:                pbtask.TaskState_RUNNING,
-					Healthy:              pbtask.HealthState_HEALTHY,
-					ConfigVersion:        newJobVersion,
-					DesiredConfigVersion: newJobVersion,
-				}, nil)
+				Return(runtime, nil)
+
+			suite.cachedUpdate.EXPECT().
+				IsInstanceComplete(newJobVersion, runtime).
+				Return(true)
 		} else {
+			runtime := &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_RUNNING,
+				ConfigVersion:        oldJobVersion,
+				DesiredConfigVersion: newJobVersion,
+			}
+
 			suite.cachedTask.EXPECT().
 				GetRunTime(gomock.Any()).
-				Return(&pbtask.RuntimeInfo{
-					State:                pbtask.TaskState_RUNNING,
-					ConfigVersion:        oldJobVersion,
-					DesiredConfigVersion: newJobVersion,
-				}, nil)
+				Return(runtime, nil)
+
+			suite.cachedUpdate.EXPECT().
+				IsInstanceComplete(newJobVersion, runtime).
+				Return(false)
+
+			suite.cachedUpdate.EXPECT().
+				IsInstanceInProgress(newJobVersion, runtime).
+				Return(true)
 		}
 	}
 

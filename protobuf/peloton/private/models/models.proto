@@ -12,8 +12,16 @@ option java_package = "peloton.private.models";
 import "peloton/api/v0/peloton.proto";
 import "peloton/api/v0/update/update.proto";
 
+enum WorkflowType {
+  UNKNOWN = 0;
+  START = 1;
+  STOP = 2;
+  RESTART = 3;
+  UPDATE = 4;
+}
+
 /**
- * Object to model a job update.
+ * Object to model a job workflow.
  */
 message UpdateModel {
   // the update identifier
@@ -48,4 +56,13 @@ message UpdateModel {
 
   // time at which the update state was last updated
   string updateTime = 11;
+
+  // instances to be added
+  repeated uint32 instancesAdded = 12;
+
+  // instances to be updated
+  repeated uint32 instancesUpdated = 13;
+
+  // The type for this workflow
+  WorkflowType type = 14;
 }

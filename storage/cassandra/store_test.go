@@ -2117,6 +2117,16 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	// update state
 	state := update.State_INITIALIZED
 	instancesTotal := uint32(60)
+	numOfInstancesAdded := 30
+	instancesAdded := make([]uint32, 0)
+	instancesUpdated := make([]uint32, 0)
+	for i := 0; i < int(instancesTotal); i++ {
+		if i < numOfInstancesAdded {
+			instancesAdded = append(instancesAdded, uint32(i))
+		} else {
+			instancesUpdated = append(instancesUpdated, uint32(i))
+		}
+	}
 
 	// get a non-existent update
 	_, err := store.GetUpdate(
@@ -2150,6 +2160,9 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			PrevJobConfigVersion: jobPrevVersion,
 			State:                state,
 			InstancesTotal:       instancesTotal,
+			InstancesUpdated:     instancesUpdated,
+			InstancesAdded:       instancesAdded,
+			Type:                 models.WorkflowType_UPDATE,
 		},
 	))
 
@@ -2164,6 +2177,9 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			PrevJobConfigVersion: jobPrevVersion,
 			State:                state,
 			InstancesTotal:       instancesTotal,
+			InstancesUpdated:     instancesUpdated,
+			InstancesAdded:       instancesAdded,
+			Type:                 models.WorkflowType_UPDATE,
 		},
 	))
 
@@ -2178,6 +2194,9 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			PrevJobConfigVersion: jobPrevVersion,
 			State:                state,
 			InstancesTotal:       instancesTotal,
+			InstancesUpdated:     instancesUpdated,
+			InstancesAdded:       instancesAdded,
+			Type:                 models.WorkflowType_UPDATE,
 		},
 	)
 	suite.Error(err)
@@ -2197,6 +2216,9 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.Equal(updateInfo.GetInstancesTotal(), instancesTotal)
 	suite.Equal(updateInfo.GetInstancesDone(), uint32(0))
 	suite.Equal(len(updateInfo.GetInstancesCurrent()), 0)
+	suite.Equal(updateInfo.GetType(), models.WorkflowType_UPDATE)
+	suite.Equal(updateInfo.GetInstancesUpdated(), instancesUpdated)
+	suite.Equal(updateInfo.GetInstancesAdded(), instancesAdded)
 
 	// get the progress
 	updateInfo, err = store.GetUpdateProgress(

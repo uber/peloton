@@ -113,7 +113,7 @@ func (t *task) JobID() *peloton.JobID {
 }
 
 // validateMesosTaskID validates whether newRunID is greater than current runID,
-// since each restart/upgrade for a task's runID is monotonically incremented.
+// since each restart/update for a task's runID is monotonically incremented.
 func validateMesosTaskID(mesosTaskID, prevMesosTaskID string) bool {
 	// TODO: remove this check, post mesostaskID migration.
 	if len(mesosTaskID) > 2*uuidLength && len(prevMesosTaskID) > 2*uuidLength {

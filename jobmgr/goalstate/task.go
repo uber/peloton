@@ -226,10 +226,10 @@ func (t *taskEntity) suggestTaskAction(
 }
 
 // check if the current configuration version of a task is the same
-// as the desired configuration version. If it is not, then upgrade
-// workflow for the task needs to be triggered. The upgrade workflow
+// as the desired configuration version. If it is not, then update
+// workflow for the task needs to be triggered. The update workflow
 // needs to be run for tasks which do not have non-terminal
-// goal states to avoid trying to upgrade a batch task or a task
+// goal states to avoid trying to update a batch task or a task
 // which is going to be killed anyways.
 func requireUpdate(currentState cached.TaskStateVector,
 	goalState cached.TaskStateVector) bool {

@@ -459,6 +459,7 @@ func main() {
 		dispatcher,
 		rootScope,
 		store, // store implements JobStore
+		store, // store implements TaskStore
 		store, // store implements UpdateStore
 		goalStateDriver,
 		jobFactory,

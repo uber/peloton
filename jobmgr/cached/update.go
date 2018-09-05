@@ -6,20 +6,17 @@ import (
 
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
-	"code.uber.internal/infra/peloton/common/taskconfig"
-	"code.uber.internal/infra/peloton/util"
-
-	"github.com/gogo/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // Update of a job being stored in the cache.
 type Update interface {
+	WorkflowStrategy
+
 	// Identifier of the update
 	ID() *peloton.UpdateID
 
@@ -32,6 +29,9 @@ type Update interface {
 		jobID *peloton.JobID,
 		jobConfig *pbjob.JobConfig,
 		prevJobConfig *pbjob.JobConfig,
+		instanceAdded []uint32,
+		instanceUpdated []uint32,
+		workflowType models.WorkflowType,
 		updateConfig *pbupdate.UpdateConfig,
 	) error
 
@@ -61,6 +61,8 @@ type Update interface {
 	GetInstancesCurrent() []uint32
 
 	GetUpdateConfig() *pbupdate.UpdateConfig
+
+	GetWorkflowType() models.WorkflowType
 }
 
 // UpdateStateVector is used to the represent the state and goal state
@@ -104,6 +106,7 @@ func IsUpdateStateTerminal(state pbupdate.State) bool {
 type update struct {
 	// Mutex to acquire before accessing any update information in cache
 	sync.RWMutex
+	WorkflowStrategy
 
 	jobID *peloton.JobID    // Parent job identifier
 	id    *peloton.UpdateID // update identifier
@@ -115,6 +118,9 @@ type update struct {
 
 	// the update configuration provided in the create request
 	updateConfig *pbupdate.UpdateConfig
+
+	// type of the update workflow
+	workflowType models.WorkflowType
 
 	// list of instances which will be updated with this update
 	instancesTotal []uint32
@@ -146,145 +152,29 @@ func (u *update) JobID() *peloton.JobID {
 	return u.jobID
 }
 
-// labelsChangeCheck returns true if the labels have changed
-func (u *update) labelsChangeCheck(
-	prevLabels []*peloton.Label,
-	newLabels []*peloton.Label) bool {
-	if len(prevLabels) != len(newLabels) {
-		return true
-	}
-
-	for _, label := range newLabels {
-		found := false
-		for _, prevLabel := range prevLabels {
-			if label.GetKey() == prevLabel.GetKey() &&
-				label.GetValue() == prevLabel.GetValue() {
-				found = true
-				break
-			}
-		}
-
-		// label not found
-		if found == false {
-			return true
-		}
-	}
-
-	// all old labels found in new config as well
-	return false
-}
-
-// taskConfigChange returns true if the task config (other than the name)
-// has changed.
-func (u *update) taskConfigChange(
-	prevTaskConfig *pbtask.TaskConfig,
-	newTaskConfig *pbtask.TaskConfig) bool {
-	if prevTaskConfig == nil || newTaskConfig == nil {
-		return true
-	}
-
-	oldName := prevTaskConfig.GetName()
-	newName := newTaskConfig.GetName()
-	prevTaskConfig.Name = ""
-	newTaskConfig.Name = ""
-
-	changed := !proto.Equal(prevTaskConfig, newTaskConfig)
-
-	prevTaskConfig.Name = oldName
-	newTaskConfig.Name = newName
-	return changed
-}
-
-// diffConfig determines the instances which have been updated in a given
-// job update. Both the old and the new job configurations are provided as
-// inputs, and it returns the instances which have been added, existing
-// instances which have been updated, and all instances touched by this
-// update (which is a union of the added and updated instances).
-func (u *update) diffConfig(
-	ctx context.Context,
-	prevJobConfig *pbjob.JobConfig,
-	newJobConfig *pbjob.JobConfig,
-) (
-	instancesTotal []uint32,
-	instancesAdded []uint32,
-	instancesUpdated []uint32,
-	err error,
-) {
-
-	if newJobConfig.GetInstanceCount() > prevJobConfig.GetInstanceCount() {
-		// New instances have been added
-		for instID := uint32(prevJobConfig.GetInstanceCount()); instID < uint32(newJobConfig.GetInstanceCount()); instID++ {
-			instancesTotal = append(instancesTotal, instID)
-			instancesAdded = append(instancesAdded, instID)
-		}
-	}
-
-	if u.labelsChangeCheck(
-		prevJobConfig.GetLabels(),
-		newJobConfig.GetLabels()) {
-		// changing labels implies that all instances need to updated
-		// so that new labels get updated in mesos
-		for i := uint32(0); i < prevJobConfig.GetInstanceCount(); i++ {
-			instancesTotal = append(instancesTotal, i)
-			instancesUpdated = append(instancesUpdated, i)
-		}
-		return
-	}
-
-	j := u.jobFactory.AddJob(u.jobID)
-	for i := uint32(0); i < prevJobConfig.GetInstanceCount(); i++ {
-		// Get the current task configuration. Cannot use prevTaskConfig to do
-		// so because the task may be still be on an older configurarion
-		// version because the previous update may not have succeeded.
-		// So, fetch the task configuration of the task from the DB.
-		var runtime *pbtask.RuntimeInfo
-		var prevTaskConfig *pbtask.TaskConfig
-
-		t := j.AddTask(i)
-		runtime, err = t.GetRunTime(ctx)
-		if err != nil {
-			return
-		}
-
-		prevTaskConfig, err = u.updateFactory.taskStore.GetTaskConfig(
-			ctx, u.jobID, i, runtime.GetConfigVersion())
-		if err != nil {
-			return
-		}
-
-		newTaskConfig := taskconfig.Merge(
-			newJobConfig.GetDefaultConfig(),
-			newJobConfig.GetInstanceConfig()[i])
-
-		if u.taskConfigChange(prevTaskConfig, newTaskConfig) {
-			// instance needs to be updated
-			instancesTotal = append(instancesTotal, i)
-			instancesUpdated = append(instancesUpdated, i)
-		}
-	}
-
-	return
-}
-
 func (u *update) Create(
 	ctx context.Context,
 	jobID *peloton.JobID,
 	jobConfig *pbjob.JobConfig,
 	prevJobConfig *pbjob.JobConfig,
+	instanceAdded []uint32,
+	instanceUpdated []uint32,
+	workflowType models.WorkflowType,
 	updateConfig *pbupdate.UpdateConfig) error {
+
+	if err := validateInput(
+		jobConfig,
+		prevJobConfig,
+		instanceAdded,
+		instanceUpdated); err != nil {
+		return err
+	}
 
 	u.Lock()
 	defer u.Unlock()
 
 	state := pbupdate.State_INITIALIZED
 	u.jobID = jobID
-
-	// determine the instances being updated with this update
-	instancesTotal, instancesAdded, instancesUpdated, err :=
-		u.diffConfig(ctx, prevJobConfig, jobConfig)
-	if err != nil {
-		return err
-	}
 
 	// Store the new job configuration
 	cachedJob := u.jobFactory.AddJob(jobID)
@@ -303,31 +193,24 @@ func (u *update) Create(
 		return err
 	}
 
+	updateModel := &models.UpdateModel{
+		UpdateID:             u.id,
+		JobID:                u.jobID,
+		UpdateConfig:         updateConfig,
+		JobConfigVersion:     newConfig.GetChangeLog().GetVersion(),
+		PrevJobConfigVersion: prevJobConfig.GetChangeLog().GetVersion(),
+		State:                state,
+		InstancesAdded:       instanceAdded,
+		InstancesUpdated:     instanceUpdated,
+		InstancesTotal:       uint32(len(instanceUpdated) + len(instanceAdded)),
+		Type:                 u.workflowType,
+	}
 	// Store the new update in DB
-	if err := u.updateFactory.updateStore.CreateUpdate(
-		ctx,
-		&models.UpdateModel{
-			UpdateID:             u.id,
-			JobID:                u.jobID,
-			UpdateConfig:         updateConfig,
-			JobConfigVersion:     newConfig.GetChangeLog().GetVersion(),
-			PrevJobConfigVersion: prevJobConfig.GetChangeLog().GetVersion(),
-			State:                state,
-			InstancesTotal:       uint32(len(instancesTotal)),
-		}); err != nil {
+	if err := u.updateFactory.updateStore.CreateUpdate(ctx, updateModel); err != nil {
 		return err
 	}
 
-	// populate the cache
-	u.state = state
-	u.updateConfig = updateConfig
-	u.instancesTotal = instancesTotal
-	u.instancesAdded = instancesAdded
-	u.instancesUpdated = instancesUpdated
-
-	// store the previous and current job configuration versions
-	u.jobVersion = newConfig.GetChangeLog().GetVersion()
-	u.jobPrevVersion = prevJobConfig.GetChangeLog().GetVersion()
+	u.populateCache(updateModel)
 
 	// store the update identifier and new configuration version in the job runtime
 	if err := cachedJob.Update(
@@ -408,11 +291,18 @@ func (u *update) Recover(ctx context.Context) error {
 			"update_id": u.id.GetValue(),
 			"job_id":    u.jobID.GetValue(),
 			"state":     u.state.String(),
-		}).Debug("skip recover upgrade progress for terminated upgrade")
+		}).Debug("skip recover update progress for terminated update")
 		return nil
 	}
 
-	err = u.recoverUpdateProgress(ctx)
+	// recover update progress
+	cachedJob := u.jobFactory.AddJob(u.jobID)
+	u.instancesCurrent, u.instancesDone, err = GetUpdateProgress(
+		ctx,
+		cachedJob,
+		u,
+		u.jobVersion,
+		u.instancesTotal)
 	if err != nil {
 		u.clearCache()
 		return err
@@ -455,7 +345,7 @@ func (u *update) GetState() *UpdateStateVector {
 			"job_id":    u.jobID.GetValue(),
 			"state":     u.state.String(),
 			"field":     "instancesDone",
-		}).Debug("accessing fields in terminated upgrade which can be stale")
+		}).Debug("accessing fields in terminated update which can be stale")
 	}
 
 	instances := make([]uint32, len(u.instancesDone))
@@ -478,7 +368,7 @@ func (u *update) GetGoalState() *UpdateStateVector {
 			"job_id":    u.jobID.GetValue(),
 			"state":     u.state.String(),
 			"field":     "instancesTotal",
-		}).Debug("accessing fields in terminated upgrade which can be stale")
+		}).Debug("accessing fields in terminated update which can be stale")
 	}
 
 	instances := make([]uint32, len(u.instancesTotal))
@@ -500,7 +390,7 @@ func (u *update) GetInstancesAdded() []uint32 {
 			"job_id":    u.jobID.GetValue(),
 			"state":     u.state.String(),
 			"field":     "instancesAdded",
-		}).Warn("accessing fields in terminated upgrade which can be stale")
+		}).Warn("accessing fields in terminated update which can be stale")
 	}
 
 	instances := make([]uint32, len(u.instancesAdded))
@@ -518,7 +408,7 @@ func (u *update) GetInstancesUpdated() []uint32 {
 			"job_id":    u.jobID.GetValue(),
 			"state":     u.state.String(),
 			"field":     "instancesUpdated",
-		}).Warn("accessing fields in terminated upgrade which can be stale")
+		}).Warn("accessing fields in terminated update which can be stale")
 	}
 
 	instances := make([]uint32, len(u.instancesUpdated))
@@ -546,39 +436,26 @@ func (u *update) GetUpdateConfig() *pbupdate.UpdateConfig {
 	return &updateConfig
 }
 
+func (u *update) GetWorkflowType() models.WorkflowType {
+	u.RLock()
+	defer u.RUnlock()
+
+	return u.workflowType
+}
+
 // populate info in updateModel into update
 func (u *update) populateCache(updateModel *models.UpdateModel) {
 	u.updateConfig = updateModel.GetUpdateConfig()
 	u.state = updateModel.GetState()
+	u.workflowType = updateModel.GetType()
 	u.jobID = updateModel.GetJobID()
 	u.instancesCurrent = updateModel.GetInstancesCurrent()
+	u.instancesAdded = updateModel.GetInstancesAdded()
+	u.instancesUpdated = updateModel.GetInstancesUpdated()
 	u.jobVersion = updateModel.GetJobConfigVersion()
 	u.jobPrevVersion = updateModel.GetPrevJobConfigVersion()
-}
-
-func (u *update) recoverUpdateProgress(ctx context.Context) error {
-	jobConfig, err := u.updateFactory.jobStore.GetJobConfigWithVersion(
-		ctx, u.jobID, u.jobVersion)
-	if err != nil {
-		return err
-	}
-
-	prevJobConfig, err := u.updateFactory.jobStore.GetJobConfigWithVersion(
-		ctx, u.jobID, u.jobPrevVersion)
-	if err != nil {
-		return err
-	}
-
-	// determine the instances being updated with this update
-	if u.instancesTotal, u.instancesAdded, u.instancesUpdated, err =
-		u.diffConfig(ctx, prevJobConfig, jobConfig); err != nil {
-		return err
-	}
-
-	cachedJob := u.jobFactory.AddJob(u.jobID)
-	u.instancesCurrent, u.instancesDone, err =
-		GetUpdateProgress(ctx, cachedJob, u.jobVersion, u.instancesTotal)
-	return err
+	u.instancesTotal = append(updateModel.GetInstancesUpdated(), updateModel.GetInstancesAdded()...)
+	u.WorkflowStrategy = getWorkflowStrategy(updateModel.GetType())
 }
 
 func (u *update) clearCache() {
@@ -588,6 +465,33 @@ func (u *update) clearCache() {
 	u.instancesCurrent = nil
 	u.instancesAdded = nil
 	u.instancesUpdated = nil
+	u.workflowType = models.WorkflowType_UNKNOWN
+}
+
+func validateInput(
+	jobConfig *pbjob.JobConfig,
+	prevJobConfig *pbjob.JobConfig,
+	instanceAdded []uint32,
+	instanceUpdated []uint32,
+) error {
+	// validate all instances in instanceUpdated is within old
+	// instance config range
+	for _, instanceID := range instanceUpdated {
+		if instanceID >= prevJobConfig.GetInstanceCount() {
+			return yarpcerrors.InvalidArgumentErrorf(
+				"instance %d is out side of range for update", instanceID)
+		}
+	}
+
+	// validate all instances in instanceAdded is within new
+	// instance config range
+	for _, instanceID := range instanceAdded {
+		if instanceID >= jobConfig.GetInstanceCount() {
+			return yarpcerrors.InvalidArgumentErrorf(
+				"instance %d is out side of range for add", instanceID)
+		}
+	}
+	return nil
 }
 
 // GetUpdateProgress iterates through instancesToCheck and check if they are running and
@@ -596,6 +500,7 @@ func (u *update) clearCache() {
 func GetUpdateProgress(
 	ctx context.Context,
 	cachedJob Job,
+	cachedUpdate Update,
 	desiredConfigVersion uint64,
 	instancesToCheck []uint32,
 ) (instancesCurrent []uint32, instancesDone []uint32, err error) {
@@ -617,43 +522,12 @@ func GetUpdateProgress(
 			return nil, nil, err
 		}
 
-		if isUpdateComplete(desiredConfigVersion, runtime) {
+		if cachedUpdate.IsInstanceComplete(desiredConfigVersion, runtime) {
 			instancesDone = append(instancesDone, instID)
-		} else if isUpdateInProgress(desiredConfigVersion, runtime) {
+		} else if cachedUpdate.IsInstanceInProgress(desiredConfigVersion, runtime) {
 			// instances set to desired configuration, but has not entered RUNNING state
 			instancesCurrent = append(instancesCurrent, instID)
 		}
 	}
 	return instancesCurrent, instancesDone, nil
-}
-
-func isUpdateComplete(desiredConfigVersion uint64, runtime *pbtask.RuntimeInfo) bool {
-	// for a running task, update is completed if:
-	// 1. runtime desired configuration is set to desiredConfigVersion
-	// 2. runtime configuration is set to desired configuration
-	// 3. healthy state is DISABLED or HEALTHY
-	if runtime.GetState() == pbtask.TaskState_RUNNING {
-		return runtime.GetDesiredConfigVersion() == desiredConfigVersion &&
-			runtime.GetConfigVersion() == runtime.GetDesiredConfigVersion() &&
-			(runtime.GetHealthy() == pbtask.HealthState_DISABLED ||
-				runtime.GetHealthy() == pbtask.HealthState_HEALTHY)
-	}
-
-	// for a terminated task, update is completed if:
-	// 1. runtime desired configuration is set to desiredConfigVersion
-	// runtime configuration does not matter as it will be set to
-	// runtime desired configuration  when it starts
-	if util.IsPelotonStateTerminal(runtime.GetState()) &&
-		util.IsPelotonStateTerminal(runtime.GetGoalState()) {
-		return runtime.GetDesiredConfigVersion() == desiredConfigVersion
-	}
-
-	return false
-}
-
-func isUpdateInProgress(desiredConfigVersion uint64, runtime *pbtask.RuntimeInfo) bool {
-	// runtime desired config version has been set to the desired,
-	// but update has not completed
-	return runtime.GetDesiredConfigVersion() == desiredConfigVersion &&
-		!isUpdateComplete(desiredConfigVersion, runtime)
 }

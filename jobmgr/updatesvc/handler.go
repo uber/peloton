@@ -6,14 +6,18 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc"
 
+	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	updateutil "code.uber.internal/infra/peloton/jobmgr/util/update"
 	"code.uber.internal/infra/peloton/storage"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
+	"github.com/gogo/protobuf/proto"
 	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -25,12 +29,14 @@ func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	jobStore storage.JobStore,
+	taskStore storage.TaskStore,
 	updateStore storage.UpdateStore,
 	goalStateDriver goalstate.Driver,
 	jobFactory cached.JobFactory,
 	updateFactory cached.UpdateFactory) {
 	handler := &serviceHandler{
 		jobStore:        jobStore,
+		taskStore:       taskStore,
 		updateStore:     updateStore,
 		goalStateDriver: goalStateDriver,
 		jobFactory:      jobFactory,
@@ -44,6 +50,7 @@ func InitServiceHandler(
 // serviceHandler implements peloton.api.update.svc
 type serviceHandler struct {
 	jobStore        storage.JobStore
+	taskStore       storage.TaskStore
 	updateStore     storage.UpdateStore
 	goalStateDriver goalstate.Driver
 	jobFactory      cached.JobFactory
@@ -165,6 +172,17 @@ func (h *serviceHandler) CreateUpdate(
 		Value: uuid.New(),
 	}
 
+	instancesAdded, instancesUpdated, err := h.diffConfig(
+		ctx,
+		jobID,
+		prevJobConfig,
+		jobConfig,
+	)
+	if err != nil {
+		h.metrics.UpdateCreateFail.Inc(1)
+		return nil, err
+	}
+
 	// add this new update to cache and DB
 	cachedUpdate := h.updateFactory.AddUpdate(id)
 	err = cachedUpdate.Create(
@@ -172,9 +190,11 @@ func (h *serviceHandler) CreateUpdate(
 		jobID,
 		jobConfig,
 		prevJobConfig,
+		instancesAdded,
+		instancesUpdated,
+		models.WorkflowType_UPDATE,
 		req.GetUpdateConfig(),
 	)
-
 	if err != nil {
 		// In case of error, since it is not clear if job runtime was
 		// persisted with the update ID or not, enqueue the update to
@@ -400,4 +420,119 @@ func (h *serviceHandler) getCachedUpdate(updateID *peloton.UpdateID) (cached.Upd
 		return nil, yarpcerrors.NotFoundErrorf("update not found")
 	}
 	return u, nil
+}
+
+// diffConfig determines the instances which have been updated in a given
+// job update. Both the old and the new job configurations are provided as
+// inputs, and it returns the instances which have been added and existing
+// instances which have been updated.
+func (h *serviceHandler) diffConfig(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	prevJobConfig *job.JobConfig,
+	newJobConfig *job.JobConfig,
+) (
+	instancesAdded []uint32,
+	instancesUpdated []uint32,
+	err error,
+) {
+
+	if newJobConfig.GetInstanceCount() > prevJobConfig.GetInstanceCount() {
+		// New instances have been added
+		for instID := prevJobConfig.GetInstanceCount(); instID < newJobConfig.GetInstanceCount(); instID++ {
+			instancesAdded = append(instancesAdded, instID)
+		}
+	}
+
+	if labelsChangeCheck(
+		prevJobConfig.GetLabels(),
+		newJobConfig.GetLabels()) {
+		// changing labels implies that all instances need to updated
+		// so that new labels get updated in mesos
+		for i := uint32(0); i < prevJobConfig.GetInstanceCount(); i++ {
+			instancesUpdated = append(instancesUpdated, i)
+		}
+		return
+	}
+
+	j := h.jobFactory.AddJob(jobID)
+	for i := uint32(0); i < prevJobConfig.GetInstanceCount(); i++ {
+		// Get the current task configuration. Cannot use prevTaskConfig to do
+		// so because the task may be still be on an older configurarion
+		// version because the previous update may not have succeeded.
+		// So, fetch the task configuration of the task from the DB.
+		var runtime *task.RuntimeInfo
+		var prevTaskConfig *task.TaskConfig
+
+		t := j.AddTask(i)
+		runtime, err = t.GetRunTime(ctx)
+		if err != nil {
+			return
+		}
+
+		prevTaskConfig, err = h.taskStore.GetTaskConfig(
+			ctx, jobID, i, runtime.GetConfigVersion())
+		if err != nil {
+			return
+		}
+
+		newTaskConfig := taskconfig.Merge(
+			newJobConfig.GetDefaultConfig(),
+			newJobConfig.GetInstanceConfig()[i])
+
+		if taskConfigChange(prevTaskConfig, newTaskConfig) {
+			// instance needs to be updated
+			instancesUpdated = append(instancesUpdated, i)
+		}
+	}
+	return
+}
+
+// labelsChangeCheck returns true if the labels have changed
+func labelsChangeCheck(
+	prevLabels []*peloton.Label,
+	newLabels []*peloton.Label) bool {
+	if len(prevLabels) != len(newLabels) {
+		return true
+	}
+
+	for _, label := range newLabels {
+		found := false
+		for _, prevLabel := range prevLabels {
+			if label.GetKey() == prevLabel.GetKey() &&
+				label.GetValue() == prevLabel.GetValue() {
+				found = true
+				break
+			}
+		}
+
+		// label not found
+		if found == false {
+			return true
+		}
+	}
+
+	// all old labels found in new config as well
+	return false
+}
+
+// taskConfigChange returns true if the task config (other than the name)
+// has changed.
+func taskConfigChange(
+	prevTaskConfig *task.TaskConfig,
+	newTaskConfig *task.TaskConfig) bool {
+	if prevTaskConfig == nil || newTaskConfig == nil {
+		return true
+	}
+
+	oldName := prevTaskConfig.GetName()
+	newName := newTaskConfig.GetName()
+	prevTaskConfig.Name = ""
+	newTaskConfig.Name = ""
+
+	changed := !proto.Equal(prevTaskConfig, newTaskConfig)
+
+	prevTaskConfig.Name = oldName
+	newTaskConfig.Name = newName
+	return changed
 }

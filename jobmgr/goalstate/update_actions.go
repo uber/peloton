@@ -197,6 +197,7 @@ func UpdateWriteProgress(ctx context.Context, entity goalstate.Entity) error {
 	instancesCurrent, instancesDone, err := cached.GetUpdateProgress(
 		ctx,
 		cachedJob,
+		cachedUpdate,
 		cachedUpdate.GetGoalState().JobVersion,
 		cachedUpdate.GetInstancesCurrent(),
 	)

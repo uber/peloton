@@ -17,6 +17,8 @@ import (
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	"code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
@@ -29,6 +31,7 @@ type UpdateSvcTestSuite struct {
 
 	ctrl            *gomock.Controller
 	jobStore        *storemocks.MockJobStore
+	taskStore       *storemocks.MockTaskStore
 	updateStore     *storemocks.MockUpdateStore
 	jobFactory      *cachedmocks.MockJobFactory
 	updateFactory   *cachedmocks.MockUpdateFactory
@@ -38,6 +41,8 @@ type UpdateSvcTestSuite struct {
 	cachedJobConfig *cachedmocks.MockJobConfigCache
 	cachedJob       *cachedmocks.MockJob
 	cachedUpdate    *cachedmocks.MockUpdate
+
+	cachedTask *cachedmocks.MockTask
 
 	jobRuntime *job.RuntimeInfo
 	jobConfig  *job.JobConfig
@@ -58,6 +63,7 @@ func (suite *UpdateSvcTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
+	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
@@ -65,6 +71,7 @@ func (suite *UpdateSvcTestSuite) SetupTest() {
 
 	suite.cachedJobConfig = cachedmocks.NewMockJobConfigCache(suite.ctrl)
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
+	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 	suite.cachedUpdate = cachedmocks.NewMockUpdate(suite.ctrl)
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
 	suite.respoolID = &peloton.ResourcePoolID{Value: uuid.NewRandom().String()}
@@ -76,6 +83,11 @@ func (suite *UpdateSvcTestSuite) SetupTest() {
 		ConfigurationVersion: uint64(2),
 	}
 
+	labels := []*peloton.Label{
+		{Key: "key1", Value: "value1"},
+		{Key: "key2", Value: "value2"},
+	}
+	cmd1 := "hello world 1"
 	suite.jobConfig = &job.JobConfig{
 		Type:          job.JobType_SERVICE,
 		InstanceCount: uint32(10),
@@ -83,8 +95,13 @@ func (suite *UpdateSvcTestSuite) SetupTest() {
 		ChangeLog: &peloton.ChangeLog{
 			Version: uint64(2),
 		},
+		DefaultConfig: &task.TaskConfig{
+			Command: &mesos_v1.CommandInfo{Value: &cmd1},
+		},
+		Labels: labels,
 	}
 
+	cmd2 := "hello world 2"
 	suite.newJobConfig = &job.JobConfig{
 		Type:          job.JobType_SERVICE,
 		InstanceCount: uint32(10),
@@ -92,6 +109,10 @@ func (suite *UpdateSvcTestSuite) SetupTest() {
 		ChangeLog: &peloton.ChangeLog{
 			Version: uint64(3),
 		},
+		DefaultConfig: &task.TaskConfig{
+			Command: &mesos_v1.CommandInfo{Value: &cmd2},
+		},
+		Labels: labels,
 	}
 
 	suite.updateConfig = &update.UpdateConfig{
@@ -100,6 +121,7 @@ func (suite *UpdateSvcTestSuite) SetupTest() {
 
 	suite.h = &serviceHandler{
 		jobStore:        suite.jobStore,
+		taskStore:       suite.taskStore,
 		updateStore:     suite.updateStore,
 		goalStateDriver: suite.goalStateDriver,
 		jobFactory:      suite.jobFactory,
@@ -126,10 +148,38 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 		AddUpdate(gomock.Any()).
 		Return(suite.cachedUpdate)
 
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	for i := uint32(0); i < suite.jobConfig.InstanceCount; i++ {
+		suite.cachedJob.EXPECT().
+			AddTask(i).
+			Return(suite.cachedTask)
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&task.RuntimeInfo{
+				ConfigVersion: suite.jobConfig.GetChangeLog().GetVersion(),
+			}, nil)
+
+		suite.taskStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				suite.jobID,
+				i,
+				suite.jobConfig.GetChangeLog().GetVersion()).
+			Return(suite.jobConfig.GetDefaultConfig(), nil)
+	}
+
 	suite.cachedUpdate.EXPECT().
 		Create(
-			gomock.Any(), suite.jobID, suite.newJobConfig,
-			suite.jobConfig, suite.updateConfig).
+			gomock.Any(), suite.jobID,
+			suite.newJobConfig,
+			suite.jobConfig,
+			nil,
+			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			models.WorkflowType_UPDATE,
+			suite.updateConfig).
 		Return(nil)
 
 	suite.goalStateDriver.EXPECT().
@@ -140,6 +190,111 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 		&svc.CreateUpdateRequest{
 			JobId:        suite.jobID,
 			JobConfig:    suite.newJobConfig,
+			UpdateConfig: suite.updateConfig,
+		},
+	)
+	suite.NoError(err)
+}
+
+// TestAddInstancesSuccess tests successfully add instances
+func (suite *UpdateSvcTestSuite) TestAddInstancesSuccess() {
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.jobID).
+		Return(suite.jobRuntime, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(suite.jobConfig, nil)
+
+	suite.updateFactory.EXPECT().
+		AddUpdate(gomock.Any()).
+		Return(suite.cachedUpdate)
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	for i := uint32(0); i < suite.jobConfig.InstanceCount; i++ {
+		suite.cachedJob.EXPECT().
+			AddTask(i).
+			Return(suite.cachedTask)
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&task.RuntimeInfo{
+				ConfigVersion: suite.jobConfig.GetChangeLog().GetVersion(),
+			}, nil)
+
+		suite.taskStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				suite.jobID,
+				i,
+				suite.jobConfig.GetChangeLog().GetVersion()).
+			Return(suite.jobConfig.GetDefaultConfig(), nil)
+	}
+
+	suite.cachedUpdate.EXPECT().
+		Create(
+			gomock.Any(), suite.jobID,
+			suite.newJobConfig,
+			suite.jobConfig,
+			[]uint32{10, 11},
+			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			models.WorkflowType_UPDATE,
+			suite.updateConfig).
+		Return(nil)
+
+	suite.goalStateDriver.EXPECT().
+		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
+
+	suite.newJobConfig.InstanceCount = 12
+	_, err := suite.h.CreateUpdate(
+		context.Background(),
+		&svc.CreateUpdateRequest{
+			JobId:        suite.jobID,
+			JobConfig:    suite.newJobConfig,
+			UpdateConfig: suite.updateConfig,
+		},
+	)
+	suite.NoError(err)
+}
+
+// TestUpdateLabelsSuccess tests label update
+func (suite *UpdateSvcTestSuite) TestUpdateLabelsSuccess() {
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.jobID).
+		Return(suite.jobRuntime, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(suite.jobConfig, nil)
+
+	suite.updateFactory.EXPECT().
+		AddUpdate(gomock.Any()).
+		Return(suite.cachedUpdate)
+
+	newConfig := *suite.jobConfig
+	newConfig.Labels = append(newConfig.Labels, &peloton.Label{Key: "newKey", Value: "newLabel"})
+
+	suite.cachedUpdate.EXPECT().
+		Create(
+			gomock.Any(), suite.jobID,
+			&newConfig,
+			suite.jobConfig,
+			nil,
+			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			models.WorkflowType_UPDATE,
+			suite.updateConfig).
+		Return(nil)
+
+	suite.goalStateDriver.EXPECT().
+		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
+
+	_, err := suite.h.CreateUpdate(
+		context.Background(),
+		&svc.CreateUpdateRequest{
+			JobId:        suite.jobID,
+			JobConfig:    &newConfig,
 			UpdateConfig: suite.updateConfig,
 		},
 	)
@@ -372,14 +527,42 @@ func (suite *UpdateSvcTestSuite) TestCreateAddUpdateFail() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, nil)
 
+	for i := uint32(0); i < suite.jobConfig.InstanceCount; i++ {
+		suite.cachedJob.EXPECT().
+			AddTask(i).
+			Return(suite.cachedTask)
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&task.RuntimeInfo{
+				ConfigVersion: suite.jobConfig.GetChangeLog().GetVersion(),
+			}, nil)
+
+		suite.taskStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				suite.jobID,
+				i,
+				suite.jobConfig.GetChangeLog().GetVersion()).
+			Return(suite.jobConfig.GetDefaultConfig(), nil)
+	}
+
 	suite.updateFactory.EXPECT().
 		AddUpdate(gomock.Any()).
 		Return(suite.cachedUpdate)
 
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
 	suite.cachedUpdate.EXPECT().
 		Create(
-			gomock.Any(), suite.jobID, suite.newJobConfig,
-			suite.jobConfig, suite.updateConfig).
+			gomock.Any(), suite.jobID,
+			suite.newJobConfig,
+			suite.jobConfig,
+			nil,
+			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			models.WorkflowType_UPDATE,
+			suite.updateConfig).
 		Return(fmt.Errorf("fake db error"))
 
 	suite.updateFactory.EXPECT().
@@ -418,6 +601,40 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccessWithExistingUpdate() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, nil)
 
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	for i := uint32(0); i < suite.jobConfig.InstanceCount; i++ {
+		suite.cachedJob.EXPECT().
+			AddTask(i).
+			Return(suite.cachedTask)
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&task.RuntimeInfo{
+				ConfigVersion: suite.jobConfig.GetChangeLog().GetVersion(),
+			}, nil)
+
+		suite.taskStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				suite.jobID,
+				i,
+				suite.jobConfig.GetChangeLog().GetVersion()).
+			Return(suite.jobConfig.GetDefaultConfig(), nil)
+	}
+
+	suite.cachedUpdate.EXPECT().
+		Create(
+			gomock.Any(), suite.jobID,
+			suite.newJobConfig,
+			suite.jobConfig,
+			nil,
+			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			models.WorkflowType_UPDATE,
+			suite.updateConfig).
+		Return(nil)
+
 	suite.updateStore.EXPECT().
 		GetUpdateProgress(gomock.Any(), oldUpdateID).
 		Return(updateModel, nil)
@@ -433,12 +650,6 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccessWithExistingUpdate() {
 	suite.updateFactory.EXPECT().
 		AddUpdate(gomock.Any()).
 		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		Create(
-			gomock.Any(), suite.jobID, suite.newJobConfig,
-			suite.jobConfig, suite.updateConfig).
-		Return(nil)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any()).

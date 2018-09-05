@@ -57,8 +57,8 @@ var (
 		update.State_SUCCEEDED: ClearUpdateAction,
 		// update is complete, clean it up from the cache and goal state
 		update.State_ABORTED: ClearUpdateAction,
-		// update is paused, write the upgrade progress if there is
-		// any instances under upgrade when pause is called
+		// update is paused, write the update progress if there is
+		// any instances under update when pause is called
 		update.State_PAUSED: WriteProgressUpdateAction,
 	}
 )
@@ -153,8 +153,8 @@ func (u *updateEntity) suggestUpdateAction(
 			// update is complete
 			return CompleteUpdateAction
 		}
-		// determine which instances have completed the upgrade,
-		// and which need to be upgraded next.
+		// determine which instances have completed the update,
+		// and which need to be updated next.
 		return RunUpdateAction
 	}
 

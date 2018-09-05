@@ -41,6 +41,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 	instancesCurrent, instancesDoneFromLastRun, err := cached.GetUpdateProgress(
 		ctx,
 		cachedJob,
+		cachedUpdate,
 		cachedUpdate.GetGoalState().JobVersion,
 		cachedUpdate.GetInstancesCurrent(),
 	)
@@ -56,7 +57,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 	instancesToAdd, instancesToUpdate :=
 		getInstancesForUpdateRun(cachedUpdate, instancesCurrent, instancesDone)
 
-	if err := processUpgrade(
+	if err := processUpdate(
 		ctx,
 		cachedJob,
 		cachedUpdate,
@@ -178,7 +179,7 @@ func writeUpdateProgress(
 	)
 }
 
-func processUpgrade(
+func processUpdate(
 	ctx context.Context,
 	cachedJob cached.Job,
 	cachedUpdate cached.Update,
@@ -208,9 +209,10 @@ func processUpgrade(
 		return err
 	}
 
-	err = upgradeInstancesInUpdate(
+	err = processInstancesInUpdate(
 		ctx,
 		cachedJob,
+		cachedUpdate,
 		instancesToUpdate,
 		jobConfig,
 		goalStateDriver,
@@ -327,10 +329,11 @@ func getTaskRuntimeIfExisted(
 	return runtime, nil
 }
 
-// upgradeInstancesInUpdate upgrade the existing instances in instancesToUpdate
-func upgradeInstancesInUpdate(
+// processInstancesInUpdate update the existing instances in instancesToUpdate
+func processInstancesInUpdate(
 	ctx context.Context,
 	cachedJob cached.Job,
+	cachedUpdate cached.Update,
 	instancesToUpdate []uint32,
 	jobConfig *pbjob.JobConfig,
 	goalStateDriver *driver) error {
@@ -340,11 +343,18 @@ func upgradeInstancesInUpdate(
 	runtimes := make(map[uint32]cached.RuntimeDiff)
 
 	for _, instID := range instancesToUpdate {
-		// update the new desired configuration version
-		runtimeDiff := cached.RuntimeDiff{
-			cached.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
+		cachedTask := cachedJob.AddTask(instID)
+
+		taskRuntime, err := cachedTask.GetRunTime(ctx)
+		if err != nil {
+			return err
 		}
-		runtimes[instID] = runtimeDiff
+
+		runtimeDiff := cachedUpdate.GetRuntimeDiff(taskRuntime, jobConfig)
+
+		if runtimeDiff != nil {
+			runtimes[instID] = runtimeDiff
+		}
 	}
 
 	if len(runtimes) > 0 {
@@ -360,7 +370,7 @@ func upgradeInstancesInUpdate(
 	return nil
 }
 
-// getInstancesForUpdateRun returns the instances to upgrade/add in
+// getInstancesForUpdateRun returns the instances to update/add in
 // the given call of UpdateRun.
 func getInstancesForUpdateRun(
 	update cached.Update,
@@ -381,7 +391,7 @@ func getInstancesForUpdateRun(
 
 	maxNumOfInstancesToProcess :=
 		int(update.GetUpdateConfig().GetBatchSize()) - len(instancesCurrent)
-	// if instances being updated are more than batch size, do not upgrade anything
+	// if instances being updated are more than batch size, do not update anything
 	if maxNumOfInstancesToProcess <= 0 {
 		return nil, nil
 	}
@@ -393,7 +403,7 @@ func getInstancesForUpdateRun(
 	}
 
 	// if can process all of the instances to add,
-	// and part of instances to upgrade
+	// and part of instances to update
 	if maxNumOfInstancesToProcess > len(unprocessedInstancesToAdd) {
 		return unprocessedInstancesToAdd,
 			unprocessedInstancesToUpdate[:maxNumOfInstancesToProcess-len(unprocessedInstancesToAdd)]
@@ -404,7 +414,7 @@ func getInstancesForUpdateRun(
 }
 
 // getUnprocessedInstances returns all of the
-// instances remaining to upgrade/add
+// instances remaining to update/add
 func getUnprocessedInstances(
 	update cached.Update,
 	instancesCurrent []uint32,

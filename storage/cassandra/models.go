@@ -114,9 +114,12 @@ type UpdateRecord struct {
 	UpdateID             querybuilder.UUID `cql:"update_id"`
 	UpdateOptions        []byte            `cql:"update_options"`
 	State                string            `cql:"update_state"`
+	Type                 string            `cql:"update_type"`
 	JobID                querybuilder.UUID `cql:"job_id"`
 	InstancesTotal       int               `cql:"instances_total"`
 	InstancesCurrent     []int             `cql:"instances_current"`
+	InstancesUpdated     []int             `cql:"instances_updated"`
+	InstancesAdded       []int             `cql:"instances_added"`
 	InstancesDone        int               `cql:"instances_done"`
 	JobConfigVersion     int64             `cql:"job_config_version"`
 	PrevJobConfigVersion int64             `cql:"job_config_prev_version"`
@@ -130,10 +133,28 @@ func (u *UpdateRecord) GetUpdateConfig() (*update.UpdateConfig, error) {
 	return config, proto.Unmarshal(u.UpdateOptions, config)
 }
 
-// GetProcessingInstances returns a list of tasks currently being upgraded.
+// GetProcessingInstances returns a list of tasks currently being updated.
 func (u *UpdateRecord) GetProcessingInstances() []uint32 {
 	p := make([]uint32, len(u.InstancesCurrent))
 	for i, v := range u.InstancesCurrent {
+		p[i] = uint32(v)
+	}
+	return p
+}
+
+// GetInstancesUpdated returns a list of tasks to be updated
+func (u *UpdateRecord) GetInstancesUpdated() []uint32 {
+	p := make([]uint32, len(u.InstancesUpdated))
+	for i, v := range u.InstancesUpdated {
+		p[i] = uint32(v)
+	}
+	return p
+}
+
+// GetInstancesAdded returns a list of tasks to be added
+func (u *UpdateRecord) GetInstancesAdded() []uint32 {
+	p := make([]uint32, len(u.InstancesAdded))
+	for i, v := range u.InstancesAdded {
 		p[i] = uint32(v)
 	}
 	return p
