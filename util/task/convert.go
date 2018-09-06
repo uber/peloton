@@ -77,7 +77,7 @@ func ConvertTaskToResMgrTask(
 		}
 	}
 
-	return &resmgr.Task{
+	resmgrTask := &resmgr.Task{
 		Id:           taskID,
 		JobId:        taskInfo.GetJobId(),
 		TaskId:       taskInfo.GetRuntime().GetMesosTaskId(),
@@ -91,8 +91,21 @@ func ConvertTaskToResMgrTask(
 		Type:         getTaskType(taskInfo.GetConfig(), jobConfig.GetType()),
 		Labels:       util.ConvertLabels(taskInfo.GetConfig().GetLabels()),
 		Controller:   taskInfo.GetConfig().GetController(),
-		Hostname:     taskInfo.GetRuntime().GetHost(),
 	}
+
+	taskState := taskInfo.GetRuntime().GetState()
+	// Typically, hostname field of resmgr task is set once it is in PLACED.
+	// So hostname field is set while the task is in PLACED, LAUNCHING,
+	// LAUNCHED, STARTING and RUNNING. However, since hostname is persisted
+	// in Runtime on LAUNCHED, we need to set hostname only if task is in
+	// LAUNCHED, STARTING or RUNNING states.
+	if taskState == task.TaskState_LAUNCHED ||
+		taskState == task.TaskState_STARTING ||
+		taskState == task.TaskState_RUNNING {
+		resmgrTask.Hostname = taskInfo.GetRuntime().GetHost()
+	}
+
+	return resmgrTask
 }
 
 // returns the task type

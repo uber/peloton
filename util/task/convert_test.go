@@ -43,10 +43,11 @@ func TestGetTaskType(t *testing.T) {
 }
 
 func TestConvertTaskToResMgrTask(t *testing.T) {
+	jobID := peloton.JobID{Value: uuid.New()}
 	taskInfos := []*task.TaskInfo{
 		{
 			InstanceId: 0,
-			JobId:      &peloton.JobID{Value: uuid.New()},
+			JobId:      &jobID,
 			Config: &task.TaskConfig{
 				Ports: []*task.PortConfig{{Name: "http", Value: 0}},
 			},
@@ -57,12 +58,54 @@ func TestConvertTaskToResMgrTask(t *testing.T) {
 		},
 		{
 			InstanceId: 1,
-			JobId:      &peloton.JobID{Value: uuid.New()},
+			JobId:      &jobID,
 			Config: &task.TaskConfig{
 				Ports: []*task.PortConfig{{Name: "http", Value: 0}},
 			},
 			Runtime: &task.RuntimeInfo{
 				State: task.TaskState_INITIALIZED,
+			},
+		},
+		{
+			InstanceId: 2,
+			JobId:      &jobID,
+			Config: &task.TaskConfig{
+				Ports: []*task.PortConfig{{Name: "http", Value: 0}},
+			},
+			Runtime: &task.RuntimeInfo{
+				State: task.TaskState_LAUNCHED,
+			},
+		},
+		{
+			InstanceId: 3,
+			JobId:      &jobID,
+			Config: &task.TaskConfig{
+				Ports: []*task.PortConfig{{Name: "http", Value: 0}},
+			},
+			Runtime: &task.RuntimeInfo{
+				State: task.TaskState_STARTING,
+			},
+		},
+		{
+			InstanceId: 4,
+			JobId:      &jobID,
+			Config: &task.TaskConfig{
+				Ports: []*task.PortConfig{{Name: "http", Value: 0}},
+			},
+			Runtime: &task.RuntimeInfo{
+				State: task.TaskState_FAILED,
+				Host:  "hostname",
+			},
+		},
+		{
+			InstanceId: 5,
+			JobId:      &jobID,
+			Config: &task.TaskConfig{
+				Ports: []*task.PortConfig{{Name: "http", Value: 0}},
+			},
+			Runtime: &task.RuntimeInfo{
+				State: task.TaskState_SUCCEEDED,
+				Host:  "hostname",
 			},
 		},
 	}
@@ -74,7 +117,14 @@ func TestConvertTaskToResMgrTask(t *testing.T) {
 		rmTask := ConvertTaskToResMgrTask(taskInfo, jobConfig)
 		assert.Equal(t, taskInfo.JobId.Value, rmTask.JobId.Value)
 		assert.Equal(t, uint32(len(taskInfo.Config.Ports)), rmTask.NumPorts)
-		assert.Equal(t, taskInfo.GetRuntime().GetHost(), rmTask.GetHostname())
+		taskState := taskInfo.Runtime.GetState()
+		if taskState == task.TaskState_LAUNCHED ||
+			taskState == task.TaskState_STARTING ||
+			taskState == task.TaskState_RUNNING {
+			assert.Equal(t, taskInfo.GetRuntime().GetHost(), rmTask.GetHostname())
+		} else {
+			assert.Empty(t, rmTask.GetHostname())
+		}
 	}
 }
 
