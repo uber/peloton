@@ -323,7 +323,6 @@ func (suite *UpdateSvcTestSuite) TestCreateFailJobNotFound() {
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(nil, fmt.Errorf("fake db error"))
-
 	_, err := suite.h.CreateUpdate(
 		context.Background(),
 		&svc.CreateUpdateRequest{

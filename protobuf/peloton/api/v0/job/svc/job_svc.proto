@@ -192,7 +192,18 @@ message UpdateJobResponse {
 }
 
 /**
+ * RestartConfig is the optional config for RestartJobRequest
+ * Experimental only
+ */
+message RestartConfig {
+  // batch size of rolling restart, if unset or 0 all tasks specified
+  // will be restarted at the same time.
+  uint32 batchSize = 1;
+}
+
+/**
  *  Request message for JobService.RestartJob method.
+ *  Experimental only
  */
 message RestartJobRequest {
   // The job to restart
@@ -202,6 +213,8 @@ message RestartJobRequest {
   // The resourceVersion received from last job operation
   // call for concurrency control
   uint64 resourceVersion = 3;
+  // The config for restart a job
+  RestartConfig restartConfig = 4;
 }
 
 /**
@@ -210,6 +223,8 @@ message RestartJobRequest {
  *  Return errors:
  *    INVALID_ARGUMENT:  if the job ID or job resourceVersion is invalid.
  *    NOT_FOUND:         if the job ID is not found.
+ *
+ *  Experimental only
  */
 message RestartJobResponse {
   // The new resourceVersion after the operation
@@ -220,6 +235,7 @@ message RestartJobResponse {
 
 /**
  *  Request message for JobService.RefreshJob method.
+ *  Experimental only
  */
 message RefreshJobRequest {
   // The job ID to look up the job.

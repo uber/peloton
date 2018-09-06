@@ -174,7 +174,6 @@ func (u *update) Create(
 	defer u.Unlock()
 
 	state := pbupdate.State_INITIALIZED
-	u.jobID = jobID
 
 	// Store the new job configuration
 	cachedJob := u.jobFactory.AddJob(jobID)
@@ -195,7 +194,7 @@ func (u *update) Create(
 
 	updateModel := &models.UpdateModel{
 		UpdateID:             u.id,
-		JobID:                u.jobID,
+		JobID:                jobID,
 		UpdateConfig:         updateConfig,
 		JobConfigVersion:     newConfig.GetChangeLog().GetVersion(),
 		PrevJobConfigVersion: prevJobConfig.GetChangeLog().GetVersion(),
@@ -203,7 +202,7 @@ func (u *update) Create(
 		InstancesAdded:       instanceAdded,
 		InstancesUpdated:     instanceUpdated,
 		InstancesTotal:       uint32(len(instanceUpdated) + len(instanceAdded)),
-		Type:                 u.workflowType,
+		Type:                 workflowType,
 	}
 	// Store the new update in DB
 	if err := u.updateFactory.updateStore.CreateUpdate(ctx, updateModel); err != nil {
@@ -233,6 +232,7 @@ func (u *update) Create(
 		WithField("instances_added", len(u.instancesAdded)).
 		WithField("instance_updated", len(u.instancesUpdated)).
 		WithField("update_state", u.state.String()).
+		WithField("update_type", u.workflowType.String()).
 		Debug("update is created")
 
 	return nil

@@ -424,6 +424,7 @@ func main() {
 		store, // store implements TaskStore
 		store, // store implements SecretStore
 		jobFactory,
+		updateFactory,
 		goalStateDriver,
 		candidate,
 		common.PelotonResourceManager, // TODO: to be removed

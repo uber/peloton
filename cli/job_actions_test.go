@@ -1645,12 +1645,15 @@ func (suite *jobActionsTestSuite) TestClientJobRestartActionSuccess() {
 			Value: testJobID,
 		},
 		ResourceVersion: 1,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: 1,
+		},
 	}).Return(restartResponse, nil)
 
-	suite.NoError(c.JobRestartAction(testJobID, 1, nil))
+	suite.NoError(c.JobRestartAction(testJobID, 1, nil, 1))
 }
 
-// TestClientJobRestartActionSuccess tests restarting fails with error
+// TestClientJobRestartActionError tests restarting fails with error
 func (suite *jobActionsTestSuite) TestClientJobRestartActionError() {
 	c := Client{
 		Debug:      false,
@@ -1667,7 +1670,10 @@ func (suite *jobActionsTestSuite) TestClientJobRestartActionError() {
 			Value: testJobID,
 		},
 		ResourceVersion: 1,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: 1,
+		},
 	}).Return(restartResponse, errors.New("test error"))
 
-	suite.Error(c.JobRestartAction(testJobID, 1, nil))
+	suite.Error(c.JobRestartAction(testJobID, 1, nil, 1))
 }

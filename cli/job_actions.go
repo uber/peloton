@@ -358,6 +358,7 @@ func (c *Client) JobRestartAction(
 	jobID string,
 	resourceVersion uint64,
 	instanceRanges []*task.InstanceRange,
+	batchSize uint32,
 ) error {
 	id := &peloton.JobID{
 		Value: jobID,
@@ -367,6 +368,9 @@ func (c *Client) JobRestartAction(
 		Id:              id,
 		Ranges:          instanceRanges,
 		ResourceVersion: resourceVersion,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: batchSize,
+		},
 	}
 	response, err := c.jobClient.Restart(c.ctx, request)
 	if err != nil {

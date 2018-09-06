@@ -501,7 +501,16 @@ message GetCacheResponse {
   RuntimeInfo runtime = 2;
 }
 
+// DEPRECATED by peloton.api.job.svc.RestartConfig
+// Experimental only
+message RestartConfig {
+  // batch size of rolling restart, if unset all tasks specified
+  // will be restarted at the same time.
+  uint32 batchSize = 1;
+}
+
 // DEPRECATED by peloton.api.job.svc.RestartJobRequest
+// Experimental only
 message RestartRequest {
   // The job to restart
   peloton.JobID id = 1;
@@ -510,9 +519,12 @@ message RestartRequest {
   // The resourceVersion received from last job operation
   // call for concurrency control
   uint64 resourceVersion = 3;
+  // The config for restarting a job
+  RestartConfig restartConfig = 4;
 }
 
 // DEPRECATED by peloton.api.job.svc.RestartJobResponse
+// Experimental only
 message RestartResponse {
   // The new resourceVersion after the operation
   uint64 resourceVersion = 1;

@@ -8,6 +8,11 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
+const (
+	_updateTaskMessage  = "Job configuration updated via API"
+	_restartTaskMessage = "Task restarted via API"
+)
+
 // WorkflowStrategy is the strategy of driving instances to
 // the desired state of the workflow
 type WorkflowStrategy interface {
@@ -25,9 +30,15 @@ type WorkflowStrategy interface {
 
 func getWorkflowStrategy(workflowType models.WorkflowType) WorkflowStrategy {
 	switch workflowType {
+	case models.WorkflowType_RESTART:
+		return newRestartStrategy()
 	default:
-		return &updateStrategy{}
+		return newUpdateStrategy()
 	}
+}
+
+func newUpdateStrategy() *updateStrategy {
+	return &updateStrategy{}
 }
 
 type updateStrategy struct{}
@@ -66,6 +77,22 @@ func (s *updateStrategy) IsInstanceInProgress(desiredConfigVersion uint64, runti
 func (s *updateStrategy) GetRuntimeDiff(taskRuntime *pbtask.RuntimeInfo, jobConfig *pbjob.JobConfig) RuntimeDiff {
 	return RuntimeDiff{
 		DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
-		MessageField:              "Job configuration updated via API",
+		MessageField:              _updateTaskMessage,
+	}
+}
+
+// restartStrategy inherits upgradeStrategy
+func newRestartStrategy() *restartStrategy {
+	return &restartStrategy{newUpdateStrategy()}
+}
+
+type restartStrategy struct {
+	WorkflowStrategy
+}
+
+func (s *restartStrategy) GetRuntimeDiff(taskRuntime *pbtask.RuntimeInfo, jobConfig *pbjob.JobConfig) RuntimeDiff {
+	return RuntimeDiff{
+		DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
+		MessageField:              _restartTaskMessage,
 	}
 }

@@ -13,6 +13,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
@@ -49,6 +51,7 @@ func InitServiceHandler(
 	taskStore storage.TaskStore,
 	secretStore storage.SecretStore,
 	jobFactory cached.JobFactory,
+	updateFactory cached.UpdateFactory,
 	goalStateDriver goalstate.Driver,
 	candidate leader.Candidate,
 	clientName string,
@@ -63,6 +66,7 @@ func InitServiceHandler(
 		resmgrClient:    resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(clientName)),
 		rootCtx:         context.Background(),
 		jobFactory:      jobFactory,
+		updateFactory:   updateFactory,
 		goalStateDriver: goalStateDriver,
 		candidate:       candidate,
 		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
@@ -81,6 +85,7 @@ type serviceHandler struct {
 	resmgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
 	rootCtx         context.Context
 	jobFactory      cached.JobFactory
+	updateFactory   cached.UpdateFactory
 	goalStateDriver goalstate.Driver
 	candidate       leader.Candidate
 	metrics         *Metrics
@@ -487,12 +492,101 @@ func (h *serviceHandler) Delete(
 }
 
 func (h *serviceHandler) Restart(
-	context.Context,
-	*job.RestartRequest) (*job.RestartResponse, error) {
+	ctx context.Context,
+	req *job.RestartRequest) (*job.RestartResponse, error) {
+
 	h.metrics.JobAPIRestart.Inc(1)
-	h.metrics.JobRestartFail.Inc(1)
-	return &job.RestartResponse{},
-		yarpcerrors.UnimplementedErrorf("restart not implemented")
+
+	if !h.candidate.IsLeader() {
+		h.metrics.JobCreateFail.Inc(1)
+		return nil, yarpcerrors.UnavailableErrorf(
+			"Job Restart API not suppported on non-leader")
+	}
+
+	cachedJob := h.jobFactory.AddJob(req.GetId())
+	runtime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		h.metrics.JobRestartFail.Inc(1)
+		return nil, err
+	}
+
+	jobConfig, err := h.jobStore.GetJobConfigWithVersion(
+		ctx,
+		req.GetId(),
+		runtime.GetConfigurationVersion(),
+	)
+	if err != nil {
+		h.metrics.JobRestartFail.Inc(1)
+		return nil, err
+	}
+
+	if jobConfig.GetType() != job.JobType_SERVICE {
+		return nil,
+			yarpcerrors.InvalidArgumentErrorf("Restart supported only for service jobs")
+	}
+
+	// copy the config with provided resource version number
+	newConfig := *jobConfig
+	now := time.Now()
+	newConfig.ChangeLog = &peloton.ChangeLog{
+		Version:   req.ResourceVersion,
+		CreatedAt: uint64(now.UnixNano()),
+		UpdatedAt: uint64(now.UnixNano()),
+	}
+	// if range is not specified, apply to all instances
+	ranges := req.GetRanges()
+	if ranges == nil {
+		ranges = []*task.InstanceRange{
+			{From: 0, To: newConfig.GetInstanceCount()},
+		}
+	}
+
+	updateID := &peloton.UpdateID{
+		Value: uuid.New(),
+	}
+	// add this new update to cache and DB
+	cachedUpdate := h.updateFactory.AddUpdate(updateID)
+	err = cachedUpdate.Create(
+		ctx,
+		req.GetId(),
+		&newConfig,
+		jobConfig,
+		nil,
+		convertRangesToSlice(ranges, newConfig.GetInstanceCount()),
+		models.WorkflowType_RESTART,
+		&pbupdate.UpdateConfig{
+			BatchSize: req.GetRestartConfig().GetBatchSize(),
+		},
+	)
+	if err != nil {
+		// In case of error, since it is not clear if job runtime was
+		// persisted with the update ID or not, enqueue the update to
+		// the goal state. If the update ID got persisted, update should
+		// start running, else, it should be aborted. Enqueueing it into
+		// the goal state will ensure both. In case the update was not
+		// persisted, clear the cache as well so that it is reloaded
+		// from DB and cleaned up.
+		h.updateFactory.ClearUpdate(updateID)
+		h.metrics.JobRestartFail.Inc(1)
+	}
+
+	// Add update to goal state engine to start it
+	h.goalStateDriver.EnqueueUpdate(req.GetId(), updateID, time.Now())
+
+	if err != nil {
+		return nil, err
+	}
+
+	cachedConfig, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	h.metrics.JobRestart.Inc(1)
+	return &job.RestartResponse{
+		UpdateID:        updateID,
+		ResourceVersion: cachedConfig.GetChangeLog().GetVersion(),
+	}, err
 }
 
 func (h *serviceHandler) GetCache(
@@ -805,4 +899,28 @@ func mergeInstanceConfig(oldConfig *job.JobConfig, newConfig *job.JobConfig) *jo
 	}
 	result.InstanceConfig = newInstanceConfig
 	return &result
+}
+
+// convertRangesToSlice merges ranges into a single slice and remove
+// any duplicated item
+// need the instanceCount because cli may send max uint32 when range is not specified.
+// TODO: cli send nil ranges when not specified
+func convertRangesToSlice(ranges []*task.InstanceRange, instanceCount uint32) []uint32 {
+	var result []uint32
+	set := make(map[uint32]bool)
+
+	for _, instanceRange := range ranges {
+		for i := instanceRange.GetFrom(); i < instanceRange.GetTo(); i++ {
+			// ignore instances above instanceCount
+			if i >= instanceCount {
+				break
+			}
+			// dedup result
+			if !set[i] {
+				result = append(result, i)
+				set[i] = true
+			}
+		}
+	}
+	return result
 }

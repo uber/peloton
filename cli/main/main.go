@@ -136,6 +136,7 @@ var (
 
 	jobRestart                = job.Command("restart", "restart instances in a job")
 	jobRestartName            = jobRestart.Arg("job", "job identifier").Required().String()
+	jobRestartBatchSize       = jobRestart.Arg("batch-size", "batch size for the restart").Required().Uint32()
 	jobRestartResourceVersion = jobRestart.Arg("resourceVersion", "resource version of the job for concurrency control").Required().Uint64()
 	jobRestartInstanceRanges  = taskRangeListFlag(jobRestart.Flag("range", "restart range of instances (specify multiple times) (from:to syntax, default ALL)").Default(":").Short('r'))
 
@@ -445,7 +446,7 @@ func main() {
 		err = client.JobUpdateAction(*jobUpdateID, *jobUpdateConfig,
 			*jobUpdateSecretPath, []byte(*jobUpdateSecret))
 	case jobRestart.FullCommand():
-		err = client.JobRestartAction(*jobRestartName, *jobRestartResourceVersion, *jobRestartInstanceRanges)
+		err = client.JobRestartAction(*jobRestartName, *jobRestartResourceVersion, *jobRestartInstanceRanges, *jobRestartBatchSize)
 	case jobGetCache.FullCommand():
 		err = client.JobGetCacheAction(*jobGetCacheName)
 	case taskGet.FullCommand():

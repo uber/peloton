@@ -14,6 +14,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	respoolmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
@@ -38,7 +40,7 @@ import (
 )
 
 const (
-	testInstanceCount    = 2
+	testInstanceCount    = 3
 	testSecretPath       = "/tmp/secret"
 	testSecretPathNew    = "/tmp/secret/new"
 	testSecretStr        = "top-secret-token"
@@ -69,7 +71,9 @@ type JobHandlerTestSuite struct {
 	mockedRespoolClient   *respoolmocks.MockResourceManagerYARPCClient
 	mockedResmgrClient    *resmocks.MockResourceManagerServiceYARPCClient
 	mockedJobFactory      *cachedmocks.MockJobFactory
+	mockedUpdateFactory   *cachedmocks.MockUpdateFactory
 	mockedCachedJob       *cachedmocks.MockJob
+	mockedCachedUpdate    *cachedmocks.MockUpdate
 	mockedGoalStateDriver *goalstatemocks.MockDriver
 	mockedJobStore        *storemocks.MockJobStore
 	mockedTaskStore       *storemocks.MockTaskStore
@@ -82,7 +86,9 @@ func (suite *JobHandlerTestSuite) initializeMocks() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.mockedJobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.mockedJobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
+	suite.mockedUpdateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
 	suite.mockedCachedJob = cachedmocks.NewMockJob(suite.ctrl)
+	suite.mockedCachedUpdate = cachedmocks.NewMockUpdate(suite.ctrl)
 	suite.mockedGoalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
 	suite.mockedRespoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.mockedResmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
@@ -94,6 +100,7 @@ func (suite *JobHandlerTestSuite) initializeMocks() {
 	suite.handler.secretStore = suite.mockedSecretStore
 	suite.handler.taskStore = suite.mockedTaskStore
 	suite.handler.jobFactory = suite.mockedJobFactory
+	suite.handler.updateFactory = suite.mockedUpdateFactory
 	suite.handler.goalStateDriver = suite.mockedGoalStateDriver
 	suite.handler.respoolClient = suite.mockedRespoolClient
 	suite.handler.resmgrClient = suite.mockedResmgrClient
@@ -162,6 +169,7 @@ func (suite *JobHandlerTestSuite) SetupTest() {
 			MaximumRunningInstances: 2,
 			MinimumRunningInstances: 1,
 		},
+		Type: job.JobType_SERVICE,
 	}
 	suite.testRespoolID = &peloton.ResourcePoolID{
 		Value: "test-respool",
@@ -1731,4 +1739,609 @@ func (suite *JobHandlerTestSuite) TestJobGetCache_SUCCESS() {
 	suite.Equal(resp.Config.Type, jobConfig.Type)
 	suite.Equal(resp.Config.InstanceCount, jobConfig.InstanceCount)
 	suite.Equal(resp.Runtime.State, jobRuntime.State)
+}
+
+// TestRestartJobSuccess tests the success path of restarting job
+func (suite *JobHandlerTestSuite) TestRestartJobSuccess() {
+	var configurationVersion uint64 = 1
+	var batchSize uint32 = 1
+
+	suite.mockedCandidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.testJobConfig.ChangeLog =
+		&peloton.ChangeLog{Version: configurationVersion}
+
+	suite.mockedJobFactory.EXPECT().
+		AddJob(suite.testJobID).
+		Return(suite.mockedCachedJob)
+
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			State:                job.JobState_PENDING,
+			ConfigurationVersion: configurationVersion,
+		}, nil)
+
+	suite.mockedJobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			suite.testJobID,
+			configurationVersion,
+		).
+		Return(suite.testJobConfig, nil)
+
+	suite.mockedUpdateFactory.EXPECT().
+		AddUpdate(gomock.Any()).
+		Return(suite.mockedCachedUpdate)
+
+	newConfig := *suite.testJobConfig
+	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
+	suite.mockedCachedUpdate.EXPECT().
+		Create(
+			gomock.Any(),
+			suite.testJobID,
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			gomock.Any(),
+			models.WorkflowType_RESTART,
+			gomock.Any(),
+		).Do(func(
+		_ context.Context,
+		_ *peloton.JobID,
+		jobConfig *job.JobConfig,
+		prevJobConfig *job.JobConfig,
+		_ []uint32,
+		instanceUpdated []uint32,
+		_ models.WorkflowType,
+		updateConfig *update.UpdateConfig,
+	) {
+		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Len(instanceUpdated, int(newConfig.GetInstanceCount()))
+		suite.Equal(updateConfig.GetBatchSize(), batchSize)
+	}).
+		Return(nil)
+
+	suite.mockedGoalStateDriver.EXPECT().
+		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
+
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&newConfig, nil)
+
+	req := &job.RestartRequest{
+		Id:              suite.testJobID,
+		ResourceVersion: configurationVersion,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: batchSize,
+		},
+	}
+
+	resp, err := suite.handler.Restart(context.Background(), req)
+	suite.NoError(err)
+	suite.NotNil(resp.GetUpdateID())
+	suite.Equal(resp.GetResourceVersion(),
+		newConfig.GetChangeLog().GetVersion())
+}
+
+// TestRestartJobSuccessWithRange tests the success path of restarting job with
+// ranges
+func (suite *JobHandlerTestSuite) TestRestartJobSuccessWithRange() {
+	var configurationVersion uint64 = 1
+	var batchSize uint32 = 1
+	restartRanges := []*task.InstanceRange{
+		{
+			From: 0,
+			To:   1,
+		},
+		{
+			From: 2,
+			To:   3,
+		},
+	}
+
+	suite.mockedCandidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.testJobConfig.ChangeLog =
+		&peloton.ChangeLog{Version: configurationVersion}
+
+	suite.mockedJobFactory.EXPECT().
+		AddJob(suite.testJobID).
+		Return(suite.mockedCachedJob)
+
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			State:                job.JobState_PENDING,
+			ConfigurationVersion: configurationVersion,
+		}, nil)
+
+	suite.mockedJobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			suite.testJobID,
+			configurationVersion,
+		).
+		Return(suite.testJobConfig, nil)
+
+	suite.mockedUpdateFactory.EXPECT().
+		AddUpdate(gomock.Any()).
+		Return(suite.mockedCachedUpdate)
+
+	newConfig := *suite.testJobConfig
+	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
+	suite.mockedCachedUpdate.EXPECT().
+		Create(
+			gomock.Any(),
+			suite.testJobID,
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			gomock.Any(),
+			models.WorkflowType_RESTART,
+			gomock.Any(),
+		).Do(func(
+		_ context.Context,
+		_ *peloton.JobID,
+		jobConfig *job.JobConfig,
+		prevJobConfig *job.JobConfig,
+		_ []uint32,
+		instanceUpdated []uint32,
+		_ models.WorkflowType,
+		updateConfig *update.UpdateConfig,
+	) {
+		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Len(instanceUpdated,
+			int(restartRanges[0].To-restartRanges[0].From+
+				restartRanges[1].To-restartRanges[1].From),
+		)
+		suite.Equal(updateConfig.GetBatchSize(), batchSize)
+	}).
+		Return(nil)
+
+	suite.mockedGoalStateDriver.EXPECT().
+		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
+
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&newConfig, nil)
+
+	req := &job.RestartRequest{
+		Id:              suite.testJobID,
+		ResourceVersion: configurationVersion,
+		Ranges:          restartRanges,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: batchSize,
+		},
+	}
+
+	resp, err := suite.handler.Restart(context.Background(), req)
+	suite.NoError(err)
+	suite.NotNil(resp.GetUpdateID())
+	suite.Equal(resp.GetResourceVersion(),
+		newConfig.GetChangeLog().GetVersion())
+}
+
+// TestRestartJobOutsideOfRangeSuccess tests the success path of restart
+// with ranges out side of range
+func (suite *JobHandlerTestSuite) TestRestartJobOutsideOfRangeSuccess() {
+	var configurationVersion uint64 = 1
+	var batchSize uint32 = 1
+	restartRanges := []*task.InstanceRange{
+		{
+			From: 0,
+			To:   1,
+		},
+		{
+			From: 1,
+			To:   10,
+		},
+	}
+
+	suite.mockedCandidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.testJobConfig.ChangeLog =
+		&peloton.ChangeLog{Version: configurationVersion}
+
+	suite.mockedJobFactory.EXPECT().
+		AddJob(suite.testJobID).
+		Return(suite.mockedCachedJob)
+
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			State:                job.JobState_PENDING,
+			ConfigurationVersion: configurationVersion,
+		}, nil)
+
+	suite.mockedJobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			suite.testJobID,
+			configurationVersion,
+		).
+		Return(suite.testJobConfig, nil)
+
+	suite.mockedUpdateFactory.EXPECT().
+		AddUpdate(gomock.Any()).
+		Return(suite.mockedCachedUpdate)
+
+	newConfig := *suite.testJobConfig
+	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
+	suite.mockedCachedUpdate.EXPECT().
+		Create(
+			gomock.Any(),
+			suite.testJobID,
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			gomock.Any(),
+			models.WorkflowType_RESTART,
+			gomock.Any(),
+		).Do(func(
+		_ context.Context,
+		_ *peloton.JobID,
+		jobConfig *job.JobConfig,
+		prevJobConfig *job.JobConfig,
+		_ []uint32,
+		instanceUpdated []uint32,
+		_ models.WorkflowType,
+		updateConfig *update.UpdateConfig,
+	) {
+		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Len(instanceUpdated, int(suite.testJobConfig.GetInstanceCount()))
+		suite.Equal(updateConfig.GetBatchSize(), batchSize)
+	}).
+		Return(nil)
+
+	suite.mockedGoalStateDriver.EXPECT().
+		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
+
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&newConfig, nil)
+
+	req := &job.RestartRequest{
+		Id:              suite.testJobID,
+		ResourceVersion: configurationVersion,
+		Ranges:          restartRanges,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: batchSize,
+		},
+	}
+
+	resp, err := suite.handler.Restart(context.Background(), req)
+	suite.NoError(err)
+	suite.NotNil(resp.GetUpdateID())
+	suite.Equal(resp.GetResourceVersion(),
+		newConfig.GetChangeLog().GetVersion())
+}
+
+// TestRestartJobNonLeaderFailure tests the restart a job fails because jobmgr
+// is not leader
+func (suite *JobHandlerTestSuite) TestRestartJobNonLeaderFailure() {
+	var configurationVersion uint64 = 1
+	var batchSize uint32 = 1
+
+	suite.mockedCandidate.EXPECT().
+		IsLeader().
+		Return(false)
+	req := &job.RestartRequest{
+		Id:              suite.testJobID,
+		ResourceVersion: configurationVersion,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: batchSize,
+		},
+	}
+
+	resp, err := suite.handler.Restart(context.Background(), req)
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestRestartJobGetRuntimeFailure tests restarting job fails because
+// get runtime fails
+func (suite *JobHandlerTestSuite) TestRestartJobGetRuntimeFailure() {
+	var configurationVersion uint64 = 1
+	var batchSize uint32 = 1
+
+	suite.mockedCandidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.testJobConfig.ChangeLog =
+		&peloton.ChangeLog{Version: configurationVersion}
+
+	suite.mockedJobFactory.EXPECT().
+		AddJob(suite.testJobID).
+		Return(suite.mockedCachedJob)
+
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(nil, fmt.Errorf("test error"))
+
+	req := &job.RestartRequest{
+		Id:              suite.testJobID,
+		ResourceVersion: configurationVersion,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: batchSize,
+		},
+	}
+
+	resp, err := suite.handler.Restart(context.Background(), req)
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestRestartJobGetConfigFailure tests restarting job fails due to get config
+// fails
+func (suite *JobHandlerTestSuite) TestRestartJobGetConfigFailure() {
+	var configurationVersion uint64 = 1
+	var batchSize uint32 = 1
+
+	suite.mockedCandidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.testJobConfig.ChangeLog =
+		&peloton.ChangeLog{Version: configurationVersion}
+
+	suite.mockedJobFactory.EXPECT().
+		AddJob(suite.testJobID).
+		Return(suite.mockedCachedJob)
+
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			State:                job.JobState_PENDING,
+			ConfigurationVersion: configurationVersion,
+		}, nil)
+
+	suite.mockedJobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			suite.testJobID,
+			configurationVersion,
+		).
+		Return(nil, fmt.Errorf("test error"))
+
+	req := &job.RestartRequest{
+		Id:              suite.testJobID,
+		ResourceVersion: configurationVersion,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: batchSize,
+		},
+	}
+
+	resp, err := suite.handler.Restart(context.Background(), req)
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestRestartJobCreateUpdateFailure tests restart job fails due to update
+// creation fails
+func (suite *JobHandlerTestSuite) TestRestartJobCreateUpdateFailure() {
+	var configurationVersion uint64 = 1
+	var batchSize uint32 = 1
+
+	suite.mockedCandidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.testJobConfig.ChangeLog =
+		&peloton.ChangeLog{Version: configurationVersion}
+
+	suite.mockedJobFactory.EXPECT().
+		AddJob(suite.testJobID).
+		Return(suite.mockedCachedJob)
+
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			State:                job.JobState_PENDING,
+			ConfigurationVersion: configurationVersion,
+		}, nil)
+
+	suite.mockedJobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			suite.testJobID,
+			configurationVersion,
+		).
+		Return(suite.testJobConfig, nil)
+
+	suite.mockedUpdateFactory.EXPECT().
+		AddUpdate(gomock.Any()).
+		Return(suite.mockedCachedUpdate)
+
+	newConfig := *suite.testJobConfig
+	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
+	suite.mockedCachedUpdate.EXPECT().
+		Create(
+			gomock.Any(),
+			suite.testJobID,
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			gomock.Any(),
+			models.WorkflowType_RESTART,
+			gomock.Any(),
+		).Do(func(
+		_ context.Context,
+		_ *peloton.JobID,
+		jobConfig *job.JobConfig,
+		prevJobConfig *job.JobConfig,
+		_ []uint32,
+		instanceUpdated []uint32,
+		_ models.WorkflowType,
+		updateConfig *update.UpdateConfig,
+	) {
+		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Len(instanceUpdated, int(newConfig.GetInstanceCount()))
+		suite.Equal(updateConfig.GetBatchSize(), batchSize)
+	}).
+		Return(fmt.Errorf("test error"))
+
+	suite.mockedUpdateFactory.EXPECT().
+		ClearUpdate(gomock.Any()).
+		Return()
+
+	suite.mockedGoalStateDriver.EXPECT().
+		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
+
+	req := &job.RestartRequest{
+		Id:              suite.testJobID,
+		ResourceVersion: configurationVersion,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: batchSize,
+		},
+	}
+
+	resp, err := suite.handler.Restart(context.Background(), req)
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestRestartJobGetCachedConfigFailure tests restarting job fails because
+// get cached config failure
+func (suite *JobHandlerTestSuite) TestRestartJobGetCachedConfigFailure() {
+	var configurationVersion uint64 = 1
+	var batchSize uint32 = 1
+
+	suite.mockedCandidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.testJobConfig.ChangeLog =
+		&peloton.ChangeLog{Version: configurationVersion}
+
+	suite.mockedJobFactory.EXPECT().
+		AddJob(suite.testJobID).
+		Return(suite.mockedCachedJob)
+
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			State:                job.JobState_PENDING,
+			ConfigurationVersion: configurationVersion,
+		}, nil)
+
+	suite.mockedJobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			suite.testJobID,
+			configurationVersion,
+		).
+		Return(suite.testJobConfig, nil)
+
+	suite.mockedUpdateFactory.EXPECT().
+		AddUpdate(gomock.Any()).
+		Return(suite.mockedCachedUpdate)
+
+	newConfig := *suite.testJobConfig
+	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
+	suite.mockedCachedUpdate.EXPECT().
+		Create(
+			gomock.Any(),
+			suite.testJobID,
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			gomock.Any(),
+			models.WorkflowType_RESTART,
+			gomock.Any(),
+		).Do(func(
+		_ context.Context,
+		_ *peloton.JobID,
+		jobConfig *job.JobConfig,
+		prevJobConfig *job.JobConfig,
+		_ []uint32,
+		instanceUpdated []uint32,
+		_ models.WorkflowType,
+		updateConfig *update.UpdateConfig,
+	) {
+		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Len(instanceUpdated, int(newConfig.GetInstanceCount()))
+		suite.Equal(updateConfig.GetBatchSize(), batchSize)
+	}).
+		Return(nil)
+
+	suite.mockedGoalStateDriver.EXPECT().
+		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
+
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(nil, fmt.Errorf("test error"))
+
+	req := &job.RestartRequest{
+		Id:              suite.testJobID,
+		ResourceVersion: configurationVersion,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: batchSize,
+		},
+	}
+
+	resp, err := suite.handler.Restart(context.Background(), req)
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestRestartNonServiceJobFailure tests restarting job fails because
+// job is not of type service
+func (suite *JobHandlerTestSuite) TestRestartNonServiceJobFailure() {
+	var configurationVersion uint64 = 1
+	var batchSize uint32 = 1
+
+	suite.mockedCandidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.testJobConfig.ChangeLog =
+		&peloton.ChangeLog{Version: configurationVersion}
+
+	suite.testJobConfig.Type = job.JobType_BATCH
+
+	suite.mockedJobFactory.EXPECT().
+		AddJob(suite.testJobID).
+		Return(suite.mockedCachedJob)
+
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			State:                job.JobState_PENDING,
+			ConfigurationVersion: configurationVersion,
+		}, nil)
+
+	suite.mockedJobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			suite.testJobID,
+			configurationVersion,
+		).
+		Return(suite.testJobConfig, nil)
+
+	req := &job.RestartRequest{
+		Id:              suite.testJobID,
+		ResourceVersion: configurationVersion,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: batchSize,
+		},
+	}
+
+	resp, err := suite.handler.Restart(context.Background(), req)
+	suite.Error(err)
+	suite.Nil(resp)
 }
