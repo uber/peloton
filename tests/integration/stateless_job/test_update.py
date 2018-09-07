@@ -11,6 +11,8 @@ UPDATE_STATELESS_JOB_ADD_INSTANCES_FILE = \
     "test_update_stateless_job_add_instances.yaml"
 UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_FILE = \
     "test_update_stateless_job_update_and_add_instances.yaml"
+UPDATE_STATELESS_JOB_UPDATE_REDUCE_INSTANCES_FILE = \
+    "test_stateless_job.yaml"
 INVALID_VERSION_ERR_MESSAGE = 'invalid job configuration version'
 
 
@@ -218,6 +220,59 @@ def test__abort_update(stateless_job):
     update.wait_for_state(goal_state='ROLLING_FORWARD')
     update.abort()
     update.wait_for_state(goal_state='ABORTED')
+
+
+def test__update_reduce_instances(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_task_infos = stateless_job.list_tasks().value
+    assert len(old_task_infos) == 3
+    # first increase instances
+    update = Update(stateless_job,
+                    updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_FILE)
+    update.create()
+    update.wait_for_state(goal_state='SUCCEEDED')
+    new_task_infos = stateless_job.list_tasks().value
+    assert len(new_task_infos) == 5
+    # now reduce instances
+    update = Update(stateless_job,
+                    updated_job_file=UPDATE_STATELESS_JOB_UPDATE_REDUCE_INSTANCES_FILE)
+    update.create()
+    update.wait_for_state(goal_state='SUCCEEDED')
+    new_task_infos = stateless_job.list_tasks().value
+    assert len(new_task_infos) == 3
+    # now increase back again
+    update = Update(stateless_job,
+                    updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_FILE)
+    update.create()
+    update.wait_for_state(goal_state='SUCCEEDED')
+    new_task_infos = stateless_job.list_tasks().value
+    assert len(new_task_infos) == 5
+
+
+def test__update_reduce_instances_stopped_tasks(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_task_infos = stateless_job.list_tasks().value
+    assert len(old_task_infos) == 3
+    # first increase instances
+    update = Update(stateless_job,
+                    updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_FILE)
+    update.create()
+    update.wait_for_state(goal_state='SUCCEEDED')
+    new_task_infos = stateless_job.list_tasks().value
+    assert len(new_task_infos) == 5
+    # now stop last 2 tasks
+    ranges = task_pb2.InstanceRange(to=5)
+    setattr(ranges, 'from', 3)
+    stateless_job.stop(ranges=[ranges])
+    # now reduce instance count
+    update = Update(stateless_job,
+                    updated_job_file=UPDATE_STATELESS_JOB_UPDATE_REDUCE_INSTANCES_FILE)
+    update.create()
+    update.wait_for_state(goal_state='SUCCEEDED')
+    new_task_infos = stateless_job.list_tasks().value
+    assert len(new_task_infos) == 3
 
 
 def assert_task_mesos_id_changed(old_task_infos, new_task_infos):

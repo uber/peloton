@@ -31,6 +31,7 @@ type Update interface {
 		prevJobConfig *pbjob.JobConfig,
 		instanceAdded []uint32,
 		instanceUpdated []uint32,
+		instanceRemoved []uint32,
 		workflowType models.WorkflowType,
 		updateConfig *pbupdate.UpdateConfig,
 	) error
@@ -56,6 +57,10 @@ type Update interface {
 	// GetInstancesUpdated returns the existing instances to be updated
 	// with this update
 	GetInstancesUpdated() []uint32
+
+	// GetInstancesRemoved returns the existing instances to be removed
+	// with this update
+	GetInstancesRemoved() []uint32
 
 	// GetInstancesCurrent returns the current set of instances being updated
 	GetInstancesCurrent() []uint32
@@ -131,8 +136,11 @@ type update struct {
 	// list of instances which have been added
 	instancesAdded []uint32
 	// list of existing instance which have been updated;
-	// instancesTotal should be union of instancesAdded and instancesUpdated
 	instancesUpdated []uint32
+	// list of existing instances which have been deleted;
+	// instancesTotal should be union of instancesAdded,
+	// instancesUpdated and instancesRemoved
+	instancesRemoved []uint32
 
 	jobVersion     uint64 // job configuration version
 	jobPrevVersion uint64 // previous job configuration version
@@ -159,6 +167,7 @@ func (u *update) Create(
 	prevJobConfig *pbjob.JobConfig,
 	instanceAdded []uint32,
 	instanceUpdated []uint32,
+	instanceRemoved []uint32,
 	workflowType models.WorkflowType,
 	updateConfig *pbupdate.UpdateConfig) error {
 
@@ -166,7 +175,9 @@ func (u *update) Create(
 		jobConfig,
 		prevJobConfig,
 		instanceAdded,
-		instanceUpdated); err != nil {
+		instanceUpdated,
+		instanceRemoved,
+	); err != nil {
 		return err
 	}
 
@@ -201,7 +212,8 @@ func (u *update) Create(
 		State:                state,
 		InstancesAdded:       instanceAdded,
 		InstancesUpdated:     instanceUpdated,
-		InstancesTotal:       uint32(len(instanceUpdated) + len(instanceAdded)),
+		InstancesRemoved:     instanceRemoved,
+		InstancesTotal:       uint32(len(instanceUpdated) + len(instanceAdded) + len(instanceRemoved)),
 		Type:                 workflowType,
 	}
 	// Store the new update in DB
@@ -231,6 +243,7 @@ func (u *update) Create(
 		WithField("instances_total", len(u.instancesTotal)).
 		WithField("instances_added", len(u.instancesAdded)).
 		WithField("instance_updated", len(u.instancesUpdated)).
+		WithField("instance_removed", len(u.instancesRemoved)).
 		WithField("update_state", u.state.String()).
 		WithField("update_type", u.workflowType.String()).
 		Debug("update is created")
@@ -416,6 +429,24 @@ func (u *update) GetInstancesUpdated() []uint32 {
 	return instances
 }
 
+func (u *update) GetInstancesRemoved() []uint32 {
+	u.RLock()
+	defer u.RUnlock()
+
+	if IsUpdateStateTerminal(u.state) {
+		log.WithFields(log.Fields{
+			"update_id": u.id.GetValue(),
+			"job_id":    u.jobID.GetValue(),
+			"state":     u.state.String(),
+			"field":     "instancesRemoved",
+		}).Warn("accessing fields in terminated update which can be stale")
+	}
+
+	instances := make([]uint32, len(u.instancesRemoved))
+	copy(instances, u.instancesRemoved)
+	return instances
+}
+
 func (u *update) GetInstancesCurrent() []uint32 {
 	u.RLock()
 	defer u.RUnlock()
@@ -451,10 +482,12 @@ func (u *update) populateCache(updateModel *models.UpdateModel) {
 	u.jobID = updateModel.GetJobID()
 	u.instancesCurrent = updateModel.GetInstancesCurrent()
 	u.instancesAdded = updateModel.GetInstancesAdded()
+	u.instancesRemoved = updateModel.GetInstancesRemoved()
 	u.instancesUpdated = updateModel.GetInstancesUpdated()
 	u.jobVersion = updateModel.GetJobConfigVersion()
 	u.jobPrevVersion = updateModel.GetPrevJobConfigVersion()
 	u.instancesTotal = append(updateModel.GetInstancesUpdated(), updateModel.GetInstancesAdded()...)
+	u.instancesTotal = append(u.instancesTotal, updateModel.GetInstancesRemoved()...)
 	u.WorkflowStrategy = getWorkflowStrategy(updateModel.GetType())
 }
 
@@ -465,6 +498,7 @@ func (u *update) clearCache() {
 	u.instancesCurrent = nil
 	u.instancesAdded = nil
 	u.instancesUpdated = nil
+	u.instancesRemoved = nil
 	u.workflowType = models.WorkflowType_UNKNOWN
 }
 
@@ -473,6 +507,7 @@ func validateInput(
 	prevJobConfig *pbjob.JobConfig,
 	instanceAdded []uint32,
 	instanceUpdated []uint32,
+	instanceRemoved []uint32,
 ) error {
 	// validate all instances in instanceUpdated is within old
 	// instance config range
@@ -491,6 +526,15 @@ func validateInput(
 				"instance %d is out side of range for add", instanceID)
 		}
 	}
+
+	// validate all removed instances is within old instance config range
+	for _, instanceID := range instanceRemoved {
+		if instanceID >= prevJobConfig.GetInstanceCount() {
+			return yarpcerrors.InvalidArgumentErrorf(
+				"instance %d is out side of range for update", instanceID)
+		}
+	}
+
 	return nil
 }
 

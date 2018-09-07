@@ -553,6 +553,7 @@ func (h *serviceHandler) Restart(
 		jobConfig,
 		nil,
 		convertRangesToSlice(ranges, newConfig.GetInstanceCount()),
+		nil,
 		models.WorkflowType_RESTART,
 		&pbupdate.UpdateConfig{
 			BatchSize: req.GetRestartConfig().GetBatchSize(),

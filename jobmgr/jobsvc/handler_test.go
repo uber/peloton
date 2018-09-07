@@ -1785,6 +1785,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccess() {
 			gomock.Any(),
 			nil,
 			gomock.Any(),
+			nil,
 			models.WorkflowType_RESTART,
 			gomock.Any(),
 		).Do(func(
@@ -1794,6 +1795,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccess() {
 		prevJobConfig *job.JobConfig,
 		_ []uint32,
 		instanceUpdated []uint32,
+		_ []uint32,
 		_ models.WorkflowType,
 		updateConfig *update.UpdateConfig,
 	) {
@@ -1883,6 +1885,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccessWithRange() {
 			gomock.Any(),
 			nil,
 			gomock.Any(),
+			nil,
 			models.WorkflowType_RESTART,
 			gomock.Any(),
 		).Do(func(
@@ -1892,6 +1895,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccessWithRange() {
 		prevJobConfig *job.JobConfig,
 		_ []uint32,
 		instanceUpdated []uint32,
+		_ []uint32,
 		_ models.WorkflowType,
 		updateConfig *update.UpdateConfig,
 	) {
@@ -1985,6 +1989,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobOutsideOfRangeSuccess() {
 			gomock.Any(),
 			nil,
 			gomock.Any(),
+			nil,
 			models.WorkflowType_RESTART,
 			gomock.Any(),
 		).Do(func(
@@ -1994,6 +1999,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobOutsideOfRangeSuccess() {
 		prevJobConfig *job.JobConfig,
 		_ []uint32,
 		instanceUpdated []uint32,
+		_ []uint32,
 		_ models.WorkflowType,
 		updateConfig *update.UpdateConfig,
 	) {
@@ -2173,6 +2179,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobCreateUpdateFailure() {
 			gomock.Any(),
 			nil,
 			gomock.Any(),
+			nil,
 			models.WorkflowType_RESTART,
 			gomock.Any(),
 		).Do(func(
@@ -2182,6 +2189,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobCreateUpdateFailure() {
 		prevJobConfig *job.JobConfig,
 		_ []uint32,
 		instanceUpdated []uint32,
+		_ []uint32,
 		_ models.WorkflowType,
 		updateConfig *update.UpdateConfig,
 	) {
@@ -2259,6 +2267,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobGetCachedConfigFailure() {
 			gomock.Any(),
 			nil,
 			gomock.Any(),
+			nil,
 			models.WorkflowType_RESTART,
 			gomock.Any(),
 		).Do(func(
@@ -2268,6 +2277,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobGetCachedConfigFailure() {
 		prevJobConfig *job.JobConfig,
 		_ []uint32,
 		instanceUpdated []uint32,
+		_ []uint32,
 		_ models.WorkflowType,
 		updateConfig *update.UpdateConfig,
 	) {

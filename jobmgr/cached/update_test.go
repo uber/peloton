@@ -233,6 +233,7 @@ func (suite *UpdateTestSuite) TestCreateUpdateInstancesUpdatedOutOfRange() {
 		prevJobConfig,
 		nil,
 		[]uint32{0, 1, 2, 4, 5, 6, 7, 8, 9, 10},
+		nil,
 		models.WorkflowType_UPDATE,
 		updateConfig,
 	)
@@ -256,6 +257,31 @@ func (suite *UpdateTestSuite) TestCreateUpdateInstancesAddedOutOfRange() {
 		prevJobConfig,
 		[]uint32{10, 11},
 		[]uint32{0, 1, 2, 4, 5, 6, 7, 8, 9},
+		nil,
+		models.WorkflowType_UPDATE,
+		updateConfig,
+	)
+
+	suite.Error(err)
+}
+
+// TestCreateUpdateInstancesRemovedOutOfRange tests the case that
+// instancesRemoved is out of job config instance count range
+func (suite *UpdateTestSuite) TestCreateUpdateInstancesRemovedOutOfRange() {
+	instanceCount := uint32(10)
+	version := uint64(2)
+	prevJobConfig, newJobConfig, updateConfig, _ :=
+		initializeUpdateTest(
+			instanceCount, version, instanceCount-1, version+1)
+
+	err := suite.update.Create(
+		context.Background(),
+		suite.jobID,
+		newJobConfig,
+		prevJobConfig,
+		nil,
+		[]uint32{0, 1, 2, 4, 5, 6, 7, 8},
+		[]uint32{11},
 		models.WorkflowType_UPDATE,
 		updateConfig,
 	)
@@ -332,6 +358,7 @@ func (suite *UpdateTestSuite) TestValidCreateUpdate() {
 		prevJobConfig,
 		[]uint32{10},
 		[]uint32{0, 1, 2, 4, 5, 6, 7, 8, 9},
+		nil,
 		models.WorkflowType_UPDATE,
 		updateConfig,
 	)
@@ -344,6 +371,91 @@ func (suite *UpdateTestSuite) TestValidCreateUpdate() {
 	suite.Equal(version+1, suite.update.jobVersion)
 	suite.Equal(instanceCount, uint32(len(suite.update.instancesTotal)))
 	suite.Equal(1, len(suite.update.instancesAdded))
+	suite.Equal(instanceCount-1, uint32(len(suite.update.instancesUpdated)))
+}
+
+// TestValidCreateUpdateWithReducedInstanceCount tests creating a valid job
+// update with changes to the default configuration and the instance
+// configuration, as well as removing one instance.
+func (suite *UpdateTestSuite) TestValidCreateUpdateWithReducedInstanceCount() {
+	instanceCount := uint32(10)
+	version := uint64(2)
+	prevJobConfig, newJobConfig, updateConfig, jobRuntime :=
+		initializeUpdateTest(
+			instanceCount, version, instanceCount-1, version)
+
+	suite.updateStore.EXPECT().
+		CreateUpdate(
+			gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, updateModel *models.UpdateModel) {
+			suite.Equal(suite.updateID, updateModel.UpdateID)
+			suite.Equal(suite.jobID, updateModel.JobID)
+			suite.Equal(updateConfig, updateModel.UpdateConfig)
+			suite.Equal(version+1, updateModel.JobConfigVersion)
+			suite.Equal(version, updateModel.PrevJobConfigVersion)
+			suite.Equal(pbupdate.State_INITIALIZED, updateModel.State)
+			suite.Equal(instanceCount, updateModel.InstancesTotal)
+		}).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(prevJobConfig, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.jobID).
+		Return(jobRuntime, nil)
+
+	suite.jobStore.EXPECT().
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(prevJobConfig.ChangeLog.Version, nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
+			suite.Equal(
+				newJobConfig.DefaultConfig.Command.Value,
+				config.DefaultConfig.Command.Value,
+			)
+			suite.Equal(
+				newJobConfig.ChangeLog.Version+1,
+				config.ChangeLog.Version,
+			)
+		}).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(
+			_ context.Context,
+			_ *peloton.JobID,
+			runtime *pbjob.RuntimeInfo) {
+			suite.Equal(runtime.UpdateID, suite.updateID)
+			suite.Equal(runtime.ConfigurationVersion, version+1)
+		}).
+		Return(nil)
+
+	err := suite.update.Create(
+		context.Background(),
+		suite.jobID,
+		newJobConfig,
+		prevJobConfig,
+		nil,
+		[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8},
+		[]uint32{9},
+		models.WorkflowType_UPDATE,
+		updateConfig,
+	)
+
+	suite.NoError(err)
+	suite.Equal(suite.jobID, suite.update.JobID())
+	suite.Equal(pbupdate.State_INITIALIZED, suite.update.state)
+	suite.Equal(updateConfig.BatchSize, suite.update.updateConfig.BatchSize)
+	suite.Equal(version, suite.update.jobPrevVersion)
+	suite.Equal(version+1, suite.update.jobVersion)
+	suite.Equal(instanceCount, uint32(len(suite.update.instancesTotal)))
+	suite.Equal(1, len(suite.update.instancesRemoved))
 	suite.Equal(instanceCount-1, uint32(len(suite.update.instancesUpdated)))
 }
 
@@ -389,6 +501,7 @@ func (suite *UpdateTestSuite) TestCreateUpdateDBError() {
 		prevJobConfig,
 		nil,
 		[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		nil,
 		models.WorkflowType_UPDATE,
 		updateConfig,
 	)
@@ -434,6 +547,7 @@ func (suite *UpdateTestSuite) TestCreateUpdateJobConfigDBError() {
 		prevJobConfig,
 		nil,
 		[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		nil,
 		models.WorkflowType_UPDATE,
 		updateConfig,
 	)
@@ -507,6 +621,7 @@ func (suite *UpdateTestSuite) TestValidCreateRestart() {
 		prevJobConfig,
 		nil,
 		[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		nil,
 		models.WorkflowType_RESTART,
 		updateConfig,
 	)
@@ -683,6 +798,14 @@ func (suite *UpdateTestSuite) TestUpdateGetInstancesUpdated() {
 
 	instances := suite.update.GetInstancesUpdated()
 	suite.True(reflect.DeepEqual(instances, suite.update.instancesUpdated))
+}
+
+// TestUpdateGetInstancesRemoved tests getting instances removed in a job update
+func (suite *UpdateTestSuite) TestUpdateGetInstancesRemoved() {
+	suite.update.instancesRemoved = []uint32{1, 2, 3, 4, 5}
+
+	instances := suite.update.GetInstancesRemoved()
+	suite.True(reflect.DeepEqual(instances, suite.update.instancesRemoved))
 }
 
 // TestUpdateGetInstancesCurrent tests getting current

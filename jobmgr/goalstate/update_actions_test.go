@@ -29,6 +29,7 @@ type UpdateActionsTestSuite struct {
 	suite.Suite
 	ctrl                  *gomock.Controller
 	updateStore           *storemocks.MockUpdateStore
+	taskStore             *storemocks.MockTaskStore
 	jobFactory            *cachedmocks.MockJobFactory
 	updateFactory         *cachedmocks.MockUpdateFactory
 	updateGoalStateEngine *goalstatemocks.MockEngine
@@ -49,12 +50,14 @@ func TestUpdateActions(t *testing.T) {
 func (suite *UpdateActionsTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
+	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
 	suite.updateGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.goalStateDriver = &driver{
 		updateStore:   suite.updateStore,
+		taskStore:     suite.taskStore,
 		jobFactory:    suite.jobFactory,
 		updateFactory: suite.updateFactory,
 		updateEngine:  suite.updateGoalStateEngine,
@@ -234,6 +237,8 @@ func (suite *UpdateActionsTestSuite) TestUpdateReloadNotExists() {
 // TestUpdateComplete tests completing an update
 func (suite *UpdateActionsTestSuite) TestUpdateComplete() {
 	instancesTotal := []uint32{2, 3, 4, 5}
+	instIDRemoved := uint32(5)
+	instancesRemoved := []uint32{instIDRemoved}
 
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
@@ -244,6 +249,21 @@ func (suite *UpdateActionsTestSuite) TestUpdateComplete() {
 		Return(&cached.UpdateStateVector{
 			Instances: instancesTotal,
 		})
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return(instancesRemoved)
+
+	suite.cachedJob.EXPECT().
+		RemoveTask(instIDRemoved)
+
+	suite.taskStore.EXPECT().
+		DeleteTaskRuntime(gomock.Any(), suite.jobID, instIDRemoved).
+		Return(nil)
 
 	suite.cachedUpdate.EXPECT().
 		WriteProgress(
@@ -288,12 +308,56 @@ func (suite *UpdateActionsTestSuite) TestUpdateCompleteDBError() {
 			Instances: instancesTotal,
 		})
 
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return([]uint32{})
+
 	suite.cachedUpdate.EXPECT().
 		WriteProgress(
 			gomock.Any(),
 			pbupdate.State_SUCCEEDED,
 			instancesTotal,
 			[]uint32{}).
+		Return(fmt.Errorf("fake db error"))
+
+	err := UpdateComplete(context.Background(), suite.updateEnt)
+	suite.EqualError(err, "fake db error")
+}
+
+// TestUpdateComplete tests failing to delete a removed task when
+// completing an update
+func (suite *UpdateActionsTestSuite) TestUpdateCompleteDeleteTaskError() {
+	instancesTotal := []uint32{2, 3, 4, 5}
+	instIDRemoved := uint32(5)
+	instancesRemoved := []uint32{instIDRemoved}
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			Instances: instancesTotal,
+		})
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return(instancesRemoved)
+
+	suite.cachedJob.EXPECT().
+		RemoveTask(instIDRemoved)
+
+	suite.taskStore.EXPECT().
+		DeleteTaskRuntime(gomock.Any(), suite.jobID, instIDRemoved).
 		Return(fmt.Errorf("fake db error"))
 
 	err := UpdateComplete(context.Background(), suite.updateEnt)

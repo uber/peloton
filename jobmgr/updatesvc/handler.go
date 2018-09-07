@@ -77,12 +77,6 @@ func (h *serviceHandler) validateJobConfigUpdate(
 		return yarpcerrors.InvalidArgumentErrorf("job type is immutable")
 	}
 
-	// Instance count can not go down
-	if newJobConfig.GetInstanceCount() < prevJobConfig.GetInstanceCount() {
-		return yarpcerrors.InvalidArgumentErrorf(
-			"instance count cannot be reduced")
-	}
-
 	// resource pool identifier is immutable
 	if newJobConfig.GetRespoolID().GetValue() !=
 		prevJobConfig.GetRespoolID().GetValue() {
@@ -172,7 +166,7 @@ func (h *serviceHandler) CreateUpdate(
 		Value: uuid.New(),
 	}
 
-	instancesAdded, instancesUpdated, err := h.diffConfig(
+	instancesAdded, instancesUpdated, instancesRemoved, err := h.diffConfig(
 		ctx,
 		jobID,
 		prevJobConfig,
@@ -192,6 +186,7 @@ func (h *serviceHandler) CreateUpdate(
 		prevJobConfig,
 		instancesAdded,
 		instancesUpdated,
+		instancesRemoved,
 		models.WorkflowType_UPDATE,
 		req.GetUpdateConfig(),
 	)
@@ -434,6 +429,7 @@ func (h *serviceHandler) diffConfig(
 ) (
 	instancesAdded []uint32,
 	instancesUpdated []uint32,
+	instancesRemoved []uint32,
 	err error,
 ) {
 
@@ -441,6 +437,13 @@ func (h *serviceHandler) diffConfig(
 		// New instances have been added
 		for instID := prevJobConfig.GetInstanceCount(); instID < newJobConfig.GetInstanceCount(); instID++ {
 			instancesAdded = append(instancesAdded, instID)
+		}
+	}
+
+	if newJobConfig.GetInstanceCount() < prevJobConfig.GetInstanceCount() {
+		// Instances have been removed
+		for instID := newJobConfig.GetInstanceCount(); instID < prevJobConfig.GetInstanceCount(); instID++ {
+			instancesRemoved = append(instancesRemoved, instID)
 		}
 	}
 
@@ -456,7 +459,12 @@ func (h *serviceHandler) diffConfig(
 	}
 
 	j := h.jobFactory.AddJob(jobID)
-	for i := uint32(0); i < prevJobConfig.GetInstanceCount(); i++ {
+	instanceCount := prevJobConfig.GetInstanceCount()
+	if instanceCount > newJobConfig.GetInstanceCount() {
+		instanceCount = newJobConfig.GetInstanceCount()
+	}
+
+	for i := uint32(0); i < instanceCount; i++ {
 		// Get the current task configuration. Cannot use prevTaskConfig to do
 		// so because the task may be still be on an older configurarion
 		// version because the previous update may not have succeeded.

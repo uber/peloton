@@ -178,6 +178,7 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 			suite.jobConfig,
 			nil,
 			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			nil,
 			models.WorkflowType_UPDATE,
 			suite.updateConfig).
 		Return(nil)
@@ -240,6 +241,7 @@ func (suite *UpdateSvcTestSuite) TestAddInstancesSuccess() {
 			suite.jobConfig,
 			[]uint32{10, 11},
 			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			nil,
 			models.WorkflowType_UPDATE,
 			suite.updateConfig).
 		Return(nil)
@@ -283,6 +285,7 @@ func (suite *UpdateSvcTestSuite) TestUpdateLabelsSuccess() {
 			suite.jobConfig,
 			nil,
 			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			nil,
 			models.WorkflowType_UPDATE,
 			suite.updateConfig).
 		Return(nil)
@@ -472,6 +475,48 @@ func (suite *UpdateSvcTestSuite) TestCreateReduceInstanceCount() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, nil)
 
+	suite.updateFactory.EXPECT().
+		AddUpdate(gomock.Any()).
+		Return(suite.cachedUpdate)
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	for i := uint32(0); i < suite.newJobConfig.InstanceCount; i++ {
+		suite.cachedJob.EXPECT().
+			AddTask(i).
+			Return(suite.cachedTask)
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&task.RuntimeInfo{
+				ConfigVersion: suite.jobConfig.GetChangeLog().GetVersion(),
+			}, nil)
+
+		suite.taskStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				suite.jobID,
+				i,
+				suite.jobConfig.GetChangeLog().GetVersion()).
+			Return(suite.jobConfig.GetDefaultConfig(), nil)
+	}
+
+	suite.cachedUpdate.EXPECT().
+		Create(
+			gomock.Any(), suite.jobID,
+			suite.newJobConfig,
+			suite.jobConfig,
+			nil,
+			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8},
+			[]uint32{9},
+			models.WorkflowType_UPDATE,
+			suite.updateConfig).
+		Return(nil)
+
+	suite.goalStateDriver.EXPECT().
+		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
+
 	_, err := suite.h.CreateUpdate(
 		context.Background(),
 		&svc.CreateUpdateRequest{
@@ -480,10 +525,7 @@ func (suite *UpdateSvcTestSuite) TestCreateReduceInstanceCount() {
 			UpdateConfig: suite.updateConfig,
 		},
 	)
-
-	suite.True(yarpcerrors.IsInvalidArgument(err))
-	suite.EqualError(err,
-		"code:invalid-argument message:instance count cannot be reduced")
+	suite.NoError(err)
 }
 
 // TestCreateChangeRespoolID tests creating a job update with a different
@@ -560,6 +602,7 @@ func (suite *UpdateSvcTestSuite) TestCreateAddUpdateFail() {
 			suite.jobConfig,
 			nil,
 			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			nil,
 			models.WorkflowType_UPDATE,
 			suite.updateConfig).
 		Return(fmt.Errorf("fake db error"))
@@ -630,6 +673,7 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccessWithExistingUpdate() {
 			suite.jobConfig,
 			nil,
 			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			nil,
 			models.WorkflowType_UPDATE,
 			suite.updateConfig).
 		Return(nil)

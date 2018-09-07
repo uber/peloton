@@ -85,6 +85,18 @@ func UpdateComplete(ctx context.Context, entity goalstate.Entity) error {
 	}
 	instancesTotal := cachedUpdate.GetGoalState().Instances
 
+	// first delete removed tasks from cache and their runtimes from DB
+	jobID := updateEnt.jobID
+	cachedJob := goalStateDriver.jobFactory.AddJob(jobID)
+	instancesRemoved := cachedUpdate.GetInstancesRemoved()
+	for _, instID := range instancesRemoved {
+		cachedJob.RemoveTask(instID)
+		if err := goalStateDriver.taskStore.DeleteTaskRuntime(ctx, jobID,
+			instID); err != nil {
+			return err
+		}
+	}
+
 	if err := cachedUpdate.WriteProgress(
 		ctx,
 		pbupdate.State_SUCCEEDED,

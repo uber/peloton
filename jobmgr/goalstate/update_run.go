@@ -54,7 +54,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 		cachedUpdate.GetState().Instances,
 		instancesDoneFromLastRun...)
 
-	instancesToAdd, instancesToUpdate :=
+	instancesToAdd, instancesToUpdate, instancesToRemove :=
 		getInstancesForUpdateRun(cachedUpdate, instancesCurrent, instancesDone)
 
 	if err := processUpdate(
@@ -63,6 +63,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 		cachedUpdate,
 		instancesToAdd,
 		instancesToUpdate,
+		instancesToRemove,
 		goalStateDriver,
 	); err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
@@ -76,6 +77,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 		instancesCurrent,
 		instancesToAdd,
 		instancesToUpdate,
+		instancesToRemove,
 	); err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
 		return err
@@ -86,6 +88,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 		cachedJob,
 		cachedUpdate,
 		instancesToUpdate,
+		instancesToRemove,
 		instancesDone,
 		goalStateDriver); err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
@@ -99,13 +102,14 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 // postUpdateAction performs actions after update run is finished for
 // one run of UpdateRun. Its job:
 // 1. Enqueue update if update is completed finished
-// 2. Enqueue update if any task updated in this run has already
-// been updated
+// 2. Enqueue update if any task updated/removed in this run has already
+// been updated/killed
 func postUpdateAction(
 	ctx context.Context,
 	cachedJob cached.Job,
 	cachedUpdate cached.Update,
 	instancesUpdatedInCurrentRun []uint32,
+	instancesRemovedInCurrentRun []uint32,
 	instancesDone []uint32,
 	goalStateDriver Driver,
 ) error {
@@ -118,10 +122,13 @@ func postUpdateAction(
 		return nil
 	}
 
-	// if any of the task updated in this round is a killed task or
-	// has already finished update, reenqueue the update, because
+	instancesInCurrentRun := append(instancesUpdatedInCurrentRun,
+		instancesRemovedInCurrentRun...)
+
+	// if any of the task updated/removed in this round is a killed task or
+	// has already finished update/kill, reenqueue the update, because
 	// more instances can be updated without receiving task event.
-	for _, instanceID := range instancesUpdatedInCurrentRun {
+	for _, instanceID := range instancesInCurrentRun {
 		cachedTask := cachedJob.GetTask(instanceID)
 		if cachedTask == nil {
 			continue
@@ -166,10 +173,12 @@ func writeUpdateProgress(
 	previousInstancesCurrent []uint32,
 	instancesAdded []uint32,
 	instancesUpdated []uint32,
+	instancesRemoved []uint32,
 ) error {
 	state := pbupdate.State_ROLLING_FORWARD
 	newInstancesCurrent := append(previousInstancesCurrent, instancesAdded...)
 	newInstancesCurrent = append(newInstancesCurrent, instancesUpdated...)
+	newInstancesCurrent = append(newInstancesCurrent, instancesRemoved...)
 	// update the state of the job update
 	return cachedUpdate.WriteProgress(
 		ctx,
@@ -185,9 +194,10 @@ func processUpdate(
 	cachedUpdate cached.Update,
 	instancesToAdd []uint32,
 	instancesToUpdate []uint32,
+	instancesToRemove []uint32,
 	goalStateDriver *driver) error {
 	// no action needed if there is no instances to update/add
-	if len(instancesToUpdate)+len(instancesToAdd) == 0 {
+	if len(instancesToUpdate)+len(instancesToAdd)+len(instancesToRemove) == 0 {
 		return nil
 	}
 
@@ -214,6 +224,17 @@ func processUpdate(
 		cachedJob,
 		cachedUpdate,
 		instancesToUpdate,
+		jobConfig,
+		goalStateDriver,
+	)
+	if err != nil {
+		return err
+	}
+
+	err = removeInstancesInUpdate(
+		ctx,
+		cachedJob,
+		instancesToRemove,
 		jobConfig,
 		goalStateDriver,
 	)
@@ -370,6 +391,39 @@ func processInstancesInUpdate(
 	return nil
 }
 
+// removeInstancesInUpdate kills the instances being removed in the update
+func removeInstancesInUpdate(
+	ctx context.Context,
+	cachedJob cached.Job,
+	instancesToRemove []uint32,
+	jobConfig *pbjob.JobConfig,
+	goalStateDriver *driver) error {
+	if len(instancesToRemove) == 0 {
+		return nil
+	}
+	runtimes := make(map[uint32]cached.RuntimeDiff)
+
+	for _, instID := range instancesToRemove {
+		runtimes[instID] = cached.RuntimeDiff{
+			cached.GoalStateField:            pbtask.TaskState_KILLED,
+			cached.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
+			cached.MessageField:              "Task Count reduced via API",
+		}
+	}
+
+	if len(runtimes) > 0 {
+		if err := cachedJob.PatchTasks(ctx, runtimes); err != nil {
+			return err
+		}
+	}
+
+	for _, instID := range instancesToRemove {
+		goalStateDriver.EnqueueTask(cachedJob.ID(), instID, time.Now())
+	}
+
+	return nil
+}
+
 // getInstancesForUpdateRun returns the instances to update/add in
 // the given call of UpdateRun.
 func getInstancesForUpdateRun(
@@ -379,38 +433,59 @@ func getInstancesForUpdateRun(
 ) (
 	instancesToAdd []uint32,
 	instancesToUpdate []uint32,
+	instancesToRemove []uint32,
 ) {
 
-	unprocessedInstancesToAdd, unprocessedInstancesToUpdate :=
+	unprocessedInstancesToAdd,
+		unprocessedInstancesToUpdate,
+		unprocessedInstancesToRemove :=
 		getUnprocessedInstances(update, instancesCurrent, instancesDone)
 
 	// if batch size is 0 or updateConfig is nil, update all of the instances
 	if update.GetUpdateConfig().GetBatchSize() == 0 {
-		return unprocessedInstancesToAdd, unprocessedInstancesToUpdate
+		return unprocessedInstancesToAdd,
+			unprocessedInstancesToUpdate,
+			unprocessedInstancesToRemove
 	}
 
 	maxNumOfInstancesToProcess :=
 		int(update.GetUpdateConfig().GetBatchSize()) - len(instancesCurrent)
 	// if instances being updated are more than batch size, do not update anything
 	if maxNumOfInstancesToProcess <= 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// if can process all of the remaining instances
 	if maxNumOfInstancesToProcess >
+		len(unprocessedInstancesToAdd)+len(unprocessedInstancesToUpdate)+
+			len(unprocessedInstancesToRemove) {
+		return unprocessedInstancesToAdd,
+			unprocessedInstancesToUpdate,
+			unprocessedInstancesToRemove
+	}
+
+	// if can process all of the instances to add, update
+	// and part of instances to remove
+	if maxNumOfInstancesToProcess >
 		len(unprocessedInstancesToAdd)+len(unprocessedInstancesToUpdate) {
-		return unprocessedInstancesToAdd, unprocessedInstancesToUpdate
+		return unprocessedInstancesToAdd,
+			unprocessedInstancesToUpdate,
+			unprocessedInstancesToRemove[:maxNumOfInstancesToProcess-
+				len(unprocessedInstancesToAdd)-
+				len(unprocessedInstancesToUpdate)]
+
 	}
 
 	// if can process all of the instances to add,
 	// and part of instances to update
 	if maxNumOfInstancesToProcess > len(unprocessedInstancesToAdd) {
 		return unprocessedInstancesToAdd,
-			unprocessedInstancesToUpdate[:maxNumOfInstancesToProcess-len(unprocessedInstancesToAdd)]
+			unprocessedInstancesToUpdate[:maxNumOfInstancesToProcess-len(unprocessedInstancesToAdd)],
+			nil
 	}
 
 	// if can process part of the instances to add
-	return unprocessedInstancesToAdd[:maxNumOfInstancesToProcess], nil
+	return unprocessedInstancesToAdd[:maxNumOfInstancesToProcess], nil, nil
 }
 
 // getUnprocessedInstances returns all of the
@@ -420,11 +495,13 @@ func getUnprocessedInstances(
 	instancesCurrent []uint32,
 	instancesDone []uint32,
 ) (instancesRemainToAdd []uint32,
-	instancesRemainToUpdate []uint32) {
+	instancesRemainToUpdate []uint32,
+	instancesRemainToRemove []uint32) {
 	instancesProcessed := append(instancesCurrent, instancesDone...)
 	instancesRemainToAdd = subtractSlice(update.GetInstancesAdded(), instancesProcessed)
 	instancesRemainToUpdate = subtractSlice(update.GetInstancesUpdated(), instancesProcessed)
-	return instancesRemainToAdd, instancesRemainToUpdate
+	instancesRemainToRemove = subtractSlice(update.GetInstancesRemoved(), instancesProcessed)
+	return
 }
 
 // subtractSlice get return the result of slice1 - slice2

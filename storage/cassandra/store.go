@@ -1903,6 +1903,28 @@ func (s *Store) GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID
 	return result, nil
 }
 
+// DeleteTaskRuntime deletes runtime of a particular task .
+// It is used to delete a task when update workflow reduces the instance
+// count during an update. The pod events are retained in case the user
+// wants to fetch the events or the logs from a previous run of a deleted task.
+// The task configurations from previous versions are retained in case
+// auto-rollback gets triggered.
+func (s *Store) DeleteTaskRuntime(
+	ctx context.Context,
+	id *peloton.JobID,
+	instanceID uint32) error {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Delete(taskRuntimeTable).
+		Where(qb.Eq{"job_id": id.GetValue(), "instance_id": instanceID})
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		s.metrics.TaskMetrics.TaskDeleteFail.Inc(1)
+		return err
+	}
+
+	s.metrics.TaskMetrics.TaskDelete.Inc(1)
+	return nil
+}
+
 // DeleteJob deletes a job and associated tasks, by job id.
 // TODO: This implementation is not perfect, as if it's getting an transient
 // error, the job or some tasks may not be fully deleted.
@@ -2680,6 +2702,7 @@ func (s *Store) CreateUpdate(
 			"instances_total",
 			"instances_added",
 			"instances_updated",
+			"instances_removed",
 			"instances_done",
 			"instances_current",
 			"job_id",
@@ -2694,6 +2717,7 @@ func (s *Store) CreateUpdate(
 			updateInfo.GetInstancesTotal(),
 			updateInfo.GetInstancesAdded(),
 			updateInfo.GetInstancesUpdated(),
+			updateInfo.GetInstancesRemoved(),
 			0,
 			[]int{},
 			updateInfo.GetJobID().GetValue(),
@@ -2850,6 +2874,7 @@ func (s *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
 			InstancesTotal:       uint32(record.InstancesTotal),
 			InstancesAdded:       record.GetInstancesAdded(),
 			InstancesUpdated:     record.GetInstancesUpdated(),
+			InstancesRemoved:     record.GetInstancesRemoved(),
 			InstancesDone:        uint32(record.InstancesDone),
 			InstancesCurrent:     record.GetProcessingInstances(),
 			CreationTime:         record.CreationTime.Format(time.RFC3339Nano),

@@ -774,7 +774,10 @@ func (j *job) IsPartiallyCreated(config JobConfig) bool {
 	j.RLock()
 	defer j.RUnlock()
 
-	if config.GetInstanceCount() == uint32(len(j.tasks)) {
+	// While the instance count is being reduced in an update,
+	// the number of instance in the cache will exceed the instance
+	// count in the configuration.
+	if config.GetInstanceCount() <= uint32(len(j.tasks)) {
 		return false
 	}
 	return true

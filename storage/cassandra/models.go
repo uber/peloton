@@ -120,6 +120,7 @@ type UpdateRecord struct {
 	InstancesCurrent     []int             `cql:"instances_current"`
 	InstancesUpdated     []int             `cql:"instances_updated"`
 	InstancesAdded       []int             `cql:"instances_added"`
+	InstancesRemoved     []int             `cql:"instances_removed"`
 	InstancesDone        int               `cql:"instances_done"`
 	JobConfigVersion     int64             `cql:"job_config_version"`
 	PrevJobConfigVersion int64             `cql:"job_config_prev_version"`
@@ -155,6 +156,15 @@ func (u *UpdateRecord) GetInstancesUpdated() []uint32 {
 func (u *UpdateRecord) GetInstancesAdded() []uint32 {
 	p := make([]uint32, len(u.InstancesAdded))
 	for i, v := range u.InstancesAdded {
+		p[i] = uint32(v)
+	}
+	return p
+}
+
+// GetInstancesRemoved returns a list of tasks to be added
+func (u *UpdateRecord) GetInstancesRemoved() []uint32 {
+	p := make([]uint32, len(u.InstancesRemoved))
+	for i, v := range u.InstancesRemoved {
 		p[i] = uint32(v)
 	}
 	return p

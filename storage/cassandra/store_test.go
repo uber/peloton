@@ -2672,6 +2672,7 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 		suite.Equal(len(tasks)-i-1, tasks[i].InstanceId)
 	}
 
+	suite.NoError(taskStore.DeleteTaskRuntime(context.Background(), &jobID, uint32(0)))
 }
 
 func (suite *CassandraStoreTestSuite) TestAddPodEvent() {

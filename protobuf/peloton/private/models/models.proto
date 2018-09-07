@@ -65,4 +65,7 @@ message UpdateModel {
 
   // The type for this workflow
   WorkflowType type = 14;
+
+  // instances to be removed
+  repeated uint32 instancesRemoved = 15;
 }
