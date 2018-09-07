@@ -4,7 +4,6 @@
 
 syntax = "proto3";
 
-import "mesos/v1/mesos.proto";
 import "peloton/api/v0/host/host.proto";
 
 package peloton.api.v0.host.svc;

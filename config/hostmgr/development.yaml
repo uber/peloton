@@ -22,3 +22,5 @@ storage:
 host_manager:
   scarce_resource_types:
     - GPU
+  host_drainer_period: 30s
+

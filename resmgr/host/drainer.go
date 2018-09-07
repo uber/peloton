@@ -129,8 +129,8 @@ func (d *Drainer) performDrainCycle() error {
 func (d *Drainer) drainHosts() error {
 	var errs error
 
-	log.WithField("hosts", d.drainingHosts).Info("Draining hosts")
 	drainingHosts := d.drainingHosts.ToSlice()
+	log.WithField("hosts", drainingHosts).Info("Draining hosts")
 	// No-op if there are no hosts to drain
 	if len(drainingHosts) == 0 {
 		return nil
@@ -143,6 +143,7 @@ func (d *Drainer) drainHosts() error {
 			drainedHosts = append(drainedHosts, host)
 			continue
 		}
+
 		err := d.preemptionQueue.EnqueueTasks(
 			tasksByHost[host],
 			resmgr.PreemptionReason_PREEMPTION_REASON_HOST_MAINTENANCE)
@@ -157,7 +158,9 @@ func (d *Drainer) drainHosts() error {
 		err := d.markHostsDrained(drainedHosts)
 		if err != nil {
 			errs = multierror.Append(err, errs)
+			return errs
 		}
+		log.WithField("hosts", drainedHosts).Info("Marked hosts as drained")
 	}
 	return errs
 }
@@ -165,6 +168,8 @@ func (d *Drainer) drainHosts() error {
 func (d *Drainer) markHostsDrained(hosts []string) error {
 	err := backoff.Retry(
 		func() error {
+			log.WithField("hosts", hosts).
+				Info("Attempting to mark hosts as drained")
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			response, err := d.hostMgrClient.MarkHostsDrained(
