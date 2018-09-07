@@ -28,5 +28,6 @@ class Client(object):
                     name=config['name'],
                     jm_url=config['jobmgr_url'],
                     rm_url=config['resmgr_url'],
+                    hm_url=config['hostmgr_url'],
                 )
         return _client
