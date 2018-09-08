@@ -46,8 +46,9 @@ func getMesosTaskID(
 	// update current mesos task id to desired mesos task id.
 	// This is used for task restart in which case desired mesos task id
 	// is changed.
-	if taskRuntime.GetMesosTaskId().GetValue() !=
-		taskRuntime.GetDesiredMesosTaskId().GetValue() {
+	if taskRuntime.GetDesiredMesosTaskId() != nil &&
+		taskRuntime.GetMesosTaskId().GetValue() !=
+			taskRuntime.GetDesiredMesosTaskId().GetValue() {
 		return taskRuntime.GetDesiredMesosTaskId()
 	}
 
