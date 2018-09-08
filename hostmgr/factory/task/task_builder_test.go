@@ -49,10 +49,18 @@ func (suite *BuilderTestSuite) getResources(
 		util.NewMesosResourceBuilder().
 			WithName("cpus").
 			WithValue(float64(numTasks * _cpu)).
+			WithRole("*").
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName("cpus").
+			WithValue(float64(numTasks * _cpu)).
+			WithRevocable(&mesos.Resource_RevocableInfo{}).
+			WithRole("*").
 			Build(),
 		util.NewMesosResourceBuilder().
 			WithName("mem").
 			WithValue(float64(numTasks * _mem)).
+			WithRole("*").
 			Build(),
 		util.NewMesosResourceBuilder().
 			WithName("disk").
@@ -127,7 +135,13 @@ func (suite *BuilderTestSuite) TestNoPortTasks() {
 	configs := createTestTaskConfigs(numTasks)
 
 	for i := 0; i < numTasks; i++ {
-		info, err := builder.Build(tids[i], configs[i], nil, nil, nil)
+		task := &hostsvc.LaunchableTask{
+			TaskId: tids[i],
+			Config: configs[i],
+			Ports:  nil,
+			Volume: nil,
+		}
+		info, err := builder.Build(task, nil, nil)
 		suite.NoError(err)
 		suite.Equal(tids[i], info.GetTaskId())
 		sc := scalar.FromMesosResources(info.GetResources())
@@ -141,7 +155,13 @@ func (suite *BuilderTestSuite) TestNoPortTasks() {
 	}
 
 	// next build call will return an error due to insufficient resource.
-	info, err := builder.Build(tids[0], configs[0], nil, nil, nil)
+	task := &hostsvc.LaunchableTask{
+		TaskId: tids[0],
+		Config: configs[0],
+		Ports:  nil,
+		Volume: nil,
+	}
+	info, err := builder.Build(task, nil, nil)
 	suite.Nil(info)
 	suite.Equal(err, ErrNotEnoughResource)
 }
@@ -216,8 +236,13 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 
 	discoveryPortSet := make(map[uint32]bool)
 	for i := 0; i < numTasks; i++ {
-		info, err := builder.Build(
-			tid[i], taskConfig, selectedDynamicPorts[i], nil, nil)
+		task := &hostsvc.LaunchableTask{
+			TaskId: tid[i],
+			Config: taskConfig,
+			Ports:  selectedDynamicPorts[i],
+			Volume: nil,
+		}
+		info, err := builder.Build(task, nil, nil)
 		suite.NoError(err)
 		suite.Equal(tid[i], info.GetTaskId())
 		sc := scalar.FromMesosResources(info.GetResources())
@@ -366,7 +391,13 @@ func (suite *BuilderTestSuite) TestCommandHealthCheck() {
 		Type:         task.HealthCheckConfig_COMMAND,
 		CommandCheck: cmdCfg,
 	}
-	info, err := builder.Build(tid, c, nil, nil, nil)
+	task := &hostsvc.LaunchableTask{
+		TaskId: tid,
+		Config: c,
+		Ports:  nil,
+		Volume: nil,
+	}
+	info, err := builder.Build(task, nil, nil)
 	suite.NoError(err)
 	suite.Equal(tid, info.GetTaskId())
 	hc := info.GetHealthCheck().GetCommand()
@@ -374,6 +405,59 @@ func (suite *BuilderTestSuite) TestCommandHealthCheck() {
 	suite.Equal(hcCmd, hc.GetValue())
 	suite.True(hc.GetShell())
 	suite.Len(hc.GetEnvironment().GetVariables(), 3)
+}
+
+func (suite *BuilderTestSuite) TestRevocableTask() {
+	numTasks := 1
+	resources := suite.getResources(numTasks)
+	builder := NewBuilder(resources)
+	tid := suite.createTestTaskIDs(numTasks)[0]
+	c := createTestTaskConfigs(numTasks)[0]
+	c.Revocable = true
+
+	hcCmd := "hello world"
+	cmdCfg := &task.HealthCheckConfig_CommandCheck{
+		Command: hcCmd,
+	}
+	c.HealthCheck = &task.HealthCheckConfig{
+		Type:         task.HealthCheckConfig_COMMAND,
+		CommandCheck: cmdCfg,
+	}
+	task := &hostsvc.LaunchableTask{
+		TaskId: tid,
+		Config: c,
+		Ports:  nil,
+		Volume: nil,
+	}
+	info, err := builder.Build(task, nil, nil)
+	suite.NoError(err)
+	suite.Equal(tid, info.GetTaskId())
+	hc := info.GetHealthCheck().GetCommand()
+	suite.NotNil(hc)
+	suite.Equal(hcCmd, hc.GetValue())
+	suite.True(hc.GetShell())
+	suite.Len(hc.GetEnvironment().GetVariables(), 3)
+
+	// Revocable resources are not sufficient
+	builder = NewBuilder(nil)
+	_, err = builder.Build(task, nil, nil)
+	suite.Error(err)
+
+	task.Config.Command = nil
+	_, err = builder.Build(task, nil, nil)
+	suite.Error(err)
+
+	task.Config.Resource = nil
+	_, err = builder.Build(task, nil, nil)
+	suite.Error(err)
+
+	task.TaskId = nil
+	_, err = builder.Build(task, nil, nil)
+	suite.Error(err)
+
+	task.Config = nil
+	_, err = builder.Build(task, nil, nil)
+	suite.Error(err)
 }
 
 // This tests various combination of populating health check.

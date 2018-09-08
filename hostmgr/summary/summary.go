@@ -18,6 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/host"
 	"code.uber.internal/infra/peloton/hostmgr/reservation"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	hmutil "code.uber.internal/infra/peloton/hostmgr/util"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -80,9 +81,6 @@ type HostSummary interface {
 		hostFilter *hostsvc.HostFilter,
 		evaluator constraints.Evaluator) (hostsvc.HostFilterResult, []*mesos.Offer)
 
-	// AddMesosOffer adds a Mesos offer to the current HostSummary.
-	AddMesosOffer(ctx context.Context, offer *mesos.Offer) HostStatus
-
 	// AddMesosOffer adds a Mesos offers to the current HostSummary.
 	AddMesosOffers(ctx context.Context, offer []*mesos.Offer) HostStatus
 
@@ -131,6 +129,10 @@ type hostSummary struct {
 	// and to prevent every task to schedule on those hosts such as GPU.
 	scarceResourceTypes []string
 
+	// Usage slack is resources that are alloacted but not completely used.
+	// As of now, cpus is only resource type supported as slack.
+	slackResourceTypes []string
+
 	// offerID -> unreserved offer
 	unreservedOffers map[string]*mesos.Offer
 	// offerID -> reserved offer
@@ -149,12 +151,14 @@ type hostSummary struct {
 func New(
 	volumeStore storage.PersistentVolumeStore,
 	scarceResourceTypes []string,
-	hostname string) HostSummary {
+	hostname string,
+	slackResourceTypes []string) HostSummary {
 	return &hostSummary{
 		unreservedOffers: make(map[string]*mesos.Offer),
 		reservedOffers:   make(map[string]*mesos.Offer),
 
 		scarceResourceTypes: scarceResourceTypes,
+		slackResourceTypes:  slackResourceTypes,
 
 		status: ReadyHost,
 
@@ -195,6 +199,19 @@ func matchHostFilter(
 	min := c.GetResourceConstraint().GetMinimum()
 	if min != nil {
 		scalarRes := scalar.FromOfferMap(offerMap)
+
+		if c.GetResourceConstraint().GetRevocable() {
+			revocable, _ := scalar.FilterRevocableMesosResources(
+				scalar.FromOffersMapToMesosResources(offerMap))
+			// ToDo: Implement clean design to not hard code cpus
+			scalarRevocable := scalar.FromMesosResources(revocable)
+			scalarRes.CPU = scalarRevocable.CPU
+		} else {
+			_, nonRevocable := scalar.FilterRevocableMesosResources(
+				scalar.FromOffersMapToMesosResources(offerMap))
+			scalarRes = scalar.FromMesosResources(nonRevocable)
+		}
+
 		scalarMin := scalar.FromResourceConfig(min)
 		if !scalarRes.Contains(scalarMin) {
 			return hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES
@@ -286,9 +303,22 @@ func (a *hostSummary) TryMatch(
 		evaluator,
 		scalar.FromMesosResources(host.GetAgentInfo(a.GetHostname()).GetResources()),
 		a.scarceResourceTypes)
+
 	if match == hostsvc.HostFilterResult_MATCH {
 		var result []*mesos.Offer
 		for _, offer := range a.unreservedOffers {
+			if filter.GetResourceConstraint().GetRevocable() {
+				offer.Resources, _ = scalar.FilterMesosResources(
+					offer.GetResources(),
+					func(r *mesos.Resource) bool {
+						if r.GetRevocable() != nil {
+							return true
+						}
+						return !hmutil.IsSlackResourceType(r.GetName(), a.slackResourceTypes)
+					})
+			} else {
+				_, offer.Resources = scalar.FilterRevocableMesosResources(offer.GetResources())
+			}
 			result = append(result, offer)
 		}
 		// Setting status to `PlacingHost`: this ensures proper state
@@ -304,38 +334,34 @@ func (a *hostSummary) TryMatch(
 	return match, nil
 }
 
-// addMesosOffer helper method to add an offer to hostsummary.
-func (a *hostSummary) addMesosOffer(offer *mesos.Offer) {
-	offerID := offer.GetId().GetValue()
-	if !reservation.HasLabeledReservedResources(offer) {
-		a.unreservedOffers[offerID] = offer
-		if a.status == ReadyHost {
-			a.readyCount.Inc()
-		}
-	} else {
-		a.reservedOffers[offerID] = offer
-	}
-}
-
-// AddMesosOffer adds a Mesos offer to the current hostSummary and returns
-// its status for tracking purpose.
-func (a *hostSummary) AddMesosOffer(ctx context.Context, offer *mesos.Offer) HostStatus {
-	a.Lock()
-	defer a.Unlock()
-
-	a.addMesosOffer(offer)
-
-	return a.status
-}
-
 // AddMesosOffers adds a Mesos offers to the current hostSummary and returns
 // its status for tracking purpose.
-func (a *hostSummary) AddMesosOffers(ctx context.Context, offers []*mesos.Offer) HostStatus {
+func (a *hostSummary) AddMesosOffers(
+	ctx context.Context,
+	offers []*mesos.Offer) HostStatus {
 	a.Lock()
 	defer a.Unlock()
 
 	for _, offer := range offers {
-		a.addMesosOffer(offer)
+		// filter out revocable resources whose type we don't recognize
+		offerID := offer.GetId().GetValue()
+		offer.Resources, _ = scalar.FilterMesosResources(
+			offer.Resources,
+			func(r *mesos.Resource) bool {
+				if r.GetRevocable() == nil {
+					return true
+				}
+				return hmutil.IsSlackResourceType(r.GetName(), a.slackResourceTypes)
+			})
+
+		if !reservation.HasLabeledReservedResources(offer) {
+			a.unreservedOffers[offerID] = offer
+		} else {
+			a.reservedOffers[offerID] = offer
+		}
+	}
+	if a.status == ReadyHost {
+		a.readyCount.Store(int32(len(a.unreservedOffers)))
 	}
 
 	return a.status

@@ -1,13 +1,53 @@
 package scalar
 
 import (
+	"strconv"
 	"testing"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/common"
 
 	"code.uber.internal/infra/peloton/util"
 	"github.com/stretchr/testify/assert"
+)
+
+var (
+	_testAgent       = "agent"
+	_defaultResValue = 1.0
+
+	_cpuRes = util.NewMesosResourceBuilder().
+		WithName(common.MesosCPU).
+		WithValue(1.0).
+		Build()
+	_cpuRevocableRes = util.NewMesosResourceBuilder().
+				WithName(common.MesosCPU).
+				WithValue(1.0).
+				WithRevocable(&mesos.Resource_RevocableInfo{}).
+				Build()
+	_memRes = util.NewMesosResourceBuilder().
+		WithName(common.MesosMem).
+		WithValue(1.0).
+		Build()
+	_memRevocableRes = util.NewMesosResourceBuilder().
+				WithName(common.MesosMem).
+				WithValue(1.0).
+				WithRevocable(&mesos.Resource_RevocableInfo{}).
+				Build()
+	_diskRes = util.NewMesosResourceBuilder().
+			WithName(common.MesosDisk).
+			WithValue(1.0).
+			Build()
+	_gpuRes = util.NewMesosResourceBuilder().
+		WithName(common.MesosGPU).
+		WithValue(1.0).
+		Build()
+	_isSlackResourceType = func(resourceType string) bool {
+		if resourceType == common.MesosCPU {
+			return true
+		}
+		return false
+	}
 )
 
 const zeroEpsilon = 0.000001
@@ -19,6 +59,37 @@ func createResource(cpus, gpus, mem, disk float64) Resources {
 		Disk: disk,
 		GPU:  gpus,
 	}
+}
+
+func createUnreservedMesosOffer(
+	offerID string) *mesos.Offer {
+	rs := []*mesos.Resource{
+		_cpuRes,
+		_memRes,
+		_diskRes,
+		_gpuRes,
+		_cpuRevocableRes,
+		_memRevocableRes,
+	}
+
+	return &mesos.Offer{
+		Id: &mesos.OfferID{
+			Value: &offerID,
+		},
+		AgentId: &mesos.AgentID{
+			Value: &_testAgent,
+		},
+		Hostname:  &_testAgent,
+		Resources: rs,
+	}
+}
+
+func createUnreservedMesosOffers(count int) []*mesos.Offer {
+	var offers []*mesos.Offer
+	for i := 0; i < count; i++ {
+		offers = append(offers, createUnreservedMesosOffer("offer-id-"+strconv.Itoa(i)))
+	}
+	return offers
 }
 
 func TestContains(t *testing.T) {
@@ -262,15 +333,17 @@ func TestScarceResourceType(t *testing.T) {
 	}
 }
 
-func TestFromTaskResources(t *testing.T) {
-	r := FromTaskResources(&task.ResourceConfig{
-		CpuLimit:    1,
-		DiskLimitMb: 1,
-		GpuLimit:    1,
-		MemLimitMb:  1,
-	})
-	assert.Equal(t, r.CPU, 1.0)
-	assert.Equal(t, r.Mem, 1.0)
-	assert.Equal(t, r.Disk, 1.0)
-	assert.Equal(t, r.GPU, 1.0)
+func TestRevocableResources(t *testing.T) {
+	offer := createUnreservedMesosOffer("offer-1")
+	offerMap := map[string]*mesos.Offer{}
+	offerMap["offer-1"] = offer
+	offerMap["offer-2"] = nil
+	revocableOffers, nonRevocableOffers := FilterRevocableMesosResources(
+		FromOffersMapToMesosResources(offerMap))
+	for _, r := range revocableOffers {
+		assert.True(t, r.GetRevocable() != nil)
+	}
+	for _, r := range nonRevocableOffers {
+		assert.True(t, r.GetRevocable() == nil)
+	}
 }

@@ -86,8 +86,9 @@ func (batch *batch) fillOffer(host *models.HostOffers, unassigned []*models.Assi
 func (batch *batch) getHostFilter(assignment *models.Assignment) *hostsvc.HostFilter {
 	result := &hostsvc.HostFilter{
 		ResourceConstraint: &hostsvc.ResourceConstraint{
-			Minimum:  assignment.GetTask().GetTask().Resource,
-			NumPorts: assignment.GetTask().GetTask().NumPorts,
+			Minimum:   assignment.GetTask().GetTask().Resource,
+			NumPorts:  assignment.GetTask().GetTask().NumPorts,
+			Revocable: assignment.GetTask().GetTask().Revocable,
 		},
 	}
 	if constraint := assignment.GetTask().GetTask().Constraint; constraint != nil {

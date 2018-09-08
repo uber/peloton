@@ -13,6 +13,10 @@ const (
 	MesosMasterOperatorEndPoint = "/api/v1"
 	// PelotonEndpointPath is the path for Peloton mux endpoint
 	PelotonEndpointPath = "/api/v1"
+	// PelotonRole name to connect with Mesos Master
+	PelotonRole = "peloton"
+	// PelotonPrincipal name to connect with Mesos Master
+	PelotonPrincipal = "peloton"
 
 	// PelotonJobManager application name
 	PelotonJobManager = "peloton-jobmgr"
@@ -68,4 +72,15 @@ const (
 	// the job state for a job which has been in the same active state for this
 	// time duration
 	StaleJobStateDurationThreshold = 100 * time.Hour
+
+	// MesosCPU resource kind
+	MesosCPU = "cpus"
+	// MesosMem resource kind
+	MesosMem = "mem"
+	// MesosDisk resource kind
+	MesosDisk = "disk"
+	// MesosGPU resource kind
+	MesosGPU = "gpus"
+	// MesosPorts resource kind
+	MesosPorts = "ports"
 )

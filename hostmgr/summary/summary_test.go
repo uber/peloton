@@ -17,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 
 	"code.uber.internal/infra/peloton/common/constraints"
@@ -30,38 +31,45 @@ var (
 	_testKey1     = "testkey1"
 	_testValue0   = "testvalue0"
 	_testValue1   = "testvalue1"
-	_cpuName      = "cpus"
-	_pelotonRole  = "peloton"
-	_memName      = "mem"
-	_diskName     = "disk"
-	_gpuName      = "gpus"
-	_portsName    = "ports"
 	_testAgent    = "agent"
 	_testAgent1   = "agent1"
 	_testAgent2   = "agent2"
 	_dummyOfferID = "dummyofferid"
 
+	_defaultResValue = 1.0
+
 	_cpuRes = util.NewMesosResourceBuilder().
-		WithName(_cpuName).
+		WithName(common.MesosCPU).
 		WithValue(1.0).
 		Build()
+	_cpuRevocableRes = util.NewMesosResourceBuilder().
+				WithName(common.MesosCPU).
+				WithValue(1.0).
+				WithRevocable(&mesos.Resource_RevocableInfo{}).
+				Build()
 	_memRes = util.NewMesosResourceBuilder().
-		WithName(_memName).
+		WithName(common.MesosMem).
 		WithValue(1.0).
 		Build()
+	_memRevocableRes = util.NewMesosResourceBuilder().
+				WithName(common.MesosMem).
+				WithValue(1.0).
+				WithRevocable(&mesos.Resource_RevocableInfo{}).
+				Build()
 	_diskRes = util.NewMesosResourceBuilder().
-			WithName(_diskName).
+			WithName(common.MesosDisk).
 			WithValue(1.0).
 			Build()
 	_gpuRes = util.NewMesosResourceBuilder().
-		WithName(_gpuName).
+		WithName(common.MesosGPU).
 		WithValue(1.0).
 		Build()
 	_portsRes = util.NewMesosResourceBuilder().
-			WithName(_portsName).
+			WithName(common.MesosPorts).
 			WithRanges(util.CreatePortRanges(
 			map[uint32]bool{1: true, 2: true})).
 		Build()
+	supportedSlackResourceTypes = []string{common.MesosCPU}
 )
 
 type HostOfferSummaryTestSuite struct {
@@ -114,19 +122,24 @@ func (suite *HostOfferSummaryTestSuite) createResourceConfig(cpus, gpus, mem, di
 func (suite *HostOfferSummaryTestSuite) createResources(cpus, gpus, mem, disk float64) []*mesos.Resource {
 	return []*mesos.Resource{
 		util.NewMesosResourceBuilder().
-			WithName(_cpuName).
+			WithName(common.MesosCPU).
 			WithValue(cpus).
 			Build(),
 		util.NewMesosResourceBuilder().
-			WithName(_memName).
+			WithName(common.MesosCPU).
+			WithValue(cpus).
+			WithRevocable(&mesos.Resource_RevocableInfo{}).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(common.MesosMem).
 			WithValue(mem).
 			Build(),
 		util.NewMesosResourceBuilder().
-			WithName(_diskName).
+			WithName(common.MesosDisk).
 			WithValue(disk).
 			Build(),
 		util.NewMesosResourceBuilder().
-			WithName(_gpuName).
+			WithName(common.MesosGPU).
 			WithValue(gpus).
 			Build(),
 	}
@@ -157,19 +170,19 @@ func (suite *HostOfferSummaryTestSuite) createReservedMesosOffer(
 	}
 	rs := []*mesos.Resource{
 		util.NewMesosResourceBuilder().
-			WithName(_cpuName).
+			WithName(common.MesosCPU).
 			WithValue(1.0).
-			WithRole(_pelotonRole).
+			WithRole(common.PelotonRole).
 			WithReservation(reservation1).
 			Build(),
 		util.NewMesosResourceBuilder().
-			WithName(_memName).
+			WithName(common.MesosMem).
 			WithValue(2.0).
 			WithReservation(reservation2).
-			WithRole(_pelotonRole).
+			WithRole(common.PelotonRole).
 			Build(),
 		util.NewMesosResourceBuilder().
-			WithName(_gpuName).
+			WithName(common.MesosGPU).
 			WithValue(5.0).
 			Build(),
 	}
@@ -178,9 +191,9 @@ func (suite *HostOfferSummaryTestSuite) createReservedMesosOffer(
 		rs = append(
 			rs,
 			util.NewMesosResourceBuilder().
-				WithName(_diskName).
+				WithName(common.MesosDisk).
 				WithValue(3.0).
-				WithRole(_pelotonRole).
+				WithRole(common.PelotonRole).
 				WithReservation(reservation1).
 				WithDisk(diskInfo).
 				Build())
@@ -213,6 +226,8 @@ func (suite *HostOfferSummaryTestSuite) createUnreservedMesosOffer(
 		_memRes,
 		_diskRes,
 		_gpuRes,
+		_cpuRevocableRes,
+		_memRevocableRes,
 	}
 
 	return &mesos.Offer{
@@ -239,7 +254,7 @@ func TestHostOfferSummaryTestSuite(t *testing.T) {
 	suite.Run(t, new(HostOfferSummaryTestSuite))
 }
 
-func (suite *HostOfferSummaryTestSuite) TestResourcesConstraint() {
+func (suite *HostOfferSummaryTestSuite) TestScarceResourcesConstraint() {
 
 	scarceResourceType1 := []string{"GPU"}
 	scarceResourceType2 := []string{}
@@ -513,6 +528,75 @@ func (suite *HostOfferSummaryTestSuite) TestResourcesConstraint() {
 	}
 }
 
+func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
+	defer suite.ctrl.Finish()
+
+	testTable := map[string]struct {
+		initialStatus HostStatus
+		afterStatus   HostStatus
+		revocable     bool
+		resMultiplier float64
+		match         hostsvc.HostFilterResult
+	}{
+		"matched-revocable-resources": {
+			match:         hostsvc.HostFilterResult_MATCH,
+			initialStatus: ReadyHost,
+			afterStatus:   PlacingHost,
+			revocable:     true,
+			resMultiplier: 1.0,
+		},
+		"matched-nonrevocable-resources": {
+			match:         hostsvc.HostFilterResult_MATCH,
+			initialStatus: ReadyHost,
+			afterStatus:   PlacingHost,
+			revocable:     false,
+			resMultiplier: 1.0,
+		},
+		"not-matched-revocable-resources": {
+			match:         hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES,
+			initialStatus: ReadyHost,
+			afterStatus:   ReadyHost,
+			revocable:     true,
+			resMultiplier: 7.0,
+		},
+		"not-matched-nonrevocable-resources": {
+			match:         hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES,
+			initialStatus: ReadyHost,
+			afterStatus:   ReadyHost,
+			revocable:     false,
+			resMultiplier: 7.0,
+		},
+	}
+
+	for ttName, tt := range testTable {
+		offers := suite.createUnreservedMesosOffers(5)
+		s := New(suite.mockVolumeStore, nil, offers[0].GetHostname(), supportedSlackResourceTypes).(*hostSummary)
+		s.status = tt.initialStatus
+
+		suite.Equal(tt.initialStatus, s.AddMesosOffers(context.Background(), offers))
+
+		filter := &hostsvc.HostFilter{
+			Quantity: &hostsvc.QuantityControl{
+				MaxHosts: uint32(1),
+			},
+			ResourceConstraint: &hostsvc.ResourceConstraint{
+				Minimum: &task.ResourceConfig{
+					CpuLimit:    _defaultResValue * tt.resMultiplier,
+					MemLimitMb:  _defaultResValue,
+					DiskLimitMb: _defaultResValue,
+				},
+				Revocable: tt.revocable,
+			},
+		}
+
+		match, offers := s.TryMatch(filter, nil)
+		suite.Equal(tt.match, match, "test case is %s", ttName)
+
+		_, afterStatus := s.UnreservedAmount()
+		suite.Equal(tt.afterStatus, afterStatus, "test case is %s", ttName)
+	}
+}
+
 func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 	defer suite.ctrl.Finish()
 	offer := suite.createUnreservedMesosOffer("offer-id")
@@ -588,11 +672,10 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 		ctrl := gomock.NewController(suite.T())
 		mockEvaluator := constraint_mocks.NewMockEvaluator(ctrl)
 
-		s := New(suite.mockVolumeStore, nil, offer.GetHostname()).(*hostSummary)
+		s := New(suite.mockVolumeStore, nil, offer.GetHostname(), supportedSlackResourceTypes).(*hostSummary)
 		s.status = tt.initialStatus
-		for _, initialOffer := range tt.initialOffers {
-			suite.Equal(tt.initialStatus, s.AddMesosOffer(context.Background(), initialOffer))
-		}
+
+		suite.Equal(tt.initialStatus, s.AddMesosOffers(context.Background(), tt.initialOffers))
 
 		filter := &hostsvc.HostFilter{
 			SchedulingConstraint: &task.Constraint{
@@ -632,7 +715,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	wg := sync.WaitGroup{}
 	wg.Add(nOffers)
 
-	hybridSummary := New(suite.mockVolumeStore, nil, _testAgent).(*hostSummary)
+	hybridSummary := New(suite.mockVolumeStore, nil, _testAgent, supportedSlackResourceTypes).(*hostSummary)
 
 	suite.False(hybridSummary.HasOffer())
 	suite.False(hybridSummary.HasAnyOffer())
@@ -664,15 +747,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 		AnyTimes().
 		Return(nil)
 
-	for _, offer := range offers {
-		go func(offer *mesos.Offer) {
-			defer wg.Done()
-
-			status := hybridSummary.AddMesosOffer(context.Background(), offer)
-			suite.Equal(ReadyHost, status)
-		}(offer)
-	}
-	wg.Wait()
+	status = hybridSummary.AddMesosOffers(context.Background(), offers)
 
 	// Verify aggregated resources for reserved part.
 	suite.Equal(reservedOffers, len(hybridSummary.reservedOffers))
@@ -683,7 +758,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	suite.True(hybridSummary.HasAnyOffer())
 	suite.Equal(hybridSummary.readyCount.Load(), int32(5))
 	unreservedAmount, status := hybridSummary.UnreservedAmount()
-	suite.Equal(5.0, unreservedAmount.CPU)
+	suite.Equal(10.0, unreservedAmount.CPU)
 	suite.Equal(5.0, unreservedAmount.Mem)
 	suite.Equal(5.0, unreservedAmount.Disk)
 	suite.Equal(5.0, unreservedAmount.GPU)
@@ -721,7 +796,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	suite.True(hybridSummary.HasAnyOffer())
 	suite.Equal(hybridSummary.readyCount.Load(), int32(5))
 	unreservedAmount, status = hybridSummary.UnreservedAmount()
-	suite.Equal(5.0, unreservedAmount.CPU)
+	suite.Equal(10.0, unreservedAmount.CPU)
 	suite.Equal(5.0, unreservedAmount.Mem)
 	suite.Equal(5.0, unreservedAmount.Disk)
 	suite.Equal(5.0, unreservedAmount.GPU)
@@ -773,7 +848,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 	}
 
 	for _, tt := range testTable {
-		s := New(suite.mockVolumeStore, nil, hostname).(*hostSummary)
+		s := New(suite.mockVolumeStore, nil, hostname, supportedSlackResourceTypes).(*hostSummary)
 		s.status = tt.initialStatus
 		s.statusPlacingOfferExpiration = tt.statusPlacingOfferExpiration
 		s.AddMesosOffers(context.Background(), offers)
@@ -783,7 +858,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 		suite.Equal(s.readyCount.Load(), int32(tt.readyCount), tt.msg)
 	}
 
-	s := New(suite.mockVolumeStore, nil, hostname).(*hostSummary)
+	s := New(suite.mockVolumeStore, nil, hostname, supportedSlackResourceTypes).(*hostSummary)
 	s.AddMesosOffers(context.Background(), offers)
 	s.statusPlacingOfferExpiration = now.Add(-10 * time.Minute)
 	invalidCacheStatus := s.CasStatus(PlacingHost, ReadyHost)
@@ -825,7 +900,7 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() 
 	}
 
 	for _, tt := range testTable {
-		s := New(suite.mockVolumeStore, nil, offers[0].GetHostname()).(*hostSummary)
+		s := New(suite.mockVolumeStore, nil, offers[0].GetHostname(), supportedSlackResourceTypes).(*hostSummary)
 		s.AddMesosOffers(context.Background(), offers)
 		suite.Equal(s.readyCount.Load(), int32(len(offers)-1))
 		s.status = tt.initialStatus
@@ -849,7 +924,7 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForReservedOffersForLaunch() {
 	offers := suite.createReservedMesosOffers(5, true)
 	offers = append(offers, suite.createUnreservedMesosOffer("unreserved-offerid-1"))
 
-	s := New(suite.mockVolumeStore, nil, offers[0].GetHostname()).(*hostSummary)
+	s := New(suite.mockVolumeStore, nil, offers[0].GetHostname(), supportedSlackResourceTypes).(*hostSummary)
 	s.AddMesosOffers(context.Background(), offers)
 	suite.Equal(int(s.readyCount.Load()), 1)
 

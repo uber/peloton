@@ -65,7 +65,8 @@ func InitEventHandler(
 	volumeStore storage.PersistentVolumeStore,
 	backgroundMgr background.Manager,
 	hostPruningPeriodSec time.Duration,
-	scarceResourceTypes []string) {
+	scarceResourceTypes []string,
+	slackResourceTypes []string) {
 
 	if handler != nil {
 		log.Warning("Offer event handler has already been initialized")
@@ -79,6 +80,7 @@ func InitEventHandler(
 		hostmgr_mesos.GetSchedulerDriver(),
 		volumeStore,
 		scarceResourceTypes,
+		slackResourceTypes,
 	)
 	hostPruner := prune.NewHostPruner(
 		pool,

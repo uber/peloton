@@ -255,9 +255,7 @@ func (o *OfferOperationsFactory) getLaunchOperation(
 
 	for _, t := range operation.GetLaunch().GetTasks() {
 		mesosTask, err := builder.Build(
-			t.GetTaskId(),
-			t.GetConfig(),
-			t.GetPorts(),
+			t,
 			operation.GetReservationLabels(),
 			t.GetVolume(),
 		)

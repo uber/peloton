@@ -16,6 +16,8 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/common"
+	hmutil "code.uber.internal/infra/peloton/hostmgr/util"
 	"code.uber.internal/infra/peloton/util"
 
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
@@ -210,6 +212,20 @@ func (suite *OfferPoolTestSuite) TearDownTest() {
 	suite.pool = nil
 }
 
+func (suite *OfferPoolTestSuite) TestSlackResourceTypes() {
+	scope := tally.NewTestScope("", map[string]string{})
+	NewOfferPool(
+		1*time.Minute,
+		suite.schedulerClient,
+		NewMetrics(scope),
+		suite.provider,
+		nil,
+		[]string{"GPU", "DUMMY"},
+		[]string{common.MesosCPU, "DUMMY"},
+	)
+	suite.True(hmutil.IsSlackResourceType(common.MesosCPU, supportedSlackResourceTypes))
+	suite.False(hmutil.IsSlackResourceType(common.MesosMem, supportedSlackResourceTypes))
+}
 func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 	// Launching tasks for host, which does not exist in the offer pool
 	_, err := suite.pool.ClaimForLaunch(_dummyTestAgent, true)

@@ -138,6 +138,11 @@ var (
 		"scarce-resource-type", "Scarce Resource Type.").
 		Envar("SCARCE_RESOURCE_TYPES").
 		String()
+
+	slackResourceTypes = app.Flag(
+		"slack-resource-type", "Slack Resource Type.").
+		Envar("SLACK_RESOURCE_TYPES").
+		String()
 )
 
 func main() {
@@ -208,6 +213,11 @@ func main() {
 	if *scarceResourceTypes != "" {
 		log.Info(strings.Split(*scarceResourceTypes, ","))
 		cfg.HostManager.ScarceResourceTypes = strings.Split(*scarceResourceTypes, ",")
+	}
+
+	if *slackResourceTypes != "" {
+		log.Info(strings.Split(*slackResourceTypes, ","))
+		cfg.HostManager.SlackResourceTypes = strings.Split(*slackResourceTypes, ",")
 	}
 
 	log.WithField("config", cfg).Debug("Loaded Host Manager config")
@@ -352,8 +362,9 @@ func main() {
 	)
 
 	loader := host.Loader{
-		OperatorClient: masterOperatorClient,
-		Scope:          rootScope.SubScope("hostmap"),
+		OperatorClient:     masterOperatorClient,
+		Scope:              rootScope.SubScope("hostmap"),
+		SlackResourceTypes: cfg.HostManager.SlackResourceTypes,
 	}
 
 	backgroundManager := background.NewManager()
@@ -407,6 +418,7 @@ func main() {
 		backgroundManager,
 		cfg.HostManager.HostPruningPeriodSec,
 		cfg.HostManager.ScarceResourceTypes,
+		cfg.HostManager.SlackResourceTypes,
 	)
 
 	maintenanceQueue := queue.NewMaintenanceQueue()
@@ -423,6 +435,7 @@ func main() {
 		mesosMasterDetector,
 		&cfg.HostManager,
 		maintenanceQueue,
+		cfg.HostManager.SlackResourceTypes,
 	)
 
 	hostsvc.InitServiceHandler(

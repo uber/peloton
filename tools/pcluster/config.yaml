@@ -21,6 +21,8 @@ quorum: 1
 registry: replicated_log
 
 # Mesos slave configs
+# Values for oversubscription are recommend at below documentation.
+# https://github.com/apache/mesos/blob/004fb5fa27c2992b11a2fa51a8ec5a3f3de404db/docs/oversubscription.md
 default_agent_port: 5051
 local_agent_port: 5051
 switch_user: 0
@@ -36,8 +38,8 @@ attributes: datacenter:tdc1;rack:tdc1-t0001;zone:tpl1-tdc1
 modules: file:///etc/mesos-slave/modules
 resource_estimator: org_apache_mesos_FixedResourceEstimator
 qos_controller: org_apache_mesos_LoadQoSController
-qos_correction_interval_min: 5secs
-oversubscribed_resources_interval: 1mins
+qos_correction_interval_min: 20secs
+oversubscribed_resources_interval: 15secs
 
 
 # Cassandra configs
@@ -57,6 +59,8 @@ peloton_image: uber/peloton
 
 scarce_resource_types:
   - GPU
+slack_resource_types:
+  - cpus
 
 # Peloton app specific configs
 peloton_resmgr_container: peloton-resmgr

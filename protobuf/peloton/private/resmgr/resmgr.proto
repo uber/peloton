@@ -105,6 +105,12 @@ message Task {
   // needed for calculating next backoff period and decide when we need
   // to do Host reservation.
   double placementRetryCount = 16;
+
+  // Whether the task is revocable. If true, then it will be launched
+  // with usage slack resources.
+  // Revocable tasks will be killed by QoS controller, if resources
+  // are required by tasks to which initial allocation was done.
+  bool revocable = 17;
 }
 
 /**

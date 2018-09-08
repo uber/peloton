@@ -50,4 +50,7 @@ type Config struct {
 
 	// Represents scarce resource types such as GPU.
 	ScarceResourceTypes []string `yaml:"scarce_resource_types"`
+
+	// Represents slack resource types (revocable resources) such as cpus, mem.
+	SlackResourceTypes []string `yaml:"slack_resource_types"`
 }

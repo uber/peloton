@@ -26,6 +26,8 @@ func TestGetOfferScalarResourceSummary(t *testing.T) {
 	var offer = &mesos_v1.Offer{
 		Resources: []*mesos_v1.Resource{
 			NewMesosResourceBuilder().WithName("cpu").WithRole("peloton").WithValue(3.5).Build(),
+			NewMesosResourceBuilder().WithName("cpu").WithRole("peloton").WithValue(4).
+				WithRevocable(&mesos.Resource_RevocableInfo{}).Build(),
 			NewMesosResourceBuilder().WithName("mem").WithRole("peloton").WithValue(300.0).Build(),
 			NewMesosResourceBuilder().WithName("mem").WithRole("*").WithValue(800.0).Build(),
 			NewMesosResourceBuilder().WithName("mem").WithRole("*").WithValue(400.0).Build(),
@@ -38,7 +40,7 @@ func TestGetOfferScalarResourceSummary(t *testing.T) {
 	fmt.Println(result)
 
 	assert.Equal(t, len(result), 3)
-	assert.Equal(t, result["peloton"]["cpu"], 3.5)
+	assert.Equal(t, result["peloton"]["cpu"], 7.5)
 	assert.Equal(t, result["peloton"]["mem"], 300.0)
 	assert.Equal(t, result["*"]["mem"], 1200.0)
 	assert.Equal(t, result["*"]["disk"], 2000.0)

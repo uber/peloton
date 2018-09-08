@@ -117,4 +117,13 @@ func (m *Metrics) RefreshClusterCapacityGauges(response *hostsvc.ClusterCapacity
 		gauge := m.scope.Gauge("cluster_capacity_" + resource.GetKind())
 		gauge.Update(resource.GetCapacity())
 	}
+
+	for _, resource := range response.GetPhysicalSlackResources() {
+		if resource.GetCapacity() == 0 {
+			continue
+		}
+
+		gauge := m.scope.Gauge("cluster_capacity_revocable_" + resource.GetKind())
+		gauge.Update(resource.GetCapacity())
+	}
 }

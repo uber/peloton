@@ -149,6 +149,13 @@ func (o *MesosResourceBuilder) WithDisk(
 	return o
 }
 
+// WithRevocable sets resource as revocable resource type
+func (o *MesosResourceBuilder) WithRevocable(
+	revocable *mesos.Resource_RevocableInfo) *MesosResourceBuilder {
+	o.Resource.Revocable = revocable
+	return o
+}
+
 // TODO: add other building functions when needed
 
 // Build returns the mesos resource

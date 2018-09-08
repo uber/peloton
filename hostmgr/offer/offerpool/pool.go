@@ -14,6 +14,7 @@ import (
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/common"
 
 	"code.uber.internal/infra/peloton/common/constraints"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
@@ -91,9 +92,15 @@ const (
 	_defaultRejectUnavailableOffer = int64(10800000000000)
 )
 
-// supportedScarceResourceTypes are resources types supported to launch scarce resource tasks,
-// exclusively on scarce resource type hosts.
-var supportedScarceResourceTypes = []string{"GPU"}
+var (
+	// supportedScarceResourceTypes are resources types supported to launch scarce resource tasks,
+	// exclusively on scarce resource type hosts.
+	//ToDo: move to lower case (match mesos resource type string)
+	supportedScarceResourceTypes = []string{"GPU"}
+
+	// supportedSlackResourceTypes are slack resource types supported by Peloton.
+	supportedSlackResourceTypes = []string{common.MesosCPU}
+)
 
 // NewOfferPool creates a offerPool object and registers the
 // corresponding YARPC procedures.
@@ -103,7 +110,8 @@ func NewOfferPool(
 	metrics *Metrics,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
 	volumeStore storage.PersistentVolumeStore,
-	scarceResourceTypes []string) Pool {
+	scarceResourceTypes []string,
+	slackResourceTypes []string) Pool {
 	// GPU is only supported scarce resource type.
 	if !reflect.DeepEqual(supportedScarceResourceTypes, scarceResourceTypes) {
 		log.WithFields(log.Fields{
@@ -112,10 +120,19 @@ func NewOfferPool(
 		}).Error("input scarce resources types are not supported")
 	}
 
+	// cpus is only supported scarce resource type.
+	if !reflect.DeepEqual(supportedSlackResourceTypes, slackResourceTypes) {
+		log.WithFields(log.Fields{
+			"supported_slack_resource_types": supportedSlackResourceTypes,
+			"slack_resource_types":           slackResourceTypes,
+		}).Error("input slack resources types are not supported")
+	}
+
 	p := &offerPool{
 		hostOfferIndex: make(map[string]summary.HostSummary),
 
 		scarceResourceTypes: scarceResourceTypes,
+		slackResourceTypes:  slackResourceTypes,
 
 		offerHoldTime: offerHoldTime,
 
@@ -148,6 +165,10 @@ type offerPool struct {
 
 	// scarce resource types, such as GPU.
 	scarceResourceTypes []string
+
+	// slack resource types, represents usage slace.
+	// cpus is only supported slack resource.
+	slackResourceTypes []string
 
 	// Map from offer id to hostname and offer expiration time.
 	// Used when offer is rescinded or pruned.
@@ -294,18 +315,19 @@ func (p *offerPool) AddOffers(ctx context.Context, offers []*mesos.Offer) []*mes
 	log.WithField("acceptable_offers", acceptableOffers).Debug("Acceptable offers.")
 
 	p.Lock()
-	defer p.Unlock()
-
-	for hostname, offers := range hostnameToOffers {
+	for hostname := range hostnameToOffers {
 		_, ok := p.hostOfferIndex[hostname]
-
 		if !ok {
 			p.hostOfferIndex[hostname] = summary.New(
 				p.volumeStore,
 				p.scarceResourceTypes,
-				hostname)
+				hostname,
+				p.slackResourceTypes)
 		}
+	}
+	p.Unlock()
 
+	for hostname, offers := range hostnameToOffers {
 		if !p.hostOfferIndex[hostname].HasAnyOffer() {
 			p.metrics.AvailableHosts.Update(float64(p.availableHosts.Inc()))
 		}

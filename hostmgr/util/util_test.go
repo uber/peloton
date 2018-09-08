@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/common"
 
 	"code.uber.internal/infra/peloton/util"
 
@@ -60,6 +61,13 @@ func TestMesosOffersToHostOffers(t *testing.T) {
 	hostOfferMap["agent"] = offerList
 	hostOffer = MesosOffersToHostOffers(hostOfferMap)
 	assert.Equal(t, len(hostOffer), 1)
+}
+
+func TestIsSlackResourceType(t *testing.T) {
+	slackResourceType := []string{common.MesosCPU, common.MesosMem}
+	assert.False(t, IsSlackResourceType(common.MesosDisk, slackResourceType))
+
+	assert.True(t, IsSlackResourceType(common.MesosCPU, slackResourceType))
 }
 
 func createUnreservedMesosOffer(

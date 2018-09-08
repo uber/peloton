@@ -265,6 +265,9 @@ message TaskConfig {
   // sending SIGKILL. If you do not set the grace period duration the default is
   // 30 seconds.
   uint32 killGracePeriodSeconds = 13;
+
+  // revocable represents task to use physical or slack resources.
+  bool revocable = 14;
 }
 
 /**

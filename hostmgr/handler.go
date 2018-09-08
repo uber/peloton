@@ -32,8 +32,9 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/reserver"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
+	hmutil "code.uber.internal/infra/peloton/hostmgr/util"
 	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
+	util "code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
 	log "github.com/sirupsen/logrus"
@@ -62,6 +63,7 @@ type ServiceHandler struct {
 	reserver              reserver.Reserver
 	hmConfig              config.Config
 	maintenanceQueue      mqueue.MaintenanceQueue // queue containing machineIDs of the machines to be put into maintenance
+	slackResourceTypes    []string
 }
 
 // NewServiceHandler creates a new ServiceHandler.
@@ -75,7 +77,8 @@ func NewServiceHandler(
 	mesosConfig hostmgr_mesos.Config,
 	mesosDetector hostmgr_mesos.MasterDetector,
 	hmConfig *config.Config,
-	maintenanceQueue mqueue.MaintenanceQueue) *ServiceHandler {
+	maintenanceQueue mqueue.MaintenanceQueue,
+	slackResourceTypes []string) *ServiceHandler {
 
 	handler := &ServiceHandler{
 		schedulerClient:       schedulerClient,
@@ -87,6 +90,7 @@ func NewServiceHandler(
 		roleName:              mesosConfig.Framework.Role,
 		mesosDetector:         mesosDetector,
 		maintenanceQueue:      maintenanceQueue,
+		slackResourceTypes:    slackResourceTypes,
 	}
 	// Creating Reserver object for handler
 	handler.reserver = reserver.NewReserver(
@@ -214,30 +218,26 @@ func (h *ServiceHandler) GetHosts(
 	body *hostsvc.GetHostsRequest) (*hostsvc.GetHostsResponse, error) {
 	log.WithField("request", body).Debug("GetHosts called.")
 
-	// validating the Host Filter, in case of invalid filter
-	// return InvalidHostFilter error
 	if invalid := validateHostFilter(body.GetFilter()); invalid != nil {
 		return h.processGetHostsFailure(invalid), nil
 	}
 
-	// Creating the Matcher instance for particular HostFilter and Evaluator
-	matcher := host.NewMatcher(body.GetFilter(),
-		constraints.NewEvaluator(pb_task.LabelConstraint_HOST))
-
-	// Calling the GetMatchingHosts to get the matched hosts for the matcher
+	matcher := host.NewMatcher(
+		body.GetFilter(),
+		constraints.NewEvaluator(pb_task.LabelConstraint_HOST),
+		func(resourceType string) bool {
+			return hmutil.IsSlackResourceType(resourceType, h.slackResourceTypes)
+		})
 	result, err := matcher.GetMatchingHosts()
 	if err != nil {
 		return h.processGetHostsFailure(err), nil
 	}
 
 	hosts := make([]*hostsvc.HostInfo, 0, len(result))
-
-	// Filling agentInfo from result to GetHostsResponse
 	for hostname, agentInfo := range result {
 		hosts = append(hosts, util.CreateHostInfo(hostname, agentInfo))
 	}
 
-	//Updating metrics for GetHosts
 	h.metrics.GetHosts.Inc(1)
 	h.metrics.GetHostsCount.Inc(int64(len(hosts)))
 
@@ -591,10 +591,8 @@ func (h *ServiceHandler) LaunchTasks(
 	var mesosTaskIds []string
 
 	builder := task.NewBuilder(mesosResources)
-
 	for _, t := range body.GetTasks() {
-		mesosTask, err := builder.Build(
-			t.GetTaskId(), t.GetConfig(), t.GetPorts(), nil, nil)
+		mesosTask, err := builder.Build(t, nil, nil)
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"task_id":             t.TaskId,
@@ -917,13 +915,7 @@ func (h *ServiceHandler) ClusterCapacity(
 	ctx context.Context,
 	body *hostsvc.ClusterCapacityRequest) (
 	*hostsvc.ClusterCapacityResponse, error) {
-
-	log.WithField("request", body).Debug("ClusterCapacity called.")
-
-	// Get frameworkID
 	frameWorkID := h.frameworkInfoProvider.GetFrameworkID(ctx)
-
-	// Validate FrameworkID
 	if len(frameWorkID.GetValue()) == 0 {
 		return &hostsvc.ClusterCapacityResponse{
 			Error: &hostsvc.ClusterCapacityResponse_Error{
@@ -934,9 +926,9 @@ func (h *ServiceHandler) ClusterCapacity(
 		}, nil
 	}
 
-	// Fetch allocated resources
-	allocatedResources, err := h.operatorMasterClient.AllocatedResources(frameWorkID.GetValue())
-
+	// Fetches allocated resources for revocable and non-revocable tasks.
+	allocatedResources, err := h.operatorMasterClient.AllocatedResources(
+		frameWorkID.GetValue())
 	if err != nil {
 		h.metrics.ClusterCapacityFail.Inc(1)
 		log.WithError(err).Error("error making cluster capacity request")
@@ -948,9 +940,6 @@ func (h *ServiceHandler) ClusterCapacity(
 			},
 		}, nil
 	}
-
-	// Get scalar resource from Mesos resources
-	tAllocatedResources := scalar.FromMesosResources(allocatedResources)
 
 	agentMap := host.GetAgentMap()
 	if agentMap == nil || len(agentMap.RegisteredAgents) == 0 {
@@ -964,13 +953,13 @@ func (h *ServiceHandler) ClusterCapacity(
 			},
 		}, nil
 	}
+	nonRevocableClusterCapacity := agentMap.Capacity
 
 	// NOTE: This only works if
 	// 1) no quota is set for any role, or
 	// 2) quota is set for the same role peloton is registered under.
 	// If operator set a quota for another role but leave peloton's role unset,
 	// cluster capacity will be over estimated.
-	var res scalar.Resources
 	quotaResources, err := h.operatorMasterClient.GetQuota(h.roleName)
 	if err != nil {
 		h.metrics.ClusterCapacityFail.Inc(1)
@@ -983,59 +972,37 @@ func (h *ServiceHandler) ClusterCapacity(
 			},
 		}, nil
 	}
-
 	if err == nil && quotaResources != nil {
-		res = scalar.FromMesosResources(quotaResources)
-		if res.GetCPU() <= 0 {
-			res.CPU = agentMap.Capacity.GetCPU()
+		nonRevocableClusterCapacity = scalar.FromMesosResources(quotaResources)
+		if nonRevocableClusterCapacity.GetCPU() <= 0 {
+			nonRevocableClusterCapacity.CPU = agentMap.Capacity.GetCPU()
 		}
-		if res.GetMem() <= 0 {
-			res.Mem = agentMap.Capacity.GetMem()
+		if nonRevocableClusterCapacity.GetMem() <= 0 {
+			nonRevocableClusterCapacity.Mem = agentMap.Capacity.GetMem()
 		}
-		if res.GetDisk() <= 0 {
-			res.Disk = agentMap.Capacity.GetDisk()
+		if nonRevocableClusterCapacity.GetDisk() <= 0 {
+			nonRevocableClusterCapacity.Disk = agentMap.Capacity.GetDisk()
 		}
-		if res.GetGPU() <= 0 {
-			res.GPU = agentMap.Capacity.GetGPU()
+		if nonRevocableClusterCapacity.GetGPU() <= 0 {
+			nonRevocableClusterCapacity.GPU = agentMap.Capacity.GetGPU()
 		}
-	} else {
-		res = agentMap.Capacity
 	}
-	h.metrics.ClusterCapacity.Inc(1)
+
+	revocableAllocated, nonRevocableAllocated := scalar.FilterMesosResources(
+		allocatedResources, func(r *mesos.Resource) bool {
+			return r.GetRevocable() != nil && hmutil.IsSlackResourceType(r.GetName(), h.slackResourceTypes)
+		})
+	physicalAllocated := scalar.FromMesosResources(nonRevocableAllocated)
+	revocableAlloc := scalar.FromMesosResources(revocableAllocated)
 
 	clusterCapacityResponse := &hostsvc.ClusterCapacityResponse{
-		Resources: []*hostsvc.Resource{
-			{
-				Kind:     common.CPU,
-				Capacity: tAllocatedResources.CPU,
-			}, {
-				Kind:     common.DISK,
-				Capacity: tAllocatedResources.Disk,
-			}, {
-				Kind:     common.GPU,
-				Capacity: tAllocatedResources.GPU,
-			}, {
-				Kind:     common.MEMORY,
-				Capacity: tAllocatedResources.Mem,
-			},
-		},
-		PhysicalResources: []*hostsvc.Resource{
-			{
-				Kind:     common.CPU,
-				Capacity: res.CPU,
-			}, {
-				Kind:     common.DISK,
-				Capacity: res.Disk,
-			}, {
-				Kind:     common.GPU,
-				Capacity: res.GPU,
-			}, {
-				Kind:     common.MEMORY,
-				Capacity: res.Mem,
-			},
-		},
+		Resources:               toHostSvcResources(&physicalAllocated),
+		AllocatedSlackResources: toHostSvcResources(&revocableAlloc),
+		PhysicalResources:       toHostSvcResources(&nonRevocableClusterCapacity),
+		PhysicalSlackResources:  toHostSvcResources(&agentMap.SlackCapacity),
 	}
 
+	h.metrics.ClusterCapacity.Inc(1)
 	h.metrics.RefreshClusterCapacityGauges(clusterCapacityResponse)
 	return clusterCapacityResponse, nil
 }
@@ -1229,4 +1196,23 @@ func (h *ServiceHandler) GetMesosAgentInfo(
 		}
 	}
 	return r, nil
+}
+
+// Helper function to convert scalar.Resource into hostsvc format.
+func toHostSvcResources(rs *scalar.Resources) []*hostsvc.Resource {
+	return []*hostsvc.Resource{
+		{
+			Kind:     common.CPU,
+			Capacity: rs.CPU,
+		}, {
+			Kind:     common.DISK,
+			Capacity: rs.Disk,
+		}, {
+			Kind:     common.GPU,
+			Capacity: rs.GPU,
+		}, {
+			Kind:     common.MEMORY,
+			Capacity: rs.Mem,
+		},
+	}
 }

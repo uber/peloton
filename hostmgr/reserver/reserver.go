@@ -290,7 +290,7 @@ func (r *reserver) FindCompletedReservations(ctx context.Context,
 	failedReservations := make(map[string]*hostsvc.Reservation)
 	for host, res := range r.reservations {
 		hostResources := r.getResourcesFromHostOffers(host)
-		taskResources := scalar.FromTaskResources(res.GetTask().GetResource())
+		taskResources := scalar.FromResourceConfig(res.GetTask().GetResource())
 		if hostResources.Contains(taskResources) {
 			err := r.returnReservation(res, host)
 			if err != nil {

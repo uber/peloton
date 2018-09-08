@@ -110,6 +110,7 @@ class App(object):
         self.mem_limit = 16 * GB
         self.disk_limit = 16 * GB
         self.scarce_resource_types = None
+        self.slack_resource_types = None
 
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
@@ -184,6 +185,9 @@ class App(object):
             if self.scarce_resource_types:
                 env_vars['SCARCE_RESOURCE_TYPES'] = ','.join(
                     self.scarce_resource_types)
+            if self.slack_resource_types:
+                env_vars['SLACK_RESOURCE_TYPES'] = ','.join(
+                    self.slack_resource_types)
 
         params = [
             DockerParameter(name='env', value='%s=%s' % (key, val))

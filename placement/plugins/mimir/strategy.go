@@ -135,6 +135,7 @@ func (mimir *mimir) PlaceOnce(pelotonAssignments []*models.Assignment, hosts []*
 func (mimir *mimir) Filters(assignments []*models.Assignment) map[*hostsvc.HostFilter][]*models.Assignment {
 	assignmentsCopy := make([]*models.Assignment, 0, len(assignments))
 	var maxCPU, maxGPU, maxMemory, maxDisk, maxPorts float64
+	var revocable bool
 	for _, assignment := range assignments {
 		assignmentsCopy = append(assignmentsCopy, assignment)
 		resmgrTask := assignment.GetTask().GetTask()
@@ -143,6 +144,7 @@ func (mimir *mimir) Filters(assignments []*models.Assignment) map[*hostsvc.HostF
 		maxMemory = math.Max(maxMemory, resmgrTask.Resource.MemLimitMb)
 		maxDisk = math.Max(maxDisk, resmgrTask.Resource.DiskLimitMb)
 		maxPorts = math.Max(maxPorts, float64(resmgrTask.NumPorts))
+		revocable = resmgrTask.Revocable
 	}
 	maxOffers := mimir.config.OfferDequeueLimit
 	factor := _offersFactor[mimir.config.TaskType]
@@ -160,6 +162,7 @@ func (mimir *mimir) Filters(assignments []*models.Assignment) map[*hostsvc.HostF
 					MemLimitMb:  maxMemory,
 					DiskLimitMb: maxDisk,
 				},
+				Revocable: revocable,
 			},
 			Quantity: &hostsvc.QuantityControl{
 				MaxHosts: uint32(maxOffers),

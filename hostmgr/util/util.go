@@ -1,10 +1,11 @@
 package util
 
 import (
+	"strings"
+
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	log "github.com/sirupsen/logrus"
-	"strings"
 )
 
 // LabelKeyToEnvVarName converts a task label key to an env var name
@@ -40,4 +41,14 @@ func MesosOffersToHostOffers(hostoffers map[string][]*mesos.Offer) []*hostsvc.Ho
 		hostOffers = append(hostOffers, &hostOffer)
 	}
 	return hostOffers
+}
+
+// IsSlackResourceType validates is given resource type is supported slack resource.
+func IsSlackResourceType(resourceType string, slackResourceTypes []string) bool {
+	for _, rType := range slackResourceTypes {
+		if strings.ToLower(rType) == strings.ToLower(resourceType) {
+			return true
+		}
+	}
+	return false
 }

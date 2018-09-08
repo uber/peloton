@@ -192,6 +192,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		nil,               /* frameworkInfoProvider */
 		suite.volumeStore, /* volumeStore */
 		[]string{},        /*scarce_resource_types*/
+		[]string{},        /*slack_resource_types*/
 	)
 
 	suite.maintenanceQueue = mocks.NewMockMaintenanceQueue(suite.ctrl)
@@ -1674,12 +1675,23 @@ func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
 				WithName(_gpuName).
 				WithValue(resVal).
 				Build(),
+			util.NewMesosResourceBuilder().
+				WithName(_cpuName).
+				WithValue(resVal).
+				WithRevocable(&mesos.Resource_RevocableInfo{}).
+				Build(),
+			util.NewMesosResourceBuilder().
+				WithName(_memName).
+				WithValue(resVal).
+				WithRevocable(&mesos.Resource_RevocableInfo{}).
+				Build(),
 		}
 		getAgent := &mesos_master.Response_GetAgents_Agent{
 			AgentInfo: &mesos.AgentInfo{
 				Hostname:  &tmpID,
 				Resources: resources,
 			},
+			TotalResources: resources,
 		}
 		response.Agents = append(response.Agents, getAgent)
 	}
@@ -1823,8 +1835,9 @@ func TestHostManagerTestSuite(t *testing.T) {
 // InitializeHosts adds the hosts to host map
 func (suite *HostMgrHandlerTestSuite) InitializeHosts(numAgents int) {
 	loader := &host.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:     suite.masterOperatorClient,
+		Scope:              suite.testScope,
+		SlackResourceTypes: []string{"cpus"},
 	}
 	response := makeAgentsResponse(numAgents)
 	gomock.InOrder(

@@ -140,6 +140,8 @@ peloton:
     instance_count: 2
     scarce_resource_types:
       - GPU
+    slack_resource_types:
+      - cpus
   resmgr:
     instance_count: 2
   jobmgr:

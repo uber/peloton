@@ -4,6 +4,8 @@ logging:
 mesos:
   host_port: "localhost:5050"
   zk_path: "zk://localhost:8192/mesos"
+  framework:
+    revocable_resources: true
 
 election:
   zk_servers: ["localhost:8192"]
@@ -20,7 +22,9 @@ storage:
   db_write_concurrency: 40
 
 host_manager:
+  #ToDo: move to lower case (match mesos resource type string)
   scarce_resource_types:
     - GPU
   host_drainer_period: 30s
-
+  slack_resource_types:
+    - cpus

@@ -1,6 +1,7 @@
 package host
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -11,12 +12,12 @@ import (
 	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/constraints"
 	constraint_mocks "code.uber.internal/infra/peloton/common/constraints/mocks"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/util"
 	mock_mpb "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
-	"errors"
 )
 
 var (
@@ -54,26 +55,48 @@ func (suite *MatcherTestSuite) InitializeHosts() {
 	loader.Load(nil)
 }
 
+func getNewMatcher(
+	filter *hostsvc.HostFilter,
+	evaluator constraints.Evaluator) *Matcher {
+	resourceTypeFilter := func(resourceType string) bool {
+		if resourceType == common.MesosCPU {
+			return true
+		}
+		return false
+	}
+	return NewMatcher(filter, evaluator, resourceTypeFilter)
+}
+
 // getAgentResponse generates the agent response
 func getAgentResponse(hostname string, resval float64) *mesos_master.Response_GetAgents_Agent {
 	resVal := resval
 	tmpID := hostname
 	resources := []*mesos.Resource{
 		util.NewMesosResourceBuilder().
-			WithName(_cpuName).
+			WithName(common.MesosCPU).
 			WithValue(resVal).
 			Build(),
 		util.NewMesosResourceBuilder().
-			WithName(_memName).
+			WithName(common.MesosMem).
 			WithValue(resVal).
 			Build(),
 		util.NewMesosResourceBuilder().
-			WithName(_diskName).
+			WithName(common.MesosDisk).
 			WithValue(resVal).
 			Build(),
 		util.NewMesosResourceBuilder().
-			WithName(_gpuName).
+			WithName(common.MesosGPU).
 			WithValue(resVal).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(common.MesosCPU).
+			WithValue(resVal).
+			WithRevocable(&mesos.Resource_RevocableInfo{}).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(common.MesosMem).
+			WithValue(resVal).
+			WithRevocable(&mesos.Resource_RevocableInfo{}).
 			Build(),
 	}
 	return &mesos_master.Response_GetAgents_Agent{
@@ -81,6 +104,7 @@ func getAgentResponse(hostname string, resval float64) *mesos_master.Response_Ge
 			Hostname:  &tmpID,
 			Resources: resources,
 		},
+		TotalResources: resources,
 	}
 }
 
@@ -110,10 +134,32 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 		Quantity: &hostsvc.QuantityControl{
 			MaxHosts: 1,
 		},
+		ResourceConstraint: &hostsvc.ResourceConstraint{
+			Minimum: &task.ResourceConfig{
+				CpuLimit:    1.0,
+				MemLimitMb:  1.0,
+				DiskLimitMb: 1.0,
+			},
+			Revocable: true,
+		},
 	}
-	matcher := NewMatcher(filter, nil)
+	matcher := getNewMatcher(filter, nil)
 	hostname := suite.response.Agents[0].AgentInfo.GetHostname()
-	resources := scalar.FromMesosResources(suite.response.Agents[0].AgentInfo.Resources)
+	agents, err := matcher.GetMatchingHosts()
+	suite.Equal(len(agents), 2)
+	suite.Nil(err)
+
+	agentNonRevocableResources, _ := scalar.FilterMesosResources(
+		suite.response.Agents[0].AgentInfo.Resources,
+		func(r *mesos.Resource) bool {
+			if r.GetRevocable() == nil {
+				return true
+			}
+
+			return false
+		})
+
+	resources := scalar.FromMesosResources(agentNonRevocableResources)
 
 	testTable := []struct {
 		hostname  string
@@ -259,7 +305,7 @@ func (suite *MatcherTestSuite) TestHostConstraints() {
 				gomock.Eq(filter.SchedulingConstraint),
 				gomock.Eq(lv)).
 			Return(tt.evaluateRes, tt.evaluateErr)
-		matcher := NewMatcher(filter, mockEvaluator)
+		matcher := getNewMatcher(filter, mockEvaluator)
 		result := matcher.matchHostFilter(suite.response.Agents[0].AgentInfo.GetHostname(),
 			scalar.FromMesosResources(suite.response.Agents[0].AgentInfo.Resources), filter, mockEvaluator, GetAgentMap())
 		suite.Equal(result, tt.match, "test case is %s", ttName)
@@ -268,7 +314,7 @@ func (suite *MatcherTestSuite) TestHostConstraints() {
 
 // TestMatchHostsFilter matches the host filter to available nodes
 func (suite *MatcherTestSuite) TestMatchHostsFilter() {
-	res := createAgentResourceMap(nil)
+	res := createAgentResourceMap(nil, nil, nil)
 	suite.Nil(res)
 
 	filter := &hostsvc.HostFilter{
@@ -285,7 +331,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilter() {
 			},
 		},
 	}
-	matcher := NewMatcher(filter, nil)
+	matcher := getNewMatcher(filter, nil)
 	// Checking with valid host filter
 	result := matcher.matchHostsFilter(matcher.agentMap, filter, nil, GetAgentMap())
 	suite.Equal(result, hostsvc.HostFilterResult_MATCH)
@@ -305,8 +351,9 @@ func (suite *MatcherTestSuite) TestMatchHostsFilter() {
 func (suite *MatcherTestSuite) TestMatchHostsFilterWithDifferentHosts() {
 	// Creating different resources hosts in the host map
 	loader := &Loader{
-		OperatorClient: suite.operatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:     suite.operatorClient,
+		Scope:              suite.testScope,
+		SlackResourceTypes: []string{common.MesosCPU},
 	}
 	numAgents := 2
 	response := createAgentsResponse(numAgents, false)
@@ -329,7 +376,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithDifferentHosts() {
 			},
 		},
 	}
-	matcher := NewMatcher(filter, nil)
+	matcher := getNewMatcher(filter, nil)
 	// one of the host should match with this filter
 	result := matcher.matchHostsFilter(matcher.agentMap, filter, nil, GetAgentMap())
 	suite.Equal(result, hostsvc.HostFilterResult_MATCH)
@@ -367,7 +414,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithZeroResourceHosts() {
 			},
 		},
 	}
-	matcher := NewMatcher(filter, nil)
+	matcher := getNewMatcher(filter, nil)
 	result := matcher.matchHostsFilter(matcher.agentMap, filter, nil, GetAgentMap())
 	suite.Equal(result, hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES)
 	hosts, err := matcher.GetMatchingHosts()

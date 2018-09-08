@@ -8,11 +8,11 @@
                "parameters":[
                   {
                      "key":"load_threshold_5min",
-                     "value":"1"
+                     "value":"6"
                   },
                   {
                      "key":"load_threshold_15min",
-                     "value":"0.5"
+                     "value":"4"
                   }
                ]
             }
@@ -24,7 +24,7 @@
             "name":"org_apache_mesos_FixedResourceEstimator",
             "parameters":{
                "key":"resources",
-               "value":"cpus:3"
+               "value":"cpus:4"
             }
          }
       }

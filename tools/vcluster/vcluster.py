@@ -209,6 +209,10 @@ class VCluster(object):
                 scarce_resource = ','.join(
                     self.config.get('peloton').get(app).get(srt))
                 dynamic_env_master['SCARCE_RESOURCE_TYPES'] = scarce_resource
+                slrt = 'slack_resource_types'
+                slack_resource = ','.join(
+                    self.config.get('peloton').get(app).get(slrt))
+                dynamic_env_master['SLACK_RESOURCE_TYPES'] = slack_resource
 
             peloton_app_count = int(
                 self.config.get('peloton').get(app).get('instance_count'))

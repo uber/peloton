@@ -124,6 +124,31 @@ func HasResourceType(agentRes, reqRes Resources, resourceType string) bool {
 	return false
 }
 
+// FilterRevocableMesosResources separates revocable resources
+// and non-revocable resources
+func FilterRevocableMesosResources(rs []*mesos.Resource) (
+	revocable []*mesos.Resource, nonRevocable []*mesos.Resource) {
+	return FilterMesosResources(
+		rs,
+		func(r *mesos.Resource) bool {
+			return r.GetRevocable() != nil
+		})
+}
+
+// FilterMesosResources separates Mesos resources slice into matched and
+// unmatched ones.
+func FilterMesosResources(rs []*mesos.Resource, filter func(*mesos.Resource) bool) (
+	matched []*mesos.Resource, unmatched []*mesos.Resource) {
+	for _, r := range rs {
+		if filter(r) {
+			matched = append(matched, r)
+		} else {
+			unmatched = append(unmatched, r)
+		}
+	}
+	return matched, unmatched
+}
+
 // FromResourceConfig creates a new instance of `Resources` from a `ResourceConfig`.
 func FromResourceConfig(rc *task.ResourceConfig) (r Resources) {
 	r.CPU = rc.GetCpuLimit()
@@ -159,14 +184,19 @@ func FromMesosResources(resources []*mesos.Resource) (r Resources) {
 	return r
 }
 
-// FromTaskResources takes the task resource config and returns
-// the scalar.Resource object
-func FromTaskResources(taskResource *task.ResourceConfig) (r Resources) {
-	r.CPU = taskResource.GetCpuLimit()
-	r.GPU = taskResource.GetGpuLimit()
-	r.Disk = taskResource.GetDiskLimitMb()
-	r.Mem = taskResource.GetMemLimitMb()
-	return r
+// FromOffersMapToMesosResources dfdfdfdfdf
+func FromOffersMapToMesosResources(offerMap map[string]*mesos.Offer) []*mesos.Resource {
+	var resources []*mesos.Resource
+	for _, offer := range offerMap {
+		if offer == nil {
+			resources = append(resources, &mesos.Resource{})
+		} else {
+			for _, r := range offer.GetResources() {
+				resources = append(resources, r)
+			}
+		}
+	}
+	return resources
 }
 
 // FromOffer returns the scalar Resources from an offer.

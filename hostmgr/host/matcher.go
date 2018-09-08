@@ -26,15 +26,22 @@ type Matcher struct {
 	resultHosts map[string]*mesos.AgentInfo
 }
 
+type filterSlackResources func(resourceType string) bool
+
 // NewMatcher returns a new instance of Matcher.
+// hostFilter defines the constraints on matching a host such as resources, revocable.
+// evaluator is used to validate constraints such as labels.
 func NewMatcher(
 	hostFilter *hostsvc.HostFilter,
 	evaluator constraints.Evaluator,
-) *Matcher {
+	filter filterSlackResources) *Matcher {
 	return &Matcher{
-		hostFilter:   hostFilter,
-		evaluator:    evaluator,
-		agentMap:     createAgentResourceMap(GetAgentMap()),
+		hostFilter: hostFilter,
+		evaluator:  evaluator,
+		agentMap: createAgentResourceMap(
+			GetAgentMap(),
+			hostFilter.GetResourceConstraint(),
+			filter),
 		agentInfoMap: GetAgentMap(),
 		resultHosts:  make(map[string]*mesos.AgentInfo),
 	}
@@ -44,7 +51,11 @@ func NewMatcher(
 // and it returns the hostname-> AgentInfo for the matched hosts.
 // If the filter does not match, it returns the error
 func (m *Matcher) GetMatchingHosts() (map[string]*mesos.AgentInfo, *hostsvc.GetHostsFailure) {
-	result := m.matchHostsFilter(m.agentMap, m.hostFilter, m.evaluator, m.agentInfoMap)
+	result := m.matchHostsFilter(
+		m.agentMap,
+		m.hostFilter,
+		m.evaluator,
+		m.agentInfoMap)
 	if result == hostsvc.HostFilterResult_MATCH {
 		return m.resultHosts, nil
 	}
@@ -125,13 +136,12 @@ func (m *Matcher) matchHostsFilter(
 	// going through the list of nodes
 	for hostname, agent := range agentInfoMap.RegisteredAgents {
 		// matching the host with hostfilter
-		result := m.matchHostFilter(
+		if result := m.matchHostFilter(
 			hostname,
 			agentMap[hostname],
 			c,
 			evaluator,
-			agentInfoMap)
-		if result != hostsvc.HostFilterResult_MATCH {
+			agentInfoMap); result != hostsvc.HostFilterResult_MATCH {
 			continue
 		}
 		// adding matched host to list of returning hosts
@@ -144,17 +154,39 @@ func (m *Matcher) matchHostsFilter(
 	return hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES
 }
 
-// createAgentResourceMap takes the AgentMap and returs the host to resource map
-func createAgentResourceMap(hostMap *AgentMap) map[string]scalar.Resources {
-	// host map is nil, return nil
-	if hostMap == nil || len(hostMap.RegisteredAgents) <= 0 {
+// createAgentResourceMap takes the AgentMap, Resource Constraint
+// filter Slack Resources func and returns the host to resource map
+func createAgentResourceMap(
+	hostMap *AgentMap,
+	resourceConstraint *hostsvc.ResourceConstraint,
+	filter filterSlackResources) map[string]scalar.Resources {
+	if hostMap == nil || len(hostMap.RegisteredAgents) == 0 {
 		return nil
 	}
+
 	agentResourceMap := make(map[string]scalar.Resources)
 	// going through each agent and calculate resources
 	for hostname, agent := range hostMap.RegisteredAgents {
-		info := agent.GetAgentInfo()
-		agentResourceMap[hostname] = scalar.FromMesosResources(info.GetResources())
+		if resourceConstraint.GetRevocable() {
+			revocable, _ := scalar.FilterRevocableMesosResources(
+				agent.GetTotalResources())
+			agentResourceMap[hostname] = scalar.FromMesosResources(revocable)
+
+			nonRevocable, _ := scalar.FilterMesosResources(
+				agent.GetTotalResources(),
+				func(r *mesos.Resource) bool {
+					if r.GetRevocable() != nil || filter(r.GetName()) {
+						return false
+					}
+					return true
+				})
+			agentResourceMap[hostname] = agentResourceMap[hostname].
+				Add(scalar.FromMesosResources(nonRevocable))
+		} else {
+			_, nonRevocable := scalar.FilterRevocableMesosResources(
+				agent.GetTotalResources())
+			agentResourceMap[hostname] = scalar.FromMesosResources(nonRevocable)
+		}
 	}
 	return agentResourceMap
 }

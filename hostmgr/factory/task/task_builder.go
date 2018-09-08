@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	hostmgrutil "code.uber.internal/infra/peloton/hostmgr/util"
 	"code.uber.internal/infra/peloton/util"
@@ -46,16 +47,29 @@ type Builder struct {
 	// A map from role -> scalar resources.
 	scalars map[string]scalar.Resources
 
+	revocable scalar.Resources
+
 	// A map from available port number to role name.
 	portToRoles map[uint32]string
 }
 
 // NewBuilder creates a new instance of Builder, which caller can use to
 // build Mesos tasks from the cached resources.
-func NewBuilder(resources []*mesos.Resource) *Builder {
+func NewBuilder(
+	resources []*mesos.Resource) *Builder {
 	scalars := make(map[string]scalar.Resources)
 	portToRoles := make(map[uint32]string)
+
+	revocable, _ := scalar.FilterMesosResources(
+		resources, func(r *mesos.Resource) bool {
+			return r.GetRevocable() != nil
+		})
+
 	for _, rs := range resources {
+		if rs.GetRevocable() != nil {
+			continue
+		}
+
 		tmp := scalar.FromMesosResource(rs)
 		role := rs.GetRole()
 
@@ -79,6 +93,7 @@ func NewBuilder(resources []*mesos.Resource) *Builder {
 	// or unreserved (* role).
 	return &Builder{
 		scalars:     scalars,
+		revocable:   scalar.FromMesosResources(revocable),
 		portToRoles: portToRoles,
 	}
 }
@@ -162,18 +177,17 @@ func (tb *Builder) pickPorts(
 // instance does not have enough resources leftover (scalar, port or
 // even volume in future), or the taskConfig is not correct.
 func (tb *Builder) Build(
-	taskID *mesos.TaskID,
-	taskConfig *task.TaskConfig,
-	selectedDynamicPorts map[string]uint32,
+	task *hostsvc.LaunchableTask,
 	reservationLabels *mesos.Labels,
-	volume *hostsvc.Volume,
-) (*mesos.TaskInfo, error) {
+	volume *hostsvc.Volume) (*mesos.TaskInfo, error) {
 
 	// Validation of input.
+	taskConfig := task.GetConfig()
 	if taskConfig == nil {
 		return nil, errors.New("TaskConfig cannot be nil")
 	}
 
+	taskID := task.GetTaskId()
 	if taskID == nil {
 		return nil, errors.New("taskID cannot be nil")
 	}
@@ -193,11 +207,14 @@ func (tb *Builder) Build(
 	}
 
 	// lres is list of "launch" resources this task needs when launched.
-	lres, err := tb.extractScalarResources(taskConfig.GetResource())
+	lres, err := tb.extractScalarResources(
+		taskConfig.GetResource(),
+		taskConfig.GetRevocable())
 	if err != nil {
 		return nil, err
 	}
 
+	selectedDynamicPorts := task.GetPorts()
 	pick, err := tb.pickPorts(taskConfig, selectedDynamicPorts)
 	if err != nil {
 		return nil, err
@@ -507,24 +524,29 @@ func (tb *Builder) populateHealthCheck(
 // of this instance to construct a task, and returns error if not enough
 // resources are left.
 func (tb *Builder) extractScalarResources(
-	taskResources *task.ResourceConfig) ([]*mesos.Resource, error) {
-
-	if taskResources == nil {
-		return nil, errors.New("Empty resources for task")
-	}
-
+	taskResources *task.ResourceConfig,
+	revocable bool) ([]*mesos.Resource, error) {
 	var launchResources []*mesos.Resource
 	requiredScalar := scalar.FromResourceConfig(taskResources)
+	if revocable {
+		// ToDo: Implement a more clean design on comparing revocable resources.
+		rs, err := tb.extractRevocableScalarResources(&requiredScalar)
+		if err != nil {
+			return nil, err
+		}
+		launchResources = append(launchResources, rs...)
+	}
+
 	for role, leftover := range tb.scalars {
 		minimum := scalar.Minimum(leftover, requiredScalar)
 		if minimum.Empty() {
 			continue
 		}
 		rs := util.CreateMesosScalarResources(map[string]float64{
-			"cpus": minimum.CPU,
-			"mem":  minimum.Mem,
-			"disk": minimum.Disk,
-			"gpus": minimum.GPU,
+			common.MesosCPU:  minimum.CPU,
+			common.MesosMem:  minimum.Mem,
+			common.MesosDisk: minimum.Disk,
+			common.MesosGPU:  minimum.GPU,
 		}, role)
 
 		launchResources = append(launchResources, rs...)
@@ -570,4 +592,23 @@ func (tb *Builder) extractScalarResources(
 		return nil, ErrNotEnoughResource
 	}
 	return launchResources, nil
+}
+
+// extractRevocableResources extract revocable resources for required task resources.
+func (tb *Builder) extractRevocableScalarResources(
+	requiredScalar *scalar.Resources) ([]*mesos.Resource, error) {
+	if tb.revocable.CPU-requiredScalar.CPU >= 0 {
+		tb.revocable.CPU = tb.revocable.CPU - requiredScalar.CPU
+	} else {
+		return nil, ErrNotEnoughResource
+	}
+
+	rs := util.CreateMesosScalarResources(
+		map[string]float64{common.MesosCPU: requiredScalar.CPU},
+		"*")
+	requiredScalar.CPU = 0
+	for _, resource := range rs {
+		resource.Revocable = &mesos.Resource_RevocableInfo{}
+	}
+	return rs, nil
 }

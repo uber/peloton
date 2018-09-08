@@ -199,6 +199,9 @@ message ResourceConstraint {
   // Number of dynamic ports
   uint32 numPorts = 2;
 
+  // revocable adds a constraint to use revocable/non-revocable resources.
+  bool revocable = 3;
+
   // TODO(zhitao): Consider adding Maximum amount of resources constraint to
   // avoid fragmentation.
 }
@@ -662,6 +665,12 @@ message ClusterCapacityResponse {
 
   // Resources for total physical capacity.
   repeated Resource physicalResources = 3;
+
+  // Represents total usage slack alloacted.
+  repeated Resource allocatedSlackResources = 4;
+
+  // Represents total slack resources at Cluster.
+  repeated Resource physicalSlackResources = 5;
 }
 
 /*
