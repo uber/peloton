@@ -137,6 +137,18 @@ def jobmgr():
 
 
 @pytest.fixture()
+def resmgr():
+    # TODO: We need to pick up the count dynamically.
+    return Container(['peloton-resmgr0', 'peloton-resmgr1'])
+
+
+@pytest.fixture()
+def hostmgr():
+    # TODO: We need to pick up the count dynamically.
+    return Container(['peloton-hostmgr0', 'peloton-hostmgr1'])
+
+
+@pytest.fixture()
 def mesos_agent():
     # TODO: We need to pick up the count dynamically.
     return Container(['peloton-mesos-agent0', 'peloton-mesos-agent1',
@@ -168,6 +180,19 @@ def stateless_job(request):
 
     request.addfinalizer(kill_stateless_job)
 
+    return job
+
+
+@pytest.fixture
+def host_affinity_job(request):
+    job = Job(job_file='test_job_host_affinity_constraint.yaml')
+
+    # Kill job
+    def kill_host_affinity_job():
+        print "\nstopping host affinity job"
+        job.stop()
+
+    request.addfinalizer(kill_host_affinity_job)
     return job
 
 

@@ -1,0 +1,28 @@
+name: TestPelotonJob_integration
+owningTeam: team6
+description: "A dummy test job for peloton integration tests"
+instanceCount: 4
+sla:
+  priority: 22
+  maximumRunningInstances: 4
+  preemptible: true
+defaultConfig:
+  resource:
+    cpuLimit: 1.0
+    memLimitMb: 0.1
+    diskLimitMb: 0.1
+    fdLimit: 2
+  healthCheck: null
+  ports: []
+  command:
+    shell: true
+    value: 'echo hello & sleep 300'
+  constraint:
+      type: 1  # LABEL_CONSTRAINT
+      labelConstraint:
+        kind: 2 # HOST
+        condition: 2 # CONDITION_EQUAL
+        requirement: 1
+        label:
+          key: 'hostname'
+          value: 'peloton-mesos-agent0'
