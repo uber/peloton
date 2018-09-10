@@ -4,7 +4,6 @@ package cassandra
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"testing"
@@ -304,52 +303,26 @@ func (suite *CassandraStoreTestSuite) TestJobQueryStaleLuceneIndex() {
 	_, summary := suite.queryJobs(spec, 1, 1)
 	suite.Equal(creationTime, summary[0].GetRuntime().GetCreationTime())
 
-	// set runtime state to succeeded
+	// Set runtime state to succeeded. This will also update the job_index
 	runtime.State = job.JobState_SUCCEEDED
 	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
 	suite.NoError(err)
 
-	// Force error by updating job index to active state. This way the lucene
-	// index will be stale and will show that the job is active for more than 24
-	// hours. In this case, the reconciliation logic should kick in and read the
-	// job summary from config instead of lucene index.
-	runtime.State = job.JobState_PENDING
-	runtimeBuffer, _ := json.Marshal(runtime)
-	queryBuilder := store.DataStore.NewQuery()
-	updateStmt := queryBuilder.Update(jobIndexTable).
-		Set("runtime_info", runtimeBuffer).
-		Where(qb.Eq{"job_id": jobID.GetValue()})
-	_, err = store.executeWrite(context.Background(), updateStmt)
+	// Now we have query from lucnene index showing the job as PENDING for 5days
+	// but the job_index table has been updated to SUCCEEDED. This should be
+	// reconciled and the final summary should not contain this job.
+	newSummary, err := store.reconcileStaleBatchJobsFromJobSummaryList(
+		context.Background(), summary, false)
 	suite.NoError(err)
-	// This will make lucene index entry pending
-	suite.refreshLuceneIndex()
+	suite.Equal(0, len(newSummary))
 
-	// Now set back job_index base table entry to SUCCEEDED and don't refresh
-	// lucene index entry. This achieves lucene index inconsistency.
-	runtime.State = job.JobState_SUCCEEDED
-	runtimeBuffer, _ = json.Marshal(runtime)
-	updateStmt = queryBuilder.Update(jobIndexTable).
-		Set("runtime_info", runtimeBuffer).
-		Where(qb.Eq{"job_id": jobID.GetValue()})
-	_, err = store.executeWrite(context.Background(), updateStmt)
+	// Run reconciliation but for terminal job query. So the new summary list
+	// should contain the job but with its new terminal state.
+	newSummary, err = store.reconcileStaleBatchJobsFromJobSummaryList(
+		context.Background(), summary, true)
 	suite.NoError(err)
-
-	// This job should no longer show up in active jobs list because the index
-	// has it in PENDING state for > 100hrs but it is actually terminal.
-	_, summary = suite.queryJobs(spec, 0, 0)
-
-	// Query for both succeeded and pending jobs. this query should return the
-	// job summary read from job config table because we did query for succeeded
-	// jobs along with pending.
-	jobStates = []job.JobState{
-		job.JobState_PENDING, job.JobState_SUCCEEDED,
-	}
-	spec = &job.QuerySpec{
-		Name:      "StaleLuceneIndex",
-		JobStates: jobStates,
-	}
-	_, summary = suite.queryJobs(spec, 1, 1)
-	suite.Equal(job.JobState_SUCCEEDED, summary[0].GetRuntime().GetState())
+	suite.Equal(1, len(newSummary))
+	suite.Equal(job.JobState_SUCCEEDED, newSummary[0].GetRuntime().GetState())
 }
 
 func (suite *CassandraStoreTestSuite) TestGetJobSummaryByTimeRange() {

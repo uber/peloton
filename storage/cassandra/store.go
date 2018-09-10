@@ -2387,6 +2387,7 @@ func (s *Store) getJobSummaryFromIndex(
 	ctx context.Context, id *peloton.JobID) (*job.JobSummary, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select(
+		"job_id",
 		"name",
 		"owner",
 		"job_type",
