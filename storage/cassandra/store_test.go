@@ -2685,6 +2685,7 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 		goalState          task.TaskState
 		jobID              peloton.JobID
 		healthy            task.HealthState
+		returnErr          bool
 	}{
 		{
 			mesosTaskID:        "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
@@ -2694,6 +2695,7 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 			goalState:          task.TaskState_RUNNING,
 			jobID:              peloton.JobID{Value: uuid.NewRandom().String()},
 			healthy:            task.HealthState_DISABLED,
+			returnErr:          true,
 		},
 		{
 			mesosTaskID:        "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-test",
@@ -2703,6 +2705,7 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 			goalState:          task.TaskState_RUNNING,
 			jobID:              peloton.JobID{Value: uuid.NewRandom().String()},
 			healthy:            task.HealthState_HEALTH_UNKNOWN,
+			returnErr:          true,
 		},
 		{
 			mesosTaskID:        "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
@@ -2712,6 +2715,7 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 			goalState:          task.TaskState_RUNNING,
 			jobID:              peloton.JobID{Value: "incorrect-jobID"},
 			healthy:            task.HealthState_HEALTH_UNKNOWN,
+			returnErr:          true,
 		},
 		{
 			mesosTaskID:        "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-2",
@@ -2721,6 +2725,27 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 			goalState:          task.TaskState_RUNNING,
 			jobID:              peloton.JobID{Value: "incorrect-jobID"},
 			healthy:            task.HealthState_HEALTHY,
+			returnErr:          true,
+		},
+		{
+			mesosTaskID:        "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
+			prevMesosTaskID:    "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-0",
+			desiredMesosTaskID: "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
+			actualState:        task.TaskState_PENDING,
+			goalState:          task.TaskState_RUNNING,
+			jobID:              peloton.JobID{Value: uuid.NewRandom().String()},
+			healthy:            task.HealthState_DISABLED,
+			returnErr:          false,
+		},
+		{
+			mesosTaskID:        "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-1",
+			prevMesosTaskID:    "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-0",
+			desiredMesosTaskID: "",
+			actualState:        task.TaskState_PENDING,
+			goalState:          task.TaskState_RUNNING,
+			jobID:              peloton.JobID{Value: uuid.NewRandom().String()},
+			healthy:            task.HealthState_DISABLED,
+			returnErr:          false,
 		},
 	}
 
@@ -2743,9 +2768,15 @@ func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
 			},
 		}
 		err := store.addPodEvent(context.Background(), &tt.jobID, 0, runtime)
-		suite.Error(err)
+		if tt.returnErr {
+			suite.Error(err)
+		} else {
+			suite.NoError(err)
+		}
 	}
+}
 
+func (suite *CassandraStoreTestSuite) TestGetPodEvent() {
 	dummyJobID := &peloton.JobID{Value: "dummy id"}
 	_, err := store.GetPodEvents(
 		context.Background(),
