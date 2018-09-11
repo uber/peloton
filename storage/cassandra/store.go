@@ -1000,7 +1000,12 @@ func (s *Store) addPodEvent(
 		errLog = true
 		errMessage = err
 	}
-	if desiredRunID, err = util.ParseRunID(
+
+	// old job does not have desired mesos task id, make it the same as runID
+	// TODO: remove the line after all tasks have desired mesos task id
+	if len(runtime.GetDesiredMesosTaskId().GetValue()) == 0 {
+		desiredRunID = runID
+	} else if desiredRunID, err = util.ParseRunID(
 		runtime.GetDesiredMesosTaskId().GetValue()); err != nil {
 		errLog = true
 		errMessage = err
