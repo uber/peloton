@@ -1,5 +1,5 @@
-hash: 31118f046bcee63a16a53edd0aebafe2fc5e047e61a553bf6eefc751e5b8ee1f
-updated: 2018-08-14T13:04:28.433772427-07:00
+hash: 6d0569901fb4c934262762c0987a7f7382a0a7424036d9806907698e29e2f524
+updated: 2018-09-11T14:09:22.489384873-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -152,7 +152,7 @@ imports:
   subpackages:
   - zk
 - name: github.com/sirupsen/logrus
-  version: 3e01752db0189b9157070a0e1668a620f9a85da2
+  version: 202f25545ea4cf9b191ff7f846df5d87c9382c2b
 - name: github.com/stretchr/objx
   version: 1a9d0bb9f541897e62256577b352fdbc1fb4fd94
 - name: github.com/stretchr/testify
