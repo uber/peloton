@@ -541,7 +541,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	log.WithField("job_id", id).
-		WithField("updated_state", jobRuntime.State.String()).
+		WithField("updated_state", jobState.String()).
 		Info("job runtime updater completed")
 
 	goalStateDriver.mtx.jobMetrics.JobRuntimeUpdated.Inc(1)
