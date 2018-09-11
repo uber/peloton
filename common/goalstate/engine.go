@@ -202,6 +202,12 @@ func (e *engine) runActions(entityItem *entityMapItem) (reschedule bool, delay t
 		e.mtx.scope.Tagged(map[string]string{"action": action.Name}).
 			Timer("run_duration").Record(time.Since(tStart))
 		if err != nil {
+			log.WithError(err).
+				WithFields(log.Fields{
+					"entity_id":   entityItem.entity.GetID(),
+					"action_name": action.Name,
+				}).
+				Info("goal state action failed to execute")
 			// Backoff and reevaluate the entity again.
 			e.calculateDelay(entityItem)
 			return true, entityItem.delay

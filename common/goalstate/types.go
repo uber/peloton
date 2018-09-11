@@ -28,7 +28,7 @@ type ActionExecute func(ctx context.Context, entity Entity) error
 // state actions. If the Execute call returns an error, the entity is
 // rescheduled in the goal state engine with an exponential backoff.
 type Action struct {
-	// Name of the action which will be used as the tag in the emoitted metrics.
+	// Name of the action which will be used as the tag in the emitted metrics.
 	Name string
 	// Execute is the function called by the goal state
 	// engine to execute the action.
