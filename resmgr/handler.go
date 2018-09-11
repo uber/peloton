@@ -1078,12 +1078,14 @@ func (h *ServiceHandler) KillTasks(
 	var killResponseErr []*resmgrsvc.KillTasksResponse_Error
 
 	if len(tasksNotFound) != 0 {
-		log.WithField("tasks", tasksNotFound).Error("tasks can't be found")
+		log.
+			WithField("tasks", tasksNotFound).
+			Info("tasks can't be found")
 		for _, task := range tasksNotFound {
 			killResponseErr = append(killResponseErr,
 				&resmgrsvc.KillTasksResponse_Error{
 					NotFound: &resmgrsvc.TasksNotFound{
-						Message: "Tasks Not Found",
+						Message: "Task Not Found",
 						Task:    task,
 					},
 				})
@@ -1094,7 +1096,7 @@ func (h *ServiceHandler) KillTasks(
 			killResponseErr = append(killResponseErr,
 				&resmgrsvc.KillTasksResponse_Error{
 					KillError: &resmgrsvc.KillTasksError{
-						Message: "Tasks can't be killed",
+						Message: "Task can't be killed",
 						Task:    task,
 					},
 				})

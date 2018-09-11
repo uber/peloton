@@ -41,7 +41,7 @@ import:
   subpackages:
   - statsd
 - package: github.com/sirupsen/logrus
-  version: ^1.0.0
+  version: 1.0.0
 - package: gopkg.in/validator.v2
   version: 0a9835d809fb647a62611d30cb792e0b5dd65b11
 - package: gopkg.in/yaml.v2
