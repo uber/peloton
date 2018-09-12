@@ -2767,6 +2767,7 @@ func (s *Store) cleanupPreviousUpdatesForJob(
 	ctx context.Context,
 	jobID *peloton.JobID) error {
 	var updateList []*SortUpdateInfo
+	var nonUpdateList []*SortUpdateInfo
 
 	// first fetch the updates for the job
 	updates, err := s.GetUpdatesForJob(ctx, jobID)
@@ -2790,11 +2791,6 @@ func (s *Store) cleanupPreviousUpdatesForJob(
 			return err
 		}
 
-		if len(allResults) <= s.Conf.MaxUpdatesPerJob {
-			// nothing to clean up
-			return nil
-		}
-
 		for _, value := range allResults {
 			var record UpdateRecord
 			if err := FillObject(value, &record,
@@ -2810,14 +2806,31 @@ func (s *Store) cleanupPreviousUpdatesForJob(
 				updateID:         updateID,
 				jobConfigVersion: uint64(record.JobConfigVersion),
 			}
-			updateList = append(updateList, updateInfo)
+			if record.Type == models.WorkflowType_UPDATE.String() {
+				updateList = append(updateList, updateInfo)
+			} else {
+				nonUpdateList = append(nonUpdateList, updateInfo)
+			}
+
 		}
 	}
 
-	sort.Sort(sort.Reverse(SortedUpdateList(updateList)))
-	for _, u := range updateList[s.Conf.MaxUpdatesPerJob:] {
-		// delete the old job and task configurations, and then the update
-		s.DeleteUpdate(ctx, u.updateID, jobID, u.jobConfigVersion)
+	// updates and non-updates are handled separately. Each category would keep
+	// up to Conf.MaxUpdatesPerJob
+	if len(updateList) > s.Conf.MaxUpdatesPerJob {
+		sort.Sort(sort.Reverse(SortedUpdateList(updateList)))
+		for _, u := range updateList[s.Conf.MaxUpdatesPerJob:] {
+			// delete the old job and task configurations, and then the update
+			s.DeleteUpdate(ctx, u.updateID, jobID, u.jobConfigVersion)
+		}
+	}
+
+	if len(nonUpdateList) > s.Conf.MaxUpdatesPerJob {
+		sort.Sort(sort.Reverse(SortedUpdateList(nonUpdateList)))
+		for _, u := range nonUpdateList[s.Conf.MaxUpdatesPerJob:] {
+			// delete the old job and task configurations, and then the update
+			s.DeleteUpdate(ctx, u.updateID, jobID, u.jobConfigVersion)
+		}
 	}
 	return nil
 }
