@@ -102,7 +102,7 @@ Instance|        Job|  CPU Limit|  Mem Limit|  Disk Limit|      State|  GoalStat
 
 
 ## Curl into Peloton endpoint:
-
+```
 curl -X POST  \
      -H 'content-type: application/json'  \
      -H 'Rpc-Procedure: JobManager.Get'   \
@@ -112,7 +112,7 @@ curl -X POST  \
      -H 'Rpc-Encoding: json'              \
      --data '{"id": {"value": "myjob12345"}}' 	\
     localhost:5292/api/v1
-
+```
 
 ## Run unit tests
 ```
@@ -226,7 +226,8 @@ make docker docker-push
 
 
 1. Find docker container process ID:
-sudo docker inspect -f {{.State.Pid}} <DOCKER_IMAGE_ID>
+docker ps
+docker inspect <DOCKER_CONTAINER_ID>
 
 2. Run a bash shell in the container:
 nsenter -t <PID> -m -p bash
@@ -239,30 +240,3 @@ ln -s /peloton-install /workspace/src/$(make project-name)
 gdb peloton-install/bin/peloton-[hostmgr|jobmgr|resmgr|placement] <PID>
 
 5. Happy debugging ;-)
-
-
-## Pressure test the cassandra store
-
-We have a tool for pressure testing the cassandra store, which is based on the storage.TaskStore interface.
-
-1. Build the cassandra store tool:
-make db-pressure
-
-2. Run test against a cassandra store. For example
-
-bin/dbpressure -s peloton_pressure -t 1000 -w 200 -h ms-3162c292.pit-irn-1.uberatc.net -c ONE
-
-Also need to make sure to have the schema migration files under storage/cassandra/migrations
-
-Flags:
-      --help             Show context-sensitive help (also try --help-long and --help-man).
-  -h, --cassandra-hosts=CASSANDRA-HOSTS
-                         Cassandra hosts
-  -c, --consistency="LOCAL_QUORUM"
-                         data consistency
-  -w, --workers=WORKERS  number of workers
-  -s, --store=STORE      store
-  -t, --batch=BATCH      task batch size per worker
-
-After running the load into C*, one can check the C* dashboard, for example
-https://graphite.uberinternal.com/grafana2/dashboard/db/cassandra-mesos-irn
