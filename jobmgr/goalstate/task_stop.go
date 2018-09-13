@@ -11,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 
 	log "github.com/sirupsen/logrus"
@@ -118,14 +119,14 @@ func stopInitializedTask(ctx context.Context, taskEnt *taskEntity) error {
 		return nil
 	}
 
-	runtimeDiff := cached.RuntimeDiff{
-		cached.StateField:   task.TaskState_KILLED,
-		cached.MessageField: "Non-running task killed",
-		cached.ReasonField:  "",
+	runtimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.StateField:   task.TaskState_KILLED,
+		jobmgrcommon.MessageField: "Non-running task killed",
+		jobmgrcommon.ReasonField:  "",
 	}
 
 	err = cachedJob.PatchTasks(ctx,
-		map[uint32]cached.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
+		map[uint32]jobmgrcommon.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
 	if err == nil {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
 		EnqueueJobWithDefaultDelay(taskEnt.jobID, goalStateDriver, cachedJob)
@@ -155,13 +156,13 @@ func stopMesosTask(ctx context.Context, taskEnt *taskEntity, runtime *task.Runti
 		return err
 	}
 
-	runtimeDiff := cached.RuntimeDiff{
-		cached.StateField:   task.TaskState_KILLING,
-		cached.MessageField: "Killing the task",
-		cached.ReasonField:  "",
+	runtimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.StateField:   task.TaskState_KILLING,
+		jobmgrcommon.MessageField: "Killing the task",
+		jobmgrcommon.ReasonField:  "",
 	}
 	err = cachedJob.PatchTasks(ctx,
-		map[uint32]cached.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
+		map[uint32]jobmgrcommon.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
 
 	if err == nil {
 		// timeout for task kill

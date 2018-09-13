@@ -17,6 +17,8 @@ import (
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -91,8 +93,8 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 	suite.mockTask.EXPECT().GetRunTime(gomock.Any()).Return(taskInfo.Runtime, nil)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(suite.mockJob)
 	suite.mockJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
-			suite.Equal(peloton_task.TaskState_KILLED, runtimeDiffs[1][cached.GoalStateField])
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.Equal(peloton_task.TaskState_KILLED, runtimeDiffs[1][jobmgrcommon.GoalStateField])
 		}).
 		Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return()
@@ -249,8 +251,8 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackStopFailed() {
 	suite.mockTask.EXPECT().GetRunTime(gomock.Any()).Return(taskInfo.Runtime, nil)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(suite.mockJob)
 	suite.mockJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
-			suite.Equal(peloton_task.TaskState_KILLED, runtimeDiffs[1][cached.GoalStateField])
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.Equal(peloton_task.TaskState_KILLED, runtimeDiffs[1][jobmgrcommon.GoalStateField])
 		}).
 		Return(errors.New(""))
 	suite.tracker.trackDeadline()

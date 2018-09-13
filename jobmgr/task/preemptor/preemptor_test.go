@@ -15,12 +15,13 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	"code.uber.internal/infra/peloton/common/lifecycle"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
+
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
@@ -150,17 +151,17 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 
 	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			suite.EqualValues(util.CreateMesosTaskID(jobID, runningTaskInfo.InstanceId, 1),
-				runtimeDiffs[runningTaskInfo.InstanceId][cached.DesiredMesosTaskIDField])
+				runtimeDiffs[runningTaskInfo.InstanceId][jobmgrcommon.DesiredMesosTaskIDField])
 		}).
 		Return(nil)
 
 	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			suite.EqualValues(peloton_task.TaskState_KILLED,
-				runtimeDiffs[noRestartTaskInfo.InstanceId][cached.GoalStateField])
+				runtimeDiffs[noRestartTaskInfo.InstanceId][jobmgrcommon.GoalStateField])
 		}).
 		Return(nil)
 

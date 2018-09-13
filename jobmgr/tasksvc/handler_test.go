@@ -16,16 +16,18 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	hostmocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
-	"code.uber.internal/infra/peloton/jobmgr/cached"
+	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	cachedtest "code.uber.internal/infra/peloton/jobmgr/cached/test"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	logmanagermocks "code.uber.internal/infra/peloton/jobmgr/logmanager/mocks"
 	activermtaskmocks "code.uber.internal/infra/peloton/jobmgr/task/activermtask/mocks"
 	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
+
+	"code.uber.internal/infra/peloton/jobmgr/cached"
+	cachedtest "code.uber.internal/infra/peloton/jobmgr/cached/test"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/mock/gomock"
@@ -757,10 +759,10 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(taskInfos, nil),
 		suite.mockedCachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).
-			Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 				for _, runtimeDiff := range runtimeDiffs {
-					suite.Equal(runtimeDiff[cached.StateField], task.TaskState_INITIALIZED)
-					suite.Equal(runtimeDiff[cached.HealthyField], task.HealthState_DISABLED)
+					suite.Equal(runtimeDiff[jobmgrcommon.StateField], task.TaskState_INITIALIZED)
+					suite.Equal(runtimeDiff[jobmgrcommon.HealthyField], task.HealthState_DISABLED)
 				}
 			}).Return(nil),
 	)
@@ -896,9 +898,9 @@ func (suite *TaskHandlerTestSuite) TestStartTasks_PatchTasksFailure() {
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(taskInfos, nil),
 		suite.mockedCachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).
-			Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 				for _, runtimeDiff := range runtimeDiffs {
-					suite.Equal(runtimeDiff[cached.StateField], task.TaskState_INITIALIZED)
+					suite.Equal(runtimeDiff[jobmgrcommon.StateField], task.TaskState_INITIALIZED)
 				}
 			}).Return(errors.New("test error")),
 	)
@@ -966,10 +968,10 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		suite.mockedCachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).
-			Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 				for _, runtimeDiff := range runtimeDiffs {
-					suite.Equal(runtimeDiff[cached.StateField], task.TaskState_INITIALIZED)
-					suite.Equal(runtimeDiff[cached.GoalStateField], task.TaskState_SUCCEEDED)
+					suite.Equal(runtimeDiff[jobmgrcommon.StateField], task.TaskState_INITIALIZED)
+					suite.Equal(runtimeDiff[jobmgrcommon.GoalStateField], task.TaskState_SUCCEEDED)
 				}
 			}).Return(nil),
 	)
@@ -1226,9 +1228,9 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 		suite.mockedHostMgr.EXPECT().KillTasks(gomock.Any(), gomock.Any()),
 		suite.mockedCachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).
-			Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 				for _, runtimeDiff := range runtimeDiffs {
-					suite.Equal(runtimeDiff[cached.StateField], task.TaskState_INITIALIZED)
+					suite.Equal(runtimeDiff[jobmgrcommon.StateField], task.TaskState_INITIALIZED)
 				}
 			}).Return(nil),
 		suite.mockedGoalStateDrive.EXPECT().

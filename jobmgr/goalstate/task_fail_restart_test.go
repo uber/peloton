@@ -11,9 +11,10 @@ import (
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
+
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -145,12 +146,12 @@ func TestTaskFailRetry(t *testing.T) {
 
 	cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			runtimeDiff := runtimeDiffs[instanceID]
-			assert.True(t, runtimeDiff[cached.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != mesosTaskID)
-			assert.True(t, runtimeDiff[cached.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == mesosTaskID)
-			assert.True(t, runtimeDiff[cached.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
-			assert.True(t, runtimeDiff[cached.HealthyField].(pbtask.HealthState) == pbtask.HealthState_DISABLED)
+			assert.True(t, runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != mesosTaskID)
+			assert.True(t, runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == mesosTaskID)
+			assert.True(t, runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
+			assert.True(t, runtimeDiff[jobmgrcommon.HealthyField].(pbtask.HealthState) == pbtask.HealthState_DISABLED)
 		}).
 		Return(nil)
 
@@ -230,11 +231,11 @@ func TestTaskFailSystemFailure(t *testing.T) {
 
 	cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			runtimeDiff := runtimeDiffs[instanceID]
-			assert.True(t, runtimeDiff[cached.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != mesosTaskID)
-			assert.True(t, runtimeDiff[cached.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == mesosTaskID)
-			assert.True(t, runtimeDiff[cached.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
+			assert.True(t, runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != mesosTaskID)
+			assert.True(t, runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == mesosTaskID)
+			assert.True(t, runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
 		}).
 		Return(nil)
 

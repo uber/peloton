@@ -7,10 +7,10 @@ import (
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
-
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/task"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 
@@ -361,7 +361,7 @@ func processInstancesInUpdate(
 	if len(instancesToUpdate) == 0 {
 		return nil
 	}
-	runtimes := make(map[uint32]cached.RuntimeDiff)
+	runtimes := make(map[uint32]jobmgrcommon.RuntimeDiff)
 
 	for _, instID := range instancesToUpdate {
 		runtimeDiff := cachedUpdate.GetRuntimeDiff(jobConfig)
@@ -394,13 +394,13 @@ func removeInstancesInUpdate(
 	if len(instancesToRemove) == 0 {
 		return nil
 	}
-	runtimes := make(map[uint32]cached.RuntimeDiff)
+	runtimes := make(map[uint32]jobmgrcommon.RuntimeDiff)
 
 	for _, instID := range instancesToRemove {
-		runtimes[instID] = cached.RuntimeDiff{
-			cached.GoalStateField:            pbtask.TaskState_KILLED,
-			cached.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
-			cached.MessageField:              "Task Count reduced via API",
+		runtimes[instID] = jobmgrcommon.RuntimeDiff{
+			jobmgrcommon.GoalStateField:            pbtask.TaskState_KILLED,
+			jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
+			jobmgrcommon.MessageField:              "Task Count reduced via API",
 		}
 	}
 

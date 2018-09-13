@@ -22,12 +22,12 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-
-	"code.uber.internal/infra/peloton/common/backoff"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+
+	"code.uber.internal/infra/peloton/common/backoff"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -152,9 +152,9 @@ func TestGetLaunchableTasks(t *testing.T) {
 	assert.NoError(t, err)
 	for _, launchableTask := range launchableTasks {
 		runtimeDiff := launchableTask.RuntimeDiff
-		assert.Equal(t, task.TaskState_LAUNCHED, runtimeDiff[cached.StateField])
-		assert.Equal(t, hostOffer.Hostname, runtimeDiff[cached.HostField])
-		assert.Equal(t, hostOffer.AgentId, runtimeDiff[cached.AgentIDField])
+		assert.Equal(t, task.TaskState_LAUNCHED, runtimeDiff[jobmgrcommon.StateField])
+		assert.Equal(t, hostOffer.Hostname, runtimeDiff[jobmgrcommon.HostField])
+		assert.Equal(t, hostOffer.AgentId, runtimeDiff[jobmgrcommon.AgentIDField])
 	}
 }
 
@@ -219,10 +219,10 @@ func TestGetLaunchableTasksStateful(t *testing.T) {
 	assert.NoError(t, err)
 	for _, launchableTask := range launchableTasks {
 		runtimeDiff := launchableTask.RuntimeDiff
-		assert.Equal(t, task.TaskState_LAUNCHED, runtimeDiff[cached.StateField])
-		assert.Equal(t, hostOffer.Hostname, runtimeDiff[cached.HostField])
-		assert.Equal(t, hostOffer.AgentId, runtimeDiff[cached.AgentIDField])
-		assert.NotNil(t, runtimeDiff[cached.VolumeIDField], "Volume ID should not be null")
+		assert.Equal(t, task.TaskState_LAUNCHED, runtimeDiff[jobmgrcommon.StateField])
+		assert.Equal(t, hostOffer.Hostname, runtimeDiff[jobmgrcommon.HostField])
+		assert.Equal(t, hostOffer.AgentId, runtimeDiff[jobmgrcommon.AgentIDField])
+		assert.NotNil(t, runtimeDiff[jobmgrcommon.VolumeIDField], "Volume ID should not be null")
 	}
 }
 
@@ -792,9 +792,9 @@ func TestCreateLaunchableTasks(t *testing.T) {
 	jobFactory.EXPECT().GetJob(tmp.JobId).Return(cachedJob)
 	cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
-			assert.Equal(t, task.TaskState_KILLED, runtimeDiffs[0][cached.GoalStateField])
-			assert.Equal(t, "REASON_SECRET_NOT_FOUND", runtimeDiffs[0][cached.ReasonField])
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			assert.Equal(t, task.TaskState_KILLED, runtimeDiffs[0][jobmgrcommon.GoalStateField])
+			assert.Equal(t, "REASON_SECRET_NOT_FOUND", runtimeDiffs[0][jobmgrcommon.ReasonField])
 		}).
 		Return(nil)
 	mockSecretStore.EXPECT().

@@ -14,10 +14,12 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+
 	"code.uber.internal/infra/peloton/common/goalstate"
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
@@ -709,8 +711,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 
 		suite.cachedUpdate.EXPECT().
 			GetRuntimeDiff(gomock.Any()).
-			Return(cached.RuntimeDiff{
-				cached.DesiredConfigVersionField: newJobVersion,
+			Return(jobmgrcommon.RuntimeDiff{
+				jobmgrcommon.DesiredConfigVersionField: newJobVersion,
 			})
 	}
 
@@ -825,8 +827,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 
 	suite.cachedUpdate.EXPECT().
 		GetRuntimeDiff(gomock.Any()).
-		Return(cached.RuntimeDiff{
-			cached.DesiredConfigVersionField: newJobVersion,
+		Return(jobmgrcommon.RuntimeDiff{
+			jobmgrcommon.DesiredConfigVersionField: newJobVersion,
 		}).Times(int(batchSize))
 
 	suite.cachedJob.EXPECT().
@@ -1164,8 +1166,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRunDBErrorUpdateInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetRuntimeDiff(gomock.Any()).
-		Return(cached.RuntimeDiff{
-			cached.DesiredConfigVersionField: newJobVersion,
+		Return(jobmgrcommon.RuntimeDiff{
+			jobmgrcommon.DesiredConfigVersionField: newJobVersion,
 		}).Times(int(batchSize))
 
 	suite.cachedJob.EXPECT().
@@ -1245,12 +1247,12 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstances() {
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(_ context.Context, runtimes map[uint32]cached.RuntimeDiff) {
+		Do(func(_ context.Context, runtimes map[uint32]jobmgrcommon.RuntimeDiff) {
 			suite.Equal(2, len(runtimes))
 			for _, runtime := range runtimes {
-				suite.Equal(runtime[cached.GoalStateField],
+				suite.Equal(runtime[jobmgrcommon.GoalStateField],
 					pbtask.TaskState_KILLED)
-				suite.Equal(runtime[cached.DesiredConfigVersionField],
+				suite.Equal(runtime[jobmgrcommon.DesiredConfigVersionField],
 					newJobConfigVer)
 			}
 		}).

@@ -10,7 +10,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
+
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
@@ -51,7 +53,7 @@ type Task interface {
 
 	// PatchRuntime patches diff to the existing runtime cache
 	// in task and persists to DB.
-	PatchRuntime(ctx context.Context, diff RuntimeDiff) error
+	PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) error
 
 	// ReplaceRuntime replaces cache with runtime
 	// forceReplace would decide whether to check version when replacing the runtime
@@ -270,13 +272,13 @@ func (t *task) CreateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, o
 
 // PatchRuntime patches diff to the existing runtime cache
 // in task and persists to DB.
-func (t *task) PatchRuntime(ctx context.Context, diff RuntimeDiff) error {
+func (t *task) PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) error {
 	if diff == nil {
 		return yarpcerrors.InvalidArgumentErrorf(
 			"unexpected nil diff")
 	}
 
-	if _, ok := diff[RevisionField]; ok {
+	if _, ok := diff[jobmgrcommon.RevisionField]; ok {
 		return yarpcerrors.InvalidArgumentErrorf(
 			"unexpected Revision field in diff")
 	}

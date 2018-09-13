@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
 
@@ -60,22 +60,22 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 		taskEnt.jobID, taskEnt.instanceID, runtime, healthState)
 
 	// update task runtime
-	runtimeDiff[cached.GoalStateField] = jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())
-	runtimeDiff[cached.StartTimeField] = ""
-	runtimeDiff[cached.CompletionTimeField] = ""
-	runtimeDiff[cached.MessageField] = "Initialize task"
-	runtimeDiff[cached.ReasonField] = ""
+	runtimeDiff[jobmgrcommon.GoalStateField] = jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())
+	runtimeDiff[jobmgrcommon.StartTimeField] = ""
+	runtimeDiff[jobmgrcommon.CompletionTimeField] = ""
+	runtimeDiff[jobmgrcommon.MessageField] = "Initialize task"
+	runtimeDiff[jobmgrcommon.ReasonField] = ""
 
 	// If the task is being updated, then move the configuration version to
 	// the desired configuration version.
 	if runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
 		// TBD should the failure count be cleaned up as well?
-		runtimeDiff[cached.ConfigVersionField] =
+		runtimeDiff[jobmgrcommon.ConfigVersionField] =
 			runtime.GetDesiredConfigVersion()
 	}
 
 	err = cachedJob.PatchTasks(ctx,
-		map[uint32]cached.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
+		map[uint32]jobmgrcommon.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
 	if err == nil {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
 		EnqueueJobWithDefaultDelay(taskEnt.jobID, goalStateDriver, cachedJob)

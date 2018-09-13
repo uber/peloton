@@ -5,7 +5,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
-	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -30,11 +30,11 @@ func RegenerateMesosTaskIDDiff(
 	mesosTaskID := getMesosTaskID(jobID, instanceID, taskRuntime)
 
 	return map[string]interface{}{
-		cached.PrevMesosTaskIDField:    taskRuntime.GetMesosTaskId(),
-		cached.StateField:              task.TaskState_INITIALIZED,
-		cached.MesosTaskIDField:        mesosTaskID,
-		cached.DesiredMesosTaskIDField: mesosTaskID,
-		cached.HealthyField:            initHealthyField,
+		jobmgrcommon.PrevMesosTaskIDField:    taskRuntime.GetMesosTaskId(),
+		jobmgrcommon.StateField:              task.TaskState_INITIALIZED,
+		jobmgrcommon.MesosTaskIDField:        mesosTaskID,
+		jobmgrcommon.DesiredMesosTaskIDField: mesosTaskID,
+		jobmgrcommon.HealthyField:            initHealthyField,
 	}
 }
 

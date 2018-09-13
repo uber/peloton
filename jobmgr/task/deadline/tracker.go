@@ -10,6 +10,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -24,13 +25,6 @@ type Config struct {
 	// DeadlineTrackingPeriod is the period to check for tasks for deadline
 	DeadlineTrackingPeriod time.Duration `yaml:"deadline_tracking_period"`
 }
-
-const (
-	// RunningStateNotStarted represents not started state of deadline tracker component
-	RunningStateNotStarted = 0
-	// RunningStateRunning represents running state of deadline tracker component
-	RunningStateRunning = 1
-)
 
 // Tracker defines the interface of task deadline tracker
 // which tracks the tasks which are running more then
@@ -188,9 +182,9 @@ func (t *tracker) stopTask(ctx context.Context, task *peloton.TaskID) error {
 		Info("stopping task")
 
 	// set goal state to TaskState_KILLED
-	runtimeDiff := cached.RuntimeDiff{
-		cached.GoalStateField: pb_task.TaskState_KILLED,
-		cached.ReasonField:    "Deadline exceeded",
+	runtimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.GoalStateField: pb_task.TaskState_KILLED,
+		jobmgrcommon.ReasonField:    "Deadline exceeded",
 	}
 
 	id, instanceID, err := util.ParseTaskID(task.GetValue())
@@ -202,7 +196,7 @@ func (t *tracker) stopTask(ctx context.Context, task *peloton.TaskID) error {
 	// update the task in DB and cache, and then schedule to goalstate
 	cachedJob := t.jobFactory.AddJob(jobID)
 	err = cachedJob.PatchTasks(ctx,
-		map[uint32]cached.RuntimeDiff{uint32(instanceID): runtimeDiff})
+		map[uint32]jobmgrcommon.RuntimeDiff{uint32(instanceID): runtimeDiff})
 	if err != nil {
 		return err
 	}

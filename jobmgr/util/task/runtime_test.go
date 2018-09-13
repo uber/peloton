@@ -9,7 +9,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
-	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 )
 
 func TestRegenerateMesosTaskIDDiff(t *testing.T) {
@@ -59,14 +59,14 @@ func TestRegenerateMesosTaskIDDiff(t *testing.T) {
 			tt.initHealthState,
 		)
 
-		assert.Equal(t, diff[cached.StateField], task.TaskState_INITIALIZED)
-		assert.Equal(t, *diff[cached.PrevMesosTaskIDField].(*mesos.TaskID).Value,
+		assert.Equal(t, diff[jobmgrcommon.StateField], task.TaskState_INITIALIZED)
+		assert.Equal(t, *diff[jobmgrcommon.PrevMesosTaskIDField].(*mesos.TaskID).Value,
 			tt.curMesosTaskID)
-		assert.Equal(t, *diff[cached.MesosTaskIDField].(*mesos.TaskID).Value,
+		assert.Equal(t, *diff[jobmgrcommon.MesosTaskIDField].(*mesos.TaskID).Value,
 			tt.newMesosTaskID)
-		assert.Equal(t, *diff[cached.DesiredMesosTaskIDField].(*mesos.TaskID).Value,
+		assert.Equal(t, *diff[jobmgrcommon.DesiredMesosTaskIDField].(*mesos.TaskID).Value,
 			tt.newMesosTaskID)
-		assert.Equal(t, diff[cached.HealthyField], tt.initHealthState)
+		assert.Equal(t, diff[jobmgrcommon.HealthyField], tt.initHealthState)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"code.uber.internal/infra/peloton/common"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -20,9 +21,7 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-var (
-	dbError error = yarpcerrors.UnavailableErrorf("db error")
-)
+var dbError = yarpcerrors.UnavailableErrorf("db error")
 
 type JobTestSuite struct {
 	suite.Suite
@@ -112,11 +111,11 @@ func initializeCurrentRuntimes(instanceCount uint32, state pbtask.TaskState) map
 	return runtimes
 }
 
-func initializeDiffs(instanceCount uint32, state pbtask.TaskState) map[uint32]RuntimeDiff {
-	diffs := make(map[uint32]RuntimeDiff)
+func initializeDiffs(instanceCount uint32, state pbtask.TaskState) map[uint32]jobmgrcommon.RuntimeDiff {
+	diffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	for i := uint32(0); i < instanceCount; i++ {
-		diff := RuntimeDiff{
-			StateField: state,
+		diff := jobmgrcommon.RuntimeDiff{
+			jobmgrcommon.StateField: state,
 		}
 		diffs[i] = diff
 	}
@@ -1081,8 +1080,8 @@ func (suite *JobTestSuite) TestPartialJobCheck() {
 // TestPatchTasks_SetGetTasksSingle tests setting and getting single task in job in cache.
 func (suite *JobTestSuite) TestPatchTasks_SetGetTasksSingle() {
 	instanceCount := uint32(10)
-	runtimeDiff := RuntimeDiff{
-		StateField: pbtask.TaskState_RUNNING,
+	RuntimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.StateField: pbtask.TaskState_RUNNING,
 	}
 
 	suite.taskStore.EXPECT().
@@ -1102,7 +1101,7 @@ func (suite *JobTestSuite) TestPatchTasks_SetGetTasksSingle() {
 
 	// Test updating tasks one at a time in cache
 	for i := uint32(0); i < instanceCount; i++ {
-		suite.job.PatchTasks(context.Background(), map[uint32]RuntimeDiff{i: runtimeDiff})
+		suite.job.PatchTasks(context.Background(), map[uint32]jobmgrcommon.RuntimeDiff{i: RuntimeDiff})
 	}
 	suite.Equal(instanceCount, uint32(len(suite.job.tasks)))
 

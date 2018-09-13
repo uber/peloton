@@ -9,7 +9,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -18,7 +18,7 @@ import (
 // of which is a set of 1+ tasks to be admitted and placed as a group.
 func ConvertToResMgrGangs(
 	tasks []*task.TaskInfo,
-	jobConfig cached.JobConfig) []*resmgrsvc.Gang {
+	jobConfig jobmgrcommon.JobConfig) []*resmgrsvc.Gang {
 	var gangs []*resmgrsvc.Gang
 
 	// Gangs of multiple tasks are placed at the front of the returned list for
@@ -52,7 +52,7 @@ func ConvertToResMgrGangs(
 // ConvertTaskToResMgrTask converts taskinfo to resmgr task.
 func ConvertTaskToResMgrTask(
 	taskInfo *task.TaskInfo,
-	jobConfig cached.JobConfig) *resmgr.Task {
+	jobConfig jobmgrcommon.JobConfig) *resmgr.Task {
 	instanceID := taskInfo.GetInstanceId()
 	taskID := &peloton.TaskID{
 		Value: fmt.Sprintf(

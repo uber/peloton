@@ -10,6 +10,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
@@ -104,14 +105,14 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 // runtimeDiffAll which is a union of runtimeDiffNonTerminatedTasks and
 // runtimeDiffTerminatedTasks
 func createRuntimeDiffForKill(ctx context.Context, cachedJob cached.Job) (
-	runtimeDiffNonTerminatedTasks map[uint32]cached.RuntimeDiff,
-	runtimeDiffTerminatedTasks map[uint32]cached.RuntimeDiff,
-	runtimeDiffAll map[uint32]cached.RuntimeDiff,
+	runtimeDiffNonTerminatedTasks map[uint32]jobmgrcommon.RuntimeDiff,
+	runtimeDiffTerminatedTasks map[uint32]jobmgrcommon.RuntimeDiff,
+	runtimeDiffAll map[uint32]jobmgrcommon.RuntimeDiff,
 	err error,
 ) {
-	runtimeDiffNonTerminatedTasks = make(map[uint32]cached.RuntimeDiff)
-	runtimeDiffTerminatedTasks = make(map[uint32]cached.RuntimeDiff)
-	runtimeDiffAll = make(map[uint32]cached.RuntimeDiff)
+	runtimeDiffNonTerminatedTasks = make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiffTerminatedTasks = make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiffAll = make(map[uint32]jobmgrcommon.RuntimeDiff)
 
 	tasks := cachedJob.GetAllTasks()
 	for instanceID, cachedTask := range tasks {
@@ -132,10 +133,10 @@ func createRuntimeDiffForKill(ctx context.Context, cachedJob cached.Job) (
 			continue
 		}
 
-		runtimeDiff := cached.RuntimeDiff{
-			cached.GoalStateField: task.TaskState_KILLED,
-			cached.MessageField:   "Task stop API request",
-			cached.ReasonField:    "",
+		runtimeDiff := jobmgrcommon.RuntimeDiff{
+			jobmgrcommon.GoalStateField: task.TaskState_KILLED,
+			jobmgrcommon.MessageField:   "Task stop API request",
+			jobmgrcommon.ReasonField:    "",
 		}
 		runtimeDiffAll[instanceID] = runtimeDiff
 		if util.IsPelotonStateTerminal(runtime.GetState()) {
@@ -152,9 +153,9 @@ func createRuntimeDiffForKill(ctx context.Context, cachedJob cached.Job) (
 func calculateJobState(
 	ctx context.Context,
 	cachedJob cached.Job,
-	config cached.JobConfig,
+	config jobmgrcommon.JobConfig,
 	jobRuntime *job.RuntimeInfo,
-	runtimeDiffNonTerminatedTasks map[uint32]cached.RuntimeDiff) job.JobState {
+	runtimeDiffNonTerminatedTasks map[uint32]jobmgrcommon.RuntimeDiff) job.JobState {
 	// If not all instances have been created,
 	// and all instances to be killed are already in terminal state,
 	// then directly update the job state to KILLED.

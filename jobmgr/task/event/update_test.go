@@ -26,7 +26,8 @@ import (
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
@@ -222,14 +223,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 	timeNow := float64(time.Now().UnixNano())
 	event.MesosTaskStatus.Timestamp = &timeNow
 	taskInfo := createTestTaskInfo(task.TaskState_INITIALIZED)
-	runtimeDiff := cached.RuntimeDiff{
-		cached.MessageField:        "testFailure",
-		cached.CompletionTimeField: "",
-		cached.StateField:          task.TaskState_RUNNING,
-		cached.StartTimeField:      _currentTime,
-		cached.ReasonField:         "",
+	runtimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.MessageField:        "testFailure",
+		jobmgrcommon.CompletionTimeField: "",
+		jobmgrcommon.StateField:          task.TaskState_RUNNING,
+		jobmgrcommon.StartTimeField:      _currentTime,
+		jobmgrcommon.ReasonField:         "",
 	}
-	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
+	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
 
 	gomock.InOrder(
@@ -288,9 +289,9 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateHealthy() {
 			suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob),
 			cachedJob.EXPECT().SetTaskUpdateTime(event.MesosTaskStatus.Timestamp).Return(),
 			cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
-				func(_ context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+				func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 					for _, runtimeDiff := range runtimeDiffs {
-						suite.Equal(t.healthState, runtimeDiff[cached.HealthyField])
+						suite.Equal(t.healthState, runtimeDiff[jobmgrcommon.HealthyField])
 					}
 				}).Return(nil),
 
@@ -344,18 +345,18 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdate() {
 		SetTaskUpdateTime(gomock.Any()).Return()
 	cachedJob.EXPECT().
 		PatchTasks(context.Background(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			runtimeDiff := runtimeDiffs[_instanceID]
 			suite.Equal(
-				runtimeDiff[cached.StateField],
+				runtimeDiff[jobmgrcommon.StateField],
 				task.TaskState_FAILED,
 			)
 			suite.Equal(
-				runtimeDiff[cached.ReasonField],
+				runtimeDiff[jobmgrcommon.ReasonField],
 				_mesosReason.String(),
 			)
 			suite.Equal(
-				runtimeDiff[cached.MessageField],
+				runtimeDiff[jobmgrcommon.MessageField],
 				_failureMsg,
 			)
 		}).
@@ -393,18 +394,18 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 		SetTaskUpdateTime(gomock.Any()).Return()
 	cachedJob.EXPECT().
 		PatchTasks(context.Background(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			runtimeDiff := runtimeDiffs[_instanceID]
 			suite.Equal(
-				runtimeDiff[cached.StateField],
+				runtimeDiff[jobmgrcommon.StateField],
 				task.TaskState_INITIALIZED,
 			)
 			suite.Equal(
-				runtimeDiff[cached.MessageField],
+				runtimeDiff[jobmgrcommon.MessageField],
 				rescheduleMsg,
 			)
 			suite.Equal(
-				runtimeDiff[cached.HealthyField],
+				runtimeDiff[jobmgrcommon.HealthyField],
 				task.HealthState_DISABLED,
 			)
 		}).
@@ -474,14 +475,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateNoRetryForStat
 		SetTaskUpdateTime(gomock.Any()).Return()
 	cachedJob.EXPECT().
 		PatchTasks(context.Background(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			runtimeDiff := runtimeDiffs[_instanceID]
 			suite.Equal(
-				runtimeDiff[cached.StateField],
+				runtimeDiff[jobmgrcommon.StateField],
 				task.TaskState_LOST,
 			)
 			suite.Equal(
-				runtimeDiff[cached.MessageField],
+				runtimeDiff[jobmgrcommon.MessageField],
 				_failureMsg,
 			)
 		}).
@@ -509,15 +510,15 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 	taskInfo := createTestTaskInfoWithHealth(task.TaskState_RUNNING)
 	taskInfo.Runtime.GoalState = task.TaskState_KILLED
 
-	runtimeDiff := cached.RuntimeDiff{
-		cached.StateField:          task.TaskState_KILLED,
-		cached.ReasonField:         failureReason.String(),
-		cached.MessageField:        "Stopped task LOST event: " + _failureMsg,
-		cached.CompletionTimeField: _currentTime,
-		cached.ResourceUsageField:  jobmgrtask.CreateEmptyResourceUsageMap(),
-		cached.HealthyField:        task.HealthState_INVALID,
+	runtimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.StateField:          task.TaskState_KILLED,
+		jobmgrcommon.ReasonField:         failureReason.String(),
+		jobmgrcommon.MessageField:        "Stopped task LOST event: " + _failureMsg,
+		jobmgrcommon.CompletionTimeField: _currentTime,
+		jobmgrcommon.ResourceUsageField:  jobmgrtask.CreateEmptyResourceUsageMap(),
+		jobmgrcommon.HealthyField:        task.HealthState_INVALID,
 	}
-	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
+	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
 
 	gomock.InOrder(
@@ -694,14 +695,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
 		Value: "testVolume",
 	}
 	taskInfo.GetRuntime().VolumeID = testVolumeID
-	runtimeDiff := cached.RuntimeDiff{
-		cached.StateField:          task.TaskState_RUNNING,
-		cached.StartTimeField:      _currentTime,
-		cached.MessageField:        "testFailure",
-		cached.CompletionTimeField: "",
-		cached.ReasonField:         "",
+	runtimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.StateField:          task.TaskState_RUNNING,
+		jobmgrcommon.StartTimeField:      _currentTime,
+		jobmgrcommon.MessageField:        "testFailure",
+		jobmgrcommon.CompletionTimeField: "",
+		jobmgrcommon.ReasonField:         "",
 	}
-	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
+	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
 
 	volumeInfo := &volume.PersistentVolumeInfo{
@@ -751,14 +752,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 		Value: "testVolume",
 	}
 	taskInfo.GetRuntime().VolumeID = testVolumeID
-	runtimeDiff := cached.RuntimeDiff{
-		cached.StateField:          task.TaskState_RUNNING,
-		cached.StartTimeField:      _currentTime,
-		cached.MessageField:        "testFailure",
-		cached.CompletionTimeField: "",
-		cached.ReasonField:         "",
+	runtimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.StateField:          task.TaskState_RUNNING,
+		jobmgrcommon.StartTimeField:      _currentTime,
+		jobmgrcommon.MessageField:        "testFailure",
+		jobmgrcommon.CompletionTimeField: "",
+		jobmgrcommon.ReasonField:         "",
 	}
-	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
+	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
 
 	volumeInfo := &volume.PersistentVolumeInfo{
@@ -810,14 +811,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessFailedTaskRunningStatusUpdate() {
 		SetTaskUpdateTime(gomock.Any()).Return()
 	cachedJob.EXPECT().
 		PatchTasks(context.Background(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			runtimeDiff := runtimeDiffs[_instanceID]
 			suite.Equal(
-				runtimeDiff[cached.StateField],
+				runtimeDiff[jobmgrcommon.StateField],
 				task.TaskState_RUNNING,
 			)
 			suite.Equal(
-				runtimeDiff[cached.CompletionTimeField],
+				runtimeDiff[jobmgrcommon.CompletionTimeField],
 				"",
 			)
 		}).

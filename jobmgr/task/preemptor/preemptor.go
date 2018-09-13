@@ -11,6 +11,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -173,10 +174,10 @@ func (p *preemptor) preemptTasks(ctx context.Context, preemptionCandidates []*re
 
 		runtimeDiff := getRuntimeDiffForPreempt(
 			jobID, uint32(instanceID), runtime, preemptPolicy)
-		runtimeDiff[cached.ReasonField] = task.GetReason().String()
+		runtimeDiff[jobmgrcommon.ReasonField] = task.GetReason().String()
 
 		// update the task in cache and enqueue to goal state engine
-		err = cachedJob.PatchTasks(ctx, map[uint32]cached.RuntimeDiff{uint32(instanceID): runtimeDiff})
+		err = cachedJob.PatchTasks(ctx, map[uint32]jobmgrcommon.RuntimeDiff{uint32(instanceID): runtimeDiff})
 		if err != nil {
 			errs = multierror.Append(errs, err)
 		} else {
@@ -261,21 +262,21 @@ func getRuntimeDiffForPreempt(
 	jobID *peloton.JobID,
 	instanceID uint32,
 	taskRuntime *pbtask.RuntimeInfo,
-	preemptPolicy *pbtask.PreemptionPolicy) cached.RuntimeDiff {
-	runtimeDiff := cached.RuntimeDiff{
-		cached.MessageField: "Preempting running task",
+	preemptPolicy *pbtask.PreemptionPolicy) jobmgrcommon.RuntimeDiff {
+	runtimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.MessageField: "Preempting running task",
 	}
 
 	// kill the task if GetKillOnPreempt is true
 	if preemptPolicy != nil && preemptPolicy.GetKillOnPreempt() {
-		runtimeDiff[cached.GoalStateField] = pbtask.TaskState_KILLED
+		runtimeDiff[jobmgrcommon.GoalStateField] = pbtask.TaskState_KILLED
 	} else {
 		// otherwise restart the task
 		prevRunID, err := util.ParseRunID(taskRuntime.GetMesosTaskId().GetValue())
 		if err != nil {
 			prevRunID = 0
 		}
-		runtimeDiff[cached.DesiredMesosTaskIDField] = util.CreateMesosTaskID(jobID, instanceID, prevRunID+1)
+		runtimeDiff[jobmgrcommon.DesiredMesosTaskIDField] = util.CreateMesosTaskID(jobID, instanceID, prevRunID+1)
 	}
 	return runtimeDiff
 }

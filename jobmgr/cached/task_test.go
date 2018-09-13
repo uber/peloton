@@ -14,6 +14,8 @@ import (
 
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
@@ -89,8 +91,8 @@ func (suite *TaskTestSuite) TestPatchRuntime() {
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
 
-	diff := RuntimeDiff{
-		StateField: pbtask.TaskState_RUNNING,
+	diff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.StateField: pbtask.TaskState_RUNNING,
 	}
 
 	suite.taskStore.EXPECT().
@@ -127,9 +129,9 @@ func (suite *TaskTestSuite) TestPatchRuntime_WithInitializedState() {
 	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
 
 	mesosTaskID := "acf6e6d4-51be-4b60-8900-683f11252848" + "-1-2"
-	diff := RuntimeDiff{
-		StateField: pbtask.TaskState_INITIALIZED,
-		MesosTaskIDField: &mesosv1.TaskID{
+	diff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.StateField: pbtask.TaskState_INITIALIZED,
+		jobmgrcommon.MesosTaskIDField: &mesosv1.TaskID{
 			Value: &mesosTaskID,
 		},
 	}
@@ -164,8 +166,8 @@ func (suite *TaskTestSuite) TestPatchRuntime_KillInitializedTask() {
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
 
-	diff := RuntimeDiff{
-		GoalStateField: pbtask.TaskState_KILLED,
+	diff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.GoalStateField: pbtask.TaskState_KILLED,
 	}
 
 	suite.taskStore.EXPECT().
@@ -198,8 +200,8 @@ func (suite *TaskTestSuite) TestPatchRuntime_NoRuntimeInCache() {
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, nil)
 
-	diff := RuntimeDiff{
-		StateField: pbtask.TaskState_RUNNING,
+	diff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.StateField: pbtask.TaskState_RUNNING,
 	}
 
 	suite.taskStore.EXPECT().
@@ -233,8 +235,8 @@ func (suite *TaskTestSuite) TestPatchRuntime_DBError() {
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
 
-	diff := RuntimeDiff{
-		StateField: pbtask.TaskState_RUNNING,
+	diff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.StateField: pbtask.TaskState_RUNNING,
 	}
 
 	suite.taskStore.EXPECT().

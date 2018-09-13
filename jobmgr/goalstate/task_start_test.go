@@ -16,12 +16,13 @@ import (
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	mocks2 "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
-	"code.uber.internal/infra/peloton/storage"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
+
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	"code.uber.internal/infra/peloton/storage"
 	taskutil "code.uber.internal/infra/peloton/util/task"
 
 	"github.com/golang/mock/gomock"
@@ -148,10 +149,10 @@ func (suite *TaskStartTestSuite) TestTaskStartStateless() {
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
-			suite.Equal(runtimeDiffs[suite.instanceID], cached.RuntimeDiff{
-				cached.StateField:   pbtask.TaskState_PENDING,
-				cached.MessageField: "Task sent for placement",
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.Equal(runtimeDiffs[suite.instanceID], jobmgrcommon.RuntimeDiff{
+				jobmgrcommon.StateField:   pbtask.TaskState_PENDING,
+				jobmgrcommon.MessageField: "Task sent for placement",
 			})
 		}).Return(nil)
 
@@ -298,7 +299,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
 			gomock.Any(),
 		).Return(map[string]*launcher.LaunchableTask{
 		taskID: {
-			RuntimeDiff: cached.RuntimeDiff{},
+			RuntimeDiff: jobmgrcommon.RuntimeDiff{},
 		},
 	}, nil)
 
@@ -312,8 +313,8 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
-			suite.Equal(runtimeDiffs[suite.instanceID], cached.RuntimeDiff{})
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.Equal(runtimeDiffs[suite.instanceID], jobmgrcommon.RuntimeDiff{})
 		}).Return(nil)
 
 	suite.cachedTask.EXPECT().
@@ -379,7 +380,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeGetTaskFailed() 
 			gomock.Any(),
 		).Return(map[string]*launcher.LaunchableTask{
 		taskID: {
-			RuntimeDiff: cached.RuntimeDiff{},
+			RuntimeDiff: jobmgrcommon.RuntimeDiff{},
 		},
 	}, nil)
 
@@ -407,7 +408,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeGetConfigFailed(
 			gomock.Any(),
 		).Return(map[string]*launcher.LaunchableTask{
 		taskID: {
-			RuntimeDiff: cached.RuntimeDiff{},
+			RuntimeDiff: jobmgrcommon.RuntimeDiff{},
 		},
 	}, nil)
 
@@ -476,7 +477,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeDBError() {
 			gomock.Any(),
 		).Return(map[string]*launcher.LaunchableTask{
 		taskID: {
-			RuntimeDiff: cached.RuntimeDiff{},
+			RuntimeDiff: jobmgrcommon.RuntimeDiff{},
 		},
 	}, nil)
 
@@ -490,8 +491,8 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeDBError() {
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
-			suite.Equal(runtimeDiffs[suite.instanceID], cached.RuntimeDiff{})
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.Equal(runtimeDiffs[suite.instanceID], jobmgrcommon.RuntimeDiff{})
 		}).
 		Return(fmt.Errorf("fake db write error"))
 
@@ -564,10 +565,10 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithoutVolume() {
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
-			suite.Equal(runtimeDiffs[suite.instanceID], cached.RuntimeDiff{
-				cached.StateField:   pbtask.TaskState_PENDING,
-				cached.MessageField: "Task sent for placement",
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.Equal(runtimeDiffs[suite.instanceID], jobmgrcommon.RuntimeDiff{
+				jobmgrcommon.StateField:   pbtask.TaskState_PENDING,
+				jobmgrcommon.MessageField: "Task sent for placement",
 			})
 		}).
 		Return(nil)

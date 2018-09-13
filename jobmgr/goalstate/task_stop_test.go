@@ -17,9 +17,10 @@ import (
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
+
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -78,12 +79,12 @@ func TestTaskStop(t *testing.T) {
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
 
-	expectedRuntimeDiff := cached.RuntimeDiff{
-		cached.StateField:   pbtask.TaskState_KILLING,
-		cached.MessageField: "Killing the task",
-		cached.ReasonField:  "",
+	expectedRuntimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.StateField:   pbtask.TaskState_KILLING,
+		jobmgrcommon.MessageField: "Killing the task",
+		jobmgrcommon.ReasonField:  "",
 	}
-	cachedJob.EXPECT().PatchTasks(gomock.Any(), map[uint32]cached.RuntimeDiff{
+	cachedJob.EXPECT().PatchTasks(gomock.Any(), map[uint32]jobmgrcommon.RuntimeDiff{
 		instanceID: expectedRuntimeDiff,
 	})
 

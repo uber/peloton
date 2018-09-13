@@ -17,6 +17,8 @@ import (
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
@@ -312,13 +314,13 @@ func (suite *UpdateStartTestSuite) TestUpdateContainsUnchangedInstance() {
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			for i := uint32(len(instancesTotal)); i < suite.jobConfig.GetInstanceCount(); i++ {
 				runtimeDiff := runtimeDiffs[i]
 				suite.NotNil(runtimeDiff)
-				suite.Equal(runtimeDiff[cached.DesiredConfigVersionField],
+				suite.Equal(runtimeDiff[jobmgrcommon.DesiredConfigVersionField],
 					suite.jobConfig.GetChangeLog().Version)
-				suite.Equal(runtimeDiff[cached.ConfigVersionField],
+				suite.Equal(runtimeDiff[jobmgrcommon.ConfigVersionField],
 					suite.jobConfig.GetChangeLog().Version)
 			}
 		}).

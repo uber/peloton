@@ -5,6 +5,7 @@ import (
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -27,7 +28,7 @@ type WorkflowStrategy interface {
 	// GetRuntimeDiff accepts the current task runtime of an instance and the desired
 	// job config, it returns the RuntimeDiff to move the instance to the state desired
 	// by the workflow. Return nil if no action is needed.
-	GetRuntimeDiff(jobConfig *pbjob.JobConfig) RuntimeDiff
+	GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommon.RuntimeDiff
 }
 
 func getWorkflowStrategy(workflowType models.WorkflowType) WorkflowStrategy {
@@ -80,10 +81,10 @@ func (s *updateStrategy) IsInstanceInProgress(desiredConfigVersion uint64, runti
 		!s.IsInstanceComplete(desiredConfigVersion, runtime)
 }
 
-func (s *updateStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) RuntimeDiff {
-	return RuntimeDiff{
-		DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
-		MessageField:              _updateTaskMessage,
+func (s *updateStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommon.RuntimeDiff {
+	return jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
+		jobmgrcommon.MessageField:              _updateTaskMessage,
 	}
 }
 
@@ -96,11 +97,11 @@ type restartStrategy struct {
 	WorkflowStrategy
 }
 
-func (s *restartStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) RuntimeDiff {
-	return RuntimeDiff{
-		GoalStateField:            getDefaultTaskGoalState(jobConfig.GetType()),
-		DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
-		MessageField:              _restartTaskMessage,
+func (s *restartStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommon.RuntimeDiff {
+	return jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.GoalStateField:            getDefaultTaskGoalState(jobConfig.GetType()),
+		jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
+		jobmgrcommon.MessageField:              _restartTaskMessage,
 	}
 }
 
@@ -113,17 +114,17 @@ type startStrategy struct {
 	WorkflowStrategy
 }
 
-func (s *startStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) RuntimeDiff {
+func (s *startStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommon.RuntimeDiff {
 	// always update both config version and desired config version, no matter
 	// the current task state. If startStrategy only update desired config
 	// version when task is in terminal state, it is possible that the task
 	// transits into a non-terminal state in another thread, and the action would
 	// become a restart action.
-	return RuntimeDiff{
-		GoalStateField:            getDefaultTaskGoalState(jobConfig.GetType()),
-		ConfigVersionField:        jobConfig.GetChangeLog().GetVersion(),
-		DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
-		MessageField:              _startTaskMessage,
+	return jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.GoalStateField:            getDefaultTaskGoalState(jobConfig.GetType()),
+		jobmgrcommon.ConfigVersionField:        jobConfig.GetChangeLog().GetVersion(),
+		jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
+		jobmgrcommon.MessageField:              _startTaskMessage,
 	}
 }
 
@@ -156,13 +157,13 @@ func (s *stopStrategy) IsInstanceInProgress(desiredConfigVersion uint64, runtime
 		!s.IsInstanceComplete(desiredConfigVersion, runtime)
 }
 
-func (s *stopStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) RuntimeDiff {
+func (s *stopStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommon.RuntimeDiff {
 	// always set goal state to KILLED to prevent any failure retry
-	return RuntimeDiff{
-		ConfigVersionField:        jobConfig.GetChangeLog().GetVersion(),
-		DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
-		GoalStateField:            pbtask.TaskState_KILLED,
-		MessageField:              _stopTaskMessage,
+	return jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.ConfigVersionField:        jobConfig.GetChangeLog().GetVersion(),
+		jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
+		jobmgrcommon.GoalStateField:            pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:              _stopTaskMessage,
 	}
 }
 

@@ -7,6 +7,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -209,12 +211,12 @@ func TestUpdateStrategyGetRuntimeDiff(t *testing.T) {
 	runtimeDiff := strategy.GetRuntimeDiff(jobConfig)
 	assert.Equal(
 		t,
-		runtimeDiff[DesiredConfigVersionField].(uint64),
+		runtimeDiff[jobmgrcommon.DesiredConfigVersionField].(uint64),
 		configVersion,
 	)
 	assert.Equal(
 		t,
-		runtimeDiff[MessageField].(string),
+		runtimeDiff[jobmgrcommon.MessageField].(string),
 		_updateTaskMessage,
 	)
 	assert.Len(t, runtimeDiff, 2)
@@ -420,17 +422,17 @@ func TestRestartStrategyGetRuntimeDiff(t *testing.T) {
 	runtimeDiff := strategy.GetRuntimeDiff(jobConfig)
 	assert.Equal(
 		t,
-		runtimeDiff[DesiredConfigVersionField].(uint64),
+		runtimeDiff[jobmgrcommon.DesiredConfigVersionField].(uint64),
 		configVersion,
 	)
 	assert.Equal(
 		t,
-		runtimeDiff[MessageField].(string),
+		runtimeDiff[jobmgrcommon.MessageField].(string),
 		_restartTaskMessage,
 	)
 	assert.Equal(
 		t,
-		runtimeDiff[GoalStateField].(pbtask.TaskState),
+		runtimeDiff[jobmgrcommon.GoalStateField].(pbtask.TaskState),
 		getDefaultTaskGoalState(jobConfig.GetType()),
 	)
 }
@@ -645,22 +647,22 @@ func TestStartStrategyGetRuntimeDiff(t *testing.T) {
 	runtimeDiff := strategy.GetRuntimeDiff(jobConfig)
 	assert.Equal(
 		t,
-		runtimeDiff[ConfigVersionField].(uint64),
+		runtimeDiff[jobmgrcommon.ConfigVersionField].(uint64),
 		configVersion,
 	)
 	assert.Equal(
 		t,
-		runtimeDiff[DesiredConfigVersionField].(uint64),
+		runtimeDiff[jobmgrcommon.DesiredConfigVersionField].(uint64),
 		configVersion,
 	)
 	assert.Equal(
 		t,
-		runtimeDiff[MessageField].(string),
+		runtimeDiff[jobmgrcommon.MessageField].(string),
 		_startTaskMessage,
 	)
 	assert.Equal(
 		t,
-		runtimeDiff[GoalStateField].(pbtask.TaskState),
+		runtimeDiff[jobmgrcommon.GoalStateField].(pbtask.TaskState),
 		getDefaultTaskGoalState(jobConfig.GetType()),
 	)
 }
@@ -833,17 +835,17 @@ func TestStopStrategyGetRuntimeDiff(t *testing.T) {
 
 	assert.Equal(
 		t,
-		runtimeDiff[DesiredConfigVersionField].(uint64),
+		runtimeDiff[jobmgrcommon.DesiredConfigVersionField].(uint64),
 		configVersion,
 	)
 	assert.Equal(
 		t,
-		runtimeDiff[MessageField].(string),
+		runtimeDiff[jobmgrcommon.MessageField].(string),
 		_stopTaskMessage,
 	)
 	assert.Equal(
 		t,
-		runtimeDiff[GoalStateField].(pbtask.TaskState),
+		runtimeDiff[jobmgrcommon.GoalStateField].(pbtask.TaskState),
 		pbtask.TaskState_KILLED,
 	)
 }

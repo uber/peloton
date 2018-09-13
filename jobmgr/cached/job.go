@@ -14,6 +14,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/taskconfig"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	stringsutil "code.uber.internal/infra/peloton/util/strings"
 
@@ -22,11 +23,6 @@ import (
 )
 
 type singleTask func(id uint32) error
-
-// RuntimeDiff to be applied to the runtime struct.
-// key is the field name to be updated,
-// value is the value to be updated to.
-type RuntimeDiff map[string]interface{}
 
 // Job in the cache.
 // TODO there a lot of methods in this interface. To determine if
@@ -46,7 +42,7 @@ type Job interface {
 	// to be update, and value is the new value of the field. PatchTasks
 	// would save the change in both cache and DB. If persisting to DB fails,
 	// cache would be invalidated as well.
-	PatchTasks(ctx context.Context, runtimeDiffs map[uint32]RuntimeDiff) error
+	PatchTasks(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) error
 
 	// ReplaceTasks replaces task runtime with runtimes in cache.
 	// If forceReplace is false, it would check Revision version
@@ -78,13 +74,13 @@ type Job interface {
 	Update(ctx context.Context, jobInfo *pbjob.JobInfo, req UpdateRequest) error
 
 	// IsPartiallyCreated returns if job has not been fully created yet
-	IsPartiallyCreated(config JobConfig) bool
+	IsPartiallyCreated(config jobmgrcommon.JobConfig) bool
 
 	// GetRuntime returns the runtime of the job
 	GetRuntime(ctx context.Context) (*pbjob.RuntimeInfo, error)
 
 	// GetConfig returns the config of the job
-	GetConfig(ctx context.Context) (JobConfig, error)
+	GetConfig(ctx context.Context) (jobmgrcommon.JobConfig, error)
 
 	// GetJobType returns the job type in the job config stored in the cache
 	// The type can be nil when we read it. It should be only used for
@@ -115,34 +111,10 @@ type Job interface {
 	RecalculateResourceUsage(ctx context.Context)
 }
 
-// JobConfig stores the job configurations in cache which is fetched multiple
-// times during normal job/task operations.
-// JobConfig makes the job interface cleaner by having the caller request
-// for the configuration first (which can fail due to Cassandra errors
-// if cache is invalid or not populated yet), and then fetch the needed
-// configuration from the interface. Otherwise, caller needs to deal with
-// context and err for each config related call.
-// The interface exposes get methods only so that the caller cannot
-// overwrite any of these configurations.
-type JobConfig interface {
-	// GetInstanceCount returns the instance count
-	// in the job config stored in the cache
-	GetInstanceCount() uint32
-	// GetType returns the type of the job stored in the cache
-	GetType() pbjob.JobType
-	// GetRespoolID returns the respool id stored in the cache
-	GetRespoolID() *peloton.ResourcePoolID
-	// GetSLA returns the SLA configuration
-	// in the job config stored in the cache
-	GetSLA() *pbjob.SlaConfig
-	// GetChangeLog returns the changeLog in the job config stored in the cache
-	GetChangeLog() *peloton.ChangeLog
-}
-
 // JobConfigCache is a union of JobConfig
 // and helper methods only available for cached config
 type JobConfigCache interface {
-	JobConfig
+	jobmgrcommon.JobConfig
 	HasControllerTask() bool
 }
 
@@ -238,7 +210,7 @@ func (j *job) CreateTasks(
 
 func (j *job) PatchTasks(
 	ctx context.Context,
-	runtimeDiffs map[uint32]RuntimeDiff) error {
+	runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) error {
 
 	patchSingleTask := func(id uint32) error {
 		t := j.AddTask(id)
@@ -770,7 +742,7 @@ func (j *job) SetTaskUpdateTime(t *float64) {
 	j.lastTaskUpdateTime = *t
 }
 
-func (j *job) IsPartiallyCreated(config JobConfig) bool {
+func (j *job) IsPartiallyCreated(config jobmgrcommon.JobConfig) bool {
 	j.RLock()
 	defer j.RUnlock()
 
@@ -797,7 +769,7 @@ func (j *job) GetRuntime(ctx context.Context) (*pbjob.RuntimeInfo, error) {
 	return j.runtime, nil
 }
 
-func (j *job) GetConfig(ctx context.Context) (JobConfig, error) {
+func (j *job) GetConfig(ctx context.Context) (jobmgrcommon.JobConfig, error) {
 	j.Lock()
 	defer j.Unlock()
 
@@ -880,7 +852,7 @@ func (c *cachedConfig) HasControllerTask() bool {
 
 // HasControllerTask returns if a job has controller task in it,
 // it can accept both cachedConfig and full JobConfig
-func HasControllerTask(config JobConfig) bool {
+func HasControllerTask(config jobmgrcommon.JobConfig) bool {
 	if castedCachedConfig, ok := config.(JobConfigCache); ok {
 		return castedCachedConfig.HasControllerTask()
 	}
@@ -902,7 +874,7 @@ func getIdsFromRuntimeMap(input map[uint32]*pbtask.RuntimeInfo) []uint32 {
 	return result
 }
 
-func getIdsFromDiffs(input map[uint32]RuntimeDiff) []uint32 {
+func getIdsFromDiffs(input map[uint32]jobmgrcommon.RuntimeDiff) []uint32 {
 	result := make([]uint32, 0, len(input))
 	for k := range input {
 		result = append(result, k)

@@ -16,9 +16,10 @@ import (
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -120,12 +121,12 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskLaunchTimeout() {
 		suite.jobConfig.EXPECT().GetType().Return(pb_job.JobType_BATCH)
 
 		suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
-			func(_ context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 				for _, runtimeDiff := range runtimeDiffs {
-					suite.Equal(oldMesosTaskID, runtimeDiff[cached.PrevMesosTaskIDField])
-					suite.NotEqual(oldMesosTaskID, runtimeDiff[cached.MesosTaskIDField])
-					suite.Equal(pb_task.TaskState_INITIALIZED, runtimeDiff[cached.StateField])
-					suite.Equal(pb_task.TaskState_SUCCEEDED, runtimeDiff[cached.GoalStateField])
+					suite.Equal(oldMesosTaskID, runtimeDiff[jobmgrcommon.PrevMesosTaskIDField])
+					suite.NotEqual(oldMesosTaskID, runtimeDiff[jobmgrcommon.MesosTaskIDField])
+					suite.Equal(pb_task.TaskState_INITIALIZED, runtimeDiff[jobmgrcommon.StateField])
+					suite.Equal(pb_task.TaskState_SUCCEEDED, runtimeDiff[jobmgrcommon.GoalStateField])
 				}
 			}).Return(nil)
 
@@ -260,12 +261,12 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeout() {
 	suite.jobConfig.EXPECT().GetType().Return(pb_job.JobType_BATCH)
 
 	suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
-		func(_ context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+		func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			for _, runtimeDiff := range runtimeDiffs {
-				suite.Equal(oldMesosTaskID, runtimeDiff[cached.PrevMesosTaskIDField])
-				suite.NotEqual(oldMesosTaskID, runtimeDiff[cached.MesosTaskIDField])
-				suite.Equal(pb_task.TaskState_INITIALIZED, runtimeDiff[cached.StateField])
-				suite.Equal(pb_task.TaskState_SUCCEEDED, runtimeDiff[cached.GoalStateField])
+				suite.Equal(oldMesosTaskID, runtimeDiff[jobmgrcommon.PrevMesosTaskIDField])
+				suite.NotEqual(oldMesosTaskID, runtimeDiff[jobmgrcommon.MesosTaskIDField])
+				suite.Equal(pb_task.TaskState_INITIALIZED, runtimeDiff[jobmgrcommon.StateField])
+				suite.Equal(pb_task.TaskState_SUCCEEDED, runtimeDiff[jobmgrcommon.GoalStateField])
 			}
 		}).Return(nil)
 

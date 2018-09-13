@@ -10,6 +10,8 @@ import (
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -55,7 +57,7 @@ func handleUnchangedInstancesInUpdate(
 	cachedJob cached.Job,
 	jobConfig *job.JobConfig) error {
 
-	runtimes := make(map[uint32]cached.RuntimeDiff)
+	runtimes := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	instanceCount := jobConfig.GetInstanceCount()
 	instancesTotal := cachedUpdate.GetGoalState().Instances
 
@@ -72,9 +74,9 @@ func handleUnchangedInstancesInUpdate(
 
 		if found == false {
 			// instance is left unchanged with this update
-			runtimeDiff := cached.RuntimeDiff{
-				cached.ConfigVersionField:        jobConfig.GetChangeLog().GetVersion(),
-				cached.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
+			runtimeDiff := jobmgrcommon.RuntimeDiff{
+				jobmgrcommon.ConfigVersionField:        jobConfig.GetChangeLog().GetVersion(),
+				jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
 			}
 			runtimes[i] = runtimeDiff
 		}

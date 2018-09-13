@@ -10,7 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
 
@@ -82,7 +82,7 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		return nil
 	}
 
-	err = cachedJob.PatchTasks(ctx, map[uint32]cached.RuntimeDiff{
+	err = cachedJob.PatchTasks(ctx, map[uint32]jobmgrcommon.RuntimeDiff{
 		taskEnt.instanceID: launchableTask.RuntimeDiff,
 	})
 	if err != nil {
@@ -196,12 +196,12 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 	// Update task state to PENDING
 	runtime := taskInfo.GetRuntime()
 	if runtime.GetState() != task.TaskState_PENDING {
-		runtimeDiff := cached.RuntimeDiff{
-			cached.StateField:   task.TaskState_PENDING,
-			cached.MessageField: "Task sent for placement",
+		runtimeDiff := jobmgrcommon.RuntimeDiff{
+			jobmgrcommon.StateField:   task.TaskState_PENDING,
+			jobmgrcommon.MessageField: "Task sent for placement",
 		}
 		err = cachedJob.PatchTasks(ctx,
-			map[uint32]cached.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
+			map[uint32]jobmgrcommon.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
 	}
 	return err
 }

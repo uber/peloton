@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	updateutil "code.uber.internal/infra/peloton/jobmgr/util/update"
 	"code.uber.internal/infra/peloton/util"
 
@@ -197,7 +198,7 @@ func jobStateDeterminerFactory(
 	jobRuntime *job.RuntimeInfo,
 	stateCounts map[string]uint32,
 	cachedJob cached.Job,
-	config cached.JobConfig) jobStateDeterminer {
+	config jobmgrcommon.JobConfig) jobStateDeterminer {
 	totalInstanceCount := getTotalInstanceCount(stateCounts)
 	// a job is partially created if:
 	// 1. number of total instance count is smaller than configured
@@ -374,7 +375,7 @@ func determineJobRuntimeState(
 	ctx context.Context,
 	jobRuntime *job.RuntimeInfo,
 	stateCounts map[string]uint32,
-	config cached.JobConfig,
+	config jobmgrcommon.JobConfig,
 	goalStateDriver *driver,
 	cachedJob cached.Job) (job.JobState, error) {
 	jobStateDeterminer := jobStateDeterminerFactory(
@@ -606,7 +607,7 @@ func setCompletionTime(
 // event handling for these tasks.
 func recalculateJobStateFromCache(
 	ctx context.Context, jobRuntime *job.RuntimeInfo, cachedJob cached.Job,
-	jobState job.JobState, config cached.JobConfig) (job.JobState, error) {
+	jobState job.JobState, config jobmgrcommon.JobConfig) (job.JobState, error) {
 
 	tasks := cachedJob.GetAllTasks()
 	stateCountsFromCache := make(map[string]uint32)

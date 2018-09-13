@@ -11,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 
 	log "github.com/sirupsen/logrus"
@@ -121,12 +122,12 @@ func sendTasksToResMgr(
 	}
 
 	// Move all task states to pending
-	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
+	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	for _, tt := range tasks {
 		instID := tt.GetInstanceId()
-		runtimeDiff := cached.RuntimeDiff{
-			cached.StateField:   task.TaskState_PENDING,
-			cached.MessageField: "Task sent for placement",
+		runtimeDiff := jobmgrcommon.RuntimeDiff{
+			jobmgrcommon.StateField:   task.TaskState_PENDING,
+			jobmgrcommon.MessageField: "Task sent for placement",
 		}
 		runtimeDiffs[instID] = runtimeDiff
 	}

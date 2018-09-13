@@ -6,6 +6,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+
 	"github.com/stretchr/testify/suite"
 )
 
@@ -24,12 +26,12 @@ func (suite *PatchTestSuite) TestPatch() {
 		Reason: "test",
 	}
 	suite.NoError(patch(input, map[string]interface{}{
-		StateField:  pbtask.TaskState_FAILED,
-		ReasonField: "test2",
-		PortsField: map[string]uint32{
+		jobmgrcommon.StateField:  pbtask.TaskState_FAILED,
+		jobmgrcommon.ReasonField: "test2",
+		jobmgrcommon.PortsField: map[string]uint32{
 			"http": 8080,
 		},
-		RevisionField: &peloton.ChangeLog{
+		jobmgrcommon.RevisionField: &peloton.ChangeLog{
 			Version: 3,
 		},
 	}))
@@ -50,9 +52,9 @@ func (suite *PatchTestSuite) TestPatch_Unset() {
 		},
 	}
 	suite.NoError(patch(input, map[string]interface{}{
-		StateField:    pbtask.TaskState_UNKNOWN,
-		ReasonField:   "",
-		RevisionField: nil,
+		jobmgrcommon.StateField:    pbtask.TaskState_UNKNOWN,
+		jobmgrcommon.ReasonField:   "",
+		jobmgrcommon.RevisionField: nil,
 	}))
 
 	suite.Equal(input.State, pbtask.TaskState_UNKNOWN)
@@ -81,9 +83,9 @@ func (suite *PatchTestSuite) TestPatch_NonExistentField() {
 func (suite *PatchTestSuite) TestPatch_NilEntity() {
 	var input *pbtask.RuntimeInfo
 	err := patch(input, map[string]interface{}{
-		StateField:    pbtask.TaskState_UNKNOWN,
-		ReasonField:   "",
-		RevisionField: nil,
+		jobmgrcommon.StateField:    pbtask.TaskState_UNKNOWN,
+		jobmgrcommon.ReasonField:   "",
+		jobmgrcommon.RevisionField: nil,
 	})
 	suite.Error(err)
 }
@@ -116,6 +118,6 @@ func (suite *PatchTestSuite) TestPatch_WrongType() {
 		},
 	}
 	suite.Error(patch(input, map[string]interface{}{
-		StateField: "wrong value",
+		jobmgrcommon.StateField: "wrong value",
 	}))
 }

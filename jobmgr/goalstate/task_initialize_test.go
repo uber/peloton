@@ -11,8 +11,8 @@ import (
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -133,23 +133,23 @@ func (suite *TestTaskInitializeSuite) TestTaskInitialize() {
 			gomock.Any(), suite.jobID, suite.instanceID, uint64(1)).Return(tt.taskConfig, nil)
 
 		suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
-			func(_ context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 				for _, runtimeDiff := range runtimeDiffs {
 					suite.Equal(
 						pbtask.TaskState_INITIALIZED,
-						runtimeDiff[cached.StateField],
+						runtimeDiff[jobmgrcommon.StateField],
 					)
 					suite.Equal(
 						pbtask.TaskState_SUCCEEDED,
-						runtimeDiff[cached.GoalStateField],
+						runtimeDiff[jobmgrcommon.GoalStateField],
 					)
 					suite.Equal(
 						suite.newConfigVersion,
-						runtimeDiff[cached.ConfigVersionField],
+						runtimeDiff[jobmgrcommon.ConfigVersionField],
 					)
 					suite.Equal(
 						tt.healthState,
-						runtimeDiff[cached.HealthyField],
+						runtimeDiff[jobmgrcommon.HealthyField],
 					)
 
 				}

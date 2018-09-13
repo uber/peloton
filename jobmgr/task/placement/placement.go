@@ -19,6 +19,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
@@ -246,7 +247,7 @@ func (p *processor) createTaskInfos(
 			retry := 0
 			for retry < maxRetryCount {
 				err = cachedJob.PatchTasks(ctx,
-					map[uint32]cached.RuntimeDiff{
+					map[uint32]jobmgrcommon.RuntimeDiff{
 						uint32(instanceID): launchableTask.RuntimeDiff,
 					})
 				if err == nil {
@@ -341,16 +342,16 @@ func (p *processor) enqueueTasksToResMgr(ctx context.Context, tasks map[string]*
 		healthState := taskutil.GetInitialHealthState(t.GetConfig())
 		runtimeDiff := taskutil.RegenerateMesosTaskIDDiff(
 			t.JobId, t.InstanceId, t.GetRuntime(), healthState)
-		runtimeDiff[cached.MessageField] = "Regenerate placement"
-		runtimeDiff[cached.ReasonField] = "REASON_HOST_REJECT_OFFER"
-		runtimeDiff[cached.AgentIDField] = &mesosv1.AgentID{}
-		runtimeDiff[cached.PortsField] = make(map[string]uint32)
+		runtimeDiff[jobmgrcommon.MessageField] = "Regenerate placement"
+		runtimeDiff[jobmgrcommon.ReasonField] = "REASON_HOST_REJECT_OFFER"
+		runtimeDiff[jobmgrcommon.AgentIDField] = &mesosv1.AgentID{}
+		runtimeDiff[jobmgrcommon.PortsField] = make(map[string]uint32)
 		retry := 0
 		for retry < maxRetryCount {
 			cachedJob := p.jobFactory.AddJob(t.JobId)
 			err = cachedJob.PatchTasks(
 				ctx,
-				map[uint32]cached.RuntimeDiff{uint32(t.InstanceId): runtimeDiff},
+				map[uint32]jobmgrcommon.RuntimeDiff{uint32(t.InstanceId): runtimeDiff},
 			)
 			if err == nil {
 				p.goalStateDriver.EnqueueTask(t.JobId, t.InstanceId, time.Now())

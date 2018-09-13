@@ -24,6 +24,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common/backoff"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -34,7 +35,7 @@ import (
 type LaunchableTask struct {
 	// RuntimeDiff is the diff to be applied to the task runtime,
 	// before launch it
-	RuntimeDiff cached.RuntimeDiff
+	RuntimeDiff jobmgrcommon.RuntimeDiff
 	// Config is the task config of the task to be launched
 	Config *task.TaskConfig
 }
@@ -197,7 +198,7 @@ func (l *launcher) GetLaunchableTasks(
 			continue
 		}
 
-		runtimeDiff := make(cached.RuntimeDiff)
+		runtimeDiff := make(jobmgrcommon.RuntimeDiff)
 
 		// Generate volume ID if not set for stateful task.
 		if taskConfig.GetVolume() != nil {
@@ -212,14 +213,14 @@ func (l *launcher) GetLaunchableTasks(
 				}).Info("generates new volume id for task")
 				// Generates volume ID if first time launch the stateful task,
 				// OR task is being launched to a different host.
-				runtimeDiff[cached.VolumeIDField] = newVolumeID
+				runtimeDiff[jobmgrcommon.VolumeIDField] = newVolumeID
 			}
 		}
 
 		if cachedRuntime.GetGoalState() != task.TaskState_KILLED {
-			runtimeDiff[cached.HostField] = hostname
-			runtimeDiff[cached.AgentIDField] = agentID
-			runtimeDiff[cached.StateField] = task.TaskState_LAUNCHED
+			runtimeDiff[jobmgrcommon.HostField] = hostname
+			runtimeDiff[jobmgrcommon.AgentIDField] = agentID
+			runtimeDiff[jobmgrcommon.StateField] = task.TaskState_LAUNCHED
 		}
 
 		if selectedPorts != nil {
@@ -242,11 +243,11 @@ func (l *launcher) GetLaunchableTasks(
 				ports[portConfig.GetName()] = selectedPorts[portsIndex]
 				portsIndex++
 			}
-			runtimeDiff[cached.PortsField] = ports
+			runtimeDiff[jobmgrcommon.PortsField] = ports
 		}
 
-		runtimeDiff[cached.MessageField] = "Add hostname and ports"
-		runtimeDiff[cached.ReasonField] = "REASON_UPDATE_OFFER"
+		runtimeDiff[jobmgrcommon.MessageField] = "Add hostname and ports"
+		runtimeDiff[jobmgrcommon.ReasonField] = "REASON_UPDATE_OFFER"
 
 		launchableTasks[taskID.GetValue()] = &LaunchableTask{
 			RuntimeDiff: runtimeDiff,
@@ -275,10 +276,10 @@ func (l *launcher) GetLaunchableTasks(
 func (l *launcher) updateTaskRuntime(
 	ctx context.Context, taskID string,
 	goalstate task.TaskState, reason string, message string) error {
-	runtimeDiff := cached.RuntimeDiff{
-		cached.GoalStateField: goalstate,
-		cached.ReasonField:    reason,
-		cached.MessageField:   message,
+	runtimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.GoalStateField: goalstate,
+		jobmgrcommon.ReasonField:    reason,
+		jobmgrcommon.MessageField:   message,
 	}
 	jobID, instanceID, err := util.ParseTaskID(taskID)
 	if err != nil {
@@ -290,7 +291,7 @@ func (l *launcher) updateTaskRuntime(
 	}
 	// update the task in DB and cache, and then schedule to goalstate
 	err = cachedJob.PatchTasks(ctx,
-		map[uint32]cached.RuntimeDiff{uint32(instanceID): runtimeDiff})
+		map[uint32]jobmgrcommon.RuntimeDiff{uint32(instanceID): runtimeDiff})
 	if err != nil {
 		return err
 	}

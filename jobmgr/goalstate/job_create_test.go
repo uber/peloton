@@ -16,6 +16,8 @@ import (
 	"code.uber.internal/infra/peloton/storage/cassandra"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
@@ -449,10 +451,10 @@ func TestJobMaxRunningInstances(t *testing.T) {
 
 	cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			assert.Equal(t, uint32(len(runtimeDiffs)), jobConfig.SLA.MaximumRunningInstances)
 			for _, runtimeDiff := range runtimeDiffs {
-				assert.Equal(t, runtimeDiff[cached.StateField], pb_task.TaskState_PENDING)
+				assert.Equal(t, runtimeDiff[jobmgrcommon.StateField], pb_task.TaskState_PENDING)
 			}
 		}).
 		Return(nil)

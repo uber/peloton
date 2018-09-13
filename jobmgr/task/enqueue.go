@@ -10,7 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	taskutil "code.uber.internal/infra/peloton/util/task"
 )
 
@@ -18,7 +18,7 @@ import (
 func EnqueueGangs(
 	ctx context.Context,
 	tasks []*task.TaskInfo,
-	jobConfig cached.JobConfig,
+	jobConfig jobmgrcommon.JobConfig,
 	client resmgrsvc.ResourceManagerServiceYARPCClient) error {
 	ctxWithTimeout, cancelFunc := context.WithTimeout(ctx, 10*time.Second)
 	defer cancelFunc()

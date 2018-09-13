@@ -28,7 +28,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/common/rpc"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -48,7 +48,7 @@ var (
 	}
 )
 
-func createTestTask(instanceID int) (*task.TaskInfo, cached.RuntimeDiff) {
+func createTestTask(instanceID int) (*task.TaskInfo, jobmgrcommon.RuntimeDiff) {
 	var tid = fmt.Sprintf(taskIDFmt, instanceID, uuid.NewUUID().String())
 	mesosID := &mesos.TaskID{
 		Value: &tid,
@@ -75,10 +75,10 @@ func createTestTask(instanceID int) (*task.TaskInfo, cached.RuntimeDiff) {
 				GoalState:   task.TaskState_SUCCEEDED,
 			},
 		},
-		cached.RuntimeDiff{
-			cached.MesosTaskIDField: mesosID,
-			cached.StateField:       task.TaskState_PENDING,
-			cached.GoalStateField:   task.TaskState_SUCCEEDED,
+		jobmgrcommon.RuntimeDiff{
+			jobmgrcommon.MesosTaskIDField: mesosID,
+			jobmgrcommon.StateField:       task.TaskState_PENDING,
+			jobmgrcommon.GoalStateField:   task.TaskState_SUCCEEDED,
 		}
 }
 
