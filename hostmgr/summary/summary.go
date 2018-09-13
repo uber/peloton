@@ -6,11 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-	"github.com/uber-go/atomic"
-
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
@@ -21,7 +16,28 @@ import (
 	hmutil "code.uber.internal/infra/peloton/hostmgr/util"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
+
+	"github.com/gogo/protobuf/proto"
+	"github.com/pborman/uuid"
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/atomic"
 )
+
+// Offer represents an offer sent from the host summary when the host is
+// moved to PLACING state.
+//
+// Evey offer sent has a unique ID which is used to to
+// claim the offer for launching a task.
+// The ID is reset when the host moves to READY state.
+//
+// The ID is not persisted and is reset when a hostmanager restarts,
+// remaining in flight tasks will have to placed again and generate new ID
+// for the offers.
+type Offer struct {
+	ID     string
+	Offers []*mesos.Offer
+}
 
 // InvalidHostStatus is returned when expected status on a hostSummary
 // does not match actual value.
@@ -37,9 +53,6 @@ func (e InvalidHostStatus) Error() string {
 // HostStatus represents status (Ready/Placing/Reserved) of the host in offer pool's cache (host -> offers).
 type HostStatus int
 
-// OfferType represents the type of offer in the host summary such as reserved, unreserved, or All.
-type OfferType int
-
 const (
 	// ReadyHost represents an host ready to be used.
 	ReadyHost HostStatus = iota + 1
@@ -47,11 +60,10 @@ const (
 	PlacingHost
 	// ReservedHost represents an host is reserved for tasks
 	ReservedHost
-
-	// hostPlacingOfferStatusTimeout is a timeout for resetting
-	// PlacingHost status back to ReadHost status.
-	hostPlacingOfferStatusTimeout time.Duration = 5 * time.Minute
 )
+
+// OfferType represents the type of offer in the host summary such as reserved, unreserved, or All.
+type OfferType int
 
 const (
 	// Reserved offer type, represents an offer reserved for a particular Mesos Role.
@@ -61,6 +73,14 @@ const (
 	Unreserved
 	// All represents reserved and unreserved offers.
 	All
+)
+
+const (
+	// hostPlacingOfferStatusTimeout is a timeout for resetting
+	// PlacingHost status back to ReadHost status.
+	hostPlacingOfferStatusTimeout time.Duration = 5 * time.Minute
+	// emptyOfferID is used when the host is in READY state.
+	emptyOfferID = ""
 )
 
 // HostSummary is the core component of host manager's internal
@@ -75,11 +95,11 @@ type HostSummary interface {
 	// and unreserved offer.
 	HasAnyOffer() bool
 
-	// TryMatch atomically tries to match offers from the current host with given
-	// constraint.
+	// TryMatch atomically tries to match offers from the current host with
+	// given constraint.
 	TryMatch(
 		hostFilter *hostsvc.HostFilter,
-		evaluator constraints.Evaluator) (hostsvc.HostFilterResult, []*mesos.Offer)
+		evaluator constraints.Evaluator) Match
 
 	// AddMesosOffer adds a Mesos offers to the current HostSummary.
 	AddMesosOffers(ctx context.Context, offer []*mesos.Offer) HostStatus
@@ -118,6 +138,13 @@ type HostSummary interface {
 	GetHostStatus() HostStatus
 }
 
+type offerIDgenerator func() string
+
+// returns a new random (version 4) UUID as a string
+func uuidOfferID() string {
+	return uuid.New()
+}
+
 // hostSummary is a data struct holding offers on a particular host.
 type hostSummary struct {
 	sync.Mutex
@@ -125,11 +152,12 @@ type hostSummary struct {
 	// hostname of the host
 	hostname string
 
-	// scarceResourceTypes are resources, which are exclusively reserved for specific task requirements,
-	// and to prevent every task to schedule on those hosts such as GPU.
+	// scarceResourceTypes are resources, which are exclusively reserved for
+	// specific task requirements, and to prevent every task to schedule on
+	// those hosts such as GPU.
 	scarceResourceTypes []string
 
-	// Usage slack is resources that are alloacted but not completely used.
+	// Usage slack is resources that are allocated but not completely used.
 	// As of now, cpus is only resource type supported as slack.
 	slackResourceTypes []string
 
@@ -140,6 +168,14 @@ type hostSummary struct {
 
 	status                       HostStatus
 	statusPlacingOfferExpiration time.Time
+
+	// When the host has been matched for placing i.e.
+	// the host status is PLACING or RESERVED a unique offer ID is generated.
+	// This match ID is used when then same host offers are used during
+	// launching a task.
+	// For all other host states the ID is empty.
+	offerID          string
+	offerIDgenerator offerIDgenerator
 
 	readyCount atomic.Int32
 
@@ -165,6 +201,8 @@ func New(
 		volumeStore: volumeStore,
 
 		hostname: hostname,
+
+		offerIDgenerator: uuidOfferID,
 	}
 }
 
@@ -181,6 +219,14 @@ func (a *hostSummary) HasAnyOffer() bool {
 	a.Lock()
 	defer a.Unlock()
 	return len(a.unreservedOffers) > 0 || len(a.reservedOffers) > 0
+}
+
+// Match represents the result of a match
+type Match struct {
+	// The result of the match
+	Result hostsvc.HostFilterResult
+	// Offer if the match is successful
+	Offer *Offer
 }
 
 // matchConstraint determines whether given HostFilter matches
@@ -233,6 +279,12 @@ func matchHostFilter(
 		return hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES
 	}
 
+	hc := c.GetSchedulingConstraint()
+	if hc == nil {
+		// No scheduling constraint, we have a match
+		return hostsvc.HostFilterResult_MATCH
+	}
+
 	// Only try to get first offer in this host because all the offers have
 	// the same host attributes.
 	var firstOffer *mesos.Offer
@@ -241,36 +293,34 @@ func matchHostFilter(
 		break
 	}
 
-	if hc := c.GetSchedulingConstraint(); hc != nil {
-		hostname := firstOffer.GetHostname()
-		lv := constraints.GetHostLabelValues(
-			hostname,
-			firstOffer.GetAttributes(),
-		)
-		result, err := evaluator.Evaluate(hc, lv)
-		if err != nil {
-			log.WithError(err).
-				Error("Error when evaluating input constraint")
-			return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
-		}
+	hostname := firstOffer.GetHostname()
+	lv := constraints.GetHostLabelValues(
+		hostname,
+		firstOffer.GetAttributes(),
+	)
+	result, err := evaluator.Evaluate(hc, lv)
+	if err != nil {
+		log.WithError(err).
+			Error("Error when evaluating input constraint")
+		return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
+	}
 
-		switch result {
-		case constraints.EvaluateResultMatch:
-			fallthrough
-		case constraints.EvaluateResultNotApplicable:
-			log.WithFields(log.Fields{
-				"values":     lv,
-				"hostname":   hostname,
-				"constraint": hc,
-			}).Debug("Attributes match constraint")
-		default:
-			log.WithFields(log.Fields{
-				"values":     lv,
-				"hostname":   hostname,
-				"constraint": hc,
-			}).Debug("Attributes do not match constraint")
-			return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
-		}
+	switch result {
+	case constraints.EvaluateResultMatch:
+		fallthrough
+	case constraints.EvaluateResultNotApplicable:
+		log.WithFields(log.Fields{
+			"values":     lv,
+			"hostname":   hostname,
+			"constraint": hc,
+		}).Debug("Attributes match constraint")
+	default:
+		log.WithFields(log.Fields{
+			"values":     lv,
+			"hostname":   hostname,
+			"constraint": hc,
+		}).Debug("Attributes do not match constraint")
+		return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
 	}
 
 	return hostsvc.HostFilterResult_MATCH
@@ -285,53 +335,69 @@ func matchHostFilter(
 // (actual reason, empty-slice) and status will remain unchanged.
 func (a *hostSummary) TryMatch(
 	filter *hostsvc.HostFilter,
-	evaluator constraints.Evaluator) (hostsvc.HostFilterResult, []*mesos.Offer) {
+	evaluator constraints.Evaluator) Match {
 	a.Lock()
 	defer a.Unlock()
 
 	if a.status != ReadyHost {
-		return hostsvc.HostFilterResult_MISMATCH_STATUS, nil
+		return Match{
+			Result: hostsvc.HostFilterResult_MISMATCH_STATUS,
+		}
 	}
 
 	if !a.HasOffer() {
-		return hostsvc.HostFilterResult_NO_OFFER, nil
+		return Match{
+			Result: hostsvc.HostFilterResult_NO_OFFER,
+		}
 	}
 
-	match := matchHostFilter(
+	result := matchHostFilter(
 		a.unreservedOffers,
 		filter,
 		evaluator,
 		scalar.FromMesosResources(host.GetAgentInfo(a.GetHostname()).GetResources()),
 		a.scarceResourceTypes)
 
-	if match == hostsvc.HostFilterResult_MATCH {
-		var result []*mesos.Offer
-		for _, offer := range a.unreservedOffers {
-			if filter.GetResourceConstraint().GetRevocable() {
-				offer.Resources, _ = scalar.FilterMesosResources(
-					offer.GetResources(),
-					func(r *mesos.Resource) bool {
-						if r.GetRevocable() != nil {
-							return true
-						}
-						return !hmutil.IsSlackResourceType(r.GetName(), a.slackResourceTypes)
-					})
-			} else {
-				_, offer.Resources = scalar.FilterRevocableMesosResources(offer.GetResources())
-			}
-			result = append(result, offer)
-		}
-		// Setting status to `PlacingHost`: this ensures proper state
-		// tracking of resources on the host and also ensures offers on
-		// this host will not be sent to another `AcquireHostOffers`
-		// call before released.
-		err := a.casStatusLockFree(ReadyHost, PlacingHost)
-		if err != nil {
-			return hostsvc.HostFilterResult_NO_OFFER, nil
-		}
-		return match, result
+	if result != hostsvc.HostFilterResult_MATCH {
+		return Match{Result: result}
 	}
-	return match, nil
+
+	// Its a match!
+	var offers []*mesos.Offer
+	for _, offer := range a.unreservedOffers {
+		if filter.GetResourceConstraint().GetRevocable() {
+			offer.Resources, _ = scalar.FilterMesosResources(
+				offer.GetResources(),
+				func(r *mesos.Resource) bool {
+					if r.GetRevocable() != nil {
+						return true
+					}
+					return !hmutil.IsSlackResourceType(r.GetName(), a.slackResourceTypes)
+				})
+		} else {
+			_, offer.Resources = scalar.FilterRevocableMesosResources(offer.GetResources())
+		}
+		offers = append(offers, offer)
+	}
+	// Setting status to `PlacingHost`: this ensures proper state
+	// tracking of resources on the host and also ensures offers on
+	// this host will not be sent to another `AcquireHostOffers`
+	// call before released.
+	err := a.casStatusLockFree(ReadyHost, PlacingHost)
+	if err != nil {
+		return Match{
+			Result: hostsvc.HostFilterResult_NO_OFFER,
+		}
+	}
+
+	// Add offer to the match
+	return Match{
+		Result: hostsvc.HostFilterResult_MATCH,
+		Offer: &Offer{
+			ID:     a.offerID,
+			Offers: offers,
+		},
+	}
 }
 
 // AddMesosOffers adds a Mesos offers to the current hostSummary and returns
@@ -383,8 +449,10 @@ func (a *hostSummary) ClaimForLaunch() (map[string]*mesos.Offer, error) {
 
 	// Reset status to ready so any future offer on the host is considered
 	// as ready.
-	a.status = ReadyHost
-	a.readyCount.Store(0)
+	if err := a.casStatusLockFree(PlacingHost, ReadyHost); err != nil {
+		return nil, errors.Wrap(err,
+			"failed to move host to Ready state")
+	}
 	return result, nil
 }
 
@@ -461,10 +529,17 @@ func (a *hostSummary) casStatusLockFree(old, new HostStatus) error {
 
 	switch a.status {
 	case ReadyHost:
+		// if its a ready host then reset the offerID
+		a.offerID = emptyOfferID
 		a.readyCount.Store(int32(len(a.unreservedOffers)))
 	case PlacingHost:
+		// generate the offer id for a placing host.
+		a.offerID = a.offerIDgenerator()
 		a.statusPlacingOfferExpiration = time.Now().Add(hostPlacingOfferStatusTimeout)
 		a.readyCount.Store(0)
+	case ReservedHost:
+		// generate the offer id for a placing host.
+		a.offerID = a.offerIDgenerator()
 	}
 	return nil
 }

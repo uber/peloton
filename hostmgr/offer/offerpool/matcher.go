@@ -6,7 +6,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common/constraints"
@@ -27,7 +26,8 @@ func effectiveHostLimit(f *hostsvc.HostFilter) uint32 {
 type Matcher struct {
 	hostFilter *hostsvc.HostFilter
 	evaluator  constraints.Evaluator
-	hostOffers map[string][]*mesos.Offer
+	// map of hostname to the host offer
+	hostOffers map[string]*summary.Offer
 
 	filterResultCounts map[string]uint32
 }
@@ -55,17 +55,17 @@ func (m *Matcher) tryMatchImpl(
 		return hostsvc.HostFilterResult_MISMATCH_MAX_HOST_LIMIT
 	}
 
-	tryResult, offers := s.TryMatch(m.hostFilter, m.evaluator)
+	match := s.TryMatch(m.hostFilter, m.evaluator)
 	log.WithFields(log.Fields{
 		"host_filter": m.hostFilter,
 		"host":        hostname,
-		"match":       tryResult,
+		"match":       match,
 	}).Debug("Constraint matching result")
 
-	if tryResult == hostsvc.HostFilterResult_MATCH {
-		m.hostOffers[hostname] = offers
+	if match.Result == hostsvc.HostFilterResult_MATCH {
+		m.hostOffers[hostname] = match.Offer
 	}
-	return tryResult
+	return match.Result
 }
 
 // HasEnoughHosts returns whether this instance has matched enough hosts based
@@ -75,8 +75,8 @@ func (m *Matcher) HasEnoughHosts() bool {
 }
 
 // getHostOffers returns all hostOffers from matcher and clears cached result.
-func (m *Matcher) getHostOffers() (map[string][]*mesos.Offer, map[string]uint32) {
-	result := make(map[string][]*mesos.Offer)
+func (m *Matcher) getHostOffers() (map[string]*summary.Offer, map[string]uint32) {
+	result := make(map[string]*summary.Offer)
 	resultCount := make(map[string]uint32)
 	// swap
 	result, m.hostOffers = m.hostOffers, result
@@ -92,7 +92,7 @@ func NewMatcher(
 	return &Matcher{
 		hostFilter:         hostFilter,
 		evaluator:          evaluator,
-		hostOffers:         make(map[string][]*mesos.Offer),
+		hostOffers:         make(map[string]*summary.Offer),
 		filterResultCounts: make(map[string]uint32),
 	}
 }

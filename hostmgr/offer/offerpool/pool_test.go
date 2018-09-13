@@ -270,16 +270,16 @@ func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 			suite.Equal(int(limit), len(hostOffers))
 			mutex.Lock()
 			defer mutex.Unlock()
-			for hostname, offers := range hostOffers {
+			for hostname, hostOffer := range hostOffers {
 				suite.Equal(
 					10,
-					len(offers),
+					len(hostOffer.Offers),
 					"hostname %s has incorrect offer length",
 					hostname)
 				if _, ok := takenHostOffers[hostname]; ok {
 					suite.Fail("Host %s is taken multiple times", hostname)
 				}
-				takenHostOffers[hostname] = offers
+				takenHostOffers[hostname] = hostOffer.Offers
 			}
 			wg.Done()
 		}(i)
@@ -575,16 +575,17 @@ func (suite *OfferPoolTestSuite) TestAddGetRemoveOffers() {
 			suite.Equal(int(limit), len(hostOffers))
 			mutex.Lock()
 			defer mutex.Unlock()
-			for hostname, offers := range hostOffers {
+			for hostname, hostOffer := range hostOffers {
+				suite.NotNil(hostOffer.ID)
 				suite.Equal(
 					nOffers,
-					len(offers),
+					len(hostOffer.Offers),
 					"hostname %s has incorrect offer length",
 					hostname)
 				if _, ok := takenHostOffers[hostname]; ok {
 					suite.Fail("Host %s is taken multiple times", hostname)
 				}
-				takenHostOffers[hostname] = offers
+				takenHostOffers[hostname] = hostOffer.Offers
 			}
 			wg.Done()
 		}(i)

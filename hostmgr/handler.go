@@ -162,7 +162,7 @@ func (h *ServiceHandler) AcquireHostOffers(
 		}, nil
 	}
 
-	hostOffers, resultCount, err := h.offerPool.ClaimForPlace(body.GetFilter())
+	result, resultCount, err := h.offerPool.ClaimForPlace(body.GetFilter())
 	if err != nil {
 		log.WithError(err).Warn("ClaimForPlace failed")
 		return &hostsvc.AcquireHostOffersResponse{
@@ -179,7 +179,8 @@ func (h *ServiceHandler) AcquireHostOffers(
 		FilterResultCounts: resultCount,
 	}
 
-	for hostname, offers := range hostOffers {
+	for hostname, hostOffer := range result {
+		offers := hostOffer.Offers
 		if len(offers) <= 0 {
 			log.WithField("host", hostname).
 				Warn("Empty offer slice from host")
@@ -193,20 +194,24 @@ func (h *ServiceHandler) AcquireHostOffers(
 			attributes = append(attributes, offer.GetAttributes()...)
 		}
 
-		hostOffer := hostsvc.HostOffer{
+		// create the peloton host offer
+		pHostOffer := hostsvc.HostOffer{
 			Hostname:   hostname,
 			AgentId:    offers[0].GetAgentId(),
 			Attributes: attributes,
 			Resources:  resources,
+			Id:         &peloton.HostOfferID{Value: hostOffer.ID},
 		}
 
-		response.HostOffers = append(response.HostOffers, &hostOffer)
+		response.HostOffers = append(response.HostOffers, &pHostOffer)
 	}
 
 	h.metrics.AcquireHostOffers.Inc(1)
 	h.metrics.AcquireHostOffersCount.Inc(int64(len(response.HostOffers)))
 
-	log.WithField("response", response).Debug("AcquireHostOffers returned")
+	log.
+		WithField("response", response).
+		Debug("AcquireHostOffers returned")
 	return &response, nil
 }
 

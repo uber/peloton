@@ -59,6 +59,13 @@ message UpdateID {
 }
 
 /**
+ *  A unique ID assigned to offers from a host.
+ */
+message HostOfferID {
+  string value = 1;
+}
+
+/**
  *  Change log of an entity info, such as Job config etc.
  */
 message ChangeLog {

@@ -25,6 +25,7 @@ message HostOffer {
   mesos.v1.AgentID agentId = 2;
   repeated mesos.v1.Resource resources = 3;
   repeated mesos.v1.Attribute attributes = 4;
+  api.v0.peloton.HostOfferID id = 5;
 }
 
 /**
