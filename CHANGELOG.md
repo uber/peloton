@@ -3,6 +3,17 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.5.2
+-----------------
+* 2018-09-12    Add pod events handle empty desired mesos task id                                      zhixin@uber.com.
+* 2018-09-11    Add override url for hostmgr in Peloton Client                                         avyas@uber.com.
+
+0.7.5.1
+-----------------
+* 2018-09-11    Change logrus version to `1.0.0`                                                       avyas@uber.com.
+* 2018-09-11    Desired mesos task id should not be nil when comparing                                 apoorvaj@uber.com.
+* 2018-08-31    Add Changelog for 0.7.5 release                                                        rcharles@uber.com.
+
 0.7.5
 ------------------
 * 2018-08-29    Remove unused function in reservation                                                  mu@uber.com
