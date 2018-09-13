@@ -692,18 +692,12 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 			ChangeLog: &peloton.ChangeLog{Version: newJobVersion},
 		}, nil)
 
-	for _, instID := range newSlice(0, batchSize) {
-		suite.cachedJob.EXPECT().
-			AddTask(instID).
-			Return(suite.cachedTask)
+	for range newSlice(0, batchSize) {
 		runtime := &pbtask.RuntimeInfo{
 			State:                pbtask.TaskState_RUNNING,
 			ConfigVersion:        jobVersion,
 			DesiredConfigVersion: jobVersion,
 		}
-		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
-			Return(runtime, nil)
 
 		suite.cachedUpdate.EXPECT().
 			IsInstanceComplete(newJobVersion, runtime).
@@ -714,7 +708,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 			Return(false)
 
 		suite.cachedUpdate.EXPECT().
-			GetRuntimeDiff(runtime, gomock.Any()).
+			GetRuntimeDiff(gomock.Any()).
 			Return(cached.RuntimeDiff{
 				cached.DesiredConfigVersionField: newJobVersion,
 			})
@@ -829,33 +823,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 		Return().
 		Times(int(batchSize))
 
-	for i := uint32(0); i < batchSize; i++ {
-		suite.cachedJob.EXPECT().
-			AddTask(i).
-			Return(suite.cachedTask)
-	}
-
-	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
-		Return(&pbtask.RuntimeInfo{
-			State:                pbtask.TaskState_KILLED,
-			GoalState:            pbtask.TaskState_KILLED,
-			ConfigVersion:        jobVersion,
-			DesiredConfigVersion: jobVersion,
-		}, nil)
-
-	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
-		Return(&pbtask.RuntimeInfo{
-			State:                pbtask.TaskState_RUNNING,
-			GoalState:            pbtask.TaskState_RUNNING,
-			ConfigVersion:        jobVersion,
-			DesiredConfigVersion: jobVersion,
-		}, nil).
-		Times(int(batchSize) - 1)
-
 	suite.cachedUpdate.EXPECT().
-		GetRuntimeDiff(gomock.Any(), gomock.Any()).
+		GetRuntimeDiff(gomock.Any()).
 		Return(cached.RuntimeDiff{
 			cached.DesiredConfigVersionField: newJobVersion,
 		}).Times(int(batchSize))
@@ -1134,7 +1103,6 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_DBError_AddInstances() {
 func (suite *UpdateRunTestSuite) TestUpdateRunDBErrorUpdateInstances() {
 	instanceNumber := uint32(10)
 	batchSize := uint32(5)
-	jobVersion := uint64(3)
 	newJobVersion := uint64(4)
 
 	suite.updateFactory.EXPECT().
@@ -1194,24 +1162,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRunDBErrorUpdateInstances() {
 			ChangeLog: &peloton.ChangeLog{Version: newJobVersion},
 		}, nil)
 
-	for i := uint32(0); i < batchSize; i++ {
-		suite.cachedJob.EXPECT().
-			AddTask(i).
-			Return(suite.cachedTask)
-	}
-
-	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
-		Return(&pbtask.RuntimeInfo{
-			State:                pbtask.TaskState_RUNNING,
-			GoalState:            pbtask.TaskState_RUNNING,
-			ConfigVersion:        jobVersion,
-			DesiredConfigVersion: jobVersion,
-		}, nil).
-		Times(int(batchSize))
-
 	suite.cachedUpdate.EXPECT().
-		GetRuntimeDiff(gomock.Any(), gomock.Any()).
+		GetRuntimeDiff(gomock.Any()).
 		Return(cached.RuntimeDiff{
 			cached.DesiredConfigVersionField: newJobVersion,
 		}).Times(int(batchSize))

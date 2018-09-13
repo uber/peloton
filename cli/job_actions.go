@@ -18,6 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/protobuf/ptypes"
+	"go.uber.org/yarpc/yarpcerrors"
 	"gopkg.in/cheggaaa/pb.v1"
 	"gopkg.in/yaml.v2"
 )
@@ -360,23 +361,152 @@ func (c *Client) JobRestartAction(
 	instanceRanges []*task.InstanceRange,
 	batchSize uint32,
 ) error {
+	var response *job.RestartResponse
+	var err error
 	id := &peloton.JobID{
 		Value: jobID,
 	}
 
-	request := &job.RestartRequest{
-		Id:              id,
-		Ranges:          instanceRanges,
-		ResourceVersion: resourceVersion,
-		RestartConfig: &job.RestartConfig{
-			BatchSize: batchSize,
+	err = c.retryUntilConcurrencyControlSucceeds(
+		id,
+		resourceVersion,
+		func(resourceVersionParam uint64) error {
+			request := &job.RestartRequest{
+				Id:              id,
+				Ranges:          instanceRanges,
+				ResourceVersion: resourceVersionParam,
+				RestartConfig: &job.RestartConfig{
+					BatchSize: batchSize,
+				},
+			}
+			response, err = c.jobClient.Restart(c.ctx, request)
+			return err
 		},
-	}
-	response, err := c.jobClient.Restart(c.ctx, request)
+	)
 	if err != nil {
 		return err
 	}
+
 	printResponseJSON(response)
+	return nil
+}
+
+// JobStartAction is the action for starting a job
+func (c *Client) JobStartAction(
+	jobID string,
+	resourceVersion uint64,
+	instanceRanges []*task.InstanceRange,
+	batchSize uint32,
+) error {
+	var response *job.StartResponse
+	var err error
+	id := &peloton.JobID{
+		Value: jobID,
+	}
+	err = c.retryUntilConcurrencyControlSucceeds(
+		id,
+		resourceVersion,
+		func(resourceVersionParam uint64) error {
+			request := &job.StartRequest{
+				Id:              id,
+				Ranges:          instanceRanges,
+				ResourceVersion: resourceVersionParam,
+				StartConfig: &job.StartConfig{
+					BatchSize: batchSize,
+				},
+			}
+			response, err = c.jobClient.Start(c.ctx, request)
+			return err
+		},
+	)
+
+	if err != nil {
+		return err
+	}
+
+	printResponseJSON(response)
+	return nil
+}
+
+// JobStopV1BetaAction is the action for stopping a job using new job API
+func (c *Client) JobStopV1BetaAction(
+	jobID string,
+	resourceVersion uint64,
+	instanceRanges []*task.InstanceRange,
+	batchSize uint32,
+) error {
+	var response *job.StopResponse
+	var err error
+	id := &peloton.JobID{
+		Value: jobID,
+	}
+	err = c.retryUntilConcurrencyControlSucceeds(
+		id,
+		resourceVersion,
+		func(resourceVersionParam uint64) error {
+			request := &job.StopRequest{
+				Id:              id,
+				Ranges:          instanceRanges,
+				ResourceVersion: resourceVersionParam,
+				StopConfig: &job.StopConfig{
+					BatchSize: batchSize,
+				},
+			}
+
+			response, err = c.jobClient.Stop(c.ctx, request)
+			return err
+		},
+	)
+
+	if err != nil {
+		return err
+	}
+
+	printResponseJSON(response)
+	return nil
+}
+
+func (c *Client) retryUntilConcurrencyControlSucceeds(
+	id *peloton.JobID,
+	resourceVersion uint64,
+	fn func(
+		resourceVersion uint64,
+	) error,
+) error {
+	for {
+		// first fetch the job runtime
+		var jobGetRequest = &job.GetRequest{
+			Id: id,
+		}
+		jobGetResponse, err := c.jobClient.Get(c.ctx, jobGetRequest)
+		if err != nil {
+			return err
+		}
+
+		jobRuntime := jobGetResponse.GetJobInfo().GetRuntime()
+		if jobRuntime == nil {
+			return fmt.Errorf("unable to find the job to restart")
+		}
+
+		if resourceVersion > 0 {
+			if jobRuntime.GetConfigurationVersion() != resourceVersion {
+				return fmt.Errorf(
+					"invalid input resource version current %v provided %v",
+					jobRuntime.GetConfigurationVersion(), resourceVersion)
+			}
+		}
+
+		err = fn(jobRuntime.GetConfigurationVersion())
+		if err != nil {
+			if yarpcerrors.IsInvalidArgument(err) &&
+				yarpcerrors.FromError(err).Message() == invalidVersionError &&
+				resourceVersion == 0 {
+				continue
+			}
+			return err
+		}
+		break
+	}
 	return nil
 }
 

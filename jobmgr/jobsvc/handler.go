@@ -497,44 +497,131 @@ func (h *serviceHandler) Restart(
 
 	h.metrics.JobAPIRestart.Inc(1)
 
-	if !h.candidate.IsLeader() {
-		h.metrics.JobCreateFail.Inc(1)
-		return nil, yarpcerrors.UnavailableErrorf(
-			"Job Restart API not suppported on non-leader")
-	}
+	updateID, resourceVersion, err := h.createNonUpdateWorkflow(
+		ctx,
+		req.GetId(),
+		req.GetResourceVersion(),
+		req.GetRanges(),
+		req.GetRestartConfig().GetBatchSize(),
+		models.WorkflowType_RESTART,
+	)
 
-	cachedJob := h.jobFactory.AddJob(req.GetId())
-	runtime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
 		h.metrics.JobRestartFail.Inc(1)
 		return nil, err
+	}
+
+	h.metrics.JobRestart.Inc(1)
+	return &job.RestartResponse{
+		UpdateID:        updateID,
+		ResourceVersion: resourceVersion,
+	}, nil
+}
+
+func (h *serviceHandler) Start(
+	ctx context.Context,
+	req *job.StartRequest) (*job.StartResponse, error) {
+	h.metrics.JobAPIStart.Inc(1)
+
+	updateID, resourceVersion, err := h.createNonUpdateWorkflow(
+		ctx,
+		req.GetId(),
+		req.GetResourceVersion(),
+		req.GetRanges(),
+		req.GetStartConfig().GetBatchSize(),
+		models.WorkflowType_START,
+	)
+
+	if err != nil {
+		h.metrics.JobStartFail.Inc(1)
+		return nil, err
+	}
+
+	h.metrics.JobStart.Inc(1)
+	return &job.StartResponse{
+		UpdateID:        updateID,
+		ResourceVersion: resourceVersion,
+	}, nil
+}
+
+func (h *serviceHandler) Stop(
+	ctx context.Context,
+	req *job.StopRequest) (*job.StopResponse, error) {
+	h.metrics.JobAPIStop.Inc(1)
+
+	updateID, resourceVersion, err := h.createNonUpdateWorkflow(
+		ctx,
+		req.GetId(),
+		req.GetResourceVersion(),
+		req.GetRanges(),
+		req.GetStopConfig().GetBatchSize(),
+		models.WorkflowType_STOP,
+	)
+
+	if err != nil {
+		h.metrics.JobStopFail.Inc(1)
+		return nil, err
+	}
+
+	h.metrics.JobStop.Inc(1)
+	return &job.StopResponse{
+		UpdateID:        updateID,
+		ResourceVersion: resourceVersion,
+	}, nil
+}
+
+// createNonUpdateWorkflow creates a workflow excluding UPDATE
+// (i.e RESTART/START/STOP are supported)
+// it returns updateID, new resource version upon success
+func (h *serviceHandler) createNonUpdateWorkflow(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	resourceVersion uint64,
+	ranges []*task.InstanceRange,
+	batchSize uint32,
+	workflowType models.WorkflowType,
+) (*peloton.UpdateID, uint64, error) {
+
+	if workflowType == models.WorkflowType_UNKNOWN || workflowType == models.WorkflowType_UPDATE {
+		return nil, 0,
+			yarpcerrors.InvalidArgumentErrorf(
+				"unexpected WorkflowType_%s", workflowType.String())
+	}
+
+	if !h.candidate.IsLeader() {
+		return nil, 0,
+			yarpcerrors.UnavailableErrorf(
+				"Job %s API not suppported on non-leader", workflowType.String())
+	}
+
+	cachedJob := h.jobFactory.AddJob(jobID)
+	runtime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	jobConfig, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
-		req.GetId(),
+		jobID,
 		runtime.GetConfigurationVersion(),
 	)
 	if err != nil {
-		h.metrics.JobRestartFail.Inc(1)
-		return nil, err
+		return nil, 0, err
 	}
 
 	if jobConfig.GetType() != job.JobType_SERVICE {
-		return nil,
-			yarpcerrors.InvalidArgumentErrorf("Restart supported only for service jobs")
+		return nil, 0, yarpcerrors.InvalidArgumentErrorf(
+			"%s supported only for service jobs", workflowType.String())
 	}
 
 	// copy the config with provided resource version number
 	newConfig := *jobConfig
 	now := time.Now()
 	newConfig.ChangeLog = &peloton.ChangeLog{
-		Version:   req.ResourceVersion,
+		Version:   resourceVersion,
 		CreatedAt: uint64(now.UnixNano()),
 		UpdatedAt: uint64(now.UnixNano()),
 	}
-	// if range is not specified, apply to all instances
-	ranges := req.GetRanges()
 	if ranges == nil {
 		ranges = []*task.InstanceRange{
 			{From: 0, To: newConfig.GetInstanceCount()},
@@ -548,15 +635,15 @@ func (h *serviceHandler) Restart(
 	cachedUpdate := h.updateFactory.AddUpdate(updateID)
 	err = cachedUpdate.Create(
 		ctx,
-		req.GetId(),
+		jobID,
 		&newConfig,
 		jobConfig,
 		nil,
 		convertRangesToSlice(ranges, newConfig.GetInstanceCount()),
 		nil,
-		models.WorkflowType_RESTART,
+		workflowType,
 		&pbupdate.UpdateConfig{
-			BatchSize: req.GetRestartConfig().GetBatchSize(),
+			BatchSize: batchSize,
 		},
 	)
 	if err != nil {
@@ -568,26 +655,21 @@ func (h *serviceHandler) Restart(
 		// persisted, clear the cache as well so that it is reloaded
 		// from DB and cleaned up.
 		h.updateFactory.ClearUpdate(updateID)
-		h.metrics.JobRestartFail.Inc(1)
 	}
 
 	// Add update to goal state engine to start it
-	h.goalStateDriver.EnqueueUpdate(req.GetId(), updateID, time.Now())
+	h.goalStateDriver.EnqueueUpdate(jobID, updateID, time.Now())
 
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	cachedConfig, err := cachedJob.GetConfig(ctx)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	h.metrics.JobRestart.Inc(1)
-	return &job.RestartResponse{
-		UpdateID:        updateID,
-		ResourceVersion: cachedConfig.GetChangeLog().GetVersion(),
-	}, err
+	return updateID, cachedConfig.GetChangeLog().GetVersion(), err
 }
 
 func (h *serviceHandler) GetCache(

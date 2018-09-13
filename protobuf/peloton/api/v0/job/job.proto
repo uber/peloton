@@ -328,6 +328,14 @@ service JobManager {
   // Experimental only
   rpc Restart(RestartRequest) returns (RestartResponse);
 
+  // Start the tasks specified in restart request
+  // Experimental only
+  rpc Start(StartRequest) returns (StartResponse);
+
+  // Stop the tasks specified in stop request
+  // Experimental only
+  rpc Stop(StopRequest) returns (StopResponse);
+
   // Debug only method. Allows user to load job runtime state from DB
   // and re-execute the action associated with current state.
   rpc Refresh(RefreshRequest) returns (RefreshResponse);
@@ -529,5 +537,67 @@ message RestartResponse {
   // The new resourceVersion after the operation
   uint64 resourceVersion = 1;
   // updateID associated with the restart
+  peloton.UpdateID updateID = 2;
+}
+
+// DEPRECATED by peloton.api.job.svc.StartConfig
+// Experimental only
+message StartConfig {
+  // batch size of rolling start, if unset all tasks specified
+  // will be started at the same time.
+  uint32 batchSize = 1;
+}
+
+// DEPRECATED by peloton.api.job.svc.StartJobRequest
+// Experimental only
+message StartRequest {
+  // The job to start
+  peloton.JobID id = 1;
+  // The instances to start, default to all
+  repeated task.InstanceRange ranges = 2;
+  // The resourceVersion received from last job operation
+  // call for concurrency control
+  uint64 resourceVersion = 3;
+  // The config for starting a job
+  StartConfig startConfig = 4;
+}
+
+// DEPRECATED by peloton.api.job.svc.StartJobResponse
+// Experimental only
+message StartResponse {
+  // The new resourceVersion after the operation
+  uint64 resourceVersion = 1;
+  // updateID associated with the start
+  peloton.UpdateID updateID = 2;
+}
+
+// DEPRECATED by peloton.api.job.svc.StopConfig
+// Experimental only
+message StopConfig {
+  // batch size of rolling stop, if unset all tasks specified
+  // will be restarted at the same time.
+  uint32 batchSize = 1;
+}
+
+// DEPRECATED by peloton.api.job.svc.StopJobRequest
+// Experimental only
+message StopRequest {
+  // The job to restart
+  peloton.JobID id = 1;
+  // The instances to restart, default to all
+  repeated task.InstanceRange ranges = 2;
+  // The resourceVersion received from last job operation
+  // call for concurrency control
+  uint64 resourceVersion = 3;
+  // The config for stopping a job
+  StopConfig stopConfig = 4;
+}
+
+// DEPRECATED by peloton.api.job.svc.StopJobResponse
+// Experimental only
+message StopResponse {
+  // The new resourceVersion after the operation
+  uint64 resourceVersion = 1;
+  // updateID associated with the stop
   peloton.UpdateID updateID = 2;
 }

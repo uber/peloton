@@ -44,6 +44,14 @@ service JobService {
   // Experimental only
   rpc RestartJob(RestartJobRequest) returns (RestartJobResponse);
 
+  // StartJob the tasks specified in start request
+  // Experimental only
+  rpc StartJob(StartJobRequest) returns (StartJobResponse);
+
+  // Stop the tasks specified in stop request
+  // Experimental only
+  rpc StopJob(StopJobRequest) returns (StopJobResponse);
+
   // Debug only method. Allows user to load job runtime state from DB
   // and re-execute the action associated with current state.
   rpc RefreshJob(RefreshJobRequest) returns (RefreshJobResponse);
@@ -272,4 +280,86 @@ message GetJobCacheResponse {
 
   // The job runtime in cache of the matching job.
   RuntimeInfo runtime = 2;
+}
+
+/**
+ * StartConfig is the optional config for StartJobRequest
+ */
+message StartConfig {
+  // batch size of rolling start, if unset or 0 all tasks specified
+  // will be started at the same time.
+  uint32 batchSize = 1;
+}
+
+/**
+ *  Request message for JobService.StartJob method.
+ *  Experimental only
+ */
+message StartJobRequest {
+  // The job to start
+  peloton.JobID id = 1;
+  // The instances to start, default to all
+  repeated task.InstanceRange ranges = 2;
+  // The resourceVersion received from last job operation
+  // call for concurrency control
+  uint64 resourceVersion = 3;
+  // The config for starting a job
+  StartConfig startConfig = 4;
+}
+
+/**
+ *  Response message for JobService.StartJob method.
+ *
+ *  Return errors:
+ *    INVALID_ARGUMENT:  if the job ID or job resourceVersion is invalid.
+ *    NOT_FOUND:         if the job ID is not found.
+ *
+ *  Experimental only
+ */
+message StartJobResponse {
+  // The new resourceVersion after the operation
+  uint64 resourceVersion = 1;
+  // updateID associated with the start
+  peloton.UpdateID updateID = 2;
+}
+
+/**
+ * StopConfig is the optional config for StopJobRequest
+ */
+message StopConfig {
+  // batch size of rolling stop, if unset or 0 all tasks specified
+  // will be stop at the same time.
+  uint32 batchSize = 1;
+}
+
+/**
+ *  Request message for JobService.StopJobRequest method.
+ *  Experimental only
+ */
+message StopJobRequest {
+  // The job to stop
+  peloton.JobID id = 1;
+  // The instances to stop, default to all
+  repeated task.InstanceRange ranges = 2;
+  // The resourceVersion received from last job operation
+  // call for concurrency control
+  uint64 resourceVersion = 3;
+  // The config for stopping a job
+  StopConfig stopConfig = 4;
+}
+
+/**
+ *  Response message for JobService.StopJob method.
+ *
+ *  Return errors:
+ *    INVALID_ARGUMENT:  if the job ID or job resourceVersion is invalid.
+ *    NOT_FOUND:         if the job ID is not found.
+ *
+ *  Experimental only
+ */
+message StopJobResponse {
+  // The new resourceVersion after the operation
+  uint64 resourceVersion = 1;
+  // updateID associated with the stop
+  peloton.UpdateID updateID = 2;
 }

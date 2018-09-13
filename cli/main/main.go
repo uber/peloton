@@ -134,11 +134,23 @@ var (
 	jobUpdateSecretPath = jobUpdate.Flag("secret-path", "secret mount path").Default("").String()
 	jobUpdateSecret     = jobUpdate.Flag("secret-data", "secret data string").Default("").String()
 
-	jobRestart                = job.Command("restart", "restart instances in a job")
+	jobRestart                = job.Command("rolling-restart", "restart instances in a job using rolling-restart")
 	jobRestartName            = jobRestart.Arg("job", "job identifier").Required().String()
 	jobRestartBatchSize       = jobRestart.Arg("batch-size", "batch size for the restart").Required().Uint32()
-	jobRestartResourceVersion = jobRestart.Arg("resourceVersion", "resource version of the job for concurrency control").Required().Uint64()
+	jobRestartResourceVersion = jobRestart.Flag("resourceVersion", "resource version of the job for concurrency control").Default("0").Uint64()
 	jobRestartInstanceRanges  = taskRangeListFlag(jobRestart.Flag("range", "restart range of instances (specify multiple times) (from:to syntax, default ALL)").Default(":").Short('r'))
+
+	jobStart                = job.Command("rolling-start", "start instances in a job using rolling-start")
+	jobStartName            = jobStart.Arg("job", "job identifier").Required().String()
+	jobStartBatchSize       = jobStart.Arg("batch-size", "batch size for the start").Required().Uint32()
+	jobStartResourceVersion = jobStart.Flag("resourceVersion", "resource version of the job for concurrency control").Default("0").Uint64()
+	jobStartInstanceRanges  = taskRangeListFlag(jobStart.Flag("range", "start range of instances (specify multiple times) (from:to syntax, default ALL)").Default(":").Short('r'))
+
+	jobStopV1Beta                = job.Command("rolling-stop", "stop instances in a job using rolling-stop")
+	jobStopV1BetaName            = jobStopV1Beta.Arg("job", "job identifier").Required().String()
+	jobStopV1BetaBatchSize       = jobStopV1Beta.Arg("batch-size", "batch size for the stop").Required().Uint32()
+	jobStopV1BetaResourceVersion = jobStopV1Beta.Flag("resourceVersion", "resource version of the job for concurrency control").Default("0").Uint64()
+	jobStopV1BetaInstanceRanges  = taskRangeListFlag(jobStopV1Beta.Flag("range", "stop range of instances (specify multiple times) (from:to syntax, default ALL)").Default(":").Short('r'))
 
 	jobGetCache     = job.Command("cache", "get a job cache")
 	jobGetCacheName = jobGetCache.Arg("job", "job identifier").Required().String()
@@ -447,6 +459,10 @@ func main() {
 			*jobUpdateSecretPath, []byte(*jobUpdateSecret))
 	case jobRestart.FullCommand():
 		err = client.JobRestartAction(*jobRestartName, *jobRestartResourceVersion, *jobRestartInstanceRanges, *jobRestartBatchSize)
+	case jobStart.FullCommand():
+		err = client.JobStartAction(*jobStartName, *jobStartResourceVersion, *jobStartInstanceRanges, *jobStartBatchSize)
+	case jobStopV1Beta.FullCommand():
+		err = client.JobStopV1BetaAction(*jobStopV1BetaName, *jobStopV1BetaResourceVersion, *jobStopV1BetaInstanceRanges, *jobStopV1BetaBatchSize)
 	case jobGetCache.FullCommand():
 		err = client.JobGetCacheAction(*jobGetCacheName)
 	case taskGet.FullCommand():

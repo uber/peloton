@@ -638,6 +638,174 @@ func (suite *UpdateTestSuite) TestValidCreateRestart() {
 	suite.Equal(models.WorkflowType_RESTART, suite.update.GetWorkflowType())
 }
 
+// TestValidCreateStart tests creating a valid job start
+func (suite *UpdateTestSuite) TestValidCreateStart() {
+	instanceCount := uint32(10)
+	version := uint64(2)
+	prevJobConfig, newJobConfig, updateConfig, jobRuntime :=
+		initializeUpdateTest(
+			instanceCount, version, instanceCount, version)
+
+	suite.updateStore.EXPECT().
+		CreateUpdate(
+			gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, updateModel *models.UpdateModel) {
+			suite.Equal(suite.updateID, updateModel.UpdateID)
+			suite.Equal(suite.jobID, updateModel.JobID)
+			suite.Equal(updateConfig, updateModel.UpdateConfig)
+			suite.Equal(version+1, updateModel.JobConfigVersion)
+			suite.Equal(version, updateModel.PrevJobConfigVersion)
+			suite.Equal(pbupdate.State_INITIALIZED, updateModel.State)
+			suite.Equal(instanceCount, updateModel.InstancesTotal)
+		}).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(prevJobConfig, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.jobID).
+		Return(jobRuntime, nil)
+
+	suite.jobStore.EXPECT().
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(prevJobConfig.ChangeLog.Version, nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
+			suite.Equal(
+				newJobConfig.DefaultConfig.Command.Value,
+				config.DefaultConfig.Command.Value,
+			)
+			suite.Equal(
+				newJobConfig.ChangeLog.Version+1,
+				config.ChangeLog.Version,
+			)
+		}).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(
+			_ context.Context,
+			_ *peloton.JobID,
+			runtime *pbjob.RuntimeInfo) {
+			suite.Equal(runtime.UpdateID, suite.updateID)
+			suite.Equal(runtime.ConfigurationVersion, version+1)
+		}).
+		Return(nil)
+
+	err := suite.update.Create(
+		context.Background(),
+		suite.jobID,
+		newJobConfig,
+		prevJobConfig,
+		nil,
+		[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		nil,
+		models.WorkflowType_START,
+		updateConfig,
+	)
+
+	suite.NoError(err)
+	suite.Equal(suite.jobID, suite.update.JobID())
+	suite.Equal(pbupdate.State_INITIALIZED, suite.update.state)
+	suite.Equal(updateConfig.BatchSize, suite.update.updateConfig.BatchSize)
+	suite.Equal(version, suite.update.jobPrevVersion)
+	suite.Equal(version+1, suite.update.jobVersion)
+	suite.Equal(instanceCount, uint32(len(suite.update.instancesTotal)))
+	suite.Equal(0, len(suite.update.instancesAdded))
+	suite.Equal(instanceCount, uint32(len(suite.update.instancesUpdated)))
+	suite.Equal(models.WorkflowType_START, suite.update.GetWorkflowType())
+}
+
+// TestValidCreateStop tests creating a valid job stop
+func (suite *UpdateTestSuite) TestValidCreateStop() {
+	instanceCount := uint32(10)
+	version := uint64(2)
+	prevJobConfig, newJobConfig, updateConfig, jobRuntime :=
+		initializeUpdateTest(
+			instanceCount, version, instanceCount, version)
+
+	suite.updateStore.EXPECT().
+		CreateUpdate(
+			gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, updateModel *models.UpdateModel) {
+			suite.Equal(suite.updateID, updateModel.UpdateID)
+			suite.Equal(suite.jobID, updateModel.JobID)
+			suite.Equal(updateConfig, updateModel.UpdateConfig)
+			suite.Equal(version+1, updateModel.JobConfigVersion)
+			suite.Equal(version, updateModel.PrevJobConfigVersion)
+			suite.Equal(pbupdate.State_INITIALIZED, updateModel.State)
+			suite.Equal(instanceCount, updateModel.InstancesTotal)
+		}).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(prevJobConfig, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.jobID).
+		Return(jobRuntime, nil)
+
+	suite.jobStore.EXPECT().
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(prevJobConfig.ChangeLog.Version, nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
+			suite.Equal(
+				newJobConfig.DefaultConfig.Command.Value,
+				config.DefaultConfig.Command.Value,
+			)
+			suite.Equal(
+				newJobConfig.ChangeLog.Version+1,
+				config.ChangeLog.Version,
+			)
+		}).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(
+			_ context.Context,
+			_ *peloton.JobID,
+			runtime *pbjob.RuntimeInfo) {
+			suite.Equal(runtime.UpdateID, suite.updateID)
+			suite.Equal(runtime.ConfigurationVersion, version+1)
+		}).
+		Return(nil)
+
+	err := suite.update.Create(
+		context.Background(),
+		suite.jobID,
+		newJobConfig,
+		prevJobConfig,
+		nil,
+		[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		nil,
+		models.WorkflowType_STOP,
+		updateConfig,
+	)
+
+	suite.NoError(err)
+	suite.Equal(suite.jobID, suite.update.JobID())
+	suite.Equal(pbupdate.State_INITIALIZED, suite.update.state)
+	suite.Equal(updateConfig.BatchSize, suite.update.updateConfig.BatchSize)
+	suite.Equal(version, suite.update.jobPrevVersion)
+	suite.Equal(version+1, suite.update.jobVersion)
+	suite.Equal(instanceCount, uint32(len(suite.update.instancesTotal)))
+	suite.Equal(0, len(suite.update.instancesAdded))
+	suite.Equal(instanceCount, uint32(len(suite.update.instancesUpdated)))
+	suite.Equal(models.WorkflowType_STOP, suite.update.GetWorkflowType())
+}
+
 // TestValidWriteProgress tests successfully writing the status
 // of an update into the DB.
 func (suite *UpdateTestSuite) TestValidWriteProgress() {

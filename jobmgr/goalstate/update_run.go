@@ -364,14 +364,7 @@ func processInstancesInUpdate(
 	runtimes := make(map[uint32]cached.RuntimeDiff)
 
 	for _, instID := range instancesToUpdate {
-		cachedTask := cachedJob.AddTask(instID)
-
-		taskRuntime, err := cachedTask.GetRunTime(ctx)
-		if err != nil {
-			return err
-		}
-
-		runtimeDiff := cachedUpdate.GetRuntimeDiff(taskRuntime, jobConfig)
+		runtimeDiff := cachedUpdate.GetRuntimeDiff(jobConfig)
 
 		if runtimeDiff != nil {
 			runtimes[instID] = runtimeDiff

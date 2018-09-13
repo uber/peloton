@@ -23,6 +23,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/yarpc/yarpcerrors"
 	"gopkg.in/yaml.v2"
 )
 
@@ -1635,15 +1636,27 @@ func (suite *jobActionsTestSuite) TestClientJobRestartActionSuccess() {
 		ctx:        suite.ctx,
 	}
 
+	jobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: jobID,
+	}).Return(&job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				ConfigurationVersion: 1,
+			},
+		},
+	}, nil)
+
 	restartResponse := &job.RestartResponse{
 		ResourceVersion: 2,
 		UpdateID:        &peloton.UpdateID{Value: uuid.NewRandom().String()},
 	}
 
 	suite.mockJob.EXPECT().Restart(gomock.Any(), &job.RestartRequest{
-		Id: &peloton.JobID{
-			Value: testJobID,
-		},
+		Id:              jobID,
 		ResourceVersion: 1,
 		RestartConfig: &job.RestartConfig{
 			BatchSize: 1,
@@ -1651,6 +1664,74 @@ func (suite *jobActionsTestSuite) TestClientJobRestartActionSuccess() {
 	}).Return(restartResponse, nil)
 
 	suite.NoError(c.JobRestartAction(testJobID, 1, nil, 1))
+}
+
+// TestClientJobRestartActionNonResVersionSuppliedSuccess tests restarting successfully
+// without user provides resversion
+func (suite *jobActionsTestSuite) TestClientJobRestartActionNonResVersionProvidedSuccess() {
+	c := Client{
+		Debug:      false,
+		jobClient:  suite.mockJob,
+		taskClient: suite.mockTask,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	jobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: jobID,
+	}).Return(&job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				ConfigurationVersion: 1,
+			},
+		},
+	}, nil)
+
+	restartResponse := &job.RestartResponse{
+		ResourceVersion: 2,
+		UpdateID:        &peloton.UpdateID{Value: uuid.NewRandom().String()},
+	}
+
+	suite.mockJob.EXPECT().Restart(gomock.Any(), &job.RestartRequest{
+		Id:              jobID,
+		ResourceVersion: 1,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: 1,
+		},
+	}).Return(restartResponse, nil)
+
+	suite.NoError(c.JobRestartAction(testJobID, 0, nil, 1))
+}
+
+// TestClientJobRestartActionError tests restarting fails with concurrency
+func (suite *jobActionsTestSuite) TestClientJobRestartActionConcurrencyError() {
+	c := Client{
+		Debug:      false,
+		jobClient:  suite.mockJob,
+		taskClient: suite.mockTask,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	jobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: jobID,
+	}).Return(&job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				ConfigurationVersion: 1,
+			},
+		},
+	}, nil)
+
+	suite.Error(c.JobRestartAction(testJobID, 2, nil, 1))
 }
 
 // TestClientJobRestartActionError tests restarting fails with error
@@ -1663,12 +1744,24 @@ func (suite *jobActionsTestSuite) TestClientJobRestartActionError() {
 		ctx:        suite.ctx,
 	}
 
+	jobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: jobID,
+	}).Return(&job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				ConfigurationVersion: 1,
+			},
+		},
+	}, nil)
+
 	restartResponse := &job.RestartResponse{}
 
 	suite.mockJob.EXPECT().Restart(gomock.Any(), &job.RestartRequest{
-		Id: &peloton.JobID{
-			Value: testJobID,
-		},
+		Id:              jobID,
 		ResourceVersion: 1,
 		RestartConfig: &job.RestartConfig{
 			BatchSize: 1,
@@ -1676,4 +1769,214 @@ func (suite *jobActionsTestSuite) TestClientJobRestartActionError() {
 	}).Return(restartResponse, errors.New("test error"))
 
 	suite.Error(c.JobRestartAction(testJobID, 1, nil, 1))
+}
+
+// TestClientJobRestartActionConcurrencyFailRetry tests restarting fails due to
+// concurrency error and retry succeeds
+func (suite *jobActionsTestSuite) TestClientJobRestartActionConcurrencyFailRetrySucceeds() {
+	c := Client{
+		Debug:      false,
+		jobClient:  suite.mockJob,
+		taskClient: suite.mockTask,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	jobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: jobID,
+	}).Return(&job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				ConfigurationVersion: 1,
+			},
+		},
+	}, nil)
+
+	suite.mockJob.EXPECT().Restart(gomock.Any(), &job.RestartRequest{
+		Id:              jobID,
+		ResourceVersion: 1,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: 1,
+		},
+	}).Return(nil, yarpcerrors.InvalidArgumentErrorf(invalidVersionError))
+
+	restartResponse := &job.RestartResponse{}
+
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: jobID,
+	}).Return(&job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				ConfigurationVersion: 2,
+			},
+		},
+	}, nil)
+
+	suite.mockJob.EXPECT().Restart(gomock.Any(), &job.RestartRequest{
+		Id:              jobID,
+		ResourceVersion: 2,
+		RestartConfig: &job.RestartConfig{
+			BatchSize: 1,
+		},
+	}).Return(restartResponse, nil)
+
+	suite.NoError(c.JobRestartAction(testJobID, 0, nil, 1))
+}
+
+// TestClientJobStartActionSuccess tests starting successfully
+func (suite *jobActionsTestSuite) TestClientJobStartActionSuccess() {
+	c := Client{
+		Debug:      false,
+		jobClient:  suite.mockJob,
+		taskClient: suite.mockTask,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	jobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: jobID,
+	}).Return(&job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				ConfigurationVersion: 1,
+			},
+		},
+	}, nil)
+
+	startResponse := &job.StartResponse{
+		ResourceVersion: 2,
+		UpdateID:        &peloton.UpdateID{Value: uuid.NewRandom().String()},
+	}
+
+	suite.mockJob.EXPECT().Start(gomock.Any(), &job.StartRequest{
+		Id:              jobID,
+		ResourceVersion: 1,
+		StartConfig: &job.StartConfig{
+			BatchSize: 1,
+		},
+	}).Return(startResponse, nil)
+
+	suite.NoError(c.JobStartAction(testJobID, 1, nil, 1))
+}
+
+// TestClientJobStartActionError tests starting fails with error
+func (suite *jobActionsTestSuite) TestClientJobStartActionError() {
+	c := Client{
+		Debug:      false,
+		jobClient:  suite.mockJob,
+		taskClient: suite.mockTask,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	jobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: jobID,
+	}).Return(&job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				ConfigurationVersion: 1,
+			},
+		},
+	}, nil)
+
+	startResponse := &job.StartResponse{}
+
+	suite.mockJob.EXPECT().Start(gomock.Any(), &job.StartRequest{
+		Id:              jobID,
+		ResourceVersion: 1,
+		StartConfig: &job.StartConfig{
+			BatchSize: 1,
+		},
+	}).Return(startResponse, errors.New("test error"))
+
+	suite.Error(c.JobStartAction(testJobID, 1, nil, 1))
+}
+
+// TestClientJobStopV2ActionSuccess tests stop successfully
+func (suite *jobActionsTestSuite) TestClientJobStopV2ActionSuccess() {
+	c := Client{
+		Debug:      false,
+		jobClient:  suite.mockJob,
+		taskClient: suite.mockTask,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	jobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: jobID,
+	}).Return(&job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				ConfigurationVersion: 1,
+			},
+		},
+	}, nil)
+
+	stopResponse := &job.StopResponse{
+		ResourceVersion: 2,
+		UpdateID:        &peloton.UpdateID{Value: uuid.NewRandom().String()},
+	}
+
+	suite.mockJob.EXPECT().Stop(gomock.Any(), &job.StopRequest{
+		Id:              jobID,
+		ResourceVersion: 1,
+		StopConfig: &job.StopConfig{
+			BatchSize: 1,
+		},
+	}).Return(stopResponse, nil)
+
+	suite.NoError(c.JobStopV1BetaAction(testJobID, 1, nil, 1))
+}
+
+// TestClientJobStopV2ActionError tests stop fails with error
+func (suite *jobActionsTestSuite) TestClientJobStopV2ActionError() {
+	c := Client{
+		Debug:      false,
+		jobClient:  suite.mockJob,
+		taskClient: suite.mockTask,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	jobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: jobID,
+	}).Return(&job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Runtime: &job.RuntimeInfo{
+				ConfigurationVersion: 1,
+			},
+		},
+	}, nil)
+
+	stopResponse := &job.StopResponse{}
+
+	suite.mockJob.EXPECT().Stop(gomock.Any(), &job.StopRequest{
+		Id:              jobID,
+		ResourceVersion: 1,
+		StopConfig: &job.StopConfig{
+			BatchSize: 1,
+		},
+	}).Return(stopResponse, errors.New("test error"))
+
+	suite.Error(c.JobStopV1BetaAction(testJobID, 1, nil, 1))
 }

@@ -2355,3 +2355,181 @@ func (suite *JobHandlerTestSuite) TestRestartNonServiceJobFailure() {
 	suite.Error(err)
 	suite.Nil(resp)
 }
+
+// TestStartJobSuccess tests the success path of starting job
+func (suite *JobHandlerTestSuite) TestStartJobSuccess() {
+	var configurationVersion uint64 = 1
+	var batchSize uint32 = 1
+
+	suite.mockedCandidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.testJobConfig.ChangeLog =
+		&peloton.ChangeLog{Version: configurationVersion}
+
+	suite.mockedJobFactory.EXPECT().
+		AddJob(suite.testJobID).
+		Return(suite.mockedCachedJob)
+
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			State:                job.JobState_PENDING,
+			ConfigurationVersion: configurationVersion,
+		}, nil)
+
+	suite.mockedJobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			suite.testJobID,
+			configurationVersion,
+		).
+		Return(suite.testJobConfig, nil)
+
+	suite.mockedUpdateFactory.EXPECT().
+		AddUpdate(gomock.Any()).
+		Return(suite.mockedCachedUpdate)
+
+	newConfig := *suite.testJobConfig
+	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
+	suite.mockedCachedUpdate.EXPECT().
+		Create(
+			gomock.Any(),
+			suite.testJobID,
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			gomock.Any(),
+			nil,
+			models.WorkflowType_START,
+			gomock.Any(),
+		).Do(func(
+		_ context.Context,
+		_ *peloton.JobID,
+		jobConfig *job.JobConfig,
+		prevJobConfig *job.JobConfig,
+		_ []uint32,
+		instanceUpdated []uint32,
+		_ []uint32,
+		_ models.WorkflowType,
+		updateConfig *update.UpdateConfig,
+	) {
+		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Len(instanceUpdated, int(newConfig.GetInstanceCount()))
+		suite.Equal(updateConfig.GetBatchSize(), batchSize)
+	}).
+		Return(nil)
+
+	suite.mockedGoalStateDriver.EXPECT().
+		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
+
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&newConfig, nil)
+
+	req := &job.StartRequest{
+		Id:              suite.testJobID,
+		ResourceVersion: configurationVersion,
+		StartConfig: &job.StartConfig{
+			BatchSize: batchSize,
+		},
+	}
+
+	resp, err := suite.handler.Start(context.Background(), req)
+	suite.NoError(err)
+	suite.NotNil(resp.GetUpdateID())
+	suite.Equal(resp.GetResourceVersion(),
+		newConfig.GetChangeLog().GetVersion())
+}
+
+// TestStopJobSuccess tests the success path of stopping job
+func (suite *JobHandlerTestSuite) TestStopJobSuccess() {
+	var configurationVersion uint64 = 1
+	var batchSize uint32 = 1
+
+	suite.mockedCandidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.testJobConfig.ChangeLog =
+		&peloton.ChangeLog{Version: configurationVersion}
+
+	suite.mockedJobFactory.EXPECT().
+		AddJob(suite.testJobID).
+		Return(suite.mockedCachedJob)
+
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			State:                job.JobState_PENDING,
+			ConfigurationVersion: configurationVersion,
+		}, nil)
+
+	suite.mockedJobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			suite.testJobID,
+			configurationVersion,
+		).
+		Return(suite.testJobConfig, nil)
+
+	suite.mockedUpdateFactory.EXPECT().
+		AddUpdate(gomock.Any()).
+		Return(suite.mockedCachedUpdate)
+
+	newConfig := *suite.testJobConfig
+	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
+	suite.mockedCachedUpdate.EXPECT().
+		Create(
+			gomock.Any(),
+			suite.testJobID,
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			gomock.Any(),
+			nil,
+			models.WorkflowType_STOP,
+			gomock.Any(),
+		).Do(func(
+		_ context.Context,
+		_ *peloton.JobID,
+		jobConfig *job.JobConfig,
+		prevJobConfig *job.JobConfig,
+		_ []uint32,
+		instanceUpdated []uint32,
+		_ []uint32,
+		_ models.WorkflowType,
+		updateConfig *update.UpdateConfig,
+	) {
+		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
+			configurationVersion)
+		suite.Len(instanceUpdated, int(newConfig.GetInstanceCount()))
+		suite.Equal(updateConfig.GetBatchSize(), batchSize)
+	}).
+		Return(nil)
+
+	suite.mockedGoalStateDriver.EXPECT().
+		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
+
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&newConfig, nil)
+
+	req := &job.StopRequest{
+		Id:              suite.testJobID,
+		ResourceVersion: configurationVersion,
+		StopConfig: &job.StopConfig{
+			BatchSize: batchSize,
+		},
+	}
+
+	resp, err := suite.handler.Stop(context.Background(), req)
+	suite.NoError(err)
+	suite.NotNil(resp.GetUpdateID())
+	suite.Equal(resp.GetResourceVersion(),
+		newConfig.GetChangeLog().GetVersion())
+}

@@ -109,7 +109,7 @@ func (c *Client) UpdateCreateAction(
 		response, err = c.updateClient.CreateUpdate(c.ctx, request)
 		if err != nil {
 			if yarpcerrors.IsInvalidArgument(err) &&
-				yarpcerrors.ErrorMessage(err) == invalidVersionError {
+				yarpcerrors.FromError(err).Message() == invalidVersionError {
 				continue
 			}
 			return err

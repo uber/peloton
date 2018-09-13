@@ -28,6 +28,12 @@ type Metrics struct {
 	JobAPIRestart  tally.Counter
 	JobRestart     tally.Counter
 	JobRestartFail tally.Counter
+	JobAPIStart    tally.Counter
+	JobStart       tally.Counter
+	JobStartFail   tally.Counter
+	JobAPIStop     tally.Counter
+	JobStop        tally.Counter
+	JobStopFail    tally.Counter
 
 	JobAPIGetByRespoolID  tally.Counter
 	JobGetByRespoolID     tally.Counter
@@ -78,6 +84,12 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobAPIRestart:  jobAPIScope.Counter("restart"),
 		JobRestart:     jobSuccessScope.Counter("restart"),
 		JobRestartFail: jobFailScope.Counter("restart"),
+		JobAPIStart:    jobAPIScope.Counter("start"),
+		JobStart:       jobSuccessScope.Counter("start"),
+		JobStartFail:   jobFailScope.Counter("start"),
+		JobAPIStop:     jobAPIScope.Counter("stop"),
+		JobStop:        jobSuccessScope.Counter("stop"),
+		JobStopFail:    jobFailScope.Counter("stop"),
 
 		JobQueryHandlerDuration: jobAPIScope.Timer("job_query_duration"),
 
