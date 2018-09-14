@@ -469,10 +469,15 @@ func (h *serviceHandler) diffConfig(
 		// so because the task may be still be on an older configurarion
 		// version because the previous update may not have succeeded.
 		// So, fetch the task configuration of the task from the DB.
+		var t cached.Task
 		var runtime *task.RuntimeInfo
 		var prevTaskConfig *task.TaskConfig
 
-		t := j.AddTask(i)
+		t, err = j.AddTask(ctx, i)
+		if err != nil {
+			return
+		}
+
 		runtime, err = t.GetRunTime(ctx)
 		if err != nil {
 			return

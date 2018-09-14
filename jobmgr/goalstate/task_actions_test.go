@@ -75,8 +75,8 @@ func (suite *TaskActionTestSuite) TestTaskReloadRuntime() {
 		GetJob(suite.jobID).
 		Return(suite.cachedJob)
 	suite.cachedJob.EXPECT().
-		AddTask(suite.instanceID).
-		Return(suite.cachedTask)
+		AddTask(gomock.Any(), suite.instanceID).
+		Return(suite.cachedTask, nil)
 	suite.taskStore.EXPECT().
 		GetTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
 		Return(&pbtask.RuntimeInfo{}, nil)

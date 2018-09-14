@@ -22,12 +22,12 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"code.uber.internal/infra/peloton/common/backoff"
+	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -138,7 +138,8 @@ func TestGetLaunchableTasks(t *testing.T) {
 		jobFactory.EXPECT().
 			GetJob(&peloton.JobID{Value: jobID}).Return(cachedJob)
 		cachedJob.EXPECT().
-			AddTask(uint32(instanceID)).Return(cachedTask)
+			AddTask(gomock.Any(), uint32(instanceID)).
+			Return(cachedTask, nil)
 		mockTaskStore.EXPECT().
 			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
 			Return(taskInfos[tasks[i].GetValue()].GetConfig(), nil)
@@ -205,7 +206,8 @@ func TestGetLaunchableTasksStateful(t *testing.T) {
 		jobFactory.EXPECT().
 			GetJob(&peloton.JobID{Value: jobID}).Return(cachedJob)
 		cachedJob.EXPECT().
-			AddTask(uint32(instanceID)).Return(cachedTask)
+			AddTask(gomock.Any(), uint32(instanceID)).
+			Return(cachedTask, nil)
 		mockTaskStore.EXPECT().
 			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
 			Return(taskInfos[tasks[i].GetValue()].GetConfig(), nil)

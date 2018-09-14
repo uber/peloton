@@ -16,10 +16,9 @@ import (
 
 	"code.uber.internal/infra/peloton/common/lifecycle"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
-
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/mock/gomock"
@@ -133,9 +132,15 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		}, nil,
 	)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(cachedJob).Times(3)
-	cachedJob.EXPECT().AddTask(runningTaskInfo.InstanceId).Return(runningCachedTask)
-	cachedJob.EXPECT().AddTask(killingTaskInfo.InstanceId).Return(killingCachedTask)
-	cachedJob.EXPECT().AddTask(noRestartTaskInfo.InstanceId).Return(noRestartCachedTask)
+	cachedJob.EXPECT().
+		AddTask(gomock.Any(), runningTaskInfo.InstanceId).
+		Return(runningCachedTask, nil)
+	cachedJob.EXPECT().
+		AddTask(gomock.Any(), killingTaskInfo.InstanceId).
+		Return(killingCachedTask, nil)
+	cachedJob.EXPECT().
+		AddTask(gomock.Any(), noRestartTaskInfo.InstanceId).
+		Return(noRestartCachedTask, nil)
 	suite.mockTaskStore.EXPECT().GetTaskConfig(
 		gomock.Any(), jobID, runningTaskInfo.InstanceId, runningTaskInfo.Runtime.ConfigVersion).
 		Return(nil, nil)
@@ -192,7 +197,9 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		}, nil,
 	)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(cachedJob)
-	cachedJob.EXPECT().AddTask(uint32(0)).Return(runningCachedTask)
+	cachedJob.EXPECT().
+		AddTask(gomock.Any(), uint32(0)).
+		Return(runningCachedTask, nil)
 	runningCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(nil, fmt.Errorf("Fake GetRunTime error"))
 	err = suite.preemptor.performPreemptionCycle()
 	suite.Error(err)

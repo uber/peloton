@@ -178,7 +178,15 @@ func (l *launcher) GetLaunchableTasks(
 			// job does not exist, just ignore the task?
 			continue
 		}
-		cachedTask := cachedJob.AddTask(uint32(instanceID))
+		cachedTask, err := cachedJob.AddTask(ctx, uint32(instanceID))
+		if err != nil {
+			log.WithError(err).
+				WithFields(log.Fields{
+					"job_id":      jobID.GetValue(),
+					"instance_id": uint32(instanceID),
+				}).Error("cannot add and recover task from DB")
+			continue
+		}
 
 		cachedRuntime, err := cachedTask.GetRunTime(ctx)
 		if err != nil {

@@ -154,8 +154,8 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 
 	for i := uint32(0); i < suite.jobConfig.InstanceCount; i++ {
 		suite.cachedJob.EXPECT().
-			AddTask(i).
-			Return(suite.cachedTask)
+			AddTask(gomock.Any(), i).
+			Return(suite.cachedTask, nil)
 		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).
 			Return(&task.RuntimeInfo{
@@ -217,8 +217,8 @@ func (suite *UpdateSvcTestSuite) TestAddInstancesSuccess() {
 
 	for i := uint32(0); i < suite.jobConfig.InstanceCount; i++ {
 		suite.cachedJob.EXPECT().
-			AddTask(i).
-			Return(suite.cachedTask)
+			AddTask(gomock.Any(), i).
+			Return(suite.cachedTask, nil)
 		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).
 			Return(&task.RuntimeInfo{
@@ -485,8 +485,8 @@ func (suite *UpdateSvcTestSuite) TestCreateReduceInstanceCount() {
 
 	for i := uint32(0); i < suite.newJobConfig.InstanceCount; i++ {
 		suite.cachedJob.EXPECT().
-			AddTask(i).
-			Return(suite.cachedTask)
+			AddTask(gomock.Any(), i).
+			Return(suite.cachedTask, nil)
 		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).
 			Return(&task.RuntimeInfo{
@@ -570,8 +570,8 @@ func (suite *UpdateSvcTestSuite) TestCreateAddUpdateFail() {
 
 	for i := uint32(0); i < suite.jobConfig.InstanceCount; i++ {
 		suite.cachedJob.EXPECT().
-			AddTask(i).
-			Return(suite.cachedTask)
+			AddTask(gomock.Any(), i).
+			Return(suite.cachedTask, nil)
 		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).
 			Return(&task.RuntimeInfo{
@@ -649,8 +649,8 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccessWithExistingUpdate() {
 
 	for i := uint32(0); i < suite.jobConfig.InstanceCount; i++ {
 		suite.cachedJob.EXPECT().
-			AddTask(i).
-			Return(suite.cachedTask)
+			AddTask(gomock.Any(), i).
+			Return(suite.cachedTask, nil)
 		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).
 			Return(&task.RuntimeInfo{

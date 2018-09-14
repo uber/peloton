@@ -154,7 +154,12 @@ func (p *preemptor) preemptTasks(ctx context.Context, preemptionCandidates []*re
 
 		jobID := &peloton.JobID{Value: id}
 		cachedJob := p.jobFactory.AddJob(jobID)
-		cachedTask := cachedJob.AddTask(uint32(instanceID))
+		cachedTask, err := cachedJob.AddTask(ctx, uint32(instanceID))
+		if err != nil {
+			errs = multierror.Append(errs, err)
+			continue
+		}
+
 		runtime, err := cachedTask.GetRunTime(ctx)
 		if err != nil {
 			errs = multierror.Append(errs, err)

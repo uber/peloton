@@ -50,8 +50,12 @@ type Job interface {
 	// If forceReplace is true, the func would always replace the runtime,
 	ReplaceTasks(runtimes map[uint32]*pbtask.RuntimeInfo, forceReplace bool) error
 
-	// AddTask adds a new task to the job, and if already present, just returns it
-	AddTask(id uint32) Task
+	// AddTask adds a new task to the job, and if already present,
+	// just returns it. In addition if the task is not present, then
+	// the caller can request to recover its runtime as well.
+	// In that case, if recovery does not succeed, the task is not
+	// added to the cache either.
+	AddTask(ctx context.Context, id uint32) (Task, error)
 
 	// GetTask from the task id.
 	GetTask(id uint32) Task
@@ -173,16 +177,66 @@ func (j *job) ID() *peloton.JobID {
 	return j.id
 }
 
-func (j *job) AddTask(id uint32) Task {
+func (j *job) populateJobConfig(ctx context.Context) error {
+	config, err := j.jobFactory.jobStore.GetJobConfig(ctx, j.ID())
+	if err != nil {
+		return err
+	}
+	j.populateJobConfigCache(config)
+	return nil
+}
+
+// addTaskToJobMap is a private API to add a task to job map
+func (j *job) addTaskToJobMap(id uint32) *task {
 	j.Lock()
 	defer j.Unlock()
 
 	t, ok := j.tasks[id]
 	if !ok {
 		t = newTask(j.ID(), id, j.jobFactory)
+	}
+	j.tasks[id] = t
+	return t
+}
+
+func (j *job) AddTask(
+	ctx context.Context,
+	id uint32) (Task, error) {
+	j.Lock()
+	defer j.Unlock()
+
+	t, ok := j.tasks[id]
+	if !ok {
+		t = newTask(j.ID(), id, j.jobFactory)
+
+		// first fetch the runtime of the task
+		_, err := t.GetRunTime(ctx)
+		if err != nil {
+			// if task runtime is not found and instance id is larger than
+			// instance count, then throw a different error
+			if !yarpcerrors.IsNotFound(err) {
+				return nil, err
+			}
+
+			// validate that the task being added is within
+			// the instance count of the job.
+			if j.config == nil {
+				err := j.populateJobConfig(ctx)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			if j.config.GetInstanceCount() <= id {
+				return nil, InstanceIDExceedsInstanceCountError
+			}
+			return nil, err
+		}
+
+		// store the task with the job
 		j.tasks[id] = t
 	}
-	return t
+	return t, nil
 }
 
 func (j *job) CreateTasks(
@@ -202,7 +256,7 @@ func (j *job) CreateTasks(
 			return yarpcerrors.AlreadyExistsErrorf("task %d already exists", id)
 		}
 
-		t := j.AddTask(id)
+		t := j.addTaskToJobMap(id)
 		return t.CreateRuntime(ctx, runtime, owner)
 	}
 	return j.runInParallel(getIdsFromRuntimeMap(runtimes), createSingleTask)
@@ -213,7 +267,10 @@ func (j *job) PatchTasks(
 	runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) error {
 
 	patchSingleTask := func(id uint32) error {
-		t := j.AddTask(id)
+		t, err := j.AddTask(ctx, id)
+		if err != nil {
+			return err
+		}
 		return t.PatchRuntime(ctx, runtimeDiffs[id])
 	}
 
@@ -225,7 +282,7 @@ func (j *job) ReplaceTasks(
 	forceReplace bool) error {
 
 	replaceSingleTask := func(id uint32) error {
-		t := j.AddTask(id)
+		t := j.addTaskToJobMap(id)
 		return t.ReplaceRuntime(runtimes[id], forceReplace)
 	}
 
@@ -774,11 +831,10 @@ func (j *job) GetConfig(ctx context.Context) (jobmgrcommon.JobConfig, error) {
 	defer j.Unlock()
 
 	if j.config == nil {
-		config, err := j.jobFactory.jobStore.GetJobConfig(ctx, j.ID())
+		err := j.populateJobConfig(ctx)
 		if err != nil {
 			return nil, err
 		}
-		j.populateJobConfigCache(config)
 	}
 	return j.config, nil
 }

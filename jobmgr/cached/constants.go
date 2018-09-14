@@ -4,6 +4,8 @@ import (
 	"time"
 
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // UpdateRequest is used to indicate whether the caller wants to update only
@@ -59,3 +61,8 @@ var (
 		pbtask.TaskState_KILLED:    true,
 	}
 )
+
+// InstanceIDExceedsInstanceCountError is the error returned when an operation
+// for an instance with instanceID larger than job instance count is requested
+var InstanceIDExceedsInstanceCountError = yarpcerrors.InvalidArgumentErrorf(
+	"instance-id is beyond the instance count")

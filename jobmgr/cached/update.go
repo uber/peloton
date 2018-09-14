@@ -564,19 +564,18 @@ func GetUpdateProgress(
 	instancesToCheck []uint32,
 ) (instancesCurrent []uint32, instancesDone []uint32, err error) {
 	for _, instID := range instancesToCheck {
-		cachedTask := cachedJob.AddTask(instID)
-		runtime, err := cachedTask.GetRunTime(ctx)
-
+		cachedTask, err := cachedJob.AddTask(ctx, instID)
 		// task is not created, this can happen when an update
 		// adds more instances
 		if yarpcerrors.IsNotFound(err) {
-			// TODO: figure out a more sensible way to handle task not found case.
-			// because add task would be added in cachedJob in the above call,
-			// and prevent further cachedJob.CreateTasks()
-			cachedJob.RemoveTask(instID)
 			continue
 		}
 
+		if err != nil {
+			return nil, nil, err
+		}
+
+		runtime, err := cachedTask.GetRunTime(ctx)
 		if err != nil {
 			return nil, nil, err
 		}

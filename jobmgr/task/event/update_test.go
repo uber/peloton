@@ -765,15 +765,29 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskLostStatusUpdate() {
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
-// Test processing status update for a task missing from DB.
-func (suite *TaskUpdaterTestSuite) TestProcessMissingTaskStatusUpdate() {
+// Test processing status update for a task failed to be fetched frmm DB.
+func (suite *TaskUpdaterTestSuite) TestProcessTaskIDFetchError() {
 	defer suite.ctrl.Finish()
 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
-		Return(nil, yarpcerrors.NotFoundErrorf("task:%s not found", _pelotonTaskID))
+		Return(nil, fmt.Errorf("fake db error"))
 	suite.Error(suite.updater.ProcessStatusUpdate(context.Background(), event))
+}
+
+// Test processing status update for a task missing from DB.
+func (suite *TaskUpdaterTestSuite) TestProcessMissingTaskStatusUpdate() {
+	defer suite.ctrl.Finish()
+
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	suite.mockTaskStore.EXPECT().
+		GetTaskByID(context.Background(), _pelotonTaskID).
+		Return(nil, yarpcerrors.NotFoundErrorf("task:%s not found", _pelotonTaskID))
+	suite.mockHostMgrClient.EXPECT().
+		KillTasks(gomock.Any(), gomock.Any()).
+		Return(&hostsvc.KillTasksResponse{}, nil)
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
 func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {

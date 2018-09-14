@@ -365,7 +365,6 @@ func processInstancesInUpdate(
 
 	for _, instID := range instancesToUpdate {
 		runtimeDiff := cachedUpdate.GetRuntimeDiff(jobConfig)
-
 		if runtimeDiff != nil {
 			runtimes[instID] = runtimeDiff
 		}

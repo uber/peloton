@@ -128,6 +128,76 @@ func (suite *JobTestSuite) TestJobFetchID() {
 	suite.Equal(suite.jobID, suite.job.ID())
 }
 
+// TestJobAddTask tests adding a task and recovering it as well
+func (suite *JobTestSuite) TestJobAddTask() {
+	instID := uint32(1)
+	runtime := &pbtask.RuntimeInfo{
+		State: pbtask.TaskState_RUNNING,
+	}
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, instID).
+		Return(runtime, nil)
+
+	t, err := suite.job.AddTask(context.Background(), instID)
+	suite.NoError(err)
+	suite.Equal(runtime, (t.(*task)).runtime)
+	suite.Equal(t, suite.job.tasks[instID])
+}
+
+// TestJobAddTaskDBError tests returning error from DB while fetching the
+// task runtime when adding a task and recovering it
+func (suite *JobTestSuite) TestJobAddTaskDBError() {
+	instID := uint32(1)
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, instID).
+		Return(nil, fmt.Errorf("fake db error"))
+
+	t, err := suite.job.AddTask(context.Background(), instID)
+	suite.Error(err)
+	suite.EqualError(err, "fake db error")
+	suite.Nil(t)
+}
+
+// TestJobAddTaskNotFound tests adding a task not in DB
+func (suite *JobTestSuite) TestJobAddTaskNotFound() {
+	instID := uint32(5)
+	suite.job.config = nil
+	jobConfig := &pbjob.JobConfig{
+		InstanceCount: 2,
+		Type:          pbjob.JobType_SERVICE,
+	}
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, instID).
+		Return(nil, yarpcerrors.NotFoundErrorf("not found"))
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(jobConfig, nil)
+
+	t, err := suite.job.AddTask(context.Background(), instID)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+	suite.Equal(err, InstanceIDExceedsInstanceCountError)
+	suite.Nil(t)
+}
+
+// TestJobAddTaskJobConfigGetError tests returning error from DB during
+// the fetch of job configuration when adding and recovering a task
+func (suite *JobTestSuite) TestJobAddTaskJobConfigGetError() {
+	instID := uint32(5)
+	suite.job.config = nil
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, instID).
+		Return(nil, yarpcerrors.NotFoundErrorf("not found"))
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(nil, fmt.Errorf("fake db error"))
+
+	t, err := suite.job.AddTask(context.Background(), instID)
+	suite.Error(err)
+	suite.EqualError(err, "fake db error")
+	suite.Nil(t)
+}
+
 // TestJobSetAndFetchConfigAndRuntime tests setting and fetching
 // job configuration and runtime.
 func (suite *JobTestSuite) TestJobSetAndFetchConfigAndRuntime() {
@@ -1130,7 +1200,7 @@ func (suite *JobTestSuite) TestReplaceTasks() {
 
 //
 // TestPatchTasks_SetGetTasksMultiple tests patching runtime in multiple
-func (suite *JobTestSuite) TestPatchTasks_SetGetTasksMultiple() {
+func (suite *JobTestSuite) TestPatchTasksSetGetTasksMultiple() {
 	instanceCount := uint32(10)
 
 	diffs := initializeDiffs(instanceCount, pbtask.TaskState_RUNNING)
@@ -1163,12 +1233,12 @@ func (suite *JobTestSuite) TestPatchTasks_SetGetTasksMultiple() {
 }
 
 // TestPatchTasks_DBError tests getting DB error during update task runtimes.
-func (suite *JobTestSuite) TestPatchTasks_DBError() {
+func (suite *JobTestSuite) TestPatchTasksDBError() {
 	instanceCount := uint32(10)
 	diffs := initializeDiffs(instanceCount, pbtask.TaskState_RUNNING)
 
 	for i := uint32(0); i < instanceCount; i++ {
-		tt := suite.job.AddTask(i).(*task)
+		tt := suite.job.addTaskToJobMap(i)
 		tt.runtime = &pbtask.RuntimeInfo{
 			State: pbtask.TaskState_LAUNCHED,
 		}
@@ -1187,10 +1257,10 @@ func (suite *JobTestSuite) TestPatchTasks_DBError() {
 }
 
 // TestPatchTasks_SingleTask tests updating task runtime of a single task in DB.
-func (suite *JobTestSuite) TestPatchTasks_SingleTask() {
+func (suite *JobTestSuite) TestPatchTasksSingleTask() {
 	diffs := initializeDiffs(1, pbtask.TaskState_RUNNING)
 	oldRuntime := initializeCurrentRuntime(pbtask.TaskState_LAUNCHED)
-	tt := suite.job.AddTask(0).(*task)
+	tt := suite.job.addTaskToJobMap(0)
 	tt.runtime = oldRuntime
 
 	// Update task runtime of only one task
@@ -1260,7 +1330,7 @@ func (suite *JobTestSuite) TestRecalculateResourceUsage() {
 				common.GPU:    float64(0),
 				common.MEMORY: float64(3)}
 		}
-		suite.job.AddTask(i)
+		suite.job.addTaskToJobMap(i)
 		suite.taskStore.EXPECT().
 			GetTaskRuntime(gomock.Any(), suite.jobID, i).Return(oldRuntime, nil)
 	}
@@ -1284,7 +1354,7 @@ func (suite *JobTestSuite) TestRecalculateResourceUsageError() {
 		common.MEMORY: float64(5)}
 	suite.job.resourceUsage = initialResourceMap
 
-	suite.job.AddTask(uint32(0))
+	suite.job.addTaskToJobMap(uint32(0))
 	suite.taskStore.EXPECT().
 		GetTaskRuntime(gomock.Any(), suite.jobID, uint32(0)).
 		Return(nil, dbError)
@@ -1297,7 +1367,7 @@ func (suite *JobTestSuite) TestRecalculateResourceUsageError() {
 }
 
 func (suite *JobTestSuite) TestJobRemoveTask() {
-	suite.job.AddTask(0)
+	suite.job.addTaskToJobMap(0)
 	suite.NotNil(suite.job.GetTask(0))
 	suite.job.RemoveTask(0)
 	suite.Nil(suite.job.GetTask(0))

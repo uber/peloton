@@ -348,7 +348,11 @@ func (d *controllerTaskJobStateDeterminer) getState(
 
 	// In job config validation, it makes sure controller
 	// task would be the first task
-	controllerTask := d.cachedJob.AddTask(0)
+	controllerTask, err := d.cachedJob.AddTask(ctx, 0)
+	if err != nil {
+		return job.JobState_UNKNOWN, err
+	}
+
 	controllerTaskRuntime, err := controllerTask.GetRunTime(ctx)
 	if err != nil {
 		return job.JobState_UNKNOWN, err

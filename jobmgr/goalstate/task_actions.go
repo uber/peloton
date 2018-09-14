@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -16,7 +17,11 @@ func TaskReloadRuntime(ctx context.Context, entity goalstate.Entity) error {
 	if cachedJob == nil {
 		return nil
 	}
-	cachedTask := cachedJob.AddTask(taskEnt.instanceID)
+
+	cachedTask, err := cachedJob.AddTask(ctx, taskEnt.instanceID)
+	if err != nil {
+		return err
+	}
 
 	runtime, err := goalStateDriver.taskStore.GetTaskRuntime(ctx, taskEnt.jobID, taskEnt.instanceID)
 	if err != nil {

@@ -589,8 +589,8 @@ func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 
 	for i, instanceID := range instancesCurrent {
 		suite.cachedJob.EXPECT().
-			AddTask(instanceID).
-			Return(suite.cachedTask)
+			AddTask(gomock.Any(), instanceID).
+			Return(suite.cachedTask, nil)
 
 		// the first instance has finished update,
 		// rest is still updating

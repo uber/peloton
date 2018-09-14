@@ -1091,8 +1091,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskSuc
 		AnyTimes()
 
 	suite.cachedJob.EXPECT().
-		AddTask(uint32(0)).
-		Return(suite.cachedTask)
+		AddTask(gomock.Any(), uint32(0)).
+		Return(suite.cachedTask, nil)
 
 	suite.cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).
@@ -1123,9 +1123,9 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskSuc
 	suite.NoError(err)
 }
 
-// TestJobRuntimeUpdater_ControllerTaskFailToGetRuntime tests
-// updating a job when controller task failed to get runtime
-func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskFailToGetRuntime() {
+// TestJobRuntimeUpdaterControllerTaskFailToGetTask tests
+// updating a job when controller task failed to get task
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdaterControllerTaskFailToGetTask() {
 	instanceCount := uint32(100)
 	suite.cachedConfig.EXPECT().
 		GetInstanceCount().
@@ -1168,8 +1168,60 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskFai
 		AnyTimes()
 
 	suite.cachedJob.EXPECT().
-		AddTask(uint32(0)).
-		Return(suite.cachedTask)
+		AddTask(gomock.Any(), uint32(0)).
+		Return(nil, yarpcerrors.UnavailableErrorf("test error"))
+
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	suite.Error(err)
+}
+
+// TestJobRuntimeUpdaterControllerTaskFailToGetRuntime tests
+// updating a job when controller task failed to get runtime
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdaterControllerTaskFailToGetRuntime() {
+	instanceCount := uint32(100)
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
+
+	stateCounts := make(map[string]uint32)
+	stateCounts[pbtask.TaskState_FAILED.String()] = instanceCount / 2
+	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount / 2
+
+	jobRuntime := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_INITIALIZED,
+		GoalState: pbjob.JobState_SUCCEEDED,
+		TaskStats: stateCounts,
+	}
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
+
+	suite.cachedConfig.EXPECT().
+		HasControllerTask().
+		Return(true)
+
+	suite.taskStore.EXPECT().
+		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
+		Return(stateCounts, nil)
+
+	suite.cachedJob.EXPECT().
+		IsPartiallyCreated(gomock.Any()).
+		Return(false).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), uint32(0)).
+		Return(suite.cachedTask, nil)
 
 	suite.cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).
@@ -1231,8 +1283,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskFai
 		AnyTimes()
 
 	suite.cachedJob.EXPECT().
-		AddTask(uint32(0)).
-		Return(suite.cachedTask)
+		AddTask(gomock.Any(), uint32(0)).
+		Return(suite.cachedTask, nil)
 
 	suite.cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).

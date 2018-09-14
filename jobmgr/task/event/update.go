@@ -25,6 +25,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // Declare a Now function so that we can mock it in unit tests.
@@ -184,6 +185,24 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 
 	taskInfo, err := p.taskStore.GetTaskByID(ctx, taskID)
 	if err != nil {
+		if yarpcerrors.IsNotFound(err) {
+			// if task runtime or config is not present in the DB,
+			// then kill this task
+			p.metrics.SkipOrphanTasksTotal.Inc(1)
+			log.WithFields(log.Fields{
+				"mesos_task_id":     mesosTaskID,
+				"task_status_event": event.GetMesosTaskStatus(),
+			}).Info("received status update for task not found in DB")
+			taskInfo := &pb_task.TaskInfo{
+				Runtime: &pb_task.RuntimeInfo{
+					State:       state,
+					MesosTaskId: event.MesosTaskStatus.GetTaskId(),
+					AgentID:     event.MesosTaskStatus.GetAgentId(),
+				},
+			}
+			return jobmgr_task.KillOrphanTask(ctx, p.hostmgrClient, taskInfo)
+		}
+
 		log.WithError(err).
 			WithField("task_id", taskID).
 			WithField("task_status_event", event.GetMesosTaskStatus()).

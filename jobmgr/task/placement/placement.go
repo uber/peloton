@@ -225,7 +225,13 @@ func (p *processor) createTaskInfos(
 		}
 		jobID := &peloton.JobID{Value: id}
 		cachedJob := p.jobFactory.AddJob(jobID)
-		cachedTask := cachedJob.AddTask(uint32(instanceID))
+		cachedTask, err := cachedJob.AddTask(ctx, uint32(instanceID))
+		if err != nil {
+			log.WithError(err).
+				WithField("task_id", taskID).
+				Error("cannot add and recover task")
+			continue
+		}
 
 		cachedRuntime, err := cachedTask.GetRunTime(ctx)
 		if err != nil {

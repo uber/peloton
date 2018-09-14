@@ -22,14 +22,14 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
-	launchermocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
 
 	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/common/rpc"
+	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	launchermocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -220,7 +220,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementNoError() {
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
-			AddTask(uint32(0)).Return(suite.cachedTask),
+			AddTask(gomock.Any(), uint32(0)).
+			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.cachedJob.EXPECT().
@@ -289,7 +290,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledTask() {
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
-			AddTask(uint32(0)).Return(suite.cachedTask),
+			AddTask(gomock.Any(), uint32(0)).
+			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 	)
@@ -325,7 +327,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledRunningTask() {
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
-			AddTask(uint32(0)).Return(suite.cachedTask),
+			AddTask(gomock.Any(), uint32(0)).
+			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.goalStateDriver.EXPECT().
@@ -359,7 +362,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementDBError() {
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
-			AddTask(uint32(0)).Return(suite.cachedTask),
+			AddTask(gomock.Any(), uint32(0)).
+			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.cachedJob.EXPECT().
@@ -393,7 +397,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementError() {
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
-			AddTask(uint32(0)).Return(suite.cachedTask),
+			AddTask(gomock.Any(), uint32(0)).
+			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.cachedJob.EXPECT().
@@ -445,7 +450,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementPlacementResMgrError() {
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
-			AddTask(uint32(0)).Return(suite.cachedTask),
+			AddTask(gomock.Any(), uint32(0)).Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.cachedJob.EXPECT().
