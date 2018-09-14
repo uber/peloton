@@ -32,6 +32,9 @@ message UpdateConfig {
   // rollbackOnFailure indicates if the update should be rolled back
   // automatically if failure is detected
   bool rollbackOnFailure = 5;
+
+  // maxInstanceRetries is the maximum retry times for one task
+  uint32 maxInstanceRetries = 6;
 }
 
 // Runtime state of a job update

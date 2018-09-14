@@ -39,7 +39,7 @@ def test__run_failing_job():
     job.wait_for_state(goal_state='FAILED', failed_state='SUCCEEDED')
 
     results = job.get_task_runs(0)
-    assert len(results) == 5
+    assert len(results) == 4
     # TBD uncomment after the ability to fetch logs from mesos in pcluster
     # for i in range(0, len(results)):
     # result = results[i]

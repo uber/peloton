@@ -1177,3 +1177,10 @@ func contains(element uint32, slice []uint32) bool {
 	}
 	return false
 }
+
+// Test function IsTaskInUpdateProgress
+func (suite *UpdateTestSuite) TestIsTaskInUpdateProgress() {
+	suite.update.instancesCurrent = []uint32{1, 2}
+	suite.True(suite.update.IsTaskInUpdateProgress(uint32(1)))
+	suite.False(suite.update.IsTaskInUpdateProgress(uint32(0)))
+}

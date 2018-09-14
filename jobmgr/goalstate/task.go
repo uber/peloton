@@ -41,6 +41,9 @@ const (
 	LaunchRetryAction TaskAction = "launch_retry"
 	// FailRetryAction retries a failed task
 	FailRetryAction TaskAction = "fail_retry"
+	// TerminatedRetryAction helps restart terminated tasks with throttling as well as
+	// fail the task update if the task does not come up for max instance retries.
+	TerminatedRetryAction TaskAction = "terminated_retry"
 	// TaskStateInvalidAction is executed when a task enters
 	// invalid current state and goal state combination, and it logs a sentry error
 	TaskStateInvalidAction TaskAction = "state_invalid"
@@ -55,6 +58,7 @@ var (
 		InitializeAction:       TaskInitialize,
 		ReloadTaskRuntime:      TaskReloadRuntime,
 		LaunchRetryAction:      TaskLaunchRetry,
+		TerminatedRetryAction:  TaskTerminatedRetry,
 		FailRetryAction:        TaskFailRetry,
 		ExecutorShutdownAction: TaskExecutorShutdown,
 		TaskStateInvalidAction: TaskStateInvalid,
@@ -74,9 +78,9 @@ var (
 			task.TaskState_INITIALIZED: StartAction,
 			task.TaskState_LAUNCHED:    LaunchRetryAction,
 			task.TaskState_STARTING:    LaunchRetryAction,
-			task.TaskState_SUCCEEDED:   InitializeAction,
-			task.TaskState_FAILED:      InitializeAction,
-			task.TaskState_KILLED:      InitializeAction,
+			task.TaskState_SUCCEEDED:   TerminatedRetryAction,
+			task.TaskState_FAILED:      TerminatedRetryAction,
+			task.TaskState_KILLED:      TerminatedRetryAction,
 			task.TaskState_LOST:        InitializeAction,
 		},
 		task.TaskState_SUCCEEDED: {

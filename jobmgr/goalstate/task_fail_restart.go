@@ -9,6 +9,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
+	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
 
@@ -35,6 +36,38 @@ func isSystemFailure(runtime *task.RuntimeInfo) bool {
 		}
 	}
 	return false
+}
+
+// rescheduleTask patch the new job runtime and enqueue the task into goalstate engine
+func rescheduleTask(
+	ctx context.Context,
+	cachedJob cached.Job,
+	instanceID uint32,
+	taskRuntime *task.RuntimeInfo,
+	taskConfig *task.TaskConfig,
+	goalStateDriver *driver) error {
+
+	jobID := cachedJob.ID()
+	healthState := taskutil.GetInitialHealthState(taskConfig)
+	// reschedule the task
+	goalStateDriver.mtx.taskMetrics.RetryFailedTasksTotal.Inc(1)
+	runtimeDiff := taskutil.RegenerateMesosTaskIDDiff(
+		jobID,
+		instanceID,
+		taskRuntime,
+		healthState)
+	runtimeDiff[jobmgrcommon.MessageField] = "Rescheduled after task terminated"
+	log.WithField("job_id", jobID).
+		WithField("instance_id", instanceID).
+		Debug("restarting terminated task")
+	err := cachedJob.PatchTasks(ctx,
+		map[uint32]jobmgrcommon.RuntimeDiff{instanceID: runtimeDiff})
+	if err != nil {
+		return err
+	}
+	goalStateDriver.EnqueueTask(jobID, instanceID, time.Now())
+	EnqueueJobWithDefaultDelay(jobID, goalStateDriver, cachedJob)
+	return nil
 }
 
 // TaskFailRetry retries on task failure
@@ -82,21 +115,11 @@ func TaskFailRetry(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	healthState := taskutil.GetInitialHealthState(taskConfig)
-	// reschedule the task
-	goalStateDriver.mtx.taskMetrics.RetryFailedTasksTotal.Inc(1)
-	runtimeDiff := taskutil.RegenerateMesosTaskIDDiff(
-		taskEnt.jobID, taskEnt.instanceID, runtime, healthState)
-	runtimeDiff[jobmgrcommon.FailureCountField] = runtime.GetFailureCount() + 1
-	runtimeDiff[jobmgrcommon.MessageField] = "Rescheduled after task failure"
-	log.WithField("job_id", taskEnt.jobID).
-		WithField("instance_id", taskEnt.instanceID).
-		Debug("restarting failed task")
-	err = cachedJob.PatchTasks(ctx,
-		map[uint32]jobmgrcommon.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
-	if err == nil {
-		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
-		EnqueueJobWithDefaultDelay(taskEnt.jobID, goalStateDriver, cachedJob)
-	}
-	return err
+	return rescheduleTask(
+		ctx,
+		cachedJob,
+		taskEnt.instanceID,
+		runtime,
+		taskConfig,
+		goalStateDriver)
 }

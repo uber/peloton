@@ -193,7 +193,7 @@ func createTestTaskInfoWithHealth(state task.TaskState) *task.TaskInfo {
 		Runtime: &task.RuntimeInfo{
 			MesosTaskId:   &mesos.TaskID{Value: &_mesosTaskID},
 			State:         state,
-			GoalState:     task.TaskState_SUCCEEDED,
+			GoalState:     task.TaskState_RUNNING,
 			ResourceUsage: jobmgrtask.CreateEmptyResourceUsageMap(),
 		},
 		Config: &task.TaskConfig{
@@ -452,6 +452,98 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedDuplicateTask() {
 		Return(taskInfo, nil)
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 	time.Sleep(_waitTime)
+}
+
+func (suite *TaskUpdaterTestSuite) TestProcessTaskFailureCountUpdate() {
+	defer suite.ctrl.Finish()
+
+	tt := []struct {
+		mesosState          mesos.TaskState
+		pelotnState         task.TaskState
+		configVersion       uint64
+		desiredVersion      uint64
+		falureCount         uint32
+		desiredFailureCount uint32
+	}{
+		{
+			mesosState:          mesos.TaskState_TASK_KILLED,
+			pelotnState:         task.TaskState_KILLED,
+			configVersion:       1,
+			desiredVersion:      1,
+			falureCount:         3,
+			desiredFailureCount: 4,
+		},
+		{
+			mesosState:          mesos.TaskState_TASK_KILLED,
+			pelotnState:         task.TaskState_KILLED,
+			configVersion:       1,
+			desiredVersion:      2,
+			falureCount:         3,
+			desiredFailureCount: 0,
+		},
+		{
+			mesosState:          mesos.TaskState_TASK_FAILED,
+			pelotnState:         task.TaskState_FAILED,
+			configVersion:       1,
+			desiredVersion:      1,
+			falureCount:         3,
+			desiredFailureCount: 4,
+		},
+		{
+			mesosState:          mesos.TaskState_TASK_FINISHED,
+			pelotnState:         task.TaskState_SUCCEEDED,
+			configVersion:       1,
+			desiredVersion:      1,
+			falureCount:         3,
+			desiredFailureCount: 4,
+		},
+	}
+
+	for _, t := range tt {
+		cachedJob := cachedmocks.NewMockJob(suite.ctrl)
+		event := createTestTaskUpdateEvent(t.mesosState)
+		taskInfo := createTestTaskInfoWithHealth(task.TaskState_RUNNING)
+
+		taskInfo.Runtime.ConfigVersion = t.configVersion
+		taskInfo.Runtime.DesiredConfigVersion = t.desiredVersion
+		taskInfo.Runtime.FailureCount = t.falureCount
+
+		suite.mockTaskStore.EXPECT().
+			GetTaskByID(context.Background(), _pelotonTaskID).
+			Return(taskInfo, nil)
+		suite.jobFactory.EXPECT().
+			AddJob(_pelotonJobID).Return(cachedJob)
+		cachedJob.EXPECT().
+			SetTaskUpdateTime(gomock.Any()).Return()
+		cachedJob.EXPECT().
+			PatchTasks(context.Background(), gomock.Any()).
+			Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+				runtimeDiff := runtimeDiffs[_instanceID]
+				suite.Equal(
+					runtimeDiff[jobmgrcommon.StateField],
+					t.pelotnState,
+				)
+				suite.Equal(
+					runtimeDiff[jobmgrcommon.HealthyField],
+					task.HealthState_INVALID,
+				)
+				suite.Equal(
+					runtimeDiff[jobmgrcommon.FailureCountField],
+					uint32(t.desiredFailureCount),
+				)
+			}).
+			Return(nil)
+		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
+		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return()
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
+		suite.goalStateDriver.EXPECT().
+			JobRuntimeDuration(job.JobType_BATCH).
+			Return(1 * time.Second)
+		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return()
+
+		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+		time.Sleep(_waitTime)
+	}
 }
 
 // Test processing task LOST status update w/o retry for stateful task.

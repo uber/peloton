@@ -294,6 +294,8 @@ var (
 		"current configuration version").Default("0").Short('c').Uint64()
 	updateOverride = updateCreate.Flag("override",
 		"override the existing update").Default("false").Short('o').Bool()
+	updateMaxInstanceRetries = updateCreate.Flag("maxretries",
+		"max retry attemps for an instance").Default("10").Uint32()
 
 	// command to fetch the status of a job update
 	updateGet   = update.Command("get", "get status of a job update")
@@ -519,6 +521,7 @@ func main() {
 			*updateResPoolPath,
 			*updateConfigVersion,
 			*updateOverride,
+			*updateMaxInstanceRetries,
 		)
 	case updateGet.FullCommand():
 		err = client.UpdateGetAction(*updateGetID)

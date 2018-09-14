@@ -68,6 +68,10 @@ type Update interface {
 	GetUpdateConfig() *pbupdate.UpdateConfig
 
 	GetWorkflowType() models.WorkflowType
+
+	// IsTaskInUpdateProgress returns true if a given task is
+	// in progress for the given update, else returns false
+	IsTaskInUpdateProgress(instanceID uint32) bool
 }
 
 // UpdateStateVector is used to the represent the state and goal state
@@ -472,6 +476,17 @@ func (u *update) GetWorkflowType() models.WorkflowType {
 	defer u.RUnlock()
 
 	return u.workflowType
+}
+
+// IsTaskInUpdateProgress returns true if a given task is
+// in progress for the given update, else returns false
+func (u *update) IsTaskInUpdateProgress(instanceID uint32) bool {
+	for _, currentInstance := range u.GetInstancesCurrent() {
+		if instanceID == currentInstance {
+			return true
+		}
+	}
+	return false
 }
 
 // populate info in updateModel into update

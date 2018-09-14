@@ -27,7 +27,8 @@ func (c *Client) UpdateCreateAction(
 	batchSize uint32,
 	respoolPath string,
 	configVersion uint64,
-	override bool) error {
+	override bool,
+	maxInstanceRetries uint32) error {
 	var jobConfig job.JobConfig
 	var response *updatesvc.CreateUpdateResponse
 
@@ -102,7 +103,8 @@ func (c *Client) UpdateCreateAction(
 			},
 			JobConfig: &jobConfig,
 			UpdateConfig: &update.UpdateConfig{
-				BatchSize: batchSize,
+				BatchSize:          batchSize,
+				MaxInstanceRetries: maxInstanceRetries,
 			},
 		}
 

@@ -233,6 +233,9 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		persistHealthyField(state, reason, healthy, runtimeDiff)
 	}
 
+	// Update FailureCount
+	updateFailureCount(state, runtime, runtimeDiff)
+
 	// Persist the reason and message for mesos updates
 	runtimeDiff[jobmgrcommon.MessageField] = statusMsg
 	runtimeDiff[jobmgrcommon.ReasonField] = ""
@@ -473,6 +476,36 @@ func persistHealthyField(
 			} else {
 				runtimeDiff[jobmgrcommon.HealthyField] = pb_task.HealthState_UNHEALTHY
 			}
+		}
+	}
+}
+
+func updateFailureCount(
+	eventState pb_task.TaskState,
+	runtime *pb_task.RuntimeInfo,
+	runtimeDiff map[string]interface{}) {
+
+	if !util.IsPelotonStateTerminal(eventState) {
+		return
+	}
+
+	switch {
+
+	case eventState == pb_task.TaskState_FAILED:
+		runtimeDiff[jobmgrcommon.FailureCountField] = uint32(runtime.GetFailureCount() + 1)
+
+	case eventState == pb_task.TaskState_SUCCEEDED &&
+		runtime.GetGoalState() == pb_task.TaskState_RUNNING:
+		runtimeDiff[jobmgrcommon.FailureCountField] = uint32(runtime.GetFailureCount() + 1)
+
+	case eventState == pb_task.TaskState_KILLED &&
+		runtime.GetGoalState() != pb_task.TaskState_KILLED:
+		if runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
+			// This KILLED event is expected that caused by update
+			runtimeDiff[jobmgrcommon.FailureCountField] = uint32(0)
+		} else {
+			// This KILLED event is unexpected
+			runtimeDiff[jobmgrcommon.FailureCountField] = uint32(runtime.GetFailureCount() + 1)
 		}
 	}
 }

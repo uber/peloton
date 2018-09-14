@@ -12,56 +12,97 @@ import (
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	storemocks "code.uber.internal/infra/peloton/storage/mocks"
-
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
 
-func TestTaskFailNoRetry(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+type TaskFailRetryTestSuite struct {
+	suite.Suite
+	ctrl *gomock.Controller
 
-	taskStore := storemocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
+	jobStore      *storemocks.MockJobStore
+	taskStore     *storemocks.MockTaskStore
+	updateFactory *cachedmocks.MockUpdateFactory
+	jobFactory    *cachedmocks.MockJobFactory
 
-	goalStateDriver := &driver{
-		jobEngine:  jobGoalStateEngine,
-		taskEngine: taskGoalStateEngine,
-		taskStore:  taskStore,
-		jobFactory: jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
+	updateGoalStateEngine *goalstatemocks.MockEngine
+	taskGoalStateEngine   *goalstatemocks.MockEngine
+	jobGoalStateEngine    *goalstatemocks.MockEngine
+	goalStateDriver       *driver
+
+	jobID      *peloton.JobID
+	instanceID uint32
+	updateID   *peloton.UpdateID
+
+	updateEnt    *updateEntity
+	taskEnt      *taskEntity
+	cachedJob    *cachedmocks.MockJob
+	cachedUpdate *cachedmocks.MockUpdate
+	cachedTask   *cachedmocks.MockTask
+
+	jobConfig   *pbjob.JobConfig
+	jobRuntime  *pbjob.RuntimeInfo
+	taskRuntime *pbtask.RuntimeInfo
+	mesosTaskID string
+}
+
+func TestTaskFailRetryStart(t *testing.T) {
+	suite.Run(t, new(TaskFailRetryTestSuite))
+}
+
+func (suite *TaskFailRetryTestSuite) TearDownTest() {
+	suite.ctrl.Finish()
+}
+
+func (suite *TaskFailRetryTestSuite) SetupTest() {
+	suite.ctrl = gomock.NewController(suite.T())
+	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
+	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
+	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
+	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
+	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
+	suite.cachedUpdate = cachedmocks.NewMockUpdate(suite.ctrl)
+	suite.goalStateDriver = &driver{
+		jobEngine:     suite.jobGoalStateEngine,
+		taskEngine:    suite.taskGoalStateEngine,
+		updateFactory: suite.updateFactory,
+		taskStore:     suite.taskStore,
+		jobFactory:    suite.jobFactory,
+		mtx:           NewMetrics(tally.NoopScope),
+		cfg:           &Config{},
 	}
-	goalStateDriver.cfg.normalize()
-
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
-
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-		driver:     goalStateDriver,
+	suite.goalStateDriver.cfg.normalize()
+	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
+	suite.updateID = &peloton.UpdateID{Value: uuid.NewRandom().String()}
+	suite.instanceID = uint32(0)
+	suite.taskEnt = &taskEntity{
+		jobID:      suite.jobID,
+		instanceID: suite.instanceID,
+		driver:     suite.goalStateDriver,
 	}
-
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), instanceID, uuid.NewUUID().String())
-
-	runtime := &pbtask.RuntimeInfo{
-		MesosTaskId:   &mesosv1.TaskID{Value: &mesosTaskID},
+	suite.mesosTaskID = fmt.Sprintf("%s-%d-%d", suite.jobID.GetValue(), suite.instanceID, 1)
+	suite.taskRuntime = &pbtask.RuntimeInfo{
+		MesosTaskId:   &mesosv1.TaskID{Value: &suite.mesosTaskID},
 		State:         pbtask.TaskState_FAILED,
 		GoalState:     pbtask.TaskState_SUCCEEDED,
 		ConfigVersion: 1,
 		Message:       "testFailure",
 		Reason:        mesosv1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
 	}
+	suite.jobRuntime = &pbjob.RuntimeInfo{
+		UpdateID: suite.updateID,
+	}
+}
+
+// TestTaskFailNoRetry tests when restart policy is set to 0 for batch task
+func (suite *TaskFailRetryTestSuite) TestTaskFailNoRetry() {
 
 	taskConfig := pbtask.TaskConfig{
 		RestartPolicy: &pbtask.RestartPolicy{
@@ -69,146 +110,93 @@ func TestTaskFailNoRetry(t *testing.T) {
 		},
 	}
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
-		GetTask(instanceID).Return(cachedTask)
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(suite.cachedTask)
 
-	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
 
-	taskStore.EXPECT().
-		GetTaskConfig(gomock.Any(), jobID, instanceID, gomock.Any()).Return(&taskConfig, nil)
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).Return(&taskConfig, nil)
 
-	err := TaskFailRetry(context.Background(), taskEnt)
-	assert.NoError(t, err)
+	err := TaskFailRetry(context.Background(), suite.taskEnt)
+	suite.NoError(err)
 }
 
-func TestTaskFailRetry(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	taskStore := storemocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
-
-	goalStateDriver := &driver{
-		jobEngine:  jobGoalStateEngine,
-		taskEngine: taskGoalStateEngine,
-		taskStore:  taskStore,
-		jobFactory: jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
-	}
-	goalStateDriver.cfg.normalize()
-
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
-
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-		driver:     goalStateDriver,
-	}
-
-	mesosTaskID := fmt.Sprintf("%s-%d-%d", jobID.GetValue(), instanceID, 1)
-
-	runtime := &pbtask.RuntimeInfo{
-		MesosTaskId:   &mesosv1.TaskID{Value: &mesosTaskID},
-		State:         pbtask.TaskState_FAILED,
-		GoalState:     pbtask.TaskState_SUCCEEDED,
-		ConfigVersion: 1,
-		Message:       "testFailure",
-		Reason:        mesosv1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
-	}
-
+// TestTaskFailRetry tests retry for failed task
+func (suite *TaskFailRetryTestSuite) TestTaskFailRetry() {
 	taskConfig := pbtask.TaskConfig{
 		RestartPolicy: &pbtask.RestartPolicy{
 			MaxFailures: 3,
 		},
 	}
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(suite.cachedTask)
 
-	cachedJob.EXPECT().
-		GetTask(instanceID).Return(cachedTask)
+	suite.cachedJob.EXPECT().
+		ID().Return(suite.jobID)
 
-	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
 
-	taskStore.EXPECT().
-		GetTaskConfig(gomock.Any(), jobID, instanceID, gomock.Any()).Return(&taskConfig, nil)
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).Return(&taskConfig, nil)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
-			runtimeDiff := runtimeDiffs[instanceID]
-			assert.True(t, runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != mesosTaskID)
-			assert.True(t, runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == mesosTaskID)
-			assert.True(t, runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
-			assert.True(t, runtimeDiff[jobmgrcommon.HealthyField].(pbtask.HealthState) == pbtask.HealthState_DISABLED)
+			runtimeDiff := runtimeDiffs[suite.instanceID]
+			suite.True(
+				runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != suite.mesosTaskID)
+			suite.True(
+				runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == suite.mesosTaskID)
+			suite.True(
+				runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
 		}).
 		Return(nil)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH)
 
-	taskGoalStateEngine.EXPECT().
+	suite.taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	jobGoalStateEngine.EXPECT().
+	suite.jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	err := TaskFailRetry(context.Background(), taskEnt)
-	assert.NoError(t, err)
+	err := TaskFailRetry(context.Background(), suite.taskEnt)
+	suite.NoError(err)
 }
 
-func TestTaskFailSystemFailure(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+// TestTaskFailSystemFailure test task failed becaused of system failure
+func (suite *TaskFailRetryTestSuite) TestTaskFailSystemFailure() {
+	suite.taskRuntime.Reason = mesosv1.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED.String()
 
-	taskStore := storemocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
-
-	goalStateDriver := &driver{
-		jobEngine:  jobGoalStateEngine,
-		taskEngine: taskGoalStateEngine,
-		taskStore:  taskStore,
-		jobFactory: jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
-	}
-	goalStateDriver.cfg.normalize()
-
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
-
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-		driver:     goalStateDriver,
-	}
-
-	mesosTaskID := fmt.Sprintf("%s-%d-%d", jobID.GetValue(), instanceID, 1)
-
-	runtime := &pbtask.RuntimeInfo{
-		MesosTaskId:   &mesosv1.TaskID{Value: &mesosTaskID},
-		State:         pbtask.TaskState_FAILED,
-		GoalState:     pbtask.TaskState_SUCCEEDED,
-		ConfigVersion: 1,
-		Message:       "testFailure",
-		Reason:        mesosv1.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED.String(),
+	testTable := []*pbtask.RuntimeInfo{
+		&pbtask.RuntimeInfo{
+			MesosTaskId:   &mesosv1.TaskID{Value: &suite.mesosTaskID},
+			State:         pbtask.TaskState_FAILED,
+			GoalState:     pbtask.TaskState_SUCCEEDED,
+			ConfigVersion: 1,
+			Message:       "testFailure",
+			Reason:        mesosv1.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED.String(),
+		},
+		&pbtask.RuntimeInfo{
+			MesosTaskId:   &mesosv1.TaskID{Value: &suite.mesosTaskID},
+			State:         pbtask.TaskState_FAILED,
+			GoalState:     pbtask.TaskState_SUCCEEDED,
+			ConfigVersion: 1,
+			Message:       "Container terminated with signal Broken pipe",
+			Reason:        mesosv1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
+		},
 	}
 
 	taskConfig := pbtask.TaskConfig{
@@ -217,96 +205,133 @@ func TestTaskFailSystemFailure(t *testing.T) {
 		},
 	}
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+	for _, taskRuntime := range testTable {
 
-	cachedJob.EXPECT().
-		GetTask(instanceID).Return(cachedTask)
+		suite.jobFactory.EXPECT().
+			GetJob(suite.jobID).Return(suite.cachedJob)
 
-	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		suite.cachedJob.EXPECT().
+			GetTask(suite.instanceID).Return(suite.cachedTask)
 
-	taskStore.EXPECT().
-		GetTaskConfig(gomock.Any(), jobID, instanceID, gomock.Any()).Return(&taskConfig, nil)
+		suite.cachedJob.EXPECT().
+			ID().Return(suite.jobID)
 
-	cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
-			runtimeDiff := runtimeDiffs[instanceID]
-			assert.True(t, runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != mesosTaskID)
-			assert.True(t, runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == mesosTaskID)
-			assert.True(t, runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
-		}).
-		Return(nil)
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(taskRuntime, nil)
 
-	cachedJob.EXPECT().
-		GetJobType().Return(pbjob.JobType_BATCH)
+		suite.taskStore.EXPECT().
+			GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).Return(&taskConfig, nil)
 
-	taskGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
+		suite.cachedJob.EXPECT().
+			PatchTasks(gomock.Any(), gomock.Any()).
+			Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+				runtimeDiff := runtimeDiffs[suite.instanceID]
+				suite.True(
+					runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != suite.mesosTaskID)
+				suite.True(
+					runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == suite.mesosTaskID)
+				suite.True(
+					runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
+			}).
+			Return(nil)
 
-	jobGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
+		suite.cachedJob.EXPECT().
+			GetJobType().Return(pbjob.JobType_BATCH)
 
-	err := TaskFailRetry(context.Background(), taskEnt)
-	assert.NoError(t, err)
+		suite.taskGoalStateEngine.EXPECT().
+			Enqueue(gomock.Any(), gomock.Any()).
+			Return()
+
+		suite.jobGoalStateEngine.EXPECT().
+			Enqueue(gomock.Any(), gomock.Any()).
+			Return()
+
+		err := TaskFailRetry(context.Background(), suite.taskEnt)
+		suite.NoError(err)
+	}
 }
 
-func TestTaskFailDBError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+// TestTaskFailDBError tests DB failure
+func (suite *TaskFailRetryTestSuite) TestTaskFailDBError() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
 
-	taskStore := storemocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(suite.cachedTask)
 
-	goalStateDriver := &driver{
-		jobEngine:  jobGoalStateEngine,
-		taskEngine: taskGoalStateEngine,
-		taskStore:  taskStore,
-		jobFactory: jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		Return(nil, fmt.Errorf("fake db error"))
+
+	err := TaskFailRetry(context.Background(), suite.taskEnt)
+	suite.Error(err)
+
+}
+
+// TestTaskFailRetryNoJob test failed to get the cached job
+func (suite *TaskFailRetryTestSuite) TestTaskFailRetryNoJob() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(nil)
+	err := TaskFailRetry(context.Background(), suite.taskEnt)
+	suite.Nil(err)
+}
+
+// TestTaskFailRetryNoJob test failed to get the cached task
+func (suite *TaskFailRetryTestSuite) TestTaskFailRetryNoTask() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(nil)
+
+	err := TaskFailRetry(context.Background(), suite.taskEnt)
+	suite.Nil(err)
+
+}
+
+// TestTaskFailRetryNoTask test failed to get the task runtime
+func (suite *TaskFailRetryTestSuite) TestTaskFailRetryNoTaskRuntime() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(suite.cachedTask)
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(nil, fmt.Errorf("runtime error"))
+
+	err := TaskFailRetry(context.Background(), suite.taskEnt)
+	suite.Error(err)
+}
+
+// TestTaskFailRetryFailedPatch tests retry when patch task runtime failed
+func (suite *TaskFailRetryTestSuite) TestTaskFailRetryFailedPatch() {
+	taskConfig := pbtask.TaskConfig{
+		RestartPolicy: &pbtask.RestartPolicy{
+			MaxFailures: 3,
+		},
 	}
-	goalStateDriver.cfg.normalize()
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
 
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(suite.cachedTask)
 
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-		driver:     goalStateDriver,
-	}
+	suite.cachedJob.EXPECT().
+		ID().Return(suite.jobID)
 
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), instanceID, uuid.NewUUID().String())
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
 
-	runtime := &pbtask.RuntimeInfo{
-		MesosTaskId:   &mesosv1.TaskID{Value: &mesosTaskID},
-		State:         pbtask.TaskState_FAILED,
-		GoalState:     pbtask.TaskState_SUCCEEDED,
-		ConfigVersion: 1,
-		Message:       "testFailure",
-		Reason:        mesosv1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
-	}
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).Return(&taskConfig, nil)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("patch error"))
 
-	cachedJob.EXPECT().
-		GetTask(instanceID).Return(cachedTask)
-
-	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
-
-	taskStore.EXPECT().
-		GetTaskConfig(gomock.Any(), jobID, instanceID, gomock.Any()).Return(nil, fmt.Errorf("fake db error"))
-
-	err := TaskFailRetry(context.Background(), taskEnt)
-	assert.Error(t, err)
+	err := TaskFailRetry(context.Background(), suite.taskEnt)
+	suite.Error(err)
 }
