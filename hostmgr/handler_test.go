@@ -26,6 +26,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common/reservation"
+	bin_packing "code.uber.internal/infra/peloton/hostmgr/binpacking"
 	"code.uber.internal/infra/peloton/hostmgr/config"
 	"code.uber.internal/infra/peloton/hostmgr/host"
 	hostmgr_mesos_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
@@ -166,6 +167,7 @@ func (suite *HostMgrHandlerTestSuite) SetupSuite() {
 	}
 
 	suite.downMachines = append(suite.downMachines, downMachine)
+	bin_packing.Init()
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupTest() {
@@ -184,7 +186,6 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	}
 
 	suite.frameworkID = mockValidFrameWorkID
-
 	suite.pool = offerpool.NewOfferPool(
 		_offerHoldTime,
 		suite.schedulerClient,
@@ -193,6 +194,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		suite.volumeStore, /* volumeStore */
 		[]string{},        /*scarce_resource_types*/
 		[]string{},        /*slack_resource_types*/
+		bin_packing.CreateRanker("FIRST_FIT"),
 	)
 
 	suite.maintenanceQueue = mocks.NewMockMaintenanceQueue(suite.ctrl)

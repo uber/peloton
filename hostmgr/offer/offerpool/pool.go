@@ -17,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 
 	"code.uber.internal/infra/peloton/common/constraints"
+	"code.uber.internal/infra/peloton/hostmgr/binpacking"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
@@ -111,7 +112,9 @@ func NewOfferPool(
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
 	volumeStore storage.PersistentVolumeStore,
 	scarceResourceTypes []string,
-	slackResourceTypes []string) Pool {
+	slackResourceTypes []string,
+	binPackingRanker binpacking.Ranker) Pool {
+
 	// GPU is only supported scarce resource type.
 	if !reflect.DeepEqual(supportedScarceResourceTypes, scarceResourceTypes) {
 		log.WithFields(log.Fields{
@@ -141,7 +144,8 @@ func NewOfferPool(
 
 		metrics: metrics,
 
-		volumeStore: volumeStore,
+		volumeStore:      volumeStore,
+		binPackingRanker: binPackingRanker,
 	}
 
 	return p
@@ -185,6 +189,8 @@ type offerPool struct {
 	placingResources scalar.AtomicResources
 
 	volumeStore storage.PersistentVolumeStore
+	// indicate if bin packing is enabled/disabled
+	binPackingRanker binpacking.Ranker
 }
 
 // ClaimForPlace obtains offers from pool conforming to given constraints.
@@ -199,8 +205,13 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (map[string][]
 		hostFilter,
 		constraints.NewEvaluator(task.LabelConstraint_HOST))
 
-	for hostname, summary := range p.hostOfferIndex {
-		matcher.tryMatch(hostname, summary)
+	// We might want to consider making it a aynchronous process if
+	// this becomes bottleneck, but that might increase the defragmentation
+	// in the cluster, will start with this approach and monitor it based
+	// on the results we will optimize this.
+	sortedSummaryList := p.getRankedHostSummaryList(p.hostOfferIndex)
+	for _, s := range sortedSummaryList {
+		matcher.tryMatch(s.(summary.HostSummary).GetHostname(), s.(summary.HostSummary))
 		if matcher.HasEnoughHosts() {
 			break
 		}
@@ -221,6 +232,11 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (map[string][]
 	// because we still need to visit corresponding offers, when these offers
 	// are returned or used.
 	return hostOffers, resultCount, nil
+}
+
+func (p *offerPool) getRankedHostSummaryList(
+	offerIndex map[string]summary.HostSummary) []interface{} {
+	return p.binPackingRanker.GetRankedHostList(offerIndex)
 }
 
 // ClaimForLaunch takes offers from pool (removes from hostsummary) for launch.
