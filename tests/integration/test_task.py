@@ -1,3 +1,4 @@
+import grpc
 import pytest
 import time
 
@@ -9,16 +10,20 @@ pytestmark = [pytest.mark.default, pytest.mark.task]
 
 
 @pytest.mark.smoketest
-@pytest.mark.stateless
-def test__stop_start_all_tasks_kills_tasks_and_job(test_job):
-    test_job.create()
-    test_job.wait_for_state(goal_state='RUNNING')
+def test__stop_start_all_tasks_kills_tasks_and_job(long_running_job):
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state='RUNNING')
 
-    test_job.stop()
-    test_job.wait_for_state(goal_state='KILLED')
+    long_running_job.stop()
+    long_running_job.wait_for_state(goal_state='KILLED')
 
-    test_job.start()
-    test_job.wait_for_state(goal_state='RUNNING')
+    try:
+        long_running_job.start()
+    except grpc.RpcError as e:
+        assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
+        assert e.details() == "cannot start tasks in a terminated job"
+        return
+    raise Exception("was able to start terminated job")
 
 
 @pytest.mark.stateless
@@ -26,24 +31,24 @@ def test__stop_start_partial_tests_with_single_range(test_job):
     test_job.create()
     test_job.wait_for_state(goal_state='RUNNING')
 
-    test_job.stop()
-    test_job.wait_for_state(goal_state='KILLED')
-
     range = task_pb2.InstanceRange(to=1)
     setattr(range, 'from', 0)
 
+    def wait_for_instance_to_stop():
+        tasks = test_job.list_tasks().value
+        return (tasks[0].runtime.state == task_pb2.TaskState.Value('KILLED'))
+
+    test_job.stop(ranges=[range])
+    test_job.wait_for_condition(wait_for_instance_to_stop)
+
     def wait_for_instance_to_run():
         tasks = test_job.list_tasks().value
-        return (tasks[0].runtime.state ==
-                task_pb2.TaskState.Value('RUNNING') and
-                tasks[1].runtime.state ==
-                task_pb2.TaskState.Value('KILLED') and
-                tasks[2].runtime.state ==
-                task_pb2.TaskState.Value('KILLED'))
+        return (tasks[0].runtime.state == task_pb2.TaskState.Value('RUNNING'))
+
     test_job.start(ranges=[range])
     test_job.wait_for_condition(wait_for_instance_to_run)
 
-    test_job.stop(ranges=[range])
+    test_job.stop()
     test_job.wait_for_state(goal_state='KILLED')
 
 
@@ -52,26 +57,29 @@ def test__stop_start_partial_tests_with_multiple_ranges(test_job):
     test_job.create()
     test_job.wait_for_state(goal_state='RUNNING')
 
-    test_job.stop()
-    test_job.wait_for_state(goal_state='KILLED')
-
     range1 = task_pb2.InstanceRange(to=1)
     setattr(range1, 'from', 0)
     range2 = task_pb2.InstanceRange(to=2)
     setattr(range2, 'from', 1)
 
+    def wait_for_instance_to_stop():
+        tasks = test_job.list_tasks().value
+        return (tasks[0].runtime.state ==
+                task_pb2.TaskState.Value('KILLED') and
+                tasks[1].runtime.state == task_pb2.TaskState.Value('KILLED'))
+
+    test_job.stop(ranges=[range1, range2])
+    test_job.wait_for_condition(wait_for_instance_to_stop)
+
     def wait_for_instance_to_run():
         tasks = test_job.list_tasks().value
         return (tasks[0].runtime.state ==
                 task_pb2.TaskState.Value('RUNNING') and
-                tasks[1].runtime.state ==
-                task_pb2.TaskState.Value('RUNNING') and
-                tasks[2].runtime.state ==
-                task_pb2.TaskState.Value('KILLED'))
+                tasks[1].runtime.state == task_pb2.TaskState.Value('RUNNING'))
     test_job.start(ranges=[range1, range2])
     test_job.wait_for_condition(wait_for_instance_to_run)
 
-    test_job.stop(ranges=[range1, range2])
+    test_job.stop()
     test_job.wait_for_state(goal_state='KILLED')
 
 
@@ -104,15 +112,31 @@ def test__stop_start_tasks_when_mesos_master_down_kills_tasks_when_started(
     test_job.create()
     test_job.wait_for_state(goal_state='RUNNING')
 
+    range = task_pb2.InstanceRange(to=1)
+    setattr(range, 'from', 0)
+
+    def wait_for_instance_to_stop():
+        tasks = test_job.list_tasks().value
+        return (tasks[0].runtime.state == task_pb2.TaskState.Value('KILLED'))
+
+    mesos_master.stop()
+    test_job.stop(ranges=[range])
+    mesos_master.start()
+    test_job.wait_for_condition(wait_for_instance_to_stop)
+
+    def wait_for_instance_to_run():
+        tasks = test_job.list_tasks().value
+        return (tasks[0].runtime.state == task_pb2.TaskState.Value('RUNNING'))
+
+    mesos_master.stop()
+    test_job.start(ranges=[range])
+    mesos_master.start()
+    test_job.wait_for_condition(wait_for_instance_to_run)
+
     mesos_master.stop()
     test_job.stop()
     mesos_master.start()
     test_job.wait_for_state(goal_state='KILLED')
-
-    mesos_master.stop()
-    test_job.start()
-    mesos_master.start()
-    test_job.wait_for_state(goal_state='RUNNING')
 
 
 @pytest.mark.stateless
@@ -121,17 +145,34 @@ def test__stop_start_tasks_when_mesos_master_down_and_jobmgr_restarts(
     test_job.create()
     test_job.wait_for_state(goal_state='RUNNING')
 
+    range = task_pb2.InstanceRange(to=1)
+    setattr(range, 'from', 0)
+
+    def wait_for_instance_to_stop():
+        tasks = test_job.list_tasks().value
+        return (tasks[0].runtime.state == task_pb2.TaskState.Value('KILLED'))
+
+    mesos_master.stop()
+    test_job.stop(ranges=[range])
+    jobmgr.restart()
+    mesos_master.start()
+    test_job.wait_for_condition(wait_for_instance_to_stop)
+
+    def wait_for_instance_to_run():
+        tasks = test_job.list_tasks().value
+        return (tasks[0].runtime.state == task_pb2.TaskState.Value('RUNNING'))
+
+    mesos_master.stop()
+    test_job.start(ranges=[range])
+    jobmgr.restart()
+    mesos_master.start()
+    test_job.wait_for_condition(wait_for_instance_to_run)
+
     mesos_master.stop()
     test_job.stop()
     jobmgr.restart()
     mesos_master.start()
     test_job.wait_for_state(goal_state='KILLED')
-
-    mesos_master.stop()
-    test_job.start()
-    jobmgr.restart()
-    mesos_master.start()
-    test_job.wait_for_state(goal_state='RUNNING')
 
 
 @pytest.mark.stateless

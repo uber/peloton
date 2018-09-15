@@ -35,6 +35,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -77,6 +78,7 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 	suite.testJobConfig = &job.JobConfig{
 		Name:          suite.testJobID.Value,
 		InstanceCount: testInstanceCount,
+		Type:          job.JobType_BATCH,
 	}
 	suite.testJobRuntime = &job.RuntimeInfo{
 		State:     job.JobState_RUNNING,
@@ -748,12 +750,14 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 		suite.mockedCachedJob.EXPECT().
 			GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedCachedJob.EXPECT().
-			Update(gomock.Any(), &job.JobInfo{
-				Runtime: &job.RuntimeInfo{
-					State:     job.JobState_PENDING,
-					GoalState: job.JobState_SUCCEEDED,
-				},
-			}, cached.UpdateCacheAndDB).
+			GetRuntime(gomock.Any()).
+			Return(suite.testJobRuntime, nil),
+		suite.mockedCachedJob.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, jobRuntime *job.RuntimeInfo) {
+				suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
+				suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
+			}).
 			Return(nil),
 		suite.mockedTaskStore.EXPECT().
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(taskInfos, nil),
@@ -833,7 +837,64 @@ func (suite *TaskHandlerTestSuite) TestStartTasks_GetConfigFailure() {
 	suite.NotNil(resp.GetError())
 }
 
-func (suite *TaskHandlerTestSuite) TestStartTasks_UpdateFailure() {
+// TestStartTasksTerminatedJob tests starting tasks from a terminated batch job
+func (suite *TaskHandlerTestSuite) TestStartTasksTerminatedJob() {
+	suite.testJobRuntime.State = job.JobState_SUCCEEDED
+	gomock.InOrder(
+		suite.mockedCandidate.EXPECT().IsLeader().Return(true),
+		suite.mockedJobFactory.EXPECT().
+			AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+		suite.mockedCachedJob.EXPECT().
+			GetConfig(gomock.Any()).
+			Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
+		suite.mockedCachedJob.EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(suite.testJobRuntime, nil),
+	)
+
+	var request = &task.StartRequest{
+		JobId: suite.testJobID,
+	}
+	resp, err := suite.handler.Start(
+		context.Background(),
+		request,
+	)
+
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+	suite.Equal(yarpcerrors.ErrorMessage(err),
+		"cannot start tasks in a terminated job")
+	suite.Nil(resp)
+}
+
+// TestStartTasksGetRuntimeFailure tests getting a DB error when fetching job runtime
+func (suite *TaskHandlerTestSuite) TestStartTasksGetRuntimeFailure() {
+	gomock.InOrder(
+		suite.mockedCandidate.EXPECT().IsLeader().Return(true),
+		suite.mockedJobFactory.EXPECT().
+			AddJob(suite.testJobID).Return(suite.mockedCachedJob),
+		suite.mockedCachedJob.EXPECT().
+			GetConfig(gomock.Any()).
+			Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
+		suite.mockedCachedJob.EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(nil, fmt.Errorf("fake db error")),
+	)
+
+	var request = &task.StartRequest{
+		JobId: suite.testJobID,
+	}
+	resp, err := suite.handler.Start(
+		context.Background(),
+		request,
+	)
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestStartTasksUpdateFailure tests getting a DB error
+// when updating the job runtime
+func (suite *TaskHandlerTestSuite) TestStartTasksUpdateFailure() {
 	gomock.InOrder(
 		suite.mockedCandidate.EXPECT().IsLeader().Return(true),
 		suite.mockedJobFactory.EXPECT().
@@ -841,14 +902,49 @@ func (suite *TaskHandlerTestSuite) TestStartTasks_UpdateFailure() {
 		suite.mockedCachedJob.EXPECT().
 			GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedCachedJob.EXPECT().
-			Update(gomock.Any(), &job.JobInfo{
-				Runtime: &job.RuntimeInfo{
-					State:     job.JobState_PENDING,
-					GoalState: job.JobState_SUCCEEDED,
-				},
-			}, cached.UpdateCacheAndDB).
+			GetRuntime(gomock.Any()).
+			Return(suite.testJobRuntime, nil),
+		suite.mockedCachedJob.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, jobRuntime *job.RuntimeInfo) {
+				suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
+				suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
+			}).
 			Return(errors.New("test error")),
 	)
+
+	var request = &task.StartRequest{
+		JobId: suite.testJobID,
+	}
+	resp, err := suite.handler.Start(
+		context.Background(),
+		request,
+	)
+
+	suite.NoError(err)
+	suite.NotNil(resp.GetError())
+}
+
+// TestStartTasksUpdateVersionError tests getting a version error from cache
+// when trying to update the job runtime
+func (suite *TaskHandlerTestSuite) TestStartTasksUpdateVersionError() {
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
+	suite.mockedJobFactory.EXPECT().
+		AddJob(suite.testJobID).Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil)
+	suite.mockedCachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(suite.testJobRuntime, nil).
+		Times(jobmgrcommon.MaxConcurrencyErrorRetry)
+	suite.mockedCachedJob.EXPECT().
+		CompareAndSetRuntime(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, jobRuntime *job.RuntimeInfo) {
+			suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
+			suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
+		}).
+		Return(jobmgrcommon.UnexpectedVersionError).
+		Times(jobmgrcommon.MaxConcurrencyErrorRetry)
 
 	var request = &task.StartRequest{
 		JobId: suite.testJobID,
@@ -887,12 +983,14 @@ func (suite *TaskHandlerTestSuite) TestStartTasks_PatchTasksFailure() {
 		suite.mockedCachedJob.EXPECT().
 			GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedCachedJob.EXPECT().
-			Update(gomock.Any(), &job.JobInfo{
-				Runtime: &job.RuntimeInfo{
-					State:     job.JobState_PENDING,
-					GoalState: job.JobState_SUCCEEDED,
-				},
-			}, cached.UpdateCacheAndDB).
+			GetRuntime(gomock.Any()).
+			Return(suite.testJobRuntime, nil),
+		suite.mockedCachedJob.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, jobRuntime *job.RuntimeInfo) {
+				suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
+				suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
+			}).
 			Return(nil),
 		suite.mockedTaskStore.EXPECT().
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(taskInfos, nil),
@@ -958,12 +1056,15 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 		suite.mockedCachedJob.EXPECT().
 			GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedCachedJob.EXPECT().
-			Update(gomock.Any(), &job.JobInfo{
-				Runtime: &job.RuntimeInfo{
-					State:     job.JobState_PENDING,
-					GoalState: job.JobState_SUCCEEDED,
-				},
-			}, cached.UpdateCacheAndDB),
+			GetRuntime(gomock.Any()).
+			Return(suite.testJobRuntime, nil),
+		suite.mockedCachedJob.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, jobRuntime *job.RuntimeInfo) {
+				suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
+				suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
+			}).
+			Return(nil),
 		suite.mockedTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		suite.mockedCachedJob.EXPECT().
@@ -1162,12 +1263,15 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithInvalidRanges() {
 			GetConfig(gomock.Any()).
 			Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedCachedJob.EXPECT().
-			Update(gomock.Any(), &job.JobInfo{
-				Runtime: &job.RuntimeInfo{
-					State:     job.JobState_PENDING,
-					GoalState: job.JobState_SUCCEEDED,
-				},
-			}, cached.UpdateCacheAndDB),
+			GetRuntime(gomock.Any()).
+			Return(suite.testJobRuntime, nil),
+		suite.mockedCachedJob.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, jobRuntime *job.RuntimeInfo) {
+				suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
+				suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
+			}).
+			Return(nil),
 		suite.mockedTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		suite.mockedTaskStore.EXPECT().
@@ -1216,12 +1320,14 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 			GetConfig(gomock.Any()).
 			Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedCachedJob.EXPECT().
-			Update(gomock.Any(), &job.JobInfo{
-				Runtime: &job.RuntimeInfo{
-					State:     job.JobState_PENDING,
-					GoalState: job.JobState_SUCCEEDED,
-				},
-			}, cached.UpdateCacheAndDB).
+			GetRuntime(gomock.Any()).
+			Return(suite.testJobRuntime, nil),
+		suite.mockedCachedJob.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, jobRuntime *job.RuntimeInfo) {
+				suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
+				suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
+			}).
 			Return(nil),
 		suite.mockedTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),

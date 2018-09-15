@@ -23,3 +23,8 @@ const (
 	StateField                = "State"
 	VolumeIDField             = "VolumeID"
 )
+
+// MaxConcurrencyErrorRetry indicates the maximum number of times to retry
+// if a concurrency error is received during optimistic concurrency
+// control when writing to the cache.
+const MaxConcurrencyErrorRetry = 5

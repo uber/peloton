@@ -24,6 +24,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/logmanager"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
@@ -33,8 +34,6 @@ import (
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/util/handler"
 	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
-
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -458,27 +457,60 @@ func (m *serviceHandler) Start(
 		}, nil
 	}
 
-	jobRuntimeUpdate := &pb_job.RuntimeInfo{
-		State: pb_job.JobState_PENDING,
-	}
+	count := 0
+	for {
+		jobRuntime, err := cachedJob.GetRuntime(ctx)
+		if err != nil {
+			log.WithField("job_id", body.JobId.Value).
+				WithError(err).
+				Info("failed to fetch job runtime while starting tasks")
+			m.metrics.TaskStartFail.Inc(1)
+			return nil, err
+		}
 
-	jobRuntimeUpdate.GoalState = goalstateutil.GetDefaultJobGoalState(cachedConfig.GetType())
+		// batch jobs in terminated state cannot be restarted
+		if cachedConfig.GetType() == pb_job.JobType_BATCH {
+			if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) {
+				log.WithFields(log.Fields{
+					"job_id": body.JobId.Value,
+					"state":  jobRuntime.GetState().String(),
+				}).Info("cannot start tasks in a terminal job")
+				m.metrics.TaskStartFail.Inc(1)
+				return nil, yarpcerrors.InvalidArgumentErrorf(
+					"cannot start tasks in a terminated job")
+			}
+		}
 
-	err = cachedJob.Update(ctx, &pb_job.JobInfo{
-		Runtime: jobRuntimeUpdate,
-	}, cached.UpdateCacheAndDB)
-	if err != nil {
-		log.WithField("job", body.JobId).
-			WithError(err).
-			Error("failed to set job runtime in db")
-		m.metrics.TaskStartFail.Inc(1)
-		return &task.StartResponse{
-			Error: &task.StartResponse_Error{
-				Failure: &task.TaskStartFailure{
-					Message: fmt.Sprintf("task start failed while updating job status %v", err),
+		jobRuntime.State = pb_job.JobState_PENDING
+		jobRuntime.GoalState = goalstateutil.GetDefaultJobGoalState(
+			cachedConfig.GetType())
+
+		// update the job runtime
+		err = cachedJob.CompareAndSetRuntime(ctx, jobRuntime)
+		if err == jobmgrcommon.UnexpectedVersionError {
+			// concurrency error; retry MaxConcurrencyErrorRetry times
+			count = count + 1
+			if count < jobmgrcommon.MaxConcurrencyErrorRetry {
+				continue
+			}
+		}
+
+		if err != nil {
+			log.WithField("job", body.JobId).
+				WithError(err).
+				Error("failed to set job runtime in db")
+			m.metrics.TaskStartFail.Inc(1)
+			return &task.StartResponse{
+				Error: &task.StartResponse_Error{
+					Failure: &task.TaskStartFailure{
+						Message: fmt.Sprintf("task start failed while updating job status %v", err),
+					},
 				},
-			},
-		}, nil
+			}, nil
+		}
+
+		// job runtime is successfully updated, move on
+		break
 	}
 
 	taskInfos, err := m.getTaskInfosByRangesFromDB(
