@@ -5,7 +5,7 @@ package cassandra
 import (
 	"context"
 	"fmt"
-	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,6 +66,65 @@ func init() {
 func TestCassandraStore(t *testing.T) {
 	suite.Run(t, new(CassandraStoreTestSuite))
 	assert.True(t, testScope.Snapshot().Counters()["execute.execute+result=success,store=peloton_test"].Value() > 0)
+}
+
+func (suite *CassandraStoreTestSuite) TestMigrateString() {
+	conf := MigrateForTest()
+	conf.CassandraConn.Username = "user"
+	conf.CassandraConn.Password = "password"
+	expectedStr := fmt.Sprintf("cassandra://%v:%v@%v:%v/%v",
+		conf.CassandraConn.Username,
+		conf.CassandraConn.Password,
+		conf.CassandraConn.ContactPoints[0],
+		conf.CassandraConn.Port,
+		conf.StoreName)
+	expectedStr = strings.Replace(expectedStr, " ", "", -1)
+	connStr := conf.MigrateString()
+	suite.Equal(connStr, expectedStr)
+}
+
+// TestGetTaskIDsForJobAndState tests reading task IDs for given job and state
+func (suite *CassandraStoreTestSuite) TestGetTaskIDsForJobAndState() {
+	var taskStore storage.TaskStore
+	taskStore = store
+	var jobID = peloton.JobID{Value: uuid.New()}
+	runtimes := make(map[uint32]*task.RuntimeInfo)
+	jobConfig := createJobConfig()
+	jobConfig.InstanceCount = 10
+	jobConfig.InstanceConfig = map[uint32]*task.TaskConfig{}
+
+	for i := 0; i < 10; i++ {
+		taskInfo := createTaskInfo(jobConfig, &jobID, 0)
+		taskInfo.Config = &task.TaskConfig{Name: fmt.Sprintf("task_%d", i)}
+		jobConfig.InstanceConfig[uint32(i)] = taskInfo.Config
+		taskInfo.Runtime.State = task.TaskState_RUNNING
+		if i%2 == 0 {
+			taskInfo.Runtime.State = task.TaskState_PENDING
+		}
+		runtimes[uint32(i)] = taskInfo.Runtime
+	}
+
+	err := suite.createJob(context.Background(), &jobID, jobConfig, "user1")
+	suite.Nil(err)
+
+	for i := 0; i < 10; i++ {
+		runtimes[uint32(i)].ConfigVersion = jobConfig.GetChangeLog().
+			GetVersion()
+		err = taskStore.CreateTaskRuntime(context.Background(),
+			&jobID, uint32(i), runtimes[uint32(i)], "test", jobConfig.GetType())
+		suite.NoError(err)
+	}
+
+	// get the task configs
+	ids, err := store.GetTaskIDsForJobAndState(
+		context.Background(), &jobID, task.TaskState_PENDING.String())
+	suite.NoError(err)
+	suite.Equal(5, len(ids))
+
+	ids, err = store.GetTaskIDsForJobAndState(
+		context.Background(), &jobID, task.TaskState_RUNNING.String())
+	suite.NoError(err)
+	suite.Equal(5, len(ids))
 }
 
 func (suite *CassandraStoreTestSuite) createJob(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
@@ -1630,31 +1689,6 @@ func (suite *CassandraStoreTestSuite) TestGetTaskEvents() {
 	suite.Error(err)
 }
 
-func (suite *CassandraStoreTestSuite) TestGetAllJobs() {
-	jobs := []string{uuid.New(), uuid.New()}
-	respoolPagination := uuid.New()
-	respoolPagination = respoolPagination[:len(respoolPagination)-1]
-	for i, job := range jobs {
-		var jobID = peloton.JobID{Value: job}
-		jobConfig := createJobConfig()
-		jobConfig.Name = jobID.GetValue()
-		jobConfig.RespoolID = &peloton.ResourcePoolID{
-			Value: fmt.Sprintf("%s%d", respoolPagination, i),
-		}
-		err := suite.createJob(context.Background(), &jobID, jobConfig, "uber")
-		suite.Nil(err)
-	}
-	all, err := store.GetAllJobs(context.Background())
-	suite.Nil(err)
-	for i, job := range jobs {
-		r := all[job]
-		suite.NotNil(r)
-		cfg, err := store.GetJobConfig(context.Background(), &peloton.JobID{Value: job})
-		suite.NoError(err)
-		suite.Equal(respoolPagination+strconv.Itoa(i), cfg.RespoolID.GetValue())
-	}
-}
-
 func (suite *CassandraStoreTestSuite) TestGetTaskStateSummary() {
 	var taskStore storage.TaskStore
 	taskStore = store
@@ -1766,6 +1800,48 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 		tID := fmt.Sprintf("%s-%d-%d", jobID.GetValue(), i, 1)
 		suite.Equal(tID, *(t.Runtime.MesosTaskId.Value))
 	}
+}
+
+// TestGetTaskRuntimesForJobByRange tests getting task runtimes for job by
+// instance range
+func (suite *CassandraStoreTestSuite) TestGetTaskRuntimesForJobByRange() {
+	var jobID = peloton.JobID{Value: uuid.New()}
+	runtimes := make(map[uint32]*task.RuntimeInfo)
+	jobConfig := createJobConfig()
+	jobConfig.InstanceCount = 5
+	jobConfig.InstanceConfig = map[uint32]*task.TaskConfig{}
+
+	for i := 0; i < 5; i++ {
+		taskInfo := createTaskInfo(jobConfig, &jobID, 0)
+		runtimes[uint32(i)] = taskInfo.Runtime
+	}
+
+	err := suite.createJob(context.Background(), &jobID, jobConfig, "user1")
+	suite.Nil(err)
+
+	for i := 0; i < 5; i++ {
+		runtimes[uint32(i)].ConfigVersion = jobConfig.GetChangeLog().
+			GetVersion()
+		err = store.CreateTaskRuntime(context.Background(),
+			&jobID, uint32(i), runtimes[uint32(i)], "test", jobConfig.GetType())
+		suite.NoError(err)
+	}
+
+	r := &task.InstanceRange{
+		From: uint32(0),
+		To:   uint32(3),
+	}
+	runtime, err := store.GetTaskRuntimesForJobByRange(
+		context.Background(), &jobID, r)
+	suite.NoError(err)
+	suite.Equal(3, len(runtime))
+
+	r.From = uint32(5)
+	r.To = uint32(6)
+	runtime, err = store.GetTaskRuntimesForJobByRange(
+		context.Background(), &jobID, r)
+	suite.NoError(err)
+	suite.Equal(0, len(runtime))
 }
 
 func (suite *CassandraStoreTestSuite) TestCreateGetResourcePoolConfig() {
@@ -2014,6 +2090,12 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	jobIds, err = store.GetJobsByStates(context.Background(), []job.JobState{120})
 	suite.NoError(err)
 	suite.Equal(0, len(jobIds))
+
+	// job not found test
+	_, err = store.getTaskRuntimeRecord(
+		context.Background(), uuid.New(), 0)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsNotFound(err))
 }
 
 func (suite *CassandraStoreTestSuite) TestJobConfig() {

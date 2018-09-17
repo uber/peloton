@@ -50,8 +50,6 @@ type JobStore interface {
 	// DeleteJob deletes the job configuration, runtime
 	// and all tasks in DB of a given job
 	DeleteJob(ctx context.Context, id *peloton.JobID) error
-	// GetAllJobs gets the runtime of all jobs in DB
-	GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, error)
 	// GetJobRuntime gets the job runtime of a given job
 	GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.RuntimeInfo, error)
 	// GetJobsByStates gets all jobs in a given state

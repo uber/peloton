@@ -623,18 +623,12 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	completionTimeRange := spec.GetCompletionTimeRange()
 	err := clauses.WithTimeRangeFilter(creationTimeRange, creationTimeField)
 	if err != nil {
-		log.WithField("creationTimeRange", creationTimeRange).
-			WithError(err).
-			Error("fail to build time range filter")
 		s.metrics.JobMetrics.JobQueryFail.Inc(1)
 		return nil, nil, 0, err
 	}
 
 	err = clauses.WithTimeRangeFilter(completionTimeRange, completionTimeField)
 	if err != nil {
-		log.WithField("completionTimeRange", completionTimeRange).
-			WithError(err).
-			Error("fail to build time range filter")
 		s.metrics.JobMetrics.JobQueryFail.Inc(1)
 		return nil, nil, 0, err
 	}
@@ -651,26 +645,17 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		now := time.Now().Add(jobQueryJitter).UTC()
 		max, err := ptypes.TimestampProto(now)
 		if err != nil {
-			log.WithField("now", now).
-				WithError(err).
-				Error("fail to create time stamp proto")
 			s.metrics.JobMetrics.JobQueryFail.Inc(1)
 			return nil, nil, 0, err
 		}
 		min, err := ptypes.TimestampProto(now.AddDate(0, 0, -jobQueryDefaultSpanInDays))
 		if err != nil {
-			log.WithField("now", now).
-				WithError(err).
-				Error("fail to create time stamp proto")
 			s.metrics.JobMetrics.JobQueryFail.Inc(1)
 			return nil, nil, 0, err
 		}
 		defaultCreationTimeRange := &peloton.TimeRange{Min: min, Max: max}
 		err = clauses.WithTimeRangeFilter(defaultCreationTimeRange, "creation_time")
 		if err != nil {
-			log.WithField("defaultCreationTimeRange", defaultCreationTimeRange).
-				WithError(err).
-				Error("fail to build time range filter")
 			s.metrics.JobMetrics.JobQueryFail.Inc(1)
 			return nil, nil, 0, err
 		}
@@ -873,43 +858,6 @@ func (s *Store) GetJobsByStates(ctx context.Context, states []job.JobState) ([]p
 	callDuration := time.Since(callStart)
 	s.metrics.JobMetrics.JobGetByStatesDuration.Record(callDuration)
 	return jobs, nil
-}
-
-// GetAllJobs returns all jobs
-// TODO: introduce jobstate and add GetJobsByState
-func (s *Store) GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, error) {
-	// TODO: Get jobs from  all edge respools
-	var resultMap = make(map[string]*job.RuntimeInfo)
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(jobRuntimeTable)
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		log.WithError(err).
-			Error("Fail to Query all jobs")
-		s.metrics.JobMetrics.JobGetAllFail.Inc(1)
-		return nil, err
-	}
-
-	for _, value := range allResults {
-		var record JobRuntimeRecord
-		err := FillObject(value, &record, reflect.TypeOf(record))
-		if err != nil {
-			log.WithError(err).
-				Error("Fail to Query jobs")
-			s.metrics.JobMetrics.JobGetAllFail.Inc(1)
-			return nil, err
-		}
-		jobRuntime, err := record.GetJobRuntime()
-		if err != nil {
-			log.WithError(err).
-				Error("Fail to Query jobs")
-			s.metrics.JobMetrics.JobGetAllFail.Inc(1)
-			return nil, err
-		}
-		resultMap[record.JobID.String()] = jobRuntime
-	}
-	s.metrics.JobMetrics.JobGetAll.Inc(1)
-	return resultMap, nil
 }
 
 // CreateTaskRuntime creates a task runtime for a peloton job
@@ -3233,12 +3181,6 @@ func (s *Store) CreateSecret(
 		IfNotExist()
 	err := s.applyStatement(ctx, stmt, id.GetValue())
 	if err != nil {
-		log.WithError(err).
-			WithFields(log.Fields{
-				"job_id":    id.GetValue(),
-				"secret_id": secret.GetId().GetValue(),
-			}).
-			Error("create secret failed")
 		s.metrics.SecretMetrics.SecretCreateFail.Inc(1)
 		return err
 	}
@@ -3262,9 +3204,6 @@ func (s *Store) UpdateSecret(
 
 	err := s.applyStatement(ctx, stmt, secret.GetId().GetValue())
 	if err != nil {
-		log.WithError(err).
-			WithField("secret_id", secret.GetId().GetValue()).
-			Error("create secret failed")
 		s.metrics.SecretMetrics.SecretUpdateFail.Inc(1)
 		return err
 	}
