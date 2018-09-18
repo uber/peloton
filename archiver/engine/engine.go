@@ -10,10 +10,12 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/archiver/config"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/backoff"
 	"code.uber.internal/infra/peloton/leader"
+	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/protobuf/ptypes"
 	log "github.com/sirupsen/logrus"
@@ -41,6 +43,9 @@ const (
 	// archiver summary map keys
 	archiverSuccessKey = "SUCCESS"
 	archiverFailureKey = "FAILURE"
+
+	// Number of pod events run to persist in DB.
+	_defaultPodEventsToConstraint = uint64(100)
 )
 
 // Engine defines the interface used to query a peloton component
@@ -48,7 +53,7 @@ const (
 // message queue
 type Engine interface {
 	// Start starts the archiver goroutines
-	Start(chan<- error)
+	Start() error
 	// Cleanup cleans the archiver engine before
 	// restart
 	Cleanup()
@@ -57,6 +62,8 @@ type Engine interface {
 type engine struct {
 	// Jobmgr client to make Job Query/Delete API requests
 	jobClient job.JobManagerYARPCClient
+	// Task Manager Client to query task events.
+	taskClient task.TaskManagerYARPCClient
 	// Yarpc dispatcher
 	dispatcher *yarpc.Dispatcher
 	// Archiver config
@@ -73,8 +80,7 @@ func New(
 	scope tally.Scope,
 	mux *nethttp.ServeMux,
 	discovery leader.Discovery,
-	inbounds []transport.Inbound,
-) (Engine, error) {
+	inbounds []transport.Inbound) (Engine, error) {
 	cfg.Archiver.Normalize()
 
 	jobmgrURL, err := discovery.GetAppURL(common.JobManagerRole)
@@ -105,6 +111,9 @@ func New(
 		jobClient: job.NewJobManagerYARPCClient(
 			dispatcher.ClientConfig(common.PelotonJobManager),
 		),
+		taskClient: task.NewTaskManagerYARPCClient(
+			dispatcher.ClientConfig(common.PelotonJobManager),
+		),
 		dispatcher: dispatcher,
 		config:     cfg,
 		metrics:    NewMetrics(scope),
@@ -114,10 +123,89 @@ func New(
 	}, nil
 }
 
-// Start starts archiver thread
-func (e *engine) Start(errChan chan<- error) {
-	go e.runArchiver(errChan)
+// Start starts archiver with actions such as
+// 1) archive terminal batch jobs
+// 2) constraint pod events for RUNNING stateless jobs.
+// Actions are iterated sequentially to minimize the load on
+// Cassandra cluster to not impact real-time workload.
+func (e *engine) Start() error {
+	// Account for time taken for jobmgr to start and finish recovery
+	// This is more of a precaution so that archiver does not mess
+	// around with core jobmgr functionality.
+	// TODO (adityacb): remove this delay once we move to API server
 	e.metrics.ArchiverStart.Inc(1)
+	jitter := time.Duration(rand.Intn(jitterMax)) * time.Millisecond
+	time.Sleep(e.config.Archiver.BootstrapDelay + jitter)
+
+	// At first, the time range will be [(t-30d-1d), (t-30d))
+	maxTime := time.Now().UTC().Add(-e.config.Archiver.ArchiveAge)
+	minTime := maxTime.Add(-e.config.Archiver.ArchiveStepSize)
+
+	for {
+		if e.config.Archiver.Enable {
+			startTime := time.Now()
+			max, err := ptypes.TimestampProto(maxTime)
+			if err != nil {
+				return err
+			}
+			min, err := ptypes.TimestampProto(minTime)
+			if err != nil {
+				return err
+			}
+
+			spec := job.QuerySpec{
+				JobStates: []job.JobState{
+					job.JobState_SUCCEEDED,
+					job.JobState_FAILED,
+					job.JobState_KILLED,
+				},
+				CompletionTimeRange: &peloton.TimeRange{Min: min, Max: max},
+				Pagination: &query.PaginationSpec{
+					Offset:   0,
+					Limit:    uint32(e.config.Archiver.MaxArchiveEntries),
+					MaxLimit: uint32(e.config.Archiver.MaxArchiveEntries),
+				},
+			}
+
+			if err := e.runArchiver(
+				&job.QueryRequest{
+					Spec:        &spec,
+					SummaryOnly: true,
+				},
+				e.archiveJobs); err != nil {
+				return err
+			}
+
+			e.metrics.ArchiverRunDuration.Record(time.Since(startTime))
+			maxTime = minTime
+			minTime = minTime.Add(-e.config.Archiver.ArchiveStepSize)
+		}
+
+		if e.config.Archiver.PodEventsCleanup {
+			spec := job.QuerySpec{
+				JobStates: []job.JobState{
+					job.JobState_RUNNING,
+				},
+				Pagination: &query.PaginationSpec{
+					Offset:   0,
+					Limit:    uint32(e.config.Archiver.MaxArchiveEntries),
+					MaxLimit: uint32(e.config.Archiver.MaxArchiveEntries),
+				},
+			}
+
+			if err := e.runArchiver(
+				&job.QueryRequest{
+					Spec:        &spec,
+					SummaryOnly: true,
+				},
+				e.deletePodEvents); err != nil {
+				return err
+			}
+		}
+
+		jitter := time.Duration(rand.Intn(jitterMax)) * time.Millisecond
+		time.Sleep(e.config.Archiver.ArchiveInterval + jitter)
+	}
 }
 
 // Cleanup cleans the archiver engine before restarting
@@ -126,38 +214,170 @@ func (e *engine) Cleanup() {
 	return
 }
 
-func (e *engine) buildQueryRequest(minTime time.Time,
-	maxTime time.Time) (*job.QueryRequest, error) {
-	jobStates := []job.JobState{
-		job.JobState_SUCCEEDED,
-		job.JobState_FAILED,
-		job.JobState_KILLED,
-	}
-	max, err := ptypes.TimestampProto(maxTime)
+// runArchiver runs the action(s) for Archiver
+func (e *engine) runArchiver(
+	queryReq *job.QueryRequest,
+	action func(
+		ctx context.Context,
+		results []*job.JobSummary)) error {
+	p := backoff.NewRetrier(e.retryPolicy)
+	queryResp, err := e.queryJobs(
+		context.Background(),
+		queryReq,
+		p)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	min, err := ptypes.TimestampProto(minTime)
-	if err != nil {
-		return nil, err
-	}
-	spec := &job.QuerySpec{
-		JobStates:           jobStates,
-		CompletionTimeRange: &peloton.TimeRange{Min: min, Max: max},
-		Pagination: &query.PaginationSpec{
-			Offset: 0,
-			// Query for max of MaxArchiveEntries entries
-			Limit:    uint32(e.config.Archiver.MaxArchiveEntries),
-			MaxLimit: uint32(e.config.Archiver.MaxArchiveEntries),
-		},
-	}
-	return &job.QueryRequest{
-		Spec:        spec,
-		SummaryOnly: true,
-	}, nil
+
+	results := queryResp.GetResults()
+	ctx, cancelFunc := context.WithTimeout(
+		context.Background(),
+		e.config.Archiver.PelotonClientTimeout)
+	defer cancelFunc()
+	action(
+		ctx,
+		results)
+	return nil
 }
 
-func (e *engine) queryJobs(ctx context.Context,
+// archiveJobs archives only batch jobs.
+func (e *engine) archiveJobs(
+	ctx context.Context,
+	results []*job.JobSummary) {
+	if len(results) > 0 {
+		archiveSummary := map[string]int{archiverFailureKey: 0, archiverSuccessKey: 0}
+		for _, summary := range results {
+			if summary.GetType() != job.JobType_BATCH {
+				continue
+			}
+			// Sleep between consecutive Job Delete requests
+			time.Sleep(delayDelete)
+
+			// The log event for completedJobTag will be logged to Archiver stdout
+			// Filebeat configured on the Peloton host will ship this log out to
+			// logstash. Logstash will be configured to stream this specific log
+			// event to Hive via a heatpipe topic.
+			log.WithField(completedJobTag, summary).Info("completed job")
+
+			if e.config.Archiver.StreamOnlyMode {
+				continue
+			}
+
+			log.WithFields(log.Fields{
+				"job_id": summary.GetId().GetValue(),
+				"state":  summary.GetRuntime().GetState()}).
+				Info("Deleting job")
+
+			deleteReq := &job.DeleteRequest{
+				Id: summary.GetId(),
+			}
+			_, err := e.jobClient.Delete(ctx, deleteReq)
+			if err != nil {
+				// TODO: have a reasonable threshold for tolerating such failures
+				// For now, just continue processing the next job in the list
+				log.WithError(err).
+					WithField("job_id", summary.GetId().GetValue()).
+					Error("job delete failed")
+				e.metrics.ArchiverJobDeleteFail.Inc(1)
+				archiveSummary[archiverFailureKey]++
+			} else {
+				e.metrics.ArchiverJobDeleteSuccess.Inc(1)
+				archiveSummary[archiverSuccessKey]++
+			}
+		}
+		succeededCount, _ := archiveSummary[archiverSuccessKey]
+		failedCount, _ := archiveSummary[archiverFailureKey]
+		e.metrics.ArchiverJobQuerySuccess.Inc(1)
+		log.WithFields(log.Fields{
+			"total":     len(results),
+			"succeeded": succeededCount,
+			"failed":    failedCount,
+		}).Info("Archive summary")
+	} else {
+		log.Debug("No jobs in timerange")
+		// TODO (adityacb)
+		// Reset here if there are no more jobs left to be archived.
+		// This means that for n consecutive attempts if we get no
+		// results, we should move the archive window back to now - 30days
+		e.metrics.ArchiverNoJobsInTimerange.Inc(1)
+	}
+}
+
+// deletePodEvents reads RUNNING service jobs and deletes,
+// runs (monotonically increasing counter) if more than 100.
+// This action is to constraint #runs in DB, to prevent large partitions
+// 1) Get the most recent run_id from DB.
+// 2) If more than 100 runs exist, delete the delta.
+func (e *engine) deletePodEvents(
+	ctx context.Context,
+	results []*job.JobSummary) {
+	var i uint32
+	for _, jobSummary := range results {
+		if jobSummary.GetType() != job.JobType_SERVICE {
+			continue
+		}
+		for i = 0; i < jobSummary.GetInstanceCount(); i++ {
+			response, err := e.taskClient.GetPodEvents(
+				ctx,
+				&task.GetPodEventsRequest{
+					JobId:      jobSummary.GetId(),
+					InstanceId: i,
+					Limit:      1})
+			if err != nil {
+				log.WithFields(log.Fields{
+					"job_id":      jobSummary.GetId(),
+					"instance_id": i,
+				}).WithError(err).Error("unable to fetch pod events")
+				e.metrics.PodDeleteEventsFail.Inc(1)
+				continue
+			}
+
+			if len(response.GetResult()) == 0 {
+				continue
+			}
+
+			runID, err := util.ParseRunID(response.GetResult()[0].GetTaskId().GetValue())
+			if err != nil {
+				log.WithFields(log.Fields{
+					"job_id":      jobSummary.GetId(),
+					"instance_id": i,
+					"run_id":      response.GetResult()[0].GetTaskId().GetValue(),
+				}).Error(err)
+				e.metrics.PodDeleteEventsFail.Inc(1)
+				continue
+			}
+
+			if runID > _defaultPodEventsToConstraint {
+				log.WithFields(log.Fields{
+					"job_id":      jobSummary.GetId(),
+					"instance_id": i,
+					"run_id":      runID - _defaultPodEventsToConstraint,
+					"task_id":     response.GetResult()[0].GetTaskId().GetValue(),
+				}).Info("Delete runs")
+
+				_, err = e.taskClient.DeletePodEvents(
+					ctx,
+					&task.DeletePodEventsRequest{
+						JobId:      jobSummary.GetId(),
+						InstanceId: i,
+						RunId:      runID - _defaultPodEventsToConstraint})
+				if err != nil {
+					log.WithFields(log.Fields{
+						"job_id":      jobSummary.GetId(),
+						"instance_id": i,
+						"run_id":      response.GetResult()[0].GetTaskId().GetValue(),
+					}).WithError(err).Error("unable to delete pod events")
+					e.metrics.PodDeleteEventsFail.Inc(1)
+					continue
+				}
+			}
+			e.metrics.PodDeleteEventsSuccess.Inc(1)
+		}
+	}
+}
+
+func (e *engine) queryJobs(
+	ctx context.Context,
 	req *job.QueryRequest,
 	p backoff.Retrier) (*job.QueryResponse, error) {
 	for {
@@ -169,129 +389,9 @@ func (e *engine) queryJobs(ctx context.Context,
 			return resp, nil
 		}
 		if backoff.CheckRetry(p) {
-			log.WithError(err).
-				Error("job query failed, retry after backoff")
 			continue
 		} else {
 			return nil, err
 		}
-	}
-}
-
-func (e *engine) archiveJobs(ctx context.Context,
-	results []*job.JobSummary) map[string]int {
-	archiveSummary := map[string]int{archiverFailureKey: 0, archiverSuccessKey: 0}
-	for _, summary := range results {
-		// Archive only BATCH jobs
-		if summary.GetType() != job.JobType_BATCH {
-			continue
-		}
-		// Sleep between consecutive Job Delete requests
-		time.Sleep(delayDelete)
-
-		// The log event for completedJobTag will be logged to Archiver stdout
-		// Filebeat configured on the Peloton host will ship this log out to
-		// logstash. Logstash will be configured to stream this specific log
-		// event to Hive via a heatpipe topic.
-		log.WithField(completedJobTag, summary).Info("completed job")
-
-		if e.config.Archiver.StreamOnlyMode {
-			continue
-		}
-
-		log.WithFields(
-			log.Fields{
-				"job_id": summary.GetId().GetValue(),
-				"state":  summary.GetRuntime().GetState(),
-			}).
-			Info("Deleting job")
-		deleteReq := &job.DeleteRequest{
-			Id: summary.GetId(),
-		}
-		ctx, cancel := context.WithTimeout(ctx,
-			e.config.Archiver.PelotonClientTimeout)
-		defer cancel()
-		_, err := e.jobClient.Delete(ctx, deleteReq)
-		if err != nil {
-			// TODO: have a reasonable threshold for tolerating such failures
-			// For now, just continue processing the next job in the list
-			log.WithError(err).WithField("job_id",
-				summary.GetId().GetValue()).
-				Error("job delete failed")
-			e.metrics.ArchiverJobDeleteFail.Inc(1)
-			archiveSummary[archiverFailureKey]++
-		} else {
-			e.metrics.ArchiverJobDeleteSuccess.Inc(1)
-			archiveSummary[archiverSuccessKey]++
-		}
-	}
-	return archiveSummary
-}
-
-// runArchiver queries jobs in a time range and archives them periodically
-func (e *engine) runArchiver(errChan chan<- error) {
-	// Account for time taken for jobmgr to start and finish recovery
-	// This is more of a precaution so that archiver does not mess
-	// around with core jobmgr functionality.
-	// TODO (adityacb): remove this delay once we move to API server
-	jitter := time.Duration(rand.Intn(jitterMax)) * time.Millisecond
-	time.Sleep(e.config.Archiver.BootstrapDelay + jitter)
-
-	// At first, the time range will be [(t-30d-1d), (t-30d))
-	maxTime := time.Now().UTC().Add(-e.config.Archiver.ArchiveAge)
-	minTime := maxTime.Add(-e.config.Archiver.ArchiveStepSize)
-	for {
-		startTime := time.Now()
-		queryReq, err := e.buildQueryRequest(minTime, maxTime)
-		if err != nil {
-			log.WithError(err).Error("buildQueryRequest failed")
-			errChan <- err
-			return
-		}
-		p := backoff.NewRetrier(e.retryPolicy)
-		queryResp, err := e.queryJobs(context.Background(), queryReq, p)
-		if err != nil {
-			// TODO (adityacb): T1782505
-			// C* timeouts can range up to 30 seconds.
-			// Add a task to monitor these and fix retry policy in case
-			// retrying 3 times after 30
-			log.WithError(err).Error("job query failed. retries exhausted")
-			e.metrics.ArchiverJobQueryFail.Inc(1)
-			errChan <- err
-			return
-		}
-		e.metrics.ArchiverJobQuerySuccess.Inc(1)
-
-		results := queryResp.GetResults()
-
-		if len(results) > 0 {
-			archiveSummary := e.archiveJobs(context.Background(), results)
-			succeededCount, _ := archiveSummary[archiverSuccessKey]
-			failedCount, _ := archiveSummary[archiverFailureKey]
-			log.WithFields(log.Fields{
-				"total":     len(results),
-				"succeeded": succeededCount,
-				"failed":    failedCount,
-				"minTime":   minTime.Format(time.RFC3339),
-				"maxTime":   maxTime.Format(time.RFC3339),
-			}).Info("Archive summary")
-		} else {
-			log.WithFields(log.Fields{
-				"minTime": minTime.Format(time.RFC3339),
-				"maxTime": maxTime.Format(time.RFC3339),
-			}).Debug("No jobs in timerange")
-			// TODO (adityacb): T1782511
-			// Reset here if there are no more jobs left to be archived.
-			// This means that for n consecutive attempts if we get no
-			// results, we should move the archive window back to now - 30days
-			e.metrics.ArchiverNoJobsInTimerange.Inc(1)
-		}
-		e.metrics.ArchiverRunDuration.Record(time.Since(startTime))
-
-		// get new time range. example: [(minTime-1d), (minTime))
-		maxTime = minTime
-		minTime = minTime.Add(-e.config.Archiver.ArchiveStepSize)
-		jitter := time.Duration(rand.Intn(jitterMax)) * time.Millisecond
-		time.Sleep(e.config.Archiver.ArchiveInterval + jitter)
 	}
 }

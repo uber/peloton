@@ -959,6 +959,9 @@ func (s *Store) CreateTaskRuntime(
 	s.metrics.TaskMetrics.TaskCreate.Inc(1)
 	if jobType == job.JobType_BATCH {
 		err = s.logTaskStateChange(ctx, jobID, instanceID, runtime)
+		if err == nil {
+			err = s.addPodEvent(ctx, jobID, instanceID, runtime)
+		}
 	} else if jobType == job.JobType_SERVICE {
 		err = s.addPodEvent(ctx, jobID, instanceID, runtime)
 	}
@@ -976,7 +979,7 @@ func (s *Store) addPodEvent(
 	jobID *peloton.JobID,
 	instanceID uint32,
 	runtime *task.RuntimeInfo) error {
-	var runID, prevRunID, desiredRunID uint32
+	var runID, prevRunID, desiredRunID uint64
 	var podStatus []byte
 	var err, errMessage error
 
@@ -1010,16 +1013,7 @@ func (s *Store) addPodEvent(
 		errMessage = err
 	}
 	if errLog {
-		log.WithFields(log.Fields{
-			"job_id":                 jobID.GetValue(),
-			"instance_id":            instanceID,
-			"mesos_task_id":          runtime.GetMesosTaskId().GetValue(),
-			"previous_mesos_task_id": runtime.GetPrevMesosTaskId().GetValue(),
-			"actual_state":           runtime.GetState().String(),
-			"goal_state":             runtime.GetGoalState().String(),
-		}).WithError(errMessage).
-			Info("pre-validation for upsert pod event failed")
-		s.metrics.TaskMetrics.TaskLogStateFail.Inc(1)
+		s.metrics.TaskMetrics.PodEventsAddFail.Inc(1)
 		return errMessage
 	}
 
@@ -1064,18 +1058,10 @@ func (s *Store) addPodEvent(
 
 	err = s.applyStatement(ctx, stmt, runtime.GetMesosTaskId().GetValue())
 	if err != nil {
-		log.WithFields(log.Fields{
-			"job_id":                 jobID.GetValue(),
-			"instance_id":            instanceID,
-			"mesos_task_id":          runtime.GetMesosTaskId().GetValue(),
-			"previous_mesos_task_id": runtime.GetPrevMesosTaskId().GetValue(),
-			"actual_state":           runtime.GetState().String(),
-			"goal_state":             runtime.GetGoalState().String(),
-		}).WithError(err).Error("adding a pod event failed")
-		s.metrics.TaskMetrics.TaskLogStateFail.Inc(1)
+		s.metrics.TaskMetrics.PodEventsAddFail.Inc(1)
 		return err
 	}
-	s.metrics.TaskMetrics.TaskLogState.Inc(1)
+	s.metrics.TaskMetrics.PodEventsAddSuccess.Inc(1)
 	return nil
 }
 
@@ -1097,10 +1083,7 @@ func (s *Store) GetPodEvents(
 		Limit(limit)
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
-		log.WithFields(log.Fields{
-			"job_id":      jobID,
-			"instance_id": instanceID}).
-			WithError(err).Info("failed to get pod events")
+		s.metrics.TaskMetrics.PodEventsGetFail.Inc(1)
 		return nil, err
 	}
 
@@ -1148,8 +1131,29 @@ func (s *Store) GetPodEvents(
 
 		podEvents = append(podEvents, podEvent)
 	}
+	s.metrics.TaskMetrics.PodEventsGetSucess.Inc(1)
 
 	return podEvents, nil
+}
+
+// DeletePodEvents deletes the pod events for provided JobID, InstanceID and (0-RunID]
+func (s *Store) DeletePodEvents(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	instanceID uint32,
+	runID uint64) error {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.
+		Delete(podEventsTable).
+		Where(qb.Eq{"job_id": jobID.GetValue()}).
+		Where(qb.Eq{"instance_id": instanceID}).
+		Where(qb.LtOrEq{"run_id": runID})
+	if err := s.applyStatement(ctx, stmt, jobID.GetValue()); err != nil {
+		s.metrics.TaskMetrics.PodEventsDeleteFail.Inc(1)
+		return err
+	}
+	s.metrics.TaskMetrics.PodEventsDeleteSucess.Inc(1)
+	return nil
 }
 
 // logTaskStateChange logs the task state change events

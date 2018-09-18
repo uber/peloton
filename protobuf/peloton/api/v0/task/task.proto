@@ -619,6 +619,11 @@ service TaskManager
   // GetPodEvents returns pod events (state transition for a pod),
   // in reverse chronological order. pod is singular instance of a Peloton job.
   rpc GetPodEvents(GetPodEventsRequest) returns (GetPodEventsResponse);
+
+  // DeletePodEvents, deletes the pod events for provided request, which is for
+  // a jobID + instanceID + less than equal to runID.
+  // Response will be successful or error on unable to delete events for input.
+  rpc DeletePodEvents(DeletePodEventsRequest) returns (DeletePodEventsResponse);
 }
 
 // DEPRECATED by google.rpc.INTERNAL error.
@@ -742,6 +747,29 @@ message GetPodEventsResponse {
   }
 
   Error error = 2;
+}
+
+/**
+ *  Request message for TaskService.DeletePodEvents method.
+ */
+message DeletePodEventsRequest {
+  // The job ID of the task
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task
+  uint32 instanceId = 2;
+
+  // deletes the run less than equal to runId.
+  uint64 runId = 3;
+}
+
+/**
+ *  Response message for TaskService.DeletePodEvents method.
+ *
+ *  Return errors:
+ *    INTERNAL:      if failed to delete task events for internal errors.
+ */
+message DeletePodEventsResponse {
 }
 
 // DEPRECATED by google.rpc.INTERNAL error.

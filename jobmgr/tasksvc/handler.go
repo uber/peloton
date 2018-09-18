@@ -269,6 +269,23 @@ func (m *serviceHandler) GetPodEvents(
 	}, nil
 }
 
+// DeletePodEvents, deletes the pod events for provided request, which is for
+// a jobID + instanceID + less than equal to runID.
+// Response will be successful or error on unable to delete events for input.
+func (m *serviceHandler) DeletePodEvents(
+	ctx context.Context,
+	body *task.DeletePodEventsRequest) (*task.DeletePodEventsResponse, error) {
+	if err := m.taskStore.DeletePodEvents(
+		ctx,
+		body.GetJobId(),
+		body.GetInstanceId(),
+		body.GetRunId(),
+	); err != nil {
+		return nil, err
+	}
+	return &task.DeletePodEventsResponse{}, nil
+}
+
 // List/Query API should not use cachedJob
 // because we would not clean up the cache for untracked job
 func (m *serviceHandler) List(

@@ -198,7 +198,12 @@ func main() {
 			Fatal("Could not create zk service discovery")
 	}
 
-	archiverEngine, err := engine.New(cfg, rootScope, mux, discovery, inbounds)
+	archiverEngine, err := engine.New(
+		cfg,
+		rootScope,
+		mux,
+		discovery,
+		inbounds)
 	if err != nil {
 		log.WithError(err).
 			WithField("zkservers", cfg.Election.ZKServers).
@@ -208,15 +213,12 @@ func main() {
 
 	health.InitHeartbeat(rootScope, cfg.Health, nil)
 	log.Info("Started archiver")
-	errChan := make(chan error, 1)
-	if cfg.Archiver.Enable {
-		archiverEngine.Start(errChan)
-	}
 
-	select {
-	case err := <-errChan:
+	if err := archiverEngine.Start(); err != nil {
 		archiverEngine.Cleanup()
 		log.WithError(err).Fatal("Archiver engine got a fatal error." +
 			" Restarting.")
 	}
+
+	select {}
 }

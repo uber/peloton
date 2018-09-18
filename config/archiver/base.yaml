@@ -1,10 +1,11 @@
 archiver:
   enable: false
+  pod_events_cleanup: false
   http_port: 5295
   grpc_port: 5395
   # This means run archiver every 24 hours
   archive_interval: 24h
-  # Restrict archiving to 5k entries per run 
+  # Restrict archiving to 5k entries per run
   max_archive_entries: 5000
   # Archive only 30 days or older jobs
   archive_age: 720h

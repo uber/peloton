@@ -120,6 +120,9 @@ type TaskStore interface {
 	GetPodEvents(ctx context.Context, id *peloton.JobID, instanceID uint32, limit uint64) ([]*task.PodEvent, error)
 	// DeleteTaskRuntime deletes the task runtime for a given job instance
 	DeleteTaskRuntime(ctx context.Context, id *peloton.JobID, instanceID uint32) error
+
+	// DeletePodEvents deletes the pod events for provided JobID, InstanceID and (0-RunID]
+	DeletePodEvents(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runID uint64) error
 }
 
 // UpdateStore is the interface to store updates and updates progress.

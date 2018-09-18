@@ -8,6 +8,7 @@ metrics:
 
 archiver:
   enable: false
+  pod_events_cleanup: true
   http_port: 5295
   grpc_port: 5395
   # This means run archiver every 1min

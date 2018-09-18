@@ -2401,8 +2401,10 @@ func createTaskInfo(
 	var tID = fmt.Sprintf("%s-%d-%d", jobID.GetValue(), i, 1)
 	var taskInfo = task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			MesosTaskId: &mesos.TaskID{Value: &tID},
-			State:       task.TaskState_INITIALIZED,
+			PrevMesosTaskId:    nil,
+			MesosTaskId:        &mesos.TaskID{Value: &tID},
+			DesiredMesosTaskId: &mesos.TaskID{Value: &tID},
+			State:              task.TaskState_INITIALIZED,
 			Revision: &peloton.ChangeLog{
 				Version: 1,
 			},
@@ -2448,13 +2450,17 @@ func createResourceConfigs() []*respool.ResourceConfig {
 
 func (suite *CassandraStoreTestSuite) TestGetTaskRuntime() {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-
+	var tID = fmt.Sprintf("%s-%d-%d", jobID.GetValue(), 0, 1)
 	suite.NoError(store.createTaskConfig(context.Background(), jobID, 0, &task.TaskConfig{}, 0))
 	suite.NoError(store.CreateTaskRuntime(
 		context.Background(),
 		jobID,
 		0,
-		&task.RuntimeInfo{},
+		&task.RuntimeInfo{
+			PrevMesosTaskId:    nil,
+			MesosTaskId:        &mesos.TaskID{Value: &tID},
+			DesiredMesosTaskId: &mesos.TaskID{Value: &tID},
+		},
 		"",
 		job.JobType_BATCH))
 
@@ -2675,7 +2681,7 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 	suite.NoError(taskStore.DeleteTaskRuntime(context.Background(), &jobID, uint32(0)))
 }
 
-func (suite *CassandraStoreTestSuite) TestAddPodEvent() {
+func (suite *CassandraStoreTestSuite) TestPodEvents() {
 	hostName := "mesos-slave-01"
 	testTable := []struct {
 		mesosTaskID        string
@@ -2813,6 +2819,51 @@ func (suite *CassandraStoreTestSuite) TestGetPodEvent() {
 
 	store.addPodEvent(context.Background(), jobID, 0, runtime)
 	podEvents, err := store.GetPodEvents(
+		context.Background(),
+		jobID,
+		0,
+		_defaultPodEventsLimit)
+	suite.Equal(len(podEvents), 1)
+	suite.NoError(err)
+
+	mesosTaskID = "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-3"
+	prevMesosTaskID = "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-2"
+	desiredMesosTaskID = "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-3"
+	runtime = &task.RuntimeInfo{
+		StartTime:      time.Now().String(),
+		CompletionTime: time.Now().String(),
+		State:          task.TaskState_RUNNING,
+		GoalState:      task.TaskState_SUCCEEDED,
+		Healthy:        task.HealthState_HEALTHY,
+		Host:           "mesos-slave-01",
+		Message:        "",
+		Reason:         "",
+		MesosTaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
+		},
+		PrevMesosTaskId: &mesos.TaskID{
+			Value: &prevMesosTaskID,
+		},
+		DesiredMesosTaskId: &mesos.TaskID{
+			Value: &desiredMesosTaskID,
+		},
+		ConfigVersion:        3,
+		DesiredConfigVersion: 4,
+	}
+
+	store.addPodEvent(context.Background(), jobID, 0, runtime)
+	podEvents, err = store.GetPodEvents(
+		context.Background(),
+		jobID,
+		0,
+		_defaultPodEventsLimit)
+	suite.Equal(len(podEvents), 2)
+	suite.NoError(err)
+
+	err = store.DeletePodEvents(context.Background(), jobID, 0, 2)
+	suite.NoError(err)
+
+	podEvents, err = store.GetPodEvents(
 		context.Background(),
 		jobID,
 		0,

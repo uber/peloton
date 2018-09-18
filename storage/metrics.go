@@ -110,6 +110,15 @@ type TaskMetrics struct {
 
 	TaskQueryTasks     tally.Counter
 	TaskQueryTasksFail tally.Counter
+
+	PodEventsAddSuccess tally.Counter
+	PodEventsAddFail    tally.Counter
+
+	PodEventsGetSucess tally.Counter
+	PodEventsGetFail   tally.Counter
+
+	PodEventsDeleteSucess tally.Counter
+	PodEventsDeleteFail   tally.Counter
 }
 
 // UpdateMetrics is a struct for tracking job update related
@@ -334,6 +343,13 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskUpdate:     taskSuccessScope.Counter("update"),
 		TaskUpdateFail: taskFailScope.Counter("update"),
 		TaskNotFound:   taskNotFoundScope.Counter("get"),
+
+		PodEventsAddSuccess:   taskSuccessScope.Counter("pod_events_add"),
+		PodEventsAddFail:      taskFailScope.Counter("pod_events_add"),
+		PodEventsGetSucess:    taskSuccessScope.Counter("pod_events_get"),
+		PodEventsGetFail:      taskFailScope.Counter("pod_events_get"),
+		PodEventsDeleteSucess: taskSuccessScope.Counter("pod_events_delete"),
+		PodEventsDeleteFail:   taskFailScope.Counter("pod_events_delete"),
 	}
 
 	updateMetrics := &UpdateMetrics{

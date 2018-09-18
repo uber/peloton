@@ -14,6 +14,9 @@ type Metrics struct {
 	ArchiverJobDeleteFail     tally.Counter
 	ArchiverNoJobsInTimerange tally.Counter
 
+	PodDeleteEventsFail    tally.Counter
+	PodDeleteEventsSuccess tally.Counter
+
 	ArchiverRunDuration tally.Timer
 }
 
@@ -27,6 +30,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		ArchiverJobDeleteSuccess:  scope.Counter("archiver_job_delete_success"),
 		ArchiverJobDeleteFail:     scope.Counter("archiver_job_delete_fail"),
 		ArchiverNoJobsInTimerange: scope.Counter("archiver_no_jobs_in_timerange"),
+		PodDeleteEventsSuccess:    scope.Counter("pod_delete_events_success"),
+		PodDeleteEventsFail:       scope.Counter("pod_delete_events_fail"),
 
 		ArchiverRunDuration: scope.Timer("archiver_run_duration"),
 	}

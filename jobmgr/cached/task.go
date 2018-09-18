@@ -122,7 +122,7 @@ func validateMesosTaskID(mesosTaskID, prevMesosTaskID string) bool {
 		return true
 	}
 
-	var newRunID, currentRunID uint32
+	var newRunID, currentRunID uint64
 	var err error
 
 	if newRunID, err = util.ParseRunID(mesosTaskID); err != nil {

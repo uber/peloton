@@ -66,22 +66,22 @@ func TestConvertLabels(t *testing.T) {
 func TestParseRunID(t *testing.T) {
 	mesosTaskID := uuid.New() + "-1-" + uuid.New()
 	runID, err := ParseRunID(mesosTaskID)
-	assert.Equal(t, runID, uint32(0))
+	assert.Equal(t, runID, uint64(0))
 	assert.Error(t, err)
 
 	mesosTaskID = uuid.New() + "-1-abc"
 	runID, err = ParseRunID(mesosTaskID)
-	assert.Equal(t, runID, uint32(0))
+	assert.Equal(t, runID, uint64(0))
 	assert.Error(t, err)
 
 	mesosTaskID = uuid.New() + "-1-1"
 	runID, err = ParseRunID(mesosTaskID)
-	assert.Equal(t, runID, uint32(1))
+	assert.Equal(t, runID, uint64(1))
 	assert.NoError(t, err)
 
 	mesosTaskID = ""
 	runID, err = ParseRunID(mesosTaskID)
-	assert.Equal(t, runID, uint32(0))
+	assert.Equal(t, runID, uint64(0))
 	assert.Error(t, err)
 }
 
@@ -460,7 +460,7 @@ func TestCreateMesosTaskID(t *testing.T) {
 	tests := []struct {
 		jobID      string
 		instanceID uint32
-		runID      uint32
+		runID      uint64
 		result     string
 	}{{
 		jobID:      "5f9b61a6-b290-49ef-899e-6e42dc5aabd3",

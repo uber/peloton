@@ -3,40 +3,52 @@ package engine
 import (
 	"context"
 	"fmt"
-	"math"
 	nethttp "net/http"
 	"net/url"
 	"testing"
 	"time"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	job_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	task_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task/mocks"
 	"code.uber.internal/infra/peloton/archiver/config"
 	"code.uber.internal/infra/peloton/common/backoff"
 	"code.uber.internal/infra/peloton/leader"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/api/transport"
 
 	"github.com/golang/mock/gomock"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+)
 
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/api/transport"
+var (
+	streamJobStates = []job.JobState{
+		job.JobState_SUCCEEDED,
+		job.JobState_FAILED,
+		job.JobState_KILLED,
+	}
 )
 
 type archiverEngineTestSuite struct {
 	suite.Suite
 
-	mockCtrl      *gomock.Controller
-	mockJobClient *job_mocks.MockJobManagerYARPCClient
-	retryPolicy   backoff.RetryPolicy
-	e             *engine
+	mockCtrl       *gomock.Controller
+	mockJobClient  *job_mocks.MockJobManagerYARPCClient
+	mockTaskClient *task_mocks.MockTaskManagerYARPCClient
+	retryPolicy    backoff.RetryPolicy
+	e              *engine
 }
 
 func (suite *archiverEngineTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mockJobClient = job_mocks.NewMockJobManagerYARPCClient(suite.mockCtrl)
+	suite.mockTaskClient = task_mocks.NewMockTaskManagerYARPCClient(suite.mockCtrl)
 	suite.retryPolicy = backoff.NewRetryPolicy(3, 100*time.Millisecond)
 	suite.e = &engine{
 		jobClient: suite.mockJobClient,
@@ -64,11 +76,84 @@ func (suite *archiverEngineTestSuite) TestEngineNew() {
 	suite.NoError(err)
 }
 
+// TestDeletePodEvents tests deleting of pod events for a job + instance
+func (suite *archiverEngineTestSuite) TestDeletePodEvents() {
+	e := &engine{
+		jobClient:  suite.mockJobClient,
+		taskClient: suite.mockTaskClient,
+		config: config.Config{
+			Archiver: config.ArchiverConfig{
+				Enable:           false,
+				PodEventsCleanup: true,
+				ArchiveInterval:  10 * time.Millisecond,
+				BootstrapDelay:   10 * time.Millisecond,
+			},
+		},
+		metrics:     NewMetrics(tally.NoopScope),
+		dispatcher:  yarpc.NewDispatcher(yarpc.Config{Name: config.PelotonArchiver}),
+		retryPolicy: suite.retryPolicy,
+	}
+
+	jobID := &peloton.JobID{Value: "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06"}
+	taskID := "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-101"
+	mesosTaskID := &mesos.TaskID{Value: &taskID}
+	queryResp := &job.QueryResponse{
+		Results: []*job.JobSummary{
+			{
+				Id:            jobID,
+				InstanceCount: 1,
+				Type:          job.JobType_SERVICE,
+			},
+		},
+	}
+
+	getPodEventRequest := &task.GetPodEventsRequest{
+		JobId:      jobID,
+		InstanceId: uint32(0),
+		Limit:      uint64(1),
+	}
+
+	deletePodEventsRequest := &task.DeletePodEventsRequest{
+		JobId:      jobID,
+		InstanceId: uint32(0),
+		RunId:      uint64(1),
+	}
+
+	var events []*task.PodEvent
+	event := &task.PodEvent{
+		TaskId: mesosTaskID,
+	}
+	events = append(events, event)
+
+	getPodEventsResponse := &task.GetPodEventsResponse{
+		Result: events,
+	}
+
+	gomock.InOrder(
+		suite.mockJobClient.EXPECT().Query(gomock.Any(), gomock.Any()).
+			Return(queryResp, nil),
+		suite.mockTaskClient.EXPECT().GetPodEvents(gomock.Any(), getPodEventRequest).
+			Return(getPodEventsResponse, nil),
+		suite.mockTaskClient.EXPECT().DeletePodEvents(gomock.Any(), deletePodEventsRequest).
+			Return(nil, nil),
+
+		// Job Query fails on all three retries. At this point we will send error to errChan
+		suite.mockJobClient.EXPECT().Query(gomock.Any(), gomock.Any()).
+			Return(nil, fmt.Errorf("Job Query failed")),
+		suite.mockJobClient.EXPECT().Query(gomock.Any(), gomock.Any()).
+			Return(nil, fmt.Errorf("Job Query failed")),
+		suite.mockJobClient.EXPECT().Query(gomock.Any(), gomock.Any()).
+			Return(nil, fmt.Errorf("Job Query failed")),
+	)
+
+	if err := e.Start(); err != nil {
+		e.Cleanup()
+	}
+}
+
 // TestEngineStartCleanup tests starting the archiver and cleaning up
 // on receiving errors
 func (suite *archiverEngineTestSuite) TestEngineStartCleanup() {
-	var err error
-
 	e := &engine{
 		jobClient: suite.mockJobClient,
 		config: config.Config{
@@ -90,7 +175,7 @@ func (suite *archiverEngineTestSuite) TestEngineStartCleanup() {
 			},
 		},
 	}
-	errChan := make(chan error, 1)
+
 	gomock.InOrder(
 		// query succeeds and returns 0 jobs. In this case, we don't call delete
 		suite.mockJobClient.EXPECT().Query(gomock.Any(), gomock.Any()).
@@ -119,52 +204,37 @@ func (suite *archiverEngineTestSuite) TestEngineStartCleanup() {
 			Return(nil, fmt.Errorf("Job Query failed")),
 	)
 
-	e.Start(errChan)
-	select {
-	case err = <-errChan:
+	if err := e.Start(); err != nil {
 		e.Cleanup()
-		close(errChan)
-		break
 	}
-	suite.Error(err)
-
-}
-
-// TestBuildQueryRequest tests the way job query request is constructed
-func (suite *archiverEngineTestSuite) TestBuildQueryRequest() {
-	maxTime := time.Now().UTC()
-	minTime := maxTime.Add(-10 * time.Second)
-	max, _ := ptypes.TimestampProto(maxTime)
-	min, _ := ptypes.TimestampProto(minTime)
-	expectedjobStates := []job.JobState{
-		job.JobState_SUCCEEDED,
-		job.JobState_FAILED,
-		job.JobState_KILLED,
-	}
-
-	req, err := suite.e.buildQueryRequest(minTime, maxTime)
-	suite.NoError(err)
-	suite.Equal(true, req.SummaryOnly)
-	suite.Equal(expectedjobStates, req.Spec.JobStates)
-	suite.Equal(max, req.Spec.CompletionTimeRange.Max)
-	suite.Equal(min, req.Spec.CompletionTimeRange.Min)
-
-	// Simulate invalid timestamp proto errors
-	req, err = suite.e.buildQueryRequest(
-		minTime, time.Unix(math.MinInt64, 0).UTC())
-	suite.Error(err)
-	req, err = suite.e.buildQueryRequest(
-		time.Unix(math.MinInt64, 0).UTC(), maxTime)
-	suite.Error(err)
-
 }
 
 // TestQueryJobs tests archiver calls to the Job Query API
 func (suite *archiverEngineTestSuite) TestQueryJobs() {
 	maxTime := time.Now().UTC()
 	minTime := maxTime.Add(-10 * time.Second)
-	req, err := suite.e.buildQueryRequest(minTime, maxTime)
-	suite.NoError(err)
+
+	max, _ := ptypes.TimestampProto(maxTime)
+	min, _ := ptypes.TimestampProto(minTime)
+
+	spec := job.QuerySpec{
+		JobStates: []job.JobState{
+			job.JobState_SUCCEEDED,
+			job.JobState_FAILED,
+			job.JobState_KILLED,
+		},
+		CompletionTimeRange: &peloton.TimeRange{Min: min, Max: max},
+		Pagination: &query.PaginationSpec{
+			Offset:   0,
+			Limit:    uint32(10),
+			MaxLimit: uint32(10),
+		},
+	}
+
+	req := &job.QueryRequest{
+		Spec:        &spec,
+		SummaryOnly: true,
+	}
 
 	expectedResp := &job.QueryResponse{}
 	suite.mockJobClient.EXPECT().Query(gomock.Any(), req).
@@ -232,8 +302,9 @@ func (suite *archiverEngineTestSuite) TestArchiveJobs() {
 			Return(nil, fmt.Errorf("Job Delete failed")),
 	)
 
-	m := suite.e.archiveJobs(context.Background(), summaryList)
-	suite.testArchiveResultMap(m, 1, 1)
+	suite.e.archiveJobs(
+		context.Background(),
+		summaryList)
 }
 
 // TestArchiveJobsService tests that service jobs are not archived
@@ -245,8 +316,9 @@ func (suite *archiverEngineTestSuite) TestArchiveJobsService() {
 		},
 	}
 
-	m := suite.e.archiveJobs(context.Background(), summaryList)
-	suite.testArchiveResultMap(m, 0, 0)
+	suite.e.archiveJobs(
+		context.Background(),
+		summaryList)
 }
 
 // TestArchiveJobsStreamOnly tests that for stream only mode, jobs are not
@@ -259,6 +331,7 @@ func (suite *archiverEngineTestSuite) TestArchiveJobsStreamOnly() {
 			Id:   &peloton.JobID{Value: "my-job-0"},
 		},
 	}
-	m := suite.e.archiveJobs(context.Background(), summaryList)
-	suite.testArchiveResultMap(m, 0, 0)
+	suite.e.archiveJobs(
+		context.Background(),
+		summaryList)
 }

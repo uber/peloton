@@ -46,6 +46,9 @@ type ArchiverConfig struct {
 	// enabled flag to toggle archiving
 	Enable bool `yaml:"enable"`
 
+	// Flag to constraint pod events
+	PodEventsCleanup bool `yaml:"pod_events_cleanup"`
+
 	// HTTP port which Archiver is listening on
 	HTTPPort int `yaml:"http_port"`
 
