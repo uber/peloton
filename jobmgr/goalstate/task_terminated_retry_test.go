@@ -131,9 +131,9 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTask() {
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
 	suite.cachedJob.EXPECT().
-		AddTask(suite.instanceID).Return(nil)
+		AddTask(gomock.Any(), suite.instanceID).Return(nil, fmt.Errorf("fake db error"))
 	err := TaskTerminatedRetry(context.Background(), suite.taskEnt)
-	suite.Nil(err)
+	suite.Error(err)
 }
 
 // TestTaskFailRetryStatelessNoTask tests restart when no task runtime
@@ -143,7 +143,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTaskRuntime(
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
 	suite.cachedJob.EXPECT().
-		AddTask(suite.instanceID).Return(suite.cachedTask)
+		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).Return(nil, fmt.Errorf(""))
 	err := TaskTerminatedRetry(context.Background(), suite.taskEnt)
@@ -157,7 +157,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTaskConfig()
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
 	suite.cachedJob.EXPECT().
-		AddTask(suite.instanceID).Return(suite.cachedTask)
+		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
 	suite.taskStore.EXPECT().GetTaskConfig(
@@ -179,7 +179,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).Return(jobRuntime, nil)
 	suite.cachedJob.EXPECT().
-		AddTask(suite.instanceID).Return(suite.cachedTask)
+		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
 	suite.taskStore.EXPECT().GetTaskConfig(
@@ -232,7 +232,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedNoRetry() {
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
 	suite.cachedJob.EXPECT().
-		AddTask(suite.instanceID).Return(suite.cachedTask)
+		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
 	suite.taskStore.EXPECT().GetTaskConfig(

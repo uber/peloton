@@ -19,18 +19,17 @@ func TaskTerminatedRetry(ctx context.Context, entity goalstate.Entity) error {
 	if err != nil {
 		return err
 	}
-	cachedTask := cachedJob.AddTask(taskEnt.instanceID)
-	if cachedTask == nil {
-		log.WithFields(log.Fields{
-			"job_id":      taskEnt.jobID.GetValue(),
-			"instance_id": taskEnt.instanceID,
-		}).Error("task is nil in cache with valid job")
-		return nil
+
+	cachedTask, err := cachedJob.AddTask(ctx, taskEnt.instanceID)
+	if err != nil {
+		return err
 	}
+
 	taskRuntime, err := cachedTask.GetRunTime(ctx)
 	if err != nil {
 		return err
 	}
+
 	taskConfig, err := goalStateDriver.taskStore.GetTaskConfig(
 		ctx,
 		taskEnt.jobID,
