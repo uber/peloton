@@ -67,6 +67,12 @@ var (
 		Envar("ENABLE_ARCHIVER").
 		Bool()
 
+	podEventsCleanup = app.Flag(
+		"pod-events-cleanup", "enable Pod Events Cleanup").
+		Default("false").
+		Envar("POD_EVENTS_CLEANUP").
+		Bool()
+
 	streamOnlyMode = app.Flag(
 		"stream-only-mode", "Archiver streams jobs without deleting them").
 		Default("true").
@@ -135,6 +141,10 @@ func main() {
 
 	if *streamOnlyMode {
 		cfg.Archiver.StreamOnlyMode = *streamOnlyMode
+	}
+
+	if *podEventsCleanup {
+		cfg.Archiver.PodEventsCleanup = *podEventsCleanup
 	}
 
 	if *archiveInterval != "" {

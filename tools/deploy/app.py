@@ -177,6 +177,7 @@ class App(object):
         if self.name == 'archiver':
             env_vars['ENABLE_ARCHIVER'] = self.enable_archiver
             env_vars['STREAM_ONLY_MODE'] = self.stream_only_mode
+            env_vars['POD_EVENTS_CLEANUP'] = self.pod_events_cleanup
             env_vars['ARCHIVE_AGE'] = self.archive_age
             env_vars['ARCHIVE_INTERVAL'] = self.archive_interval
             env_vars['ARCHIVE_STEP_SIZE'] = self.archive_step_size
