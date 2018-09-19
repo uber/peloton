@@ -1,5 +1,5 @@
-hash: 6d0569901fb4c934262762c0987a7f7382a0a7424036d9806907698e29e2f524
-updated: 2018-09-11T14:09:22.489384873-07:00
+hash: 6a56573ba6018476b3508d2e3c7ab5a413cddfe532185969b3550080fae5c72c
+updated: 2018-09-19T11:04:16.556662545-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -78,6 +78,8 @@ imports:
   - ptypes/timestamp
 - name: github.com/golang/snappy
   version: d9eb7a3d35ec988b8585d4a0068e462c27d28380
+- name: github.com/google/uuid
+  version: 9b3b1e0f5f99ae461456d768e7d301a7acdaa2d8
 - name: github.com/hailocab/go-hostpool
   version: e80d13ce29ede4452c43dea11e79b9bc8a15b478
 - name: github.com/hashicorp/errwrap
@@ -121,7 +123,7 @@ imports:
   - ext
   - log
 - name: github.com/pborman/uuid
-  version: c65b2f87fee37d1c7854c9164a450713c28d50cd
+  version: 8b1b92947f46224e3b97bb1a3a5b0382be00d31e
 - name: github.com/pkg/errors
   version: 248dadf4e9068a0b3e79f02ed0a610d935de5302
 - name: github.com/pmezard/go-difflib
@@ -196,9 +198,12 @@ imports:
 - name: go.uber.org/automaxprocs
   version: 6fecebd30e89df4ebcb6ca6dc1d0a5c8d2aa10a0
   subpackages:
-  - internal/cgroups
   - internal/runtime
   - maxprocs
+- name: go.uber.org/goleak
+  version: b12bb1eedf12e90b75899bf8a73ce2d8fc4d9938
+  subpackages:
+  - internal/stack
 - name: go.uber.org/multierr
   version: 3c4937480c32f4c13a875a1829af76c98ca3d40a
 - name: go.uber.org/net/metrics
@@ -208,7 +213,7 @@ imports:
   - push
   - tallypush
 - name: go.uber.org/thriftrw
-  version: fb439a9a7f5a388d8606aae1c1ff6654b8b67fbe
+  version: c8eb6919acebb42254375c897469d986c91405ae
   subpackages:
   - version
 - name: go.uber.org/yarpc
@@ -254,12 +259,8 @@ imports:
   - internal/color
   - internal/exit
   - zapcore
-- name: golang.org/x/crypto
-  version: 96846453c37f0876340a66a47f3f75b1f3a6cd2d
-  subpackages:
-  - ssh/terminal
 - name: golang.org/x/net
-  version: d11bb6cd8e3c4e60239c9cb20ef68586d74500d0
+  version: 26e67e76b6c3f6ce91f7c52def5af501b4e0f3a2
   repo: https://github.com/golang/net
   subpackages:
   - bpf
@@ -291,7 +292,7 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: 32fb0ac620c32ba40a4626ddf94d90d12cce3455
+  version: 8dea3dc473e90c8179e519d91302d0597c0ca1d1
   repo: https://github.com/grpc/grpc-go
   subpackages:
   - balancer

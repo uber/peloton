@@ -28,6 +28,10 @@ import:
   - zk
 - package: gopkg.in/alecthomas/kingpin.v2
   version: ^2.2.3
+- package: go.uber.org/goleak
+  version: b12bb1eedf12e90b75899bf8a73ce2d8fc4d9938
+  subpackages:
+  - internal/stack
 - package: go.uber.org/yarpc
   version: 1.28.0
   subpackages:

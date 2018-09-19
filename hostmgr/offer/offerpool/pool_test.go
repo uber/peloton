@@ -12,6 +12,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/goleak"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
@@ -513,6 +514,7 @@ func (suite *OfferPoolTestSuite) TestRemoveExpiredOffers() {
 }
 
 func (suite *OfferPoolTestSuite) TestAddGetRemoveOffers() {
+	defer goleak.VerifyNoLeaks(suite.T())
 	// Add offer concurrently
 	nOffers := 10
 	nAgents := 10
@@ -659,42 +661,42 @@ func (suite *OfferPoolTestSuite) TestResetExpiredHostSummaries() {
 		{
 			helpers:                 []mockHelper{},
 			expectedPrunedHostnames: []string{},
-			msg:                     "Pool with no host",
+			msg: "Pool with no host",
 		}, {
 			helpers: []mockHelper{
 				{
 					mockResetExpiredPlacingOfferStatus: false,
-					hostname:                           "host0",
+					hostname: "host0",
 				},
 			},
 			expectedPrunedHostnames: []string{},
-			msg:                     "Pool with 1 host, 0 pruned",
+			msg: "Pool with 1 host, 0 pruned",
 		}, {
 			helpers: []mockHelper{
 				{
 					mockResetExpiredPlacingOfferStatus: false,
-					hostname:                           "host0",
+					hostname: "host0",
 				},
 				{
 					mockResetExpiredPlacingOfferStatus: true,
-					hostname:                           "host1",
+					hostname: "host1",
 				},
 			},
 			expectedPrunedHostnames: []string{"host1"},
-			msg:                     "Pool with 2 hosts, 1 pruned",
+			msg: "Pool with 2 hosts, 1 pruned",
 		}, {
 			helpers: []mockHelper{
 				{
 					mockResetExpiredPlacingOfferStatus: true,
-					hostname:                           "host0",
+					hostname: "host0",
 				},
 				{
 					mockResetExpiredPlacingOfferStatus: true,
-					hostname:                           "host1",
+					hostname: "host1",
 				},
 			},
 			expectedPrunedHostnames: []string{"host0", "host1"},
-			msg:                     "Pool with 2 hosts, 2 pruned",
+			msg: "Pool with 2 hosts, 2 pruned",
 		},
 	}
 

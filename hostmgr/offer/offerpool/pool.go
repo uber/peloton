@@ -343,13 +343,21 @@ func (p *offerPool) AddOffers(ctx context.Context, offers []*mesos.Offer) []*mes
 	}
 	p.Unlock()
 
+	var wg sync.WaitGroup
 	for hostname, offers := range hostnameToOffers {
-		if !p.hostOfferIndex[hostname].HasAnyOffer() {
-			p.metrics.AvailableHosts.Update(float64(p.availableHosts.Inc()))
-		}
+		wg.Add(1)
 
-		p.hostOfferIndex[hostname].AddMesosOffers(ctx, offers)
+		go func(hostname string, offers []*mesos.Offer) {
+			defer wg.Done()
+
+			if !p.hostOfferIndex[hostname].HasAnyOffer() {
+				p.metrics.AvailableHosts.Update(float64(p.availableHosts.Inc()))
+			}
+
+			p.hostOfferIndex[hostname].AddMesosOffers(ctx, offers)
+		}(hostname, offers)
 	}
+	wg.Wait()
 
 	return acceptableOffers
 }
