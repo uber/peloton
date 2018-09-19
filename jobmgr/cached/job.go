@@ -77,6 +77,13 @@ type Job interface {
 	// If successful, the cache is updated as well.
 	Update(ctx context.Context, jobInfo *pbjob.JobInfo, req UpdateRequest) error
 
+	// CompareAndSetRuntime replaces the existing job runtime in cache and DB with
+	// the job runtime supplied. CompareAndSetRuntime would use
+	// RuntimeInfo.Revision.Version for concurrency control, and it would
+	// update RuntimeInfo.Revision.Version automatically upon success. Caller
+	// should not manually modify the value of RuntimeInfo.Revision.Version.
+	CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.RuntimeInfo) error
+
 	// IsPartiallyCreated returns if job has not been fully created yet
 	IsPartiallyCreated(config jobmgrcommon.JobConfig) bool
 
@@ -466,6 +473,45 @@ func (j *job) createJobRuntime(ctx context.Context, config *pbjob.JobConfig) err
 	return nil
 }
 
+func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.RuntimeInfo) error {
+	if jobRuntime == nil {
+		return yarpcerrors.InvalidArgumentErrorf("unexpected nil jobRuntime")
+	}
+
+	j.Lock()
+	defer j.Unlock()
+
+	// first make sure we have job runtime in cache
+	if err := j.populateRuntime(ctx); err != nil {
+		return err
+	}
+
+	if j.runtime.GetRevision().GetVersion() !=
+		jobRuntime.GetRevision().GetVersion() {
+		return jobmgrcommon.UnexpectedVersionError
+	}
+
+	// version matches, update the input changeLog
+	newRuntime := *jobRuntime
+	newRuntime.Revision = &peloton.ChangeLog{
+		Version:   jobRuntime.GetRevision().GetVersion() + 1,
+		CreatedAt: jobRuntime.GetRevision().GetCreatedAt(),
+		UpdatedAt: uint64(time.Now().UnixNano()),
+	}
+
+	if err := j.jobFactory.jobStore.UpdateJobRuntime(
+		ctx,
+		j.id,
+		&newRuntime,
+	); err != nil {
+		j.invalidateCache()
+		return err
+	}
+
+	j.runtime = &newRuntime
+	return nil
+}
+
 // The runtime being passed should only set the fields which the caller intends to change,
 // the remaining fields should be left unfilled.
 // The config would be updated to the config passed in (except changeLog)
@@ -656,12 +702,8 @@ func (j *job) getUpdatedJobRuntimeCache(
 	newRuntime := runtime
 
 	if req == UpdateCacheAndDB {
-		if j.runtime == nil {
-			runtime, err := j.jobFactory.jobStore.GetJobRuntime(ctx, j.ID())
-			if err != nil {
-				return nil, err
-			}
-			j.runtime = runtime
+		if err := j.populateRuntime(ctx); err != nil {
+			return nil, err
 		}
 	}
 
@@ -776,8 +818,11 @@ func (j *job) mergeRuntime(newRuntime *pbjob.RuntimeInfo) *pbjob.RuntimeInfo {
 	}
 
 	// bump up the runtime version
-	runtime.Revision.Version++
-	runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
+	runtime.Revision = &peloton.ChangeLog{
+		Version:   runtime.GetRevision().GetVersion() + 1,
+		CreatedAt: runtime.GetRevision().GetCreatedAt(),
+		UpdatedAt: uint64(time.Now().UnixNano()),
+	}
 
 	return &runtime
 }
@@ -816,12 +861,8 @@ func (j *job) GetRuntime(ctx context.Context) (*pbjob.RuntimeInfo, error) {
 	j.Lock()
 	defer j.Unlock()
 
-	if j.runtime == nil {
-		runtime, err := j.jobFactory.jobStore.GetJobRuntime(ctx, j.ID())
-		if err != nil {
-			return nil, err
-		}
-		j.runtime = runtime
+	if err := j.populateRuntime(ctx); err != nil {
+		return nil, err
 	}
 	return j.runtime, nil
 }
@@ -985,6 +1026,17 @@ func (j *job) RecalculateResourceUsage(ctx context.Context) {
 				Error("error adding task resource usage to job")
 		}
 	}
+}
+
+func (j *job) populateRuntime(ctx context.Context) error {
+	if j.runtime == nil {
+		runtime, err := j.jobFactory.jobStore.GetJobRuntime(ctx, j.ID())
+		if err != nil {
+			return err
+		}
+		j.runtime = runtime
+	}
+	return nil
 }
 
 func createEmptyResourceUsageMap() map[string]float64 {

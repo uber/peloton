@@ -13,6 +13,7 @@ import (
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
@@ -403,7 +404,8 @@ func (t *task) GetRunTime(ctx context.Context) (*pbtask.RuntimeInfo, error) {
 		t.runtime = runtime
 	}
 
-	return t.runtime, nil
+	runtime := proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
+	return runtime, nil
 }
 
 func (t *task) GetLastRuntimeUpdateTime() time.Time {

@@ -274,8 +274,8 @@ func (suite *JobTestSuite) TestJobDBError() {
 	err = suite.job.Update(context.Background(), &pbjob.JobInfo{Runtime: jobRuntime}, UpdateCacheAndDB)
 	suite.NoError(err)
 	actJobRuntime, err = suite.job.GetRuntime(context.Background())
-	suite.Equal(jobRuntime.State, actJobRuntime.State)
-	suite.Equal(jobRuntime.GoalState, actJobRuntime.GoalState)
+	suite.Equal(jobRuntime.State, actJobRuntime.GetState())
+	suite.Equal(jobRuntime.GoalState, actJobRuntime.GetGoalState())
 	suite.NoError(err)
 
 	// Test error in DB while update job runtime
@@ -335,6 +335,138 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeWithCache() {
 	suite.NoError(err)
 	suite.Equal(suite.job.runtime.State, jobRuntime.State)
 	suite.Equal(suite.job.runtime.GoalState, jobRuntime.GoalState)
+}
+
+// TestJobCompareAndSetRuntimeWithCache tests replace job runtime which has
+// existing cache
+func (suite *JobTestSuite) TestJobCompareAndSetRuntimeWithCache() {
+	revision := &peloton.ChangeLog{
+		Version: 1,
+	}
+
+	suite.job.runtime = &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_INITIALIZED,
+		GoalState: pbjob.JobState_SUCCEEDED,
+		Revision:  revision,
+	}
+
+	jobRuntime, err := suite.job.GetRuntime(context.Background())
+	suite.NoError(err)
+	suite.Equal(suite.job.runtime.State, jobRuntime.GetState())
+	suite.Equal(suite.job.runtime.GoalState, jobRuntime.GetGoalState())
+
+	suite.jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+			suite.Equal(runtime.State, jobRuntime.GetState())
+			suite.Equal(runtime.GoalState, jobRuntime.GetGoalState())
+		}).
+		Return(nil)
+
+	err = suite.job.CompareAndSetRuntime(context.Background(), jobRuntime)
+	suite.NoError(err)
+	suite.Equal(suite.job.runtime.State, jobRuntime.GetState())
+	suite.Equal(suite.job.runtime.GoalState, jobRuntime.GetGoalState())
+	suite.Equal(suite.job.runtime.GetRevision().GetVersion(), revision.GetVersion()+1)
+
+	// second call with the same jobRuntime should fail due to concurrency check
+	err = suite.job.CompareAndSetRuntime(context.Background(), jobRuntime)
+	suite.Error(err)
+}
+
+// TestJobUpdateCompareAndSetRuntimeMixedUsage tests using CompareAndSetRuntime
+// and update together
+func (suite *JobTestSuite) TestJobUpdateCompareAndSetRuntimeMixedUsage() {
+	revision := &peloton.ChangeLog{
+		Version: 1,
+	}
+
+	jobRuntimeUpdate := &pbjob.RuntimeInfo{
+		State: pbjob.JobState_PENDING,
+	}
+
+	suite.job.runtime = &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_INITIALIZED,
+		GoalState: pbjob.JobState_SUCCEEDED,
+		Revision:  revision,
+	}
+
+	suite.jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+			suite.Equal(runtime.State, jobRuntimeUpdate.State)
+		}).
+		Return(nil)
+
+	jobRuntime, err := suite.job.GetRuntime(context.Background())
+	suite.NoError(err)
+	err = suite.job.Update(context.Background(), &pbjob.JobInfo{Runtime: jobRuntimeUpdate}, UpdateCacheAndDB)
+	suite.NoError(err)
+
+	// should fail because jobRuntime is already outdated due to Update
+	jobRuntime.State = pbjob.JobState_KILLED
+	err = suite.job.CompareAndSetRuntime(context.Background(), jobRuntime)
+	suite.Error(err)
+}
+
+// TestJobCompareAndSetRuntimeUnexpectedVersionError tests replace job runtime
+// which fails due to incorrect version number
+func (suite *JobTestSuite) TestJobCompareAndSetRuntimeUnexpectedVersionError() {
+	jobRuntime := &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_RUNNING,
+		GoalState: pbjob.JobState_KILLED,
+		Revision: &peloton.ChangeLog{
+			Version: 2,
+		},
+	}
+
+	suite.job.runtime = &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_INITIALIZED,
+		GoalState: pbjob.JobState_SUCCEEDED,
+		Revision: &peloton.ChangeLog{
+			Version: 1,
+		},
+	}
+
+	err := suite.job.CompareAndSetRuntime(context.Background(), jobRuntime)
+	suite.Error(err)
+}
+
+// TestJobCompareAndSetRuntimeNoCache tests replace job runtime which has
+// no existing cache
+func (suite *JobTestSuite) TestJobCompareAndSetRuntimeNoCache() {
+	revision := &peloton.ChangeLog{
+		Version: 1,
+	}
+
+	jobRuntime := &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_RUNNING,
+		GoalState: pbjob.JobState_KILLED,
+		Revision:  revision,
+	}
+
+	suite.job.runtime = nil
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.jobID).
+		Return(&pbjob.RuntimeInfo{
+			State:     pbjob.JobState_INITIALIZED,
+			GoalState: pbjob.JobState_SUCCEEDED,
+			Revision:  revision,
+		}, nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+			suite.Equal(runtime.State, jobRuntime.State)
+			suite.Equal(runtime.GoalState, jobRuntime.GoalState)
+		}).
+		Return(nil)
+	err := suite.job.CompareAndSetRuntime(context.Background(), jobRuntime)
+	suite.NoError(err)
+	suite.Equal(suite.job.runtime.State, jobRuntime.State)
+	suite.Equal(suite.job.runtime.GoalState, jobRuntime.GoalState)
+	suite.Equal(suite.job.runtime.GetRevision().GetVersion(), revision.GetVersion()+1)
 }
 
 // TestJobUpdateConfig tests update job which new config
@@ -944,8 +1076,8 @@ func (suite *JobTestSuite) TestJobGetRuntimeRefillCache() {
 		Return(jobRuntime, nil)
 	runtime, err := suite.job.GetRuntime(context.Background())
 	suite.NoError(err)
-	suite.Equal(runtime.State, jobRuntime.State)
-	suite.Equal(runtime.GoalState, jobRuntime.GoalState)
+	suite.Equal(runtime.GetState(), jobRuntime.State)
+	suite.Equal(runtime.GetGoalState(), jobRuntime.GoalState)
 }
 
 func (suite *JobTestSuite) TestJobGetConfig() {
