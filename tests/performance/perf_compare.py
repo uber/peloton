@@ -3,6 +3,7 @@ from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import os
 
 import pandas as pd
 import smtplib
@@ -13,7 +14,9 @@ PERF_DIR = 'tests/performance/PERF_RES'
 
 SERVER = 'localhost'
 FROM = 'peloton.performance@uber.com'
-TO = 'peloton-internal-group@uber.com '
+TO = os.environ.get('EMAIL_TO', 'peloton-group@uber.com')
+COMMIT_INFO = 'COMMIT_INFO'
+BUILD_URL = 'BUILD_URL'
 
 HTML_TEMPLATE = """
 <html>
@@ -26,6 +29,8 @@ HTML_TEMPLATE = """
     </h1>
     <p>
         Environment: vCluster <br>
+        Commit info: %s <br>
+        Build URL: %s <br>
         CPU per Node: 1 <br>
         Memory per Node: 32 MB <br>
         Disk per Node: 32 MB <br>
@@ -91,6 +96,7 @@ def send_email(html_msg):
     html = MIMEText(html_msg, 'html')
     message.attach(html)
 
+    print "Emailing performance report to " + TO
     s = smtplib.SMTP('localhost')
     s.sendmail(FROM, [TO], message.as_string())
     s.quit()
@@ -109,9 +115,12 @@ def main():
     merge_table.to_csv('compare.csv', sep='\t')
 
     table_html = merge_table.to_html()
-    msg = HTML_TEMPLATE % table_html
+    commit_info = os.environ.get(COMMIT_INFO) or 'N/A'
+    build_url = os.environ.get(BUILD_URL) or 'N/A'
+    msg = HTML_TEMPLATE % (commit_info, build_url, table_html)
 
-    send_email(msg)
+    if TO:
+        send_email(msg)
 
 
 if __name__ == "__main__":
