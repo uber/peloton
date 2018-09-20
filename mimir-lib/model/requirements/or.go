@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -49,11 +49,11 @@ func NewOrRequirement(requirements ...placement.Requirement) *OrRequirement {
 }
 
 // Passed checks if the requirement is fulfilled by the given group within the scope groups.
-func (requirement *OrRequirement) Passed(group *placement.Group, scopeGroups []*placement.Group,
+func (requirement *OrRequirement) Passed(group *placement.Group, scopeSet *placement.ScopeSet,
 	entity *placement.Entity, transcript *placement.Transcript) bool {
 	result := false
 	for _, subRequirement := range requirement.Requirements {
-		if subRequirement.Passed(group, scopeGroups, entity, transcript.Subscript(subRequirement)) {
+		if subRequirement.Passed(group, scopeSet, entity, transcript.Subscript(subRequirement)) {
 			result = true
 		}
 	}

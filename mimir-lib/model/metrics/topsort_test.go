@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -29,7 +29,7 @@ import (
 )
 
 func TestTopSort_DetectCycle(t *testing.T) {
-	metricTypes := make([]MetricType, 3)
+	metricTypes := make([]Type, 3)
 	for i := range metricTypes {
 		metricTypes[i].Name = fmt.Sprintf("metric_type%v", i)
 		metricTypes[i].Unit = "unit"
@@ -38,7 +38,7 @@ func TestTopSort_DetectCycle(t *testing.T) {
 	for i := range metricTypes {
 		next := metricTypes[(i+1)%3]
 		d := metricTypes[i].derivation.(*derivation)
-		d.dependencies = []MetricType{next}
+		d.dependencies = []Type{next}
 	}
 
 	_, err := TopSort(metricTypes[2], metricTypes[1], metricTypes[0])
@@ -46,7 +46,7 @@ func TestTopSort_DetectCycle(t *testing.T) {
 }
 
 func TestTopSort_ChainDAG(t *testing.T) {
-	metricTypes := make([]MetricType, 3)
+	metricTypes := make([]Type, 3)
 	for i := range metricTypes {
 		metricTypes[i].Name = fmt.Sprintf("metric_type%v", i)
 		metricTypes[i].Unit = "unit"
@@ -58,7 +58,7 @@ func TestTopSort_ChainDAG(t *testing.T) {
 		}
 		next := metricTypes[(i+1)%3]
 		d := metricTypes[i].derivation.(*derivation)
-		d.dependencies = []MetricType{next}
+		d.dependencies = []Type{next}
 	}
 
 	order, err := TopSort(metricTypes...)

@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -24,14 +24,15 @@ package labels
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
-// LabelTemplate represents a label template which can be instantiated with different values. A template can create
+// Template represents a label template which can be instantiated with different values. A template can create
 // labels like schemaless.cluster.percona-cluster-$instance-name$-$zone$-db$cluster$ where the labelTemplate substrings
 // <instance-name>, <zone> and <cluster> can then be bound later, and re-bound to instantiate different labels.
-type LabelTemplate interface {
+type Template interface {
 	// Bind will bind the template with the given name to the given value.
-	Bind(name, value string) LabelTemplate
+	Bind(name, value string) Template
 
 	// Mappings will return a map of all the current variables and their values.
 	Mappings() map[string]string
@@ -40,10 +41,10 @@ type LabelTemplate interface {
 	Instantiate() *Label
 }
 
-// NewLabelTemplate will create a new label template which can be used to create labels with. Each name in the slice of
+// NewTemplate will create a new label template which can be used to create labels with. Each name in the slice of
 // supplied names can use template substrings like percona-cluster-$instance-name$-$zone$-db$cluster$ and then later
 // bind the template names <instance-name>, <zone> and <cluster> using the bind method.
-func NewLabelTemplate(names ...string) LabelTemplate {
+func NewTemplate(names ...string) Template {
 	return &labelTemplate{
 		names:     names,
 		variables: map[string]string{},
@@ -53,6 +54,7 @@ func NewLabelTemplate(names ...string) LabelTemplate {
 type labelTemplate struct {
 	names     []string
 	variables map[string]string
+	lock      sync.Mutex
 }
 
 func (template *labelTemplate) replace(name string) string {
@@ -66,6 +68,9 @@ func (template *labelTemplate) replace(name string) string {
 }
 
 func (template *labelTemplate) Instantiate() *Label {
+	defer template.lock.Unlock()
+	template.lock.Lock()
+
 	names := make([]string, len(template.names))
 	for i, name := range template.names {
 		names[i] = template.replace(name)
@@ -73,12 +78,18 @@ func (template *labelTemplate) Instantiate() *Label {
 	return NewLabel(names...)
 }
 
-func (template *labelTemplate) Bind(name, value string) LabelTemplate {
+func (template *labelTemplate) Bind(name, value string) Template {
+	defer template.lock.Unlock()
+	template.lock.Lock()
+
 	template.variables[name] = value
 	return template
 }
 
 func (template *labelTemplate) Mappings() map[string]string {
+	defer template.lock.Unlock()
+	template.lock.Lock()
+
 	mappings := make(map[string]string, len(template.variables))
 	for _, name := range template.names {
 		for i, variable := range strings.Split(name, "$") {

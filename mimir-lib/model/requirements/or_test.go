@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -63,11 +63,12 @@ func TestOrRequirement_String_and_Composite(t *testing.T) {
 func TestOrRequirement_Fulfilled_updates_transcript_and_delegates_updates(t *testing.T) {
 	group := placement.NewGroup("group")
 	group.Labels, group.Relations = hostWithZFSVolume()
+	scopeSet := placement.NewScopeSet(nil)
 
 	requirement := setupOrRequirement()
 
 	transcript := placement.NewTranscript("transcript")
-	requirement.Passed(group, nil, nil, transcript)
+	requirement.Passed(group, scopeSet, nil, transcript)
 	assert.Equal(t, 1, transcript.GroupsPassed)
 	assert.Equal(t, 0, transcript.GroupsFailed)
 	assert.Equal(t, 2, len(transcript.Subscripts))
@@ -85,17 +86,19 @@ func TestOrRequirement_Fulfilled_updates_transcript_and_delegates_updates(t *tes
 func TestOrRequirement_Fulfilled_returns_true_if_any_subrequirement_is_true(t *testing.T) {
 	group := placement.NewGroup("group")
 	group.Labels, group.Relations = hostWithZFSVolume()
+	scopeSet := placement.NewScopeSet(nil)
 
 	requirement := setupOrRequirement()
 
-	assert.True(t, requirement.Passed(group, nil, nil, nil))
+	assert.True(t, requirement.Passed(group, scopeSet, nil, nil))
 }
 
 func TestOrRequirement_Fulfilled_returns_false_if_all_subrequirements_are_false(t *testing.T) {
 	group := placement.NewGroup("group")
 	group.Labels, group.Relations = hostWithoutIssue()
+	scopeSet := placement.NewScopeSet(nil)
 
 	requirement := setupOrRequirement()
 
-	assert.False(t, requirement.Passed(group, nil, nil, nil))
+	assert.False(t, requirement.Passed(group, scopeSet, nil, nil))
 }

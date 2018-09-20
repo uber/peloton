@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -29,10 +29,11 @@ import (
 // Entity represents an task, process or some entity that should run on a group.
 type Entity struct {
 	Name        string
+	Reservation Reserved
 	Requirement Requirement
 	Ordering    Ordering
-	Relations   *labels.LabelBag
-	Metrics     *metrics.MetricSet
+	Relations   *labels.Bag
+	Metrics     *metrics.Set
 }
 
 // NewEntity will create a new entity with the given name and creation time.
@@ -41,7 +42,7 @@ func NewEntity(name string) *Entity {
 		Name:        name,
 		Requirement: FailedRequirement(),
 		Ordering:    NameOrdering(),
-		Relations:   labels.NewLabelBag(),
-		Metrics:     metrics.NewMetricSet(),
+		Relations:   labels.NewBag(),
+		Metrics:     metrics.NewSet(),
 	}
 }

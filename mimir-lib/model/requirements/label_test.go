@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -29,38 +29,38 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func hostWithoutIssue() (*labels.LabelBag, *labels.LabelBag) {
-	labelBag := labels.NewLabelBag()
+func hostWithoutIssue() (*labels.Bag, *labels.Bag) {
+	labelBag := labels.NewBag()
 	labelBag.Add(labels.NewLabel("datacenter", "dc1"))
 	labelBag.Add(labels.NewLabel("rack", "dc1-a007"))
 	labelBag.Add(labels.NewLabel("host", "host42-dc1"))
 
-	relationBag := labels.NewLabelBag()
+	relationBag := labels.NewBag()
 	relationBag.Add(labels.NewLabel("redis", "instance", "store1"))
 
 	return labelBag, relationBag
 }
 
-func hostWithIssue() (*labels.LabelBag, *labels.LabelBag) {
-	labelBag := labels.NewLabelBag()
+func hostWithIssue() (*labels.Bag, *labels.Bag) {
+	labelBag := labels.NewBag()
 	labelBag.Add(labels.NewLabel("datacenter", "dc1"))
 	labelBag.Add(labels.NewLabel("rack", "dc1-a007"))
 	labelBag.Add(labels.NewLabel("host", "host43-dc1"))
 	labelBag.Add(labels.NewLabel("issues", "someissue"))
 
-	relationBag := labels.NewLabelBag()
+	relationBag := labels.NewBag()
 
 	return labelBag, relationBag
 }
 
-func hostWithZFSVolume() (*labels.LabelBag, *labels.LabelBag) {
-	labelBag := labels.NewLabelBag()
+func hostWithZFSVolume() (*labels.Bag, *labels.Bag) {
+	labelBag := labels.NewBag()
 	labelBag.Add(labels.NewLabel("datacenter", "dc1"))
 	labelBag.Add(labels.NewLabel("rack", "dc1-a007"))
 	labelBag.Add(labels.NewLabel("host", "host44-dc1"))
 	labelBag.Add(labels.NewLabel("volume-types", "zfs"))
 
-	relationBag := labels.NewLabelBag()
+	relationBag := labels.NewBag()
 
 	return labelBag, relationBag
 }
@@ -74,7 +74,7 @@ func TestLabelRequirement_String_and_Composite(t *testing.T) {
 	)
 
 	assert.Equal(t, "requires that the occurrences of the label issues.* should"+
-		" be less_than_equal 0", requirement.String())
+		" be less_than_equal 0 in scope <nil>", requirement.String())
 	composite, name := requirement.Composite()
 	assert.False(t, composite)
 	assert.Equal(t, "label", name)
@@ -85,7 +85,8 @@ func TestLabelRequirement_Fulfilled_NotFulfilledOnScopedBagWithIssues(t *testing
 	group1.Labels, group1.Relations = hostWithoutIssue()
 	group2 := placement.NewGroup("group2")
 	group2.Labels, group2.Relations = hostWithIssue()
-	scope := []*placement.Group{group1, group2}
+	groups := []*placement.Group{group1, group2}
+	scopeSet := placement.NewScopeSet(groups)
 	requirement := NewLabelRequirement(
 		labels.NewLabel("rack", "*"),
 		labels.NewLabel("issues", "*"),
@@ -93,7 +94,7 @@ func TestLabelRequirement_Fulfilled_NotFulfilledOnScopedBagWithIssues(t *testing
 		0,
 	)
 	transcript := placement.NewTranscript("transcript")
-	assert.False(t, requirement.Passed(group1, scope, nil, transcript))
+	assert.False(t, requirement.Passed(group1, scopeSet, nil, transcript))
 	assert.Equal(t, 0, transcript.GroupsPassed)
 	assert.Equal(t, 1, transcript.GroupsFailed)
 }
@@ -103,7 +104,8 @@ func TestLabelRequirement_Fulfilled_FulfilledOnScopedBagWithoutIssues(t *testing
 	group1.Labels, group1.Relations = hostWithoutIssue()
 	group2 := placement.NewGroup("group2")
 	group2.Labels, group2.Relations = hostWithoutIssue()
-	scope := []*placement.Group{group1, group2}
+	groups := []*placement.Group{group1, group2}
+	scopeSet := placement.NewScopeSet(groups)
 
 	requirement := NewLabelRequirement(
 		labels.NewLabel("rack", "*"),
@@ -112,7 +114,7 @@ func TestLabelRequirement_Fulfilled_FulfilledOnScopedBagWithoutIssues(t *testing
 		0,
 	)
 	transcript := placement.NewTranscript("transcript")
-	assert.True(t, requirement.Passed(group1, scope, nil, transcript))
+	assert.True(t, requirement.Passed(group1, scopeSet, nil, transcript))
 	assert.Equal(t, 1, transcript.GroupsPassed)
 	assert.Equal(t, 0, transcript.GroupsFailed)
 }
@@ -120,6 +122,7 @@ func TestLabelRequirement_Fulfilled_FulfilledOnScopedBagWithoutIssues(t *testing
 func TestLabelRequirement_Fulfilled_FulfilledOnBagWithoutIssues(t *testing.T) {
 	group := placement.NewGroup("group")
 	group.Labels, group.Relations = hostWithoutIssue()
+	scopeSet := placement.NewScopeSet(nil)
 
 	requirement := NewLabelRequirement(
 		nil,
@@ -128,7 +131,7 @@ func TestLabelRequirement_Fulfilled_FulfilledOnBagWithoutIssues(t *testing.T) {
 		0,
 	)
 	transcript := placement.NewTranscript("transcript")
-	assert.True(t, requirement.Passed(group, nil, nil, transcript))
+	assert.True(t, requirement.Passed(group, scopeSet, nil, transcript))
 	assert.Equal(t, 1, transcript.GroupsPassed)
 	assert.Equal(t, 0, transcript.GroupsFailed)
 }
@@ -136,6 +139,7 @@ func TestLabelRequirement_Fulfilled_FulfilledOnBagWithoutIssues(t *testing.T) {
 func TestLabelRequirement_Fulfilled_NotFulfilledOnBagWithIssues(t *testing.T) {
 	group := placement.NewGroup("group")
 	group.Labels, group.Relations = hostWithIssue()
+	scopeSet := placement.NewScopeSet(nil)
 
 	requirement := NewLabelRequirement(
 		nil,
@@ -144,7 +148,7 @@ func TestLabelRequirement_Fulfilled_NotFulfilledOnBagWithIssues(t *testing.T) {
 		0,
 	)
 	transcript := placement.NewTranscript("transcript")
-	assert.False(t, requirement.Passed(group, nil, nil, transcript))
+	assert.False(t, requirement.Passed(group, scopeSet, nil, transcript))
 	assert.Equal(t, 0, transcript.GroupsPassed)
 	assert.Equal(t, 1, transcript.GroupsFailed)
 }
@@ -152,6 +156,7 @@ func TestLabelRequirement_Fulfilled_NotFulfilledOnBagWithIssues(t *testing.T) {
 func TestLabelRequirement_Fulfilled_ForHostWithZFSVolumeTypes(t *testing.T) {
 	group := placement.NewGroup("group")
 	group.Labels, group.Relations = hostWithZFSVolume()
+	scopeSet := placement.NewScopeSet(nil)
 
 	requirement := NewLabelRequirement(
 		nil,
@@ -159,12 +164,13 @@ func TestLabelRequirement_Fulfilled_ForHostWithZFSVolumeTypes(t *testing.T) {
 		Equal,
 		1,
 	)
-	assert.True(t, requirement.Passed(group, nil, nil, nil))
+	assert.True(t, requirement.Passed(group, scopeSet, nil, nil))
 }
 
 func TestLabelRequirement_Fulfilled_IsUnfulfilledForInvalidComparison(t *testing.T) {
 	group := placement.NewGroup("group")
 	group.Labels, group.Relations = hostWithZFSVolume()
+	scopeSet := placement.NewScopeSet(nil)
 
 	requirement := NewLabelRequirement(
 		nil,
@@ -172,5 +178,5 @@ func TestLabelRequirement_Fulfilled_IsUnfulfilledForInvalidComparison(t *testing
 		Comparison("invalid"),
 		1,
 	)
-	assert.False(t, requirement.Passed(group, nil, nil, nil))
+	assert.False(t, requirement.Passed(group, scopeSet, nil, nil))
 }

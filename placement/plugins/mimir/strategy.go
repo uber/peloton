@@ -101,6 +101,7 @@ func (mimir *mimir) updateAssignments(assignments []*placement.Assignment,
 func (mimir *mimir) PlaceOnce(pelotonAssignments []*models.Assignment, hosts []*models.HostOffers) {
 	assignments, entitiesToAssignments := mimir.convertAssignments(pelotonAssignments)
 	groups, groupsToHosts := mimir.convertHosts(hosts)
+	scopeSet := placement.NewScopeSet(groups)
 
 	log.WithFields(log.Fields{
 		"peloton_assignments": pelotonAssignments,
@@ -108,7 +109,7 @@ func (mimir *mimir) PlaceOnce(pelotonAssignments []*models.Assignment, hosts []*
 	}).Debug("PlaceOnce Mimir strategy called")
 
 	// Place the assignments onto the groups
-	mimir.placer.Place(assignments, groups, nil)
+	mimir.placer.Place(assignments, groups, scopeSet)
 
 	for _, assignment := range assignments {
 		if assignment.AssignedGroup != nil {

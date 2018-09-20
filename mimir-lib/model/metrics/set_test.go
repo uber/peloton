@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -27,24 +27,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestReadCombine_ors_together_all_flags(t *testing.T) {
-	assert.Equal(t, all, readCombine())
-	assert.Equal(t, ephemeral, readCombine(Ephemeral()))
-	assert.Equal(t, nonEphemeral, readCombine(NonEphemeral()))
-	assert.Equal(t, all, readCombine(Ephemeral(), NonEphemeral()))
-	assert.Equal(t, all, readCombine(Ephemeral(), NonEphemeral(), All()))
-}
-
-func TestWriteCombine_finds_the_top_flag(t *testing.T) {
-	assert.Equal(t, nonEphemeral, writeCombine())
-	assert.Equal(t, ephemeral, writeCombine(Ephemeral()))
-	assert.Equal(t, nonEphemeral, writeCombine(NonEphemeral()))
-	assert.Equal(t, nonEphemeral, writeCombine(Ephemeral(), NonEphemeral()))
-	assert.Equal(t, nonEphemeral, writeCombine(Ephemeral(), NonEphemeral(), All()))
-}
-
-func TestMetricSet_Add(t *testing.T) {
-	set := NewMetricSet()
+func TestSet_Add(t *testing.T) {
+	set := NewSet()
 
 	set.Add(CPUUsed, 1.0*GiBit)
 	assert.Equal(t, 1.0*GiBit, set.Get(CPUUsed))
@@ -53,25 +37,19 @@ func TestMetricSet_Add(t *testing.T) {
 	assert.Equal(t, 2.0*GiBit, set.Get(CPUUsed))
 }
 
-func TestMetricSet_Types(t *testing.T) {
-	set := NewMetricSet()
-	set.Add(CPUFree, 100.0)
+func TestSet_Types(t *testing.T) {
+	set := NewSet()
 	set.Add(MemoryFree, 16*GiB)
+	set.Add(CPUFree, 100.0)
 
 	types := set.Types()
 	assert.Equal(t, 2, len(types))
-	for _, metricType := range types {
-		switch metricType {
-		case CPUFree:
-		case MemoryFree:
-		default:
-			assert.True(t, false)
-		}
-	}
+	assert.Equal(t, CPUFree, types[0])
+	assert.Equal(t, MemoryFree, types[1])
 }
 
-func TestMetricSet_Set(t *testing.T) {
-	set := NewMetricSet()
+func TestSet_Set(t *testing.T) {
+	set := NewSet()
 
 	set.Set(DiskFree, 1.0*TiB)
 	assert.Equal(t, 1.0*TiB, set.Get(DiskFree))
@@ -80,11 +58,11 @@ func TestMetricSet_Set(t *testing.T) {
 	assert.Equal(t, 1.0*TiB, set.Get(DiskFree))
 }
 
-func TestMetricSet_AddAll(t *testing.T) {
-	set1 := NewMetricSet()
+func TestSet_AddAll(t *testing.T) {
+	set1 := NewSet()
 	set1.Add(CPUFree, 100.0)
 	set1.Add(MemoryFree, 16*GiB)
-	set2 := NewMetricSet()
+	set2 := NewSet()
 	set2.Add(CPUFree, 200.0)
 
 	set1.AddAll(set2)
@@ -93,11 +71,11 @@ func TestMetricSet_AddAll(t *testing.T) {
 	assert.Equal(t, 16*GiB, set1.Get(MemoryFree))
 }
 
-func TestMetricSet_SetAll(t *testing.T) {
-	set1 := NewMetricSet()
+func TestSet_SetAll(t *testing.T) {
+	set1 := NewSet()
 	set1.Add(CPUFree, 100.0)
 	set1.Add(MemoryFree, 16*GiB)
-	set2 := NewMetricSet()
+	set2 := NewSet()
 	set2.Add(CPUFree, 200.0)
 
 	set1.SetAll(set2)
@@ -106,8 +84,8 @@ func TestMetricSet_SetAll(t *testing.T) {
 	assert.Equal(t, 16*GiB, set1.Get(MemoryFree))
 }
 
-func TestMetricSet_ClearAndSize(t *testing.T) {
-	set := NewMetricSet()
+func TestSet_ClearAndSize(t *testing.T) {
+	set := NewSet()
 	assert.Equal(t, 0, set.Size())
 	set.Add(NetworkTotal, 1.0*GiBit)
 	assert.Equal(t, 1, set.Size())
@@ -115,55 +93,55 @@ func TestMetricSet_ClearAndSize(t *testing.T) {
 	assert.Equal(t, 0, set.Size())
 }
 
-func TestMetricSet_ClearAll(t *testing.T) {
-	set := NewMetricSet()
+func TestSet_ClearAll(t *testing.T) {
+	set := NewSet()
 
-	set.Add(NetworkTotal, 1.0*GiBit, Ephemeral())
-	set.Add(DiskTotal, 1.0*TiB, NonEphemeral())
-
-	assert.Equal(t, 2, set.Size())
-	assert.Equal(t, 2, len(set.Types()))
-
-	set.ClearAll(All())
-
-	assert.Equal(t, 0, set.Size())
-	assert.Equal(t, 0, len(set.Types()))
-}
-
-func TestMetricSet_ClearAll_non_ephemeral(t *testing.T) {
-	set := NewMetricSet()
-
-	set.Add(NetworkTotal, 1.0*GiBit, Ephemeral())
+	set.Add(NetworkTotal, 1.0*GiBit)
 	set.Add(DiskTotal, 1.0*TiB)
 
 	assert.Equal(t, 2, set.Size())
 	assert.Equal(t, 2, len(set.Types()))
 
-	set.ClearAll(NonEphemeral())
+	set.ClearAll(true, true)
+
+	assert.Equal(t, 0, set.Size())
+	assert.Equal(t, 0, len(set.Types()))
+}
+
+func TestSet_ClearAll_non_inherited(t *testing.T) {
+	set := NewSet()
+
+	set.Add(NetworkTotal, 1.0*GiBit)
+	set.Add(NetworkUsed, 0.5*GiBit)
+
+	assert.Equal(t, 2, set.Size())
+	assert.Equal(t, 2, len(set.Types()))
+
+	set.ClearAll(false, true)
+
+	assert.Equal(t, 1, set.Size())
+	assert.Equal(t, 1, len(set.Types()))
+	assert.Equal(t, NetworkUsed, set.Types()[0])
+}
+
+func TestSet_ClearAll_inherited(t *testing.T) {
+	set := NewSet()
+
+	set.Add(NetworkTotal, 1.0*GiBit)
+	set.Add(NetworkUsed, 0.5*GiBit)
+
+	assert.Equal(t, 2, set.Size())
+	assert.Equal(t, 2, len(set.Types()))
+
+	set.ClearAll(true, false)
 
 	assert.Equal(t, 1, set.Size())
 	assert.Equal(t, 1, len(set.Types()))
 	assert.Equal(t, NetworkTotal, set.Types()[0])
 }
 
-func TestMetricSet_ClearAll_ephemeral(t *testing.T) {
-	set := NewMetricSet()
-
-	set.Add(NetworkTotal, 1.0*GiBit, Ephemeral())
-	set.Add(DiskTotal, 1.0*TiB)
-
-	assert.Equal(t, 2, set.Size())
-	assert.Equal(t, 2, len(set.Types()))
-
-	set.ClearAll(Ephemeral())
-
-	assert.Equal(t, 1, set.Size())
-	assert.Equal(t, 1, len(set.Types()))
-	assert.Equal(t, DiskTotal, set.Types()[0])
-}
-
-func TestMetricSet_Update(t *testing.T) {
-	set := NewMetricSet()
+func TestSet_Update(t *testing.T) {
+	set := NewSet()
 	set.Add(CPUTotal, 100.0)
 	set.Add(CPUUsed, 25.0)
 	set.Add(CPUFree, 0.0)

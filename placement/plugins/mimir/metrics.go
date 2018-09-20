@@ -5,84 +5,99 @@ import "code.uber.internal/infra/peloton/mimir-lib/model/metrics"
 var (
 	// CPUAvailable represents the available cpu in a host offer, each cpu adds 100 %, so a 24 core machine will
 	// have 2400 % cpu.
-	CPUAvailable = metrics.MetricType{
-		Name: "cpu_available",
-		Unit: "%",
+	CPUAvailable = metrics.Type{
+		Name:      "cpu_available",
+		Unit:      "%",
+		Inherited: false,
 	}
 	// CPUReserved represents the reserved cpu on a host offer or of a task.
-	CPUReserved = metrics.MetricType{
-		Name: "cpu_reserved",
-		Unit: "%",
+	CPUReserved = metrics.Type{
+		Name:      "cpu_reserved",
+		Unit:      "%",
+		Inherited: true,
 	}
 	// CPUFree represents the free cpu for a host offer.
-	CPUFree = metrics.MetricType{
-		Name: "cpu_free",
-		Unit: "%",
+	CPUFree = metrics.Type{
+		Name:      "cpu_free",
+		Unit:      "%",
+		Inherited: false,
 	}
 
 	// GPUAvailable represents the available gpu in a host offer, each gpu adds 100 %, so a 384 core gpu will
 	// have 38400 % cpu.
-	GPUAvailable = metrics.MetricType{
-		Name: "gpu_available",
-		Unit: "%",
+	GPUAvailable = metrics.Type{
+		Name:      "gpu_available",
+		Unit:      "%",
+		Inherited: false,
 	}
 	// GPUReserved represents the reserved gpu on a host offer or of a task.
-	GPUReserved = metrics.MetricType{
-		Name: "gpu_reserved",
-		Unit: "%",
+	GPUReserved = metrics.Type{
+		Name:      "gpu_reserved",
+		Unit:      "%",
+		Inherited: true,
 	}
 	// GPUFree represents the free gpu for a host offer.
-	GPUFree = metrics.MetricType{
-		Name: "gpu_free",
-		Unit: "%",
+	GPUFree = metrics.Type{
+		Name:      "gpu_free",
+		Unit:      "%",
+		Inherited: false,
 	}
 
 	// MemoryAvailable represents the available memory on a host offer.
-	MemoryAvailable = metrics.MetricType{
-		Name: "memory_available",
-		Unit: "bytes",
+	MemoryAvailable = metrics.Type{
+		Name:      "memory_available",
+		Unit:      "bytes",
+		Inherited: false,
 	}
 	// MemoryReserved represents the reserved memory on a host offer or of a task.
-	MemoryReserved = metrics.MetricType{
-		Name: "memory_reserved",
-		Unit: "bytes",
+	MemoryReserved = metrics.Type{
+		Name:      "memory_reserved",
+		Unit:      "bytes",
+		Inherited: true,
 	}
 	// MemoryFree represents the free memory for a host offer.
-	MemoryFree = metrics.MetricType{
-		Name: "memory_free",
-		Unit: "bytes",
+	MemoryFree = metrics.Type{
+		Name:      "memory_free",
+		Unit:      "bytes",
+		Inherited: false,
 	}
 
 	// DiskAvailable represents the available disk on a host offer.
-	DiskAvailable = metrics.MetricType{
-		Name: "disk_available",
-		Unit: "bytes",
+	DiskAvailable = metrics.Type{
+		Name:      "disk_available",
+		Unit:      "bytes",
+		Inherited: false,
 	}
 	// DiskReserved represents the reserved disk on a host offer or of a task.
-	DiskReserved = metrics.MetricType{
-		Name: "disk_reserved",
-		Unit: "bytes",
+	DiskReserved = metrics.Type{
+		Name:      "disk_reserved",
+		Unit:      "bytes",
+		Inherited: true,
 	}
 	// DiskFree represents the free disk for a host offer.
-	DiskFree = metrics.MetricType{
-		Name: "disk_free",
-		Unit: "bytes",
+	DiskFree = metrics.Type{
+		Name:      "disk_free",
+		Unit:      "bytes",
+		Inherited: false,
 	}
 
 	// PortsAvailable represents the available ports on a host offer.
-	PortsAvailable = metrics.MetricType{
-		Name: "ports_available",
-		Unit: "#",
+	PortsAvailable = metrics.Type{
+		Name:      "ports_available",
+		Unit:      "#",
+		Inherited: false,
 	}
 	// PortsReserved represents the reserved ports on a host offer or of a task.
-	PortsReserved = metrics.MetricType{
-		Name: "ports_reserved",
-		Unit: "#",
+	PortsReserved = metrics.Type{
+		Name:      "ports_reserved",
+		Unit:      "#",
+		Inherited: true,
 	}
 	// PortsFree represents the free ports for a host offer.
-	PortsFree = metrics.MetricType{
-		Name: "ports_free",
-		Unit: "#",
+	PortsFree = metrics.Type{
+		Name:      "ports_free",
+		Unit:      "#",
+		Inherited: false,
 	}
 )
 
@@ -98,23 +113,23 @@ func initializeDerivations() bool {
 }
 
 type derivation struct {
-	dependencies []metrics.MetricType
-	calculation  func(metricType metrics.MetricType, metricSet *metrics.MetricSet)
+	dependencies []metrics.Type
+	calculation  func(metricType metrics.Type, metricSet *metrics.Set)
 }
 
-func (derivation *derivation) Dependencies() []metrics.MetricType {
+func (derivation *derivation) Dependencies() []metrics.Type {
 	return derivation.dependencies
 }
 
-func (derivation *derivation) Calculate(metricType metrics.MetricType, metricSet *metrics.MetricSet) {
+func (derivation *derivation) Calculate(metricType metrics.Type, metricSet *metrics.Set) {
 	derivation.calculation(metricType, metricSet)
 }
 
-func free(available, reserved metrics.MetricType) metrics.Derivation {
+func free(available, reserved metrics.Type) metrics.Derivation {
 	return &derivation{
-		dependencies: []metrics.MetricType{available, reserved},
-		calculation: func(free metrics.MetricType, metricSet *metrics.MetricSet) {
-			metricSet.Set(free, metricSet.Get(available)-metricSet.Get(reserved))
+		dependencies: []metrics.Type{available, reserved},
+		calculation: func(free metrics.Type, set *metrics.Set) {
+			set.Set(free, set.Get(available)-set.Get(reserved))
 		},
 	}
 }

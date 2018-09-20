@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -30,8 +30,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func hostWithDiskResources() *metrics.MetricSet {
-	set := metrics.NewMetricSet()
+func hostWithDiskResources() *metrics.Set {
+	set := metrics.NewSet()
 	set.Add(metrics.DiskTotal, 2*metrics.TiB)
 	set.Add(metrics.DiskUsed, 542*metrics.GiB)
 	set.Add(metrics.DiskFree, 482*metrics.GiB)
@@ -42,7 +42,7 @@ func hostWithDiskResources() *metrics.MetricSet {
 func TestMetricRequirement_String_and_Composite(t *testing.T) {
 	requirement := NewMetricRequirement(metrics.DiskFree, GreaterThanEqual, 256*metrics.GiB)
 
-	assert.Equal(t, fmt.Sprintf("disk_free should be greater_than_equal %v bytes", 256*metrics.GiB),
+	assert.Equal(t, fmt.Sprintf("requires that disk_free should be greater_than_equal %v bytes", 256*metrics.GiB),
 		requirement.String())
 	composite, name := requirement.Composite()
 	assert.False(t, composite)

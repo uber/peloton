@@ -49,7 +49,7 @@ func dumpEntity(entity *placement.Entity) *Entity {
 }
 
 // dumpLabelBag converts a Mimir label bag into map of labels to counts who's structure we can log.
-func dumpLabelBag(bag *labels.LabelBag) map[string]int {
+func dumpLabelBag(bag *labels.Bag) map[string]int {
 	result := map[string]int{}
 	for _, label := range bag.Labels() {
 		result[label.String()] = bag.Count(label)
@@ -58,9 +58,9 @@ func dumpLabelBag(bag *labels.LabelBag) map[string]int {
 }
 
 // dumpMetricSet converts a Mimir metric set into map of metrics to values who's structure we can log.
-func dumpMetricSet(set *metrics.MetricSet) map[string]float64 {
+func dumpMetricSet(set *metrics.Set) map[string]float64 {
 	result := map[string]float64{}
-	for _, metricType := range set.Types(metrics.All()) {
+	for _, metricType := range set.Types() {
 		result[fmt.Sprintf("%v (%v)", metricType.Name, metricType.Unit)] = set.Get(metricType)
 	}
 	return result

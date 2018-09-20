@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -27,8 +27,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestLabelTemplate(t *testing.T) {
-	template := NewLabelTemplate("foo", "$bar$", "$baz$")
+func TestTemplate(t *testing.T) {
+	template := NewTemplate("foo", "$bar$", "$baz$")
 	label1 := template.Instantiate()
 
 	assert.Equal(t, "foo.$bar$.$baz$", label1.String())
@@ -42,8 +42,8 @@ func TestLabelTemplate(t *testing.T) {
 	assert.Equal(t, "foo.bar.baz", label3.String())
 }
 
-func TestLabelTemplate_Mappings(t *testing.T) {
-	template := NewLabelTemplate("foo", "$bar$", "$baz$")
+func TestTemplate_Mappings(t *testing.T) {
+	template := NewTemplate("foo", "$bar$", "$baz$")
 	template.Bind("bar", "bar")
 
 	assert.Equal(t, map[string]string{"bar": "bar", "baz": ""}, template.Mappings())

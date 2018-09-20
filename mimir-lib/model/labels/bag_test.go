@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -28,8 +28,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestLabelBag_Size(t *testing.T) {
-	bag := NewLabelBag()
+func TestBag_Size(t *testing.T) {
+	bag := NewBag()
 	label := NewLabel("some", "label")
 	assert.Equal(t, 0, bag.Size())
 	bag.Add(label)
@@ -38,24 +38,24 @@ func TestLabelBag_Size(t *testing.T) {
 	assert.Equal(t, 1, bag.Size())
 }
 
-func TestLabelBag_Contains(t *testing.T) {
-	bag := NewLabelBag()
+func TestBag_Contains(t *testing.T) {
+	bag := NewBag()
 	label := NewLabel("some", "label")
 	assert.False(t, bag.Contains(label))
 	bag.Add(label)
 	assert.True(t, bag.Contains(label))
 }
 
-func TestLabelBag_AddWillAddALabelToTheBag(t *testing.T) {
-	bag := NewLabelBag()
+func TestBag_AddWillAddALabelToTheBag(t *testing.T) {
+	bag := NewBag()
 	label := NewLabel("some", "label")
 	bag.Add(label)
 	assert.Equal(t, 1, bag.Count(label))
 }
 
-func TestLabelBag_AddAllWillAddAllLabelsToTheBag(t *testing.T) {
-	bag1 := NewLabelBag()
-	bag2 := NewLabelBag()
+func TestBag_AddAllWillAddAllLabelsToTheBag(t *testing.T) {
+	bag1 := NewBag()
+	bag2 := NewBag()
 	label1 := NewLabel("some", "label", "1")
 	label2 := NewLabel("some", "label", "2")
 	bag2.Add(label1)
@@ -68,8 +68,8 @@ func TestLabelBag_AddAllWillAddAllLabelsToTheBag(t *testing.T) {
 	assert.Equal(t, 3, bag1.Count(label2))
 }
 
-func TestLabelBag_Set(t *testing.T) {
-	bag := NewLabelBag()
+func TestBag_Set(t *testing.T) {
+	bag := NewBag()
 	label1 := NewLabel("some", "label", "1")
 	label2 := NewLabel("some", "label", "2")
 	bag.Add(label1)
@@ -80,9 +80,9 @@ func TestLabelBag_Set(t *testing.T) {
 	assert.Equal(t, 2, bag.Count(label2))
 }
 
-func TestLabelBag_SetAllReplacesAllLabels(t *testing.T) {
-	bag1 := NewLabelBag()
-	bag2 := NewLabelBag()
+func TestBag_SetAllReplacesAllLabels(t *testing.T) {
+	bag1 := NewBag()
+	bag2 := NewBag()
 	label1 := NewLabel("some", "label", "1")
 	label2 := NewLabel("some", "label", "2")
 	bag2.Add(label1)
@@ -102,9 +102,9 @@ func TestLabelBag_SetAllReplacesAllLabels(t *testing.T) {
 	assert.Equal(t, 3, bag1.Count(label2))
 }
 
-func TestLabelBag_Labels(t *testing.T) {
-	bag := NewLabelBag()
-	for i := 0; i < 3; i++ {
+func TestBag_Labels(t *testing.T) {
+	bag := NewBag()
+	for i := 3; i > 0; i-- {
 		bag.Add(NewLabel("some", "label", strconv.Itoa(i)))
 	}
 
@@ -115,16 +115,16 @@ func TestLabelBag_Labels(t *testing.T) {
 	}
 }
 
-func TestLabelBag_Find(t *testing.T) {
-	bag := NewLabelBag()
+func TestBag_Find(t *testing.T) {
+	bag := NewBag()
 	label := NewLabel("some", "label")
 	bag.Add(label)
 
 	assert.Equal(t, 1, len(bag.Find(label)))
 }
 
-func TestLabelBag_FindWithWildCards(t *testing.T) {
-	bag := NewLabelBag()
+func TestBag_FindWithWildCards(t *testing.T) {
+	bag := NewBag()
 	pattern1 := NewLabel("some", "label", "*")
 	pattern2 := NewLabel("*", "label", "*")
 	label1 := NewLabel("some", "label", "1")
@@ -155,8 +155,8 @@ func TestLabelBag_FindWithWildCards(t *testing.T) {
 	assert.True(t, found2["some.label.3"] == "some.label.3")
 }
 
-func TestLabelBag_CountWillCountAllMatchingLabels(t *testing.T) {
-	bag := NewLabelBag()
+func TestBag_CountWillCountAllMatchingLabels(t *testing.T) {
+	bag := NewBag()
 	pattern1 := NewLabel("some", "label", "*")
 	pattern2 := NewLabel("*", "label", "*")
 	label1 := NewLabel("some", "label", "1")

@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,13 +21,34 @@
 
 package placement
 
-import "strings"
-
-// Ordering orders two given groups relative to each other given an entity.
+// Ordering returns a tuple of floats given a group relative to an entity and a scope of groups.
 type Ordering interface {
-	// Less returns true if group1 is strictly less than group2, i.e. group1 < group2. when ranking the groups for
-	// placing the entity onto them.
-	Less(group1, group2 *Group, scopeGroups []*Group, entity *Entity) bool
+	// Tuple returns a tuple of floats created from the group, scope groups and the entity.
+	Tuple(group *Group, scopeSet *ScopeSet, entity *Entity) []float64
+}
+
+// Less returns true iff tuple1 is strictly less than tuple2, i.e. tuple1 < tuple2 when comparing the entries
+// lexicographically
+func Less(tuple1, tuple2 []float64) bool {
+	if tuple1 == nil {
+		return false
+	}
+	if tuple2 == nil {
+		return true
+	}
+	length := len(tuple1)
+	if len(tuple2) < length {
+		length = len(tuple2)
+	}
+	for i := 0; i < length; i++ {
+		if tuple1[i] < tuple2[i] {
+			return true
+		}
+	}
+	if len(tuple1) < len(tuple2) {
+		return true
+	}
+	return false
 }
 
 // NameOrdering returns a new ordering by the group name.
@@ -37,6 +58,10 @@ func NameOrdering() Ordering {
 
 type name struct{}
 
-func (ordering name) Less(group1, group2 *Group, scopeGroups []*Group, entity *Entity) bool {
-	return strings.Compare(group1.Name, group2.Name) == -1
+func (ordering name) Tuple(group *Group, scopeSet *ScopeSet, entity *Entity) []float64 {
+	result := make([]float64, len(group.Name))
+	for i, char := range group.Name {
+		result[i] = float64(char)
+	}
+	return result
 }

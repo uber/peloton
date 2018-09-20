@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -80,8 +80,22 @@ func TestLabel_Match_WithWildcardInPatternAndOtherLabels(t *testing.T) {
 	assert.False(t, pattern.Match(label4))
 }
 
+func TestLabel_Names_ReturnsACopyOfNames(t *testing.T) {
+	label := NewLabel("foo", "bar", "baz")
+	names := label.Names()
+
+	assert.Equal(t, label.names, names)
+	names[1] = "42"
+	assert.NotEqual(t, names, label.names)
+}
+
 func TestLabel_String_JoinsTheLabelNames(t *testing.T) {
 	label := NewLabel("foo", "bar", "baz")
 
 	assert.Equal(t, "foo.bar.baz", label.String())
+}
+
+func TestLabel_Match_ReturnsTrueWhenSamePointer(t *testing.T) {
+	label := NewLabel("foo", "bar", "baz")
+	assert.True(t, label.Match(label))
 }

@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -24,7 +24,6 @@ package requirements
 import (
 	"fmt"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model"
 	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
 	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 )
@@ -59,10 +58,9 @@ func NewLabelRequirement(scope, label *labels.Label, comparison Comparison, occu
 }
 
 // Passed checks if the requirement is fulfilled by the given group within the scope groups.
-func (requirement *LabelRequirement) Passed(group *placement.Group, scopeGroups []*placement.Group,
+func (requirement *LabelRequirement) Passed(group *placement.Group, scopeSet *placement.ScopeSet,
 	entity *placement.Entity, transcript *placement.Transcript) bool {
-	scopeLabels := model.CopyScope(requirement.Scope, false, group, scopeGroups)
-	occurrences := scopeLabels.Count(requirement.Label)
+	occurrences := scopeSet.LabelScope(group, requirement.Scope).Count(requirement.Label)
 	fulfilled, err := requirement.Comparison.Compare(float64(occurrences), float64(requirement.Occurrences))
 	if err != nil || !fulfilled {
 		transcript.IncFailed()
@@ -73,8 +71,8 @@ func (requirement *LabelRequirement) Passed(group *placement.Group, scopeGroups 
 }
 
 func (requirement *LabelRequirement) String() string {
-	return fmt.Sprintf("requires that the occurrences of the label %v should be %v %v",
-		requirement.Label, requirement.Comparison, requirement.Occurrences)
+	return fmt.Sprintf("requires that the occurrences of the label %v should be %v %v in scope %v",
+		requirement.Label, requirement.Comparison, requirement.Occurrences, requirement.Scope)
 }
 
 // Composite returns false as the requirement is not composite and the name of the requirement type.

@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -93,4 +93,28 @@ func TestDiscrete_Value(t *testing.T) {
 	value2 := distribution.Value(random, now)
 	assert.Equal(t, value1, value2)
 	assert.Equal(t, 1.0, value1)
+}
+
+func TestConstant_Value(t *testing.T) {
+	random := NewRandom(42)
+	now := time.Duration(0)
+	constant := NewConstant(42.0)
+
+	assert.Equal(t, 42.0, constant.Value(random, now))
+}
+
+func TestConstant_NewValue(t *testing.T) {
+	random := NewRandom(42)
+	now := time.Duration(0)
+	constant := NewConstant(42.0)
+
+	assert.Equal(t, 42.0, constant.Value(random, now))
+	constant.NewValue(21.0)
+	assert.Equal(t, 21.0, constant.Value(random, now))
+}
+
+func TestConstant_CurrentValue(t *testing.T) {
+	constant := NewConstant(42.0)
+
+	assert.Equal(t, 42.0, constant.CurrentValue())
 }

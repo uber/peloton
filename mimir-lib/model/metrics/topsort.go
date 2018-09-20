@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -32,13 +32,13 @@ const (
 	permanent = 2
 )
 
-func reverse(s []MetricType) {
+func reverse(s []Type) {
 	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
 		s[i], s[j] = s[j], s[i]
 	}
 }
 
-func topSortVisit(metricType MetricType, marks map[string]mark, order []MetricType) ([]MetricType, error) {
+func topSortVisit(metricType Type, marks map[string]mark, order []Type) ([]Type, error) {
 	if marks[metricType.Name] == permanent {
 		return order, nil
 	}
@@ -62,9 +62,9 @@ func topSortVisit(metricType MetricType, marks map[string]mark, order []MetricTy
 // TopSort takes a list of metric types and returns a order to visit the metric types in where any metric type is before
 // its dependent metric types. If the metric types dependencies form a cycle it will be detected and an error will be
 // returned.
-func TopSort(unmarked ...MetricType) ([]MetricType, error) {
+func TopSort(unmarked ...Type) ([]Type, error) {
 	marks := make(map[string]mark, len(unmarked))
-	order := make([]MetricType, 0, len(unmarked))
+	order := make([]Type, 0, len(unmarked))
 	var err error
 	for len(unmarked) > 0 {
 		node := unmarked[0]

@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -39,13 +39,13 @@ import (
 //	)
 // which requires that the group should have 256 GiB or more of the metric disk free.
 type MetricRequirement struct {
-	MetricType metrics.MetricType
+	MetricType metrics.Type
 	Comparison Comparison
 	Value      float64
 }
 
 // NewMetricRequirement creates a new metric requirement.
-func NewMetricRequirement(metricType metrics.MetricType, comparison Comparison, value float64) *MetricRequirement {
+func NewMetricRequirement(metricType metrics.Type, comparison Comparison, value float64) *MetricRequirement {
 	return &MetricRequirement{
 		MetricType: metricType,
 		Comparison: comparison,
@@ -54,7 +54,7 @@ func NewMetricRequirement(metricType metrics.MetricType, comparison Comparison, 
 }
 
 // Passed checks if the requirement is fulfilled by the given group within the scope groups.
-func (requirement *MetricRequirement) Passed(group *placement.Group, scopeGroups []*placement.Group,
+func (requirement *MetricRequirement) Passed(group *placement.Group, scopeSet *placement.ScopeSet,
 	entity *placement.Entity, transcript *placement.Transcript) bool {
 	value := group.Metrics.Get(requirement.MetricType)
 	fulfilled, err := requirement.Comparison.Compare(value, requirement.Value)
@@ -67,8 +67,8 @@ func (requirement *MetricRequirement) Passed(group *placement.Group, scopeGroups
 }
 
 func (requirement *MetricRequirement) String() string {
-	return fmt.Sprintf("%v should be %v %v %v", requirement.MetricType.Name, requirement.Comparison,
-		requirement.Value, requirement.MetricType.Unit)
+	return fmt.Sprintf("requires that %v should be %v %v %v", requirement.MetricType.Name,
+		requirement.Comparison, requirement.Value, requirement.MetricType.Unit)
 }
 
 // Composite returns false as the requirement is not composite and the name of the requirement type.

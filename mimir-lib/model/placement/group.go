@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -29,9 +29,9 @@ import (
 // Group represents a host or other physical entity which can contain entities.
 type Group struct {
 	Name      string
-	Labels    *labels.LabelBag
-	Metrics   *metrics.MetricSet
-	Relations *labels.LabelBag
+	Labels    *labels.Bag
+	Metrics   *metrics.Set
+	Relations *labels.Bag
 	Entities  Entities
 }
 
@@ -39,23 +39,23 @@ type Group struct {
 func NewGroup(name string) *Group {
 	return &Group{
 		Name:      name,
-		Labels:    labels.NewLabelBag(),
-		Relations: labels.NewLabelBag(),
-		Metrics:   metrics.NewMetricSet(),
+		Labels:    labels.NewBag(),
+		Relations: labels.NewBag(),
+		Metrics:   metrics.NewSet(),
 		Entities:  Entities{},
 	}
 }
 
 // Update will update the relations and metrics of the group from those of its entities.
 func (group *Group) Update() {
-	newRelations := labels.NewLabelBag()
-	newMetrics := metrics.NewMetricSet()
+	newRelations := labels.NewBag()
+	newMetrics := metrics.NewSet()
 	for _, entity := range group.Entities {
 		newRelations.AddAll(entity.Relations)
-		newMetrics.AddAll(entity.Metrics, metrics.Ephemeral())
+		newMetrics.AddAll(entity.Metrics)
 	}
 	group.Relations = newRelations
-	group.Metrics.ClearAll(metrics.Ephemeral())
-	group.Metrics.SetAll(newMetrics, metrics.Ephemeral())
+	group.Metrics.ClearAll(true, false)
+	group.Metrics.SetAll(newMetrics)
 	group.Metrics.Update()
 }

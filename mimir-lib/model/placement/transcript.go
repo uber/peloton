@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -42,6 +42,22 @@ func NewTranscript(name string) *Transcript {
 	}
 }
 
+// IncPassed will increment the number of groups that passed the requirements.
+func (transcript *Transcript) IncPassed() {
+	if transcript == nil {
+		return
+	}
+	transcript.GroupsPassed++
+}
+
+// IncFailed will increment the number of groups that failed the requirements.
+func (transcript *Transcript) IncFailed() {
+	if transcript == nil {
+		return
+	}
+	transcript.GroupsFailed++
+}
+
 // Subscript will create a sub transcript with the given description if one does not exist.
 func (transcript *Transcript) Subscript(transcriptable Transcriptable) *Transcript {
 	if transcript == nil {
@@ -59,20 +75,37 @@ func (transcript *Transcript) Subscript(transcriptable Transcriptable) *Transcri
 	return subscript
 }
 
-// IncPassed will increment the number of groups that passed the requirements.
-func (transcript *Transcript) IncPassed() {
+// Copy creates a deep copy of the transcript and all sub-transcripts, but with a shallow copy of all
+// the transcriptables.
+func (transcript *Transcript) Copy() *Transcript {
 	if transcript == nil {
-		return
+		return nil
 	}
-	transcript.GroupsPassed++
+	subscripts := make(map[Transcriptable]*Transcript, len(transcript.Subscripts))
+	for transcriptable, subscript := range transcript.Subscripts {
+		subscripts[transcriptable] = subscript.Copy()
+	}
+	return &Transcript{
+		Requirement:  transcript.Requirement,
+		GroupsPassed: transcript.GroupsPassed,
+		GroupsFailed: transcript.GroupsFailed,
+		Subscripts:   subscripts,
+	}
 }
 
-// IncFailed will increment the number of groups that failed the requirements.
-func (transcript *Transcript) IncFailed() {
-	if transcript == nil {
+// Add will add the other transcript into this transcript by merging them.
+func (transcript *Transcript) Add(other *Transcript) {
+	if transcript == nil || other == nil {
 		return
 	}
-	transcript.GroupsFailed++
+	if transcript.Requirement == other.Requirement {
+		transcript.GroupsPassed += other.GroupsPassed
+		transcript.GroupsFailed += other.GroupsFailed
+	}
+	for transcriptable, subScriptToAdd := range other.Subscripts {
+		subScript := transcript.Subscript(transcriptable)
+		subScript.Add(subScriptToAdd)
+	}
 }
 
 func (transcript *Transcript) string(indent int) string {

@@ -22,13 +22,11 @@ func TaskToEntity(task *resmgr.Task, isLaunched bool) *placement.Entity {
 		addMetrics(task, entity.Metrics)
 	}
 	addRelations(task.GetLabels(), entity.Relations)
-	entity.Ordering = orderings.NewCustomOrdering(
-		orderings.Concatenate(
-			orderings.Negate(orderings.Metric(orderings.GroupSource, DiskFree)),
-			orderings.Negate(orderings.Metric(orderings.GroupSource, MemoryFree)),
-			orderings.Negate(orderings.Metric(orderings.GroupSource, CPUFree)),
-			orderings.Negate(orderings.Metric(orderings.GroupSource, GPUFree)),
-		),
+	entity.Ordering = orderings.Concatenate(
+		orderings.Negate(orderings.Metric(orderings.GroupSource, DiskFree)),
+		orderings.Negate(orderings.Metric(orderings.GroupSource, MemoryFree)),
+		orderings.Negate(orderings.Metric(orderings.GroupSource, CPUFree)),
+		orderings.Negate(orderings.Metric(orderings.GroupSource, GPUFree)),
 	)
 	var req []placement.Requirement
 	req = append(req, makeAffinityRequirements(task.GetConstraint()))
@@ -116,14 +114,14 @@ func makeMetricRequirements(task *resmgr.Task) []placement.Requirement {
 	}
 }
 
-func addRelations(labels *mesos_v1.Labels, relations *labels.LabelBag) {
+func addRelations(labels *mesos_v1.Labels, relations *labels.Bag) {
 	for _, label := range labels.GetLabels() {
 		log.WithField("label", label.String()).Debug("Adding relation label")
 		relations.Add(makeLabel(label.GetKey(), label.GetValue()))
 	}
 }
 
-func addMetrics(task *resmgr.Task, metricSet *metrics.MetricSet) {
+func addMetrics(task *resmgr.Task, metricSet *metrics.Set) {
 	resource := task.GetResource()
 	metricSet.Set(CPUReserved, resource.GetCpuLimit()*100.0)
 	metricSet.Set(GPUReserved, resource.GetGpuLimit()*100)

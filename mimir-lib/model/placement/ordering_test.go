@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -27,10 +27,30 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestLess_returns_false_when_tuple1_is_nil(t *testing.T) {
+	assert.False(t, Less(nil, nil))
+}
+
+func TestLess_returns_true_when_tuple1_is_not_nil_and_tuple2_is_nil(t *testing.T) {
+	assert.True(t, Less([]float64{}, nil))
+}
+
+func TestLess_if_tuple1_is_equal_to_a_prefix_of_tuple2_then_tuple1_is_least(t *testing.T) {
+	assert.True(t, Less([]float64{0.0}, []float64{0.0, 1.0}))
+}
+
+func TestLess_if_tuple2_is_equal_to_a_prefix_of_tuple1_then_tuple1_is_not_least(t *testing.T) {
+	assert.False(t, Less([]float64{0.0, 1.0}, []float64{0.0}))
+}
+
 func TestNameOrdering(t *testing.T) {
 	group1 := NewGroup("a")
 	group2 := NewGroup("b")
 	ordering := NameOrdering()
-	assert.True(t, ordering.Less(group1, group2, nil, nil))
-	assert.False(t, ordering.Less(group2, group1, nil, nil))
+
+	tuple1 := ordering.Tuple(group1, nil, nil)
+	tuple2 := ordering.Tuple(group2, nil, nil)
+
+	assert.True(t, Less(tuple1, tuple2))
+	assert.False(t, Less(tuple2, tuple1))
 }

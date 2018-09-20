@@ -289,7 +289,7 @@ func main() {
 		strategy = batch.New()
 	case config.Mimir:
 		cfg.Placement.Concurrency = 1
-		placer := algorithms.NewPlacer()
+		placer := algorithms.NewPlacer(4, 300)
 		strategy = mimir_strategy.New(placer, &cfg.Placement)
 	}
 

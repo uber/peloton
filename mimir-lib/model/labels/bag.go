@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,17 +21,20 @@
 
 package labels
 
-import "sync"
+import (
+	"sort"
+	"sync"
+)
 
-// LabelBag represents a bag of labels and their counts, i.e. it is a multi-bag.
-type LabelBag struct {
+// Bag represents a bag of labels and their counts, i.e. it is a multi-bag.
+type Bag struct {
 	bag  map[string]*labelCount
 	lock sync.RWMutex
 }
 
-// NewLabelBag will create a new label bag.
-func NewLabelBag() *LabelBag {
-	return &LabelBag{
+// NewBag will create a new label bag.
+func NewBag() *Bag {
+	return &Bag{
 		bag: map[string]*labelCount{},
 	}
 }
@@ -49,7 +52,7 @@ func (pair *labelCount) clone() *labelCount {
 }
 
 // Size will return the number of different labels in the label bag.
-func (bag *LabelBag) Size() int {
+func (bag *Bag) Size() int {
 	bag.lock.RLock()
 	defer bag.lock.RUnlock()
 
@@ -57,7 +60,7 @@ func (bag *LabelBag) Size() int {
 }
 
 // Add adds a label to this label bag with a count of 1.
-func (bag *LabelBag) Add(labels ...*Label) {
+func (bag *Bag) Add(labels ...*Label) {
 	bag.lock.Lock()
 	defer bag.lock.Unlock()
 
@@ -74,7 +77,7 @@ func (bag *LabelBag) Add(labels ...*Label) {
 	}
 }
 
-func copyContent(src *LabelBag) map[string]*labelCount {
+func copyContent(src *Bag) map[string]*labelCount {
 	src.lock.RLock()
 	defer src.lock.RUnlock()
 	dst := make(map[string]*labelCount, len(src.bag))
@@ -85,7 +88,7 @@ func copyContent(src *LabelBag) map[string]*labelCount {
 }
 
 // AddAll adds all labels in the given label bag to this label bag.
-func (bag *LabelBag) AddAll(other *LabelBag) {
+func (bag *Bag) AddAll(other *Bag) {
 	otherCopy := copyContent(other)
 
 	bag.lock.Lock()
@@ -101,7 +104,7 @@ func (bag *LabelBag) AddAll(other *LabelBag) {
 }
 
 // Set adds the value in the label bag and sets it count.
-func (bag *LabelBag) Set(label *Label, count int) {
+func (bag *Bag) Set(label *Label, count int) {
 	bag.lock.Lock()
 	defer bag.lock.Unlock()
 
@@ -117,7 +120,7 @@ func (bag *LabelBag) Set(label *Label, count int) {
 
 // SetAll sets all labels in the given label bag to the labels and counts in the other label bag, any labels that
 // exists in the label bag but not in other will still be present with the same count.
-func (bag *LabelBag) SetAll(other *LabelBag) {
+func (bag *Bag) SetAll(other *Bag) {
 	otherCopy := copyContent(other)
 
 	bag.lock.Lock()
@@ -132,20 +135,35 @@ func (bag *LabelBag) SetAll(other *LabelBag) {
 	}
 }
 
+type sortedLabels []*Label
+
+func (labels sortedLabels) Len() int {
+	return len(labels)
+}
+
+func (labels sortedLabels) Less(i, j int) bool {
+	return labels[i].simpleName < labels[j].simpleName
+}
+
+func (labels sortedLabels) Swap(i, j int) {
+	labels[i], labels[j] = labels[j], labels[i]
+}
+
 // Labels returns a new slice of all the labels in the bag.
-func (bag *LabelBag) Labels() []*Label {
+func (bag *Bag) Labels() []*Label {
 	bag.lock.RLock()
 	defer bag.lock.RUnlock()
 
-	result := make([]*Label, 0, len(bag.bag))
+	result := make(sortedLabels, 0, len(bag.bag))
 	for _, pair := range bag.bag {
 		result = append(result, pair.label)
 	}
+	sort.Sort(result)
 	return result
 }
 
 // Find will find all labels matching the given label.
-func (bag *LabelBag) Find(label *Label) []*Label {
+func (bag *Bag) Find(label *Label) []*Label {
 	bag.lock.RLock()
 	defer bag.lock.RUnlock()
 
@@ -159,7 +177,7 @@ func (bag *LabelBag) Find(label *Label) []*Label {
 	return result
 }
 
-func (bag *LabelBag) findByPattern(pattern *Label) []*Label {
+func (bag *Bag) findByPattern(pattern *Label) []*Label {
 	var result []*Label
 	for _, pair := range bag.bag {
 		if !pattern.Match(pair.label) {
@@ -171,12 +189,12 @@ func (bag *LabelBag) findByPattern(pattern *Label) []*Label {
 }
 
 // Contains returns true iff the count of the label is strictly higher than zero.
-func (bag *LabelBag) Contains(label *Label) bool {
+func (bag *Bag) Contains(label *Label) bool {
 	return bag.Count(label) > 0
 }
 
 // Count counts the number of labels that this label matches.
-func (bag *LabelBag) Count(label *Label) int {
+func (bag *Bag) Count(label *Label) int {
 	bag.lock.RLock()
 	defer bag.lock.RUnlock()
 
@@ -190,7 +208,7 @@ func (bag *LabelBag) Count(label *Label) int {
 	return 0
 }
 
-func (bag *LabelBag) countByPattern(pattern *Label) int {
+func (bag *Bag) countByPattern(pattern *Label) int {
 	counts := 0
 	for _, pair := range bag.bag {
 		if !pattern.Match(pair.label) {

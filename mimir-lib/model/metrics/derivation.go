@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -25,8 +25,8 @@ package metrics
 // the current value of the metric from the other other metrics in a given metric set.
 type Derivation interface {
 	// Dependencies returns the set of dependencies that this metric needs to derive its value.
-	Dependencies() []MetricType
+	Dependencies() []Type
 
 	// Calculate computes the derived value of the metric type and updates the metric set.
-	Calculate(metricType MetricType, metricSet *MetricSet)
+	Calculate(metricType Type, metricSet *Set)
 }

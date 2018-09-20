@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -24,7 +24,7 @@ package placement
 // Requirement tells if a given group passes the requirements for a given entity in relation to the given scope.
 type Requirement interface {
 	// Passed returns true iff group passes the requirement in relation to the given scope.
-	Passed(group *Group, scopeGroups []*Group, entity *Entity, transcript *Transcript) bool
+	Passed(group *Group, scopeSet *ScopeSet, entity *Entity, transcript *Transcript) bool
 
 	// The requirement should be transcript-able, so we can get metrics about how many groups pass and fail the
 	// requirement.
@@ -40,6 +40,6 @@ type failed struct {
 	empty
 }
 
-func (requirement failed) Passed(group *Group, scopeGroups []*Group, entity *Entity, transcript *Transcript) bool {
+func (requirement failed) Passed(group *Group, scopeSet *ScopeSet, entity *Entity, transcript *Transcript) bool {
 	return false
 }

@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -24,7 +24,6 @@ package requirements
 import (
 	"fmt"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model"
 	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
 	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 )
@@ -59,10 +58,9 @@ func NewRelationRequirement(scope, relation *labels.Label, comparison Comparison
 }
 
 // Passed checks if the requirement is fulfilled by the given group within the scope groups.
-func (requirement *RelationRequirement) Passed(group *placement.Group, scopeGroups []*placement.Group,
+func (requirement *RelationRequirement) Passed(group *placement.Group, scopeSet *placement.ScopeSet,
 	entity *placement.Entity, transcript *placement.Transcript) bool {
-	scopeRelations := model.CopyScope(requirement.Scope, true, group, scopeGroups)
-	occurrences := scopeRelations.Count(requirement.Relation)
+	occurrences := scopeSet.RelationScope(group, requirement.Scope).Count(requirement.Relation)
 	fulfilled, err := requirement.Comparison.Compare(float64(occurrences), float64(requirement.Occurrences))
 	if err != nil || !fulfilled {
 		transcript.IncFailed()
@@ -73,8 +71,8 @@ func (requirement *RelationRequirement) Passed(group *placement.Group, scopeGrou
 }
 
 func (requirement *RelationRequirement) String() string {
-	return fmt.Sprintf("requires that the occurrences of the relation %v should be %v %v",
-		requirement.Relation, requirement.Comparison, requirement.Occurrences)
+	return fmt.Sprintf("requires that the occurrences of the relation %v should be %v %v in scope %v",
+		requirement.Relation, requirement.Comparison, requirement.Occurrences, requirement.Scope)
 }
 
 // Composite returns false as the requirement is not composite and the name of the requirement type.

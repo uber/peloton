@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -27,6 +27,31 @@ import (
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestMapping_Buckets(t *testing.T) {
+	mapping, err := NewMapping(
+		NewBucket(
+			NewEndpoint(math.Inf(-1), false),
+			NewEndpoint(0, false),
+			0,
+		),
+		NewBucket(
+			NewEndpoint(0, true),
+			NewEndpoint(math.Inf(1), false),
+			1,
+		),
+	)
+
+	assert.NoError(t, err)
+	expected, actual := mapping.buckets, mapping.Buckets()
+	assert.Equal(t, expected, actual)
+	actual[1] = NewBucket(
+		NewEndpoint(0, true),
+		NewEndpoint(math.Inf(1), false),
+		42,
+	)
+	assert.NotEqual(t, expected, actual)
+}
 
 func TestMapping_Map(t *testing.T) {
 	mapping, err := NewMapping(
@@ -74,6 +99,12 @@ func TestMapping_MapPanicsOnInvalidMapping(t *testing.T) {
 		mapping.Map(0.0)
 	}
 	assert.Panics(t, f)
+}
+
+func TestNewMapping_NoBuckets(t *testing.T) {
+	_, err := NewMapping()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "the buckets do not cover any part of")
 }
 
 func TestNewMapping_InvalidBucket(t *testing.T) {

@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -37,12 +37,12 @@ func TestGroup_Update_remove_entity_will_decrease_load_on_group(t *testing.T) {
 	entity1 := NewEntity("entity1")
 	label1 := labels.NewLabel("redis", "instance", "store1")
 	entity1.Relations.Add(label1)
-	entity1.Metrics.Add(metrics.MemoryUsed, 16*metrics.GiB, metrics.Ephemeral())
+	entity1.Metrics.Add(metrics.MemoryUsed, 16*metrics.GiB)
 
 	entity2 := NewEntity("entity2")
 	label2 := labels.NewLabel("redis", "instance", "store2")
 	entity2.Relations.Add(label2)
-	entity2.Metrics.Add(metrics.MemoryUsed, 8*metrics.GiB, metrics.Ephemeral())
+	entity2.Metrics.Add(metrics.MemoryUsed, 8*metrics.GiB)
 
 	group.Entities.Add(entity1)
 	group.Entities.Add(entity2)
@@ -70,7 +70,7 @@ func TestGroup_Update_remove_all_entities_will_give_group_zero_load(t *testing.T
 	entity := NewEntity("entity")
 	label := labels.NewLabel("redis", "instance", "store1")
 	entity.Relations.Add(label)
-	entity.Metrics.Add(metrics.MemoryUsed, 16*metrics.GiB, metrics.Ephemeral())
+	entity.Metrics.Add(metrics.MemoryUsed, 16*metrics.GiB)
 
 	group.Entities.Add(entity)
 	group.Update()

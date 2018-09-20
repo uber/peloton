@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -64,11 +64,12 @@ func TestAndRequirement_String_and_Composite(t *testing.T) {
 func TestAndRequirement_Fulfilled_updates_transcript_and_delegates_updates(t *testing.T) {
 	group := placement.NewGroup("group")
 	group.Labels, group.Relations = hostWithIssue()
+	scopeSet := placement.NewScopeSet(nil)
 
 	requirement := setupAndRequirement()
 
 	transcript := placement.NewTranscript("transcript")
-	requirement.Passed(group, nil, nil, transcript)
+	requirement.Passed(group, scopeSet, nil, transcript)
 	assert.Equal(t, 0, transcript.GroupsPassed)
 	assert.Equal(t, 1, transcript.GroupsFailed)
 	assert.Equal(t, 2, len(transcript.Subscripts))
@@ -86,16 +87,18 @@ func TestAndRequirement_Fulfilled_updates_transcript_and_delegates_updates(t *te
 func TestAndRequirement_Fulfilled_returns_true_if_subrequirements_are_true(t *testing.T) {
 	group := placement.NewGroup("group")
 	group.Labels, group.Relations = hostWithoutIssue()
+	scopeSet := placement.NewScopeSet(nil)
 
 	requirement := setupAndRequirement()
 
 	transcript := placement.NewTranscript("transcript")
-	assert.True(t, requirement.Passed(group, nil, nil, transcript))
+	assert.True(t, requirement.Passed(group, scopeSet, nil, transcript))
 }
 
 func TestAndRequirement_Fulfilled_returns_false_if_any_subrequirements_are_false(t *testing.T) {
 	group := placement.NewGroup("group")
 	group.Labels, group.Relations = hostWithoutIssue()
+	scopeSet := placement.NewScopeSet(nil)
 
 	requirement := NewAndRequirement(
 		NewLabelRequirement(
@@ -112,5 +115,5 @@ func TestAndRequirement_Fulfilled_returns_false_if_any_subrequirements_are_false
 		),
 	)
 
-	assert.False(t, requirement.Passed(group, nil, nil, nil))
+	assert.False(t, requirement.Passed(group, scopeSet, nil, nil))
 }

@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -30,6 +30,15 @@ import (
 // Mapping represents a mapping of an interval from ]-inf;inf[ onto a finite set of float values.
 type Mapping struct {
 	buckets []*Bucket
+}
+
+// Buckets returns a copy of the list of buckets.
+func (mapping *Mapping) Buckets() []*Bucket {
+	result := make([]*Bucket, 0, len(mapping.buckets))
+	for _, bucket := range mapping.buckets {
+		result = append(result, bucket)
+	}
+	return result
 }
 
 // Map will map the given value into another value defined by the mapping.
@@ -105,6 +114,9 @@ func NewMapping(buckets ...*Bucket) (*Mapping, error) {
 			}
 		}
 		lastBucket = bucket
+	}
+	if lastBucket == nil {
+		return nil, fmt.Errorf("the buckets do not cover any part of [-inf;inf], as no buckets where provided")
 	}
 	if !math.IsInf(lastBucket.end.value, 1) || lastBucket.end.Open() {
 		return nil, fmt.Errorf("the buckets do not cover exactly [-inf;inf], the last bucket is %v", lastBucket)

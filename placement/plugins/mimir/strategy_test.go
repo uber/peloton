@@ -21,7 +21,7 @@ func setupStrategy() *mimir {
 		TaskType:             resmgr.TaskType_BATCH,
 		FetchOfferTasks:      false,
 	}
-	placer := algorithms.NewPlacer()
+	placer := algorithms.NewPlacer(1, 100)
 	return New(placer, config).(*mimir)
 }
 

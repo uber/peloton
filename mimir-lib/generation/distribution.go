@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -27,6 +27,12 @@ import (
 	"sync"
 	"time"
 )
+
+// Distribution represents a probability distribution which can change according to time but always returns the same
+// value for the same point in time.
+type Distribution interface {
+	Value(random Random, gtime time.Duration) float64
+}
 
 // Random is source of randomness that varies throughout time, but will always return the same value for the same
 // instance in time.
@@ -86,12 +92,6 @@ func (random *randomImpl) Perm(gtime time.Duration, n int) []int {
 	defer random.lock.Unlock()
 	random.source.Seed(random.seed + int64(gtime))
 	return random.source.Perm(n)
-}
-
-// Distribution represents a probability distribution which can change according to time but always returns the same
-// value for the same point in time.
-type Distribution interface {
-	Value(random Random, gtime time.Duration) float64
 }
 
 // NewConstantGaussian creates a new GaussianDistribution with constant mean and standard deviation.
@@ -171,4 +171,32 @@ func NewDiscrete(valueToWeight map[float64]float64) *Discrete {
 	return &Discrete{
 		ValuesToProbabilities: v,
 	}
+}
+
+// Constant represents a constant distribution which always returns the same value, though the value to return can be
+// changed using the new value method.
+type Constant struct {
+	value float64
+}
+
+// NewConstant creates a new constant distribution.
+func NewConstant(value float64) *Constant {
+	return &Constant{
+		value: value,
+	}
+}
+
+// Value returns the currently set constant value.
+func (constant *Constant) Value(random Random, gtime time.Duration) float64 {
+	return constant.value
+}
+
+// NewValue changes the value of the constant distribution to a new constant value.
+func (constant *Constant) NewValue(value float64) {
+	constant.value = value
+}
+
+// CurrentValue returns the current value of the constant distribution.
+func (constant *Constant) CurrentValue() float64 {
+	return constant.value
 }

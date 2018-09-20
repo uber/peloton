@@ -1,4 +1,4 @@
-// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// @generated AUTO GENERATED - DO NOT EDIT! 117d51fa2854b0184adc875246a35929bbbf0a91
 // Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,7 +21,9 @@
 
 package labels
 
-import "strings"
+import (
+	"strings"
+)
 
 // Label represents an immutable label which consists of a list of names. Since a label is a list of names the label
 // have a hierarchy, e.g. the labels foo.bar and foo.baz can be thought of as being nested under the label foo.*.
@@ -49,6 +51,13 @@ func (label *Label) Wildcard() bool {
 	return label.wildcard
 }
 
+// Names returns a copy of the names in the label.
+func (label *Label) Names() []string {
+	result := make([]string, 0, len(label.names))
+	result = append(result, label.names...)
+	return result
+}
+
 // String returns a concatenation of the names in the label with dot as a separator.
 func (label *Label) String() string {
 	return label.simpleName
@@ -64,6 +73,9 @@ func (label *Label) nameMatch(name1, name2 string) bool {
 // Match returns true iff the label matches the other label or vice versa taking wildcards into account.
 // When matching one label to another label then a wildcard will match any name in the other label at the same position.
 func (label *Label) Match(other *Label) bool {
+	if label == other {
+		return true
+	}
 	if !label.wildcard && !other.wildcard {
 		return label.simpleName == other.simpleName
 	}

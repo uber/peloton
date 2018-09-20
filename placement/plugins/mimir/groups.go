@@ -19,8 +19,8 @@ func OfferToGroup(hostOffer *hostsvc.HostOffer) *placement.Group {
 	return group
 }
 
-func makeMetrics(resources []*mesos_v1.Resource) *metrics.MetricSet {
-	result := metrics.NewMetricSet()
+func makeMetrics(resources []*mesos_v1.Resource) *metrics.Set {
+	result := metrics.NewSet()
 	for _, resource := range resources {
 		value := resource.GetScalar().GetValue()
 		switch name := resource.GetName(); name {
@@ -55,8 +55,8 @@ func makeMetrics(resources []*mesos_v1.Resource) *metrics.MetricSet {
 // A text attribute with name n and value t will be turned into the label ["n", "t"].
 // A ranges attribute with name n and ranges [r_1a:r_1b], ..., [r_na:r_nb] will be turned into
 // the label ["n", "[r_1a-r1b];...[r_na-r_nb]"].
-func makeLabels(attributes []*mesos_v1.Attribute) *labels.LabelBag {
-	result := labels.NewLabelBag()
+func makeLabels(attributes []*mesos_v1.Attribute) *labels.Bag {
+	result := labels.NewBag()
 	for _, attribute := range attributes {
 		var value string
 		switch attribute.GetType() {
