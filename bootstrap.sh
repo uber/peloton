@@ -9,6 +9,8 @@ function install_protoc_dev_server {
     unzip -d protoc protoc-$PROTOC_VERSION-linux-x86_64.zip
     sudo cp protoc/bin/protoc /usr/bin
     sudo chmod 755 /usr/bin/protoc
+    sudo cp -R protoc/include/* /usr/local/include/
+    sudo chmod -R 755 /usr/local/include
     rm -r protoc
     rm protoc-$PROTOC_VERSION-linux-x86_64.zip
 

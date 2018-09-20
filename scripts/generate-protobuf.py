@@ -15,8 +15,8 @@ proto_file_paths = [
     '*/*/*/*/*/*.proto',
 ]
 protoc_cmd = (
-    'protoc  --proto_path={proto_path} --{gen}_out={mflags}:{out_dir} '
-    '--{gen}_opt={gen_opt} {file}'
+    'protoc --proto_path /usr/local/include/ --proto_path={proto_path} '
+    '--{gen}_out={mflags}:{out_dir} --{gen}_opt={gen_opt} {file}'
 )
 doc_opt = 'html,apidoc.html:mesos/*,private/*'
 
@@ -51,6 +51,7 @@ def is_service_proto(f):
 def generate(gen, f, m, out_dir, gen_opt=''):
     print ' '.join([
         'protoc',
+        '--proto_path /usr/local/include/',
         '--proto_path=%s' % peloton_proto,
         '--%s_out=%s:%s' % (gen, '${mflags}' if m != '' else m, out_dir),
         '--%s_opt=%s' % (gen, gen_opt) if gen_opt != '' else '',
