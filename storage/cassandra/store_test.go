@@ -2438,6 +2438,86 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 		))
 	}
 
+	// Create update to increase #instances 60 -> 120
+	state = update.State_INITIALIZED
+	instancesTotal = uint32(120)
+	numOfInstancesAdded = 60
+	instancesAdded = make([]uint32, 0)
+	for i := 60; i < int(instancesTotal); i++ {
+		instancesAdded = append(instancesAdded, uint32(i))
+	}
+
+	updateID = &peloton.UpdateID{
+		Value: uuid.New(),
+	}
+	suite.NoError(store.CreateUpdate(
+		context.Background(),
+		&models.UpdateModel{
+			UpdateID:             updateID,
+			JobID:                jobID,
+			UpdateConfig:         updateConfig,
+			JobConfigVersion:     jobVersion,
+			PrevJobConfigVersion: jobPrevVersion,
+			State:                state,
+			InstancesTotal:       instancesTotal,
+			InstancesAdded:       instancesAdded,
+			Type:                 models.WorkflowType_UPDATE,
+		},
+	))
+
+	updateInfo, err = store.GetUpdate(
+		context.Background(),
+		updateID,
+	)
+	suite.NoError(err)
+	suite.Equal(updateInfo.GetJobID().GetValue(), jobID.GetValue())
+	suite.Equal(updateInfo.GetUpdateConfig().GetBatchSize(), updateConfig.GetBatchSize())
+	suite.Equal(updateInfo.GetJobConfigVersion(), jobVersion)
+	suite.Equal(updateInfo.GetPrevJobConfigVersion(), jobPrevVersion)
+	suite.Equal(updateInfo.GetState(), state)
+	suite.Equal(updateInfo.GetInstancesTotal(), instancesTotal)
+	suite.Equal(updateInfo.GetInstancesAdded(), instancesAdded)
+
+	// Create update to decrease #instances 120 -> 60
+	state = update.State_INITIALIZED
+	prevInstancesTotal := instancesTotal
+	instancesTotal = uint32(60)
+	instancesRemoved := make([]uint32, 0)
+	for i := instancesTotal; i < prevInstancesTotal; i++ {
+		instancesRemoved = append(instancesRemoved, uint32(i))
+	}
+	updateID = &peloton.UpdateID{
+		Value: uuid.New(),
+	}
+
+	suite.NoError(store.CreateUpdate(
+		context.Background(),
+		&models.UpdateModel{
+			UpdateID:             updateID,
+			JobID:                jobID,
+			UpdateConfig:         updateConfig,
+			JobConfigVersion:     jobVersion,
+			PrevJobConfigVersion: jobPrevVersion,
+			State:                state,
+			InstancesTotal:       instancesTotal,
+			InstancesRemoved:     instancesRemoved,
+			Type:                 models.WorkflowType_UPDATE,
+		},
+	))
+
+	updateInfo, err = store.GetUpdate(
+		context.Background(),
+		updateID,
+	)
+	suite.NoError(err)
+	suite.Equal(updateInfo.GetJobID().GetValue(), jobID.GetValue())
+	suite.Equal(updateInfo.GetUpdateConfig().GetBatchSize(), updateConfig.GetBatchSize())
+	suite.Equal(updateInfo.GetJobConfigVersion(), jobVersion)
+	suite.Equal(updateInfo.GetPrevJobConfigVersion(), jobPrevVersion)
+	suite.Equal(updateInfo.GetState(), state)
+	suite.Equal(updateInfo.GetInstancesTotal(), instancesTotal)
+	suite.Equal(updateInfo.GetInstancesRemoved(), instancesRemoved)
+
 	// delete the first update
 	err = store.DeleteUpdate(context.Background(), updateID, jobID, jobVersion)
 	suite.NoError(err)

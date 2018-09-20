@@ -3,16 +3,19 @@ package cassandra
 import (
 	"context"
 	"testing"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/storage"
 	datastore "code.uber.internal/infra/peloton/storage/cassandra/api"
 	datastoremocks "code.uber.internal/infra/peloton/storage/cassandra/api/mocks"
 	datastoreimpl "code.uber.internal/infra/peloton/storage/cassandra/impl"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
 )
@@ -57,6 +60,22 @@ func TestMockDatastoreTestSuite(t *testing.T) {
 	suite.Run(t, new(MockDatastoreTestSuite))
 }
 
+// TestDataStoreDeleteJob test delete job
+func (suite *MockDatastoreTestSuite) TestDataStoreDeleteJob() {
+	ctx, cancelFunc := context.WithTimeout(
+		context.Background(),
+		time.Second)
+	defer cancelFunc()
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+
+	// Failure test for GetJobConfig
+	suite.mockedDataStore.EXPECT().Execute(ctx, gomock.Any()).
+		Return(nil, errors.New("my-error"))
+	suite.Error(suite.store.DeleteJob(ctx, jobID))
+}
+
 // TestDataStoreFailureGetJobConfig tests datastore failures in getting job cfg
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobConfig() {
 	_, err := suite.store.GetJobConfigWithVersion(
@@ -72,8 +91,26 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobConfig() {
 // TestDataStoreFailureGetJobRuntime tests datastore failures in getting
 // job runtime
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobRuntime() {
+	suite.Error(suite.store.CreateJobRuntimeWithConfig(
+		context.Background(),
+		suite.testJobID,
+		&job.RuntimeInfo{},
+		&job.JobConfig{}))
+
 	_, err := suite.store.GetJobRuntime(
 		context.Background(), suite.testJobID)
+	suite.Error(err)
+}
+
+// TestGetFrameworkID tests the fetch for framework ID
+func (suite *MockDatastoreTestSuite) TestGetFrameworkID() {
+	_, err := suite.store.GetFrameworkID(context.Background(), common.PelotonRole)
+	suite.Error(err)
+}
+
+// TestGetStreamID test the fetch for stream ID
+func (suite *MockDatastoreTestSuite) TestGetStreamID() {
+	_, err := suite.store.GetMesosStreamID(context.Background(), common.PelotonRole)
 	suite.Error(err)
 }
 

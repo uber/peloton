@@ -1882,10 +1882,63 @@ func (s *Store) DeleteTaskRuntime(
 	return nil
 }
 
+// 1) Pod Events table has partition key job_id + instance_id,
+// so pod events need to be deleted per instance.
+// 2) Fetch instance count from job config, and delete pod events
+// incrementally for each Instance.
+// 3) There maybe a scenario, were instance count is shrunk, in order to delete
+// pod events for shrunk instances, first read pod event for shrunk instances,
+// if exist then delete. If result is zero, that means we have reached
+// maximum instance count ever for that job.
+// 4) Performance optimization for deleting shrunk instances,
+// read pod events for every - instance_id % 100 = 0
+// If pod event exist then continue to delete pod events for next 100 instances
+// If pod event not exist means pod events are deleted for all shrunk instances
+func (s *Store) deletePodEventsOnDeleteJob(
+	ctx context.Context,
+	id *peloton.JobID) error {
+	queryBuilder := s.DataStore.NewQuery()
+	instanceCount := uint32(0)
+	jobConfig, err := s.GetJobConfig(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	for {
+		// 1) read pod events to identify shrunk instances
+		// 2) read pod events if instance_id (shrunk instances) % 100 = 0
+		if instanceCount > jobConfig.InstanceCount &&
+			instanceCount%_defaultPodEventsLimit == 0 {
+			events, err := s.GetPodEvents(ctx, id, instanceCount, 1)
+			if err != nil {
+				s.metrics.JobMetrics.JobDeleteFail.Inc(1)
+				return err
+			}
+			if len(events) == 0 {
+				break
+			}
+		}
+		stmt := queryBuilder.Delete(podEventsTable).
+			Where(qb.Eq{"job_id": id.GetValue()}).
+			Where(qb.Eq{"instance_id": instanceCount})
+
+		if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+			s.metrics.JobMetrics.JobDeleteFail.Inc(1)
+			return err
+		}
+		instanceCount++
+	}
+	return nil
+}
+
 // DeleteJob deletes a job and associated tasks, by job id.
 // TODO: This implementation is not perfect, as if it's getting an transient
 // error, the job or some tasks may not be fully deleted.
 func (s *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
+	if err := s.deletePodEventsOnDeleteJob(ctx, id); err != nil {
+		return err
+	}
+
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Delete(taskRuntimeTable).Where(qb.Eq{"job_id": id.GetValue()})
 	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
