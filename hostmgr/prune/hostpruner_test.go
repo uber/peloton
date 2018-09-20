@@ -24,12 +24,12 @@ func TestPrune(t *testing.T) {
 		{
 			mockResetExpiredHostSummaries: []string{},
 			counterPrunedExpected:         0,
-			msg: "No host pruned",
+			msg:                           "No host pruned",
 		},
 		{
 			mockResetExpiredHostSummaries: []string{"host0", "host1"},
 			counterPrunedExpected:         2,
-			msg: "2 hosts pruned",
+			msg:                           "2 hosts pruned",
 		},
 	}
 

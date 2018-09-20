@@ -468,6 +468,14 @@ func (suite *UpdateTestSuite) TestCreateUpdateDBError() {
 			instanceCount, version, instanceCount, version)
 
 	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.jobID).
+		Return(&pbjob.RuntimeInfo{
+			ConfigurationVersion: prevJobConfig.
+				GetChangeLog().
+				GetVersion(),
+		}, nil)
+
+	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(prevJobConfig, nil)
 
@@ -516,6 +524,14 @@ func (suite *UpdateTestSuite) TestCreateUpdateJobConfigDBError() {
 	prevJobConfig, newJobConfig, updateConfig, _ :=
 		initializeUpdateTest(
 			instanceCount, version, instanceCount, version)
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.jobID).
+		Return(&pbjob.RuntimeInfo{
+			ConfigurationVersion: prevJobConfig.
+				GetChangeLog().
+				GetVersion(),
+		}, nil)
 
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
@@ -720,6 +736,87 @@ func (suite *UpdateTestSuite) TestValidCreateStart() {
 	suite.Equal(0, len(suite.update.instancesAdded))
 	suite.Equal(instanceCount, uint32(len(suite.update.instancesUpdated)))
 	suite.Equal(models.WorkflowType_START, suite.update.GetWorkflowType())
+}
+
+// TestWorkflowOverWrite tests which workflow overwrite
+func (suite *UpdateTestSuite) TestWorkflowOverWrite() {
+	tests := []struct {
+		previousWorkflowType models.WorkflowType
+		newWorkflowType      models.WorkflowType
+		isValidOverWrite     bool
+	}{
+		{models.WorkflowType_UPDATE, models.WorkflowType_UPDATE, true},
+		{models.WorkflowType_UPDATE, models.WorkflowType_START, false},
+		{models.WorkflowType_UPDATE, models.WorkflowType_STOP, false},
+		{models.WorkflowType_UPDATE, models.WorkflowType_RESTART, false},
+		{models.WorkflowType_START, models.WorkflowType_START, false},
+		{models.WorkflowType_STOP, models.WorkflowType_STOP, false},
+		{models.WorkflowType_RESTART, models.WorkflowType_UPDATE, false},
+	}
+
+	for _, t := range tests {
+		instanceCount := uint32(10)
+		version := uint64(2)
+		prevJobConfig, newJobConfig, updateConfig, jobRuntime :=
+			initializeUpdateTest(
+				instanceCount, version, instanceCount, version)
+		existingUpdateID := &peloton.UpdateID{
+			Value: uuid.New(),
+		}
+		jobRuntime.UpdateID = existingUpdateID
+
+		suite.updateStore.EXPECT().
+			CreateUpdate(
+				gomock.Any(), gomock.Any()).
+			Return(nil)
+
+		suite.jobStore.EXPECT().
+			GetJobConfig(gomock.Any(), suite.jobID).
+			Return(prevJobConfig, nil)
+
+		suite.jobStore.EXPECT().
+			GetJobRuntime(gomock.Any(), suite.jobID).
+			Return(jobRuntime, nil)
+
+		suite.jobStore.EXPECT().
+			GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+			Return(prevJobConfig.ChangeLog.Version, nil)
+
+		suite.updateStore.EXPECT().
+			GetUpdate(gomock.Any(), existingUpdateID).
+			Return(&models.UpdateModel{
+				Type: t.previousWorkflowType,
+			}, nil)
+
+		suite.jobStore.EXPECT().
+			UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
+			Return(nil)
+
+		suite.jobStore.EXPECT().
+			UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+			Return(nil).
+			MaxTimes(1)
+
+		err := suite.update.Create(
+			context.Background(),
+			suite.jobID,
+			newJobConfig,
+			prevJobConfig,
+			nil,
+			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			nil,
+			t.newWorkflowType,
+			updateConfig,
+		)
+
+		if t.isValidOverWrite {
+			suite.NoError(err)
+		} else {
+			suite.Error(err)
+		}
+
+		suite.update.jobFactory.ClearJob(suite.jobID)
+	}
 }
 
 // TestValidCreateStop tests creating a valid job stop
@@ -1167,6 +1264,102 @@ func (suite *UpdateTestSuite) TestUpdateRecover_UpdateStoreErr() {
 	suite.Empty(suite.update.instancesCurrent)
 	suite.Empty(suite.update.instancesTotal)
 	suite.Equal(suite.update.state, pbupdate.State_INVALID)
+}
+
+// testCachedJob is a test object for cached job, which enables user to
+// overwrite some of its behavior
+type testCachedJob struct {
+	*job
+
+	compareAndSetRuntime func(ctx context.Context, jobRuntime *pbjob.RuntimeInfo) (*pbjob.RuntimeInfo, error)
+}
+
+// if testCachedJob.compareAndSetRuntime is set, CompareAndSetRuntime will call
+// testCachedJob.compareAndSetRuntime. Otherwise, it will inherit the behavior
+// of job.CompareAndSetRuntime
+func (j *testCachedJob) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.RuntimeInfo) (*pbjob.RuntimeInfo, error) {
+	if j.compareAndSetRuntime != nil {
+		return j.compareAndSetRuntime(ctx, jobRuntime)
+	}
+	return j.CompareAndSetRuntime(ctx, jobRuntime)
+}
+
+// TestUpdateWorkflowWithUnexpectedVersionError tests the case that
+// creating update workflow with UnexpectedVersionError can be recovered
+// by retry
+func (suite *UpdateTestSuite) TestUpdateWorkflowWithUnexpectedVersionError() {
+	testJob := &testCachedJob{
+		job: &job{
+			runtime: &pbjob.RuntimeInfo{
+				Revision: &peloton.ChangeLog{
+					Version: 1,
+				},
+			},
+			jobFactory: &jobFactory{
+				jobStore: suite.jobStore,
+			},
+		},
+	}
+
+	testJob.compareAndSetRuntime = func(ctx context.Context, jobRuntime *pbjob.RuntimeInfo) (*pbjob.RuntimeInfo, error) {
+		// simulate the case that when CompareAndSetRuntime is called,
+		// job runtime is changed by another goroutine
+		testJob.runtime = &pbjob.RuntimeInfo{
+			Revision: &peloton.ChangeLog{
+				Version: 2,
+			},
+		}
+		return testJob.job.CompareAndSetRuntime(ctx, jobRuntime)
+	}
+
+	suite.jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	err := suite.update.updateWorkflow(
+		context.Background(),
+		testJob,
+		models.WorkflowType_RESTART,
+		2,
+	)
+
+	suite.NoError(err)
+}
+
+// TestUpdateWorkflowWithTooManyUnexpectedVersionError tests the case that
+// creating update workflow with too many UnexpectedVersionError
+func (suite *UpdateTestSuite) TestUpdateWorkflowWithTooManyUnexpectedVersionError() {
+	testJob := &testCachedJob{
+		job: &job{
+			runtime: &pbjob.RuntimeInfo{
+				Revision: &peloton.ChangeLog{
+					Version: 1,
+				},
+			},
+			jobFactory: &jobFactory{
+				jobStore: suite.jobStore,
+			},
+		},
+	}
+
+	testJob.compareAndSetRuntime = func(ctx context.Context, jobRuntime *pbjob.RuntimeInfo) (*pbjob.RuntimeInfo, error) {
+		// always change the version to something different form input
+		testJob.runtime = &pbjob.RuntimeInfo{
+			Revision: &peloton.ChangeLog{
+				Version: jobRuntime.GetRevision().GetVersion() + 1,
+			},
+		}
+		return testJob.job.CompareAndSetRuntime(ctx, jobRuntime)
+	}
+
+	err := suite.update.updateWorkflow(
+		context.Background(),
+		testJob,
+		models.WorkflowType_RESTART,
+		2,
+	)
+
+	suite.Error(err)
 }
 
 func contains(element uint32, slice []uint32) bool {

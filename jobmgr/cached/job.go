@@ -18,6 +18,7 @@ import (
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	stringsutil "code.uber.internal/infra/peloton/util/strings"
 
+	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -75,6 +76,8 @@ type Job interface {
 	// both DB and cache, it first attempts to persist the request in storage,
 	// If that fails, it just returns back the error for now.
 	// If successful, the cache is updated as well.
+	// TODO: no config update should go through this API, divide this API into
+	// config and runtime part
 	Update(ctx context.Context, jobInfo *pbjob.JobInfo, req UpdateRequest) error
 
 	// CompareAndSetRuntime replaces the existing job runtime in cache and DB with
@@ -82,7 +85,19 @@ type Job interface {
 	// RuntimeInfo.Revision.Version for concurrency control, and it would
 	// update RuntimeInfo.Revision.Version automatically upon success. Caller
 	// should not manually modify the value of RuntimeInfo.Revision.Version.
-	CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.RuntimeInfo) error
+	// It returns the resultant jobRuntime with version updated.
+	CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.RuntimeInfo) (*pbjob.RuntimeInfo, error)
+
+	// CompareAndSetConfig compares the version of config supplied and the
+	// version of config in cache. If the version matches, it would update
+	// the config in cache and DB with the config supplied (Notice: it does
+	// NOT mean job would use the new job config, job would still use the
+	// config which its runtime.ConfigurationVersion points to).
+	// CompareAndSetConfig would update JobConfig.ChangeLog.Version
+	// automatically upon success. Caller should not manually modify
+	// the value of JobConfig.ChangeLog.Version.
+	// It returns the resultant jobConfig with version updated.
+	CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig) (jobmgrcommon.JobConfig, error)
 
 	// IsPartiallyCreated returns if job has not been fully created yet
 	IsPartiallyCreated(config jobmgrcommon.JobConfig) bool
@@ -90,7 +105,7 @@ type Job interface {
 	// GetRuntime returns the runtime of the job
 	GetRuntime(ctx context.Context) (*pbjob.RuntimeInfo, error)
 
-	// GetConfig returns the config of the job
+	// GetConfig returns the current config of the job
 	GetConfig(ctx context.Context) (jobmgrcommon.JobConfig, error)
 
 	// GetJobType returns the job type in the job config stored in the cache
@@ -184,12 +199,24 @@ func (j *job) ID() *peloton.JobID {
 	return j.id
 }
 
-func (j *job) populateJobConfig(ctx context.Context) error {
-	config, err := j.jobFactory.jobStore.GetJobConfig(ctx, j.ID())
-	if err != nil {
+// populateCurrentJobConfig populates the config pointed by runtime config version
+// into cache
+func (j *job) populateCurrentJobConfig(ctx context.Context) error {
+	if err := j.populateRuntime(ctx); err != nil {
 		return err
 	}
-	j.populateJobConfigCache(config)
+
+	// repopulate the config when config is not present or
+	// the version mismatches withe job runtime configuration version
+	if j.config == nil ||
+		j.config.GetChangeLog().GetVersion() !=
+			j.runtime.GetConfigurationVersion() {
+		config, err := j.jobFactory.jobStore.GetJobConfig(ctx, j.ID())
+		if err != nil {
+			return err
+		}
+		j.populateJobConfigCache(config)
+	}
 	return nil
 }
 
@@ -227,11 +254,8 @@ func (j *job) AddTask(
 
 			// validate that the task being added is within
 			// the instance count of the job.
-			if j.config == nil {
-				err := j.populateJobConfig(ctx)
-				if err != nil {
-					return nil, err
-				}
+			if err := j.populateCurrentJobConfig(ctx); err != nil {
+				return nil, err
 			}
 
 			if j.config.GetInstanceCount() <= id {
@@ -473,9 +497,9 @@ func (j *job) createJobRuntime(ctx context.Context, config *pbjob.JobConfig) err
 	return nil
 }
 
-func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.RuntimeInfo) error {
+func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.RuntimeInfo) (*pbjob.RuntimeInfo, error) {
 	if jobRuntime == nil {
-		return yarpcerrors.InvalidArgumentErrorf("unexpected nil jobRuntime")
+		return nil, yarpcerrors.InvalidArgumentErrorf("unexpected nil jobRuntime")
 	}
 
 	j.Lock()
@@ -483,12 +507,12 @@ func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.Runtim
 
 	// first make sure we have job runtime in cache
 	if err := j.populateRuntime(ctx); err != nil {
-		return err
+		return nil, err
 	}
 
 	if j.runtime.GetRevision().GetVersion() !=
 		jobRuntime.GetRevision().GetVersion() {
-		return jobmgrcommon.UnexpectedVersionError
+		return nil, jobmgrcommon.UnexpectedVersionError
 	}
 
 	// version matches, update the input changeLog
@@ -505,11 +529,37 @@ func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.Runtim
 		&newRuntime,
 	); err != nil {
 		j.invalidateCache()
-		return err
+		return nil, err
 	}
 
 	j.runtime = &newRuntime
-	return nil
+	return proto.Clone(j.runtime).(*pbjob.RuntimeInfo), nil
+}
+
+func (j *job) CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig) (jobmgrcommon.JobConfig, error) {
+	j.Lock()
+	defer j.Unlock()
+
+	// first make sure current config is in cache
+	j.populateCurrentJobConfig(ctx)
+
+	// then validate and merge config
+	updatedConfig, err := j.validateAndMergeConfig(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+
+	// write the config into DB
+	if err := j.jobFactory.jobStore.
+		UpdateJobConfig(ctx, j.ID(), updatedConfig); err != nil {
+		j.invalidateCache()
+		return nil, err
+	}
+
+	// finally update the cache
+	j.populateJobConfigCache(updatedConfig)
+
+	return j.config, nil
 }
 
 // The runtime being passed should only set the fields which the caller intends to change,
@@ -864,18 +914,17 @@ func (j *job) GetRuntime(ctx context.Context) (*pbjob.RuntimeInfo, error) {
 	if err := j.populateRuntime(ctx); err != nil {
 		return nil, err
 	}
-	return j.runtime, nil
+
+	runtime := proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
+	return runtime, nil
 }
 
 func (j *job) GetConfig(ctx context.Context) (jobmgrcommon.JobConfig, error) {
 	j.Lock()
 	defer j.Unlock()
 
-	if j.config == nil {
-		err := j.populateJobConfig(ctx)
-		if err != nil {
-			return nil, err
-		}
+	if err := j.populateCurrentJobConfig(ctx); err != nil {
+		return nil, err
 	}
 	return j.config, nil
 }

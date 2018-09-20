@@ -238,8 +238,8 @@ func (h *Handler) purgeEvents(clientName string, purgeOffset uint64) {
 		log.WithFields(log.Fields{
 			"min_purge_offset":             minPurgeOffset,
 			"client_with_min_purge_offset": clientWithMinPurgeOffset,
-			"tail": tail,
-			"head": head,
+			"tail":                         tail,
+			"head":                         head,
 		}).Error("minPurgeOffset incorrect")
 		h.metrics.PurgeEventError.Inc(1)
 	}

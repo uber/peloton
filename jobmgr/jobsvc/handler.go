@@ -284,16 +284,11 @@ func (h *serviceHandler) Update(
 	}
 
 	// first persist the configuration
-	err = cachedJob.Update(ctx, &job.JobInfo{
-		Config: mergeInstanceConfig(oldConfig, newConfig),
-	}, cached.UpdateCacheAndDB)
+	newUpdatedConfig, err := cachedJob.CompareAndSetConfig(
+		ctx,
+		mergeInstanceConfig(oldConfig, newConfig))
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
-		return nil, err
-	}
-
-	newUpdatedConfig, err := cachedJob.GetConfig(ctx)
-	if err != nil {
 		return nil, err
 	}
 

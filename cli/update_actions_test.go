@@ -218,7 +218,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateResPoolErrors() {
 		},
 		{
 			respoolLookUpResponse: nil,
-			err: errors.New("cannot lookup resource pool"),
+			err:                   errors.New("cannot lookup resource pool"),
 		},
 	}
 

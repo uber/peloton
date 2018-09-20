@@ -486,7 +486,7 @@ func (m *serviceHandler) Start(
 			cachedConfig.GetType())
 
 		// update the job runtime
-		err = cachedJob.CompareAndSetRuntime(ctx, jobRuntime)
+		_, err = cachedJob.CompareAndSetRuntime(ctx, jobRuntime)
 		if err == jobmgrcommon.UnexpectedVersionError {
 			// concurrency error; retry MaxConcurrencyErrorRetry times
 			count = count + 1

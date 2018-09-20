@@ -65,10 +65,10 @@ func (s *resPoolHandlerTestSuite) SetupTest() {
 	})
 
 	s.handler = &ServiceHandler{
-		resPoolTree: s.resourceTree,
-		dispatcher:  dispatcher,
-		metrics:     res.NewMetrics(tally.NoopScope),
-		store:       s.mockResPoolStore,
+		resPoolTree:            s.resourceTree,
+		dispatcher:             dispatcher,
+		metrics:                res.NewMetrics(tally.NoopScope),
+		store:                  s.mockResPoolStore,
 		resPoolConfigValidator: s.resourcePoolConfigValidator,
 		lifeCycle:              lifecycle.NewLifeCycle(),
 	}
@@ -551,10 +551,10 @@ func (s *resPoolHandlerTestSuite) TestUpsertError() {
 func (s *resPoolHandlerTestSuite) getMockHandlerWithResTreeAndRespool() (*ServiceHandler, *mocks.MockTree, *mocks.MockResPool) {
 	resTree := mocks.NewMockTree(s.mockCtrl)
 	return &ServiceHandler{
-		resPoolTree: resTree,
-		dispatcher:  nil,
-		metrics:     res.NewMetrics(tally.NoopScope),
-		store:       s.mockResPoolStore,
+		resPoolTree:            resTree,
+		dispatcher:             nil,
+		metrics:                res.NewMetrics(tally.NoopScope),
+		store:                  s.mockResPoolStore,
 		resPoolConfigValidator: s.resourcePoolConfigValidator,
 		lifeCycle:              lifecycle.NewLifeCycle(),
 	}, resTree, mocks.NewMockResPool(s.mockCtrl)
@@ -854,10 +854,10 @@ func (s *resPoolHandlerTestSuite) TestDeleteblahblah() {
 		respool := mocks.NewMockResPool(s.mockCtrl)
 
 		handler := &ServiceHandler{
-			resPoolTree: resTree,
-			dispatcher:  nil,
-			metrics:     res.NewMetrics(tally.NoopScope),
-			store:       s.mockResPoolStore,
+			resPoolTree:            resTree,
+			dispatcher:             nil,
+			metrics:                res.NewMetrics(tally.NoopScope),
+			store:                  s.mockResPoolStore,
 			resPoolConfigValidator: s.resourcePoolConfigValidator,
 			lifeCycle:              lifecycle.NewLifeCycle(),
 		}

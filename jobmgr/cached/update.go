@@ -9,6 +9,8 @@ import (
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -192,17 +194,7 @@ func (u *update) Create(
 
 	// Store the new job configuration
 	cachedJob := u.jobFactory.AddJob(jobID)
-	if err := cachedJob.Update(
-		ctx,
-		&pbjob.JobInfo{
-			Config: jobConfig,
-		},
-		UpdateCacheAndDB,
-	); err != nil {
-		return err
-	}
-
-	newConfig, err := cachedJob.GetConfig(ctx)
+	newConfig, err := cachedJob.CompareAndSetConfig(ctx, jobConfig)
 	if err != nil {
 		return err
 	}
@@ -227,21 +219,14 @@ func (u *update) Create(
 
 	u.populateCache(updateModel)
 
-	// store the update identifier and new configuration version in the job runtime
-	if err := cachedJob.Update(
+	if err := u.updateWorkflow(
 		ctx,
-		&pbjob.JobInfo{
-			Runtime: &pbjob.RuntimeInfo{
-				UpdateID:             u.id,
-				ConfigurationVersion: newConfig.GetChangeLog().GetVersion(),
-			},
-		},
-		UpdateCacheAndDB,
-	); err != nil {
+		cachedJob,
+		workflowType,
+		newConfig.GetChangeLog().GetVersion()); err != nil {
 		return err
 	}
 
-	// TODO Make this log debug
 	log.WithField("update_id", u.id.GetValue()).
 		WithField("job_id", jobID.GetValue()).
 		WithField("instances_total", len(u.instancesTotal)).
@@ -253,6 +238,89 @@ func (u *update) Create(
 		Debug("update is created")
 
 	return nil
+}
+
+// updateWorkflow updates job runtime with newConfigVersion. It validates
+// if the workflowType update is valid and retry if update fails due to
+// concurrency error
+func (u *update) updateWorkflow(
+	ctx context.Context,
+	cachedJob Job,
+	workflowType models.WorkflowType,
+	newConfigVersion uint64,
+) error {
+	// 1. read job runtime
+	// 2. decide if the current workflow of the job can be overwritten
+	// 3. overwrite the workflow if step2 succeeds
+	// 4. go to step 1, if step 3 fails due to concurrency error
+	for i := 0; i < jobmgrcommon.MaxConcurrencyErrorRetry; i++ {
+		jobRuntime, err := cachedJob.GetRuntime(ctx)
+		if err != nil {
+			return err
+		}
+
+		if err := u.validateWorkflowOverwrite(
+			ctx,
+			jobRuntime,
+			workflowType,
+		); err != nil {
+			return err
+		}
+
+		jobRuntime.UpdateID = &peloton.UpdateID{
+			Value: u.id.GetValue(),
+		}
+		jobRuntime.ConfigurationVersion = newConfigVersion
+		_, err = cachedJob.CompareAndSetRuntime(
+			ctx,
+			jobRuntime,
+		)
+
+		// the error is due to another goroutine updates the runtime, which
+		// results in a concurrency error. Redo the process again.
+		if err == jobmgrcommon.UnexpectedVersionError {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	return yarpcerrors.AbortedErrorf(
+		"job update failed too many times due to concurrency error")
+}
+
+// validateWorkflowOverwrite validates if the new workflow type can override
+// existing workflow in job runtime. It returns an error if the validation
+// fails.
+func (u *update) validateWorkflowOverwrite(
+	ctx context.Context,
+	jobRuntime *pbjob.RuntimeInfo,
+	workflowType models.WorkflowType,
+) error {
+
+	updateID := jobRuntime.GetUpdateID()
+	// no update ongoing, workflow update always succeeds
+	if len(updateID.GetValue()) == 0 {
+		return nil
+	}
+
+	updateModel, err := u.updateFactory.updateStore.GetUpdate(ctx, updateID)
+	if err != nil {
+		return err
+	}
+
+	// an overwrite is only valid if both current and new workflow
+	// type is update
+	if updateModel.GetType() == models.WorkflowType_UPDATE &&
+		workflowType == models.WorkflowType_UPDATE {
+		return nil
+	}
+
+	return yarpcerrors.InvalidArgumentErrorf(
+		"workflow %s cannot overwrite workflow %s",
+		workflowType.String(), updateModel.GetType().String())
 }
 
 func (u *update) WriteProgress(

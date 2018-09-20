@@ -37,11 +37,14 @@ func initializeTask(taskStore *storemocks.MockTaskStore, jobID *peloton.JobID, i
 		},
 	}
 	config := &cachedConfig{
-		jobType: pbjob.JobType_BATCH,
+		jobType:   pbjob.JobType_BATCH,
+		changeLog: &peloton.ChangeLog{Version: 1},
 	}
 	job := &job{
 		id:     jobID,
 		config: config,
+		runtime: &pbjob.RuntimeInfo{
+			ConfigurationVersion: config.changeLog.Version},
 	}
 	tt.jobFactory.jobs[jobID.GetValue()] = job
 	return tt

@@ -922,7 +922,7 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil).
 		AnyTimes()
 	suite.mockedCachedJob.EXPECT().
-		GetConfig(gomock.Any()).
+		CompareAndSetConfig(gomock.Any(), gomock.Any()).
 		Return(&job.JobConfig{
 			ChangeLog: &peloton.ChangeLog{
 				Version: 2,
@@ -974,15 +974,12 @@ func (suite *JobHandlerTestSuite) TestJobUpdateInstanceConfig() {
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
 	suite.mockedCachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *job.JobInfo, _ cached.UpdateRequest) {
-			suite.NotNil(jobInfo.GetConfig().GetInstanceConfig()[0])
-			suite.True(jobInfo.GetConfig().GetInstanceConfig()[0].Controller)
-			suite.NotNil(jobInfo.GetConfig().GetInstanceConfig()[1])
+		CompareAndSetConfig(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, jobConfig *job.JobConfig) {
+			suite.NotNil(jobConfig.GetInstanceConfig()[0])
+			suite.True(jobConfig.GetInstanceConfig()[0].Controller)
+			suite.NotNil(jobConfig.GetInstanceConfig()[1])
 		}).
-		Return(nil)
-	suite.mockedCachedJob.EXPECT().
-		GetConfig(gomock.Any()).
 		Return(&job.JobConfig{
 			ChangeLog: &peloton.ChangeLog{Version: 2},
 		}, nil)
@@ -1099,8 +1096,8 @@ func (suite *JobHandlerTestSuite) TestJobUpdateFailure() {
 			DefaultConfig: defaultConfig,
 		}, nil)
 	suite.mockedCachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Return(errors.New("random error"))
+		CompareAndSetConfig(gomock.Any(), gomock.Any()).
+		Return(nil, errors.New("random error"))
 	resp, err = suite.handler.Update(suite.context, &job.UpdateRequest{
 		Id: jobID,
 		Config: &job.JobConfig{
@@ -1259,13 +1256,6 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	}
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
-	suite.mockedCachedJob.EXPECT().
-		GetConfig(gomock.Any()).
-		Return(&job.JobConfig{
-			ChangeLog: &peloton.ChangeLog{
-				Version: 2,
-			},
-		}, nil)
 	resp, err := suite.handler.Update(suite.context, req)
 	suite.NoError(err)
 	suite.Nil(resp)
@@ -1279,7 +1269,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
 	suite.mockedCachedJob.EXPECT().
-		GetConfig(gomock.Any()).
+		CompareAndSetConfig(gomock.Any(), gomock.Any()).
 		Return(&job.JobConfig{
 			ChangeLog: &peloton.ChangeLog{
 				Version: 2,
@@ -1313,7 +1303,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
 	suite.mockedCachedJob.EXPECT().
-		GetConfig(gomock.Any()).
+		CompareAndSetConfig(gomock.Any(), gomock.Any()).
 		Return(&job.JobConfig{
 			ChangeLog: &peloton.ChangeLog{
 				Version: 2,
@@ -1355,6 +1345,13 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 		gomock.Any(), addedSecret, jobID).Return(nil)
 	suite.mockedSecretStore.EXPECT().UpdateSecret(
 		gomock.Any(), updatedSecret).Return(nil)
+	suite.mockedCachedJob.EXPECT().
+		CompareAndSetConfig(gomock.Any(), gomock.Any()).
+		Return(&job.JobConfig{
+			ChangeLog: &peloton.ChangeLog{
+				Version: 2,
+			},
+		}, nil)
 	resp, err = suite.handler.Update(suite.context, req)
 	suite.NoError(err)
 	suite.NotNil(resp)
@@ -1387,7 +1384,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 			Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
 		}}, nil)
 	suite.mockedCachedJob.EXPECT().
-		GetConfig(gomock.Any()).
+		CompareAndSetConfig(gomock.Any(), gomock.Any()).
 		Return(&job.JobConfig{
 			ChangeLog: &peloton.ChangeLog{
 				Version: 2,
@@ -1528,7 +1525,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 
 	resp, err = suite.handler.Update(suite.context, req)
 	suite.Error(err)
-	suite.Equal(yarpcerrors.ErrorMessage(err), "DB error")
+	suite.Equal(yarpcerrors.FromError(err).Message(), "DB error")
 
 	// Cluster does not support secrets but update request has secrets,
 	// this will result in error

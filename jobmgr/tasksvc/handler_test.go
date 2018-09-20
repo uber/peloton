@@ -758,7 +758,7 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 				suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
 				suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
 			}).
-			Return(nil),
+			Return(&job.RuntimeInfo{}, nil),
 		suite.mockedTaskStore.EXPECT().
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(taskInfos, nil),
 		suite.mockedCachedJob.EXPECT().
@@ -910,7 +910,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksUpdateFailure() {
 				suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
 				suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
 			}).
-			Return(errors.New("test error")),
+			Return(nil, errors.New("test error")),
 	)
 
 	var request = &task.StartRequest{
@@ -943,7 +943,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksUpdateVersionError() {
 			suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
 			suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
 		}).
-		Return(jobmgrcommon.UnexpectedVersionError).
+		Return(nil, jobmgrcommon.UnexpectedVersionError).
 		Times(jobmgrcommon.MaxConcurrencyErrorRetry)
 
 	var request = &task.StartRequest{
@@ -991,7 +991,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasks_PatchTasksFailure() {
 				suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
 				suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
 			}).
-			Return(nil),
+			Return(&job.RuntimeInfo{}, nil),
 		suite.mockedTaskStore.EXPECT().
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(taskInfos, nil),
 		suite.mockedCachedJob.EXPECT().
@@ -1064,7 +1064,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 				suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
 				suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
 			}).
-			Return(nil),
+			Return(&job.RuntimeInfo{}, nil),
 		suite.mockedTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		suite.mockedCachedJob.EXPECT().
@@ -1271,7 +1271,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithInvalidRanges() {
 				suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
 				suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
 			}).
-			Return(nil),
+			Return(&job.RuntimeInfo{}, nil),
 		suite.mockedTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		suite.mockedTaskStore.EXPECT().
@@ -1328,7 +1328,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 				suite.Equal(job.JobState_PENDING, jobRuntime.GetState())
 				suite.Equal(job.JobState_SUCCEEDED, jobRuntime.GetGoalState())
 			}).
-			Return(nil),
+			Return(&job.RuntimeInfo{}, nil),
 		suite.mockedTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		suite.mockedHostMgr.EXPECT().KillTasks(gomock.Any(), gomock.Any()),
