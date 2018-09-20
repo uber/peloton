@@ -49,17 +49,9 @@ def is_service_proto(f):
 
 
 def generate(gen, f, m, out_dir, gen_opt=''):
-    print ' '.join([
-        'protoc',
-        '--proto_path /usr/local/include/',
-        '--proto_path=%s' % peloton_proto,
-        '--%s_out=%s:%s' % (gen, '${mflags}' if m != '' else m, out_dir),
-        '--%s_opt=%s' % (gen, gen_opt) if gen_opt != '' else '',
-        f,
-    ])
-
     cmd = protoc_cmd.format(proto_path=peloton_proto, gen=gen, mflags=m,
                             out_dir=out_dir, gen_opt=gen_opt, file=f)
+    print(cmd)
     retval = subprocess.call(cmd, shell=True)
 
     if retval != 0:
