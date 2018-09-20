@@ -17,7 +17,7 @@ var (
 
 // CreateReservationLabels creates reservation labels for stateful task.
 func CreateReservationLabels(
-	jobID string, instanceID int, hostname string) *mesos.Labels {
+	jobID string, instanceID uint32, hostname string) *mesos.Labels {
 	return &mesos.Labels{
 		Labels: []*mesos.Label{
 			{
@@ -26,7 +26,7 @@ func CreateReservationLabels(
 			},
 			{
 				Key:   &_instanceKey,
-				Value: util.PtrPrintf(strconv.Itoa(instanceID)),
+				Value: util.PtrPrintf(fmt.Sprint(instanceID)),
 			},
 			{
 				Key:   &_hostnameKey,

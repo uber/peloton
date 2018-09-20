@@ -704,7 +704,8 @@ func (suite *BuilderTestSuite) TestPopulateLabels() {
 
 	for _, test := range tt {
 		mesosTask := &mesos.TaskInfo{}
-		builder.populateLabels(mesosTask, test.pelotonTaskLabels, jobID, instanceID)
+		builder.populateLabels(
+			mesosTask, test.pelotonTaskLabels, jobID, uint32(instanceID))
 		suite.Equal(test.mesosTaskLabels, mesosTask.Labels)
 	}
 }

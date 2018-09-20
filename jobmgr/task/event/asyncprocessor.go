@@ -169,7 +169,7 @@ func (t *asyncEventProcessor) addEvent(event *pbeventstream.Event) error {
 			Error("Failed to ParseTaskID")
 		return err
 	}
-	index := instanceID % len(t.eventBuckets)
+	index := instanceID % uint32(len(t.eventBuckets))
 	t.eventBuckets[index].eventCh <- event
 	return nil
 }

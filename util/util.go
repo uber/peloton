@@ -255,15 +255,15 @@ func ParseRunID(mesosTaskID string) (uint64, error) {
 }
 
 // ParseTaskID parses the jobID and instanceID from peloton taskID
-func ParseTaskID(taskID string) (string, int, error) {
+func ParseTaskID(taskID string) (string, uint32, error) {
 	pos := strings.LastIndex(taskID, "-")
 	if len(taskID) < UUIDLength || pos == -1 {
-		return "", -1, fmt.Errorf("invalid pelotonTaskID %v", taskID)
+		return "", 0, fmt.Errorf("invalid pelotonTaskID %v", taskID)
 	}
 	jobID := taskID[0:pos]
 	ins := taskID[pos+1:]
 
-	instanceID, err := strconv.Atoi(ins)
+	instanceID, err := strconv.ParseUint(ins, 10, 32)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"task_id": taskID,
@@ -271,10 +271,10 @@ func ParseTaskID(taskID string) (string, int, error) {
 		}).WithError(err).Error("failed to parse taskID")
 		log.Info(err)
 		return "",
-			-1,
+			0,
 			fmt.Errorf("unable to parse instanceID %v", taskID)
 	}
-	return jobID, instanceID, err
+	return jobID, uint32(instanceID), err
 }
 
 // ParseTaskIDFromMesosTaskID parses the taskID from mesosTaskID
@@ -306,10 +306,10 @@ func ParseTaskIDFromMesosTaskID(mesosTaskID string) (string, error) {
 }
 
 // ParseJobAndInstanceID return jobID and instanceID from given mesos task id.
-func ParseJobAndInstanceID(mesosTaskID string) (string, int, error) {
+func ParseJobAndInstanceID(mesosTaskID string) (string, uint32, error) {
 	pelotonTaskID, err := ParseTaskIDFromMesosTaskID(mesosTaskID)
 	if err != nil {
-		return "", -1, err
+		return "", 0, err
 	}
 	return ParseTaskID(pelotonTaskID)
 }

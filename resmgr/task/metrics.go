@@ -142,7 +142,7 @@ func getInstanceID(mesosTaskID string) string {
 	if err != nil {
 		return "-1"
 	}
-	return strconv.Itoa(id)
+	return strconv.Itoa(int(id))
 }
 
 // TODO: Update this once mesos task id migration is complete from

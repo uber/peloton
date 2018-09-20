@@ -91,7 +91,7 @@ func TestParseTaskID(t *testing.T) {
 		msg           string
 		pelotonTaskID string
 		jobID         string
-		instanceID    int
+		instanceID    uint32
 		err           error
 	}{
 		{
@@ -105,44 +105,44 @@ func TestParseTaskID(t *testing.T) {
 			msg:           "Incorrect pelotonTaskID - uuid_text",
 			pelotonTaskID: ID + "-1234test",
 			jobID:         "",
-			instanceID:    -1,
+			instanceID:    0,
 			err:           errors.New("unable to parse instanceID " + ID + "-1234test"),
 		},
 		{
 			msg:           "Incorrect pelotonTaskID - text-int",
 			pelotonTaskID: "Test-1234",
 			jobID:         "",
-			instanceID:    -1,
+			instanceID:    0,
 			err:           errors.New("invalid pelotonTaskID Test-1234"),
 		},
 		{
 			msg:           "Incorrect pelotonTaskID - text",
 			pelotonTaskID: "Test",
 			jobID:         "",
-			instanceID:    -1,
+			instanceID:    0,
 			err:           errors.New("invalid pelotonTaskID Test"),
 		},
 		{
 			msg:           "Incorrect pelotonTaskID - text_int",
 			pelotonTaskID: "Test_1234",
 			jobID:         "",
-			instanceID:    -1,
+			instanceID:    0,
 			err:           errors.New("invalid pelotonTaskID Test_1234"),
 		},
 		{
 			msg:           "Incorrect pelotonTaskID - text_text",
 			pelotonTaskID: "Test_1234test",
 			jobID:         "",
-			instanceID:    -1,
+			instanceID:    0,
 			err:           errors.New("invalid pelotonTaskID Test_1234test"),
 		},
 	}
 
 	for _, tt := range testTable {
 		jobID, instanceID, err := ParseTaskID(tt.pelotonTaskID)
-		assert.Equal(t, jobID, tt.jobID)
-		assert.Equal(t, instanceID, tt.instanceID)
-		assert.Equal(t, err, tt.err)
+		assert.Equal(t, jobID, tt.jobID, tt.msg)
+		assert.Equal(t, instanceID, tt.instanceID, tt.msg)
+		assert.Equal(t, err, tt.err, tt.msg)
 	}
 }
 
@@ -200,8 +200,8 @@ func TestParseTaskIDFromMesosTaskID(t *testing.T) {
 
 	for _, tt := range testTable {
 		pelotonTaskID, err := ParseTaskIDFromMesosTaskID(tt.mesosTaskID)
-		assert.Equal(t, pelotonTaskID, tt.pelotonTaskID)
-		assert.Equal(t, err, tt.err)
+		assert.Equal(t, pelotonTaskID, tt.pelotonTaskID, tt.msg)
+		assert.Equal(t, err, tt.err, tt.msg)
 	}
 }
 
@@ -211,7 +211,7 @@ func TestParseJobAndInstanceID(t *testing.T) {
 		msg         string
 		mesosTaskID string
 		jobID       string
-		instanceID  int
+		instanceID  uint32
 		err         error
 	}{
 		{
@@ -232,16 +232,16 @@ func TestParseJobAndInstanceID(t *testing.T) {
 			msg:         "Incorrect mesosTaskID uuid-text-runid(int)",
 			mesosTaskID: ID + "-test-" + "1",
 			jobID:       "",
-			instanceID:  -1,
+			instanceID:  0,
 			err:         errors.New("unable to parse instanceID " + ID + "-test"),
 		},
 	}
 
 	for _, tt := range testTable {
 		jobID, instanceID, err := ParseJobAndInstanceID(tt.mesosTaskID)
-		assert.Equal(t, jobID, tt.jobID)
-		assert.Equal(t, instanceID, tt.instanceID)
-		assert.Equal(t, err, tt.err)
+		assert.Equal(t, jobID, tt.jobID, tt.msg)
+		assert.Equal(t, instanceID, tt.instanceID, tt.msg)
+		assert.Equal(t, err, tt.err, tt.msg)
 	}
 }
 

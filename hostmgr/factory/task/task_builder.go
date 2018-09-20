@@ -302,7 +302,7 @@ func (tb *Builder) populateCommandInfo(
 	command *mesos.CommandInfo,
 	envMap map[string]string,
 	jobID string,
-	instanceID int,
+	instanceID uint32,
 ) {
 
 	if command == nil {
@@ -371,7 +371,7 @@ func (tb *Builder) populateLabels(
 	mesosTask *mesos.TaskInfo,
 	labels []*peloton.Label,
 	jobID string,
-	instanceID int,
+	instanceID uint32,
 ) {
 	var mesosLabels *mesos.Labels
 
