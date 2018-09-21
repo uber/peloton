@@ -149,19 +149,6 @@ func (h *serviceHandler) CreateUpdate(
 		return nil, err
 	}
 
-	if jobRuntime.GetUpdateID() != nil &&
-		len(jobRuntime.GetUpdateID().GetValue()) > 0 {
-		if err = updateutil.AbortJobUpdate(
-			ctx,
-			jobRuntime.GetUpdateID(),
-			h.updateStore,
-			h.updateFactory,
-		); err != nil {
-			h.metrics.UpdateCreateFail.Inc(1)
-			return nil, err
-		}
-	}
-
 	id := &peloton.UpdateID{
 		Value: uuid.New(),
 	}
