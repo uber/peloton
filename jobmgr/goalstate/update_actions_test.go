@@ -16,6 +16,7 @@ import (
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -395,15 +396,41 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrackRuntimeSetFail() {
 		Return(jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pbjob.JobInfo,
-			_ cached.UpdateRequest) {
-			suite.Equal("", jobInfo.GetRuntime().GetUpdateID().GetValue())
+		CompareAndSetRuntime(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, runtime *pbjob.RuntimeInfo) {
+			suite.Nil(runtime.GetUpdateID())
 		}).
 		Return(fmt.Errorf("fake db error"))
 
 	err := UpdateUntrack(context.Background(), suite.updateEnt)
 	suite.EqualError(err, "fake db error")
+}
+
+// TestUpdateUntrackRuntimeSetVersionError tests getting version error
+// when trying to untrack update from runtime
+func (suite *UpdateActionsTestSuite) TestUpdateUntrackRuntimeSetVersionError() {
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	for i := 0; i < jobmgrcommon.MaxConcurrencyErrorRetry; i++ {
+		suite.cachedJob.EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(&pbjob.RuntimeInfo{
+				UpdateID: suite.updateID,
+			}, nil)
+
+		suite.cachedJob.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, runtime *pbjob.RuntimeInfo) {
+				suite.Nil(runtime.GetUpdateID())
+			}).
+			Return(jobmgrcommon.UnexpectedVersionError)
+	}
+
+	err := UpdateUntrack(context.Background(), suite.updateEnt)
+	suite.Error(err)
+	suite.Equal(jobmgrcommon.UnexpectedVersionError, err)
 }
 
 // TestUpdateUntrack tests untracking an update successfully
@@ -429,10 +456,9 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrack() {
 		Return(jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pbjob.JobInfo,
-			_ cached.UpdateRequest) {
-			suite.Equal("", jobInfo.GetRuntime().GetUpdateID().GetValue())
+		CompareAndSetRuntime(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, runtime *pbjob.RuntimeInfo) {
+			suite.Nil(runtime.GetUpdateID())
 		}).
 		Return(nil)
 
@@ -461,7 +487,7 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrack() {
 
 // TestUpdateUntrack_TerminalJob tests untracking an update would untrack
 // a terminated job
-func (suite *UpdateActionsTestSuite) TestUpdateUntrack_TerminatedJob() {
+func (suite *UpdateActionsTestSuite) TestUpdateUntrackTerminatedJob() {
 	jobRuntime := &pbjob.RuntimeInfo{
 		UpdateID: suite.updateID,
 		State:    pbjob.JobState_KILLED,
@@ -484,10 +510,9 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrack_TerminatedJob() {
 		Return(jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pbjob.JobInfo,
-			_ cached.UpdateRequest) {
-			suite.Equal("", jobInfo.GetRuntime().GetUpdateID().GetValue())
+		CompareAndSetRuntime(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, runtime *pbjob.RuntimeInfo) {
+			suite.Nil(runtime.GetUpdateID())
 		}).
 		Return(nil)
 

@@ -5,11 +5,11 @@ import (
 	"time"
 
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	updateutil "code.uber.internal/infra/peloton/jobmgr/util/update"
 	"code.uber.internal/infra/peloton/util"
 
@@ -115,33 +115,43 @@ func UpdateComplete(ctx context.Context, entity goalstate.Entity) error {
 
 // UpdateUntrack deletes the update from the cache and the goal state engine.
 func UpdateUntrack(ctx context.Context, entity goalstate.Entity) error {
+	var runtime *pbjob.RuntimeInfo
+	var err error
+
 	updateEnt := entity.(*updateEntity)
 	goalStateDriver := updateEnt.driver
-
-	// TODO: first remove the update id from the job runtime
-	// if still the same as the update-id.
-	// For now set it to an empty string.
 	jobID := updateEnt.jobID
 	cachedJob := goalStateDriver.jobFactory.AddJob(jobID)
-	runtime, err := cachedJob.GetRuntime(ctx)
-	if err != nil {
-		return err
-	}
 
-	if runtime.GetUpdateID().GetValue() == updateEnt.id.GetValue() {
-		// if update ID in runtime is the same as the update being untracked,
-		// clean up the job runtime.
-		if err := cachedJob.Update(
-			ctx,
-			&pbjob.JobInfo{
-				Runtime: &pbjob.RuntimeInfo{
-					UpdateID: &peloton.UpdateID{Value: ""},
-				},
-			},
-			cached.UpdateCacheAndDB,
-		); err != nil {
+	count := 0
+	for {
+		runtime, err = cachedJob.GetRuntime(ctx)
+		if err != nil {
 			return err
 		}
+
+		if runtime.GetUpdateID().GetValue() != updateEnt.id.GetValue() {
+			break
+		}
+
+		// update ID in runtime is the same as the update
+		// being untracked, clean up the job runtime.
+		runtime.UpdateID = nil
+		err = cachedJob.CompareAndSetRuntime(ctx, runtime)
+		if err == jobmgrcommon.UnexpectedVersionError {
+			// concurrency error; retry MaxConcurrencyErrorRetry times
+			count = count + 1
+			if count < jobmgrcommon.MaxConcurrencyErrorRetry {
+				continue
+			}
+		}
+
+		if err != nil {
+			return err
+		}
+
+		// updateID has been successfully unset from job runtime
+		break
 	}
 
 	// clean up the update from cache and goal state
