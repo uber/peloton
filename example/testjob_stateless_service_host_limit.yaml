@@ -1,0 +1,44 @@
+changelog: null
+name: TestPelotonJob_Stateless_123_HostLimit
+owningteam: team6
+ldapgroups:
+- money
+- team6
+- otto
+description: "A dummy test stateless service job for peloton"
+labels:
+- key: instance
+  value: ubunny.production.ubunny
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
+instancecount: 4
+type: 1
+sla:
+  priority: 22
+  preemptible: false
+defaultconfig:
+  resource:
+    cpulimit: 1.0
+    memlimitmb: 2.0
+    disklimitmb: 10
+    fdlimit: 10
+  healthcheck: null
+  ports: []
+  container: null
+  command:
+    shell: true
+    value: 'while :; do echo running; sleep 10; done'
+  labels:
+  - key: instance
+    value: ubunny.production.ubunny
+  constraint:
+    type: 1  # LABEL_CONSTRAINT
+    labelconstraint:
+      kind: 1 # TASK
+      condition: 2 # CONDITION_EQUAL
+      requirement: 0
+      label:
+        key: instance
+        value: ubunny.production.ubunny

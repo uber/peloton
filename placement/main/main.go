@@ -135,7 +135,8 @@ func main() {
 	}
 	log.SetLevel(initialLevel)
 
-	log.WithField("files", *cfgFiles).Info("Loading Placement Engnine config")
+	log.WithField("files", *cfgFiles).
+		Info("Loading Placement Engnine config")
 	var cfg config.Config
 	if err := common_config.Parse(&cfg, *cfgFiles...); err != nil {
 		log.WithField("error", err).Fatal("Cannot parse yaml config")
@@ -182,26 +183,15 @@ func main() {
 		cfg.Storage.Cassandra.CassandraConn.Port = *cassandraPort
 	}
 
-	cfg.Placement.TaskType = resmgr.TaskType_BATCH
 	if *taskType != "" {
-		if tt, ok := resmgr.TaskType_value[*taskType]; ok {
-			cfg.Placement.TaskType = resmgr.TaskType(tt)
-			if cfg.Placement.TaskType == resmgr.TaskType_STATEFUL {
-				// Use mimir strategy for stateful task placement.
-				cfg.Placement.Strategy = config.Mimir
-				cfg.Placement.FetchOfferTasks = true
-			} else if cfg.Placement.TaskType == resmgr.TaskType_STATELESS {
-				// TODO: use mirmir for stateless service
-				cfg.Placement.Strategy = config.Batch
-				cfg.Placement.FetchOfferTasks = false
-			}
-		} else {
-			log.WithField("placement_task_type", *taskType).Error("Invalid placement task type")
-		}
+		overridePlacementStrategy(*taskType, &cfg)
 	}
-	log.WithField("placement_task_type", cfg.Placement.TaskType).Info("Placement engine task type")
+	log.WithField("placement_task_type", cfg.Placement.TaskType).
+		WithField("strategy", cfg.Placement.Strategy).
+		Info("Placement engine type")
 
-	log.WithField("config", cfg).Info("Completed Loading Placement Engine config")
+	log.WithField("config", cfg).
+		Info("Completed Loading Placement Engine config")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,
@@ -222,8 +212,11 @@ func main() {
 		t,
 	)
 	if err != nil {
-		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
-			Fatal("Could not create smart peer chooser for host manager")
+		log.WithFields(
+			log.Fields{
+				"error": err,
+				"role":  common.HostManagerRole},
+		).Fatal("Could not create smart peer chooser for host manager")
 	}
 	defer hostmgrPeerChooser.Stop()
 
@@ -237,8 +230,11 @@ func main() {
 		t,
 	)
 	if err != nil {
-		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
-			Fatal("Could not create smart peer chooser for resource manager")
+		log.WithFields(
+			log.Fields{
+				"error": err,
+				"role":  common.ResourceManagerRole},
+		).Fatal("Could not create smart peer chooser for resource manager")
 	}
 	defer resmgrPeerChooser.Stop()
 
@@ -278,22 +274,29 @@ func main() {
 	}
 	defer dispatcher.Stop()
 
-	tallyMetrics := tally_metrics.NewMetrics(rootScope.SubScope("placement"))
-	resourceManager := resmgrsvc.NewResourceManagerServiceYARPCClient(dispatcher.ClientConfig(common.PelotonResourceManager))
-	hostManager := hostsvc.NewInternalHostServiceYARPCClient(dispatcher.ClientConfig(common.PelotonHostManager))
-	offerService := offers.NewService(hostManager, resourceManager, tallyMetrics)
-	taskService := tasks.NewService(resourceManager, &cfg.Placement, tallyMetrics)
-	hostsService := hosts.NewService(hostManager, resourceManager, tallyMetrics)
+	tallyMetrics := tally_metrics.NewMetrics(
+		rootScope.SubScope("placement"))
+	resourceManager := resmgrsvc.NewResourceManagerServiceYARPCClient(
+		dispatcher.ClientConfig(common.PelotonResourceManager))
+	hostManager := hostsvc.NewInternalHostServiceYARPCClient(
+		dispatcher.ClientConfig(common.PelotonHostManager))
+	offerService := offers.NewService(
+		hostManager,
+		resourceManager,
+		tallyMetrics,
+	)
+	taskService := tasks.NewService(
+		resourceManager,
+		&cfg.Placement,
+		tallyMetrics,
+	)
+	hostsService := hosts.NewService(
+		hostManager,
+		resourceManager,
+		tallyMetrics,
+	)
 
-	var strategy plugins.Strategy
-	switch cfg.Placement.Strategy {
-	case config.Batch:
-		strategy = batch.New()
-	case config.Mimir:
-		cfg.Placement.Concurrency = 1
-		placer := algorithms.NewPlacer(4, 300)
-		strategy = mimir_strategy.New(placer, &cfg.Placement)
-	}
+	strategy := initPlacementStrategy(cfg)
 
 	pool := async.NewPool(async.PoolOptions{
 		MaxWorkers: cfg.Placement.Concurrency,
@@ -317,4 +320,39 @@ func main() {
 	health.InitHeartbeat(rootScope, cfg.Health, nil)
 
 	select {}
+}
+
+func initPlacementStrategy(cfg config.Config) plugins.Strategy {
+	var strategy plugins.Strategy
+	switch cfg.Placement.Strategy {
+	case config.Batch:
+		strategy = batch.New()
+	case config.Mimir:
+		// TODO avyas check mimir concurrency parameters
+		cfg.Placement.Concurrency = 1
+		placer := algorithms.NewPlacer(4, 300)
+		strategy = mimir_strategy.New(placer, &cfg.Placement)
+	}
+	return strategy
+}
+
+// overrides the strategy based on the task type supplied at runtime.
+func overridePlacementStrategy(taskType string, cfg *config.Config) {
+	tt, ok := resmgr.TaskType_value[taskType]
+	if !ok {
+		log.WithField("placement_task_type", taskType).
+			Fatal("Invalid placement task type")
+	}
+
+	cfg.Placement.TaskType = resmgr.TaskType(tt)
+	switch cfg.Placement.TaskType {
+	case resmgr.TaskType_STATEFUL, resmgr.TaskType_STATELESS:
+		// Use mimir strategy for stateful and stateless task placement.
+		cfg.Placement.Strategy = config.Mimir
+		cfg.Placement.FetchOfferTasks = true
+	default:
+		// Use batch strategy for everything else.
+		cfg.Placement.Strategy = config.Batch
+		cfg.Placement.FetchOfferTasks = false
+	}
 }
