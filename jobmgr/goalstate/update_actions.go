@@ -137,7 +137,7 @@ func UpdateUntrack(ctx context.Context, entity goalstate.Entity) error {
 		// update ID in runtime is the same as the update
 		// being untracked, clean up the job runtime.
 		runtime.UpdateID = nil
-		err = cachedJob.CompareAndSetRuntime(ctx, runtime)
+		_, err = cachedJob.CompareAndSetRuntime(ctx, runtime)
 		if err == jobmgrcommon.UnexpectedVersionError {
 			// concurrency error; retry MaxConcurrencyErrorRetry times
 			count = count + 1

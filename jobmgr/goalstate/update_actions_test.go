@@ -400,7 +400,7 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrackRuntimeSetFail() {
 		Do(func(_ context.Context, runtime *pbjob.RuntimeInfo) {
 			suite.Nil(runtime.GetUpdateID())
 		}).
-		Return(fmt.Errorf("fake db error"))
+		Return(&pbjob.RuntimeInfo{}, fmt.Errorf("fake db error"))
 
 	err := UpdateUntrack(context.Background(), suite.updateEnt)
 	suite.EqualError(err, "fake db error")
@@ -425,7 +425,7 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrackRuntimeSetVersionError() {
 			Do(func(_ context.Context, runtime *pbjob.RuntimeInfo) {
 				suite.Nil(runtime.GetUpdateID())
 			}).
-			Return(jobmgrcommon.UnexpectedVersionError)
+			Return(&pbjob.RuntimeInfo{}, jobmgrcommon.UnexpectedVersionError)
 	}
 
 	err := UpdateUntrack(context.Background(), suite.updateEnt)
@@ -460,7 +460,7 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrack() {
 		Do(func(_ context.Context, runtime *pbjob.RuntimeInfo) {
 			suite.Nil(runtime.GetUpdateID())
 		}).
-		Return(nil)
+		Return(&pbjob.RuntimeInfo{}, nil)
 
 	suite.updateGoalStateEngine.EXPECT().
 		Delete(gomock.Any()).
@@ -514,7 +514,7 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrackTerminatedJob() {
 		Do(func(_ context.Context, runtime *pbjob.RuntimeInfo) {
 			suite.Nil(runtime.GetUpdateID())
 		}).
-		Return(nil)
+		Return(&pbjob.RuntimeInfo{}, nil)
 
 	suite.updateGoalStateEngine.EXPECT().
 		Delete(gomock.Any()).
