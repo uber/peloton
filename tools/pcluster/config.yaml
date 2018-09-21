@@ -43,7 +43,7 @@ oversubscribed_resources_interval: 15secs
 
 
 # Cassandra configs
-cassandra_image: cassandra:3.9
+cassandra_image: cassandra:3.0.14
 cassandra_container: peloton-cassandra
 cassandra_cql_port: 9042
 cassandra_thrift_port: 9160
