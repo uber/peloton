@@ -39,17 +39,11 @@ host_manager:
   # Resource Types are case sensitive, supported resource types are "CPU", "GPU", "Mem" and "Disk"
   # As of now, GPU is the only supported scarce resource type, adding other resource types are no-op.
   scarce_resource_types:
-
   # slack_resource_types are resource types exposed as revocable resources by Mesos.
   # usage slack = allocated resources - actual resources consumed.
   # Mesos supports cpus & mem as revocable resources.
   # Peloton only supports [cpus] as revocable/slack resources.
   slack_resource_types:
-
-  # bin_packing represents the strategy hostmanager is going to use in order
-  # to pack the tasks in the host. By default it was FIRST_FIT, we are changing
-  # it to DEFRAG.
-  bin_packing: DEFRAG # DEFRAG/FIRST_FIT
 
 mesos:
   encoding: "x-protobuf"

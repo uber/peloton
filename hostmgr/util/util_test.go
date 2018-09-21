@@ -70,13 +70,6 @@ func TestIsSlackResourceType(t *testing.T) {
 	assert.True(t, IsSlackResourceType(common.MesosCPU, slackResourceType))
 }
 
-func TestGetResourcesFromOffers(t *testing.T) {
-	offers := createUnreservedMesosOffers(1)
-	resource := GetResourcesFromOffers(offers)
-	assert.Equal(t, resource.GetCPU(), float64(1))
-	assert.Equal(t, resource.GetMem(), float64(1))
-}
-
 func createUnreservedMesosOffer(
 	offerID string) *mesos.Offer {
 	rs := []*mesos.Resource{

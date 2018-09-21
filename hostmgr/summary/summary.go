@@ -508,16 +508,6 @@ func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) (bool, scala
 // GetOffers returns offers, and #offers present for this host, of type reserved, unreserved or all.
 // Returns map of offerid -> offer
 func (a *hostSummary) GetOffers(offertype OfferType) map[string]*mesos.Offer {
-	a.Lock()
-	defer a.Unlock()
-	return a.getOffers(offertype)
-}
-
-// getOffers is a unprotected method
-// returns offers, and #offers present for this host, of type
-// reserved, unreserved or all.
-// Returns map of offerid -> offer
-func (a *hostSummary) getOffers(offertype OfferType) map[string]*mesos.Offer {
 	offers := make(map[string]*mesos.Offer)
 	switch offertype {
 	case Reserved:
@@ -533,8 +523,8 @@ func (a *hostSummary) getOffers(offertype OfferType) map[string]*mesos.Offer {
 	case All:
 		fallthrough
 	default:
-		offers = a.getOffers(Unreserved)
-		reservedOffers := a.getOffers(Reserved)
+		offers = a.GetOffers(Unreserved)
+		reservedOffers := a.GetOffers(Reserved)
 		for key, value := range reservedOffers {
 			offers[key] = value
 		}

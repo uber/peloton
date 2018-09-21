@@ -5,9 +5,6 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
-
 	log "github.com/sirupsen/logrus"
 )
 
@@ -54,14 +51,4 @@ func IsSlackResourceType(resourceType string, slackResourceTypes []string) bool 
 		}
 	}
 	return false
-}
-
-// GetResourcesFromOffers returns the combined number of scalar.resources
-// passed as a map of offerid->mesos.offer map.
-func GetResourcesFromOffers(offers map[string]*mesos.Offer) scalar.Resources {
-	var resources []*mesos.Resource
-	for _, offer := range offers {
-		resources = append(resources, offer.GetResources()...)
-	}
-	return scalar.FromMesosResources(resources)
 }

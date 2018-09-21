@@ -16,15 +16,15 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/hostmgr/binpacking"
-	hostmgr_mesos_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
+	hmutil "code.uber.internal/infra/peloton/hostmgr/util"
+	"code.uber.internal/infra/peloton/util"
+
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
 	hostmgr_summary_mocks "code.uber.internal/infra/peloton/hostmgr/summary/mocks"
-	hmutil "code.uber.internal/infra/peloton/hostmgr/util"
-	"code.uber.internal/infra/peloton/util"
+
+	hostmgr_mesos_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
 	mpb_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
 )
 
@@ -184,7 +184,6 @@ func (suite *OfferPoolTestSuite) SetupSuite() {
 			suite.agent4Offers = append(suite.agent4Offers, offers...)
 		}
 	}
-	binpacking.Init()
 }
 
 func (suite *OfferPoolTestSuite) SetupTest() {
@@ -201,7 +200,6 @@ func (suite *OfferPoolTestSuite) SetupTest() {
 		metrics:                    NewMetrics(scope),
 		mSchedulerClient:           suite.schedulerClient,
 		mesosFrameworkInfoProvider: suite.provider,
-		binPackingRanker:           binpacking.CreateRanker(binpacking.DeFrag),
 	}
 
 	suite.pool.timedOffers.Range(func(key interface{}, value interface{}) bool {
@@ -224,12 +222,10 @@ func (suite *OfferPoolTestSuite) TestSlackResourceTypes() {
 		nil,
 		[]string{"GPU", "DUMMY"},
 		[]string{common.MesosCPU, "DUMMY"},
-		binpacking.CreateRanker("DEFRAG"),
 	)
 	suite.True(hmutil.IsSlackResourceType(common.MesosCPU, supportedSlackResourceTypes))
 	suite.False(hmutil.IsSlackResourceType(common.MesosMem, supportedSlackResourceTypes))
 }
-
 func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 	// Launching tasks for host, which does not exist in the offer pool
 	_, err := suite.pool.ClaimForLaunch(_dummyTestAgent, true)
@@ -757,81 +753,6 @@ func (suite *OfferPoolTestSuite) TestDeclineOffers() {
 	// Decline a valid and non-valid offer.
 	suite.pool.DeclineOffers(context.Background(), []*mesos.OfferID{offer1.Id})
 	suite.Equal(suite.GetTimedOfferLen(), 2)
-}
-
-func (suite *OfferPoolTestSuite) TestOfferSorting() {
-	// Verify offer pool is empty
-	suite.Equal(suite.GetTimedOfferLen(), 0)
-
-	hostName0 := "hostname0"
-	offer0 := suite.createOffer(hostName0, scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 1})
-
-	hostName1 := "hostname1"
-	offer1 := suite.createOffer(hostName1, scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
-
-	hostName2 := "hostname2"
-	offer2 := suite.createOffer(hostName2, scalar.Resources{CPU: 2, Mem: 2, Disk: 2, GPU: 4})
-
-	hostName3 := "hostname3"
-	offer3 := suite.createOffer(hostName3, scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
-
-	hostName4 := "hostname4"
-	offer4 := suite.createOffer(hostName4, scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
-
-	suite.pool.AddOffers(context.Background(),
-		[]*mesos.Offer{offer2, offer3, offer1, offer0, offer4})
-
-	sortedList := suite.pool.getRankedHostSummaryList(suite.pool.hostOfferIndex)
-
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[0].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 1})
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[1].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[2].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[3].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[4].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 2, Mem: 2, Disk: 2, GPU: 4})
-}
-
-func (suite *OfferPoolTestSuite) createOffer(
-	hostName string,
-	resource scalar.Resources) *mesos.Offer {
-	offerID := fmt.Sprintf("%s-%d", hostName, 1)
-	agentID := fmt.Sprintf("%s-%d", hostName, 1)
-	return &mesos.Offer{
-		Id: &mesos.OfferID{
-			Value: &offerID,
-		},
-		AgentId: &mesos.AgentID{
-			Value: &agentID,
-		},
-		Hostname: &hostName,
-		Resources: []*mesos.Resource{
-			util.NewMesosResourceBuilder().
-				WithName("cpus").
-				WithValue(resource.CPU).
-				Build(),
-			util.NewMesosResourceBuilder().
-				WithName("mem").
-				WithValue(resource.Mem).
-				Build(),
-			util.NewMesosResourceBuilder().
-				WithName("disk").
-				WithValue(resource.Disk).
-				Build(),
-			util.NewMesosResourceBuilder().
-				WithName("gpus").
-				WithValue(resource.GPU).
-				Build(),
-		},
-	}
 }
 
 func (suite *OfferPoolTestSuite) TestGetHostSummary() {

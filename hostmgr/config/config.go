@@ -53,7 +53,4 @@ type Config struct {
 
 	// Represents slack resource types (revocable resources) such as cpus, mem.
 	SlackResourceTypes []string `yaml:"slack_resource_types"`
-
-	// Bin Packing tasks in hosts as much as possible
-	BinPacking string `yaml:"bin_packing"`
 }

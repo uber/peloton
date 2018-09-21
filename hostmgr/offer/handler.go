@@ -11,7 +11,6 @@ import (
 
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 	"code.uber.internal/infra/peloton/common/background"
-	"code.uber.internal/infra/peloton/hostmgr/binpacking"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
 	"code.uber.internal/infra/peloton/hostmgr/prune"
@@ -67,8 +66,7 @@ func InitEventHandler(
 	backgroundMgr background.Manager,
 	hostPruningPeriodSec time.Duration,
 	scarceResourceTypes []string,
-	slackResourceTypes []string,
-	ranker binpacking.Ranker) {
+	slackResourceTypes []string) {
 
 	if handler != nil {
 		log.Warning("Offer event handler has already been initialized")
@@ -83,7 +81,6 @@ func InitEventHandler(
 		volumeStore,
 		scarceResourceTypes,
 		slackResourceTypes,
-		ranker,
 	)
 	hostPruner := prune.NewHostPruner(
 		pool,

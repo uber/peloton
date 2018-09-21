@@ -17,7 +17,6 @@ import (
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/hostmgr"
-	bin_packing "code.uber.internal/infra/peloton/hostmgr/binpacking"
 	"code.uber.internal/infra/peloton/hostmgr/host"
 	"code.uber.internal/infra/peloton/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
@@ -144,11 +143,6 @@ var (
 		"slack-resource-type", "Slack Resource Type.").
 		Envar("SLACK_RESOURCE_TYPES").
 		String()
-
-	binPacking = app.Flag(
-		"bin_packing", "Bin Packing enable/disable, by default disabled.").
-		Envar("BIN_PACKING").
-		String()
 )
 
 func main() {
@@ -224,11 +218,6 @@ func main() {
 	if *slackResourceTypes != "" {
 		log.Info(strings.Split(*slackResourceTypes, ","))
 		cfg.HostManager.SlackResourceTypes = strings.Split(*slackResourceTypes, ",")
-	}
-
-	if *binPacking != "" {
-		log.Info("Bin Packing is enabled")
-		cfg.HostManager.BinPacking = *binPacking
 	}
 
 	log.WithField("config", cfg).Debug("Loaded Host Manager config")
@@ -419,8 +408,6 @@ func main() {
 		log.WithError(err).Fatal("Cannot register reconciler background worker.")
 	}
 
-	bin_packing.Init()
-	log.Infof(" %s Bin Packing is enabled", cfg.HostManager.BinPacking)
 	offer.InitEventHandler(
 		dispatcher,
 		rootScope,
@@ -432,7 +419,6 @@ func main() {
 		cfg.HostManager.HostPruningPeriodSec,
 		cfg.HostManager.ScarceResourceTypes,
 		cfg.HostManager.SlackResourceTypes,
-		bin_packing.CreateRanker(cfg.HostManager.BinPacking),
 	)
 
 	maintenanceQueue := queue.NewMaintenanceQueue()

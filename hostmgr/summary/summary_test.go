@@ -925,7 +925,6 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForReservedOffersForLaunch() {
 	offers = append(offers, suite.createUnreservedMesosOffer("unreserved-offerid-1"))
 
 	s := New(suite.mockVolumeStore, nil, offers[0].GetHostname(), supportedSlackResourceTypes).(*hostSummary)
-
 	s.AddMesosOffers(context.Background(), offers)
 	suite.Equal(int(s.readyCount.Load()), 1)
 
