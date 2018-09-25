@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/background"
 	"code.uber.internal/infra/peloton/common/config"
@@ -144,6 +145,14 @@ var (
 		Default("false").
 		Envar("ENABLE_SECRETS").
 		Bool()
+
+	// TODO: remove this flag and all related code after
+	// storage layer can figure out recovery
+	jobType = app.Flag(
+		"job-type", "Cluster job type").
+		Default("BATCH").
+		Envar("JOB_TYPE").
+		Enum("BATCH", "SERVICE")
 )
 
 func main() {
@@ -159,6 +168,8 @@ func main() {
 		initialLevel = log.DebugLevel
 	}
 	log.SetLevel(initialLevel)
+
+	log.WithField("job_type", jobType).Info("Loaded job type for the cluster")
 
 	log.WithField("files", *cfgFiles).Info("Loading job manager config")
 	var cfg Config
@@ -344,6 +355,7 @@ func main() {
 		jobFactory,
 		updateFactory,
 		launcher.GetLauncher(),
+		job.JobType(job.JobType_value[*jobType]),
 		rootScope,
 		cfg.JobManager.GoalState,
 	)

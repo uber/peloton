@@ -39,8 +39,9 @@ const (
 )
 
 var (
-	// jobStatesToRecover represents the job states which need recovery
-	jobStatesToRecover = []job.JobState{
+	// batchJobStatesToRecover represents the job states which need recovery
+	// for a batch job cluster
+	batchJobStatesToRecover = []job.JobState{
 		job.JobState_INITIALIZED,
 		job.JobState_PENDING,
 		job.JobState_RUNNING,
@@ -52,6 +53,26 @@ var (
 		// TODO remove recovery of UNKNOWN state after all old jobs created
 		// before job goal state engine was added have terminated.
 		job.JobState_UNKNOWN,
+	}
+
+	// serviceJobStatesToRecover represents the job states which need recovery
+	// for a service job cluster
+	serviceJobStatesToRecover = []job.JobState{
+		job.JobState_INITIALIZED,
+		job.JobState_PENDING,
+		job.JobState_RUNNING,
+		job.JobState_KILLING,
+		// Get failed jobs in-case service jobs need to be restarted
+		// Only killed and succeeded jobs are not recovered as of now.
+		// TODO uncomment this after archiver has been put in to delete old jobs.
+		//job.JobState_FAILED,
+		// TODO remove recovery of UNKNOWN state after all old jobs created
+		// before job goal state engine was added have terminated.
+		job.JobState_UNKNOWN,
+		// for service job event terminal job state need to be recovered
+		job.JobState_KILLED,
+		job.JobState_FAILED,
+		job.JobState_SUCCEEDED,
 	}
 )
 
@@ -104,6 +125,7 @@ func NewDriver(
 	jobFactory cached.JobFactory,
 	updateFactory cached.UpdateFactory,
 	taskLauncher launcher.Launcher,
+	jobType job.JobType,
 	parentScope tally.Scope,
 	cfg Config) Driver {
 	cfg.normalize()
@@ -196,6 +218,8 @@ type driver struct {
 	cfg     *Config  // goal state engine configuration
 	mtx     *Metrics // goal state metrics
 	running int32    // whether driver is running or not
+
+	jobType job.JobType // the type of the job for the driver
 }
 
 func (d *driver) EnqueueJob(jobID *peloton.JobID, deadline time.Time) {
@@ -346,6 +370,10 @@ func (d *driver) syncFromDB(ctx context.Context) error {
 	log.Info("syncing cache and goal state with db")
 	startRecoveryTime := time.Now()
 
+	jobStatesToRecover := batchJobStatesToRecover
+	if d.jobType == job.JobType_SERVICE {
+		jobStatesToRecover = serviceJobStatesToRecover
+	}
 	err := recovery.RecoverJobsByState(ctx, d.jobStore, jobStatesToRecover, d.recoverTasks)
 	if err != nil {
 		return err

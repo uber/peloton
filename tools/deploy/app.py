@@ -174,6 +174,9 @@ class App(object):
             env_vars['TASK_TYPE'] = 'STATELESS'
             env_vars['APP'] = 'placement'
 
+        if self.name == 'jobmgr':
+            env_vars['JOB_TYPE'] = getattr(self, "job_type", "BATCH")
+
         if self.name == 'archiver':
             env_vars['ENABLE_ARCHIVER'] = self.enable_archiver
             env_vars['STREAM_ONLY_MODE'] = self.stream_only_mode

@@ -427,7 +427,8 @@ def run_peloton_jobmgr():
         name = config['peloton_jobmgr_container'] + repr(i)
         remove_existing_container(name)
         start_and_wait('jobmgr', name, ports,
-                       extra_env={'MESOS_AGENT_WORK_DIR': config['work_dir']})
+                       extra_env={'MESOS_AGENT_WORK_DIR': config['work_dir'],
+                                  'JOB_TYPE': os.getenv('JOB_TYPE', 'BATCH')})
 
 
 #

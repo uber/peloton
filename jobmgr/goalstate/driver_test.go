@@ -68,6 +68,7 @@ func (suite *DriverTestSuite) SetupTest() {
 		updateFactory: suite.updateFactory,
 		mtx:           NewMetrics(tally.NoopScope),
 		cfg:           &Config{},
+		jobType:       job.JobType_BATCH,
 	}
 	suite.goalStateDriver.cfg.normalize()
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
@@ -106,6 +107,7 @@ func (suite *DriverTestSuite) TestNewDriver() {
 		suite.jobFactory,
 		suite.updateFactory,
 		taskLauncher,
+		job.JobType_BATCH,
 		tally.NoopScope,
 		config,
 	)
@@ -215,6 +217,7 @@ func (suite *DriverTestSuite) TestRecoverJobStates() {
 		job.JobState_KILLED,
 	}
 
+	jobStatesToRecover := append(serviceJobStatesToRecover, batchJobStatesToRecover...)
 	jobKnownStates := append(jobStatesNotRecover, jobStatesToRecover...)
 	for _, state := range job.JobState_name {
 		found := false
@@ -227,7 +230,7 @@ func (suite *DriverTestSuite) TestRecoverJobStates() {
 	}
 }
 
-func (suite *DriverTestSuite) prepareTestSyncDB() {
+func (suite *DriverTestSuite) prepareTestSyncDB(jobType job.JobType) {
 	var jobIDList []peloton.JobID
 	jobIDList = append(jobIDList, *suite.jobID)
 
@@ -236,9 +239,15 @@ func (suite *DriverTestSuite) prepareTestSyncDB() {
 		InstanceCount: 1,
 	}
 
-	suite.jobStore.EXPECT().
-		GetJobsByStates(gomock.Any(), gomock.Any()).
-		Return(jobIDList, nil)
+	if jobType == job.JobType_BATCH {
+		suite.jobStore.EXPECT().
+			GetJobsByStates(gomock.Any(), batchJobStatesToRecover).
+			Return(jobIDList, nil)
+	} else if jobType == job.JobType_SERVICE {
+		suite.jobStore.EXPECT().
+			GetJobsByStates(gomock.Any(), serviceJobStatesToRecover).
+			Return(jobIDList, nil)
+	}
 
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
@@ -270,16 +279,48 @@ func (suite *DriverTestSuite) prepareTestSyncDB() {
 
 // TestSyncFromDBFailed tests SyncFromDB when GetTaskRuntimesForJobByRange failed
 func (suite *DriverTestSuite) TestSyncFromDBFailed() {
-	suite.prepareTestSyncDB()
+	suite.prepareTestSyncDB(job.JobType_BATCH)
 	suite.taskStore.EXPECT().
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(nil, errors.New(""))
 	suite.Error(suite.goalStateDriver.syncFromDB(context.Background()))
 }
 
-// TestSyncFromDB tests syncing job manager with jobs and tasks in DB.
-func (suite *DriverTestSuite) TestSyncFromDB() {
-	suite.prepareTestSyncDB()
+// TestSyncFromDBForBatchCluster tests syncing job manager for batch type
+// with jobs and tasks in DB.
+func (suite *DriverTestSuite) TestSyncFromDBForBatchCluster() {
+	suite.prepareTestSyncDB(job.JobType_BATCH)
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
+		Return(map[uint32]*task.RuntimeInfo{
+			suite.instanceID: {
+				GoalState:            task.TaskState_RUNNING,
+				DesiredConfigVersion: 42,
+				ConfigVersion:        42,
+			},
+		}, nil)
+
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(nil)
+
+	suite.cachedJob.EXPECT().
+		ReplaceTasks(gomock.Any(), false).Return(nil)
+
+	suite.taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	suite.cachedJob.EXPECT().
+		RecalculateResourceUsage(gomock.Any())
+
+	suite.NoError(suite.goalStateDriver.syncFromDB(context.Background()))
+}
+
+// TestSyncFromDBForBatchCluster tests syncing job manager for service type
+// with jobs and tasks in DB.
+func (suite *DriverTestSuite) TestSyncFromDBForServiceCluster() {
+	suite.goalStateDriver.jobType = job.JobType_SERVICE
+	suite.prepareTestSyncDB(job.JobType_SERVICE)
 	suite.taskStore.EXPECT().
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(map[uint32]*task.RuntimeInfo{
