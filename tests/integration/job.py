@@ -4,29 +4,18 @@ import time
 from client import Client
 from pool import Pool
 from task import Task
+from workflow import Workflow
+from common import IntegrationTestConfig
+from util import load_test_config
+
 from google.protobuf import json_format
 
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 from peloton_client.pbgen.peloton.api.v0.job import job_pb2 as job
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
-from peloton_client.pbgen.peloton.api.v0.respool import respool_pb2 as respool
-from util import load_test_config
 
 
 log = logging.getLogger(__name__)
-
-
-class IntegrationTestConfig(object):
-    def __init__(self, pool_file='test_respool.yaml', max_retry_attempts=60,
-                 sleep_time_sec=1, rpc_timeout_sec=10):
-        respool_config_dump = load_test_config(pool_file)
-        respool_config = respool.ResourcePoolConfig()
-        json_format.ParseDict(respool_config_dump, respool_config)
-        self.respool_config = respool_config
-
-        self.max_retry_attempts = max_retry_attempts
-        self.sleep_time_sec = sleep_time_sec
-        self.rpc_timeout_sec = rpc_timeout_sec
 
 
 class Job(object):
@@ -139,6 +128,112 @@ class Job(object):
         log.info('stopping tasks in job {0} with ranges {1}'
                  .format(self.job_id, ranges))
         return response
+
+    class WorkflowResp:
+        """
+        WorkflowResp represents the response from a job level operation
+        including update, restart, stop and start.
+        """
+        def __init__(self, workflow_id, resource_version,
+                     client=None, config=None):
+            self.workflow = Workflow(workflow_id, client=client, config=config)
+            self.resource_version = resource_version
+
+    def rolling_start(self,
+                      ranges=None,
+                      resource_version=None,
+                      batch_size=None):
+        """
+        Starts a job or certain tasks in a rolling fashion based on the ranges
+        and batch size
+        :param ranges: the instance ranges to start
+        :param resource_version: the resource_version to use,
+            if not set. the API would fetch if from job runtime
+        :param batch_size: the batch size of rolling start
+       :return: WorkflowResp
+       """
+        if resource_version is None:
+            job_info = self.get_info()
+            resource_version = job_info.runtime.configurationVersion
+
+        request = job.StartRequest(
+            id=peloton.JobID(value=self.job_id),
+            ranges=ranges,
+            resourceVersion=resource_version,
+            startConfig=job.StartConfig(batchSize=batch_size),
+        )
+        resp = self.client.job_svc.Start(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        return Job.WorkflowResp(resp.updateID.value, resp.resourceVersion,
+                                client=self.client,
+                                config=self.config)
+
+    def rolling_stop(self,
+                     ranges=None,
+                     resource_version=None,
+                     batch_size=None):
+        """
+        Stops a job or certain tasks in a rolling fashion based on the ranges
+        and batch size
+        :param ranges: the instance ranges to stop
+        :param resource_version: the resource_version to use,
+            if not set. the API would fetch if from job runtime
+        :param batch_size: the batch size of rolling stop
+       :return: WorkflowResp
+       """
+        if resource_version is None:
+            job_info = self.get_info()
+            resource_version = job_info.runtime.configurationVersion
+
+        request = job.StopRequest(
+            id=peloton.JobID(value=self.job_id),
+            ranges=ranges,
+            resourceVersion=resource_version,
+            stopConfig=job.StopConfig(batchSize=batch_size),
+        )
+        resp = self.client.job_svc.Stop(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        return Job.WorkflowResp(resp.updateID.value, resp.resourceVersion,
+                                client=self.client,
+                                config=self.config)
+
+    def rolling_restart(self,
+                        ranges=None,
+                        resource_version=None,
+                        batch_size=None):
+        """
+        Restart a job or certain tasks in a rolling fashion based on the ranges
+        and batch size
+        :param ranges: the instance ranges to stop
+        :param resource_version: the resource_version to use,
+            if not set. the API would fetch if from job runtime
+        :param batch_size: the batch size of rolling stop
+       :return: WorkflowResp
+       """
+        if resource_version is None:
+            job_info = self.get_info()
+            resource_version = job_info.runtime.configurationVersion
+
+        request = job.RestartRequest(
+            id=peloton.JobID(value=self.job_id),
+            ranges=ranges,
+            resourceVersion=resource_version,
+            restartConfig=job.RestartConfig(batchSize=batch_size),
+        )
+        resp = self.client.job_svc.Restart(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        return Job.WorkflowResp(resp.updateID.value, resp.resourceVersion,
+                                client=self.client,
+                                config=self.config)
 
     def get_info(self):
         """

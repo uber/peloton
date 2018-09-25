@@ -1,6 +1,7 @@
 import pytest
 
-from tests.integration.job import IntegrationTestConfig, Job
+from tests.integration.job import Job
+from tests.integration.common import IntegrationTestConfig
 
 pytestmark = [pytest.mark.default, pytest.mark.stateless]
 

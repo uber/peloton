@@ -1,6 +1,7 @@
 import pytest
 
-from job import Job, IntegrationTestConfig
+from job import Job
+from common import IntegrationTestConfig
 
 
 pytestmark = pytest.mark.load

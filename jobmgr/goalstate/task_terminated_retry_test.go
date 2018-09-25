@@ -219,6 +219,56 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 	suite.Nil(err)
 }
 
+// TestTaskTerminatedRetryNoFailure tests restart when no there is no failure
+func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
+	jobRuntime := &pbjob.RuntimeInfo{}
+	suite.taskRuntime.FailureCount = 0
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).Return(jobRuntime, nil)
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
+	suite.taskStore.EXPECT().GetTaskConfig(
+		gomock.Any(),
+		suite.jobID,
+		suite.instanceID,
+		gomock.Any()).Return(suite.taskConfig, nil)
+
+	suite.cachedJob.EXPECT().
+		ID().Return(suite.jobID)
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			runtimeDiff := runtimeDiffs[suite.instanceID]
+			suite.True(
+				runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != suite.mesosTaskID)
+			suite.True(
+				runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == suite.mesosTaskID)
+			suite.True(
+				runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
+		}).
+		Return(nil)
+
+	suite.cachedJob.EXPECT().
+		GetJobType().Return(pbjob.JobType_BATCH)
+
+	suite.taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	err := TaskTerminatedRetry(context.Background(), suite.taskEnt)
+	suite.Nil(err)
+}
+
 // TestTaskTerminatedNoRetry tests not retry on a terminated task
 func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedNoRetry() {
 

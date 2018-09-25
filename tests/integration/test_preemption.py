@@ -1,5 +1,6 @@
 import pytest
-from job import IntegrationTestConfig, Job, kill_jobs
+from job import Job, kill_jobs
+from common import IntegrationTestConfig
 from pool import Pool
 
 pytestmark = [pytest.mark.preemption]

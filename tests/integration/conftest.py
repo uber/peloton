@@ -184,6 +184,20 @@ def stateless_job(request):
 
 
 @pytest.fixture
+def large_stateless_job(request):
+    job = Job(job_file='test_stateless_job_large.yaml')
+
+    # teardown
+    def kill_large_stateless_job():
+        print "\nstopping stateless job"
+        job.stop()
+
+    request.addfinalizer(kill_large_stateless_job)
+
+    return job
+
+
+@pytest.fixture
 def host_affinity_job(request):
     job = Job(job_file='test_job_host_affinity_constraint.yaml')
 
