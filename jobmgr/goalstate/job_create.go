@@ -2,11 +2,13 @@ package goalstate
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/common/taskconfig"
@@ -67,7 +69,14 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	if err != nil {
-		goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
+		// Have this check so ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST
+		// would not cause alert
+		// TODO: remove this check once
+		// ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST is handled correctly
+		if !strings.Contains(err.Error(),
+			resmgrsvc.EnqueueGangsFailure_ErrorCode_name[int32(resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST)]) {
+			goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
+		}
 		return err
 	}
 
