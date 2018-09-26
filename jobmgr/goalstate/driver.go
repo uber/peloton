@@ -162,6 +162,7 @@ func NewDriver(
 		taskLauncher:  taskLauncher,
 		mtx:           NewMetrics(scope),
 		cfg:           &cfg,
+		jobType:       jobType,
 	}
 }
 

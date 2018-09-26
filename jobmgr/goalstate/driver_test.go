@@ -98,7 +98,7 @@ func (suite *DriverTestSuite) TestNewDriver() {
 		NumWorkerTaskThreads:   5,
 		NumWorkerUpdateThreads: 6,
 	}
-	driver := NewDriver(
+	dr := NewDriver(
 		dispatcher,
 		suite.jobStore,
 		suite.taskStore,
@@ -107,11 +107,12 @@ func (suite *DriverTestSuite) TestNewDriver() {
 		suite.jobFactory,
 		suite.updateFactory,
 		taskLauncher,
-		job.JobType_BATCH,
+		job.JobType_SERVICE,
 		tally.NoopScope,
 		config,
 	)
-	suite.NotNil(driver)
+	suite.NotNil(dr)
+	suite.Equal(dr.(*driver).jobType, job.JobType_SERVICE)
 }
 
 func (suite *DriverTestSuite) TearDownTest() {
