@@ -6,6 +6,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/buildversion"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
@@ -178,6 +179,7 @@ func main() {
 	rootScope.Counter("boot").Inc(1)
 
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
+	mux.HandleFunc(buildversion.Get, buildversion.Handler(version))
 
 	store := stores.MustCreateStore(&cfg.Storage, rootScope)
 

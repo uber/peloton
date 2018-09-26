@@ -6,6 +6,7 @@ import (
 
 	archiverConfig "code.uber.internal/infra/peloton/archiver/config"
 	"code.uber.internal/infra/peloton/archiver/engine"
+	"code.uber.internal/infra/peloton/common/buildversion"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
@@ -194,6 +195,8 @@ func main() {
 		logging.LevelOverwrite,
 		logging.LevelOverwriteHandler(initialLevel),
 	)
+
+	mux.HandleFunc(buildversion.Get, buildversion.Handler(version))
 
 	inbounds := rpc.NewInbounds(
 		cfg.Archiver.HTTPPort,

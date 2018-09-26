@@ -11,6 +11,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/background"
+	"code.uber.internal/infra/peloton/common/buildversion"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
@@ -243,6 +244,8 @@ func main() {
 	mux.HandleFunc(
 		logging.LevelOverwrite,
 		logging.LevelOverwriteHandler(initialLevel))
+
+	mux.HandleFunc(buildversion.Get, buildversion.Handler(version))
 
 	// Create both HTTP and GRPC inbounds
 	inbounds := rpc.NewInbounds(

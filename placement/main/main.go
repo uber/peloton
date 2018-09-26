@@ -8,6 +8,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/async"
+	"code.uber.internal/infra/peloton/common/buildversion"
 	common_config "code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
@@ -25,7 +26,7 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/peer"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	resmgrsvc "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	log "github.com/sirupsen/logrus"
 	_ "go.uber.org/automaxprocs"
@@ -210,6 +211,7 @@ func main() {
 	defer scopeCloser.Close()
 
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
+	mux.HandleFunc(buildversion.Get, buildversion.Handler(version))
 
 	log.Info("Connecting to HostManager")
 	t := rpc.NewTransport()

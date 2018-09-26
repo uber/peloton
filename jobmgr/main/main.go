@@ -8,6 +8,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/background"
+	"code.uber.internal/infra/peloton/common/buildversion"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
@@ -238,6 +239,8 @@ func main() {
 		logging.LevelOverwrite,
 		logging.LevelOverwriteHandler(initialLevel),
 	)
+
+	mux.HandleFunc(buildversion.Get, buildversion.Handler(version))
 
 	// store implements JobStore, TaskStore, VolumeStore, UpdateStore
 	// and FrameworkInfoStore
