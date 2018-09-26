@@ -3,6 +3,64 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.6
+-----------------
+* 2018-09-26    JobMgr recovers jobs by job type                                                       zhixin@uber.com
+* 2018-09-26    Add interation test for stateless job API and fix TaskTerminatedRetry                  zhixin@uber.com
+* 2018-09-25    Disabling Dfrag bin packing                                                            mabansal@uber.com
+* 2018-09-25    Do not emit error metrics if enqueue gangs fails due to gang already exists            zhixin@uber.com
+* 2018-09-25    Add `HostOfferID` to offers from host manager                                          avyas@uber.com
+* 2018-09-24    Add parallelism to add offers by host.                                                 varung@uber.com
+* 2018-09-22    Fix CompareAndSetRuntime build error                                                   zhixin@uber.com
+* 2018-09-21    change cassandra version from 3.9 -> 3.0.14 for local container                        varung@uber.com
+* 2018-09-21    Fix flaky unit test to parse instanceID                                                varung@uber.com
+* 2018-09-21    Do not abort existing update in the update svc handler                                 apoorvaj@uber.com
+* 2018-09-21    Set update identifier to nil in job runtime while untracking the update                apoorvaj@uber.com
+* 2018-09-21    Bump Mimir-Lib                                                                         kejlberg@uber.com
+* 2018-09-21    Fix command print.                                                                     kejlberg@uber.com
+* 2018-09-20    Implement restart overwrite strategy                                                   zhixin@uber.com
+* 2018-09-20    Tasks in a terminated batch job cannot be restarted.                                   apoorvaj@uber.com
+* 2018-09-20    Fix test setup for a local linux dev laptop.                                           kejlberg@uber.com
+* 2018-09-20    Delete Pod Events on Job Delete                                                        varung@uber.com
+* 2018-09-20    Add metrics for task state transitions                                                 avyas@uber.com
+* 2018-09-19    Add env variable to enable pod events cleanup                                          varung@uber.com
+* 2018-09-19    Add CompareAndSetRuntime to support job write after read                               zhixin@uber.com
+* 2018-09-18    Fix the build and tests for terminate-retry                                            apoorvaj@uber.com
+* 2018-09-18    Add support for handling tasks with id greater than instance count                     apoorvaj@uber.com
+* 2018-09-18    Improve storage unit test coverage                                                     adityacb@uber.com
+* 2018-09-18    Removing empty test file from YARPC package                                            mabansal@uber.com
+* 2018-09-18    Retry on  terminated long running task                                                 chunyang.shen@uber.com
+* 2018-09-17    Add constraint pod events in Archiver                                                  varung@uber.com
+* 2018-09-15    Adding Defragmentation bin packing suppport for host manager                           mabansal@uber.com
+* 2018-09-14    Move RuntimeDiff and JobConfig from cached to models                                   zhixin@uber.com
+* 2018-09-13    Add integration tests for host maintenance                                             sachins@uber.com
+* 2018-09-13    Clean up updates and other ops separately                                              zhixin@uber.com
+* 2018-09-13    Add job level start and stop support                                                   zhixin@uber.com
+* 2018-09-13    Add changelog for 0.7.5.1 and 0.7.5.2                                                  zhixin@uber.com
+* 2018-09-12    Update debug commands and remove pressure test                                         sishi@uber.com
+* 2018-09-12    Add pod events handle empty desired mesos task id                                      zhixin@uber.com
+* 2018-09-12    Fix job runtime updater logged job state                                               zhixin@uber.com
+* 2018-09-11    Dump logs when goal state action execute returns an error                              apoorvaj@uber.com
+* 2018-09-11    Change logrus version to `1.0.0`                                                       avyas@uber.com
+* 2018-09-11    Add support to reduce instance count during an update                                  apoorvaj@uber.com
+* 2018-09-10    Fix bug in reading job_index table                                                     adityacb@uber.com
+* 2018-09-10    Desired mesos task id should not be nil when comparing                                 apoorvaj@uber.com
+* 2018-09-09    Add parallelism to calculate cluster capacity                                          varung@uber.com
+* 2018-09-08    Add revocable task launch support to host manager                                      varung@uber.com
+* 2018-09-07    Set drainer period for development environment                                         sachins@uber.com
+* 2018-09-06    Set hostname field in resmgr tasks only if relevant                                    sachins@uber.com
+* 2018-09-06    Add override url for hostmgr in Peloton Client                                         sachins@uber.com
+* 2018-09-06    Implement job level Restart                                                            zhixin@uber.com
+* 2018-09-06    Reconcile stale job index entries                                                      adityacb@uber.com
+* 2018-09-05    Refactor update to support different workflow                                          zhixin@uber.com
+* 2018-09-05    Set proper health state for task whenever it re-initiate                               chunyang.shen@uber.com
+* 2018-09-04    Add integration tests for update of a stateless job                                    apoorvaj@uber.com
+* 2018-09-04    Reconcile active jobs which have out of sync mv_task_by_state entry                    adityacb@uber.com
+* 2018-08-31    Add job restart proto and cli                                                          zhixin@uber.com
+* 2018-08-31    Add Changelog for 0.7.5 release                                                        rcharles@uber.com
+* 2018-08-30    Refactor preemption package to remove singleton and add tests                          avyas@uber.com
+* 2018-08-29    Use slave agent IP for fetching logs                                                   amitbose
+
 0.7.5.2
 -----------------
 * 2018-09-12    Add pod events handle empty desired mesos task id                                      zhixin@uber.com.
