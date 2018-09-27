@@ -28,6 +28,8 @@ const (
 	// TotalAllocation tracks the allocation of all tasks(
 	// including NonPreemptibleAllocation,PreemptibleAllocation and ControllerAllocation)
 	TotalAllocation
+	// SlackAllocation track allocation for tasks launched using slack resources.
+	SlackAllocation
 )
 
 // Allocation is the container to track allocation across different dimensions
@@ -73,6 +75,7 @@ func initializeZeroAlloc() *Allocation {
 	alloc.Value[NonPreemptibleAllocation] = ZeroResource
 	alloc.Value[ControllerAllocation] = ZeroResource
 	alloc.Value[PreemptibleAllocation] = ZeroResource
+	alloc.Value[SlackAllocation] = ZeroResource
 
 	return alloc
 }
@@ -98,7 +101,6 @@ func GetTaskAllocation(rmTask *resmgr.Task) *Allocation {
 	// check if the task is non-preemptible
 	if rmTask.GetPreemptible() {
 		alloc.Value[PreemptibleAllocation] = taskResource
-
 	} else {
 		alloc.Value[NonPreemptibleAllocation] = taskResource
 	}
@@ -106,6 +108,10 @@ func GetTaskAllocation(rmTask *resmgr.Task) *Allocation {
 	// check if its a controller task
 	if rmTask.GetController() {
 		alloc.Value[ControllerAllocation] = taskResource
+	}
+
+	if rmTask.GetRevocable() {
+		alloc.Value[SlackAllocation] = taskResource
 	}
 
 	// every task account for total allocation
@@ -243,8 +249,8 @@ func GetGangResources(gang *resmgrsvc.Gang) *Resources {
 }
 
 func (r *Resources) String() string {
-	return fmt.Sprintf("CPU:%f, Mem:%f, Disk:%f, GPU:%f", r.CPU, r.MEMORY,
-		r.DISK, r.GPU)
+	return fmt.Sprintf("CPU:%.2f MEM:%.2f DISK:%.2f GPU:%.2f",
+		r.GetCPU(), r.GetMem(), r.GetDisk(), r.GetGPU())
 }
 
 // Subtract another scalar resources from current one and return a new copy of result.

@@ -12,12 +12,12 @@ resources:
   limit: 12
   share: 1
 - kind: memory
-  reservation: 50
-  limit: 100
-  share: 2
+  reservation: 6144
+  limit: 6144
+  share: 1
 - kind: disk
-  reservation: 250
-  limit: 1000
+  reservation: 10240
+  limit: 20480
   share: 1
 - kind: gpu
   reservation: 0
@@ -25,4 +25,6 @@ resources:
   share: 1
 controllerlimit:
   maxpercent: 10
+slacklimit:
+  maxpercent: 30
 policy: 1

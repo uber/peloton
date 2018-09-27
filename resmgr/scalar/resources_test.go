@@ -355,7 +355,7 @@ func TestGetGangResources(t *testing.T) {
 		},
 	})
 	assertEqual(t, &Resources{1.0, 1.0, 1.0, 1.0}, res)
-	assert.Equal(t, "CPU:1.000000, Mem:1.000000, Disk:1.000000, GPU:1.000000", res.String())
+	assert.Equal(t, "CPU:1.00 MEM:1.00 DISK:1.00 GPU:1.00", res.String())
 }
 
 func TestGetGangAllocation(t *testing.T) {

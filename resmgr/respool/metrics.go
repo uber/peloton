@@ -36,11 +36,17 @@ type Metrics struct {
 
 	PendingQueueSize tally.Gauge
 
+	// Physical Resources
 	TotalAllocation          scalar.GaugeMaps
 	NonPreemptibleAllocation scalar.GaugeMaps
 	Entitlement              scalar.GaugeMaps
 	Available                scalar.GaugeMaps
 	Demand                   scalar.GaugeMaps
+
+	// Slack Resources
+	SlackAllocation  scalar.GaugeMaps
+	SlackEntitlement scalar.GaugeMaps
+	SlackDemand      scalar.GaugeMaps
 
 	ResourcePoolReservation scalar.GaugeMaps
 	ResourcePoolLimit       scalar.GaugeMaps
@@ -48,6 +54,7 @@ type Metrics struct {
 
 	ControllerAllocation scalar.GaugeMaps
 	ControllerLimit      scalar.GaugeMaps
+	SlackLimit           scalar.GaugeMaps
 }
 
 // NewMetrics returns a new instance of respool.Metrics.
@@ -62,6 +69,10 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	entitlementScope := scope.SubScope("entitlement")
 	availableScope := scope.SubScope("available")
 	demandScope := scope.SubScope("demand")
+
+	slackAllocationScope := scope.SubScope("slack_allocation")
+	slackEntitlementScope := scope.SubScope("slack_entitlement")
+	slackDemandScope := scope.SubScope("slack_demand")
 
 	reservationScope := scope.SubScope("reservation")
 	limitScope := scope.SubScope("limit")
@@ -102,6 +113,10 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		Available:   scalar.NewGaugeMaps(availableScope),
 		Demand:      scalar.NewGaugeMaps(demandScope),
 
+		SlackAllocation:  scalar.NewGaugeMaps(slackAllocationScope),
+		SlackEntitlement: scalar.NewGaugeMaps(slackEntitlementScope),
+		SlackDemand:      scalar.NewGaugeMaps(slackDemandScope),
+
 		ResourcePoolReservation: scalar.NewGaugeMaps(reservationScope),
 		ResourcePoolLimit:       scalar.NewGaugeMaps(limitScope),
 		ResourcePoolShare:       scalar.NewGaugeMaps(shareScope),
@@ -110,5 +125,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 			SubScope("controller_allocation")),
 		ControllerLimit: scalar.NewGaugeMaps(limitScope.SubScope(
 			"controller_limit")),
+		SlackLimit: scalar.NewGaugeMaps(limitScope.SubScope(
+			"slack_limit")),
 	}
 }

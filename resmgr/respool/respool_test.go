@@ -141,6 +141,22 @@ func (s *ResPoolSuite) getTasks() []*resmgr.Task {
 	}
 }
 
+func (s *ResPoolSuite) getRevocableTask() *resmgr.Task {
+	return &resmgr.Task{
+		Name:     "job1-1",
+		Priority: 0,
+		JobId:    &peloton.JobID{Value: "job1"},
+		Id:       &peloton.TaskID{Value: "job1-1"},
+		Resource: &task.ResourceConfig{
+			CpuLimit:    10,
+			DiskLimitMb: 2,
+			GpuLimit:    0,
+			MemLimitMb:  10,
+		},
+		Revocable: true,
+	}
+}
+
 func (s *ResPoolSuite) getEntitlement() map[string]float64 {
 	mapEntitlement := make(map[string]float64)
 	mapEntitlement[common.CPU] = float64(100)
@@ -150,12 +166,30 @@ func (s *ResPoolSuite) getEntitlement() map[string]float64 {
 	return mapEntitlement
 }
 
+func (s *ResPoolSuite) getSlackEntitlement() map[string]float64 {
+	mapEntitlement := make(map[string]float64)
+	mapEntitlement[common.CPU] = float64(80)
+	mapEntitlement[common.MEMORY] = float64(200)
+	mapEntitlement[common.DISK] = float64(20)
+	mapEntitlement[common.GPU] = float64(0)
+	return mapEntitlement
+}
+
 func (s *ResPoolSuite) getDemand() *scalar.Resources {
 	return &scalar.Resources{
 		CPU:    float64(100),
 		GPU:    float64(1),
 		MEMORY: float64(100),
 		DISK:   float64(1000),
+	}
+}
+
+func (s *ResPoolSuite) getSlackDemand() *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    float64(10),
+		GPU:    float64(0),
+		MEMORY: float64(10),
+		DISK:   float64(10),
 	}
 }
 
@@ -397,6 +431,9 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 	s.NoError(err)
 	s.Nil(dequeuedGangs)
 	resPoolNode.SetEntitlementByKind(common.CPU, float64(500))
+	resPoolNode.SetEntitlementByKind(common.MEMORY, float64(500))
+	resPoolNode.SetEntitlementByKind(common.GPU, float64(4))
+	resPoolNode.SetEntitlementByKind(common.DISK, float64(500))
 	dequeuedGangs, err = resPoolNode.DequeueGangs(1)
 	s.NoError(err)
 	s.Equal(1, len(dequeuedGangs))
@@ -421,6 +458,38 @@ func (s *ResPoolSuite) TestEntitlement() {
 	}
 	resPoolNode.SetEntitlementResources(expectedEntitlement)
 	s.Equal(expectedEntitlement, resPoolNode.GetEntitlement())
+}
+
+func (s *ResPoolSuite) TestSlackEntitlement() {
+	resPoolNode := s.createTestResourcePool()
+	resPoolNode.SetSlackEntitlement(nil)
+	resPoolNode.SetSlackEntitlement(s.getSlackEntitlement())
+	expectedEntitlement := &scalar.Resources{
+		CPU:    float64(80),
+		MEMORY: float64(200),
+		DISK:   float64(20),
+		GPU:    float64(0),
+	}
+	s.Equal(expectedEntitlement, resPoolNode.GetSlackEntitlement())
+
+	expectedEntitlement = &scalar.Resources{
+		CPU:    float64(1000),
+		MEMORY: float64(1000),
+		DISK:   float64(100),
+		GPU:    float64(3),
+	}
+	resPoolNode.SetSlackEntitlementResources(expectedEntitlement)
+	s.Equal(expectedEntitlement, resPoolNode.GetSlackEntitlement())
+
+	resPoolNode.SetSlackEntitlementByKind(common.CPU, float64(100))
+	resPoolNode.SetSlackEntitlementByKind(common.MEMORY, float64(100))
+	resPoolNode.SetSlackEntitlementByKind(common.GPU, float64(4))
+	resPoolNode.SetSlackEntitlementByKind(common.DISK, float64(100))
+
+	s.Equal(resPoolNode.GetSlackEntitlementByKind(common.CPU), float64(100))
+	s.Equal(resPoolNode.GetSlackEntitlementByKind(common.MEMORY), float64(100))
+	s.Equal(resPoolNode.GetSlackEntitlementByKind(common.GPU), float64(4))
+	s.Equal(resPoolNode.GetSlackEntitlementByKind(common.DISK), float64(100))
 }
 
 func (s *ResPoolSuite) TestAllocation() {
@@ -646,6 +715,7 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 	resPoolNode11.SetEntitlement(s.getEntitlement())
 	resPoolNode11.SetTotalAllocatedResources(s.getAllocation())
 	resPoolNode11.AddToDemand(s.getDemand())
+	resPoolNode11.AddToSlackDemand(s.getSlackDemand())
 
 	poolConfig12 := &pb_respool.ResourcePoolConfig{
 		Name:      "respool12",
@@ -684,6 +754,7 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 	resPoolNode2.SetChildren(node2ChildrenList)
 
 	resPoolroot.CalculateDemand()
+	resPoolroot.CalculateSlackDemand()
 
 	demandRoot := resPoolroot.GetDemand()
 	s.NotNil(demandRoot)
@@ -712,6 +783,13 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 	s.Equal(float64(100), demand11.MEMORY)
 	s.Equal(float64(1000), demand11.DISK)
 	s.Equal(float64(1), demand11.GPU)
+
+	slackDemand11 := resPoolNode11.GetSlackDemand()
+	s.NotNil(slackDemand11)
+	s.Equal(float64(10), slackDemand11.CPU)
+	s.Equal(float64(10), slackDemand11.MEMORY)
+	s.Equal(float64(10), slackDemand11.DISK)
+	s.Equal(float64(0), slackDemand11.GPU)
 
 	demand12 := resPoolNode12.GetDemand()
 	s.NotNil(demand12)
@@ -750,6 +828,19 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 	s.Equal(float64(100), demand2.MEMORY)
 	s.Equal(float64(1000), demand2.DISK)
 	s.Equal(float64(1), demand2.GPU)
+
+	resPoolNode11.SubtractFromSlackDemand(&scalar.Resources{
+		CPU:    1,
+		MEMORY: 1,
+		DISK:   1,
+		GPU:    0})
+	expectedSlackDemand := &scalar.Resources{
+		CPU:    9,
+		MEMORY: 9,
+		DISK:   9,
+		GPU:    0,
+	}
+	s.Equal(resPoolNode11.GetSlackDemand().String(), expectedSlackDemand.String())
 }
 
 func (s *ResPoolSuite) TestResPoolDequeueError() {

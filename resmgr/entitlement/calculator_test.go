@@ -3,9 +3,15 @@ package entitlement
 import (
 	"context"
 	"errors"
+	"math"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/golang/mock/gomock"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
@@ -18,10 +24,6 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	"code.uber.internal/infra/peloton/resmgr/tasktestutil"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
 )
 
 type EntitlementCalculatorTestSuite struct {
@@ -36,12 +38,13 @@ func (s *EntitlementCalculatorTestSuite) SetupTest() {
 	s.mockCtrl = gomock.NewController(s.T())
 
 	s.calculator = &Calculator{
-		resPoolTree:       s.resTree,
-		runningState:      res_common.RunningStateNotStarted,
-		calculationPeriod: 10 * time.Millisecond,
-		stopChan:          make(chan struct{}, 1),
-		clusterCapacity:   make(map[string]float64),
-		metrics:           NewMetrics(tally.NoopScope),
+		resPoolTree:          s.resTree,
+		runningState:         res_common.RunningStateNotStarted,
+		calculationPeriod:    10 * time.Millisecond,
+		stopChan:             make(chan struct{}, 1),
+		clusterCapacity:      make(map[string]float64),
+		clusterSlackCapacity: make(map[string]float64),
+		metrics:              NewMetrics(tally.NoopScope),
 	}
 	s.initRespoolTree()
 	s.resTree.Start()
@@ -303,7 +306,8 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 				gomock.Any(),
 				gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
-				PhysicalResources: s.createClusterCapacity(),
+				PhysicalResources:      s.createClusterCapacity(),
+				PhysicalSlackResources: s.createSlackClusterCapacity(),
 			}, nil).
 			AnyTimes(),
 	)
@@ -392,6 +396,142 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 		map[string]int64{"CPU": 100, "GPU": 0, "MEMORY": 1000, "DISK": 6000}))
 }
 
+func (s *EntitlementCalculatorTestSuite) TestEntitlementForSlackResources() {
+	// Mock LaunchTasks call.
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
+	gomock.InOrder(
+		mockHostMgr.EXPECT().
+			ClusterCapacity(
+				gomock.Any(),
+				gomock.Any()).
+			Return(&hostsvc.ClusterCapacityResponse{
+				PhysicalResources:      s.createClusterCapacity(),
+				PhysicalSlackResources: s.createSlackClusterCapacity(),
+			}, nil).
+			AnyTimes(),
+	)
+	s.calculator.hostMgrClient = mockHostMgr
+	resPool11, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool11"})
+	s.NoError(err)
+	demand := &scalar.Resources{
+		CPU:    20,
+		MEMORY: 200,
+		DISK:   2000,
+		GPU:    0,
+	}
+	resPool11.AddToSlackDemand(demand)
+
+	resPool21, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool21"})
+	s.NoError(err)
+	demand = &scalar.Resources{
+		CPU:    20,
+		MEMORY: 10,
+		DISK:   50,
+		GPU:    0,
+	}
+	resPool21.AddToSlackDemand(demand)
+
+	alloc := scalar.NewAllocation()
+	alloc.Value[scalar.SlackAllocation] = &scalar.Resources{
+		CPU:    5.0,
+		MEMORY: 5.0,
+		DISK:   25.0,
+		GPU:    0.0,
+	}
+	alloc.Value[scalar.TotalAllocation] = &scalar.Resources{
+		CPU:    0.0,
+		MEMORY: 5.0,
+		DISK:   25.0,
+		GPU:    0.0,
+	}
+	resPool21.AddToAllocation(alloc)
+
+	resPool3, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	demand = &scalar.Resources{
+		CPU:    20,
+		MEMORY: 10,
+		DISK:   100,
+		GPU:    0,
+	}
+	resPool3.AddToSlackDemand(demand)
+
+	s.calculator.calculateEntitlement(context.Background())
+
+	// Slack Limit is 20% of reservation or minimum(allocation + slack demand, slack limit)
+
+	// demand is higher or slack entitlement is capped at 20% default limit.
+	resPool11Reservation := tasktestutil.GetReservationFromResourceConfig(resPool11.Resources())
+	s.Equal(resPool11Reservation.GetMem()*0.20, resPool11.GetSlackEntitlement().GetMem())
+	s.Equal(resPool11Reservation.GetDisk()*0.20, resPool11.GetSlackEntitlement().GetDisk())
+
+	// slack entitlement is capped at slack demand + allocation < slack limit
+	s.Equal(float64(15), resPool21.GetSlackEntitlement().GetMem())
+	s.Equal(float64(75), resPool21.GetSlackEntitlement().GetDisk())
+
+	// slack entitlement is capped at demand < slack limit
+	s.Equal(demand.GetMem(), resPool3.GetSlackEntitlement().GetMem())
+	s.Equal(demand.GetDisk(), resPool3.GetSlackEntitlement().GetDisk())
+
+	// Distribution of 80 revocable cpus
+	// Demand = 20, Allocation = 0
+	s.Equal(float64(22.5), resPool11.GetSlackEntitlement().GetCPU())
+
+	// Demand = 0, Allocation = 0
+	resPool12, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool12"})
+	s.Equal(float64(2.5), resPool12.GetSlackEntitlement().GetCPU())
+
+	// Demand = 20, Allocation = 5
+	s.Equal(float64(27.5), resPool21.GetSlackEntitlement().GetCPU())
+	resPool22, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool22"})
+
+	// Demand = 0, Allocation = 0
+	s.Equal(float64(2.5), resPool22.GetSlackEntitlement().GetCPU())
+
+	// Demand = 20, Allocation = 0
+	s.Equal(float64(25), resPool3.GetSlackEntitlement().GetCPU())
+
+	// demand is more than total physical slack cpus avaiable at cluster
+	demand = &scalar.Resources{
+		CPU:    30,
+		MEMORY: 20,
+		DISK:   20,
+		GPU:    0,
+	}
+	resPool12.AddToSlackDemand(demand)
+	s.calculator.calculateEntitlement(context.Background())
+
+	// 80 revocable cpus to distribute
+	// Root (R) has three childred: R1, R2, R3 with equal share,
+	// thereby 26ish each
+
+	// R1 -> demand + allocation = 50  :: satisfied = 35
+	// R2 -> demand + allocation = 25  :: satisfied = 25
+	// R3 -> demand + allocation = 20  :: satisfied = 20
+
+	// R2 and R3's need was satisfied and remaning were given to R1.
+	// Within R1, equal distribution for R11 and R12
+
+	// From previous round of entitlement calculation, demand for R12
+	// is increased, so unclaimed resources from other resource pool
+	// are taken away
+
+	// Demand = 20
+	s.Equal(int(resPool11.GetSlackEntitlement().GetCPU()), 17)
+
+	// Demand = 40
+	s.Equal(int(resPool12.GetSlackEntitlement().GetCPU()), 17)
+
+	// Demand = 20, Allocation = 5
+	s.Equal(math.Round(resPool21.GetSlackEntitlement().GetCPU()), float64(25))
+
+	// No demand and allocation
+	s.Equal(resPool22.GetSlackEntitlement().GetCPU(), float64(0))
+
+	// Demand = 20
+	s.Equal(resPool3.GetSlackEntitlement().GetCPU(), float64(20))
+}
+
 func (s *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 	// Mock LaunchTasks call.
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
@@ -470,7 +610,8 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 				gomock.Any(),
 				gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
-				PhysicalResources: s.createClusterCapacity(),
+				PhysicalResources:      s.createClusterCapacity(),
+				PhysicalSlackResources: s.createSlackClusterCapacity(),
 			}, nil).
 			AnyTimes(),
 	)
@@ -563,7 +704,7 @@ func (s *EntitlementCalculatorTestSuite) TestStartCalculatorMultipleTimes() {
 			gomock.Any(),
 			gomock.Any()).
 		Return(&hostsvc.ClusterCapacityResponse{}, nil).
-		Times(1)
+		AnyTimes()
 	s.calculator.hostMgrClient = mockHostMgr
 
 	s.NoError(s.calculator.Start())
@@ -619,13 +760,14 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 
 	// Creating local Calculator object
 	calculator := &Calculator{
-		resPoolTree:       resTree,
-		runningState:      res_common.RunningStateNotStarted,
-		calculationPeriod: 10 * time.Millisecond,
-		stopChan:          make(chan struct{}, 1),
-		clusterCapacity:   make(map[string]float64),
-		hostMgrClient:     mockHostMgr,
-		metrics:           NewMetrics(tally.NoopScope),
+		resPoolTree:          resTree,
+		runningState:         res_common.RunningStateNotStarted,
+		calculationPeriod:    10 * time.Millisecond,
+		stopChan:             make(chan struct{}, 1),
+		clusterCapacity:      make(map[string]float64),
+		clusterSlackCapacity: make(map[string]float64),
+		hostMgrClient:        mockHostMgr,
+		metrics:              NewMetrics(tally.NoopScope),
 	}
 
 	resTree.Start()
@@ -637,7 +779,8 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 				gomock.Any(),
 				gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
-				PhysicalResources: s.createClusterCapacity(),
+				PhysicalResources:      s.createClusterCapacity(),
+				PhysicalSlackResources: s.createSlackClusterCapacity(),
 			}, nil).
 			AnyTimes(),
 	)
@@ -652,10 +795,26 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 		GPU:    0,
 	}
 	resPool.AddToDemand(demand)
+
+	demand = &scalar.Resources{
+		CPU:    20,
+		MEMORY: 10,
+		DISK:   100,
+		GPU:    0,
+	}
+	resPool.AddToSlackDemand(demand)
+
 	calculator.calculateEntitlement(context.Background())
 	res := resPool.GetEntitlement()
+	log.Info(resPool.GetEntitlement().String())
 	s.True(tasktestutil.ValidateResources(res,
-		map[string]int64{"CPU": 28, "GPU": 1, "MEMORY": 283, "DISK": 1000}))
+		map[string]int64{"CPU": 28, "GPU": 1, "MEMORY": 291, "DISK": 1000}))
+
+	res = resPool.GetSlackEntitlement()
+	// Out of 80 revocable cpus, 20 are to satisfy existing demand and
+	// remaining 10 are allocated part of unclaimed resources
+	s.True(tasktestutil.ValidateResources(res,
+		map[string]int64{"CPU": 30, "GPU": 0, "MEMORY": 10, "DISK": 100}))
 
 	err = resTree.Stop()
 	s.NoError(err)
@@ -682,6 +841,28 @@ func (s *EntitlementCalculatorTestSuite) createClusterCapacity() []*hostsvc.Reso
 		{
 			Kind:     common.DISK,
 			Capacity: 6000,
+		},
+	}
+}
+
+// createSlackClusterCapacity creates the cluster capacity for revocable resources.
+func (s *EntitlementCalculatorTestSuite) createSlackClusterCapacity() []*hostsvc.Resource {
+	return []*hostsvc.Resource{
+		{
+			Kind:     common.CPU,
+			Capacity: 80,
+		},
+		{
+			Kind:     common.GPU,
+			Capacity: 0,
+		},
+		{
+			Kind:     common.MEMORY,
+			Capacity: 0,
+		},
+		{
+			Kind:     common.DISK,
+			Capacity: 0,
 		},
 	}
 }

@@ -30,7 +30,9 @@ func ConvertToResMgrGangs(
 		resmgrtask := ConvertTaskToResMgrTask(t, jobConfig)
 		// Currently a job has at most 1 gang comprising multiple tasks;
 		// those tasks have their MinInstances field set > 1.
-		if resmgrtask.MinInstances > 1 && !resmgrtask.GetRevocable() {
+		if resmgrtask.MinInstances > 1 &&
+			!resmgrtask.GetRevocable() &&
+			jobConfig.GetType() != job.JobType_SERVICE {
 			if len(multiTaskGangs) == 0 {
 				var multiTaskGang resmgrsvc.Gang
 				multiTaskGangs = append(multiTaskGangs, &multiTaskGang)

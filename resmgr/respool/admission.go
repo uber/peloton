@@ -32,6 +32,9 @@ const (
 	ControllerQueue
 	// NonPreemptibleQueue is the queue for non preemptible gangs
 	NonPreemptibleQueue
+	// RevocableQueue is the queue for revocable gangs
+	// which are scheduled using slack resources [cpus]
+	RevocableQueue
 )
 
 // String returns the queue name
@@ -43,6 +46,8 @@ func (qt QueueType) String() string {
 		return "pending"
 	case ControllerQueue:
 		return "controller"
+	case RevocableQueue:
+		return "revocable"
 	}
 
 	// should never come here
@@ -146,7 +151,8 @@ var admission = admissionController{
 // Returns an error if there was some error in the admission control
 func (ac admissionController) TryAdmit(
 	gang *resmgrsvc.Gang,
-	pool *resPool, qt QueueType) error {
+	pool *resPool,
+	qt QueueType) error {
 
 	pool.Lock()
 	defer pool.Unlock()
@@ -222,9 +228,10 @@ func (ac admissionController) moveToQueue(pool *resPool, qt QueueType,
 // rest of the tasks in the gang.
 // Returns true if the gang is valid and ready for admission control,
 // false if the gang is invalid and an optional error if the validation failed.
-func (ac admissionController) validateGang(gang *resmgrsvc.Gang,
-	pool *resPool, qt QueueType) (bool,
-	error) {
+func (ac admissionController) validateGang(
+	gang *resmgrsvc.Gang,
+	pool *resPool,
+	qt QueueType) (bool, error) {
 
 	// return false if gang is nil
 	if gang == nil {
@@ -298,8 +305,8 @@ func (ac admissionController) validateGang(gang *resmgrsvc.Gang,
 	}
 
 	// All the tasks in this gang is been deleted
-	log.WithField("gang", gang).Info("All tasks are killed " +
-		"for gang")
+	log.WithField("gang", gang).
+		Info("All tasks are killed for gang")
 	return false, nil
 }
 

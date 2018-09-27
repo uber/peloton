@@ -122,6 +122,10 @@ message ResourcePoolConfig {
 
   // The controller limit for this resource pool
   ControllerLimit controllerLimit = 9;
+
+  // Cap on max non-slack resources[mem,disk] in percentage
+  // that can be used by revocable task.
+  SlackLimit slackLimit = 10;
 }
 
 // The max limit of resources `CONTROLLER`(see TaskType) tasks can use in
@@ -144,6 +148,27 @@ message ResourcePoolConfig {
 //      gpu:1
 //
 message ControllerLimit {
+  double maxPercent = 1 ;
+}
+
+// The max limit of resources `REVOCABLE`(see TaskType) tasks can use in
+// this resource pool. This is defined as a percentage of the resource pool's
+// reservation. If undefined there is no maximum limit for revocable tasks
+// i.e. revocable tasks will not be treated differently. For eg if the
+// resource pool's reservation is defined as:
+//
+//      cpu:100
+//      mem:1000
+//      disk:1000
+//
+// And the SlackLimit = 10 ,Then the maximum resources the revocable
+// tasks can use is 10% of the reservation, i.e.
+//
+//      mem:100
+//      disk:100
+//
+// For cpu, it will use revocable resources.
+message SlackLimit {
   double maxPercent = 1 ;
 }
 

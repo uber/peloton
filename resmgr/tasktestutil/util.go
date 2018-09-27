@@ -4,12 +4,13 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"github.com/stretchr/testify/assert"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
-
-	"github.com/stretchr/testify/assert"
 )
 
 /**
@@ -48,4 +49,15 @@ func ValidateResources(resources *scalar.Resources, values map[string]int64) boo
 		int64(resources.GPU) == values["GPU"] &&
 		int64(resources.MEMORY) == values["MEMORY"] &&
 		int64(resources.DISK) == values["DISK"]
+}
+
+// GetReservationFromResourceConfig gets the reservation from the respools resource config
+func GetReservationFromResourceConfig(
+	resourcesMap map[string]*respool.ResourceConfig) *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    resourcesMap[common.CPU].GetReservation(),
+		GPU:    resourcesMap[common.GPU].GetReservation(),
+		MEMORY: resourcesMap[common.MEMORY].GetReservation(),
+		DISK:   resourcesMap[common.DISK].GetReservation(),
+	}
 }
