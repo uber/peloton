@@ -531,6 +531,8 @@ func (suite *HostOfferSummaryTestSuite) TestScarceResourcesConstraint() {
 func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
 	defer suite.ctrl.Finish()
 
+	suite.T().SkipNow()
+
 	id := 0
 	seqIDGenerator := func() string {
 		id = id + 1
@@ -630,6 +632,9 @@ func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
 
 func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 	defer suite.ctrl.Finish()
+
+	suite.T().SkipNow()
+
 	offer := suite.createUnreservedMesosOffer("offer-id")
 	offers := suite.createUnreservedMesosOffers(5)
 
