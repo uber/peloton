@@ -252,7 +252,7 @@ func (mo *masterOperatorClient) UpdateMaintenanceSchedule(schedule *mesos_v1_mai
 		Schedule: schedule,
 	}
 	masterMsg := &mesos_master.Call{
-		Type:                      &callType,
+		Type: &callType,
 		UpdateMaintenanceSchedule: updateMaintenanceSchedule,
 	}
 

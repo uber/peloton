@@ -101,8 +101,8 @@ func NewMasterDetector(zkurls string, options ...detector.Option) (*MasterDetect
 
 	detector := &MasterDetector{
 		minDetectorCyclePeriod: defaultMinDetectorCyclePeriod,
-		done:                   make(chan struct{}),
-		cancel:                 func() {},
+		done:   make(chan struct{}),
+		cancel: func() {},
 	}
 
 	detector.bootstrapFunc = func(client ZKInterface, _ <-chan struct{}) (ZKInterface, error) {

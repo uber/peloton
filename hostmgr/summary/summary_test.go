@@ -531,57 +531,55 @@ func (suite *HostOfferSummaryTestSuite) TestScarceResourcesConstraint() {
 func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
 	defer suite.ctrl.Finish()
 
-	suite.T().SkipNow()
-
-	id := 0
-	seqIDGenerator := func() string {
-		id = id + 1
-		return strconv.Itoa(id)
+	seqIDGenerator := func(i string) func() string {
+		return func() string {
+			return i
+		}
 	}
 
 	testTable := map[string]struct {
-		initialStatus   HostStatus
-		afterStatus     HostStatus
-		revocable       bool
-		resMultiplier   float64
-		wantResult      hostsvc.HostFilterResult
-		expectedOfferID string
+		initialStatus HostStatus
+		afterStatus   HostStatus
+		revocable     bool
+		resMultiplier float64
+		wantResult    hostsvc.HostFilterResult
+		offerID       string
 	}{
 		"matched-revocable-resources": {
 			wantResult: hostsvc.
 				HostFilterResult_MATCH,
-			initialStatus:   ReadyHost,
-			afterStatus:     PlacingHost,
-			revocable:       true,
-			resMultiplier:   1.0,
-			expectedOfferID: "1",
+			initialStatus: ReadyHost,
+			afterStatus:   PlacingHost,
+			revocable:     true,
+			resMultiplier: 1.0,
+			offerID:       "1",
 		},
 		"matched-nonrevocable-resources": {
 			wantResult: hostsvc.
 				HostFilterResult_MATCH,
-			initialStatus:   ReadyHost,
-			afterStatus:     PlacingHost,
-			revocable:       false,
-			resMultiplier:   1.0,
-			expectedOfferID: "2",
+			initialStatus: ReadyHost,
+			afterStatus:   PlacingHost,
+			revocable:     false,
+			resMultiplier: 1.0,
+			offerID:       "2",
 		},
 		"not-matched-revocable-resources": {
 			wantResult: hostsvc.
 				HostFilterResult_INSUFFICIENT_OFFER_RESOURCES,
-			initialStatus:   ReadyHost,
-			afterStatus:     ReadyHost,
-			revocable:       true,
-			resMultiplier:   7.0,
-			expectedOfferID: emptyOfferID,
+			initialStatus: ReadyHost,
+			afterStatus:   ReadyHost,
+			revocable:     true,
+			resMultiplier: 7.0,
+			offerID:       emptyOfferID,
 		},
 		"not-matched-nonrevocable-resources": {
 			wantResult: hostsvc.
 				HostFilterResult_INSUFFICIENT_OFFER_RESOURCES,
-			initialStatus:   ReadyHost,
-			afterStatus:     ReadyHost,
-			revocable:       false,
-			resMultiplier:   7.0,
-			expectedOfferID: emptyOfferID,
+			initialStatus: ReadyHost,
+			afterStatus:   ReadyHost,
+			revocable:     false,
+			resMultiplier: 7.0,
+			offerID:       emptyOfferID,
 		},
 	}
 
@@ -593,7 +591,7 @@ func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
 			offers[0].GetHostname(),
 			supportedSlackResourceTypes,
 		).(*hostSummary)
-		s.offerIDgenerator = seqIDGenerator
+		s.offerIDgenerator = seqIDGenerator(tt.offerID)
 		s.status = tt.initialStatus
 
 		suite.Equal(tt.initialStatus, s.AddMesosOffers(context.Background(), offers))
@@ -617,7 +615,7 @@ func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
 			"test case is %s", ttName)
 
 		suite.Equal(
-			tt.expectedOfferID,
+			tt.offerID,
 			s.offerID,
 			"test case is %s", ttName)
 
@@ -632,22 +630,19 @@ func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
 
 func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 	defer suite.ctrl.Finish()
-
-	suite.T().SkipNow()
-
 	offer := suite.createUnreservedMesosOffer("offer-id")
 	offers := suite.createUnreservedMesosOffers(5)
 
-	id := 0
-	seqIDGenerator := func() string {
-		id = id + 1
-		return strconv.Itoa(id)
+	seqIDGenerator := func(i string) func() string {
+		return func() string {
+			return i
+		}
 	}
 
 	testTable := map[string]struct {
-		wantResult      hostsvc.HostFilterResult
-		expectedOffers  []*mesos.Offer
-		expectedOfferID string
+		wantResult     hostsvc.HostFilterResult
+		expectedOffers []*mesos.Offer
+		offerID        string
 
 		evaluateRes constraints.EvaluateResult
 		evaluateErr error
@@ -659,62 +654,62 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 		initialOffers []*mesos.Offer
 	}{
 		"matched-correctly": {
-			wantResult:      hostsvc.HostFilterResult_MATCH,
-			expectedOffers:  offers,
-			evaluateRes:     constraints.EvaluateResultMatch,
-			initialStatus:   ReadyHost,
-			afterStatus:     PlacingHost,
-			initialOffers:   offers,
-			expectedOfferID: "1",
+			wantResult:     hostsvc.HostFilterResult_MATCH,
+			expectedOffers: offers,
+			evaluateRes:    constraints.EvaluateResultMatch,
+			initialStatus:  ReadyHost,
+			afterStatus:    PlacingHost,
+			initialOffers:  offers,
+			offerID:        "1",
 		},
 		"matched-not-applicable": {
-			wantResult:      hostsvc.HostFilterResult_MATCH,
-			expectedOffers:  []*mesos.Offer{offer},
-			evaluateRes:     constraints.EvaluateResultNotApplicable,
-			initialStatus:   ReadyHost,
-			afterStatus:     PlacingHost,
-			initialOffers:   []*mesos.Offer{offer},
-			expectedOfferID: "2",
+			wantResult:     hostsvc.HostFilterResult_MATCH,
+			expectedOffers: []*mesos.Offer{offer},
+			evaluateRes:    constraints.EvaluateResultNotApplicable,
+			initialStatus:  ReadyHost,
+			afterStatus:    PlacingHost,
+			initialOffers:  []*mesos.Offer{offer},
+			offerID:        "2",
 		},
 		"mismatched-constraint": {
-			wantResult:      hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
-			evaluateRes:     constraints.EvaluateResultMismatch,
-			initialStatus:   ReadyHost,
-			afterStatus:     ReadyHost,
-			initialOffers:   []*mesos.Offer{offer},
-			expectedOfferID: emptyOfferID,
+			wantResult:    hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
+			evaluateRes:   constraints.EvaluateResultMismatch,
+			initialStatus: ReadyHost,
+			afterStatus:   ReadyHost,
+			initialOffers: []*mesos.Offer{offer},
+			offerID:       emptyOfferID,
 		},
 		"mismatched-error": {
-			wantResult:      hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
-			evaluateErr:     errors.New("some error"),
-			initialStatus:   ReadyHost,
-			afterStatus:     ReadyHost,
-			initialOffers:   []*mesos.Offer{offer},
-			expectedOfferID: emptyOfferID,
+			wantResult:    hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
+			evaluateErr:   errors.New("some error"),
+			initialStatus: ReadyHost,
+			afterStatus:   ReadyHost,
+			initialOffers: []*mesos.Offer{offer},
+			offerID:       emptyOfferID,
 		},
 		"mismatched-no-offer-placing-status": {
-			wantResult:      hostsvc.HostFilterResult_MISMATCH_STATUS,
-			initialStatus:   PlacingHost,
-			afterStatus:     PlacingHost,
-			noMock:          true, // mockEvaluator should not be called in this case.
-			initialOffers:   []*mesos.Offer{},
-			expectedOfferID: emptyOfferID,
+			wantResult:    hostsvc.HostFilterResult_MISMATCH_STATUS,
+			initialStatus: PlacingHost,
+			afterStatus:   PlacingHost,
+			noMock:        true, // mockEvaluator should not be called in this case.
+			initialOffers: []*mesos.Offer{},
+			offerID:       emptyOfferID,
 		},
 		"mismatched-no-offer-ready-status": {
-			wantResult:      hostsvc.HostFilterResult_NO_OFFER,
-			initialStatus:   ReadyHost,
-			afterStatus:     ReadyHost,
-			noMock:          true, // mockEvaluator should not be called in this case.
-			initialOffers:   []*mesos.Offer{},
-			expectedOfferID: emptyOfferID,
+			wantResult:    hostsvc.HostFilterResult_NO_OFFER,
+			initialStatus: ReadyHost,
+			afterStatus:   ReadyHost,
+			noMock:        true, // mockEvaluator should not be called in this case.
+			initialOffers: []*mesos.Offer{},
+			offerID:       emptyOfferID,
 		},
 		"mismatched-mismatch-status": {
-			wantResult:      hostsvc.HostFilterResult_MISMATCH_STATUS,
-			initialStatus:   PlacingHost,
-			afterStatus:     PlacingHost,
-			noMock:          true, // mockEvaluator should not be called in this case.
-			initialOffers:   []*mesos.Offer{offer},
-			expectedOfferID: emptyOfferID,
+			wantResult:    hostsvc.HostFilterResult_MISMATCH_STATUS,
+			initialStatus: PlacingHost,
+			afterStatus:   PlacingHost,
+			noMock:        true, // mockEvaluator should not be called in this case.
+			initialOffers: []*mesos.Offer{offer},
+			offerID:       emptyOfferID,
 		},
 	}
 
@@ -728,7 +723,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 			offer.GetHostname(),
 			supportedSlackResourceTypes).(*hostSummary)
 		s.status = tt.initialStatus
-		s.offerIDgenerator = seqIDGenerator
+		s.offerIDgenerator = seqIDGenerator(tt.offerID)
 
 		suite.Equal(
 			tt.initialStatus,
@@ -761,7 +756,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 			"test case is %s", ttName)
 
 		suite.Equal(
-			tt.expectedOfferID,
+			tt.offerID,
 			s.offerID,
 			"test case is %s", ttName)
 

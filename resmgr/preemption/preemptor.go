@@ -89,9 +89,9 @@ func NewPreemptor(
 		enabled:                      cfg.Enabled,
 		preemptionPeriod:             cfg.TaskPreemptionPeriod,
 		sustainedOverAllocationCount: cfg.SustainedOverAllocationCount,
-		resTree:                      respool.GetTree(),
-		respoolState:                 make(map[string]int),
-		taskSet:                      stringset.New(),
+		resTree:      respool.GetTree(),
+		respoolState: make(map[string]int),
+		taskSet:      stringset.New(),
 		preemptionQueue: queue.NewQueue(
 			"preemption-queue",
 			reflect.TypeOf(resmgr.PreemptionCandidate{}),
