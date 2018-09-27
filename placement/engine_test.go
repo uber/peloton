@@ -28,7 +28,11 @@ import (
 )
 
 const (
-	_testReason = "Test Placement Reason"
+	_testReason      = "Test Placement Reason"
+	_portRange1Begin = 31000
+	_portRange1End   = 31001
+	_portRange2Begin = 31002
+	_portRange2End   = 31009
 )
 
 func setupEngine(t *testing.T) (
@@ -524,8 +528,8 @@ func TestEngineAssignPortsFromMultipleRanges(t *testing.T) {
 		assignment2.GetTask(),
 	}
 	host := testutil.SetupHostOffers()
-	*host.GetOffer().Resources[4].Ranges.Range[0].End = uint64(31001)
-	begin, end := uint64(31002), uint64(31009)
+	*host.GetOffer().Resources[4].Ranges.Range[0].End = uint64(_portRange1End)
+	begin, end := uint64(_portRange2Begin), uint64(_portRange2End)
 	host.GetOffer().Resources[4].Ranges.Range = append(
 		host.GetOffer().Resources[4].Ranges.Range, &mesos_v1.Value_Range{
 			Begin: &begin,
@@ -539,12 +543,19 @@ func TestEngineAssignPortsFromMultipleRanges(t *testing.T) {
 	}
 	sort.Ints(intPorts)
 	assert.Equal(t, 6, len(ports))
-	assert.Equal(t, 31000, intPorts[0])
-	assert.Equal(t, 31001, intPorts[1])
-	assert.Equal(t, 31002, intPorts[2])
-	assert.Equal(t, 31003, intPorts[3])
-	assert.Equal(t, 31004, intPorts[4])
-	assert.Equal(t, 31005, intPorts[5])
+
+	// range 1 (31000-31001) and range 2 (31002-31009)
+	// ports selected from both ranges
+	if intPorts[0] == _portRange1Begin {
+		for i := 0; i < len(intPorts); i++ {
+			assert.Equal(t, intPorts[i], 31000+i)
+		}
+	} else {
+		// ports selected from range2 only
+		for i := 0; i < len(intPorts); i++ {
+			assert.Equal(t, intPorts[i], _portRange2Begin+i)
+		}
+	}
 }
 
 func TestEngineFindUnusedOffers(t *testing.T) {
