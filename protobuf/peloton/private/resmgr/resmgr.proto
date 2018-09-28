@@ -128,7 +128,8 @@ message Placement {
   mesos.v1.AgentID agentId = 3;
 
   // The list of Mesos offers of the placed tasks
-  repeated mesos.v1.OfferID offerIds = 4;
+  // DEPRECATED: see `HostOfferID`
+  repeated mesos.v1.OfferID offerIds = 4 [deprecated=true];
 
   // The list of allocated ports which should be sufficient for all placed tasks
   repeated uint32 ports = 5;
@@ -136,6 +137,9 @@ message Placement {
   // Type of the tasks in the placement. Note all tasks must belong to same type.
   // By default the type is batch task.
   TaskType type = 6;
+
+  // The unique offer id of the offers on the host where the tasks are placed
+  api.v0.peloton.HostOfferID hostOfferID = 7;
 }
 
 /*

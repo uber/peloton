@@ -484,11 +484,17 @@ func TestEngineCreatePlacement(t *testing.T) {
 
 	placements := engine.createPlacement(assignments)
 	assert.Equal(t, 1, len(placements))
-	assert.Equal(t, host.GetOffer().Hostname, placements[0].Hostname)
-	assert.Equal(t, host.GetOffer().AgentId, placements[0].AgentId)
-	assert.Equal(t, assignment1.GetTask().GetTask().Type, placements[0].Type)
-	assert.Equal(t, []*peloton.TaskID{assignment1.GetTask().GetTask().Id}, placements[0].Tasks)
-	assert.Equal(t, 3, len(placements[0].Ports))
+	assert.Equal(t, host.GetOffer().GetHostname(), placements[0].GetHostname())
+	assert.Equal(t, host.GetOffer().GetId(), placements[0].GetHostOfferID())
+	assert.Equal(t, host.GetOffer().AgentId, placements[0].GetAgentId())
+	assert.Equal(t,
+		assignment1.GetTask().GetTask().GetType(),
+		placements[0].GetType())
+	assert.Equal(t,
+		[]*peloton.TaskID{
+			assignment1.GetTask().GetTask().GetId(),
+		}, placements[0].GetTasks())
+	assert.Equal(t, 3, len(placements[0].GetPorts()))
 }
 
 func TestEngineAssignPortsAllFromASingleRange(t *testing.T) {

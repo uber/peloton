@@ -210,6 +210,7 @@ func (e *engine) placeAssignmentGroup(
 			e.config.FetchOfferTasks,
 			e.config.TaskType,
 			filter)
+
 		existing := e.findUsedHosts(assignments)
 		now := time.Now()
 		for !e.pastDeadline(now, assignments) && len(hosts)+len(existing) == 0 {
@@ -225,7 +226,7 @@ func (e *engine) placeAssignmentGroup(
 		// Add any hosts still assigned to any task so the offers will eventually be returned or used in a placement.
 		hosts = append(hosts, existing...)
 
-		// We where starved from hosts
+		// We were starved for hosts
 		if len(hosts) == 0 {
 			log.WithFields(log.Fields{
 				"filter":      filter,
@@ -241,7 +242,8 @@ func (e *engine) placeAssignmentGroup(
 		// PlaceOnce the tasks on the hosts by delegating to the placement strategy.
 		e.strategy.PlaceOnce(assignments, hosts)
 
-		// Filter the assignments according to if they got assigned, should be retried or where unassigned.
+		// Filter the assignments according to if they got assigned,
+		// should be retried or were unassigned.
 		assigned, retryable, unassigned := e.filterAssignments(time.Now(), assignments)
 
 		// We will retry the retryable tasks
@@ -312,6 +314,7 @@ func (e *engine) filterAssignments(
 			}
 		} else {
 			task.IncRounds()
+			// TODO avyas : This seems backwards
 			if task.PastMaxRounds() || task.PastDeadline(now) {
 				assigned = append(assigned, assignment)
 				continue
@@ -323,16 +326,13 @@ func (e *engine) filterAssignments(
 }
 
 // findUsedHosts will find the hosts that are used by the retryable assignments.
-func (e *engine) findUsedHosts(retryable []*models.Assignment) []*models.HostOffers {
-	offers := map[*models.HostOffers]struct{}{}
+func (e *engine) findUsedHosts(
+	retryable []*models.Assignment) []*models.HostOffers {
+	var used []*models.HostOffers
 	for _, assignment := range retryable {
 		if offer := assignment.GetHost(); offer != nil {
-			offers[offer] = struct{}{}
+			used = append(used, offer)
 		}
-	}
-	var used []*models.HostOffers
-	for offer := range offers {
-		used = append(used, offer)
 	}
 	return used
 }
@@ -381,16 +381,17 @@ func (e *engine) createPlacement(assigned []*models.Assignment) []*resmgr.Placem
 	}
 
 	// For each offer create a placement with all the tasks assigned to it.
-	resPlacements := []*resmgr.Placement{}
+	var resPlacements []*resmgr.Placement
 	for offer, tasks := range offersToTasks {
 		taskIDs := e.getTaskIDs(tasks)
 		selectedPorts := e.assignPorts(offer, tasks)
 		placement := &resmgr.Placement{
-			Hostname: offer.GetOffer().Hostname,
-			AgentId:  offer.GetOffer().AgentId,
-			Type:     e.config.TaskType,
-			Tasks:    taskIDs,
-			Ports:    selectedPorts,
+			Hostname:    offer.GetOffer().Hostname,
+			AgentId:     offer.GetOffer().AgentId,
+			Type:        e.config.TaskType,
+			Tasks:       taskIDs,
+			Ports:       selectedPorts,
+			HostOfferID: offer.GetOffer().GetId(),
 		}
 		resPlacements = append(resPlacements, placement)
 	}
@@ -399,7 +400,9 @@ func (e *engine) createPlacement(assigned []*models.Assignment) []*resmgr.Placem
 	return resPlacements
 }
 
-func (e *engine) cleanup(ctx context.Context, assigned, retryable, unassigned []*models.Assignment,
+func (e *engine) cleanup(
+	ctx context.Context,
+	assigned, retryable, unassigned []*models.Assignment,
 	offers []*models.HostOffers) {
 	if len(assigned) > 0 {
 		// Create the resource manager placements.
