@@ -84,7 +84,8 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 	)
 	err = cachedJob.Update(ctx, &job.JobInfo{
 		Runtime: &job.RuntimeInfo{State: jobState},
-	}, cached.UpdateCacheAndDB)
+	}, nil,
+		cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).

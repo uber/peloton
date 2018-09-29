@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -339,7 +340,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), &jobs[0]).
-		Return(suite.createJob(&jobs[0], 10, 1), nil)
+		Return(suite.createJob(&jobs[0], 10, 1), &models.ConfigAddOn{}, nil)
 	suite.mockTaskStore.EXPECT().
 		GetTasksForJobByRange(context.Background(), &jobs[0], &task.InstanceRange{
 			From: 0,
@@ -356,7 +357,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), &jobs[1]).
-		Return(suite.createJob(&jobs[1], 10, 10), nil)
+		Return(suite.createJob(&jobs[1], 10, 10), &models.ConfigAddOn{}, nil)
 	suite.mockTaskStore.EXPECT().
 		GetTasksForJobByRange(context.Background(), &jobs[1], &task.InstanceRange{
 			From: 0,
@@ -373,7 +374,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), &jobs[2]).
-		Return(suite.createJob(&jobs[2], 10, 1), nil)
+		Return(suite.createJob(&jobs[2], 10, 1), &models.ConfigAddOn{}, nil)
 	suite.mockTaskStore.EXPECT().
 		GetTasksForJobByRange(context.Background(), &jobs[2], &task.InstanceRange{
 			From: 0,
@@ -390,7 +391,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), &jobs[3]).
-		Return(suite.createJob(&jobs[3], 10, 1), nil)
+		Return(suite.createJob(&jobs[3], 10, 1), &models.ConfigAddOn{}, nil)
 	suite.mockTaskStore.EXPECT().
 		GetTasksForJobByRange(context.Background(), &jobs[3], &task.InstanceRange{
 			From: 0,
@@ -451,7 +452,7 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), &jobs[0]).
-		Return(jobConfig, nil)
+		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.mockTaskStore.EXPECT().
 		GetTasksForJobByRange(context.Background(), &jobs[0], &task.InstanceRange{

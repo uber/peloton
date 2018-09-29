@@ -249,7 +249,7 @@ func (p *preemptor) getTaskPreemptionPolicy(
 	jobID *peloton.JobID,
 	instanceID uint32,
 	configVersion uint64) (*pbtask.PreemptionPolicy, error) {
-	config, err := p.taskStore.GetTaskConfig(
+	config, _, err := p.taskStore.GetTaskConfig(
 		ctx,
 		jobID,
 		instanceID,

@@ -7,6 +7,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -40,6 +41,7 @@ type RecoverBatchTasks func(
 	ctx context.Context,
 	jobID string,
 	jobConfig *job.JobConfig,
+	configAddOn *models.ConfigAddOn,
 	jobRuntime *job.RuntimeInfo,
 	batch TasksBatch,
 	errChan chan<- error)
@@ -94,6 +96,7 @@ func recoverJob(
 	ctx context.Context,
 	jobID string,
 	jobConfig *job.JobConfig,
+	configAddOn *models.ConfigAddOn,
 	jobRuntime *job.RuntimeInfo,
 	f RecoverBatchTasks) error {
 	finished := make(chan bool)
@@ -106,7 +109,7 @@ func recoverJob(
 		twg.Add(1)
 		go func(batch TasksBatch) {
 			defer twg.Done()
-			f(ctx, jobID, jobConfig, jobRuntime, batch, errChan)
+			f(ctx, jobID, jobConfig, configAddOn, jobRuntime, batch, errChan)
 		}(batch)
 	}
 
@@ -164,7 +167,7 @@ func recoverJobsBatch(
 			continue
 		}
 
-		jobConfig, err := jobStore.GetJobConfig(ctx, &jobID)
+		jobConfig, configAddOn, err := jobStore.GetJobConfig(ctx, &jobID)
 		if err != nil {
 			log.WithField("job_id", jobID.Value).
 				WithError(err).
@@ -173,7 +176,7 @@ func recoverJobsBatch(
 			return
 		}
 
-		err = recoverJob(ctx, jobID.Value, jobConfig, jobRuntime, f)
+		err = recoverJob(ctx, jobID.Value, jobConfig, configAddOn, jobRuntime, f)
 		if err != nil {
 			log.WithError(err).
 				WithField("job_id", jobID).

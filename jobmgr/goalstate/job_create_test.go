@@ -7,6 +7,7 @@ import (
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
@@ -84,10 +85,10 @@ func TestJobCreateTasks(t *testing.T) {
 
 	jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), jobID).
-		Return(&jobConfig, nil)
+		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
 	taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any()).
+		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	jobFactory.EXPECT().
@@ -99,8 +100,11 @@ func TestJobCreateTasks(t *testing.T) {
 		Return(nil)
 
 	cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pb_job.JobInfo, _ cached.UpdateRequest) {
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context,
+			jobInfo *pb_job.JobInfo,
+			_ *models.ConfigAddOn,
+			_ cached.UpdateRequest) {
 			assert.Equal(t, jobInfo.Runtime.State, pb_job.JobState_PENDING)
 		}).
 		Return(nil)
@@ -248,10 +252,10 @@ func TestJobRecover(t *testing.T) {
 
 	jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), jobID).
-		Return(&jobConfig, nil)
+		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
 	taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any()).
+		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	jobFactory.EXPECT().
@@ -259,8 +263,11 @@ func TestJobRecover(t *testing.T) {
 		Return(cachedJob)
 
 	cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pb_job.JobInfo, _ cached.UpdateRequest) {
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context,
+			jobInfo *pb_job.JobInfo,
+			_ *models.ConfigAddOn,
+			_ cached.UpdateRequest) {
 			assert.Equal(t, jobInfo.Runtime.State, pb_job.JobState_PENDING)
 		}).
 		Return(nil)
@@ -426,10 +433,10 @@ func TestJobMaxRunningInstances(t *testing.T) {
 
 	jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), jobID).
-		Return(&jobConfig, nil)
+		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
 	taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any()).
+		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	jobFactory.EXPECT().
@@ -460,8 +467,11 @@ func TestJobMaxRunningInstances(t *testing.T) {
 		Return(nil)
 
 	cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pb_job.JobInfo, _ cached.UpdateRequest) {
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context,
+			jobInfo *pb_job.JobInfo,
+			_ *models.ConfigAddOn,
+			_ cached.UpdateRequest) {
 			assert.Equal(t, jobInfo.Runtime.State, pb_job.JobState_PENDING)
 		}).
 		Return(nil)
@@ -537,10 +547,10 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 
 	jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), jobID).
-		Return(&jobConfig, nil)
+		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
 	taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any()).
+		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	jobFactory.EXPECT().
@@ -559,8 +569,11 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		Return(nil)
 
 	cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pb_job.JobInfo, _ cached.UpdateRequest) {
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context,
+			jobInfo *pb_job.JobInfo,
+			_ *models.ConfigAddOn,
+			_ cached.UpdateRequest) {
 			assert.Equal(t, jobInfo.Runtime.State, pb_job.JobState_PENDING)
 		}).
 		Return(nil)

@@ -84,3 +84,22 @@ const (
 	// MesosPorts resource kind
 	MesosPorts = "ports"
 )
+
+const (
+	// SystemLabelKeyTemplate is the system label key template
+	SystemLabelKeyTemplate = "%s.%s"
+	// SystemLabelPrefix is the system label key name prefix
+	SystemLabelPrefix = "peloton"
+	// SystemLabelRespoolPath is the system label key name for respool path
+	SystemLabelRespoolPath = "respool_path"
+	// SystemLabelJobName is the system label key name for job name
+	SystemLabelJobName = "job_name"
+	// SystemLabelJobOwner is the system label key name for job owner
+	SystemLabelJobOwner = "job_owner"
+	// SystemLabelJobType is the system label key name for job type
+	SystemLabelJobType = "job_type"
+	// SystemLabelCluster is the system label key name for cluster
+	SystemLabelCluster = "cluster"
+	// ClusterEnvVar is the cluster environment variable
+	ClusterEnvVar = "CLUSTER"
+)

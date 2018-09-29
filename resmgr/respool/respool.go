@@ -460,6 +460,7 @@ func (n *resPool) ToResourcePoolInfo() *respool.ResourcePoolInfo {
 		Config:   n.poolConfig,
 		Children: childrenResourcePoolIDs,
 		Usage:    n.createRespoolUsage(n.CalculateTotalAllocatedResources()),
+		Path:     &respool.ResourcePoolPath{Value: n.GetPath()},
 	}
 }
 

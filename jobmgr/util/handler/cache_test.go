@@ -7,6 +7,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -113,7 +114,7 @@ func (suite *HandlerCacheTestSuite) TestGetJobConfig_CacheHitWithErr() {
 func (suite *HandlerCacheTestSuite) TestGetJobConfig_CacheMiss() {
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(nil)
 	suite.jobStore.EXPECT().GetJobConfig(gomock.Any(), suite.jobID).
-		Return(suite.config, nil)
+		Return(suite.config, &models.ConfigAddOn{}, nil)
 	config, err := GetJobConfigWithoutFillingCache(
 		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)
 	suite.NoError(err)
@@ -123,7 +124,7 @@ func (suite *HandlerCacheTestSuite) TestGetJobConfig_CacheMiss() {
 func (suite *HandlerCacheTestSuite) TestGetJobConfig_CacheMissWithErr() {
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(nil)
 	suite.jobStore.EXPECT().GetJobConfig(gomock.Any(), suite.jobID).
-		Return(nil, fmt.Errorf("db error"))
+		Return(nil, nil, fmt.Errorf("db error"))
 	config, err := GetJobConfigWithoutFillingCache(
 		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)
 	suite.Error(err)

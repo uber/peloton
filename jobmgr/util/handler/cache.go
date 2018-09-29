@@ -3,12 +3,12 @@ package handler
 import (
 	"context"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/storage"
-
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 )
 
 // GetJobConfigWithoutFillingCache returns models.JobConfig without filling in
@@ -26,7 +26,8 @@ func GetJobConfigWithoutFillingCache(
 		return cachedJob.GetConfig(ctx)
 	}
 
-	return store.GetJobConfig(ctx, id)
+	jobConfig, _, err := store.GetJobConfig(ctx, id)
+	return jobConfig, err
 }
 
 // GetJobRuntimeWithoutFillingCache returns job.RuntimeInfo without filling in

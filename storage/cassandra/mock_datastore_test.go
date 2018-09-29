@@ -80,11 +80,11 @@ func (suite *MockDatastoreTestSuite) TestDataStoreDeleteJob() {
 
 // TestDataStoreFailureGetJobConfig tests datastore failures in getting job cfg
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobConfig() {
-	_, err := suite.store.GetJobConfigWithVersion(
+	_, _, err := suite.store.GetJobConfigWithVersion(
 		context.Background(), suite.testJobID, 0)
 	suite.Error(err)
 
-	_, err = suite.store.GetJobConfig(
+	_, _, err = suite.store.GetJobConfig(
 		context.Background(), suite.testJobID)
 	suite.Error(err)
 
@@ -182,11 +182,11 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetTasks() {
 
 // TestDataStoreFailureGetTaskConfig tests datastore failures in getting task cfg
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetTaskConfig() {
-	_, err := suite.store.GetTaskConfig(
+	_, _, err := suite.store.GetTaskConfig(
 		context.Background(), suite.testJobID, 0, 0)
 	suite.Error(err)
 
-	_, err = suite.store.GetTaskConfigs(
+	_, _, err = suite.store.GetTaskConfigs(
 		context.Background(), suite.testJobID, []uint32{0}, 0)
 	suite.Error(err)
 

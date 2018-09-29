@@ -19,6 +19,7 @@ import (
 	launchermocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
@@ -259,7 +260,7 @@ func (suite *DriverTestSuite) prepareTestSyncDB(jobType job.JobType) {
 
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(jobConfig, nil)
+		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -270,7 +271,7 @@ func (suite *DriverTestSuite) prepareTestSyncDB(jobType job.JobType) {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
 		Return(nil)
 
 	suite.jobGoalStateEngine.EXPECT().
@@ -376,7 +377,7 @@ func (suite *DriverTestSuite) TestSyncFromDBWithMaxRunningInstancesSLA() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(jobConfig, nil)
+		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -387,7 +388,7 @@ func (suite *DriverTestSuite) TestSyncFromDBWithMaxRunningInstancesSLA() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
 		Return(nil)
 
 	suite.jobGoalStateEngine.EXPECT().
@@ -452,7 +453,7 @@ func (suite *DriverTestSuite) TestInitializedJobSyncFromDB() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(jobConfig, nil)
+		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -463,7 +464,7 @@ func (suite *DriverTestSuite) TestInitializedJobSyncFromDB() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
 		Return(nil)
 
 	suite.jobGoalStateEngine.EXPECT().
@@ -523,7 +524,7 @@ func (suite *DriverTestSuite) TestSyncFromDBRecoverUpdate() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(jobConfig, nil)
+		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -534,7 +535,7 @@ func (suite *DriverTestSuite) TestSyncFromDBRecoverUpdate() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
 		Return(nil)
 
 	suite.jobGoalStateEngine.EXPECT().

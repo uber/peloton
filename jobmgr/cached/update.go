@@ -31,6 +31,7 @@ type Update interface {
 		jobID *peloton.JobID,
 		jobConfig *pbjob.JobConfig,
 		prevJobConfig *pbjob.JobConfig,
+		prevConfigAddOn *models.ConfigAddOn,
 		instanceAdded []uint32,
 		instanceUpdated []uint32,
 		instanceRemoved []uint32,
@@ -171,6 +172,7 @@ func (u *update) Create(
 	jobID *peloton.JobID,
 	jobConfig *pbjob.JobConfig,
 	prevJobConfig *pbjob.JobConfig,
+	prevConfigAddOn *models.ConfigAddOn,
 	instanceAdded []uint32,
 	instanceUpdated []uint32,
 	instanceRemoved []uint32,
@@ -194,7 +196,7 @@ func (u *update) Create(
 
 	// Store the new job configuration
 	cachedJob := u.jobFactory.AddJob(jobID)
-	newConfig, err := cachedJob.CompareAndSetConfig(ctx, jobConfig)
+	newConfig, err := cachedJob.CompareAndSetConfig(ctx, jobConfig, prevConfigAddOn)
 	if err != nil {
 		return err
 	}

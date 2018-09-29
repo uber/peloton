@@ -20,6 +20,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common/backoff"
@@ -38,6 +39,15 @@ type LaunchableTask struct {
 	RuntimeDiff jobmgrcommon.RuntimeDiff
 	// Config is the task config of the task to be launched
 	Config *task.TaskConfig
+	// ConfigAddOn is the task config add on
+	ConfigAddOn *models.ConfigAddOn
+}
+
+// LaunchableTaskInfo contains the info of a task to be launched
+type LaunchableTaskInfo struct {
+	*task.TaskInfo
+	// ConfigAddOn is the task config add on
+	ConfigAddOn *models.ConfigAddOn
 }
 
 // Launcher defines the interface of task launcher which launches
@@ -57,8 +67,8 @@ type Launcher interface {
 	// CreateLaunchableTasks generates list of hostsvc.LaunchableTask and a map
 	// of skipped TaskInfo from map of TaskInfo
 	CreateLaunchableTasks(
-		ctx context.Context, tasks map[string]*task.TaskInfo) (
-		[]*hostsvc.LaunchableTask, map[string]*task.TaskInfo)
+		ctx context.Context, tasks map[string]*LaunchableTaskInfo) (
+		[]*hostsvc.LaunchableTask, map[string]*LaunchableTaskInfo)
 	// TryReturnOffers returns the offers in the placement back to host manager
 	TryReturnOffers(ctx context.Context, err error, placement *resmgr.Placement) error
 }
@@ -199,7 +209,7 @@ func (l *launcher) GetLaunchableTasks(
 		}
 
 		// TODO: We need to add batch api's for getting all tasks in one shot
-		taskConfig, err := l.taskStore.GetTaskConfig(ctx, jobID, uint32(instanceID), cachedRuntime.GetConfigVersion())
+		taskConfig, configAddOn, err := l.taskStore.GetTaskConfig(ctx, jobID, uint32(instanceID), cachedRuntime.GetConfigVersion())
 		if err != nil {
 			log.WithError(err).WithField("task_id", taskID.GetValue()).
 				Error("not able to get task configuration")
@@ -260,6 +270,7 @@ func (l *launcher) GetLaunchableTasks(
 		launchableTasks[taskID.GetValue()] = &LaunchableTask{
 			RuntimeDiff: runtimeDiff,
 			Config:      taskConfig,
+			ConfigAddOn: configAddOn,
 		}
 	}
 
@@ -310,13 +321,13 @@ func (l *launcher) updateTaskRuntime(
 // task.TaskInfo. For tasks containing secrets, it tries to populate secrets
 // from DB. If some tasks are not launched, return a map of skipped taskInfos.
 func (l *launcher) CreateLaunchableTasks(
-	ctx context.Context, tasks map[string]*task.TaskInfo,
+	ctx context.Context, tasks map[string]*LaunchableTaskInfo,
 ) (launchableTasks []*hostsvc.LaunchableTask,
-	skippedTaskInfos map[string]*task.TaskInfo) {
-	skippedTaskInfos = make(map[string]*task.TaskInfo)
-	for id, taskInfo := range tasks {
+	skippedTaskInfos map[string]*LaunchableTaskInfo) {
+	skippedTaskInfos = make(map[string]*LaunchableTaskInfo)
+	for id, launchableTaskInfo := range tasks {
 		// if task config has secret volumes, populate secret data in config
-		err := l.populateSecrets(ctx, taskInfo.GetConfig())
+		err := l.populateSecrets(ctx, launchableTaskInfo.Config)
 		if err != nil {
 			if yarpcerrors.IsNotFound(err) {
 				// This is not retryable and we will never recover
@@ -345,25 +356,31 @@ func (l *launcher) CreateLaunchableTasks(
 				// launch this task again
 				log.WithError(err).WithField("task_id", id).
 					Error("populateSecrets failed. skipping task")
-				skippedTaskInfos[id] = taskInfo
+				skippedTaskInfos[id] = launchableTaskInfo
 			}
 			// skip the task for which we could not populate secrets
 			continue
 		}
+		// Set system labels as task labels
+		for _, label := range launchableTaskInfo.ConfigAddOn.GetSystemLabels() {
+			launchableTaskInfo.Config.Labels = append(
+				launchableTaskInfo.Config.Labels,
+				label)
+		}
 		// Add volume info into launchable task if task config has volume.
 		launchableTask := hostsvc.LaunchableTask{
-			TaskId: taskInfo.GetRuntime().GetMesosTaskId(),
-			Config: taskInfo.GetConfig(),
-			Ports:  taskInfo.GetRuntime().GetPorts(),
+			TaskId: launchableTaskInfo.Runtime.GetMesosTaskId(),
+			Config: launchableTaskInfo.Config,
+			Ports:  launchableTaskInfo.Runtime.GetPorts(),
 		}
-		if taskInfo.GetConfig().GetVolume() != nil {
+		if launchableTaskInfo.Config.GetVolume() != nil {
 			diskResource := util.NewMesosResourceBuilder().
 				WithName("disk").
-				WithValue(float64(taskInfo.GetConfig().GetVolume().GetSizeMB())).
+				WithValue(float64(launchableTaskInfo.Config.GetVolume().GetSizeMB())).
 				Build()
 			launchableTask.Volume = &hostsvc.Volume{
-				Id:            taskInfo.GetRuntime().GetVolumeID(),
-				ContainerPath: taskInfo.GetConfig().GetVolume().GetContainerPath(),
+				Id:            launchableTaskInfo.Runtime.GetVolumeID(),
+				ContainerPath: launchableTaskInfo.Config.GetVolume().GetContainerPath(),
 				Resource:      diskResource,
 			}
 		}

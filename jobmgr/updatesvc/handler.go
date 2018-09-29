@@ -129,7 +129,7 @@ func (h *serviceHandler) CreateUpdate(
 	jobConfig := req.GetJobConfig()
 
 	// Get previous job configuration
-	prevJobConfig, err := h.jobStore.GetJobConfig(ctx, jobID)
+	prevJobConfig, prevConfigAddOn, err := h.jobStore.GetJobConfig(ctx, jobID)
 	if err != nil {
 		h.metrics.UpdateCreateFail.Inc(1)
 		return nil, err
@@ -171,6 +171,7 @@ func (h *serviceHandler) CreateUpdate(
 		jobID,
 		jobConfig,
 		prevJobConfig,
+		prevConfigAddOn,
 		instancesAdded,
 		instancesUpdated,
 		instancesRemoved,
@@ -470,7 +471,7 @@ func (h *serviceHandler) diffConfig(
 			return
 		}
 
-		prevTaskConfig, err = h.taskStore.GetTaskConfig(
+		prevTaskConfig, _, err = h.taskStore.GetTaskConfig(
 			ctx, jobID, i, runtime.GetConfigVersion())
 		if err != nil {
 			return

@@ -23,6 +23,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/job/config"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/util/handler"
+	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -127,7 +128,7 @@ func (h *serviceHandler) Create(
 
 	jobConfig := req.GetConfig()
 
-	err := h.validateResourcePool(jobConfig.GetRespoolID())
+	respoolPath, err := h.validateResourcePool(jobConfig.GetRespoolID())
 	if err != nil {
 		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{
@@ -171,7 +172,12 @@ func (h *serviceHandler) Create(
 
 	// Create job in cache and db
 	cachedJob := h.jobFactory.AddJob(jobID)
-	err = cachedJob.Create(ctx, jobConfig, "peloton")
+
+	systemLabels := jobutil.ConstructSystemLabels(jobConfig, respoolPath.GetValue())
+	configAddOn := &models.ConfigAddOn{
+		SystemLabels: systemLabels,
+	}
+	err = cachedJob.Create(ctx, jobConfig, configAddOn, "peloton")
 	if err != nil {
 		// best effort to clean up cache and db when job creation fails
 		// and the err is not due to job has already existed.
@@ -233,7 +239,8 @@ func (h *serviceHandler) Update(
 	}
 
 	newConfig := req.GetConfig()
-	oldConfig, err := h.jobStore.GetJobConfig(ctx, jobID)
+	oldConfig, oldConfigAddOn, err := h.jobStore.GetJobConfig(ctx, jobID)
+
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).
@@ -283,10 +290,20 @@ func (h *serviceHandler) Update(
 		return nil, nil
 	}
 
+	var respoolPath string
+	for _, label := range oldConfigAddOn.GetSystemLabels() {
+		if label.GetKey() == common.SystemLabelRespoolPath {
+			respoolPath = label.GetValue()
+		}
+	}
+	newConfigAddOn := &models.ConfigAddOn{
+		SystemLabels: jobutil.ConstructSystemLabels(newConfig, respoolPath),
+	}
 	// first persist the configuration
 	newUpdatedConfig, err := cachedJob.CompareAndSetConfig(
 		ctx,
-		mergeInstanceConfig(oldConfig, newConfig))
+		mergeInstanceConfig(oldConfig, newConfig),
+		newConfigAddOn)
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
@@ -298,7 +315,8 @@ func (h *serviceHandler) Update(
 			ConfigurationVersion: newUpdatedConfig.GetChangeLog().GetVersion(),
 			State:                job.JobState_INITIALIZED,
 		},
-	}, cached.UpdateCacheAndDB)
+	}, nil,
+		cached.UpdateCacheAndDB)
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
@@ -322,7 +340,7 @@ func (h *serviceHandler) Get(
 	log.WithField("request", req).Debug("JobManager.Get called")
 	h.metrics.JobAPIGet.Inc(1)
 
-	jobConfig, err := h.jobStore.GetJobConfig(ctx, req.GetId())
+	jobConfig, _, err := h.jobStore.GetJobConfig(ctx, req.GetId())
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
@@ -385,7 +403,7 @@ func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (
 		return nil, yarpcerrors.UnavailableErrorf("Job Refresh API not suppported on non-leader")
 	}
 
-	jobConfig, err := h.jobStore.GetJobConfig(ctx, req.GetId())
+	jobConfig, configAddOn, err := h.jobStore.GetJobConfig(ctx, req.GetId())
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", req.GetId().GetValue()).
@@ -408,7 +426,8 @@ func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (
 	cachedJob.Update(ctx, &job.JobInfo{
 		Config:  jobConfig,
 		Runtime: jobRuntime,
-	}, cached.UpdateCacheOnly)
+	}, configAddOn,
+		cached.UpdateCacheOnly)
 	h.goalStateDriver.EnqueueJob(req.GetId(), time.Now())
 	h.metrics.JobRefresh.Inc(1)
 	return &job.RefreshResponse{}, nil
@@ -595,7 +614,7 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 		return nil, 0, err
 	}
 
-	jobConfig, err := h.jobStore.GetJobConfigWithVersion(
+	jobConfig, prevConfigAddOn, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
 		jobID,
 		runtime.GetConfigurationVersion(),
@@ -633,6 +652,7 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 		jobID,
 		&newConfig,
 		jobConfig,
+		prevConfigAddOn,
 		nil,
 		convertRangesToSlice(ranges, newConfig.GetInstanceCount()),
 		nil,
@@ -703,16 +723,16 @@ func (h *serviceHandler) GetCache(
 // validateResourcePool validates the resource pool before submitting job
 func (h *serviceHandler) validateResourcePool(
 	respoolID *peloton.ResourcePoolID,
-) error {
+) (*respool.ResourcePoolPath, error) {
 	ctx, cancelFunc := context.WithTimeout(h.rootCtx, 10*time.Second)
 	defer cancelFunc()
 
 	if respoolID == nil {
-		return errNullResourcePoolID
+		return nil, errNullResourcePoolID
 	}
 
 	if respoolID.GetValue() == common.RootResPoolID {
-		return errRootResourcePoolID
+		return nil, errRootResourcePoolID
 	}
 
 	var request = &respool.GetRequest{
@@ -720,26 +740,26 @@ func (h *serviceHandler) validateResourcePool(
 	}
 	response, err := h.respoolClient.GetResourcePool(ctx, request)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if response.GetError() != nil {
-		return errResourcePoolNotFound
+		return nil, errResourcePoolNotFound
 	}
 
 	if response.GetPoolinfo() != nil && response.GetPoolinfo().Id != nil {
 		if response.GetPoolinfo().Id.Value != respoolID.Value {
-			return errResourcePoolNotFound
+			return nil, errResourcePoolNotFound
 		}
 	} else {
-		return errResourcePoolNotFound
+		return nil, errResourcePoolNotFound
 	}
 
 	if len(response.GetPoolinfo().GetChildren()) > 0 {
-		return errNonLeafResourcePool
+		return nil, errNonLeafResourcePool
 	}
 
-	return nil
+	return response.GetPoolinfo().GetPath(), nil
 }
 
 // validateSecretsAndConfig checks the secrets for input sanity and makes sure

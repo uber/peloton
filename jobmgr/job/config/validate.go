@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/taskconfig"
 
 	"github.com/hashicorp/go-multierror"
@@ -164,6 +166,15 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 		if taskConfig == nil {
 			err := fmt.Errorf("missing task config for instance %v", i)
 			return err
+		}
+
+		for _, label := range taskConfig.GetLabels() {
+			if strings.HasPrefix(label.GetKey(), common.SystemLabelPrefix+".") {
+				return fmt.Errorf(
+					"keys with prefix"+
+						" '%s' are reserved for system labels",
+					common.SystemLabelPrefix)
+			}
 		}
 
 		restartPolicy := taskConfig.GetRestartPolicy()

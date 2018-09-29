@@ -11,6 +11,7 @@ import (
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	"code.uber.internal/infra/peloton/storage/cassandra"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -70,6 +71,7 @@ func createJob(ctx context.Context, state pb_job.JobState, goalState pb_job.JobS
 			Version:   1,
 		},
 	}
+	configAddOn := &models.ConfigAddOn{}
 
 	initialJobRuntime := pb_job.RuntimeInfo{
 		State:        pb_job.JobState_INITIALIZED,
@@ -84,7 +86,7 @@ func createJob(ctx context.Context, state pb_job.JobState, goalState pb_job.JobS
 		ConfigurationVersion: jobConfig.GetChangeLog().GetVersion(),
 	}
 
-	err := csStore.CreateJobConfig(ctx, jobID, &jobConfig, 1, "gsg9")
+	err := csStore.CreateJobConfig(ctx, jobID, &jobConfig, configAddOn, 1, "gsg9")
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +111,14 @@ func createJob(ctx context.Context, state pb_job.JobState, goalState pb_job.JobS
 	return jobID, nil
 }
 
-func recoverPendingTask(ctx context.Context, jobID string, jobConfig *pb_job.JobConfig, jobRuntime *pb_job.RuntimeInfo, batch TasksBatch, errChan chan<- error) {
+func recoverPendingTask(
+	ctx context.Context,
+	jobID string,
+	jobConfig *pb_job.JobConfig,
+	configAddOn *models.ConfigAddOn,
+	jobRuntime *pb_job.RuntimeInfo,
+	batch TasksBatch,
+	errChan chan<- error) {
 	if jobID != pendingJobID.GetValue() {
 		err := fmt.Errorf("Got the wrong job id")
 		errChan <- err
@@ -122,7 +131,14 @@ func recoverPendingTask(ctx context.Context, jobID string, jobConfig *pb_job.Job
 	return
 }
 
-func recoverRunningTask(ctx context.Context, jobID string, jobConfig *pb_job.JobConfig, jobRuntime *pb_job.RuntimeInfo, batch TasksBatch, errChan chan<- error) {
+func recoverRunningTask(
+	ctx context.Context,
+	jobID string,
+	jobConfig *pb_job.JobConfig,
+	configAddOn *models.ConfigAddOn,
+	jobRuntime *pb_job.RuntimeInfo,
+	batch TasksBatch,
+	errChan chan<- error) {
 	if jobID != runningJobID.GetValue() {
 		err := fmt.Errorf("Got the wrong job id")
 		errChan <- err
@@ -135,7 +151,14 @@ func recoverRunningTask(ctx context.Context, jobID string, jobConfig *pb_job.Job
 	return
 }
 
-func recoverAllTask(ctx context.Context, jobID string, jobConfig *pb_job.JobConfig, jobRuntime *pb_job.RuntimeInfo, batch TasksBatch, errChan chan<- error) {
+func recoverAllTask(
+	ctx context.Context,
+	jobID string,
+	jobConfig *pb_job.JobConfig,
+	configAddOn *models.ConfigAddOn,
+	jobRuntime *pb_job.RuntimeInfo,
+	batch TasksBatch,
+	errChan chan<- error) {
 	mutex.Lock()
 	receivedPendingJobID = append(receivedPendingJobID, jobID)
 	mutex.Unlock()
@@ -146,6 +169,7 @@ func recoverTaskRandomly(
 	ctx context.Context,
 	jobID string,
 	jobConfig *pb_job.JobConfig,
+	configAddOn *models.ConfigAddOn,
 	jobRuntime *pb_job.RuntimeInfo,
 	batch TasksBatch,
 	errChan chan<- error) {
@@ -240,7 +264,7 @@ func TestRecoveryAfterJobDelete(t *testing.T) {
 
 	mockJobStore.EXPECT().
 		GetJobConfig(ctx, pendingJobID).
-		Return(&jobConfig, nil).
+		Return(&jobConfig, &models.ConfigAddOn{}, nil).
 		AnyTimes()
 
 	err = RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
@@ -252,6 +276,45 @@ func TestRecoveryAfterJobDelete(t *testing.T) {
 		AnyTimes()
 	err = RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
 	assert.NoError(t, err)
+}
+
+// TestRecoveryErrors tests RecoverJobsByState errors
+func TestRecoveryErrors(t *testing.T) {
+	jobStatesPending := []pb_job.JobState{
+		pb_job.JobState_PENDING,
+	}
+	jobRuntime := pb_job.RuntimeInfo{
+		State: pb_job.JobState_PENDING,
+	}
+	jobID := &peloton.JobID{Value: uuid.New()}
+
+	ctrl := gomock.NewController(t)
+	ctx := context.Background()
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+
+	//Test GetJobsByStates error
+	mockJobStore.EXPECT().
+		GetJobsByStates(ctx, jobStatesPending).
+		Return(nil, fmt.Errorf("Fake GetJobsByStates error"))
+	err := RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
+	assert.Error(t, err)
+
+	// Test GetJobConfig error
+	jobIDs := []peloton.JobID{*jobID}
+	mockJobStore.EXPECT().
+		GetJobsByStates(ctx, jobStatesPending).
+		Return(jobIDs, nil)
+
+	mockJobStore.EXPECT().
+		GetJobRuntime(ctx, jobID).
+		Return(&jobRuntime, nil)
+
+	mockJobStore.EXPECT().
+		GetJobConfig(ctx, jobID).
+		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
+
+	err = RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
+	assert.Error(t, err)
 }
 
 // TestRecoveryWithFailedJobBatches test will create 100 jobs, and eventually 10 jobByBatches.

@@ -69,3 +69,11 @@ message UpdateModel {
   // instances to be removed
   repeated uint32 instancesRemoved = 15;
 }
+
+/**
+ * ConfigAddOn defines the add-ons to the user provided configuration
+ */
+message ConfigAddOn {
+  // Peloton added labels
+  repeated api.v0.peloton.Label system_labels = 1;
+}

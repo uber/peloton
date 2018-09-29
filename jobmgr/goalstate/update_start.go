@@ -118,7 +118,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 
 	jobID := cachedUpdate.JobID()
 	// fetch the job configuration first
-	jobConfig, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
+	jobConfig, systemLabels, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
 		ctx,
 		jobID,
 		cachedUpdate.GetGoalState().JobVersion)
@@ -131,7 +131,8 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 	if err := goalStateDriver.taskStore.CreateTaskConfigs(
 		ctx,
 		jobID,
-		jobConfig); err != nil {
+		jobConfig,
+		systemLabels); err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)
 		return err
 	}

@@ -9,6 +9,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common/lifecycle"
@@ -204,8 +205,8 @@ func (r *RecoveryHandler) recoverNonRunningTasks() {
 }
 
 func (r *RecoveryHandler) requeueTasksInRange(ctx context.Context,
-	jobID string, jobConfig *job.JobConfig, jobRuntime *job.RuntimeInfo,
-	batch cmn_recovery.TasksBatch, errChan chan<- error) {
+	jobID string, jobConfig *job.JobConfig, configAddOn *models.ConfigAddOn,
+	jobRuntime *job.RuntimeInfo, batch cmn_recovery.TasksBatch, errChan chan<- error) {
 	nonRunningTasks, runningTasks, err := r.loadTasksInRange(ctx, jobID,
 		batch.From, batch.To)
 

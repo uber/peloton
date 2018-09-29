@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	hostmocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
@@ -452,7 +453,7 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 			GetRuntime(gomock.Any()).
 			Return(suite.testJobRuntime, nil),
 		suite.mockedCachedJob.EXPECT().
-			Update(gomock.Any(), expectedJobInfo, cached.UpdateCacheAndDB).
+			Update(gomock.Any(), expectedJobInfo, gomock.Any(), cached.UpdateCacheAndDB).
 			Return(nil),
 		suite.mockedGoalStateDrive.EXPECT().
 			EnqueueJob(suite.testJobID, gomock.Any()).Return(),
@@ -651,7 +652,7 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasksWithUpdateFailure() {
 			GetRuntime(gomock.Any()).
 			Return(suite.testJobRuntime, nil),
 		suite.mockedCachedJob.EXPECT().
-			Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(fmt.Errorf("db update failure")),
+			Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(fmt.Errorf("db update failure")),
 	)
 
 	var request = &task.StopRequest{
@@ -1683,7 +1684,7 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
 	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil)
+		GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 	suite.mockedTaskStore.EXPECT().
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
 			From: 0,
@@ -1710,13 +1711,13 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
 	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID).Return(nil, fmt.Errorf("fake db error"))
+		GetJobConfig(gomock.Any(), suite.testJobID).Return(nil, nil, fmt.Errorf("fake db error"))
 	_, err = suite.handler.Refresh(context.Background(), request)
 	suite.Error(err)
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
 	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil)
+		GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 	suite.mockedTaskStore.EXPECT().
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
 			From: 0,
@@ -1727,7 +1728,8 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
 	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil)
+		GetJobConfig(gomock.Any(), suite.testJobID).
+		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 	suite.mockedTaskStore.EXPECT().
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
 			From: 0,

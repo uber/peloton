@@ -30,7 +30,7 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 	jobID := &peloton.JobID{Value: id}
 	goalStateDriver := entity.(*jobEntity).driver
 
-	jobConfig, err = goalStateDriver.jobStore.GetJobConfig(ctx, jobID)
+	jobConfig, configAddOn, err := goalStateDriver.jobStore.GetJobConfig(ctx, jobID)
 	if err != nil {
 		goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
 		log.WithError(err).
@@ -42,7 +42,7 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 	instances := jobConfig.InstanceCount
 
 	// First create task configs
-	if err = goalStateDriver.taskStore.CreateTaskConfigs(ctx, jobID, jobConfig); err != nil {
+	if err = goalStateDriver.taskStore.CreateTaskConfigs(ctx, jobID, jobConfig, configAddOn); err != nil {
 		goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
 		log.WithError(err).
 			WithField("job_id", id).
@@ -86,7 +86,8 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 	}
 	err = cachedJob.Update(ctx, &job.JobInfo{
 		Runtime: &job.RuntimeInfo{State: job.JobState_PENDING},
-	}, cached.UpdateCacheAndDB)
+	}, configAddOn,
+		cached.UpdateCacheAndDB)
 	if err != nil {
 		goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
 		log.WithError(err).

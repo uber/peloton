@@ -21,6 +21,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common/backoff"
@@ -48,27 +49,29 @@ var (
 	lock = sync.RWMutex{}
 )
 
-func createTestTask(instanceID int) *task.TaskInfo {
+func createTestTask(instanceID int) *LaunchableTaskInfo {
 	var tid = fmt.Sprintf(taskIDFmt, instanceID, uuid.NewUUID().String())
 
-	return &task.TaskInfo{
-		JobId: &peloton.JobID{
-			Value: _testJobID,
-		},
-		InstanceId: uint32(instanceID),
-		Config: &task.TaskConfig{
-			Name:     _testJobID,
-			Resource: &_defaultResourceConfig,
-			Ports: []*task.PortConfig{
-				{
-					Name:    "port",
-					EnvName: "PORT",
+	return &LaunchableTaskInfo{
+		TaskInfo: &task.TaskInfo{
+			JobId: &peloton.JobID{
+				Value: _testJobID,
+			},
+			InstanceId: uint32(instanceID),
+			Config: &task.TaskConfig{
+				Name:     _testJobID,
+				Resource: &_defaultResourceConfig,
+				Ports: []*task.PortConfig{
+					{
+						Name:    "port",
+						EnvName: "PORT",
+					},
 				},
 			},
-		},
-		Runtime: &task.RuntimeInfo{
-			MesosTaskId: &mesos.TaskID{
-				Value: &tid,
+			Runtime: &task.RuntimeInfo{
+				MesosTaskId: &mesos.TaskID{
+					Value: &tid,
+				},
 			},
 		},
 	}
@@ -118,7 +121,7 @@ func TestGetLaunchableTasks(t *testing.T) {
 	numTasks := 25
 	var tasks []*peloton.TaskID
 	var selectedPorts []uint32
-	taskInfos := make(map[string]*task.TaskInfo)
+	taskInfos := make(map[string]*LaunchableTaskInfo)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
 		taskID := &peloton.TaskID{
@@ -142,7 +145,7 @@ func TestGetLaunchableTasks(t *testing.T) {
 			Return(cachedTask, nil)
 		mockTaskStore.EXPECT().
 			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
-			Return(taskInfos[tasks[i].GetValue()].GetConfig(), nil)
+			Return(taskInfos[tasks[i].GetValue()].GetConfig(), &models.ConfigAddOn{}, nil)
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
 	}
@@ -182,7 +185,7 @@ func TestGetLaunchableTasksStateful(t *testing.T) {
 	numTasks := 25
 	var tasks []*peloton.TaskID
 	var selectedPorts []uint32
-	taskInfos := make(map[string]*task.TaskInfo)
+	taskInfos := make(map[string]*LaunchableTaskInfo)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
 		tmp.GetConfig().Volume = &task.PersistentVolumeConfig{
@@ -210,7 +213,7 @@ func TestGetLaunchableTasksStateful(t *testing.T) {
 			Return(cachedTask, nil)
 		mockTaskStore.EXPECT().
 			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
-			Return(taskInfos[tasks[i].GetValue()].GetConfig(), nil)
+			Return(taskInfos[tasks[i].GetValue()].GetConfig(), &models.ConfigAddOn{}, nil)
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
 	}
@@ -247,7 +250,7 @@ func TestMultipleTasksLaunched(t *testing.T) {
 	// generate 25 test tasks
 	numTasks := 25
 	var launchableTasks []*hostsvc.LaunchableTask
-	taskInfos := make(map[string]*task.TaskInfo)
+	taskInfos := make(map[string]*LaunchableTaskInfo)
 	taskConfigs := make(map[string]*task.TaskConfig)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
@@ -323,7 +326,7 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 	// generate 1 test task
 	numTasks := 1
 	var launchableTasks []*hostsvc.LaunchableTask
-	taskInfos := make(map[string]*task.TaskInfo)
+	taskInfos := make(map[string]*LaunchableTaskInfo)
 	taskConfigs := make(map[string]*task.TaskConfig)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
@@ -335,7 +338,7 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 		launchableTasks = append(launchableTasks, &launchableTask)
 		taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
 		taskInfos[taskID] = tmp
-		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
+		taskConfigs[tmp.Runtime.GetMesosTaskId().GetValue()] = tmp.Config
 	}
 
 	// generate 1 host offer, each can hold many tasks
@@ -409,7 +412,7 @@ func TestLaunchTasksRetryWithError(t *testing.T) {
 	// generate 1 test task
 	numTasks := 1
 	var launchableTasks []*hostsvc.LaunchableTask
-	taskInfos := make(map[string]*task.TaskInfo)
+	taskInfos := make(map[string]*LaunchableTaskInfo)
 	taskConfigs := make(map[string]*task.TaskConfig)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
@@ -502,7 +505,7 @@ func TestLaunchStatefulTask(t *testing.T) {
 	// generate 1 test task
 	numTasks := 1
 	var launchableTasks []*hostsvc.LaunchableTask
-	taskInfos := make(map[string]*task.TaskInfo)
+	taskInfos := make(map[string]*LaunchableTaskInfo)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
 		tmp.GetConfig().Volume = &task.PersistentVolumeConfig{
@@ -585,7 +588,7 @@ func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
 	// generate 1 test task
 	numTasks := 1
 	var launchableTasks []*hostsvc.LaunchableTask
-	taskInfos := make(map[string]*task.TaskInfo)
+	taskInfos := make(map[string]*LaunchableTaskInfo)
 	taskConfigs := make(map[string]*task.TaskConfig)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
@@ -704,7 +707,7 @@ func TestCreateLaunchableTasks(t *testing.T) {
 
 	// generate 5 test tasks
 	numTasks := 5
-	taskInfos := make(map[string]*task.TaskInfo)
+	taskInfos := make(map[string]*LaunchableTaskInfo)
 	var launchableTasks []*hostsvc.LaunchableTask
 	for i := 0; i < numTasks; i++ {
 		idStr := fmt.Sprintf("secret-id-%d", i)
@@ -743,7 +746,7 @@ func TestCreateLaunchableTasks(t *testing.T) {
 
 	// Simulate error in GetSecret() for one task
 	// generate 5 test tasks
-	taskInfos = make(map[string]*task.TaskInfo)
+	taskInfos = make(map[string]*LaunchableTaskInfo)
 	for i := 0; i < numTasks; i++ {
 		idStr := fmt.Sprintf("bad-secret-id-%d", i)
 		tmp := createTestTask(i)
@@ -779,7 +782,7 @@ func TestCreateLaunchableTasks(t *testing.T) {
 	}
 
 	// test secret not found error. make sure, task goalstate is set to killed
-	taskInfos = make(map[string]*task.TaskInfo)
+	taskInfos = make(map[string]*LaunchableTaskInfo)
 	idStr := fmt.Sprintf("no-secret-id")
 	tmp := createTestTask(0)
 	taskID := &peloton.TaskID{
@@ -827,7 +830,7 @@ func TestCreateLaunchableTasks(t *testing.T) {
 }
 
 // createPlacementMultipleTasks creates the placement with multiple tasks
-func createPlacementMultipleTasks(tasks map[string]*task.TaskInfo, hostOffer *hostsvc.HostOffer) *resmgr.Placement {
+func createPlacementMultipleTasks(tasks map[string]*LaunchableTaskInfo, hostOffer *hostsvc.HostOffer) *resmgr.Placement {
 	var TasksIds []*peloton.TaskID
 
 	for id := range tasks {
@@ -843,7 +846,7 @@ func createPlacementMultipleTasks(tasks map[string]*task.TaskInfo, hostOffer *ho
 }
 
 // createPlacements creates the placement
-func createPlacements(t *task.TaskInfo,
+func createPlacements(t *LaunchableTaskInfo,
 	hostOffer *hostsvc.HostOffer) *resmgr.Placement {
 	TasksIds := make([]*peloton.TaskID, 1)
 

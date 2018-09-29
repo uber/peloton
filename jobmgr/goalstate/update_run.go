@@ -201,7 +201,7 @@ func processUpdate(
 		return nil
 	}
 
-	jobConfig, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
+	jobConfig, _, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
 		ctx,
 		cachedJob.ID(),
 		cachedUpdate.GetGoalState().JobVersion)
@@ -270,7 +270,8 @@ func addInstancesInUpdate(
 			Runtime: &pbjob.RuntimeInfo{
 				GoalState: goalstateutil.GetDefaultJobGoalState(
 					pbjob.JobType_SERVICE)},
-		}, cached.UpdateCacheAndDB)
+		}, nil,
+			cached.UpdateCacheAndDB)
 		if err != nil {
 			return err
 		}

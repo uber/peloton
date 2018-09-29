@@ -10,8 +10,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
-	"code.uber.internal/infra/peloton/storage/querybuilder"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
+	"code.uber.internal/infra/peloton/storage/querybuilder"
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/gogo/protobuf/proto"
@@ -23,12 +24,19 @@ type JobConfigRecord struct {
 	Version      int
 	CreationTime time.Time `cql:"creation_time"`
 	Config       []byte
+	ConfigAddOn  []byte `cql:"config_addon"`
 }
 
 // GetJobConfig returns the unmarshaled job.JobConfig
 func (j *JobConfigRecord) GetJobConfig() (*job.JobConfig, error) {
 	config := &job.JobConfig{}
 	return config, proto.Unmarshal(j.Config, config)
+}
+
+// GetConfigAddOn returns the unmarshaled models.ConfigAddOn
+func (j *JobConfigRecord) GetConfigAddOn() (*models.ConfigAddOn, error) {
+	addOn := &models.ConfigAddOn{}
+	return addOn, proto.Unmarshal(j.ConfigAddOn, addOn)
 }
 
 // TaskRuntimeRecord correspond to a peloton task
@@ -54,12 +62,19 @@ type TaskConfigRecord struct {
 	InstanceID   int       `cql:"instance_id"`
 	CreationTime time.Time `cql:"creation_time"`
 	Config       []byte
+	ConfigAddOn  []byte `cql:"config_addon"`
 }
 
 // GetTaskConfig returns the unmarshaled task.TaskInfo
 func (t *TaskConfigRecord) GetTaskConfig() (*task.TaskConfig, error) {
 	config := &task.TaskConfig{}
 	return config, proto.Unmarshal(t.Config, config)
+}
+
+// GetConfigAddOn returns the unmarshaled models.ConfigAddOn
+func (t *TaskConfigRecord) GetConfigAddOn() (*models.ConfigAddOn, error) {
+	addOn := &models.ConfigAddOn{}
+	return addOn, proto.Unmarshal(t.ConfigAddOn, addOn)
 }
 
 // TaskStateChangeRecords tracks a peloton task's state transition events

@@ -964,6 +964,7 @@ func (s *ResPoolSuite) TestToResourcePoolInfo() {
 	}
 	s.Equal(0, len(info.GetChildren()))
 	s.Equal(&_rootResPoolID, info.GetParent())
+	s.Equal("/"+_testResPoolName, info.GetPath().GetValue())
 }
 
 func (s *ResPoolSuite) TestAggregatedChildrenReservations() {

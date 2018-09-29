@@ -19,6 +19,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/storage"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -299,7 +300,11 @@ func (d *driver) JobRuntimeDuration(jobType job.JobType) time.Duration {
 // recoverTasks recovers the job and tasks from DB when job manager instance
 // gains leadership. The jobs and tasks are loaded into the cached and enqueued
 // to the goal state engine for evaluation.
-func (d *driver) recoverTasks(ctx context.Context, id string, jobConfig *job.JobConfig,
+func (d *driver) recoverTasks(
+	ctx context.Context,
+	id string,
+	jobConfig *job.JobConfig,
+	configAddOn *models.ConfigAddOn,
 	jobRuntime *job.RuntimeInfo, batch recovery.TasksBatch, errChan chan<- error) {
 
 	jobID := &peloton.JobID{Value: id}
@@ -311,7 +316,8 @@ func (d *driver) recoverTasks(ctx context.Context, id string, jobConfig *job.Job
 		cachedJob.Update(ctx, &job.JobInfo{
 			Runtime: jobRuntime,
 			Config:  jobConfig,
-		}, cached.UpdateCacheOnly)
+		}, configAddOn,
+			cached.UpdateCacheOnly)
 	}
 
 	// Enqueue job into goal state

@@ -110,7 +110,7 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 	}).Info("task timed out, reinitializing the task")
 
 	// kill the old task before intializing a new one as the best effort
-	taskConfig, err := goalStateDriver.taskStore.GetTaskConfig(
+	taskConfig, _, err := goalStateDriver.taskStore.GetTaskConfig(
 		ctx,
 		taskEnt.jobID,
 		taskEnt.instanceID,

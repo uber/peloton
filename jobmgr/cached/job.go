@@ -11,6 +11,7 @@ import (
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/taskconfig"
@@ -70,7 +71,7 @@ type Job interface {
 	// Create will be used to create the job configuration and runtime in DB.
 	// Create and Update need to be different functions as the backing
 	// storage calls are different.
-	Create(ctx context.Context, config *pbjob.JobConfig, createBy string) error
+	Create(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn, createBy string) error
 
 	// Update updates job with the new runtime and config. If the request is to update
 	// both DB and cache, it first attempts to persist the request in storage,
@@ -78,7 +79,7 @@ type Job interface {
 	// If successful, the cache is updated as well.
 	// TODO: no config update should go through this API, divide this API into
 	// config and runtime part
-	Update(ctx context.Context, jobInfo *pbjob.JobInfo, req UpdateRequest) error
+	Update(ctx context.Context, jobInfo *pbjob.JobInfo, configAddOn *models.ConfigAddOn, req UpdateRequest) error
 
 	// CompareAndSetRuntime replaces the existing job runtime in cache and DB with
 	// the job runtime supplied. CompareAndSetRuntime would use
@@ -97,7 +98,7 @@ type Job interface {
 	// automatically upon success. Caller should not manually modify
 	// the value of JobConfig.ChangeLog.Version.
 	// It returns the resultant jobConfig with version updated.
-	CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig) (jobmgrcommon.JobConfig, error)
+	CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn) (jobmgrcommon.JobConfig, error)
 
 	// IsPartiallyCreated returns if job has not been fully created yet
 	IsPartiallyCreated(config jobmgrcommon.JobConfig) bool
@@ -211,7 +212,7 @@ func (j *job) populateCurrentJobConfig(ctx context.Context) error {
 	if j.config == nil ||
 		j.config.GetChangeLog().GetVersion() !=
 			j.runtime.GetConfigurationVersion() {
-		config, err := j.jobFactory.jobStore.GetJobConfig(ctx, j.ID())
+		config, _, err := j.jobFactory.jobStore.GetJobConfig(ctx, j.ID())
 		if err != nil {
 			return err
 		}
@@ -430,7 +431,7 @@ func (j *job) GetAllTasks() map[uint32]Task {
 	return taskMap
 }
 
-func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, createBy string) error {
+func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn, createBy string) error {
 	j.Lock()
 	defer j.Unlock()
 
@@ -438,7 +439,7 @@ func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, createBy stri
 		return yarpcerrors.InvalidArgumentErrorf("missing config in jobInfo")
 	}
 
-	config, err := j.createJobConfig(ctx, config, createBy)
+	config, err := j.createJobConfig(ctx, config, configAddOn, createBy)
 	if err != nil {
 		j.invalidateCache()
 		return err
@@ -453,7 +454,7 @@ func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, createBy stri
 }
 
 // createJobConfig creates job config in db and cache
-func (j *job) createJobConfig(ctx context.Context, config *pbjob.JobConfig, createBy string) (*pbjob.JobConfig, error) {
+func (j *job) createJobConfig(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn, createBy string) (*pbjob.JobConfig, error) {
 	newConfig := *config
 	now := time.Now().UTC()
 	newConfig.ChangeLog = &peloton.ChangeLog{
@@ -461,7 +462,7 @@ func (j *job) createJobConfig(ctx context.Context, config *pbjob.JobConfig, crea
 		UpdatedAt: uint64(now.UnixNano()),
 		Version:   1,
 	}
-	err := j.jobFactory.jobStore.CreateJobConfig(ctx, j.id, &newConfig, newConfig.ChangeLog.Version, createBy)
+	err := j.jobFactory.jobStore.CreateJobConfig(ctx, j.id, &newConfig, configAddOn, newConfig.ChangeLog.Version, createBy)
 	if err != nil {
 		return nil, err
 	}
@@ -536,7 +537,7 @@ func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.Runtim
 	return proto.Clone(j.runtime).(*pbjob.RuntimeInfo), nil
 }
 
-func (j *job) CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig) (jobmgrcommon.JobConfig, error) {
+func (j *job) CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn) (jobmgrcommon.JobConfig, error) {
 	j.Lock()
 	defer j.Unlock()
 
@@ -551,7 +552,7 @@ func (j *job) CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig) 
 
 	// write the config into DB
 	if err := j.jobFactory.jobStore.
-		UpdateJobConfig(ctx, j.ID(), updatedConfig); err != nil {
+		UpdateJobConfig(ctx, j.ID(), updatedConfig, configAddOn); err != nil {
 		j.invalidateCache()
 		return nil, err
 	}
@@ -565,13 +566,20 @@ func (j *job) CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig) 
 // The runtime being passed should only set the fields which the caller intends to change,
 // the remaining fields should be left unfilled.
 // The config would be updated to the config passed in (except changeLog)
-func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, req UpdateRequest) error {
+func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, configAddOn *models.ConfigAddOn, req UpdateRequest) error {
 	j.Lock()
 	defer j.Unlock()
 
-	var updatedConfig *pbjob.JobConfig
-	var err error
+	var (
+		updatedConfig *pbjob.JobConfig
+		err           error
+	)
+
 	if jobInfo.GetConfig() != nil {
+		if configAddOn == nil {
+			return fmt.Errorf(
+				"ConfigAddOn cannot be nil when 'JobInfo.JobConfig' is not nil")
+		}
 		if req == UpdateCacheOnly {
 			// overwrite the cache after validating that
 			// version is either the same or increasing
@@ -614,7 +622,7 @@ func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, req UpdateRequ
 		// config. If we update the runtime first successfully, and update
 		// config with failure, job would try to access a non-existent config.
 		if updatedConfig != nil {
-			err := j.jobFactory.jobStore.UpdateJobConfig(ctx, j.ID(), updatedConfig)
+			err := j.jobFactory.jobStore.UpdateJobConfig(ctx, j.ID(), updatedConfig, configAddOn)
 			if err != nil {
 				j.invalidateCache()
 				return err
@@ -641,7 +649,7 @@ func (j *job) getUpdatedJobConfigCache(
 	req UpdateRequest) (*pbjob.JobConfig, error) {
 	if req == UpdateCacheAndDB {
 		if j.config == nil {
-			config, err := j.jobFactory.jobStore.GetJobConfig(ctx, j.ID())
+			config, _, err := j.jobFactory.jobStore.GetJobConfig(ctx, j.ID())
 			if err != nil {
 				return nil, err
 			}

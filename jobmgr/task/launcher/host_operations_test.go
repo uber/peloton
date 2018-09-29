@@ -43,7 +43,7 @@ func (suite *HostOperationTestSuite) TestGetHostOperations() {
 	taskLauncher := launcher{}
 	testTask := createStatefulTask(0)
 
-	tasksInfo := make(map[string]*task.TaskInfo)
+	tasksInfo := make(map[string]*LaunchableTaskInfo)
 	tasksInfo["0"] = testTask
 	launchableTasks, _ := taskLauncher.CreateLaunchableTasks(
 		context.Background(), tasksInfo)
@@ -89,7 +89,7 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsLaunchOnly() {
 	}
 	taskLauncher := launcher{}
 	testTask := createStatefulTask(0)
-	tasksInfo := make(map[string]*task.TaskInfo)
+	tasksInfo := make(map[string]*LaunchableTaskInfo)
 	tasksInfo["0"] = testTask
 	launchableTasks, _ := taskLauncher.CreateLaunchableTasks(
 		context.Background(), tasksInfo)
@@ -127,7 +127,7 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsReserveNoPorts() {
 	}
 	taskLauncher := launcher{}
 	testTask := createStatefulTask(0)
-	tasksInfo := make(map[string]*task.TaskInfo)
+	tasksInfo := make(map[string]*LaunchableTaskInfo)
 	tasksInfo["0"] = testTask
 	launchableTasks, _ := taskLauncher.CreateLaunchableTasks(
 		context.Background(), tasksInfo)
@@ -177,8 +177,8 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsIncorrectMesosTaskIDFo
 	}
 	taskLauncher := launcher{}
 	testTask := createStatefulTask(0)
-	testTask.GetRuntime().GetMesosTaskId().Value = util.PtrPrintf("test-format")
-	tasksInfo := make(map[string]*task.TaskInfo)
+	testTask.Runtime.GetMesosTaskId().Value = util.PtrPrintf("test-format")
+	tasksInfo := make(map[string]*LaunchableTaskInfo)
 	tasksInfo["0"] = testTask
 	launchableTasks, _ := taskLauncher.CreateLaunchableTasks(
 		context.Background(), tasksInfo)
@@ -197,9 +197,9 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsIncorrectMesosTaskIDFo
 	suite.Equal(0, len(hostOperations))
 }
 
-func createStatefulTask(instanceID int) *task.TaskInfo {
+func createStatefulTask(instanceID int) *LaunchableTaskInfo {
 	testTask := createTestTask(instanceID)
-	testTask.GetConfig().Volume = &task.PersistentVolumeConfig{
+	testTask.Config.Volume = &task.PersistentVolumeConfig{
 		ContainerPath: "testpath",
 		SizeMB:        10,
 	}

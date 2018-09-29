@@ -9,6 +9,7 @@ import (
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
@@ -120,7 +121,8 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailNoRetry() {
 		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
 
 	suite.taskStore.EXPECT().
-		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).Return(&taskConfig, nil)
+		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		Return(&taskConfig, &models.ConfigAddOn{}, nil)
 
 	err := TaskFailRetry(context.Background(), suite.taskEnt)
 	suite.NoError(err)
@@ -146,7 +148,8 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailRetry() {
 		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
 
 	suite.taskStore.EXPECT().
-		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).Return(&taskConfig, nil)
+		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		Return(&taskConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
@@ -220,7 +223,8 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailSystemFailure() {
 			GetRunTime(gomock.Any()).Return(taskRuntime, nil)
 
 		suite.taskStore.EXPECT().
-			GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).Return(&taskConfig, nil)
+			GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+			Return(&taskConfig, &models.ConfigAddOn{}, nil)
 
 		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).
@@ -264,7 +268,7 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailDBError() {
 
 	suite.taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
-		Return(nil, fmt.Errorf("fake db error"))
+		Return(nil, nil, fmt.Errorf("fake db error"))
 
 	err := TaskFailRetry(context.Background(), suite.taskEnt)
 	suite.Error(err)
@@ -327,7 +331,8 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailRetryFailedPatch() {
 		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
 
 	suite.taskStore.EXPECT().
-		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).Return(&taskConfig, nil)
+		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		Return(&taskConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("patch error"))

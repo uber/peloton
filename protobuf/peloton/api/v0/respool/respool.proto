@@ -176,6 +176,9 @@ message ResourcePoolInfo {
 
   // Resource usage for each resource kind
   repeated ResourceUsage usage = 5;
+
+  // Resource Pool Path
+  ResourcePoolPath path = 6;
 }
 
 /**

@@ -165,9 +165,9 @@ func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Plac
 		return
 	}
 
-	taskInfos := p.createTaskInfos(ctx, lauchableTasks)
+	launchableTaskInfos := p.createTaskInfos(ctx, lauchableTasks)
 
-	if len(taskInfos) == 0 {
+	if len(launchableTaskInfos) == 0 {
 		// nothing to launch
 		return
 	}
@@ -175,22 +175,22 @@ func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Plac
 	// CreateLaunchableTasks returns a list of launchableTasks and taskInfo map
 	// of tasks that could not be launched because of transient error in getting
 	// secrets.
-	launchableTasks, skippedTaskInfos := p.taskLauncher.CreateLaunchableTasks(ctx, taskInfos)
+	launchableTasks, skippedTaskInfos := p.taskLauncher.CreateLaunchableTasks(ctx, launchableTaskInfos)
 	// enqueue skipped tasks back to resmgr to launch again, instead of waiting
 	// for resmgr timeout
 	p.enqueueTasksToResMgr(ctx, skippedTaskInfos)
 
 	if err = p.taskLauncher.ProcessPlacement(ctx, launchableTasks, placement); err != nil {
-		p.enqueueTasksToResMgr(ctx, taskInfos)
+		p.enqueueTasksToResMgr(ctx, launchableTaskInfos)
 		return
 	}
 
 	// Finally, enqueue tasks into goalstate
-	p.enqueueTaskToGoalState(taskInfos)
+	p.enqueueTaskToGoalState(launchableTaskInfos)
 
 }
 
-func (p *processor) enqueueTaskToGoalState(taskInfos map[string]*task.TaskInfo) {
+func (p *processor) enqueueTaskToGoalState(taskInfos map[string]*launcher.LaunchableTaskInfo) {
 	for id := range taskInfos {
 		jobID, instanceID, err := util.ParseTaskID(id)
 		if err != nil {
@@ -216,8 +216,8 @@ func (p *processor) enqueueTaskToGoalState(taskInfos map[string]*task.TaskInfo) 
 func (p *processor) createTaskInfos(
 	ctx context.Context,
 	lauchableTasks map[string]*launcher.LaunchableTask,
-) map[string]*task.TaskInfo {
-	taskInfos := make(map[string]*task.TaskInfo)
+) map[string]*launcher.LaunchableTaskInfo {
+	taskInfos := make(map[string]*launcher.LaunchableTaskInfo)
 	for taskID, launchableTask := range lauchableTasks {
 		id, instanceID, err := util.ParseTaskID(taskID)
 		if err != nil {
@@ -258,11 +258,14 @@ func (p *processor) createTaskInfos(
 					})
 				if err == nil {
 					runtime, _ := cachedTask.GetRunTime(ctx)
-					taskInfos[taskID] = &task.TaskInfo{
-						Runtime:    runtime,
-						Config:     launchableTask.Config,
-						InstanceId: uint32(instanceID),
-						JobId:      jobID,
+					taskInfos[taskID] = &launcher.LaunchableTaskInfo{
+						TaskInfo: &task.TaskInfo{
+							Runtime:    runtime,
+							Config:     launchableTask.Config,
+							InstanceId: uint32(instanceID),
+							JobId:      jobID,
+						},
+						ConfigAddOn: launchableTask.ConfigAddOn,
 					}
 					break
 				}
@@ -325,7 +328,7 @@ func (p *processor) getPlacements() ([]*resmgr.Placement, error) {
 }
 
 // enqueueTask enqueues given task to resmgr to launch again.
-func (p *processor) enqueueTasksToResMgr(ctx context.Context, tasks map[string]*task.TaskInfo) (err error) {
+func (p *processor) enqueueTasksToResMgr(ctx context.Context, tasks map[string]*launcher.LaunchableTaskInfo) (err error) {
 	defer func() {
 		if err == nil {
 			return

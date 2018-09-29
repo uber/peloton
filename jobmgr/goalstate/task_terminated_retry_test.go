@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
@@ -164,7 +165,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTaskConfig()
 		gomock.Any(),
 		suite.jobID,
 		suite.instanceID,
-		gomock.Any()).Return(nil, fmt.Errorf(""))
+		gomock.Any()).Return(nil, nil, fmt.Errorf(""))
 
 	err := TaskTerminatedRetry(context.Background(), suite.taskEnt)
 	suite.Error(err)
@@ -186,7 +187,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 		gomock.Any(),
 		suite.jobID,
 		suite.instanceID,
-		gomock.Any()).Return(suite.taskConfig, nil)
+		gomock.Any()).Return(suite.taskConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
 		ID().Return(suite.jobID)
@@ -236,7 +237,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 		gomock.Any(),
 		suite.jobID,
 		suite.instanceID,
-		gomock.Any()).Return(suite.taskConfig, nil)
+		gomock.Any()).Return(suite.taskConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
 		ID().Return(suite.jobID)
@@ -289,7 +290,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedNoRetry() {
 		gomock.Any(),
 		suite.jobID,
 		suite.instanceID,
-		gomock.Any()).Return(suite.taskConfig, nil)
+		gomock.Any()).Return(suite.taskConfig, &models.ConfigAddOn{}, nil)
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).Return(suite.cachedUpdate)
 	suite.cachedUpdate.EXPECT().IsTaskInUpdateProgress(

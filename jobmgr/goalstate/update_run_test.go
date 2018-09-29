@@ -11,7 +11,6 @@ import (
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
@@ -612,7 +611,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_FullyRunning_AddInstances() {
 		GetJobConfigWithVersion(gomock.Any(), gomock.Any(), uint64(4)).
 		Return(&pbjob.JobConfig{
 			ChangeLog: &peloton.ChangeLog{Version: uint64(4)},
-		}, nil)
+		}, &models.ConfigAddOn{},
+			nil)
 
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
@@ -731,7 +731,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 		GetJobConfigWithVersion(gomock.Any(), gomock.Any(), newJobVersion).
 		Return(&pbjob.JobConfig{
 			ChangeLog: &peloton.ChangeLog{Version: newJobVersion},
-		}, nil)
+		}, &models.ConfigAddOn{},
+			nil)
 
 	for range newSlice(0, batchSize) {
 		runtime := &pbtask.RuntimeInfo{
@@ -857,7 +858,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 		GetJobConfigWithVersion(gomock.Any(), gomock.Any(), newJobVersion).
 		Return(&pbjob.JobConfig{
 			ChangeLog: &peloton.ChangeLog{Version: newJobVersion},
-		}, nil)
+		}, &models.ConfigAddOn{},
+			nil)
 
 	suite.taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
@@ -978,7 +980,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_KilledJob_AddInstances() {
 		GetJobConfigWithVersion(gomock.Any(), gomock.Any(), uint64(4)).
 		Return(&pbjob.JobConfig{
 			ChangeLog: &peloton.ChangeLog{Version: uint64(4)},
-		}, nil)
+		}, &models.ConfigAddOn{},
+			nil)
 
 	for _, instID := range newSlice(oldInstanceNumber, newInstanceNumber) {
 		suite.cachedJob.EXPECT().
@@ -992,8 +995,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_KilledJob_AddInstances() {
 		Return(&pbjob.RuntimeInfo{GoalState: pbjob.JobState_KILLED}, nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pbjob.JobInfo, _ cached.UpdateRequest) {
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context, jobInfo *pbjob.JobInfo, _ *models.ConfigAddOn, _ cached.UpdateRequest) {
 			suite.Equal(jobInfo.Runtime.GoalState,
 				goalstateutil.GetDefaultJobGoalState(pbjob.JobType_SERVICE))
 		}).
@@ -1103,7 +1106,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_DBError_AddInstances() {
 		GetJobConfigWithVersion(gomock.Any(), gomock.Any(), uint64(4)).
 		Return(&pbjob.JobConfig{
 			ChangeLog: &peloton.ChangeLog{Version: uint64(4)},
-		}, nil)
+		}, &models.ConfigAddOn{},
+			nil)
 
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
@@ -1195,7 +1199,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRunDBErrorUpdateInstances() {
 		GetJobConfigWithVersion(gomock.Any(), gomock.Any(), newJobVersion).
 		Return(&pbjob.JobConfig{
 			ChangeLog: &peloton.ChangeLog{Version: newJobVersion},
-		}, nil)
+		}, &models.ConfigAddOn{},
+			nil)
 
 	suite.cachedUpdate.EXPECT().
 		GetRuntimeDiff(gomock.Any()).
@@ -1276,7 +1281,8 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstances() {
 		GetJobConfigWithVersion(gomock.Any(), gomock.Any(), uint64(4)).
 		Return(&pbjob.JobConfig{
 			ChangeLog: &peloton.ChangeLog{Version: uint64(4)},
-		}, nil)
+		}, &models.ConfigAddOn{},
+			nil)
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
@@ -1389,7 +1395,8 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstancesDBError() {
 		GetJobConfigWithVersion(gomock.Any(), gomock.Any(), uint64(4)).
 		Return(&pbjob.JobConfig{
 			ChangeLog: &peloton.ChangeLog{Version: uint64(4)},
-		}, nil)
+		}, &models.ConfigAddOn{},
+			nil)
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).

@@ -85,7 +85,7 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 		return nil
 	}
 
-	jobConfig, err := goalStateDriver.jobStore.GetJobConfig(ctx, jobID)
+	jobConfig, _, err := goalStateDriver.jobStore.GetJobConfig(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).
@@ -519,7 +519,8 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	// Update the job runtime
 	err = cachedJob.Update(ctx, &job.JobInfo{
 		Runtime: jobRuntimeUpdate,
-	}, cached.UpdateCacheAndDB)
+	}, nil,
+		cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).

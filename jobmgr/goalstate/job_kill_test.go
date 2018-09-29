@@ -8,6 +8,7 @@ import (
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
@@ -150,8 +151,11 @@ func (suite JobKillTestSuite) TestJobKill() {
 		Return(jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pbjob.JobInfo, _ cached.UpdateRequest) {
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context,
+			jobInfo *pbjob.JobInfo,
+			_ *models.ConfigAddOn,
+			_ cached.UpdateRequest) {
 			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_KILLING)
 		}).
 		Return(nil)
@@ -349,8 +353,11 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 		Return(jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pbjob.JobInfo, _ cached.UpdateRequest) {
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context,
+			jobInfo *pbjob.JobInfo,
+			_ *models.ConfigAddOn,
+			_ cached.UpdateRequest) {
 			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_KILLED)
 		}).
 		Return(nil)
@@ -395,8 +402,11 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 		Return(jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pbjob.JobInfo, _ cached.UpdateRequest) {
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context,
+			jobInfo *pbjob.JobInfo,
+			_ *models.ConfigAddOn,
+			_ cached.UpdateRequest) {
 			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_KILLING)
 		}).
 		Return(nil)
@@ -463,8 +473,11 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob_AllTerminated() {
 		Return(jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pbjob.JobInfo, _ cached.UpdateRequest) {
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context,
+			jobInfo *pbjob.JobInfo,
+			_ *models.ConfigAddOn,
+			_ cached.UpdateRequest) {
 			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_KILLED)
 		}).
 		Return(nil)

@@ -10,6 +10,7 @@ import (
 	peloton_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
@@ -143,13 +144,13 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		Return(noRestartCachedTask, nil)
 	suite.mockTaskStore.EXPECT().GetTaskConfig(
 		gomock.Any(), jobID, runningTaskInfo.InstanceId, runningTaskInfo.Runtime.ConfigVersion).
-		Return(nil, nil)
+		Return(nil, nil, nil)
 	suite.mockTaskStore.EXPECT().GetTaskConfig(
 		gomock.Any(), jobID, noRestartTaskInfo.InstanceId, noRestartTaskInfo.Runtime.ConfigVersion).
 		Return(
 			&peloton_task.TaskConfig{
 				PreemptionPolicy: &peloton_task.PreemptionPolicy{KillOnPreempt: true},
-			}, nil)
+			}, &models.ConfigAddOn{}, nil)
 	runningCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(runningTaskInfo.Runtime, nil)
 	killingCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(killingTaskInfo.Runtime, nil)
 	noRestartCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(noRestartTaskInfo.Runtime, nil)

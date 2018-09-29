@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/common/goalstate"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/storage"
 
 	log "github.com/sirupsen/logrus"
@@ -102,12 +103,15 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		return err
 	}
 
-	taskInfos := map[string]*task.TaskInfo{
+	taskInfos := map[string]*launcher.LaunchableTaskInfo{
 		pelotonTaskID.Value: {
-			Runtime:    newRuntime,
-			Config:     launchableTask.Config,
-			JobId:      taskEnt.jobID,
-			InstanceId: taskEnt.instanceID,
+			TaskInfo: &task.TaskInfo{
+				Runtime:    newRuntime,
+				Config:     launchableTask.Config,
+				JobId:      taskEnt.jobID,
+				InstanceId: taskEnt.instanceID,
+			},
+			ConfigAddOn: launchableTask.ConfigAddOn,
 		},
 	}
 

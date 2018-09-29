@@ -9,6 +9,7 @@ import (
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
@@ -130,7 +131,8 @@ func (suite *TestTaskInitializeSuite) TestTaskInitialize() {
 		suite.cachedJob.EXPECT().GetConfig(gomock.Any()).Return(suite.cachedConfig, nil)
 
 		suite.taskStore.EXPECT().GetTaskConfig(
-			gomock.Any(), suite.jobID, suite.instanceID, uint64(1)).Return(tt.taskConfig, nil)
+			gomock.Any(), suite.jobID, suite.instanceID, uint64(1)).
+			Return(tt.taskConfig, &models.ConfigAddOn{}, nil)
 
 		suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
 			func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
@@ -242,7 +244,7 @@ func (suite *TestTaskInitializeSuite) TestTaskInitializeNoTaskConfig() {
 	suite.cachedJob.EXPECT().GetConfig(gomock.Any()).Return(suite.cachedConfig, nil)
 
 	suite.taskStore.EXPECT().GetTaskConfig(
-		gomock.Any(), suite.jobID, suite.instanceID, uint64(1)).Return(nil, errors.New(""))
+		gomock.Any(), suite.jobID, suite.instanceID, uint64(1)).Return(nil, nil, errors.New(""))
 
 	err := TaskInitialize(context.Background(), suite.taskEnt)
 	suite.Error(err)

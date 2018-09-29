@@ -354,6 +354,7 @@ def start_and_wait(application_name, container_name, ports, extra_env=None):
         'DATACENTER': '',
         # used to migrate the schema;used inside host manager
         'AUTO_MIGRATE': config['auto_migrate'],
+        'CLUSTER': 'pcluster',
     }
     if extra_env:
         env.update(extra_env)

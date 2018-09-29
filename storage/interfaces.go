@@ -36,17 +36,17 @@ type Store interface {
 // JobStore is the interface to store job states
 type JobStore interface {
 	// CreateJobConfig creates the job configuration
-	CreateJobConfig(ctx context.Context, id *peloton.JobID, config *job.JobConfig, version uint64, createBy string) error
+	CreateJobConfig(ctx context.Context, id *peloton.JobID, config *job.JobConfig, configAddOn *models.ConfigAddOn, version uint64, createBy string) error
 	// CreateJobRuntimeWithConfig creates the job runtime
 	CreateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobID, initialRuntime *job.RuntimeInfo, config *job.JobConfig) error
 	// GetJobConfig fetches the job configuration for a given job
-	GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error)
+	GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, *models.ConfigAddOn, error)
 	// GetJobConfigWithVersion fetches the job configuration for a given job of a given version
-	GetJobConfigWithVersion(ctx context.Context, id *peloton.JobID, version uint64) (*job.JobConfig, error)
+	GetJobConfigWithVersion(ctx context.Context, id *peloton.JobID, version uint64) (*job.JobConfig, *models.ConfigAddOn, error)
 	// QueryJobs queries for all jobs which match the query in the QuerySpec
 	QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec, summaryOnly bool) ([]*job.JobInfo, []*job.JobSummary, uint32, error)
 	// UpdateJobConfig updates the job configuration of an existing job
-	UpdateJobConfig(ctx context.Context, id *peloton.JobID, Config *job.JobConfig) error
+	UpdateJobConfig(ctx context.Context, id *peloton.JobID, Config *job.JobConfig, configAddOn *models.ConfigAddOn) error
 	// DeleteJob deletes the job configuration, runtime
 	// and all tasks in DB of a given job
 	DeleteJob(ctx context.Context, id *peloton.JobID) error
@@ -81,7 +81,7 @@ type TaskStore interface {
 		jobType job.JobType) error
 
 	// CreateTaskConfigs creates the configuration of all tasks
-	CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error
+	CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, configAddOn *models.ConfigAddOn) error
 
 	// GetTasksForJob gets the task info for all tasks in a job
 	GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error)
@@ -100,10 +100,10 @@ type TaskStore interface {
 	// GetTaskForJob gets the task info for a given task
 	GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error)
 	// GetTaskConfig gets the task config of a given task
-	GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version uint64) (*task.TaskConfig, error)
+	GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version uint64) (*task.TaskConfig, *models.ConfigAddOn, error)
 	// GetTaskConfigs gets the task config for all tasks in a job
 	// for all the instanceIDs provided in the input
-	GetTaskConfigs(ctx context.Context, id *peloton.JobID, instanceIDs []uint32, version uint64) (map[uint32]*task.TaskConfig, error)
+	GetTaskConfigs(ctx context.Context, id *peloton.JobID, instanceIDs []uint32, version uint64) (map[uint32]*task.TaskConfig, *models.ConfigAddOn, error)
 	// GetTaskByID gets the task info for a given task
 	GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo, error)
 	// QueryTasks queries for all tasks in a job matching the QuerySpec

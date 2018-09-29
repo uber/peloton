@@ -231,6 +231,7 @@ func (suite *UpdateTestSuite) TestCreateUpdateInstancesUpdatedOutOfRange() {
 		suite.jobID,
 		newJobConfig,
 		prevJobConfig,
+		&models.ConfigAddOn{},
 		nil,
 		[]uint32{0, 1, 2, 4, 5, 6, 7, 8, 9, 10},
 		nil,
@@ -255,6 +256,7 @@ func (suite *UpdateTestSuite) TestCreateUpdateInstancesAddedOutOfRange() {
 		suite.jobID,
 		newJobConfig,
 		prevJobConfig,
+		&models.ConfigAddOn{},
 		[]uint32{10, 11},
 		[]uint32{0, 1, 2, 4, 5, 6, 7, 8, 9},
 		nil,
@@ -279,6 +281,7 @@ func (suite *UpdateTestSuite) TestCreateUpdateInstancesRemovedOutOfRange() {
 		suite.jobID,
 		newJobConfig,
 		prevJobConfig,
+		&models.ConfigAddOn{},
 		nil,
 		[]uint32{0, 1, 2, 4, 5, 6, 7, 8},
 		[]uint32{11},
@@ -313,9 +316,10 @@ func (suite *UpdateTestSuite) TestValidCreateUpdate() {
 		}).
 		Return(nil)
 
+	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(prevJobConfig, nil)
+		Return(prevJobConfig, configAddOn, nil)
 
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
@@ -326,8 +330,8 @@ func (suite *UpdateTestSuite) TestValidCreateUpdate() {
 		Return(prevJobConfig.ChangeLog.Version, nil)
 
 	suite.jobStore.EXPECT().
-		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig, addOn *models.ConfigAddOn) {
 			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
 			suite.Equal(
 				newJobConfig.DefaultConfig.Command.Value,
@@ -356,6 +360,7 @@ func (suite *UpdateTestSuite) TestValidCreateUpdate() {
 		suite.jobID,
 		newJobConfig,
 		prevJobConfig,
+		&models.ConfigAddOn{},
 		[]uint32{10},
 		[]uint32{0, 1, 2, 4, 5, 6, 7, 8, 9},
 		nil,
@@ -398,9 +403,10 @@ func (suite *UpdateTestSuite) TestValidCreateUpdateWithReducedInstanceCount() {
 		}).
 		Return(nil)
 
+	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(prevJobConfig, nil)
+		Return(prevJobConfig, configAddOn, nil)
 
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
@@ -411,8 +417,8 @@ func (suite *UpdateTestSuite) TestValidCreateUpdateWithReducedInstanceCount() {
 		Return(prevJobConfig.ChangeLog.Version, nil)
 
 	suite.jobStore.EXPECT().
-		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig, addOn *models.ConfigAddOn) {
 			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
 			suite.Equal(
 				newJobConfig.DefaultConfig.Command.Value,
@@ -422,6 +428,7 @@ func (suite *UpdateTestSuite) TestValidCreateUpdateWithReducedInstanceCount() {
 				newJobConfig.ChangeLog.Version+1,
 				config.ChangeLog.Version,
 			)
+			suite.Equal(*configAddOn, *addOn)
 		}).
 		Return(nil)
 
@@ -441,6 +448,7 @@ func (suite *UpdateTestSuite) TestValidCreateUpdateWithReducedInstanceCount() {
 		suite.jobID,
 		newJobConfig,
 		prevJobConfig,
+		configAddOn,
 		nil,
 		[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8},
 		[]uint32{9},
@@ -475,17 +483,18 @@ func (suite *UpdateTestSuite) TestCreateUpdateDBError() {
 				GetVersion(),
 		}, nil)
 
+	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(prevJobConfig, nil)
+		Return(prevJobConfig, configAddOn, nil)
 
 	suite.jobStore.EXPECT().
 		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
 		Return(prevJobConfig.ChangeLog.Version, nil)
 
 	suite.jobStore.EXPECT().
-		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig, addOn *models.ConfigAddOn) {
 			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
 			suite.Equal(
 				newJobConfig.DefaultConfig.Command.Value,
@@ -495,6 +504,7 @@ func (suite *UpdateTestSuite) TestCreateUpdateDBError() {
 				newJobConfig.ChangeLog.Version+1,
 				config.ChangeLog.Version,
 			)
+			suite.Equal(*configAddOn, *addOn)
 		}).
 		Return(nil)
 
@@ -507,6 +517,7 @@ func (suite *UpdateTestSuite) TestCreateUpdateDBError() {
 		suite.jobID,
 		newJobConfig,
 		prevJobConfig,
+		configAddOn,
 		nil,
 		[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 		nil,
@@ -533,17 +544,18 @@ func (suite *UpdateTestSuite) TestCreateUpdateJobConfigDBError() {
 				GetVersion(),
 		}, nil)
 
+	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(prevJobConfig, nil)
+		Return(prevJobConfig, configAddOn, nil)
 
 	suite.jobStore.EXPECT().
 		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
 		Return(prevJobConfig.ChangeLog.Version, nil)
 
 	suite.jobStore.EXPECT().
-		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig, addOn *models.ConfigAddOn) {
 			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
 			suite.Equal(
 				newJobConfig.DefaultConfig.Command.Value,
@@ -553,6 +565,7 @@ func (suite *UpdateTestSuite) TestCreateUpdateJobConfigDBError() {
 				newJobConfig.ChangeLog.Version+1,
 				config.ChangeLog.Version,
 			)
+			suite.Equal(*configAddOn, *addOn)
 		}).
 		Return(fmt.Errorf("fake db error"))
 
@@ -561,6 +574,7 @@ func (suite *UpdateTestSuite) TestCreateUpdateJobConfigDBError() {
 		suite.jobID,
 		newJobConfig,
 		prevJobConfig,
+		configAddOn,
 		nil,
 		[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 		nil,
@@ -592,9 +606,10 @@ func (suite *UpdateTestSuite) TestValidCreateRestart() {
 		}).
 		Return(nil)
 
+	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(prevJobConfig, nil)
+		Return(prevJobConfig, configAddOn, nil)
 
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
@@ -605,8 +620,8 @@ func (suite *UpdateTestSuite) TestValidCreateRestart() {
 		Return(prevJobConfig.ChangeLog.Version, nil)
 
 	suite.jobStore.EXPECT().
-		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig, addOn *models.ConfigAddOn) {
 			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
 			suite.Equal(
 				newJobConfig.DefaultConfig.Command.Value,
@@ -616,6 +631,7 @@ func (suite *UpdateTestSuite) TestValidCreateRestart() {
 				newJobConfig.ChangeLog.Version+1,
 				config.ChangeLog.Version,
 			)
+			suite.Equal(*configAddOn, *addOn)
 		}).
 		Return(nil)
 
@@ -635,6 +651,7 @@ func (suite *UpdateTestSuite) TestValidCreateRestart() {
 		suite.jobID,
 		newJobConfig,
 		prevJobConfig,
+		configAddOn,
 		nil,
 		[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 		nil,
@@ -676,9 +693,10 @@ func (suite *UpdateTestSuite) TestValidCreateStart() {
 		}).
 		Return(nil)
 
+	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(prevJobConfig, nil)
+		Return(prevJobConfig, configAddOn, nil)
 
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
@@ -689,8 +707,8 @@ func (suite *UpdateTestSuite) TestValidCreateStart() {
 		Return(prevJobConfig.ChangeLog.Version, nil)
 
 	suite.jobStore.EXPECT().
-		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig, addOn *models.ConfigAddOn) {
 			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
 			suite.Equal(
 				newJobConfig.DefaultConfig.Command.Value,
@@ -700,6 +718,7 @@ func (suite *UpdateTestSuite) TestValidCreateStart() {
 				newJobConfig.ChangeLog.Version+1,
 				config.ChangeLog.Version,
 			)
+			suite.Equal(*configAddOn, *addOn)
 		}).
 		Return(nil)
 
@@ -719,6 +738,7 @@ func (suite *UpdateTestSuite) TestValidCreateStart() {
 		suite.jobID,
 		newJobConfig,
 		prevJobConfig,
+		configAddOn,
 		nil,
 		[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 		nil,
@@ -770,9 +790,10 @@ func (suite *UpdateTestSuite) TestWorkflowOverWrite() {
 				gomock.Any(), gomock.Any()).
 			Return(nil)
 
+		configAddOn := &models.ConfigAddOn{}
 		suite.jobStore.EXPECT().
 			GetJobConfig(gomock.Any(), suite.jobID).
-			Return(prevJobConfig, nil)
+			Return(prevJobConfig, configAddOn, nil)
 
 		suite.jobStore.EXPECT().
 			GetJobRuntime(gomock.Any(), suite.jobID).
@@ -789,7 +810,7 @@ func (suite *UpdateTestSuite) TestWorkflowOverWrite() {
 			}, nil)
 
 		suite.jobStore.EXPECT().
-			UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
+			UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 			Return(nil)
 
 		suite.jobStore.EXPECT().
@@ -802,6 +823,7 @@ func (suite *UpdateTestSuite) TestWorkflowOverWrite() {
 			suite.jobID,
 			newJobConfig,
 			prevJobConfig,
+			configAddOn,
 			nil,
 			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 			nil,
@@ -841,9 +863,10 @@ func (suite *UpdateTestSuite) TestValidCreateStop() {
 		}).
 		Return(nil)
 
+	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(prevJobConfig, nil)
+		Return(prevJobConfig, configAddOn, nil)
 
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
@@ -854,8 +877,8 @@ func (suite *UpdateTestSuite) TestValidCreateStop() {
 		Return(prevJobConfig.ChangeLog.Version, nil)
 
 	suite.jobStore.EXPECT().
-		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig, addOn *models.ConfigAddOn) {
 			suite.Equal(newJobConfig.InstanceCount, config.InstanceCount)
 			suite.Equal(
 				newJobConfig.DefaultConfig.Command.Value,
@@ -865,6 +888,7 @@ func (suite *UpdateTestSuite) TestValidCreateStop() {
 				newJobConfig.ChangeLog.Version+1,
 				config.ChangeLog.Version,
 			)
+			suite.Equal(*configAddOn, *addOn)
 		}).
 		Return(nil)
 
@@ -884,6 +908,7 @@ func (suite *UpdateTestSuite) TestValidCreateStop() {
 		suite.jobID,
 		newJobConfig,
 		prevJobConfig,
+		configAddOn,
 		nil,
 		[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 		nil,
