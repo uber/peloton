@@ -329,7 +329,8 @@ func main() {
 		store, // store implements JobStore
 		store, // store implements TaskStore
 		store, // store implements VolumeStore
-		rootScope)
+		rootScope,
+		nil)
 
 	updateFactory := cached.InitUpdateFactory(
 		store, // store implements JobStore

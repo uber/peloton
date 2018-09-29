@@ -17,7 +17,7 @@ import (
 
 // TestInitJobFactory tests initialization of the job factory
 func TestInitJobFactory(t *testing.T) {
-	f := InitJobFactory(nil, nil, nil, tally.NoopScope)
+	f := InitJobFactory(nil, nil, nil, tally.NoopScope, nil)
 	assert.NotNil(t, f)
 }
 

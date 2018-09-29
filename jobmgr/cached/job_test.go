@@ -32,6 +32,7 @@ type JobTestSuite struct {
 	taskStore *storemocks.MockTaskStore
 	jobID     *peloton.JobID
 	job       *job
+	listeners []*FakeJobListener
 }
 
 func TestJob(t *testing.T) {
@@ -43,14 +44,22 @@ func (suite *JobTestSuite) SetupTest() {
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
-	suite.job = initializeJob(suite.jobStore, suite.taskStore, suite.jobID)
+	suite.listeners = append(suite.listeners,
+		new(FakeJobListener),
+		new(FakeJobListener))
+	suite.job = suite.initializeJob(suite.jobStore, suite.taskStore,
+		suite.jobID)
 }
 
 func (suite *JobTestSuite) TearDownTest() {
+	suite.listeners = nil
 	suite.ctrl.Finish()
 }
 
-func initializeJob(jobStore *storemocks.MockJobStore, taskStore *storemocks.MockTaskStore, jobID *peloton.JobID) *job {
+func (suite *JobTestSuite) initializeJob(
+	jobStore *storemocks.MockJobStore,
+	taskStore *storemocks.MockTaskStore,
+	jobID *peloton.JobID) *job {
 	j := &job{
 		id: jobID,
 		jobFactory: &jobFactory{
@@ -69,6 +78,9 @@ func initializeJob(jobStore *storemocks.MockJobStore, taskStore *storemocks.Mock
 			},
 		},
 		runtime: &pbjob.RuntimeInfo{ConfigurationVersion: 1},
+	}
+	for _, l := range suite.listeners {
+		j.jobFactory.listeners = append(j.jobFactory.listeners, l)
 	}
 	j.jobFactory.jobs[j.id.GetValue()] = j
 	return j
@@ -122,6 +134,27 @@ func initializeDiffs(instanceCount uint32, state pbtask.TaskState) map[uint32]jo
 		diffs[i] = diff
 	}
 	return diffs
+}
+
+// checkListeners verifies that listeners received the correct data
+func (suite *JobTestSuite) checkListeners() {
+	suite.NotZero(len(suite.listeners))
+	for i, l := range suite.listeners {
+		msg := fmt.Sprintf("Listener %d", i)
+		suite.Equal(suite.jobID, l.jobID, msg)
+		suite.Equal(suite.job.GetJobType(), l.jobType, msg)
+		suite.Equal(suite.job.runtime, l.jobRuntime, msg)
+	}
+}
+
+// checkListenersNotCalled verifies that listeners did not get invoked
+func (suite *JobTestSuite) checkListenersNotCalled() {
+	suite.NotZero(len(suite.listeners))
+	for i, l := range suite.listeners {
+		msg := fmt.Sprintf("Listener %d", i)
+		suite.Nil(l.jobID, msg)
+		suite.Nil(l.jobRuntime, msg)
+	}
 }
 
 // TestJobFetchID tests fetching job ID.
@@ -248,6 +281,7 @@ func (suite *JobTestSuite) TestJobSetAndFetchConfigAndRuntime() {
 	suite.Equal(pbjob.JobType_BATCH, actJobConfig.GetType())
 	suite.Equal(jobConfig.RespoolID.Value, actJobConfig.GetRespoolID().Value)
 	suite.Equal(jobRuntime.UpdateID.Value, actJobRuntime.GetUpdateID().Value)
+	suite.checkListenersNotCalled()
 }
 
 // TestJobDBError tests DB errors during job operations.
@@ -290,6 +324,7 @@ func (suite *JobTestSuite) TestJobDBError() {
 	suite.Equal(jobRuntime.State, actJobRuntime.GetState())
 	suite.Equal(jobRuntime.GoalState, actJobRuntime.GetGoalState())
 	suite.NoError(err)
+	suite.checkListeners()
 
 	// Test error in DB while update job runtime
 	suite.jobStore.EXPECT().
@@ -338,6 +373,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeWithNoCache() {
 	suite.NoError(err)
 	suite.Equal(suite.job.runtime.State, jobRuntime.State)
 	suite.Equal(suite.job.runtime.GoalState, jobRuntime.GoalState)
+	suite.checkListeners()
 }
 
 // TestJobUpdateRuntimeWithNoRuntimeCache tests update job which has
@@ -361,6 +397,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeWithCache() {
 	suite.NoError(err)
 	suite.Equal(suite.job.runtime.State, jobRuntime.State)
 	suite.Equal(suite.job.runtime.GoalState, jobRuntime.GoalState)
+	suite.checkListenersNotCalled()
 }
 
 // TestJobCompareAndSetRuntimeWithCache tests replace job runtime which has
@@ -394,10 +431,15 @@ func (suite *JobTestSuite) TestJobCompareAndSetRuntimeWithCache() {
 	suite.Equal(suite.job.runtime.State, jobRuntime.GetState())
 	suite.Equal(suite.job.runtime.GoalState, jobRuntime.GetGoalState())
 	suite.Equal(suite.job.runtime.GetRevision().GetVersion(), revision.GetVersion()+1)
+	suite.checkListeners()
+	for _, l := range suite.listeners {
+		l.Reset()
+	}
 
 	// second call with the same jobRuntime should fail due to concurrency check
 	_, err = suite.job.CompareAndSetRuntime(context.Background(), jobRuntime)
 	suite.Error(err)
+	suite.checkListenersNotCalled()
 }
 
 // TestJobUpdateCompareAndSetRuntimeMixedUsage tests using CompareAndSetRuntime
@@ -432,11 +474,16 @@ func (suite *JobTestSuite) TestJobUpdateCompareAndSetRuntimeMixedUsage() {
 		nil,
 		UpdateCacheAndDB)
 	suite.NoError(err)
+	suite.checkListeners()
+	for _, l := range suite.listeners {
+		l.Reset()
+	}
 
 	// should fail because jobRuntime is already outdated due to Update
 	jobRuntime.State = pbjob.JobState_KILLED
 	_, err = suite.job.CompareAndSetRuntime(context.Background(), jobRuntime)
 	suite.Error(err)
+	suite.checkListenersNotCalled()
 }
 
 // TestJobCompareAndSetRuntimeUnexpectedVersionError tests replace job runtime
@@ -460,6 +507,7 @@ func (suite *JobTestSuite) TestJobCompareAndSetRuntimeUnexpectedVersionError() {
 
 	_, err := suite.job.CompareAndSetRuntime(context.Background(), jobRuntime)
 	suite.Error(err)
+	suite.checkListenersNotCalled()
 }
 
 // TestJobCompareAndSetRuntimeNoCache tests replace job runtime which has
@@ -498,6 +546,7 @@ func (suite *JobTestSuite) TestJobCompareAndSetRuntimeNoCache() {
 	suite.Equal(suite.job.runtime.State, jobRuntime.State)
 	suite.Equal(suite.job.runtime.GoalState, jobRuntime.GoalState)
 	suite.Equal(suite.job.runtime.GetRevision().GetVersion(), revision.GetVersion()+1)
+	suite.checkListeners()
 }
 
 // TestJobUpdateConfig tests update job which new config
@@ -548,6 +597,7 @@ func (suite *JobTestSuite) TestJobUpdateConfig() {
 	suite.Equal(suite.job.config.instanceCount, jobConfig.InstanceCount)
 	_, err = suite.job.GetRuntime(context.Background())
 	suite.NoError(err)
+	suite.checkListenersNotCalled()
 	// update runtime to point to the new config
 	err = suite.job.Update(context.Background(),
 		&pbjob.JobInfo{Runtime: &pbjob.RuntimeInfo{
@@ -555,6 +605,7 @@ func (suite *JobTestSuite) TestJobUpdateConfig() {
 		}}, nil,
 		UpdateCacheAndDB)
 	suite.NoError(err)
+	suite.checkListeners()
 	config, err := suite.job.GetConfig(context.Background())
 	suite.NoError(err)
 	suite.Equal(config.GetChangeLog().Version, uint64(2))
@@ -586,6 +637,7 @@ func (suite *JobTestSuite) TestJobUpdateConfigIncorectChangeLog() {
 	suite.EqualError(err,
 		"code:invalid-argument message:invalid job configuration version")
 	suite.NotEqual(suite.job.config.instanceCount, jobConfig.InstanceCount)
+	suite.checkListenersNotCalled()
 }
 
 // TestJobUpdateRuntimeAndConfig tests update both runtime
@@ -641,6 +693,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndConfig() {
 	}, &models.ConfigAddOn{},
 		UpdateCacheAndDB)
 	suite.NoError(err)
+	suite.checkListeners()
 	suite.Equal(suite.job.runtime.State, jobRuntime.State)
 	suite.Equal(suite.job.runtime.GoalState, jobRuntime.GoalState)
 	suite.Equal(suite.job.config.instanceCount, jobConfig.InstanceCount)
@@ -1175,6 +1228,7 @@ func (suite *JobTestSuite) TestJobCreate() {
 	suite.Equal(runtime.GetConfigurationVersion(), uint64(1))
 	suite.Equal(runtime.GetState(), pbjob.JobState_INITIALIZED)
 	suite.Equal(runtime.GetGoalState(), pbjob.JobState_SUCCEEDED)
+	suite.checkListeners()
 }
 
 // TestJobGetRuntimeRefillCache tests job would refill runtime cache

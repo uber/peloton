@@ -180,6 +180,11 @@ type job struct {
 	config  *cachedConfig      // The job config need to be cached
 	runtime *pbjob.RuntimeInfo // Runtime information of the job
 
+	// jobType is updated when a valid JobConfig is used to update
+	// member 'config'. However unlike config, it does not get unset on
+	// failures.
+	jobType pbjob.JobType
+
 	jobFactory *jobFactory // Pointer to the parent job factory object
 
 	tasks map[uint32]*task // map of all job tasks
@@ -432,6 +437,13 @@ func (j *job) GetAllTasks() map[uint32]Task {
 }
 
 func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn, createBy string) error {
+	var runtimeCopy *pbjob.RuntimeInfo
+	var jobType pbjob.JobType
+	// notify listeners after dropping the lock
+	defer func() {
+		j.jobFactory.notifyJobRuntimeChanged(j.ID(), jobType,
+			runtimeCopy)
+	}()
 	j.Lock()
 	defer j.Unlock()
 
@@ -444,12 +456,14 @@ func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, configAddOn *
 		j.invalidateCache()
 		return err
 	}
+	jobType = j.jobType
 
 	err = j.createJobRuntime(ctx, config)
 	if err != nil {
 		j.invalidateCache()
 		return err
 	}
+	runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
 	return nil
 }
 
@@ -503,6 +517,13 @@ func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.Runtim
 		return nil, yarpcerrors.InvalidArgumentErrorf("unexpected nil jobRuntime")
 	}
 
+	var runtimeCopy *pbjob.RuntimeInfo
+	var jobType pbjob.JobType
+	// notify listeners after dropping the lock
+	defer func() {
+		j.jobFactory.notifyJobRuntimeChanged(j.ID(), jobType,
+			runtimeCopy)
+	}()
 	j.Lock()
 	defer j.Unlock()
 
@@ -534,7 +555,9 @@ func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.Runtim
 	}
 
 	j.runtime = &newRuntime
-	return proto.Clone(j.runtime).(*pbjob.RuntimeInfo), nil
+	runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
+	jobType = j.jobType
+	return runtimeCopy, nil
 }
 
 func (j *job) CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn) (jobmgrcommon.JobConfig, error) {
@@ -567,6 +590,13 @@ func (j *job) CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, 
 // the remaining fields should be left unfilled.
 // The config would be updated to the config passed in (except changeLog)
 func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, configAddOn *models.ConfigAddOn, req UpdateRequest) error {
+	var runtimeCopy *pbjob.RuntimeInfo
+	var jobType pbjob.JobType
+	// notify listeners after dropping the lock
+	defer func() {
+		j.jobFactory.notifyJobRuntimeChanged(j.ID(), jobType,
+			runtimeCopy)
+	}()
 	j.Lock()
 	defer j.Unlock()
 
@@ -635,8 +665,10 @@ func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, configAddOn *m
 				j.invalidateCache()
 				return err
 			}
+			runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
 		}
 	}
+	jobType = j.jobType
 	return nil
 }
 
@@ -748,6 +780,7 @@ func (j *job) populateJobConfigCache(config *pbjob.JobConfig) {
 	j.config.hasControllerTask = hasControllerTask(config)
 
 	j.config.jobType = config.GetType()
+	j.jobType = j.config.jobType
 }
 
 // getUpdatedJobRuntimeCache validates the runtime input and

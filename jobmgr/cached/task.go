@@ -250,6 +250,12 @@ func (t *task) CreateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, o
 		}).Warn("create task runtime when job is nil in cache")
 	}
 
+	var runtimeCopy *pbtask.RuntimeInfo
+	// notify listeners after dropping the lock
+	defer func() {
+		t.jobFactory.notifyTaskRuntimeChanged(t.JobID(), t.ID(), jobType,
+			runtimeCopy)
+	}()
 	t.Lock()
 	defer t.Unlock()
 
@@ -268,6 +274,7 @@ func (t *task) CreateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, o
 
 	t.runtime = runtime
 	t.lastRuntimeUpdateTime = time.Now()
+	runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
 	return nil
 }
 
@@ -303,6 +310,12 @@ func (t *task) PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) 
 		}).Warn("patch task runtime when job is nil in cache")
 	}
 
+	var runtimeCopy *pbtask.RuntimeInfo
+	// notify listeners after dropping the lock
+	defer func() {
+		t.jobFactory.notifyTaskRuntimeChanged(t.JobID(), t.ID(), jobType,
+			runtimeCopy)
+	}()
 	t.Lock()
 	defer t.Unlock()
 
@@ -346,6 +359,7 @@ func (t *task) PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) 
 	// Store the new runtime in cache
 	t.runtime = newRuntimePtr
 	t.lastRuntimeUpdateTime = time.Now()
+	runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
 	return nil
 }
 

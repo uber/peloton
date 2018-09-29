@@ -23,33 +23,6 @@ import (
 	"github.com/uber-go/tally"
 )
 
-// initializeTask initializes a test task to be used in the unit test
-func initializeTask(taskStore *storemocks.MockTaskStore, jobID *peloton.JobID, instanceID uint32, runtime *pbtask.RuntimeInfo) *task {
-	tt := &task{
-		id:      instanceID,
-		jobID:   jobID,
-		runtime: runtime,
-		jobFactory: &jobFactory{
-			mtx:       NewMetrics(tally.NoopScope),
-			taskStore: taskStore,
-			running:   true,
-			jobs:      map[string]*job{},
-		},
-	}
-	config := &cachedConfig{
-		jobType:   pbjob.JobType_BATCH,
-		changeLog: &peloton.ChangeLog{Version: 1},
-	}
-	job := &job{
-		id:     jobID,
-		config: config,
-		runtime: &pbjob.RuntimeInfo{
-			ConfigurationVersion: config.changeLog.Version},
-	}
-	tt.jobFactory.jobs[jobID.GetValue()] = job
-	return tt
-}
-
 func initializeTaskRuntime(state pbtask.TaskState, version uint64) *pbtask.RuntimeInfo {
 	runtime := &pbtask.RuntimeInfo{
 		State: state,
@@ -69,6 +42,7 @@ type TaskTestSuite struct {
 	jobID      *peloton.JobID
 	instanceID uint32
 	taskStore  *storemocks.MockTaskStore
+	listeners  []*FakeTaskListener
 }
 
 func (suite *TaskTestSuite) SetupTest() {
@@ -78,9 +52,13 @@ func (suite *TaskTestSuite) SetupTest() {
 
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
+	suite.listeners = append(suite.listeners,
+		new(FakeTaskListener),
+		new(FakeTaskListener))
 }
 
 func (suite *TaskTestSuite) TearDownTest() {
+	suite.listeners = nil
 	suite.ctrl.Finish()
 }
 
@@ -88,11 +66,90 @@ func TestTask(t *testing.T) {
 	suite.Run(t, new(TaskTestSuite))
 }
 
+// initializeTask initializes a test task to be used in the unit test
+func (suite *TaskTestSuite) initializeTask(
+	taskStore *storemocks.MockTaskStore,
+	jobID *peloton.JobID, instanceID uint32,
+	runtime *pbtask.RuntimeInfo) *task {
+	tt := &task{
+		id:      instanceID,
+		jobID:   jobID,
+		runtime: runtime,
+		jobFactory: &jobFactory{
+			mtx:       NewMetrics(tally.NoopScope),
+			taskStore: taskStore,
+			running:   true,
+			jobs:      map[string]*job{},
+		},
+	}
+	for _, l := range suite.listeners {
+		tt.jobFactory.listeners = append(tt.jobFactory.listeners, l)
+	}
+	config := &cachedConfig{
+		jobType:   pbjob.JobType_BATCH,
+		changeLog: &peloton.ChangeLog{Version: 1},
+	}
+	job := &job{
+		id:     jobID,
+		config: config,
+		runtime: &pbjob.RuntimeInfo{
+			ConfigurationVersion: config.changeLog.Version},
+	}
+	tt.jobFactory.jobs[jobID.GetValue()] = job
+	return tt
+}
+
+// checkListeners verifies that listeners received the correct data
+func (suite *TaskTestSuite) checkListeners(tt *task, jobType pbjob.JobType) {
+	suite.NotZero(len(suite.listeners))
+	for i, l := range suite.listeners {
+		msg := fmt.Sprintf("Listener %d", i)
+		suite.Equal(suite.jobID, l.jobID, msg)
+		suite.Equal(suite.instanceID, l.instanceID, msg)
+		suite.Equal(jobType, l.jobType, msg)
+		suite.Equal(tt.runtime, l.taskRuntime, msg)
+	}
+}
+
+// checkListenersNotCalled verifies that listeners did not get invoked
+func (suite *TaskTestSuite) checkListenersNotCalled() {
+	suite.NotZero(len(suite.listeners))
+	for i, l := range suite.listeners {
+		msg := fmt.Sprintf("Listener %d", i)
+		suite.Nil(l.jobID, msg)
+		suite.Nil(l.taskRuntime, msg)
+	}
+}
+
+// TestTaskCreateRuntime tests creating task runtime without any DB errors
+func (suite *TaskTestSuite) TestCreateRuntime() {
+	tt := suite.initializeTask(suite.taskStore, suite.jobID,
+		suite.instanceID, nil)
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	jobType := pbjob.JobType_BATCH
+
+	suite.taskStore.EXPECT().
+		CreateTaskRuntime(
+			gomock.Any(),
+			suite.jobID,
+			suite.instanceID,
+			runtime,
+			gomock.Any(),
+			jobType).
+		Return(nil)
+
+	err := tt.CreateRuntime(context.Background(), runtime, "team10")
+	suite.Nil(err)
+	suite.checkListeners(tt, jobType)
+}
+
 // TestTaskPatchRuntime tests updating the task runtime without any DB errors
 func (suite *TaskTestSuite) TestPatchRuntime() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
-	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		runtime)
 
 	diff := jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.StateField: pbtask.TaskState_RUNNING,
@@ -119,6 +176,7 @@ func (suite *TaskTestSuite) TestPatchRuntime() {
 
 	err := tt.PatchRuntime(context.Background(), diff)
 	suite.Nil(err)
+	suite.checkListeners(tt, pbjob.JobType_BATCH)
 }
 
 // TestTaskPatchRuntime tests updating the task runtime without any DB errors
@@ -129,7 +187,8 @@ func (suite *TaskTestSuite) TestPatchRuntime_WithInitializedState() {
 		Value: &currentMesosTaskID,
 	}
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
-	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		runtime)
 
 	mesosTaskID := "acf6e6d4-51be-4b60-8900-683f11252848" + "-1-2"
 	diff := jobmgrcommon.RuntimeDiff{
@@ -160,6 +219,7 @@ func (suite *TaskTestSuite) TestPatchRuntime_WithInitializedState() {
 
 	err := tt.PatchRuntime(context.Background(), diff)
 	suite.Nil(err)
+	suite.checkListeners(tt, pbjob.JobType_BATCH)
 }
 
 // TestPatchRuntime_KillInitializedTask tests updating the case of
@@ -167,7 +227,8 @@ func (suite *TaskTestSuite) TestPatchRuntime_WithInitializedState() {
 func (suite *TaskTestSuite) TestPatchRuntime_KillInitializedTask() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_INITIALIZED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
-	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		runtime)
 
 	diff := jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.GoalStateField: pbtask.TaskState_KILLED,
@@ -194,6 +255,7 @@ func (suite *TaskTestSuite) TestPatchRuntime_KillInitializedTask() {
 
 	err := tt.PatchRuntime(context.Background(), diff)
 	suite.Nil(err)
+	suite.checkListeners(tt, pbjob.JobType_BATCH)
 }
 
 // TestTaskPatchRuntime_NoRuntimeInCache tests updating task runtime when
@@ -201,7 +263,8 @@ func (suite *TaskTestSuite) TestPatchRuntime_KillInitializedTask() {
 func (suite *TaskTestSuite) TestPatchRuntime_NoRuntimeInCache() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
-	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, nil)
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		nil)
 
 	diff := jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.StateField: pbtask.TaskState_RUNNING,
@@ -230,13 +293,15 @@ func (suite *TaskTestSuite) TestPatchRuntime_NoRuntimeInCache() {
 
 	err := tt.PatchRuntime(context.Background(), diff)
 	suite.Nil(err)
+	suite.checkListeners(tt, pbjob.JobType_BATCH)
 }
 
 // TestPatchRuntime_DBError tests updating the task runtime with DB errors
 func (suite *TaskTestSuite) TestPatchRuntime_DBError() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
-	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		runtime)
 
 	diff := jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.StateField: pbtask.TaskState_RUNNING,
@@ -253,19 +318,22 @@ func (suite *TaskTestSuite) TestPatchRuntime_DBError() {
 
 	err := tt.PatchRuntime(context.Background(), diff)
 	suite.NotNil(err)
+	suite.checkListenersNotCalled()
 }
 
 // TestReplaceRuntime tests replacing runtime in the cache only
 func (suite *TaskTestSuite) TestReplaceRuntime() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
-	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		runtime)
 
 	newRuntime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 3)
 
 	err := tt.ReplaceRuntime(newRuntime, false)
 	suite.Nil(err)
 	suite.Equal(tt.runtime.GetState(), pbtask.TaskState_RUNNING)
+	suite.checkListenersNotCalled()
 }
 
 // TestReplaceRuntime_NoExistingCache tests replacing cache when
@@ -293,19 +361,22 @@ func (suite *TaskTestSuite) TestReplaceRuntime_NoExistingCache() {
 	curGoalState := tt.GoalState()
 	suite.Equal(runtime.State, curState.State)
 	suite.Equal(runtime.GoalState, curGoalState.State)
+	suite.checkListenersNotCalled()
 }
 
 // TestReplaceRuntime_StaleRuntime tests replacing with stale runtime
 func (suite *TaskTestSuite) TestReplaceRuntime_StaleRuntime() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
-	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		runtime)
 
 	newRuntime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 1)
 
 	err := tt.ReplaceRuntime(newRuntime, false)
 	suite.Nil(err)
 	suite.Equal(tt.runtime.GetState(), pbtask.TaskState_LAUNCHED)
+	suite.checkListenersNotCalled()
 }
 
 func (suite *TaskTestSuite) TestValidateState() {
@@ -389,7 +460,7 @@ func (suite *TaskTestSuite) TestValidateState() {
 	}
 
 	for i, t := range tt {
-		task := initializeTask(
+		task := suite.initializeTask(
 			suite.taskStore, suite.jobID, suite.instanceID, t.curRuntime)
 		suite.Equal(task.validateState(t.newRuntime), t.expectedResult,
 			"test %d fails. message: %s", i, t.message)

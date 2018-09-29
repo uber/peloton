@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/storage"
@@ -46,6 +47,9 @@ type jobFactory struct {
 	taskStore   storage.TaskStore             // storage task store object
 	volumeStore storage.PersistentVolumeStore // storage volume store object
 	mtx         *Metrics                      // cache metrics
+	// Tob/task listeners. This list is immutable after object is created.
+	// So it can read without a lock.
+	listeners []JobTaskListener
 	// channel to indicate that the job factory needs to stop
 	stopChan chan struct{}
 }
@@ -55,13 +59,15 @@ func InitJobFactory(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
-	parentScope tally.Scope) JobFactory {
+	parentScope tally.Scope,
+	listeners []JobTaskListener) JobFactory {
 	return &jobFactory{
 		jobs:        map[string]*job{},
 		jobStore:    jobStore,
 		taskStore:   taskStore,
 		volumeStore: volumeStore,
 		mtx:         NewMetrics(parentScope.SubScope("cache")),
+		listeners:   listeners,
 	}
 }
 
@@ -209,4 +215,31 @@ func (f *jobFactory) getJobs() map[string]*job {
 		}
 	}
 	return result
+}
+
+func (f *jobFactory) notifyJobRuntimeChanged(
+	jobID *peloton.JobID,
+	jobType pbjob.JobType,
+	runtime *pbjob.RuntimeInfo) {
+
+	if runtime != nil {
+		for _, l := range f.listeners {
+			l.JobRuntimeChanged(jobID, jobType, runtime)
+		}
+		// TODO add metric for listener execution latency
+	}
+}
+
+func (f *jobFactory) notifyTaskRuntimeChanged(
+	jobID *peloton.JobID,
+	instanceID uint32,
+	jobType pbjob.JobType,
+	runtime *pbtask.RuntimeInfo) {
+
+	if runtime != nil {
+		for _, l := range f.listeners {
+			l.TaskRuntimeChanged(jobID, instanceID, jobType, runtime)
+		}
+		// TODO add metric for listener execution latency
+	}
 }
