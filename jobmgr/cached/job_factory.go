@@ -123,7 +123,7 @@ func (f *jobFactory) Start() {
 	f.running = true
 
 	f.stopChan = make(chan struct{})
-	go f.runPublishMetrics(f.stopChan)
+	// go f.runPublishMetrics(f.stopChan)
 	log.Info("job factory started")
 }
 
