@@ -160,40 +160,43 @@ func getRunIDPrefix(mesosTaskID string) string {
 
 // Observe implements TransitionObserver
 func (obs *TransObs) Observe(currentState statemachine.State) {
-	// go through all the rules and see if currentState is the start state
-	// for any of the rules.
-	if endStates, ok := obs.rules[currentState]; ok {
-		for _, endState := range endStates {
-			obs.inProgress[endState] = append(obs.inProgress[endState],
-				timeRecord{
-					startState: currentState,
-					startTime:  time.Now(),
-				})
-		}
-	}
+	return
 
-	// go through all the in progress transitions and see if any one is
-	// waiting on the currentState, if so record it and remove it from the map.
-	if inProgressRecords, ok := obs.inProgress[currentState]; ok {
-		for _, inProgressRecord := range inProgressRecords {
-			key := getRecorderKey(
-				inProgressRecord.startState, currentState)
-
-			recorder, ok := obs.recorders[key]
-			if !ok {
-				// lazily instantiate the recorder
-				obs.tags["states"] = string(key)
-				recorder = obs.recorderGenerator(obs.scope.Tagged(obs.tags))
-				obs.recorders[key] = recorder
-			}
-
-			recorder.Record(
-				time.Now().Sub(inProgressRecord.startTime),
-			)
-		}
-		// not in progress anymore
-		delete(obs.inProgress, currentState)
-	}
+	// TODO avyas: enable once m3 bug is fixed.
+	//// go through all the rules and see if currentState is the start state
+	//// for any of the rules.
+	//if endStates, ok := obs.rules[currentState]; ok {
+	//	for _, endState := range endStates {
+	//		obs.inProgress[endState] = append(obs.inProgress[endState],
+	//			timeRecord{
+	//				startState: currentState,
+	//				startTime:  time.Now(),
+	//			})
+	//	}
+	//}
+	//
+	//// go through all the in progress transitions and see if any one is
+	//// waiting on the currentState, if so record it and remove it from the map.
+	//if inProgressRecords, ok := obs.inProgress[currentState]; ok {
+	//	for _, inProgressRecord := range inProgressRecords {
+	//		key := getRecorderKey(
+	//			inProgressRecord.startState, currentState)
+	//
+	//		recorder, ok := obs.recorders[key]
+	//		if !ok {
+	//			// lazily instantiate the recorder
+	//			obs.tags["states"] = string(key)
+	//			recorder = obs.recorderGenerator(obs.scope.Tagged(obs.tags))
+	//			obs.recorders[key] = recorder
+	//		}
+	//
+	//		recorder.Record(
+	//			time.Now().Sub(inProgressRecord.startTime),
+	//		)
+	//	}
+	//	// not in progress anymore
+	//	delete(obs.inProgress, currentState)
+	//}
 }
 
 func getRecorderKey(from statemachine.State, to statemachine.State) recorderKey {
