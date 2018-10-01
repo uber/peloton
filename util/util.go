@@ -244,7 +244,7 @@ func ParseRunID(mesosTaskID string) (uint64, error) {
 	splitMesosTaskID := strings.Split(mesosTaskID, "-")
 	if len(mesosTaskID) == 0 { // prev mesos task id is nil
 		return 0, errors.New("mesosTaskID provided is empty")
-	} else if len(splitMesosTaskID) > 0 {
+	} else if len(splitMesosTaskID) == 7 {
 		if runID, err := strconv.ParseUint(
 			splitMesosTaskID[len(splitMesosTaskID)-1], 10, 64); err == nil {
 			return runID, nil

@@ -252,19 +252,19 @@ func (suite *taskActionsTestSuite) TestGetPodEvents() {
 	jobID := &peloton.JobID{
 		Value: uuid.New(),
 	}
+	runID := "taskid"
+	prevRunID := "prevtaskid"
 	req := &task.GetPodEventsRequest{
 		JobId:      jobID,
 		InstanceId: 0,
 		Limit:      5,
+		RunId:      runID,
 	}
 
 	suite.mockTask.EXPECT().GetPodEvents(context.Background(), req).
 		Return(nil, errors.New("get pod events request failed"))
-	err := c.PodGetEventsAction(jobID.GetValue(), 0, 5)
+	err := c.PodGetEventsAction(jobID.GetValue(), 0, runID, 5)
 	suite.Error(err)
-
-	runID := "taskid"
-	prevRunID := "prevtaskid"
 
 	podEvent := &task.PodEvent{
 		TaskId: &mesos.TaskID{
@@ -283,7 +283,7 @@ func (suite *taskActionsTestSuite) TestGetPodEvents() {
 	}
 	suite.mockTask.EXPECT().GetPodEvents(context.Background(), req).
 		Return(response, nil)
-	err = c.PodGetEventsAction(jobID.GetValue(), 0, 5)
+	err = c.PodGetEventsAction(jobID.GetValue(), 0, runID, 5)
 	suite.NoError(err)
 
 	response = &task.GetPodEventsResponse{
@@ -293,13 +293,13 @@ func (suite *taskActionsTestSuite) TestGetPodEvents() {
 	}
 	suite.mockTask.EXPECT().GetPodEvents(context.Background(), req).
 		Return(response, nil)
-	err = c.PodGetEventsAction(jobID.GetValue(), 0, 5)
+	err = c.PodGetEventsAction(jobID.GetValue(), 0, runID, 5)
 	suite.NoError(err)
 
 	c.Debug = true
 	suite.mockTask.EXPECT().GetPodEvents(context.Background(), req).
 		Return(response, nil)
-	err = c.PodGetEventsAction(jobID.GetValue(), 0, 5)
+	err = c.PodGetEventsAction(jobID.GetValue(), 0, runID, 5)
 	suite.NoError(err)
 }
 

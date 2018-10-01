@@ -115,7 +115,10 @@ type TaskStore interface {
 	GetTaskEvents(ctx context.Context, id *peloton.JobID, instanceID uint32) ([]*task.TaskEvent, error)
 
 	// GetPodEvents returns pod events (state transition for a job instance).
-	GetPodEvents(ctx context.Context, id *peloton.JobID, instanceID uint32, limit uint64) ([]*task.PodEvent, error)
+	// limit parameter manages number of pod events to return
+	// and optional runID parameter to fetch pod events only for that run if
+	// not provided or unparseable then return for all runs
+	GetPodEvents(ctx context.Context, id *peloton.JobID, instanceID uint32, limit uint64, runID ...string) ([]*task.PodEvent, error)
 	// DeleteTaskRuntime deletes the task runtime for a given job instance
 	DeleteTaskRuntime(ctx context.Context, id *peloton.JobID, instanceID uint32) error
 

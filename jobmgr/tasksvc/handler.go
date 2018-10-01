@@ -259,7 +259,8 @@ func (m *serviceHandler) GetPodEvents(
 		ctx,
 		body.GetJobId(),
 		body.GetInstanceId(),
-		body.GetLimit())
+		body.GetLimit(),
+		body.GetRunId())
 	if err != nil {
 		return nil, err
 	}

@@ -81,7 +81,16 @@ const (
 	jobQueryDefaultSpanInDays = 7
 	jobQueryJitter            = time.Second * 30
 
+	// podEventsLastRecord is used in GetPodEvents to return the most recent
+	// event for most recent run
+	podEventsLastRecord = 1
+
+	// _defaultPodEventsLimit is default number of pod events
+	// to read if not provided for jobID + instanceID
 	_defaultPodEventsLimit = 100
+
+	// invalidRunID is used to read pod events for all runs
+	invalidRunID = uint64(0)
 )
 
 // Config is the config for cassandra Store
@@ -1048,22 +1057,37 @@ func (s *Store) addPodEvent(
 	return nil
 }
 
-// GetPodEvents returns pod events for a Job + Instance.
+// GetPodEvents returns pod events for a Job + Instance + RunID (optional)
+// Pod events are sorted by RunID + Timestamp, and by default returns first 100
 // Primary usecase for pod events is for CLI, UI & create sandbox directory path.
 func (s *Store) GetPodEvents(
 	ctx context.Context,
 	jobID *peloton.JobID,
 	instanceID uint32,
-	limit uint64) ([]*task.PodEvent, error) {
+	limit uint64,
+	runID ...string) ([]*task.PodEvent, error) {
+	var stmt qb.SelectBuilder
+	queryBuilder := s.DataStore.NewQuery()
+
 	if limit == 0 {
 		limit = _defaultPodEventsLimit
 	}
 
-	// Events are sorted by RunID and then update time.
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(podEventsTable).
-		Where(qb.Eq{"job_id": jobID.GetValue(), "instance_id": instanceID}).
+	// Events are sorted in descinding order by RunID and then update time.
+	stmt = queryBuilder.Select("*").From(podEventsTable).
+		Where(qb.Eq{
+			"job_id":      jobID.GetValue(),
+			"instance_id": instanceID}).
 		Limit(limit)
+
+	if len(runID) > 0 && len(runID[0]) > 0 {
+		runID, err := util.ParseRunID(runID[0])
+		if err != nil {
+			return nil, err
+		}
+		stmt = stmt.Where(qb.Eq{"run_id": runID})
+	}
+
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		s.metrics.TaskMetrics.PodEventsGetFail.Inc(1)
@@ -1963,7 +1987,11 @@ func (s *Store) deletePodEventsOnDeleteJob(
 		// 2) read pod events if instance_id (shrunk instances) % 100 = 0
 		if instanceCount > jobConfig.InstanceCount &&
 			instanceCount%_defaultPodEventsLimit == 0 {
-			events, err := s.GetPodEvents(ctx, id, instanceCount, 1)
+			events, err := s.GetPodEvents(
+				ctx,
+				id,
+				instanceCount,
+				podEventsLastRecord)
 			if err != nil {
 				s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 				return err

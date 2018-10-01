@@ -139,12 +139,14 @@ func (c *Client) TaskGetEventsAction(jobID string, instanceID uint32) error {
 func (c *Client) PodGetEventsAction(
 	jobID string,
 	instanceID uint32,
+	runID string,
 	limit uint64) error {
 	var request = &task.GetPodEventsRequest{
 		JobId: &peloton.JobID{
 			Value: jobID,
 		},
 		InstanceId: instanceID,
+		RunId:      runID,
 		Limit:      limit,
 	}
 	response, err := c.taskClient.GetPodEvents(c.ctx, request)

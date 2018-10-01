@@ -161,6 +161,7 @@ var (
 	podGetEvents           = pod.Command("events", "get pod events in reverse chronological order.")
 	podGetEventsJobName    = podGetEvents.Arg("job", "job identifier").Required().String()
 	podGetEventsInstanceID = podGetEvents.Arg("instance", "job instance id").Required().Uint32()
+	podGetEventsRunID      = podGetEvents.Flag("run", "get pod events for this runID only").Short('r').String()
 	podGetEventsLimit      = podGetEvents.Flag("limit", "number of events to return, default value 100").Short('l').Uint64()
 
 	// Top level task command
@@ -474,7 +475,7 @@ func main() {
 	case taskGetEvents.FullCommand():
 		err = client.TaskGetEventsAction(*taskGetEventsJobName, *taskGetEventsInstanceID)
 	case podGetEvents.FullCommand():
-		err = client.PodGetEventsAction(*podGetEventsJobName, *podGetEventsInstanceID, *podGetEventsLimit)
+		err = client.PodGetEventsAction(*podGetEventsJobName, *podGetEventsInstanceID, *podGetEventsRunID, *podGetEventsLimit)
 	case taskLogsGet.FullCommand():
 		err = client.TaskLogsGetAction(*taskLogsGetFileName, *taskLogsGetJobName, *taskLogsGetInstanceID, *taskLogsGetTaskID)
 	case taskList.FullCommand():

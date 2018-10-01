@@ -731,6 +731,10 @@ message GetPodEventsRequest {
 
   // Limit of events
   uint64 limit = 3;
+
+  // Unique identifier to fetch pod events (state transition(s))
+  // of an instance for a particular run
+  string runId = 4;
 }
 
 /**
