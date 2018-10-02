@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -44,6 +45,7 @@ type UpdateRunTestSuite struct {
 	cachedUpdate          *cachedmocks.MockUpdate
 	cachedTask            *cachedmocks.MockTask
 	jobStore              *storemocks.MockJobStore
+	taskStore             *storemocks.MockTaskStore
 	resmgrClient          *resmocks.MockResourceManagerServiceYARPCClient
 }
 
@@ -58,6 +60,7 @@ func (suite *UpdateRunTestSuite) SetupTest() {
 	suite.updateGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
+	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.resmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 	suite.goalStateDriver = &driver{
 		updateFactory: suite.updateFactory,
@@ -65,6 +68,7 @@ func (suite *UpdateRunTestSuite) SetupTest() {
 		updateEngine:  suite.updateGoalStateEngine,
 		taskEngine:    suite.taskGoalStateEngine,
 		jobStore:      suite.jobStore,
+		taskStore:     suite.taskStore,
 		mtx:           NewMetrics(tally.NoopScope),
 		cfg:           &Config{},
 		resmgrClient:  suite.resmgrClient,
@@ -622,6 +626,143 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_FullyRunning_AddInstances() {
 		suite.cachedJob.EXPECT().
 			GetTask(instID).
 			Return(nil)
+		suite.taskStore.EXPECT().
+			GetPodEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, nil)
+	}
+
+	suite.cachedJob.EXPECT().
+		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, _ string) {
+			suite.Len(runtimes, int(batchSize))
+		}).Return(nil)
+
+	suite.resmgrClient.EXPECT().
+		EnqueueGangs(gomock.Any(), gomock.Any()).
+		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		WriteProgress(
+			gomock.Any(),
+			pbupdate.State_ROLLING_FORWARD,
+			gomock.Any(),
+			gomock.Any()).
+		Do(func(_ context.Context, _ pbupdate.State,
+			instancesDone []uint32, instancesCurrent []uint32) {
+			suite.EqualValues(instancesCurrent,
+				newSlice(oldInstanceNumber, oldInstanceNumber+batchSize))
+			suite.Empty(instancesDone)
+		}).Return(nil)
+
+	err := UpdateRun(context.Background(), suite.updateEnt)
+	suite.NoError(err)
+}
+
+// TestUpdateRun_FullyRunning_AddShrinkInstances test adding shrink instances
+// for a fully running job
+
+func (suite *UpdateRunTestSuite) TestUpdateRun_FullyRunning_AddShrinkInstances() {
+	oldInstanceNumber := uint32(10)
+	newInstanceNumber := uint32(20)
+	batchSize := uint32(5)
+	newJobVersion := uint64(4)
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID)
+
+	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			Instances:  newSlice(oldInstanceNumber, newInstanceNumber),
+			JobVersion: newJobVersion,
+		}).AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesCurrent().
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{})
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesAdded().
+		Return(newSlice(oldInstanceNumber, newInstanceNumber))
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesUpdated().
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetUpdateConfig().
+		Return(&pbupdate.UpdateConfig{
+			BatchSize: batchSize,
+		}).AnyTimes()
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(gomock.Any(), gomock.Any(), uint64(4)).
+		Return(&pbjob.JobConfig{
+			ChangeLog: &peloton.ChangeLog{Version: uint64(4)},
+		}, &models.ConfigAddOn{},
+			nil)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbjob.RuntimeInfo{State: pbjob.JobState_RUNNING}, nil)
+
+	for _, instID := range newSlice(oldInstanceNumber, oldInstanceNumber+batchSize) {
+		suite.cachedJob.EXPECT().
+			GetTask(instID).
+			Return(nil)
+
+		mesosTaskID := fmt.Sprintf("%s-%d-%d", suite.jobID.GetValue(), instID, 50)
+		taskID := &mesos.TaskID{
+			Value: &mesosTaskID,
+		}
+
+		prevMesosTaskID := fmt.Sprintf("%s-%d-%d", suite.jobID.GetValue(), instID, 49)
+		prevTaskID := &mesos.TaskID{
+			Value: &prevMesosTaskID,
+		}
+
+		var podEvents []*pbtask.PodEvent
+		podEvent := &pbtask.PodEvent{
+			TaskId:     taskID,
+			PrevTaskId: prevTaskID,
+		}
+		podEvents = append(podEvents, podEvent)
+
+		suite.taskStore.EXPECT().
+			GetPodEvents(gomock.Any(), suite.jobID, uint32(instID), uint64(1)).
+			Return(podEvents, nil)
 	}
 
 	suite.cachedJob.EXPECT().
@@ -1006,6 +1147,9 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_KilledJob_AddInstances() {
 		suite.cachedJob.EXPECT().
 			GetTask(instID).
 			Return(nil)
+		suite.taskStore.EXPECT().
+			GetPodEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, nil)
 	}
 
 	suite.cachedJob.EXPECT().
@@ -1117,6 +1261,9 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_DBError_AddInstances() {
 		suite.cachedJob.EXPECT().
 			GetTask(instID).
 			Return(nil)
+		suite.taskStore.EXPECT().
+			GetPodEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, nil)
 	}
 
 	suite.cachedJob.EXPECT().

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/common/goalstate"
@@ -13,6 +14,7 @@ import (
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/task"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
+	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
@@ -300,6 +302,16 @@ func addInstancesInUpdate(
 			// runtime is nil, initialize the runtime
 			runtime := task.CreateInitializingTask(
 				cachedJob.ID(), instID, jobConfig)
+
+			if err = updateWithRecentRunID(
+				ctx,
+				cachedJob.ID(),
+				instID,
+				runtime,
+				goalStateDriver); err != nil {
+				return err
+			}
+
 			runtime.ConfigVersion = jobConfig.GetChangeLog().GetVersion()
 			runtime.DesiredConfigVersion =
 				jobConfig.GetChangeLog().GetVersion()
@@ -518,4 +530,44 @@ func subtractSlice(slice1 []uint32, slice2 []uint32) []uint32 {
 	}
 
 	return result
+}
+
+// updateWithRecentRunID has primary use case to sync runID from persistent storage
+// for previously removed instance that is added back again.
+//
+// 1. Fetches most recent pod event to get last runID
+// 2. If RunID exists for this instance, then update the runtime with
+//	  last RunID. Primary reason to not start RunID for newly added instance
+// 	  is to prevent overwriting previous pod events at storage.
+// 3. Starting from most recent RunID enables user to fetch sandbox logs,
+//    state transitions for previous instance runs.
+func updateWithRecentRunID(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	instanceID uint32,
+	runtime *pbtask.RuntimeInfo,
+	goalStateDriver *driver) error {
+	podEvents, err := goalStateDriver.taskStore.GetPodEvents(
+		ctx,
+		jobID,
+		instanceID,
+		1)
+	if err != nil {
+		return err
+	}
+
+	// instance removed previously during update is being added back.
+	if len(podEvents) > 0 {
+		runID, err := util.ParseRunID(podEvents[0].GetTaskId().GetValue())
+		if err != nil {
+			return err
+		}
+		runtime.MesosTaskId = util.CreateMesosTaskID(
+			jobID,
+			instanceID,
+			runID+1)
+		runtime.DesiredMesosTaskId = runtime.MesosTaskId
+		runtime.PrevMesosTaskId = podEvents[0].GetTaskId()
+	}
+	return nil
 }
