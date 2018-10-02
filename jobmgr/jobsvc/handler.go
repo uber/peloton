@@ -36,6 +36,9 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
+// maximum number of updates per job allowed
+const maxUpdatesAllowed = uint64(400)
+
 var (
 	errNullResourcePoolID   = errors.New("resource pool ID is null")
 	errResourcePoolNotFound = errors.New("resource pool not found")
@@ -250,8 +253,17 @@ func (h *serviceHandler) Update(
 	}
 
 	if oldConfig.GetType() != job.JobType_BATCH {
+		h.metrics.JobUpdateFail.Inc(1)
 		return nil, yarpcerrors.InvalidArgumentErrorf(
 			"job update is only supported for batch jobs")
+	}
+
+	if oldConfig.GetChangeLog().GetVersion() > maxUpdatesAllowed {
+		log.WithField("job_id", jobID.GetValue()).
+			Error("maximum number of updates reached")
+		h.metrics.JobUpdateFail.Inc(1)
+		return nil, yarpcerrors.InvalidArgumentErrorf(
+			"no more updates allowed on the job")
 	}
 
 	if newConfig.GetRespoolID() == nil {
