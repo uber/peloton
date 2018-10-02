@@ -1,7 +1,10 @@
 package cached
 
 import (
+	"math/rand"
+	"sync"
 	"testing"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -84,4 +87,151 @@ func TestPublishMetrics(t *testing.T) {
 	j.ReplaceTasks(runtimes, false)
 
 	f.publishMetrics()
+}
+
+// BenchmarkPublishMetrics benchmarks the time needed to call publishMetrics
+// when other goroutines are competing for locks with jobFactory.AddJob and
+// jobFactory.GetJob
+func BenchmarkPublishMetrics(b *testing.B) {
+	b.StopTimer()
+
+	numberOfJob := 600
+	numberOfTaskPerJob := 1400
+	f := createJobFactoryWithMockTasks(numberOfJob, numberOfTaskPerJob)
+
+	stopChan := make(chan struct{})
+	numberOfPeriodicalJobAddGetWorker := 5
+	// readyWg to make sure the benchmark enters goroutine that simulates add/get
+	// job before running publishMetrics
+	readyWg := sync.WaitGroup{}
+	// finishWg to make sure all go routine exists before test exists
+	finishWg := sync.WaitGroup{}
+	readyWg.Add(numberOfPeriodicalJobAddGetWorker)
+	finishWg.Add(numberOfPeriodicalJobAddGetWorker)
+
+	jobIDs := createRandomJobIds(numberOfJob)
+	// simulate the lock contention due to add/get job in other goroutines
+	periodicalJobAddGet := func() {
+		readyWg.Done()
+		ticker := time.Tick(time.Millisecond)
+		for {
+			select {
+			case <-ticker:
+				go f.AddJob(jobIDs[rand.Intn(len(jobIDs))])
+				go f.GetJob(jobIDs[rand.Intn(len(jobIDs))])
+			case <-stopChan:
+				finishWg.Done()
+				return
+			}
+		}
+	}
+
+	for i := 0; i < numberOfPeriodicalJobAddGetWorker; i++ {
+		go periodicalJobAddGet()
+	}
+	readyWg.Wait()
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		f.publishMetrics()
+	}
+
+	b.StopTimer()
+	close(stopChan)
+	finishWg.Wait()
+}
+
+// BenchmarkAddJobWhichPublishingMetrics benchmarks jobFactory.AddJob
+// while publishMetrics is going on
+func BenchmarkAddJobWhichPublishingMetrics(b *testing.B) {
+	b.StopTimer()
+
+	numberOfJob := 600
+	numberOfTaskPerJob := 1400
+	f := createJobFactoryWithMockTasks(numberOfJob, numberOfTaskPerJob)
+
+	stopChan := make(chan struct{})
+	// readyWg to make sure the benchmark enters publishMetrics goroutine before
+	// benchmarking
+	readyWg := sync.WaitGroup{}
+	// finishWg to make sure all go routine exists before test exists
+	finishWg := sync.WaitGroup{}
+	readyWg.Add(1)
+	finishWg.Add(1)
+
+	jobIDs := createRandomJobIds(numberOfJob)
+	// simulate the lock contention due to add/get job in other goroutines
+	publishMetrics := func() {
+		readyWg.Done()
+		for {
+			select {
+			case <-stopChan:
+				finishWg.Done()
+				return
+			default:
+				f.publishMetrics()
+			}
+		}
+	}
+
+	go publishMetrics()
+	readyWg.Wait()
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		f.AddJob(jobIDs[rand.Intn(len(jobIDs))])
+	}
+
+	b.StopTimer()
+	close(stopChan)
+	finishWg.Wait()
+}
+
+// BenchmarkAddJob benchmarks jobFactory.AddJob
+// without contention
+func BenchmarkAddJob(b *testing.B) {
+	numberOfJob := 600
+	f := &jobFactory{
+		jobs: map[string]*job{},
+	}
+
+	jobIDs := createRandomJobIds(numberOfJob)
+	for i := 0; i < b.N; i++ {
+		f.AddJob(jobIDs[rand.Intn(len(jobIDs))])
+	}
+}
+
+func createJobFactoryWithMockTasks(
+	numberOfJob int,
+	numberOfTaskPerJob int) *jobFactory {
+
+	f := &jobFactory{
+		jobs:    map[string]*job{},
+		mtx:     NewMetrics(tally.NoopScope),
+		running: true,
+	}
+
+	// populate job factory with mock jobs and tasks
+	for i := 0; i < numberOfJob; i++ {
+		jobID := &peloton.JobID{Value: uuid.New()}
+		cachedJob := f.AddJob(jobID)
+		for j := uint32(0); j < uint32(numberOfTaskPerJob); j++ {
+			cachedTask := newTask(jobID, j, f)
+			// randomly populate the states
+			cachedTask.runtime = &pbtask.RuntimeInfo{
+				State:     pbtask.TaskState(uint32(rand.Intn(len(pbtask.TaskState_name)))),
+				GoalState: pbtask.TaskState(uint32(rand.Intn(len(pbtask.TaskState_name)))),
+			}
+			cachedJob.(*job).tasks[j] = cachedTask
+		}
+	}
+	return f
+}
+
+func createRandomJobIds(n int) []*peloton.JobID {
+	result := make([]*peloton.JobID, n, n)
+	for i := 0; i < n; i++ {
+		result[i] = &peloton.JobID{Value: uuid.New()}
+	}
+	return result
 }

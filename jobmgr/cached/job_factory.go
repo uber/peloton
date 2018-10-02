@@ -66,9 +66,14 @@ func InitJobFactory(
 }
 
 func (f *jobFactory) AddJob(id *peloton.JobID) Job {
+	if j := f.GetJob(id); j != nil {
+		return j
+	}
+
 	f.Lock()
 	defer f.Unlock()
-
+	// check whether the job exists again, in case it
+	// is created between RUnlock and Lock
 	j, ok := f.jobs[id.GetValue()]
 	if !ok {
 		j = newJob(id, f)
@@ -174,24 +179,34 @@ func (f *jobFactory) publishMetrics() {
 	}
 
 	// Iterate through jobs, tasks and count
-	f.RLock()
-	jCount := float64(len(f.jobs))
-	for _, j := range f.jobs {
-		j.RLock()
+	jobsCopy := f.getJobs()
+	for _, j := range jobsCopy {
 		for _, t := range j.tasks {
 			t.RLock()
 			tCount[t.runtime.GetState()][t.runtime.GetGoalState()]++
 			t.RUnlock()
 		}
-		j.RUnlock()
 	}
-	f.RUnlock()
 
 	// Publish
-	f.mtx.scope.Gauge("jobs_count").Update(jCount)
+	f.mtx.scope.Gauge("jobs_count").Update(float64(len(jobsCopy)))
 	for s, sm := range tCount {
 		for gs, tc := range sm {
 			f.mtx.scope.Tagged(map[string]string{"state": s.String(), "goal_state": gs.String()}).Gauge("tasks_count").Update(tc)
 		}
 	}
+}
+
+// getJobs returns a copy of the internal map of job
+func (f *jobFactory) getJobs() map[string]*job {
+	result := make(map[string]*job)
+	f.RLock()
+	defer f.RUnlock()
+
+	for k, v := range f.jobs {
+		result[k] = &job{
+			tasks: v.tasks,
+		}
+	}
+	return result
 }
