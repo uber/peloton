@@ -189,8 +189,8 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 	return sendTasksToResMgr(ctx, jobID, tasks, jobConfig, goalStateDriver)
 }
 
-// jobStateDeterminer determines job state given the current job runtime
-type jobStateDeterminer interface {
+// stateDeterminer determines job state given the current job runtime
+type stateDeterminer interface {
 	getState(ctx context.Context, jobRuntime *job.RuntimeInfo) (job.JobState, error)
 }
 
@@ -198,7 +198,7 @@ func jobStateDeterminerFactory(
 	jobRuntime *job.RuntimeInfo,
 	stateCounts map[string]uint32,
 	cachedJob cached.Job,
-	config jobmgrcommon.JobConfig) jobStateDeterminer {
+	config jobmgrcommon.JobConfig) stateDeterminer {
 	totalInstanceCount := getTotalInstanceCount(stateCounts)
 	// a job is partially created if:
 	// 1. number of total instance count is smaller than configured
@@ -214,25 +214,22 @@ func jobStateDeterminerFactory(
 			cachedJob, stateCounts)
 	}
 
-	if config.GetType() == job.JobType_SERVICE {
-		return newServiceJobStateDeterminer(stateCounts)
-	}
-	return newBatchJobStateDeterminer(stateCounts)
+	return newJobStateDeterminer(stateCounts)
 }
 
-func newBatchJobStateDeterminer(
+func newJobStateDeterminer(
 	stateCounts map[string]uint32,
-) *batchJobStateDeterminer {
-	return &batchJobStateDeterminer{
+) *jobStateDeterminer {
+	return &jobStateDeterminer{
 		stateCounts: stateCounts,
 	}
 }
 
-type batchJobStateDeterminer struct {
+type jobStateDeterminer struct {
 	stateCounts map[string]uint32
 }
 
-func (d *batchJobStateDeterminer) getState(
+func (d *jobStateDeterminer) getState(
 	ctx context.Context,
 	jobRuntime *job.RuntimeInfo,
 ) (job.JobState, error) {
@@ -264,46 +261,6 @@ func (d *batchJobStateDeterminer) getState(
 
 }
 
-func newServiceJobStateDeterminer(
-	stateCounts map[string]uint32,
-) *serviceJobStateDeterminer {
-	return &serviceJobStateDeterminer{
-		stateCounts: stateCounts,
-	}
-}
-
-type serviceJobStateDeterminer struct {
-	stateCounts map[string]uint32
-}
-
-func (d *serviceJobStateDeterminer) getState(
-	ctx context.Context,
-	jobRuntime *job.RuntimeInfo,
-) (job.JobState, error) {
-	// use totalInstanceCount instead of config.GetInstanceCount,
-	// because totalInstanceCount can be larger than config.GetInstanceCount
-	// due to a race condition bug. Although the bug is fixed, the change is
-	// needed to unblock affected jobs.
-	// Also if in the future, similar bug occur again, using totalInstanceCount
-	// would ensure the bug would not make a job stuck.
-	totalInstanceCount := getTotalInstanceCount(d.stateCounts)
-	// For tasks of service job, SUCCEEDED and FAILED states are transient
-	// states. Task with these states would move to INITIALIZED shortly.
-	// Therefore, service jobs should never enter SUCCEEDED/FAILED state,
-	// since they should never be terminal unless KILLED.
-	if d.stateCounts[task.TaskState_KILLED.String()] == totalInstanceCount {
-		return job.JobState_KILLED, nil
-	} else if jobRuntime.State == job.JobState_KILLING {
-		// jobState is set to KILLING in JobKill to avoid materialized view delay,
-		// should keep the state to be KILLING unless job transits to terminal state
-		return job.JobState_KILLING, nil
-	} else if d.stateCounts[task.TaskState_RUNNING.String()] > 0 {
-		return job.JobState_RUNNING, nil
-	}
-	return job.JobState_PENDING, nil
-
-}
-
 func newPartiallyCreatedJobStateDeterminer() *partiallyCreatedJobStateDeterminer {
 	return &partiallyCreatedJobStateDeterminer{}
 }
@@ -323,13 +280,13 @@ func newControllerTaskJobStateDeterminer(
 ) *controllerTaskJobStateDeterminer {
 	return &controllerTaskJobStateDeterminer{
 		cachedJob:       cachedJob,
-		batchDeterminer: newBatchJobStateDeterminer(stateCounts),
+		batchDeterminer: newJobStateDeterminer(stateCounts),
 	}
 }
 
 type controllerTaskJobStateDeterminer struct {
 	cachedJob       cached.Job
-	batchDeterminer *batchJobStateDeterminer
+	batchDeterminer *jobStateDeterminer
 }
 
 // If the job will be in terminal state, state of task would be determined by

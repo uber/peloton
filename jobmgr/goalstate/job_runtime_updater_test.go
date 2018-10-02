@@ -176,7 +176,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobCompletionTimeNotEmpty() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).Times(2)
+		Return(pbjob.JobType_BATCH)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -251,7 +251,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_RUNNING() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).Times(2)
+		Return(pbjob.JobType_BATCH)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -333,7 +333,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_SUCCEED() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).Times(2)
+		Return(pbjob.JobType_BATCH)
 
 	suite.cachedConfig.EXPECT().
 		GetInstanceCount().
@@ -417,7 +417,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_PENDING() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).Times(2)
+		Return(pbjob.JobType_BATCH)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -488,7 +488,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_FAILED() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).Times(2)
+		Return(pbjob.JobType_BATCH)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -565,7 +565,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_KILLING() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).Times(2)
+		Return(pbjob.JobType_BATCH)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -638,7 +638,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_KILLED() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).Times(2)
+		Return(pbjob.JobType_BATCH)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -713,7 +713,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_DBError() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).Times(2)
+		Return(pbjob.JobType_BATCH)
 
 	suite.cachedConfig.EXPECT().
 		HasControllerTask().
@@ -780,7 +780,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_IncorrectState() 
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).Times(2)
+		Return(pbjob.JobType_BATCH)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -961,7 +961,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_InitializedJobWit
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).Times(2)
+		Return(pbjob.JobType_BATCH)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -1039,7 +1039,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PendingJobWithMor
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).Times(2)
+		Return(pbjob.JobType_BATCH)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -1474,7 +1474,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInsta
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_SERVICE).Times(2)
+		Return(pbjob.JobType_SERVICE)
 
 	suite.cachedJob.EXPECT().
 		IsPartiallyCreated(gomock.Any()).
@@ -1659,8 +1659,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 			instanceCount,
 			pbjob.JobType_SERVICE,
 			pbjob.JobState_PENDING,
-			pbjob.JobState_PENDING,
-			"Service job with all tasks entered non-KILLED terminal state should be PENDING",
+			pbjob.JobState_FAILED,
+			"Service job completed with task FAILED should be FAILED",
 		},
 		{
 			map[string]uint32{
@@ -1680,8 +1680,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 			instanceCount,
 			pbjob.JobType_SERVICE,
 			pbjob.JobState_PENDING,
-			pbjob.JobState_PENDING,
-			"Service job with all tasks entered non-KILLED terminal state should be PENDING",
+			pbjob.JobState_SUCCEEDED,
+			"Service job with all tasks SUCCEEDED should be SUCCEEDED",
 		},
 		{
 			map[string]uint32{
@@ -1713,8 +1713,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 			instanceCount,
 			pbjob.JobType_SERVICE,
 			pbjob.JobState_PENDING,
-			pbjob.JobState_PENDING,
-			"Service job with all tasks entered non-KILLED terminal state should be PENDING",
+			pbjob.JobState_KILLED,
+			"Service job terminated with tasks KILLED should be KILLED",
 		},
 		{
 			map[string]uint32{
