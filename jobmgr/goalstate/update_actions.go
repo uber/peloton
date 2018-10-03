@@ -10,7 +10,6 @@ import (
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
-	updateutil "code.uber.internal/infra/peloton/jobmgr/util/update"
 	"code.uber.internal/infra/peloton/util"
 
 	"go.uber.org/yarpc/yarpcerrors"
@@ -42,7 +41,7 @@ func UpdateAbortIfNeeded(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	if err := updateutil.AbortJobUpdate(
+	if err := cached.AbortJobUpdate(
 		ctx,
 		updateEnt.id,
 		goalStateDriver.updateStore,
@@ -83,7 +82,6 @@ func UpdateComplete(ctx context.Context, entity goalstate.Entity) error {
 		goalStateDriver.mtx.updateMetrics.UpdateCompleteFail.Inc(1)
 		return nil
 	}
-	instancesTotal := cachedUpdate.GetGoalState().Instances
 
 	// first delete removed tasks from cache and their runtimes from DB
 	jobID := updateEnt.jobID
@@ -100,7 +98,8 @@ func UpdateComplete(ctx context.Context, entity goalstate.Entity) error {
 	if err := cachedUpdate.WriteProgress(
 		ctx,
 		pbupdate.State_SUCCEEDED,
-		instancesTotal,
+		cachedUpdate.GetInstancesDone(),
+		cachedUpdate.GetInstancesFailed(),
 		[]uint32{},
 	); err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateCompleteFail.Inc(1)
@@ -216,7 +215,7 @@ func UpdateWriteProgress(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	instancesCurrent, instancesDone, err := cached.GetUpdateProgress(
+	instancesCurrent, instancesDone, instancesFailed, err := cached.GetUpdateProgress(
 		ctx,
 		cachedJob,
 		cachedUpdate,
@@ -228,11 +227,11 @@ func UpdateWriteProgress(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	currentState := cachedUpdate.GetState()
 	err = cachedUpdate.WriteProgress(
 		ctx,
-		currentState.State,
-		append(currentState.Instances, instancesDone...),
+		cachedUpdate.GetState().State,
+		append(cachedUpdate.GetInstancesDone(), instancesDone...),
+		append(cachedUpdate.GetInstancesFailed(), instancesFailed...),
 		instancesCurrent,
 	)
 	if err != nil {

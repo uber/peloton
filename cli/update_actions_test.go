@@ -82,6 +82,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 	batchSize := uint32(2)
 	version := uint64(3)
 	maxInstanceRetries := uint32(3)
+	maxFailureInstances := uint32(0)
 
 	respoolPath := "/DefaultResPool"
 	respoolID := &peloton.ResourcePoolID{Value: uuid.NewRandom().String()}
@@ -179,6 +180,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 			uint64(0),
 			t.override,
 			maxInstanceRetries,
+			maxFailureInstances,
 		)
 
 		if t.err != nil {
@@ -203,6 +205,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateResPoolErrors() {
 
 	batchSize := uint32(2)
 	maxInstanceRetries := uint32(3)
+	maxFailureInstances := uint32(0)
 
 	respoolPath := "/DefaultResPool"
 
@@ -238,6 +241,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateResPoolErrors() {
 			uint64(0),
 			false,
 			maxInstanceRetries,
+			maxFailureInstances,
 		)
 		suite.Error(err)
 	}
@@ -257,6 +261,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateJobGetErrors() {
 
 	batchSize := uint32(2)
 	maxInstanceRetries := uint32(3)
+	maxFailureInstances := uint32(0)
 	version := uint64(3)
 
 	respoolPath := "/DefaultResPool"
@@ -327,6 +332,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateJobGetErrors() {
 			t.configVersion,
 			false,
 			maxInstanceRetries,
+			maxFailureInstances,
 		)
 		suite.Error(err)
 	}
@@ -347,6 +353,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateRetry() {
 	jobConfig := suite.getConfig()
 	batchSize := uint32(2)
 	maxInstanceRetries := uint32(3)
+	maxFailureInstances := uint32(0)
 	version := uint64(3)
 
 	respoolPath := "/DefaultResPool"
@@ -428,6 +435,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateRetry() {
 		uint64(0),
 		false,
 		maxInstanceRetries,
+		maxFailureInstances,
 	)
 	suite.NoError(err)
 }

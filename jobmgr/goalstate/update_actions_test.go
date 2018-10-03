@@ -237,19 +237,14 @@ func (suite *UpdateActionsTestSuite) TestUpdateReloadNotExists() {
 
 // TestUpdateComplete tests completing an update
 func (suite *UpdateActionsTestSuite) TestUpdateComplete() {
-	instancesTotal := []uint32{2, 3, 4, 5}
+	instancesDone := []uint32{4, 5}
+	instancesFailed := []uint32{2, 3}
 	instIDRemoved := uint32(5)
 	instancesRemoved := []uint32{instIDRemoved}
 
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		GetGoalState().
-		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -267,10 +262,19 @@ func (suite *UpdateActionsTestSuite) TestUpdateComplete() {
 		Return(nil)
 
 	suite.cachedUpdate.EXPECT().
+		GetInstancesFailed().
+		Return(instancesFailed)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesDone().
+		Return(instancesDone)
+
+	suite.cachedUpdate.EXPECT().
 		WriteProgress(
 			gomock.Any(),
 			pbupdate.State_SUCCEEDED,
-			instancesTotal,
+			instancesDone,
+			instancesFailed,
 			[]uint32{}).
 		Return(nil)
 
@@ -303,12 +307,6 @@ func (suite *UpdateActionsTestSuite) TestUpdateCompleteDBError() {
 		GetUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
 
-	suite.cachedUpdate.EXPECT().
-		GetGoalState().
-		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
-
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
 		Return(suite.cachedJob)
@@ -318,10 +316,19 @@ func (suite *UpdateActionsTestSuite) TestUpdateCompleteDBError() {
 		Return([]uint32{})
 
 	suite.cachedUpdate.EXPECT().
+		GetInstancesFailed().
+		Return([]uint32{})
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesDone().
+		Return(instancesTotal)
+
+	suite.cachedUpdate.EXPECT().
 		WriteProgress(
 			gomock.Any(),
 			pbupdate.State_SUCCEEDED,
 			instancesTotal,
+			[]uint32{},
 			[]uint32{}).
 		Return(fmt.Errorf("fake db error"))
 
@@ -332,19 +339,12 @@ func (suite *UpdateActionsTestSuite) TestUpdateCompleteDBError() {
 // TestUpdateComplete tests failing to delete a removed task when
 // completing an update
 func (suite *UpdateActionsTestSuite) TestUpdateCompleteDeleteTaskError() {
-	instancesTotal := []uint32{2, 3, 4, 5}
 	instIDRemoved := uint32(5)
 	instancesRemoved := []uint32{instIDRemoved}
 
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		GetGoalState().
-		Return(&cached.UpdateStateVector{
-			Instances: instancesTotal,
-		})
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -583,8 +583,10 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrackNewUpdate() {
 func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 	instancesCurrent := []uint32{0, 1, 2}
 	instancesDone := []uint32{3, 4, 5}
+	instancesFailed := []uint32{1}
 	oldJobVersion := uint64(1)
 	newJobVersion := uint64(2)
+	updateConfig := &pbupdate.UpdateConfig{}
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
@@ -618,6 +620,7 @@ func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 			Return(suite.cachedTask, nil)
 
 		// the first instance has finished update,
+		// the second is failed,
 		// rest is still updating
 		if i == 0 {
 			runtime := &pbtask.RuntimeInfo{
@@ -632,6 +635,24 @@ func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 
 			suite.cachedUpdate.EXPECT().
 				IsInstanceComplete(newJobVersion, runtime).
+				Return(true)
+		} else if i == 1 {
+			runtime := &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_FAILED,
+				Healthy:              pbtask.HealthState_UNHEALTHY,
+				ConfigVersion:        newJobVersion,
+				DesiredConfigVersion: newJobVersion,
+			}
+			suite.cachedTask.EXPECT().
+				GetRunTime(gomock.Any()).
+				Return(runtime, nil)
+
+			suite.cachedUpdate.EXPECT().
+				IsInstanceComplete(newJobVersion, runtime).
+				Return(false)
+
+			suite.cachedUpdate.EXPECT().
+				IsInstanceFailed(runtime, updateConfig.GetMaxInstanceAttempts()).
 				Return(true)
 		} else {
 			runtime := &pbtask.RuntimeInfo{
@@ -649,28 +670,48 @@ func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 				Return(false)
 
 			suite.cachedUpdate.EXPECT().
+				IsInstanceFailed(runtime, updateConfig.GetMaxInstanceAttempts()).
+				Return(false)
+
+			suite.cachedUpdate.EXPECT().
 				IsInstanceInProgress(newJobVersion, runtime).
 				Return(true)
 		}
 	}
 
 	suite.cachedUpdate.EXPECT().
+		GetUpdateConfig().
+		Return(updateConfig)
+
+	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State:     pbupdate.State_PAUSED,
-			Instances: instancesDone,
+			Instances: append(instancesDone, instancesFailed...),
 		})
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesFailed().
+		Return([]uint32{})
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesDone().
+		Return(instancesDone)
 
 	suite.cachedUpdate.EXPECT().
 		WriteProgress(
 			gomock.Any(),
 			pbupdate.State_PAUSED,
 			gomock.Any(),
+			gomock.Any(),
 			gomock.Any()).
 		Do(func(_ context.Context, _ pbupdate.State,
-			instancesDone []uint32, instancesCurrent []uint32) {
+			instancesDone []uint32,
+			instancesFailed []uint32,
+			instancesCurrent []uint32) {
 			suite.Equal(instancesDone, []uint32{3, 4, 5, 0})
-			suite.Equal(instancesCurrent, []uint32{1, 2})
+			suite.Equal(instancesCurrent, []uint32{2})
+			suite.Equal(instancesFailed, []uint32{1})
 		}).Return(nil)
 
 	err := UpdateWriteProgress(context.Background(), suite.updateEnt)

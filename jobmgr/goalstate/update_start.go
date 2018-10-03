@@ -151,6 +151,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 		pbupdate.State_ROLLING_FORWARD,
 		[]uint32{},
 		[]uint32{},
+		[]uint32{},
 	); err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)
 		return err

@@ -2980,6 +2980,7 @@ func (s *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
 			InstancesAdded:       record.GetInstancesAdded(),
 			InstancesUpdated:     record.GetInstancesUpdated(),
 			InstancesRemoved:     record.GetInstancesRemoved(),
+			InstancesFailed:      uint32(record.InstancesFailed),
 			InstancesDone:        uint32(record.InstancesDone),
 			InstancesCurrent:     record.GetProcessingInstances(),
 			CreationTime:         record.CreationTime.Format(time.RFC3339Nano),
@@ -3053,6 +3054,7 @@ func (s *Store) WriteUpdateProgress(
 	stmt := queryBuilder.Update(updatesTable).
 		Set("update_state", updateInfo.GetState().String()).
 		Set("instances_done", updateInfo.GetInstancesDone()).
+		Set("instances_failed", updateInfo.GetInstancesFailed()).
 		Set("instances_current", updateInfo.GetInstancesCurrent()).
 		Set("update_time", time.Now().UTC()).
 		Where(qb.Eq{"update_id": updateInfo.GetUpdateID().GetValue()})
@@ -3063,9 +3065,10 @@ func (s *Store) WriteUpdateProgress(
 		updateInfo.GetUpdateID().GetValue()); err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{
-				"update_id":             updateInfo.GetUpdateID().GetValue(),
-				"update_state":          updateInfo.GetState().String(),
-				"update_instances_done": updateInfo.GetInstancesDone(),
+				"update_id":               updateInfo.GetUpdateID().GetValue(),
+				"update_state":            updateInfo.GetState().String(),
+				"update_instances_done":   updateInfo.GetInstancesDone(),
+				"update_instances_failed": updateInfo.GetInstancesFailed(),
 			}).Info("write update progress in DB failed")
 		s.metrics.UpdateMetrics.UpdateWriteProgressFail.Inc(1)
 		return err
@@ -3105,6 +3108,7 @@ func (s *Store) GetUpdateProgress(ctx context.Context, id *peloton.UpdateID) (
 			State:            update.State(update.State_value[record.State]),
 			InstancesTotal:   uint32(record.InstancesTotal),
 			InstancesDone:    uint32(record.InstancesDone),
+			InstancesFailed:  uint32(record.InstancesFailed),
 			InstancesCurrent: record.GetProcessingInstances(),
 			UpdateTime:       record.UpdateTime.Format(time.RFC3339Nano),
 		}

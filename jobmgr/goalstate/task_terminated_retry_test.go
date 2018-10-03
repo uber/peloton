@@ -274,7 +274,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedNoRetry() {
 
 	updateConfig := pbupdate.UpdateConfig{
-		MaxInstanceRetries: uint32(3),
+		MaxInstanceAttempts: uint32(3),
 	}
 	suite.taskRuntime.FailureCount = 5
 

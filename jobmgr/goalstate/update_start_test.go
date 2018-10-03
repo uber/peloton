@@ -272,6 +272,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStartWriteProgressFail() {
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{},
 			[]uint32{},
+			gomock.Any(),
 		).Return(fmt.Errorf("fake db error"))
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
@@ -332,6 +333,7 @@ func (suite *UpdateStartTestSuite) TestUpdateContainsUnchangedInstance() {
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{},
 			[]uint32{},
+			gomock.Any(),
 		).Return(nil)
 
 	suite.updateGoalStateEngine.EXPECT().
@@ -427,6 +429,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStart_NoUnchangedInstance() {
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{},
 			[]uint32{},
+			gomock.Any(),
 		).Return(nil)
 
 	suite.updateGoalStateEngine.EXPECT().

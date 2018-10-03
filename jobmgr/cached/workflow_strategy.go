@@ -6,6 +6,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	updateutil "code.uber.internal/infra/peloton/jobmgr/util/update"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -25,6 +26,12 @@ type WorkflowStrategy interface {
 	// IsInstanceInProgress returns if an instance in the process of getting
 	// to the state desired by the workflow
 	IsInstanceInProgress(desiredConfigVersion uint64, runtime *pbtask.RuntimeInfo) bool
+	// IsInstanceFailed returns if an instance is failed when getting
+	// to the state desired by the workflow
+	// TODO: now a task can both get true for IsInstanceInProgress and
+	// IsInstanceFailed, it should get true for only one of the func.
+	// Now the correctness of code is guarded by order of func call.
+	IsInstanceFailed(runtime *pbtask.RuntimeInfo, maxAttempts uint32) bool
 	// GetRuntimeDiff accepts the current task runtime of an instance and the desired
 	// job config, it returns the RuntimeDiff to move the instance to the state desired
 	// by the workflow. Return nil if no action is needed.
@@ -72,6 +79,12 @@ func (s *updateStrategy) IsInstanceComplete(desiredConfigVersion uint64, runtime
 	}
 
 	return false
+}
+
+func (s *updateStrategy) IsInstanceFailed(
+	runtime *pbtask.RuntimeInfo,
+	maxAttempts uint32) bool {
+	return updateutil.HasFailedUpdate(runtime, maxAttempts)
 }
 
 func (s *updateStrategy) IsInstanceInProgress(desiredConfigVersion uint64, runtime *pbtask.RuntimeInfo) bool {
@@ -155,6 +168,12 @@ func (s *stopStrategy) IsInstanceInProgress(desiredConfigVersion uint64, runtime
 	// but stop has not completed
 	return runtime.GetDesiredConfigVersion() == desiredConfigVersion &&
 		!s.IsInstanceComplete(desiredConfigVersion, runtime)
+}
+
+func (s *stopStrategy) IsInstanceFailed(
+	runtime *pbtask.RuntimeInfo,
+	maxAttempts uint32) bool {
+	return false
 }
 
 func (s *stopStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommon.RuntimeDiff {

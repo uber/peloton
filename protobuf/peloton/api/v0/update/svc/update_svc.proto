@@ -204,6 +204,8 @@ message GetUpdateCacheResponse {
   repeated uint32 instancesCurrent = 5;
   // List of instances which have been added with this update
   repeated uint32 instancesAdded = 6;
-  // List of existing instance which need to be updated with this update
+  // List of existing instances which need to be updated with this update
   repeated uint32 instancesUpdated = 7;
+  // List of existing instances which fail to be updated with this update
+  repeated uint32 instancesFailed = 8;
 }

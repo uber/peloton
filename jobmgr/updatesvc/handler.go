@@ -9,14 +9,13 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
-	updateutil "code.uber.internal/infra/peloton/jobmgr/util/update"
 	"code.uber.internal/infra/peloton/storage"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
@@ -267,10 +266,11 @@ func (h *serviceHandler) GetUpdateCache(ctx context.Context,
 		JobId:            u.JobID(),
 		State:            u.GetState().State,
 		InstancesTotal:   u.GetGoalState().Instances,
-		InstancesDone:    u.GetState().Instances,
+		InstancesDone:    u.GetInstancesDone(),
 		InstancesCurrent: u.GetInstancesCurrent(),
 		InstancesAdded:   u.GetInstancesAdded(),
 		InstancesUpdated: u.GetInstancesUpdated(),
+		InstancesFailed:  u.GetInstancesFailed(),
 	}, nil
 }
 
@@ -301,7 +301,8 @@ func (h *serviceHandler) PauseUpdate(ctx context.Context,
 	err = cachedUpdate.WriteProgress(
 		ctx,
 		update.State_PAUSED,
-		cachedUpdate.GetState().Instances,
+		cachedUpdate.GetInstancesDone(),
+		cachedUpdate.GetInstancesFailed(),
 		cachedUpdate.GetInstancesCurrent(),
 	)
 	if err != nil {
@@ -368,7 +369,7 @@ func (h *serviceHandler) AbortUpdate(ctx context.Context,
 	h.metrics.UpdateAPIAbort.Inc(1)
 	updateID := req.GetUpdateId()
 
-	err := updateutil.AbortJobUpdate(
+	err := cached.AbortJobUpdate(
 		ctx,
 		updateID,
 		h.updateStore,

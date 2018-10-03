@@ -24,9 +24,6 @@ import (
 // start the next set of instances to update and update the state
 // of the job update in cache and DB.
 func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
-	var instancesDone []uint32
-	var instancesCurrent []uint32
-
 	updateEnt := entity.(*updateEntity)
 	goalStateDriver := updateEnt.driver
 
@@ -40,24 +37,51 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	instancesCurrent, instancesDoneFromLastRun, err := cached.GetUpdateProgress(
-		ctx,
-		cachedJob,
-		cachedUpdate,
-		cachedUpdate.GetGoalState().JobVersion,
-		cachedUpdate.GetInstancesCurrent(),
-	)
+	instancesCurrent, instancesDoneFromLastRun, instancesFailedFromLastRun, err :=
+		cached.GetUpdateProgress(
+			ctx,
+			cachedJob,
+			cachedUpdate,
+			cachedUpdate.GetGoalState().JobVersion,
+			cachedUpdate.GetInstancesCurrent(),
+		)
 	if err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
 		return err
 	}
 
-	instancesDone = append(
-		cachedUpdate.GetState().Instances,
+	instancesFailed := append(
+		cachedUpdate.GetInstancesFailed(),
+		instancesFailedFromLastRun...)
+	instancesDone := append(
+		cachedUpdate.GetInstancesDone(),
 		instancesDoneFromLastRun...)
 
+	// number of failed instances in the update exceeds limit and
+	// max instance retries is set, process the failed update and
+	// return directly
+	// TODO: use job SLA if GetMaxFailureInstances is not set
+	if cachedUpdate.GetUpdateConfig().GetMaxFailureInstances() != 0 &&
+		uint32(len(instancesFailed)) >=
+			cachedUpdate.GetUpdateConfig().GetMaxFailureInstances() {
+		err := processFailedUpdate(
+			ctx,
+			cachedJob,
+			cachedUpdate,
+			instancesDone,
+			instancesFailed,
+			instancesCurrent,
+			goalStateDriver,
+		)
+		if err != nil {
+			goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
+		}
+		return err
+	}
+
 	instancesToAdd, instancesToUpdate, instancesToRemove :=
-		getInstancesForUpdateRun(cachedUpdate, instancesCurrent, instancesDone)
+		getInstancesForUpdateRun(
+			cachedUpdate, instancesCurrent, instancesDone, instancesFailed)
 
 	if err := processUpdate(
 		ctx,
@@ -75,7 +99,9 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 	if err := writeUpdateProgress(
 		ctx,
 		cachedUpdate,
+		pbupdate.State_ROLLING_FORWARD,
 		instancesDone,
+		instancesFailed,
 		instancesCurrent,
 		instancesToAdd,
 		instancesToUpdate,
@@ -98,6 +124,35 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	goalStateDriver.mtx.updateMetrics.UpdateRun.Inc(1)
+	return nil
+}
+
+// processFailedUpdate is called when the update fails due to
+// too many instances fail during the process. It update the
+// state to failed and enqueue it to goal state engine directly.
+func processFailedUpdate(
+	ctx context.Context,
+	cachedJob cached.Job,
+	cachedUpdate cached.Update,
+	instancesDone []uint32,
+	instancesFailed []uint32,
+	instancesCurrent []uint32,
+	driver *driver,
+) error {
+	if err := cachedUpdate.WriteProgress(
+		ctx,
+		pbupdate.State_FAILED,
+		instancesDone,
+		instancesFailed,
+		instancesCurrent,
+	); err != nil {
+		return err
+	}
+
+	driver.EnqueueUpdate(
+		cachedJob.ID(),
+		cachedUpdate.ID(),
+		time.Now())
 	return nil
 }
 
@@ -147,7 +202,6 @@ func postUpdateAction(
 				cachedJob.ID(), cachedUpdate.ID(), time.Now())
 			return nil
 		}
-
 	}
 
 	return nil
@@ -171,21 +225,23 @@ func isTaskKilled(runtime *pbtask.RuntimeInfo) bool {
 func writeUpdateProgress(
 	ctx context.Context,
 	cachedUpdate cached.Update,
+	updateState pbupdate.State,
 	instancesDone []uint32,
+	instancesFailed []uint32,
 	previousInstancesCurrent []uint32,
 	instancesAdded []uint32,
 	instancesUpdated []uint32,
 	instancesRemoved []uint32,
 ) error {
-	state := pbupdate.State_ROLLING_FORWARD
 	newInstancesCurrent := append(previousInstancesCurrent, instancesAdded...)
 	newInstancesCurrent = append(newInstancesCurrent, instancesUpdated...)
 	newInstancesCurrent = append(newInstancesCurrent, instancesRemoved...)
 	// update the state of the job update
 	return cachedUpdate.WriteProgress(
 		ctx,
-		state,
+		updateState,
 		instancesDone,
+		instancesFailed,
 		newInstancesCurrent,
 	)
 }
@@ -435,6 +491,7 @@ func getInstancesForUpdateRun(
 	update cached.Update,
 	instancesCurrent []uint32,
 	instancesDone []uint32,
+	instancesFailed []uint32,
 ) (
 	instancesToAdd []uint32,
 	instancesToUpdate []uint32,
@@ -442,9 +499,8 @@ func getInstancesForUpdateRun(
 ) {
 
 	unprocessedInstancesToAdd,
-		unprocessedInstancesToUpdate,
-		unprocessedInstancesToRemove :=
-		getUnprocessedInstances(update, instancesCurrent, instancesDone)
+		unprocessedInstancesToUpdate, unprocessedInstancesToRemove := getUnprocessedInstances(
+		update, instancesCurrent, instancesDone, instancesFailed)
 
 	// if batch size is 0 or updateConfig is nil, update all of the instances
 	if update.GetUpdateConfig().GetBatchSize() == 0 {
@@ -499,10 +555,13 @@ func getUnprocessedInstances(
 	update cached.Update,
 	instancesCurrent []uint32,
 	instancesDone []uint32,
+	instancesFailed []uint32,
 ) (instancesRemainToAdd []uint32,
 	instancesRemainToUpdate []uint32,
 	instancesRemainToRemove []uint32) {
 	instancesProcessed := append(instancesCurrent, instancesDone...)
+	instancesProcessed = append(instancesProcessed, instancesFailed...)
+
 	instancesRemainToAdd = subtractSlice(update.GetInstancesAdded(), instancesProcessed)
 	instancesRemainToUpdate = subtractSlice(update.GetInstancesUpdated(), instancesProcessed)
 	instancesRemainToRemove = subtractSlice(update.GetInstancesRemoved(), instancesProcessed)

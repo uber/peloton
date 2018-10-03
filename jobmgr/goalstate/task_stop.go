@@ -119,10 +119,15 @@ func stopInitializedTask(ctx context.Context, taskEnt *taskEntity) error {
 		return nil
 	}
 
+	// TODO: this is write after read, should use optimistic concurrency control
 	runtimeDiff := jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.StateField:   task.TaskState_KILLED,
 		jobmgrcommon.MessageField: "Non-running task killed",
 		jobmgrcommon.ReasonField:  "",
+	}
+	if runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
+		// Kill is due to update, reset failure count
+		runtimeDiff[jobmgrcommon.FailureCountField] = uint32(0)
 	}
 
 	err = cachedJob.PatchTasks(ctx,

@@ -137,6 +137,7 @@ type UpdateRecord struct {
 	InstancesAdded       []int             `cql:"instances_added"`
 	InstancesRemoved     []int             `cql:"instances_removed"`
 	InstancesDone        int               `cql:"instances_done"`
+	InstancesFailed      int               `cql:"instances_failed"`
 	JobConfigVersion     int64             `cql:"job_config_version"`
 	PrevJobConfigVersion int64             `cql:"job_config_prev_version"`
 	CreationTime         time.Time         `cql:"creation_time"`

@@ -33,8 +33,17 @@ message UpdateConfig {
   // automatically if failure is detected
   bool rollbackOnFailure = 5;
 
-  // maxInstanceRetries is the maximum retry times for one task
-  uint32 maxInstanceRetries = 6;
+  // maxInstanceAttempts is the maximum attempt times for one task.
+  // If the value is 0, the instance can be retried for infinite
+  // times.
+  uint32 maxInstanceAttempts = 6;
+  
+  // maxFailureInstances is the number of failed instances in one
+  // update that allowed.
+  // If the value is 0, there is no limit for max failure instances
+  // and the update is marked successful even if all of the instances
+  // fail.
+  uint32 maxFailureInstances = 7;
 }
 
 // Runtime state of a job update
@@ -56,6 +65,9 @@ enum State {
 
   // The update was aborted/cancelled
   ABORTED = 5;
+
+  // The update is failed
+  FAILED = 6;
 }
 
 /**

@@ -24,7 +24,13 @@ const (
 	VolumeIDField             = "VolumeID"
 )
 
-// MaxConcurrencyErrorRetry indicates the maximum number of times to retry
-// if a concurrency error is received during optimistic concurrency
-// control when writing to the cache.
-const MaxConcurrencyErrorRetry = 5
+const (
+	// MaxConcurrencyErrorRetry indicates the maximum number of times to retry
+	// if a concurrency error is received during optimistic concurrency
+	// control when writing to the cache.
+	MaxConcurrencyErrorRetry = 5
+
+	// MaxSystemFailureAttempts indicates the maximum retries on mesos
+	// system failures
+	MaxSystemFailureAttempts = 4
+)

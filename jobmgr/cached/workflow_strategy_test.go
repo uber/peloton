@@ -6,7 +6,6 @@ import (
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 
 	"github.com/stretchr/testify/assert"
@@ -196,6 +195,32 @@ func TestUpdateStrategyIsInstanceInProgress(t *testing.T) {
 			t,
 			strategy.IsInstanceInProgress(test.desiredConfigVersion, test.taskRuntime),
 			test.inProgress,
+			"test %d fails", id)
+	}
+}
+
+// TestUpdateStrategyIsInstanceFailed tests IsInstanceFailed
+// for updateStrategy
+func TestUpdateStrategyIsInstanceFailed(t *testing.T) {
+	tests := []struct {
+		failureCount uint32
+		maxAttempts  uint32
+		result       bool
+	}{
+		{100, 0, false},
+		{1, 1, true},
+		{2, 1, true},
+	}
+
+	for id, test := range tests {
+		strategy := newUpdateStrategy()
+		assert.Equal(
+			t,
+			strategy.IsInstanceFailed(
+				&pbtask.RuntimeInfo{
+					FailureCount: test.failureCount,
+				}, test.maxAttempts),
+			test.result,
 			"test %d fails", id)
 	}
 }
@@ -406,6 +431,32 @@ func TestRestartStrategyIsInstanceInProgress(t *testing.T) {
 			t,
 			strategy.IsInstanceInProgress(test.desiredConfigVersion, test.taskRuntime),
 			test.inProgress,
+			"test %d fails", id)
+	}
+}
+
+// TestRestartStrategyIsInstanceFailed tests IsInstanceFailed
+// for restartStrategy
+func TestRestartStrategyIsInstanceFailed(t *testing.T) {
+	tests := []struct {
+		failureCount uint32
+		maxAttempts  uint32
+		result       bool
+	}{
+		{100, 0, false},
+		{1, 1, true},
+		{2, 1, true},
+	}
+
+	for id, test := range tests {
+		strategy := newRestartStrategy()
+		assert.Equal(
+			t,
+			strategy.IsInstanceFailed(
+				&pbtask.RuntimeInfo{
+					FailureCount: test.failureCount,
+				}, test.maxAttempts),
+			test.result,
 			"test %d fails", id)
 	}
 }
@@ -746,6 +797,78 @@ func TestStopStrategyIsInstanceComplete(t *testing.T) {
 			t,
 			strategy.IsInstanceComplete(test.desiredConfigVersion, test.taskRuntime),
 			test.completed,
+			"test %d fails", id)
+	}
+}
+
+// TestStopStrategyIsInstanceFailed tests IsInstanceFailed
+// for stopStrategy
+func TestStopStrategyIsInstanceFailed(t *testing.T) {
+	tests := []struct {
+		taskRuntime          *pbtask.RuntimeInfo
+		desiredConfigVersion uint64
+		isFailed             bool
+	}{
+		{
+			taskRuntime: &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_RUNNING,
+				GoalState:            pbtask.TaskState_KILLED,
+				ConfigVersion:        2,
+				DesiredConfigVersion: 2,
+				Healthy:              pbtask.HealthState_HEALTH_UNKNOWN,
+			},
+			desiredConfigVersion: 2,
+			isFailed:             false,
+		},
+		{
+			taskRuntime: &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_KILLED,
+				GoalState:            pbtask.TaskState_KILLED,
+				ConfigVersion:        2,
+				DesiredConfigVersion: 2,
+				Healthy:              pbtask.HealthState_HEALTH_UNKNOWN,
+			},
+			desiredConfigVersion: 2,
+			isFailed:             false,
+		},
+		{
+			taskRuntime: &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_KILLING,
+				GoalState:            pbtask.TaskState_KILLED,
+				ConfigVersion:        2,
+				DesiredConfigVersion: 2,
+			},
+			desiredConfigVersion: 2,
+			isFailed:             false,
+		},
+		{
+			taskRuntime: &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_RUNNING,
+				GoalState:            pbtask.TaskState_KILLED,
+				ConfigVersion:        1,
+				DesiredConfigVersion: 1,
+			},
+			desiredConfigVersion: 2,
+			isFailed:             false,
+		},
+		{
+			taskRuntime: &pbtask.RuntimeInfo{
+				State:                pbtask.TaskState_RUNNING,
+				GoalState:            pbtask.TaskState_KILLED,
+				ConfigVersion:        2,
+				DesiredConfigVersion: 2,
+			},
+			desiredConfigVersion: 2,
+			isFailed:             false,
+		},
+	}
+
+	for id, test := range tests {
+		strategy := newStopStrategy()
+		assert.Equal(
+			t,
+			strategy.IsInstanceFailed(test.taskRuntime, 1),
+			test.isFailed,
 			"test %d fails", id)
 	}
 }

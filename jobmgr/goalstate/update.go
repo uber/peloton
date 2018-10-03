@@ -60,6 +60,8 @@ var (
 		// update is paused, write the update progress if there is
 		// any instances under update when pause is called
 		update.State_PAUSED: WriteProgressUpdateAction,
+		// update is failed, clean it up from the cache and goal state
+		update.State_FAILED: ClearUpdateAction,
 	}
 )
 

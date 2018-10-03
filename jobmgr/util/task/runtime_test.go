@@ -97,3 +97,41 @@ func TestGetInitialHealthState(t *testing.T) {
 		assert.Equal(t, healthState, tt.healthState)
 	}
 }
+
+func TestIsSystemFailure(t *testing.T) {
+	testTable := []struct {
+		taskRuntime     *task.RuntimeInfo
+		isSystemFailure bool
+	}{
+		{
+			&task.RuntimeInfo{
+				Reason: mesos.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED.String(),
+			},
+			true,
+		},
+		{
+			&task.RuntimeInfo{
+				Reason:  mesos.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
+				Message: "Container terminated with signal Broken pipe",
+			},
+			true,
+		},
+		{
+			&task.RuntimeInfo{
+				Reason:  mesos.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
+				Message: "",
+			},
+			false,
+		},
+		{
+			&task.RuntimeInfo{
+				Reason: mesos.TaskState_TASK_FINISHED.String(),
+			},
+			false,
+		},
+	}
+
+	for _, test := range testTable {
+		assert.Equal(t, IsSystemFailure(test.taskRuntime), test.isSystemFailure)
+	}
+}

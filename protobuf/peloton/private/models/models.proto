@@ -68,6 +68,9 @@ message UpdateModel {
 
   // instances to be removed
   repeated uint32 instancesRemoved = 15;
+
+  // instances which are failed during update
+  uint32 instancesFailed = 16;
 }
 
 /**

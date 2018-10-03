@@ -8,6 +8,8 @@ import (
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
+	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
+	updateutil "code.uber.internal/infra/peloton/jobmgr/util/update"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -65,7 +67,7 @@ func TaskTerminatedRetry(ctx context.Context, entity goalstate.Entity) error {
 }
 
 // shouldTaskRetry returns whether a terminated task should retry given its
-// MaxInstanceRetries config
+// MaxInstanceAttempts config
 func shouldTaskRetry(
 	jobID *peloton.JobID,
 	instanceID uint32,
@@ -81,33 +83,22 @@ func shouldTaskRetry(
 		// directly retry when there is no update going on, or no failure
 		// has occurred
 		if cachedUpdate == nil ||
-			!cachedUpdate.IsTaskInUpdateProgress(instanceID) ||
-			taskRuntime.GetFailureCount() == 0 {
+			!cachedUpdate.IsTaskInUpdateProgress(instanceID) {
 			return true
 		}
-
-		// the task is in the progress of update, will do a retry with max retry attempts
-		maxAttempts := cachedUpdate.GetUpdateConfig().GetMaxInstanceRetries()
-		if isSystemFailure(taskRuntime) {
-			if maxAttempts < MaxSystemFailureAttempts {
-				maxAttempts = MaxSystemFailureAttempts
-			}
+		if taskutil.IsSystemFailure(taskRuntime) {
 			goalStateDriver.mtx.taskMetrics.RetryFailedLaunchTotal.Inc(1)
 		}
 
-		// failureRetryCount is failure count - 1, because JobMgr would only
-		// retry for failure after a failure happens. Therefore, failure count
-		// is always one larger then failureRetryCount. For example, when failure
-		// count is 1, it means JobMgr has never done a failure retry.
-		failureRetryCount := taskRuntime.GetFailureCount() - 1
 		// If the current failure retry count has reached the maxAttempts, we give up retry
-		if failureRetryCount >= maxAttempts {
+		if updateutil.HasFailedUpdate(
+			taskRuntime,
+			cachedUpdate.GetUpdateConfig().GetMaxInstanceAttempts()) {
 			log.
 				WithField("jobID", jobID.GetValue()).
 				WithField("instanceID", instanceID).
 				WithField("failureCount", taskRuntime.GetFailureCount()).
-				WithField("maxAttemps", maxAttempts).
-				Debug("failureCount larger than maxAttemps, give up retry")
+				Debug("failureCount larger than max attempts, give up retry")
 			return false
 		}
 	}

@@ -2460,6 +2460,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.Equal(updateInfo.GetState(), state)
 	suite.Equal(updateInfo.GetInstancesTotal(), instancesTotal)
 	suite.Equal(updateInfo.GetInstancesDone(), uint32(0))
+	suite.Equal(updateInfo.GetInstancesFailed(), uint32(0))
 	suite.Equal(len(updateInfo.GetInstancesCurrent()), 0)
 	suite.Equal(updateInfo.GetType(), models.WorkflowType_UPDATE)
 	suite.Equal(updateInfo.GetInstancesUpdated(), instancesUpdated)
@@ -2479,6 +2480,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	// write new progress
 	state = update.State_ROLLING_FORWARD
 	instancesDone := uint32(5)
+	instancesFailed := uint32(6)
 	instanceCurrent := []uint32{5, 6, 7, 8}
 	err = store.WriteUpdateProgress(
 		context.Background(),
@@ -2486,6 +2488,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			UpdateID:         updateID,
 			State:            state,
 			InstancesDone:    instancesDone,
+			InstancesFailed:  instancesFailed,
 			InstancesCurrent: instanceCurrent,
 		},
 	)
@@ -2504,6 +2507,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.Equal(updateInfo.GetState(), state)
 	suite.Equal(updateInfo.GetInstancesTotal(), instancesTotal)
 	suite.Equal(updateInfo.GetInstancesDone(), instancesDone)
+	suite.Equal(updateInfo.GetInstancesFailed(), instancesFailed)
 	suite.Equal(updateInfo.GetInstancesCurrent(), instanceCurrent)
 
 	// get the progress
@@ -2515,6 +2519,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.Equal(updateInfo.GetState(), state)
 	suite.Equal(updateInfo.GetInstancesTotal(), instancesTotal)
 	suite.Equal(updateInfo.GetInstancesDone(), instancesDone)
+	suite.Equal(updateInfo.GetInstancesFailed(), instancesFailed)
 	suite.Equal(updateInfo.GetInstancesCurrent(), instanceCurrent)
 
 	// fetch update for job

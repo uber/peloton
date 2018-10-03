@@ -2,10 +2,8 @@ package goalstate
 
 import (
 	"context"
-	"strings"
 	"time"
 
-	mesosv1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
@@ -15,28 +13,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 )
-
-// Maximum retries on mesos system failures
-const (
-	MaxSystemFailureAttempts = 4
-)
-
-// isSystemFailure returns true is failure is due to a system failure like
-// container launch failure or container terminated with signal broken pipe.
-// System failures should be tried MaxSystemFailureAttempts irrespective of
-// the maxium retries in the job configuration.
-func isSystemFailure(runtime *task.RuntimeInfo) bool {
-	if runtime.GetReason() == mesosv1.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED.String() {
-		return true
-	}
-
-	if runtime.GetReason() == mesosv1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String() {
-		if strings.Contains(runtime.GetMessage(), "Container terminated with signal Broken pipe") {
-			return true
-		}
-	}
-	return false
-}
 
 // rescheduleTask patch the new job runtime and enqueue the task into goalstate engine
 func rescheduleTask(
@@ -103,9 +79,9 @@ func TaskFailRetry(ctx context.Context, entity goalstate.Entity) error {
 
 	maxAttempts := taskConfig.GetRestartPolicy().GetMaxFailures()
 
-	if isSystemFailure(runtime) {
-		if maxAttempts < MaxSystemFailureAttempts {
-			maxAttempts = MaxSystemFailureAttempts
+	if taskutil.IsSystemFailure(runtime) {
+		if maxAttempts < jobmgrcommon.MaxSystemFailureAttempts {
+			maxAttempts = jobmgrcommon.MaxSystemFailureAttempts
 		}
 		goalStateDriver.mtx.taskMetrics.RetryFailedLaunchTotal.Inc(1)
 	}

@@ -934,6 +934,7 @@ func (suite *UpdateTestSuite) TestValidWriteProgress() {
 	state := pbupdate.State_ROLLING_FORWARD
 	instancesDone := []uint32{0, 1, 2, 3}
 	instancesCurrent := []uint32{4, 5}
+	instanceFailed := []uint32{6, 7}
 
 	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
@@ -942,6 +943,7 @@ func (suite *UpdateTestSuite) TestValidWriteProgress() {
 			suite.Equal(state, updateModel.State)
 			suite.Equal(uint32(len(instancesDone)), updateModel.InstancesDone)
 			suite.Equal(instancesCurrent, updateModel.InstancesCurrent)
+			suite.Equal(uint32(len(instanceFailed)), updateModel.InstancesFailed)
 		}).
 		Return(nil)
 
@@ -949,6 +951,7 @@ func (suite *UpdateTestSuite) TestValidWriteProgress() {
 		context.Background(),
 		state,
 		instancesDone,
+		instanceFailed,
 		instancesCurrent,
 	)
 
@@ -956,6 +959,7 @@ func (suite *UpdateTestSuite) TestValidWriteProgress() {
 	suite.Equal(state, suite.update.state)
 	suite.Equal(instancesCurrent, suite.update.instancesCurrent)
 	suite.Equal(instancesDone, suite.update.instancesDone)
+	suite.Equal(instanceFailed, suite.update.instancesFailed)
 }
 
 // TestWriteProgressAbortedUpdate tests WriteProgress invalidates
@@ -965,12 +969,14 @@ func (suite *UpdateTestSuite) TestWriteProgressAbortedUpdate() {
 	state := pbupdate.State_ROLLING_FORWARD
 	instancesDone := []uint32{0, 1, 2, 3}
 	instancesCurrent := []uint32{4, 5}
+	instanceFailed := []uint32{}
 
 	err := suite.update.WriteProgress(
 		context.Background(),
 		state,
 		instancesDone,
 		instancesCurrent,
+		instanceFailed,
 	)
 
 	suite.NoError(err)
@@ -983,6 +989,7 @@ func (suite *UpdateTestSuite) TestWriteProgressDBError() {
 	state := pbupdate.State_ROLLING_FORWARD
 	instancesDone := []uint32{0, 1, 2, 3}
 	instancesCurrent := []uint32{4, 5}
+	instanceFailed := []uint32{}
 
 	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
@@ -993,6 +1000,7 @@ func (suite *UpdateTestSuite) TestWriteProgressDBError() {
 		state,
 		instancesDone,
 		instancesCurrent,
+		instanceFailed,
 	)
 	suite.EqualError(err, "fake db error")
 }
@@ -1048,11 +1056,13 @@ func (suite *UpdateTestSuite) TestCancelTerminatedUpdate() {
 // TestUpdateGetState tests getting state of a job update
 func (suite *UpdateTestSuite) TestUpdateGetState() {
 	suite.update.instancesDone = []uint32{1, 2, 3, 4, 5}
+	suite.update.instancesFailed = []uint32{6, 7}
 	suite.update.state = pbupdate.State_ROLLING_FORWARD
 
 	state := suite.update.GetState()
 	suite.Equal(suite.update.state, state.State)
-	suite.True(reflect.DeepEqual(state.Instances, suite.update.instancesDone))
+	suite.Equal(state.Instances,
+		append(suite.update.instancesDone, suite.update.instancesFailed...))
 }
 
 // TestUpdateGetState tests getting update config
@@ -1079,6 +1089,22 @@ func (suite *UpdateTestSuite) TestUpdateGetInstancesAdded() {
 
 	instances := suite.update.GetInstancesAdded()
 	suite.True(reflect.DeepEqual(instances, suite.update.instancesAdded))
+}
+
+// TestUpdateGetInstancesDone tests getting instances done in a job update
+func (suite *UpdateTestSuite) TestUpdateGetInstancesDone() {
+	suite.update.instancesDone = []uint32{1, 2, 3, 4, 5}
+
+	instances := suite.update.GetInstancesDone()
+	suite.True(reflect.DeepEqual(instances, suite.update.instancesDone))
+}
+
+// TestUpdateGetInstancesFailed tests getting instances failed in a job update
+func (suite *UpdateTestSuite) TestUpdateGetInstancesFailed() {
+	suite.update.instancesFailed = []uint32{1, 2, 3, 4, 5}
+
+	instances := suite.update.GetInstancesFailed()
+	suite.True(reflect.DeepEqual(instances, suite.update.instancesFailed))
 }
 
 // TestTestUpdateGetInstancesUpdated tests getting
@@ -1281,6 +1307,52 @@ func (suite *UpdateTestSuite) TestUpdateRecover_UpdateStoreErr() {
 	suite.updateStore.EXPECT().
 		GetUpdate(gomock.Any(), suite.updateID).
 		Return(nil, yarpcerrors.UnavailableErrorf("test error"))
+
+	err := suite.update.Recover(context.Background())
+	suite.Error(err)
+
+	suite.Empty(suite.update.instancesDone)
+	suite.Empty(suite.update.instancesCurrent)
+	suite.Empty(suite.update.instancesTotal)
+	suite.Equal(suite.update.state, pbupdate.State_INVALID)
+}
+
+func (suite *UpdateTestSuite) TestUpdateRecoverGetRuntimeFailure() {
+	instancesTotal := []uint32{0, 1, 2, 3, 4}
+	instancesCurrent := []uint32{0, 1, 2, 3, 4}
+	var instancesDone []uint32
+	instanceCount := uint32(len(instancesTotal))
+	preJobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 0,
+		},
+		InstanceCount: instanceCount,
+	}
+	newJobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 1,
+		},
+		InstanceCount: instanceCount,
+		Labels:        []*peloton.Label{{"test-key", "test-value"}},
+	}
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			JobID:                suite.jobID,
+			InstancesTotal:       uint32(len(instancesTotal)),
+			InstancesUpdated:     instancesTotal,
+			InstancesDone:        uint32(len(instancesDone)),
+			InstancesCurrent:     instancesCurrent,
+			PrevJobConfigVersion: preJobConfig.GetChangeLog().GetVersion(),
+			JobConfigVersion:     newJobConfig.GetChangeLog().GetVersion(),
+			State:                pbupdate.State_INITIALIZED,
+			Type:                 models.WorkflowType_UPDATE,
+		}, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, uint32(0)).
+		Return(nil, fmt.Errorf("test db error"))
 
 	err := suite.update.Recover(context.Background())
 	suite.Error(err)

@@ -1,6 +1,8 @@
 package task
 
 import (
+	"strings"
+
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -63,4 +65,21 @@ func getMesosTaskID(
 		prevRunID = 0
 	}
 	return util.CreateMesosTaskID(jobID, instanceID, prevRunID+1)
+}
+
+// IsSystemFailure returns true is failure is due to a system failure like
+// container launch failure or container terminated with signal broken pipe.
+// System failures should be tried MaxSystemFailureAttempts irrespective of
+// the maximum retries in the job configuration.
+func IsSystemFailure(runtime *task.RuntimeInfo) bool {
+	if runtime.GetReason() == mesos.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED.String() {
+		return true
+	}
+
+	if runtime.GetReason() == mesos.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String() {
+		if strings.Contains(runtime.GetMessage(), "Container terminated with signal Broken pipe") {
+			return true
+		}
+	}
+	return false
 }

@@ -818,10 +818,12 @@ func (suite *UpdateSvcTestSuite) TestGetCacheUpdate() {
 		})
 
 	suite.cachedUpdate.EXPECT().
-		GetState().
-		Return(&cached.UpdateStateVector{
-			Instances: instancesDone,
-		})
+		GetInstancesDone().
+		Return(instancesDone)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesFailed().
+		Return([]uint32{})
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
@@ -850,6 +852,7 @@ func (suite *UpdateSvcTestSuite) TestGetCacheUpdate() {
 	suite.Equal(instancesCurrent, resp.GetInstancesCurrent())
 	suite.Equal(instancesAdded, resp.GetInstancesAdded())
 	suite.Equal(instancesUpdated, resp.GetInstancesUpdated())
+	suite.Equal([]uint32{}, resp.GetInstancesFailed())
 }
 
 // TestListNoJobID tests fetching all updates for a job
@@ -1045,15 +1048,24 @@ func (suite *UpdateSvcTestSuite) TestPauseUpdateSuccess() {
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
-		GetState().
-		Return(&cached.UpdateStateVector{State: update.State_ROLLING_FORWARD})
-
-	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
 		Return([]uint32{})
 
 	suite.cachedUpdate.EXPECT().
-		WriteProgress(gomock.Any(), update.State_PAUSED, gomock.Any(), gomock.Any()).
+		GetInstancesDone().
+		Return([]uint32{})
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesFailed().
+		Return([]uint32{})
+
+	suite.cachedUpdate.EXPECT().
+		WriteProgress(
+			gomock.Any(),
+			update.State_PAUSED,
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any()).
 		Return(nil)
 
 	_, err := suite.h.PauseUpdate(

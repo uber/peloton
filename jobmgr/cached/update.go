@@ -40,8 +40,11 @@ type Update interface {
 	) error
 
 	// Update updates the update in DB and cache
-	WriteProgress(ctx context.Context, state pbupdate.State,
-		instancesDone []uint32, instancesCurrent []uint32) error
+	WriteProgress(ctx context.Context,
+		state pbupdate.State,
+		instancesDone []uint32,
+		instanceFailed []uint32,
+		instancesCurrent []uint32) error
 
 	// Recover recovers the update from DB into the cache
 	Recover(ctx context.Context) error
@@ -51,6 +54,7 @@ type Update interface {
 
 	// GetState returns the state of the update
 	GetState() *UpdateStateVector
+
 	// GetGoalState returns the goal state of the update
 	GetGoalState() *UpdateStateVector
 
@@ -67,6 +71,12 @@ type Update interface {
 
 	// GetInstancesCurrent returns the current set of instances being updated
 	GetInstancesCurrent() []uint32
+
+	// GetInstanceFailed returns the current set of instances marked as failed
+	GetInstancesFailed() []uint32
+
+	// GetInstancesDone returns the current set of instances updated
+	GetInstancesDone() []uint32
 
 	GetUpdateConfig() *pbupdate.UpdateConfig
 
@@ -108,7 +118,7 @@ func newUpdate(
 // IsUpdateStateTerminal returns true if the update has reach terminal state
 func IsUpdateStateTerminal(state pbupdate.State) bool {
 	switch state {
-	case pbupdate.State_SUCCEEDED, pbupdate.State_ABORTED:
+	case pbupdate.State_SUCCEEDED, pbupdate.State_ABORTED, pbupdate.State_FAILED:
 		return true
 	}
 	return false
@@ -136,8 +146,10 @@ type update struct {
 
 	// list of instances which will be updated with this update
 	instancesTotal []uint32
-	// list of instances which have already been updated
+	// list of instances which have already been updated successfully
 	instancesDone []uint32
+	// list of instances which have been marked as failed
+	instancesFailed []uint32
 	// list of instances which are currently being updated
 	instancesCurrent []uint32
 	// list of instances which have been added
@@ -329,6 +341,7 @@ func (u *update) WriteProgress(
 	ctx context.Context,
 	state pbupdate.State,
 	instancesDone []uint32,
+	instancesFailed []uint32,
 	instancesCurrent []uint32) error {
 	u.Lock()
 	defer u.Unlock()
@@ -345,12 +358,14 @@ func (u *update) WriteProgress(
 			UpdateID:         u.id,
 			State:            state,
 			InstancesDone:    uint32(len(instancesDone)),
+			InstancesFailed:  uint32(len(instancesFailed)),
 			InstancesCurrent: instancesCurrent,
 		}); err != nil {
 		return err
 	}
 
 	u.instancesCurrent = instancesCurrent
+	u.instancesFailed = instancesFailed
 	u.state = state
 	u.instancesDone = instancesDone
 	return nil
@@ -384,10 +399,11 @@ func (u *update) Recover(ctx context.Context) error {
 
 	// recover update progress
 	cachedJob := u.jobFactory.AddJob(u.jobID)
-	u.instancesCurrent, u.instancesDone, err = GetUpdateProgress(
+	u.instancesCurrent, u.instancesDone, u.instancesFailed, err = getUpdateProgress(
 		ctx,
 		cachedJob,
-		u,
+		u.WorkflowStrategy,
+		u.updateConfig.GetMaxInstanceAttempts(),
 		u.jobVersion,
 		u.instancesTotal)
 	if err != nil {
@@ -435,12 +451,15 @@ func (u *update) GetState() *UpdateStateVector {
 		}).Debug("accessing fields in terminated update which can be stale")
 	}
 
-	instances := make([]uint32, len(u.instancesDone))
-	copy(instances, u.instancesDone)
+	instancesDone := make([]uint32, len(u.instancesDone))
+	copy(instancesDone, u.instancesDone)
+
+	instancesFailed := make([]uint32, len(u.instancesFailed))
+	copy(instancesFailed, u.instancesFailed)
 
 	return &UpdateStateVector{
 		State:      u.state,
-		Instances:  instances,
+		Instances:  append(instancesDone, instancesFailed...),
 		JobVersion: u.jobPrevVersion,
 	}
 }
@@ -503,6 +522,24 @@ func (u *update) GetInstancesUpdated() []uint32 {
 	return instances
 }
 
+func (u *update) GetInstancesDone() []uint32 {
+	u.RLock()
+	defer u.RUnlock()
+
+	if IsUpdateStateTerminal(u.state) {
+		log.WithFields(log.Fields{
+			"update_id": u.id.GetValue(),
+			"job_id":    u.jobID.GetValue(),
+			"state":     u.state.String(),
+			"field":     "instancesDone",
+		}).Warn("accessing fields in terminated update which can be stale")
+	}
+
+	instances := make([]uint32, len(u.instancesDone))
+	copy(instances, u.instancesDone)
+	return instances
+}
+
 func (u *update) GetInstancesRemoved() []uint32 {
 	u.RLock()
 	defer u.RUnlock()
@@ -527,6 +564,15 @@ func (u *update) GetInstancesCurrent() []uint32 {
 
 	instances := make([]uint32, len(u.instancesCurrent))
 	copy(instances, u.instancesCurrent)
+	return instances
+}
+
+func (u *update) GetInstancesFailed() []uint32 {
+	u.RLock()
+	defer u.RUnlock()
+
+	instances := make([]uint32, len(u.instancesFailed))
+	copy(instances, u.instancesFailed)
 	return instances
 }
 
@@ -632,7 +678,26 @@ func GetUpdateProgress(
 	cachedUpdate Update,
 	desiredConfigVersion uint64,
 	instancesToCheck []uint32,
-) (instancesCurrent []uint32, instancesDone []uint32, err error) {
+) (instancesCurrent []uint32, instancesDone []uint32, instancesFailed []uint32, err error) {
+	return getUpdateProgress(
+		ctx,
+		cachedJob,
+		cachedUpdate,
+		cachedUpdate.GetUpdateConfig().GetMaxInstanceAttempts(),
+		desiredConfigVersion,
+		instancesToCheck)
+}
+
+// getUpdateProgress is the internal version of GetUpdateProgress, which does not depend on cachedUpdate.
+// Therefore it can be used inside of cachedUpdate without deadlock risk.
+func getUpdateProgress(
+	ctx context.Context,
+	cachedJob Job,
+	strategy WorkflowStrategy,
+	maxInstanceAttempts uint32,
+	desiredConfigVersion uint64,
+	instancesToCheck []uint32,
+) (instancesCurrent []uint32, instancesDone []uint32, instancesFailed []uint32, err error) {
 	for _, instID := range instancesToCheck {
 		cachedTask, err := cachedJob.AddTask(ctx, instID)
 		// task is not created, this can happen when an update
@@ -642,20 +707,23 @@ func GetUpdateProgress(
 		}
 
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		runtime, err := cachedTask.GetRunTime(ctx)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
-		if cachedUpdate.IsInstanceComplete(desiredConfigVersion, runtime) {
+		if strategy.IsInstanceComplete(desiredConfigVersion, runtime) {
 			instancesDone = append(instancesDone, instID)
-		} else if cachedUpdate.IsInstanceInProgress(desiredConfigVersion, runtime) {
+		} else if strategy.IsInstanceFailed(runtime, maxInstanceAttempts) {
+			instancesFailed = append(instancesFailed, instID)
+		} else if strategy.IsInstanceInProgress(desiredConfigVersion, runtime) {
 			// instances set to desired configuration, but has not entered RUNNING state
 			instancesCurrent = append(instancesCurrent, instID)
 		}
 	}
-	return instancesCurrent, instancesDone, nil
+
+	return instancesCurrent, instancesDone, instancesFailed, nil
 }
