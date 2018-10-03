@@ -150,8 +150,8 @@ func createTestTaskUpdateEvent(state mesos.TaskState) *pb_eventstream.Event {
 	return event
 }
 
-func createTestTaskUpdateHealthCheckEvent(healthy bool) *pb_eventstream.Event {
-	state := mesos.TaskState_TASK_RUNNING
+func createTestTaskUpdateHealthCheckEvent(
+	state mesos.TaskState, healthy bool) *pb_eventstream.Event {
 	taskStatus := &mesos.TaskStatus{
 		TaskId: &mesos.TaskID{
 			Value: &_mesosTaskID,
@@ -188,9 +188,13 @@ func createTestTaskInfo(state task.TaskState) *task.TaskInfo {
 	return taskInfo
 }
 
-func createTestTaskInfoWithHealth(state task.TaskState) *task.TaskInfo {
+func createTestTaskInfoWithHealth(
+	state task.TaskState,
+	healthState task.HealthState,
+	healthCheckEnabled bool) *task.TaskInfo {
 	taskInfo := &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
+			Healthy:       healthState,
 			MesosTaskId:   &mesos.TaskID{Value: &_mesosTaskID},
 			State:         state,
 			GoalState:     task.TaskState_RUNNING,
@@ -206,6 +210,7 @@ func createTestTaskInfoWithHealth(state task.TaskState) *task.TaskInfo {
 				IntervalSecs:           10,
 				MaxConsecutiveFailures: 5,
 				TimeoutSecs:            5,
+				Enabled:                healthCheckEnabled,
 			},
 		},
 		InstanceId: uint32(_instanceID),
@@ -262,25 +267,98 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateHealthy() {
 	defer suite.ctrl.Finish()
 
 	tt := []struct {
-		health      bool
-		healthState task.HealthState
+		previousState       task.TaskState
+		newState            mesos.TaskState
+		previousHealthState task.HealthState
+		newHealthState      bool
+
+		healthyCounter   int64
+		unHealthyCounter int64
+
+		msg string
 	}{
 		{
-			health:      true,
-			healthState: task.HealthState_HEALTHY,
+			previousState:       task.TaskState_RUNNING,
+			previousHealthState: task.HealthState_HEALTH_UNKNOWN,
+
+			newState:       mesos.TaskState_TASK_RUNNING,
+			newHealthState: true,
+
+			healthyCounter:   1,
+			unHealthyCounter: 0,
+
+			msg: "Before Task RUNNING + HEALTHY_UNKNOWN, " +
+				"After TASK RUNNING + HEALTHY",
 		},
 		{
-			health:      false,
-			healthState: task.HealthState_UNHEALTHY,
+			previousState:       task.TaskState_RUNNING,
+			previousHealthState: task.HealthState_HEALTHY,
+
+			newState:       mesos.TaskState_TASK_RUNNING,
+			newHealthState: false,
+
+			healthyCounter:   1,
+			unHealthyCounter: 1,
+
+			msg: "Before TASK RUNNING + HEALTHY, " +
+				"After TASK RUNNING + UNHEALTHY",
+		},
+		{
+			previousState:       task.TaskState_RUNNING,
+			previousHealthState: task.HealthState_UNHEALTHY,
+
+			newState:       mesos.TaskState_TASK_RUNNING,
+			newHealthState: true,
+
+			healthyCounter:   2,
+			unHealthyCounter: 1,
+
+			msg: "Before TASK RUNNING + UNHEALTHY, " +
+				"After TASK RUNNING + HEALTHY",
+		},
+		{
+			previousState:       task.TaskState_RUNNING,
+			previousHealthState: task.HealthState_HEALTHY,
+
+			newState:       mesos.TaskState_TASK_FAILED,
+			newHealthState: false,
+
+			healthyCounter:   2,
+			unHealthyCounter: 1,
+
+			msg: "Before TASK RUNNING + HEALTHY, " +
+				"After TASK FAILED + UNHEALTHY, " +
+				"health check max retries exhausted",
+		},
+		{
+			previousState:       task.TaskState_RUNNING,
+			previousHealthState: task.HealthState_UNHEALTHY,
+
+			newState:       mesos.TaskState_TASK_RUNNING,
+			newHealthState: false,
+
+			healthyCounter:   2,
+			unHealthyCounter: 2,
+
+			msg: "Before TASK RUNNING + UNHEALTHY, " +
+				"After TASK RUNNING + UNHEALTHY, " +
+				"Consecutive negative health check result",
 		},
 	}
 
 	for _, t := range tt {
 		cachedJob := cachedmocks.NewMockJob(suite.ctrl)
-		event := createTestTaskUpdateHealthCheckEvent(t.health)
+
+		taskInfo := createTestTaskInfoWithHealth(
+			t.previousState,
+			t.previousHealthState,
+			true)
+
+		event := createTestTaskUpdateHealthCheckEvent(
+			t.newState,
+			t.newHealthState)
 		timeNow := float64(time.Now().UnixNano())
 		event.MesosTaskStatus.Timestamp = &timeNow
-		taskInfo := createTestTaskInfoWithHealth(task.TaskState_INITIALIZED)
 
 		gomock.InOrder(
 			suite.mockTaskStore.EXPECT().
@@ -291,7 +369,9 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateHealthy() {
 			cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
 				func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 					for _, runtimeDiff := range runtimeDiffs {
-						suite.Equal(t.healthState, runtimeDiff[jobmgrcommon.HealthyField])
+						if t.newHealthState {
+							suite.Equal(task.HealthState_HEALTHY, runtimeDiff[jobmgrcommon.HealthyField])
+						}
 					}
 				}).Return(nil),
 
@@ -304,28 +384,143 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateHealthy() {
 			cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
 		)
 
-		now = nowMock
 		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+		suite.Equal(
+			t.healthyCounter,
+			suite.testScope.Snapshot().Counters()["status_updater.tasks_healthy_total+"].Value(),
+			t.msg)
+
+		suite.Equal(
+			t.unHealthyCounter,
+			suite.testScope.Snapshot().Counters()["status_updater.tasks_unhealthy_total+"].Value(),
+			t.msg)
 	}
 }
 
-func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipSameState() {
+// Test processing health check configured, configured but enabled or not
+func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipSameStateWithHealthy() {
 	defer suite.ctrl.Finish()
 
-	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_STARTING)
-	taskInfo := createTestTaskInfo(task.TaskState_STARTING)
+	tt := []struct {
+		previousState            task.TaskState
+		newState                 mesos.TaskState
+		previousHealthState      task.HealthState
+		newHealthState           bool
+		healthCheckEnabled       bool
+		newStateByReconciliation bool
+		msg                      string
+	}{
+		{
+			previousHealthState: task.HealthState_HEALTH_UNKNOWN,
+			previousState:       task.TaskState_STARTING,
+			healthCheckEnabled:  false,
 
-	gomock.InOrder(
-		suite.mockTaskStore.EXPECT().
-			GetTaskByID(context.Background(), _pelotonTaskID).
-			Return(taskInfo, nil),
-	)
+			newHealthState: false,
+			newState:       mesos.TaskState_TASK_STARTING,
 
-	now = nowMock
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
-	suite.Equal(
-		int64(0),
-		suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
+			msg: "Before/After TASK_STARTING",
+		},
+		{
+			previousHealthState: task.HealthState_HEALTH_UNKNOWN,
+			previousState:       task.TaskState_FAILED,
+			healthCheckEnabled:  false,
+
+			newHealthState: false,
+			newState:       mesos.TaskState_TASK_FAILED,
+
+			msg: "Before/After TASK_FAILED",
+		},
+		{
+			previousHealthState: task.HealthState_INVALID,
+			previousState:       task.TaskState_RUNNING,
+			healthCheckEnabled:  false,
+
+			newHealthState: false,
+			newState:       mesos.TaskState_TASK_RUNNING,
+
+			msg: "Before/After is TASK_RUNNING and health check not configured",
+		},
+		{
+			previousHealthState: task.HealthState_HEALTH_UNKNOWN,
+			previousState:       task.TaskState_RUNNING,
+			healthCheckEnabled:  false,
+
+			newHealthState: false,
+			newState:       mesos.TaskState_TASK_RUNNING,
+
+			msg: "Before/After is TASK_RUNNING " +
+				"health check disabled",
+		},
+		{
+			previousHealthState: task.HealthState_HEALTHY,
+			previousState:       task.TaskState_RUNNING,
+			healthCheckEnabled:  true,
+
+			newHealthState:           false,
+			newState:                 mesos.TaskState_TASK_RUNNING,
+			newStateByReconciliation: true,
+
+			msg: "Before/After is TASK_RUNNING, health check is enabled " +
+				"but status update received is not due to health check",
+		},
+		{
+			previousHealthState: task.HealthState_HEALTHY,
+			previousState:       task.TaskState_RUNNING,
+			healthCheckEnabled:  true,
+
+			newHealthState:           true,
+			newState:                 mesos.TaskState_TASK_RUNNING,
+			newStateByReconciliation: false,
+
+			msg: "Before/After is TASK_RUNNING, health is enabled, " +
+				"status update is received using health check " +
+				"but health check result is healthy consecutively",
+		},
+	}
+
+	for _, t := range tt {
+
+		var taskInfo *task.TaskInfo
+		var event *pb_eventstream.Event
+
+		if t.previousHealthState == task.HealthState_INVALID {
+			taskInfo = createTestTaskInfo(t.previousState)
+			event = createTestTaskUpdateEvent(t.newState)
+		} else {
+			taskInfo = createTestTaskInfoWithHealth(
+				t.previousState,
+				t.previousHealthState,
+				t.healthCheckEnabled)
+
+			event = createTestTaskUpdateHealthCheckEvent(
+				t.newState, t.newHealthState)
+		}
+
+		if t.newStateByReconciliation {
+			event = createTestTaskUpdateEvent(t.newState)
+		}
+
+		gomock.InOrder(
+			suite.mockTaskStore.EXPECT().
+				GetTaskByID(context.Background(), _pelotonTaskID).
+				Return(taskInfo, nil),
+		)
+		now = nowMock
+		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+
+		if t.newState == mesos.TaskState_TASK_RUNNING {
+			suite.NotZero(suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
+		}
+
+		// Same status update with healthy is not processed so respective counters for
+		// healthy or unhealthy status update is not increment in any scenario
+		suite.Equal(
+			int64(0),
+			suite.testScope.Snapshot().Counters()["status_updater.tasks_healthy_total+"].Value())
+		suite.Equal(
+			int64(0),
+			suite.testScope.Snapshot().Counters()["status_updater.tasks_unhealthy_total+"].Value())
+	}
 }
 
 // Test processing task failure status update w/ retry.
@@ -502,7 +697,10 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailureCountUpdate() {
 	for _, t := range tt {
 		cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 		event := createTestTaskUpdateEvent(t.mesosState)
-		taskInfo := createTestTaskInfoWithHealth(task.TaskState_RUNNING)
+		taskInfo := createTestTaskInfoWithHealth(
+			task.TaskState_RUNNING,
+			task.HealthState_HEALTHY,
+			true)
 
 		taskInfo.Runtime.ConfigVersion = t.configVersion
 		taskInfo.Runtime.DesiredConfigVersion = t.desiredVersion
@@ -599,7 +797,10 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 	failureReason := mesos.TaskStatus_REASON_RECONCILIATION
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
 	event.MesosTaskStatus.Reason = &failureReason
-	taskInfo := createTestTaskInfoWithHealth(task.TaskState_RUNNING)
+	taskInfo := createTestTaskInfoWithHealth(
+		task.TaskState_RUNNING,
+		task.HealthState_HEALTHY,
+		true)
 	taskInfo.Runtime.GoalState = task.TaskState_KILLED
 
 	runtimeDiff := jobmgrcommon.RuntimeDiff{

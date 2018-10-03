@@ -227,12 +227,12 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		return jobmgr_task.KillOrphanTask(ctx, p.hostmgrClient, taskInfo)
 	}
 
-	// Skip non-RUNNING event with duplicate state
-	if state == runtime.GetState() && state != pb_task.TaskState_RUNNING {
-		log.WithFields(log.Fields{
-			"db_task_runtime":   taskInfo.GetRuntime(),
-			"task_status_event": event.GetMesosTaskStatus(),
-		}).Debug("skip same status update for mesos task")
+	// whether to skip or not if instance state is similar before and after
+	if isDuplicateStateUpdate(
+		runtime,
+		taskInfo,
+		event,
+		state) {
 		return nil
 	}
 
@@ -249,7 +249,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	if taskInfo.GetConfig().GetHealthCheck() != nil {
 		reason := event.GetMesosTaskStatus().GetReason()
 		healthy := event.GetMesosTaskStatus().GetHealthy()
-		persistHealthyField(state, reason, healthy, runtimeDiff)
+		p.persistHealthyField(state, reason, healthy, runtimeDiff)
 	}
 
 	// Update FailureCount
@@ -475,7 +475,7 @@ func getCurrTaskResourceUsage(taskID string, state pb_task.TaskState,
 }
 
 // persistHealthyField update the healthy field in runtimeDiff
-func persistHealthyField(
+func (p *statusUpdate) persistHealthyField(
 	state pb_task.TaskState,
 	reason mesos_v1.TaskStatus_Reason,
 	healthy bool,
@@ -492,8 +492,10 @@ func persistHealthyField(
 			runtimeDiff[jobmgrcommon.ReasonField] = reason
 			if healthy {
 				runtimeDiff[jobmgrcommon.HealthyField] = pb_task.HealthState_HEALTHY
+				p.metrics.TasksHealthyTotal.Inc(1)
 			} else {
 				runtimeDiff[jobmgrcommon.HealthyField] = pb_task.HealthState_UNHEALTHY
+				p.metrics.TasksUnHealthyTotal.Inc(1)
 			}
 		}
 	}
@@ -527,4 +529,75 @@ func updateFailureCount(
 			runtimeDiff[jobmgrcommon.FailureCountField] = uint32(runtime.GetFailureCount() + 1)
 		}
 	}
+}
+
+// isDuplicateStateUpdate validates if the current instance state is left unchanged
+// by this status update.
+// If it is left unchanged, then the status update should be ignored.
+// The state is said to be left unchanged
+// if any of the following conditions is satisfied.
+//
+// 1. State is the same and that state is not running.
+// 2. State is the same, that state is running, and health check is not configured.
+// 3. State is the same, that state is running, and the update is not due to health check result.
+// 4. State is the same, that state is running, the update is due to health check result and the task is healthy.
+//
+// Each unhealthy state needs to be logged into the pod events table.
+func isDuplicateStateUpdate(
+	runtime *pb_task.RuntimeInfo,
+	taskInfo *pb_task.TaskInfo,
+	event *pb_eventstream.Event,
+	newState pb_task.TaskState) bool {
+
+	if newState != runtime.GetState() {
+		return false
+	}
+
+	if newState != pb_task.TaskState_RUNNING {
+		log.WithFields(log.Fields{
+			"db_task_runtime":   taskInfo.GetRuntime(),
+			"task_status_event": event.GetMesosTaskStatus(),
+		}).Debug("skip same status update if state is not RUNNING")
+		return true
+	}
+
+	if taskInfo.GetConfig().GetHealthCheck() == nil ||
+		!taskInfo.GetConfig().GetHealthCheck().GetEnabled() {
+		log.WithFields(log.Fields{
+			"db_task_runtime":   taskInfo.GetRuntime(),
+			"task_status_event": event.GetMesosTaskStatus(),
+		}).Debug("skip same status update if health check is not configured or " +
+			"disabled")
+		return true
+	}
+
+	newStateReason := event.GetMesosTaskStatus().GetReason()
+	if newStateReason != mesos_v1.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED {
+		log.WithFields(log.Fields{
+			"db_task_runtime":   taskInfo.GetRuntime(),
+			"task_status_event": event.GetMesosTaskStatus(),
+		}).Debug("skip same status update if status update reason is not from health check")
+		return true
+	}
+
+	// Current behavior will log consecutive negative health check results
+	// ToDo (varung): Evaluate if consecutive negative results should be logged or not
+	isPreviousStateHealthy := runtime.GetHealthy() == pb_task.HealthState_HEALTHY
+	if !isPreviousStateHealthy {
+		log.WithFields(log.Fields{
+			"db_task_runtime":   taskInfo.GetRuntime(),
+			"task_status_event": event.GetMesosTaskStatus(),
+		}).Debug("log each negative health check result")
+		return false
+	}
+
+	if event.GetMesosTaskStatus().GetHealthy() == isPreviousStateHealthy {
+		log.WithFields(log.Fields{
+			"db_task_runtime":   taskInfo.GetRuntime(),
+			"task_status_event": event.GetMesosTaskStatus(),
+		}).Debug("skip same status update if health check result is positive consecutively")
+		return true
+	}
+
+	return false
 }
