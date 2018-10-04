@@ -626,7 +626,7 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 		return nil, 0, err
 	}
 
-	jobConfig, prevConfigAddOn, err := h.jobStore.GetJobConfigWithVersion(
+	jobConfig, configAddOn, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
 		jobID,
 		runtime.GetConfigurationVersion(),
@@ -664,7 +664,7 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 		jobID,
 		&newConfig,
 		jobConfig,
-		prevConfigAddOn,
+		configAddOn,
 		nil,
 		convertRangesToSlice(ranges, newConfig.GetInstanceCount()),
 		nil,

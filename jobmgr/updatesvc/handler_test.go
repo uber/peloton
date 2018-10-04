@@ -176,7 +176,7 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 			gomock.Any(), suite.jobID,
 			suite.newJobConfig,
 			suite.jobConfig,
-			configAddOn,
+			gomock.Any(),
 			nil,
 			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 			nil,
@@ -204,10 +204,9 @@ func (suite *UpdateSvcTestSuite) TestAddInstancesSuccess() {
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(suite.jobRuntime, nil)
 
-	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig, configAddOn, nil)
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.updateFactory.EXPECT().
 		AddUpdate(gomock.Any()).
@@ -238,10 +237,11 @@ func (suite *UpdateSvcTestSuite) TestAddInstancesSuccess() {
 
 	suite.cachedUpdate.EXPECT().
 		Create(
-			gomock.Any(), suite.jobID,
+			gomock.Any(),
+			suite.jobID,
 			suite.newJobConfig,
 			suite.jobConfig,
-			configAddOn,
+			gomock.Any(),
 			[]uint32{10, 11},
 			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 			nil,
@@ -270,7 +270,6 @@ func (suite *UpdateSvcTestSuite) TestUpdateLabelsSuccess() {
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(suite.jobRuntime, nil)
 
-	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
@@ -287,7 +286,7 @@ func (suite *UpdateSvcTestSuite) TestUpdateLabelsSuccess() {
 			gomock.Any(), suite.jobID,
 			&newConfig,
 			suite.jobConfig,
-			configAddOn,
+			gomock.Any(),
 			nil,
 			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 			nil,
@@ -513,7 +512,7 @@ func (suite *UpdateSvcTestSuite) TestCreateReduceInstanceCount() {
 			gomock.Any(), suite.jobID,
 			suite.newJobConfig,
 			suite.jobConfig,
-			configAddOn,
+			gomock.Any(),
 			nil,
 			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8},
 			[]uint32{9},
@@ -608,7 +607,7 @@ func (suite *UpdateSvcTestSuite) TestCreateAddUpdateFail() {
 			gomock.Any(), suite.jobID,
 			suite.newJobConfig,
 			suite.jobConfig,
-			configAddOn,
+			gomock.Any(),
 			nil,
 			[]uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 			nil,

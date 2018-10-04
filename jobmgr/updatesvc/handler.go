@@ -11,9 +11,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
+	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 	"code.uber.internal/infra/peloton/storage"
 
 	"github.com/gogo/protobuf/proto"
@@ -163,6 +165,15 @@ func (h *serviceHandler) CreateUpdate(
 		return nil, err
 	}
 
+	var respoolPath string
+	for _, label := range prevConfigAddOn.GetSystemLabels() {
+		if label.GetKey() == common.SystemLabelRespoolPath {
+			respoolPath = label.GetValue()
+		}
+	}
+	configAddOn := &models.ConfigAddOn{
+		SystemLabels: jobutil.ConstructSystemLabels(jobConfig, respoolPath),
+	}
 	// add this new update to cache and DB
 	cachedUpdate := h.updateFactory.AddUpdate(id)
 	err = cachedUpdate.Create(
@@ -170,7 +181,7 @@ func (h *serviceHandler) CreateUpdate(
 		jobID,
 		jobConfig,
 		prevJobConfig,
-		prevConfigAddOn,
+		configAddOn,
 		instancesAdded,
 		instancesUpdated,
 		instancesRemoved,
