@@ -270,7 +270,7 @@ var (
 	hostMaintenanceCompleteHostnames = hostMaintenanceComplete.Arg("hostnames", "comma separated hostnames").Required().String()
 
 	hostQuery       = host.Command("query", "query hosts by state(s)")
-	hostQueryStates = hostQuery.Flag("states", "host states").Default("").Short('s').String()
+	hostQueryStates = hostQuery.Flag("states", "host state(s) to filter").Default("").Short('s').String()
 
 	// Top level volume command
 	volume = app.Command("volume", "manage persistent volume")

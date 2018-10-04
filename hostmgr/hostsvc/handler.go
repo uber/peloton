@@ -61,6 +61,12 @@ func (m *serviceHandler) QueryHosts(
 		hostStateSet.Add(state.String())
 	}
 
+	if request.HostStates == nil || len(request.HostStates) == 0 {
+		for _, state := range host.HostState_name {
+			hostStateSet.Add(state)
+		}
+	}
+
 	// upHosts is map to ensure we don't have 2 entries for DRAINING hosts
 	// as the response from Agents() includes info of DRAINING hosts
 	var upHosts map[string]*host.HostInfo
@@ -92,8 +98,8 @@ func (m *serviceHandler) QueryHosts(
 
 	// Build result
 	var hostInfos []*host.HostInfo
-	for _, hostState := range request.GetHostStates() {
-		switch hostState {
+	for _, hostState := range hostStateSet.ToSlice() {
+		switch host.HostState(host.HostState_value[hostState]) {
 		case host.HostState_HOST_STATE_UP:
 			for _, hostInfo := range upHosts {
 				hostInfos = append(hostInfos, hostInfo)

@@ -79,13 +79,6 @@ func (c *Client) HostQueryAction(states string) error {
 		}
 	}
 
-	// If states is empty then query for all states
-	if len(hostStates) == 0 {
-		for state := range host.HostState_name {
-			hostStates = append(hostStates, host.HostState(state))
-		}
-	}
-
 	request := &host_svc.QueryHostsRequest{
 		HostStates: hostStates,
 	}

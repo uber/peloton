@@ -11,6 +11,7 @@ import (
 	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc"
 
+	"code.uber.internal/infra/peloton/common/stringset"
 	hm_host "code.uber.internal/infra/peloton/hostmgr/host"
 	qm "code.uber.internal/infra/peloton/hostmgr/queue/mocks"
 	ym "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
@@ -327,7 +328,7 @@ func (suite *HostSvcHandlerTestSuite) TestQueryHosts() {
 				},
 				DownMachines: suite.downMachines,
 			},
-		}, nil).Times(2)
+		}, nil).Times(3)
 
 	resp, err := suite.handler.QueryHosts(suite.ctx, &svcpb.QueryHostsRequest{
 		HostStates: []host.HostState{
@@ -344,21 +345,19 @@ func (suite *HostSvcHandlerTestSuite) TestQueryHosts() {
 			len(suite.downMachines),
 		len(resp.GetHostInfos()),
 	)
-
-	i := 0
+	hostnameSet := stringset.New()
+	for _, hostInfo := range resp.GetHostInfos() {
+		hostnameSet.Add(hostInfo.GetHostname())
+	}
 	for _, upMachine := range suite.upMachines {
-		suite.Equal(resp.HostInfos[i].GetHostname(), upMachine.GetHostname())
-		i++
+		suite.True(hostnameSet.Contains(upMachine.GetHostname()))
 	}
 	for _, drainingMachine := range suite.drainingMachines {
-		suite.Equal(resp.HostInfos[i].GetHostname(), drainingMachine.GetHostname())
-		i++
+		suite.True(hostnameSet.Contains(drainingMachine.GetHostname()))
 	}
 	for _, downMachine := range suite.downMachines {
-		suite.Equal(resp.HostInfos[i].GetHostname(), downMachine.GetHostname())
-		i++
+		suite.True(hostnameSet.Contains(downMachine.GetHostname()))
 	}
-	suite.Equal(i, len(resp.HostInfos))
 
 	// Test querying only draining hosts
 	resp, err = suite.handler.QueryHosts(suite.ctx, &svcpb.QueryHostsRequest{
@@ -371,6 +370,30 @@ func (suite *HostSvcHandlerTestSuite) TestQueryHosts() {
 	suite.Equal(len(suite.drainingMachines), len(resp.GetHostInfos()))
 	for i, drainingMachine := range suite.drainingMachines {
 		suite.Equal(resp.HostInfos[i].GetHostname(), drainingMachine.GetHostname())
+	}
+
+	// Empty QueryHostsRequest should return hosts in all states
+	resp, err = suite.handler.QueryHosts(suite.ctx, &svcpb.QueryHostsRequest{})
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(
+		len(suite.upMachines)+
+			len(suite.drainingMachines)+
+			len(suite.downMachines),
+		len(resp.GetHostInfos()),
+	)
+	hostnameSet.Clear()
+	for _, hostInfo := range resp.GetHostInfos() {
+		hostnameSet.Add(hostInfo.GetHostname())
+	}
+	for _, upMachine := range suite.upMachines {
+		suite.True(hostnameSet.Contains(upMachine.GetHostname()))
+	}
+	for _, drainingMachine := range suite.drainingMachines {
+		suite.True(hostnameSet.Contains(drainingMachine.GetHostname()))
+	}
+	for _, downMachine := range suite.downMachines {
+		suite.True(hostnameSet.Contains(downMachine.GetHostname()))
 	}
 }
 
