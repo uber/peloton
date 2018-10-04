@@ -4,12 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
-	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/taskconfig"
 
 	"github.com/hashicorp/go-multierror"
@@ -168,14 +166,17 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 			return err
 		}
 
-		for _, label := range taskConfig.GetLabels() {
-			if strings.HasPrefix(label.GetKey(), common.SystemLabelPrefix+".") {
-				return fmt.Errorf(
-					"keys with prefix"+
-						" '%s' are reserved for system labels",
-					common.SystemLabelPrefix)
-			}
-		}
+		//TODO: uncomment the following once all Peloton clients have been
+		// modified to not add these labels to jobs submitted through them
+
+		//for _, label := range taskConfig.GetLabels() {
+		//	if strings.HasPrefix(label.GetKey(), common.SystemLabelPrefix+".") {
+		//		return fmt.Errorf(
+		//			"keys with prefix"+
+		//				" '%s' are reserved for system labels",
+		//			common.SystemLabelPrefix)
+		//	}
+		//}
 
 		restartPolicy := taskConfig.GetRestartPolicy()
 		if restartPolicy.GetMaxFailures() > _maxTaskRetries {

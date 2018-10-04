@@ -4,16 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
-
-	"github.com/pborman/uuid"
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-	"github.com/uber-go/tally"
-
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/yarpcerrors"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -23,11 +16,19 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/backoff"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
+
+	"github.com/pborman/uuid"
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // LaunchableTask contains the changes to the task runtime, expressed as the
@@ -361,6 +362,19 @@ func (l *launcher) CreateLaunchableTasks(
 			// skip the task for which we could not populate secrets
 			continue
 		}
+
+		// Strip off labels with prefix common.SystemLabelPrefix. This is a temporary
+		// fix to ensure job creates dont fail on clients adding the system labels
+		// TODO: remove this once all Peloton clients have been modified
+		// to not add these labels to jobs submitted through them
+		var labels []*peloton.Label
+		for _, label := range launchableTaskInfo.GetConfig().GetLabels() {
+			if !strings.HasPrefix(label.GetKey(), common.SystemLabelPrefix+".") {
+				labels = append(labels, label)
+			}
+		}
+		launchableTaskInfo.Config.Labels = labels
+
 		// Set system labels as task labels
 		for _, label := range launchableTaskInfo.ConfigAddOn.GetSystemLabels() {
 			launchableTaskInfo.Config.Labels = append(
