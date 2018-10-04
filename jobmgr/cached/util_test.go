@@ -40,7 +40,8 @@ func (suite *CachedUtilTestSuite) SetupTest() {
 		nil,
 		nil,
 		nil,
-		tally.NoopScope).(*jobFactory)
+		tally.NoopScope,
+		nil).(*jobFactory)
 	suite.updateFactory = InitUpdateFactory(
 		nil,
 		nil,
