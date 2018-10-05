@@ -82,6 +82,9 @@ message UpdateStatus {
 
   // Runtime state of the update
   State state = 3;
+
+  // Number of tasks that failed during the update
+  uint32 numTasksFailed = 4;
 }
 
 /**

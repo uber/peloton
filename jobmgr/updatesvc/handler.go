@@ -215,9 +215,12 @@ func (h *serviceHandler) GetUpdate(ctx context.Context, req *svc.GetUpdateReques
 		updateInfo := &update.UpdateInfo{
 			UpdateId: updateID,
 			Status: &update.UpdateStatus{
-				NumTasksDone:      updateModel.GetInstancesDone(),
-				NumTasksRemaining: updateModel.GetInstancesTotal() - updateModel.GetInstancesDone(),
-				State:             updateModel.GetState(),
+				NumTasksDone: updateModel.GetInstancesDone(),
+				NumTasksRemaining: updateModel.GetInstancesTotal() -
+					updateModel.GetInstancesDone() -
+					updateModel.GetInstancesFailed(),
+				NumTasksFailed: updateModel.GetInstancesFailed(),
+				State:          updateModel.GetState(),
 			},
 		}
 
@@ -240,9 +243,12 @@ func (h *serviceHandler) GetUpdate(ctx context.Context, req *svc.GetUpdateReques
 		ConfigVersion:     updateModel.GetJobConfigVersion(),
 		PrevConfigVersion: updateModel.GetPrevJobConfigVersion(),
 		Status: &update.UpdateStatus{
-			NumTasksDone:      updateModel.GetInstancesDone(),
-			NumTasksRemaining: updateModel.GetInstancesTotal() - updateModel.GetInstancesDone(),
-			State:             updateModel.GetState(),
+			NumTasksDone: updateModel.GetInstancesDone(),
+			NumTasksRemaining: updateModel.GetInstancesTotal() -
+				updateModel.GetInstancesDone() -
+				updateModel.GetInstancesFailed(),
+			NumTasksFailed: updateModel.GetInstancesFailed(),
+			State:          updateModel.GetState(),
 		},
 	}
 
@@ -349,9 +355,12 @@ func (h *serviceHandler) ListUpdates(ctx context.Context,
 			ConfigVersion:     updateModel.GetJobConfigVersion(),
 			PrevConfigVersion: updateModel.GetPrevJobConfigVersion(),
 			Status: &update.UpdateStatus{
-				NumTasksDone:      updateModel.GetInstancesDone(),
-				NumTasksRemaining: updateModel.GetInstancesTotal() - updateModel.GetInstancesDone(),
-				State:             updateModel.GetState(),
+				NumTasksDone: updateModel.GetInstancesDone(),
+				NumTasksRemaining: updateModel.GetInstancesTotal() -
+					updateModel.GetInstancesDone() -
+					updateModel.GetInstancesFailed(),
+				NumTasksFailed: updateModel.GetInstancesFailed(),
+				State:          updateModel.GetState(),
 			},
 		}
 

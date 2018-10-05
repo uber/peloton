@@ -15,8 +15,8 @@ import (
 
 const (
 	updateListFormatHeader = "Update-ID\tState\tNumberTasksCompleted\t" +
-		"NumberTasksRemaining\n"
-	updateListFormatBody = "%s\t%s\t%d\t%d\n"
+		"NumberTasksFailed\tNumberTasksRemaining\n"
+	updateListFormatBody = "%s\t%s\t%d\t%d\t%d\n"
 	invalidVersionError  = "invalid job configuration version"
 )
 
@@ -233,6 +233,7 @@ func printUpdate(u *update.UpdateInfo) {
 		u.GetUpdateId().GetValue(),
 		status.GetState().String(),
 		status.GetNumTasksDone(),
+		status.GetNumTasksFailed(),
 		status.GetNumTasksRemaining(),
 	)
 }
