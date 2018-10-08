@@ -48,7 +48,22 @@ const (
 	// This is the number of completed reservations which
 	// will be fetched in one call from the reserver.
 	_completedReservationLimit = 10
-	_errNilReservation         = "reservation is nil"
+)
+
+// validation errors
+var (
+	errEmptyExecutorList                 = errors.New("empty executor list")
+	errEmptyExecutorID                   = errors.New("empty executor id")
+	errEmptyOfferOperations              = errors.New("empty operations")
+	errEmptyTaskList                     = errors.New("empty task list")
+	errEmptyAgentID                      = errors.New("empty agent id")
+	errEmptyHostName                     = errors.New("empty hostname")
+	errEmptyHostOfferID                  = errors.New("empty host offer")
+	errNilReservation                    = errors.New("reservation is nil")
+	errLaunchOperationIsNotLastOperation = errors.New("launch operation is not the last operation")
+	errOfferOperationNotSupported        = errors.New("offer operation not supported")
+	errInvalidOfferOperation             = errors.New("invalid offer operation")
+	errReservationNotFound               = errors.New("reservation could not be made")
 )
 
 // ServiceHandler implements peloton.private.hostmgr.InternalHostService.
@@ -301,16 +316,6 @@ func (h *ServiceHandler) ReleaseHostOffers(
 	return &response, nil
 }
 
-var (
-	errEmptyOfferOperations              = errors.New("empty operations in OfferOperationsRequest")
-	errLaunchOperationIsNotLastOperation = errors.New("launch operation is not the last operation")
-	errLaunchOperationWithEmptyTasks     = errors.New("launch operation with empty task list")
-	errOfferOperationNotSupported        = errors.New("offer operation not supported")
-	errInvalidOfferOperation             = errors.New("invalid offer operation")
-	errHostnameMissing                   = errors.New("hostname is required")
-	errReservationNotFound               = errors.New("reservation could not be made")
-)
-
 // validateOfferOperation ensures offer operations sequences are valid.
 func validateOfferOperationsRequest(
 	request *hostsvc.OfferOperationsRequest) error {
@@ -325,7 +330,7 @@ func validateOfferOperationsRequest(
 			if index != len(operations)-1 {
 				return errLaunchOperationIsNotLastOperation
 			} else if len(op.GetLaunch().GetTasks()) == 0 {
-				return errLaunchOperationWithEmptyTasks
+				return errEmptyTaskList
 			}
 		} else if op.GetType() != hostsvc.OfferOperation_CREATE &&
 			op.GetType() != hostsvc.OfferOperation_RESERVE {
@@ -339,15 +344,15 @@ func validateOfferOperationsRequest(
 	}
 
 	if len(request.GetHostname()) == 0 {
-		return errHostnameMissing
+		return errEmptyHostName
 	}
 
 	return nil
 }
 
-// extractReserveationLabels checks if operations on reserved offers, if yes,
+// extractReservationLabels checks if operations on reserved offers, if yes,
 // returns reservation labels, otherwise nil.
-func (h *ServiceHandler) extractReserveationLabels(
+func (h *ServiceHandler) extractReservationLabels(
 	req *hostsvc.OfferOperationsRequest,
 ) *mesos.Labels {
 	reqOps := req.GetOperations()
@@ -384,10 +389,11 @@ func (h *ServiceHandler) OfferOperations(
 		}, nil
 	}
 
-	reservedOfferLabels := h.extractReserveationLabels(req)
+	reservedOfferLabels := h.extractReservationLabels(req)
 	offers, err := h.offerPool.ClaimForLaunch(
 		req.GetHostname(),
 		reservedOfferLabels != nil, /* useReservedOffers */
+		req.GetId().GetValue(),
 	)
 	if err != nil {
 		log.WithError(err).
@@ -560,12 +566,12 @@ func (h *ServiceHandler) persistVolumeInfo(
 // LaunchTasks implements InternalHostService.LaunchTasks.
 func (h *ServiceHandler) LaunchTasks(
 	ctx context.Context,
-	body *hostsvc.LaunchTasksRequest) (
+	req *hostsvc.LaunchTasksRequest) (
 	*hostsvc.LaunchTasksResponse,
 	error) {
-	log.WithField("request", body).Debug("LaunchTasks called.")
+	log.WithField("request", req).Debug("LaunchTasks called.")
 
-	if err := validateLaunchTasks(body); err != nil {
+	if err := validateLaunchTasks(req); err != nil {
 		h.metrics.LaunchTasksInvalid.Inc(1)
 		return &hostsvc.LaunchTasksResponse{
 			Error: &hostsvc.LaunchTasksResponse_Error{
@@ -576,7 +582,11 @@ func (h *ServiceHandler) LaunchTasks(
 		}, nil
 	}
 
-	offers, err := h.offerPool.ClaimForLaunch(body.GetHostname(), false)
+	offers, err := h.offerPool.ClaimForLaunch(
+		req.GetHostname(),
+		false,
+		req.GetId().GetValue(),
+	)
 	if err != nil {
 		h.metrics.LaunchTasksInvalidOffers.Inc(1)
 		return &hostsvc.LaunchTasksResponse{
@@ -590,9 +600,9 @@ func (h *ServiceHandler) LaunchTasks(
 
 	var offerIds []*mesos.OfferID
 	var mesosResources []*mesos.Resource
-	for _, offer := range offers {
-		offerIds = append(offerIds, offer.GetId())
-		mesosResources = append(mesosResources, offer.GetResources()...)
+	for _, o := range offers {
+		offerIds = append(offerIds, o.GetId())
+		mesosResources = append(mesosResources, o.GetResources()...)
 	}
 
 	// TODO: Use `offers` so we can support reservation, port picking, etc.
@@ -602,18 +612,19 @@ func (h *ServiceHandler) LaunchTasks(
 	var mesosTaskIds []string
 
 	builder := task.NewBuilder(mesosResources)
-	for _, t := range body.GetTasks() {
+	for _, t := range req.GetTasks() {
 		mesosTask, err := builder.Build(t, nil, nil)
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"task_id":             t.TaskId,
-				"tasks_total":         len(body.GetTasks()),
-				"tasks":               body.GetTasks(),
+				"tasks_total":         len(req.GetTasks()),
+				"tasks":               req.GetTasks(),
 				"matched_tasks":       mesosTasks,
 				"matched_task_ids":    mesosTaskIds,
 				"matched_tasks_total": len(mesosTasks),
 				"offers":              offers,
-				"hostname":            body.GetHostname(),
+				"hostname":            req.GetHostname(),
+				"host_offer_id":       req.GetId().GetValue(),
 			}).Warn("Fail to get correct Mesos TaskInfo")
 			h.metrics.LaunchTasksInvalid.Inc(1)
 
@@ -623,7 +634,7 @@ func (h *ServiceHandler) LaunchTasks(
 			if derr := h.offerPool.DeclineOffers(ctx, offerIds); derr != nil {
 				log.WithError(err).WithFields(log.Fields{
 					"offers":   offerIds,
-					"hostname": body.GetHostname(),
+					"hostname": req.GetHostname(),
 				}).Warn("Cannot decline offers task building error")
 			}
 
@@ -648,7 +659,7 @@ func (h *ServiceHandler) LaunchTasks(
 			}, nil
 		}
 
-		mesosTask.AgentId = body.GetAgentId()
+		mesosTask.AgentId = req.GetAgentId()
 		mesosTasks = append(mesosTasks, mesosTask)
 		mesosTaskIds = append(mesosTaskIds, *mesosTask.TaskId.Value)
 	}
@@ -681,9 +692,10 @@ func (h *ServiceHandler) LaunchTasks(
 	if err != nil {
 		h.metrics.LaunchTasksFail.Inc(int64(len(mesosTasks)))
 		log.WithFields(log.Fields{
-			"tasks":  mesosTasks,
-			"offers": offerIds,
-			"error":  err,
+			"tasks":         mesosTasks,
+			"offers":        offerIds,
+			"error":         err,
+			"host_offer_id": req.GetId().GetValue(),
 		}).Warn("Tasks launch failure")
 
 		return &hostsvc.LaunchTasksResponse{
@@ -697,8 +709,9 @@ func (h *ServiceHandler) LaunchTasks(
 
 	h.metrics.LaunchTasks.Inc(int64(len(mesosTasks)))
 	log.WithFields(log.Fields{
-		"tasks":  len(mesosTasks),
-		"offers": len(offerIds),
+		"tasks":         len(mesosTasks),
+		"offers":        len(offerIds),
+		"host_offer_id": req.GetId().GetValue(),
 	}).Debug("Tasks launched.")
 
 	return &hostsvc.LaunchTasksResponse{}, nil
@@ -706,32 +719,21 @@ func (h *ServiceHandler) LaunchTasks(
 
 func validateLaunchTasks(request *hostsvc.LaunchTasksRequest) error {
 	if len(request.Tasks) <= 0 {
-		return errors.New("empty task list in LaunchTasksRequest")
+		return errEmptyTaskList
 	}
 
 	if len(request.GetAgentId().GetValue()) <= 0 {
-		return errors.New("empty agent id in LaunchTasksRequest")
+		return errEmptyAgentID
 	}
 
 	if len(request.Hostname) <= 0 {
-		return errors.New("empty hostname in LaunchTasksRequest")
+		return errEmptyHostName
 	}
 
-	return nil
-}
-
-func validateShutdownExecutors(request *hostsvc.ShutdownExecutorsRequest) error {
-	executorList := request.GetExecutors()
-
-	if len(executorList) <= 0 {
-		return errors.New("empty executor list in ShutdownExecutorsRequest")
+	if len(request.GetId().GetValue()) <= 0 {
+		return errEmptyHostOfferID
 	}
 
-	for _, executor := range executorList {
-		if executor.GetAgentId() == nil || executor.GetExecutorId() == nil {
-			return errors.New("empty Executor Id or Agent Id")
-		}
-	}
 	return nil
 }
 
@@ -807,6 +809,24 @@ func (h *ServiceHandler) ShutdownExecutors(
 	}
 
 	return &hostsvc.ShutdownExecutorsResponse{}, nil
+}
+
+func validateShutdownExecutors(request *hostsvc.ShutdownExecutorsRequest) error {
+	executorList := request.GetExecutors()
+
+	if len(executorList) <= 0 {
+		return errEmptyExecutorList
+	}
+
+	for _, executor := range executorList {
+		if executor.GetAgentId() == nil {
+			return errEmptyAgentID
+		}
+		if executor.GetExecutorId() == nil {
+			return errEmptyExecutorID
+		}
+	}
+	return nil
 }
 
 // KillTasks implements InternalHostService.KillTasks.
@@ -1047,17 +1067,19 @@ func (h *ServiceHandler) ReserveHosts(
 ) (*hostsvc.ReserveHostsResponse, error) {
 
 	log.WithField("request", req).Debug("ReserveHosts called.")
-	if req.GetReservation() == nil {
+	if err := validateReserveHosts(req); err != nil {
 		return &hostsvc.ReserveHostsResponse{
 			Error: &hostsvc.ReserveHostsResponse_Error{
 				Failed: &hostsvc.ReservationFailed{
-					Message: _errNilReservation,
+					Message: err.Error(),
 				},
 			},
 		}, nil
 	}
+
 	err := h.reserver.EnqueueReservation(ctx, req.Reservation)
 	if err != nil {
+		log.WithError(err).Error("failed to enqueue reservation")
 		return &hostsvc.ReserveHostsResponse{
 			Error: &hostsvc.ReserveHostsResponse_Error{
 				Failed: &hostsvc.ReservationFailed{
@@ -1068,6 +1090,13 @@ func (h *ServiceHandler) ReserveHosts(
 	}
 	log.Debug("ReserveHosts returned.")
 	return &hostsvc.ReserveHostsResponse{}, nil
+}
+
+func validateReserveHosts(req *hostsvc.ReserveHostsRequest) error {
+	if req.GetReservation() == nil {
+		return errNilReservation
+	}
+	return nil
 }
 
 // GetCompletedReservations gets the completed host reservations from

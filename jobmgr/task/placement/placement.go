@@ -153,7 +153,8 @@ func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Plac
 		placement.GetTasks(),
 		placement.GetHostname(),
 		placement.GetAgentId(),
-		placement.GetPorts())
+		placement.GetPorts(),
+	)
 	if err != nil {
 		err = p.taskLauncher.TryReturnOffers(ctx, err, placement)
 		if err != nil {

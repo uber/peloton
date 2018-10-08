@@ -55,24 +55,41 @@ type LaunchableTaskInfo struct {
 // tasks from the placed queues of resource pool
 type Launcher interface {
 	// ProcessPlacement launches tasks to hostmgr
-	ProcessPlacement(ctx context.Context, tasks []*hostsvc.LaunchableTask, placement *resmgr.Placement) error
-	// LaunchStatefulTasks launches stateful task with reserved resource to hostmgr directly.
-	LaunchStatefulTasks(ctx context.Context, selectedTasks []*hostsvc.LaunchableTask, hostname string, selectedPorts []uint32, checkVolume bool) error
+	ProcessPlacement(
+		ctx context.Context,
+		tasks []*hostsvc.LaunchableTask,
+		placement *resmgr.Placement) error
+	// LaunchStatefulTasks launches stateful task with reserved resource to
+	// hostmgr directly.
+	LaunchStatefulTasks(
+		ctx context.Context,
+		selectedTasks []*hostsvc.LaunchableTask,
+		hostname string,
+		selectedPorts []uint32,
+		hostOfferID *peloton.HostOfferID,
+		checkVolume bool,
+	) error
 	// GetLaunchableTasks returns current task configuration and
 	// the runtime diff which needs to be patched onto existing runtime for
 	// each launchable task. The second return value contains the tasks that
 	// were skipped, for example because they were not found.
 	GetLaunchableTasks(
-		ctx context.Context, tasks []*peloton.TaskID,
-		hostname string, agentID *mesos.AgentID, selectedPorts []uint32) (
-		map[string]*LaunchableTask, []*peloton.TaskID, error)
+		ctx context.Context,
+		tasks []*peloton.TaskID,
+		hostname string,
+		agentID *mesos.AgentID,
+		selectedPorts []uint32,
+	) (map[string]*LaunchableTask, []*peloton.TaskID, error)
 	// CreateLaunchableTasks generates list of hostsvc.LaunchableTask and a map
 	// of skipped TaskInfo from map of TaskInfo
 	CreateLaunchableTasks(
 		ctx context.Context, tasks map[string]*LaunchableTaskInfo) (
 		[]*hostsvc.LaunchableTask, map[string]*LaunchableTaskInfo)
 	// TryReturnOffers returns the offers in the placement back to host manager
-	TryReturnOffers(ctx context.Context, err error, placement *resmgr.Placement) error
+	TryReturnOffers(
+		ctx context.Context,
+		err error,
+		placement *resmgr.Placement) error
 }
 
 // launcher implements the Launcher interface
@@ -141,7 +158,11 @@ func GetLauncher() Launcher {
 }
 
 // ProcessPlacements launches tasks to host manager
-func (l *launcher) ProcessPlacement(ctx context.Context, tasks []*hostsvc.LaunchableTask, placement *resmgr.Placement) error {
+func (l *launcher) ProcessPlacement(
+	ctx context.Context,
+	tasks []*hostsvc.LaunchableTask,
+	placement *resmgr.Placement,
+) error {
 	l.metrics.LauncherGoRoutines.Inc(1)
 	err := l.launchTasks(ctx, tasks, placement)
 	l.TryReturnOffers(ctx, err, placement)
@@ -413,7 +434,9 @@ func (l *launcher) LaunchStatefulTasks(
 	selectedTasks []*hostsvc.LaunchableTask,
 	hostname string,
 	selectedPorts []uint32,
-	checkVolume bool) error {
+	hostOfferID *peloton.HostOfferID,
+	checkVolume bool,
+) error {
 	ctx, cancel := context.WithTimeout(ctx, _rpcTimeout)
 	defer cancel()
 
@@ -463,6 +486,7 @@ func (l *launcher) LaunchStatefulTasks(
 	var request = &hostsvc.OfferOperationsRequest{
 		Hostname:   hostname,
 		Operations: operations,
+		Id:         hostOfferID,
 	}
 
 	log.WithFields(log.Fields{
@@ -490,6 +514,7 @@ func (l *launcher) launchBatchTasks(
 		Hostname: placement.GetHostname(),
 		Tasks:    selectedTasks,
 		AgentId:  placement.GetAgentId(),
+		Id:       placement.GetHostOfferID(),
 	}
 
 	log.WithField("request", request).Debug("LaunchTasks Called")
@@ -535,6 +560,7 @@ func (l *launcher) launchTasks(
 			selectedTasks,
 			placement.GetHostname(),
 			placement.GetPorts(),
+			placement.GetHostOfferID(),
 			true, /* checkVolume */
 		)
 	}
@@ -563,6 +589,7 @@ func (l *launcher) TryReturnOffers(ctx context.Context, err error, placement *re
 			HostOffers: []*hostsvc.HostOffer{{
 				Hostname: placement.Hostname,
 				AgentId:  placement.AgentId,
+				Id:       placement.GetHostOfferID(),
 			}},
 		}
 		ctx, cancel := context.WithTimeout(ctx, _rpcTimeout)

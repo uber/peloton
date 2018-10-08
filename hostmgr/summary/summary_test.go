@@ -616,7 +616,7 @@ func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
 
 		suite.Equal(
 			tt.offerID,
-			s.offerID,
+			s.hostOfferID,
 			"test case is %s", ttName)
 
 		if match.Result != hostsvc.HostFilterResult_MATCH {
@@ -757,7 +757,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 
 		suite.Equal(
 			tt.offerID,
-			s.offerID,
+			s.hostOfferID,
 			"test case is %s", ttName)
 
 		if tt.wantResult != hostsvc.HostFilterResult_MATCH {
@@ -921,7 +921,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 		suite.Equal(tt.resetExpected, reset, tt.msg)
 		suite.Equal(s.readyCount.Load(), int32(tt.readyCount), tt.msg)
 		if tt.resetExpected {
-			suite.Equal(emptyOfferID, s.offerID)
+			suite.Equal(emptyOfferID, s.hostOfferID)
 		}
 	}
 
@@ -933,7 +933,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 
 	// Setting placing offers, without resetting readyCount (represents outstanding unreserved offers) to zero
 	s.CasStatus(s.status, PlacingHost)
-	suite.NotEqual(emptyOfferID, s.offerID)
+	suite.NotEqual(emptyOfferID, s.hostOfferID)
 	suite.Equal(s.readyCount.Load(), int32(0))
 	s.readyCount.Store(int32(5))
 	reset, _ := s.ResetExpiredPlacingOfferStatus(now)
@@ -945,45 +945,67 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() {
 	defer suite.ctrl.Finish()
 	offers := suite.createUnreservedMesosOffers(5)
-	offers = append(offers, suite.createReservedMesosOffer("reserved-offerid-1", false))
+	offers = append(offers, suite.createReservedMesosOffer(
+		"reserved-offerid-1", false))
 
 	testTable := []struct {
+		name               string
 		initialStatus      HostStatus
 		afterStatus        HostStatus
+		offerID            string
 		expectedReadyCount int32
 		err                error
 	}{
 		{
+			name:               "host in ready state should not return offers",
 			initialStatus:      ReadyHost,
 			afterStatus:        ReadyHost,
+			offerID:            offers[0].GetId().GetValue(),
 			expectedReadyCount: 5,
-			err:                errors.New("Host status is not Placing"),
+			err:                errors.New("host status is not Placing"),
 		},
 		{
+			name:               "host in placing state should return offers",
 			initialStatus:      PlacingHost,
 			afterStatus:        ReadyHost,
+			offerID:            offers[0].GetId().GetValue(),
 			expectedReadyCount: 0,
 			err:                nil,
+		},
+		{
+			name: "host in placing state with different offer id should not " +
+				"return offers",
+			initialStatus:      PlacingHost,
+			afterStatus:        PlacingHost,
+			offerID:            "does-not-exist",
+			expectedReadyCount: 5,
+			err:                errors.New("host offer id does not match"),
 		},
 	}
 
 	for _, tt := range testTable {
-		s := New(suite.mockVolumeStore, nil, offers[0].GetHostname(), supportedSlackResourceTypes).(*hostSummary)
+		s := New(
+			suite.mockVolumeStore,
+			nil,
+			offers[0].GetHostname(),
+			supportedSlackResourceTypes).(*hostSummary)
 		s.AddMesosOffers(context.Background(), offers)
 		suite.Equal(s.readyCount.Load(), int32(len(offers)-1))
 		s.status = tt.initialStatus
+		s.hostOfferID = tt.offerID
 
-		_, err := s.ClaimForLaunch()
+		_, err := s.ClaimForLaunch(offers[0].GetId().GetValue())
 		if err != nil {
-			suite.Equal(err.Error(), tt.err.Error())
+			suite.Equal(err.Error(), tt.err.Error(), tt.name)
 		}
-		suite.Equal(s.status, tt.afterStatus)
-		suite.Equal(s.readyCount.Load(), tt.expectedReadyCount)
+		suite.Equal(s.status, tt.afterStatus, tt.name)
+		suite.Equal(s.readyCount.Load(), tt.expectedReadyCount, tt.name)
 		summaryOffers := s.GetOffers(Unreserved)
-		suite.Equal(int32(len(summaryOffers)), tt.expectedReadyCount)
-		s.RemoveMesosOffer("reserved-offerid-1", "Removing reserved offer")
+		suite.Equal(int32(len(summaryOffers)), tt.expectedReadyCount, tt.name)
+		s.RemoveMesosOffer("reserved-offerid-1",
+			"Removing reserved offer")
 		summaryOffers = s.GetOffers(Reserved)
-		suite.Equal(len(summaryOffers), 0)
+		suite.Equal(len(summaryOffers), 0, tt.name)
 	}
 }
 

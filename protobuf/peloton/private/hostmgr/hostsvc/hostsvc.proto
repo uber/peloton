@@ -500,7 +500,11 @@ message OfferOperationsRequest {
     // Repeated Operations will be performed in sequential manner.
     repeated OfferOperation operations = 1;
 
+    // The host name of the host where the operations will be performed
     string hostname = 2;
+
+    // The host offer id of the host where the operations will be performed
+    api.v0.peloton.HostOfferID id = 3;
 }
 
 message OfferOperationsResponse {
@@ -571,6 +575,7 @@ message LaunchTasksRequest {
   string hostname = 1;
   repeated LaunchableTask tasks = 2;
   mesos.v1.AgentID agentId = 3;
+  api.v0.peloton.HostOfferID id = 4;
 }
 
 message LaunchTasksResponse {

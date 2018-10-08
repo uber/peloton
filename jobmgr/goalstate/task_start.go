@@ -124,7 +124,14 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		selectedPorts = append(selectedPorts, port)
 	}
 
-	return goalStateDriver.taskLauncher.LaunchStatefulTasks(ctx, tasksToBeLaunched, taskInfo.GetRuntime().GetHost(), selectedPorts, false /* checkVolume */)
+	return goalStateDriver.taskLauncher.LaunchStatefulTasks(
+		ctx,
+		tasksToBeLaunched,
+		taskInfo.GetRuntime().GetHost(),
+		selectedPorts,
+		nil,   // TODO persist host offer id for stateful
+		false, /* checkVolume */
+	)
 }
 
 // TaskStart sends the task to resource manager for placement and changes the state to PENDING.

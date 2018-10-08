@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
-	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 	"go.uber.org/goleak"
@@ -30,8 +29,6 @@ import (
 )
 
 const (
-	_perHostCPU     = 10.0
-	_perHostMem     = 20.0
 	pelotonRole     = "peloton"
 	_testAgent      = "agent"
 	_testAgent1     = "agent-1"
@@ -39,18 +36,10 @@ const (
 	_testAgent3     = "agent-3"
 	_testAgent4     = "agent-4"
 	_testOfferID    = "testOffer"
-	_testKey        = "testKey"
-	_testValue      = "testValue"
 	_streamID       = "streamID"
 	_dummyOfferID   = "dummyOfferID"
 	_dummyTestAgent = "dummyTestAgent"
 )
-
-type mockJSONClient struct {
-	rejectedOfferIds map[string]bool
-}
-
-type mockMesosStreamIDProvider struct{}
 
 func getMesosOffer(hostName string, offerID string) *mesos.Offer {
 	agentID := fmt.Sprintf("%s-%d", hostName, 1)
@@ -72,14 +61,6 @@ func (suite *OfferPoolTestSuite) GetTimedOfferLen() int {
 		return true
 	})
 	return length
-}
-
-func (c *mockJSONClient) Call(mesosStreamID string, msg proto.Message) error {
-	call := msg.(*sched.Call)
-	for _, id := range call.Decline.OfferIds {
-		c.rejectedOfferIds[*id.Value] = true
-	}
-	return nil
 }
 
 func (suite *OfferPoolTestSuite) createReservedMesosOffer(
@@ -146,10 +127,13 @@ func (suite *OfferPoolTestSuite) createReservedMesosOffer(
 	}
 }
 
-func (suite *OfferPoolTestSuite) createReservedMesosOffers(count int, hasPersistentVolume bool) []*mesos.Offer {
+func (suite *OfferPoolTestSuite) createReservedMesosOffers(
+	count int,
+	hasPersistentVolume bool) []*mesos.Offer {
 	var offers []*mesos.Offer
 	for i := 0; i < count; i++ {
-		offers = append(offers, suite.createReservedMesosOffer("offer-id-"+strconv.Itoa(i), hasPersistentVolume))
+		offers = append(offers, suite.createReservedMesosOffer(
+			"offer-id-"+strconv.Itoa(i), hasPersistentVolume))
 	}
 	return offers
 }
@@ -172,7 +156,9 @@ func (suite *OfferPoolTestSuite) SetupSuite() {
 	for i := 1; i <= 4; i++ {
 		var offers []*mesos.Offer
 		for j := 1; j <= 10; j++ {
-			offer := getMesosOffer(_testAgent+"-"+strconv.Itoa(i), _testAgent+"-"+strconv.Itoa(i)+_testOfferID+"-"+strconv.Itoa(j))
+			offer := getMesosOffer(
+				_testAgent+"-"+strconv.Itoa(i),
+				_testAgent+"-"+strconv.Itoa(i)+_testOfferID+"-"+strconv.Itoa(j))
 			offers = append(offers, offer)
 		}
 		if i == 1 {
@@ -190,7 +176,6 @@ func (suite *OfferPoolTestSuite) SetupSuite() {
 
 func (suite *OfferPoolTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
-	scope := tally.NewTestScope("", map[string]string{})
 
 	suite.schedulerClient = mpb_mocks.NewMockSchedulerClient(suite.ctrl)
 	suite.masterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.ctrl)
@@ -199,7 +184,7 @@ func (suite *OfferPoolTestSuite) SetupTest() {
 	suite.pool = &offerPool{
 		hostOfferIndex:             make(map[string]summary.HostSummary),
 		offerHoldTime:              1 * time.Minute,
-		metrics:                    NewMetrics(scope),
+		metrics:                    NewMetrics(tally.NoopScope),
 		mSchedulerClient:           suite.schedulerClient,
 		mesosFrameworkInfoProvider: suite.provider,
 		binPackingRanker:           binpacking.CreateRanker(binpacking.DeFrag),
@@ -216,25 +201,32 @@ func (suite *OfferPoolTestSuite) TearDownTest() {
 }
 
 func (suite *OfferPoolTestSuite) TestSlackResourceTypes() {
-	scope := tally.NewTestScope("", map[string]string{})
 	NewOfferPool(
 		1*time.Minute,
 		suite.schedulerClient,
-		NewMetrics(scope),
+		NewMetrics(tally.NoopScope),
 		suite.provider,
 		nil,
 		[]string{"GPU", "DUMMY"},
 		[]string{common.MesosCPU, "DUMMY"},
 		binpacking.CreateRanker("DEFRAG"),
 	)
-	suite.True(hmutil.IsSlackResourceType(common.MesosCPU, supportedSlackResourceTypes))
-	suite.False(hmutil.IsSlackResourceType(common.MesosMem, supportedSlackResourceTypes))
+	suite.True(hmutil.IsSlackResourceType(
+		common.MesosCPU,
+		supportedSlackResourceTypes))
+	suite.False(hmutil.IsSlackResourceType(
+		common.MesosMem,
+		supportedSlackResourceTypes))
 }
 
 func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 	// Launching tasks for host, which does not exist in the offer pool
-	_, err := suite.pool.ClaimForLaunch(_dummyTestAgent, true)
+	_, err := suite.pool.ClaimForLaunch(
+		_dummyTestAgent,
+		true,
+		"")
 	suite.Error(err)
+	suite.EqualError(err, "cannot find input hostname dummyTestAgent")
 
 	// Add reserved & unreserved offers, and do ClaimForPlace.
 	offers := suite.createReservedMesosOffers(10, true)
@@ -246,13 +238,14 @@ func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 	suite.Equal(suite.GetTimedOfferLen(), 50)
 
 	for i := 1; i <= len(suite.agent3Offers); i++ {
-		suite.pool.timedOffers.Store(_testAgent3+_testOfferID+"-"+strconv.Itoa(i), &TimedOffer{
-			Hostname:   _testAgent3,
-			Expiration: time.Now().Add(-2 * time.Minute),
-		})
+		suite.pool.timedOffers.Store(_testAgent3+_testOfferID+"-"+strconv.Itoa(i),
+			&TimedOffer{
+				Hostname:   _testAgent3,
+				Expiration: time.Now().Add(-2 * time.Minute),
+			})
 	}
 
-	takenHostOffers := map[string][]*mesos.Offer{}
+	takenHostOffers := map[string]*summary.Offer{}
 	mutex := &sync.Mutex{}
 	nClients := 4
 	var limit uint32 = 1
@@ -277,9 +270,11 @@ func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 					"hostname %s has incorrect offer length",
 					hostname)
 				if _, ok := takenHostOffers[hostname]; ok {
-					suite.Fail("Host %s is taken multiple times", hostname)
+					suite.Fail(
+						"Host %s is taken multiple times",
+						hostname)
 				}
-				takenHostOffers[hostname] = hostOffer.Offers
+				takenHostOffers[hostname] = hostOffer
 			}
 			wg.Done()
 		}(i)
@@ -290,7 +285,10 @@ func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 	suite.Equal(len(resultCount), 2)
 
 	// Launch Tasks for successful case.
-	offerMap, err := suite.pool.ClaimForLaunch(_testAgent1, false)
+	offerMap, err := suite.pool.ClaimForLaunch(
+		_testAgent1,
+		false,
+		takenHostOffers[_testAgent1].ID)
 	suite.NoError(err)
 	suite.Equal(len(offerMap), 10)
 	suite.Equal(suite.GetTimedOfferLen(), 40)
@@ -298,19 +296,30 @@ func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 	// Launch Task for Expired Offers.
 	suite.pool.RemoveExpiredOffers()
 	suite.Equal(suite.GetTimedOfferLen(), 30)
-	offerMap, err = suite.pool.ClaimForLaunch(_testAgent3, false)
+	offerMap, err = suite.pool.ClaimForLaunch(
+		_testAgent3,
+		false,
+		takenHostOffers[_testAgent3].ID)
 	suite.Nil(offerMap)
 	suite.Error(err)
 
 	// Return unused offers for host, it will mark that host from Placing -> Ready.
 	suite.pool.ReturnUnusedOffers(_testAgent2)
-	offerMap, err = suite.pool.ClaimForLaunch(_testAgent2, false)
+	offerMap, err = suite.pool.ClaimForLaunch(
+		_testAgent2,
+		false,
+		takenHostOffers[_testAgent2].ID,
+	)
 	suite.Nil(offerMap)
 	suite.Error(err)
 
 	_offerID := "agent-4testOffer-1"
 	suite.pool.RescindOffer(&mesos.OfferID{Value: &_offerID})
-	offerMap, err = suite.pool.ClaimForLaunch(_testAgent4, false)
+	offerMap, err = suite.pool.ClaimForLaunch(
+		_testAgent4,
+		false,
+		takenHostOffers[_testAgent4].ID,
+	)
 	suite.Equal(len(offerMap), 9)
 	suite.NoError(err)
 
@@ -320,12 +329,18 @@ func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 	// Launch Task on Host, who are set from Placing -> Ready
 	hostnames := suite.pool.ResetExpiredHostSummaries(time.Now().Add(2 * time.Hour))
 	suite.Equal(len(hostnames), 1)
-	offerMap, err = suite.pool.ClaimForLaunch(_testAgent3, false)
+	offerMap, err = suite.pool.ClaimForLaunch(
+		_testAgent3,
+		false,
+		takenHostOffers[_testAgent3].ID)
 	suite.Nil(offerMap)
 	suite.Error(err)
 
 	// Launch Task with Reserved Resources.
-	offerMap, err = suite.pool.ClaimForLaunch(_testAgent, true)
+	offerMap, err = suite.pool.ClaimForLaunch(
+		_testAgent,
+		true,
+		takenHostOffers[_testAgent3].ID)
 	suite.NoError(err)
 	suite.Equal(len(offerMap), 10)
 	suite.Equal(suite.GetTimedOfferLen(), 20)
@@ -442,18 +457,36 @@ func (suite *OfferPoolTestSuite) TestOffersWithUnavailability() {
 		FrameworkId: frameworkID,
 		Type:        &callType,
 		Decline: &sched.Call_Decline{
-			OfferIds: []*mesos.OfferID{unavailableOffer1.Id, unavailableOffer3.Id, unavailableOffer4.Id},
+			OfferIds: []*mesos.OfferID{
+				unavailableOffer1.Id,
+				unavailableOffer3.Id,
+				unavailableOffer4.Id,
+			},
 		},
 	}
 
 	gomock.InOrder(
-		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(frameworkID),
-		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
+		suite.provider.
+			EXPECT().
+			GetFrameworkID(context.Background()).Return(frameworkID),
+		suite.provider.
+			EXPECT().
+			GetMesosStreamID(context.Background()).Return(_streamID),
 		suite.schedulerClient.EXPECT().Call(_streamID, msg).Return(nil),
 	)
 
 	// the offer with Unavailability shouldn't be considered
-	suite.pool.AddOffers(context.Background(), []*mesos.Offer{offer1, offer2, offer3, unavailableOffer1, unavailableOffer2, unavailableOffer3, unavailableOffer4})
+	suite.pool.AddOffers(
+		context.Background(),
+		[]*mesos.Offer{
+			offer1,
+			offer2,
+			offer3,
+			unavailableOffer1,
+			unavailableOffer2,
+			unavailableOffer3,
+			unavailableOffer4},
+	)
 	suite.Equal(suite.GetTimedOfferLen(), 4)
 
 	// Clear all offers.
@@ -462,7 +495,11 @@ func (suite *OfferPoolTestSuite) TestOffersWithUnavailability() {
 	suite.Equal(len(suite.pool.hostOfferIndex), 0)
 
 	// Add offers back to pool
-	suite.pool.AddOffers(context.Background(), []*mesos.Offer{offer1, offer2, offer3})
+	suite.pool.AddOffers(context.Background(), []*mesos.Offer{
+		offer1,
+		offer2,
+		offer3,
+	})
 	suite.Equal(suite.GetTimedOfferLen(), 3)
 
 	// resending an unavailable offer shouldn't break anything
@@ -482,7 +519,12 @@ func (suite *OfferPoolTestSuite) TestRemoveExpiredOffers() {
 	offer4 := suite.agent4Offers[3]
 
 	// pool with offers within timeout
-	suite.pool.AddOffers(context.Background(), []*mesos.Offer{offer1, offer2, offer3, offer4})
+	suite.pool.AddOffers(context.Background(), []*mesos.Offer{
+		offer1,
+		offer2,
+		offer3,
+		offer4,
+	})
 	removed, valid = suite.pool.RemoveExpiredOffers()
 	suite.Empty(removed)
 	suite.Equal(4, valid)
@@ -702,18 +744,21 @@ func (suite *OfferPoolTestSuite) TestResetExpiredHostSummaries() {
 	}
 
 	now := time.Now()
-	scope := tally.NewTestScope("", map[string]string{})
-
 	for _, tt := range testTable {
 		hostOfferIndex := make(map[string]summary.HostSummary)
 		for _, helper := range tt.helpers {
 			mhs := hostmgr_summary_mocks.NewMockHostSummary(suite.ctrl)
-			mhs.EXPECT().ResetExpiredPlacingOfferStatus(now).Return(helper.mockResetExpiredPlacingOfferStatus, scalar.Resources{})
+			mhs.EXPECT().
+				ResetExpiredPlacingOfferStatus(now).
+				Return(
+					helper.mockResetExpiredPlacingOfferStatus,
+					scalar.Resources{},
+				)
 			hostOfferIndex[helper.hostname] = mhs
 		}
 		pool := &offerPool{
 			hostOfferIndex: hostOfferIndex,
-			metrics:        NewMetrics(scope),
+			metrics:        NewMetrics(tally.NoopScope),
 		}
 		resetHostnames := pool.ResetExpiredHostSummaries(now)
 		suite.Equal(len(tt.expectedPrunedHostnames), len(resetHostnames), tt.msg)
@@ -766,19 +811,24 @@ func (suite *OfferPoolTestSuite) TestOfferSorting() {
 	suite.Equal(suite.GetTimedOfferLen(), 0)
 
 	hostName0 := "hostname0"
-	offer0 := suite.createOffer(hostName0, scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 1})
+	offer0 := suite.createOffer(hostName0,
+		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 1})
 
 	hostName1 := "hostname1"
-	offer1 := suite.createOffer(hostName1, scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
+	offer1 := suite.createOffer(hostName1,
+		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
 
 	hostName2 := "hostname2"
-	offer2 := suite.createOffer(hostName2, scalar.Resources{CPU: 2, Mem: 2, Disk: 2, GPU: 4})
+	offer2 := suite.createOffer(hostName2,
+		scalar.Resources{CPU: 2, Mem: 2, Disk: 2, GPU: 4})
 
 	hostName3 := "hostname3"
-	offer3 := suite.createOffer(hostName3, scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
+	offer3 := suite.createOffer(hostName3,
+		scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
 
 	hostName4 := "hostname4"
-	offer4 := suite.createOffer(hostName4, scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
+	offer4 := suite.createOffer(hostName4,
+		scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
 
 	suite.pool.AddOffers(context.Background(),
 		[]*mesos.Offer{offer2, offer3, offer1, offer0, offer4})

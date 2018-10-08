@@ -81,10 +81,6 @@ func (h *Handler) AddEvent(event *pb_eventstream.Event) error {
 	item, err := h.circularBuffer.AddItem(event)
 	if err != nil {
 		h.metrics.AddEventFail.Inc(1)
-		log.WithFields(log.Fields{
-			"Type":  event.Type,
-			"error": err}).
-			Error("Adding event failed")
 		return err
 	}
 	h.metrics.AddEventSuccess.Inc(1)

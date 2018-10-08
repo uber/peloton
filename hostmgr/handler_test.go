@@ -35,6 +35,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -439,6 +440,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 		Hostname: acquiredHostOffers[0].GetHostname(),
 		AgentId:  acquiredHostOffers[0].GetAgentId(),
 		Tasks:    []*hostsvc.LaunchableTask{},
+		Id:       acquiredHostOffers[0].GetId(),
 	}
 
 	launchResp, err := suite.handler.LaunchTasks(
@@ -542,6 +544,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOperation() {
 		Operations: []*hostsvc.OfferOperation{
 			launchOperation,
 		},
+		Id: acquiredHostOffers[0].GetId(),
 	}
 
 	operationResp, err := suite.handler.OfferOperations(
@@ -700,7 +703,7 @@ func (suite *HostMgrHandlerTestSuite) TestShutdownExecutorsFailure() {
 			executors:    nil,
 			numExecutors: 0,
 			shutdownCall: false,
-			errMsg:       "empty executor list in ShutdownExecutorsRequest",
+			errMsg:       errEmptyExecutorList.Error(),
 			msg:          "Test invalid shutdown executor request with no executors present",
 		},
 		{
@@ -712,7 +715,7 @@ func (suite *HostMgrHandlerTestSuite) TestShutdownExecutorsFailure() {
 			},
 			numExecutors: 1,
 			shutdownCall: false,
-			errMsg:       "empty Executor Id or Agent Id",
+			errMsg:       errEmptyAgentID.Error(),
 			msg:          "Test empty Agent ID",
 		},
 		{
@@ -724,7 +727,7 @@ func (suite *HostMgrHandlerTestSuite) TestShutdownExecutorsFailure() {
 			},
 			numExecutors: 1,
 			shutdownCall: false,
-			errMsg:       "empty Executor Id or Agent Id",
+			errMsg:       errEmptyExecutorID.Error(),
 			msg:          "Test empty Executor ID",
 		},
 		{
@@ -787,10 +790,16 @@ func (suite *HostMgrHandlerTestSuite) TestShutdownExecutorsFailure() {
 			suite.Equal(resp.GetError().GetInvalidExecutors().Message, tt.errMsg)
 		} else if tt.shutdownCall && len(tt.errMsg) > 0 {
 			suite.NotNil(resp.GetError().GetShutdownFailure())
-			suite.Equal(int64(1), suite.testScope.Snapshot().Counters()["shutdown_executors_fail+"].Value())
+			suite.Equal(
+				int64(1),
+				suite.testScope.
+					Snapshot().Counters()["shutdown_executors_fail+"].Value())
 		} else {
 			suite.NoError(err)
-			suite.Equal(int64(1), suite.testScope.Snapshot().Counters()["shutdown_executors+"].Value())
+			suite.Equal(
+				int64(1),
+				suite.testScope.
+					Snapshot().Counters()["shutdown_executors+"].Value())
 		}
 	}
 }
@@ -1281,6 +1290,7 @@ func (suite *HostMgrHandlerTestSuite) TestReserveCreateLaunchOperation() {
 			launchOperation,
 			createOperation,
 		},
+		Id: acquiredHostOffers[0].GetId(),
 	}
 
 	operationResp, err := suite.handler.OfferOperations(
@@ -1355,6 +1365,7 @@ func (suite *HostMgrHandlerTestSuite) TestReserveCreateLaunchOperation() {
 			createOperation,
 			launchOperation,
 		},
+		Id: acquiredHostOffers[0].GetId(),
 	}
 
 	operationResp, err = suite.handler.OfferOperations(
@@ -1382,10 +1393,14 @@ func (suite *HostMgrHandlerTestSuite) TestReserveCreateLaunchOperationWithCreate
 
 	// Matching constraint.
 	acquireReq := getAcquireHostOffersRequest()
-	_, err := suite.handler.AcquireHostOffers(
+	acquiredResp, err := suite.handler.AcquireHostOffers(
 		rootCtx,
 		acquireReq,
 	)
+
+	suite.NoError(err)
+	suite.Nil(acquiredResp.GetError())
+	acquiredHostOffers := acquiredResp.GetHostOffers()
 
 	reserveOperation := createHostReserveOperation()
 	createOperation := createHostCreateOperation()
@@ -1443,12 +1458,13 @@ func (suite *HostMgrHandlerTestSuite) TestReserveCreateLaunchOperationWithCreate
 	)
 
 	operationReq := &hostsvc.OfferOperationsRequest{
-		Hostname: "hostname-0",
+		Hostname: acquiredHostOffers[0].GetHostname(),
 		Operations: []*hostsvc.OfferOperation{
 			reserveOperation,
 			createOperation,
 			launchOperation,
 		},
+		Id: acquiredHostOffers[0].GetId(),
 	}
 
 	operationResp, err := suite.handler.OfferOperations(
@@ -1822,7 +1838,7 @@ func (suite *HostMgrHandlerTestSuite) TestReserveHostsError() {
 	}
 	resp, err := suite.handler.ReserveHosts(context.Background(), reserveReq)
 	suite.NoError(err)
-	suite.Equal(resp.Error.Failed.Message, _errNilReservation)
+	suite.Equal(resp.Error.Failed.Message, errNilReservation.Error())
 }
 
 // TestEnqueueReservationError tests to reserve the hosts
@@ -1922,6 +1938,9 @@ func (suite *HostMgrHandlerTestSuite) TestOfferOperationsError() {
 		operationReq,
 	)
 	suite.NotNil(operationResp.GetError().GetInvalidOffers())
+	suite.Equal(
+		operationResp.GetError().GetInvalidOffers().GetMessage(),
+		"cannot find input hostname test-host")
 	suite.Nil(err)
 
 	// Test scheduler Call error
@@ -1941,6 +1960,7 @@ func (suite *HostMgrHandlerTestSuite) TestOfferOperationsError() {
 	suite.checkResourcesGauges(numHosts, "placing")
 
 	operationReq.Hostname = acquiredHostOffers[0].GetHostname()
+	errString := "Fake scheduler call error"
 	gomock.InOrder(
 		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 			suite.frameworkID),
@@ -1950,8 +1970,16 @@ func (suite *HostMgrHandlerTestSuite) TestOfferOperationsError() {
 			Call(
 				gomock.Eq(_streamID),
 				gomock.Any(),
-			).Return(fmt.Errorf("Fake scheduler call error")),
+			).Return(fmt.Errorf(errString)),
 	)
+
+	operationReq = &hostsvc.OfferOperationsRequest{
+		Hostname: acquiredHostOffers[0].GetHostname(),
+		Operations: []*hostsvc.OfferOperation{
+			launchOperation,
+		},
+		Id: acquiredHostOffers[0].GetId(),
+	}
 
 	operationResp, err = suite.handler.OfferOperations(
 		rootCtx,
@@ -1959,40 +1987,146 @@ func (suite *HostMgrHandlerTestSuite) TestOfferOperationsError() {
 	)
 	suite.NoError(err)
 	suite.NotNil(operationResp.GetError().GetFailure())
+	suite.Equal(errString, operationResp.GetError().GetFailure().GetMessage())
 }
 
-// Test LaunchTasks errors
-func (suite *HostMgrHandlerTestSuite) TestLaunchTasksError() {
-	numHosts := 1
+func (suite *HostMgrHandlerTestSuite) withHostOffers(numHosts int) []*hostsvc.
+	HostOffer {
 	acquiredResp, err := suite.acquireHostOffers(numHosts)
-
 	suite.NoError(err)
 	suite.Nil(acquiredResp.GetError())
 	acquiredHostOffers := acquiredResp.GetHostOffers()
 	suite.Equal(1, len(acquiredHostOffers))
-
 	suite.Equal(
 		int64(1),
 		suite.testScope.Snapshot().Counters()["acquire_host_offers+"].Value())
-
 	suite.checkResourcesGauges(0, "ready")
 	suite.checkResourcesGauges(numHosts, "placing")
+	return acquiredHostOffers
+}
 
-	launchReq := &hostsvc.LaunchTasksRequest{
-		Hostname: "test-host",
-		AgentId:  acquiredHostOffers[0].GetAgentId(),
-		Tasks:    generateLaunchableTasks(1),
+// Test LaunchTasks errors
+func (suite *HostMgrHandlerTestSuite) TestLaunchTasksInvalidOfferError() {
+	acquiredHostOffers := suite.withHostOffers(1)
+
+	tt := []struct {
+		test string
+		req  *hostsvc.LaunchTasksRequest
+		err  *hostsvc.InvalidOffers
+	}{
+		{test: "test invalid host name",
+			req: &hostsvc.LaunchTasksRequest{
+				Hostname: "test-host",
+				AgentId:  acquiredHostOffers[0].GetAgentId(),
+				Tasks:    generateLaunchableTasks(1),
+				Id:       acquiredHostOffers[0].GetId(),
+			},
+			err: &hostsvc.InvalidOffers{
+				Message: "cannot find input hostname test-host",
+			},
+		},
+		{
+			test: "test invalid host offer id",
+			req: &hostsvc.LaunchTasksRequest{
+				Hostname: acquiredHostOffers[0].GetHostname(),
+				AgentId:  acquiredHostOffers[0].GetAgentId(),
+				Tasks:    generateLaunchableTasks(1),
+				Id:       &peloton.HostOfferID{Value: uuid.New()},
+			},
+			err: &hostsvc.InvalidOffers{
+				Message: "host offer id does not match",
+			},
+		},
 	}
 
-	// Test InvalidOffer error
-	launchResp, err := suite.handler.LaunchTasks(
-		rootCtx,
-		launchReq,
-	)
-	suite.NoError(err)
-	suite.NotNil(launchResp.GetError().GetInvalidOffers())
+	for _, t := range tt {
+		// Test InvalidOffer error
+		launchResp, err := suite.handler.LaunchTasks(
+			rootCtx,
+			t.req,
+		)
+		suite.NoError(err, t.test)
+		suite.NotNil(launchResp.GetError().GetInvalidOffers(), t.test)
+		suite.Equal(
+			t.err.GetMessage(),
+			launchResp.GetError().GetInvalidOffers().GetMessage(), t.test)
+	}
+}
 
-	launchReq.Hostname = acquiredHostOffers[0].GetHostname()
+func (suite *HostMgrHandlerTestSuite) TestLaunchTasksInvalidArgError() {
+	acquiredHostOffers := suite.withHostOffers(1)
+	tt := []struct {
+		test string
+		req  *hostsvc.LaunchTasksRequest
+		err  *hostsvc.InvalidArgument
+	}{
+		{test: "test empty tasks",
+			req: &hostsvc.LaunchTasksRequest{
+				Hostname: acquiredHostOffers[0].GetHostname(),
+				AgentId:  acquiredHostOffers[0].GetAgentId(),
+				Tasks:    nil,
+				Id:       &peloton.HostOfferID{Value: uuid.New()},
+			},
+			err: &hostsvc.InvalidArgument{
+				Message: errEmptyTaskList.Error(),
+			},
+		},
+		{
+			test: "test empty agent id",
+			req: &hostsvc.LaunchTasksRequest{
+				Hostname: acquiredHostOffers[0].GetHostname(),
+				AgentId:  nil,
+				Tasks:    generateLaunchableTasks(1),
+				Id:       &peloton.HostOfferID{Value: uuid.New()},
+			},
+			err: &hostsvc.InvalidArgument{
+				Message: errEmptyAgentID.Error(),
+			},
+		},
+		{
+			test: "test empty hostname",
+			req: &hostsvc.LaunchTasksRequest{
+				Hostname: "",
+				AgentId:  acquiredHostOffers[0].GetAgentId(),
+				Tasks:    generateLaunchableTasks(1),
+				Id:       &peloton.HostOfferID{Value: uuid.New()},
+			},
+			err: &hostsvc.InvalidArgument{
+				Message: errEmptyHostName.Error(),
+			},
+		},
+		{
+			test: "test empty host offer id",
+			req: &hostsvc.LaunchTasksRequest{
+				Hostname: acquiredHostOffers[0].GetHostname(),
+				AgentId:  acquiredHostOffers[0].GetAgentId(),
+				Tasks:    generateLaunchableTasks(1),
+				Id:       nil,
+			},
+			err: &hostsvc.InvalidArgument{
+				Message: errEmptyHostOfferID.Error(),
+			},
+		},
+	}
+	for _, t := range tt {
+		// Test InvalidArgument error
+		launchResp, err := suite.handler.LaunchTasks(
+			rootCtx,
+			t.req,
+		)
+		suite.NoError(err, t.test)
+		suite.NotNil(launchResp.GetError().GetInvalidArgument(), t.test)
+		suite.Equal(
+			t.err.GetMessage(),
+			launchResp.GetError().GetInvalidArgument().GetMessage(), t.test)
+	}
+}
+
+func (suite *HostMgrHandlerTestSuite) TestLaunchTasksSchedulerError() {
+	acquiredHostOffers := suite.withHostOffers(1)
+
+	// Test framework client error
+	errString := "fake scheduler call error"
 	gomock.InOrder(
 		// Set expectations on provider
 		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
@@ -2004,16 +2138,24 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchTasksError() {
 			Call(
 				gomock.Eq(_streamID),
 				gomock.Any(),
-			).Return(fmt.Errorf("Fake scheduler call error")),
+			).Return(fmt.Errorf(errString)),
 	)
 
-	launchResp, err = suite.handler.LaunchTasks(
+	launchResp, err := suite.handler.LaunchTasks(
 		rootCtx,
-		launchReq,
+		&hostsvc.LaunchTasksRequest{
+			Hostname: acquiredHostOffers[0].GetHostname(),
+			AgentId:  acquiredHostOffers[0].GetAgentId(),
+			Tasks:    generateLaunchableTasks(1),
+			Id:       acquiredHostOffers[0].GetId(),
+		},
 	)
 
 	suite.NoError(err)
 	suite.NotNil(launchResp.GetError().GetLaunchFailure())
+	suite.Equal(
+		launchResp.GetError().GetLaunchFailure().GetMessage(),
+		errString)
 }
 
 // Helper type to implement sorting on the slice

@@ -62,7 +62,8 @@ type Pool interface {
 	// of peloton apps.
 	ClaimForLaunch(
 		hostname string,
-		useReservedOffers bool) (map[string]*mesos.Offer, error)
+		useReservedOffers bool,
+		hostOfferID string) (map[string]*mesos.Offer, error)
 
 	// ReturnUnusedOffers returns previously placed offers on hostname back
 	// to current offer pool so they can be used by future launch actions.
@@ -246,7 +247,9 @@ func (p *offerPool) getRankedHostSummaryList(
 // ClaimForLaunch takes offers from pool (removes from hostsummary) for launch.
 func (p *offerPool) ClaimForLaunch(
 	hostname string,
-	useReservedOffers bool) (map[string]*mesos.Offer, error) {
+	useReservedOffers bool,
+	hostOfferID string,
+) (map[string]*mesos.Offer, error) {
 	p.RLock()
 	defer p.RUnlock()
 
@@ -261,7 +264,7 @@ func (p *offerPool) ClaimForLaunch(
 	if useReservedOffers {
 		offerMap, err = hs.ClaimReservedOffersForLaunch()
 	} else {
-		offerMap, err = hs.ClaimForLaunch()
+		offerMap, err = hs.ClaimForLaunch(hostOfferID)
 	}
 
 	if err != nil {
@@ -269,7 +272,7 @@ func (p *offerPool) ClaimForLaunch(
 	}
 
 	if len(offerMap) == 0 {
-		return nil, errors.New("No offer found to launch task on " + hostname)
+		return nil, errors.New("no offer found to launch task on " + hostname)
 	}
 
 	for id := range offerMap {
@@ -522,13 +525,13 @@ func (p *offerPool) ResetExpiredHostSummaries(now time.Time) []string {
 	p.RLock()
 	defer p.RUnlock()
 	var resetHostnames []string
-	for hostname, summary := range p.hostOfferIndex {
-		if reset, res := summary.ResetExpiredPlacingOfferStatus(now); reset {
+	for hostname, summ := range p.hostOfferIndex {
+		if reset, res := summ.ResetExpiredPlacingOfferStatus(now); reset {
 			resetHostnames = append(resetHostnames, hostname)
 			p.metrics.ResetExpiredHosts.Inc(1)
 			log.WithFields(log.Fields{
 				"host":    hostname,
-				"summary": summary,
+				"summary": summ,
 				"delta":   res,
 			}).Info("reset expired host summaries.")
 		}

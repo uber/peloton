@@ -157,11 +157,7 @@ func (r *reserver) Stop() {
 func (r *reserver) EnqueueReservation(
 	ctx context.Context,
 	reservation *hostsvc.Reservation) error {
-	err := r.reserveQueue.Enqueue(reservation)
-	if err != nil {
-		return err
-	}
-	return nil
+	return r.reserveQueue.Enqueue(reservation)
 }
 
 // DequeueCompletedReservation dequeues the completed reservation
@@ -197,11 +193,13 @@ func (r *reserver) Reserve(ctx context.Context) (time.Duration, error) {
 	// Get Tasks from the reservation queue
 	item, err := r.reserveQueue.Dequeue(1 * time.Second)
 	if err != nil {
-		return _noTasksTimeoutPenalty, errors.New("No items in reservation queue")
+		return _noTasksTimeoutPenalty,
+			errors.New("no items in reservation queue")
 	}
 	reservation, ok := item.(*hostsvc.Reservation)
 	if !ok || reservation.GetTask() == nil {
-		return _noTasksTimeoutPenalty, fmt.Errorf("Not a valid task %s", reservation.GetTask())
+		return _noTasksTimeoutPenalty, fmt.Errorf("not a valid task %s",
+			reservation.GetTask())
 	}
 
 	hsummary, hInfo := r.addHostReservation(reservation.GetHosts())
@@ -210,10 +208,12 @@ func (r *reserver) Reserve(ctx context.Context) (time.Duration, error) {
 		// we need to add this reservation as failed reservation
 		err := r.completedReservationQueue.Enqueue(reservation)
 		if err != nil {
-			log.WithError(err).WithField("reservation", reservation).
+			log.WithError(err).
+				WithField("reservation", reservation).
 				Errorf("couldn't enqueue failed reservation")
 		}
-		return time.Duration(_noHostsTimeoutPenalty), errors.New("reservation failed")
+		return time.Duration(_noHostsTimeoutPenalty),
+			errors.New("reservation failed")
 	}
 	// Making the reservation
 	r.reservations[hInfo.Hostname] = reservation

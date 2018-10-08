@@ -95,6 +95,7 @@ func createHostOffer(hostID int, resources []*mesos.Resource) *hostsvc.HostOffer
 			Value: &agentID,
 		},
 		Resources: resources,
+		Id:        &peloton.HostOfferID{Value: uuid.New()},
 	}
 }
 

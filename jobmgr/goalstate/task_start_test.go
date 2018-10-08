@@ -3,9 +3,8 @@ package goalstate
 import (
 	"context"
 	"errors"
-	"testing"
-
 	"fmt"
+	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	job2 "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
@@ -17,12 +16,11 @@ import (
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
-	mocks2 "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
-	storemocks "code.uber.internal/infra/peloton/storage/mocks"
-
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	launchermocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
 	"code.uber.internal/infra/peloton/storage"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 	taskutil "code.uber.internal/infra/peloton/util/task"
 
 	"github.com/golang/mock/gomock"
@@ -43,7 +41,7 @@ type TaskStartTestSuite struct {
 	cachedJob           *cachedmocks.MockJob
 	cachedConfig        *cachedmocks.MockJobConfigCache
 	cachedTask          *cachedmocks.MockTask
-	mockTaskLauncher    *mocks2.MockLauncher
+	mockTaskLauncher    *launchermocks.MockLauncher
 	mockVolumeStore     *storemocks.MockPersistentVolumeStore
 	goalStateDriver     *driver
 	resmgrClient        *resmocks.MockResourceManagerServiceYARPCClient
@@ -68,7 +66,7 @@ func (suite *TaskStartTestSuite) SetupTest() {
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.cachedConfig = cachedmocks.NewMockJobConfigCache(suite.ctrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
-	suite.mockTaskLauncher = mocks2.NewMockLauncher(suite.ctrl)
+	suite.mockTaskLauncher = launchermocks.NewMockLauncher(suite.ctrl)
 	suite.mockVolumeStore = storemocks.NewMockPersistentVolumeStore(suite.ctrl)
 
 	suite.goalStateDriver = &driver{
@@ -326,7 +324,13 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
 		Return(nil, nil)
 
 	suite.mockTaskLauncher.EXPECT().
-		LaunchStatefulTasks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), false).
+		LaunchStatefulTasks(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			false).
 		Return(nil)
 
 	err := TaskStart(context.Background(), suite.taskEnt)

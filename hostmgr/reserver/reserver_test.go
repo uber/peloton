@@ -104,7 +104,7 @@ func (suite *ReserverTestSuite) TestReservationWithNoTasks() {
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), _noTasksTimeoutPenalty.Seconds())
 	suite.Error(err)
-	suite.Contains(err.Error(), "No items in reservation queue")
+	suite.Contains(err.Error(), "no items in reservation queue")
 }
 
 // Testing reservation with Nil Task
@@ -115,7 +115,7 @@ func (suite *ReserverTestSuite) TestReservationWithNilTasks() {
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), _noTasksTimeoutPenalty.Seconds())
 	suite.Error(err)
-	suite.Contains(err.Error(), "Not a valid task")
+	suite.Contains(err.Error(), "not a valid task")
 }
 
 // Testing reservation if that fulfills

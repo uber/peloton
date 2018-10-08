@@ -109,7 +109,7 @@ type HostSummary interface {
 	RemoveMesosOffer(offerID, reason string) (HostStatus, *mesos.Offer)
 
 	// ClaimForLaunch releases unreserved offers for task launch.
-	ClaimForLaunch() (map[string]*mesos.Offer, error)
+	ClaimForLaunch(hostOfferID string) (map[string]*mesos.Offer, error)
 
 	// ClaimReservedOffersForLaunch releases reserved offers for task launch.
 	ClaimReservedOffersForLaunch() (map[string]*mesos.Offer, error)
@@ -161,20 +161,19 @@ type hostSummary struct {
 	// As of now, cpus is only resource type supported as slack.
 	slackResourceTypes []string
 
-	// offerID -> unreserved offer
+	// mesos offerID -> unreserved offer
 	unreservedOffers map[string]*mesos.Offer
-	// offerID -> reserved offer
+	// mesos offerID -> reserved offer
 	reservedOffers map[string]*mesos.Offer
 
 	status                       HostStatus
 	statusPlacingOfferExpiration time.Time
 
 	// When the host has been matched for placing i.e.
-	// the host status is PLACING or RESERVED a unique offer ID is generated.
-	// This match ID is used when then same host offers are used during
-	// launching a task.
-	// For all other host states the ID is empty.
-	offerID          string
+	// the host status is PLACING or RESERVED a unique host offer ID is
+	// generated.
+	// For all other host states the host offer ID is empty.
+	hostOfferID      string
 	offerIDgenerator offerIDgenerator
 
 	readyCount atomic.Int32
@@ -394,7 +393,7 @@ func (a *hostSummary) TryMatch(
 	return Match{
 		Result: hostsvc.HostFilterResult_MATCH,
 		Offer: &Offer{
-			ID:     a.offerID,
+			ID:     a.hostOfferID,
 			Offers: offers,
 		},
 	}
@@ -436,13 +435,20 @@ func (a *hostSummary) AddMesosOffers(
 // ClaimForLaunch atomically check that current hostSummary is in Placing
 // status, release offers so caller can use them to launch tasks, and reset
 // status to ready.
-func (a *hostSummary) ClaimForLaunch() (map[string]*mesos.Offer, error) {
+func (a *hostSummary) ClaimForLaunch(hostOfferID string) (map[string]*mesos.Offer,
+	error) {
 	a.Lock()
 	defer a.Unlock()
 
 	if a.status != PlacingHost {
-		return nil, errors.New("Host status is not Placing")
+		return nil, errors.New("host status is not Placing")
 	}
+
+	if a.hostOfferID != hostOfferID {
+		return nil, errors.New("host offer id does not match")
+	}
+
+	log.WithField("offer_id", hostOfferID).Debug("host offer match")
 
 	result := make(map[string]*mesos.Offer)
 	result, a.unreservedOffers = a.unreservedOffers, result
@@ -529,17 +535,17 @@ func (a *hostSummary) casStatusLockFree(old, new HostStatus) error {
 
 	switch a.status {
 	case ReadyHost:
-		// if its a ready host then reset the offerID
-		a.offerID = emptyOfferID
+		// if its a ready host then reset the hostOfferID
+		a.hostOfferID = emptyOfferID
 		a.readyCount.Store(int32(len(a.unreservedOffers)))
 	case PlacingHost:
 		// generate the offer id for a placing host.
-		a.offerID = a.offerIDgenerator()
+		a.hostOfferID = a.offerIDgenerator()
 		a.statusPlacingOfferExpiration = time.Now().Add(hostPlacingOfferStatusTimeout)
 		a.readyCount.Store(0)
 	case ReservedHost:
 		// generate the offer id for a placing host.
-		a.offerID = a.offerIDgenerator()
+		a.hostOfferID = a.offerIDgenerator()
 		a.readyCount.Store(0)
 	}
 	return nil
