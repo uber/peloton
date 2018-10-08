@@ -1120,6 +1120,131 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 	suite.NoError(err)
 }
 
+// TestUpdateRunContainsTerminatedTaskInstances tests the case to update
+// a job with failed tasks with killed goal state
+func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() {
+	instanceNumber := uint32(10)
+	batchSize := uint32(5)
+	jobVersion := uint64(3)
+	newJobVersion := uint64(4)
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID)
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesCurrent().
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			Instances:  newSlice(0, instanceNumber),
+			JobVersion: newJobVersion,
+		}).AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesUpdated().
+		Return(newSlice(0, instanceNumber))
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesAdded().
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesDone().
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesFailed().
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetUpdateConfig().
+		Return(&pbupdate.UpdateConfig{
+			BatchSize: batchSize,
+		}).AnyTimes()
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(gomock.Any(), gomock.Any(), newJobVersion).
+		Return(&pbjob.JobConfig{
+			ChangeLog: &peloton.ChangeLog{Version: newJobVersion},
+		}, &models.ConfigAddOn{},
+			nil)
+
+	suite.taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return().
+		Times(int(batchSize))
+
+	suite.cachedUpdate.EXPECT().
+		GetRuntimeDiff(gomock.Any()).
+		Return(jobmgrcommon.RuntimeDiff{
+			jobmgrcommon.DesiredConfigVersionField: newJobVersion,
+		}).Times(int(batchSize))
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		WriteProgress(
+			gomock.Any(),
+			pbupdate.State_ROLLING_FORWARD,
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any()).
+		Do(func(_ context.Context, _ pbupdate.State,
+			instancesDone []uint32, instancesFailed []uint32, instancesCurrent []uint32) {
+			suite.EqualValues(instancesCurrent,
+				newSlice(0, batchSize))
+			suite.Empty(instancesDone)
+			suite.Empty(instancesFailed)
+		}).Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.cachedJob.EXPECT().
+		GetTask(uint32(0)).
+		Return(suite.cachedTask)
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(&pbtask.RuntimeInfo{
+			State:                pbtask.TaskState_FAILED,
+			GoalState:            pbtask.TaskState_KILLED,
+			ConfigVersion:        jobVersion,
+			DesiredConfigVersion: jobVersion,
+		}, nil)
+
+	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	err := UpdateRun(context.Background(), suite.updateEnt)
+	suite.NoError(err)
+}
+
 // TestUpdateRunKilledJobAddInstances tests add instances to killed job
 func (suite *UpdateRunTestSuite) TestUpdateRunKilledJobAddInstances() {
 	oldInstanceNumber := uint32(10)

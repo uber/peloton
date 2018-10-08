@@ -197,7 +197,7 @@ func postUpdateAction(
 		// directly begin the next update because some tasks have already completed update
 		// and more update can begin without waiting.
 		if isTaskUpdateCompleted(cachedUpdate, runtime) ||
-			isTaskKilled(runtime) {
+			isTaskTerminated(runtime) {
 			goalStateDriver.EnqueueUpdate(
 				cachedJob.ID(), cachedUpdate.ID(), time.Now())
 			return nil
@@ -217,9 +217,11 @@ func isTaskUpdateCompleted(cachedUpdate cached.Update, runtime *pbtask.RuntimeIn
 		runtime.GetConfigVersion() == cachedUpdate.GetGoalState().JobVersion
 }
 
-func isTaskKilled(runtime *pbtask.RuntimeInfo) bool {
-	return runtime.GetGoalState() == pbtask.TaskState_KILLED &&
-		runtime.GetState() == pbtask.TaskState_KILLED
+// isTaskTerminated returns whether a task is terminated and would
+// not be started again
+func isTaskTerminated(runtime *pbtask.RuntimeInfo) bool {
+	return util.IsPelotonStateTerminal(runtime.GetState()) &&
+		util.IsPelotonStateTerminal(runtime.GetGoalState())
 }
 
 func writeUpdateProgress(
