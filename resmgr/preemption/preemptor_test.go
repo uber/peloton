@@ -340,12 +340,6 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForReadyTasks() {
 		}).Return(nil).AnyTimes()
 	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil).AnyTimes()
 
-	demand := scalar.ZeroResource
-	mockResPool.EXPECT().AddToDemand(gomock.Any()).Do(
-		func(res *scalar.Resources) {
-			demand = demand.Add(res)
-		}).Return(nil).AnyTimes()
-
 	numReadyTasks := 3
 	tasks := suite.createTasks(numReadyTasks, mockResPool)
 	for _, t := range tasks {
@@ -357,8 +351,6 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForReadyTasks() {
 	// Check allocation > entitlement before
 	suite.False(allocation.
 		GetByType(scalar.TotalAllocation).LessThanOrEqual(mockResPool.GetEntitlement()))
-	// Check demand is zero
-	suite.Equal(demand, scalar.ZeroResource)
 
 	err := suite.preemptor.processResourcePool("respool-1")
 	suite.NoError(err)
@@ -366,13 +358,6 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForReadyTasks() {
 	// Check allocation <= entitlement after
 	suite.True(allocation.
 		GetByType(scalar.TotalAllocation).LessThanOrEqual(mockResPool.GetEntitlement()))
-	// Check demand includes resources for all READY tasks
-	suite.Equal(demand, &scalar.Resources{
-		CPU:    _taskResources.CpuLimit * float64(numReadyTasks),
-		MEMORY: _taskResources.MemLimitMb * float64(numReadyTasks),
-		DISK:   _taskResources.DiskLimitMb * float64(numReadyTasks),
-		GPU:    _taskResources.GpuLimit * float64(numReadyTasks),
-	}, demand)
 }
 
 func (suite *PreemptorTestSuite) TestProcessResourcePoolForPlacingTasks() {
@@ -401,20 +386,14 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForPlacingTasks() {
 				DISK:   2450,
 				GPU:    1,
 			}}}
-	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation.
-		GetByType(scalar.TotalAllocation)).
+	mockResPool.EXPECT().GetTotalAllocatedResources().
+		Return(allocation.GetByType(scalar.TotalAllocation)).
 		AnyTimes()
-	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
-		func(res *scalar.Allocation) {
+	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).
+		Do(func(res *scalar.Allocation) {
 			allocation = allocation.Subtract(res)
 		}).Return(nil).AnyTimes()
 	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil).AnyTimes()
-
-	demand := scalar.ZeroResource
-	mockResPool.EXPECT().AddToDemand(gomock.Any()).Do(
-		func(res *scalar.Resources) {
-			demand = demand.Add(res)
-		}).Return(nil).AnyTimes()
 
 	numReadyTasks := 3
 	tasks := suite.createTasks(numReadyTasks, mockResPool)
@@ -425,11 +404,8 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForPlacingTasks() {
 	suite.preemptor.ranker = suite.getMockRanker(tasks)
 
 	// Check allocation > entitlement before
-	suite.False(allocation.GetByType(scalar.TotalAllocation).LessThanOrEqual(
-		mockResPool.
-			GetEntitlement()))
-	// Check demand is zero
-	suite.Equal(demand, scalar.ZeroResource)
+	suite.False(allocation.GetByType(scalar.TotalAllocation).
+		LessThanOrEqual(mockResPool.GetEntitlement()))
 
 	err := suite.preemptor.processResourcePool("respool-1")
 	suite.NoError(err)
@@ -437,13 +413,6 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForPlacingTasks() {
 	// Check allocation <= entitlement after
 	suite.True(allocation.GetByType(scalar.TotalAllocation).
 		LessThanOrEqual(mockResPool.GetEntitlement()))
-	// Check demand includes resources for all READY tasks
-	suite.Equal(demand, &scalar.Resources{
-		CPU:    _taskResources.CpuLimit * float64(numReadyTasks),
-		MEMORY: _taskResources.MemLimitMb * float64(numReadyTasks),
-		DISK:   _taskResources.DiskLimitMb * float64(numReadyTasks),
-		GPU:    _taskResources.GpuLimit * float64(numReadyTasks),
-	}, demand)
 }
 
 func (suite *PreemptorTestSuite) TestProcessResourceGetError() {
@@ -576,64 +545,6 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolEnqueueGangError() {
 	suite.True(strings.Contains(err.Error(), fakeEnqueueError.Error()))
 }
 
-func (suite *PreemptorTestSuite) TestProcessResourcePoolAddDemandError() {
-	ctr := gomock.NewController(suite.T())
-	defer ctr.Finish()
-
-	// Test AddToDemand error
-	fakeDemandError := fmt.Errorf("fake AddToDemand error")
-
-	//Mock resource pool
-	mockResPool := mocks.NewMockResPool(ctr)
-	mockResPool.
-		EXPECT().
-		ID().
-		Return("respool-1").
-		AnyTimes()
-	mockResPool.
-		EXPECT().
-		GetPath().
-		Return("/respool-1").
-		AnyTimes()
-	mockResPool.
-		EXPECT().
-		GetEntitlement().
-		Return(_entitlement)
-	mockResPool.
-		EXPECT().
-		GetTotalAllocatedResources().
-		Return(_allocation.GetByType(scalar.TotalAllocation))
-	mockResPool.
-		EXPECT().
-		EnqueueGang(gomock.Any()).
-		Return(nil)
-	mockResPool.
-		EXPECT().
-		AddToDemand(gomock.Any()).
-		Return(fakeDemandError)
-
-		// Mock resource pool tree
-	mockResTree := mocks.NewMockTree(ctr)
-	mockResTree.
-		EXPECT().
-		Get(&peloton.ResourcePoolID{Value: "respool-1"}).
-		Return(mockResPool, nil)
-	suite.preemptor.resTree = mockResTree
-
-	// Add tasks in the tracker in READY state
-	numReadyTasks := 1
-	tasks := suite.createTasks(numReadyTasks, mockResPool)
-	suite.preemptor.ranker = suite.getMockRanker(tasks)
-	for _, t := range tasks {
-		suite.transitToReady(t.Id)
-	}
-	defer suite.tracker.Clear()
-
-	err := suite.preemptor.processResourcePool("respool-1")
-	suite.NotNil(err)
-	suite.True(strings.Contains(err.Error(), fakeDemandError.Error()))
-}
-
 func (suite *PreemptorTestSuite) TestProcessResourcePoolSubtractAllocationError() {
 	ctr := gomock.NewController(suite.T())
 	defer ctr.Finish()
@@ -666,10 +577,6 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolSubtractAllocationError(
 		EXPECT().
 		SubtractFromAllocation(gomock.Any()).
 		Return(fakeAllocationError)
-	mockResPool.
-		EXPECT().
-		AddToDemand(gomock.Any()).
-		Return(nil)
 	mockResPool.
 		EXPECT().
 		EnqueueGang(gomock.Any()).

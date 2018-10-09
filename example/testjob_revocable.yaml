@@ -1,5 +1,5 @@
 changelog: null
-name: TestPelotonJob_123
+name: TestPelotonJob_Batch_Revocable
 owningteam: team6
 ldapgroups:
 - money
@@ -22,6 +22,8 @@ sla:
   maxrunningtime: 300
   revocable: true
 defaultconfig:
+  # For non-revocable resources [mem,disk,gpu] check slack limit
+  # for resource pool. Default is 20%.
   resource:
     cpulimit: 1.0
     memlimitmb: 2.0
@@ -34,21 +36,3 @@ defaultconfig:
   command:
     shell: true
     value: 'echo "Job $PELOTON_JOB_ID instance $PELOTON_INSTANCE_ID: $PELOTON_TASK_ID" && sleep 30'
-instanceconfig:
-  0:
-    name: controller0
-    controller: true
-    command:
-      shell: true
-      value: 'echo Hello instance 0 && sleep 100'
-    killgraceperiodseconds: 40
-  1:
-    name: instance1
-    command:
-      shell: true
-      value: 'echo Hello instance 0 && sleep 15'
-  2:
-    name: instance2
-    command:
-      shell: true
-      value: 'echo Hello instance 0 && sleep 20'

@@ -34,7 +34,10 @@ type Metrics struct {
 	QueryResourcePoolsSuccess tally.Counter
 	QueryResourcePoolsFail    tally.Counter
 
-	PendingQueueSize tally.Gauge
+	PendingQueueSize    tally.Gauge
+	RevocableQueueSize  tally.Gauge
+	ControllerQueueSize tally.Gauge
+	NPQueueSize         tally.Gauge
 
 	// Physical Resources
 	TotalAllocation          scalar.GaugeMaps
@@ -47,6 +50,7 @@ type Metrics struct {
 	SlackAllocation  scalar.GaugeMaps
 	SlackEntitlement scalar.GaugeMaps
 	SlackDemand      scalar.GaugeMaps
+	SlackAvailable   scalar.GaugeMaps
 
 	ResourcePoolReservation scalar.GaugeMaps
 	ResourcePoolLimit       scalar.GaugeMaps
@@ -63,7 +67,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	failScope := scope.Tagged(map[string]string{"result": "fail"})
 	apiScope := scope.SubScope("api")
 
-	pendingScope := scope.SubScope("pending")
+	queueScope := scope.SubScope("queue")
 
 	allocationScope := scope.SubScope("allocation")
 	entitlementScope := scope.SubScope("entitlement")
@@ -73,6 +77,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	slackAllocationScope := scope.SubScope("slack_allocation")
 	slackEntitlementScope := scope.SubScope("slack_entitlement")
 	slackDemandScope := scope.SubScope("slack_demand")
+	slackAvailableScope := scope.SubScope("slack_available")
 
 	reservationScope := scope.SubScope("reservation")
 	limitScope := scope.SubScope("limit")
@@ -104,7 +109,10 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		QueryResourcePoolsSuccess: successScope.Counter("query_resource_pools"),
 		QueryResourcePoolsFail:    failScope.Counter("query_resource_pools"),
 
-		PendingQueueSize: pendingScope.Gauge("pending_queue_size"),
+		PendingQueueSize:    queueScope.Gauge("pending_queue_size"),
+		RevocableQueueSize:  queueScope.Gauge("revocable_queue_size"),
+		ControllerQueueSize: queueScope.Gauge("controller_queue_size"),
+		NPQueueSize:         queueScope.Gauge("np_queue_size"),
 
 		TotalAllocation: scalar.NewGaugeMaps(allocationScope),
 		NonPreemptibleAllocation: scalar.NewGaugeMaps(allocationScope.
@@ -116,6 +124,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		SlackAllocation:  scalar.NewGaugeMaps(slackAllocationScope),
 		SlackEntitlement: scalar.NewGaugeMaps(slackEntitlementScope),
 		SlackDemand:      scalar.NewGaugeMaps(slackDemandScope),
+		SlackAvailable:   scalar.NewGaugeMaps(slackAvailableScope),
 
 		ResourcePoolReservation: scalar.NewGaugeMaps(reservationScope),
 		ResourcePoolLimit:       scalar.NewGaugeMaps(limitScope),

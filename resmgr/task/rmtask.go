@@ -19,7 +19,7 @@ import (
 
 var errTaskNotPresent = errors.New("task is not present in the tracker")
 
-// RunTimeStats is the container for run time stats of the res mgr task
+// RunTimeStats is the container for run time stats of the resmgr task
 type RunTimeStats struct {
 	StartTime time.Time
 }
@@ -341,21 +341,15 @@ func (rmTask *RMTask) PushTaskForReadmission() error {
 		Tasks: append(tasks, rmTask.task),
 	}
 
-	// pushing it to pending queue
+	// push to pending queue and add demand
 	if err := rmTask.Respool().EnqueueGang(gang); err != nil {
 		return errors.Wrapf(err, "failed to enqueue gang")
 	}
 
 	// remove allocation
-	if err := rmTask.Respool().SubtractFromAllocation(scalar.GetGangAllocation(
-		gang)); err != nil {
+	if err := rmTask.Respool().SubtractFromAllocation(
+		scalar.GetGangAllocation(gang)); err != nil {
 		return errors.Wrapf(err, "failed to remove allocation from respool")
-	}
-
-	// add to demand
-	if err := rmTask.Respool().AddToDemand(scalar.GetGangResources(
-		gang)); err != nil {
-		return errors.Wrapf(err, "failed to to add to demand for respool")
 	}
 
 	return nil

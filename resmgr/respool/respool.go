@@ -151,6 +151,10 @@ type ResPool interface {
 	// AddInvalidTask will add the killed tasks to respool which can be
 	// discarded asynchronously which scheduling.
 	AddInvalidTask(task *peloton.TaskID)
+
+	// UpdateResourceMetrics updates metrics for this resource pool
+	// on each entitlement cycle calculation (15s)
+	UpdateResourceMetrics()
 }
 
 // resPool implements the ResPool interface.
@@ -371,11 +375,23 @@ func (n *resPool) EnqueueGang(gang *resmgrsvc.Gang) error {
 		err := errors.Errorf("gang has no elements")
 		return err
 	}
-	if n.isLeaf() {
-		return n.pendingQueue.Enqueue(gang)
+
+	if !n.isLeaf() {
+		return errors.Errorf("resource pool %s is not a leaf node", n.id)
 	}
-	err := errors.Errorf("resource pool %s is not a leaf node", n.id)
-	return err
+
+	if err := n.pendingQueue.Enqueue(gang); err != nil {
+		return err
+	}
+
+	// if task is revocable then add to slack demand
+	if isRevocable(gang) {
+		n.AddToSlackDemand(scalar.GetGangResources(gang))
+		return nil
+	}
+
+	n.AddToDemand(scalar.GetGangResources(gang))
+	return nil
 }
 
 // DequeueGangs dequeues a list of gangs from the
@@ -419,8 +435,7 @@ func (n *resPool) DequeueGangs(limit int) ([]*resmgrsvc.Gang, error) {
 				"respool_id": n.id,
 				"queue":      qt,
 				"gangs_left": left,
-			}).WithError(err).
-				Warn("Error dequeueing from queue")
+			}).WithError(err).Warn("Error dequeueing from queue")
 			continue
 		}
 		gangList = append(gangList, gangs...)
@@ -430,9 +445,9 @@ func (n *resPool) DequeueGangs(limit int) ([]*resmgrsvc.Gang, error) {
 }
 
 // dequeues limit number of gangs from the respool for admission.
-func (n *resPool) dequeue(qt QueueType, limit int) ([]*resmgrsvc.Gang,
-	error) {
-
+func (n *resPool) dequeue(
+	qt QueueType,
+	limit int) ([]*resmgrsvc.Gang, error) {
 	var err error
 	var gangList []*resmgrsvc.Gang
 
@@ -447,8 +462,7 @@ func (n *resPool) dequeue(qt QueueType, limit int) ([]*resmgrsvc.Gang,
 				// queue is empty we are done
 				return gangList, nil
 			}
-			log.WithError(err).
-				Error("Failed to peek into queue")
+			log.WithError(err).Error("Failed to peek into queue")
 			return gangList, err
 		}
 		gang := gangs[0]
@@ -625,23 +639,20 @@ func (n *resPool) createRespoolUsage(
 	resUsage = append(resUsage, ru)
 	ru = &respool.ResourceUsage{
 		Kind:       common.GPU,
-		Allocation: allocation.GPU,
-		// Hard coding until we have real slack
-		Slack: float64(0),
+		Allocation: allocation.GPU - slackAllocation.GPU,
+		Slack:      slackAllocation.GPU,
 	}
 	resUsage = append(resUsage, ru)
 	ru = &respool.ResourceUsage{
 		Kind:       common.MEMORY,
-		Allocation: allocation.MEMORY,
-		// Hard coding until we have real slack
-		Slack: float64(0),
+		Allocation: allocation.MEMORY - slackAllocation.MEMORY,
+		Slack:      slackAllocation.MEMORY,
 	}
 	resUsage = append(resUsage, ru)
 	ru = &respool.ResourceUsage{
 		Kind:       common.DISK,
-		Allocation: allocation.DISK,
-		// Hard coding until we have real slack
-		Slack: float64(0),
+		Allocation: allocation.DISK - slackAllocation.DISK,
+		Slack:      slackAllocation.DISK,
 	}
 	resUsage = append(resUsage, ru)
 	return resUsage
@@ -659,8 +670,6 @@ func (n *resPool) initialize(cfg *respool.ResourcePoolConfig) {
 	n.initControllerLimit(cfg)
 	n.initSlackLimit(cfg)
 	n.initReservation(cfg)
-	// ToDo (varung): Move to a background worker
-	n.updateResourceMetrics()
 }
 
 // initializes the reserved resources
@@ -1137,17 +1146,25 @@ func (n *resPool) updateDynamicResourceMetrics() {
 		NonPreemptibleAllocation))
 	n.metrics.ControllerAllocation.Update(n.allocation.GetByType(scalar.
 		ControllerAllocation))
+
+	nonSlackAllocation := n.allocation.GetByType(scalar.TotalAllocation).
+		Subtract(n.allocation.GetByType(scalar.SlackAllocation))
 	n.metrics.Available.Update(n.entitlement.
-		Subtract(n.allocation.GetByType(scalar.TotalAllocation)))
+		Subtract(nonSlackAllocation))
+	n.metrics.SlackAvailable.Update(n.slackEntitlement.
+		Subtract(n.allocation.GetByType(scalar.SlackAllocation)))
 
 	n.metrics.Demand.Update(n.demand)
 	n.metrics.SlackDemand.Update(n.slackDemand)
 
 	n.metrics.PendingQueueSize.Update(float64(n.pendingQueue.Size()))
+	n.metrics.RevocableQueueSize.Update(float64(n.revocableQueue.Size()))
+	n.metrics.ControllerQueueSize.Update(float64(n.controllerQueue.Size()))
+	n.metrics.NPQueueSize.Update(float64(n.npQueue.Size()))
 }
 
 // updates all the metrics (static and dynamic)
-func (n *resPool) updateResourceMetrics() {
+func (n *resPool) UpdateResourceMetrics() {
 	n.updateStaticResourceMetrics()
 	n.updateDynamicResourceMetrics()
 }
@@ -1173,6 +1190,8 @@ func (n *resPool) PeekGangs(qt QueueType, limit uint32) ([]*resmgrsvc.Gang,
 		return n.controllerQueue.Peek(limit)
 	case NonPreemptibleQueue:
 		return n.npQueue.Peek(limit)
+	case RevocableQueue:
+		return n.revocableQueue.Peek(limit)
 	}
 
 	// should never come here

@@ -1724,6 +1724,15 @@ func (s *HandlerTestSuite) TestGetPendingTasks() {
 			},
 		},
 	}, nil).Times(1)
+	mr.EXPECT().PeekGangs(respool.RevocableQueue, limit).Return([]*resmgrsvc.Gang{
+		{
+			Tasks: []*resmgr.Task{
+				{
+					Id: &peloton.TaskID{Value: "revocablequeue-job"},
+				},
+			},
+		},
+	}, nil).Times(1)
 
 	mt := rm.NewMockTree(s.ctrl)
 	mt.EXPECT().Get(respoolID).Return(mr, nil).Times(1)
@@ -1750,7 +1759,7 @@ func (s *HandlerTestSuite) TestGetPendingTasks() {
 	resp, err := handler.GetPendingTasks(s.context, req)
 	s.NoError(err)
 
-	s.Equal(3, len(resp.GetPendingGangsByQueue()))
+	s.Equal(4, len(resp.GetPendingGangsByQueue()))
 	for q, gangs := range resp.GetPendingGangsByQueue() {
 		s.Equal(1, len(gangs.GetPendingGangs()))
 		expectedTaskID := ""
@@ -1761,6 +1770,8 @@ func (s *HandlerTestSuite) TestGetPendingTasks() {
 			expectedTaskID = "npqueue-job"
 		case "pending":
 			expectedTaskID = "pendingqueue-job"
+		case "revocable":
+			expectedTaskID = "revocablequeue-job"
 		}
 
 		for _, gang := range gangs.GetPendingGangs() {

@@ -19,7 +19,7 @@ sla:
   minimuminstancecount: 12
   minimuminstancepercent: 50
   preemptible: false
-  maxrunningtime: 300 
+  maxrunningtime: 300
 defaultconfig:
   resource:
     cpulimit: 1.0

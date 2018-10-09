@@ -244,8 +244,9 @@ func (p *Preemptor) processResourcePool(respoolID string) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to get resource pool")
 	}
-	resourcesToFree := resourcePool.GetTotalAllocatedResources().Subtract(
-		resourcePool.GetEntitlement())
+	resourcesToFree := resourcePool.GetTotalAllocatedResources().
+		Subtract(resourcePool.GetEntitlement())
+
 	log.
 		WithField("respool_id", respoolID).
 		WithField("resource_to_free", resourcesToFree).
@@ -366,15 +367,7 @@ func (p *Preemptor) processNonRunningTask(
 			t,
 		},
 	}); err != nil {
-		return errors.Wrapf(err, "unable to enqueue gang to resource "+
-			"pool")
-	}
-
-	// Add the task resources back to demand
-	if err := resPool.AddToDemand(scalar.ConvertToResmgrResource(t.
-		Resource)); err != nil {
-		return errors.Wrapf(err, "unable to add task resources to "+
-			"resource pool demand")
+		return errors.Wrapf(err, "unable to enqueue gang to resource pool")
 	}
 
 	// Subtract the task resources from the resource pool allocation

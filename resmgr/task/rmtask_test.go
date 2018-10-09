@@ -505,12 +505,6 @@ func (s *RMTaskTestSuite) TestPushTaskForReadmissionError() {
 	mockNode.EXPECT().EnqueueGang(gomock.Any()).Return(nil).Times(1)
 	mockNode.EXPECT().SubtractFromAllocation(gomock.Any()).Return(fErr).Times(1)
 	runWithMockNode(mockNode, fErr)
-
-	// Mock Add To Allocation failure
-	mockNode.EXPECT().EnqueueGang(gomock.Any()).Return(nil).Times(1)
-	mockNode.EXPECT().SubtractFromAllocation(gomock.Any()).Return(nil).Times(1)
-	mockNode.EXPECT().AddToDemand(gomock.Any()).Return(fErr).Times(1)
-	runWithMockNode(mockNode, fErr)
 }
 
 func (s *RMTaskTestSuite) TestRMTaskTransitToError() {

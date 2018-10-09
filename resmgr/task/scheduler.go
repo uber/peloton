@@ -64,8 +64,7 @@ var sched *scheduler
 func InitScheduler(
 	parent tally.Scope,
 	taskSchedulingPeriod time.Duration,
-	rmTaskTracker Tracker,
-) {
+	rmTaskTracker Tracker) {
 
 	if sched != nil {
 		log.Warning("Task scheduler has already been initialized")
@@ -152,8 +151,10 @@ func (s *scheduler) scheduleTasks() {
 		}
 		var invalidGangs []*resmgrsvc.Gang
 		for _, gang := range gangList {
-
-			invalidTasks, err := s.transitGang(gang, pt.TaskState_PENDING, pt.TaskState_READY,
+			invalidTasks, err := s.transitGang(
+				gang,
+				pt.TaskState_PENDING,
+				pt.TaskState_READY,
 				"gang admitted")
 			if err != nil {
 				newGang := s.processGangFailure(n, gang, invalidTasks)
@@ -169,41 +170,38 @@ func (s *scheduler) scheduleTasks() {
 			// Once the transition is done to ready state for all
 			// the tasks in the gang , we are enqueuing the gang to
 			// ready queue.
-			err = s.EnqueueGang(gang)
-			if err != nil {
+			if err = s.EnqueueGang(gang); err != nil {
 				invalidGangs = append(invalidGangs, gang)
 				continue
 			}
-			// Once the gang is enqueued in ready queue,
-			// removing it from from demand for the next entitlement
-			// cycle
-			err = n.SubtractFromDemand(scalar.GetGangResources(gang))
-			if err != nil {
-				log.WithError(err).WithField("gang", gang).Error("Error while " +
-					"subtracting demand for gang")
-
-			}
 		}
-		// We need to requeue those gangs back
-		// which can not be admitted to ready queue
-		// for the placement
+
+		// For invalid gangs, which are unable to be admitted to ready queue
+		// at scheduling phase for placement
+		//
+		// 1. remove the allocation for invalid gangs
+		// 2. transit those gangs from ready -> pending state
+		// 3. enqueue those invalid gangs back to pending queue at respool
 		for _, invalidGang := range invalidGangs {
-			_, err := s.transitGang(invalidGang, pt.TaskState_READY, pt.TaskState_PENDING,
-				"gang admission failure")
-			if err != nil {
-				log.WithError(err).Error("Not able to transit back " +
-					"to Pending")
+			if err = n.SubtractFromAllocation(
+				scalar.GetGangAllocation(invalidGang)); err != nil {
+				log.WithField("gang", invalidGang).
+					WithError(err).
+					Error("unable to remove allocation for invalid gang from respool at scheduler")
 			}
-			err = n.EnqueueGang(invalidGang)
-			if err != nil {
-				log.WithError(err).Error("Not able to enqueue" +
-					"gang back to pending queue")
+
+			if _, err := s.transitGang(
+				invalidGang,
+				pt.TaskState_READY,
+				pt.TaskState_PENDING,
+				"gang admission failure"); err != nil {
+				log.WithError(err).
+					Error("not able to transit from READY -> PENDING")
 			}
-			err = n.SubtractFromAllocation(scalar.GetGangAllocation(invalidGang))
-			if err != nil {
-				log.WithError(err).WithField(
-					"Gang", invalidGang).
-					Error("Not able to remove allocation from respool")
+
+			if err = n.EnqueueGang(invalidGang); err != nil {
+				log.WithError(err).
+					Error("not able to enqueue gang back to pending queue at resource pool")
 			}
 		}
 	}
@@ -214,8 +212,7 @@ func (s *scheduler) scheduleTasks() {
 func (s *scheduler) processGangFailure(
 	n respool.ResPool,
 	gang *resmgrsvc.Gang,
-	invalidTasks map[string]error,
-) *resmgrsvc.Gang {
+	invalidTasks map[string]error) *resmgrsvc.Gang {
 	var newTasks []*resmgr.Task
 	var deletedTasks []*resmgr.Task
 
@@ -241,18 +238,17 @@ func (s *scheduler) processGangFailure(
 			"deleted_tasks": deletedTasks,
 			"from":          pt.TaskState_PENDING.String(),
 			"to":            pt.TaskState_READY.String(),
-		}).Info("Tasks could not be transitioned to Ready " +
-			"due to deletion, " +
-			"Dropping them")
+		}).Info("Removing deleted tasks")
 		// We need to remove the allocation from the resource pool
 		// We are deleting allocation only for deleted tasks
-		err := n.SubtractFromAllocation(scalar.GetGangAllocation(&resmgrsvc.Gang{
-			Tasks: deletedTasks,
-		}))
-		if err != nil {
-			log.WithError(err).WithField(
-				"Gang", gang).
-				Error("Not able to remove allocation from respool")
+		if err := n.SubtractFromAllocation(
+			scalar.GetGangAllocation(
+				&resmgrsvc.Gang{
+					Tasks: deletedTasks,
+				})); err != nil {
+			log.WithField("gang", gang).
+				WithError(err).
+				Error("not able to remove allocation from respool")
 		}
 	}
 
@@ -277,11 +273,6 @@ func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, to
 		rmTask := s.rmTaskTracker.GetTask(task.Id)
 		if rmTask == nil {
 			isInvalidTaskInGang = true
-			log.WithFields(log.Fields{
-				"task_id": task.Id.Value,
-				"to":      toState.String(),
-				"from":    fromState.String(),
-			}).Error("Task not in tracker")
 			invalidTasks[task.GetId().GetValue()] = errTaskIsNotPresent
 			continue
 		}
@@ -293,7 +284,7 @@ func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, to
 	}
 
 	if isInvalidTaskInGang {
-		return invalidTasks, errors.Errorf("Invalid Tasks in gang %s", gang)
+		return invalidTasks, errors.Errorf("invalid Tasks in gang %s", gang)
 	}
 	return nil, nil
 }
@@ -314,7 +305,7 @@ func (s *scheduler) transitTask(rmTask *RMTask,
 			"to":         toState.String(),
 			"from":       fromState.String(),
 			"task_state": rmTask.GetCurrentState().String(),
-		}).Error("Task is not in expected state")
+		}).Error("task is not in expected state")
 		return errTaskNotInCorrectState
 	}
 
@@ -325,8 +316,7 @@ func (s *scheduler) transitTask(rmTask *RMTask,
 			"to":         toState.String(),
 			"from":       fromState.String(),
 			"task_state": rmTask.GetCurrentState().String(),
-		}).WithError(err).
-			Error("Failed to transition task")
+		}).WithError(err).Error("Failed to transition task")
 		return errTaskNotTransitioned
 	}
 

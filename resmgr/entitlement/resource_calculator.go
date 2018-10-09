@@ -68,6 +68,9 @@ func (c *Calculator) setEntitlementForChildren(
 		"entitlement":  entitlement.String(),
 	}).Info("Completed Entitlement cycle for respool")
 
+	// Update each resource pool metrics post entitlement calculation
+	resp.UpdateResourceMetrics()
+
 	// Now setting entitlement for all the children and call
 	// for their children recursively
 	for e := childs.Front(); e != nil; e = e.Next() {

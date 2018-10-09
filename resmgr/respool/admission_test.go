@@ -20,6 +20,10 @@ func (s *ResPoolSuite) respoolWithConfig(respoolConfig *respool.ResourcePoolConf
 }
 
 func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitValidationFail() {
+
+	s.False(isRevocable(nil))
+	s.False(isPreemptible(nil))
+
 	pool := s.createTestResourcePool()
 	resPool, ok := pool.(*resPool)
 	s.True(ok)
@@ -28,7 +32,6 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitValidationFail() {
 	gang := makeTaskGang(task)
 
 	err := resPool.EnqueueGang(gang)
-	resPool.AddToDemand(scalar.GetGangResources(gang))
 	s.NoError(err)
 
 	// check demand before
@@ -41,6 +44,8 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitValidationFail() {
 	resPool.AddInvalidTask(task.Id)
 
 	// try and admit
+	err = admission.TryAdmit(nil, resPool, PendingQueue)
+	s.Equal(err, errGangInvalid)
 	err = admission.TryAdmit(gang, resPool, PendingQueue)
 	s.Equal(err, errGangInvalid)
 
@@ -50,6 +55,40 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitValidationFail() {
 	s.Equal(float64(0), resPool.GetDemand().DISK)
 	s.Equal(float64(0), resPool.GetDemand().GPU)
 
+	// Add a valid task and invalid task in a gang
+	task = s.getTasks()[0]
+	gang = makeTaskGang(task)
+
+	task1 := s.getTasks()[1]
+	gang.Tasks = append(gang.Tasks, task1)
+
+	err = resPool.EnqueueGang(gang)
+	s.NoError(err)
+
+	// Demand of invalid + valid task
+	s.Equal(float64(2), resPool.GetDemand().CPU)
+	s.Equal(float64(200), resPool.GetDemand().MEMORY)
+	s.Equal(float64(20), resPool.GetDemand().DISK)
+	s.Equal(float64(0), resPool.GetDemand().GPU)
+
+	// mark one task as invalid
+	resPool.AddInvalidTask(task.Id)
+	resPool.SetEntitlement(s.getEntitlement())
+
+	// gang will be re-enqueued with one task (removing invalid task)
+	err = admission.TryAdmit(gang, resPool, PendingQueue)
+	s.Equal(err, errGangInvalid)
+
+	s.Equal(resPool.GetTotalAllocatedResources().String(), scalar.ZeroResource.String())
+
+	// valid task is re-enqueued
+	s.Equal(1, resPool.pendingQueue.Size())
+
+	// demand is added back for valid task
+	s.Equal(float64(1), resPool.GetDemand().CPU)
+	s.Equal(float64(100), resPool.GetDemand().MEMORY)
+	s.Equal(float64(10), resPool.GetDemand().DISK)
+	s.Equal(float64(0), resPool.GetDemand().GPU)
 }
 
 func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitSuccess() {
@@ -63,7 +102,6 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitSuccess() {
 	gang := makeTaskGang(task)
 
 	err := resPool.EnqueueGang(gang)
-	resPool.AddToDemand(scalar.GetGangResources(gang))
 	s.NoError(err)
 
 	// allocation should be zero
@@ -71,6 +109,11 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitSuccess() {
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().MEMORY)
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().DISK)
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().GPU)
+
+	s.Equal(float64(1), resPool.GetDemand().GetCPU())
+	s.Equal(float64(100), resPool.GetDemand().GetMem())
+	s.Equal(float64(10), resPool.GetDemand().GetDisk())
+	s.Equal(float64(0), resPool.GetDemand().GetGPU())
 
 	err = admission.TryAdmit(gang, resPool, PendingQueue)
 	s.NoError(err)
@@ -81,6 +124,11 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitSuccess() {
 	s.Equal(float64(100), resPool.GetTotalAllocatedResources().MEMORY)
 	s.Equal(float64(10), resPool.GetTotalAllocatedResources().DISK)
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().GPU)
+
+	s.Equal(float64(0), resPool.GetDemand().GetCPU())
+	s.Equal(float64(0), resPool.GetDemand().GetMem())
+	s.Equal(float64(0), resPool.GetDemand().GetDisk())
+	s.Equal(float64(0), resPool.GetDemand().GetGPU())
 }
 
 func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitFailure() {
@@ -92,7 +140,6 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitFailure() {
 	gang := makeTaskGang(task)
 
 	err := resPool.EnqueueGang(gang)
-	resPool.AddToDemand(scalar.GetGangResources(gang))
 	s.NoError(err)
 
 	// allocation should be zero
@@ -110,6 +157,75 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitFailure() {
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().MEMORY)
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().DISK)
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().GPU)
+}
+
+// Test adds 9 revocable tasks and 2 non-revocable tasks.
+// 8 revocable and 2 non-revocable tasks are admitted based,
+// on their entitlement for the resource pool.
+func (s *ResPoolSuite) TestServiceTypeAdmission() {
+	pool := s.createTestResourcePool()
+	resPool, ok := pool.(*resPool)
+	s.True(ok)
+
+	resPool.SetEntitlement(s.getEntitlement())
+	resPool.SetSlackEntitlement(s.getSlackEntitlement())
+
+	// validate entitlement
+	s.Equal(float64(80), resPool.GetSlackEntitlement().CPU)
+
+	s.Equal(float64(100), resPool.GetEntitlement().CPU)
+	s.Equal(float64(1000), resPool.GetEntitlement().MEMORY)
+	s.Equal(float64(100), resPool.GetEntitlement().DISK)
+
+	for i := 0; i < 11; i++ {
+		task := s.getRevocableTask()
+		gang := makeTaskGang(task)
+
+		if i == 1 || i == 3 {
+			task = s.getTasks()[i]
+			gang = makeTaskGang(task)
+			err := resPool.EnqueueGang(gang)
+			s.NoError(err)
+			continue
+		}
+
+		err := resPool.EnqueueGang(gang)
+		s.NoError(err)
+	}
+
+	// validate demand
+	// 9 revocable tasks
+	s.Equal(float64(90), resPool.GetSlackDemand().CPU)
+	s.Equal(float64(90), resPool.GetSlackDemand().MEMORY)
+	s.Equal(float64(18), resPool.GetSlackDemand().DISK)
+
+	// 2 non-revocable tasks
+	s.Equal(float64(2), resPool.GetDemand().CPU)
+	s.Equal(float64(200), resPool.GetDemand().MEMORY)
+	s.Equal(float64(20), resPool.GetDemand().DISK)
+
+	gangs, err := resPool.DequeueGangs(100)
+	s.NoError(err)
+	s.Equal(10, len(gangs))
+	s.Equal(resPool.revocableQueue.Size(), 1)
+
+	gangs, err = resPool.revocableQueue.Peek(1)
+	s.Equal(len(gangs), 1)
+	s.Equal(len(gangs[0].Tasks), 1)
+
+	task := gangs[0].Tasks[0]
+	s.True(task.GetRevocable())
+
+	// validate allocated resources to revocable and non-revocable
+	// 8 revocable tasks admitted out of 9
+	s.Equal(float64(80), resPool.GetSlackAllocatedResources().CPU)
+	s.Equal(float64(80), resPool.GetSlackAllocatedResources().MEMORY)
+	s.Equal(float64(16), resPool.GetSlackAllocatedResources().DISK)
+
+	// 8 revocable + 2 non-revocable tasks admitted
+	s.Equal(float64(82), resPool.GetTotalAllocatedResources().CPU)
+	s.Equal(float64(280), resPool.GetTotalAllocatedResources().MEMORY)
+	s.Equal(float64(36), resPool.GetTotalAllocatedResources().DISK)
 }
 
 func (s *ResPoolSuite) TestBatchAdmissionController_PendingQueueAdmitter() {

@@ -19,6 +19,8 @@ var (
 		"skipping controller gang from admitting")
 	errSkipNonPreemptibleGang = errors.New(
 		"skipping non-preemptible gang from admitting")
+	errSkipRevocableGang = errors.New(
+		"skipping revocable gang from admitting")
 )
 
 // QueueType defines the different queues of the resource pool from which
@@ -57,12 +59,19 @@ func (qt QueueType) String() string {
 // returns true if the gang can be admitted to the pool
 type admitter func(gang *resmgrsvc.Gang, pool *resPool) bool
 
-//  returns true if there's enough resources in the pool to admit the gang
+// returns true iff there's enough resources in the pool to admit the gang
 func entitlementAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
-	currentEntitlement := pool.entitlement
-	currentAllocation := pool.allocation.GetByType(scalar.TotalAllocation)
-	neededResources := scalar.GetGangResources(gang)
+	var currentAllocation, currentEntitlement *scalar.Resources
+	if !isRevocable(gang) {
+		currentEntitlement = pool.entitlement
+		currentAllocation = pool.allocation.GetByType(scalar.TotalAllocation).Subtract(
+			pool.allocation.GetByType(scalar.SlackAllocation))
+	} else {
+		currentEntitlement = pool.slackEntitlement
+		currentAllocation = pool.allocation.GetByType(scalar.SlackAllocation)
+	}
 
+	neededResources := scalar.GetGangResources(gang)
 	log.WithFields(log.Fields{
 		"entitlement":        currentEntitlement,
 		"total_alloc":        currentAllocation,
@@ -72,13 +81,13 @@ func entitlementAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 	return currentAllocation.
 		Add(neededResources).
 		LessThanOrEqual(currentEntitlement)
-
 }
 
 // returns true if a controller gang can be admitted to the pool
 func controllerAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
-	if !isController(gang) {
-		// don't need to check controller limit
+	// ignore check on admission for non-controller tasks,
+	// and revocable tasks (can not be of controller type)
+	if !isController(gang) || isRevocable(gang) {
 		return true
 	}
 
@@ -112,7 +121,9 @@ func controllerAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 // Peloton takes approach 1 by checking the total allocation of all
 // non-preemptible gangs and the resource pool reservation.
 func reservationAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
-	if !pool.isPreemptionEnabled() || isPreemptible(gang) {
+	if !pool.isPreemptionEnabled() ||
+		isPreemptible(gang) ||
+		isRevocable(gang) {
 		// don't need to check reservation if
 		// 1. preemption is disabled or
 		// 2. its a preemptible job
@@ -147,13 +158,12 @@ var admission = admissionController{
 	},
 }
 
-// Try admit, tries to admit the gang into the resource pool.
+// TryAdmit, tries to admit the gang into the resource pool.
 // Returns an error if there was some error in the admission control
 func (ac admissionController) TryAdmit(
 	gang *resmgrsvc.Gang,
 	pool *resPool,
 	qt QueueType) error {
-
 	pool.Lock()
 	defer pool.Unlock()
 
@@ -174,7 +184,8 @@ func (ac admissionController) TryAdmit(
 			// 1. Its a non-preemptible task it is moved to the non-preemptible
 			//    queue
 			// 2. Its a controller task it is moved to the controller queue
-			// 3. Else the resource pool is full, do nothing
+			// 3. Its a revocable task it is moved to the revocable queue
+			// 4. Else the resource pool is full, do nothing
 			if !isPreemptible(gang) && pool.isPreemptionEnabled() {
 				// only move to non preemptible queue iff both are true
 				// 1. its a non preemptible gang
@@ -192,34 +203,58 @@ func (ac admissionController) TryAdmit(
 				}
 				return errSkipControllerGang
 			}
+			if isRevocable(gang) {
+				err = ac.moveToQueue(pool, RevocableQueue, gang)
+				if err != nil {
+					return err
+				}
+				return errSkipRevocableGang
+			}
 		}
 		return errResourcePoolFull
 	}
 
-	// add to allocation and remove from source queue
-	err = pool.queue(qt).Remove(gang)
-	if err != nil {
-		return errors.Wrapf(err,
-			"failed to remove gang from queue, qtype:%d", qt)
+	// gang is admittable,
+	// 1. remove the gang from queue
+	// 2. remove the demand for resource pool
+	// 3. add gang resources to allocation
+	if err := removeGangFromQueue(
+		pool,
+		qt,
+		gang); err != nil {
+		log.Error("failed to remove gang after successful admit")
+		return err
 	}
 
 	pool.allocation = pool.allocation.Add(scalar.GetGangAllocation(gang))
 	return nil
 }
 
-// moves the gang from the pending queue to one of controller queue or np queue.
-func (ac admissionController) moveToQueue(pool *resPool, qt QueueType,
+// moves the gang from the pending queue to
+// one of (controller/np/revocable) queue
+func (ac admissionController) moveToQueue(
+	pool *resPool,
+	qt QueueType,
 	gang *resmgrsvc.Gang) error {
-	err := pool.pendingQueue.Remove(gang)
-	if err != nil {
-		return errors.Wrap(err,
-			"failed to remove gang from pending queue")
+
+	// remove task from pending queue
+	if err := removeGangFromQueue(
+		pool,
+		PendingQueue,
+		gang); err != nil {
+		log.Error("failed to remove from queue on move")
+		return err
 	}
-	err = pool.queue(qt).Enqueue(gang)
-	if err != nil {
-		return errors.Wrapf(err,
-			"failed to enqueue gang to queue, qtype:%d", qt)
+
+	// adds removed gang from pending queue -> controller/np/revocable queue
+	if err := addGangToQueue(
+		pool,
+		qt,
+		gang); err != nil {
+		log.Error("failed to add to queue on move")
+		return err
 	}
+
 	return nil
 }
 
@@ -238,14 +273,12 @@ func (ac admissionController) validateGang(
 		return false, nil
 	}
 
-	isGangValid := true
-
 	// list of tasks which are still valid inside the gang.
 	// There could be cases where only some tasks are invalidated.
 	// In such cases a new gang is created with the valid tasks and enqueued
 	// back to the queue.
 	var validTasks []*resmgr.Task
-
+	isGangValid := true
 	for _, task := range gang.GetTasks() {
 		// check if the task in the gang has been invalidated
 		if _, exists := pool.invalidTasks[task.Id.Value]; !exists {
@@ -264,28 +297,26 @@ func (ac admissionController) validateGang(
 
 	// Now we perform the cleanup of the invalid gang and if required requeue
 	// the gang with the valid tasks back to the queue.
-
-	// remove it from the pending queue
 	log.WithFields(log.Fields{
-		"gang": gang,
-	}).Info("Tasks are deleted for this gang")
+		"respool_name": pool.Name(),
+		"respool_id":   pool.ID(),
+		"gang":         gang,
+		"queue_type":   qt,
+	}).Info("Tasks are invalidated for this gang")
 
 	// Removing the gang from queue as tasks are deleted
 	// from this gang
-	err := pool.queue(qt).Remove(gang)
-	if err != nil {
-		log.WithError(err).Error("Failed to delete" +
-			"gang from pending queue")
+	if err := removeGangFromQueue(
+		pool,
+		qt,
+		gang); err != nil {
+		log.WithFields(log.Fields{
+			"respool_name": pool.Name(),
+			"respool_id":   pool.ID(),
+			"gang":         gang,
+			"queue_type":   qt,
+		}).WithError(err).Error("failed to remove from queue post validateGang")
 		return false, err
-	}
-
-	// We need to remove it from the demand
-	for _, task := range gang.GetTasks() {
-		// We have to remove demand as we removed task from
-		// pending queue.
-		pool.demand = pool.demand.Subtract(
-			scalar.ConvertToResmgrResource(
-				task.GetResource()))
 	}
 
 	// We need to enqueue the gang if all the tasks are not
@@ -293,25 +324,29 @@ func (ac admissionController) validateGang(
 	if len(validTasks) != 0 {
 		gang.Tasks = validTasks
 		// TODO this should enqueue at the head of the queue
-		err = pool.queue(qt).Enqueue(gang)
-		if err != nil {
-			log.WithError(err).
-				WithField("new_gang", gang).
-				Error("Not able to enqueue gang to pending queue")
+		if err := addGangToQueue(
+			pool,
+			qt,
+			gang); err != nil {
+			log.WithFields(log.Fields{
+				"respool_name": pool.Name(),
+				"respool_id":   pool.ID(),
+				"gang":         gang,
+				"queue_type":   qt,
+			}).WithError(err).Error("failed to add gang (with valid tasks) " +
+				"to queue post validateGang")
 			return false, err
 		}
-		pool.demand = pool.demand.Add(scalar.GetGangResources(gang))
-		return false, nil
 	}
 
-	// All the tasks in this gang is been deleted
-	log.WithField("gang", gang).
-		Info("All tasks are killed for gang")
+	// All the tasks in this gang are deleted
+	log.WithField("gang", gang).Info("All tasks are killed for gang")
 	return false, nil
 }
 
 // returns true if gang can be admitted to the pool
-func (ac admissionController) canAdmit(gang *resmgrsvc.Gang,
+func (ac admissionController) canAdmit(
+	gang *resmgrsvc.Gang,
 	pool *resPool) bool {
 
 	// loop through the admitters
@@ -323,6 +358,49 @@ func (ac admissionController) canAdmit(gang *resmgrsvc.Gang,
 	}
 	// all admitters can admit
 	return true
+}
+
+// removeGangFromQueue removes a gang from a queue (pending/np/controller/revocable)
+// and with that also reduces the demand for the respool
+func removeGangFromQueue(
+	pool *resPool,
+	qt QueueType,
+	gang *resmgrsvc.Gang) error {
+
+	if err := pool.queue(qt).Remove(gang); err != nil {
+		return err
+	}
+
+	if !isRevocable(gang) {
+		pool.demand = pool.demand.Subtract(
+			scalar.GetGangResources(gang))
+	} else {
+		pool.slackDemand = pool.slackDemand.Subtract(
+			scalar.GetGangResources(gang))
+	}
+
+	return nil
+}
+
+// addGangToQueue adds a gang to a queue (pending/np/controller/revocable)
+// and with that also add that gangs demand to the respool
+func addGangToQueue(
+	pool *resPool,
+	qt QueueType,
+	gang *resmgrsvc.Gang) error {
+
+	if err := pool.queue(qt).Enqueue(gang); err != nil {
+		return err
+	}
+
+	if !isRevocable(gang) {
+		pool.demand = pool.demand.Add(
+			scalar.GetGangResources(gang))
+	} else {
+		pool.slackDemand = pool.slackDemand.Add(
+			scalar.GetGangResources(gang))
+	}
+	return nil
 }
 
 // returns true if the gang is of controller task
@@ -346,4 +424,17 @@ func isPreemptible(gang *resmgrsvc.Gang) bool {
 
 	// Preemption is defined at the Job level, so we can check just one task
 	return tasks[0].Preemptible
+}
+
+// returns true iff the gang is revocable
+func isRevocable(gang *resmgrsvc.Gang) bool {
+	tasks := gang.GetTasks()
+
+	if len(tasks) == 0 {
+		return false
+	}
+
+	// Revocable is defined at Gang level,
+	// all tasks in a gang are revocable or non-revocable.
+	return tasks[0].GetRevocable()
 }

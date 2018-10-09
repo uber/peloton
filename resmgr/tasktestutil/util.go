@@ -61,3 +61,14 @@ func GetReservationFromResourceConfig(
 		DISK:   resourcesMap[common.DISK].GetReservation(),
 	}
 }
+
+// GetLimitFromResourceConfig gets the limit from the respools resource config
+func GetLimitFromResourceConfig(
+	resourcesMap map[string]*respool.ResourceConfig) *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    resourcesMap[common.CPU].GetLimit(),
+		GPU:    resourcesMap[common.GPU].GetLimit(),
+		MEMORY: resourcesMap[common.MEMORY].GetLimit(),
+		DISK:   resourcesMap[common.DISK].GetLimit(),
+	}
+}

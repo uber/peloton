@@ -26,6 +26,7 @@ import (
 	res_common "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 )
 
@@ -80,6 +81,10 @@ func (suite *SchedulerTestSuite) SetupSuite() {
 		rmTaskTracker:    suite.rmTaskTracker,
 		metrics:          NewMetrics(tally.NoopScope),
 	}
+	InitScheduler(
+		tally.NoopScope,
+		time.Duration(1)*time.Second,
+		suite.rmTaskTracker)
 }
 
 func (suite *SchedulerTestSuite) TearDownSuite() {
@@ -90,6 +95,10 @@ func (suite *SchedulerTestSuite) TearDownSuite() {
 func (suite *SchedulerTestSuite) SetupTest() {
 	fmt.Println("setting up")
 	suite.resTree.Start()
+	suite.taskSched.runningState = 0
+	suite.Nil(suite.taskSched.Start())
+
+	suite.taskSched.runningState = 1
 	suite.taskSched.Start()
 	suite.AddTasks()
 }
@@ -571,12 +580,39 @@ func (suite *SchedulerTestSuite) TestDeletePartialTasksTasks() {
 		err = rmTask.TransitTo(task.TaskState_PENDING.String())
 		suite.NoError(err)
 	}
-	resPool.EnqueueGang(&resmgrsvc.Gang{
+	gang := &resmgrsvc.Gang{
 		Tasks: tasks,
-	})
+	}
+	resPool.EnqueueGang(gang)
 	suite.rmTaskTracker.DeleteTask(&peloton.TaskID{Value: "job1-1"})
 
 	suite.taskSched.scheduleTasks()
+
+	// 1. Admission control passes for gang with 2 tasks.
+	//    Thereby allocation is equal to resources to both tasks
+	// 2. During transit tasks from pending -> ready state it fails
+	//	  Thereby, it decreases the allocation for 1 task
+	//	  and increases then demand
+	suite.Equal(
+		scalar.GetGangResources(gang).GetCPU()/2,
+		resPool.GetTotalAllocatedResources().GetCPU())
+	suite.Equal(
+		scalar.GetGangResources(gang).GetMem()/2,
+		resPool.GetTotalAllocatedResources().GetMem())
+	suite.Equal(
+		scalar.GetGangResources(gang).GetDisk()/2,
+		resPool.GetTotalAllocatedResources().GetDisk())
+
+	suite.Equal(
+		scalar.GetGangResources(gang).GetCPU()/2,
+		resPool.GetDemand().GetCPU())
+	suite.Equal(
+		scalar.GetGangResources(gang).GetMem()/2,
+		resPool.GetDemand().GetMem())
+	suite.Equal(
+		scalar.GetGangResources(gang).GetDisk()/2,
+		resPool.GetDemand().GetDisk())
+
 	suite.rmTaskTracker.Clear()
 
 	expectedTaskIDs := []string{

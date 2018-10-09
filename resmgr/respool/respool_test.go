@@ -441,6 +441,7 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 
 func (s *ResPoolSuite) TestEntitlement() {
 	resPoolNode := s.createTestResourcePool()
+	resPoolNode.UpdateResourceMetrics()
 	resPoolNode.SetEntitlement(s.getEntitlement())
 	expectedEntitlement := &scalar.Resources{
 		CPU:    float64(100),
@@ -920,13 +921,14 @@ func (s *ResPoolSuite) TestGetGangResources() {
 
 func (s *ResPoolSuite) TestTaskValidation() {
 	resPoolNode1 := s.createTestResourcePool()
+	resPoolNode1.SetEntitlement(nil)
+	s.Equal(resPoolNode1.GetEntitlement().String(), scalar.ZeroResource.String())
+
 	resPoolNode1.SetEntitlement(s.getEntitlement())
 
 	for _, t := range s.getTasks() {
 		resPoolNode1.EnqueueGang(makeTaskGang(t))
 		resPoolNode1.AddInvalidTask(t.Id)
-		resPoolNode1.AddToDemand(scalar.ConvertToResmgrResource(
-			t.GetResource()))
 	}
 	demand := resPoolNode1.GetDemand()
 	s.NotNil(demand)
@@ -1122,6 +1124,7 @@ func (s *ResPoolSuite) TestResPoolPeekGangs() {
 		PendingQueue,
 		ControllerQueue,
 		NonPreemptibleQueue,
+		RevocableQueue,
 	} {
 		respool := s.createTestResourcePool()
 

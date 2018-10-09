@@ -20,7 +20,6 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/preemption"
 	r_queue "code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
-	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rmtask "code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/util"
 
@@ -288,10 +287,9 @@ func (h *ServiceHandler) removeGangFromTracker(gang *resmgrsvc.Gang) {
 // addingGangToPendingQueue transit all tasks of gang to PENDING state
 // and add them to pending queue by that they can be scheduled for
 // next scheduling cycle
-func (h *ServiceHandler) addingGangToPendingQueue(gang *resmgrsvc.Gang,
+func (h *ServiceHandler) addingGangToPendingQueue(
+	gang *resmgrsvc.Gang,
 	respool respool.ResPool) error {
-	totalGangResources := &scalar.Resources{}
-	taskFailtoTransit := false
 	for _, task := range gang.GetTasks() {
 		if h.rmTracker.GetTask(task.Id) != nil {
 			// transiting the task from INITIALIZED State to PENDING State
@@ -299,41 +297,24 @@ func (h *ServiceHandler) addingGangToPendingQueue(gang *resmgrsvc.Gang,
 				t.TaskState_PENDING.String(), statemachine.WithReason("enqueue gangs called"),
 				statemachine.WithInfo(mesosTaskID, *task.GetTaskId().Value))
 			if err != nil {
-				taskFailtoTransit = true
 				log.WithError(err).WithField("task", task.Id.Value).
 					Error("not able to transit task to PENDING")
-				break
+
+				// Removing the gang from the tracker if some tasks fail to transit
+				h.removeGangFromTracker(gang)
+				return errGangNotEnqueued
 			}
 		}
-		// Adding to gang resources as this task is been
-		// successfully added to tracker
-		totalGangResources = totalGangResources.Add(
-			scalar.ConvertToResmgrResource(
-				task.GetResource()))
 	}
-	// Removing the gang from the tracker if some tasks fail to transit
-	if taskFailtoTransit {
+
+	// Adding gang to pending queue
+	if err := respool.EnqueueGang(gang); err != nil {
+		// We need to remove gang tasks from tracker
 		h.removeGangFromTracker(gang)
 		return errGangNotEnqueued
 	}
-	// Adding gang to pending queue
-	err := respool.EnqueueGang(gang)
 
-	if err == nil {
-		err = respool.AddToDemand(totalGangResources)
-		log.WithFields(log.Fields{
-			"respool_id":           respool.ID(),
-			"total_gang_resources": totalGangResources,
-		}).Debug("Resources added for Gang")
-		if err != nil {
-			log.Error(err)
-		}
-		return err
-	}
-
-	// We need to remove gang tasks from tracker
-	h.removeGangFromTracker(gang)
-	return errGangNotEnqueued
+	return nil
 }
 
 // markingTasksFailInGang marks all other tasks fail which are not
@@ -1012,7 +993,8 @@ func (h *ServiceHandler) getPendingGangs(node respool.ResPool,
 	for _, q := range []respool.QueueType{
 		respool.PendingQueue,
 		respool.NonPreemptibleQueue,
-		respool.ControllerQueue} {
+		respool.ControllerQueue,
+		respool.RevocableQueue} {
 		gangs, err = node.PeekGangs(q, limit)
 
 		if err != nil {
