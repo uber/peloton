@@ -128,6 +128,10 @@ func TestGetLaunchableTasks(t *testing.T) {
 		taskInfos[taskID.Value] = tmp
 		selectedPorts = append(selectedPorts, testPort+uint32(i))
 	}
+	unknownTasks := []*peloton.TaskID{
+		{Value: "bcabcabc-bcab-bcab-bcab-bcabcabcabca-0"},
+		{Value: "abcabcab-bcab-bcab-bcab-bcabcabcabca-1"},
+	}
 	rs := createResources(1)
 	hostOffer := createHostOffer(0, rs)
 
@@ -145,8 +149,15 @@ func TestGetLaunchableTasks(t *testing.T) {
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
 	}
+	for _, taskID := range unknownTasks {
+		jobID, _, err := util.ParseTaskID(taskID.GetValue())
+		assert.NoError(t, err)
+		jobFactory.EXPECT().
+			GetJob(&peloton.JobID{Value: jobID}).Return(nil)
+	}
 
-	launchableTasks, err := taskLauncher.GetLaunchableTasks(
+	tasks = append(tasks, unknownTasks...)
+	launchableTasks, skippedTasks, err := taskLauncher.GetLaunchableTasks(
 		context.Background(), tasks, hostOffer.Hostname,
 		hostOffer.AgentId, selectedPorts)
 	assert.NoError(t, err)
@@ -156,6 +167,7 @@ func TestGetLaunchableTasks(t *testing.T) {
 		assert.Equal(t, hostOffer.Hostname, runtimeDiff[cached.HostField])
 		assert.Equal(t, hostOffer.AgentId, runtimeDiff[cached.AgentIDField])
 	}
+	assert.EqualValues(t, unknownTasks, skippedTasks)
 }
 
 func TestGetLaunchableTasksStateful(t *testing.T) {
@@ -175,6 +187,10 @@ func TestGetLaunchableTasksStateful(t *testing.T) {
 		taskStore:     mockTaskStore,
 		metrics:       metrics,
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
+	}
+	unknownTasks := []*peloton.TaskID{
+		{Value: "bcabcabc-bcab-bcab-bcab-bcabcabcabca-0"},
+		{Value: "abcabcab-bcab-bcab-bcab-bcabcabcabca-1"},
 	}
 
 	// generate 25 test tasks
@@ -212,8 +228,15 @@ func TestGetLaunchableTasksStateful(t *testing.T) {
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
 	}
+	for _, taskID := range unknownTasks {
+		jobID, _, err := util.ParseTaskID(taskID.GetValue())
+		assert.NoError(t, err)
+		jobFactory.EXPECT().
+			GetJob(&peloton.JobID{Value: jobID}).Return(nil)
+	}
 
-	launchableTasks, err := taskLauncher.GetLaunchableTasks(
+	tasks = append(tasks, unknownTasks...)
+	launchableTasks, skippedTasks, err := taskLauncher.GetLaunchableTasks(
 		context.Background(), tasks, hostOffer.Hostname,
 		hostOffer.AgentId, selectedPorts)
 	assert.NoError(t, err)
@@ -224,6 +247,7 @@ func TestGetLaunchableTasksStateful(t *testing.T) {
 		assert.Equal(t, hostOffer.AgentId, runtimeDiff[cached.AgentIDField])
 		assert.NotNil(t, runtimeDiff[cached.VolumeIDField], "Volume ID should not be null")
 	}
+	assert.EqualValues(t, unknownTasks, skippedTasks)
 }
 
 // This test ensures that multiple tasks can be launched in hostmgr

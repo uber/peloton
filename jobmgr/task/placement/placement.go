@@ -147,7 +147,7 @@ func (p *processor) process() {
 
 func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Placement) {
 	tasks := placement.GetTasks()
-	lauchableTasks, err := p.taskLauncher.GetLaunchableTasks(
+	lauchableTasks, skippedTasks, err := p.taskLauncher.GetLaunchableTasks(
 		ctx,
 		placement.GetTasks(),
 		placement.GetHostname(),
@@ -164,29 +164,35 @@ func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Plac
 		return
 	}
 
-	taskInfos := p.createTaskInfos(ctx, lauchableTasks)
 
-	if len(taskInfos) == 0 {
-		// nothing to launch
-		return
+	launchableTaskInfos, skippedTasks1 := p.createTaskInfos(ctx, lauchableTasks)
+	skippedTasks = append(skippedTasks, skippedTasks1...)
+
+	if len(launchableTaskInfos) > 0 {
+
+		// CreateLaunchableTasks returns a list of launchableTasks and taskInfo
+		// map of tasks that could not be launched because of transient error
+		// in getting secrets.
+		launchableTasks, skippedTaskInfos :=
+			p.taskLauncher.CreateLaunchableTasks(ctx, launchableTaskInfos)
+		// enqueue skipped tasks back to resmgr to launch again, instead of
+		// waiting for resmgr timeout
+		p.enqueueTasksToResMgr(ctx, skippedTaskInfos)
+
+		if err = p.taskLauncher.ProcessPlacement(ctx,
+			launchableTasks, placement); err != nil {
+			p.enqueueTasksToResMgr(ctx, launchableTaskInfos)
+			return
+		}
+
+		// Finally, enqueue tasks into goalstate
+		p.enqueueTaskToGoalState(launchableTaskInfos)
 	}
 
-	// CreateLaunchableTasks returns a list of launchableTasks and taskInfo map
-	// of tasks that could not be launched because of transient error in getting
-	// secrets.
-	launchableTasks, skippedTaskInfos := p.taskLauncher.CreateLaunchableTasks(ctx, taskInfos)
-	// enqueue skipped tasks back to resmgr to launch again, instead of waiting
-	// for resmgr timeout
-	p.enqueueTasksToResMgr(ctx, skippedTaskInfos)
-
-	if err = p.taskLauncher.ProcessPlacement(ctx, launchableTasks, placement); err != nil {
-		p.enqueueTasksToResMgr(ctx, taskInfos)
-		return
-	}
-
-	// Finally, enqueue tasks into goalstate
-	p.enqueueTaskToGoalState(taskInfos)
-
+	// Kill skipped/unknown tasks. We ignore errors because that would indicate
+	// a channel/network error. We will retry when we can reconnect to
+	// resource-manager
+	p.KillResManagerTasks(ctx, skippedTasks)
 }
 
 func (p *processor) enqueueTaskToGoalState(taskInfos map[string]*task.TaskInfo) {
@@ -215,8 +221,9 @@ func (p *processor) enqueueTaskToGoalState(taskInfos map[string]*task.TaskInfo) 
 func (p *processor) createTaskInfos(
 	ctx context.Context,
 	lauchableTasks map[string]*launcher.LaunchableTask,
-) map[string]*task.TaskInfo {
+) (map[string]*task.TaskInfo, []*peloton.TaskID) {
 	taskInfos := make(map[string]*task.TaskInfo)
+	skippedTasks := make([]*peloton.TaskID, 0)
 	for taskID, launchableTask := range lauchableTasks {
 		id, instanceID, err := util.ParseTaskID(taskID)
 		if err != nil {
@@ -241,6 +248,7 @@ func (p *processor) createTaskInfos(
 			}
 
 			// Skip launching of deleted tasks.
+			skippedTasks = append(skippedTasks, &peloton.TaskID{Value: taskID})
 			log.WithField("task_id", taskID).Info("skipping launch of killed task")
 		} else {
 			retry := 0
@@ -277,7 +285,7 @@ func (p *processor) createTaskInfos(
 			}
 		}
 	}
-	return taskInfos
+	return taskInfos, skippedTasks
 }
 
 func (p *processor) getPlacements() ([]*resmgr.Placement, error) {
@@ -381,4 +389,30 @@ func (p *processor) Stop() error {
 	p.lifeCycle.Wait()
 	log.Info("placement processor stopped")
 	return nil
+}
+
+// KillResManagerTasks issues a kill request to resource-manager for
+// specified tasks
+func (p *processor) KillResManagerTasks(ctx context.Context,
+	tasks []*peloton.TaskID) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+	req := &resmgrsvc.KillTasksRequest{Tasks: tasks}
+	ctx, cancelFunc := context.WithTimeout(ctx, _rpcTimeout)
+	defer cancelFunc()
+	resp, err := p.resMgrClient.KillTasks(ctx, req)
+	if err != nil {
+		log.WithError(err).WithField("task_list", tasks).
+			Error("placement: resource-manager KillTasks failed")
+	} else {
+		log.WithField("task_list", tasks).
+			Info("placement: killed resource-manager tasks")
+		if len(resp.Error) > 0 {
+			// Not really much we can do about these errors, just log them
+			log.WithField("errors", resp.Error).
+				Error("placement: resource-manager KillTasks errors")
+		}
+	}
+	return err
 }

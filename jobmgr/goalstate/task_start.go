@@ -41,7 +41,7 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		Value: taskEnt.GetID(),
 	}
 
-	launchableTasks, err := goalStateDriver.taskLauncher.GetLaunchableTasks(
+	launchableTasks, _, err := goalStateDriver.taskLauncher.GetLaunchableTasks(
 		ctx,
 		[]*peloton.TaskID{pelotonTaskID},
 		taskInfo.GetRuntime().GetHost(),
