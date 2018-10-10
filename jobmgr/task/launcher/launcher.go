@@ -60,11 +60,12 @@ type Launcher interface {
 	LaunchStatefulTasks(ctx context.Context, selectedTasks []*hostsvc.LaunchableTask, hostname string, selectedPorts []uint32, checkVolume bool) error
 	// GetLaunchableTasks returns current task configuration and
 	// the runtime diff which needs to be patched onto existing runtime for
-	// each launchable task.
+	// each launchable task. The second return value contains the tasks that
+	// were skipped, for example because they were not found.
 	GetLaunchableTasks(
 		ctx context.Context, tasks []*peloton.TaskID,
 		hostname string, agentID *mesos.AgentID, selectedPorts []uint32) (
-		map[string]*LaunchableTask, error)
+		map[string]*LaunchableTask, []*peloton.TaskID, error)
 	// CreateLaunchableTasks generates list of hostsvc.LaunchableTask and a map
 	// of skipped TaskInfo from map of TaskInfo
 	CreateLaunchableTasks(
@@ -174,10 +175,14 @@ func (l *launcher) GetLaunchableTasks(
 	tasks []*peloton.TaskID,
 	hostname string,
 	agentID *mesos.AgentID,
-	selectedPorts []uint32) (map[string]*LaunchableTask, error) {
+	selectedPorts []uint32) (
+	map[string]*LaunchableTask,
+	[]*peloton.TaskID,
+	error) {
 	portsIndex := 0
 
 	launchableTasks := make(map[string]*LaunchableTask)
+	skippedTasks := make([]*peloton.TaskID, 0)
 	getTaskInfoStart := time.Now()
 
 	for _, taskID := range tasks {
@@ -186,7 +191,7 @@ func (l *launcher) GetLaunchableTasks(
 
 		cachedJob := l.jobFactory.GetJob(jobID)
 		if cachedJob == nil {
-			// job does not exist, just ignore the task?
+			skippedTasks = append(skippedTasks, taskID)
 			continue
 		}
 		cachedTask, err := cachedJob.AddTask(ctx, uint32(instanceID))
@@ -257,7 +262,7 @@ func (l *launcher) GetLaunchableTasks(
 						"selected_ports": selectedPorts,
 						"task_id":        taskID,
 					}).Error("placement contains less selected ports than required.")
-					return nil, errors.New("invalid placement")
+					return nil, nil, errors.New("invalid placement")
 				}
 				ports[portConfig.GetName()] = selectedPorts[portsIndex]
 				portsIndex++
@@ -275,8 +280,8 @@ func (l *launcher) GetLaunchableTasks(
 		}
 	}
 
-	if len(launchableTasks) == 0 {
-		return nil, errEmptyTasks
+	if len(launchableTasks) == 0 && len(skippedTasks) == 0 {
+		return nil, nil, errEmptyTasks
 	}
 
 	getTaskInfoDuration := time.Since(getTaskInfoStart)
@@ -288,7 +293,7 @@ func (l *launcher) GetLaunchableTasks(
 
 	l.metrics.GetDBTaskInfo.Record(getTaskInfoDuration)
 
-	return launchableTasks, nil
+	return launchableTasks, skippedTasks, nil
 }
 
 // updateTaskRuntime updates task runtime with goalstate, reason and message

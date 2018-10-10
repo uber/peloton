@@ -301,7 +301,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
 		taskID: {
 			RuntimeDiff: jobmgrcommon.RuntimeDiff{},
 		},
-	}, nil)
+	}, nil, nil)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -342,7 +342,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeFailed() {
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
-		).Return(nil, errors.New(""))
+		).Return(nil, nil, errors.New(""))
 
 	err := TaskStart(context.Background(), suite.taskEnt)
 	suite.Error(err)
@@ -363,7 +363,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeNoLaunch() {
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
-		).Return(nil, nil)
+		).Return(nil, nil, nil)
 	err := TaskStart(context.Background(), suite.taskEnt)
 	suite.Nil(err)
 }
@@ -382,7 +382,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeGetTaskFailed() 
 		taskID: {
 			RuntimeDiff: jobmgrcommon.RuntimeDiff{},
 		},
-	}, nil)
+	}, nil, nil)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -410,7 +410,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeGetConfigFailed(
 		taskID: {
 			RuntimeDiff: jobmgrcommon.RuntimeDiff{},
 		},
-	}, nil)
+	}, nil, nil)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -479,7 +479,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeDBError() {
 		taskID: {
 			RuntimeDiff: jobmgrcommon.RuntimeDiff{},
 		},
-	}, nil)
+	}, nil, nil)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).

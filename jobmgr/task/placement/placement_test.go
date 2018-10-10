@@ -216,6 +216,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementNoError() {
 						Config:      testTask.Config,
 					},
 				},
+				nil,
 				nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
@@ -256,7 +257,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementGetTaskError() {
 	gomock.InOrder(
 		suite.taskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
-			Return(nil, fmt.Errorf("fake launch error")),
+			Return(nil, nil, fmt.Errorf("fake launch error")),
 		suite.taskLauncher.EXPECT().
 			TryReturnOffers(gomock.Any(), gomock.Any(), p).Return(nil),
 	)
@@ -276,6 +277,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledTask() {
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
 
+	req := &resmgrsvc.KillTasksRequest{Tasks: []*peloton.TaskID{taskID}}
+	resp := &resmgrsvc.KillTasksResponse{}
 	gomock.InOrder(
 		suite.taskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
@@ -286,6 +289,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledTask() {
 						Config:      testTask.Config,
 					},
 				},
+				nil,
 				nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
@@ -294,6 +298,47 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledTask() {
 			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+		suite.resMgrClient.EXPECT().
+			KillTasks(gomock.Any(), req).
+			Return(resp, nil),
+	)
+
+	suite.pp.processPlacement(context.Background(), p)
+}
+
+func (suite *PlacementTestSuite) TestTaskPlacementKilledJob() {
+	testTask, _ := createTestTask(0) // taskinfo
+	rs := createResources(float64(1))
+	hostOffer := createHostOffer(0, rs)
+	p := createPlacements(testTask, hostOffer)
+	testTask.Runtime.State = task.TaskState_KILLED
+	testTask.Runtime.GoalState = task.TaskState_KILLED
+
+	taskID := &peloton.TaskID{
+		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
+	}
+
+	req := &resmgrsvc.KillTasksRequest{Tasks: []*peloton.TaskID{taskID}}
+	resp := &resmgrsvc.KillTasksResponse{
+		Error: []*resmgrsvc.KillTasksResponse_Error{
+			{
+				NotFound: &resmgrsvc.TasksNotFound{
+					Message: "Task Not Found",
+					Task:    taskID,
+				},
+			},
+		},
+	}
+	gomock.InOrder(
+		suite.taskLauncher.EXPECT().
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
+			Return(
+				nil,
+				[]*peloton.TaskID{taskID},
+				nil),
+		suite.resMgrClient.EXPECT().
+			KillTasks(gomock.Any(), req).
+			Return(resp, nil),
 	)
 
 	suite.pp.processPlacement(context.Background(), p)
@@ -313,6 +358,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledRunningTask() {
 	expectedRuntime := make(map[uint32]*task.RuntimeInfo)
 	expectedRuntime[testTask.InstanceId] = testTask.Runtime
 
+	req := &resmgrsvc.KillTasksRequest{Tasks: []*peloton.TaskID{taskID}}
+	resp := &resmgrsvc.KillTasksResponse{}
 	gomock.InOrder(
 		suite.taskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).
@@ -323,6 +370,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledRunningTask() {
 						Config:      testTask.Config,
 					},
 				},
+				nil,
 				nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
@@ -333,6 +381,9 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledRunningTask() {
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.goalStateDriver.EXPECT().
 			EnqueueTask(testTask.JobId, gomock.Any(), gomock.Any()).Return(),
+		suite.resMgrClient.EXPECT().
+			KillTasks(gomock.Any(), req).
+			Return(resp, nil),
 	)
 
 	suite.pp.processPlacement(context.Background(), p)
@@ -358,6 +409,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementDBError() {
 						Config:      testTask.Config,
 					},
 				},
+				nil,
 				nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
@@ -393,6 +445,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementError() {
 						Config:      testTask.Config,
 					},
 				},
+				nil,
 				nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
@@ -446,6 +499,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementPlacementResMgrError() {
 						Config:      testTask.Config,
 					},
 				},
+				nil,
 				nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
@@ -584,7 +638,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementProcessorProcessNormal() {
 	suite.taskLauncher.EXPECT().
 		GetLaunchableTasks(gomock.Any(), gomock.Any(),
 			gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("test err"))
+		Return(nil, nil, fmt.Errorf("test err"))
 	suite.taskLauncher.EXPECT().
 		TryReturnOffers(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(fmt.Errorf("test err"))
