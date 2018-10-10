@@ -55,7 +55,7 @@ func (c *schedulerClient) Call(mesosStreamID string, msg *mesos_v1_scheduler.Cal
 		Body:      strings.NewReader(body),
 	}
 
-	ctx, _ := context.WithTimeout(context.Background(), 100*1000*time.Millisecond)
+	ctx, _ := context.WithTimeout(context.Background(), 10*1000*time.Millisecond)
 	_, err = c.cfg.GetUnaryOutbound().Call(ctx, &treq)
 
 	// All Mesos calls are one-way so no need to decode response body
