@@ -429,6 +429,10 @@ func (suite *TaskConfigTestSuite) TestValidateStatelessJobConfig() {
 		{
 			MaxRunningTime: 1,
 		}: errIncorrectMaxRunningTimeSLA,
+		{
+			Revocable:   true,
+			Preemptible: false,
+		}: errIncorrectRevocableSLA,
 		{}: nil,
 	}
 	for slaConfig, errExp := range testMap {

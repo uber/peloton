@@ -11,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/common/taskconfig"
 
 	"github.com/hashicorp/go-multierror"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -38,6 +39,8 @@ var (
 		"Task preemption policy should be false for stateless job")
 	errIncorrectHealthCheck = errors.New(
 		"Batch job task should not set health check ")
+	errIncorrectRevocableSLA = yarpcerrors.InvalidArgumentErrorf(
+		"revocable job must be preemptible")
 
 	_jobTypeTaskValidate = map[job.JobType]func(*task.TaskConfig) error{
 		job.JobType_BATCH:   validateBatchTaskConfig,
@@ -278,6 +281,11 @@ func validateStatelessJobConfig(jobConfig *job.JobConfig) error {
 	// stateless job should not set MaxRunningTime
 	if configSLA.GetMaxRunningTime() != 0 {
 		return errIncorrectMaxRunningTimeSLA
+	}
+
+	if configSLA.GetRevocable() == true &&
+		configSLA.GetPreemptible() != true {
+		return errIncorrectRevocableSLA
 	}
 
 	return nil
