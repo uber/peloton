@@ -11,7 +11,9 @@ ALL_SRC := $(shell find . -name "*.go" | grep -v -e Godeps -e vendor -e go-build
 	-e ".*/_.*" \
 	-e ".*/mocks.*" \
 	-e ".*/*.pb.go")
-BIN_DIR = bin
+ifndef BIN_DIR
+	BIN_DIR = bin
+endif
 FMT_SRC:=$(shell echo "$(ALL_SRC)" | tr ' ' '\n')
 ALL_PKGS = $(shell go list $(sort $(dir $(ALL_SRC))) | grep -v vendor | grep -v mesos-go)
 

@@ -361,6 +361,11 @@ def start_and_wait(application_name, container_name, ports, extra_env=None):
     environment = []
     for key, value in env.iteritems():
         environment.append('%s=%s' % (key, value))
+    # BIND_MOUNTS allows additional files to be mounted in the
+    # the container. Expected format is a comma-separated list
+    # of items of the form <host-path>:<container-path>
+    mounts = os.environ.get("BIND_MOUNTS", "")
+    mounts = mounts.split(",") if mounts else []
     container = cli.create_container(
         name=container_name,
         hostname=container_name,
@@ -373,7 +378,7 @@ def start_and_wait(application_name, container_name, ports, extra_env=None):
             },
             binds=[
                 work_dir + '/files:/files',
-            ],
+            ] + mounts,
         ),
         # pull or build peloton image if not exists
         image=config['peloton_image'],

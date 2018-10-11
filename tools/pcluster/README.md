@@ -12,6 +12,11 @@ specify "--no-<app>" flags with pcluster setup command so it'll be skipped, then
 it via command line:
 ./bin/peloton-<app> -c config/<app>/base.yaml -c config/<app>/development.yaml -d
 
+Alternately, you can use BIND_MOUNTS to mount binaries from your development environment
+into the container. This is helpful when you want to setup pcluster with your code
+changes without waiting to build a Docker image each time (for example, to run some
+integration tests). See Usage section for details.
+
 Usage:
 
 To bootstrap the local dev env cluster w/o peloton:
@@ -37,3 +42,20 @@ $PELOTON_HOME/tools/pcluster/pcluster.py teardown
 To check peloton app logs:
 
 docker logs -f peloton-<app i.e jobmgr,resmgr,hostmgr,placement,><instance id, i.e. 0>
+
+To mount your local binaries inside the container:
+
+* Cross-compile Peloton for Linux. This step is necessary if you are NOT building on Linux,
+such as your MacOS laptop. Place the produced binaries in a different directory
+(say `bin-linux`) so that you do not overwrite your MacOS binaries in `bin`
+
+    GOOS=linux GOARCH=amd64 BIN_DIR=bin-linux make
+
+* Set environment variable BIND_MOUNTS to map the binaries directory in the container.
+Expected format for this variable is a comma-separated list of items of the form
+\<host-path>:\<container-path>
+
+    BIND_MOUNTS=$PWD/bin-linux:/go/src/code.uber.internal/infra/peloton/bin \
+    $PELOTON_HOME/tools/pcluster/pcluster.py setup -a
+
+  Replace $PWD/bin-linux with $PWD/bin if you are building on Linux.
