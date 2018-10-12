@@ -623,7 +623,7 @@ func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
 			suite.Nil(match.Offer, "test case is %s", ttName)
 		}
 
-		_, afterStatus := s.UnreservedAmount()
+		_, _, afterStatus := s.UnreservedAmount()
 		suite.Equal(tt.afterStatus, afterStatus, "test case is %s", ttName)
 	}
 }
@@ -763,7 +763,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 		if tt.wantResult != hostsvc.HostFilterResult_MATCH {
 			suite.Nil(match.Offer, "test case is %s", ttName)
 		}
-		_, afterStatus := s.UnreservedAmount()
+		_, _, afterStatus := s.UnreservedAmount()
 		suite.Equal(tt.afterStatus, afterStatus, "test case is %s", ttName)
 	}
 }
@@ -819,8 +819,9 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	suite.True(hybridSummary.HasOffer())
 	suite.True(hybridSummary.HasAnyOffer())
 	suite.Equal(hybridSummary.readyCount.Load(), int32(5))
-	unreservedAmount, status := hybridSummary.UnreservedAmount()
-	suite.Equal(10.0, unreservedAmount.CPU)
+	unreservedAmount, revocableUnreservedAmount, status := hybridSummary.UnreservedAmount()
+	suite.Equal(5.0, unreservedAmount.CPU)
+	suite.Equal(5.0, revocableUnreservedAmount.CPU)
 	suite.Equal(5.0, unreservedAmount.Mem)
 	suite.Equal(5.0, unreservedAmount.Disk)
 	suite.Equal(5.0, unreservedAmount.GPU)
@@ -857,8 +858,9 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	suite.True(hybridSummary.HasOffer())
 	suite.True(hybridSummary.HasAnyOffer())
 	suite.Equal(hybridSummary.readyCount.Load(), int32(5))
-	unreservedAmount, status = hybridSummary.UnreservedAmount()
-	suite.Equal(10.0, unreservedAmount.CPU)
+	unreservedAmount, revocableUnreservedAmount, status = hybridSummary.UnreservedAmount()
+	suite.Equal(5.0, unreservedAmount.CPU)
+	suite.Equal(5.0, revocableUnreservedAmount.CPU)
 	suite.Equal(5.0, unreservedAmount.Mem)
 	suite.Equal(5.0, unreservedAmount.Disk)
 	suite.Equal(5.0, unreservedAmount.GPU)

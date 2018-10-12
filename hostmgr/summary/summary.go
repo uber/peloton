@@ -118,9 +118,9 @@ type HostSummary interface {
 	// otherwise returns error.
 	CasStatus(old, new HostStatus) error
 
-	// UnreservedAmount tells us unreserved resources amount and status for
-	// report purpose.
-	UnreservedAmount() (scalar.Resources, HostStatus)
+	// UnreservedAmount returns unreserved non-revocable and revocable resources
+	// and current host status
+	UnreservedAmount() (scalar.Resources, scalar.Resources, HostStatus)
 
 	// ResetExpiredPlacingOfferStatus resets a hostSummary status from PlacingOffer
 	// to ReadyOffer if the PlacingOffer status has expired, and returns
@@ -540,16 +540,23 @@ func (a *hostSummary) casStatusLockFree(old, new HostStatus) error {
 	case ReservedHost:
 		// generate the offer id for a placing host.
 		a.offerID = a.offerIDgenerator()
+		a.readyCount.Store(0)
 	}
 	return nil
 }
 
-// UnreservedAmount returns the amount of unreserved resources.
-func (a *hostSummary) UnreservedAmount() (scalar.Resources, HostStatus) {
+// UnreservedAmount returns unreserved non-revocable and revocable resources
+// and current host status
+func (a *hostSummary) UnreservedAmount() (scalar.Resources, scalar.Resources, HostStatus) {
 	a.Lock()
 	defer a.Unlock()
 
-	return scalar.FromOfferMap(a.unreservedOffers), a.status
+	unreservedResources := scalar.FromOffersMapToMesosResources(a.unreservedOffers)
+	revocable, nonRevocable := scalar.FilterRevocableMesosResources(unreservedResources)
+
+	return scalar.FromMesosResources(nonRevocable),
+		scalar.FromMesosResources(revocable),
+		a.status
 }
 
 // ResetExpiredPlacingOfferStatus resets a hostSummary status from PlacingOffer

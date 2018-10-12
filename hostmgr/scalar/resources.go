@@ -184,7 +184,7 @@ func FromMesosResources(resources []*mesos.Resource) (r Resources) {
 	return r
 }
 
-// FromOffersMapToMesosResources dfdfdfdfdf
+// FromOffersMapToMesosResources returns list of resources from a offerMap
 func FromOffersMapToMesosResources(offerMap map[string]*mesos.Offer) []*mesos.Resource {
 	var resources []*mesos.Resource
 	for _, offer := range offerMap {

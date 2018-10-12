@@ -67,10 +67,7 @@ func (p *offerPruner) Start() {
 				return
 			case <-timer.C:
 				log.Debug("Running offer pruning loop")
-				expiredOffers, numValid := p.pool.RemoveExpiredOffers()
-
-				p.metrics.Pruned.Inc(int64(len(expiredOffers)))
-				p.metrics.PrunerValid.Update(float64(numValid))
+				expiredOffers, _ := p.pool.RemoveExpiredOffers()
 
 				if len(expiredOffers) != 0 {
 					var offerIDs []*mesos.OfferID

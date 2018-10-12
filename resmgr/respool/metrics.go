@@ -47,10 +47,11 @@ type Metrics struct {
 	Demand                   scalar.GaugeMaps
 
 	// Slack Resources
-	SlackAllocation  scalar.GaugeMaps
-	SlackEntitlement scalar.GaugeMaps
-	SlackDemand      scalar.GaugeMaps
-	SlackAvailable   scalar.GaugeMaps
+	NonSlackAllocation scalar.GaugeMaps
+	SlackAllocation    scalar.GaugeMaps
+	SlackEntitlement   scalar.GaugeMaps
+	SlackDemand        scalar.GaugeMaps
+	SlackAvailable     scalar.GaugeMaps
 
 	ResourcePoolReservation scalar.GaugeMaps
 	ResourcePoolLimit       scalar.GaugeMaps
@@ -74,6 +75,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	availableScope := scope.SubScope("available")
 	demandScope := scope.SubScope("demand")
 
+	nonSlackAllocationScope := scope.SubScope("non_slack_allocation")
 	slackAllocationScope := scope.SubScope("slack_allocation")
 	slackEntitlementScope := scope.SubScope("slack_entitlement")
 	slackDemandScope := scope.SubScope("slack_demand")
@@ -117,9 +119,10 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TotalAllocation: scalar.NewGaugeMaps(allocationScope),
 		NonPreemptibleAllocation: scalar.NewGaugeMaps(allocationScope.
 			SubScope("non_preemptible")),
-		Entitlement: scalar.NewGaugeMaps(entitlementScope),
-		Available:   scalar.NewGaugeMaps(availableScope),
-		Demand:      scalar.NewGaugeMaps(demandScope),
+		Entitlement:        scalar.NewGaugeMaps(entitlementScope),
+		Available:          scalar.NewGaugeMaps(availableScope),
+		Demand:             scalar.NewGaugeMaps(demandScope),
+		NonSlackAllocation: scalar.NewGaugeMaps(nonSlackAllocationScope),
 
 		SlackAllocation:  scalar.NewGaugeMaps(slackAllocationScope),
 		SlackEntitlement: scalar.NewGaugeMaps(slackEntitlementScope),

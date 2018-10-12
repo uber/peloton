@@ -8,72 +8,59 @@ import (
 
 // Metrics tracks various metrics at offer pool level.
 type Metrics struct {
-	ready   scalar.GaugeMaps
-	placing scalar.GaugeMaps
+	// Revocable/Non-Revocable Resources in Ready/Placing status
+	Ready            scalar.GaugeMaps
+	ReadyRevocable   scalar.GaugeMaps
+	Placing          scalar.GaugeMaps
+	PlacingRevocable scalar.GaugeMaps
 
-	refreshTimer tally.Timer
+	// metrics for number of hosts on each status.
+	ReadyHosts        tally.Gauge
+	PlacingHosts      tally.Gauge
+	AvailableHosts    tally.Gauge
+	ReturnUnusedHosts tally.Counter
+	ResetExpiredHosts tally.Counter
 
-	// metrics for handler
-	OfferEvents               tally.Counter
-	RescindEvents             tally.Counter
-	InverseOfferEvents        tally.Counter
-	RescindInverseOfferEvents tally.Counter
-
-	// metrics for pool
-	Decline     tally.Counter
-	DeclineFail tally.Counter
-
-	// metrics for pruner
-	Pruned      tally.Counter
-	PrunerValid tally.Gauge
-
-	// metrics for unreserving offers
-	UnreserveOffer           tally.Counter
-	UnreserveOfferFail       tally.Counter
-	CleanReservationResource tally.Counter
-
-	// metrics for total number of available hosts in the cluster.
-	AvailableHosts tally.Gauge
+	// metrics for offers
+	UnavailableOffers tally.Counter
+	AcceptableOffers  tally.Counter
+	ExpiredOffers     tally.Counter
+	RescindEvents     tally.Counter
+	Decline           tally.Counter
+	DeclineFail       tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized
 // and rooted at the given tally.Scope
 func NewMetrics(scope tally.Scope) *Metrics {
 	poolScope := scope.SubScope("pool")
-	hostScope := scope.SubScope("hosts")
+
+	// resources in ready & placing host status
 	readyScope := poolScope.SubScope("ready")
+	readyRevocableScope := poolScope.SubScope("ready_revocable")
 	placingScope := poolScope.SubScope("placing")
-	poolFailScope := poolScope.SubScope("fail")
-	poolCallScope := poolScope.SubScope("call")
+	placingRevocableScope := poolScope.SubScope("placing_revocable")
 
-	handlerScope := scope.SubScope("handler")
-	offerEventScope := handlerScope.Tagged(map[string]string{"result": "offer"})
-	inverseEventScope := handlerScope.Tagged(map[string]string{"result": "inverse"})
-
-	prunerScope := handlerScope.SubScope("pruner")
+	hostsScope := poolScope.SubScope("hosts")
+	offersScope := poolScope.SubScope("offers")
 
 	return &Metrics{
-		ready:   scalar.NewGaugeMaps(readyScope),
-		placing: scalar.NewGaugeMaps(placingScope),
+		Ready:            scalar.NewGaugeMaps(readyScope),
+		ReadyRevocable:   scalar.NewGaugeMaps(readyRevocableScope),
+		Placing:          scalar.NewGaugeMaps(placingScope),
+		PlacingRevocable: scalar.NewGaugeMaps(placingRevocableScope),
 
-		refreshTimer: poolScope.Timer("refresh"),
+		UnavailableOffers: offersScope.Counter("unavilable"),
+		AcceptableOffers:  offersScope.Counter("acceptable"),
+		RescindEvents:     offersScope.Counter("rescind"),
+		ExpiredOffers:     offersScope.Counter("expired"),
+		Decline:           offersScope.Counter("decline"),
+		DeclineFail:       offersScope.Counter("decline_fail"),
 
-		OfferEvents:   offerEventScope.Counter("offer"),
-		RescindEvents: offerEventScope.Counter("rescind"),
-
-		InverseOfferEvents:        inverseEventScope.Counter("offer"),
-		RescindInverseOfferEvents: inverseEventScope.Counter("rescind"),
-
-		Decline:     poolCallScope.Counter("decline"),
-		DeclineFail: poolFailScope.Counter("decline"),
-
-		Pruned:      prunerScope.Counter("pruned"),
-		PrunerValid: prunerScope.Gauge("valid"),
-
-		UnreserveOffer:           poolCallScope.Counter("unreserve"),
-		UnreserveOfferFail:       poolFailScope.Counter("unreserve"),
-		CleanReservationResource: poolCallScope.Counter("clean"),
-
-		AvailableHosts: hostScope.Gauge("available_total"),
+		ReadyHosts:        hostsScope.Gauge("ready"),
+		PlacingHosts:      hostsScope.Gauge("placing"),
+		AvailableHosts:    hostsScope.Gauge("available"),
+		ReturnUnusedHosts: hostsScope.Counter("return_unused"),
+		ResetExpiredHosts: hostsScope.Counter("reset_expired"),
 	}
 }

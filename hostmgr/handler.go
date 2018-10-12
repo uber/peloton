@@ -165,6 +165,7 @@ func (h *ServiceHandler) AcquireHostOffers(
 	result, resultCount, err := h.offerPool.ClaimForPlace(body.GetFilter())
 	if err != nil {
 		log.WithError(err).Warn("ClaimForPlace failed")
+		h.metrics.AcquireHostOffersInvalid.Inc(1)
 		return &hostsvc.AcquireHostOffersResponse{
 			Error: &hostsvc.AcquireHostOffersResponse_Error{
 				Failure: &hostsvc.AcquireHostOffersFailure{
@@ -286,6 +287,7 @@ func (h *ServiceHandler) ReleaseHostOffers(
 		if err := h.offerPool.ReturnUnusedOffers(hostname); err != nil {
 			log.WithError(err).WithField("hostoffer", hostOffer).
 				Warn("Cannot return unused offer on host.")
+			h.metrics.ReleaseHostOffersInvalid.Inc(1)
 		}
 	}
 
@@ -1102,6 +1104,7 @@ func (h *ServiceHandler) GetDrainingHosts(
 	if limit == 0 {
 		limit = uint32(h.maintenanceQueue.Length())
 	}
+
 	for i := uint32(0); i < limit; i++ {
 		hostname, err := h.maintenanceQueue.Dequeue(timeout * time.Millisecond)
 		if err != nil {

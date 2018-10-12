@@ -28,8 +28,9 @@ type Metrics struct {
 	ShutdownExecutorsInvalid tally.Counter
 	ShutdownExecutorsFail    tally.Counter
 
-	ReleaseHostOffers tally.Counter
-	ReleaseHostsCount tally.Counter
+	ReleaseHostOffers        tally.Counter
+	ReleaseHostOffersInvalid tally.Counter
+	ReleaseHostsCount        tally.Counter
 
 	Elected         tally.Gauge
 	MesosConnected  tally.Gauge
@@ -84,8 +85,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		ShutdownExecutorsInvalid: scope.Counter("shutdown_executors_invalid"),
 		ShutdownExecutorsFail:    scope.Counter("shutdown_executors_fail"),
 
-		ReleaseHostOffers: scope.Counter("release_host_offers"),
-		ReleaseHostsCount: scope.Counter("release_hosts_count"),
+		ReleaseHostOffers:        scope.Counter("release_host_offers"),
+		ReleaseHostOffersInvalid: scope.Counter("release_host_offers_invalid"),
+		ReleaseHostsCount:        scope.Counter("release_hosts_count"),
 
 		Elected:         serverScope.Gauge("elected"),
 		MesosConnected:  serverScope.Gauge("mesos_connected"),
@@ -109,8 +111,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 // RefreshClusterCapacityGauges refreshes all the cluster capacity gauges
 func (m *Metrics) RefreshClusterCapacityGauges(response *hostsvc.ClusterCapacityResponse) {
-	for _, resource := range response.GetResources() {
-		if len(resource.GetKind()) == 0 {
+	for _, resource := range response.GetPhysicalResources() {
+		if len(resource.GetKind()) == 0 || resource.GetCapacity() == 0 {
 			continue
 		}
 
@@ -119,7 +121,7 @@ func (m *Metrics) RefreshClusterCapacityGauges(response *hostsvc.ClusterCapacity
 	}
 
 	for _, resource := range response.GetPhysicalSlackResources() {
-		if resource.GetCapacity() == 0 {
+		if len(resource.GetKind()) == 0 || resource.GetCapacity() == 0 {
 			continue
 		}
 

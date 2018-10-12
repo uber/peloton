@@ -1149,6 +1149,7 @@ func (n *resPool) updateDynamicResourceMetrics() {
 
 	nonSlackAllocation := n.allocation.GetByType(scalar.TotalAllocation).
 		Subtract(n.allocation.GetByType(scalar.SlackAllocation))
+	n.metrics.NonSlackAllocation.Update(nonSlackAllocation)
 	n.metrics.Available.Update(n.entitlement.
 		Subtract(nonSlackAllocation))
 	n.metrics.SlackAvailable.Update(n.slackEntitlement.

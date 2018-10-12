@@ -27,7 +27,7 @@ const (
 	_resourceCleanerInitialDelay = 15 * time.Minute
 
 	_poolMetricsRefresh       = "poolMetricsRefresh"
-	_poolMetricsRefreshPeriod = 60 * time.Second
+	_poolMetricsRefreshPeriod = 10 * time.Second
 )
 
 // EventHandler defines the interface for offer event handler that is
@@ -156,8 +156,6 @@ func (h *eventHandler) Offers(ctx context.Context, body *sched.Event) error {
 	log.WithField("event", event).Debug("OfferManager: processing Offers event")
 	h.offerPool.AddOffers(ctx, event.Offers)
 
-	h.metrics.OfferEvents.Inc(1)
-
 	return nil
 }
 
@@ -167,8 +165,6 @@ func (h *eventHandler) InverseOffers(ctx context.Context, body *sched.Event) err
 	event := body.GetInverseOffers()
 	log.WithField("event", event).
 		Debug("OfferManager: processing InverseOffers event")
-
-	h.metrics.InverseOfferEvents.Inc(1)
 
 	// TODO: Handle inverse offers from Mesos
 	return nil
@@ -181,8 +177,6 @@ func (h *eventHandler) Rescind(ctx context.Context, body *sched.Event) error {
 	log.WithField("event", event).Debug("OfferManager: processing Rescind event")
 	h.offerPool.RescindOffer(event.OfferId)
 
-	h.metrics.RescindEvents.Inc(1)
-
 	return nil
 }
 
@@ -193,7 +187,7 @@ func (h *eventHandler) RescindInverseOffer(ctx context.Context, body *sched.Even
 	log.WithField("event", event).
 		Debug("OfferManager: processing RescindInverseOffer event")
 
-	h.metrics.RescindInverseOfferEvents.Inc(1)
+	// TODO: handle rescind inverse offer events
 	return nil
 }
 

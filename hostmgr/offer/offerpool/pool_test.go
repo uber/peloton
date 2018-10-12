@@ -619,7 +619,7 @@ func (suite *OfferPoolTestSuite) TestAddGetRemoveOffers() {
 	suite.Equal(len(hostOffers), 1)
 
 	// Remove Expired Offers,
-	_, status := suite.pool.hostOfferIndex[_testAgent2].UnreservedAmount()
+	_, _, status := suite.pool.hostOfferIndex[_testAgent2].UnreservedAmount()
 	suite.Equal(status, summary.PlacingHost)
 	suite.pool.RemoveExpiredOffers()
 	suite.Equal(suite.pool.hostOfferIndex[_testAgent2].HasOffer(), false)
@@ -709,7 +709,6 @@ func (suite *OfferPoolTestSuite) TestResetExpiredHostSummaries() {
 		for _, helper := range tt.helpers {
 			mhs := hostmgr_summary_mocks.NewMockHostSummary(suite.ctrl)
 			mhs.EXPECT().ResetExpiredPlacingOfferStatus(now).Return(helper.mockResetExpiredPlacingOfferStatus, scalar.Resources{})
-			mhs.EXPECT().HasAnyOffer().Return(true)
 			hostOfferIndex[helper.hostname] = mhs
 		}
 		pool := &offerPool{
