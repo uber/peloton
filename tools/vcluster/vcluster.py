@@ -205,14 +205,15 @@ class VCluster(object):
                 dynamic_env_master['MESOS_AGENT_WORK_DIR'] = mesos_work_dir[0]
 
             if app == 'hostmgr':
-                srt = 'scarce_resource_types'
-                scarce_resource = ','.join(
-                    self.config.get('peloton').get(app).get(srt))
-                dynamic_env_master['SCARCE_RESOURCE_TYPES'] = scarce_resource
-                slrt = 'slack_resource_types'
-                slack_resource = ','.join(
-                    self.config.get('peloton').get(app).get(slrt))
-                dynamic_env_master['SLACK_RESOURCE_TYPES'] = slack_resource
+                dynamic_env_master['SCARCE_RESOURCE_TYPES'] = ','.join(
+                    self.config.get('peloton').get(app).get(
+                        'scarce_resource_types'))
+                dynamic_env_master['SLACK_RESOURCE_TYPES'] = ','.join(
+                    self.config.get('peloton').get(app).get(
+                        'slack_resource_types'))
+                dynamic_env_master['ENABLE_REVOCABLE_RESOURCES'] = \
+                    self.config.get('peloton').get(app).get(
+                        'enable_revocable_resources')
 
             peloton_app_count = int(
                 self.config.get('peloton').get(app).get('instance_count'))

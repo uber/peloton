@@ -146,6 +146,11 @@ var (
 		Envar("SLACK_RESOURCE_TYPES").
 		String()
 
+	enableRevocableResources = app.Flag(
+		"enable-revocable-resources", "Revcocable Resources Enabled").
+		Envar("ENABLE_REVOCABLE_RESOURCES").
+		Bool()
+
 	binPacking = app.Flag(
 		"bin_packing", "Bin Packing enable/disable, by default disabled.").
 		Envar("BIN_PACKING").
@@ -225,6 +230,11 @@ func main() {
 	if *slackResourceTypes != "" {
 		log.Info(strings.Split(*slackResourceTypes, ","))
 		cfg.HostManager.SlackResourceTypes = strings.Split(*slackResourceTypes, ",")
+	}
+
+	if *enableRevocableResources {
+		log.Info("Revocable Resource Enabled")
+		cfg.Mesos.Framework.RevocableResourcesSupported = *enableRevocableResources
 	}
 
 	if *binPacking != "" {

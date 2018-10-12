@@ -142,6 +142,7 @@ peloton:
       - GPU
     slack_resource_types:
       - cpus
+    enable_revocable_resources: true
   resmgr:
     instance_count: 2
   jobmgr:
