@@ -1157,10 +1157,25 @@ func (n *resPool) updateDynamicResourceMetrics() {
 	n.metrics.Demand.Update(n.demand)
 	n.metrics.SlackDemand.Update(n.slackDemand)
 
-	n.metrics.PendingQueueSize.Update(float64(n.pendingQueue.Size()))
-	n.metrics.RevocableQueueSize.Update(float64(n.revocableQueue.Size()))
-	n.metrics.ControllerQueueSize.Update(float64(n.controllerQueue.Size()))
-	n.metrics.NPQueueSize.Update(float64(n.npQueue.Size()))
+	n.metrics.PendingQueueSize.Update(float64(n.aggregateQueueByType(PendingQueue)))
+	n.metrics.RevocableQueueSize.Update(float64(n.aggregateQueueByType(RevocableQueue)))
+	n.metrics.ControllerQueueSize.Update(float64(n.aggregateQueueByType(ControllerQueue)))
+	n.metrics.NPQueueSize.Update(float64(n.aggregateQueueByType(NonPreemptibleQueue)))
+}
+
+// aggregateQueueByType aggreagates the queue size for leaf resource pools
+func (n *resPool) aggregateQueueByType(qt QueueType) int {
+	if n.isLeaf() {
+		return n.queue(qt).Size()
+	}
+
+	queueSize := 0
+	for child := n.children.Front(); child != nil; child = child.Next() {
+		if childResPool, ok := child.Value.(*resPool); ok {
+			queueSize += childResPool.aggregateQueueByType(qt)
+		}
+	}
+	return queueSize
 }
 
 // updates all the metrics (static and dynamic)

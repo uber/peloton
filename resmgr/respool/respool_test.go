@@ -1172,6 +1172,130 @@ func (s *ResPoolSuite) TestResPoolControllerLimit() {
 	s.Equal(float64(1), resPool.controllerLimit.CPU)
 }
 
+func (s *ResPoolSuite) TestAggregateQueue() {
+	respool1ID := peloton.ResourcePoolID{Value: "respool1"}
+	respool2ID := peloton.ResourcePoolID{Value: "respool2"}
+	respool11ID := peloton.ResourcePoolID{Value: "respool11"}
+	respool12ID := peloton.ResourcePoolID{Value: "respool12"}
+	respool21ID := peloton.ResourcePoolID{Value: "respool21"}
+
+	poolConfigroot := &pb_respool.ResourcePoolConfig{
+		Name:      "root",
+		Parent:    nil,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolroot, err := NewRespool(tally.NoopScope, _rootResPoolID.Value,
+		nil, poolConfigroot, s.cfg)
+	s.NoError(err)
+
+	poolConfig1 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool1",
+		Parent:    &_rootResPoolID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode1, err := NewRespool(tally.NoopScope, respool1ID.Value,
+		resPoolroot, poolConfig1, s.cfg)
+	s.NoError(err)
+
+	poolConfig2 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool2",
+		Parent:    &_rootResPoolID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode2, err := NewRespool(tally.NoopScope, respool2ID.Value,
+		resPoolroot, poolConfig2, s.cfg)
+	s.NoError(err)
+
+	rootChildrenList := list.New()
+	rootChildrenList.PushBack(resPoolNode1)
+	rootChildrenList.PushBack(resPoolNode2)
+	resPoolroot.SetChildren(rootChildrenList)
+
+	poolConfig11 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool11",
+		Parent:    &respool1ID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode11, err := NewRespool(tally.NoopScope, respool11ID.Value,
+		resPoolNode1, poolConfig11, s.cfg)
+	s.NoError(err)
+
+	poolConfig12 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool12",
+		Parent:    &respool1ID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode12, err := NewRespool(tally.NoopScope, respool12ID.Value,
+		resPoolNode1, poolConfig12, s.cfg)
+	s.NoError(err)
+
+	node1ChildrenList := list.New()
+	node1ChildrenList.PushBack(resPoolNode11)
+	node1ChildrenList.PushBack(resPoolNode12)
+	resPoolNode1.SetChildren(node1ChildrenList)
+
+	for _, t := range s.getTasks() {
+		gang := makeTaskGang(t)
+		resPool, ok := resPoolNode11.(*resPool)
+		s.True(ok)
+		err := resPool.queue(PendingQueue).Enqueue(gang)
+		s.NoError(err)
+		err = resPool.queue(ControllerQueue).Enqueue(gang)
+		s.NoError(err)
+	}
+
+	for _, t := range s.getTasks() {
+		gang := makeTaskGang(t)
+		resPool, ok := resPoolNode12.(*resPool)
+		s.True(ok)
+		err = resPool.queue(NonPreemptibleQueue).Enqueue(gang)
+		s.NoError(err)
+		err = resPool.queue(RevocableQueue).Enqueue(gang)
+		s.NoError(err)
+	}
+
+	poolConfig21 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool21",
+		Parent:    &respool2ID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode21, err := NewRespool(tally.NoopScope, respool21ID.Value,
+		resPoolNode2, poolConfig21, s.cfg)
+	s.NoError(err)
+	node2ChildrenList := list.New()
+	node2ChildrenList.PushBack(resPoolNode21)
+	resPoolNode2.SetChildren(node2ChildrenList)
+
+	for _, t := range s.getTasks() {
+		gang := makeTaskGang(t)
+		resPool, ok := resPoolNode21.(*resPool)
+		s.True(ok)
+		err := resPool.queue(PendingQueue).Enqueue(gang)
+		s.NoError(err)
+		err = resPool.queue(NonPreemptibleQueue).Enqueue(gang)
+		s.NoError(err)
+	}
+
+	resPoolRoot := resPoolroot.(*resPool)
+
+	s.Equal(resPoolRoot.aggregateQueueByType(PendingQueue), 8)
+	s.Equal(resPoolRoot.aggregateQueueByType(NonPreemptibleQueue), 8)
+	s.Equal(resPoolRoot.aggregateQueueByType(ControllerQueue), 4)
+	s.Equal(resPoolRoot.aggregateQueueByType(RevocableQueue), 4)
+}
+
 func TestResPoolSuite(t *testing.T) {
 	suite.Run(t, new(ResPoolSuite))
 }
