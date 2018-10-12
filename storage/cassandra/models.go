@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/gogo/protobuf/proto"
+	log "github.com/sirupsen/logrus"
 )
 
 // JobConfigRecord correspond to a peloton job config.
@@ -213,7 +214,9 @@ func FillObject(data map[string]interface{}, object interface{}, objType reflect
 	for fieldName, value := range data {
 		_, contains := objectFields[strings.ToLower(fieldName)]
 		if !contains {
-			return fmt.Errorf("Field %v not found in object", fieldName)
+			log.WithField("field", fieldName).
+				Error("Field not found in object")
+			continue
 		}
 		err := SetObjectField(object, objectFields[strings.ToLower(fieldName)], value)
 		if err != nil {
@@ -282,11 +285,4 @@ type PersistentVolumeRecord struct {
 	ContainerPath string    `cql:"container_path"`
 	CreateTime    time.Time `cql:"creation_time"`
 	UpdateTime    time.Time `cql:"update_time"`
-}
-
-func formatTime(t time.Time) string {
-	if t.IsZero() {
-		return ""
-	}
-	return t.Format(time.RFC3339Nano)
 }
