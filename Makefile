@@ -27,7 +27,7 @@ APIDOC_DIR = docs/_static/
 
 GOCOV = $(go get github.com/axw/gocov/gocov)
 GOCOV_XML = $(go get github.com/AlekSi/gocov-xml)
-GOLINT = $(go get github.com/golang/lint/golint)
+GOLINT = $(go get golang.org/x/lint/golint)
 GOIMPORTS = $(go get golang.org/x/tools/cmd/goimports)
 GOMOCK = $(go get github.com/golang/mock/gomock github.com/golang/mock/mockgen)
 PHAB_COMMENT = .phabricator-comment
