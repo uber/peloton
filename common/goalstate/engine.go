@@ -224,9 +224,14 @@ func (e *engine) runActions(entityItem *entityMapItem) (reschedule bool, delay t
 func (e *engine) processEntityAfterDequeue(queueItem *queue.Item) {
 	entityItem := e.getItemFromEntityMap(queueItem.GetString())
 	if entityItem == nil {
-		// should never be hit
+		// If an object is deleted from the entity map, it may
+		// still exist in the deadline queue. An example in Peloton is
+		// task items which are untracked when a job gets untracked.
+		// Since untracking of job happens in job goal state, it may get
+		// untracked while the task has not been dequeued yet in the deadline queue
+		// which will hit this if check.
 		log.WithField("goal_state_id", queueItem.GetString()).
-			Error("did not find the identifier in the entity map")
+			Debug("did not find the identifier in the entity map")
 		e.mtx.missingItems.Inc(1)
 		return
 	}
