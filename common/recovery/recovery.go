@@ -228,6 +228,14 @@ func RecoverJobsByState(
 	// exit early
 	select {
 	case <-finished:
+		// If the last goroutine threw an error then both cases of the select
+		// statement are satisfied. To ensure this error doesnt go uncaught, we
+		// need to check the length of errChan here
+		if len(errChan) != 0 {
+			err = <-errChan
+			log.WithError(err).Error("recovery failed")
+			return err
+		}
 	case err := <-errChan:
 		if err != nil {
 			log.WithError(err).Error("recovery failed")
