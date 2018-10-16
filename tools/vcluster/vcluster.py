@@ -212,8 +212,8 @@ class VCluster(object):
                     self.config.get('peloton').get(app).get(
                         'slack_resource_types'))
                 dynamic_env_master['ENABLE_REVOCABLE_RESOURCES'] = \
-                    self.config.get('peloton').get(app).get(
-                        'enable_revocable_resources')
+                    str(self.config.get('peloton').get(app).get(
+                        'enable_revocable_resources'))
 
             peloton_app_count = int(
                 self.config.get('peloton').get(app).get('instance_count'))
