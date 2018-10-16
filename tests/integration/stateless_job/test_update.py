@@ -192,26 +192,26 @@ def test__create_update_stopped_tasks(stateless_job):
     assert_task_config_changed(old_instance_zero_config, new_instance_zero_config)
 
 
-def test__create_multiple_consecutive_updates(stateless_job):
-    stateless_job.create()
-    stateless_job.wait_for_state(goal_state='RUNNING')
-    old_task_infos = stateless_job.list_tasks().value
-    old_instance_zero_config = stateless_job.get_task_info(0).config
-    update1 = Update(stateless_job,
-                     updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_FILE)
-    update1.create()
-    update2 = Update(stateless_job,
-                     updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_FILE,
-                     batch_size=1)
-    update2.create()
-    update2.wait_for_state(goal_state='SUCCEEDED')
-    update1.wait_for_state(goal_state='ABORTED')
-    new_task_infos = stateless_job.list_tasks().value
-    new_instance_zero_config = stateless_job.get_task_info(0).config
-    assert len(old_task_infos) == 3
-    assert len(new_task_infos) == 5
-    assert_task_mesos_id_changed(old_task_infos, new_task_infos)
-    assert_task_config_changed(old_instance_zero_config, new_instance_zero_config)
+# def test__create_multiple_consecutive_updates(stateless_job):
+#     stateless_job.create()
+#     stateless_job.wait_for_state(goal_state='RUNNING')
+#     old_task_infos = stateless_job.list_tasks().value
+#     old_instance_zero_config = stateless_job.get_task_info(0).config
+#     update1 = Update(stateless_job,
+#                      updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_FILE)
+#     update1.create()
+#     update2 = Update(stateless_job,
+#                      updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_FILE,
+#                      batch_size=1)
+#     update2.create()
+#     update2.wait_for_state(goal_state='SUCCEEDED')
+#     update1.wait_for_state(goal_state='ABORTED')
+#     new_task_infos = stateless_job.list_tasks().value
+#     new_instance_zero_config = stateless_job.get_task_info(0).config
+#     assert len(old_task_infos) == 3
+#     assert len(new_task_infos) == 5
+#     assert_task_mesos_id_changed(old_task_infos, new_task_infos)
+#     assert_task_config_changed(old_instance_zero_config, new_instance_zero_config)
 
 
 def test__abort_update(stateless_job):
