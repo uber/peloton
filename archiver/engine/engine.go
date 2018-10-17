@@ -38,6 +38,10 @@ const (
 	// kafka topic to Hive table
 	completedJobTag = "completed_job"
 
+	// The key "filebeat_topic" will be used by filebeat to stream completed
+	// jobs to kafka topic specified
+	filebeatTopic = "filebeat_topic"
+
 	// archiver summary map keys
 	archiverSuccessKey = "SUCCESS"
 	archiverFailureKey = "FAILURE"
@@ -193,7 +197,10 @@ func (e *engine) archiveJobs(ctx context.Context,
 		// Filebeat configured on the Peloton host will ship this log out to
 		// logstash. Logstash will be configured to stream this specific log
 		// event to Hive via a heatpipe topic.
-		log.WithField(completedJobTag, summary).Info("completed job")
+		log.WithFields(log.Fields{
+			filebeatTopic:   e.config.Archiver.KafkaTopic,
+			completedJobTag: summary,
+		}).Info("completed job")
 
 		if e.config.Archiver.StreamOnlyMode {
 			continue
