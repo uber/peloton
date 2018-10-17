@@ -17,7 +17,7 @@ endif
 FMT_SRC:=$(shell echo "$(ALL_SRC)" | tr ' ' '\n')
 ALL_PKGS = $(shell go list $(sort $(dir $(ALL_SRC))) | grep -v vendor | grep -v mesos-go)
 
-PACKAGE_VERSION=`git describe --always --tags`
+PACKAGE_VERSION=`git describe --always --tags --abbrev=8`
 PACKAGE_HASH=`git rev-parse HEAD`
 STABLE_RELEASE=`git describe --abbrev=0 --tags`
 DOCKER_IMAGE ?= uber/peloton
@@ -31,7 +31,6 @@ GOLINT = $(go get golang.org/x/lint/golint)
 GOIMPORTS = $(go get golang.org/x/tools/cmd/goimports)
 GOMOCK = $(go get github.com/golang/mock/gomock github.com/golang/mock/mockgen)
 PHAB_COMMENT = .phabricator-comment
-PACKAGE_VERSION=`git describe --always --tags`
 # See https://golang.org/doc/gdb for details of the flags
 GO_FLAGS = -gcflags '-N -l' -ldflags "-X main.version=$(PACKAGE_VERSION)"
 

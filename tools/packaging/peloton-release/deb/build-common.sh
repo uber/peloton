@@ -33,7 +33,6 @@ build_peloton() {
     proj="$(make project-name)"
     mkdir -p $GOPATH/src/$proj
     cp -R $SRC_DIR/vendor/* $GOPATH/src
-    cp -R $SRC_DIR $GOPATH/src/$(dirname $proj)
     cd $GOPATH/src/$proj
     go version
     make

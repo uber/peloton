@@ -12,12 +12,29 @@ RUN apt-get -yqq update && DEBIAN_FRONTEND=noninteractive apt-get -yqq install \
         unzip \
         ruby-dev \
         rubygems \
-        python-dev
+        python-dev \
+        python-pip
 
 RUN gem install fpm
+RUN pip install virtualenv
 
-ADD . /peloton
-WORKDIR /peloton
+RUN mkdir -p /gocode/src/code.uber.internal/infra/peloton
+WORKDIR /gocode/src/code.uber.internal/infra/peloton
+
+RUN curl -o go1.10.4.linux-amd64.tar.gz https://dl.google.com/go/go1.10.4.linux-amd64.tar.gz
+RUN tar -C /usr/local -xzf go1.10.4.linux-amd64.tar.gz
+
+ENV PATH="${PATH}:/usr/local/go/bin"
+ENV GOROOT=/usr/local/go
+ENV GOBIN=/usr/local/go/bin
+ENV GOPATH=/gocode
+ENV SRC_DIR=/gocode/src/code.uber.internal/infra/peloton
+
+RUN curl https://glide.sh/get | sh
+
+ADD . /gocode/src/code.uber.internal/infra/peloton
+
+RUN rm -rf vendor && glide cc && glide install
 
 ADD tools/packaging/peloton-release/deb/jessie/build.sh /build.sh
 ADD tools/packaging/peloton-release/deb/build-common.sh /build-common.sh

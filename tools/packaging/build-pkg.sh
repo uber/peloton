@@ -40,10 +40,6 @@ mkdir -p "$GOPATH/bin"
 export GOBIN="$GOPATH/bin"
 export PATH=$PATH:$GOBIN
 
-# FIXME(gabe) this is a hack; ensure deps are up to date before performing package build
-# Remove this when we can properly perform a `glide install` in a container
-make install
-
 for dist in $DISTRIBUTION ; do
   echo "Building debs for $dist"
   outputdir="debs/$dist"

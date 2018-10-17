@@ -20,8 +20,6 @@ jessie_install(){
 }
 
 install_dependencies() {
-  export GOPATH=/workspace
-  install_golang
   install_protoc
 }
 
