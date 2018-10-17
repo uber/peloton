@@ -97,6 +97,12 @@ var (
 		"Archive step size in h/m/s (archiver.archive_step_size override) (set $ARCHIVE_STEP_SIZE to override)").
 		Envar("ARCHIVE_STEP_SIZE").
 		String()
+
+	kafkaTopic = app.Flag(
+		"kafka-topic",
+		"kafka topic used by archiver to stream completed jobs").
+		Envar("KAFKA_TOPIC").
+		String()
 )
 
 func main() {
@@ -173,6 +179,10 @@ func main() {
 				WithField("ARCHIVE_STEP_SIZE", *archiveStepSize).
 				Fatal("Cannot parse Archive Step Size")
 		}
+	}
+
+	if *kafkaTopic != "" {
+		cfg.Archiver.KafkaTopic = *kafkaTopic
 	}
 
 	// zkservers list is needed to create peloton client.

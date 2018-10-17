@@ -86,6 +86,9 @@ type ArchiverConfig struct {
 	// Only stream the jobs to external storage if this is set
 	// Do not delete the jobs from local storage
 	StreamOnlyMode bool `yaml:"stream_only_mode"`
+
+	// Kafka topic used by archiver to stream jobs via filebeat
+	KafkaTopic string `yaml:"kafka_topic"`
 }
 
 // Normalize configuration by setting unassigned fields to default values.
