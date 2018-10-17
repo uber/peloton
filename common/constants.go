@@ -90,8 +90,8 @@ const (
 	SystemLabelKeyTemplate = "%s.%s"
 	// SystemLabelPrefix is the system label key name prefix
 	SystemLabelPrefix = "peloton"
-	// SystemLabelRespoolPath is the system label key name for respool path
-	SystemLabelRespoolPath = "respool_path"
+	// SystemLabelResourcePool is the system label key name for resource pool
+	SystemLabelResourcePool = "resource_pool"
 	// SystemLabelJobName is the system label key name for job name
 	SystemLabelJobName = "job_name"
 	// SystemLabelJobOwner is the system label key name for job owner

@@ -46,7 +46,7 @@ func ConstructSystemLabels(jobConfig *job.JobConfig, respoolPath string) []*pelo
 			Key: fmt.Sprintf(
 				common.SystemLabelKeyTemplate,
 				common.SystemLabelPrefix,
-				common.SystemLabelRespoolPath),
+				common.SystemLabelResourcePool),
 			Value: respoolPath,
 		},
 	)

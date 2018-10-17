@@ -305,7 +305,7 @@ func (h *serviceHandler) Update(
 
 	var respoolPath string
 	for _, label := range oldConfigAddOn.GetSystemLabels() {
-		if label.GetKey() == common.SystemLabelRespoolPath {
+		if label.GetKey() == common.SystemLabelResourcePool {
 			respoolPath = label.GetValue()
 		}
 	}
