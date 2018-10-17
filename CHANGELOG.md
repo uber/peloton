@@ -3,6 +3,59 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.7
+-----------------
+* 2018-10-17    Get rid of glide dependency and fix peloton cli build                                  xiaojian@uber.com
+* 2018-10-17    Rename label key for system label resource pool                                        rcharles@uber.com
+* 2018-10-17    Converge recent job config version for all batch tasks                                 varung@uber.com
+* 2018-10-17    Add KAFKA_TOPIC env var to archiver deploy script                                      adityacb@uber.com
+* 2018-10-16    Add filebeat_topic to archiver logs                                                    adityacb@uber.com
+* 2018-10-16    Make enable revocable resources env as string for vCluster                             varung@uber.com
+* 2018-10-16    Update golint repo path                                                                avyas@uber.com
+* 2018-10-16    Fix race condition in `RecoverJobsByState`                                             sachins@uber.com
+* 2018-10-16    remove test__create_multiple_consecutive_updates temporarily                           zhixin@uber.com
+* 2018-10-15    Cleanup metrics for Host Manager                                                       varung@uber.com
+* 2018-10-15    Not finding the entity in the map after dequeue is not an error                        apoorvaj@uber.com
+* 2018-10-12    Make it easier to mount local binaries in pcluster                                     amitbose@uber.com
+* 2018-10-12    Expose revocable resources attribute as env variable                                   varung@uber.com
+* 2018-10-12    Aggregate non-leaf resource pool queues size for metrics                               varung@uber.com
+* 2018-10-12    Modify FillObject to fill an object having fewer fields than that in data              sachins@uber.com
+* 2018-10-12    Add v1alpha directory as a copy of v0 api.                                             apoorvaj@uber.com
+* 2018-10-11    Clean-up resource-manager tasks stuck in LAUNCHING                                     amitbose@uber.com
+* 2018-10-11    Fix go get for lint                                                                    amitbose@uber.com
+* 2018-10-10    Validate that revocable job is set preemptible                                         varung@uber.com
+* 2018-10-09    Carry on update progress when task will not be started                                 zhixin@uber.com
+* 2018-10-09    Skip flaky unit test TestAddRunningTasks                                               varung@uber.com
+* 2018-10-08    Add admission control for revocable/slack resources                                    varung@uber.com
+* 2018-10-08    Construct system labels based on new config for Job Update                             sachins@uber.com
+* 2018-10-05    UpdateStatus includes instances failed                                                 zhixin@uber.com
+* 2018-10-05    QueryHosts API returns all hosts if request empty                                      sachins@uber.com
+* 2018-10-04    Remove client-added system labels at the time of job creation                          sachins@uber.com
+* 2018-10-04    Reenable job factory metrics                                                           zhixin@uber.com
+* 2018-10-04    Fix InitJobFactory in unit test                                                        zhixin@uber.com
+* 2018-10-04    Mark update failed if more instances failed during update than configured              zhixin@uber.com
+* 2018-10-04    Add a listener to jobmgr cache                                                         amitbose@uber.com
+* 2018-10-03    Ignore same status for healthy update                                                  varung@uber.com
+* 2018-10-03    Reduce jobFactory lock contention                                                      zhixin@uber.com
+* 2018-10-03    Batch job and stateless job share the same jobStateDeterminer                          zhixin@uber.com
+* 2018-10-02    Restrict the maximum number of updates allowed per job                                 apoorvaj@uber.com
+* 2018-10-02    Put git commit and build-url in performance test report                                amitbose@uber.com
+* 2018-10-02    Add `HostOfferID` to placements                                                        avyas@uber.com
+* 2018-10-01    Add entitlement calculation for revocable/slack resources                              varung@uber.com
+* 2018-10-01    Use previous run id from persistent storage on adding shrink instances                 varung@uber.com
+* 2018-10-01    Disable recording state transition durations for `rmTask`                              avyas@uber.com
+* 2018-10-01    Filter pod events by RunID                                                             varung@uber.com
+* 2018-10-01    Comment out runPublishMetrics for job factory                                          zhixin@uber.com
+* 2018-10-01    Add system labels to peloton tasks                                                     sachins@uber.com
+* 2018-09-28    Use mimir for `Stateless` task types                                                   avyas@uber.com
+* 2018-09-27    Remove mock datastore test from make unit-test                                         varung@uber.com
+* 2018-09-27    Fix flaky unit test TestEngineAssignPortsFromMultipleRanges                            varung@uber.com
+* 2018-09-27    Fix flaky unit test for host summary match filter                                      avyas@uber.com
+* 2018-09-27    Add get Peloton Version end point                                                      sishi@uber.com
+* 2018-09-26    Skip flaky unit test for host summary match filter                                     varung@uber.com
+* 2018-09-26    Changelog for release 0.7.6                                                            adityacb@uber.com
+* 2018-09-26    Fix merge error                                                                        zhixin@uber.com
+
 0.7.6
 -----------------
 * 2018-09-26    JobMgr recovers jobs by job type                                                       zhixin@uber.com
