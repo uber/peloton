@@ -533,44 +533,80 @@ func (m *serviceHandler) Start(
 
 	var startedInstanceIds []uint32
 	var failedInstanceIds []uint32
-	var instanceIds []uint32
-	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
+
 	for _, taskInfo := range taskInfos {
-		runtimeDiff := make(jobmgrcommon.RuntimeDiff)
-		taskState := taskInfo.GetRuntime().GetState()
-		healthState := taskutil.GetInitialHealthState(taskInfo.GetConfig())
-		if taskState == task.TaskState_INITIALIZED || taskState == task.TaskState_PENDING ||
-			(taskInfo.GetConfig().GetVolume() != nil && len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0) {
-			// Do not regenerate mesos task ID if task is known that not in mesos yet OR stateful task.
-			runtimeDiff[jobmgrcommon.StateField] = task.TaskState_INITIALIZED
-			runtimeDiff[jobmgrcommon.HealthyField] = healthState
-		} else {
-			// Kill the old Mesos task and regenerate a new ID
-			jobmgr_task.KillOrphanTask(ctx, m.hostMgrClient, taskInfo)
-			runtimeDiff = taskutil.RegenerateMesosTaskIDDiff(
-				taskInfo.JobId, taskInfo.InstanceId, taskInfo.GetRuntime(), healthState)
+		cachedTask, err := cachedJob.AddTask(ctx, taskInfo.InstanceId)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"job_id":      body.GetJobId().GetValue(),
+				"instance_id": taskInfo.InstanceId,
+			}).Info("failed to add task during task start")
+			failedInstanceIds = append(failedInstanceIds, taskInfo.InstanceId)
+			continue
 		}
 
-		// Change the goalstate.
-		runtimeDiff[jobmgrcommon.GoalStateField] = jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())
-		runtimeDiff[jobmgrcommon.MessageField] = "Task start API request"
-		runtimeDiff[jobmgrcommon.ReasonField] = ""
-		runtimeDiffs[taskInfo.InstanceId] = runtimeDiff
+		count := 0
+		for {
+			taskRuntime, err := cachedTask.GetRunTime(ctx)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"job_id":      body.GetJobId().GetValue(),
+					"instance_id": taskInfo.InstanceId,
+				}).Info("failed to fetch runtime during task start")
+				failedInstanceIds = append(failedInstanceIds, taskInfo.InstanceId)
+				break
+			}
 
-		instanceIds = append(instanceIds, taskInfo.InstanceId)
-	}
+			if taskRuntime.GetGoalState() != task.TaskState_KILLED {
+				// ignore start request for tasks with non-killed goal state
+				log.WithFields(log.Fields{
+					"instance_id": taskInfo.InstanceId,
+					"job_id":      body.GetJobId().GetValue(),
+					"goal_state":  taskRuntime.GetGoalState().String(),
+				}).Debug("task was not stopped")
+				break
+			}
 
-	err = cachedJob.PatchTasks(ctx, runtimeDiffs)
-	if err != nil {
-		log.WithError(err).
-			WithField("instance_ids", instanceIds).
-			WithField("job_id", body.GetJobId().GetValue()).
-			Error("failed to update task to initialized state")
-		m.metrics.TaskStartFail.Inc(1)
-		failedInstanceIds = instanceIds
-	} else {
-		startedInstanceIds = instanceIds
-		m.metrics.TaskStart.Inc(1)
+			// Regenerate the task and change the goalstate
+			healthState := taskutil.GetInitialHealthState(taskInfo.GetConfig())
+			taskutil.RegenerateMesosTaskRuntime(
+				body.GetJobId(),
+				taskInfo.InstanceId,
+				taskRuntime,
+				healthState,
+			)
+			taskRuntime.GoalState =
+				jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())
+			taskRuntime.Message = "Task start API request"
+			taskRuntime.Reason = ""
+
+			// Directly call task level APIs instead of calling job level API
+			// as one transaction (like PatchTasks calls) because
+			// compare and set calls cannot be batched as one transaction
+			// as if task runtime of only one task has changed, then it should
+			// not cause the entire transaction to fail and to be retried again.
+			_, err = cachedTask.CompareAndSetRuntime(
+				ctx, taskRuntime, cachedConfig.GetType())
+
+			if err == jobmgrcommon.UnexpectedVersionError {
+				count = count + 1
+				if count < jobmgrcommon.MaxConcurrencyErrorRetry {
+					continue
+				}
+			}
+
+			if err != nil {
+				log.WithError(err).
+					WithFields(log.Fields{
+						"job_id":      body.GetJobId().GetValue(),
+						"instance_id": taskInfo.InstanceId,
+					}).Info("failed to write runtime during task start")
+				failedInstanceIds = append(failedInstanceIds, taskInfo.InstanceId)
+			} else {
+				startedInstanceIds = append(startedInstanceIds, taskInfo.InstanceId)
+			}
+			break
+		}
 	}
 
 	for _, instID := range startedInstanceIds {
@@ -579,24 +615,7 @@ func (m *serviceHandler) Start(
 	goalstate.EnqueueJobWithDefaultDelay(
 		body.GetJobId(), m.goalStateDriver, cachedJob)
 
-	if err != nil {
-		log.WithError(err).WithFields(log.Fields{
-			"request":              body,
-			"tasks":                taskInfos,
-			"started_instance_ids": startedInstanceIds,
-		}).Error("failed to start tasks")
-		m.metrics.TaskStartFail.Inc(1)
-		return &task.StartResponse{
-			Error: &task.StartResponse_Error{
-				Failure: &task.TaskStartFailure{
-					Message: fmt.Sprintf("task start failed for %v", err),
-				},
-			},
-			StartedInstanceIds: startedInstanceIds,
-			InvalidInstanceIds: failedInstanceIds,
-		}, nil
-	}
-
+	m.metrics.TaskStart.Inc(1)
 	return &task.StartResponse{
 		StartedInstanceIds: startedInstanceIds,
 		InvalidInstanceIds: failedInstanceIds,
@@ -864,7 +883,9 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 	_, err := handler.GetJobRuntimeWithoutFillingCache(
 		ctx, req.JobId, m.jobFactory, m.jobStore)
 	if err != nil {
-		log.Debug("Failed to find job with id %v, err=%v", req.JobId, err)
+		log.WithError(err).
+			WithField("job_id", req.JobId.GetValue()).
+			Debug("failed to find job")
 		m.metrics.TaskQueryFail.Inc(1)
 		return &task.QueryResponse{
 			Error: &task.QueryResponse_Error{

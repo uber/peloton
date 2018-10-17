@@ -21,6 +21,23 @@ func GetInitialHealthState(taskConfig *task.TaskConfig) task.HealthState {
 	return task.HealthState_DISABLED
 }
 
+// RegenerateMesosTaskRuntime changes the runtime to INITIALIZED state
+// with correct initial health state and a regenerated mesos task id
+// and the previous mesos task id set to the current value.
+func RegenerateMesosTaskRuntime(
+	jobID *peloton.JobID,
+	instanceID uint32,
+	taskRuntime *task.RuntimeInfo,
+	initHealthyField task.HealthState,
+) {
+	mesosTaskID := getMesosTaskID(jobID, instanceID, taskRuntime)
+	taskRuntime.PrevMesosTaskId = taskRuntime.GetMesosTaskId()
+	taskRuntime.State = task.TaskState_INITIALIZED
+	taskRuntime.MesosTaskId = mesosTaskID
+	taskRuntime.DesiredMesosTaskId = mesosTaskID
+	taskRuntime.Healthy = initHealthyField
+}
+
 // RegenerateMesosTaskIDDiff returns a diff for patch with the previous mesos
 // task id set to the current mesos task id, a regenerated mesos task id, a
 // proper initial health state, and task state set to INITIALIZED.

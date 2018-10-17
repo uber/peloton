@@ -54,8 +54,8 @@ type Job interface {
 
 	// AddTask adds a new task to the job, and if already present,
 	// just returns it. In addition if the task is not present, then
-	// the caller can request to recover its runtime as well.
-	// In that case, if recovery does not succeed, the task is not
+	// the runtime is recovered from DB as well. And
+	// if the recovery does not succeed, the task is not
 	// added to the cache either.
 	AddTask(ctx context.Context, id uint32) (Task, error)
 

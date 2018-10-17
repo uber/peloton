@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 func initializeTaskRuntime(state pbtask.TaskState, version uint64) *pbtask.RuntimeInfo {
@@ -318,6 +319,206 @@ func (suite *TaskTestSuite) TestPatchRuntime_DBError() {
 
 	err := tt.PatchRuntime(context.Background(), diff)
 	suite.NotNil(err)
+	suite.checkListenersNotCalled()
+}
+
+func (suite *TaskTestSuite) TestCompareAndSetNilRuntime() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	tt := suite.initializeTask(suite.taskStore, suite.jobID,
+		suite.instanceID, runtime)
+	_, err := tt.CompareAndSetRuntime(
+		context.Background(),
+		nil,
+		pbjob.JobType_BATCH,
+	)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+}
+
+// TestCompareAndSetRuntime tests changing the task runtime
+// using compare and set
+func (suite *TaskTestSuite) TestCompareAndSetRuntime() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		runtime)
+
+	newRuntime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 2)
+	newRuntime.GoalState = pbtask.TaskState_SUCCEEDED
+
+	suite.taskStore.EXPECT().
+		UpdateTaskRuntime(
+			gomock.Any(),
+			suite.jobID,
+			suite.instanceID,
+			gomock.Any(),
+			gomock.Any()).
+		Do(func(
+			ctx context.Context,
+			jobID *peloton.JobID,
+			instanceID uint32,
+			runtime *pbtask.RuntimeInfo,
+			jobType pbjob.JobType) {
+			suite.Equal(runtime.GetState(), pbtask.TaskState_RUNNING)
+			suite.Equal(runtime.Revision.Version, uint64(3))
+			suite.Equal(runtime.GetGoalState(), pbtask.TaskState_SUCCEEDED)
+		}).
+		Return(nil)
+
+	_, err := tt.CompareAndSetRuntime(
+		context.Background(),
+		newRuntime,
+		pbjob.JobType_BATCH,
+	)
+	suite.Nil(err)
+	suite.checkListeners(tt, pbjob.JobType_BATCH)
+}
+
+// TestCompareAndSetRuntimeFailValidation tests changing the task runtime
+// using compare and set but the new runtime fails validation
+func (suite *TaskTestSuite) TestCompareAndSetRuntimeFailValidation() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		runtime)
+
+	newRuntime := initializeTaskRuntime(pbtask.TaskState_PENDING, 2)
+	newRuntime.GoalState = pbtask.TaskState_SUCCEEDED
+
+	_, err := tt.CompareAndSetRuntime(
+		context.Background(),
+		newRuntime,
+		pbjob.JobType_BATCH,
+	)
+	suite.Nil(err)
+	suite.checkListenersNotCalled()
+}
+
+// TestCompareAndSetRuntimeLoadRuntime tests changing the task runtime
+// using compare and set and runtime needs to be reloaded from DB
+func (suite *TaskTestSuite) TestCompareAndSetRuntimeLoadRuntime() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		runtime)
+	tt.runtime = nil
+
+	newRuntime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 2)
+	newRuntime.GoalState = pbtask.TaskState_SUCCEEDED
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
+		Return(runtime, nil)
+
+	suite.taskStore.EXPECT().
+		UpdateTaskRuntime(
+			gomock.Any(),
+			suite.jobID,
+			suite.instanceID,
+			gomock.Any(),
+			gomock.Any()).
+		Do(func(
+			ctx context.Context,
+			jobID *peloton.JobID,
+			instanceID uint32,
+			runtime *pbtask.RuntimeInfo,
+			jobType pbjob.JobType) {
+			suite.Equal(runtime.GetState(), pbtask.TaskState_RUNNING)
+			suite.Equal(runtime.Revision.Version, uint64(3))
+			suite.Equal(runtime.GetGoalState(), pbtask.TaskState_SUCCEEDED)
+		}).
+		Return(nil)
+
+	_, err := tt.CompareAndSetRuntime(
+		context.Background(),
+		newRuntime,
+		pbjob.JobType_BATCH,
+	)
+	suite.Nil(err)
+	suite.checkListeners(tt, pbjob.JobType_BATCH)
+}
+
+// TestCompareAndSetRuntimeLoadRuntimeDBError tests changing the task runtime
+// using compare and set and runtime reload from DB yields error
+func (suite *TaskTestSuite) TestCompareAndSetRuntimeLoadRuntimeDBError() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		runtime)
+	tt.runtime = nil
+
+	newRuntime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 2)
+	newRuntime.GoalState = pbtask.TaskState_SUCCEEDED
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
+		Return(runtime, fmt.Errorf("fake db error"))
+
+	_, err := tt.CompareAndSetRuntime(
+		context.Background(),
+		newRuntime,
+		pbjob.JobType_BATCH,
+	)
+	suite.Error(err)
+	suite.checkListenersNotCalled()
+}
+
+// TestCompareAndSetRuntimeVersionError tests changing the task runtime
+// using compare and set but with a version error
+func (suite *TaskTestSuite) TestCompareAndSetRuntimeVersionError() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		runtime)
+
+	newRuntime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 3)
+	newRuntime.GoalState = pbtask.TaskState_SUCCEEDED
+
+	_, err := tt.CompareAndSetRuntime(
+		context.Background(),
+		newRuntime,
+		pbjob.JobType_BATCH,
+	)
+	suite.NotNil(err)
+	suite.Equal(err, jobmgrcommon.UnexpectedVersionError)
+	suite.checkListenersNotCalled()
+}
+
+// TestCompareAndSetRuntimeDBError tests changing the task runtime
+// using compare and set but getting a DB error in the write
+func (suite *TaskTestSuite) TestCompareAndSetRuntimeDBError() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		runtime)
+
+	newRuntime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 2)
+	newRuntime.GoalState = pbtask.TaskState_SUCCEEDED
+
+	suite.taskStore.EXPECT().
+		UpdateTaskRuntime(
+			gomock.Any(),
+			suite.jobID,
+			suite.instanceID,
+			gomock.Any(),
+			gomock.Any()).
+		Do(func(
+			ctx context.Context,
+			jobID *peloton.JobID,
+			instanceID uint32,
+			runtime *pbtask.RuntimeInfo,
+			jobType pbjob.JobType) {
+			suite.Equal(runtime.GetState(), pbtask.TaskState_RUNNING)
+			suite.Equal(runtime.Revision.Version, uint64(3))
+			suite.Equal(runtime.GetGoalState(), pbtask.TaskState_SUCCEEDED)
+		}).
+		Return(fmt.Errorf("fake DB Error"))
+
+	_, err := tt.CompareAndSetRuntime(
+		context.Background(),
+		newRuntime,
+		pbjob.JobType_BATCH,
+	)
+	suite.Error(err)
 	suite.checkListenersNotCalled()
 }
 

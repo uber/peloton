@@ -56,6 +56,16 @@ type Task interface {
 	// in task and persists to DB.
 	PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) error
 
+	// CompareAndSetRuntime replaces the exiting task runtime in DB and cache.
+	// It uses RuntimeInfo.Revision.Version for concurrency control, and it would
+	// update RuntimeInfo.Revision.Version automatically upon success.
+	// Caller should not manually modify the value of RuntimeInfo.Revision.Version.
+	CompareAndSetRuntime(
+		ctx context.Context,
+		runtime *pbtask.RuntimeInfo,
+		jobType pbjob.JobType,
+	) (*pbtask.RuntimeInfo, error)
+
 	// ReplaceRuntime replaces cache with runtime
 	// forceReplace would decide whether to check version when replacing the runtime
 	// forceReplace is used for Refresh, which is for debugging only
@@ -343,7 +353,7 @@ func (t *task) PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) 
 		return nil
 	}
 
-	t.updateRevision()
+	t.updateRevision(newRuntimePtr)
 
 	err := t.jobFactory.taskStore.UpdateTaskRuntime(
 		ctx,
@@ -361,6 +371,72 @@ func (t *task) PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) 
 	t.lastRuntimeUpdateTime = time.Now()
 	runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
 	return nil
+}
+
+func (t *task) CompareAndSetRuntime(
+	ctx context.Context,
+	runtime *pbtask.RuntimeInfo,
+	jobType pbjob.JobType,
+) (*pbtask.RuntimeInfo, error) {
+	if runtime == nil {
+		return nil, yarpcerrors.InvalidArgumentErrorf(
+			"unexpected nil runtime")
+	}
+
+	var runtimeCopy *pbtask.RuntimeInfo
+	// notify listeners after dropping the lock
+	defer func() {
+		t.jobFactory.notifyTaskRuntimeChanged(t.JobID(), t.ID(), jobType,
+			runtimeCopy)
+	}()
+
+	t.Lock()
+	defer t.Unlock()
+
+	// reload cache if there is none
+	if t.runtime == nil {
+		// fetch runtime from db if not present in cache
+		runtimeDB, err := t.jobFactory.taskStore.GetTaskRuntime(ctx, t.jobID, t.id)
+		if err != nil {
+			return nil, err
+		}
+		t.runtime = runtimeDB
+	}
+
+	// validate that the input version is the same as the version in cache
+	if runtime.GetRevision().GetVersion() !=
+		t.runtime.GetRevision().GetVersion() {
+		return nil, jobmgrcommon.UnexpectedVersionError
+	}
+
+	// validate if the patched runtime is valid,
+	// if not ignore the diff, since the runtime has already been updated by
+	// other threads and the change in diff is no longer valid
+	if !t.validateState(runtime) {
+		return nil, nil
+	}
+
+	// bump up the changelog version
+	t.updateRevision(runtime)
+
+	// update the DB
+	err := t.jobFactory.taskStore.UpdateTaskRuntime(
+		ctx,
+		t.jobID,
+		t.id,
+		runtime,
+		jobType)
+	if err != nil {
+		// clean the runtime in cache on DB write failure
+		t.runtime = nil
+		return nil, err
+	}
+
+	// Store the new runtime in cache
+	t.runtime = runtime
+	t.lastRuntimeUpdateTime = time.Now()
+	runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
+	return runtimeCopy, nil
 }
 
 // ReplaceRuntime replaces runtime in cache with runtime input.
@@ -389,20 +465,20 @@ func (t *task) ReplaceRuntime(runtime *pbtask.RuntimeInfo, forceReplace bool) er
 	return nil
 }
 
-func (t *task) updateRevision() {
-	if t.runtime.Revision == nil {
+func (t *task) updateRevision(runtime *pbtask.RuntimeInfo) {
+	if runtime.Revision == nil {
 		// should never enter here
 		log.WithField("job_id", t.jobID).
 			WithField("instance_id", t.id).
 			Error("runtime revision is nil in update tasks")
-		t.runtime.Revision = &peloton.ChangeLog{
+		runtime.Revision = &peloton.ChangeLog{
 			CreatedAt: uint64(time.Now().UnixNano()),
 		}
 	}
 
 	// bump up the runtime version
-	t.runtime.Revision.Version++
-	t.runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
+	runtime.Revision.Version++
+	runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
 }
 
 func (t *task) GetRunTime(ctx context.Context) (*pbtask.RuntimeInfo, error) {
