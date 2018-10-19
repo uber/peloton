@@ -7,16 +7,19 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/queue"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
+	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
+
 	log "github.com/sirupsen/logrus"
 )
 
 // drainer defines the host drainer which drains
 // the hosts which are to be put into maintenance
 type drainer struct {
-	drainerPeriod        time.Duration
-	masterOperatorClient mpb.MasterOperatorClient
-	maintenanceQueue     queue.MaintenanceQueue
-	lifecycle            lifecycle.LifeCycle // lifecycle manager
+	drainerPeriod          time.Duration
+	masterOperatorClient   mpb.MasterOperatorClient
+	maintenanceQueue       queue.MaintenanceQueue
+	lifecycle              lifecycle.LifeCycle // lifecycle manager
+	maintenanceHostInfoMap MaintenanceHostInfoMap
 }
 
 // Drainer defines the interface for host drainer
@@ -30,12 +33,14 @@ func NewDrainer(
 	drainerPeriod time.Duration,
 	masterOperatorClient mpb.MasterOperatorClient,
 	maintenanceQueue queue.MaintenanceQueue,
+	hostInfoMap MaintenanceHostInfoMap,
 ) Drainer {
 	return &drainer{
-		drainerPeriod:        drainerPeriod,
-		masterOperatorClient: masterOperatorClient,
-		maintenanceQueue:     maintenanceQueue,
-		lifecycle:            lifecycle.NewLifeCycle(),
+		drainerPeriod:          drainerPeriod,
+		masterOperatorClient:   masterOperatorClient,
+		maintenanceQueue:       maintenanceQueue,
+		lifecycle:              lifecycle.NewLifeCycle(),
+		maintenanceHostInfoMap: hostInfoMap,
 	}
 }
 
@@ -61,9 +66,10 @@ func (d *drainer) Start() {
 				log.Info("Exiting Host drainer")
 				return
 			case <-ticker.C:
-				err := d.enqueueDrainingHosts()
+				err := d.reconcileMaintenanceState()
 				if err != nil {
-					log.WithError(err).Warn("Draining host enqueue unsuccessful")
+					log.WithError(err).
+						Warn("Maintenance state reconciliation unsuccessful")
 				}
 			}
 		}
@@ -82,19 +88,32 @@ func (d *drainer) Stop() {
 	log.Info("drainer stopped")
 }
 
-// Enqueue draining hosts into maintenance queue
-func (d *drainer) enqueueDrainingHosts() error {
-	maintenanceStatus, err := d.masterOperatorClient.GetMaintenanceStatus()
+func (d *drainer) reconcileMaintenanceState() error {
+	response, err := d.masterOperatorClient.GetMaintenanceStatus()
 	if err != nil {
 		return err
 	}
 	var drainingHosts []string
-	for _, machine := range maintenanceStatus.GetStatus().GetDrainingMachines() {
-		drainingHosts = append(drainingHosts, machine.GetId().GetHostname())
+	var hostInfos []*host.HostInfo
+	for _, drainingMachine := range response.GetStatus().GetDrainingMachines() {
+		machineID := drainingMachine.GetId()
+		hostInfos = append(hostInfos,
+			&host.HostInfo{
+				Hostname: machineID.GetHostname(),
+				Ip:       machineID.GetIp(),
+				State:    host.HostState_HOST_STATE_DRAINING,
+			})
+		drainingHosts = append(drainingHosts, machineID.GetHostname())
 	}
-	err = d.maintenanceQueue.Enqueue(drainingHosts)
-	if err != nil {
-		return err
+
+	for _, downMachine := range response.GetStatus().GetDownMachines() {
+		hostInfos = append(hostInfos,
+			&host.HostInfo{
+				Hostname: downMachine.GetHostname(),
+				Ip:       downMachine.GetIp(),
+				State:    host.HostState_HOST_STATE_DOWN,
+			})
 	}
-	return nil
+	d.maintenanceHostInfoMap.AddHostInfos(hostInfos)
+	return d.maintenanceQueue.Enqueue(drainingHosts)
 }

@@ -99,11 +99,11 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		RecoverySuccess: scope.Counter("recovery_success"),
 		RecoveryFail:    scope.Counter("recovery_fail"),
 
-		GetDrainingHosts:     scope.Counter("get_hosts_to_drain"),
-		GetDrainingHostsFail: scope.Counter("get_hosts_to_drain_fail"),
+		GetDrainingHosts:     scope.Counter("get_draining_hosts"),
+		GetDrainingHostsFail: scope.Counter("get_draining_hosts_fail"),
 
-		MarkHostsDrained:     scope.Counter("mark_hosts_draining"),
-		MarkHostsDrainedFail: scope.Counter("mark_hosts_draining_fail"),
+		MarkHostsDrained:     scope.Counter("mark_hosts_drained"),
+		MarkHostsDrainedFail: scope.Counter("mark_hosts_drained_fail"),
 
 		scope: scope,
 	}

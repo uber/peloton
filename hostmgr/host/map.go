@@ -1,13 +1,15 @@
 package host
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
-	"code.uber.internal/infra/peloton/common"
+	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -131,4 +133,151 @@ func getResourcesByType(
 		scalar.Resources) {
 		return revocable, nonRevocable
 	})
+}
+
+// MaintenanceHostInfoMap defines an interface of a map of
+// HostInfos of hosts in maintenance
+// TODO: remove this once GetAgents Response has maintenance state of the agents
+type MaintenanceHostInfoMap interface {
+	// GetDrainingHostInfos returns HostInfo of the specified DRAINING hosts.
+	// If the hostFilter is empty then HostInfos of all DRAINING hosts is returned.
+	GetDrainingHostInfos(hostFilter []string) []*host.HostInfo
+	// GetDownHostInfos returns HostInfo of hosts in DOWN state
+	// If the hostFilter is empty then HostInfos of all DOWN hosts is returned.
+	GetDownHostInfos(hostFilter []string) []*host.HostInfo
+	// AddHostInfos adds HostInfos to the map. AddHostInfos is called when one
+	// or more hosts transition to maintenance states (DRAINING and DRAINED).
+	AddHostInfos(hostInfos []*host.HostInfo)
+	// RemoveHostInfos removes the HostInfos of the specified hosts from the map
+	// RemoveHostInfos is needed to remove entries of hosts from the map when
+	// hosts transition from one of the maintenance states to UP state.
+	RemoveHostInfos(hosts []string)
+	// UpdateHostState updates the HostInfo.HostState of the specified
+	// host from 'from' state to 'to' state.
+	UpdateHostState(hostname string, from host.HostState, to host.HostState) error
+}
+
+// maintenanceHostInfoMap implements MaintenanceHostInfoMap interface
+type maintenanceHostInfoMap struct {
+	lock          sync.RWMutex
+	drainingHosts map[string]*host.HostInfo
+	downHosts     map[string]*host.HostInfo
+}
+
+// NewMaintenanceHostInfoMap returns a new MaintenanceHostInfoMap
+func NewMaintenanceHostInfoMap() MaintenanceHostInfoMap {
+	return &maintenanceHostInfoMap{
+		drainingHosts: make(map[string]*host.HostInfo),
+		downHosts:     make(map[string]*host.HostInfo),
+	}
+}
+
+// GetDrainingHostInfos returns HostInfo of the specified DRAINING hosts
+// If the hostFilter is empty then HostInfos of all DRAINING hosts is returned
+func (h *maintenanceHostInfoMap) GetDrainingHostInfos(hostFilter []string) []*host.HostInfo {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+
+	var hostInfos []*host.HostInfo
+	if len(hostFilter) == 0 {
+		for _, hostInfo := range h.drainingHosts {
+			hostInfos = append(hostInfos, hostInfo)
+		}
+		return hostInfos
+	}
+	for _, host := range hostFilter {
+		if hostInfo, ok := h.drainingHosts[host]; ok {
+			hostInfos = append(hostInfos, hostInfo)
+		}
+	}
+	return hostInfos
+}
+
+// GetDownHosts returns HostInfo of the specified DOWN hosts
+// If the hostFilter is empty then HostInfos of all DOWN hosts is returned
+func (h *maintenanceHostInfoMap) GetDownHostInfos(hostFilter []string) []*host.HostInfo {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+
+	var hostInfos []*host.HostInfo
+	if len(hostFilter) == 0 {
+		for _, hostInfo := range h.downHosts {
+			hostInfos = append(hostInfos, hostInfo)
+		}
+		return hostInfos
+	}
+	for _, host := range hostFilter {
+		if hostInfo, ok := h.downHosts[host]; ok {
+			hostInfos = append(hostInfos, hostInfo)
+		}
+	}
+	return hostInfos
+}
+
+// AddHostInfo adds hostInfo to the specified host state bucket
+func (h *maintenanceHostInfoMap) AddHostInfos(
+	hostInfos []*host.HostInfo) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	for _, hostInfo := range hostInfos {
+		switch hostInfo.State {
+		case host.HostState_HOST_STATE_DRAINING:
+			h.drainingHosts[hostInfo.GetHostname()] = hostInfo
+		case host.HostState_HOST_STATE_DOWN:
+			h.downHosts[hostInfo.GetHostname()] = hostInfo
+		}
+	}
+}
+
+// RemoveHostInfos removes the hostInfos of the specified hosts from
+// the specified host state bucket
+func (h *maintenanceHostInfoMap) RemoveHostInfos(hosts []string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	for _, host := range hosts {
+		delete(h.drainingHosts, host)
+		delete(h.downHosts, host)
+	}
+}
+
+// UpdateHostState updates the HostInfo.HostState of the specified
+// host from 'from' state to 'to' state
+func (h *maintenanceHostInfoMap) UpdateHostState(
+	hostname string,
+	from host.HostState,
+	to host.HostState) error {
+	if to != host.HostState_HOST_STATE_DRAINING &&
+		to != host.HostState_HOST_STATE_DOWN {
+		return fmt.Errorf("invalid target state")
+	}
+
+	var (
+		hostInfo *host.HostInfo
+		ok       bool
+	)
+
+	switch from {
+	case host.HostState_HOST_STATE_DRAINING:
+		if hostInfo, ok = h.drainingHosts[hostname]; !ok {
+			return fmt.Errorf("host not in expected state")
+		}
+		delete(h.drainingHosts, hostname)
+	case host.HostState_HOST_STATE_DOWN:
+		if hostInfo, ok = h.downHosts[hostname]; !ok {
+			return fmt.Errorf("host not in expected state")
+		}
+		delete(h.downHosts, hostname)
+	default:
+		return fmt.Errorf("invalid current state")
+	}
+	hostInfo.State = to
+	switch to {
+	case host.HostState_HOST_STATE_DRAINING:
+		h.drainingHosts[hostname] = hostInfo
+	case host.HostState_HOST_STATE_DOWN:
+		h.downHosts[hostname] = hostInfo
+	}
+	return nil
 }

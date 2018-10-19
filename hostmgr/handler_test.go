@@ -8,23 +8,17 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
-
-	"github.com/gogo/protobuf/proto"
-	"github.com/golang/mock/gomock"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
-
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	mesos_maintenance "code.uber.internal/infra/peloton/.gen/mesos/v1/maintenance"
 	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	hpb "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
+	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/common/reservation"
 	bin_packing "code.uber.internal/infra/peloton/hostmgr/binpacking"
 	"code.uber.internal/infra/peloton/hostmgr/config"
@@ -38,6 +32,13 @@ import (
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 	mpb_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
+
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/mock/gomock"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -134,20 +135,21 @@ func generateLaunchableTasks(numTasks int) []*hostsvc.LaunchableTask {
 type HostMgrHandlerTestSuite struct {
 	suite.Suite
 
-	ctrl                 *gomock.Controller
-	testScope            tally.TestScope
-	schedulerClient      *mpb_mocks.MockSchedulerClient
-	masterOperatorClient *mpb_mocks.MockMasterOperatorClient
-	provider             *hostmgr_mesos_mocks.MockFrameworkInfoProvider
-	volumeStore          *storage_mocks.MockPersistentVolumeStore
-	pool                 offerpool.Pool
-	handler              *ServiceHandler
-	frameworkID          *mesos.FrameworkID
-	mesosDetector        *hostmgr_mesos_mocks.MockMasterDetector
-	reserver             reserver.Reserver
-	maintenanceQueue     *mocks.MockMaintenanceQueue
-	drainingMachines     []*mesos.MachineID
-	downMachines         []*mesos.MachineID
+	ctrl                   *gomock.Controller
+	testScope              tally.TestScope
+	schedulerClient        *mpb_mocks.MockSchedulerClient
+	masterOperatorClient   *mpb_mocks.MockMasterOperatorClient
+	provider               *hostmgr_mesos_mocks.MockFrameworkInfoProvider
+	volumeStore            *storage_mocks.MockPersistentVolumeStore
+	pool                   offerpool.Pool
+	handler                *ServiceHandler
+	frameworkID            *mesos.FrameworkID
+	mesosDetector          *hostmgr_mesos_mocks.MockMasterDetector
+	reserver               reserver.Reserver
+	maintenanceQueue       *mocks.MockMaintenanceQueue
+	drainingMachines       []*mesos.MachineID
+	downMachines           []*mesos.MachineID
+	maintenanceHostInfoMap host.MaintenanceHostInfoMap
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupSuite() {
@@ -198,16 +200,18 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	)
 
 	suite.maintenanceQueue = mocks.NewMockMaintenanceQueue(suite.ctrl)
+	suite.maintenanceHostInfoMap = host.NewMaintenanceHostInfoMap()
 
 	suite.handler = &ServiceHandler{
-		schedulerClient:       suite.schedulerClient,
-		operatorMasterClient:  suite.masterOperatorClient,
-		metrics:               metrics.NewMetrics(suite.testScope),
-		offerPool:             suite.pool,
-		frameworkInfoProvider: suite.provider,
-		volumeStore:           suite.volumeStore,
-		mesosDetector:         suite.mesosDetector,
-		maintenanceQueue:      suite.maintenanceQueue,
+		schedulerClient:        suite.schedulerClient,
+		operatorMasterClient:   suite.masterOperatorClient,
+		metrics:                metrics.NewMetrics(suite.testScope),
+		offerPool:              suite.pool,
+		frameworkInfoProvider:  suite.provider,
+		volumeStore:            suite.volumeStore,
+		mesosDetector:          suite.mesosDetector,
+		maintenanceQueue:       suite.maintenanceQueue,
+		maintenanceHostInfoMap: suite.maintenanceHostInfoMap,
 	}
 	suite.handler.reserver = reserver.NewReserver(
 		metrics.NewMetrics(suite.testScope),
@@ -1495,31 +1499,50 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerGetDrainingHosts() {
 	resp, err = suite.handler.GetDrainingHosts(context.Background(), req)
 	suite.Error(err)
 	suite.Nil(resp)
+
+	// Request with limit set to 0
+	req = &hostsvc.GetDrainingHostsRequest{
+		Limit:   0,
+		Timeout: 1000,
+	}
+	suite.maintenanceQueue.EXPECT().Length().Return(2)
+	suite.maintenanceQueue.EXPECT().
+		Dequeue(gomock.Any()).
+		Return(testHost, nil)
+	suite.maintenanceQueue.EXPECT().
+		Dequeue(gomock.Any()).
+		Return("", queue.DequeueTimeOutError{})
+	resp, err = suite.handler.GetDrainingHosts(context.Background(), req)
+	suite.Equal(1, len(resp.GetHostnames()))
+	suite.Equal(testHost, resp.GetHostnames()[0])
+	suite.NoError(err)
 }
 
 func (suite *HostMgrHandlerTestSuite) TestServiceHandlerMarkHostsDrained() {
 	defer suite.ctrl.Finish()
 
-	hostnames := []string{"testhost"}
+	hostInfos := []*hpb.HostInfo{
+		{
+			Hostname: "testhost",
+			Ip:       "0.0.0.0",
+			State:    hpb.HostState_HOST_STATE_DRAINING,
+		},
+	}
+
+	suite.maintenanceHostInfoMap.AddHostInfos(hostInfos)
 
 	var drainingMachines []*mesos_maintenance.ClusterStatus_DrainingMachine
-	for i := range hostnames {
+	for _, hostInfo := range hostInfos {
 		machineID := &mesos.MachineID{
-			Hostname: &hostnames[i],
+			Hostname: &hostInfo.Hostname,
+			Ip:       &hostInfo.Ip,
 		}
 		drainingMachines = append(drainingMachines,
 			&mesos_maintenance.ClusterStatus_DrainingMachine{
 				Id: machineID,
 			})
 	}
-	status := &mesos_maintenance.ClusterStatus{
-		DrainingMachines: drainingMachines,
-	}
-	suite.masterOperatorClient.EXPECT().
-		GetMaintenanceStatus().
-		Return(&mesos_master.Response_GetMaintenanceStatus{
-			Status: status,
-		}, nil)
+
 	suite.masterOperatorClient.EXPECT().
 		StartMaintenance(gomock.Any()).
 		Return(nil).
@@ -1528,6 +1551,11 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerMarkHostsDrained() {
 				suite.Exactly(drainingMachines[i].Id, machineIds[i])
 			}
 		})
+
+	var hostnames []string
+	for _, hostInfo := range hostInfos {
+		hostnames = append(hostnames, hostInfo.GetHostname())
+	}
 	resp, err := suite.handler.MarkHostsDrained(
 		context.Background(),
 		&hostsvc.MarkHostsDrainedRequest{
@@ -1537,9 +1565,6 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerMarkHostsDrained() {
 	suite.NotNil(resp)
 
 	// Test host-not-DRAINING
-	suite.masterOperatorClient.EXPECT().
-		GetMaintenanceStatus().
-		Return(&mesos_master.Response_GetMaintenanceStatus{}, nil)
 	resp, err = suite.handler.MarkHostsDrained(
 		context.Background(),
 		&hostsvc.MarkHostsDrainedRequest{
@@ -1547,31 +1572,21 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerMarkHostsDrained() {
 		})
 	suite.Nil(resp.GetMarkedHosts())
 
-	// Test GetMaintenanceStatus error
-	suite.masterOperatorClient.EXPECT().
-		GetMaintenanceStatus().
-		Return(nil, fmt.Errorf("fake GetMaintenanceStatus error"))
-	resp, err = suite.handler.MarkHostsDrained(
-		context.Background(),
-		&hostsvc.MarkHostsDrainedRequest{
-			Hostnames: hostnames,
-		})
-	suite.Error(err)
-	suite.Nil(resp)
-
 	// Test StartMaintenance error
-	suite.masterOperatorClient.EXPECT().
-		GetMaintenanceStatus().
-		Return(&mesos_master.Response_GetMaintenanceStatus{
-			Status: status,
-		}, nil)
+	suite.maintenanceHostInfoMap.AddHostInfos([]*hpb.HostInfo{
+		{
+			Hostname: "host1",
+			Ip:       "0.0.0.0",
+			State:    hpb.HostState_HOST_STATE_DRAINING,
+		},
+	})
 	suite.masterOperatorClient.EXPECT().
 		StartMaintenance(gomock.Any()).
 		Return(fmt.Errorf("fake StartMaintenance error"))
 	resp, err = suite.handler.MarkHostsDrained(
 		context.Background(),
 		&hostsvc.MarkHostsDrainedRequest{
-			Hostnames: hostnames,
+			Hostnames: []string{"host1"},
 		})
 	suite.Error(err)
 	suite.Nil(resp.GetMarkedHosts())

@@ -10,6 +10,7 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	hpb "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
@@ -34,7 +35,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/summary"
 	hmutil "code.uber.internal/infra/peloton/hostmgr/util"
 	"code.uber.internal/infra/peloton/storage"
-	util "code.uber.internal/infra/peloton/util"
+	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
 	log "github.com/sirupsen/logrus"
@@ -52,18 +53,19 @@ const (
 
 // ServiceHandler implements peloton.private.hostmgr.InternalHostService.
 type ServiceHandler struct {
-	schedulerClient       mpb.SchedulerClient
-	operatorMasterClient  mpb.MasterOperatorClient
-	metrics               *metrics.Metrics
-	offerPool             offerpool.Pool
-	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
-	volumeStore           storage.PersistentVolumeStore
-	roleName              string
-	mesosDetector         hostmgr_mesos.MasterDetector
-	reserver              reserver.Reserver
-	hmConfig              config.Config
-	maintenanceQueue      mqueue.MaintenanceQueue // queue containing machineIDs of the machines to be put into maintenance
-	slackResourceTypes    []string
+	schedulerClient        mpb.SchedulerClient
+	operatorMasterClient   mpb.MasterOperatorClient
+	metrics                *metrics.Metrics
+	offerPool              offerpool.Pool
+	frameworkInfoProvider  hostmgr_mesos.FrameworkInfoProvider
+	volumeStore            storage.PersistentVolumeStore
+	roleName               string
+	mesosDetector          hostmgr_mesos.MasterDetector
+	reserver               reserver.Reserver
+	hmConfig               config.Config
+	maintenanceQueue       mqueue.MaintenanceQueue // queue containing machineIDs of the machines to be put into maintenance
+	slackResourceTypes     []string
+	maintenanceHostInfoMap host.MaintenanceHostInfoMap
 }
 
 // NewServiceHandler creates a new ServiceHandler.
@@ -78,19 +80,21 @@ func NewServiceHandler(
 	mesosDetector hostmgr_mesos.MasterDetector,
 	hmConfig *config.Config,
 	maintenanceQueue mqueue.MaintenanceQueue,
-	slackResourceTypes []string) *ServiceHandler {
+	slackResourceTypes []string,
+	maintenanceHostInfoMap host.MaintenanceHostInfoMap) *ServiceHandler {
 
 	handler := &ServiceHandler{
-		schedulerClient:       schedulerClient,
-		operatorMasterClient:  masterOperatorClient,
-		metrics:               metrics.NewMetrics(parent),
-		offerPool:             offer.GetEventHandler().GetOfferPool(),
-		frameworkInfoProvider: frameworkInfoProvider,
-		volumeStore:           volumeStore,
-		roleName:              mesosConfig.Framework.Role,
-		mesosDetector:         mesosDetector,
-		maintenanceQueue:      maintenanceQueue,
-		slackResourceTypes:    slackResourceTypes,
+		schedulerClient:        schedulerClient,
+		operatorMasterClient:   masterOperatorClient,
+		metrics:                metrics.NewMetrics(parent),
+		offerPool:              offer.GetEventHandler().GetOfferPool(),
+		frameworkInfoProvider:  frameworkInfoProvider,
+		volumeStore:            volumeStore,
+		roleName:               mesosConfig.Framework.Role,
+		mesosDetector:          mesosDetector,
+		maintenanceQueue:       maintenanceQueue,
+		slackResourceTypes:     slackResourceTypes,
+		maintenanceHostInfoMap: maintenanceHostInfoMap,
 	}
 	// Creating Reserver object for handler
 	handler.reserver = reserver.NewReserver(
@@ -1134,21 +1138,25 @@ func (h *ServiceHandler) MarkHostsDrained(
 	ctx context.Context,
 	request *hostsvc.MarkHostsDrainedRequest,
 ) (*hostsvc.MarkHostsDrainedResponse, error) {
-	response, err := h.operatorMasterClient.GetMaintenanceStatus()
-	if err != nil {
-		log.WithError(err).Error("Error getting maintenance status")
-		return nil, err
-	}
-	status := response.GetStatus()
 	hostSet := stringset.New()
 	for _, host := range request.GetHostnames() {
 		hostSet.Add(host)
 	}
 	var machineIDs []*mesos.MachineID
-	for _, drainingMachine := range status.GetDrainingMachines() {
-		if hostSet.Contains(drainingMachine.GetId().GetHostname()) {
-			machineIDs = append(machineIDs, drainingMachine.GetId())
+	for _, hostInfo := range h.maintenanceHostInfoMap.GetDrainingHostInfos([]string{}) {
+		if hostSet.Contains(hostInfo.GetHostname()) {
+			machineIDs = append(machineIDs, &mesos.MachineID{
+				Hostname: &hostInfo.Hostname,
+				Ip:       &hostInfo.Ip,
+			})
 		}
+	}
+
+	if len(machineIDs) != len(request.Hostnames) {
+		log.WithFields(log.Fields{
+			"machine_ids_in_map": machineIDs,
+			"request":            request,
+		}).Errorf("failed to find some hostnames in maintenanceHostInfoMap")
 	}
 	// No-op if none of the hosts in the request are 'DRAINING'
 	if len(machineIDs) == 0 {
@@ -1159,7 +1167,7 @@ func (h *ServiceHandler) MarkHostsDrained(
 	for _, machineID := range machineIDs {
 		// Start maintenance on the host by posting to
 		// /machine/down endpoint of the Mesos Master
-		err = h.operatorMasterClient.StartMaintenance([]*mesos.MachineID{machineID})
+		err := h.operatorMasterClient.StartMaintenance([]*mesos.MachineID{machineID})
 		if err != nil {
 			errs = multierr.Append(errs, err)
 			log.WithError(err).
@@ -1168,8 +1176,13 @@ func (h *ServiceHandler) MarkHostsDrained(
 			h.metrics.MarkHostsDrainedFail.Inc(1)
 			continue
 		}
+		h.maintenanceHostInfoMap.UpdateHostState(
+			machineID.GetHostname(),
+			hpb.HostState_HOST_STATE_DRAINING,
+			hpb.HostState_HOST_STATE_DOWN)
 		downedHosts = append(downedHosts, machineID.GetHostname())
 	}
+
 	h.metrics.MarkHostsDrained.Inc(int64(len(downedHosts)))
 	return &hostsvc.MarkHostsDrainedResponse{
 		MarkedHosts: downedHosts,

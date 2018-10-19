@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	"code.uber.internal/infra/peloton/common/backoff"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/background"
+	"code.uber.internal/infra/peloton/common/backoff"
 	"code.uber.internal/infra/peloton/common/buildversion"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
@@ -449,6 +449,7 @@ func main() {
 	)
 
 	maintenanceQueue := queue.NewMaintenanceQueue()
+	maintenanceHostInfoMap := host.NewMaintenanceHostInfoMap()
 
 	// Create new hostmgr internal service handler.
 	hostmgr.NewServiceHandler(
@@ -463,6 +464,7 @@ func main() {
 		&cfg.HostManager,
 		maintenanceQueue,
 		cfg.HostManager.SlackResourceTypes,
+		maintenanceHostInfoMap,
 	)
 
 	hostsvc.InitServiceHandler(
@@ -470,6 +472,7 @@ func main() {
 		rootScope,
 		masterOperatorClient,
 		maintenanceQueue,
+		maintenanceHostInfoMap,
 	)
 
 	// Initializing TaskStateManager will start to record task status
@@ -501,12 +504,14 @@ func main() {
 		rootScope,
 		maintenanceQueue,
 		masterOperatorClient,
+		maintenanceHostInfoMap,
 	)
 
 	drainer := host.NewDrainer(
 		cfg.HostManager.HostDrainerPeriod,
 		masterOperatorClient,
 		maintenanceQueue,
+		maintenanceHostInfoMap,
 	)
 
 	server := hostmgr.NewServer(

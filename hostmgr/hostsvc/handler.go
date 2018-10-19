@@ -7,11 +7,11 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	mesos_maintenance "code.uber.internal/infra/peloton/.gen/mesos/v1/maintenance"
-	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
+	hpb "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
 	host_svc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc"
 
 	"code.uber.internal/infra/peloton/common/stringset"
-	hm_host "code.uber.internal/infra/peloton/hostmgr/host"
+	"code.uber.internal/infra/peloton/hostmgr/host"
 	"code.uber.internal/infra/peloton/hostmgr/queue"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -23,9 +23,10 @@ import (
 
 // serviceHandler implements peloton.api.host.svc.HostService
 type serviceHandler struct {
-	maintenanceQueue     queue.MaintenanceQueue
-	metrics              *Metrics
-	operatorMasterClient mpb.MasterOperatorClient
+	maintenanceQueue       queue.MaintenanceQueue
+	metrics                *Metrics
+	operatorMasterClient   mpb.MasterOperatorClient
+	maintenanceHostInfoMap host.MaintenanceHostInfoMap
 }
 
 // InitServiceHandler initializes the HostService
@@ -33,11 +34,13 @@ func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	operatorMasterClient mpb.MasterOperatorClient,
-	maintenanceQueue queue.MaintenanceQueue) {
+	maintenanceQueue queue.MaintenanceQueue,
+	hostInfoMap host.MaintenanceHostInfoMap) {
 	handler := &serviceHandler{
-		maintenanceQueue:     maintenanceQueue,
-		metrics:              NewMetrics(parent.SubScope("hostsvc")),
-		operatorMasterClient: operatorMasterClient,
+		maintenanceQueue:       maintenanceQueue,
+		metrics:                NewMetrics(parent.SubScope("hostsvc")),
+		operatorMasterClient:   operatorMasterClient,
+		maintenanceHostInfoMap: hostInfoMap,
 	}
 	d.Register(host_svc.BuildHostServiceYARPCProcedures(handler))
 	log.Info("Hostsvc handler initialized")
@@ -55,66 +58,45 @@ func (m *serviceHandler) QueryHosts(
 	request *host_svc.QueryHostsRequest) (*host_svc.QueryHostsResponse, error) {
 	m.metrics.QueryHostsAPI.Inc(1)
 
-	var err error
+	// Add request.HostStates to a set to remove duplicates
 	hostStateSet := stringset.New()
 	for _, state := range request.GetHostStates() {
 		hostStateSet.Add(state.String())
 	}
 
 	if request.HostStates == nil || len(request.HostStates) == 0 {
-		for _, state := range host.HostState_name {
+		for _, state := range hpb.HostState_name {
 			hostStateSet.Add(state)
 		}
 	}
 
-	// upHosts is map to ensure we don't have 2 entries for DRAINING hosts
-	// as the response from Agents() includes info of DRAINING hosts
-	var upHosts map[string]*host.HostInfo
-	if hostStateSet.Contains(host.HostState_HOST_STATE_UP.String()) {
-		upHosts, err = buildHostInfoForRegisteredAgents()
-		if err != nil {
-			m.metrics.QueryHostsFail.Inc(1)
-			return nil, err
-		}
-	}
-
-	var clusterStatus *mesos_maintenance.ClusterStatus
-
-	// Get current maintenance status
-	response, err := m.operatorMasterClient.GetMaintenanceStatus()
-	if err != nil {
-		m.metrics.QueryHostsFail.Inc(1)
-		return nil, err
-	}
-	clusterStatus = response.GetStatus()
-
-	var drainingHosts []*host.HostInfo
-	if hostStateSet.Contains(host.HostState_HOST_STATE_DRAINING.String()) ||
-		hostStateSet.Contains(host.HostState_HOST_STATE_UP.String()) {
-		drainingHosts = buildHostInfosForMachineIDs(clusterStatus.GetDrainingMachines())
-		// We need to remove DRAINING hosts from upHosts
-		removeHostsFromMap(upHosts, drainingHosts)
-	}
-
-	// Build result
-	var hostInfos []*host.HostInfo
+	var hostInfos []*hpb.HostInfo
+	drainingHostsInfo := m.maintenanceHostInfoMap.GetDrainingHostInfos([]string{})
 	for _, hostState := range hostStateSet.ToSlice() {
-		switch host.HostState(host.HostState_value[hostState]) {
-		case host.HostState_HOST_STATE_UP:
+		switch hostState {
+		case hpb.HostState_HOST_STATE_UP.String():
+			upHosts, err := buildHostInfoForRegisteredAgents()
+			if err != nil {
+				m.metrics.QueryHostsFail.Inc(1)
+				return nil, err
+			}
+			for _, hostInfo := range drainingHostsInfo {
+				delete(upHosts, hostInfo.GetHostname())
+			}
 			for _, hostInfo := range upHosts {
 				hostInfos = append(hostInfos, hostInfo)
 			}
-		case host.HostState_HOST_STATE_DRAINING:
-			for _, hostInfo := range drainingHosts {
+		case hpb.HostState_HOST_STATE_DRAINING.String():
+			for _, hostInfo := range drainingHostsInfo {
 				hostInfos = append(hostInfos, hostInfo)
 			}
-		case host.HostState_HOST_STATE_DOWN:
-			for _, downMachine := range clusterStatus.DownMachines {
+		case hpb.HostState_HOST_STATE_DOWN.String():
+			for _, downMachine := range m.maintenanceHostInfoMap.GetDownHostInfos([]string{}) {
 				hostname := downMachine.GetHostname()
-				hostInfo := &host.HostInfo{
+				hostInfo := &hpb.HostInfo{
 					Hostname: hostname,
 					Ip:       downMachine.GetIp(),
-					State:    host.HostState_HOST_STATE_DOWN,
+					State:    hpb.HostState_HOST_STATE_DOWN,
 				}
 				hostInfos = append(hostInfos, hostInfo)
 			}
@@ -179,6 +161,16 @@ func (m *serviceHandler) StartMaintenance(
 	log.WithField("maintenance_schedule", schedule).
 		Info("Maintenance Schedule posted to Mesos Master")
 
+	var hostInfos []*hpb.HostInfo
+	for _, machine := range machineIds {
+		hostInfos = append(hostInfos,
+			&hpb.HostInfo{
+				Hostname: machine.GetHostname(),
+				Ip:       machine.GetIp(),
+				State:    hpb.HostState_HOST_STATE_DRAINING,
+			})
+	}
+	m.maintenanceHostInfoMap.AddHostInfos(hostInfos)
 	// Enqueue hostnames into maintenance queue to initiate
 	// the rescheduling of tasks running on these hosts
 	err = m.maintenanceQueue.Enqueue(request.GetHostnames())
@@ -200,50 +192,45 @@ func (m *serviceHandler) CompleteMaintenance(
 ) (*host_svc.CompleteMaintenanceResponse, error) {
 	m.metrics.CompleteMaintenanceAPI.Inc(1)
 
-	response, err := m.operatorMasterClient.GetMaintenanceStatus()
-	if err != nil {
-		m.metrics.CompleteMaintenanceFail.Inc(1)
-		return nil, err
-	}
-	clusterStatus := response.GetStatus()
-
-	downMachinesMap := make(map[string]string)
-	for _, downMachine := range clusterStatus.GetDownMachines() {
-		downMachinesMap[downMachine.GetHostname()] = downMachine.GetIp()
+	downHostInfoMap := make(map[string]*hpb.HostInfo)
+	for _, hostInfo := range m.maintenanceHostInfoMap.GetDownHostInfos([]string{}) {
+		downHostInfoMap[hostInfo.GetHostname()] = hostInfo
 	}
 
 	var machineIds []*mesos.MachineID
 	hostnames := request.GetHostnames()
-	for i := 0; i < len(hostnames); i++ {
-		hostname := hostnames[i]
-		ip, ok := downMachinesMap[hostname]
+	for _, hostname := range hostnames {
+		hostInfo, ok := downHostInfoMap[hostname]
 		if !ok {
+			m.metrics.CompleteMaintenanceFail.Inc(1)
 			return nil, fmt.Errorf("invalid request. Host %s is not DOWN", hostname)
 		}
 		machineID := &mesos.MachineID{
-			Hostname: &hostname,
-			Ip:       &ip,
+			Hostname: &hostInfo.Hostname,
+			Ip:       &hostInfo.Ip,
 		}
 		machineIds = append(machineIds, machineID)
 	}
 
-	err = m.operatorMasterClient.StopMaintenance(machineIds)
+	err := m.operatorMasterClient.StopMaintenance(machineIds)
 	if err != nil {
 		m.metrics.CompleteMaintenanceFail.Inc(1)
 		return nil, err
 	}
+
+	m.maintenanceHostInfoMap.RemoveHostInfos(hostnames)
 
 	m.metrics.CompleteMaintenanceSuccess.Inc(1)
 	return &host_svc.CompleteMaintenanceResponse{}, nil
 }
 
 // Build host info for registered agents
-func buildHostInfoForRegisteredAgents() (map[string]*host.HostInfo, error) {
-	agentMap := hm_host.GetAgentMap()
+func buildHostInfoForRegisteredAgents() (map[string]*hpb.HostInfo, error) {
+	agentMap := host.GetAgentMap()
 	if agentMap == nil || len(agentMap.RegisteredAgents) == 0 {
 		return nil, nil
 	}
-	upHosts := make(map[string]*host.HostInfo)
+	upHosts := make(map[string]*hpb.HostInfo)
 	for _, agent := range agentMap.RegisteredAgents {
 		hostname := agent.GetAgentInfo().GetHostname()
 		agentIP, _, err := util.ExtractIPAndPortFromMesosAgentPID(
@@ -251,10 +238,10 @@ func buildHostInfoForRegisteredAgents() (map[string]*host.HostInfo, error) {
 		if err != nil {
 			return nil, err
 		}
-		hostInfo := &host.HostInfo{
+		hostInfo := &hpb.HostInfo{
 			Hostname: hostname,
 			Ip:       agentIP,
-			State:    host.HostState_HOST_STATE_UP,
+			State:    hpb.HostState_HOST_STATE_UP,
 		}
 		upHosts[hostname] = hostInfo
 	}
@@ -266,7 +253,7 @@ func buildMachineIDsForHosts(
 	hostnames []string,
 ) ([]*mesos.MachineID, error) {
 	var machineIds []*mesos.MachineID
-	agentMap := hm_host.GetAgentMap()
+	agentMap := host.GetAgentMap()
 	if agentMap == nil || len(agentMap.RegisteredAgents) == 0 {
 		return nil, fmt.Errorf("no registered agents")
 	}
@@ -287,37 +274,4 @@ func buildMachineIDsForHosts(
 		machineIds = append(machineIds, machineID)
 	}
 	return machineIds, nil
-}
-
-// Build HostInfo from machineID
-func buildHostInfosForMachineIDs(
-	machines []*mesos_maintenance.ClusterStatus_DrainingMachine,
-) []*host.HostInfo {
-	var hosts []*host.HostInfo
-	for _, machine := range machines {
-		machineID := machine.GetId()
-		hostname := machineID.GetHostname()
-		hostInfo := &host.HostInfo{
-			Hostname: hostname,
-			Ip:       machineID.GetIp(),
-			State:    host.HostState_HOST_STATE_DRAINING,
-		}
-		hosts = append(hosts, hostInfo)
-	}
-	return hosts
-}
-
-// Remove the 'hosts' from host map 'm'
-func removeHostsFromMap(
-	m map[string]*host.HostInfo,
-	hosts []*host.HostInfo,
-) {
-	for _, host := range hosts {
-		ip := host.GetIp()
-		hostname := host.GetHostname()
-		// Remove the entry from m, if both hostname and IP match
-		if hostInfo, ok := m[hostname]; ok && hostInfo.GetIp() == ip {
-			delete(m, hostname)
-		}
-	}
 }

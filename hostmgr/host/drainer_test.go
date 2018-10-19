@@ -8,6 +8,7 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	mesos_maintenance "code.uber.internal/infra/peloton/.gen/mesos/v1/maintenance"
 	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
+	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
 
 	"code.uber.internal/infra/peloton/common/lifecycle"
 	mq_mocks "code.uber.internal/infra/peloton/hostmgr/queue/mocks"
@@ -21,16 +22,50 @@ const (
 	drainerPeriod = 100 * time.Millisecond
 )
 
-var (
-	hostnames = []string{"testhost"}
-)
-
 type DrainerTestSuite struct {
 	suite.Suite
 	drainer                  *drainer
 	mockCtrl                 *gomock.Controller
 	mockMasterOperatorClient *mpb_mocks.MockMasterOperatorClient
 	mockMaintenanceQueue     *mq_mocks.MockMaintenanceQueue
+	drainingMachines         []*mesos.MachineID
+	downMachines             []*mesos.MachineID
+}
+
+func (suite *DrainerTestSuite) SetupSuite() {
+	testDownMachines := []struct {
+		host string
+		ip   string
+	}{
+		{
+			host: "host2",
+			ip:   "172.17.0.6",
+		},
+	}
+	for _, test := range testDownMachines {
+		suite.downMachines = append(suite.downMachines, &mesos.MachineID{
+			Hostname: &test.host,
+			Ip:       &test.ip,
+		})
+	}
+
+	testDrainingMachines := []struct {
+		host string
+		ip   string
+	}{
+		{
+			host: "host3",
+			ip:   "172.17.0.7",
+		},
+	}
+	for _, test := range testDrainingMachines {
+		suite.drainingMachines = append(
+			suite.drainingMachines,
+			&mesos.MachineID{
+				Hostname: &test.host,
+				Ip:       &test.ip,
+			})
+	}
 }
 
 func (suite *DrainerTestSuite) SetupTest() {
@@ -38,10 +73,11 @@ func (suite *DrainerTestSuite) SetupTest() {
 	suite.mockMasterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.mockCtrl)
 	suite.mockMaintenanceQueue = mq_mocks.NewMockMaintenanceQueue(suite.mockCtrl)
 	suite.drainer = &drainer{
-		drainerPeriod:        drainerPeriod,
-		masterOperatorClient: suite.mockMasterOperatorClient,
-		maintenanceQueue:     suite.mockMaintenanceQueue,
-		lifecycle:            lifecycle.NewLifeCycle(),
+		drainerPeriod:          drainerPeriod,
+		masterOperatorClient:   suite.mockMasterOperatorClient,
+		maintenanceQueue:       suite.mockMaintenanceQueue,
+		lifecycle:              lifecycle.NewLifeCycle(),
+		maintenanceHostInfoMap: NewMaintenanceHostInfoMap(),
 	}
 }
 
@@ -57,7 +93,8 @@ func TestDrainer(t *testing.T) {
 func (suite *DrainerTestSuite) TestNewDrainer() {
 	drainer := NewDrainer(drainerPeriod,
 		suite.mockMasterOperatorClient,
-		suite.mockMaintenanceQueue)
+		suite.mockMaintenanceQueue,
+		NewMaintenanceHostInfoMap())
 	suite.NotNil(drainer)
 }
 
@@ -66,15 +103,22 @@ func (suite *DrainerTestSuite) TestStart() {
 	response := mesos_master.Response_GetMaintenanceStatus{
 		Status: &mesos_maintenance.ClusterStatus{
 			DrainingMachines: []*mesos_maintenance.ClusterStatus_DrainingMachine{},
+			DownMachines:     suite.downMachines,
 		},
 	}
-	for i := 0; i < len(hostnames); i++ {
+	for _, drainingMachine := range suite.drainingMachines {
 		response.Status.DrainingMachines = append(
-			response.Status.DrainingMachines, &mesos_maintenance.ClusterStatus_DrainingMachine{
+			response.Status.DrainingMachines,
+			&mesos_maintenance.ClusterStatus_DrainingMachine{
 				Id: &mesos.MachineID{
-					Hostname: &hostnames[i],
+					Hostname: drainingMachine.Hostname,
+					Ip:       drainingMachine.Ip,
 				},
 			})
+	}
+	var drainingHostnames []string
+	for _, machine := range suite.drainingMachines {
+		drainingHostnames = append(drainingHostnames, machine.GetHostname())
 	}
 	suite.mockMasterOperatorClient.EXPECT().
 		GetMaintenanceStatus().
@@ -82,7 +126,7 @@ func (suite *DrainerTestSuite) TestStart() {
 		MinTimes(1).
 		MaxTimes(2)
 	suite.mockMaintenanceQueue.EXPECT().
-		Enqueue(hostnames).
+		Enqueue(drainingHostnames).
 		Return(nil).
 		MinTimes(1).
 		MaxTimes(2)
@@ -90,6 +134,29 @@ func (suite *DrainerTestSuite) TestStart() {
 	// Starting drainer again should be no-op
 	suite.drainer.Start()
 	time.Sleep(2 * drainerPeriod)
+	drainingHostInfoMap := make(map[string]*host.HostInfo)
+	for _, hostInfo := range suite.drainer.maintenanceHostInfoMap.GetDrainingHostInfos([]string{}) {
+		drainingHostInfoMap[hostInfo.GetHostname()] = hostInfo
+	}
+	for _, drainingMachine := range suite.drainingMachines {
+		hostInfo := drainingHostInfoMap[drainingMachine.GetHostname()]
+		suite.NotNil(hostInfo)
+		suite.Equal(drainingMachine.GetHostname(), hostInfo.GetHostname())
+		suite.Equal(drainingMachine.GetIp(), hostInfo.GetIp())
+		suite.Equal(host.HostState_HOST_STATE_DRAINING, hostInfo.GetState())
+	}
+
+	downHostInfoMap := make(map[string]*host.HostInfo)
+	for _, hostInfo := range suite.drainer.maintenanceHostInfoMap.GetDownHostInfos([]string{}) {
+		downHostInfoMap[hostInfo.GetHostname()] = hostInfo
+	}
+	for _, downMachine := range suite.downMachines {
+		hostInfo := downHostInfoMap[downMachine.GetHostname()]
+		suite.NotNil(hostInfo)
+		suite.Equal(downMachine.GetHostname(), hostInfo.GetHostname())
+		suite.Equal(downMachine.GetIp(), hostInfo.GetIp())
+		suite.Equal(host.HostState_HOST_STATE_DOWN, hostInfo.GetState())
+	}
 	suite.drainer.Stop()
 
 	// Test GetMaintenanceStatus error
@@ -109,7 +176,7 @@ func (suite *DrainerTestSuite) TestStart() {
 		MinTimes(1).
 		MaxTimes(2)
 	suite.mockMaintenanceQueue.EXPECT().
-		Enqueue(hostnames).
+		Enqueue(drainingHostnames).
 		Return(fmt.Errorf("Fake Enqueue error")).
 		MinTimes(1).
 		MaxTimes(2)

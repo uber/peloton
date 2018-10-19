@@ -1,16 +1,18 @@
 package hostmgr
 
 import (
+	"fmt"
 	"testing"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	mesos_maintenance "code.uber.internal/infra/peloton/.gen/mesos/v1/maintenance"
 	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
+	hpb "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
 
+	"code.uber.internal/infra/peloton/hostmgr/host"
 	"code.uber.internal/infra/peloton/hostmgr/queue/mocks"
 	mpb_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
 
-	"fmt"
 	"github.com/golang/mock/gomock"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
@@ -25,6 +27,7 @@ type RecoveryTestSuite struct {
 	mockMasterOperatorClient *mpb_mocks.MockMasterOperatorClient
 	drainingMachines         []*mesos.MachineID
 	downMachines             []*mesos.MachineID
+	maintenanceHostInfoMap   host.MaintenanceHostInfoMap
 }
 
 func (suite *RecoveryTestSuite) SetupSuite() {
@@ -52,9 +55,11 @@ func (suite *RecoveryTestSuite) SetupTest() {
 	suite.mockMaintenanceQueue = mocks.NewMockMaintenanceQueue(suite.mockCtrl)
 	suite.mockMasterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.mockCtrl)
 
+	suite.maintenanceHostInfoMap = host.NewMaintenanceHostInfoMap()
 	suite.recoveryHandler = NewRecoveryHandler(tally.NoopScope,
 		suite.mockMaintenanceQueue,
-		suite.mockMasterOperatorClient)
+		suite.mockMasterOperatorClient,
+		suite.maintenanceHostInfoMap)
 }
 
 func (suite *RecoveryTestSuite) TearDownTest() {
@@ -97,6 +102,30 @@ func (suite *RecoveryTestSuite) TestStart() {
 	})
 	err := suite.recoveryHandler.Start()
 	suite.NoError(err)
+
+	drainingHostInfoMap := make(map[string]*hpb.HostInfo)
+	for _, hostInfo := range suite.maintenanceHostInfoMap.GetDrainingHostInfos([]string{}) {
+		drainingHostInfoMap[hostInfo.GetHostname()] = hostInfo
+	}
+	for _, drainingMachine := range suite.drainingMachines {
+		hostInfo := drainingHostInfoMap[drainingMachine.GetHostname()]
+		suite.NotNil(hostInfo)
+		suite.Equal(drainingMachine.GetHostname(), hostInfo.GetHostname())
+		suite.Equal(drainingMachine.GetIp(), hostInfo.GetIp())
+		suite.Equal(hpb.HostState_HOST_STATE_DRAINING, hostInfo.GetState())
+	}
+
+	downHostInfoMap := make(map[string]*hpb.HostInfo)
+	for _, hostInfo := range suite.maintenanceHostInfoMap.GetDownHostInfos([]string{}) {
+		downHostInfoMap[hostInfo.GetHostname()] = hostInfo
+	}
+	for _, downMachine := range suite.downMachines {
+		hostInfo := downHostInfoMap[downMachine.GetHostname()]
+		suite.NotNil(hostInfo)
+		suite.Equal(downMachine.GetHostname(), hostInfo.GetHostname())
+		suite.Equal(downMachine.GetIp(), hostInfo.GetIp())
+		suite.Equal(hpb.HostState_HOST_STATE_DOWN, hostInfo.GetState())
+	}
 }
 
 func (suite *RecoveryTestSuite) TestStart_Error() {
