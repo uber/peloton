@@ -667,7 +667,10 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddInstances() {
 	for _, instID := range newSlice(oldInstanceNumber, oldInstanceNumber+batchSize) {
 		suite.cachedJob.EXPECT().
 			GetTask(instID).
-			Return(nil)
+			Return(suite.cachedTask)
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(nil, yarpcerrors.NotFoundErrorf("not found"))
 		suite.taskStore.EXPECT().
 			GetPodEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil, nil)

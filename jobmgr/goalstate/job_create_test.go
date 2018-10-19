@@ -2,31 +2,32 @@ package goalstate
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
-	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	"code.uber.internal/infra/peloton/storage/cassandra"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	//"code.uber.internal/infra/peloton/storage/cassandra"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
+	//log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
 
-var csStore *cassandra.Store
+/*var csStore *cassandra.Store
 
 func init() {
 	conf := cassandra.MigrateForTest()
@@ -35,95 +36,232 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}*/
+
+type JobCreateTestSuite struct {
+	suite.Suite
+	ctrl                *gomock.Controller
+	jobStore            *storemocks.MockJobStore
+	taskStore           *storemocks.MockTaskStore
+	jobGoalStateEngine  *goalstatemocks.MockEngine
+	taskGoalStateEngine *goalstatemocks.MockEngine
+	jobFactory          *cachedmocks.MockJobFactory
+	jobID               *peloton.JobID
+	cachedJob           *cachedmocks.MockJob
+	cachedTask          *cachedmocks.MockTask
+	resmgrClient        *resmocks.MockResourceManagerServiceYARPCClient
+	goalStateDriver     *driver
+	jobEnt              *jobEntity
+	instanceCount       uint32
+	jobConfig           *pbjob.JobConfig
 }
 
-func TestJobCreateTasks(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+func TestJobCreateRun(t *testing.T) {
+	suite.Run(t, new(JobCreateTestSuite))
+}
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	resmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-
-	goalStateDriver := &driver{
-		jobEngine:    jobGoalStateEngine,
-		taskEngine:   taskGoalStateEngine,
-		resmgrClient: resmgrClient,
-		jobStore:     jobStore,
-		taskStore:    taskStore,
-		jobFactory:   jobFactory,
+func (suite *JobCreateTestSuite) SetupTest() {
+	suite.ctrl = gomock.NewController(suite.T())
+	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
+	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
+	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
+	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.resmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
+	suite.goalStateDriver = &driver{
+		jobFactory:   suite.jobFactory,
+		jobEngine:    suite.jobGoalStateEngine,
+		taskEngine:   suite.taskGoalStateEngine,
+		jobStore:     suite.jobStore,
+		taskStore:    suite.taskStore,
 		mtx:          NewMetrics(tally.NoopScope),
 		cfg:          &Config{},
+		resmgrClient: suite.resmgrClient,
 	}
-	goalStateDriver.cfg.normalize()
+	suite.goalStateDriver.cfg.normalize()
 
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-
-	jobEnt := &jobEntity{
-		id:     jobID,
-		driver: goalStateDriver,
+	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
+	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
+	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
+	suite.jobEnt = &jobEntity{
+		id:     suite.jobID,
+		driver: suite.goalStateDriver,
 	}
-
-	instanceCount := uint32(4)
-
-	jobConfig := pb_job.JobConfig{
+	suite.instanceCount = uint32(4)
+	suite.jobConfig = &pbjob.JobConfig{
 		OwningTeam:    "team6",
 		LdapGroups:    []string{"team1", "team2", "team3"},
-		InstanceCount: instanceCount,
-		Type:          pb_job.JobType_BATCH,
+		InstanceCount: suite.instanceCount,
+		Type:          pbjob.JobType_BATCH,
 	}
+}
 
-	emptyTaskInfo := make(map[uint32]*pb_task.TaskInfo)
+func (suite *JobCreateTestSuite) TearDownTest() {
+	suite.ctrl.Finish()
+}
 
-	taskStore.EXPECT().
-		GetTasksForJob(gomock.Any(), jobID).
+func (suite *JobCreateTestSuite) TestJobCreateTasks() {
+	emptyTaskInfo := make(map[uint32]*pbtask.TaskInfo)
+
+	suite.taskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.jobID).
 		Return(emptyTaskInfo, nil)
 
-	jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).
-		Return(&jobConfig, &models.ConfigAddOn{}, nil)
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any(), gomock.Any()).
+	suite.taskStore.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Do(func(_ context.Context,
-			jobInfo *pb_job.JobInfo,
+			jobInfo *pbjob.JobInfo,
 			_ *models.ConfigAddOn,
 			_ cached.UpdateRequest) {
-			assert.Equal(t, jobInfo.Runtime.State, pb_job.JobState_PENDING)
+			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_PENDING)
 		}).
 		Return(nil)
 
-	resmgrClient.EXPECT().
+	suite.resmgrClient.EXPECT().
 		EnqueueGangs(gomock.Any(), gomock.Any()).
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).
-		Return(cachedJob).
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
 		Times(2)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	err := JobCreateTasks(context.Background(), jobEnt)
-	assert.NoError(t, err)
+	err := JobCreateTasks(context.Background(), suite.jobEnt)
+	suite.NoError(err)
+}
+
+func (suite *JobCreateTestSuite) TestJobCreateGetConfigFailure() {
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(nil, nil, fmt.Errorf("fake db error"))
+
+	err := JobCreateTasks(context.Background(), suite.jobEnt)
+	suite.Error(err)
+}
+
+func (suite *JobCreateTestSuite) TestJobCreateTaskConfigCreateFailure() {
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.taskStore.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Return(fmt.Errorf("fake db error"))
+
+	err := JobCreateTasks(context.Background(), suite.jobEnt)
+	suite.Error(err)
+}
+
+func (suite *JobCreateTestSuite) TestJobCreateGetTasksFailure() {
+	suite.taskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.jobID).
+		Return(nil, fmt.Errorf("fake db error"))
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.taskStore.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	err := JobCreateTasks(context.Background(), suite.jobEnt)
+	suite.Error(err)
+}
+
+func (suite *JobCreateTestSuite) TestJobCreateResmgrFailure() {
+	emptyTaskInfo := make(map[uint32]*pbtask.TaskInfo)
+
+	suite.taskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.jobID).
+		Return(emptyTaskInfo, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.taskStore.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.resmgrClient.EXPECT().
+		EnqueueGangs(gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("fake db error"))
+
+	err := JobCreateTasks(context.Background(), suite.jobEnt)
+	suite.Error(err)
+}
+
+func (suite *JobCreateTestSuite) TestJobCreateUpdateFailure() {
+	emptyTaskInfo := make(map[uint32]*pbtask.TaskInfo)
+
+	suite.taskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.jobID).
+		Return(emptyTaskInfo, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.taskStore.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Return(fmt.Errorf("fake db error"))
+
+	suite.resmgrClient.EXPECT().
+		EnqueueGangs(gomock.Any(), gomock.Any()).
+		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		Times(2)
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	err := JobCreateTasks(context.Background(), suite.jobEnt)
+	suite.Error(err)
 }
 
 // These are integration tests within job manager.
@@ -189,119 +327,81 @@ func TestJobCreateTasks(t *testing.T) {
 	}
 }*/
 
-func TestJobRecover(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	resmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-
-	goalStateDriver := &driver{
-		jobEngine:    jobGoalStateEngine,
-		taskEngine:   taskGoalStateEngine,
-		resmgrClient: resmgrClient,
-		jobStore:     jobStore,
-		taskStore:    taskStore,
-		jobFactory:   jobFactory,
-		mtx:          NewMetrics(tally.NoopScope),
-		cfg:          &Config{},
-	}
-	goalStateDriver.cfg.normalize()
-
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-
-	jobEnt := &jobEntity{
-		id:     jobID,
-		driver: goalStateDriver,
-	}
-
-	instanceCount := uint32(4)
-
-	jobConfig := pb_job.JobConfig{
-		OwningTeam:    "team6",
-		LdapGroups:    []string{"team1", "team2", "team3"},
-		InstanceCount: instanceCount,
-	}
-
-	taskInfos := make(map[uint32]*pb_task.TaskInfo)
-	taskInfos[0] = &pb_task.TaskInfo{
-		Runtime: &pb_task.RuntimeInfo{
-			State:     pb_task.TaskState_RUNNING,
-			GoalState: pb_task.TaskState_SUCCEEDED,
+func (suite *JobCreateTestSuite) TestJobRecover() {
+	taskInfos := make(map[uint32]*pbtask.TaskInfo)
+	taskInfos[0] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_RUNNING,
+			GoalState: pbtask.TaskState_SUCCEEDED,
 		},
 		InstanceId: 0,
-		JobId:      jobID,
+		JobId:      suite.jobID,
 	}
-	taskInfos[1] = &pb_task.TaskInfo{
-		Runtime: &pb_task.RuntimeInfo{
-			State:     pb_task.TaskState_INITIALIZED,
-			GoalState: pb_task.TaskState_SUCCEEDED,
+	taskInfos[1] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_INITIALIZED,
+			GoalState: pbtask.TaskState_SUCCEEDED,
 		},
 		InstanceId: 1,
-		JobId:      jobID,
+		JobId:      suite.jobID,
 	}
 
-	taskStore.EXPECT().
-		GetTasksForJob(gomock.Any(), jobID).
+	suite.taskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.jobID).
 		Return(taskInfos, nil)
 
-	jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).
-		Return(&jobConfig, &models.ConfigAddOn{}, nil)
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any(), gomock.Any()).
+	suite.taskStore.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Do(func(_ context.Context,
-			jobInfo *pb_job.JobInfo,
+			jobInfo *pbjob.JobInfo,
 			_ *models.ConfigAddOn,
 			_ cached.UpdateRequest) {
-			assert.Equal(t, jobInfo.Runtime.State, pb_job.JobState_PENDING)
+			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_PENDING)
 		}).
 		Return(nil)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetTask(uint32(1)).Return(nil)
 
-	cachedJob.EXPECT().
-		ReplaceTasks(map[uint32]*pb_task.RuntimeInfo{1: taskInfos[1].GetRuntime()}, false).
+	suite.cachedJob.EXPECT().
+		ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{1: taskInfos[1].GetRuntime()}, false).
 		Return(nil)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	resmgrClient.EXPECT().
+	suite.resmgrClient.EXPECT().
 		EnqueueGangs(gomock.Any(), gomock.Any()).
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).
-		Return(cachedJob).
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
 		Times(2)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	err := JobCreateTasks(context.Background(), jobEnt)
-	assert.NoError(t, err)
+	err := JobCreateTasks(context.Background(), suite.jobEnt)
+	suite.NoError(err)
 }
 
 // These are integration tests within job manager.
@@ -382,231 +482,154 @@ func TestJobRecover(t *testing.T) {
 	}
 }*/
 
-func TestJobMaxRunningInstances(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	resmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-
-	goalStateDriver := &driver{
-		jobEngine:    jobGoalStateEngine,
-		taskEngine:   taskGoalStateEngine,
-		resmgrClient: resmgrClient,
-		jobStore:     jobStore,
-		taskStore:    taskStore,
-		jobFactory:   jobFactory,
-		mtx:          NewMetrics(tally.NoopScope),
-		cfg:          &Config{},
+func (suite *JobCreateTestSuite) TestJobMaxRunningInstances() {
+	suite.jobConfig.SLA = &pbjob.SlaConfig{
+		MaximumRunningInstances: 1,
 	}
-	goalStateDriver.cfg.normalize()
+	emptyTaskInfo := make(map[uint32]*pbtask.TaskInfo)
 
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-
-	jobEnt := &jobEntity{
-		id:     jobID,
-		driver: goalStateDriver,
-	}
-
-	instanceCount := uint32(4)
-
-	jobConfig := pb_job.JobConfig{
-		OwningTeam:    "team6",
-		LdapGroups:    []string{"team1", "team2", "team3"},
-		InstanceCount: instanceCount,
-		Type:          pb_job.JobType_BATCH,
-		SLA: &pb_job.SlaConfig{
-			MaximumRunningInstances: 1,
-		},
-	}
-
-	emptyTaskInfo := make(map[uint32]*pb_task.TaskInfo)
-
-	taskStore.EXPECT().
-		GetTasksForJob(gomock.Any(), jobID).
+	suite.taskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.jobID).
 		Return(emptyTaskInfo, nil)
 
-	jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).
-		Return(&jobConfig, &models.ConfigAddOn{}, nil)
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any(), gomock.Any()).
+	suite.taskStore.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	resmgrClient.EXPECT().
+	suite.resmgrClient.EXPECT().
 		EnqueueGangs(gomock.Any(), gomock.Any()).
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).
-		Return(cachedJob).
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
 		Times(2)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
-			assert.Equal(t, uint32(len(runtimeDiffs)), jobConfig.SLA.MaximumRunningInstances)
+			suite.Equal(uint32(len(runtimeDiffs)), suite.jobConfig.SLA.MaximumRunningInstances)
 			for _, runtimeDiff := range runtimeDiffs {
-				assert.Equal(t, runtimeDiff[jobmgrcommon.StateField], pb_task.TaskState_PENDING)
+				suite.Equal(runtimeDiff[jobmgrcommon.StateField], pbtask.TaskState_PENDING)
 			}
 		}).
 		Return(nil)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Do(func(_ context.Context,
-			jobInfo *pb_job.JobInfo,
+			jobInfo *pbjob.JobInfo,
 			_ *models.ConfigAddOn,
 			_ cached.UpdateRequest) {
-			assert.Equal(t, jobInfo.Runtime.State, pb_job.JobState_PENDING)
+			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_PENDING)
 		}).
 		Return(nil)
 
-	err := JobCreateTasks(context.Background(), jobEnt)
-	assert.NoError(t, err)
+	err := JobCreateTasks(context.Background(), suite.jobEnt)
+	suite.NoError(err)
 }
 
-func TestJobRecoverMaxRunningInstances(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
-
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	resmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-
-	goalStateDriver := &driver{
-		jobEngine:    jobGoalStateEngine,
-		taskEngine:   taskGoalStateEngine,
-		resmgrClient: resmgrClient,
-		jobStore:     jobStore,
-		taskStore:    taskStore,
-		jobFactory:   jobFactory,
-		mtx:          NewMetrics(tally.NoopScope),
-		cfg:          &Config{},
-	}
-	goalStateDriver.cfg.normalize()
-
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-
-	jobEnt := &jobEntity{
-		id:     jobID,
-		driver: goalStateDriver,
+func (suite *JobCreateTestSuite) TestJobRecoverMaxRunningInstances() {
+	suite.jobConfig.SLA = &pbjob.SlaConfig{
+		MaximumRunningInstances: 1,
 	}
 
-	instanceCount := uint32(4)
-
-	jobConfig := pb_job.JobConfig{
-		OwningTeam:    "team6",
-		LdapGroups:    []string{"team1", "team2", "team3"},
-		InstanceCount: instanceCount,
-		SLA: &pb_job.SlaConfig{
-			MaximumRunningInstances: 1,
-		},
-	}
-
-	taskInfos := make(map[uint32]*pb_task.TaskInfo)
-	taskInfos[0] = &pb_task.TaskInfo{
-		Runtime: &pb_task.RuntimeInfo{
-			State:     pb_task.TaskState_RUNNING,
-			GoalState: pb_task.TaskState_SUCCEEDED,
+	taskInfos := make(map[uint32]*pbtask.TaskInfo)
+	taskInfos[0] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_RUNNING,
+			GoalState: pbtask.TaskState_SUCCEEDED,
 		},
 		InstanceId: 0,
-		JobId:      jobID,
+		JobId:      suite.jobID,
 	}
-	taskInfos[1] = &pb_task.TaskInfo{
-		Runtime: &pb_task.RuntimeInfo{
-			State:     pb_task.TaskState_INITIALIZED,
-			GoalState: pb_task.TaskState_SUCCEEDED,
+	taskInfos[1] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_INITIALIZED,
+			GoalState: pbtask.TaskState_SUCCEEDED,
 		},
 		InstanceId: 1,
-		JobId:      jobID,
+		JobId:      suite.jobID,
 	}
 
-	taskStore.EXPECT().
-		GetTasksForJob(gomock.Any(), jobID).
+	suite.taskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.jobID).
 		Return(taskInfos, nil)
 
-	jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).
-		Return(&jobConfig, &models.ConfigAddOn{}, nil)
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	taskStore.EXPECT().
-		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any(), gomock.Any()).
+	suite.taskStore.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).
-		Return(cachedJob)
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetTask(uint32(1)).Return(nil)
 
-	cachedJob.EXPECT().
-		ReplaceTasks(map[uint32]*pb_task.RuntimeInfo{1: taskInfos[1].GetRuntime()}, false).
+	suite.cachedJob.EXPECT().
+		ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{1: taskInfos[1].GetRuntime()}, false).
 		Return(nil)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Do(func(_ context.Context,
-			jobInfo *pb_job.JobInfo,
+			jobInfo *pbjob.JobInfo,
 			_ *models.ConfigAddOn,
 			_ cached.UpdateRequest) {
-			assert.Equal(t, jobInfo.Runtime.State, pb_job.JobState_PENDING)
+			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_PENDING)
 		}).
 		Return(nil)
 
-	cachedJob.EXPECT().
-		GetJobType().Return(pb_job.JobType_BATCH)
+	suite.cachedJob.EXPECT().
+		GetJobType().Return(pbjob.JobType_BATCH)
 
-	jobGoalStateEngine.EXPECT().
+	suite.jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	cachedJob.EXPECT().
-		GetJobType().Return(pb_job.JobType_BATCH)
+	suite.cachedJob.EXPECT().
+		GetJobType().Return(pbjob.JobType_BATCH)
 
-	jobGoalStateEngine.EXPECT().
+	suite.jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	cachedJob.EXPECT().
-		GetJobType().Return(pb_job.JobType_BATCH)
+	suite.cachedJob.EXPECT().
+		GetJobType().Return(pbjob.JobType_BATCH)
 
-	jobGoalStateEngine.EXPECT().
+	suite.jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	err := JobCreateTasks(context.Background(), jobEnt)
-	assert.NoError(t, err)
+	err := JobCreateTasks(context.Background(), suite.jobEnt)
+	suite.NoError(err)
 }
