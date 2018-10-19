@@ -150,7 +150,7 @@ func TestTaskService_SetPlacements(t *testing.T) {
 	}
 
 	// Placement engine with empty placements
-	service.SetPlacements(ctx, nil)
+	service.SetPlacements(ctx, nil, nil)
 
 	// Placement engine, resource manager set placements request failed
 	mockResourceManager.EXPECT().
@@ -164,7 +164,7 @@ func TestTaskService_SetPlacements(t *testing.T) {
 			},
 			nil,
 		)
-	service.SetPlacements(ctx, placements)
+	service.SetPlacements(ctx, placements, nil)
 
 	mockResourceManager.EXPECT().
 		SetPlacements(
@@ -179,7 +179,7 @@ func TestTaskService_SetPlacements(t *testing.T) {
 			},
 			nil,
 		)
-	service.SetPlacements(ctx, placements)
+	service.SetPlacements(ctx, placements, nil)
 
 	mockResourceManager.EXPECT().
 		SetPlacements(
@@ -190,7 +190,7 @@ func TestTaskService_SetPlacements(t *testing.T) {
 			nil,
 			errors.New("resource manager set placements request failed"),
 		)
-	service.SetPlacements(ctx, placements)
+	service.SetPlacements(ctx, placements, nil)
 
 	gomock.InOrder(
 		mockResourceManager.EXPECT().
@@ -205,7 +205,7 @@ func TestTaskService_SetPlacements(t *testing.T) {
 				nil,
 			),
 	)
-	service.SetPlacements(ctx, placements)
+	service.SetPlacements(ctx, placements, nil)
 }
 
 func TestTaskService_Enqueue(t *testing.T) {

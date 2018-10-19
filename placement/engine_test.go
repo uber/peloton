@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+
 	"code.uber.internal/infra/peloton/common/async"
 	"code.uber.internal/infra/peloton/placement/config"
 	"code.uber.internal/infra/peloton/placement/metrics"
@@ -22,6 +22,7 @@ import (
 	reserver_mocks "code.uber.internal/infra/peloton/placement/reserver/mocks"
 	tasks_mock "code.uber.internal/infra/peloton/placement/tasks/mocks"
 	"code.uber.internal/infra/peloton/placement/testutil"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
@@ -102,57 +103,8 @@ func TestEnginePlaceNoTasksToPlace(t *testing.T) {
 	assert.True(t, delay > time.Duration(0))
 }
 
-// TODO: use mockgens to replace manually generated mocks.
-type mockService struct {
-	lockAssignments sync.Mutex
-	lockHosts       sync.Mutex
-	assignments     []*models.Assignment
-	hosts           []*models.HostOffers
-}
-
-func (s *mockService) Acquire(
-	ctx context.Context,
-	fetchTasks bool,
-	taskType resmgr.TaskType,
-	filter *hostsvc.HostFilter) (offers []*models.HostOffers, reason string) {
-
-	s.lockHosts.Lock()
-	defer s.lockHosts.Unlock()
-	result := s.hosts
-	s.hosts = nil
-	return result, _testReason
-}
-
-func (s *mockService) Dequeue(
-	ctx context.Context,
-	taskType resmgr.TaskType,
-	batchSize int,
-	timeout int) (assignments []*models.Assignment) {
-	s.lockAssignments.Lock()
-	defer s.lockAssignments.Unlock()
-	result := s.assignments
-	s.assignments = nil
-	return result
-}
-
-func (s *mockService) Release(
-	ctx context.Context,
-	offers []*models.HostOffers) {
-}
-
-func (s *mockService) Enqueue(
-	ctx context.Context,
-	assignments []*models.Assignment,
-	reason string) {
-}
-
-func (s *mockService) SetPlacements(
-	ctx context.Context,
-	placements []*resmgr.Placement) {
-}
-
 func TestEnginePlaceMultipleTasks(t *testing.T) {
-	ctrl, engine, _, _, _ := setupEngine(t)
+	ctrl, engine, mockOfferService, mockTaskService, _ := setupEngine(t)
 	defer ctrl.Finish()
 	createTasks := 25
 	createHosts := 10
@@ -172,15 +124,32 @@ func TestEnginePlaceMultipleTasks(t *testing.T) {
 		hosts = append(hosts, testutil.SetupHostOffers())
 	}
 
-	mockService := &mockService{
-		assignments: assignments,
-		hosts:       hosts,
-	}
-	engine.taskService = mockService
-	engine.offerService = mockService
+	mockOfferService.EXPECT().Acquire(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+	).Return(hosts, _testReason).MinTimes(1)
+	mockOfferService.EXPECT().Release(
+		gomock.Any(),
+		gomock.Any()).
+		Return()
+
+	mockTaskService.EXPECT().
+		Dequeue(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Times(1).
+		Return(assignments)
+	mockTaskService.EXPECT().SetPlacements(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any()).
+		Return()
 
 	engine.strategy = batch.New()
-
 	engine.Place(context.Background())
 	engine.pool.WaitUntilProcessed()
 
@@ -198,7 +167,7 @@ func TestEnginePlaceMultipleTasks(t *testing.T) {
 }
 
 func TestEnginePlaceSubsetOfTasksDueToInsufficientResources(t *testing.T) {
-	ctrl, engine, _, _, _ := setupEngine(t)
+	ctrl, engine, mockOfferService, mockTaskService, _ := setupEngine(t)
 	defer ctrl.Finish()
 	createTasks := 25
 	createHosts := 10
@@ -214,15 +183,42 @@ func TestEnginePlaceSubsetOfTasksDueToInsufficientResources(t *testing.T) {
 	for i := 0; i < createHosts; i++ {
 		hosts = append(hosts, testutil.SetupHostOffers())
 	}
-	mockService := &mockService{
-		assignments: assignments,
-		hosts:       hosts,
-	}
-	engine.taskService = mockService
-	engine.offerService = mockService
+
+	gomock.InOrder(
+		mockOfferService.EXPECT().Acquire(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Return(hosts, _testReason).Times(1),
+		mockOfferService.EXPECT().Acquire(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Return(nil, _testReason).AnyTimes(),
+	)
+
+	mockTaskService.EXPECT().
+		Dequeue(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Times(1).
+		Return(assignments)
+	mockTaskService.EXPECT().SetPlacements(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any()).
+		Return().AnyTimes()
+	mockTaskService.EXPECT().Enqueue(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any()).
+		Return()
 
 	engine.strategy = batch.New()
-
 	engine.Place(context.Background())
 	engine.pool.WaitUntilProcessed()
 
@@ -288,6 +284,7 @@ func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
 
 	mockTaskService.EXPECT().
 		SetPlacements(
+			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
 		).MinTimes(1).
@@ -368,6 +365,7 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 
 	mockTaskService.EXPECT().
 		SetPlacements(
+			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
 		).AnyTimes().
@@ -451,6 +449,7 @@ func TestEngineCleanup(t *testing.T) {
 
 	mockTaskService.EXPECT().
 		SetPlacements(
+			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
 		).
@@ -601,35 +600,33 @@ func TestEngineFindUnusedOffers(t *testing.T) {
 func TestProcessCompletedReservations(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	metrics := metrics.NewMetrics(tally.NoopScope)
 	mockOfferService := offers_mock.NewMockService(ctrl)
 	mockTaskService := tasks_mock.NewMockService(ctrl)
 	mockStrategy := mocks.NewMockStrategy(ctrl)
 	mockReserver := reserver_mocks.NewMockReserver(ctrl)
-	config := &config.PlacementConfig{
-		Strategy: config.Batch,
-	}
 	engine := &engine{
-		config:       config,
-		metrics:      metrics,
+		config: &config.PlacementConfig{
+			Strategy: config.Batch,
+		},
+		metrics:      metrics.NewMetrics(tally.NoopScope),
 		offerService: mockOfferService,
 		taskService:  mockTaskService,
 		strategy:     mockStrategy,
 		reserver:     mockReserver,
 	}
-	// Testing the scenario where GetCompletetedReservation returns error
+	// Testing the scenario where GetCompletedReservation returns error
 	mockReserver.EXPECT().GetCompletetedReservation(gomock.Any()).Return(nil, errors.New("error"))
 	err := engine.processCompletedReservations(context.Background())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error")
 
-	// Testing the scenario where GetCompletetedReservation returns with no reservations
+	// Testing the scenario where GetCompletedReservation returns with no reservations
 	var reservations []*hostsvc.CompletedReservation
 	mockReserver.EXPECT().GetCompletetedReservation(gomock.Any()).Return(reservations, nil)
 	err = engine.processCompletedReservations(context.Background())
 	assert.Contains(t, err.Error(), "no valid reservations")
 
-	// Testing the scenario where GetCompletetedReservation returns with valid reservations
+	// Testing the scenario where GetCompletedReservation returns with valid reservations
 	host := "host"
 	reservations = append(reservations, &hostsvc.CompletedReservation{
 		HostOffers: []*hostsvc.HostOffer{
@@ -647,7 +644,7 @@ func TestProcessCompletedReservations(t *testing.T) {
 		},
 	})
 	mockReserver.EXPECT().GetCompletetedReservation(gomock.Any()).Return(reservations, nil)
-	mockTaskService.EXPECT().SetPlacements(gomock.Any(), gomock.Any())
+	mockTaskService.EXPECT().SetPlacements(gomock.Any(), gomock.Any(), gomock.Any())
 	err = engine.processCompletedReservations(context.Background())
 	assert.NoError(t, err)
 }

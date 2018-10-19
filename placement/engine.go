@@ -31,8 +31,6 @@ const (
 	_noTasksTimeoutPenalty = 1 * time.Second
 	// error message for failed placed task
 	_failedToPlaceTaskAfterTimeout = "failed to place task after timeout"
-	// represents the max size of the preemption queue
-	_maxReservationQueueSize = 10000
 )
 
 // Engine represents a placement engine that can be started and stopped.
@@ -189,7 +187,7 @@ func (e *engine) processCompletedReservations(ctx context.Context) error {
 		placements = append(placements, placement)
 	}
 
-	e.taskService.SetPlacements(ctx, placements)
+	e.taskService.SetPlacements(ctx, placements, nil)
 	return nil
 }
 
@@ -302,27 +300,45 @@ func (e *engine) assignPorts(offer *models.HostOffers, tasks []*models.Task) []u
 	return selectedPorts
 }
 
+// filters the assignments into three groups
+// 1. assigned :  successful assignments.
+// 2. retryable:  should be retried, either because we can find a
+// 				  better host or we couldn't find a host.
+// 3. unassigned: tried enough times, we couldn't find a host.
 func (e *engine) filterAssignments(
 	now time.Time,
-	assignments []*models.Assignment) (assigned, retryable, unassigned []*models.Assignment) {
+	assignments []*models.Assignment) (
+	assigned, retryable, unassigned []*models.Assignment) {
 	for _, assignment := range assignments {
 		task := assignment.GetTask()
 		if assignment.GetHost() == nil {
+			// we haven't found an assignment yet
 			if task.PastDeadline(now) {
+				// tried enough
 				unassigned = append(unassigned, assignment)
 				continue
 			}
 		} else {
+			// found a host
 			task.IncRounds()
-			// TODO avyas : This seems backwards
-			if task.PastMaxRounds() || task.PastDeadline(now) {
+			// lets check if we can find a better one
+			if e.isAssignmentGoodEnough(task, now) {
+				// tried enough, this match is good enough
 				assigned = append(assigned, assignment)
 				continue
 			}
 		}
+		// If we come here we have either
+		// 1) found a host but we can try and find a better match
+		// 2) we haven't found a host but we have time to find another one
 		retryable = append(retryable, assignment)
 	}
 	return assigned, retryable, unassigned
+}
+
+// returns true if we have tried past max rounds or reached the deadline.
+func (e *engine) isAssignmentGoodEnough(task *models.Task, now time.Time) bool {
+	return task.PastMaxRounds() || task.PastDeadline(now)
 }
 
 // findUsedHosts will find the hosts that are used by the retryable assignments.
@@ -402,14 +418,20 @@ func (e *engine) createPlacement(assigned []*models.Assignment) []*resmgr.Placem
 
 func (e *engine) cleanup(
 	ctx context.Context,
-	assigned, retryable, unassigned []*models.Assignment,
+	assigned, retryable,
+	unassigned []*models.Assignment,
 	offers []*models.HostOffers) {
-	if len(assigned) > 0 {
-		// Create the resource manager placements.
-		resPlacements := e.createPlacement(assigned)
-		e.taskService.SetPlacements(ctx, resPlacements)
-	}
 
+	// Create the resource manager placements.
+	e.taskService.SetPlacements(
+		ctx,
+		e.createPlacement(assigned),
+		unassigned,
+	)
+
+	// For now we are double sending the unassigned placements to resource
+	// manager.
+	// TODO avyas: remove this once we migrate to the SetPlacements API
 	if len(unassigned) > 0 {
 		// Return tasks that failed to get placed.
 		e.taskService.Enqueue(ctx, unassigned, _failedToPlaceTaskAfterTimeout)

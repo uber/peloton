@@ -38,7 +38,9 @@ type mimir struct {
 	config *config.PlacementConfig
 }
 
-func (mimir *mimir) convertAssignments(pelotonAssignments []*models.Assignment) ([]*placement.Assignment,
+func (mimir *mimir) convertAssignments(
+	pelotonAssignments []*models.Assignment) (
+	[]*placement.Assignment,
 	map[*placement.Entity]*models.Assignment) {
 	// Convert the Peloton assignments to mimir assignments and keep a map
 	// from entities to Peloton assignments.
@@ -84,21 +86,26 @@ func (mimir *mimir) convertHosts(hosts []*models.HostOffers) ([]*placement.Group
 	return groups, groupsToHosts
 }
 
-func (mimir *mimir) updateAssignments(assignments []*placement.Assignment,
-	entitiesToAssignments map[*placement.Entity]*models.Assignment, groupsToHosts map[*placement.Group]*models.HostOffers) {
+func (mimir *mimir) updateAssignments(
+	assignments []*placement.Assignment,
+	entitiesToAssignments map[*placement.Entity]*models.Assignment,
+	groupsToHosts map[*placement.Group]*models.HostOffers) {
 	// Update the Peloton assignments from the mimir assignments
 	for _, assignment := range assignments {
+		pelotonAssignment := entitiesToAssignments[assignment.Entity]
 		if assignment.Failed {
+			pelotonAssignment.SetReason(assignment.Transcript.String())
 			continue
 		}
 		host := groupsToHosts[assignment.AssignedGroup]
-		pelotonAssignment := entitiesToAssignments[assignment.Entity]
 		pelotonAssignment.SetHost(host)
 	}
 }
 
 // PlaceOnce is an implementation of the placement.Strategy interface.
-func (mimir *mimir) PlaceOnce(pelotonAssignments []*models.Assignment, hosts []*models.HostOffers) {
+func (mimir *mimir) PlaceOnce(
+	pelotonAssignments []*models.Assignment,
+	hosts []*models.HostOffers) {
 	assignments, entitiesToAssignments := mimir.convertAssignments(pelotonAssignments)
 	groups, groupsToHosts := mimir.convertHosts(hosts)
 	scopeSet := placement.NewScopeSet(groups)

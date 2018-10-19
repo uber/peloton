@@ -29,7 +29,11 @@ type Service interface {
 	Enqueue(ctx context.Context, assignments []*models.Assignment, reason string)
 
 	// SetPlacements sets placements in the resource manager.
-	SetPlacements(ctx context.Context, placements []*resmgr.Placement)
+	SetPlacements(
+		ctx context.Context,
+		successFullPlacements []*resmgr.Placement,
+		failedAssignments []*models.Assignment,
+	)
 }
 
 // NewService will create a new task service.
@@ -126,8 +130,12 @@ func (s *service) Dequeue(
 }
 
 // SetPlacements sets placements in the resource manager.
-func (s *service) SetPlacements(ctx context.Context, placements []*resmgr.Placement) {
-	if len(placements) == 0 {
+func (s *service) SetPlacements(
+	ctx context.Context,
+	placements []*resmgr.Placement,
+	failedAssignments []*models.Assignment,
+) {
+	if len(placements) == 0 && len(failedAssignments) == 0 {
 		log.Debug("No task to place")
 		return
 	}
@@ -136,31 +144,55 @@ func (s *service) SetPlacements(ctx context.Context, placements []*resmgr.Placem
 	ctx, cancelFunc := context.WithTimeout(ctx, _timeout)
 	defer cancelFunc()
 
+	// create the failed placements and populate the reason.
+	var failedPlacements []*resmgrsvc.SetPlacementsRequest_FailedPlacement
+	for _, a := range failedAssignments {
+		failedPlacements = append(
+			failedPlacements,
+			&resmgrsvc.SetPlacementsRequest_FailedPlacement{
+				Reason: a.GetReason(),
+				Gang: &resmgrsvc.Gang{
+					Tasks: []*resmgr.Task{a.GetTask().GetTask()},
+				},
+			})
+		log.WithField("task_id", a.GetTask().GetTask().GetId()).
+			WithField("reason", a.GetReason()).
+			Info("failed placement")
+	}
+
 	var request = &resmgrsvc.SetPlacementsRequest{
-		Placements: placements,
+		Placements:       placements,
+		FailedPlacements: failedPlacements,
 	}
 	response, err := s.resourceManager.SetPlacements(ctx, request)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"num_placements":          len(placements),
+			"num_failed_placements":   len(failedPlacements),
 			"placements":              placements,
+			"failed_placements":       failedPlacements,
 			"set_placements_request":  request,
 			"set_placements_response": response,
-		}).WithError(err).Error(_failedToSetPlacements)
+		}).WithError(err).
+			Error(_failedToSetPlacements)
 		return
 	}
 
 	if response.GetError().GetFailure() != nil {
-		s.metrics.SetPlacementFail.Inc(int64(len(response.GetError().GetFailure().GetFailed())))
+		s.metrics.SetPlacementFail.Inc(
+			int64(len(response.GetError().GetFailure().GetFailed())))
 	}
 
 	if response.GetError() != nil {
 		log.WithFields(log.Fields{
 			"num_placements":          len(placements),
+			"num_failed_placements":   len(failedPlacements),
 			"placements":              placements,
+			"failed_placements":       failedPlacements,
 			"set_placements_request":  request,
 			"set_placements_response": response,
-		}).WithError(errors.New(response.Error.String())).Error(_failedToSetPlacements)
+		}).WithError(errors.New(response.Error.String())).
+			Error(_failedToSetPlacements)
 		return
 	}
 
@@ -169,7 +201,9 @@ func (s *service) SetPlacements(ctx context.Context, placements []*resmgr.Placem
 		"set_placements_response": response,
 	}).Debug("set placements called")
 
-	log.WithField("num_placements", len(placements)).Info("Set placements succeeded")
+	log.WithField("num_placements", len(placements)).
+		WithField("num_failed_placements", len(failedPlacements)).
+		Info("Set placements succeeded")
 
 	setPlacementDuration := time.Since(setPlacementStart)
 	s.metrics.SetPlacementDuration.Record(setPlacementDuration)

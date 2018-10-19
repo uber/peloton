@@ -63,7 +63,7 @@ func TestOfferService_Dequeue(t *testing.T) {
 			HostOffers: nil,
 		}, nil)
 	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
-	assert.Equal(t, reason, _failedToAcquireHostOffers)
+	assert.Equal(t, reason, _noHostOffers)
 
 	// Acquire Host Offers get tasks failure
 	filterResult := map[string]uint32{

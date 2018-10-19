@@ -47,10 +47,14 @@ service ResourceManagerService {
   rpc DequeueGangs(DequeueGangsRequest) returns (DequeueGangsResponse);
 
   /**
-   *  Set the placement information for a list of tasks. The tasks will
-   *  transit from PLACING to PLACED state after this call. This method
-   *  will be called by Placement Engine after it computes the placement
+   *  Sets the placement information for successfully placed tasks and
+   *  the reason for unsuccessful tasks. For successfully placed tasks the
+   *  tasks will transit from PLACING to PLACED state after this call. This
+   *  method will be called by Placement Engine after it computes the placement
    *  decision for those tasks.
+   *  For unsuccessful tasks the tasks are returned back to the resource manager
+   *  along with the reason for the failure. These tasks will be tried again
+   *  at a later time for placement again.
    */
   rpc SetPlacements(SetPlacementsRequest) returns (SetPlacementsResponse);
 
@@ -243,8 +247,19 @@ message SetPlacementsFailure {
 }
 
 message SetPlacementsRequest {
-  // List of task placements to set
+  // Represents a failed gang which couldn't be placed.
+  message FailedPlacement {
+    // The reason for the failure.
+    string reason = 1;
+    // The gang which couldn't be placed.
+    Gang gang = 2;
+  }
+
+  // List of successful task placements to set
   repeated resmgr.Placement placements = 1;
+
+  // List of failed task placements to return
+  repeated FailedPlacement failedPlacements = 2;
 }
 
 message SetPlacementsResponse {

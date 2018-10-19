@@ -596,7 +596,7 @@ func (h *ServiceHandler) SetPlacements(
 	req *resmgrsvc.SetPlacementsRequest,
 ) (*resmgrsvc.SetPlacementsResponse, error) {
 
-	log.WithField("request", req).Debug("SetPlacements called.")
+	log.WithField("request", req).Info("SetPlacements called.")
 	h.metrics.APISetPlacements.Inc(1)
 
 	var failed []*resmgrsvc.SetPlacementsFailure_FailedPlacement
@@ -621,6 +621,17 @@ func (h *ServiceHandler) SetPlacements(
 			h.metrics.SetPlacementFail.Inc(1)
 		} else {
 			h.metrics.SetPlacementSuccess.Inc(1)
+		}
+	}
+
+	// log the failed placements.
+	// TODO move this logic of requeue here from enqueue.
+	for _, failedPlacement := range req.GetFailedPlacements() {
+		for _, task := range failedPlacement.GetGang().GetTasks() {
+			log.
+				WithField("task_id", task.GetId()).
+				WithField("reason", failedPlacement.GetReason()).
+				Info("failed placement")
 		}
 	}
 

@@ -5,26 +5,37 @@ package models
 type Assignment struct {
 	HostOffers *HostOffers `json:"host"`
 	Task       *Task       `json:"task"`
+	Reason     string
 }
 
 // GetHost returns the host that the task was assigned to.
-func (assignment *Assignment) GetHost() *HostOffers {
-	return assignment.HostOffers
+func (a *Assignment) GetHost() *HostOffers {
+	return a.HostOffers
 }
 
 // SetHost sets the host in the assignment to the given host.
-func (assignment *Assignment) SetHost(host *HostOffers) {
-	assignment.HostOffers = host
+func (a *Assignment) SetHost(host *HostOffers) {
+	a.HostOffers = host
 }
 
 // GetTask returns the task of the assignment.
-func (assignment *Assignment) GetTask() *Task {
-	return assignment.Task
+func (a *Assignment) GetTask() *Task {
+	return a.Task
 }
 
 // SetTask sets the task in the assignment to the given task.
-func (assignment *Assignment) SetTask(task *Task) {
-	assignment.Task = task
+func (a *Assignment) SetTask(task *Task) {
+	a.Task = task
+}
+
+// GetReason returns the reason why the assignment was unsuccessful
+func (a *Assignment) GetReason() string {
+	return a.Reason
+}
+
+// SetReason sets the reason for the failed assignment
+func (a *Assignment) SetReason(reason string) {
+	a.Reason = reason
 }
 
 // NewAssignment will create a new empty assignment from a task.

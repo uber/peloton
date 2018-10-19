@@ -17,6 +17,7 @@ import (
 
 const (
 	_failedToAcquireHostOffers = "failed to acquire host offers"
+	_noHostOffers              = "no offers from the cluster"
 	_failedToFetchTasksOnHosts = "failed to fetch tasks on hosts"
 	_timeout                   = 10 * time.Second
 )
@@ -83,7 +84,7 @@ func (s *service) Acquire(
 	}
 
 	if len(hostOffers) == 0 {
-		return offers, _failedToAcquireHostOffers
+		return offers, _noHostOffers
 	}
 
 	// Get tasks running on hosts from hostOffers
@@ -110,7 +111,7 @@ func (s *service) Acquire(
 			"filter_results_json": string(filterRes),
 			"task_type":           taskType,
 			"host_task_map":       hostTasksMap,
-		}).Info("Log tasks already running on Hosts whose offers are acquired")
+		}).Info("Tasks already running on hosts")
 	}
 
 	log.WithFields(log.Fields{
