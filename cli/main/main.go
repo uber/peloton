@@ -296,9 +296,11 @@ var (
 	updateOverride = updateCreate.Flag("override",
 		"override the existing update").Default("false").Short('o').Bool()
 	updateMaxInstanceAttempts = updateCreate.Flag("maxattempts",
-		"max retry attempts for an instance").Default("0").Uint32()
+		"maximum retry attempts to bring up the instance after updating before marking it failed").Default("0").Uint32()
 	updateMaxFailureInstances = updateCreate.Flag("maxfailureInstances",
-		"max tolerable instances failed for the update").Default("0").Uint32()
+		"maximum number of instance failures tolerable before failing the update").Default("0").Uint32()
+	updateRollbackOnFailure = updateCreate.Flag("rollbackOnFailure",
+		"rollback an update if it fails").Default("false").Bool()
 
 	// command to fetch the status of a job update
 	updateGet   = update.Command("get", "get status of a job update")
@@ -526,6 +528,7 @@ func main() {
 			*updateOverride,
 			*updateMaxInstanceAttempts,
 			*updateMaxFailureInstances,
+			*updateRollbackOnFailure,
 		)
 	case updateGet.FullCommand():
 		err = client.UpdateGetAction(*updateGetID)

@@ -669,14 +669,6 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailureCountUpdate() {
 			desiredFailureCount: 4,
 		},
 		{
-			mesosState:          mesos.TaskState_TASK_KILLED,
-			pelotnState:         task.TaskState_KILLED,
-			configVersion:       1,
-			desiredVersion:      2,
-			falureCount:         3,
-			desiredFailureCount: 0,
-		},
-		{
 			mesosState:          mesos.TaskState_TASK_FAILED,
 			pelotnState:         task.TaskState_FAILED,
 			configVersion:       1,

@@ -6,11 +6,15 @@ import (
 
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
+	"code.uber.internal/infra/peloton/common/taskconfig"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	"code.uber.internal/infra/peloton/storage"
 
+	"github.com/gogo/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -51,6 +55,11 @@ type Update interface {
 
 	// Cancel is used to cancel the update
 	Cancel(ctx context.Context) error
+
+	// Rollback is used to rollback the update.
+	// It makes a copy of the previous config. The job points to the config copy
+	// and update to the config copy.
+	Rollback(ctx context.Context) error
 
 	// GetState returns the state of the update
 	GetState() *UpdateStateVector
@@ -118,7 +127,8 @@ func newUpdate(
 // IsUpdateStateTerminal returns true if the update has reach terminal state
 func IsUpdateStateTerminal(state pbupdate.State) bool {
 	switch state {
-	case pbupdate.State_SUCCEEDED, pbupdate.State_ABORTED, pbupdate.State_FAILED:
+	case pbupdate.State_SUCCEEDED, pbupdate.State_ABORTED,
+		pbupdate.State_FAILED, pbupdate.State_ROLLED_BACK:
 		return true
 	}
 	return false
@@ -233,7 +243,7 @@ func (u *update) Create(
 
 	u.populateCache(updateModel)
 
-	if err := u.updateWorkflow(
+	if err := u.updateJobConfigAndUpdateID(
 		ctx,
 		cachedJob,
 		workflowType,
@@ -254,10 +264,11 @@ func (u *update) Create(
 	return nil
 }
 
-// updateWorkflow updates job runtime with newConfigVersion. It validates
-// if the workflowType update is valid and retry if update fails due to
+// updateJobConfigAndUpdateID updates job runtime with newConfigVersion and
+// set the runtime updateID to u.id.
+// It validates if the workflowType update is valid and retries if update fails due to
 // concurrency error
-func (u *update) updateWorkflow(
+func (u *update) updateJobConfigAndUpdateID(
 	ctx context.Context,
 	cachedJob Job,
 	workflowType models.WorkflowType,
@@ -428,6 +439,7 @@ func (u *update) Cancel(ctx context.Context) error {
 			UpdateID:         u.id,
 			State:            pbupdate.State_ABORTED,
 			InstancesDone:    uint32(len(u.instancesDone)),
+			InstancesFailed:  uint32(len(u.instancesFailed)),
 			InstancesCurrent: u.instancesCurrent,
 		})
 
@@ -436,6 +448,150 @@ func (u *update) Cancel(ctx context.Context) error {
 	}
 
 	return err
+}
+
+// Rollback rolls back the current update. It creates the copy of job and task
+// config of the version to rollback to, and set the desired job version
+// to the copy version. It also updates job to point to the config copy.
+func (u *update) Rollback(ctx context.Context) error {
+	u.Lock()
+	defer u.Unlock()
+	cachedJob := u.jobFactory.AddJob(u.jobID)
+
+	// update is already rolling back, this can happen due to error retry
+	if u.state == pbupdate.State_ROLLING_BACKWARD {
+		runtime, err := cachedJob.GetRuntime(ctx)
+		if err != nil {
+			return err
+		}
+		// runtime configuration version fails to be updated in the last call,
+		// only need to update job
+		if u.jobVersion != runtime.GetConfigurationVersion() {
+			return u.updateJobConfigAndUpdateID(
+				ctx,
+				cachedJob,
+				u.workflowType,
+				u.jobVersion,
+			)
+		}
+		// update and job are in expected state, no action is needed
+		return nil
+	}
+
+	jobConfigCopy, err := u.copyJobAndTaskConfig(
+		ctx,
+		cachedJob,
+		u.jobPrevVersion,
+	)
+	if err != nil {
+		return err
+	}
+
+	currentJobConfig, _, err := u.updateFactory.jobStore.GetJobConfigWithVersion(
+		ctx,
+		u.jobID,
+		u.jobVersion,
+	)
+	if err != nil {
+		return err
+	}
+
+	instancesAdded, instancesUpdated, instancesRemoved, err := GetInstancesToProcessForUpdate(
+		ctx,
+		cachedJob,
+		currentJobConfig,
+		jobConfigCopy,
+		u.updateFactory.taskStore,
+	)
+	if err != nil {
+		return err
+	}
+	updateModel := &models.UpdateModel{
+		UpdateID:             u.id,
+		State:                pbupdate.State_ROLLING_BACKWARD,
+		InstancesCurrent:     []uint32{},
+		InstancesAdded:       instancesAdded,
+		InstancesRemoved:     instancesRemoved,
+		InstancesUpdated:     instancesUpdated,
+		InstancesTotal:       uint32(len(instancesAdded) + len(instancesRemoved) + len(instancesUpdated)),
+		JobConfigVersion:     jobConfigCopy.GetChangeLog().GetVersion(),
+		PrevJobConfigVersion: u.jobVersion,
+		InstancesDone:        0,
+		InstancesFailed:      0,
+	}
+
+	if err := u.updateFactory.updateStore.ModifyUpdate(ctx, updateModel); err != nil {
+		return err
+	}
+
+	u.instancesCurrent = []uint32{}
+	u.instancesDone = []uint32{}
+	u.instancesFailed = []uint32{}
+	u.populateCache(updateModel)
+
+	return u.updateJobConfigAndUpdateID(
+		ctx,
+		cachedJob,
+		u.workflowType,
+		u.jobVersion)
+}
+
+// copyJobAndTaskConfig copies the job config and task config of the version provided
+// with new version number of value (max version of all configs + 1)
+// It returns the copied config with changeLog updated.
+func (u *update) copyJobAndTaskConfig(
+	ctx context.Context,
+	cachedJob Job,
+	version uint64,
+) (*pbjob.JobConfig, error) {
+	jobConfig, configAddOn, err := u.updateFactory.jobStore.
+		GetJobConfigWithVersion(ctx, u.jobID, version)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", u.jobID).
+			WithField("update_id", u.id).
+			Info("failed to get job config to copy for update rolling back")
+		return nil, err
+	}
+
+	currentConfig, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", u.jobID).
+			WithField("update_id", u.id).
+			Info("failed to get current job config for update rolling back")
+		return nil, err
+	}
+	// set config changeLog version to that of current config for
+	// concurrency control
+	jobConfig.ChangeLog = &peloton.ChangeLog{
+		Version: currentConfig.GetChangeLog().GetVersion(),
+	}
+	// copy job config
+	configCopy, err := cachedJob.CompareAndSetConfig(ctx, jobConfig, configAddOn)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", u.jobID).
+			WithField("update_id", u.id).
+			Info("failed to set job config for update rolling back")
+		return nil, err
+	}
+
+	// change the job config version to that of config copy,
+	// so task config would have the right version
+	jobConfig.ChangeLog = &peloton.ChangeLog{
+		Version: configCopy.GetChangeLog().GetVersion(),
+	}
+	// copy task configs
+	if err = u.updateFactory.taskStore.CreateTaskConfigs(ctx, u.jobID, jobConfig, configAddOn); err != nil {
+		log.WithError(err).
+			WithField("job_id", u.jobID).
+			WithField("update_id", u.id).
+			Error("failed to create task configs for update rolling back")
+		return nil, err
+	}
+
+	return jobConfig, nil
 }
 
 func (u *update) GetState() *UpdateStateVector {
@@ -607,10 +763,17 @@ func (u *update) IsTaskInUpdateProgress(instanceID uint32) bool {
 
 // populate info in updateModel into update
 func (u *update) populateCache(updateModel *models.UpdateModel) {
-	u.updateConfig = updateModel.GetUpdateConfig()
+	if updateModel.GetUpdateConfig() != nil {
+		u.updateConfig = updateModel.GetUpdateConfig()
+	}
+	if updateModel.GetType() != models.WorkflowType_UNKNOWN {
+		u.workflowType = updateModel.GetType()
+	}
+	if updateModel.GetJobID() != nil {
+		u.jobID = updateModel.GetJobID()
+	}
+
 	u.state = updateModel.GetState()
-	u.workflowType = updateModel.GetType()
-	u.jobID = updateModel.GetJobID()
 	u.instancesCurrent = updateModel.GetInstancesCurrent()
 	u.instancesAdded = updateModel.GetInstancesAdded()
 	u.instancesRemoved = updateModel.GetInstancesRemoved()
@@ -619,7 +782,7 @@ func (u *update) populateCache(updateModel *models.UpdateModel) {
 	u.jobPrevVersion = updateModel.GetPrevJobConfigVersion()
 	u.instancesTotal = append(updateModel.GetInstancesUpdated(), updateModel.GetInstancesAdded()...)
 	u.instancesTotal = append(u.instancesTotal, updateModel.GetInstancesRemoved()...)
-	u.WorkflowStrategy = getWorkflowStrategy(updateModel.GetType())
+	u.WorkflowStrategy = getWorkflowStrategy(updateModel.GetState(), updateModel.GetType())
 }
 
 func (u *update) clearCache() {
@@ -726,4 +889,138 @@ func getUpdateProgress(
 	}
 
 	return instancesCurrent, instancesDone, instancesFailed, nil
+}
+
+// GetInstancesToProcessForUpdate determines the instances which have been updated in a given
+// job update. Both the old and the new job configurations are provided as
+// inputs, and it returns the instances which have been added and existing
+// instances which have been updated.
+// TODO: this func would not work if update is overwritten before finish.
+func GetInstancesToProcessForUpdate(
+	ctx context.Context,
+	cachedJob Job,
+	prevJobConfig *pbjob.JobConfig,
+	newJobConfig *pbjob.JobConfig,
+	taskStore storage.TaskStore,
+) (
+	instancesAdded []uint32,
+	instancesUpdated []uint32,
+	instancesRemoved []uint32,
+	err error,
+) {
+
+	if newJobConfig.GetInstanceCount() > prevJobConfig.GetInstanceCount() {
+		// New instances have been added
+		for instID := prevJobConfig.GetInstanceCount(); instID < newJobConfig.GetInstanceCount(); instID++ {
+			instancesAdded = append(instancesAdded, instID)
+		}
+	}
+
+	if newJobConfig.GetInstanceCount() < prevJobConfig.GetInstanceCount() {
+		// Instances have been removed
+		for instID := newJobConfig.GetInstanceCount(); instID < prevJobConfig.GetInstanceCount(); instID++ {
+			instancesRemoved = append(instancesRemoved, instID)
+		}
+	}
+
+	if labelsChangeCheck(
+		prevJobConfig.GetLabels(),
+		newJobConfig.GetLabels()) {
+		// changing labels implies that all instances need to updated
+		// so that new labels get updated in mesos
+		for i := uint32(0); i < prevJobConfig.GetInstanceCount(); i++ {
+			instancesUpdated = append(instancesUpdated, i)
+		}
+		return
+	}
+
+	instanceCount := prevJobConfig.GetInstanceCount()
+	if instanceCount > newJobConfig.GetInstanceCount() {
+		instanceCount = newJobConfig.GetInstanceCount()
+	}
+
+	for i := uint32(0); i < instanceCount; i++ {
+		// Get the current task configuration. Cannot use prevTaskConfig to do
+		// so because the task may be still be on an older configuration
+		// version because the previous update may not have succeeded.
+		// So, fetch the task configuration of the task from the DB.
+		var t Task
+		var runtime *pbtask.RuntimeInfo
+		var prevTaskConfig *pbtask.TaskConfig
+
+		t, err = cachedJob.AddTask(ctx, i)
+		if err != nil {
+			return
+		}
+
+		runtime, err = t.GetRunTime(ctx)
+		if err != nil {
+			return
+		}
+
+		prevTaskConfig, _, err = taskStore.GetTaskConfig(
+			ctx, cachedJob.ID(), i, runtime.GetConfigVersion())
+		if err != nil {
+			return
+		}
+
+		newTaskConfig := taskconfig.Merge(
+			newJobConfig.GetDefaultConfig(),
+			newJobConfig.GetInstanceConfig()[i])
+
+		if taskConfigChange(prevTaskConfig, newTaskConfig) {
+			// instance needs to be updated
+			instancesUpdated = append(instancesUpdated, i)
+		}
+	}
+	return
+}
+
+// labelsChangeCheck returns true if the labels have changed
+func labelsChangeCheck(
+	prevLabels []*peloton.Label,
+	newLabels []*peloton.Label) bool {
+	if len(prevLabels) != len(newLabels) {
+		return true
+	}
+
+	for _, label := range newLabels {
+		found := false
+		for _, prevLabel := range prevLabels {
+			if label.GetKey() == prevLabel.GetKey() &&
+				label.GetValue() == prevLabel.GetValue() {
+				found = true
+				break
+			}
+		}
+
+		// label not found
+		if found == false {
+			return true
+		}
+	}
+
+	// all old labels found in new config as well
+	return false
+}
+
+// taskConfigChange returns true if the task config (other than the name)
+// has changed.
+func taskConfigChange(
+	prevTaskConfig *pbtask.TaskConfig,
+	newTaskConfig *pbtask.TaskConfig) bool {
+	if prevTaskConfig == nil || newTaskConfig == nil {
+		return true
+	}
+
+	oldName := prevTaskConfig.GetName()
+	newName := newTaskConfig.GetName()
+	prevTaskConfig.Name = ""
+	newTaskConfig.Name = ""
+
+	changed := !proto.Equal(prevTaskConfig, newTaskConfig)
+
+	prevTaskConfig.Name = oldName
+	newTaskConfig.Name = newName
+	return changed
 }

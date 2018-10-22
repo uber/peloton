@@ -62,6 +62,8 @@ var (
 		update.State_PAUSED: WriteProgressUpdateAction,
 		// update is failed, clean it up from the cache and goal state
 		update.State_FAILED: ClearUpdateAction,
+		// update is rolled back, clean it up from the cache and goal state
+		update.State_ROLLED_BACK: ClearUpdateAction,
 	}
 )
 
@@ -147,7 +149,8 @@ func (u *updateEntity) suggestUpdateAction(
 		return updateAction
 	}
 
-	if updateState.State == update.State_ROLLING_FORWARD {
+	if updateState.State == update.State_ROLLING_FORWARD ||
+		updateState.State == update.State_ROLLING_BACKWARD {
 		// TODO What if instancesTotal has same length as instancesDone, but has
 		// different instances in them? It is not clear what to behave other than
 		// give up.

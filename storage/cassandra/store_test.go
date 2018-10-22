@@ -2677,6 +2677,85 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.True(yarpcerrors.IsNotFound(err))
 }
 
+// TestModifyUpdate tests ModifyUpdate call
+func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
+	// the job identifier
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+
+	// the update identifier
+	updateID := &peloton.UpdateID{
+		Value: uuid.New(),
+	}
+
+	// the update configuration
+	updateConfig := &update.UpdateConfig{
+		BatchSize: 5,
+	}
+
+	// job config versions
+	jobVersion := uint64(5)
+	jobPrevVersion := uint64(4)
+
+	// update state
+	state := update.State_INITIALIZED
+	instancesTotal := uint32(60)
+	numOfInstancesAdded := 30
+	instancesAdded := make([]uint32, 0)
+	instancesUpdated := make([]uint32, 0)
+	for i := 0; i < int(instancesTotal); i++ {
+		if i < numOfInstancesAdded {
+			instancesAdded = append(instancesAdded, uint32(i))
+		} else {
+			instancesUpdated = append(instancesUpdated, uint32(i))
+		}
+	}
+
+	// create a new update
+	suite.NoError(store.CreateUpdate(
+		context.Background(),
+		&models.UpdateModel{
+			UpdateID:             updateID,
+			JobID:                jobID,
+			UpdateConfig:         updateConfig,
+			JobConfigVersion:     jobVersion,
+			PrevJobConfigVersion: jobPrevVersion,
+			State:                state,
+			InstancesTotal:       instancesTotal,
+			InstancesUpdated:     instancesUpdated,
+			InstancesAdded:       instancesAdded,
+			Type:                 models.WorkflowType_UPDATE,
+		},
+	))
+
+	suite.NoError(store.ModifyUpdate(
+		context.Background(),
+		&models.UpdateModel{
+			UpdateID:             updateID,
+			JobID:                jobID,
+			JobConfigVersion:     jobVersion + 1,
+			PrevJobConfigVersion: jobVersion,
+			InstancesDone:        0,
+			InstancesFailed:      0,
+			InstancesCurrent:     []uint32{},
+			InstancesAdded:       []uint32{},
+			InstancesRemoved:     instancesAdded,
+			State:                update.State_ROLLING_BACKWARD,
+		},
+	),
+	)
+
+	updateResult, err := store.GetUpdate(context.Background(), updateID)
+	suite.NoError(err)
+	suite.Empty(updateResult.GetInstancesCurrent())
+	suite.Empty(updateResult.GetInstancesAdded())
+	suite.NotEmpty(updateResult.GetInstancesRemoved())
+	suite.Equal(updateResult.GetState(), update.State_ROLLING_BACKWARD)
+	suite.Equal(updateResult.GetJobConfigVersion(), jobVersion+1)
+	suite.Equal(updateResult.GetPrevJobConfigVersion(), jobVersion)
+}
+
 func createJobConfig() *job.JobConfig {
 	var sla = job.SlaConfig{
 		Priority:                22,

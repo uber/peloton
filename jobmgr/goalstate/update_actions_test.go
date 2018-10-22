@@ -235,8 +235,9 @@ func (suite *UpdateActionsTestSuite) TestUpdateReloadNotExists() {
 	suite.NoError(err)
 }
 
-// TestUpdateComplete tests completing an update
-func (suite *UpdateActionsTestSuite) TestUpdateComplete() {
+// TestUpdateRollingForwardComplete tests completing an update
+// which is rolling forward
+func (suite *UpdateActionsTestSuite) TestUpdateRollingForwardComplete() {
 	instancesDone := []uint32{4, 5}
 	instancesFailed := []uint32{2, 3}
 	instIDRemoved := uint32(5)
@@ -262,6 +263,12 @@ func (suite *UpdateActionsTestSuite) TestUpdateComplete() {
 		Return(nil)
 
 	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_ROLLING_FORWARD,
+		})
+
+	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
 		Return(instancesFailed)
 
@@ -273,6 +280,66 @@ func (suite *UpdateActionsTestSuite) TestUpdateComplete() {
 		WriteProgress(
 			gomock.Any(),
 			pbupdate.State_SUCCEEDED,
+			instancesDone,
+			instancesFailed,
+			[]uint32{}).
+		Return(nil)
+
+	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Do(func(updateEntity goalstate.Entity, deadline time.Time) {
+			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
+		})
+
+	err := UpdateComplete(context.Background(), suite.updateEnt)
+	suite.NoError(err)
+}
+
+// TestUpdateRollingBackwardComplete tests completing an update
+// which is rolling backward
+func (suite *UpdateActionsTestSuite) TestUpdateRollingBackwardComplete() {
+	instancesDone := []uint32{4, 5}
+	instancesFailed := []uint32{2, 3}
+	instIDRemoved := uint32(5)
+	instancesRemoved := []uint32{instIDRemoved}
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return(instancesRemoved)
+
+	suite.cachedJob.EXPECT().
+		RemoveTask(instIDRemoved)
+
+	suite.taskStore.EXPECT().
+		DeleteTaskRuntime(gomock.Any(), suite.jobID, instIDRemoved).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_ROLLING_BACKWARD,
+		})
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesFailed().
+		Return(instancesFailed)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesDone().
+		Return(instancesDone)
+
+	suite.cachedUpdate.EXPECT().
+		WriteProgress(
+			gomock.Any(),
+			pbupdate.State_ROLLED_BACK,
 			instancesDone,
 			instancesFailed,
 			[]uint32{}).
@@ -314,6 +381,12 @@ func (suite *UpdateActionsTestSuite) TestUpdateCompleteDBError() {
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
 		Return([]uint32{})
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_ROLLING_FORWARD,
+		})
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().

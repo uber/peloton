@@ -156,6 +156,13 @@ type UpdateStore interface {
 		updateInfo *models.UpdateModel,
 	) error
 
+	// ModifyUpdate modify the progress of an update,
+	// instances to update/remove/add and the job config version
+	ModifyUpdate(
+		ctx context.Context,
+		updateInfo *models.UpdateModel,
+	) error
+
 	// GetUpdateProgess fetches the job update progress, which includes the
 	// instances already updated, instances being updated and the current
 	// state of the update.

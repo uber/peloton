@@ -3,6 +3,7 @@ package cached
 import (
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
@@ -11,10 +12,11 @@ import (
 )
 
 const (
-	_updateTaskMessage  = "Job configuration updated via API"
-	_restartTaskMessage = "Task restarted via API"
-	_startTaskMessage   = "Task started via API"
-	_stopTaskMessage    = "Task stopped via API"
+	_updateTaskMessage   = "Job configuration updated via API"
+	_rollbackTaskMessage = "Job configuration updated due to rollback"
+	_restartTaskMessage  = "Task restarted via API"
+	_startTaskMessage    = "Task started via API"
+	_stopTaskMessage     = "Task stopped via API"
 )
 
 // WorkflowStrategy is the strategy of driving instances to
@@ -38,7 +40,9 @@ type WorkflowStrategy interface {
 	GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommon.RuntimeDiff
 }
 
-func getWorkflowStrategy(workflowType models.WorkflowType) WorkflowStrategy {
+func getWorkflowStrategy(
+	updateState pbupdate.State,
+	workflowType models.WorkflowType) WorkflowStrategy {
 	switch workflowType {
 	case models.WorkflowType_START:
 		return newStartStrategy()
@@ -46,9 +50,13 @@ func getWorkflowStrategy(workflowType models.WorkflowType) WorkflowStrategy {
 		return newStopStrategy()
 	case models.WorkflowType_RESTART:
 		return newRestartStrategy()
-	default:
-		return newUpdateStrategy()
 	}
+
+	if updateState == pbupdate.State_ROLLING_BACKWARD {
+		return newRollbackStrategy()
+	}
+
+	return newUpdateStrategy()
 }
 
 func newUpdateStrategy() *updateStrategy {
@@ -98,6 +106,28 @@ func (s *updateStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommon
 	return jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
 		jobmgrcommon.MessageField:              _updateTaskMessage,
+		// when updating a task, failure count due to old version should be reset
+		jobmgrcommon.FailureCountField: uint32(0),
+		jobmgrcommon.ReasonField:       "",
+	}
+}
+
+// rollbackStrategy inherits upgradeStrategy
+func newRollbackStrategy() *rollbackStrategy {
+	return &rollbackStrategy{newUpdateStrategy()}
+}
+
+type rollbackStrategy struct {
+	WorkflowStrategy
+}
+
+func (s *rollbackStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommon.RuntimeDiff {
+	return jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
+		jobmgrcommon.MessageField:              _rollbackTaskMessage,
+		// when updating a task, failure count due to old version should be reset
+		jobmgrcommon.FailureCountField: uint32(0),
+		jobmgrcommon.ReasonField:       "",
 	}
 }
 
@@ -115,6 +145,7 @@ func (s *restartStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommo
 		jobmgrcommon.GoalStateField:            getDefaultTaskGoalState(jobConfig.GetType()),
 		jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
 		jobmgrcommon.MessageField:              _restartTaskMessage,
+		jobmgrcommon.ReasonField:               "",
 	}
 }
 
@@ -138,6 +169,7 @@ func (s *startStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommon.
 		jobmgrcommon.ConfigVersionField:        jobConfig.GetChangeLog().GetVersion(),
 		jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
 		jobmgrcommon.MessageField:              _startTaskMessage,
+		jobmgrcommon.ReasonField:               "",
 	}
 }
 
@@ -183,6 +215,7 @@ func (s *stopStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommon.R
 		jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
 		jobmgrcommon.GoalStateField:            pbtask.TaskState_KILLED,
 		jobmgrcommon.MessageField:              _stopTaskMessage,
+		jobmgrcommon.ReasonField:               "",
 	}
 }
 

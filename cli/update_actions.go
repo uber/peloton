@@ -29,7 +29,8 @@ func (c *Client) UpdateCreateAction(
 	configVersion uint64,
 	override bool,
 	maxInstanceAttempts uint32,
-	maxFailureInstances uint32) error {
+	maxFailureInstances uint32,
+	updateRollbackOnFailure bool) error {
 	var jobConfig job.JobConfig
 	var response *updatesvc.CreateUpdateResponse
 
@@ -107,6 +108,7 @@ func (c *Client) UpdateCreateAction(
 				BatchSize:           batchSize,
 				MaxInstanceAttempts: maxInstanceAttempts,
 				MaxFailureInstances: maxFailureInstances,
+				RollbackOnFailure:   updateRollbackOnFailure,
 			},
 		}
 

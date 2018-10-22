@@ -244,7 +244,16 @@ func TestUpdateStrategyGetRuntimeDiff(t *testing.T) {
 		runtimeDiff[jobmgrcommon.MessageField].(string),
 		_updateTaskMessage,
 	)
-	assert.Len(t, runtimeDiff, 2)
+	assert.Equal(
+		t,
+		runtimeDiff[jobmgrcommon.FailureCountField].(uint32),
+		uint32(0),
+	)
+	assert.Empty(
+		t,
+		runtimeDiff[jobmgrcommon.ReasonField].(string),
+	)
+	assert.Len(t, runtimeDiff, 4)
 }
 
 // TestRestartStrategyIsInstanceComplete tests IsInstanceComplete
@@ -486,6 +495,11 @@ func TestRestartStrategyGetRuntimeDiff(t *testing.T) {
 		runtimeDiff[jobmgrcommon.GoalStateField].(pbtask.TaskState),
 		getDefaultTaskGoalState(jobConfig.GetType()),
 	)
+	assert.Empty(
+		t,
+		runtimeDiff[jobmgrcommon.ReasonField].(string),
+	)
+	assert.Len(t, runtimeDiff, 4)
 }
 
 // TestStartStrategyIsInstanceComplete tests IsInstanceComplete
@@ -971,4 +985,9 @@ func TestStopStrategyGetRuntimeDiff(t *testing.T) {
 		runtimeDiff[jobmgrcommon.GoalStateField].(pbtask.TaskState),
 		pbtask.TaskState_KILLED,
 	)
+	assert.Empty(
+		t,
+		runtimeDiff[jobmgrcommon.ReasonField].(string),
+	)
+	assert.Len(t, runtimeDiff, 5)
 }

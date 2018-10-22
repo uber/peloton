@@ -4,9 +4,8 @@ import (
 	"context"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
@@ -55,7 +54,7 @@ func handleUnchangedInstancesInUpdate(
 	ctx context.Context,
 	cachedUpdate cached.Update,
 	cachedJob cached.Job,
-	jobConfig *job.JobConfig) error {
+	jobConfig jobmgrcommon.JobConfig) error {
 
 	runtimes := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	instanceCount := jobConfig.GetInstanceCount()
@@ -148,7 +147,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 	// update the state of the job update
 	if err = cachedUpdate.WriteProgress(
 		ctx,
-		pbupdate.State_ROLLING_FORWARD,
+		update.State_ROLLING_FORWARD,
 		[]uint32{},
 		[]uint32{},
 		[]uint32{},

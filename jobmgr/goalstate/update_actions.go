@@ -95,9 +95,14 @@ func UpdateComplete(ctx context.Context, entity goalstate.Entity) error {
 		}
 	}
 
+	completeState := pbupdate.State_SUCCEEDED
+	if cachedUpdate.GetState().State == pbupdate.State_ROLLING_BACKWARD {
+		completeState = pbupdate.State_ROLLED_BACK
+	}
+
 	if err := cachedUpdate.WriteProgress(
 		ctx,
-		pbupdate.State_SUCCEEDED,
+		completeState,
 		cachedUpdate.GetInstancesDone(),
 		cachedUpdate.GetInstancesFailed(),
 		[]uint32{},

@@ -8,6 +8,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
+
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
@@ -57,8 +59,8 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 		cachedUpdate.GetInstancesDone(),
 		instancesDoneFromLastRun...)
 
-	// number of failed instances in the update exceeds limit and
-	// max instance retries is set, process the failed update and
+	// number of failed instances in the workflow exceeds limit and
+	// max instance retries is set, process the failed workflow and
 	// return directly
 	// TODO: use job SLA if GetMaxFailureInstances is not set
 	if cachedUpdate.GetUpdateConfig().GetMaxFailureInstances() != 0 &&
@@ -99,7 +101,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 	if err := writeUpdateProgress(
 		ctx,
 		cachedUpdate,
-		pbupdate.State_ROLLING_FORWARD,
+		cachedUpdate.GetState().State,
 		instancesDone,
 		instancesFailed,
 		instancesCurrent,
@@ -139,21 +141,71 @@ func processFailedUpdate(
 	instancesCurrent []uint32,
 	driver *driver,
 ) error {
-	if err := cachedUpdate.WriteProgress(
-		ctx,
-		pbupdate.State_FAILED,
-		instancesDone,
-		instancesFailed,
-		instancesCurrent,
-	); err != nil {
-		return err
+	// rollback the update if RollbackOnFailure is set and
+	// the update itself is not a rollback
+	if cachedUpdate.GetUpdateConfig().RollbackOnFailure &&
+		!isUpdateRollback(cachedUpdate) {
+		if err := cachedUpdate.Rollback(ctx); err != nil {
+			log.WithFields(log.Fields{
+				"update_id": cachedUpdate.ID().String(),
+				"job_id":    cachedJob.ID().String(),
+			}).WithError(err).
+				Info("fail to rollback update")
+			return err
+		}
+
+		cachedConfig, err := cachedJob.GetConfig(ctx)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"update_id": cachedUpdate.ID().String(),
+				"job_id":    cachedJob.ID().String(),
+			}).WithError(err).
+				Info("fail to get job config to rollback update")
+			return err
+		}
+
+		if err := handleUnchangedInstancesInUpdate(
+			ctx,
+			cachedUpdate,
+			cachedJob,
+			cachedConfig,
+		); err != nil {
+			log.WithFields(log.Fields{
+				"update_id": cachedUpdate.ID().String(),
+				"job_id":    cachedJob.ID().String(),
+			}).WithError(err).
+				Info("fail to update unchanged instances to rollback update")
+			return err
+		}
+
+		log.WithFields(log.Fields{
+			"update_id": cachedUpdate.ID().String(),
+			"job_id":    cachedJob.ID().String(),
+		}).Info("update rolling back")
+	} else {
+		if err := cachedUpdate.WriteProgress(
+			ctx,
+			pbupdate.State_FAILED,
+			instancesDone,
+			instancesFailed,
+			instancesCurrent,
+		); err != nil {
+			return err
+		}
+	}
+	driver.EnqueueUpdate(cachedJob.ID(), cachedUpdate.ID(), time.Now())
+
+	return nil
+}
+
+// isUpdateRollback returns if an update is a rolling back to a
+// previous version
+func isUpdateRollback(cachedUpdate cached.Update) bool {
+	if cachedUpdate.GetWorkflowType() != models.WorkflowType_UPDATE {
+		return false
 	}
 
-	driver.EnqueueUpdate(
-		cachedJob.ID(),
-		cachedUpdate.ID(),
-		time.Now())
-	return nil
+	return cachedUpdate.GetState().State == pbupdate.State_ROLLING_BACKWARD
 }
 
 // postUpdateAction performs actions after update run is finished for

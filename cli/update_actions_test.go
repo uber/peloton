@@ -181,6 +181,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 			t.override,
 			maxInstanceRetries,
 			maxFailureInstances,
+			false,
 		)
 
 		if t.err != nil {
@@ -242,6 +243,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateResPoolErrors() {
 			false,
 			maxInstanceRetries,
 			maxFailureInstances,
+			false,
 		)
 		suite.Error(err)
 	}
@@ -333,6 +335,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateJobGetErrors() {
 			false,
 			maxInstanceRetries,
 			maxFailureInstances,
+			false,
 		)
 		suite.Error(err)
 	}
@@ -436,6 +439,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateRetry() {
 		false,
 		maxInstanceRetries,
 		maxFailureInstances,
+		false,
 	)
 	suite.NoError(err)
 }

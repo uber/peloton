@@ -152,6 +152,12 @@ func (suite *UpdateGoalStateTestSuite) TestUpdateSuggestAction() {
 			action:         RunUpdateAction,
 		},
 		{
+			state:          update.State_ROLLING_BACKWARD,
+			instancesDone:  []uint32{2, 3, 4, 5, 6},
+			instancesTotal: []uint32{1, 2, 3, 4, 5, 6},
+			action:         RunUpdateAction,
+		},
+		{
 			state:          update.State_INVALID,
 			instancesDone:  []uint32{2, 3, 4, 5, 6},
 			instancesTotal: []uint32{1, 2, 3, 4, 5, 6},
@@ -177,6 +183,12 @@ func (suite *UpdateGoalStateTestSuite) TestUpdateSuggestAction() {
 		},
 		{
 			state:          update.State_ROLLING_FORWARD,
+			instancesDone:  []uint32{1, 2, 3, 4, 5, 6},
+			instancesTotal: []uint32{1, 2, 3, 4, 5, 6},
+			action:         CompleteUpdateAction,
+		},
+		{
+			state:          update.State_ROLLING_BACKWARD,
 			instancesDone:  []uint32{1, 2, 3, 4, 5, 6},
 			instancesTotal: []uint32{1, 2, 3, 4, 5, 6},
 			action:         CompleteUpdateAction,

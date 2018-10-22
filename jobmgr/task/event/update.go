@@ -520,14 +520,10 @@ func updateFailureCount(
 		runtimeDiff[jobmgrcommon.FailureCountField] = uint32(runtime.GetFailureCount() + 1)
 
 	case eventState == pb_task.TaskState_KILLED &&
-		runtime.GetGoalState() != pb_task.TaskState_KILLED:
-		if runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
-			// This KILLED event is expected that caused by update
-			runtimeDiff[jobmgrcommon.FailureCountField] = uint32(0)
-		} else {
-			// This KILLED event is unexpected
-			runtimeDiff[jobmgrcommon.FailureCountField] = uint32(runtime.GetFailureCount() + 1)
-		}
+		runtime.GetGoalState() != pb_task.TaskState_KILLED &&
+		runtime.GetConfigVersion() == runtime.GetDesiredConfigVersion():
+		// This KILLED event is unexpected
+		runtimeDiff[jobmgrcommon.FailureCountField] = uint32(runtime.GetFailureCount() + 1)
 	}
 }
 

@@ -152,6 +152,11 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 		AddJob(suite.jobID).
 		Return(suite.cachedJob)
 
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
+
 	for i := uint32(0); i < suite.jobConfig.InstanceCount; i++ {
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), i).
@@ -216,6 +221,11 @@ func (suite *UpdateSvcTestSuite) TestAddInstancesSuccess() {
 		AddJob(suite.jobID).
 		Return(suite.cachedJob)
 
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
+
 	for i := uint32(0); i < suite.jobConfig.InstanceCount; i++ {
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), i).
@@ -277,6 +287,15 @@ func (suite *UpdateSvcTestSuite) TestUpdateLabelsSuccess() {
 	suite.updateFactory.EXPECT().
 		AddUpdate(gomock.Any()).
 		Return(suite.cachedUpdate)
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
 
 	newConfig := *suite.jobConfig
 	newConfig.Labels = append(newConfig.Labels, &peloton.Label{Key: "newKey", Value: "newLabel"})
@@ -488,6 +507,11 @@ func (suite *UpdateSvcTestSuite) TestCreateReduceInstanceCount() {
 		AddJob(suite.jobID).
 		Return(suite.cachedJob)
 
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
+
 	for i := uint32(0); i < suite.newJobConfig.InstanceCount; i++ {
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), i).
@@ -601,6 +625,11 @@ func (suite *UpdateSvcTestSuite) TestCreateAddUpdateFail() {
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		Create(

@@ -2857,6 +2857,7 @@ func (s *Store) CreateUpdate(
 			"instances_removed",
 			"instances_done",
 			"instances_current",
+			"instances_failed",
 			"job_id",
 			"job_config_version",
 			"job_config_prev_version",
@@ -2872,6 +2873,7 @@ func (s *Store) CreateUpdate(
 			updateInfo.GetInstancesRemoved(),
 			0,
 			[]int{},
+			0,
 			updateInfo.GetJobID().GetValue(),
 			updateInfo.GetJobConfigVersion(),
 			updateInfo.GetPrevJobConfigVersion(),
@@ -3116,6 +3118,45 @@ func (s *Store) WriteUpdateProgress(
 		Set("instances_done", updateInfo.GetInstancesDone()).
 		Set("instances_failed", updateInfo.GetInstancesFailed()).
 		Set("instances_current", updateInfo.GetInstancesCurrent()).
+		Set("update_time", time.Now().UTC()).
+		Where(qb.Eq{"update_id": updateInfo.GetUpdateID().GetValue()})
+
+	if err := s.applyStatement(
+		ctx,
+		stmt,
+		updateInfo.GetUpdateID().GetValue()); err != nil {
+		log.WithError(err).
+			WithFields(log.Fields{
+				"update_id":               updateInfo.GetUpdateID().GetValue(),
+				"update_state":            updateInfo.GetState().String(),
+				"update_instances_done":   updateInfo.GetInstancesDone(),
+				"update_instances_failed": updateInfo.GetInstancesFailed(),
+			}).Info("modify update in DB failed")
+		s.metrics.UpdateMetrics.UpdateWriteProgressFail.Inc(1)
+		return err
+	}
+
+	s.metrics.UpdateMetrics.UpdateWriteProgress.Inc(1)
+	return nil
+}
+
+// ModifyUpdate modify the progress of an update,
+// instances to update/remove/add and the job config version
+func (s *Store) ModifyUpdate(
+	ctx context.Context,
+	updateInfo *models.UpdateModel) error {
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Update(updatesTable).
+		Set("update_state", updateInfo.GetState().String()).
+		Set("instances_done", updateInfo.GetInstancesDone()).
+		Set("instances_failed", updateInfo.GetInstancesFailed()).
+		Set("instances_current", updateInfo.GetInstancesCurrent()).
+		Set("instances_added", updateInfo.GetInstancesAdded()).
+		Set("instances_removed", updateInfo.GetInstancesRemoved()).
+		Set("instances_total", updateInfo.GetInstancesTotal()).
+		Set("job_config_version", updateInfo.GetJobConfigVersion()).
+		Set("job_config_prev_version", updateInfo.GetPrevJobConfigVersion()).
 		Set("update_time", time.Now().UTC()).
 		Where(qb.Eq{"update_id": updateInfo.GetUpdateID().GetValue()})
 

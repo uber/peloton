@@ -68,6 +68,12 @@ enum State {
 
   // The update is failed
   FAILED = 6;
+
+  // The update is rolling barckward
+  ROLLING_BACKWARD = 7;
+
+  // The update was rolled back due to failure
+  ROLLED_BACK = 8;
 }
 
 /**
