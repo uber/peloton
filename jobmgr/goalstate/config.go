@@ -8,6 +8,9 @@ const (
 	_defaultLaunchTimeRetryDuration  = 20 * time.Minute
 	_defaultStartTimeRetryDuration   = 20 * time.Minute
 	_defaultJobRuntimeUpdateInterval = 1 * time.Second
+	_defaultInitialTaskBackoff       = 30 * time.Second
+	_defaultMaxTaskBackoff           = 60 * time.Minute
+
 	// Job worker threads should be small because job create and job kill
 	// actions create 1000 parallel threads to update the DB, and if too
 	// many job worker threads do these operations in parallel, it can
@@ -58,6 +61,18 @@ type Config struct {
 	// the maximum number of job updates which can be parallely processed
 	// by the goal state engine.
 	NumWorkerUpdateThreads int `yaml:"update_worker_thread_count"`
+
+	// InitialTaskBackoff defines the initial back-off delay to recreate
+	// failed tasks. Back off is calculated as
+	// min(InitialTaskBackOff * 2 ^ (failureCount - 1), MaxBackoff).
+	// Default to 30s.
+	InitialTaskBackoff time.Duration `yaml:"initial_task_backoff"`
+
+	// InitialTaskBackoff defines the max back-off delay to recreate
+	// failed tasks. Back off is calculated as
+	// min(InitialTaskBackOff * 2 ^ (failureCount - 1), MaxBackoff).
+	// Default to 1h.
+	MaxTaskBackoff time.Duration `yaml:"max_task_backoff"`
 }
 
 // normalize configuration by setting unassigned fields to default values.
@@ -92,5 +107,13 @@ func (c *Config) normalize() {
 	}
 	if c.NumWorkerUpdateThreads == 0 {
 		c.NumWorkerUpdateThreads = _defaultUpdateWorkerThreads
+	}
+
+	if c.InitialTaskBackoff == 0 {
+		c.InitialTaskBackoff = _defaultInitialTaskBackoff
+	}
+
+	if c.MaxTaskBackoff == 0 {
+		c.MaxTaskBackoff = _defaultMaxTaskBackoff
 	}
 }

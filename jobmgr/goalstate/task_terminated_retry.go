@@ -60,7 +60,8 @@ func TaskTerminatedRetry(ctx context.Context, entity goalstate.Entity) error {
 			taskEnt.instanceID,
 			taskRuntime,
 			taskConfig,
-			goalStateDriver)
+			goalStateDriver,
+			true)
 	}
 
 	return nil

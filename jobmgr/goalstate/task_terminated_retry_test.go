@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	mesosv1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
@@ -12,6 +13,7 @@ import (
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
+	"code.uber.internal/infra/peloton/common/goalstate"
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
@@ -79,7 +81,10 @@ func (suite *TaskTerminatedRetryTestSuite) SetupTest() {
 		taskStore:     suite.taskStore,
 		jobFactory:    suite.jobFactory,
 		mtx:           NewMetrics(tally.NoopScope),
-		cfg:           &Config{},
+		cfg: &Config{
+			InitialTaskBackoff: 30 * time.Second,
+			MaxTaskBackoff:     60 * time.Minute,
+		},
 	}
 	suite.goalStateDriver.cfg.normalize()
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
@@ -181,8 +186,14 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 		GetRuntime(gomock.Any()).Return(jobRuntime, nil)
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
+	suite.taskRuntime.FailureCount = 2
 	suite.cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
+	suite.taskConfig = &pbtask.TaskConfig{
+		RestartPolicy: &pbtask.RestartPolicy{
+			MaxFailures: 3,
+		},
+	}
 	suite.taskStore.EXPECT().GetTaskConfig(
 		gomock.Any(),
 		suite.jobID,
@@ -210,6 +221,9 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 
 	suite.taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
+		Do(func(_ goalstate.Entity, deadline time.Time) {
+			suite.True(deadline.After(time.Now()))
+		}).
 		Return()
 
 	suite.jobGoalStateEngine.EXPECT().

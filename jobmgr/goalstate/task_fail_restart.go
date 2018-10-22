@@ -2,6 +2,7 @@ package goalstate
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -15,13 +16,16 @@ import (
 )
 
 // rescheduleTask patch the new job runtime and enqueue the task into goalstate engine
+// When JobMgr restarts, the task would be throttled again. Therefore, a task can be throttled
+// for more than the duration returned by getBackoff.
 func rescheduleTask(
 	ctx context.Context,
 	cachedJob cached.Job,
 	instanceID uint32,
 	taskRuntime *task.RuntimeInfo,
 	taskConfig *task.TaskConfig,
-	goalStateDriver *driver) error {
+	goalStateDriver *driver,
+	throttleOnFailure bool) error {
 
 	jobID := cachedJob.ID()
 	healthState := taskutil.GetInitialHealthState(taskConfig)
@@ -41,9 +45,36 @@ func rescheduleTask(
 	if err != nil {
 		return err
 	}
-	goalStateDriver.EnqueueTask(jobID, instanceID, time.Now())
+	if throttleOnFailure {
+		goalStateDriver.EnqueueTask(
+			jobID,
+			instanceID,
+			time.Now().Add(getBackoff(taskRuntime,
+				goalStateDriver.cfg.InitialTaskBackoff,
+				goalStateDriver.cfg.MaxTaskBackoff)))
+	} else {
+		goalStateDriver.EnqueueTask(jobID, instanceID, time.Now())
+	}
+
 	EnqueueJobWithDefaultDelay(jobID, goalStateDriver, cachedJob)
 	return nil
+}
+
+func getBackoff(taskRuntime *task.RuntimeInfo,
+	initialTaskBackOff time.Duration,
+	maxTaskBackOff time.Duration) time.Duration {
+	if taskRuntime.GetFailureCount() == 0 {
+		return time.Duration(0)
+	}
+
+	// backOff = _initialTaskBackOff * 2 ^ (failureCount - 1)
+	backOff := time.Duration(float64(initialTaskBackOff.Nanoseconds()) *
+		math.Pow(2, float64(taskRuntime.GetFailureCount()-1)))
+
+	if backOff > maxTaskBackOff {
+		return maxTaskBackOff
+	}
+	return backOff
 }
 
 // TaskFailRetry retries on task failure
@@ -97,5 +128,6 @@ func TaskFailRetry(ctx context.Context, entity goalstate.Entity) error {
 		taskEnt.instanceID,
 		runtime,
 		taskConfig,
-		goalStateDriver)
+		goalStateDriver,
+		false)
 }
