@@ -3,6 +3,11 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.7.1
+-----------------
+* 2018-10-22    Constraint job and task configurations at DB                                           rcharles@uber.com
+* 2018-10-22    Revert "Restrict the maximum number of updates allowed per job"                        rcharles@uber.com
+
 0.7.7
 -----------------
 * 2018-10-17    Get rid of glide dependency and fix peloton cli build                                  xiaojian@uber.com
