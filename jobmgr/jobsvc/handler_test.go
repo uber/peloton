@@ -171,9 +171,6 @@ func (suite *JobHandlerTestSuite) SetupTest() {
 			MinimumRunningInstances: 1,
 		},
 		Type: job.JobType_SERVICE,
-		ChangeLog: &peloton.ChangeLog{
-			Version: 3,
-		},
 	}
 	suite.testRespoolID = &peloton.ResourcePoolID{
 		Value: "test-respool",
@@ -913,9 +910,6 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		LdapGroups:    []string{"team1", "team2", "team3"},
 		InstanceCount: oldInstanceCount,
 		DefaultConfig: defaultConfig,
-		ChangeLog: &peloton.ChangeLog{
-			Version: 3,
-		},
 	}
 	newJobConfig := &job.JobConfig{
 		OwningTeam:    "team6",
@@ -1057,39 +1051,6 @@ func (suite *JobHandlerTestSuite) TestJobUpdateServiceJob() {
 		"job update is only supported for batch jobs")
 }
 
-func (suite *JobHandlerTestSuite) TestJobExceedingMaxAllowedUpdates() {
-	jobID := &peloton.JobID{
-		Value: uuid.New(),
-	}
-	respoolID := &peloton.ResourcePoolID{
-		Value: "test-respool",
-	}
-
-	suite.mockedCandidate.EXPECT().IsLeader().Return(true).AnyTimes()
-	suite.mockedJobFactory.EXPECT().AddJob(jobID).
-		Return(suite.mockedCachedJob).AnyTimes()
-	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
-		Return(&job.RuntimeInfo{State: job.JobState_RUNNING}, nil).AnyTimes()
-	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).
-		Return(&job.JobConfig{
-			OwningTeam: "team-original",
-			RespoolID:  respoolID,
-			ChangeLog: &peloton.ChangeLog{
-				Version: 500,
-			},
-		}, &models.ConfigAddOn{}, nil)
-
-	resp, err := suite.handler.Update(suite.context, &job.UpdateRequest{
-		Id: jobID,
-		Config: &job.JobConfig{
-			OwningTeam: "team-change",
-		},
-	})
-	suite.Error(err)
-	suite.Nil(resp)
-}
-
 // TestJobUpdateFailure tests failure scenarios for Job Update API
 func (suite *JobHandlerTestSuite) TestJobUpdateFailure() {
 	jobID := &peloton.JobID{
@@ -1140,9 +1101,6 @@ func (suite *JobHandlerTestSuite) TestJobUpdateFailure() {
 		Return(&job.JobConfig{
 			OwningTeam: "team-original",
 			RespoolID:  respoolID,
-			ChangeLog: &peloton.ChangeLog{
-				Version: 3,
-			},
 		}, &models.ConfigAddOn{}, nil)
 	resp, err = suite.handler.Update(suite.context, &job.UpdateRequest{
 		Id: jobID,
@@ -1159,9 +1117,6 @@ func (suite *JobHandlerTestSuite) TestJobUpdateFailure() {
 		Return(&job.JobConfig{
 			RespoolID:     respoolID,
 			DefaultConfig: defaultConfig,
-			ChangeLog: &peloton.ChangeLog{
-				Version: 3,
-			},
 		}, &models.ConfigAddOn{}, nil)
 	suite.mockedCachedJob.EXPECT().
 		CompareAndSetConfig(gomock.Any(), gomock.Any(), gomock.Any()).
