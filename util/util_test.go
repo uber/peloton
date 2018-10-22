@@ -448,6 +448,7 @@ func TestTaskTerminalState(t *testing.T) {
 		task.TaskState_KILLED:    true,
 		task.TaskState_SUCCEEDED: true,
 		task.TaskState_LOST:      true,
+		task.TaskState_DELETED:   true,
 	}
 	for s := range task.TaskState_name {
 		_, isTerm := taskTerminalStates[task.TaskState(s)]

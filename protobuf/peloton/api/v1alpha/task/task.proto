@@ -324,6 +324,9 @@ enum TaskState {
 
   // Execution of the task was terminated by the system
   KILLED      = 14;
+
+  // The task is to be deleted after termination
+  DELETED     = 16;
 }
 
 /**

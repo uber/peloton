@@ -172,7 +172,7 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil)
+		Return(nil).Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
@@ -329,6 +329,10 @@ func (suite *UpdateRunTestSuite) TestCompletedUpdate() {
 		Return(nil)
 
 	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return([]uint32{})
+
+	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
 		Return(instancesRemaining)
 
@@ -450,6 +454,10 @@ func (suite *UpdateRunTestSuite) TestUpdateTaskAddTaskFail() {
 		Return(instancesTotal)
 
 	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return([]uint32{})
+
+	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
 		Return(&pbupdate.UpdateConfig{})
 
@@ -491,6 +499,10 @@ func (suite *UpdateRunTestSuite) TestUpdateTaskRuntimeGetFail() {
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
 		Return(instancesTotal)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return([]uint32{})
 
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), gomock.Any()).
@@ -553,7 +565,7 @@ func (suite *UpdateRunTestSuite) TestUpdateProgressDBError() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil)
+		Return(nil).Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
@@ -663,7 +675,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil)
+		Return(nil).Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
@@ -793,7 +805,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_FullyRunning_AddShrinkInstances()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil)
+		Return(nil).Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
@@ -944,7 +956,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil)
+		Return(nil).Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
@@ -1081,7 +1093,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil)
+		Return(nil).Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
@@ -1212,7 +1224,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() 
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil)
+		Return(nil).Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
@@ -1342,7 +1354,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunKilledJobAddInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil)
+		Return(nil).Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
@@ -1478,7 +1490,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunDBErrorAddInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil)
+		Return(nil).Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
@@ -1587,7 +1599,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunDBErrorUpdateInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil)
+		Return(nil).Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
@@ -1665,7 +1677,7 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(instancesTotal)
+		Return(instancesTotal).Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
@@ -1702,7 +1714,7 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstances() {
 			suite.Equal(2, len(runtimes))
 			for _, runtime := range runtimes {
 				suite.Equal(runtime[jobmgrcommon.GoalStateField],
-					pbtask.TaskState_KILLED)
+					pbtask.TaskState_DELETED)
 				suite.Equal(runtime[jobmgrcommon.DesiredConfigVersionField],
 					newJobConfigVer)
 			}
@@ -1790,7 +1802,7 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstancesDBError() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(instancesTotal)
+		Return(instancesTotal).Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
@@ -1923,6 +1935,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateFailed() {
 	}
 
 	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return([]uint32{})
+
+	suite.cachedUpdate.EXPECT().
 		WriteProgress(
 			gomock.Any(),
 			pbupdate.State_FAILED,
@@ -2012,6 +2028,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRolledBack() {
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
 		Return(totalInstancesToUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return([]uint32{})
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
@@ -2153,6 +2173,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRolledBackFail() {
 		Return([]uint32{})
 
 	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return([]uint32{})
+
+	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
 		Return(instancesTotal)
 
@@ -2275,6 +2299,10 @@ func (suite *UpdateRunTestSuite) TestUpdateRollingBackFailed() {
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
 		Return(instancesTotal)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return([]uint32{})
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
@@ -2415,7 +2443,7 @@ func (suite *UpdateRunTestSuite) TestRunningUpdatePartialFailure() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil)
+		Return(nil).Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().

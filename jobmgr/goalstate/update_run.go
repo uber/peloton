@@ -520,7 +520,7 @@ func removeInstancesInUpdate(
 
 	for _, instID := range instancesToRemove {
 		runtimes[instID] = jobmgrcommon.RuntimeDiff{
-			jobmgrcommon.GoalStateField:            pbtask.TaskState_KILLED,
+			jobmgrcommon.GoalStateField:            pbtask.TaskState_DELETED,
 			jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
 			jobmgrcommon.MessageField:              "Task Count reduced via API",
 		}

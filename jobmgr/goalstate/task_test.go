@@ -337,6 +337,92 @@ func TestEngineSuggestActionGoalFailed(t *testing.T) {
 
 }
 
+func TestEngineSuggestActionGoalDeleted(t *testing.T) {
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+	instanceID := uint32(0)
+
+	taskEnt := &taskEntity{
+		jobID:      jobID,
+		instanceID: instanceID,
+	}
+
+	tt := []struct {
+		currentState         pbtask.TaskState
+		configVersion        uint64
+		desiredConfigVersion uint64
+		action               TaskAction
+	}{
+		{
+			currentState:         pbtask.TaskState_RUNNING,
+			configVersion:        0,
+			desiredConfigVersion: 0,
+			action:               StopAction,
+		},
+		{
+			currentState:         pbtask.TaskState_RUNNING,
+			configVersion:        10,
+			desiredConfigVersion: 10,
+			action:               StopAction,
+		},
+		{
+			currentState:         pbtask.TaskState_STARTING,
+			configVersion:        10,
+			desiredConfigVersion: 10,
+			action:               StopAction,
+		},
+		{
+			currentState:         pbtask.TaskState_LAUNCHED,
+			configVersion:        10,
+			desiredConfigVersion: 10,
+			action:               StopAction,
+		},
+		{
+			currentState:         pbtask.TaskState_KILLING,
+			configVersion:        10,
+			desiredConfigVersion: 10,
+			action:               ExecutorShutdownAction,
+		},
+		{
+			currentState:         pbtask.TaskState_KILLED,
+			configVersion:        10,
+			desiredConfigVersion: 11,
+			action:               DeleteAction,
+		},
+		{
+			currentState:         pbtask.TaskState_FAILED,
+			configVersion:        10,
+			desiredConfigVersion: 11,
+			action:               DeleteAction,
+		},
+		{
+			currentState:         pbtask.TaskState_SUCCEEDED,
+			configVersion:        10,
+			desiredConfigVersion: 11,
+			action:               DeleteAction,
+		},
+		{
+			currentState:         pbtask.TaskState_LOST,
+			configVersion:        10,
+			desiredConfigVersion: 11,
+			action:               DeleteAction,
+		},
+	}
+
+	for i, test := range tt {
+		a := taskEnt.suggestTaskAction(
+			cached.TaskStateVector{
+				State:         test.currentState,
+				ConfigVersion: test.configVersion,
+			},
+			cached.TaskStateVector{
+				State:         pbtask.TaskState_DELETED,
+				ConfigVersion: test.desiredConfigVersion,
+			},
+		)
+		assert.Equal(t, test.action, a, "test %d fails", i)
+	}
+}
+
 // TestEngineSuggestActionRestart tests task action suggestion
 // given mesos id and desired mesos id
 func TestEngineSuggestActionRestart(t *testing.T) {

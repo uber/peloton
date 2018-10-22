@@ -200,7 +200,8 @@ func MesosStateToPelotonState(mstate mesos.TaskState) task.TaskState {
 func IsPelotonStateTerminal(state task.TaskState) bool {
 	switch state {
 	case task.TaskState_SUCCEEDED, task.TaskState_FAILED,
-		task.TaskState_KILLED, task.TaskState_LOST:
+		task.TaskState_KILLED, task.TaskState_LOST,
+		task.TaskState_DELETED:
 		return true
 	default:
 		return false

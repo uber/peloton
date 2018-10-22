@@ -1363,6 +1363,67 @@ func (suite *UpdateTestSuite) TestUpdateRecoverGetRuntimeFailure() {
 	suite.Equal(suite.update.state, pbupdate.State_INVALID)
 }
 
+func (suite *UpdateTestSuite) TestUpdateRecoverRemoveInstances() {
+	instancesTotal := []uint32{0, 1, 2, 3, 4}
+	instancesCurrent := []uint32{0, 1, 2, 3, 4}
+	var instancesDone []uint32
+	instanceCount := uint32(len(instancesTotal))
+	preJobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 0,
+		},
+		InstanceCount: instanceCount,
+	}
+	newJobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 1,
+		},
+		InstanceCount: instanceCount,
+		Labels:        []*peloton.Label{{"test-key", "test-value"}},
+	}
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			JobID:                suite.jobID,
+			InstancesTotal:       uint32(len(instancesTotal)),
+			InstancesUpdated:     []uint32{},
+			InstancesDone:        uint32(len(instancesDone)),
+			InstancesCurrent:     instancesCurrent,
+			InstancesRemoved:     instancesCurrent,
+			PrevJobConfigVersion: preJobConfig.GetChangeLog().GetVersion(),
+			JobConfigVersion:     newJobConfig.GetChangeLog().GetVersion(),
+			State:                pbupdate.State_INITIALIZED,
+			Type:                 models.WorkflowType_UPDATE,
+		}, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.jobID).
+		Return(&pbjob.RuntimeInfo{
+			ConfigurationVersion: 2,
+		}, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(newJobConfig, &models.ConfigAddOn{}, nil).AnyTimes()
+
+	for i := uint32(0); i < instanceCount; i++ {
+		taskRuntime := &pbtask.RuntimeInfo{
+			State:   pbtask.TaskState_RUNNING,
+			Healthy: pbtask.HealthState_DISABLED,
+		}
+
+		suite.taskStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), suite.jobID, i).
+			Return(taskRuntime, yarpcerrors.NotFoundErrorf("not-found"))
+	}
+
+	err := suite.update.Recover(context.Background())
+	suite.NoError(err)
+
+	suite.Equal(suite.update.instancesDone, instancesCurrent)
+}
+
 // testCachedJob is a test object for cached job, which enables user to
 // overwrite some of its behavior
 type testCachedJob struct {
@@ -1457,15 +1518,6 @@ func (suite *UpdateTestSuite) TestUpdateWorkflowWithTooManyUnexpectedVersionErro
 	)
 
 	suite.Error(err)
-}
-
-func contains(element uint32, slice []uint32) bool {
-	for _, v := range slice {
-		if v == element {
-			return true
-		}
-	}
-	return false
 }
 
 // Test function IsTaskInUpdateProgress

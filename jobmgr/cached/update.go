@@ -416,7 +416,9 @@ func (u *update) Recover(ctx context.Context) error {
 		u.WorkflowStrategy,
 		u.updateConfig.GetMaxInstanceAttempts(),
 		u.jobVersion,
-		u.instancesTotal)
+		u.instancesTotal,
+		u.instancesRemoved,
+	)
 	if err != nil {
 		u.clearCache()
 		return err
@@ -848,7 +850,9 @@ func GetUpdateProgress(
 		cachedUpdate,
 		cachedUpdate.GetUpdateConfig().GetMaxInstanceAttempts(),
 		desiredConfigVersion,
-		instancesToCheck)
+		instancesToCheck,
+		cachedUpdate.GetInstancesRemoved(),
+	)
 }
 
 // getUpdateProgress is the internal version of GetUpdateProgress, which does not depend on cachedUpdate.
@@ -860,12 +864,17 @@ func getUpdateProgress(
 	maxInstanceAttempts uint32,
 	desiredConfigVersion uint64,
 	instancesToCheck []uint32,
+	instancesRemoved []uint32,
 ) (instancesCurrent []uint32, instancesDone []uint32, instancesFailed []uint32, err error) {
 	for _, instID := range instancesToCheck {
 		cachedTask, err := cachedJob.AddTask(ctx, instID)
 		// task is not created, this can happen when an update
-		// adds more instances
-		if yarpcerrors.IsNotFound(err) {
+		// adds more instances or instance is being removed
+		if yarpcerrors.IsNotFound(err) ||
+			err == InstanceIDExceedsInstanceCountError {
+			if contains(instID, instancesRemoved) {
+				instancesDone = append(instancesDone, instID)
+			}
 			continue
 		}
 
@@ -1023,4 +1032,14 @@ func taskConfigChange(
 	prevTaskConfig.Name = oldName
 	newTaskConfig.Name = newName
 	return changed
+}
+
+// contains is a helper function to check if an element is present in the list
+func contains(element uint32, slice []uint32) bool {
+	for _, v := range slice {
+		if v == element {
+			return true
+		}
+	}
+	return false
 }

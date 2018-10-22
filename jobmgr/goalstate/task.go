@@ -44,6 +44,8 @@ const (
 	// TerminatedRetryAction helps restart terminated tasks with throttling as well as
 	// fail the task update if the task does not come up for max instance retries.
 	TerminatedRetryAction TaskAction = "terminated_retry"
+	// DeleteAction deletes the task from cache and its runtime from the DB
+	DeleteAction TaskAction = "delete_task"
 	// TaskStateInvalidAction is executed when a task enters
 	// invalid current state and goal state combination, and it logs a sentry error
 	TaskStateInvalidAction TaskAction = "state_invalid"
@@ -61,6 +63,7 @@ var (
 		TerminatedRetryAction:  TaskTerminatedRetry,
 		FailRetryAction:        TaskFailRetry,
 		ExecutorShutdownAction: TaskExecutorShutdown,
+		DeleteAction:           TaskDelete,
 		TaskStateInvalidAction: TaskStateInvalid,
 	}
 )
@@ -99,6 +102,18 @@ var (
 			task.TaskState_RUNNING:     StopAction,
 			task.TaskState_LOST:        NoTaskAction,
 			task.TaskState_KILLING:     ExecutorShutdownAction,
+		},
+		task.TaskState_DELETED: {
+			task.TaskState_INITIALIZED: StopAction,
+			task.TaskState_PENDING:     StopAction,
+			task.TaskState_LAUNCHED:    StopAction,
+			task.TaskState_STARTING:    StopAction,
+			task.TaskState_RUNNING:     StopAction,
+			task.TaskState_KILLING:     ExecutorShutdownAction,
+			task.TaskState_LOST:        DeleteAction,
+			task.TaskState_SUCCEEDED:   DeleteAction,
+			task.TaskState_FAILED:      DeleteAction,
+			task.TaskState_KILLED:      DeleteAction,
 		},
 		task.TaskState_FAILED: {
 			// FAILED is not a valid task goal state.

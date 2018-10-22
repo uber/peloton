@@ -2,6 +2,7 @@ package goalstate
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -130,4 +131,32 @@ func (suite *TaskActionTestSuite) TestTaskStateInvalidAction() {
 		Return(suite.instanceID)
 	err := TaskStateInvalid(context.Background(), suite.taskEnt)
 	suite.NoError(err)
+}
+
+func (suite *TaskActionTestSuite) TestTaskDeleteAction() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		RemoveTask(suite.instanceID).
+		Return()
+	suite.taskStore.EXPECT().
+		DeleteTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
+		Return(nil)
+
+	suite.NoError(TaskDelete(context.Background(), suite.taskEnt))
+}
+
+func (suite *TaskActionTestSuite) TestTaskDeleteActionDBError() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		RemoveTask(suite.instanceID).
+		Return()
+	suite.taskStore.EXPECT().
+		DeleteTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
+		Return(fmt.Errorf("fake db error"))
+
+	suite.Error(TaskDelete(context.Background(), suite.taskEnt))
 }

@@ -58,3 +58,18 @@ func TaskStateInvalid(_ context.Context, entity goalstate.Entity) error {
 	goalStateDriver.mtx.taskMetrics.TaskInvalidState.Inc(1)
 	return nil
 }
+
+// TaskDelete delete the task from cache and removes its runtime from the DB.
+// It is used to reduce the instance count of a job.
+func TaskDelete(ctx context.Context, entity goalstate.Entity) error {
+	taskEnt := entity.(*taskEntity)
+	goalStateDriver := taskEnt.driver
+	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
+	if cachedJob == nil {
+		return nil
+	}
+
+	cachedJob.RemoveTask(taskEnt.instanceID)
+	return goalStateDriver.taskStore.DeleteTaskRuntime(
+		ctx, taskEnt.jobID, taskEnt.instanceID)
+}
