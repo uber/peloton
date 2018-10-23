@@ -88,9 +88,10 @@ func (suite *HostMapTestSuite) TestRefresh() {
 	defer suite.ctrl.Finish()
 
 	loader := &Loader{
-		OperatorClient:     suite.operatorClient,
-		Scope:              suite.testScope,
-		SlackResourceTypes: []string{common.MesosCPU},
+		OperatorClient:         suite.operatorClient,
+		Scope:                  suite.testScope,
+		SlackResourceTypes:     []string{common.MesosCPU},
+		MaintenanceHostInfoMap: NewMaintenanceHostInfoMap(),
 	}
 
 	gomock.InOrder(
@@ -101,13 +102,20 @@ func (suite *HostMapTestSuite) TestRefresh() {
 
 	numAgents := 2000
 	response := makeAgentsResponse(numAgents)
+	loader.MaintenanceHostInfoMap.AddHostInfos([]*host.HostInfo{
+		{
+			Hostname: *response.Agents[numAgents-1].AgentInfo.Hostname,
+			State:    host.HostState_HOST_STATE_DRAINING,
+		},
+	})
 	gomock.InOrder(
 		suite.operatorClient.EXPECT().Agents().Return(response, nil),
 	)
 	loader.Load(nil)
 
+	numRegisteredAgents := numAgents - 1
 	m := GetAgentMap()
-	suite.Len(m.RegisteredAgents, numAgents)
+	suite.Len(m.RegisteredAgents, numRegisteredAgents)
 
 	id1 := "id-1"
 	a1 := GetAgentInfo(id1)
@@ -118,17 +126,17 @@ func (suite *HostMapTestSuite) TestRefresh() {
 
 	gauges := suite.testScope.Snapshot().Gauges()
 	suite.Contains(gauges, "registered_hosts+")
-	suite.Equal(float64(numAgents), gauges["registered_hosts+"].Value())
+	suite.Equal(float64(numRegisteredAgents), gauges["registered_hosts+"].Value())
 	suite.Contains(gauges, "cpus+")
-	suite.Equal(float64(numAgents*_defaultResourceValue), gauges["cpus+"].Value())
+	suite.Equal(float64(numRegisteredAgents*_defaultResourceValue), gauges["cpus+"].Value())
 	suite.Contains(gauges, "cpus_revocable+")
-	suite.Equal(float64(numAgents*_defaultResourceValue), gauges["cpus_revocable+"].Value())
+	suite.Equal(float64(numRegisteredAgents*_defaultResourceValue), gauges["cpus_revocable+"].Value())
 	suite.Contains(gauges, "mem+")
-	suite.Equal(float64(numAgents*_defaultResourceValue), gauges["mem+"].Value())
+	suite.Equal(float64(numRegisteredAgents*_defaultResourceValue), gauges["mem+"].Value())
 	suite.Contains(gauges, "disk+")
-	suite.Equal(float64(numAgents*_defaultResourceValue), gauges["disk+"].Value())
+	suite.Equal(float64(numRegisteredAgents*_defaultResourceValue), gauges["disk+"].Value())
 	suite.Contains(gauges, "gpus+")
-	suite.Equal(float64(numAgents*_defaultResourceValue), gauges["gpus+"].Value())
+	suite.Equal(float64(numRegisteredAgents*_defaultResourceValue), gauges["gpus+"].Value())
 }
 
 func (suite *HostMapTestSuite) TestMaintenanceHostInfoMap() {

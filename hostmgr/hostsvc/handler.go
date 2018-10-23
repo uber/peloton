@@ -72,6 +72,7 @@ func (m *serviceHandler) QueryHosts(
 
 	var hostInfos []*hpb.HostInfo
 	drainingHostsInfo := m.maintenanceHostInfoMap.GetDrainingHostInfos([]string{})
+	downHostsInfo := m.maintenanceHostInfoMap.GetDownHostInfos([]string{})
 	for _, hostState := range hostStateSet.ToSlice() {
 		switch hostState {
 		case hpb.HostState_HOST_STATE_UP.String():
@@ -80,9 +81,16 @@ func (m *serviceHandler) QueryHosts(
 				m.metrics.QueryHostsFail.Inc(1)
 				return nil, err
 			}
+			// Remove draining and down hosts from the result.
+			// This is needed because AgentMap is updated every 15s
+			// and might not have the up to date information.
 			for _, hostInfo := range drainingHostsInfo {
 				delete(upHosts, hostInfo.GetHostname())
 			}
+			for _, hostInfo := range downHostsInfo {
+				delete(upHosts, hostInfo.GetHostname())
+			}
+
 			for _, hostInfo := range upHosts {
 				hostInfos = append(hostInfos, hostInfo)
 			}
@@ -91,13 +99,7 @@ func (m *serviceHandler) QueryHosts(
 				hostInfos = append(hostInfos, hostInfo)
 			}
 		case hpb.HostState_HOST_STATE_DOWN.String():
-			for _, downMachine := range m.maintenanceHostInfoMap.GetDownHostInfos([]string{}) {
-				hostname := downMachine.GetHostname()
-				hostInfo := &hpb.HostInfo{
-					Hostname: hostname,
-					Ip:       downMachine.GetIp(),
-					State:    hpb.HostState_HOST_STATE_DOWN,
-				}
+			for _, hostInfo := range downHostsInfo {
 				hostInfos = append(hostInfos, hostInfo)
 			}
 		}

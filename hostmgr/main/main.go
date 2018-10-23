@@ -385,10 +385,13 @@ func main() {
 		cfg.HostManager.TaskReconcilerConfig,
 	)
 
+	maintenanceHostInfoMap := host.NewMaintenanceHostInfoMap()
+
 	loader := host.Loader{
-		OperatorClient:     masterOperatorClient,
-		Scope:              rootScope.SubScope("hostmap"),
-		SlackResourceTypes: cfg.HostManager.SlackResourceTypes,
+		OperatorClient:         masterOperatorClient,
+		Scope:                  rootScope.SubScope("hostmap"),
+		SlackResourceTypes:     cfg.HostManager.SlackResourceTypes,
+		MaintenanceHostInfoMap: maintenanceHostInfoMap,
 	}
 
 	backgroundManager := background.NewManager()
@@ -449,7 +452,6 @@ func main() {
 	)
 
 	maintenanceQueue := queue.NewMaintenanceQueue()
-	maintenanceHostInfoMap := host.NewMaintenanceHostInfoMap()
 
 	// Create new hostmgr internal service handler.
 	hostmgr.NewServiceHandler(

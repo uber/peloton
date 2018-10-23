@@ -958,6 +958,7 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 	loader := &host.Loader{
 		OperatorClient: suite.masterOperatorClient,
 		Scope:          suite.testScope,
+		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	numAgents := 2
 	response := makeAgentsResponse(numAgents)
@@ -1046,6 +1047,7 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithoutAg
 	loader := &host.Loader{
 		OperatorClient: suite.masterOperatorClient,
 		Scope:          suite.testScope,
+		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
 	loader.Load(nil)
@@ -1083,6 +1085,7 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithQuota
 	loader := &host.Loader{
 		OperatorClient: suite.masterOperatorClient,
 		Scope:          suite.testScope,
+		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	numAgents := 2
 	response := makeAgentsResponse(numAgents)
@@ -1868,9 +1871,10 @@ func TestHostManagerTestSuite(t *testing.T) {
 // InitializeHosts adds the hosts to host map
 func (suite *HostMgrHandlerTestSuite) InitializeHosts(numAgents int) {
 	loader := &host.Loader{
-		OperatorClient:     suite.masterOperatorClient,
-		Scope:              suite.testScope,
-		SlackResourceTypes: []string{"cpus"},
+		OperatorClient:         suite.masterOperatorClient,
+		Scope:                  suite.testScope,
+		SlackResourceTypes:     []string{"cpus"},
+		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	response := makeAgentsResponse(numAgents)
 	gomock.InOrder(
@@ -2186,6 +2190,7 @@ func (suite *HostMgrHandlerTestSuite) TestGetMesosAgentInfo() {
 	loader := &host.Loader{
 		OperatorClient: suite.masterOperatorClient,
 		Scope:          suite.testScope,
+		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	loader.Load(nil)
 

@@ -107,6 +107,7 @@ func (suite *HostSvcHandlerTestSuite) SetupTest() {
 	loader := &host.Loader{
 		OperatorClient: suite.mockMasterOperatorClient,
 		Scope:          tally.NewTestScope("", map[string]string{}),
+		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
 	loader.Load(nil)
@@ -242,6 +243,7 @@ func (suite *HostSvcHandlerTestSuite) TestStartMaintenanceError() {
 	loader := &host.Loader{
 		OperatorClient: suite.mockMasterOperatorClient,
 		Scope:          tally.NewTestScope("", map[string]string{}),
+		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(nil, nil)
 	loader.Load(nil)
@@ -419,6 +421,7 @@ func (suite *HostSvcHandlerTestSuite) TestQueryHostsError() {
 	loader := &host.Loader{
 		OperatorClient: suite.mockMasterOperatorClient,
 		Scope:          tally.NewTestScope("", map[string]string{}),
+		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(nil, nil)
 	loader.Load(nil)

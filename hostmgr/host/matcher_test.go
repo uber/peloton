@@ -45,6 +45,7 @@ func (suite *MatcherTestSuite) InitializeHosts() {
 	loader := &Loader{
 		OperatorClient: suite.operatorClient,
 		Scope:          suite.testScope,
+		MaintenanceHostInfoMap: NewMaintenanceHostInfoMap(),
 	}
 	numAgents := 2
 	suite.response = makeAgentsResponse(numAgents)
@@ -351,9 +352,10 @@ func (suite *MatcherTestSuite) TestMatchHostsFilter() {
 func (suite *MatcherTestSuite) TestMatchHostsFilterWithDifferentHosts() {
 	// Creating different resources hosts in the host map
 	loader := &Loader{
-		OperatorClient:     suite.operatorClient,
-		Scope:              suite.testScope,
-		SlackResourceTypes: []string{common.MesosCPU},
+		OperatorClient:         suite.operatorClient,
+		Scope:                  suite.testScope,
+		SlackResourceTypes:     []string{common.MesosCPU},
+		MaintenanceHostInfoMap: NewMaintenanceHostInfoMap(),
 	}
 	numAgents := 2
 	response := createAgentsResponse(numAgents, false)
@@ -392,6 +394,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithZeroResourceHosts() {
 	loader := &Loader{
 		OperatorClient: suite.operatorClient,
 		Scope:          suite.testScope,
+		MaintenanceHostInfoMap: NewMaintenanceHostInfoMap(),
 	}
 	numAgents := 2
 	response := createAgentsResponse(numAgents, true)

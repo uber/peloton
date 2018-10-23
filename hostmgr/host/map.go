@@ -70,9 +70,10 @@ func GetAgentMap() *AgentMap {
 // Loader loads hostmap from Mesos and stores in global singleton.
 type Loader struct {
 	sync.Mutex
-	OperatorClient     mpb.MasterOperatorClient
-	SlackResourceTypes []string
-	Scope              tally.Scope
+	OperatorClient         mpb.MasterOperatorClient
+	MaintenanceHostInfoMap MaintenanceHostInfoMap
+	SlackResourceTypes     []string
+	Scope                  tally.Scope
 }
 
 // Load hostmap into singleton.
@@ -91,16 +92,22 @@ func (loader *Loader) Load(_ *uatomic.Bool) {
 
 	outchan := make(chan func() (scalar.Resources, scalar.Resources))
 
+	count := 0
 	for _, agent := range agents.GetAgents() {
-		m.RegisteredAgents[agent.GetAgentInfo().GetHostname()] = agent
+		hostname := agent.GetAgentInfo().GetHostname()
+		if len(loader.MaintenanceHostInfoMap.GetDrainingHostInfos([]string{hostname})) != 0 {
+			continue
+		}
+		m.RegisteredAgents[hostname] = agent
 
+		count++
 		go getResourcesByType(
 			agent.GetTotalResources(),
 			outchan,
 			loader.SlackResourceTypes)
 	}
 
-	for i := 0; i < len(agents.GetAgents()); i++ {
+	for i := 0; i < count; i++ {
 		revocable, nonRevocable := (<-outchan)()
 		m.SlackCapacity = m.SlackCapacity.Add(revocable)
 		m.Capacity = m.Capacity.Add(nonRevocable)
