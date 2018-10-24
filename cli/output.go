@@ -9,7 +9,6 @@ import (
 
 	"github.com/gogo/protobuf/jsonpb"
 	"github.com/gogo/protobuf/proto"
-
 	"gopkg.in/yaml.v2"
 )
 
@@ -19,12 +18,61 @@ var (
 	)
 )
 
+// used for testing
+type encoderDecoder interface {
+	MarshalToString(pb proto.Message) (string, error)
+	MarshalIndent(v interface{}, prefix, indent string) ([]byte, error)
+	Unmarshal(data []byte, v interface{}) error
+}
+
+type jsonEncoderDecoder struct {
+	encoder jsonpb.Marshaler
+}
+
+func (ed jsonEncoderDecoder) MarshalToString(pb proto.Message) (string, error) {
+	return ed.encoder.MarshalToString(pb)
+}
+
+func (ed jsonEncoderDecoder) Unmarshal(data []byte, v interface{}) error {
+	return json.Unmarshal(data, v)
+}
+
+func (ed jsonEncoderDecoder) MarshalIndent(v interface{}, prefix,
+	indent string) ([]byte, error) {
+	return json.MarshalIndent(v, prefix, indent)
+}
+
+func newJSONEncoderDecoder() encoderDecoder {
+	return jsonEncoderDecoder{
+		encoder:
+		// use jsonpb encoder to convert enum int into string
+		jsonpb.Marshaler{
+			EnumsAsInts:  false,
+			OrigName:     true,
+			EmitDefaults: true,
+		}}
+}
+
+type outputter interface {
+	output(string)
+}
+
+type stdOutPutputter struct{}
+
+func (o stdOutPutputter) output(l string) { fmt.Printf(l) }
+func newStdOutOutputter() outputter       { return stdOutPutputter{} }
+
+var (
+	cliEncoder   = newJSONEncoderDecoder()
+	cliOutPutter = newStdOutOutputter()
+)
+
 func printResponseJSON(response interface{}) {
-	buffer, err := json.MarshalIndent(response, "", "  ")
+	buffer, err := cliEncoder.MarshalIndent(response, "", "  ")
 	if err == nil {
-		fmt.Printf("%v\n", string(buffer))
+		cliOutPutter.output(fmt.Sprintf("%v\n", string(buffer)))
 	} else {
-		fmt.Printf("MarshalIndent err=%v\n", err)
+		cliOutPutter.output(fmt.Sprintf("MarshalIndent err=%v\n", err))
 	}
 }
 
@@ -33,14 +81,7 @@ func marshallResponse(
 	format string,
 	message proto.Message) ([]byte, error) {
 
-	encoder := jsonpb.Marshaler{
-		EnumsAsInts:  false,
-		OrigName:     true,
-		EmitDefaults: true,
-	}
-
-	// use jsonpb encoder to convert enum int into string
-	body, err := encoder.MarshalToString(message)
+	body, err := cliEncoder.MarshalToString(message)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"Failed to marshal response : %v",
@@ -49,7 +90,7 @@ func marshallResponse(
 
 	byt := []byte(body)
 	var dat map[string]interface{}
-	if err := json.Unmarshal(byt, &dat); err != nil {
+	if err := cliEncoder.Unmarshal(byt, &dat); err != nil {
 		return nil, fmt.Errorf(
 			"Failed to unmarshal response : %v",
 			err)
