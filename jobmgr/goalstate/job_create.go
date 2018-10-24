@@ -169,15 +169,37 @@ func recoverTasks(
 
 	cachedJob := goalStateDriver.jobFactory.AddJob(jobID)
 	maxRunningInstances := jobConfig.GetSLA().GetMaximumRunningInstances()
+
+	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	for instID, taskInfo := range taskInfos {
+		// add task to cache if not already present
+		if cachedJob.GetTask(instID) == nil {
+			cachedJob.ReplaceTasks(map[uint32]*task.RuntimeInfo{instID: taskInfos[instID].GetRuntime()}, false)
+		}
+		// converge the task configuration version for existing tasks,
+		// if they diverge from job config
+		if taskInfo.GetRuntime().GetDesiredConfigVersion() !=
+			jobConfig.GetChangeLog().GetVersion() {
+			if jobConfig.GetType() == job.JobType_BATCH {
+				// batch job does not allow update task config, so
+				// it is ok to override both current and desired config version
+				runtimeDiffs[instID] = jobmgrcommon.RuntimeDiff{
+					jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
+					jobmgrcommon.ConfigVersionField:        jobConfig.GetChangeLog().GetVersion(),
+				}
+			}
+		}
+	}
+
+	if err := cachedJob.PatchTasks(ctx, runtimeDiffs); err != nil {
+		return err
+	}
+
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		if _, ok := taskInfos[i]; ok {
 			if taskInfos[i].GetRuntime().GetState() == task.TaskState_INITIALIZED {
 				// Task exists, just send to resource manager
 				if maxRunningInstances > 0 && taskInfos[i].GetRuntime().GetState() == task.TaskState_INITIALIZED {
-					// add task to cache if not already present
-					if cachedJob.GetTask(i) == nil {
-						cachedJob.ReplaceTasks(map[uint32]*task.RuntimeInfo{i: taskInfos[i].GetRuntime()}, false)
-					}
 					// run the runtime updater to start instances
 					EnqueueJobWithDefaultDelay(
 						jobID, goalStateDriver, cachedJob)
@@ -191,10 +213,6 @@ func recoverTasks(
 						Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[i]),
 					}
 					tasks = append(tasks, taskInfo)
-					// add task to cache if not already present
-					if cachedJob.GetTask(i) == nil {
-						cachedJob.ReplaceTasks(runtimes, false)
-					}
 				}
 
 			}

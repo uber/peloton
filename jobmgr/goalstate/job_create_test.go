@@ -73,8 +73,11 @@ func TestJobCreateTasks(t *testing.T) {
 	jobConfig := pb_job.JobConfig{
 		OwningTeam:    "team6",
 		LdapGroups:    []string{"team1", "team2", "team3"},
-		InstanceCount: instanceCount,
-		Type:          pb_job.JobType_BATCH,
+		InstanceCount: suite.instanceCount,
+		Type:          pbjob.JobType_BATCH,
+		ChangeLog: &peloton.ChangeLog{
+			Version: 2,
+		},
 	}
 
 	emptyTaskInfo := make(map[uint32]*pb_task.TaskInfo)
@@ -189,6 +192,7 @@ func TestJobCreateTasks(t *testing.T) {
 	}
 }*/
 
+<<<<<<< HEAD
 func TestJobRecover(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -233,19 +237,39 @@ func TestJobRecover(t *testing.T) {
 		Runtime: &pb_task.RuntimeInfo{
 			State:     pb_task.TaskState_RUNNING,
 			GoalState: pb_task.TaskState_SUCCEEDED,
+=======
+func (suite *JobCreateTestSuite) TestJobRecover() {
+	taskInfos := make(map[uint32]*pbtask.TaskInfo)
+	taskInfos[0] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:                pbtask.TaskState_RUNNING,
+			GoalState:            pbtask.TaskState_SUCCEEDED,
+			ConfigVersion:        suite.jobConfig.GetChangeLog().GetVersion() - 1,
+			DesiredConfigVersion: suite.jobConfig.GetChangeLog().GetVersion() - 1,
+>>>>>>> cfbfb90e... Batch job of INITIALIZED state can be updated
 		},
 		InstanceId: 0,
 		JobId:      jobID,
 	}
+<<<<<<< HEAD
 	taskInfos[1] = &pb_task.TaskInfo{
 		Runtime: &pb_task.RuntimeInfo{
 			State:     pb_task.TaskState_INITIALIZED,
 			GoalState: pb_task.TaskState_SUCCEEDED,
+=======
+	taskInfos[1] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:                pbtask.TaskState_INITIALIZED,
+			GoalState:            pbtask.TaskState_SUCCEEDED,
+			ConfigVersion:        suite.jobConfig.GetChangeLog().GetVersion() - 1,
+			DesiredConfigVersion: suite.jobConfig.GetChangeLog().GetVersion() - 1,
+>>>>>>> cfbfb90e... Batch job of INITIALIZED state can be updated
 		},
 		InstanceId: 1,
 		JobId:      jobID,
 	}
 
+<<<<<<< HEAD
 	taskStore.EXPECT().
 		GetTasksForJob(gomock.Any(), jobID).
 		Return(taskInfos, nil)
@@ -253,6 +277,32 @@ func TestJobRecover(t *testing.T) {
 	jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), jobID).
 		Return(&jobConfig, &models.ConfigAddOn{}, nil)
+=======
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.taskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.jobID).
+		Return(taskInfos, nil)
+
+	suite.cachedJob.EXPECT().
+		GetTask(gomock.Any()).
+		Return(nil).
+		Times(2)
+
+	suite.cachedJob.EXPECT().
+		ReplaceTasks(gomock.Any(), gomock.Any()).
+		Return(nil).
+		Times(2)
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.Len(runtimeDiffs, 2)
+		}).
+		Return(nil)
+>>>>>>> cfbfb90e... Batch job of INITIALIZED state can be updated
 
 	taskStore.EXPECT().
 		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any(), gomock.Any()).
@@ -272,6 +322,7 @@ func TestJobRecover(t *testing.T) {
 		}).
 		Return(nil)
 
+<<<<<<< HEAD
 	cachedJob.EXPECT().
 		GetTask(uint32(1)).Return(nil)
 
@@ -280,6 +331,9 @@ func TestJobRecover(t *testing.T) {
 		Return(nil)
 
 	cachedJob.EXPECT().
+=======
+	suite.cachedJob.EXPECT().
+>>>>>>> cfbfb90e... Batch job of INITIALIZED state can be updated
 		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
@@ -512,6 +566,7 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		driver: goalStateDriver,
 	}
 
+<<<<<<< HEAD
 	instanceCount := uint32(4)
 
 	jobConfig := pb_job.JobConfig{
@@ -528,14 +583,32 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		Runtime: &pb_task.RuntimeInfo{
 			State:     pb_task.TaskState_RUNNING,
 			GoalState: pb_task.TaskState_SUCCEEDED,
+=======
+	taskInfos := make(map[uint32]*pbtask.TaskInfo)
+	taskInfos[0] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:                pbtask.TaskState_RUNNING,
+			GoalState:            pbtask.TaskState_SUCCEEDED,
+			ConfigVersion:        suite.jobConfig.GetChangeLog().GetVersion() - 1,
+			DesiredConfigVersion: suite.jobConfig.GetChangeLog().GetVersion() - 1,
+>>>>>>> cfbfb90e... Batch job of INITIALIZED state can be updated
 		},
 		InstanceId: 0,
 		JobId:      jobID,
 	}
+<<<<<<< HEAD
 	taskInfos[1] = &pb_task.TaskInfo{
 		Runtime: &pb_task.RuntimeInfo{
 			State:     pb_task.TaskState_INITIALIZED,
 			GoalState: pb_task.TaskState_SUCCEEDED,
+=======
+	taskInfos[1] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:                pbtask.TaskState_INITIALIZED,
+			GoalState:            pbtask.TaskState_SUCCEEDED,
+			ConfigVersion:        suite.jobConfig.GetChangeLog().GetVersion() - 1,
+			DesiredConfigVersion: suite.jobConfig.GetChangeLog().GetVersion() - 1,
+>>>>>>> cfbfb90e... Batch job of INITIALIZED state can be updated
 		},
 		InstanceId: 1,
 		JobId:      jobID,
@@ -561,14 +634,36 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		GetJob(jobID).
 		Return(cachedJob)
 
+<<<<<<< HEAD
 	cachedJob.EXPECT().
+=======
+	suite.cachedJob.EXPECT().
+		GetTask(uint32(0)).Return(nil)
+
+	suite.cachedJob.EXPECT().
+		ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{0: taskInfos[0].GetRuntime()}, false).
+		Return(nil)
+
+	suite.cachedJob.EXPECT().
+>>>>>>> cfbfb90e... Batch job of INITIALIZED state can be updated
 		GetTask(uint32(1)).Return(nil)
 
 	cachedJob.EXPECT().
 		ReplaceTasks(map[uint32]*pb_task.RuntimeInfo{1: taskInfos[1].GetRuntime()}, false).
 		Return(nil)
 
+<<<<<<< HEAD
 	cachedJob.EXPECT().
+=======
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.Len(runtimeDiffs, 2)
+		}).
+		Return(nil)
+
+	suite.cachedJob.EXPECT().
+>>>>>>> cfbfb90e... Batch job of INITIALIZED state can be updated
 		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Do(func(_ context.Context,
 			jobInfo *pb_job.JobInfo,
