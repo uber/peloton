@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
+	mesosv1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
@@ -48,8 +50,9 @@ type UpdateStartTestSuite struct {
 	cachedUpdate *cachedmocks.MockUpdate
 	cachedTask   *cachedmocks.MockTask
 
-	jobConfig  *pbjob.JobConfig
-	jobRuntime *pbjob.RuntimeInfo
+	jobConfig     *pbjob.JobConfig
+	prevJobConfig *pbjob.JobConfig
+	jobRuntime    *pbjob.RuntimeInfo
 }
 
 func TestUpdateStart(t *testing.T) {
@@ -92,11 +95,32 @@ func (suite *UpdateStartTestSuite) SetupTest() {
 	suite.cachedUpdate = cachedmocks.NewMockUpdate(suite.ctrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 
+	commandValueNew := "new.sh"
+	taskConfigNew := &pbtask.TaskConfig{
+		Command: &mesosv1.CommandInfo{
+			Value: &commandValueNew,
+		},
+	}
 	suite.jobConfig = &pbjob.JobConfig{
 		ChangeLog: &peloton.ChangeLog{
 			Version: 4,
 		},
 		InstanceCount: 10,
+		DefaultConfig: taskConfigNew,
+	}
+
+	commandValue := "entrypoint.sh"
+	taskConfig := &pbtask.TaskConfig{
+		Command: &mesosv1.CommandInfo{
+			Value: &commandValue,
+		},
+	}
+	suite.prevJobConfig = &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 3,
+		},
+		InstanceCount: 5,
+		DefaultConfig: taskConfig,
 	}
 
 	suite.jobRuntime = &pbjob.RuntimeInfo{
@@ -260,6 +284,10 @@ func (suite *UpdateStartTestSuite) TestUpdateStartWriteProgressFail() {
 		Return(nil)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_RESTART)
+
+	suite.cachedUpdate.EXPECT().
 		GetGoalState().
 		Return(&cached.UpdateStateVector{
 			Instances:  instancesTotal,
@@ -305,6 +333,10 @@ func (suite *UpdateStartTestSuite) TestUpdateContainsUnchangedInstance() {
 	suite.taskStore.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_RESTART)
 
 	suite.cachedUpdate.EXPECT().
 		GetGoalState().
@@ -372,6 +404,10 @@ func (suite *UpdateStartTestSuite) TestUpdateStart_ContainsUnchangedInstance_Pat
 		Return(nil)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_RESTART)
+
+	suite.cachedUpdate.EXPECT().
 		GetGoalState().
 		Return(&cached.UpdateStateVector{
 			Instances:  instancesTotal,
@@ -417,6 +453,10 @@ func (suite *UpdateStartTestSuite) TestUpdateStart_NoUnchangedInstance() {
 		Return(nil)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_RESTART)
+
+	suite.cachedUpdate.EXPECT().
 		GetGoalState().
 		Return(&cached.UpdateStateVector{
 			Instances:  instancesTotal,
@@ -438,4 +478,306 @@ func (suite *UpdateStartTestSuite) TestUpdateStart_NoUnchangedInstance() {
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
 	suite.NoError(err)
+}
+
+// TestUpdateWorkflowUpdate tests starting a workflow update with no unchanged instances
+func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdate() {
+	instancesTotal := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < suite.prevJobConfig.InstanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State:         pbtask.TaskState_RUNNING,
+			ConfigVersion: suite.prevJobConfig.ChangeLog.Version,
+		}
+		taskRuntimes[i] = runtime
+	}
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			JobVersion: suite.jobConfig.ChangeLog.Version,
+			Instances:  instancesTotal,
+		}).AnyTimes()
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.taskStore.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			JobVersion: suite.prevJobConfig.ChangeLog.Version,
+		})
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.prevJobConfig.ChangeLog.Version).
+		Return(suite.prevJobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(taskRuntimes, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(suite.prevJobConfig.DefaultConfig, nil, nil).
+		Times(int(suite.prevJobConfig.InstanceCount))
+
+	suite.cachedUpdate.EXPECT().
+		Modify(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Do(func(
+			_ context.Context,
+			instancesAdded []uint32,
+			instancesUpdated []uint32,
+			instancesRemoved []uint32,
+		) {
+			suite.Len(instancesAdded,
+				int(suite.jobConfig.InstanceCount-suite.prevJobConfig.InstanceCount))
+			suite.Len(instancesUpdated, int(suite.prevJobConfig.InstanceCount))
+			suite.Empty(instancesRemoved)
+		}).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			Instances:  instancesTotal,
+			JobVersion: suite.jobConfig.ChangeLog.Version,
+		}).AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		WriteProgress(
+			gomock.Any(),
+			pbupdate.State_ROLLING_FORWARD,
+			[]uint32{},
+			[]uint32{},
+			gomock.Any(),
+		).Return(nil)
+
+	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	err := UpdateStart(context.Background(), suite.updateEnt)
+	suite.NoError(err)
+}
+
+// TestUpdateWorkflowUpdatePrevJobConfigGetError tests getting an error when
+// previous job config is fetched
+func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdatePrevJobConfigGetError() {
+	instancesTotal := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			JobVersion: suite.jobConfig.ChangeLog.Version,
+			Instances:  instancesTotal,
+		}).AnyTimes()
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.taskStore.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			JobVersion: suite.prevJobConfig.ChangeLog.Version,
+		})
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.prevJobConfig.ChangeLog.Version).
+		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("fake db error"))
+
+	err := UpdateStart(context.Background(), suite.updateEnt)
+	suite.Error(err)
+}
+
+// TestUpdateWorkflowUpdate tests getting an error when task runtimes are fetched
+func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdateGetRuntimeError() {
+	instancesTotal := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			JobVersion: suite.jobConfig.ChangeLog.Version,
+			Instances:  instancesTotal,
+		}).AnyTimes()
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.taskStore.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			JobVersion: suite.prevJobConfig.ChangeLog.Version,
+		})
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.prevJobConfig.ChangeLog.Version).
+		Return(suite.prevJobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID)
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(nil, fmt.Errorf("fake db error"))
+
+	err := UpdateStart(context.Background(), suite.updateEnt)
+	suite.Error(err)
+}
+
+// TestUpdateWorkflowUpdateModifyError tests getting an error when modifying the update
+func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdateModifyError() {
+	instancesTotal := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < suite.prevJobConfig.InstanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State:         pbtask.TaskState_RUNNING,
+			ConfigVersion: suite.prevJobConfig.ChangeLog.Version,
+		}
+		taskRuntimes[i] = runtime
+	}
+
+	suite.updateFactory.EXPECT().
+		GetUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			JobVersion: suite.jobConfig.ChangeLog.Version,
+			Instances:  instancesTotal,
+		}).AnyTimes()
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.taskStore.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			JobVersion: suite.prevJobConfig.ChangeLog.Version,
+		})
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(), suite.jobID, suite.prevJobConfig.ChangeLog.Version).
+		Return(suite.prevJobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(taskRuntimes, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(suite.prevJobConfig.DefaultConfig, nil, nil).
+		Times(int(suite.prevJobConfig.InstanceCount))
+
+	suite.cachedUpdate.EXPECT().
+		Modify(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(fmt.Errorf("fake db error"))
+
+	err := UpdateStart(context.Background(), suite.updateEnt)
+	suite.Error(err)
 }

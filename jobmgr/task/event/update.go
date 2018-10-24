@@ -550,6 +550,11 @@ func updateFailureCount(
 		return
 	}
 
+	if runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
+		// do not increment the failure count if config version has changed
+		return
+	}
+
 	switch {
 
 	case eventState == pb_task.TaskState_FAILED:
@@ -560,8 +565,7 @@ func updateFailureCount(
 		runtimeDiff[jobmgrcommon.FailureCountField] = uint32(runtime.GetFailureCount() + 1)
 
 	case eventState == pb_task.TaskState_KILLED &&
-		runtime.GetGoalState() != pb_task.TaskState_KILLED &&
-		runtime.GetConfigVersion() == runtime.GetDesiredConfigVersion():
+		runtime.GetGoalState() != pb_task.TaskState_KILLED:
 		// This KILLED event is unexpected
 		runtimeDiff[jobmgrcommon.FailureCountField] = uint32(runtime.GetFailureCount() + 1)
 	}

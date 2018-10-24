@@ -133,12 +133,17 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 		DesiredConfigVersion: newJobConfigVer,
 	}
 
-	runtimenNotReady := &pbtask.RuntimeInfo{
+	runtimeNotReady := &pbtask.RuntimeInfo{
 		State:                pbtask.TaskState_RUNNING,
 		GoalState:            pbtask.TaskState_RUNNING,
 		Healthy:              pbtask.HealthState_HEALTH_UNKNOWN,
 		ConfigVersion:        newJobConfigVer,
 		DesiredConfigVersion: newJobConfigVer,
+	}
+
+	cachedTasks := make(map[uint32]*cachedmocks.MockTask)
+	for _, instID := range instancesTotal {
+		cachedTasks[instID] = cachedmocks.NewMockTask(suite.ctrl)
 	}
 
 	suite.updateFactory.EXPECT().
@@ -194,68 +199,68 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 	for _, instID := range instancesTotal {
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), instID).
-			Return(suite.cachedTask, nil)
-
-		if instID == instancesTotal[0] {
-			// only 1 of the task is still running
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeRunning, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeRunning).
-				Return(false)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceFailed(runtimeRunning, updateConfig.GetMaxInstanceAttempts()).
-				Return(false)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceInProgress(newJobConfigVer, runtimeRunning).
-				Return(true)
-		} else if instID == instancesTotal[1] {
-			// only 1 task is in terminal goal state
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeTerminated, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeTerminated).
-				Return(true)
-		} else if instID == instancesTotal[2] {
-			// only 1 task is in initialized state
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeInitialized, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeInitialized).
-				Return(false)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceFailed(runtimeInitialized, updateConfig.GetMaxInstanceAttempts()).
-				Return(false)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceInProgress(newJobConfigVer, runtimeInitialized).
-				Return(true)
-		} else if instID == instancesTotal[3] {
-			// only 1 task is in initialized state
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimenNotReady, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimenNotReady).
-				Return(false)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceFailed(runtimenNotReady, updateConfig.GetMaxInstanceAttempts()).
-				Return(false)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceInProgress(newJobConfigVer, runtimenNotReady).
-				Return(true)
-		} else {
-			// rest are updated
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeDone, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeDone).
-				Return(true)
-		}
+			Return(cachedTasks[instID], nil).
+			AnyTimes()
 	}
+
+	cachedTasks[instancesTotal[0]].EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeRunning, nil).
+		AnyTimes()
+	cachedTasks[instancesTotal[1]].EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeTerminated, nil).
+		AnyTimes()
+	cachedTasks[instancesTotal[2]].EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeInitialized, nil).
+		AnyTimes()
+	cachedTasks[instancesTotal[3]].EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeNotReady, nil).
+		AnyTimes()
+	cachedTasks[instancesTotal[4]].EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeDone, nil).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeRunning).
+		Return(false)
+	suite.cachedUpdate.EXPECT().
+		IsInstanceFailed(runtimeRunning, updateConfig.GetMaxInstanceAttempts()).
+		Return(false)
+	suite.cachedUpdate.EXPECT().
+		IsInstanceInProgress(newJobConfigVer, runtimeRunning).
+		Return(true)
+
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeTerminated).
+		Return(true)
+
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeInitialized).
+		Return(false)
+	suite.cachedUpdate.EXPECT().
+		IsInstanceFailed(runtimeInitialized, updateConfig.GetMaxInstanceAttempts()).
+		Return(false)
+	suite.cachedUpdate.EXPECT().
+		IsInstanceInProgress(newJobConfigVer, runtimeInitialized).
+		Return(true)
+
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeNotReady).
+		Return(false)
+	suite.cachedUpdate.EXPECT().
+		IsInstanceFailed(runtimeNotReady, updateConfig.GetMaxInstanceAttempts()).
+		Return(false)
+	suite.cachedUpdate.EXPECT().
+		IsInstanceInProgress(newJobConfigVer, runtimeNotReady).
+		Return(true)
+
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeDone).
+		Return(true)
 
 	suite.cachedUpdate.EXPECT().
 		GetState().
@@ -350,16 +355,19 @@ func (suite *UpdateRunTestSuite) TestCompletedUpdate() {
 	for _, instID := range instancesTotal {
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), instID).
-			Return(suite.cachedTask, nil)
-
-		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
-			Return(runtime, nil)
-
-		suite.cachedUpdate.EXPECT().
-			IsInstanceComplete(desiredConfigVersion, runtime).
-			Return(true)
+			Return(suite.cachedTask, nil).
+			AnyTimes()
 	}
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtime, nil).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(desiredConfigVersion, runtime).
+		Return(true).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetState().
@@ -585,16 +593,19 @@ func (suite *UpdateRunTestSuite) TestUpdateProgressDBError() {
 	for _, instID := range instancesTotal {
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), instID).
-			Return(suite.cachedTask, nil)
-
-		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
-			Return(runtime, nil)
-
-		suite.cachedUpdate.EXPECT().
-			IsInstanceComplete(newJobVer, runtime).
-			Return(true)
+			Return(suite.cachedTask, nil).
+			AnyTimes()
 	}
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtime, nil).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobVer, runtime).
+		Return(true).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetState().
@@ -696,6 +707,12 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddInstances() {
 
 	for _, instID := range newSlice(oldInstanceNumber, oldInstanceNumber+batchSize) {
 		suite.cachedJob.EXPECT().
+			AddTask(gomock.Any(), instID).
+			Return(nil, yarpcerrors.NotFoundErrorf("not found"))
+	}
+
+	for _, instID := range newSlice(oldInstanceNumber, oldInstanceNumber+batchSize) {
+		suite.cachedJob.EXPECT().
 			GetTask(instID).
 			Return(suite.cachedTask)
 		suite.cachedTask.EXPECT().
@@ -747,7 +764,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddInstances() {
 
 // TestUpdateRun_FullyRunning_AddShrinkInstances test adding shrink instances
 // for a fully running job
-func (suite *UpdateRunTestSuite) TestUpdateRun_FullyRunning_AddShrinkInstances() {
+func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddShrinkInstances() {
 	oldInstanceNumber := uint32(10)
 	newInstanceNumber := uint32(20)
 	batchSize := uint32(5)
@@ -825,6 +842,10 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_FullyRunning_AddShrinkInstances()
 		Return(&pbjob.RuntimeInfo{State: pbjob.JobState_RUNNING}, nil)
 
 	for _, instID := range newSlice(oldInstanceNumber, oldInstanceNumber+batchSize) {
+		suite.cachedJob.EXPECT().
+			AddTask(gomock.Any(), instID).
+			Return(nil, yarpcerrors.NotFoundErrorf("not found"))
+
 		suite.cachedJob.EXPECT().
 			GetTask(instID).
 			Return(nil)
@@ -921,15 +942,17 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 	for _, instID := range newSlice(0, batchSize) {
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), instID).
-			Return(suite.cachedTask, nil)
-		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
-			Return(&pbtask.RuntimeInfo{
-				State:                pbtask.TaskState_RUNNING,
-				ConfigVersion:        jobVersion,
-				DesiredConfigVersion: jobVersion,
-			}, nil)
+			Return(suite.cachedTask, nil).
+			AnyTimes()
 	}
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(&pbtask.RuntimeInfo{
+			State:                pbtask.TaskState_RUNNING,
+			ConfigVersion:        jobVersion,
+			DesiredConfigVersion: jobVersion,
+		}, nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetGoalState().
@@ -1033,13 +1056,6 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 		suite.cachedJob.EXPECT().
 			GetTask(instID).
 			Return(suite.cachedTask)
-		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
-			Return(&pbtask.RuntimeInfo{
-				State:                pbtask.TaskState_RUNNING,
-				ConfigVersion:        jobVersion,
-				DesiredConfigVersion: jobVersion,
-			}, nil)
 	}
 
 	err := UpdateRun(context.Background(), suite.updateEnt)
@@ -1103,6 +1119,21 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 		GetInstancesFailed().
 		Return(nil)
 
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), gomock.Any()).
+		Return(suite.cachedTask, nil).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(&pbtask.RuntimeInfo{
+			State:                pbtask.TaskState_KILLED,
+			GoalState:            pbtask.TaskState_KILLED,
+			ConfigVersion:        jobVersion,
+			DesiredConfigVersion: jobVersion,
+		}, nil).
+		AnyTimes()
+
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
 		Return(&pbupdate.UpdateConfig{
@@ -1156,11 +1187,11 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 		ID().
 		Return(suite.updateID)
 
+	task0 := cachedmocks.NewMockTask(suite.ctrl)
 	suite.cachedJob.EXPECT().
 		GetTask(uint32(0)).
-		Return(suite.cachedTask)
-
-	suite.cachedTask.EXPECT().
+		Return(task0)
+	task0.EXPECT().
 		GetRunTime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			State:                pbtask.TaskState_KILLED,
@@ -1234,6 +1265,21 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() 
 		GetInstancesFailed().
 		Return(nil)
 
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), gomock.Any()).
+		Return(suite.cachedTask, nil).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(&pbtask.RuntimeInfo{
+			State:                pbtask.TaskState_KILLED,
+			GoalState:            pbtask.TaskState_KILLED,
+			ConfigVersion:        jobVersion,
+			DesiredConfigVersion: jobVersion,
+		}, nil).
+		AnyTimes()
+
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
 		Return(&pbupdate.UpdateConfig{
@@ -1287,11 +1333,11 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() 
 		ID().
 		Return(suite.updateID)
 
+	task0 := cachedmocks.NewMockTask(suite.ctrl)
 	suite.cachedJob.EXPECT().
 		GetTask(uint32(0)).
-		Return(suite.cachedTask)
-
-	suite.cachedTask.EXPECT().
+		Return(task0)
+	task0.EXPECT().
 		GetRunTime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			State:                pbtask.TaskState_FAILED,
@@ -1385,7 +1431,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRunKilledJobAddInstances() {
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), instID).
 			Return(nil,
-				yarpcerrors.NotFoundErrorf("new instance has no runtime yet"))
+				yarpcerrors.NotFoundErrorf("new instance has no runtime yet")).
+			AnyTimes()
 	}
 
 	suite.cachedJob.EXPECT().
@@ -1509,6 +1556,11 @@ func (suite *UpdateRunTestSuite) TestUpdateRunDBErrorAddInstances() {
 		Return(models.WorkflowType_UPDATE).
 		AnyTimes()
 
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.NotFoundErrorf("not-found")).
+		AnyTimes()
+
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
 		Return(&pbupdate.UpdateConfig{
@@ -1609,6 +1661,18 @@ func (suite *UpdateRunTestSuite) TestUpdateRunDBErrorUpdateInstances() {
 		GetInstancesDone().
 		Return(nil)
 
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), gomock.Any()).
+		Return(suite.cachedTask, nil).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(&pbtask.RuntimeInfo{
+			State: pbtask.TaskState_RUNNING,
+		}, nil).
+		AnyTimes()
+
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
 		Return(&pbupdate.UpdateConfig{
@@ -1691,6 +1755,16 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstances() {
 		GetInstancesFailed().
 		Return(nil)
 
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), gomock.Any()).
+		Return(suite.cachedTask, nil).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeTerminated, nil).
+		AnyTimes()
+
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
 		Return(&pbupdate.UpdateConfig{
@@ -1749,10 +1823,6 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstances() {
 		GetTask(gomock.Any()).
 		Return(suite.cachedTask)
 
-	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
-		Return(runtimeTerminated, nil)
-
 	suite.cachedUpdate.EXPECT().
 		ID().
 		Return(suite.updateID)
@@ -1770,6 +1840,12 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstances() {
 func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstancesDBError() {
 	instancesTotal := []uint32{4, 5, 6}
 	newJobConfigVer := uint64(4)
+	runtimeTerminated := &pbtask.RuntimeInfo{
+		State:                pbtask.TaskState_KILLED,
+		GoalState:            pbtask.TaskState_KILLED,
+		Healthy:              pbtask.HealthState_INVALID,
+		DesiredConfigVersion: newJobConfigVer,
+	}
 
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
@@ -1815,6 +1891,16 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstancesDBError() {
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
 		Return(nil)
+
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), gomock.Any()).
+		Return(suite.cachedTask, nil).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeTerminated, nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
@@ -1871,6 +1957,8 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateFailed() {
 		DesiredConfigVersion: newJobConfigVer,
 	}
 
+	cachedFailedTask := cachedmocks.NewMockTask(suite.ctrl)
+
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
@@ -1910,29 +1998,38 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateFailed() {
 		Times(4)
 
 	for i, instID := range instancesTotal {
-		suite.cachedJob.EXPECT().
-			AddTask(gomock.Any(), instID).
-			Return(suite.cachedTask, nil)
-
 		if uint32(i) < failedInstances {
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeFailed, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeFailed).
-				Return(false)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceFailed(runtimeFailed, updateConfig.GetMaxInstanceAttempts()).
-				Return(true)
+			suite.cachedJob.EXPECT().
+				AddTask(gomock.Any(), instID).
+				Return(cachedFailedTask, nil)
 		} else {
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeDone, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeDone).
-				Return(true)
+			suite.cachedJob.EXPECT().
+				AddTask(gomock.Any(), instID).
+				Return(suite.cachedTask, nil)
 		}
 	}
+
+	cachedFailedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeFailed, nil).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeFailed).
+		Return(false).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceFailed(runtimeFailed, updateConfig.GetMaxInstanceAttempts()).
+		Return(true).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeDone, nil).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeDone).
+		Return(true).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
@@ -1996,6 +2093,8 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRolledBack() {
 		DesiredConfigVersion: newJobConfigVer,
 	}
 
+	cachedFailedTask := cachedmocks.NewMockTask(suite.ctrl)
+
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
@@ -2039,29 +2138,38 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRolledBack() {
 		Times(4)
 
 	for i, instID := range totalInstancesToUpdate {
-		suite.cachedJob.EXPECT().
-			AddTask(gomock.Any(), instID).
-			Return(suite.cachedTask, nil)
-
 		if uint32(i) < failedInstances {
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeFailed, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeFailed).
-				Return(false)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceFailed(runtimeFailed, updateConfig.GetMaxInstanceAttempts()).
-				Return(true)
+			suite.cachedJob.EXPECT().
+				AddTask(gomock.Any(), instID).
+				Return(cachedFailedTask, nil)
 		} else {
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeDone, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeDone).
-				Return(true)
+			suite.cachedJob.EXPECT().
+				AddTask(gomock.Any(), instID).
+				Return(suite.cachedTask, nil)
 		}
 	}
+
+	cachedFailedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeFailed, nil).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeFailed).
+		Return(false).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceFailed(runtimeFailed, updateConfig.GetMaxInstanceAttempts()).
+		Return(true).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeDone, nil).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeDone).
+		Return(true).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetWorkflowType().
@@ -2143,6 +2251,8 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRolledBackFail() {
 		DesiredConfigVersion: newJobConfigVer,
 	}
 
+	cachedFailedTask := cachedmocks.NewMockTask(suite.ctrl)
+
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
@@ -2186,29 +2296,38 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRolledBackFail() {
 		Times(4)
 
 	for i, instID := range instancesTotal {
-		suite.cachedJob.EXPECT().
-			AddTask(gomock.Any(), instID).
-			Return(suite.cachedTask, nil)
-
 		if uint32(i) < failedInstances {
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeFailed, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeFailed).
-				Return(false)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceFailed(runtimeFailed, updateConfig.GetMaxInstanceAttempts()).
-				Return(true)
+			suite.cachedJob.EXPECT().
+				AddTask(gomock.Any(), instID).
+				Return(cachedFailedTask, nil)
 		} else {
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeDone, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeDone).
-				Return(true)
+			suite.cachedJob.EXPECT().
+				AddTask(gomock.Any(), instID).
+				Return(suite.cachedTask, nil)
 		}
 	}
+
+	cachedFailedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeFailed, nil).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeFailed).
+		Return(false).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceFailed(runtimeFailed, updateConfig.GetMaxInstanceAttempts()).
+		Return(true).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeDone, nil).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeDone).
+		Return(true).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetWorkflowType().
@@ -2267,6 +2386,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRollingBackFailed() {
 		DesiredConfigVersion: newJobConfigVer,
 	}
 
+	cachedFailedTask := cachedmocks.NewMockTask(suite.ctrl)
+
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
@@ -2310,29 +2431,38 @@ func (suite *UpdateRunTestSuite) TestUpdateRollingBackFailed() {
 		Times(4)
 
 	for i, instID := range instancesTotal {
-		suite.cachedJob.EXPECT().
-			AddTask(gomock.Any(), instID).
-			Return(suite.cachedTask, nil)
-
 		if uint32(i) < failedInstances {
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeFailed, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeFailed).
-				Return(false)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceFailed(runtimeFailed, updateConfig.GetMaxInstanceAttempts()).
-				Return(true)
+			suite.cachedJob.EXPECT().
+				AddTask(gomock.Any(), instID).
+				Return(cachedFailedTask, nil)
 		} else {
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeDone, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeDone).
-				Return(true)
+			suite.cachedJob.EXPECT().
+				AddTask(gomock.Any(), instID).
+				Return(suite.cachedTask, nil)
 		}
 	}
+
+	cachedFailedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeFailed, nil).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeFailed).
+		Return(false).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceFailed(runtimeFailed, updateConfig.GetMaxInstanceAttempts()).
+		Return(true).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeDone, nil).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeDone).
+		Return(true).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetWorkflowType().
@@ -2400,6 +2530,8 @@ func (suite *UpdateRunTestSuite) TestRunningUpdatePartialFailure() {
 		DesiredConfigVersion: newJobConfigVer,
 	}
 
+	cachedFailedTask := cachedmocks.NewMockTask(suite.ctrl)
+
 	suite.updateFactory.EXPECT().
 		GetUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
@@ -2451,29 +2583,38 @@ func (suite *UpdateRunTestSuite) TestRunningUpdatePartialFailure() {
 		Times(4)
 
 	for i, instID := range instancesTotal {
-		suite.cachedJob.EXPECT().
-			AddTask(gomock.Any(), instID).
-			Return(suite.cachedTask, nil)
-
 		if uint32(i) < failedInstances {
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeFailed, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeFailed).
-				Return(false)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceFailed(runtimeFailed, updateConfig.GetMaxInstanceAttempts()).
-				Return(true)
+			suite.cachedJob.EXPECT().
+				AddTask(gomock.Any(), instID).
+				Return(cachedFailedTask, nil)
 		} else {
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
-				Return(runtimeDone, nil)
-			suite.cachedUpdate.EXPECT().
-				IsInstanceComplete(newJobConfigVer, runtimeDone).
-				Return(true)
+			suite.cachedJob.EXPECT().
+				AddTask(gomock.Any(), instID).
+				Return(suite.cachedTask, nil)
 		}
 	}
+
+	cachedFailedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeFailed, nil).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeFailed).
+		Return(false).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceFailed(runtimeFailed, updateConfig.GetMaxInstanceAttempts()).
+		Return(true).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtimeDone, nil).
+		AnyTimes()
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeDone).
+		Return(true).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetState().
@@ -2503,6 +2644,71 @@ func (suite *UpdateRunTestSuite) TestRunningUpdatePartialFailure() {
 
 	err := UpdateRun(context.Background(), suite.updateEnt)
 	suite.NoError(err)
+}
+
+func (suite *UpdateRunTestSuite) TestConfirmInstancesStatus() {
+	instanceCount := uint32(6)
+	instancesToAdd := []uint32{2, 3, 4}
+	instancesToUpdate := []uint32{0, 1}
+	instancesToRemove := []uint32{5}
+	cachedTasks := make(map[uint32]*cachedmocks.MockTask)
+
+	for i := uint32(1); i < instanceCount-1; i++ {
+		cachedTasks[i] = cachedmocks.NewMockTask(suite.ctrl)
+		suite.cachedJob.EXPECT().
+			AddTask(gomock.Any(), i).
+			Return(cachedTasks[i], nil)
+	}
+
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), uint32(0)).
+		Return(nil, yarpcerrors.NotFoundErrorf("not-found"))
+
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), uint32(5)).
+		Return(nil, yarpcerrors.NotFoundErrorf("not-found"))
+
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			JobVersion: 3,
+		}).AnyTimes()
+
+	cachedTasks[2].EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(nil, yarpcerrors.NotFoundErrorf("not-found"))
+
+	cachedTasks[3].EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(&pbtask.RuntimeInfo{
+			ConfigVersion: 3,
+		}, nil)
+
+	cachedTasks[4].EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(&pbtask.RuntimeInfo{
+			ConfigVersion: 2,
+		}, nil)
+
+	cachedTasks[1].EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(nil, yarpcerrors.NotFoundErrorf("not-found"))
+
+	newInstancesToAdd, newInstancesToUpdate, newInstancesToRemove,
+		instancesDone, err := confirmInstancesStatus(
+		context.Background(),
+		suite.cachedJob,
+		suite.cachedUpdate,
+		instancesToAdd,
+		instancesToUpdate,
+		instancesToRemove,
+	)
+
+	suite.NoError(err)
+	suite.Len(newInstancesToAdd, 4)
+	suite.Len(newInstancesToUpdate, 1)
+	suite.Empty(newInstancesToRemove)
+	suite.Len(instancesDone, 1)
 }
 
 func newSlice(start uint32, end uint32) []uint32 {

@@ -29,10 +29,10 @@ defaultConfig:
   healthCheck:
     type: 1
     enabled: true
-    initialIntervalSecs: 1
+    initialIntervalSecs: 5
     intervalSecs: 1
     timeoutSecs: 5
-    maxConsecutiveFailures: 1
+    maxConsecutiveFailures: 5
     commandCheck:
       command: 'ls'
   resource:

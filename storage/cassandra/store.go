@@ -1787,9 +1787,11 @@ func (s *Store) GetTaskRuntimesForJobByRange(ctx context.Context,
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").
 		From(taskRuntimeTable).
-		Where(qb.Eq{"job_id": jobID}).
-		Where("instance_id >= ?", instanceRange.From).
-		Where("instance_id < ?", instanceRange.To)
+		Where(qb.Eq{"job_id": jobID})
+	if instanceRange != nil {
+		stmt = stmt.Where("instance_id >= ?", instanceRange.From).
+			Where("instance_id < ?", instanceRange.To)
+	}
 
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
@@ -3200,6 +3202,7 @@ func (s *Store) ModifyUpdate(
 		Set("instances_failed", updateInfo.GetInstancesFailed()).
 		Set("instances_current", updateInfo.GetInstancesCurrent()).
 		Set("instances_added", updateInfo.GetInstancesAdded()).
+		Set("instances_updated", updateInfo.GetInstancesUpdated()).
 		Set("instances_removed", updateInfo.GetInstancesRemoved()).
 		Set("instances_total", updateInfo.GetInstancesTotal()).
 		Set("job_config_version", updateInfo.GetJobConfigVersion()).

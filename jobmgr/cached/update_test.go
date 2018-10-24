@@ -928,6 +928,53 @@ func (suite *UpdateTestSuite) TestValidCreateStop() {
 	suite.Equal(models.WorkflowType_STOP, suite.update.GetWorkflowType())
 }
 
+// TestModifyValid tests a valid modification to the update.
+func (suite *UpdateTestSuite) TestModifyValid() {
+	instancesAdded := []uint32{3, 4}
+	instancesUpdated := []uint32{0, 1, 2}
+	instancesRemoved := []uint32{5}
+
+	suite.updateStore.EXPECT().
+		ModifyUpdate(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, updateModel *models.UpdateModel) {
+			suite.Equal(suite.updateID, updateModel.UpdateID)
+			suite.Equal(instancesAdded, updateModel.InstancesAdded)
+			suite.Equal(instancesUpdated, updateModel.InstancesUpdated)
+			suite.Equal(instancesRemoved, updateModel.InstancesRemoved)
+		}).Return(nil)
+
+	err := suite.update.Modify(
+		context.Background(),
+		instancesAdded,
+		instancesUpdated,
+		instancesRemoved,
+	)
+	suite.NoError(err)
+	suite.Equal(instancesAdded, suite.update.instancesAdded)
+	suite.Equal(instancesUpdated, suite.update.instancesUpdated)
+	suite.Equal(instancesRemoved, suite.update.instancesRemoved)
+	suite.Equal([]uint32{0, 1, 2, 3, 4, 5}, suite.update.instancesTotal)
+}
+
+// TestModifyDBError tests getting a DB error while modifying an update.
+func (suite *UpdateTestSuite) TestModifyDBError() {
+	instancesAdded := []uint32{3, 4}
+	instancesUpdated := []uint32{0, 1, 2}
+	instancesRemoved := []uint32{5}
+
+	suite.updateStore.EXPECT().
+		ModifyUpdate(gomock.Any(), gomock.Any()).
+		Return(fmt.Errorf("fake db error"))
+
+	err := suite.update.Modify(
+		context.Background(),
+		instancesAdded,
+		instancesUpdated,
+		instancesRemoved,
+	)
+	suite.Error(err)
+}
+
 // TestValidWriteProgress tests successfully writing the status
 // of an update into the DB.
 func (suite *UpdateTestSuite) TestValidWriteProgress() {
@@ -1664,6 +1711,15 @@ func (suite *UpdateTestSuite) TestUpdateRollbackSuccess() {
 	suite.update.jobVersion = jobVersion
 	suite.update.jobPrevVersion = jobPrevVersion
 
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < jobConfig.GetInstanceCount(); i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State:         pbtask.TaskState_RUNNING,
+			ConfigVersion: jobPrevVersion,
+		}
+		taskRuntimes[i] = runtime
+	}
+
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(&pbjob.RuntimeInfo{
@@ -1701,13 +1757,11 @@ func (suite *UpdateTestSuite) TestUpdateRollbackSuccess() {
 		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobVersion).
 		Return(jobConfig, nil, nil)
 
-	for i := uint32(0); i < jobPrevConfig.GetInstanceCount(); i++ {
-		suite.taskStore.EXPECT().
-			GetTaskRuntime(gomock.Any(), suite.jobID, i).
-			Return(&pbtask.RuntimeInfo{
-				ConfigVersion: jobPrevVersion,
-			}, nil)
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(taskRuntimes, nil)
 
+	for i := uint32(0); i < jobPrevConfig.GetInstanceCount(); i++ {
 		suite.taskStore.EXPECT().
 			GetTaskConfig(gomock.Any(), suite.jobID, i, jobPrevVersion).
 			Return(&pbtask.TaskConfig{}, nil, nil)
@@ -1737,8 +1791,8 @@ func (suite *UpdateTestSuite) TestUpdateRollbackSuccess() {
 	suite.Empty(suite.update.GetInstancesDone())
 	suite.Empty(suite.update.GetInstancesCurrent())
 	suite.Equal(suite.update.GetState().State, pbupdate.State_ROLLING_BACKWARD)
-	suite.Equal(suite.update.GetInstancesRemoved(), []uint32{5, 6, 7, 8, 9})
-	suite.Equal(suite.update.GetInstancesUpdated(), []uint32{0, 1, 2, 3, 4})
+	suite.Equal(len(suite.update.GetInstancesRemoved()), 5)
+	suite.Equal(len(suite.update.GetInstancesUpdated()), 5)
 }
 
 // TestUpdateRollbackRetrySuccessAfterModifyUpdateFails tests update rollback can
@@ -1763,6 +1817,15 @@ func (suite *UpdateTestSuite) TestUpdateRollbackRetrySuccessAfterModifyUpdateFai
 	suite.update.jobID = suite.jobID
 	suite.update.jobVersion = jobVersion
 	suite.update.jobPrevVersion = jobPrevVersion
+
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < jobConfig.GetInstanceCount(); i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State:         pbtask.TaskState_RUNNING,
+			ConfigVersion: jobPrevVersion,
+		}
+		taskRuntimes[i] = runtime
+	}
 
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
@@ -1801,13 +1864,11 @@ func (suite *UpdateTestSuite) TestUpdateRollbackRetrySuccessAfterModifyUpdateFai
 		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobVersion).
 		Return(jobConfig, nil, nil)
 
-	for i := uint32(0); i < jobPrevConfig.GetInstanceCount(); i++ {
-		suite.taskStore.EXPECT().
-			GetTaskRuntime(gomock.Any(), suite.jobID, i).
-			Return(&pbtask.RuntimeInfo{
-				ConfigVersion: jobPrevVersion,
-			}, nil)
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(taskRuntimes, nil).Times(2)
 
+	for i := uint32(0); i < jobPrevConfig.GetInstanceCount(); i++ {
 		suite.taskStore.EXPECT().
 			GetTaskConfig(gomock.Any(), suite.jobID, i, jobPrevVersion).
 			Return(&pbtask.TaskConfig{}, nil, nil)
@@ -1857,12 +1918,6 @@ func (suite *UpdateTestSuite) TestUpdateRollbackRetrySuccessAfterModifyUpdateFai
 		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobVersion).
 		Return(jobConfig, nil, nil)
 
-	for i := uint32(0); i < jobPrevConfig.GetInstanceCount(); i++ {
-		suite.taskStore.EXPECT().
-			GetTaskConfig(gomock.Any(), suite.jobID, i, jobPrevVersion).
-			Return(&pbtask.TaskConfig{}, nil, nil)
-	}
-
 	suite.updateStore.EXPECT().
 		ModifyUpdate(gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, updateInfo *models.UpdateModel) {
@@ -1887,8 +1942,8 @@ func (suite *UpdateTestSuite) TestUpdateRollbackRetrySuccessAfterModifyUpdateFai
 	suite.Empty(suite.update.GetInstancesDone())
 	suite.Empty(suite.update.GetInstancesCurrent())
 	suite.Equal(suite.update.GetState().State, pbupdate.State_ROLLING_BACKWARD)
-	suite.Equal(suite.update.GetInstancesRemoved(), []uint32{5, 6, 7, 8, 9})
-	suite.Equal(suite.update.GetInstancesUpdated(), []uint32{0, 1, 2, 3, 4})
+	suite.Equal(len(suite.update.GetInstancesRemoved()), 5)
+	suite.Equal(len(suite.update.GetInstancesUpdated()), 0)
 }
 
 // TestUpdateRollbackRetrySuccessAfterJobRuntimeUpdateFails tests update rollback can
@@ -1913,6 +1968,15 @@ func (suite *UpdateTestSuite) TestUpdateRollbackRetrySuccessAfterJobRuntimeUpdat
 	suite.update.jobID = suite.jobID
 	suite.update.jobVersion = jobVersion
 	suite.update.jobPrevVersion = jobPrevVersion
+
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < jobConfig.GetInstanceCount(); i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State:         pbtask.TaskState_RUNNING,
+			ConfigVersion: jobPrevVersion,
+		}
+		taskRuntimes[i] = runtime
+	}
 
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
@@ -1951,13 +2015,11 @@ func (suite *UpdateTestSuite) TestUpdateRollbackRetrySuccessAfterJobRuntimeUpdat
 		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobVersion).
 		Return(jobConfig, nil, nil)
 
-	for i := uint32(0); i < jobPrevConfig.GetInstanceCount(); i++ {
-		suite.taskStore.EXPECT().
-			GetTaskRuntime(gomock.Any(), suite.jobID, i).
-			Return(&pbtask.RuntimeInfo{
-				ConfigVersion: jobPrevVersion,
-			}, nil)
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(taskRuntimes, nil)
 
+	for i := uint32(0); i < jobPrevConfig.GetInstanceCount(); i++ {
 		suite.taskStore.EXPECT().
 			GetTaskConfig(gomock.Any(), suite.jobID, i, jobPrevVersion).
 			Return(&pbtask.TaskConfig{}, nil, nil)
@@ -2002,8 +2064,8 @@ func (suite *UpdateTestSuite) TestUpdateRollbackRetrySuccessAfterJobRuntimeUpdat
 	suite.Empty(suite.update.GetInstancesDone())
 	suite.Empty(suite.update.GetInstancesCurrent())
 	suite.Equal(suite.update.GetState().State, pbupdate.State_ROLLING_BACKWARD)
-	suite.Equal(suite.update.GetInstancesRemoved(), []uint32{5, 6, 7, 8, 9})
-	suite.Equal(suite.update.GetInstancesUpdated(), []uint32{0, 1, 2, 3, 4})
+	suite.Equal(len(suite.update.GetInstancesRemoved()), 5)
+	suite.Equal(len(suite.update.GetInstancesUpdated()), 5)
 }
 
 func (suite *UpdateTestSuite) TestUpdateRollbackRollingBackwardUpdate() {
@@ -2203,13 +2265,32 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithLabelAddAndU
 		},
 	}
 
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < instanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State:         pbtask.TaskState_RUNNING,
+			ConfigVersion: 3,
+		}
+		taskRuntimes[i] = runtime
+	}
+
+	testJob := &job{
+		id: suite.jobID,
+	}
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(taskRuntimes, nil)
+
 	instancesAdded, instancesUpdated, instancesRemoved, err :=
 		GetInstancesToProcessForUpdate(
 			context.Background(),
-			&job{},
+			testJob,
 			prevJobConfig,
 			jobConfig,
-			suite.taskStore)
+			suite.taskStore,
+		)
+
 	suite.NoError(err)
 	suite.Len(instancesUpdated, int(instanceCount))
 	suite.Empty(instancesRemoved)
@@ -2235,19 +2316,39 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithLabelUpdated
 		},
 	}
 
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < instanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State:         pbtask.TaskState_RUNNING,
+			ConfigVersion: 3,
+		}
+		taskRuntimes[i] = runtime
+	}
+
+	testJob := &job{
+		id: suite.jobID,
+	}
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(taskRuntimes, nil)
+
 	instancesAdded, instancesUpdated, instancesRemoved, err :=
 		GetInstancesToProcessForUpdate(
 			context.Background(),
-			&job{},
+			testJob,
 			prevJobConfig,
 			jobConfig,
-			suite.taskStore)
+			suite.taskStore,
+		)
+
 	suite.NoError(err)
 	suite.Len(instancesUpdated, int(instanceCount))
 	suite.Empty(instancesRemoved)
 	suite.Empty(instancesAdded)
 }
 
+// TestGetInstancesToProcessForUpdateWithAddedInstances tests adding and updating instances
 func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithAddedInstances() {
 	commandValue := "entrypoint.sh"
 	taskConfig := &pbtask.TaskConfig{
@@ -2255,6 +2356,14 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithAddedInstanc
 			Value: &commandValue,
 		},
 	}
+
+	commandValueNew := "new.sh"
+	taskConfigNew := &pbtask.TaskConfig{
+		Command: &mesosv1.CommandInfo{
+			Value: &commandValueNew,
+		},
+	}
+
 	testJob := &job{
 		runtime: &pbjob.RuntimeInfo{
 			Revision: &peloton.ChangeLog{
@@ -2266,27 +2375,38 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithAddedInstanc
 			taskStore: suite.taskStore,
 		},
 		tasks: make(map[uint32]*task),
+		id:    suite.jobID,
 	}
+
 	prevInstanceCount := uint32(10)
 	prevJobConfig := &pbjob.JobConfig{
 		InstanceCount: prevInstanceCount,
 		DefaultConfig: taskConfig,
 	}
-	instanceCount := uint32(22)
+
+	instanceCount := uint32(12)
 	jobConfig := &pbjob.JobConfig{
 		InstanceCount: instanceCount,
-		DefaultConfig: taskConfig,
+		DefaultConfig: taskConfigNew,
+	}
+
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < prevInstanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State:         pbtask.TaskState_RUNNING,
+			ConfigVersion: 3,
+		}
+		taskRuntimes[i] = runtime
 	}
 
 	suite.taskStore.EXPECT().
-		GetTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(&pbtask.RuntimeInfo{}, nil).
-		AnyTimes()
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(taskRuntimes, nil)
 
 	suite.taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(taskConfig, nil, nil).
-		AnyTimes()
+		Times(int(prevInstanceCount))
 
 	instancesAdded, instancesUpdated, instancesRemoved, err :=
 		GetInstancesToProcessForUpdate(
@@ -2294,9 +2414,192 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithAddedInstanc
 			testJob,
 			prevJobConfig,
 			jobConfig,
-			suite.taskStore)
+			suite.taskStore,
+		)
+
 	suite.NoError(err)
 	suite.Len(instancesAdded, int(instanceCount-prevInstanceCount))
 	suite.Empty(instancesRemoved)
-	suite.Empty(instancesUpdated)
+	suite.Len(instancesUpdated, int(prevInstanceCount))
+}
+
+// TestGetInstancesToProcessForUpdateWithRemovedInstances tests removing instances
+func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithRemovedInstances() {
+	commandValue := "entrypoint.sh"
+	taskConfig := &pbtask.TaskConfig{
+		Command: &mesosv1.CommandInfo{
+			Value: &commandValue,
+		},
+	}
+
+	commandValueNew := "new.sh"
+	taskConfigNew := &pbtask.TaskConfig{
+		Command: &mesosv1.CommandInfo{
+			Value: &commandValueNew,
+		},
+	}
+
+	testJob := &job{
+		runtime: &pbjob.RuntimeInfo{
+			Revision: &peloton.ChangeLog{
+				Version: 1,
+			},
+		},
+		jobFactory: &jobFactory{
+			jobStore:  suite.jobStore,
+			taskStore: suite.taskStore,
+		},
+		tasks: make(map[uint32]*task),
+		id:    suite.jobID,
+	}
+
+	prevInstanceCount := uint32(10)
+	prevJobConfig := &pbjob.JobConfig{
+		InstanceCount: prevInstanceCount,
+		DefaultConfig: taskConfig,
+	}
+
+	instanceCount := uint32(8)
+	jobConfig := &pbjob.JobConfig{
+		InstanceCount: instanceCount,
+		DefaultConfig: taskConfigNew,
+	}
+
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < prevInstanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State:         pbtask.TaskState_RUNNING,
+			ConfigVersion: 3,
+		}
+		taskRuntimes[i] = runtime
+	}
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(taskRuntimes, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, nil, yarpcerrors.NotFoundErrorf("not-found")).
+		Times(int(instanceCount))
+
+	instancesAdded, instancesUpdated, instancesRemoved, err :=
+		GetInstancesToProcessForUpdate(
+			context.Background(),
+			testJob,
+			prevJobConfig,
+			jobConfig,
+			suite.taskStore,
+		)
+
+	suite.NoError(err)
+	suite.Empty(instancesAdded)
+	suite.Len(instancesRemoved, int(prevInstanceCount-instanceCount))
+	suite.Len(instancesUpdated, int(instanceCount))
+}
+
+func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateRuntimeError() {
+	instanceCount := uint32(10)
+	prevJobConfig := &pbjob.JobConfig{
+		InstanceCount: instanceCount,
+		Labels: []*peloton.Label{
+			{"key1", "val1"},
+			{"key2", "val2"},
+		},
+	}
+	jobConfig := &pbjob.JobConfig{
+		InstanceCount: instanceCount,
+		Labels: []*peloton.Label{
+			{"key1", "val1"},
+			{"key2", "val2-1"},
+		},
+	}
+
+	testJob := &job{
+		id: suite.jobID,
+	}
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(nil, fmt.Errorf("fake db error"))
+
+	_, _, _, err :=
+		GetInstancesToProcessForUpdate(
+			context.Background(),
+			testJob,
+			prevJobConfig,
+			jobConfig,
+			suite.taskStore,
+		)
+
+	suite.Error(err)
+}
+
+func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateConfigError() {
+	commandValue := "entrypoint.sh"
+	taskConfig := &pbtask.TaskConfig{
+		Command: &mesosv1.CommandInfo{
+			Value: &commandValue,
+		},
+	}
+
+	commandValueNew := "new.sh"
+	taskConfigNew := &pbtask.TaskConfig{
+		Command: &mesosv1.CommandInfo{
+			Value: &commandValueNew,
+		},
+	}
+
+	testJob := &job{
+		runtime: &pbjob.RuntimeInfo{
+			Revision: &peloton.ChangeLog{
+				Version: 1,
+			},
+		},
+		jobFactory: &jobFactory{
+			jobStore:  suite.jobStore,
+			taskStore: suite.taskStore,
+		},
+		tasks: make(map[uint32]*task),
+		id:    suite.jobID,
+	}
+
+	instanceCount := uint32(10)
+	prevJobConfig := &pbjob.JobConfig{
+		InstanceCount: instanceCount,
+		DefaultConfig: taskConfig,
+	}
+
+	jobConfig := &pbjob.JobConfig{
+		InstanceCount: instanceCount,
+		DefaultConfig: taskConfigNew,
+	}
+
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < instanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State:         pbtask.TaskState_RUNNING,
+			ConfigVersion: 3,
+		}
+		taskRuntimes[i] = runtime
+	}
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(taskRuntimes, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, nil, fmt.Errorf("fake db error"))
+
+	_, _, _, err :=
+		GetInstancesToProcessForUpdate(
+			context.Background(),
+			testJob,
+			prevJobConfig,
+			jobConfig,
+			suite.taskStore,
+		)
+
+	suite.Error(err)
 }

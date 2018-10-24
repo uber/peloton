@@ -660,26 +660,26 @@ func (suite *TaskTestSuite) TestValidateState() {
 		},
 		{
 			curRuntime: &pbtask.RuntimeInfo{
-				GoalState:     pbtask.TaskState_DELETED,
-				ConfigVersion: 3,
+				GoalState:            pbtask.TaskState_DELETED,
+				DesiredConfigVersion: 3,
 			},
 			newRuntime: &pbtask.RuntimeInfo{
-				GoalState:     pbtask.TaskState_RUNNING,
-				ConfigVersion: 3,
+				GoalState:            pbtask.TaskState_RUNNING,
+				DesiredConfigVersion: 3,
 			},
 			expectedResult: false,
 			message:        "DELETED goal state cannot be overwritten with config change",
 		},
 		{
 			curRuntime: &pbtask.RuntimeInfo{
-				State:         pbtask.TaskState_RUNNING,
-				GoalState:     pbtask.TaskState_DELETED,
-				ConfigVersion: 3,
+				State:                pbtask.TaskState_RUNNING,
+				GoalState:            pbtask.TaskState_DELETED,
+				DesiredConfigVersion: 3,
 			},
 			newRuntime: &pbtask.RuntimeInfo{
-				State:         pbtask.TaskState_RUNNING,
-				GoalState:     pbtask.TaskState_RUNNING,
-				ConfigVersion: 4,
+				State:                pbtask.TaskState_RUNNING,
+				GoalState:            pbtask.TaskState_RUNNING,
+				DesiredConfigVersion: 4,
 			},
 			expectedResult: true,
 			message:        "DELETED goal state can be overwritten with config change",

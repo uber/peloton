@@ -85,6 +85,21 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 		getInstancesForUpdateRun(
 			cachedUpdate, instancesCurrent, instancesDone, instancesFailed)
 
+	instancesToAdd, instancesToUpdate, instancesToRemove, instancesRemovedDone, err :=
+		confirmInstancesStatus(
+			ctx,
+			cachedJob,
+			cachedUpdate,
+			instancesToAdd,
+			instancesToUpdate,
+			instancesToRemove,
+		)
+	if err != nil {
+		goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
+		return err
+	}
+	instancesDone = append(instancesDone, instancesRemovedDone...)
+
 	if err := processUpdate(
 		ctx,
 		cachedJob,
@@ -398,18 +413,27 @@ func addInstancesInUpdate(
 			return err
 		}
 
-		if runtime != nil && runtime.GetState() == pbtask.TaskState_INITIALIZED {
-			// runtime is initialized, do not create the task again and directly
-			// send to ResMgr
-			taskInfo := &pbtask.TaskInfo{
-				JobId:      cachedJob.ID(),
-				InstanceId: instID,
-				Runtime:    runtime,
-				Config: taskconfig.Merge(
-					jobConfig.GetDefaultConfig(),
-					jobConfig.GetInstanceConfig()[instID]),
+		if runtime != nil {
+			if runtime.GetState() == pbtask.TaskState_INITIALIZED {
+				// runtime is initialized, do not create the task again and directly
+				// send to ResMgr
+				taskInfo := &pbtask.TaskInfo{
+					JobId:      cachedJob.ID(),
+					InstanceId: instID,
+					Runtime:    runtime,
+					Config: taskconfig.Merge(
+						jobConfig.GetDefaultConfig(),
+						jobConfig.GetInstanceConfig()[instID]),
+				}
+				tasks = append(tasks, taskInfo)
+			} else {
+				log.WithFields(log.Fields{
+					"job_id":      cachedJob.ID().GetValue(),
+					"instance_id": instID,
+					"state":       runtime.GetState().String(),
+				}).Info(
+					"task added in update has non-nil runtime in uninitialized state")
 			}
-			tasks = append(tasks, taskInfo)
 		} else {
 			// runtime is nil, initialize the runtime
 			runtime := task.CreateInitializingTask(
@@ -491,6 +515,19 @@ func processInstancesInUpdate(
 	for _, instID := range instancesToUpdate {
 		runtimeDiff := cachedUpdate.GetRuntimeDiff(jobConfig)
 		if runtimeDiff != nil {
+			cachedTask, err := cachedJob.AddTask(ctx, instID)
+			if err != nil {
+				return err
+			}
+
+			runtime, err := cachedTask.GetRunTime(ctx)
+			if err != nil {
+				return err
+			}
+
+			if runtime.GetGoalState() == pbtask.TaskState_DELETED {
+				runtimeDiff[jobmgrcommon.GoalStateField] = pbtask.TaskState_RUNNING
+			}
 			runtimes[instID] = runtimeDiff
 		}
 	}
@@ -525,6 +562,7 @@ func removeInstancesInUpdate(
 			jobmgrcommon.GoalStateField:            pbtask.TaskState_DELETED,
 			jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
 			jobmgrcommon.MessageField:              "Task Count reduced via API",
+			jobmgrcommon.FailureCountField:         uint32(0),
 		}
 	}
 
@@ -539,6 +577,107 @@ func removeInstancesInUpdate(
 	}
 
 	return nil
+}
+
+func confirmInstancesStatus(
+	ctx context.Context,
+	cachedJob cached.Job,
+	cachedUpdate cached.Update,
+	instancesToAdd []uint32,
+	instancesToUpdate []uint32,
+	instancesToRemove []uint32,
+) (
+	newInstancesToAdd []uint32,
+	newInstancesToUpdate []uint32,
+	newInstancesToRemove []uint32,
+	instancesDone []uint32,
+	err error,
+) {
+	for _, instID := range instancesToAdd {
+		var cachedTask cached.Task
+		var runtime *pbtask.RuntimeInfo
+
+		cachedTask, err = cachedJob.AddTask(ctx, instID)
+		if err == nil {
+			runtime, err = cachedTask.GetRunTime(ctx)
+			if err != nil {
+				if yarpcerrors.IsNotFound(err) {
+					// runtime does not exist, lets try to add it
+					newInstancesToAdd = append(newInstancesToAdd, instID)
+					continue
+				}
+				// got some error, just retry later
+				return
+			}
+
+			// instance already exists
+			if runtime.GetConfigVersion() == cachedUpdate.GetGoalState().JobVersion {
+				// instance exists with correct configuration version
+				newInstancesToAdd = append(newInstancesToAdd, instID)
+			} else {
+				// instance exists with previous configuration version,
+				// hence needs to be updated
+				newInstancesToUpdate = append(newInstancesToUpdate, instID)
+			}
+			continue
+		}
+
+		if yarpcerrors.IsNotFound(err) ||
+			err == cached.InstanceIDExceedsInstanceCountError {
+			// instance does not exist
+			newInstancesToAdd = append(newInstancesToAdd, instID)
+			continue
+		}
+
+		// got some error, just retry later
+		return
+	}
+
+	for _, instID := range instancesToUpdate {
+		var cachedTask cached.Task
+
+		cachedTask, err = cachedJob.AddTask(ctx, instID)
+		if err != nil {
+			if yarpcerrors.IsNotFound(err) {
+				// not found, add it
+				newInstancesToAdd = append(newInstancesToAdd, instID)
+				continue
+			}
+			// got some error, just retry later
+			return
+		}
+
+		_, err = cachedTask.GetRunTime(ctx)
+		if err != nil {
+			if yarpcerrors.IsNotFound(err) {
+				// not found, add it
+				newInstancesToAdd = append(newInstancesToAdd, instID)
+				continue
+			}
+			// got some error, just retry later
+			return
+		}
+		newInstancesToUpdate = append(newInstancesToUpdate, instID)
+	}
+
+	for _, instID := range instancesToRemove {
+		_, err = cachedJob.AddTask(ctx, instID)
+		if err != nil {
+			if yarpcerrors.IsNotFound(err) ||
+				err == cached.InstanceIDExceedsInstanceCountError {
+				// not found, already removed
+				instancesDone = append(instancesDone, instID)
+				continue
+			}
+			return
+		}
+		// remove it
+		newInstancesToRemove = append(newInstancesToRemove, instID)
+	}
+
+	// clear the error and return
+	err = nil
+	return
 }
 
 // getInstancesForUpdateRun returns the instances to update/add in

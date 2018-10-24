@@ -151,19 +151,6 @@ func (h *serviceHandler) CreateUpdate(
 		Value: uuid.New(),
 	}
 
-	cachedJob := h.jobFactory.AddJob(jobID)
-	instancesAdded, instancesUpdated, instancesRemoved, err := cached.GetInstancesToProcessForUpdate(
-		ctx,
-		cachedJob,
-		prevJobConfig,
-		jobConfig,
-		h.taskStore,
-	)
-	if err != nil {
-		h.metrics.UpdateCreateFail.Inc(1)
-		return nil, err
-	}
-
 	var respoolPath string
 	for _, label := range prevConfigAddOn.GetSystemLabels() {
 		if label.GetKey() == common.SystemLabelResourcePool {
@@ -181,9 +168,12 @@ func (h *serviceHandler) CreateUpdate(
 		jobConfig,
 		prevJobConfig,
 		configAddOn,
-		instancesAdded,
-		instancesUpdated,
-		instancesRemoved,
+		// these will be populated when the update is started as
+		// they can change even if we populate them here as there
+		// may be an update already running which can change these lists
+		[]uint32{},
+		[]uint32{},
+		[]uint32{},
 		models.WorkflowType_UPDATE,
 		req.GetUpdateConfig(),
 	)

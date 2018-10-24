@@ -43,6 +43,14 @@ type Update interface {
 		updateConfig *pbupdate.UpdateConfig,
 	) error
 
+	// Modify modifies the update in DB and cache
+	Modify(
+		ctx context.Context,
+		instancesAdded []uint32,
+		instancesUpdated []uint32,
+		instancesRemoved []uint32,
+	) error
+
 	// Update updates the update in DB and cache
 	WriteProgress(ctx context.Context,
 		state pbupdate.State,
@@ -269,6 +277,51 @@ func (u *update) Create(
 		WithField("update_type", u.workflowType.String()).
 		Debug("update is created")
 
+	return nil
+}
+
+func (u *update) Modify(
+	ctx context.Context,
+	instancesAdded []uint32,
+	instancesUpdated []uint32,
+	instancesRemoved []uint32) error {
+	u.Lock()
+	defer u.Unlock()
+
+	updateModel := &models.UpdateModel{
+		UpdateID:             u.id,
+		JobConfigVersion:     u.jobVersion,
+		PrevJobConfigVersion: u.jobPrevVersion,
+		State:                u.state,
+		PrevState:            u.prevState,
+		InstancesAdded:       instancesAdded,
+		InstancesUpdated:     instancesUpdated,
+		InstancesRemoved:     instancesRemoved,
+		InstancesDone:        uint32(len(u.instancesDone)),
+		InstancesFailed:      uint32(len(u.instancesFailed)),
+		InstancesCurrent:     u.instancesCurrent,
+		InstancesTotal:       uint32(len(instancesUpdated) + len(instancesAdded) + len(instancesRemoved)),
+	}
+	// Store the new update in DB
+	if err := u.updateFactory.updateStore.ModifyUpdate(ctx, updateModel); err != nil {
+		u.clearCache()
+		return err
+	}
+
+	// populate in cache
+
+	u.instancesAdded = instancesAdded
+	u.instancesUpdated = instancesUpdated
+	u.instancesRemoved = instancesRemoved
+	u.instancesTotal = append(instancesUpdated, instancesAdded...)
+	u.instancesTotal = append(u.instancesTotal, instancesRemoved...)
+
+	log.WithField("update_id", u.id.GetValue()).
+		WithField("instances_total", len(u.instancesTotal)).
+		WithField("instances_added", len(u.instancesAdded)).
+		WithField("instance_updated", len(u.instancesUpdated)).
+		WithField("instance_removed", len(u.instancesRemoved)).
+		Debug("update is modified")
 	return nil
 }
 
@@ -966,6 +1019,15 @@ func getUpdateProgress(
 
 		runtime, err := cachedTask.GetRunTime(ctx)
 		if err != nil {
+			if yarpcerrors.IsNotFound(err) {
+				// should never happen, so dump a sentry error
+				log.WithFields(log.Fields{
+					"job_id":      cachedJob.ID().GetValue(),
+					"instance_id": instID,
+				}).Error(
+					"instance in cache but runtime is missing from DB during update")
+				continue
+			}
 			return nil, nil, nil, err
 		}
 
@@ -982,11 +1044,46 @@ func getUpdateProgress(
 	return instancesCurrent, instancesDone, instancesFailed, nil
 }
 
+// hasInstanceConfigChanged is a helper function to determine if the configuration
+// of a given task has changed from its current configuration.
+func hasInstanceConfigChanged(
+	ctx context.Context,
+	cachedJob Job,
+	instID uint32,
+	configVersion uint64,
+	newJobConfig *pbjob.JobConfig,
+	taskStore storage.TaskStore,
+	labelsChanged bool,
+) (bool, error) {
+	if labelsChanged {
+		// labels have changed, task needs to restarted
+		return true, nil
+	}
+
+	// Get the current task configuration. Cannot use prevTaskConfig to do
+	// so because the task may be still be on an older configuration
+	// version because the previous update may not have succeeded.
+	// So, fetch the task configuration of the task from the DB.
+	prevTaskConfig, _, err := taskStore.GetTaskConfig(
+		ctx, cachedJob.ID(), instID, configVersion)
+	if err != nil {
+		if yarpcerrors.IsNotFound(err) {
+			//  configuration not found, just update it
+			return true, nil
+		}
+		return false, err
+	}
+
+	newTaskConfig := taskconfig.Merge(
+		newJobConfig.GetDefaultConfig(),
+		newJobConfig.GetInstanceConfig()[instID])
+	return taskConfigChange(prevTaskConfig, newTaskConfig), nil
+}
+
 // GetInstancesToProcessForUpdate determines the instances which have been updated in a given
 // job update. Both the old and the new job configurations are provided as
 // inputs, and it returns the instances which have been added and existing
 // instances which have been updated.
-// TODO: this func would not work if update is overwritten before finish.
 func GetInstancesToProcessForUpdate(
 	ctx context.Context,
 	cachedJob Job,
@@ -999,71 +1096,55 @@ func GetInstancesToProcessForUpdate(
 	instancesRemoved []uint32,
 	err error,
 ) {
+	var taskRuntimes map[uint32]*pbtask.RuntimeInfo
 
-	if newJobConfig.GetInstanceCount() > prevJobConfig.GetInstanceCount() {
-		// New instances have been added
-		for instID := prevJobConfig.GetInstanceCount(); instID < newJobConfig.GetInstanceCount(); instID++ {
-			instancesAdded = append(instancesAdded, instID)
-		}
-	}
-
-	if newJobConfig.GetInstanceCount() < prevJobConfig.GetInstanceCount() {
-		// Instances have been removed
-		for instID := newJobConfig.GetInstanceCount(); instID < prevJobConfig.GetInstanceCount(); instID++ {
-			instancesRemoved = append(instancesRemoved, instID)
-		}
-	}
-
-	if labelsChangeCheck(
-		prevJobConfig.GetLabels(),
-		newJobConfig.GetLabels()) {
-		// changing labels implies that all instances need to updated
-		// so that new labels get updated in mesos
-		for i := uint32(0); i < prevJobConfig.GetInstanceCount(); i++ {
-			instancesUpdated = append(instancesUpdated, i)
-		}
+	taskRuntimes, err = taskStore.GetTaskRuntimesForJobByRange(
+		ctx,
+		cachedJob.ID(),
+		nil,
+	)
+	if err != nil {
 		return
 	}
 
-	instanceCount := prevJobConfig.GetInstanceCount()
-	if instanceCount > newJobConfig.GetInstanceCount() {
-		instanceCount = newJobConfig.GetInstanceCount()
-	}
+	labelsChanged := labelsChangeCheck(
+		prevJobConfig.GetLabels(),
+		newJobConfig.GetLabels(),
+	)
 
-	for i := uint32(0); i < instanceCount; i++ {
-		// Get the current task configuration. Cannot use prevTaskConfig to do
-		// so because the task may be still be on an older configuration
-		// version because the previous update may not have succeeded.
-		// So, fetch the task configuration of the task from the DB.
-		var t Task
-		var runtime *pbtask.RuntimeInfo
-		var prevTaskConfig *pbtask.TaskConfig
+	for instID := uint32(0); instID < newJobConfig.GetInstanceCount(); instID++ {
+		if runtime, ok := taskRuntimes[instID]; !ok {
+			// new instance added
+			instancesAdded = append(instancesAdded, instID)
+		} else {
+			var changed bool
 
-		t, err = cachedJob.AddTask(ctx, i)
-		if err != nil {
-			return
-		}
+			changed, err = hasInstanceConfigChanged(
+				ctx,
+				cachedJob,
+				instID,
+				runtime.GetConfigVersion(),
+				newJobConfig,
+				taskStore,
+				labelsChanged,
+			)
+			if err != nil {
+				return
+			}
 
-		runtime, err = t.GetRunTime(ctx)
-		if err != nil {
-			return
-		}
-
-		prevTaskConfig, _, err = taskStore.GetTaskConfig(
-			ctx, cachedJob.ID(), i, runtime.GetConfigVersion())
-		if err != nil {
-			return
-		}
-
-		newTaskConfig := taskconfig.Merge(
-			newJobConfig.GetDefaultConfig(),
-			newJobConfig.GetInstanceConfig()[i])
-
-		if taskConfigChange(prevTaskConfig, newTaskConfig) {
-			// instance needs to be updated
-			instancesUpdated = append(instancesUpdated, i)
+			if changed {
+				// instance needs to be updated
+				instancesUpdated = append(instancesUpdated, instID)
+			}
+			delete(taskRuntimes, instID)
 		}
 	}
+
+	for instID := range taskRuntimes {
+		// instance has been removed
+		instancesRemoved = append(instancesRemoved, instID)
+	}
+
 	return
 }
 

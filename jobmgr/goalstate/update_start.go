@@ -6,6 +6,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
@@ -136,7 +137,48 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	// then, update the configuration and desired configuration version of
+	if cachedUpdate.GetWorkflowType() == models.WorkflowType_UPDATE {
+		// Populate instancesAdded, instancesUpdated and instancesRemoved
+		// by the update. This is not done in the handler because the previous
+		// update may be running when this current update was created, and
+		// hence the instances in this list may have changed. So do in start
+		// to ensure that these list of instances remain the same
+		// while the update is non-terminal.
+
+		prevJobConfig, _, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
+			ctx,
+			jobID,
+			cachedUpdate.GetState().JobVersion,
+		)
+		if err != nil {
+			goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)
+			return err
+		}
+
+		instancesAdded, instancesUpdated, instancesRemoved, err := cached.GetInstancesToProcessForUpdate(
+			ctx,
+			cachedJob,
+			prevJobConfig,
+			jobConfig,
+			goalStateDriver.taskStore,
+		)
+		if err != nil {
+			goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)
+			return err
+		}
+
+		if err := cachedUpdate.Modify(
+			ctx,
+			instancesAdded,
+			instancesUpdated,
+			instancesRemoved,
+		); err != nil {
+			goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)
+			return err
+		}
+	}
+
+	// update the configuration and desired configuration version of
 	// all instances which do not need to be updated
 	if err = handleUnchangedInstancesInUpdate(
 		ctx, cachedUpdate, cachedJob, jobConfig); err != nil {
