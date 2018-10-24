@@ -117,126 +117,39 @@ func (p *statusUpdate) GetEventProgress() uint64 {
 
 // ProcessStatusUpdate processes the actual task status
 func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_eventstream.Event) error {
-	var taskID string
-	var err error
-	var mesosTaskID string
-	var state pb_task.TaskState
-	var reason mesos_v1.TaskStatus_Reason
-	var statusMsg string
 	var currTaskResourceUsage map[string]float64
-	isMesosStatus := false
-
-	if event.Type == pb_eventstream.Event_MESOS_TASK_STATUS {
-		mesosTaskID = event.MesosTaskStatus.GetTaskId().GetValue()
-		taskID, err = util.ParseTaskIDFromMesosTaskID(mesosTaskID)
-		if err != nil {
-			log.WithError(err).
-				WithField("task_id", mesosTaskID).
-				Error("Fail to parse taskID for mesostaskID")
-			return err
-		}
-		state = util.MesosStateToPelotonState(event.MesosTaskStatus.GetState())
-		statusMsg = event.MesosTaskStatus.GetMessage()
-		isMesosStatus = true
-		log.WithFields(log.Fields{
-			"task_id": taskID,
-			"state":   state.String(),
-		}).Debug("Adding Mesos Event ")
-		reason = event.GetMesosTaskStatus().GetReason()
-	} else if event.Type == pb_eventstream.Event_PELOTON_TASK_EVENT {
-		// Peloton task event is used for task status update from resmgr.
-		taskID = event.PelotonTaskEvent.TaskId.Value
-		state = event.PelotonTaskEvent.State
-		statusMsg = event.PelotonTaskEvent.Message
-		log.WithFields(log.Fields{
-			"task_id": taskID,
-			"state":   state.String(),
-		}).Debug("Adding Peloton Event ")
-	} else {
-		log.WithFields(log.Fields{
-			"task_id": taskID,
-			"state":   state.String(),
-		}).Error("Unknown Event ")
-		return errors.New("Unknown Event ")
-	}
-
-	// Update task state counter for non-reconcilication update.
-	if isMesosStatus && reason != mesos_v1.TaskStatus_REASON_RECONCILIATION {
-		switch state {
-		case pb_task.TaskState_RUNNING:
-			p.metrics.TasksRunningTotal.Inc(1)
-		case pb_task.TaskState_SUCCEEDED:
-			p.metrics.TasksSucceededTotal.Inc(1)
-		case pb_task.TaskState_FAILED:
-			p.metrics.TasksFailedTotal.Inc(1)
-			p.metrics.TasksFailedReason[int32(reason)].Inc(1)
-			log.WithFields(log.Fields{
-				"task_id":       mesosTaskID,
-				"failed_reason": mesos_v1.TaskStatus_Reason_name[int32(reason)],
-			}).Debug("received failed task")
-		case pb_task.TaskState_KILLED:
-			p.metrics.TasksKilledTotal.Inc(1)
-		case pb_task.TaskState_LOST:
-			p.metrics.TasksLostTotal.Inc(1)
-		}
-	} else {
-		p.metrics.TasksReconciledTotal.Inc(1)
-	}
-
-	taskInfo, err := p.taskStore.GetTaskByID(ctx, taskID)
+	updateEvent, err := convertEvent(event)
 	if err != nil {
-		if yarpcerrors.IsNotFound(err) {
-			// if task runtime or config is not present in the DB,
-			// then kill this task
-			p.metrics.SkipOrphanTasksTotal.Inc(1)
-			log.WithFields(log.Fields{
-				"mesos_task_id":     mesosTaskID,
-				"task_status_event": event.GetMesosTaskStatus(),
-			}).Info("received status update for task not found in DB")
-			taskInfo := &pb_task.TaskInfo{
-				Runtime: &pb_task.RuntimeInfo{
-					State:       state,
-					MesosTaskId: event.MesosTaskStatus.GetTaskId(),
-					AgentID:     event.MesosTaskStatus.GetAgentId(),
-				},
-			}
-			return jobmgr_task.KillOrphanTask(ctx, p.hostmgrClient, taskInfo)
-		}
-
-		log.WithError(err).
-			WithField("task_id", taskID).
-			WithField("task_status_event", event.GetMesosTaskStatus()).
-			WithField("state", state.String()).
-			Error("fail to find taskInfo for taskID for mesos event")
 		return err
 	}
 
-	runtime := taskInfo.GetRuntime()
-	runtimeDiff := make(map[string]interface{})
-	dbTaskID := runtime.GetMesosTaskId().GetValue()
-	if isMesosStatus && dbTaskID != mesosTaskID {
+	p.logTaskMetrics(updateEvent)
+
+	isOrphanTask, taskInfo, err := p.isOrphanTaskEvent(ctx, updateEvent)
+	if err != nil {
+		return err
+	}
+	if isOrphanTask {
 		p.metrics.SkipOrphanTasksTotal.Inc(1)
-		log.WithFields(log.Fields{
-			"orphan_task_id":    mesosTaskID,
-			"db_task_id":        dbTaskID,
-			"db_task_runtime":   taskInfo.GetRuntime(),
-			"task_status_event": event.GetMesosTaskStatus(),
-		}).Info("received status update for orphan mesos task")
-		taskInfo.GetRuntime().State = state
-		taskInfo.GetRuntime().MesosTaskId = event.MesosTaskStatus.GetTaskId()
+		taskInfo := &pb_task.TaskInfo{
+			Runtime: &pb_task.RuntimeInfo{
+				State:       updateEvent.state,
+				MesosTaskId: event.MesosTaskStatus.GetTaskId(),
+				AgentID:     event.MesosTaskStatus.GetAgentId(),
+			},
+		}
 		return jobmgr_task.KillOrphanTask(ctx, p.hostmgrClient, taskInfo)
 	}
 
 	// whether to skip or not if instance state is similar before and after
 	if isDuplicateStateUpdate(
-		runtime,
 		taskInfo,
 		event,
-		state) {
+		updateEvent.state) {
 		return nil
 	}
 
-	if state == pb_task.TaskState_RUNNING &&
+	if updateEvent.state == pb_task.TaskState_RUNNING &&
 		taskInfo.GetConfig().GetVolume() != nil &&
 		len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0 {
 		// Update volume state to be CREATED upon task RUNNING.
@@ -245,52 +158,53 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		}
 	}
 
+	runtimeDiff := make(map[string]interface{})
 	// Persist healthy field if health check is enabled
 	if taskInfo.GetConfig().GetHealthCheck() != nil {
 		reason := event.GetMesosTaskStatus().GetReason()
 		healthy := event.GetMesosTaskStatus().GetHealthy()
-		p.persistHealthyField(state, reason, healthy, runtimeDiff)
+		p.persistHealthyField(updateEvent.state, reason, healthy, runtimeDiff)
 	}
 
 	// Update FailureCount
-	updateFailureCount(state, runtime, runtimeDiff)
+	updateFailureCount(updateEvent.state, taskInfo.GetRuntime(), runtimeDiff)
 
 	// Persist the reason and message for mesos updates
-	runtimeDiff[jobmgrcommon.MessageField] = statusMsg
+	runtimeDiff[jobmgrcommon.MessageField] = updateEvent.statusMsg
 	runtimeDiff[jobmgrcommon.ReasonField] = ""
 
-	switch state {
+	switch updateEvent.state {
 	case pb_task.TaskState_FAILED:
 		if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_TASK_INVALID &&
 			strings.Contains(event.GetMesosTaskStatus().GetMessage(), "Task has duplicate ID") {
-			log.WithField("task_id", taskID).
+			log.WithField("task_id", updateEvent.taskID).
 				Info("ignoring duplicate task id failure")
 			return nil
 		}
 		runtimeDiff[jobmgrcommon.ReasonField] = event.GetMesosTaskStatus().GetReason().String()
-		runtimeDiff[jobmgrcommon.StateField] = state
+		runtimeDiff[jobmgrcommon.StateField] = updateEvent.state
 
 	case pb_task.TaskState_LOST:
 		runtimeDiff[jobmgrcommon.ReasonField] = event.GetMesosTaskStatus().GetReason().String()
-		if util.IsPelotonStateTerminal(runtime.GetState()) {
+		if util.IsPelotonStateTerminal(taskInfo.GetRuntime().GetState()) {
 			// Skip LOST status update if current state is terminal state.
 			log.WithFields(log.Fields{
-				"task_id":           taskID,
+				"task_id":           updateEvent.taskID,
 				"db_task_runtime":   taskInfo.GetRuntime(),
 				"task_status_event": event.GetMesosTaskStatus(),
 			}).Debug("skip reschedule lost task as it is already in terminal state")
 			return nil
 		}
-		if runtime.GetGoalState() == pb_task.TaskState_KILLED {
+		if taskInfo.GetRuntime().GetGoalState() == pb_task.TaskState_KILLED {
 			// Do not take any action for killed tasks, just mark it killed.
 			// Same message will go to resource manager which will release the placement.
 			log.WithFields(log.Fields{
-				"task_id":           taskID,
+				"task_id":           updateEvent.taskID,
 				"db_task_runtime":   taskInfo.GetRuntime(),
 				"task_status_event": event.GetMesosTaskStatus(),
 			}).Debug("mark stopped task as killed due to LOST")
 			runtimeDiff[jobmgrcommon.StateField] = pb_task.TaskState_KILLED
-			runtimeDiff[jobmgrcommon.MessageField] = "Stopped task LOST event: " + statusMsg
+			runtimeDiff[jobmgrcommon.MessageField] = "Stopped task LOST event: " + updateEvent.statusMsg
 			break
 		}
 
@@ -303,7 +217,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		}
 
 		log.WithFields(log.Fields{
-			"task_id":           taskID,
+			"task_id":           updateEvent.taskID,
 			"db_task_runtime":   taskInfo.GetRuntime(),
 			"task_status_event": event.GetMesosTaskStatus(),
 		}).Info("reschedule lost task")
@@ -312,18 +226,18 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		healthState := taskutil.GetInitialHealthState(taskInfo.GetConfig())
 		runtimeDiff = taskutil.RegenerateMesosTaskIDDiff(
 			taskInfo.JobId, taskInfo.InstanceId, taskInfo.GetRuntime(), healthState)
-		runtimeDiff[jobmgrcommon.MessageField] = "Rescheduled due to task LOST: " + statusMsg
+		runtimeDiff[jobmgrcommon.MessageField] = "Rescheduled due to task LOST: " + updateEvent.statusMsg
 		runtimeDiff[jobmgrcommon.ReasonField] = event.GetMesosTaskStatus().GetReason().String()
 
 		// Calculate resource usage for TaskState_LOST using time.Now() as
 		// completion time
 		currTaskResourceUsage = getCurrTaskResourceUsage(
-			taskID, state, taskInfo.GetConfig().GetResource(),
-			runtime.GetStartTime(),
+			updateEvent.taskID, updateEvent.state, taskInfo.GetConfig().GetResource(),
+			taskInfo.GetRuntime().GetStartTime(),
 			now().UTC().Format(time.RFC3339Nano))
 
 	default:
-		runtimeDiff[jobmgrcommon.StateField] = state
+		runtimeDiff[jobmgrcommon.StateField] = updateEvent.state
 	}
 
 	// Update task start and completion timestamps
@@ -333,7 +247,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		// CompletionTime may have been set (e.g. task has been set),
 		// which could make StartTime larger than CompletionTime.
 		// Reset CompletionTime every time a task transits to RUNNING state.
-		if state != runtime.GetState() {
+		if updateEvent.state != taskInfo.GetRuntime().GetState() {
 			runtimeDiff[jobmgrcommon.StartTimeField] = now().UTC().Format(time.RFC3339Nano)
 			runtimeDiff[jobmgrcommon.CompletionTimeField] = ""
 		}
@@ -345,14 +259,14 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		runtimeDiff[jobmgrcommon.CompletionTimeField] = completionTime
 
 		currTaskResourceUsage = getCurrTaskResourceUsage(
-			taskID, state, taskInfo.GetConfig().GetResource(),
-			runtime.GetStartTime(), completionTime)
+			updateEvent.taskID, updateEvent.state, taskInfo.GetConfig().GetResource(),
+			taskInfo.GetRuntime().GetStartTime(), completionTime)
 	}
 
 	if len(currTaskResourceUsage) > 0 {
 		// current task resource usage was updated by this event, so we should
 		// add it to aggregated resource usage for the task and update runtime
-		aggregateTaskResourceUsage := runtime.GetResourceUsage()
+		aggregateTaskResourceUsage := taskInfo.GetRuntime().GetResourceUsage()
 		if len(aggregateTaskResourceUsage) > 0 {
 			for k, v := range currTaskResourceUsage {
 				aggregateTaskResourceUsage[k] += v
@@ -370,8 +284,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	if err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{
-				"task_id": taskID,
-				"state":   state}).
+				"task_id": updateEvent.taskID,
+				"state":   updateEvent.state}).
 			Error("Fail to update runtime for taskID")
 		return err
 	}
@@ -393,6 +307,132 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	// indefinitely until errors are resolved.
 	cachedJob.UpdateResourceUsage(currTaskResourceUsage)
 	return nil
+}
+
+type statusUpateEvent struct {
+	taskID    string
+	state     pb_task.TaskState
+	statusMsg string
+
+	isMesosStatus   bool
+	mesosTaskStatus *mesos_v1.TaskStatus
+}
+
+// convertEvent converts pb_eventstream.Event to statusUpateEvent
+// so it is easier for statusUpdate to process
+func convertEvent(event *pb_eventstream.Event) (*statusUpateEvent, error) {
+	var err error
+
+	updateEvent := &statusUpateEvent{mesosTaskStatus: &mesos_v1.TaskStatus{}}
+	if event.Type == pb_eventstream.Event_MESOS_TASK_STATUS {
+		mesosTaskID := event.MesosTaskStatus.GetTaskId().GetValue()
+		updateEvent.taskID, err = util.ParseTaskIDFromMesosTaskID(mesosTaskID)
+		if err != nil {
+			log.WithError(err).
+				WithField("task_id", mesosTaskID).
+				Error("Fail to parse taskID for mesostaskID")
+			return nil, err
+		}
+		updateEvent.state = util.MesosStateToPelotonState(event.MesosTaskStatus.GetState())
+		updateEvent.statusMsg = event.MesosTaskStatus.GetMessage()
+
+		updateEvent.isMesosStatus = true
+		updateEvent.mesosTaskStatus = event.MesosTaskStatus
+		log.WithFields(log.Fields{
+			"task_id": updateEvent.taskID,
+			"state":   updateEvent.state.String(),
+		}).Debug("Adding Mesos Event ")
+
+	} else if event.Type == pb_eventstream.Event_PELOTON_TASK_EVENT {
+		// Peloton task event is used for task status update from resmgr.
+		updateEvent.taskID = event.PelotonTaskEvent.TaskId.Value
+		updateEvent.state = event.PelotonTaskEvent.State
+		updateEvent.statusMsg = event.PelotonTaskEvent.Message
+		log.WithFields(log.Fields{
+			"task_id": updateEvent.taskID,
+			"state":   updateEvent.state.String(),
+		}).Debug("Adding Peloton Event ")
+	} else {
+		log.WithFields(log.Fields{
+			"task_id": updateEvent.taskID,
+			"state":   updateEvent.state.String(),
+		}).Error("Unknown Event ")
+		return nil, errors.New("Unknown Event ")
+	}
+	return updateEvent, nil
+}
+
+// logTaskMetrics logs events metrics
+func (p *statusUpdate) logTaskMetrics(event *statusUpateEvent) {
+	// Update task state counter for non-reconcilication update.
+	if event.isMesosStatus && event.mesosTaskStatus.GetReason() !=
+		mesos_v1.TaskStatus_REASON_RECONCILIATION {
+		switch event.state {
+		case pb_task.TaskState_RUNNING:
+			p.metrics.TasksRunningTotal.Inc(1)
+		case pb_task.TaskState_SUCCEEDED:
+			p.metrics.TasksSucceededTotal.Inc(1)
+		case pb_task.TaskState_FAILED:
+			p.metrics.TasksFailedTotal.Inc(1)
+			p.metrics.TasksFailedReason[int32(event.mesosTaskStatus.GetReason())].Inc(1)
+			log.WithFields(log.Fields{
+				"task_id":       event.taskID,
+				"failed_reason": mesos_v1.TaskStatus_Reason_name[int32(event.mesosTaskStatus.GetReason())],
+			}).Debug("received failed task")
+		case pb_task.TaskState_KILLED:
+			p.metrics.TasksKilledTotal.Inc(1)
+		case pb_task.TaskState_LOST:
+			p.metrics.TasksLostTotal.Inc(1)
+		case pb_task.TaskState_LAUNCHED:
+			p.metrics.TasksLaunchedTotal.Inc(1)
+		case pb_task.TaskState_STARTING:
+			p.metrics.TasksStartingTotal.Inc(1)
+		}
+	} else if event.isMesosStatus && event.mesosTaskStatus.GetReason() ==
+		mesos_v1.TaskStatus_REASON_RECONCILIATION {
+		p.metrics.TasksReconciledTotal.Inc(1)
+	}
+}
+
+// isOrphanTaskEvent returns if a task event is from orphan task,
+// it returns the TaskInfo if task is not orphan
+func (p *statusUpdate) isOrphanTaskEvent(
+	ctx context.Context,
+	event *statusUpateEvent,
+) (bool, *pb_task.TaskInfo, error) {
+	taskInfo, err := p.taskStore.GetTaskByID(ctx, event.taskID)
+	if err != nil {
+		if yarpcerrors.IsNotFound(err) {
+			// if task runtime or config is not present in the DB,
+			// then the task is orphan
+			log.WithFields(log.Fields{
+				"mesos_task_id":      event.mesosTaskStatus,
+				"task_status_event≠": event.state.String(),
+			}).Info("received status update for task not found in DB")
+			return true, nil, nil
+		}
+
+		log.WithError(err).
+			WithField("task_id", event.taskID).
+			WithField("task_status_event", event.mesosTaskStatus).
+			WithField("state", event.state.String()).
+			Error("fail to find taskInfo for taskID for mesos event")
+		return false, nil, err
+	}
+
+	dbTaskID := taskInfo.GetRuntime().GetMesosTaskId().GetValue()
+	if event.isMesosStatus && dbTaskID !=
+		event.mesosTaskStatus.GetTaskId().GetValue() {
+		log.WithFields(log.Fields{
+			"orphan_task_id":    event.mesosTaskStatus.GetTaskId().GetValue(),
+			"db_task_id":        dbTaskID,
+			"db_task_runtime":   taskInfo.GetRuntime(),
+			"task_status_event": event.mesosTaskStatus,
+		}).Info("received status update for orphan mesos task")
+		return true, nil, nil
+	}
+
+	return false, taskInfo, nil
 }
 
 // updatePersistentVolumeState updates volume state to be CREATED.
@@ -540,12 +580,11 @@ func updateFailureCount(
 //
 // Each unhealthy state needs to be logged into the pod events table.
 func isDuplicateStateUpdate(
-	runtime *pb_task.RuntimeInfo,
 	taskInfo *pb_task.TaskInfo,
 	event *pb_eventstream.Event,
 	newState pb_task.TaskState) bool {
 
-	if newState != runtime.GetState() {
+	if newState != taskInfo.GetRuntime().GetState() {
 		return false
 	}
 
@@ -578,7 +617,7 @@ func isDuplicateStateUpdate(
 
 	// Current behavior will log consecutive negative health check results
 	// ToDo (varung): Evaluate if consecutive negative results should be logged or not
-	isPreviousStateHealthy := runtime.GetHealthy() == pb_task.HealthState_HEALTHY
+	isPreviousStateHealthy := taskInfo.GetRuntime().GetHealthy() == pb_task.HealthState_HEALTHY
 	if !isPreviousStateHealthy {
 		log.WithFields(log.Fields{
 			"db_task_runtime":   taskInfo.GetRuntime(),

@@ -19,6 +19,8 @@ type Metrics struct {
 	TasksKilledTotal    tally.Counter
 	TasksSucceededTotal tally.Counter
 	TasksRunningTotal   tally.Counter
+	TasksLaunchedTotal  tally.Counter
+	TasksStartingTotal  tally.Counter
 
 	TasksHealthyTotal   tally.Counter
 	TasksUnHealthyTotal tally.Counter
@@ -42,6 +44,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TasksSucceededTotal: scope.Counter("tasks_succeeded_total"),
 		TasksKilledTotal:    scope.Counter("tasks_killed_total"),
 		TasksRunningTotal:   scope.Counter("tasks_running_total"),
+		TasksLaunchedTotal:  scope.Counter("tasks_launched_total"),
+		TasksStartingTotal:  scope.Counter("tasks_starting_total"),
 
 		TasksHealthyTotal:   scope.Counter("tasks_healthy_total"),
 		TasksUnHealthyTotal: scope.Counter("tasks_unhealthy_total"),
