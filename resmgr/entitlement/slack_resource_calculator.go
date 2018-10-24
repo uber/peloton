@@ -1,7 +1,6 @@
 package entitlement
 
 import (
-	"fmt"
 	"math"
 
 	log "github.com/sirupsen/logrus"
@@ -34,8 +33,9 @@ func (c *Calculator) setSlackEntitlementForChildren(
 	totalShare := make(map[string]float64)
 
 	log.WithFields(log.Fields{
-		"respool_name": resp.Name(),
-		"respool_id":   resp.ID(),
+		"respool_name":      resp.Name(),
+		"respool_id":        resp.ID(),
+		"slack_entitlement": slackEntitlement.String(),
 	}).Info("Starting Slack Entitlement cycle for respool")
 
 	// This is first phase for assignment capped at slack limit
@@ -62,9 +62,9 @@ func (c *Calculator) setSlackEntitlementForChildren(
 		slackAssignments)
 
 	log.WithFields(log.Fields{
-		"slack_entitlement": slackEntitlement.String(),
-	}).Info(fmt.Sprintf("Completed Entitlement cycle for respool: %s %s",
-		resp.Name(), resp.ID()))
+		"respool_name": resp.Name(),
+		"respool_id":   resp.ID(),
+	}).Info("Completed Slack Entitlement cycle for respool")
 
 	// Now setting entitlement for all the children and call
 	// for their children recursively

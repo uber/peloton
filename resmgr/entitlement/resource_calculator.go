@@ -36,6 +36,7 @@ func (c *Calculator) setEntitlementForChildren(
 	log.WithFields(log.Fields{
 		"respool_name": resp.Name(),
 		"respool_id":   resp.ID(),
+		"entitlement":  entitlement.String(),
 	}).Info("Starting Entitlement cycle for respool")
 
 	// This is the first phase for assignment
@@ -65,7 +66,6 @@ func (c *Calculator) setEntitlementForChildren(
 	log.WithFields(log.Fields{
 		"respool_name": resp.Name(),
 		"respool_id":   resp.ID(),
-		"entitlement":  entitlement.String(),
 	}).Info("Completed Entitlement cycle for respool")
 
 	// Update each resource pool metrics post entitlement calculation
@@ -276,16 +276,16 @@ func (c *Calculator) distributeRemainingResources(
 					"respool":    n.Name(),
 					"assignment": value,
 				}).Debug("Setting assignment for this respool")
+
+				log.WithFields(log.Fields{
+					"respool_resources":              n.Resources(),
+					"respool_name":                   n.Name(),
+					"demand_cap_by_share_assignment": assignments[n.ID()],
+					"demand_not_satisfied":           demands[n.ID()],
+				}).Info("Second pass completed for respool")
 			}
 			*entitlement = remaining
 		}
-		log.WithFields(log.Fields{
-			"respool_resources":              resp.Resources(),
-			"respool_name":                   resp.Name(),
-			"demand_cap_by_share_assignment": assignments,
-			"demand_not_satisfied":           demands,
-			"entitlement":                    entitlement.String(),
-		}).Info("Second pass completed for respool")
 	}
 }
 
@@ -328,12 +328,12 @@ func (c *Calculator) distributeUnclaimedResources(
 				} else {
 					assignments[n.ID()].Set(kind, value)
 				}
+				log.WithFields(log.Fields{
+					"respool_name":      n.Name(),
+					"respool_resources": n.Resources(),
+					"final_assignment":  assignments[n.ID()],
+				}).Info("Thrid pass completed for respool")
 			}
 		}
 	}
-	log.WithFields(log.Fields{
-		"respool_resources": resp.Resources(),
-		"final_assignment":  assignments,
-		"entitlement":       entitlement.String(),
-	}).Info("Thrid pass completed for respool: " + resp.Name())
 }

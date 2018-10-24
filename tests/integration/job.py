@@ -346,6 +346,33 @@ class Job(object):
         assert not resp.HasField('notFound')
         return resp.result
 
+    def wait_for_all_tasks_running(self):
+        attempts = 0
+        start = time.time()
+        while attempts < self.config.max_retry_attempts:
+            try:
+                count = 0
+                task_infos = self.list_tasks().value
+                for instance_id, task_info in task_infos.items():
+                    if task_info.runtime.state == task.RUNNING:
+                        count += 1
+
+                if count == len(task_infos):
+                    break
+            except Exception as e:
+                log.warn(e)
+
+            time.sleep(self.config.sleep_time_sec)
+            attempts += 1
+
+        if attempts == self.config.max_retry_attempts:
+            log.info('max attempts reached to wait for all tasks running')
+            assert False
+
+        end = time.time()
+        elapsed = end - start
+        log.info('%s job has all running tasks in %s seconds', self.job_id, elapsed)
+
     def wait_for_terminated(self):
         """
         Waits for the job to be terminated
