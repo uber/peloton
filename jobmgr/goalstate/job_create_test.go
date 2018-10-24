@@ -93,6 +93,9 @@ func (suite *JobCreateTestSuite) SetupTest() {
 		LdapGroups:    []string{"team1", "team2", "team3"},
 		InstanceCount: suite.instanceCount,
 		Type:          pbjob.JobType_BATCH,
+		ChangeLog: &peloton.ChangeLog{
+			Version: 2,
+		},
 	}
 }
 
@@ -331,28 +334,49 @@ func (suite *JobCreateTestSuite) TestJobRecover() {
 	taskInfos := make(map[uint32]*pbtask.TaskInfo)
 	taskInfos[0] = &pbtask.TaskInfo{
 		Runtime: &pbtask.RuntimeInfo{
-			State:     pbtask.TaskState_RUNNING,
-			GoalState: pbtask.TaskState_SUCCEEDED,
+			State:                pbtask.TaskState_RUNNING,
+			GoalState:            pbtask.TaskState_SUCCEEDED,
+			ConfigVersion:        suite.jobConfig.GetChangeLog().GetVersion() - 1,
+			DesiredConfigVersion: suite.jobConfig.GetChangeLog().GetVersion() - 1,
 		},
 		InstanceId: 0,
 		JobId:      suite.jobID,
 	}
 	taskInfos[1] = &pbtask.TaskInfo{
 		Runtime: &pbtask.RuntimeInfo{
-			State:     pbtask.TaskState_INITIALIZED,
-			GoalState: pbtask.TaskState_SUCCEEDED,
+			State:                pbtask.TaskState_INITIALIZED,
+			GoalState:            pbtask.TaskState_SUCCEEDED,
+			ConfigVersion:        suite.jobConfig.GetChangeLog().GetVersion() - 1,
+			DesiredConfigVersion: suite.jobConfig.GetChangeLog().GetVersion() - 1,
 		},
 		InstanceId: 1,
 		JobId:      suite.jobID,
 	}
 
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
+
 	suite.taskStore.EXPECT().
 		GetTasksForJob(gomock.Any(), suite.jobID).
 		Return(taskInfos, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
+	suite.cachedJob.EXPECT().
+		GetTask(gomock.Any()).
+		Return(nil).
+		Times(2)
+
+	suite.cachedJob.EXPECT().
+		ReplaceTasks(gomock.Any(), gomock.Any()).
+		Return(nil).
+		Times(2)
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.Len(runtimeDiffs, 2)
+		}).
+		Return(nil)
 
 	suite.taskStore.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
@@ -370,13 +394,6 @@ func (suite *JobCreateTestSuite) TestJobRecover() {
 			_ cached.UpdateRequest) {
 			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_PENDING)
 		}).
-		Return(nil)
-
-	suite.cachedJob.EXPECT().
-		GetTask(uint32(1)).Return(nil)
-
-	suite.cachedJob.EXPECT().
-		ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{1: taskInfos[1].GetRuntime()}, false).
 		Return(nil)
 
 	suite.cachedJob.EXPECT().
@@ -549,16 +566,20 @@ func (suite *JobCreateTestSuite) TestJobRecoverMaxRunningInstances() {
 	taskInfos := make(map[uint32]*pbtask.TaskInfo)
 	taskInfos[0] = &pbtask.TaskInfo{
 		Runtime: &pbtask.RuntimeInfo{
-			State:     pbtask.TaskState_RUNNING,
-			GoalState: pbtask.TaskState_SUCCEEDED,
+			State:                pbtask.TaskState_RUNNING,
+			GoalState:            pbtask.TaskState_SUCCEEDED,
+			ConfigVersion:        suite.jobConfig.GetChangeLog().GetVersion() - 1,
+			DesiredConfigVersion: suite.jobConfig.GetChangeLog().GetVersion() - 1,
 		},
 		InstanceId: 0,
 		JobId:      suite.jobID,
 	}
 	taskInfos[1] = &pbtask.TaskInfo{
 		Runtime: &pbtask.RuntimeInfo{
-			State:     pbtask.TaskState_INITIALIZED,
-			GoalState: pbtask.TaskState_SUCCEEDED,
+			State:                pbtask.TaskState_INITIALIZED,
+			GoalState:            pbtask.TaskState_SUCCEEDED,
+			ConfigVersion:        suite.jobConfig.GetChangeLog().GetVersion() - 1,
+			DesiredConfigVersion: suite.jobConfig.GetChangeLog().GetVersion() - 1,
 		},
 		InstanceId: 1,
 		JobId:      suite.jobID,
@@ -585,10 +606,24 @@ func (suite *JobCreateTestSuite) TestJobRecoverMaxRunningInstances() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
+		GetTask(uint32(0)).Return(nil)
+
+	suite.cachedJob.EXPECT().
+		ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{0: taskInfos[0].GetRuntime()}, false).
+		Return(nil)
+
+	suite.cachedJob.EXPECT().
 		GetTask(uint32(1)).Return(nil)
 
 	suite.cachedJob.EXPECT().
 		ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{1: taskInfos[1].GetRuntime()}, false).
+		Return(nil)
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.Len(runtimeDiffs, 2)
+		}).
 		Return(nil)
 
 	suite.cachedJob.EXPECT().

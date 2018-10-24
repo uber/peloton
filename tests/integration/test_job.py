@@ -93,3 +93,30 @@ def test_update_job_increase_instances():
     job.wait_for_state(goal_state='RUNNING')
 
     kill_jobs([job])
+
+
+def test_update_job_consecutive_increase_instances():
+    job = Job(job_file='long_running_job.yaml',
+              config=IntegrationTestConfig(max_retry_attempts=100))
+    job.create()
+
+    # increase the batch instance immediately after job created,
+    # it verifies if job can updated when it is still under
+    # INITIALIZED state
+    job.update(new_job_file='long_running_job_update_instances.yaml')
+
+    # number of tasks should increase to 4
+    expected_count = 4
+
+    def tasks_count():
+        count = 0
+        for t in job.get_tasks().values():
+            if t.state == 8 or t.state == 9:
+                count += 1
+
+        print "total instances running/completed: %d" % count
+        return count == expected_count
+
+    job.wait_for_condition(tasks_count)
+    job.wait_for_state(goal_state='RUNNING')
+    kill_jobs([job])
