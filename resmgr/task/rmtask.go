@@ -1,6 +1,7 @@
 package task
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -17,7 +18,17 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var errTaskNotPresent = errors.New("task is not present in the tracker")
+var (
+	errTaskNotPresent           = errors.New("task is not present in the tracker")
+	errUnplacedTaskInWrongState = errors.New("unplaced task should be in state placing")
+	errTaskNotInCorrectState    = errors.New("task is not present in correct state")
+	errTaskNotTransitioned      = errors.New("task is not transitioned to state")
+)
+
+var (
+	reasonPlacementFailed = "Reached placement failure backoff threshold"
+	reasonPlacementRetry  = "Previous placement failed"
+)
 
 // RunTimeStats is the container for run time stats of the resmgr task
 type RunTimeStats struct {
@@ -26,7 +37,7 @@ type RunTimeStats struct {
 
 // RMTask is the wrapper around resmgr.task for state machine
 type RMTask struct {
-	sync.Mutex // Mutex for synchronization
+	mu sync.Mutex // Mutex for synchronization
 
 	task         *resmgr.Task       // resmgr task
 	stateMachine state.StateMachine // state machine for the task
@@ -248,12 +259,37 @@ func (rmTask *RMTask) initStateMachine() error {
 	return nil
 }
 
+// TransitFromTo transits a task from a source to target state.
+// If the from state doesn't match the current state and error is returned.
+func (rmTask *RMTask) TransitFromTo(
+	stateFrom string,
+	stateTo string,
+	options ...state.Option) error {
+
+	rmTask.mu.Lock()
+	defer rmTask.mu.Unlock()
+
+	if rmTask.GetCurrentState().String() != stateFrom {
+		return errTaskNotInCorrectState
+	}
+
+	if err := rmTask.TransitTo(
+		stateTo,
+		options...); err != nil {
+		return errTaskNotTransitioned
+	}
+
+	return nil
+}
+
 // TransitTo transitions to the target state
 func (rmTask *RMTask) TransitTo(stateTo string, options ...state.Option) error {
 	err := rmTask.stateMachine.TransitTo(state.State(stateTo), options...)
 	if err == nil {
-		GetTracker().UpdateCounters(rmTask.GetCurrentState(),
-			task.TaskState(task.TaskState_value[stateTo]))
+		GetTracker().UpdateCounters(
+			rmTask.GetCurrentState(),
+			task.TaskState(task.TaskState_value[stateTo]),
+		)
 	}
 	return err
 }
@@ -292,8 +328,8 @@ func (rmTask *RMTask) UpdateStartTime(startTime time.Time) {
 
 // AddBackoff adds the backoff to the RMtask based on backoff policy
 func (rmTask *RMTask) AddBackoff() error {
-	rmTask.Lock()
-	defer rmTask.Unlock()
+	rmTask.mu.Lock()
+	defer rmTask.mu.Unlock()
 
 	// Check if policy is nil then we should return back
 	if rmTask.policy == nil {
@@ -322,11 +358,90 @@ func (rmTask *RMTask) AddBackoff() error {
 	return nil
 }
 
-// IsFailedEnoughPlacement returns true if one placement cycle is completed
+// RequeueUnPlaced Requeues the task which couldn't be placed.
+func (rmTask *RMTask) RequeueUnPlaced(reason string) error {
+	rmTask.mu.Lock()
+	defer rmTask.mu.Unlock()
+
+	cState := rmTask.GetCurrentState()
+
+	// If the task is in READY/PENDING state we don't need to do anything.
+	// This can happen if the state machine recovered from PLACING state
+	if cState == task.TaskState_READY || cState == task.TaskState_PENDING {
+		return nil
+	}
+
+	// If task is not in PLACING state, it should return error
+	if cState != task.TaskState_PLACING {
+		return errUnplacedTaskInWrongState
+	}
+
+	// If task is in PLACING state we need to determine which STATE it will
+	// transition to based on retry attempts
+
+	if rmTask.hasFinishedPlacementCycle() {
+		// If this task is been failed enough times
+		// put this task to PENDING queue.
+		return rmTask.requeueToPendingQueue(reason)
+	}
+
+	// requeue to ready queue
+	return rmTask.requeueToReadyQueue(reason)
+}
+
+// requeques a placing task to ready queue
+// NB: Acquire lock on rm task before calling
+func (rmTask *RMTask) requeueToReadyQueue(reason string) error {
+	// move from PLACING to READY with the reason
+	if err := rmTask.TransitTo(task.TaskState_READY.String(),
+		state.WithReason(strings.Join(
+			[]string{
+				reasonPlacementRetry, reason,
+			}, ":"))); err != nil {
+		return err
+	}
+
+	// Enqueue back to ready Queue
+	if err := rmTask.pushTaskForPlacementAgain(); err != nil {
+		return err
+	}
+
+	log.WithFields(log.Fields{
+		"task_id":    rmTask.Task().Id.Value,
+		"from_state": task.TaskState_PLACING.String(),
+		"to_state":   task.TaskState_READY.String(),
+	}).Info("Task moved back to ready queue")
+	return nil
+}
+
+// requeques a placing task to pending queue
+// NB: Acquire lock on rm task before calling
+func (rmTask *RMTask) requeueToPendingQueue(reason string) error {
+	// Transitioning task state to PENDING with the reason
+	if err := rmTask.TransitTo(
+		task.TaskState_PENDING.String(),
+		state.WithReason(strings.Join(
+			[]string{
+				reasonPlacementFailed, reason,
+			}, ":"))); err != nil {
+		return err
+	}
+	// Pushing task to PENDING queue
+	if err := rmTask.pushTaskForReadmission(); err != nil {
+		return err
+	}
+	log.WithFields(log.Fields{
+		"task_id":    rmTask.Task().Id.Value,
+		"from_state": task.TaskState_PLACING.String(),
+		"to_state":   task.TaskState_PENDING.String(),
+	}).Info("Task is pushed back to pending queue from placement engine requeue")
+	return nil
+}
+
+// hasFinishedPlacementCycle returns true if one placement cycle is completed
 // otherwise false
-func (rmTask *RMTask) IsFailedEnoughPlacement() bool {
-	rmTask.Lock()
-	defer rmTask.Unlock()
+// NB: Acquire lock before calling
+func (rmTask *RMTask) hasFinishedPlacementCycle() bool {
 	// Checking if placement backoff is enabled
 	if !rmTask.config.EnablePlacementBackoff {
 		return false
@@ -334,8 +449,10 @@ func (rmTask *RMTask) IsFailedEnoughPlacement() bool {
 	return rmTask.policy.IsCycleCompleted(rmTask.Task(), rmTask.config)
 }
 
-// PushTaskForReadmission pushes the task for readmission to pending queue
-func (rmTask *RMTask) PushTaskForReadmission() error {
+// pushTaskForReadmission pushes the pending task for readmission to pending
+// queue
+// NB: Acquire lock on rm task before calling
+func (rmTask *RMTask) pushTaskForReadmission() error {
 	var tasks []*resmgr.Task
 	gang := &resmgrsvc.Gang{
 		Tasks: append(tasks, rmTask.task),
@@ -355,8 +472,9 @@ func (rmTask *RMTask) PushTaskForReadmission() error {
 	return nil
 }
 
-// pushTaskForPlacementAgain pushes the task to ready queue as the placement cycle is not
-// completed for this task.
+// pushTaskForPlacementAgain pushes the task to ready queue as the
+// placement cycle is not completed for this task.
+// NB: Acquire lock on rm task before calling
 func (rmTask *RMTask) pushTaskForPlacementAgain() error {
 	var tasks []*resmgr.Task
 	gang := &resmgrsvc.Gang{
@@ -401,7 +519,7 @@ func (rmTask *RMTask) timeoutCallbackFromPlacing(t *state.Transition) error {
 			"to_state":   t.To,
 		}).Info("Task is pushed back to pending queue")
 		// we need to push it if pending
-		err := rmTask.PushTaskForReadmission()
+		err := rmTask.pushTaskForReadmission()
 		if err != nil {
 			return err
 		}
@@ -444,7 +562,7 @@ func (rmTask *RMTask) preTimeoutCallback(t *state.Transition) error {
 		return errTaskNotPresent
 	}
 
-	if rmTask.IsFailedEnoughPlacement() {
+	if rmTask.hasFinishedPlacementCycle() {
 		t.To = state.State(task.TaskState_PENDING.String())
 		return nil
 	}

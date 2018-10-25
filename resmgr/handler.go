@@ -32,13 +32,12 @@ import (
 )
 
 var (
-	errFailingGangMemberTask    = errors.New("task fail because other gang member failed")
-	errSameTaskPresent          = errors.New("same task present in tracker, Ignoring new task")
-	errGangNotEnqueued          = errors.New("could not enqueue gang to ready after retry")
-	errEnqueuedAgain            = errors.New("enqueued again after retry")
-	errUnplacedTaskInWrongState = errors.New("unplaced task should be in state placing")
-	errRequeueTaskFailed        = errors.New("requeue exisiting task to resmgr failed")
-	errGangEnqueuedPending      = errors.New("could not enqueue gang to pending after multiple placement retry")
+	errFailingGangMemberTask = errors.New("task fail because other gang member failed")
+	errSameTaskPresent       = errors.New("same task present in tracker, Ignoring new task")
+	errGangNotEnqueued       = errors.New("could not enqueue gang to ready after retry")
+	errEnqueuedAgain         = errors.New("enqueued again after retry")
+	errRequeueTaskFailed     = errors.New("requeue existing task to resmgr failed")
+	errIncompleteGang        = errors.New("some tasks are not present for the gang")
 )
 
 // ServiceHandler implements peloton.private.resmgr.ResourceManagerService
@@ -132,65 +131,61 @@ func (h *ServiceHandler) EnqueueGangs(
 		}
 	}
 
+	var failedGangs []*resmgrsvc.EnqueueGangsFailure_FailedTask
+	var failedGang []*resmgrsvc.EnqueueGangsFailure_FailedTask
 	// Enqueue the gangs sent in an API call to the pending queue of the respool.
 	// For each gang, add its tasks to the state machine, enqueue the gang, and
 	// return per-task success/failure.
-	var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
 	for _, gang := range req.GetGangs() {
-		// Here we are checking if the respool is nil that means
-		// These gangs are failed in placement engine and been returned
-		// to resmgr for enqueuing again.
 		if resourcePool == nil {
-			failed, err = h.returnExistingTasks(gang, req.GetReason())
+			// Here we are checking if the respool is nil that means
+			// These gangs are failed in placement engine and been returned
+			// to resmgr for enqueuing again.
+			failedGang, err = h.returnExistingTasks(gang, req.GetReason())
 		} else {
-			failed, err = h.enqueueGang(gang, resourcePool)
+			failedGang, err = h.enqueueGang(gang, resourcePool)
 		}
 		if err != nil {
+			failedGangs = append(failedGangs, failedGang...)
 			h.metrics.EnqueueGangFail.Inc(1)
 			continue
 		}
 		h.metrics.EnqueueGangSuccess.Inc(1)
 	}
 
-	if len(failed) > 0 {
+	if len(failedGangs) > 0 {
 		return &resmgrsvc.EnqueueGangsResponse{
 			Error: &resmgrsvc.EnqueueGangsResponse_Error{
 				Failure: &resmgrsvc.EnqueueGangsFailure{
-					Failed: failed,
+					Failed: failedGangs,
 				},
 			},
 		}, nil
 	}
 
-	response := resmgrsvc.EnqueueGangsResponse{}
 	log.Debug("Enqueue Returned")
-	return &response, nil
+	return &resmgrsvc.EnqueueGangsResponse{}, nil
 }
 
 func (h *ServiceHandler) returnExistingTasks(gang *resmgrsvc.Gang, reason string) (
 	[]*resmgrsvc.EnqueueGangsFailure_FailedTask, error) {
-	allTasksExist := true
 	failedTasks := make(map[string]bool)
 	var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
 	for _, task := range gang.GetTasks() {
-		task := h.rmTracker.GetTask(task.GetId())
-		if task == nil {
-			allTasksExist = false
-			break
+		if !h.isTaskPresent(task) {
+			// Making the whole gang failed as there are not all tasks present.
+			log.WithField("task_id", task.GetId()).
+				Error("task not present in gang to be requeued")
+			failed = append(failed, h.markingTasksFailInGang(
+				gang,
+				failedTasks,
+				errIncompleteGang)...)
+			return failed, errIncompleteGang
 		}
 	}
 
-	if !allTasksExist {
-		// Making the whole gang failed as there are not all tasks present
-		err := fmt.Errorf("not all tasks for the gang exists in the resource manager")
-		log.WithError(err).Error("failing gang to requeue again ")
-		failed = append(failed, h.markingTasksFailInGang(gang, failedTasks, err)...)
-		return failed, err
-	}
-
 	for _, task := range gang.GetTasks() {
-		err := h.requeueUnplacedTask(task, reason)
-		if err != nil {
+		if err := h.requeueUnplacedTask(task, reason); err != nil {
 			failed = append(
 				failed,
 				&resmgrsvc.EnqueueGangsFailure_FailedTask{
@@ -207,7 +202,10 @@ func (h *ServiceHandler) returnExistingTasks(gang *resmgrsvc.Gang, reason string
 		// If there are some tasks in this gang been failed to enqueue
 		// we are making all the tasks in this gang to be failed
 		// as we can enqueue the full gang or full gang will be failed.
-		failed = append(failed, h.markingTasksFailInGang(gang, failedTasks, errFailingGangMemberTask)...)
+		failed = append(failed, h.markingTasksFailInGang(
+			gang,
+			failedTasks,
+			errFailingGangMemberTask)...)
 		err = fmt.Errorf("some tasks failed to be re-enqueued")
 	}
 	return failed, err
@@ -347,78 +345,7 @@ func (h *ServiceHandler) requeueUnplacedTask(requeuedTask *resmgr.Task, reason s
 	if rmTask == nil {
 		return nil
 	}
-	currentTaskState := rmTask.GetCurrentState()
-	// If the task is in READY state we dont need to do anything
-	if currentTaskState == t.TaskState_READY {
-		return nil
-	}
-
-	// If task is not in PLACING state, it should return errUnplacedTaskInWrongState error
-	if currentTaskState != t.TaskState_PLACING {
-		return errUnplacedTaskInWrongState
-	}
-	// If task is in PLACING state we need to determine which STATE it will
-	// transition to based on retry attempts
-
-	// Checking if this task is been failed enough times
-	// put this task to PENDING queue.
-	if rmTask.IsFailedEnoughPlacement() {
-		err := h.moveTaskForAdmission(requeuedTask, reason)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-
-	log.WithFields(log.Fields{
-		"task_id":    rmTask.Task().Id.Value,
-		"from_state": t.TaskState_PLACING.String(),
-		"to_state":   t.TaskState_PENDING.String(),
-	}).Info("Task is pushed back to pending queue from placement engine requeue")
-
-	// Transitioning back to Ready State
-	err := rmTask.TransitTo(t.TaskState_READY.String(),
-		statemachine.WithReason("Previous placement timed out due to "+reason))
-	if err != nil {
-		log.WithField("task", rmTask.Task().Id.Value).Error(errGangNotEnqueued.Error())
-		return err
-	}
-	// Adding to ready Queue
-	gang := &resmgrsvc.Gang{
-		Tasks: []*resmgr.Task{rmTask.Task()},
-	}
-	err = rmtask.GetScheduler().EnqueueGang(gang)
-	if err != nil {
-		log.WithField("gang", gang).Error(errGangNotEnqueued.Error())
-		return err
-	}
-	return nil
-}
-
-// moveTaskForAdmission transits task to PENDING state and push it back to Pending queue
-func (h *ServiceHandler) moveTaskForAdmission(requeuedTask *resmgr.Task, reason string) error {
-	rmTask := h.rmTracker.GetTask(requeuedTask.Id)
-	if rmTask == nil {
-		return nil
-	}
-	// Transitioning task state to PENDING
-	err := rmTask.TransitTo(t.TaskState_PENDING.String(),
-		statemachine.WithReason("multiple placement timed out, putting back for readmission"+reason))
-	if err != nil {
-		log.WithField("task", rmTask.Task().Id.Value).Error(errGangEnqueuedPending.Error())
-		return err
-	}
-	log.WithFields(log.Fields{
-		"task_id":    rmTask.Task().Id.Value,
-		"from_state": t.TaskState_PLACING.String(),
-		"to_state":   t.TaskState_PENDING.String(),
-	}).Info("Task is pushed back to pending queue from placement engine requeue")
-	// Pushing task to PENDING queue
-	err = rmTask.PushTaskForReadmission()
-	if err != nil {
-		return err
-	}
-	return nil
+	return rmTask.RequeueUnPlaced(reason)
 }
 
 // addTask adds the task to RMTracker based on the respool

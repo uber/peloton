@@ -29,15 +29,15 @@ var testTableName string
 // 	*	id	| 	 name	|  	 data
 //  1.   1  	"test"	   "testdata"
 var testRow = []base.Column{
-	base.Column{
+	{
 		Name:  "id",
 		Value: uint64(1),
 	},
-	base.Column{
+	{
 		Name:  "name",
 		Value: "test",
 	},
-	base.Column{
+	{
 		Name:  "data",
 		Value: "testdata",
 	},
@@ -45,7 +45,7 @@ var testRow = []base.Column{
 
 // keyRow defines primary key column list for test table
 var keyRow = []base.Column{
-	base.Column{
+	{
 		Name:  "id",
 		Value: uint64(1),
 	},

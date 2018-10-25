@@ -490,7 +490,7 @@ func (s *RMTaskTestSuite) TestPushTaskForReadmissionError() {
 
 		s.NoError(err)
 
-		err = rmTask.PushTaskForReadmission()
+		err = rmTask.pushTaskForReadmission()
 		s.EqualError(err, err.Error())
 	}
 
@@ -586,4 +586,198 @@ func (s *RMTaskTestSuite) TestRMTaskCallBackNilChecks() {
 	for _, t := range tt {
 		s.Error(t.f(nil), t.err.Error())
 	}
+}
+
+func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskNotInPlacing() {
+
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	rmTask, err := CreateRMTask(s.createTask(1),
+		nil,
+		node,
+		nil,
+		&Config{
+			LaunchingTimeout:       2 * time.Second,
+			PlacingTimeout:         2 * time.Second,
+			PlacementRetryCycle:    3,
+			PlacementRetryBackoff:  1 * time.Second,
+			PolicyName:             ExponentialBackOffPolicy,
+			EnablePlacementBackoff: true,
+		})
+	s.NotNil(rmTask.StateMachine())
+
+	tt := []struct {
+		tState task.TaskState
+		err    error
+		test   string
+	}{
+		{
+			tState: task.TaskState_READY,
+			err:    nil,
+			test:   "task in ready state should return",
+		},
+		{
+			tState: task.TaskState_PENDING,
+			err:    nil,
+			test:   "task in pending state should return",
+		},
+		{
+			tState: task.TaskState_RUNNING,
+			err:    errUnplacedTaskInWrongState,
+			test:   "task not in placing state should return error",
+		},
+	}
+
+	for _, t := range tt {
+		mockStateMachine := sm_mock.NewMockStateMachine(s.ctrl)
+		mockStateMachine.EXPECT().GetCurrentState().Return(statemachine.State(t.
+			tState.String()))
+		rmTask.stateMachine = mockStateMachine
+
+		err := rmTask.RequeueUnPlaced("")
+		s.Equal(t.err, err, t.test)
+	}
+}
+
+func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToReady() {
+	// Tests a task is PLACING state whose placement cycle hasn't finished is
+	// successfully re-enqueued to the ready queue.
+
+	runWithMockNode := func(
+		mnode respool.ResPool,
+		config *Config,
+		sm statemachine.StateMachine) error {
+		rmTask, err := CreateRMTask(s.createTask(1),
+			nil,
+			mnode,
+			nil,
+			config,
+		)
+		rmTask.stateMachine = sm
+		s.NoError(err)
+
+		return rmTask.RequeueUnPlaced("")
+	}
+
+	mockNode := mocks.NewMockResPool(s.ctrl)
+	mockStateMachine := sm_mock.NewMockStateMachine(s.ctrl)
+
+	// task is in PLACING state
+	mockStateMachine.
+		EXPECT().GetCurrentState().
+		Return(statemachine.State(task.TaskState_PLACING.String()))
+	// transit to READY
+	mockStateMachine.
+		EXPECT().TransitTo(
+		statemachine.State(task.TaskState_READY.String()),
+		gomock.Any(),
+	).Return(nil)
+	// task is in READY state
+	mockStateMachine.
+		EXPECT().GetCurrentState().
+		Return(statemachine.State(task.TaskState_READY.String()))
+
+	err := runWithMockNode(
+		mockNode,
+		&Config{
+			PolicyName: ExponentialBackOffPolicy,
+		},
+		mockStateMachine)
+	s.Nil(err, "placing to ready requeue should not fail")
+}
+
+func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToReadyErr() {
+	// Tests a task is PLACING state can't be requeued because of error in
+	// state machine transition.
+	runWithMockNode := func(
+		mnode respool.ResPool,
+		config *Config,
+		sm statemachine.StateMachine) error {
+		rmTask, err := CreateRMTask(s.createTask(1),
+			nil,
+			mnode,
+			nil,
+			config,
+		)
+		rmTask.stateMachine = sm
+		s.NoError(err)
+
+		return rmTask.RequeueUnPlaced("")
+	}
+
+	mockNode := mocks.NewMockResPool(s.ctrl)
+	mockStateMachine := sm_mock.NewMockStateMachine(s.ctrl)
+	fakeError := errors.New("fake error")
+
+	// task is in PLACING state
+	mockStateMachine.
+		EXPECT().GetCurrentState().
+		Return(statemachine.State(task.TaskState_PLACING.String())).AnyTimes()
+	// transit to READY
+	mockStateMachine.
+		EXPECT().TransitTo(
+		statemachine.State(task.TaskState_READY.String()),
+		gomock.Any(),
+	).Return(fakeError)
+
+	err := runWithMockNode(
+		mockNode,
+		&Config{
+			PolicyName: ExponentialBackOffPolicy,
+		},
+		mockStateMachine)
+	s.Equal(fakeError, err, "placing to ready requeue should fail")
+}
+
+func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToPending() {
+	// Tests a task is PLACING state can't be requeued because of error in
+	// state machine transition.
+	runWithMockNode := func(
+		mnode respool.ResPool,
+		config *Config,
+		sm statemachine.StateMachine) error {
+		rmTask, err := CreateRMTask(s.createTask(1),
+			nil,
+			mnode,
+			nil,
+			config,
+		)
+		rmTask.stateMachine = sm
+		s.NoError(err)
+
+		return rmTask.RequeueUnPlaced("")
+	}
+
+	mockNode := mocks.NewMockResPool(s.ctrl)
+	mockStateMachine := sm_mock.NewMockStateMachine(s.ctrl)
+
+	// task is in PLACING state
+	mockStateMachine.
+		EXPECT().GetCurrentState().
+		Return(statemachine.State(task.TaskState_PLACING.String())).AnyTimes()
+	// Enqueue gang
+	mockNode.EXPECT().
+		EnqueueGang(gomock.Any()).Return(nil)
+	// Remove allocation
+	mockNode.EXPECT().
+		SubtractFromAllocation(gomock.Any()).Return(nil)
+	// transit to READY
+	mockStateMachine.
+		EXPECT().TransitTo(
+		statemachine.State(task.TaskState_PENDING.String()),
+		gomock.Any(),
+	).Return(nil)
+
+	err := runWithMockNode(
+		mockNode,
+		&Config{
+			LaunchingTimeout:       2 * time.Second,
+			PlacingTimeout:         2 * time.Second,
+			PlacementRetryCycle:    3,
+			PlacementRetryBackoff:  1 * time.Second,
+			PolicyName:             ExponentialBackOffPolicy,
+			EnablePlacementBackoff: true,
+		},
+		mockStateMachine)
+	s.NoError(err, "placing to pending requeue should not fail")
 }

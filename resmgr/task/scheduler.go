@@ -26,8 +26,6 @@ var (
 	errReadyQueueDequeueFailed  = errors.New("dequeue gang from ready queue failed")
 	errReadyQueueDequeueTimeout = errors.New("dequeue gang from ready queue timed out")
 	errTaskIsNotPresent         = errors.New("task is not present in tracker")
-	errTaskNotInCorrectState    = errors.New("task is not present in correct state")
-	errTaskNotTransitioned      = errors.New("task is not transitioned to state")
 )
 
 // Scheduler defines the interface of task scheduler which schedules
@@ -277,7 +275,10 @@ func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, to
 			continue
 		}
 
-		if err := s.transitTask(rmTask, fromState, toState, reason); err != nil {
+		if err := rmTask.TransitFromTo(
+			fromState.String(),
+			toState.String(),
+			statemachine.WithReason(reason)); err != nil {
 			isInvalidTaskInGang = true
 			invalidTasks[task.GetId().GetValue()] = err
 		}
@@ -287,40 +288,6 @@ func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, to
 		return invalidTasks, errors.Errorf("invalid Tasks in gang %s", gang)
 	}
 	return nil, nil
-}
-
-func (s *scheduler) transitTask(rmTask *RMTask,
-	fromState pt.TaskState,
-	toState pt.TaskState,
-	reason string) error {
-	// Locking for making the transition
-	rmTask.Lock()
-	defer rmTask.Unlock()
-
-	taskID := rmTask.Task().GetId().GetValue()
-
-	if rmTask.GetCurrentState() != fromState {
-		log.WithFields(log.Fields{
-			"task_id":    taskID,
-			"to":         toState.String(),
-			"from":       fromState.String(),
-			"task_state": rmTask.GetCurrentState().String(),
-		}).Error("task is not in expected state")
-		return errTaskNotInCorrectState
-	}
-
-	if err := rmTask.TransitTo(toState.String(),
-		statemachine.WithReason(reason)); err != nil {
-		log.WithFields(log.Fields{
-			"task_id":    taskID,
-			"to":         toState.String(),
-			"from":       fromState.String(),
-			"task_state": rmTask.GetCurrentState().String(),
-		}).WithError(err).Error("Failed to transition task")
-		return errTaskNotTransitioned
-	}
-
-	return nil
 }
 
 // Stop stops Task Scheduler process
