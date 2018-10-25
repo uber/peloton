@@ -3,6 +3,10 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.7.2
+-----------------
+* 2018-10-25    Batch job of INITIALIZED state can be updated                                          zhixin@uber.com
+
 0.7.7.1
 -----------------
 * 2018-10-22    Constraint job and task configurations at DB                                           rcharles@uber.com
