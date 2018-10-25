@@ -1005,6 +1005,121 @@ func (suite *UpdateTestSuite) TestWriteProgressDBError() {
 	suite.EqualError(err, "fake db error")
 }
 
+// TestConsecutiveWriteProgressPrevState tests after consecutive call to
+// WriteProgress, prevState is correcct
+func (suite *UpdateTestSuite) TestConsecutiveWriteProgressPrevState() {
+	instancesDone := []uint32{0, 1, 2, 3}
+	instancesCurrent := []uint32{4, 5}
+	instanceFailed := []uint32{}
+
+	suite.updateStore.EXPECT().
+		WriteUpdateProgress(gomock.Any(), gomock.Any()).
+		Return(nil).
+		AnyTimes()
+
+	suite.update.state = pbupdate.State_INITIALIZED
+	suite.NoError(suite.update.WriteProgress(
+		context.Background(),
+		pbupdate.State_ROLLING_FORWARD,
+		instancesDone,
+		instancesCurrent,
+		instanceFailed,
+	))
+	suite.Equal(suite.update.prevState, pbupdate.State_INITIALIZED)
+	suite.Equal(suite.update.state, pbupdate.State_ROLLING_FORWARD)
+
+	// prev state should still be INITIALIZED after we write
+	// State_ROLLING_FORWARD twice
+	suite.NoError(suite.update.WriteProgress(
+		context.Background(),
+		pbupdate.State_ROLLING_FORWARD,
+		instancesDone,
+		instancesCurrent,
+		instanceFailed,
+	))
+	suite.Equal(suite.update.prevState, pbupdate.State_INITIALIZED)
+	suite.Equal(suite.update.state, pbupdate.State_ROLLING_FORWARD)
+
+	suite.NoError(suite.update.WriteProgress(
+		context.Background(),
+		pbupdate.State_ROLLING_FORWARD,
+		instancesDone,
+		instancesCurrent,
+		instanceFailed,
+	))
+	suite.Equal(suite.update.prevState, pbupdate.State_INITIALIZED)
+	suite.Equal(suite.update.state, pbupdate.State_ROLLING_FORWARD)
+
+	suite.NoError(suite.update.WriteProgress(
+		context.Background(),
+		pbupdate.State_ROLLING_BACKWARD,
+		instancesDone,
+		instancesCurrent,
+		instanceFailed,
+	))
+	suite.Equal(suite.update.prevState, pbupdate.State_ROLLING_FORWARD)
+	suite.Equal(suite.update.state, pbupdate.State_ROLLING_BACKWARD)
+}
+
+// TestPauseSuccess tests successfully pause an update
+func (suite *UpdateTestSuite) TestPauseSuccess() {
+	suite.update.state = pbupdate.State_ROLLING_FORWARD
+	suite.updateStore.EXPECT().
+		WriteUpdateProgress(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, updateModel *models.UpdateModel) {
+			suite.Equal(suite.updateID, updateModel.UpdateID)
+			suite.Equal(pbupdate.State_PAUSED, updateModel.State)
+		}).
+		Return(nil)
+
+	suite.NoError(suite.update.Pause(context.Background()))
+}
+
+// TestPausePausedUpdate tests pause an update already paused
+func (suite *UpdateTestSuite) TestPausePausedUpdate() {
+	suite.update.state = pbupdate.State_PAUSED
+	suite.NoError(suite.update.Pause(context.Background()))
+}
+
+// TestPauseResumeRollingForwardUpdate tests pause and resume a rolling
+// forward update
+func (suite *UpdateTestSuite) TestPauseResumeRollingForwardUpdate() {
+	suite.updateStore.EXPECT().
+		WriteUpdateProgress(gomock.Any(), gomock.Any()).
+		Return(nil).
+		AnyTimes()
+	suite.update.state = pbupdate.State_ROLLING_FORWARD
+	suite.NoError(suite.update.Pause(context.Background()))
+	suite.NoError(suite.update.Resume(context.Background()))
+	suite.Equal(suite.update.state, pbupdate.State_ROLLING_FORWARD)
+}
+
+// TestPauseResumeRollingForwardUpdate tests pause and resume a rolling
+// backward update
+func (suite *UpdateTestSuite) TestPauseResumeRollingBackwardUpdate() {
+	suite.updateStore.EXPECT().
+		WriteUpdateProgress(gomock.Any(), gomock.Any()).
+		Return(nil).
+		AnyTimes()
+	suite.update.state = pbupdate.State_ROLLING_BACKWARD
+	suite.NoError(suite.update.Pause(context.Background()))
+	suite.NoError(suite.update.Resume(context.Background()))
+	suite.Equal(suite.update.state, pbupdate.State_ROLLING_BACKWARD)
+}
+
+// TestPauseResumeInitializedUpdate tests pause and resume an
+// initialized update
+func (suite *UpdateTestSuite) TestPauseResumeInitializedUpdate() {
+	suite.updateStore.EXPECT().
+		WriteUpdateProgress(gomock.Any(), gomock.Any()).
+		Return(nil).
+		AnyTimes()
+	suite.update.state = pbupdate.State_INITIALIZED
+	suite.NoError(suite.update.Pause(context.Background()))
+	suite.NoError(suite.update.Resume(context.Background()))
+	suite.Equal(suite.update.state, pbupdate.State_INITIALIZED)
+}
+
 // TestCancelValid tests successfully canceling a job update
 func (suite *UpdateTestSuite) TestCancelValid() {
 	instancesDone := []uint32{1, 2, 3, 4, 5}
@@ -1042,7 +1157,7 @@ func (suite *UpdateTestSuite) TestCancelDBError() {
 
 	err := suite.update.Cancel(context.Background())
 	suite.EqualError(err, "fake db error")
-	suite.Equal(pbupdate.State_INITIALIZED, suite.update.state)
+	suite.Equal(pbupdate.State_INVALID, suite.update.state)
 }
 
 // TestCancelTerminatedUpdate tests canceling a terminated update

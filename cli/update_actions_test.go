@@ -691,3 +691,40 @@ func (suite *updateActionsTestSuite) TestClientUpdatePause() {
 		}
 	}
 }
+
+// TestClientUpdateResume tests resuming a job update
+func (suite *updateActionsTestSuite) TestClientUpdateResume() {
+	c := Client{
+		Debug:        false,
+		updateClient: suite.mockUpdate,
+		dispatcher:   nil,
+		ctx:          suite.ctx,
+	}
+
+	resp := &svc.ResumeUpdateResponse{}
+	tt := []struct {
+		err error
+	}{
+		{
+			err: nil,
+		},
+		{
+			err: errors.New("update cannot be resumed"),
+		},
+	}
+
+	for _, t := range tt {
+		suite.mockUpdate.EXPECT().
+			ResumeUpdate(context.Background(), gomock.Any()).
+			Do(func(_ context.Context, req *svc.ResumeUpdateRequest) {
+				suite.Equal(suite.updateID.GetValue(), req.GetUpdateId().GetValue())
+			}).
+			Return(resp, t.err)
+
+		if t.err != nil {
+			suite.Error(c.UpdateResumeAction(suite.updateID.GetValue()))
+		} else {
+			suite.NoError(c.UpdateResumeAction(suite.updateID.GetValue()))
+		}
+	}
+}

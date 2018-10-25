@@ -71,6 +71,9 @@ message UpdateModel {
 
   // instances which are failed during update
   uint32 instancesFailed = 16;
+
+  // the previous update state
+  api.v0.update.State prevState = 17;
 }
 
 /**

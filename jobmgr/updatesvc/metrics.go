@@ -26,6 +26,14 @@ type Metrics struct {
 	UpdateAPIAbort  tally.Counter
 	UpdateAbort     tally.Counter
 	UpdateAbortFail tally.Counter
+
+	UpdateAPIPause  tally.Counter
+	UpdatePause     tally.Counter
+	UpdatePauseFail tally.Counter
+
+	UpdateAPIResume  tally.Counter
+	UpdateResume     tally.Counter
+	UpdateResumeFail tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
@@ -55,5 +63,13 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		UpdateAPIAbort:  UpdateAPIScope.Counter("abort"),
 		UpdateAbort:     UpdateSuccessScope.Counter("abort"),
 		UpdateAbortFail: UpdateFailScope.Counter("abort"),
+
+		UpdateAPIPause:  UpdateAPIScope.Counter("pause"),
+		UpdatePause:     UpdateSuccessScope.Counter("pause"),
+		UpdatePauseFail: UpdateFailScope.Counter("pause"),
+
+		UpdateAPIResume:  UpdateAPIScope.Counter("resume"),
+		UpdateResume:     UpdateSuccessScope.Counter("resume"),
+		UpdateResumeFail: UpdateFailScope.Counter("resume"),
 	}
 }

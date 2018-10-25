@@ -130,6 +130,7 @@ type UpdateRecord struct {
 	UpdateID             querybuilder.UUID `cql:"update_id"`
 	UpdateOptions        []byte            `cql:"update_options"`
 	State                string            `cql:"update_state"`
+	PrevState            string            `cql:"update_prev_state"`
 	Type                 string            `cql:"update_type"`
 	JobID                querybuilder.UUID `cql:"job_id"`
 	InstancesTotal       int               `cql:"instances_total"`

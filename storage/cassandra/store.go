@@ -2851,6 +2851,7 @@ func (s *Store) CreateUpdate(
 			"update_type",
 			"update_options",
 			"update_state",
+			"update_prev_state",
 			"instances_total",
 			"instances_added",
 			"instances_updated",
@@ -2867,6 +2868,7 @@ func (s *Store) CreateUpdate(
 			updateInfo.GetType().String(),
 			updateConfigBuffer,
 			updateInfo.GetState().String(),
+			updateInfo.GetPrevState().String(),
 			updateInfo.GetInstancesTotal(),
 			updateInfo.GetInstancesAdded(),
 			updateInfo.GetInstancesUpdated(),
@@ -3037,6 +3039,7 @@ func (s *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
 			JobConfigVersion:     uint64(record.JobConfigVersion),
 			PrevJobConfigVersion: uint64(record.PrevJobConfigVersion),
 			State:                update.State(update.State_value[record.State]),
+			PrevState:            update.State(update.State_value[record.PrevState]),
 			Type:                 models.WorkflowType(models.WorkflowType_value[record.Type]),
 			InstancesTotal:       uint32(record.InstancesTotal),
 			InstancesAdded:       record.GetInstancesAdded(),
@@ -3115,6 +3118,7 @@ func (s *Store) WriteUpdateProgress(
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(updatesTable).
 		Set("update_state", updateInfo.GetState().String()).
+		Set("update_prev_state", updateInfo.GetPrevState().String()).
 		Set("instances_done", updateInfo.GetInstancesDone()).
 		Set("instances_failed", updateInfo.GetInstancesFailed()).
 		Set("instances_current", updateInfo.GetInstancesCurrent()).
@@ -3129,6 +3133,7 @@ func (s *Store) WriteUpdateProgress(
 			WithFields(log.Fields{
 				"update_id":               updateInfo.GetUpdateID().GetValue(),
 				"update_state":            updateInfo.GetState().String(),
+				"update_prev_state":       updateInfo.GetPrevState().String(),
 				"update_instances_done":   updateInfo.GetInstancesDone(),
 				"update_instances_failed": updateInfo.GetInstancesFailed(),
 			}).Info("modify update in DB failed")
@@ -3149,6 +3154,7 @@ func (s *Store) ModifyUpdate(
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(updatesTable).
 		Set("update_state", updateInfo.GetState().String()).
+		Set("update_prev_state", updateInfo.GetPrevState().String()).
 		Set("instances_done", updateInfo.GetInstancesDone()).
 		Set("instances_failed", updateInfo.GetInstancesFailed()).
 		Set("instances_current", updateInfo.GetInstancesCurrent()).
@@ -3168,6 +3174,7 @@ func (s *Store) ModifyUpdate(
 			WithFields(log.Fields{
 				"update_id":               updateInfo.GetUpdateID().GetValue(),
 				"update_state":            updateInfo.GetState().String(),
+				"update_prev_state":       updateInfo.GetPrevState().String(),
 				"update_instances_done":   updateInfo.GetInstancesDone(),
 				"update_instances_failed": updateInfo.GetInstancesFailed(),
 			}).Info("write update progress in DB failed")
@@ -3207,6 +3214,7 @@ func (s *Store) GetUpdateProgress(ctx context.Context, id *peloton.UpdateID) (
 		updateInfo := &models.UpdateModel{
 			UpdateID:         id,
 			State:            update.State(update.State_value[record.State]),
+			PrevState:        update.State(update.State_value[record.PrevState]),
 			InstancesTotal:   uint32(record.InstancesTotal),
 			InstancesDone:    uint32(record.InstancesDone),
 			InstancesFailed:  uint32(record.InstancesFailed),

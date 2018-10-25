@@ -194,6 +194,21 @@ func (c *Client) UpdateAbortAction(updateID string) error {
 	return nil
 }
 
+// UpdateResumeAction resumes a given update
+func (c *Client) UpdateResumeAction(updateID string) error {
+	var request = &updatesvc.ResumeUpdateRequest{
+		UpdateId: &peloton.UpdateID{
+			Value: updateID,
+		},
+	}
+
+	_, err := c.updateClient.ResumeUpdate(c.ctx, request)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // UpdatePauseAction pauses a given update
 func (c *Client) UpdatePauseAction(updateID string) error {
 	var request = &updatesvc.PauseUpdateRequest{

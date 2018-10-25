@@ -1063,38 +1063,31 @@ func (suite *UpdateSvcTestSuite) TestAbort() {
 	suite.NoError(err)
 }
 
-// TestPauseUpdateSuccess tests the success case of pause an update
-func (suite *UpdateSvcTestSuite) TestPauseUpdateSuccess() {
-	suite.updateStore.EXPECT().
-		GetUpdateProgress(gomock.Any(), suite.updateID).
-		Return(&models.UpdateModel{
-			State: update.State_ROLLING_FORWARD,
-		}, nil)
-
+// TestPauseSuccess tests successfully pauses an update
+func (suite *UpdateSvcTestSuite) TestPauseSuccess() {
 	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
+		AddUpdate(suite.updateID).
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
-		GetInstancesCurrent().
-		Return([]uint32{})
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesDone().
-		Return([]uint32{})
-
-	suite.cachedUpdate.EXPECT().
-		GetInstancesFailed().
-		Return([]uint32{})
-
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
-			gomock.Any(),
-			update.State_PAUSED,
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any()).
+		Recover(gomock.Any()).
 		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		Pause(gomock.Any()).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID)
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.goalStateDriver.EXPECT().
+		EnqueueUpdate(suite.jobID, suite.updateID, gomock.Any()).
+		Return()
 
 	_, err := suite.h.PauseUpdate(
 		context.Background(),
@@ -1103,18 +1096,16 @@ func (suite *UpdateSvcTestSuite) TestPauseUpdateSuccess() {
 	suite.NoError(err)
 }
 
-// TestPauseUpdateCacheMiss tests the failure case of pause an update
-// due to cache miss
-func (suite *UpdateSvcTestSuite) TestPauseUpdateCacheMiss() {
-	suite.updateStore.EXPECT().
-		GetUpdateProgress(gomock.Any(), suite.updateID).
-		Return(&models.UpdateModel{
-			State: update.State_ROLLING_FORWARD,
-		}, nil)
-
+// TestPauseRecoverFails tests update pause fails due to
+// call to Recover fails
+func (suite *UpdateSvcTestSuite) TestPauseRecoverFails() {
 	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(nil)
+		AddUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		Recover(gomock.Any()).
+		Return(fmt.Errorf("test error"))
 
 	_, err := suite.h.PauseUpdate(
 		context.Background(),
@@ -1123,30 +1114,121 @@ func (suite *UpdateSvcTestSuite) TestPauseUpdateCacheMiss() {
 	suite.Error(err)
 }
 
-// TestPauseUpdateIncorrectState tests the failure case of pause
-// due to invalid update state
-func (suite *UpdateSvcTestSuite) TestPauseUpdateIncorrectState() {
-	suite.updateStore.EXPECT().
-		GetUpdateProgress(gomock.Any(), suite.updateID).
-		Return(&models.UpdateModel{
-			State: update.State_PAUSED,
-		}, nil)
+// TestPauseProgressUpdateFails fails due to update fails to
+// update the state
+func (suite *UpdateSvcTestSuite) TestPauseProgressUpdateFails() {
+	suite.updateFactory.EXPECT().
+		AddUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		Recover(gomock.Any()).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		Pause(gomock.Any()).
+		Return(fmt.Errorf("test error"))
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID)
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.goalStateDriver.EXPECT().
+		EnqueueUpdate(suite.jobID, suite.updateID, gomock.Any()).
+		Return()
 
 	_, err := suite.h.PauseUpdate(
 		context.Background(),
 		&svc.PauseUpdateRequest{UpdateId: suite.updateID},
 	)
 	suite.Error(err)
+}
 
-	suite.updateStore.EXPECT().
-		GetUpdateProgress(gomock.Any(), suite.updateID).
-		Return(&models.UpdateModel{
-			State: update.State_ABORTED,
-		}, nil)
+// TestPauseSuccess tests successfully resumes an update
+func (suite *UpdateSvcTestSuite) TestResumeSuccess() {
+	suite.updateFactory.EXPECT().
+		AddUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
 
-	_, err = suite.h.PauseUpdate(
+	suite.cachedUpdate.EXPECT().
+		Recover(gomock.Any()).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		Resume(gomock.Any()).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID)
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.goalStateDriver.EXPECT().
+		EnqueueUpdate(suite.jobID, suite.updateID, gomock.Any()).
+		Return()
+
+	_, err := suite.h.ResumeUpdate(
 		context.Background(),
-		&svc.PauseUpdateRequest{UpdateId: suite.updateID},
+		&svc.ResumeUpdateRequest{UpdateId: suite.updateID},
+	)
+	suite.NoError(err)
+}
+
+// TestResumeRecoverFails tests update resume fails due to
+// call to Recover fails
+func (suite *UpdateSvcTestSuite) TestResumeRecoverFails() {
+	suite.updateFactory.EXPECT().
+		AddUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		Recover(gomock.Any()).
+		Return(fmt.Errorf("test error"))
+
+	_, err := suite.h.ResumeUpdate(
+		context.Background(),
+		&svc.ResumeUpdateRequest{UpdateId: suite.updateID},
+	)
+	suite.Error(err)
+}
+
+// TestResumeProgressUpdateFails fails due to update fails to
+// update the state
+func (suite *UpdateSvcTestSuite) TestResumeProgressUpdateFails() {
+	suite.updateFactory.EXPECT().
+		AddUpdate(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		Recover(gomock.Any()).
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		Resume(gomock.Any()).
+		Return(fmt.Errorf("test error"))
+
+	suite.cachedUpdate.EXPECT().
+		JobID().
+		Return(suite.jobID)
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.goalStateDriver.EXPECT().
+		EnqueueUpdate(suite.jobID, suite.updateID, gomock.Any()).
+		Return()
+
+	_, err := suite.h.ResumeUpdate(
+		context.Background(),
+		&svc.ResumeUpdateRequest{UpdateId: suite.updateID},
 	)
 	suite.Error(err)
 }

@@ -290,48 +290,54 @@ func (h *serviceHandler) GetUpdateCache(ctx context.Context,
 	}, nil
 }
 
-func (h *serviceHandler) PauseUpdate(ctx context.Context,
-	req *svc.PauseUpdateRequest) (*svc.PauseUpdateResponse, error) {
-	h.metrics.UpdateAPIGetCache.Inc(1)
+func (h *serviceHandler) PauseUpdate(
+	ctx context.Context,
+	req *svc.PauseUpdateRequest,
+) (*svc.PauseUpdateResponse, error) {
+	var err error
 
-	updateModel, err := h.updateStore.GetUpdateProgress(ctx, req.GetUpdateId())
-	if err != nil {
+	h.metrics.UpdateAPIPause.Inc(1)
+
+	cachedUpdate := h.updateFactory.AddUpdate(req.GetUpdateId())
+	if err := cachedUpdate.Recover(ctx); err != nil {
+		h.metrics.UpdatePauseFail.Inc(1)
 		return nil, err
 	}
 
-	if updateModel.GetState() == update.State_PAUSED {
-		return nil, yarpcerrors.InvalidArgumentErrorf(
-			"update already paused")
+	if err = cachedUpdate.Pause(ctx); err != nil {
+		// In case of error, since it is not clear if job runtime was
+		// updated or not, enqueue the update to the goal state.
+		h.metrics.UpdatePauseFail.Inc(1)
 	}
+	h.goalStateDriver.EnqueueUpdate(cachedUpdate.JobID(), cachedUpdate.ID(), time.Now())
 
-	if cached.IsUpdateStateTerminal(updateModel.GetState()) {
-		return nil, yarpcerrors.InvalidArgumentErrorf(
-			"update already terminated")
-	}
-
-	cachedUpdate, err := h.getCachedUpdate(req.GetUpdateId())
-	if err != nil {
-		return nil, err
-	}
-
-	err = cachedUpdate.WriteProgress(
-		ctx,
-		update.State_PAUSED,
-		cachedUpdate.GetInstancesDone(),
-		cachedUpdate.GetInstancesFailed(),
-		cachedUpdate.GetInstancesCurrent(),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return &svc.PauseUpdateResponse{}, nil
+	h.metrics.UpdatePause.Inc(1)
+	return &svc.PauseUpdateResponse{}, err
 }
 
-func (h *serviceHandler) ResumeUpdate(ctx context.Context,
-	req *svc.ResumeUpdateRequest) (*svc.ResumeUpdateResponse, error) {
-	return nil, yarpcerrors.UnimplementedErrorf(
-		"UpdateService.ResumeUpdate is not implemented")
+func (h *serviceHandler) ResumeUpdate(
+	ctx context.Context,
+	req *svc.ResumeUpdateRequest,
+) (*svc.ResumeUpdateResponse, error) {
+	var err error
+
+	h.metrics.UpdateAPIResume.Inc(1)
+
+	cachedUpdate := h.updateFactory.AddUpdate(req.GetUpdateId())
+	if err := cachedUpdate.Recover(ctx); err != nil {
+		h.metrics.UpdateResumeFail.Inc(1)
+		return nil, err
+	}
+
+	if err = cachedUpdate.Resume(ctx); err != nil {
+		// In case of error, since it is not clear if job runtime was
+		// updated or not, enqueue the update to the goal state.
+		h.metrics.UpdateResumeFail.Inc(1)
+	}
+	h.goalStateDriver.EnqueueUpdate(cachedUpdate.JobID(), cachedUpdate.ID(), time.Now())
+
+	h.metrics.UpdateResume.Inc(1)
+	return &svc.ResumeUpdateResponse{}, err
 }
 
 func (h *serviceHandler) ListUpdates(ctx context.Context,

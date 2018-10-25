@@ -50,6 +50,13 @@ type Update interface {
 		instanceFailed []uint32,
 		instancesCurrent []uint32) error
 
+	// Pause pauses the current update progress
+	Pause(ctx context.Context) error
+
+	// Resume resumes a paused update, and update would change
+	// to the state before pause
+	Resume(ctx context.Context) error
+
 	// Recover recovers the update from DB into the cache
 	Recover(ctx context.Context) error
 
@@ -146,7 +153,8 @@ type update struct {
 	jobFactory    JobFactory     // Pointer to the job factory object
 	updateFactory *updateFactory // Pointer to the parent update factory object
 
-	state pbupdate.State // current update state
+	state     pbupdate.State // current update state
+	prevState pbupdate.State // previous update state
 
 	// the update configuration provided in the create request
 	updateConfig *pbupdate.UpdateConfig
@@ -357,24 +365,99 @@ func (u *update) WriteProgress(
 	u.Lock()
 	defer u.Unlock()
 
+	// if state is PAUSED, does not WriteProgress
+	// to overwrite the state, because it should be
+	// only be overwritten by Resume and Cancel.
+	// The branch can be reached when state is changed
+	// to PAUSED in handler, and the update is being
+	// processed in goal state engine
+	if u.state == pbupdate.State_PAUSED {
+		state = pbupdate.State_PAUSED
+	}
+
+	return u.writeProgress(
+		ctx,
+		state,
+		instancesDone,
+		instancesFailed,
+		instancesCurrent,
+	)
+}
+
+func (u *update) Pause(ctx context.Context) error {
+	u.Lock()
+	defer u.Unlock()
+
+	// already paused, do nothing
+	if u.state == pbupdate.State_PAUSED {
+		return nil
+	}
+
+	return u.writeProgress(
+		ctx,
+		pbupdate.State_PAUSED,
+		u.instancesDone,
+		u.instancesFailed,
+		u.instancesCurrent,
+	)
+}
+
+func (u *update) Resume(ctx context.Context) error {
+	u.Lock()
+	defer u.Unlock()
+
+	// already unpaused, do nothing
+	if u.state != pbupdate.State_PAUSED {
+		return nil
+	}
+
+	return u.writeProgress(
+		ctx,
+		u.prevState,
+		u.instancesDone,
+		u.instancesFailed,
+		u.instancesCurrent,
+	)
+}
+
+// writeProgress write update progress into cache and db,
+// it is not concurrency safe and must be called with lock held.
+func (u *update) writeProgress(
+	ctx context.Context,
+	state pbupdate.State,
+	instancesDone []uint32,
+	instancesFailed []uint32,
+	instancesCurrent []uint32) error {
 	// once an update is in terminal state, it should
 	// not have any more state change
 	if IsUpdateStateTerminal(u.state) {
 		return nil
 	}
 
+	// only update the prevState if it has changed, otherwise
+	// we would lose the prevState if WriteProgress is called
+	// with the same state for several times
+	prevState := u.prevState
+	if u.state != state {
+		prevState = u.state
+	}
+
 	if err := u.updateFactory.updateStore.WriteUpdateProgress(
 		ctx,
 		&models.UpdateModel{
 			UpdateID:         u.id,
+			PrevState:        prevState,
 			State:            state,
 			InstancesDone:    uint32(len(instancesDone)),
 			InstancesFailed:  uint32(len(instancesFailed)),
 			InstancesCurrent: instancesCurrent,
 		}); err != nil {
+		// clear the cache on DB error to avoid cache inconsistency
+		u.clearCache()
 		return err
 	}
 
+	u.prevState = prevState
 	u.instancesCurrent = instancesCurrent
 	u.instancesFailed = instancesFailed
 	u.state = state
@@ -430,26 +513,13 @@ func (u *update) Cancel(ctx context.Context) error {
 	u.Lock()
 	defer u.Unlock()
 
-	// ignore canceling terminated updates
-	if IsUpdateStateTerminal(u.state) {
-		return nil
-	}
-
-	err := u.updateFactory.updateStore.WriteUpdateProgress(
+	return u.writeProgress(
 		ctx,
-		&models.UpdateModel{
-			UpdateID:         u.id,
-			State:            pbupdate.State_ABORTED,
-			InstancesDone:    uint32(len(u.instancesDone)),
-			InstancesFailed:  uint32(len(u.instancesFailed)),
-			InstancesCurrent: u.instancesCurrent,
-		})
-
-	if err == nil {
-		u.state = pbupdate.State_ABORTED
-	}
-
-	return err
+		pbupdate.State_ABORTED,
+		u.instancesDone,
+		u.instancesFailed,
+		u.instancesCurrent,
+	)
 }
 
 // Rollback rolls back the current update. It creates the copy of job and task
@@ -458,6 +528,14 @@ func (u *update) Cancel(ctx context.Context) error {
 func (u *update) Rollback(ctx context.Context) error {
 	u.Lock()
 	defer u.Unlock()
+
+	// Rollback should only happen when an update is in progress.
+	// If an update is in terminal state, a new update with
+	// the old config should be created.
+	if IsUpdateStateTerminal(u.state) {
+		return nil
+	}
+
 	cachedJob := u.jobFactory.AddJob(u.jobID)
 
 	// update is already rolling back, this can happen due to error retry
@@ -510,6 +588,7 @@ func (u *update) Rollback(ctx context.Context) error {
 	}
 	updateModel := &models.UpdateModel{
 		UpdateID:             u.id,
+		PrevState:            u.state,
 		State:                pbupdate.State_ROLLING_BACKWARD,
 		InstancesCurrent:     []uint32{},
 		InstancesAdded:       instancesAdded,
@@ -523,6 +602,7 @@ func (u *update) Rollback(ctx context.Context) error {
 	}
 
 	if err := u.updateFactory.updateStore.ModifyUpdate(ctx, updateModel); err != nil {
+		u.clearCache()
 		return err
 	}
 
@@ -776,6 +856,7 @@ func (u *update) populateCache(updateModel *models.UpdateModel) {
 	}
 
 	u.state = updateModel.GetState()
+	u.prevState = updateModel.GetPrevState()
 	u.instancesCurrent = updateModel.GetInstancesCurrent()
 	u.instancesAdded = updateModel.GetInstancesAdded()
 	u.instancesRemoved = updateModel.GetInstancesRemoved()
@@ -789,6 +870,7 @@ func (u *update) populateCache(updateModel *models.UpdateModel) {
 
 func (u *update) clearCache() {
 	u.state = pbupdate.State_INVALID
+	u.prevState = pbupdate.State_INVALID
 	u.instancesTotal = nil
 	u.instancesDone = nil
 	u.instancesCurrent = nil

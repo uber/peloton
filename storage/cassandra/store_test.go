@@ -2504,6 +2504,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.Equal(len(updateInfo.GetInstancesCurrent()), 0)
 
 	// write new progress
+	prevState := update.State_INITIALIZED
 	state = update.State_ROLLING_FORWARD
 	instancesDone := uint32(5)
 	instancesFailed := uint32(6)
@@ -2512,6 +2513,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 		context.Background(),
 		&models.UpdateModel{
 			UpdateID:         updateID,
+			PrevState:        prevState,
 			State:            state,
 			InstancesDone:    instancesDone,
 			InstancesFailed:  instancesFailed,
@@ -2531,6 +2533,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.Equal(updateInfo.GetJobConfigVersion(), jobVersion)
 	suite.Equal(updateInfo.GetPrevJobConfigVersion(), jobPrevVersion)
 	suite.Equal(updateInfo.GetState(), state)
+	suite.Equal(updateInfo.GetPrevState(), prevState)
 	suite.Equal(updateInfo.GetInstancesTotal(), instancesTotal)
 	suite.Equal(updateInfo.GetInstancesDone(), instancesDone)
 	suite.Equal(updateInfo.GetInstancesFailed(), instancesFailed)
@@ -2543,6 +2546,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	)
 	suite.NoError(err)
 	suite.Equal(updateInfo.GetState(), state)
+	suite.Equal(updateInfo.GetPrevState(), prevState)
 	suite.Equal(updateInfo.GetInstancesTotal(), instancesTotal)
 	suite.Equal(updateInfo.GetInstancesDone(), instancesDone)
 	suite.Equal(updateInfo.GetInstancesFailed(), instancesFailed)
@@ -2742,6 +2746,7 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 			InstancesAdded:       []uint32{},
 			InstancesRemoved:     instancesAdded,
 			State:                update.State_ROLLING_BACKWARD,
+			PrevState:            state,
 		},
 	),
 	)
@@ -2752,6 +2757,7 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 	suite.Empty(updateResult.GetInstancesAdded())
 	suite.NotEmpty(updateResult.GetInstancesRemoved())
 	suite.Equal(updateResult.GetState(), update.State_ROLLING_BACKWARD)
+	suite.Equal(updateResult.GetPrevState(), state)
 	suite.Equal(updateResult.GetJobConfigVersion(), jobVersion+1)
 	suite.Equal(updateResult.GetPrevJobConfigVersion(), jobVersion)
 }
