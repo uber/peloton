@@ -156,6 +156,15 @@ func (t *task) validateState(newRuntime *pbtask.RuntimeInfo) bool {
 		return false
 	}
 
+	// if current goal state is deleted, it cannot be overwritten
+	// till the configuration version also changes
+	if currentRuntime.GetGoalState() == pbtask.TaskState_DELETED &&
+		newRuntime.GetGoalState() != currentRuntime.GetGoalState() {
+		if currentRuntime.GetConfigVersion() == newRuntime.GetConfigVersion() {
+			return false
+		}
+	}
+
 	if newRuntime.GetMesosTaskId() != nil {
 		if currentRuntime.GetMesosTaskId().GetValue() !=
 			newRuntime.GetMesosTaskId().GetValue() {

@@ -658,6 +658,32 @@ func (suite *TaskTestSuite) TestValidateState() {
 			expectedResult: false,
 			message:        "KILLING can only transit to terminal state",
 		},
+		{
+			curRuntime: &pbtask.RuntimeInfo{
+				GoalState:     pbtask.TaskState_DELETED,
+				ConfigVersion: 3,
+			},
+			newRuntime: &pbtask.RuntimeInfo{
+				GoalState:     pbtask.TaskState_RUNNING,
+				ConfigVersion: 3,
+			},
+			expectedResult: false,
+			message:        "DELETED goal state cannot be overwritten with config change",
+		},
+		{
+			curRuntime: &pbtask.RuntimeInfo{
+				State:         pbtask.TaskState_RUNNING,
+				GoalState:     pbtask.TaskState_DELETED,
+				ConfigVersion: 3,
+			},
+			newRuntime: &pbtask.RuntimeInfo{
+				State:         pbtask.TaskState_RUNNING,
+				GoalState:     pbtask.TaskState_RUNNING,
+				ConfigVersion: 4,
+			},
+			expectedResult: true,
+			message:        "DELETED goal state can be overwritten with config change",
+		},
 	}
 
 	for i, t := range tt {
