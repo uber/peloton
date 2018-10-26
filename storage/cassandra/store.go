@@ -2939,7 +2939,7 @@ func (s *Store) cleanupPreviousUpdatesForJob(
 			log.WithError(err).
 				WithField("update_id", updateID.GetValue()).
 				Info("failed to get job config version")
-			return err
+			continue
 		}
 
 		for _, value := range allResults {
@@ -2949,7 +2949,7 @@ func (s *Store) cleanupPreviousUpdatesForJob(
 				log.WithError(err).
 					WithField("update_id", updateID.GetValue()).
 					Info("failed to fill the update record")
-				return err
+				continue
 			}
 
 			// sort as per the job configuration version
