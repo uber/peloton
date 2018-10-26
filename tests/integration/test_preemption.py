@@ -3,7 +3,7 @@ from job import Job, kill_jobs
 from common import IntegrationTestConfig
 from pool import Pool
 
-pytestmark = [pytest.mark.preemption]
+pytestmark = [pytest.mark.default, pytest.mark.preemption]
 
 
 def respool(request, pool_file):
