@@ -159,8 +159,6 @@ func (s *stateManagerTestSuite) TestAddTaskStatusUpdate() {
 
 	s.stateManager.Update(s.context, s.taskStatusUpdate)
 	s.stateManager.UpdateCounters(nil)
-	stateManager := s.stateManager.(*stateManager)
-	s.Equal(stateManager.getTaskUpdateCount(), int64(1))
 
 	time.Sleep(500 * time.Millisecond)
 }

@@ -46,20 +46,8 @@ type stateManager struct {
 	updateAckConcurrency int
 	ackChannel           chan *mesos.TaskStatus // Buffers the mesos task status updates to be acknowledged
 
-	taskUpdateCount *int64 // mesos task status update received
-	prevUpdateCount *int64 // mesos task status update count to get difference/sec
-	taskAckCount    *int64 // mesos task status update acknowledged
-	prevAckCount    *int64 // mesos task status update ack count to get difference/sec
-
-	// TODO: move DB written counts into jobmgr
-	dBWrittenCount     *int64
-	prevDBWrittenCount *int64
-
-	statusChannelCount *int32 // #mesos task status update present in channel
-
-	lastPrintTime      time.Time
 	eventStreamHandler *eventstream.Handler
-	scope              tally.Scope
+	metrics            *Metrics
 }
 
 // eventForwarder is the struct to forward status update events to
@@ -124,26 +112,12 @@ func NewStateManager(
 	resmgrClient resmgrsvc.ResourceManagerServiceYARPCClient,
 	parentScope tally.Scope) StateManager {
 
-	var taskUpdateCount int64
-	var prevUpdateCount int64
-	var taskUpdateAckCount int64
-	var prevTaskUpdateAckCount int64
-	var taskUpdateDBWrittenCount int64
-	var prevTaskUpdateDBWrittenCount int64
-	var statusChannelCount int32
-
+	stateManagerScope := parentScope.SubScope("taskStateManager")
 	handler := &stateManager{
 		schedulerclient:      schedulerClient,
 		updateAckConcurrency: updateAckConcurrency,
 		ackChannel:           make(chan *mesos.TaskStatus, updateBufferSize),
-		taskUpdateCount:      &taskUpdateCount,
-		prevUpdateCount:      &prevUpdateCount,
-		taskAckCount:         &taskUpdateAckCount,
-		prevAckCount:         &prevTaskUpdateAckCount,
-		dBWrittenCount:       &taskUpdateDBWrittenCount,
-		prevDBWrittenCount:   &prevTaskUpdateDBWrittenCount,
-		statusChannelCount:   &statusChannelCount,
-		scope:                parentScope.SubScope("taskStateManager"),
+		metrics:              NewMetrics(stateManagerScope),
 	}
 	mpb.Register(
 		d,
@@ -154,11 +128,12 @@ func NewStateManager(
 		d,
 		handler,
 		updateBufferSize,
-		handler.scope.SubScope("EventStreamHandler"))
+		stateManagerScope.SubScope("EventStreamHandler"))
 	initResMgrEventForwarder(
 		handler.eventStreamHandler,
 		resmgrClient,
-		handler.scope.SubScope("ResourceManagerClient"))
+		stateManagerScope.SubScope("ResourceManagerClient"))
+	NewMetrics(parentScope)
 	return handler
 }
 
@@ -210,17 +185,14 @@ func (f *eventForwarder) notifyResourceManager(
 	return f.client.NotifyTaskUpdates(ctx, request)
 }
 
-// getTaskUpdateCount is to get total mesos task status updates notified.
-func (m *stateManager) getTaskUpdateCount() int64 {
-	return *m.taskUpdateCount
-}
-
 // Update is the Mesos callback on mesos state updates
 func (m *stateManager) Update(ctx context.Context, body *sched.Event) error {
 	var err error
 	taskUpdate := body.GetUpdate()
-	log.WithField("task_update", taskUpdate).
-		Debugf("taskManager: Update called")
+	m.metrics.taskUpdateCounter.Inc(1)
+	taskStateCounter := m.metrics.scope.Counter(
+		"task_state_" + taskUpdate.GetStatus().GetState().String())
+	taskStateCounter.Inc(1)
 
 	event := &pb_eventstream.Event{
 		MesosTaskStatus: taskUpdate.GetStatus(),
@@ -241,36 +213,7 @@ func (m *stateManager) Update(ctx context.Context, body *sched.Event) error {
 
 // UpdateCounters tracks the count for task status update & ack count.
 func (m *stateManager) UpdateCounters(_ *uatomic.Bool) {
-	atomic.AddInt32(m.statusChannelCount, 1)
-	atomic.AddInt64(m.taskUpdateCount, 1)
-	m.lastPrintTime = time.Now()
-	updateCount := atomic.LoadInt64(m.taskUpdateCount)
-	prevCount := atomic.LoadInt64(m.prevUpdateCount)
-	log.WithFields(log.Fields{
-		"task_update_count": updateCount,
-		"delta":             updateCount - prevCount,
-	}).Info("Task updates received")
-	atomic.StoreInt64(m.prevUpdateCount, updateCount)
-
-	ackCount := atomic.LoadInt64(m.taskAckCount)
-	prevAckCount := atomic.LoadInt64(m.prevAckCount)
-	log.WithFields(log.Fields{
-		"task_ack_count": ackCount,
-		"delta":          ackCount - prevAckCount,
-	}).Info("Task updates acked")
-	atomic.StoreInt64(m.prevAckCount, ackCount)
-
-	writtenCount := atomic.LoadInt64(m.dBWrittenCount)
-	prevWrittenCount := atomic.LoadInt64(m.prevDBWrittenCount)
-	log.WithFields(log.Fields{
-		"task_written_count": writtenCount,
-		"delta":              writtenCount - prevWrittenCount,
-	}).Debug("Task db persisted")
-	atomic.StoreInt64(m.prevDBWrittenCount, writtenCount)
-
-	log.WithField("task_update_channel_count",
-		atomic.LoadInt32(m.statusChannelCount)).
-		Info("TaskUpdate channel size")
+	m.metrics.taskAckChannelSize.Update(float64(len(m.ackChannel)))
 }
 
 // startAsyncProcessTaskUpdates concurrently process task status update events
@@ -279,10 +222,7 @@ func (m *stateManager) startAsyncProcessTaskUpdates() {
 	for i := 0; i < m.updateAckConcurrency; i++ {
 		go func() {
 			for taskStatus := range m.ackChannel {
-				if len(taskStatus.GetUuid()) == 0 {
-					log.WithField("status_update", taskStatus).
-						Debug("Skip acknowledging update with empty uuid")
-				} else {
+				if len(taskStatus.GetUuid()) != 0 {
 					// TODO (varung): Add retry for acknowledging status update
 					err := m.acknowledgeTaskUpdate(
 						context.Background(),
@@ -303,8 +243,7 @@ func (m *stateManager) startAsyncProcessTaskUpdates() {
 func (m *stateManager) acknowledgeTaskUpdate(
 	ctx context.Context,
 	taskStatus *mesos.TaskStatus) error {
-	atomic.AddInt64(m.taskAckCount, 1)
-	atomic.AddInt32(m.statusChannelCount, -1)
+	m.metrics.taskUpdateAck.Inc(1)
 	callType := sched.Call_ACKNOWLEDGE
 	msg := &sched.Call{
 		FrameworkId: hostmgr_mesos.GetSchedulerDriver().GetFrameworkID(ctx),
@@ -318,9 +257,6 @@ func (m *stateManager) acknowledgeTaskUpdate(
 	msid := hostmgr_mesos.GetSchedulerDriver().GetMesosStreamID(ctx)
 	err := m.schedulerclient.Call(msid, msg)
 	if err != nil {
-		log.WithField("task_status", *taskStatus).
-			WithError(err).
-			Error("Failed to ack task update")
 		return err
 	}
 	log.WithField("task_status", *taskStatus).
