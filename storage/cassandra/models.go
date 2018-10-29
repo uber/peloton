@@ -30,8 +30,12 @@ type JobConfigRecord struct {
 
 // GetJobConfig returns the unmarshaled job.JobConfig
 func (j *JobConfigRecord) GetJobConfig() (*job.JobConfig, error) {
+	configBuffer, err := uncompress(j.Config)
+	if err != nil {
+		return nil, err
+	}
 	config := &job.JobConfig{}
-	return config, proto.Unmarshal(j.Config, config)
+	return config, proto.Unmarshal(configBuffer, config)
 }
 
 // GetConfigAddOn returns the unmarshaled models.ConfigAddOn

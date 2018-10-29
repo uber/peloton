@@ -1,6 +1,7 @@
 package cassandra
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"reflect"
 	"testing"
@@ -47,6 +48,13 @@ func (suite *TestModelsSuite) TestJobConfigRecord_GetJobConfig() {
 	jobConfigUnMarshalled, err := record.GetJobConfig()
 	suite.NoError(err)
 	suite.Equal(jobConfig, jobConfigUnMarshalled)
+
+	// simulate uncompression failure due to checksum errors
+	record = &JobConfigRecord{
+		Config: badCheckSumData,
+	}
+	_, err = record.GetJobConfig()
+	suite.Equal(err, gzip.ErrChecksum)
 }
 
 // TestJobConfigRecord_GetConfigAddOn tests JobConfigRecord.GetConfigAddOn

@@ -1,9 +1,12 @@
 package cassandra
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"reflect"
 	"sort"
@@ -288,18 +291,55 @@ func (s *Store) executeRead(
 	}
 }
 
+// Compress a blob using gzip
+func compress(buffer []byte) ([]byte, error) {
+	var b bytes.Buffer
+	w := gzip.NewWriter(&b)
+	if _, err := w.Write(buffer); err != nil {
+		return nil, err
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+// Uncompress a blob using gzip, return original blob if it was not compressed
+func uncompress(buffer []byte) ([]byte, error) {
+	b := bytes.NewBuffer(buffer)
+	r, err := gzip.NewReader(b)
+
+	if err != nil {
+		if err == gzip.ErrHeader {
+			// blob was not compressed, so we can ignore this error. We can
+			// look for only checksum errors which will mean data corruption
+			return buffer, nil
+		}
+		return nil, err
+	}
+
+	defer r.Close()
+	uncompressed, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	return uncompressed, nil
+}
+
 // CreateJobConfig creates a job config in db
 func (s *Store) CreateJobConfig(
-	ctx context.Context,
-	id *peloton.JobID,
-	jobConfig *job.JobConfig,
-	configAddOn *models.ConfigAddOn,
-	version uint64,
-	owner string) error {
+	ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig,
+	configAddOn *models.ConfigAddOn, version uint64, owner string) error {
 	jobID := id.GetValue()
 	configBuffer, err := proto.Marshal(jobConfig)
 	if err != nil {
 		log.WithError(err).Error("Failed to marshal jobConfig")
+		s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
+		return err
+	}
+
+	configBuffer, err = compress(configBuffer)
+	if err != nil {
 		s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
 		return err
 	}

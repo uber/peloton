@@ -3,6 +3,7 @@
 package cassandra
 
 import (
+	"compress/gzip"
 	"context"
 	"fmt"
 	"strings"
@@ -53,6 +54,17 @@ type CassandraStoreTestSuite struct {
 
 var store *Store
 var testScope = tally.NewTestScope("", map[string]string{})
+
+// This test vector borrowed from gzip test suite to simulate a checksum
+// error during ucompressing data
+var badCheckSumData = []byte{
+	0x1f, 0x8b, 0x08, 0x08, 0xc8, 0x58, 0x13, 0x4a,
+	0x00, 0x03, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x2e,
+	0x74, 0x78, 0x74, 0x00, 0xcb, 0x48, 0xcd, 0xc9,
+	0xc9, 0x57, 0x28, 0xcf, 0x2f, 0xca, 0x49, 0xe1,
+	0x02, 0x00, 0x2d, 0x3b, 0x08, 0xaf, 0xff, 0x00,
+	0x00, 0x00,
+}
 
 func init() {
 	conf := MigrateForTest()
@@ -180,6 +192,28 @@ func (suite *CassandraStoreTestSuite) refreshLuceneIndex() {
 	stmt := queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
 	_, err := store.DataStore.Execute(context.Background(), stmt)
 	suite.NoError(err)
+}
+
+// Test compress and uncompress functionality
+func (suite *CassandraStoreTestSuite) TestCompression() {
+	buf := []byte("Test data for compression")
+	compressedBuf, err := compress(buf)
+	suite.NoError(err)
+
+	// success case for compression
+	uncompressedBuf, err := uncompress(compressedBuf)
+	suite.NoError(err)
+	suite.Equal(buf, uncompressedBuf)
+
+	// simulate uncompression failures due to checksum
+	uncompressedBuf, err = uncompress(badCheckSumData)
+	suite.Equal(err, gzip.ErrChecksum)
+
+	// simulate uncompressing data that was never compressed. this should not
+	// throw error but just return the source buffer.
+	uncompressedBuf, err = uncompress(buf)
+	suite.NoError(err)
+	suite.Equal(buf, uncompressedBuf)
 }
 
 func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
