@@ -157,22 +157,31 @@ func (s *ResPoolSuite) getRevocableTask() *resmgr.Task {
 	}
 }
 
-func (s *ResPoolSuite) getEntitlement() map[string]float64 {
-	mapEntitlement := make(map[string]float64)
-	mapEntitlement[common.CPU] = float64(100)
-	mapEntitlement[common.MEMORY] = float64(1000)
-	mapEntitlement[common.DISK] = float64(100)
-	mapEntitlement[common.GPU] = float64(2)
-	return mapEntitlement
+func (s *ResPoolSuite) getEntitlement() *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    100,
+		MEMORY: 1000,
+		DISK:   100,
+		GPU:    2,
+	}
 }
 
-func (s *ResPoolSuite) getSlackEntitlement() map[string]float64 {
-	mapEntitlement := make(map[string]float64)
-	mapEntitlement[common.CPU] = float64(80)
-	mapEntitlement[common.MEMORY] = float64(200)
-	mapEntitlement[common.DISK] = float64(20)
-	mapEntitlement[common.GPU] = float64(0)
-	return mapEntitlement
+func (s *ResPoolSuite) getNonSlackEntitlement() *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    100,
+		MEMORY: 800,
+		DISK:   80,
+		GPU:    2,
+	}
+}
+
+func (s *ResPoolSuite) getSlackEntitlement() *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    80,
+		MEMORY: 200,
+		DISK:   20,
+		GPU:    0,
+	}
 }
 
 func (s *ResPoolSuite) getDemand() *scalar.Resources {
@@ -345,7 +354,7 @@ out:
 
 func (s *ResPoolSuite) TestResPoolDequeue() {
 	resPoolNode := s.createTestResourcePool()
-	resPoolNode.SetEntitlement(s.getEntitlement())
+	resPoolNode.SetNonSlackEntitlement(s.getEntitlement())
 
 	for _, t := range s.getTasks() {
 		resPoolNode.EnqueueGang(makeTaskGang(t))
@@ -386,7 +395,7 @@ func (s *ResPoolSuite) TestResPoolDequeueNonLeaf() {
 
 func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 	resPoolNode := s.createTestResourcePool()
-	resPoolNode.SetEntitlement(s.getEntitlement())
+	resPoolNode.SetNonSlackEntitlement(s.getEntitlement())
 
 	for _, t := range s.getTasks() {
 		resPoolNode.EnqueueGang(makeTaskGang(t))
@@ -430,10 +439,13 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 	dequeuedGangs, err = resPoolNode.DequeueGangs(1)
 	s.NoError(err)
 	s.Nil(dequeuedGangs)
-	resPoolNode.SetEntitlementByKind(common.CPU, float64(500))
-	resPoolNode.SetEntitlementByKind(common.MEMORY, float64(500))
-	resPoolNode.SetEntitlementByKind(common.GPU, float64(4))
-	resPoolNode.SetEntitlementByKind(common.DISK, float64(500))
+	resPoolNode.SetNonSlackEntitlement(
+		&scalar.Resources{
+			CPU:    500,
+			MEMORY: 500,
+			GPU:    4,
+			DISK:   500,
+		})
 	dequeuedGangs, err = resPoolNode.DequeueGangs(1)
 	s.NoError(err)
 	s.Equal(1, len(dequeuedGangs))
@@ -442,28 +454,27 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 func (s *ResPoolSuite) TestEntitlement() {
 	resPoolNode := s.createTestResourcePool()
 	resPoolNode.UpdateResourceMetrics()
-	resPoolNode.SetEntitlement(s.getEntitlement())
+	resPoolNode.SetNonSlackEntitlement(s.getEntitlement())
 	expectedEntitlement := &scalar.Resources{
 		CPU:    float64(100),
 		MEMORY: float64(1000),
 		DISK:   float64(100),
 		GPU:    float64(2),
 	}
-	s.Equal(expectedEntitlement, resPoolNode.GetEntitlement())
+	s.Equal(expectedEntitlement, resPoolNode.GetNonSlackEntitlement())
 
 	expectedEntitlement = &scalar.Resources{
-		CPU:    float64(1000),
+		CPU:    float64(100),
 		MEMORY: float64(1000),
 		DISK:   float64(100),
 		GPU:    float64(3),
 	}
-	resPoolNode.SetEntitlementResources(expectedEntitlement)
-	s.Equal(expectedEntitlement, resPoolNode.GetEntitlement())
+	resPoolNode.SetSlackEntitlement(expectedEntitlement)
+	s.Equal(expectedEntitlement, resPoolNode.GetSlackEntitlement())
 }
 
 func (s *ResPoolSuite) TestSlackEntitlement() {
 	resPoolNode := s.createTestResourcePool()
-	resPoolNode.SetSlackEntitlement(nil)
 	resPoolNode.SetSlackEntitlement(s.getSlackEntitlement())
 	expectedEntitlement := &scalar.Resources{
 		CPU:    float64(80),
@@ -479,23 +490,13 @@ func (s *ResPoolSuite) TestSlackEntitlement() {
 		DISK:   float64(100),
 		GPU:    float64(3),
 	}
-	resPoolNode.SetSlackEntitlementResources(expectedEntitlement)
+	resPoolNode.SetSlackEntitlement(expectedEntitlement)
 	s.Equal(expectedEntitlement, resPoolNode.GetSlackEntitlement())
-
-	resPoolNode.SetSlackEntitlementByKind(common.CPU, float64(100))
-	resPoolNode.SetSlackEntitlementByKind(common.MEMORY, float64(100))
-	resPoolNode.SetSlackEntitlementByKind(common.GPU, float64(4))
-	resPoolNode.SetSlackEntitlementByKind(common.DISK, float64(100))
-
-	s.Equal(resPoolNode.GetSlackEntitlementByKind(common.CPU), float64(100))
-	s.Equal(resPoolNode.GetSlackEntitlementByKind(common.MEMORY), float64(100))
-	s.Equal(resPoolNode.GetSlackEntitlementByKind(common.GPU), float64(4))
-	s.Equal(resPoolNode.GetSlackEntitlementByKind(common.DISK), float64(100))
 }
 
 func (s *ResPoolSuite) TestAllocation() {
 	resPoolNode := s.createTestResourcePool()
-	resPoolNode.SetEntitlement(s.getEntitlement())
+	resPoolNode.SetNonSlackEntitlement(s.getNonSlackEntitlement())
 
 	totalAlloc := scalar.NewAllocation()
 	for _, t := range s.getTasks() {
@@ -560,7 +561,7 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 	resPoolNode1, err := NewRespool(tally.NoopScope, respool1ID.Value,
 		resPoolRoot, poolConfig1, s.cfg)
 	s.NoError(err)
-	resPoolNode1.SetEntitlement(s.getEntitlement())
+	resPoolNode1.SetNonSlackEntitlement(s.getEntitlement())
 
 	poolConfig2 := &pb_respool.ResourcePoolConfig{
 		Name:      "respool2",
@@ -572,7 +573,7 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 	resPoolNode2, err := NewRespool(tally.NoopScope, respool2ID.Value,
 		resPoolRoot, poolConfig2, s.cfg)
 	s.NoError(err)
-	resPoolNode2.SetEntitlement(s.getEntitlement())
+	resPoolNode2.SetNonSlackEntitlement(s.getEntitlement())
 
 	rootChildrenList := list.New()
 	rootChildrenList.PushBack(resPoolNode1)
@@ -589,7 +590,7 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 	resPoolNode11, err := NewRespool(tally.NoopScope, respool11ID.Value,
 		resPoolNode1, poolConfig11, s.cfg)
 	s.NoError(err)
-	resPoolNode11.SetEntitlement(s.getEntitlement())
+	resPoolNode11.SetNonSlackEntitlement(s.getEntitlement())
 	resPoolNode11.SetTotalAllocatedResources(s.getAllocation())
 
 	poolConfig12 := &pb_respool.ResourcePoolConfig{
@@ -602,7 +603,7 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 	resPoolNode12, err := NewRespool(tally.NoopScope, respool12ID.Value,
 		resPoolNode1, poolConfig12, s.cfg)
 	s.NoError(err)
-	resPoolNode12.SetEntitlement(s.getEntitlement())
+	resPoolNode12.SetNonSlackEntitlement(s.getEntitlement())
 	resPoolNode12.SetTotalAllocatedResources(s.getAllocation())
 
 	node1ChildrenList := list.New()
@@ -620,7 +621,7 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 	resPoolNode21, err := NewRespool(tally.NoopScope, respool21ID.Value,
 		resPoolNode2, poolConfig21, s.cfg)
 	s.NoError(err)
-	resPoolNode21.SetEntitlement(s.getEntitlement())
+	resPoolNode21.SetNonSlackEntitlement(s.getEntitlement())
 	resPoolNode21.SetTotalAllocatedResources(s.getAllocation())
 	node2ChildrenList := list.New()
 	node2ChildrenList.PushBack(resPoolNode21)
@@ -684,7 +685,7 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 	resPoolNode1, err := NewRespool(tally.NoopScope, respool1ID.Value,
 		resPoolroot, poolConfig1, s.cfg)
 	s.NoError(err)
-	resPoolNode1.SetEntitlement(s.getEntitlement())
+	resPoolNode1.SetNonSlackEntitlement(s.getEntitlement())
 
 	poolConfig2 := &pb_respool.ResourcePoolConfig{
 		Name:      "respool2",
@@ -696,7 +697,7 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 	resPoolNode2, err := NewRespool(tally.NoopScope, respool2ID.Value,
 		resPoolroot, poolConfig2, s.cfg)
 	s.NoError(err)
-	resPoolNode2.SetEntitlement(s.getEntitlement())
+	resPoolNode2.SetNonSlackEntitlement(s.getEntitlement())
 
 	rootChildrenList := list.New()
 	rootChildrenList.PushBack(resPoolNode1)
@@ -713,7 +714,7 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 	resPoolNode11, err := NewRespool(tally.NoopScope, respool11ID.Value,
 		resPoolNode1, poolConfig11, s.cfg)
 	s.NoError(err)
-	resPoolNode11.SetEntitlement(s.getEntitlement())
+	resPoolNode11.SetNonSlackEntitlement(s.getEntitlement())
 	resPoolNode11.SetTotalAllocatedResources(s.getAllocation())
 	resPoolNode11.AddToDemand(s.getDemand())
 	resPoolNode11.AddToSlackDemand(s.getSlackDemand())
@@ -728,7 +729,7 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 	resPoolNode12, err := NewRespool(tally.NoopScope, respool12ID.Value,
 		resPoolNode1, poolConfig12, s.cfg)
 	s.NoError(err)
-	resPoolNode12.SetEntitlement(s.getEntitlement())
+	resPoolNode12.SetNonSlackEntitlement(s.getEntitlement())
 	resPoolNode12.SetTotalAllocatedResources(s.getAllocation())
 	resPoolNode12.AddToDemand(s.getDemand())
 
@@ -747,7 +748,7 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 	resPoolNode21, err := NewRespool(tally.NoopScope, respool21ID.Value,
 		resPoolNode2, poolConfig21, s.cfg)
 	s.NoError(err)
-	resPoolNode21.SetEntitlement(s.getEntitlement())
+	resPoolNode21.SetNonSlackEntitlement(s.getEntitlement())
 	resPoolNode21.SetTotalAllocatedResources(s.getAllocation())
 	resPoolNode21.AddToDemand(s.getDemand())
 	node2ChildrenList := list.New()
@@ -921,10 +922,9 @@ func (s *ResPoolSuite) TestGetGangResources() {
 
 func (s *ResPoolSuite) TestTaskValidation() {
 	resPoolNode1 := s.createTestResourcePool()
-	resPoolNode1.SetEntitlement(nil)
 	s.Equal(resPoolNode1.GetEntitlement().String(), scalar.ZeroResource.String())
 
-	resPoolNode1.SetEntitlement(s.getEntitlement())
+	resPoolNode1.SetNonSlackEntitlement(s.getEntitlement())
 
 	for _, t := range s.getTasks() {
 		resPoolNode1.EnqueueGang(makeTaskGang(t))

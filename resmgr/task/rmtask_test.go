@@ -14,12 +14,12 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/statemachine"
 	sm_mock "code.uber.internal/infra/peloton/common/statemachine/mocks"
 	rc "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/respool/mocks"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -223,13 +223,13 @@ func (s *RMTaskTestSuite) pendingGangs() []*resmgrsvc.Gang {
 	return gangs
 }
 
-func (s *RMTaskTestSuite) getEntitlement() map[string]float64 {
-	mapEntitlement := make(map[string]float64)
-	mapEntitlement[common.CPU] = float64(100)
-	mapEntitlement[common.MEMORY] = float64(1000)
-	mapEntitlement[common.DISK] = float64(100)
-	mapEntitlement[common.GPU] = float64(2)
-	return mapEntitlement
+func (s *RMTaskTestSuite) getEntitlement() *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    100,
+		MEMORY: 1000,
+		DISK:   100,
+		GPU:    2,
+	}
 }
 
 func TestRMTask(t *testing.T) {
@@ -272,7 +272,7 @@ func (s *RMTaskTestSuite) TestReadyBackoff() {
 
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	node.SetEntitlement(s.getEntitlement())
+	node.SetNonSlackEntitlement(s.getEntitlement())
 
 	s.tracker.AddTask(
 		s.pendingGang0().Tasks[0],
@@ -312,7 +312,7 @@ func (s *RMTaskTestSuite) TestPendingBackoff() {
 
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	node.SetEntitlement(s.getEntitlement())
+	node.SetNonSlackEntitlement(s.getEntitlement())
 
 	s.tracker.AddTask(
 		s.pendingGang0().Tasks[0],
@@ -353,7 +353,7 @@ func (s *RMTaskTestSuite) TestPendingBackoff() {
 func (s *RMTaskTestSuite) TestBackOffDisabled() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	node.SetEntitlement(s.getEntitlement())
+	node.SetNonSlackEntitlement(s.getEntitlement())
 
 	s.tracker.AddTask(
 		s.pendingGang0().Tasks[0],
@@ -400,7 +400,7 @@ func (s *RMTaskTestSuite) TestLaunchingTimeout() {
 
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	node.SetEntitlement(s.getEntitlement())
+	node.SetNonSlackEntitlement(s.getEntitlement())
 
 	s.tracker.AddTask(
 		s.pendingGang0().Tasks[0],
@@ -436,7 +436,7 @@ func (s *RMTaskTestSuite) TestLaunchingTimeout() {
 func (s *RMTaskTestSuite) TestRunTimeStats() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	node.SetEntitlement(s.getEntitlement())
+	node.SetNonSlackEntitlement(s.getEntitlement())
 
 	s.tracker.AddTask(
 		s.pendingGang0().Tasks[0],

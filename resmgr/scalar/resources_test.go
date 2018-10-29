@@ -268,6 +268,28 @@ func TestSubtractAllocation(t *testing.T) {
 	}
 }
 
+func TestMinResources(t *testing.T) {
+	r1 := &Resources{
+		CPU:    0,
+		MEMORY: 100,
+		DISK:   1000,
+		GPU:    10,
+	}
+
+	r2 := &Resources{
+		CPU:    10,
+		MEMORY: 80,
+		DISK:   1000,
+		GPU:    4,
+	}
+
+	result := Min(r1, r2)
+	assert.Equal(t, result.CPU, float64(0))
+	assert.Equal(t, result.MEMORY, float64(80))
+	assert.Equal(t, result.DISK, float64(1000))
+	assert.Equal(t, result.GPU, float64(4))
+}
+
 func TestGetTaskAllocation(t *testing.T) {
 	taskConfig := &task.ResourceConfig{
 		CpuLimit:    4.0,

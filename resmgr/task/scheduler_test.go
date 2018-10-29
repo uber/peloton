@@ -261,7 +261,7 @@ func (suite *SchedulerTestSuite) AddTasks() {
 	resPool, err := suite.resTree.Get(&peloton.ResourcePoolID{
 		Value: "respool11",
 	})
-	resPool.SetEntitlement(suite.getEntitlement())
+	resPool.SetNonSlackEntitlement(suite.getEntitlement())
 
 	for _, t := range tasks {
 		suite.NoError(err)
@@ -324,13 +324,13 @@ func (suite *SchedulerTestSuite) TestTaskStates() {
 	}
 }
 
-func (suite *SchedulerTestSuite) getEntitlement() map[string]float64 {
-	mapEntitlement := make(map[string]float64)
-	mapEntitlement[common.CPU] = float64(100)
-	mapEntitlement[common.MEMORY] = float64(1000)
-	mapEntitlement[common.DISK] = float64(100)
-	mapEntitlement[common.GPU] = float64(2)
-	return mapEntitlement
+func (suite *SchedulerTestSuite) getEntitlement() *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    100,
+		MEMORY: 1000,
+		DISK:   100,
+		GPU:    2,
+	}
 }
 
 func setupScheduler(limit int64) *scheduler {
@@ -571,7 +571,7 @@ func (suite *SchedulerTestSuite) TestDeletePartialTasksTasks() {
 	resPool, err := suite.resTree.Get(&peloton.ResourcePoolID{
 		Value: "respool11",
 	})
-	resPool.SetEntitlement(suite.getEntitlement())
+	resPool.SetNonSlackEntitlement(suite.getEntitlement())
 
 	for _, t := range tasks {
 		suite.NoError(err)
@@ -641,7 +641,7 @@ func (suite *SchedulerTestSuite) TestTransitTask() {
 		Value: "respool11",
 	})
 	suite.NoError(err)
-	resPool.SetEntitlement(suite.getEntitlement())
+	resPool.SetNonSlackEntitlement(suite.getEntitlement())
 
 	suite.addTasktotracker(t)
 	rmTask := suite.rmTaskTracker.GetTask(&peloton.TaskID{Value: "job1-1"})

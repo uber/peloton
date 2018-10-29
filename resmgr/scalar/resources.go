@@ -30,6 +30,8 @@ const (
 	TotalAllocation
 	// SlackAllocation track allocation for tasks launched using slack resources.
 	SlackAllocation
+	// NonSlackAllocation track allocation for non-revocable tasks.
+	NonSlackAllocation
 )
 
 // Allocation is the container to track allocation across different dimensions
@@ -76,6 +78,7 @@ func initializeZeroAlloc() *Allocation {
 	alloc.Value[ControllerAllocation] = ZeroResource
 	alloc.Value[PreemptibleAllocation] = ZeroResource
 	alloc.Value[SlackAllocation] = ZeroResource
+	alloc.Value[NonSlackAllocation] = ZeroResource
 
 	return alloc
 }
@@ -112,6 +115,8 @@ func GetTaskAllocation(rmTask *resmgr.Task) *Allocation {
 
 	if rmTask.GetRevocable() {
 		alloc.Value[SlackAllocation] = taskResource
+	} else {
+		alloc.Value[NonSlackAllocation] = taskResource
 	}
 
 	// every task account for total allocation
@@ -251,6 +256,16 @@ func GetGangResources(gang *resmgrsvc.Gang) *Resources {
 func (r *Resources) String() string {
 	return fmt.Sprintf("CPU:%.2f MEM:%.2f DISK:%.2f GPU:%.2f",
 		r.GetCPU(), r.GetMem(), r.GetDisk(), r.GetGPU())
+}
+
+// Min Gets the minimum value for each resource type
+func Min(r1, r2 *Resources) *Resources {
+	return &Resources{
+		CPU:    math.Min(r1.GetCPU(), r2.GetCPU()),
+		MEMORY: math.Min(r1.GetMem(), r2.GetMem()),
+		DISK:   math.Min(r1.GetDisk(), r2.GetDisk()),
+		GPU:    math.Min(r1.GetGPU(), r2.GetGPU()),
+	}
 }
 
 // Subtract another scalar resources from current one and return a new copy of result.

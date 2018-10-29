@@ -23,6 +23,7 @@ import (
 	"code.uber.internal/infra/peloton/common/queue"
 	rc "code.uber.internal/infra/peloton/resmgr/common"
 	rp "code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
 	task_mocks "code.uber.internal/infra/peloton/resmgr/task/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -218,13 +219,13 @@ func (suite *recoveryTestSuite) TearDownSuite() {
 	suite.mockCtrl.Finish()
 }
 
-func (suite *recoveryTestSuite) getEntitlement() map[string]float64 {
-	mapEntitlement := make(map[string]float64)
-	mapEntitlement[common.CPU] = float64(100)
-	mapEntitlement[common.MEMORY] = float64(1000)
-	mapEntitlement[common.DISK] = float64(100)
-	mapEntitlement[common.GPU] = float64(2)
-	return mapEntitlement
+func (suite *recoveryTestSuite) getEntitlement() *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    100,
+		MEMORY: 1000,
+		DISK:   100,
+		GPU:    2,
+	}
 }
 
 // returns a map of JobID -> array of gangs
@@ -235,7 +236,7 @@ func (suite *recoveryTestSuite) getQueueContent(
 	for {
 		node, err := suite.resourceTree.Get(&respoolID)
 		suite.NoError(err)
-		node.SetEntitlement(suite.getEntitlement())
+		node.SetNonSlackEntitlement(suite.getEntitlement())
 		dequeuedGangs, err := node.DequeueGangs(1)
 		suite.NoError(err)
 

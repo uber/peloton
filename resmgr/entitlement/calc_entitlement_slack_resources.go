@@ -1,8 +1,6 @@
 package entitlement
 
 import (
-	"math"
-
 	log "github.com/sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/common"
@@ -11,7 +9,11 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
-// Setting entitlement is a 3 phase process for revocable resources
+// Setting slack entitlement is a 3 phase process for revocable resources
+// and non-revocable resources derived from total entitlement (previous step)
+//
+// Setting non-slack entitlement = total_entitlement - slack_entitlement
+//
 // 1 Calculate assignments for non-revocable resources [mem,disk,gpu]
 // capped by slack limit.
 //
@@ -19,7 +21,7 @@ import (
 //
 // 3 Once the demand is zero, distribute remaining based on share
 //   for revocable tasks
-func (c *Calculator) setSlackEntitlementForChildren(
+func (c *Calculator) setSlackAndNonSlackEntitlementForChildren(
 	resp respool.ResPool) {
 	if resp == nil {
 		return
@@ -71,8 +73,8 @@ func (c *Calculator) setSlackEntitlementForChildren(
 	for e := childs.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
 
-		n.SetSlackEntitlementResources(slackAssignments[n.ID()])
-		c.setSlackEntitlementForChildren(n)
+		n.SetSlackEntitlement(slackAssignments[n.ID()])
+		c.setSlackAndNonSlackEntitlementForChildren(n)
 	}
 }
 
@@ -87,34 +89,58 @@ func (c *Calculator) calculateSlackAssignmentFromSlackLimit(
 	totalShare map[string]float64) {
 	childs := resp.Children()
 	cloneSlackEntitlement := slackEntitlement.Clone()
+
 	for e := childs.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
 
-		// slack demands tracks demand for revocable resources [cpus]
-		// per resource pool
+		// CPU is the only revocable resource
 		slackDemands[n.ID()] = &scalar.Resources{
 			CPU: n.GetSlackDemand().CPU,
 		}
+		totalShare[common.CPU] += n.Resources()[common.CPU].GetShare()
 
-		// Create assignment for non-revocable resources [mem,disk,gpu]
-		// used by revocable tasks
-		// slack assignment = Min(slack limit, demand + allocation)
-		slackAssignment := &scalar.Resources{
-			MEMORY: math.Min(n.GetSlackLimit().GetMem(),
-				n.GetSlackDemand().GetMem()+n.GetSlackAllocatedResources().GetMem()),
-			DISK: math.Min(n.GetSlackLimit().GetDisk(),
-				n.GetSlackDemand().GetDisk()+n.GetSlackAllocatedResources().GetDisk()),
-			GPU: math.Min(n.GetSlackLimit().GetGPU(),
-				n.GetSlackDemand().GetGPU()+n.GetSlackAllocatedResources().GetGPU()),
-			// Append allocation for revocable resources as-is,
-			// because they are not capped to a limit or reservation
-			CPU: n.GetSlackAllocatedResources().GetCPU(),
+		// get the requirements
+		// Non-Revocable resources demand & allocation can change between calculating
+		// total entitlement versus setting non-slack entitlement.
+		// As this will be taken care in next iteration, it is ok.
+		// ToDo: Use same demand + allocation throughout entitlement calculation
+		slackRequirement := c.getSlackResourcesRequirement(n)
+		nonSlackRequirement := c.getNonSlackResourcesRequirement(n)
+
+		// lets see if total-entitlement > non-revoc requirement
+		// this is done to satisfy the requirements for non-revocable tasks first,
+		// any resources left after are given for revocable tasks
+		remainingForSlack := n.GetEntitlement().Subtract(nonSlackRequirement)
+
+		// Here remainingForSlack could be zero, in that case we don;t give
+		// any resources for revocable tasks.
+		//
+		// If it is non-zero we give at most the required resources and not
+		// all. These resources given for revocable jobs is capped at the slackLimit
+		//
+		// Get MIN(available, requirement) of non-revocable resources for revocable tasks
+		slackAssignment := scalar.Min(remainingForSlack, slackRequirement)
+
+		if slackAssignment.Equal(scalar.ZeroResource) {
+			// nothing left for revocable tasks.
+			// set the non-revocable entitlement = total entitlement
+			n.SetNonSlackEntitlement(n.GetEntitlement())
+		} else {
+			// non revocable requirement is less than the total entitlement
+			// lets satisfy all that non-revocable requirement + elastic resources.
+			n.SetNonSlackEntitlement(n.GetEntitlement().Subtract(slackAssignment))
 		}
 
-		// Update CPU shares, as Peloton supports revocable cpus only
-		totalShare[common.CPU] += n.Resources()[common.CPU].GetShare()
+		slackAssignment.CPU = n.GetSlackAllocatedResources().GetCPU()
 		slackAssignments[n.ID()] = slackAssignment.Clone()
 		cloneSlackEntitlement = cloneSlackEntitlement.Subtract(slackAssignment)
+		log.WithFields(log.Fields{
+			"respool_id":        n.ID(),
+			"respool_name":      n.Name(),
+			"slack_available":   remainingForSlack.String(),
+			"slack_requirement": slackRequirement.String(),
+			"slack_assignment":  slackAssignment.String(),
+		}).Info("First phase of slack entitlement calculation completed")
 	}
 	slackEntitlement.Copy(cloneSlackEntitlement)
 }
@@ -172,6 +198,12 @@ func (c *Calculator) distrubuteSlackResourcesToSatisfyDemand(
 
 			value += slackAssignments[n.ID()].Get(kind)
 			slackAssignments[n.ID()].Set(kind, value)
+			log.WithFields(log.Fields{
+				"respool_name":               n.Name(),
+				"respool_id":                 n.ID(),
+				"slack_assignment":           slackAssignments[n.ID()],
+				"slack_demand_not_satisfied": slackDemands[n.ID()],
+			}).Info("Second phase of slack entitlement calculation completed")
 		}
 		*slackEntitlement = remaining
 	}
@@ -200,7 +232,22 @@ func (c *Calculator) distributeUnclaimedSlackResources(
 
 				value += slackAssignments[n.ID()].Get(kind)
 				slackAssignments[n.ID()].Set(kind, value)
+				log.WithFields(log.Fields{
+					"respool_name":           n.Name(),
+					"respool_id":             n.ID(),
+					"final_slack_assignment": slackAssignments[n.ID()],
+				}).Info("Third phase of slack entitlement calculation completed")
 			}
 		}
 	}
+}
+
+// getSlackResourcesRequirement returns the non-revocable resources required
+// for revocable tasks capped to slack limit.
+func (c *Calculator) getSlackResourcesRequirement(
+	n respool.ResPool) *scalar.Resources {
+	// Revocable tasks are limited for non-revocable resources [mem,disk,gpu]
+	// slack limited = Min(slack limit, revocable tasks: demand + allocation)
+	slackRequest := n.GetSlackAllocatedResources().Add(n.GetSlackDemand())
+	return scalar.Min(n.GetSlackLimit(), slackRequest)
 }

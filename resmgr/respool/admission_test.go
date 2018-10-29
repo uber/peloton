@@ -1,7 +1,9 @@
 package respool
 
 import (
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/resmgr/common"
@@ -73,7 +75,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitValidationFail() {
 
 	// mark one task as invalid
 	resPool.AddInvalidTask(task.Id)
-	resPool.SetEntitlement(s.getEntitlement())
+	resPool.SetNonSlackEntitlement(s.getEntitlement())
 
 	// gang will be re-enqueued with one task (removing invalid task)
 	err = admission.TryAdmit(gang, resPool, PendingQueue)
@@ -96,7 +98,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitSuccess() {
 	resPool, ok := pool.(*resPool)
 	s.True(ok)
 
-	resPool.SetEntitlement(s.getEntitlement())
+	resPool.SetNonSlackEntitlement(s.getEntitlement())
 
 	task := s.getTasks()[0]
 	gang := makeTaskGang(task)
@@ -167,15 +169,15 @@ func (s *ResPoolSuite) TestServiceTypeAdmission() {
 	resPool, ok := pool.(*resPool)
 	s.True(ok)
 
-	resPool.SetEntitlement(s.getEntitlement())
+	resPool.SetNonSlackEntitlement(s.getNonSlackEntitlement())
 	resPool.SetSlackEntitlement(s.getSlackEntitlement())
 
 	// validate entitlement
 	s.Equal(float64(80), resPool.GetSlackEntitlement().CPU)
 
-	s.Equal(float64(100), resPool.GetEntitlement().CPU)
-	s.Equal(float64(1000), resPool.GetEntitlement().MEMORY)
-	s.Equal(float64(100), resPool.GetEntitlement().DISK)
+	s.Equal(float64(100), resPool.GetNonSlackEntitlement().CPU)
+	s.Equal(float64(800), resPool.GetNonSlackEntitlement().MEMORY)
+	s.Equal(float64(80), resPool.GetNonSlackEntitlement().DISK)
 
 	for i := 0; i < 11; i++ {
 		task := s.getRevocableTask()
@@ -226,6 +228,206 @@ func (s *ResPoolSuite) TestServiceTypeAdmission() {
 	s.Equal(float64(82), resPool.GetTotalAllocatedResources().CPU)
 	s.Equal(float64(280), resPool.GetTotalAllocatedResources().MEMORY)
 	s.Equal(float64(36), resPool.GetTotalAllocatedResources().DISK)
+}
+
+// Slack Request: Slack Allocation + Slack Demand is more than Slack Entitlement
+// Expected Result: More unadmittable gangs to revocable queue
+func (s *ResPoolSuite) TestSlackRequeust_More_SlackEntitlement_Admission() {
+	pool := s.createTestResourcePool()
+	resPool, ok := pool.(*resPool)
+	s.True(ok)
+
+	// resource type: reservation, limit
+	// CPU: 100, 1000 MEMORY: 1000, 1000 DISK: 100, 1000, GPU: 2, 4
+	resPool.SetNonSlackEntitlement(
+		&scalar.Resources{
+			CPU:    200,
+			MEMORY: 800, // Entitlement is lower than Reservation
+			DISK:   800, // Entitlement is more than Reservation and lower than Limit
+			GPU:    4,
+		})
+
+	resPool.SetSlackEntitlement(
+		&scalar.Resources{
+			CPU:    160, // revocable cpus are counted separate
+			MEMORY: 200,
+			DISK:   20,
+			GPU:    0,
+		})
+
+	// Slack Entitlement can not be more than Slack Limit
+	s.True(pool.GetSlackLimit().GetMem() >= pool.GetSlackEntitlement().GetMem())
+	s.True(pool.GetSlackLimit().GetDisk() >= pool.GetSlackEntitlement().GetDisk())
+	s.True(pool.GetSlackLimit().GetGPU() >= pool.GetSlackEntitlement().GetGPU())
+
+	// 1)
+	// Slack Demand + Slack Allocation > Slack Entitlement
+	alloc := scalar.NewAllocation()
+	alloc.Value[scalar.TotalAllocation] = &scalar.Resources{
+		CPU:    100,
+		MEMORY: 100,
+		DISK:   10,
+		GPU:    0,
+	}
+	alloc.Value[scalar.SlackAllocation] = &scalar.Resources{
+		CPU:    100,
+		MEMORY: 100,
+		DISK:   10,
+		GPU:    0,
+	}
+	resPool.AddToAllocation(alloc)
+
+	for i := 0; i < 10; i++ {
+		task := &resmgr.Task{
+			Name:     "job1-1",
+			Priority: 0,
+			JobId:    &peloton.JobID{Value: "job1"},
+			Id:       &peloton.TaskID{Value: "job1-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    10,
+				MemLimitMb:  20,
+				DiskLimitMb: 1,
+				GpuLimit:    0,
+			},
+			Revocable: true,
+		}
+		gang := makeTaskGang(task)
+		err := resPool.EnqueueGang(gang)
+		s.NoError(err)
+	}
+
+	gangs, err := resPool.DequeueGangs(100)
+	s.NoError(err)
+
+	// MEMORY is maxed out to slack entitlement
+	// Slack Entitlement: 200 MB, Allocation: 100MB Demand: 200 MB (100MB satisfied)
+	s.Equal(len(gangs), 5)
+	s.Equal(resPool.pendingQueue.Size(), 0)   // No gangs should be left in pending queue
+	s.Equal(resPool.revocableQueue.Size(), 5) // remaining 5 tasks are moved to revocable queue
+
+	gangs, err = resPool.DequeueGangs(100)
+	s.NoError(err)
+	s.Equal(len(gangs), 0) // No more gangs can be dequeued since entitlement == allocation now
+
+}
+
+// Slack Entitlement is zero.
+// Expected behavior: unadmittable gangs will move to revocable queue to
+// unblock non-revocable gangs
+func (s *ResPoolSuite) TestSlackEntitlementZero() {
+	pool := s.createTestResourcePool()
+	resPool, ok := pool.(*resPool)
+	s.True(ok)
+
+	alloc := scalar.NewAllocation()
+	alloc.Value[scalar.TotalAllocation] = &scalar.Resources{
+		CPU:    100,
+		MEMORY: 100,
+		DISK:   100,
+		GPU:    0,
+	}
+
+	alloc.Value[scalar.NonPreemptibleAllocation] = &scalar.Resources{
+		CPU:    100,
+		MEMORY: 100,
+		DISK:   100,
+		GPU:    0,
+	}
+	resPool.AddToAllocation(alloc)
+
+	// Non-Revocable Demand + Allocation > Total Entitlement
+	// Slack Entitlement will be zero in this case
+
+	// resource type: reservation, limit
+	// CPU: 100, 1000 MEMORY: 1000, 1000 DISK: 100, 1000, GPU: 2, 4
+	resPool.SetNonSlackEntitlement(
+		&scalar.Resources{
+			CPU:    200,
+			MEMORY: 2000,
+			DISK:   1000,
+			GPU:    4,
+		})
+
+	resPool.SetSlackEntitlement(
+		&scalar.Resources{
+			CPU:    160, // revocable cpus are counted separate
+			MEMORY: 0,
+			DISK:   0,
+			GPU:    0,
+		})
+
+	// Revocable && Preemptible can not be admitted -> move to revocable queue
+	// Slack Entitlement -> 0
+	for i := 0; i < 10; i++ {
+		task := &resmgr.Task{
+			Name:     "job1-1",
+			Priority: 0,
+			JobId:    &peloton.JobID{Value: "job1"},
+			Id:       &peloton.TaskID{Value: "job1-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    10,
+				MemLimitMb:  20,
+				DiskLimitMb: 1,
+				GpuLimit:    0,
+			},
+			Revocable:   true,
+			Preemptible: true,
+		}
+		gang := makeTaskGang(task)
+		err := resPool.EnqueueGang(gang)
+		s.NoError(err)
+	}
+
+	// Non-Revocable + Non-Preemptible can not be admitted -> continue to be in pending queue
+	// Resource Pool Reservation -> already allocated
+	for i := 0; i < 10; i++ {
+		task := &resmgr.Task{
+			Name:     "job1-1",
+			Priority: 0,
+			JobId:    &peloton.JobID{Value: "job1"},
+			Id:       &peloton.TaskID{Value: "job1-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    10,
+				MemLimitMb:  20,
+				DiskLimitMb: 1,
+				GpuLimit:    0,
+			},
+			Preemptible: false,
+			Revocable:   false,
+		}
+		gang := makeTaskGang(task)
+		err := resPool.EnqueueGang(gang)
+		s.NoError(err)
+	}
+
+	// Non-Revocable + Preemptible can be admitted using elastic resources
+	for i := 0; i < 10; i++ {
+		task := &resmgr.Task{
+			Name:     "job1-1",
+			Priority: 0,
+			JobId:    &peloton.JobID{Value: "job1"},
+			Id:       &peloton.TaskID{Value: "job1-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    10,
+				MemLimitMb:  20,
+				DiskLimitMb: 1,
+				GpuLimit:    0,
+			},
+			Preemptible: true,
+			Revocable:   false,
+		}
+		gang := makeTaskGang(task)
+		err := resPool.EnqueueGang(gang)
+		s.NoError(err)
+	}
+
+	gangs, err := resPool.DequeueGangs(100)
+	s.NoError(err)
+
+	s.Equal(len(gangs), 10)
+	s.Equal(resPool.revocableQueue.Size(), 10) // Tasks move to revocable queue, un-blocking pending queue
+	s.Equal(resPool.npQueue.Size(), 0)         // Preemption is not enabled -> so no tasks in npQueue
+	s.Equal(resPool.pendingQueue.Size(), 10)   // Non-Preemptible tasks stay in pending queue
 }
 
 func (s *ResPoolSuite) TestBatchAdmissionController_PendingQueueAdmitter() {
@@ -297,7 +499,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_PendingQueueAdmitter() {
 		resPool, ok := rp.(*resPool)
 		s.True(ok)
 		if t.canAdmit {
-			resPool.SetEntitlement(s.getEntitlement())
+			resPool.SetNonSlackEntitlement(s.getEntitlement())
 		} else if t.controller {
 			// set the limit to zero
 			resPool.controllerLimit = scalar.ZeroResource
@@ -354,7 +556,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_ControllerAdmitter() {
 		resPool, ok := rp.(*resPool)
 		s.True(ok)
 		if t.canAdmit {
-			resPool.SetEntitlement(s.getEntitlement())
+			resPool.SetNonSlackEntitlement(s.getEntitlement())
 		} else {
 			// set the limit to zero
 			resPool.controllerLimit = scalar.ZeroResource
@@ -425,7 +627,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_NPAdmitter() {
 				// set the reservation to zero
 				resPool.reservation = scalar.ZeroResource
 			}
-			resPool.SetEntitlement(s.getEntitlement())
+			resPool.SetNonSlackEntitlement(s.getEntitlement())
 		} else {
 			// set the reservation to zero
 			resPool.reservation = scalar.ZeroResource

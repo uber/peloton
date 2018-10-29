@@ -25,6 +25,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/preemption/mocks"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	rm "code.uber.internal/infra/peloton/resmgr/respool/mocks"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
 	task_mocks "code.uber.internal/infra/peloton/resmgr/task/mocks"
 	"code.uber.internal/infra/peloton/resmgr/tasktestutil"
@@ -406,7 +407,7 @@ func (s *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
 	}
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	node.SetEntitlement(s.getEntitlement())
+	node.SetNonSlackEntitlement(s.getEntitlement())
 	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
 
 	s.NoError(err)
@@ -443,7 +444,7 @@ func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacement() {
 	}
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	node.SetEntitlement(s.getEntitlement())
+	node.SetNonSlackEntitlement(s.getEntitlement())
 	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
 	s.NoError(err)
 	s.Nil(enqResp.GetError())
@@ -479,7 +480,7 @@ func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacementManyTimes() {
 	}
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	node.SetEntitlement(s.getEntitlement())
+	node.SetNonSlackEntitlement(s.getEntitlement())
 	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
 	s.NoError(err)
 	s.Nil(enqResp.GetError())
@@ -540,7 +541,7 @@ func (s *HandlerTestSuite) TestRequeue() {
 
 	// Testing to see if we can send same task in the enqueue
 	// request then it should error out
-	node.SetEntitlement(s.getEntitlement())
+	node.SetNonSlackEntitlement(s.getEntitlement())
 	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
 	s.NoError(err)
 	s.NotNil(enqResp.GetError())
@@ -629,7 +630,7 @@ func (s *HandlerTestSuite) TestRequeueFailures() {
 		task.TaskState_LAUNCHING})
 	// Testing to see if we can send same task in the enqueue
 	// request then it should error out
-	node.SetEntitlement(s.getEntitlement())
+	node.SetNonSlackEntitlement(s.getEntitlement())
 	// Testing to see if we can send different Mesos taskID
 	// in the enqueue request then it should move task to
 	// ready state and ready queue
@@ -1419,13 +1420,13 @@ func (s *HandlerTestSuite) TestHandleRunningEventError() {
 
 }
 
-func (s *HandlerTestSuite) getEntitlement() map[string]float64 {
-	mapEntitlement := make(map[string]float64)
-	mapEntitlement[common.CPU] = float64(100)
-	mapEntitlement[common.MEMORY] = float64(1000)
-	mapEntitlement[common.DISK] = float64(100)
-	mapEntitlement[common.GPU] = float64(2)
-	return mapEntitlement
+func (s *HandlerTestSuite) getEntitlement() *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    100,
+		MEMORY: 1000,
+		DISK:   100,
+		GPU:    2,
+	}
 }
 
 func (s *HandlerTestSuite) TestGetActiveTasks() {
@@ -1679,7 +1680,7 @@ func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {
 
 	// Testing to see if we can send same task in the enqueue
 	// after invalidating the task
-	node.SetEntitlement(s.getEntitlement())
+	node.SetNonSlackEntitlement(s.getEntitlement())
 	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
 	s.NoError(err)
 	s.Nil(enqResp.GetError())

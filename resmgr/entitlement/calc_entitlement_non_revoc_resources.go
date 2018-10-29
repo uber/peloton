@@ -12,7 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
-// Setting entitlement is a 3 phase process for non-revocable resources
+// Setting total entitlement is a 3 phase process for non-revocable resources
 // 1 Calculate assignments based on reservation and limit non-revocable tasks
 //
 // 2 For non-revocable tasks, distribute rest of the free resources
@@ -76,7 +76,7 @@ func (c *Calculator) setEntitlementForChildren(
 	for e := childs.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
 
-		n.SetEntitlementResources(assignments[n.ID()])
+		n.SetEntitlement(assignments[n.ID()])
 		c.setEntitlementForChildren(n)
 	}
 }
@@ -151,25 +151,18 @@ func (c *Calculator) calculateAssignmentsFromReservation(
 }
 
 // calculateDemandForRespool calculates the demand based on number of
-// tasks waiting in the queue as well as current allocation.
-// This also caps the demand based on the limit of the resource pool
-// for that type of resource
+// tasks waiting in the queue as well as current allocation
+// for non-revocable and revocable tasks.
+//
+// For revocable tasks total requirement is capped to slack limit.
+// For non-revocable tasks totol requirement is capped on the limit of the
+// resource pool for that type of resource
 func (c *Calculator) calculateDemandForRespool(
 	n respool.ResPool,
 	demands map[string]*scalar.Resources) {
-	// allocation [cpus, mem, disk, gpu] for non-revocable tasks
-	totalAllocation := n.GetTotalAllocatedResources().Clone()
-	nonSlackAllocation := totalAllocation.Subtract(n.GetSlackAllocatedResources())
 
-	// Net Demand = revocable task demand + allocation capped to slack limit
-	// 				for non-slack resources [mem,disk,gpu] +
-	//				allocation for non-revocable tasks +
-	// 				demand for non-revocable task
-	demand := n.GetSlackEntitlement().Clone()
-	demand.CPU = 0 // reset revocable cpus for non-revocable tasks
-
-	demand = demand.Add(nonSlackAllocation)
-	demand = demand.Add(n.GetDemand())
+	demand := c.getNonSlackResourcesRequirement(n).Add(
+		c.getSlackResourcesRequirement(n))
 
 	log.WithFields(log.Fields{
 		"respool_ID":   n.ID(),
@@ -336,4 +329,11 @@ func (c *Calculator) distributeUnclaimedResources(
 			}
 		}
 	}
+}
+
+// getNonSlackResourcesRequirement returns the total non-revocable resources
+// allocated + demand (pending for launch) for non-revocable tasks
+func (c *Calculator) getNonSlackResourcesRequirement(
+	n respool.ResPool) *scalar.Resources {
+	return n.GetNonSlackAllocatedResources().Add(n.GetDemand())
 }

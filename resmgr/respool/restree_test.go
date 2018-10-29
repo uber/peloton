@@ -15,6 +15,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	rc "code.uber.internal/infra/peloton/resmgr/common"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	taskutil "code.uber.internal/infra/peloton/util/task"
 
@@ -205,13 +206,13 @@ func (s *resTreeTestSuite) getResPools() map[string]*respool.ResourcePoolConfig 
 	}
 }
 
-func (s *resTreeTestSuite) getEntitlement() map[string]float64 {
-	mapEntitlement := make(map[string]float64)
-	mapEntitlement[common.CPU] = float64(100)
-	mapEntitlement[common.MEMORY] = float64(1000)
-	mapEntitlement[common.DISK] = float64(100)
-	mapEntitlement[common.GPU] = float64(2)
-	return mapEntitlement
+func (s *resTreeTestSuite) getEntitlement() *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    100,
+		MEMORY: 1000,
+		DISK:   100,
+		GPU:    2,
+	}
 }
 
 func (s *resTreeTestSuite) TestGetChildren() {
@@ -321,7 +322,7 @@ func (s *resTreeTestSuite) TestPendingQueue() {
 		},
 		Preemptible: true,
 	}
-	rt.resPools["respool11"].SetEntitlement(s.getEntitlement())
+	rt.resPools["respool11"].SetNonSlackEntitlement(s.getEntitlement())
 	rt.resPools["respool11"].EnqueueGang(makeTaskGang(taskItem2))
 
 	gangList3, err := rt.resPools["respool11"].DequeueGangs(1)

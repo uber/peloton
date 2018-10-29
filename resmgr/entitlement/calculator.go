@@ -143,10 +143,12 @@ func (c *Calculator) calculateEntitlement(ctx context.Context) error {
 	rootResPool.CalculateSlackDemand()
 	// Invoking the Allocation calculation
 	rootResPool.CalculateTotalAllocatedResources()
-	// Setting Slack Entitlement for root respool's children
-	c.setSlackEntitlementForChildren(rootResPool)
-	// Setting Entitlement for root respool's children
+	// Calculate Total Entitlement for non-revocable resources root respool's children
 	c.setEntitlementForChildren(rootResPool)
+	// Calculate entitlement for revocable resources and
+	// set Slack and Non-Slack Entitlement for root respool's children
+	// based on the previous entitlement calculation
+	c.setSlackAndNonSlackEntitlementForChildren(rootResPool)
 
 	return nil
 }
@@ -245,9 +247,17 @@ func (c *Calculator) updateClusterCapacity(
 	}
 
 	rootResPool.SetResourcePoolConfig(rootResourcePoolConfig)
-	rootResPool.SetEntitlement(c.clusterCapacity)
-	rootResPool.SetSlackEntitlement(c.clusterSlackCapacity)
-
+	rootResPool.SetEntitlement(
+		&scalar.Resources{
+			CPU:    c.clusterCapacity[common.CPU],
+			MEMORY: c.clusterCapacity[common.MEMORY],
+			DISK:   c.clusterCapacity[common.DISK],
+			GPU:    c.clusterCapacity[common.GPU],
+		})
+	rootResPool.SetSlackEntitlement(
+		&scalar.Resources{
+			CPU: c.clusterSlackCapacity[common.CPU],
+		})
 	log.WithField("root resource ", rootres).Info("Updating root resources")
 	return nil
 }

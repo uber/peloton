@@ -74,33 +74,23 @@ type ResPool interface {
 	// returned.
 	PeekGangs(qt QueueType, limit uint32) ([]*resmgrsvc.Gang, error)
 
-	// SetEntitlement sets the entitlement for the resource pool.
-	// input is map[ResourceKind]->EntitledCapacity
-	SetEntitlement(map[string]float64)
-	// SetEntitlementResources sets the entitlement for
-	// the resource pool based on the resources.
-	SetEntitlementResources(res *scalar.Resources)
-	// SetEntitlementByKind sets the entitlement of the respool
-	// by kind.
-	SetEntitlementByKind(kind string, entitlement float64)
-	// GetEntitlement gets the entitlement for the resource pool.
+	// SetEntitlement sets the entitlement of non-revocable resources
+	// for non-revocable tasks + revocable tasks for this resource pool.
+	SetEntitlement(res *scalar.Resources)
+	// SetSlackEntitlement sets the entitlement of revocable cpus
+	// + non-revocable resources [mem, disk, gpu] for the resource pool
+	SetSlackEntitlement(res *scalar.Resources)
+	// SetNonSlackEntitlement Sets the entitlement of non-revocable resources
+	// for non-revocable tasks for this resource pool
+	SetNonSlackEntitlement(res *scalar.Resources)
+
+	// GetEntitlement returns the total entitlement of non-revocable resources
+	// for this resource pool.
 	GetEntitlement() *scalar.Resources
-	// GetSlackEntitlement gets the slack entitlement for the resource pool.
+	// GetSlackEntitlement returns the entitlement for revocable tasks.
 	GetSlackEntitlement() *scalar.Resources
-
-	// GetSlackEntitlementByKind gets the slack entitlement by resource type
-	// for the resource pool.
-	GetSlackEntitlementByKind(kind string) float64
-
-	// SetSlackEntitlement sets the slack entitlement for the resource pool.
-	// input is map[ResourceKind]->SlackEntitledCapacity
-	SetSlackEntitlement(map[string]float64)
-	// SetSlackEntitlementResources sets the entitlement for
-	// the resource pool based on the resources.
-	SetSlackEntitlementResources(res *scalar.Resources)
-	// SetSlackEntitlementByKind sets the entitlement of the respool
-	// by kind.
-	SetSlackEntitlementByKind(kind string, entitlement float64)
+	// GetNonSlackEntitlement returns the entitlement for non-revocable tasks.
+	GetNonSlackEntitlement() *scalar.Resources
 
 	// AddToAllocation adds resources to current allocation
 	// for the resource pool.
@@ -113,6 +103,9 @@ type ResPool interface {
 	GetTotalAllocatedResources() *scalar.Resources
 	// GetSlackAllocatedResources returns the slack allocation for the resource pool.
 	GetSlackAllocatedResources() *scalar.Resources
+	// GetNonSlackAllocatedResources returns resources allocated to non-revocable tasks.
+	GetNonSlackAllocatedResources() *scalar.Resources
+
 	// CalculateTotalAllocatedResources calculates the total allocation recursively for
 	// all the children.
 	CalculateTotalAllocatedResources() *scalar.Resources
@@ -177,6 +170,9 @@ type resPool struct {
 	// Tracks the max resources this resource pool can use in a given
 	// entitlement cycle
 	entitlement *scalar.Resources
+	// Tracks the max resources for this resource pool to be given
+	// for non-revocable tasks.
+	nonSlackEntitlement *scalar.Resources
 	// Tracks the max slack resources this resource pool can use
 	// in a given entitlement cycle for revocable tasks.
 	// As of now, slack entitlement is only calculated for [cpus]
@@ -267,24 +263,25 @@ func NewRespool(
 	}
 
 	pool := &resPool{
-		id:               id,
-		children:         list.New(),
-		parent:           parent,
-		resourceConfigs:  make(map[string]*respool.ResourceConfig),
-		poolConfig:       config,
-		pendingQueue:     pq,
-		controllerQueue:  cq,
-		npQueue:          nq,
-		revocableQueue:   rq,
-		allocation:       scalar.NewAllocation(),
-		entitlement:      &scalar.Resources{},
-		slackEntitlement: &scalar.Resources{},
-		demand:           &scalar.Resources{},
-		slackDemand:      &scalar.Resources{},
-		slackLimit:       &scalar.Resources{},
-		reservation:      &scalar.Resources{},
-		invalidTasks:     make(map[string]bool),
-		preemptionCfg:    preemptionConfig,
+		id:                  id,
+		children:            list.New(),
+		parent:              parent,
+		resourceConfigs:     make(map[string]*respool.ResourceConfig),
+		poolConfig:          config,
+		pendingQueue:        pq,
+		controllerQueue:     cq,
+		npQueue:             nq,
+		revocableQueue:      rq,
+		allocation:          scalar.NewAllocation(),
+		entitlement:         &scalar.Resources{},
+		nonSlackEntitlement: &scalar.Resources{},
+		slackEntitlement:    &scalar.Resources{},
+		demand:              &scalar.Resources{},
+		slackDemand:         &scalar.Resources{},
+		slackLimit:          &scalar.Resources{},
+		reservation:         &scalar.Resources{},
+		invalidTasks:        make(map[string]bool),
+		preemptionCfg:       preemptionConfig,
 	}
 
 	// Initialize metrics
@@ -470,14 +467,15 @@ func (n *resPool) dequeue(
 		if err != nil {
 			if err == errGangInvalid ||
 				err == errSkipNonPreemptibleGang ||
-				err == errSkipControllerGang {
+				err == errSkipControllerGang ||
+				err == errSkipRevocableGang {
 				// the admission can fail  :
 				// 1. Because the gang is invalid.
 				// In this case we move on to the next gang in the queue with the
 				// expectation that the invalid gang is removed from the head of
 				// the queue.
 				// 2. Because the gang should be skipped (
-				// controller gang or non-preemptible gang)
+				// revocable gang, controller gang or non-preemptible gang)
 				log.WithFields(log.Fields{
 					"respool_id": n.id,
 					"error":      err.Error(),
@@ -574,8 +572,8 @@ func (n *resPool) calculateAllocation() *scalar.Allocation {
 	return allocation
 }
 
-// CalculateAndSetDemand calculates and sets the resource demand
-// for the resource pool recursively for the subtree
+// CalculateDemand calculates and sets the non-revocable tasks
+// resource demand for the resource pool recursively for the subtree
 func (n *resPool) CalculateDemand() *scalar.Resources {
 	if n.isLeaf() {
 		return n.demand
@@ -757,75 +755,14 @@ func (n *resPool) initSlackLimit(cfg *respool.ResourcePoolConfig) {
 	}).Info("Setting slack limit")
 }
 
-// ControllerLimit returns the controller limit of the resource pool
-func (n *resPool) ControllerLimit() *scalar.Resources {
-	return n.controllerLimit
-}
-
-// SetControllerLimit sets the controller limit of this resource pool
-func (n *resPool) SetControllerLimit(controllerLimit *scalar.Resources) {
-	n.controllerLimit = controllerLimit
-}
-
 // SlackLimit returns the slack limit of the resource pool
 func (n *resPool) GetSlackLimit() *scalar.Resources {
 	return n.slackLimit
 }
 
-// SetSlackLimit sets the slack limit of this resource pool
-func (n *resPool) SetSlackLimit(slackLimit *scalar.Resources) {
-	n.slackLimit = slackLimit
-}
-
-// SetEntitlement sets the entitlement for the resource pool
-func (n *resPool) SetEntitlement(entitlement map[string]float64) {
-	n.Lock()
-	defer n.Unlock()
-
-	if entitlement == nil {
-		return
-	}
-
-	for kind, capacity := range entitlement {
-		switch kind {
-		case common.CPU:
-			n.entitlement.CPU = capacity
-		case common.DISK:
-			n.entitlement.DISK = capacity
-		case common.GPU:
-			n.entitlement.GPU = capacity
-		case common.MEMORY:
-			n.entitlement.MEMORY = capacity
-		}
-	}
-	log.WithFields(log.Fields{
-		"respool_id":  n.ID(),
-		"entitlement": n.entitlement.String(),
-	}).Info("Setting Entitlement for Respool: " + n.Name())
-}
-
-// SetEntitlementByKind sets the entitlement for the resource pool
-func (n *resPool) SetEntitlementByKind(kind string, entitlement float64) {
-	n.Lock()
-	defer n.Unlock()
-	switch kind {
-	case common.CPU:
-		n.entitlement.CPU = entitlement
-	case common.DISK:
-		n.entitlement.DISK = entitlement
-	case common.GPU:
-		n.entitlement.GPU = entitlement
-	case common.MEMORY:
-		n.entitlement.MEMORY = entitlement
-	}
-	log.WithFields(log.Fields{
-		"respool_id":  n.ID(),
-		"kind":        kind,
-		"entitlement": entitlement,
-	}).Debug("Setting Entitlement")
-}
-
-func (n *resPool) SetEntitlementResources(res *scalar.Resources) {
+// SetEntitlement sets the entitlement of non-revocable resources
+// for non-revocable tasks + revocable tasks for this resource pool.
+func (n *resPool) SetEntitlement(res *scalar.Resources) {
 	n.Lock()
 	defer n.Unlock()
 	n.entitlement = res
@@ -835,58 +772,9 @@ func (n *resPool) SetEntitlementResources(res *scalar.Resources) {
 	}).Debug("Setting Entitlement")
 }
 
-// SetSlackEntitlement sets the entitlement for the resource pool
-func (n *resPool) SetSlackEntitlement(entitlement map[string]float64) {
-	n.Lock()
-	defer n.Unlock()
-
-	if entitlement == nil {
-		return
-	}
-
-	for kind, capacity := range entitlement {
-		switch kind {
-		case common.CPU:
-			n.slackEntitlement.CPU = capacity
-		case common.DISK:
-			n.slackEntitlement.DISK = capacity
-		case common.GPU:
-			n.slackEntitlement.GPU = capacity
-		case common.MEMORY:
-			n.slackEntitlement.MEMORY = capacity
-		}
-	}
-	log.WithFields(log.Fields{
-		"respool_id":        n.ID(),
-		"respool_name":      n.Name(),
-		"slack_entitlement": n.slackEntitlement.String(),
-	}).Debug("Setting Slack Entitlement for Respool")
-}
-
-// SetSlackEntitlementByKind sets the slack entitlement for the resource pool
-// Only slack/revocable CPU resources are supported.
-func (n *resPool) SetSlackEntitlementByKind(kind string, slackEntitlement float64) {
-	n.Lock()
-	defer n.Unlock()
-	switch kind {
-	case common.CPU:
-		n.slackEntitlement.CPU = slackEntitlement
-	case common.DISK:
-		n.slackEntitlement.DISK = slackEntitlement
-	case common.GPU:
-		n.slackEntitlement.GPU = slackEntitlement
-	case common.MEMORY:
-		n.slackEntitlement.MEMORY = slackEntitlement
-	}
-	log.WithFields(log.Fields{
-		"respool_id":        n.ID(),
-		"kind":              kind,
-		"slack_entitlement": slackEntitlement,
-	}).Debug("Setting Slack Entitlement")
-}
-
-// SetSlackEntitlementResources sets the slack entitlement for provided resources.
-func (n *resPool) SetSlackEntitlementResources(res *scalar.Resources) {
+// SetSlackEntitlement sets the entitlement of revocable cpus
+// + non-revocable resources [mem, disk, gpu] for the resource pool
+func (n *resPool) SetSlackEntitlement(res *scalar.Resources) {
 	n.Lock()
 	defer n.Unlock()
 	n.slackEntitlement = res
@@ -896,36 +784,32 @@ func (n *resPool) SetSlackEntitlementResources(res *scalar.Resources) {
 	}).Debug("Setting Slack Entitlement")
 }
 
-// GetEntitlement gets the entitlement for the resource pool
+// SetNonSlackEntitlement Sets the entitlement of non-revocable resources
+// for non-revocable tasks for this resource pool
+func (n *resPool) SetNonSlackEntitlement(res *scalar.Resources) {
+	n.Lock()
+	defer n.Unlock()
+	n.nonSlackEntitlement = res
+}
+
+// GetEntitlement returns the total entitlement of non-revocable resources
+// for this resource pool.
 func (n *resPool) GetEntitlement() *scalar.Resources {
 	n.RLock()
 	defer n.RUnlock()
 	return n.entitlement
 }
 
-// GetSlackEntitlement gets the entitlement for the resource pool
+// GetSlackEntitlement returns the entitlement for revocable tasks.
 func (n *resPool) GetSlackEntitlement() *scalar.Resources {
 	n.RLock()
 	defer n.RUnlock()
 	return n.slackEntitlement
 }
 
-// GetSlackEntitlementByKind returns the slack entitlement for a kind
-func (n *resPool) GetSlackEntitlementByKind(kind string) float64 {
-	n.RLock()
-	defer n.RUnlock()
-	switch kind {
-	case common.CPU:
-		return n.slackEntitlement.CPU
-	case common.DISK:
-		return n.slackEntitlement.DISK
-	case common.GPU:
-		return n.slackEntitlement.GPU
-	case common.MEMORY:
-		return n.slackEntitlement.MEMORY
-	}
-
-	return 0
+// GetNonSlackEntitlement returns the entitlement for non-revocable tasks.
+func (n *resPool) GetNonSlackEntitlement() *scalar.Resources {
+	return n.nonSlackEntitlement
 }
 
 // GetTotalAllocatedResources gets the resource allocation for the pool
@@ -940,6 +824,13 @@ func (n *resPool) GetSlackAllocatedResources() *scalar.Resources {
 	n.RLock()
 	defer n.RUnlock()
 	return n.allocation.GetByType(scalar.SlackAllocation)
+}
+
+// GetNonSlackAllocatedResources returns resources allocated to non-revocable tasks.
+func (n *resPool) GetNonSlackAllocatedResources() *scalar.Resources {
+	n.RLock()
+	defer n.RUnlock()
+	return n.allocation.GetByType(scalar.NonSlackAllocation)
 }
 
 // SetAllocation sets the resource allocation for the pool
@@ -1137,21 +1028,23 @@ func (n *resPool) updateStaticResourceMetrics() {
 // usage and entitlement calculation
 // ToDo (varung): expose available slack resources
 func (n *resPool) updateDynamicResourceMetrics() {
-	n.metrics.Entitlement.Update(n.entitlement)
+	n.metrics.TotalEntitlement.Update(n.entitlement)
 	n.metrics.SlackEntitlement.Update(n.slackEntitlement)
+	n.metrics.NonSlackEntitlement.Update(n.nonSlackEntitlement)
 
-	n.metrics.TotalAllocation.Update(n.allocation.GetByType(scalar.TotalAllocation))
-	n.metrics.SlackAllocation.Update(n.allocation.GetByType(scalar.SlackAllocation))
-	n.metrics.NonPreemptibleAllocation.Update(n.allocation.GetByType(scalar.
-		NonPreemptibleAllocation))
-	n.metrics.ControllerAllocation.Update(n.allocation.GetByType(scalar.
-		ControllerAllocation))
+	n.metrics.TotalAllocation.Update(n.allocation.GetByType(
+		scalar.TotalAllocation))
+	n.metrics.SlackAllocation.Update(n.allocation.GetByType(
+		scalar.SlackAllocation))
+	n.metrics.NonPreemptibleAllocation.Update(n.allocation.GetByType(
+		scalar.NonPreemptibleAllocation))
+	n.metrics.ControllerAllocation.Update(n.allocation.GetByType(
+		scalar.ControllerAllocation))
+	n.metrics.NonSlackAllocation.Update(n.allocation.GetByType(
+		scalar.NonSlackAllocation))
 
-	nonSlackAllocation := n.allocation.GetByType(scalar.TotalAllocation).
-		Subtract(n.allocation.GetByType(scalar.SlackAllocation))
-	n.metrics.NonSlackAllocation.Update(nonSlackAllocation)
-	n.metrics.Available.Update(n.entitlement.
-		Subtract(nonSlackAllocation))
+	n.metrics.NonSlackAvailable.Update(n.nonSlackEntitlement.
+		Subtract(n.allocation.GetByType(scalar.NonSlackAllocation)))
 	n.metrics.SlackAvailable.Update(n.slackEntitlement.
 		Subtract(n.allocation.GetByType(scalar.SlackAllocation)))
 

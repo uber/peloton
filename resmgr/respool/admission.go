@@ -63,7 +63,7 @@ type admitter func(gang *resmgrsvc.Gang, pool *resPool) bool
 func entitlementAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 	var currentAllocation, currentEntitlement *scalar.Resources
 	if !isRevocable(gang) {
-		currentEntitlement = pool.entitlement
+		currentEntitlement = pool.nonSlackEntitlement
 		currentAllocation = pool.allocation.GetByType(scalar.TotalAllocation).Subtract(
 			pool.allocation.GetByType(scalar.SlackAllocation))
 	} else {
@@ -74,7 +74,7 @@ func entitlementAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 	neededResources := scalar.GetGangResources(gang)
 	log.WithFields(log.Fields{
 		"entitlement":        currentEntitlement,
-		"total_alloc":        currentAllocation,
+		"allocation":         currentAllocation,
 		"resources_required": neededResources,
 	}).Debug("checking entitlement")
 
