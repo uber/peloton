@@ -82,9 +82,9 @@ func (h *serviceHandler) GetJob(
 	return &svc.GetJobResponse{}, nil
 }
 func (h *serviceHandler) ListPods(
-	ctx context.Context,
-	req *svc.ListPodsRequest) (*svc.ListPodsResponse, error) {
-	return &svc.ListPodsResponse{}, nil
+	req *svc.ListPodsRequest,
+	stream svc.JobServiceServiceListPodsYARPCServer) error {
+	return nil
 }
 func (h *serviceHandler) QueryPods(
 	ctx context.Context,
@@ -95,6 +95,11 @@ func (h *serviceHandler) QueryJobs(
 	ctx context.Context,
 	req *svc.QueryJobsRequest) (*svc.QueryJobsResponse, error) {
 	return &svc.QueryJobsResponse{}, nil
+}
+func (h *serviceHandler) ListJobs(
+	req *svc.ListJobsRequest,
+	stream svc.JobServiceServiceListJobsYARPCServer) error {
+	return nil
 }
 func (h *serviceHandler) ListJobUpdates(
 	ctx context.Context,

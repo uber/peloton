@@ -284,19 +284,17 @@ message ListPodsRequest {
   // The job identifier of the pods to list.
   peloton.JobID job_id = 1;
 
-  // The instance ID range of the pods to list.
+  // The instance ID range of the pods to list. If unset, all pods
+  // in the job will be returned.
   pod.InstanceIDRange range = 2;
-
-  // If set to true, only return the pod status and not the configuration.
-  bool summary_only = 3;
 }
 
 // Response message for JobService.ListPods method.
 // Return errors:
 //   NOT_FOUND:         if the job ID is not found.
 message ListPodsResponse {
-  // The map of pod ID to pod info for all matching pods.
-  map<string, pod.PodInfo> pods = 1;
+  // Pod summary for all matching pods.
+  repeated pod.PodSummary pods = 1;
 }
 
 // Request message for JobService.QueryPods method.
@@ -389,6 +387,15 @@ message GetJobCacheResponse {
   stateless.JobStatus status = 2;
 }
 
+// Request message for JobService.ListJobs method.
+message ListJobsRequest {}
+
+// Response message for JobService.ListJobs method.
+message ListJobsResponse {
+  // List of all jobs.
+  repeated stateless.JobSummary jobs = 1;
+}
+
 // Job service defines the job related methods such as create, get, query and kill jobs.
 service JobService {
   // Methods which mutate the state of the job.
@@ -439,7 +446,7 @@ service JobService {
   rpc GetJob(GetJobRequest) returns (GetJobResponse);
 
   // List all pods in a job for a given range of pod IDs.
-  rpc ListPods(ListPodsRequest) returns (ListPodsResponse);
+  rpc ListPods(ListPodsRequest) returns (stream ListPodsResponse);
 
   // Query pod info in a job using a set of filters.
   rpc QueryPods(QueryPodsRequest) returns (QueryPodsResponse);
@@ -447,6 +454,10 @@ service JobService {
   // Query the jobs using a set of filters.
   // TODO find the appropriate service to put this method in.
   rpc QueryJobs(QueryJobsRequest) returns (QueryJobsResponse);
+
+  // Get summary for all jobs. Results are streamed back to the caller
+  // in batches and the stream is closed once all results have been sent.
+  rpc ListJobs(ListJobsRequest) returns (stream ListJobsResponse);
 
   // List all updates (including current and previously completed) for a given job.
   rpc ListJobUpdates(ListJobUpdatesRequest) returns (ListJobUpdatesResponse);

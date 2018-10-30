@@ -409,6 +409,18 @@ message PodInfo {
   PodStatus status = 2;
 }
 
+// Summary information about a pod
+message PodSummary {
+  // Name of the pod
+  peloton.PodName pod_name = 1;
+
+  // Name of image used by the pod
+  string image = 2;
+
+  // Runtime status of the pod
+  PodStatus status = 3;
+}
+
 // Pod InstanceID range [from, to)
 message InstanceIDRange {
   uint32 from = 1;
