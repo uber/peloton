@@ -17,10 +17,10 @@ zookeeper:
     diskLimitMb: 10000.0
 
 mesos-master:
-  docker_registry: docker-registry.pit-irn-1.uberatc.net
-  image_path: uber-usi/uber-mesos
-  version: sjc1-produ-0000000002
-  image: docker-registry.pit-irn-1.uberatc.net/uber-usi/uber-mesos:sjc1-produ-0000000002
+  docker_registry: ''
+  image_path: mesosphere/mesos-master
+  version: 1.6.0-rc1
+  image: mesosphere/mesos-master:1.6.0-rc1
   instance_count: 3
   ports:
     - MESOS_PORT
@@ -56,10 +56,10 @@ mesos-master:
       name: 'credentials.json'
 
 mesos-slave:
-  docker_registry: docker-registry.pit-irn-1.uberatc.net
-  image_path: uber-usi/uber-mesos
-  version: sjc1-produ-0000000002
-  image: docker-registry.pit-irn-1.uberatc.net/uber-usi/uber-mesos:sjc1-produ-0000000002
+  docker_registry: ''
+  image_path: mesosphere/mesos-master
+  version: 1.6.0-rc1
+  image: mesosphere/mesos-master:1.6.0-rc1
   instance_count: 8
   ports:
     - MESOS_PORT
@@ -99,22 +99,31 @@ mesos-slave:
 
 
 cassandra:
-  cli: 'cqlsh'
-  host: 'ms-82ef95a4.pit-irn-1.uberatc.net'
-#  port: '9042'
-  version: '--cqlversion=3.4.0'
-  migrate_cli: '%s/bin/migrate'
-  path: 'storage/cassandra/migrations'
-  cmd:
-    create: "CREATE KEYSPACE IF NOT EXISTS {keyspace} with replication={{ 'class' : 'SimpleStrategy', 'replication_factor' : 1 }};"
-    drop: "DROP KEYSPACE IF EXISTS {keyspace}"
-    migrate: "cassandra://{host}:{port}/{keyspace}?protocol=4&consistency=all&disable_init_host_lookup"
-
+  docker_registry: ''
+  image_path: cassandra
+  version: 3.0.14
+#  keyspace: vcluster
+  instance_count: 1
+  ports:
+    - CQL_PORT
+    - THRIFT_PORT
+  start_command: 'bash /mnt/mesos/sandbox/peloton_vcluster_run_cassandra.sh'
+  resource:
+    cpuLimit: 8.0
+    memLimitMb: 20480.0
+    diskLimitMb: 32768.0
+  fetch_files:
+    - source: 'https://gist.githubusercontent.com/amittbose/a3b0fe9f7bc41750ee2a8f0fb0d39202/raw/8206f7dedea2507557d095d6c73f3b207100ed24/peloton_vcluster_run_cassandra.sh'
+      name: 'peloton_vcluster_run_cassandra.sh'
+      executable: true
+    - source: 'http://central.maven.org/maven2/com/stratio/cassandra/cassandra-lucene-index-plugin/3.0.14.0/cassandra-lucene-index-plugin-3.0.14.0.jar'
+      name: 'cassandra-lucene-index-plugin-3.0.14.0.jar'
+      cached: true
 
 peloton:
-  docker_registry: docker-registry.pit-irn-1.uberatc.net
-  image_path: vendor/peloton
-  version: 0.7.2
+  docker_registry: ''
+  image_path: uber/peloton
+  version: 0.8.0
   ports:
     - HTTP_PORT
     - GRPC_PORT
@@ -132,7 +141,7 @@ peloton:
     - name: 'CONFIG_DIR'
       value: 'config'
     - name: 'AUTO_MIGRATE'
-      value: 'false'
+      value: 'true'
     - name: 'MESOS_SECRET_FILE'
       value: '/mnt/mesos/sandbox/hostmgr_mesos_secret'
   start_command: 'bash /bin/entrypoint.sh'

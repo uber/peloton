@@ -1,7 +1,10 @@
 import json
+import time
 import uuid
 
 from kazoo.client import KazooClient
+
+from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 
 from config_generator import (
     create_mesos_task_config,
@@ -48,7 +51,7 @@ class Module(object):
         self.version = ''
 
     def setup(self, dynamic_env, instance_number,
-              job_name=None, version=None):
+              job_name=None, version=None, image_path=None):
         """
         param dynamic: dict of dynamic environment virable
         param instance_number: number of tasks in the job
@@ -63,7 +66,8 @@ class Module(object):
         task_config = create_mesos_task_config(self.config,
                                                self.name,
                                                dynamic_env,
-                                               version)
+                                               version,
+                                               image_path)
         if version:
             self.version = version
 
@@ -87,7 +91,7 @@ class Module(object):
         """
         if not job_name:
             job_name = self.label + '_' + self.name
-        states = [] if remove else ['RUNNING']
+        states = [] if remove else ['RUNNING', 'PENDING', 'INITIALIZED']
         ids = self.peloton_helper.get_jobs_by_label(
             self.label, job_name, states)
         for id in ids:
@@ -98,6 +102,34 @@ class Module(object):
             for id in ids:
                 self.peloton_helper.monitering(id, NOT_IN_KILLING_STATE)
                 self.peloton_helper.delete_job(id)
+
+    def get_host_port_for_instance(self, instance_num, port_name):
+        """
+        rtype: host, port: str, str
+        """
+        if self.job_id:
+            ids = [self.job_id]
+        else:
+            ids = self.peloton_helper.get_jobs_by_label(
+                self.label,
+                self.label + '_' + self.name,
+                ['RUNNING']
+            )
+            if len(ids) == 0:
+                raise Exception("No jobs found for %s" % self.name)
+
+        tasks = self.peloton_helper.get_tasks(ids[0])
+        if len(tasks) == 0:
+            raise Exception("No instances found for %s" % self.name)
+        if instance_num >= len(tasks):
+            raise Exception(
+                "Instance %d not found for %s" % (instance_num, self.name))
+        host = tasks[instance_num].runtime.host
+        port = tasks[instance_num].runtime.ports.get(port_name)
+        if not port:
+            raise Exception("Port %s not found for %s,%s" % (
+                port_name, self.name, instance_num))
+        return host, port
 
 
 class Zookeeper(Module):
@@ -115,22 +147,7 @@ class Zookeeper(Module):
         """
         rtype: host, port: str, str
         """
-        if self.job_id:
-            ids = [self.job_id]
-        else:
-            ids = self.peloton_helper.get_jobs_by_label(
-                self.label,
-                self.label + '_' + 'zookeeper',
-                ['RUNNING']
-            )
-
-        if len(ids) == 0:
-            raise Exception("No zookeeper")
-
-        zk_tasks = self.peloton_helper.get_tasks(ids[0])
-        host = zk_tasks[0].runtime.host
-        port = zk_tasks[0].runtime.ports['ZOO_PORT']
-        return host, port
+        return self.get_host_port_for_instance(0, "ZOO_PORT")
 
 
 class MesosMaster(Module):
@@ -225,6 +242,12 @@ class Cassandra(Module):
             'cassandra', label_name, config, peloton_helper
         )
 
+    def get_host_port(self):
+        """
+        rtype: host, port: str, str
+        """
+        return self.get_host_port_for_instance(0, "CQL_PORT")
+
 
 class Peloton(Module):
     def __init__(self, label_name, config, peloton_helper):
@@ -236,3 +259,44 @@ class Peloton(Module):
         super(Peloton, self).__init__(
             'peloton', label_name, config, peloton_helper
         )
+
+    def setup(self, dynamic_env, instance_number,
+              job_name=None, version=None, image_path=None):
+        """
+        Overrides setup() from base-class to create hostmgr in a phased manner.
+        """
+        if 'hostmgr' not in job_name:
+            return super(Peloton, self).setup(
+                dynamic_env,
+                instance_number,
+                job_name=job_name,
+                version=version,
+                image_path=image_path)
+
+        # create a single instance of hostmgr to avoid running DB migrations
+        # concurrently.
+        super(Peloton, self).setup(
+                dynamic_env,
+                1,
+                job_name=job_name,
+                version=version,
+                image_path=image_path)
+        # Wait a little so that DB migration can complete.
+        # TODO(amitbose) Find a better way to wait
+        time.sleep(30)
+        jobInfo = self.peloton_helper.get_job(self.job_id).jobInfo
+        runtime = jobInfo.runtime
+        config = jobInfo.config
+
+        # update the job to change the instances
+        config.instanceCount = instance_number
+        cl = peloton.ChangeLog(version=runtime.configurationVersion)
+        config.changeLog.MergeFrom(cl)
+        self.peloton_helper.update_stateless_job(self.job_id, config)
+
+        print_okblue('Waiting for job %s update...' % job_name)
+        if not self.peloton_helper.monitering(self.job_id,
+                                              RUNNING_TARGET_STATUS):
+            raise ModuleLaunchFailedException(
+                "%s can not launch: update failed" % self.name)
+        return self.job_id

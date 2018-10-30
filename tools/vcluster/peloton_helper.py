@@ -10,6 +10,9 @@ from peloton_client.pbgen.peloton.api.v0.job import job_pb2 as job
 from peloton_client.pbgen.peloton.api.v0.query import query_pb2 as query
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 from peloton_client.pbgen.peloton.api.v0.respool import respool_pb2 as respool
+from peloton_client.pbgen.peloton.api.v0.update import update_pb2
+from peloton_client.pbgen.peloton.api.v0.update.svc import (
+    update_svc_pb2 as update_svc)
 
 from config_generator import (
     create_pool_config,
@@ -115,6 +118,53 @@ class PelotonClientHelper(object):
             )
             raise
 
+    def get_job_config_spec(self, label, name,
+                            num_instance, default_task_config,
+                            instance_config=None, **extra):
+        """
+        Creates a job.JobConfig object
+        :param label: the label value of the job
+        :param name: the name of the job
+        :param respool_id: the id of the resource pool
+        :param num_instance: the number of instance of the job
+        :param default_task_config: the default task config of the job
+        :param instance_config: instance specific task config
+        :param extra: extra information of the job
+
+        :type label: str
+        :type name: str
+        :type respool_id: str
+        :type num_instance: int
+        :type default_task_config: task.TaskConfig
+        :type instance_config: dict<int, task.TaskConfig>
+        :type extra: dict
+        """
+        return job.JobConfig(
+            name=name,
+            type=extra.get('job_type', job.SERVICE),
+            labels=[
+                peloton.Label(
+                    key='cluster_name',
+                    value=label,
+                ),
+                peloton.Label(
+                    key='module_name',
+                    value=name,
+                ),
+            ],
+            owningTeam=extra.get('owningTeam', 'compute'),
+            description=extra.get('description', 'compute task'),
+            instanceCount=num_instance,
+            defaultConfig=default_task_config,
+            instanceConfig=instance_config,
+            # sla is required by resmgr
+            sla=job.SlaConfig(
+                priority=1,
+                preemptible=True,
+            ),
+            respoolID=peloton.ResourcePoolID(value=self.respool_id),
+            changeLog=extra.get('change_log', None))
+
     def create_job(self, label, name,
                    num_instance, default_task_config,
                    instance_config=None, **extra):
@@ -138,32 +188,9 @@ class PelotonClientHelper(object):
         :rtypr: job.CreateResponse
         """
         request = job.CreateRequest(
-            config=job.JobConfig(
-                name=name,
-                type=job.SERVICE,
-                labels=[
-                    peloton.Label(
-                        key='cluster_name',
-                        value=label,
-                    ),
-                    peloton.Label(
-                        key='module_name',
-                        value=name,
-                    ),
-                ],
-                owningTeam=extra.get('owningTeam', 'compute'),
-                description=extra.get('description', 'compute task'),
-                instanceCount=num_instance,
-                defaultConfig=default_task_config,
-                instanceConfig=instance_config,
-                # sla is required by resmgr
-                sla=job.SlaConfig(
-                    priority=1,
-                    preemptible=True,
-                ),
-                respoolID=peloton.ResourcePoolID(value=self.respool_id),
-            ),
-        )
+            config=self.get_job_config_spec(
+                label, name, num_instance, default_task_config,
+                instance_config=instance_config, **extra))
 
         try:
             resp = self.client.job_svc.Create(
@@ -290,6 +317,57 @@ class PelotonClientHelper(object):
             return resp
         except Exception, e:
             print_fail('Exception calling delete job :%s' % str(e))
+            raise
+
+    def update_job(self, job_id, new_job_config):
+        """
+        param job_id: id of the job
+        param new_job_config: new config of the job
+        type job_id: str
+        type new_job_config: job.JobConfig
+
+        rtype: job.UpdateResponse
+        """
+        request = job.UpdateRequest(
+            id=peloton.JobID(value=job_id),
+            config=new_job_config,
+        )
+        try:
+            print_okblue("Updating Job %s" % job_id)
+            resp = self.client.job_svc.Update(
+                request,
+                metadata=self.client.jobmgr_metadata,
+                timeout=default_timeout,
+            )
+            return resp
+        except Exception, e:
+            print_fail('Exception calling Update Job: %s' % str(e))
+            raise
+
+    def update_stateless_job(self, job_id, new_job_config):
+        """
+        param job_id: id of the job
+        param new_job_config: new config of the job
+        type job_id: str
+        type new_job_config: job.JobConfig
+
+        rtype: job.UpdateResponse
+        """
+        request = update_svc.CreateUpdateRequest(
+            jobId=peloton.JobID(value=job_id),
+            jobConfig=new_job_config,
+            updateConfig=update_pb2.UpdateConfig()
+        )
+        try:
+            print_okblue("Updating Job %s" % job_id)
+            resp = self.client.update_svc.CreateUpdate(
+                request,
+                metadata=self.client.jobmgr_metadata,
+                timeout=default_timeout,
+            )
+            return resp
+        except Exception, e:
+            print_fail('Exception calling Update Stateless Job: %s' % str(e))
             raise
 
     def get_tasks(self, job_id):

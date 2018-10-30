@@ -270,7 +270,6 @@ vcluster:
 		pip install -r tools/vcluster/requirements.txt ; \
 		deactivate ; \
 	fi
-	go get github.com/gemnasium/migrate
 
 version:
 	@echo $(PACKAGE_VERSION)

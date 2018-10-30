@@ -14,7 +14,8 @@ def load_config(config_file):
 
 
 # create task config to launch Mesos Containerizer container
-def create_mesos_task_config(config, module, dynamic_env, version=None):
+def create_mesos_task_config(config, module, dynamic_env,
+                             version=None, image_path=None):
     resource_config = config.get(module).get('resource')
     ports = config.get(module).get('ports', [])
     ports_config = []
@@ -47,12 +48,16 @@ def create_mesos_task_config(config, module, dynamic_env, version=None):
             )
         )
 
-    docker_registry = config.get(module).get('docker_registry')
-    image_path = config.get(module).get('image_path')
-    if not version:
-        version = config.get(module).get('version')
+    if image_path:
+        docker_image = image_path
+    else:
+        docker_registry = config.get(module).get('docker_registry')
+        image_path = config.get(module).get('image_path')
+        if not version:
+            version = config.get(module).get('version')
 
-    docker_image = os.path.join(docker_registry, image_path) + ':' + version
+        docker_image = os.path.join(docker_registry, image_path) + ':' + \
+            version
 
     return task.TaskConfig(
         resource=task.ResourceConfig(**resource_config),
@@ -73,6 +78,8 @@ def create_mesos_task_config(config, module, dynamic_env, version=None):
             uris=[mesos.CommandInfo.URI(
                 value=fetch_file['source'],
                 output_file=fetch_file['name'],
+                cache=bool(fetch_file.get('cache', False)),
+                executable=bool(fetch_file.get('executable', False)),
             ) for fetch_file in fetch_files],
             shell=True,
             value=start_cmd,

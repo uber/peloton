@@ -26,12 +26,12 @@ class ConfigGeneratorTest(unittest.TestCase):
             config,
             module='peloton',
             dynamic_env=dynamic_env_master,
-            version='1.0.0')
+            image_path='myregistry/peloton:0.1.0')
 
         expected = task.TaskConfig(
             resource=task.ResourceConfig(
                 cpuLimit=2.0,
-                memLimitMb=2048,
+                memLimitMb=4096,
                 diskLimitMb=2048,
             ),
             ports=[task.PortConfig(
@@ -46,8 +46,7 @@ class ConfigGeneratorTest(unittest.TestCase):
                     image=mesos.Image(
                         type='DOCKER',
                         docker=mesos.Image.Docker(
-                            name='docker-registry.pit-irn-1.uberatc.net'
-                                 '/vendor/peloton:1.0.0',
+                            name='myregistry/peloton:0.1.0',
                         )
                     )
                 ),
@@ -58,6 +57,8 @@ class ConfigGeneratorTest(unittest.TestCase):
                           '08a66afe3a7837e5e1c1528d16b47e6f/raw/'
                           '2119f0fe20b7a1e827e4e43b288545799d6b4e5e/'
                           'hostmgr_mesos_secret',
+                    executable=False,
+                    cache=False,
                     output_file='hostmgr_mesos_secret',
                 )],
                 shell=True,
@@ -68,7 +69,7 @@ class ConfigGeneratorTest(unittest.TestCase):
                         value='config',
                     ), mesos.Environment.Variable(
                         name='AUTO_MIGRATE',
-                        value='false',
+                        value='true',
                     ), mesos.Environment.Variable(
                         name='MESOS_SECRET_FILE',
                         value='/mnt/mesos/sandbox/hostmgr_mesos_secret',

@@ -1,7 +1,5 @@
 import time
-import subprocess
 import os
-from retry import retry
 import json
 
 from peloton_helper import (
@@ -17,73 +15,11 @@ from modules import (
     Zookeeper,
     MesosMaster,
     MesosSlave,
+    Cassandra,
     Peloton,
 )
 
 DEFAULT_PELOTON_NUM_LOG_FILES = 10
-
-
-@retry(tries=3, delay=10)
-def cassandra_operation(config, keyspace, create=True):
-    """
-    rtype: bool
-    """
-    cli = config.get('cassandra').get('cli')
-    host = config.get('cassandra').get('host')
-    port = config.get('cassandra').get('port', '9042')
-    migrate_cli = config.get('cassandra').get('migrate_cli') \
-        % os.environ['GOPATH']
-    migrate_cmd = config.get('cassandra').get('cmd').get('migrate').format(
-        host=host,
-        port=port,
-        keyspace=keyspace,
-    )
-    path = config.get('cassandra').get('path')
-
-    version = config.get('cassandra').get('version')
-    if create:
-        # Create DB
-        create_script = config.get('cassandra').get('cmd').get(
-            'create').format(keyspace=keyspace)
-        cmd_create = [cli, version, "-e", create_script, host, port]
-        print_okgreen(
-            "Step: creating Cassandra keyspace {keyspace} on "
-            "{host}:{port}".format(
-                host=host,
-                port=port,
-                keyspace=keyspace,
-            )
-        )
-        return_create = subprocess.call(cmd_create)
-        time.sleep(5)
-
-        # Migrate DB
-        cmd_migrate = [migrate_cli,
-                       '--url', migrate_cmd,
-                       '--path', path,
-                       'up']
-        print_okgreen(
-            "Step: migrating Cassandra %s from %s" % (
-                migrate_cmd, path
-            )
-        )
-
-        return_migrate = subprocess.call(cmd_migrate)
-        if return_create != 0 | return_migrate != 0:
-            raise Exception("Cassandra DB migration failed")
-    else:
-        cmd = config.get('cassandra').get('cmd').get(
-            'drop').format(keyspace=keyspace)
-        print_okgreen(
-            "Step: drop Cassandra keyspace {keyspace} "
-            "on {host}:{port}".format(
-                host=host,
-                port=port,
-                keyspace=keyspace,
-            )
-        )
-        if subprocess.call([cli, version, "-e", cmd, host, port]) != 0:
-            raise Exception("Cassandra DB drop failed")
 
 
 class VCluster(object):
@@ -122,6 +58,8 @@ class VCluster(object):
                                       self.peloton_helper)
 
         # Optionally includes Peloton apps
+        self.cassandra = Cassandra(self.label_name, self.config,
+                                   self.peloton_helper)
         self.peloton = Peloton(self.label_name, self.config,
                                self.peloton_helper)
 
@@ -182,21 +120,42 @@ class VCluster(object):
         })
         return host, port
 
+    def start_cassandra(self):
+        print_okgreen('Step: creating cassandra')
+        cassandra_count = int(self.config.get('cassandra').get(
+            'instance_count'))
+        keyspace = self.config.get('cassandra').get('keyspace', 'vcluster')
+        env = {'CASSANDRA_KEYSPACE': keyspace}
+        self.vcluster_config['job_info']['cassandra'] = (
+            self.cassandra.setup(env, cassandra_count))
+        host, port = self.cassandra.get_host_port()
+        self.vcluster_config["Cassandra"] = "%s:%s" % (host, port)
+        print_okgreen(
+            'Created Cassandra store at %s:%s, keyspace %s' % (
+                host, port, keyspace
+            ))
+        return host, port, keyspace
+
     def start_peloton(self, virtual_zookeeper, agent_num, version=None,
-                      skip_respool=False):
+                      skip_respool=False, peloton_image=None):
         """
         type zk_host: str
         type zk_port: str
         """
-        # DB Migration
-        cassandra_operation(self.config, keyspace=self.label_name,
-                            create=True)
-        host = self.config.get('cassandra').get('host')
-        time.sleep(10)
-        print_okblue("DB migration finished")
+        # Setup Cassandra
+        chost, cport, keyspace = self.start_cassandra()
+        # Wait a little for cassandra to start-up and create keyspace.
+        # TODO(amitbose) find a better way to wait
+        time.sleep(20)
+
+        if peloton_image:
+            parts = peloton_image.split(':')
+            if len(parts) > 1:
+                version = parts[-1]
 
         # Setup Peloton
-        print_okgreen('Step: Create Peloton, version: %s' % version)
+        print_okgreen('Step: Create Peloton, version: %s, image: %s' % (
+            version, peloton_image))
         num_logs = self.config.get('peloton').get(
             'num_log_files', DEFAULT_PELOTON_NUM_LOG_FILES)
 
@@ -207,10 +166,9 @@ class VCluster(object):
                 'ENVIRONMENT': 'production',
                 'ELECTION_ZK_SERVERS': virtual_zookeeper,
                 'MESOS_ZK_PATH': 'zk://%s/mesos' % virtual_zookeeper,
-                'CASSANDRA_STORE': self.label_name,
-                'CASSANDRA_HOSTS': host,
-                'CASSANDRA_PORT': self.config.get('cassandra').get(
-                    'port', '9042'),
+                'CASSANDRA_STORE': keyspace,
+                'CASSANDRA_HOSTS': chost,
+                'CASSANDRA_PORT': str(cport),
                 'CONTAINER_LOGGER_LOGROTATE_STDERR_OPTIONS':
                 'rotate %s' % num_logs,
             }
@@ -242,7 +200,8 @@ class VCluster(object):
                 self.peloton.setup(
                     dynamic_env_master, peloton_app_count,
                     self.label_name + '_' + 'peloton-' + app,
-                    version
+                    version,
+                    peloton_image,
                 ))
 
         self.vcluster_config.update({
@@ -257,7 +216,8 @@ class VCluster(object):
                 agent_num=agent_num,
             )
 
-    def start_all(self, agent_num, peloton_version, skip_respool=False):
+    def start_all(self, agent_num, peloton_version, skip_respool=False,
+                  peloton_image=None):
         """
         type agent_num: int
         """
@@ -267,7 +227,8 @@ class VCluster(object):
             host, port = self.start_mesos(agent_num)
             virtual_zookeeper = '%s:%s' % (host, port)
             self.start_peloton(virtual_zookeeper, agent_num, peloton_version,
-                               skip_respool=skip_respool)
+                               skip_respool=skip_respool,
+                               peloton_image=peloton_image)
             self.output_vcluster_data()
         except Exception as e:
             print 'Failed to create/configure vcluster: %s' % e
@@ -309,9 +270,8 @@ class VCluster(object):
             self.peloton.teardown(self.label_name + '_' + 'peloton-' + app,
                                   remove=remove)
 
-        print_okgreen('Step: drop the cassandra keyspace')
-        cassandra_operation(self.config, keyspace=self.label_name,
-                            create=False)
+        print_okgreen('Step: stopping cassandra')
+        self.cassandra.teardown(remove=remove)
 
         try:
             os.remove(self.config_name)

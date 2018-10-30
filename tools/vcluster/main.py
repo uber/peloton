@@ -6,7 +6,6 @@ import os
 from config_generator import load_config
 from vcluster import (
     VCluster,
-    cassandra_operation,
 )
 
 DATE = '2017-09-13'
@@ -70,7 +69,7 @@ def parse_arguments():
         help='the number of Mesos agent in the vcluster',
     )
 
-    # Subparser for the 'mesos' command
+    # Subparser for the 'mesos-slave' command
     parser_mesos_slave = subparsers.add_parser(
         'mesos-slave',
         help='adding Mesos slaves giving a zookeeper')
@@ -90,7 +89,7 @@ def parse_arguments():
         help='the host of virtual zk',
     )
 
-    # Subparser for the 'mesos-slave' command
+    # Subparser for the 'mesos-master' command
     parser_mesos_slave = subparsers.add_parser(
         'mesos-master',
         help='set up a virtual cluster with Mesos master and Mesos slave')
@@ -113,6 +112,15 @@ def parse_arguments():
         nargs='?',
         dest='peloton_version',
         help='The image version for Peloton',
+    )
+
+    parser_setup.add_argument(
+        '-i',
+        '--peloton-image',
+        dest='peloton_image',
+        default=None,
+        help='Docker image to use for Peloton. ' +
+        'If specified, overrides option -v',
     )
 
     parser_setup.add_argument(
@@ -181,15 +189,13 @@ def parse_arguments():
         help='The image version for Peloton',
     )
 
-    # Subparser for the 'cassandra' command
-    parser_cassandra = subparsers.add_parser(
-        'cassandra',
-        help='cassandra keyspace creation and migration')
-    parser_cassandra.add_argument(
-        '-o',
-        '--option',
-        dest='option',
-        help='option of action',
+    parser_peloton.add_argument(
+        '-i',
+        '--peloton-image',
+        dest='peloton_image',
+        default=None,
+        help='Docker image to use for Peloton. ' +
+        'If specified, overrides option -v',
     )
 
     subparsers.add_parser(
@@ -238,7 +244,8 @@ def main():
         if len(zk) != 2:
             raise Exception("Invalid zk")
         vcluster.start_peloton(
-            args.zk, args.agent_number, args.peloton_version)
+            args.zk, args.agent_number, args.peloton_version,
+            peloton_image=args.peloton_image)
 
     elif command == 'setup':
         agent_number = args.agent_number
@@ -246,7 +253,8 @@ def main():
         if args.clean_setup:
             vcluster.teardown()
         vcluster.start_all(agent_number, peloton_version,
-                           skip_respool=args.skip_respool)
+                           skip_respool=args.skip_respool,
+                           peloton_image=args.peloton_image)
 
     elif command == 'teardown':
         option = args.option
@@ -256,15 +264,6 @@ def main():
             vcluster.teardown_peloton(remove=args.remove)
         else:
             vcluster.teardown(remove=args.remove)
-
-    elif command == 'cassandra':
-        option = args.option
-        if option == 'up':
-            cassandra_operation(
-                config, create=True, keyspace=args.label_name)
-        elif option == 'drop':
-            cassandra_operation(
-                config, create=False, keyspace=args.label_name)
 
 
 if __name__ == "__main__":

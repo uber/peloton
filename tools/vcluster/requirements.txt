@@ -1,5 +1,5 @@
 # Used for launching peloton job
-peloton-client>=0.7.1
+peloton-client>=0.7.8.1
 
 # To parse yaml config for vCluster
 pyyaml>=3.12
@@ -16,8 +16,5 @@ tabulate>=0.7.7
 bs4>=0.0.1
 jinja2>=1.1.0
 
-# DB migration
-cqlsh>=5.0.4
 retry>=0.9.2
-
 m3>=3.0.0

@@ -3,7 +3,7 @@ import logging
 import os
 import re
 
-from cluster_driver import MiniClusterDriver
+from minicluster_driver import MiniClusterDriver
 from vcluster_driver import VClusterDriver
 
 log = logging.getLogger(__name__)

@@ -17,7 +17,10 @@ Usage
  3. If all tests pass, the created minicluster will be cleaned up.
 
 * Testing against vcluster
-  1. Ensure environment variable GOPATH is set and $GOPATH/bin is in your PATH
+  1. Ensure the following environment variables are set:
+     a. VCLUSTER_ZOOKEEPER is set to the location of Zookeeper where underlying    Peloton is running
+     b. VCLUSTER_PELOTON_IMAGE is set to the Docker image of Peloton that
+        you want to test against (see step 2).
   2. Build a docker image for Peloton and push it to remote registries
      make docker
      make docker-push
@@ -27,10 +30,8 @@ Usage
   5. To override the defaults used to create the vcluster, use the following
      environment variables
      VCLUSTER_CONFIG_FILE - default is $PELOTON_HOME/tools/vcluster/config/default-small.yaml
-     VCLUSTER_ZOOKEEPER - default is zookeeper-mesos-preprod01.pit-irn-1.uberatc.net
      VCLUSTER_RESPOOL - default is /DefaultResPool
      VCLUSTER_LABEL - default is ${USER}_failure_test
-     VCLUSTER_PELOTON_VERSION - default is inferred using 'git describe'
      VCLUSTER_AGENT_NUM - default is 3
 
 

@@ -28,6 +28,15 @@ make vcluster
 
 . env/bin/activate
 
+if [[ -z "${PELOTON_IMAGE}" ]]; then
+  echo "Docker image for Peloton not set in environment variable PELOTON_IMAGE"
+  exit 1
+fi
+if [[ -z "${ZOOKEEPER}" ]]; then
+  echo "Zookeeper location not set in environment variable ZOOKEEPER"
+  exit 1
+fi
+
 # get the current version
 if [[ -z "${VERSION}" ]]; then
   echo "No Version specified"
@@ -45,17 +54,23 @@ echo $COMMIT_HASH
 
 # vCluster name is the first 12 character of the commit
 vcluster_name="v${COMMIT_HASH:0:12}"
+VCLUSTER_ARGS="-z ${ZOOKEEPER} -p /DefaultResPool -n ${vcluster_name}"
+NUM_SLAVES=1000
 
 # start vCluster
-tools/vcluster/main.py -z zookeeper-mesos-preprod01.pit-irn-1.uberatc.net -p /DefaultResPool -n ${vcluster_name} setup -s 1000 -v ${VERSION}
+tools/vcluster/main.py \
+  ${VCLUSTER_ARGS} \
+  setup \
+  -s ${NUM_SLAVES} \
+  -i ${PELOTON_IMAGE}
 
 # run benchmark. Make a note of the return code instead of failing this script
 # so that vcluster teardown is run even if the benchmark fails.
 RC=0
-tests/performance/multi_benchmark.py -i ".${vcluster_name}" -o "PERF_${VERSION}" || RC=$?
+tests/performance/multi_benchmark.py -i ".${vcluster_name}" -o "PERF_TEST" || RC=$?
 
 # teardown vCluster
-tools/vcluster/main.py -z zookeeper-mesos-preprod01.pit-irn-1.uberatc.net -p /DefaultResPool -n ${vcluster_name} teardown
+tools/vcluster/main.py ${VCLUSTER_ARGS} teardown
 
 deactivate
 

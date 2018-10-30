@@ -42,7 +42,17 @@ export DRIVER=$1
 shift
 
 case ${DRIVER} in
-   minicluster|vcluster)
+   minicluster)
+     ;;
+   vcluster)
+      if [[ -z "${VCLUSTER_ZOOKEEPER}" ]]; then
+        echo "Zookeeper location not set in environment variable VCLUSTER_ZOOKEEPER"
+        exit 1
+      fi
+      if [[ -z "${VCLUSTER_PELOTON_IMAGE}" ]]; then
+        echo "Docker image for Peloton not set in environment variable VCLUSTER_PELOTON_IMAGE"
+        exit 1
+      fi
      ;;
    *)
      echo "Unknown driver type ${DRIVER}, see help (-h)"
@@ -52,7 +62,6 @@ esac
 set -eo pipefail
 
 VCLUSTER_CONFIG_FILE=${VCLUSTER_CONFIG_FILE:-tools/vcluster/config/default-small.yaml}
-VCLUSTER_ZOOKEEPER=${VCLUSTER_ZOOKEEPER:-zookeeper-mesos-preprod01.pit-irn-1.uberatc.net}
 VCLUSTER_RESPOOL=${VCLUSTER_RESPOOL:-/DefaultResPool}
 
 if [[ -z "${VCLUSTER_LABEL}" ]]; then
@@ -60,13 +69,10 @@ if [[ -z "${VCLUSTER_LABEL}" ]]; then
 fi
 VCLUSTER_ARGS="-c ${VCLUSTER_CONFIG_FILE} -z ${VCLUSTER_ZOOKEEPER} -p ${VCLUSTER_RESPOOL} -n ${VCLUSTER_LABEL}"
 
-if [[ -z "${VCLUSTER_PELOTON_VERSION}" ]]; then
-  VCLUSTER_PELOTON_VERSION=$(git describe --tags --always)
-fi
 if [[ -z "${VCLUSTER_AGENT_NUM}" ]]; then
   VCLUSTER_AGENT_NUM="3"
 fi
-VCLUSTER_SETUP_ARGS="-s ${VCLUSTER_AGENT_NUM} -v ${VCLUSTER_PELOTON_VERSION} --no-respool --clean"
+VCLUSTER_SETUP_ARGS="-s ${VCLUSTER_AGENT_NUM} -i ${VCLUSTER_PELOTON_IMAGE} --no-respool --clean"
 
 cur_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 root_dir=$(dirname "$cur_dir")
@@ -100,12 +106,7 @@ if [[ ${SKIP_SETUP} -eq 0 ]]; then
       python tools/minicluster/minicluster.py setup -a
       ;;
     vcluster)
-      if [[ -z "${GOPATH}" ]]; then
-        echo "GOPATH not set"
-        exit 1
-      fi
-      go get github.com/gemnasium/migrate
-      echo "Setting up vcluster, label ${VCLUSTER_LABEL}, Peloton version ${VCLUSTER_PELOTON_VERSION}"
+      echo "Setting up vcluster, label ${VCLUSTER_LABEL}, Peloton image ${VCLUSTER_PELOTON_IMAGE}"
       python tools/vcluster/main.py ${VCLUSTER_ARGS} setup ${VCLUSTER_SETUP_ARGS}
       ;;
   esac
