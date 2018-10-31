@@ -20,6 +20,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc/stateless"
 	"code.uber.internal/infra/peloton/jobmgr/logmanager"
+	"code.uber.internal/infra/peloton/jobmgr/podsvc"
 	"code.uber.internal/infra/peloton/jobmgr/task/activermtask"
 	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
@@ -466,6 +467,8 @@ func main() {
 		logmanager.NewLogManager(&http.Client{Timeout: _httpClientTimeout}),
 		activeJobCache,
 	)
+
+	podsvc.InitV1AlphaPodServiceHandler(dispatcher)
 
 	volumesvc.InitServiceHandler(
 		dispatcher,
