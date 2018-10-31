@@ -13,16 +13,18 @@ import (
 
 // Represents the task states in the order in which they should be
 // evaluated for preemption.
-// TODO PLACED, LAUNCHING, LAUNCHED
+// For each task revocable tasks are first selected then
+// preemptible non-revocable tasks
 var taskStatesPreemptionOrder = []task.TaskState{
 	task.TaskState_READY,
 	task.TaskState_PLACING,
 	task.TaskState_RUNNING,
 }
 
-// ranker sorts the tasks in eviction order such that the resourcesLimit is satisfied
+// ranker sorts revocable tasks first for eviction to satisfy slackResourcesToFree and
+// then sort non-revocable tasks to satisfy nonSlackResourcesToFree
 type ranker interface {
-	GetTasksToEvict(respoolID string, requiredResources *scalar.Resources) []*rm_task.RMTask
+	GetTasksToEvict(respoolID string, slackResourcesToFree, nonSlackResourcesToFree *scalar.Resources) []*rm_task.RMTask
 }
 
 // statePriorityRuntimeRanker sorts the tasks in the following order
@@ -49,44 +51,90 @@ func newStatePriorityRuntimeRanker(tracker rm_task.Tracker) ranker {
 
 // GetTasksToEvict returns the tasks in the order in which they should be evicted from
 // the resource pool such that the cumulative resources of those tasks >= requiredResources
-func (r *statePriorityRuntimeRanker) GetTasksToEvict(respoolID string, requiredResources *scalar.Resources) []*rm_task.RMTask {
-	// get all the tasks in preemption order
-	allTasks := r.rankAllTasks(respoolID)
+func (r *statePriorityRuntimeRanker) GetTasksToEvict(
+	respoolID string,
+	slackResourcesToFree, nonSlackResourcesToFree *scalar.Resources) []*rm_task.RMTask {
 
-	// filter tasks based on the resource limit
-	tasksToEvict := filterTasks(requiredResources, allTasks)
-	return tasksToEvict
+	// get all active tasks for this resource pool
+	stateTaskMap := r.tracker.GetActiveTasks("", respoolID, nil)
+
+	// get revocable tasks to preempt and filter on slack resources to free
+	revocableTasks := r.rankAllRevocableTasks(stateTaskMap)
+	revocableTasksToEvict := filterTasks(slackResourcesToFree, revocableTasks)
+
+	// get non-revocable preemptible tasks to preempt and filter on
+	// non-slack resources to free
+	nonRevocTasks := r.rankAllNonRevocableTasks(stateTaskMap)
+	nonRevocTasksToEvict := filterTasks(nonSlackResourcesToFree, nonRevocTasks)
+	return append(revocableTasksToEvict, nonRevocTasksToEvict...)
 }
 
-// rankAllTasks returns all active tasks in the resource pool in the preemption order
-func (r *statePriorityRuntimeRanker) rankAllTasks(respoolID string) []*rm_task.RMTask {
-	stateTaskMap := r.tracker.GetActiveTasks("", respoolID, nil)
+// rankAllRevocableTasks retuns a ranked list of revocable tasks
+// in which order they will be preempted to free up slack resources
+func (r *statePriorityRuntimeRanker) rankAllRevocableTasks(
+	stateTaskMap map[string][]*rm_task.RMTask) []*rm_task.RMTask {
 	var allTasks []*rm_task.RMTask
 	for _, taskState := range taskStatesPreemptionOrder {
-		// tracker contains *all*(preemptible + non-preemptible) tasks,
-		// so we need to filer out the non-preemptible tasks before ranking
+		var tasksInState []*rm_task.RMTask
+		// tracker contains *all*(revocable + preemptible + non-preemptible) tasks,
+		// so we need to filer out the non-revocable tasks before ranking
 		// them.
-		tasksInState := filterPreemptibleTasks(stateTaskMap[taskState.String()])
+		tasksInState = filterRevocableTasks(stateTaskMap[taskState.String()])
+
 		r.sorter.Sort(tasksInState)
 		allTasks = append(allTasks, tasksInState...)
 	}
 	return allTasks
 }
 
-// returns only preemptible tasks
-func filterPreemptibleTasks(allTasks []*rm_task.RMTask) []*rm_task.RMTask {
+// rankAllNonRevocableTasks retuns a ranked order/list of non-revocable preemptible
+// tasks in which order they will be preempted to free up non-slack resources
+func (r *statePriorityRuntimeRanker) rankAllNonRevocableTasks(
+	stateTaskMap map[string][]*rm_task.RMTask) []*rm_task.RMTask {
+	var allTasks []*rm_task.RMTask
+	for _, taskState := range taskStatesPreemptionOrder {
+		var tasksInState []*rm_task.RMTask
+		// tracker contains *all*(revocable + preemptible + non-preemptible) tasks,
+		// so we need to filer out the non-preemptible tasks before ranking
+		// them.
+		tasksInState = filterNonRevocableTasks(stateTaskMap[taskState.String()])
+		r.sorter.Sort(tasksInState)
+		allTasks = append(allTasks, tasksInState...)
+	}
+	return allTasks
+}
+
+// returns only revocable tasks
+func filterRevocableTasks(
+	allTasks []*rm_task.RMTask) []*rm_task.RMTask {
 	var p []*rm_task.RMTask
 	for _, t := range allTasks {
-		if t.Task().Preemptible {
+		if t.Task().Preemptible && t.Task().Revocable {
 			p = append(p, t)
 		}
 	}
+
+	return p
+}
+
+// returns only preemptible non-revocable tasks
+func filterNonRevocableTasks(
+	allTasks []*rm_task.RMTask) []*rm_task.RMTask {
+	var p []*rm_task.RMTask
+	for _, t := range allTasks {
+		if t.Task().Preemptible && !t.Task().Revocable {
+			p = append(p, t)
+		}
+	}
+
 	return p
 }
 
 // filterTasks filters tasks which satisfy the resourcesLimit
 // This method assumes the list of tasks supplied is already sorted in the preferred order
-func filterTasks(resourcesLimit *scalar.Resources, allTasks []*rm_task.RMTask) []*rm_task.RMTask {
+func filterTasks(
+	resourcesLimit *scalar.Resources,
+	allTasks []*rm_task.RMTask) []*rm_task.RMTask {
 	var tasksToEvict []*rm_task.RMTask
 	resourceRunningCount := scalar.ZeroResource
 	for _, task := range allTasks {
@@ -98,6 +146,7 @@ func filterTasks(resourcesLimit *scalar.Resources, allTasks []*rm_task.RMTask) [
 		}
 		// get task resources
 		taskResources := scalar.ConvertToResmgrResource(task.Task().Resource)
+
 		// check if the task resource helps in satisfying resourceToFree
 		newResourceToFree := resourcesLimit.Subtract(taskResources)
 		if newResourceToFree.Equal(resourcesLimit) {

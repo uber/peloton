@@ -201,12 +201,15 @@ func (suite *RankerTestSuite) TestStatePriorityRuntimeRanker_GetTasksToEvict() {
 	suite.addTasks()
 
 	ranker := newStatePriorityRuntimeRanker(suite.tracker)
-	tasksToEvict := ranker.GetTasksToEvict("respool-1", &scalar.Resources{
-		CPU:    10,
-		MEMORY: 1000,
-		GPU:    0,
-		DISK:   100,
-	})
+	tasksToEvict := ranker.GetTasksToEvict(
+		"respool-1",
+		scalar.ZeroResource,
+		&scalar.Resources{
+			CPU:    10,
+			MEMORY: 1000,
+			GPU:    0,
+			DISK:   100,
+		})
 	suite.Equal(12, len(tasksToEvict))
 
 	expectedTasks := []string{
@@ -277,12 +280,15 @@ func (suite *RankerTestSuite) TestStatePriorityRuntimeRanker_GetTasksToEvictLimi
 	suite.addTasks()
 
 	ranker := newStatePriorityRuntimeRanker(suite.tracker)
-	tasksToEvict := ranker.GetTasksToEvict("respool-1", &scalar.Resources{
-		CPU:    5.5,
-		MEMORY: 550,
-		GPU:    0,
-		DISK:   55,
-	})
+	tasksToEvict := ranker.GetTasksToEvict(
+		"respool-1",
+		scalar.ZeroResource,
+		&scalar.Resources{
+			CPU:    5.5,
+			MEMORY: 550,
+			GPU:    0,
+			DISK:   55,
+		})
 
 	// should only contain 7 tasks since resource limit is met by those tasks
 	suite.Equal(7, len(tasksToEvict))
@@ -306,8 +312,10 @@ func (suite *RankerTestSuite) TestStatePriorityRuntimeRanker_GetTasksToEvictLimi
 	}
 }
 
-func (suite *RankerTestSuite) addTaskWithID(tid string,
-	jid string, preemptible bool) {
+func (suite *RankerTestSuite) addTaskWithID(
+	tid string,
+	jid string,
+	preemptible bool) {
 	suite.addTaskToTracker(&resmgr.Task{
 		Name:     tid,
 		Priority: 0,
@@ -322,6 +330,76 @@ func (suite *RankerTestSuite) addTaskWithID(tid string,
 		},
 		Preemptible: preemptible,
 	})
+}
+
+func (suite *RankerTestSuite) addRevocableTaskWithID(
+	tid string,
+	jid string) {
+	suite.addTaskToTracker(&resmgr.Task{
+		Name:     tid,
+		Priority: 0,
+		JobId:    &peloton.JobID{Value: jid},
+		Id:       &peloton.TaskID{Value: tid},
+		Hostname: "hostname",
+		Resource: &task.ResourceConfig{
+			CpuLimit:    1,
+			DiskLimitMb: 9,
+			GpuLimit:    0,
+			MemLimitMb:  100,
+		},
+		Preemptible: true,
+		Revocable:   true,
+	})
+}
+
+func (suite *RankerTestSuite) TestRankerForRevocableTasks() {
+	// Add three non-revocable + non-preemptible tasks
+	suite.addTaskWithID("j3-t1", "j3", false)
+	suite.transitToRunning(&peloton.TaskID{Value: "j3-t1"})
+	suite.addTaskWithID("j3-t2", "j3", false)
+	suite.transitToRunning(&peloton.TaskID{Value: "j3-t2"})
+	suite.addTaskWithID("j3-t3", "j3", false)
+	suite.transitToRunning(&peloton.TaskID{Value: "j3-t3"})
+
+	// Add three revocable tasks
+	suite.addRevocableTaskWithID("j2-t1", "j2")
+	suite.transitToReady(&peloton.TaskID{Value: "j2-t1"})
+	suite.addRevocableTaskWithID("j2-t2", "j2")
+	suite.transitToPlacing(&peloton.TaskID{Value: "j2-t2"})
+	suite.addRevocableTaskWithID("j2-t3", "j2")
+	suite.transitToRunning(&peloton.TaskID{Value: "j2-t3"})
+
+	// Add three non-revocable + preemptible tasks
+	suite.addTaskWithID("j1-t1", "j1", true)
+	suite.transitToReady(&peloton.TaskID{Value: "j1-t1"})
+	suite.addTaskWithID("j1-t2", "j1", true)
+	suite.transitToPlacing(&peloton.TaskID{Value: "j1-t2"})
+	suite.addTaskWithID("j1-t3", "j1", true)
+	suite.transitToRunning(&peloton.TaskID{Value: "j1-t3"})
+
+	// tasks to evict have revocable tasks before non-revocable tasks
+	ranker := newStatePriorityRuntimeRanker(suite.tracker)
+	tasksToEvict := ranker.GetTasksToEvict(
+		"respool-1",
+		&scalar.Resources{
+			CPU:    3,
+			MEMORY: 300,
+			GPU:    0,
+			DISK:   25,
+		},
+		&scalar.Resources{
+			CPU:    2.5,
+			MEMORY: 250,
+			GPU:    0,
+			DISK:   25,
+		})
+	suite.Equal(len(tasksToEvict), 6)
+	suite.Equal(tasksToEvict[0].Task().GetId().GetValue(), "j2-t1") // revocable + ready
+	suite.Equal(tasksToEvict[1].Task().GetId().GetValue(), "j2-t2") // revocable + placing
+	suite.Equal(tasksToEvict[2].Task().GetId().GetValue(), "j2-t3") // revocable + running
+	suite.Equal(tasksToEvict[3].Task().GetId().GetValue(), "j1-t1") // non-revocable + ready
+	suite.Equal(tasksToEvict[4].Task().GetId().GetValue(), "j1-t2") // non-revocable + placing
+	suite.Equal(tasksToEvict[5].Task().GetId().GetValue(), "j1-t3") // non-revocable + running
 }
 
 func (suite *RankerTestSuite) TestStatePriorityRuntimeRanker_FilterNonPreemptible() {
@@ -347,12 +425,14 @@ func (suite *RankerTestSuite) TestStatePriorityRuntimeRanker_FilterNonPreemptibl
 		suite.transitToRunning(&peloton.TaskID{Value: t.tid})
 
 		ranker := newStatePriorityRuntimeRanker(suite.tracker)
-		tasksToEvict := ranker.GetTasksToEvict("respool-1", &scalar.Resources{
-			CPU:    5.5,
-			MEMORY: 550,
-			GPU:    0,
-			DISK:   55,
-		})
+		tasksToEvict := ranker.GetTasksToEvict("respool-1",
+			scalar.ZeroResource,
+			&scalar.Resources{
+				CPU:    5.5,
+				MEMORY: 550,
+				GPU:    0,
+				DISK:   55,
+			})
 
 		// should always contain just the preemptible task(s)s
 		suite.Equal(1, len(tasksToEvict))

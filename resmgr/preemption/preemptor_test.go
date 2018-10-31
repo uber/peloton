@@ -52,9 +52,8 @@ var (
 	}
 )
 
-func (suite *PreemptorTestSuite) SetupSuite() {
+func (suite *PreemptorTestSuite) SetupTest() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-
 	rm_task.InitTaskTracker(
 		tally.NoopScope,
 		tasktestutil.CreateTaskConfig())
@@ -67,7 +66,6 @@ func (suite *PreemptorTestSuite) SetupSuite() {
 		},
 		nil,
 		tally.Scope(tally.NoopScope))
-
 	suite.preemptor = Preemptor{
 		resTree:                      nil,
 		preemptionPeriod:             1 * time.Second,
@@ -178,10 +176,20 @@ func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState() {
 	suite.preemptor.sustainedOverAllocationCount = 5
 
 	for _, t := range tt {
-		mockResPool.EXPECT().GetEntitlement().Return(t.entitlement).
+		mockResPool.EXPECT().
+			GetNonSlackEntitlement().
+			Return(t.entitlement).
 			Times(6)
-		mockResPool.EXPECT().GetTotalAllocatedResources().Return(t.allocation).
+		mockResPool.EXPECT().
+			GetNonSlackAllocatedResources().
+			Return(t.allocation).
 			Times(6)
+		mockResPool.EXPECT().GetSlackEntitlement().
+			Return(scalar.ZeroResource).
+			AnyTimes()
+		mockResPool.EXPECT().GetSlackAllocatedResources().
+			Return(scalar.ZeroResource).
+			AnyTimes()
 
 		for i := 0; i < 6; i++ {
 			suite.preemptor.updateResourcePoolsState()
@@ -201,34 +209,41 @@ func (suite *PreemptorTestSuite) TestUpdateResourcePoolsStateReset() {
 
 	// Mocks
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
-	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
+	mockResPool.EXPECT().GetPath().Return("/respool-1").AnyTimes()
+	mockResPool.EXPECT().GetNonSlackEntitlement().Return(&scalar.Resources{
 		CPU:    20,
 		MEMORY: 200,
 		DISK:   2000,
 		GPU:    0,
 	}).AnyTimes()
+	mockResPool.EXPECT().GetSlackEntitlement().
+		Return(scalar.ZeroResource).
+		AnyTimes()
+	mockResPool.EXPECT().GetSlackAllocatedResources().
+		Return(scalar.ZeroResource).
+		AnyTimes()
 
 	// mock allocation going down on compared to the entitlement once
 	gomock.InOrder(
-		mockResPool.EXPECT().GetTotalAllocatedResources().Return(
+		mockResPool.EXPECT().GetNonSlackAllocatedResources().Return(
 			&scalar.Resources{
 				CPU:    20,
 				MEMORY: 200,
 				DISK:   2000,
 				GPU:    0,
-			}), mockResPool.EXPECT().GetTotalAllocatedResources().Return(
+			}), mockResPool.EXPECT().GetNonSlackAllocatedResources().Return(
 			&scalar.Resources{
 				CPU:    20,
 				MEMORY: 200,
 				DISK:   2000,
 				GPU:    0,
-			}), mockResPool.EXPECT().GetTotalAllocatedResources().Return(
+			}), mockResPool.EXPECT().GetNonSlackAllocatedResources().Return(
 			&scalar.Resources{
 				CPU:    20,
 				MEMORY: 200,
 				DISK:   2000,
 				GPU:    0,
-			}), mockResPool.EXPECT().GetTotalAllocatedResources().Return(
+			}), mockResPool.EXPECT().GetNonSlackAllocatedResources().Return(
 			&scalar.Resources{
 				CPU:    20,
 				MEMORY: 200,
@@ -236,7 +251,7 @@ func (suite *PreemptorTestSuite) TestUpdateResourcePoolsStateReset() {
 				GPU:    0,
 			}),
 		// allocation goes down
-		mockResPool.EXPECT().GetTotalAllocatedResources().Return(
+		mockResPool.EXPECT().GetNonSlackAllocatedResources().Return(
 			&scalar.Resources{
 				CPU:    10,
 				MEMORY: 100,
@@ -273,19 +288,31 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForRunningTasks() {
 		Return(mockResPool, nil)
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
 	mockResPool.EXPECT().GetPath().Return("/respool-1").AnyTimes()
-	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
-		CPU:    20,
-		MEMORY: 200,
-		DISK:   2000,
-		GPU:    1,
-	}).AnyTimes()
+	mockResPool.EXPECT().
+		GetNonSlackEntitlement().
+		Return(&scalar.Resources{
+			CPU:    20,
+			MEMORY: 200,
+			DISK:   2000,
+			GPU:    1,
+		}).AnyTimes()
 	allocation := &scalar.Resources{
 		CPU:    25,
 		MEMORY: 500,
 		DISK:   2450,
 		GPU:    1,
 	}
-	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation).
+	mockResPool.EXPECT().
+		GetNonSlackAllocatedResources().
+		Return(allocation).
+		AnyTimes()
+	mockResPool.EXPECT().
+		GetSlackAllocatedResources().
+		Return(scalar.ZeroResource).
+		AnyTimes()
+	mockResPool.EXPECT().
+		GetSlackEntitlement().
+		Return(scalar.ZeroResource).
 		AnyTimes()
 	mockResPool.EXPECT().GetPath().Return("/respool-1")
 
@@ -299,7 +326,8 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForRunningTasks() {
 	suite.preemptor.ranker = suite.getMockRanker(tasks)
 
 	// Check allocation > entitlement before
-	suite.False(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
+	suite.False(allocation.LessThanOrEqual(
+		mockResPool.GetNonSlackEntitlement()))
 
 	err := suite.preemptor.processResourcePool("respool-1")
 	suite.NoError(err)
@@ -318,26 +346,38 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForReadyTasks() {
 		Return(mockResPool, nil)
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
 	mockResPool.EXPECT().GetPath().Return("/respool-1").AnyTimes()
-	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
-		CPU:    20,
-		MEMORY: 200,
-		DISK:   2000,
-		GPU:    1,
-	}).AnyTimes()
+	mockResPool.EXPECT().
+		GetNonSlackEntitlement().
+		Return(&scalar.Resources{
+			CPU:    20,
+			MEMORY: 200,
+			DISK:   2000,
+			GPU:    1,
+		}).AnyTimes()
 	allocation := &scalar.Allocation{
 		Value: map[scalar.AllocationType]*scalar.Resources{
-			scalar.TotalAllocation: {
+			scalar.NonSlackAllocation: {
 				CPU:    25,
 				MEMORY: 500,
 				DISK:   2450,
 				GPU:    1,
 			}}}
-	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation.
-		GetByType(scalar.TotalAllocation)).AnyTimes()
+	mockResPool.EXPECT().
+		GetNonSlackAllocatedResources().
+		Return(allocation.GetByType(scalar.NonSlackAllocation)).
+		AnyTimes()
 	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
 		func(res *scalar.Allocation) {
 			allocation = allocation.Subtract(res)
 		}).Return(nil).AnyTimes()
+	mockResPool.EXPECT().
+		GetSlackEntitlement().
+		Return(scalar.ZeroResource).
+		AnyTimes()
+	mockResPool.EXPECT().
+		GetSlackAllocatedResources().
+		Return(scalar.ZeroResource).
+		AnyTimes()
 	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil).AnyTimes()
 
 	numReadyTasks := 3
@@ -349,15 +389,15 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForReadyTasks() {
 	suite.preemptor.ranker = suite.getMockRanker(tasks)
 
 	// Check allocation > entitlement before
-	suite.False(allocation.
-		GetByType(scalar.TotalAllocation).LessThanOrEqual(mockResPool.GetEntitlement()))
+	suite.False(allocation.GetByType(scalar.NonSlackAllocation).
+		LessThanOrEqual(mockResPool.GetNonSlackEntitlement()))
 
 	err := suite.preemptor.processResourcePool("respool-1")
 	suite.NoError(err)
 
 	// Check allocation <= entitlement after
-	suite.True(allocation.
-		GetByType(scalar.TotalAllocation).LessThanOrEqual(mockResPool.GetEntitlement()))
+	suite.True(allocation.GetByType(scalar.NonSlackAllocation).
+		LessThanOrEqual(mockResPool.GetNonSlackEntitlement()))
 }
 
 func (suite *PreemptorTestSuite) TestProcessResourcePoolForPlacingTasks() {
@@ -372,27 +412,38 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForPlacingTasks() {
 		GetPath().
 		Return("/respool-1").
 		AnyTimes()
-	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
-		CPU:    20,
-		MEMORY: 200,
-		DISK:   2000,
-		GPU:    1,
-	}).AnyTimes()
+	mockResPool.EXPECT().
+		GetNonSlackEntitlement().
+		Return(&scalar.Resources{
+			CPU:    20,
+			MEMORY: 200,
+			DISK:   2000,
+			GPU:    1,
+		}).AnyTimes()
 	allocation := &scalar.Allocation{
 		Value: map[scalar.AllocationType]*scalar.Resources{
-			scalar.TotalAllocation: {
+			scalar.NonSlackAllocation: {
 				CPU:    25,
 				MEMORY: 500,
 				DISK:   2450,
 				GPU:    1,
 			}}}
-	mockResPool.EXPECT().GetTotalAllocatedResources().
-		Return(allocation.GetByType(scalar.TotalAllocation)).
+	mockResPool.EXPECT().
+		GetNonSlackAllocatedResources().
+		Return(allocation.GetByType(scalar.NonSlackAllocation)).
 		AnyTimes()
 	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).
 		Do(func(res *scalar.Allocation) {
 			allocation = allocation.Subtract(res)
 		}).Return(nil).AnyTimes()
+	mockResPool.EXPECT().
+		GetSlackEntitlement().
+		Return(scalar.ZeroResource).
+		AnyTimes()
+	mockResPool.EXPECT().
+		GetSlackAllocatedResources().
+		Return(scalar.ZeroResource).
+		AnyTimes()
 	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil).AnyTimes()
 
 	numReadyTasks := 3
@@ -404,15 +455,126 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForPlacingTasks() {
 	suite.preemptor.ranker = suite.getMockRanker(tasks)
 
 	// Check allocation > entitlement before
-	suite.False(allocation.GetByType(scalar.TotalAllocation).
-		LessThanOrEqual(mockResPool.GetEntitlement()))
+	suite.False(allocation.GetByType(scalar.NonSlackAllocation).
+		LessThanOrEqual(mockResPool.GetNonSlackEntitlement()))
 
 	err := suite.preemptor.processResourcePool("respool-1")
 	suite.NoError(err)
 
 	// Check allocation <= entitlement after
-	suite.True(allocation.GetByType(scalar.TotalAllocation).
-		LessThanOrEqual(mockResPool.GetEntitlement()))
+	suite.True(allocation.GetByType(scalar.NonSlackAllocation).
+		LessThanOrEqual(mockResPool.GetNonSlackEntitlement()))
+}
+
+func (suite *PreemptorTestSuite) TestRevocableTaskPreemptionOnly() {
+	ctr := gomock.NewController(suite.T())
+	defer ctr.Finish()
+	mockResTree := mocks.NewMockTree(ctr)
+	mockResPool := mocks.NewMockResPool(ctr)
+
+	mockResTree.EXPECT().
+		Get(&peloton.ResourcePoolID{Value: "respool-1"}).
+		Return(mockResPool, nil)
+	mockResPool.EXPECT().
+		ID().
+		Return("respool-1").
+		AnyTimes()
+	mockResPool.EXPECT().
+		GetPath().
+		Return("/respool-1").
+		AnyTimes()
+	mockResPool.EXPECT().
+		GetNonSlackEntitlement().
+		Return(&scalar.Resources{
+			CPU:    20,
+			MEMORY: 500,
+			DISK:   2500,
+			GPU:    0,
+		}).AnyTimes()
+	mockResPool.EXPECT().
+		GetSlackEntitlement().
+		Return(&scalar.Resources{
+			CPU:    10,
+			MEMORY: 0,
+			DISK:   1000,
+			GPU:    0,
+		}).
+		AnyTimes()
+	allocation := &scalar.Allocation{
+		Value: map[scalar.AllocationType]*scalar.Resources{
+			scalar.NonSlackAllocation: {
+				CPU:    20,
+				MEMORY: 500,
+				DISK:   2450,
+				GPU:    0,
+			},
+			scalar.SlackAllocation: {
+				CPU:    20,
+				MEMORY: 600,
+				DISK:   1000,
+				GPU:    0,
+			},
+		}}
+	mockResPool.EXPECT().
+		GetNonSlackAllocatedResources().
+		Return(allocation.GetByType(scalar.NonSlackAllocation)).
+		AnyTimes()
+	mockResPool.EXPECT().
+		GetSlackAllocatedResources().
+		Return(allocation.GetByType(scalar.SlackAllocation)).
+		AnyTimes()
+
+	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
+		func(res *scalar.Allocation) {
+			allocation = allocation.Subtract(res)
+		}).Return(nil).AnyTimes()
+
+	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil).AnyTimes()
+
+	// Add non-revocable tasks in all states
+	tasks := suite.createTasks(6, mockResPool)
+	for i, t := range tasks {
+		if i == 0 || i == 1 {
+			suite.transitToReady(t.Id)
+		} else if i == 2 || i == 3 {
+			suite.transitToPlacing(t.Id)
+		} else {
+			suite.transitToRunning(t.Id)
+		}
+	}
+
+	// Add revocable tasks in all states
+	tasks = suite.createRevocableTasks(6, mockResPool)
+	for i, t := range tasks {
+		if i == 0 || i == 1 {
+			suite.transitToReady(t.Id)
+		} else if i == 2 || i == 3 {
+			suite.transitToPlacing(t.Id)
+		} else {
+			suite.transitToRunning(t.Id)
+		}
+	}
+
+	suite.preemptor.resTree = mockResTree
+	suite.preemptor.ranker = suite.getMockRanker(tasks)
+
+	// Non-Revocable Alloction < Non-Revocable Entitlement
+	// Revocable Allocation > Non-Revocable Entitlement
+	// Only preempt revocable tasks
+	err := suite.preemptor.processResourcePool("respool-1")
+	suite.NoError(err)
+
+	// Two running tasks added preemption queue
+	suite.Equal(suite.preemptor.preemptionQueue.Length(), 2)
+	// Each Task Requirement, CPU: 2, Mem: 100, Disk: 150
+	// 4 tasks removed in ready or placing state
+	// slack allocation goes down
+	suite.Equal(allocation.GetByType(scalar.SlackAllocation).GetCPU(), float64(12))
+	suite.Equal(allocation.GetByType(scalar.SlackAllocation).GetMem(), float64(200))
+	suite.Equal(allocation.GetByType(scalar.SlackAllocation).GetDisk(), float64(400))
+
+	// non-slack allocation remain as-is
+	suite.Equal(allocation.GetByType(scalar.NonSlackAllocation), mockResPool.GetNonSlackAllocatedResources())
 }
 
 func (suite *PreemptorTestSuite) TestProcessResourceGetError() {
@@ -445,6 +607,12 @@ var (
 	_allocation = &scalar.Allocation{
 		Value: map[scalar.AllocationType]*scalar.Resources{
 			scalar.TotalAllocation: {
+				CPU:    25,
+				MEMORY: 500,
+				DISK:   2450,
+				GPU:    1,
+			},
+			scalar.NonSlackAllocation: {
 				CPU:    25,
 				MEMORY: 500,
 				DISK:   2450,
@@ -504,7 +672,7 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolEnqueueGangError() {
 	mockResPool.
 		EXPECT().
 		ID().
-		Return("respool-1")
+		Return("respool-1").AnyTimes()
 	mockResPool.
 		EXPECT().
 		GetPath().
@@ -512,12 +680,22 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolEnqueueGangError() {
 		AnyTimes()
 	mockResPool.
 		EXPECT().
-		GetEntitlement().
+		GetNonSlackEntitlement().
 		Return(_entitlement)
 	mockResPool.
 		EXPECT().
-		GetTotalAllocatedResources().
-		Return(_allocation.GetByType(scalar.TotalAllocation))
+		GetNonSlackAllocatedResources().
+		Return(_allocation.GetByType(scalar.NonSlackAllocation))
+	mockResPool.
+		EXPECT().
+		GetSlackEntitlement().
+		Return(scalar.ZeroResource).
+		AnyTimes()
+	mockResPool.
+		EXPECT().
+		GetSlackAllocatedResources().
+		Return(scalar.ZeroResource).
+		AnyTimes()
 	mockResPool.
 		EXPECT().
 		EnqueueGang(gomock.Any()).
@@ -565,13 +743,21 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolSubtractAllocationError(
 		AnyTimes()
 	mockResPool.
 		EXPECT().
-		GetEntitlement().
+		GetNonSlackEntitlement().
 		Return(_entitlement).AnyTimes()
 	mockResPool.
 		EXPECT().
-		GetTotalAllocatedResources().
-		Return(
-			_allocation.GetByType(scalar.TotalAllocation)).
+		GetNonSlackAllocatedResources().
+		Return(_allocation.GetByType(scalar.NonSlackAllocation)).AnyTimes()
+	mockResPool.
+		EXPECT().
+		GetSlackEntitlement().
+		Return(scalar.ZeroResource).
+		AnyTimes()
+	mockResPool.
+		EXPECT().
+		GetSlackAllocatedResources().
+		Return(scalar.ZeroResource).
 		AnyTimes()
 	mockResPool.
 		EXPECT().
@@ -609,6 +795,9 @@ func (suite *PreemptorTestSuite) TestPreemptorEnqueue() {
 	defer ctr.Finish()
 
 	mockResPool := mocks.NewMockResPool(ctr)
+	mockResPool.EXPECT().ID().
+		Return("respool-1").
+		AnyTimes()
 	mockResPool.
 		EXPECT().
 		GetPath().
@@ -651,20 +840,35 @@ func (suite *PreemptorTestSuite) TestPreemptionQueueDuplicateTasks() {
 	// Mocks
 	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
-	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
-		CPU:    20,
-		MEMORY: 200,
-		DISK:   2000,
-		GPU:    1,
-	}).AnyTimes()
+	mockResPool.EXPECT().
+		GetNonSlackEntitlement().
+		Return(&scalar.Resources{
+			CPU:    20,
+			MEMORY: 200,
+			DISK:   2000,
+			GPU:    1,
+		}).AnyTimes()
 	allocation := &scalar.Resources{
 		CPU:    25,
 		MEMORY: 500,
 		DISK:   2450,
 		GPU:    1,
 	}
-	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation).AnyTimes()
-	mockResPool.EXPECT().GetPath().Return("/respool-1")
+	mockResPool.EXPECT().
+		GetNonSlackAllocatedResources().
+		Return(allocation).
+		AnyTimes()
+	mockResPool.EXPECT().
+		GetSlackEntitlement().
+		Return(scalar.ZeroResource).
+		AnyTimes()
+	mockResPool.EXPECT().
+		GetSlackAllocatedResources().
+		Return(scalar.ZeroResource).
+		AnyTimes()
+	mockResPool.EXPECT().GetPath().
+		Return("/respool-1").
+		AnyTimes()
 
 	numRunningTasks := 1
 	tasks := suite.createTasks(numRunningTasks, mockResPool)
@@ -676,7 +880,8 @@ func (suite *PreemptorTestSuite) TestPreemptionQueueDuplicateTasks() {
 	suite.preemptor.ranker = suite.getMockRanker(tasks)
 
 	// Check allocation > entitlement before
-	suite.False(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
+	suite.False(allocation.
+		LessThanOrEqual(mockResPool.GetNonSlackEntitlement()))
 
 	err := suite.preemptor.processResourcePool("respool-1")
 	suite.NoError(err)
@@ -700,20 +905,35 @@ func (suite *PreemptorTestSuite) TestPreemptorDequeueTask() {
 	// Mocks
 	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
 	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
-	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
-		CPU:    20,
-		MEMORY: 200,
-		DISK:   2000,
-		GPU:    1,
-	}).AnyTimes()
+	mockResPool.EXPECT().
+		GetNonSlackEntitlement().
+		Return(&scalar.Resources{
+			CPU:    20,
+			MEMORY: 200,
+			DISK:   2000,
+			GPU:    1,
+		}).AnyTimes()
 	allocation := &scalar.Resources{
 		CPU:    25,
 		MEMORY: 500,
 		DISK:   2450,
 		GPU:    1,
 	}
-	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation).AnyTimes()
-	mockResPool.EXPECT().GetPath().Return("/respool-1")
+	mockResPool.EXPECT().
+		GetNonSlackAllocatedResources().
+		Return(allocation).
+		AnyTimes()
+	mockResPool.EXPECT().
+		GetSlackEntitlement().
+		Return(scalar.ZeroResource).
+		AnyTimes()
+	mockResPool.EXPECT().
+		GetSlackAllocatedResources().
+		Return(scalar.ZeroResource).
+		AnyTimes()
+	mockResPool.EXPECT().GetPath().
+		Return("/respool-1").
+		AnyTimes()
 
 	numRunningTasks := 1
 	tasks := suite.createTasks(numRunningTasks, mockResPool)
@@ -725,7 +945,8 @@ func (suite *PreemptorTestSuite) TestPreemptorDequeueTask() {
 	suite.preemptor.ranker = suite.getMockRanker(tasks)
 
 	// Check allocation > entitlement before
-	suite.False(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
+	suite.False(allocation.
+		LessThanOrEqual(mockResPool.GetNonSlackEntitlement()))
 
 	err := suite.preemptor.processResourcePool("respool-1")
 	suite.NoError(err)
@@ -830,27 +1051,66 @@ func (suite *PreemptorTestSuite) getResPools() map[string]*pb_respool.ResourcePo
 	}
 }
 
-func (suite *PreemptorTestSuite) createTasks(numTasks int,
+func (suite *PreemptorTestSuite) createTasks(
+	numTasks int,
 	mockResPool *mocks.MockResPool) []*resmgr.Task {
 	var tasks []*resmgr.Task
 	for i := 0; i < numTasks; i++ {
 		t := suite.createTask(i, uint32(i))
 		tasks = append(tasks, t)
-		suite.tracker.AddTask(t, suite.eventStreamHandler, mockResPool,
+		suite.tracker.AddTask(
+			t,
+			suite.eventStreamHandler,
+			mockResPool,
 			tasktestutil.CreateTaskConfig())
 	}
 	return tasks
 }
 
-func (suite *PreemptorTestSuite) createTask(instance int, priority uint32) *resmgr.Task {
+func (suite *PreemptorTestSuite) createTask(
+	instance int,
+	priority uint32) *resmgr.Task {
 	taskID := fmt.Sprintf("job1-%d", instance)
 	return &resmgr.Task{
-		Name:     taskID,
-		Priority: priority,
-		JobId:    &peloton.JobID{Value: "job1"},
-		Id:       &peloton.TaskID{Value: taskID},
-		Hostname: "hostname",
-		Resource: _taskResources,
+		Name:        taskID,
+		Priority:    priority,
+		JobId:       &peloton.JobID{Value: "job1"},
+		Id:          &peloton.TaskID{Value: taskID},
+		Hostname:    "hostname",
+		Resource:    _taskResources,
+		Preemptible: true,
+	}
+}
+
+func (suite *PreemptorTestSuite) createRevocableTasks(
+	numTasks int,
+	mockResPool *mocks.MockResPool) []*resmgr.Task {
+	var tasks []*resmgr.Task
+	for i := 0; i < numTasks; i++ {
+		t := suite.createRevocableTask(i, uint32(i))
+		tasks = append(tasks, t)
+		suite.tracker.AddTask(
+			t,
+			suite.eventStreamHandler,
+			mockResPool,
+			tasktestutil.CreateTaskConfig())
+	}
+	return tasks
+}
+
+func (suite *PreemptorTestSuite) createRevocableTask(
+	instance int,
+	priority uint32) *resmgr.Task {
+	taskID := fmt.Sprintf("job1-%d", instance)
+	return &resmgr.Task{
+		Name:        taskID,
+		Priority:    priority,
+		JobId:       &peloton.JobID{Value: "job1"},
+		Id:          &peloton.TaskID{Value: taskID},
+		Hostname:    "hostname",
+		Resource:    _taskResources,
+		Revocable:   true,
+		Preemptible: true,
 	}
 }
 
@@ -864,8 +1124,9 @@ func newMockRanker(tasks []*rm_task.RMTask) ranker {
 	}
 }
 
-func (mr *mockRanker) GetTasksToEvict(respoolID string,
-	resourcesLimit *scalar.Resources) []*rm_task.RMTask {
+func (mr *mockRanker) GetTasksToEvict(
+	respoolID string,
+	slackResourcesToFree, nonSlackResourcesToFree *scalar.Resources) []*rm_task.RMTask {
 	return mr.tasks
 }
 

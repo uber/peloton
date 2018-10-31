@@ -1,11 +1,10 @@
-changeLog: null
+changelog: null
 name: TestPelotonJob_Stateless_123
-owningTeam: team6
-ldapGroups:
+owningteam: team6
+ldapgroups:
 - money
 - team6
 - otto
-type: 1
 description: "A dummy test stateless service job for peloton"
 labels:
 - key: testKey0
@@ -14,19 +13,18 @@ labels:
   value: testVal1
 - key: testKey2
   value: testVal2
-instanceCount: 3
+instancecount: 10
+type: 1
 sla:
   priority: 22
   preemptible: true
-  revocable: true
-defaultConfig:
+defaultconfig:
   resource:
-    cpuLimit: 2
-    memLimitMb: 10
-    diskLimitMb: 10
-    fdLimit: 2
-  healthCheck: null
-  revocable: true
+    cpulimit: 0.1
+    memlimitmb: 10.0
+    disklimitmb: 10
+    fdlimit: 10
+  healthcheck: null
   ports: []
   container: null
   command:

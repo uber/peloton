@@ -358,6 +358,7 @@ class Job(object):
                         count += 1
 
                 if count == len(task_infos):
+                    log.info('%s job has %s running tasks', self.job_id, count)
                     break
             except Exception as e:
                 log.warn(e)

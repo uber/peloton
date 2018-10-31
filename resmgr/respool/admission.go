@@ -73,6 +73,7 @@ func entitlementAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 
 	neededResources := scalar.GetGangResources(gang)
 	log.WithFields(log.Fields{
+		"respool_id":         pool.ID(),
 		"entitlement":        currentEntitlement,
 		"allocation":         currentAllocation,
 		"resources_required": neededResources,
@@ -103,6 +104,7 @@ func controllerAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 	neededResources := scalar.GetGangResources(gang)
 
 	log.WithFields(log.Fields{
+		"respool_id":         pool.ID(),
 		"controller_limit":   controllerLimit,
 		"controller_alloc":   controllerAllocation,
 		"resources_required": neededResources,
@@ -135,10 +137,11 @@ func reservationAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 	reservation := pool.reservation
 
 	log.WithFields(log.Fields{
+		"respool_id":            pool.ID(),
 		"reservation":           reservation,
 		"non_preemptible_alloc": npAllocation,
 		"resources_required":    neededResources,
-	}).Info("checking reservation")
+	}).Debug("checking reservation")
 
 	return npAllocation.
 		Add(neededResources).

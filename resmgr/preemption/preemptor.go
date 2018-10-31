@@ -34,7 +34,7 @@ type Queue interface {
 	DequeueTask(maxWaitTime time.Duration) (*resmgr.PreemptionCandidate, error)
 	// EnqueueTasks enqueues tasks either into the preemption queue for
 	// RUNNING tasks or to the pending queue for NON_RUNNING tasks.
-	// This API can be used by a caller whp is making a the decision to
+	// This API can be used by a caller when making a the decision to
 	// preempt certain tasks outside of the preemptor.
 	// This can include cases where a host is being taken down for maintenance.
 	EnqueueTasks(tasks []*task.RMTask, event resmgr.PreemptionReason) error
@@ -224,10 +224,15 @@ func (p *Preemptor) updateResourcePoolsState() {
 	nodes := p.resTree.GetAllNodes(true)
 	for e := nodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
-		resourcesAboveEntitlement := n.GetTotalAllocatedResources().Subtract(
-			n.GetEntitlement())
+		resourcesAboveEntitlement := n.GetNonSlackAllocatedResources().Subtract(
+			n.GetNonSlackEntitlement())
+
+		slackResourcesAboveEntitlement := n.GetSlackAllocatedResources().Subtract(
+			n.GetSlackEntitlement())
+
 		count := 0
-		if !scalar.ZeroResource.Equal(resourcesAboveEntitlement) {
+		if !scalar.ZeroResource.Equal(resourcesAboveEntitlement) ||
+			!scalar.ZeroResource.Equal(slackResourcesAboveEntitlement) {
 			// increment the count
 			count = p.respoolState[n.ID()]
 			count++
@@ -244,18 +249,39 @@ func (p *Preemptor) processResourcePool(respoolID string) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to get resource pool")
 	}
-	resourcesToFree := resourcePool.GetTotalAllocatedResources().
-		Subtract(resourcePool.GetEntitlement())
 
-	log.
-		WithField("respool_id", respoolID).
-		WithField("resource_to_free", resourcesToFree).
-		Info("Resource to free from resource pool")
+	// Get resources to free from non-revocable tasks
+	nonSlackResourcesToFree := resourcePool.GetNonSlackAllocatedResources().
+		Subtract(resourcePool.GetNonSlackEntitlement())
 
-	tasks := p.ranker.GetTasksToEvict(respoolID, resourcesToFree)
-	log.WithField("tasks", tasks).
-		WithField("respool_id", respoolID).
-		Debug("Tasks to evict from resource pool")
+	// Get resources to free from revocable tasks
+	slackResourcesToFree := resourcePool.GetSlackAllocatedResources().
+		Subtract(resourcePool.GetSlackEntitlement())
+
+	log.WithFields(log.Fields{
+		"respool_id":                  respoolID,
+		"non_slack_resources_to_free": nonSlackResourcesToFree.String(),
+		"slack_resources_to_free":     slackResourcesToFree.String(),
+	}).Info("Resource to free from resource pool")
+
+	p.metrics(resourcePool).NonSlackTotalResourcesToFree.Inc(nonSlackResourcesToFree)
+	p.metrics(resourcePool).SlackTotalResourcesToFree.Inc(slackResourcesToFree)
+
+	tasks := p.ranker.GetTasksToEvict(
+		respoolID,
+		slackResourcesToFree,
+		nonSlackResourcesToFree)
+
+	p.metrics(resourcePool).TasksToEvict.Update(float64(len(tasks)))
+	if len(tasks) > 0 {
+		log.WithFields(log.Fields{
+			"respool_id":                  respoolID,
+			"tasks_to_evict_len":          len(tasks),
+			"tasks_to_evict":              tasks,
+			"non_slack_resources_to_free": nonSlackResourcesToFree.String(),
+			"slack_resources_to_free":     slackResourcesToFree.String(),
+		}).Info("Resources to free and tasks to evict")
+	}
 
 	// we've processed the pool
 	p.markProcessed(respoolID)
@@ -267,7 +293,8 @@ func (p *Preemptor) processResourcePool(respoolID string) error {
 
 // processes the tasks for preemption with the specified reason
 func (p *Preemptor) processTasks(
-	tasks []*task.RMTask, reason resmgr.PreemptionReason) error {
+	tasks []*task.RMTask,
+	reason resmgr.PreemptionReason) error {
 
 	var errs error
 	for _, t := range tasks {
@@ -297,8 +324,8 @@ func (p *Preemptor) processTasks(
 }
 
 func (p *Preemptor) processRunningTask(
-	t *task.RMTask, reason resmgr.PreemptionReason,
-) error {
+	t *task.RMTask,
+	reason resmgr.PreemptionReason) error {
 	// Do not add to preemption queue if it already has an entry for this
 	// Peloton task
 	if p.taskSet.Contains(t.Task().GetId().GetValue()) {
@@ -325,38 +352,56 @@ func (p *Preemptor) processRunningTask(
 			t.Task().GetId().Value)
 	}
 
-	// Add task to taskSet
+	// Adding task to taskSet to dedupe adding the same task to the queue.
+	// There could be cases where preemption is taking longer than usual
+	// so we don't want to add the same task in the next preemption cycle.
 	p.taskSet.Add(preemptionCandidate.GetId().GetValue())
+
+	// ToDo: ResourcesFreed are speculated to get free if preemption
+	// runs uninterrupted. Fix it to track that running tasks reached
+	// terminal state and then emit metrics.
+	resourcesFreed := scalar.ConvertToResmgrResource(t.Task().Resource)
+	if t.Task().GetRevocable() {
+		p.metrics(t.Respool()).RevocableRunningTasksToPreempt.Inc(1)
+		p.metrics(t.Respool()).SlackRunningTasksResourcesToFreed.Inc(resourcesFreed)
+	} else {
+		p.metrics(t.Respool()).NonRevocableRunningTasksToPreempt.Inc(1)
+		p.metrics(t.Respool()).NonSlackRunningTasksResourcesToFreed.Inc(resourcesFreed)
+	}
+
+	p.metrics(t.Respool()).PreemptionQueueSize.Update(
+		float64(p.preemptionQueue.Length()))
+	log.WithFields(log.Fields{
+		"task_id": t.Task().GetId(),
+	}).Info("Adding running task to preemption queue")
+
 	return nil
 }
 
 // 1) Moves the state to PENDING state
 // 2) Moves the task back to the pending queue
-// 3) Add the task resources back to demand
-// 4) Subtract the task resources from the resource pool allocation
+// 3) Subtract the task resources from the resource pool allocation
 // The task should be scheduled again at a later time.
 func (p *Preemptor) processNonRunningTask(
 	rmTask *task.RMTask,
-	reason resmgr.PreemptionReason,
-) error {
+	reason resmgr.PreemptionReason) error {
 	t := rmTask.Task()
 	resPool := rmTask.Respool()
-	log.
-		WithField("task_id", t.Id.Value).
-		WithField("respool_id", resPool.ID()).
-		WithField("state", rmTask.GetCurrentState()).
-		Infof("Evicting non-running task from resource pool")
+
+	log.WithFields(log.Fields{
+		"respool_id": resPool.ID(),
+		"task_id":    t.GetId().GetValue(),
+		"state":      rmTask.GetCurrentState(),
+	}).Debug("Evicting non-running task from resource pool")
 
 	// Transit task to PENDING
 	if err := rmTask.TransitTo(peloton_task.TaskState_PENDING.String(),
 		statemachine.WithReason(reason.String())); err != nil {
-		log.
-			WithField("task_id", t.Id.Value).
-			WithField("respool_id", resPool.ID()).
-			WithField("state", rmTask.GetCurrentState()).
-			Debug("Unable to transit non-running task to PENDING for" +
-				" preemption")
-		// The task could have transited to another state
+		log.WithFields(log.Fields{
+			"respool_id": resPool.ID(),
+			"task_id":    t.GetId().GetValue(),
+			"state":      rmTask.GetCurrentState(),
+		}).Debug("Unable to transit non-running task to PENDING for preemption")
 		return nil
 	}
 
@@ -377,10 +422,21 @@ func (p *Preemptor) processNonRunningTask(
 			"resource pool")
 	}
 
-	log.WithField("task_id", t.Id.Value).
-		WithField("respool_id", resPool.ID()).
-		WithField("state", rmTask.GetCurrentState()).
-		Debug("Evicted task from resource pool")
+	resourcesFreed := scalar.ConvertToResmgrResource(rmTask.Task().Resource)
+	if rmTask.Task().GetRevocable() {
+		p.metrics(resPool).RevocableNonRunningTasksToPreempt.Inc(1)
+		p.metrics(resPool).SlackNonRunningTasksResourcesFreed.Inc(resourcesFreed)
+	} else {
+		p.metrics(resPool).NonRevocableNonRunningTasksToPreempt.Inc(1)
+		p.metrics(resPool).NonSlackNonRunningTasksResourcesFreed.Inc(resourcesFreed)
+	}
+
+	log.WithFields(log.Fields{
+		"respool_id": resPool.ID(),
+		"task_id":    t.GetId().GetValue(),
+		"state":      rmTask.GetCurrentState(),
+		"revocable":  t.GetRevocable(),
+	}).Info("Evicted non-running task from resource pool")
 
 	return nil
 }

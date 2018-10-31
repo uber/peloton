@@ -63,6 +63,9 @@ func (c *Calculator) setSlackAndNonSlackEntitlementForChildren(
 		slackEntitlement,
 		slackAssignments)
 
+	// Update each resource pool metrics post entitlement calculation
+	resp.UpdateResourceMetrics()
+
 	log.WithFields(log.Fields{
 		"respool_name": resp.Name(),
 		"respool_id":   resp.ID(),

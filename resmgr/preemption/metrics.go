@@ -8,11 +8,24 @@ import (
 
 // Metrics is a placeholder for all metrics in preemption
 type Metrics struct {
-	RunningTasksPreempted    tally.Counter
-	NonRunningTasksPreempted tally.Counter
-	TasksFailedPreemption    tally.Counter
+	RevocableRunningTasksToPreempt    tally.Counter
+	RevocableNonRunningTasksToPreempt tally.Counter
 
-	ResourcesFreed scalar.GaugeMaps
+	NonRevocableRunningTasksToPreempt    tally.Counter
+	NonRevocableNonRunningTasksToPreempt tally.Counter
+
+	PreemptionQueueSize tally.Gauge
+	TasksToEvict        tally.Gauge
+
+	TasksFailedPreemption tally.Counter
+
+	NonSlackTotalResourcesToFree          scalar.CounterMaps
+	NonSlackNonRunningTasksResourcesFreed scalar.CounterMaps
+	NonSlackRunningTasksResourcesToFreed  scalar.CounterMaps
+
+	SlackTotalResourcesToFree          scalar.CounterMaps
+	SlackNonRunningTasksResourcesFreed scalar.CounterMaps
+	SlackRunningTasksResourcesToFreed  scalar.CounterMaps
 
 	OverAllocationCount tally.Gauge
 }
@@ -20,11 +33,24 @@ type Metrics struct {
 // NewMetrics returns a new instance of preemption.Metrics
 func NewMetrics(scope tally.Scope) *Metrics {
 	return &Metrics{
-		RunningTasksPreempted:    scope.Counter("num_running_tasks"),
-		NonRunningTasksPreempted: scope.Counter("num_non_running_tasks"),
-		TasksFailedPreemption:    scope.Counter("num_tasks_failed"),
+		RevocableRunningTasksToPreempt:    scope.Counter("revocable_running_tasks"),
+		RevocableNonRunningTasksToPreempt: scope.Counter("revocable_non_running_tasks"),
 
-		ResourcesFreed: scalar.NewGaugeMaps(scope.SubScope("resources")),
+		NonRevocableRunningTasksToPreempt:    scope.Counter("non_revocable_running_tasks"),
+		NonRevocableNonRunningTasksToPreempt: scope.Counter("non_revocable_non_running_tasks"),
+
+		TasksFailedPreemption: scope.Counter("num_tasks_failed"),
+
+		PreemptionQueueSize: scope.Gauge("preemption_queue_size"),
+		TasksToEvict:        scope.Gauge("tasks_to_evict"),
+
+		NonSlackTotalResourcesToFree:          scalar.NewCounterMaps(scope.SubScope("non_slack_total_resources_to_free")),
+		NonSlackNonRunningTasksResourcesFreed: scalar.NewCounterMaps(scope.SubScope("non_slack_non_running_tasks_resources_freed")),
+		NonSlackRunningTasksResourcesToFreed:  scalar.NewCounterMaps(scope.SubScope("non_slack_running_tasks_resources_freed")),
+
+		SlackTotalResourcesToFree:          scalar.NewCounterMaps(scope.SubScope("slack_total_resources_to_free")),
+		SlackNonRunningTasksResourcesFreed: scalar.NewCounterMaps(scope.SubScope("slack_non_running_tasks_resources_freed")),
+		SlackRunningTasksResourcesToFreed:  scalar.NewCounterMaps(scope.SubScope("slack_running_tasks_resources_freed")),
 
 		OverAllocationCount: scope.Gauge("over_allocation_count"),
 	}
