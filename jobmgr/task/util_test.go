@@ -254,6 +254,7 @@ func (suite *JobmgrTaskUtilTestSuite) TestCreateInitializingTask() {
 	suite.Equal(runtime.GetState(), task.TaskState_INITIALIZED)
 	suite.Equal(runtime.GetGoalState(), task.TaskState_SUCCEEDED)
 	suite.Equal(runtime.GetMesosTaskId(), runtime.GetDesiredMesosTaskId())
+	suite.Equal(runtime.GetHealthy(), task.HealthState_DISABLED)
 	suite.NotEmpty(runtime.GetMesosTaskId())
 	suite.NotEmpty(runtime.GetDesiredMesosTaskId())
 }
@@ -261,6 +262,7 @@ func (suite *JobmgrTaskUtilTestSuite) TestCreateInitializingTask() {
 func (suite *JobmgrTaskUtilTestSuite) TestCreateInitializingTaskWithHealthCheck() {
 	taskConfigWithHealth := task.TaskConfig{
 		HealthCheck: &task.HealthCheckConfig{
+			Enabled:                true,
 			InitialIntervalSecs:    10,
 			IntervalSecs:           10,
 			MaxConsecutiveFailures: 5,
@@ -273,6 +275,27 @@ func (suite *JobmgrTaskUtilTestSuite) TestCreateInitializingTaskWithHealthCheck(
 	runtime := CreateInitializingTask(&peloton.JobID{Value: suite.jobID},
 		uint32(suite.instanceID), &jobConfig)
 	suite.Equal(runtime.GetHealthy(), task.HealthState_HEALTH_UNKNOWN)
+	suite.Equal(runtime.GetMesosTaskId(), runtime.GetDesiredMesosTaskId())
+	suite.NotEmpty(runtime.GetMesosTaskId())
+	suite.NotEmpty(runtime.GetDesiredMesosTaskId())
+}
+
+func (suite *JobmgrTaskUtilTestSuite) TestCreateInitializingTaskWithHealthCheckDisabled() {
+	taskConfigWithHealth := task.TaskConfig{
+		HealthCheck: &task.HealthCheckConfig{
+			Enabled:                false,
+			InitialIntervalSecs:    10,
+			IntervalSecs:           10,
+			MaxConsecutiveFailures: 5,
+			TimeoutSecs:            5,
+		},
+	}
+	jobConfig := job.JobConfig{
+		DefaultConfig: &taskConfigWithHealth,
+	}
+	runtime := CreateInitializingTask(&peloton.JobID{Value: suite.jobID},
+		uint32(suite.instanceID), &jobConfig)
+	suite.Equal(runtime.GetHealthy(), task.HealthState_DISABLED)
 	suite.Equal(runtime.GetMesosTaskId(), runtime.GetDesiredMesosTaskId())
 	suite.NotEmpty(runtime.GetMesosTaskId())
 	suite.NotEmpty(runtime.GetDesiredMesosTaskId())

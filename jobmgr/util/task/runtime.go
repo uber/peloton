@@ -15,7 +15,7 @@ import (
 // The initial health state is UNKNOWN or DISABLED
 // depends on health check is enabled or not
 func GetInitialHealthState(taskConfig *task.TaskConfig) task.HealthState {
-	if taskConfig.GetHealthCheck() != nil {
+	if taskConfig.GetHealthCheck().GetEnabled() {
 		return task.HealthState_HEALTH_UNKNOWN
 	}
 	return task.HealthState_DISABLED

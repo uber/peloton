@@ -133,6 +133,7 @@ func TestGetInitialHealthState(t *testing.T) {
 		{
 			taskConfig: &task.TaskConfig{
 				HealthCheck: &task.HealthCheckConfig{
+					Enabled:                true,
 					InitialIntervalSecs:    10,
 					MaxConsecutiveFailures: 5,
 					IntervalSecs:           10,
@@ -143,6 +144,18 @@ func TestGetInitialHealthState(t *testing.T) {
 		},
 		{
 			taskConfig:  &task.TaskConfig{},
+			healthState: task.HealthState_DISABLED,
+		},
+		{
+			taskConfig: &task.TaskConfig{
+				HealthCheck: &task.HealthCheckConfig{
+					Enabled:                false,
+					InitialIntervalSecs:    10,
+					MaxConsecutiveFailures: 5,
+					IntervalSecs:           10,
+					TimeoutSecs:            5,
+				},
+			},
 			healthState: task.HealthState_DISABLED,
 		},
 	}

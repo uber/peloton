@@ -106,6 +106,7 @@ func (suite *TestTaskInitializeSuite) TestTaskInitialize() {
 		{
 			taskConfig: &pbtask.TaskConfig{
 				HealthCheck: &pbtask.HealthCheckConfig{
+					Enabled:                true,
 					InitialIntervalSecs:    10,
 					IntervalSecs:           10,
 					MaxConsecutiveFailures: 10,
@@ -113,6 +114,18 @@ func (suite *TestTaskInitializeSuite) TestTaskInitialize() {
 				},
 			},
 			healthState: pbtask.HealthState_HEALTH_UNKNOWN,
+		},
+		{
+			taskConfig: &pbtask.TaskConfig{
+				HealthCheck: &pbtask.HealthCheckConfig{
+					Enabled:                false,
+					InitialIntervalSecs:    10,
+					IntervalSecs:           10,
+					MaxConsecutiveFailures: 10,
+					TimeoutSecs:            10,
+				},
+			},
+			healthState: pbtask.HealthState_DISABLED,
 		},
 	}
 
