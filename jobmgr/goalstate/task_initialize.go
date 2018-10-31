@@ -50,7 +50,7 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 		ctx,
 		taskEnt.jobID,
 		taskEnt.instanceID,
-		runtime.GetConfigVersion())
+		runtime.GetDesiredConfigVersion())
 	if err != nil {
 		return err
 	}

@@ -131,7 +131,7 @@ func (suite *TestTaskInitializeSuite) TestTaskInitialize() {
 		suite.cachedJob.EXPECT().GetConfig(gomock.Any()).Return(suite.cachedConfig, nil)
 
 		suite.taskStore.EXPECT().GetTaskConfig(
-			gomock.Any(), suite.jobID, suite.instanceID, uint64(1)).
+			gomock.Any(), suite.jobID, suite.instanceID, suite.newConfigVersion).
 			Return(tt.taskConfig, &models.ConfigAddOn{}, nil)
 
 		suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
@@ -244,7 +244,7 @@ func (suite *TestTaskInitializeSuite) TestTaskInitializeNoTaskConfig() {
 	suite.cachedJob.EXPECT().GetConfig(gomock.Any()).Return(suite.cachedConfig, nil)
 
 	suite.taskStore.EXPECT().GetTaskConfig(
-		gomock.Any(), suite.jobID, suite.instanceID, uint64(1)).Return(nil, nil, errors.New(""))
+		gomock.Any(), suite.jobID, suite.instanceID, suite.newConfigVersion).Return(nil, nil, errors.New(""))
 
 	err := TaskInitialize(context.Background(), suite.taskEnt)
 	suite.Error(err)
