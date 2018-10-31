@@ -21,7 +21,7 @@ message CreateJobRequest {
   peloton.JobID job_id = 1;
 
   // The configuration of the job to be created.
-  stateless_job.JobSpec spec = 2;
+  stateless.JobSpec spec = 2;
 
   // The list of secrets for this job
   repeated peloton.Secret secrets = 3;
@@ -52,13 +52,13 @@ message ReplaceJobRequest {
   peloton.EntityVersion version = 2;
 
   // The new job configuration to be applied.
-  stateless_job.JobSpec spec = 3;
+  stateless.JobSpec spec = 3;
 
   // The list of secrets for this job
   repeated peloton.Secret secrets = 4;
 
   // The update SLA specification.
-  stateless_job.UpdateSpec update_spec = 5;
+  stateless.UpdateSpec update_spec = 5;
 }
 
 // Response message for JobService.ReplaceJob method.
@@ -81,13 +81,13 @@ message PatchJobRequest {
   peloton.EntityVersion version = 2;
 
   // The new job configuration to be patched.
-  stateless_job.JobSpec spec = 3;
+  stateless.JobSpec spec = 3;
 
   // The list of secrets for this job
   repeated peloton.Secret secrets = 4;
 
   // The update SLA specification.
-  stateless_job.UpdateSpec update_spec = 5;
+  stateless.UpdateSpec update_spec = 5;
 }
 
 // Response message for JobService.PatchJob method.
@@ -268,10 +268,10 @@ message GetJobRequest {
 //   NOT_FOUND:         if the job ID is not found.
 message GetJobResponse {
   // The configuration specification and runtime status of the job.
-  stateless_job.JobInfo job_info = 1;
+  stateless.JobInfo job_info = 1;
 
   // The job summary.
-  stateless_job.JobSummary summary = 2;
+  stateless.JobSummary summary = 2;
 
   // The list of secrets for this job, secret.Value will be empty.
   // SecretID and path will be populated, so that caller
@@ -328,7 +328,7 @@ message QueryPodsResponse {
 // Request message for JobService.QueryJobs method.
 message QueryJobsRequest {
   // The spec of query criteria for the jobs.
-  stateless_job.QuerySpec spec = 1;
+  stateless.QuerySpec spec = 1;
 
   // The spec of how to do pagination for the query results.
   query.PaginationSpec pagination = 2;
@@ -339,13 +339,13 @@ message QueryJobsRequest {
 //   INVALID_ARGUMENT:  if the resource pool path or job states are invalid.
 message QueryJobsResponse {
   // List of jobs that match the job query criteria.
-  repeated stateless_job.JobSummary records = 1;
+  repeated stateless.JobSummary records = 1;
 
   // Pagination result of the job query.
   query.Pagination pagination = 2;
 
   // Return the spec of query criteria from the request.
-  stateless_job.QuerySpec spec = 3;
+  stateless.QuerySpec spec = 3;
 }
 
 // Request message for JobService.ListJobUpdates method.
@@ -383,10 +383,10 @@ message GetJobCacheRequest {
 //   NOT_FOUND:         if the job ID is not found.
 message GetJobCacheResponse {
   // The job configuration in cache of the matching job.
-  stateless_job.JobSpec spec = 1;
+  stateless.JobSpec spec = 1;
 
   // The job runtime in cache of the matching job.
-  stateless_job.JobStatus status = 2;
+  stateless.JobStatus status = 2;
 }
 
 // Job service defines the job related methods such as create, get, query and kill jobs.
