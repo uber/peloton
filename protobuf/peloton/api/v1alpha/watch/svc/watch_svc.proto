@@ -1,0 +1,99 @@
+// This file defines the Watch Service in Peloton API
+
+syntax = "proto3";
+
+package peloton.api.v1alpha.watch.svc;
+
+option go_package = "peloton/api/v1alpha/watch/svc";
+option java_package = "peloton.api.v1alpha.watch.svc";
+
+import "peloton/api/v1alpha/job/stateless/stateless.proto";
+import "peloton/api/v1alpha/peloton.proto";
+import "peloton/api/v1alpha/pod/pod.proto";
+import "peloton/api/v1alpha/watch/watch.proto";
+
+// Watch service defines the methods for getting notifications
+// on changes to Peloton objects. A watch is long-running request
+// where a client specifies the kind of objects that it is interested
+// in as well as a revision, either current or historical. The server
+// continuously streams back changes from that revision till the client
+// cancels the watch (or the connection is lost). The server may support
+// only a limited amount of historical revisions to keep the load on
+// the server reasonable. Historical revisions are mainly provided for
+// clients to recover from transient errors without having to rebuild
+// a snapshot of the system (which can be expensive for both sides).
+// Also, implementations may limit the number of concurrent watch
+// requests that can be serviced so that the server is not overloaded.
+service WatchService
+{
+  // Create a watch to get notified about changes to Peloton objects.
+  // Changed objects are streamed back to the caller till the watch
+  // is cancelled.
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
+
+  // Cancel a watch. The watch stream will get an error indicating
+  // watch was cancelled and the stream will be closed.
+  rpc Cancel(CancelRequest) returns (CancelResponse);
+}
+
+// WatchRequest is request for method WatchService.Watch. It
+// specifies the objects that should be monitored for changes.
+message WatchRequest
+{
+  // The revision from which to start getting changes. If unspecified,
+  // the server will return changes after the current revision. The server
+  // may choose to maintain only a limited number of historical revisions;
+  // a start revision older than the oldest revision available at the
+  // server will result in an error and the watch stream will be closed.
+  // Note: Initial implementations will not support historical revisions,
+  // so if the client sets a value for this field, it will receive an
+  // OUT_OF_RANGE error immediately.
+  uint64 start_revision = 1;
+
+  // Criteria to select the stateless jobs to watch. If unset,
+  // no jobs will be watched.
+  watch.StatelessJobFilter stateless_job_filter = 2;
+
+  // Criteria to select the pods to watch. If unset,
+  // no pods will be watched.
+  watch.PodFilter pod_filter = 3;
+}
+
+// WatchResponse is response method for WatchService.Watch. It
+// contains the objects that have changed.
+// Return errors:
+//    OUT_OF_RANGE: Requested start-revision is too old
+//    INVALID_ARGUMENT: Requested start-revision is newer than server revision
+//    RESOURCE_EXHAUSTED: Number of concurrent watches exceeded
+//    CANCELLED: Watch cancelled
+message WatchResponse {
+  // Unique identifier for the watch session
+  uint64 watch_id = 1;
+
+  // Server revision when the response results were created
+  uint64 revision = 2;
+
+  // Stateless jobs that have changed.
+  repeated job.stateless.JobSummary stateless_jobs = 3;
+
+  // Stateless job IDs that were not found.
+  repeated peloton.JobID stateless_jobs_not_found = 4;
+
+  // Pods that have changed.
+  repeated pod.PodSummary pods = 5;
+
+  // Names of pods that were not found.
+  repeated peloton.PodName pods_not_found = 6;
+}
+
+// CancelRequest is request for method WatchService.Cancel
+message CancelRequest
+{
+  // ID of the watch session to cancel.
+  uint64 watch_id = 1;
+}
+
+// CancelRequest is response for method WatchService.Cancel
+// Return errors:
+//    NOT_FOUND: Watch ID not found
+message CancelResponse {}
