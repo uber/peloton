@@ -236,7 +236,7 @@ message DeleteJobRequest {
   // The job will be first stopped and deleted. This step cannot be undone,
   // and the job cannot be re-created (with same uuid) till the delete is complete.
   // So, it is recommended to not set force to true.
-  bool force = 1;
+  bool force = 3;
 }
 
 // Response message for JobService.DeleteJob method.

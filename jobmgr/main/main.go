@@ -18,6 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
+	"code.uber.internal/infra/peloton/jobmgr/jobsvc/stateless"
 	"code.uber.internal/infra/peloton/jobmgr/logmanager"
 	"code.uber.internal/infra/peloton/jobmgr/task/activermtask"
 	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
@@ -446,6 +447,8 @@ func main() {
 		common.PelotonResourceManager, // TODO: to be removed
 		cfg.JobManager.JobSvcCfg,
 	)
+
+	stateless.InitV1AlphaJobServiceHandler(dispatcher)
 
 	tasksvc.InitServiceHandler(
 		dispatcher,

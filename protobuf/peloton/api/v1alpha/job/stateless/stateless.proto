@@ -5,7 +5,7 @@ syntax = "proto3";
 
 package peloton.api.v1alpha.job.stateless;
 
-option go_package = "peloton/api/v1alpha/job.stateless";
+option go_package = "peloton/api/v1alpha/job/stateless";
 option java_package = "peloton.api.v1alpha.job.stateless";
 
 import "peloton/api/v1alpha/peloton.proto";

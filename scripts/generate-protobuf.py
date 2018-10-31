@@ -13,6 +13,7 @@ proto_file_paths = [
     '*/*/*/*.proto',
     '*/*/*/*/*.proto',
     '*/*/*/*/*/*.proto',
+    '*/*/*/*/*/*/*.proto'
 ]
 protoc_cmd = (
     'protoc --proto_path /usr/local/include/ --proto_path={proto_path} '
@@ -32,9 +33,13 @@ def protos():
 def mflags(files, go_loc):
     pfiles = [string.replace(f, peloton_proto, '') for f in files]
     pfiles.remove('peloton/api/v0/peloton.proto')
+    pfiles.remove('peloton/api/v1alpha/peloton.proto')
+
     m = string.join(['M' + f + '=' + go_loc +
                      os.path.dirname(f) for f in pfiles], ',')
     m += ',Mpeloton/api/v0/peloton.proto=%speloton/api/v0/peloton' % go_loc
+    m += ',Mpeloton/api/v1alpha/peloton.proto=' \
+         '%speloton/api/v1alpha/peloton' % go_loc
     return m
 
 
