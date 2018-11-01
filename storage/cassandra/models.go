@@ -216,7 +216,7 @@ func FillObject(data map[string]interface{}, object interface{}, objType reflect
 		_, contains := objectFields[strings.ToLower(fieldName)]
 		if !contains {
 			log.WithField("field", fieldName).
-				Error("Field not found in object")
+				Debug("Field not found in object")
 			continue
 		}
 		err := SetObjectField(object, objectFields[strings.ToLower(fieldName)], value)
