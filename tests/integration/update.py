@@ -30,7 +30,11 @@ class Update(object):
                  config=None,
                  pool=None,
                  batch_size=None,
-                 updated_job_config=None):
+                 updated_job_config=None,
+                 roll_back_on_failure=None,
+                 max_instance_attempts=None,
+                 max_failure_instances=None,
+                 ):
 
         self.config = config or IntegrationTestConfig()
         self.client = client or Client()
@@ -41,6 +45,9 @@ class Update(object):
             json_format.ParseDict(job_config_dump, updated_job_config)
         self.updated_job_config = updated_job_config
         self.batch_size = batch_size or 0
+        self.roll_back_on_failure = roll_back_on_failure or False
+        self.max_instance_attempts = max_instance_attempts or 0
+        self.max_failure_instances = max_failure_instances or 0
         self.job = job
         self.workflow = None
 
@@ -65,7 +72,10 @@ class Update(object):
                 jobId=peloton.JobID(value=self.job.job_id),
                 jobConfig=self.updated_job_config,
                 updateConfig=update.UpdateConfig(
-                    batchSize=self.batch_size
+                    batchSize=self.batch_size,
+                    rollbackOnFailure=self.roll_back_on_failure,
+                    maxInstanceAttempts=self.max_instance_attempts,
+                    maxFailureInstances=self.max_failure_instances,
                 )
             )
             try:

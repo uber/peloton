@@ -346,6 +346,21 @@ class Job(object):
         assert not resp.HasField('notFound')
         return resp.result
 
+    def get_pod_events(self, instance_id):
+        """
+        :return: A list of all of the pod events of a given task
+        """
+        request = task.GetPodEventsRequest(
+            jobId=peloton.JobID(value=self.job_id),
+            instanceId=instance_id
+        )
+        resp = self.client.task_svc.GetPodEvents(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        return resp.result
+
     def wait_for_all_tasks_running(self):
         attempts = 0
         start = time.time()

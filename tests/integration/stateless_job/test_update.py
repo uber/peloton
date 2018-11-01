@@ -1,12 +1,17 @@
 import pytest
 import grpc
 
+from peloton_client.pbgen.peloton.api.v0.task import task_pb2
+from peloton_client.pbgen.peloton.api.v0.job.job_pb2 import JobConfig
+
+from google.protobuf import json_format
 
 from tests.integration.stateless_job.util import \
-    assert_task_config_changed, assert_task_mesos_id_changed
-from peloton_client.pbgen.peloton.api.v0.task import task_pb2
+    assert_task_config_changed, assert_task_mesos_id_changed, assert_task_config_equal
 from tests.integration.update import Update
-
+from tests.integration.util import load_test_config
+from tests.integration.job import Job
+from tests.integration.common import IntegrationTestConfig
 
 pytestmark = [pytest.mark.default, pytest.mark.stateless, pytest.mark.update]
 
@@ -17,6 +22,12 @@ UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_FILE = \
     "test_update_stateless_job_update_and_add_instances.yaml"
 UPDATE_STATELESS_JOB_UPDATE_REDUCE_INSTANCES_FILE = \
     "test_stateless_job.yaml"
+UPDATE_STATELESS_JOB_BAD_CONFIG_FILE = \
+    "test_stateless_job_with_bad_config.yaml"
+UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_CONFIG_FILE = \
+    "test_stateless_job_successful_health_check_config.yaml"
+UPDATE_STATELESS_JOB_BAD_HEALTH_CHECK_FILE = \
+    "test_stateless_job_failed_health_check_config.yaml"
 INVALID_VERSION_ERR_MESSAGE = 'invalid job configuration version'
 
 
@@ -279,3 +290,271 @@ def test__update_reduce_instances_stopped_tasks(stateless_job):
     assert len(new_task_infos) == 3
 
 
+# test__create_update_bad_config tests creating an update with bad config
+# without rollback
+def test__create_update_with_bad_config(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_instance_zero_config = stateless_job.get_task_info(0).config
+
+    update = Update(stateless_job,
+                    updated_job_file=UPDATE_STATELESS_JOB_BAD_CONFIG_FILE,
+                    max_failure_instances=1,
+                    max_instance_attempts=1)
+    update.create()
+    update.wait_for_state(goal_state='FAILED', failed_state='SUCCEEDED')
+    new_instance_zero_config = stateless_job.get_task_info(0).config
+
+    assert_task_config_changed(old_instance_zero_config, new_instance_zero_config)
+
+
+# test__create_update_add_instances_with_bad_config
+# tests creating an update with bad config and more instances
+# without rollback
+def test__create_update_add_instances_with_bad_config(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+
+    job_config_dump = load_test_config(UPDATE_STATELESS_JOB_BAD_CONFIG_FILE)
+    updated_job_config = JobConfig()
+    json_format.ParseDict(job_config_dump, updated_job_config)
+
+    updated_job_config.instanceCount = \
+        stateless_job.job_config.instanceCount + 3
+
+    update = Update(stateless_job,
+                    batch_size=1,
+                    updated_job_config=updated_job_config,
+                    max_failure_instances=1,
+                    max_instance_attempts=1)
+    update.create()
+    update.wait_for_state(goal_state='FAILED', failed_state='SUCCEEDED')
+
+    # only one instance should be added
+    assert len(stateless_job.list_tasks().value) == \
+        stateless_job.job_config.instanceCount + 1
+
+
+# test__create_update_reduce_instances_with_bad_config
+# tests creating an update with bad config and fewer instances
+# without rollback
+def test__create_update_reduce_instances_with_bad_config(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_task_infos = stateless_job.list_tasks().value
+
+    job_config_dump = load_test_config(UPDATE_STATELESS_JOB_BAD_CONFIG_FILE)
+    updated_job_config = JobConfig()
+    json_format.ParseDict(job_config_dump, updated_job_config)
+
+    updated_job_config.instanceCount = \
+        stateless_job.job_config.instanceCount - 1
+
+    update = Update(stateless_job,
+                    updated_job_config=updated_job_config,
+                    batch_size=1,
+                    max_failure_instances=1,
+                    max_instance_attempts=1)
+    update.create()
+    update.wait_for_state(goal_state='FAILED', failed_state='SUCCEEDED')
+    new_task_infos = stateless_job.list_tasks().value
+    assert len(old_task_infos) == len(new_task_infos)
+
+
+# test__create_update_with_failed_health_check
+# tests an update fails even if the new task state is RUNNING,
+# as long as the health check fails
+def test__create_update_with_failed_health_check(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+
+    update = Update(stateless_job,
+                    updated_job_file=UPDATE_STATELESS_JOB_BAD_HEALTH_CHECK_FILE,
+                    max_failure_instances=1,
+                    max_instance_attempts=1)
+    update.create()
+    update.wait_for_state(goal_state='FAILED', failed_state='SUCCEEDED')
+
+
+# test__create_update_to_disable_health_check tests an update which
+# disables healthCheck
+def test__create_update_to_disable_health_check():
+    job = Job(job_file=UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_CONFIG_FILE,
+              config=IntegrationTestConfig(max_retry_attempts=100))
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+
+    job.job_config.defaultConfig.healthCheck.enabled = False
+    update = Update(job,
+                    updated_job_config=job.job_config,
+                    max_failure_instances=1,
+                    max_instance_attempts=1)
+    update.create()
+    update.wait_for_state(goal_state='SUCCEEDED')
+
+
+# test__create_update_to_enable_health_check tests an update which
+# enables healthCheck
+def test__create_update_to_enable_health_check():
+    job = Job(job_file=UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_CONFIG_FILE,
+              config=IntegrationTestConfig(max_retry_attempts=100))
+    job.job_config.defaultConfig.healthCheck.enabled = False
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+
+    job.job_config.defaultConfig.healthCheck.enabled = True
+    update = Update(job,
+                    updated_job_config=job.job_config,
+                    max_failure_instances=1,
+                    max_instance_attempts=1)
+    update.create()
+    update.wait_for_state(goal_state='SUCCEEDED')
+
+
+# test__create_update_to_unset_health_check tests an update to unset
+# health check config
+def test__create_update_to_unset_health_check():
+    job = Job(job_file=UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_CONFIG_FILE,
+              config=IntegrationTestConfig(max_retry_attempts=100))
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+
+    update = Update(job,
+                    updated_job_file=UPDATE_STATELESS_JOB_FILE,
+                    max_failure_instances=1,
+                    max_instance_attempts=1)
+    update.create()
+    update.wait_for_state(goal_state='SUCCEEDED')
+
+
+# test__create_update_to_unset_health_check tests an update to set
+# health check config for a job without health check set
+def test__create_update_to_set_health_check():
+    job = Job(job_file=UPDATE_STATELESS_JOB_FILE,
+              config=IntegrationTestConfig(max_retry_attempts=100))
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+
+    update = Update(job,
+                    updated_job_file=UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_CONFIG_FILE,
+                    max_failure_instances=1,
+                    max_instance_attempts=1)
+    update.create()
+    update.wait_for_state(goal_state='SUCCEEDED')
+
+
+# test__create_update_to_change_health_check_config tests an update which
+# changes healthCheck
+def test__create_update_to_change_health_check_config():
+    job = Job(job_file=UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_CONFIG_FILE,
+              config=IntegrationTestConfig(max_retry_attempts=100))
+    job.job_config.defaultConfig.healthCheck.enabled = False
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+
+    job.job_config.defaultConfig.healthCheck.initialIntervalSecs = 2
+    update = Update(job,
+                    updated_job_config=job.job_config,
+                    max_failure_instances=1,
+                    max_instance_attempts=1)
+    update.create()
+    update.wait_for_state(goal_state='SUCCEEDED')
+
+
+# test__auto_rollback_update_with_bad_config tests creating an update with bad config
+# with rollback
+def test__auto_rollback_update_with_bad_config(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_instance_zero_config = stateless_job.get_task_info(0).config
+
+    update = Update(stateless_job,
+                    updated_job_file=UPDATE_STATELESS_JOB_BAD_CONFIG_FILE,
+                    roll_back_on_failure=True,
+                    max_failure_instances=1,
+                    max_instance_attempts=1)
+    update.create()
+    update.wait_for_state(goal_state='ROLLED_BACK')
+    new_instance_zero_config = stateless_job.get_task_info(0).config
+
+    assert_task_config_equal(old_instance_zero_config, new_instance_zero_config)
+
+# TODO: reenable this test when update can handle task runtime not found
+# # test__auto_rollback_update_add_instances_with_bad_config
+# # tests creating an update with bad config and more instances
+# # with rollback
+# def test__auto_rollback_update_add_instances_with_bad_config(stateless_job):
+#     stateless_job.create()
+#     stateless_job.wait_for_state(goal_state='RUNNING')
+#     old_instance_zero_config = stateless_job.get_task_info(0).config
+#
+#     job_config_dump = load_test_config(UPDATE_STATELESS_JOB_BAD_CONFIG_FILE)
+#     updated_job_config = JobConfig()
+#     json_format.ParseDict(job_config_dump, updated_job_config)
+#
+#     updated_job_config.instanceCount = \
+#         stateless_job.job_config.instanceCount + 3
+#
+#     update = Update(stateless_job,
+#                     updated_job_config=updated_job_config,
+#                     roll_back_on_failure=True,
+#                     max_failure_instances=1,
+#                     max_instance_attempts=1)
+#     update.create()
+#     update.wait_for_state(goal_state='ROLLED_BACK')
+#     new_instance_zero_config = stateless_job.get_task_info(0).config
+#
+#     # no instance should be added
+#     assert len(stateless_job.list_tasks().value) == \
+#         stateless_job.job_config.instanceCount
+#     assert_task_config_equal(old_instance_zero_config, new_instance_zero_config)
+
+
+# TODO: enable this test when update can recover from aborted update
+# # test__auto_rollback_update_reduce_instances_with_bad_config
+# # tests creating an update with bad config and fewer instances
+# # with rollback
+# def test__auto_rollback_update_reduce_instances_with_bad_config(stateless_job):
+#     stateless_job.create()
+#     stateless_job.wait_for_state(goal_state='RUNNING')
+#     old_instance_zero_config = stateless_job.get_task_info(0).config
+#
+#     job_config_dump = load_test_config(UPDATE_STATELESS_JOB_BAD_CONFIG_FILE)
+#     updated_job_config = JobConfig()
+#     json_format.ParseDict(job_config_dump, updated_job_config)
+#
+#     updated_job_config.instanceCount = \
+#         stateless_job.job_config.instanceCount - 1
+#
+#     update = Update(stateless_job,
+#                     updated_job_config=updated_job_config,
+#                     roll_back_on_failure=True,
+#                     max_failure_instances=1,
+#                     max_instance_attempts=1)
+#     update.create()
+#     update.wait_for_state(goal_state='ROLLED_BACK')
+#     new_instance_zero_config = stateless_job.get_task_info(0).config
+#
+#     # no instance should be removed
+#     assert len(stateless_job.list_tasks().value) == \
+#         stateless_job.job_config.instanceCount
+#     assert_task_config_equal(old_instance_zero_config, new_instance_zero_config)
+
+
+# test__auto_rollback_update_with_failed_health_check
+# tests an update fails even if the new task state is RUNNING,
+# as long as the health check fails
+def test__auto_rollback_update_with_failed_health_check(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_instance_zero_config = stateless_job.get_task_info(0).config
+
+    update = Update(stateless_job,
+                    updated_job_file=UPDATE_STATELESS_JOB_BAD_HEALTH_CHECK_FILE,
+                    roll_back_on_failure=True,
+                    max_failure_instances=1,
+                    max_instance_attempts=1)
+    update.create()
+    update.wait_for_state(goal_state='ROLLED_BACK')
+    new_instance_zero_config = stateless_job.get_task_info(0).config
+    assert_task_config_equal(old_instance_zero_config, new_instance_zero_config)
