@@ -7,7 +7,6 @@ from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 pytestmark = [pytest.mark.default, pytest.mark.job]
 
 
-@pytest.mark.smoketest
 # Start a job with 4 instances with hostlimit:1
 # Since we have 3 mesos agents , 3 tasks should start running on different
 # hosts and have 1 task PENDING since there's no other host to satisfy the
