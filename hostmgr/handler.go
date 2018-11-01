@@ -396,10 +396,11 @@ func (h *ServiceHandler) OfferOperations(
 		req.GetId().GetValue(),
 	)
 	if err != nil {
-		log.WithError(err).
-			WithField("request", req).
-			WithField("offers", offers).
-			Error("claim offer for operations failed.")
+		log.WithFields(log.Fields{
+			"hostname":        req.GetHostname(),
+			"host_offer_id":   req.GetId(),
+			"offer_resources": scalar.FromOfferMap(offers),
+		}).WithError(err).Error("claim offer for operations failed")
 		h.metrics.OfferOperationsInvalidOffers.Inc(1)
 		return &hostsvc.OfferOperationsResponse{
 			Error: &hostsvc.OfferOperationsResponse_Error{
@@ -572,6 +573,11 @@ func (h *ServiceHandler) LaunchTasks(
 	log.WithField("request", req).Debug("LaunchTasks called.")
 
 	if err := validateLaunchTasks(req); err != nil {
+		log.WithFields(log.Fields{
+			"hostname":       req.GetHostname(),
+			"host_offer_id":  req.GetId(),
+			"mesos_agent_id": req.GetAgentId(),
+		}).WithError(err).Error("validate launch tasks failed")
 		h.metrics.LaunchTasksInvalid.Inc(1)
 		return &hostsvc.LaunchTasksResponse{
 			Error: &hostsvc.LaunchTasksResponse_Error{
@@ -585,9 +591,14 @@ func (h *ServiceHandler) LaunchTasks(
 	offers, err := h.offerPool.ClaimForLaunch(
 		req.GetHostname(),
 		false,
-		req.GetId().GetValue(),
-	)
+		req.GetId().GetValue())
 	if err != nil {
+		log.WithFields(log.Fields{
+			"hostname":        req.GetHostname(),
+			"host_offer_id":   req.GetId(),
+			"mesos_agent_id":  req.GetAgentId(),
+			"offer_resources": scalar.FromOfferMap(offers),
+		}).WithError(err).Error("claim for launch failed")
 		h.metrics.LaunchTasksInvalidOffers.Inc(1)
 		return &hostsvc.LaunchTasksResponse{
 			Error: &hostsvc.LaunchTasksResponse_Error{
@@ -615,17 +626,12 @@ func (h *ServiceHandler) LaunchTasks(
 	for _, t := range req.GetTasks() {
 		mesosTask, err := builder.Build(t, nil, nil)
 		if err != nil {
-			log.WithError(err).WithFields(log.Fields{
-				"task_id":             t.TaskId,
-				"tasks_total":         len(req.GetTasks()),
-				"tasks":               req.GetTasks(),
-				"matched_tasks":       mesosTasks,
-				"matched_task_ids":    mesosTaskIds,
-				"matched_tasks_total": len(mesosTasks),
-				"offers":              offers,
-				"hostname":            req.GetHostname(),
-				"host_offer_id":       req.GetId().GetValue(),
-			}).Warn("Fail to get correct Mesos TaskInfo")
+			log.WithFields(log.Fields{
+				"tasks_total":    len(req.GetTasks()),
+				"host_resources": scalar.FromOfferMap(offers),
+				"hostname":       req.GetHostname(),
+				"host_offer_id":  req.GetId().GetValue(),
+			}).WithError(err).Warn("fail to get correct mesos taskinfo")
 			h.metrics.LaunchTasksInvalid.Inc(1)
 
 			// For now, decline all offers to Mesos in the hope that next
@@ -635,7 +641,7 @@ func (h *ServiceHandler) LaunchTasks(
 				log.WithError(err).WithFields(log.Fields{
 					"offers":   offerIds,
 					"hostname": req.GetHostname(),
-				}).Warn("Cannot decline offers task building error")
+				}).Warn("cannot decline offers task building error")
 			}
 
 			if err == task.ErrNotEnoughResource {
@@ -650,7 +656,7 @@ func (h *ServiceHandler) LaunchTasks(
 			return &hostsvc.LaunchTasksResponse{
 				Error: &hostsvc.LaunchTasksResponse_Error{
 					InvalidArgument: &hostsvc.InvalidArgument{
-						Message: "Cannot get Mesos task info: " + err.Error(),
+						Message: "cannot get Mesos task info: " + err.Error(),
 						InvalidTasks: []*hostsvc.LaunchableTask{
 							t,
 						},

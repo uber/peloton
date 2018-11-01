@@ -4,6 +4,7 @@ package task
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"github.com/google/uuid"
 )
 
 const (
@@ -45,6 +47,7 @@ type stateManager struct {
 
 	updateAckConcurrency int
 	ackChannel           chan *mesos.TaskStatus // Buffers the mesos task status updates to be acknowledged
+	ackStatusMap         sync.Map
 
 	eventStreamHandler *eventstream.Handler
 	metrics            *Metrics
@@ -214,6 +217,12 @@ func (m *stateManager) Update(ctx context.Context, body *sched.Event) error {
 // UpdateCounters tracks the count for task status update & ack count.
 func (m *stateManager) UpdateCounters(_ *uatomic.Bool) {
 	m.metrics.taskAckChannelSize.Update(float64(len(m.ackChannel)))
+	var length float64
+	m.ackStatusMap.Range(func(key, _ interface{}) bool {
+		length++
+		return true
+	})
+	m.metrics.taskAckMapSize.Update(length)
 }
 
 // startAsyncProcessTaskUpdates concurrently process task status update events
@@ -222,12 +231,14 @@ func (m *stateManager) startAsyncProcessTaskUpdates() {
 	for i := 0; i < m.updateAckConcurrency; i++ {
 		go func() {
 			for taskStatus := range m.ackChannel {
-				if len(taskStatus.GetUuid()) != 0 {
-					// TODO (varung): Add retry for acknowledging status update
-					err := m.acknowledgeTaskUpdate(
+				if uuid, err := uuid.FromBytes(taskStatus.GetUuid()); err == nil {
+					// once acked, delete from map
+					// if ack failed at mesos master then agent will re-send
+					m.ackStatusMap.Delete(uuid)
+
+					if err := m.acknowledgeTaskUpdate(
 						context.Background(),
-						taskStatus)
-					if err != nil {
+						taskStatus); err != nil {
 						log.WithField("task_status", *taskStatus).
 							WithError(err).
 							Error("Failed to acknowledgeTaskUpdate")
@@ -269,7 +280,15 @@ func (m *stateManager) EventPurged(events []*cirbuf.CircularBufferItem) {
 	for _, e := range events {
 		event, ok := e.Value.(*pb_eventstream.Event)
 		if ok {
-			if len(event.GetMesosTaskStatus().GetUuid()) > 0 {
+			uuid, err := uuid.FromBytes(event.GetMesosTaskStatus().GetUuid())
+			if err == nil {
+				// if ack for status update is pending, ignore it
+				_, ok := m.ackStatusMap.Load(uuid)
+				if ok {
+					m.metrics.taskUpdateAckDeDupe.Inc(1)
+					continue
+				}
+				m.ackStatusMap.Store(uuid, struct{}{})
 				m.ackChannel <- event.GetMesosTaskStatus()
 			}
 		}

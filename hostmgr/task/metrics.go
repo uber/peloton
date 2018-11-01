@@ -6,9 +6,11 @@ import (
 
 // Metrics tracks various metrics at task state level.
 type Metrics struct {
-	taskUpdateCounter  tally.Counter
-	taskUpdateAck      tally.Counter
-	taskAckChannelSize tally.Gauge
+	taskUpdateCounter   tally.Counter
+	taskUpdateAck       tally.Counter
+	taskAckChannelSize  tally.Gauge
+	taskAckMapSize      tally.Gauge
+	taskUpdateAckDeDupe tally.Counter
 
 	scope tally.Scope
 }
@@ -17,9 +19,11 @@ type Metrics struct {
 // and rooted at the given tally.Scope
 func NewMetrics(scope tally.Scope) *Metrics {
 	return &Metrics{
-		taskUpdateCounter:  scope.Counter("task_updates"),
-		taskUpdateAck:      scope.Counter("task_update_ack"),
-		taskAckChannelSize: scope.Gauge("task_ack_channel_size"),
+		taskUpdateCounter:   scope.Counter("task_updates"),
+		taskUpdateAck:       scope.Counter("task_update_ack"),
+		taskAckChannelSize:  scope.Gauge("task_ack_channel_size"),
+		taskAckMapSize:      scope.Gauge("task_ack_map_size"),
+		taskUpdateAckDeDupe: scope.Counter("task_update_ack_dedupe"),
 
 		scope: scope,
 	}

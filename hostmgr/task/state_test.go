@@ -45,6 +45,9 @@ type stateManagerTestSuite struct {
 	resMgrClient *res_mocks.MockResourceManagerServiceYARPCClient
 	stateManager StateManager
 
+	dispatcher *yarpc.Dispatcher
+	testScope  tally.TestScope
+
 	taskStatusUpdate *sched.Event
 	event            *pb_eventstream.Event
 
@@ -53,7 +56,7 @@ type stateManagerTestSuite struct {
 	schedulerClient *mpb_mocks.MockSchedulerClient
 }
 
-func (s *stateManagerTestSuite) SetupSuite() {
+func (s *stateManagerTestSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.context = context.Background()
 
@@ -64,7 +67,7 @@ func (s *stateManagerTestSuite) SetupSuite() {
 			Unary: outbound,
 		},
 	}
-	dispatcher := yarpc.NewDispatcher(yarpc.Config{
+	s.dispatcher = yarpc.NewDispatcher(yarpc.Config{
 		Name:      common.PelotonHostManager,
 		Inbounds:  nil,
 		Outbounds: outbounds,
@@ -75,13 +78,7 @@ func (s *stateManagerTestSuite) SetupSuite() {
 	s.schedulerClient = mpb_mocks.NewMockSchedulerClient(s.ctrl)
 
 	s.resMgrClient = res_mocks.NewMockResourceManagerServiceYARPCClient(s.ctrl)
-	s.stateManager = NewStateManager(
-		dispatcher,
-		s.schedulerClient,
-		10,
-		10,
-		s.resMgrClient,
-		tally.NoopScope)
+	s.testScope = tally.NewTestScope("", map[string]string{})
 
 	s.store = storage_mocks.NewMockFrameworkInfoStore(s.ctrl)
 
@@ -100,13 +97,7 @@ func (s *stateManagerTestSuite) SetupSuite() {
 		s.store,
 		http.Header{},
 	).(hostmgr_mesos.SchedulerDriver)
-}
 
-func (s *stateManagerTestSuite) TearDownSuite() {
-	s.ctrl.Finish()
-}
-
-func (s *stateManagerTestSuite) SetupTest() {
 	_uuid := "d2c41522-0216-4704-8903-2945414c414c"
 	state := mesos.TaskState_TASK_STARTING
 	status := &mesos.TaskStatus{
@@ -114,7 +105,7 @@ func (s *stateManagerTestSuite) SetupTest() {
 			Value: &_uuid,
 		},
 		State: &state,
-		Uuid:  []byte(_uuid),
+		Uuid:  []byte{201, 117, 104, 168, 54, 76, 69, 143, 185, 116, 159, 95, 198, 94, 162, 38},
 		AgentId: &mesos.AgentID{
 			Value: &_uuid,
 		},
@@ -134,13 +125,73 @@ func (s *stateManagerTestSuite) SetupTest() {
 }
 
 func (s *stateManagerTestSuite) TearDownTest() {
+	s.ctrl.Finish()
+}
+
+func (s *stateManagerTestSuite) createNewStateManager(ackConcurrency int) StateManager {
+	return NewStateManager(
+		s.dispatcher,
+		s.schedulerClient,
+		10,
+		ackConcurrency,
+		s.resMgrClient,
+		s.testScope)
+}
+
+func (s *stateManagerTestSuite) TestStatusUpdateDedupe() {
+	s.stateManager = s.createNewStateManager(0)
+	var items []*cirbuf.CircularBufferItem
+	var item *cirbuf.CircularBufferItem
+	_uuid := "59f2d54b-9688-4075-83dd-5fdf305a4f5e"
+	for i := 1; i <= 5; i++ {
+		item = &cirbuf.CircularBufferItem{
+			SequenceID: uint64(i),
+			Value:      createEvent(_uuid, i),
+		}
+		items = append(items, item)
+	}
+
+	s.stateManager.EventPurged(items)
+	s.stateManager.UpdateCounters(nil)
+
+	// Four ack are deduped
+	s.Equal(s.testScope.Snapshot().Counters()["taskStateManager.task_update_ack_dedupe+"].Value(), int64(4))
+	s.Equal(s.testScope.Snapshot().Gauges()["taskStateManager.task_ack_map_size+"].Value(), float64(1))
+}
+
+func createEvent(_uuid string, offset int) *pb_eventstream.Event {
+	state := mesos.TaskState_TASK_STARTING
+	status := &mesos.TaskStatus{
+		TaskId: &mesos.TaskID{
+			Value: &_uuid,
+		},
+		State: &state,
+		Uuid:  []byte{201, 117, 104, 168, 54, 76, 69, 143, 185, 116, 159, 95, 198, 94, 162, 38},
+		AgentId: &mesos.AgentID{
+			Value: &_uuid,
+		},
+	}
+
+	taskStatusUpdate := &sched.Event{
+		Update: &sched.Event_Update{
+			Status: status,
+		},
+	}
+
+	return &pb_eventstream.Event{
+		Offset:          uint64(offset),
+		Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+		MesosTaskStatus: taskStatusUpdate.GetUpdate().GetStatus(),
+	}
 }
 
 func (s *stateManagerTestSuite) TestInitStateManager() {
+	s.stateManager = s.createNewStateManager(10)
 	s.NotNil(s.stateManager)
 }
 
 func (s *stateManagerTestSuite) TestAddTaskStatusUpdate() {
+	s.stateManager = s.createNewStateManager(10)
 	var events []*pb_eventstream.Event
 	event := &pb_eventstream.Event{
 		Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
@@ -164,6 +215,7 @@ func (s *stateManagerTestSuite) TestAddTaskStatusUpdate() {
 }
 
 func (s *stateManagerTestSuite) TestAckTaskStatusUpdate() {
+	s.stateManager = s.createNewStateManager(10)
 	var items []*cirbuf.CircularBufferItem
 	item := &cirbuf.CircularBufferItem{
 		SequenceID: uint64(1),
@@ -184,7 +236,7 @@ func (s *stateManagerTestSuite) TestAckTaskStatusUpdate() {
 			TaskId: &mesos.TaskID{
 				Value: &_uuid,
 			},
-			Uuid: []byte(_uuid),
+			Uuid: []byte{201, 117, 104, 168, 54, 76, 69, 143, 185, 116, 159, 95, 198, 94, 162, 38},
 			AgentId: &mesos.AgentID{
 				Value: &_uuid,
 			},
@@ -202,6 +254,7 @@ func (s *stateManagerTestSuite) TestAckTaskStatusUpdate() {
 
 	s.stateManager.EventPurged(items)
 	time.Sleep(500 * time.Millisecond)
+	s.Equal(s.testScope.Snapshot().Gauges()["taskStateManager.task_ack_map_size+"].Value(), float64(0))
 }
 
 func TestStateManager(t *testing.T) {

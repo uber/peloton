@@ -1,6 +1,7 @@
 package task
 
 import (
+	"math"
 	"strconv"
 	"time"
 
@@ -38,7 +39,9 @@ var (
 	// ErrPortMismatch represents port not matching.
 	ErrPortMismatch = errors.New("port in launch not in offer")
 	// ErrNotEnoughResource means resource is not enough to match given task.
-	ErrNotEnoughResource = errors.New("Not enough resources left to run task")
+	ErrNotEnoughResource = errors.New("not enough resources left to run task")
+	// ErrNotEnoughRevocableResource means revocable resources is not enough to match given task
+	ErrNotEnoughRevocableResource = errors.New("not enough revocable resources left to run task")
 )
 
 // Builder helps to build launchable Mesos TaskInfo from offers and
@@ -532,6 +535,10 @@ func (tb *Builder) extractScalarResources(
 		// ToDo: Implement a more clean design on comparing revocable resources.
 		rs, err := tb.extractRevocableScalarResources(&requiredScalar)
 		if err != nil {
+			log.WithFields(log.Fields{
+				"resources_requested":       requiredScalar,
+				"total_revocable_resources": tb.revocable,
+			}).Error("not enough revocable resources to match current task")
 			return nil, err
 		}
 		launchResources = append(launchResources, rs...)
@@ -586,9 +593,11 @@ func (tb *Builder) extractScalarResources(
 
 	if !requiredScalar.Empty() {
 		log.WithFields(log.Fields{
-			"not_matched_resource": requiredScalar,
-			"task_resource":        taskResources,
-		}).Error("not enough resources to match current task")
+			"resources_left_to_match": requiredScalar,
+			"requested_resources":     taskResources,
+			"revocable_resources":     tb.revocable,
+			"non_revocable_resources": tb.scalars,
+		}).Error("resources are still left to match")
 		return nil, ErrNotEnoughResource
 	}
 	return launchResources, nil
@@ -597,10 +606,11 @@ func (tb *Builder) extractScalarResources(
 // extractRevocableResources extract revocable resources for required task resources.
 func (tb *Builder) extractRevocableScalarResources(
 	requiredScalar *scalar.Resources) ([]*mesos.Resource, error) {
-	if tb.revocable.CPU-requiredScalar.CPU >= 0 {
-		tb.revocable.CPU = tb.revocable.CPU - requiredScalar.CPU
+	leftover := math.Round((tb.revocable.CPU-requiredScalar.CPU)*100) / 100
+	if leftover >= 0 {
+		tb.revocable.CPU = leftover
 	} else {
-		return nil, ErrNotEnoughResource
+		return nil, ErrNotEnoughRevocableResource
 	}
 
 	rs := util.CreateMesosScalarResources(

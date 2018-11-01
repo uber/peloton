@@ -253,6 +253,35 @@ func TestFromOfferMap(t *testing.T) {
 	assert.InEpsilon(t, 8.0, result.GPU, zeroEpsilon)
 }
 
+func TestFromOffers(t *testing.T) {
+	rs := []*mesos.Resource{
+		util.NewMesosResourceBuilder().WithName("cpus").WithValue(1.0).Build(),
+		util.NewMesosResourceBuilder().WithName("mem").WithValue(2.0).Build(),
+		util.NewMesosResourceBuilder().WithName("disk").WithValue(3.0).Build(),
+		util.NewMesosResourceBuilder().WithName("gpus").WithValue(4.0).Build(),
+		util.NewMesosResourceBuilder().WithName("custom").WithValue(5.0).Build(),
+	}
+
+	offer := mesos.Offer{
+		Resources: rs,
+	}
+
+	result := FromOffers([]*mesos.Offer{&offer})
+	assert.InEpsilon(t, 1.0, result.CPU, zeroEpsilon)
+	assert.InEpsilon(t, 2.0, result.Mem, zeroEpsilon)
+	assert.InEpsilon(t, 3.0, result.Disk, zeroEpsilon)
+	assert.InEpsilon(t, 4.0, result.GPU, zeroEpsilon)
+
+	result = FromOffers([]*mesos.Offer{
+		&offer,
+		&offer,
+	})
+	assert.InEpsilon(t, 2.0, result.CPU, zeroEpsilon)
+	assert.InEpsilon(t, 4.0, result.Mem, zeroEpsilon)
+	assert.InEpsilon(t, 6.0, result.Disk, zeroEpsilon)
+	assert.InEpsilon(t, 8.0, result.GPU, zeroEpsilon)
+}
+
 func TestFromResourceConfig(t *testing.T) {
 	result := FromResourceConfig(&task.ResourceConfig{
 		CpuLimit:    1.0,

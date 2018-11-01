@@ -378,7 +378,7 @@ func (p *offerPool) removeOffer(offerID, reason string) {
 	if !ok {
 		log.
 			WithField("offer_id", offerID).
-			Info("removeOffer: OfferID not found in pool.")
+			Info("offer not found in pool.")
 		return
 	}
 	p.timedOffers.Delete(offerID)
@@ -403,10 +403,8 @@ func (p *offerPool) RescindOffer(offerID *mesos.OfferID) bool {
 	defer p.RUnlock()
 
 	oID := *offerID.Value
-	log.WithField("offer_id", oID).Info("RescindOffer Received")
-
 	p.metrics.RescindEvents.Inc(1)
-	p.removeOffer(oID, "Offer is rescinded.")
+	p.removeOffer(oID, "offer is rescinded.")
 	return true
 }
 
@@ -432,7 +430,7 @@ func (p *offerPool) RemoveExpiredOffers() (map[string]*TimedOffer, int) {
 	if len(offersToDecline) > 0 {
 		p.metrics.ExpiredOffers.Inc(int64(len(offersToDecline)))
 		for offerID := range offersToDecline {
-			p.removeOffer(offerID, "Offer is expired.")
+			p.removeOffer(offerID, "offer is expired.")
 		}
 	}
 
@@ -465,8 +463,6 @@ func (p *offerPool) DeclineOffers(
 	p.RLock()
 	defer p.RUnlock()
 
-	log.WithField("offer_ids", offerIDs).Info("Decline offer.")
-
 	callType := sched.Call_DECLINE
 	msg := &sched.Call{
 		FrameworkId: p.mesosFrameworkInfoProvider.GetFrameworkID(ctx),
@@ -490,7 +486,7 @@ func (p *offerPool) DeclineOffers(
 
 	p.metrics.Decline.Inc(int64(len(offerIDs)))
 	for _, offerID := range offerIDs {
-		p.removeOffer(*offerID.Value, "Offer is declined.")
+		p.removeOffer(*offerID.Value, "offer is declined")
 	}
 
 	return nil

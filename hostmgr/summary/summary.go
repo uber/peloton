@@ -505,12 +505,12 @@ func (a *hostSummary) RemoveMesosOffer(offerID, reason string) (HostStatus, *mes
 	default:
 		// This could trigger INVALID_OFFER error later.
 		log.WithFields(log.Fields{
-			"offer":             offer,
-			"unreserved_offers": a.unreservedOffers,
-			"reserved_offers":   a.reservedOffers,
-			"status":            a.status,
-			"reason":            reason,
-		}).Warn("Offer removed while not in ready status")
+			"offer_id":                  offer.Id.GetValue(),
+			"resources_removed":         scalar.FromOffer(offer),
+			"unreserved_resources_left": scalar.FromOfferMap(a.unreservedOffers),
+			"status":                    a.status,
+			"reason":                    reason,
+		}).Warn("offer removed while not in ready status")
 	}
 
 	return a.status, offer
@@ -576,15 +576,11 @@ func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) (bool, scala
 		a.status == PlacingHost &&
 		now.After(a.statusPlacingOfferExpiration) {
 
-		var offers []*mesos.Offer
-		for _, o := range a.unreservedOffers {
-			offers = append(offers, o)
-		}
 		log.WithFields(log.Fields{
-			"time":        now,
-			"curr_status": a.status,
-			"ready_count": a.readyCount.Load(),
-			"offers":      offers,
+			"time":            now,
+			"current_status":  a.status,
+			"ready_count":     a.readyCount.Load(),
+			"offer_resources": scalar.FromOfferMap(a.unreservedOffers),
 		}).Warn("reset host from placing to ready after timeout")
 
 		a.casStatusLockFree(PlacingHost, ReadyHost)

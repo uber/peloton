@@ -115,6 +115,25 @@ func createTestTaskConfigs(numTasks int) []*task.TaskConfig {
 	return configs
 }
 
+func (suite *BuilderTestSuite) TestRevocableFloatOverflow() {
+	resources := []*mesos.Resource{
+		util.NewMesosResourceBuilder().
+			WithName("cpus").
+			WithValue(float64(19)).
+			WithRevocable(&mesos.Resource_RevocableInfo{}).
+			WithRole("*").
+			Build(),
+	}
+	builder := NewBuilder(resources)
+	for i := 0; i < 190; i++ {
+		requiredScalar := &scalar.Resources{
+			CPU: 0.1,
+		}
+		_, err := builder.extractRevocableScalarResources(requiredScalar)
+		suite.NoError(err)
+	}
+}
+
 // This tests several copies of simple tasks without any port can be
 // created as long as there are enough resources.
 func (suite *BuilderTestSuite) TestNoPortTasks() {

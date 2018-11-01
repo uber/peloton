@@ -207,6 +207,16 @@ func FromOffer(offer *mesos.Offer) Resources {
 	return FromMesosResources(offer.GetResources())
 }
 
+// FromOffers returns the scalar Resources from given offers
+func FromOffers(offers []*mesos.Offer) (r Resources) {
+	for _, offer := range offers {
+		tmp := FromOffer(offer)
+		r = r.Add(tmp)
+	}
+
+	return r
+}
+
 // FromOfferMap returns the scalar Resources from given id to offer map.
 func FromOfferMap(offerMap map[string]*mesos.Offer) (r Resources) {
 	for _, offer := range offerMap {
