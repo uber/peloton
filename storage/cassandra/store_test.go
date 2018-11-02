@@ -3047,6 +3047,7 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 	// testing sorting by state
 	tasks, _, err = taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
 		Pagination: &query.PaginationSpec{
+			Limit: 17,
 			OrderBy: []*query.OrderBy{
 				{
 					Order: query.OrderBy_DESC,
@@ -3062,9 +3063,10 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 		suite.Equal(tasks[i-1].Runtime.State > tasks[i].Runtime.State, true)
 	}
 
-	// teseting sorting by time
+	// testing sorting by time
 	tasks, _, err = taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
 		Pagination: &query.PaginationSpec{
+			Limit: 17,
 			OrderBy: []*query.OrderBy{
 				{
 					Order: query.OrderBy_DESC,
@@ -3077,10 +3079,166 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 	})
 
 	for i := 0; i < len(tasks); i++ {
-		suite.Equal(len(tasks)-i-1, tasks[i].InstanceId)
+		suite.Equal(uint32(len(tasks)-i-1), tasks[i].InstanceId)
 	}
 
 	suite.NoError(taskStore.DeleteTaskRuntime(context.Background(), &jobID, uint32(0)))
+}
+
+// Test task query with sort by host
+func (suite *CassandraStoreTestSuite) TestQueryTasksSortByHost() {
+	var jobID = peloton.JobID{Value: uuid.New()}
+	var taskStore = suite.createTasksForSortBy(jobID)
+	tasks, _, err := taskStore.QueryTasks(context.Background(), &jobID, suite.prepareQuerySpec([]string{hostField}))
+	suite.Nil(err)
+
+	for i := 1; i < 100; i++ {
+		suite.Equal(tasks[i-1].GetRuntime().GetHost() > tasks[i].GetRuntime().GetHost(), true)
+	}
+	suite.NoError(taskStore.DeleteTaskRuntime(context.Background(), &jobID, uint32(0)))
+}
+
+// Test task query with sort by InstanceID
+func (suite *CassandraStoreTestSuite) TestQueryTasksSortByInstanceID() {
+	var jobID = peloton.JobID{Value: uuid.New()}
+	var taskStore = suite.createTasksForSortBy(jobID)
+	tasks, _, err := taskStore.QueryTasks(context.Background(), &jobID, suite.prepareQuerySpec([]string{instanceIDField}))
+	suite.Nil(err)
+
+	for i := 1; i < 100; i++ {
+		suite.Equal(tasks[i-1].GetInstanceId() > tasks[i].GetInstanceId(), true)
+	}
+	suite.NoError(taskStore.DeleteTaskRuntime(context.Background(), &jobID, uint32(0)))
+}
+
+// Test task query with sort by message
+func (suite *CassandraStoreTestSuite) TestQueryTasksSortByMessage() {
+	var jobID = peloton.JobID{Value: uuid.New()}
+	var taskStore = suite.createTasksForSortBy(jobID)
+	tasks, _, err := taskStore.QueryTasks(context.Background(), &jobID, suite.prepareQuerySpec([]string{messageField}))
+	suite.Nil(err)
+
+	for i := 1; i < 100; i++ {
+		suite.Equal(tasks[i-1].GetRuntime().GetMessage() > tasks[i].GetRuntime().GetMessage(), true)
+	}
+	suite.NoError(taskStore.DeleteTaskRuntime(context.Background(), &jobID, uint32(0)))
+}
+
+// Test task query with sort by name
+func (suite *CassandraStoreTestSuite) TestQueryTasksSortByName() {
+	var jobID = peloton.JobID{Value: uuid.New()}
+	var taskStore = suite.createTasksForSortBy(jobID)
+	tasks, _, err := taskStore.QueryTasks(context.Background(), &jobID, suite.prepareQuerySpec([]string{nameField}))
+	suite.Nil(err)
+
+	for i := 1; i < 100; i++ {
+		suite.Equal(tasks[i-1].GetConfig().GetName() > tasks[i].GetConfig().GetName(), true)
+	}
+	suite.NoError(taskStore.DeleteTaskRuntime(context.Background(), &jobID, uint32(0)))
+}
+
+// Test task query with sort by reason
+func (suite *CassandraStoreTestSuite) TestQueryTasksSortByReason() {
+	var jobID = peloton.JobID{Value: uuid.New()}
+	var taskStore = suite.createTasksForSortBy(jobID)
+	tasks, _, err := taskStore.QueryTasks(context.Background(), &jobID, suite.prepareQuerySpec([]string{reasonField}))
+	suite.Nil(err)
+
+	for i := 1; i < 100; i++ {
+		suite.Equal(tasks[i-1].GetRuntime().GetReason() > tasks[i].GetRuntime().GetReason(), true)
+	}
+	suite.NoError(taskStore.DeleteTaskRuntime(context.Background(), &jobID, uint32(0)))
+}
+
+// sortedByList has name and reason, since name of each task is the same(empty) in this TC, it should use second sortBy reason to compare instead
+func (suite *CassandraStoreTestSuite) TestQueryTasksSortByNameReasonEmptyName() {
+	var jobID = peloton.JobID{Value: uuid.New()}
+	var taskStore storage.TaskStore
+	taskStore = store
+
+	configAddOn := &models.ConfigAddOn{}
+	runtimes := make(map[uint32]*task.RuntimeInfo)
+	jobConfig := createJobConfig()
+	jobConfig.InstanceCount = 100
+	jobConfig.InstanceConfig = map[uint32]*task.TaskConfig{}
+
+	for i := 0; i < 100; i++ {
+		taskInfo := createTaskInfo(jobConfig, &jobID, 0)
+		taskInfo.Config = &task.TaskConfig{}
+		jobConfig.InstanceConfig[uint32(i)] = taskInfo.Config
+		taskInfo.Runtime.Reason = fmt.Sprintf("REASON_COMMAND_EXECUTOR_FAILED_%d", i)
+		runtimes[uint32(i)] = taskInfo.Runtime
+	}
+
+	err := suite.createJob(context.Background(), &jobID, jobConfig, configAddOn, "user1")
+	suite.Nil(err)
+
+	for i := 0; i < 100; i++ {
+		runtimes[uint32(i)].ConfigVersion = jobConfig.GetChangeLog().GetVersion()
+		err = taskStore.CreateTaskRuntime(context.Background(),
+			&jobID, uint32(i), runtimes[uint32(i)], "test", jobConfig.GetType())
+		suite.NoError(err)
+	}
+
+	// testing sorting by message and name
+	tasks, _, err := taskStore.QueryTasks(context.Background(), &jobID, suite.prepareQuerySpec([]string{reasonField, nameField}))
+
+	for i := 1; i < len(tasks); i++ {
+		suite.Equal(tasks[i-1].GetRuntime().GetReason() > tasks[i].GetRuntime().GetReason(), true)
+		suite.Equal(tasks[i-1].GetConfig().GetName() == tasks[i].GetConfig().GetName(), true)
+	}
+	suite.NoError(taskStore.DeleteTaskRuntime(context.Background(), &jobID, uint32(0)))
+}
+
+func (suite *CassandraStoreTestSuite) prepareQuerySpec(sortTypeArr []string) *task.QuerySpec {
+	queryOrderByList := make([]*query.OrderBy, len(sortTypeArr))
+	for i := 0; i < len(sortTypeArr); i++ {
+		queryOrderByList[i] = &query.OrderBy{
+			Order: query.OrderBy_DESC,
+			Property: &query.PropertyPath{
+				Value: sortTypeArr[i],
+			},
+		}
+	}
+	return &task.QuerySpec{
+		Pagination: &query.PaginationSpec{
+			Limit:   100,
+			OrderBy: queryOrderByList,
+		},
+	}
+}
+
+func (suite *CassandraStoreTestSuite) createTasksForSortBy(jobID peloton.JobID) storage.TaskStore {
+	var taskStore storage.TaskStore
+	taskStore = store
+
+	configAddOn := &models.ConfigAddOn{}
+	runtimes := make(map[uint32]*task.RuntimeInfo)
+	jobConfig := createJobConfig()
+	jobConfig.InstanceCount = 100
+	jobConfig.InstanceConfig = map[uint32]*task.TaskConfig{}
+
+	for i := 0; i < 100; i++ {
+		taskInfo := createTaskInfo(jobConfig, &jobID, 0)
+		taskInfo.Config = &task.TaskConfig{Name: fmt.Sprintf("task_%d", i)}
+		jobConfig.InstanceConfig[uint32(i)] = taskInfo.Config
+		taskInfo.Runtime.Host = fmt.Sprintf("host_%d", i)
+		taskInfo.Runtime.Reason = fmt.Sprintf("REASON_COMMAND_EXECUTOR_FAILED_%d", i)
+		taskInfo.Runtime.Message = fmt.Sprintf("Container exited with status %d", i)
+		runtimes[uint32(i)] = taskInfo.Runtime
+	}
+
+	err := suite.createJob(context.Background(), &jobID, jobConfig, configAddOn, "user1")
+	suite.Nil(err)
+
+	for i := 0; i < 100; i++ {
+		runtimes[uint32(i)].ConfigVersion = jobConfig.GetChangeLog().GetVersion()
+		err = taskStore.CreateTaskRuntime(context.Background(),
+			&jobID, uint32(i), runtimes[uint32(i)], "test", jobConfig.GetType())
+		suite.NoError(err)
+	}
+
+	return taskStore
 }
 
 func (suite *CassandraStoreTestSuite) TestPodEvents() {
@@ -3302,6 +3460,12 @@ func TestLess(t *testing.T) {
 	taskInfo0.Runtime.State = task.TaskState_RUNNING
 	taskInfo0.Runtime.StartTime = "2018-04-24T01:50:38Z"
 	taskInfo2.Runtime.StartTime = "2018-04-24T01:40:38Z"
+	taskInfo0.Config = &task.TaskConfig{Name: "taskInfo0"}
+	taskInfo2.Config = &task.TaskConfig{Name: "taskInfo2"}
+	taskInfo0.Runtime.Host = "taskHost0"
+	taskInfo2.Runtime.Host = "taskHost2"
+	taskInfo0.Runtime.Reason = "reason0"
+	taskInfo2.Runtime.Reason = "reason2"
 
 	assert.Equal(t, true, Less(orderByList, taskInfo0, taskInfo2))
 
@@ -3332,6 +3496,46 @@ func TestLess(t *testing.T) {
 	orderByList = []*query.OrderBy{&timeOrder}
 	assert.Equal(t, Less(orderByList, taskInfo0, taskInfo1), true)
 	assert.Equal(t, Less(orderByList, taskInfo1, taskInfo2), false)
+	assert.Equal(t, Less(orderByList, taskInfo0, taskInfo2), false)
+
+	// testing sort by instanceId
+	instanceIDOrder := query.OrderBy{
+		Order: query.OrderBy_DESC,
+		Property: &query.PropertyPath{
+			Value: instanceIDField,
+		},
+	}
+	orderByList = []*query.OrderBy{&instanceIDOrder}
+	assert.Equal(t, Less(orderByList, taskInfo0, taskInfo2), false)
+
+	// testing sort by host
+	hostOrder := query.OrderBy{
+		Order: query.OrderBy_DESC,
+		Property: &query.PropertyPath{
+			Value: hostField,
+		},
+	}
+	orderByList = []*query.OrderBy{&hostOrder}
+	assert.Equal(t, Less(orderByList, taskInfo0, taskInfo2), false)
+
+	// testing sort by reason
+	reasonOrder := query.OrderBy{
+		Order: query.OrderBy_DESC,
+		Property: &query.PropertyPath{
+			Value: reasonField,
+		},
+	}
+	orderByList = []*query.OrderBy{&reasonOrder}
+	assert.Equal(t, Less(orderByList, taskInfo0, taskInfo2), false)
+
+	// testing sort by name
+	nameOrder := query.OrderBy{
+		Order: query.OrderBy_DESC,
+		Property: &query.PropertyPath{
+			Value: nameField,
+		},
+	}
+	orderByList = []*query.OrderBy{&nameOrder}
 	assert.Equal(t, Less(orderByList, taskInfo0, taskInfo2), false)
 }
 

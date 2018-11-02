@@ -196,7 +196,7 @@ var (
 	taskQueryTaskHosts = taskQuery.Flag("hosts", "task hosts").Default("").String()
 	taskQueryLimit     = taskQuery.Flag("limit", "limit").Default("100").Short('n').Uint32()
 	taskQueryOffset    = taskQuery.Flag("offset", "offset").Default("0").Short('o').Uint32()
-	taskQuerySortBy    = taskQuery.Flag("sort", "sort by property (state, creation_time)").Short('p').String()
+	taskQuerySortBy    = taskQuery.Flag("sort", "sort by property (creation_time, host, instance_id, message, name, reason, state)").Short('p').String()
 	taskQuerySortOrder = taskQuery.Flag("sortorder", "sort order (ASC or DESC)").Short('a').Default("ASC").Enum("ASC", "DESC")
 
 	taskRefresh              = task.Command("refresh", "load runtime state of tasks and re-refresh corresponding action (debug only)")

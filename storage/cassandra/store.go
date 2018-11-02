@@ -67,6 +67,13 @@ const (
 	completionTimeField = "completion_time"
 	stateField          = "state"
 
+	// Task query sort by field
+	hostField       = "host"
+	instanceIDField = "instanceId"
+	messageField    = "message"
+	nameField       = "name"
+	reasonField     = "reason"
+
 	secretVersion0 = 0
 	secretValid    = true
 
@@ -2658,8 +2665,37 @@ func Less(orderByList []*query.OrderBy, t1 *task.TaskInfo, t2 *task.TaskInfo) bo
 			} else if time1.After(time2) {
 				return desc
 			}
+		} else if property == hostField {
+			if t1.GetRuntime().GetHost() < t2.GetRuntime().GetHost() {
+				return !desc
+			} else if t1.GetRuntime().GetHost() > t2.GetRuntime().GetHost() {
+				return desc
+			}
+		} else if property == instanceIDField {
+			if t1.GetInstanceId() < t2.GetInstanceId() {
+				return !desc
+			} else if t1.GetInstanceId() > t2.GetInstanceId() {
+				return desc
+			}
+		} else if property == messageField {
+			if t1.GetRuntime().GetMessage() < t2.GetRuntime().GetMessage() {
+				return !desc
+			} else if t1.GetRuntime().GetMessage() > t2.GetRuntime().GetMessage() {
+				return desc
+			}
+		} else if property == nameField {
+			if t1.GetConfig().GetName() < t2.GetConfig().GetName() {
+				return !desc
+			} else if t1.GetConfig().GetName() > t2.GetConfig().GetName() {
+				return desc
+			}
+		} else if property == reasonField {
+			if t1.GetRuntime().GetReason() < t2.GetRuntime().GetReason() {
+				return !desc
+			} else if t1.GetRuntime().GetReason() > t2.GetRuntime().GetReason() {
+				return desc
+			}
 		} else if property == stateField {
-			// return result if not equal, otherwise goto next loop
 			if t1.GetRuntime().GetState() < t2.GetRuntime().GetState() {
 				return !desc
 			} else if t1.GetRuntime().GetState() > t2.GetRuntime().GetState() {
@@ -2695,10 +2731,15 @@ func (s *Store) QueryTasks(
 		switch property {
 		case
 			creationTimeField,
+			hostField,
+			instanceIDField,
+			messageField,
+			nameField,
+			reasonField,
 			stateField:
 			continue
 		}
-		return nil, 0, errors.New("Sort only supports fields: state, creation_time")
+		return nil, 0, errors.New("Sort only supports fields: creation_time, host, instanceId, message, name, reason, state")
 	}
 
 	sort.Slice(sortedTasksResult, func(i, j int) bool {
@@ -2707,7 +2748,7 @@ func (s *Store) QueryTasks(
 
 	offset := spec.GetPagination().GetOffset()
 	limit := _defaultQueryLimit
-	if spec.GetPagination() != nil {
+	if spec.GetPagination().GetLimit() != 0 {
 		limit = spec.GetPagination().GetLimit()
 	}
 
