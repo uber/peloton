@@ -2490,6 +2490,17 @@ func (suite *UpdateRunTestSuite) TestRunningUpdatePartialFailure() {
 			nil,
 		).Return(nil)
 
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID)
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any())
+
 	err := UpdateRun(context.Background(), suite.updateEnt)
 	suite.NoError(err)
 }

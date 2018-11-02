@@ -120,6 +120,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 		instancesToUpdate,
 		instancesToRemove,
 		instancesDone,
+		instancesFailed,
 		goalStateDriver); err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
 		return err
@@ -220,10 +221,11 @@ func postUpdateAction(
 	instancesUpdatedInCurrentRun []uint32,
 	instancesRemovedInCurrentRun []uint32,
 	instancesDone []uint32,
+	instancesFailed []uint32,
 	goalStateDriver Driver,
 ) error {
 	// update finishes, reenqueue the update
-	if len(cachedUpdate.GetGoalState().Instances) == len(instancesDone) {
+	if len(cachedUpdate.GetGoalState().Instances) == len(instancesDone)+len(instancesFailed) {
 		goalStateDriver.EnqueueUpdate(
 			cachedJob.ID(),
 			cachedUpdate.ID(),
