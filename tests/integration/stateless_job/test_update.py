@@ -1,5 +1,6 @@
 import pytest
 import grpc
+import time
 
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 from peloton_client.pbgen.peloton.api.v0.job.job_pb2 import JobConfig
@@ -558,3 +559,47 @@ def test__auto_rollback_update_with_failed_health_check(stateless_job):
     update.wait_for_state(goal_state='ROLLED_BACK')
     new_instance_zero_config = stateless_job.get_task_info(0).config
     assert_task_config_equal(old_instance_zero_config, new_instance_zero_config)
+
+
+# test__pause_resume_initialized_update test pause and resume
+#  an update in initialized state
+def test__pause_resume_initialized_update(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_task_infos = stateless_job.list_tasks().value
+    old_instance_zero_config = stateless_job.get_task_info(0).config
+    update = Update(stateless_job,
+                    batch_size=1,
+                    updated_job_file=UPDATE_STATELESS_JOB_FILE)
+    update.create()
+    # immediately pause the update, so the update may still be INITIALIZED
+    update.pause()
+    update.wait_for_state(goal_state='PAUSED')
+    update.resume()
+    update.wait_for_state(goal_state='SUCCEEDED')
+    new_task_infos = stateless_job.list_tasks().value
+    new_instance_zero_config = stateless_job.get_task_info(0).config
+    assert_task_mesos_id_changed(old_task_infos, new_task_infos)
+    assert_task_config_changed(old_instance_zero_config, new_instance_zero_config)
+
+
+# test__pause_resume_initialized_update test pause and resume an update
+def test__pause_resume__update(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_task_infos = stateless_job.list_tasks().value
+    old_instance_zero_config = stateless_job.get_task_info(0).config
+    update = Update(stateless_job,
+                    batch_size=1,
+                    updated_job_file=UPDATE_STATELESS_JOB_FILE)
+    update.create()
+    # sleep for 1 sec so update can begin to roll forward
+    time.sleep(1)
+    update.pause()
+    update.wait_for_state(goal_state='PAUSED')
+    update.resume()
+    update.wait_for_state(goal_state='SUCCEEDED')
+    new_task_infos = stateless_job.list_tasks().value
+    new_instance_zero_config = stateless_job.get_task_info(0).config
+    assert_task_mesos_id_changed(old_task_infos, new_task_infos)
+    assert_task_config_changed(old_instance_zero_config, new_instance_zero_config)

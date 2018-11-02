@@ -112,3 +112,31 @@ class Workflow(object):
             timeout=self.config.rpc_timeout_sec,
         )
         return resp.updateInfo.status.state
+
+    def pause(self):
+        """
+        pause the given workflow
+        """
+        request = update_svc.PauseUpdateRequest(
+            updateId=peloton.UpdateID(value=self.workflow_id),
+        )
+        resp = self.client.update_svc.PauseUpdate(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        return resp
+
+    def resume(self):
+        """
+        resume the given workflow
+        """
+        request = update_svc.ResumeUpdateRequest(
+            updateId=peloton.UpdateID(value=self.workflow_id),
+        )
+        resp = self.client.update_svc.ResumeUpdate(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        return resp

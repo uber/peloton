@@ -115,3 +115,15 @@ class Update(object):
         """
         self.workflow.wait_for_state(goal_state=goal_state,
                                      failed_state=failed_state)
+
+    def pause(self):
+        """
+        pause the given update
+        """
+        return self.workflow.pause()
+
+    def resume(self):
+        """
+        resume the given update
+        """
+        return self.workflow.resume()
