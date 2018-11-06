@@ -40,7 +40,6 @@ def create_task_config(sleep_time, dynamic_factor):
             value="echo %s && sleep %s" % (
                 str(dynamic_factor), str(sleep_time)),
         ),
-
     )
 
 
@@ -100,10 +99,20 @@ class PerformanceTestClient(object):
         except Exception:
             raise
 
-    def run_benchmark(self,
-                      instance_num,
-                      sleep_time,
-                      use_instance_config=False):
+    def stop_job(self, job_id):
+        request = task.StopRequest(
+            jobId=peloton.JobID(value=job_id),
+        )
+        try:
+            self.client.task_svc.Stop(
+                request,
+                metadata=self.client.jobmgr_metadata,
+                timeout=default_timeout,
+            )
+        except Exception:
+            raise
+
+    def create_job(self, instance_num, sleep_time, use_instance_config=False):
         default_config = create_task_config(sleep_time, 'static')
         instance_config = {}
         if use_instance_config:
@@ -149,11 +158,9 @@ class PerformanceTestClient(object):
                 metadata=self.client.jobmgr_metadata,
                 timeout=default_timeout,
             )
-            print resp
         except Exception:
             raise JobCreateFailedException
-
-        return self.monitoring(resp.jobId.value)
+        return resp.jobId.value
 
     def monitoring(self, job_id, stable_timeout=600):
         """
@@ -161,9 +168,7 @@ class PerformanceTestClient(object):
         or the job status meets the target_status. monitering returns a bool
         value whether the job completedd and meet the target status, and the
         time (seconds) to complete the job.
-
         rtype: bool, int, int
-
         """
         if not job_id:
             return False, 0, 0
