@@ -110,7 +110,7 @@ func (suite *podHandlerTestSuite) TestGetPodCacheSuccess() {
 	suite.NotNil(resp.GetStatus())
 	suite.Equal(resp.GetStatus().GetState(), pod.PodState_POD_STATE_RUNNING)
 	suite.Equal(resp.GetStatus().GetDesiredState(), pod.PodState_POD_STATE_KILLED)
-	suite.Equal(resp.GetStatus().GetHealthy(), pod.HealthState_HEALTH_STATE_HEALTHY)
+	suite.Equal(resp.GetStatus().GetContainersStatus()[0].GetHealthy().GetState(), pod.HealthState_HEALTH_STATE_HEALTHY)
 }
 
 // TestGetPodCacheInvalidPodName test the case of getting cache
@@ -1278,4 +1278,84 @@ func (suite *podHandlerTestSuite) TestDeletePodEvents() {
 	response, err := suite.handler.DeletePodEvents(context.Background(), request)
 	suite.NoError(err)
 	suite.NotNil(response)
+}
+
+func (suite *podHandlerTestSuite) TestConvertTaskStateToPodstate() {
+	tt := []struct {
+		taskState pbtask.TaskState
+		podState  pod.PodState
+	}{
+		{
+			taskState: pbtask.TaskState_UNKNOWN,
+			podState:  pod.PodState_POD_STATE_INVALID,
+		},
+		{
+			taskState: pbtask.TaskState_INITIALIZED,
+			podState:  pod.PodState_POD_STATE_INITIALIZED,
+		},
+		{
+			taskState: pbtask.TaskState_PENDING,
+			podState:  pod.PodState_POD_STATE_PENDING,
+		},
+		{
+			taskState: pbtask.TaskState_READY,
+			podState:  pod.PodState_POD_STATE_READY,
+		},
+		{
+			taskState: pbtask.TaskState_PLACING,
+			podState:  pod.PodState_POD_STATE_PLACING,
+		},
+		{
+			taskState: pbtask.TaskState_PLACED,
+			podState:  pod.PodState_POD_STATE_PLACED,
+		},
+		{
+			taskState: pbtask.TaskState_LAUNCHING,
+			podState:  pod.PodState_POD_STATE_LAUNCHING,
+		},
+		{
+			taskState: pbtask.TaskState_LAUNCHED,
+			podState:  pod.PodState_POD_STATE_LAUNCHED,
+		},
+		{
+			taskState: pbtask.TaskState_STARTING,
+			podState:  pod.PodState_POD_STATE_STARTING,
+		},
+		{
+			taskState: pbtask.TaskState_RUNNING,
+			podState:  pod.PodState_POD_STATE_RUNNING,
+		},
+		{
+			taskState: pbtask.TaskState_SUCCEEDED,
+			podState:  pod.PodState_POD_STATE_SUCCEEDED,
+		},
+		{
+			taskState: pbtask.TaskState_FAILED,
+			podState:  pod.PodState_POD_STATE_FAILED,
+		},
+		{
+			taskState: pbtask.TaskState_LOST,
+			podState:  pod.PodState_POD_STATE_LOST,
+		},
+		{
+			taskState: pbtask.TaskState_PREEMPTING,
+			podState:  pod.PodState_POD_STATE_PREEMPTING,
+		},
+		{
+			taskState: pbtask.TaskState_KILLING,
+			podState:  pod.PodState_POD_STATE_KILLING,
+		},
+		{
+			taskState: pbtask.TaskState_KILLED,
+			podState:  pod.PodState_POD_STATE_KILLED,
+		},
+		{
+			taskState: pbtask.TaskState_DELETED,
+			podState:  pod.PodState_POD_STATE_DELETED,
+		},
+	}
+
+	for _, test := range tt {
+		suite.Equal(test.podState, convertTaskStateToPodState(test.taskState))
+	}
 }

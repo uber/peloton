@@ -529,19 +529,66 @@ func (h *serviceHandler) DeletePodEvents(
 	return &svc.DeletePodEventsResponse{}, nil
 }
 
+func convertTaskStateToPodState(state pbtask.TaskState) pbpod.PodState {
+	switch state {
+	case pbtask.TaskState_UNKNOWN:
+		return pbpod.PodState_POD_STATE_INVALID
+	case pbtask.TaskState_INITIALIZED:
+		return pbpod.PodState_POD_STATE_INITIALIZED
+	case pbtask.TaskState_PENDING:
+		return pbpod.PodState_POD_STATE_PENDING
+	case pbtask.TaskState_READY:
+		return pbpod.PodState_POD_STATE_READY
+	case pbtask.TaskState_PLACING:
+		return pbpod.PodState_POD_STATE_PLACING
+	case pbtask.TaskState_PLACED:
+		return pbpod.PodState_POD_STATE_PLACED
+	case pbtask.TaskState_LAUNCHING:
+		return pbpod.PodState_POD_STATE_LAUNCHING
+	case pbtask.TaskState_LAUNCHED:
+		return pbpod.PodState_POD_STATE_LAUNCHED
+	case pbtask.TaskState_STARTING:
+		return pbpod.PodState_POD_STATE_STARTING
+	case pbtask.TaskState_RUNNING:
+		return pbpod.PodState_POD_STATE_RUNNING
+	case pbtask.TaskState_SUCCEEDED:
+		return pbpod.PodState_POD_STATE_SUCCEEDED
+	case pbtask.TaskState_FAILED:
+		return pbpod.PodState_POD_STATE_FAILED
+	case pbtask.TaskState_LOST:
+		return pbpod.PodState_POD_STATE_LOST
+	case pbtask.TaskState_PREEMPTING:
+		return pbpod.PodState_POD_STATE_PREEMPTING
+	case pbtask.TaskState_KILLING:
+		return pbpod.PodState_POD_STATE_KILLING
+	case pbtask.TaskState_KILLED:
+		return pbpod.PodState_POD_STATE_KILLED
+	case pbtask.TaskState_DELETED:
+		return pbpod.PodState_POD_STATE_DELETED
+	}
+	return pbpod.PodState_POD_STATE_INVALID
+}
+
 func convertToPodStatus(runtime *pbtask.RuntimeInfo) *pbpod.PodStatus {
 	return &pbpod.PodStatus{
-		State:          pbpod.PodState(runtime.GetState()),
+		State:          convertTaskStateToPodState(runtime.GetState()),
 		PodId:          &v1alphapeloton.PodID{Value: runtime.GetMesosTaskId().GetValue()},
 		StartTime:      runtime.GetStartTime(),
 		CompletionTime: runtime.GetCompletionTime(),
 		Host:           runtime.GetHost(),
-		Ports:          runtime.GetPorts(),
-		DesiredState:   pbpod.PodState(runtime.GetGoalState()),
-		Message:        runtime.GetMessage(),
-		Reason:         runtime.GetReason(),
-		FailureCount:   runtime.GetFailureCount(),
-		VolumeId:       &v1alphapeloton.VolumeID{Value: runtime.GetVolumeID().GetValue()},
+		ContainersStatus: []*pbpod.ContainerStatus{
+			&pbpod.ContainerStatus{
+				Ports: runtime.GetPorts(),
+				Healthy: &pbpod.HealthStatus{
+					State: pbpod.HealthState(runtime.GetHealthy()),
+				},
+			},
+		},
+		DesiredState: pbpod.PodState(runtime.GetGoalState()),
+		Message:      runtime.GetMessage(),
+		Reason:       runtime.GetReason(),
+		FailureCount: runtime.GetFailureCount(),
+		VolumeId:     &v1alphapeloton.VolumeID{Value: runtime.GetVolumeID().GetValue()},
 		JobVersion: &v1alphapeloton.EntityVersion{
 			Value: fmt.Sprintf("%d", runtime.GetConfigVersion())},
 		DesiredJobVersion: &v1alphapeloton.EntityVersion{
@@ -555,7 +602,6 @@ func convertToPodStatus(runtime *pbtask.RuntimeInfo) *pbpod.PodStatus {
 		},
 		PrevPodId:     &v1alphapeloton.PodID{Value: runtime.GetPrevMesosTaskId().GetValue()},
 		ResourceUsage: runtime.GetResourceUsage(),
-		Healthy:       pbpod.HealthState(runtime.GetHealthy()),
 		DesiredPodId:  &v1alphapeloton.PodID{Value: runtime.GetDesiredMesosTaskId().GetValue()},
 	}
 }

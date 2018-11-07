@@ -184,6 +184,33 @@ message PersistentVolumeSpec {
     uint32 size_mb = 2;
 }
 
+// A single application container running inside a pod
+message ContainerSpec {
+  // Name of the container.
+  // Each container in a pod must have a unique name.
+  // Cannot be updated.
+  string name = 1;
+
+  // Resource config of the container
+  ResourceSpec resource = 2;
+
+  // Container config of the container
+  mesos.v1.ContainerInfo container = 3;
+
+  // Command line config of the container
+  mesos.v1.CommandInfo command = 4;
+
+  // Liveness health check config of the container
+  HealthCheckSpec liveness_check = 5;
+
+  // Readiness health check config of the container
+  // This is currently not supported.
+  HealthCheckSpec readiness_check = 6;
+
+  // List of network ports to be allocated for the pod
+  repeated PortSpec ports = 7;
+}
+
 // Pod configuration for a given job instance
 // Note that only add string/slice/ptr type into PodConfig directly due to
 // the limitation of go reflection inside our pod specific config logic.
@@ -194,53 +221,156 @@ message PodSpec {
   // List of user-defined labels for the pod
   repeated peloton.Label labels = 2;
 
-  // Resource config of the pod container
-  ResourceSpec resource = 3;
+  // List of initialization containers belonging to the pod.
+  // These containers are assumed to run to completion and
+  // are executed in order prior to containers being started.
+  // If any init container fails, the pod is considered to have failed.
+  // Init containers cannot be configured to have readiness or liveness health checks.
+  repeated ContainerSpec init_containers = 3;
 
-  // Container config of the pod
-  mesos.v1.ContainerInfo container = 4;
-
-  // Command line config of the pod
-  mesos.v1.CommandInfo command = 5;
-
-  // Liveness health check config of the pod container
-  HealthCheckSpec liveness_check = 6;
-
-  // Readiness health check config of the pod container
-  // This is currently not supported.
-  HealthCheckSpec readiness_check = 7;
-
-  // List of network ports to be allocated for the pod
-  repeated PortSpec ports = 8;
+  // List of containers belonging to the pod.
+  // These will be started in parallel after init containers terminate.
+  // There must be at least one container in a pod.
+  repeated ContainerSpec containers = 4;
 
   // Constraint on the attributes of the host or labels on pods on the host
   // that this pod should run on.
   // Use `AndConstraint`/`OrConstraint` to compose multiple constraints if
   // necessary.
-  Constraint constraint = 9;
+  Constraint constraint = 5;
 
   // Pod restart policy on failures
-  RestartPolicy restart_policy = 10;
+  RestartPolicy restart_policy = 6;
 
   // Persistent volume config of the pod.
-  PersistentVolumeSpec volume = 11;
+  PersistentVolumeSpec volume = 7;
 
   // Preemtion policy of the pod
-  PreemptionPolicy preemption_policy = 12;
+  PreemptionPolicy preemption_policy = 8;
 
   // Whether this is a controler pod. A controller is a special batch pod
   // which controls other pods inside a job. E.g. spark driver pods in a spark
   // job will be a controller pod.
-  bool controller = 13;
+  bool controller = 9;
 
   // This is used to set the amount of time between when the executor sends the
   // SIGTERM message to gracefully terminate a pod and when it kills it by
   // sending SIGKILL. If you do not set the grace period duration the default is
   // 30 seconds.
-  uint32 kill_grace_period_seconds = 14;
+  uint32 kill_grace_period_seconds = 10;
 
   // revocable represents pod to use physical or slack resources.
-  bool revocable = 15;
+  bool revocable = 11;
+}
+
+// Runtime states of a container in a pod
+enum ContainerState {
+  // Invalid state.
+  CONTAINER_STATE_INVALID = 0;
+
+  // The container has not been created yet
+  CONTAINER_STATE_PENDING = 1;
+
+  // The container has been launched
+  CONTAINER_STATE_LAUNCHED = 2;
+
+  // The container is being started on a host
+  CONTAINER_STATE_STARTING = 3;
+
+  // The container is running on a host
+  CONTAINER_STATE_RUNNING = 4;
+
+  // The container terminated with an exit code of zero
+  CONTAINER_STATE_SUCCEEDED = 5;
+
+  // The container terminated with a non-zero exit code
+  CONTAINER_STATE_FAILED = 6;
+
+  // The container is being killed
+  CONTAINER_STATE_KILLING = 7;
+
+  // Execution of the container was terminated by the system
+  CONTAINER_STATE_KILLED = 8;
+}
+
+// HealthState is the health check state of a container
+enum HealthState {
+  // Default value.
+  HEALTH_STATE_INVALID = 0;
+
+  // If the health check config is not enabled in the container config,
+  // then the health state is DISABLED.
+  HEALTH_STATE_DISABLED = 1;
+
+  // If the health check config is enabled in the container config,
+  // but the container has not reported the output of the health check yet,
+  // then the health state is UNKNOWN.
+  HEALTH_STATE_UNKNOWN = 2;
+
+  // In a Mesos event, If the healthy field is true and
+  // the reason field is REASON_TASK_HEALTH_CHECK_STATUS_UPDATED
+  // the health state of the container is HEALTHY
+  HEALTH_STATE_HEALTHY = 3;
+
+  // In a Mesos event, If the healthy field is false and
+  // the reason field is REASON_TASK_HEALTH_CHECK_STATUS_UPDATED
+  // the health state of the container is UNHEALTHY
+  HEALTH_STATE_UNHEALTHY = 4;
+}
+
+// The result of the health check
+message HealthStatus {
+  // The health check state
+  HealthState state = 1;
+
+  // The output of the health check run
+  string output = 2;
+}
+
+// Runtime status of a container in a pod
+message ContainerStatus {
+  // Name of the container
+  string name = 1;
+
+  // Runtime state of the container
+  ContainerState state = 2;
+
+  // Dynamic ports reserved on the host while this container is running
+  map<string, uint32> ports = 3;
+
+  // The message that explains the current state of a container such as why
+  // the container is failed. Only track the latest one if the container has been
+  // retried and failed multiple times.
+  string message = 4;
+
+  // The reason that explains the current state of a container. Only track
+  // the latest one if the container has been retried and failed multiple times.
+  string reason = 5;
+
+  // The number of times the container has failed after retries.
+  uint32 failure_count = 6;
+
+  // The result of the health check
+  HealthStatus healthy = 7;
+
+  // The image the container is running
+  string image = 8;
+
+  // The time when the container starts to run. Will be unset if the
+  // pod hasn't started running yet. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string start_time = 9;
+
+  // The time when the container terminated. Will be unset if the
+  // pod hasn't completed yet. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string completion_time = 10;
+
+  // Exit status when the container terminated.
+  int32 exit_code = 11;
+
+  // Signal from when the container terminated.
+  int32 signal = 12;
 }
 
 // Runtime states of a pod instance
@@ -269,59 +399,35 @@ enum PodState {
   POD_STATE_LAUNCHING = 6;
 
   // The pod is being launched in Job manager
-  // TODO: We need to correct the numbering
-  POD_STATE_LAUNCHED = 15;
+  POD_STATE_LAUNCHED = 7;
 
-  // The pod is being started by Mesos agent
-  POD_STATE_STARTING = 7;
+  // Either init containers are starting/running or the main containers
+  // in the pod are being started by Mesos agent
+  POD_STATE_STARTING = 8;
 
-  // The pod is running on a Mesos host
-  POD_STATE_RUNNING = 8;
+  // All containers in the pod are running
+  POD_STATE_RUNNING = 9;
 
-  // The pod terminated with an exit code of zero
-  POD_STATE_SUCCEEDED = 9;
+  // All containers in the pod terminated with an exit code of zero
+  POD_STATE_SUCCEEDED = 10;
 
-  // The pod terminated with a non-zero exit code
-  POD_STATE_FAILED = 10;
+  // At least on container in the pod terminated with a non-zero exit code
+  POD_STATE_FAILED = 11;
 
   // The pod is lost
-  POD_STATE_LOST = 11;
-
-  // The pod is being preempted by another one on the node
-  POD_STATE_PREEMPTING = 12;
+  POD_STATE_LOST = 12;
 
   // The pod is being killed
   POD_STATE_KILLING = 13;
 
-  // Execution of the pod was terminated by the system
+  // At least one of the containers in the pod was terminated by the system
   POD_STATE_KILLED = 14;
 
-  // The task is to be deleted after termination
+  // The pod is being preempted by another one on the node
+  POD_STATE_PREEMPTING = 15;
+
+  // The pod is to be deleted after termination
   POD_STATE_DELETED = 16;
-}
-
-// HealthState is the health check state of a pod container
-enum HealthState {
-  // Default value.
-  HEALTH_STATE_INVALID = 0;
-
-  // If the health check config is not enabled in the pod config,
-  // the initial value of the health state is DISABLED.
-  HEALTH_STATE_DISABLED = 1;
-
-  // If the health check config is enabled in the pod config,
-  // the initial value of the health state is HEALTH_UNKNOWN.
-  HEALTH_STATE_UNKNOWN = 2;
-
-  // In a Mesos event, If the healthy field is true and
-  // the reason field is REASON_TASK_HEALTH_CHECK_STATUS_UPDATED
-  // the health state of the pod is HEALTHY
-  HEALTH_STATE_HEALTHY = 3;
-
-  // In a Mesos event, If the healthy field is false and
-  // the reason field is REASON_TASK_HEALTH_CHECK_STATUS_UPDATED
-  // the health state of the pod is UNHEALTHY
-  HEALTH_STATE_UNHEALTHY = 4;
 }
 
 // Runtime status of a pod instance in a Job
@@ -345,56 +451,53 @@ message PodStatus {
   // The name of the host where the pod is running
   string host = 5;
 
-  // Dynamic ports reserved on the host while this pod is running
-  map<string, uint32> ports = 6;
+  // Status of the init containers.
+  repeated ContainerStatus init_containers_status = 6;
+
+  // Status of the containers.
+  repeated ContainerStatus containers_status = 7;
 
   // The desired state of the pod which should be eventually reached
   // by the system.
-  PodState desired_state = 7;
+  PodState desired_state = 8;
 
-  // The message that explains the current state of a pod such as why
-  // the pod is failed. Only track the latest one if the pod has been
-  // retried and failed multiple times.
-  string message = 8;
+  // The message that explains the current state of a pod.
+  string message = 9;
 
-  // The reason that explains the current state of a pod. Only track
-  // the latest one if the pod has been retried and failed multiple times.
+  // The reason that explains the current state of a pod.
   // See Mesos TaskStatus.Reason for more details.
-  string reason = 9;
+  string reason = 10;
 
   // The number of times the pod has failed after retries.
-  uint32 failure_count = 10;
+  uint32 failure_count = 11;
 
   // persistent volume id
-  peloton.VolumeID volume_id = 11;
+  peloton.VolumeID volume_id = 12;
 
   // The job version currently used by the pod.
   // TODO Avoid leaking job abstractions into public pod APIs.
   // Remove after internal protobuf structures are defined.
-  peloton.EntityVersion job_version = 12;
+  peloton.EntityVersion job_version = 13;
 
   // The desired job version that should be used by the pod.
   // TODO Avoid leaking job abstractions into public pod APIs.
   // Remove after internal protobuf structures are defined.
-  peloton.EntityVersion desired_job_version = 13;
+  peloton.EntityVersion desired_job_version = 14;
 
   // the id of mesos agent on the host to be launched.
-  mesos.v1.AgentID agent_id = 14;
+  mesos.v1.AgentID agent_id = 15;
 
   // Revision of the current pod status.
-  peloton.Revision revision = 15;
+  peloton.Revision revision = 16;
 
   // The pod id of the previous pod.
-  peloton.PodID prev_pod_id = 16;
+  peloton.PodID prev_pod_id = 17;
 
   // The resource usage for this pod. The map key is each resource kind
   // in string format and the map value is the number of unit-seconds
   // of that resource used by the job. Example: if a pod that uses 1 CPU
   // and finishes in 10 seconds, this map will contain <"cpu":10>
-  map<string, double> resource_usage = 17;
-
-  // The result of the health check
-  HealthState healthy = 18;
+  map<string, double> resource_usage = 18;
 
   // The desired pod ID for this pod
   peloton.PodID desired_pod_id = 19;
@@ -414,8 +517,10 @@ message PodSummary {
   // Name of the pod
   peloton.PodName pod_name = 1;
 
-  // Name of image used by the pod
-  string image = 2;
+  // Images being used by the containers in the pod.
+  // The key to the map is the container name and the value
+  // is the image name being used by the container.
+  map<string, string> images = 2;
 
   // Runtime status of the pod
   PodStatus status = 3;
