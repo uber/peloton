@@ -283,6 +283,7 @@ func NewRespool(
 		invalidTasks:        make(map[string]bool),
 		preemptionCfg:       preemptionConfig,
 	}
+	pool.path = pool.calculatePath()
 
 	// Initialize metrics
 	pool.metrics = NewMetrics(scope.Tagged(map[string]string{
@@ -316,8 +317,8 @@ func (n *resPool) Parent() ResPool {
 func (n *resPool) SetParent(parent ResPool) {
 	n.Lock()
 	n.parent = parent
-	// reset path to be calculated again.
-	n.path = ""
+	// calculate path again.
+	n.path = n.calculatePath()
 	n.Unlock()
 }
 
@@ -542,10 +543,10 @@ func (n *resPool) ToResourcePoolInfo() *respool.ResourcePoolInfo {
 		Parent:   parentResPoolID,
 		Config:   n.poolConfig,
 		Children: childrenResourcePoolIDs,
-		Path:     &respool.ResourcePoolPath{Value: n.GetPath()},
+		Path:     &respool.ResourcePoolPath{Value: n.path},
 		Usage: n.createRespoolUsage(
-			n.CalculateTotalAllocatedResources(),
-			n.GetSlackAllocatedResources()),
+			n.allocation.GetByType(scalar.TotalAllocation),
+			n.allocation.GetByType(scalar.SlackAllocation)),
 	}
 }
 
@@ -898,9 +899,6 @@ func (n *resPool) IsRoot() bool {
 func (n *resPool) GetPath() string {
 	n.RLock()
 	defer n.RUnlock()
-	if n.path == "" {
-		n.path = n.calculatePath()
-	}
 	return n.path
 }
 
