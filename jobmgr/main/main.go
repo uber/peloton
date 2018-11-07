@@ -468,7 +468,10 @@ func main() {
 		activeJobCache,
 	)
 
-	podsvc.InitV1AlphaPodServiceHandler(dispatcher)
+	podsvc.InitV1AlphaPodServiceHandler(
+		dispatcher,
+		jobFactory,
+	)
 
 	volumesvc.InitServiceHandler(
 		dispatcher,

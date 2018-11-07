@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	updatesvc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc"
 	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume/svc"
+	podsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	hostmgr_svc "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -26,6 +27,7 @@ import (
 type Client struct {
 	jobClient     job.JobManagerYARPCClient
 	taskClient    task.TaskManagerYARPCClient
+	podClient     podsvc.PodServiceYARPCClient
 	resClient     respool.ResourceManagerYARPCClient
 	resMgrClient  resmgrsvc.ResourceManagerServiceYARPCClient
 	updateClient  updatesvc.UpdateServiceYARPCClient
@@ -106,6 +108,9 @@ func New(
 		),
 		hostClient: hostsvc.NewHostServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonHostManager),
+		),
+		podClient: podsvc.NewPodServiceYARPCClient(
+			dispatcher.ClientConfig(common.PelotonJobManager),
 		),
 		dispatcher: dispatcher,
 		ctx:        ctx,

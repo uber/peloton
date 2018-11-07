@@ -164,6 +164,9 @@ var (
 	podGetEventsRunID      = podGetEvents.Flag("run", "get pod events for this runID only").Short('r').String()
 	podGetEventsLimit      = podGetEvents.Flag("limit", "number of events to return, default value 100").Short('l').Uint64()
 
+	podGetCache        = pod.Command("cache", "get pod status from cache")
+	podGetCachePodName = podGetCache.Arg("pod", "pod name").Required().String()
+
 	// Top level task command
 	task = app.Command("task", "manage tasks")
 
@@ -482,8 +485,6 @@ func main() {
 		err = client.TaskGetCacheAction(*taskGetCacheName, *taskGetCacheInstanceID)
 	case taskGetEvents.FullCommand():
 		err = client.TaskGetEventsAction(*taskGetEventsJobName, *taskGetEventsInstanceID)
-	case podGetEvents.FullCommand():
-		err = client.PodGetEventsAction(*podGetEventsJobName, *podGetEventsInstanceID, *podGetEventsRunID, *podGetEventsLimit)
 	case taskLogsGet.FullCommand():
 		err = client.TaskLogsGetAction(*taskLogsGetFileName, *taskLogsGetJobName, *taskLogsGetInstanceID, *taskLogsGetTaskID)
 	case taskList.FullCommand():
@@ -548,6 +549,10 @@ func main() {
 		err = client.UpdateResumeAction(*updateResumeID)
 	case offersList.FullCommand():
 		err = client.OffersGetAction()
+	case podGetEvents.FullCommand():
+		err = client.PodGetEventsAction(*podGetEventsJobName, *podGetEventsInstanceID, *podGetEventsRunID, *podGetEventsLimit)
+	case podGetCache.FullCommand():
+		err = client.PodGetCache(*podGetCachePodName)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}
