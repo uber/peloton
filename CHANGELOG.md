@@ -3,6 +3,10 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.7.3
+-----------------
+* 2018-11-07    Fix deadlock in resmgr/respool/respool.go                                              sachins@uber.com
+
 0.7.7.2
 -----------------
 * 2018-10-25    Batch job of INITIALIZED state can be updated                                          zhixin@uber.com
