@@ -167,6 +167,10 @@ var (
 	podGetCache        = pod.Command("cache", "get pod status from cache")
 	podGetCachePodName = podGetCache.Arg("pod", "pod name").Required().String()
 
+	podGetEventsV1Alpha        = pod.Command("events-v1alpha", "get pod events")
+	podGetEventsV1AlphaPodName = podGetEventsV1Alpha.Arg("name", "pod name").Required().String()
+	podGetEventsV1AlphaPodID   = podGetEventsV1Alpha.Flag("id", "pod identifier").Short('p').String()
+
 	// Top level task command
 	task = app.Command("task", "manage tasks")
 
@@ -553,6 +557,10 @@ func main() {
 		err = client.PodGetEventsAction(*podGetEventsJobName, *podGetEventsInstanceID, *podGetEventsRunID, *podGetEventsLimit)
 	case podGetCache.FullCommand():
 		err = client.PodGetCache(*podGetCachePodName)
+	case podGetEvents.FullCommand():
+		err = client.PodGetEventsAction(*podGetEventsJobName, *podGetEventsInstanceID, *podGetEventsRunID, *podGetEventsLimit)
+	case podGetEventsV1Alpha.FullCommand():
+		err = client.PodGetEventsV1AlphaAction(*podGetEventsV1AlphaPodName, *podGetEventsV1AlphaPodID)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

@@ -8,7 +8,6 @@ option go_package = "peloton/api/v1alpha/pod/svc";
 option java_package = "peloton.api.v1alpha.pod.svc";
 
 import "peloton/api/v1alpha/peloton.proto";
-import "peloton/api/v1alpha/query/query.proto";
 import "peloton/api/v1alpha/pod/pod.proto";
 
 // Request message for PodService.StartPod method

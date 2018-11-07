@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	mesosv1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -803,16 +804,15 @@ func updateWithRecentRunID(
 	goalStateDriver *driver) error {
 	podEvents, err := goalStateDriver.taskStore.GetPodEvents(
 		ctx,
-		jobID,
-		instanceID,
-		1)
+		jobID.GetValue(),
+		instanceID)
 	if err != nil {
 		return err
 	}
 
 	// instance removed previously during update is being added back.
 	if len(podEvents) > 0 {
-		runID, err := util.ParseRunID(podEvents[0].GetTaskId().GetValue())
+		runID, err := util.ParseRunID(podEvents[0].GetPodId().GetValue())
 		if err != nil {
 			return err
 		}
@@ -821,7 +821,9 @@ func updateWithRecentRunID(
 			instanceID,
 			runID+1)
 		runtime.DesiredMesosTaskId = runtime.MesosTaskId
-		runtime.PrevMesosTaskId = podEvents[0].GetTaskId()
+		runtime.PrevMesosTaskId = &mesosv1.TaskID{
+			Value: &podEvents[0].GetPodId().Value,
+		}
 	}
 	return nil
 }

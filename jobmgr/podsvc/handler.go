@@ -12,6 +12,7 @@ import (
 
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	handlerutil "code.uber.internal/infra/peloton/jobmgr/util/handler"
+	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/pkg/errors"
@@ -22,15 +23,18 @@ import (
 
 type serviceHandler struct {
 	jobFactory cached.JobFactory
+	podStore   storage.TaskStore
 }
 
 // InitV1AlphaPodServiceHandler initializes the Pod Service Handler
 func InitV1AlphaPodServiceHandler(
 	d *yarpc.Dispatcher,
 	jobFactory cached.JobFactory,
+	podStore storage.TaskStore,
 ) {
 	handler := &serviceHandler{
 		jobFactory: jobFactory,
+		podStore:   podStore,
 	}
 	d.Register(svc.BuildPodServiceYARPCProcedures(handler))
 }
@@ -38,21 +42,21 @@ func InitV1AlphaPodServiceHandler(
 func (h *serviceHandler) StartPod(
 	ctx context.Context,
 	req *svc.StartPodRequest,
-) (*svc.StartPodResponse, error) {
+) (resp *svc.StartPodResponse, err error) {
 	return &svc.StartPodResponse{}, nil
 }
 
 func (h *serviceHandler) StopPod(
 	ctx context.Context,
 	req *svc.StopPodRequest,
-) (*svc.StopPodResponse, error) {
+) (resp *svc.StopPodResponse, err error) {
 	return &svc.StopPodResponse{}, nil
 }
 
 func (h *serviceHandler) RestartPod(
 	ctx context.Context,
 	req *svc.RestartPodRequest,
-) (*svc.RestartPodResponse, error) {
+) (resp *svc.RestartPodResponse, err error) {
 	return &svc.RestartPodResponse{}, nil
 }
 
@@ -66,21 +70,49 @@ func (h *serviceHandler) GetPod(
 func (h *serviceHandler) GetPodEvents(
 	ctx context.Context,
 	req *svc.GetPodEventsRequest,
-) (*svc.GetPodEventsResponse, error) {
-	return &svc.GetPodEventsResponse{}, nil
+) (resp *svc.GetPodEventsResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("PodSVC.GetPodEvents failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Debug("PodSVC.GetPodEvents succeeded")
+	}()
+	jobID, instanceID, err := util.ParseTaskID(req.GetPodName().GetValue())
+	if err != nil {
+		return nil, yarpcerrors.InvalidArgumentErrorf(err.Error())
+	}
+
+	events, err := h.podStore.GetPodEvents(
+		ctx,
+		jobID,
+		instanceID,
+		req.GetPodId().GetValue())
+	if err != nil {
+		return nil, err
+	}
+	return &svc.GetPodEventsResponse{
+		Events: events,
+	}, nil
 }
 
 func (h *serviceHandler) BrowsePodSandbox(
 	ctx context.Context,
 	req *svc.BrowsePodSandboxRequest,
-) (*svc.BrowsePodSandboxResponse, error) {
+) (resp *svc.BrowsePodSandboxResponse, err error) {
 	return &svc.BrowsePodSandboxResponse{}, nil
 }
 
 func (h *serviceHandler) RefreshPod(
 	ctx context.Context,
 	req *svc.RefreshPodRequest,
-) (*svc.RefreshPodResponse, error) {
+) (resp *svc.RefreshPodResponse, err error) {
 	return &svc.RefreshPodResponse{}, nil
 }
 
@@ -133,7 +165,7 @@ func (h *serviceHandler) GetPodCache(
 func (h *serviceHandler) DeletePodEvents(
 	ctx context.Context,
 	req *svc.DeletePodEventsRequest,
-) (*svc.DeletePodEventsResponse, error) {
+) (resp *svc.DeletePodEventsResponse, err error) {
 	return &svc.DeletePodEventsResponse{}, nil
 }
 

@@ -31,6 +31,8 @@ import (
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
 
+	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -42,6 +44,7 @@ import (
 const (
 	testInstanceCount = 4
 	testJob           = "941ff353-ba82-49fe-8f80-fb5bc649b04d"
+	testRunID         = "941ff353-ba82-49fe-8f80-fb5bc649b04d-2"
 )
 
 type TaskHandlerTestSuite struct {
@@ -1449,6 +1452,172 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithInvalidRanges() {
 	suite.Equal(
 		resp.GetError().GetOutOfRange().GetInstanceCount(),
 		uint32(testInstanceCount))
+}
+
+// TestGetPodEventsWithRunID tests getting
+// pod events for a given run of a task
+func (suite *TaskHandlerTestSuite) TestGetPodEventsWithRunID() {
+	request := &task.GetPodEventsRequest{
+		JobId: &peloton.JobID{
+			Value: testJob,
+		},
+		InstanceId: testInstanceCount,
+		RunId:      testRunID,
+	}
+
+	events := []*pod.PodEvent{
+		{
+			PodId: &v1alphapeloton.PodID{
+				Value: testRunID,
+			},
+			JobVersion: &v1alphapeloton.EntityVersion{
+				Value: "1",
+			},
+			DesiredJobVersion: &v1alphapeloton.EntityVersion{
+				Value: "1",
+			},
+		},
+	}
+	suite.mockedTaskStore.EXPECT().
+		GetPodEvents(gomock.Any(), testJob, uint32(testInstanceCount), testRunID).
+		Return(events, nil)
+	response, err := suite.handler.GetPodEvents(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+}
+
+// TestGetPodEventsForAllRuns tests getting pod events for all runs of a task
+func (suite *TaskHandlerTestSuite) TestGetPodEventsForAllRuns() {
+	request := &task.GetPodEventsRequest{
+		JobId: &peloton.JobID{
+			Value: testJob,
+		},
+		InstanceId: testInstanceCount,
+	}
+
+	prevRunID := "941ff353-ba82-49fe-8f80-fb5bc649b04d-1"
+	tt := []struct {
+		RunID  string
+		Events []*pod.PodEvent
+	}{
+		{
+			RunID: "",
+			Events: []*pod.PodEvent{
+				{
+					PodId: &v1alphapeloton.PodID{
+						Value: testRunID,
+					},
+					JobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					PrevPodId: &v1alphapeloton.PodID{
+						Value: prevRunID,
+					},
+				},
+			},
+		},
+		{
+			RunID: prevRunID,
+			Events: []*pod.PodEvent{
+				{
+					PodId: &v1alphapeloton.PodID{
+						Value: prevRunID,
+					},
+					JobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					PrevPodId: &v1alphapeloton.PodID{
+						Value: "0",
+					},
+				},
+			},
+		},
+	}
+
+	for _, t := range tt {
+		suite.mockedTaskStore.EXPECT().
+			GetPodEvents(gomock.Any(), testJob, uint32(testInstanceCount), t.RunID).
+			Return(t.Events, nil)
+	}
+	response, err := suite.handler.GetPodEvents(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+}
+
+// TestGetPodEventsStoreError tests store error while getting pod events
+func (suite *TaskHandlerTestSuite) TestGetPodEventsStoreError() {
+	request := &task.GetPodEventsRequest{
+		JobId: &peloton.JobID{
+			Value: testJob,
+		},
+		InstanceId: testInstanceCount,
+		RunId:      testRunID,
+	}
+
+	suite.mockedTaskStore.EXPECT().
+		GetPodEvents(gomock.Any(), testJob, uint32(testInstanceCount), testRunID).
+		Return(nil, fmt.Errorf("fake GetPodEvents error"))
+	_, err := suite.handler.GetPodEvents(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestGetPodEventsJobVersionParseError tests
+// JobVersion parse error while getting pod events
+func (suite *TaskHandlerTestSuite) TestGetPodEventsJobVersionParseError() {
+	request := &task.GetPodEventsRequest{
+		JobId: &peloton.JobID{
+			Value: testJob,
+		},
+		InstanceId: testInstanceCount,
+		RunId:      testRunID,
+	}
+
+	events := []*pod.PodEvent{
+		{
+			PodId: &v1alphapeloton.PodID{
+				Value: testRunID,
+			},
+		},
+	}
+	suite.mockedTaskStore.EXPECT().
+		GetPodEvents(gomock.Any(), testJob, uint32(testInstanceCount), testRunID).
+		Return(events, nil)
+	_, err := suite.handler.GetPodEvents(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestGetPodEventsDesiredJobVersionParseError tests
+// DesiredJobVersion parse error while getting pod events
+func (suite *TaskHandlerTestSuite) TestGetPodEventsDesiredJobVersionParseError() {
+	request := &task.GetPodEventsRequest{
+		JobId: &peloton.JobID{
+			Value: testJob,
+		},
+		InstanceId: testInstanceCount,
+		RunId:      testRunID,
+	}
+
+	events := []*pod.PodEvent{
+		{
+			PodId: &v1alphapeloton.PodID{
+				Value: testRunID,
+			},
+			JobVersion: &v1alphapeloton.EntityVersion{
+				Value: "1",
+			},
+		},
+	}
+	suite.mockedTaskStore.EXPECT().
+		GetPodEvents(gomock.Any(), testJob, uint32(testInstanceCount), testRunID).
+		Return(events, nil)
+	_, err := suite.handler.GetPodEvents(context.Background(), request)
+	suite.Error(err)
 }
 
 func (suite *TaskHandlerTestSuite) TestBrowseSandboxPreviousTaskRun() {

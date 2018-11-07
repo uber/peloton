@@ -3346,9 +3346,8 @@ func (suite *CassandraStoreTestSuite) TestGetPodEvent() {
 	dummyJobID := &peloton.JobID{Value: "dummy id"}
 	_, err := store.GetPodEvents(
 		context.Background(),
-		dummyJobID,
-		0,
-		_defaultPodEventsLimit)
+		dummyJobID.GetValue(),
+		0)
 	suite.Error(err)
 
 	jobID := &peloton.JobID{Value: "7ac74273-4ef0-4ca4-8fd2-34bc52aeac06"}
@@ -3380,9 +3379,8 @@ func (suite *CassandraStoreTestSuite) TestGetPodEvent() {
 	store.addPodEvent(context.Background(), jobID, 0, runtime)
 	podEvents, err := store.GetPodEvents(
 		context.Background(),
-		jobID,
+		jobID.GetValue(),
 		0,
-		_defaultPodEventsLimit,
 		"7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-2")
 	suite.Equal(len(podEvents), 1)
 	suite.NoError(err)
@@ -3415,17 +3413,15 @@ func (suite *CassandraStoreTestSuite) TestGetPodEvent() {
 	store.addPodEvent(context.Background(), jobID, 0, runtime)
 	podEvents, err = store.GetPodEvents(
 		context.Background(),
-		jobID,
-		0,
-		_defaultPodEventsLimit)
-	suite.Equal(len(podEvents), 2)
+		jobID.GetValue(),
+		0)
+	suite.Equal(len(podEvents), 1)
 	suite.NoError(err)
 
 	podEvents, err = store.GetPodEvents(
 		context.Background(),
-		jobID,
+		jobID.GetValue(),
 		0,
-		_defaultPodEventsLimit,
 		"7ac74273-4ef0-4ca4-8fd2-34bc52aeac06-0-3")
 	suite.Equal(len(podEvents), 1)
 	suite.NoError(err)
@@ -3435,9 +3431,8 @@ func (suite *CassandraStoreTestSuite) TestGetPodEvent() {
 
 	podEvents, err = store.GetPodEvents(
 		context.Background(),
-		jobID,
-		0,
-		_defaultPodEventsLimit)
+		jobID.GetValue(),
+		0)
 	suite.Equal(len(podEvents), 1)
 	suite.NoError(err)
 }

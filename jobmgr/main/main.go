@@ -471,6 +471,7 @@ func main() {
 	podsvc.InitV1AlphaPodServiceHandler(
 		dispatcher,
 		jobFactory,
+		store,
 	)
 
 	volumesvc.InitServiceHandler(

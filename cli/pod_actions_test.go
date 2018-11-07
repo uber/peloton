@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	podsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc/mocks"
@@ -60,6 +61,67 @@ func (suite *podActionsTestSuite) TestClientPodGetCacheFail() {
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
 	suite.Error(suite.client.PodGetCache(testPodName))
+}
+
+// TestClient_PodGetEventsV1AlphaAction tests PodGetEventsV1AlphaAction
+func (suite *podActionsTestSuite) TestPodGetEventsV1AlphaAction() {
+	podname := &peloton.PodName{
+		Value: "podname",
+	}
+	podID := &peloton.PodID{
+		Value: "podID",
+	}
+	req := &podsvc.GetPodEventsRequest{
+		PodName: podname,
+		PodId:   podID,
+	}
+
+	podEvent := &pod.PodEvent{
+		PodId: &peloton.PodID{
+			Value: "podID",
+		},
+		PrevPodId: &peloton.PodID{
+			Value: "prevPodID",
+		},
+		ActualState:  "PENDING",
+		DesiredState: "RUNNING",
+	}
+
+	var podEvents []*pod.PodEvent
+	podEvents = append(podEvents, podEvent)
+	response := &podsvc.GetPodEventsResponse{
+		Events: podEvents,
+	}
+	suite.podClient.EXPECT().GetPodEvents(context.Background(), req).
+		Return(response, nil)
+	err := suite.client.PodGetEventsV1AlphaAction(podname.GetValue(), podID.GetValue())
+	suite.NoError(err)
+
+	// Client with debug set to true
+	suite.client.Debug = true
+	suite.podClient.EXPECT().GetPodEvents(context.Background(), req).
+		Return(response, nil)
+	err = suite.client.PodGetEventsV1AlphaAction(podname.GetValue(), podID.GetValue())
+	suite.NoError(err)
+}
+
+// TestPodGetEventsV1AlphaActionClientFailure tests GetPodEvents API error
+func (suite *podActionsTestSuite) TestPodGetEventsV1AlphaActionAPIError() {
+	podname := &peloton.PodName{
+		Value: "podname",
+	}
+	podID := &peloton.PodID{
+		Value: "podID",
+	}
+	req := &podsvc.GetPodEventsRequest{
+		PodName: podname,
+		PodId:   podID,
+	}
+
+	suite.podClient.EXPECT().GetPodEvents(suite.ctx, req).
+		Return(nil, yarpcerrors.InternalErrorf("test GetPodEvents error"))
+	err := suite.client.PodGetEventsV1AlphaAction(podname.GetValue(), podID.GetValue())
+	suite.Error(err)
 }
 
 func TestPodActions(t *testing.T) {

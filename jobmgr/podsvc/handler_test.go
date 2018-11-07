@@ -2,15 +2,17 @@ package podsvc
 
 import (
 	"context"
+	"fmt"
 	"testing"
-
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
+
+	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -21,6 +23,7 @@ const (
 	testJobID      = "941ff353-ba82-49fe-8f80-fb5bc649b04d"
 	testInstanceID = 1
 	testPodName    = "941ff353-ba82-49fe-8f80-fb5bc649b04d-1"
+	testPodID      = "941ff353-ba82-49fe-8f80-fb5bc649b04d-1-3"
 )
 
 type podHandlerTestSuite struct {
@@ -30,6 +33,7 @@ type podHandlerTestSuite struct {
 	cachedJob  *cachedmocks.MockJob
 	cachedTask *cachedmocks.MockTask
 	jobFactory *cachedmocks.MockJobFactory
+	podStore   *storemocks.MockTaskStore
 }
 
 func (suite *podHandlerTestSuite) SetupTest() {
@@ -37,8 +41,10 @@ func (suite *podHandlerTestSuite) SetupTest() {
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
+	suite.podStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.handler = &serviceHandler{
 		jobFactory: suite.jobFactory,
+		podStore:   suite.podStore,
 	}
 }
 
@@ -153,4 +159,108 @@ func (suite *podHandlerTestSuite) TestGetPodCacheFailToGetRuntime() {
 
 func TestPodServiceHandler(t *testing.T) {
 	suite.Run(t, new(podHandlerTestSuite))
+}
+
+func (suite *podHandlerTestSuite) TestStartPod() {
+	request := &svc.StartPodRequest{}
+	response, err := suite.handler.StartPod(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+}
+
+func (suite *podHandlerTestSuite) TestStopPod() {
+	request := &svc.StopPodRequest{}
+	response, err := suite.handler.StopPod(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+}
+
+func (suite *podHandlerTestSuite) TestRestartPod() {
+	request := &svc.RestartPodRequest{}
+	response, err := suite.handler.RestartPod(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+}
+
+func (suite *podHandlerTestSuite) TestGetPod() {
+	request := &svc.GetPodRequest{}
+	response, err := suite.handler.GetPod(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+}
+
+// TestServiceHandler_GetPodEvents tests getting pod events for a given pod
+func (suite *podHandlerTestSuite) TestGetPodEvents() {
+	request := &svc.GetPodEventsRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+	}
+
+	events := []*pod.PodEvent{
+		{
+			PodId: &v1alphapeloton.PodID{
+				Value: testPodID,
+			},
+			ActualState:  "STARTING",
+			DesiredState: "RUNNING",
+			PrevPodId: &v1alphapeloton.PodID{
+				Value: "0",
+			},
+		},
+	}
+	response := &svc.GetPodEventsResponse{
+		Events: events,
+	}
+
+	suite.podStore.EXPECT().
+		GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+		Return(events, nil)
+	response, err := suite.handler.GetPodEvents(context.Background(), request)
+	suite.NoError(err)
+	suite.Equal(events, response.GetEvents())
+}
+
+// TestGetPodEventsPodNameParseError tests PodName parse error
+// while getting pod events for a given pod
+func (suite *podHandlerTestSuite) TestGetPodEventsPodNameParseError() {
+	request := &svc.GetPodEventsRequest{}
+	_, err := suite.handler.GetPodEvents(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestGetPodEventsStoreError tests store error
+// while getting pod events for a given pod
+func (suite *podHandlerTestSuite) TestGetPodEventsStoreError() {
+	request := &svc.GetPodEventsRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+	}
+	suite.podStore.EXPECT().
+		GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+		Return(nil, fmt.Errorf("fake GetPodEvents error"))
+	_, err := suite.handler.GetPodEvents(context.Background(), request)
+	suite.Error(err)
+}
+
+func (suite *podHandlerTestSuite) TestBrowsePodSandbox() {
+	request := &svc.BrowsePodSandboxRequest{}
+	response, err := suite.handler.BrowsePodSandbox(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+}
+
+func (suite *podHandlerTestSuite) TestRefreshPod() {
+	request := &svc.RefreshPodRequest{}
+	response, err := suite.handler.RefreshPod(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+}
+
+func (suite *podHandlerTestSuite) TestDeletePodEvents() {
+	request := &svc.DeletePodEventsRequest{}
+	response, err := suite.handler.DeletePodEvents(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
 }

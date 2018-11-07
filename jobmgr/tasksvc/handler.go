@@ -5,15 +5,10 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"time"
 
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/yarpcerrors"
-
-	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	mesosv1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pb_errors "code.uber.internal/infra/peloton/.gen/peloton/api/v0/errors"
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -37,6 +32,12 @@ import (
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
+
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -131,16 +132,16 @@ func (m *serviceHandler) getTerminalEvents(eventList []*task.TaskEvent, lastTask
 			Config:     lastTaskInfo.GetConfig(),
 			Runtime: &task.RuntimeInfo{
 				State: terminalEvent.GetState(),
-				MesosTaskId: &mesos_v1.TaskID{
+				MesosTaskId: &mesosv1.TaskID{
 					Value: &mesosID,
 				},
 				Host: terminalEvent.GetHostname(),
-				AgentID: &mesos_v1.AgentID{
+				AgentID: &mesosv1.AgentID{
 					Value: &agentID,
 				},
 				Message: terminalEvent.GetMessage(),
 				Reason:  terminalEvent.GetReason(),
-				PrevMesosTaskId: &mesos_v1.TaskID{
+				PrevMesosTaskId: &mesosv1.TaskID{
 					Value: &prevMesosID,
 				},
 			},
@@ -255,17 +256,73 @@ func (m *serviceHandler) GetEvents(
 func (m *serviceHandler) GetPodEvents(
 	ctx context.Context,
 	body *task.GetPodEventsRequest) (*task.GetPodEventsResponse, error) {
-	podEvents, err := m.taskStore.GetPodEvents(
-		ctx,
-		body.GetJobId(),
-		body.GetInstanceId(),
-		body.GetLimit(),
-		body.GetRunId())
-	if err != nil {
-		return nil, err
+	limit := body.GetLimit()
+	if limit == 0 {
+		limit = 100
 	}
+
+	runID := body.GetRunId()
+	var result []*task.PodEvent
+	for i := uint64(0); i < limit; i++ {
+		podEvents, err := m.taskStore.GetPodEvents(
+			ctx,
+			body.GetJobId().GetValue(),
+			body.GetInstanceId(),
+			runID)
+		if err != nil {
+			log.WithError(err).
+				Info("Error getting pod events from store")
+			return nil, err
+		}
+
+		var prevPodID string
+		for _, e := range podEvents {
+			podID := e.GetPodId().GetValue()
+			prevPodID = e.GetPrevPodId().GetValue()
+			desiredPodID := e.GetDesiredPodId().GetValue()
+			jobVersion, err := strconv.ParseInt(e.GetJobVersion().GetValue(), 10, 64)
+			if err != nil {
+				log.WithError(err).
+					Info("Error parsing job version")
+				return nil, err
+			}
+			desiredJobVersion, err := strconv.ParseInt(e.GetDesiredJobVersion().GetValue(), 10, 64)
+			if err != nil {
+				log.WithError(err).
+					Info("Error parsing desired job version")
+				return nil, err
+			}
+
+			result = append(result, &task.PodEvent{
+				TaskId: &mesosv1.TaskID{
+					Value: &podID,
+				},
+				ActualState:          e.GetActualState(),
+				GoalState:            e.GetDesiredState(),
+				Timestamp:            e.GetTimestamp(),
+				ConfigVersion:        uint64(jobVersion),
+				DesiredConfigVersion: uint64(desiredJobVersion),
+				AgentID:              e.GetAgentId(),
+				Hostname:             e.GetHostname(),
+				Message:              e.GetMessage(),
+				Reason:               e.GetReason(),
+				PrevTaskId: &mesosv1.TaskID{
+					Value: &prevPodID,
+				},
+				Healthy: e.GetHealthy(),
+				DesriedTaskId: &mesosv1.TaskID{
+					Value: &desiredPodID,
+				},
+			})
+		}
+		if (len(runID) != 0) || prevPodID == "0" {
+			break
+		}
+		runID = prevPodID
+	}
+
 	return &task.GetPodEventsResponse{
-		Result: podEvents,
+		Result: result,
 	}, nil
 }
 

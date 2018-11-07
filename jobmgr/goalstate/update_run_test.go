@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
@@ -851,24 +852,24 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddShrinkInstances() {
 			Return(nil)
 
 		mesosTaskID := fmt.Sprintf("%s-%d-%d", suite.jobID.GetValue(), instID, 50)
-		taskID := &mesos.TaskID{
-			Value: &mesosTaskID,
+		podID := &v1alphapeloton.PodID{
+			Value: mesosTaskID,
 		}
 
 		prevMesosTaskID := fmt.Sprintf("%s-%d-%d", suite.jobID.GetValue(), instID, 49)
-		prevTaskID := &mesos.TaskID{
-			Value: &prevMesosTaskID,
+		prevPodID := &v1alphapeloton.PodID{
+			Value: prevMesosTaskID,
 		}
 
-		var podEvents []*pbtask.PodEvent
-		podEvent := &pbtask.PodEvent{
-			TaskId:     taskID,
-			PrevTaskId: prevTaskID,
+		var podEvents []*pod.PodEvent
+		podEvent := &pod.PodEvent{
+			PodId:     podID,
+			PrevPodId: prevPodID,
 		}
 		podEvents = append(podEvents, podEvent)
 
 		suite.taskStore.EXPECT().
-			GetPodEvents(gomock.Any(), suite.jobID, uint32(instID), uint64(1)).
+			GetPodEvents(gomock.Any(), suite.jobID.GetValue(), uint32(instID)).
 			Return(podEvents, nil)
 	}
 

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
@@ -19,6 +18,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	pb_volume "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
+	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	"code.uber.internal/infra/peloton/common"
@@ -87,10 +88,6 @@ const (
 	jobIndexTimeFormat        = "20060102150405"
 	jobQueryDefaultSpanInDays = 7
 	jobQueryJitter            = time.Second * 30
-
-	// podEventsLastRecord is used in GetPodEvents to return the most recent
-	// event for most recent run
-	podEventsLastRecord = 1
 
 	// _defaultPodEventsLimit is default number of pod events
 	// to read if not provided for jobID + instanceID
@@ -1124,35 +1121,42 @@ func (s *Store) addPodEvent(
 	return nil
 }
 
-// GetPodEvents returns pod events for a Job + Instance + RunID (optional)
-// Pod events are sorted by RunID + Timestamp, and by default returns first 100
-// Primary usecase for pod events is for CLI, UI & create sandbox directory path.
+// GetPodEvents returns pod events for a Job + Instance + PodID (optional)
+// Pod events are sorted by PodID + Timestamp
 func (s *Store) GetPodEvents(
 	ctx context.Context,
-	jobID *peloton.JobID,
+	jobID string,
 	instanceID uint32,
-	limit uint64,
-	runID ...string) ([]*task.PodEvent, error) {
+	podID ...string) ([]*pod.PodEvent, error) {
 	var stmt qb.SelectBuilder
 	queryBuilder := s.DataStore.NewQuery()
 
-	if limit == 0 {
-		limit = _defaultPodEventsLimit
-	}
-
-	// Events are sorted in descinding order by RunID and then update time.
+	// Events are sorted in descinding order by PodID and then update time.
 	stmt = queryBuilder.Select("*").From(podEventsTable).
 		Where(qb.Eq{
-			"job_id":      jobID.GetValue(),
-			"instance_id": instanceID}).
-		Limit(limit)
+			"job_id":      jobID,
+			"instance_id": instanceID})
 
-	if len(runID) > 0 && len(runID[0]) > 0 {
-		runID, err := util.ParseRunID(runID[0])
+	if len(podID) > 0 && len(podID[0]) > 0 {
+		runID, err := util.ParseRunID(podID[0])
 		if err != nil {
 			return nil, err
 		}
 		stmt = stmt.Where(qb.Eq{"run_id": runID})
+	} else {
+		statement := queryBuilder.Select("run_id").From(podEventsTable).
+			Where(qb.Eq{
+				"job_id":      jobID,
+				"instance_id": instanceID}).
+			Limit(1)
+		res, err := s.executeRead(ctx, statement)
+		if err != nil {
+			s.metrics.TaskMetrics.PodEventsGetFail.Inc(1)
+			return nil, err
+		}
+		for _, value := range res {
+			stmt = stmt.Where(qb.Eq{"run_id": value["run_id"].(int64)})
+		}
 	}
 
 	allResults, err := s.executeRead(ctx, stmt)
@@ -1161,45 +1165,48 @@ func (s *Store) GetPodEvents(
 		return nil, err
 	}
 
-	var podEvents []*task.PodEvent
+	var podEvents []*pod.PodEvent
 	for _, value := range allResults {
-		podEvent := &task.PodEvent{}
+		podEvent := &pod.PodEvent{}
 
-		taskID := fmt.Sprintf("%s-%d-%d",
+		podID := fmt.Sprintf("%s-%d-%d",
 			value["job_id"].(qb.UUID),
 			value["instance_id"].(int),
 			value["run_id"].(int64))
 
-		prevTaskID := fmt.Sprintf("%s-%d-%d",
+		prevPodID := fmt.Sprintf("%s-%d-%d",
 			value["job_id"].(qb.UUID),
 			value["instance_id"].(int),
 			value["previous_run_id"].(int64))
 
-		desiredTaskID := fmt.Sprintf("%s-%d-%d",
+		desiredPodID := fmt.Sprintf("%s-%d-%d",
 			value["job_id"].(qb.UUID),
 			value["instance_id"].(int),
 			value["desired_run_id"].(int64))
 
 		// Set podEvent fields
-		podEvent.TaskId = &mesos.TaskID{
-			Value: &taskID,
+		podEvent.PodId = &v1alphapeloton.PodID{
+			Value: podID,
 		}
-		podEvent.PrevTaskId = &mesos.TaskID{
-			Value: &prevTaskID,
+		podEvent.PrevPodId = &v1alphapeloton.PodID{
+			Value: prevPodID,
 		}
-		podEvent.DesriedTaskId = &mesos.TaskID{
-			Value: &desiredTaskID,
+		podEvent.DesiredPodId = &v1alphapeloton.PodID{
+			Value: desiredPodID,
 		}
 		podEvent.Timestamp =
 			value["update_time"].(qb.UUID).Time().Format(time.RFC3339)
-		podEvent.ConfigVersion = uint64(value["config_version"].(int64))
-		podEvent.DesiredConfigVersion =
-			uint64(value["desired_config_version"].(int64))
+		podEvent.JobVersion = &v1alphapeloton.EntityVersion{
+			Value: fmt.Sprintf("%d", value["config_version"].(int64)),
+		}
+		podEvent.DesiredJobVersion = &v1alphapeloton.EntityVersion{
+			Value: fmt.Sprintf("%d", value["desired_config_version"].(int64)),
+		}
 		podEvent.ActualState = value["actual_state"].(string)
-		podEvent.GoalState = value["goal_state"].(string)
+		podEvent.DesiredState = value["goal_state"].(string)
 		podEvent.Message = value["message"].(string)
 		podEvent.Reason = value["reason"].(string)
-		podEvent.AgentID = value["agent_id"].(string)
+		podEvent.AgentId = value["agent_id"].(string)
 		podEvent.Hostname = value["hostname"].(string)
 		podEvent.Healthy = value["healthy"].(string)
 
@@ -2058,9 +2065,8 @@ func (s *Store) deletePodEventsOnDeleteJob(
 			instanceCount%_defaultPodEventsLimit == 0 {
 			events, err := s.GetPodEvents(
 				ctx,
-				id,
-				instanceCount,
-				podEventsLastRecord)
+				id.GetValue(),
+				instanceCount)
 			if err != nil {
 				s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 				return err
