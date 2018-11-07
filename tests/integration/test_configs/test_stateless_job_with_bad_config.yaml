@@ -26,12 +26,20 @@ defaultConfig:
     value: testVal4
   - key: testKey5
     value: testVal5
+  healthCheck:
+    type: 1
+    enabled: true
+    initialIntervalSecs: 1
+    intervalSecs: 1
+    timeoutSecs: 5
+    maxConsecutiveFailures: 1
+    commandCheck:
+      command: 'ls'
   resource:
     cpuLimit: 0.1
     memLimitMb: 0.1
     diskLimitMb: 0.1
     fdLimit: 2
-  healthCheck: null
   ports: []
   command:
     shell: true
