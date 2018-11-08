@@ -11,6 +11,7 @@ import (
 
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
@@ -259,7 +260,8 @@ func ParseRunID(mesosTaskID string) (uint64, error) {
 func ParseTaskID(taskID string) (string, uint32, error) {
 	pos := strings.LastIndex(taskID, "-")
 	if len(taskID) < UUIDLength || pos == -1 {
-		return "", 0, fmt.Errorf("invalid pelotonTaskID %v", taskID)
+		return "", 0,
+			yarpcerrors.InvalidArgumentErrorf("invalid pelotonTaskID %v", taskID)
 	}
 	jobID := taskID[0:pos]
 	ins := taskID[pos+1:]
@@ -273,16 +275,16 @@ func ParseTaskID(taskID string) (string, uint32, error) {
 		log.Info(err)
 		return "",
 			0,
-			fmt.Errorf("unable to parse instanceID %v", taskID)
+			yarpcerrors.InvalidArgumentErrorf("unable to parse instanceID %v", taskID)
 	}
-	return jobID, uint32(instanceID), err
+	return jobID, uint32(instanceID), nil
 }
 
 // ParseTaskIDFromMesosTaskID parses the taskID from mesosTaskID
 func ParseTaskIDFromMesosTaskID(mesosTaskID string) (string, error) {
 	// mesos task id would be "(jobID)-(instanceID)-(runID)" form
 	if len(mesosTaskID) < UUIDLength+1 {
-		return "", fmt.Errorf("invalid mesostaskID %v", mesosTaskID)
+		return "", yarpcerrors.InvalidArgumentErrorf("invalid mesostaskID %v", mesosTaskID)
 	}
 
 	// TODO: deprecate the check once mesos task id migration is complete from

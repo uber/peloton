@@ -2,13 +2,13 @@ package util
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/yarpc/yarpcerrors"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -106,35 +106,35 @@ func TestParseTaskID(t *testing.T) {
 			pelotonTaskID: ID + "-1234test",
 			jobID:         "",
 			instanceID:    0,
-			err:           errors.New("unable to parse instanceID " + ID + "-1234test"),
+			err:           yarpcerrors.InvalidArgumentErrorf("unable to parse instanceID " + ID + "-1234test"),
 		},
 		{
 			msg:           "Incorrect pelotonTaskID - text-int",
 			pelotonTaskID: "Test-1234",
 			jobID:         "",
 			instanceID:    0,
-			err:           errors.New("invalid pelotonTaskID Test-1234"),
+			err:           yarpcerrors.InvalidArgumentErrorf("invalid pelotonTaskID Test-1234"),
 		},
 		{
 			msg:           "Incorrect pelotonTaskID - text",
 			pelotonTaskID: "Test",
 			jobID:         "",
 			instanceID:    0,
-			err:           errors.New("invalid pelotonTaskID Test"),
+			err:           yarpcerrors.InvalidArgumentErrorf("invalid pelotonTaskID Test"),
 		},
 		{
 			msg:           "Incorrect pelotonTaskID - text_int",
 			pelotonTaskID: "Test_1234",
 			jobID:         "",
 			instanceID:    0,
-			err:           errors.New("invalid pelotonTaskID Test_1234"),
+			err:           yarpcerrors.InvalidArgumentErrorf("invalid pelotonTaskID Test_1234"),
 		},
 		{
 			msg:           "Incorrect pelotonTaskID - text_text",
 			pelotonTaskID: "Test_1234test",
 			jobID:         "",
 			instanceID:    0,
-			err:           errors.New("invalid pelotonTaskID Test_1234test"),
+			err:           yarpcerrors.InvalidArgumentErrorf("invalid pelotonTaskID Test_1234test"),
 		},
 	}
 
@@ -170,31 +170,31 @@ func TestParseTaskIDFromMesosTaskID(t *testing.T) {
 			msg:           "Incorrect mesosTaskID text-instanceid-runid(int)",
 			mesosTaskID:   "Test-170-1",
 			pelotonTaskID: "",
-			err:           errors.New("invalid mesostaskID Test-170-1"),
+			err:           yarpcerrors.InvalidArgumentErrorf("invalid mesostaskID Test-170-1"),
 		},
 		{
 			msg:           "Incorrect mesosTaskID text",
 			mesosTaskID:   "Test",
 			pelotonTaskID: "",
-			err:           errors.New("invalid mesostaskID Test"),
+			err:           yarpcerrors.InvalidArgumentErrorf("invalid mesostaskID Test"),
 		},
 		{
 			msg:           "Incorrect mesosTaskID uuid",
 			mesosTaskID:   ID,
 			pelotonTaskID: "",
-			err:           errors.New("invalid mesostaskID " + ID),
+			err:           yarpcerrors.InvalidArgumentErrorf("invalid mesostaskID " + ID),
 		},
 		{
 			msg:           "Incorrect mesosTaskID uuid-text",
 			mesosTaskID:   ID + "-test",
 			pelotonTaskID: "",
-			err:           errors.New("unable to parse instanceID " + ID),
+			err:           yarpcerrors.InvalidArgumentErrorf("unable to parse instanceID " + ID),
 		},
 		{
 			msg:           "Incorrect mesosTaskID uuid-text",
 			mesosTaskID:   ID + "-test-1",
 			pelotonTaskID: "",
-			err:           errors.New("unable to parse instanceID " + ID + "-test"),
+			err:           yarpcerrors.InvalidArgumentErrorf("unable to parse instanceID " + ID + "-test"),
 		},
 	}
 
@@ -233,7 +233,7 @@ func TestParseJobAndInstanceID(t *testing.T) {
 			mesosTaskID: ID + "-test-" + "1",
 			jobID:       "",
 			instanceID:  0,
-			err:         errors.New("unable to parse instanceID " + ID + "-test"),
+			err:         yarpcerrors.InvalidArgumentErrorf("unable to parse instanceID " + ID + "-test"),
 		},
 	}
 

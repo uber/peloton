@@ -3,6 +3,7 @@ package podsvc
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -11,7 +12,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
 
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	handlerutil "code.uber.internal/infra/peloton/jobmgr/util/handler"
+	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 
@@ -22,19 +25,25 @@ import (
 )
 
 type serviceHandler struct {
-	jobFactory cached.JobFactory
-	podStore   storage.TaskStore
+	podStore        storage.TaskStore
+	jobFactory      cached.JobFactory
+	goalStateDriver goalstate.Driver
+	candidate       leader.Candidate
 }
 
 // InitV1AlphaPodServiceHandler initializes the Pod Service Handler
 func InitV1AlphaPodServiceHandler(
 	d *yarpc.Dispatcher,
-	jobFactory cached.JobFactory,
 	podStore storage.TaskStore,
+	jobFactory cached.JobFactory,
+	goalStateDriver goalstate.Driver,
+	candidate leader.Candidate,
 ) {
 	handler := &serviceHandler{
-		jobFactory: jobFactory,
-		podStore:   podStore,
+		jobFactory:      jobFactory,
+		podStore:        podStore,
+		goalStateDriver: goalStateDriver,
+		candidate:       candidate,
 	}
 	d.Register(svc.BuildPodServiceYARPCProcedures(handler))
 }
@@ -86,7 +95,7 @@ func (h *serviceHandler) GetPodEvents(
 	}()
 	jobID, instanceID, err := util.ParseTaskID(req.GetPodName().GetValue())
 	if err != nil {
-		return nil, yarpcerrors.InvalidArgumentErrorf(err.Error())
+		return nil, err
 	}
 
 	events, err := h.podStore.GetPodEvents(
@@ -113,6 +122,47 @@ func (h *serviceHandler) RefreshPod(
 	ctx context.Context,
 	req *svc.RefreshPodRequest,
 ) (resp *svc.RefreshPodResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("PodSVC.RefreshPod failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Info("PodSVC.RefreshPod succeeded")
+	}()
+
+	if !h.candidate.IsLeader() {
+		return nil,
+			yarpcerrors.UnavailableErrorf("PodSVC.RefreshPod is not supported on non-leader")
+	}
+
+	jobID, instanceID, err := util.ParseTaskID(req.GetPodName().GetValue())
+	if err != nil {
+		return nil, err
+	}
+
+	pelotonJobID := &peloton.JobID{Value: jobID}
+	runtime, err := h.podStore.GetTaskRuntime(ctx, pelotonJobID, instanceID)
+	if err != nil {
+		return nil, errors.Wrap(err, "fail to get task runtime")
+	}
+
+	cachedJob := h.jobFactory.AddJob(pelotonJobID)
+	if err := cachedJob.ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{
+		instanceID: runtime,
+	}, true); err != nil {
+		return nil, errors.Wrap(err, "fail to replace task runtime")
+	}
+
+	h.goalStateDriver.EnqueueTask(pelotonJobID, instanceID, time.Now())
+	goalstate.EnqueueJobWithDefaultDelay(
+		pelotonJobID, h.goalStateDriver, cachedJob)
+
 	return &svc.RefreshPodResponse{}, nil
 }
 
@@ -136,7 +186,7 @@ func (h *serviceHandler) GetPodCache(
 
 	jobID, instanceID, err := util.ParseTaskID(req.GetPodName().GetValue())
 	if err != nil {
-		return nil, yarpcerrors.InvalidArgumentErrorf(err.Error())
+		return nil, err
 	}
 
 	cachedJob := h.jobFactory.GetJob(&peloton.JobID{Value: jobID})

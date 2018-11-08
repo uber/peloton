@@ -63,7 +63,7 @@ func (suite *podActionsTestSuite) TestClientPodGetCacheFail() {
 	suite.Error(suite.client.PodGetCache(testPodName))
 }
 
-// TestClient_PodGetEventsV1AlphaAction tests PodGetEventsV1AlphaAction
+// TestPodGetEventsV1AlphaAction tests PodGetEventsV1AlphaAction
 func (suite *podActionsTestSuite) TestPodGetEventsV1AlphaAction() {
 	podname := &peloton.PodName{
 		Value: "podname",
@@ -122,6 +122,24 @@ func (suite *podActionsTestSuite) TestPodGetEventsV1AlphaActionAPIError() {
 		Return(nil, yarpcerrors.InternalErrorf("test GetPodEvents error"))
 	err := suite.client.PodGetEventsV1AlphaAction(podname.GetValue(), podID.GetValue())
 	suite.Error(err)
+}
+
+// TestClientPodRefreshSuccess test the success case of refreshing pod
+func (suite *podActionsTestSuite) TestClientPodRefreshSuccess() {
+	suite.podClient.EXPECT().
+		RefreshPod(gomock.Any(), gomock.Any()).
+		Return(&podsvc.RefreshPodResponse{}, nil)
+
+	suite.NoError(suite.client.PodRefresh(testPodName))
+}
+
+// TestClientPodRefreshFail test the failure case of refreshing pod
+func (suite *podActionsTestSuite) TestClientPodRefreshFail() {
+	suite.podClient.EXPECT().
+		RefreshPod(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.PodRefresh(testPodName))
 }
 
 func TestPodActions(t *testing.T) {

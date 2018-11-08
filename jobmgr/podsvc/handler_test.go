@@ -4,15 +4,19 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
+	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
+	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
+
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
-
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -28,12 +32,16 @@ const (
 
 type podHandlerTestSuite struct {
 	suite.Suite
-	ctrl       *gomock.Controller
-	handler    *serviceHandler
-	cachedJob  *cachedmocks.MockJob
-	cachedTask *cachedmocks.MockTask
-	jobFactory *cachedmocks.MockJobFactory
-	podStore   *storemocks.MockTaskStore
+
+	handler *serviceHandler
+
+	ctrl            *gomock.Controller
+	cachedJob       *cachedmocks.MockJob
+	cachedTask      *cachedmocks.MockTask
+	jobFactory      *cachedmocks.MockJobFactory
+	candidate       *leadermocks.MockCandidate
+	podStore        *storemocks.MockTaskStore
+	goalStateDriver *goalstatemocks.MockDriver
 }
 
 func (suite *podHandlerTestSuite) SetupTest() {
@@ -42,9 +50,13 @@ func (suite *podHandlerTestSuite) SetupTest() {
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.podStore = storemocks.NewMockTaskStore(suite.ctrl)
+	suite.candidate = leadermocks.NewMockCandidate(suite.ctrl)
+	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
 	suite.handler = &serviceHandler{
-		jobFactory: suite.jobFactory,
-		podStore:   suite.podStore,
+		jobFactory:      suite.jobFactory,
+		candidate:       suite.candidate,
+		podStore:        suite.podStore,
+		goalStateDriver: suite.goalStateDriver,
 	}
 }
 
@@ -86,7 +98,7 @@ func (suite *podHandlerTestSuite) TestGetPodCacheSuccess() {
 func (suite *podHandlerTestSuite) TestGetPodCacheInvalidPodName() {
 	resp, err := suite.handler.GetPodCache(context.Background(),
 		&svc.GetPodCacheRequest{
-			PodName: &v1alphapeloton.PodName{Value: "run-name"},
+			PodName: &v1alphapeloton.PodName{Value: "invalid-name"},
 		})
 	suite.Nil(resp)
 	suite.Error(err)
@@ -155,6 +167,149 @@ func (suite *podHandlerTestSuite) TestGetPodCacheFailToGetRuntime() {
 	suite.Nil(resp)
 	suite.Error(err)
 	suite.True(yarpcerrors.IsUnavailable(err))
+}
+
+// TestRefreshPodSuccess tests the success case of refreshing pod
+func (suite *podHandlerTestSuite) TestRefreshPodSuccess() {
+	taskRuntime := &pbtask.RuntimeInfo{
+		State: pbtask.TaskState_RUNNING,
+	}
+	pelotonJobID := &peloton.JobID{Value: testJobID}
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), pelotonJobID, uint32(testInstanceID)).
+			Return(taskRuntime, nil),
+
+		suite.jobFactory.EXPECT().
+			AddJob(pelotonJobID).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{
+				testInstanceID: taskRuntime,
+			}, true).
+			Return(nil),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueTask(pelotonJobID, uint32(testInstanceID), gomock.Any()).
+			Return(),
+
+		suite.cachedJob.EXPECT().
+			GetJobType().
+			Return(pbjob.JobType_SERVICE),
+
+		suite.goalStateDriver.EXPECT().
+			JobRuntimeDuration(pbjob.JobType_SERVICE).
+			Return(time.Second),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueJob(pelotonJobID, gomock.Any()).
+			Return(),
+	)
+
+	resp, err := suite.handler.RefreshPod(context.Background(),
+		&svc.RefreshPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: testPodName},
+		})
+	suite.NotNil(resp)
+	suite.NoError(err)
+}
+
+// TestRefreshPodNonLeader tests calling refresh pod
+// on non-leader jobmgr
+func (suite *podHandlerTestSuite) TestRefreshPodNonLeader() {
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(false)
+
+	resp, err := suite.handler.RefreshPod(context.Background(),
+		&svc.RefreshPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: testPodName},
+		})
+	suite.Nil(resp)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsUnavailable(err))
+}
+
+// TestRefreshPodInvalidPodName tests the failure case of refreshing pod
+// due to invalid pod name
+func (suite *podHandlerTestSuite) TestRefreshPodInvalidPodName() {
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	resp, err := suite.handler.RefreshPod(context.Background(),
+		&svc.RefreshPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: "invalid-name"},
+		})
+	suite.Nil(resp)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+}
+
+// TestRefreshPodFailToGetTaskRuntime tests the failure
+// case of refreshing pod, due to error while getting task runtime
+func (suite *podHandlerTestSuite) TestRefreshPodFailToGetTaskRuntime() {
+	pelotonJobID := &peloton.JobID{Value: testJobID}
+
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.podStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), pelotonJobID, uint32(testInstanceID)).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	resp, err := suite.handler.RefreshPod(context.Background(),
+		&svc.RefreshPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: testPodName},
+		})
+
+	suite.Nil(resp)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInternal(err))
+}
+
+// TestRefreshPodFailToReplaceTasks tests the failure case of
+// replacing tasks
+func (suite *podHandlerTestSuite) TestRefreshPodFailToReplaceTasks() {
+	taskRuntime := &pbtask.RuntimeInfo{
+		State: pbtask.TaskState_RUNNING,
+	}
+	pelotonJobID := &peloton.JobID{Value: testJobID}
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), pelotonJobID, uint32(testInstanceID)).
+			Return(taskRuntime, nil),
+
+		suite.jobFactory.EXPECT().
+			AddJob(pelotonJobID).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{
+				testInstanceID: taskRuntime,
+			}, true).
+			Return(yarpcerrors.InternalErrorf("test error")),
+	)
+
+	resp, err := suite.handler.RefreshPod(context.Background(),
+		&svc.RefreshPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: testPodName},
+		})
+	suite.Nil(resp)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInternal(err))
 }
 
 func TestPodServiceHandler(t *testing.T) {
@@ -247,13 +402,6 @@ func (suite *podHandlerTestSuite) TestGetPodEventsStoreError() {
 func (suite *podHandlerTestSuite) TestBrowsePodSandbox() {
 	request := &svc.BrowsePodSandboxRequest{}
 	response, err := suite.handler.BrowsePodSandbox(context.Background(), request)
-	suite.NoError(err)
-	suite.NotNil(response)
-}
-
-func (suite *podHandlerTestSuite) TestRefreshPod() {
-	request := &svc.RefreshPodRequest{}
-	response, err := suite.handler.RefreshPod(context.Background(), request)
 	suite.NoError(err)
 	suite.NotNil(response)
 }

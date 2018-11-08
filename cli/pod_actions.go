@@ -12,7 +12,7 @@ const (
 	podGetEventsV1AlphaFormatBody   = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
 )
 
-// PodGetCache get pod status from cache"
+// PodGetCache get pod status from cache
 func (c *Client) PodGetCache(podName string) error {
 	resp, err := c.podClient.GetPodCache(
 		c.ctx,
@@ -79,4 +79,25 @@ func printPodGetEventsV1AlphaResponse(r *podsvc.GetPodEventsResponse, debug bool
 			event.GetTimestamp(),
 		)
 	}
+}
+
+// PodRefresh refresh the pod
+func (c *Client) PodRefresh(podName string) error {
+	resp, err := c.podClient.RefreshPod(
+		c.ctx,
+		&podsvc.RefreshPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: podName},
+		})
+	if err != nil {
+		return err
+	}
+
+	out, err := marshallResponse(defaultResponseFormat, resp)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v\n", string(out))
+
+	tabWriter.Flush()
+	return nil
 }
