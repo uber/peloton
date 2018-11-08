@@ -14,10 +14,12 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
+	"code.uber.internal/infra/peloton/common/stringset"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/protobuf/ptypes"
+	"go.uber.org/multierr"
 	"go.uber.org/yarpc/yarpcerrors"
 	"gopkg.in/cheggaaa/pb.v1"
 	"gopkg.in/yaml.v2"
@@ -36,6 +38,9 @@ const (
 	jobSummaryFormatHeader = "ID\tName\tOwner\tState\tCreation Time\tCompletion Time\tTotal\t" +
 		"Running\tSucceeded\tFailed\tKilled\t\n"
 	jobSummaryFormatBody = "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t\n"
+
+	jobStopConfirmationMessage = "The above jobs will be stopped. " +
+		"Are you sure you want to continue?"
 )
 
 // JobCreateAction is the action for creating a job
@@ -158,7 +163,8 @@ func (c *Client) JobStatusAction(jobID string) error {
 	return nil
 }
 
-// JobQueryAction is the action for getting job ids by labels and respool path
+// JobQueryAction is the action for getting job ids by labels,
+// respool path, keywords, state(s), owner and jobname
 func (c *Client) JobQueryAction(
 	labels string,
 	respoolPath string,
@@ -173,28 +179,22 @@ func (c *Client) JobQueryAction(
 	sortBy string,
 	sortOrder string) error {
 	var apiLabels []*peloton.Label
+	var err error
 	if len(labels) > 0 {
-		labelPairs := strings.Split(labels, labelSeparator)
-		for _, l := range labelPairs {
-			labelVals := strings.Split(l, keyValSeparator)
-			if len(labelVals) != 2 {
-				fmt.Printf("Invalid label %v", l)
-				return errors.New("Invalid label" + l)
-			}
-			apiLabels = append(apiLabels, &peloton.Label{
-				Key:   labelVals[0],
-				Value: labelVals[1],
-			})
+		apiLabels, err = parsePelotonLabels(labels)
+		if err != nil {
+			return err
 		}
 	}
+
 	var respoolID *peloton.ResourcePoolID
-	var err error
 	if len(respoolPath) > 0 {
 		respoolID, err = c.LookupResourcePoolID(respoolPath)
 		if err != nil {
 			return err
 		}
 	}
+
 	var apiKeywords []string
 	for _, k := range strings.Split(keywords, labelSeparator) {
 		if k != "" {
@@ -301,57 +301,165 @@ func (c *Client) JobUpdateAction(
 	return nil
 }
 
-// JobStopAction is the action of stopping a job
-func (c *Client) JobStopAction(jobID string, showProgress bool) error {
-	// check the job status
-	jobGetResponse, err := c.jobGet(jobID)
-	if err != nil {
-		return err
+// JobStopAction is the action of stopping job(s) by jobID,
+// owner and labels
+func (c *Client) JobStopAction(
+	jobID string,
+	showProgress bool,
+	owner string,
+	labels string,
+	isForceStop bool,
+) error {
+	var (
+		errs             error
+		jobsToStop       []*peloton.JobID
+		jobStopLabels    []*peloton.Label
+		stopJobIDs       []string
+		stopFailedJobIDs []string
+	)
+
+	jobStopLabelSet := stringset.New()
+	if len(labels) > 0 {
+		var err error
+		jobStopLabels, err = parsePelotonLabels(labels)
+		if err != nil {
+			return err
+		}
+		for _, label := range jobStopLabels {
+			jobStopLabelSet.Add(label.GetKey() + ":" + label.GetValue())
+		}
 	}
 
-	if util.IsPelotonJobStateTerminal(
-		jobGetResponse.GetJobInfo().GetRuntime().GetState()) {
-		fmt.Fprintf(
-			tabWriter,
-			"Job is in terminal state: %s\n", jobGetResponse.GetJobInfo().
-				GetRuntime().GetState().String(),
-		)
+	if jobID != "" {
+		// check the job status
+		jobGetResponse, err := c.jobGet(jobID)
+		if err != nil {
+			return err
+		}
+
+		jobConfig := jobGetResponse.GetJobInfo().GetConfig()
+		// If the job doesn't satisfy owner or label constraints, return
+		if owner != "" && jobConfig.GetOwningTeam() != owner {
+			fmt.Printf("No matching job found\n")
+			tabWriter.Flush()
+			return nil
+		}
+		if len(labels) > 0 {
+			jobHasStopLabels := false
+			for _, label := range jobConfig.Labels {
+				if jobStopLabelSet.Contains(strings.TrimSpace(label.GetKey()) +
+					":" + strings.TrimSpace(label.GetValue())) {
+					jobHasStopLabels = true
+					break
+				}
+			}
+			if !jobHasStopLabels {
+				fmt.Fprintf(
+					tabWriter,
+					"No matching job found\n",
+				)
+				tabWriter.Flush()
+				return nil
+			}
+		}
+
+		if util.IsPelotonJobStateTerminal(
+			jobGetResponse.GetJobInfo().GetRuntime().GetState()) {
+			fmt.Fprintf(
+				tabWriter,
+				"Job is in terminal state: %s\n", jobGetResponse.GetJobInfo().
+					GetRuntime().GetState().String(),
+			)
+			tabWriter.Flush()
+			return nil
+		}
+
+		jobsToStop = append(jobsToStop, &peloton.JobID{Value: jobID})
+	} else {
+		jobStates := []job.JobState{
+			job.JobState_INITIALIZED,
+			job.JobState_PENDING,
+			job.JobState_RUNNING,
+		}
+		spec := &job.QuerySpec{
+			JobStates: jobStates,
+			Owner:     owner,
+			Labels:    jobStopLabels,
+		}
+		request := &job.QueryRequest{
+			Spec:        spec,
+			SummaryOnly: true,
+		}
+
+		response, err := c.jobClient.Query(c.ctx, request)
+		if err != nil {
+			return err
+		}
+
+		for _, jobSummary := range response.GetResults() {
+			printResponseJSON(jobSummary)
+			jobsToStop = append(jobsToStop, jobSummary.GetId())
+		}
+
+		if !isForceStop && !askForConfirmation(jobStopConfirmationMessage) {
+			return nil
+		}
+	}
+
+	if len(jobsToStop) == 0 {
+		fmt.Fprintf(tabWriter, "No matching job(s) found\n")
 		tabWriter.Flush()
 		return nil
 	}
 
-	id := &peloton.JobID{
-		Value: jobID,
-	}
+	for _, jobID := range jobsToStop {
+		request := &task.StopRequest{
+			JobId: jobID,
+		}
+		response, err := c.taskClient.Stop(c.ctx, request)
 
-	// job is not in terminal state, so lets stop it
-	var request = &task.StopRequest{
-		JobId:  id,
-		Ranges: nil,
-	}
-	response, err := c.taskClient.Stop(c.ctx, request)
-	if err != nil {
-		return err
+		if err != nil {
+			stopFailedJobIDs = append(stopFailedJobIDs,
+				jobID.GetValue())
+			errs = multierr.Append(errs, err)
+		} else {
+			stopJobIDs = append(stopJobIDs, jobID.GetValue())
+		}
+
+		if showProgress {
+			continue
+		}
+
+		printTaskStopResponse(response, c.Debug)
+		// Retry one more time in case failedInstanceList is non zero
+		if len(response.GetInvalidInstanceIds()) > 0 {
+			fmt.Fprint(
+				tabWriter,
+				"Retrying failed tasks",
+			)
+			response, err = c.taskClient.Stop(c.ctx, request)
+			if err != nil {
+				errs = multierr.Append(errs, err)
+				continue
+			}
+			printTaskStopResponse(response, c.Debug)
+		}
 	}
 
 	if showProgress {
-		return c.pollStatusWithTimeout(id)
+		for _, jobID := range jobsToStop {
+			if err := c.pollStatusWithTimeout(jobID); err != nil {
+				errs = multierr.Append(errs, err)
+			}
+		}
 	}
 
-	printTaskStopResponse(response, c.Debug)
-	// Retry one more time in case failedInstanceList is non zero
-	if len(response.GetInvalidInstanceIds()) > 0 {
-		fmt.Fprint(
-			tabWriter,
-			"Retrying failed tasks",
-		)
-		response, err = c.taskClient.Stop(c.ctx, request)
-		if err != nil {
-			return err
-		}
-		printTaskStopResponse(response, c.Debug)
+	fmt.Fprintf(tabWriter, "Stopping jobs: %v\n", stopJobIDs)
+	if len(stopFailedJobIDs) != 0 {
+		fmt.Fprintf(tabWriter, "Error stopping jobs: %v\n", stopFailedJobIDs)
 	}
-	return nil
+	tabWriter.Flush()
+	return errs
 }
 
 // JobRestartAction is the action for restarting a job
@@ -519,8 +627,8 @@ func (c *Client) pollStatusWithTimeout(id *peloton.JobID) error {
 
 	if total == terminated {
 		// done
-		fmt.Printf("Job stopped, total_tasks:%d terminated_tasks:%d\n",
-			total, terminated)
+		fmt.Printf("Job %s stopped, total_tasks:%d terminated_tasks:%d\n",
+			id.GetValue(), total, terminated)
 		return nil
 	}
 
@@ -528,8 +636,9 @@ func (c *Client) pollStatusWithTimeout(id *peloton.JobID) error {
 	bar := pb.Simple.
 		Start(int(total)).
 		SetTotal(int64(total)).
-		SetWidth(80).
-		SetRefreshRate(time.Second).Set("prefix", "terminated/total: ")
+		SetWidth(150).
+		SetRefreshRate(time.Second).
+		Set("prefix", fmt.Sprintf("Job %s terminated/total: ", id.GetValue()))
 	defer bar.Finish()
 
 	// Keep trying until we're timed out or got a result or got an error
@@ -722,5 +831,43 @@ func printJobQueryResponse(r *job.QueryResponse, jsonFormat bool) {
 			}
 		}
 		tabWriter.Flush()
+	}
+}
+
+func parsePelotonLabels(labels string) ([]*peloton.Label, error) {
+	var pelotonLabels []*peloton.Label
+	for _, l := range strings.Split(labels, labelSeparator) {
+		labelVals := strings.Split(l, keyValSeparator)
+		if len(labelVals) != 2 {
+			fmt.Printf("Invalid label %v", l)
+			return nil, errors.New("Invalid label" + l)
+		}
+		pelotonLabels = append(pelotonLabels, &peloton.Label{
+			Key:   labelVals[0],
+			Value: labelVals[1],
+		})
+	}
+	return pelotonLabels, nil
+}
+
+// askForConfirmation uses Scanln to parse user input. A user must type in "yes" or "no" and
+// then press enter. It has fuzzy matching, so "y", "Y", "yes", "YES", and "Yes" all count as
+// confirmations. If the input is not recognized, it will ask again. The function does not return
+// until it gets a valid response from the user.
+func askForConfirmation(s string) bool {
+	for {
+		fmt.Printf("%s [y/n]: ", s)
+		var response string
+		_, err := fmt.Scanln(&response)
+		if err != nil {
+			return false
+		}
+		response = strings.ToLower(strings.TrimSpace(response))
+		if response == "y" || response == "yes" {
+			return true
+		}
+		if response == "n" || response == "no" {
+			return false
+		}
 	}
 }

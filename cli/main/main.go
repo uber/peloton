@@ -95,11 +95,14 @@ var (
 	jobDelete     = job.Command("delete", "delete a job")
 	jobDeleteName = jobDelete.Arg("job", "job identifier").Required().String()
 
-	jobStop         = job.Command("stop", "stop a job")
-	jobStopName     = jobStop.Arg("job", "job identifier").Required().String()
+	jobStop         = job.Command("stop", "stop job(s) by job identifier, owning team or labels")
+	jobStopName     = jobStop.Arg("job", "job identifier").Default("").String()
 	jobStopProgress = jobStop.Flag("progress",
 		"show progress of the job stopping").Default(
 		"false").Bool()
+	jobStopOwner  = jobStop.Flag("owner", "job owner").Default("").String()
+	jobStopLabels = jobStop.Flag("labels", "job labels").Default("").Short('l').String()
+	jobStopForce  = jobStop.Flag("force", "force stop").Default("false").Short('f').Bool()
 
 	jobGet     = job.Command("get", "get a job")
 	jobGetName = jobGet.Arg("job", "job identifier").Required().String()
@@ -466,7 +469,13 @@ func main() {
 	case jobDelete.FullCommand():
 		err = client.JobDeleteAction(*jobDeleteName)
 	case jobStop.FullCommand():
-		err = client.JobStopAction(*jobStopName, *jobStopProgress)
+		err = client.JobStopAction(
+			*jobStopName,
+			*jobStopProgress,
+			*jobStopOwner,
+			*jobStopLabels,
+			*jobStopForce,
+		)
 	case jobGet.FullCommand():
 		err = client.JobGetAction(*jobGetName)
 	case jobRefresh.FullCommand():

@@ -3,20 +3,20 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"testing"
 	"time"
 
-	jobmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job/mocks"
-	respoolmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
-	taskmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task/mocks"
-
 	pberrors "code.uber.internal/infra/peloton/.gen/peloton/api/v0/errors"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	jobmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	respoolmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	taskmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task/mocks"
 
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 
@@ -41,22 +41,31 @@ type jobActionsTestSuite struct {
 	mockTask    *taskmocks.MockTaskManagerYARPCClient
 	mockRespool *respoolmocks.MockResourceManagerYARPCClient
 	ctx         context.Context
+	client      Client
 }
 
-func (suite *jobActionsTestSuite) SetupSuite() {
+func (suite *jobActionsTestSuite) SetupTest() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mockJob = jobmocks.NewMockJobManagerYARPCClient(suite.mockCtrl)
 	suite.mockTask = taskmocks.NewMockTaskManagerYARPCClient(suite.mockCtrl)
 	suite.mockRespool = respoolmocks.NewMockResourceManagerYARPCClient(
 		suite.mockCtrl)
 	suite.ctx = context.Background()
+	suite.client = Client{
+		Debug:      false,
+		resClient:  suite.mockRespool,
+		taskClient: suite.mockTask,
+		jobClient:  suite.mockJob,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
 }
 
 func TestJobActions(t *testing.T) {
 	suite.Run(t, new(jobActionsTestSuite))
 }
 
-func (suite *jobActionsTestSuite) TearDownSuite() {
+func (suite *jobActionsTestSuite) TearDownTest() {
 	suite.mockCtrl.Finish()
 	suite.ctx.Done()
 }
@@ -72,13 +81,6 @@ func (suite *jobActionsTestSuite) getConfig() *job.JobConfig {
 
 // TestClientJobCreateAction tests creating a job
 func (suite *jobActionsTestSuite) TestClientJobCreateAction() {
-	c := Client{
-		Debug:      false,
-		resClient:  suite.mockRespool,
-		jobClient:  suite.mockJob,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
 	id := uuid.New()
 	path := "/a/b/c/d"
 	config := suite.getConfig()
@@ -417,7 +419,7 @@ func (suite *jobActionsTestSuite) TestClientJobCreateAction() {
 	}
 
 	for _, t := range tt {
-		c.Debug = t.debug
+		suite.client.Debug = t.debug
 		suite.withMockResourcePoolLookup(
 			t.respoolLookupRequest,
 			t.respoolLookupResponse,
@@ -432,7 +434,7 @@ func (suite *jobActionsTestSuite) TestClientJobCreateAction() {
 			)
 		}
 
-		err := c.JobCreateAction(t.jobID, path, testJobConfig, t.secretPath, t.secret)
+		err := suite.client.JobCreateAction(t.jobID, path, testJobConfig, t.secretPath, t.secret)
 		if t.createError != nil {
 			suite.EqualError(err, t.createError.Error())
 		} else if t.respoolError != nil {
@@ -447,13 +449,6 @@ func (suite *jobActionsTestSuite) TestClientJobCreateAction() {
 
 // TestClientJobUpdateAction tests updating a job
 func (suite *jobActionsTestSuite) TestClientJobUpdateAction() {
-	c := Client{
-		Debug:      false,
-		resClient:  suite.mockRespool,
-		jobClient:  suite.mockJob,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
 	id := uuid.New()
 	config := suite.getConfig()
 	tt := []struct {
@@ -573,9 +568,9 @@ func (suite *jobActionsTestSuite) TestClientJobUpdateAction() {
 	}
 
 	for _, t := range tt {
-		c.Debug = t.debug
+		suite.client.Debug = t.debug
 		suite.withMockJobUpdateResponse(t.jobUpdateRequest, t.jobUpdateResponse, t.updateError)
-		err := c.JobUpdateAction(t.jobID, testJobConfig, t.secretPath, t.secret)
+		err := suite.client.JobUpdateAction(t.jobID, testJobConfig, t.secretPath, t.secret)
 		if t.updateError != nil {
 			suite.EqualError(err, t.updateError.Error())
 		} else {
@@ -614,14 +609,6 @@ func (suite *jobActionsTestSuite) withMockResourcePoolLookup(
 
 // TestClientJobQueryAction tests job query
 func (suite *jobActionsTestSuite) TestClientJobQueryAction() {
-	c := Client{
-		Debug:      false,
-		resClient:  suite.mockRespool,
-		jobClient:  suite.mockJob,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	resp := &job.QueryResponse{
 		Results: []*job.JobSummary{
 			{
@@ -686,24 +673,24 @@ func (suite *jobActionsTestSuite) TestClientJobQueryAction() {
 		SummaryOnly: true,
 	}).Return(resp, nil)
 
-	suite.NoError(c.JobQueryAction(
+	suite.NoError(suite.client.JobQueryAction(
 		"key=value", "", "keyword,", "RUNNING", "test_owner",
 		"test_name", 0, 10, 100, 0, "creation_time", "DESC",
 	))
-	suite.Error(c.JobQueryAction(
+	suite.Error(suite.client.JobQueryAction(
 		"key=value1,value2", "", "keyword,", "RUNNING",
 		"test_owner", "test_name", 0, 10, 100, 0, "creation_time", "DESC",
 	))
-	suite.Error(c.JobQueryAction(
+	suite.Error(suite.client.JobQueryAction(
 		"key=value", "", "keyword,", "RUNNING", "test_owner",
 		"test_name", 0, 10, 100, 0, "creation_time", "RANDOM",
 	))
 
-	c.Debug = true
+	suite.client.Debug = true
 	suite.mockJob.EXPECT().
 		Query(gomock.Any(), gomock.Any()).
 		Return(resp, nil)
-	suite.NoError(c.JobQueryAction(
+	suite.NoError(suite.client.JobQueryAction(
 		"key=value", "", "keyword,", "RUNNING", "test_owner",
 		"test_name", 0, 10, 100, 0, "creation_time", "DESC",
 	))
@@ -712,14 +699,6 @@ func (suite *jobActionsTestSuite) TestClientJobQueryAction() {
 // TestClientJobQueryActionWithRespoolError tests job query
 // with error in resource pool lookup
 func (suite *jobActionsTestSuite) TestClientJobQueryActionWithRespoolError() {
-	c := Client{
-		Debug:      false,
-		resClient:  suite.mockRespool,
-		jobClient:  suite.mockJob,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	path := "/respool"
 	req := &respool.LookupRequest{
 		Path: &respool.ResourcePoolPath{
@@ -731,7 +710,7 @@ func (suite *jobActionsTestSuite) TestClientJobQueryActionWithRespoolError() {
 		LookupResourcePoolID(suite.ctx, gomock.Eq(req)).
 		Return(nil, errors.New("unable to get resource pool"))
 
-	suite.Error(c.JobQueryAction(
+	suite.Error(suite.client.JobQueryAction(
 		"key=value", path, "keyword,", "RUNNING", "test_owner",
 		"test_name", 0, 10, 100, 0, "creation_time", "DESC",
 	))
@@ -740,14 +719,6 @@ func (suite *jobActionsTestSuite) TestClientJobQueryActionWithRespoolError() {
 // TestClientJobQueryActionWithError tests with job query
 // request returning error
 func (suite *jobActionsTestSuite) TestClientJobQueryActionWithError() {
-	c := Client{
-		Debug:      false,
-		resClient:  suite.mockRespool,
-		jobClient:  suite.mockJob,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	suite.mockJob.EXPECT().Query(gomock.Any(), &job.QueryRequest{
 		Spec: &job.QuerySpec{
 			Keywords: []string{"keyword"},
@@ -775,7 +746,7 @@ func (suite *jobActionsTestSuite) TestClientJobQueryActionWithError() {
 		SummaryOnly: true,
 	}).Return(nil, errors.New("unable to query jobs"))
 
-	suite.Error(c.JobQueryAction(
+	suite.Error(suite.client.JobQueryAction(
 		"key=value", "", "keyword,", "RUNNING", "test_owner",
 		"test_name", 0, 10, 100, 0, "creation_time", "ASC",
 	))
@@ -783,14 +754,6 @@ func (suite *jobActionsTestSuite) TestClientJobQueryActionWithError() {
 
 // TestClientJobQueryActionResponseError tests error in query response
 func (suite *jobActionsTestSuite) TestClientJobQueryActionResponseError() {
-	c := Client{
-		Debug:      false,
-		resClient:  suite.mockRespool,
-		jobClient:  suite.mockJob,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	resp := &job.QueryResponse{
 		Error: &job.QueryResponse_Error{
 			Err: &pberrors.UnknownError{
@@ -826,7 +789,7 @@ func (suite *jobActionsTestSuite) TestClientJobQueryActionResponseError() {
 		SummaryOnly: true,
 	}).Return(resp, nil)
 
-	suite.NoError(c.JobQueryAction(
+	suite.NoError(suite.client.JobQueryAction(
 		"key=value", "", "keyword,", "RUNNING", "test_owner",
 		"test_name", 0, 10, 100, 0, "creation_time", "DESC",
 	))
@@ -834,18 +797,10 @@ func (suite *jobActionsTestSuite) TestClientJobQueryActionResponseError() {
 
 // TestClientJobQueryActionWithDays tests job query with days
 func (suite *jobActionsTestSuite) TestClientJobQueryActionWithDays() {
-	c := Client{
-		Debug:      false,
-		resClient:  suite.mockRespool,
-		jobClient:  suite.mockJob,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	suite.mockJob.EXPECT().
 		Query(gomock.Any(), gomock.Any()).
 		Return(nil, nil)
-	suite.NoError(c.JobQueryAction(
+	suite.NoError(suite.client.JobQueryAction(
 		"key=value", "", "keyword,", "RUNNING", "test_owner",
 		"test_name", 5, 10, 100, 0, "creation_time", "DESC",
 	))
@@ -853,14 +808,6 @@ func (suite *jobActionsTestSuite) TestClientJobQueryActionWithDays() {
 
 // TestClientJobGetAction tests job get
 func (suite *jobActionsTestSuite) TestClientJobGetAction() {
-	c := Client{
-		Debug:      false,
-		resClient:  suite.mockRespool,
-		jobClient:  suite.mockJob,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	tt := []struct {
 		debug    bool
 		req      *job.GetRequest
@@ -929,28 +876,21 @@ func (suite *jobActionsTestSuite) TestClientJobGetAction() {
 	}
 
 	for _, t := range tt {
-		c.Debug = t.debug
+		suite.client.Debug = t.debug
 		suite.mockJob.EXPECT().
 			Get(gomock.Any(), t.req).
 			Return(t.resp, t.getError)
 
 		if t.getError != nil {
-			suite.Error(c.JobGetAction(testJobID))
+			suite.Error(suite.client.JobGetAction(testJobID))
 		} else {
-			suite.NoError(c.JobGetAction(testJobID))
+			suite.NoError(suite.client.JobGetAction(testJobID))
 		}
 	}
 }
 
 // TestClientJobStatusAction tests fetching job status
 func (suite *jobActionsTestSuite) TestClientJobStatusAction() {
-	c := Client{
-		Debug:      false,
-		resClient:  suite.mockRespool,
-		jobClient:  suite.mockJob,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
 
 	tt := []struct {
 		debug    bool
@@ -1020,28 +960,20 @@ func (suite *jobActionsTestSuite) TestClientJobStatusAction() {
 	}
 
 	for _, t := range tt {
-		c.Debug = t.debug
+		suite.client.Debug = t.debug
 		suite.mockJob.EXPECT().
 			Get(gomock.Any(), t.req).
 			Return(t.resp, t.getError)
 		if t.getError != nil {
-			suite.Error(c.JobStatusAction(testJobID))
+			suite.Error(suite.client.JobStatusAction(testJobID))
 		} else {
-			suite.NoError(c.JobStatusAction(testJobID))
+			suite.NoError(suite.client.JobStatusAction(testJobID))
 		}
 	}
 }
 
 // TestClientJobGetCacheAction tests fetching job in cache
 func (suite *jobActionsTestSuite) TestClientJobGetCacheAction() {
-	c := Client{
-		Debug:      false,
-		resClient:  suite.mockRespool,
-		jobClient:  suite.mockJob,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	tt := []struct {
 		req *job.GetCacheRequest
 		err error
@@ -1070,22 +1002,15 @@ func (suite *jobActionsTestSuite) TestClientJobGetCacheAction() {
 			Return(nil, t.err)
 
 		if t.err != nil {
-			suite.Error(c.JobGetCacheAction(testJobID))
+			suite.Error(suite.client.JobGetCacheAction(testJobID))
 		} else {
-			suite.NoError(c.JobGetCacheAction(testJobID))
+			suite.NoError(suite.client.JobGetCacheAction(testJobID))
 		}
 	}
 }
 
 // TestClientJobRefreshAction tests refreshing a job
 func (suite *jobActionsTestSuite) TestClientJobRefreshAction() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	resp := &job.RefreshResponse{}
 
 	suite.mockJob.EXPECT().
@@ -1096,18 +1021,11 @@ func (suite *jobActionsTestSuite) TestClientJobRefreshAction() {
 		}).
 		Return(resp, nil)
 
-	suite.NoError(c.JobRefreshAction(testJobID))
+	suite.NoError(suite.client.JobRefreshAction(testJobID))
 }
 
 // TestClientJobDeleteAction tests deleting a job
 func (suite *jobActionsTestSuite) TestClientJobDeleteAction() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	tt := []struct {
 		req *job.DeleteRequest
 		err error
@@ -1137,23 +1055,15 @@ func (suite *jobActionsTestSuite) TestClientJobDeleteAction() {
 			Return(resp, t.err)
 
 		if t.err != nil {
-			suite.Error(c.JobDeleteAction(testJobID))
+			suite.Error(suite.client.JobDeleteAction(testJobID))
 		} else {
-			suite.NoError(c.JobDeleteAction(testJobID))
+			suite.NoError(suite.client.JobDeleteAction(testJobID))
 		}
 	}
 }
 
 // TestClientJobStopAction tests stopping a job
 func (suite *jobActionsTestSuite) TestClientJobStopAction() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	getResponse := &job.GetResponse{
 		JobInfo: &job.JobInfo{
 			Id: &peloton.JobID{
@@ -1194,20 +1104,12 @@ func (suite *jobActionsTestSuite) TestClientJobStopAction() {
 		}).
 		Return(resp, nil)
 
-	suite.NoError(c.JobStopAction(testJobID, false))
+	suite.NoError(suite.client.JobStopAction(testJobID, false, "", "", false))
 }
 
 // TestClientJobStopActionWithProgress tests stopping a job
 // while printing the progress
 func (suite *jobActionsTestSuite) TestClientJobStopActionWithProgress() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	getResponse := &job.GetResponse{
 		JobInfo: &job.JobInfo{
 			Id: &peloton.JobID{
@@ -1284,20 +1186,12 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionWithProgress() {
 		}).Return(getResponse2, nil),
 	)
 
-	suite.NoError(c.JobStopAction(testJobID, true))
+	suite.NoError(suite.client.JobStopAction(testJobID, true, "", "", false))
 }
 
 // TestClientJobStopActionProgressTerminate tests stopping a job and
 // print progress and job enters terminal state
 func (suite *jobActionsTestSuite) TestClientJobStopActionProgressTerminate() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	getResponse := &job.GetResponse{
 		JobInfo: &job.JobInfo{
 			Id: &peloton.JobID{
@@ -1351,20 +1245,12 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionProgressTerminate() {
 		},
 	}).Return(getResponse1, nil)
 
-	suite.NoError(c.JobStopAction(testJobID, true))
+	suite.NoError(suite.client.JobStopAction(testJobID, true, "", "", false))
 }
 
 // TestClientJobStopActionProgressError tests stopping a job and getting
 // an error while fetching the progress
 func (suite *jobActionsTestSuite) TestClientJobStopActionProgressError() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	getResponse := &job.GetResponse{
 		JobInfo: &job.JobInfo{
 			Id: &peloton.JobID{
@@ -1401,20 +1287,12 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionProgressError() {
 		},
 	}).Return(nil, errors.New("unable to get job"))
 
-	suite.Error(c.JobStopAction(testJobID, true))
+	suite.Error(suite.client.JobStopAction(testJobID, true, "", "", false))
 }
 
 // TestClientJobStopActionProgressIterError tests stopping a job and
 // getting an error while monitoring the progress
 func (suite *jobActionsTestSuite) TestClientJobStopActionProgressIterError() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	getResponse := &job.GetResponse{
 		JobInfo: &job.JobInfo{
 			Id: &peloton.JobID{
@@ -1477,39 +1355,23 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionProgressIterError() {
 		}).Return(nil, errors.New("unable to get job")),
 	)
 
-	suite.Error(c.JobStopAction(testJobID, true))
+	suite.Error(suite.client.JobStopAction(testJobID, true, "", "", false))
 }
 
 // TestClientJobStopActionGetError tests getting an error in
 // job get while stopping a job
 func (suite *jobActionsTestSuite) TestClientJobStopActionGetError() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
 		Id: &peloton.JobID{
 			Value: testJobID,
 		},
 	}).Return(nil, errors.New("unable to get job"))
 
-	suite.Error(c.JobStopAction(testJobID, false))
+	suite.Error(suite.client.JobStopAction(testJobID, false, "", "", false))
 }
 
 // TestClientJobStopActionTerminalJob tests stopping a terminated job
 func (suite *jobActionsTestSuite) TestClientJobStopActionTerminalJob() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	getResponse := &job.GetResponse{
 		JobInfo: &job.JobInfo{
 			Id: &peloton.JobID{
@@ -1527,20 +1389,12 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionTerminalJob() {
 		},
 	}).Return(getResponse, nil)
 
-	suite.NoError(c.JobStopAction(testJobID, false))
+	suite.NoError(suite.client.JobStopAction(testJobID, false, "", "", false))
 }
 
 // TestClientJobStopActionStopError tests getting
 // an error when stopping a job
 func (suite *jobActionsTestSuite) TestClientJobStopActionStopError() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	getResponse := &job.GetResponse{
 		JobInfo: &job.JobInfo{
 			Id: &peloton.JobID{
@@ -1567,20 +1421,12 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionStopError() {
 		}).
 		Return(nil, errors.New("unable to stop job"))
 
-	suite.Error(c.JobStopAction(testJobID, false))
+	suite.Error(suite.client.JobStopAction(testJobID, false, "", "", false))
 }
 
 // TestClientJobStopAction tests error during second stop
 // API call when stopping a job
 func (suite *jobActionsTestSuite) TestClientJobStopActionIterError() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	getResponse := &job.GetResponse{
 		JobInfo: &job.JobInfo{
 			Id: &peloton.JobID{
@@ -1623,19 +1469,11 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionIterError() {
 			Return(resp, errors.New("cannot stop job")),
 	)
 
-	suite.Error(c.JobStopAction(testJobID, false))
+	suite.Error(suite.client.JobStopAction(testJobID, false, "", "", false))
 }
 
 // TestClientJobRestartActionSuccess tests restarting successfully
 func (suite *jobActionsTestSuite) TestClientJobRestartActionSuccess() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	jobID := &peloton.JobID{
 		Value: testJobID,
 	}
@@ -1663,20 +1501,12 @@ func (suite *jobActionsTestSuite) TestClientJobRestartActionSuccess() {
 		},
 	}).Return(restartResponse, nil)
 
-	suite.NoError(c.JobRestartAction(testJobID, 1, nil, 1))
+	suite.NoError(suite.client.JobRestartAction(testJobID, 1, nil, 1))
 }
 
 // TestClientJobRestartActionNonResVersionSuppliedSuccess tests restarting successfully
 // without user provides resversion
 func (suite *jobActionsTestSuite) TestClientJobRestartActionNonResVersionProvidedSuccess() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	jobID := &peloton.JobID{
 		Value: testJobID,
 	}
@@ -1704,19 +1534,11 @@ func (suite *jobActionsTestSuite) TestClientJobRestartActionNonResVersionProvide
 		},
 	}).Return(restartResponse, nil)
 
-	suite.NoError(c.JobRestartAction(testJobID, 0, nil, 1))
+	suite.NoError(suite.client.JobRestartAction(testJobID, 0, nil, 1))
 }
 
 // TestClientJobRestartActionError tests restarting fails with concurrency
 func (suite *jobActionsTestSuite) TestClientJobRestartActionConcurrencyError() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	jobID := &peloton.JobID{
 		Value: testJobID,
 	}
@@ -1731,19 +1553,11 @@ func (suite *jobActionsTestSuite) TestClientJobRestartActionConcurrencyError() {
 		},
 	}, nil)
 
-	suite.Error(c.JobRestartAction(testJobID, 2, nil, 1))
+	suite.Error(suite.client.JobRestartAction(testJobID, 2, nil, 1))
 }
 
 // TestClientJobRestartActionError tests restarting fails with error
 func (suite *jobActionsTestSuite) TestClientJobRestartActionError() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	jobID := &peloton.JobID{
 		Value: testJobID,
 	}
@@ -1768,20 +1582,12 @@ func (suite *jobActionsTestSuite) TestClientJobRestartActionError() {
 		},
 	}).Return(restartResponse, errors.New("test error"))
 
-	suite.Error(c.JobRestartAction(testJobID, 1, nil, 1))
+	suite.Error(suite.client.JobRestartAction(testJobID, 1, nil, 1))
 }
 
 // TestClientJobRestartActionConcurrencyFailRetry tests restarting fails due to
 // concurrency error and retry succeeds
 func (suite *jobActionsTestSuite) TestClientJobRestartActionConcurrencyFailRetrySucceeds() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	jobID := &peloton.JobID{
 		Value: testJobID,
 	}
@@ -1824,19 +1630,11 @@ func (suite *jobActionsTestSuite) TestClientJobRestartActionConcurrencyFailRetry
 		},
 	}).Return(restartResponse, nil)
 
-	suite.NoError(c.JobRestartAction(testJobID, 0, nil, 1))
+	suite.NoError(suite.client.JobRestartAction(testJobID, 0, nil, 1))
 }
 
 // TestClientJobStartActionSuccess tests starting successfully
 func (suite *jobActionsTestSuite) TestClientJobStartActionSuccess() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	jobID := &peloton.JobID{
 		Value: testJobID,
 	}
@@ -1864,19 +1662,11 @@ func (suite *jobActionsTestSuite) TestClientJobStartActionSuccess() {
 		},
 	}).Return(startResponse, nil)
 
-	suite.NoError(c.JobStartAction(testJobID, 1, nil, 1))
+	suite.NoError(suite.client.JobStartAction(testJobID, 1, nil, 1))
 }
 
 // TestClientJobStartActionError tests starting fails with error
 func (suite *jobActionsTestSuite) TestClientJobStartActionError() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	jobID := &peloton.JobID{
 		Value: testJobID,
 	}
@@ -1901,19 +1691,11 @@ func (suite *jobActionsTestSuite) TestClientJobStartActionError() {
 		},
 	}).Return(startResponse, errors.New("test error"))
 
-	suite.Error(c.JobStartAction(testJobID, 1, nil, 1))
+	suite.Error(suite.client.JobStartAction(testJobID, 1, nil, 1))
 }
 
 // TestClientJobStopV2ActionSuccess tests stop successfully
 func (suite *jobActionsTestSuite) TestClientJobStopV2ActionSuccess() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	jobID := &peloton.JobID{
 		Value: testJobID,
 	}
@@ -1941,19 +1723,11 @@ func (suite *jobActionsTestSuite) TestClientJobStopV2ActionSuccess() {
 		},
 	}).Return(stopResponse, nil)
 
-	suite.NoError(c.JobStopV1BetaAction(testJobID, 1, nil, 1))
+	suite.NoError(suite.client.JobStopV1BetaAction(testJobID, 1, nil, 1))
 }
 
 // TestClientJobStopV2ActionError tests stop fails with error
 func (suite *jobActionsTestSuite) TestClientJobStopV2ActionError() {
-	c := Client{
-		Debug:      false,
-		jobClient:  suite.mockJob,
-		taskClient: suite.mockTask,
-		dispatcher: nil,
-		ctx:        suite.ctx,
-	}
-
 	jobID := &peloton.JobID{
 		Value: testJobID,
 	}
@@ -1978,5 +1752,267 @@ func (suite *jobActionsTestSuite) TestClientJobStopV2ActionError() {
 		},
 	}).Return(stopResponse, errors.New("test error"))
 
-	suite.Error(c.JobStopV1BetaAction(testJobID, 1, nil, 1))
+	suite.Error(suite.client.JobStopV1BetaAction(testJobID, 1, nil, 1))
+}
+
+// TestClientJobStopActionOwner tests stopping all running jobs of a given owning team
+func (suite *jobActionsTestSuite) TestClientJobStopActionOwner() {
+	results := []*job.JobSummary{
+		{
+			Id: &peloton.JobID{
+				Value: testJobID,
+			},
+			Name:          "test",
+			OwningTeam:    "user1",
+			InstanceCount: 10,
+			Runtime: &job.RuntimeInfo{
+				State:          job.JobState_RUNNING,
+				CreationTime:   time.Now().UTC().Format(time.RFC3339Nano),
+				CompletionTime: "",
+				TaskStats: map[string]uint32{
+					"RUNNING": 10,
+				},
+			},
+		},
+	}
+
+	owner := "user1"
+	jobStates := []job.JobState{
+		job.JobState_INITIALIZED,
+		job.JobState_PENDING,
+		job.JobState_RUNNING,
+	}
+	spec := &job.QuerySpec{
+		JobStates: jobStates,
+		Owner:     owner,
+	}
+	request := &job.QueryRequest{
+		Spec:        spec,
+		SummaryOnly: true,
+	}
+	response := &job.QueryResponse{
+		Results: results,
+	}
+
+	suite.mockJob.EXPECT().Query(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, queryRequest *job.QueryRequest) {
+			suite.Equal(request.Spec.JobStates, queryRequest.Spec.JobStates)
+			suite.Equal(request.Spec.Owner, queryRequest.Spec.Owner)
+			suite.Equal(request.SummaryOnly, queryRequest.SummaryOnly)
+		}).Return(response, nil)
+	suite.mockTask.EXPECT().Stop(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, stopRequest *task.StopRequest) {
+			suite.Equal(results[0].GetId(), stopRequest.GetJobId())
+		}).Return(&task.StopResponse{}, nil)
+	suite.NoError(suite.client.JobStopAction("", false, owner, "", true))
+}
+
+// TestClientJobStopActionJobIDAndOwner tests stopping jobs by jobID and owner
+func (suite *jobActionsTestSuite) TestClientJobStopActionJobIDAndOwner() {
+	owner := "test"
+	getResponse := &job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Id: &peloton.JobID{
+				Value: testJobID,
+			},
+			Config: &job.JobConfig{
+				OwningTeam: "user2",
+			},
+			Runtime: &job.RuntimeInfo{
+				State: job.JobState_RUNNING,
+			},
+		},
+	}
+
+	// Test behavior when the job's owning team doesn't match with
+	// the owner field specified in the query
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: &peloton.JobID{
+			Value: testJobID,
+		},
+	}).Return(getResponse, nil)
+	suite.NoError(suite.client.JobStopAction(testJobID, false, owner, "", true))
+}
+
+// TestClientJobStopActionOwnerErrors tests errors while stopping all running jobs of a owner
+func (suite *jobActionsTestSuite) TestClientJobStopActionOwnerErrors() {
+	results := []*job.JobSummary{
+		{
+			Id: &peloton.JobID{
+				Value: testJobID,
+			},
+			Name:          "test",
+			OwningTeam:    "user1",
+			InstanceCount: 10,
+			Runtime: &job.RuntimeInfo{
+				State:          job.JobState_RUNNING,
+				CreationTime:   time.Now().UTC().Format(time.RFC3339Nano),
+				CompletionTime: "",
+				TaskStats: map[string]uint32{
+					"RUNNING": 10,
+				},
+			},
+		},
+	}
+	owner := "test"
+	jobStates := []job.JobState{
+		job.JobState_INITIALIZED,
+		job.JobState_PENDING,
+		job.JobState_RUNNING,
+	}
+	spec := &job.QuerySpec{
+		JobStates: jobStates,
+		Owner:     owner,
+	}
+	request := &job.QueryRequest{
+		Spec:        spec,
+		SummaryOnly: true,
+	}
+	response := &job.QueryResponse{
+		Results: results,
+	}
+	// Test Job Query error
+	suite.mockJob.EXPECT().
+		Query(gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("fake Query error"))
+	suite.Error(suite.client.JobStopAction("", false, owner, "", true))
+
+	//Test Job Stop error
+	suite.mockJob.EXPECT().Query(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, queryRequest *job.QueryRequest) {
+			suite.Equal(request.Spec.JobStates, queryRequest.Spec.JobStates)
+			suite.Equal(request.Spec.Owner, queryRequest.Spec.Owner)
+			suite.Equal(request.SummaryOnly, queryRequest.SummaryOnly)
+		}).Return(response, nil)
+	suite.mockTask.EXPECT().
+		Stop(gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("fake Stop error"))
+	suite.Error(suite.client.JobStopAction("", false, owner, "", true))
+}
+
+// TestClientJobStopActionLabels tests stopping jobs by labels
+func (suite *jobActionsTestSuite) TestClientJobStopActionLabels() {
+	testLabels := []*peloton.Label{
+		{
+			Key:   "testkey1",
+			Value: "testvalue1",
+		},
+		{
+			Key:   "testkey2",
+			Value: "testvalue2",
+		},
+	}
+
+	results := []*job.JobSummary{
+		{
+			Id: &peloton.JobID{
+				Value: testJobID,
+			},
+			Name:          "test",
+			OwningTeam:    "user1",
+			Labels:        testLabels,
+			InstanceCount: 10,
+			Runtime: &job.RuntimeInfo{
+				State:          job.JobState_RUNNING,
+				CreationTime:   time.Now().UTC().Format(time.RFC3339Nano),
+				CompletionTime: "",
+				TaskStats: map[string]uint32{
+					"RUNNING": 10,
+				},
+			},
+		},
+	}
+
+	owner := "user1"
+	jobStates := []job.JobState{
+		job.JobState_INITIALIZED,
+		job.JobState_PENDING,
+		job.JobState_RUNNING,
+	}
+	spec := &job.QuerySpec{
+		JobStates: jobStates,
+		Owner:     owner,
+		Labels:    testLabels,
+	}
+	request := &job.QueryRequest{
+		Spec:        spec,
+		SummaryOnly: true,
+	}
+	response := &job.QueryResponse{
+		Results: results,
+	}
+
+	suite.mockJob.EXPECT().Query(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, queryRequest *job.QueryRequest) {
+			suite.Equal(request.Spec.JobStates, queryRequest.Spec.JobStates)
+			suite.Equal(request.SummaryOnly, queryRequest.SummaryOnly)
+		}).Return(response, nil)
+	suite.mockTask.EXPECT().Stop(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, stopRequest *task.StopRequest) {
+			suite.Equal(results[0].GetId(), stopRequest.GetJobId())
+		}).Return(&task.StopResponse{}, nil)
+	suite.NoError(suite.client.JobStopAction("", false, "", "testkey1=testvalue1", true))
+
+	// Test empty job query result
+	response = &job.QueryResponse{
+		Results: nil,
+	}
+	suite.mockJob.EXPECT().Query(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, queryRequest *job.QueryRequest) {
+			suite.Equal(request.Spec.JobStates, queryRequest.Spec.JobStates)
+			suite.Equal(request.SummaryOnly, queryRequest.SummaryOnly)
+		}).Return(response, nil)
+	suite.NoError(suite.client.JobStopAction("", false, "", "testkey1=testvalue1", true))
+}
+
+// TestClientJobStopActionLabelsErrors tests errors while stopping jobs by labels
+func (suite *jobActionsTestSuite) TestClientJobStopActionLabelsErrors() {
+	suite.Error(suite.client.JobStopAction("", false, "", "testkey1:testvalue1", true))
+}
+
+// TestClientJobStopActionJobIDAndLabels tests stopping jobs by jobID and labels
+func (suite *jobActionsTestSuite) TestClientJobStopActionJobIDAndLabels() {
+	testLabels := []*peloton.Label{
+		{
+			Key:   "testkey1",
+			Value: "testvalue1",
+		},
+		{
+			Key:   "testkey2",
+			Value: "testvalue2",
+		},
+	}
+	getResponse := &job.GetResponse{
+		JobInfo: &job.JobInfo{
+			Id: &peloton.JobID{
+				Value: testJobID,
+			},
+			Config: &job.JobConfig{
+				Labels: testLabels,
+			},
+			Runtime: &job.RuntimeInfo{
+				State: job.JobState_RUNNING,
+			},
+		},
+	}
+
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: &peloton.JobID{
+			Value: testJobID,
+		},
+	}).Return(getResponse, nil)
+	suite.mockTask.EXPECT().Stop(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, stopRequest *task.StopRequest) {
+			suite.Equal(getResponse.GetJobInfo().GetId(), stopRequest.GetJobId())
+		}).Return(&task.StopResponse{}, nil)
+	suite.NoError(suite.client.JobStopAction(testJobID, false, "", "testkey1=testvalue1", true))
+
+	// Test behavior when the job labels doesn't contain any of the
+	// labels specified in the labels field of the query
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: &peloton.JobID{
+			Value: testJobID,
+		},
+	}).Return(getResponse, nil)
+	suite.NoError(suite.client.JobStopAction(testJobID, false, "", "key=value", true))
 }
