@@ -446,12 +446,16 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 			WithField("task_stats", stateCounts).
 			Debug("Task stats did not change, return")
 
-		// if an update is running for this job, enqueue it as well
+		// if an update is running for this job, enqueue it to goal state
 		// TODO change this to use watch functionality from the cache
-		if updateutil.HasUpdate(jobRuntime) {
-			goalStateDriver.EnqueueUpdate(jobID, jobRuntime.GetUpdateID(), time.Now())
+		err = enqueueJobUpdate(ctx, jobID, jobRuntime, goalStateDriver)
+		if err != nil {
+			log.WithError(err).
+				WithField("job_id", id).
+				Error("failed to fetch update info in runtime updater")
+			goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
 		}
-		return nil
+		return err
 	}
 
 	jobRuntimeUpdate = setStartTime(
@@ -488,8 +492,13 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 
 	// if an update is running for this job, enqueue it as well
 	// TODO change this to use watch functionality from the cache
-	if updateutil.HasUpdate(jobRuntime) {
-		goalStateDriver.EnqueueUpdate(jobID, jobRuntime.GetUpdateID(), time.Now())
+	err = enqueueJobUpdate(ctx, jobID, jobRuntime, goalStateDriver)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id).
+			Error("failed to fetch update info in runtime updater")
+		goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
+		return err
 	}
 
 	// Evaluate this job immediately when
@@ -613,4 +622,27 @@ func isJobStateStale(cachedJob cached.Job, threshold time.Duration) bool {
 		return true
 	}
 	return false
+}
+
+// enqueueJobUpdate enqueues the update to the goal state engine if a job
+// update exists in the runtime, and it is not in terminal state
+func enqueueJobUpdate(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	jobRuntime *job.RuntimeInfo,
+	goalStateDriver *driver) error {
+	if !updateutil.HasUpdate(jobRuntime) {
+		return nil
+	}
+
+	updateInfo, err := goalStateDriver.updateStore.GetUpdateProgress(
+		ctx, jobRuntime.GetUpdateID())
+	if err != nil {
+		return err
+	}
+
+	if !cached.IsUpdateStateTerminal(updateInfo.GetState()) {
+		goalStateDriver.EnqueueUpdate(jobID, jobRuntime.GetUpdateID(), time.Now())
+	}
+	return nil
 }

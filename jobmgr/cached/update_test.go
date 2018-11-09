@@ -764,14 +764,16 @@ func (suite *UpdateTestSuite) TestWorkflowOverWrite() {
 		previousWorkflowType models.WorkflowType
 		newWorkflowType      models.WorkflowType
 		isValidOverWrite     bool
+		updateState          pbupdate.State
 	}{
-		{models.WorkflowType_UPDATE, models.WorkflowType_UPDATE, true},
-		{models.WorkflowType_UPDATE, models.WorkflowType_START, false},
-		{models.WorkflowType_UPDATE, models.WorkflowType_STOP, false},
-		{models.WorkflowType_UPDATE, models.WorkflowType_RESTART, false},
-		{models.WorkflowType_START, models.WorkflowType_START, false},
-		{models.WorkflowType_STOP, models.WorkflowType_STOP, false},
-		{models.WorkflowType_RESTART, models.WorkflowType_UPDATE, false},
+		{models.WorkflowType_UPDATE, models.WorkflowType_UPDATE, true, pbupdate.State_ROLLING_FORWARD},
+		{models.WorkflowType_UPDATE, models.WorkflowType_START, false, pbupdate.State_ROLLING_FORWARD},
+		{models.WorkflowType_UPDATE, models.WorkflowType_STOP, false, pbupdate.State_ROLLING_FORWARD},
+		{models.WorkflowType_UPDATE, models.WorkflowType_RESTART, false, pbupdate.State_ROLLING_FORWARD},
+		{models.WorkflowType_START, models.WorkflowType_START, false, pbupdate.State_ROLLING_FORWARD},
+		{models.WorkflowType_STOP, models.WorkflowType_STOP, false, pbupdate.State_ROLLING_FORWARD},
+		{models.WorkflowType_RESTART, models.WorkflowType_UPDATE, false, pbupdate.State_ROLLING_FORWARD},
+		{models.WorkflowType_RESTART, models.WorkflowType_UPDATE, true, pbupdate.State_SUCCEEDED},
 	}
 
 	for _, t := range tests {
@@ -806,7 +808,8 @@ func (suite *UpdateTestSuite) TestWorkflowOverWrite() {
 		suite.updateStore.EXPECT().
 			GetUpdate(gomock.Any(), existingUpdateID).
 			Return(&models.UpdateModel{
-				Type: t.previousWorkflowType,
+				Type:  t.previousWorkflowType,
+				State: t.updateState,
 			}, nil)
 
 		suite.jobStore.EXPECT().
@@ -1687,6 +1690,13 @@ func (suite *UpdateTestSuite) TestIsTaskInUpdateProgress() {
 	suite.update.instancesCurrent = []uint32{1, 2}
 	suite.True(suite.update.IsTaskInUpdateProgress(uint32(1)))
 	suite.False(suite.update.IsTaskInUpdateProgress(uint32(0)))
+}
+
+// Trst function IsTaskInFailed
+func (suite *UpdateTestSuite) TestIsTaskInFailed() {
+	suite.update.instancesFailed = []uint32{1, 2}
+	suite.True(suite.update.IsTaskInFailed(uint32(1)))
+	suite.False(suite.update.IsTaskInFailed(uint32(0)))
 }
 
 // TestUpdateRollbackSuccess tests successful rollback

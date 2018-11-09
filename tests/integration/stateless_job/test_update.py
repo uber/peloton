@@ -8,7 +8,8 @@ from peloton_client.pbgen.peloton.api.v0.job.job_pb2 import JobConfig
 from google.protobuf import json_format
 
 from tests.integration.stateless_job.util import \
-    assert_task_config_changed, assert_task_mesos_id_changed, assert_task_config_equal
+    assert_task_config_changed, assert_task_mesos_id_changed, \
+    assert_task_config_equal, assert_tasks_failed
 from tests.integration.update import Update
 from tests.integration.util import load_test_config
 from tests.integration.job import Job
@@ -300,13 +301,14 @@ def test__create_update_with_bad_config(stateless_job):
 
     update = Update(stateless_job,
                     updated_job_file=UPDATE_STATELESS_JOB_BAD_CONFIG_FILE,
-                    max_failure_instances=1,
+                    max_failure_instances=3,
                     max_instance_attempts=1)
     update.create()
     update.wait_for_state(goal_state='FAILED', failed_state='SUCCEEDED')
     new_instance_zero_config = stateless_job.get_task_info(0).config
 
     assert_task_config_changed(old_instance_zero_config, new_instance_zero_config)
+    assert_tasks_failed(stateless_job.list_tasks().value)
 
 
 # test__create_update_add_instances_with_bad_config

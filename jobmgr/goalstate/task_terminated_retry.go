@@ -84,7 +84,8 @@ func shouldTaskRetry(
 		// directly retry when there is no update going on, or no failure
 		// has occurred
 		if cachedUpdate == nil ||
-			!cachedUpdate.IsTaskInUpdateProgress(instanceID) {
+			(!cachedUpdate.IsTaskInUpdateProgress(instanceID) &&
+				!cachedUpdate.IsTaskInFailed(instanceID)) {
 			return true
 		}
 		if taskutil.IsSystemFailure(taskRuntime) {

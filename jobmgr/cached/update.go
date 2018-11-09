@@ -109,6 +109,10 @@ type Update interface {
 	// IsTaskInUpdateProgress returns true if a given task is
 	// in progress for the given update, else returns false
 	IsTaskInUpdateProgress(instanceID uint32) bool
+
+	// IsTaskInFailed returns true if a given task is in the
+	// instancesFailed list for the given update, else returns false
+	IsTaskInFailed(instanceID uint32) bool
 }
 
 // UpdateStateVector is used to the represent the state and goal state
@@ -395,6 +399,11 @@ func (u *update) validateWorkflowOverwrite(
 	updateModel, err := u.updateFactory.updateStore.GetUpdate(ctx, updateID)
 	if err != nil {
 		return err
+	}
+
+	// workflow update should succeed if previous update is terminal
+	if IsUpdateStateTerminal(updateModel.GetState()) {
+		return nil
 	}
 
 	// an overwrite is only valid if both current and new workflow
@@ -889,6 +898,15 @@ func (u *update) GetWorkflowType() models.WorkflowType {
 // in progress for the given update, else returns false
 func (u *update) IsTaskInUpdateProgress(instanceID uint32) bool {
 	for _, currentInstance := range u.GetInstancesCurrent() {
+		if instanceID == currentInstance {
+			return true
+		}
+	}
+	return false
+}
+
+func (u *update) IsTaskInFailed(instanceID uint32) bool {
+	for _, currentInstance := range u.GetInstancesFailed() {
 		if instanceID == currentInstance {
 			return true
 		}

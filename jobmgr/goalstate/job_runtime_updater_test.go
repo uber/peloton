@@ -10,6 +10,7 @@ import (
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
@@ -19,7 +20,6 @@ import (
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
-	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 
@@ -41,6 +41,7 @@ type JobRuntimeUpdaterTestSuite struct {
 	ctrl                  *gomock.Controller
 	jobStore              *storemocks.MockJobStore
 	taskStore             *storemocks.MockTaskStore
+	updateStore           *storemocks.MockUpdateStore
 	jobGoalStateEngine    *goalstatemocks.MockEngine
 	taskGoalStateEngine   *goalstatemocks.MockEngine
 	updateGoalStateEngine *goalstatemocks.MockEngine
@@ -63,6 +64,7 @@ func (suite *JobRuntimeUpdaterTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
+	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
 
 	suite.resmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
@@ -78,6 +80,7 @@ func (suite *JobRuntimeUpdaterTestSuite) SetupTest() {
 		updateEngine: suite.updateGoalStateEngine,
 		jobStore:     suite.jobStore,
 		taskStore:    suite.taskStore,
+		updateStore:  suite.updateStore,
 		jobFactory:   suite.jobFactory,
 		resmgrClient: suite.resmgrClient,
 		mtx:          NewMetrics(tally.NoopScope),
@@ -284,11 +287,11 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_RUNNING() {
 		}).
 		Return(nil)
 
-	suite.updateGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Do(func(updateEntity goalstate.Entity, deadline time.Time) {
-			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
-		})
+	suite.updateStore.EXPECT().
+		GetUpdateProgress(gomock.Any(), updateID).
+		Return(&models.UpdateModel{
+			State: pbupdate.State_SUCCEEDED,
+		}, nil)
 
 	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
@@ -1493,6 +1496,12 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInsta
 			_ cached.UpdateRequest) {
 			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_RUNNING)
 		}).Return(nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdateProgress(gomock.Any(), jobRuntime.UpdateID).
+		Return(&models.UpdateModel{
+			State: pbupdate.State_ROLLING_FORWARD,
+		}, nil)
 
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).

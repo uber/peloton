@@ -9,7 +9,6 @@ import (
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
 
 	"go.uber.org/yarpc/yarpcerrors"
@@ -114,36 +113,9 @@ func UpdateUntrack(ctx context.Context, entity goalstate.Entity) error {
 	goalStateDriver := updateEnt.driver
 	jobID := updateEnt.jobID
 	cachedJob := goalStateDriver.jobFactory.AddJob(jobID)
-
-	count := 0
-	for {
-		runtime, err = cachedJob.GetRuntime(ctx)
-		if err != nil {
-			return err
-		}
-
-		if runtime.GetUpdateID().GetValue() != updateEnt.id.GetValue() {
-			break
-		}
-
-		// update ID in runtime is the same as the update
-		// being untracked, clean up the job runtime.
-		runtime.UpdateID = nil
-		_, err = cachedJob.CompareAndSetRuntime(ctx, runtime)
-		if err == jobmgrcommon.UnexpectedVersionError {
-			// concurrency error; retry MaxConcurrencyErrorRetry times
-			count = count + 1
-			if count < jobmgrcommon.MaxConcurrencyErrorRetry {
-				continue
-			}
-		}
-
-		if err != nil {
-			return err
-		}
-
-		// updateID has been successfully unset from job runtime
-		break
+	runtime, err = cachedJob.GetRuntime(ctx)
+	if err != nil {
+		return err
 	}
 
 	// clean up the update from cache and goal state

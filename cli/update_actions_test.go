@@ -113,6 +113,14 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 		},
 	}
 
+	updateGetResponse := &svc.GetUpdateResponse{
+		UpdateInfo: &update.UpdateInfo{
+			Status: &update.UpdateStatus{
+				State: update.State_SUCCEEDED,
+			},
+		},
+	}
+
 	resp := &svc.CreateUpdateResponse{
 		UpdateID: suite.updateID,
 	}
@@ -121,6 +129,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 		debug    bool
 		override bool
 		err      error
+		resp     *svc.GetUpdateResponse
 	}{
 		{
 			err: nil,
@@ -161,6 +170,9 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 					suite.Equal(suite.jobID.GetValue(), req.GetId().GetValue())
 				}).
 				Return(jobGetResponseWithUpdate, nil)
+			suite.mockUpdate.EXPECT().
+				GetUpdate(gomock.Any(), gomock.Any()).
+				Return(updateGetResponse, nil)
 		}
 
 		suite.mockUpdate.EXPECT().
@@ -222,7 +234,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateResPoolErrors() {
 		},
 		{
 			respoolLookUpResponse: nil,
-			err: errors.New("cannot lookup resource pool"),
+			err:                   errors.New("cannot lookup resource pool"),
 		},
 	}
 
@@ -280,9 +292,17 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateJobGetErrors() {
 		JobInfo: &job.JobInfo{
 			Runtime: &job.RuntimeInfo{
 				UpdateID: &peloton.UpdateID{
-					Value: "abc",
+					Value: "abcd",
 				},
 				ConfigurationVersion: version,
+			},
+		},
+	}
+
+	updateGetResponse := &svc.GetUpdateResponse{
+		UpdateInfo: &update.UpdateInfo{
+			Status: &update.UpdateStatus{
+				State: update.State_ROLLING_FORWARD,
 			},
 		},
 	}
@@ -325,6 +345,13 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateJobGetErrors() {
 				suite.Equal(suite.jobID.GetValue(), req.GetId().GetValue())
 			}).
 			Return(t.resp, t.err)
+
+		if t.resp.GetJobInfo().GetRuntime().GetUpdateID() != nil &&
+			t.err == nil && t.configVersion == 0 {
+			suite.mockUpdate.EXPECT().
+				GetUpdate(gomock.Any(), gomock.Any()).
+				Return(updateGetResponse, nil)
+		}
 
 		err := c.UpdateCreateAction(
 			suite.jobID.GetValue(),

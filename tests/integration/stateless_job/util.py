@@ -1,3 +1,6 @@
+from peloton_client.pbgen.peloton.api.v0.task import task_pb2
+
+
 def assert_task_mesos_id_changed(old_task_infos, new_task_infos):
     """""
     assert if the mesos ids in old_task_infos change in
@@ -32,3 +35,11 @@ def assert_task_config_equal(old_instance_config, new_instance_config):
     assert that the command in the instance config is equal
     """
     assert old_instance_config.command.value == new_instance_config.command.value
+
+
+def assert_tasks_failed(task_infos):
+    """
+    assert that all instances are in FAILED state
+    """
+    for instance_id, task_info in task_infos.items():
+        assert task_info.runtime.state == task_pb2.FAILED

@@ -20,6 +20,25 @@ const (
 	invalidVersionError  = "invalid job configuration version"
 )
 
+// isUpdateTerminated returns true if update is complete or abortee
+func (c *Client) isUpdateTerminated(updateID *peloton.UpdateID) (bool, error) {
+	var request = &updatesvc.GetUpdateRequest{
+		UpdateId: updateID,
+	}
+
+	response, err := c.updateClient.GetUpdate(c.ctx, request)
+	if err != nil {
+		return false, err
+	}
+
+	switch response.GetUpdateInfo().GetStatus().GetState() {
+	case update.State_SUCCEEDED, update.State_ABORTED,
+		update.State_FAILED, update.State_ROLLED_BACK:
+		return true, nil
+	}
+	return false, nil
+}
+
 // UpdateCreateAction will create a new job update.
 func (c *Client) UpdateCreateAction(
 	jobID string,
@@ -84,13 +103,20 @@ func (c *Client) UpdateCreateAction(
 
 		if jobRuntime.GetUpdateID() != nil &&
 			len(jobRuntime.GetUpdateID().GetValue()) > 0 {
-			if override {
-				fmt.Fprintf(tabWriter, "going to override existing update: %v\n",
-					jobRuntime.GetUpdateID().GetValue())
-				tabWriter.Flush()
-			} else {
-				return fmt.Errorf(
-					"cannot create a new update as another update is already running")
+			terminal, err := c.isUpdateTerminated(jobRuntime.GetUpdateID())
+			if err != nil {
+				return err
+			}
+
+			if !terminal {
+				if override {
+					fmt.Fprintf(tabWriter, "going to override existing update: %v\n",
+						jobRuntime.GetUpdateID().GetValue())
+					tabWriter.Flush()
+				} else {
+					return fmt.Errorf(
+						"cannot create a new update as another update is already running")
+				}
 			}
 		}
 
