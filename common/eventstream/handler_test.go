@@ -45,6 +45,44 @@ func makeWaitForEventsRequest(
 	}
 }
 
+func TestGetEvents(t *testing.T) {
+	var testScope = tally.NewTestScope("", map[string]string{})
+	bufferSize := 100
+	eventStreamHandler := NewEventStreamHandler(
+		bufferSize,
+		[]string{"jobMgr", "resMgr"},
+		nil,
+		testScope,
+	)
+
+	// No events present in the circular buffer
+	items, _ := eventStreamHandler.GetEvents()
+	assert.Equal(t, 0, len(items))
+
+	// Add partial events to the buffer
+	for i := 0; i < bufferSize/2; i++ {
+		eventStreamHandler.AddEvent(&pb_eventstream.Event{
+			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+			MesosTaskStatus: &mesos.TaskStatus{},
+		})
+		assert.Equal(t, int64(i+1), testScope.Snapshot().Counters()["EventStreamHandler.api.addEvent+"].Value())
+		assert.Equal(t, int64(i+1), testScope.Snapshot().Counters()["EventStreamHandler.addEvent+result=success"].Value())
+	}
+	items, _ = eventStreamHandler.GetEvents()
+	assert.Equal(t, bufferSize/2, len(items))
+
+	// Add some data into the circular buffer
+	for i := 0; i < bufferSize; i++ {
+		eventStreamHandler.AddEvent(&pb_eventstream.Event{
+			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+			MesosTaskStatus: &mesos.TaskStatus{},
+		})
+	}
+
+	items, _ = eventStreamHandler.GetEvents()
+	assert.Equal(t, bufferSize, len(items))
+}
+
 func TestInitStream(t *testing.T) {
 	purgeEventProcessor := PurgeEventCollector{}
 	eventStreamHandler := NewEventStreamHandler(

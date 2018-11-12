@@ -33,6 +33,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/reserver"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
+	taskStateManager "code.uber.internal/infra/peloton/hostmgr/task"
 	hmutil "code.uber.internal/infra/peloton/hostmgr/util"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -81,6 +82,7 @@ type ServiceHandler struct {
 	maintenanceQueue       mqueue.MaintenanceQueue // queue containing machineIDs of the machines to be put into maintenance
 	slackResourceTypes     []string
 	maintenanceHostInfoMap host.MaintenanceHostInfoMap
+	taskStateManager       taskStateManager.StateManager
 }
 
 // NewServiceHandler creates a new ServiceHandler.
@@ -96,7 +98,8 @@ func NewServiceHandler(
 	hmConfig *config.Config,
 	maintenanceQueue mqueue.MaintenanceQueue,
 	slackResourceTypes []string,
-	maintenanceHostInfoMap host.MaintenanceHostInfoMap) *ServiceHandler {
+	maintenanceHostInfoMap host.MaintenanceHostInfoMap,
+	taskStateManager taskStateManager.StateManager) *ServiceHandler {
 
 	handler := &ServiceHandler{
 		schedulerClient:        schedulerClient,
@@ -110,6 +113,7 @@ func NewServiceHandler(
 		maintenanceQueue:       maintenanceQueue,
 		slackResourceTypes:     slackResourceTypes,
 		maintenanceHostInfoMap: maintenanceHostInfoMap,
+		taskStateManager:       taskStateManager,
 	}
 	// Creating Reserver object for handler
 	handler.reserver = reserver.NewReserver(
@@ -160,6 +164,23 @@ func (h *ServiceHandler) GetOutstandingOffers(
 
 	return &hostsvc.GetOutstandingOffersResponse{
 		Offers: outstandingOffers,
+	}, nil
+}
+
+// GetStatusUpdateEvents returns all the outstanding status update
+// events
+func (h *ServiceHandler) GetStatusUpdateEvents(
+	ctx context.Context,
+	body *hostsvc.GetStatusUpdateEventsRequest,
+) (*hostsvc.GetStatusUpdateEventsResponse, error) {
+
+	events, err := h.taskStateManager.GetStatusUpdateEvents()
+	if err != nil {
+		return nil, err
+	}
+
+	return &hostsvc.GetStatusUpdateEventsResponse{
+		Events: events,
 	}, nil
 }
 

@@ -453,6 +453,21 @@ func main() {
 
 	maintenanceQueue := queue.NewMaintenanceQueue()
 
+	// Initializing TaskStateManager will start to record task status
+	// update back to storage.  TODO(zhitao): This is
+	// temporary. Eventually we should create proper API protocol for
+	// `WaitTaskStatusUpdate` and allow RM/JM to retrieve this
+	// separately.
+	taskStateManager := task.NewStateManager(
+		dispatcher,
+		schedulerClient,
+		cfg.HostManager.TaskUpdateBufferSize,
+		cfg.HostManager.TaskUpdateAckConcurrency,
+		resmgrsvc.NewResourceManagerServiceYARPCClient(
+			dispatcher.ClientConfig(common.PelotonResourceManager)),
+		rootScope,
+	)
+
 	// Create new hostmgr internal service handler.
 	hostmgr.NewServiceHandler(
 		dispatcher,
@@ -467,6 +482,7 @@ func main() {
 		maintenanceQueue,
 		cfg.HostManager.SlackResourceTypes,
 		maintenanceHostInfoMap,
+		taskStateManager,
 	)
 
 	hostsvc.InitServiceHandler(
@@ -475,21 +491,6 @@ func main() {
 		masterOperatorClient,
 		maintenanceQueue,
 		maintenanceHostInfoMap,
-	)
-
-	// Initializing TaskStateManager will start to record task status
-	// update back to storage.  TODO(zhitao): This is
-	// temporary. Eventually we should create proper API protocol for
-	// `WaitTaskStatusUpdate` and allow RM/JM to retrieve this
-	// separately.
-	taskStateManager := task.NewStateManager(
-		dispatcher,
-		schedulerClient,
-		cfg.HostManager.TaskUpdateBufferSize,
-		cfg.HostManager.TaskUpdateAckConcurrency,
-		resmgrsvc.NewResourceManagerServiceYARPCClient(
-			dispatcher.ClientConfig(common.PelotonResourceManager)),
-		rootScope,
 	)
 
 	// Register background worker to start mesos task status update counter.

@@ -92,6 +92,34 @@ func (h *Handler) AddEvent(event *pb_eventstream.Event) error {
 	return nil
 }
 
+// GetEvents returns all the events pending in circular buffer
+// This method is primarily for debugging purpose
+func (h *Handler) GetEvents() ([]*pb_eventstream.Event, error) {
+	h.Lock()
+	defer h.Unlock()
+
+	// Get and return data
+	head, tail := h.circularBuffer.GetRange()
+	items, err := h.circularBuffer.GetItemsByRange(tail, head)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]*pb_eventstream.Event, 0, len(items))
+	for _, item := range items {
+		if event, ok := item.Value.(*pb_eventstream.Event); ok {
+			e := &pb_eventstream.Event{
+				Type:             event.Type,
+				MesosTaskStatus:  event.MesosTaskStatus,
+				PelotonTaskEvent: event.PelotonTaskEvent,
+				Offset:           item.SequenceID,
+			}
+			events = append(events, e)
+		}
+	}
+	return events, nil
+}
+
 // InitStream handles the initstream request
 func (h *Handler) InitStream(
 	ctx context.Context,

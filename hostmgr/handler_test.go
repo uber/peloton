@@ -18,6 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/common/reservation"
 	bin_packing "code.uber.internal/infra/peloton/hostmgr/binpacking"
@@ -29,6 +30,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/queue/mocks"
 	"code.uber.internal/infra/peloton/hostmgr/reserver"
 	reserver_mocks "code.uber.internal/infra/peloton/hostmgr/reserver/mocks"
+	task_state_mocks "code.uber.internal/infra/peloton/hostmgr/task/mocks"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 	mpb_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
@@ -151,6 +153,7 @@ type HostMgrHandlerTestSuite struct {
 	drainingMachines       []*mesos.MachineID
 	downMachines           []*mesos.MachineID
 	maintenanceHostInfoMap host.MaintenanceHostInfoMap
+	taskStateManager       *task_state_mocks.MockStateManager
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupSuite() {
@@ -181,6 +184,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	suite.provider = hostmgr_mesos_mocks.NewMockFrameworkInfoProvider(suite.ctrl)
 	suite.volumeStore = storage_mocks.NewMockPersistentVolumeStore(suite.ctrl)
 	suite.mesosDetector = hostmgr_mesos_mocks.NewMockMasterDetector(suite.ctrl)
+	suite.taskStateManager = task_state_mocks.NewMockStateManager(suite.ctrl)
 
 	mockValidValue := new(string)
 	*mockValidValue = _frameworkID
@@ -213,6 +217,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		mesosDetector:          suite.mesosDetector,
 		maintenanceQueue:       suite.maintenanceQueue,
 		maintenanceHostInfoMap: suite.maintenanceHostInfoMap,
+		taskStateManager:       suite.taskStateManager,
 	}
 	suite.handler.reserver = reserver.NewReserver(
 		metrics.NewMetrics(suite.testScope),
@@ -299,6 +304,34 @@ func (suite *HostMgrHandlerTestSuite) TestGetOutstandingOffers() {
 	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
 	resp, _ = suite.handler.GetOutstandingOffers(rootCtx, &hostsvc.GetOutstandingOffersRequest{})
 	suite.Equal(len(resp.Offers), numHosts)
+}
+
+func (suite *HostMgrHandlerTestSuite) TestStatusUpdateEvents() {
+	defer suite.ctrl.Finish()
+
+	suite.taskStateManager.EXPECT().GetStatusUpdateEvents().
+		Return(nil, nil)
+	resp, _ := suite.handler.GetStatusUpdateEvents(rootCtx,
+		&hostsvc.GetStatusUpdateEventsRequest{})
+	suite.Equal(0, len(resp.GetEvents()))
+
+	suite.taskStateManager.EXPECT().GetStatusUpdateEvents().
+		Return(nil, errors.New("error on getting status update events"))
+	resp, err := suite.handler.GetStatusUpdateEvents(rootCtx,
+		&hostsvc.GetStatusUpdateEventsRequest{})
+	suite.Error(err)
+	suite.Nil(resp)
+
+	var events []*pb_eventstream.Event
+	for i := 0; i < 5; i++ {
+		events = append(events, createEvent(uuid.New(), i+1))
+	}
+
+	suite.taskStateManager.EXPECT().GetStatusUpdateEvents().
+		Return(events, nil)
+	resp, _ = suite.handler.GetStatusUpdateEvents(rootCtx,
+		&hostsvc.GetStatusUpdateEventsRequest{})
+	suite.Equal(5, len(resp.Events))
 }
 
 // This checks the happy case of acquire -> release -> acquire
@@ -1733,6 +1766,32 @@ func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
 	}
 
 	return response
+}
+
+func createEvent(_uuid string, offset int) *pb_eventstream.Event {
+	state := mesos.TaskState_TASK_STARTING
+	status := &mesos.TaskStatus{
+		TaskId: &mesos.TaskID{
+			Value: &_uuid,
+		},
+		State: &state,
+		Uuid:  []byte{201, 117, 104, 168, 54, 76, 69, 143, 185, 116, 159, 95, 198, 94, 162, 38},
+		AgentId: &mesos.AgentID{
+			Value: &_uuid,
+		},
+	}
+
+	taskStatusUpdate := &sched.Event{
+		Update: &sched.Event_Update{
+			Status: status,
+		},
+	}
+
+	return &pb_eventstream.Event{
+		Offset:          uint64(offset),
+		Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+		MesosTaskStatus: taskStatusUpdate.GetUpdate().GetStatus(),
+	}
 }
 
 // TestGetHosts tests the hosts, which meets the criteria

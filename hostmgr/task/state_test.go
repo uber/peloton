@@ -211,6 +211,10 @@ func (s *stateManagerTestSuite) TestAddTaskStatusUpdate() {
 	s.stateManager.Update(s.context, s.taskStatusUpdate)
 	s.stateManager.UpdateCounters(nil)
 
+	events, err := s.stateManager.GetStatusUpdateEvents()
+	s.Equal(1, len(events))
+	s.NoError(err)
+
 	time.Sleep(500 * time.Millisecond)
 }
 

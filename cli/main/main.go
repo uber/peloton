@@ -342,10 +342,14 @@ var (
 	updateResume   = update.Command("resume", "resume a job update")
 	updateResumeID = updateResume.Arg("update-id", "update identifier").Required().String()
 
-	// top level command for offers
-	offers = app.Command("offers", "get outstanding offers")
+	// Top level hostmgr command
+	hostmgr = app.Command("hostmgr", "top level command for hostmgr")
 
-	offersList = offers.Command("list", "list all the outstanding offers")
+	// command for list offers
+	offers = hostmgr.Command("offers", "list all outstanding offers")
+
+	// command for list status update events present in the event stream
+	eventStream = hostmgr.Command("events", "list all the task status update events present in event stream")
 )
 
 // TaskRangeValue allows us to define a new target type for kingpin to allow specifying ranges of tasks with from:to syntax as a TaskRangeFlag
@@ -566,7 +570,7 @@ func main() {
 		err = client.UpdatePauseAction(*updatePauseID)
 	case updateResume.FullCommand():
 		err = client.UpdateResumeAction(*updateResumeID)
-	case offersList.FullCommand():
+	case offers.FullCommand():
 		err = client.OffersGetAction()
 	case podGetEvents.FullCommand():
 		err = client.PodGetEventsAction(*podGetEventsJobName, *podGetEventsInstanceID, *podGetEventsRunID, *podGetEventsLimit)
@@ -580,7 +584,8 @@ func main() {
 		err = client.PodRefresh(*podRefreshPodName)
 	case podStart.FullCommand():
 		err = client.PodStart(*podStartPodName)
-
+	case eventStream.FullCommand():
+		err = client.EventStreamAction()
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

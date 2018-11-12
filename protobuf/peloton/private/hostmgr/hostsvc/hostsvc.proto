@@ -14,6 +14,7 @@ import "mesos/v1/master/master.proto";
 import "peloton/api/v0/peloton.proto";
 import "peloton/api/v0/task/task.proto";
 import "peloton/private/resmgr/resmgr.proto";
+import "peloton/private/eventstream/eventstream.proto";
 
 
 /**
@@ -374,6 +375,9 @@ service InternalHostService
   // Return all the outstanding offers present in offer pool.
   rpc GetOutstandingOffers(GetOutstandingOffersRequest) returns (GetOutstandingOffersResponse);
 
+  // Return all the outstanding status update events present in the event stream.
+  rpc GetStatusUpdateEvents(GetStatusUpdateEventsRequest) returns(GetStatusUpdateEventsResponse);
+
   // Get the hosts in DRAINING state. This method is called by Resource Manager
   // to get hosts which are to be drained.
   rpc GetDrainingHosts (GetDrainingHostsRequest) returns (GetDrainingHostsResponse);
@@ -422,6 +426,24 @@ message GetOutstandingOffersResponse {
   }
 
   repeated mesos.v1.Offer offers = 1;
+
+  Error error = 2;
+}
+
+/**
+ * Request to get all pending status update events
+ */
+message GetStatusUpdateEventsRequest {}
+
+/**
+ * Responds all pending status update events.
+ */
+message GetStatusUpdateEventsResponse {
+  message Error {
+    string message = 1;
+  }
+
+  repeated eventstream.Event events = 1;
 
   Error error = 2;
 }

@@ -40,6 +40,10 @@ type StateManager interface {
 
 	// EventPurged is for implementing PurgedEventsProcessor interface.
 	EventPurged(events []*cirbuf.CircularBufferItem)
+
+	// GetStatusUpdateEvents returns all the outstanding status update events
+	// from the event stream
+	GetStatusUpdateEvents() ([]*pb_eventstream.Event, error)
 }
 
 type stateManager struct {
@@ -62,6 +66,8 @@ type eventForwarder struct {
 	// Tracking the progress returned from remote side
 	progress *uint64
 }
+
+var eventStreamHandler *eventstream.EventHandler
 
 // initResMgrEventForwarder, creates an event stream client to push
 // mesos task status update events to Resource Manager from Host Manager.
@@ -223,6 +229,17 @@ func (m *stateManager) UpdateCounters(_ *uatomic.Bool) {
 		return true
 	})
 	m.metrics.taskAckMapSize.Update(length)
+}
+
+// GetStatusUpdateEvents returns all the outstanding status update events
+// from the event stream
+// This method is primarily for deubbing purpose
+func (m *stateManager) GetStatusUpdateEvents() ([]*pb_eventstream.Event, error) {
+	events, err := m.eventStreamHandler.GetEvents()
+	if err != nil {
+		return nil, err
+	}
+	return events, nil
 }
 
 // startAsyncProcessTaskUpdates concurrently process task status update events
