@@ -35,4 +35,4 @@ defaultConfig:
   ports: []
   command:
     shell: true
-    value: 'echo lol & sleep 100'
+    value: 'echo lol & sleep 200'
