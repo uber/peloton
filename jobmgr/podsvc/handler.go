@@ -5,15 +5,21 @@ import (
 	"fmt"
 	"time"
 
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
 
-	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
+	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	handlerutil "code.uber.internal/infra/peloton/jobmgr/util/handler"
+	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
+
+	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -52,7 +58,162 @@ func (h *serviceHandler) StartPod(
 	ctx context.Context,
 	req *svc.StartPodRequest,
 ) (resp *svc.StartPodResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("PodSVC.StartPod failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Info("PodSVC.StartPod succeeded")
+	}()
+
+	if !h.candidate.IsLeader() {
+		return nil,
+			yarpcerrors.UnavailableErrorf("PodSVC.StartPod is not supported on non-leader")
+	}
+
+	jobID, instanceID, err := util.ParseTaskID(req.GetPodName().GetValue())
+	if err != nil {
+		return nil, err
+	}
+
+	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: jobID})
+	cachedConfig, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "fail to get job config")
+	}
+
+	// change the state of job first
+	if err := h.startJob(ctx, cachedJob, cachedConfig); err != nil {
+		// enqueue job state to goal state engine and let goal state engine
+		// decide if the job state needs to be changed
+		goalstate.EnqueueJobWithDefaultDelay(
+			&peloton.JobID{Value: jobID}, h.goalStateDriver, cachedJob)
+		return nil, err
+	}
+
+	// then change task state
+	cachedTask, err := cachedJob.AddTask(ctx, instanceID)
+	if err != nil {
+		return nil, errors.Wrap(err, "fail to add pod in job cache")
+	}
+
+	err = h.startPod(ctx, cachedJob, cachedTask, cachedConfig.GetType())
+	// enqueue the pod/job into goal state engine even in failure case.
+	// Because the state may be updated, let goal state engine decide what to do
+	h.goalStateDriver.EnqueueTask(&peloton.JobID{Value: jobID}, instanceID, time.Now())
+	goalstate.EnqueueJobWithDefaultDelay(
+		&peloton.JobID{Value: jobID}, h.goalStateDriver, cachedJob)
+	if err != nil {
+		return nil, err
+	}
 	return &svc.StartPodResponse{}, nil
+}
+
+// startJob sets the job state to PENDING, and set the goal state to
+// RUNNING/SUCCEEDED based on job config
+func (h *serviceHandler) startJob(
+	ctx context.Context,
+	cachedJob cached.Job,
+	cachedConfig jobmgrcommon.JobConfig,
+) error {
+	count := 0
+
+	for {
+		jobRuntime, err := cachedJob.GetRuntime(ctx)
+		if err != nil {
+			return errors.Wrap(err, "fail to fetch job runtime")
+		}
+
+		// batch jobs in terminated state cannot be restarted
+		if cachedConfig.GetType() == pbjob.JobType_BATCH &&
+			util.IsPelotonJobStateTerminal(jobRuntime.GetState()) {
+			return yarpcerrors.InvalidArgumentErrorf("cannot start pod in terminated job")
+		}
+
+		// job already in expected state, skip the runtime update
+		if jobRuntime.State == pbjob.JobState_PENDING &&
+			jobRuntime.GoalState == goalstateutil.GetDefaultJobGoalState(cachedConfig.GetType()) {
+			return nil
+		}
+
+		jobRuntime.State = pbjob.JobState_PENDING
+		jobRuntime.GoalState = goalstateutil.GetDefaultJobGoalState(cachedConfig.GetType())
+
+		// update the job runtime
+		if _, err = cachedJob.CompareAndSetRuntime(ctx, jobRuntime); err == nil {
+			return nil
+		}
+		if err == jobmgrcommon.UnexpectedVersionError {
+			// concurrency error; retry MaxConcurrencyErrorRetry times
+			count = count + 1
+			if count < jobmgrcommon.MaxConcurrencyErrorRetry {
+				continue
+			}
+		}
+		return errors.Wrap(err, "fail to update job runtime")
+	}
+}
+
+func (h *serviceHandler) startPod(
+	ctx context.Context,
+	cachedJob cached.Job,
+	cachedTask cached.Task,
+	jobType pbjob.JobType,
+) error {
+	count := 0
+
+	for {
+		taskRuntime, err := cachedTask.GetRunTime(ctx)
+		if err != nil {
+			return errors.Wrap(err, "fail to get pod runtime")
+		}
+
+		// for pod not going to be killed, ignore the request.
+		if taskRuntime.GetGoalState() != pbtask.TaskState_KILLED {
+			return yarpcerrors.InvalidArgumentErrorf(
+				"pod goal state is not killed, ignore the start request")
+		}
+
+		taskConfig, _, err := h.podStore.GetTaskConfig(
+			ctx,
+			cachedJob.ID(),
+			cachedTask.ID(),
+			taskRuntime.GetConfigVersion(),
+		)
+		if err != nil {
+			return errors.Wrap(err, "fail to get pod config")
+		}
+
+		healthState := taskutil.GetInitialHealthState(taskConfig)
+		taskutil.RegenerateMesosTaskRuntime(
+			cachedJob.ID(),
+			cachedTask.ID(),
+			taskRuntime,
+			healthState,
+		)
+		taskRuntime.GoalState =
+			jobmgrtask.GetDefaultTaskGoalState(jobType)
+		taskRuntime.Message = "PodSVC.StartPod request"
+		taskRuntime.Reason = ""
+
+		if _, err = cachedTask.CompareAndSetRuntime(
+			ctx, taskRuntime, jobType); err == nil {
+			return nil
+		}
+		if err == jobmgrcommon.UnexpectedVersionError {
+			count = count + 1
+			if count < jobmgrcommon.MaxConcurrencyErrorRetry {
+				continue
+			}
+		}
+		return errors.Wrap(err, "fail to update pod runtime")
+	}
 }
 
 func (h *serviceHandler) StopPod(

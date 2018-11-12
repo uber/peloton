@@ -101,3 +101,24 @@ func (c *Client) PodRefresh(podName string) error {
 	tabWriter.Flush()
 	return nil
 }
+
+// PodStart starts the pod
+func (c *Client) PodStart(podName string) error {
+	resp, err := c.podClient.StartPod(
+		c.ctx,
+		&podsvc.StartPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: podName},
+		})
+	if err != nil {
+		return err
+	}
+
+	out, err := marshallResponse(defaultResponseFormat, resp)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v\n", string(out))
+
+	tabWriter.Flush()
+	return nil
+}

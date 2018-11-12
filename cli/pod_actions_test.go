@@ -142,6 +142,24 @@ func (suite *podActionsTestSuite) TestClientPodRefreshFail() {
 	suite.Error(suite.client.PodRefresh(testPodName))
 }
 
+// TestClientPodStartSuccess test the success case of starting pod
+func (suite *podActionsTestSuite) TestClientPodStartSuccess() {
+	suite.podClient.EXPECT().
+		StartPod(gomock.Any(), gomock.Any()).
+		Return(&podsvc.StartPodResponse{}, nil)
+
+	suite.NoError(suite.client.PodStart(testPodName))
+}
+
+// TestClientPodStartFail test the failure case starting pod
+func (suite *podActionsTestSuite) TestClientPodStartFail() {
+	suite.podClient.EXPECT().
+		StartPod(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.PodStart(testPodName))
+}
+
 func TestPodActions(t *testing.T) {
 	suite.Run(t, new(podActionsTestSuite))
 }

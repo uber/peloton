@@ -168,14 +168,17 @@ var (
 	podGetEventsLimit      = podGetEvents.Flag("limit", "number of events to return, default value 100").Short('l').Uint64()
 
 	podGetCache        = pod.Command("cache", "get pod status from cache")
-	podGetCachePodName = podGetCache.Arg("pod", "pod name").Required().String()
+	podGetCachePodName = podGetCache.Arg("name", "pod name").Required().String()
 
 	podGetEventsV1Alpha        = pod.Command("events-v1alpha", "get pod events")
 	podGetEventsV1AlphaPodName = podGetEventsV1Alpha.Arg("name", "pod name").Required().String()
 	podGetEventsV1AlphaPodID   = podGetEventsV1Alpha.Flag("id", "pod identifier").Short('p').String()
 
 	podRefresh        = pod.Command("refresh", "load pod status and re-refresh corresponding action (debug only)")
-	podRefreshPodName = podRefresh.Arg("pod", "pod name").Required().String()
+	podRefreshPodName = podRefresh.Arg("name", "pod name").Required().String()
+
+	podStart        = pod.Command("start", "start a pod")
+	podStartPodName = podStart.Arg("name", "pod name").Required().String()
 
 	// Top level task command
 	task = app.Command("task", "manage tasks")
@@ -575,6 +578,9 @@ func main() {
 		err = client.PodGetEventsV1AlphaAction(*podGetEventsV1AlphaPodName, *podGetEventsV1AlphaPodID)
 	case podRefresh.FullCommand():
 		err = client.PodRefresh(*podRefreshPodName)
+	case podStart.FullCommand():
+		err = client.PodStart(*podStartPodName)
+
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

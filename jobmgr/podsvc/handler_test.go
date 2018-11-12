@@ -17,6 +17,7 @@ import (
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -312,15 +313,406 @@ func (suite *podHandlerTestSuite) TestRefreshPodFailToReplaceTasks() {
 	suite.True(yarpcerrors.IsInternal(err))
 }
 
-func TestPodServiceHandler(t *testing.T) {
-	suite.Run(t, new(podHandlerTestSuite))
+// TestStartPodSuccess tests the case of start pod successfully
+func (suite *podHandlerTestSuite) TestStartPodSuccess() {
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(&peloton.JobID{Value: testJobID}).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(testInstanceID)).
+		AnyTimes()
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			GetConfig(gomock.Any()).
+			Return(&pbjob.JobConfig{
+				Type: pbjob.JobType_SERVICE,
+			}, nil),
+
+		suite.cachedJob.EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(&pbjob.RuntimeInfo{
+				State:     pbjob.JobState_RUNNING,
+				GoalState: pbjob.JobState_RUNNING,
+			}, nil),
+
+		suite.cachedJob.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), &pbjob.RuntimeInfo{
+				State:     pbjob.JobState_PENDING,
+				GoalState: pbjob.JobState_RUNNING,
+			}).Return(&pbjob.RuntimeInfo{
+			State:     pbjob.JobState_PENDING,
+			GoalState: pbjob.JobState_RUNNING,
+		}, nil),
+
+		suite.cachedJob.EXPECT().
+			AddTask(gomock.Any(), uint32(testInstanceID)).
+			Return(suite.cachedTask, nil),
+
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&pbtask.RuntimeInfo{
+				State:         pbtask.TaskState_KILLED,
+				GoalState:     pbtask.TaskState_KILLED,
+				ConfigVersion: 1,
+			}, nil),
+
+		suite.podStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				&peloton.JobID{Value: testJobID},
+				uint32(testInstanceID),
+				uint64(1)).
+			Return(&pbtask.TaskConfig{
+				HealthCheck: &pbtask.HealthCheckConfig{
+					Enabled: true,
+				},
+			}, nil, nil),
+
+		suite.cachedTask.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), gomock.Any(), pbjob.JobType_SERVICE).
+			Return(nil, nil),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueTask(&peloton.JobID{Value: testJobID}, uint32(testInstanceID), gomock.Any()).
+			Return(),
+
+		suite.cachedJob.EXPECT().
+			GetJobType().
+			Return(pbjob.JobType_SERVICE),
+
+		suite.goalStateDriver.EXPECT().
+			JobRuntimeDuration(pbjob.JobType_SERVICE).
+			Return(time.Second),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueJob(&peloton.JobID{Value: testJobID}, gomock.Any()).
+			Return(),
+	)
+
+	resp, err := suite.handler.StartPod(context.Background(), &svc.StartPodRequest{
+		PodName: &v1alphapeloton.PodName{Value: testPodName},
+	})
+	suite.NotNil(resp)
+	suite.NoError(err)
 }
 
-func (suite *podHandlerTestSuite) TestStartPod() {
-	request := &svc.StartPodRequest{}
-	response, err := suite.handler.StartPod(context.Background(), request)
+// TestStartPodNonLeaderFailure tests start pod failure case
+// as the candidate is non-leader
+func (suite *podHandlerTestSuite) TestStartPodNonLeaderFailure() {
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(false)
+
+	resp, err := suite.handler.StartPod(context.Background(), &svc.StartPodRequest{
+		PodName: &v1alphapeloton.PodName{Value: testPodName},
+	})
+	suite.Nil(resp)
+	suite.Error(err)
+}
+
+// TestStartPodSuccessWithRuntimeUnexpectedVersionError tests the case that
+// pod start can succeed in the case of job runtime update has
+// UnexpectedVersionError
+func (suite *podHandlerTestSuite) TestStartPodSuccessWithJobRuntimeUnexpectedVersionError() {
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(&peloton.JobID{Value: testJobID}).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(testInstanceID)).
+		AnyTimes()
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			GetConfig(gomock.Any()).
+			Return(&pbjob.JobConfig{
+				Type: pbjob.JobType_SERVICE,
+			}, nil),
+
+		suite.cachedJob.EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(&pbjob.RuntimeInfo{
+				State:     pbjob.JobState_RUNNING,
+				GoalState: pbjob.JobState_RUNNING,
+			}, nil),
+
+		suite.cachedJob.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), &pbjob.RuntimeInfo{
+				State:     pbjob.JobState_PENDING,
+				GoalState: pbjob.JobState_RUNNING,
+			}).Return(nil, jobmgrcommon.UnexpectedVersionError),
+
+		suite.cachedJob.EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(&pbjob.RuntimeInfo{
+				State:     pbjob.JobState_RUNNING,
+				GoalState: pbjob.JobState_RUNNING,
+			}, nil),
+
+		suite.cachedJob.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), &pbjob.RuntimeInfo{
+				State:     pbjob.JobState_PENDING,
+				GoalState: pbjob.JobState_RUNNING,
+			}).Return(nil, nil),
+
+		suite.cachedJob.EXPECT().
+			AddTask(gomock.Any(), uint32(testInstanceID)).
+			Return(suite.cachedTask, nil),
+
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&pbtask.RuntimeInfo{
+				State:         pbtask.TaskState_KILLED,
+				GoalState:     pbtask.TaskState_KILLED,
+				ConfigVersion: 1,
+			}, nil),
+
+		suite.podStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				&peloton.JobID{Value: testJobID},
+				uint32(testInstanceID),
+				uint64(1)).
+			Return(&pbtask.TaskConfig{
+				HealthCheck: &pbtask.HealthCheckConfig{
+					Enabled: true,
+				},
+			}, nil, nil),
+
+		suite.cachedTask.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), gomock.Any(), pbjob.JobType_SERVICE).
+			Return(nil, nil),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueTask(&peloton.JobID{Value: testJobID}, uint32(testInstanceID), gomock.Any()).
+			Return(),
+
+		suite.cachedJob.EXPECT().
+			GetJobType().
+			Return(pbjob.JobType_SERVICE),
+
+		suite.goalStateDriver.EXPECT().
+			JobRuntimeDuration(pbjob.JobType_SERVICE).
+			Return(time.Second),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueJob(&peloton.JobID{Value: testJobID}, gomock.Any()).
+			Return(),
+	)
+
+	resp, err := suite.handler.StartPod(context.Background(), &svc.StartPodRequest{
+		PodName: &v1alphapeloton.PodName{Value: testPodName},
+	})
+	suite.NotNil(resp)
 	suite.NoError(err)
-	suite.NotNil(response)
+}
+
+// TestStartPodSuccessWithRuntimeUnexpectedVersionError tests the case that
+// pod start can succeed in the case of pod runtime update has
+// UnexpectedVersionError
+func (suite *podHandlerTestSuite) TestStartPodSuccessWithPodRuntimeUnexpectedVersionError() {
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(&peloton.JobID{Value: testJobID}).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(testInstanceID)).
+		AnyTimes()
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			GetConfig(gomock.Any()).
+			Return(&pbjob.JobConfig{
+				Type: pbjob.JobType_SERVICE,
+			}, nil),
+
+		suite.cachedJob.EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(&pbjob.RuntimeInfo{
+				State:     pbjob.JobState_RUNNING,
+				GoalState: pbjob.JobState_RUNNING,
+			}, nil),
+
+		suite.cachedJob.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), &pbjob.RuntimeInfo{
+				State:     pbjob.JobState_PENDING,
+				GoalState: pbjob.JobState_RUNNING,
+			}).Return(&pbjob.RuntimeInfo{
+			State:     pbjob.JobState_PENDING,
+			GoalState: pbjob.JobState_RUNNING,
+		}, nil),
+
+		suite.cachedJob.EXPECT().
+			AddTask(gomock.Any(), uint32(testInstanceID)).
+			Return(suite.cachedTask, nil),
+
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&pbtask.RuntimeInfo{
+				State:         pbtask.TaskState_KILLED,
+				GoalState:     pbtask.TaskState_KILLED,
+				ConfigVersion: 1,
+			}, nil),
+
+		suite.podStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				&peloton.JobID{Value: testJobID},
+				uint32(testInstanceID),
+				uint64(1)).
+			Return(&pbtask.TaskConfig{
+				HealthCheck: &pbtask.HealthCheckConfig{
+					Enabled: true,
+				},
+			}, nil, nil),
+
+		suite.cachedTask.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), gomock.Any(), pbjob.JobType_SERVICE).
+			Return(nil, jobmgrcommon.UnexpectedVersionError),
+
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&pbtask.RuntimeInfo{
+				State:         pbtask.TaskState_KILLED,
+				GoalState:     pbtask.TaskState_KILLED,
+				ConfigVersion: 1,
+			}, nil),
+
+		suite.podStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				&peloton.JobID{Value: testJobID},
+				uint32(testInstanceID),
+				uint64(1)).
+			Return(&pbtask.TaskConfig{
+				HealthCheck: &pbtask.HealthCheckConfig{
+					Enabled: true,
+				},
+			}, nil, nil),
+
+		suite.cachedTask.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), gomock.Any(), pbjob.JobType_SERVICE).
+			Return(nil, nil),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueTask(&peloton.JobID{Value: testJobID}, uint32(testInstanceID), gomock.Any()).
+			Return(),
+
+		suite.cachedJob.EXPECT().
+			GetJobType().
+			Return(pbjob.JobType_SERVICE),
+
+		suite.goalStateDriver.EXPECT().
+			JobRuntimeDuration(pbjob.JobType_SERVICE).
+			Return(time.Second),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueJob(&peloton.JobID{Value: testJobID}, gomock.Any()).
+			Return(),
+	)
+
+	resp, err := suite.handler.StartPod(context.Background(), &svc.StartPodRequest{
+		PodName: &v1alphapeloton.PodName{Value: testPodName},
+	})
+	suite.NotNil(resp)
+	suite.NoError(err)
+}
+
+// TestStartPodFailToSetJobRuntime tests the case of pod failure
+// due to fail to set job runtime
+func (suite *podHandlerTestSuite) TestStartPodFailToSetJobRuntime() {
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(&peloton.JobID{Value: testJobID}).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(testInstanceID)).
+		AnyTimes()
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			GetConfig(gomock.Any()).
+			Return(&pbjob.JobConfig{
+				Type: pbjob.JobType_SERVICE,
+			}, nil),
+
+		suite.cachedJob.EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(&pbjob.RuntimeInfo{
+				State:     pbjob.JobState_RUNNING,
+				GoalState: pbjob.JobState_RUNNING,
+			}, nil),
+
+		suite.cachedJob.EXPECT().
+			CompareAndSetRuntime(gomock.Any(), &pbjob.RuntimeInfo{
+				State:     pbjob.JobState_PENDING,
+				GoalState: pbjob.JobState_RUNNING,
+			}).Return(nil, yarpcerrors.InternalErrorf("test error")),
+
+		suite.cachedJob.EXPECT().
+			GetJobType().
+			Return(pbjob.JobType_SERVICE),
+
+		suite.goalStateDriver.EXPECT().
+			JobRuntimeDuration(pbjob.JobType_SERVICE).
+			Return(time.Second),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueJob(&peloton.JobID{Value: testJobID}, gomock.Any()).
+			Return(),
+	)
+
+	resp, err := suite.handler.StartPod(context.Background(), &svc.StartPodRequest{
+		PodName: &v1alphapeloton.PodName{Value: testPodName},
+	})
+	suite.Nil(resp)
+	suite.Error(err)
+}
+
+func TestPodServiceHandler(t *testing.T) {
+	suite.Run(t, new(podHandlerTestSuite))
 }
 
 func (suite *podHandlerTestSuite) TestStopPod() {
