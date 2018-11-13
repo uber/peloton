@@ -140,11 +140,11 @@ enum WorkflowState {
   // The workflow has completed successfully
   WORKFLOW_STATE_SUCCEEDED = 4;
 
-  // The workflows has failed to complete.
-  WORKFLOW_STATE_FAILED = 5;
-
   // The update was aborted/cancelled
-  WORKFLOW_STATE_ABORTED = 6;
+  WORKFLOW_STATE_ABORTED = 5;
+
+  // The workflows has failed to complete.
+  WORKFLOW_STATE_FAILED = 6;
 
   // The update is rolling backward
   WORKFLOW_STATE_ROLLING_BACKWARD = 7;

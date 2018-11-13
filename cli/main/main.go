@@ -167,6 +167,11 @@ var (
 	jobGetCache     = job.Command("cache", "get a job cache")
 	jobGetCacheName = jobGetCache.Arg("job", "job identifier").Required().String()
 
+	// Top level job command for stateless jobs
+	stateless             = app.Command("stateless", "manage stateless jobs")
+	statelessGetCache     = stateless.Command("cache", "get a job cache")
+	statelessGetCacheName = statelessGetCache.Arg("job", "job identifier").Required().String()
+
 	// Top level pod command
 	pod = app.Command("pod", "CLI reflects pod(s) actions, such as get pod details, create/restart/update a pod...")
 
@@ -612,6 +617,8 @@ func main() {
 		err = client.PodStart(*podStartPodName)
 	case eventStream.FullCommand():
 		err = client.EventStreamAction()
+	case statelessGetCache.FullCommand():
+		err = client.StatelessGetCacheAction(*statelessGetCacheName)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

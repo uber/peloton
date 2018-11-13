@@ -449,7 +449,11 @@ func main() {
 		cfg.JobManager.JobSvcCfg,
 	)
 
-	stateless.InitV1AlphaJobServiceHandler(dispatcher)
+	stateless.InitV1AlphaJobServiceHandler(
+		dispatcher,
+		jobFactory,
+		updateFactory,
+	)
 
 	tasksvc.InitServiceHandler(
 		dispatcher,

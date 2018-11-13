@@ -14,10 +14,10 @@ import "peloton/api/v0/update/update.proto";
 
 enum WorkflowType {
   UNKNOWN = 0;
-  START = 1;
-  STOP = 2;
-  RESTART = 3;
-  UPDATE = 4;
+  UPDATE = 1;
+  RESTART = 2;
+  START = 3;
+  STOP = 4;
 }
 
 /**

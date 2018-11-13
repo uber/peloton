@@ -76,6 +76,10 @@ message SlaConfig {
   // can run. This timer starts when the task enters into running state.
   // if the tasks of this job exceeds this run time then they will be killed
   uint32 maxRunningTime = 6;
+
+  //
+  // Maximum number of job instances which can be unavailable at a given time.
+  uint32 maximumUnavailableInstances = 7;
 }
 
 
