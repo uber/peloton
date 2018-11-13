@@ -1724,8 +1724,9 @@ func (suite *UpdateTestSuite) TestUpdateRollbackSuccess() {
 	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < jobConfig.GetInstanceCount(); i++ {
 		runtime := &pbtask.RuntimeInfo{
-			State:         pbtask.TaskState_RUNNING,
-			ConfigVersion: jobPrevVersion,
+			State:                pbtask.TaskState_RUNNING,
+			ConfigVersion:        jobPrevVersion,
+			DesiredConfigVersion: jobPrevVersion,
 		}
 		taskRuntimes[i] = runtime
 	}
@@ -1982,8 +1983,9 @@ func (suite *UpdateTestSuite) TestUpdateRollbackRetrySuccessAfterJobRuntimeUpdat
 	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < jobConfig.GetInstanceCount(); i++ {
 		runtime := &pbtask.RuntimeInfo{
-			State:         pbtask.TaskState_RUNNING,
-			ConfigVersion: jobPrevVersion,
+			State:                pbtask.TaskState_RUNNING,
+			ConfigVersion:        jobPrevVersion,
+			DesiredConfigVersion: jobPrevVersion,
 		}
 		taskRuntimes[i] = runtime
 	}
@@ -2278,8 +2280,9 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithLabelAddAndU
 	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < instanceCount; i++ {
 		runtime := &pbtask.RuntimeInfo{
-			State:         pbtask.TaskState_RUNNING,
-			ConfigVersion: 3,
+			State:                pbtask.TaskState_RUNNING,
+			ConfigVersion:        3,
+			DesiredConfigVersion: 3,
 		}
 		taskRuntimes[i] = runtime
 	}
@@ -2329,8 +2332,9 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithLabelUpdated
 	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < instanceCount; i++ {
 		runtime := &pbtask.RuntimeInfo{
-			State:         pbtask.TaskState_RUNNING,
-			ConfigVersion: 3,
+			State:                pbtask.TaskState_RUNNING,
+			ConfigVersion:        3,
+			DesiredConfigVersion: 3,
 		}
 		taskRuntimes[i] = runtime
 	}
@@ -2403,8 +2407,9 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithAddedInstanc
 	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < prevInstanceCount; i++ {
 		runtime := &pbtask.RuntimeInfo{
-			State:         pbtask.TaskState_RUNNING,
-			ConfigVersion: 3,
+			State:                pbtask.TaskState_RUNNING,
+			ConfigVersion:        3,
+			DesiredConfigVersion: 3,
 		}
 		taskRuntimes[i] = runtime
 	}
@@ -2478,8 +2483,9 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithRemovedInsta
 	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < prevInstanceCount; i++ {
 		runtime := &pbtask.RuntimeInfo{
-			State:         pbtask.TaskState_RUNNING,
-			ConfigVersion: 3,
+			State:                pbtask.TaskState_RUNNING,
+			ConfigVersion:        3,
+			DesiredConfigVersion: 3,
 		}
 		taskRuntimes[i] = runtime
 	}
@@ -2505,6 +2511,70 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithRemovedInsta
 	suite.NoError(err)
 	suite.Empty(instancesAdded)
 	suite.Len(instancesRemoved, int(prevInstanceCount-instanceCount))
+	suite.Len(instancesUpdated, int(instanceCount))
+}
+
+// TestGetInstancesToProcessForUpdateWithUpdateInstances tests updating instances
+// which are unchanged but the config and desired config version are different.
+func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithUpdateInstances() {
+	commandValue := "entrypoint.sh"
+	taskConfig := &pbtask.TaskConfig{
+		Command: &mesosv1.CommandInfo{
+			Value: &commandValue,
+		},
+	}
+
+	testJob := &job{
+		runtime: &pbjob.RuntimeInfo{
+			Revision: &peloton.ChangeLog{
+				Version: 1,
+			},
+		},
+		jobFactory: &jobFactory{
+			jobStore:  suite.jobStore,
+			taskStore: suite.taskStore,
+		},
+		tasks: make(map[uint32]*task),
+		id:    suite.jobID,
+	}
+
+	instanceCount := uint32(10)
+	jobConfig := &pbjob.JobConfig{
+		InstanceCount: instanceCount,
+		DefaultConfig: taskConfig,
+	}
+
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < instanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State:                pbtask.TaskState_RUNNING,
+			ConfigVersion:        3,
+			DesiredConfigVersion: 4,
+		}
+		taskRuntimes[i] = runtime
+	}
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(taskRuntimes, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(taskConfig, nil, nil).
+		Times(int(instanceCount))
+
+	instancesAdded, instancesUpdated, instancesRemoved, err :=
+		GetInstancesToProcessForUpdate(
+			context.Background(),
+			testJob,
+			jobConfig,
+			jobConfig,
+			suite.taskStore,
+		)
+
+	suite.NoError(err)
+	suite.Empty(instancesAdded)
+	suite.Empty(instancesRemoved)
 	suite.Len(instancesUpdated, int(instanceCount))
 }
 
@@ -2588,8 +2658,9 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateConfigError() {
 	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < instanceCount; i++ {
 		runtime := &pbtask.RuntimeInfo{
-			State:         pbtask.TaskState_RUNNING,
-			ConfigVersion: 3,
+			State:                pbtask.TaskState_RUNNING,
+			ConfigVersion:        3,
+			DesiredConfigVersion: 3,
 		}
 		taskRuntimes[i] = runtime
 	}

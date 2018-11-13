@@ -487,8 +487,9 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdate() {
 	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < suite.prevJobConfig.InstanceCount; i++ {
 		runtime := &pbtask.RuntimeInfo{
-			State:         pbtask.TaskState_RUNNING,
-			ConfigVersion: suite.prevJobConfig.ChangeLog.Version,
+			State:                pbtask.TaskState_RUNNING,
+			ConfigVersion:        suite.prevJobConfig.ChangeLog.Version,
+			DesiredConfigVersion: suite.prevJobConfig.ChangeLog.Version,
 		}
 		taskRuntimes[i] = runtime
 	}

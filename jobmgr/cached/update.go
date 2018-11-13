@@ -1154,6 +1154,21 @@ func GetInstancesToProcessForUpdate(
 				// instance needs to be updated
 				instancesUpdated = append(instancesUpdated, instID)
 			}
+
+			// If the configuration version is not the same as the desired
+			// configuration version, then lets treat this instance as one
+			// which needs to be updated irrespective of whether the current
+			// config it has is the same as provided in the new configuration.
+			// In some cases it may result in an unneeded restart of a
+			// few instances, but this ensures correctness.
+			if runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
+				instancesUpdated = append(instancesUpdated, instID)
+			}
+
+			// TODO what happens if the update does not change the instance
+			// configuration, but it was being updates as part of the
+			// previous aborted update.
+
 			delete(taskRuntimes, instID)
 		}
 	}
