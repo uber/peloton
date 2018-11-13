@@ -553,6 +553,8 @@ func (n *resPool) ToResourcePoolInfo() *respool.ResourcePoolInfo {
 // CalculateTotalAllocatedResources calculates the total allocation
 // recursively for all the children.
 func (n *resPool) CalculateTotalAllocatedResources() *scalar.Resources {
+	n.Lock()
+	defer n.Unlock()
 	return n.calculateAllocation().GetByType(scalar.TotalAllocation)
 }
 
@@ -576,6 +578,14 @@ func (n *resPool) calculateAllocation() *scalar.Allocation {
 // CalculateDemand calculates and sets the non-revocable tasks
 // resource demand for the resource pool recursively for the subtree
 func (n *resPool) CalculateDemand() *scalar.Resources {
+	n.Lock()
+	defer n.Unlock()
+	return n.calculateDemand()
+}
+
+// calculateDemand is a private method to recursively calculate demand for non-leaf
+// resource pool nodes and return the demand for current resource pool
+func (n *resPool) calculateDemand() *scalar.Resources {
 	if n.isLeaf() {
 		return n.demand
 	}
@@ -583,7 +593,7 @@ func (n *resPool) CalculateDemand() *scalar.Resources {
 	for child := n.children.Front(); child != nil; child = child.Next() {
 		if childResPool, ok := child.Value.(*resPool); ok {
 			demand = demand.Add(
-				childResPool.CalculateDemand())
+				childResPool.calculateDemand())
 		}
 	}
 	n.demand = demand
@@ -593,6 +603,14 @@ func (n *resPool) CalculateDemand() *scalar.Resources {
 // CalculateAndSetDemand calculates and sets the resource demand
 // for the resource pool recursively for the subtree
 func (n *resPool) CalculateSlackDemand() *scalar.Resources {
+	n.Lock()
+	defer n.Unlock()
+	return n.calculateSlackDemand()
+}
+
+// calculateSlackDemand in the private method to recursively calculate slack demand
+// for non-leaf resource pool nodes and return the slack demand for current resource pool
+func (n *resPool) calculateSlackDemand() *scalar.Resources {
 	if n.isLeaf() {
 		return n.slackDemand
 	}
@@ -758,6 +776,8 @@ func (n *resPool) initSlackLimit(cfg *respool.ResourcePoolConfig) {
 
 // SlackLimit returns the slack limit of the resource pool
 func (n *resPool) GetSlackLimit() *scalar.Resources {
+	n.RLock()
+	defer n.RUnlock()
 	return n.slackLimit
 }
 
@@ -810,6 +830,8 @@ func (n *resPool) GetSlackEntitlement() *scalar.Resources {
 
 // GetNonSlackEntitlement returns the entitlement for non-revocable tasks.
 func (n *resPool) GetNonSlackEntitlement() *scalar.Resources {
+	n.RLock()
+	defer n.RUnlock()
 	return n.nonSlackEntitlement
 }
 
@@ -885,6 +907,12 @@ func (n *resPool) SubtractFromAllocation(allocation *scalar.Allocation) error {
 // IsRoot returns true if the node is the root in the resource
 // pool hierarchy
 func (n *resPool) IsRoot() bool {
+	n.RLock()
+	defer n.RUnlock()
+	return n.isRoot()
+}
+
+func (n *resPool) isRoot() bool {
 	return n.ID() == common.RootResPoolID
 }
 
@@ -903,7 +931,7 @@ func (n *resPool) GetPath() string {
 }
 
 func (n *resPool) calculatePath() string {
-	if n.IsRoot() {
+	if n.isRoot() {
 		return ResourcePoolPathDelimiter
 	}
 	if n.parent == nil || n.parent.IsRoot() {
@@ -1072,6 +1100,8 @@ func (n *resPool) aggregateQueueByType(qt QueueType) int {
 
 // updates all the metrics (static and dynamic)
 func (n *resPool) UpdateResourceMetrics() {
+	n.RLock()
+	defer n.RUnlock()
 	n.updateStaticResourceMetrics()
 	n.updateDynamicResourceMetrics()
 }
