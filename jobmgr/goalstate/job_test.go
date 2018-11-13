@@ -101,6 +101,9 @@ func TestJobGetActionList(t *testing.T) {
 	_, _, actions = jobEnt.GetActionList(job.JobState_SUCCEEDED, job.JobState_SUCCEEDED)
 	assert.Equal(t, 1, len(actions))
 
+	_, _, actions = jobEnt.GetActionList(job.JobState_UNINITIALIZED, job.JobState_SUCCEEDED)
+	assert.Equal(t, 1, len(actions))
+
 	_, _, actions = jobEnt.GetActionList(job.JobState_RUNNING, job.JobState_SUCCEEDED)
 	assert.Equal(t, 2, len(actions))
 
@@ -131,4 +134,7 @@ func TestEngineJobSuggestAction(t *testing.T) {
 
 	a = jobEnt.suggestJobAction(job.JobState_KILLING, job.JobState_FAILED)
 	assert.Equal(t, JobStateInvalidAction, a)
+
+	a = jobEnt.suggestJobAction(job.JobState_UNINITIALIZED, job.JobState_SUCCEEDED)
+	assert.Equal(t, RecoverAction, a)
 }

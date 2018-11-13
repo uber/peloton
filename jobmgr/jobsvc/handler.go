@@ -178,16 +178,12 @@ func (h *serviceHandler) Create(
 		SystemLabels: systemLabels,
 	}
 	err = cachedJob.Create(ctx, jobConfig, configAddOn, "peloton")
-	if err != nil {
-		// best effort to clean up cache and db when job creation fails
-		// and the err is not due to job has already existed.
-		// if job already exists, and one calls create again,
-		// it should not clean up the running job.
-		if !yarpcerrors.IsAlreadyExists(err) {
-			h.jobFactory.ClearJob(jobID)
-			h.jobStore.DeleteJob(ctx, jobID)
-		}
+	// if err is not nil, still enqueue to goal state engine,
+	// because job may be partially created. Goal state engine
+	// knows if the job can be recovered
+	h.goalStateDriver.EnqueueJob(jobID, time.Now())
 
+	if err != nil {
 		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{
 			Error: &job.CreateResponse_Error{
@@ -196,12 +192,11 @@ func (h *serviceHandler) Create(
 					Message: err.Error(),
 				},
 			},
+			JobId: jobID, // should return the jobID even when error occurs
+			// because the job may be running
 		}, nil
 	}
 	h.metrics.JobCreate.Inc(1)
-
-	// Enqueue job into goal state engine
-	h.goalStateDriver.EnqueueJob(jobID, time.Now())
 
 	return &job.CreateResponse{
 		JobId: jobID,

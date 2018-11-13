@@ -1202,7 +1202,7 @@ func (suite *JobTestSuite) TestJobCreate() {
 	suite.jobStore.EXPECT().
 		CreateJobRuntimeWithConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, initialRuntime *pbjob.RuntimeInfo, config *pbjob.JobConfig) {
-			suite.Equal(initialRuntime.State, pbjob.JobState_INITIALIZED)
+			suite.Equal(initialRuntime.State, pbjob.JobState_UNINITIALIZED)
 			suite.Equal(initialRuntime.GoalState, pbjob.JobState_SUCCEEDED)
 			suite.Equal(initialRuntime.Revision.Version, uint64(1))
 			suite.Equal(initialRuntime.ConfigurationVersion, config.ChangeLog.Version)
@@ -1214,6 +1214,12 @@ func (suite *JobTestSuite) TestJobCreate() {
 			suite.Equal(config.Type, jobConfig.Type)
 		}).
 		Return(nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+			suite.Equal(runtime.GetState(), pbjob.JobState_INITIALIZED)
+		}).Return(nil)
 
 	err := suite.job.Create(context.Background(), jobConfig, configAddOn, createdBy)
 	suite.NoError(err)

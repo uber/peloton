@@ -451,24 +451,37 @@ func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, configAddOn *
 		return yarpcerrors.InvalidArgumentErrorf("missing config in jobInfo")
 	}
 
-	config, err := j.createJobConfig(ctx, config, configAddOn, createBy)
+	config = populateConfigChangeLog(config)
+
+	// create job runtime and set state to UNINITIALIZED
+	if err := j.createJobRuntime(ctx, config); err != nil {
+		j.invalidateCache()
+		return err
+	}
+
+	// create job config
+	err := j.createJobConfig(ctx, config, configAddOn, createBy)
 	if err != nil {
 		j.invalidateCache()
 		return err
 	}
 	jobType = j.jobType
 
-	err = j.createJobRuntime(ctx, config)
-	if err != nil {
+	// both config and runtime are created, move the state to INITIALIZED
+	j.runtime.State = pbjob.JobState_INITIALIZED
+	if err := j.jobFactory.jobStore.UpdateJobRuntime(
+		ctx,
+		j.id,
+		j.runtime); err != nil {
 		j.invalidateCache()
 		return err
 	}
+
 	runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
 	return nil
 }
 
-// createJobConfig creates job config in db and cache
-func (j *job) createJobConfig(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn, createBy string) (*pbjob.JobConfig, error) {
+func populateConfigChangeLog(config *pbjob.JobConfig) *pbjob.JobConfig {
 	newConfig := *config
 	now := time.Now().UTC()
 	newConfig.ChangeLog = &peloton.ChangeLog{
@@ -476,20 +489,26 @@ func (j *job) createJobConfig(ctx context.Context, config *pbjob.JobConfig, conf
 		UpdatedAt: uint64(now.UnixNano()),
 		Version:   1,
 	}
-	err := j.jobFactory.jobStore.CreateJobConfig(ctx, j.id, &newConfig, configAddOn, newConfig.ChangeLog.Version, createBy)
-	if err != nil {
-		return nil, err
-	}
-	j.populateJobConfigCache(&newConfig)
-	return &newConfig, nil
+	return &newConfig
 }
 
-// createJobRuntime creates and initialize job runtime in db and cache
+// createJobConfig creates job config in db and cache
+func (j *job) createJobConfig(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn, createBy string) error {
+	if err := j.jobFactory.jobStore.CreateJobConfig(ctx, j.id, config, configAddOn, config.ChangeLog.Version, createBy); err != nil {
+		return err
+	}
+	j.populateJobConfigCache(config)
+	return nil
+}
+
+// createJobRuntime creates job runtime in db and cache,
+// job state is set to UNINITIALIZED, because job config is persisted after
+// calling createJobRuntime and job creation is not complete
 func (j *job) createJobRuntime(ctx context.Context, config *pbjob.JobConfig) error {
 	goalState := goalstateutil.GetDefaultJobGoalState(config.Type)
 	now := time.Now().UTC()
 	initialJobRuntime := &pbjob.RuntimeInfo{
-		State:        pbjob.JobState_INITIALIZED,
+		State:        pbjob.JobState_UNINITIALIZED,
 		CreationTime: now.Format(time.RFC3339Nano),
 		TaskStats:    make(map[string]uint32),
 		GoalState:    goalState,

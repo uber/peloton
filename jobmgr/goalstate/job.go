@@ -34,6 +34,8 @@ const (
 	ClearAction JobAction = "job_clear"
 	// EnqeueAction enqueues the job again into the goal state engine
 	EnqeueAction JobAction = "enqueue"
+	// RecoverAction attempts to recover a partially created job
+	RecoverAction JobAction = "recover"
 )
 
 // _jobActionsMaps maps the JobAction string to the Action function.
@@ -44,6 +46,7 @@ var (
 		KillAction:            JobKill,
 		UntrackAction:         JobUntrack,
 		JobStateInvalidAction: JobStateInvalid,
+		RecoverAction:         JobRecover,
 	}
 )
 
@@ -52,35 +55,39 @@ var (
 	// goal-state -> current-state -> action.
 	_isoVersionsJobRules = map[job.JobState]map[job.JobState]JobAction{
 		job.JobState_RUNNING: {
-			job.JobState_INITIALIZED: CreateTasksAction,
-			job.JobState_SUCCEEDED:   JobStateInvalidAction,
-			job.JobState_FAILED:      JobStateInvalidAction,
-			job.JobState_KILLING:     JobStateInvalidAction,
+			job.JobState_INITIALIZED:   CreateTasksAction,
+			job.JobState_SUCCEEDED:     JobStateInvalidAction,
+			job.JobState_FAILED:        JobStateInvalidAction,
+			job.JobState_KILLING:       JobStateInvalidAction,
+			job.JobState_UNINITIALIZED: RecoverAction,
 		},
 		job.JobState_SUCCEEDED: {
-			job.JobState_INITIALIZED: CreateTasksAction,
-			job.JobState_SUCCEEDED:   UntrackAction,
-			job.JobState_FAILED:      UntrackAction,
-			job.JobState_KILLED:      UntrackAction,
-			job.JobState_KILLING:     JobStateInvalidAction,
+			job.JobState_INITIALIZED:   CreateTasksAction,
+			job.JobState_SUCCEEDED:     UntrackAction,
+			job.JobState_FAILED:        UntrackAction,
+			job.JobState_KILLED:        UntrackAction,
+			job.JobState_KILLING:       JobStateInvalidAction,
+			job.JobState_UNINITIALIZED: RecoverAction,
 		},
 		job.JobState_KILLED: {
-			job.JobState_UNKNOWN:     KillAction,
-			job.JobState_INITIALIZED: KillAction,
-			job.JobState_PENDING:     KillAction,
-			job.JobState_RUNNING:     KillAction,
-			job.JobState_SUCCEEDED:   UntrackAction,
-			job.JobState_FAILED:      UntrackAction,
-			job.JobState_KILLED:      UntrackAction,
+			job.JobState_UNKNOWN:       KillAction,
+			job.JobState_INITIALIZED:   KillAction,
+			job.JobState_PENDING:       KillAction,
+			job.JobState_RUNNING:       KillAction,
+			job.JobState_SUCCEEDED:     UntrackAction,
+			job.JobState_FAILED:        UntrackAction,
+			job.JobState_KILLED:        UntrackAction,
+			job.JobState_UNINITIALIZED: UntrackAction,
 		},
 		job.JobState_FAILED: {
-			job.JobState_INITIALIZED: JobStateInvalidAction,
-			job.JobState_PENDING:     JobStateInvalidAction,
-			job.JobState_RUNNING:     JobStateInvalidAction,
-			job.JobState_SUCCEEDED:   JobStateInvalidAction,
-			job.JobState_FAILED:      JobStateInvalidAction,
-			job.JobState_KILLED:      JobStateInvalidAction,
-			job.JobState_KILLING:     JobStateInvalidAction,
+			job.JobState_INITIALIZED:   JobStateInvalidAction,
+			job.JobState_PENDING:       JobStateInvalidAction,
+			job.JobState_RUNNING:       JobStateInvalidAction,
+			job.JobState_SUCCEEDED:     JobStateInvalidAction,
+			job.JobState_FAILED:        JobStateInvalidAction,
+			job.JobState_KILLED:        JobStateInvalidAction,
+			job.JobState_KILLING:       JobStateInvalidAction,
+			job.JobState_UNINITIALIZED: JobStateInvalidAction,
 		},
 	}
 )
@@ -176,7 +183,7 @@ func (j *jobEntity) GetActionList(
 		})
 	}
 
-	if actionStr != UntrackAction {
+	if actionStr != UntrackAction && actionStr != RecoverAction {
 		// These should always be run
 		actions = append(actions, goalstate.Action{
 			Name:    string(RuntimeUpdateAction),

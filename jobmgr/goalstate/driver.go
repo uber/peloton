@@ -54,6 +54,7 @@ var (
 		// TODO remove recovery of UNKNOWN state after all old jobs created
 		// before job goal state engine was added have terminated.
 		job.JobState_UNKNOWN,
+		job.JobState_UNINITIALIZED,
 	}
 
 	// serviceJobStatesToRecover represents the job states which need recovery
@@ -74,6 +75,7 @@ var (
 		job.JobState_KILLED,
 		job.JobState_FAILED,
 		job.JobState_SUCCEEDED,
+		job.JobState_UNINITIALIZED,
 	}
 )
 

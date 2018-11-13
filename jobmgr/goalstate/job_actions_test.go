@@ -15,6 +15,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 func TestJobEnqueue(t *testing.T) {
@@ -131,5 +132,109 @@ func TestJobStateInvalidAction(t *testing.T) {
 		}, nil)
 
 	err := JobStateInvalid(context.Background(), jobEnt)
+	assert.NoError(t, err)
+}
+
+func TestJobRecoverActionSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
+
+	goalStateDriver := &driver{
+		jobFactory: jobFactory,
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
+		jobEngine:  jobGoalStateEngine,
+	}
+	goalStateDriver.cfg.normalize()
+
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+
+	jobEnt := &jobEntity{
+		id:     jobID,
+		driver: goalStateDriver,
+	}
+
+	jobFactory.EXPECT().
+		AddJob(jobID).
+		Return(cachedJob)
+
+	cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{}, nil)
+
+	cachedJob.EXPECT().
+		Update(gomock.Any(), &job.JobInfo{
+			Runtime: &job.RuntimeInfo{State: job.JobState_INITIALIZED},
+		}, nil, cached.UpdateCacheAndDB).
+		Return(nil)
+
+	jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any())
+
+	err := JobRecover(context.Background(), jobEnt)
+	assert.NoError(t, err)
+}
+
+func TestJobRecoverActionFailToRecover(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
+	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
+
+	taskMap := make(map[uint32]cached.Task)
+	taskMap[0] = cachedTask
+
+	goalStateDriver := &driver{
+		jobFactory: jobFactory,
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
+		jobEngine:  jobGoalStateEngine,
+		taskEngine: taskGoalStateEngine,
+	}
+	goalStateDriver.cfg.normalize()
+
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+
+	jobEnt := &jobEntity{
+		id:     jobID,
+		driver: goalStateDriver,
+	}
+
+	jobFactory.EXPECT().
+		AddJob(jobID).
+		Return(cachedJob)
+
+	cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{}, yarpcerrors.NotFoundErrorf("config not found"))
+
+	jobFactory.EXPECT().
+		GetJob(jobID).
+		Return(cachedJob)
+
+	cachedJob.EXPECT().
+		GetAllTasks().
+		Return(taskMap)
+
+	taskGoalStateEngine.EXPECT().
+		Delete(gomock.Any()).
+		Return()
+
+	jobGoalStateEngine.EXPECT().
+		Delete(gomock.Any()).
+		Return()
+
+	jobFactory.EXPECT().
+		ClearJob(jobID).Return()
+
+	err := JobRecover(context.Background(), jobEnt)
 	assert.NoError(t, err)
 }

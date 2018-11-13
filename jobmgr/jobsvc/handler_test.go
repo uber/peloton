@@ -285,8 +285,6 @@ func (suite *JobHandlerTestSuite) TestCreateJob_InternalError() {
 	// simulate cachedjob create failure
 	suite.mockedCachedJob.EXPECT().Create(gomock.Any(), jobConfig, gomock.Any(), "peloton").
 		Return(errors.New("random error"))
-	suite.mockedJobFactory.EXPECT().ClearJob(suite.testJobID)
-	suite.mockedJobStore.EXPECT().DeleteJob(gomock.Any(), suite.testJobID)
 
 	resp, err := suite.handler.Create(suite.context, req)
 	suite.NoError(err)

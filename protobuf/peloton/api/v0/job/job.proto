@@ -152,6 +152,9 @@ enum JobState {
 
   // All tasks in the job have been requested to be killed by the user.
   KILLING = 7;
+
+  // The job is partially created and is not ready to be scheduled
+  UNINITIALIZED = 8;
 }
 
 

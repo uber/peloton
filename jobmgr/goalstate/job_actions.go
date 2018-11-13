@@ -4,9 +4,13 @@ import (
 	"context"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+
 	"code.uber.internal/infra/peloton/common/goalstate"
+	"code.uber.internal/infra/peloton/jobmgr/cached"
 
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // JobEnqueue enqueues the job back into the goal state engine.
@@ -62,4 +66,38 @@ func JobStateInvalid(ctx context.Context, entity goalstate.Entity) error {
 	}).Error("unexpected job state")
 	goalStateDriver.mtx.jobMetrics.JobInvalidState.Inc(1)
 	return nil
+}
+
+// JobRecover tries to recover a partially created job.
+// If job is not recoverable, it would untrack the job
+func JobRecover(ctx context.Context, entity goalstate.Entity) error {
+	jobEnt := entity.(*jobEntity)
+	goalStateDriver := jobEnt.driver
+	cachedJob := goalStateDriver.jobFactory.AddJob(jobEnt.id)
+
+	_, err := cachedJob.GetConfig(ctx)
+	// config exists, it means the job is created, move the state to initialized
+	if err == nil {
+		log.WithFields(log.Fields{
+			"job_id": jobEnt.GetID(),
+		}).Info("job config is found and job is recoverable")
+
+		if err := cachedJob.Update(ctx, &job.JobInfo{
+			Runtime: &job.RuntimeInfo{State: job.JobState_INITIALIZED},
+		}, nil, cached.UpdateCacheAndDB); err != nil {
+			return err
+		}
+		goalStateDriver.EnqueueJob(jobEnt.id, time.Now())
+		return nil
+	}
+
+	// config is not created, job cannot be recovered.
+	if yarpcerrors.IsNotFound(err) {
+		log.WithFields(log.Fields{
+			"job_id": jobEnt.GetID(),
+		}).Info("job is not recoverable due to missing config")
+		return JobUntrack(ctx, entity)
+	}
+
+	return err
 }
