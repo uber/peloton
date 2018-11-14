@@ -1,6 +1,7 @@
 package main
 
 import (
+	"code.uber.internal/infra/peloton/util"
 	"fmt"
 	"math"
 	"os"
@@ -56,6 +57,14 @@ var (
 		Default("http://localhost:5291").
 		Envar("HOSTMGR_URL").
 		URL()
+
+	clusterName = app.Flag(
+		"clusterName",
+		"name of the cluster you want to connect to."+
+			"e.g pit1-preprod01").
+		Short('e').
+		Envar("CLUSTER_NAME").
+		String()
 
 	zkServers = app.Flag(
 		"zkservers",
@@ -453,6 +462,23 @@ func main() {
 	cmd := kingpin.MustParse(app.Parse(os.Args[1:]))
 	var err error
 
+	if len(*clusterName) > 0 {
+		var zkInfo string
+		zkInfo, err = pc.GetZkInfoFromClusterName(*clusterName)
+		if err != nil {
+			app.FatalIfError(err, "Fail to get zk info for this cluster")
+		}
+		zkInfoSlice := strings.Split(zkInfo, ",")
+		// if user provides both cluster name and zk info, check whether the information matches
+		if len(*zkServers) > 0 {
+			for _, a := range *zkServers {
+				if !util.Contains(zkInfoSlice, a) {
+					app.Fatalf("zk info of cluster %s mismatch with provided zk server %s, please correct/remove the cluster name or zk server", *clusterName, a)
+				}
+			}
+		}
+		zkServers = &zkInfoSlice
+	}
 	var discovery leader.Discovery
 	if len(*zkServers) > 0 {
 		discovery, err = leader.NewZkServiceDiscovery(*zkServers, *zkRoot)
