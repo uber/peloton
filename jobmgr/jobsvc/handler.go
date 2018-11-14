@@ -141,7 +141,7 @@ func (h *serviceHandler) Create(
 	log.WithField("config", jobConfig).Infof("JobManager.Create called")
 
 	// Validate job config with default task configs
-	err = jobconfig.ValidateTaskConfig(jobConfig, h.jobSvcCfg.MaxTasksPerJob)
+	err = jobconfig.ValidateConfig(jobConfig, h.jobSvcCfg.MaxTasksPerJob)
 	if err != nil {
 		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{
@@ -263,7 +263,7 @@ func (h *serviceHandler) Update(
 	err = jobconfig.ValidateUpdatedConfig(oldConfig, newConfig, h.jobSvcCfg.MaxTasksPerJob)
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
-		return nil, err
+		return nil, yarpcerrors.InvalidArgumentErrorf(err.Error())
 	}
 
 	if err = h.handleUpdateSecrets(ctx, jobID, existingSecretVolumes, newConfig,

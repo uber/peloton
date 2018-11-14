@@ -11,7 +11,6 @@ import (
 	"code.uber.internal/infra/peloton/common/taskconfig"
 
 	"github.com/hashicorp/go-multierror"
-	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -39,8 +38,12 @@ var (
 		"Task preemption policy should be false for stateless job")
 	errIncorrectHealthCheck = errors.New(
 		"Batch job task should not set health check ")
-	errIncorrectRevocableSLA = yarpcerrors.InvalidArgumentErrorf(
+	errIncorrectRevocableSLA = errors.New(
 		"revocable job must be preemptible")
+	errInvalidPreemptionOverride = errors.New(
+		"can't override the preemption policy of a task" +
+			" which is going to be a part of a gang having tasks with" +
+			" a different preemption policy")
 
 	_jobTypeTaskValidate = map[job.JobType]func(*task.TaskConfig) error{
 		job.JobType_BATCH:   validateBatchTaskConfig,
@@ -53,10 +56,13 @@ var (
 	}
 )
 
-// ValidateTaskConfig checks whether the task configs in a job config
-// is missing or not, also validates port configs.
-func ValidateTaskConfig(jobConfig *job.JobConfig, maxTasksPerJob uint32) error {
-	return validateTaskConfigWithRange(jobConfig, maxTasksPerJob, 0, jobConfig.InstanceCount)
+// ValidateConfig validates the job and instance specific configs
+func ValidateConfig(jobConfig *job.JobConfig, maxTasksPerJob uint32) error {
+	return validateTaskConfigWithRange(
+		jobConfig,
+		maxTasksPerJob,
+		0, jobConfig.InstanceCount,
+	)
 }
 
 // ValidateUpdatedConfig validates the changes in the new config
@@ -122,12 +128,11 @@ func ValidateUpdatedConfig(oldConfig *job.JobConfig,
 	}
 
 	// validate the task configs of new instances
-	err := validateTaskConfigWithRange(newConfig,
+	if err := validateTaskConfigWithRange(newConfig,
 		maxTasksPerJob,
 		oldConfig.InstanceCount,
-		newConfig.InstanceCount)
-	if err != nil {
-		errs = multierror.Append(err)
+		newConfig.InstanceCount); err != nil {
+		errs = multierror.Append(errs, err)
 	}
 
 	return errs.ErrorOrNil()
@@ -135,7 +140,20 @@ func ValidateUpdatedConfig(oldConfig *job.JobConfig,
 
 // validateTaskConfigWithRange validates jobConfig with instancesNumber within [from, to)
 func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32, from uint32, to uint32) error {
-	// Check if each instance has a default or instance-specific config
+
+	// validate job type
+	jobType := jobConfig.GetType()
+	validator, ok := _jobTypeJobValidate[jobType]
+	if !ok {
+		return fmt.Errorf("invalid job type: %v", jobType)
+	}
+
+	// validate job config based on type
+	if err := validator(jobConfig); err != nil {
+		return err
+	}
+
+	// validate ports
 	defaultConfig := jobConfig.GetDefaultConfig()
 	if err := validatePortConfig(defaultConfig.GetPorts()); err != nil {
 		return err
@@ -156,11 +174,7 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 		return err
 	}
 
-	jobType := jobConfig.GetType()
-	if err := _jobTypeJobValidate[jobType](jobConfig); err != nil {
-		return err
-	}
-
+	// validate task config
 	for i := from; i < to; i++ {
 		taskConfig := taskconfig.Merge(
 			defaultConfig, jobConfig.GetInstanceConfig()[i])
@@ -186,24 +200,24 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 			restartPolicy.MaxFailures = _maxTaskRetries
 		}
 
-		// Validate port config
 		if err := validatePortConfig(taskConfig.GetPorts()); err != nil {
-			return instanceConfigErrorGenerate(i, err)
+			return errInvalidTaskConfig(i, err)
 		}
 
-		// Validate command info
 		if taskConfig.GetCommand() == nil {
-			err := fmt.Errorf("missing command info for instance %v", i)
-			return err
+			return fmt.Errorf("missing command info for instance %v", i)
 		}
 
 		if taskConfig.GetController() && i != 0 {
-			err := fmt.Errorf("only task 0 can be controller task")
-			return err
+			return fmt.Errorf("only task 0 can be controller task")
 		}
 
 		if err := _jobTypeTaskValidate[jobType](taskConfig); err != nil {
-			return instanceConfigErrorGenerate(i, err)
+			return errInvalidTaskConfig(i, err)
+		}
+
+		if err := validatePreemptionPolicy(i, taskConfig, jobConfig); err != nil {
+			return errInvalidTaskConfig(i, err)
 		}
 	}
 
@@ -223,9 +237,38 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 	return nil
 }
 
-func instanceConfigErrorGenerate(instanceID uint32, err error) error {
+func errInvalidTaskConfig(instanceID uint32, err error) error {
 	return fmt.Errorf(
 		"Invalid config for instance %v, %v", instanceID, err)
+}
+
+// validatePreemptionPolicy validates the tasks preemption policy override
+func validatePreemptionPolicy(instanceID uint32, taskConfig *task.TaskConfig,
+	jobConfig *job.JobConfig) error {
+
+	var taskPreemptible bool
+	switch taskConfig.GetPreemptionPolicy().GetType() {
+	case task.PreemptionPolicy_TYPE_INVALID:
+		// nothing to do
+		return nil
+	case task.PreemptionPolicy_TYPE_PREEMPTIBLE:
+		taskPreemptible = true
+	case task.PreemptionPolicy_TYPE_NON_PREEMPTIBLE:
+		taskPreemptible = false
+	}
+
+	jobPreemptible := jobConfig.GetSLA().GetPreemptible()
+
+	if taskPreemptible != jobPreemptible {
+		// Override is only valid if the task's instance id is more than
+		// the job's minimum running instances.
+		// Otherwise we can end up with a gang which has both preemptible
+		// and non-preemptible tasks.
+		if instanceID < jobConfig.GetSLA().GetMinimumRunningInstances() {
+			return errInvalidPreemptionOverride
+		}
+	}
+	return nil
 }
 
 // validatePortConfig checks port name and port env name exists for dynamic port.

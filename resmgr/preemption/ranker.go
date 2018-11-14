@@ -24,7 +24,10 @@ var taskStatesPreemptionOrder = []task.TaskState{
 // ranker sorts revocable tasks first for eviction to satisfy slackResourcesToFree and
 // then sort non-revocable tasks to satisfy nonSlackResourcesToFree
 type ranker interface {
-	GetTasksToEvict(respoolID string, slackResourcesToFree, nonSlackResourcesToFree *scalar.Resources) []*rm_task.RMTask
+	GetTasksToEvict(
+		respoolID string,
+		slackResourcesToFree,
+		nonSlackResourcesToFree *scalar.Resources) []*rm_task.RMTask
 }
 
 // statePriorityRuntimeRanker sorts the tasks in the following order
@@ -69,7 +72,7 @@ func (r *statePriorityRuntimeRanker) GetTasksToEvict(
 	return append(revocableTasksToEvict, nonRevocTasksToEvict...)
 }
 
-// rankAllRevocableTasks retuns a ranked list of revocable tasks
+// rankAllRevocableTasks returns a ranked list of revocable tasks
 // in which order they will be preempted to free up slack resources
 func (r *statePriorityRuntimeRanker) rankAllRevocableTasks(
 	stateTaskMap map[string][]*rm_task.RMTask) []*rm_task.RMTask {

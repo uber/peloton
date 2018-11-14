@@ -128,7 +128,7 @@ enum WorkflowState {
   // Invalid protobuf value
   WORKFLOW_STATE_INVALID = 0;
 
-  // The operaton has been created but not started yet.
+  // The operation has been created but not started yet.
   WORKFLOW_STATE_INITIALIZED = 1;
 
   // The workflow is rolling forward
@@ -143,7 +143,7 @@ enum WorkflowState {
   // The update was aborted/cancelled
   WORKFLOW_STATE_ABORTED = 5;
 
-  // The workflows has failed to complete.
+  // The workflow has failed to complete.
   WORKFLOW_STATE_FAILED = 6;
 
   // The update is rolling backward

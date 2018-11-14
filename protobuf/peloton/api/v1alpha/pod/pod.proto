@@ -168,7 +168,7 @@ message RestartPolicy {
 
 // Preemption policy for a pod
 message PreemptionPolicy {
-  // This polciy defines if the pod should be restarted after it is
+  // This policy defines if the pod should be restarted after it is
   // preempted. If set to true the pod will not be rescheduled
   // after it is preempted. If set to false the pod will be rescheduled.
   // Defaults to false
@@ -245,10 +245,10 @@ message PodSpec {
   // Persistent volume config of the pod.
   PersistentVolumeSpec volume = 7;
 
-  // Preemtion policy of the pod
+  // Preemption policy of the pod
   PreemptionPolicy preemption_policy = 8;
 
-  // Whether this is a controler pod. A controller is a special batch pod
+  // Whether this is a controller pod. A controller is a special batch pod
   // which controls other pods inside a job. E.g. spark driver pods in a spark
   // job will be a controller pod.
   bool controller = 9;

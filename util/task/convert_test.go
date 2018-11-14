@@ -153,3 +153,102 @@ func TestConvertToResMgrGangs(t *testing.T) {
 
 	assert.Len(t, gangs, 3)
 }
+
+func TestConvertTaskToResMgrTaskPreemptible(t *testing.T) {
+	tt := []struct {
+		name        string
+		taskInfo    *task.TaskInfo
+		jobConfig   *job.JobConfig
+		preemptible bool
+	}{
+		{
+			name: "no override should use job value: false",
+			taskInfo: &task.TaskInfo{
+				Config: &task.TaskConfig{
+					PreemptionPolicy: &task.PreemptionPolicy{
+						Type: task.PreemptionPolicy_TYPE_INVALID,
+					},
+				},
+			},
+			jobConfig: &job.JobConfig{
+				SLA: &job.SlaConfig{Preemptible: false},
+			},
+			preemptible: false,
+		},
+		{
+			name: "no override should use job value: true",
+			taskInfo: &task.TaskInfo{
+				Config: &task.TaskConfig{
+					PreemptionPolicy: &task.PreemptionPolicy{
+						Type: task.PreemptionPolicy_TYPE_INVALID,
+					},
+				},
+			},
+			jobConfig: &job.JobConfig{
+				SLA: &job.SlaConfig{Preemptible: true},
+			},
+			preemptible: true,
+		},
+		{
+			name: "same override should use job value: true",
+			taskInfo: &task.TaskInfo{
+				Config: &task.TaskConfig{
+					PreemptionPolicy: &task.PreemptionPolicy{
+						Type: task.PreemptionPolicy_TYPE_PREEMPTIBLE,
+					},
+				},
+			},
+			jobConfig: &job.JobConfig{
+				SLA: &job.SlaConfig{Preemptible: true},
+			},
+			preemptible: true,
+		},
+		{
+			name: "task override should use task value: true",
+			taskInfo: &task.TaskInfo{
+				Config: &task.TaskConfig{
+					PreemptionPolicy: &task.PreemptionPolicy{
+						Type: task.PreemptionPolicy_TYPE_PREEMPTIBLE,
+					},
+				},
+			},
+			jobConfig: &job.JobConfig{
+				SLA: &job.SlaConfig{Preemptible: false},
+			},
+			preemptible: true,
+		},
+		{
+			name: "same override should use job value: false",
+			taskInfo: &task.TaskInfo{
+				Config: &task.TaskConfig{
+					PreemptionPolicy: &task.PreemptionPolicy{
+						Type: task.PreemptionPolicy_TYPE_NON_PREEMPTIBLE,
+					},
+				},
+			},
+			jobConfig: &job.JobConfig{
+				SLA: &job.SlaConfig{Preemptible: false},
+			},
+			preemptible: false,
+		},
+		{
+			name: "task override should use task value: false",
+			taskInfo: &task.TaskInfo{
+				Config: &task.TaskConfig{
+					PreemptionPolicy: &task.PreemptionPolicy{
+						Type: task.PreemptionPolicy_TYPE_NON_PREEMPTIBLE,
+					},
+				},
+			},
+			jobConfig: &job.JobConfig{
+				SLA: &job.SlaConfig{Preemptible: true},
+			},
+			preemptible: false,
+		},
+	}
+
+	for _, test := range tt {
+		r := ConvertTaskToResMgrTask(test.taskInfo, test.jobConfig)
+		assert.Equal(t, test.preemptible, r.Preemptible, test.name)
+	}
+}

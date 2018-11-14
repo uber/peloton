@@ -6,15 +6,15 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/suite"
-	"gopkg.in/yaml.v2"
-
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"code.uber.internal/infra/peloton/util"
+
+	"github.com/stretchr/testify/assert"
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -29,25 +29,7 @@ const (
 	invalidNewConfigWithouDefaultCmd = "testdata/invalid_new_config_without_cmd.yaml"
 )
 
-type TaskConfigTestSuite struct {
-	suite.Suite
-	jobID *peloton.JobID
-}
-
-func (suite *TaskConfigTestSuite) SetupTest() {
-	suite.jobID = &peloton.JobID{
-		Value: "4d8ef238-3747-11e7-a919-92ebcb67fe33",
-	}
-}
-
-func (suite *TaskConfigTestSuite) TearDownTest() {
-}
-
-func TestJobManagerTaskConfig(t *testing.T) {
-	suite.Run(t, new(TaskConfigTestSuite))
-}
-
-func (suite *TaskConfigTestSuite) TestValidateTaskConfigSuccess() {
+func TestValidateTaskConfigSuccess(t *testing.T) {
 	// No error if there is a default task config
 	taskConfig := task.TaskConfig{
 		Resource: &task.ResourceConfig{
@@ -72,8 +54,8 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigSuccess() {
 		DefaultConfig: &taskConfig,
 	}
 
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
-	suite.NoError(err)
+	err := ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.NoError(t, err)
 
 	// No error if all instance configs exist
 	instances := make(map[uint32]*task.TaskConfig)
@@ -85,11 +67,11 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigSuccess() {
 		InstanceCount:  10,
 		InstanceConfig: instances,
 	}
-	err = ValidateTaskConfig(&jobConfig, maxTasksPerJob)
-	suite.NoError(err)
+	err = ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.NoError(t, err)
 }
 
-func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailure() {
+func TestValidateTaskConfigFailure(t *testing.T) {
 	// Error if there is any instance config is missing
 	taskConfig := task.TaskConfig{
 		Resource: &task.ResourceConfig{
@@ -108,20 +90,20 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailure() {
 		InstanceCount:  20,
 		InstanceConfig: instances,
 	}
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
-	suite.Error(err)
+	err := ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.Error(t, err)
 }
 
-func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMaxTasksPerJob() {
+func TestValidateTaskConfigFailureMaxTasksPerJob(t *testing.T) {
 	jobConfig := job.JobConfig{
 		Name:          fmt.Sprintf("TestJob_1"),
 		InstanceCount: maxTasksPerJob + 1,
 	}
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
-	suite.Error(err)
+	err := ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.Error(t, err)
 }
 
-func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailurebStateless() {
+func TestValidateTaskConfigFailureStateless(t *testing.T) {
 	jobConfig := job.JobConfig{
 		Name:          fmt.Sprintf("TestJob_1"),
 		Type:          job.JobType_SERVICE,
@@ -131,11 +113,11 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailurebStateless() {
 			MaxRunningTime: 1,
 		},
 	}
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
-	suite.Error(err)
+	err := ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.Error(t, err)
 }
 
-func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureBatch() {
+func TestValidateTaskConfigFailureBatch(t *testing.T) {
 	jobConfig := job.JobConfig{
 		Name:          fmt.Sprintf("TestJob_1"),
 		InstanceCount: 10,
@@ -148,11 +130,13 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureBatch() {
 			},
 		},
 	}
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
-	suite.Error(err)
+	err := ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.Error(t, err)
+	assert.EqualError(t, err, "Invalid config for instance 0, "+
+		"Batch job task should not set health check ")
 }
 
-func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMaxInstances() {
+func TestValidateTaskConfigFailureMaxInstances(t *testing.T) {
 	// No error if there is a default task config
 	taskConfig := task.TaskConfig{
 		Resource: &task.ResourceConfig{
@@ -184,11 +168,12 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMaxInstances() {
 		DefaultConfig: &taskConfig,
 	}
 
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
-	suite.Error(err)
+	err := ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.Error(t, err)
+	assert.EqualError(t, err, errMaxInstancesTooBig.Error())
 }
 
-func (suite *TaskConfigTestSuite) TestValidateTaskConfigMaxFailureRetries() {
+func TestValidateTaskConfigMaxFailureRetries(t *testing.T) {
 	// No error if there is a default task config
 	taskConfig := task.TaskConfig{
 		Resource: &task.ResourceConfig{
@@ -217,10 +202,18 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigMaxFailureRetries() {
 		DefaultConfig: &taskConfig,
 	}
 
-	suite.Equal(int(jobConfig.GetDefaultConfig().GetRestartPolicy().GetMaxFailures()), 200)
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
-	suite.Equal(int(jobConfig.GetDefaultConfig().GetRestartPolicy().GetMaxFailures()), 100)
-	suite.NoError(err)
+	assert.Equal(
+		t,
+		int(jobConfig.GetDefaultConfig().GetRestartPolicy().GetMaxFailures()),
+		200,
+	)
+	err := ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.Equal(
+		t,
+		int(jobConfig.GetDefaultConfig().GetRestartPolicy().GetMaxFailures()),
+		100,
+	)
+	assert.NoError(t, err)
 
 	taskConfig = task.TaskConfig{
 		Resource: &task.ResourceConfig{
@@ -280,16 +273,32 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigMaxFailureRetries() {
 	}
 
 	// resets max task retry failures to 10.
-	suite.Equal(int(jobConfig.GetInstanceConfig()[0].GetRestartPolicy().GetMaxFailures()), 200)
-	suite.Equal(int(jobConfig.GetInstanceConfig()[5].GetRestartPolicy().GetMaxFailures()), 5)
+	assert.Equal(
+		t,
+		int(jobConfig.GetInstanceConfig()[0].GetRestartPolicy().GetMaxFailures()),
+		200,
+	)
+	assert.Equal(
+		t,
+		int(jobConfig.GetInstanceConfig()[5].GetRestartPolicy().GetMaxFailures()),
+		5,
+	)
 
-	err = ValidateTaskConfig(&jobConfig, maxTasksPerJob)
-	suite.Equal(int(jobConfig.GetInstanceConfig()[0].GetRestartPolicy().GetMaxFailures()), _maxTaskRetries)
-	suite.Equal(int(jobConfig.GetInstanceConfig()[5].GetRestartPolicy().GetMaxFailures()), 5)
-	suite.NoError(err)
+	err = ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.Equal(
+		t,
+		int(jobConfig.GetInstanceConfig()[0].GetRestartPolicy().GetMaxFailures()),
+		_maxTaskRetries,
+	)
+	assert.Equal(
+		t,
+		int(jobConfig.GetInstanceConfig()[5].GetRestartPolicy().GetMaxFailures()),
+		5,
+	)
+	assert.NoError(t, err)
 }
 
-func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMinInstances() {
+func TestValidateTaskConfigFailureMinInstances(t *testing.T) {
 	// No error if there is a default task config
 	taskConfig := task.TaskConfig{
 		Resource: &task.ResourceConfig{
@@ -321,11 +330,12 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMinInstances() {
 		DefaultConfig: &taskConfig,
 	}
 
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
-	suite.Error(err)
+	err := ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.Error(t, err)
+	assert.EqualError(t, err, errMinInstancesTooBig.Error())
 }
 
-func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureForPortConfig() {
+func TestValidateTaskConfigFailureForPortConfig(t *testing.T) {
 	taskConfig := task.TaskConfig{
 		Resource: &task.ResourceConfig{
 			CpuLimit:    0.8,
@@ -345,11 +355,12 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureForPortConfig() {
 		DefaultConfig: &taskConfig,
 	}
 
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
-	suite.Error(err)
+	err := ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.Error(t, err)
+	assert.EqualError(t, err, errPortEnvNameMissing.Error())
 }
 
-func (suite *TaskConfigTestSuite) TestValidatePortConfigFailure() {
+func TestValidatePortConfigFailure(t *testing.T) {
 	portConfigs := []*task.PortConfig{
 		{
 			Value: uint32(80),
@@ -357,10 +368,10 @@ func (suite *TaskConfigTestSuite) TestValidatePortConfigFailure() {
 	}
 
 	err := validatePortConfig(portConfigs)
-	suite.Error(err)
+	assert.Error(t, err, errPortNameMissing.Error())
 }
 
-func (suite *TaskConfigTestSuite) TestValidateTaskConfigWithInvalidFieldType() {
+func TestValidateTaskConfigWithInvalidFieldType(t *testing.T) {
 	// Validates task config field type is string/ptr/slice/bool, otherwise
 	// we cannot distinguish between unset value and default value through
 	// reflection.
@@ -368,57 +379,79 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigWithInvalidFieldType() {
 	val := reflect.ValueOf(taskConfig).Elem()
 	for i := 0; i < val.NumField(); i++ {
 		kind := val.Field(i).Kind()
-		suite.True(kind == reflect.String || kind == reflect.
-			Ptr || kind == reflect.Slice || kind == reflect.
-			Bool || kind == reflect.Uint32)
+		assert.True(t,
+			kind == reflect.String || kind == reflect.
+				Ptr || kind == reflect.Slice || kind == reflect.
+				Bool || kind == reflect.Uint32)
 	}
 }
 
-func (suite *TaskConfigTestSuite) TestValidateInvalidUpdateConfig() {
-	oldConfig := getConfig(oldConfig, suite.Suite)
-	invalidNewConfig := getConfig(invalidNewConfig, suite.Suite)
+func TestValidateInvalidUpdateConfig(t *testing.T) {
+	oldConfig := getConfig(oldConfig, t)
+
+	invalidNewConfig := getConfig(invalidNewConfig, t)
+	invalidNewConfig.RespoolID = &peloton.ResourcePoolID{Value: "different"}
+	invalidNewConfig.Type = job.JobType_SERVICE
+
 	err := ValidateUpdatedConfig(oldConfig, invalidNewConfig, maxTasksPerJob)
-	suite.Error(err)
-	expectedErrors := `7 errors occurred:
+	assert.Error(t, err)
+	expectedErrors := `9 errors occurred:
 
 * updating Name not supported
 * updating Labels not supported
 * updating OwningTeam not supported
+* updating RespoolID not supported
+* updating Type not supported
 * updating LdapGroups not supported
 * updating DefaultConfig not supported
 * new instance count can't be less
 * existing instance config can't be updated`
-	suite.Equal(err.Error(), expectedErrors)
+	assert.Equal(t, err.Error(), expectedErrors)
 }
 
-func (suite *TaskConfigTestSuite) TestValidateValidUpdateConfig() {
-	oldConfig := getConfig(oldConfig, suite.Suite)
-	validNewConfig := getConfig(newConfig, suite.Suite)
+func TestValidateValidUpdateConfig(t *testing.T) {
+	oldConfig := getConfig(oldConfig, t)
+	validNewConfig := getConfig(newConfig, t)
 	err := ValidateUpdatedConfig(oldConfig, validNewConfig, maxTasksPerJob)
-	suite.NoError(err)
+	assert.NoError(t, err)
 }
 
-func (suite *TaskConfigTestSuite) TestValdiateInvalidUpdateConfigWithoutCmd() {
-	oldConfig := getConfig(oldConfigWithoutDefaultCmd, suite.Suite)
-	invalidNewConfig := getConfig(invalidNewConfigWithouDefaultCmd, suite.Suite)
+func TestValidateInvalidUpdateConfigWithoutCmd(t *testing.T) {
+	oldConfig := getConfig(oldConfigWithoutDefaultCmd, t)
+	invalidNewConfig := getConfig(invalidNewConfigWithouDefaultCmd, t)
 	err := ValidateUpdatedConfig(oldConfig, invalidNewConfig, maxTasksPerJob)
-	suite.Error(err)
+	assert.Error(t, err)
 	expectedErrors := `1 error occurred:
 
 * missing command info for instance 3`
-	suite.Equal(err.Error(), expectedErrors)
+	assert.Equal(t, err.Error(), expectedErrors)
 }
 
-func getConfig(config string, suite suite.Suite) *job.JobConfig {
+func TestValidateInvalidUpdateConfigJobType(t *testing.T) {
+	oldConfig := getConfig(oldConfig, t)
+
+	invalidNewConfig := getConfig(newConfig, t)
+	invalidNewConfig.Type = job.JobType_DAEMON
+
+	err := ValidateUpdatedConfig(oldConfig, invalidNewConfig, maxTasksPerJob)
+	assert.Error(t, err)
+	expectedErrors := `2 errors occurred:
+
+* updating Type not supported
+* invalid job type: DAEMON`
+	assert.Equal(t, err.Error(), expectedErrors)
+}
+
+func getConfig(config string, t *testing.T) *job.JobConfig {
 	var jobConfig job.JobConfig
 	buffer, err := ioutil.ReadFile(config)
-	suite.NoError(err)
+	assert.NoError(t, err)
 	err = yaml.Unmarshal(buffer, &jobConfig)
-	suite.NoError(err)
+	assert.NoError(t, err)
 	return &jobConfig
 }
 
-func (suite *TaskConfigTestSuite) TestValidateStatelessJobConfig() {
+func TestValidateStatelessJobConfig(t *testing.T) {
 	testMap := map[job.SlaConfig]error{
 		{
 			MaximumRunningInstances: 1,
@@ -443,12 +476,12 @@ func (suite *TaskConfigTestSuite) TestValidateStatelessJobConfig() {
 			SLA:           &slaConfig,
 		}
 		err := validateStatelessJobConfig(&jobConfig)
-		suite.Equal(err, errExp)
+		assert.Equal(t, err, errExp)
 	}
 
 }
 
-func (suite *TaskConfigTestSuite) TestValidateStatelessTaskConfig() {
+func TestValidateStatelessTaskConfig(t *testing.T) {
 	testMap := map[task.PreemptionPolicy]error{
 		{
 			KillOnPreempt: true,
@@ -462,11 +495,11 @@ func (suite *TaskConfigTestSuite) TestValidateStatelessTaskConfig() {
 			PreemptionPolicy: &pp,
 		}
 		err := validateStatelessTaskConfig(&taskConfig)
-		suite.Equal(err, errExp)
+		assert.Equal(t, err, errExp)
 	}
 }
 
-func (suite *TaskConfigTestSuite) TestValidateBatchTaskConfig() {
+func TestValidateBatchTaskConfig(t *testing.T) {
 	testMap := map[task.HealthCheckConfig]error{
 		{
 			Enabled: true,
@@ -477,23 +510,109 @@ func (suite *TaskConfigTestSuite) TestValidateBatchTaskConfig() {
 			HealthCheck: &hc,
 		}
 		err := validateBatchTaskConfig(&taskConfig)
-		suite.Equal(err, errExp)
+		assert.Equal(t, err, errExp)
 	}
 }
 
-func TestValidateTaskConfigFailureStateless(t *testing.T) {
-	jobConfig := job.JobConfig{
-		Name:          fmt.Sprintf("TestJob_1"),
-		InstanceCount: 10,
-		DefaultConfig: &task.TaskConfig{
-			HealthCheck: &task.HealthCheckConfig{
-				Enabled: true,
+func TestValidatePreemptionPolicy(t *testing.T) {
+	tt := []struct {
+		name       string
+		taskConfig *task.TaskConfig
+		jobConfig  *job.JobConfig
+		instanceID uint32
+		wantErr    error
+	}{
+		{
+			name: "preemption policy unknown should pass",
+			taskConfig: &task.TaskConfig{
+				PreemptionPolicy: &task.PreemptionPolicy{
+					Type: task.PreemptionPolicy_TYPE_INVALID,
+				},
 			},
-			Command: &mesos.CommandInfo{
-				Value: util.PtrPrintf("echo Hello"),
+			jobConfig:  nil,
+			instanceID: 0,
+			wantErr:    nil,
+		},
+		{
+			name: "preemption policy override if same within min instance" +
+				" count should pass",
+			taskConfig: &task.TaskConfig{
+				PreemptionPolicy: &task.PreemptionPolicy{
+					Type: task.PreemptionPolicy_TYPE_PREEMPTIBLE,
+				},
 			},
+			jobConfig: &job.JobConfig{
+				SLA: &job.SlaConfig{
+					Preemptible:             true,
+					MinimumRunningInstances: 10,
+				},
+			},
+			instanceID: 0,
+			wantErr:    nil,
+		},
+		{
+			name: "preemption policy override if different but greater than" +
+				" min instance count should pass",
+			taskConfig: &task.TaskConfig{
+				PreemptionPolicy: &task.PreemptionPolicy{
+					Type: task.PreemptionPolicy_TYPE_PREEMPTIBLE,
+				},
+			},
+			jobConfig: &job.JobConfig{
+				SLA: &job.SlaConfig{
+					Preemptible:             false,
+					MinimumRunningInstances: 10,
+				},
+			},
+			instanceID: 11,
+			wantErr:    nil,
+		},
+		{
+			name: "preemption policy override if different but less than" +
+				" min instance count should pass",
+			taskConfig: &task.TaskConfig{
+				PreemptionPolicy: &task.PreemptionPolicy{
+					Type: task.PreemptionPolicy_TYPE_PREEMPTIBLE,
+				},
+			},
+			jobConfig: &job.JobConfig{
+				SLA: &job.SlaConfig{
+					Preemptible:             false,
+					MinimumRunningInstances: 10,
+				},
+			},
+			instanceID: 5,
+			wantErr:    errInvalidPreemptionOverride,
+		},
+		{
+			name: "preemption policy override if different but less than" +
+				" min instance count should pass",
+			taskConfig: &task.TaskConfig{
+				PreemptionPolicy: &task.PreemptionPolicy{
+					Type: task.PreemptionPolicy_TYPE_NON_PREEMPTIBLE,
+				},
+			},
+			jobConfig: &job.JobConfig{
+				SLA: &job.SlaConfig{
+					Preemptible:             true,
+					MinimumRunningInstances: 10,
+				},
+			},
+			instanceID: 5,
+			wantErr:    errInvalidPreemptionOverride,
 		},
 	}
-	ValidateTaskConfig(&jobConfig, maxTasksPerJob)
-	//suite.Error(err)
+
+	for _, test := range tt {
+		err := validatePreemptionPolicy(
+			test.instanceID,
+			test.taskConfig,
+			test.jobConfig,
+		)
+		if test.wantErr == nil {
+			assert.Nil(t, err, test.name)
+			continue
+		}
+		assert.EqualError(t, test.wantErr, err.Error(), test.name)
+	}
 }

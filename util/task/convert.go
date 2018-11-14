@@ -79,12 +79,24 @@ func ConvertTaskToResMgrTask(
 		}
 	}
 
+	// checking if preemption policy is overridden at task level
+	var preemptible bool
+	switch taskInfo.GetConfig().GetPreemptionPolicy().GetType() {
+	case task.PreemptionPolicy_TYPE_PREEMPTIBLE:
+		preemptible = true
+	case task.PreemptionPolicy_TYPE_NON_PREEMPTIBLE:
+		preemptible = false
+	default:
+		// default to the policy at job level
+		preemptible = slaConfig.GetPreemptible()
+	}
+
 	resmgrTask := &resmgr.Task{
 		Id:           taskID,
 		JobId:        taskInfo.GetJobId(),
 		TaskId:       taskInfo.GetRuntime().GetMesosTaskId(),
 		Name:         taskInfo.GetConfig().GetName(),
-		Preemptible:  slaConfig.GetPreemptible(),
+		Preemptible:  preemptible,
 		Priority:     slaConfig.GetPriority(),
 		MinInstances: minInstances,
 		Resource:     taskInfo.GetConfig().GetResource(),

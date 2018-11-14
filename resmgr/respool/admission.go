@@ -414,6 +414,7 @@ func isController(gang *resmgrsvc.Gang) bool {
 		return false
 	}
 
+	// controller gang has only 1 task
 	return tasks[0].GetController()
 }
 
@@ -425,7 +426,8 @@ func isPreemptible(gang *resmgrsvc.Gang) bool {
 		return false
 	}
 
-	// Preemption is defined at the Job level, so we can check just one task
+	// A gang is homogeneous w.r.t preemption policy so we can look at
+	// just one task
 	return tasks[0].Preemptible
 }
 

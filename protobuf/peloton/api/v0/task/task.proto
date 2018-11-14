@@ -198,10 +198,26 @@ message RestartPolicy {
  * Preemption policy for a task
  */
 message PreemptionPolicy {
-  // This polciy defines if the task should be restarted after it is
+  /**
+   * Type represents whether the instance is preemptible. If so, it might
+   * be scheduled using elastic resources from other resource pools and
+   * subject to preemption when the demands of other resource pools increase.
+   * If it is non-preemptible it will be scheduled using the reserved
+   * resources only.
+   * This can override the preemptible sla configuration at the job level.
+   */
+  enum Type {
+    TYPE_INVALID         = 0;
+    TYPE_PREEMPTIBLE     = 1;
+    TYPE_NON_PREEMPTIBLE = 2;
+  }
+  Type type = 1;
+
+  // This policy defines if the task should be restarted after it is
   // preempted. If set to true the task will not be rescheduled
   // after it is preempted. If set to false the task will be rescheduled.
   // Defaults to false
+  // This only takes effect if the task is preemptible.
   bool killOnPreempt = 2;
 }
 
@@ -255,10 +271,10 @@ message TaskConfig {
   // Persistent volume config of the task.
   PersistentVolumeConfig volume = 10;
 
-  // Preemtion policy of the task
+  // Preemption policy of the task
   PreemptionPolicy preemptionPolicy = 11;
 
-  // Whether this is a controler task. A controller is a special batch task
+  // Whether this is a controller task. A controller is a special batch task
   // which controls other tasks inside a job. E.g. spark driver tasks in a spark
   // job will be a controller task.
   bool controller = 12;
@@ -269,7 +285,10 @@ message TaskConfig {
   // 30 seconds.
   uint32 killGracePeriodSeconds = 13;
 
-  // revocable represents task to use physical or slack resources.
+  // Whether the instance is revocable. If so, it might
+  // be scheduled using revocable resources and subject to preemption
+  // when there is resource contention on the host.
+  // This can override the revocable configuration at the job level.
   bool revocable = 14;
 }
 
