@@ -6,18 +6,22 @@ import (
 	"testing"
 	"time"
 
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
-	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
-	storemocks "code.uber.internal/infra/peloton/storage/mocks"
-
+	mesosmaster "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	hostmocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+
+	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
+	logmanagermocks "code.uber.internal/infra/peloton/jobmgr/logmanager/mocks"
+	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -36,13 +40,17 @@ type podHandlerTestSuite struct {
 
 	handler *serviceHandler
 
-	ctrl            *gomock.Controller
-	cachedJob       *cachedmocks.MockJob
-	cachedTask      *cachedmocks.MockTask
-	jobFactory      *cachedmocks.MockJobFactory
-	candidate       *leadermocks.MockCandidate
-	podStore        *storemocks.MockTaskStore
-	goalStateDriver *goalstatemocks.MockDriver
+	ctrl               *gomock.Controller
+	cachedJob          *cachedmocks.MockJob
+	cachedTask         *cachedmocks.MockTask
+	jobFactory         *cachedmocks.MockJobFactory
+	candidate          *leadermocks.MockCandidate
+	podStore           *storemocks.MockTaskStore
+	goalStateDriver    *goalstatemocks.MockDriver
+	frameworkInfoStore *storemocks.MockFrameworkInfoStore
+	hostmgrClient      *hostmocks.MockInternalHostServiceYARPCClient
+	logmanager         *logmanagermocks.MockLogManager
+	mesosAgentWorkDir  string
 }
 
 func (suite *podHandlerTestSuite) SetupTest() {
@@ -53,11 +61,19 @@ func (suite *podHandlerTestSuite) SetupTest() {
 	suite.podStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.candidate = leadermocks.NewMockCandidate(suite.ctrl)
 	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
+	suite.frameworkInfoStore = storemocks.NewMockFrameworkInfoStore(suite.ctrl)
+	suite.hostmgrClient = hostmocks.NewMockInternalHostServiceYARPCClient(suite.ctrl)
+	suite.logmanager = logmanagermocks.NewMockLogManager(suite.ctrl)
+	suite.mesosAgentWorkDir = "test"
 	suite.handler = &serviceHandler{
-		jobFactory:      suite.jobFactory,
-		candidate:       suite.candidate,
-		podStore:        suite.podStore,
-		goalStateDriver: suite.goalStateDriver,
+		jobFactory:         suite.jobFactory,
+		candidate:          suite.candidate,
+		podStore:           suite.podStore,
+		goalStateDriver:    suite.goalStateDriver,
+		frameworkInfoStore: suite.frameworkInfoStore,
+		hostMgrClient:      suite.hostmgrClient,
+		logManager:         suite.logmanager,
+		mesosAgentWorkDir:  suite.mesosAgentWorkDir,
 	}
 }
 
@@ -791,11 +807,297 @@ func (suite *podHandlerTestSuite) TestGetPodEventsStoreError() {
 	suite.Error(err)
 }
 
-func (suite *podHandlerTestSuite) TestBrowsePodSandbox() {
-	request := &svc.BrowsePodSandboxRequest{}
+// TestBrowsePodSandboxSuccess tests the success case of browsing pod sandbox
+func (suite *podHandlerTestSuite) TestBrowsePodSandboxSuccess() {
+	request := &svc.BrowsePodSandboxRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+		PodId: &v1alphapeloton.PodID{
+			Value: testPodID,
+		},
+	}
+
+	hostname := "hostname"
+	frameworkID := "testFramework"
+	agentPID := "slave(1)@1.2.3.4:9090"
+	agentIP := "1.2.3.4"
+	agentPort := "9090"
+	agentID := "agentID"
+	agents := []*mesosmaster.Response_GetAgents_Agent{
+		{
+			Pid: &agentPID,
+		},
+	}
+	events := []*pod.PodEvent{
+		{
+			PodId: &v1alphapeloton.PodID{
+				Value: testPodID,
+			},
+			ActualState: pbtask.TaskState_RUNNING.String(),
+			Hostname:    hostname,
+			AgentId:     agentID,
+		},
+	}
+	logPaths := []string{}
+
+	gomock.InOrder(
+		suite.podStore.EXPECT().
+			GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), testPodID).
+			Return(events, nil),
+
+		suite.frameworkInfoStore.EXPECT().
+			GetFrameworkID(gomock.Any(), _frameworkName).
+			Return(frameworkID, nil),
+
+		suite.hostmgrClient.EXPECT().
+			GetMesosAgentInfo(
+				gomock.Any(),
+				&hostsvc.GetMesosAgentInfoRequest{Hostname: hostname},
+			).Return(&hostsvc.GetMesosAgentInfoResponse{Agents: agents}, nil),
+
+		suite.logmanager.EXPECT().
+			ListSandboxFilesPaths(
+				suite.mesosAgentWorkDir,
+				frameworkID,
+				agentIP,
+				agentPort,
+				agentID,
+				testPodID,
+			).Return(logPaths, nil),
+
+		suite.hostmgrClient.EXPECT().GetMesosMasterHostPort(
+			gomock.Any(),
+			&hostsvc.MesosMasterHostPortRequest{},
+		).Return(&hostsvc.MesosMasterHostPortResponse{}, nil),
+	)
 	response, err := suite.handler.BrowsePodSandbox(context.Background(), request)
+
 	suite.NoError(err)
-	suite.NotNil(response)
+	suite.Equal(agentIP, response.GetHostname())
+	suite.Equal(agentPort, response.GetPort())
+	suite.Equal(logPaths, response.GetPaths())
+	suite.Empty(response.GetMesosMasterHostname())
+	suite.Empty(response.GetMesosMasterPort())
+}
+
+// TestBrowsePodSandboxFailureInvalidPodName test BrowsePodSandbox failure
+// due to invalid podname
+func (suite *podHandlerTestSuite) TestBrowsePodSandboxFailureInvalidPodName() {
+	request := &svc.BrowsePodSandboxRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: "InvalidPodName",
+		},
+	}
+
+	_, err := suite.handler.BrowsePodSandbox(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestBrowsePodSandboxGetPodEventsFailure test BrowsePodSandbox failure
+// due to GetPodEvents failure
+func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetPodEventsFailure() {
+	request := &svc.BrowsePodSandboxRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+	}
+
+	suite.podStore.EXPECT().
+		GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+		Return(nil, yarpcerrors.NotFoundErrorf("test error"))
+	_, err := suite.handler.BrowsePodSandbox(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestBrowsePodSandboxAbort tests BrowsePodSandbox failure with aborted error
+func (suite *podHandlerTestSuite) TestBrowsePodSandboxAbort() {
+	request := &svc.BrowsePodSandboxRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+	}
+
+	suite.podStore.EXPECT().
+		GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+		Return(nil, nil)
+	_, err := suite.handler.BrowsePodSandbox(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestBrowsePodSandboxGetFrameworkIDFailure test BrowsePodSandbox failure
+// due to error while getting framework id
+func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetFrameworkIDFailure() {
+	request := &svc.BrowsePodSandboxRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+	}
+
+	events := []*pod.PodEvent{
+		{
+			PodId: &v1alphapeloton.PodID{
+				Value: testPodID,
+			},
+			ActualState: pbtask.TaskState_RUNNING.String(),
+			Hostname:    "hostname",
+			AgentId:     "agentID",
+		},
+	}
+
+	gomock.InOrder(
+		suite.podStore.EXPECT().
+			GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+			Return(events, nil),
+
+		suite.frameworkInfoStore.EXPECT().
+			GetFrameworkID(gomock.Any(), _frameworkName).
+			Return("", yarpcerrors.NotFoundErrorf("test error")),
+	)
+
+	_, err := suite.handler.BrowsePodSandbox(context.Background(), request)
+	suite.Error(err)
+
+	// Test error due to empty framework id
+	gomock.InOrder(
+		suite.podStore.EXPECT().
+			GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+			Return(events, nil),
+
+		suite.frameworkInfoStore.EXPECT().
+			GetFrameworkID(gomock.Any(), _frameworkName).
+			Return("", nil),
+	)
+
+	_, err = suite.handler.BrowsePodSandbox(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestBrowsePodSandboxListSandboxFilesPathsFailure tests BrowsePodSandbox
+// failure due to LogManager.ListSandboxFilesPaths error
+func (suite *podHandlerTestSuite) TestBrowsePodSandboxListSandboxFilesPathsFailure() {
+	request := &svc.BrowsePodSandboxRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+		PodId: &v1alphapeloton.PodID{
+			Value: testPodID,
+		},
+	}
+
+	hostname := "hostname"
+	frameworkID := "testFramework"
+	agentID := "agentID"
+	agents := []*mesosmaster.Response_GetAgents_Agent{}
+	events := []*pod.PodEvent{
+		{
+			PodId: &v1alphapeloton.PodID{
+				Value: testPodID,
+			},
+			ActualState: pbtask.TaskState_RUNNING.String(),
+			Hostname:    hostname,
+			AgentId:     agentID,
+		},
+	}
+
+	gomock.InOrder(
+		suite.podStore.EXPECT().
+			GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), testPodID).
+			Return(events, nil),
+
+		suite.frameworkInfoStore.EXPECT().
+			GetFrameworkID(gomock.Any(), _frameworkName).
+			Return(frameworkID, nil),
+
+		suite.hostmgrClient.EXPECT().
+			GetMesosAgentInfo(
+				gomock.Any(),
+				&hostsvc.GetMesosAgentInfoRequest{Hostname: hostname},
+			).Return(&hostsvc.GetMesosAgentInfoResponse{Agents: agents}, nil),
+
+		suite.logmanager.EXPECT().
+			ListSandboxFilesPaths(
+				suite.mesosAgentWorkDir,
+				frameworkID,
+				gomock.Any(),
+				gomock.Any(),
+				agentID,
+				testPodID,
+			).Return(nil, yarpcerrors.NotFoundErrorf("test error")),
+	)
+
+	_, err := suite.handler.BrowsePodSandbox(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestBrowsePodSandboxGetMesosMasterHostPortFailure tests BrowsePodSandbox
+// failure due to HostMgrClient.GetMesosMasterHostPort error
+func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetMesosMasterHostPortFailure() {
+	request := &svc.BrowsePodSandboxRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+		PodId: &v1alphapeloton.PodID{
+			Value: testPodID,
+		},
+	}
+
+	hostname := "hostname"
+	frameworkID := "testFramework"
+	agentPID := "slave(1)@1.2.3.4:9090"
+	agentIP := "1.2.3.4"
+	agentPort := "9090"
+	agentID := "agentID"
+	agents := []*mesosmaster.Response_GetAgents_Agent{
+		{
+			Pid: &agentPID,
+		},
+	}
+	events := []*pod.PodEvent{
+		{
+			PodId: &v1alphapeloton.PodID{
+				Value: testPodID,
+			},
+			ActualState: pbtask.TaskState_RUNNING.String(),
+			Hostname:    hostname,
+			AgentId:     agentID,
+		},
+	}
+	logPaths := []string{}
+
+	gomock.InOrder(
+		suite.podStore.EXPECT().
+			GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), testPodID).
+			Return(events, nil),
+
+		suite.frameworkInfoStore.EXPECT().
+			GetFrameworkID(gomock.Any(), _frameworkName).
+			Return(frameworkID, nil),
+
+		suite.hostmgrClient.EXPECT().
+			GetMesosAgentInfo(
+				gomock.Any(),
+				&hostsvc.GetMesosAgentInfoRequest{Hostname: hostname},
+			).Return(&hostsvc.GetMesosAgentInfoResponse{Agents: agents}, nil),
+
+		suite.logmanager.EXPECT().
+			ListSandboxFilesPaths(
+				suite.mesosAgentWorkDir,
+				frameworkID,
+				agentIP,
+				agentPort,
+				agentID,
+				testPodID,
+			).Return(logPaths, nil),
+
+		suite.hostmgrClient.EXPECT().GetMesosMasterHostPort(
+			gomock.Any(),
+			&hostsvc.MesosMasterHostPortRequest{},
+		).Return(nil, yarpcerrors.InternalErrorf("test error")),
+	)
+
+	_, err := suite.handler.BrowsePodSandbox(context.Background(), request)
+	suite.Error(err)
 }
 
 func (suite *podHandlerTestSuite) TestDeletePodEvents() {

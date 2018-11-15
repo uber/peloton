@@ -1395,7 +1395,7 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 	// Test JobID doesnt exist
 	_, err := taskStore.GetTaskForJob(
 		context.Background(),
-		&peloton.JobID{Value: "dummy_jobID"},
+		"dummy_jobID",
 		uint32(0))
 	suite.Error(err)
 
@@ -1408,7 +1408,7 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 			suite.Equal(taskInfo.InstanceId, uint32(j))
 
 			var taskMap map[uint32]*task.TaskInfo
-			taskMap, err = taskStore.GetTaskForJob(context.Background(), jobIDs[i], uint32(j))
+			taskMap, err = taskStore.GetTaskForJob(context.Background(), jobIDs[i].GetValue(), uint32(j))
 			suite.NoError(err)
 			taskInfo = taskMap[uint32(j)]
 			suite.Equal(taskInfo.JobId.Value, jobIDs[i].Value)

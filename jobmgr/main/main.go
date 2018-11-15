@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/background"
 	"code.uber.internal/infra/peloton/common/buildversion"
@@ -478,9 +480,15 @@ func main() {
 	podsvc.InitV1AlphaPodServiceHandler(
 		dispatcher,
 		store,
+		store,
+		store,
 		jobFactory,
 		goalStateDriver,
-		candidate)
+		candidate,
+		logmanager.NewLogManager(&http.Client{Timeout: _httpClientTimeout}),
+		*mesosAgentWorkDir,
+		hostsvc.NewInternalHostServiceYARPCClient(dispatcher.ClientConfig(common.PelotonHostManager)),
+	)
 
 	volumesvc.InitServiceHandler(
 		dispatcher,

@@ -2043,8 +2043,8 @@ func (s *Store) UpdateTaskRuntime(
 }
 
 // GetTaskForJob returns a task by jobID and instanceID
-func (s *Store) GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
-	taskID := fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID))
+func (s *Store) GetTaskForJob(ctx context.Context, jobID string, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
+	taskID := fmt.Sprintf(taskIDFmt, jobID, int(instanceID))
 	taskInfo, err := s.GetTaskByID(ctx, taskID)
 	if err != nil {
 		return nil, err

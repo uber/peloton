@@ -2,6 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"strings"
 
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	podsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
@@ -12,8 +15,8 @@ const (
 	podGetEventsV1AlphaFormatBody   = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
 )
 
-// PodGetCache get pod status from cache
-func (c *Client) PodGetCache(podName string) error {
+// PodGetCacheAction is the action to get pod status from cache
+func (c *Client) PodGetCacheAction(podName string) error {
 	resp, err := c.podClient.GetPodCache(
 		c.ctx,
 		&podsvc.GetPodCacheRequest{
@@ -33,7 +36,7 @@ func (c *Client) PodGetCache(podName string) error {
 	return nil
 }
 
-// PodGetEventsV1AlphaAction is the action to get the pod events of a given pod
+// PodGetEventsV1AlphaAction is the action to get the events of a given pod
 func (c *Client) PodGetEventsV1AlphaAction(podName string, podID string) error {
 	var request = &podsvc.GetPodEventsRequest{
 		PodName: &v1alphapeloton.PodName{
@@ -50,6 +53,77 @@ func (c *Client) PodGetEventsV1AlphaAction(podName string, podID string) error {
 	}
 
 	printPodGetEventsV1AlphaResponse(response, c.Debug)
+	return nil
+}
+
+// PodRefreshAction is the action to refresh the pod
+func (c *Client) PodRefreshAction(podName string) error {
+	resp, err := c.podClient.RefreshPod(
+		c.ctx,
+		&podsvc.RefreshPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: podName},
+		})
+	if err != nil {
+		return err
+	}
+
+	out, err := marshallResponse(defaultResponseFormat, resp)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v\n", string(out))
+
+	tabWriter.Flush()
+	return nil
+}
+
+// PodLogsGetAction is the action to get logs files for given pod
+func (c *Client) PodLogsGetAction(filename string, podName string, podID string) error {
+	request := &podsvc.BrowsePodSandboxRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: podName,
+		},
+		PodId: &v1alphapeloton.PodID{
+			Value: podID,
+		},
+	}
+	response, err := c.podClient.BrowsePodSandbox(c.ctx, request)
+	if err != nil {
+		return err
+	}
+
+	var filePath string
+	for _, path := range response.GetPaths() {
+		if strings.HasSuffix(path, filename) {
+			filePath = path
+		}
+	}
+
+	if len(filePath) == 0 {
+		return fmt.Errorf(
+			"filename:%s not found in sandbox files: %s",
+			filename,
+			response.GetPaths())
+	}
+
+	logFileDownloadURL := fmt.Sprintf(
+		"http://%s:%s/files/download?path=%s",
+		response.GetHostname(),
+		response.GetPort(),
+		filePath)
+
+	resp, err := http.Get(logFileDownloadURL)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("\n\n%s", body)
+
 	return nil
 }
 
@@ -81,29 +155,8 @@ func printPodGetEventsV1AlphaResponse(r *podsvc.GetPodEventsResponse, debug bool
 	}
 }
 
-// PodRefresh refresh the pod
-func (c *Client) PodRefresh(podName string) error {
-	resp, err := c.podClient.RefreshPod(
-		c.ctx,
-		&podsvc.RefreshPodRequest{
-			PodName: &v1alphapeloton.PodName{Value: podName},
-		})
-	if err != nil {
-		return err
-	}
-
-	out, err := marshallResponse(defaultResponseFormat, resp)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("%v\n", string(out))
-
-	tabWriter.Flush()
-	return nil
-}
-
-// PodStart starts the pod
-func (c *Client) PodStart(podName string) error {
+// PodStartAction is the action for starting the pod
+func (c *Client) PodStartAction(podName string) error {
 	resp, err := c.podClient.StartPod(
 		c.ctx,
 		&podsvc.StartPodRequest{

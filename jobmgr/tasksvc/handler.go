@@ -172,7 +172,7 @@ func (m *serviceHandler) Get(
 	}
 
 	var lastTaskInfo *task.TaskInfo
-	result, err := m.taskStore.GetTaskForJob(ctx, body.JobId, body.InstanceId)
+	result, err := m.taskStore.GetTaskForJob(ctx, body.JobId.GetValue(), body.InstanceId)
 	for _, taskInfo := range result {
 		lastTaskInfo = taskInfo
 		break
@@ -1051,7 +1051,7 @@ func (m *serviceHandler) getHostInfoCurrentTask(
 	ctx context.Context,
 	jobID *peloton.JobID,
 	instanceID uint32) (hostname string, agentID string, taskID string, err error) {
-	result, err := m.taskStore.GetTaskForJob(ctx, jobID, instanceID)
+	result, err := m.taskStore.GetTaskForJob(ctx, jobID.GetValue(), instanceID)
 
 	if err != nil {
 		return "", "", "", err

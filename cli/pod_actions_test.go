@@ -51,7 +51,7 @@ func (suite *podActionsTestSuite) TestClientPodGetCacheSuccess() {
 			},
 		}, nil)
 
-	suite.NoError(suite.client.PodGetCache(testPodName))
+	suite.NoError(suite.client.PodGetCacheAction(testPodName))
 }
 
 // TestClientPodGetCacheSuccess test the failure case of getting cache
@@ -60,7 +60,7 @@ func (suite *podActionsTestSuite) TestClientPodGetCacheFail() {
 		GetPodCache(gomock.Any(), gomock.Any()).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.Error(suite.client.PodGetCache(testPodName))
+	suite.Error(suite.client.PodGetCacheAction(testPodName))
 }
 
 // TestPodGetEventsV1AlphaAction tests PodGetEventsV1AlphaAction
@@ -130,7 +130,7 @@ func (suite *podActionsTestSuite) TestClientPodRefreshSuccess() {
 		RefreshPod(gomock.Any(), gomock.Any()).
 		Return(&podsvc.RefreshPodResponse{}, nil)
 
-	suite.NoError(suite.client.PodRefresh(testPodName))
+	suite.NoError(suite.client.PodRefreshAction(testPodName))
 }
 
 // TestClientPodRefreshFail test the failure case of refreshing pod
@@ -139,7 +139,7 @@ func (suite *podActionsTestSuite) TestClientPodRefreshFail() {
 		RefreshPod(gomock.Any(), gomock.Any()).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.Error(suite.client.PodRefresh(testPodName))
+	suite.Error(suite.client.PodRefreshAction(testPodName))
 }
 
 // TestClientPodStartSuccess test the success case of starting pod
@@ -148,7 +148,7 @@ func (suite *podActionsTestSuite) TestClientPodStartSuccess() {
 		StartPod(gomock.Any(), gomock.Any()).
 		Return(&podsvc.StartPodResponse{}, nil)
 
-	suite.NoError(suite.client.PodStart(testPodName))
+	suite.NoError(suite.client.PodStartAction(testPodName))
 }
 
 // TestClientPodStartFail test the failure case starting pod
@@ -157,7 +157,84 @@ func (suite *podActionsTestSuite) TestClientPodStartFail() {
 		StartPod(gomock.Any(), gomock.Any()).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.Error(suite.client.PodStart(testPodName))
+	suite.Error(suite.client.PodStartAction(testPodName))
+}
+
+// TestPodLogsGetActionSuccess tests failure of getting pod logs
+// due to file not found error
+func (suite *podActionsTestSuite) TestPodLogsGetActionFileNotFound() {
+	podname := &peloton.PodName{
+		Value: "podname",
+	}
+	podID := &peloton.PodID{
+		Value: "podID",
+	}
+	req := &podsvc.BrowsePodSandboxRequest{
+		PodName: podname,
+		PodId:   podID,
+	}
+	resp := &podsvc.BrowsePodSandboxResponse{
+		Hostname: "host1",
+		Port:     "8000",
+	}
+
+	suite.podClient.EXPECT().
+		BrowsePodSandbox(suite.ctx, req).
+		Return(resp, nil)
+	suite.Error(
+		suite.client.PodLogsGetAction(
+			"",
+			podname.GetValue(),
+			podID.GetValue(),
+		),
+	)
+}
+
+// TestPodLogsGetActionSuccess tests failure of getting pod logs
+// due to BrowsePodSandbox API error
+func (suite *podActionsTestSuite) TestPodLogsGetActionBrowsePodSandboxFailure() {
+	suite.podClient.EXPECT().
+		BrowsePodSandbox(suite.ctx, gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+	suite.Error(
+		suite.client.PodLogsGetAction(
+			"",
+			"",
+			"",
+		),
+	)
+}
+
+// TestPodLogsGetActionSuccess tests failure of getting pod logs
+// due to error while downloading file
+func (suite *podActionsTestSuite) TestPodLogsGetActionFileGetFailure() {
+	podname := &peloton.PodName{
+		Value: "podname",
+	}
+	podID := &peloton.PodID{
+		Value: "podID",
+	}
+	filename := "filename"
+	req := &podsvc.BrowsePodSandboxRequest{
+		PodName: podname,
+		PodId:   podID,
+	}
+	resp := &podsvc.BrowsePodSandboxResponse{
+		Hostname: "host1",
+		Port:     "8000",
+		Paths:    []string{filename},
+	}
+
+	suite.podClient.EXPECT().
+		BrowsePodSandbox(suite.ctx, req).
+		Return(resp, nil)
+	suite.Error(
+		suite.client.PodLogsGetAction(
+			filename,
+			podname.GetValue(),
+			podID.GetValue(),
+		),
+	)
 }
 
 func TestPodActions(t *testing.T) {

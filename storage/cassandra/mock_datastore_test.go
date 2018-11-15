@@ -165,7 +165,7 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetTasks() {
 	suite.Error(err)
 
 	_, err = suite.store.GetTaskForJob(
-		context.Background(), suite.testJobID, 0)
+		context.Background(), suite.testJobID.GetValue(), 0)
 	suite.Error(err)
 
 	_, err = suite.store.GetTaskIDsForJobAndState(

@@ -99,7 +99,7 @@ type TaskStore interface {
 	// tasks in a job with instanceID in the given range
 	GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error)
 	// GetTaskForJob gets the task info for a given task
-	GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error)
+	GetTaskForJob(ctx context.Context, jobID string, instanceID uint32) (map[uint32]*task.TaskInfo, error)
 	// GetTaskConfig gets the task config of a given task
 	GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version uint64) (*task.TaskConfig, *models.ConfigAddOn, error)
 	// GetTaskConfigs gets the task config for all tasks in a job

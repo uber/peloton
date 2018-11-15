@@ -197,6 +197,11 @@ var (
 	podStart        = pod.Command("start", "start a pod")
 	podStartPodName = podStart.Arg("name", "pod name").Required().String()
 
+	podLogsGet         = pod.Command("logs", "show pod logs")
+	podLogsGetFileName = podLogsGet.Flag("filename", "log filename to browse").Default("stdout").Short('f').String()
+	podLogsGetPodName  = podLogsGet.Arg("name", "pod name").Required().String()
+	podLogsGetPodID    = podLogsGet.Flag("id", "pod identifier").Short('p').String()
+
 	// Top level task command
 	task = app.Command("task", "manage tasks")
 
@@ -609,21 +614,21 @@ func main() {
 	case podGetEvents.FullCommand():
 		err = client.PodGetEventsAction(*podGetEventsJobName, *podGetEventsInstanceID, *podGetEventsRunID, *podGetEventsLimit)
 	case podGetCache.FullCommand():
-		err = client.PodGetCache(*podGetCachePodName)
-	case podGetEvents.FullCommand():
-		err = client.PodGetEventsAction(*podGetEventsJobName, *podGetEventsInstanceID, *podGetEventsRunID, *podGetEventsLimit)
+		err = client.PodGetCacheAction(*podGetCachePodName)
 	case podGetEventsV1Alpha.FullCommand():
 		err = client.PodGetEventsV1AlphaAction(*podGetEventsV1AlphaPodName, *podGetEventsV1AlphaPodID)
 	case podRefresh.FullCommand():
-		err = client.PodRefresh(*podRefreshPodName)
+		err = client.PodRefreshAction(*podRefreshPodName)
 	case podStart.FullCommand():
-		err = client.PodStart(*podStartPodName)
+		err = client.PodStartAction(*podStartPodName)
 	case eventStream.FullCommand():
 		err = client.EventStreamAction()
 	case statelessGetCache.FullCommand():
 		err = client.StatelessGetCacheAction(*statelessGetCacheName)
 	case statelessRefresh.FullCommand():
 		err = client.StatelessRefreshAction(*statelessRefreshName)
+	case podLogsGet.FullCommand():
+		err = client.PodLogsGetAction(*podLogsGetFileName, *podLogsGetPodName, *podLogsGetPodID)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}
