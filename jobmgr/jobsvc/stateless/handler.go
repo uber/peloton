@@ -3,6 +3,7 @@ package stateless
 import (
 	"context"
 	"fmt"
+	"time"
 
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -12,7 +13,10 @@ import (
 
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	handlerutil "code.uber.internal/infra/peloton/jobmgr/util/handler"
+	"code.uber.internal/infra/peloton/leader"
+	"code.uber.internal/infra/peloton/storage"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -21,19 +25,28 @@ import (
 )
 
 type serviceHandler struct {
-	jobFactory    cached.JobFactory
-	updateFactory cached.UpdateFactory
+	jobStore        storage.JobStore
+	jobFactory      cached.JobFactory
+	updateFactory   cached.UpdateFactory
+	goalStateDriver goalstate.Driver
+	candidate       leader.Candidate
 }
 
 // InitV1AlphaJobServiceHandler initializes the Job Manager V1Alpha Service Handler
 func InitV1AlphaJobServiceHandler(
 	d *yarpc.Dispatcher,
+	jobStore storage.JobStore,
 	jobFactory cached.JobFactory,
 	updateFactory cached.UpdateFactory,
+	goalStateDriver goalstate.Driver,
+	candidate leader.Candidate,
 ) {
 	handler := &serviceHandler{
-		jobFactory:    jobFactory,
-		updateFactory: updateFactory,
+		jobStore:        jobStore,
+		jobFactory:      jobFactory,
+		updateFactory:   updateFactory,
+		goalStateDriver: goalStateDriver,
+		candidate:       candidate,
 	}
 	d.Register(svc.BuildJobServiceYARPCProcedures(handler))
 }
@@ -127,9 +140,48 @@ func (h *serviceHandler) ListJobUpdates(
 }
 func (h *serviceHandler) RefreshJob(
 	ctx context.Context,
-	req *svc.RefreshJobRequest) (*svc.RefreshJobResponse, error) {
+	req *svc.RefreshJobRequest) (resp *svc.RefreshJobResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("JobSVC.RefreshJob failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Info("JobSVC.RefreshJob succeeded")
+	}()
+
+	if !h.candidate.IsLeader() {
+		return nil,
+			yarpcerrors.UnavailableErrorf("JobSVC.RefreshJob is not supported on non-leader")
+	}
+
+	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
+
+	jobConfig, configAddOn, err := h.jobStore.GetJobConfig(ctx, pelotonJobID)
+	if err != nil {
+		return nil, errors.Wrap(err, "fail to get job config")
+	}
+
+	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, pelotonJobID)
+	if err != nil {
+		return nil, errors.Wrap(err, "fail to get job runtime")
+	}
+
+	cachedJob := h.jobFactory.AddJob(pelotonJobID)
+	cachedJob.Update(ctx, &pbjob.JobInfo{
+		Config:  jobConfig,
+		Runtime: jobRuntime,
+	}, configAddOn,
+		cached.UpdateCacheOnly)
+	h.goalStateDriver.EnqueueJob(pelotonJobID, time.Now())
 	return &svc.RefreshJobResponse{}, nil
 }
+
 func (h *serviceHandler) GetJobCache(
 	ctx context.Context,
 	req *svc.GetJobCacheRequest) (resp *svc.GetJobCacheResponse, err error) {

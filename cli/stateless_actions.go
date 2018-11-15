@@ -27,3 +27,24 @@ func (c *Client) StatelessGetCacheAction(jobID string) error {
 	tabWriter.Flush()
 	return nil
 }
+
+// StatelessRefreshAction refreshes a job
+func (c *Client) StatelessRefreshAction(jobID string) error {
+	resp, err := c.statelessClient.RefreshJob(
+		c.ctx,
+		&statelesssvc.RefreshJobRequest{
+			JobId: &v1alphapeloton.JobID{Value: jobID},
+		})
+	if err != nil {
+		return err
+	}
+
+	out, err := marshallResponse(defaultResponseFormat, resp)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v\n", string(out))
+
+	tabWriter.Flush()
+	return nil
+}

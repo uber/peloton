@@ -451,8 +451,11 @@ func main() {
 
 	stateless.InitV1AlphaJobServiceHandler(
 		dispatcher,
+		store,
 		jobFactory,
 		updateFactory,
+		goalStateDriver,
+		candidate,
 	)
 
 	tasksvc.InitServiceHandler(

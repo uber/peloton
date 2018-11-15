@@ -58,6 +58,26 @@ func (suite *statelessActionsTestSuite) TestStatelessGetCacheActionError() {
 	suite.Error(suite.client.StatelessGetCacheAction(testJobID))
 }
 
+func (suite *statelessActionsTestSuite) TestStatelessRefreshAction() {
+	suite.statelessClient.EXPECT().
+		RefreshJob(suite.ctx, &svc.RefreshJobRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		}).
+		Return(&svc.RefreshJobResponse{}, nil)
+
+	suite.NoError(suite.client.StatelessRefreshAction(testJobID))
+}
+
+func (suite *statelessActionsTestSuite) TestStatelessRefreshActionError() {
+	suite.statelessClient.EXPECT().
+		RefreshJob(suite.ctx, &svc.RefreshJobRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		}).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessRefreshAction(testJobID))
+}
+
 func TestStatelessActions(t *testing.T) {
 	suite.Run(t, new(statelessActionsTestSuite))
 }

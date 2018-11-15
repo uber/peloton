@@ -12,7 +12,11 @@ import (
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
+	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -29,11 +33,14 @@ type statelessHandlerTestSuite struct {
 
 	handler *serviceHandler
 
-	ctrl          *gomock.Controller
-	cachedJob     *cachedmocks.MockJob
-	cachedUpdate  *cachedmocks.MockUpdate
-	jobFactory    *cachedmocks.MockJobFactory
-	updateFactory *cachedmocks.MockUpdateFactory
+	ctrl            *gomock.Controller
+	cachedJob       *cachedmocks.MockJob
+	cachedUpdate    *cachedmocks.MockUpdate
+	jobFactory      *cachedmocks.MockJobFactory
+	updateFactory   *cachedmocks.MockUpdateFactory
+	candidate       *leadermocks.MockCandidate
+	goalStateDriver *goalstatemocks.MockDriver
+	jobStore        *storemocks.MockJobStore
 }
 
 func (suite *statelessHandlerTestSuite) SetupTest() {
@@ -42,9 +49,15 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.cachedUpdate = cachedmocks.NewMockUpdate(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
+	suite.candidate = leadermocks.NewMockCandidate(suite.ctrl)
+	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
+	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.handler = &serviceHandler{
-		jobFactory:    suite.jobFactory,
-		updateFactory: suite.updateFactory,
+		jobFactory:      suite.jobFactory,
+		updateFactory:   suite.updateFactory,
+		candidate:       suite.candidate,
+		goalStateDriver: suite.goalStateDriver,
+		jobStore:        suite.jobStore,
 	}
 }
 
@@ -206,6 +219,107 @@ func (suite *statelessHandlerTestSuite) TestGetJobCacheNotFound() {
 	suite.Error(err)
 	suite.Nil(resp)
 	suite.True(yarpcerrors.IsNotFound(err))
+}
+
+// TestRefreshJobSuccess tests the case of successfully refreshing job
+func (suite *statelessHandlerTestSuite) TestRefreshJobSuccess() {
+	jobConfig := &pbjob.JobConfig{
+		InstanceCount: 10,
+	}
+	configAddOn := &models.ConfigAddOn{}
+	jobRuntime := &pbjob.RuntimeInfo{
+		State: pbjob.JobState_RUNNING,
+	}
+
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), &peloton.JobID{Value: testJobID}).
+		Return(jobConfig, configAddOn, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), &peloton.JobID{Value: testJobID}).
+		Return(jobRuntime, nil)
+
+	suite.jobFactory.EXPECT().
+		AddJob(&peloton.JobID{Value: testJobID}).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		Update(gomock.Any(), &pbjob.JobInfo{
+			Config:  jobConfig,
+			Runtime: jobRuntime,
+		}, configAddOn, cached.UpdateCacheOnly).
+		Return(nil)
+
+	suite.goalStateDriver.EXPECT().
+		EnqueueJob(&peloton.JobID{Value: testJobID}, gomock.Any())
+
+	resp, err := suite.handler.RefreshJob(context.Background(), &statelesssvc.RefreshJobRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+	})
+	suite.NotNil(resp)
+	suite.NoError(err)
+}
+
+// TestRefreshJobFailNonLeader tests the failure case of refreshing job
+// due to JobMgr is not leader
+func (suite *statelessHandlerTestSuite) TestRefreshJobFailNonLeader() {
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(false)
+	resp, err := suite.handler.RefreshJob(context.Background(), &statelesssvc.RefreshJobRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+	})
+	suite.Nil(resp)
+	suite.Error(err)
+}
+
+// TestRefreshJobGetConfigFail tests the case of failure due to
+// failure of getting job config
+func (suite *statelessHandlerTestSuite) TestRefreshJobGetConfigFail() {
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), &peloton.JobID{Value: testJobID}).
+		Return(nil, nil, yarpcerrors.InternalErrorf("test error"))
+
+	resp, err := suite.handler.RefreshJob(context.Background(), &statelesssvc.RefreshJobRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+	})
+	suite.Nil(resp)
+	suite.Error(err)
+}
+
+// TestRefreshJobGetRuntimeFail tests the case of failure due to
+// failure of getting job runtime
+func (suite *statelessHandlerTestSuite) TestRefreshJobGetRuntimeFail() {
+	jobConfig := &pbjob.JobConfig{
+		InstanceCount: 10,
+	}
+	configAddOn := &models.ConfigAddOn{}
+
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), &peloton.JobID{Value: testJobID}).
+		Return(jobConfig, configAddOn, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), &peloton.JobID{Value: testJobID}).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	resp, err := suite.handler.RefreshJob(context.Background(), &statelesssvc.RefreshJobRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+	})
+	suite.Nil(resp)
+	suite.Error(err)
 }
 
 func TestStatelessServiceHandler(t *testing.T) {
