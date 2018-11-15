@@ -24,7 +24,9 @@ for dc in $DC ; do
       #TODO this is interactive; use login flags to automate?
       $docker_cmd login "$registry"
     else
-      registry="docker-registry02-sjc1:5055"
+      # Although it is pushed to dca1 kraken zone, it will 
+      # be replicated globally (sjc1, irn and wbu2)
+      registry="kraken-origin.dca1.uber.internal:5367"
     fi
     # pull version from the image, assume latest if not present
     ver="${image##*:}"
