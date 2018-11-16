@@ -44,7 +44,7 @@ import (
 const (
 	testInstanceCount = 4
 	testJob           = "941ff353-ba82-49fe-8f80-fb5bc649b04d"
-	testRunID         = "941ff353-ba82-49fe-8f80-fb5bc649b04d-2"
+	testRunID         = "941ff353-ba82-49fe-8f80-fb5bc649b04d-4-5"
 )
 
 type TaskHandlerTestSuite struct {
@@ -1474,6 +1474,9 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsWithRunID() {
 		RunId:      testRunID,
 	}
 
+	run, err := util.ParseRunID(testRunID)
+	suite.NoError(err)
+
 	events := []*pod.PodEvent{
 		{
 			PodId: &v1alphapeloton.PodID{
@@ -1484,6 +1487,9 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsWithRunID() {
 			},
 			DesiredJobVersion: &v1alphapeloton.EntityVersion{
 				Value: "1",
+			},
+			PrevPodId: &v1alphapeloton.PodID{
+				Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
 			},
 		},
 	}
@@ -1504,7 +1510,10 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsForAllRuns() {
 		InstanceId: testInstanceCount,
 	}
 
-	prevRunID := "941ff353-ba82-49fe-8f80-fb5bc649b04d-1"
+	run, err := util.ParseRunID(testRunID)
+	suite.NoError(err)
+	prevRunID := fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1)
+
 	tt := []struct {
 		RunID  string
 		Events []*pod.PodEvent
@@ -1542,7 +1551,181 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsForAllRuns() {
 						Value: "1",
 					},
 					PrevPodId: &v1alphapeloton.PodID{
-						Value: "0",
+						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, 0),
+					},
+				},
+			},
+		},
+	}
+
+	for _, t := range tt {
+		suite.mockedTaskStore.EXPECT().
+			GetPodEvents(gomock.Any(), testJob, uint32(testInstanceCount), t.RunID).
+			Return(t.Events, nil)
+	}
+	response, err := suite.handler.GetPodEvents(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+}
+
+// TestGetPodEventsLimitToThreeRuns tests limiting the pod
+// events to last three runs of a task with 5 runs
+func (suite *TaskHandlerTestSuite) TestGetPodEventsFiveRunsLimitToThree() {
+	request := &task.GetPodEventsRequest{
+		JobId: &peloton.JobID{
+			Value: testJob,
+		},
+		InstanceId: testInstanceCount,
+		Limit:      3,
+	}
+
+	run, err := util.ParseRunID(testRunID)
+	suite.NoError(err)
+
+	tt := []struct {
+		RunID  string
+		Events []*pod.PodEvent
+	}{
+		{
+			RunID: "",
+			Events: []*pod.PodEvent{
+				{
+					PodId: &v1alphapeloton.PodID{
+						Value: testRunID,
+					},
+					JobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					PrevPodId: &v1alphapeloton.PodID{
+						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
+					},
+				},
+			},
+		},
+		{
+			RunID: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
+			Events: []*pod.PodEvent{
+				{
+					PodId: &v1alphapeloton.PodID{
+						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
+					},
+					JobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					PrevPodId: &v1alphapeloton.PodID{
+						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
+					},
+				},
+			},
+		},
+		{
+			RunID: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
+			Events: []*pod.PodEvent{
+				{
+					PodId: &v1alphapeloton.PodID{
+						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
+					},
+					JobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					PrevPodId: &v1alphapeloton.PodID{
+						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-3),
+					},
+				},
+			},
+		},
+	}
+
+	for _, t := range tt {
+		suite.mockedTaskStore.EXPECT().
+			GetPodEvents(gomock.Any(), testJob, uint32(testInstanceCount), t.RunID).
+			Return(t.Events, nil)
+	}
+	response, err := suite.handler.GetPodEvents(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+}
+
+// TestGetPodEventsThreeRunsLimitToFive tests limiting
+// the pod events to last five runs of a task with 3 runs
+func (suite *TaskHandlerTestSuite) TestGetPodEventsThreeRunsLimitToFive() {
+	request := &task.GetPodEventsRequest{
+		JobId: &peloton.JobID{
+			Value: testJob,
+		},
+		InstanceId: testInstanceCount,
+		Limit:      10,
+	}
+
+	run, err := util.ParseRunID(testRunID)
+	suite.NoError(err)
+
+	tt := []struct {
+		RunID  string
+		Events []*pod.PodEvent
+	}{
+		{
+			RunID: "",
+			Events: []*pod.PodEvent{
+				{
+					PodId: &v1alphapeloton.PodID{
+						Value: testRunID,
+					},
+					JobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					PrevPodId: &v1alphapeloton.PodID{
+						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
+					},
+				},
+			},
+		},
+		{
+			RunID: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
+			Events: []*pod.PodEvent{
+				{
+					PodId: &v1alphapeloton.PodID{
+						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
+					},
+					JobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					PrevPodId: &v1alphapeloton.PodID{
+						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
+					},
+				},
+			},
+		},
+		{
+			RunID: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
+			Events: []*pod.PodEvent{
+				{
+					PodId: &v1alphapeloton.PodID{
+						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
+					},
+					JobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+						Value: "1",
+					},
+					PrevPodId: &v1alphapeloton.PodID{
+						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, 0),
 					},
 				},
 			},
@@ -1628,6 +1811,61 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsDesiredJobVersionParseError()
 	_, err := suite.handler.GetPodEvents(context.Background(), request)
 	suite.Error(err)
 }
+
+// TestGetPodEventsPrevPodIDParseError tests GetPodEvents
+// failure due to prevPodID parse error
+func (suite *TaskHandlerTestSuite) TestGetPodEventsPrevPodIDParseError() {
+	request := &task.GetPodEventsRequest{
+		JobId: &peloton.JobID{
+			Value: testJob,
+		},
+		InstanceId: testInstanceCount,
+		RunId:      testRunID,
+	}
+
+	events := []*pod.PodEvent{
+		{
+			PodId: &v1alphapeloton.PodID{
+				Value: testRunID,
+			},
+			JobVersion: &v1alphapeloton.EntityVersion{
+				Value: "1",
+			},
+			DesiredJobVersion: &v1alphapeloton.EntityVersion{
+				Value: "1",
+			},
+			PrevPodId: &v1alphapeloton.PodID{
+				Value: "invalid-id",
+			},
+		},
+	}
+
+	suite.mockedTaskStore.EXPECT().
+		GetPodEvents(gomock.Any(), testJob, uint32(testInstanceCount), testRunID).
+		Return(events, nil)
+	response, err := suite.handler.GetPodEvents(context.Background(), request)
+	suite.Error(err)
+	suite.Nil(response)
+}
+
+
+// TestGetPodEventsNoEvents tests getting pod events for a task with no events
+func (suite *TaskHandlerTestSuite) TestGetPodEventsNoEvents() {
+	request := &task.GetPodEventsRequest{
+		JobId: &peloton.JobID{
+			Value: testJob,
+		},
+		InstanceId: testInstanceCount,
+		RunId:      testRunID,
+	}
+
+	suite.mockedTaskStore.EXPECT().
+		GetPodEvents(gomock.Any(), testJob, uint32(testInstanceCount), testRunID).
+		Return([]*pod.PodEvent{}, nil)
+	_, err := suite.handler.GetPodEvents(context.Background(), request)
+	suite.NoError(err)
+}
+
 
 func (suite *TaskHandlerTestSuite) TestBrowseSandboxPreviousTaskRun() {
 	instanceID := uint32(0)

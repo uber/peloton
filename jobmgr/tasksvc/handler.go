@@ -257,22 +257,24 @@ func (m *serviceHandler) GetPodEvents(
 	ctx context.Context,
 	body *task.GetPodEventsRequest) (*task.GetPodEventsResponse, error) {
 	limit := body.GetLimit()
-	if limit == 0 {
-		limit = 100
+	if len(body.GetRunId()) != 0 {
+		limit = 1
 	}
 
-	runID := body.GetRunId()
+	if limit == 0 {
+		limit = 10
+	}
+
+	podID := body.GetRunId()
 	var result []*task.PodEvent
 	for i := uint64(0); i < limit; i++ {
 		podEvents, err := m.taskStore.GetPodEvents(
 			ctx,
 			body.GetJobId().GetValue(),
 			body.GetInstanceId(),
-			runID)
+			podID)
 		if err != nil {
-			log.WithError(err).
-				Info("Error getting pod events from store")
-			return nil, err
+			return nil, errors.Wrap(err, "error getting pod events from store")
 		}
 
 		var prevPodID string
@@ -282,15 +284,12 @@ func (m *serviceHandler) GetPodEvents(
 			desiredPodID := e.GetDesiredPodId().GetValue()
 			jobVersion, err := strconv.ParseInt(e.GetJobVersion().GetValue(), 10, 64)
 			if err != nil {
-				log.WithError(err).
-					Info("Error parsing job version")
-				return nil, err
+				return nil, errors.Wrap(err, "error parsing job version")
 			}
+
 			desiredJobVersion, err := strconv.ParseInt(e.GetDesiredJobVersion().GetValue(), 10, 64)
 			if err != nil {
-				log.WithError(err).
-					Info("Error parsing desired job version")
-				return nil, err
+				return nil, errors.Wrap(err, "error parsing desired job version")
 			}
 
 			result = append(result, &task.PodEvent{
@@ -315,10 +314,20 @@ func (m *serviceHandler) GetPodEvents(
 				},
 			})
 		}
-		if (len(runID) != 0) || prevPodID == "0" {
+
+		if len(prevPodID) == 0 {
 			break
 		}
-		runID = prevPodID
+
+		prevRunID, err := util.ParseRunID(prevPodID)
+		if err != nil {
+			return nil, errors.Wrap(err, "error parsing prevPodID")
+		}
+
+		if prevRunID == uint64(0) {
+			break
+		}
+		podID = prevPodID
 	}
 
 	return &task.GetPodEventsResponse{

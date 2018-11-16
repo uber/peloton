@@ -182,7 +182,7 @@ var (
 	podGetEventsJobName    = podGetEvents.Arg("job", "job identifier").Required().String()
 	podGetEventsInstanceID = podGetEvents.Arg("instance", "job instance id").Required().Uint32()
 	podGetEventsRunID      = podGetEvents.Flag("run", "get pod events for this runID only").Short('r').String()
-	podGetEventsLimit      = podGetEvents.Flag("limit", "number of events to return, default value 100").Short('l').Uint64()
+	podGetEventsLimit      = podGetEvents.Flag("limit", "limit to last n runs of the pod, default value 10").Short('l').Uint64()
 
 	podGetCache        = pod.Command("cache", "get pod status from cache")
 	podGetCachePodName = podGetCache.Arg("name", "pod name").Required().String()
