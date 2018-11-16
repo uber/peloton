@@ -237,6 +237,24 @@ func (suite *podActionsTestSuite) TestPodLogsGetActionFileGetFailure() {
 	)
 }
 
+// TestClientPodRestartSuccess tests the success case of restarting pod
+func (suite *podActionsTestSuite) TestClientPodRestartSuccess() {
+	suite.podClient.EXPECT().
+		RestartPod(gomock.Any(), gomock.Any()).
+		Return(&podsvc.RestartPodResponse{}, nil)
+
+	suite.NoError(suite.client.PodRestartAction(testPodName))
+}
+
+// TestClientPodRestartFail tests the failure case restarting pod
+func (suite *podActionsTestSuite) TestClientPodRestartFail() {
+	suite.podClient.EXPECT().
+		RestartPod(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.PodRestartAction(testPodName))
+}
+
 func TestPodActions(t *testing.T) {
 	suite.Run(t, new(podActionsTestSuite))
 }

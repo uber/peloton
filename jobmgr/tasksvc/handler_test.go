@@ -2304,7 +2304,21 @@ func (suite *TaskHandlerTestSuite) TestRestartAllTasks() {
 		suite.mockedCachedJob.EXPECT().
 			ID().Return(suite.testJobID).Times(len(taskInfos)),
 		suite.mockedCachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
+			PatchTasks(gomock.Any(), gomock.Any()).
+			Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+				for instanceID, runtimeDiff := range runtimeDiffs {
+					mesosTaskID := runtimeDiff[jobmgrcommon.DesiredMesosTaskIDField].(*mesos.TaskID)
+					runID, err := util.ParseRunID(mesosTaskID.GetValue())
+					suite.NoError(err)
+
+					prevMesosTaskID := taskInfos[instanceID].GetRuntime().GetMesosTaskId()
+					prevRunID, err := util.ParseRunID(prevMesosTaskID.GetValue())
+					suite.NoError(err)
+
+					suite.Equal(prevRunID+1, runID)
+				}
+			}).
+			Return(nil),
 		suite.mockedGoalStateDrive.EXPECT().
 			EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return().AnyTimes(),
 	)

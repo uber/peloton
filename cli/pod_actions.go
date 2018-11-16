@@ -175,3 +175,24 @@ func (c *Client) PodStartAction(podName string) error {
 	tabWriter.Flush()
 	return nil
 }
+
+// PodRestartAction is the action for restarting the pod
+func (c *Client) PodRestartAction(podName string) error {
+	resp, err := c.podClient.RestartPod(
+		c.ctx,
+		&podsvc.RestartPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: podName},
+		})
+	if err != nil {
+		return err
+	}
+
+	out, err := marshallResponse(defaultResponseFormat, resp)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v\n", string(out))
+
+	tabWriter.Flush()
+	return nil
+}

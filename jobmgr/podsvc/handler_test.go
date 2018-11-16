@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	mesosmaster "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -22,6 +23,7 @@ import (
 	logmanagermocks "code.uber.internal/infra/peloton/jobmgr/logmanager/mocks"
 	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
+	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -33,6 +35,7 @@ const (
 	testInstanceID = 1
 	testPodName    = "941ff353-ba82-49fe-8f80-fb5bc649b04d-1"
 	testPodID      = "941ff353-ba82-49fe-8f80-fb5bc649b04d-1-3"
+	testRunID      = 3
 )
 
 type podHandlerTestSuite struct {
@@ -738,10 +741,180 @@ func (suite *podHandlerTestSuite) TestStopPod() {
 	suite.NotNil(response)
 }
 
-func (suite *podHandlerTestSuite) TestRestartPod() {
-	request := &svc.RestartPodRequest{}
+// TestRestartPodSuccess tests the success case of restarting a pod
+func (suite *podHandlerTestSuite) TestRestartPodSuccess() {
+	jobID := &peloton.JobID{Value: testJobID}
+	mesosTaskID := testPodID
+	taskRuntimeInfo := &pbtask.RuntimeInfo{
+		MesosTaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
+		},
+	}
+	runtimeDiff := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.DesiredMesosTaskIDField: util.CreateMesosTaskID(
+			jobID, uint32(testInstanceID), uint64(testRunID)+1),
+	}
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(jobID).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(testInstanceID)).
+		AnyTimes()
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), jobID, uint32(testInstanceID)).
+			Return(taskRuntimeInfo, nil),
+
+		suite.cachedJob.EXPECT().
+			PatchTasks(gomock.Any(), runtimeDiff).
+			Return(nil),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueTask(jobID, uint32(testInstanceID), gomock.Any()),
+	)
+
+	request := &svc.RestartPodRequest{
+		PodName: &v1alphapeloton.PodName{Value: testPodName},
+	}
 	response, err := suite.handler.RestartPod(context.Background(), request)
 	suite.NoError(err)
+	suite.NotNil(response)
+}
+
+// TestRestartPodNonLeader tests calling restart pod
+// on non-leader jobmgr
+func (suite *podHandlerTestSuite) TestRestartPodNonLeader() {
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(false)
+
+	resp, err := suite.handler.RestartPod(context.Background(),
+		&svc.RestartPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: testPodName},
+		})
+	suite.Nil(resp)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsUnavailable(err))
+}
+
+// TestRestartPodInvalidPodName tests the case of restarting pod
+// with invalid pod name
+func (suite *podHandlerTestSuite) TestRestartPodInvalidPodName() {
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	resp, err := suite.handler.RestartPod(context.Background(),
+		&svc.RestartPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: "invalid-name"},
+		})
+	suite.Nil(resp)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+}
+
+// TestRestartPodGetTaskRuntimeFailure tests failure of
+// restarting pod due to GetTaskRuntime failure
+func (suite *podHandlerTestSuite) TestRestartPodGetTaskRuntimeFailure() {
+	jobID := &peloton.JobID{Value: testJobID}
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(jobID).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(testInstanceID)).
+		AnyTimes()
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), jobID, uint32(testInstanceID)).
+			Return(nil, yarpcerrors.NotFoundErrorf("test error")),
+	)
+
+	resp, err := suite.handler.RestartPod(context.Background(),
+		&svc.RestartPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: testPodName},
+		})
+	suite.Nil(resp)
+	suite.Error(err)
+}
+
+// TestRestartPodPatchTasksFailure tests failure of
+// restarting pod due to PatchTasks failure
+func (suite *podHandlerTestSuite) TestRestartPodPatchTasksFailure() {
+	jobID := &peloton.JobID{Value: testJobID}
+	mesosTaskID := ""
+	taskRuntimeInfo := &pbtask.RuntimeInfo{
+		MesosTaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
+		},
+	}
+	runtimeDiff := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.DesiredMesosTaskIDField: util.CreateMesosTaskID(
+			jobID, uint32(testInstanceID), 1),
+	}
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(jobID).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(testInstanceID)).
+		AnyTimes()
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), jobID, uint32(testInstanceID)).
+			Return(taskRuntimeInfo, nil),
+
+		suite.cachedJob.EXPECT().
+			PatchTasks(gomock.Any(), runtimeDiff).
+			Return(yarpcerrors.InternalErrorf("test error")),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueTask(jobID, uint32(testInstanceID), gomock.Any()),
+	)
+
+	request := &svc.RestartPodRequest{
+		PodName: &v1alphapeloton.PodName{Value: testPodName},
+	}
+	response, err := suite.handler.RestartPod(context.Background(), request)
+	suite.Error(err)
 	suite.NotNil(response)
 }
 

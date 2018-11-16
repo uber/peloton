@@ -202,6 +202,9 @@ var (
 	podLogsGetPodName  = podLogsGet.Arg("name", "pod name").Required().String()
 	podLogsGetPodID    = podLogsGet.Flag("id", "pod identifier").Short('p').String()
 
+	podRestart     = pod.Command("restart", "restart a pod")
+	podRestartName = podRestart.Arg("name", "pod name").Required().String()
+
 	// Top level task command
 	task = app.Command("task", "manage tasks")
 
@@ -629,6 +632,8 @@ func main() {
 		err = client.StatelessRefreshAction(*statelessRefreshName)
 	case podLogsGet.FullCommand():
 		err = client.PodLogsGetAction(*podLogsGetFileName, *podLogsGetPodName, *podLogsGetPodID)
+	case podRestart.FullCommand():
+		err = client.PodRestartAction(*podRestartName)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

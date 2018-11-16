@@ -923,7 +923,7 @@ func (m *serviceHandler) getRuntimeDiffsForRestart(
 
 		result[taskInfo.InstanceId] = jobmgrcommon.RuntimeDiff{
 			jobmgrcommon.DesiredMesosTaskIDField: util.CreateMesosTaskID(
-				cachedJob.ID(), taskInfo.InstanceId, runID),
+				cachedJob.ID(), taskInfo.InstanceId, runID+1),
 		}
 	}
 

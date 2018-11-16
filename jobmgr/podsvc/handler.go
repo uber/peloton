@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
@@ -247,7 +248,55 @@ func (h *serviceHandler) RestartPod(
 	ctx context.Context,
 	req *svc.RestartPodRequest,
 ) (resp *svc.RestartPodResponse, err error) {
-	return &svc.RestartPodResponse{}, nil
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("PodSVC.RestartPod failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Info("PodSVC.RestartPod succeeded")
+	}()
+
+	if !h.candidate.IsLeader() {
+		return nil,
+			yarpcerrors.UnavailableErrorf("PodSVC.RestartPod is not supported on non-leader")
+	}
+
+	jobID, instanceID, err := util.ParseTaskID(req.GetPodName().GetValue())
+	if err != nil {
+		return nil, yarpcerrors.InvalidArgumentErrorf("invalid pod name")
+	}
+
+	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: jobID})
+
+	newPodID, err := h.getPodIDForRestart(ctx,
+		cachedJob,
+		instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	runtimeDiff := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiff[instanceID] = jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.DesiredMesosTaskIDField: newPodID,
+	}
+	err = cachedJob.PatchTasks(ctx, runtimeDiff)
+
+	// We should enqueue the tasks even if PatchTasks fail,
+	// because some tasks may get updated successfully in db.
+	// We can let goal state engine to decide whether or not to restart.
+	h.goalStateDriver.EnqueueTask(
+		&peloton.JobID{Value: jobID},
+		instanceID,
+		time.Now(),
+	)
+
+	return &svc.RestartPodResponse{}, err
 }
 
 func (h *serviceHandler) GetPod(
@@ -408,6 +457,7 @@ func (h *serviceHandler) RefreshPod(
 
 	pelotonJobID := &peloton.JobID{Value: jobID}
 	runtime, err := h.podStore.GetTaskRuntime(ctx, pelotonJobID, instanceID)
+
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to get task runtime")
 	}
@@ -575,4 +625,25 @@ func (h *serviceHandler) getFrameworkID(ctx context.Context) (string, error) {
 		return frameworkIDVal, yarpcerrors.InternalErrorf("framework id is empty")
 	}
 	return frameworkIDVal, nil
+}
+
+// getPodIDForRestart returns the new pod id for restart
+func (h *serviceHandler) getPodIDForRestart(
+	ctx context.Context,
+	cachedJob cached.Job,
+	instanceID uint32) (*mesos.TaskID, error) {
+	runtimeInfo, err := h.podStore.GetTaskRuntime(
+		ctx, cachedJob.ID(), instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	runID, err :=
+		util.ParseRunID(runtimeInfo.GetMesosTaskId().GetValue())
+	if err != nil {
+		runID = 0
+	}
+
+	return util.CreateMesosTaskID(
+		cachedJob.ID(), instanceID, runID+1), nil
 }
