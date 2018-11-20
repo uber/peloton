@@ -604,3 +604,51 @@ def test__pause_resume__update(stateless_job):
     new_instance_zero_config = stateless_job.get_task_info(0).config
     assert_task_mesos_id_changed(old_task_infos, new_task_infos)
     assert_task_config_changed(old_instance_zero_config, new_instance_zero_config)
+
+
+# test_manual_rollback manually rolls back a running update when
+# the instance count is reduced in the rollback.
+# Note that manual rollback in peloton is just updating to the
+# previous job configuration
+def test_manual_rollback_reduce_instances(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_task_infos = stateless_job.list_tasks().value
+    old_instance_zero_config = stateless_job.get_task_info(0).config
+    update = Update(stateless_job,
+                    updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_FILE)
+    update.create()
+    # manually rollback the update
+    update2 = Update(stateless_job,
+                     updated_job_file=UPDATE_STATELESS_JOB_UPDATE_REDUCE_INSTANCES_FILE)
+    update2.create()
+    update2.wait_for_state(goal_state='SUCCEEDED')
+    new_task_infos = stateless_job.list_tasks().value
+    assert len(old_task_infos) == len(new_task_infos)
+    new_instance_zero_config = stateless_job.get_task_info(0).config
+    assert_task_config_equal(old_instance_zero_config, new_instance_zero_config)
+
+
+# test_manual_rollback manually rolls back a running update when
+# the instance count is increased in the rollback
+def test_manual_rollback_increase_instances(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    update = Update(stateless_job,
+                    updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_FILE)
+    update.create()
+    update.wait_for_state(goal_state='SUCCEEDED')
+    old_task_infos = stateless_job.list_tasks().value
+    old_instance_zero_config = stateless_job.get_task_info(0).config
+    # reduce instance count and then roll it back
+    update2 = Update(stateless_job,
+                     updated_job_file=UPDATE_STATELESS_JOB_UPDATE_REDUCE_INSTANCES_FILE)
+    update2.create()
+    update3 = Update(stateless_job,
+                     updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_FILE)
+    update3.create()
+    update3.wait_for_state(goal_state='SUCCEEDED')
+    new_task_infos = stateless_job.list_tasks().value
+    assert len(old_task_infos) == len(new_task_infos)
+    new_instance_zero_config = stateless_job.get_task_info(0).config
+    assert_task_config_equal(old_instance_zero_config, new_instance_zero_config)
