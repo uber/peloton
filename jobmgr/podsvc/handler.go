@@ -584,7 +584,7 @@ func convertToPodStatus(runtime *pbtask.RuntimeInfo) *pbpod.PodStatus {
 				},
 			},
 		},
-		DesiredState: pbpod.PodState(runtime.GetGoalState()),
+		DesiredState: convertTaskStateToPodState(runtime.GetGoalState()),
 		Message:      runtime.GetMessage(),
 		Reason:       runtime.GetReason(),
 		FailureCount: runtime.GetFailureCount(),
