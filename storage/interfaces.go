@@ -112,8 +112,6 @@ type TaskStore interface {
 	// GetTaskStateSummaryForJob gets the map state to instanceIDs
 	// (in that state) in a given job
 	GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID) (map[string]uint32, error)
-	// GetTaskEvents gets all the events for runtime changes for a given task
-	GetTaskEvents(ctx context.Context, id *peloton.JobID, instanceID uint32) ([]*task.TaskEvent, error)
 
 	// GetPodEvents returns pod events (state transition for a job instance).
 	// limit parameter manages number of pod events to return

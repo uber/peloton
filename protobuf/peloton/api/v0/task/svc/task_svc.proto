@@ -47,12 +47,6 @@ service TaskService
   // the files. http://mesos.apache.org/documentation/latest/endpoints/
   rpc BrowseSandbox(BrowseSandboxRequest) returns (BrowseSandboxResponse);
 
-  // GetEvents returns task events in for a instance in a job. An instance
-  // may have multiple Mesos tasks and GetEventsResponse will contain a
-  // map for each mesos task and its corresponding list of events.
-  // This is an experimental API and is subject to change
-  rpc GetEvents(GetEventsRequest) returns (GetEventsResponse);
-
   // Debug only method. Allows user to load task runtime state from DB
   // and re-execute the action associated with current state.
   rpc RefreshTasks(RefreshTasksRequest) returns (RefreshTasksResponse);
@@ -288,37 +282,6 @@ message TaskEventsError {
 }
 
 /**
- *  Request message for TaskService.GetEvents method.
- */
-message GetEventsRequest {
-  // The job ID of the task
-  peloton.JobID jobId = 1;
-
-  // The instance ID of the task
-  uint32 instanceId = 2;
-}
-
-/**
- *  Response message for TaskService.GetEvents method.
- *
- *  Return errors:
- *    INTERNAL:      if failed to get task events for internal errors.
- */
-message GetEventsResponse {
-  message Events {
-    repeated TaskEvent event = 1;
-  };
-
-  repeated Events result = 1;
-
-  message Error {
-    TaskEventsError eventError = 1;
-  }
-
-  Error error = 2;
-}
-
-/**
  *  Pod event of a Peloton pod instance.
  */
 message PodEvent {
@@ -356,7 +319,7 @@ message PodEvent {
   // The previous task ID of the pod event.
   peloton.TaskID prevTaskId = 11;
 
-  // The health check state of the task 
+  // The health check state of the task
   string healthy = 12;
 }
 

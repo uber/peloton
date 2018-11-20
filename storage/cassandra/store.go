@@ -1053,14 +1053,8 @@ func (s *Store) CreateTaskRuntime(
 		return err
 	}
 	s.metrics.TaskMetrics.TaskCreate.Inc(1)
-	if jobType == job.JobType_BATCH {
-		err = s.logTaskStateChange(ctx, jobID, instanceID, runtime)
-		if err == nil {
-			err = s.addPodEvent(ctx, jobID, instanceID, runtime)
-		}
-	} else if jobType == job.JobType_SERVICE {
-		err = s.addPodEvent(ctx, jobID, instanceID, runtime)
-	}
+
+	err = s.addPodEvent(ctx, jobID, instanceID, runtime)
 	if err != nil {
 		log.Errorf("Unable to log task state changes for job ID %v instance %v, error = %v", jobID.GetValue(), instanceID, err)
 		return err
@@ -1275,145 +1269,6 @@ func (s *Store) DeletePodEvents(
 	}
 	s.metrics.TaskMetrics.PodEventsDeleteSucess.Inc(1)
 	return nil
-}
-
-// logTaskStateChange logs the task state change events
-func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error {
-	var stateChange = TaskStateChangeRecord{
-		JobID:              jobID.GetValue(),
-		InstanceID:         instanceID,
-		MesosTaskID:        runtime.GetMesosTaskId().GetValue(),
-		AgentID:            runtime.GetAgentID().GetValue(),
-		TaskState:          runtime.GetState().String(),
-		TaskHost:           runtime.GetHost(),
-		EventTime:          time.Now().UTC().Format(time.RFC3339),
-		Reason:             runtime.GetReason(),
-		Healthy:            runtime.GetHealthy().String(),
-		Message:            runtime.GetMessage(),
-		PrevMesosTaskID:    runtime.GetPrevMesosTaskId().GetValue(),
-		DesiredMesosTaskID: runtime.GetDesiredMesosTaskId().GetValue(),
-	}
-	buffer, err := json.Marshal(stateChange)
-	if err != nil {
-		log.Errorf("Failed to marshal stateChange, error = %v", err)
-		s.metrics.TaskMetrics.TaskLogStateFail.Inc(1)
-		return err
-	}
-	stateChangePart := []string{string(buffer)}
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Update(taskStateChangesTable).
-		Add("events", stateChangePart).
-		Where(qb.Eq{"job_id": jobID.GetValue(), "instance_id": instanceID})
-	result, err := s.executeWrite(ctx, stmt)
-	if result != nil {
-		defer result.Close()
-	}
-	if err != nil {
-		log.Errorf("Fail to logTaskStateChange by jobID %v, instanceID %v %v, err=%v", jobID, instanceID, stateChangePart, err)
-		s.metrics.TaskMetrics.TaskLogStateFail.Inc(1)
-		return err
-	}
-	s.metrics.TaskMetrics.TaskLogState.Inc(1)
-	return nil
-}
-
-// GetTaskStateChanges returns the state changes for a task
-func (s *Store) GetTaskStateChanges(ctx context.Context, jobID *peloton.JobID, instanceID uint32) ([]*TaskStateChangeRecord, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(taskStateChangesTable).
-		Where(qb.Eq{"job_id": jobID.GetValue(), "instance_id": instanceID})
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		log.Errorf("Fail to GetTaskStateChanges by jobID %v, instanceID %v, err=%v", jobID, instanceID, err)
-		s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
-		return nil, err
-	}
-	for _, value := range allResults {
-		var stateChangeRecords TaskStateChangeRecords
-		err = FillObject(value, &stateChangeRecords, reflect.TypeOf(stateChangeRecords))
-		if err != nil {
-			log.Errorf("Failed to Fill into TaskStateChangeRecords, val = %v err= %v", value, err)
-			s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
-			return nil, err
-		}
-		s.metrics.TaskMetrics.TaskGetLogState.Inc(1)
-		return stateChangeRecords.GetStateChangeRecords()
-	}
-	s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
-	return nil, fmt.Errorf("No state change records found for jobID %v, instanceID %v", jobID, instanceID)
-}
-
-// GetTaskEvents returns the events list for a task
-func (s *Store) GetTaskEvents(ctx context.Context, jobID *peloton.JobID, instanceID uint32) ([]*task.TaskEvent, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(taskStateChangesTable).
-		Where(qb.Eq{"job_id": jobID.GetValue(), "instance_id": instanceID})
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID).
-			WithField("instance_id", instanceID).
-			Error("Failed to get task state changes")
-		s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
-		return nil, err
-	}
-
-	var result []*task.TaskEvent
-	for _, value := range allResults {
-		var stateChangeRecords TaskStateChangeRecords
-		err = FillObject(value, &stateChangeRecords, reflect.TypeOf(stateChangeRecords))
-		if err != nil {
-			log.WithError(err).
-				WithField("value", value).
-				Error("Failed to Fill into TaskStateChangeRecords")
-			s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
-			return nil, err
-		}
-
-		records, err := stateChangeRecords.GetStateChangeRecords()
-		if err != nil {
-			log.WithError(err).
-				Error("Failed to get TaskStateChangeRecords")
-			s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
-			return nil, err
-		}
-
-		for _, record := range records {
-			state, ok := task.TaskState_value[record.TaskState]
-			if !ok {
-				log.WithError(err).
-					WithField("task_state", record.TaskState).
-					Error("Unknown TaskState")
-				state, _ = task.TaskState_value["UNKNOWN"]
-			}
-			rec := &task.TaskEvent{
-				// TaskStateChangeRecords does not store event source, so don't set Source here
-				State:     task.TaskState(state),
-				Timestamp: record.EventTime,
-				Message:   record.Message,
-				Reason:    record.Reason,
-				Healthy:   task.HealthState(task.HealthState_value[record.Healthy]),
-				Hostname:  record.TaskHost,
-				// TaskId here will contain Mesos TaskId
-				TaskId: &peloton.TaskID{
-					Value: record.MesosTaskID,
-				},
-				AgentId: record.AgentID,
-				PrevTaskId: &peloton.TaskID{
-					Value: record.PrevMesosTaskID,
-				},
-				DesiredTaskId: &peloton.TaskID{
-					Value: record.DesiredMesosTaskID,
-				},
-			}
-			result = append(result, rec)
-		}
-		s.metrics.TaskMetrics.TaskGetLogState.Inc(1)
-		return result, nil
-
-	}
-	s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
-	return nil, fmt.Errorf("No state change records found for jobID %v, instanceID %v", jobID, instanceID)
 }
 
 // GetTasksForJobResultSet returns the result set that can be used to iterate each task in a job
@@ -2033,12 +1888,8 @@ func (s *Store) UpdateTaskRuntime(
 	}
 
 	s.metrics.TaskMetrics.TaskUpdate.Inc(1)
-	if jobType == job.JobType_BATCH {
-		s.logTaskStateChange(ctx, jobID, instanceID, runtime)
-		s.addPodEvent(ctx, jobID, instanceID, runtime)
-	} else if jobType == job.JobType_SERVICE {
-		s.addPodEvent(ctx, jobID, instanceID, runtime)
-	}
+	s.addPodEvent(ctx, jobID, instanceID, runtime)
+
 	return nil
 }
 

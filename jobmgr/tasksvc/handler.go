@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
 	"strconv"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -24,7 +24,6 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/logmanager"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/task/activermtask"
-	"code.uber.internal/infra/peloton/jobmgr/task/event/statechanges"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/util/handler"
@@ -105,52 +104,6 @@ type serviceHandler struct {
 	activeRMTasks      activermtask.ActiveRMTasks
 }
 
-func (m *serviceHandler) getTerminalEvents(eventList []*task.TaskEvent, lastTaskInfo *task.TaskInfo) []*task.TaskInfo {
-	var taskInfos []*task.TaskInfo
-
-	sortEventsList := getEventsResponseResult(eventList)
-	for _, events := range sortEventsList {
-		var terminalEvent *task.TaskEvent
-
-		for i := len(events.GetEvent()) - 1; i >= 0; i-- {
-			event := events.GetEvent()[i]
-			if util.IsPelotonStateTerminal(event.GetState()) {
-				terminalEvent = event
-				break
-			}
-			if i == 0 {
-				terminalEvent = events.GetEvent()[len(events.GetEvent())-1]
-			}
-		}
-
-		mesosID := terminalEvent.GetTaskId().GetValue()
-		prevMesosID := terminalEvent.GetPrevTaskId().GetValue()
-		agentID := terminalEvent.GetAgentId()
-		taskInfos = append(taskInfos, &task.TaskInfo{
-			InstanceId: lastTaskInfo.GetInstanceId(),
-			JobId:      lastTaskInfo.GetJobId(),
-			Config:     lastTaskInfo.GetConfig(),
-			Runtime: &task.RuntimeInfo{
-				State: terminalEvent.GetState(),
-				MesosTaskId: &mesosv1.TaskID{
-					Value: &mesosID,
-				},
-				Host: terminalEvent.GetHostname(),
-				AgentID: &mesosv1.AgentID{
-					Value: &agentID,
-				},
-				Message: terminalEvent.GetMessage(),
-				Reason:  terminalEvent.GetReason(),
-				PrevMesosTaskId: &mesosv1.TaskID{
-					Value: &prevMesosID,
-				},
-			},
-		})
-	}
-
-	return taskInfos
-}
-
 func (m *serviceHandler) Get(
 	ctx context.Context,
 	body *task.GetRequest) (*task.GetResponse, error) {
@@ -188,8 +141,11 @@ func (m *serviceHandler) Get(
 		}, nil
 	}
 
-	eventList, err := m.getTaskEvents(
-		ctx, body.GetJobId(), body.GetInstanceId(), jobConfig.GetType())
+	eventList, err := m.getPodEvents(
+		ctx,
+		body.GetJobId(),
+		body.GetInstanceId(),
+		"") // get pod events for last run
 	if err != nil {
 		m.metrics.TaskGetFail.Inc(1)
 		return &task.GetResponse{
@@ -206,48 +162,6 @@ func (m *serviceHandler) Get(
 	return &task.GetResponse{
 		Result:  lastTaskInfo,
 		Results: taskInfos,
-	}, nil
-}
-
-func (m *serviceHandler) GetEvents(
-	ctx context.Context,
-	body *task.GetEventsRequest) (*task.GetEventsResponse, error) {
-	m.metrics.TaskAPIGetEvents.Inc(1)
-	jobConfig, err := handler.GetJobConfigWithoutFillingCache(
-		ctx, body.JobId, m.jobFactory, m.jobStore)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", body.GetJobId()).
-			Debug("Failed to get job config cache")
-		m.metrics.TaskGetEventsFail.Inc(1)
-		return &task.GetEventsResponse{
-			Error: &task.GetEventsResponse_Error{
-				EventError: &task.TaskEventsError{
-					Message: fmt.Sprintf("error: %v", err),
-				},
-			},
-		}, nil
-	}
-
-	result, err := m.getTaskEvents(
-		ctx, body.GetJobId(), body.GetInstanceId(), jobConfig.GetType())
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", body.GetJobId()).
-			Debug("Failed to get task state changes")
-		m.metrics.TaskGetEventsFail.Inc(1)
-		return &task.GetEventsResponse{
-			Error: &task.GetEventsResponse_Error{
-				EventError: &task.TaskEventsError{
-					Message: fmt.Sprintf("error: %v", err),
-				},
-			},
-		}, nil
-	}
-
-	m.metrics.TaskGetEvents.Inc(1)
-	return &task.GetEventsResponse{
-		Result: getEventsResponseResult(result),
 	}, nil
 }
 
@@ -1022,37 +936,28 @@ func (m *serviceHandler) getHostInfoWithTaskID(
 	ctx context.Context,
 	jobID *peloton.JobID,
 	instanceID uint32,
-	taskID string,
-	jobType pb_job.JobType) (hostname string, agentID string, err error) {
-	var taskEventsList []*task.TaskEvent
-
-	events, err := m.getTaskEvents(ctx, jobID, instanceID, jobType)
+	taskID string) (hostname string, agentID string, err error) {
+	events, err := m.getPodEvents(ctx, jobID, instanceID, taskID)
 	if err != nil {
 		return "", "", err
 	}
 
-	for _, event := range events {
-		if event.TaskId.GetValue() == taskID {
-			taskEventsList = append(taskEventsList, event)
-		}
+	if len(events) == 0 {
+		return "", "", errors.New(
+			fmt.Sprintf("no pod events present for job_id: %s, instance_id: %d, run_id: %s",
+				jobID.GetValue(), instanceID, taskID))
 	}
+	terminalEvent := events[0]
 
-	var terminalEvent *task.TaskEvent
-	sort.Sort(statechanges.TaskEventByTime(taskEventsList))
-
-	for i := len(taskEventsList) - 1; i >= 0; i-- {
-		event := taskEventsList[i]
-		if util.IsPelotonStateTerminal(event.GetState()) {
+	for _, event := range events {
+		taskState := task.TaskState(task.TaskState_value[event.GetActualState()])
+		if util.IsPelotonStateTerminal(taskState) {
 			terminalEvent = event
 			break
 		}
-		if i == 0 {
-			terminalEvent = taskEventsList[len(taskEventsList)-1]
-		}
 	}
-
 	hostname = terminalEvent.GetHostname()
-	agentID = terminalEvent.GetAgentId()
+	agentID = terminalEvent.GetAgentID()
 	return hostname, agentID, nil
 }
 
@@ -1081,20 +986,26 @@ func (m *serviceHandler) getHostInfoCurrentTask(
 }
 
 // getSandboxPathInfo - return details such as hostname, agentID, frameworkID and taskID to create sandbox path.
-func (m *serviceHandler) getSandboxPathInfo(ctx context.Context,
+func (m *serviceHandler) getSandboxPathInfo(
+	ctx context.Context,
 	instanceCount uint32,
-	req *task.BrowseSandboxRequest,
-	jobType pb_job.JobType) (hostname, agentID, taskID, frameworkID string, resp *task.BrowseSandboxResponse) {
+	req *task.BrowseSandboxRequest) (hostname, agentID, taskID, frameworkID string, resp *task.BrowseSandboxResponse) {
 	var host string
 	var agentid string
 	taskid := req.GetTaskId()
 
 	var err error
 	if len(taskid) > 0 {
-		host, agentid, err = m.getHostInfoWithTaskID(
-			ctx, req.JobId, req.InstanceId, taskid, jobType)
+		host, agentid, err = m.getHostInfoWithTaskID(ctx,
+			req.JobId,
+			req.InstanceId,
+			taskid,
+		)
 	} else {
-		host, agentid, taskid, err = m.getHostInfoCurrentTask(ctx, req.JobId, req.InstanceId)
+		host, agentid, taskid, err = m.getHostInfoCurrentTask(
+			ctx,
+			req.JobId,
+			req.InstanceId)
 	}
 
 	if err != nil {
@@ -1162,9 +1073,8 @@ func (m *serviceHandler) BrowseSandbox(
 		}, nil
 	}
 
-	hostname, agentID, taskID, frameworkID, resp :=
-		m.getSandboxPathInfo(
-			ctx, jobConfig.GetInstanceCount(), req, jobConfig.GetType())
+	hostname, agentID, taskID, frameworkID, resp := m.getSandboxPathInfo(ctx,
+		jobConfig.GetInstanceCount(), req)
 	if resp != nil {
 		return resp, nil
 	}
@@ -1295,39 +1205,81 @@ func (m *serviceHandler) getFrameworkID(ctx context.Context) (string, error) {
 	return frameworkIDVal, nil
 }
 
-// TODO: handle STATELESS job correctly
-func (m *serviceHandler) getTaskEvents(
+// getPodEvents returns all the pod events for given
+// job_id + instance_id + optional (run_id)
+func (m *serviceHandler) getPodEvents(
 	ctx context.Context,
 	id *peloton.JobID,
 	instanceID uint32,
-	jobType pb_job.JobType) ([]*task.TaskEvent, error) {
-	if jobType == pb_job.JobType_BATCH {
-		return m.taskStore.GetTaskEvents(ctx, id, instanceID)
+	runID string) ([]*task.PodEvent, error) {
+	var events []*task.PodEvent
+	for {
+		podEvents, err := m.taskStore.GetPodEvents(ctx, id.GetValue(), instanceID, runID)
+		if err != nil {
+			return nil, err
+		}
+		if len(podEvents) == 0 {
+			break
+		}
+
+		taskEvents, err := convertPodEventsFormat(podEvents)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, taskEvents...)
+
+		prevRunID, err := util.ParseRunID(podEvents[0].GetPrevPodId().GetValue())
+		if err != nil {
+			return nil, err
+		}
+		// Reached last run for this task
+		if prevRunID == 0 {
+			break
+		}
+		runID = podEvents[0].GetPrevPodId().GetValue()
 	}
-	return nil, nil
+
+	return events, nil
 }
 
-// getEventsResponseResult returns []*GetEventsResponse_Events which is a list
-// of event lists for each mesos task sorted by time
-func getEventsResponseResult(records []*task.TaskEvent) []*task.GetEventsResponse_Events {
-	// Get a map of <mesos task id : []*TaskEvent>
-	resMap := make(map[string]*task.GetEventsResponse_Events)
-	for _, record := range records {
-		taskID := record.GetTaskId().GetValue()
-		_, ok := resMap[taskID]
-		if ok {
-			resMap[taskID].Event = append(resMap[taskID].Event, record)
-		} else {
-			resMap[taskID] = &task.GetEventsResponse_Events{Event: []*task.TaskEvent{record}}
+// getTerminalEvents filters input pod events and return on terminal ones
+func (m *serviceHandler) getTerminalEvents(
+	eventList []*task.PodEvent,
+	lastTaskInfo *task.TaskInfo) []*task.TaskInfo {
+	var taskInfos []*task.TaskInfo
+
+	for _, event := range eventList {
+		taskState := task.TaskState(task.TaskState_value[event.GetActualState()])
+		if !util.IsPelotonStateTerminal(taskState) {
+			continue
 		}
+
+		mesosID := event.GetTaskId().GetValue()
+		prevMesosID := event.GetPrevTaskId().GetValue()
+		agentID := event.GetAgentID()
+		taskInfos = append(taskInfos, &task.TaskInfo{
+			InstanceId: lastTaskInfo.GetInstanceId(),
+			JobId:      lastTaskInfo.GetJobId(),
+			Config:     lastTaskInfo.GetConfig(),
+			Runtime: &task.RuntimeInfo{
+				State: taskState,
+				MesosTaskId: &mesosv1.TaskID{
+					Value: &mesosID,
+				},
+				Host: event.GetHostname(),
+				AgentID: &mesosv1.AgentID{
+					Value: &agentID,
+				},
+				Message: event.GetMessage(),
+				Reason:  event.GetReason(),
+				PrevMesosTaskId: &mesosv1.TaskID{
+					Value: &prevMesosID,
+				},
+			},
+		})
 	}
-	var eventsListRes []*task.GetEventsResponse_Events
-	for _, eventList := range resMap {
-		sort.Sort(statechanges.TaskEventByTime(eventList.GetEvent()))
-		eventsListRes = append(eventsListRes, eventList)
-	}
-	sort.Sort(statechanges.TaskEventListByTime(eventsListRes))
-	return eventsListRes
+
+	return taskInfos
 }
 
 // TODO: remove this function once eventstream is enabled in RM
@@ -1337,4 +1289,48 @@ func convertTaskMapToSlice(taskMaps map[uint32]*task.TaskInfo) []*task.TaskInfo 
 		result = append(result, taskInfo)
 	}
 	return result
+}
+
+func convertPodEventsFormat(podEvents []*pod.PodEvent) ([]*task.PodEvent, error) {
+	var result []*task.PodEvent
+	for _, e := range podEvents {
+		podID := e.GetPodId().GetValue()
+		prevPodID := e.GetPrevPodId().GetValue()
+		desiredPodID := e.GetDesiredPodId().GetValue()
+		jobVersion, err := strconv.ParseInt(e.GetJobVersion().GetValue(), 10, 64)
+		if err != nil {
+			log.WithError(err).
+				Info("Error parsing job version")
+			return nil, err
+		}
+		desiredJobVersion, err := strconv.ParseInt(e.GetDesiredJobVersion().GetValue(), 10, 64)
+		if err != nil {
+			log.WithError(err).
+				Info("Error parsing desired job version")
+			return nil, err
+		}
+
+		result = append(result, &task.PodEvent{
+			TaskId: &mesosv1.TaskID{
+				Value: &podID,
+			},
+			ActualState:          e.GetActualState(),
+			GoalState:            e.GetDesiredState(),
+			Timestamp:            e.GetTimestamp(),
+			ConfigVersion:        uint64(jobVersion),
+			DesiredConfigVersion: uint64(desiredJobVersion),
+			AgentID:              e.GetAgentId(),
+			Hostname:             e.GetHostname(),
+			Message:              e.GetMessage(),
+			Reason:               e.GetReason(),
+			PrevTaskId: &mesosv1.TaskID{
+				Value: &prevPodID,
+			},
+			Healthy: e.GetHealthy(),
+			DesriedTaskId: &mesosv1.TaskID{
+				Value: &desiredPodID,
+			},
+		})
+	}
+	return result, nil
 }

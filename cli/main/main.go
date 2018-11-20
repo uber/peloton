@@ -1,12 +1,13 @@
 package main
 
 import (
-	"code.uber.internal/infra/peloton/util"
 	"fmt"
 	"math"
 	"os"
 	"strconv"
 	"strings"
+
+	"code.uber.internal/infra/peloton/util"
 
 	pt "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 

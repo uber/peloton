@@ -139,16 +139,6 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJob() {
 	suite.Error(err)
 }
 
-// TestDataStoreFailureTaskEvents tests datastore failures in getting task evt
-func (suite *MockDatastoreTestSuite) TestDataStoreFailureTaskEvents() {
-	_, err := suite.store.GetTaskStateChanges(
-		context.Background(), suite.testJobID, 0)
-	suite.Error(err)
-	_, err = suite.store.GetTaskEvents(
-		context.Background(), suite.testJobID, 0)
-	suite.Error(err)
-}
-
 // TestDataStoreFailureGetTasks tests datastore failures in getting tasks
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetTasks() {
 	_, err := suite.store.GetTasksForJobAndStates(

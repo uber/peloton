@@ -609,9 +609,6 @@ service TaskManager
   // BrowseSandbox returns list of file paths inside sandbox.
   rpc BrowseSandbox(BrowseSandboxRequest) returns (BrowseSandboxResponse);
 
-  // Get event changes of a task in job.
-  rpc GetEvents(GetEventsRequest) returns (GetEventsResponse);
-
   // Debug only method. Allows user to load task runtime state from DB
   // and re-execute the action associated with current state.
   rpc Refresh(RefreshRequest) returns (RefreshResponse);
@@ -699,27 +696,6 @@ message GetResponse {
   InstanceIdOutOfRange outOfRange = 3;
   // Returns all active and completed tasks of the given instance.
   repeated TaskInfo results = 4;
-}
-
-// DEPRECATED by peloton.api.v0.task.svc.GetEventsRequest.
-message GetEventsRequest {
-  peloton.JobID jobId = 1;
-  uint32 instanceId = 2;
-}
-
-// DEPRECATED by peloton.api.v0.task.svc.GetEventsResponse.
-message GetEventsResponse {
-  message Events {
-    repeated TaskEvent event = 1;
-  };
-
-  repeated Events result = 1;
-
-  message Error {
-    TaskEventsError eventError = 1;
-  }
-
-  Error error = 2;
 }
 
 /**

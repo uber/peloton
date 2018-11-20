@@ -26,12 +26,12 @@ import (
 	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedtest "code.uber.internal/infra/peloton/jobmgr/cached/test"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
 
-	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
@@ -45,6 +45,8 @@ const (
 	testInstanceCount = 4
 	testJob           = "941ff353-ba82-49fe-8f80-fb5bc649b04d"
 	testRunID         = "941ff353-ba82-49fe-8f80-fb5bc649b04d-4-5"
+	testPrevTaskID    = "941ff353-ba82-49fe-8f80-fb5bc649b04d-0-0"
+	testTaskID        = "941ff353-ba82-49fe-8f80-fb5bc649b04d-0-1"
 )
 
 type TaskHandlerTestSuite struct {
@@ -297,12 +299,30 @@ func (suite *TaskHandlerTestSuite) createTaskEventForGetTasks(instanceID uint32,
 
 func (suite *TaskHandlerTestSuite) TestGetTasks_Batch_Job() {
 	instanceID := uint32(0)
-	taskRuns := uint32(3)
+	taskRuns := uint32(1)
 	lastTaskInfo := suite.createTestTaskInfo(task.TaskState_FAILED, instanceID)
 	taskInfoMap := make(map[uint32]*task.TaskInfo)
 	taskInfoMap[instanceID] = lastTaskInfo
-	events, _ := suite.createTaskEventForGetTasks(instanceID, taskRuns)
 	suite.testJobConfig.Type = job.JobType_BATCH
+
+	var events []*pod.PodEvent
+	event := &pod.PodEvent{
+		PodId: &v1alphapeloton.PodID{
+			Value: testTaskID,
+		},
+		PrevPodId: &v1alphapeloton.PodID{
+			Value: testPrevTaskID,
+		},
+		JobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		ActualState:  task.TaskState_FAILED.String(),
+		DesiredState: task.TaskState_SUCCEEDED.String(),
+	}
+	events = append(events, event)
 
 	gomock.InOrder(
 		suite.mockedJobFactory.EXPECT().GetJob(suite.testJobID).
@@ -314,7 +334,7 @@ func (suite *TaskHandlerTestSuite) TestGetTasks_Batch_Job() {
 			GetTaskForJob(gomock.Any(), suite.testJobID.GetValue(), instanceID).
 			Return(taskInfoMap, nil),
 		suite.mockedTaskStore.EXPECT().
-			GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).
+			GetPodEvents(gomock.Any(), suite.testJobID.GetValue(), instanceID, "").
 			Return(events, nil),
 	)
 
@@ -338,6 +358,22 @@ func (suite *TaskHandlerTestSuite) TestGetTasks_Service_Job() {
 	taskInfoMap[instanceID] = lastTaskInfo
 	suite.testJobConfig.Type = job.JobType_SERVICE
 
+	var events []*pod.PodEvent
+	event := &pod.PodEvent{
+		PodId: &v1alphapeloton.PodID{
+			Value: testTaskID,
+		},
+		JobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		ActualState:  task.TaskState_RUNNING.String(),
+		DesiredState: task.TaskState_SUCCEEDED.String(),
+	}
+	events = append(events, event)
+
 	gomock.InOrder(
 		suite.mockedJobFactory.EXPECT().GetJob(suite.testJobID).
 			Return(suite.mockedCachedJob),
@@ -347,6 +383,9 @@ func (suite *TaskHandlerTestSuite) TestGetTasks_Service_Job() {
 		suite.mockedTaskStore.EXPECT().
 			GetTaskForJob(gomock.Any(), suite.testJobID.GetValue(), instanceID).
 			Return(taskInfoMap, nil),
+		suite.mockedTaskStore.EXPECT().
+			GetPodEvents(gomock.Any(), suite.testJobID.GetValue(), instanceID, "").
+			Return(events, nil),
 	)
 
 	var req = &task.GetRequest{
@@ -396,36 +435,6 @@ func (suite *TaskHandlerTestSuite) TestGetTasks_GetTaskFail() {
 		suite.mockedTaskStore.EXPECT().
 			GetTaskForJob(gomock.Any(), suite.testJobID.GetValue(), instanceID).
 			Return(nil, fmt.Errorf("test err")),
-	)
-
-	var req = &task.GetRequest{
-		JobId:      suite.testJobID,
-		InstanceId: instanceID,
-	}
-
-	resp, err := suite.handler.Get(context.Background(), req)
-	suite.NoError(err)
-	suite.NotNil(resp.GetOutOfRange())
-}
-
-func (suite *TaskHandlerTestSuite) TestGetTasks_FailToGetTaskEvents() {
-	instanceID := uint32(0)
-	lastTaskInfo := suite.createTestTaskInfo(task.TaskState_FAILED, instanceID)
-	taskInfoMap := make(map[uint32]*task.TaskInfo)
-	taskInfoMap[instanceID] = lastTaskInfo
-	suite.testJobConfig.Type = job.JobType_BATCH
-
-	gomock.InOrder(
-		suite.mockedJobFactory.EXPECT().GetJob(suite.testJobID).Return(suite.mockedCachedJob),
-		suite.mockedCachedJob.EXPECT().
-			GetConfig(gomock.Any()).
-			Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
-		suite.mockedTaskStore.EXPECT().
-			GetTaskForJob(gomock.Any(), suite.testJobID.GetValue(), instanceID).
-			Return(taskInfoMap, nil),
-		suite.mockedTaskStore.EXPECT().
-			GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).
-			Return(nil, fmt.Errorf("test error")),
 	)
 
 	var req = &task.GetRequest{
@@ -1271,137 +1280,6 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 	suite.Equal(resp.GetStartedInstanceIds(), []uint32{1})
 }
 
-func (suite *TaskHandlerTestSuite) TestGetEvents() {
-	taskEvents := suite.createTestTaskEvents()
-	suite.testJobConfig.Type = job.JobType_BATCH
-
-	gomock.InOrder(
-		suite.mockedJobFactory.EXPECT().
-			GetJob(suite.testJobID).Return(suite.mockedCachedJob),
-		suite.mockedCachedJob.EXPECT().
-			GetConfig(gomock.Any()).Return(suite.testJobConfig, nil),
-		suite.mockedTaskStore.EXPECT().
-			GetTaskEvents(gomock.Any(), gomock.Any(), gomock.Any()).Return(taskEvents, nil),
-	)
-	var request = &task.GetEventsRequest{
-		JobId:      suite.testJobID,
-		InstanceId: 0,
-	}
-	resp, err := suite.handler.GetEvents(
-		context.Background(),
-		request,
-	)
-	suite.NoError(err)
-	suite.Nil(resp.GetError())
-	eventsList := resp.GetResult()
-	suite.Equal(len(eventsList), 2)
-	task0Events := eventsList[0].GetEvent()
-	task1Events := eventsList[1].GetEvent()
-	suite.Equal(len(task0Events), 2)
-	suite.Equal(len(task1Events), 3)
-	taskID1 := fmt.Sprintf("%s-%d", suite.testJobID.Value, 1)
-	expectedTask1Events := []*task.TaskEvent{
-		{
-			TaskId: &peloton.TaskID{
-				Value: taskID1,
-			},
-			State:     task.TaskState_INITIALIZED,
-			Message:   "",
-			Timestamp: "2017-12-11T22:17:46Z",
-			Hostname:  "peloton-test-host-1",
-			Reason:    "",
-		},
-		{
-			TaskId: &peloton.TaskID{
-				Value: taskID1,
-			},
-			State:     task.TaskState_LAUNCHED,
-			Message:   "",
-			Timestamp: "2017-12-11T22:17:50Z",
-			Hostname:  "peloton-test-host-1",
-			Reason:    "",
-		},
-		{
-			TaskId: &peloton.TaskID{
-				Value: taskID1,
-			},
-			State:     task.TaskState_RUNNING,
-			Message:   "",
-			Timestamp: "2017-12-11T22:17:56Z",
-			Hostname:  "peloton-test-host-1",
-			Reason:    "",
-		},
-	}
-	suite.Equal(task1Events, expectedTask1Events)
-}
-
-func (suite *TaskHandlerTestSuite) TestGetEvents_GetJobConfigFailure() {
-	suite.testJobConfig.Type = job.JobType_BATCH
-
-	gomock.InOrder(
-		suite.mockedJobFactory.EXPECT().
-			GetJob(suite.testJobID).Return(suite.mockedCachedJob),
-		suite.mockedCachedJob.EXPECT().
-			GetConfig(gomock.Any()).Return(nil, fmt.Errorf("test error")),
-	)
-	var request = &task.GetEventsRequest{
-		JobId:      suite.testJobID,
-		InstanceId: 0,
-	}
-	resp, err := suite.handler.GetEvents(
-		context.Background(),
-		request,
-	)
-	suite.NoError(err)
-	suite.NotNil(resp.GetError())
-}
-
-func (suite *TaskHandlerTestSuite) TestGetEvents_GetEventsFailure() {
-	suite.testJobConfig.Type = job.JobType_BATCH
-
-	gomock.InOrder(
-		suite.mockedJobFactory.EXPECT().
-			GetJob(suite.testJobID).Return(suite.mockedCachedJob),
-		suite.mockedCachedJob.EXPECT().
-			GetConfig(gomock.Any()).Return(suite.testJobConfig, nil),
-		suite.mockedTaskStore.EXPECT().
-			GetTaskEvents(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("test error")),
-	)
-	var request = &task.GetEventsRequest{
-		JobId:      suite.testJobID,
-		InstanceId: 0,
-	}
-	resp, err := suite.handler.GetEvents(
-		context.Background(),
-		request,
-	)
-	suite.Nil(err)
-	suite.NotNil(resp.GetError())
-}
-
-func (suite *TaskHandlerTestSuite) TestGetEvents_Service_Job() {
-	suite.testJobConfig.Type = job.JobType_SERVICE
-
-	gomock.InOrder(
-		suite.mockedJobFactory.EXPECT().
-			GetJob(suite.testJobID).Return(suite.mockedCachedJob),
-		suite.mockedCachedJob.EXPECT().
-			GetConfig(gomock.Any()).Return(suite.testJobConfig, nil),
-	)
-	var request = &task.GetEventsRequest{
-		JobId:      suite.testJobID,
-		InstanceId: 0,
-	}
-	resp, err := suite.handler.GetEvents(
-		context.Background(),
-		request,
-	)
-	suite.NoError(err)
-	suite.Nil(resp.GetError())
-	eventsList := resp.GetResult()
-	suite.Len(eventsList, 0)
-}
-
 func (suite *TaskHandlerTestSuite) TestStartTasksWithInvalidRanges() {
 	singleTaskInfo := make(map[uint32]*task.TaskInfo)
 	singleTaskInfo[1] = suite.taskInfos[1]
@@ -1848,7 +1726,6 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsPrevPodIDParseError() {
 	suite.Nil(response)
 }
 
-
 // TestGetPodEventsNoEvents tests getting pod events for a task with no events
 func (suite *TaskHandlerTestSuite) TestGetPodEventsNoEvents() {
 	request := &task.GetPodEventsRequest{
@@ -1866,11 +1743,25 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsNoEvents() {
 	suite.NoError(err)
 }
 
-
 func (suite *TaskHandlerTestSuite) TestBrowseSandboxPreviousTaskRun() {
-	instanceID := uint32(0)
-	taskRuns := uint32(3)
-	events, getReturnEvents := suite.createTaskEventForGetTasks(instanceID, taskRuns)
+	var events []*pod.PodEvent
+	event := &pod.PodEvent{
+		PodId: &v1alphapeloton.PodID{
+			Value: testTaskID,
+		},
+		PrevPodId: &v1alphapeloton.PodID{
+			Value: testPrevTaskID,
+		},
+		JobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		ActualState:  task.TaskState_FAILED.String(),
+		DesiredState: task.TaskState_SUCCEEDED.String(),
+	}
+	events = append(events, event)
 
 	gomock.InOrder(
 		suite.mockedJobFactory.EXPECT().
@@ -1878,13 +1769,14 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxPreviousTaskRun() {
 		suite.mockedCachedJob.EXPECT().
 			GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedTaskStore.EXPECT().
-			GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).Return(events, nil),
+			GetPodEvents(gomock.Any(), suite.testJobID.GetValue(), uint32(0), testTaskID).
+			Return(events, nil),
 	)
 
 	var req = &task.BrowseSandboxRequest{
 		JobId:      suite.testJobID,
-		InstanceId: instanceID,
-		TaskId:     getReturnEvents[0].GetTaskId().GetValue(),
+		InstanceId: uint32(0),
+		TaskId:     testTaskID,
 	}
 	resp, err := suite.handler.BrowseSandbox(context.Background(), req)
 	suite.NoError(err)
@@ -1943,21 +1835,39 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxWithEmptyFrameworkID() {
 }
 
 func (suite *TaskHandlerTestSuite) TestBrowseSandboxListSandboxFileFailure() {
-	instanceID := uint32(0)
-	taskRuns := uint32(3)
-	events, getReturnEvents := suite.createTaskEventForGetTasks(
-		instanceID, taskRuns)
 	hostName := "peloton-test-host"
 	agentID := "peloton-test-agent"
 	frameworkID := "1234"
 	mesosAgentDir := "mesosAgentDir"
+	instanceID := uint32(0)
 
 	suite.handler.mesosAgentWorkDir = mesosAgentDir
+
+	var events []*pod.PodEvent
+	event := &pod.PodEvent{
+		PodId: &v1alphapeloton.PodID{
+			Value: testTaskID,
+		},
+		PrevPodId: &v1alphapeloton.PodID{
+			Value: testPrevTaskID,
+		},
+		Hostname: hostName,
+		AgentId:  agentID,
+		JobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		ActualState:  task.TaskState_RUNNING.String(),
+		DesiredState: task.TaskState_SUCCEEDED.String(),
+	}
+	events = append(events, event)
 
 	var req = &task.BrowseSandboxRequest{
 		JobId:      suite.testJobID,
 		InstanceId: instanceID,
-		TaskId:     getReturnEvents[1].GetTaskId().GetValue(),
+		TaskId:     testTaskID,
 	}
 
 	gomock.InOrder(
@@ -1968,7 +1878,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListSandboxFileFailure() {
 				cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig),
 				nil),
 		suite.mockedTaskStore.EXPECT().
-			GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).
+			GetPodEvents(gomock.Any(), suite.testJobID.GetValue(), instanceID, testTaskID).
 			Return(events, nil),
 		suite.mockedFrameworkInfoStore.EXPECT().
 			GetFrameworkID(gomock.Any(), _frameworkName).
@@ -1990,9 +1900,6 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListSandboxFileFailure() {
 
 func (suite *TaskHandlerTestSuite) TestBrowseSandboxGetMesosMasterInfoFailure() {
 	instanceID := uint32(0)
-	taskRuns := uint32(3)
-	events, getReturnEvents := suite.createTaskEventForGetTasks(
-		instanceID, taskRuns)
 	sandboxFilesPaths := []string{"path1", "path2"}
 	hostName := "peloton-test-host"
 	agentID := "peloton-test-agent"
@@ -2001,10 +1908,31 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxGetMesosMasterInfoFailure() 
 
 	suite.handler.mesosAgentWorkDir = mesosAgentDir
 
+	var events []*pod.PodEvent
+	event := &pod.PodEvent{
+		PodId: &v1alphapeloton.PodID{
+			Value: testTaskID,
+		},
+		PrevPodId: &v1alphapeloton.PodID{
+			Value: testPrevTaskID,
+		},
+		Hostname: hostName,
+		AgentId:  agentID,
+		JobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		ActualState:  task.TaskState_RUNNING.String(),
+		DesiredState: task.TaskState_SUCCEEDED.String(),
+	}
+	events = append(events, event)
+
 	var req = &task.BrowseSandboxRequest{
 		JobId:      suite.testJobID,
 		InstanceId: instanceID,
-		TaskId:     getReturnEvents[1].GetTaskId().GetValue(),
+		TaskId:     testTaskID,
 	}
 
 	gomock.InOrder(
@@ -2015,7 +1943,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxGetMesosMasterInfoFailure() 
 				cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig),
 				nil),
 		suite.mockedTaskStore.EXPECT().
-			GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).
+			GetPodEvents(gomock.Any(), suite.testJobID.GetValue(), instanceID, testTaskID).
 			Return(events, nil),
 		suite.mockedFrameworkInfoStore.EXPECT().
 			GetFrameworkID(gomock.Any(), _frameworkName).
@@ -2041,9 +1969,6 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxGetMesosMasterInfoFailure() 
 func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccess() {
 
 	instanceID := uint32(0)
-	taskRuns := uint32(3)
-	events, getReturnEvents := suite.createTaskEventForGetTasks(
-		instanceID, taskRuns)
 	sandboxFilesPaths := []string{"path1", "path2"}
 	hostName := "peloton-test-host"
 	agentID := "peloton-test-agent"
@@ -2052,10 +1977,31 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccess() {
 
 	suite.handler.mesosAgentWorkDir = mesosAgentDir
 
+	var events []*pod.PodEvent
+	event := &pod.PodEvent{
+		PodId: &v1alphapeloton.PodID{
+			Value: testTaskID,
+		},
+		PrevPodId: &v1alphapeloton.PodID{
+			Value: testPrevTaskID,
+		},
+		Hostname: hostName,
+		AgentId:  agentID,
+		JobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		ActualState:  task.TaskState_RUNNING.String(),
+		DesiredState: task.TaskState_SUCCEEDED.String(),
+	}
+	events = append(events, event)
+
 	var req = &task.BrowseSandboxRequest{
 		JobId:      suite.testJobID,
 		InstanceId: instanceID,
-		TaskId:     getReturnEvents[1].GetTaskId().GetValue(),
+		TaskId:     testTaskID,
 	}
 
 	var res = &task.BrowseSandboxResponse{
@@ -2075,7 +2021,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccess() {
 				cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig),
 				nil),
 		suite.mockedTaskStore.EXPECT().
-			GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).
+			GetPodEvents(gomock.Any(), suite.testJobID.GetValue(), instanceID, testTaskID).
 			Return(events, nil),
 		suite.mockedFrameworkInfoStore.EXPECT().
 			GetFrameworkID(gomock.Any(), _frameworkName).
@@ -2108,8 +2054,6 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccess() {
 func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccessAgentIP() {
 
 	instanceID := uint32(0)
-	taskRuns := uint32(3)
-	events, getReturnEvents := suite.createTaskEventForGetTasks(instanceID, taskRuns)
 	sandboxFilesPaths := []string{"path1", "path2"}
 	hostName := "peloton-test-host"
 	agentIP := "1.2.3.4"
@@ -2121,10 +2065,31 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccessAgentIP() {
 
 	suite.handler.mesosAgentWorkDir = mesosAgentDir
 
+	var events []*pod.PodEvent
+	event := &pod.PodEvent{
+		PodId: &v1alphapeloton.PodID{
+			Value: testTaskID,
+		},
+		PrevPodId: &v1alphapeloton.PodID{
+			Value: testPrevTaskID,
+		},
+		Hostname: hostName,
+		AgentId:  agentID,
+		JobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+			Value: "1",
+		},
+		ActualState:  task.TaskState_RUNNING.String(),
+		DesiredState: task.TaskState_SUCCEEDED.String(),
+	}
+	events = append(events, event)
+
 	var req = &task.BrowseSandboxRequest{
 		JobId:      suite.testJobID,
 		InstanceId: instanceID,
-		TaskId:     getReturnEvents[1].GetTaskId().GetValue(),
+		TaskId:     testTaskID,
 	}
 
 	var res = &task.BrowseSandboxResponse{
@@ -2152,7 +2117,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccessAgentIP() {
 				cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig),
 				nil),
 		suite.mockedTaskStore.EXPECT().
-			GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).
+			GetPodEvents(gomock.Any(), suite.testJobID.GetValue(), instanceID, testTaskID).
 			Return(events, nil),
 		suite.mockedFrameworkInfoStore.EXPECT().
 			GetFrameworkID(gomock.Any(), _frameworkName).
