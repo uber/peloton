@@ -33,3 +33,9 @@ func (f *firstFitRanker) GetRankedHostList(offerIndex map[string]summary.HostSum
 	}
 	return summaryList
 }
+
+// RefreshRanking is implementation of Ranker.RefreshRanking
+// This is no op for first fitranker
+func (f *firstFitRanker) RefreshRanking(offerIndex map[string]summary.HostSummary) {
+	return
+}

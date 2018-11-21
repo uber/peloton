@@ -1,6 +1,8 @@
 package binpacking
 
 import (
+	"sync"
+
 	"code.uber.internal/infra/peloton/common/sorter"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
 	"code.uber.internal/infra/peloton/hostmgr/util"
@@ -11,12 +13,16 @@ import (
 // defragRanker is the struct for implementation of
 // Defrag Ranker
 type defragRanker struct {
-	name string
+	mu          sync.RWMutex
+	name        string
+	summaryList []interface{}
 }
 
 // NewDeFragRanker returns the Defrag Ranker
 func NewDeFragRanker() Ranker {
-	return &defragRanker{name: DeFrag}
+	return &defragRanker{
+		name: DeFrag,
+	}
 }
 
 // Name is the implementation for Ranker interface.Name method
@@ -31,10 +37,37 @@ func (d *defragRanker) Name() string {
 // 2. CPU
 // 3. Memory
 // 4. Disk
+// This checks if there is already a list present pass that
+// and it depends on RefreshRanking to refresh the list
 func (d *defragRanker) GetRankedHostList(
 	offerIndex map[string]summary.HostSummary) []interface{} {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	log.Debugf(" %s ranker GetRankedHostList is been called", d.Name())
+	// if d.summaryList is not initilized , call the getRankedHostList
+	if len(d.summaryList) == 0 {
+		d.summaryList = d.getRankedHostList(offerIndex)
+	}
+	return d.summaryList
+}
 
+// RefreshRanking refreshes the hostlist based on new host summary index
+// This function has to be called periodically to refresh the list
+func (d *defragRanker) RefreshRanking(offerIndex map[string]summary.HostSummary) {
+	summaryList := d.getRankedHostList(offerIndex)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.summaryList = summaryList
+}
+
+// getRankedHostList this is the unprotected method for sorting
+// the offer index to all the 4 dimensions
+// 1. GPU
+// 2. CPU
+// 3. Memory
+// 4. Disk
+func (d *defragRanker) getRankedHostList(
+	offerIndex map[string]summary.HostSummary) []interface{} {
 	var summaryList []interface{}
 	for _, summary := range offerIndex {
 		summaryList = append(summaryList, summary)

@@ -56,4 +56,6 @@ type Config struct {
 
 	// Bin Packing tasks in hosts as much as possible
 	BinPacking string `yaml:"bin_packing"`
+	// Bin Packing Refresh Interval
+	BinPackingRefreshIntervalSec time.Duration `yaml:"bin_packing_refresh_interval"`
 }

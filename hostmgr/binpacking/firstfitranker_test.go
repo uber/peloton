@@ -56,4 +56,12 @@ func (suite *FirstFitRankerTestSuite) TestGetRankedHostList() {
 				scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
 		}
 	}
+	// Checking by adding new host to ranker it does not effect any thing
+	// for the firstfit ranker
+	AddHostToIndex(5, suite.offerIndex)
+	sortedListNew := suite.firstfitRanker.GetRankedHostList(suite.offerIndex)
+	suite.EqualValues(len(sortedListNew), 6)
+	suite.firstfitRanker.RefreshRanking(suite.offerIndex)
+	sortedListNew = suite.firstfitRanker.GetRankedHostList(suite.offerIndex)
+	suite.EqualValues(len(sortedListNew), 6)
 }

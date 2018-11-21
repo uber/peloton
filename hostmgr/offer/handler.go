@@ -22,6 +22,7 @@ import (
 
 const (
 	_hostPrunerName              = "hostpruner"
+	_binPackingRefresherName     = "binPackingRefresher"
 	_resourceCleanerName         = "resourceCleaner"
 	_resourceCleanerPeriod       = 15 * time.Minute
 	_resourceCleanerInitialDelay = 15 * time.Minute
@@ -68,7 +69,8 @@ func InitEventHandler(
 	hostPruningPeriodSec time.Duration,
 	scarceResourceTypes []string,
 	slackResourceTypes []string,
-	ranker binpacking.Ranker) {
+	ranker binpacking.Ranker,
+	binPackingRefreshIntervalSec time.Duration) {
 
 	if handler != nil {
 		log.Warning("Offer event handler has already been initialized")
@@ -96,6 +98,17 @@ func InitEventHandler(
 			Period: hostPruningPeriodSec,
 		},
 	)
+	binPackingRefresher := offerpool.NewRefresher(
+		pool,
+	)
+	backgroundMgr.RegisterWorks(
+		background.Work{
+			Name:   _binPackingRefresherName,
+			Func:   binPackingRefresher.Refresh,
+			Period: binPackingRefreshIntervalSec,
+		},
+	)
+
 	resourceCleaner := cleaner.NewCleaner(
 		pool,
 		parent.SubScope(_resourceCleanerName),

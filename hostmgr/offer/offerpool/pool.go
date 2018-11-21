@@ -90,6 +90,13 @@ type Pool interface {
 
 	// GetHostSummary returns the host summary object for the given host name
 	GetHostSummary(hostName string) (summary.HostSummary, error)
+
+	// GetBinPackingRanker returns the associated ranker with the offer pool
+	GetBinPackingRanker() binpacking.Ranker
+
+	// GetHostOfferIndex returns the host to host summary mapping
+	// it makes the copy and returns the new map
+	GetHostOfferIndex() map[string]summary.HostSummary
 }
 
 const (
@@ -634,4 +641,21 @@ func (p *offerPool) GetHostSummary(hostname string) (summary.HostSummary, error)
 			hostname)
 	}
 	return p.hostOfferIndex[hostname], nil
+}
+
+// GetBinPackingRanker returns the associated ranker with the offer pool
+func (p *offerPool) GetBinPackingRanker() binpacking.Ranker {
+	return p.binPackingRanker
+}
+
+// GetHostOfferIndex returns the host to host summary mapping
+// it makes the copy and returns the new map
+func (p *offerPool) GetHostOfferIndex() map[string]summary.HostSummary {
+	p.RLock()
+	defer p.RUnlock()
+	dest := make(map[string]summary.HostSummary)
+	for k, v := range p.hostOfferIndex {
+		dest[k] = v
+	}
+	return dest
 }

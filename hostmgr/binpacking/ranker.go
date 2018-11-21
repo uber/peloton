@@ -11,4 +11,8 @@ type Ranker interface {
 	Name() string
 	// returns the list of ranked ordered list
 	GetRankedHostList(offerIndex map[string]summary.HostSummary) []interface{}
+	// Refreshes the ranker based on new host summary index
+	// we need to call this asynchronously to mitigate the
+	// performance panality of bin packing.
+	RefreshRanking(offerIndex map[string]summary.HostSummary)
 }

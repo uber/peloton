@@ -1,39 +1,48 @@
-package binpacking
+package offerpool
 
 import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+
+	"code.uber.internal/infra/peloton/hostmgr/binpacking"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
 	hmutil "code.uber.internal/infra/peloton/hostmgr/util"
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 )
 
-type DeFragRankerTestSuite struct {
+type RefreshTestSuite struct {
 	suite.Suite
-	defragRanker Ranker
+	defragRanker binpacking.Ranker
 	offerIndex   map[string]summary.HostSummary
+	pool         Pool
 }
 
-func TestDeFragRankerTestSuite(t *testing.T) {
-	suite.Run(t, new(DeFragRankerTestSuite))
+func TestRefreshTestSuite(t *testing.T) {
+	suite.Run(t, new(RefreshTestSuite))
 }
 
-func (suite *DeFragRankerTestSuite) SetupTest() {
-	suite.defragRanker = NewDeFragRanker()
+func (suite *RefreshTestSuite) SetupTest() {
+	suite.defragRanker = binpacking.NewDeFragRanker()
 	suite.offerIndex = CreateOfferIndex()
+	suite.pool = &offerPool{
+		hostOfferIndex:   suite.offerIndex,
+		offerHoldTime:    1 * time.Minute,
+		metrics:          NewMetrics(tally.NoopScope),
+		binPackingRanker: suite.defragRanker,
+	}
 }
 
-func (suite *DeFragRankerTestSuite) TestName() {
-	suite.EqualValues(suite.defragRanker.Name(), DeFrag)
-}
-
-func (suite *DeFragRankerTestSuite) TestGetRankedHostList() {
+func (suite *RefreshTestSuite) TestRefresh() {
+	refresher := NewRefresher(suite.pool)
+	refresher.Refresh(nil)
 	sortedList := suite.defragRanker.GetRankedHostList(suite.offerIndex)
 	suite.EqualValues(hmutil.GetResourcesFromOffers(
 		sortedList[0].(summary.HostSummary).GetOffers(summary.All)),
@@ -50,36 +59,12 @@ func (suite *DeFragRankerTestSuite) TestGetRankedHostList() {
 	suite.EqualValues(hmutil.GetResourcesFromOffers(
 		sortedList[4].(summary.HostSummary).GetOffers(summary.All)),
 		scalar.Resources{CPU: 2, Mem: 2, Disk: 2, GPU: 4})
-}
 
-func (suite *DeFragRankerTestSuite) TestGetRankedHostListWithRefresh() {
-	// Getting the sorted list based on first call
-	sortedList := suite.defragRanker.GetRankedHostList(suite.offerIndex)
-	suite.EqualValues(len(sortedList), 5)
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[0].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 1})
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[1].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[2].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[3].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[4].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 2, Mem: 2, Disk: 2, GPU: 4})
-	// Adding new host and check we still not get
-	// the new list before we call refresh
-	// Checking if we get the previous list
 	AddHostToIndex(5, suite.offerIndex)
 	sortedListNew := suite.defragRanker.GetRankedHostList(suite.offerIndex)
 	suite.EqualValues(len(sortedListNew), 5)
 	// Refresh the ranker
-	suite.defragRanker.RefreshRanking(suite.offerIndex)
-	// NOw it should get the new list
+	refresher.Refresh(nil)
 	sortedListNew = suite.defragRanker.GetRankedHostList(suite.offerIndex)
 	suite.EqualValues(len(sortedListNew), 6)
 	suite.EqualValues(hmutil.GetResourcesFromOffers(

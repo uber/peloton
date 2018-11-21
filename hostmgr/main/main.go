@@ -449,6 +449,7 @@ func main() {
 		cfg.HostManager.ScarceResourceTypes,
 		cfg.HostManager.SlackResourceTypes,
 		bin_packing.CreateRanker(cfg.HostManager.BinPacking),
+		cfg.HostManager.BinPackingRefreshIntervalSec,
 	)
 
 	maintenanceQueue := queue.NewMaintenanceQueue()
