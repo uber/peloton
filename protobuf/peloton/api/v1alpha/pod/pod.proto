@@ -517,11 +517,6 @@ message PodSummary {
   // Name of the pod
   peloton.PodName pod_name = 1;
 
-  // Images being used by the containers in the pod.
-  // The key to the map is the container name and the value
-  // is the image name being used by the container.
-  map<string, string> images = 2;
-
   // Runtime status of the pod
   PodStatus status = 3;
 }
