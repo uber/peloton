@@ -242,6 +242,10 @@ func (j *job) addTaskToJobMap(id uint32) *task {
 func (j *job) AddTask(
 	ctx context.Context,
 	id uint32) (Task, error) {
+	if t := j.GetTask(id); t != nil {
+		return t, nil
+	}
+
 	j.Lock()
 	defer j.Unlock()
 
