@@ -8,6 +8,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
@@ -111,4 +112,37 @@ func JobRecover(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	return err
+}
+
+// DeleteJobFromActiveJobs deletes a terminal batch job from active jobs
+// table
+func DeleteJobFromActiveJobs(
+	ctx context.Context, entity goalstate.Entity) error {
+	jobEnt := entity.(*jobEntity)
+	goalStateDriver := entity.(*jobEntity).driver
+
+	cachedJob := goalStateDriver.jobFactory.GetJob(jobEnt.id)
+	if cachedJob == nil {
+		return nil
+	}
+
+	runtime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		return err
+	}
+
+	cfg, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	// delete a terminal batch job from the active jobs table
+	if cfg.GetType() == job.JobType_BATCH &&
+		util.IsPelotonJobStateTerminal(runtime.GetState()) {
+		if err := goalStateDriver.jobStore.DeleteActiveJob(
+			ctx, jobEnt.id); err != nil {
+			return err
+		}
+	}
+	return nil
 }

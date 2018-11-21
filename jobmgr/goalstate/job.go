@@ -36,6 +36,9 @@ const (
 	EnqeueAction JobAction = "enqueue"
 	// RecoverAction attempts to recover a partially created job
 	RecoverAction JobAction = "recover"
+	// DeleteFromActiveJobsAction deletes a jobID from active jobs list if
+	// the job is a terminal BATCH job
+	DeleteFromActiveJobsAction JobAction = "delete_from_active_jobs"
 )
 
 // _jobActionsMaps maps the JobAction string to the Action function.
@@ -194,6 +197,12 @@ func (j *jobEntity) GetActionList(
 			Name:    string(EvaluateSLAAction),
 			Execute: JobEvaluateMaxRunningInstancesSLA,
 		})
+
+		actions = append(actions, goalstate.Action{
+			Name:    string(DeleteFromActiveJobsAction),
+			Execute: DeleteJobFromActiveJobs,
+		})
+
 	}
 
 	return context.Background(), nil, actions

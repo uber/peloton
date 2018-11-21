@@ -105,10 +105,10 @@ func TestJobGetActionList(t *testing.T) {
 	assert.Equal(t, 1, len(actions))
 
 	_, _, actions = jobEnt.GetActionList(job.JobState_RUNNING, job.JobState_SUCCEEDED)
-	assert.Equal(t, 2, len(actions))
+	assert.Equal(t, 3, len(actions))
 
 	_, _, actions = jobEnt.GetActionList(job.JobState_RUNNING, job.JobState_KILLED)
-	assert.Equal(t, 3, len(actions))
+	assert.Equal(t, 4, len(actions))
 }
 
 func TestEngineJobSuggestAction(t *testing.T) {

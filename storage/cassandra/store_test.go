@@ -23,6 +23,7 @@ import (
 	"code.uber.internal/infra/peloton/common/backoff"
 	"code.uber.internal/infra/peloton/storage"
 	qb "code.uber.internal/infra/peloton/storage/querybuilder"
+	"code.uber.internal/infra/peloton/util"
 
 	"github.com/gocql/gocql"
 	"github.com/golang/protobuf/ptypes"
@@ -1632,6 +1633,38 @@ func (suite *CassandraStoreTestSuite) TestGetTaskByRange() {
 	suite.validateRange(&jobID, 60, 83)
 	suite.validateRange(&jobID, 70, 97)
 	suite.validateRange(&jobID, 70, 120)
+}
+
+// TestActiveJobsForRecovery tests add/get/delete jobs to active jobs table
+func (suite *CassandraStoreTestSuite) TestActiveJobsForRecovery() {
+	var jobStore storage.JobStore
+	jobStore = store
+	ctx := context.Background()
+	jobIDs := []string{}
+	for i := 0; i < 10; i++ {
+		jobID := peloton.JobID{Value: uuid.New()}
+		err := jobStore.AddActiveJob(ctx, &jobID)
+		suite.NoError(err)
+		jobIDs = append(jobIDs, jobID.GetValue())
+	}
+
+	actualJobIDs, err := jobStore.GetActiveJobs(ctx)
+	suite.NoError(err)
+	suite.Len(actualJobIDs, 10)
+
+	for _, actualID := range actualJobIDs {
+		suite.True(util.Contains(jobIDs, actualID.GetValue()))
+	}
+
+	for _, id := range jobIDs {
+		err := jobStore.DeleteActiveJob(
+			context.Background(), &peloton.JobID{Value: id})
+		suite.NoError(err)
+	}
+
+	actualJobIDs, err = jobStore.GetActiveJobs(ctx)
+	suite.NoError(err)
+	suite.Len(actualJobIDs, 0)
 }
 
 func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, to int) {

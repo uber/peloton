@@ -52,6 +52,15 @@ type JobMetrics struct {
 	// Timers
 	JobGetByStatesDuration     tally.Timer
 	JobGetByStatesFailDuration tally.Timer
+
+	// Recovery
+	ActiveJobsAddSuccess    tally.Counter
+	ActiveJobsAddFail       tally.Counter
+	ActiveJobsDeleteSuccess tally.Counter
+	ActiveJobsDeleteFail    tally.Counter
+	GetActiveJobsSuccess    tally.Counter
+	GetActiveJobsFail       tally.Counter
+	GetActiveJobsDuration   tally.Timer
 }
 
 // TaskMetrics is a struct for tracking all the task related counters in the storage layer
@@ -299,6 +308,14 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		JobGetByStatesDuration:     jobSuccessScope.Timer("get_job_by_state_duration"),
 		JobGetByStatesFailDuration: jobFailScope.Timer("get_job_by_state_duration"),
+
+		ActiveJobsAddSuccess:    jobSuccessScope.Counter("add_active_job"),
+		ActiveJobsAddFail:       jobFailScope.Counter("add_active_job"),
+		ActiveJobsDeleteSuccess: jobSuccessScope.Counter("delete_active_job"),
+		ActiveJobsDeleteFail:    jobFailScope.Counter("delete_active_job"),
+		GetActiveJobsSuccess:    jobSuccessScope.Counter("get_active_job"),
+		GetActiveJobsFail:       jobFailScope.Counter("get_active_job"),
+		GetActiveJobsDuration:   jobSuccessScope.Timer("get_active_jobs_duration"),
 	}
 
 	taskMetrics := &TaskMetrics{

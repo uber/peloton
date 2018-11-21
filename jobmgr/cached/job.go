@@ -457,6 +457,14 @@ func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, configAddOn *
 
 	config = populateConfigChangeLog(config)
 
+	// Add jobID to active jobs table before creating job runtime. This should
+	// happen every time a job is first created.
+	if err := j.jobFactory.jobStore.AddActiveJob(
+		ctx, j.ID()); err != nil {
+		j.invalidateCache()
+		return err
+	}
+
 	// create job runtime and set state to UNINITIALIZED
 	if err := j.createJobRuntime(ctx, config); err != nil {
 		j.invalidateCache()

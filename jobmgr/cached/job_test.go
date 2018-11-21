@@ -1200,6 +1200,9 @@ func (suite *JobTestSuite) TestJobCreate() {
 		Return(nil)
 
 	suite.jobStore.EXPECT().
+		AddActiveJob(gomock.Any(), suite.jobID).Return(nil)
+
+	suite.jobStore.EXPECT().
 		CreateJobRuntimeWithConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, initialRuntime *pbjob.RuntimeInfo, config *pbjob.JobConfig) {
 			suite.Equal(initialRuntime.State, pbjob.JobState_UNINITIALIZED)

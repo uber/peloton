@@ -21,6 +21,20 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+//  Runtime states of a Job
+type transitionType int32
+
+const (
+	// When job state is unknown, transition type is also unknown
+	transitionTypeUnknown transitionType = 0
+	// When job transitions from one active state to another
+	transitionTypeActiveActive transitionType = 1
+	// When job transitions from active state to terminal state
+	transitionTypeActiveTerminal transitionType = 2
+	// When job transitions from terminal state to active state
+	transitionTypeTerminalActive transitionType = 3
+)
+
 // taskStatesAfterStart is the set of Peloton task states which
 // indicate a task is being or has already been started.
 var taskStatesAfterStart = []task.TaskState{
@@ -326,6 +340,20 @@ func (d *controllerTaskJobStateDeterminer) getState(
 	}
 }
 
+// getTransitionType returns the type of state transition for this job.
+// for example: a job being restarted would move from a terminal to active
+// state and the state transition returned is transitionTypeTerminalActive
+func getTransitionType(newState, oldState job.JobState) transitionType {
+	newStateIsTerminal := util.IsPelotonJobStateTerminal(newState)
+	oldStateIsTerminal := util.IsPelotonJobStateTerminal(oldState)
+	if newStateIsTerminal && !oldStateIsTerminal {
+		return transitionTypeActiveTerminal
+	} else if !newStateIsTerminal && oldStateIsTerminal {
+		return transitionTypeTerminalActive
+	}
+	return transitionTypeActiveActive
+}
+
 // determineJobRuntimeState determines the job state based on current
 // job runtime state and task state counts.
 // This function is not expected to be called when
@@ -338,12 +366,13 @@ func determineJobRuntimeState(
 	stateCounts map[string]uint32,
 	config jobmgrcommon.JobConfig,
 	goalStateDriver *driver,
-	cachedJob cached.Job) (job.JobState, error) {
+	cachedJob cached.Job) (job.JobState, transitionType, error) {
+	prevState := jobRuntime.GetState()
 	jobStateDeterminer := jobStateDeterminerFactory(
 		jobRuntime, stateCounts, cachedJob, config)
 	jobState, err := jobStateDeterminer.getState(ctx, jobRuntime)
 	if err != nil {
-		return job.JobState_UNKNOWN, err
+		return job.JobState_UNKNOWN, transitionTypeUnknown, err
 	}
 
 	// Check if a batch job is active for a very long time which may indicate
@@ -363,7 +392,7 @@ func determineJobRuntimeState(
 		goalStateDriver.mtx.jobMetrics.JobKilled.Inc(1)
 
 	}
-	return jobState, nil
+	return jobState, getTransitionType(jobState, prevState), nil
 }
 
 // JobRuntimeUpdater updates the job runtime.
@@ -433,7 +462,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	// determineJobRuntimeState would handle both
 	// totalInstanceCount > config.GetInstanceCount() and
 	// partially created job
-	jobState, err = determineJobRuntimeState(
+	jobState, transition, err := determineJobRuntimeState(
 		ctx, jobRuntime, stateCounts, config, goalStateDriver, cachedJob)
 	if err != nil {
 		return err
@@ -476,6 +505,19 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	jobRuntimeUpdate.TaskStats = stateCounts
 
 	jobRuntimeUpdate.ResourceUsage = cachedJob.GetResourceUsage()
+
+	// add to active jobs list BEFORE writing state to job runtime table.
+	// Also write to active jobs list only when the job is being transitioned
+	// from a terminal to active state. For active to active transitions, we
+	// can assume that the job is already in this list from the time it was
+	// first created. Terminal jobs will be removed from this list and must
+	// be added back when they are rerun.
+	if transition == transitionTypeTerminalActive {
+		if err := goalStateDriver.jobStore.AddActiveJob(
+			ctx, jobID); err != nil {
+			return err
+		}
+	}
 
 	// Update the job runtime
 	err = cachedJob.Update(ctx, &job.JobInfo{

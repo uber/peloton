@@ -2,6 +2,7 @@ package goalstate
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
@@ -10,6 +11,7 @@ import (
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -283,4 +285,146 @@ func TestJobRecoverActionFailToRecover(t *testing.T) {
 
 	err := JobRecover(context.Background(), jobEnt)
 	assert.NoError(t, err)
+}
+
+// TestDeleteJobFromActiveJobs tests DeleteJobFromActiveJobs goalstate
+// action results
+func TestDeleteJobFromActiveJobs(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobStore := storemocks.NewMockJobStore(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+
+	goalStateDriver := &driver{
+		jobFactory: jobFactory,
+		jobStore:   jobStore,
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
+	}
+
+	goalStateDriver.cfg.normalize()
+
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+
+	jobEnt := &jobEntity{id: jobID, driver: goalStateDriver}
+
+	tt := []struct {
+		typ          job.JobType
+		state        job.JobState
+		shouldDelete bool
+	}{
+		{
+			typ:          job.JobType_BATCH,
+			state:        job.JobState_RUNNING,
+			shouldDelete: false,
+		},
+
+		{
+			typ:          job.JobType_SERVICE,
+			state:        job.JobState_RUNNING,
+			shouldDelete: false,
+		},
+
+		{
+			typ:          job.JobType_SERVICE,
+			state:        job.JobState_FAILED,
+			shouldDelete: false,
+		},
+		{
+			typ:          job.JobType_BATCH,
+			state:        job.JobState_SUCCEEDED,
+			shouldDelete: true,
+		},
+		{
+			typ:          job.JobType_BATCH,
+			state:        job.JobState_FAILED,
+			shouldDelete: true,
+		},
+	}
+	for _, test := range tt {
+		jobFactory.EXPECT().GetJob(jobID).Return(cachedJob)
+		cachedJob.EXPECT().GetRuntime(context.Background()).
+			Return(&job.RuntimeInfo{
+				State: test.state,
+			}, nil)
+		cachedJob.EXPECT().
+			GetConfig(gomock.Any()).
+			Return(&job.JobConfig{
+				Type: test.typ,
+			}, nil)
+
+		// cachedJob.EXPECT().GetJobType().Return(test.typ)
+		if test.shouldDelete {
+			jobStore.EXPECT().DeleteActiveJob(gomock.Any(), jobID).Return(nil)
+		}
+		err := DeleteJobFromActiveJobs(context.Background(), jobEnt)
+		assert.NoError(t, err)
+	}
+
+}
+
+// TestDeleteJobFromActiveJobsFailures tests failure scenarios for
+// DeleteJobFromActiveJobs goalstate action
+func TestDeleteJobFromActiveJobsFailures(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobStore := storemocks.NewMockJobStore(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+
+	goalStateDriver := &driver{
+		jobFactory: jobFactory,
+		jobStore:   jobStore,
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
+	}
+
+	goalStateDriver.cfg.normalize()
+
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+
+	jobEnt := &jobEntity{id: jobID, driver: goalStateDriver}
+
+	// set cached job to nil. this should not return error
+	jobFactory.EXPECT().GetJob(jobID).Return(nil)
+	err := DeleteJobFromActiveJobs(context.Background(), jobEnt)
+	assert.NoError(t, err)
+
+	jobFactory.EXPECT().GetJob(jobID).Return(cachedJob).AnyTimes()
+
+	// simulate GetRuntime error
+	cachedJob.EXPECT().
+		GetRuntime(context.Background()).
+		Return(nil, fmt.Errorf("runtime error"))
+	err = DeleteJobFromActiveJobs(context.Background(), jobEnt)
+	assert.Error(t, err)
+
+	// Simulate GetConfig error
+	cachedJob.EXPECT().GetRuntime(context.Background()).
+		Return(&job.RuntimeInfo{
+			State: job.JobState_FAILED,
+		}, nil)
+	cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(nil, fmt.Errorf("config error"))
+	err = DeleteJobFromActiveJobs(context.Background(), jobEnt)
+	assert.Error(t, err)
+
+	// Simulate storage error
+	cachedJob.EXPECT().GetRuntime(context.Background()).
+		Return(&job.RuntimeInfo{
+			State: job.JobState_FAILED,
+		}, nil)
+	cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			Type: job.JobType_BATCH,
+		}, nil)
+	jobStore.EXPECT().DeleteActiveJob(gomock.Any(), jobID).
+		Return(fmt.Errorf("DB error"))
+	err = DeleteJobFromActiveJobs(context.Background(), jobEnt)
+	assert.Error(t, err)
 }

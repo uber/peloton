@@ -1551,7 +1551,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeStateStaleJob() 
 	suite.cachedJob.EXPECT().GetLastTaskUpdateTime().
 		Return(float64(time.Now().AddDate(0, 0, -5).UnixNano())).AnyTimes()
 
-	jobState, err := determineJobRuntimeState(
+	jobState, _, err := determineJobRuntimeState(
 		context.Background(), jobRuntime, stateCounts, suite.cachedConfig,
 		suite.goalStateDriver, suite.cachedJob)
 	suite.NoError(err)
@@ -1566,7 +1566,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeStateStaleJob() 
 		})
 	}
 
-	jobState, err = determineJobRuntimeState(
+	jobState, _, err = determineJobRuntimeState(
 		context.Background(), jobRuntime, stateCounts, suite.cachedConfig,
 		suite.goalStateDriver, suite.cachedJob)
 	suite.NoError(err)
@@ -1769,7 +1769,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 		cachedJob.EXPECT().GetLastTaskUpdateTime().
 			Return(suite.lastUpdateTs).AnyTimes()
 
-		jobState, _ := determineJobRuntimeState(
+		jobState, _, _ := determineJobRuntimeState(
 			context.Background(),
 			jobRuntime,
 			test.stateCounts,

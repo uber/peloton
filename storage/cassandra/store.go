@@ -49,6 +49,7 @@ const (
 	taskIDFmt = "%s-%d"
 
 	// DB table names
+	activeJobsTable       = "active_jobs"
 	jobConfigTable        = "job_config"
 	jobRuntimeTable       = "job_runtime"
 	jobIndexTable         = "job_index"
@@ -86,7 +87,8 @@ const (
 
 	// _defaultTaskConfigID is used for storing, and retrieving, the default
 	// task configuration, when no specific is available.
-	_defaultTaskConfigID = -1
+	_defaultTaskConfigID      = -1
+	_defaultActiveJobsShardID = 0
 
 	jobIndexTimeFormat        = "20060102150405"
 	jobQueryDefaultSpanInDays = 7
@@ -328,6 +330,7 @@ func (s *Store) CreateJobConfig(
 	ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig,
 	configAddOn *models.ConfigAddOn, version uint64, owner string) error {
 	jobID := id.GetValue()
+
 	configBuffer, err := proto.Marshal(jobConfig)
 	if err != nil {
 		log.WithError(err).Error("Failed to marshal jobConfig")
@@ -954,6 +957,91 @@ func (s *Store) GetJobsByStates(ctx context.Context, states []job.JobState) ([]p
 	callDuration := time.Since(callStart)
 	s.metrics.JobMetrics.JobGetByStatesDuration.Record(callDuration)
 	return jobs, nil
+}
+
+func getActiveJobShardIDFromJobID(jobID *peloton.JobID) uint32 {
+	// This can be constructed from jobID (ex: first byte of job_id is shard id)
+	// For now, we can stick to default shard id
+	return _defaultActiveJobsShardID
+}
+
+// Get a list of shardIDs to query active jobs
+func getAllActiveJobsShardIDs() []uint32 {
+	return []uint32{_defaultActiveJobsShardID}
+}
+
+// AddActiveJob adds job to active jobs table
+func (s *Store) AddActiveJob(
+	ctx context.Context, jobID *peloton.JobID) error {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(activeJobsTable).
+		Columns("shard_id", "job_id").
+		Values(getActiveJobShardIDFromJobID(jobID), jobID.GetValue())
+	if err := s.applyStatement(ctx, stmt, jobID.GetValue()); err != nil {
+		s.metrics.JobMetrics.ActiveJobsAddFail.Inc(1)
+		return err
+	}
+	s.metrics.JobMetrics.ActiveJobsAddSuccess.Inc(1)
+	return nil
+}
+
+// DeleteActiveJob deletes job from active jobs table
+func (s *Store) DeleteActiveJob(
+	ctx context.Context, jobID *peloton.JobID) error {
+	// Batch job has reached terminal state. Delete it from active jobs list.
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Delete(activeJobsTable).
+		Where(qb.Eq{"shard_id": getActiveJobShardIDFromJobID(jobID)}).
+		Where(qb.Eq{"job_id": jobID.GetValue()})
+	if err := s.applyStatement(ctx, stmt, jobID.GetValue()); err != nil {
+		s.metrics.JobMetrics.ActiveJobsDeleteFail.Inc(1)
+		return err
+	}
+	s.metrics.JobMetrics.ActiveJobsDeleteSuccess.Inc(1)
+	return nil
+}
+
+// GetActiveJobs returns active jobs at any given time. This means Batch jobs
+// in PENDING, INITIALIZED, RUNNING, KILLING state and ALL Stateless jobs.
+func (s *Store) GetActiveJobs(ctx context.Context) ([]peloton.JobID, error) {
+	queryBuilder := s.DataStore.NewQuery()
+
+	callStart := time.Now()
+	// active jobs table is shareded using synthetic shardIDs derived from jobID
+	// This is to prevent large partitions in cassandra. We may choose to add
+	// synthetic sharding later, but for now we will use just one shardID for
+	// this table and recover all jobs in that one shardID. This code is for
+	// future proofing. getAllActiveJobsShardIDs will return a list of all
+	// shardIDs in the system (currently returns list of item)
+	stmt := queryBuilder.Select("job_id").From(activeJobsTable).
+		Where(qb.Eq{"shard_id": getAllActiveJobsShardIDs()})
+	allResults, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		s.metrics.JobMetrics.GetActiveJobsFail.Inc(1)
+		callDuration := time.Since(callStart)
+		s.metrics.JobMetrics.GetActiveJobsDuration.Record(callDuration)
+		return nil, err
+	}
+
+	var jobIDs []peloton.JobID
+	for _, value := range allResults {
+		id, ok := value["job_id"].(qb.UUID)
+		if !ok {
+			// If we return an error here because of one potentially corrupt
+			// job_id entry, it will break recovery and jobmgr/resmgr will be
+			// thrown in a crash loop. This is a highly unlikely error, so we
+			// should investigate it if we catch it on sentry without breaking
+			// peloton restarts
+			log.WithField("job_id", value["job_id"]).
+				Error("Invalid jobID in active jobs table")
+			continue
+		}
+		jobIDs = append(jobIDs, peloton.JobID{Value: id.String()})
+	}
+	s.metrics.JobMetrics.GetActiveJobsSuccess.Inc(1)
+	callDuration := time.Since(callStart)
+	s.metrics.JobMetrics.GetActiveJobsDuration.Record(callDuration)
+	return jobIDs, nil
 }
 
 // CreateTaskRuntime creates a task runtime for a peloton job
