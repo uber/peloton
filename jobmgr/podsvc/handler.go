@@ -577,7 +577,7 @@ func convertToPodStatus(runtime *pbtask.RuntimeInfo) *pbpod.PodStatus {
 		CompletionTime: runtime.GetCompletionTime(),
 		Host:           runtime.GetHost(),
 		ContainersStatus: []*pbpod.ContainerStatus{
-			&pbpod.ContainerStatus{
+			{
 				Ports: runtime.GetPorts(),
 				Healthy: &pbpod.HealthStatus{
 					State: pbpod.HealthState(runtime.GetHealthy()),
