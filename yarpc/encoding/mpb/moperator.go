@@ -26,6 +26,7 @@ const (
 // MasterOperatorClient makes Mesos JSON requests to Mesos Master endpoint(s)
 type MasterOperatorClient interface {
 	Agents() (*mesos_master.Response_GetAgents, error)
+	GetTasksAllocation(ID string) ([]*mesos.Resource, []*mesos.Resource, error)
 	AllocatedResources(ID string) ([]*mesos.Resource, error)
 	GetMaintenanceSchedule() (*mesos_master.Response_GetMaintenanceSchedule, error)
 	GetMaintenanceStatus() (*mesos_master.Response_GetMaintenanceStatus, error)
@@ -136,6 +137,46 @@ func (mo *masterOperatorClient) Agents() (
 	}
 
 	return getAgents, nil
+}
+
+// GetTasksAllocation returns resources for Peloton framework
+// allocatedResources: actual resource allocated for task + offered resources
+// offeredResources: offered resources are also assumed to be allocated to Peloton framework
+// by Mesos Master
+func (mo *masterOperatorClient) GetTasksAllocation(
+	ID string) ([]*mesos.Resource, []*mesos.Resource, error) {
+	var allocatedResources, offeredResources []*mesos.Resource
+
+	// Set the CALL TYPE
+	callType := mesos_master.Call_GET_FRAMEWORKS
+
+	masterMsg := &mesos_master.Call{
+		Type: &callType,
+	}
+
+	// Create context to cancel automatically when Timeout expires
+	ctx, cancel := context.WithTimeout(
+		context.Background(), _timeout,
+	)
+
+	defer cancel()
+
+	// Make Call
+	response, err := mo.call(ctx, masterMsg)
+	if err != nil {
+		return allocatedResources, offeredResources, errors.WithStack(err)
+	}
+
+	for _, framework := range response.GetGetFrameworks().GetFrameworks() {
+		if ID != framework.GetFrameworkInfo().GetId().GetValue() {
+			continue
+		}
+
+		allocatedResources = append(allocatedResources, framework.GetAllocatedResources()...)
+		offeredResources = append(offeredResources, framework.GetOfferedResources()...)
+	}
+
+	return allocatedResources, offeredResources, nil
 }
 
 // AllocatedResources returns the roles information from the Master Operator API
@@ -252,7 +293,7 @@ func (mo *masterOperatorClient) UpdateMaintenanceSchedule(schedule *mesos_v1_mai
 		Schedule: schedule,
 	}
 	masterMsg := &mesos_master.Call{
-		Type: &callType,
+		Type:                      &callType,
 		UpdateMaintenanceSchedule: updateMaintenanceSchedule,
 	}
 

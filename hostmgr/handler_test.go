@@ -989,8 +989,8 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 	name := "cpus"
 
 	loader := &host.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.masterOperatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	numAgents := 2
@@ -1039,9 +1039,9 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 
 		if tt.clientCall {
 			// Set expectations on the mesos operator client
-			suite.masterOperatorClient.EXPECT().AllocatedResources(
+			suite.masterOperatorClient.EXPECT().GetTasksAllocation(
 				gomock.Any(),
-			).Return(tt.response, tt.err)
+			).Return(tt.response, tt.response, tt.err)
 			suite.masterOperatorClient.EXPECT().GetQuota(gomock.Any()).Return(nil, nil)
 		}
 
@@ -1078,8 +1078,8 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithoutAg
 		Agents: []*mesos_master.Response_GetAgents_Agent{},
 	}
 	loader := &host.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.masterOperatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
@@ -1090,7 +1090,7 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithoutAg
 	scalerType := mesos.Value_SCALAR
 	scalerVal := 200.0
 	name := "cpus"
-	suite.masterOperatorClient.EXPECT().AllocatedResources(gomock.Any()).Return([]*mesos.Resource{
+	suite.masterOperatorClient.EXPECT().GetTasksAllocation(gomock.Any()).Return([]*mesos.Resource{
 		{
 			Name: &name,
 			Scalar: &mesos.Value_Scalar{
@@ -1098,7 +1098,16 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithoutAg
 			},
 			Type: &scalerType,
 		},
-	}, nil)
+	},
+		[]*mesos.Resource{
+			{
+				Name: &name,
+				Scalar: &mesos.Value_Scalar{
+					Value: &scalerVal,
+				},
+				Type: &scalerType,
+			},
+		}, nil)
 
 	// Make the cluster capacity API request
 	resp, _ := suite.handler.ClusterCapacity(
@@ -1116,8 +1125,8 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithQuota
 	quotaVal := 100.0
 
 	loader := &host.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.masterOperatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	numAgents := 2
@@ -1150,7 +1159,7 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithQuota
 
 	// Test GetQuota failure scenario
 	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(suite.frameworkID)
-	suite.masterOperatorClient.EXPECT().AllocatedResources(gomock.Any()).Return(responseAllocated, nil)
+	suite.masterOperatorClient.EXPECT().GetTasksAllocation(gomock.Any()).Return(responseAllocated, responseAllocated, nil)
 	suite.masterOperatorClient.EXPECT().GetQuota(gomock.Any()).Return(nil, errors.New("error getting quota"))
 	resp, _ := suite.handler.ClusterCapacity(
 		rootCtx,
@@ -1160,7 +1169,7 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithQuota
 
 	// Test GetQuota success scenario
 	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(suite.frameworkID)
-	suite.masterOperatorClient.EXPECT().AllocatedResources(gomock.Any()).Return(responseAllocated, nil)
+	suite.masterOperatorClient.EXPECT().GetTasksAllocation(gomock.Any()).Return(responseAllocated, responseAllocated, nil)
 	suite.masterOperatorClient.EXPECT().GetQuota(gomock.Any()).Return(responseQuota, nil)
 	resp, _ = suite.handler.ClusterCapacity(
 		rootCtx,
@@ -2247,8 +2256,8 @@ func (suite *HostMgrHandlerTestSuite) TestGetMesosAgentInfo() {
 	sort.Sort(agentInfo)
 	suite.masterOperatorClient.EXPECT().Agents().Return(agents, nil)
 	loader := &host.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.masterOperatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	loader.Load(nil)

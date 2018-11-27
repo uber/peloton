@@ -984,9 +984,8 @@ func (h *ServiceHandler) ClusterCapacity(
 		}, nil
 	}
 
-	// Fetches allocated resources for revocable and non-revocable tasks.
-	allocatedResources, err := h.operatorMasterClient.AllocatedResources(
-		frameWorkID.GetValue())
+	allocatedResources, _, err := h.operatorMasterClient.
+		GetTasksAllocation(frameWorkID.GetValue())
 	if err != nil {
 		h.metrics.ClusterCapacityFail.Inc(1)
 		log.WithError(err).Error("error making cluster capacity request")
@@ -1051,11 +1050,11 @@ func (h *ServiceHandler) ClusterCapacity(
 			return r.GetRevocable() != nil && hmutil.IsSlackResourceType(r.GetName(), h.slackResourceTypes)
 		})
 	physicalAllocated := scalar.FromMesosResources(nonRevocableAllocated)
-	revocableAlloc := scalar.FromMesosResources(revocableAllocated)
+	slackAllocated := scalar.FromMesosResources(revocableAllocated)
 
 	clusterCapacityResponse := &hostsvc.ClusterCapacityResponse{
 		Resources:               toHostSvcResources(&physicalAllocated),
-		AllocatedSlackResources: toHostSvcResources(&revocableAlloc),
+		AllocatedSlackResources: toHostSvcResources(&slackAllocated),
 		PhysicalResources:       toHostSvcResources(&nonRevocableClusterCapacity),
 		PhysicalSlackResources:  toHostSvcResources(&agentMap.SlackCapacity),
 	}

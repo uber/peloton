@@ -4,6 +4,7 @@ import (
 	"github.com/uber-go/tally"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/util"
 )
 
 // Metrics is a placeholder for all metrics in hostmgr.
@@ -111,8 +112,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 // RefreshClusterCapacityGauges refreshes all the cluster capacity gauges
 func (m *Metrics) RefreshClusterCapacityGauges(response *hostsvc.ClusterCapacityResponse) {
+	// update metrics for total cluster capacity
 	for _, resource := range response.GetPhysicalResources() {
-		if len(resource.GetKind()) == 0 || resource.GetCapacity() == 0 {
+		if len(resource.GetKind()) == 0 || resource.GetCapacity() < util.ResourceEpsilon {
 			continue
 		}
 
@@ -121,11 +123,30 @@ func (m *Metrics) RefreshClusterCapacityGauges(response *hostsvc.ClusterCapacity
 	}
 
 	for _, resource := range response.GetPhysicalSlackResources() {
-		if len(resource.GetKind()) == 0 || resource.GetCapacity() == 0 {
+		if len(resource.GetKind()) == 0 || resource.GetCapacity() < util.ResourceEpsilon {
 			continue
 		}
 
 		gauge := m.scope.Gauge("cluster_capacity_revocable_" + resource.GetKind())
+		gauge.Update(resource.GetCapacity())
+	}
+
+	// update metrics for resources allocated tasks launched by Peloton
+	for _, resource := range response.GetResources() {
+		if len(resource.GetKind()) == 0 || resource.GetCapacity() < util.ResourceEpsilon {
+			continue
+		}
+
+		gauge := m.scope.Gauge("mesos_task_allocation_" + resource.GetKind())
+		gauge.Update(resource.GetCapacity())
+	}
+
+	for _, resource := range response.GetAllocatedSlackResources() {
+		if len(resource.GetKind()) == 0 || resource.GetCapacity() < util.ResourceEpsilon {
+			continue
+		}
+
+		gauge := m.scope.Gauge("mesos_task_allocation_revocable_" + resource.GetKind())
 		gauge.Update(resource.GetCapacity())
 	}
 }

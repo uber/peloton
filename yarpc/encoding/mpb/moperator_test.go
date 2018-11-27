@@ -10,6 +10,8 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	mesos_maintenance "code.uber.internal/infra/peloton/.gen/mesos/v1/maintenance"
 	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/util"
 
 	"go.uber.org/yarpc/api/transport"
 	transport_mocks "go.uber.org/yarpc/api/transport/transporttest"
@@ -239,6 +241,114 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 			suite.NotNil(resources)
 		}
 	}
+}
+
+func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_TaskAllocation() {
+
+	var response *transport.Response
+	frameworkName := "peloton"
+	isActive := true
+
+	allocatedResources := []*mesos.Resource{
+		util.NewMesosResourceBuilder().
+			WithName(common.MesosCPU).
+			WithValue(8).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(common.MesosCPU).
+			WithValue(8).
+			WithRevocable(&mesos.Resource_RevocableInfo{}).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(common.MesosMem).
+			WithValue(20).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(common.MesosDisk).
+			WithValue(20).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(common.MesosGPU).
+			WithValue(4).
+			Build(),
+	}
+
+	offeredResources := []*mesos.Resource{
+		util.NewMesosResourceBuilder().
+			WithName(common.MesosCPU).
+			WithValue(4).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(common.MesosCPU).
+			WithValue(4).
+			WithRevocable(&mesos.Resource_RevocableInfo{}).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(common.MesosMem).
+			WithValue(10).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(common.MesosDisk).
+			WithValue(10).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(common.MesosGPU).
+			WithValue(2).
+			Build(),
+	}
+
+	resp := &mesos_master.Response{
+		GetFrameworks: &mesos_master.Response_GetFrameworks{
+			Frameworks: []*mesos_master.Response_GetFrameworks_Framework{
+				{
+					FrameworkInfo: &mesos.FrameworkInfo{
+						User: &frameworkName,
+						Name: &frameworkName,
+						Id: &mesos.FrameworkID{
+							Value: &frameworkName,
+						},
+					},
+					Active:             &isActive,
+					Connected:          &isActive,
+					Recovered:          &isActive,
+					AllocatedResources: allocatedResources,
+					OfferedResources:   offeredResources,
+				},
+			},
+		},
+	}
+
+	wireData, err := proto.Marshal(resp)
+	suite.NoError(err)
+
+	response = &transport.Response{
+		Body: ioutil.NopCloser(
+			bytes.NewReader(wireData),
+		),
+		Headers: transport.Headers(transport.NewHeaders().With("a", "b")),
+	}
+
+	gomock.InOrder(
+		suite.mockClientCfg.EXPECT().Caller().Return(mockCaller),
+		suite.mockClientCfg.EXPECT().Service().Return(mockSvc),
+		suite.mockClientCfg.EXPECT().GetUnaryOutbound().Return(
+			suite.mockUnaryOutbound,
+		),
+
+		suite.mockUnaryOutbound.EXPECT().Call(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(
+			response,
+			nil,
+		),
+	)
+
+	mOClient := NewMasterOperatorClient(suite.mockClientCfg, suite.defaultEncoding)
+	allocated, offered, err := mOClient.GetTasksAllocation("peloton")
+	suite.Equal(len(allocatedResources), len(allocated))
+	suite.Equal(len(offeredResources), len(offered))
+	suite.NoError(err)
 }
 
 func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetMaintenanceSchedule() {
