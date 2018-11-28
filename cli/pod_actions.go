@@ -217,3 +217,26 @@ func (c *Client) PodStopAction(podName string) error {
 	tabWriter.Flush()
 	return nil
 }
+
+// PodGetAction is the action for getting the info of a pod
+func (c *Client) PodGetAction(podName string, statusOnly bool) error {
+	resp, err := c.podClient.GetPod(
+		c.ctx,
+		&podsvc.GetPodRequest{
+			PodName:    &v1alphapeloton.PodName{Value: podName},
+			StatusOnly: statusOnly,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	out, err := marshallResponse(defaultResponseFormat, resp)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v\n", string(out))
+
+	tabWriter.Flush()
+	return nil
+}

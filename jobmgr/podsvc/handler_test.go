@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	hostmocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
@@ -35,6 +36,7 @@ const (
 	testInstanceID = 1
 	testPodName    = "941ff353-ba82-49fe-8f80-fb5bc649b04d-1"
 	testPodID      = "941ff353-ba82-49fe-8f80-fb5bc649b04d-1-3"
+	testPrevPodID  = "941ff353-ba82-49fe-8f80-fb5bc649b04d-1-2"
 	testRunID      = 3
 )
 
@@ -1127,11 +1129,271 @@ func (suite *podHandlerTestSuite) TestRestartPodPatchTasksFailure() {
 	suite.NotNil(response)
 }
 
-func (suite *podHandlerTestSuite) TestGetPod() {
-	request := &svc.GetPodRequest{}
+// TestGetPodSuccess tests the success case of getting pod info
+func (suite *podHandlerTestSuite) TestGetPodSuccess() {
+	request := &svc.GetPodRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+	}
+	pelotonJob := &peloton.JobID{Value: testJobID}
+	var configVersion uint64 = 1
+	testLabels := []*peloton.Label{
+		{
+			Key:   "testKey",
+			Value: "testValue",
+		},
+	}
+	testPorts := []*pbtask.PortConfig{
+		{
+			Name:  "port name",
+			Value: 8080,
+		},
+	}
+	testConstraint := &pbtask.Constraint{
+		Type: pbtask.Constraint_LABEL_CONSTRAINT,
+		LabelConstraint: &pbtask.LabelConstraint{
+			Kind: pbtask.LabelConstraint_TASK,
+		},
+	}
+	events := []*pod.PodEvent{
+		{
+			PodId: &v1alphapeloton.PodID{
+				Value: testPodID,
+			},
+			ActualState:  "RUNNING",
+			DesiredState: "RUNNING",
+			PrevPodId: &v1alphapeloton.PodID{
+				Value: testPrevPodID,
+			},
+		},
+	}
+
+	gomock.InOrder(
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), pelotonJob, uint32(testInstanceID)).
+			Return(
+				&pbtask.RuntimeInfo{
+					State:         pbtask.TaskState_RUNNING,
+					GoalState:     pbtask.TaskState_RUNNING,
+					ConfigVersion: configVersion,
+				}, nil),
+
+		suite.podStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				pelotonJob,
+				uint32(testInstanceID),
+				configVersion,
+			).Return(
+			&pbtask.TaskConfig{
+				Name:       testPodName,
+				Labels:     testLabels,
+				Ports:      testPorts,
+				Constraint: testConstraint,
+			}, &models.ConfigAddOn{},
+			nil,
+		),
+
+		suite.podStore.EXPECT().
+			GetPodEvents(
+				gomock.Any(),
+				testJobID,
+				uint32(testInstanceID),
+			).Return(events, nil),
+
+		suite.podStore.EXPECT().
+			GetPodEvents(
+				gomock.Any(),
+				testJobID,
+				uint32(testInstanceID),
+				testPrevPodID,
+			).Return(events, nil),
+
+		suite.podStore.EXPECT().
+			GetPodEvents(
+				gomock.Any(),
+				testJobID,
+				uint32(testInstanceID),
+				testPrevPodID,
+			).Return(nil, nil),
+	)
+
 	response, err := suite.handler.GetPod(context.Background(), request)
 	suite.NoError(err)
 	suite.NotNil(response)
+}
+
+// TestGetPodInvalidPodName tests PodName
+// parse error while getting pod info
+func (suite *podHandlerTestSuite) TestGetPodInvalidPodName() {
+	request := &svc.GetPodRequest{}
+	_, err := suite.handler.GetPod(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestGetPodTaskRuntimeFailure tests GetPod failure due to
+// error while getting task runtime.
+func (suite *podHandlerTestSuite) TestGetPodTaskRuntimeFailure() {
+	request := &svc.GetPodRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+	}
+	pelotonJob := &peloton.JobID{Value: testJobID}
+
+	suite.podStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), pelotonJob, uint32(testInstanceID)).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	_, err := suite.handler.GetPod(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestGetPodTaskRuntimeFailure tests GetPod failure due to
+// error while getting task config.
+func (suite *podHandlerTestSuite) TestGetPodTaskConfigFailure() {
+	request := &svc.GetPodRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+	}
+	pelotonJob := &peloton.JobID{Value: testJobID}
+	var configVersion uint64 = 1
+
+	gomock.InOrder(
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), pelotonJob, uint32(testInstanceID)).
+			Return(
+				&pbtask.RuntimeInfo{
+					State:         pbtask.TaskState_RUNNING,
+					GoalState:     pbtask.TaskState_RUNNING,
+					ConfigVersion: configVersion,
+				}, nil),
+
+		suite.podStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				pelotonJob,
+				uint32(testInstanceID),
+				configVersion,
+			).Return(nil, nil, yarpcerrors.InternalErrorf("test error")),
+	)
+
+	_, err := suite.handler.GetPod(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestGetPodPodEventsFailure tests failure to get pod info due to
+// error while getting pod events
+func (suite *podHandlerTestSuite) TestGetPodPodEventsFailure() {
+	request := &svc.GetPodRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+	}
+	pelotonJob := &peloton.JobID{Value: testJobID}
+	var configVersion uint64 = 1
+
+	gomock.InOrder(
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), pelotonJob, uint32(testInstanceID)).
+			Return(
+				&pbtask.RuntimeInfo{
+					State:         pbtask.TaskState_RUNNING,
+					GoalState:     pbtask.TaskState_RUNNING,
+					ConfigVersion: configVersion,
+				}, nil),
+
+		suite.podStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				pelotonJob,
+				uint32(testInstanceID),
+				configVersion,
+			).Return(
+			&pbtask.TaskConfig{
+				Name: testPodName,
+			}, &models.ConfigAddOn{},
+			nil,
+		),
+
+		suite.podStore.EXPECT().
+			GetPodEvents(
+				gomock.Any(),
+				testJobID,
+				uint32(testInstanceID),
+			).Return(nil, yarpcerrors.InternalErrorf("test error")),
+	)
+
+	_, err := suite.handler.GetPod(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestGetPodFailureToGetPreviousPodEvents tests failure to get pod info due to
+// error while getting events for previous runs of the pod
+func (suite *podHandlerTestSuite) TestGetPodFailureToGetPreviousPodEvents() {
+	request := &svc.GetPodRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+	}
+	pelotonJob := &peloton.JobID{Value: testJobID}
+	var configVersion uint64 = 1
+	events := []*pod.PodEvent{
+		{
+			PodId: &v1alphapeloton.PodID{
+				Value: testPodID,
+			},
+			ActualState:  "RUNNING",
+			DesiredState: "RUNNING",
+			PrevPodId: &v1alphapeloton.PodID{
+				Value: testPrevPodID,
+			},
+		},
+	}
+
+	gomock.InOrder(
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), pelotonJob, uint32(testInstanceID)).
+			Return(
+				&pbtask.RuntimeInfo{
+					State:         pbtask.TaskState_RUNNING,
+					GoalState:     pbtask.TaskState_RUNNING,
+					ConfigVersion: configVersion,
+				}, nil),
+
+		suite.podStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				pelotonJob,
+				uint32(testInstanceID),
+				configVersion,
+			).Return(
+			&pbtask.TaskConfig{
+				Name: testPodName,
+			}, &models.ConfigAddOn{},
+			nil,
+		),
+
+		suite.podStore.EXPECT().
+			GetPodEvents(
+				gomock.Any(),
+				testJobID,
+				uint32(testInstanceID),
+			).Return(events, nil),
+
+		suite.podStore.EXPECT().
+			GetPodEvents(
+				gomock.Any(),
+				testJobID,
+				uint32(testInstanceID),
+				testPrevPodID,
+			).Return(nil, yarpcerrors.InternalErrorf("test error")),
+	)
+
+	_, err := suite.handler.GetPod(context.Background(), request)
+	suite.Error(err)
 }
 
 // TestServiceHandler_GetPodEvents tests getting pod events for a given pod

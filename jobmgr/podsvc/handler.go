@@ -7,7 +7,7 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	v0peloton "code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
@@ -103,7 +103,7 @@ func (h *serviceHandler) StartPod(
 		return nil, err
 	}
 
-	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: jobID})
+	cachedJob := h.jobFactory.AddJob(&v0peloton.JobID{Value: jobID})
 	cachedConfig, err := cachedJob.GetConfig(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to get job config")
@@ -114,7 +114,7 @@ func (h *serviceHandler) StartPod(
 		// enqueue job state to goal state engine and let goal state engine
 		// decide if the job state needs to be changed
 		goalstate.EnqueueJobWithDefaultDelay(
-			&peloton.JobID{Value: jobID}, h.goalStateDriver, cachedJob)
+			&v0peloton.JobID{Value: jobID}, h.goalStateDriver, cachedJob)
 		return nil, err
 	}
 
@@ -127,9 +127,9 @@ func (h *serviceHandler) StartPod(
 	err = h.startPod(ctx, cachedJob, cachedTask, cachedConfig.GetType())
 	// enqueue the pod/job into goal state engine even in failure case.
 	// Because the state may be updated, let goal state engine decide what to do
-	h.goalStateDriver.EnqueueTask(&peloton.JobID{Value: jobID}, instanceID, time.Now())
+	h.goalStateDriver.EnqueueTask(&v0peloton.JobID{Value: jobID}, instanceID, time.Now())
 	goalstate.EnqueueJobWithDefaultDelay(
-		&peloton.JobID{Value: jobID}, h.goalStateDriver, cachedJob)
+		&v0peloton.JobID{Value: jobID}, h.goalStateDriver, cachedJob)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ func (h *serviceHandler) StopPod(
 		return nil, err
 	}
 
-	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: jobID})
+	cachedJob := h.jobFactory.AddJob(&v0peloton.JobID{Value: jobID})
 
 	runtimeInfo, err := h.podStore.GetTaskRuntime(
 		ctx, cachedJob.ID(), instanceID)
@@ -290,7 +290,7 @@ func (h *serviceHandler) StopPod(
 	// because some tasks may get updated successfully in db.
 	// We can let goal state engine to decide whether or not to stop.
 	h.goalStateDriver.EnqueueTask(
-		&peloton.JobID{Value: jobID},
+		&v0peloton.JobID{Value: jobID},
 		instanceID,
 		time.Now(),
 	)
@@ -326,7 +326,7 @@ func (h *serviceHandler) RestartPod(
 		return nil, yarpcerrors.InvalidArgumentErrorf("invalid pod name")
 	}
 
-	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: jobID})
+	cachedJob := h.jobFactory.AddJob(&v0peloton.JobID{Value: jobID})
 
 	newPodID, err := h.getPodIDForRestart(ctx,
 		cachedJob,
@@ -345,7 +345,7 @@ func (h *serviceHandler) RestartPod(
 	// because some tasks may get updated successfully in db.
 	// We can let goal state engine to decide whether or not to restart.
 	h.goalStateDriver.EnqueueTask(
-		&peloton.JobID{Value: jobID},
+		&v0peloton.JobID{Value: jobID},
 		instanceID,
 		time.Now(),
 	)
@@ -356,8 +356,77 @@ func (h *serviceHandler) RestartPod(
 func (h *serviceHandler) GetPod(
 	ctx context.Context,
 	req *svc.GetPodRequest,
-) (*svc.GetPodResponse, error) {
-	return &svc.GetPodResponse{}, nil
+) (resp *svc.GetPodResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("PodSVC.GetPod failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Debug("PodSVC.GetPod succeeded")
+	}()
+
+	jobID, instanceID, err := util.ParseTaskID(req.GetPodName().GetValue())
+	if err != nil {
+		return nil, err
+	}
+
+	pelotonJobID := &v0peloton.JobID{Value: jobID}
+	taskRuntime, err := h.podStore.GetTaskRuntime(ctx, pelotonJobID, instanceID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get task runtime")
+	}
+
+	podStatus := convertTaskRuntimeToPodStatus(taskRuntime)
+
+	var podSpec *pbpod.PodSpec
+	if !req.GetStatusOnly() {
+		taskConfig, _, err := h.podStore.GetTaskConfig(
+			ctx,
+			pelotonJobID,
+			instanceID,
+			taskRuntime.GetConfigVersion(),
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get task config")
+		}
+
+		podSpec = convertTaskConfigToPodSpec(taskConfig)
+	}
+
+	currentPodInfo := &pbpod.PodInfo{
+		Spec:   podSpec,
+		Status: podStatus,
+	}
+
+	events, err := h.podStore.GetPodEvents(ctx, jobID, instanceID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get current pod events")
+	}
+
+	var prevPodInfos []*pbpod.PodInfo
+	if len(events) != 0 {
+		prevPodInfos, err = h.getPodInfoForAllPodRuns(
+			ctx,
+			jobID,
+			instanceID,
+			events[0].GetPrevPodId(),
+			currentPodInfo,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get pod info for previous runs")
+		}
+	}
+
+	return &svc.GetPodResponse{
+		Current:  currentPodInfo,
+		Previous: prevPodInfos,
+	}, nil
 }
 
 func (h *serviceHandler) GetPodEvents(
@@ -509,7 +578,7 @@ func (h *serviceHandler) RefreshPod(
 		return nil, err
 	}
 
-	pelotonJobID := &peloton.JobID{Value: jobID}
+	pelotonJobID := &v0peloton.JobID{Value: jobID}
 	runtime, err := h.podStore.GetTaskRuntime(ctx, pelotonJobID, instanceID)
 
 	if err != nil {
@@ -553,7 +622,7 @@ func (h *serviceHandler) GetPodCache(
 		return nil, err
 	}
 
-	cachedJob := h.jobFactory.GetJob(&peloton.JobID{Value: jobID})
+	cachedJob := h.jobFactory.GetJob(&v0peloton.JobID{Value: jobID})
 	if cachedJob == nil {
 		return nil,
 			yarpcerrors.NotFoundErrorf("job not found in cache")
@@ -572,7 +641,7 @@ func (h *serviceHandler) GetPodCache(
 	}
 
 	return &svc.GetPodCacheResponse{
-		Status: convertToPodStatus(runtime),
+		Status: convertTaskRuntimeToPodStatus(runtime),
 	}, nil
 }
 
@@ -581,83 +650,6 @@ func (h *serviceHandler) DeletePodEvents(
 	req *svc.DeletePodEventsRequest,
 ) (resp *svc.DeletePodEventsResponse, err error) {
 	return &svc.DeletePodEventsResponse{}, nil
-}
-
-func convertTaskStateToPodState(state pbtask.TaskState) pbpod.PodState {
-	switch state {
-	case pbtask.TaskState_UNKNOWN:
-		return pbpod.PodState_POD_STATE_INVALID
-	case pbtask.TaskState_INITIALIZED:
-		return pbpod.PodState_POD_STATE_INITIALIZED
-	case pbtask.TaskState_PENDING:
-		return pbpod.PodState_POD_STATE_PENDING
-	case pbtask.TaskState_READY:
-		return pbpod.PodState_POD_STATE_READY
-	case pbtask.TaskState_PLACING:
-		return pbpod.PodState_POD_STATE_PLACING
-	case pbtask.TaskState_PLACED:
-		return pbpod.PodState_POD_STATE_PLACED
-	case pbtask.TaskState_LAUNCHING:
-		return pbpod.PodState_POD_STATE_LAUNCHING
-	case pbtask.TaskState_LAUNCHED:
-		return pbpod.PodState_POD_STATE_LAUNCHED
-	case pbtask.TaskState_STARTING:
-		return pbpod.PodState_POD_STATE_STARTING
-	case pbtask.TaskState_RUNNING:
-		return pbpod.PodState_POD_STATE_RUNNING
-	case pbtask.TaskState_SUCCEEDED:
-		return pbpod.PodState_POD_STATE_SUCCEEDED
-	case pbtask.TaskState_FAILED:
-		return pbpod.PodState_POD_STATE_FAILED
-	case pbtask.TaskState_LOST:
-		return pbpod.PodState_POD_STATE_LOST
-	case pbtask.TaskState_PREEMPTING:
-		return pbpod.PodState_POD_STATE_PREEMPTING
-	case pbtask.TaskState_KILLING:
-		return pbpod.PodState_POD_STATE_KILLING
-	case pbtask.TaskState_KILLED:
-		return pbpod.PodState_POD_STATE_KILLED
-	case pbtask.TaskState_DELETED:
-		return pbpod.PodState_POD_STATE_DELETED
-	}
-	return pbpod.PodState_POD_STATE_INVALID
-}
-
-func convertToPodStatus(runtime *pbtask.RuntimeInfo) *pbpod.PodStatus {
-	return &pbpod.PodStatus{
-		State:          convertTaskStateToPodState(runtime.GetState()),
-		PodId:          &v1alphapeloton.PodID{Value: runtime.GetMesosTaskId().GetValue()},
-		StartTime:      runtime.GetStartTime(),
-		CompletionTime: runtime.GetCompletionTime(),
-		Host:           runtime.GetHost(),
-		ContainersStatus: []*pbpod.ContainerStatus{
-			{
-				Ports: runtime.GetPorts(),
-				Healthy: &pbpod.HealthStatus{
-					State: pbpod.HealthState(runtime.GetHealthy()),
-				},
-			},
-		},
-		DesiredState: convertTaskStateToPodState(runtime.GetGoalState()),
-		Message:      runtime.GetMessage(),
-		Reason:       runtime.GetReason(),
-		FailureCount: runtime.GetFailureCount(),
-		VolumeId:     &v1alphapeloton.VolumeID{Value: runtime.GetVolumeID().GetValue()},
-		JobVersion: &v1alphapeloton.EntityVersion{
-			Value: fmt.Sprintf("%d", runtime.GetConfigVersion())},
-		DesiredJobVersion: &v1alphapeloton.EntityVersion{
-			Value: fmt.Sprintf("%d", runtime.GetDesiredConfigVersion())},
-		AgentId: runtime.GetAgentID(),
-		Revision: &v1alphapeloton.Revision{
-			Version:   runtime.GetRevision().GetVersion(),
-			CreatedAt: runtime.GetRevision().GetCreatedAt(),
-			UpdatedAt: runtime.GetRevision().GetUpdatedAt(),
-			UpdatedBy: runtime.GetRevision().GetUpdatedBy(),
-		},
-		PrevPodId:     &v1alphapeloton.PodID{Value: runtime.GetPrevMesosTaskId().GetValue()},
-		ResourceUsage: runtime.GetResourceUsage(),
-		DesiredPodId:  &v1alphapeloton.PodID{Value: runtime.GetDesiredMesosTaskId().GetValue()},
-	}
 }
 
 func (h *serviceHandler) getHostInfo(
@@ -675,7 +667,7 @@ func (h *serviceHandler) getHostInfo(
 	agentID = ""
 	for _, event := range events {
 		podid = event.GetPodId().GetValue()
-		if event.GetActualState() == pbtask.TaskState_RUNNING.String() {
+		if event.GetActualState() == jobmgrtask.GetDefaultTaskGoalState(pbjob.JobType_SERVICE).String() {
 			hostname = event.GetHostname()
 			agentID = event.GetAgentId()
 			break
@@ -746,4 +738,241 @@ func (h *serviceHandler) getPodIDForRestart(
 
 	return util.CreateMesosTaskID(
 		cachedJob.ID(), instanceID, runID+1), nil
+}
+
+func (h *serviceHandler) getPodInfoForAllPodRuns(
+	ctx context.Context,
+	jobID string,
+	instanceID uint32,
+	podID *v1alphapeloton.PodID,
+	latestPodInfo *pbpod.PodInfo,
+) ([]*pbpod.PodInfo, error) {
+	var podInfos []*pbpod.PodInfo
+
+	pID := podID.GetValue()
+	for {
+		events, err := h.podStore.GetPodEvents(ctx, jobID, instanceID, pID)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(events) == 0 {
+			break
+		}
+
+		prevPodID := events[0].GetPrevPodId().GetValue()
+		agentID := events[0].GetAgentId()
+		podInfos = append(podInfos, &pbpod.PodInfo{
+			Spec: latestPodInfo.GetSpec(),
+			Status: &pbpod.PodStatus{
+				State: convertTaskStateToPodState(
+					pbtask.TaskState(pbtask.TaskState_value[events[0].GetActualState()]),
+				),
+				DesiredState: latestPodInfo.GetStatus().GetDesiredState(),
+				PodId: &v1alphapeloton.PodID{
+					Value: events[0].GetPodId().GetValue(),
+				},
+				Host: events[0].GetHostname(),
+				AgentId: &mesos.AgentID{
+					Value: &agentID,
+				},
+				JobVersion:        events[0].GetJobVersion(),
+				DesiredJobVersion: events[0].GetDesiredJobVersion(),
+				Message:           events[0].GetMessage(),
+				Reason:            events[0].GetReason(),
+				PrevPodId: &v1alphapeloton.PodID{
+					Value: prevPodID,
+				},
+				DesiredPodId: events[0].GetDesiredPodId(),
+			},
+		})
+
+		pID = prevPodID
+	}
+
+	return podInfos, nil
+}
+
+func convertTaskStateToPodState(state pbtask.TaskState) pbpod.PodState {
+	switch state {
+	case pbtask.TaskState_UNKNOWN:
+		return pbpod.PodState_POD_STATE_INVALID
+	case pbtask.TaskState_INITIALIZED:
+		return pbpod.PodState_POD_STATE_INITIALIZED
+	case pbtask.TaskState_PENDING:
+		return pbpod.PodState_POD_STATE_PENDING
+	case pbtask.TaskState_READY:
+		return pbpod.PodState_POD_STATE_READY
+	case pbtask.TaskState_PLACING:
+		return pbpod.PodState_POD_STATE_PLACING
+	case pbtask.TaskState_PLACED:
+		return pbpod.PodState_POD_STATE_PLACED
+	case pbtask.TaskState_LAUNCHING:
+		return pbpod.PodState_POD_STATE_LAUNCHING
+	case pbtask.TaskState_LAUNCHED:
+		return pbpod.PodState_POD_STATE_LAUNCHED
+	case pbtask.TaskState_STARTING:
+		return pbpod.PodState_POD_STATE_STARTING
+	case pbtask.TaskState_RUNNING:
+		return pbpod.PodState_POD_STATE_RUNNING
+	case pbtask.TaskState_SUCCEEDED:
+		return pbpod.PodState_POD_STATE_SUCCEEDED
+	case pbtask.TaskState_FAILED:
+		return pbpod.PodState_POD_STATE_FAILED
+	case pbtask.TaskState_LOST:
+		return pbpod.PodState_POD_STATE_LOST
+	case pbtask.TaskState_PREEMPTING:
+		return pbpod.PodState_POD_STATE_PREEMPTING
+	case pbtask.TaskState_KILLING:
+		return pbpod.PodState_POD_STATE_KILLING
+	case pbtask.TaskState_KILLED:
+		return pbpod.PodState_POD_STATE_KILLED
+	case pbtask.TaskState_DELETED:
+		return pbpod.PodState_POD_STATE_DELETED
+	}
+	return pbpod.PodState_POD_STATE_INVALID
+}
+
+func convertTaskRuntimeToPodStatus(runtime *pbtask.RuntimeInfo) *pbpod.PodStatus {
+	return &pbpod.PodStatus{
+		State:          convertTaskStateToPodState(runtime.GetState()),
+		PodId:          &v1alphapeloton.PodID{Value: runtime.GetMesosTaskId().GetValue()},
+		StartTime:      runtime.GetStartTime(),
+		CompletionTime: runtime.GetCompletionTime(),
+		Host:           runtime.GetHost(),
+		ContainersStatus: []*pbpod.ContainerStatus{
+			{
+				Ports: runtime.GetPorts(),
+				Healthy: &pbpod.HealthStatus{
+					State: pbpod.HealthState(runtime.GetHealthy()),
+				},
+			},
+		},
+		DesiredState: convertTaskStateToPodState(runtime.GetGoalState()),
+		Message:      runtime.GetMessage(),
+		Reason:       runtime.GetReason(),
+		FailureCount: runtime.GetFailureCount(),
+		VolumeId:     &v1alphapeloton.VolumeID{Value: runtime.GetVolumeID().GetValue()},
+		JobVersion: &v1alphapeloton.EntityVersion{
+			Value: fmt.Sprintf("%d", runtime.GetConfigVersion())},
+		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+			Value: fmt.Sprintf("%d", runtime.GetDesiredConfigVersion())},
+		AgentId: runtime.GetAgentID(),
+		Revision: &v1alphapeloton.Revision{
+			Version:   runtime.GetRevision().GetVersion(),
+			CreatedAt: runtime.GetRevision().GetCreatedAt(),
+			UpdatedAt: runtime.GetRevision().GetUpdatedAt(),
+			UpdatedBy: runtime.GetRevision().GetUpdatedBy(),
+		},
+		PrevPodId:     &v1alphapeloton.PodID{Value: runtime.GetPrevMesosTaskId().GetValue()},
+		ResourceUsage: runtime.GetResourceUsage(),
+		DesiredPodId:  &v1alphapeloton.PodID{Value: runtime.GetDesiredMesosTaskId().GetValue()},
+	}
+}
+
+func convertTaskConfigToPodSpec(taskConfig *pbtask.TaskConfig) *pbpod.PodSpec {
+	var constraint *pbpod.Constraint
+	if taskConfig.GetConstraint() != nil {
+		constraint = getPodConstraints([]*pbtask.Constraint{taskConfig.GetConstraint()})[0]
+	}
+
+	return &pbpod.PodSpec{
+		PodName: &v1alphapeloton.PodName{Value: taskConfig.GetName()},
+		Labels:  getPodLabels(taskConfig.GetLabels()),
+		Containers: []*pbpod.ContainerSpec{
+			{
+				Name: taskConfig.GetName(),
+				Resource: &pbpod.ResourceSpec{
+					CpuLimit:    taskConfig.GetResource().GetCpuLimit(),
+					MemLimitMb:  taskConfig.GetResource().GetMemLimitMb(),
+					DiskLimitMb: taskConfig.GetResource().GetDiskLimitMb(),
+					FdLimit:     taskConfig.GetResource().GetFdLimit(),
+					GpuLimit:    taskConfig.GetResource().GetGpuLimit(),
+				},
+				Container: taskConfig.GetContainer(),
+				Command:   taskConfig.GetCommand(),
+				LivenessCheck: &pbpod.HealthCheckSpec{
+					Enabled:                taskConfig.GetHealthCheck().GetEnabled(),
+					InitialIntervalSecs:    taskConfig.GetHealthCheck().GetInitialIntervalSecs(),
+					IntervalSecs:           taskConfig.GetHealthCheck().GetIntervalSecs(),
+					MaxConsecutiveFailures: taskConfig.GetHealthCheck().GetMaxConsecutiveFailures(),
+					TimeoutSecs:            taskConfig.GetHealthCheck().GetTimeoutSecs(),
+					Type:                   pbpod.HealthCheckSpec_HealthCheckType(taskConfig.GetHealthCheck().GetType()),
+					CommandCheck: &pbpod.HealthCheckSpec_CommandCheck{
+						Command:             taskConfig.GetHealthCheck().GetCommandCheck().GetCommand(),
+						UnshareEnvironments: taskConfig.GetHealthCheck().GetCommandCheck().GetUnshareEnvironments(),
+					},
+				},
+				Ports: getContainerPorts(taskConfig.GetPorts()),
+			},
+		},
+		Constraint: constraint,
+		RestartPolicy: &pbpod.RestartPolicy{
+			MaxFailures: taskConfig.GetRestartPolicy().GetMaxFailures(),
+		},
+		Volume: &pbpod.PersistentVolumeSpec{
+			ContainerPath: taskConfig.GetVolume().GetContainerPath(),
+			SizeMb:        taskConfig.GetVolume().GetSizeMB(),
+		},
+		PreemptionPolicy: &pbpod.PreemptionPolicy{
+			KillOnPreempt: taskConfig.GetPreemptionPolicy().GetKillOnPreempt(),
+		},
+		Controller:             taskConfig.GetController(),
+		KillGracePeriodSeconds: taskConfig.GetKillGracePeriodSeconds(),
+		Revocable:              taskConfig.GetRevocable(),
+	}
+}
+
+func getPodLabels(labels []*v0peloton.Label) []*v1alphapeloton.Label {
+	var podLabels []*v1alphapeloton.Label
+	for _, l := range labels {
+		podLabels = append(podLabels, &v1alphapeloton.Label{
+			Key:   l.GetKey(),
+			Value: l.GetValue(),
+		})
+	}
+	return podLabels
+}
+
+func getPodConstraints(constraints []*pbtask.Constraint) []*pbpod.Constraint {
+	var podConstraints []*pbpod.Constraint
+	for _, constraint := range constraints {
+		podConstraints = append(podConstraints, &pbpod.Constraint{
+			Type: pbpod.Constraint_Type(constraint.GetType()),
+			LabelConstraint: &pbpod.LabelConstraint{
+				Kind: pbpod.LabelConstraint_Kind(
+					constraint.GetLabelConstraint().GetKind(),
+				),
+				Condition: pbpod.LabelConstraint_Condition(
+					constraint.GetLabelConstraint().GetCondition(),
+				),
+				Label: &v1alphapeloton.Label{
+					Value: constraint.GetLabelConstraint().GetLabel().GetValue(),
+				},
+				Requirement: constraint.GetLabelConstraint().GetRequirement(),
+			},
+			AndConstraint: &pbpod.AndConstraint{
+				Constraints: getPodConstraints(constraint.GetAndConstraint().GetConstraints()),
+			},
+			OrConstraint: &pbpod.OrConstraint{
+				Constraints: getPodConstraints(constraint.GetOrConstraint().GetConstraints()),
+			},
+		})
+	}
+	return podConstraints
+}
+
+func getContainerPorts(ports []*pbtask.PortConfig) []*pbpod.PortSpec {
+	var containerPorts []*pbpod.PortSpec
+	for _, p := range ports {
+		containerPorts = append(
+			containerPorts,
+			&pbpod.PortSpec{
+				Name:    p.GetName(),
+				Value:   p.GetValue(),
+				EnvName: p.GetEnvName(),
+			},
+		)
+	}
+	return containerPorts
 }

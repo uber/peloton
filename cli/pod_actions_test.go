@@ -273,6 +273,24 @@ func (suite *podActionsTestSuite) TestClientPodStopFail() {
 	suite.Error(suite.client.PodStopAction(testPodName))
 }
 
+// TestClientPodGetSuccess tests the success case of getting pod info
+func (suite *podActionsTestSuite) TestClientPodGetSuccess() {
+	suite.podClient.EXPECT().
+		GetPod(gomock.Any(), gomock.Any()).
+		Return(&podsvc.GetPodResponse{}, nil)
+
+	suite.NoError(suite.client.PodGetAction(testPodName, false))
+}
+
+// TestClientPodGetFailure tests the failure case of getting pod info
+func (suite *podActionsTestSuite) TestClientPodGetFailure() {
+	suite.podClient.EXPECT().
+		GetPod(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.PodGetAction(testPodName, false))
+}
+
 func TestPodActions(t *testing.T) {
 	suite.Run(t, new(podActionsTestSuite))
 }
