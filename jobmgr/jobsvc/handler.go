@@ -33,6 +33,8 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
+const _updateInitializedJobDelay = 120 * time.Second
+
 var (
 	errNullResourcePoolID   = errors.New("resource pool ID is null")
 	errResourcePoolNotFound = errors.New("resource pool not found")
@@ -202,6 +204,7 @@ func (h *serviceHandler) Create(
 func (h *serviceHandler) Update(
 	ctx context.Context,
 	req *job.UpdateRequest) (*job.UpdateResponse, error) {
+	var jobInitialized bool
 
 	h.metrics.JobAPIUpdate.Inc(1)
 
@@ -225,6 +228,10 @@ func (h *serviceHandler) Update(
 		msg := fmt.Sprintf("Job is in a terminal state:%s", jobRuntime.State)
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, yarpcerrors.InvalidArgumentErrorf(msg)
+	}
+
+	if jobRuntime.GetState() == job.JobState_INITIALIZED {
+		jobInitialized = true
 	}
 
 	newConfig := req.GetConfig()
@@ -304,7 +311,25 @@ func (h *serviceHandler) Update(
 		return nil, err
 	}
 
-	h.goalStateDriver.EnqueueJob(jobID, time.Now())
+	// Temporary solution to delay the evaluation of the job goal state
+	// if the job is currently partually created. This avoids too many
+	// dequeues in the job goal state of the same job.
+	// TODO remove this hack when goalstate engine has been modified to
+	// better handle enqueue of the same job multiple times
+	// with time.Now()
+	if jobInitialized {
+		h.goalStateDriver.EnqueueJob(
+			jobID,
+			time.Now().Add(_updateInitializedJobDelay),
+		)
+	} else {
+		h.goalStateDriver.EnqueueJob(jobID, time.Now())
+	}
+
+	log.WithFields(log.Fields{
+		"job_id":          jobID.GetValue(),
+		"instances_added": instancesToAdd,
+	}).Info("Job update API requested")
 
 	h.metrics.JobUpdate.Inc(1)
 	msg := fmt.Sprintf("added %d instances", instancesToAdd)
