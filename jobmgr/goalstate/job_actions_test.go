@@ -46,7 +46,7 @@ func TestJobEnqueue(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestUntrackJob(t *testing.T) {
+func TestUntrackJobBatch(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -80,6 +80,12 @@ func TestUntrackJob(t *testing.T) {
 		Return(cachedJob)
 
 	cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			Type: job.JobType_BATCH,
+		}, nil)
+
+	cachedJob.EXPECT().
 		GetAllTasks().
 		Return(taskMap)
 
@@ -93,6 +99,45 @@ func TestUntrackJob(t *testing.T) {
 
 	jobFactory.EXPECT().
 		ClearJob(jobID).Return()
+
+	err := JobUntrack(context.Background(), jobEnt)
+	assert.NoError(t, err)
+}
+
+func TestUntrackJobStateless(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
+	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+
+	goalStateDriver := &driver{
+		jobEngine:  jobGoalStateEngine,
+		taskEngine: taskGoalStateEngine,
+		jobFactory: jobFactory,
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
+	}
+	goalStateDriver.cfg.normalize()
+
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+
+	jobEnt := &jobEntity{
+		id:     jobID,
+		driver: goalStateDriver,
+	}
+
+	jobFactory.EXPECT().
+		GetJob(jobID).
+		Return(cachedJob)
+
+	cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			Type: job.JobType_SERVICE,
+		}, nil)
 
 	err := JobUntrack(context.Background(), jobEnt)
 	assert.NoError(t, err)
@@ -214,7 +259,8 @@ func TestJobRecoverActionFailToRecover(t *testing.T) {
 
 	cachedJob.EXPECT().
 		GetConfig(gomock.Any()).
-		Return(&job.JobConfig{}, yarpcerrors.NotFoundErrorf("config not found"))
+		Return(&job.JobConfig{}, yarpcerrors.NotFoundErrorf("config not found")).
+		Times(2)
 
 	jobFactory.EXPECT().
 		GetJob(jobID).

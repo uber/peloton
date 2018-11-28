@@ -500,10 +500,22 @@ func (h *serviceHandler) Delete(
 			fmt.Sprintf("Job is not in a terminal state: %s", jobRuntime.State))
 	}
 
+	// Delete job from DB
 	if err := h.jobStore.DeleteJob(ctx, req.Id); err != nil {
 		h.metrics.JobDeleteFail.Inc(1)
 		log.Errorf("Delete job failed with error %v", err)
 		return nil, err
+	}
+
+	// Delete job from goalstate and cache
+	cachedJob := h.jobFactory.GetJob(req.GetId())
+	if cachedJob != nil {
+		taskMap := cachedJob.GetAllTasks()
+		for instID := range taskMap {
+			h.goalStateDriver.DeleteTask(req.GetId(), instID)
+		}
+		h.goalStateDriver.DeleteJob(req.GetId())
+		h.jobFactory.ClearJob(req.GetId())
 	}
 
 	h.metrics.JobDelete.Inc(1)

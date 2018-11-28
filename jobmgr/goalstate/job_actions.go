@@ -31,6 +31,17 @@ func JobUntrack(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
+	jobConfig, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		if !yarpcerrors.IsNotFound(err) {
+			// if config is not found, untrack the job from cache
+			return err
+		}
+	} else if jobConfig.GetType() == job.JobType_SERVICE {
+		// service jobs are always active and never untracked
+		return nil
+	}
+
 	// First clean from goal state
 	taskMap := cachedJob.GetAllTasks()
 	for instID := range taskMap {

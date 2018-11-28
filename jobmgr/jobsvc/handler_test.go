@@ -1612,13 +1612,33 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 		Value: "my-job",
 	}
 
+	cachedTask := cachedmocks.NewMockTask(suite.ctrl)
+	taskMap := make(map[uint32]cached.Task)
+	taskMap[0] = cachedTask
+
 	suite.mockedJobFactory.EXPECT().GetJob(id).
-		Return(suite.mockedCachedJob)
+		Return(suite.mockedCachedJob).Times(2)
 
 	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(&job.RuntimeInfo{State: job.JobState_SUCCEEDED}, nil)
 
 	suite.mockedJobStore.EXPECT().DeleteJob(context.Background(), id).Return(nil)
+
+	suite.mockedCachedJob.EXPECT().
+		GetAllTasks().
+		Return(taskMap)
+
+	suite.mockedGoalStateDriver.EXPECT().
+		DeleteTask(id, uint32(0)).
+		Return()
+
+	suite.mockedGoalStateDriver.EXPECT().
+		DeleteJob(id).
+		Return()
+
+	suite.mockedJobFactory.EXPECT().
+		ClearJob(id).
+		Return()
 
 	res, err := suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
 	suite.Equal(&job.DeleteResponse{}, res)
