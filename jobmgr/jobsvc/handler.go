@@ -19,6 +19,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/job/config"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
@@ -104,7 +105,7 @@ func (h *serviceHandler) Create(
 	if !h.candidate.IsLeader() {
 		h.metrics.JobCreateFail.Inc(1)
 		return nil, yarpcerrors.UnavailableErrorf(
-			"Job Create API not supported on non-leader")
+			"Job Create API not suppported on non-leader")
 	}
 
 	jobID := req.GetId()
@@ -212,11 +213,9 @@ func (h *serviceHandler) Update(
 	h.metrics.JobAPIUpdate.Inc(1)
 
 	if !h.candidate.IsLeader() {
-		log.WithField("job_id", req.Id.GetValue()).
-			Error("Job Update API not supported on non-leader")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, yarpcerrors.UnavailableErrorf(
-			"Job Update API not supported on non-leader")
+			"Job Update API not suppported on non-leader")
 	}
 
 	jobID := req.GetId()
@@ -231,14 +230,13 @@ func (h *serviceHandler) Update(
 	}
 	if util.IsPelotonJobStateTerminal(jobRuntime.State) {
 		msg := fmt.Sprintf("Job is in a terminal state:%s", jobRuntime.State)
-		log.WithField("job_id", req.Id.GetValue()).
-			Error(msg)
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, yarpcerrors.InvalidArgumentErrorf(msg)
 	}
 
 	newConfig := req.GetConfig()
 	oldConfig, oldConfigAddOn, err := h.jobStore.GetJobConfig(ctx, jobID)
+
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).
@@ -248,11 +246,8 @@ func (h *serviceHandler) Update(
 	}
 
 	if oldConfig.GetType() != job.JobType_BATCH {
-		msg := "Job update is only supported for batch jobs"
-		log.WithField("job_id", jobID.GetValue()).
-			Error(msg)
-		h.metrics.JobUpdateFail.Inc(1)
-		return nil, yarpcerrors.InvalidArgumentErrorf(msg)
+		return nil, yarpcerrors.InvalidArgumentErrorf(
+			"job update is only supported for batch jobs")
 	}
 
 	if newConfig.GetRespoolID() == nil {
@@ -267,26 +262,16 @@ func (h *serviceHandler) Update(
 
 	// check secrets and new config for input sanity
 	if err := h.validateSecretsAndConfig(newConfig, req.GetSecrets()); err != nil {
-		log.WithField("job_id", jobID.GetValue()).
-			WithError(err).
-			Error("Failed to validate secrete config")
-		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
 	}
 	err = jobconfig.ValidateUpdatedConfig(oldConfig, newConfig, h.jobSvcCfg.MaxTasksPerJob)
 	if err != nil {
-		log.WithField("job_id", jobID.GetValue()).
-			WithError(err).
-			Error("Failed to validate update config")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
 	}
 
 	if err = h.handleUpdateSecrets(ctx, jobID, existingSecretVolumes, newConfig,
 		req.GetSecrets()); err != nil {
-		log.WithField("job_id", jobID.GetValue()).
-			WithError(err).
-			Error("Failed to handle secrete")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
 	}
@@ -316,9 +301,6 @@ func (h *serviceHandler) Update(
 		mergeInstanceConfig(oldConfig, newConfig),
 		newConfigAddOn)
 	if err != nil {
-		log.WithField("job_id", jobID.GetValue()).
-			WithError(err).
-			Error("Failed to set job config")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
 	}
@@ -332,9 +314,15 @@ func (h *serviceHandler) Update(
 	}, nil,
 		cached.UpdateCacheAndDB)
 	if err != nil {
-		log.WithField("job_id", jobID.GetValue()).
-			WithError(err).
-			Error("Failed to update job runtime")
+		h.metrics.JobUpdateFail.Inc(1)
+		return nil, err
+	}
+
+	if err = convergeRecentJobVersionForAllTasks(
+		ctx,
+		cachedJob,
+		oldConfig,
+		newUpdatedConfig); err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
 	}
@@ -417,7 +405,7 @@ func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (
 
 	if !h.candidate.IsLeader() {
 		h.metrics.JobRefreshFail.Inc(1)
-		return nil, yarpcerrors.UnavailableErrorf("Job Refresh API not supported on non-leader")
+		return nil, yarpcerrors.UnavailableErrorf("Job Refresh API not suppported on non-leader")
 	}
 
 	jobConfig, configAddOn, err := h.jobStore.GetJobConfig(ctx, req.GetId())
@@ -622,7 +610,7 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 	if !h.candidate.IsLeader() {
 		return nil, 0,
 			yarpcerrors.UnavailableErrorf(
-				"Job %s API not supported on non-leader", workflowType.String())
+				"Job %s API not suppported on non-leader", workflowType.String())
 	}
 
 	cachedJob := h.jobFactory.AddJob(jobID)
@@ -1038,4 +1026,37 @@ func convertRangesToSlice(ranges []*task.InstanceRange, instanceCount uint32) []
 		}
 	}
 	return result
+}
+
+// convergeRecentJobVersionForAllTasks updates the runtime state of
+// all instances with the given update; essentially, the
+// configuration and desired configuration version of all
+// tasks is updated to the newest version.
+func convergeRecentJobVersionForAllTasks(
+	ctx context.Context,
+	cachedJob cached.Job,
+	oldJobConfig *job.JobConfig,
+	newJobConfig jobmgrcommon.JobConfig) error {
+
+	runtimes := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	instanceCount := oldJobConfig.GetInstanceCount()
+
+	// Only update tasks running previous job config
+	for i := uint32(0); i < instanceCount; i++ {
+		runtimeDiff := jobmgrcommon.RuntimeDiff{
+			jobmgrcommon.ConfigVersionField:        newJobConfig.GetChangeLog().GetVersion(),
+			jobmgrcommon.DesiredConfigVersionField: newJobConfig.GetChangeLog().GetVersion(),
+		}
+		runtimes[i] = runtimeDiff
+	}
+
+	if len(runtimes) > 0 {
+		// Just update the runtime of the tasks with the
+		// new version and move on.
+		if err := cachedJob.PatchTasks(ctx, runtimes); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

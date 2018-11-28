@@ -23,6 +23,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	cachedtest "code.uber.internal/infra/peloton/jobmgr/cached/test"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
@@ -598,7 +599,7 @@ func (suite *JobHandlerTestSuite) TestNonLeader() {
 	suite.Error(err)
 	suite.Equal(yarpcerrors.IsUnavailable(err), true)
 	suite.Equal(yarpcerrors.ErrorMessage(err),
-		"Job Create API not supported on non-leader")
+		"Job Create API not suppported on non-leader")
 
 	// Test Update
 	updateResp, err := suite.handler.Update(suite.context, &job.UpdateRequest{})
@@ -606,7 +607,7 @@ func (suite *JobHandlerTestSuite) TestNonLeader() {
 	suite.Error(err)
 	suite.Equal(yarpcerrors.IsUnavailable(err), true)
 	suite.Equal(yarpcerrors.ErrorMessage(err),
-		"Job Update API not supported on non-leader")
+		"Job Update API not suppported on non-leader")
 
 	// Test Refresh
 	refreshResp, err := suite.handler.Refresh(suite.context, &job.RefreshRequest{})
@@ -614,7 +615,7 @@ func (suite *JobHandlerTestSuite) TestNonLeader() {
 	suite.Error(err)
 	suite.Equal(yarpcerrors.IsUnavailable(err), true)
 	suite.Equal(yarpcerrors.ErrorMessage(err),
-		"Job Refresh API not supported on non-leader")
+		"Job Refresh API not suppported on non-leader")
 }
 
 // TestCreateJobWithSecrets tests different success/failure scenarios
@@ -927,6 +928,16 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 				Version: 2,
 			},
 		}, nil)
+	suite.mockedCachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.Equal(uint32(len(runtimeDiffs)), oldJobConfig.GetInstanceCount())
+			for _, runtimeDiff := range runtimeDiffs {
+				suite.Equal(runtimeDiff[jobmgrcommon.ConfigVersionField].(uint64),
+					uint64(2))
+			}
+		}).
+		Return(nil)
 	req := &job.UpdateRequest{
 		Id:     jobID,
 		Config: newJobConfig,
@@ -986,6 +997,16 @@ func (suite *JobHandlerTestSuite) TestJobUpdateInstanceConfig() {
 	suite.mockedCachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Return(nil)
+	suite.mockedCachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.Equal(uint32(len(runtimeDiffs)), oldJobConfig.GetInstanceCount())
+			for _, runtimeDiff := range runtimeDiffs {
+				suite.Equal(runtimeDiff[jobmgrcommon.ConfigVersionField].(uint64),
+					uint64(2))
+			}
+		}).
+		Return(nil)
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueJob(gomock.Any(), gomock.Any()).
 		Return()
@@ -1025,7 +1046,7 @@ func (suite *JobHandlerTestSuite) TestJobUpdateServiceJob() {
 	_, err := suite.handler.Update(suite.context, req)
 	suite.True(yarpcerrors.IsInvalidArgument(err))
 	suite.Equal(yarpcerrors.ErrorMessage(err),
-		"Job update is only supported for batch jobs")
+		"job update is only supported for batch jobs")
 }
 
 // TestJobUpdateFailure tests failure scenarios for Job Update API
