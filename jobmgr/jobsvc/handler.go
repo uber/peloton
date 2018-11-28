@@ -19,7 +19,6 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/job/config"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
@@ -314,15 +313,6 @@ func (h *serviceHandler) Update(
 	}, nil,
 		cached.UpdateCacheAndDB)
 	if err != nil {
-		h.metrics.JobUpdateFail.Inc(1)
-		return nil, err
-	}
-
-	if err = convergeRecentJobVersionForAllTasks(
-		ctx,
-		cachedJob,
-		oldConfig,
-		newUpdatedConfig); err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
 	}
@@ -1038,37 +1028,4 @@ func convertRangesToSlice(ranges []*task.InstanceRange, instanceCount uint32) []
 		}
 	}
 	return result
-}
-
-// convergeRecentJobVersionForAllTasks updates the runtime state of
-// all instances with the given update; essentially, the
-// configuration and desired configuration version of all
-// tasks is updated to the newest version.
-func convergeRecentJobVersionForAllTasks(
-	ctx context.Context,
-	cachedJob cached.Job,
-	oldJobConfig *job.JobConfig,
-	newJobConfig jobmgrcommon.JobConfig) error {
-
-	runtimes := make(map[uint32]jobmgrcommon.RuntimeDiff)
-	instanceCount := oldJobConfig.GetInstanceCount()
-
-	// Only update tasks running previous job config
-	for i := uint32(0); i < instanceCount; i++ {
-		runtimeDiff := jobmgrcommon.RuntimeDiff{
-			jobmgrcommon.ConfigVersionField:        newJobConfig.GetChangeLog().GetVersion(),
-			jobmgrcommon.DesiredConfigVersionField: newJobConfig.GetChangeLog().GetVersion(),
-		}
-		runtimes[i] = runtimeDiff
-	}
-
-	if len(runtimes) > 0 {
-		// Just update the runtime of the tasks with the
-		// new version and move on.
-		if err := cachedJob.PatchTasks(ctx, runtimes); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
