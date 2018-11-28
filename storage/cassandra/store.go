@@ -501,9 +501,17 @@ func (s *Store) UpdateJobConfig(
 	id *peloton.JobID,
 	jobConfig *job.JobConfig,
 	configAddOn *models.ConfigAddOn) error {
-	return s.CreateJobConfig(ctx,
-		id, jobConfig, configAddOn, jobConfig.GetChangeLog().GetVersion(),
-		"<missing owner>")
+	if err := s.CreateJobConfig(
+		ctx,
+		id,
+		jobConfig,
+		configAddOn,
+		jobConfig.GetChangeLog().GetVersion(),
+		"<missing owner>"); err != nil {
+		return err
+	}
+
+	return s.updateJobIndex(ctx, id, nil, jobConfig)
 }
 
 // GetJobConfig returns a job config given the job id
@@ -2333,33 +2341,40 @@ func (s *Store) updateJobIndex(
 	runtime *job.RuntimeInfo,
 	config *job.JobConfig) error {
 
-	runtimeBuffer, err := json.Marshal(runtime)
-	if err != nil {
-		log.WithField("job_id", id.GetValue()).
-			WithError(err).
-			Error("Failed to marshal job runtime")
-		s.metrics.JobMetrics.JobUpdateRuntimeFail.Inc(1)
-		return err
-	}
-
-	completeTime := time.Time{}
-	if runtime.GetCompletionTime() != "" {
-		completeTime, err = time.Parse(time.RFC3339Nano, runtime.GetCompletionTime())
-		if err != nil {
-			log.WithField("runtime", runtime).
-				WithError(err).
-				Warn("Fail to parse completeTime")
-		}
+	if runtime == nil && config == nil {
+		return nil
 	}
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(jobIndexTable).
-		Set("runtime_info", runtimeBuffer).
-		Set("state", runtime.GetState().String()).
-		Set("creation_time", parseTime(runtime.GetCreationTime())).
-		Set("completion_time", completeTime).
-		Set("update_time", time.Now()).
 		Where(qb.Eq{"job_id": id.GetValue()})
+
+	if runtime != nil {
+		runtimeBuffer, err := json.Marshal(runtime)
+		if err != nil {
+			log.WithField("job_id", id.GetValue()).
+				WithError(err).
+				Error("Failed to marshal job runtime")
+			s.metrics.JobMetrics.JobUpdateRuntimeFail.Inc(1)
+			return err
+		}
+
+		completeTime := time.Time{}
+		if runtime.GetCompletionTime() != "" {
+			completeTime, err = time.Parse(time.RFC3339Nano, runtime.GetCompletionTime())
+			if err != nil {
+				log.WithField("runtime", runtime).
+					WithError(err).
+					Warn("Fail to parse completeTime")
+			}
+		}
+
+		stmt = stmt.Set("runtime_info", runtimeBuffer).
+			Set("state", runtime.GetState().String()).
+			Set("creation_time", parseTime(runtime.GetCreationTime())).
+			Set("completion_time", completeTime).
+			Set("update_time", time.Now())
+	}
 
 	if config != nil {
 		// Do not save the instance config with the job
@@ -2390,7 +2405,7 @@ func (s *Store) updateJobIndex(
 			Set("labels", labelBuffer)
 	}
 
-	err = s.applyStatement(ctx, stmt, id.GetValue())
+	err := s.applyStatement(ctx, stmt, id.GetValue())
 	if err != nil {
 		log.WithField("job_id", id.GetValue()).
 			WithError(err).
