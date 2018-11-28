@@ -241,7 +241,61 @@ func (h *serviceHandler) StopPod(
 	ctx context.Context,
 	req *svc.StopPodRequest,
 ) (resp *svc.StopPodResponse, err error) {
-	return &svc.StopPodResponse{}, nil
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("PodSVC.StopPod failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Info("PodSVC.StopPod succeeded")
+	}()
+
+	if !h.candidate.IsLeader() {
+		return nil,
+			yarpcerrors.UnavailableErrorf("PodSVC.StopPod is not supported on non-leader")
+	}
+
+	jobID, instanceID, err := util.ParseTaskID(req.GetPodName().GetValue())
+	if err != nil {
+		return nil, err
+	}
+
+	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: jobID})
+
+	runtimeInfo, err := h.podStore.GetTaskRuntime(
+		ctx, cachedJob.ID(), instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	if runtimeInfo.GetGoalState() == pbtask.TaskState_KILLED {
+		// No-op if the pod is already KILLED
+		return &svc.StopPodResponse{}, nil
+	}
+
+	runtimeDiff := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiff[instanceID] = jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.GoalStateField: pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:   "Task stop API request",
+		jobmgrcommon.ReasonField:    "",
+	}
+	err = cachedJob.PatchTasks(ctx, runtimeDiff)
+
+	// We should enqueue the tasks even if PatchTasks fail,
+	// because some tasks may get updated successfully in db.
+	// We can let goal state engine to decide whether or not to stop.
+	h.goalStateDriver.EnqueueTask(
+		&peloton.JobID{Value: jobID},
+		instanceID,
+		time.Now(),
+	)
+
+	return &svc.StopPodResponse{}, err
 }
 
 func (h *serviceHandler) RestartPod(

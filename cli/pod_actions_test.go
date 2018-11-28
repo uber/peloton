@@ -255,6 +255,24 @@ func (suite *podActionsTestSuite) TestClientPodRestartFail() {
 	suite.Error(suite.client.PodRestartAction(testPodName))
 }
 
+// TestClientPodStopSuccess tests the success case of stopping pod
+func (suite *podActionsTestSuite) TestClientPodStopSuccess() {
+	suite.podClient.EXPECT().
+		StopPod(gomock.Any(), gomock.Any()).
+		Return(&podsvc.StopPodResponse{}, nil)
+
+	suite.NoError(suite.client.PodStopAction(testPodName))
+}
+
+// TestClientPodStopSuccess tests the failure case stopping pod
+func (suite *podActionsTestSuite) TestClientPodStopFail() {
+	suite.podClient.EXPECT().
+		StopPod(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.PodStopAction(testPodName))
+}
+
 func TestPodActions(t *testing.T) {
 	suite.Run(t, new(podActionsTestSuite))
 }

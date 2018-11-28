@@ -669,7 +669,7 @@ func (suite *podHandlerTestSuite) TestStartPodSuccessWithPodRuntimeUnexpectedVer
 	suite.NoError(err)
 }
 
-// TestStartPodFailToSetJobRuntime tests the case of pod failure
+// TestStartPodFailToSetJobRuntime tests the case of pod start failure
 // due to fail to set job runtime
 func (suite *podHandlerTestSuite) TestStartPodFailToSetJobRuntime() {
 	suite.cachedJob.EXPECT().
@@ -730,14 +730,228 @@ func (suite *podHandlerTestSuite) TestStartPodFailToSetJobRuntime() {
 	suite.Error(err)
 }
 
-func TestPodServiceHandler(t *testing.T) {
-	suite.Run(t, new(podHandlerTestSuite))
-}
+// TestStopPodSuccess tests the success case of stopping a pod
+func (suite *podHandlerTestSuite) TestStopPodSuccess() {
+	jobID := &peloton.JobID{Value: testJobID}
+	mesosTaskID := testPodID
+	taskRuntimeInfo := &pbtask.RuntimeInfo{
+		MesosTaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
+		},
+	}
+	runtimeDiff := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.GoalStateField: pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:   "Task stop API request",
+		jobmgrcommon.ReasonField:    "",
+	}
 
-func (suite *podHandlerTestSuite) TestStopPod() {
-	request := &svc.StopPodRequest{}
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(jobID).
+		AnyTimes()
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), jobID, uint32(testInstanceID)).
+			Return(taskRuntimeInfo, nil),
+
+		suite.cachedJob.EXPECT().
+			PatchTasks(gomock.Any(), runtimeDiff).
+			Return(nil),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueTask(jobID, uint32(testInstanceID), gomock.Any()),
+	)
+
+	request := &svc.StopPodRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+	}
+
 	response, err := suite.handler.StopPod(context.Background(), request)
 	suite.NoError(err)
+	suite.NotNil(response)
+}
+
+// TestStopPodAlreadyStoppedPod tests calling stop pod
+// on an already stopped pod
+func (suite *podHandlerTestSuite) TestStopPodAlreadyStoppedPod() {
+	jobID := &peloton.JobID{Value: testJobID}
+	mesosTaskID := testPodID
+	taskRuntimeInfo := &pbtask.RuntimeInfo{
+		GoalState: pbtask.TaskState_KILLED,
+		MesosTaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
+		},
+	}
+	runtimeDiff := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.GoalStateField: pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:   "Task stop API request",
+		jobmgrcommon.ReasonField:    "",
+	}
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(jobID).
+		AnyTimes()
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), jobID, uint32(testInstanceID)).
+			Return(taskRuntimeInfo, nil),
+	)
+
+	request := &svc.StopPodRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+	}
+
+	response, err := suite.handler.StopPod(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+}
+
+// TestStopPodNonLeader tests calling stop pod
+// on non-leader jobmgr
+func (suite *podHandlerTestSuite) TestStopPodNonLeader() {
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(false)
+
+	resp, err := suite.handler.StopPod(context.Background(),
+		&svc.StopPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: testPodName},
+		})
+	suite.Nil(resp)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsUnavailable(err))
+}
+
+// TestStopPodInvalidPodName tests the case of
+// stopping pod with invalid pod name
+func (suite *podHandlerTestSuite) TestStopPodInvalidPodName() {
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	resp, err := suite.handler.StopPod(context.Background(),
+		&svc.StopPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: "invalid-name"},
+		})
+	suite.Nil(resp)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+}
+
+// TestStopPodGetTaskRuntimeFailure tests failure of
+// stopping pod due to GetTaskRuntime failure
+func (suite *podHandlerTestSuite) TestStopPodGetTaskRuntimeFailure() {
+	jobID := &peloton.JobID{Value: testJobID}
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(jobID).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(testInstanceID)).
+		AnyTimes()
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), jobID, uint32(testInstanceID)).
+			Return(nil, yarpcerrors.NotFoundErrorf("test error")),
+	)
+
+	resp, err := suite.handler.StopPod(context.Background(),
+		&svc.StopPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: testPodName},
+		})
+	suite.Nil(resp)
+	suite.Error(err)
+}
+
+// TestStopPodPatchTasksFailure tests failure of
+// stopping pod due to PatchTasks failure
+func (suite *podHandlerTestSuite) TestStopPodPatchTasksFailure() {
+	jobID := &peloton.JobID{Value: testJobID}
+	mesosTaskID := ""
+	taskRuntimeInfo := &pbtask.RuntimeInfo{
+		MesosTaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
+		},
+	}
+	runtimeDiff := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.GoalStateField: pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:   "Task stop API request",
+		jobmgrcommon.ReasonField:    "",
+	}
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(jobID).
+		AnyTimes()
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(testInstanceID)).
+		AnyTimes()
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), jobID, uint32(testInstanceID)).
+			Return(taskRuntimeInfo, nil),
+
+		suite.cachedJob.EXPECT().
+			PatchTasks(gomock.Any(), runtimeDiff).
+			Return(yarpcerrors.InternalErrorf("test error")),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueTask(jobID, uint32(testInstanceID), gomock.Any()),
+	)
+
+	request := &svc.StopPodRequest{
+		PodName: &v1alphapeloton.PodName{Value: testPodName},
+	}
+	response, err := suite.handler.StopPod(context.Background(), request)
+	suite.Error(err)
 	suite.NotNil(response)
 }
 
@@ -759,11 +973,6 @@ func (suite *podHandlerTestSuite) TestRestartPodSuccess() {
 	suite.cachedJob.EXPECT().
 		ID().
 		Return(jobID).
-		AnyTimes()
-
-	suite.cachedTask.EXPECT().
-		ID().
-		Return(uint32(testInstanceID)).
 		AnyTimes()
 
 	gomock.InOrder(
@@ -1358,4 +1567,8 @@ func (suite *podHandlerTestSuite) TestConvertTaskStateToPodstate() {
 	for _, test := range tt {
 		suite.Equal(test.podState, convertTaskStateToPodState(test.taskState))
 	}
+}
+
+func TestPodServiceHandler(t *testing.T) {
+	suite.Run(t, new(podHandlerTestSuite))
 }

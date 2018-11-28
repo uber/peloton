@@ -196,3 +196,24 @@ func (c *Client) PodRestartAction(podName string) error {
 	tabWriter.Flush()
 	return nil
 }
+
+// PodStopAction is the action for stopping the pod
+func (c *Client) PodStopAction(podName string) error {
+	resp, err := c.podClient.StopPod(
+		c.ctx,
+		&podsvc.StopPodRequest{
+			PodName: &v1alphapeloton.PodName{Value: podName},
+		})
+	if err != nil {
+		return err
+	}
+
+	out, err := marshallResponse(defaultResponseFormat, resp)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v\n", string(out))
+
+	tabWriter.Flush()
+	return nil
+}
