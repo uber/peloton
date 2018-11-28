@@ -2032,35 +2032,9 @@ func (suite *CassandraStoreTestSuite) TestJobConfig() {
 	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, jobRuntime)
 	suite.NoError(err)
 
-	// update instance count more
-	jobConfig.InstanceCount = uint32(newInstanceCount * 2)
-	jobConfig.ChangeLog.Version = uint64(3)
-	err = jobStore.UpdateJobConfig(context.Background(), &jobID, jobConfig, &models.ConfigAddOn{})
-	suite.NoError(err)
-
-	// in production, cachedJob would take care of job runtime update
-	jobRuntime.Revision.Version = uint64(3)
-	jobRuntime.ConfigurationVersion = uint64(3)
-	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, jobRuntime)
-	suite.NoError(err)
-
 	jobConfig, _, err = jobStore.GetJobConfig(context.Background(), &jobID)
 	suite.NoError(err)
-	suite.Equal(uint32(newInstanceCount*2), jobConfig.InstanceCount)
-
-	// Validate previous job and task configurations are deleted
-	jobStore.cleanupPreviousJobandTaskConfig(context.Background(), &jobID, 11)
-	jobConfig, _, err = jobStore.GetJobConfigWithVersion(context.Background(), &jobID, 1)
-	suite.Error(err)
-	suite.Nil(jobConfig)
-
-	jobConfig, _, err = jobStore.GetJobConfigWithVersion(context.Background(), &jobID, 2)
-	suite.NoError(err)
 	suite.Equal(uint32(newInstanceCount), jobConfig.InstanceCount)
-
-	jobConfig, _, err = jobStore.GetJobConfigWithVersion(context.Background(), &jobID, 3)
-	suite.NoError(err)
-	suite.Equal(uint32(newInstanceCount*2), jobConfig.InstanceCount)
 }
 
 func (suite *CassandraStoreTestSuite) TestGetJobConfigOfDifferentVersions() {

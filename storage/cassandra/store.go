@@ -98,9 +98,6 @@ const (
 
 	// invalidRunID is used to read pod events for all runs
 	invalidRunID = uint64(0)
-	// _jobAndTaskVersionToRetain is used to constraint job & task
-	// config version in DB.
-	_jobAndTaskVersionToRetain = 10
 )
 
 // Config is the config for cassandra Store
@@ -504,66 +501,9 @@ func (s *Store) UpdateJobConfig(
 	id *peloton.JobID,
 	jobConfig *job.JobConfig,
 	configAddOn *models.ConfigAddOn) error {
-
-	// ToDo (using production stats): Delete Job & Task Configuration with
-	// 20% probability, Since UpdateJobConfig are rare & Cassandra deletes are expensive
-	// deleteJobTaskConfigHeuristic := rand.Intn(_jobAndTaskVersionToRetain)
-	// if deleteJobTaskConfigHeuristic < 2 {
-	// 	go s.cleanupPreviousJobandTaskConfig(
-	// 		ctx,
-	// 		id,
-	// 		jobConfig.GetChangeLog().GetVersion())
-	// }
-
-	go s.cleanupPreviousJobandTaskConfig(
-		ctx,
-		id,
-		jobConfig.GetChangeLog().GetVersion())
-
-	return s.CreateJobConfig(
-		ctx,
-		id,
-		jobConfig,
-		configAddOn,
-		jobConfig.GetChangeLog().GetVersion(),
+	return s.CreateJobConfig(ctx,
+		id, jobConfig, configAddOn, jobConfig.GetChangeLog().GetVersion(),
 		"<missing owner>")
-}
-
-// cleanupPreviousJobandTaskConfig cleans up the old job configurations.
-// This constraints job and task configs in DB to prevent large partition.
-func (s *Store) cleanupPreviousJobandTaskConfig(
-	ctx context.Context,
-	jobID *peloton.JobID,
-	version uint64) {
-	if version <= _jobAndTaskVersionToRetain {
-		return
-	}
-
-	queryBuilder := s.DataStore.NewQuery()
-	version = version - _jobAndTaskVersionToRetain
-	stmt := queryBuilder.
-		Delete(taskConfigTable).
-		Where(fmt.Sprintf("job_id=%s AND version<=%d", jobID.GetValue(), version))
-	if err := s.applyStatement(ctx, stmt, jobID.GetValue()); err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			WithField("version", version).
-			Info("failed to delete the task configuration(s) before provided version")
-		return
-	}
-
-	stmt = queryBuilder.
-		Delete(jobConfigTable).
-		Where(fmt.Sprintf("job_id=%s AND version<=%d", jobID.GetValue(), version))
-	err := s.applyStatement(ctx, stmt, jobID.GetValue())
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			WithField("version", version).
-			Info("failed to delete the job configuration(s) before provided version")
-	}
-
-	return
 }
 
 // GetJobConfig returns a job config given the job id
