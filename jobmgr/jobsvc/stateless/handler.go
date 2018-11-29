@@ -2,7 +2,6 @@ package stateless
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
@@ -15,6 +14,7 @@ import (
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	handlerutil "code.uber.internal/infra/peloton/jobmgr/util/handler"
+	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
 
@@ -271,7 +271,7 @@ func convertToJobStatus(
 	result.CreationTime = runtime.GetCreationTime()
 	result.PodStats = runtime.TaskStats
 	result.DesiredState = stateless.JobState(runtime.GetGoalState())
-	result.Version = getEntityVersion(runtime.GetConfigurationVersion())
+	result.Version = jobutil.GetEntityVersion(runtime.GetConfigurationVersion())
 
 	if cachedUpdate == nil {
 		return result
@@ -287,15 +287,9 @@ func convertToJobStatus(
 			len(cachedUpdate.GetInstancesDone()) -
 			len(cachedUpdate.GetInstancesFailed()))
 	workflowStatus.CurrentInstances = cachedUpdate.GetInstancesCurrent()
-	workflowStatus.PrevVersion = getEntityVersion(cachedUpdate.GetState().JobVersion)
-	workflowStatus.Version = getEntityVersion(cachedUpdate.GetGoalState().JobVersion)
+	workflowStatus.PrevVersion = jobutil.GetEntityVersion(cachedUpdate.GetState().JobVersion)
+	workflowStatus.Version = jobutil.GetEntityVersion(cachedUpdate.GetGoalState().JobVersion)
 
 	result.WorkflowStatus = workflowStatus
 	return result
-}
-
-func getEntityVersion(configVersion uint64) *v1alphapeloton.EntityVersion {
-	return &v1alphapeloton.EntityVersion{
-		Value: fmt.Sprintf("%d", configVersion),
-	}
 }

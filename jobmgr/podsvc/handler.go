@@ -2,7 +2,6 @@ package podsvc
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -21,6 +20,7 @@ import (
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	handlerutil "code.uber.internal/infra/peloton/jobmgr/util/handler"
+	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
@@ -848,16 +848,14 @@ func convertTaskRuntimeToPodStatus(runtime *pbtask.RuntimeInfo) *pbpod.PodStatus
 				},
 			},
 		},
-		DesiredState: convertTaskStateToPodState(runtime.GetGoalState()),
-		Message:      runtime.GetMessage(),
-		Reason:       runtime.GetReason(),
-		FailureCount: runtime.GetFailureCount(),
-		VolumeId:     &v1alphapeloton.VolumeID{Value: runtime.GetVolumeID().GetValue()},
-		JobVersion: &v1alphapeloton.EntityVersion{
-			Value: fmt.Sprintf("%d", runtime.GetConfigVersion())},
-		DesiredJobVersion: &v1alphapeloton.EntityVersion{
-			Value: fmt.Sprintf("%d", runtime.GetDesiredConfigVersion())},
-		AgentId: runtime.GetAgentID(),
+		DesiredState:      convertTaskStateToPodState(runtime.GetGoalState()),
+		Message:           runtime.GetMessage(),
+		Reason:            runtime.GetReason(),
+		FailureCount:      runtime.GetFailureCount(),
+		VolumeId:          &v1alphapeloton.VolumeID{Value: runtime.GetVolumeID().GetValue()},
+		JobVersion:        jobutil.GetEntityVersion(runtime.GetConfigVersion()),
+		DesiredJobVersion: jobutil.GetEntityVersion(runtime.GetDesiredConfigVersion()),
+		AgentId:           runtime.GetAgentID(),
 		Revision: &v1alphapeloton.Revision{
 			Version:   runtime.GetRevision().GetVersion(),
 			CreatedAt: runtime.GetRevision().GetCreatedAt(),
