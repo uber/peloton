@@ -10,6 +10,13 @@ type JobMetrics struct {
 	JobCreateFailed     tally.Counter
 	JobRecoveryDuration tally.Gauge
 
+	// granualar metrics at the time of creating tasks for a job
+	JobGetDuration               tally.Gauge
+	JobCreateTaskConfigsDuration tally.Gauge
+	JobCreateTaskRuntimeDuration tally.Gauge
+	JobRecoverTasksDuration      tally.Gauge
+	JobTaskGetDuration           tally.Gauge
+
 	JobSucceeded    tally.Counter
 	JobKilled       tally.Counter
 	JobFailed       tally.Counter
@@ -74,6 +81,13 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobRuntimeUpdated:                jobScope.Counter("runtime_update_success"),
 		JobRuntimeUpdateFailed:           jobScope.Counter("runtime_update_fail"),
 		JobMaxRunningInstancesExcceeding: jobScope.Counter("max_running_instances_exceeded"),
+
+		// job create tasks duration metrics
+		JobGetDuration:               jobScope.Gauge("job_get_duration"),
+		JobCreateTaskConfigsDuration: jobScope.Gauge("create_task_configs_duration"),
+		JobCreateTaskRuntimeDuration: jobScope.Gauge("create_task_runtimes_duration"),
+		JobRecoverTasksDuration:      jobScope.Gauge("recover_tasks_duration"),
+		JobTaskGetDuration:           jobScope.Gauge("task_get_duration"),
 	}
 
 	taskMetrics := &TaskMetrics{

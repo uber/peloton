@@ -27,6 +27,7 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 	jobID := &peloton.JobID{Value: id}
 	goalStateDriver := entity.(*jobEntity).driver
 
+	startJobGetTime := time.Now()
 	jobConfig, err = goalStateDriver.jobStore.GetJobConfig(ctx, jobID)
 	if err != nil {
 		goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
@@ -35,9 +36,13 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 			Error("failed to get job config while creating tasks")
 		return err
 	}
+	// job get duration
+	goalStateDriver.mtx.jobMetrics.JobGetDuration.Update(
+		float64(time.Since(startJobGetTime) / time.Millisecond))
 
 	instances := jobConfig.InstanceCount
 
+	startCreateTaskConfigsTime := time.Now()
 	// First create task configs
 	if err = goalStateDriver.taskStore.CreateTaskConfigs(ctx, jobID, jobConfig); err != nil {
 		goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
@@ -46,8 +51,12 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 			Error("failed to create task configs")
 		return err
 	}
+	// task config create duration
+	goalStateDriver.mtx.jobMetrics.JobCreateTaskConfigsDuration.Update(
+		float64(time.Since(startCreateTaskConfigsTime) / time.Millisecond))
 
 	// Get task runtimes.
+	startTaskGetTime := time.Now()
 	taskInfos, err = goalStateDriver.taskStore.GetTasksForJob(ctx, jobID)
 	if err != nil {
 		goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
@@ -56,13 +65,24 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 			Error("failed to get tasks for job")
 		return err
 	}
+	// get tasks for job duration
+	goalStateDriver.mtx.jobMetrics.JobTaskGetDuration.Update(
+		float64(time.Since(startTaskGetTime) / time.Millisecond))
 
 	if len(taskInfos) == 0 {
 		// New job being created
+		startCreateTaskRuntime := time.Now()
 		err = createAndEnqueueTasks(ctx, jobID, jobConfig, goalStateDriver)
+		// task runtime create duration
+		goalStateDriver.mtx.jobMetrics.JobCreateTaskRuntimeDuration.Update(
+			float64(time.Since(startCreateTaskRuntime) / time.Millisecond))
 	} else {
 		// Recover error in previous creation of job
+		startRecoverTask := time.Now()
 		err = recoverTasks(ctx, jobID, jobConfig, taskInfos, goalStateDriver)
+		// recoverTasks duration
+		goalStateDriver.mtx.jobMetrics.JobRecoverTasksDuration.Update(
+			float64(time.Since(startRecoverTask) / time.Millisecond))
 	}
 
 	if err != nil {
