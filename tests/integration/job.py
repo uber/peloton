@@ -5,7 +5,7 @@ from client import Client
 from pool import Pool
 from task import Task
 from workflow import Workflow
-from common import IntegrationTestConfig
+from common import IntegrationTestConfig, wait_for_condition
 from util import load_test_config
 
 from google.protobuf import json_format
@@ -22,6 +22,7 @@ class Job(object):
     """
     Job represents a peloton job
     """
+
     def __init__(self, job_file='test_job.yaml',
                  client=None,
                  config=None,
@@ -102,10 +103,10 @@ class Job(object):
             ranges=ranges,
         )
         response = self.client.task_svc.Start(
-                request,
-                metadata=self.client.jobmgr_metadata,
-                timeout=self.config.rpc_timeout_sec,
-            )
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
         log.info('starting tasks in job {0} with ranges {1}'
                  .format(self.job_id, ranges))
         return response
@@ -121,10 +122,10 @@ class Job(object):
             ranges=ranges,
         )
         response = self.client.task_svc.Stop(
-                request,
-                metadata=self.client.jobmgr_metadata,
-                timeout=self.config.rpc_timeout_sec,
-            )
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
         log.info('stopping tasks in job {0} with ranges {1}'
                  .format(self.job_id, ranges))
         return response
@@ -134,6 +135,7 @@ class Job(object):
         WorkflowResp represents the response from a job level operation
         including update, restart, stop and start.
         """
+
         def __init__(self, workflow_id, resource_version,
                      client=None, config=None):
             self.workflow = Workflow(workflow_id, client=client, config=config)
@@ -497,32 +499,7 @@ class Job(object):
         Waits for a particular condition to be met with the job
         :param condition: The condition to meet
         """
-        attempts = 0
-        start = time.time()
-        log.info('%s waiting for condition %s', self.job_id,
-                 condition.__name__)
-        result = False
-        while attempts < self.config.max_retry_attempts:
-            try:
-                result = condition()
-                if result:
-                    break
-            except Exception as e:
-                log.warn(e)
-
-            time.sleep(self.config.sleep_time_sec)
-            attempts += 1
-
-        if attempts == self.config.max_retry_attempts:
-            log.info('max attempts reached to wait for condition')
-            log.info('condition: %s', condition.__name__)
-            assert False
-
-        end = time.time()
-        elapsed = end - start
-        log.info('%s waited on condition %s for %s seconds',
-                 self.job_id, condition.__name__, elapsed)
-        assert result
+        wait_for_condition(message=self.job_id, condition=condition, config=self.config)
 
     def update_instance_count(self, count):
         """

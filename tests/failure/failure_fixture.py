@@ -1,6 +1,7 @@
 import logging
 
 from tests.failure.framework import components, framework
+from tests.integration.common import wait_for_condition
 from tests.integration import job as tjob
 
 
@@ -73,10 +74,8 @@ class FailureFixture(object):
         Wait for a condition to be true.
         :param condition: Function that is evalauted
         """
-        dummy_job = tjob.Job(config=self.integ_config,
-                             client=self.client)
-        dummy_job.job_id = ''
-        dummy_job.wait_for_condition(condition)
+        wait_for_condition(message='', condition=condition,
+                           config=self.integ_config)
 
     def wait_for_leader_change(self, comp, old_leader):
         """
