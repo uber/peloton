@@ -3,6 +3,99 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.8
+------------------
+* 2018-11-27    Update job index when job configuration is updated                                            apoorvaj@uber.com
+* 2018-11-28    Revert "Constraint job and task configurations at DB"                                         varung@uber.com
+* 2018-11-28    Revert "Converge recent job config version for all batch tasks"                               varung@uber.com
+* 2018-11-28    Move entity version construct into util                                                       zhixin@uber.com
+* 2018-11-28    Do not untrack stateless jobs from the cache                                                  apoorvaj@uber.com
+* 2018-11-28    Revert "Batch job of INITIALIZED state can be updated"                                        varung@uber.com
+* 2018-11-28    Revert "Reenable job factory metrics"                                                         varung@uber.com
+* 2018-11-28    Add PodService.GetPod handler                                                                 sachins@uber.com
+* 2018-11-21    Adding asynchronous bin pacing computation support and enable DEFRAG bin packing algorithm    mabansal@uber.com
+* 2018-11-28    Add PodService.PodStop handler                                                                sachins@uber.com
+* 2018-11-27    Set agent id to pointer of empty string on task launch failure                                zhixin@uber.com
+* 2018-11-27    Add actual tasks allocation for Mesos                                                         varung@uber.com
+* 2018-11-20    Add integration test for manual rollback                                                      apoorvaj@uber.com
+* 2018-11-21    reduce cachedjob.AddTask lock contention                                                      zhixin@uber.com
+* 2018-11-20     Use convertTaskStateToPodState to convert task state                                         zhixin@uber.com
+* 2018-11-20    Image is reported in the container status, hence it is not needed in pod summary as well      apoorvaj@uber.com
+* 2018-11-20    Deprecate write/read path for task_state_changes table                                        varung@uber.com
+* 2018-11-07    Add API for multiple containers in a pod.                                                     apoorvaj@uber.com
+* 2018-11-16    Fix TaskSVC.GetPodEvents to return events for all runs                                        sachins@uber.com
+* 2018-11-16    Add PodService.RestartPod handler                                                             sachins@uber.com
+* 2018-11-15    Add PodService.BrowsePodSandbox handler                                                       sachins@uber.com
+* 2018-11-15    Add JobSVC.RefreshJob                                                                         zhixin@uber.com
+* 2018-11-13    Add JobSvc.GetJobCache                                                                        zhixin@uber.com
+* 2018-11-14    Push images to Kraken                                                                         sachins@uber.com
+* 2018-11-13    Fix data race issues with respool interface                                                   varung@uber.com
+* 2018-11-13    Lookup zk info by providing a cluster name                                                    sishi@uber.com
+* 2018-11-13    Update respool doc with revocable tasks                                                       varung@uber.com
+* 2018-11-13    Fix JobSvc.Create error when the previous create call fails                                   zhixin@uber.com
+* 2018-11-12    Dump host manager event stream via CLI                                                        varung@uber.com
+* 2018-11-12    Handle instances with different desired config than their current config                      apoorvaj@uber.com
+* 2018-11-06    Add stress test for job create/get to vcluster                                                adityacb@uber.com
+* 2018-11-12    Add PodSvc.StartPod                                                                           zhixin@uber.com
+* 2018-10-19    Add reason for failure in placement engine                                                    avyas@uber.com
+* 2018-10-29    Compress job config before storing it to DB                                                   adityacb@uber.com
+* 2018-11-12    Increase runtime of non-preemptible test job                                                  avyas@uber.com
+* 2018-11-08    Do not unset the job update identifier after update is complete                               apoorvaj@uber.com
+* 2018-11-08    Add CLI command to kill all jobs owned by a given owner                                       sachins@uber.com
+* 2018-11-07    Add PodSVC.RefreshPod                                                                         zhixin@uber.com
+* 2018-10-31    v1alpha: Define APIs for watching for changes                                                 amitbose@uber.com
+* 2018-11-07    Add changelog for 0.7.7.3                                                                     varung@uber.com
+* 2018-11-07    Add GetPodEvents API handler                                                                  sachins@uber.com
+* 2018-10-23    Handle race conditions during consecutive updates                                             apoorvaj@uber.com
+* 2018-11-07    Fix deadlock in resmgr/respool/respool.go                                                     sachins@uber.*com
+* 2018-11-07    Fix deadlock in resmgr/respool/respool.go                                                     sachins@uber.com
+* 2018-11-06    Fix flaky update integration test                                                             zhixin@uber.com
+* 2018-11-06    Implement PodSVC.GetPodCache                                                                  zhixin@uber.com
+* 2018-11-05    Add ConvertToYARPCError for pod service handler                                               zhixin@uber.com
+* 2018-11-02    Add integration test for pause and resume update                                              zhixin@uber.com
+* 2018-08-23    Framework for failure testing                                                                 amitbose
+* 2018-11-02    Fix update stuck when instances failed                                                        zhixin@uber.com
+* 2018-10-30    v1alpha Add APIs to get all jobs/tasks as a stream                                            amitbose@uber.com
+* 2018-11-01    Add integration tests for update and health check                                             zhixin@uber.com
+* 2018-11-01    Add sorting by instanceId, name, host, reason for task query                                  sishi@uber.com
+* 2018-11-01    Dedupe pending task status update acknowledgement                                             varung@uber.com
+* 2018-11-01    Change log level when field not found in object (FillObject)                                  sachins@uber.com
+* 2018-11-01    Remove test__host_limit integration test from smoke test list                                 varung@uber.com
+* 2018-10-31    Add dummy PodService V1 Alpha API handler                                                     sachins@uber.com
+* 2018-10-31    Fix healthState when healthcheck is not enabled                                               zhixin@uber.com
+* 2018-10-31    Task uses new task config when reinitialized                                                  zhixin@uber.com
+* 2018-10-31    Add dummy JobService V1 Alpha API handler                                                     sachins@uber.com
+* 2018-10-30    Fix preemption for revocable tasks                                                            varung@uber.com
+* 2018-10-30    Fix v1aplha API by replacing stateless_job with stateless.                                    apoorvaj@uber.com
+* 2018-10-29    Calculate slack entitlement for non-revocable resources from main entitlement                 varung@uber.com
+* 2018-10-12    Add peloton v1alpha API for stateless jobs.                                                   apoorvaj@uber.com
+* 2018-10-26    Fix preemption integration test and add it to default tag                                     avyas@uber.com
+* 2018-10-25    Add metrics by tasks state at event stream                                                    varung@uber.com
+* 2018-10-26    If cleanup of one update fails, continue cleaning up the remaining                            apoorvaj@uber.com
+* 2018-10-25    DELETED goal state cannot be overwritten unless a configuration change is requested           apoorvaj@uber.com
+* 2018-10-25    Implement pause and resume for an update                                                      zhixin@uber.com
+* 2018-10-25    Add changelog for 0.7.7.2                                                                     rcharles@uber.com
+* 2018-10-25    Add changelog for 0.7.7.2                                                                     rcharles@uber.com
+* 2018-10-24    Batch job of INITIALIZED state can be updated                                                 zhixin@uber.com
+* 2018-10-24    Refactor event status update for clarity                                                      zhixin@uber.com
+* 2018-10-24    Batch job of INITIALIZED state can be updated                                                 zhixin@uber.com
+* 2018-10-24    Add integration test for stateless revocable job                                              varung@uber.com
+* 2018-10-24    Add test for cli output                                                                       avyas@uber.com
+* 2018-10-22    Implement reducing instance count using DELETED task goal state                               apoorvaj@uber.com
+* 2018-10-22    Remove DRAINING hosts from Cluster Capacity calculation                                       sachins@uber.com
+* 2018-10-23    Add unit test for update                                                                      zhixin@uber.com
+* 2018-10-22    Add Changelog for 0.7.7.1                                                                     rcharles@uber.com
+* 2018-10-22    Add Changelog for 0.7.7.1                                                                     rcharles@uber.com
+* 2018-10-17    Ignore start request for non-running tasks                                                    apoorvaj@uber.com
+* 2018-10-22    Rollback update on failure                                                                    zhixin@uber.com
+* 2018-08-29    Constraint job and task configurations at DB                                                  varung@uber.com
+* 2018-10-22    Revert "Restrict the maximum number of updates allowed per job"                               varung@uber.com
+* 2018-10-08    Use `HostOfferID` when launching batch and stateless tasks                                    avyas@uber.com
+* 2018-10-19    Increase goal state unit test coverage to > 90%                                               apoorvaj@uber.com
+* 2018-10-22    Revert "Restrict the maximum number of updates allowed per job"                               varung@uber.com
+* 2018-10-22    Add exponential backoff for fail retry                                                        zhixin@uber.com
+* 2018-10-19    Maintain all host states in Peloton                                                           sachins@uber.com
+
 0.7.7.3
 -----------------
 * 2018-11-07    Fix deadlock in resmgr/respool/respool.go                                              sachins@uber.com
