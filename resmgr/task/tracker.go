@@ -144,7 +144,12 @@ func (tr *tracker) AddTask(
 		t,
 		handler,
 		respool,
-		DefaultTransitionObserver(tr.scope, t, respool),
+		DefaultTransitionObserver(
+			config.EnableSLATracking,
+			tr.scope,
+			t,
+			respool,
+		),
 		config)
 	if err != nil {
 		return err

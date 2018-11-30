@@ -106,6 +106,12 @@ var (
 		Default("false").
 		Envar("ENABLE_PREEMPTION").
 		Bool()
+
+	enableSLATracking = app.Flag(
+		"enable_sla_tracking", "Enabling SLA tracking").
+		Default("false").
+		Envar("ENABLE_SLA_TRACKING").
+		Bool()
 )
 
 func getConfig(cfgFiles ...string) Config {
@@ -147,6 +153,9 @@ func getConfig(cfgFiles ...string) Config {
 	}
 	if *enablePreemption {
 		cfg.ResManager.PreemptionConfig.Enabled = *enablePreemption
+	}
+	if *enableSLATracking {
+		cfg.ResManager.RmTaskConfig.EnableSLATracking = *enableSLATracking
 	}
 
 	log.

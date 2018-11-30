@@ -556,6 +556,7 @@ func (suite *recoveryTestSuite) TestAddRunningTasks() {
 		nil,
 		node,
 		rm_task.DefaultTransitionObserver(
+			false,
 			tally.NoopScope,
 			t,
 			node,

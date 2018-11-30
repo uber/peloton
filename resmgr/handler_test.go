@@ -851,6 +851,7 @@ func (s *HandlerTestSuite) TestTransitTasksInPlacement() {
 	rmTask, err := rm_task.CreateRMTask(t, nil,
 		resp,
 		rm_task.DefaultTransitionObserver(
+			false,
 			tally.NoopScope,
 			t,
 			resp,
@@ -1274,6 +1275,7 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 	rmTask, err := rm_task.CreateRMTask(t, nil,
 		resp,
 		rm_task.DefaultTransitionObserver(
+			true,
 			tally.NoopScope,
 			t,
 			resp,
@@ -1307,6 +1309,7 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 		nil,
 		resp,
 		rm_task.DefaultTransitionObserver(
+			false,
 			tally.NoopScope,
 			t,
 			resp,
@@ -1390,6 +1393,7 @@ func (s *HandlerTestSuite) TestHandleRunningEventError() {
 		nil,
 		resp,
 		rm_task.DefaultTransitionObserver(
+			true,
 			tally.NoopScope,
 			t,
 			resp,
@@ -1545,6 +1549,7 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasksError() {
 		nil,
 		resp,
 		rm_task.DefaultTransitionObserver(
+			false,
 			tally.NoopScope,
 			t,
 			resp,

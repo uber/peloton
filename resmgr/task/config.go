@@ -19,4 +19,6 @@ type Config struct {
 	PolicyName string `yaml:"backoff_policy_name"`
 	// This flag will enable/disable the placement backoff policies
 	EnablePlacementBackoff bool `yaml:"enable_placement_backoff"`
+	// This flag will enable/disable SLA tracking of tasks
+	EnableSLATracking bool `yaml:"enable_sla_tracking"`
 }
