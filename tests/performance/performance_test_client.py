@@ -28,6 +28,10 @@ class JobCreateFailedException(Exception):
     pass
 
 
+class JobUpdateFailedException(Exception):
+    pass
+
+
 def create_task_config(sleep_time, dynamic_factor):
     return task.TaskConfig(
         resource=task.ResourceConfig(
@@ -111,6 +115,31 @@ class PerformanceTestClient(object):
             )
         except Exception:
             raise
+
+    def update_job(self, job_id, instance_inc, use_instance_config,
+                   sleep_time):
+        job_info = self.get_job_info(job_id)
+        job_config = job_info.config
+        if use_instance_config:
+            instance_config = {}
+            for i in range(0, instance_inc):
+                count = job_config.instanceCount + i
+                instance_config[count] = create_task_config(sleep_time,
+                                                            'instance %s' % i)
+            job_config.instanceConfig.MergeFrom(instance_config)
+        job_config.instanceCount = job_config.instanceCount + instance_inc
+        try:
+            request = job.UpdateRequest(
+                id=peloton.JobID(value=job_id),
+                config=job_config,
+            )
+            self.client.job_svc.Update(
+                request,
+                metadata=self.client.jobmgr_metadata,
+                timeout=default_timeout,
+            )
+        except Exception:
+            raise JobUpdateFailedException
 
     def create_job(self, instance_num, sleep_time, use_instance_config=False):
         default_config = create_task_config(sleep_time, 'static')
@@ -228,8 +257,8 @@ class PerformanceTestClient(object):
         complete_du = (complete_time - create_time).total_seconds()
 
         self.m3_client.timing(
-            'start_duration', start_du*1000, tags)
+            'start_duration', start_du * 1000, tags)
         self.m3_client.timing(
-            'complete_duration', complete_du*1000, tags)
+            'complete_duration', complete_du * 1000, tags)
 
         return True, start_du, complete_du

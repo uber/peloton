@@ -16,6 +16,7 @@ from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
 from collections import Counter
 
+import datetime
 import json
 import os
 import pandas as pd
@@ -27,6 +28,7 @@ from performance_test_client import (
     PerformanceTestClient,
     ResPoolNotFoundException,
     JobCreateFailedException,
+    JobUpdateFailedException
 )
 
 
@@ -151,6 +153,10 @@ def main():
 
     t.dump_records_to_file()
 
+    t.perf_test_job_update(num_start_tasks=1, tasks_inc=10,
+                           num_increment=500,
+                           sleep_time=10, use_instance_config=True)
+
 
 class perfCounter():
     def __init__(self):
@@ -173,6 +179,54 @@ class PerformanceTest ():
         self.client = client
         self.output_file = output_file
         self.records = []
+
+    def perf_test_job_update(self, num_start_tasks=1, tasks_inc=1,
+                             num_increment=300,
+                             sleep_time=10, use_instance_config=False):
+        """
+        perf_test_job_update can be used for testing create job and then
+        update the job to increase instances.
+        The test starts by creating one job with num_start_tasks, and then
+        loop num_increment times to add number of
+        tasks_inc each time, each task is sleeping for 10 seconds, and caculate
+        the total time.
+        """
+        start_time = datetime.datetime.now()
+        try:
+            job_id = self.client.create_job(
+                num_start_tasks, sleep_time, use_instance_config)
+        except JobCreateFailedException:
+            print "Num_start_tasks %s && SleepTime %s && InstanceConfig %s" % (
+                num_start_tasks, sleep_time, use_instance_config,
+            ) + "Create Job failed in perf_test_job_update!"
+            return
+        for counter in xrange(num_increment):
+            try:
+                self.client.update_job(job_id, tasks_inc, use_instance_config,
+                                       sleep_time)
+            except JobUpdateFailedException:
+                print "NumStartTasks %s && TasksInc %s && NumIncrement %s" % (
+                    num_start_tasks, tasks_inc, num_increment,
+                ) + " Update Job failed in perf_test_job_update!"
+                return
+        end_time = datetime.datetime.now()
+        total_time_in_seconds = (end_time - start_time).total_seconds()
+
+        record = [{
+            'NumStartTasks': num_start_tasks,
+            'TaskIncrementEachTime': tasks_inc,
+            'NumOfIncrement': num_increment,
+            'Sleep(s)': sleep_time,
+            'UseInsConf': use_instance_config,
+            'TotalTimeInSeconds': total_time_in_seconds,
+        }]
+        df = pd.DataFrame(
+            record,
+            columns=['NumStartTasks', 'TaskIncrementEachTime',
+                     'NumOfIncrement', 'Sleep(s)',
+                     'UseInsConf', 'TotalTimeInSeconds']
+        )
+        print(df)
 
     def perf_test_job_create_get(self, num_threads=10, jobs_per_thread=5,
                                  num_tasks=10, sleep_time=10,
