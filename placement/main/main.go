@@ -300,7 +300,8 @@ func main() {
 
 	pool := async.NewPool(async.PoolOptions{
 		MaxWorkers: cfg.Placement.Concurrency,
-	})
+	}, nil)
+	pool.Start()
 
 	engine := placement.New(
 		rootScope,

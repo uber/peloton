@@ -12,14 +12,15 @@ import (
 func TestEmptyPool(t *testing.T) {
 	p := NewPool(PoolOptions{
 		MaxWorkers: 1,
-	})
+	}, nil)
 
 	p.WaitUntilProcessed()
 }
 
 func TestPoolEnqueueAndRunMany(t *testing.T) {
-	p := NewPool(PoolOptions{})
+	p := NewPool(PoolOptions{}, nil)
 	c := 100
+	p.Start()
 
 	var r int64
 
@@ -35,8 +36,9 @@ func TestPoolEnqueueAndRunMany(t *testing.T) {
 }
 
 func TestPoolEnqueueConcurrentAndRunMany(t *testing.T) {
-	p := NewPool(PoolOptions{})
+	p := NewPool(PoolOptions{}, nil)
 	c := 100
+	p.Start()
 
 	var r int64
 	var wg sync.WaitGroup
@@ -59,9 +61,10 @@ func TestPoolEnqueueConcurrentAndRunMany(t *testing.T) {
 }
 
 func TestPoolSetMaxWorkers(t *testing.T) {
-	p := NewPool(PoolOptions{})
+	p := NewPool(PoolOptions{}, nil)
 	c := 100
 	iter := 10
+	p.Start()
 
 	var r int64
 	var wg sync.WaitGroup
@@ -99,9 +102,10 @@ func TestPoolSetMaxWorkers(t *testing.T) {
 }
 
 func TestPoolStop(t *testing.T) {
-	p := NewPool(PoolOptions{})
+	p := NewPool(PoolOptions{}, nil)
 	c := 100
 	iter := 10
+	p.Start()
 
 	var r int64
 

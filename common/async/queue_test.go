@@ -6,7 +6,7 @@ import (
 )
 
 func TestEnqueueManyAreAllRead(t *testing.T) {
-	q := NewQueue()
+	q := newQueue()
 	c := 100
 
 	test := func() {
@@ -15,7 +15,7 @@ func TestEnqueueManyAreAllRead(t *testing.T) {
 		}
 
 		for i := 0; i < c; i++ {
-			<-q.DequeueChannel()
+			<-q.dequeueChannel
 		}
 	}
 
@@ -25,7 +25,7 @@ func TestEnqueueManyAreAllRead(t *testing.T) {
 }
 
 func TestEnqueueManyConcurrentlyAreAllRead(t *testing.T) {
-	q := NewQueue()
+	q := newQueue()
 	c := 100
 
 	test := func() {
@@ -36,7 +36,7 @@ func TestEnqueueManyConcurrentlyAreAllRead(t *testing.T) {
 		}
 
 		for i := 0; i < c; i++ {
-			<-q.DequeueChannel()
+			<-q.dequeueChannel
 		}
 	}
 

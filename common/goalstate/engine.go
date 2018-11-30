@@ -12,6 +12,44 @@ import (
 	"github.com/uber-go/tally"
 )
 
+// asyncWorkerQueueItem implements the async.Job interface while
+// storing the metadata for async.Queue which includes information
+// to be provided to the deadline queue on Enqueue
+type asyncWorkerQueueItem struct {
+	item     queue.QueueItem // the queue item
+	deadline time.Time       // deadline to be set for the queue item in enqueue
+	engine   *engine         // backpointer to goal state engine
+}
+
+func (w *asyncWorkerQueueItem) Run(ctx context.Context) {
+	w.engine.processEntityAfterDequeue(w.item.(*queue.Item))
+}
+
+// asyncWorkerQueue is a wrapper around deadline queue which
+// implements async.Queue
+type asyncWorkerQueue struct {
+	queue  queue.DeadlineQueue // goal state engine's deadline queue
+	engine *engine             // backpointer to goal state engine
+}
+
+func (q *asyncWorkerQueue) Enqueue(job async.Job) {
+	asyncQueueItem := job.(*asyncWorkerQueueItem)
+	q.queue.Enqueue(asyncQueueItem.item, asyncQueueItem.deadline)
+	return
+}
+
+func (q *asyncWorkerQueue) Dequeue(stopChan <-chan struct{}) async.Job {
+	queueItem := q.queue.Dequeue(stopChan)
+	if queueItem == nil {
+		return nil
+	}
+
+	return &asyncWorkerQueueItem{
+		item:   queueItem,
+		engine: q.engine,
+	}
+}
+
 // Engine defines the goal state engine interface.
 type Engine interface {
 	// Start starts the goal state engine processing.
@@ -40,14 +78,25 @@ func NewEngine(
 	failureRetryDelay time.Duration,
 	maxRetryDelay time.Duration,
 	parentScope tally.Scope) Engine {
-	return &engine{
-		queue:             queue.NewDeadlineQueue(queue.NewQueueMetrics(parentScope)),
+	e := &engine{
 		entityMap:         make(map[string]*entityMapItem),
-		pool:              async.NewPool(async.PoolOptions{MaxWorkers: numWorkerThreads}),
 		failureRetryDelay: failureRetryDelay,
 		maxRetryDelay:     maxRetryDelay,
 		mtx:               NewMetrics(parentScope),
 	}
+
+	asyncQueue := &asyncWorkerQueue{
+		queue:  queue.NewDeadlineQueue(queue.NewQueueMetrics(parentScope)),
+		engine: e,
+	}
+
+	pool := async.NewPool(
+		async.PoolOptions{MaxWorkers: numWorkerThreads},
+		asyncQueue,
+	)
+	e.pool = pool
+
+	return e
 }
 
 // entityMapItem stores the entity state in goal state engine.
@@ -65,7 +114,6 @@ type entityMapItem struct {
 type engine struct {
 	sync.RWMutex // the mutex to synchronize access to this object
 
-	queue     queue.DeadlineQueue       // goal state engine's deadline queue
 	entityMap map[string]*entityMapItem // map to store the entity items
 	stopChan  chan struct{}             // channel to indicate to deadline queue to stop processing
 
@@ -144,7 +192,11 @@ func (e *engine) getMaxRetryDelay() time.Duration {
 
 func (e *engine) Enqueue(entity Entity, deadline time.Time) {
 	id := entity.GetID()
-	e.queue.Enqueue(e.addItemToEntityMap(id, entity), deadline)
+	asyncQueueItem := &asyncWorkerQueueItem{
+		item:     e.addItemToEntityMap(id, entity),
+		deadline: deadline,
+	}
+	e.pool.Enqueue(asyncQueueItem)
 }
 
 func (e *engine) IsScheduled(entity Entity) bool {
@@ -238,22 +290,11 @@ func (e *engine) processEntityAfterDequeue(queueItem *queue.Item) {
 
 	reschedule, delay := e.runActions(entityItem)
 	if reschedule == true {
-		e.queue.Enqueue(queueItem, time.Now().Add(delay))
-	}
-}
-
-// processItems dequeues the items from the deadline queue.
-// stopChan is used to indicate to the deadline queue to stop processing.
-func (e *engine) processItems(stopChan <-chan struct{}) {
-	for {
-		queueItem := e.queue.Dequeue(stopChan)
-		if queueItem == nil {
-			return
+		asyncQueueItem := &asyncWorkerQueueItem{
+			item:     queueItem,
+			deadline: time.Now().Add(delay),
 		}
-
-		e.pool.Enqueue(async.JobFunc(func(context.Context) {
-			e.processEntityAfterDequeue(queueItem.(*queue.Item))
-		}))
+		e.pool.Enqueue(asyncQueueItem)
 	}
 }
 
@@ -261,13 +302,7 @@ func (e *engine) Start() {
 	e.Lock()
 	defer e.Unlock()
 
-	if e.stopChan != nil {
-		return
-	}
-
-	e.stopChan = make(chan struct{})
-	go e.processItems(e.stopChan)
-
+	e.pool.Start()
 	log.Info("goalstate.Engine started")
 }
 
@@ -275,12 +310,6 @@ func (e *engine) Stop() {
 	e.Lock()
 	defer e.Unlock()
 
-	if e.stopChan == nil {
-		return
-	}
-
-	close(e.stopChan)
-	e.stopChan = nil
-
+	e.pool.Stop()
 	log.Info("goalstate.Engine stopped")
 }

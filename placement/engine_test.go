@@ -70,6 +70,8 @@ func setupEngine(t *testing.T) (
 			Stateful:  25 * time.Second,
 		},
 	}
+	pool := async.NewPool(async.PoolOptions{}, nil)
+	pool.Start()
 
 	e := New(
 		tally.NoopScope,
@@ -78,7 +80,7 @@ func setupEngine(t *testing.T) (
 		mockTaskService,
 		nil,
 		mockStrategy,
-		async.NewPool(async.PoolOptions{}),
+		pool,
 	)
 
 	return ctrl, e.(*engine), mockOfferService, mockTaskService, mockStrategy

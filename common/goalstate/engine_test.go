@@ -104,7 +104,7 @@ func (te *testEntity) GetActionList(state interface{}, goalstate interface{}) (c
 		// returns sample test action
 		actions = append(actions, actionS)
 	} else if state == stateValue && goalstate == goalStateValueFail {
-		// returns sample test actions which fails thrics before succeeding
+		// returns sample test actions which fails thrice before succeeding
 		actions = append(actions, actionF)
 	} else if state == stateValueMulti && goalstate == goalStateValue {
 		// returns both sample test actions with a context timeout
@@ -122,19 +122,25 @@ func (te *testEntity) GetActionList(state interface{}, goalstate interface{}) (c
 // TestEngineStartStop tests starting and stopping the goal state engine.
 func TestEngineStartStop(t *testing.T) {
 	e := &engine{
-		queue:             queue.NewDeadlineQueue(queue.NewQueueMetrics(tally.NoopScope)),
 		entityMap:         make(map[string]*entityMapItem),
-		pool:              async.NewPool(async.PoolOptions{MaxWorkers: numWorkerThreads}),
 		failureRetryDelay: 1 * time.Second,
 		maxRetryDelay:     1 * time.Second,
 		mtx:               NewMetrics(tally.NoopScope),
 	}
 
+	asyncQueue := &asyncWorkerQueue{
+		queue:  queue.NewDeadlineQueue(queue.NewQueueMetrics(tally.NoopScope)),
+		engine: e,
+	}
+
+	pool := async.NewPool(
+		async.PoolOptions{MaxWorkers: numWorkerThreads},
+		asyncQueue,
+	)
+	e.pool = pool
+
 	e.Start()
-
 	e.Stop()
-
-	assert.Nil(t, e.stopChan)
 }
 
 // TestEngineEnqueueDequeueSuccess tests enqueing a test entity, and then
@@ -143,26 +149,33 @@ func TestEngineEnqueueDequeueSuccess(t *testing.T) {
 	idList = []string{}
 	failCount = 0
 	e := &engine{
-		queue:             queue.NewDeadlineQueue(queue.NewQueueMetrics(tally.NoopScope)),
 		entityMap:         make(map[string]*entityMapItem),
-		pool:              async.NewPool(async.PoolOptions{MaxWorkers: numWorkerThreads}),
 		failureRetryDelay: 1 * time.Second,
 		maxRetryDelay:     1 * time.Second,
 		mtx:               NewMetrics(tally.NoopScope),
 	}
-	stopChan := make(chan struct{})
-	count := 10
 
+	asyncQueue := &asyncWorkerQueue{
+		queue:  queue.NewDeadlineQueue(queue.NewQueueMetrics(tally.NoopScope)),
+		engine: e,
+	}
+
+	pool := async.NewPool(
+		async.PoolOptions{MaxWorkers: numWorkerThreads},
+		asyncQueue,
+	)
+	e.pool = pool
+
+	count := 10
 	for i := uint32(0); i < uint32(count); i++ {
 		ent := newTestEntity(strconv.Itoa(int(i)), stateValue, goalStateValue)
 		e.Enqueue(ent, time.Now())
 		assert.True(t, e.IsScheduled(ent))
 	}
 	wg.Add(count)
-
-	go e.processItems(stopChan)
+	e.pool.Start()
 	wg.Wait()
-	close(stopChan)
+	e.pool.Stop()
 	assert.Equal(t, count, len(idList))
 
 	assert.Equal(t, count, len(e.entityMap))
@@ -180,25 +193,33 @@ func TestEngineEnqueueDequeueFailure(t *testing.T) {
 	idList = []string{}
 	failCount = 0
 	e := &engine{
-		queue:             queue.NewDeadlineQueue(queue.NewQueueMetrics(tally.NoopScope)),
 		entityMap:         make(map[string]*entityMapItem),
-		pool:              async.NewPool(async.PoolOptions{MaxWorkers: numWorkerThreads}),
 		failureRetryDelay: 100 * time.Millisecond,
 		maxRetryDelay:     200 * time.Millisecond,
 		mtx:               NewMetrics(tally.NoopScope),
 	}
-	stopChan := make(chan struct{})
-	count := 3
 
+	asyncQueue := &asyncWorkerQueue{
+		queue:  queue.NewDeadlineQueue(queue.NewQueueMetrics(tally.NoopScope)),
+		engine: e,
+	}
+
+	pool := async.NewPool(
+		async.PoolOptions{MaxWorkers: numWorkerThreads},
+		asyncQueue,
+	)
+	e.pool = pool
+
+	count := 3
 	for i := uint32(0); i < uint32(count); i++ {
 		ent := newTestEntity(strconv.Itoa(int(i)), stateValue, goalStateValueFail)
 		e.Enqueue(ent, time.Now())
 	}
 	wg.Add(count)
 
-	go e.processItems(stopChan)
+	e.pool.Start()
 	wg.Wait()
-	close(stopChan)
+	e.pool.Stop()
 	assert.Equal(t, 4*count, len(idList))
 	for i := uint32(0); i < uint32(count); i++ {
 		ent := e.getItemFromEntityMap(strconv.Itoa(int(i)))
@@ -216,25 +237,33 @@ func TestEngineMultipleActions(t *testing.T) {
 	idList = []string{}
 	failCount = 0
 	e := &engine{
-		queue:             queue.NewDeadlineQueue(queue.NewQueueMetrics(tally.NoopScope)),
 		entityMap:         make(map[string]*entityMapItem),
-		pool:              async.NewPool(async.PoolOptions{MaxWorkers: numWorkerThreads}),
 		failureRetryDelay: 100 * time.Millisecond,
 		maxRetryDelay:     200 * time.Millisecond,
 		mtx:               NewMetrics(tally.NoopScope),
 	}
-	stopChan := make(chan struct{})
-	count := 3
 
+	asyncQueue := &asyncWorkerQueue{
+		queue:  queue.NewDeadlineQueue(queue.NewQueueMetrics(tally.NoopScope)),
+		engine: e,
+	}
+
+	pool := async.NewPool(
+		async.PoolOptions{MaxWorkers: numWorkerThreads},
+		asyncQueue,
+	)
+	e.pool = pool
+
+	count := 3
 	for i := uint32(0); i < uint32(count); i++ {
 		ent := newTestEntity(strconv.Itoa(int(i)), stateValueMulti, goalStateValue)
 		e.Enqueue(ent, time.Now())
 	}
 	wg.Add((4 * count) + count)
 
-	go e.processItems(stopChan)
+	e.pool.Start()
 	wg.Wait()
-	close(stopChan)
+	e.pool.Stop()
 	assert.Equal(t, 4*2*count, len(idList))
 	for i := uint32(0); i < uint32(count); i++ {
 		ent := e.getItemFromEntityMap(strconv.Itoa(int(i)))
@@ -248,25 +277,33 @@ func TestNoActions(t *testing.T) {
 	idList = []string{}
 	failCount = 0
 	e := &engine{
-		queue:             queue.NewDeadlineQueue(queue.NewQueueMetrics(tally.NoopScope)),
 		entityMap:         make(map[string]*entityMapItem),
-		pool:              async.NewPool(async.PoolOptions{MaxWorkers: numWorkerThreads}),
 		failureRetryDelay: 100 * time.Millisecond,
 		maxRetryDelay:     200 * time.Millisecond,
 		mtx:               NewMetrics(tally.NoopScope),
 	}
-	stopChan := make(chan struct{})
-	count := 10
 
+	asyncQueue := &asyncWorkerQueue{
+		queue:  queue.NewDeadlineQueue(queue.NewQueueMetrics(tally.NoopScope)),
+		engine: e,
+	}
+
+	pool := async.NewPool(
+		async.PoolOptions{MaxWorkers: numWorkerThreads},
+		asyncQueue,
+	)
+	e.pool = pool
+
+	count := 10
 	for i := uint32(0); i < uint32(count); i++ {
 		ent := newTestEntity(strconv.Itoa(int(i)), stateValueMulti, goalStateValueFail)
 		e.Enqueue(ent, time.Now())
 	}
 	wg.Add(count)
 
-	go e.processItems(stopChan)
+	e.pool.Start()
 	wg.Wait()
-	close(stopChan)
+	e.pool.Stop()
 	assert.Equal(t, 0, len(idList))
 }
 
@@ -275,23 +312,30 @@ func TestMultiRequeue(t *testing.T) {
 	idList = []string{}
 	failCount = 0
 	e := &engine{
-		queue:             queue.NewDeadlineQueue(queue.NewQueueMetrics(tally.NoopScope)),
 		entityMap:         make(map[string]*entityMapItem),
-		pool:              async.NewPool(async.PoolOptions{MaxWorkers: numWorkerThreads}),
 		failureRetryDelay: 1 * time.Second,
 		maxRetryDelay:     1 * time.Second,
 		mtx:               NewMetrics(tally.NoopScope),
 	}
-	stopChan := make(chan struct{})
+
+	asyncQueue := &asyncWorkerQueue{
+		queue:  queue.NewDeadlineQueue(queue.NewQueueMetrics(tally.NoopScope)),
+		engine: e,
+	}
+
+	pool := async.NewPool(
+		async.PoolOptions{MaxWorkers: numWorkerThreads},
+		asyncQueue,
+	)
+	e.pool = pool
+
 	count := 10
 	deadline := 30 * time.Second
-
 	for i := uint32(0); i < uint32(count); i++ {
 		ent := newTestEntity(strconv.Itoa(int(i)), stateValue, goalStateValue)
 		e.Enqueue(ent, time.Now().Add(deadline))
 	}
 	wg.Add(count)
-	go e.processItems(stopChan)
 	assert.Equal(t, 0, len(idList))
 
 	// Requeue again with a larger deadline
@@ -308,7 +352,8 @@ func TestMultiRequeue(t *testing.T) {
 		e.Enqueue(ent, time.Now())
 	}
 
+	e.pool.Start()
 	wg.Wait()
-	close(stopChan)
+	e.pool.Stop()
 	assert.Equal(t, count, len(idList))
 }

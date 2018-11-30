@@ -5,11 +5,20 @@ import (
 	"sync"
 )
 
-// Queue structure that works similar to an unlimited channel, where Jobs can be
+// Queue defines the interface of a queue used by the async pool
+// to enqueue jobs and then dequeue the job when a worker becomes available
+type Queue interface {
+	// Enqueue is used to enqueue a job
+	Enqueue(job Job)
+	// Dequeue is used to fetch an enqueued job when a worker is available
+	Dequeue(stopChan <-chan struct{}) Job
+}
+
+// queue structure that works similar to an unlimited channel, where Jobs can be
 // added using Enqueue and drained by reading from the DequeueChannel.
-// TODO: This Queue may be changed dramatically going forward, as the main
+// TODO: This queue may be changed dramatically going forward, as the main
 // purpose right now is to facilitate the Pool.
-type Queue struct {
+type queue struct {
 	sync.Mutex
 	// TODO: Consider using circular buffer, if memory overhead can be lowered.
 	list *list.List
@@ -20,9 +29,9 @@ type Queue struct {
 	dequeueChannel chan Job
 }
 
-// NewQueue for enqueing Jobs.
-func NewQueue() *Queue {
-	q := &Queue{
+// newQueue for enqueing Jobs.
+func newQueue() *queue {
+	q := &queue{
 		list:           list.New(),
 		enqueueSignal:  make(chan struct{}, 1),
 		dequeueChannel: make(chan Job),
@@ -32,7 +41,7 @@ func NewQueue() *Queue {
 }
 
 // Enqueue the Job. This method will return immediately.
-func (q *Queue) Enqueue(job Job) {
+func (q *queue) Enqueue(job Job) {
 	q.Lock()
 	q.list.PushBack(job)
 	q.Unlock()
@@ -44,12 +53,17 @@ func (q *Queue) Enqueue(job Job) {
 	}
 }
 
-// DequeueChannel for reading in order from the front of the queue.
-func (q *Queue) DequeueChannel() <-chan Job {
-	return q.dequeueChannel
+// Dequeue the Job.
+func (q *queue) Dequeue(stopChan <-chan struct{}) Job {
+	select {
+	case <-stopChan:
+		return nil
+	case job := <-q.dequeueChannel:
+		return job
+	}
 }
 
-func (q *Queue) run() {
+func (q *queue) run() {
 	for {
 		q.Lock()
 

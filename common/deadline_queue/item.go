@@ -1,6 +1,7 @@
 package deadlinequeue
 
 import (
+	"sync"
 	"time"
 )
 
@@ -22,15 +23,40 @@ type QueueItem interface {
 // queueItemMixin is an implementation of the queue item in the
 // deadline queue for the goal state scheduler.
 type queueItemMixin struct {
+	sync.RWMutex            // the mutex to synchronize access to this object
 	queueIndex    int       // the index in the queue
 	queueDeadline time.Time // the current deadline
 }
 
-func (i *queueItemMixin) Index() int                     { return i.queueIndex }
-func (i *queueItemMixin) SetIndex(index int)             { i.queueIndex = index }
-func (i *queueItemMixin) Deadline() time.Time            { return i.queueDeadline }
-func (i *queueItemMixin) SetDeadline(deadline time.Time) { i.queueDeadline = deadline }
-func (i *queueItemMixin) IsScheduled() bool              { return !i.Deadline().IsZero() }
+func (i *queueItemMixin) Index() int {
+	i.RLock()
+	defer i.RUnlock()
+	return i.queueIndex
+}
+
+func (i *queueItemMixin) SetIndex(index int) {
+	i.Lock()
+	defer i.Unlock()
+	i.queueIndex = index
+}
+
+func (i *queueItemMixin) Deadline() time.Time {
+	i.RLock()
+	defer i.RUnlock()
+	return i.queueDeadline
+}
+
+func (i *queueItemMixin) SetDeadline(deadline time.Time) {
+	i.Lock()
+	defer i.Unlock()
+	i.queueDeadline = deadline
+}
+
+func (i *queueItemMixin) IsScheduled() bool {
+	i.RLock()
+	defer i.RUnlock()
+	return !i.Deadline().IsZero()
+}
 
 // newQueueItemMixing returns a new queueItemMixin object.
 func newQueueItemMixing() queueItemMixin {

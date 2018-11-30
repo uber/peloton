@@ -21,28 +21,26 @@ type PoolOptions struct {
 type Pool struct {
 	sync.Mutex
 	options    PoolOptions
-	queue      *Queue
+	queue      Queue
 	numWorkers int
 	jobs       sync.WaitGroup
-	stopChan   chan bool
+	stopChan   chan struct{}
 }
 
-// NewPool returns a new pool, provided the PoolOptions.
-func NewPool(o PoolOptions) *Pool {
+// NewPool returns a new pool, provided the PoolOptions and the queue.
+func NewPool(o PoolOptions, queue Queue) *Pool {
 	if o.MaxWorkers <= 0 {
 		o.MaxWorkers = DefaultMaxWorkers
 	}
 
-	p := &Pool{
-		options:    o,
-		queue:      NewQueue(),
-		numWorkers: o.MaxWorkers,
-		stopChan:   make(chan bool),
+	if queue == nil {
+		queue = newQueue()
 	}
 
-	// Spawn initial workers.
-	for i := 0; i < o.MaxWorkers; i++ {
-		go p.runWorker()
+	p := &Pool{
+		options:    o,
+		queue:      queue,
+		numWorkers: o.MaxWorkers,
 	}
 
 	return p
@@ -80,13 +78,42 @@ func (p *Pool) WaitUntilProcessed() {
 	p.jobs.Wait()
 }
 
+// Start the worker pool by initializing the stop channel
+// and starting all the workers
+func (p *Pool) Start() {
+	p.Lock()
+	if p.stopChan != nil {
+		p.Unlock()
+		return
+	}
+
+	p.stopChan = make(chan struct{})
+	p.Unlock()
+
+	// Spawn initial workers.
+	for i := 0; i < p.options.MaxWorkers; i++ {
+		go p.runWorker()
+	}
+}
+
 // Stop sets the assigned workers (goal state) to zero,
-// and then stopWorkers terminates running workers (actual state) to 0 value.
+// and then stopWorkers terminates running workers (actual state) to 0 value
+// amd finally cleans up the stop channel
 func (p *Pool) Stop() {
 	p.Lock()
+	if p.stopChan == nil {
+		p.Unlock()
+		return
+	}
+
 	p.options.MaxWorkers = 0
 	p.Unlock()
 	p.stopWorkers()
+
+	p.Lock()
+	defer p.Unlock()
+	close(p.stopChan)
+	p.stopChan = nil
 }
 
 // addWorkers add more workers in the pool to achieve goal state of Max Workers in the pool.
@@ -117,7 +144,7 @@ func (p *Pool) stopWorkers() {
 			// Send best effort stopChan to terminate worker,
 			// if received then a running worker is terminated.
 			select {
-			case p.stopChan <- true:
+			case p.stopChan <- struct{}{}:
 				p.numWorkers--
 			default:
 			}
@@ -129,12 +156,12 @@ func (p *Pool) stopWorkers() {
 // runWorker starts a worker go routine to process jobs from FIFO queue.
 func (p *Pool) runWorker() {
 	for {
-		select {
-		case <-p.stopChan:
+		job := p.queue.Dequeue(p.stopChan)
+		if job == nil {
 			return
-		case job := <-p.queue.DequeueChannel():
-			job.Run(context.TODO())
-			p.jobs.Done()
 		}
+
+		job.Run(context.TODO())
+		p.jobs.Done()
 	}
 }
