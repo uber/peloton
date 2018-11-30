@@ -26,7 +26,6 @@ type Server struct {
 	role string
 
 	jobFactory         cached.JobFactory
-	updateFactory      cached.UpdateFactory
 	taskPreemptor      preemptor.Preemptor
 	goalstateDriver    goalstate.Driver
 	deadlineTracker    deadline.Tracker
@@ -39,7 +38,6 @@ type Server struct {
 func NewServer(
 	httpPort, grpcPort int,
 	jobFactory cached.JobFactory,
-	updateFactory cached.UpdateFactory,
 	goalstateDriver goalstate.Driver,
 	taskPreemptor preemptor.Preemptor,
 	deadlineTracker deadline.Tracker,
@@ -47,12 +45,10 @@ func NewServer(
 	statusUpdate event.StatusUpdate,
 	backgroundManager background.Manager,
 ) *Server {
-
 	return &Server{
 		ID:                 leader.NewID(httpPort, grpcPort),
 		role:               common.JobManagerRole,
 		jobFactory:         jobFactory,
-		updateFactory:      updateFactory,
 		taskPreemptor:      taskPreemptor,
 		goalstateDriver:    goalstateDriver,
 		deadlineTracker:    deadlineTracker,
@@ -69,7 +65,6 @@ func (s *Server) GainedLeadershipCallback() error {
 	log.WithFields(log.Fields{"role": s.role}).Info("Gained leadership")
 
 	s.jobFactory.Start()
-	s.updateFactory.Start()
 
 	// goalstateDriver will perform recovery of jobs from DB as
 	// part of startup. Other than cache initialization and start
@@ -99,7 +94,6 @@ func (s *Server) LostLeadershipCallback() error {
 	s.deadlineTracker.Stop()
 	s.backgroundManager.Stop()
 	s.goalstateDriver.Stop()
-	s.updateFactory.Stop()
 	s.jobFactory.Stop()
 
 	return nil
@@ -116,7 +110,6 @@ func (s *Server) ShutDownCallback() error {
 	s.deadlineTracker.Stop()
 	s.backgroundManager.Stop()
 	s.goalstateDriver.Stop()
-	s.updateFactory.Stop()
 	s.jobFactory.Stop()
 
 	return nil

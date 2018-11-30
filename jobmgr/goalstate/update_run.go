@@ -33,20 +33,26 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 	log.WithField("update_id", updateEnt.id.GetValue()).
 		Info("update running")
 
-	cachedUpdate, cachedJob, err := fetchUpdateAndJobFromCache(
-		ctx, updateEnt.id, goalStateDriver)
-	if err != nil || cachedUpdate == nil || cachedJob == nil {
+	cachedWorkflow, cachedJob, err := fetchWorkflowAndJobFromCache(
+		ctx, updateEnt.jobID, updateEnt.id, goalStateDriver)
+	if err != nil || cachedWorkflow == nil || cachedJob == nil {
 		goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
 		return err
+	}
+
+	// TODO: remove after recovery is done when reading state
+	if cachedWorkflow.GetState().State == pbupdate.State_INVALID {
+		return UpdateReload(ctx, entity)
 	}
 
 	instancesCurrent, instancesDoneFromLastRun, instancesFailedFromLastRun, err :=
 		cached.GetUpdateProgress(
 			ctx,
-			cachedJob,
-			cachedUpdate,
-			cachedUpdate.GetGoalState().JobVersion,
-			cachedUpdate.GetInstancesCurrent(),
+			cachedJob.ID(),
+			cachedWorkflow,
+			cachedWorkflow.GetGoalState().JobVersion,
+			cachedWorkflow.GetInstancesCurrent(),
+			goalStateDriver.taskStore,
 		)
 	if err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
@@ -54,23 +60,23 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	instancesFailed := append(
-		cachedUpdate.GetInstancesFailed(),
+		cachedWorkflow.GetInstancesFailed(),
 		instancesFailedFromLastRun...)
 	instancesDone := append(
-		cachedUpdate.GetInstancesDone(),
+		cachedWorkflow.GetInstancesDone(),
 		instancesDoneFromLastRun...)
 
 	// number of failed instances in the workflow exceeds limit and
 	// max instance retries is set, process the failed workflow and
 	// return directly
 	// TODO: use job SLA if GetMaxFailureInstances is not set
-	if cachedUpdate.GetUpdateConfig().GetMaxFailureInstances() != 0 &&
+	if cachedWorkflow.GetUpdateConfig().GetMaxFailureInstances() != 0 &&
 		uint32(len(instancesFailed)) >=
-			cachedUpdate.GetUpdateConfig().GetMaxFailureInstances() {
+			cachedWorkflow.GetUpdateConfig().GetMaxFailureInstances() {
 		err := processFailedUpdate(
 			ctx,
 			cachedJob,
-			cachedUpdate,
+			cachedWorkflow,
 			instancesDone,
 			instancesFailed,
 			instancesCurrent,
@@ -84,13 +90,13 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 
 	instancesToAdd, instancesToUpdate, instancesToRemove :=
 		getInstancesForUpdateRun(
-			cachedUpdate, instancesCurrent, instancesDone, instancesFailed)
+			cachedWorkflow, instancesCurrent, instancesDone, instancesFailed)
 
 	instancesToAdd, instancesToUpdate, instancesToRemove, instancesRemovedDone, err :=
 		confirmInstancesStatus(
 			ctx,
 			cachedJob,
-			cachedUpdate,
+			cachedWorkflow,
 			instancesToAdd,
 			instancesToUpdate,
 			instancesToRemove,
@@ -104,7 +110,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 	if err := processUpdate(
 		ctx,
 		cachedJob,
-		cachedUpdate,
+		cachedWorkflow,
 		instancesToAdd,
 		instancesToUpdate,
 		instancesToRemove,
@@ -116,8 +122,8 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 
 	if err := writeUpdateProgress(
 		ctx,
-		cachedUpdate,
-		cachedUpdate.GetState().State,
+		cachedWorkflow,
+		cachedWorkflow.GetState().State,
 		instancesDone,
 		instancesFailed,
 		instancesCurrent,
@@ -132,7 +138,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 	if err := postUpdateAction(
 		ctx,
 		cachedJob,
-		cachedUpdate,
+		cachedWorkflow,
 		instancesToUpdate,
 		instancesToRemove,
 		instancesDone,
@@ -162,10 +168,10 @@ func processFailedUpdate(
 	// the update itself is not a rollback
 	if cachedUpdate.GetUpdateConfig().RollbackOnFailure &&
 		!isUpdateRollback(cachedUpdate) {
-		if err := cachedUpdate.Rollback(ctx); err != nil {
+		if err := cachedJob.RollbackWorkflow(ctx); err != nil {
 			log.WithFields(log.Fields{
-				"update_id": cachedUpdate.ID().String(),
-				"job_id":    cachedJob.ID().String(),
+				"update_id": cachedUpdate.ID().GetValue(),
+				"job_id":    cachedJob.ID().GetValue(),
 			}).WithError(err).
 				Info("fail to rollback update")
 			return err
@@ -174,8 +180,8 @@ func processFailedUpdate(
 		cachedConfig, err := cachedJob.GetConfig(ctx)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"update_id": cachedUpdate.ID().String(),
-				"job_id":    cachedJob.ID().String(),
+				"update_id": cachedUpdate.ID().GetValue(),
+				"job_id":    cachedJob.ID().GetValue(),
 			}).WithError(err).
 				Info("fail to get job config to rollback update")
 			return err
@@ -188,16 +194,16 @@ func processFailedUpdate(
 			cachedConfig,
 		); err != nil {
 			log.WithFields(log.Fields{
-				"update_id": cachedUpdate.ID().String(),
-				"job_id":    cachedJob.ID().String(),
+				"update_id": cachedUpdate.ID().GetValue(),
+				"job_id":    cachedJob.ID().GetValue(),
 			}).WithError(err).
 				Info("fail to update unchanged instances to rollback update")
 			return err
 		}
 
 		log.WithFields(log.Fields{
-			"update_id": cachedUpdate.ID().String(),
-			"job_id":    cachedJob.ID().String(),
+			"update_id": cachedUpdate.ID().GetValue(),
+			"job_id":    cachedJob.ID().GetValue(),
 		}).Info("update rolling back")
 	} else {
 		if err := cachedUpdate.WriteProgress(

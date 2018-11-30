@@ -27,18 +27,15 @@ func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	jobStore storage.JobStore,
-	taskStore storage.TaskStore,
 	updateStore storage.UpdateStore,
 	goalStateDriver goalstate.Driver,
 	jobFactory cached.JobFactory,
-	updateFactory cached.UpdateFactory) {
+) {
 	handler := &serviceHandler{
 		jobStore:        jobStore,
-		taskStore:       taskStore,
 		updateStore:     updateStore,
 		goalStateDriver: goalStateDriver,
 		jobFactory:      jobFactory,
-		updateFactory:   updateFactory,
 		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("update")),
 	}
 
@@ -48,11 +45,9 @@ func InitServiceHandler(
 // serviceHandler implements peloton.api.update.svc
 type serviceHandler struct {
 	jobStore        storage.JobStore
-	taskStore       storage.TaskStore
 	updateStore     storage.UpdateStore
 	goalStateDriver goalstate.Driver
 	jobFactory      cached.JobFactory
-	updateFactory   cached.UpdateFactory
 	metrics         *Metrics
 }
 
@@ -147,10 +142,6 @@ func (h *serviceHandler) CreateUpdate(
 		return nil, err
 	}
 
-	id := &peloton.UpdateID{
-		Value: uuid.New(),
-	}
-
 	var respoolPath string
 	for _, label := range prevConfigAddOn.GetSystemLabels() {
 		if label.GetKey() == common.SystemLabelResourcePool {
@@ -161,21 +152,13 @@ func (h *serviceHandler) CreateUpdate(
 		SystemLabels: jobutil.ConstructSystemLabels(jobConfig, respoolPath),
 	}
 	// add this new update to cache and DB
-	cachedUpdate := h.updateFactory.AddUpdate(id)
-	err = cachedUpdate.Create(
+	cachedJob := h.jobFactory.AddJob(jobID)
+	updateID, err := cachedJob.CreateWorkflow(
 		ctx,
-		jobID,
-		jobConfig,
-		prevJobConfig,
-		configAddOn,
-		// these will be populated when the update is started as
-		// they can change even if we populate them here as there
-		// may be an update already running which can change these lists
-		[]uint32{},
-		[]uint32{},
-		[]uint32{},
 		models.WorkflowType_UPDATE,
 		req.GetUpdateConfig(),
+		nil,
+		cached.WithConfig(jobConfig, prevJobConfig, configAddOn),
 	)
 	if err != nil {
 		// In case of error, since it is not clear if job runtime was
@@ -185,14 +168,15 @@ func (h *serviceHandler) CreateUpdate(
 		// the goal state will ensure both. In case the update was not
 		// persisted, clear the cache as well so that it is reloaded
 		// from DB and cleaned up.
-		h.updateFactory.ClearUpdate(id)
 		h.metrics.UpdateCreateFail.Inc(1)
 	}
 
 	// Add update to goal state engine to start it
-	h.goalStateDriver.EnqueueUpdate(jobID, id, time.Now())
+	if len(updateID.GetValue()) > 0 {
+		h.goalStateDriver.EnqueueUpdate(jobID, updateID, time.Now())
+	}
 	return &svc.CreateUpdateResponse{
-		UpdateID: id,
+		UpdateID: updateID,
 	}, err
 }
 
@@ -261,22 +245,28 @@ func (h *serviceHandler) GetUpdate(ctx context.Context, req *svc.GetUpdateReques
 func (h *serviceHandler) GetUpdateCache(ctx context.Context,
 	req *svc.GetUpdateCacheRequest) (*svc.GetUpdateCacheResponse, error) {
 	h.metrics.UpdateAPIGetCache.Inc(1)
-	u, err := h.getCachedUpdate(req.GetUpdateId())
+
+	cachedJob, err := h.getCachedJobWithUpdateID(ctx, req.GetUpdateId())
 	if err != nil {
 		return nil, err
+	}
+
+	workflow := cachedJob.GetWorkflow(req.GetUpdateId())
+	if workflow == nil {
+		return nil, yarpcerrors.NotFoundErrorf("update not found")
 	}
 
 	h.metrics.UpdateGetCache.Inc(1)
 
 	return &svc.GetUpdateCacheResponse{
-		JobId:            u.JobID(),
-		State:            u.GetState().State,
-		InstancesTotal:   u.GetGoalState().Instances,
-		InstancesDone:    u.GetInstancesDone(),
-		InstancesCurrent: u.GetInstancesCurrent(),
-		InstancesAdded:   u.GetInstancesAdded(),
-		InstancesUpdated: u.GetInstancesUpdated(),
-		InstancesFailed:  u.GetInstancesFailed(),
+		JobId:            workflow.JobID(),
+		State:            workflow.GetState().State,
+		InstancesTotal:   workflow.GetGoalState().Instances,
+		InstancesDone:    workflow.GetInstancesDone(),
+		InstancesCurrent: workflow.GetInstancesCurrent(),
+		InstancesAdded:   workflow.GetInstancesAdded(),
+		InstancesUpdated: workflow.GetInstancesUpdated(),
+		InstancesFailed:  workflow.GetInstancesFailed(),
 	}, nil
 }
 
@@ -288,20 +278,22 @@ func (h *serviceHandler) PauseUpdate(
 
 	h.metrics.UpdateAPIPause.Inc(1)
 
-	cachedUpdate := h.updateFactory.AddUpdate(req.GetUpdateId())
-	if err := cachedUpdate.Recover(ctx); err != nil {
+	cachedJob, err := h.getCachedJobWithUpdateID(ctx, req.GetUpdateId())
+	if err != nil {
 		h.metrics.UpdatePauseFail.Inc(1)
 		return nil, err
 	}
 
-	if err = cachedUpdate.Pause(ctx); err != nil {
+	if err = cachedJob.PauseWorkflow(ctx, nil); err != nil {
 		// In case of error, since it is not clear if job runtime was
 		// updated or not, enqueue the update to the goal state.
 		h.metrics.UpdatePauseFail.Inc(1)
+	} else {
+		h.metrics.UpdatePause.Inc(1)
 	}
-	h.goalStateDriver.EnqueueUpdate(cachedUpdate.JobID(), cachedUpdate.ID(), time.Now())
 
-	h.metrics.UpdatePause.Inc(1)
+	h.goalStateDriver.EnqueueUpdate(cachedJob.ID(), req.GetUpdateId(), time.Now())
+
 	return &svc.PauseUpdateResponse{}, err
 }
 
@@ -313,20 +305,21 @@ func (h *serviceHandler) ResumeUpdate(
 
 	h.metrics.UpdateAPIResume.Inc(1)
 
-	cachedUpdate := h.updateFactory.AddUpdate(req.GetUpdateId())
-	if err := cachedUpdate.Recover(ctx); err != nil {
+	cachedJob, err := h.getCachedJobWithUpdateID(ctx, req.GetUpdateId())
+	if err != nil {
 		h.metrics.UpdateResumeFail.Inc(1)
 		return nil, err
 	}
 
-	if err = cachedUpdate.Resume(ctx); err != nil {
+	if err = cachedJob.ResumeWorkflow(ctx, nil); err != nil {
 		// In case of error, since it is not clear if job runtime was
 		// updated or not, enqueue the update to the goal state.
 		h.metrics.UpdateResumeFail.Inc(1)
+	} else {
+		h.metrics.UpdateResume.Inc(1)
 	}
-	h.goalStateDriver.EnqueueUpdate(cachedUpdate.JobID(), cachedUpdate.ID(), time.Now())
+	h.goalStateDriver.EnqueueUpdate(cachedJob.ID(), req.GetUpdateId(), time.Now())
 
-	h.metrics.UpdateResume.Inc(1)
 	return &svc.ResumeUpdateResponse{}, err
 }
 
@@ -382,22 +375,20 @@ func (h *serviceHandler) ListUpdates(ctx context.Context,
 func (h *serviceHandler) AbortUpdate(ctx context.Context,
 	req *svc.AbortUpdateRequest) (*svc.AbortUpdateResponse, error) {
 	h.metrics.UpdateAPIAbort.Inc(1)
-	updateID := req.GetUpdateId()
+	cachedJob, err := h.getCachedJobWithUpdateID(ctx, req.GetUpdateId())
+	// TODO: what if the workflow in job is not what is intended to be aborted
+	if err != nil {
+		h.metrics.UpdateAbortFail.Inc(1)
+		return nil, err
+	}
 
-	err := cached.AbortJobUpdate(
-		ctx,
-		updateID,
-		h.updateStore,
-		h.updateFactory,
-	)
+	err = cachedJob.AbortWorkflow(ctx, nil)
 	if err != nil {
 		h.metrics.UpdateAbortFail.Inc(1)
 	} else {
 		h.metrics.UpdateAbort.Inc(1)
 	}
-
-	cachedUpdate := h.updateFactory.GetUpdate(updateID)
-	h.goalStateDriver.EnqueueUpdate(cachedUpdate.JobID(), updateID, time.Now())
+	h.goalStateDriver.EnqueueUpdate(cachedJob.ID(), req.GetUpdateId(), time.Now())
 	return &svc.AbortUpdateResponse{}, err
 }
 
@@ -407,16 +398,18 @@ func (h *serviceHandler) RollbackUpdate(ctx context.Context,
 		"UpdateService.RollbackUpdate is not implemented")
 }
 
-func (h *serviceHandler) getCachedUpdate(updateID *peloton.UpdateID) (cached.Update, error) {
-	if updateID == nil {
-		h.metrics.UpdateGetCacheFail.Inc(1)
+func (h *serviceHandler) getCachedJobWithUpdateID(
+	ctx context.Context,
+	updateID *peloton.UpdateID,
+) (cached.Job, error) {
+	if len(updateID.GetValue()) == 0 {
 		return nil, yarpcerrors.InvalidArgumentErrorf("no update ID provided")
 	}
 
-	u := h.updateFactory.GetUpdate(updateID)
-	if u == nil {
-		h.metrics.UpdateGetCacheFail.Inc(1)
-		return nil, yarpcerrors.NotFoundErrorf("update not found")
+	updateModel, err := h.updateStore.GetUpdate(ctx, updateID)
+	if err != nil {
+		return nil, err
 	}
-	return u, nil
+
+	return h.jobFactory.AddJob(updateModel.GetJobID()), nil
 }

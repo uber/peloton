@@ -52,7 +52,6 @@ func InitServiceHandler(
 	taskStore storage.TaskStore,
 	secretStore storage.SecretStore,
 	jobFactory cached.JobFactory,
-	updateFactory cached.UpdateFactory,
 	goalStateDriver goalstate.Driver,
 	candidate leader.Candidate,
 	clientName string,
@@ -67,7 +66,6 @@ func InitServiceHandler(
 		resmgrClient:    resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(clientName)),
 		rootCtx:         context.Background(),
 		jobFactory:      jobFactory,
-		updateFactory:   updateFactory,
 		goalStateDriver: goalStateDriver,
 		candidate:       candidate,
 		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
@@ -86,7 +84,6 @@ type serviceHandler struct {
 	resmgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
 	rootCtx         context.Context
 	jobFactory      cached.JobFactory
-	updateFactory   cached.UpdateFactory
 	goalStateDriver goalstate.Driver
 	candidate       leader.Candidate
 	metrics         *Metrics
@@ -602,7 +599,6 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 	batchSize uint32,
 	workflowType models.WorkflowType,
 ) (*peloton.UpdateID, uint64, error) {
-
 	if workflowType == models.WorkflowType_UNKNOWN || workflowType == models.WorkflowType_UPDATE {
 		return nil, 0,
 			yarpcerrors.InvalidArgumentErrorf(
@@ -649,38 +645,35 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 		}
 	}
 
-	updateID := &peloton.UpdateID{
-		Value: uuid.New(),
-	}
-	// add this new update to cache and DB
-	cachedUpdate := h.updateFactory.AddUpdate(updateID)
-	err = cachedUpdate.Create(
+	updateID, err := cachedJob.CreateWorkflow(
 		ctx,
-		jobID,
-		&newConfig,
-		jobConfig,
-		configAddOn,
-		nil,
-		convertRangesToSlice(ranges, newConfig.GetInstanceCount()),
-		nil,
 		workflowType,
 		&pbupdate.UpdateConfig{
 			BatchSize: batchSize,
 		},
+		nil,
+		cached.WithInstanceToProcess(
+			nil,
+			convertRangesToSlice(ranges, newConfig.GetInstanceCount()),
+			nil),
+		cached.WithConfig(
+			&newConfig,
+			jobConfig,
+			configAddOn,
+		),
 	)
-	if err != nil {
-		// In case of error, since it is not clear if job runtime was
-		// persisted with the update ID or not, enqueue the update to
-		// the goal state. If the update ID got persisted, update should
-		// start running, else, it should be aborted. Enqueueing it into
-		// the goal state will ensure both. In case the update was not
-		// persisted, clear the cache as well so that it is reloaded
-		// from DB and cleaned up.
-		h.updateFactory.ClearUpdate(updateID)
-	}
 
+	// In case of error, since it is not clear if job runtime was
+	// persisted with the update ID or not, enqueue the update to
+	// the goal state. If the update ID got persisted, update should
+	// start running, else, it should be aborted. Enqueueing it into
+	// the goal state will ensure both. In case the update was not
+	// persisted, clear the cache as well so that it is reloaded
+	// from DB and cleaned up.
 	// Add update to goal state engine to start it
-	h.goalStateDriver.EnqueueUpdate(jobID, updateID, time.Now())
+	if len(updateID.GetValue()) > 0 {
+		h.goalStateDriver.EnqueueUpdate(jobID, updateID, time.Now())
+	}
 
 	if err != nil {
 		return nil, 0, err

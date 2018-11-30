@@ -92,13 +92,14 @@ func (u *updateEntity) GetID() string {
 }
 
 func (u *updateEntity) GetState() interface{} {
-	cachedUpdate := u.driver.updateFactory.AddUpdate(u.id)
-	return cachedUpdate.GetState()
+	cachedJob := u.driver.jobFactory.AddJob(u.jobID)
+	return cachedJob.AddWorkflow(u.id).GetState()
+
 }
 
 func (u *updateEntity) GetGoalState() interface{} {
-	cachedUpdate := u.driver.updateFactory.AddUpdate(u.id)
-	return cachedUpdate.GetGoalState()
+	cachedJob := u.driver.jobFactory.AddJob(u.jobID)
+	return cachedJob.AddWorkflow(u.id).GetGoalState()
 }
 
 func (u *updateEntity) GetActionList(

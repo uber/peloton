@@ -332,16 +332,10 @@ func main() {
 	jobFactory := cached.InitJobFactory(
 		store, // store implements JobStore
 		store, // store implements TaskStore
+		store, // store implements UpdateStore
 		store, // store implements VolumeStore
 		rootScope,
 		nil)
-
-	updateFactory := cached.InitUpdateFactory(
-		store, // store implements JobStore
-		store, // store implements TaskStore
-		store, // store implements UpdateStore
-		jobFactory,
-		rootScope)
 
 	// TODO: We need to cleanup the client names
 	launcher.InitTaskLauncher(
@@ -361,7 +355,6 @@ func main() {
 		store, // store implements VolumeStore
 		store, // store implements UpdateStore
 		jobFactory,
-		updateFactory,
 		launcher.GetLauncher(),
 		job.JobType(job.JobType_value[*jobType]),
 		rootScope,
@@ -418,7 +411,6 @@ func main() {
 		cfg.JobManager.HTTPPort,
 		cfg.JobManager.GRPCPort,
 		jobFactory,
-		updateFactory,
 		goalStateDriver,
 		taskPreemptor,
 		deadlineTracker,
@@ -444,7 +436,6 @@ func main() {
 		store, // store implements TaskStore
 		store, // store implements SecretStore
 		jobFactory,
-		updateFactory,
 		goalStateDriver,
 		candidate,
 		common.PelotonResourceManager, // TODO: to be removed
@@ -455,7 +446,6 @@ func main() {
 		dispatcher,
 		store,
 		jobFactory,
-		updateFactory,
 		goalStateDriver,
 		candidate,
 	)
@@ -468,7 +458,6 @@ func main() {
 		store, // store implements UpdateStore
 		store, // store implements FrameworkInfoStore
 		jobFactory,
-		updateFactory,
 		goalStateDriver,
 		candidate,
 		*mesosAgentWorkDir,
@@ -502,11 +491,9 @@ func main() {
 		dispatcher,
 		rootScope,
 		store, // store implements JobStore
-		store, // store implements TaskStore
 		store, // store implements UpdateStore
 		goalStateDriver,
 		jobFactory,
-		updateFactory,
 	)
 
 	// Start dispatch loop

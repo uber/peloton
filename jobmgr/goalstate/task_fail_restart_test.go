@@ -26,27 +26,22 @@ type TaskFailRetryTestSuite struct {
 	suite.Suite
 	ctrl *gomock.Controller
 
-	jobStore      *storemocks.MockJobStore
-	taskStore     *storemocks.MockTaskStore
-	updateFactory *cachedmocks.MockUpdateFactory
-	jobFactory    *cachedmocks.MockJobFactory
+	taskStore  *storemocks.MockTaskStore
+	jobFactory *cachedmocks.MockJobFactory
 
-	updateGoalStateEngine *goalstatemocks.MockEngine
-	taskGoalStateEngine   *goalstatemocks.MockEngine
-	jobGoalStateEngine    *goalstatemocks.MockEngine
-	goalStateDriver       *driver
+	taskGoalStateEngine *goalstatemocks.MockEngine
+	jobGoalStateEngine  *goalstatemocks.MockEngine
+	goalStateDriver     *driver
 
 	jobID      *peloton.JobID
 	instanceID uint32
 	updateID   *peloton.UpdateID
 
-	updateEnt    *updateEntity
 	taskEnt      *taskEntity
 	cachedJob    *cachedmocks.MockJob
 	cachedUpdate *cachedmocks.MockUpdate
 	cachedTask   *cachedmocks.MockTask
 
-	jobConfig   *pbjob.JobConfig
 	jobRuntime  *pbjob.RuntimeInfo
 	taskRuntime *pbtask.RuntimeInfo
 	mesosTaskID string
@@ -65,19 +60,17 @@ func (suite *TaskFailRetryTestSuite) SetupTest() {
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
-	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 	suite.cachedUpdate = cachedmocks.NewMockUpdate(suite.ctrl)
 	suite.goalStateDriver = &driver{
-		jobEngine:     suite.jobGoalStateEngine,
-		taskEngine:    suite.taskGoalStateEngine,
-		updateFactory: suite.updateFactory,
-		taskStore:     suite.taskStore,
-		jobFactory:    suite.jobFactory,
-		mtx:           NewMetrics(tally.NoopScope),
-		cfg:           &Config{},
+		jobEngine:  suite.jobGoalStateEngine,
+		taskEngine: suite.taskGoalStateEngine,
+		taskStore:  suite.taskStore,
+		jobFactory: suite.jobFactory,
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
 	}
 	suite.goalStateDriver.cfg.normalize()
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}

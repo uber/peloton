@@ -35,9 +35,8 @@ type statelessHandlerTestSuite struct {
 
 	ctrl            *gomock.Controller
 	cachedJob       *cachedmocks.MockJob
-	cachedUpdate    *cachedmocks.MockUpdate
+	cachedWorkflow  *cachedmocks.MockUpdate
 	jobFactory      *cachedmocks.MockJobFactory
-	updateFactory   *cachedmocks.MockUpdateFactory
 	candidate       *leadermocks.MockCandidate
 	goalStateDriver *goalstatemocks.MockDriver
 	jobStore        *storemocks.MockJobStore
@@ -46,15 +45,13 @@ type statelessHandlerTestSuite struct {
 func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
-	suite.cachedUpdate = cachedmocks.NewMockUpdate(suite.ctrl)
+	suite.cachedWorkflow = cachedmocks.NewMockUpdate(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
-	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
 	suite.candidate = leadermocks.NewMockCandidate(suite.ctrl)
 	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.handler = &serviceHandler{
 		jobFactory:      suite.jobFactory,
-		updateFactory:   suite.updateFactory,
 		candidate:       suite.candidate,
 		goalStateDriver: suite.goalStateDriver,
 		jobStore:        suite.jobStore,
@@ -104,47 +101,47 @@ func (suite *statelessHandlerTestSuite) TestGetJobCacheWithUpdateSuccess() {
 			},
 		}, nil)
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(&peloton.UpdateID{Value: testUpdateID}).
-		Return(suite.cachedUpdate)
+	suite.cachedJob.EXPECT().
+		GetWorkflow(&peloton.UpdateID{Value: testUpdateID}).
+		Return(suite.cachedWorkflow)
 
-	suite.cachedUpdate.EXPECT().
+	suite.cachedWorkflow.EXPECT().
 		GetWorkflowType().
 		Return(models.WorkflowType_UPDATE)
 
-	suite.cachedUpdate.EXPECT().
+	suite.cachedWorkflow.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
+	suite.cachedWorkflow.EXPECT().
 		GetInstancesDone().
 		Return(instancesDone).
 		AnyTimes()
 
-	suite.cachedUpdate.EXPECT().
+	suite.cachedWorkflow.EXPECT().
 		GetInstancesFailed().
 		Return(instancesFailed).
 		AnyTimes()
 
-	suite.cachedUpdate.EXPECT().
+	suite.cachedWorkflow.EXPECT().
 		GetGoalState().
 		Return(&cached.UpdateStateVector{
 			Instances: totalInstances,
 		})
 
-	suite.cachedUpdate.EXPECT().
+	suite.cachedWorkflow.EXPECT().
 		GetInstancesCurrent().
 		Return(instancesCurrent)
 
-	suite.cachedUpdate.EXPECT().
+	suite.cachedWorkflow.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			JobVersion: curJobVersion,
 		})
 
-	suite.cachedUpdate.EXPECT().
+	suite.cachedWorkflow.EXPECT().
 		GetGoalState().
 		Return(&cached.UpdateStateVector{
 			JobVersion: targetJobVersion,

@@ -14,7 +14,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	respoolmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
@@ -71,7 +70,6 @@ type JobHandlerTestSuite struct {
 	mockedRespoolClient   *respoolmocks.MockResourceManagerYARPCClient
 	mockedResmgrClient    *resmocks.MockResourceManagerServiceYARPCClient
 	mockedJobFactory      *cachedmocks.MockJobFactory
-	mockedUpdateFactory   *cachedmocks.MockUpdateFactory
 	mockedCachedJob       *cachedmocks.MockJob
 	mockedCachedUpdate    *cachedmocks.MockUpdate
 	mockedGoalStateDriver *goalstatemocks.MockDriver
@@ -86,7 +84,6 @@ func (suite *JobHandlerTestSuite) initializeMocks() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.mockedJobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.mockedJobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
-	suite.mockedUpdateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
 	suite.mockedCachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.mockedCachedUpdate = cachedmocks.NewMockUpdate(suite.ctrl)
 	suite.mockedGoalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
@@ -100,7 +97,6 @@ func (suite *JobHandlerTestSuite) initializeMocks() {
 	suite.handler.secretStore = suite.mockedSecretStore
 	suite.handler.taskStore = suite.mockedTaskStore
 	suite.handler.jobFactory = suite.mockedJobFactory
-	suite.handler.updateFactory = suite.mockedUpdateFactory
 	suite.handler.goalStateDriver = suite.mockedGoalStateDriver
 	suite.handler.respoolClient = suite.mockedRespoolClient
 	suite.handler.resmgrClient = suite.mockedResmgrClient
@@ -1799,44 +1795,17 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccess() {
 		).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.mockedUpdateFactory.EXPECT().
-		AddUpdate(gomock.Any()).
-		Return(suite.mockedCachedUpdate)
-
 	newConfig := *suite.testJobConfig
 	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
-	suite.mockedCachedUpdate.EXPECT().
-		Create(
+	suite.mockedCachedJob.EXPECT().
+		CreateWorkflow(
 			gomock.Any(),
-			suite.testJobID,
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			nil,
-			gomock.Any(),
-			nil,
 			models.WorkflowType_RESTART,
 			gomock.Any(),
-		).Do(func(
-		_ context.Context,
-		_ *peloton.JobID,
-		jobConfig *job.JobConfig,
-		prevJobConfig *job.JobConfig,
-		_ *models.ConfigAddOn,
-		_ []uint32,
-		instanceUpdated []uint32,
-		_ []uint32,
-		_ models.WorkflowType,
-		updateConfig *update.UpdateConfig,
-	) {
-		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Len(instanceUpdated, int(newConfig.GetInstanceCount()))
-		suite.Equal(updateConfig.GetBatchSize(), batchSize)
-	}).
-		Return(nil)
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(&peloton.UpdateID{Value: uuid.New()}, nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -1901,47 +1870,17 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccessWithRange() {
 		).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.mockedUpdateFactory.EXPECT().
-		AddUpdate(gomock.Any()).
-		Return(suite.mockedCachedUpdate)
-
 	newConfig := *suite.testJobConfig
 	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
-	suite.mockedCachedUpdate.EXPECT().
-		Create(
+	suite.mockedCachedJob.EXPECT().
+		CreateWorkflow(
 			gomock.Any(),
-			suite.testJobID,
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			nil,
-			gomock.Any(),
-			nil,
 			models.WorkflowType_RESTART,
 			gomock.Any(),
-		).Do(func(
-		_ context.Context,
-		_ *peloton.JobID,
-		jobConfig *job.JobConfig,
-		prevJobConfig *job.JobConfig,
-		_ *models.ConfigAddOn,
-		_ []uint32,
-		instanceUpdated []uint32,
-		_ []uint32,
-		_ models.WorkflowType,
-		updateConfig *update.UpdateConfig,
-	) {
-		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Len(instanceUpdated,
-			int(restartRanges[0].To-restartRanges[0].From+
-				restartRanges[1].To-restartRanges[1].From),
-		)
-		suite.Equal(updateConfig.GetBatchSize(), batchSize)
-	}).
-		Return(nil)
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(&peloton.UpdateID{Value: uuid.New()}, nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -2007,44 +1946,17 @@ func (suite *JobHandlerTestSuite) TestRestartJobOutsideOfRangeSuccess() {
 		).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.mockedUpdateFactory.EXPECT().
-		AddUpdate(gomock.Any()).
-		Return(suite.mockedCachedUpdate)
-
 	newConfig := *suite.testJobConfig
 	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
-	suite.mockedCachedUpdate.EXPECT().
-		Create(
+	suite.mockedCachedJob.EXPECT().
+		CreateWorkflow(
 			gomock.Any(),
-			suite.testJobID,
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			nil,
-			gomock.Any(),
-			nil,
 			models.WorkflowType_RESTART,
 			gomock.Any(),
-		).Do(func(
-		_ context.Context,
-		_ *peloton.JobID,
-		jobConfig *job.JobConfig,
-		prevJobConfig *job.JobConfig,
-		_ *models.ConfigAddOn,
-		_ []uint32,
-		instanceUpdated []uint32,
-		_ []uint32,
-		_ models.WorkflowType,
-		updateConfig *update.UpdateConfig,
-	) {
-		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Len(instanceUpdated, int(suite.testJobConfig.GetInstanceCount()))
-		suite.Equal(updateConfig.GetBatchSize(), batchSize)
-	}).
-		Return(nil)
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(&peloton.UpdateID{Value: uuid.New()}, nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -2199,48 +2111,17 @@ func (suite *JobHandlerTestSuite) TestRestartJobCreateUpdateFailure() {
 		).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.mockedUpdateFactory.EXPECT().
-		AddUpdate(gomock.Any()).
-		Return(suite.mockedCachedUpdate)
-
 	newConfig := *suite.testJobConfig
 	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
-	suite.mockedCachedUpdate.EXPECT().
-		Create(
+	suite.mockedCachedJob.EXPECT().
+		CreateWorkflow(
 			gomock.Any(),
-			suite.testJobID,
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			nil,
-			gomock.Any(),
-			nil,
 			models.WorkflowType_RESTART,
 			gomock.Any(),
-		).Do(func(
-		_ context.Context,
-		_ *peloton.JobID,
-		jobConfig *job.JobConfig,
-		prevJobConfig *job.JobConfig,
-		_ *models.ConfigAddOn,
-		_ []uint32,
-		instanceUpdated []uint32,
-		_ []uint32,
-		_ models.WorkflowType,
-		updateConfig *update.UpdateConfig,
-	) {
-		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Len(instanceUpdated, int(newConfig.GetInstanceCount()))
-		suite.Equal(updateConfig.GetBatchSize(), batchSize)
-	}).
-		Return(fmt.Errorf("test error"))
-
-	suite.mockedUpdateFactory.EXPECT().
-		ClearUpdate(gomock.Any()).
-		Return()
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(&peloton.UpdateID{Value: uuid.New()}, yarpcerrors.InternalErrorf("test error"))
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -2289,44 +2170,17 @@ func (suite *JobHandlerTestSuite) TestRestartJobGetCachedConfigFailure() {
 		).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.mockedUpdateFactory.EXPECT().
-		AddUpdate(gomock.Any()).
-		Return(suite.mockedCachedUpdate)
-
 	newConfig := *suite.testJobConfig
 	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
-	suite.mockedCachedUpdate.EXPECT().
-		Create(
+	suite.mockedCachedJob.EXPECT().
+		CreateWorkflow(
 			gomock.Any(),
-			suite.testJobID,
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			nil,
-			gomock.Any(),
-			nil,
 			models.WorkflowType_RESTART,
 			gomock.Any(),
-		).Do(func(
-		_ context.Context,
-		_ *peloton.JobID,
-		jobConfig *job.JobConfig,
-		prevJobConfig *job.JobConfig,
-		_ *models.ConfigAddOn,
-		_ []uint32,
-		instanceUpdated []uint32,
-		_ []uint32,
-		_ models.WorkflowType,
-		updateConfig *update.UpdateConfig,
-	) {
-		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Len(instanceUpdated, int(newConfig.GetInstanceCount()))
-		suite.Equal(updateConfig.GetBatchSize(), batchSize)
-	}).
-		Return(nil)
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(&peloton.UpdateID{Value: uuid.New()}, nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -2424,44 +2278,18 @@ func (suite *JobHandlerTestSuite) TestStartJobSuccess() {
 		).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.mockedUpdateFactory.EXPECT().
-		AddUpdate(gomock.Any()).
-		Return(suite.mockedCachedUpdate)
-
 	newConfig := *suite.testJobConfig
 	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
-	suite.mockedCachedUpdate.EXPECT().
-		Create(
+
+	suite.mockedCachedJob.EXPECT().
+		CreateWorkflow(
 			gomock.Any(),
-			suite.testJobID,
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			nil,
-			gomock.Any(),
-			nil,
 			models.WorkflowType_START,
 			gomock.Any(),
-		).Do(func(
-		_ context.Context,
-		_ *peloton.JobID,
-		jobConfig *job.JobConfig,
-		prevJobConfig *job.JobConfig,
-		_ *models.ConfigAddOn,
-		_ []uint32,
-		instanceUpdated []uint32,
-		_ []uint32,
-		_ models.WorkflowType,
-		updateConfig *update.UpdateConfig,
-	) {
-		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Len(instanceUpdated, int(newConfig.GetInstanceCount()))
-		suite.Equal(updateConfig.GetBatchSize(), batchSize)
-	}).
-		Return(nil)
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(&peloton.UpdateID{Value: uuid.New()}, nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -2515,44 +2343,17 @@ func (suite *JobHandlerTestSuite) TestStopJobSuccess() {
 		).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.mockedUpdateFactory.EXPECT().
-		AddUpdate(gomock.Any()).
-		Return(suite.mockedCachedUpdate)
-
 	newConfig := *suite.testJobConfig
 	newConfig.ChangeLog = &peloton.ChangeLog{Version: configurationVersion + 1}
-	suite.mockedCachedUpdate.EXPECT().
-		Create(
+	suite.mockedCachedJob.EXPECT().
+		CreateWorkflow(
 			gomock.Any(),
-			suite.testJobID,
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			nil,
-			gomock.Any(),
-			nil,
 			models.WorkflowType_STOP,
 			gomock.Any(),
-		).Do(func(
-		_ context.Context,
-		_ *peloton.JobID,
-		jobConfig *job.JobConfig,
-		prevJobConfig *job.JobConfig,
-		_ *models.ConfigAddOn,
-		_ []uint32,
-		instanceUpdated []uint32,
-		_ []uint32,
-		_ models.WorkflowType,
-		updateConfig *update.UpdateConfig,
-	) {
-		suite.Equal(jobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Equal(prevJobConfig.GetChangeLog().GetVersion(),
-			configurationVersion)
-		suite.Len(instanceUpdated, int(newConfig.GetInstanceCount()))
-		suite.Equal(updateConfig.GetBatchSize(), batchSize)
-	}).
-		Return(nil)
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(&peloton.UpdateID{Value: uuid.New()}, nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())

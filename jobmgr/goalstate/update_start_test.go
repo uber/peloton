@@ -32,13 +32,13 @@ type UpdateStartTestSuite struct {
 	suite.Suite
 	ctrl *gomock.Controller
 
-	jobStore      *storemocks.MockJobStore
-	taskStore     *storemocks.MockTaskStore
-	updateFactory *cachedmocks.MockUpdateFactory
-	jobFactory    *cachedmocks.MockJobFactory
-	resmgrClient  *resmocks.MockResourceManagerServiceYARPCClient
+	jobStore     *storemocks.MockJobStore
+	taskStore    *storemocks.MockTaskStore
+	jobFactory   *cachedmocks.MockJobFactory
+	resmgrClient *resmocks.MockResourceManagerServiceYARPCClient
 
 	updateGoalStateEngine *goalstatemocks.MockEngine
+	jobGoalStateEngine    *goalstatemocks.MockEngine
 	taskGoalStateEngine   *goalstatemocks.MockEngine
 	goalStateDriver       *driver
 
@@ -63,23 +63,23 @@ func (suite *UpdateStartTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
-	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.updateGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.resmgrClient =
 		resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 
 	suite.goalStateDriver = &driver{
-		jobStore:      suite.jobStore,
-		taskStore:     suite.taskStore,
-		updateFactory: suite.updateFactory,
-		jobFactory:    suite.jobFactory,
-		resmgrClient:  suite.resmgrClient,
-		updateEngine:  suite.updateGoalStateEngine,
-		taskEngine:    suite.taskGoalStateEngine,
-		mtx:           NewMetrics(tally.NoopScope),
-		cfg:           &Config{},
+		jobStore:     suite.jobStore,
+		taskStore:    suite.taskStore,
+		jobFactory:   suite.jobFactory,
+		resmgrClient: suite.resmgrClient,
+		updateEngine: suite.updateGoalStateEngine,
+		taskEngine:   suite.taskGoalStateEngine,
+		jobEngine:    suite.jobGoalStateEngine,
+		mtx:          NewMetrics(tally.NoopScope),
+		cfg:          &Config{},
 	}
 	suite.goalStateDriver.cfg.normalize()
 
@@ -133,27 +133,18 @@ func (suite *UpdateStartTestSuite) TearDownTest() {
 	suite.ctrl.Finish()
 }
 
-func (suite *UpdateStartTestSuite) TestUpdateStartCacheUpdateGetFail() {
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(nil)
-
-	err := UpdateStart(context.Background(), suite.updateEnt)
-	suite.NoError(err)
-}
-
 func (suite *UpdateStartTestSuite) TestUpdateStartCacheJobGetFail() {
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(nil)
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
 		Cancel(gomock.Any()).
@@ -165,43 +156,51 @@ func (suite *UpdateStartTestSuite) TestUpdateStartCacheJobGetFail() {
 			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
 		})
 
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any())
+
 	err := UpdateStart(context.Background(), suite.updateEnt)
 	suite.NoError(err)
 }
 
 func (suite *UpdateStartTestSuite) TestUpdateStartCacheJobGetError() {
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(nil)
 
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
 	suite.cachedUpdate.EXPECT().
 		Cancel(gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
+
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any())
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
 	suite.EqualError(err, "fake db error")
 }
 
 func (suite *UpdateStartTestSuite) TestUpdateStartJobConfigGetFail() {
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_INITIALIZED,
+		})
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
@@ -223,17 +222,19 @@ func (suite *UpdateStartTestSuite) TestUpdateStartJobConfigGetFail() {
 }
 
 func (suite *UpdateStartTestSuite) TestUpdateStartTaskConfigCreateFail() {
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_INITIALIZED,
+		})
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
@@ -261,13 +262,19 @@ func (suite *UpdateStartTestSuite) TestUpdateStartTaskConfigCreateFail() {
 func (suite *UpdateStartTestSuite) TestUpdateStartWriteProgressFail() {
 	instancesTotal := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_INITIALIZED,
+		})
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
@@ -312,13 +319,19 @@ func (suite *UpdateStartTestSuite) TestUpdateStartWriteProgressFail() {
 func (suite *UpdateStartTestSuite) TestUpdateContainsUnchangedInstance() {
 	instancesTotal := []uint32{0}
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_INITIALIZED,
+		})
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
@@ -381,13 +394,19 @@ func (suite *UpdateStartTestSuite) TestUpdateContainsUnchangedInstance() {
 func (suite *UpdateStartTestSuite) TestUpdateStart_ContainsUnchangedInstance_PatchTasksFail() {
 	instancesTotal := []uint32{0}
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_INITIALIZED,
+		})
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
@@ -430,13 +449,19 @@ func (suite *UpdateStartTestSuite) TestUpdateStart_NoUnchangedInstance() {
 		instancesTotal = append(instancesTotal, i)
 	}
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_INITIALIZED,
+		})
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
@@ -494,13 +519,19 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdate() {
 		taskRuntimes[i] = runtime
 	}
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_INITIALIZED,
+		})
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
@@ -596,13 +627,19 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdate() {
 func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdatePrevJobConfigGetError() {
 	instancesTotal := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_INITIALIZED,
+		})
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
@@ -648,13 +685,19 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdatePrevJobConfigGetError
 func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdateGetRuntimeError() {
 	instancesTotal := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_INITIALIZED,
+		})
 
 	suite.cachedUpdate.EXPECT().
 		JobID().
@@ -717,13 +760,19 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdateModifyError() {
 		taskRuntimes[i] = runtime
 	}
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_INITIALIZED,
+		})
 
 	suite.cachedUpdate.EXPECT().
 		JobID().

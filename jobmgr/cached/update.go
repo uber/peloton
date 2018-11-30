@@ -33,7 +33,7 @@ type Update interface {
 	Create(
 		ctx context.Context,
 		jobID *peloton.JobID,
-		jobConfig *pbjob.JobConfig,
+		jobConfig jobmgrcommon.JobConfig,
 		prevJobConfig *pbjob.JobConfig,
 		configAddOn *models.ConfigAddOn,
 		instanceAdded []uint32,
@@ -72,9 +72,11 @@ type Update interface {
 	Cancel(ctx context.Context) error
 
 	// Rollback is used to rollback the update.
-	// It makes a copy of the previous config. The job points to the config copy
-	// and update to the config copy.
-	Rollback(ctx context.Context) error
+	Rollback(
+		ctx context.Context,
+		currentConfig *pbjob.JobConfig,
+		targetConfig *pbjob.JobConfig,
+	) error
 
 	// GetState returns the state of the update
 	GetState() *UpdateStateVector
@@ -129,15 +131,13 @@ type UpdateStateVector struct {
 	Instances []uint32
 }
 
-// newUpdatecreates a new cache update object
+// newUpdate creates a new cache update object
 func newUpdate(
 	updateID *peloton.UpdateID,
-	jobFactory JobFactory,
-	updateFactory *updateFactory) *update {
+	jobFactory *jobFactory) *update {
 	update := &update{
-		id:            updateID,
-		jobFactory:    jobFactory,
-		updateFactory: updateFactory,
+		id:         updateID,
+		jobFactory: jobFactory,
 	}
 
 	return update
@@ -162,8 +162,7 @@ type update struct {
 	jobID *peloton.JobID    // Parent job identifier
 	id    *peloton.UpdateID // update identifier
 
-	jobFactory    JobFactory     // Pointer to the job factory object
-	updateFactory *updateFactory // Pointer to the parent update factory object
+	jobFactory *jobFactory // Pointer to the job factory object
 
 	state     pbupdate.State // current update state
 	prevState pbupdate.State // previous update state
@@ -212,7 +211,7 @@ func (u *update) JobID() *peloton.JobID {
 func (u *update) Create(
 	ctx context.Context,
 	jobID *peloton.JobID,
-	jobConfig *pbjob.JobConfig,
+	jobConfig jobmgrcommon.JobConfig,
 	prevJobConfig *pbjob.JobConfig,
 	configAddOn *models.ConfigAddOn,
 	instanceAdded []uint32,
@@ -220,34 +219,16 @@ func (u *update) Create(
 	instanceRemoved []uint32,
 	workflowType models.WorkflowType,
 	updateConfig *pbupdate.UpdateConfig) error {
-
-	if err := validateInput(
-		jobConfig,
-		prevJobConfig,
-		instanceAdded,
-		instanceUpdated,
-		instanceRemoved,
-	); err != nil {
-		return err
-	}
-
 	u.Lock()
 	defer u.Unlock()
 
 	state := pbupdate.State_INITIALIZED
 
-	// Store the new job configuration
-	cachedJob := u.jobFactory.AddJob(jobID)
-	newConfig, err := cachedJob.CompareAndSetConfig(ctx, jobConfig, configAddOn)
-	if err != nil {
-		return err
-	}
-
 	updateModel := &models.UpdateModel{
 		UpdateID:             u.id,
 		JobID:                jobID,
 		UpdateConfig:         updateConfig,
-		JobConfigVersion:     newConfig.GetChangeLog().GetVersion(),
+		JobConfigVersion:     jobConfig.GetChangeLog().GetVersion(),
 		PrevJobConfigVersion: prevJobConfig.GetChangeLog().GetVersion(),
 		State:                state,
 		InstancesAdded:       instanceAdded,
@@ -257,29 +238,11 @@ func (u *update) Create(
 		Type:                 workflowType,
 	}
 	// Store the new update in DB
-	if err := u.updateFactory.updateStore.CreateUpdate(ctx, updateModel); err != nil {
+	if err := u.jobFactory.updateStore.CreateUpdate(ctx, updateModel); err != nil {
 		return err
 	}
 
 	u.populateCache(updateModel)
-
-	if err := u.updateJobConfigAndUpdateID(
-		ctx,
-		cachedJob,
-		workflowType,
-		newConfig.GetChangeLog().GetVersion()); err != nil {
-		return err
-	}
-
-	log.WithField("update_id", u.id.GetValue()).
-		WithField("job_id", jobID.GetValue()).
-		WithField("instances_total", len(u.instancesTotal)).
-		WithField("instances_added", len(u.instancesAdded)).
-		WithField("instance_updated", len(u.instancesUpdated)).
-		WithField("instance_removed", len(u.instancesRemoved)).
-		WithField("update_state", u.state.String()).
-		WithField("update_type", u.workflowType.String()).
-		Debug("update is created")
 
 	return nil
 }
@@ -291,6 +254,11 @@ func (u *update) Modify(
 	instancesRemoved []uint32) error {
 	u.Lock()
 	defer u.Unlock()
+
+	// TODO: do recovery automatically when read state
+	if err := u.recover(ctx); err != nil {
+		return err
+	}
 
 	updateModel := &models.UpdateModel{
 		UpdateID:             u.id,
@@ -307,7 +275,7 @@ func (u *update) Modify(
 		InstancesTotal:       uint32(len(instancesUpdated) + len(instancesAdded) + len(instancesRemoved)),
 	}
 	// Store the new update in DB
-	if err := u.updateFactory.updateStore.ModifyUpdate(ctx, updateModel); err != nil {
+	if err := u.jobFactory.updateStore.ModifyUpdate(ctx, updateModel); err != nil {
 		u.clearCache()
 		return err
 	}
@@ -329,95 +297,6 @@ func (u *update) Modify(
 	return nil
 }
 
-// updateJobConfigAndUpdateID updates job runtime with newConfigVersion and
-// set the runtime updateID to u.id.
-// It validates if the workflowType update is valid and retries if update fails due to
-// concurrency error
-func (u *update) updateJobConfigAndUpdateID(
-	ctx context.Context,
-	cachedJob Job,
-	workflowType models.WorkflowType,
-	newConfigVersion uint64,
-) error {
-	// 1. read job runtime
-	// 2. decide if the current workflow of the job can be overwritten
-	// 3. overwrite the workflow if step2 succeeds
-	// 4. go to step 1, if step 3 fails due to concurrency error
-	for i := 0; i < jobmgrcommon.MaxConcurrencyErrorRetry; i++ {
-		jobRuntime, err := cachedJob.GetRuntime(ctx)
-		if err != nil {
-			return err
-		}
-
-		if err := u.validateWorkflowOverwrite(
-			ctx,
-			jobRuntime,
-			workflowType,
-		); err != nil {
-			return err
-		}
-
-		jobRuntime.UpdateID = &peloton.UpdateID{
-			Value: u.id.GetValue(),
-		}
-		jobRuntime.ConfigurationVersion = newConfigVersion
-		_, err = cachedJob.CompareAndSetRuntime(
-			ctx,
-			jobRuntime,
-		)
-
-		// the error is due to another goroutine updates the runtime, which
-		// results in a concurrency error. Redo the process again.
-		if err == jobmgrcommon.UnexpectedVersionError {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-
-	return yarpcerrors.AbortedErrorf(
-		"job update failed too many times due to concurrency error")
-}
-
-// validateWorkflowOverwrite validates if the new workflow type can override
-// existing workflow in job runtime. It returns an error if the validation
-// fails.
-func (u *update) validateWorkflowOverwrite(
-	ctx context.Context,
-	jobRuntime *pbjob.RuntimeInfo,
-	workflowType models.WorkflowType,
-) error {
-
-	updateID := jobRuntime.GetUpdateID()
-	// no update ongoing, workflow update always succeeds
-	if len(updateID.GetValue()) == 0 {
-		return nil
-	}
-
-	updateModel, err := u.updateFactory.updateStore.GetUpdate(ctx, updateID)
-	if err != nil {
-		return err
-	}
-
-	// workflow update should succeed if previous update is terminal
-	if IsUpdateStateTerminal(updateModel.GetState()) {
-		return nil
-	}
-
-	// an overwrite is only valid if both current and new workflow
-	// type is update
-	if updateModel.GetType() == models.WorkflowType_UPDATE &&
-		workflowType == models.WorkflowType_UPDATE {
-		return nil
-	}
-
-	return yarpcerrors.InvalidArgumentErrorf(
-		"workflow %s cannot overwrite workflow %s",
-		workflowType.String(), updateModel.GetType().String())
-}
-
 func (u *update) WriteProgress(
 	ctx context.Context,
 	state pbupdate.State,
@@ -426,6 +305,11 @@ func (u *update) WriteProgress(
 	instancesCurrent []uint32) error {
 	u.Lock()
 	defer u.Unlock()
+
+	// TODO: do recovery automatically when read state
+	if err := u.recover(ctx); err != nil {
+		return err
+	}
 
 	// if state is PAUSED, does not WriteProgress
 	// to overwrite the state, because it should be
@@ -450,6 +334,11 @@ func (u *update) Pause(ctx context.Context) error {
 	u.Lock()
 	defer u.Unlock()
 
+	// TODO: do recovery automatically when read state
+	if err := u.recover(ctx); err != nil {
+		return err
+	}
+
 	// already paused, do nothing
 	if u.state == pbupdate.State_PAUSED {
 		return nil
@@ -467,6 +356,11 @@ func (u *update) Pause(ctx context.Context) error {
 func (u *update) Resume(ctx context.Context) error {
 	u.Lock()
 	defer u.Unlock()
+
+	// TODO: do recovery automatically when read state
+	if err := u.recover(ctx); err != nil {
+		return err
+	}
 
 	// already unpaused, do nothing
 	if u.state != pbupdate.State_PAUSED {
@@ -504,7 +398,7 @@ func (u *update) writeProgress(
 		prevState = u.state
 	}
 
-	if err := u.updateFactory.updateStore.WriteUpdateProgress(
+	if err := u.jobFactory.updateStore.WriteUpdateProgress(
 		ctx,
 		&models.UpdateModel{
 			UpdateID:         u.id,
@@ -531,12 +425,16 @@ func (u *update) Recover(ctx context.Context) error {
 	u.Lock()
 	defer u.Unlock()
 
+	return u.recover(ctx)
+}
+
+func (u *update) recover(ctx context.Context) error {
 	// update is already recovered
 	if u.state != pbupdate.State_INVALID {
 		return nil
 	}
 
-	updateModel, err := u.updateFactory.updateStore.GetUpdate(ctx, u.id)
+	updateModel, err := u.jobFactory.updateStore.GetUpdate(ctx, u.id)
 	if err != nil {
 		return err
 	}
@@ -553,16 +451,18 @@ func (u *update) Recover(ctx context.Context) error {
 		return nil
 	}
 
+	// TODO: optimize the recover path, since it needs to read from task store
+	// for each task
 	// recover update progress
-	cachedJob := u.jobFactory.AddJob(u.jobID)
 	u.instancesCurrent, u.instancesDone, u.instancesFailed, err = getUpdateProgress(
 		ctx,
-		cachedJob,
+		u.jobID,
 		u.WorkflowStrategy,
 		u.updateConfig.GetMaxInstanceAttempts(),
 		u.jobVersion,
 		u.instancesTotal,
 		u.instancesRemoved,
+		u.jobFactory.taskStore,
 	)
 	if err != nil {
 		u.clearCache()
@@ -575,6 +475,11 @@ func (u *update) Cancel(ctx context.Context) error {
 	u.Lock()
 	defer u.Unlock()
 
+	// TODO: do recovery automatically when read state
+	if err := u.recover(ctx); err != nil {
+		return err
+	}
+
 	return u.writeProgress(
 		ctx,
 		pbupdate.State_ABORTED,
@@ -584,12 +489,19 @@ func (u *update) Cancel(ctx context.Context) error {
 	)
 }
 
-// Rollback rolls back the current update. It creates the copy of job and task
-// config of the version to rollback to, and set the desired job version
-// to the copy version. It also updates job to point to the config copy.
-func (u *update) Rollback(ctx context.Context) error {
+// Rollback rolls back the current update.
+func (u *update) Rollback(
+	ctx context.Context,
+	currentConfig *pbjob.JobConfig,
+	targetConfig *pbjob.JobConfig,
+) error {
 	u.Lock()
 	defer u.Unlock()
+
+	// TODO: do recovery automatically when read state
+	if err := u.recover(ctx); err != nil {
+		return err
+	}
 
 	// Rollback should only happen when an update is in progress.
 	// If an update is in terminal state, a new update with
@@ -598,56 +510,22 @@ func (u *update) Rollback(ctx context.Context) error {
 		return nil
 	}
 
-	cachedJob := u.jobFactory.AddJob(u.jobID)
-
 	// update is already rolling back, this can happen due to error retry
 	if u.state == pbupdate.State_ROLLING_BACKWARD {
-		runtime, err := cachedJob.GetRuntime(ctx)
-		if err != nil {
-			return err
-		}
-		// runtime configuration version fails to be updated in the last call,
-		// only need to update job
-		if u.jobVersion != runtime.GetConfigurationVersion() {
-			return u.updateJobConfigAndUpdateID(
-				ctx,
-				cachedJob,
-				u.workflowType,
-				u.jobVersion,
-			)
-		}
-		// update and job are in expected state, no action is needed
 		return nil
-	}
-
-	jobConfigCopy, err := u.copyJobAndTaskConfig(
-		ctx,
-		cachedJob,
-		u.jobPrevVersion,
-	)
-	if err != nil {
-		return err
-	}
-
-	currentJobConfig, _, err := u.updateFactory.jobStore.GetJobConfigWithVersion(
-		ctx,
-		u.jobID,
-		u.jobVersion,
-	)
-	if err != nil {
-		return err
 	}
 
 	instancesAdded, instancesUpdated, instancesRemoved, err := GetInstancesToProcessForUpdate(
 		ctx,
-		cachedJob,
-		currentJobConfig,
-		jobConfigCopy,
-		u.updateFactory.taskStore,
+		u.jobID,
+		currentConfig,
+		targetConfig,
+		u.jobFactory.taskStore,
 	)
 	if err != nil {
 		return err
 	}
+
 	updateModel := &models.UpdateModel{
 		UpdateID:             u.id,
 		PrevState:            u.state,
@@ -657,13 +535,13 @@ func (u *update) Rollback(ctx context.Context) error {
 		InstancesRemoved:     instancesRemoved,
 		InstancesUpdated:     instancesUpdated,
 		InstancesTotal:       uint32(len(instancesAdded) + len(instancesRemoved) + len(instancesUpdated)),
-		JobConfigVersion:     jobConfigCopy.GetChangeLog().GetVersion(),
-		PrevJobConfigVersion: u.jobVersion,
+		JobConfigVersion:     targetConfig.GetChangeLog().GetVersion(),
+		PrevJobConfigVersion: currentConfig.GetChangeLog().GetVersion(),
 		InstancesDone:        0,
 		InstancesFailed:      0,
 	}
 
-	if err := u.updateFactory.updateStore.ModifyUpdate(ctx, updateModel); err != nil {
+	if err := u.jobFactory.updateStore.ModifyUpdate(ctx, updateModel); err != nil {
 		u.clearCache()
 		return err
 	}
@@ -673,83 +551,12 @@ func (u *update) Rollback(ctx context.Context) error {
 	u.instancesFailed = []uint32{}
 	u.populateCache(updateModel)
 
-	return u.updateJobConfigAndUpdateID(
-		ctx,
-		cachedJob,
-		u.workflowType,
-		u.jobVersion)
-}
-
-// copyJobAndTaskConfig copies the job config and task config of the version provided
-// with new version number of value (max version of all configs + 1)
-// It returns the copied config with changeLog updated.
-func (u *update) copyJobAndTaskConfig(
-	ctx context.Context,
-	cachedJob Job,
-	version uint64,
-) (*pbjob.JobConfig, error) {
-	jobConfig, configAddOn, err := u.updateFactory.jobStore.
-		GetJobConfigWithVersion(ctx, u.jobID, version)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", u.jobID).
-			WithField("update_id", u.id).
-			Info("failed to get job config to copy for update rolling back")
-		return nil, err
-	}
-
-	currentConfig, err := cachedJob.GetConfig(ctx)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", u.jobID).
-			WithField("update_id", u.id).
-			Info("failed to get current job config for update rolling back")
-		return nil, err
-	}
-	// set config changeLog version to that of current config for
-	// concurrency control
-	jobConfig.ChangeLog = &peloton.ChangeLog{
-		Version: currentConfig.GetChangeLog().GetVersion(),
-	}
-	// copy job config
-	configCopy, err := cachedJob.CompareAndSetConfig(ctx, jobConfig, configAddOn)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", u.jobID).
-			WithField("update_id", u.id).
-			Info("failed to set job config for update rolling back")
-		return nil, err
-	}
-
-	// change the job config version to that of config copy,
-	// so task config would have the right version
-	jobConfig.ChangeLog = &peloton.ChangeLog{
-		Version: configCopy.GetChangeLog().GetVersion(),
-	}
-	// copy task configs
-	if err = u.updateFactory.taskStore.CreateTaskConfigs(ctx, u.jobID, jobConfig, configAddOn); err != nil {
-		log.WithError(err).
-			WithField("job_id", u.jobID).
-			WithField("update_id", u.id).
-			Error("failed to create task configs for update rolling back")
-		return nil, err
-	}
-
-	return jobConfig, nil
+	return nil
 }
 
 func (u *update) GetState() *UpdateStateVector {
 	u.RLock()
 	defer u.RUnlock()
-
-	if IsUpdateStateTerminal(u.state) {
-		log.WithFields(log.Fields{
-			"update_id": u.id.GetValue(),
-			"job_id":    u.jobID.GetValue(),
-			"state":     u.state.String(),
-			"field":     "instancesDone",
-		}).Debug("accessing fields in terminated update which can be stale")
-	}
 
 	instancesDone := make([]uint32, len(u.instancesDone))
 	copy(instancesDone, u.instancesDone)
@@ -768,15 +575,6 @@ func (u *update) GetGoalState() *UpdateStateVector {
 	u.RLock()
 	defer u.RUnlock()
 
-	if IsUpdateStateTerminal(u.state) {
-		log.WithFields(log.Fields{
-			"update_id": u.id.GetValue(),
-			"job_id":    u.jobID.GetValue(),
-			"state":     u.state.String(),
-			"field":     "instancesTotal",
-		}).Debug("accessing fields in terminated update which can be stale")
-	}
-
 	instances := make([]uint32, len(u.instancesTotal))
 	copy(instances, u.instancesTotal)
 
@@ -790,15 +588,6 @@ func (u *update) GetInstancesAdded() []uint32 {
 	u.RLock()
 	defer u.RUnlock()
 
-	if IsUpdateStateTerminal(u.state) {
-		log.WithFields(log.Fields{
-			"update_id": u.id.GetValue(),
-			"job_id":    u.jobID.GetValue(),
-			"state":     u.state.String(),
-			"field":     "instancesAdded",
-		}).Warn("accessing fields in terminated update which can be stale")
-	}
-
 	instances := make([]uint32, len(u.instancesAdded))
 	copy(instances, u.instancesAdded)
 	return instances
@@ -807,15 +596,6 @@ func (u *update) GetInstancesAdded() []uint32 {
 func (u *update) GetInstancesUpdated() []uint32 {
 	u.RLock()
 	defer u.RUnlock()
-
-	if IsUpdateStateTerminal(u.state) {
-		log.WithFields(log.Fields{
-			"update_id": u.id.GetValue(),
-			"job_id":    u.jobID.GetValue(),
-			"state":     u.state.String(),
-			"field":     "instancesUpdated",
-		}).Warn("accessing fields in terminated update which can be stale")
-	}
 
 	instances := make([]uint32, len(u.instancesUpdated))
 	copy(instances, u.instancesUpdated)
@@ -826,15 +606,6 @@ func (u *update) GetInstancesDone() []uint32 {
 	u.RLock()
 	defer u.RUnlock()
 
-	if IsUpdateStateTerminal(u.state) {
-		log.WithFields(log.Fields{
-			"update_id": u.id.GetValue(),
-			"job_id":    u.jobID.GetValue(),
-			"state":     u.state.String(),
-			"field":     "instancesDone",
-		}).Warn("accessing fields in terminated update which can be stale")
-	}
-
 	instances := make([]uint32, len(u.instancesDone))
 	copy(instances, u.instancesDone)
 	return instances
@@ -843,15 +614,6 @@ func (u *update) GetInstancesDone() []uint32 {
 func (u *update) GetInstancesRemoved() []uint32 {
 	u.RLock()
 	defer u.RUnlock()
-
-	if IsUpdateStateTerminal(u.state) {
-		log.WithFields(log.Fields{
-			"update_id": u.id.GetValue(),
-			"job_id":    u.jobID.GetValue(),
-			"state":     u.state.String(),
-			"field":     "instancesRemoved",
-		}).Warn("accessing fields in terminated update which can be stale")
-	}
 
 	instances := make([]uint32, len(u.instancesRemoved))
 	copy(instances, u.instancesRemoved)
@@ -944,6 +706,7 @@ func (u *update) clearCache() {
 	u.prevState = pbupdate.State_INVALID
 	u.instancesTotal = nil
 	u.instancesDone = nil
+	u.instancesFailed = nil
 	u.instancesCurrent = nil
 	u.instancesAdded = nil
 	u.instancesUpdated = nil
@@ -951,60 +714,27 @@ func (u *update) clearCache() {
 	u.workflowType = models.WorkflowType_UNKNOWN
 }
 
-func validateInput(
-	jobConfig *pbjob.JobConfig,
-	prevJobConfig *pbjob.JobConfig,
-	instanceAdded []uint32,
-	instanceUpdated []uint32,
-	instanceRemoved []uint32,
-) error {
-	// validate all instances in instanceUpdated is within old
-	// instance config range
-	for _, instanceID := range instanceUpdated {
-		if instanceID >= prevJobConfig.GetInstanceCount() {
-			return yarpcerrors.InvalidArgumentErrorf(
-				"instance %d is out side of range for update", instanceID)
-		}
-	}
-
-	// validate all instances in instanceAdded is within new
-	// instance config range
-	for _, instanceID := range instanceAdded {
-		if instanceID >= jobConfig.GetInstanceCount() {
-			return yarpcerrors.InvalidArgumentErrorf(
-				"instance %d is out side of range for add", instanceID)
-		}
-	}
-
-	// validate all removed instances is within old instance config range
-	for _, instanceID := range instanceRemoved {
-		if instanceID >= prevJobConfig.GetInstanceCount() {
-			return yarpcerrors.InvalidArgumentErrorf(
-				"instance %d is out side of range for update", instanceID)
-		}
-	}
-
-	return nil
-}
-
 // GetUpdateProgress iterates through instancesToCheck and check if they are running and
 // their current config version is the same as the desired config version.
 // TODO: find the right place to put the func
 func GetUpdateProgress(
 	ctx context.Context,
-	cachedJob Job,
+	jobID *peloton.JobID,
 	cachedUpdate Update,
 	desiredConfigVersion uint64,
 	instancesToCheck []uint32,
+	taskStore storage.TaskStore,
 ) (instancesCurrent []uint32, instancesDone []uint32, instancesFailed []uint32, err error) {
+	// TODO: figure out if cache can be used to read task runtime
 	return getUpdateProgress(
 		ctx,
-		cachedJob,
+		jobID,
 		cachedUpdate,
 		cachedUpdate.GetUpdateConfig().GetMaxInstanceAttempts(),
 		desiredConfigVersion,
 		instancesToCheck,
 		cachedUpdate.GetInstancesRemoved(),
+		taskStore,
 	)
 }
 
@@ -1012,38 +742,27 @@ func GetUpdateProgress(
 // Therefore it can be used inside of cachedUpdate without deadlock risk.
 func getUpdateProgress(
 	ctx context.Context,
-	cachedJob Job,
+	jobID *peloton.JobID,
 	strategy WorkflowStrategy,
 	maxInstanceAttempts uint32,
 	desiredConfigVersion uint64,
 	instancesToCheck []uint32,
 	instancesRemoved []uint32,
+	taskStore storage.TaskStore,
 ) (instancesCurrent []uint32, instancesDone []uint32, instancesFailed []uint32, err error) {
 	for _, instID := range instancesToCheck {
-		cachedTask, err := cachedJob.AddTask(ctx, instID)
-		// task is not created, this can happen when an update
-		// adds more instances or instance is being removed
-		if yarpcerrors.IsNotFound(err) ||
-			err == InstanceIDExceedsInstanceCountError {
-			if contains(instID, instancesRemoved) {
-				instancesDone = append(instancesDone, instID)
-			}
-			continue
-		}
-
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
-		runtime, err := cachedTask.GetRunTime(ctx)
+		runtime, err := taskStore.GetTaskRuntime(ctx, jobID, instID)
 		if err != nil {
 			if yarpcerrors.IsNotFound(err) {
-				// should never happen, so dump a sentry error
-				log.WithFields(log.Fields{
-					"job_id":      cachedJob.ID().GetValue(),
-					"instance_id": instID,
-				}).Error(
-					"instance in cache but runtime is missing from DB during update")
+				if contains(instID, instancesRemoved) {
+					instancesDone = append(instancesDone, instID)
+				} else {
+					log.WithFields(log.Fields{
+						"job_id":      jobID.GetValue(),
+						"instance_id": instID,
+					}).Error(
+						"instance in cache but runtime is missing from DB during update")
+				}
 				continue
 			}
 			return nil, nil, nil, err
@@ -1066,7 +785,7 @@ func getUpdateProgress(
 // of a given task has changed from its current configuration.
 func hasInstanceConfigChanged(
 	ctx context.Context,
-	cachedJob Job,
+	jobID *peloton.JobID,
 	instID uint32,
 	configVersion uint64,
 	newJobConfig *pbjob.JobConfig,
@@ -1083,7 +802,7 @@ func hasInstanceConfigChanged(
 	// version because the previous update may not have succeeded.
 	// So, fetch the task configuration of the task from the DB.
 	prevTaskConfig, _, err := taskStore.GetTaskConfig(
-		ctx, cachedJob.ID(), instID, configVersion)
+		ctx, jobID, instID, configVersion)
 	if err != nil {
 		if yarpcerrors.IsNotFound(err) {
 			//  configuration not found, just update it
@@ -1104,7 +823,7 @@ func hasInstanceConfigChanged(
 // instances which have been updated.
 func GetInstancesToProcessForUpdate(
 	ctx context.Context,
-	cachedJob Job,
+	jobID *peloton.JobID,
 	prevJobConfig *pbjob.JobConfig,
 	newJobConfig *pbjob.JobConfig,
 	taskStore storage.TaskStore,
@@ -1118,7 +837,7 @@ func GetInstancesToProcessForUpdate(
 
 	taskRuntimes, err = taskStore.GetTaskRuntimesForJobByRange(
 		ctx,
-		cachedJob.ID(),
+		jobID,
 		nil,
 	)
 	if err != nil {
@@ -1139,7 +858,7 @@ func GetInstancesToProcessForUpdate(
 
 			changed, err = hasInstanceConfigChanged(
 				ctx,
-				cachedJob,
+				jobID,
 				instID,
 				runtime.GetConfigVersion(),
 				newJobConfig,

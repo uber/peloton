@@ -35,14 +35,13 @@ const (
 
 type JobmgrTaskUtilTestSuite struct {
 	suite.Suite
-	ctrl               *gomock.Controller
-	ctx                context.Context
-	mockHostMgr        *host_mocks.MockInternalHostServiceYARPCClient
-	jobID              string
-	instanceID         int32
-	mesosTaskID        string
-	taskInfo           *task.TaskInfo
-	taskInfoWithHealth *task.TaskInfo
+	ctrl        *gomock.Controller
+	ctx         context.Context
+	mockHostMgr *host_mocks.MockInternalHostServiceYARPCClient
+	jobID       string
+	instanceID  int32
+	mesosTaskID string
+	taskInfo    *task.TaskInfo
 }
 
 func (suite *JobmgrTaskUtilTestSuite) TearDownTest() {

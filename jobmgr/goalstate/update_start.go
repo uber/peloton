@@ -15,21 +15,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// fetchUpdateAndJobFromCache is a helper function to fetch the
-// update and the job from the cache for a given update entity.
-func fetchUpdateAndJobFromCache(
+// fetchWorkflowAndJobFromCache is a helper function to fetch the
+// workflow and the job from the cache for a given update entity.
+func fetchWorkflowAndJobFromCache(
 	ctx context.Context,
+	jobID *peloton.JobID,
 	updateID *peloton.UpdateID,
-	goalStateDriver *driver) (
-	cachedUpdate cached.Update, cachedJob cached.Job, err error) {
-	// first fetch the update
-	cachedUpdate = goalStateDriver.updateFactory.GetUpdate(updateID)
-	if cachedUpdate == nil {
-		return
-	}
-
-	// now lets fetch the job
-	jobID := cachedUpdate.JobID()
+	goalStateDriver *driver,
+) (cachedWorkflow cached.Update, cachedJob cached.Job, err error) {
+	// first fetch the job
 	cachedJob = goalStateDriver.jobFactory.GetJob(jobID)
 	if cachedJob == nil {
 		// if job has been untracked, cancel the update and then enqueue into
@@ -39,11 +33,17 @@ func fetchUpdateAndJobFromCache(
 				"job_id":    jobID.GetValue(),
 				"update_id": updateID.GetValue(),
 			}).Info("job has been deleted, so canceling the update as well")
-		err = cachedUpdate.Cancel(ctx)
+		cachedJob = goalStateDriver.jobFactory.AddJob(jobID)
+		err = cachedJob.AddWorkflow(updateID).Cancel(ctx)
 		if err == nil {
 			goalStateDriver.EnqueueUpdate(jobID, updateID, time.Now())
 		}
+		// clean up the job since it is untracked before
+		goalStateDriver.EnqueueJob(jobID, time.Now())
+		cachedJob = nil
+		return
 	}
+	cachedWorkflow = cachedJob.AddWorkflow(updateID)
 	return
 }
 
@@ -105,23 +105,22 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 		Info("update starting")
 
 	// fetch the update and job from the cache
-	cachedUpdate, cachedJob, err := fetchUpdateAndJobFromCache(
-		ctx, updateEnt.id, goalStateDriver)
-	if err != nil {
-		goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)
+	cachedWorkflow, cachedJob, err := fetchWorkflowAndJobFromCache(
+		ctx, updateEnt.jobID, updateEnt.id, goalStateDriver)
+	if err != nil || cachedWorkflow == nil || cachedJob == nil {
+		goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
 		return err
 	}
-	if cachedUpdate == nil || cachedJob == nil {
-		goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)
-		return nil
+	if cachedWorkflow.GetState().State == update.State_INVALID {
+		return UpdateReload(ctx, entity)
 	}
 
-	jobID := cachedUpdate.JobID()
+	jobID := cachedWorkflow.JobID()
 	// fetch the job configuration first
 	jobConfig, systemLabels, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
 		ctx,
 		jobID,
-		cachedUpdate.GetGoalState().JobVersion)
+		cachedWorkflow.GetGoalState().JobVersion)
 	if err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)
 		return err
@@ -137,7 +136,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	if cachedUpdate.GetWorkflowType() == models.WorkflowType_UPDATE {
+	if cachedWorkflow.GetWorkflowType() == models.WorkflowType_UPDATE {
 		// Populate instancesAdded, instancesUpdated and instancesRemoved
 		// by the update. This is not done in the handler because the previous
 		// update may be running when this current update was created, and
@@ -148,7 +147,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 		prevJobConfig, _, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
 			ctx,
 			jobID,
-			cachedUpdate.GetState().JobVersion,
+			cachedWorkflow.GetState().JobVersion,
 		)
 		if err != nil {
 			goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)
@@ -157,7 +156,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 
 		instancesAdded, instancesUpdated, instancesRemoved, err := cached.GetInstancesToProcessForUpdate(
 			ctx,
-			cachedJob,
+			cachedJob.ID(),
 			prevJobConfig,
 			jobConfig,
 			goalStateDriver.taskStore,
@@ -167,7 +166,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 			return err
 		}
 
-		if err := cachedUpdate.Modify(
+		if err := cachedWorkflow.Modify(
 			ctx,
 			instancesAdded,
 			instancesUpdated,
@@ -181,13 +180,13 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 	// update the configuration and desired configuration version of
 	// all instances which do not need to be updated
 	if err = handleUnchangedInstancesInUpdate(
-		ctx, cachedUpdate, cachedJob, jobConfig); err != nil {
+		ctx, cachedWorkflow, cachedJob, jobConfig); err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)
 		return err
 	}
 
 	// update the state of the job update
-	if err = cachedUpdate.WriteProgress(
+	if err = cachedWorkflow.WriteProgress(
 		ctx,
 		update.State_ROLLING_FORWARD,
 		[]uint32{},

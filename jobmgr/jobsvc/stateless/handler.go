@@ -27,7 +27,6 @@ import (
 type serviceHandler struct {
 	jobStore        storage.JobStore
 	jobFactory      cached.JobFactory
-	updateFactory   cached.UpdateFactory
 	goalStateDriver goalstate.Driver
 	candidate       leader.Candidate
 }
@@ -37,14 +36,12 @@ func InitV1AlphaJobServiceHandler(
 	d *yarpc.Dispatcher,
 	jobStore storage.JobStore,
 	jobFactory cached.JobFactory,
-	updateFactory cached.UpdateFactory,
 	goalStateDriver goalstate.Driver,
 	candidate leader.Candidate,
 ) {
 	handler := &serviceHandler{
 		jobStore:        jobStore,
 		jobFactory:      jobFactory,
-		updateFactory:   updateFactory,
 		goalStateDriver: goalStateDriver,
 		candidate:       candidate,
 	}
@@ -215,14 +212,14 @@ func (h *serviceHandler) GetJobCache(
 		return nil, errors.Wrap(err, "fail to get job config")
 	}
 
-	var cachedUpdate cached.Update
+	var cachedWorkflow cached.Update
 	if len(runtime.GetUpdateID().GetValue()) > 0 {
-		cachedUpdate = h.updateFactory.GetUpdate(runtime.GetUpdateID())
+		cachedWorkflow = cachedJob.GetWorkflow(runtime.GetUpdateID())
 	}
 
 	return &svc.GetJobCacheResponse{
 		Spec:   convertToJobSpec(config),
-		Status: convertToJobStatus(runtime, cachedUpdate),
+		Status: convertToJobStatus(runtime, cachedWorkflow),
 	}, nil
 }
 
@@ -258,7 +255,7 @@ func convertToJobSpec(config jobmgrcommon.JobConfig) *stateless.JobSpec {
 
 func convertToJobStatus(
 	runtime *pbjob.RuntimeInfo,
-	cachedUpdate cached.Update,
+	cachedWorkflow cached.Update,
 ) *stateless.JobStatus {
 	result := &stateless.JobStatus{}
 	result.Revision = &v1alphapeloton.Revision{
@@ -273,22 +270,22 @@ func convertToJobStatus(
 	result.DesiredState = stateless.JobState(runtime.GetGoalState())
 	result.Version = jobutil.GetEntityVersion(runtime.GetConfigurationVersion())
 
-	if cachedUpdate == nil {
+	if cachedWorkflow == nil {
 		return result
 	}
 
 	workflowStatus := &stateless.WorkflowStatus{}
-	workflowStatus.Type = stateless.WorkflowType(cachedUpdate.GetWorkflowType())
-	workflowStatus.State = stateless.WorkflowState(cachedUpdate.GetState().State)
-	workflowStatus.NumInstancesCompleted = uint32(len(cachedUpdate.GetInstancesDone()))
-	workflowStatus.NumInstancesFailed = uint32(len(cachedUpdate.GetInstancesFailed()))
+	workflowStatus.Type = stateless.WorkflowType(cachedWorkflow.GetWorkflowType())
+	workflowStatus.State = stateless.WorkflowState(cachedWorkflow.GetState().State)
+	workflowStatus.NumInstancesCompleted = uint32(len(cachedWorkflow.GetInstancesDone()))
+	workflowStatus.NumInstancesFailed = uint32(len(cachedWorkflow.GetInstancesFailed()))
 	workflowStatus.NumInstancesRemaining =
-		uint32(len(cachedUpdate.GetGoalState().Instances) -
-			len(cachedUpdate.GetInstancesDone()) -
-			len(cachedUpdate.GetInstancesFailed()))
-	workflowStatus.CurrentInstances = cachedUpdate.GetInstancesCurrent()
-	workflowStatus.PrevVersion = jobutil.GetEntityVersion(cachedUpdate.GetState().JobVersion)
-	workflowStatus.Version = jobutil.GetEntityVersion(cachedUpdate.GetGoalState().JobVersion)
+		uint32(len(cachedWorkflow.GetGoalState().Instances) -
+			len(cachedWorkflow.GetInstancesDone()) -
+			len(cachedWorkflow.GetInstancesFailed()))
+	workflowStatus.CurrentInstances = cachedWorkflow.GetInstancesCurrent()
+	workflowStatus.PrevVersion = jobutil.GetEntityVersion(cachedWorkflow.GetState().JobVersion)
+	workflowStatus.Version = jobutil.GetEntityVersion(cachedWorkflow.GetGoalState().JobVersion)
 
 	result.WorkflowStatus = workflowStatus
 	return result

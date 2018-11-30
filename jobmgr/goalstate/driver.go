@@ -126,7 +126,6 @@ func NewDriver(
 	volumeStore storage.PersistentVolumeStore,
 	updateStore storage.UpdateStore,
 	jobFactory cached.JobFactory,
-	updateFactory cached.UpdateFactory,
 	taskLauncher launcher.Launcher,
 	jobType job.JobType,
 	parentScope tally.Scope,
@@ -156,16 +155,15 @@ func NewDriver(
 			d.ClientConfig(common.PelotonHostManager)),
 		resmgrClient: resmgrsvc.NewResourceManagerServiceYARPCClient(
 			d.ClientConfig(common.PelotonResourceManager)),
-		jobStore:      jobStore,
-		taskStore:     taskStore,
-		volumeStore:   volumeStore,
-		updateStore:   updateStore,
-		jobFactory:    jobFactory,
-		updateFactory: updateFactory,
-		taskLauncher:  taskLauncher,
-		mtx:           NewMetrics(scope),
-		cfg:           &cfg,
-		jobType:       jobType,
+		jobStore:     jobStore,
+		taskStore:    taskStore,
+		volumeStore:  volumeStore,
+		updateStore:  updateStore,
+		jobFactory:   jobFactory,
+		taskLauncher: taskLauncher,
+		mtx:          NewMetrics(scope),
+		cfg:          &cfg,
+		jobType:      jobType,
 	}
 }
 
@@ -213,8 +211,6 @@ type driver struct {
 
 	// jobFactory is the in-memory cache object fpr jobs and tasks
 	jobFactory cached.JobFactory
-	// updateFactory is the in-memory cache object for updates
-	updateFactory cached.UpdateFactory
 
 	// taskLauncher is used to launch tasks to host manager
 	taskLauncher launcher.Launcher
@@ -440,15 +436,6 @@ func (d *driver) Stop() {
 	d.jobEngine.Stop()
 	d.Unlock()
 
-	// Cleanup all updates from the goal state engine
-	updates := d.updateFactory.GetAllUpdates()
-	for updateID, cachedUpdate := range updates {
-		d.DeleteUpdate(
-			cachedUpdate.JobID(),
-			&peloton.UpdateID{Value: updateID},
-		)
-	}
-
 	// Cleanup tasks and jobs from the goal state engine
 	jobs := d.jobFactory.GetAllJobs()
 	for jobID, cachedJob := range jobs {
@@ -461,6 +448,16 @@ func (d *driver) Stop() {
 		d.DeleteJob(&peloton.JobID{
 			Value: jobID,
 		})
+
+		workflows := cachedJob.GetAllWorkflows()
+		for updateID := range workflows {
+			d.DeleteUpdate(&peloton.JobID{
+				Value: jobID,
+			},
+				&peloton.UpdateID{
+					Value: updateID,
+				})
+		}
 	}
 
 	atomic.StoreInt32(&d.running, int32(notRunning))

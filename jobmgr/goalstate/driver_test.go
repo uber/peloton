@@ -38,7 +38,6 @@ type DriverTestSuite struct {
 	jobStore              *storemocks.MockJobStore
 	taskStore             *storemocks.MockTaskStore
 	jobFactory            *cachedmocks.MockJobFactory
-	updateFactory         *cachedmocks.MockUpdateFactory
 	goalStateDriver       *driver
 	cachedJob             *cachedmocks.MockJob
 	jobID                 *peloton.JobID
@@ -58,18 +57,16 @@ func (suite *DriverTestSuite) SetupTest() {
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
-	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
 	suite.goalStateDriver = &driver{
-		jobEngine:     suite.jobGoalStateEngine,
-		taskEngine:    suite.taskGoalStateEngine,
-		updateEngine:  suite.updateGoalStateEngine,
-		jobStore:      suite.jobStore,
-		taskStore:     suite.taskStore,
-		jobFactory:    suite.jobFactory,
-		updateFactory: suite.updateFactory,
-		mtx:           NewMetrics(tally.NoopScope),
-		cfg:           &Config{},
-		jobType:       job.JobType_BATCH,
+		jobEngine:    suite.jobGoalStateEngine,
+		taskEngine:   suite.taskGoalStateEngine,
+		updateEngine: suite.updateGoalStateEngine,
+		jobStore:     suite.jobStore,
+		taskStore:    suite.taskStore,
+		jobFactory:   suite.jobFactory,
+		mtx:          NewMetrics(tally.NoopScope),
+		cfg:          &Config{},
+		jobType:      job.JobType_BATCH,
 	}
 	suite.goalStateDriver.cfg.normalize()
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
@@ -106,7 +103,6 @@ func (suite *DriverTestSuite) TestNewDriver() {
 		volumeStore,
 		updateStore,
 		suite.jobFactory,
-		suite.updateFactory,
 		taskLauncher,
 		job.JobType_SERVICE,
 		tally.NoopScope,
@@ -609,13 +605,12 @@ func (suite *DriverTestSuite) TestEngineStartStop() {
 	suite.jobGoalStateEngine.EXPECT().Stop()
 	suite.taskGoalStateEngine.EXPECT().Stop()
 	suite.updateGoalStateEngine.EXPECT().Stop()
-	suite.updateFactory.EXPECT().GetAllUpdates().Return(updateMap)
-	cachedUpdate.EXPECT().JobID().Return(suite.jobID)
-	suite.updateGoalStateEngine.EXPECT().Delete(gomock.Any())
 	suite.jobFactory.EXPECT().GetAllJobs().Return(jobMap)
 	suite.cachedJob.EXPECT().GetAllTasks().Return(taskMap)
+	suite.cachedJob.EXPECT().GetAllWorkflows().Return(updateMap)
 	suite.taskGoalStateEngine.EXPECT().Delete(gomock.Any())
 	suite.jobGoalStateEngine.EXPECT().Delete(gomock.Any())
+	suite.updateGoalStateEngine.EXPECT().Delete(gomock.Any())
 
 	suite.goalStateDriver.Stop()
 }

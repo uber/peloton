@@ -57,7 +57,6 @@ func InitServiceHandler(
 	updateStore storage.UpdateStore,
 	frameworkInfoStore storage.FrameworkInfoStore,
 	jobFactory cached.JobFactory,
-	updateFactory cached.UpdateFactory,
 	goalStateDriver goalstate.Driver,
 	candidate leader.Candidate,
 	mesosAgentWorkDir string,
@@ -74,7 +73,6 @@ func InitServiceHandler(
 		resmgrClient:       resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		taskLauncher:       launcher.GetLauncher(),
 		jobFactory:         jobFactory,
-		updateFactory:      updateFactory,
 		goalStateDriver:    goalStateDriver,
 		candidate:          candidate,
 		mesosAgentWorkDir:  mesosAgentWorkDir,
@@ -95,7 +93,6 @@ type serviceHandler struct {
 	resmgrClient       resmgrsvc.ResourceManagerServiceYARPCClient
 	taskLauncher       launcher.Launcher
 	jobFactory         cached.JobFactory
-	updateFactory      cached.UpdateFactory
 	goalStateDriver    goalstate.Driver
 	candidate          leader.Candidate
 	mesosAgentWorkDir  string
@@ -943,9 +940,9 @@ func (m *serviceHandler) getHostInfoWithTaskID(
 	}
 
 	if len(events) == 0 {
-		return "", "", errors.New(
-			fmt.Sprintf("no pod events present for job_id: %s, instance_id: %d, run_id: %s",
-				jobID.GetValue(), instanceID, taskID))
+		return "", "",
+			yarpcerrors.NotFoundErrorf("no pod events present for job_id: %s, instance_id: %d, run_id: %s",
+				jobID.GetValue(), instanceID, taskID)
 	}
 	terminalEvent := events[0]
 

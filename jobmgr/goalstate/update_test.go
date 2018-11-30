@@ -18,7 +18,8 @@ import (
 type UpdateGoalStateTestSuite struct {
 	suite.Suite
 	ctrl            *gomock.Controller
-	updateFactory   *cachedmocks.MockUpdateFactory
+	jobFactory      *cachedmocks.MockJobFactory
+	cachedJob       *cachedmocks.MockJob
 	goalStateDriver *driver
 	jobID           *peloton.JobID
 	updateID        *peloton.UpdateID
@@ -31,11 +32,12 @@ func TestUpdateGoalState(t *testing.T) {
 
 func (suite *UpdateGoalStateTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
-	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
+	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
+	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.goalStateDriver = &driver{
-		updateFactory: suite.updateFactory,
-		mtx:           NewMetrics(tally.NoopScope),
-		cfg:           &Config{},
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
+		jobFactory: suite.jobFactory,
 	}
 	suite.goalStateDriver.cfg.normalize()
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
@@ -65,8 +67,12 @@ func (suite *UpdateGoalStateTestSuite) TestUpdateStateAndGoalState() {
 		Instances: []uint32{2, 3, 4, 5, 6},
 	}
 
-	suite.updateFactory.EXPECT().
-		AddUpdate(suite.updateID).
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
 		Return(cachedUpdate)
 
 	cachedUpdate.EXPECT().
@@ -83,8 +89,12 @@ func (suite *UpdateGoalStateTestSuite) TestUpdateStateAndGoalState() {
 		Instances: []uint32{2, 3, 4, 5, 6},
 	}
 
-	suite.updateFactory.EXPECT().
-		AddUpdate(suite.updateID).
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
 		Return(cachedUpdate)
 
 	cachedUpdate.EXPECT().

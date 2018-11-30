@@ -45,6 +45,7 @@ type jobFactory struct {
 	running     bool                          // whether job factory is running
 	jobStore    storage.JobStore              // storage job store object
 	taskStore   storage.TaskStore             // storage task store object
+	updateStore storage.UpdateStore           // storage update store object
 	volumeStore storage.PersistentVolumeStore // storage volume store object
 	mtx         *Metrics                      // cache metrics
 	// Tob/task listeners. This list is immutable after object is created.
@@ -58,6 +59,7 @@ type jobFactory struct {
 func InitJobFactory(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
+	updateStore storage.UpdateStore,
 	volumeStore storage.PersistentVolumeStore,
 	parentScope tally.Scope,
 	listeners []JobTaskListener) JobFactory {
@@ -65,6 +67,7 @@ func InitJobFactory(
 		jobs:        map[string]*job{},
 		jobStore:    jobStore,
 		taskStore:   taskStore,
+		updateStore: updateStore,
 		volumeStore: volumeStore,
 		mtx:         NewMetrics(parentScope.SubScope("cache")),
 		listeners:   listeners,

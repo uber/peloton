@@ -31,7 +31,6 @@ type UpdateActionsTestSuite struct {
 	updateStore           *storemocks.MockUpdateStore
 	taskStore             *storemocks.MockTaskStore
 	jobFactory            *cachedmocks.MockJobFactory
-	updateFactory         *cachedmocks.MockUpdateFactory
 	updateGoalStateEngine *goalstatemocks.MockEngine
 	jobGoalStateEngine    *goalstatemocks.MockEngine
 	goalStateDriver       *driver
@@ -52,18 +51,16 @@ func (suite *UpdateActionsTestSuite) SetupTest() {
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
-	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
 	suite.updateGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.goalStateDriver = &driver{
-		updateStore:   suite.updateStore,
-		taskStore:     suite.taskStore,
-		jobFactory:    suite.jobFactory,
-		updateFactory: suite.updateFactory,
-		updateEngine:  suite.updateGoalStateEngine,
-		jobEngine:     suite.jobGoalStateEngine,
-		mtx:           NewMetrics(tally.NoopScope),
-		cfg:           &Config{},
+		updateStore:  suite.updateStore,
+		taskStore:    suite.taskStore,
+		jobFactory:   suite.jobFactory,
+		updateEngine: suite.updateGoalStateEngine,
+		jobEngine:    suite.jobGoalStateEngine,
+		mtx:          NewMetrics(tally.NoopScope),
+		cfg:          &Config{},
 	}
 	suite.goalStateDriver.cfg.normalize()
 
@@ -89,8 +86,12 @@ func (suite *UpdateActionsTestSuite) TearDownTest() {
 // engine needs to be aborted
 func (suite *UpdateActionsTestSuite) TestUpdateCheckIfAbortedRuntimeGetFail() {
 	suite.jobFactory.EXPECT().
-		AddJob(suite.jobID).
+		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateEnt.id).
+		Return(suite.cachedUpdate)
 
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
@@ -108,15 +109,18 @@ func (suite *UpdateActionsTestSuite) TestUpdateCheckIfAbortedRunUpdate() {
 	}
 
 	suite.jobFactory.EXPECT().
-		AddJob(suite.jobID).
+		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateEnt.id).
+		Return(suite.cachedUpdate)
 
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
 		Return(jobRuntime, nil)
 
-	err := UpdateAbortIfNeeded(context.Background(), suite.updateEnt)
-	suite.NoError(err)
+	suite.NoError(UpdateAbortIfNeeded(context.Background(), suite.updateEnt))
 }
 
 // TestUpdateCheckIfAbortedUpdateAbort tests that the current update in the
@@ -125,25 +129,22 @@ func (suite *UpdateActionsTestSuite) TestUpdateCheckIfAbortedUpdateAbort() {
 	jobRuntime := &pbjob.RuntimeInfo{
 		UpdateID: &peloton.UpdateID{Value: uuid.NewRandom().String()},
 	}
-	updateInfo := &models.UpdateModel{
-		State: pbupdate.State_ABORTED,
-	}
 
 	suite.jobFactory.EXPECT().
-		AddJob(suite.jobID).
+		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateEnt.id).
+		Return(suite.cachedUpdate)
 
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
 		Return(jobRuntime, nil)
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.updateStore.EXPECT().
-		GetUpdateProgress(gomock.Any(), suite.updateID).
-		Return(updateInfo, nil)
+	suite.cachedUpdate.EXPECT().
+		Cancel(gomock.Any()).
+		Return(nil)
 
 	err := UpdateAbortIfNeeded(context.Background(), suite.updateEnt)
 	suite.True(yarpcerrors.IsAborted(err))
@@ -159,29 +160,32 @@ func (suite *UpdateActionsTestSuite) TestUpdateCheckIfAbortedUpdateAbortFail() {
 	}
 
 	suite.jobFactory.EXPECT().
-		AddJob(suite.jobID).
+		GetJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateEnt.id).
+		Return(suite.cachedUpdate)
 
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
 		Return(jobRuntime, nil)
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
+	suite.cachedUpdate.EXPECT().
+		Cancel(gomock.Any()).
+		Return(yarpcerrors.InternalErrorf("test error"))
 
-	suite.updateStore.EXPECT().
-		GetUpdateProgress(gomock.Any(), suite.updateID).
-		Return(nil, fmt.Errorf("fake db error"))
-
-	err := UpdateAbortIfNeeded(context.Background(), suite.updateEnt)
-	suite.EqualError(err, "fake db error")
+	suite.Error(UpdateAbortIfNeeded(context.Background(), suite.updateEnt))
 }
 
 // TestUpdateReload tests reloading the update from the DB
 func (suite *UpdateActionsTestSuite) TestUpdateReload() {
-	suite.updateFactory.EXPECT().
-		AddUpdate(suite.updateID).
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateEnt.id).
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
@@ -201,8 +205,12 @@ func (suite *UpdateActionsTestSuite) TestUpdateReload() {
 // TestUpdateReloadNotExists tests reloading an update which
 // does not exist in the DB
 func (suite *UpdateActionsTestSuite) TestUpdateReloadNotExists() {
-	suite.updateFactory.EXPECT().
-		AddUpdate(suite.updateID).
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateEnt.id).
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
@@ -217,14 +225,14 @@ func (suite *UpdateActionsTestSuite) TestUpdateReloadNotExists() {
 		GetRuntime(gomock.Any()).
 		Return(&pbjob.RuntimeInfo{}, nil)
 
+	suite.cachedJob.EXPECT().
+		ClearWorkflow(suite.updateEnt.id)
+
 	suite.updateGoalStateEngine.EXPECT().
 		Delete(gomock.Any()).
 		Do(func(updateEntity goalstate.Entity) {
 			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
 		})
-
-	suite.updateFactory.EXPECT().
-		ClearUpdate(suite.updateID)
 
 	suite.updateStore.EXPECT().
 		GetUpdatesForJob(gomock.Any(), suite.jobID).
@@ -240,15 +248,20 @@ func (suite *UpdateActionsTestSuite) TestUpdateRollingForwardComplete() {
 	instancesDone := []uint32{4, 5}
 	instancesFailed := []uint32{2, 3}
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
-		})
+		}).
+		Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
@@ -283,15 +296,20 @@ func (suite *UpdateActionsTestSuite) TestUpdateRollingBackwardComplete() {
 	instancesDone := []uint32{4, 5}
 	instancesFailed := []uint32{2, 3}
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_BACKWARD,
-		})
+		}).
+		Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
@@ -323,9 +341,35 @@ func (suite *UpdateActionsTestSuite) TestUpdateRollingBackwardComplete() {
 // TestUpdateCompleteMissingInCache tests completing an update which
 // is not present in the cache
 func (suite *UpdateActionsTestSuite) TestUpdateCompleteMissingInCache() {
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_INVALID,
+		})
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		Recover(gomock.Any()).
 		Return(nil)
+
+	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
 
 	err := UpdateComplete(context.Background(), suite.updateEnt)
 	suite.NoError(err)
@@ -335,15 +379,20 @@ func (suite *UpdateActionsTestSuite) TestUpdateCompleteMissingInCache() {
 func (suite *UpdateActionsTestSuite) TestUpdateCompleteDBError() {
 	instancesTotal := []uint32{2, 3, 4, 5}
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
-		})
+		}).
+		Times(2)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
@@ -409,8 +458,9 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrack() {
 			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
 		})
 
-	suite.updateFactory.EXPECT().
-		ClearUpdate(suite.updateID)
+	suite.cachedJob.EXPECT().
+		ClearWorkflow(suite.updateID).
+		Return()
 
 	suite.updateStore.EXPECT().
 		GetUpdatesForJob(gomock.Any(), suite.jobID).
@@ -456,8 +506,9 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrackTerminatedJob() {
 			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
 		})
 
-	suite.updateFactory.EXPECT().
-		ClearUpdate(suite.updateID)
+	suite.cachedJob.EXPECT().
+		ClearWorkflow(suite.updateID).
+		Return()
 
 	suite.updateStore.EXPECT().
 		GetUpdatesForJob(gomock.Any(), suite.jobID).
@@ -498,8 +549,9 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrackNewUpdate() {
 			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
 		})
 
-	suite.updateFactory.EXPECT().
-		ClearUpdate(suite.updateID)
+	suite.cachedJob.EXPECT().
+		ClearWorkflow(suite.updateID).
+		Return()
 
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
@@ -522,21 +574,21 @@ func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 	newJobVersion := uint64(2)
 	updateConfig := &pbupdate.UpdateConfig{}
 
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateEnt.id).
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
 		Return(instancesCurrent)
 
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).
-		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID)
 
 	suite.cachedUpdate.EXPECT().
 		GetGoalState().
@@ -549,10 +601,6 @@ func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 		Return(instancesCurrent)
 
 	for i, instanceID := range instancesCurrent {
-		suite.cachedJob.EXPECT().
-			AddTask(gomock.Any(), instanceID).
-			Return(suite.cachedTask, nil)
-
 		// the first instance has finished update,
 		// the second is failed,
 		// rest is still updating
@@ -563,8 +611,8 @@ func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 				ConfigVersion:        newJobVersion,
 				DesiredConfigVersion: newJobVersion,
 			}
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
+			suite.taskStore.EXPECT().
+				GetTaskRuntime(gomock.Any(), suite.jobID, instanceID).
 				Return(runtime, nil)
 
 			suite.cachedUpdate.EXPECT().
@@ -577,8 +625,8 @@ func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 				ConfigVersion:        newJobVersion,
 				DesiredConfigVersion: newJobVersion,
 			}
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
+			suite.taskStore.EXPECT().
+				GetTaskRuntime(gomock.Any(), suite.jobID, instanceID).
 				Return(runtime, nil)
 
 			suite.cachedUpdate.EXPECT().
@@ -595,8 +643,8 @@ func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 				DesiredConfigVersion: newJobVersion,
 			}
 
-			suite.cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
+			suite.taskStore.EXPECT().
+				GetTaskRuntime(gomock.Any(), suite.jobID, instanceID).
 				Return(runtime, nil)
 
 			suite.cachedUpdate.EXPECT().
@@ -637,6 +685,13 @@ func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 		Return([]uint32{})
 
 	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State:     pbupdate.State_PAUSED,
+			Instances: append(instancesDone, instancesFailed...),
+		})
+
+	suite.cachedUpdate.EXPECT().
 		WriteProgress(
 			gomock.Any(),
 			pbupdate.State_PAUSED,
@@ -659,39 +714,56 @@ func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressSuccess() {
 // TestUpdateWriteProgressMissingCache test the failure case of UpdateWriteProgress
 // because of missing cache
 func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressMissingCache() {
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(nil)
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	err := UpdateWriteProgress(context.Background(), suite.updateEnt)
-	suite.NoError(err)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
-		GetInstancesCurrent().
-		Return([]uint32{0, 1, 2})
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_INVALID,
+		})
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		Recover(gomock.Any()).
 		Return(nil)
 
-	err = UpdateWriteProgress(context.Background(), suite.updateEnt)
+	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	err := UpdateWriteProgress(context.Background(), suite.updateEnt)
 	suite.NoError(err)
 }
 
 // TestUpdateWriteProgressNoUpdatingInstance test the case that there is no instance
 // in update
 func (suite *UpdateActionsTestSuite) TestUpdateWriteProgressNoUpdatingInstance() {
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateEnt.id).
 		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_ROLLING_FORWARD,
+		})
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().

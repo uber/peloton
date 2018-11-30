@@ -2,12 +2,14 @@ package goalstate
 
 import (
 	"context"
+	"time"
 
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
+	"code.uber.internal/infra/peloton/jobmgr/cached"
 	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
 	updateutil "code.uber.internal/infra/peloton/jobmgr/util/update"
 
@@ -47,13 +49,19 @@ func TaskTerminatedRetry(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	if shouldTaskRetry(
-		taskEnt.jobID,
+	shouldRetry, err := shouldTaskRetry(
+		ctx,
+		cachedJob,
 		taskEnt.instanceID,
 		jobRuntime,
 		taskRuntime,
 		goalStateDriver,
-	) {
+	)
+	if err != nil {
+		return err
+	}
+
+	if shouldRetry {
 		return rescheduleTask(
 			ctx,
 			cachedJob,
@@ -70,39 +78,55 @@ func TaskTerminatedRetry(ctx context.Context, entity goalstate.Entity) error {
 // shouldTaskRetry returns whether a terminated task should retry given its
 // MaxInstanceAttempts config
 func shouldTaskRetry(
-	jobID *peloton.JobID,
+	ctx context.Context,
+	cachedJob cached.Job,
 	instanceID uint32,
 	jobRuntime *pbjob.RuntimeInfo,
 	taskRuntime *pbtask.RuntimeInfo,
 	goalStateDriver *driver,
-) bool {
-	// Check Whether task retry is in an update
-	updateID := jobRuntime.GetUpdateID()
-	if updateID != nil {
-		cachedUpdate := goalStateDriver.updateFactory.GetUpdate(updateID)
+) (bool, error) {
+	// no update, should retry
+	if len(jobRuntime.GetUpdateID().GetValue()) == 0 {
+		return true, nil
+	}
 
-		// directly retry when there is no update going on, or no failure
-		// has occurred
-		if cachedUpdate == nil ||
-			(!cachedUpdate.IsTaskInUpdateProgress(instanceID) &&
-				!cachedUpdate.IsTaskInFailed(instanceID)) {
-			return true
-		}
-		if taskutil.IsSystemFailure(taskRuntime) {
-			goalStateDriver.mtx.taskMetrics.RetryFailedLaunchTotal.Inc(1)
-		}
+	cachedWorkflow := cachedJob.AddWorkflow(jobRuntime.GetUpdateID())
 
-		// If the current failure retry count has reached the maxAttempts, we give up retry
-		if updateutil.HasFailedUpdate(
-			taskRuntime,
-			cachedUpdate.GetUpdateConfig().GetMaxInstanceAttempts()) {
-			log.
-				WithField("jobID", jobID.GetValue()).
-				WithField("instanceID", instanceID).
-				WithField("failureCount", taskRuntime.GetFailureCount()).
-				Debug("failureCount larger than max attempts, give up retry")
-			return false
+	// TODO: remove after recovery is done when reading state
+	if cachedWorkflow.GetState().State == pbupdate.State_INVALID {
+		if err := cachedWorkflow.Recover(ctx); err != nil {
+			return false, err
 		}
 	}
-	return true
+
+	if cached.IsUpdateStateTerminal(cachedWorkflow.GetState().State) {
+		// update is terminal, let goal state engine untrack it
+		goalStateDriver.EnqueueUpdate(
+			cachedJob.ID(),
+			cachedWorkflow.ID(),
+			time.Now())
+		return true, nil
+	}
+
+	if !cachedWorkflow.IsTaskInUpdateProgress(instanceID) &&
+		!cachedWorkflow.IsTaskInFailed(instanceID) {
+		return true, nil
+	}
+
+	if taskutil.IsSystemFailure(taskRuntime) {
+		goalStateDriver.mtx.taskMetrics.RetryFailedLaunchTotal.Inc(1)
+	}
+
+	// If the current failure retry count has reached the maxAttempts, we give up retry
+	if updateutil.HasFailedUpdate(
+		taskRuntime,
+		cachedWorkflow.GetUpdateConfig().GetMaxInstanceAttempts()) {
+		log.
+			WithField("jobID", cachedJob.ID().GetValue()).
+			WithField("instanceID", instanceID).
+			WithField("failureCount", taskRuntime.GetFailureCount()).
+			Debug("failureCount larger than max attempts, give up retry")
+		return false, nil
+	}
+	return true, nil
 }

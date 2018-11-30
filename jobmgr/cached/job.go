@@ -11,8 +11,10 @@ import (
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
+	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/taskconfig"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
@@ -20,6 +22,8 @@ import (
 	stringsutil "code.uber.internal/infra/peloton/util/strings"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/pborman/uuid"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -30,6 +34,8 @@ type singleTask func(id uint32) error
 // TODO there a lot of methods in this interface. To determine if
 // this can be broken up into smaller pieces.
 type Job interface {
+	WorkflowOps
+
 	// Identifier of the job.
 	ID() *peloton.JobID
 
@@ -138,6 +144,54 @@ type Job interface {
 	RecalculateResourceUsage(ctx context.Context)
 }
 
+// WorkflowOps defines operations on workflow
+type WorkflowOps interface {
+	// CreateWorkflow creates a workflow associated with
+	// the calling object
+	CreateWorkflow(
+		ctx context.Context,
+		workflowType models.WorkflowType,
+		updateConfig *pbupdate.UpdateConfig,
+		entityVersion *v1alphapeloton.EntityVersion,
+		option ...Option,
+	) (*peloton.UpdateID, error)
+
+	// PauseWorkflow pauses the current workflow, if any
+	PauseWorkflow(
+		ctx context.Context,
+		entityVersion *v1alphapeloton.EntityVersion,
+	) error
+
+	// ResumeWorkflow resumes the current workflow, if any
+	ResumeWorkflow(
+		ctx context.Context,
+		entityVersion *v1alphapeloton.EntityVersion,
+	) error
+
+	// AbortWorkflow aborts the current workflow, if any
+	AbortWorkflow(
+		ctx context.Context,
+		entityVersion *v1alphapeloton.EntityVersion,
+	) error
+
+	// RollbackWorkflow rollbacks the current workflow, if any
+	RollbackWorkflow(ctx context.Context) error
+
+	// AddWorkflow add a workflow to the calling object
+	AddWorkflow(updateID *peloton.UpdateID) Update
+
+	// GetWorkflow gets the workflow to the calling object
+	// it should only be used in place like handler, where
+	// a read operation should not mutate cache
+	GetWorkflow(updateID *peloton.UpdateID) Update
+
+	// ClearWorkflow removes a workflow from the calling object
+	ClearWorkflow(updateID *peloton.UpdateID)
+
+	// GetAllWorkflows returns all workflows for the job
+	GetAllWorkflows() map[string]Update
+}
+
 // JobConfigCache is a union of JobConfig
 // and helper methods only available for cached config
 type JobConfigCache interface {
@@ -155,6 +209,7 @@ func newJob(id *peloton.JobID, jobFactory *jobFactory) *job {
 		jobFactory:    jobFactory,
 		tasks:         map[uint32]*task{},
 		resourceUsage: createEmptyResourceUsageMap(),
+		workflows:     map[string]*update{},
 	}
 }
 
@@ -199,6 +254,8 @@ type job struct {
 	// of that resource used by the job. Example: if a job has one task that
 	// uses 1 CPU and finishes in 10 seconds, this map will contain <"cpu":10>
 	resourceUsage map[string]float64
+
+	workflows map[string]*update // map of all job workflows
 }
 
 func (j *job) ID() *peloton.JobID {
@@ -217,7 +274,11 @@ func (j *job) populateCurrentJobConfig(ctx context.Context) error {
 	if j.config == nil ||
 		j.config.GetChangeLog().GetVersion() !=
 			j.runtime.GetConfigurationVersion() {
-		config, _, err := j.jobFactory.jobStore.GetJobConfig(ctx, j.ID())
+		config, _, err := j.jobFactory.jobStore.GetJobConfigWithVersion(
+			ctx,
+			j.ID(),
+			j.runtime.GetConfigurationVersion(),
+		)
 		if err != nil {
 			return err
 		}
@@ -595,8 +656,14 @@ func (j *job) CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, 
 	j.Lock()
 	defer j.Unlock()
 
+	return j.compareAndSetConfig(ctx, config, configAddOn)
+}
+
+func (j *job) compareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn) (jobmgrcommon.JobConfig, error) {
 	// first make sure current config is in cache
-	j.populateCurrentJobConfig(ctx)
+	if err := j.populateCurrentJobConfig(ctx); err != nil {
+		return nil, err
+	}
 
 	// then validate and merge config
 	updatedConfig, err := j.validateAndMergeConfig(ctx, config)
@@ -1032,6 +1099,431 @@ func (j *job) GetLastTaskUpdateTime() float64 {
 	return j.lastTaskUpdateTime
 }
 
+// Option to create a workflow
+type Option interface {
+	apply(*workflowOpts)
+}
+
+type workflowOpts struct {
+	jobConfig       *pbjob.JobConfig
+	prevJobConfig   *pbjob.JobConfig
+	configAddOn     *models.ConfigAddOn
+	instanceAdded   []uint32
+	instanceUpdated []uint32
+	instanceRemoved []uint32
+}
+
+// WithConfig defines the original
+// config and target config for the workflow.
+// Workflow could use the configs to calculate
+// the instances it would need to work on.
+func WithConfig(
+	jobConfig *pbjob.JobConfig,
+	prevJobConfig *pbjob.JobConfig,
+	configAddOn *models.ConfigAddOn,
+) Option {
+	return &configOpt{
+		jobConfig:     jobConfig,
+		prevJobConfig: prevJobConfig,
+		configAddOn:   configAddOn,
+	}
+}
+
+// WithInstanceToProcess defines the instances
+// the workflow would work on. When it is provided,
+// workflow would not calculate instances to process
+// based on config.
+func WithInstanceToProcess(
+	instancesAdded []uint32,
+	instancesUpdated []uint32,
+	instancesRemoved []uint32,
+) Option {
+	return &instanceToProcessOpt{
+		instancesAdded:   instancesAdded,
+		instancesUpdated: instancesUpdated,
+		instancesRemoved: instancesRemoved,
+	}
+}
+
+type configOpt struct {
+	jobConfig     *pbjob.JobConfig
+	prevJobConfig *pbjob.JobConfig
+	configAddOn   *models.ConfigAddOn
+}
+
+func (o *configOpt) apply(opts *workflowOpts) {
+	opts.jobConfig = o.jobConfig
+	opts.prevJobConfig = o.prevJobConfig
+	opts.configAddOn = o.configAddOn
+}
+
+type instanceToProcessOpt struct {
+	instancesAdded   []uint32
+	instancesUpdated []uint32
+	instancesRemoved []uint32
+}
+
+func (o *instanceToProcessOpt) apply(opts *workflowOpts) {
+	opts.instanceAdded = o.instancesAdded
+	opts.instanceUpdated = o.instancesUpdated
+	opts.instanceRemoved = o.instancesRemoved
+}
+
+// TODO: use entity version for concurrency control
+func (j *job) CreateWorkflow(
+	ctx context.Context,
+	workflowType models.WorkflowType,
+	updateConfig *pbupdate.UpdateConfig,
+	entityVersion *v1alphapeloton.EntityVersion,
+	options ...Option,
+) (*peloton.UpdateID, error) {
+	j.Lock()
+	defer j.Unlock()
+
+	opts := &workflowOpts{}
+	for _, option := range options {
+		option.apply(opts)
+	}
+
+	newConfig, err := j.compareAndSetConfig(ctx, opts.jobConfig, opts.configAddOn)
+	if err != nil {
+		return nil, err
+	}
+
+	updateID := &peloton.UpdateID{Value: uuid.New()}
+	newWorkflow := newUpdate(updateID, j.jobFactory)
+
+	if err := newWorkflow.Create(
+		ctx,
+		j.id,
+		newConfig,
+		opts.prevJobConfig,
+		opts.configAddOn,
+		opts.instanceAdded,
+		opts.instanceUpdated,
+		opts.instanceRemoved,
+		workflowType,
+		updateConfig,
+	); err != nil {
+		// Directly return without invalidating job config cache.
+		// When reading job config later, it would check if
+		// runtime.GetConfigurationVersion has the same version with cached config.
+		// If not, it would invalidate config cache and repopulate the cache with
+		// the correct version.
+		return nil, err
+	}
+
+	err = j.updateJobConfigAndUpdateID(
+		ctx,
+		newConfig.GetChangeLog().GetVersion(),
+		newWorkflow,
+	)
+
+	if err == nil {
+		// only add new workflow to job if runtime update succeeds.
+		// If err is not nil, it is unclear whether update id in job
+		// runtime is updated successfully. If the update id does get
+		// persisted in job runtime, workflow.Recover and AddWorkflow
+		// can ensure that job tracks the workflow when the workflow
+		// is processed.
+		j.workflows[updateID.GetValue()] = newWorkflow
+	}
+
+	log.WithField("workflow_id", updateID.GetValue()).
+		WithField("job_id", j.id.GetValue()).
+		WithField("instances_added", len(opts.instanceAdded)).
+		WithField("instances_updated", len(opts.instanceUpdated)).
+		WithField("instances_removed", len(opts.instanceRemoved)).
+		WithField("workflow_type", workflowType.String()).
+		Debug("workflow is created")
+
+	return updateID, err
+}
+
+func (j *job) PauseWorkflow(
+	ctx context.Context,
+	entityVersion *v1alphapeloton.EntityVersion,
+) error {
+	j.Lock()
+	defer j.Unlock()
+
+	// TODO: check entity version and bump the version
+	currentWorkflow, err := j.getCurrentWorkflow(ctx)
+	if err != nil {
+		return err
+	}
+	if currentWorkflow == nil {
+		return yarpcerrors.NotFoundErrorf("no workflow found")
+	}
+
+	return currentWorkflow.Pause(ctx)
+}
+
+func (j *job) ResumeWorkflow(
+	ctx context.Context,
+	entityVersion *v1alphapeloton.EntityVersion,
+) error {
+	j.Lock()
+	defer j.Unlock()
+
+	// TODO: check entity version and bump the version
+	currentWorkflow, err := j.getCurrentWorkflow(ctx)
+	if err != nil {
+		return err
+	}
+	if currentWorkflow == nil {
+		return yarpcerrors.NotFoundErrorf("no workflow found")
+	}
+
+	return currentWorkflow.Resume(ctx)
+}
+
+func (j *job) AbortWorkflow(
+	ctx context.Context,
+	entityVersion *v1alphapeloton.EntityVersion,
+) error {
+	j.Lock()
+	defer j.Unlock()
+
+	// TODO: check entity version and bump the version
+	currentWorkflow, err := j.getCurrentWorkflow(ctx)
+	if err != nil {
+		return err
+	}
+	if currentWorkflow == nil {
+		return yarpcerrors.NotFoundErrorf("no workflow found")
+	}
+
+	return currentWorkflow.Cancel(ctx)
+}
+
+func (j *job) RollbackWorkflow(ctx context.Context) error {
+	j.Lock()
+	defer j.Unlock()
+
+	currentWorkflow, err := j.getCurrentWorkflow(ctx)
+	if err != nil {
+		return err
+	}
+	if currentWorkflow == nil {
+		return yarpcerrors.NotFoundErrorf("no workflow found")
+	}
+
+	// make sure workflow cache is populated
+	if err := currentWorkflow.Recover(ctx); err != nil {
+		return err
+	}
+
+	if IsUpdateStateTerminal(currentWorkflow.GetState().State) {
+		return nil
+	}
+
+	if currentWorkflow.GetState().State == pbupdate.State_ROLLING_BACKWARD {
+		// make sure runtime cache is populated
+		if err := j.populateRuntime(ctx); err != nil {
+			return err
+		}
+
+		// config version in runtime is already set to the target
+		// job version of rollback. This can happen due to error retry.
+		if j.runtime.GetConfigurationVersion() ==
+			currentWorkflow.GetGoalState().JobVersion {
+			return nil
+		}
+
+		// just update job runtime config version
+		return j.updateJobConfigAndUpdateID(
+			ctx,
+			currentWorkflow.GetGoalState().JobVersion,
+			currentWorkflow,
+		)
+	}
+
+	// get the old job config before the workflow is run
+	prevJobConfig, configAddOn, err := j.jobFactory.jobStore.
+		GetJobConfigWithVersion(ctx, j.id, currentWorkflow.GetState().JobVersion)
+	if err != nil {
+		return errors.Wrap(err,
+			"failed to get job config to copy for workflow rolling back")
+	}
+
+	// copy the old job config and get the config which
+	// the workflow can "rollback" to
+	configCopy, err := j.copyJobAndTaskConfig(ctx, prevJobConfig, configAddOn)
+	if err != nil {
+		return errors.Wrap(err,
+			"failed to copy job and task config for workflow rolling back")
+	}
+
+	// get the job config the workflow is targeted at before rollback
+	currentConfig, _, err := j.jobFactory.jobStore.
+		GetJobConfigWithVersion(ctx, j.id, currentWorkflow.GetGoalState().JobVersion)
+	if err != nil {
+		return errors.Wrap(err,
+			"failed to get current job config for workflow rolling back")
+	}
+
+	if err := currentWorkflow.Rollback(ctx, currentConfig, configCopy); err != nil {
+		return err
+	}
+
+	return j.updateJobConfigAndUpdateID(
+		ctx,
+		configCopy.GetChangeLog().GetVersion(),
+		currentWorkflow,
+	)
+}
+
+func (j *job) AddWorkflow(updateID *peloton.UpdateID) Update {
+	if workflow := j.GetWorkflow(updateID); workflow != nil {
+		return workflow
+	}
+
+	j.Lock()
+	defer j.Unlock()
+
+	if workflow, ok := j.workflows[updateID.GetValue()]; ok {
+		return workflow
+	}
+
+	workflow := newUpdate(updateID, j.jobFactory)
+	j.workflows[updateID.GetValue()] = workflow
+	return workflow
+}
+
+func (j *job) GetWorkflow(updateID *peloton.UpdateID) Update {
+	j.RLock()
+	defer j.RUnlock()
+	if workflow, ok := j.workflows[updateID.GetValue()]; ok {
+		return workflow
+	}
+	return nil
+}
+
+func (j *job) ClearWorkflow(updateID *peloton.UpdateID) {
+	j.Lock()
+	defer j.Unlock()
+
+	delete(j.workflows, updateID.GetValue())
+}
+
+// copyJobAndTaskConfig copies the provided job config and
+// create task configs for the copy. It returns the job config
+// copy with change log version updated.
+func (j *job) copyJobAndTaskConfig(
+	ctx context.Context,
+	jobConfig *pbjob.JobConfig,
+	configAddOn *models.ConfigAddOn,
+) (*pbjob.JobConfig, error) {
+	// set config changeLog version to that of current config for
+	// concurrency control
+	if err := j.populateRuntime(ctx); err != nil {
+		return nil, err
+	}
+	jobConfig.ChangeLog = &peloton.ChangeLog{
+		Version: j.runtime.GetConfigurationVersion(),
+	}
+
+	// copy job config
+	configCopy, err := j.compareAndSetConfig(ctx, jobConfig, configAddOn)
+	if err != nil {
+		return nil, errors.Wrap(err,
+			"failed to set job config for workflow rolling back")
+	}
+
+	// change the job config version to that of config copy,
+	// so task config would have the right version
+	jobConfig.ChangeLog = &peloton.ChangeLog{
+		Version: configCopy.GetChangeLog().GetVersion(),
+	}
+	// copy task configs
+	if err = j.jobFactory.taskStore.CreateTaskConfigs(ctx, j.id, jobConfig, configAddOn); err != nil {
+		return nil, errors.Wrap(err,
+			"failed to create task configs for workflow rolling back")
+	}
+
+	return jobConfig, nil
+}
+
+// updateJobConfigAndUpdateID updates job runtime with newConfigVersion and
+// set the runtime updateID to u.id.
+// It validates if the workflowType update is valid.
+// It must be called with job lock held.
+func (j *job) updateJobConfigAndUpdateID(
+	ctx context.Context,
+	newConfigVersion uint64,
+	newWorkflow Update,
+) error {
+	if err := j.populateRuntime(ctx); err != nil {
+		return err
+	}
+
+	if err := j.validateWorkflowOverwrite(
+		ctx,
+		newWorkflow.GetWorkflowType(),
+	); err != nil {
+		return err
+	}
+
+	// TODO: check entity version and bump the version
+	runtime := proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
+	runtime.UpdateID = &peloton.UpdateID{
+		Value: newWorkflow.ID().GetValue(),
+	}
+	runtime.Revision = &peloton.ChangeLog{
+		Version:   j.runtime.GetRevision().GetVersion() + 1,
+		CreatedAt: j.runtime.GetRevision().GetCreatedAt(),
+		UpdatedAt: uint64(time.Now().UnixNano()),
+	}
+	runtime.ConfigurationVersion = newConfigVersion
+	if err := j.jobFactory.jobStore.UpdateJobRuntime(
+		ctx,
+		j.id,
+		runtime,
+	); err != nil {
+		j.invalidateCache()
+		return err
+	}
+
+	j.runtime = runtime
+
+	return nil
+}
+
+// validateWorkflowOverwrite validates if the new workflow type can override
+// existing workflow in job runtime. It returns an error if the validation
+// fails.
+func (j *job) validateWorkflowOverwrite(
+	ctx context.Context,
+	workflowType models.WorkflowType,
+) error {
+	currentWorkflow, err := j.getCurrentWorkflow(ctx)
+	if err != nil || currentWorkflow == nil {
+		return err
+	}
+
+	// make sure workflow cache is populated
+	if err := currentWorkflow.Recover(ctx); err != nil {
+		return err
+	}
+
+	// workflow update should succeed if previous update is terminal
+	if IsUpdateStateTerminal(currentWorkflow.GetState().State) {
+		return nil
+	}
+
+	// an overwrite is only valid if both current and new workflow
+	// type is update
+	if currentWorkflow.GetWorkflowType() == models.WorkflowType_UPDATE &&
+		workflowType == models.WorkflowType_UPDATE {
+		return nil
+	}
+
+	return yarpcerrors.InvalidArgumentErrorf(
+		"workflow %s cannot overwrite workflow %s",
+		workflowType.String(), currentWorkflow.GetWorkflowType().String())
+}
+
 func (c *cachedConfig) GetInstanceCount() uint32 {
 	return c.instanceCount
 }
@@ -1120,6 +1612,18 @@ func (j *job) GetResourceUsage() map[string]float64 {
 	return j.resourceUsage
 }
 
+func (j *job) GetAllWorkflows() map[string]Update {
+	j.RLock()
+	defer j.RUnlock()
+
+	result := make(map[string]Update)
+	for id, workflow := range j.workflows {
+		result[id] = workflow
+	}
+
+	return result
+}
+
 // RecalculateResourceUsage recalculates the resource usage of a job by adding
 // together resource usage numbers of all terminal tasks of this job.
 // RecalculateResourceUsage should be called ONLY during job recovery to
@@ -1158,6 +1662,28 @@ func (j *job) populateRuntime(ctx context.Context) error {
 		j.runtime = runtime
 	}
 	return nil
+}
+
+// getCurrentWorkflow return the current workflow of the job.
+// it is possible that the workflow returned was not in goal state engine
+// and cache, caller needs to make sure the workflow returned is
+func (j *job) getCurrentWorkflow(ctx context.Context) (Update, error) {
+	// make sure runtime is in cache
+	if err := j.populateRuntime(ctx); err != nil {
+		return nil, err
+	}
+
+	if len(j.runtime.GetUpdateID().GetValue()) == 0 {
+		return nil, nil
+	}
+
+	if workflow, ok := j.workflows[j.runtime.GetUpdateID().GetValue()]; ok {
+		return workflow, nil
+	}
+
+	// workflow not found in cache, create a new one and let called
+	// to recover the update state
+	return newUpdate(j.runtime.GetUpdateID(), j.jobFactory), nil
 }
 
 func createEmptyResourceUsageMap() map[string]float64 {

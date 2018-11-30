@@ -12,6 +12,7 @@ import (
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
+	"code.uber.internal/infra/peloton/jobmgr/cached"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
@@ -29,10 +30,8 @@ type TaskTerminatedRetryTestSuite struct {
 	suite.Suite
 	ctrl *gomock.Controller
 
-	jobStore      *storemocks.MockJobStore
-	taskStore     *storemocks.MockTaskStore
-	updateFactory *cachedmocks.MockUpdateFactory
-	jobFactory    *cachedmocks.MockJobFactory
+	taskStore  *storemocks.MockTaskStore
+	jobFactory *cachedmocks.MockJobFactory
 
 	updateGoalStateEngine *goalstatemocks.MockEngine
 	taskGoalStateEngine   *goalstatemocks.MockEngine
@@ -43,13 +42,11 @@ type TaskTerminatedRetryTestSuite struct {
 	instanceID uint32
 	updateID   *peloton.UpdateID
 
-	updateEnt    *updateEntity
 	taskEnt      *taskEntity
 	cachedJob    *cachedmocks.MockJob
 	cachedUpdate *cachedmocks.MockUpdate
 	cachedTask   *cachedmocks.MockTask
 
-	jobConfig   *pbjob.JobConfig
 	jobRuntime  *pbjob.RuntimeInfo
 	taskConfig  *pbtask.TaskConfig
 	taskRuntime *pbtask.RuntimeInfo
@@ -69,18 +66,18 @@ func (suite *TaskTerminatedRetryTestSuite) SetupTest() {
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
-	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
+	suite.updateGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 	suite.cachedUpdate = cachedmocks.NewMockUpdate(suite.ctrl)
 	suite.goalStateDriver = &driver{
-		jobEngine:     suite.jobGoalStateEngine,
-		taskEngine:    suite.taskGoalStateEngine,
-		updateFactory: suite.updateFactory,
-		taskStore:     suite.taskStore,
-		jobFactory:    suite.jobFactory,
-		mtx:           NewMetrics(tally.NoopScope),
+		jobEngine:    suite.jobGoalStateEngine,
+		taskEngine:   suite.taskGoalStateEngine,
+		updateEngine: suite.updateGoalStateEngine,
+		taskStore:    suite.taskStore,
+		jobFactory:   suite.jobFactory,
+		mtx:          NewMetrics(tally.NoopScope),
 		cfg: &Config{
 			InitialTaskBackoff: 30 * time.Second,
 			MaxTaskBackoff:     60 * time.Minute,
@@ -234,15 +231,18 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 	suite.Nil(err)
 }
 
-// TestTaskTerminatedRetryNoFailure tests restart when no there is no failure
+// TestTaskTerminatedRetryNoFailure tests restart when there is no failure
 func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
-	jobRuntime := &pbjob.RuntimeInfo{}
+	updateConfig := pbupdate.UpdateConfig{
+		MaxInstanceAttempts: uint32(3),
+	}
+
 	suite.taskRuntime.FailureCount = 0
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
 	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).Return(jobRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
@@ -252,6 +252,20 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 		suite.jobID,
 		suite.instanceID,
 		gomock.Any()).Return(suite.taskConfig, &models.ConfigAddOn{}, nil)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_ROLLING_FORWARD,
+		}).
+		Times(2)
+	suite.cachedUpdate.EXPECT().IsTaskInUpdateProgress(
+		suite.instanceID).Return(true)
+	suite.cachedUpdate.EXPECT().
+		GetUpdateConfig().Return(&updateConfig)
 
 	suite.cachedJob.EXPECT().
 		ID().Return(suite.jobID)
@@ -284,9 +298,8 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 	suite.Nil(err)
 }
 
-// TestTaskTerminatedNoRetry tests not retry on a terminated task
-func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedNoRetry() {
-
+// TestTaskTooManyFailuresNoRetry tests not retry on a task with too many failures
+func (suite *TaskTerminatedRetryTestSuite) TestTaskTooManyFailuresNoRetry() {
 	updateConfig := pbupdate.UpdateConfig{
 		MaxInstanceAttempts: uint32(3),
 	}
@@ -305,12 +318,89 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedNoRetry() {
 		suite.jobID,
 		suite.instanceID,
 		gomock.Any()).Return(suite.taskConfig, &models.ConfigAddOn{}, nil)
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).Return(suite.cachedUpdate)
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_ROLLING_FORWARD,
+		}).
+		Times(2)
 	suite.cachedUpdate.EXPECT().IsTaskInUpdateProgress(
 		suite.instanceID).Return(true)
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().Return(&updateConfig)
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID)
+	err := TaskTerminatedRetry(context.Background(), suite.taskEnt)
+	suite.Nil(err)
+}
+
+// TestTaskTerminatedRetryUpdateTerminated tests restart when update is terminal
+func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryUpdateTerminated() {
+	suite.taskRuntime.FailureCount = 5
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
+	suite.taskStore.EXPECT().GetTaskConfig(
+		gomock.Any(),
+		suite.jobID,
+		suite.instanceID,
+		gomock.Any()).Return(suite.taskConfig, &models.ConfigAddOn{}, nil)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_SUCCEEDED,
+		}).
+		Times(2)
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID)
+	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID)
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			runtimeDiff := runtimeDiffs[suite.instanceID]
+			suite.True(
+				runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != suite.mesosTaskID)
+			suite.True(
+				runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == suite.mesosTaskID)
+			suite.True(
+				runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
+		}).
+		Return(nil)
+
+	suite.cachedJob.EXPECT().
+		GetJobType().Return(pbjob.JobType_BATCH)
+
+	suite.taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
 	err := TaskTerminatedRetry(context.Background(), suite.taskEnt)
 	suite.Nil(err)
 }

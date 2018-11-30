@@ -21,12 +21,22 @@ import (
 func UpdateAbortIfNeeded(ctx context.Context, entity goalstate.Entity) error {
 	updateEnt := entity.(*updateEntity)
 	goalStateDriver := updateEnt.driver
-	jobID := updateEnt.jobID
 
-	cachedJob := goalStateDriver.jobFactory.AddJob(jobID)
+	cachedWorkflow, cachedJob, err := fetchWorkflowAndJobFromCache(
+		ctx, updateEnt.jobID, updateEnt.id, goalStateDriver)
+	if err != nil || cachedWorkflow == nil || cachedJob == nil {
+		return err
+	}
+
 	runtime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
 		return err
+	}
+
+	// maybe abort a workflow of a terminated job, reenenque job goal
+	// state engine to untrack
+	if util.IsPelotonJobStateTerminal(runtime.GetState()) {
+		goalStateDriver.EnqueueJob(updateEnt.jobID, time.Now())
 	}
 
 	if runtime.GetUpdateID().GetValue() == updateEnt.id.GetValue() {
@@ -34,18 +44,7 @@ func UpdateAbortIfNeeded(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	cachedUpdate := goalStateDriver.updateFactory.GetUpdate(updateEnt.id)
-	if cachedUpdate == nil {
-		// no update in cache, recovery will be run anyways
-		return nil
-	}
-
-	if err := cached.AbortJobUpdate(
-		ctx,
-		updateEnt.id,
-		goalStateDriver.updateStore,
-		goalStateDriver.updateFactory,
-	); err != nil {
+	if err := cachedWorkflow.Cancel(ctx); err != nil {
 		return err
 	}
 
@@ -58,9 +57,15 @@ func UpdateAbortIfNeeded(ctx context.Context, entity goalstate.Entity) error {
 func UpdateReload(ctx context.Context, entity goalstate.Entity) error {
 	updateEnt := entity.(*updateEntity)
 	goalStateDriver := updateEnt.driver
-	cachedUpdate := goalStateDriver.updateFactory.AddUpdate(updateEnt.id)
 	goalStateDriver.mtx.updateMetrics.UpdateReload.Inc(1)
-	if err := cachedUpdate.Recover(ctx); err != nil {
+
+	cachedWorkflow, cachedJob, err := fetchWorkflowAndJobFromCache(
+		ctx, updateEnt.jobID, updateEnt.id, goalStateDriver)
+	if err != nil || cachedWorkflow == nil || cachedJob == nil {
+		return err
+	}
+
+	if err := cachedWorkflow.Recover(ctx); err != nil {
 		if !yarpcerrors.IsNotFound(err) {
 			return err
 		}
@@ -76,22 +81,28 @@ func UpdateReload(ctx context.Context, entity goalstate.Entity) error {
 func UpdateComplete(ctx context.Context, entity goalstate.Entity) error {
 	updateEnt := entity.(*updateEntity)
 	goalStateDriver := updateEnt.driver
-	cachedUpdate := goalStateDriver.updateFactory.GetUpdate(updateEnt.id)
-	if cachedUpdate == nil {
-		goalStateDriver.mtx.updateMetrics.UpdateCompleteFail.Inc(1)
-		return nil
+
+	cachedWorkflow, cachedJob, err := fetchWorkflowAndJobFromCache(
+		ctx, updateEnt.jobID, updateEnt.id, goalStateDriver)
+	if err != nil || cachedWorkflow == nil || cachedJob == nil {
+		return err
+	}
+
+	// TODO: remove after recovery is done when reading state
+	if cachedWorkflow.GetState().State == pbupdate.State_INVALID {
+		return UpdateReload(ctx, entity)
 	}
 
 	completeState := pbupdate.State_SUCCEEDED
-	if cachedUpdate.GetState().State == pbupdate.State_ROLLING_BACKWARD {
+	if cachedWorkflow.GetState().State == pbupdate.State_ROLLING_BACKWARD {
 		completeState = pbupdate.State_ROLLED_BACK
 	}
 
-	if err := cachedUpdate.WriteProgress(
+	if err := cachedWorkflow.WriteProgress(
 		ctx,
 		completeState,
-		cachedUpdate.GetInstancesDone(),
-		cachedUpdate.GetInstancesFailed(),
+		cachedWorkflow.GetInstancesDone(),
+		cachedWorkflow.GetInstancesFailed(),
 		[]uint32{},
 	); err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateCompleteFail.Inc(1)
@@ -120,7 +131,7 @@ func UpdateUntrack(ctx context.Context, entity goalstate.Entity) error {
 
 	// clean up the update from cache and goal state
 	goalStateDriver.DeleteUpdate(jobID, updateEnt.id)
-	goalStateDriver.updateFactory.ClearUpdate(updateEnt.id)
+	cachedJob.ClearWorkflow(updateEnt.id)
 	goalStateDriver.mtx.updateMetrics.UpdateUntrack.Inc(1)
 
 	// check if we have another job update to run
@@ -162,41 +173,41 @@ func UpdateUntrack(ctx context.Context, entity goalstate.Entity) error {
 func UpdateWriteProgress(ctx context.Context, entity goalstate.Entity) error {
 	updateEnt := entity.(*updateEntity)
 	goalStateDriver := updateEnt.driver
-	cachedUpdate := goalStateDriver.updateFactory.GetUpdate(updateEnt.id)
-	if cachedUpdate == nil {
-		goalStateDriver.mtx.updateMetrics.UpdateWriteProgressFail.Inc(1)
-		return nil
+	cachedWorkflow, cachedJob, err := fetchWorkflowAndJobFromCache(
+		ctx, updateEnt.jobID, updateEnt.id, goalStateDriver)
+	if err != nil || cachedWorkflow == nil || cachedJob == nil {
+		return err
+	}
+
+	// TODO: remove after recovery is done when reading state
+	if cachedWorkflow.GetState().State == pbupdate.State_INVALID {
+		return UpdateReload(ctx, entity)
 	}
 
 	// all the instances being updated are finished, nothing new to update
-	if len(cachedUpdate.GetInstancesCurrent()) == 0 {
+	if len(cachedWorkflow.GetInstancesCurrent()) == 0 {
 		goalStateDriver.mtx.updateMetrics.UpdateWriteProgress.Inc(1)
-		return nil
-	}
-
-	cachedJob := goalStateDriver.jobFactory.GetJob(cachedUpdate.JobID())
-	if cachedJob == nil {
-		goalStateDriver.mtx.updateMetrics.UpdateWriteProgressFail.Inc(1)
 		return nil
 	}
 
 	instancesCurrent, instancesDone, instancesFailed, err := cached.GetUpdateProgress(
 		ctx,
-		cachedJob,
-		cachedUpdate,
-		cachedUpdate.GetGoalState().JobVersion,
-		cachedUpdate.GetInstancesCurrent(),
+		cachedJob.ID(),
+		cachedWorkflow,
+		cachedWorkflow.GetGoalState().JobVersion,
+		cachedWorkflow.GetInstancesCurrent(),
+		goalStateDriver.taskStore,
 	)
 	if err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateWriteProgressFail.Inc(1)
 		return err
 	}
 
-	err = cachedUpdate.WriteProgress(
+	err = cachedWorkflow.WriteProgress(
 		ctx,
-		cachedUpdate.GetState().State,
-		append(cachedUpdate.GetInstancesDone(), instancesDone...),
-		append(cachedUpdate.GetInstancesFailed(), instancesFailed...),
+		cachedWorkflow.GetState().State,
+		append(cachedWorkflow.GetInstancesDone(), instancesDone...),
+		append(cachedWorkflow.GetInstancesFailed(), instancesFailed...),
 		instancesCurrent,
 	)
 	if err != nil {

@@ -30,10 +30,8 @@ type UpdateSvcTestSuite struct {
 
 	ctrl            *gomock.Controller
 	jobStore        *storemocks.MockJobStore
-	taskStore       *storemocks.MockTaskStore
 	updateStore     *storemocks.MockUpdateStore
 	jobFactory      *cachedmocks.MockJobFactory
-	updateFactory   *cachedmocks.MockUpdateFactory
 	goalStateDriver *goalstatemocks.MockDriver
 	h               *serviceHandler
 
@@ -62,10 +60,8 @@ func (suite *UpdateSvcTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
-	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
-	suite.updateFactory = cachedmocks.NewMockUpdateFactory(suite.ctrl)
 	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
 
 	suite.cachedJobConfig = cachedmocks.NewMockJobConfigCache(suite.ctrl)
@@ -120,11 +116,9 @@ func (suite *UpdateSvcTestSuite) SetupTest() {
 
 	suite.h = &serviceHandler{
 		jobStore:        suite.jobStore,
-		taskStore:       suite.taskStore,
 		updateStore:     suite.updateStore,
 		goalStateDriver: suite.goalStateDriver,
 		jobFactory:      suite.jobFactory,
-		updateFactory:   suite.updateFactory,
 		metrics:         NewMetrics(tally.NoopScope),
 	}
 }
@@ -135,6 +129,10 @@ func (suite *UpdateSvcTestSuite) TearDownTest() {
 
 // TestCreateSuccess tests successfully creating a job update
 func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(suite.jobRuntime, nil)
@@ -144,22 +142,15 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, configAddOn, nil)
 
-	suite.updateFactory.EXPECT().
-		AddUpdate(gomock.Any()).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		Create(
-			gomock.Any(), suite.jobID,
-			suite.newJobConfig,
-			suite.jobConfig,
+	suite.cachedJob.EXPECT().
+		CreateWorkflow(
 			gomock.Any(),
-			[]uint32{},
-			[]uint32{},
-			[]uint32{},
 			models.WorkflowType_UPDATE,
-			suite.updateConfig).
-		Return(nil)
+			suite.updateConfig,
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(suite.updateID, nil)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -177,6 +168,10 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 
 // TestAddInstancesSuccess tests successfully add instances
 func (suite *UpdateSvcTestSuite) TestAddInstancesSuccess() {
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(suite.jobRuntime, nil)
@@ -185,23 +180,15 @@ func (suite *UpdateSvcTestSuite) TestAddInstancesSuccess() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.updateFactory.EXPECT().
-		AddUpdate(gomock.Any()).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		Create(
+	suite.cachedJob.EXPECT().
+		CreateWorkflow(
 			gomock.Any(),
-			suite.jobID,
-			suite.newJobConfig,
-			suite.jobConfig,
-			gomock.Any(),
-			[]uint32{},
-			[]uint32{},
-			[]uint32{},
 			models.WorkflowType_UPDATE,
-			suite.updateConfig).
-		Return(nil)
+			suite.updateConfig,
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(suite.updateID, nil)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -223,6 +210,10 @@ func (suite *UpdateSvcTestSuite) TestUpdateLabelsSuccess() {
 	newConfig := *suite.jobConfig
 	newConfig.Labels = append(newConfig.Labels, &peloton.Label{Key: "newKey", Value: "newLabel"})
 
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(suite.jobRuntime, nil)
@@ -231,22 +222,15 @@ func (suite *UpdateSvcTestSuite) TestUpdateLabelsSuccess() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.updateFactory.EXPECT().
-		AddUpdate(gomock.Any()).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		Create(
-			gomock.Any(), suite.jobID,
-			&newConfig,
-			suite.jobConfig,
+	suite.cachedJob.EXPECT().
+		CreateWorkflow(
 			gomock.Any(),
-			[]uint32{},
-			[]uint32{},
-			[]uint32{},
 			models.WorkflowType_UPDATE,
-			suite.updateConfig).
-		Return(nil)
+			suite.updateConfig,
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(suite.updateID, nil)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -425,6 +409,10 @@ func (suite *UpdateSvcTestSuite) TestCreateChangeJobType() {
 func (suite *UpdateSvcTestSuite) TestCreateReduceInstanceCount() {
 	suite.newJobConfig.InstanceCount = suite.jobConfig.InstanceCount - 1
 
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(suite.jobRuntime, nil)
@@ -434,22 +422,15 @@ func (suite *UpdateSvcTestSuite) TestCreateReduceInstanceCount() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, configAddOn, nil)
 
-	suite.updateFactory.EXPECT().
-		AddUpdate(gomock.Any()).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		Create(
-			gomock.Any(), suite.jobID,
-			suite.newJobConfig,
-			suite.jobConfig,
+	suite.cachedJob.EXPECT().
+		CreateWorkflow(
 			gomock.Any(),
-			[]uint32{},
-			[]uint32{},
-			[]uint32{},
 			models.WorkflowType_UPDATE,
-			suite.updateConfig).
-		Return(nil)
+			suite.updateConfig,
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(suite.updateID, nil)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -497,35 +478,27 @@ func (suite *UpdateSvcTestSuite) TestCreateChangeRespoolID() {
 // TestCreateAddUpdateFail tests failing to create the new update
 // in the DB during the create update request
 func (suite *UpdateSvcTestSuite) TestCreateAddUpdateFail() {
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(suite.jobRuntime, nil)
 
-	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(suite.jobConfig, configAddOn, nil)
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.updateFactory.EXPECT().
-		AddUpdate(gomock.Any()).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		Create(
-			gomock.Any(), suite.jobID,
-			suite.newJobConfig,
-			suite.jobConfig,
+	suite.cachedJob.EXPECT().
+		CreateWorkflow(
 			gomock.Any(),
-			[]uint32{},
-			[]uint32{},
-			[]uint32{},
 			models.WorkflowType_UPDATE,
-			suite.updateConfig).
-		Return(fmt.Errorf("fake db error"))
-
-	suite.updateFactory.EXPECT().
-		ClearUpdate(gomock.Any()).
-		Return()
+			suite.updateConfig,
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(suite.updateID, fmt.Errorf("fake db error"))
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -680,8 +653,18 @@ func (suite *UpdateSvcTestSuite) TestGetCacheUpdateNoID() {
 
 // TestGetCacheUpdateNotFound tests fetching a non-existent update from cache
 func (suite *UpdateSvcTestSuite) TestGetCacheUpdateNotFound() {
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			JobID: suite.jobID,
+		}, nil)
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetWorkflow(suite.updateID).
 		Return(nil)
 
 	_, err := suite.h.GetUpdateCache(
@@ -704,8 +687,18 @@ func (suite *UpdateSvcTestSuite) TestGetCacheUpdate() {
 	instancesAdded := []uint32{8, 9}
 	instancesUpdated := []uint32{0, 1, 2, 3, 4, 5, 6, 7}
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			JobID: suite.jobID,
+		}, nil)
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetWorkflow(suite.updateID).
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
@@ -881,15 +874,21 @@ func (suite *UpdateSvcTestSuite) TestList() {
 // TestAbortFail tests getting a DB error while aborting an update
 func (suite *UpdateSvcTestSuite) TestAbortFail() {
 	suite.updateStore.EXPECT().
-		GetUpdateProgress(gomock.Any(), suite.updateID).
-		Return(nil, fmt.Errorf("fake db error"))
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			JobID: suite.jobID,
+		}, nil)
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	suite.cachedUpdate.EXPECT().
-		JobID().
+	suite.cachedJob.EXPECT().
+		AbortWorkflow(gomock.Any(), gomock.Any()).
+		Return(fmt.Errorf("fake db error"))
+
+	suite.cachedJob.EXPECT().
+		ID().
 		Return(suite.jobID)
 
 	suite.goalStateDriver.EXPECT().
@@ -905,30 +904,22 @@ func (suite *UpdateSvcTestSuite) TestAbortFail() {
 
 // TestAbort tests successfully aborting an update
 func (suite *UpdateSvcTestSuite) TestAbort() {
-	updateModel := &models.UpdateModel{
-		JobID:                suite.jobID,
-		UpdateConfig:         suite.updateConfig,
-		JobConfigVersion:     suite.newJobConfig.ChangeLog.Version,
-		PrevJobConfigVersion: suite.jobConfig.ChangeLog.Version,
-		State:                update.State_ROLLING_FORWARD,
-		InstancesTotal:       suite.newJobConfig.InstanceCount,
-		InstancesDone:        uint32(5),
-	}
-
 	suite.updateStore.EXPECT().
-		GetUpdateProgress(gomock.Any(), suite.updateID).
-		Return(updateModel, nil)
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			JobID: suite.jobID,
+		}, nil)
 
-	suite.updateFactory.EXPECT().
-		GetUpdate(suite.updateID).
-		Return(suite.cachedUpdate).Times(2)
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	suite.cachedUpdate.EXPECT().
-		Cancel(gomock.Any()).
+	suite.cachedJob.EXPECT().
+		AbortWorkflow(gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	suite.cachedUpdate.EXPECT().
-		JobID().
+	suite.cachedJob.EXPECT().
+		ID().
 		Return(suite.jobID)
 
 	suite.goalStateDriver.EXPECT().
@@ -944,25 +935,23 @@ func (suite *UpdateSvcTestSuite) TestAbort() {
 
 // TestPauseSuccess tests successfully pauses an update
 func (suite *UpdateSvcTestSuite) TestPauseSuccess() {
-	suite.updateFactory.EXPECT().
-		AddUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			JobID: suite.jobID,
+		}, nil)
 
-	suite.cachedUpdate.EXPECT().
-		Recover(gomock.Any()).
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		PauseWorkflow(gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	suite.cachedUpdate.EXPECT().
-		Pause(gomock.Any()).
-		Return(nil)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
+	suite.cachedJob.EXPECT().
 		ID().
-		Return(suite.updateID)
+		Return(suite.jobID)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(suite.jobID, suite.updateID, gomock.Any()).
@@ -975,46 +964,26 @@ func (suite *UpdateSvcTestSuite) TestPauseSuccess() {
 	suite.NoError(err)
 }
 
-// TestPauseRecoverFails tests update pause fails due to
-// call to Recover fails
-func (suite *UpdateSvcTestSuite) TestPauseRecoverFails() {
-	suite.updateFactory.EXPECT().
-		AddUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		Recover(gomock.Any()).
-		Return(fmt.Errorf("test error"))
-
-	_, err := suite.h.PauseUpdate(
-		context.Background(),
-		&svc.PauseUpdateRequest{UpdateId: suite.updateID},
-	)
-	suite.Error(err)
-}
-
 // TestPauseProgressUpdateFails fails due to update fails to
 // update the state
 func (suite *UpdateSvcTestSuite) TestPauseProgressUpdateFails() {
-	suite.updateFactory.EXPECT().
-		AddUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			JobID: suite.jobID,
+		}, nil)
 
-	suite.cachedUpdate.EXPECT().
-		Recover(gomock.Any()).
-		Return(nil)
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	suite.cachedUpdate.EXPECT().
-		Pause(gomock.Any()).
+	suite.cachedJob.EXPECT().
+		PauseWorkflow(gomock.Any(), gomock.Any()).
 		Return(fmt.Errorf("test error"))
 
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
+	suite.cachedJob.EXPECT().
 		ID().
-		Return(suite.updateID)
+		Return(suite.jobID)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(suite.jobID, suite.updateID, gomock.Any()).
@@ -1029,25 +998,23 @@ func (suite *UpdateSvcTestSuite) TestPauseProgressUpdateFails() {
 
 // TestPauseSuccess tests successfully resumes an update
 func (suite *UpdateSvcTestSuite) TestResumeSuccess() {
-	suite.updateFactory.EXPECT().
-		AddUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			JobID: suite.jobID,
+		}, nil)
 
-	suite.cachedUpdate.EXPECT().
-		Recover(gomock.Any()).
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		ResumeWorkflow(gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	suite.cachedUpdate.EXPECT().
-		Resume(gomock.Any()).
-		Return(nil)
-
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
+	suite.cachedJob.EXPECT().
 		ID().
-		Return(suite.updateID)
+		Return(suite.jobID)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(suite.jobID, suite.updateID, gomock.Any()).
@@ -1060,46 +1027,26 @@ func (suite *UpdateSvcTestSuite) TestResumeSuccess() {
 	suite.NoError(err)
 }
 
-// TestResumeRecoverFails tests update resume fails due to
-// call to Recover fails
-func (suite *UpdateSvcTestSuite) TestResumeRecoverFails() {
-	suite.updateFactory.EXPECT().
-		AddUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
-
-	suite.cachedUpdate.EXPECT().
-		Recover(gomock.Any()).
-		Return(fmt.Errorf("test error"))
-
-	_, err := suite.h.ResumeUpdate(
-		context.Background(),
-		&svc.ResumeUpdateRequest{UpdateId: suite.updateID},
-	)
-	suite.Error(err)
-}
-
 // TestResumeProgressUpdateFails fails due to update fails to
 // update the state
 func (suite *UpdateSvcTestSuite) TestResumeProgressUpdateFails() {
-	suite.updateFactory.EXPECT().
-		AddUpdate(suite.updateID).
-		Return(suite.cachedUpdate)
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), suite.updateID).
+		Return(&models.UpdateModel{
+			JobID: suite.jobID,
+		}, nil)
 
-	suite.cachedUpdate.EXPECT().
-		Recover(gomock.Any()).
-		Return(nil)
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	suite.cachedUpdate.EXPECT().
-		Resume(gomock.Any()).
+	suite.cachedJob.EXPECT().
+		ResumeWorkflow(gomock.Any(), gomock.Any()).
 		Return(fmt.Errorf("test error"))
 
-	suite.cachedUpdate.EXPECT().
-		JobID().
-		Return(suite.jobID)
-
-	suite.cachedUpdate.EXPECT().
+	suite.cachedJob.EXPECT().
 		ID().
-		Return(suite.updateID)
+		Return(suite.jobID)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(suite.jobID, suite.updateID, gomock.Any()).

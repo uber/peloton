@@ -22,10 +22,8 @@ import (
 type TaskActionTestSuite struct {
 	suite.Suite
 
-	ctrl        *gomock.Controller
-	jobStore    *storemocks.MockJobStore
-	taskStore   *storemocks.MockTaskStore
-	updateStore *storemocks.MockUpdateStore
+	ctrl      *gomock.Controller
+	taskStore *storemocks.MockTaskStore
 
 	jobGoalStateEngine  *goalstatemocks.MockEngine
 	taskGoalStateEngine *goalstatemocks.MockEngine
@@ -88,20 +86,6 @@ func (suite *TaskActionTestSuite) TestTaskReloadRuntime() {
 		Return()
 	err := TaskReloadRuntime(context.Background(), suite.taskEnt)
 	suite.NoError(err)
-}
-
-func (suite *TaskActionTestSuite) prepareTest() {
-	suite.jobFactory.EXPECT().
-		AddJob(suite.jobID).
-		Return(suite.cachedJob)
-	suite.cachedJob.EXPECT().
-		GetTask(suite.instanceID).
-		Return(suite.cachedTask)
-	suite.cachedTask.EXPECT().
-		CurrentState().Return(
-		cached.TaskStateVector{
-			State: pbtask.TaskState_UNKNOWN,
-		})
 }
 
 func (suite *TaskActionTestSuite) TestTaskStateInvalidAction() {
