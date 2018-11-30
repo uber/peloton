@@ -190,11 +190,13 @@ func (f *jobFactory) publishMetrics() {
 	// Iterate through jobs, tasks and count
 	jobsCopy := f.getJobs()
 	for _, j := range jobsCopy {
+		j.RLock()
 		for _, t := range j.tasks {
 			t.RLock()
 			tCount[t.runtime.GetState()][t.runtime.GetGoalState()]++
 			t.RUnlock()
 		}
+		j.RUnlock()
 	}
 
 	// Publish
