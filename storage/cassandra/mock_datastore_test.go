@@ -316,3 +316,16 @@ func (suite *MockDatastoreTestSuite) TestJobNameToIDMapFailures() {
 	_, err = suite.store.GetJobIDFromJobName(context.Background(), testJobName)
 	suite.Error(err)
 }
+
+// TestCreateTaskConfigFailures tests failure scenarios for create task configs
+func (suite *MockDatastoreTestSuite) TestCreateTaskConfigFailures() {
+
+	jobID := &peloton.JobID{
+		Value: testJob,
+	}
+
+	err := suite.store.CreateTaskConfig(context.Background(), jobID,
+		0, &task.TaskConfig{Name: "dummy-task"}, nil, 0)
+
+	suite.Error(err)
+}

@@ -54,6 +54,7 @@ const (
 	jobRuntimeTable       = "job_runtime"
 	jobIndexTable         = "job_index"
 	taskConfigTable       = "task_config"
+	taskConfigV2Table     = "task_config_v2"
 	taskRuntimeTable      = "task_runtime"
 	taskStateChangesTable = "task_state_changes"
 	podEventsTable        = "pod_events"
@@ -488,6 +489,37 @@ func (s *Store) CreateTaskConfig(
 		s.metrics.TaskMetrics.TaskCreateConfigFail.Inc(1)
 		return err
 	}
+
+	// Enable dual writes for task_config_v2 table.
+	// TODO: remove writes to task_config once we are ready to switch over
+	// Even if the second write fails, we would not have consistency issues
+	// because the create task configs goalstate action would be retried
+	// and would create the DB entry on retry (assuming DB is stable)
+	stmt = queryBuilder.Insert(taskConfigV2Table).
+		Columns(
+			"job_id",
+			"version",
+			"instance_id",
+			"creation_time",
+			"config",
+			"config_addon").
+		Values(
+			id.GetValue(),
+			version,
+			instanceID,
+			time.Now().UTC(),
+			configBuffer,
+			addOnBuffer)
+
+	err = s.applyStatement(ctx, stmt, id.GetValue())
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id.GetValue()).
+			Error("createTaskConfigV2 failed")
+		s.metrics.TaskMetrics.TaskCreateConfigFail.Inc(1)
+		return err
+	}
+
 	s.metrics.TaskMetrics.TaskCreateConfig.Inc(1)
 
 	return nil
