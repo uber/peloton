@@ -1327,6 +1327,57 @@ func (suite *UpdateTestSuite) TestUpdateCreateSuccess() {
 			suite.Equal(updateInfo.GetPrevJobConfigVersion(),
 				prevConfig.GetChangeLog().GetVersion())
 			suite.Equal(updateInfo.GetState(), pbupdate.State_INITIALIZED)
+			suite.Equal(updateInfo.GetPrevState(), pbupdate.State_INVALID)
+			suite.Equal(updateInfo.GetJobID(), suite.jobID)
+			suite.Equal(updateInfo.GetInstancesAdded(), instancesAdded)
+			suite.Equal(updateInfo.GetInstancesUpdated(), instancesUpdated)
+			suite.Equal(updateInfo.GetInstancesRemoved(), instnacesRemoved)
+			suite.Equal(updateInfo.GetType(), workflowType)
+			suite.Equal(updateInfo.GetUpdateConfig(), updateConfig)
+		}).
+		Return(nil)
+
+	suite.NoError(suite.update.Create(
+		context.Background(),
+		suite.jobID,
+		jobConfig,
+		prevConfig,
+		configAddOn,
+		instancesAdded,
+		instancesUpdated,
+		instnacesRemoved,
+		workflowType,
+		updateConfig,
+	))
+}
+
+// TestUpdateCreateSuccess tests the success case of creating update
+func (suite *UpdateTestSuite) TestUpdateCreatePausedSuccess() {
+	var instancesAdded []uint32
+	var instnacesRemoved []uint32
+	instancesUpdated := []uint32{0, 1, 2}
+
+	workflowType := models.WorkflowType_START
+	updateConfig := &pbupdate.UpdateConfig{
+		BatchSize:   10,
+		StartPaused: true,
+	}
+
+	prevConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{Version: 1},
+	}
+	jobConfig := prevConfig
+	configAddOn := &models.ConfigAddOn{}
+
+	suite.updateStore.EXPECT().
+		CreateUpdate(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, updateInfo *models.UpdateModel) {
+			suite.Equal(updateInfo.GetJobConfigVersion(),
+				jobConfig.GetChangeLog().GetVersion())
+			suite.Equal(updateInfo.GetPrevJobConfigVersion(),
+				prevConfig.GetChangeLog().GetVersion())
+			suite.Equal(updateInfo.GetState(), pbupdate.State_PAUSED)
+			suite.Equal(updateInfo.GetPrevState(), pbupdate.State_INITIALIZED)
 			suite.Equal(updateInfo.GetJobID(), suite.jobID)
 			suite.Equal(updateInfo.GetInstancesAdded(), instancesAdded)
 			suite.Equal(updateInfo.GetInstancesUpdated(), instancesUpdated)

@@ -222,7 +222,15 @@ func (u *update) Create(
 	u.Lock()
 	defer u.Unlock()
 
-	state := pbupdate.State_INITIALIZED
+	var state pbupdate.State
+	var prevState pbupdate.State
+
+	if updateConfig.StartPaused == true {
+		state = pbupdate.State_PAUSED
+		prevState = pbupdate.State_INITIALIZED
+	} else {
+		state = pbupdate.State_INITIALIZED
+	}
 
 	updateModel := &models.UpdateModel{
 		UpdateID:             u.id,
@@ -231,6 +239,7 @@ func (u *update) Create(
 		JobConfigVersion:     jobConfig.GetChangeLog().GetVersion(),
 		PrevJobConfigVersion: prevJobConfig.GetChangeLog().GetVersion(),
 		State:                state,
+		PrevState:            prevState,
 		InstancesAdded:       instanceAdded,
 		InstancesUpdated:     instanceUpdated,
 		InstancesRemoved:     instanceRemoved,

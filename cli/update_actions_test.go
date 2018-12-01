@@ -194,6 +194,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 			maxInstanceRetries,
 			maxFailureInstances,
 			false,
+			false,
 		)
 
 		if t.err != nil {
@@ -234,7 +235,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateResPoolErrors() {
 		},
 		{
 			respoolLookUpResponse: nil,
-			err: errors.New("cannot lookup resource pool"),
+			err:                   errors.New("cannot lookup resource pool"),
 		},
 	}
 
@@ -255,6 +256,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateResPoolErrors() {
 			false,
 			maxInstanceRetries,
 			maxFailureInstances,
+			false,
 			false,
 		)
 		suite.Error(err)
@@ -363,6 +365,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateJobGetErrors() {
 			maxInstanceRetries,
 			maxFailureInstances,
 			false,
+			false,
 		)
 		suite.Error(err)
 	}
@@ -466,6 +469,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateRetry() {
 		false,
 		maxInstanceRetries,
 		maxFailureInstances,
+		false,
 		false,
 	)
 	suite.NoError(err)

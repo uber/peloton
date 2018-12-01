@@ -350,6 +350,8 @@ var (
 		"maximum number of instance failures tolerable before failing the update").Default("0").Uint32()
 	updateRollbackOnFailure = updateCreate.Flag("rollbackOnFailure",
 		"rollback an update if it fails").Default("false").Bool()
+	updateStartInPausedState = updateCreate.Flag("start-paused",
+		"start the update in a paused state").Default("false").Bool()
 
 	// command to fetch the status of a job update
 	updateGet   = update.Command("get", "get status of a job update")
@@ -607,6 +609,7 @@ func main() {
 			*updateMaxInstanceAttempts,
 			*updateMaxFailureInstances,
 			*updateRollbackOnFailure,
+			*updateStartInPausedState,
 		)
 	case updateGet.FullCommand():
 		err = client.UpdateGetAction(*updateGetID)

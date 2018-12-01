@@ -320,4 +320,8 @@ message UpdateSpec {
   // Maximum number of instance failures before
   // the update is declared to be failed.
   uint32 max_tolerable_instance_failures = 4;
+
+  // If set to true, indicates that the update should start
+  // in the paused state, requiring an explicit resume to roll forward.
+  bool start_paused = 5;
 }

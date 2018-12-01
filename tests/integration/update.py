@@ -34,6 +34,7 @@ class Update(object):
                  roll_back_on_failure=None,
                  max_instance_attempts=None,
                  max_failure_instances=None,
+                 start_paused=None,
                  ):
 
         self.config = config or IntegrationTestConfig()
@@ -48,6 +49,7 @@ class Update(object):
         self.roll_back_on_failure = roll_back_on_failure or False
         self.max_instance_attempts = max_instance_attempts or 0
         self.max_failure_instances = max_failure_instances or 0
+        self.start_paused = start_paused or False
         self.job = job
         self.workflow = None
 
@@ -76,6 +78,7 @@ class Update(object):
                     rollbackOnFailure=self.roll_back_on_failure,
                     maxInstanceAttempts=self.max_instance_attempts,
                     maxFailureInstances=self.max_failure_instances,
+                    startPaused=self.start_paused,
                 )
             )
             try:

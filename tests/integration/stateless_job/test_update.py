@@ -78,6 +78,26 @@ def test__create_update_update_and_add_instances(stateless_job):
     assert_task_config_changed(old_instance_zero_config, new_instance_zero_config)
 
 
+def test__create_update_update_start_paused(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_task_infos = stateless_job.list_tasks().value
+    old_instance_zero_config = stateless_job.get_task_info(0).config
+    update = Update(stateless_job,
+                    updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_FILE,
+                    start_paused=True)
+    update.create()
+    update.wait_for_state(goal_state='PAUSED')
+    update.resume()
+    update.wait_for_state(goal_state='SUCCEEDED')
+    new_task_infos = stateless_job.list_tasks().value
+    new_instance_zero_config = stateless_job.get_task_info(0).config
+    assert len(old_task_infos) == 3
+    assert len(new_task_infos) == 5
+    assert_task_mesos_id_changed(old_task_infos, new_task_infos)
+    assert_task_config_changed(old_instance_zero_config, new_instance_zero_config)
+
+
 def test__create_update_with_batch_size(stateless_job):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state='RUNNING')

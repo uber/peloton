@@ -49,7 +49,8 @@ func (c *Client) UpdateCreateAction(
 	override bool,
 	maxInstanceAttempts uint32,
 	maxFailureInstances uint32,
-	updateRollbackOnFailure bool) error {
+	updateRollbackOnFailure bool,
+	updateStartInPausedState bool) error {
 	var jobConfig job.JobConfig
 	var response *updatesvc.CreateUpdateResponse
 
@@ -135,6 +136,7 @@ func (c *Client) UpdateCreateAction(
 				MaxInstanceAttempts: maxInstanceAttempts,
 				MaxFailureInstances: maxFailureInstances,
 				RollbackOnFailure:   updateRollbackOnFailure,
+				StartPaused:         updateStartInPausedState,
 			},
 		}
 
