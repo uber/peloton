@@ -895,6 +895,53 @@ func (suite *OfferPoolTestSuite) TestGetHostSummary() {
 	suite.NoError(err)
 }
 
+func (suite *OfferPoolTestSuite) TestGetHostSummaries() {
+	// empty offer pool
+	hostSummaries, err := suite.pool.GetHostSummaries([]string{})
+	suite.NoError(err)
+	suite.Equal(0, len(hostSummaries))
+
+	// sample offer pool
+	hostname0 := "hostname0"
+	offer0 := suite.createOffer(hostname0,
+		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 1})
+	hostname1 := "hostname1"
+	offer1 := suite.createOffer(hostname1,
+		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
+	hostname2 := "hostname2"
+	offer2 := suite.createOffer(hostname2,
+		scalar.Resources{CPU: 2, Mem: 2, Disk: 2, GPU: 4})
+	hostname3 := "hostname3"
+	offer3 := suite.createOffer(hostname3,
+		scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
+	hostname4 := "hostname4"
+	offer4 := suite.createOffer(hostname4,
+		scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
+	suite.pool.AddOffers(context.Background(),
+		[]*mesos.Offer{offer0, offer1, offer2, offer3, offer4})
+
+	hostSummaries, err = suite.pool.GetHostSummaries([]string{})
+	suite.NoError(err)
+	suite.Equal(5, len(hostSummaries))
+	hostSummary0, _ := suite.pool.GetHostSummary("hostname0")
+	hostSummary1, _ := suite.pool.GetHostSummary("hostname1")
+	hostSummary2, _ := suite.pool.GetHostSummary("hostname2")
+	hostSummary3, _ := suite.pool.GetHostSummary("hostname3")
+	hostSummary4, _ := suite.pool.GetHostSummary("hostname4")
+	suite.Equal(hostSummary0, hostSummaries[hostname0])
+	suite.Equal(hostSummary1, hostSummaries[hostname1])
+	suite.Equal(hostSummary2, hostSummaries[hostname2])
+	suite.Equal(hostSummary3, hostSummaries[hostname3])
+	suite.Equal(hostSummary4, hostSummaries[hostname4])
+
+	// filter hostname
+	hostSummaries, err = suite.pool.GetHostSummaries([]string{"hostname0", "hostname3"})
+	suite.NoError(err)
+	suite.Equal(2, len(hostSummaries))
+	suite.Equal(hostSummary0, hostSummaries[hostname0])
+	suite.Equal(hostSummary3, hostSummaries[hostname3])
+}
+
 func TestOfferPoolTestSuite(t *testing.T) {
 	suite.Run(t, new(OfferPoolTestSuite))
 }

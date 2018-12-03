@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -89,6 +90,41 @@ func (suite *commonTestSuite) TestClient_LookupResourcePoolID() {
 			suite.NoError(err)
 		}
 	}
+}
+
+func (suite *commonTestSuite) TestClient_ExtractHostnames() {
+	c := Client{
+		Debug:      false,
+		resClient:  suite.mockRespool,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	// input should be trimmed
+	hosts, err := c.ExtractHostnames("a, b,c ", ",")
+	suite.NoError(err)
+	sort.Strings(hosts)
+	suite.Equal("a", hosts[0])
+	suite.Equal("b", hosts[1])
+	suite.Equal("c", hosts[2])
+
+	// empty input
+	_, err = c.ExtractHostnames("", ",")
+	suite.Error(err)
+	suite.Equal(errors.New("Host cannot be empty"), err)
+
+	// duplicate input
+	_, err = c.ExtractHostnames("a,a", ",")
+	suite.Error(err)
+	suite.Equal(errors.New("Invalid input. Duplicate entry for host a found"), err)
+
+	// input should be sorted
+	hosts, err = c.ExtractHostnames("b, c,a ", ",")
+	suite.NoError(err)
+	sort.Strings(hosts)
+	suite.Equal("a", hosts[0])
+	suite.Equal("b", hosts[1])
+	suite.Equal("c", hosts[2])
 }
 
 func TestCommon(t *testing.T) {

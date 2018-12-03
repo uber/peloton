@@ -28,6 +28,15 @@ func lessThanOrEqual(f1, f2 float64) bool {
 	return v < 0
 }
 
+// a safe less than to comparator which takes epsilon into consideration.
+func lessThan(f1, f2 float64) bool {
+	v := f1 - f2
+	if math.Abs(v) < util.ResourceEpsilon {
+		return false
+	}
+	return v < 0
+}
+
 // GetCPU returns the CPU resource
 func (r Resources) GetCPU() float64 {
 	return r.CPU
@@ -60,6 +69,38 @@ func (r Resources) Contains(other Resources) bool {
 		lessThanOrEqual(other.Mem, r.Mem) &&
 		lessThanOrEqual(other.Disk, r.Disk) &&
 		lessThanOrEqual(other.GPU, r.GPU)
+}
+
+// Compare method compares current Resources with the other one, return
+// true if current Resources is strictly larger than or equal to / less than
+// the other one (based on boolean cmpLess), false if not. Fields in the
+// other one are ignore if they are 0.
+func (r Resources) Compare(other Resources, cmpLess bool) bool {
+	// lessThan(r.XXX, other.XXX) != cmpLess XOR's those two values.
+	// cmpLess flag toggles either it's comparing the current one is
+	// greater than or equal to the other (when set to false), or
+	// the current one is less than the other one (when set to true).
+	// The following is the possible combinations of inputs, and their
+	// result:
+	//
+	//   r.XXX < other.XXX  cmpLess  XOR    return
+	//   false              false    false  true (current >= other)
+	//   true               false    true   false (current < other)
+	//   false              true     true   false (current >= other)
+	//   true               true     false  true (current < other)
+	if other.CPU > 0 && lessThan(r.CPU, other.CPU) != cmpLess {
+		return false
+	}
+	if other.Mem > 0 && lessThan(r.Mem, other.Mem) != cmpLess {
+		return false
+	}
+	if other.GPU > 0 && lessThan(r.GPU, other.GPU) != cmpLess {
+		return false
+	}
+	if other.Disk > 0 && lessThan(r.Disk, other.Disk) != cmpLess {
+		return false
+	}
+	return true
 }
 
 // Add atomically add another scalar resources onto current one.
@@ -184,17 +225,24 @@ func FromMesosResources(resources []*mesos.Resource) (r Resources) {
 	return r
 }
 
+// FromOfferToMesosResources returns list of resources from a single offer
+func FromOfferToMesosResources(offer *mesos.Offer) []*mesos.Resource {
+	var resources []*mesos.Resource
+	if offer == nil {
+		resources = append(resources, &mesos.Resource{})
+	} else {
+		for _, r := range offer.GetResources() {
+			resources = append(resources, r)
+		}
+	}
+	return resources
+}
+
 // FromOffersMapToMesosResources returns list of resources from a offerMap
 func FromOffersMapToMesosResources(offerMap map[string]*mesos.Offer) []*mesos.Resource {
 	var resources []*mesos.Resource
 	for _, offer := range offerMap {
-		if offer == nil {
-			resources = append(resources, &mesos.Resource{})
-		} else {
-			for _, r := range offer.GetResources() {
-				resources = append(resources, r)
-			}
-		}
+		resources = append(resources, FromOfferToMesosResources(offer)...)
 	}
 	return resources
 }

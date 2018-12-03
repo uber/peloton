@@ -125,6 +125,120 @@ func TestContains(t *testing.T) {
 	assert.True(t, r3.Contains(r3))
 }
 
+func TestCompareGe(t *testing.T) {
+	r1 := Resources{
+		CPU:  3.0,
+		GPU:  2.0,
+		Mem:  1024,
+		Disk: 1024,
+	}
+	l1 := Resources{
+		CPU:  2.0,
+		GPU:  1.0,
+		Mem:  1024,
+		Disk: 1024,
+	}
+	assert.True(t, r1.Compare(l1, false))
+
+	l2 := Resources{
+		CPU:  3.0,
+		GPU:  2.0,
+		Mem:  1024,
+		Disk: 1024,
+	}
+	assert.True(t, r1.Compare(l2, false))
+
+	l3 := Resources{
+		CPU: 3.0,
+		GPU: 0.0,
+	}
+	assert.True(t, r1.Compare(l3, false))
+
+	l4 := Resources{}
+	assert.True(t, r1.Compare(l4, false))
+
+	l5 := Resources{
+		CPU:  4.0,
+		GPU:  3.0,
+		Mem:  2048,
+		Disk: 2048,
+	}
+	assert.False(t, r1.Compare(l5, false))
+
+	l6 := Resources{
+		CPU: 4.0,
+		GPU: 1.0,
+	}
+	assert.False(t, r1.Compare(l6, false))
+}
+
+func TestCompareLess(t *testing.T) {
+	r1 := Resources{
+		CPU:  3.0,
+		GPU:  2.0,
+		Mem:  1024,
+		Disk: 1024,
+	}
+	l1 := Resources{
+		CPU:  4.0,
+		GPU:  3.0,
+		Mem:  2048,
+		Disk: 2048,
+	}
+	assert.True(t, r1.Compare(l1, true))
+
+	l2 := Resources{
+		CPU:  4.0,
+		GPU:  3.0,
+		Mem:  1024,
+		Disk: 1024,
+	}
+	assert.False(t, r1.Compare(l2, true))
+
+	l3 := Resources{
+		CPU:  4.0,
+		GPU:  3.0,
+		Mem:  1024,
+		Disk: 2048,
+	}
+	assert.False(t, r1.Compare(l3, true))
+
+	l4 := Resources{
+		CPU:  4.0,
+		GPU:  3.0,
+		Mem:  2048,
+		Disk: 1024,
+	}
+	assert.False(t, r1.Compare(l4, true))
+
+	l5 := Resources{
+		CPU: 3.0,
+		GPU: 2.0,
+	}
+	assert.False(t, r1.Compare(l5, true))
+
+	l6 := Resources{
+		CPU: 3.0,
+		GPU: 0.0,
+	}
+	assert.False(t, r1.Compare(l6, true))
+
+	l9 := Resources{
+		CPU: 0.0,
+		GPU: 2.0,
+	}
+	assert.False(t, r1.Compare(l9, true))
+
+	l7 := Resources{}
+	assert.True(t, r1.Compare(l7, true))
+
+	l8 := Resources{
+		CPU: 4.0,
+		GPU: 0.0,
+	}
+	assert.True(t, r1.Compare(l8, true))
+}
+
 func TestHasGPU(t *testing.T) {
 	empty := Resources{}
 	assert.False(t, empty.HasGPU())

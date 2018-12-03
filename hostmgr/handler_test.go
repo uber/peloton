@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -79,27 +80,59 @@ func generateOffers(numOffers int) []*mesos.Offer {
 		oid := fmt.Sprintf("offer-%d", i)
 		aid := fmt.Sprintf("agent-%d", i)
 		hostname := fmt.Sprintf("hostname-%d", i)
-		offers = append(offers, &mesos.Offer{
-			Id:       &mesos.OfferID{Value: &oid},
-			AgentId:  &mesos.AgentID{Value: &aid},
-			Hostname: &hostname,
-			Resources: []*mesos.Resource{
-				util.NewMesosResourceBuilder().
-					WithName("cpus").
-					WithValue(_perHostCPU).
-					Build(),
-				util.NewMesosResourceBuilder().
-					WithName("mem").
-					WithValue(_perHostMem).
-					Build(),
-				util.NewMesosResourceBuilder().
-					WithName("disk").
-					WithValue(_perHostDisk).
-					Build(),
-			},
-		})
+		offers = append(offers, generateOfferWithResource(
+			oid, aid, hostname, _perHostCPU, _perHostMem, _perHostDisk, 0.0))
 	}
 	return offers
+}
+
+func generateOfferWithResource(
+	offerID string,
+	agentID string,
+	hostname string,
+	cpu float64,
+	mem float64,
+	disk float64,
+	gpu float64) *mesos.Offer {
+	var resources []*mesos.Resource
+	if cpu > 0 {
+		resources = append(resources,
+			util.NewMesosResourceBuilder().
+				WithName("cpus").
+				WithValue(cpu).
+				Build(),
+		)
+	}
+	if mem > 0 {
+		resources = append(resources,
+			util.NewMesosResourceBuilder().
+				WithName("mem").
+				WithValue(mem).
+				Build(),
+		)
+	}
+	if disk > 0 {
+		resources = append(resources,
+			util.NewMesosResourceBuilder().
+				WithName("disk").
+				WithValue(disk).
+				Build(),
+		)
+	}
+	if gpu > 0 {
+		resources = append(resources,
+			util.NewMesosResourceBuilder().
+				WithName("gpus").
+				WithValue(gpu).
+				Build(),
+		)
+	}
+	return &mesos.Offer{
+		Id:        &mesos.OfferID{Value: &offerID},
+		AgentId:   &mesos.AgentID{Value: &agentID},
+		Hostname:  &hostname,
+		Resources: resources,
+	}
 }
 
 func generateLaunchableTasks(numTasks int) []*hostsvc.LaunchableTask {
@@ -304,6 +337,206 @@ func (suite *HostMgrHandlerTestSuite) TestGetOutstandingOffers() {
 	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
 	resp, _ = suite.handler.GetOutstandingOffers(rootCtx, &hostsvc.GetOutstandingOffersRequest{})
 	suite.Equal(len(resp.Offers), numHosts)
+}
+
+func (suite *HostMgrHandlerTestSuite) TestGetHostsByQueryNoOffers() {
+	defer suite.ctrl.Finish()
+
+	req := &hostsvc.GetHostsByQueryRequest{
+		Resource: &task.ResourceConfig{
+			CpuLimit: 1.0,
+			GpuLimit: 2.0,
+		},
+		Hostnames: []string{"host1", "host2"},
+	}
+	resp, _ := suite.handler.GetHostsByQuery(rootCtx, req)
+	suite.Equal(0, len(resp.Hosts))
+}
+
+func (suite *HostMgrHandlerTestSuite) TestGetHostsByQueryAllHosts() {
+	defer suite.ctrl.Finish()
+
+	req := &hostsvc.GetHostsByQueryRequest{
+		Resource: &task.ResourceConfig{
+			CpuLimit: 0.0,
+			GpuLimit: 0.0,
+		},
+	}
+	numHosts := 5
+	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
+	resp, _ := suite.handler.GetHostsByQuery(rootCtx, req)
+	suite.Equal(numHosts, len(resp.Hosts))
+}
+
+func (suite *HostMgrHandlerTestSuite) TestGetHostsByQueryFilterHostnames() {
+	defer suite.ctrl.Finish()
+
+	req := &hostsvc.GetHostsByQueryRequest{
+		Hostnames: []string{"hostname-0", "hostname-2"},
+	}
+	var offers []*mesos.Offer
+	offers = append(offers, generateOfferWithResource(
+		"offer-0", "agent-0", "hostname-0", 1.0, _perHostMem, _perHostDisk, 1.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-1", "agent-1", "hostname-1", 3.0, _perHostMem, _perHostDisk, 1.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-2", "agent-2", "hostname-2", 1.0, _perHostMem, _perHostDisk, 2.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-3", "agent-3", "hostname-3", 3.0, _perHostMem, _perHostDisk, 2.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-4", "agent-4", "hostname-4", 4.0, _perHostMem, _perHostDisk, 3.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-5", "agent-5", "hostname-5", 4.0, _perHostMem, _perHostDisk, 0.0))
+
+	suite.pool.AddOffers(context.Background(), offers)
+	resp, _ := suite.handler.GetHostsByQuery(rootCtx, req)
+	suite.Equal(2, len(resp.Hosts))
+	sort.Slice(resp.Hosts, func(i, j int) bool {
+		return strings.Compare(resp.Hosts[i].Hostname, resp.Hosts[j].Hostname) < 0
+	})
+
+	suite.Equal("hostname-0", resp.Hosts[0].Hostname)
+	suite.Equal("hostname-2", resp.Hosts[1].Hostname)
+}
+
+func (suite *HostMgrHandlerTestSuite) TestGetHostsByQueryGreaterThanEqualTo() {
+	defer suite.ctrl.Finish()
+
+	req := &hostsvc.GetHostsByQueryRequest{
+		Resource: &task.ResourceConfig{
+			CpuLimit: 3.0,
+			GpuLimit: 2.0,
+		},
+		CmpLess: false,
+	}
+	var offers []*mesos.Offer
+	offers = append(offers, generateOfferWithResource(
+		"offer-0", "agent-0", "hostname-0", 1.0, _perHostMem, _perHostDisk, 1.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-1", "agent-1", "hostname-1", 3.0, _perHostMem, _perHostDisk, 1.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-2", "agent-2", "hostname-2", 1.0, _perHostMem, _perHostDisk, 2.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-3", "agent-3", "hostname-3", 3.0, _perHostMem, _perHostDisk, 2.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-4", "agent-4", "hostname-4", 4.0, _perHostMem, _perHostDisk, 3.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-5", "agent-5", "hostname-5", 4.0, _perHostMem, _perHostDisk, 0.0))
+
+	suite.pool.AddOffers(context.Background(), offers)
+	resp, _ := suite.handler.GetHostsByQuery(rootCtx, req)
+	suite.Equal(2, len(resp.Hosts))
+	sort.Slice(resp.Hosts, func(i, j int) bool {
+		return strings.Compare(resp.Hosts[i].Hostname, resp.Hosts[j].Hostname) < 0
+	})
+
+	suite.Equal("hostname-3", resp.Hosts[0].Hostname)
+	suite.Equal("hostname-4", resp.Hosts[1].Hostname)
+}
+
+func (suite *HostMgrHandlerTestSuite) TestGetHostsByQueryGreaterThanEqualToCpuOnly() {
+	defer suite.ctrl.Finish()
+
+	req := &hostsvc.GetHostsByQueryRequest{
+		Resource: &task.ResourceConfig{
+			CpuLimit: 3.0,
+			GpuLimit: 0.0,
+		},
+		CmpLess: false,
+	}
+	var offers []*mesos.Offer
+	offers = append(offers, generateOfferWithResource(
+		"offer-0", "agent-0", "hostname-0", 1.0, _perHostMem, _perHostDisk, 1.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-1", "agent-1", "hostname-1", 3.0, _perHostMem, _perHostDisk, 1.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-2", "agent-2", "hostname-2", 1.0, _perHostMem, _perHostDisk, 2.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-3", "agent-3", "hostname-3", 3.0, _perHostMem, _perHostDisk, 2.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-4", "agent-4", "hostname-4", 4.0, _perHostMem, _perHostDisk, 3.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-5", "agent-5", "hostname-5", 4.0, _perHostMem, _perHostDisk, 0.0))
+
+	suite.pool.AddOffers(context.Background(), offers)
+	resp, _ := suite.handler.GetHostsByQuery(rootCtx, req)
+	suite.Equal(4, len(resp.Hosts))
+	sort.Slice(resp.Hosts, func(i, j int) bool {
+		return strings.Compare(resp.Hosts[i].Hostname, resp.Hosts[j].Hostname) < 0
+	})
+
+	suite.Equal("hostname-1", resp.Hosts[0].Hostname)
+	suite.Equal("hostname-3", resp.Hosts[1].Hostname)
+	suite.Equal("hostname-4", resp.Hosts[2].Hostname)
+	suite.Equal("hostname-5", resp.Hosts[3].Hostname)
+}
+
+func (suite *HostMgrHandlerTestSuite) TestGetHostsByQueryLessThan() {
+	defer suite.ctrl.Finish()
+
+	req := &hostsvc.GetHostsByQueryRequest{
+		Resource: &task.ResourceConfig{
+			CpuLimit: 3.0,
+			GpuLimit: 2.0,
+		},
+		CmpLess: true,
+	}
+	var offers []*mesos.Offer
+	offers = append(offers, generateOfferWithResource(
+		"offer-0", "agent-0", "hostname-0", 1.0, _perHostMem, _perHostDisk, 1.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-1", "agent-1", "hostname-1", 3.0, _perHostMem, _perHostDisk, 1.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-2", "agent-2", "hostname-2", 1.0, _perHostMem, _perHostDisk, 2.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-3", "agent-3", "hostname-3", 3.0, _perHostMem, _perHostDisk, 2.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-4", "agent-4", "hostname-4", 4.0, _perHostMem, _perHostDisk, 3.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-5", "agent-5", "hostname-5", 4.0, _perHostMem, _perHostDisk, 0.0))
+
+	suite.pool.AddOffers(context.Background(), offers)
+	resp, _ := suite.handler.GetHostsByQuery(rootCtx, req)
+
+	for _, host := range resp.Hosts {
+		fmt.Println("BLAH", host.Hostname)
+	}
+
+	suite.Equal(1, len(resp.Hosts))
+	sort.Slice(resp.Hosts, func(i, j int) bool {
+		return strings.Compare(resp.Hosts[i].Hostname, resp.Hosts[j].Hostname) < 0
+	})
+
+	suite.Equal("hostname-0", resp.Hosts[0].Hostname)
+}
+
+func (suite *HostMgrHandlerTestSuite) TestGetHostsByQueryNoHosts() {
+	defer suite.ctrl.Finish()
+
+	req := &hostsvc.GetHostsByQueryRequest{
+		Resource: &task.ResourceConfig{
+			CpuLimit: 10.0,
+			GpuLimit: 10.0,
+		},
+		CmpLess: false,
+	}
+	var offers []*mesos.Offer
+	offers = append(offers, generateOfferWithResource(
+		"offer-0", "agent-0", "hostname-0", 1.0, _perHostMem, _perHostDisk, 1.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-1", "agent-1", "hostname-1", 3.0, _perHostMem, _perHostDisk, 1.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-2", "agent-2", "hostname-2", 1.0, _perHostMem, _perHostDisk, 2.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-3", "agent-3", "hostname-3", 3.0, _perHostMem, _perHostDisk, 2.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-4", "agent-4", "hostname-4", 4.0, _perHostMem, _perHostDisk, 3.0))
+	offers = append(offers, generateOfferWithResource(
+		"offer-5", "agent-5", "hostname-5", 4.0, _perHostMem, _perHostDisk, 0.0))
+
+	suite.pool.AddOffers(context.Background(), offers)
+	resp, _ := suite.handler.GetHostsByQuery(rootCtx, req)
+	suite.Equal(0, len(resp.Hosts))
 }
 
 func (suite *HostMgrHandlerTestSuite) TestStatusUpdateEvents() {

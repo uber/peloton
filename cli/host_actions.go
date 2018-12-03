@@ -2,18 +2,23 @@ package cli
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
 	host_svc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"code.uber.internal/infra/peloton/common/stringset"
+	"code.uber.internal/infra/peloton/hostmgr/scalar"
 )
 
 const (
 	hostQueryFormatHeader = "Hostname\tIP\tState\n"
 	hostQueryFormatBody   = "%s\t%s\t%s\n"
 	hostSeparator         = ","
+	getHostsFormatHeader  = "Hostname\tCPU\tGPU\tMEM\tDisk\tState\t\n"
+	getHostsFormatBody    = "%s\t%.2f\t%.2f\t%.2f MB\t%.2f MB\t%s\t\n"
 )
 
 // HostMaintenanceStartAction is the action for starting host maintenance. StartMaintenance puts the host(s)
@@ -23,7 +28,7 @@ const (
 // by posting to /machine/down endpoint of Mesos Master.
 // The hosts transition from UP to DRAINING and finally to DOWN.
 func (c *Client) HostMaintenanceStartAction(hosts string) error {
-	hostnames, err := extractHostnames(hosts)
+	hostnames, err := c.ExtractHostnames(hosts, hostSeparator)
 	if err != nil {
 		return err
 	}
@@ -45,7 +50,7 @@ func (c *Client) HostMaintenanceStartAction(hosts string) error {
 // which is in maintenance by posting to /machine/up endpoint of Mesos Master i.e. the machine transitions from DOWN to
 // UP state (Please check Mesos Maintenance Primitives for more info)
 func (c *Client) HostMaintenanceCompleteAction(hosts string) error {
-	hostnames, err := extractHostnames(hosts)
+	hostnames, err := c.ExtractHostnames(hosts, hostSeparator)
 	if err != nil {
 		return err
 	}
@@ -91,22 +96,6 @@ func (c *Client) HostQueryAction(states string) error {
 	return nil
 }
 
-func extractHostnames(hosts string) ([]string, error) {
-	hostSet := stringset.New()
-	for _, host := range strings.Split(hosts, hostSeparator) {
-		// removing leading and trailing white spaces
-		host = strings.TrimSpace(host)
-		if host == "" {
-			return nil, fmt.Errorf("Host cannot be empty")
-		}
-		if hostSet.Contains(host) {
-			return nil, fmt.Errorf("Invalid input. Duplicate entry for host %s found", host)
-		}
-		hostSet.Add(host)
-	}
-	return hostSet.ToSlice(), nil
-}
-
 func printHostQueryResponse(r *host_svc.QueryHostsResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
@@ -127,4 +116,64 @@ func printHostQueryResponse(r *host_svc.QueryHostsResponse, debug bool) {
 		}
 	}
 	tabWriter.Flush()
+}
+
+// HostsGetAction prints all the hosts based on resource requirement
+// passed in.
+func (c *Client) HostsGetAction(
+	cpu float64,
+	gpu float64,
+	cmpLess bool,
+	hosts string) error {
+	var hostnames []string
+	var err error
+
+	if len(hosts) > 0 {
+		hostnames, err = c.ExtractHostnames(hosts, hostSeparator)
+		if err != nil {
+			return err
+		}
+	}
+
+	resourceConfig := &pb_task.ResourceConfig{
+		CpuLimit: cpu,
+		GpuLimit: gpu,
+	}
+
+	resp, _ := c.hostMgrClient.GetHostsByQuery(
+		c.ctx,
+		&hostsvc.GetHostsByQueryRequest{
+			Resource:  resourceConfig,
+			CmpLess:   cmpLess,
+			Hostnames: hostnames,
+		})
+
+	printGetHostsResponse(resp)
+	return nil
+}
+
+func printGetHostsResponse(resp *hostsvc.GetHostsByQueryResponse) {
+	defer tabWriter.Flush()
+
+	hosts := resp.GetHosts()
+	if len(hosts) == 0 {
+		fmt.Fprintln(tabWriter, "No hosts found satisfies the requirement")
+	} else {
+		sort.Slice(hosts, func(i, j int) bool {
+			return strings.Compare(hosts[i].GetHostname(), hosts[j].GetHostname()) < 0
+		})
+
+		fmt.Fprint(tabWriter, getHostsFormatHeader)
+		for _, host := range hosts {
+			resource := scalar.FromMesosResources(host.GetResources())
+			fmt.Fprintf(tabWriter,
+				getHostsFormatBody,
+				host.GetHostname(),
+				resource.GetCPU(),
+				resource.GetGPU(),
+				resource.GetMem(),
+				resource.GetDisk(),
+				host.GetStatus())
+		}
+	}
 }

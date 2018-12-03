@@ -167,6 +167,47 @@ func (h *ServiceHandler) GetOutstandingOffers(
 	}, nil
 }
 
+// GetHostsByQuery implements InternalHostService.GetHostsByQuery.
+// This function gets host resources from offer pool and filters
+// host list based on the requirements passed in the request
+// through hostsvc.HostFilter.
+func (h *ServiceHandler) GetHostsByQuery(
+	ctx context.Context,
+	body *hostsvc.GetHostsByQueryRequest,
+) (*hostsvc.GetHostsByQueryResponse, error) {
+	filterHostnames := body.GetHostnames()
+	hostSummaries, _ := h.offerPool.GetHostSummaries(filterHostnames)
+	hostSummariesCount := len(hostSummaries)
+
+	if hostSummariesCount == 0 {
+		return &hostsvc.GetHostsByQueryResponse{}, nil
+	}
+
+	cmpLess := body.GetCmpLess()
+	resourcesLimit := scalar.FromResourceConfig(body.GetResource())
+
+	hosts := make([]*hostsvc.GetHostsByQueryResponse_Host, 0, hostSummariesCount)
+	for hostname, hostSummary := range hostSummaries {
+		resources := scalar.FromOffersMapToMesosResources(hostSummary.GetOffers(summary.All))
+		_, nonRevocable := scalar.FilterRevocableMesosResources(resources)
+		nonRevocableResources := scalar.FromMesosResources(nonRevocable)
+
+		if !nonRevocableResources.Compare(resourcesLimit, cmpLess) {
+			continue
+		}
+
+		hosts = append(hosts, &hostsvc.GetHostsByQueryResponse_Host{
+			Hostname:  hostname,
+			Resources: nonRevocable,
+			Status:    toHostStatus(hostSummary.GetHostStatus()),
+		})
+	}
+
+	return &hostsvc.GetHostsByQueryResponse{
+		Hosts: hosts,
+	}, nil
+}
+
 // GetStatusUpdateEvents returns all the outstanding status update
 // events
 func (h *ServiceHandler) GetStatusUpdateEvents(
@@ -1291,4 +1332,20 @@ func toHostSvcResources(rs *scalar.Resources) []*hostsvc.Resource {
 			Capacity: rs.Mem,
 		},
 	}
+}
+
+// Helper function to convert summary.HostStatus to string
+func toHostStatus(hostStatus summary.HostStatus) string {
+	var status string
+	switch hostStatus {
+	case summary.ReadyHost:
+		status = "ready"
+	case summary.PlacingHost:
+		status = "placing"
+	case summary.ReservedHost:
+		status = "reserved"
+	default:
+		status = "unknown"
+	}
+	return status
 }

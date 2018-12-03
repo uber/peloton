@@ -97,6 +97,9 @@ type Pool interface {
 	// GetHostOfferIndex returns the host to host summary mapping
 	// it makes the copy and returns the new map
 	GetHostOfferIndex() map[string]summary.HostSummary
+
+	// GetHostSummaries returns a map of hostname to host summary object
+	GetHostSummaries(hostnames []string) (map[string]summary.HostSummary, error)
 }
 
 const (
@@ -658,4 +661,27 @@ func (p *offerPool) GetHostOfferIndex() map[string]summary.HostSummary {
 		dest[k] = v
 	}
 	return dest
+}
+
+// GetHostSummaries returns a map of hostname to host summary object
+func (p *offerPool) GetHostSummaries(
+	hostnames []string) (map[string]summary.HostSummary, error) {
+	p.RLock()
+	defer p.RUnlock()
+
+	hostSummaries := make(map[string]summary.HostSummary)
+
+	if len(hostnames) > 0 {
+		for _, hostname := range hostnames {
+			if offerSummary, ok := p.hostOfferIndex[hostname]; ok {
+				hostSummaries[hostname] = offerSummary
+			}
+		}
+	} else {
+		for hostname, offerSummary := range p.hostOfferIndex {
+			hostSummaries[hostname] = offerSummary
+		}
+	}
+
+	return hostSummaries, nil
 }

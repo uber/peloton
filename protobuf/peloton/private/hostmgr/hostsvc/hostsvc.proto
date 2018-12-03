@@ -375,6 +375,9 @@ service InternalHostService
   // Return all the outstanding offers present in offer pool.
   rpc GetOutstandingOffers(GetOutstandingOffersRequest) returns (GetOutstandingOffersResponse);
 
+  // Return all the hosts with available resources matching the query, used in cli only.
+  rpc GetHostsByQuery(GetHostsByQueryRequest) returns (GetHostsByQueryResponse);
+
   // Return all the outstanding status update events present in the event stream.
   rpc GetStatusUpdateEvents(GetStatusUpdateEventsRequest) returns(GetStatusUpdateEventsResponse);
 
@@ -428,6 +431,42 @@ message GetOutstandingOffersResponse {
   repeated mesos.v1.Offer offers = 1;
 
   Error error = 2;
+}
+
+/**
+ * Request to get all the hosts with available resources matching the query,
+ * used in cli.
+ */
+message GetHostsByQueryRequest {
+  // Resource limit, currently only cpu and gpu count are used.
+  // The field is ignore if the value is 0.
+  api.v0.task.ResourceConfig resource = 1;
+
+  // Set to true if wants to return hosts with resources less than provided
+  // in the "resource" field, otherwise returns hosts with resources
+  // greater than and equal to the resources provided.
+  bool cmpLess = 2;
+
+  // Match the agent hostnames if provided.
+  repeated string hostnames = 3;
+}
+
+/**
+ * Responds all the hosts with available resources matching the query,
+ * used in cli.
+ */
+message GetHostsByQueryResponse {
+  // Host information by aggregating a list of Mesos offers
+  message Host {
+    // name of the host
+    string hostname = 1;
+    // list of mesos resources for the host
+    repeated mesos.v1.Resource resources = 2;
+    // host status - ready, placing, reserved
+    string status = 3;
+  }
+
+  repeated Host hosts = 1;
 }
 
 /**

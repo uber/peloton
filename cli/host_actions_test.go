@@ -5,12 +5,19 @@ import (
 	"fmt"
 	"testing"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
 	hostsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc"
 	hostmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc/mocks"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	hostmgrsvc "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	hostmgrMocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
 	"github.com/golang/mock/gomock"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
+
+	"code.uber.internal/infra/peloton/util"
 )
 
 type hostmgrActionsTestSuite struct {
@@ -156,4 +163,145 @@ func (suite *hostmgrActionsTestSuite) TestClientHostQueryAction() {
 			suite.NoError(c.HostQueryAction("HOST_STATE_DRAINING"))
 		}
 	}
+}
+
+type hostmgrActionsInternalTestSuite struct {
+	suite.Suite
+	mockCtrl    *gomock.Controller
+	mockHostMgr *hostmgrMocks.MockInternalHostServiceYARPCClient
+	ctx         context.Context
+}
+
+func TestHostmgrInternalActions(t *testing.T) {
+	suite.Run(t, new(hostmgrActionsInternalTestSuite))
+}
+
+func (suite *hostmgrActionsInternalTestSuite) SetupSuite() {
+	suite.mockCtrl = gomock.NewController(suite.T())
+	suite.mockHostMgr = hostmgrMocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
+	suite.ctx = context.Background()
+}
+
+func (suite *hostmgrActionsInternalTestSuite) TearDownSuite() {
+	suite.mockCtrl.Finish()
+	suite.ctx.Done()
+}
+
+func (suite *hostmgrActionsInternalTestSuite) SetupTest() {
+	log.Debug("SetupTest")
+}
+
+func (suite *hostmgrActionsInternalTestSuite) TearDownTest() {
+	log.Debug("TearDownTest")
+}
+
+func newHost(
+	hostname string,
+	cpu float64,
+	gpu float64,
+	mem float64,
+	disk float64) *hostmgrsvc.GetHostsByQueryResponse_Host {
+	return &hostmgrsvc.GetHostsByQueryResponse_Host{
+		Hostname: hostname,
+		Resources: []*mesos.Resource{
+			util.NewMesosResourceBuilder().
+				WithName("cpus").
+				WithValue(cpu).
+				Build(),
+			util.NewMesosResourceBuilder().
+				WithName("mem").
+				WithValue(mem).
+				Build(),
+			util.NewMesosResourceBuilder().
+				WithName("disk").
+				WithValue(disk).
+				Build(),
+			util.NewMesosResourceBuilder().
+				WithName("gpu").
+				WithValue(gpu).
+				Build(),
+		},
+		Status: "ready",
+	}
+}
+
+func (suite *hostmgrActionsInternalTestSuite) TestGetHostsByQuery() {
+	c := Client{
+		Debug:         false,
+		hostMgrClient: suite.mockHostMgr,
+		dispatcher:    nil,
+		ctx:           suite.ctx,
+	}
+
+	req := &hostmgrsvc.GetHostsByQueryRequest{
+		Resource: &pb_task.ResourceConfig{
+			CpuLimit: 1.0,
+			GpuLimit: 2.0,
+		},
+		CmpLess:   false,
+		Hostnames: []string{"host1", "host3"},
+	}
+
+	resp := &hostmgrsvc.GetHostsByQueryResponse{
+		Hosts: []*hostmgrsvc.GetHostsByQueryResponse_Host{
+			newHost("host1", 2.0, 1.0, 1024.0, 20000.0),
+			newHost("host2", 3.0, 2.0, 2048.0, 20000.0),
+			newHost("host3", 3.0, 2.0, 2048.0, 20000.0),
+		},
+	}
+
+	suite.mockHostMgr.EXPECT().GetHostsByQuery(gomock.Any(), req).Return(resp, nil)
+	err := c.HostsGetAction(1.0, 2.0, false, "host1,host3")
+	suite.NoError(err)
+}
+
+func (suite *hostmgrActionsInternalTestSuite) TestGetHostsByQueryLessThan() {
+	c := Client{
+		Debug:         false,
+		hostMgrClient: suite.mockHostMgr,
+		dispatcher:    nil,
+		ctx:           suite.ctx,
+	}
+
+	req := &hostmgrsvc.GetHostsByQueryRequest{
+		Resource: &pb_task.ResourceConfig{
+			CpuLimit: 4.0,
+			GpuLimit: 3.0,
+		},
+		CmpLess: true,
+	}
+
+	resp := &hostmgrsvc.GetHostsByQueryResponse{
+		Hosts: []*hostmgrsvc.GetHostsByQueryResponse_Host{
+			newHost("host1", 2.0, 1.0, 1024.0, 20000.0),
+			newHost("host2", 3.0, 2.0, 2048.0, 20000.0),
+		},
+	}
+
+	suite.mockHostMgr.EXPECT().GetHostsByQuery(gomock.Any(), req).Return(resp, nil)
+	err := c.HostsGetAction(4.0, 3.0, true, "")
+	suite.NoError(err)
+}
+
+func (suite *hostmgrActionsInternalTestSuite) TestGetHostsByQueryNoHost() {
+	c := Client{
+		Debug:         false,
+		hostMgrClient: suite.mockHostMgr,
+		dispatcher:    nil,
+		ctx:           suite.ctx,
+	}
+
+	req := &hostmgrsvc.GetHostsByQueryRequest{
+		Resource: &pb_task.ResourceConfig{
+			CpuLimit: 1.0,
+			GpuLimit: 2.0,
+		},
+		CmpLess: false,
+	}
+
+	resp := &hostmgrsvc.GetHostsByQueryResponse{}
+
+	suite.mockHostMgr.EXPECT().GetHostsByQuery(gomock.Any(), req).Return(resp, nil)
+	err := c.HostsGetAction(1.0, 2.0, false, "")
+	suite.NoError(err)
 }

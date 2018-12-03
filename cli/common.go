@@ -1,8 +1,14 @@
 package cli
 
 import (
+	"fmt"
+	"sort"
+	"strings"
+
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+
+	"code.uber.internal/infra/peloton/common/stringset"
 )
 
 // LookupResourcePoolID returns the resource pool ID for a given path
@@ -18,4 +24,23 @@ func (c *Client) LookupResourcePoolID(resourcePoolPath string) (*peloton.Resourc
 		return nil, err
 	}
 	return response.Id, nil
+}
+
+// ExtractHostnames extracts a list of hosts from a comma-separated list
+func (c *Client) ExtractHostnames(hosts string, hostSeparator string) ([]string, error) {
+	hostSet := stringset.New()
+	for _, host := range strings.Split(hosts, hostSeparator) {
+		// removing leading and trailing white spaces
+		host = strings.TrimSpace(host)
+		if host == "" {
+			return nil, fmt.Errorf("Host cannot be empty")
+		}
+		if hostSet.Contains(host) {
+			return nil, fmt.Errorf("Invalid input. Duplicate entry for host %s found", host)
+		}
+		hostSet.Add(host)
+	}
+	hostSlice := hostSet.ToSlice()
+	sort.Strings(hostSlice)
+	return hostSlice, nil
 }

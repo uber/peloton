@@ -138,3 +138,29 @@ func TestTaskQuery(t *testing.T) {
 	assert.NotNil(t, err)
 
 }
+
+func TestHostmgrHosts(t *testing.T) {
+	cmd, err := app.Parse([]string{"hostmgr", "hosts", "--cpu", "3.0", "--gpu", "5.0", "-l", "--hosts", "host1,host2"})
+	assert.Nil(t, err)
+	assert.Equal(t, cmd, getHosts.FullCommand())
+	assert.Equal(t, *getHostsCPU, 3.0)
+	assert.Equal(t, *getHostsGPU, 5.0)
+	assert.Equal(t, *getHostsCmpLess, true)
+	assert.Equal(t, *getHostsHostnames, "host1,host2")
+
+	// test default value
+	cmd, err = app.Parse([]string{"hostmgr", "hosts"})
+	assert.Nil(t, err)
+	assert.Equal(t, cmd, getHosts.FullCommand())
+	assert.Equal(t, *getHostsCPU, 0.0)
+	assert.Equal(t, *getHostsGPU, 0.0)
+	assert.Equal(t, *getHostsCmpLess, false)
+
+	// test invalid sign
+	cmd, err = app.Parse([]string{"hostmgr", "hosts", "--cpu", "1.0", "--gpu", "5.0", "--leess"})
+	assert.Error(t, err)
+
+	// test invalid cpu gpu value
+	cmd, err = app.Parse([]string{"hostmgr", "hosts", "--cpu", "-1.0", "--gpu", "-5.0"})
+	assert.Error(t, err)
+}

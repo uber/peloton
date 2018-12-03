@@ -383,6 +383,13 @@ var (
 	// command for list offers
 	offers = hostmgr.Command("offers", "list all outstanding offers")
 
+	// command for listing hosts
+	getHosts          = hostmgr.Command("hosts", "list all hosts matching the query")
+	getHostsCPU       = getHosts.Flag("cpu", "compare cpu cores available at the host, ignore if not provided").Short('c').Default("0").Float64()
+	getHostsGPU       = getHosts.Flag("gpu", "compare gpu cores available at the host, ignore if not provided").Short('g').Default("0").Float64()
+	getHostsCmpLess   = getHosts.Flag("less", "list hosts with resources less than cpu and/or gpu cores specified (default to greater than and equal to if not specified)").Short('l').Default("false").Bool()
+	getHostsHostnames = getHosts.Flag("hosts", "filter the hosts based on the comma separated hostnames provided").String()
+
 	// command for list status update events present in the event stream
 	eventStream = hostmgr.Command("events", "list all the task status update events present in event stream")
 )
@@ -625,6 +632,8 @@ func main() {
 		err = client.UpdateResumeAction(*updateResumeID)
 	case offers.FullCommand():
 		err = client.OffersGetAction()
+	case getHosts.FullCommand():
+		err = client.HostsGetAction(*getHostsCPU, *getHostsGPU, *getHostsCmpLess, *getHostsHostnames)
 	case podGetEvents.FullCommand():
 		err = client.PodGetEventsAction(*podGetEventsJobName, *podGetEventsInstanceID, *podGetEventsRunID, *podGetEventsLimit)
 	case podGetCache.FullCommand():
