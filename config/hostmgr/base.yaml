@@ -49,7 +49,7 @@ host_manager:
   # bin_packing represents the strategy hostmanager is going to use in order
   # to pack the tasks in the host. By default it was FIRST_FIT, we are changing
   # it to DEFRAG.
-  bin_packing: DEFRAG # DEFRAG/FIRST_FIT
+  bin_packing: FIRST_FIT # DEFRAG/FIRST_FIT
 
   # bin packing refresh interval represents the time interval in which
   # we can refresh the list of hosts based on bin packing algorithm
