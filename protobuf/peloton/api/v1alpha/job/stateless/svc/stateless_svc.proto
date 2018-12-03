@@ -59,6 +59,9 @@ message ReplaceJobRequest {
 
   // The update SLA specification.
   stateless.UpdateSpec update_spec = 5;
+
+  // Metadata information supplied by the client
+  string metadata = 6;
 }
 
 // Response message for JobService.ReplaceJob method.
@@ -88,6 +91,9 @@ message PatchJobRequest {
 
   // The update SLA specification.
   stateless.UpdateSpec update_spec = 5;
+
+  // Metadata information supplied by the client
+  string metadata = 6;
 }
 
 // Response message for JobService.PatchJob method.
@@ -115,6 +121,9 @@ message RestartJobRequest {
 
   // The pods to restart, default to all.
   repeated pod.InstanceIDRange ranges = 4;
+
+  // Metadata information supplied by the client
+  string metadata = 5;
 }
 
 // Response message for JobService.RestartJob method.
@@ -133,6 +142,9 @@ message PauseJobWorkflowRequest {
 
   // The current version of the job.
   peloton.EntityVersion version = 2;
+
+  // Metadata information supplied by the client
+  string metadata = 3;
 }
 
 // Response message for JobService.PauseJobWorkflow method.
@@ -152,6 +164,9 @@ message ResumeJobWorkflowRequest {
 
   // The current version of the job.
   peloton.EntityVersion version = 2;
+
+  // Metadata information supplied by the client
+  string metadata = 3;
 }
 
 // Response message for JobService.ResumeJobWorkflow method.
@@ -171,6 +186,9 @@ message AbortJobWorkflowRequest {
 
   // The current version of the job.
   peloton.EntityVersion version = 2;
+
+  // Metadata information supplied by the client
+  string metadata = 3;
 }
 
 // Response message for JobService.AbortJobWorkflow method.
@@ -256,7 +274,7 @@ message GetJobRequest {
   // If not provided, then the latest job configuration
   // specification and runtime status are returned.
   // If provided, only the job configuration specification
-  // at a given version is returned.
+  // (and no runtime) at a given version is returned.
   peloton.EntityVersion version = 2;
 
   // If set to true, only return the job summary.
@@ -277,6 +295,24 @@ message GetJobResponse {
   // SecretID and path will be populated, so that caller
   // can identify which secret is associated with this job.
   repeated peloton.Secret secrets = 3;
+
+  // Information about the current/last completed workflow
+  // including its state and specification.
+  stateless.WorkflowInfo workflow_info = 4;
+}
+
+// Request message for JobService.GetWorkflowEvents
+message GetWorkflowEventsRequest {
+  // The job ID to look up the job.
+  peloton.JobID job_id = 1;
+}
+
+// Response message for JobService.GetWorkflowEvents
+// Return errors:
+//   NOT_FOUND:         if the job ID is not found.
+message GetWorkflowEventsResponse {
+  // Workflow events for the given workflow
+  repeated stateless.WorkflowEvent events = 1;
 }
 
 // Request message for JobService.ListPods method.
@@ -356,7 +392,13 @@ message ListJobUpdatesRequest {
 // Return errors:
 //   NOT_FOUND:         if the job ID is not found.
 message ListJobUpdatesResponse {
-  repeated WorkflowStatus status = 1;
+  message UpdateInfo {
+    // workflow information including status and specification
+    stateless.WorkflowInfo info = 1;
+    // workflow events
+    repeated stateless.WorkflowEvent events = 2;
+  }
+  repeated UpdateInfo updates = 1;
 }
 
 // Request message for JobService.RefreshJob method.
@@ -444,6 +486,9 @@ service JobService {
 
   // Get the configuration and runtime status of a job.
   rpc GetJob(GetJobRequest) returns (GetJobResponse);
+
+  // Get the events of the current / last completed workflow of a job
+  rpc GetWorkflowEvents(GetWorkflowEventsRequest) returns (GetWorkflowEventsResponse);
 
   // List all pods in a job for a given range of pod IDs.
   rpc ListPods(ListPodsRequest) returns (stream ListPodsResponse);

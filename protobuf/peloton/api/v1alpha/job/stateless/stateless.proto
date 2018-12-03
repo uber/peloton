@@ -172,7 +172,7 @@ message WorkflowStatus {
   uint32 num_instances_failed = 5;
 
   // Current instances being operated on.
-  repeated uint32 current_instances = 6;
+  repeated uint32 instances_current = 6;
 
   // Job version the workflow moved the job object to.
   peloton.EntityVersion version = 7;
@@ -324,4 +324,43 @@ message UpdateSpec {
   // If set to true, indicates that the update should start
   // in the paused state, requiring an explicit resume to roll forward.
   bool start_paused = 5;
+}
+
+// Information about a workflow including its status and specification
+message WorkflowInfo {
+  // Workflow status
+  WorkflowStatus status = 1;
+
+  // Update specification for update workflow
+  UpdateSpec update_spec = 2;
+
+  // Batch size provided for restart workflow
+  uint32 restart_batch_size = 3;
+
+  // Instance ranges provided for restart workflow
+  repeated pod.InstanceIDRange restart_ranges = 4;
+
+  // Metadata information supplied by the client
+  string metadata = 6;
+}
+
+message WorkflowEvent {
+  // Workflow type.
+  WorkflowType type = 1;
+
+  // Timestamp of the event represented in RFC3339
+  // form with UTC timezone.
+  string timestamp = 2;
+
+  // Current runtime state of the workflow.
+  WorkflowState state = 3;
+
+  // Instances which have successfully completed.
+  repeated uint32 instances_completed = 4;
+
+  // Instances which have failed to come up after the workflow.
+  repeated uint32 instances_failed = 5;
+
+  // Current instances being operated on.
+  repeated uint32 instances_current = 6;
 }

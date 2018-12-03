@@ -173,7 +173,7 @@ func (suite *statelessHandlerTestSuite) TestGetJobCacheWithUpdateSuccess() {
 		uint32(len(instancesFailed)))
 	suite.Equal(resp.GetStatus().GetWorkflowStatus().GetNumInstancesRemaining(),
 		uint32(len(totalInstances)-len(instancesFailed)-len(instancesDone)))
-	suite.Equal(resp.GetStatus().GetWorkflowStatus().GetCurrentInstances(),
+	suite.Equal(resp.GetStatus().GetWorkflowStatus().GetInstancesCurrent(),
 		instancesCurrent)
 	suite.Equal(
 		resp.GetStatus().GetWorkflowStatus().GetPrevVersion().GetValue(),

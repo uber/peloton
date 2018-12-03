@@ -110,6 +110,11 @@ func (h *serviceHandler) GetJob(
 	req *svc.GetJobRequest) (*svc.GetJobResponse, error) {
 	return &svc.GetJobResponse{}, nil
 }
+func (h *serviceHandler) GetWorkflowEvents(
+	ctx context.Context,
+	req *svc.GetWorkflowEventsRequest) (*svc.GetWorkflowEventsResponse, error) {
+	return &svc.GetWorkflowEventsResponse{}, nil
+}
 func (h *serviceHandler) ListPods(
 	req *svc.ListPodsRequest,
 	stream svc.JobServiceServiceListPodsYARPCServer) error {
@@ -283,7 +288,7 @@ func convertToJobStatus(
 		uint32(len(cachedWorkflow.GetGoalState().Instances) -
 			len(cachedWorkflow.GetInstancesDone()) -
 			len(cachedWorkflow.GetInstancesFailed()))
-	workflowStatus.CurrentInstances = cachedWorkflow.GetInstancesCurrent()
+	workflowStatus.InstancesCurrent = cachedWorkflow.GetInstancesCurrent()
 	workflowStatus.PrevVersion = jobutil.GetEntityVersion(cachedWorkflow.GetState().JobVersion)
 	workflowStatus.Version = jobutil.GetEntityVersion(cachedWorkflow.GetGoalState().JobVersion)
 
