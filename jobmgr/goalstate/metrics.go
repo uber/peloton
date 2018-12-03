@@ -25,6 +25,9 @@ type JobMetrics struct {
 	JobRuntimeUpdated                tally.Counter
 	JobRuntimeUpdateFailed           tally.Counter
 	JobMaxRunningInstancesExcceeding tally.Counter
+
+	JobRecalculateStateDuration tally.Gauge
+	JobRecalculateStateCount    tally.Counter
 }
 
 // TaskMetrics contains all counters to track task metrics in goal state.
@@ -88,6 +91,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobCreateTaskRuntimeDuration: jobScope.Gauge("create_task_runtimes_duration"),
 		JobRecoverTasksDuration:      jobScope.Gauge("recover_tasks_duration"),
 		JobTaskGetDuration:           jobScope.Gauge("task_get_duration"),
+
+		JobRecalculateStateDuration: jobScope.Gauge("job_recal_state_duration"),
+		JobRecalculateStateCount:    jobScope.Counter("job_recal_state_count"),
 	}
 
 	taskMetrics := &TaskMetrics{

@@ -164,7 +164,6 @@ func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Plac
 		return
 	}
 
-
 	launchableTaskInfos, skippedTasks1 := p.createTaskInfos(ctx, lauchableTasks)
 	skippedTasks = append(skippedTasks, skippedTasks1...)
 
