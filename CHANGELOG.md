@@ -3,6 +3,10 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.8.1
+------------------
+* 2018-12-03    Disable bin packing by default                                                      avyas@uber.com
+
 0.7.8
 ------------------
 * 2018-11-27    Update job index when job configuration is updated                                            apoorvaj@uber.com
