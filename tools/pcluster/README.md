@@ -35,6 +35,10 @@ To bootstrap the local dev env cluster w/ peloton apps, excluding one or more ap
 
 $PELOTON_HOME/tools/pcluster/pcluster.py setup -a --no-<app name, i.e jobmgr,resmgr,hostmgr,placement, specify multiple times for multiple apps>
 
+To bootstrap the Peloton only components (no Mesos and ZK) by pointing to an existing ZK:
+
+$PELOTON_HOME/tools/pcluster/pcluster.py setup --no-mesos --zk_url="192.168.33.6:2181" -a
+
 To destroy the local dev env cluster (clean up all existing pcluster related containers):
 
 $PELOTON_HOME/tools/pcluster/pcluster.py teardown

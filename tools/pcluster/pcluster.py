@@ -88,6 +88,7 @@ def load_config():
 
 
 host_ip = get_host_ip()
+zk_url = None
 cli = Client(base_url='unix://var/run/docker.sock')
 work_dir = os.path.dirname(os.path.abspath(__file__))
 config = load_config()
@@ -335,19 +336,25 @@ def run_peloton(applications):
 def start_and_wait(application_name, container_name, ports, extra_env=None):
     # TODO: It's very implicit that the first port is the HTTP port, perhaps we
     # should split it out even more.
+    election_zk_servers = None
+    mesos_zk_path = None
+    if zk_url is not None:
+        election_zk_servers = zk_url
+        mesos_zk_path = 'zk://{0}/mesos'.format(zk_url)
+    else:
+        election_zk_servers = '{0}:{1}'.format(
+            host_ip,
+            config['local_zk_port'])
+        mesos_zk_path = 'zk://{0}:{1}/mesos'.format(
+            host_ip,
+            config['local_zk_port'])
     env = {
         'CONFIG_DIR': 'config',
         'APP': application_name,
         'HTTP_PORT': ports[0],
         'DB_HOST': host_ip,
-        'ELECTION_ZK_SERVERS': '{0}:{1}'.format(
-            host_ip,
-            config['local_zk_port']
-        ),
-        'MESOS_ZK_PATH': 'zk://{0}:{1}/mesos'.format(
-            host_ip,
-            config['local_zk_port']
-        ),
+        'ELECTION_ZK_SERVERS': election_zk_servers,
+        'MESOS_ZK_PATH': mesos_zk_path,
         'MESOS_SECRET_FILE': '/files/hostmgr_mesos_secret',
         'CASSANDRA_HOSTS': host_ip,
         'ENABLE_DEBUG_LOGGING': config['debug'],
@@ -502,9 +509,10 @@ def wait_for_up(app, port):
 #
 # Set up a personal cluster
 #
-def setup(applications={}, enable_peloton=False):
+def setup(disable_mesos=False, applications={}, enable_peloton=False):
     run_cassandra()
-    run_mesos()
+    if not disable_mesos:
+        run_mesos()
 
     if enable_peloton:
         run_peloton(
@@ -565,6 +573,21 @@ USAGE
     parser_setup = subparsers.add_parser(
         'setup',
         help='set up a personal cluster')
+    parser_setup.add_argument(
+        "--no-mesos",
+        dest="disable_mesos",
+        action='store_true',
+        default=False,
+        help="disable mesos setup"
+    )
+    parser_setup.add_argument(
+        "--zk_url",
+        dest="zk_url",
+        action='store',
+        type=str,
+        default=None,
+        help="zk URL when pointing to a pre-existing zk"
+    )
     parser_setup.add_argument(
         "-a",
         "--enable-peloton",
@@ -650,7 +673,10 @@ def main():
             App.ARCHIVER: args.disable_peloton_archiver
         }
 
+        global zk_url
+        zk_url = args.zk_url
         setup(
+            disable_mesos=args.disable_mesos,
             enable_peloton=args.enable_peloton,
             applications=applications
         )
