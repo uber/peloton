@@ -1525,7 +1525,7 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxSuccess() {
 	suite.Empty(response.GetMesosMasterPort())
 }
 
-// TestBrowsePodSandboxFailureInvalidPodName test BrowsePodSandbox failure
+// TestBrowsePodSandboxFailureInvalidPodName tests BrowsePodSandbox failure
 // due to invalid podname
 func (suite *podHandlerTestSuite) TestBrowsePodSandboxFailureInvalidPodName() {
 	request := &svc.BrowsePodSandboxRequest{
@@ -1538,7 +1538,7 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxFailureInvalidPodName() {
 	suite.Error(err)
 }
 
-// TestBrowsePodSandboxGetPodEventsFailure test BrowsePodSandbox failure
+// TestBrowsePodSandboxGetPodEventsFailure tests BrowsePodSandbox failure
 // due to GetPodEvents failure
 func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetPodEventsFailure() {
 	request := &svc.BrowsePodSandboxRequest{
@@ -1569,7 +1569,7 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxAbort() {
 	suite.Error(err)
 }
 
-// TestBrowsePodSandboxGetFrameworkIDFailure test BrowsePodSandbox failure
+// TestBrowsePodSandboxGetFrameworkIDFailure tests BrowsePodSandbox failure
 // due to error while getting framework id
 func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetFrameworkIDFailure() {
 	request := &svc.BrowsePodSandboxRequest{
@@ -1744,13 +1744,81 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetMesosMasterHostPortFail
 	suite.Error(err)
 }
 
-func (suite *podHandlerTestSuite) TestDeletePodEvents() {
-	request := &svc.DeletePodEventsRequest{}
+// TestDeletePodEventsSuccess tests the success case of deleting pod events
+func (suite *podHandlerTestSuite) TestDeletePodEventsSuccess() {
+	request := &svc.DeletePodEventsRequest{
+		PodName: &v1alphapeloton.PodName{Value: testPodName},
+		PodId:   &v1alphapeloton.PodID{Value: testPodID},
+	}
+
+	suite.podStore.EXPECT().
+		DeletePodEvents(
+			gomock.Any(),
+			testJobID,
+			uint32(testInstanceID),
+			uint64(testRunID),
+			uint64(testRunID)+1,
+		).Return(nil)
+
 	response, err := suite.handler.DeletePodEvents(context.Background(), request)
 	suite.NoError(err)
 	suite.NotNil(response)
 }
 
+// TestDeletePodEventsFailureInvalidPodName tests
+// DeletePodEvents failure due to invalid podname
+func (suite *podHandlerTestSuite) TestDeletePodEventsFailureInvalidPodName() {
+	request := &svc.DeletePodEventsRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: "InvalidPodName",
+		},
+		PodId: &v1alphapeloton.PodID{
+			Value: testPodID,
+		},
+	}
+
+	_, err := suite.handler.DeletePodEvents(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestDeletePodEventsFailureInvalidPodID tests
+// DeletePodEvents failure due to invalid pod-id
+func (suite *podHandlerTestSuite) TestDeletePodEventsFailureInvalidPodID() {
+	request := &svc.DeletePodEventsRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+		PodId: &v1alphapeloton.PodID{
+			Value: "invalid-pod-id",
+		},
+	}
+
+	_, err := suite.handler.DeletePodEvents(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestDeletePodEventsStoreError tests
+// DeletePodEvents failure due to store error
+func (suite *podHandlerTestSuite) TestDeletePodEventsStoreError() {
+	request := &svc.DeletePodEventsRequest{
+		PodName: &v1alphapeloton.PodName{Value: testPodName},
+		PodId:   &v1alphapeloton.PodID{Value: testPodID},
+	}
+
+	suite.podStore.EXPECT().
+		DeletePodEvents(
+			gomock.Any(),
+			testJobID,
+			uint32(testInstanceID),
+			uint64(testRunID),
+			uint64(testRunID)+1,
+		).Return(yarpcerrors.InternalErrorf("test error"))
+
+	_, err := suite.handler.DeletePodEvents(context.Background(), request)
+	suite.Error(err)
+}
+
+// TestConvertTaskStateToPodstate tests conversion of TaskState to PodState
 func (suite *podHandlerTestSuite) TestConvertTaskStateToPodstate() {
 	tt := []struct {
 		taskState pbtask.TaskState

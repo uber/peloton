@@ -87,10 +87,8 @@ type TaskStore interface {
 		instanceID uint32,
 		runtime *task.RuntimeInfo,
 		jobType job.JobType) error
-
 	// CreateTaskConfigs creates the configuration of all tasks
 	CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, configAddOn *models.ConfigAddOn) error
-
 	// GetTasksForJob gets the task info for all tasks in a job
 	GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error)
 	// GetTasksForJobAndStates gets the task info for all
@@ -119,7 +117,6 @@ type TaskStore interface {
 	// GetTaskStateSummaryForJob gets the map state to instanceIDs
 	// (in that state) in a given job
 	GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID) (map[string]uint32, error)
-
 	// GetPodEvents returns pod events (state transition for a job instance).
 	// limit parameter manages number of pod events to return
 	// and optional runID parameter to fetch pod events only for that run if
@@ -127,9 +124,8 @@ type TaskStore interface {
 	GetPodEvents(ctx context.Context, jobID string, instanceID uint32, podID ...string) ([]*pod.PodEvent, error)
 	// DeleteTaskRuntime deletes the task runtime for a given job instance
 	DeleteTaskRuntime(ctx context.Context, id *peloton.JobID, instanceID uint32) error
-
-	// DeletePodEvents deletes the pod events for provided JobID, InstanceID and (0-RunID]
-	DeletePodEvents(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runID uint64) error
+	// DeletePodEvents deletes the pod events for provided JobID, InstanceID and RunID in the range [fromRunID-toRunID)
+	DeletePodEvents(ctx context.Context, jobID string, instanceID uint32, fromRunID uint64, toRunID uint64) error
 }
 
 // UpdateStore is the interface to store updates and updates progress.

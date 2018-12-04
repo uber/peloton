@@ -649,6 +649,40 @@ func (h *serviceHandler) DeletePodEvents(
 	ctx context.Context,
 	req *svc.DeletePodEventsRequest,
 ) (resp *svc.DeletePodEventsResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("PodSVC.DeletePodEvents failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Info("PodSVC.DeletePodEvents succeeded")
+	}()
+
+	jobID, instanceID, err := util.ParseTaskID(req.GetPodName().GetValue())
+	if err != nil {
+		return nil, err
+	}
+
+	runID, err := util.ParseRunID(req.GetPodId().GetValue())
+	if err != nil {
+		return nil, err
+	}
+
+	if err = h.podStore.DeletePodEvents(
+		ctx,
+		jobID,
+		instanceID,
+		runID,
+		runID+1,
+	); err != nil {
+		return nil, err
+	}
+
 	return &svc.DeletePodEventsResponse{}, nil
 }
 

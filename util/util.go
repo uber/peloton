@@ -2,7 +2,6 @@ package util
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -245,7 +244,10 @@ func CreateMesosTaskID(jobID *peloton.JobID,
 func ParseRunID(mesosTaskID string) (uint64, error) {
 	splitMesosTaskID := strings.Split(mesosTaskID, "-")
 	if len(mesosTaskID) == 0 { // prev mesos task id is nil
-		return 0, errors.New("mesosTaskID provided is empty")
+		return 0,
+			yarpcerrors.InvalidArgumentErrorf(
+				"mesosTaskID provided is empty",
+			)
 	} else if len(splitMesosTaskID) == 7 {
 		if runID, err := strconv.ParseUint(
 			splitMesosTaskID[len(splitMesosTaskID)-1], 10, 64); err == nil {
@@ -253,7 +255,11 @@ func ParseRunID(mesosTaskID string) (uint64, error) {
 		}
 	}
 
-	return 0, errors.New("unable to parse mesos task id: " + mesosTaskID)
+	return 0,
+		yarpcerrors.InvalidArgumentErrorf(
+			"unable to parse mesos task id: %v",
+			mesosTaskID,
+		)
 }
 
 // ParseTaskID parses the jobID and instanceID from peloton taskID

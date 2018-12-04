@@ -3258,7 +3258,7 @@ func (suite *CassandraStoreTestSuite) TestGetPodEvent() {
 	suite.Equal(len(podEvents), 1)
 	suite.NoError(err)
 
-	err = store.DeletePodEvents(context.Background(), jobID, 0, 2)
+	err = store.DeletePodEvents(context.Background(), jobID.GetValue(), 0, 2, 3)
 	suite.NoError(err)
 
 	podEvents, err = store.GetPodEvents(

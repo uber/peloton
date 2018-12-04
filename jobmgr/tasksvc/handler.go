@@ -252,12 +252,14 @@ func (m *serviceHandler) GetPodEvents(
 // Response will be successful or error on unable to delete events for input.
 func (m *serviceHandler) DeletePodEvents(
 	ctx context.Context,
-	body *task.DeletePodEventsRequest) (*task.DeletePodEventsResponse, error) {
+	body *task.DeletePodEventsRequest,
+) (*task.DeletePodEventsResponse, error) {
 	if err := m.taskStore.DeletePodEvents(
 		ctx,
-		body.GetJobId(),
+		body.GetJobId().GetValue(),
 		body.GetInstanceId(),
-		body.GetRunId(),
+		1,
+		body.GetRunId()+1,
 	); err != nil {
 		return nil, err
 	}

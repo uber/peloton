@@ -1287,19 +1287,22 @@ func (s *Store) GetPodEvents(
 	return podEvents, nil
 }
 
-// DeletePodEvents deletes the pod events for provided JobID, InstanceID and (0-RunID]
+// DeletePodEvents deletes the pod events for provided JobID,
+// InstanceID and RunID in the range [fromRunID-toRunID)
 func (s *Store) DeletePodEvents(
 	ctx context.Context,
-	jobID *peloton.JobID,
+	jobID string,
 	instanceID uint32,
-	runID uint64) error {
+	fromRunID uint64,
+	toRunID uint64,
+) error {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.
 		Delete(podEventsTable).
-		Where(qb.Eq{"job_id": jobID.GetValue()}).
-		Where(qb.Eq{"instance_id": instanceID}).
-		Where(qb.LtOrEq{"run_id": runID})
-	if err := s.applyStatement(ctx, stmt, jobID.GetValue()); err != nil {
+		Where(qb.Eq{"job_id": jobID, "instance_id": instanceID}).
+		Where("run_id >= ?", fromRunID).
+		Where("run_id < ?", toRunID)
+	if err := s.applyStatement(ctx, stmt, jobID); err != nil {
 		s.metrics.TaskMetrics.PodEventsDeleteFail.Inc(1)
 		return err
 	}

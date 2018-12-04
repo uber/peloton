@@ -213,6 +213,10 @@ var (
 	podGetPodName    = podGet.Arg("name", "pod name").Required().String()
 	podGetStatusOnly = podGet.Flag("statusonly", "get pod status only(not spec)").Default("false").Bool()
 
+	podDeleteEvents        = pod.Command("delete-events", "delete pod events")
+	podDeleteEventsPodName = podDeleteEvents.Arg("name", "pod name").Required().String()
+	podDeleteEventsPodID   = podDeleteEvents.Arg("id", "pod identifier").Required().String()
+
 	// Top level task command
 	task = app.Command("task", "manage tasks")
 
@@ -658,6 +662,8 @@ func main() {
 		err = client.PodStopAction(*podStopPodName)
 	case podGet.FullCommand():
 		err = client.PodGetAction(*podGetPodName, *podGetStatusOnly)
+	case podDeleteEvents.FullCommand():
+		err = client.PodDeleteEvents(*podDeleteEventsPodName, *podDeleteEventsPodID)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

@@ -14,7 +14,10 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-const testPodName = "941ff353-ba82-49fe-8f80-fb5bc649b04d-1"
+const (
+	testPodName = "941ff353-ba82-49fe-8f80-fb5bc649b04d-1"
+	testPodID   = "941ff353-ba82-49fe-8f80-fb5bc649b04d-1-2"
+)
 
 type podActionsTestSuite struct {
 	suite.Suite
@@ -289,6 +292,24 @@ func (suite *podActionsTestSuite) TestClientPodGetFailure() {
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
 	suite.Error(suite.client.PodGetAction(testPodName, false))
+}
+
+// TestClientPodDeleteEventsSuccess tests the success case of deleting pod events
+func (suite *podActionsTestSuite) TestClientPodDeleteEventsSuccess() {
+	suite.podClient.EXPECT().
+		DeletePodEvents(gomock.Any(), gomock.Any()).
+		Return(&podsvc.DeletePodEventsResponse{}, nil)
+
+	suite.NoError(suite.client.PodDeleteEvents(testPodName, testPodID))
+}
+
+// TestClientPodDeleteEventsFailure tests the failure case of deleting pod events
+func (suite *podActionsTestSuite) TestClientPodDeleteEventsFailure() {
+	suite.podClient.EXPECT().
+		DeletePodEvents(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.PodDeleteEvents(testPodName, testPodID))
 }
 
 func TestPodActions(t *testing.T) {

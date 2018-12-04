@@ -218,13 +218,36 @@ func (c *Client) PodStopAction(podName string) error {
 	return nil
 }
 
-// PodGetAction is the action for getting the info of a pod
+// PodGetAction is the action for getting the info of the pod
 func (c *Client) PodGetAction(podName string, statusOnly bool) error {
 	resp, err := c.podClient.GetPod(
 		c.ctx,
 		&podsvc.GetPodRequest{
 			PodName:    &v1alphapeloton.PodName{Value: podName},
 			StatusOnly: statusOnly,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	out, err := marshallResponse(defaultResponseFormat, resp)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v\n", string(out))
+
+	tabWriter.Flush()
+	return nil
+}
+
+// PodDeleteEvents is the action for deleting events of the pod
+func (c *Client) PodDeleteEvents(podName string, podID string) error {
+	resp, err := c.podClient.DeletePodEvents(
+		c.ctx,
+		&podsvc.DeletePodEventsRequest{
+			PodName: &v1alphapeloton.PodName{Value: podName},
+			PodId:   &v1alphapeloton.PodID{Value: podID},
 		},
 	)
 	if err != nil {
