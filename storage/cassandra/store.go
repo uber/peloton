@@ -1266,10 +1266,10 @@ func (s *Store) GetPodEvents(
 		}
 		podEvent.Timestamp =
 			value["update_time"].(qb.UUID).Time().Format(time.RFC3339)
-		podEvent.JobVersion = &v1alphapeloton.EntityVersion{
+		podEvent.Version = &v1alphapeloton.EntityVersion{
 			Value: fmt.Sprintf("%d", value["config_version"].(int64)),
 		}
-		podEvent.DesiredJobVersion = &v1alphapeloton.EntityVersion{
+		podEvent.DesiredVersion = &v1alphapeloton.EntityVersion{
 			Value: fmt.Sprintf("%d", value["desired_config_version"].(int64)),
 		}
 		podEvent.ActualState = value["actual_state"].(string)

@@ -153,11 +153,13 @@ func (h *serviceHandler) CreateUpdate(
 	}
 	// add this new update to cache and DB
 	cachedJob := h.jobFactory.AddJob(jobID)
-	updateID, err := cachedJob.CreateWorkflow(
+	updateID, _, err := cachedJob.CreateWorkflow(
 		ctx,
 		models.WorkflowType_UPDATE,
 		req.GetUpdateConfig(),
-		nil,
+		jobutil.GetJobEntityVersion(
+			jobRuntime.GetConfigurationVersion(),
+			jobRuntime.GetWorkflowVersion()),
 		cached.WithConfig(jobConfig, prevJobConfig, configAddOn),
 	)
 	if err != nil {
@@ -284,7 +286,18 @@ func (h *serviceHandler) PauseUpdate(
 		return nil, err
 	}
 
-	if err = cachedJob.PauseWorkflow(ctx, nil); err != nil {
+	runtime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		h.metrics.UpdatePauseFail.Inc(1)
+		return nil, err
+	}
+
+	if _, err = cachedJob.PauseWorkflow(
+		ctx,
+		jobutil.GetJobEntityVersion(
+			runtime.GetConfigurationVersion(),
+			runtime.GetWorkflowVersion()),
+	); err != nil {
 		// In case of error, since it is not clear if job runtime was
 		// updated or not, enqueue the update to the goal state.
 		h.metrics.UpdatePauseFail.Inc(1)
@@ -311,7 +324,18 @@ func (h *serviceHandler) ResumeUpdate(
 		return nil, err
 	}
 
-	if err = cachedJob.ResumeWorkflow(ctx, nil); err != nil {
+	runtime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		h.metrics.UpdateResumeFail.Inc(1)
+		return nil, err
+	}
+
+	if _, err = cachedJob.ResumeWorkflow(
+		ctx,
+		jobutil.GetJobEntityVersion(
+			runtime.GetConfigurationVersion(),
+			runtime.GetWorkflowVersion()),
+	); err != nil {
 		// In case of error, since it is not clear if job runtime was
 		// updated or not, enqueue the update to the goal state.
 		h.metrics.UpdateResumeFail.Inc(1)
@@ -382,8 +406,18 @@ func (h *serviceHandler) AbortUpdate(ctx context.Context,
 		return nil, err
 	}
 
-	err = cachedJob.AbortWorkflow(ctx, nil)
+	runtime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
+		h.metrics.UpdatePauseFail.Inc(1)
+		return nil, err
+	}
+
+	if _, err = cachedJob.AbortWorkflow(
+		ctx,
+		jobutil.GetJobEntityVersion(
+			runtime.GetConfigurationVersion(),
+			runtime.GetWorkflowVersion()),
+	); err != nil {
 		h.metrics.UpdateAbortFail.Inc(1)
 	} else {
 		h.metrics.UpdateAbort.Inc(1)

@@ -27,6 +27,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/util/handler"
+	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
@@ -193,12 +194,12 @@ func (m *serviceHandler) GetPodEvents(
 			podID := e.GetPodId().GetValue()
 			prevPodID = e.GetPrevPodId().GetValue()
 			desiredPodID := e.GetDesiredPodId().GetValue()
-			jobVersion, err := strconv.ParseInt(e.GetJobVersion().GetValue(), 10, 64)
+			jobVersion, err := strconv.ParseInt(e.GetVersion().GetValue(), 10, 64)
 			if err != nil {
 				return nil, errors.Wrap(err, "error parsing job version")
 			}
 
-			desiredJobVersion, err := strconv.ParseInt(e.GetDesiredJobVersion().GetValue(), 10, 64)
+			desiredVersion, err := strconv.ParseInt(e.GetDesiredVersion().GetValue(), 10, 64)
 			if err != nil {
 				return nil, errors.Wrap(err, "error parsing desired job version")
 			}
@@ -211,7 +212,7 @@ func (m *serviceHandler) GetPodEvents(
 				GoalState:            e.GetDesiredState(),
 				Timestamp:            e.GetTimestamp(),
 				ConfigVersion:        uint64(jobVersion),
-				DesiredConfigVersion: uint64(desiredJobVersion),
+				DesiredConfigVersion: uint64(desiredVersion),
 				AgentID:              e.GetAgentId(),
 				Hostname:             e.GetHostname(),
 				Message:              e.GetMessage(),
@@ -1294,16 +1295,16 @@ func convertPodEventsFormat(podEvents []*pod.PodEvent) ([]*task.PodEvent, error)
 		podID := e.GetPodId().GetValue()
 		prevPodID := e.GetPrevPodId().GetValue()
 		desiredPodID := e.GetDesiredPodId().GetValue()
-		jobVersion, err := strconv.ParseInt(e.GetJobVersion().GetValue(), 10, 64)
+		configVersion, err := jobutil.ParsePodEntityVersion(e.GetVersion())
 		if err != nil {
 			log.WithError(err).
-				Info("Error parsing job version")
+				Info("Error parsing config version")
 			return nil, err
 		}
-		desiredJobVersion, err := strconv.ParseInt(e.GetDesiredJobVersion().GetValue(), 10, 64)
+		desiredConfigVersion, err := jobutil.ParsePodEntityVersion(e.GetDesiredVersion())
 		if err != nil {
 			log.WithError(err).
-				Info("Error parsing desired job version")
+				Info("Error parsing desired config version")
 			return nil, err
 		}
 
@@ -1314,8 +1315,8 @@ func convertPodEventsFormat(podEvents []*pod.PodEvent) ([]*task.PodEvent, error)
 			ActualState:          e.GetActualState(),
 			GoalState:            e.GetDesiredState(),
 			Timestamp:            e.GetTimestamp(),
-			ConfigVersion:        uint64(jobVersion),
-			DesiredConfigVersion: uint64(desiredJobVersion),
+			ConfigVersion:        uint64(configVersion),
+			DesiredConfigVersion: uint64(desiredConfigVersion),
 			AgentID:              e.GetAgentId(),
 			Hostname:             e.GetHostname(),
 			Message:              e.GetMessage(),

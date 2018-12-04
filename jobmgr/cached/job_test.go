@@ -10,11 +10,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
-	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	"code.uber.internal/infra/peloton/common"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/gogo/protobuf/proto"
@@ -91,7 +91,10 @@ func (suite *JobTestSuite) initializeJob(
 				Version:   1,
 			},
 		},
-		runtime:   &pbjob.RuntimeInfo{ConfigurationVersion: 1},
+		runtime: &pbjob.RuntimeInfo{
+			ConfigurationVersion: 1,
+			WorkflowVersion:      2,
+		},
 		workflows: map[string]*update{},
 	}
 	for _, l := range suite.listeners {
@@ -1823,9 +1826,12 @@ func (suite *JobTestSuite) TestJobCreateWorkflowSuccess() {
 	updateConfig := &pbupdate.UpdateConfig{
 		BatchSize: 10,
 	}
-	entityVersion := &v1alphapeloton.EntityVersion{
-		Value: "1",
-	}
+	oldConfigVersion := suite.job.runtime.GetConfigurationVersion()
+	oldWorkflowVersion := suite.job.runtime.GetWorkflowVersion()
+	entityVersion := jobutil.GetJobEntityVersion(
+		oldConfigVersion,
+		oldWorkflowVersion,
+	)
 	prevConfig := &pbjob.JobConfig{
 		ChangeLog: &peloton.ChangeLog{Version: 1},
 	}
@@ -1867,7 +1873,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowSuccess() {
 			Return(nil),
 	)
 
-	updateID, err := suite.job.CreateWorkflow(
+	updateID, newEntityVersion, err := suite.job.CreateWorkflow(
 		context.Background(),
 		workflowType,
 		updateConfig,
@@ -1887,6 +1893,10 @@ func (suite *JobTestSuite) TestJobCreateWorkflowSuccess() {
 	suite.NotNil(updateID)
 	suite.NoError(err)
 	suite.NotNil(suite.job.workflows[updateID.GetValue()])
+	suite.Equal(newEntityVersion, jobutil.GetJobEntityVersion(
+		oldConfigVersion+1,
+		oldWorkflowVersion+1,
+	))
 }
 
 // TestJobCreateWorkflowUpdateConfigFailure tests the failure case of
@@ -1900,9 +1910,10 @@ func (suite *JobTestSuite) TestJobCreateWorkflowUpdateConfigFailure() {
 	updateConfig := &pbupdate.UpdateConfig{
 		BatchSize: 10,
 	}
-	entityVersion := &v1alphapeloton.EntityVersion{
-		Value: "1",
-	}
+	entityVersion := jobutil.GetJobEntityVersion(
+		suite.job.runtime.GetConfigurationVersion(),
+		suite.job.runtime.GetWorkflowVersion(),
+	)
 	prevConfig := &pbjob.JobConfig{
 		ChangeLog: &peloton.ChangeLog{Version: 1},
 	}
@@ -1924,7 +1935,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowUpdateConfigFailure() {
 			Return(yarpcerrors.InternalErrorf("test error")),
 	)
 
-	updateID, err := suite.job.CreateWorkflow(
+	updateID, newEntityVersion, err := suite.job.CreateWorkflow(
 		context.Background(),
 		workflowType,
 		updateConfig,
@@ -1943,6 +1954,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowUpdateConfigFailure() {
 
 	suite.Nil(updateID)
 	suite.Error(err)
+	suite.Nil(newEntityVersion)
 	suite.Nil(suite.job.workflows[updateID.GetValue()])
 }
 
@@ -1957,9 +1969,10 @@ func (suite *JobTestSuite) TestJobCreateWorkflowWorkflowCreationFailure() {
 	updateConfig := &pbupdate.UpdateConfig{
 		BatchSize: 10,
 	}
-	entityVersion := &v1alphapeloton.EntityVersion{
-		Value: "1",
-	}
+	entityVersion := jobutil.GetJobEntityVersion(
+		suite.job.runtime.GetConfigurationVersion(),
+		suite.job.runtime.GetWorkflowVersion(),
+	)
 	prevConfig := &pbjob.JobConfig{
 		ChangeLog: &peloton.ChangeLog{Version: 1},
 	}
@@ -1997,7 +2010,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowWorkflowCreationFailure() {
 			Return(yarpcerrors.InternalErrorf("test error")),
 	)
 
-	updateID, err := suite.job.CreateWorkflow(
+	updateID, newEntityVersion, err := suite.job.CreateWorkflow(
 		context.Background(),
 		workflowType,
 		updateConfig,
@@ -2016,6 +2029,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowWorkflowCreationFailure() {
 
 	suite.Nil(updateID)
 	suite.Error(err)
+	suite.Nil(newEntityVersion)
 	suite.Nil(suite.job.workflows[updateID.GetValue()])
 }
 
@@ -2030,9 +2044,10 @@ func (suite *JobTestSuite) TestJobCreateWorkflowUpdateRuntimeFailure() {
 	updateConfig := &pbupdate.UpdateConfig{
 		BatchSize: 10,
 	}
-	entityVersion := &v1alphapeloton.EntityVersion{
-		Value: "1",
-	}
+	entityVersion := jobutil.GetJobEntityVersion(
+		suite.job.runtime.GetConfigurationVersion(),
+		suite.job.runtime.GetWorkflowVersion(),
+	)
 	prevConfig := &pbjob.JobConfig{
 		ChangeLog: &peloton.ChangeLog{Version: 1},
 	}
@@ -2074,7 +2089,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowUpdateRuntimeFailure() {
 			Return(yarpcerrors.InternalErrorf("test error")),
 	)
 
-	updateID, err := suite.job.CreateWorkflow(
+	updateID, newEntityVersion, err := suite.job.CreateWorkflow(
 		context.Background(),
 		workflowType,
 		updateConfig,
@@ -2097,13 +2112,17 @@ func (suite *JobTestSuite) TestJobCreateWorkflowUpdateRuntimeFailure() {
 	// in job runtime, there is no way to clean it up.
 	suite.NotNil(updateID)
 	suite.Error(err)
+	suite.Nil(newEntityVersion)
 	suite.Nil(suite.job.workflows[updateID.GetValue()])
 }
 
 // TestResumeWorkflowSuccess tests the success case
 // of resuming a workflow
 func (suite *JobTestSuite) TestResumeWorkflowSuccess() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1"}
+	oldConfigVersion := suite.job.runtime.GetConfigurationVersion()
+	oldWorkflowVersion := suite.job.runtime.GetWorkflowVersion()
+	entityVersion := jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion)
+
 	updateID := &peloton.UpdateID{Value: testUpdateID}
 	suite.job.runtime.UpdateID = updateID
 	suite.job.workflows[updateID.GetValue()] = &update{
@@ -2113,52 +2132,126 @@ func (suite *JobTestSuite) TestResumeWorkflowSuccess() {
 		state:      pbupdate.State_PAUSED,
 	}
 
-	suite.updateStore.EXPECT().
-		WriteUpdateProgress(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
-			suite.Equal(updateInfo.GetState(), pbupdate.State_ROLLING_FORWARD)
-		}).
-		Return(nil)
+	gomock.InOrder(
+		suite.jobStore.EXPECT().
+			UpdateJobRuntime(gomock.Any(), suite.job.ID(), gomock.Any()).
+			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+				suite.Equal(runtime.GetConfigurationVersion(), oldConfigVersion)
+				suite.Equal(runtime.GetWorkflowVersion(), oldWorkflowVersion+1)
+			}).Return(nil),
+		suite.updateStore.EXPECT().
+			WriteUpdateProgress(gomock.Any(), gomock.Any()).
+			Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
+				suite.Equal(updateInfo.GetState(), pbupdate.State_ROLLING_FORWARD)
+			}).
+			Return(nil),
+	)
 
-	suite.NoError(suite.job.ResumeWorkflow(context.Background(), entityVersion))
+	newEntityVersion, err := suite.job.ResumeWorkflow(context.Background(), entityVersion)
+	suite.NoError(err)
+	suite.Equal(
+		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
+		newEntityVersion,
+	)
+}
+
+// TestResumeWorkflowNilEntityVersionFailure tests the failure case
+// of resuming a workflow due to nil entity version provided
+func (suite *JobTestSuite) TestResumeWorkflowNilEntityVersionFailure() {
+	updateID := &peloton.UpdateID{Value: testUpdateID}
+	suite.job.runtime.UpdateID = updateID
+	suite.job.workflows[updateID.GetValue()] = &update{
+		id:         updateID,
+		jobFactory: suite.job.jobFactory,
+		prevState:  pbupdate.State_ROLLING_FORWARD,
+		state:      pbupdate.State_PAUSED,
+	}
+
+	newEntityVersion, err := suite.job.ResumeWorkflow(context.Background(), nil)
+	suite.Error(err)
+	suite.Nil(newEntityVersion)
+}
+
+// TestResumeWorkflowWrongEntityVersionFailure tests the failure case
+// of resuming a workflow due to wrong entity version provided
+func (suite *JobTestSuite) TestResumeWorkflowWrongEntityVersionFailure() {
+	updateID := &peloton.UpdateID{Value: testUpdateID}
+	suite.job.runtime.UpdateID = updateID
+	suite.job.workflows[updateID.GetValue()] = &update{
+		id:         updateID,
+		jobFactory: suite.job.jobFactory,
+		state:      pbupdate.State_ROLLING_FORWARD,
+	}
+
+	newEntityVersion, err := suite.job.ResumeWorkflow(
+		context.Background(),
+		jobutil.GetJobEntityVersion(
+			suite.job.runtime.GetConfigurationVersion()+1,
+			suite.job.runtime.GetWorkflowVersion(),
+		))
+	suite.Error(err)
+	suite.Nil(newEntityVersion)
 }
 
 // TestResumeWorkflowNotExistInCacheSuccess tests the success case
 // of resuming a workflow when the workflow is not in cache
 func (suite *JobTestSuite) TestResumeWorkflowNotExistInCacheSuccess() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1"}
+	oldConfigVersion := suite.job.runtime.GetConfigurationVersion()
+	oldWorkflowVersion := suite.job.runtime.GetWorkflowVersion()
+	entityVersion := jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion)
+
 	updateID := &peloton.UpdateID{Value: testUpdateID}
 	suite.job.runtime.UpdateID = updateID
 
-	suite.updateStore.EXPECT().
-		GetUpdate(gomock.Any(), updateID).
-		Return(&models.UpdateModel{
-			PrevState: pbupdate.State_ROLLING_FORWARD,
-			State:     pbupdate.State_PAUSED,
-		}, nil)
+	gomock.InOrder(
+		suite.jobStore.EXPECT().
+			UpdateJobRuntime(gomock.Any(), suite.job.ID(), gomock.Any()).
+			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+				suite.Equal(runtime.GetConfigurationVersion(), oldConfigVersion)
+				suite.Equal(runtime.GetWorkflowVersion(), oldWorkflowVersion+1)
+			}).Return(nil),
+		suite.updateStore.EXPECT().
+			GetUpdate(gomock.Any(), updateID).
+			Return(&models.UpdateModel{
+				PrevState: pbupdate.State_ROLLING_FORWARD,
+				State:     pbupdate.State_PAUSED,
+			}, nil),
+		suite.updateStore.EXPECT().
+			WriteUpdateProgress(gomock.Any(), gomock.Any()).
+			Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
+				suite.Equal(updateInfo.GetState(), pbupdate.State_ROLLING_FORWARD)
+			}).
+			Return(nil),
+	)
 
-	suite.updateStore.EXPECT().
-		WriteUpdateProgress(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
-			suite.Equal(updateInfo.GetState(), pbupdate.State_ROLLING_FORWARD)
-		}).
-		Return(nil)
-
-	suite.NoError(suite.job.ResumeWorkflow(context.Background(), entityVersion))
+	newEntityVersion, err := suite.job.ResumeWorkflow(context.Background(), entityVersion)
+	suite.NoError(err)
+	suite.Equal(
+		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
+		newEntityVersion,
+	)
 }
 
-// TestPauseWorkflowNoUpdate TestResumeWorkflowNoUpdate the case of update pause
+// TestResumeWorkflowNoUpdate the case of update pause
 // when there is no update
 func (suite *JobTestSuite) TestResumeWorkflowNoUpdate() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1"}
+	entityVersion := jobutil.GetJobEntityVersion(
+		suite.job.runtime.GetConfigurationVersion(),
+		suite.job.runtime.GetWorkflowVersion(),
+	)
 
-	suite.Error(suite.job.ResumeWorkflow(context.Background(), entityVersion))
+	newEntityVersion, err := suite.job.ResumeWorkflow(context.Background(), entityVersion)
+	suite.Error(err)
+	suite.Nil(newEntityVersion)
 }
 
 // TestPauseWorkflowSuccess tests the success case
 // of pausing a workflow
 func (suite *JobTestSuite) TestPauseWorkflowSuccess() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1"}
+	oldConfigVersion := suite.job.runtime.GetConfigurationVersion()
+	oldWorkflowVersion := suite.job.runtime.GetWorkflowVersion()
+	entityVersion := jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion)
+
 	updateID := &peloton.UpdateID{Value: testUpdateID}
 	suite.job.runtime.UpdateID = updateID
 	suite.job.workflows[updateID.GetValue()] = &update{
@@ -2167,51 +2260,124 @@ func (suite *JobTestSuite) TestPauseWorkflowSuccess() {
 		state:      pbupdate.State_ROLLING_FORWARD,
 	}
 
-	suite.updateStore.EXPECT().
-		WriteUpdateProgress(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
-			suite.Equal(updateInfo.GetState(), pbupdate.State_PAUSED)
-		}).
-		Return(nil)
+	gomock.InOrder(
+		suite.jobStore.EXPECT().
+			UpdateJobRuntime(gomock.Any(), suite.job.ID(), gomock.Any()).
+			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+				suite.Equal(runtime.GetConfigurationVersion(), oldConfigVersion)
+				suite.Equal(runtime.GetWorkflowVersion(), oldWorkflowVersion+1)
+			}).Return(nil),
+		suite.updateStore.EXPECT().
+			WriteUpdateProgress(gomock.Any(), gomock.Any()).
+			Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
+				suite.Equal(updateInfo.GetState(), pbupdate.State_PAUSED)
+			}).
+			Return(nil),
+	)
 
-	suite.NoError(suite.job.PauseWorkflow(context.Background(), entityVersion))
+	newEntityVersion, err := suite.job.PauseWorkflow(context.Background(), entityVersion)
+	suite.NoError(err)
+	suite.Equal(
+		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
+		newEntityVersion,
+	)
+}
+
+// TestPauseWorkflowNilEntityVersionFailure tests the failure case
+// of pausing a workflow due to nil entity version provided
+func (suite *JobTestSuite) TestPauseWorkflowNilEntityVersionFailure() {
+	updateID := &peloton.UpdateID{Value: testUpdateID}
+	suite.job.runtime.UpdateID = updateID
+	suite.job.workflows[updateID.GetValue()] = &update{
+		id:         updateID,
+		jobFactory: suite.job.jobFactory,
+		state:      pbupdate.State_ROLLING_FORWARD,
+	}
+
+	newEntityVersion, err := suite.job.PauseWorkflow(context.Background(), nil)
+	suite.Error(err)
+	suite.Nil(newEntityVersion)
+}
+
+// TestPauseWorkflowWrongEntityVersionFailure tests the failure case
+// of pausing a workflow due to wrong entity version provided
+func (suite *JobTestSuite) TestPauseWorkflowWrongEntityVersionFailure() {
+	updateID := &peloton.UpdateID{Value: testUpdateID}
+	suite.job.runtime.UpdateID = updateID
+	suite.job.workflows[updateID.GetValue()] = &update{
+		id:         updateID,
+		jobFactory: suite.job.jobFactory,
+		state:      pbupdate.State_ROLLING_FORWARD,
+	}
+
+	newEntityVersion, err := suite.job.PauseWorkflow(
+		context.Background(),
+		jobutil.GetJobEntityVersion(
+			suite.job.runtime.GetConfigurationVersion()+1,
+			suite.job.runtime.GetWorkflowVersion(),
+		))
+	suite.Error(err)
+	suite.Nil(newEntityVersion)
 }
 
 // TestPauseWorkflowNotExistInCacheSuccess tests the success case
 // of pausing a workflow when the workflow is not in cache
 func (suite *JobTestSuite) TestPauseWorkflowNotExistInCacheSuccess() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1"}
+	oldConfigVersion := suite.job.runtime.GetConfigurationVersion()
+	oldWorkflowVersion := suite.job.runtime.GetWorkflowVersion()
+	entityVersion := jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion)
+
 	updateID := &peloton.UpdateID{Value: testUpdateID}
 	suite.job.runtime.UpdateID = updateID
 
-	suite.updateStore.EXPECT().
-		GetUpdate(gomock.Any(), updateID).
-		Return(&models.UpdateModel{
-			State: pbupdate.State_ROLLING_FORWARD,
-		}, nil)
+	gomock.InOrder(
+		suite.jobStore.EXPECT().
+			UpdateJobRuntime(gomock.Any(), suite.job.ID(), gomock.Any()).
+			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+				suite.Equal(runtime.GetConfigurationVersion(), oldConfigVersion)
+				suite.Equal(runtime.GetWorkflowVersion(), oldWorkflowVersion+1)
+			}).Return(nil),
+		suite.updateStore.EXPECT().
+			GetUpdate(gomock.Any(), updateID).
+			Return(&models.UpdateModel{
+				State: pbupdate.State_ROLLING_FORWARD,
+			}, nil),
+		suite.updateStore.EXPECT().
+			WriteUpdateProgress(gomock.Any(), gomock.Any()).
+			Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
+				suite.Equal(updateInfo.GetState(), pbupdate.State_PAUSED)
+			}).
+			Return(nil),
+	)
 
-	suite.updateStore.EXPECT().
-		WriteUpdateProgress(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
-			suite.Equal(updateInfo.GetState(), pbupdate.State_PAUSED)
-		}).
-		Return(nil)
-
-	suite.NoError(suite.job.PauseWorkflow(context.Background(), entityVersion))
+	newEntityVersion, err := suite.job.PauseWorkflow(context.Background(), entityVersion)
+	suite.NoError(err)
+	suite.Equal(
+		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
+		newEntityVersion,
+	)
 }
 
 // TestPauseWorkflowNoUpdate tests the case of update pause
 // when there is no update
 func (suite *JobTestSuite) TestPauseWorkflowNoUpdate() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1"}
+	entityVersion := jobutil.GetJobEntityVersion(
+		suite.job.runtime.GetConfigurationVersion(),
+		suite.job.runtime.GetWorkflowVersion(),
+	)
 
-	suite.Error(suite.job.PauseWorkflow(context.Background(), entityVersion))
+	newEntityVersion, err := suite.job.PauseWorkflow(context.Background(), entityVersion)
+	suite.Error(err)
+	suite.Nil(newEntityVersion)
 }
 
 // TestAbortWorkflowSuccess tests the success case
 // of aborting a workflow
 func (suite *JobTestSuite) TestAbortWorkflowSuccess() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1"}
+	oldConfigVersion := suite.job.runtime.GetConfigurationVersion()
+	oldWorkflowVersion := suite.job.runtime.GetWorkflowVersion()
+	entityVersion := jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion)
+
 	updateID := &peloton.UpdateID{Value: testUpdateID}
 	suite.job.runtime.UpdateID = updateID
 	suite.job.workflows[updateID.GetValue()] = &update{
@@ -2220,45 +2386,118 @@ func (suite *JobTestSuite) TestAbortWorkflowSuccess() {
 		state:      pbupdate.State_ROLLING_FORWARD,
 	}
 
-	suite.updateStore.EXPECT().
-		WriteUpdateProgress(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
-			suite.Equal(updateInfo.GetState(), pbupdate.State_ABORTED)
-		}).
-		Return(nil)
+	gomock.InOrder(
+		suite.jobStore.EXPECT().
+			UpdateJobRuntime(gomock.Any(), suite.job.ID(), gomock.Any()).
+			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+				suite.Equal(runtime.GetConfigurationVersion(), oldConfigVersion)
+				suite.Equal(runtime.GetWorkflowVersion(), oldWorkflowVersion+1)
+			}).Return(nil),
+		suite.updateStore.EXPECT().
+			WriteUpdateProgress(gomock.Any(), gomock.Any()).
+			Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
+				suite.Equal(updateInfo.GetState(), pbupdate.State_ABORTED)
+			}).
+			Return(nil),
+	)
 
-	suite.NoError(suite.job.AbortWorkflow(context.Background(), entityVersion))
+	newEntityVersion, err := suite.job.AbortWorkflow(context.Background(), entityVersion)
+	suite.NoError(err)
+	suite.Equal(
+		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
+		newEntityVersion,
+	)
+}
+
+// TestAbortWorkflowWrongEntityVersionFailure tests the failure case
+// of aborting a workflow due to wrong entity version provided
+func (suite *JobTestSuite) TestAbortWorkflowWrongEntityVersionFailure() {
+	updateID := &peloton.UpdateID{Value: testUpdateID}
+	suite.job.runtime.UpdateID = updateID
+	suite.job.workflows[updateID.GetValue()] = &update{
+		id:         updateID,
+		jobFactory: suite.job.jobFactory,
+		state:      pbupdate.State_ROLLING_FORWARD,
+	}
+
+	newEntityVersion, err := suite.job.AbortWorkflow(
+		context.Background(),
+		jobutil.GetJobEntityVersion(
+			suite.job.runtime.GetConfigurationVersion()+1,
+			suite.job.runtime.GetWorkflowVersion(),
+		))
+	suite.Error(err)
+	suite.Nil(newEntityVersion)
+}
+
+// TestAbortWorkflowNilEntityVersionFailure tests the failure case
+// of aborting a workflow due to nil entity version provided
+func (suite *JobTestSuite) TestAbortWorkflowNilEntityVersionFailure() {
+	updateID := &peloton.UpdateID{Value: testUpdateID}
+	suite.job.runtime.UpdateID = updateID
+	suite.job.workflows[updateID.GetValue()] = &update{
+		id:         updateID,
+		jobFactory: suite.job.jobFactory,
+		prevState:  pbupdate.State_ROLLING_FORWARD,
+		state:      pbupdate.State_PAUSED,
+	}
+
+	newEntityVersion, err := suite.job.AbortWorkflow(context.Background(), nil)
+	suite.Error(err)
+	suite.Nil(newEntityVersion)
 }
 
 // TestAbortWorkflowNotExistInCacheSuccess tests the success case
 // of aborting a workflow when the workflow is not in cache
 func (suite *JobTestSuite) TestAbortWorkflowNotExistInCacheSuccess() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1"}
+	oldConfigVersion := suite.job.runtime.GetConfigurationVersion()
+	oldWorkflowVersion := suite.job.runtime.GetWorkflowVersion()
+	entityVersion := jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion)
+
 	updateID := &peloton.UpdateID{Value: testUpdateID}
 	suite.job.runtime.UpdateID = updateID
 
-	suite.updateStore.EXPECT().
-		GetUpdate(gomock.Any(), updateID).
-		Return(&models.UpdateModel{
-			State: pbupdate.State_ROLLING_FORWARD,
-		}, nil)
+	gomock.InOrder(
+		suite.jobStore.EXPECT().
+			UpdateJobRuntime(gomock.Any(), suite.job.ID(), gomock.Any()).
+			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+				suite.Equal(runtime.GetConfigurationVersion(), oldConfigVersion)
+				suite.Equal(runtime.GetWorkflowVersion(), oldWorkflowVersion+1)
+			}).Return(nil),
 
-	suite.updateStore.EXPECT().
-		WriteUpdateProgress(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
-			suite.Equal(updateInfo.GetState(), pbupdate.State_ABORTED)
-		}).
-		Return(nil)
+		suite.updateStore.EXPECT().
+			GetUpdate(gomock.Any(), updateID).
+			Return(&models.UpdateModel{
+				State: pbupdate.State_ROLLING_FORWARD,
+			}, nil),
 
-	suite.NoError(suite.job.AbortWorkflow(context.Background(), entityVersion))
+		suite.updateStore.EXPECT().
+			WriteUpdateProgress(gomock.Any(), gomock.Any()).
+			Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
+				suite.Equal(updateInfo.GetState(), pbupdate.State_ABORTED)
+			}).
+			Return(nil),
+	)
+
+	newEntityVersion, err := suite.job.AbortWorkflow(context.Background(), entityVersion)
+	suite.NoError(err)
+	suite.Equal(
+		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
+		newEntityVersion,
+	)
 }
 
 // TestAbortWorkflowNoUpdate tests the case of update pause
 // when there is no update
 func (suite *JobTestSuite) TestAbortWorkflowNoUpdate() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1"}
+	entityVersion := jobutil.GetJobEntityVersion(
+		suite.job.runtime.GetConfigurationVersion(),
+		suite.job.runtime.GetWorkflowVersion(),
+	)
 
-	suite.Error(suite.job.AbortWorkflow(context.Background(), entityVersion))
+	newEntityVersion, err := suite.job.AbortWorkflow(context.Background(), entityVersion)
+	suite.Nil(newEntityVersion)
+	suite.Error(err)
 }
 
 // TestAddExistingWorkflow tests adding an already exist workflow

@@ -210,6 +210,11 @@ message RuntimeInfo
   // of that resource used by the job. Example: if a job has one task that
   // uses 1 CPU and finishes in 10 seconds, this map will contain <"cpu":10>
   map<string, double> resourceUsage = 11;
+
+
+  // The version reflects the version of the workflow, it is an opaque value
+  // which is used internally only
+  uint64 workflowVersion = 12;
 }
 
 /**

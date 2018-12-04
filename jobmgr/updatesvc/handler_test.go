@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"testing"
 
+	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
@@ -14,10 +16,8 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
+	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
-
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
@@ -75,7 +75,8 @@ func (suite *UpdateSvcTestSuite) SetupTest() {
 	suite.jobRuntime = &job.RuntimeInfo{
 		State:                job.JobState_RUNNING,
 		GoalState:            job.JobState_RUNNING,
-		ConfigurationVersion: uint64(2),
+		ConfigurationVersion: 2,
+		WorkflowVersion:      1,
 	}
 
 	labels := []*peloton.Label{
@@ -150,7 +151,12 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Return(suite.updateID, nil)
+		Return(
+			suite.updateID,
+			jobutil.GetJobEntityVersion(
+				suite.jobRuntime.GetConfigurationVersion()+1,
+				suite.jobRuntime.GetWorkflowVersion()),
+			nil)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -188,7 +194,12 @@ func (suite *UpdateSvcTestSuite) TestAddInstancesSuccess() {
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Return(suite.updateID, nil)
+		Return(suite.updateID,
+			jobutil.GetJobEntityVersion(
+				suite.jobRuntime.GetConfigurationVersion()+1,
+				suite.jobRuntime.GetWorkflowVersion(),
+			),
+			nil)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -230,7 +241,11 @@ func (suite *UpdateSvcTestSuite) TestUpdateLabelsSuccess() {
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Return(suite.updateID, nil)
+		Return(suite.updateID,
+			jobutil.GetJobEntityVersion(
+				suite.jobRuntime.GetConfigurationVersion(),
+				suite.jobRuntime.GetWorkflowVersion()+1),
+			nil)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -430,7 +445,12 @@ func (suite *UpdateSvcTestSuite) TestCreateReduceInstanceCount() {
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Return(suite.updateID, nil)
+		Return(
+			suite.updateID,
+			jobutil.GetJobEntityVersion(
+				suite.jobRuntime.GetConfigurationVersion()+1,
+				suite.jobRuntime.GetWorkflowVersion()),
+			nil)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -498,7 +518,7 @@ func (suite *UpdateSvcTestSuite) TestCreateAddUpdateFail() {
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Return(suite.updateID, fmt.Errorf("fake db error"))
+		Return(suite.updateID, nil, fmt.Errorf("fake db error"))
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -884,8 +904,12 @@ func (suite *UpdateSvcTestSuite) TestAbortFail() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(suite.jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
 		AbortWorkflow(gomock.Any(), gomock.Any()).
-		Return(fmt.Errorf("fake db error"))
+		Return(nil, fmt.Errorf("fake db error"))
 
 	suite.cachedJob.EXPECT().
 		ID().
@@ -915,8 +939,15 @@ func (suite *UpdateSvcTestSuite) TestAbort() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(suite.jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
 		AbortWorkflow(gomock.Any(), gomock.Any()).
-		Return(nil)
+		Return(jobutil.GetJobEntityVersion(
+			suite.jobRuntime.GetConfigurationVersion(),
+			suite.jobRuntime.GetWorkflowVersion()+1),
+			nil)
 
 	suite.cachedJob.EXPECT().
 		ID().
@@ -946,8 +977,16 @@ func (suite *UpdateSvcTestSuite) TestPauseSuccess() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(suite.jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
 		PauseWorkflow(gomock.Any(), gomock.Any()).
-		Return(nil)
+		Return(
+			jobutil.GetJobEntityVersion(
+				suite.jobRuntime.GetConfigurationVersion(),
+				suite.jobRuntime.GetWorkflowVersion()+1),
+			nil)
 
 	suite.cachedJob.EXPECT().
 		ID().
@@ -978,8 +1017,12 @@ func (suite *UpdateSvcTestSuite) TestPauseProgressUpdateFails() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(suite.jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
 		PauseWorkflow(gomock.Any(), gomock.Any()).
-		Return(fmt.Errorf("test error"))
+		Return(nil, fmt.Errorf("test error"))
 
 	suite.cachedJob.EXPECT().
 		ID().
@@ -1009,8 +1052,15 @@ func (suite *UpdateSvcTestSuite) TestResumeSuccess() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(suite.jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
 		ResumeWorkflow(gomock.Any(), gomock.Any()).
-		Return(nil)
+		Return(jobutil.GetJobEntityVersion(
+			suite.jobRuntime.GetConfigurationVersion(),
+			suite.jobRuntime.GetWorkflowVersion()+1),
+			nil)
 
 	suite.cachedJob.EXPECT().
 		ID().
@@ -1041,8 +1091,12 @@ func (suite *UpdateSvcTestSuite) TestResumeProgressUpdateFails() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(suite.jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
 		ResumeWorkflow(gomock.Any(), gomock.Any()).
-		Return(fmt.Errorf("test error"))
+		Return(nil, fmt.Errorf("test error"))
 
 	suite.cachedJob.EXPECT().
 		ID().

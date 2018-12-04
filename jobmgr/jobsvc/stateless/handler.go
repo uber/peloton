@@ -273,7 +273,9 @@ func convertToJobStatus(
 	result.CreationTime = runtime.GetCreationTime()
 	result.PodStats = runtime.TaskStats
 	result.DesiredState = stateless.JobState(runtime.GetGoalState())
-	result.Version = jobutil.GetEntityVersion(runtime.GetConfigurationVersion())
+	result.Version = jobutil.GetJobEntityVersion(
+		runtime.GetConfigurationVersion(),
+		runtime.GetWorkflowVersion())
 
 	if cachedWorkflow == nil {
 		return result
@@ -289,8 +291,10 @@ func convertToJobStatus(
 			len(cachedWorkflow.GetInstancesDone()) -
 			len(cachedWorkflow.GetInstancesFailed()))
 	workflowStatus.InstancesCurrent = cachedWorkflow.GetInstancesCurrent()
-	workflowStatus.PrevVersion = jobutil.GetEntityVersion(cachedWorkflow.GetState().JobVersion)
-	workflowStatus.Version = jobutil.GetEntityVersion(cachedWorkflow.GetGoalState().JobVersion)
+	workflowStatus.PrevVersion =
+		jobutil.GetPodEntityVersion(cachedWorkflow.GetState().JobVersion)
+	workflowStatus.Version =
+		jobutil.GetPodEntityVersion(cachedWorkflow.GetGoalState().JobVersion)
 
 	result.WorkflowStatus = workflowStatus
 	return result

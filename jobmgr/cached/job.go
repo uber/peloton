@@ -12,13 +12,14 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
-	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/taskconfig"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
+	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 	stringsutil "code.uber.internal/infra/peloton/util/strings"
 
 	"github.com/golang/protobuf/proto"
@@ -154,25 +155,25 @@ type WorkflowOps interface {
 		updateConfig *pbupdate.UpdateConfig,
 		entityVersion *v1alphapeloton.EntityVersion,
 		option ...Option,
-	) (*peloton.UpdateID, error)
+	) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error)
 
 	// PauseWorkflow pauses the current workflow, if any
 	PauseWorkflow(
 		ctx context.Context,
 		entityVersion *v1alphapeloton.EntityVersion,
-	) error
+	) (*v1alphapeloton.EntityVersion, error)
 
 	// ResumeWorkflow resumes the current workflow, if any
 	ResumeWorkflow(
 		ctx context.Context,
 		entityVersion *v1alphapeloton.EntityVersion,
-	) error
+	) (*v1alphapeloton.EntityVersion, error)
 
 	// AbortWorkflow aborts the current workflow, if any
 	AbortWorkflow(
 		ctx context.Context,
 		entityVersion *v1alphapeloton.EntityVersion,
-	) error
+	) (*v1alphapeloton.EntityVersion, error)
 
 	// RollbackWorkflow rollbacks the current workflow, if any
 	RollbackWorkflow(ctx context.Context) error
@@ -592,6 +593,7 @@ func (j *job) createJobRuntime(ctx context.Context, config *pbjob.JobConfig) err
 		},
 		ConfigurationVersion: config.GetChangeLog().GetVersion(),
 		ResourceUsage:        createEmptyResourceUsageMap(),
+		WorkflowVersion:      1,
 	}
 	// Init the task stats to reflect that all tasks are in initialized state
 	initialJobRuntime.TaskStats[pbtask.TaskState_INITIALIZED.String()] = config.InstanceCount
@@ -996,6 +998,10 @@ func (j *job) mergeRuntime(newRuntime *pbjob.RuntimeInfo) *pbjob.RuntimeInfo {
 		runtime.UpdateID = newRuntime.GetUpdateID()
 	}
 
+	if newRuntime.GetWorkflowVersion() > 0 {
+		runtime.WorkflowVersion = newRuntime.GetWorkflowVersion()
+	}
+
 	if runtime.Revision == nil {
 		// should never enter here
 		log.WithField("job_id", j.id.GetValue()).
@@ -1169,16 +1175,19 @@ func (o *instanceToProcessOpt) apply(opts *workflowOpts) {
 	opts.instanceRemoved = o.instancesRemoved
 }
 
-// TODO: use entity version for concurrency control
 func (j *job) CreateWorkflow(
 	ctx context.Context,
 	workflowType models.WorkflowType,
 	updateConfig *pbupdate.UpdateConfig,
 	entityVersion *v1alphapeloton.EntityVersion,
 	options ...Option,
-) (*peloton.UpdateID, error) {
+) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error) {
 	j.Lock()
 	defer j.Unlock()
+
+	if err := j.validateEntityVersion(ctx, entityVersion); err != nil {
+		return nil, nil, err
+	}
 
 	opts := &workflowOpts{}
 	for _, option := range options {
@@ -1187,7 +1196,7 @@ func (j *job) CreateWorkflow(
 
 	newConfig, err := j.compareAndSetConfig(ctx, opts.jobConfig, opts.configAddOn)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	updateID := &peloton.UpdateID{Value: uuid.New()}
@@ -1210,7 +1219,7 @@ func (j *job) CreateWorkflow(
 		// runtime.GetConfigurationVersion has the same version with cached config.
 		// If not, it would invalidate config cache and repopulate the cache with
 		// the correct version.
-		return nil, err
+		return nil, nil, err
 	}
 
 	err = j.updateJobConfigAndUpdateID(
@@ -1219,15 +1228,23 @@ func (j *job) CreateWorkflow(
 		newWorkflow,
 	)
 
-	if err == nil {
-		// only add new workflow to job if runtime update succeeds.
-		// If err is not nil, it is unclear whether update id in job
-		// runtime is updated successfully. If the update id does get
-		// persisted in job runtime, workflow.Recover and AddWorkflow
-		// can ensure that job tracks the workflow when the workflow
-		// is processed.
-		j.workflows[updateID.GetValue()] = newWorkflow
+	if err != nil {
+		return updateID, nil, err
 	}
+
+	// only add new workflow to job if runtime update succeeds.
+	// If err is not nil, it is unclear whether update id in job
+	// runtime is updated successfully. If the update id does get
+	// persisted in job runtime, workflow.Recover and AddWorkflow
+	// can ensure that job tracks the workflow when the workflow
+	// is processed.
+	j.workflows[updateID.GetValue()] = newWorkflow
+
+	// entity version is changed due to change in config version
+	newEntityVersion := jobutil.GetJobEntityVersion(
+		j.runtime.GetConfigurationVersion(),
+		j.runtime.GetWorkflowVersion()+1,
+	)
 
 	log.WithField("workflow_id", updateID.GetValue()).
 		WithField("job_id", j.id.GetValue()).
@@ -1237,64 +1254,97 @@ func (j *job) CreateWorkflow(
 		WithField("workflow_type", workflowType.String()).
 		Debug("workflow is created")
 
-	return updateID, err
+	return updateID, newEntityVersion, err
 }
 
 func (j *job) PauseWorkflow(
 	ctx context.Context,
 	entityVersion *v1alphapeloton.EntityVersion,
-) error {
+) (*v1alphapeloton.EntityVersion, error) {
 	j.Lock()
 	defer j.Unlock()
 
-	// TODO: check entity version and bump the version
 	currentWorkflow, err := j.getCurrentWorkflow(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if currentWorkflow == nil {
-		return yarpcerrors.NotFoundErrorf("no workflow found")
+		return nil, yarpcerrors.NotFoundErrorf("no workflow found")
 	}
 
-	return currentWorkflow.Pause(ctx)
+	// update workflow version before mutating workflow, so
+	// when workflow state changes, entity version must be changed
+	// as well
+	if err := j.updateWorkflowVersion(ctx, entityVersion); err != nil {
+		return nil, err
+	}
+
+	newEntityVersion := jobutil.GetJobEntityVersion(
+		j.runtime.GetConfigurationVersion(),
+		j.runtime.GetWorkflowVersion(),
+	)
+	err = currentWorkflow.Pause(ctx)
+	return newEntityVersion, err
 }
 
 func (j *job) ResumeWorkflow(
 	ctx context.Context,
 	entityVersion *v1alphapeloton.EntityVersion,
-) error {
+) (*v1alphapeloton.EntityVersion, error) {
 	j.Lock()
 	defer j.Unlock()
 
-	// TODO: check entity version and bump the version
 	currentWorkflow, err := j.getCurrentWorkflow(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if currentWorkflow == nil {
-		return yarpcerrors.NotFoundErrorf("no workflow found")
+		return nil, yarpcerrors.NotFoundErrorf("no workflow found")
 	}
 
-	return currentWorkflow.Resume(ctx)
+	// update workflow version before mutating workflow, so
+	// when workflow state changes, entity version must be changed
+	// as well
+	if err := j.updateWorkflowVersion(ctx, entityVersion); err != nil {
+		return nil, err
+	}
+
+	newEntityVersion := jobutil.GetJobEntityVersion(
+		j.runtime.GetConfigurationVersion(),
+		j.runtime.GetWorkflowVersion(),
+	)
+	err = currentWorkflow.Resume(ctx)
+	return newEntityVersion, err
 }
 
 func (j *job) AbortWorkflow(
 	ctx context.Context,
 	entityVersion *v1alphapeloton.EntityVersion,
-) error {
+) (*v1alphapeloton.EntityVersion, error) {
 	j.Lock()
 	defer j.Unlock()
 
-	// TODO: check entity version and bump the version
 	currentWorkflow, err := j.getCurrentWorkflow(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if currentWorkflow == nil {
-		return yarpcerrors.NotFoundErrorf("no workflow found")
+		return nil, yarpcerrors.NotFoundErrorf("no workflow found")
 	}
 
-	return currentWorkflow.Cancel(ctx)
+	// update workflow version before mutating workflow, so
+	// when workflow state changes, entity version must be changed
+	// as well
+	if err := j.updateWorkflowVersion(ctx, entityVersion); err != nil {
+		return nil, err
+	}
+
+	newEntityVersion := jobutil.GetJobEntityVersion(
+		j.runtime.GetConfigurationVersion(),
+		j.runtime.GetWorkflowVersion(),
+	)
+	err = currentWorkflow.Cancel(ctx)
+	return newEntityVersion, err
 }
 
 func (j *job) RollbackWorkflow(ctx context.Context) error {
@@ -1684,6 +1734,54 @@ func (j *job) getCurrentWorkflow(ctx context.Context) (Update, error) {
 	// workflow not found in cache, create a new one and let called
 	// to recover the update state
 	return newUpdate(j.runtime.GetUpdateID(), j.jobFactory), nil
+}
+
+// validateEntityVersion validates if the entity version provided
+// match the entity version expected
+func (j *job) validateEntityVersion(
+	ctx context.Context,
+	version *v1alphapeloton.EntityVersion,
+) error {
+	if err := j.populateRuntime(ctx); err != nil {
+		return err
+	}
+
+	configVersion, workflowVersion, err := jobutil.ParseJobEntityVersion(version)
+	if err != nil {
+		return err
+	}
+
+	if configVersion != j.runtime.GetConfigurationVersion() ||
+		workflowVersion != j.runtime.GetWorkflowVersion() {
+		return yarpcerrors.InvalidArgumentErrorf("unexpected entity version")
+	}
+	return nil
+}
+
+// updateWorkflowVersion updates workflow version field in job runtime and persist
+// job runtime into db
+func (j *job) updateWorkflowVersion(
+	ctx context.Context,
+	version *v1alphapeloton.EntityVersion,
+) error {
+	if err := j.validateEntityVersion(ctx, version); err != nil {
+		return err
+	}
+	_, workflowVersion, err := jobutil.ParseJobEntityVersion(version)
+	if err != nil {
+		return err
+	}
+
+	runtimeDiff := &pbjob.RuntimeInfo{WorkflowVersion: workflowVersion + 1}
+	newRuntime := j.mergeRuntime(runtimeDiff)
+
+	if err := j.jobFactory.jobStore.UpdateJobRuntime(ctx, j.id, newRuntime); err != nil {
+		j.runtime = nil
+		return err
+	}
+
+	j.runtime = newRuntime
+	return nil
 }
 
 func createEmptyResourceUsageMap() map[string]float64 {

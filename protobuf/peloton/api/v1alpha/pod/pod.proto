@@ -474,15 +474,15 @@ message PodStatus {
   // persistent volume id
   peloton.VolumeID volume_id = 12;
 
-  // The job version currently used by the pod.
+  // The entity version currently used by the pod.
   // TODO Avoid leaking job abstractions into public pod APIs.
   // Remove after internal protobuf structures are defined.
-  peloton.EntityVersion job_version = 13;
+  peloton.EntityVersion version = 13;
 
-  // The desired job version that should be used by the pod.
+  // The desired entity version that should be used by the pod.
   // TODO Avoid leaking job abstractions into public pod APIs.
   // Remove after internal protobuf structures are defined.
-  peloton.EntityVersion desired_job_version = 14;
+  peloton.EntityVersion desired_version = 14;
 
   // the id of mesos agent on the host to be launched.
   mesos.v1.AgentID agent_id = 15;
@@ -563,11 +563,11 @@ message PodEvent {
   // RFC3339 form with UTC timezone.
   string timestamp = 4;
 
-  // The job version currently used by the pod.
-  peloton.EntityVersion job_version = 5;
+  // The entity version currently used by the pod.
+  peloton.EntityVersion version = 5;
 
-  // The desired job version that should be used by the pod.
-  peloton.EntityVersion desired_job_version = 6;
+  // The desired entity version that should be used by the pod.
+  peloton.EntityVersion desired_version = 6;
 
   // The agentID for the pod
   string agent_id = 7;

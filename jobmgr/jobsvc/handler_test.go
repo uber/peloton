@@ -24,6 +24,7 @@ import (
 	cachedtest "code.uber.internal/infra/peloton/jobmgr/cached/test"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
+	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
@@ -1768,6 +1769,7 @@ func (suite *JobHandlerTestSuite) TestJobGetCache_SUCCESS() {
 // TestRestartJobSuccess tests the success path of restarting job
 func (suite *JobHandlerTestSuite) TestRestartJobSuccess() {
 	var configurationVersion uint64 = 1
+	var workflowVersion uint64 = 2
 	var batchSize uint32 = 1
 
 	suite.mockedCandidate.EXPECT().
@@ -1805,7 +1807,10 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccess() {
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Return(&peloton.UpdateID{Value: uuid.New()}, nil)
+		Return(
+			&peloton.UpdateID{Value: uuid.New()},
+			jobutil.GetJobEntityVersion(configurationVersion+1, workflowVersion),
+			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -1833,6 +1838,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccess() {
 // ranges
 func (suite *JobHandlerTestSuite) TestRestartJobSuccessWithRange() {
 	var configurationVersion uint64 = 1
+	var workflowVersion uint64 = 2
 	var batchSize uint32 = 1
 	restartRanges := []*task.InstanceRange{
 		{
@@ -1880,7 +1886,10 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccessWithRange() {
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Return(&peloton.UpdateID{Value: uuid.New()}, nil)
+		Return(
+			&peloton.UpdateID{Value: uuid.New()},
+			jobutil.GetJobEntityVersion(configurationVersion+1, workflowVersion),
+			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -1909,6 +1918,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccessWithRange() {
 // with ranges out side of range
 func (suite *JobHandlerTestSuite) TestRestartJobOutsideOfRangeSuccess() {
 	var configurationVersion uint64 = 1
+	var workflowVersion uint64 = 2
 	var batchSize uint32 = 1
 	restartRanges := []*task.InstanceRange{
 		{
@@ -1936,6 +1946,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobOutsideOfRangeSuccess() {
 		Return(&job.RuntimeInfo{
 			State:                job.JobState_PENDING,
 			ConfigurationVersion: configurationVersion,
+			WorkflowVersion:      workflowVersion,
 		}, nil)
 
 	suite.mockedJobStore.EXPECT().
@@ -1956,7 +1967,10 @@ func (suite *JobHandlerTestSuite) TestRestartJobOutsideOfRangeSuccess() {
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Return(&peloton.UpdateID{Value: uuid.New()}, nil)
+		Return(
+			&peloton.UpdateID{Value: uuid.New()},
+			jobutil.GetJobEntityVersion(configurationVersion+1, workflowVersion),
+			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -2084,6 +2098,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobGetConfigFailure() {
 // creation fails
 func (suite *JobHandlerTestSuite) TestRestartJobCreateUpdateFailure() {
 	var configurationVersion uint64 = 1
+	var workflowVersion uint64 = 2
 	var batchSize uint32 = 1
 
 	suite.mockedCandidate.EXPECT().
@@ -2101,6 +2116,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobCreateUpdateFailure() {
 		Return(&job.RuntimeInfo{
 			State:                job.JobState_PENDING,
 			ConfigurationVersion: configurationVersion,
+			WorkflowVersion:      workflowVersion,
 		}, nil)
 
 	suite.mockedJobStore.EXPECT().
@@ -2121,7 +2137,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobCreateUpdateFailure() {
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Return(&peloton.UpdateID{Value: uuid.New()}, yarpcerrors.InternalErrorf("test error"))
+		Return(&peloton.UpdateID{Value: uuid.New()}, nil, yarpcerrors.InternalErrorf("test error"))
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -2143,6 +2159,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobCreateUpdateFailure() {
 // get cached config failure
 func (suite *JobHandlerTestSuite) TestRestartJobGetCachedConfigFailure() {
 	var configurationVersion uint64 = 1
+	var workflowVersion uint64 = 2
 	var batchSize uint32 = 1
 
 	suite.mockedCandidate.EXPECT().
@@ -2160,6 +2177,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobGetCachedConfigFailure() {
 		Return(&job.RuntimeInfo{
 			State:                job.JobState_PENDING,
 			ConfigurationVersion: configurationVersion,
+			WorkflowVersion:      workflowVersion,
 		}, nil)
 
 	suite.mockedJobStore.EXPECT().
@@ -2180,7 +2198,10 @@ func (suite *JobHandlerTestSuite) TestRestartJobGetCachedConfigFailure() {
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Return(&peloton.UpdateID{Value: uuid.New()}, nil)
+		Return(
+			&peloton.UpdateID{Value: uuid.New()},
+			jobutil.GetJobEntityVersion(configurationVersion+1, workflowVersion),
+			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -2251,6 +2272,7 @@ func (suite *JobHandlerTestSuite) TestRestartNonServiceJobFailure() {
 // TestStartJobSuccess tests the success path of starting job
 func (suite *JobHandlerTestSuite) TestStartJobSuccess() {
 	var configurationVersion uint64 = 1
+	var workflowVersion uint64 = 2
 	var batchSize uint32 = 1
 
 	suite.mockedCandidate.EXPECT().
@@ -2289,7 +2311,10 @@ func (suite *JobHandlerTestSuite) TestStartJobSuccess() {
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Return(&peloton.UpdateID{Value: uuid.New()}, nil)
+		Return(
+			&peloton.UpdateID{Value: uuid.New()},
+			jobutil.GetJobEntityVersion(configurationVersion+1, workflowVersion),
+			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())
@@ -2316,6 +2341,7 @@ func (suite *JobHandlerTestSuite) TestStartJobSuccess() {
 // TestStopJobSuccess tests the success path of stopping job
 func (suite *JobHandlerTestSuite) TestStopJobSuccess() {
 	var configurationVersion uint64 = 1
+	var workflowVersion uint64 = 2
 	var batchSize uint32 = 1
 
 	suite.mockedCandidate.EXPECT().
@@ -2353,7 +2379,10 @@ func (suite *JobHandlerTestSuite) TestStopJobSuccess() {
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Return(&peloton.UpdateID{Value: uuid.New()}, nil)
+		Return(
+			&peloton.UpdateID{Value: uuid.New()},
+			jobutil.GetJobEntityVersion(configurationVersion+1, workflowVersion),
+			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueUpdate(gomock.Any(), gomock.Any(), gomock.Any())

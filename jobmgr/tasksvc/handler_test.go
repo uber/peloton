@@ -183,10 +183,10 @@ func (suite *TaskHandlerTestSuite) TestGetTasks_Batch_Job() {
 		PrevPodId: &v1alphapeloton.PodID{
 			Value: testPrevTaskID,
 		},
-		JobVersion: &v1alphapeloton.EntityVersion{
+		Version: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
-		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+		DesiredVersion: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
 		ActualState:  task.TaskState_FAILED.String(),
@@ -233,10 +233,10 @@ func (suite *TaskHandlerTestSuite) TestGetTasks_Service_Job() {
 		PodId: &v1alphapeloton.PodID{
 			Value: testTaskID,
 		},
-		JobVersion: &v1alphapeloton.EntityVersion{
+		Version: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
-		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+		DesiredVersion: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
 		ActualState:  task.TaskState_RUNNING.String(),
@@ -1230,10 +1230,10 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsWithRunID() {
 			PodId: &v1alphapeloton.PodID{
 				Value: testRunID,
 			},
-			JobVersion: &v1alphapeloton.EntityVersion{
+			Version: &v1alphapeloton.EntityVersion{
 				Value: "1",
 			},
-			DesiredJobVersion: &v1alphapeloton.EntityVersion{
+			DesiredVersion: &v1alphapeloton.EntityVersion{
 				Value: "1",
 			},
 			PrevPodId: &v1alphapeloton.PodID{
@@ -1273,10 +1273,10 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsForAllRuns() {
 					PodId: &v1alphapeloton.PodID{
 						Value: testRunID,
 					},
-					JobVersion: &v1alphapeloton.EntityVersion{
+					Version: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
-					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+					DesiredVersion: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
 					PrevPodId: &v1alphapeloton.PodID{
@@ -1292,10 +1292,10 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsForAllRuns() {
 					PodId: &v1alphapeloton.PodID{
 						Value: prevRunID,
 					},
-					JobVersion: &v1alphapeloton.EntityVersion{
+					Version: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
-					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+					DesiredVersion: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
 					PrevPodId: &v1alphapeloton.PodID{
@@ -1341,10 +1341,10 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsFiveRunsLimitToThree() {
 					PodId: &v1alphapeloton.PodID{
 						Value: testRunID,
 					},
-					JobVersion: &v1alphapeloton.EntityVersion{
+					Version: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
-					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+					DesiredVersion: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
 					PrevPodId: &v1alphapeloton.PodID{
@@ -1360,10 +1360,10 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsFiveRunsLimitToThree() {
 					PodId: &v1alphapeloton.PodID{
 						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
 					},
-					JobVersion: &v1alphapeloton.EntityVersion{
+					Version: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
-					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+					DesiredVersion: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
 					PrevPodId: &v1alphapeloton.PodID{
@@ -1379,10 +1379,10 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsFiveRunsLimitToThree() {
 					PodId: &v1alphapeloton.PodID{
 						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
 					},
-					JobVersion: &v1alphapeloton.EntityVersion{
+					Version: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
-					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+					DesiredVersion: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
 					PrevPodId: &v1alphapeloton.PodID{
@@ -1428,10 +1428,10 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsThreeRunsLimitToFive() {
 					PodId: &v1alphapeloton.PodID{
 						Value: testRunID,
 					},
-					JobVersion: &v1alphapeloton.EntityVersion{
+					Version: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
-					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+					DesiredVersion: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
 					PrevPodId: &v1alphapeloton.PodID{
@@ -1447,10 +1447,10 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsThreeRunsLimitToFive() {
 					PodId: &v1alphapeloton.PodID{
 						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
 					},
-					JobVersion: &v1alphapeloton.EntityVersion{
+					Version: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
-					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+					DesiredVersion: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
 					PrevPodId: &v1alphapeloton.PodID{
@@ -1466,10 +1466,10 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsThreeRunsLimitToFive() {
 					PodId: &v1alphapeloton.PodID{
 						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
 					},
-					JobVersion: &v1alphapeloton.EntityVersion{
+					Version: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
-					DesiredJobVersion: &v1alphapeloton.EntityVersion{
+					DesiredVersion: &v1alphapeloton.EntityVersion{
 						Value: "1",
 					},
 					PrevPodId: &v1alphapeloton.PodID{
@@ -1548,7 +1548,7 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsDesiredJobVersionParseError()
 			PodId: &v1alphapeloton.PodID{
 				Value: testRunID,
 			},
-			JobVersion: &v1alphapeloton.EntityVersion{
+			Version: &v1alphapeloton.EntityVersion{
 				Value: "1",
 			},
 		},
@@ -1576,10 +1576,10 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsPrevPodIDParseError() {
 			PodId: &v1alphapeloton.PodID{
 				Value: testRunID,
 			},
-			JobVersion: &v1alphapeloton.EntityVersion{
+			Version: &v1alphapeloton.EntityVersion{
 				Value: "1",
 			},
-			DesiredJobVersion: &v1alphapeloton.EntityVersion{
+			DesiredVersion: &v1alphapeloton.EntityVersion{
 				Value: "1",
 			},
 			PrevPodId: &v1alphapeloton.PodID{
@@ -1622,10 +1622,10 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxPreviousTaskRun() {
 		PrevPodId: &v1alphapeloton.PodID{
 			Value: testPrevTaskID,
 		},
-		JobVersion: &v1alphapeloton.EntityVersion{
+		Version: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
-		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+		DesiredVersion: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
 		ActualState:  task.TaskState_FAILED.String(),
@@ -1723,10 +1723,10 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListSandboxFileFailure() {
 		},
 		Hostname: hostName,
 		AgentId:  agentID,
-		JobVersion: &v1alphapeloton.EntityVersion{
+		Version: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
-		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+		DesiredVersion: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
 		ActualState:  task.TaskState_RUNNING.String(),
@@ -1788,10 +1788,10 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxGetMesosMasterInfoFailure() 
 		},
 		Hostname: hostName,
 		AgentId:  agentID,
-		JobVersion: &v1alphapeloton.EntityVersion{
+		Version: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
-		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+		DesiredVersion: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
 		ActualState:  task.TaskState_RUNNING.String(),
@@ -1857,10 +1857,10 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccess() {
 		},
 		Hostname: hostName,
 		AgentId:  agentID,
-		JobVersion: &v1alphapeloton.EntityVersion{
+		Version: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
-		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+		DesiredVersion: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
 		ActualState:  task.TaskState_RUNNING.String(),
@@ -1945,10 +1945,10 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccessAgentIP() {
 		},
 		Hostname: hostName,
 		AgentId:  agentID,
-		JobVersion: &v1alphapeloton.EntityVersion{
+		Version: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
-		DesiredJobVersion: &v1alphapeloton.EntityVersion{
+		DesiredVersion: &v1alphapeloton.EntityVersion{
 			Value: "1",
 		},
 		ActualState:  task.TaskState_RUNNING.String(),

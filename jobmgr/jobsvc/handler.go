@@ -645,13 +645,15 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 		}
 	}
 
-	updateID, err := cachedJob.CreateWorkflow(
+	updateID, _, err := cachedJob.CreateWorkflow(
 		ctx,
 		workflowType,
 		&pbupdate.UpdateConfig{
 			BatchSize: batchSize,
 		},
-		nil,
+		jobutil.GetJobEntityVersion(
+			runtime.GetConfigurationVersion(),
+			runtime.GetWorkflowVersion()),
 		cached.WithInstanceToProcess(
 			nil,
 			convertRangesToSlice(ranges, newConfig.GetInstanceCount()),
