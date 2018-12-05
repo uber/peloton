@@ -2508,8 +2508,8 @@ func (s *Store) updateJobIndex(
 	return nil
 }
 
-// getJobSummaryFromIndex gets the job summary from job index table
-func (s *Store) getJobSummaryFromIndex(
+// GetJobSummaryFromIndex gets the job summary from job index table
+func (s *Store) GetJobSummaryFromIndex(
 	ctx context.Context, id *peloton.JobID) (*job.JobSummary, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select(
@@ -3279,7 +3279,7 @@ func (s *Store) reconcileStaleBatchJobsFromJobSummaryList(
 				parseTime(summary.GetRuntime().GetCreationTime()),
 			) > common.StaleJobStateDurationThreshold {
 			// get job summary from DB table instead of index
-			summary, err = s.getJobSummaryFromIndex(ctx, summary.Id)
+			summary, err = s.GetJobSummaryFromIndex(ctx, summary.Id)
 			if err != nil {
 				return nil, err
 			}

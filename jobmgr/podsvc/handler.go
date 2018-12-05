@@ -20,7 +20,6 @@ import (
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	handlerutil "code.uber.internal/infra/peloton/jobmgr/util/handler"
-	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
@@ -382,7 +381,7 @@ func (h *serviceHandler) GetPod(
 		return nil, errors.Wrap(err, "failed to get task runtime")
 	}
 
-	podStatus := convertTaskRuntimeToPodStatus(taskRuntime)
+	podStatus := handlerutil.ConvertTaskRuntimeToPodStatus(taskRuntime)
 
 	var podSpec *pbpod.PodSpec
 	if !req.GetStatusOnly() {
@@ -396,7 +395,7 @@ func (h *serviceHandler) GetPod(
 			return nil, errors.Wrap(err, "failed to get task config")
 		}
 
-		podSpec = convertTaskConfigToPodSpec(taskConfig)
+		podSpec = handlerutil.ConvertTaskConfigToPodSpec(taskConfig)
 	}
 
 	currentPodInfo := &pbpod.PodInfo{
@@ -641,7 +640,7 @@ func (h *serviceHandler) GetPodCache(
 	}
 
 	return &svc.GetPodCacheResponse{
-		Status: convertTaskRuntimeToPodStatus(runtime),
+		Status: handlerutil.ConvertTaskRuntimeToPodStatus(runtime),
 	}, nil
 }
 
@@ -799,7 +798,7 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 		podInfos = append(podInfos, &pbpod.PodInfo{
 			Spec: latestPodInfo.GetSpec(),
 			Status: &pbpod.PodStatus{
-				State: convertTaskStateToPodState(
+				State: handlerutil.ConvertTaskStateToPodState(
 					pbtask.TaskState(pbtask.TaskState_value[events[0].GetActualState()]),
 				),
 				DesiredState: latestPodInfo.GetStatus().GetDesiredState(),
@@ -825,186 +824,4 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 	}
 
 	return podInfos, nil
-}
-
-func convertTaskStateToPodState(state pbtask.TaskState) pbpod.PodState {
-	switch state {
-	case pbtask.TaskState_UNKNOWN:
-		return pbpod.PodState_POD_STATE_INVALID
-	case pbtask.TaskState_INITIALIZED:
-		return pbpod.PodState_POD_STATE_INITIALIZED
-	case pbtask.TaskState_PENDING:
-		return pbpod.PodState_POD_STATE_PENDING
-	case pbtask.TaskState_READY:
-		return pbpod.PodState_POD_STATE_READY
-	case pbtask.TaskState_PLACING:
-		return pbpod.PodState_POD_STATE_PLACING
-	case pbtask.TaskState_PLACED:
-		return pbpod.PodState_POD_STATE_PLACED
-	case pbtask.TaskState_LAUNCHING:
-		return pbpod.PodState_POD_STATE_LAUNCHING
-	case pbtask.TaskState_LAUNCHED:
-		return pbpod.PodState_POD_STATE_LAUNCHED
-	case pbtask.TaskState_STARTING:
-		return pbpod.PodState_POD_STATE_STARTING
-	case pbtask.TaskState_RUNNING:
-		return pbpod.PodState_POD_STATE_RUNNING
-	case pbtask.TaskState_SUCCEEDED:
-		return pbpod.PodState_POD_STATE_SUCCEEDED
-	case pbtask.TaskState_FAILED:
-		return pbpod.PodState_POD_STATE_FAILED
-	case pbtask.TaskState_LOST:
-		return pbpod.PodState_POD_STATE_LOST
-	case pbtask.TaskState_PREEMPTING:
-		return pbpod.PodState_POD_STATE_PREEMPTING
-	case pbtask.TaskState_KILLING:
-		return pbpod.PodState_POD_STATE_KILLING
-	case pbtask.TaskState_KILLED:
-		return pbpod.PodState_POD_STATE_KILLED
-	case pbtask.TaskState_DELETED:
-		return pbpod.PodState_POD_STATE_DELETED
-	}
-	return pbpod.PodState_POD_STATE_INVALID
-}
-
-func convertTaskRuntimeToPodStatus(runtime *pbtask.RuntimeInfo) *pbpod.PodStatus {
-	return &pbpod.PodStatus{
-		State:          convertTaskStateToPodState(runtime.GetState()),
-		PodId:          &v1alphapeloton.PodID{Value: runtime.GetMesosTaskId().GetValue()},
-		StartTime:      runtime.GetStartTime(),
-		CompletionTime: runtime.GetCompletionTime(),
-		Host:           runtime.GetHost(),
-		ContainersStatus: []*pbpod.ContainerStatus{
-			{
-				Ports: runtime.GetPorts(),
-				Healthy: &pbpod.HealthStatus{
-					State: pbpod.HealthState(runtime.GetHealthy()),
-				},
-			},
-		},
-		DesiredState:   convertTaskStateToPodState(runtime.GetGoalState()),
-		Message:        runtime.GetMessage(),
-		Reason:         runtime.GetReason(),
-		FailureCount:   runtime.GetFailureCount(),
-		VolumeId:       &v1alphapeloton.VolumeID{Value: runtime.GetVolumeID().GetValue()},
-		Version:        jobutil.GetPodEntityVersion(runtime.GetConfigVersion()),
-		DesiredVersion: jobutil.GetPodEntityVersion(runtime.GetDesiredConfigVersion()),
-		AgentId:        runtime.GetAgentID(),
-		Revision: &v1alphapeloton.Revision{
-			Version:   runtime.GetRevision().GetVersion(),
-			CreatedAt: runtime.GetRevision().GetCreatedAt(),
-			UpdatedAt: runtime.GetRevision().GetUpdatedAt(),
-			UpdatedBy: runtime.GetRevision().GetUpdatedBy(),
-		},
-		PrevPodId:     &v1alphapeloton.PodID{Value: runtime.GetPrevMesosTaskId().GetValue()},
-		ResourceUsage: runtime.GetResourceUsage(),
-		DesiredPodId:  &v1alphapeloton.PodID{Value: runtime.GetDesiredMesosTaskId().GetValue()},
-	}
-}
-
-func convertTaskConfigToPodSpec(taskConfig *pbtask.TaskConfig) *pbpod.PodSpec {
-	var constraint *pbpod.Constraint
-	if taskConfig.GetConstraint() != nil {
-		constraint = getPodConstraints([]*pbtask.Constraint{taskConfig.GetConstraint()})[0]
-	}
-
-	return &pbpod.PodSpec{
-		PodName: &v1alphapeloton.PodName{Value: taskConfig.GetName()},
-		Labels:  getPodLabels(taskConfig.GetLabels()),
-		Containers: []*pbpod.ContainerSpec{
-			{
-				Name: taskConfig.GetName(),
-				Resource: &pbpod.ResourceSpec{
-					CpuLimit:    taskConfig.GetResource().GetCpuLimit(),
-					MemLimitMb:  taskConfig.GetResource().GetMemLimitMb(),
-					DiskLimitMb: taskConfig.GetResource().GetDiskLimitMb(),
-					FdLimit:     taskConfig.GetResource().GetFdLimit(),
-					GpuLimit:    taskConfig.GetResource().GetGpuLimit(),
-				},
-				Container: taskConfig.GetContainer(),
-				Command:   taskConfig.GetCommand(),
-				LivenessCheck: &pbpod.HealthCheckSpec{
-					Enabled:                taskConfig.GetHealthCheck().GetEnabled(),
-					InitialIntervalSecs:    taskConfig.GetHealthCheck().GetInitialIntervalSecs(),
-					IntervalSecs:           taskConfig.GetHealthCheck().GetIntervalSecs(),
-					MaxConsecutiveFailures: taskConfig.GetHealthCheck().GetMaxConsecutiveFailures(),
-					TimeoutSecs:            taskConfig.GetHealthCheck().GetTimeoutSecs(),
-					Type:                   pbpod.HealthCheckSpec_HealthCheckType(taskConfig.GetHealthCheck().GetType()),
-					CommandCheck: &pbpod.HealthCheckSpec_CommandCheck{
-						Command:             taskConfig.GetHealthCheck().GetCommandCheck().GetCommand(),
-						UnshareEnvironments: taskConfig.GetHealthCheck().GetCommandCheck().GetUnshareEnvironments(),
-					},
-				},
-				Ports: getContainerPorts(taskConfig.GetPorts()),
-			},
-		},
-		Constraint: constraint,
-		RestartPolicy: &pbpod.RestartPolicy{
-			MaxFailures: taskConfig.GetRestartPolicy().GetMaxFailures(),
-		},
-		Volume: &pbpod.PersistentVolumeSpec{
-			ContainerPath: taskConfig.GetVolume().GetContainerPath(),
-			SizeMb:        taskConfig.GetVolume().GetSizeMB(),
-		},
-		PreemptionPolicy: &pbpod.PreemptionPolicy{
-			KillOnPreempt: taskConfig.GetPreemptionPolicy().GetKillOnPreempt(),
-		},
-		Controller:             taskConfig.GetController(),
-		KillGracePeriodSeconds: taskConfig.GetKillGracePeriodSeconds(),
-		Revocable:              taskConfig.GetRevocable(),
-	}
-}
-
-func getPodLabels(labels []*v0peloton.Label) []*v1alphapeloton.Label {
-	var podLabels []*v1alphapeloton.Label
-	for _, l := range labels {
-		podLabels = append(podLabels, &v1alphapeloton.Label{
-			Key:   l.GetKey(),
-			Value: l.GetValue(),
-		})
-	}
-	return podLabels
-}
-
-func getPodConstraints(constraints []*pbtask.Constraint) []*pbpod.Constraint {
-	var podConstraints []*pbpod.Constraint
-	for _, constraint := range constraints {
-		podConstraints = append(podConstraints, &pbpod.Constraint{
-			Type: pbpod.Constraint_Type(constraint.GetType()),
-			LabelConstraint: &pbpod.LabelConstraint{
-				Kind: pbpod.LabelConstraint_Kind(
-					constraint.GetLabelConstraint().GetKind(),
-				),
-				Condition: pbpod.LabelConstraint_Condition(
-					constraint.GetLabelConstraint().GetCondition(),
-				),
-				Label: &v1alphapeloton.Label{
-					Value: constraint.GetLabelConstraint().GetLabel().GetValue(),
-				},
-				Requirement: constraint.GetLabelConstraint().GetRequirement(),
-			},
-			AndConstraint: &pbpod.AndConstraint{
-				Constraints: getPodConstraints(constraint.GetAndConstraint().GetConstraints()),
-			},
-			OrConstraint: &pbpod.OrConstraint{
-				Constraints: getPodConstraints(constraint.GetOrConstraint().GetConstraints()),
-			},
-		})
-	}
-	return podConstraints
-}
-
-func getContainerPorts(ports []*pbtask.PortConfig) []*pbpod.PortSpec {
-	var containerPorts []*pbpod.PortSpec
-	for _, p := range ports {
-		containerPorts = append(
-			containerPorts,
-			&pbpod.PortSpec{
-				Name:    p.GetName(),
-				Value:   p.GetValue(),
-				EnvName: p.GetEnvName(),
-			},
-		)
-	}
-	return containerPorts
 }

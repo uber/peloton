@@ -1818,8 +1818,9 @@ func (suite *podHandlerTestSuite) TestDeletePodEventsStoreError() {
 	suite.Error(err)
 }
 
-// TestConvertTaskStateToPodstate tests conversion of TaskState to PodState
-func (suite *podHandlerTestSuite) TestConvertTaskStateToPodstate() {
+// TODO move to api_converter_test.go
+/*func (suite *podHandlerTestSuite) TestConvertTaskStateToPodstate() {
+>>>>>>> Implement v1alpha GetJob API
 	tt := []struct {
 		taskState pbtask.TaskState
 		podState  pod.PodState
@@ -1897,7 +1898,7 @@ func (suite *podHandlerTestSuite) TestConvertTaskStateToPodstate() {
 	for _, test := range tt {
 		suite.Equal(test.podState, convertTaskStateToPodState(test.taskState))
 	}
-}
+}*/
 
 func TestPodServiceHandler(t *testing.T) {
 	suite.Run(t, new(podHandlerTestSuite))

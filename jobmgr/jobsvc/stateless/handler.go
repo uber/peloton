@@ -9,14 +9,17 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	handlerutil "code.uber.internal/infra/peloton/jobmgr/util/handler"
 	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -26,6 +29,7 @@ import (
 
 type serviceHandler struct {
 	jobStore        storage.JobStore
+	updateStore     storage.UpdateStore
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
 	candidate       leader.Candidate
@@ -35,12 +39,14 @@ type serviceHandler struct {
 func InitV1AlphaJobServiceHandler(
 	d *yarpc.Dispatcher,
 	jobStore storage.JobStore,
+	updateStore storage.UpdateStore,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
 	candidate leader.Candidate,
 ) {
 	handler := &serviceHandler{
 		jobStore:        jobStore,
+		updateStore:     updateStore,
 		jobFactory:      jobFactory,
 		goalStateDriver: goalStateDriver,
 		candidate:       candidate,
@@ -105,11 +111,132 @@ func (h *serviceHandler) DeleteJob(
 	req *svc.DeleteJobRequest) (*svc.DeleteJobResponse, error) {
 	return &svc.DeleteJobResponse{}, nil
 }
+
+func (h *serviceHandler) getJobSummary(
+	ctx context.Context,
+	jobID *v1alphapeloton.JobID) (*svc.GetJobResponse, error) {
+	jobSummary, err := h.jobStore.GetJobSummaryFromIndex(
+		ctx,
+		&peloton.JobID{Value: jobID.GetValue()},
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "fail to get job summary")
+	}
+
+	var updateInfo *models.UpdateModel
+	if len(jobSummary.GetRuntime().GetUpdateID().GetValue()) > 0 {
+		updateInfo, err = h.updateStore.GetUpdate(
+			ctx,
+			jobSummary.GetRuntime().GetUpdateID(),
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "fail to get update information")
+		}
+	}
+
+	return &svc.GetJobResponse{
+		Summary: handlerutil.ConvertJobSummary(jobSummary, updateInfo),
+	}, nil
+}
+
+func (h *serviceHandler) getJobConfigurationWithVersion(
+	ctx context.Context,
+	jobID *v1alphapeloton.JobID,
+	version *v1alphapeloton.EntityVersion) (*svc.GetJobResponse, error) {
+	configVersion, _, err := jobutil.ParseJobEntityVersion(version)
+	if err != nil {
+		return nil, err
+	}
+
+	jobConfig, _, err := h.jobStore.GetJobConfigWithVersion(
+		ctx,
+		&peloton.JobID{Value: jobID.GetValue()},
+		configVersion,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "fail to get job spec")
+	}
+
+	return &svc.GetJobResponse{
+		JobInfo: &stateless.JobInfo{
+			JobId: jobID,
+			Spec:  handlerutil.ConvertJobConfigToJobSpec(jobConfig),
+		},
+	}, nil
+}
+
 func (h *serviceHandler) GetJob(
 	ctx context.Context,
-	req *svc.GetJobRequest) (*svc.GetJobResponse, error) {
-	return &svc.GetJobResponse{}, nil
+	req *svc.GetJobRequest) (resp *svc.GetJobResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Info("StatelessJobSvc.GetJob failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("req", req).
+			Debug("StatelessJobSvc.GetJob succeeded")
+	}()
+
+	// Get the summary only
+	if req.GetSummaryOnly() == true {
+		return h.getJobSummary(ctx, req.GetJobId())
+	}
+
+	// Get the configuration for a given version only
+	if req.GetVersion() != nil {
+		return h.getJobConfigurationWithVersion(ctx, req.GetJobId(), req.GetVersion())
+	}
+
+	// Get the latest configuration and runtime
+	jobConfig, _, err := h.jobStore.GetJobConfig(
+		ctx,
+		&peloton.JobID{Value: req.GetJobId().GetValue()},
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get job spec")
+	}
+
+	// Do not display the secret volumes in defaultconfig that were added by
+	// handleSecrets. They should remain internal to peloton logic.
+	// Secret ID and Path should be returned using the peloton.Secret
+	// proto message.
+	secretVolumes := util.RemoveSecretVolumesFromJobConfig(jobConfig)
+
+	jobRuntime, err := h.jobStore.GetJobRuntime(
+		ctx,
+		&peloton.JobID{Value: req.GetJobId().GetValue()},
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get job status")
+	}
+
+	var updateInfo *models.UpdateModel
+	if len(jobRuntime.GetUpdateID().GetValue()) > 0 {
+		updateInfo, err = h.updateStore.GetUpdate(
+			ctx,
+			jobRuntime.GetUpdateID(),
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get update information")
+		}
+	}
+
+	return &svc.GetJobResponse{
+		JobInfo: &stateless.JobInfo{
+			JobId:  req.GetJobId(),
+			Spec:   handlerutil.ConvertJobConfigToJobSpec(jobConfig),
+			Status: handlerutil.ConvertRuntimeInfoToJobStatus(jobRuntime, updateInfo),
+		},
+		Secrets: handlerutil.ConvertSecrets(
+			jobmgrtask.CreateSecretsFromVolumes(secretVolumes)),
+		WorkflowInfo: handlerutil.ConvertUpdateModelToWorkflowInfo(updateInfo),
+	}, nil
 }
+
 func (h *serviceHandler) GetWorkflowEvents(
 	ctx context.Context,
 	req *svc.GetWorkflowEventsRequest) (*svc.GetWorkflowEventsResponse, error) {
@@ -223,12 +350,12 @@ func (h *serviceHandler) GetJobCache(
 	}
 
 	return &svc.GetJobCacheResponse{
-		Spec:   convertToJobSpec(config),
-		Status: convertToJobStatus(runtime, cachedWorkflow),
+		Spec:   convertCacheJobConfigToJobSpec(config),
+		Status: convertCacheToJobStatus(runtime, cachedWorkflow),
 	}, nil
 }
 
-func convertToJobSpec(config jobmgrcommon.JobConfig) *stateless.JobSpec {
+func convertCacheJobConfigToJobSpec(config jobmgrcommon.JobConfig) *stateless.JobSpec {
 	result := &stateless.JobSpec{}
 	// set the fields used by both job config and cached job config
 	result.InstanceCount = config.GetInstanceCount()
@@ -258,7 +385,7 @@ func convertToJobSpec(config jobmgrcommon.JobConfig) *stateless.JobSpec {
 	return result
 }
 
-func convertToJobStatus(
+func convertCacheToJobStatus(
 	runtime *pbjob.RuntimeInfo,
 	cachedWorkflow cached.Update,
 ) *stateless.JobStatus {
@@ -277,25 +404,21 @@ func convertToJobStatus(
 		runtime.GetConfigurationVersion(),
 		runtime.GetWorkflowVersion())
 
-	if cachedWorkflow == nil {
-		return result
+	if cachedWorkflow != nil {
+		workflowStatus := &stateless.WorkflowStatus{}
+		workflowStatus.Type = stateless.WorkflowType(cachedWorkflow.GetWorkflowType())
+		workflowStatus.State = stateless.WorkflowState(cachedWorkflow.GetState().State)
+		workflowStatus.NumInstancesCompleted = uint32(len(cachedWorkflow.GetInstancesDone()))
+		workflowStatus.NumInstancesFailed = uint32(len(cachedWorkflow.GetInstancesFailed()))
+		workflowStatus.NumInstancesRemaining =
+			uint32(len(cachedWorkflow.GetGoalState().Instances) -
+				len(cachedWorkflow.GetInstancesDone()) -
+				len(cachedWorkflow.GetInstancesFailed()))
+		workflowStatus.InstancesCurrent = cachedWorkflow.GetInstancesCurrent()
+		workflowStatus.PrevVersion = jobutil.GetPodEntityVersion(cachedWorkflow.GetState().JobVersion)
+		workflowStatus.Version = jobutil.GetPodEntityVersion(cachedWorkflow.GetGoalState().JobVersion)
+
+		result.WorkflowStatus = workflowStatus
 	}
-
-	workflowStatus := &stateless.WorkflowStatus{}
-	workflowStatus.Type = stateless.WorkflowType(cachedWorkflow.GetWorkflowType())
-	workflowStatus.State = stateless.WorkflowState(cachedWorkflow.GetState().State)
-	workflowStatus.NumInstancesCompleted = uint32(len(cachedWorkflow.GetInstancesDone()))
-	workflowStatus.NumInstancesFailed = uint32(len(cachedWorkflow.GetInstancesFailed()))
-	workflowStatus.NumInstancesRemaining =
-		uint32(len(cachedWorkflow.GetGoalState().Instances) -
-			len(cachedWorkflow.GetInstancesDone()) -
-			len(cachedWorkflow.GetInstancesFailed()))
-	workflowStatus.InstancesCurrent = cachedWorkflow.GetInstancesCurrent()
-	workflowStatus.PrevVersion =
-		jobutil.GetPodEntityVersion(cachedWorkflow.GetState().JobVersion)
-	workflowStatus.Version =
-		jobutil.GetPodEntityVersion(cachedWorkflow.GetGoalState().JobVersion)
-
-	result.WorkflowStatus = workflowStatus
 	return result
 }

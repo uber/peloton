@@ -445,6 +445,7 @@ func main() {
 	stateless.InitV1AlphaJobServiceHandler(
 		dispatcher,
 		store,
+		store,
 		jobFactory,
 		goalStateDriver,
 		candidate,

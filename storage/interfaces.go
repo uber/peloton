@@ -59,6 +59,7 @@ type JobStore interface {
 	UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error
 	// GetMaxJobConfigVersion returns the maximum version of configs of a given job
 	GetMaxJobConfigVersion(ctx context.Context, id *peloton.JobID) (uint64, error)
+	GetJobSummaryFromIndex(ctx context.Context, id *peloton.JobID) (*job.JobSummary, error)
 
 	// AddActiveJob adds job to active jobs table
 	AddActiveJob(ctx context.Context, id *peloton.JobID) error

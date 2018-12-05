@@ -119,7 +119,7 @@ func (suite *MockDatastoreTestSuite) TestGetStreamID() {
 // TestDataStoreFailureGetJobSummary tests datastore failures in getting
 // job summary
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobSummary() {
-	_, err := suite.store.getJobSummaryFromIndex(
+	_, err := suite.store.GetJobSummaryFromIndex(
 		context.Background(), suite.testJobID)
 	suite.Error(err)
 

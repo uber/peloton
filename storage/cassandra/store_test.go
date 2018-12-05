@@ -2067,7 +2067,7 @@ func (suite *CassandraStoreTestSuite) TestJobConfig() {
 
 	// ensure that the job index table has been updated as well
 	var jobSummary *job.JobSummary
-	jobSummary, err = jobStore.getJobSummaryFromIndex(context.Background(), &jobID)
+	jobSummary, err = jobStore.GetJobSummaryFromIndex(context.Background(), &jobID)
 	suite.NoError(err)
 	suite.Equal(uint32(newInstanceCount), jobSummary.GetInstanceCount())
 
