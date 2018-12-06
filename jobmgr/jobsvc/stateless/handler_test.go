@@ -12,6 +12,7 @@ import (
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
+	statelesssvcmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	pelotonv1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
 	pelotonv1alpharespool "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool"
@@ -51,6 +52,7 @@ type statelessHandlerTestSuite struct {
 	goalStateDriver *goalstatemocks.MockDriver
 	jobStore        *storemocks.MockJobStore
 	updateStore     *storemocks.MockUpdateStore
+	listJobsServer  *statelesssvcmocks.MockJobServiceServiceListJobsYARPCServer
 }
 
 func (suite *statelessHandlerTestSuite) SetupTest() {
@@ -63,6 +65,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
 	suite.respoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
+	suite.listJobsServer = statelesssvcmocks.NewMockJobServiceServiceListJobsYARPCServer(suite.ctrl)
 	suite.handler = &serviceHandler{
 		jobFactory:      suite.jobFactory,
 		candidate:       suite.candidate,
@@ -1076,6 +1079,130 @@ func (suite *statelessHandlerTestSuite) TestPauseJobWorkflowPauseWorkflowFailure
 		})
 	suite.Error(err)
 	suite.Nil(resp)
+}
+
+// TestListJobsSuccess tests invoking ListJobs API successfully
+func (suite *statelessHandlerTestSuite) TestListJobsSuccess() {
+	jobs := []*pbjob.JobSummary{
+		&pbjob.JobSummary{
+			Id:   &peloton.JobID{Value: testJobID},
+			Name: "testjob",
+			Runtime: &pbjob.RuntimeInfo{
+				State:    pbjob.JobState_RUNNING,
+				UpdateID: &peloton.UpdateID{Value: testUpdateID},
+			},
+		},
+	}
+
+	suite.jobStore.EXPECT().
+		GetAllJobsInJobIndex(gomock.Any()).
+		Return(jobs, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
+		Return(&models.UpdateModel{
+			UpdateID: &peloton.UpdateID{Value: testUpdateID},
+			State:    pbupdate.State_ROLLING_FORWARD,
+		}, nil)
+
+	suite.listJobsServer.EXPECT().
+		Send(gomock.Any()).
+		Do(func(resp *statelesssvc.ListJobsResponse) {
+			suite.Equal(1, len(resp.GetJobs()))
+			job := resp.GetJobs()[0]
+			suite.Equal(job.GetName(), "testjob")
+			suite.Equal(job.GetStatus().GetState(), stateless.JobState_JOB_STATE_RUNNING)
+			suite.Equal(
+				job.GetStatus().GetWorkflowStatus().GetState(),
+				stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+			)
+		}).
+		Return(nil)
+
+	err := suite.handler.ListJobs(
+		&statelesssvc.ListJobsRequest{},
+		suite.listJobsServer,
+	)
+	suite.NoError(err)
+}
+
+// TestListJobsGetSummaryDBError tests getting DB error when fetching all
+// job summaries from DB in the ListJobs API invocation
+func (suite *statelessHandlerTestSuite) TestListJobsGetSummaryDBError() {
+	suite.jobStore.EXPECT().
+		GetAllJobsInJobIndex(gomock.Any()).
+		Return(nil, fmt.Errorf("fake db error"))
+
+	err := suite.handler.ListJobs(
+		&statelesssvc.ListJobsRequest{},
+		suite.listJobsServer,
+	)
+	suite.Error(err)
+}
+
+// TestListJobsGetUpdateError tests getting DB error when fetching
+// the updae info from DB in the ListJobs API invocation
+func (suite *statelessHandlerTestSuite) TestListJobsGetUpdateError() {
+	jobs := []*pbjob.JobSummary{
+		&pbjob.JobSummary{
+			Id:   &peloton.JobID{Value: testJobID},
+			Name: "testjob",
+			Runtime: &pbjob.RuntimeInfo{
+				State:    pbjob.JobState_RUNNING,
+				UpdateID: &peloton.UpdateID{Value: testUpdateID},
+			},
+		},
+	}
+
+	suite.jobStore.EXPECT().
+		GetAllJobsInJobIndex(gomock.Any()).
+		Return(jobs, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
+		Return(nil, fmt.Errorf("fake db error"))
+
+	err := suite.handler.ListJobs(
+		&statelesssvc.ListJobsRequest{},
+		suite.listJobsServer,
+	)
+	suite.Error(err)
+}
+
+// TestListJobsSendError tests getting an error during Send to
+// the stream in the ListJobs API invocation
+func (suite *statelessHandlerTestSuite) TestListJobsSendError() {
+	jobs := []*pbjob.JobSummary{
+		&pbjob.JobSummary{
+			Id:   &peloton.JobID{Value: testJobID},
+			Name: "testjob",
+			Runtime: &pbjob.RuntimeInfo{
+				State:    pbjob.JobState_RUNNING,
+				UpdateID: &peloton.UpdateID{Value: testUpdateID},
+			},
+		},
+	}
+
+	suite.jobStore.EXPECT().
+		GetAllJobsInJobIndex(gomock.Any()).
+		Return(jobs, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
+		Return(&models.UpdateModel{
+			UpdateID: &peloton.UpdateID{Value: testUpdateID},
+			State:    pbupdate.State_ROLLING_FORWARD,
+		}, nil)
+
+	suite.listJobsServer.EXPECT().
+		Send(gomock.Any()).
+		Return(fmt.Errorf("fake db error"))
+
+	err := suite.handler.ListJobs(
+		&statelesssvc.ListJobsRequest{},
+		suite.listJobsServer,
+	)
+	suite.Error(err)
 }
 
 func TestStatelessServiceHandler(t *testing.T) {

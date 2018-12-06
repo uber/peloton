@@ -2576,6 +2576,28 @@ func (s *Store) updateJobIndex(
 	return nil
 }
 
+// GetAllJobsInJobIndex returns the job summaries of all the jobs
+// in the job index table.
+func (s *Store) GetAllJobsInJobIndex(ctx context.Context) ([]*job.JobSummary, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select(
+		"job_id",
+		"name",
+		"owner",
+		"job_type",
+		"respool_id",
+		"instance_count",
+		"labels",
+		"runtime_info").
+		From(jobIndexTable)
+
+	allResults, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		return nil, err
+	}
+	return s.getJobSummaryFromResultMap(ctx, allResults)
+}
+
 // GetJobSummaryFromIndex gets the job summary from job index table
 func (s *Store) GetJobSummaryFromIndex(
 	ctx context.Context, id *peloton.JobID) (*job.JobSummary, error) {

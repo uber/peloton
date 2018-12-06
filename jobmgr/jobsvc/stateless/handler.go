@@ -510,9 +510,50 @@ func (h *serviceHandler) QueryJobs(
 
 func (h *serviceHandler) ListJobs(
 	req *svc.ListJobsRequest,
-	stream svc.JobServiceServiceListJobsYARPCServer) error {
+	stream svc.JobServiceServiceListJobsYARPCServer) (err error) {
+	defer func() {
+		if err != nil {
+			log.WithError(err).
+				Info("JobSVC.ListJobs failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.Debug("JobSVC.ListJobs succeeded")
+	}()
+
+	jobSummaries, err := h.jobStore.GetAllJobsInJobIndex(context.Background())
+	if err != nil {
+		return err
+	}
+
+	for _, jobSummary := range jobSummaries {
+		var updateInfo *models.UpdateModel
+
+		if len(jobSummary.GetRuntime().GetUpdateID().GetValue()) > 0 {
+			updateInfo, err = h.updateStore.GetUpdate(
+				context.Background(),
+				jobSummary.GetRuntime().GetUpdateID(),
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		resp := &svc.ListJobsResponse{
+			Jobs: []*stateless.JobSummary{
+				handlerutil.ConvertJobSummary(jobSummary, updateInfo),
+			},
+		}
+
+		if err := stream.Send(resp); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
+
 func (h *serviceHandler) ListJobUpdates(
 	ctx context.Context,
 	req *svc.ListJobUpdatesRequest) (*svc.ListJobUpdatesResponse, error) {

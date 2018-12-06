@@ -37,25 +37,25 @@ var (
 	//       and make sure that local cli can access Uber Prodution hostname/ip
 	jobMgrURL = app.Flag(
 		"jobmgr",
-		"name of the jobmgr address to use (http/tchannel) (set $JOBMGR_URL to override)").
+		"name of the jobmgr address to use (grpc) (set $JOBMGR_URL to override)").
 		Short('m').
-		Default("http://localhost:5292").
+		Default("localhost:5392").
 		Envar("JOBMGR_URL").
 		URL()
 
 	resMgrURL = app.Flag(
 		"resmgr",
-		"name of the resource manager address to use (http/tchannel) (set $RESMGR_URL to override)").
+		"name of the resource manager address to use (grpc) (set $RESMGR_URL to override)").
 		Short('v').
-		Default("http://localhost:5290").
+		Default("localhost:5394").
 		Envar("RESMGR_URL").
 		URL()
 
 	hostMgrURL = app.Flag(
 		"hostmgr",
-		"name of the host manager address to use (http/tchannel) (set $HOSTMGR_URL to override)").
+		"name of the host manager address to use (grpc) (set $HOSTMGR_URL to override)").
 		Short('u').
-		Default("http://localhost:5291").
+		Default("localhost:5391").
 		Envar("HOSTMGR_URL").
 		URL()
 
@@ -171,7 +171,8 @@ var (
 	jobGetActiveJobs = job.Command("active-list", "get a list of active jobs")
 
 	// Top level job command for stateless jobs
-	stateless             = job.Command("stateless", "manage stateless jobs")
+	stateless = job.Command("stateless", "manage stateless jobs")
+
 	statelessGetCache     = stateless.Command("cache", "get a job cache")
 	statelessGetCacheName = statelessGetCache.Arg("job", "job identifier").Required().String()
 
@@ -234,6 +235,8 @@ var (
 		"rollback an update if it fails").Default("false").Bool()
 	statelessReplaceStartPaused = statelessReplace.Flag("start-paused",
 		"start the update in a paused state").Default("false").Bool()
+
+	statelessListJobs = stateless.Command("list", "list all jobs")
 
 	// Top level pod command
 	pod = app.Command("pod", "CLI reflects pod(s) actions, such as get pod details, create/restart/update a pod...")
@@ -711,6 +714,8 @@ func main() {
 		err = client.PodStartAction(*podStartPodName)
 	case eventStream.FullCommand():
 		err = client.EventStreamAction()
+	case statelessListJobs.FullCommand():
+		err = client.StatelessListJobsAction()
 	case statelessGetCache.FullCommand():
 		err = client.StatelessGetCacheAction(*statelessGetCacheName)
 	case statelessRefresh.FullCommand():

@@ -2113,6 +2113,18 @@ func (suite *CassandraStoreTestSuite) TestJobConfig() {
 		suite.Equal(configAddOn.SystemLabels[i].Value, addOn.SystemLabels[i].Value)
 	}
 
+	// test getting all jobs in the index
+	jobs, err := jobStore.GetAllJobsInJobIndex(context.Background())
+	suite.NoError(err)
+	var found bool
+	for _, job := range jobs {
+		if job.GetId().GetValue() == jobID.GetValue() {
+			found = true
+			break
+		}
+	}
+	suite.Equal(true, found)
+
 	// update instance count
 	jobConfig.InstanceCount = uint32(newInstanceCount)
 	jobConfig.ChangeLog.Version = uint64(2)

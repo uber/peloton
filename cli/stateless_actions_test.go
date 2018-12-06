@@ -2,11 +2,13 @@ package cli
 
 import (
 	"context"
+	"io"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	respoolmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -349,6 +351,61 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionLookupResou
 		rollbackOnFailure,
 		startPaused,
 	))
+}
+
+// TestStatelessListJobsActionSuccess tests executing
+// ListJobsAction successfully
+func (suite *statelessActionsTestSuite) TestStatelessListJobsActionSuccess() {
+	stream := mocks.NewMockJobServiceServiceListJobsYARPCClient(suite.ctrl)
+	jobs := &svc.ListJobsResponse{
+		Jobs: []*stateless.JobSummary{
+			&stateless.JobSummary{
+				JobId: &v1alphapeloton.JobID{Value: testJobID},
+				Name:  "test",
+			},
+		},
+	}
+
+	suite.statelessClient.EXPECT().
+		ListJobs(gomock.Any(), gomock.Any()).
+		Return(stream, nil)
+
+	gomock.InOrder(
+		stream.EXPECT().
+			Recv().
+			Return(jobs, nil),
+		stream.EXPECT().
+			Recv().
+			Return(nil, io.EOF),
+	)
+
+	suite.NoError(suite.client.StatelessListJobsAction())
+}
+
+// TestStatelessListJobsActionSuccess tests executing
+// ListJobsAction and getting an error from the initial connection
+func (suite *statelessActionsTestSuite) TestStatelessListJobsActionError() {
+	suite.statelessClient.EXPECT().
+		ListJobs(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessListJobsAction())
+}
+
+// TestStatelessListJobsActionSuccess tests executing
+// ListJobsAction and getting an error in stream receive
+func (suite *statelessActionsTestSuite) TestStatelessListJobsActionRecvError() {
+	stream := mocks.NewMockJobServiceServiceListJobsYARPCClient(suite.ctrl)
+
+	suite.statelessClient.EXPECT().
+		ListJobs(gomock.Any(), gomock.Any()).
+		Return(stream, nil)
+
+	stream.EXPECT().
+		Recv().
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessListJobsAction())
 }
 
 func TestStatelessActions(t *testing.T) {

@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"strings"
 	"time"
@@ -361,4 +362,38 @@ func (c *Client) StatelessReplaceJobAction(
 	fmt.Printf("New EntityVersion: %s\n", resp.GetVersion().GetValue())
 
 	return nil
+}
+
+// StatelessListJobsAction prints summary of all jobs using the ListJobs API
+func (c *Client) StatelessListJobsAction() error {
+	stream, err := c.statelessClient.ListJobs(
+		c.ctx,
+		&statelesssvc.ListJobsRequest{},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprint(tabWriter, statlessJobSummaryFormatHeader)
+	tabWriter.Flush()
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		printListJobsResponse(resp)
+		tabWriter.Flush()
+	}
+}
+
+func printListJobsResponse(resp *statelesssvc.ListJobsResponse) {
+	jobs := resp.GetJobs()
+	for _, r := range jobs {
+		printStatelessQueryResult(r)
+	}
 }

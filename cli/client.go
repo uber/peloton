@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
-	"go.uber.org/yarpc/transport/http"
+	"go.uber.org/yarpc/transport/grpc"
 
 	hostsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
@@ -15,7 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	updatesvc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc"
 	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume/svc"
-	statlesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
+	statelesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	podsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	hostmgr_svc "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -29,7 +29,7 @@ type Client struct {
 	jobClient       job.JobManagerYARPCClient
 	taskClient      task.TaskManagerYARPCClient
 	podClient       podsvc.PodServiceYARPCClient
-	statelessClient statlesssvc.JobServiceYARPCClient
+	statelessClient statelesssvc.JobServiceYARPCClient
 	resClient       respool.ResourceManagerYARPCClient
 	resMgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
 	updateClient    updatesvc.UpdateServiceYARPCClient
@@ -64,19 +64,20 @@ func New(
 		return nil, err
 	}
 
-	t := http.NewTransport()
+	t := grpc.NewTransport()
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name: common.PelotonCLI,
 		Outbounds: yarpc.Outbounds{
 			common.PelotonJobManager: transport.Outbounds{
-				Unary: t.NewSingleOutbound(jobmgrURL.String()),
+				Unary:  t.NewSingleOutbound(jobmgrURL.Host),
+				Stream: t.NewSingleOutbound(jobmgrURL.Host),
 			},
 			common.PelotonResourceManager: transport.Outbounds{
-				Unary: t.NewSingleOutbound(resmgrURL.String()),
+				Unary: t.NewSingleOutbound(resmgrURL.Host),
 			},
 			common.PelotonHostManager: transport.Outbounds{
-				Unary: t.NewSingleOutbound(hostmgrURL.String()),
+				Unary: t.NewSingleOutbound(hostmgrURL.Host),
 			},
 		},
 	})
@@ -114,7 +115,7 @@ func New(
 		podClient: podsvc.NewPodServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonJobManager),
 		),
-		statelessClient: statlesssvc.NewJobServiceYARPCClient(
+		statelessClient: statelesssvc.NewJobServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonJobManager),
 		),
 		dispatcher: dispatcher,

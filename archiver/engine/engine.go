@@ -22,7 +22,7 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
-	"go.uber.org/yarpc/transport/http"
+	"go.uber.org/yarpc/transport/grpc"
 )
 
 const (
@@ -92,14 +92,14 @@ func New(
 		return nil, err
 	}
 
-	t := http.NewTransport()
+	t := grpc.NewTransport()
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:     config.PelotonArchiver,
 		Inbounds: inbounds,
 		Outbounds: yarpc.Outbounds{
 			common.PelotonJobManager: transport.Outbounds{
-				Unary: t.NewSingleOutbound(jobmgrURL.String()),
+				Unary: t.NewSingleOutbound(jobmgrURL.Host),
 			},
 		},
 		Metrics: yarpc.MetricsConfig{

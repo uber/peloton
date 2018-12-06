@@ -31,11 +31,9 @@ func NewStaticServiceDiscovery(
 		resmgrURL:  resmgrURL,
 		hostmgrURL: hostmgrURL,
 	}
-
-	discovery.jobmgrURL.Path = common.PelotonEndpointPath
-	discovery.resmgrURL.Path = common.PelotonEndpointPath
-	discovery.hostmgrURL.Path = common.PelotonEndpointPath
-
+	discovery.jobmgrURL.Host = jobmgrURL.String()
+	discovery.resmgrURL.Host = resmgrURL.String()
+	discovery.hostmgrURL.Host = hostmgrURL.String()
 	return discovery, nil
 }
 
@@ -100,8 +98,6 @@ func (s *zkDiscovery) GetAppURL(role string) (*url.URL, error) {
 		return nil, err
 	}
 	return &url.URL{
-		Scheme: "http",
-		Host:   fmt.Sprintf("%s:%d", id.IP, id.HTTPPort),
-		Path:   common.PelotonEndpointPath,
+		Host: fmt.Sprintf("%s:%d", id.IP, id.GRPCPort),
 	}, nil
 }
