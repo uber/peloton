@@ -12,7 +12,10 @@ import (
 // and exits if store can't be created
 func MustCreateStore(
 	cfg *storage_config.Config, rootScope tally.Scope) storage.Store {
-	log.Infof("cassandra Config: %v", cfg.Cassandra)
+	log.WithFields(log.Fields{
+		"cassandra_connection": cfg.Cassandra.CassandraConn,
+		"cassandra_config":     cfg.Cassandra,
+	}).Info("Cassandra Config")
 	if cfg.AutoMigrate {
 		if errs := cfg.Cassandra.AutoMigrate(); errs != nil {
 			log.Fatalf("Could not migrate database: %+v", errs)

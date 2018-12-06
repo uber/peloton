@@ -131,8 +131,17 @@ func newCluster(storeConfig *CassandraConn) *gocql.ClusterConfig {
 		cluster.Port = defaultPort
 	}
 
+	dc := config.DataCenter
+	if dc != "" {
+		cluster.HostFilter = gocql.DataCentreHostFilter(dc)
+	}
+
 	if config.HostPolicy == "TokenAwareHostPolicy" {
-		cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy())
+		if dc != "" {
+			cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.DCAwareRoundRobinPolicy(dc))
+		} else {
+			cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy())
+		}
 	} else {
 		cluster.PoolConfig.HostSelectionPolicy = gocql.RoundRobinHostPolicy()
 	}
@@ -145,10 +154,6 @@ func newCluster(storeConfig *CassandraConn) *gocql.ClusterConfig {
 		cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: config.RetryCount}
 	} else {
 		cluster.RetryPolicy = &gocql.SimpleRetryPolicy{NumRetries: 3}
-	}
-
-	if dc := config.DataCenter; dc != "" {
-		cluster.HostFilter = gocql.DataCentreHostFilter(dc)
 	}
 
 	if config.TimeoutLimit > 10 {
