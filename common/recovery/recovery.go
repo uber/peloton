@@ -171,9 +171,10 @@ func recoverJobsBatch(
 		if err != nil {
 			log.WithField("job_id", jobID.Value).
 				WithError(err).
-				Error("Failed to load job config")
-			errChan <- err
-			return
+				Error("Recovery failed for job, error getting job config")
+				//errChan <- err
+				//return
+			continue
 		}
 
 		err = recoverJob(ctx, jobID.Value, jobConfig, configAddOn, jobRuntime, f)
