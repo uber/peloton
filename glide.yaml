@@ -2,6 +2,7 @@ package: code.uber.internal/infra/peloton
 ignore:
 - peloton
 - mesos/v1
+- go/doc
 excludeDirs:
 - pbgen
 import:
@@ -71,7 +72,7 @@ import:
 - package: github.com/opentracing/opentracing-go
   version: v1.0.1
 - package: github.com/evalphobia/logrus_sentry
-  version: ^0.4.1
+  version: b78b27461c8163c45abf4ab3a8330d2b1ee9456a
 - package: github.com/golang/mock
   version: ^v1.0.0
   subpackages:
@@ -84,3 +85,10 @@ import:
   version: 4e1fef5609515ec7a2cee7b5de30ba6d9b438cbf
   subpackages:
   - unix
+- package: github.com/apache/thrift
+  version: '>=0.9.3, <0.11.0'
+  subpackages:
+  - lib/go/thrift
+- package: google.golang.org/grpc
+  version: 8dea3dc473e90c8179e519d91302d0597c0ca1d1
+  repo: https://github.com/grpc/grpc-go

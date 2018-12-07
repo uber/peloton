@@ -12,7 +12,7 @@
     "golint": {
       "type": "golint",
       "include": "(\\.go$)",
-      "exclude": ["(^mesos-go/.+\\.go$)", "(^pbgen/.+\\.go$)", "(^\\.gen/.+\\.go$)"]
+      "exclude": ["(^mesos-go/.+\\.go$)", "(^pbgen/.+\\.go$)", "(^\\.gen/.+\\.go$)", "(aurorabridge/aurora/api)"]
     },
     "govet": {
       "type": "govet",

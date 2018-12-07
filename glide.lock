@@ -1,5 +1,5 @@
-hash: 6a56573ba6018476b3508d2e3c7ab5a413cddfe532185969b3550080fae5c72c
-updated: 2018-09-19T11:04:16.556662545-07:00
+hash: a4987ee73ef268becbc29a0c4bc82edf019e207b55be5f9b252837cf3f397a47
+updated: 2018-12-07T13:51:54.33879-08:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -185,7 +185,7 @@ imports:
   - prometheus
   - statsd
 - name: github.com/uber/tchannel-go
-  version: 7f5c12c66261f3ac3c5dde959d65eed59e3b63af
+  version: 162ecb0dc97845a0c42aae3899651dba111085e5
   subpackages:
   - internal/argreader
   - relay
@@ -213,7 +213,7 @@ imports:
   - push
   - tallypush
 - name: go.uber.org/thriftrw
-  version: c8eb6919acebb42254375c897469d986c91405ae
+  version: f21741d67580a27b01451386c3998090905dc243
   subpackages:
   - version
 - name: go.uber.org/yarpc
@@ -260,7 +260,7 @@ imports:
   - internal/exit
   - zapcore
 - name: golang.org/x/net
-  version: 26e67e76b6c3f6ce91f7c52def5af501b4e0f3a2
+  version: 610586996380ceef02dd726cc09df7e00a3f8e56
   repo: https://github.com/golang/net
   subpackages:
   - bpf

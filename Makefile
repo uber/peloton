@@ -1,4 +1,4 @@
-.PHONY: all placement install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers archiver failure-test-pcluster failure-test-vcluster
+.PHONY: all placement install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers archiver failure-test-pcluster failure-test-vcluster aurorabridge
 .DEFAULT_GOAL := all
 
 PROJECT_ROOT  = code.uber.internal/infra/peloton
@@ -60,6 +60,9 @@ resmgr:
 
 archiver:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-archiver archiver/main/*.go
+
+aurorabridge:
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-aurorabridge aurorabridge/main/*.go
 
 # Use the same version of mockgen in unit tests as in mock generation
 build-mockgen:

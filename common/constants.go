@@ -28,6 +28,8 @@ const (
 	PelotonPlacement = "peloton-placement"
 	// PelotonCLI application name
 	PelotonCLI = "peloton-cli"
+	// PelotonAuroraBridge application name
+	PelotonAuroraBridge = "peloton-aurorabridge"
 
 	// PlacementRole is the leadership election role for placement engine
 	PlacementRole = "placement"
