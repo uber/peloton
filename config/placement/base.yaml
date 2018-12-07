@@ -51,3 +51,8 @@ storage:
     migrations: storage/cassandra/migrations/
   use_cassandra: false
   db_write_concurrency: 40
+
+metrics:
+  runtime_metrics:
+    enabled: true
+    interval: 10s

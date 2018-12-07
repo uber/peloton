@@ -34,10 +34,17 @@ const (
 
 // Config will be containing the metrics configuration
 type Config struct {
-	MultiReporter bool                   `yaml:"multi_reporter"`
-	Prometheus    *prometheusConfig      `yaml:"prometheus"`
-	Statsd        *statsdConfig          `yaml:"statsd"`
-	M3            *tallym3.Configuration `yaml:"m3"`
+	MultiReporter  bool                   `yaml:"multi_reporter"`
+	Prometheus     *prometheusConfig      `yaml:"prometheus"`
+	Statsd         *statsdConfig          `yaml:"statsd"`
+	M3             *tallym3.Configuration `yaml:"m3"`
+	RuntimeMetrics *runtimeConfig         `yaml:"runtime_metrics"`
+}
+
+// runtimeConfig contains configuration for initializing runtime metrics
+type runtimeConfig struct {
+	Enabled         bool          `yaml:"enabled"`
+	CollectInterval time.Duration `yaml:"interval"`
 }
 
 type prometheusConfig struct {

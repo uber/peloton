@@ -320,6 +320,12 @@ func main() {
 	// we can *honestly* say the server is booted up now
 	health.InitHeartbeat(rootScope, cfg.Health, nil)
 
+	// start collecting runtime metrics
+	defer metrics.StartCollectingRuntimeMetrics(
+		rootScope,
+		cfg.Metrics.RuntimeMetrics.Enabled,
+		cfg.Metrics.RuntimeMetrics.CollectInterval)()
+
 	select {}
 }
 
