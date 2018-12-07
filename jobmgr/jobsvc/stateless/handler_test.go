@@ -12,7 +12,9 @@ import (
 	statelesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
@@ -600,6 +602,151 @@ func (suite *statelessHandlerTestSuite) TestRefreshJobGetRuntimeFail() {
 	})
 	suite.Nil(resp)
 	suite.Error(err)
+}
+
+// TestReplaceJobSuccess tests the success case of replacing job
+func (suite *statelessHandlerTestSuite) TestReplaceJobSuccess() {
+	configVersion := uint64(1)
+	workflowVersion := uint64(1)
+	batchSize := uint32(1)
+
+	suite.jobFactory.EXPECT().
+		AddJob(&peloton.JobID{Value: testJobID}).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbjob.RuntimeInfo{
+			State:                pbjob.JobState_RUNNING,
+			WorkflowVersion:      workflowVersion,
+			ConfigurationVersion: configVersion,
+		}, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			&peloton.JobID{Value: testJobID},
+			configVersion,
+		).Return(
+		&pbjob.JobConfig{
+			Type: pbjob.JobType_SERVICE,
+		},
+		&models.ConfigAddOn{
+			SystemLabels: []*peloton.Label{
+				{Key: common.SystemLabelResourcePool, Value: "/testRespool"},
+			},
+		},
+		nil)
+
+	suite.cachedJob.EXPECT().
+		CreateWorkflow(
+			gomock.Any(),
+			models.WorkflowType_UPDATE,
+			&pbupdate.UpdateConfig{
+				BatchSize: batchSize,
+			},
+			jobutil.GetJobEntityVersion(configVersion, workflowVersion),
+			gomock.Any(),
+		).
+		Return(
+			&peloton.UpdateID{
+				Value: testUpdateID,
+			},
+			jobutil.GetJobEntityVersion(configVersion+1, workflowVersion+1),
+			nil)
+
+	suite.goalStateDriver.EXPECT().
+		EnqueueUpdate(&peloton.JobID{Value: testJobID}, &peloton.UpdateID{Value: testUpdateID}, gomock.Any()).
+		Return()
+
+	resp, err := suite.handler.ReplaceJob(
+		context.Background(),
+		&statelesssvc.ReplaceJobRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: jobutil.GetJobEntityVersion(configVersion, workflowVersion),
+			Spec:    &stateless.JobSpec{},
+			UpdateSpec: &stateless.UpdateSpec{
+				BatchSize: batchSize,
+			},
+		},
+	)
+	suite.NoError(err)
+	suite.Equal(resp.GetVersion(), jobutil.GetJobEntityVersion(configVersion+1, workflowVersion+1))
+}
+
+// TestReplaceJobInitializedJobFailure tests the failure case of replacing job
+// due to job is in INITIALIZED state
+func (suite *statelessHandlerTestSuite) TestReplaceJobInitializedJobFailure() {
+	configVersion := uint64(1)
+	workflowVersion := uint64(1)
+	batchSize := uint32(1)
+
+	suite.jobFactory.EXPECT().
+		AddJob(&peloton.JobID{Value: testJobID}).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbjob.RuntimeInfo{
+			State:                pbjob.JobState_INITIALIZED,
+			WorkflowVersion:      workflowVersion,
+			ConfigurationVersion: configVersion,
+		}, nil)
+
+	resp, err := suite.handler.ReplaceJob(
+		context.Background(),
+		&statelesssvc.ReplaceJobRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: jobutil.GetJobEntityVersion(configVersion, workflowVersion),
+			Spec:    &stateless.JobSpec{},
+			UpdateSpec: &stateless.UpdateSpec{
+				BatchSize: batchSize,
+			},
+		},
+	)
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestReplaceJobGetJobConfigFailure tests the failure case of replacing job
+// due to not able to get job config
+func (suite *statelessHandlerTestSuite) TestReplaceJobGetJobConfigFailure() {
+	configVersion := uint64(1)
+	workflowVersion := uint64(1)
+	batchSize := uint32(1)
+
+	suite.jobFactory.EXPECT().
+		AddJob(&peloton.JobID{Value: testJobID}).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbjob.RuntimeInfo{
+			State:                pbjob.JobState_RUNNING,
+			WorkflowVersion:      workflowVersion,
+			ConfigurationVersion: configVersion,
+		}, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			&peloton.JobID{Value: testJobID},
+			configVersion,
+		).Return(nil, nil, yarpcerrors.InternalErrorf("test error"))
+
+	resp, err := suite.handler.ReplaceJob(
+		context.Background(),
+		&statelesssvc.ReplaceJobRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: jobutil.GetJobEntityVersion(configVersion, workflowVersion),
+			Spec:    &stateless.JobSpec{},
+			UpdateSpec: &stateless.UpdateSpec{
+				BatchSize: batchSize,
+			},
+		},
+	)
+	suite.Error(err)
+	suite.Nil(resp)
 }
 
 func TestStatelessServiceHandler(t *testing.T) {

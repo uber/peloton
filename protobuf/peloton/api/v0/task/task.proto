@@ -70,6 +70,9 @@ message HealthCheckConfig {
 
     // HTTP endpoint based health check
     HTTP = 2;
+
+    // GRPC endpoint based health check
+    GRPC = 3;
   }
 
   message CommandCheck {

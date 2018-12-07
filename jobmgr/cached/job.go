@@ -1225,6 +1225,7 @@ func (j *job) CreateWorkflow(
 	err = j.updateJobConfigAndUpdateID(
 		ctx,
 		newConfig.GetChangeLog().GetVersion(),
+		j.runtime.GetWorkflowVersion()+1,
 		newWorkflow,
 	)
 
@@ -1243,7 +1244,7 @@ func (j *job) CreateWorkflow(
 	// entity version is changed due to change in config version
 	newEntityVersion := jobutil.GetJobEntityVersion(
 		j.runtime.GetConfigurationVersion(),
-		j.runtime.GetWorkflowVersion()+1,
+		j.runtime.GetWorkflowVersion(),
 	)
 
 	log.WithField("workflow_id", updateID.GetValue()).
@@ -1368,12 +1369,12 @@ func (j *job) RollbackWorkflow(ctx context.Context) error {
 		return nil
 	}
 
-	if currentWorkflow.GetState().State == pbupdate.State_ROLLING_BACKWARD {
-		// make sure runtime cache is populated
-		if err := j.populateRuntime(ctx); err != nil {
-			return err
-		}
+	// make sure runtime cache is populated
+	if err := j.populateRuntime(ctx); err != nil {
+		return err
+	}
 
+	if currentWorkflow.GetState().State == pbupdate.State_ROLLING_BACKWARD {
 		// config version in runtime is already set to the target
 		// job version of rollback. This can happen due to error retry.
 		if j.runtime.GetConfigurationVersion() ==
@@ -1385,6 +1386,7 @@ func (j *job) RollbackWorkflow(ctx context.Context) error {
 		return j.updateJobConfigAndUpdateID(
 			ctx,
 			currentWorkflow.GetGoalState().JobVersion,
+			j.runtime.GetWorkflowVersion(),
 			currentWorkflow,
 		)
 	}
@@ -1420,6 +1422,7 @@ func (j *job) RollbackWorkflow(ctx context.Context) error {
 	return j.updateJobConfigAndUpdateID(
 		ctx,
 		configCopy.GetChangeLog().GetVersion(),
+		j.runtime.GetWorkflowVersion(),
 		currentWorkflow,
 	)
 }
@@ -1502,6 +1505,7 @@ func (j *job) copyJobAndTaskConfig(
 func (j *job) updateJobConfigAndUpdateID(
 	ctx context.Context,
 	newConfigVersion uint64,
+	newWorkflowVersion uint64,
 	newWorkflow Update,
 ) error {
 	if err := j.populateRuntime(ctx); err != nil {
@@ -1526,6 +1530,7 @@ func (j *job) updateJobConfigAndUpdateID(
 		UpdatedAt: uint64(time.Now().UnixNano()),
 	}
 	runtime.ConfigurationVersion = newConfigVersion
+	runtime.WorkflowVersion = newWorkflowVersion
 	if err := j.jobFactory.jobStore.UpdateJobRuntime(
 		ctx,
 		j.id,

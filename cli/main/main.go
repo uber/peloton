@@ -176,6 +176,30 @@ var (
 	statelessRefresh     = stateless.Command("refresh", "refresh a job")
 	statelessRefreshName = statelessRefresh.Arg("job", "job identifier").Required().String()
 
+	statelessReplace            = stateless.Command("replace", "update by replacing job config")
+	statelessReplaceJobID       = statelessReplace.Arg("job", "job identifier").Required().String()
+	statelessReplaceSpec        = statelessReplace.Arg("spec", "YAML job spec").Required().ExistingFile()
+	statelessReplaceBatchSize   = statelessReplace.Arg("batch-size", "batch size for the update").Required().Uint32()
+	statelessReplaceResPoolPath = statelessReplace.Arg("respool", "complete path of the "+
+		"resource pool starting from the root").Required().String()
+	statelessReplaceEntityVersion = statelessReplace.Arg("entityVersion",
+		"entity version for concurrency control").Required().String()
+	statelessReplaceOverride = statelessReplace.Flag("override",
+		"override the existing update").Default("false").Short('o').Bool()
+	statelessReplaceMaxInstanceRetries = statelessReplace.Flag(
+		"maxInstanceRetries",
+		"maximum instance retries to bring up the instance after updating before marking it failed."+
+			"If the value is 0, the instance can be retried for infinite times.").Default("0").Uint32()
+	statelessReplaceMaxTolerableInstanceFailures = statelessReplace.Flag(
+		"maxTolerableInstanceFailures",
+		"maximum number of instance failures tolerable before failing the update."+
+			"If the value is 0, there is no limit for max failure instances and"+
+			"the update is marked successful even if all of the instances fail.").Default("0").Uint32()
+	statelessReplaceRollbackOnFailure = statelessReplace.Flag("rollbackOnFailure",
+		"rollback an update if it fails").Default("false").Bool()
+	statelessReplaceStartPaused = statelessReplace.Flag("start-paused",
+		"start the update in a paused state").Default("false").Bool()
+
 	// Top level pod command
 	pod = app.Command("pod", "CLI reflects pod(s) actions, such as get pod details, create/restart/update a pod...")
 
@@ -654,6 +678,19 @@ func main() {
 		err = client.StatelessGetCacheAction(*statelessGetCacheName)
 	case statelessRefresh.FullCommand():
 		err = client.StatelessRefreshAction(*statelessRefreshName)
+	case statelessReplace.FullCommand():
+		err = client.StatelessReplaceJobAction(
+			*statelessReplaceJobID,
+			*statelessReplaceSpec,
+			*statelessReplaceBatchSize,
+			*statelessReplaceResPoolPath,
+			*statelessReplaceEntityVersion,
+			*statelessReplaceOverride,
+			*statelessReplaceMaxInstanceRetries,
+			*statelessReplaceMaxTolerableInstanceFailures,
+			*statelessReplaceRollbackOnFailure,
+			*statelessReplaceStartPaused,
+		)
 	case podLogsGet.FullCommand():
 		err = client.PodLogsGetAction(*podLogsGetFileName, *podLogsGetPodName, *podLogsGetPodID)
 	case podRestart.FullCommand():

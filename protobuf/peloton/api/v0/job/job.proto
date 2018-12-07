@@ -123,6 +123,9 @@ message JobConfig {
 
   // Resource Pool ID where this job belongs to
   peloton.ResourcePoolID respoolID = 12;
+
+  // Owner of the job
+  string owner = 13;
 }
 
 

@@ -11,6 +11,7 @@ import (
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
@@ -21,6 +22,7 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 
+	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc"
@@ -62,8 +64,109 @@ func (h *serviceHandler) CreateJob(
 
 func (h *serviceHandler) ReplaceJob(
 	ctx context.Context,
-	req *svc.ReplaceJobRequest) (*svc.ReplaceJobResponse, error) {
-	return &svc.ReplaceJobResponse{}, nil
+	req *svc.ReplaceJobRequest) (resp *svc.ReplaceJobResponse, err error) {
+	defer func() {
+		jobID := req.GetJobId().GetValue()
+		specVersion := req.GetSpec().GetRevision().GetVersion()
+		entityVersion := req.GetVersion().GetValue()
+
+		if err != nil {
+			log.WithField("job_id", jobID).
+				WithField("spec_version", specVersion).
+				WithField("entity_version", entityVersion).
+				WithError(err).
+				Warn("JobSVC.ReplaceJob failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("job_id", jobID).
+			WithField("spec_version", specVersion).
+			WithField("entity_version", entityVersion).
+			WithField("response", resp).
+			Info("JobSVC.ReplaceJob succeeded")
+	}()
+
+	// TODO: handle secretes
+	jobUUID := uuid.Parse(req.GetJobId().GetValue())
+	if jobUUID == nil {
+		return nil, yarpcerrors.InvalidArgumentErrorf(
+			"JobID must be of UUID format")
+	}
+
+	jobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
+
+	cachedJob := h.jobFactory.AddJob(jobID)
+	jobRuntime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// do not allow update initialized job for now, because
+	// the job would be updated by both job and update goal
+	// state engine. The constraint may be removed later
+	if jobRuntime.GetState() == pbjob.JobState_INITIALIZED {
+		return nil, yarpcerrors.UnavailableErrorf(
+			"cannot update partially created job")
+	}
+
+	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(req.GetSpec())
+	if err != nil {
+		return nil, err
+	}
+	prevJobConfig, prevConfigAddOn, err := h.jobStore.GetJobConfigWithVersion(
+		ctx,
+		jobID,
+		jobRuntime.GetConfigurationVersion())
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateJobConfigUpdate(prevJobConfig, jobConfig); err != nil {
+		return nil, err
+	}
+
+	// get the new configAddOn
+	var respoolPath string
+	for _, label := range prevConfigAddOn.GetSystemLabels() {
+		if label.GetKey() == common.SystemLabelResourcePool {
+			respoolPath = label.GetValue()
+		}
+	}
+	configAddOn := &models.ConfigAddOn{
+		SystemLabels: jobutil.ConstructSystemLabels(jobConfig, respoolPath),
+	}
+
+	// if change log is set, CreateWorkflow would use the version inside
+	// to do concurrency control.
+	// However, for replace job, concurrency control is done by entity version.
+	// User should not be required to provide config version when entity version is
+	// provided.
+	jobConfig.ChangeLog = nil
+	updateID, newEntityVersion, err := cachedJob.CreateWorkflow(
+		ctx,
+		models.WorkflowType_UPDATE,
+		handlerutil.ConvertUpdateSpecToUpdateConfig(req.GetUpdateSpec()),
+		req.GetVersion(),
+		cached.WithConfig(jobConfig, prevJobConfig, configAddOn),
+	)
+
+	// In case of error, since it is not clear if job runtime was
+	// persisted with the update ID or not, enqueue the update to
+	// the goal state. If the update ID got persisted, update should
+	// start running, else, it should be aborted. Enqueueing it into
+	// the goal state will ensure both. In case the update was not
+	// persisted, clear the cache as well so that it is reloaded
+	// from DB and cleaned up.
+	if len(updateID.GetValue()) > 0 {
+		h.goalStateDriver.EnqueueUpdate(jobID, updateID, time.Now())
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &svc.ReplaceJobResponse{Version: newEntityVersion}, nil
 }
 
 func (h *serviceHandler) PatchJob(
@@ -353,6 +456,25 @@ func (h *serviceHandler) GetJobCache(
 		Spec:   convertCacheJobConfigToJobSpec(config),
 		Status: convertCacheToJobStatus(runtime, cachedWorkflow),
 	}, nil
+}
+
+func validateJobConfigUpdate(
+	prevJobConfig *pbjob.JobConfig,
+	newJobConfig *pbjob.JobConfig,
+) error {
+	// job type is immutable
+	if newJobConfig.GetType() != prevJobConfig.GetType() {
+		return yarpcerrors.InvalidArgumentErrorf("job type is immutable")
+	}
+
+	// resource pool identifier is immutable
+	if newJobConfig.GetRespoolID().GetValue() !=
+		prevJobConfig.GetRespoolID().GetValue() {
+		return yarpcerrors.InvalidArgumentErrorf(
+			"resource pool identifier is immutable")
+	}
+
+	return nil
 }
 
 func convertCacheJobConfigToJobSpec(config jobmgrcommon.JobConfig) *stateless.JobSpec {

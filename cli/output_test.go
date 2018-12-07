@@ -19,6 +19,7 @@ var respose = &job.GetResponse{
 		Config: &job.JobConfig{
 			Name:          "test job",
 			Description:   "test job",
+			OwningTeam:    "test team",
 			InstanceCount: 1,
 		},
 	},
@@ -29,17 +30,19 @@ func TestMarshallResponse(t *testing.T) {
 	ret, err := marshallResponse(jsonResponseFormat, respose)
 	assert.Nil(t, err)
 	expected := "{\n  \"jobInfo\": {\n    \"config\": {\n" +
-		"      \"description\": \"test job\",\n" +
-		"      \"instanceCount\": 1,\n      \"name\": \"test job\",\n" +
-		"      \"owningTeam\": \"\",\n      \"type\": \"BATCH\"\n    },\n" +
-		"    \"id\": {\n      \"value\": \"481d565e-28da-457d-8434-f6bb7faa0e95\"\n    }\n  }\n}"
+		"      \"description\": \"test job\",\n      \"instanceCount\": 1,\n " +
+		"     \"name\": \"test job\",\n      \"owner\": \"\",\n   " +
+		"   \"owningTeam\": \"test team\",\n      \"type\": \"BATCH\"\n   " +
+		" },\n    \"id\": {\n      \"value\": \"481d565e-28da-457d-8434-f6bb7faa0e95\"\n   " +
+		" }\n  }\n}"
 	assert.Equal(t, expected, string(ret))
 
 	ret, err = marshallResponse(defaultResponseFormat, respose)
 	assert.Nil(t, err)
-	expected = "jobInfo:\n  config:\n    description: test job\n" +
-		"    instanceCount: 1\n    name: test job\n    owningTeam: \"\"\n    type: BATCH\n" +
-		"  id:\n    value: 481d565e-28da-457d-8434-f6bb7faa0e95\n"
+	expected = "jobInfo:\n  config:\n    description: test job\n    " +
+		"instanceCount: 1\n    name: test job\n    owner: \"\"\n    " +
+		"owningTeam: test team\n    type: BATCH\n  id:\n    " +
+		"value: 481d565e-28da-457d-8434-f6bb7faa0e95\n"
 	assert.Equal(t, expected, string(ret))
 }
 
@@ -102,9 +105,9 @@ func TestPrintResponseJSON(t *testing.T) {
 
 	fo := cliOutPutter.(*fakeOutputter)
 	printResponseJSON(respose)
-	assert.Equal(t, fo.Out, ""+
-		"{\n  \"jobInfo\": {\n    \"id\": {\n      "+
-		"\"value\": \"481d565e-28da-457d-8434-f6bb7faa0e95\"\n    },"+
-		"\n    \"config\": {\n      \"name\": \"test job\",\n     "+
-		" \"description\": \"test job\",\n      \"instanceCount\": 1\n    }\n  }\n}\n")
+	assert.Equal(t, fo.Out, "{\n  \"jobInfo\": {\n    \"id\": {\n "+
+		"     \"value\": \"481d565e-28da-457d-8434-f6bb7faa0e95\"\n    "+
+		"},\n    \"config\": {\n      \"name\": \"test job\",\n      "+
+		"\"owningTeam\": \"test team\",\n      \"description\": \"test job\",\n"+
+		"      \"instanceCount\": 1\n    }\n  }\n}\n")
 }

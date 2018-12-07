@@ -4,12 +4,15 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
+
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // ConvertTaskStateToPodState converts v0 task.TaskState to v1alpha pod.PodState
@@ -262,8 +265,8 @@ func ConvertUpdateModelToWorkflowStatus(
 	}
 
 	return &stateless.WorkflowStatus{
-		Type:                  stateless.WorkflowType(updateInfo.GetType()),
-		State:                 stateless.WorkflowState(updateInfo.GetState()),
+		Type:  stateless.WorkflowType(updateInfo.GetType()),
+		State: stateless.WorkflowState(updateInfo.GetState()),
 		NumInstancesCompleted: updateInfo.GetInstancesDone(),
 		NumInstancesRemaining: updateInfo.GetInstancesTotal() - updateInfo.GetInstancesDone() - updateInfo.GetInstancesFailed(),
 		NumInstancesFailed:    updateInfo.GetInstancesFailed(),
@@ -336,4 +339,232 @@ func ConvertUpdateModelToWorkflowInfo(
 		// TODO store and implement the restart ranges provided in the configuration
 	}
 	return result
+}
+
+// ConvertJobSpecToJobConfig converts stateless job spec to job config
+func ConvertJobSpecToJobConfig(spec *stateless.JobSpec) (*job.JobConfig, error) {
+	result := &job.JobConfig{
+		Type:          job.JobType_SERVICE,
+		Name:          spec.GetName(),
+		Owner:         spec.GetOwner(),
+		OwningTeam:    spec.GetOwningTeam(),
+		LdapGroups:    spec.GetLdapGroups(),
+		Description:   spec.GetDescription(),
+		InstanceCount: spec.GetInstanceCount(),
+	}
+
+	if spec.GetRevision() != nil {
+		result.ChangeLog = &peloton.ChangeLog{
+			Version:   spec.GetRevision().GetVersion(),
+			CreatedAt: spec.GetRevision().GetCreatedAt(),
+			UpdatedAt: spec.GetRevision().GetUpdatedAt(),
+			UpdatedBy: spec.GetRevision().GetUpdatedBy(),
+		}
+	}
+
+	if len(spec.GetLabels()) != 0 {
+		var labels []*peloton.Label
+		for _, label := range spec.GetLabels() {
+			labels = append(labels, &peloton.Label{
+				Key: label.GetKey(), Value: label.GetValue(),
+			})
+		}
+		result.Labels = labels
+	}
+
+	if spec.GetSla() != nil {
+		result.SLA = &job.SlaConfig{
+			Priority:                spec.GetSla().GetPriority(),
+			Preemptible:             spec.GetSla().GetPreemptible(),
+			Revocable:               spec.GetSla().GetRevocable(),
+			MaximumRunningInstances: spec.GetSla().GetMaximumUnavailableInstances(),
+		}
+	}
+
+	if spec.GetDefaultSpec() != nil {
+		defaultConfig, err := ConvertPodSpecToTaskConfig(spec.GetDefaultSpec())
+		if err != nil {
+			return nil, err
+		}
+		result.DefaultConfig = defaultConfig
+	}
+
+	if len(spec.GetInstanceSpec()) != 0 {
+		var instanceConfigs map[uint32]*task.TaskConfig
+		for instanceID, instanceSpec := range spec.GetInstanceSpec() {
+			instanceConfig, err := ConvertPodSpecToTaskConfig(instanceSpec)
+			if err != nil {
+				return nil, err
+			}
+			instanceConfigs[instanceID] = instanceConfig
+		}
+	}
+
+	if spec.GetRespoolId() != nil {
+		result.RespoolID = &peloton.ResourcePoolID{
+			Value: spec.GetRespoolId().GetValue(),
+		}
+	}
+
+	return result, nil
+}
+
+// ConvertPodSpecToTaskConfig converts a pod spec to task config
+func ConvertPodSpecToTaskConfig(spec *pod.PodSpec) (*task.TaskConfig, error) {
+	if len(spec.GetContainers()) > 1 {
+		return nil,
+			yarpcerrors.UnimplementedErrorf("configuration of more than one container per pod is not supported")
+	}
+
+	if len(spec.GetInitContainers()) > 0 {
+		return nil,
+			yarpcerrors.UnimplementedErrorf("init containers are not supported")
+	}
+
+	mainContainer := spec.GetContainers()[0]
+	result := &task.TaskConfig{
+		Name:                   spec.GetPodName().GetValue(),
+		Container:              mainContainer.GetContainer(),
+		Command:                mainContainer.GetCommand(),
+		Controller:             spec.GetController(),
+		KillGracePeriodSeconds: spec.GetKillGracePeriodSeconds(),
+		Revocable:              spec.GetRevocable(),
+	}
+
+	if spec.GetLabels() != nil {
+		var labels []*peloton.Label
+		for _, label := range spec.GetLabels() {
+			labels = append(labels, &peloton.Label{
+				Key: label.GetKey(), Value: label.GetValue(),
+			})
+		}
+		result.Labels = labels
+	}
+
+	if mainContainer.GetResource() != nil {
+		result.Resource = &task.ResourceConfig{
+			CpuLimit:    mainContainer.GetResource().GetCpuLimit(),
+			MemLimitMb:  mainContainer.GetResource().GetMemLimitMb(),
+			DiskLimitMb: mainContainer.GetResource().GetDiskLimitMb(),
+			FdLimit:     mainContainer.GetResource().GetFdLimit(),
+			GpuLimit:    mainContainer.GetResource().GetGpuLimit(),
+		}
+	}
+
+	if mainContainer.GetLivenessCheck() != nil {
+		healthCheck := &task.HealthCheckConfig{
+			Enabled:                mainContainer.GetLivenessCheck().GetEnabled(),
+			InitialIntervalSecs:    mainContainer.GetLivenessCheck().GetInitialIntervalSecs(),
+			IntervalSecs:           mainContainer.GetLivenessCheck().GetIntervalSecs(),
+			MaxConsecutiveFailures: mainContainer.GetLivenessCheck().GetMaxConsecutiveFailures(),
+			TimeoutSecs:            mainContainer.GetLivenessCheck().GetTimeoutSecs(),
+			Type:                   task.HealthCheckConfig_Type(mainContainer.GetLivenessCheck().GetType()),
+		}
+
+		if mainContainer.GetLivenessCheck().GetCommandCheck() != nil {
+			healthCheck.CommandCheck = &task.HealthCheckConfig_CommandCheck{
+				Command:             mainContainer.GetLivenessCheck().GetCommandCheck().GetCommand(),
+				UnshareEnvironments: mainContainer.GetLivenessCheck().GetCommandCheck().GetUnshareEnvironments(),
+			}
+		}
+
+		result.HealthCheck = healthCheck
+	}
+
+	if len(mainContainer.GetPorts()) != 0 {
+		var portConfigs []*task.PortConfig
+		for _, port := range mainContainer.GetPorts() {
+			portConfigs = append(portConfigs, &task.PortConfig{
+				Name:    port.GetName(),
+				Value:   port.GetValue(),
+				EnvName: port.GetEnvName(),
+			})
+		}
+		result.Ports = portConfigs
+	}
+
+	if spec.GetConstraint() != nil {
+		result.Constraint = ConvertPodConstraintsToTaskConstraints(
+			[]*pod.Constraint{spec.GetConstraint()},
+		)[0]
+	}
+
+	if spec.GetRestartPolicy() != nil {
+		result.RestartPolicy = &task.RestartPolicy{
+			MaxFailures: spec.GetRestartPolicy().GetMaxFailures(),
+		}
+	}
+
+	if spec.GetVolume() != nil {
+		result.Volume = &task.PersistentVolumeConfig{
+			ContainerPath: spec.GetVolume().GetContainerPath(),
+			SizeMB:        spec.GetVolume().GetSizeMb(),
+		}
+	}
+
+	if spec.GetPreemptionPolicy() != nil {
+		result.PreemptionPolicy = &task.PreemptionPolicy{
+			KillOnPreempt: spec.GetPreemptionPolicy().GetKillOnPreempt(),
+		}
+	}
+
+	return result, nil
+}
+
+// ConvertPodConstraintsToTaskConstraints converts pod constraints to task constraints
+func ConvertPodConstraintsToTaskConstraints(
+	constraints []*pod.Constraint,
+) []*task.Constraint {
+	var result []*task.Constraint
+	for _, podConstraint := range constraints {
+		taskConstraint := &task.Constraint{
+			Type: task.Constraint_Type(podConstraint.GetType()),
+		}
+
+		if podConstraint.GetLabelConstraint() != nil {
+			label := &peloton.Label{
+				Key:   podConstraint.GetLabelConstraint().GetLabel().GetKey(),
+				Value: podConstraint.GetLabelConstraint().GetLabel().GetValue(),
+			}
+			taskConstraint.LabelConstraint = &task.LabelConstraint{
+				Kind: task.LabelConstraint_Kind(
+					podConstraint.GetLabelConstraint().GetKind(),
+				),
+				Condition: task.LabelConstraint_Condition(
+					podConstraint.GetLabelConstraint().GetCondition(),
+				),
+				Label:       label,
+				Requirement: podConstraint.GetLabelConstraint().GetRequirement(),
+			}
+		}
+
+		if podConstraint.GetAndConstraint() != nil {
+			taskConstraint.AndConstraint = &task.AndConstraint{
+				Constraints: ConvertPodConstraintsToTaskConstraints(
+					podConstraint.GetAndConstraint().GetConstraints()),
+			}
+		}
+
+		if podConstraint.GetOrConstraint() != nil {
+			taskConstraint.OrConstraint = &task.OrConstraint{
+				Constraints: ConvertPodConstraintsToTaskConstraints(
+					podConstraint.GetOrConstraint().GetConstraints()),
+			}
+		}
+
+		result = append(result, taskConstraint)
+	}
+
+	return result
+}
+
+// ConvertUpdateSpecToUpdateConfig converts update spec to update config
+func ConvertUpdateSpecToUpdateConfig(spec *stateless.UpdateSpec) *update.UpdateConfig {
+	return &update.UpdateConfig{
+		BatchSize:           spec.GetBatchSize(),
+		RollbackOnFailure:   spec.GetRollbackOnFailure(),
+		MaxInstanceAttempts: spec.GetMaxInstanceRetries(),
+		MaxFailureInstances: spec.GetMaxTolerableInstanceFailures(),
+		StartPaused:         spec.GetStartPaused(),
+	}
 }

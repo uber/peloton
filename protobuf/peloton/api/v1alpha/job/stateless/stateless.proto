@@ -315,10 +315,15 @@ message UpdateSpec {
 
   // Maximum number of times a failing instance will
   // be retried during the update.
+  // If the value is 0, the instance can be retried for infinite
+  // times.
   uint32 max_instance_retries = 3;
 
   // Maximum number of instance failures before
   // the update is declared to be failed.
+  // If the value is 0, there is no limit for max failure instances
+  // and the update is marked successful even if all of the instances
+  // fail.
   uint32 max_tolerable_instance_failures = 4;
 
   // If set to true, indicates that the update should start
