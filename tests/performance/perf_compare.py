@@ -7,8 +7,9 @@ import os
 
 import pandas as pd
 import smtplib
-from tabulate import tabulate
 import sys
+
+from multi_benchmark import output_files_list
 
 PERF_DIR = 'tests/performance/PERF_RES'
 
@@ -37,6 +38,15 @@ HTML_TEMPLATE = """
         Respool size: 900 Nodes <br>
     </p>
     <p>
+        Performance Change on <b>Job create</b>
+     %s
+    </p>
+    <p>
+        Performance Change on <b>Job get</b>
+     %s
+    </p>
+    <p>
+        Performance Change on <b>Job update</b>
      %s
     </p>
   </body>
@@ -50,29 +60,41 @@ def parse_arguments(args):
         description='',
         formatter_class=RawDescriptionHelpFormatter)
 
+    # Input of this argument should be either the file name, or the file
+    # name without '.csv' suffix. This input will look for a set of data files
+    # generated along. Input of this argument shouldn't contain '_job_get'
+    # or '_job_update' segments.
     parser.add_argument(
         '-f1',
         '--file-1',
         dest='file_1',
-        help='the first perf data file',
+        help='Filename prefix of baseline perf data files',
     )
+    # Same as the comment for '-f1'.
     parser.add_argument(
         '-f2',
         '--file-2',
         dest='file_2',
-        help='the second perf data file',
+        help='Filename prefix of perf data files to compare against baseline',
     )
     return parser.parse_args(args)
 
 
-def perf_compare(df1, df2):
+def compare_create(f1, f2):
     """
-    type df1: pandas.DataFrame
-    type df2: pandas.DataFrame
-    rtype pandas.DataFrame
+    Returns the benchmark results of comparing perf executions in
+    html table format.
+
+    Args:
+        f1: pandas.DataFrame, benchmark result on one run
+        f2: pandas.DataFrame, benchmark result on the second run
+
+    Returns:
+        html table object.
     """
+    dataframe_1, dataframe_2 = to_df(f1), to_df(f2)
     merge_table = pd.merge(
-        df1, df2,
+        dataframe_1, dataframe_2,
         how='right',
         on=['Cores', 'Sleep(s)', 'UseInsConf', 'TaskNum']
     )
@@ -81,7 +103,58 @@ def perf_compare(df1, df2):
         lambda x: format(
             (x['Exec(s)_y'] - x['Exec(s)_x']) / x['Exec(s)_x'], '.4f'),
         axis=1)
-    return merge_table
+
+    return merge_table.to_html()
+
+
+def compare_get(f1, f2):
+    """
+    Returns the benchmark results of comparing job's GET counts in
+    html table format.
+
+    Args:
+        f1: pandas.DataFrame, benchmark result on job get
+        f2: pandas.DataFrame, benchmark result on job get
+
+    Returns:
+        html table object.
+    """
+    dataframe_1, dataframe_2 = to_df(f1), to_df(f2)
+    merge_table = pd.merge(
+        dataframe_1, dataframe_2,
+        how='right',
+        on=['TaskNum', 'Sleep(s)', 'UseInsConf']
+    )
+
+    return merge_table.to_html()
+
+
+def compare_update(f1, f2):
+    """
+    Returns the benchmark results of updating a job and its comparison in
+    html table format.
+
+    Args:
+        f1: pandas.DataFrame, benchmark result on job update
+        f2: pandas.DataFrame, benchmark result on job update
+
+    Returns:
+        html table object.
+    """
+    dataframe_1, dataframe_2 = to_df(f1), to_df(f2)
+    merge_table = pd.merge(
+        dataframe_1, dataframe_2,
+        how='right',
+        on=['NumStartTasks', 'TaskIncrementEachTime', 'NumOfIncrement',
+            'Sleep(s)', 'UseInsConf']
+    )
+
+    merge_table['Time Diff'] = merge_table.apply(
+        lambda x: format(
+            (x['TotalTimeInSeconds_y'] - x['TotalTimeInSeconds_x']), '.2f'),
+        axis=1)
+
+    return merge_table.to_html()
 
 
 def send_email(html_msg):
@@ -94,6 +167,8 @@ def send_email(html_msg):
     message['To'] = TO
 
     html = MIMEText(html_msg, 'html')
+
+    print('The html generated is: %s', html)
     message.attach(html)
 
     print "Emailing performance report to " + TO
@@ -105,22 +180,28 @@ def send_email(html_msg):
 def main():
     args = parse_arguments(sys.argv[1:])
 
-    perf_file_1 = PERF_DIR + '/' + args.file_1
-    perf_file_2 = PERF_DIR + '/' + args.file_2
+    # Aggregates data source with its function operation.
+    operations = [compare_create, compare_get, compare_update]
+    file_set_1 = output_files_list(PERF_DIR + '/', args.file_1)
+    file_set_2 = output_files_list(PERF_DIR + '/', args.file_2)
+    result_htmls = [None] * 3
 
-    df1 = pd.read_csv(perf_file_1, '\t', index_col=0)
-    df2 = pd.read_csv(perf_file_2, '\t', index_col=0)
-    merge_table = perf_compare(df1, df2)
-    print tabulate(merge_table, headers='keys', tablefmt='orgtbl')
-    merge_table.to_csv('compare.csv', sep='\t')
+    # Compare and generate html tables.
+    for i, combo in enumerate(zip(operations, file_set_1, file_set_2)):
+        func, f1, f2 = combo
+        result_htmls[i] = func(f1, f2)
 
-    table_html = merge_table.to_html()
     commit_info = os.environ.get(COMMIT_INFO) or 'N/A'
     build_url = os.environ.get(BUILD_URL) or 'N/A'
-    msg = HTML_TEMPLATE % (commit_info, build_url, table_html)
-
+    msg = HTML_TEMPLATE % (commit_info, build_url,
+                           result_htmls[0], result_htmls[1], result_htmls[2])
+    print(msg)
     if TO:
         send_email(msg)
+
+
+# Helper function. Converts csv contents to dataframe.
+def to_df(csv_file): return pd.read_csv(csv_file, '\t', index_col=0)
 
 
 if __name__ == "__main__":

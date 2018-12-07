@@ -31,6 +31,12 @@ from performance_test_client import (
     JobUpdateFailedException
 )
 
+# Perf tests conducted. Serves as a single source of truth.
+# Within each tuple, first item explains the perf test purpose;
+# second item shows the corresponding csv file structure.
+PERF_TEST_CONDUCTED = [('JOB_CREATE', '_job_create.csv'),
+                       ('JOB_GET', '_job_get.csv'),
+                       ('JOB_UPDATE', '_job_update.csv')]
 
 NUM_TASKS = [10000, 50000]
 SLEEP_TIME_SEC = [10, 60]
@@ -56,17 +62,41 @@ def parse_arguments(args):
     # Output the performance data
     parser.add_argument(
         '-o',
-        '--output-file',
-        dest='output_file',
-        help='the output file to store perf result',
+        '--output-file-prefix',
+        dest='output_file_prefix',
+        help='the output file prefix to store a list finished perf results',
     )
     return parser.parse_args(args)
+
+
+def output_files_list(res_dir, base_output):
+    """
+    Generates a set of desired output file names.
+
+    Args:
+        res_dir: absolute path of the result output files.
+        base_output: user specified output file as basis of generated file set.
+
+    Returns:
+        a list of csv files where perf test results will be written to.
+    """
+    prefix = base_output.split('.')[0]
+    suffix = [t[1] for t in PERF_TEST_CONDUCTED]
+    output_file_list = [os.path.join(res_dir, prefix+s) for s in suffix]
+    return output_file_list
 
 
 def main():
     args = parse_arguments(sys.argv[1:])
     vcluster_config = args.input_file
-    output_file = args.output_file
+    res_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        'PERF_RES'
+    )
+    if not os.path.exists(res_dir):
+        os.makedirs(res_dir)
+    base_csv_name = args.output_file_prefix
+    output_csv_files_list = output_files_list(res_dir, base_csv_name)
 
     try:
         cluster_config = json.loads(open(vcluster_config).read())
@@ -84,13 +114,6 @@ def main():
         print "Can't find Respool for this Peloton Cluster."
         return
     peloton_version = cluster_config['Peloton Version']
-    res_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        'PERF_RES'
-    )
-    if not os.path.exists(res_dir):
-        os.makedirs(res_dir)
-    output = os.path.join(res_dir, output_file)
     records = []
 
     for num_tasks in NUM_TASKS:
@@ -130,9 +153,10 @@ def main():
     )
     print(df)
 
-    df.to_csv(output, sep='\t')
+    # write results to '$base_path$_job_create.csv'.
+    df.to_csv(output_csv_files_list[0], sep='\t')
 
-    t = PerformanceTest(pf_client, output)
+    t = PerformanceTest(pf_client)
 
     # create 5000 jobs in 100 threads and count num of job.Get() that
     # can be done in 300sec
@@ -151,11 +175,15 @@ def main():
         num_threads=1, num_tasks=50000,
         use_instance_config=True, get_only=True)
 
-    t.dump_records_to_file()
+    # write test_job_create_get results to '$base_path$_job_get.csv'.
+    get_df = t.dump_records_to_file()
+    get_df.to_csv(output_csv_files_list[1], sep='\t')
 
-    t.perf_test_job_update(num_start_tasks=1, tasks_inc=10,
-                           num_increment=500,
-                           sleep_time=10, use_instance_config=True)
+    # write test_job_update results to '$base_path$_job_update.csv'.
+    update_df = t.perf_test_job_update(num_start_tasks=1, tasks_inc=10,
+                                       num_increment=500,
+                                       sleep_time=10, use_instance_config=True)
+    update_df.to_csv(output_csv_files_list[2], sep='\t')
 
 
 class perfCounter():
@@ -175,9 +203,8 @@ class perfCounter():
 
 
 class PerformanceTest ():
-    def __init__(self, client, output_file):
+    def __init__(self, client):
         self.client = client
-        self.output_file = output_file
         self.records = []
 
     def perf_test_job_update(self, num_start_tasks=1, tasks_inc=1,
@@ -226,7 +253,8 @@ class PerformanceTest ():
                      'NumOfIncrement', 'Sleep(s)',
                      'UseInsConf', 'TotalTimeInSeconds']
         )
-        print(df)
+        print('Create + Get: %s', df)
+        return df
 
     def perf_test_job_create_get(self, num_threads=10, jobs_per_thread=5,
                                  num_tasks=10, sleep_time=10,
@@ -298,9 +326,8 @@ class PerformanceTest ():
                      'UseInsConf', 'Creates',
                      'CreateFails', 'Gets', 'GetFails']
         )
-        print(df)
-        # with open(self.output_file, 'a') as f:
-        #    df.to_csv(f, header=False)
+        print('Update: %s', df)
+        return df
 
 
 class jobWorker (threading.Thread):
@@ -308,6 +335,7 @@ class jobWorker (threading.Thread):
     jobWorker is a worker class that can be used to perform job.Create() and
     job.Get() at scale
     """
+
     def __init__(
             self, client, num_tasks, jobs_per_thread, stopper,
             use_instance_config=False, job_id=None, sleep_time=10,
