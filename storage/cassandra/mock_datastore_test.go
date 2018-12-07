@@ -23,7 +23,8 @@ import (
 )
 
 const (
-	testJob = "941ff353-ba82-49fe-8f80-fb5bc649b04d"
+	testJobName = "uber"
+	testJob     = "941ff353-ba82-49fe-8f80-fb5bc649b04d"
 )
 
 type MockDatastoreTestSuite struct {
@@ -296,5 +297,22 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureActiveJobs() {
 	suite.Error(err)
 
 	err = suite.store.DeleteActiveJob(context.Background(), suite.testJobID)
+	suite.Error(err)
+}
+
+// TestJobNameToIDMapFailures tests failure scenarios for job name to job uuid
+func (suite *MockDatastoreTestSuite) TestJobNameToIDMapFailures() {
+	jobID := &peloton.JobID{
+		Value: testJob,
+	}
+
+	jobConfig := &job.JobConfig{
+		Name: testJobName,
+		Type: job.JobType_SERVICE,
+	}
+	err := suite.store.addJobNameToJobIDMapping(context.Background(), jobID, jobConfig)
+	suite.Error(err)
+
+	_, err = suite.store.GetJobIDFromJobName(context.Background(), testJobName)
 	suite.Error(err)
 }

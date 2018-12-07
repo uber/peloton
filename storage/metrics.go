@@ -49,6 +49,12 @@ type JobMetrics struct {
 	JobUpdateInfo     tally.Counter
 	JobUpdateInfoFail tally.Counter
 
+	JobNameToID     tally.Counter
+	JobNameToIDFail tally.Counter
+
+	JobGetNameToID     tally.Counter
+	JobGetNameToIDFail tally.Counter
+
 	// Timers
 	JobGetByStatesDuration     tally.Timer
 	JobGetByStatesFailDuration tally.Timer
@@ -302,6 +308,12 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobUpdateRuntimeFail:  jobFailScope.Counter("update_runtime"),
 		JobUpdateConfig:       jobSuccessScope.Counter("update_config"),
 		JobUpdateConfigFail:   jobFailScope.Counter("update_config"),
+
+		JobNameToID:     jobSuccessScope.Counter("job_name_to_id"),
+		JobNameToIDFail: jobFailScope.Counter("job_name_to_id_fail"),
+
+		JobGetNameToID:     jobSuccessScope.Counter("job_get_name_to_id"),
+		JobGetNameToIDFail: jobFailScope.Counter("job_get_name_to_id_fail"),
 
 		JobUpdateInfo:     jobSuccessScope.Counter("update_info"),
 		JobUpdateInfoFail: jobFailScope.Counter("update_info"),
