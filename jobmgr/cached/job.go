@@ -40,10 +40,18 @@ type Job interface {
 	// Identifier of the job.
 	ID() *peloton.JobID
 
-	// CreateTasks creates the task runtimes in cache and DB.
+	// CreateTaskConfigs creates task configurations in the DB
+	CreateTaskConfigs(
+		ctx context.Context,
+		jobID *peloton.JobID,
+		jobConfig *pbjob.JobConfig,
+		configAddOn *models.ConfigAddOn,
+	) error
+
+	// CreateTaskRuntimes creates the task runtimes in cache and DB.
 	// Create and Update need to be different functions as the backing
 	// storage calls are different.
-	CreateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, owner string) error
+	CreateTaskRuntimes(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, owner string) error
 
 	// PatchTasks patch runtime diff to the existing task cache. runtimeDiffs
 	// is a kv map with key as the instance_id of the task to be updated.
@@ -342,7 +350,61 @@ func (j *job) AddTask(
 	return t, nil
 }
 
-func (j *job) CreateTasks(
+// CreateTaskConfigs creates task configurations in the DB
+func (j *job) CreateTaskConfigs(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	jobConfig *pbjob.JobConfig,
+	configAddOn *models.ConfigAddOn,
+) error {
+	// Create default task config in DB
+	if err := j.jobFactory.taskStore.CreateTaskConfig(
+		ctx,
+		jobID,
+		common.DefaultTaskConfigID,
+		jobConfig.GetDefaultConfig(),
+		configAddOn,
+		jobConfig.GetChangeLog().GetVersion(),
+	); err != nil {
+		log.WithError(err).
+			WithFields(log.Fields{
+				"job_id":      j.ID().GetValue(),
+				"instance_id": common.DefaultTaskConfigID,
+			}).Info("failed to write default task config")
+		return yarpcerrors.InternalErrorf(err.Error())
+	}
+
+	createSingleTaskConfig := func(id uint32) error {
+		var cfg *pbtask.TaskConfig
+		var ok bool
+		if cfg, ok = jobConfig.GetInstanceConfig()[id]; !ok {
+			return yarpcerrors.NotFoundErrorf(
+				"failed to get instance config for instance %v", id,
+			)
+		}
+		taskConfig := taskconfig.Merge(jobConfig.GetDefaultConfig(), cfg)
+
+		return j.jobFactory.taskStore.CreateTaskConfig(
+			ctx,
+			jobID,
+			int64(id),
+			taskConfig,
+			configAddOn,
+			jobConfig.GetChangeLog().GetVersion(),
+		)
+	}
+
+	var instanceIDList []uint32
+	for i := uint32(0); i < jobConfig.GetInstanceCount(); i++ {
+		if _, ok := jobConfig.GetInstanceConfig()[i]; ok {
+			instanceIDList = append(instanceIDList, i)
+		}
+	}
+
+	return j.runInParallel(instanceIDList, createSingleTaskConfig)
+}
+
+func (j *job) CreateTaskRuntimes(
 	ctx context.Context,
 	runtimes map[uint32]*pbtask.RuntimeInfo,
 	owner string) error {
@@ -392,7 +454,7 @@ func (j *job) ReplaceTasks(
 	return j.runInParallel(getIdsFromRuntimeMap(runtimes), replaceSingleTask)
 }
 
-// runInParallel runs go routines which will create/update tasks
+// runInParallel runs go routines which will create/update runtime/config of tasks
 func (j *job) runInParallel(idList []uint32, task singleTask) error {
 	var transientError int32
 
@@ -444,7 +506,7 @@ func (j *job) runInParallel(idList []uint32, task singleTask) error {
 						WithFields(log.Fields{
 							"job_id":      j.ID().GetValue(),
 							"instance_id": id,
-						}).Info("failed to write task runtime")
+						}).Info("failed to write task config/runtime")
 					atomic.AddUint32(&tasksNotRun, 1)
 					if common.IsTransientError(err) {
 						atomic.StoreInt32(&transientError, 1)
@@ -466,7 +528,7 @@ func (j *job) runInParallel(idList []uint32, task singleTask) error {
 			time.Since(timeStart))
 		if transientError > 0 {
 			// return a transient error if a transient error is encountered
-			// while creating.updating any task
+			// while creating/updating any task
 			return yarpcerrors.AbortedErrorf(msg)
 		}
 		return yarpcerrors.InternalErrorf(msg)
@@ -1490,7 +1552,7 @@ func (j *job) copyJobAndTaskConfig(
 		Version: configCopy.GetChangeLog().GetVersion(),
 	}
 	// copy task configs
-	if err = j.jobFactory.taskStore.CreateTaskConfigs(ctx, j.id, jobConfig, configAddOn); err != nil {
+	if err = j.CreateTaskConfigs(ctx, j.id, jobConfig, configAddOn); err != nil {
 		return nil, errors.Wrap(err,
 			"failed to create task configs for workflow rolling back")
 	}

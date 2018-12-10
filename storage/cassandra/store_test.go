@@ -20,7 +20,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/backoff"
+	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/storage"
 	qb "code.uber.internal/infra/peloton/storage/querybuilder"
 	"code.uber.internal/infra/peloton/util"
@@ -184,7 +186,41 @@ func (suite *CassandraStoreTestSuite) createJob(
 	if err != nil {
 		return err
 	}
-	return store.CreateTaskConfigs(ctx, id, jobConfig, configAddOn)
+	return createTaskConfigs(ctx, id, jobConfig, configAddOn)
+}
+
+// CreateTaskConfigs from the job config.
+func createTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, configAddOn *models.ConfigAddOn) error {
+	version := jobConfig.GetChangeLog().GetVersion()
+	if jobConfig.GetDefaultConfig() != nil {
+		if err := store.CreateTaskConfig(
+			ctx,
+			id,
+			common.DefaultTaskConfigID,
+			jobConfig.GetDefaultConfig(),
+			configAddOn,
+			version,
+		); err != nil {
+			return err
+		}
+	}
+
+	for instanceID, cfg := range jobConfig.GetInstanceConfig() {
+		merged := taskconfig.Merge(jobConfig.GetDefaultConfig(), cfg)
+		// TODO set correct version
+		if err := store.CreateTaskConfig(
+			ctx,
+			id,
+			int64(instanceID),
+			merged,
+			configAddOn,
+			version,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Run the following query to trigger lucene index refresh
@@ -1476,7 +1512,16 @@ func (suite *CassandraStoreTestSuite) TestTaskVersionMigration() {
 	configAddOn := &models.ConfigAddOn{}
 
 	// Create legacy task with missing version field.
-	suite.NoError(store.createTaskConfig(context.Background(), jobID, 0, &task.TaskConfig{}, configAddOn, 0))
+	suite.NoError(
+		store.CreateTaskConfig(
+			context.Background(),
+			jobID,
+			0,
+			&task.TaskConfig{},
+			configAddOn,
+			0,
+		),
+	)
 	queryBuilder := store.DataStore.NewQuery()
 	stmt := queryBuilder.Insert(taskRuntimeTable).
 		Columns(
@@ -1537,8 +1582,8 @@ func (suite *CassandraStoreTestSuite) TestGetTaskConfigs() {
 	}
 
 	// create default task config
-	store.createTaskConfig(context.Background(), jobID,
-		_defaultTaskConfigID,
+	store.CreateTaskConfig(context.Background(), jobID,
+		common.DefaultTaskConfigID,
 		&task.TaskConfig{
 			Name: "default",
 		}, configAddOn,
@@ -1546,7 +1591,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskConfigs() {
 
 	// create 5 tasks with versions
 	for i := int64(0); i < 5; i++ {
-		suite.NoError(store.createTaskConfig(context.Background(), jobID,
+		suite.NoError(store.CreateTaskConfig(context.Background(), jobID,
 			i,
 			&task.TaskConfig{
 				Name: fmt.Sprintf("task-%d", i),
@@ -1740,7 +1785,13 @@ func (suite *CassandraStoreTestSuite) TestGetTaskRuntimesForJobByRange() {
 		runtimes[uint32(i)] = taskInfo.Runtime
 	}
 
-	err := suite.createJob(context.Background(), &jobID, jobConfig, configAddOn, "user1")
+	err := suite.createJob(
+		context.Background(),
+		&jobID,
+		jobConfig,
+		configAddOn,
+		"user1",
+	)
 	suite.Nil(err)
 
 	for i := 0; i < 5; i++ {
@@ -2684,7 +2735,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskRuntime() {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 	configAddOn := &models.ConfigAddOn{}
 	var tID = fmt.Sprintf("%s-%d-%d", jobID.GetValue(), 0, 1)
-	suite.NoError(store.createTaskConfig(context.Background(), jobID, 0, &task.TaskConfig{}, configAddOn, 0))
+	suite.NoError(store.CreateTaskConfig(context.Background(), jobID, 0, &task.TaskConfig{}, configAddOn, 0))
 	suite.NoError(store.CreateTaskRuntime(
 		context.Background(),
 		jobID,
@@ -3480,4 +3531,35 @@ func (suite *CassandraStoreTestSuite) TestGetTasksForJobError() {
 
 func (suite *CassandraStoreTestSuite) TestDeleteTaskRuntimeError() {
 	suite.Error(store.DeleteTaskRuntime(context.Background(), &peloton.JobID{Value: "error"}, uint32(0)))
+}
+
+// TestCreateTaskConfigSuccess tests success case of creating the task configuration
+func (suite *CassandraStoreTestSuite) TestCreateTaskConfigSuccess() {
+	taskConfig := &task.TaskConfig{
+		Name: testJob,
+		Resource: &task.ResourceConfig{
+			CpuLimit:    0.8,
+			MemLimitMb:  800,
+			DiskLimitMb: 1500,
+		},
+		RestartPolicy: &task.RestartPolicy{
+			MaxFailures: 3,
+		},
+		HealthCheck: &task.HealthCheckConfig{
+			InitialIntervalSecs:    10,
+			IntervalSecs:           10,
+			MaxConsecutiveFailures: 5,
+			TimeoutSecs:            5,
+			Enabled:                false,
+		},
+	}
+
+	suite.NoError(store.CreateTaskConfig(
+		context.Background(),
+		&peloton.JobID{Value: testJob},
+		0,
+		taskConfig,
+		&models.ConfigAddOn{},
+		1,
+	))
 }

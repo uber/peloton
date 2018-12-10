@@ -91,8 +91,17 @@ type TaskStore interface {
 		instanceID uint32,
 		runtime *task.RuntimeInfo,
 		jobType job.JobType) error
-	// CreateTaskConfigs creates the configuration of all tasks
-	CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, configAddOn *models.ConfigAddOn) error
+
+	// CreateTaskConfig creates the task configuration
+	CreateTaskConfig(
+		ctx context.Context,
+		id *peloton.JobID,
+		instanceID int64,
+		taskConfig *task.TaskConfig,
+		configAddOn *models.ConfigAddOn,
+		version uint64,
+	) error
+
 	// GetTasksForJob gets the task info for all tasks in a job
 	GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error)
 	// GetTasksForJobAndStates gets the task info for all

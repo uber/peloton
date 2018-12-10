@@ -105,3 +105,9 @@ const (
 	// ClusterEnvVar is the cluster environment variable
 	ClusterEnvVar = "CLUSTER"
 )
+
+const (
+	// DefaultTaskConfigID is used for storing, and retrieving, the default
+	// task configuration, when no specific is available.
+	DefaultTaskConfigID = -1
+)

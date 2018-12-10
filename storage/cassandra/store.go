@@ -27,7 +27,6 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/backoff"
-	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
 	"code.uber.internal/infra/peloton/storage/cassandra/impl"
@@ -86,9 +85,6 @@ const (
 	_defaultQueryLimit    uint32 = 10
 	_defaultQueryMaxLimit uint32 = 100
 
-	// _defaultTaskConfigID is used for storing, and retrieving, the default
-	// task configuration, when no specific is available.
-	_defaultTaskConfigID      = -1
 	_defaultActiveJobsShardID = 0
 
 	jobIndexTimeFormat        = "20060102150405"
@@ -440,33 +436,15 @@ func (s *Store) GetJobIDFromJobName(
 	return jobIDs, nil
 }
 
-// CreateTaskConfigs from the job config.
-func (s *Store) CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, configAddOn *models.ConfigAddOn) error {
-	version := jobConfig.GetChangeLog().GetVersion()
-	if jobConfig.GetDefaultConfig() != nil {
-		if err := s.createTaskConfig(ctx, id, _defaultTaskConfigID, jobConfig.GetDefaultConfig(), configAddOn, version); err != nil {
-			return err
-		}
-	}
-
-	for instanceID, cfg := range jobConfig.GetInstanceConfig() {
-		merged := taskconfig.Merge(jobConfig.GetDefaultConfig(), cfg)
-		// TODO set correct version
-		if err := s.createTaskConfig(ctx, id, int64(instanceID), merged, configAddOn, version); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (s *Store) createTaskConfig(
+// CreateTaskConfig creates the task configuration
+func (s *Store) CreateTaskConfig(
 	ctx context.Context,
 	id *peloton.JobID,
 	instanceID int64,
 	taskConfig *task.TaskConfig,
 	configAddOn *models.ConfigAddOn,
-	version uint64) error {
+	version uint64,
+) error {
 	configBuffer, err := proto.Marshal(taskConfig)
 	if err != nil {
 		s.metrics.TaskMetrics.TaskCreateConfigFail.Inc(1)
@@ -1435,7 +1413,7 @@ func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
 			qb.Eq{
 				"job_id":      id.GetValue(),
 				"version":     version,
-				"instance_id": []interface{}{instanceID, _defaultTaskConfigID},
+				"instance_id": []interface{}{instanceID, common.DefaultTaskConfigID},
 			})
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
@@ -1486,7 +1464,7 @@ func (s *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
 	for _, instance := range instanceIDs {
 		dbInstanceIDs = append(dbInstanceIDs, int(instance))
 	}
-	dbInstanceIDs = append(dbInstanceIDs, _defaultTaskConfigID)
+	dbInstanceIDs = append(dbInstanceIDs, common.DefaultTaskConfigID)
 
 	stmt := s.DataStore.NewQuery().Select("*").From(taskConfigTable).
 		Where(
@@ -1526,7 +1504,7 @@ func (s *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
 		if err != nil {
 			return nil, nil, err
 		}
-		if record.InstanceID == _defaultTaskConfigID {
+		if record.InstanceID == common.DefaultTaskConfigID {
 			// get the default config
 			defaultConfig = taskConfig
 			continue

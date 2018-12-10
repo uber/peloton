@@ -696,7 +696,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddInstances() {
 	}
 
 	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, _ string) {
 			suite.Len(runtimes, int(batchSize))
 		}).Return(nil)
@@ -852,7 +852,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddShrinkInstances() {
 	}
 
 	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, _ string) {
 			suite.Len(runtimes, int(batchSize))
 		}).Return(nil)
@@ -1461,7 +1461,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunKilledJobAddInstances() {
 	}
 
 	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, _ string) {
 			suite.Len(runtimes, int(batchSize))
 		}).Return(nil)
@@ -1599,7 +1599,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunDBErrorAddInstances() {
 	}
 
 	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, _ string) {
 			suite.Len(runtimes, int(batchSize))
 		}).Return(nil)

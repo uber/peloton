@@ -117,7 +117,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 
 	jobID := cachedWorkflow.JobID()
 	// fetch the job configuration first
-	jobConfig, systemLabels, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
+	jobConfig, configAddOn, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
 		ctx,
 		jobID,
 		cachedWorkflow.GetGoalState().JobVersion)
@@ -127,11 +127,11 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	// lets write the new task configs first
-	if err := goalStateDriver.taskStore.CreateTaskConfigs(
+	if err := cachedJob.CreateTaskConfigs(
 		ctx,
 		jobID,
 		jobConfig,
-		systemLabels); err != nil {
+		configAddOn); err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)
 		return err
 	}

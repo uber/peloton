@@ -111,7 +111,7 @@ func (suite *JobCreateTestSuite) TestJobCreateTasks() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.taskStore.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
@@ -120,7 +120,7 @@ func (suite *JobCreateTestSuite) TestJobCreateTasks() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	suite.cachedJob.EXPECT().
@@ -164,7 +164,11 @@ func (suite *JobCreateTestSuite) TestJobCreateTaskConfigCreateFailure() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.taskStore.EXPECT().
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
 
@@ -173,17 +177,21 @@ func (suite *JobCreateTestSuite) TestJobCreateTaskConfigCreateFailure() {
 }
 
 func (suite *JobCreateTestSuite) TestJobCreateGetTasksFailure() {
-	suite.taskStore.EXPECT().
-		GetTasksForJob(gomock.Any(), suite.jobID).
-		Return(nil, fmt.Errorf("fake db error"))
-
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.taskStore.EXPECT().
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
+
+	suite.taskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.jobID).
+		Return(nil, fmt.Errorf("fake db error"))
 
 	err := JobCreateTasks(context.Background(), suite.jobEnt)
 	suite.Error(err)
@@ -200,7 +208,11 @@ func (suite *JobCreateTestSuite) TestJobCreateResmgrFailure() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.taskStore.EXPECT().
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
@@ -209,7 +221,7 @@ func (suite *JobCreateTestSuite) TestJobCreateResmgrFailure() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	suite.resmgrClient.EXPECT().
@@ -231,7 +243,7 @@ func (suite *JobCreateTestSuite) TestJobCreateUpdateFailure() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.taskStore.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
@@ -240,7 +252,7 @@ func (suite *JobCreateTestSuite) TestJobCreateUpdateFailure() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	suite.cachedJob.EXPECT().
@@ -354,7 +366,7 @@ func (suite *JobCreateTestSuite) TestJobRecover() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.taskStore.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
@@ -380,11 +392,7 @@ func (suite *JobCreateTestSuite) TestJobRecover() {
 		Return(nil)
 
 	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil)
-
-	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	suite.resmgrClient.EXPECT().
@@ -496,7 +504,7 @@ func (suite *JobCreateTestSuite) TestJobMaxRunningInstances() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.taskStore.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
@@ -505,7 +513,7 @@ func (suite *JobCreateTestSuite) TestJobMaxRunningInstances() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	suite.resmgrClient.EXPECT().
@@ -572,7 +580,7 @@ func (suite *JobCreateTestSuite) TestJobRecoverMaxRunningInstances() {
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
-	suite.taskStore.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
@@ -609,18 +617,7 @@ func (suite *JobCreateTestSuite) TestJobRecoverMaxRunningInstances() {
 		Return()
 
 	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil)
-
-	suite.cachedJob.EXPECT().
-		GetJobType().Return(pbjob.JobType_BATCH)
-
-	suite.jobGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-
-	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	suite.cachedJob.EXPECT().
