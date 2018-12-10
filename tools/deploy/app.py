@@ -197,6 +197,8 @@ class App(object):
             if self.enable_revocable_resources:
                 env_vars['ENABLE_REVOCABLE_RESOURCES'] = \
                     self.enable_revocable_resources
+            if self.bin_packing:
+                env_vars['BIN_PACKING'] = self.bin_packing
 
         params = [
             DockerParameter(name='env', value='%s=%s' % (key, val))
