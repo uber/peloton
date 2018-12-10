@@ -169,12 +169,29 @@ var (
 	jobGetCacheName = jobGetCache.Arg("job", "job identifier").Required().String()
 
 	// Top level job command for stateless jobs
-	stateless             = app.Command("stateless", "manage stateless jobs")
+	stateless             = job.Command("stateless", "manage stateless jobs")
 	statelessGetCache     = stateless.Command("cache", "get a job cache")
 	statelessGetCacheName = statelessGetCache.Arg("job", "job identifier").Required().String()
 
 	statelessRefresh     = stateless.Command("refresh", "refresh a job")
 	statelessRefreshName = statelessRefresh.Arg("job", "job identifier").Required().String()
+
+	statelessQuery            = stateless.Command("query", "query stateless jobs by mesos label / respool")
+	statelessQueryLabels      = statelessQuery.Flag("labels", "labels").Default("").Short('l').String()
+	statelessQueryRespoolPath = statelessQuery.Flag("respool", "respool path").Default("").Short('r').String()
+	statelessQueryKeywords    = statelessQuery.Flag("keywords", "keywords").Default("").Short('k').String()
+	statelessQueryStates      = statelessQuery.Flag("states", "job states").Default("").Short('s').String()
+	statelessQueryOwner       = statelessQuery.Flag("owner", "job owner").Default("").String()
+	statelessQueryName        = statelessQuery.Flag("name", "job name").Default("").String()
+	// We can search by time range for completed time as well as created time.
+	// We support protobuf timestamps in backend to define time range
+	// To keep CLI simple, lets accept this time range for creation time in last n days
+	statelessQueryTimeRange = statelessQuery.Flag("timerange", "query jobs created within last d days").Short('d').Default("0").Uint32()
+	statelessQueryLimit     = statelessQuery.Flag("limit", "maximum number of jobs to return").Default("100").Short('n').Uint32()
+	statelessQueryMaxLimit  = statelessQuery.Flag("total", "total number of jobs to query").Default("100").Short('q').Uint32()
+	statelessQueryOffset    = statelessQuery.Flag("offset", "offset").Default("0").Short('o').Uint32()
+	statelessQuerySortBy    = statelessQuery.Flag("sort", "sort by property").Default("creation_time").Short('p').String()
+	statelessQuerySortOrder = statelessQuery.Flag("sortorder", "sort order (ASC or DESC)").Default("DESC").Short('a').String()
 
 	statelessReplace            = stateless.Command("replace", "update by replacing job config")
 	statelessReplaceJobID       = statelessReplace.Arg("job", "job identifier").Required().String()
@@ -678,6 +695,8 @@ func main() {
 		err = client.StatelessGetCacheAction(*statelessGetCacheName)
 	case statelessRefresh.FullCommand():
 		err = client.StatelessRefreshAction(*statelessRefreshName)
+	case statelessQuery.FullCommand():
+		err = client.StatelessQueryAction(*statelessQueryLabels, *statelessQueryRespoolPath, *statelessQueryKeywords, *statelessQueryStates, *statelessQueryOwner, *statelessQueryName, *statelessQueryTimeRange, *statelessQueryLimit, *statelessQueryMaxLimit, *statelessQueryOffset, *statelessQuerySortBy, *statelessQuerySortOrder)
 	case statelessReplace.FullCommand():
 		err = client.StatelessReplaceJobAction(
 			*statelessReplaceJobID,

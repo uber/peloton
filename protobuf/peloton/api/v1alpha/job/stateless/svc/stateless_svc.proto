@@ -363,9 +363,6 @@ message QueryPodsResponse {
 message QueryJobsRequest {
   // The spec of query criteria for the jobs.
   stateless.QuerySpec spec = 1;
-
-  // The spec of how to do pagination for the query results.
-  query.PaginationSpec pagination = 2;
 }
 
 // Response message for JobService.QueryJobs method.

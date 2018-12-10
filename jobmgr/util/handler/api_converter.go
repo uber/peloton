@@ -3,6 +3,8 @@ package handler
 import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pelotonv0query "code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
+	pelotonv0respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
@@ -96,7 +98,7 @@ func ConvertTaskRuntimeToPodStatus(runtime *task.RuntimeInfo) *pod.PodStatus {
 func ConvertTaskConfigToPodSpec(taskConfig *task.TaskConfig) *pod.PodSpec {
 	var constraint *pod.Constraint
 	if taskConfig.GetConstraint() != nil {
-		constraint = ConvertConstraints([]*task.Constraint{taskConfig.GetConstraint()})[0]
+		constraint = ConvertTaskConstraintsToPodConstraints([]*task.Constraint{taskConfig.GetConstraint()})[0]
 	}
 
 	return &pod.PodSpec{
@@ -159,9 +161,9 @@ func ConvertLabels(labels []*peloton.Label) []*v1alphapeloton.Label {
 	return podLabels
 }
 
-// ConvertConstraints converts v0 task.Constraint array to
+// ConvertTaskConstraintsToPodConstraints converts v0 task.Constraint array to
 // v1alpha pod.Constraint array
-func ConvertConstraints(constraints []*task.Constraint) []*pod.Constraint {
+func ConvertTaskConstraintsToPodConstraints(constraints []*task.Constraint) []*pod.Constraint {
 	var podConstraints []*pod.Constraint
 	for _, constraint := range constraints {
 		podConstraints = append(podConstraints, &pod.Constraint{
@@ -179,10 +181,10 @@ func ConvertConstraints(constraints []*task.Constraint) []*pod.Constraint {
 				Requirement: constraint.GetLabelConstraint().GetRequirement(),
 			},
 			AndConstraint: &pod.AndConstraint{
-				Constraints: ConvertConstraints(constraint.GetAndConstraint().GetConstraints()),
+				Constraints: ConvertTaskConstraintsToPodConstraints(constraint.GetAndConstraint().GetConstraints()),
 			},
 			OrConstraint: &pod.OrConstraint{
-				Constraints: ConvertConstraints(constraint.GetOrConstraint().GetConstraints()),
+				Constraints: ConvertTaskConstraintsToPodConstraints(constraint.GetOrConstraint().GetConstraints()),
 			},
 		})
 	}
@@ -339,6 +341,79 @@ func ConvertUpdateModelToWorkflowInfo(
 		// TODO store and implement the restart ranges provided in the configuration
 	}
 	return result
+}
+
+// ConvertStatelessQuerySpecToJobQuerySpec converts query spec for stateless svc to
+// job query spec
+func ConvertStatelessQuerySpecToJobQuerySpec(spec *stateless.QuerySpec) *job.QuerySpec {
+	var orderBy []*pelotonv0query.OrderBy
+	var labels []*peloton.Label
+	var jobStates []job.JobState
+	var creationTimeRange *peloton.TimeRange
+	var completionTimeRange *peloton.TimeRange
+	var respoolPath *pelotonv0respool.ResourcePoolPath
+	var paginationSpec *pelotonv0query.PaginationSpec
+
+	for _, ele := range spec.GetPagination().GetOrderBy() {
+		orderBy = append(orderBy, &pelotonv0query.OrderBy{
+			Order: pelotonv0query.OrderBy_Order(ele.GetOrder()),
+			Property: &pelotonv0query.PropertyPath{
+				Value: ele.GetProperty().GetValue(),
+			},
+		})
+	}
+
+	for _, label := range spec.GetLabels() {
+		labels = append(labels, &peloton.Label{
+			Key:   label.GetKey(),
+			Value: label.GetValue(),
+		})
+	}
+
+	for _, jobState := range spec.GetJobStates() {
+		jobStates = append(jobStates, job.JobState(jobState))
+	}
+
+	if spec.GetCreationTimeRange() != nil {
+		creationTimeRange = &peloton.TimeRange{
+			Min: spec.GetCreationTimeRange().GetMin(),
+			Max: spec.GetCreationTimeRange().GetMax(),
+		}
+	}
+
+	if spec.GetCompletionTimeRange() != nil {
+		completionTimeRange = &peloton.TimeRange{
+			Min: spec.GetCompletionTimeRange().GetMin(),
+			Max: spec.GetCompletionTimeRange().GetMax(),
+		}
+	}
+
+	if spec.GetRespool() != nil {
+		respoolPath = &pelotonv0respool.ResourcePoolPath{
+			Value: spec.GetRespool().GetValue(),
+		}
+	}
+
+	if spec.GetPagination() != nil {
+		paginationSpec = &pelotonv0query.PaginationSpec{
+			Offset:   spec.GetPagination().GetOffset(),
+			Limit:    spec.GetPagination().GetLimit(),
+			OrderBy:  orderBy,
+			MaxLimit: spec.GetPagination().GetMaxLimit(),
+		}
+	}
+
+	return &job.QuerySpec{
+		Pagination:          paginationSpec,
+		Labels:              labels,
+		Keywords:            spec.GetKeywords(),
+		JobStates:           jobStates,
+		Respool:             respoolPath,
+		Owner:               spec.GetOwner(),
+		Name:                spec.GetName(),
+		CreationTimeRange:   creationTimeRange,
+		CompletionTimeRange: completionTimeRange,
+	}
 }
 
 // ConvertJobSpecToJobConfig converts stateless job spec to job config

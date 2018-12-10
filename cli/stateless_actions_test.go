@@ -89,6 +89,116 @@ func (suite *statelessActionsTestSuite) TestStatelessRefreshActionError() {
 	suite.Error(suite.client.StatelessRefreshAction(testJobID))
 }
 
+func (suite *statelessActionsTestSuite) TestStatelessQueryActionSuccess() {
+	suite.statelessClient.EXPECT().
+		QueryJobs(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, req *svc.QueryJobsRequest) {
+			spec := req.GetSpec()
+			suite.Equal(spec.GetPagination().GetLimit(), uint32(10))
+			suite.Equal(spec.GetPagination().GetMaxLimit(), uint32(0))
+			suite.Equal(spec.GetPagination().GetOffset(), uint32(0))
+			suite.Equal(spec.GetRespool().GetValue(), "/testPath")
+			suite.Equal(spec.GetName(), "test1")
+			suite.Equal(spec.GetOwner(), "owner1")
+			suite.Equal(spec.GetLabels()[0].GetKey(), "k1")
+			suite.Equal(spec.GetLabels()[0].GetValue(), "v1")
+			suite.Equal(spec.GetLabels()[1].GetKey(), "k2")
+			suite.Equal(spec.GetLabels()[1].GetValue(), "v2")
+			suite.Equal(spec.GetKeywords()[0], "key1")
+			suite.Equal(spec.GetKeywords()[1], "key2")
+		}).
+		Return(&svc.QueryJobsResponse{}, nil)
+
+	err := suite.client.StatelessQueryAction(
+		"k1=v1,k2=v2",
+		"/testPath",
+		"key1,key2",
+		"JOB_STATE_RUNNING,JOB_STATE_SUCCEEDED",
+		"owner1",
+		"test1",
+		1,
+		10,
+		0,
+		0,
+		"creation_time",
+		"ASC",
+	)
+	suite.NoError(err)
+}
+
+func (suite *statelessActionsTestSuite) TestStatelessQueryActionWrongLabelFormatFailure() {
+	err := suite.client.StatelessQueryAction(
+		"k1,k2",
+		"/testPath",
+		"key1,key2",
+		"JOB_STATE_RUNNING,JOB_STATE_SUCCEEDED",
+		"owner1",
+		"test1",
+		1,
+		10,
+		0,
+		0,
+		"creation_time",
+		"ASC",
+	)
+	suite.Error(err)
+}
+
+func (suite *statelessActionsTestSuite) TestStatelessQueryActionWrongSortOrderFailure() {
+	err := suite.client.StatelessQueryAction(
+		"k1=v1,k2=v2",
+		"/testPath",
+		"key1,key2",
+		"JOB_STATE_RUNNING,JOB_STATE_SUCCEEDED",
+		"owner1",
+		"test1",
+		1,
+		10,
+		0,
+		0,
+		"creation_time",
+		"Descent",
+	)
+	suite.Error(err)
+}
+
+func (suite *statelessActionsTestSuite) TestStatelessQueryActionError() {
+	suite.statelessClient.EXPECT().
+		QueryJobs(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, req *svc.QueryJobsRequest) {
+			spec := req.GetSpec()
+			suite.Equal(spec.GetPagination().GetLimit(), uint32(10))
+			suite.Equal(spec.GetPagination().GetMaxLimit(), uint32(0))
+			suite.Equal(spec.GetPagination().GetOffset(), uint32(0))
+			suite.Equal(spec.GetRespool().GetValue(), "/testPath")
+			suite.Equal(spec.GetName(), "test1")
+			suite.Equal(spec.GetOwner(), "owner1")
+			suite.Equal(spec.GetLabels()[0].GetKey(), "k1")
+			suite.Equal(spec.GetLabels()[0].GetValue(), "v1")
+			suite.Equal(spec.GetLabels()[1].GetKey(), "k2")
+			suite.Equal(spec.GetLabels()[1].GetValue(), "v2")
+			suite.Equal(spec.GetKeywords()[0], "key1")
+			suite.Equal(spec.GetKeywords()[1], "key2")
+		}).
+		Return(&svc.QueryJobsResponse{}, yarpcerrors.InternalErrorf("test error"))
+
+	err := suite.client.StatelessQueryAction(
+		"k1=v1,k2=v2",
+		"/testPath",
+		"key1,key2",
+		"JOB_STATE_RUNNING,JOB_STATE_SUCCEEDED",
+		"owner1",
+		"test1",
+		1,
+		10,
+		0,
+		0,
+		"creation_time",
+		"ASC",
+	)
+	suite.Error(err)
+}
+
 func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionSuccess() {
 	batchSize := uint32(1)
 	respoolPath := "/testPath"

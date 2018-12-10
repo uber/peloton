@@ -4,24 +4,30 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
+	pelotonv1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
+	pelotonv1alpharespool "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 
+	respoolmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
+	"github.com/golang/protobuf/ptypes"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -41,6 +47,7 @@ type statelessHandlerTestSuite struct {
 	cachedWorkflow  *cachedmocks.MockUpdate
 	jobFactory      *cachedmocks.MockJobFactory
 	candidate       *leadermocks.MockCandidate
+	respoolClient   *respoolmocks.MockResourceManagerYARPCClient
 	goalStateDriver *goalstatemocks.MockDriver
 	jobStore        *storemocks.MockJobStore
 	updateStore     *storemocks.MockUpdateStore
@@ -55,12 +62,14 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
+	suite.respoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.handler = &serviceHandler{
 		jobFactory:      suite.jobFactory,
 		candidate:       suite.candidate,
 		goalStateDriver: suite.goalStateDriver,
 		jobStore:        suite.jobStore,
 		updateStore:     suite.updateStore,
+		respoolClient:   suite.respoolClient,
 	}
 }
 
@@ -600,6 +609,173 @@ func (suite *statelessHandlerTestSuite) TestRefreshJobGetRuntimeFail() {
 	resp, err := suite.handler.RefreshJob(context.Background(), &statelesssvc.RefreshJobRequest{
 		JobId: &v1alphapeloton.JobID{Value: testJobID},
 	})
+	suite.Nil(resp)
+	suite.Error(err)
+}
+
+// TestQueryJobsSuccess tests the success case of query jobs
+func (suite *statelessHandlerTestSuite) TestQueryJobsSuccess() {
+	pagination := &pelotonv1alphaquery.PaginationSpec{
+		Offset: 0,
+		Limit:  10,
+		OrderBy: []*pelotonv1alphaquery.OrderBy{
+			{
+				Order:    pelotonv1alphaquery.OrderBy_ORDER_BY_ASC,
+				Property: &pelotonv1alphaquery.PropertyPath{Value: "creation_time"},
+			},
+		},
+		MaxLimit: 100,
+	}
+	labels := []*v1alphapeloton.Label{{Key: "k1", Value: "v1"}}
+	keywords := []string{"key1", "key2"}
+	jobstates := []stateless.JobState{stateless.JobState_JOB_STATE_RUNNING}
+	respoolPath := &pelotonv1alpharespool.ResourcePoolPath{
+		Value: "/testPath",
+	}
+	owner := "owner1"
+	name := "test"
+	respoolID := &peloton.ResourcePoolID{Value: "321d565e-28da-457d-8434-f6bb7faa0e95"}
+	updateID := &peloton.UpdateID{Value: "322e122e-28da-457d-8434-f6bb7faa0e95"}
+	jobSummary := &pbjob.JobSummary{
+		Name:  name,
+		Owner: owner,
+		Runtime: &pbjob.RuntimeInfo{
+			State:    pbjob.JobState_RUNNING,
+			UpdateID: updateID,
+		},
+		Labels: []*peloton.Label{{
+			Key:   labels[0].GetKey(),
+			Value: labels[0].GetValue(),
+		}},
+	}
+	timestamp, err := ptypes.TimestampProto(time.Now())
+	suite.NoError(err)
+	spec := &stateless.QuerySpec{
+		Pagination: pagination,
+		Labels:     labels,
+		Keywords:   keywords,
+		JobStates:  jobstates,
+		Respool:    respoolPath,
+		Owner:      owner,
+		Name:       name,
+		CreationTimeRange: &v1alphapeloton.TimeRange{
+			Max: timestamp,
+		},
+		CompletionTimeRange: &v1alphapeloton.TimeRange{
+			Max: timestamp,
+		},
+	}
+	totalResult := uint32(1)
+
+	suite.respoolClient.EXPECT().
+		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+			Path: &respool.ResourcePoolPath{Value: respoolPath.GetValue()},
+		}).
+		Return(&respool.LookupResponse{Id: respoolID}, nil)
+
+	suite.jobStore.EXPECT().
+		QueryJobs(gomock.Any(), respoolID, gomock.Any(), true).
+		Return(nil, []*pbjob.JobSummary{jobSummary}, totalResult, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), updateID).
+		Return(&models.UpdateModel{
+			Type:                 models.WorkflowType_UPDATE,
+			State:                pbupdate.State_ROLLING_FORWARD,
+			InstancesTotal:       10,
+			InstancesDone:        1,
+			InstancesFailed:      6,
+			InstancesCurrent:     []uint32{0, 1, 2},
+			PrevJobConfigVersion: 1,
+			JobConfigVersion:     2,
+		}, nil)
+
+	resp, err := suite.handler.QueryJobs(
+		context.Background(),
+		&statelesssvc.QueryJobsRequest{
+			Spec: spec,
+		},
+	)
+	suite.NotNil(resp)
+	suite.Equal(resp.GetPagination(), &pelotonv1alphaquery.Pagination{
+		Offset: pagination.GetOffset(),
+		Limit:  pagination.GetLimit(),
+		Total:  totalResult,
+	})
+	suite.Equal(resp.GetSpec(), spec)
+	suite.Equal(resp.GetRecords()[0].GetOwner(), jobSummary.GetOwner())
+	suite.Equal(resp.GetRecords()[0].GetOwningTeam(), jobSummary.GetOwningTeam())
+	suite.Equal(
+		resp.GetRecords()[0].GetLabels()[0].GetKey(),
+		jobSummary.GetLabels()[0].GetKey(),
+	)
+	suite.Equal(
+		resp.GetRecords()[0].GetLabels()[0].GetValue(),
+		jobSummary.GetLabels()[0].GetValue(),
+	)
+	suite.Equal(
+		resp.GetRecords()[0].GetStatus().GetState(),
+		stateless.JobState_JOB_STATE_RUNNING,
+	)
+	suite.Equal(
+		resp.GetRecords()[0].GetStatus().GetWorkflowStatus().GetState(),
+		stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+	)
+	suite.NoError(err)
+}
+
+// TestQueryJobsGetRespoolIDFail tests the failure case of query jobs
+// due to get respool id
+func (suite *statelessHandlerTestSuite) TestQueryJobsGetRespoolIdFail() {
+	pagination := &pelotonv1alphaquery.PaginationSpec{
+		Offset: 0,
+		Limit:  10,
+		OrderBy: []*pelotonv1alphaquery.OrderBy{
+			{
+				Order:    pelotonv1alphaquery.OrderBy_ORDER_BY_ASC,
+				Property: &pelotonv1alphaquery.PropertyPath{Value: "creation_time"},
+			},
+		},
+		MaxLimit: 100,
+	}
+	labels := []*v1alphapeloton.Label{{Key: "k1", Value: "v1"}}
+	keywords := []string{"key1", "key2"}
+	jobstates := []stateless.JobState{stateless.JobState_JOB_STATE_RUNNING}
+	respoolPath := &pelotonv1alpharespool.ResourcePoolPath{
+		Value: "/testPath",
+	}
+	owner := "owner1"
+	name := "test"
+	timestamp, err := ptypes.TimestampProto(time.Now())
+	suite.NoError(err)
+	spec := &stateless.QuerySpec{
+		Pagination: pagination,
+		Labels:     labels,
+		Keywords:   keywords,
+		JobStates:  jobstates,
+		Respool:    respoolPath,
+		Owner:      owner,
+		Name:       name,
+		CreationTimeRange: &v1alphapeloton.TimeRange{
+			Max: timestamp,
+		},
+		CompletionTimeRange: &v1alphapeloton.TimeRange{
+			Max: timestamp,
+		},
+	}
+
+	suite.respoolClient.EXPECT().
+		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+			Path: &respool.ResourcePoolPath{Value: respoolPath.GetValue()},
+		}).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	resp, err := suite.handler.QueryJobs(
+		context.Background(),
+		&statelesssvc.QueryJobsRequest{
+			Spec: spec,
+		},
+	)
 	suite.Nil(resp)
 	suite.Error(err)
 }
