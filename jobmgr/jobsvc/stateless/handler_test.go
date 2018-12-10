@@ -794,6 +794,7 @@ func (suite *statelessHandlerTestSuite) TestReplaceJobSuccess() {
 	configVersion := uint64(1)
 	workflowVersion := uint64(1)
 	batchSize := uint32(1)
+	opaque := "test"
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
@@ -853,6 +854,7 @@ func (suite *statelessHandlerTestSuite) TestReplaceJobSuccess() {
 			UpdateSpec: &stateless.UpdateSpec{
 				BatchSize: batchSize,
 			},
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		},
 	)
 	suite.NoError(err)
@@ -1148,13 +1150,14 @@ func (suite *statelessHandlerTestSuite) TestGetReplaceJobDiffGetConfigError() {
 func (suite *statelessHandlerTestSuite) TestResumeJobWorkflowSuccess() {
 	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
 	newEntityVersion := &v1alphapeloton.EntityVersion{Value: "1-2"}
+	opaque := "test"
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		ResumeWorkflow(gomock.Any(), entityVersion).
+		ResumeWorkflow(gomock.Any(), entityVersion, gomock.Any()).
 		Return(&peloton.UpdateID{Value: testUpdateID}, newEntityVersion, nil)
 
 	suite.cachedJob.EXPECT().
@@ -1166,8 +1169,9 @@ func (suite *statelessHandlerTestSuite) TestResumeJobWorkflowSuccess() {
 
 	resp, err := suite.handler.ResumeJobWorkflow(context.Background(),
 		&statelesssvc.ResumeJobWorkflowRequest{
-			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: entityVersion,
+			JobId:      &v1alphapeloton.JobID{Value: testJobID},
+			Version:    entityVersion,
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		})
 	suite.NoError(err)
 	suite.Equal(resp.GetVersion(), newEntityVersion)
@@ -1183,7 +1187,7 @@ func (suite *statelessHandlerTestSuite) TestResumeJobWorkflowResumeWorkflowFailu
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		ResumeWorkflow(gomock.Any(), entityVersion).
+		ResumeWorkflow(gomock.Any(), entityVersion, gomock.Any()).
 		Return(nil, nil, yarpcerrors.InternalErrorf("test error"))
 
 	resp, err := suite.handler.ResumeJobWorkflow(context.Background(),
@@ -1199,13 +1203,14 @@ func (suite *statelessHandlerTestSuite) TestResumeJobWorkflowResumeWorkflowFailu
 func (suite *statelessHandlerTestSuite) TestAbortJobWorkflowSuccess() {
 	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
 	newEntityVersion := &v1alphapeloton.EntityVersion{Value: "1-2"}
+	opaque := "test"
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		AbortWorkflow(gomock.Any(), entityVersion).
+		AbortWorkflow(gomock.Any(), entityVersion, gomock.Any()).
 		Return(&peloton.UpdateID{Value: testUpdateID}, newEntityVersion, nil)
 
 	suite.cachedJob.EXPECT().
@@ -1217,8 +1222,9 @@ func (suite *statelessHandlerTestSuite) TestAbortJobWorkflowSuccess() {
 
 	resp, err := suite.handler.AbortJobWorkflow(context.Background(),
 		&statelesssvc.AbortJobWorkflowRequest{
-			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: entityVersion,
+			JobId:      &v1alphapeloton.JobID{Value: testJobID},
+			Version:    entityVersion,
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		})
 	suite.NoError(err)
 	suite.Equal(resp.GetVersion(), newEntityVersion)
@@ -1234,7 +1240,7 @@ func (suite *statelessHandlerTestSuite) TestAbortJobWorkflowAbortWorkflowFailure
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		AbortWorkflow(gomock.Any(), entityVersion).
+		AbortWorkflow(gomock.Any(), entityVersion, gomock.Any()).
 		Return(nil, nil, yarpcerrors.InternalErrorf("test error"))
 
 	resp, err := suite.handler.AbortJobWorkflow(context.Background(),
@@ -1250,13 +1256,14 @@ func (suite *statelessHandlerTestSuite) TestAbortJobWorkflowAbortWorkflowFailure
 func (suite *statelessHandlerTestSuite) TestPauseJobWorkflowSuccess() {
 	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
 	newEntityVersion := &v1alphapeloton.EntityVersion{Value: "1-2"}
+	opaque := "test"
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		PauseWorkflow(gomock.Any(), entityVersion).
+		PauseWorkflow(gomock.Any(), entityVersion, gomock.Any()).
 		Return(&peloton.UpdateID{Value: testUpdateID}, newEntityVersion, nil)
 
 	suite.cachedJob.EXPECT().
@@ -1268,8 +1275,9 @@ func (suite *statelessHandlerTestSuite) TestPauseJobWorkflowSuccess() {
 
 	resp, err := suite.handler.PauseJobWorkflow(context.Background(),
 		&statelesssvc.PauseJobWorkflowRequest{
-			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: entityVersion,
+			JobId:      &v1alphapeloton.JobID{Value: testJobID},
+			Version:    entityVersion,
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		})
 	suite.NoError(err)
 	suite.Equal(resp.GetVersion(), newEntityVersion)
@@ -1313,7 +1321,7 @@ func (suite *statelessHandlerTestSuite) TestPauseJobWorkflowPauseWorkflowFailure
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		PauseWorkflow(gomock.Any(), entityVersion).
+		PauseWorkflow(gomock.Any(), entityVersion, gomock.Any()).
 		Return(nil, nil, yarpcerrors.InternalErrorf("test error"))
 
 	resp, err := suite.handler.PauseJobWorkflow(context.Background(),

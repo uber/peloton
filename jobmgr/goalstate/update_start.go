@@ -34,7 +34,7 @@ func fetchWorkflowAndJobFromCache(
 				"update_id": updateID.GetValue(),
 			}).Info("job has been deleted, so canceling the update as well")
 		cachedJob = goalStateDriver.jobFactory.AddJob(jobID)
-		err = cachedJob.AddWorkflow(updateID).Cancel(ctx)
+		err = cachedJob.AddWorkflow(updateID).Cancel(ctx, nil)
 		if err == nil {
 			goalStateDriver.EnqueueUpdate(jobID, updateID, time.Now())
 		}

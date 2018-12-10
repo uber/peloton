@@ -148,6 +148,7 @@ type UpdateRecord struct {
 	PrevJobConfigVersion int64             `cql:"job_config_prev_version"`
 	CreationTime         time.Time         `cql:"creation_time"`
 	UpdateTime           time.Time         `cql:"update_time"`
+	OpaqueData           string            `cql:"opaque_data"`
 }
 
 // GetUpdateConfig unmarshals and returns the configuration of the job update.

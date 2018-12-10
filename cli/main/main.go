@@ -184,16 +184,22 @@ var (
 	workflowPauseName          = workflowPause.Arg("job", "job identifier").Required().String()
 	workflowPauseEntityVersion = workflowPause.Arg("entityVersion",
 		"entity version for concurrency control").Required().String()
+	workflowPauseOpaqueData = workflowPause.Flag("opaque-data",
+		"opaque data provided by the user").Default("").String()
 
 	workflowResume              = workflow.Command("resume", "resume a workflow")
 	workflowResumeName          = workflowResume.Arg("job", "job identifier").Required().String()
 	workflowResumeEntityVersion = workflowResume.Arg("entityVersion",
 		"entity version for concurrency control").Required().String()
+	workflowResumeOpaqueData = workflowResume.Flag("opaque-data",
+		"opaque data provided by the user").Default("").String()
 
 	workflowAbort              = workflow.Command("abort", "abort a workflow")
 	workflowAbortName          = workflowAbort.Arg("job", "job identifier").Required().String()
 	workflowAbortEntityVersion = workflowAbort.Arg("entityVersion",
 		"entity version for concurrency control").Required().String()
+	workflowAbortOpaqueData = workflowAbort.Flag("opaque-data",
+		"opaque data provided by the user").Default("").String()
 
 	statelessQuery            = stateless.Command("query", "query stateless jobs by mesos label / respool")
 	statelessQueryLabels      = statelessQuery.Flag("labels", "labels").Default("").Short('l').String()
@@ -235,6 +241,8 @@ var (
 		"rollback an update if it fails").Default("false").Bool()
 	statelessReplaceStartPaused = statelessReplace.Flag("start-paused",
 		"start the update in a paused state").Default("false").Bool()
+	statelessReplaceOpaqueData = statelessReplace.Flag("opaque-data",
+		"opaque data provided by the user").Default("").String()
 
 	statelessListJobs = stateless.Command("list", "list all jobs")
 
@@ -427,6 +435,8 @@ var (
 		"rollback an update if it fails").Default("false").Bool()
 	updateStartInPausedState = updateCreate.Flag("start-paused",
 		"start the update in a paused state").Default("false").Bool()
+	updateCreateOpaqueData = updateCreate.Flag("opaque-data",
+		"opaque data provided by the user").Default("").String()
 
 	// command to fetch the status of a job update
 	updateGet   = update.Command("get", "get status of a job update")
@@ -441,16 +451,22 @@ var (
 	updateCacheID = updateCache.Arg("update-id", "update identifier").Required().String()
 
 	// command to abort an update
-	updateAbort   = update.Command("abort", "abort a job update")
-	updateAbortID = updateAbort.Arg("update-id", "update identifier").Required().String()
+	updateAbort           = update.Command("abort", "abort a job update")
+	updateAbortID         = updateAbort.Arg("update-id", "update identifier").Required().String()
+	updateAbortOpaqueData = updateAbort.Flag("opaque-data",
+		"opaque data provided by the user").Default("").String()
 
 	// command to pause an update
-	updatePause   = update.Command("pause", "pause a job update")
-	updatePauseID = updatePause.Arg("update-id", "update identifier").Required().String()
+	updatePause           = update.Command("pause", "pause a job update")
+	updatePauseID         = updatePause.Arg("update-id", "update identifier").Required().String()
+	updatePauseOpaqueData = updatePause.Flag("opaque-data",
+		"opaque data provided by the user").Default("").String()
 
 	// command to resume an update
-	updateResume   = update.Command("resume", "resume a job update")
-	updateResumeID = updateResume.Arg("update-id", "update identifier").Required().String()
+	updateResume           = update.Command("resume", "resume a job update")
+	updateResumeID         = updateResume.Arg("update-id", "update identifier").Required().String()
+	updateResumeOpaqueData = updateResume.Flag("opaque-data",
+		"opaque data provided by the user").Default("").String()
 
 	// Top level hostmgr command
 	hostmgr = app.Command("hostmgr", "top level command for hostmgr")
@@ -694,6 +710,7 @@ func main() {
 			*updateMaxFailureInstances,
 			*updateRollbackOnFailure,
 			*updateStartInPausedState,
+			*updateCreateOpaqueData,
 		)
 	case updateGet.FullCommand():
 		err = client.UpdateGetAction(*updateGetID)
@@ -702,11 +719,11 @@ func main() {
 	case updateCache.FullCommand():
 		err = client.UpdateGetCacheAction(*updateCacheID)
 	case updateAbort.FullCommand():
-		err = client.UpdateAbortAction(*updateAbortID)
+		err = client.UpdateAbortAction(*updateAbortID, *updateAbortOpaqueData)
 	case updatePause.FullCommand():
-		err = client.UpdatePauseAction(*updatePauseID)
+		err = client.UpdatePauseAction(*updatePauseID, *updatePauseOpaqueData)
 	case updateResume.FullCommand():
-		err = client.UpdateResumeAction(*updateResumeID)
+		err = client.UpdateResumeAction(*updateResumeID, *updateResumeOpaqueData)
 	case offers.FullCommand():
 		err = client.OffersGetAction()
 	case getHosts.FullCommand():
@@ -730,11 +747,23 @@ func main() {
 	case statelessRefresh.FullCommand():
 		err = client.StatelessRefreshAction(*statelessRefreshName)
 	case workflowPause.FullCommand():
-		err = client.StatelessWorkflowPauseAction(*workflowPauseName, *workflowPauseEntityVersion)
+		err = client.StatelessWorkflowPauseAction(
+			*workflowPauseName,
+			*workflowPauseEntityVersion,
+			*workflowPauseOpaqueData,
+		)
 	case workflowResume.FullCommand():
-		err = client.StatelessWorkflowResumeAction(*workflowResumeName, *workflowResumeEntityVersion)
+		err = client.StatelessWorkflowResumeAction(
+			*workflowResumeName,
+			*workflowResumeEntityVersion,
+			*workflowResumeOpaqueData,
+		)
 	case workflowAbort.FullCommand():
-		err = client.StatelessWorkflowAbortAction(*workflowAbortName, *workflowAbortEntityVersion)
+		err = client.StatelessWorkflowAbortAction(
+			*workflowAbortName,
+			*workflowAbortEntityVersion,
+			*workflowAbortOpaqueData,
+		)
 	case statelessQuery.FullCommand():
 		err = client.StatelessQueryAction(*statelessQueryLabels, *statelessQueryRespoolPath, *statelessQueryKeywords, *statelessQueryStates, *statelessQueryOwner, *statelessQueryName, *statelessQueryTimeRange, *statelessQueryLimit, *statelessQueryMaxLimit, *statelessQueryOffset, *statelessQuerySortBy, *statelessQuerySortOrder)
 	case statelessReplace.FullCommand():
@@ -749,6 +778,7 @@ func main() {
 			*statelessReplaceMaxTolerableInstanceFailures,
 			*statelessReplaceRollbackOnFailure,
 			*statelessReplaceStartPaused,
+			*statelessReplaceOpaqueData,
 		)
 	case statelessReplaceJobDiff.FullCommand():
 		err = client.StatelessReplaceJobDiffAction(

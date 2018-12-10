@@ -114,4 +114,7 @@ message UpdateInfo {
 
   // Job configuration version before the update
   uint64 prevConfigVersion = 6;
+
+  // Opaque metadata provided by the user
+  peloton.OpaqueData opaque_data = 7;
 }

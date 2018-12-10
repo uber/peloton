@@ -418,7 +418,7 @@ func (suite *UpdateRunTestSuite) TestUpdateFailGetJob() {
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
-		Cancel(gomock.Any()).
+		Cancel(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	suite.jobGoalStateEngine.EXPECT().

@@ -74,6 +74,9 @@ message UpdateModel {
 
   // the previous update state
   api.v0.update.State prevState = 17;
+
+  // the previous update state
+  api.v0.peloton.OpaqueData opaque_data = 18;
 }
 
 /**

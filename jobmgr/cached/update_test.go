@@ -291,15 +291,20 @@ func (suite *UpdateTestSuite) TestConsecutiveWriteProgressPrevState() {
 // TestPauseSuccess tests successfully pause an update
 func (suite *UpdateTestSuite) TestPauseSuccess() {
 	suite.update.state = pbupdate.State_ROLLING_FORWARD
+	opaque := "test"
 	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, updateModel *models.UpdateModel) {
 			suite.Equal(suite.updateID, updateModel.UpdateID)
 			suite.Equal(pbupdate.State_PAUSED, updateModel.State)
+			suite.Equal(opaque, updateModel.GetOpaqueData().GetData())
 		}).
 		Return(nil)
 
-	suite.NoError(suite.update.Pause(context.Background()))
+	suite.NoError(suite.update.Pause(
+		context.Background(),
+		&peloton.OpaqueData{Data: opaque}),
+	)
 }
 
 // TestPauseRecoverFail tests the failure case of
@@ -309,13 +314,13 @@ func (suite *UpdateTestSuite) TestPauseRecoverFail() {
 		GetUpdate(gomock.Any(), suite.updateID).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.Error(suite.update.Pause(context.Background()))
+	suite.Error(suite.update.Pause(context.Background(), nil))
 }
 
 // TestPausePausedUpdate tests pause an update already paused
 func (suite *UpdateTestSuite) TestPausePausedUpdate() {
 	suite.update.state = pbupdate.State_PAUSED
-	suite.NoError(suite.update.Pause(context.Background()))
+	suite.NoError(suite.update.Pause(context.Background(), nil))
 }
 
 // TestPauseResumeRollingForwardUpdate tests pause and resume a rolling
@@ -326,8 +331,8 @@ func (suite *UpdateTestSuite) TestPauseResumeRollingForwardUpdate() {
 		Return(nil).
 		AnyTimes()
 	suite.update.state = pbupdate.State_ROLLING_FORWARD
-	suite.NoError(suite.update.Pause(context.Background()))
-	suite.NoError(suite.update.Resume(context.Background()))
+	suite.NoError(suite.update.Pause(context.Background(), nil))
+	suite.NoError(suite.update.Resume(context.Background(), nil))
 	suite.Equal(suite.update.state, pbupdate.State_ROLLING_FORWARD)
 }
 
@@ -339,8 +344,8 @@ func (suite *UpdateTestSuite) TestPauseResumeRollingBackwardUpdate() {
 		Return(nil).
 		AnyTimes()
 	suite.update.state = pbupdate.State_ROLLING_BACKWARD
-	suite.NoError(suite.update.Pause(context.Background()))
-	suite.NoError(suite.update.Resume(context.Background()))
+	suite.NoError(suite.update.Pause(context.Background(), nil))
+	suite.NoError(suite.update.Resume(context.Background(), nil))
 	suite.Equal(suite.update.state, pbupdate.State_ROLLING_BACKWARD)
 }
 
@@ -352,8 +357,8 @@ func (suite *UpdateTestSuite) TestPauseResumeInitializedUpdate() {
 		Return(nil).
 		AnyTimes()
 	suite.update.state = pbupdate.State_INITIALIZED
-	suite.NoError(suite.update.Pause(context.Background()))
-	suite.NoError(suite.update.Resume(context.Background()))
+	suite.NoError(suite.update.Pause(context.Background(), nil))
+	suite.NoError(suite.update.Resume(context.Background(), nil))
 	suite.Equal(suite.update.state, pbupdate.State_INITIALIZED)
 }
 
@@ -364,7 +369,7 @@ func (suite *UpdateTestSuite) TestResumeRecoverFail() {
 		GetUpdate(gomock.Any(), suite.updateID).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.Error(suite.update.Resume(context.Background()))
+	suite.Error(suite.update.Resume(context.Background(), nil))
 }
 
 // TestCancelValid tests successfully canceling a job update
@@ -374,6 +379,7 @@ func (suite *UpdateTestSuite) TestCancelValid() {
 	suite.update.state = pbupdate.State_INITIALIZED
 	suite.update.instancesDone = instancesDone
 	suite.update.instancesCurrent = instancesCurrent
+	opaque := "test"
 
 	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
@@ -382,10 +388,14 @@ func (suite *UpdateTestSuite) TestCancelValid() {
 			suite.Equal(pbupdate.State_ABORTED, updateModel.State)
 			suite.Equal(uint32(len(instancesDone)), updateModel.InstancesDone)
 			suite.Equal(instancesCurrent, updateModel.InstancesCurrent)
+			suite.Equal(opaque, updateModel.GetOpaqueData().GetData())
 		}).
 		Return(nil)
 
-	err := suite.update.Cancel(context.Background())
+	err := suite.update.Cancel(
+		context.Background(),
+		&peloton.OpaqueData{Data: opaque},
+	)
 	suite.NoError(err)
 	suite.Equal(pbupdate.State_ABORTED, suite.update.state)
 }
@@ -402,7 +412,7 @@ func (suite *UpdateTestSuite) TestCancelDBError() {
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
 
-	err := suite.update.Cancel(context.Background())
+	err := suite.update.Cancel(context.Background(), nil)
 	suite.EqualError(err, "fake db error")
 	suite.Equal(pbupdate.State_INVALID, suite.update.state)
 }
@@ -414,14 +424,14 @@ func (suite *UpdateTestSuite) TestCancelRecoverFail() {
 		GetUpdate(gomock.Any(), suite.updateID).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.Error(suite.update.Cancel(context.Background()))
+	suite.Error(suite.update.Cancel(context.Background(), nil))
 }
 
 // TestCancelTerminatedUpdate tests canceling a terminated update
 func (suite *UpdateTestSuite) TestCancelTerminatedUpdate() {
 	suite.update.state = pbupdate.State_SUCCEEDED
 
-	err := suite.update.Cancel(context.Background())
+	err := suite.update.Cancel(context.Background(), nil)
 	suite.NoError(err)
 }
 
@@ -1370,6 +1380,7 @@ func (suite *UpdateTestSuite) TestUpdateCreateSuccess() {
 	var instancesAdded []uint32
 	var instnacesRemoved []uint32
 	instancesUpdated := []uint32{0, 1, 2}
+	opaque := "test"
 
 	workflowType := models.WorkflowType_START
 	updateConfig := &pbupdate.UpdateConfig{
@@ -1397,6 +1408,7 @@ func (suite *UpdateTestSuite) TestUpdateCreateSuccess() {
 			suite.Equal(updateInfo.GetInstancesRemoved(), instnacesRemoved)
 			suite.Equal(updateInfo.GetType(), workflowType)
 			suite.Equal(updateInfo.GetUpdateConfig(), updateConfig)
+			suite.Equal(updateInfo.GetOpaqueData().GetData(), opaque)
 		}).
 		Return(nil)
 
@@ -1411,6 +1423,7 @@ func (suite *UpdateTestSuite) TestUpdateCreateSuccess() {
 		instnacesRemoved,
 		workflowType,
 		updateConfig,
+		&peloton.OpaqueData{Data: opaque},
 	))
 }
 
@@ -1461,6 +1474,7 @@ func (suite *UpdateTestSuite) TestUpdateCreatePausedSuccess() {
 		instnacesRemoved,
 		workflowType,
 		updateConfig,
+		nil,
 	))
 }
 

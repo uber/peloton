@@ -2938,6 +2938,7 @@ func (s *Store) CreateUpdate(
 			"job_id",
 			"job_config_version",
 			"job_config_prev_version",
+			"opaque_data",
 			"creation_time").
 		Values(
 			updateInfo.GetUpdateID().GetValue(),
@@ -2955,6 +2956,7 @@ func (s *Store) CreateUpdate(
 			updateInfo.GetJobID().GetValue(),
 			updateInfo.GetJobConfigVersion(),
 			updateInfo.GetPrevJobConfigVersion(),
+			updateInfo.GetOpaqueData().GetData(),
 			time.Now()).
 		IfNotExist()
 
@@ -3126,6 +3128,7 @@ func (s *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
 			InstancesCurrent:     record.GetProcessingInstances(),
 			CreationTime:         record.CreationTime.Format(time.RFC3339Nano),
 			UpdateTime:           record.UpdateTime.Format(time.RFC3339Nano),
+			OpaqueData:           &peloton.OpaqueData{Data: record.OpaqueData},
 		}
 		s.metrics.UpdateMetrics.UpdateGet.Inc(1)
 		return updateInfo, nil
@@ -3198,8 +3201,13 @@ func (s *Store) WriteUpdateProgress(
 		Set("instances_done", updateInfo.GetInstancesDone()).
 		Set("instances_failed", updateInfo.GetInstancesFailed()).
 		Set("instances_current", updateInfo.GetInstancesCurrent()).
-		Set("update_time", time.Now().UTC()).
-		Where(qb.Eq{"update_id": updateInfo.GetUpdateID().GetValue()})
+		Set("update_time", time.Now().UTC())
+
+	if updateInfo.GetOpaqueData() != nil {
+		stmt = stmt.Set("opaque_data", updateInfo.GetOpaqueData().GetData())
+	}
+
+	stmt = stmt.Where(qb.Eq{"update_id": updateInfo.GetUpdateID().GetValue()})
 
 	if err := s.applyStatement(
 		ctx,

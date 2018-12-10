@@ -143,7 +143,7 @@ func (suite *UpdateActionsTestSuite) TestUpdateCheckIfAbortedUpdateAbort() {
 		Return(jobRuntime, nil)
 
 	suite.cachedUpdate.EXPECT().
-		Cancel(gomock.Any()).
+		Cancel(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	err := UpdateAbortIfNeeded(context.Background(), suite.updateEnt)
@@ -172,7 +172,7 @@ func (suite *UpdateActionsTestSuite) TestUpdateCheckIfAbortedUpdateAbortFail() {
 		Return(jobRuntime, nil)
 
 	suite.cachedUpdate.EXPECT().
-		Cancel(gomock.Any()).
+		Cancel(gomock.Any(), gomock.Any()).
 		Return(yarpcerrors.InternalErrorf("test error"))
 
 	suite.Error(UpdateAbortIfNeeded(context.Background(), suite.updateEnt))

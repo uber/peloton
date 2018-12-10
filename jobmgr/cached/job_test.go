@@ -1821,6 +1821,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowSuccess() {
 	var instancesAdded []uint32
 	var instnacesRemoved []uint32
 	instancesUpdated := []uint32{0, 1, 2}
+	opaque := "test"
 
 	workflowType := models.WorkflowType_START
 	updateConfig := &pbupdate.UpdateConfig{
@@ -1865,6 +1866,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowSuccess() {
 				suite.Equal(updateInfo.GetInstancesRemoved(), instnacesRemoved)
 				suite.Equal(updateInfo.GetType(), workflowType)
 				suite.Equal(updateInfo.GetUpdateConfig(), updateConfig)
+				suite.Equal(updateInfo.GetOpaqueData().GetData(), opaque)
 			}).
 			Return(nil),
 
@@ -1888,6 +1890,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowSuccess() {
 			instancesUpdated,
 			instnacesRemoved,
 		),
+		WithOpaqueData(&peloton.OpaqueData{Data: opaque}),
 	)
 
 	suite.NotNil(updateID)
@@ -2122,6 +2125,7 @@ func (suite *JobTestSuite) TestResumeWorkflowSuccess() {
 	oldConfigVersion := suite.job.runtime.GetConfigurationVersion()
 	oldWorkflowVersion := suite.job.runtime.GetWorkflowVersion()
 	entityVersion := jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion)
+	opaque := "test"
 
 	updateID := &peloton.UpdateID{Value: testUpdateID}
 	suite.job.runtime.UpdateID = updateID
@@ -2143,11 +2147,17 @@ func (suite *JobTestSuite) TestResumeWorkflowSuccess() {
 			WriteUpdateProgress(gomock.Any(), gomock.Any()).
 			Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
 				suite.Equal(updateInfo.GetState(), pbupdate.State_ROLLING_FORWARD)
+				suite.Equal(updateInfo.GetOpaqueData().GetData(), opaque)
 			}).
 			Return(nil),
 	)
 
-	updateIDResult, newEntityVersion, err := suite.job.ResumeWorkflow(context.Background(), entityVersion)
+	updateIDResult, newEntityVersion, err := suite.job.ResumeWorkflow(
+		context.Background(),
+		entityVersion,
+		WithOpaqueData(&peloton.OpaqueData{Data: opaque}),
+	)
+
 	suite.NoError(err)
 	suite.Equal(
 		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
@@ -2190,7 +2200,8 @@ func (suite *JobTestSuite) TestResumeWorkflowWrongEntityVersionFailure() {
 		jobutil.GetJobEntityVersion(
 			suite.job.runtime.GetConfigurationVersion()+1,
 			suite.job.runtime.GetWorkflowVersion(),
-		))
+		),
+	)
 	suite.Error(err)
 	suite.Nil(newEntityVersion)
 	suite.Nil(updateID)
@@ -2256,6 +2267,7 @@ func (suite *JobTestSuite) TestPauseWorkflowSuccess() {
 	oldConfigVersion := suite.job.runtime.GetConfigurationVersion()
 	oldWorkflowVersion := suite.job.runtime.GetWorkflowVersion()
 	entityVersion := jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion)
+	opaque := "test"
 
 	updateID := &peloton.UpdateID{Value: testUpdateID}
 	suite.job.runtime.UpdateID = updateID
@@ -2276,11 +2288,16 @@ func (suite *JobTestSuite) TestPauseWorkflowSuccess() {
 			WriteUpdateProgress(gomock.Any(), gomock.Any()).
 			Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
 				suite.Equal(updateInfo.GetState(), pbupdate.State_PAUSED)
+				suite.Equal(updateInfo.GetOpaqueData().GetData(), opaque)
 			}).
 			Return(nil),
 	)
 
-	updateIDResult, newEntityVersion, err := suite.job.PauseWorkflow(context.Background(), entityVersion)
+	updateIDResult, newEntityVersion, err := suite.job.PauseWorkflow(
+		context.Background(),
+		entityVersion,
+		WithOpaqueData(&peloton.OpaqueData{Data: opaque}),
+	)
 	suite.NoError(err)
 	suite.Equal(
 		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
@@ -2322,7 +2339,8 @@ func (suite *JobTestSuite) TestPauseWorkflowWrongEntityVersionFailure() {
 		jobutil.GetJobEntityVersion(
 			suite.job.runtime.GetConfigurationVersion()+1,
 			suite.job.runtime.GetWorkflowVersion(),
-		))
+		),
+	)
 	suite.Error(err)
 	suite.Nil(newEntityVersion)
 	suite.Nil(updateID)
@@ -2387,6 +2405,7 @@ func (suite *JobTestSuite) TestAbortWorkflowSuccess() {
 	oldConfigVersion := suite.job.runtime.GetConfigurationVersion()
 	oldWorkflowVersion := suite.job.runtime.GetWorkflowVersion()
 	entityVersion := jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion)
+	opaque := "test"
 
 	updateID := &peloton.UpdateID{Value: testUpdateID}
 	suite.job.runtime.UpdateID = updateID
@@ -2407,11 +2426,16 @@ func (suite *JobTestSuite) TestAbortWorkflowSuccess() {
 			WriteUpdateProgress(gomock.Any(), gomock.Any()).
 			Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
 				suite.Equal(updateInfo.GetState(), pbupdate.State_ABORTED)
+				suite.Equal(updateInfo.GetOpaqueData().GetData(), opaque)
 			}).
 			Return(nil),
 	)
 
-	updateIDResult, newEntityVersion, err := suite.job.AbortWorkflow(context.Background(), entityVersion)
+	updateIDResult, newEntityVersion, err := suite.job.AbortWorkflow(
+		context.Background(),
+		entityVersion,
+		WithOpaqueData(&peloton.OpaqueData{Data: opaque}),
+	)
 	suite.NoError(err)
 	suite.Equal(
 		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
@@ -2436,7 +2460,8 @@ func (suite *JobTestSuite) TestAbortWorkflowWrongEntityVersionFailure() {
 		jobutil.GetJobEntityVersion(
 			suite.job.runtime.GetConfigurationVersion()+1,
 			suite.job.runtime.GetWorkflowVersion(),
-		))
+		),
+	)
 	suite.Error(err)
 	suite.Nil(newEntityVersion)
 	suite.Nil(updateID)

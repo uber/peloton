@@ -161,6 +161,7 @@ func (h *serviceHandler) CreateUpdate(
 			jobRuntime.GetConfigurationVersion(),
 			jobRuntime.GetWorkflowVersion()),
 		cached.WithConfig(jobConfig, prevJobConfig, configAddOn),
+		cached.WithOpaqueData(req.GetOpaqueData()),
 	)
 	if err != nil {
 		// In case of error, since it is not clear if job runtime was
@@ -228,6 +229,7 @@ func (h *serviceHandler) GetUpdate(ctx context.Context, req *svc.GetUpdateReques
 		JobId:             updateModel.GetJobID(),
 		ConfigVersion:     updateModel.GetJobConfigVersion(),
 		PrevConfigVersion: updateModel.GetPrevJobConfigVersion(),
+		OpaqueData:        updateModel.GetOpaqueData(),
 		Status: &update.UpdateStatus{
 			NumTasksDone: updateModel.GetInstancesDone(),
 			NumTasksRemaining: updateModel.GetInstancesTotal() -
@@ -297,6 +299,7 @@ func (h *serviceHandler) PauseUpdate(
 		jobutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),
 			runtime.GetWorkflowVersion()),
+		cached.WithOpaqueData(req.GetOpaqueData()),
 	); err != nil {
 		// In case of error, since it is not clear if job runtime was
 		// updated or not, enqueue the update to the goal state.
@@ -335,6 +338,7 @@ func (h *serviceHandler) ResumeUpdate(
 		jobutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),
 			runtime.GetWorkflowVersion()),
+		cached.WithOpaqueData(req.GetOpaqueData()),
 	); err != nil {
 		// In case of error, since it is not clear if job runtime was
 		// updated or not, enqueue the update to the goal state.
@@ -417,6 +421,7 @@ func (h *serviceHandler) AbortUpdate(ctx context.Context,
 		jobutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),
 			runtime.GetWorkflowVersion()),
+		cached.WithOpaqueData(req.GetOpaqueData()),
 	); err != nil {
 		h.metrics.UpdateAbortFail.Inc(1)
 	} else {

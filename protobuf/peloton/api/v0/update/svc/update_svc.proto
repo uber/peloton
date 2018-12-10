@@ -59,6 +59,9 @@ message CreateUpdateRequest {
 
   // The options of the update.
   update.UpdateConfig updateConfig = 3;
+
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 4;
 }
 
 /**
@@ -116,6 +119,9 @@ message ListUpdatesResponse {
 message PauseUpdateRequest {
   // Identifier of the update to be paused.
   peloton.UpdateID updateId = 1;
+
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 2;
 }
 
 /**
@@ -133,6 +139,9 @@ message PauseUpdateResponse {
 message ResumeUpdateRequest {
   // Identifier of the update to be resumed.
   peloton.UpdateID updateId = 1;
+
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 2;
 }
 
 /**
@@ -168,6 +177,9 @@ message AbortUpdateRequest {
   // Identifier of the update to be aborted.
   peloton.UpdateID updateId = 1;
   bool softAbort = 2;
+
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 3;
 }
 
 /**

@@ -50,7 +50,8 @@ func (c *Client) UpdateCreateAction(
 	maxInstanceAttempts uint32,
 	maxFailureInstances uint32,
 	updateRollbackOnFailure bool,
-	updateStartInPausedState bool) error {
+	updateStartInPausedState bool,
+	opaqueData string) error {
 	var jobConfig job.JobConfig
 	var response *updatesvc.CreateUpdateResponse
 
@@ -126,6 +127,11 @@ func (c *Client) UpdateCreateAction(
 			Version: jobRuntime.GetConfigurationVersion(),
 		}
 
+		var opaque *peloton.OpaqueData
+		if len(opaqueData) > 0 {
+			opaque = &peloton.OpaqueData{Data: opaqueData}
+		}
+
 		var request = &updatesvc.CreateUpdateRequest{
 			JobId: &peloton.JobID{
 				Value: jobID,
@@ -138,6 +144,7 @@ func (c *Client) UpdateCreateAction(
 				RollbackOnFailure:   updateRollbackOnFailure,
 				StartPaused:         updateStartInPausedState,
 			},
+			OpaqueData: opaque,
 		}
 
 		response, err = c.updateClient.CreateUpdate(c.ctx, request)
@@ -208,11 +215,17 @@ func (c *Client) UpdateGetCacheAction(updateID string) error {
 }
 
 // UpdateAbortAction aborts a given update
-func (c *Client) UpdateAbortAction(updateID string) error {
+func (c *Client) UpdateAbortAction(updateID string, opaqueData string) error {
+	var opaque *peloton.OpaqueData
+	if len(opaqueData) > 0 {
+		opaque = &peloton.OpaqueData{Data: opaqueData}
+	}
+
 	var request = &updatesvc.AbortUpdateRequest{
 		UpdateId: &peloton.UpdateID{
 			Value: updateID,
 		},
+		OpaqueData: opaque,
 	}
 
 	_, err := c.updateClient.AbortUpdate(c.ctx, request)
@@ -223,11 +236,17 @@ func (c *Client) UpdateAbortAction(updateID string) error {
 }
 
 // UpdateResumeAction resumes a given update
-func (c *Client) UpdateResumeAction(updateID string) error {
+func (c *Client) UpdateResumeAction(updateID string, opaqueData string) error {
+	var opaque *peloton.OpaqueData
+	if len(opaqueData) > 0 {
+		opaque = &peloton.OpaqueData{Data: opaqueData}
+	}
+
 	var request = &updatesvc.ResumeUpdateRequest{
 		UpdateId: &peloton.UpdateID{
 			Value: updateID,
 		},
+		OpaqueData: opaque,
 	}
 
 	_, err := c.updateClient.ResumeUpdate(c.ctx, request)
@@ -238,11 +257,17 @@ func (c *Client) UpdateResumeAction(updateID string) error {
 }
 
 // UpdatePauseAction pauses a given update
-func (c *Client) UpdatePauseAction(updateID string) error {
+func (c *Client) UpdatePauseAction(updateID string, opaqueData string) error {
+	var opaque *peloton.OpaqueData
+	if len(opaqueData) > 0 {
+		opaque = &peloton.OpaqueData{Data: opaqueData}
+	}
+
 	var request = &updatesvc.PauseUpdateRequest{
 		UpdateId: &peloton.UpdateID{
 			Value: updateID,
 		},
+		OpaqueData: opaque,
 	}
 
 	_, err := c.updateClient.PauseUpdate(c.ctx, request)

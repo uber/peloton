@@ -146,6 +146,13 @@ func (h *serviceHandler) ReplaceJob(
 		SystemLabels: jobutil.ConstructSystemLabels(jobConfig, respoolPath),
 	}
 
+	opaque := cached.WithOpaqueData(nil)
+	if req.GetOpaqueData() != nil {
+		opaque = cached.WithOpaqueData(&peloton.OpaqueData{
+			Data: req.GetOpaqueData().GetData(),
+		})
+	}
+
 	// if change log is set, CreateWorkflow would use the version inside
 	// to do concurrency control.
 	// However, for replace job, concurrency control is done by entity version.
@@ -158,6 +165,7 @@ func (h *serviceHandler) ReplaceJob(
 		handlerutil.ConvertUpdateSpecToUpdateConfig(req.GetUpdateSpec()),
 		req.GetVersion(),
 		cached.WithConfig(jobConfig, prevJobConfig, configAddOn),
+		opaque,
 	)
 
 	// In case of error, since it is not clear if job runtime was
@@ -208,7 +216,18 @@ func (h *serviceHandler) PauseJobWorkflow(
 	}()
 
 	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: req.GetJobId().GetValue()})
-	updateID, newEntityVersion, err := cachedJob.PauseWorkflow(ctx, req.GetVersion())
+	opaque := cached.WithOpaqueData(nil)
+	if req.GetOpaqueData() != nil {
+		opaque = cached.WithOpaqueData(&peloton.OpaqueData{
+			Data: req.GetOpaqueData().GetData(),
+		})
+	}
+
+	updateID, newEntityVersion, err := cachedJob.PauseWorkflow(
+		ctx,
+		req.GetVersion(),
+		opaque,
+	)
 
 	if len(updateID.GetValue()) > 0 {
 		h.goalStateDriver.EnqueueUpdate(cachedJob.ID(), updateID, time.Now())
@@ -239,7 +258,18 @@ func (h *serviceHandler) ResumeJobWorkflow(
 	}()
 
 	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: req.GetJobId().GetValue()})
-	updateID, newEntityVersion, err := cachedJob.ResumeWorkflow(ctx, req.GetVersion())
+	opaque := cached.WithOpaqueData(nil)
+	if req.GetOpaqueData() != nil {
+		opaque = cached.WithOpaqueData(&peloton.OpaqueData{
+			Data: req.GetOpaqueData().GetData(),
+		})
+	}
+
+	updateID, newEntityVersion, err := cachedJob.ResumeWorkflow(
+		ctx,
+		req.GetVersion(),
+		opaque,
+	)
 
 	if len(updateID.GetValue()) > 0 {
 		h.goalStateDriver.EnqueueUpdate(cachedJob.ID(), updateID, time.Now())
@@ -270,7 +300,18 @@ func (h *serviceHandler) AbortJobWorkflow(
 	}()
 
 	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: req.GetJobId().GetValue()})
-	updateID, newEntityVersion, err := cachedJob.AbortWorkflow(ctx, req.GetVersion())
+	opaque := cached.WithOpaqueData(nil)
+	if req.GetOpaqueData() != nil {
+		opaque = cached.WithOpaqueData(&peloton.OpaqueData{
+			Data: req.GetOpaqueData().GetData(),
+		})
+	}
+
+	updateID, newEntityVersion, err := cachedJob.AbortWorkflow(
+		ctx,
+		req.GetVersion(),
+		opaque,
+	)
 
 	if len(updateID.GetValue()) > 0 {
 		h.goalStateDriver.EnqueueUpdate(cachedJob.ID(), updateID, time.Now())

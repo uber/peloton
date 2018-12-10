@@ -51,6 +51,12 @@ message EntityVersion {
   string value = 1;
 }
 
+// Opaque data passed to Peloton from the client.
+// Passing an empty string in the structure will unset the existing data.
+message OpaqueData {
+  string data = 1;
+}
+
 // Revision of an entity info, such as JobSpec etc.
 message Revision {
   // Version number of the entity info which is monotonically increasing.

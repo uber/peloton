@@ -340,6 +340,10 @@ func ConvertUpdateModelToWorkflowInfo(
 		result.RestartBatchSize = updateInfo.GetUpdateConfig().GetBatchSize()
 		// TODO store and implement the restart ranges provided in the configuration
 	}
+
+	result.OpaqueData = &v1alphapeloton.OpaqueData{
+		Data: updateInfo.GetOpaqueData().GetData(),
+	}
 	return result
 }
 

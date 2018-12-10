@@ -345,8 +345,8 @@ message WorkflowInfo {
   // Instance ranges provided for restart workflow
   repeated pod.InstanceIDRange restart_ranges = 4;
 
-  // Metadata information supplied by the client
-  string metadata = 6;
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 6;
 }
 
 message WorkflowEvent {

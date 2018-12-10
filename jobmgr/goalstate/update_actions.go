@@ -44,7 +44,7 @@ func UpdateAbortIfNeeded(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	if err := cachedWorkflow.Cancel(ctx); err != nil {
+	if err := cachedWorkflow.Cancel(ctx, nil); err != nil {
 		return err
 	}
 

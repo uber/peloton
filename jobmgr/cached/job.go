@@ -173,18 +173,21 @@ type WorkflowOps interface {
 	PauseWorkflow(
 		ctx context.Context,
 		entityVersion *v1alphapeloton.EntityVersion,
+		option ...Option,
 	) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error)
 
 	// ResumeWorkflow resumes the current workflow, if any
 	ResumeWorkflow(
 		ctx context.Context,
 		entityVersion *v1alphapeloton.EntityVersion,
+		option ...Option,
 	) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error)
 
 	// AbortWorkflow aborts the current workflow, if any
 	AbortWorkflow(
 		ctx context.Context,
 		entityVersion *v1alphapeloton.EntityVersion,
+		option ...Option,
 	) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error)
 
 	// RollbackWorkflow rollbacks the current workflow, if any
@@ -1183,6 +1186,7 @@ type workflowOpts struct {
 	instanceAdded   []uint32
 	instanceUpdated []uint32
 	instanceRemoved []uint32
+	opaqueData      *peloton.OpaqueData
 }
 
 // WithConfig defines the original
@@ -1217,6 +1221,14 @@ func WithInstanceToProcess(
 	}
 }
 
+// WithOpaqueData defines the opaque data provided by the
+// user to be stored with the update
+func WithOpaqueData(opaqueData *peloton.OpaqueData) Option {
+	return &opaqueDataOpt{
+		opaqueData: opaqueData,
+	}
+}
+
 type configOpt struct {
 	jobConfig     *pbjob.JobConfig
 	prevJobConfig *pbjob.JobConfig
@@ -1239,6 +1251,14 @@ func (o *instanceToProcessOpt) apply(opts *workflowOpts) {
 	opts.instanceAdded = o.instancesAdded
 	opts.instanceUpdated = o.instancesUpdated
 	opts.instanceRemoved = o.instancesRemoved
+}
+
+type opaqueDataOpt struct {
+	opaqueData *peloton.OpaqueData
+}
+
+func (o *opaqueDataOpt) apply(opts *workflowOpts) {
+	opts.opaqueData = o.opaqueData
 }
 
 func (j *job) CreateWorkflow(
@@ -1279,6 +1299,7 @@ func (j *job) CreateWorkflow(
 		opts.instanceRemoved,
 		workflowType,
 		updateConfig,
+		opts.opaqueData,
 	); err != nil {
 		// Directly return without invalidating job config cache.
 		// When reading job config later, it would check if
@@ -1327,6 +1348,7 @@ func (j *job) CreateWorkflow(
 func (j *job) PauseWorkflow(
 	ctx context.Context,
 	entityVersion *v1alphapeloton.EntityVersion,
+	options ...Option,
 ) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error) {
 	j.Lock()
 	defer j.Unlock()
@@ -1337,6 +1359,11 @@ func (j *job) PauseWorkflow(
 	}
 	if currentWorkflow == nil {
 		return nil, nil, yarpcerrors.NotFoundErrorf("no workflow found")
+	}
+
+	opts := &workflowOpts{}
+	for _, option := range options {
+		option.apply(opts)
 	}
 
 	// update workflow version before mutating workflow, so
@@ -1350,13 +1377,14 @@ func (j *job) PauseWorkflow(
 		j.runtime.GetConfigurationVersion(),
 		j.runtime.GetWorkflowVersion(),
 	)
-	err = currentWorkflow.Pause(ctx)
+	err = currentWorkflow.Pause(ctx, opts.opaqueData)
 	return currentWorkflow.ID(), newEntityVersion, err
 }
 
 func (j *job) ResumeWorkflow(
 	ctx context.Context,
 	entityVersion *v1alphapeloton.EntityVersion,
+	options ...Option,
 ) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error) {
 	j.Lock()
 	defer j.Unlock()
@@ -1367,6 +1395,11 @@ func (j *job) ResumeWorkflow(
 	}
 	if currentWorkflow == nil {
 		return nil, nil, yarpcerrors.NotFoundErrorf("no workflow found")
+	}
+
+	opts := &workflowOpts{}
+	for _, option := range options {
+		option.apply(opts)
 	}
 
 	// update workflow version before mutating workflow, so
@@ -1380,13 +1413,14 @@ func (j *job) ResumeWorkflow(
 		j.runtime.GetConfigurationVersion(),
 		j.runtime.GetWorkflowVersion(),
 	)
-	err = currentWorkflow.Resume(ctx)
+	err = currentWorkflow.Resume(ctx, opts.opaqueData)
 	return currentWorkflow.ID(), newEntityVersion, err
 }
 
 func (j *job) AbortWorkflow(
 	ctx context.Context,
 	entityVersion *v1alphapeloton.EntityVersion,
+	options ...Option,
 ) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error) {
 	j.Lock()
 	defer j.Unlock()
@@ -1397,6 +1431,11 @@ func (j *job) AbortWorkflow(
 	}
 	if currentWorkflow == nil {
 		return nil, nil, yarpcerrors.NotFoundErrorf("no workflow found")
+	}
+
+	opts := &workflowOpts{}
+	for _, option := range options {
+		option.apply(opts)
 	}
 
 	// update workflow version before mutating workflow, so
@@ -1410,7 +1449,7 @@ func (j *job) AbortWorkflow(
 		j.runtime.GetConfigurationVersion(),
 		j.runtime.GetWorkflowVersion(),
 	)
-	err = currentWorkflow.Cancel(ctx)
+	err = currentWorkflow.Cancel(ctx, opts.opaqueData)
 	return currentWorkflow.ID(), newEntityVersion, err
 }
 

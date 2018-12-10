@@ -41,6 +41,7 @@ type Update interface {
 		instanceRemoved []uint32,
 		workflowType models.WorkflowType,
 		updateConfig *pbupdate.UpdateConfig,
+		opaqueData *peloton.OpaqueData,
 	) error
 
 	// Modify modifies the update in DB and cache
@@ -59,17 +60,17 @@ type Update interface {
 		instancesCurrent []uint32) error
 
 	// Pause pauses the current update progress
-	Pause(ctx context.Context) error
+	Pause(ctx context.Context, opaqueData *peloton.OpaqueData) error
 
 	// Resume resumes a paused update, and update would change
 	// to the state before pause
-	Resume(ctx context.Context) error
+	Resume(ctx context.Context, opaqueData *peloton.OpaqueData) error
 
 	// Recover recovers the update from DB into the cache
 	Recover(ctx context.Context) error
 
 	// Cancel is used to cancel the update
-	Cancel(ctx context.Context) error
+	Cancel(ctx context.Context, opaqueData *peloton.OpaqueData) error
 
 	// Rollback is used to rollback the update.
 	Rollback(
@@ -218,7 +219,8 @@ func (u *update) Create(
 	instanceUpdated []uint32,
 	instanceRemoved []uint32,
 	workflowType models.WorkflowType,
-	updateConfig *pbupdate.UpdateConfig) error {
+	updateConfig *pbupdate.UpdateConfig,
+	opaqueData *peloton.OpaqueData) error {
 	u.Lock()
 	defer u.Unlock()
 
@@ -245,6 +247,7 @@ func (u *update) Create(
 		InstancesRemoved:     instanceRemoved,
 		InstancesTotal:       uint32(len(instanceUpdated) + len(instanceAdded) + len(instanceRemoved)),
 		Type:                 workflowType,
+		OpaqueData:           opaqueData,
 	}
 	// Store the new update in DB
 	if err := u.jobFactory.updateStore.CreateUpdate(ctx, updateModel); err != nil {
@@ -336,10 +339,11 @@ func (u *update) WriteProgress(
 		instancesDone,
 		instancesFailed,
 		instancesCurrent,
+		nil,
 	)
 }
 
-func (u *update) Pause(ctx context.Context) error {
+func (u *update) Pause(ctx context.Context, opaqueData *peloton.OpaqueData) error {
 	u.Lock()
 	defer u.Unlock()
 
@@ -359,10 +363,11 @@ func (u *update) Pause(ctx context.Context) error {
 		u.instancesDone,
 		u.instancesFailed,
 		u.instancesCurrent,
+		opaqueData,
 	)
 }
 
-func (u *update) Resume(ctx context.Context) error {
+func (u *update) Resume(ctx context.Context, opaqueData *peloton.OpaqueData) error {
 	u.Lock()
 	defer u.Unlock()
 
@@ -382,6 +387,7 @@ func (u *update) Resume(ctx context.Context) error {
 		u.instancesDone,
 		u.instancesFailed,
 		u.instancesCurrent,
+		opaqueData,
 	)
 }
 
@@ -392,7 +398,8 @@ func (u *update) writeProgress(
 	state pbupdate.State,
 	instancesDone []uint32,
 	instancesFailed []uint32,
-	instancesCurrent []uint32) error {
+	instancesCurrent []uint32,
+	opaqueData *peloton.OpaqueData) error {
 	// once an update is in terminal state, it should
 	// not have any more state change
 	if IsUpdateStateTerminal(u.state) {
@@ -416,6 +423,7 @@ func (u *update) writeProgress(
 			InstancesDone:    uint32(len(instancesDone)),
 			InstancesFailed:  uint32(len(instancesFailed)),
 			InstancesCurrent: instancesCurrent,
+			OpaqueData:       opaqueData,
 		}); err != nil {
 		// clear the cache on DB error to avoid cache inconsistency
 		u.clearCache()
@@ -480,7 +488,7 @@ func (u *update) recover(ctx context.Context) error {
 	return nil
 }
 
-func (u *update) Cancel(ctx context.Context) error {
+func (u *update) Cancel(ctx context.Context, opaqueData *peloton.OpaqueData) error {
 	u.Lock()
 	defer u.Unlock()
 
@@ -495,6 +503,7 @@ func (u *update) Cancel(ctx context.Context) error {
 		u.instancesDone,
 		u.instancesFailed,
 		u.instancesCurrent,
+		opaqueData,
 	)
 }
 

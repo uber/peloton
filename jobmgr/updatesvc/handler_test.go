@@ -130,6 +130,7 @@ func (suite *UpdateSvcTestSuite) TearDownTest() {
 
 // TestCreateSuccess tests successfully creating a job update
 func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
+	opaque := "test"
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
 		Return(suite.cachedJob)
@@ -167,6 +168,7 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 			JobId:        suite.jobID,
 			JobConfig:    suite.newJobConfig,
 			UpdateConfig: suite.updateConfig,
+			OpaqueData:   &peloton.OpaqueData{Data: opaque},
 		},
 	)
 	suite.NoError(err)
@@ -191,6 +193,7 @@ func (suite *UpdateSvcTestSuite) TestAddInstancesSuccess() {
 			gomock.Any(),
 			models.WorkflowType_UPDATE,
 			suite.updateConfig,
+			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
 		).
@@ -238,6 +241,7 @@ func (suite *UpdateSvcTestSuite) TestUpdateLabelsSuccess() {
 			gomock.Any(),
 			models.WorkflowType_UPDATE,
 			suite.updateConfig,
+			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
 		).
@@ -444,6 +448,7 @@ func (suite *UpdateSvcTestSuite) TestCreateReduceInstanceCount() {
 			suite.updateConfig,
 			gomock.Any(),
 			gomock.Any(),
+			gomock.Any(),
 		).
 		Return(
 			suite.updateID,
@@ -515,6 +520,7 @@ func (suite *UpdateSvcTestSuite) TestCreateAddUpdateFail() {
 			gomock.Any(),
 			models.WorkflowType_UPDATE,
 			suite.updateConfig,
+			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
 		).
@@ -623,6 +629,8 @@ func (suite *UpdateSvcTestSuite) TestGetUpdateFail() {
 
 // TestGetUpdate tests fetching the update information from the DB
 func (suite *UpdateSvcTestSuite) TestGetUpdate() {
+	opaque := "test"
+
 	updateModel := &models.UpdateModel{
 		JobID:                suite.jobID,
 		UpdateConfig:         suite.updateConfig,
@@ -631,6 +639,7 @@ func (suite *UpdateSvcTestSuite) TestGetUpdate() {
 		State:                update.State_ROLLING_FORWARD,
 		InstancesTotal:       suite.newJobConfig.InstanceCount,
 		InstancesDone:        uint32(5),
+		OpaqueData:           &peloton.OpaqueData{Data: opaque},
 	}
 
 	suite.updateStore.EXPECT().
@@ -657,6 +666,7 @@ func (suite *UpdateSvcTestSuite) TestGetUpdate() {
 		resp.GetUpdateInfo().GetConfigVersion())
 	suite.Equal(suite.jobConfig.ChangeLog.Version,
 		resp.GetUpdateInfo().GetPrevConfigVersion())
+	suite.Equal(opaque, resp.GetUpdateInfo().GetOpaqueData().GetData())
 }
 
 // TestGetCacheUpdateNoID tests fetching an update from cache without
@@ -908,7 +918,7 @@ func (suite *UpdateSvcTestSuite) TestAbortFail() {
 		Return(suite.jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		AbortWorkflow(gomock.Any(), gomock.Any()).
+		AbortWorkflow(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, nil, fmt.Errorf("fake db error"))
 
 	suite.cachedJob.EXPECT().
@@ -943,7 +953,7 @@ func (suite *UpdateSvcTestSuite) TestAbort() {
 		Return(suite.jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		AbortWorkflow(gomock.Any(), gomock.Any()).
+		AbortWorkflow(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(
 			suite.updateID,
 			jobutil.GetJobEntityVersion(
@@ -983,7 +993,7 @@ func (suite *UpdateSvcTestSuite) TestPauseSuccess() {
 		Return(suite.jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		PauseWorkflow(gomock.Any(), gomock.Any()).
+		PauseWorkflow(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(
 			suite.updateID,
 			jobutil.GetJobEntityVersion(
@@ -1024,7 +1034,7 @@ func (suite *UpdateSvcTestSuite) TestPauseProgressUpdateFails() {
 		Return(suite.jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		PauseWorkflow(gomock.Any(), gomock.Any()).
+		PauseWorkflow(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, nil, fmt.Errorf("test error"))
 
 	suite.cachedJob.EXPECT().
@@ -1059,7 +1069,7 @@ func (suite *UpdateSvcTestSuite) TestResumeSuccess() {
 		Return(suite.jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		ResumeWorkflow(gomock.Any(), gomock.Any()).
+		ResumeWorkflow(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(
 			suite.updateID,
 			jobutil.GetJobEntityVersion(
@@ -1100,7 +1110,7 @@ func (suite *UpdateSvcTestSuite) TestResumeProgressUpdateFails() {
 		Return(suite.jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		ResumeWorkflow(gomock.Any(), gomock.Any()).
+		ResumeWorkflow(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, nil, fmt.Errorf("test error"))
 
 	suite.cachedJob.EXPECT().

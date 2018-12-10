@@ -66,6 +66,13 @@ message HostOfferID {
 }
 
 /**
+ *  Opaque data passed to Peloton from the client.
+ */
+message OpaqueData {
+  string data = 1;
+}
+
+/**
  *  Change log of an entity info, such as Job config etc.
  */
 message ChangeLog {

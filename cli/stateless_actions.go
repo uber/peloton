@@ -66,12 +66,22 @@ func (c *Client) StatelessRefreshAction(jobID string) error {
 }
 
 // StatelessWorkflowPauseAction pauses a workflow
-func (c *Client) StatelessWorkflowPauseAction(jobID string, entityVersion string) error {
+func (c *Client) StatelessWorkflowPauseAction(
+	jobID string,
+	entityVersion string,
+	opaqueData string,
+) error {
+	var opaque *v1alphapeloton.OpaqueData
+	if len(opaqueData) > 0 {
+		opaque = &v1alphapeloton.OpaqueData{Data: opaqueData}
+	}
+
 	resp, err := c.statelessClient.PauseJobWorkflow(
 		c.ctx,
 		&statelesssvc.PauseJobWorkflowRequest{
-			JobId:   &v1alphapeloton.JobID{Value: jobID},
-			Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
+			JobId:      &v1alphapeloton.JobID{Value: jobID},
+			Version:    &v1alphapeloton.EntityVersion{Value: entityVersion},
+			OpaqueData: opaque,
 		},
 	)
 	if err != nil {
@@ -84,12 +94,22 @@ func (c *Client) StatelessWorkflowPauseAction(jobID string, entityVersion string
 }
 
 // StatelessWorkflowResumeAction resumes a workflow
-func (c *Client) StatelessWorkflowResumeAction(jobID string, entityVersion string) error {
+func (c *Client) StatelessWorkflowResumeAction(
+	jobID string,
+	entityVersion string,
+	opaqueData string,
+) error {
+	var opaque *v1alphapeloton.OpaqueData
+	if len(opaqueData) > 0 {
+		opaque = &v1alphapeloton.OpaqueData{Data: opaqueData}
+	}
+
 	resp, err := c.statelessClient.ResumeJobWorkflow(
 		c.ctx,
 		&statelesssvc.ResumeJobWorkflowRequest{
-			JobId:   &v1alphapeloton.JobID{Value: jobID},
-			Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
+			JobId:      &v1alphapeloton.JobID{Value: jobID},
+			Version:    &v1alphapeloton.EntityVersion{Value: entityVersion},
+			OpaqueData: opaque,
 		},
 	)
 	if err != nil {
@@ -102,12 +122,22 @@ func (c *Client) StatelessWorkflowResumeAction(jobID string, entityVersion strin
 }
 
 // StatelessWorkflowAbortAction aborts a workflow
-func (c *Client) StatelessWorkflowAbortAction(jobID string, entityVersion string) error {
+func (c *Client) StatelessWorkflowAbortAction(
+	jobID string,
+	entityVersion string,
+	opaqueData string,
+) error {
+	var opaque *v1alphapeloton.OpaqueData
+	if len(opaqueData) > 0 {
+		opaque = &v1alphapeloton.OpaqueData{Data: opaqueData}
+	}
+
 	resp, err := c.statelessClient.AbortJobWorkflow(
 		c.ctx,
 		&statelesssvc.AbortJobWorkflowRequest{
-			JobId:   &v1alphapeloton.JobID{Value: jobID},
-			Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
+			JobId:      &v1alphapeloton.JobID{Value: jobID},
+			Version:    &v1alphapeloton.EntityVersion{Value: entityVersion},
+			OpaqueData: opaque,
 		},
 	)
 	if err != nil {
@@ -314,6 +344,7 @@ func (c *Client) StatelessReplaceJobAction(
 	maxTolerableInstanceFailures uint32,
 	rollbackOnFailure bool,
 	startPaused bool,
+	opaqueData string,
 ) error {
 	// TODO: implement cli override check and get entity version
 	// form job after stateless.Get is ready
@@ -341,6 +372,11 @@ func (c *Client) StatelessReplaceJobAction(
 	// set the resource pool id
 	jobSpec.RespoolId = &v1alphapeloton.ResourcePoolID{Value: respoolID.GetValue()}
 
+	var opaque *v1alphapeloton.OpaqueData
+	if len(opaqueData) > 0 {
+		opaque = &v1alphapeloton.OpaqueData{Data: opaqueData}
+	}
+
 	req := &statelesssvc.ReplaceJobRequest{
 		JobId:   &v1alphapeloton.JobID{Value: jobID},
 		Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
@@ -352,6 +388,7 @@ func (c *Client) StatelessReplaceJobAction(
 			MaxTolerableInstanceFailures: maxTolerableInstanceFailures,
 			StartPaused:                  startPaused,
 		},
+		OpaqueData: opaque,
 	}
 
 	resp, err := c.statelessClient.ReplaceJob(c.ctx, req)

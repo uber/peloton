@@ -60,8 +60,8 @@ message ReplaceJobRequest {
   // The update SLA specification.
   stateless.UpdateSpec update_spec = 5;
 
-  // Metadata information supplied by the client
-  string metadata = 6;
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 6;
 }
 
 // Response message for JobService.ReplaceJob method.
@@ -92,8 +92,8 @@ message PatchJobRequest {
   // The update SLA specification.
   stateless.UpdateSpec update_spec = 5;
 
-  // Metadata information supplied by the client
-  string metadata = 6;
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 6;
 }
 
 // Response message for JobService.PatchJob method.
@@ -122,8 +122,8 @@ message RestartJobRequest {
   // The pods to restart, default to all.
   repeated pod.InstanceIDRange ranges = 4;
 
-  // Metadata information supplied by the client
-  string metadata = 5;
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 5;
 }
 
 // Response message for JobService.RestartJob method.
@@ -143,8 +143,8 @@ message PauseJobWorkflowRequest {
   // The current version of the job.
   peloton.EntityVersion version = 2;
 
-  // Metadata information supplied by the client
-  string metadata = 3;
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 3;
 }
 
 // Response message for JobService.PauseJobWorkflow method.
@@ -165,8 +165,8 @@ message ResumeJobWorkflowRequest {
   // The current version of the job.
   peloton.EntityVersion version = 2;
 
-  // Metadata information supplied by the client
-  string metadata = 3;
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 3;
 }
 
 // Response message for JobService.ResumeJobWorkflow method.
@@ -187,8 +187,8 @@ message AbortJobWorkflowRequest {
   // The current version of the job.
   peloton.EntityVersion version = 2;
 
-  // Metadata information supplied by the client
-  string metadata = 3;
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 3;
 }
 
 // Response message for JobService.AbortJobWorkflow method.

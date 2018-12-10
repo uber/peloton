@@ -195,6 +195,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 			maxFailureInstances,
 			false,
 			false,
+			"",
 		)
 
 		if t.err != nil {
@@ -235,7 +236,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateResPoolErrors() {
 		},
 		{
 			respoolLookUpResponse: nil,
-			err: errors.New("cannot lookup resource pool"),
+			err:                   errors.New("cannot lookup resource pool"),
 		},
 	}
 
@@ -258,6 +259,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateResPoolErrors() {
 			maxFailureInstances,
 			false,
 			false,
+			"",
 		)
 		suite.Error(err)
 	}
@@ -366,6 +368,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateJobGetErrors() {
 			maxFailureInstances,
 			false,
 			false,
+			"",
 		)
 		suite.Error(err)
 	}
@@ -471,6 +474,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateRetry() {
 		maxFailureInstances,
 		false,
 		false,
+		"",
 	)
 	suite.NoError(err)
 }
@@ -679,9 +683,9 @@ func (suite *updateActionsTestSuite) TestClientUpdateAbort() {
 			Return(resp, t.err)
 
 		if t.err != nil {
-			suite.Error(c.UpdateAbortAction(suite.updateID.GetValue()))
+			suite.Error(c.UpdateAbortAction(suite.updateID.GetValue(), ""))
 		} else {
-			suite.NoError(c.UpdateAbortAction(suite.updateID.GetValue()))
+			suite.NoError(c.UpdateAbortAction(suite.updateID.GetValue(), ""))
 		}
 	}
 }
@@ -716,9 +720,9 @@ func (suite *updateActionsTestSuite) TestClientUpdatePause() {
 			Return(resp, t.err)
 
 		if t.err != nil {
-			suite.Error(c.UpdatePauseAction(suite.updateID.GetValue()))
+			suite.Error(c.UpdatePauseAction(suite.updateID.GetValue(), ""))
 		} else {
-			suite.NoError(c.UpdatePauseAction(suite.updateID.GetValue()))
+			suite.NoError(c.UpdatePauseAction(suite.updateID.GetValue(), ""))
 		}
 	}
 }
@@ -753,9 +757,9 @@ func (suite *updateActionsTestSuite) TestClientUpdateResume() {
 			Return(resp, t.err)
 
 		if t.err != nil {
-			suite.Error(c.UpdateResumeAction(suite.updateID.GetValue()))
+			suite.Error(c.UpdateResumeAction(suite.updateID.GetValue(), ""))
 		} else {
-			suite.NoError(c.UpdateResumeAction(suite.updateID.GetValue()))
+			suite.NoError(c.UpdateResumeAction(suite.updateID.GetValue(), ""))
 		}
 	}
 }

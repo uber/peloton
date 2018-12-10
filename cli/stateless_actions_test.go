@@ -94,16 +94,18 @@ func (suite *statelessActionsTestSuite) TestStatelessRefreshActionError() {
 
 func (suite *statelessActionsTestSuite) TestStatelessWorkflowPauseAction() {
 	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	opaque := "test"
 	suite.statelessClient.EXPECT().
 		PauseJobWorkflow(suite.ctx, &svc.PauseJobWorkflowRequest{
-			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: entityVersion,
+			JobId:      &v1alphapeloton.JobID{Value: testJobID},
+			Version:    entityVersion,
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		}).
 		Return(&svc.PauseJobWorkflowResponse{
 			Version: entityVersion,
 		}, nil)
 
-	suite.NoError(suite.client.StatelessWorkflowPauseAction(testJobID, entityVersion.GetValue()))
+	suite.NoError(suite.client.StatelessWorkflowPauseAction(testJobID, entityVersion.GetValue(), opaque))
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessWorkflowPauseActionFailure() {
@@ -115,21 +117,23 @@ func (suite *statelessActionsTestSuite) TestStatelessWorkflowPauseActionFailure(
 		}).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.Error(suite.client.StatelessWorkflowPauseAction(testJobID, entityVersion.GetValue()))
+	suite.Error(suite.client.StatelessWorkflowPauseAction(testJobID, entityVersion.GetValue(), ""))
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessWorkflowResumeAction() {
 	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	opaque := "test"
 	suite.statelessClient.EXPECT().
 		ResumeJobWorkflow(suite.ctx, &svc.ResumeJobWorkflowRequest{
-			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: entityVersion,
+			JobId:      &v1alphapeloton.JobID{Value: testJobID},
+			Version:    entityVersion,
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		}).
 		Return(&svc.ResumeJobWorkflowResponse{
 			Version: entityVersion,
 		}, nil)
 
-	suite.NoError(suite.client.StatelessWorkflowResumeAction(testJobID, entityVersion.GetValue()))
+	suite.NoError(suite.client.StatelessWorkflowResumeAction(testJobID, entityVersion.GetValue(), opaque))
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessWorkflowResumeActionFailure() {
@@ -141,21 +145,23 @@ func (suite *statelessActionsTestSuite) TestStatelessWorkflowResumeActionFailure
 		}).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.Error(suite.client.StatelessWorkflowResumeAction(testJobID, entityVersion.GetValue()))
+	suite.Error(suite.client.StatelessWorkflowResumeAction(testJobID, entityVersion.GetValue(), ""))
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessWorkflowAbortAction() {
 	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	opaque := "test"
 	suite.statelessClient.EXPECT().
 		AbortJobWorkflow(suite.ctx, &svc.AbortJobWorkflowRequest{
-			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: entityVersion,
+			JobId:      &v1alphapeloton.JobID{Value: testJobID},
+			Version:    entityVersion,
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		}).
 		Return(&svc.AbortJobWorkflowResponse{
 			Version: entityVersion,
 		}, nil)
 
-	suite.NoError(suite.client.StatelessWorkflowAbortAction(testJobID, entityVersion.GetValue()))
+	suite.NoError(suite.client.StatelessWorkflowAbortAction(testJobID, entityVersion.GetValue(), opaque))
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessWorkflowAbortActionFailure() {
@@ -167,7 +173,7 @@ func (suite *statelessActionsTestSuite) TestStatelessWorkflowAbortActionFailure(
 		}).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.Error(suite.client.StatelessWorkflowAbortAction(testJobID, entityVersion.GetValue()))
+	suite.Error(suite.client.StatelessWorkflowAbortAction(testJobID, entityVersion.GetValue(), ""))
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessQueryActionSuccess() {
@@ -289,6 +295,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionSuccess() {
 	maxTolerableInstanceFailures := uint32(1)
 	rollbackOnFailure := false
 	startPaused := true
+	opaque := "test"
 
 	suite.resClient.EXPECT().
 		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
@@ -317,6 +324,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionSuccess() {
 		maxTolerableInstanceFailures,
 		rollbackOnFailure,
 		startPaused,
+		opaque,
 	))
 }
 
@@ -351,6 +359,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionLookupResou
 		maxTolerableInstanceFailures,
 		rollbackOnFailure,
 		startPaused,
+		"",
 	))
 }
 

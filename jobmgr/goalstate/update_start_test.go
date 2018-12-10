@@ -147,7 +147,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStartCacheJobGetFail() {
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
-		Cancel(gomock.Any()).
+		Cancel(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	suite.updateGoalStateEngine.EXPECT().
@@ -177,7 +177,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStartCacheJobGetError() {
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
-		Cancel(gomock.Any()).
+		Cancel(gomock.Any(), gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
 
 	suite.jobGoalStateEngine.EXPECT().

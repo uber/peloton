@@ -2289,6 +2289,9 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	jobVersion := uint64(5)
 	jobPrevVersion := uint64(4)
 
+	// opaque data
+	opaque := "test"
+
 	// update state
 	state := update.State_INITIALIZED
 	instancesTotal := uint32(60)
@@ -2338,6 +2341,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			InstancesUpdated:     instancesUpdated,
 			InstancesAdded:       instancesAdded,
 			Type:                 models.WorkflowType_UPDATE,
+			OpaqueData:           &peloton.OpaqueData{Data: opaque},
 		},
 	))
 
@@ -2355,6 +2359,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			InstancesUpdated:     instancesUpdated,
 			InstancesAdded:       instancesAdded,
 			Type:                 models.WorkflowType_UPDATE,
+			OpaqueData:           &peloton.OpaqueData{Data: opaque},
 		},
 	))
 
@@ -2372,6 +2377,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			InstancesUpdated:     instancesUpdated,
 			InstancesAdded:       instancesAdded,
 			Type:                 models.WorkflowType_UPDATE,
+			OpaqueData:           &peloton.OpaqueData{Data: opaque},
 		},
 	)
 	suite.Error(err)
@@ -2395,6 +2401,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.Equal(updateInfo.GetType(), models.WorkflowType_UPDATE)
 	suite.Equal(updateInfo.GetInstancesUpdated(), instancesUpdated)
 	suite.Equal(updateInfo.GetInstancesAdded(), instancesAdded)
+	suite.Equal(updateInfo.GetOpaqueData().GetData(), opaque)
 
 	// get the progress
 	updateInfo, err = store.GetUpdateProgress(
@@ -2410,6 +2417,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	// write new progress
 	prevState := update.State_INITIALIZED
 	state = update.State_ROLLING_FORWARD
+	opaqueNew := "new_test"
 	instancesDone := uint32(5)
 	instancesFailed := uint32(6)
 	instanceCurrent := []uint32{5, 6, 7, 8}
@@ -2422,6 +2430,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			InstancesDone:    instancesDone,
 			InstancesFailed:  instancesFailed,
 			InstancesCurrent: instanceCurrent,
+			OpaqueData:       &peloton.OpaqueData{Data: opaqueNew},
 		},
 	)
 	suite.NoError(err)
@@ -2442,6 +2451,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.Equal(updateInfo.GetInstancesDone(), instancesDone)
 	suite.Equal(updateInfo.GetInstancesFailed(), instancesFailed)
 	suite.Equal(updateInfo.GetInstancesCurrent(), instanceCurrent)
+	suite.Equal(updateInfo.GetOpaqueData().GetData(), opaqueNew)
 
 	// get the progress
 	updateInfo, err = store.GetUpdateProgress(
