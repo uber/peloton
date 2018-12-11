@@ -112,6 +112,7 @@ class App(object):
         self.scarce_resource_types = None
         self.slack_resource_types = None
         self.enable_revocable_resources = None
+        self.bin_packing = None
 
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
