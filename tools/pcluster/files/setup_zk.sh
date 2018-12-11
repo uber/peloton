@@ -11,4 +11,8 @@ create /peloton/resmgr/leader /peloton/resmgr/leader
 create /peloton/hostmgr peloton/hostmgr
 create /peloton/hostmgr/leader /peloton/hostmgr/leader
 
+create /peloton/aurora peloton/aurora
+create /peloton/aurora/scheduler peloton/aurora/scheduler
+create /peloton/aurora/scheduler/member_ peloton/aurora/scheduler/member_
+
 EOF

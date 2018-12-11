@@ -44,7 +44,7 @@ endif
 
 .PRECIOUS: $(PBGENS) $(LOCAL_MOCKS) $(VENDOR_MOCKS) mockgens
 
-all: pbgens placement cli hostmgr resmgr jobmgr archiver
+all: pbgens placement cli hostmgr resmgr jobmgr archiver aurorabridge
 
 jobmgr:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-jobmgr jobmgr/main/*.go

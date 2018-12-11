@@ -39,6 +39,8 @@ const (
 	JobManagerRole = "jobmanager"
 	// ResourceManagerRole is the leadership election role for resmgr
 	ResourceManagerRole = "resourcemanager"
+	// PelotonAuroraBridgeRole is the leadership election for peloton-aurora bridge
+	PelotonAuroraBridgeRole = "aurora/scheduler"
 
 	// DefaultLeaderElectionRoot is the default leader election root path
 	DefaultLeaderElectionRoot = "/peloton"

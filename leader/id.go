@@ -111,3 +111,43 @@ func listenIP() (net.IP, error) {
 
 	return bestIP, nil
 }
+
+// ServiceInstance represents znode for Peloton Bridge
+// to mock Aurora leader
+type ServiceInstance struct {
+	ServiceEndpoint     Endpoint            `json:"serviceEndpoint"`
+	AdditionalEndpoints map[string]Endpoint `json:"additionalEndpoints"`
+	Status              string              `json:"status"`
+}
+
+// NewServiceInstance creates a new instance for Aurora
+func NewServiceInstance(endpoint Endpoint, additionalEndpoints map[string]Endpoint) string {
+	serviceInstance := &ServiceInstance{
+		ServiceEndpoint:     endpoint,
+		AdditionalEndpoints: additionalEndpoints,
+		Status:              "ALIVE",
+	}
+
+	serviceInstanceJSON, _ := json.Marshal(serviceInstance)
+	return string(serviceInstanceJSON)
+}
+
+// Endpoint represents on instance for aurora leader/follower
+type Endpoint struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
+// NewEndpoint creates a new endpoint
+func NewEndpoint(port int) Endpoint {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return Endpoint{}
+	}
+	endpoint := Endpoint{
+		Host: hostname,
+		Port: port,
+	}
+
+	return endpoint
+}

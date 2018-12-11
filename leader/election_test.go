@@ -55,6 +55,30 @@ func (l *testLock) Unlock() error {
 	return nil
 }
 
+func TestNewCandidate(t *testing.T) {
+	config := ElectionConfig{
+		ZKServers: []string{"1.1.1.1:2181"},
+		Root:      "peloton",
+	}
+
+	nomination := &testComponent{
+		host:   "testhost",
+		port:   "666",
+		events: make(chan string, 100),
+	}
+
+	el, err := NewCandidate(
+		config,
+		tally.NoopScope,
+		"aurora",
+		nomination,
+	)
+	assert.NoError(t, err)
+
+	err = el.Start()
+	assert.NoError(t, err)
+}
+
 func TestLeaderElection(t *testing.T) {
 	// the zkservers will be replaced with the mock libkv client, dont worry :)
 	role := "testrole"

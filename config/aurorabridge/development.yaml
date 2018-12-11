@@ -1,0 +1,10 @@
+logging:
+  level: info
+
+metrics:
+  multi_reporter: true
+  prometheus:
+    enable: true
+
+election:
+  zk_servers: ["localhost:8192"]

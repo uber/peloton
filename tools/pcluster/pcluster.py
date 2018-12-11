@@ -447,6 +447,18 @@ def run_peloton_jobmgr():
 
 
 #
+# Run peloton aurora bridge app
+#
+def run_peloton_aurorabridge():
+    for i in range(0, config['peloton_aurorabridge_instance_count']):
+        ports = \
+            [port + i * 10 for port in config['peloton_aurorabridge_ports']]
+        name = config['peloton_aurorabridge_container'] + repr(i)
+        remove_existing_container(name)
+        start_and_wait('aurorabridge', name, ports)
+
+
+#
 # Run peloton placement app
 #
 def run_peloton_placement():
@@ -477,6 +489,9 @@ def run_peloton_archiver():
 # Run health check for peloton apps
 #
 def wait_for_up(app, port):
+    if app == 'peloton-aurorabridge0' or app == 'peloton-aurorabridge1':
+        return
+
     count = 0
     error = ''
     url = 'http://%s:%s/%s' % (
@@ -548,6 +563,11 @@ def teardown():
     # 5 - Remove archiver instances
     for i in range(0, config['peloton_archiver_instance_count']):
         name = config['peloton_archiver_container'] + repr(i)
+        remove_existing_container(name)
+
+    # 6 - Remove aurorabridge instances
+    for i in range(0, config['peloton_aurorabridge_instance_count']):
+        name = config['peloton_aurorabridge_container'] + repr(i)
         remove_existing_container(name)
 
     teardown_mesos()
@@ -631,6 +651,13 @@ USAGE
         default=False,
         help="disable peloton archiver app"
     )
+    parser_setup.add_argument(
+        "--no-aurorabridge",
+        dest="disable_peloton_aurorabridge",
+        action='store_true',
+        default=False,
+        help="disable peloton aurora bridge app"
+    )
     # Subparser for the 'teardown' command
     subparsers.add_parser('teardown', help='tear down a personal cluster')
     # Process arguments
@@ -646,6 +673,7 @@ class App:
     PLACEMENT_ENGINE = 3
     JOB_MANAGER = 4
     ARCHIVER = 5
+    AURORABRIDGE = 6
 
 
 # Defines the order in which the apps are started
@@ -655,7 +683,8 @@ APP_START_ORDER = OrderedDict([
     (App.RESOURCE_MANAGER, run_peloton_resmgr),
     (App.PLACEMENT_ENGINE, run_peloton_placement),
     (App.JOB_MANAGER, run_peloton_jobmgr),
-    (App.ARCHIVER, run_peloton_archiver)]
+    (App.ARCHIVER, run_peloton_archiver),
+    (App.AURORABRIDGE, run_peloton_aurorabridge)]
 )
 
 
@@ -670,7 +699,8 @@ def main():
             App.RESOURCE_MANAGER: args.disable_peloton_resmgr,
             App.PLACEMENT_ENGINE: args.disable_peloton_placement,
             App.JOB_MANAGER: args.disable_peloton_jobmgr,
-            App.ARCHIVER: args.disable_peloton_archiver
+            App.ARCHIVER: args.disable_peloton_archiver,
+            App.AURORABRIDGE: args.disable_peloton_aurorabridge
         }
 
         global zk_url

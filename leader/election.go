@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"code.uber.internal/infra/peloton/common"
 	"github.com/docker/leadership"
 	"github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/zookeeper"
@@ -59,10 +60,7 @@ func NewCandidate(
 	parent tally.Scope,
 	role string,
 	nomination Nomination) (Candidate, error) {
-
-	log.WithFields(log.Fields{"id": nomination.GetID(), "role": role}).
-		Debug("Creating new Candidate")
-
+	var leaderPath string
 	if role == "" {
 		return nil, errors.New("You need to specify a role to campaign " +
 			"for that isnt the empty string")
@@ -76,9 +74,20 @@ func NewCandidate(
 		return nil, err
 	}
 
+	if role == common.PelotonAuroraBridgeRole {
+		leaderPath = leaderBridgeZKPath(cfg.Root, role)
+	} else {
+		leaderPath = leaderZkPath(cfg.Root, role)
+	}
+	log.WithFields(log.Fields{
+		"id":          nomination.GetID(),
+		"role":        role,
+		"leader_path": leaderPath,
+	}).Debug("Creating new Candidate")
+
 	candidate := leadership.NewCandidate(
 		client,
-		leaderZkPath(cfg.Root, role),
+		leaderPath,
 		nomination.GetID(),
 		ttl,
 	)
@@ -97,7 +106,6 @@ func NewCandidate(
 	}
 
 	return &el, nil
-
 }
 
 // Start begins running election for leadership
@@ -268,4 +276,9 @@ func (el *election) Resign() {
 func leaderZkPath(rootPath string, role string) string {
 	// NOTE: remember, there cannot be a leading / for libkv
 	return strings.TrimPrefix(path.Join(rootPath, role, "leader"), "/")
+}
+
+// leaderBridgeZKPath returns the zk path for Peloton-Aurora Bridge
+func leaderBridgeZKPath(rootPath string, role string) string {
+	return strings.TrimPrefix(path.Join(rootPath, role, "member_0000000001"), "/")
 }
