@@ -126,7 +126,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	// lets write the new task configs first
-	if err := goalStateDriver.taskStore.CreateTaskConfigs(
+	if err := cachedJob.CreateTaskConfigs(
 		ctx,
 		jobID,
 		jobConfig); err != nil {

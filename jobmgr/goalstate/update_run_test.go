@@ -520,7 +520,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_FullyRunning_AddInstances() {
 	}
 
 	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, _ string) {
 			suite.Len(runtimes, int(batchSize))
 		}).Return(nil)
@@ -862,7 +862,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_KilledJob_AddInstances() {
 	}
 
 	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, _ string) {
 			suite.Len(runtimes, int(batchSize))
 		}).Return(nil)
@@ -963,7 +963,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRun_DBError_AddInstances() {
 	}
 
 	suite.cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, _ string) {
 			suite.Len(runtimes, int(batchSize))
 		}).Return(nil)

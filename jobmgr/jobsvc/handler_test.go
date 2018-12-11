@@ -122,10 +122,15 @@ func (suite *JobHandlerTestSuite) setupMocks(
 		UpdateJobConfig(context.Background(), jobID, gomock.Any()).
 		Return(nil).AnyTimes()
 	suite.mockedTaskStore.EXPECT().
-		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
-		Return(nil).AnyTimes()
+		CreateTaskConfig(
+			context.Background(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Return(nil).AnyTimes()
 	suite.mockedCachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), "peloton").
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), "peloton").
 		Return(nil).AnyTimes()
 	suite.mockedCachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).AnyTimes()
 	suite.mockedJobFactory.EXPECT().AddJob(jobID).

@@ -60,3 +60,9 @@ const (
 	// related to secret_info table
 	DBArgsLogField = "db_args"
 )
+
+const (
+	// DefaultTaskConfigID is used for storing, and retrieving, the default
+	// task configuration, when no specific is available.
+	DefaultTaskConfigID = -1
+)

@@ -295,7 +295,7 @@ func addInstancesInUpdate(
 
 	// Create the tasks
 	if len(runtimes) > 0 {
-		if err := cachedJob.CreateTasks(ctx, runtimes, "peloton"); err != nil {
+		if err := cachedJob.CreateTaskRuntimes(ctx, runtimes, "peloton"); err != nil {
 			return err
 		}
 	}

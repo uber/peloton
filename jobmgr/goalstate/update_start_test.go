@@ -224,7 +224,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStartTaskConfigCreateFail() {
 			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, nil)
 
-	suite.taskStore.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
 
@@ -253,7 +253,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStartWriteProgressFail() {
 			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, nil)
 
-	suite.taskStore.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(nil)
 
@@ -299,7 +299,7 @@ func (suite *UpdateStartTestSuite) TestUpdateContainsUnchangedInstance() {
 			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, nil)
 
-	suite.taskStore.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(nil)
 
@@ -363,7 +363,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStart_ContainsUnchangedInstance_Pat
 			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, nil)
 
-	suite.taskStore.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(nil)
 
@@ -408,7 +408,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStart_NoUnchangedInstance() {
 			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, nil)
 
-	suite.taskStore.EXPECT().
+	suite.cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(nil)
 

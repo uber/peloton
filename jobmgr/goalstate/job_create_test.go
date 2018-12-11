@@ -84,7 +84,7 @@ func TestJobCreateTasks(t *testing.T) {
 		GetJobConfig(gomock.Any(), jobID).
 		Return(&jobConfig, nil)
 
-	taskStore.EXPECT().
+	cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any()).
 		Return(nil)
 
@@ -93,7 +93,7 @@ func TestJobCreateTasks(t *testing.T) {
 		Return(cachedJob)
 
 	cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	cachedJob.EXPECT().
@@ -248,7 +248,7 @@ func TestJobRecover(t *testing.T) {
 		GetJobConfig(gomock.Any(), jobID).
 		Return(&jobConfig, nil)
 
-	taskStore.EXPECT().
+	cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any()).
 		Return(nil)
 
@@ -271,11 +271,7 @@ func TestJobRecover(t *testing.T) {
 		Return(nil)
 
 	cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil)
-
-	cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	resmgrClient.EXPECT().
@@ -426,7 +422,7 @@ func TestJobMaxRunningInstances(t *testing.T) {
 		GetJobConfig(gomock.Any(), jobID).
 		Return(&jobConfig, nil)
 
-	taskStore.EXPECT().
+	cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any()).
 		Return(nil)
 
@@ -435,7 +431,7 @@ func TestJobMaxRunningInstances(t *testing.T) {
 		Return(cachedJob)
 
 	cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	resmgrClient.EXPECT().
@@ -537,7 +533,7 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		GetJobConfig(gomock.Any(), jobID).
 		Return(&jobConfig, nil)
 
-	taskStore.EXPECT().
+	cachedJob.EXPECT().
 		CreateTaskConfigs(gomock.Any(), jobID, gomock.Any()).
 		Return(nil)
 
@@ -571,18 +567,7 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		Return()
 
 	cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil)
-
-	cachedJob.EXPECT().
-		GetJobType().Return(pb_job.JobType_BATCH)
-
-	jobGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-
-	cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	cachedJob.EXPECT().

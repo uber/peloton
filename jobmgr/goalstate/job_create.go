@@ -14,6 +14,7 @@ import (
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // JobCreateTasks creates/recovers all tasks in the job
@@ -42,9 +43,14 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 
 	instances := jobConfig.InstanceCount
 
+	cachedJob := goalStateDriver.jobFactory.GetJob(jobID)
+	if cachedJob == nil {
+		return yarpcerrors.AbortedErrorf("failed to get job from cache")
+	}
+
 	startCreateTaskConfigsTime := time.Now()
 	// First create task configs
-	if err = goalStateDriver.taskStore.CreateTaskConfigs(ctx, jobID, jobConfig); err != nil {
+	if err = cachedJob.CreateTaskConfigs(ctx, jobID, jobConfig); err != nil {
 		goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
 		log.WithError(err).
 			WithField("job_id", id).
@@ -90,10 +96,6 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	cachedJob := goalStateDriver.jobFactory.GetJob(jobID)
-	if cachedJob == nil {
-		return nil
-	}
 	err = cachedJob.Update(ctx, &job.JobInfo{
 		Runtime: &job.RuntimeInfo{State: job.JobState_PENDING},
 	}, cached.UpdateCacheAndDB)
@@ -178,6 +180,7 @@ func recoverTasks(
 
 	cachedJob := goalStateDriver.jobFactory.AddJob(jobID)
 	maxRunningInstances := jobConfig.GetSLA().GetMaximumRunningInstances()
+	taskRuntimeInfoMap := make(map[uint32]*task.RuntimeInfo)
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		if _, ok := taskInfos[i]; ok {
 			if taskInfos[i].GetRuntime().GetState() == task.TaskState_INITIALIZED {
@@ -205,7 +208,6 @@ func recoverTasks(
 						cachedJob.ReplaceTasks(runtimes, false)
 					}
 				}
-
 			}
 			continue
 		}
@@ -216,20 +218,9 @@ func recoverTasks(
 			Info("Creating missing task")
 
 		runtime := jobmgr_task.CreateInitializingTask(jobID, i, jobConfig)
-		if err := cachedJob.CreateTasks(ctx, map[uint32]*task.RuntimeInfo{i: runtime}, jobConfig.OwningTeam); err != nil {
-			goalStateDriver.mtx.taskMetrics.TaskCreateFail.Inc(1)
-			log.WithError(err).
-				WithField("job_id", jobID.GetValue()).
-				WithField("id", i).
-				Error("failed to create task")
-			return err
-		}
-		goalStateDriver.mtx.taskMetrics.TaskCreate.Inc(1)
+		taskRuntimeInfoMap[i] = runtime
 
-		if maxRunningInstances > 0 {
-			// run the runtime updater to start instances
-			EnqueueJobWithDefaultDelay(jobID, goalStateDriver, cachedJob)
-		} else {
+		if maxRunningInstances == 0 {
 			taskInfo := &task.TaskInfo{
 				JobId:      jobID,
 				InstanceId: i,
@@ -238,6 +229,18 @@ func recoverTasks(
 			}
 			tasks = append(tasks, taskInfo)
 		}
+	}
+
+	if err := cachedJob.CreateTaskRuntimes(ctx, taskRuntimeInfoMap, jobConfig.OwningTeam); err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.GetValue()).
+			Error("failed to create runtime for tasks")
+		return err
+	}
+
+	if maxRunningInstances > 0 {
+		// run the runtime updater to start instances
+		EnqueueJobWithDefaultDelay(jobID, goalStateDriver, cachedJob)
 	}
 
 	return sendTasksToResMgr(ctx, jobID, tasks, jobConfig, goalStateDriver)
@@ -267,7 +270,7 @@ func createAndEnqueueTasks(
 		}
 	}
 
-	err := cachedJob.CreateTasks(ctx, runtimes, jobConfig.OwningTeam)
+	err := cachedJob.CreateTaskRuntimes(ctx, runtimes, jobConfig.OwningTeam)
 	nTasks := int64(len(tasks))
 	if err != nil {
 		log.WithError(err).

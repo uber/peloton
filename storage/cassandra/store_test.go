@@ -19,7 +19,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/backoff"
+	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/storage"
 	qb "code.uber.internal/infra/peloton/storage/querybuilder"
 
@@ -107,7 +109,39 @@ func (suite *CassandraStoreTestSuite) createJob(ctx context.Context, id *peloton
 	if err != nil {
 		return err
 	}
-	return store.CreateTaskConfigs(ctx, id, jobConfig)
+	return createTaskConfigs(ctx, id, jobConfig)
+}
+
+// CreateTaskConfigs from the job config.
+func createTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
+	version := jobConfig.GetChangeLog().GetVersion()
+	if jobConfig.GetDefaultConfig() != nil {
+		if err := store.CreateTaskConfig(
+			ctx,
+			id,
+			common.DefaultTaskConfigID,
+			jobConfig.GetDefaultConfig(),
+			version,
+		); err != nil {
+			return err
+		}
+	}
+
+	for instanceID, cfg := range jobConfig.GetInstanceConfig() {
+		merged := taskconfig.Merge(jobConfig.GetDefaultConfig(), cfg)
+		// TODO set correct version
+		if err := store.CreateTaskConfig(
+			ctx,
+			id,
+			int64(instanceID),
+			merged,
+			version,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Run the following query to trigger lucene index refresh
@@ -1283,7 +1317,7 @@ func (suite *CassandraStoreTestSuite) TestTaskVersionMigration() {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 
 	// Create legacy task with missing version field.
-	suite.NoError(store.createTaskConfig(context.Background(), jobID, 0, &task.TaskConfig{}, 0))
+	suite.NoError(store.CreateTaskConfig(context.Background(), jobID, 0, &task.TaskConfig{}, 0))
 	queryBuilder := store.DataStore.NewQuery()
 	stmt := queryBuilder.Insert(taskRuntimeTable).
 		Columns(
@@ -1324,8 +1358,8 @@ func (suite *CassandraStoreTestSuite) TestGetTaskConfigs() {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 
 	// create default task config
-	store.createTaskConfig(context.Background(), jobID,
-		_defaultTaskConfigID,
+	store.CreateTaskConfig(context.Background(), jobID,
+		common.DefaultTaskConfigID,
 		&task.TaskConfig{
 			Name: "default",
 		}, 0)
@@ -1333,7 +1367,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskConfigs() {
 	// create 5 tasks with versions
 	var instanceIDs []uint32
 	for i := int64(0); i < 5; i++ {
-		suite.NoError(store.createTaskConfig(context.Background(), jobID,
+		suite.NoError(store.CreateTaskConfig(context.Background(), jobID,
 			i,
 			&task.TaskConfig{
 				Name: fmt.Sprintf("task-%d", i),
@@ -2369,7 +2403,7 @@ func createResourceConfigs() []*respool.ResourceConfig {
 func (suite *CassandraStoreTestSuite) TestGetTaskRuntime() {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 
-	suite.NoError(store.createTaskConfig(context.Background(), jobID, 0, &task.TaskConfig{}, 0))
+	suite.NoError(store.CreateTaskConfig(context.Background(), jobID, 0, &task.TaskConfig{}, 0))
 	suite.NoError(store.CreateTaskRuntime(
 		context.Background(),
 		jobID,
@@ -2874,4 +2908,35 @@ func (suite *CassandraStoreTestSuite) TestCreateTaskRuntimeForServiceJob() {
 		jobConfig.GetType())
 	suite.NoError(err)
 
+}
+
+// TestCreateTaskConfigSuccess tests success case of creating the task configuration
+func (suite *CassandraStoreTestSuite) TestCreateTaskConfigSuccess() {
+	testJob := "941ff353-ba82-49fe-8f80-fb5bc649b04d"
+	taskConfig := &task.TaskConfig{
+		Name: testJob,
+		Resource: &task.ResourceConfig{
+			CpuLimit:    0.8,
+			MemLimitMb:  800,
+			DiskLimitMb: 1500,
+		},
+		RestartPolicy: &task.RestartPolicy{
+			MaxFailures: 3,
+		},
+		HealthCheck: &task.HealthCheckConfig{
+			InitialIntervalSecs:    10,
+			IntervalSecs:           10,
+			MaxConsecutiveFailures: 5,
+			TimeoutSecs:            5,
+			Enabled:                false,
+		},
+	}
+
+	suite.NoError(store.CreateTaskConfig(
+		context.Background(),
+		&peloton.JobID{Value: testJob},
+		0,
+		taskConfig,
+		1,
+	))
 }

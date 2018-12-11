@@ -20,9 +20,7 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-var (
-	dbError error = yarpcerrors.UnavailableErrorf("db error")
-)
+var dbError = yarpcerrors.UnavailableErrorf("db error")
 
 type JobTestSuite struct {
 	suite.Suite
@@ -956,8 +954,8 @@ func (suite *JobTestSuite) TestJobSetJobUpdateTime() {
 	suite.Equal(updateTime, suite.job.GetLastTaskUpdateTime())
 }
 
-// TestJobCreateTasks tests creating task runtimes in cache and DB
-func (suite *JobTestSuite) TestJobCreateTasks() {
+// TestJobCreateTaskRuntimes tests creating task runtimes in cache and DB
+func (suite *JobTestSuite) TestJobCreateTaskRuntimes() {
 	instanceCount := uint32(10)
 	runtimes := initializeRuntimes(instanceCount, pbtask.TaskState_INITIALIZED)
 
@@ -982,7 +980,7 @@ func (suite *JobTestSuite) TestJobCreateTasks() {
 			}).Return(nil)
 	}
 
-	err := suite.job.CreateTasks(context.Background(), runtimes, "peloton")
+	err := suite.job.CreateTaskRuntimes(context.Background(), runtimes, "peloton")
 	suite.NoError(err)
 
 	// Validate the state of the tasks in cache is correct
@@ -1012,7 +1010,7 @@ func (suite *JobTestSuite) TestJobCreateTasksWithDBError() {
 			Return(dbError)
 	}
 
-	err := suite.job.CreateTasks(context.Background(), runtimes, "peloton")
+	err := suite.job.CreateTaskRuntimes(context.Background(), runtimes, "peloton")
 	suite.Error(err)
 }
 
@@ -1302,4 +1300,111 @@ func (suite *JobTestSuite) TestJobRemoveTask() {
 	suite.NotNil(suite.job.GetTask(0))
 	suite.job.RemoveTask(0)
 	suite.Nil(suite.job.GetTask(0))
+}
+
+// TestJobCreateTaskConfigsSuccess tests success case of creating task configurations
+func (suite *JobTestSuite) TestJobCreateTaskConfigsSuccess() {
+	instanceCount := uint32(10)
+	jobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 1,
+		},
+		OwningTeam:    "uber",
+		LdapGroups:    []string{"money", "team6", "otto"},
+		InstanceCount: instanceCount,
+		DefaultConfig: &pbtask.TaskConfig{
+			Name: "instance",
+			Resource: &pbtask.ResourceConfig{
+				CpuLimit:    0.8,
+				MemLimitMb:  800,
+				DiskLimitMb: 1500,
+			},
+		},
+		InstanceConfig: map[uint32]*pbtask.TaskConfig{
+			2: {
+				Name: "instance2",
+				Resource: &pbtask.ResourceConfig{
+					CpuLimit:    1,
+					MemLimitMb:  500,
+					DiskLimitMb: 1000,
+				},
+			},
+
+			4: {
+				Name: "instance4",
+				Resource: &pbtask.ResourceConfig{
+					CpuLimit:    1,
+					MemLimitMb:  600,
+					DiskLimitMb: 1200,
+				},
+			},
+		},
+	}
+
+	suite.taskStore.EXPECT().
+		CreateTaskConfig(
+			gomock.Any(),
+			suite.jobID,
+			int64(-1),
+			jobConfig.GetDefaultConfig(),
+			jobConfig.GetChangeLog().GetVersion()).
+		Return(nil)
+
+	for i, taskConfig := range jobConfig.GetInstanceConfig() {
+		suite.taskStore.EXPECT().
+			CreateTaskConfig(
+				gomock.Any(),
+				suite.jobID,
+				int64(i),
+				taskConfig,
+				jobConfig.GetChangeLog().GetVersion()).
+			Return(nil)
+	}
+
+	suite.NoError(
+		suite.job.CreateTaskConfigs(
+			context.Background(),
+			suite.jobID,
+			jobConfig,
+		),
+	)
+}
+
+// TestJobCreateTaskConfigsFailureToCreateDefaultConfig tests failure
+// case of JobCreateTaskConfigs due to error while writing default config
+func (suite *JobTestSuite) TestJobCreateTaskConfigsFailureToCreateDefaultConfig() {
+	instanceCount := uint32(10)
+	jobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 1,
+		},
+		OwningTeam:    "uber",
+		LdapGroups:    []string{"money", "team6", "otto"},
+		InstanceCount: instanceCount,
+		DefaultConfig: &pbtask.TaskConfig{
+			Name: "instance",
+			Resource: &pbtask.ResourceConfig{
+				CpuLimit:    0.8,
+				MemLimitMb:  800,
+				DiskLimitMb: 1500,
+			},
+		},
+	}
+
+	suite.taskStore.EXPECT().
+		CreateTaskConfig(
+			gomock.Any(),
+			suite.jobID,
+			int64(-1),
+			jobConfig.GetDefaultConfig(),
+			jobConfig.GetChangeLog().GetVersion()).
+		Return(yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(
+		suite.job.CreateTaskConfigs(
+			context.Background(),
+			suite.jobID,
+			jobConfig,
+		),
+	)
 }
