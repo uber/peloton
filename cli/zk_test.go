@@ -24,6 +24,17 @@ func TestInvalidClusterName(t *testing.T) {
 	zkURL, err := GetZkInfoFromClusterName(testInvalidClusterName)
 	assert.NotNil(t, err)
 	assert.EqualValues(t, zkURL, "", "response should be empty string")
-	expectedErr := "cannot find the corresponding zkURL for " + testInvalidClusterName
+	expectedErr := "cannot find the corresponding zk url for " + testInvalidClusterName
+	assert.EqualError(t, err, expectedErr)
+}
+
+// negative TC: could not find the config file
+func TestNoConfigFile(t *testing.T) {
+	filePath := "."
+	fileName := "test"
+	zkURL, err := readConfigFile(filePath, fileName)
+	assert.NotNil(t, err)
+	assert.EqualValues(t, zkURL, "", "response should be empty string")
+	expectedErr := "unable to open file " + fileName
 	assert.EqualError(t, err, expectedErr)
 }
