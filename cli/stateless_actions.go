@@ -52,6 +52,10 @@ const (
 	queryPodsFormatHeader = "Pod ID\tName\tState\tContainer Name\tContainer State\tHealthy\tStart Time\tRun Time\t" +
 		"Host\tMessage\tReason\t\n"
 	queryPodsFormatBody = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
+
+	podListFormatHeader = "Name\tPod ID\tState\tHealthy\tStart Time\t" +
+		"Host\tMessage\tReason\t\n"
+	podListFormatBody = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
 )
 
 // StatelessGetCacheAction get cache of stateless job
@@ -578,6 +582,50 @@ func (c *Client) StatelessQueryPodsAction(
 	return err
 }
 
+// StatelessListPodsAction is the action to list pods in a job
+func (c *Client) StatelessListPodsAction(
+	jobID string,
+	instanceRange *task.InstanceRange,
+) error {
+	idInstanceRange := &v1alphapod.InstanceIDRange{
+		From: instanceRange.GetFrom(),
+		To:   instanceRange.GetTo(),
+	}
+
+	stream, err := c.statelessClient.ListPods(
+		c.ctx,
+		&statelesssvc.ListPodsRequest{
+			JobId: &v1alphapeloton.JobID{Value: jobID},
+			Range: idInstanceRange,
+		},
+	)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprint(tabWriter, queryPodsFormatHeader)
+	tabWriter.Flush()
+
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		printStatelessListPodsResponse(resp)
+		tabWriter.Flush()
+	}
+}
+
+func printStatelessListPodsResponse(resp *statelesssvc.ListPodsResponse) {
+	for _, pod := range resp.GetPods() {
+		printPod(pod.GetStatus(), pod.GetPodName())
+	}
+}
+
 // StatelessStartJobAction is the action for starting a stateless job
 func (c *Client) StatelessStartJobAction(
 	jobID string,
@@ -595,6 +643,7 @@ func (c *Client) StatelessStartJobAction(
 	resp, err := c.statelessClient.StartJob(
 		c.ctx,
 		&request)
+
 	if err != nil {
 		return err
 	}
@@ -927,14 +976,11 @@ func printQueryPodsResponse(r *statelesssvc.QueryPodsResponse, err error, debug 
 
 	fmt.Fprint(tabWriter, queryPodsFormatHeader)
 	for _, t := range r.GetPods() {
-		printPod(t)
+		printPod(t.GetStatus(), t.GetSpec().GetPodName())
 	}
 }
 
-func printPod(p *v1alphapod.PodInfo) {
-	spec := p.GetSpec()
-	status := p.GetStatus()
-
+func printPod(status *v1alphapod.PodStatus, podName *v1alphapeloton.PodName) {
 	for _, container := range status.GetContainersStatus() {
 		// Calculate the start time and run time of the container
 		startTimeStr := ""
@@ -962,7 +1008,7 @@ func printPod(p *v1alphapod.PodInfo) {
 			tabWriter,
 			queryPodsFormatBody,
 			status.GetPodId().GetValue(),
-			spec.GetPodName().GetValue(),
+			podName.GetValue(),
 			status.GetState().String(),
 			container.GetName(),
 			container.GetState().String(),

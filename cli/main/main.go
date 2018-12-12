@@ -274,6 +274,10 @@ var (
 
 	statelessListJobs = stateless.Command("list", "list all jobs")
 
+	statelessListPods              = stateless.Command("list-pods", "list all pods in a job")
+	statelessListPodsJobID         = statelessListPods.Arg("job", "job identifier").Required().String()
+	statelessListPodsInstanceRange = taskRangeFlag(statelessListPods.Flag("range", "show range of instances (from:to syntax)").Default(":").Short('r'))
+
 	statelessCreate            = stateless.Command("create", "create stateless job")
 	statelessCreateResPoolPath = statelessCreate.Arg("respool", "complete path of the "+
 		"resource pool starting from the root").Required().String()
@@ -832,6 +836,8 @@ func main() {
 		err = client.EventStreamAction()
 	case statelessListJobs.FullCommand():
 		err = client.StatelessListJobsAction()
+	case statelessListPods.FullCommand():
+		err = client.StatelessListPodsAction(*statelessListPodsJobID, statelessListPodsInstanceRange)
 	case statelessGetCache.FullCommand():
 		err = client.StatelessGetCacheAction(*statelessGetCacheName)
 	case statelessRefresh.FullCommand():

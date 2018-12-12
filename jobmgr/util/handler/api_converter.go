@@ -115,6 +115,21 @@ func ConvertPodStateToTaskState(state pod.PodState) task.TaskState {
 	return task.TaskState_UNKNOWN
 }
 
+// ConvertV1InstanceRangeToV0InstanceRange converts from array of
+// v1 pod.InstanceIDRange to array of v0 task.InstanceRange
+func ConvertV1InstanceRangeToV0InstanceRange(
+	instanceRange []*pod.InstanceIDRange) []*task.InstanceRange {
+	var resp []*task.InstanceRange
+	for _, inst := range instanceRange {
+		r := &task.InstanceRange{
+			From: inst.GetFrom(),
+			To:   inst.GetTo(),
+		}
+		resp = append(resp, r)
+	}
+	return resp
+}
+
 // ConvertTaskRuntimeToPodStatus converts
 // v0 task.RuntimeInfo to v1alpha pod.PodStatus
 func ConvertTaskRuntimeToPodStatus(runtime *task.RuntimeInfo) *pod.PodStatus {
@@ -351,8 +366,8 @@ func ConvertUpdateModelToWorkflowStatus(
 	}
 
 	return &stateless.WorkflowStatus{
-		Type:  stateless.WorkflowType(updateInfo.GetType()),
-		State: stateless.WorkflowState(updateInfo.GetState()),
+		Type:                  stateless.WorkflowType(updateInfo.GetType()),
+		State:                 stateless.WorkflowState(updateInfo.GetState()),
 		NumInstancesCompleted: updateInfo.GetInstancesDone(),
 		NumInstancesRemaining: updateInfo.GetInstancesTotal() - updateInfo.GetInstancesDone() - updateInfo.GetInstancesFailed(),
 		NumInstancesFailed:    updateInfo.GetInstancesFailed(),

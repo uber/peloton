@@ -102,6 +102,7 @@ type statelessHandlerTestSuite struct {
 	jobStore        *storemocks.MockJobStore
 	updateStore     *storemocks.MockUpdateStore
 	listJobsServer  *statelesssvcmocks.MockJobServiceServiceListJobsYARPCServer
+	listPodsServer  *statelesssvcmocks.MockJobServiceServiceListPodsYARPCServer
 	secretStore     *storemocks.MockSecretStore
 	taskStore       *storemocks.MockTaskStore
 	activeRMTasks   *activermtaskmocks.MockActiveRMTasks
@@ -119,6 +120,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.respoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.listJobsServer = statelesssvcmocks.NewMockJobServiceServiceListJobsYARPCServer(suite.ctrl)
+	suite.listPodsServer = statelesssvcmocks.NewMockJobServiceServiceListPodsYARPCServer(suite.ctrl)
 	suite.secretStore = storemocks.NewMockSecretStore(suite.ctrl)
 	suite.activeRMTasks = activermtaskmocks.NewMockActiveRMTasks(suite.ctrl)
 	suite.handler = &serviceHandler{
@@ -1734,6 +1736,95 @@ func (suite *statelessHandlerTestSuite) TestPauseJobWorkflowPauseWorkflowFailure
 		})
 	suite.Error(err)
 	suite.Nil(resp)
+}
+
+func (suite *statelessHandlerTestSuite) TestListPodsSuccess() {
+	tasks := make(map[uint32]*pbtask.RuntimeInfo)
+	instID := uint32(1)
+	podName := fmt.Sprintf("%s-%d", testJobID, instID)
+	mesosID := fmt.Sprintf("%s-%d", podName, 1)
+	tasks[instID] = &pbtask.RuntimeInfo{
+		State:       pbtask.TaskState_RUNNING,
+		MesosTaskId: &mesos.TaskID{Value: &mesosID},
+		Host:        "host1",
+	}
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(
+			gomock.Any(),
+			&peloton.JobID{Value: testJobID},
+			gomock.Any(),
+		).
+		Return(tasks, nil)
+
+	suite.listPodsServer.EXPECT().
+		Send(gomock.Any()).
+		Do(func(resp *statelesssvc.ListPodsResponse) {
+			suite.Equal(len(resp.GetPods()), 1)
+			task := resp.GetPods()[0]
+			suite.Equal(task.GetStatus().GetState(), pod.PodState_POD_STATE_RUNNING)
+			suite.Equal(task.GetPodName().GetValue(), podName)
+			suite.Equal(task.GetStatus().GetHost(), tasks[1].Host)
+			suite.Equal(task.GetStatus().GetPodId().GetValue(), tasks[1].MesosTaskId.GetValue())
+		}).Return(nil)
+
+	err := suite.handler.ListPods(
+		&statelesssvc.ListPodsRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		},
+		suite.listPodsServer,
+	)
+	suite.NoError(err)
+}
+
+func (suite *statelessHandlerTestSuite) TestListPodsTaskGetError() {
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(
+			gomock.Any(),
+			&peloton.JobID{Value: testJobID},
+			gomock.Any(),
+		).
+		Return(nil, fmt.Errorf("fake db error"))
+
+	err := suite.handler.ListPods(
+		&statelesssvc.ListPodsRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		},
+		suite.listPodsServer,
+	)
+	suite.Error(err)
+}
+
+func (suite *statelessHandlerTestSuite) TestListPodsSendError() {
+	tasks := make(map[uint32]*pbtask.RuntimeInfo)
+	instID := uint32(1)
+	podName := fmt.Sprintf("%s-%d", testJobID, instID)
+	mesosID := fmt.Sprintf("%s-%d", podName, 1)
+	tasks[instID] = &pbtask.RuntimeInfo{
+		State:       pbtask.TaskState_RUNNING,
+		MesosTaskId: &mesos.TaskID{Value: &mesosID},
+		Host:        "host1",
+	}
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(
+			gomock.Any(),
+			&peloton.JobID{Value: testJobID},
+			gomock.Any(),
+		).
+		Return(tasks, nil)
+
+	suite.listPodsServer.EXPECT().
+		Send(gomock.Any()).
+		Return(fmt.Errorf("fake db error"))
+
+	err := suite.handler.ListPods(
+		&statelesssvc.ListPodsRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		},
+		suite.listPodsServer,
+	)
+	suite.Error(err)
 }
 
 // TestListJobsSuccess tests invoking ListJobs API successfully

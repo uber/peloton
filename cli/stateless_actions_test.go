@@ -992,6 +992,81 @@ func (suite *statelessActionsTestSuite) TestStatelessQueryPodsActionInvalidSortO
 	))
 }
 
+// TestClientListPodsSuccess tests a successful execution of ListPods action
+func (suite *statelessActionsTestSuite) TestClientListPodsSuccess() {
+	stream := mocks.NewMockJobServiceServiceListPodsYARPCClient(suite.ctrl)
+	pods := &svc.ListPodsResponse{
+		Pods: []*v1alphapod.PodSummary{
+			{
+				PodName: &v1alphapeloton.PodName{
+					Value: "test-1",
+				},
+				Status: &v1alphapod.PodStatus{
+					State: v1alphapod.PodState_POD_STATE_RUNNING,
+					PodId: &v1alphapeloton.PodID{Value: testPodID},
+					ContainersStatus: []*v1alphapod.ContainerStatus{
+						{
+							Name:  "test-container",
+							State: v1alphapod.ContainerState_CONTAINER_STATE_RUNNING,
+							Healthy: &v1alphapod.HealthStatus{
+								State: v1alphapod.HealthState_HEALTH_STATE_HEALTHY,
+							},
+							StartTime: time.Now().Format(time.RFC3339Nano),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	suite.statelessClient.EXPECT().
+		ListPods(gomock.Any(), gomock.Any()).
+		Return(stream, nil)
+
+	gomock.InOrder(
+		stream.EXPECT().
+			Recv().
+			Return(pods, nil),
+		stream.EXPECT().
+			Recv().
+			Return(nil, io.EOF),
+	)
+
+	suite.NoError(suite.client.StatelessListPodsAction(
+		testJobID,
+		&task.InstanceRange{
+			From: uint32(0),
+			To:   uint32(5),
+		},
+	))
+}
+
+// TestClientListPodsActionError tests ListPods action getting an error on
+// ininvoking the ListPods API
+func (suite *statelessActionsTestSuite) TestClientListPodsActionError() {
+	suite.statelessClient.EXPECT().
+		ListPods(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessListPodsAction(testJobID, nil))
+}
+
+// TestClientListPodsStreamError tests receiving an error from the stream
+// while fetching pods summary via ListPods action
+func (suite *statelessActionsTestSuite) TestClientListPodsStreamError() {
+	stream := mocks.NewMockJobServiceServiceListPodsYARPCClient(suite.ctrl)
+
+	suite.statelessClient.EXPECT().
+		ListPods(gomock.Any(), gomock.Any()).
+		Return(stream, nil)
+
+	stream.EXPECT().
+		Recv().
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessListPodsAction(testJobID, nil))
+}
+
 // TestClientStartJobSuccess tests the success case of starting a stateless job
 func (suite *statelessActionsTestSuite) TestClientStartJobSuccess() {
 	suite.statelessClient.EXPECT().

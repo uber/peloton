@@ -1044,7 +1044,50 @@ func (h *serviceHandler) GetJobUpdate(
 
 func (h *serviceHandler) ListPods(
 	req *svc.ListPodsRequest,
-	stream svc.JobServiceServiceListPodsYARPCServer) error {
+	stream svc.JobServiceServiceListPodsYARPCServer,
+) (err error) {
+	defer func() {
+		if err != nil {
+			log.WithError(err).
+				WithField("job_id", req.GetJobId().GetValue()).
+				Warn("JobSVC.ListPods failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("job_id", req.GetJobId().GetValue()).
+			Debug("JobSVC.ListPods succeeded")
+	}()
+
+	taskRuntimes, err := h.taskStore.GetTaskRuntimesForJobByRange(
+		context.Background(),
+		&peloton.JobID{Value: req.GetJobId().GetValue()},
+		&task.InstanceRange{
+			From: req.GetRange().GetFrom(),
+			To:   req.GetRange().GetTo(),
+		},
+	)
+	if err != nil {
+		return errors.Wrap(err, "failed to get tasks")
+	}
+
+	for instID, taskRuntime := range taskRuntimes {
+		resp := &svc.ListPodsResponse{
+			Pods: []*pod.PodSummary{
+				&pod.PodSummary{
+					PodName: &v1alphapeloton.PodName{
+						Value: util.CreatePelotonTaskID(req.GetJobId().GetValue(), instID),
+					},
+					Status: handlerutil.ConvertTaskRuntimeToPodStatus(taskRuntime),
+				},
+			},
+		}
+
+		if err := stream.Send(resp); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

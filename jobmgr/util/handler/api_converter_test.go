@@ -1434,6 +1434,22 @@ func (suite *apiConverterTestSuite) TestConvertTerminationStatusReason() {
 	}
 }
 
+func (suite *apiConverterTestSuite) TestConvertV1InstanceRangeToV0() {
+	from := uint32(5)
+	to := uint32(10)
+	v1Range := []*pod.InstanceIDRange{
+		{
+			From: from,
+			To:   to,
+		},
+	}
+
+	v0Range := ConvertV1InstanceRangeToV0InstanceRange(v1Range)
+	suite.Equal(len(v0Range), 1)
+	suite.Equal(v0Range[0].From, from)
+	suite.Equal(v0Range[0].To, to)
+}
+
 func TestAPIConverter(t *testing.T) {
 	suite.Run(t, new(apiConverterTestSuite))
 }
