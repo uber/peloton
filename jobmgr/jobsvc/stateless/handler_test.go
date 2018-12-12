@@ -9,6 +9,7 @@ import (
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
@@ -53,6 +54,7 @@ type statelessHandlerTestSuite struct {
 	jobStore        *storemocks.MockJobStore
 	updateStore     *storemocks.MockUpdateStore
 	listJobsServer  *statelesssvcmocks.MockJobServiceServiceListJobsYARPCServer
+	taskStore       *storemocks.MockTaskStore
 }
 
 func (suite *statelessHandlerTestSuite) SetupTest() {
@@ -64,6 +66,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
+	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.respoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.listJobsServer = statelesssvcmocks.NewMockJobServiceServiceListJobsYARPCServer(suite.ctrl)
 	suite.handler = &serviceHandler{
@@ -72,6 +75,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 		goalStateDriver: suite.goalStateDriver,
 		jobStore:        suite.jobStore,
 		updateStore:     suite.updateStore,
+		taskStore:       suite.taskStore,
 		respoolClient:   suite.respoolClient,
 	}
 }
@@ -928,6 +932,216 @@ func (suite *statelessHandlerTestSuite) TestReplaceJobGetJobConfigFailure() {
 	suite.Nil(resp)
 }
 
+// TestGetReplaceJobDiffSuccess tests the success case of getting the
+// difference in configuration for ReplaceJob API
+func (suite *statelessHandlerTestSuite) TestGetReplaceJobDiffSuccess() {
+	configVersion := uint64(1)
+	workflowVersion := uint64(1)
+	entityVersion := jobutil.GetJobEntityVersion(
+		configVersion,
+		workflowVersion,
+	)
+	instanceCount := uint32(5)
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < instanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State: pbtask.TaskState_RUNNING,
+		}
+		taskRuntimes[i] = runtime
+	}
+
+	suite.jobFactory.EXPECT().
+		AddJob(&peloton.JobID{Value: testJobID}).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbjob.RuntimeInfo{
+			State:                pbjob.JobState_RUNNING,
+			WorkflowVersion:      workflowVersion,
+			ConfigurationVersion: configVersion,
+		}, nil)
+
+	suite.cachedJob.EXPECT().
+		ValidateEntityVersion(gomock.Any(), entityVersion).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			&peloton.JobID{Value: testJobID},
+			configVersion,
+		).Return(
+		&pbjob.JobConfig{
+			Type:          pbjob.JobType_SERVICE,
+			InstanceCount: instanceCount,
+		},
+		nil,
+		nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), gomock.Any(), nil).
+		Return(taskRuntimes, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, nil, nil).
+		Times(int(instanceCount))
+
+	_, err := suite.handler.GetReplaceJobDiff(
+		context.Background(),
+		&statelesssvc.GetReplaceJobDiffRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+			Spec: &stateless.JobSpec{
+				InstanceCount: instanceCount,
+			},
+		},
+	)
+	suite.NoError(err)
+}
+
+// TestGetReplaceJobDiffSuccess tests the failure case of DB error when
+// fetching the job runtime when invoking GetReplaceJobDiff API
+func (suite *statelessHandlerTestSuite) TestGetReplaceJobDiffRuntimeDBError() {
+	configVersion := uint64(1)
+	workflowVersion := uint64(1)
+	entityVersion := jobutil.GetJobEntityVersion(
+		configVersion,
+		workflowVersion,
+	)
+	instanceCount := uint32(5)
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < instanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State: pbtask.TaskState_RUNNING,
+		}
+		taskRuntimes[i] = runtime
+	}
+
+	suite.jobFactory.EXPECT().
+		AddJob(&peloton.JobID{Value: testJobID}).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	_, err := suite.handler.GetReplaceJobDiff(
+		context.Background(),
+		&statelesssvc.GetReplaceJobDiffRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+			Spec: &stateless.JobSpec{
+				InstanceCount: instanceCount,
+			},
+		},
+	)
+	suite.Error(err)
+}
+
+// TestGetReplaceJobDiffValidateVersionFail failure case of entity
+// version validation failure when invoking GetReplaceJobDiff API
+func (suite *statelessHandlerTestSuite) TestGetReplaceJobDiffValidateVersionFail() {
+	configVersion := uint64(1)
+	workflowVersion := uint64(1)
+	entityVersion := jobutil.GetJobEntityVersion(
+		configVersion,
+		workflowVersion,
+	)
+	instanceCount := uint32(5)
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < instanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State: pbtask.TaskState_RUNNING,
+		}
+		taskRuntimes[i] = runtime
+	}
+
+	suite.jobFactory.EXPECT().
+		AddJob(&peloton.JobID{Value: testJobID}).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbjob.RuntimeInfo{
+			State:                pbjob.JobState_RUNNING,
+			WorkflowVersion:      workflowVersion,
+			ConfigurationVersion: configVersion,
+		}, nil)
+
+	suite.cachedJob.EXPECT().
+		ValidateEntityVersion(gomock.Any(), entityVersion).
+		Return(yarpcerrors.InternalErrorf("test error"))
+
+	_, err := suite.handler.GetReplaceJobDiff(
+		context.Background(),
+		&statelesssvc.GetReplaceJobDiffRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+			Spec: &stateless.JobSpec{
+				InstanceCount: instanceCount,
+			},
+		},
+	)
+	suite.Error(err)
+}
+
+// TestGetReplaceJobDiffGetConfigError tests the failure case of DB error when
+// fetching the job configuration when invoking GetReplaceJobDiff API
+func (suite *statelessHandlerTestSuite) TestGetReplaceJobDiffGetConfigError() {
+	configVersion := uint64(1)
+	workflowVersion := uint64(1)
+	entityVersion := jobutil.GetJobEntityVersion(
+		configVersion,
+		workflowVersion,
+	)
+	instanceCount := uint32(5)
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < instanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State: pbtask.TaskState_RUNNING,
+		}
+		taskRuntimes[i] = runtime
+	}
+
+	suite.jobFactory.EXPECT().
+		AddJob(&peloton.JobID{Value: testJobID}).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbjob.RuntimeInfo{
+			State:                pbjob.JobState_RUNNING,
+			WorkflowVersion:      workflowVersion,
+			ConfigurationVersion: configVersion,
+		}, nil)
+
+	suite.cachedJob.EXPECT().
+		ValidateEntityVersion(gomock.Any(), entityVersion).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			&peloton.JobID{Value: testJobID},
+			configVersion,
+		).Return(
+		nil, nil, yarpcerrors.InternalErrorf("test error"))
+
+	_, err := suite.handler.GetReplaceJobDiff(
+		context.Background(),
+		&statelesssvc.GetReplaceJobDiffRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+			Spec: &stateless.JobSpec{
+				InstanceCount: instanceCount,
+			},
+		},
+	)
+	suite.Error(err)
+}
+
 // TestResumeJobWorkflowSuccess tests the success case of resume workflow
 func (suite *statelessHandlerTestSuite) TestResumeJobWorkflowSuccess() {
 	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
@@ -1203,6 +1417,20 @@ func (suite *statelessHandlerTestSuite) TestListJobsSendError() {
 		suite.listJobsServer,
 	)
 	suite.Error(err)
+}
+
+func (suite *statelessHandlerTestSuite) TestConvertInstanceListToRange() {
+	instList := []uint32{2, 6, 5, 1}
+	instRange := convertInstanceIDListToInstanceRange(instList)
+	suite.Equal(len(instRange), 2)
+	for _, r := range instRange {
+		if r.From == 1 {
+			suite.Equal(r.To, uint32(2))
+		} else {
+			suite.Equal(r.From, uint32(5))
+			suite.Equal(r.To, uint32(6))
+		}
+	}
 }
 
 func TestStatelessServiceHandler(t *testing.T) {

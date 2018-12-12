@@ -238,6 +238,15 @@ var (
 
 	statelessListJobs = stateless.Command("list", "list all jobs")
 
+	statelessReplaceJobDiff = stateless.Command("replace-diff",
+		"dry-run of replace to the the instances to be added/removed/updated/unchanged")
+	statelessReplaceJobDiffJobID       = statelessReplaceJobDiff.Arg("job", "job identifier").Required().String()
+	statelessReplaceJobDiffSpec        = statelessReplaceJobDiff.Arg("spec", "YAML job spec").Required().ExistingFile()
+	statelessReplaceJobDiffResPoolPath = statelessReplaceJobDiff.Arg("respool", "complete path of the "+
+		"resource pool starting from the root").Required().String()
+	statelessReplaceJobDiffEntityVersion = statelessReplaceJobDiff.Arg("entityVersion",
+		"entity version for concurrency control").Required().String()
+
 	// Top level pod command
 	pod = app.Command("pod", "CLI reflects pod(s) actions, such as get pod details, create/restart/update a pod...")
 
@@ -740,6 +749,13 @@ func main() {
 			*statelessReplaceMaxTolerableInstanceFailures,
 			*statelessReplaceRollbackOnFailure,
 			*statelessReplaceStartPaused,
+		)
+	case statelessReplaceJobDiff.FullCommand():
+		err = client.StatelessReplaceJobDiffAction(
+			*statelessReplaceJobDiffJobID,
+			*statelessReplaceJobDiffSpec,
+			*statelessReplaceJobDiffEntityVersion,
+			*statelessReplaceJobDiffResPoolPath,
 		)
 	case podLogsGet.FullCommand():
 		err = client.PodLogsGetAction(*podLogsGetFileName, *podLogsGetPodName, *podLogsGetPodID)

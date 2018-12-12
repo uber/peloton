@@ -2,6 +2,7 @@ package stateless
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
@@ -10,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	pelotonv1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
@@ -34,6 +36,7 @@ import (
 type serviceHandler struct {
 	jobStore        storage.JobStore
 	updateStore     storage.UpdateStore
+	taskStore       storage.TaskStore
 	respoolClient   respool.ResourceManagerYARPCClient
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
@@ -45,6 +48,7 @@ func InitV1AlphaJobServiceHandler(
 	d *yarpc.Dispatcher,
 	jobStore storage.JobStore,
 	updateStore storage.UpdateStore,
+	taskStore storage.TaskStore,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
 	candidate leader.Candidate,
@@ -52,6 +56,7 @@ func InitV1AlphaJobServiceHandler(
 	handler := &serviceHandler{
 		jobStore:        jobStore,
 		updateStore:     updateStore,
+		taskStore:       taskStore,
 		respoolClient:   respool.NewResourceManagerYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		jobFactory:      jobFactory,
 		goalStateDriver: goalStateDriver,
@@ -565,6 +570,86 @@ func (h *serviceHandler) ListJobUpdates(
 	req *svc.ListJobUpdatesRequest) (*svc.ListJobUpdatesResponse, error) {
 	return &svc.ListJobUpdatesResponse{}, nil
 }
+
+func (h *serviceHandler) GetReplaceJobDiff(
+	ctx context.Context,
+	req *svc.GetReplaceJobDiffRequest,
+) (resp *svc.GetReplaceJobDiffResponse, err error) {
+	defer func() {
+		jobID := req.GetJobId().GetValue()
+		entityVersion := req.GetVersion().GetValue()
+
+		if err != nil {
+			log.WithField("job_id", jobID).
+				WithField("entity_version", entityVersion).
+				WithError(err).
+				Info("JobSVC.GetReplaceJobDifffailed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("job_id", jobID).
+			WithField("entity_version", entityVersion).
+			Debug("JobSVC.GetReplaceJobDiff succeeded")
+	}()
+
+	jobUUID := uuid.Parse(req.GetJobId().GetValue())
+	if jobUUID == nil {
+		return nil, yarpcerrors.InvalidArgumentErrorf(
+			"JobID must be of UUID format")
+	}
+
+	jobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
+	cachedJob := h.jobFactory.AddJob(jobID)
+	jobRuntime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get job status")
+	}
+
+	if err := cachedJob.ValidateEntityVersion(
+		ctx,
+		req.GetVersion(),
+	); err != nil {
+		return nil, err
+	}
+
+	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(req.GetSpec())
+	if err != nil {
+		return nil, err
+	}
+
+	prevJobConfig, _, err := h.jobStore.GetJobConfigWithVersion(
+		ctx,
+		jobID,
+		jobRuntime.GetConfigurationVersion())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get previous configuration")
+	}
+
+	if err := validateJobConfigUpdate(prevJobConfig, jobConfig); err != nil {
+		return nil, err
+	}
+
+	added, updated, removed, unchanged, err :=
+		cached.GetInstancesToProcessForUpdate(
+			ctx,
+			jobID,
+			prevJobConfig,
+			jobConfig,
+			h.taskStore,
+		)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get configuration difference")
+	}
+
+	return &svc.GetReplaceJobDiffResponse{
+		InstancesAdded:     convertInstanceIDListToInstanceRange(added),
+		InstancesRemoved:   convertInstanceIDListToInstanceRange(removed),
+		InstancesUpdated:   convertInstanceIDListToInstanceRange(updated),
+		InstancesUnchanged: convertInstanceIDListToInstanceRange(unchanged),
+	}, nil
+}
+
 func (h *serviceHandler) RefreshJob(
 	ctx context.Context,
 	req *svc.RefreshJobRequest) (resp *svc.RefreshJobResponse, err error) {
@@ -741,4 +826,43 @@ func convertCacheToWorkflowStatus(
 	workflowStatus.PrevVersion = jobutil.GetPodEntityVersion(cachedWorkflow.GetState().JobVersion)
 	workflowStatus.Version = jobutil.GetPodEntityVersion(cachedWorkflow.GetGoalState().JobVersion)
 	return workflowStatus
+}
+
+func convertInstanceIDListToInstanceRange(instIDs []uint32) []*pod.InstanceIDRange {
+	var instanceIDRange []*pod.InstanceIDRange
+	var instanceRange *pod.InstanceIDRange
+	var prevInstID uint32
+
+	instIDSortLess := func(i, j int) bool {
+		return instIDs[i] < instIDs[j]
+	}
+
+	sort.Slice(instIDs, instIDSortLess)
+
+	for _, instID := range instIDs {
+		if instanceRange == nil {
+			// create a new range
+			instanceRange = &pod.InstanceIDRange{
+				From: instID,
+			}
+		} else {
+			// range already exists
+			if instID != prevInstID+1 {
+				// finish the previous range and start a new one
+				instanceRange.To = prevInstID
+				instanceIDRange = append(instanceIDRange, instanceRange)
+				instanceRange = &pod.InstanceIDRange{
+					From: instID,
+				}
+			}
+		}
+		prevInstID = instID
+	}
+
+	// finish the last instance range
+	if instanceRange != nil {
+		instanceRange.To = prevInstID
+		instanceIDRange = append(instanceIDRange, instanceRange)
+	}
+	return instanceIDRange
 }

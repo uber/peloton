@@ -154,7 +154,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 			return err
 		}
 
-		instancesAdded, instancesUpdated, instancesRemoved, err := cached.GetInstancesToProcessForUpdate(
+		instancesAdded, instancesUpdated, instancesRemoved, _, err := cached.GetInstancesToProcessForUpdate(
 			ctx,
 			cachedJob.ID(),
 			prevJobConfig,

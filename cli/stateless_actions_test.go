@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -406,6 +407,95 @@ func (suite *statelessActionsTestSuite) TestStatelessListJobsActionRecvError() {
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
 	suite.Error(suite.client.StatelessListJobsAction())
+}
+
+// TestStatelessReplaceJobDiffActionSuccess tests successfully invoking
+// the GetReplaceJobDiff API
+func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionSuccess() {
+	respoolPath := "/testPath"
+	entityVersion := "1-1"
+
+	suite.resClient.EXPECT().
+		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+			Path: &respool.ResourcePoolPath{
+				Value: respoolPath,
+			},
+		}).
+		Return(&respool.LookupResponse{
+			Id: &peloton.ResourcePoolID{Value: uuid.New()},
+		}, nil)
+
+	suite.statelessClient.EXPECT().
+		GetReplaceJobDiff(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, req *svc.GetReplaceJobDiffRequest) {
+			suite.Equal(req.GetVersion().GetValue(), entityVersion)
+			suite.Equal(req.GetJobId().GetValue(), testJobID)
+		}).
+		Return(&svc.GetReplaceJobDiffResponse{
+			InstancesAdded: []*pod.InstanceIDRange{
+				&pod.InstanceIDRange{
+					From: uint32(0),
+					To:   uint32(5),
+				},
+			},
+		}, nil)
+
+	suite.NoError(suite.client.StatelessReplaceJobDiffAction(
+		testJobID,
+		testStatelessSpecConfig,
+		entityVersion,
+		respoolPath,
+	))
+}
+
+// TestStatelessReplaceJobDiffActionSuccess tests getting an error on invoking
+// the GetReplaceJobDiff API
+func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionFail() {
+	respoolPath := "/testPath"
+	entityVersion := "1-1"
+
+	suite.resClient.EXPECT().
+		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+			Path: &respool.ResourcePoolPath{
+				Value: respoolPath,
+			},
+		}).
+		Return(&respool.LookupResponse{
+			Id: &peloton.ResourcePoolID{Value: uuid.New()},
+		}, nil)
+
+	suite.statelessClient.EXPECT().
+		GetReplaceJobDiff(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessReplaceJobDiffAction(
+		testJobID,
+		testStatelessSpecConfig,
+		entityVersion,
+		respoolPath,
+	))
+}
+
+// TestStatelessReplaceJobActionLookupResourcePoolIDFail tests the failure case
+// of the GetReplaceJobDiff API due to the look up resource pool failing
+func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionLookupRPFail() {
+	respoolPath := "/testPath"
+	entityVersion := "1-1"
+
+	suite.resClient.EXPECT().
+		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+			Path: &respool.ResourcePoolPath{
+				Value: respoolPath,
+			},
+		}).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessReplaceJobDiffAction(
+		testJobID,
+		testStatelessSpecConfig,
+		entityVersion,
+		respoolPath,
+	))
 }
 
 func TestStatelessActions(t *testing.T) {

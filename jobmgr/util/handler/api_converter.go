@@ -267,8 +267,8 @@ func ConvertUpdateModelToWorkflowStatus(
 	}
 
 	return &stateless.WorkflowStatus{
-		Type:  stateless.WorkflowType(updateInfo.GetType()),
-		State: stateless.WorkflowState(updateInfo.GetState()),
+		Type:                  stateless.WorkflowType(updateInfo.GetType()),
+		State:                 stateless.WorkflowState(updateInfo.GetState()),
 		NumInstancesCompleted: updateInfo.GetInstancesDone(),
 		NumInstancesRemaining: updateInfo.GetInstancesTotal() - updateInfo.GetInstancesDone() - updateInfo.GetInstancesFailed(),
 		NumInstancesFailed:    updateInfo.GetInstancesFailed(),
@@ -465,7 +465,7 @@ func ConvertJobSpecToJobConfig(spec *stateless.JobSpec) (*job.JobConfig, error) 
 	}
 
 	if len(spec.GetInstanceSpec()) != 0 {
-		var instanceConfigs map[uint32]*task.TaskConfig
+		instanceConfigs := make(map[uint32]*task.TaskConfig)
 		for instanceID, instanceSpec := range spec.GetInstanceSpec() {
 			instanceConfig, err := ConvertPodSpecToTaskConfig(instanceSpec)
 			if err != nil {
@@ -473,6 +473,7 @@ func ConvertJobSpecToJobConfig(spec *stateless.JobSpec) (*job.JobConfig, error) 
 			}
 			instanceConfigs[instanceID] = instanceConfig
 		}
+		result.InstanceConfig = instanceConfigs
 	}
 
 	if spec.GetRespoolId() != nil {

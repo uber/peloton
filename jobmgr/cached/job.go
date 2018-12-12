@@ -118,6 +118,10 @@ type Job interface {
 	// IsPartiallyCreated returns if job has not been fully created yet
 	IsPartiallyCreated(config jobmgrcommon.JobConfig) bool
 
+	// ValidateEntityVersion validates the entity version of the job is the
+	// same as provided in the input, and if not, then returns an error.
+	ValidateEntityVersion(ctx context.Context, version *v1alphapeloton.EntityVersion) error
+
 	// GetRuntime returns the runtime of the job
 	GetRuntime(ctx context.Context) (*pbjob.RuntimeInfo, error)
 
@@ -1247,7 +1251,7 @@ func (j *job) CreateWorkflow(
 	j.Lock()
 	defer j.Unlock()
 
-	if err := j.validateEntityVersion(ctx, entityVersion); err != nil {
+	if err := j.ValidateEntityVersion(ctx, entityVersion); err != nil {
 		return nil, nil, err
 	}
 
@@ -1803,9 +1807,7 @@ func (j *job) getCurrentWorkflow(ctx context.Context) (Update, error) {
 	return newUpdate(j.runtime.GetUpdateID(), j.jobFactory), nil
 }
 
-// validateEntityVersion validates if the entity version provided
-// match the entity version expected
-func (j *job) validateEntityVersion(
+func (j *job) ValidateEntityVersion(
 	ctx context.Context,
 	version *v1alphapeloton.EntityVersion,
 ) error {
@@ -1831,7 +1833,7 @@ func (j *job) updateWorkflowVersion(
 	ctx context.Context,
 	version *v1alphapeloton.EntityVersion,
 ) error {
-	if err := j.validateEntityVersion(ctx, version); err != nil {
+	if err := j.ValidateEntityVersion(ctx, version); err != nil {
 		return err
 	}
 	_, workflowVersion, err := jobutil.ParseJobEntityVersion(version)

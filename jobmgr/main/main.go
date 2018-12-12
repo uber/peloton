@@ -459,6 +459,7 @@ func main() {
 		dispatcher,
 		store,
 		store,
+		store,
 		jobFactory,
 		goalStateDriver,
 		candidate,

@@ -397,3 +397,51 @@ func printListJobsResponse(resp *statelesssvc.ListJobsResponse) {
 		printStatelessQueryResult(r)
 	}
 }
+
+// StatelessReplaceJobDiffAction returns the set of instances which will be
+// added, removed, updated and remain unchanged for a new
+// job specification for a given job
+func (c *Client) StatelessReplaceJobDiffAction(
+	jobID string,
+	spec string,
+	entityVersion string,
+	respoolPath string,
+) error {
+	var jobSpec stateless.JobSpec
+
+	// read the job configuration
+	buffer, err := ioutil.ReadFile(spec)
+	if err != nil {
+		return fmt.Errorf("unable to open file %s: %v", spec, err)
+	}
+	if err := yaml.Unmarshal(buffer, &jobSpec); err != nil {
+		return fmt.Errorf("unable to parse file %s: %v", spec, err)
+	}
+
+	// fetch the resource pool id
+	respoolID, err := c.LookupResourcePoolID(respoolPath)
+	if err != nil {
+		return err
+	}
+	if respoolID == nil {
+		return fmt.Errorf("unable to find resource pool ID for "+
+			":%s", respoolPath)
+	}
+
+	// set the resource pool id
+	jobSpec.RespoolId = &v1alphapeloton.ResourcePoolID{Value: respoolID.GetValue()}
+
+	req := &statelesssvc.GetReplaceJobDiffRequest{
+		JobId:   &v1alphapeloton.JobID{Value: jobID},
+		Spec:    &jobSpec,
+		Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
+	}
+
+	resp, err := c.statelessClient.GetReplaceJobDiff(c.ctx, req)
+	if err != nil {
+		return err
+	}
+
+	printResponseJSON(resp)
+	return nil
+}

@@ -912,7 +912,7 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithLabelAddAndU
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
 		Return(taskRuntimes, nil)
 
-	instancesAdded, instancesUpdated, instancesRemoved, err :=
+	instancesAdded, instancesUpdated, instancesRemoved, instancesUnchanged, err :=
 		GetInstancesToProcessForUpdate(
 			context.Background(),
 			testJob.ID(),
@@ -925,6 +925,7 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithLabelAddAndU
 	suite.Len(instancesUpdated, int(instanceCount))
 	suite.Empty(instancesRemoved)
 	suite.Empty(instancesAdded)
+	suite.Empty(instancesUnchanged)
 }
 
 // TestGetInstancesToProcessForUpdateWithLabelUpdated tests
@@ -964,7 +965,7 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithLabelUpdated
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
 		Return(taskRuntimes, nil)
 
-	instancesAdded, instancesUpdated, instancesRemoved, err :=
+	instancesAdded, instancesUpdated, instancesRemoved, instancesUnchanged, err :=
 		GetInstancesToProcessForUpdate(
 			context.Background(),
 			testJob.ID(),
@@ -977,6 +978,7 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithLabelUpdated
 	suite.Len(instancesUpdated, int(instanceCount))
 	suite.Empty(instancesRemoved)
 	suite.Empty(instancesAdded)
+	suite.Empty(instancesUnchanged)
 }
 
 // TestGetInstancesToProcessForUpdateWithAddedInstances tests adding and updating instances
@@ -1040,7 +1042,7 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithAddedInstanc
 		Return(taskConfig, nil, nil).
 		Times(int(prevInstanceCount))
 
-	instancesAdded, instancesUpdated, instancesRemoved, err :=
+	instancesAdded, instancesUpdated, instancesRemoved, instancesUnchanged, err :=
 		GetInstancesToProcessForUpdate(
 			context.Background(),
 			testJob.ID(),
@@ -1053,6 +1055,7 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithAddedInstanc
 	suite.Len(instancesAdded, int(instanceCount-prevInstanceCount))
 	suite.Empty(instancesRemoved)
 	suite.Len(instancesUpdated, int(prevInstanceCount))
+	suite.Empty(instancesUnchanged)
 }
 
 // TestGetInstancesToProcessForUpdateWithRemovedInstances tests removing instances
@@ -1061,13 +1064,6 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithRemovedInsta
 	taskConfig := &pbtask.TaskConfig{
 		Command: &mesosv1.CommandInfo{
 			Value: &commandValue,
-		},
-	}
-
-	commandValueNew := "new.sh"
-	taskConfigNew := &pbtask.TaskConfig{
-		Command: &mesosv1.CommandInfo{
-			Value: &commandValueNew,
 		},
 	}
 
@@ -1094,7 +1090,7 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithRemovedInsta
 	instanceCount := uint32(8)
 	jobConfig := &pbjob.JobConfig{
 		InstanceCount: instanceCount,
-		DefaultConfig: taskConfigNew,
+		DefaultConfig: taskConfig,
 	}
 
 	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
@@ -1113,10 +1109,10 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithRemovedInsta
 
 	suite.taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil, nil, yarpcerrors.NotFoundErrorf("not-found")).
+		Return(taskConfig, nil, nil).
 		Times(int(instanceCount))
 
-	instancesAdded, instancesUpdated, instancesRemoved, err :=
+	instancesAdded, instancesUpdated, instancesRemoved, instancesUnchanged, err :=
 		GetInstancesToProcessForUpdate(
 			context.Background(),
 			testJob.ID(),
@@ -1128,7 +1124,73 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithRemovedInsta
 	suite.NoError(err)
 	suite.Empty(instancesAdded)
 	suite.Len(instancesRemoved, int(prevInstanceCount-instanceCount))
+	suite.Len(instancesUnchanged, int(instanceCount))
+	suite.Empty(instancesUpdated)
+}
+
+// TestGetInstancesToProcessForUpdateWithMssingConfig tests updating instances
+// whose current task config is not found in the DB.
+func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithMssingConfig() {
+	commandValue := "entrypoint.sh"
+	taskConfig := &pbtask.TaskConfig{
+		Command: &mesosv1.CommandInfo{
+			Value: &commandValue,
+		},
+	}
+
+	testJob := &job{
+		runtime: &pbjob.RuntimeInfo{
+			Revision: &peloton.ChangeLog{
+				Version: 1,
+			},
+		},
+		jobFactory: &jobFactory{
+			jobStore:  suite.jobStore,
+			taskStore: suite.taskStore,
+		},
+		tasks: make(map[uint32]*task),
+		id:    suite.jobID,
+	}
+
+	instanceCount := uint32(10)
+	jobConfig := &pbjob.JobConfig{
+		InstanceCount: instanceCount,
+		DefaultConfig: taskConfig,
+	}
+
+	taskRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < instanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State:                pbtask.TaskState_RUNNING,
+			ConfigVersion:        3,
+			DesiredConfigVersion: 3,
+		}
+		taskRuntimes[i] = runtime
+	}
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
+		Return(taskRuntimes, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, nil, yarpcerrors.NotFoundErrorf("not-found")).
+		Times(int(instanceCount))
+
+	instancesAdded, instancesUpdated, instancesRemoved, instancesUnchanged, err :=
+		GetInstancesToProcessForUpdate(
+			context.Background(),
+			testJob.ID(),
+			jobConfig,
+			jobConfig,
+			suite.taskStore,
+		)
+
+	suite.NoError(err)
+	suite.Empty(instancesAdded)
+	suite.Empty(instancesRemoved)
 	suite.Len(instancesUpdated, int(instanceCount))
+	suite.Empty(instancesUnchanged)
 }
 
 // TestGetInstancesToProcessForUpdateWithUpdateInstances tests updating instances
@@ -1180,7 +1242,7 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithUpdateInstan
 		Return(taskConfig, nil, nil).
 		Times(int(instanceCount))
 
-	instancesAdded, instancesUpdated, instancesRemoved, err :=
+	instancesAdded, instancesUpdated, instancesRemoved, instancesUnchanged, err :=
 		GetInstancesToProcessForUpdate(
 			context.Background(),
 			testJob.ID(),
@@ -1193,6 +1255,7 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithUpdateInstan
 	suite.Empty(instancesAdded)
 	suite.Empty(instancesRemoved)
 	suite.Len(instancesUpdated, int(instanceCount))
+	suite.Empty(instancesUnchanged)
 }
 
 func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateRuntimeError() {
@@ -1220,7 +1283,7 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateRuntimeError() {
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
 		Return(nil, fmt.Errorf("fake db error"))
 
-	_, _, _, err :=
+	_, _, _, _, err :=
 		GetInstancesToProcessForUpdate(
 			context.Background(),
 			testJob.ID(),
@@ -1290,7 +1353,7 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateConfigError() {
 		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, nil, fmt.Errorf("fake db error"))
 
-	_, _, _, err :=
+	_, _, _, _, err :=
 		GetInstancesToProcessForUpdate(
 			context.Background(),
 			testJob.ID(),

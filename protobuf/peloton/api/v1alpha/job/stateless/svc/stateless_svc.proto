@@ -413,6 +413,37 @@ message ListJobUpdatesResponse {
   repeated UpdateInfo updates = 1;
 }
 
+// Request message for JobService.GetReplaceJobDiffRequest method.
+message GetReplaceJobDiffRequest {
+  // The job ID to be updated.
+  peloton.JobID job_id = 1;
+
+  // The current version of the job.
+  peloton.EntityVersion version = 2;
+
+  // The new job configuration to be applied.
+  stateless.JobSpec spec = 3;
+}
+
+// Response message for JobService.GetReplaceJobDiff method.
+// Return errors:
+//   INVALID_ARGUMENT:  if the job ID or job config is invalid.
+//   NOT_FOUND:         if the job ID is not found.
+//   ABORTED:           if the job version is invalid.
+message GetReplaceJobDiffResponse {
+  // Instances which are being added
+  repeated pod.InstanceIDRange instances_added = 1;
+
+  // Instances which are being removed
+  repeated pod.InstanceIDRange instances_removed = 2;
+
+  // Instances which are being updated
+  repeated pod.InstanceIDRange instances_updated = 3;
+
+  // Instances which are unchanged
+  repeated pod.InstanceIDRange instances_unchanged = 4;
+}
+
 // Request message for JobService.RefreshJob method.
 message RefreshJobRequest {
   // The job ID to look up the job.
@@ -521,6 +552,10 @@ service JobService {
 
   // List all updates (including current and previously completed) for a given job.
   rpc ListJobUpdates(ListJobUpdatesRequest) returns (ListJobUpdatesResponse);
+
+  // Get the list of instances which will be added/removed/updated if
+  // the given job specification is applied via the ReplaceJob API.
+  rpc GetReplaceJobDiff(GetReplaceJobDiffRequest) returns (GetReplaceJobDiffResponse);
 
   // Debug only methods.
   // TODO move to private job manager APIs.

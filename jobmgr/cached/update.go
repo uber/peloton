@@ -524,7 +524,7 @@ func (u *update) Rollback(
 		return nil
 	}
 
-	instancesAdded, instancesUpdated, instancesRemoved, err := GetInstancesToProcessForUpdate(
+	instancesAdded, instancesUpdated, instancesRemoved, _, err := GetInstancesToProcessForUpdate(
 		ctx,
 		u.jobID,
 		currentConfig,
@@ -840,6 +840,7 @@ func GetInstancesToProcessForUpdate(
 	instancesAdded []uint32,
 	instancesUpdated []uint32,
 	instancesRemoved []uint32,
+	instancesUnchanged []uint32,
 	err error,
 ) {
 	var taskRuntimes map[uint32]*pbtask.RuntimeInfo
@@ -878,19 +879,17 @@ func GetInstancesToProcessForUpdate(
 				return
 			}
 
-			if changed {
-				// instance needs to be updated
+			if changed || runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
+				// Update if configuration has changed.
+				// Also, if the configuration version is not the same as the desired
+				// configuration version, then lets treat this instance as one
+				// which needs to be updated irrespective of whether the current
+				// config it has is the same as provided in the new configuration.
+				// In some cases it may result in an unneeded restart of a
+				// few instances, but this ensures correctness.
 				instancesUpdated = append(instancesUpdated, instID)
-			}
-
-			// If the configuration version is not the same as the desired
-			// configuration version, then lets treat this instance as one
-			// which needs to be updated irrespective of whether the current
-			// config it has is the same as provided in the new configuration.
-			// In some cases it may result in an unneeded restart of a
-			// few instances, but this ensures correctness.
-			if runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
-				instancesUpdated = append(instancesUpdated, instID)
+			} else {
+				instancesUnchanged = append(instancesUnchanged, instID)
 			}
 
 			// TODO what happens if the update does not change the instance
