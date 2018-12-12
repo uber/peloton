@@ -1009,6 +1009,22 @@ func (suite *jobActionsTestSuite) TestClientJobGetCacheAction() {
 	}
 }
 
+// TestClientJobGetActiveJobsAction tests fetching job in cache
+func (suite *jobActionsTestSuite) TestClientJobGetActiveJobsAction() {
+	req := &job.GetActiveJobsRequest{}
+
+	suite.mockJob.EXPECT().
+		GetActiveJobs(gomock.Any(), req).
+		Return(nil, nil)
+	suite.NoError(suite.client.JobGetActiveJobsAction())
+
+	suite.mockJob.EXPECT().
+		GetActiveJobs(gomock.Any(), req).
+		Return(nil, errors.New("unable to get active jobs"))
+	suite.Error(suite.client.JobGetActiveJobsAction())
+
+}
+
 // TestClientJobRefreshAction tests refreshing a job
 func (suite *jobActionsTestSuite) TestClientJobRefreshAction() {
 	resp := &job.RefreshResponse{}

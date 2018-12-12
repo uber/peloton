@@ -1772,6 +1772,30 @@ func (suite *JobHandlerTestSuite) TestJobGetCache_SUCCESS() {
 	suite.Equal(resp.Runtime.State, jobRuntime.State)
 }
 
+// TestJobGetActiveJobsFail tests failure to get active jobs list from DB
+func (suite *JobHandlerTestSuite) TestJobGetActiveJobsFail() {
+	suite.mockedJobStore.EXPECT().GetActiveJobs(context.Background()).
+		Return(nil, fmt.Errorf("get active jobs err"))
+	_, err := suite.handler.GetActiveJobs(context.Background(),
+		&job.GetActiveJobsRequest{})
+	suite.Error(err)
+}
+
+// TestJobGetActiveJobs tests failure to get active jobs list from DB
+func (suite *JobHandlerTestSuite) TestJobGetActiveJobs() {
+	expectedJobIDs := []*peloton.JobID{
+		&peloton.JobID{Value: "my-job-1"},
+	}
+	suite.mockedJobStore.EXPECT().
+		GetActiveJobs(context.Background()).
+		Return(expectedJobIDs, nil)
+
+	resp, err := suite.handler.GetActiveJobs(context.Background(),
+		&job.GetActiveJobsRequest{})
+	suite.NoError(err)
+	suite.Equal(resp.GetIds(), expectedJobIDs)
+}
+
 // TestRestartJobSuccess tests the success path of restarting job
 func (suite *JobHandlerTestSuite) TestRestartJobSuccess() {
 	var configurationVersion uint64 = 1

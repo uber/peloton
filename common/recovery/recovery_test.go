@@ -253,6 +253,11 @@ func TestRecoveryAfterJobDelete(t *testing.T) {
 		AnyTimes()
 
 	mockJobStore.EXPECT().
+		GetActiveJobs(ctx).
+		Return([]*peloton.JobID{missingJobID, pendingJobID}, nil).
+		AnyTimes()
+
+	mockJobStore.EXPECT().
 		GetJobRuntime(ctx, missingJobID).
 		Return(nil, fmt.Errorf("Cannot find job wth jobID %v", missingJobID.GetValue())).
 		AnyTimes()
@@ -273,6 +278,12 @@ func TestRecoveryAfterJobDelete(t *testing.T) {
 	mockJobStore.EXPECT().
 		GetJobsByStates(ctx, jobStatesPending).
 		Return([]peloton.JobID{}, nil).
+		AnyTimes()
+	// an error getting active_jobs should not result in recovery failure
+	// because we do not use active_jobs for recovery just yet.
+	mockJobStore.EXPECT().
+		GetActiveJobs(ctx).
+		Return([]*peloton.JobID{}, fmt.Errorf("")).
 		AnyTimes()
 	err = RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
 	assert.NoError(t, err)
@@ -304,6 +315,32 @@ func TestRecoveryErrors(t *testing.T) {
 	mockJobStore.EXPECT().
 		GetJobsByStates(ctx, jobStatesPending).
 		Return(jobIDs, nil)
+
+	mockJobStore.EXPECT().
+		GetActiveJobs(ctx).
+		Return([]*peloton.JobID{jobID}, nil)
+
+	mockJobStore.EXPECT().
+		GetJobRuntime(ctx, jobID).
+		Return(&jobRuntime, nil)
+
+	mockJobStore.EXPECT().
+		GetJobConfig(ctx, jobID).
+		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
+
+	err = RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
+	assert.Error(t, err)
+
+	// Test active jobs != jobs in MV
+	jobIDs = []peloton.JobID{*jobID}
+	mockJobStore.EXPECT().
+		GetJobsByStates(ctx, jobStatesPending).
+		Return(jobIDs, nil)
+	// even if active jobs returns an empty list, the recovery process should
+	// move on without error
+	mockJobStore.EXPECT().
+		GetActiveJobs(ctx).
+		Return([]*peloton.JobID{}, nil)
 
 	mockJobStore.EXPECT().
 		GetJobRuntime(ctx, jobID).

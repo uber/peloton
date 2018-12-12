@@ -201,6 +201,26 @@ func RecoverJobsByState(
 		return err
 	}
 
+	activeJobIDs, err := jobStore.GetActiveJobs(ctx)
+	if err != nil {
+		// Monitor logs to make sure you no longer see this log.
+		// We will start returning error here once we switch recovery to use
+		// active_jobs table.
+		log.WithError(err).
+			Error("GetActiveJobs failed")
+	}
+
+	if len(activeJobIDs) != len(jobsIDs) {
+		// Monitor logs to make sure you no longer see this log. Once we get
+		// active_jobs populated by goalstate engine, we should never see this
+		// log and at that time we are ready to switch recovery to use
+		// active_jobs table
+		log.WithFields(log.Fields{
+			"total_jobs_from_mv": len(jobsIDs),
+			"total_active_jobs":  len(activeJobIDs),
+		}).Error("active_jobs not equal to jobs in mv_job_by_state")
+	}
+
 	log.WithFields(log.Fields{
 		"total_jobs":            len(jobsIDs),
 		"job_ids":               jobsIDs,

@@ -333,6 +333,10 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	})).Return(jobs, nil)
 
 	suite.mockJobStore.EXPECT().
+		GetActiveJobs(gomock.Any()).
+		Return([]*peloton.JobID{}, nil)
+
+	suite.mockJobStore.EXPECT().
 		GetJobRuntime(context.Background(), &jobs[0]).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_RUNNING,
@@ -439,6 +443,10 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 		job.JobState_RUNNING,
 		job.JobState_UNKNOWN,
 	})).Return(jobs, nil)
+
+	suite.mockJobStore.EXPECT().
+		GetActiveJobs(gomock.Any()).
+		Return([]*peloton.JobID{}, nil)
 
 	suite.mockJobStore.EXPECT().
 		GetJobRuntime(context.Background(), &jobs[0]).

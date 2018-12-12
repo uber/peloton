@@ -168,6 +168,8 @@ var (
 	jobGetCache     = job.Command("cache", "get a job cache")
 	jobGetCacheName = jobGetCache.Arg("job", "job identifier").Required().String()
 
+	jobGetActiveJobs = job.Command("active-list", "get a list of active jobs")
+
 	// Top level job command for stateless jobs
 	stateless             = job.Command("stateless", "manage stateless jobs")
 	statelessGetCache     = stateless.Command("cache", "get a job cache")
@@ -622,6 +624,8 @@ func main() {
 		err = client.JobStopV1BetaAction(*jobStopV1BetaName, *jobStopV1BetaResourceVersion, *jobStopV1BetaInstanceRanges, *jobStopV1BetaBatchSize)
 	case jobGetCache.FullCommand():
 		err = client.JobGetCacheAction(*jobGetCacheName)
+	case jobGetActiveJobs.FullCommand():
+		err = client.JobGetActiveJobsAction()
 	case taskGet.FullCommand():
 		err = client.TaskGetAction(*taskGetJobName, *taskGetInstanceID)
 	case taskGetCache.FullCommand():

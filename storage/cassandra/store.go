@@ -1071,7 +1071,7 @@ func (s *Store) DeleteActiveJob(
 
 // GetActiveJobs returns active jobs at any given time. This means Batch jobs
 // in PENDING, INITIALIZED, RUNNING, KILLING state and ALL Stateless jobs.
-func (s *Store) GetActiveJobs(ctx context.Context) ([]peloton.JobID, error) {
+func (s *Store) GetActiveJobs(ctx context.Context) ([]*peloton.JobID, error) {
 	queryBuilder := s.DataStore.NewQuery()
 
 	callStart := time.Now()
@@ -1091,7 +1091,7 @@ func (s *Store) GetActiveJobs(ctx context.Context) ([]peloton.JobID, error) {
 		return nil, err
 	}
 
-	var jobIDs []peloton.JobID
+	var jobIDs []*peloton.JobID
 	for _, value := range allResults {
 		id, ok := value["job_id"].(qb.UUID)
 		if !ok {
@@ -1104,7 +1104,7 @@ func (s *Store) GetActiveJobs(ctx context.Context) ([]peloton.JobID, error) {
 				Error("Invalid jobID in active jobs table")
 			continue
 		}
-		jobIDs = append(jobIDs, peloton.JobID{Value: id.String()})
+		jobIDs = append(jobIDs, &peloton.JobID{Value: id.String()})
 	}
 	s.metrics.JobMetrics.GetActiveJobsSuccess.Inc(1)
 	callDuration := time.Since(callStart)

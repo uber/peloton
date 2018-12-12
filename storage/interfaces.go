@@ -64,7 +64,7 @@ type JobStore interface {
 	// AddActiveJob adds job to active jobs table
 	AddActiveJob(ctx context.Context, id *peloton.JobID) error
 	// GetActiveJobs fetches all active jobs
-	GetActiveJobs(ctx context.Context) ([]peloton.JobID, error)
+	GetActiveJobs(ctx context.Context) ([]*peloton.JobID, error)
 	// DeleteActiveJob deletes job from active jobs table
 	DeleteActiveJob(ctx context.Context, id *peloton.JobID) error
 

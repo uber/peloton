@@ -137,6 +137,18 @@ func (c *Client) JobGetCacheAction(jobID string) error {
 	return nil
 }
 
+// JobGetActiveJobsAction is the action for getting active jobs list
+func (c *Client) JobGetActiveJobsAction() error {
+	r, err := c.jobClient.GetActiveJobs(c.ctx, &job.GetActiveJobsRequest{})
+	if err != nil {
+		return err
+	}
+
+	printResponseJSON(r)
+	tabWriter.Flush()
+	return nil
+}
+
 // JobRefreshAction calls the refresh API for a job
 func (c *Client) JobRefreshAction(jobID string) error {
 	var request = &job.RefreshRequest{

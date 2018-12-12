@@ -357,6 +357,12 @@ service JobManager {
 
   // Debug only method. Get the cache of a job stored in Peloton.
   rpc GetCache(GetCacheRequest) returns(GetCacheResponse);
+
+  // Debug only method. Get the list of active job IDs stored in Peloton.
+  // This method is experimental and will be deprecated
+  // It will be temporarily used for testing the consistency between
+  // active_jobs table and mv_job_by_state materialzied view
+  rpc GetActiveJobs(GetActiveJobsRequest) returns(GetActiveJobsResponse);
 }
 
 // DEPRECATED by google.rpc.ALREADY_EXISTS error
@@ -522,6 +528,16 @@ message GetCacheResponse {
 
   // The job runtime in cache of the matching job.
   RuntimeInfo runtime = 2;
+}
+
+// DEPRECATED by peloton.api.job.svc.GetActiveJobsRequest
+message GetActiveJobsRequest {
+}
+
+// DEPRECATED by peloton.api.job.svc.GetActiveJobsResponse
+message GetActiveJobsResponse {
+  // List of Active Job IDs
+  repeated peloton.JobID ids = 1;
 }
 
 // DEPRECATED by peloton.api.job.svc.RestartConfig

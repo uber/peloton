@@ -722,6 +722,23 @@ func (h *serviceHandler) GetCache(
 	}, nil
 }
 
+// GetActiveJobs is a debug only API used to get the list of active job IDs
+// stored in Peloton. It will be temporarily used for testing the consistency
+// between active_jobs table and mv_job_by_state materialzied view
+func (h *serviceHandler) GetActiveJobs(
+	ctx context.Context,
+	req *job.GetActiveJobsRequest) (*job.GetActiveJobsResponse, error) {
+
+	jobIDs, err := h.jobStore.GetActiveJobs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &job.GetActiveJobsResponse{
+		Ids: jobIDs,
+	}, nil
+}
+
 // validateResourcePool validates the resource pool before submitting job
 func (h *serviceHandler) validateResourcePool(
 	respoolID *peloton.ResourcePoolID,

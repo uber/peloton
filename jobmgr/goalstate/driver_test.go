@@ -248,6 +248,10 @@ func (suite *DriverTestSuite) prepareTestSyncDB(jobType job.JobType) {
 	}
 
 	suite.jobStore.EXPECT().
+		GetActiveJobs(gomock.Any()).
+		Return([]*peloton.JobID{}, nil)
+
+	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_RUNNING,
@@ -363,6 +367,9 @@ func (suite *DriverTestSuite) TestSyncFromDBWithMaxRunningInstancesSLA() {
 	suite.jobStore.EXPECT().
 		GetJobsByStates(gomock.Any(), gomock.Any()).
 		Return(jobIDList, nil)
+	suite.jobStore.EXPECT().
+		GetActiveJobs(gomock.Any()).
+		Return([]*peloton.JobID{}, nil)
 
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
@@ -441,6 +448,10 @@ func (suite *DriverTestSuite) TestInitializedJobSyncFromDB() {
 		Return(jobIDList, nil)
 
 	suite.jobStore.EXPECT().
+		GetActiveJobs(gomock.Any()).
+		Return([]*peloton.JobID{}, nil)
+
+	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_INITIALIZED,
@@ -509,6 +520,9 @@ func (suite *DriverTestSuite) TestSyncFromDBRecoverUpdate() {
 	suite.jobStore.EXPECT().
 		GetJobsByStates(gomock.Any(), gomock.Any()).
 		Return(jobIDList, nil)
+	suite.jobStore.EXPECT().
+		GetActiveJobs(gomock.Any()).
+		Return([]*peloton.JobID{}, nil)
 
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
@@ -589,6 +603,9 @@ func (suite *DriverTestSuite) TestEngineStartStop() {
 	suite.jobStore.EXPECT().
 		GetJobsByStates(gomock.Any(), gomock.Any()).
 		Return(jobIDList, nil)
+	suite.jobStore.EXPECT().
+		GetActiveJobs(gomock.Any()).
+		Return([]*peloton.JobID{}, nil)
 
 	suite.goalStateDriver.Start()
 
