@@ -33,9 +33,9 @@ def cassandra_operation(config, keyspace, create=True):
     migrate_cli = config.get('cassandra').get('migrate_cli') \
         % os.environ['GOPATH']
     migrate_cmd = config.get('cassandra').get('cmd').get('migrate').format(
-                    host=host,
-                    port=port,
-                    keyspace=keyspace,
+        host=host,
+        port=port,
+        keyspace=keyspace,
     )
     path = config.get('cassandra').get('path')
 
@@ -238,6 +238,11 @@ class VCluster(object):
 
         # create a default resource pool
         if not skip_respool:
+            # Sleep 30 seconds before creating respool in order to
+            # give resmgr time to account for all resources from mesos
+            # slaves so that respool creation doesn't fail due to
+            # lack of resources.
+            time.sleep(30)
             create_respool_for_new_peloton(
                 self.config,
                 zk_server=virtual_zookeeper,
