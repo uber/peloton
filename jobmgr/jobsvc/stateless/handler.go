@@ -423,7 +423,7 @@ func (h *serviceHandler) RestartJob(
 		})
 	}
 
-	instancesToUpdate := convertInstanceIDRangesToSlice(req.GetRanges(), newConfig.GetInstanceCount())
+	instancesToUpdate := convertInstanceIDRangesToSlice(req.GetRestartSpec().GetRanges(), newConfig.GetInstanceCount())
 	if len(instancesToUpdate) == 0 {
 		for i := uint32(0); i < newConfig.GetInstanceCount(); i++ {
 			instancesToUpdate = append(instancesToUpdate, i)
@@ -434,7 +434,7 @@ func (h *serviceHandler) RestartJob(
 		ctx,
 		models.WorkflowType_RESTART,
 		&pbupdate.UpdateConfig{
-			BatchSize: req.GetBatchSize(),
+			BatchSize: req.GetRestartSpec().GetBatchSize(),
 		},
 		req.GetVersion(),
 		cached.WithInstanceToProcess(
@@ -1246,21 +1246,21 @@ func (h *serviceHandler) ListJobs(
 	return nil
 }
 
-func (h *serviceHandler) ListJobUpdates(
+func (h *serviceHandler) ListJobWorkflows(
 	ctx context.Context,
-	req *svc.ListJobUpdatesRequest) (resp *svc.ListJobUpdatesResponse, err error) {
+	req *svc.ListJobWorkflowsRequest) (resp *svc.ListJobWorkflowsResponse, err error) {
 	defer func() {
 		if err != nil {
 			log.WithField("request", req).
 				WithError(err).
-				Warn("JobSVC.ListJobUpdates failed")
+				Warn("JobSVC.ListJobWorkflows failed")
 			err = handlerutil.ConvertToYARPCError(err)
 			return
 		}
 
 		log.WithField("request", req).
-			WithField("num_of_updates", len(resp.GetWorkflowInfos())).
-			Debug("JobSVC.ListJobUpdates succeeded")
+			WithField("num_of_workflows", len(resp.GetWorkflowInfos())).
+			Debug("JobSVC.ListJobWorkflows succeeded")
 	}()
 
 	if len(req.GetJobId().GetValue()) == 0 {
@@ -1283,7 +1283,7 @@ func (h *serviceHandler) ListJobUpdates(
 			ctx,
 			updateID)
 		if err != nil {
-			return nil, errors.Wrap(err, "fail to get job update events")
+			return nil, errors.Wrap(err, "fail to get job workflow events")
 		}
 
 		updateInfos = append(updateInfos,
@@ -1291,7 +1291,7 @@ func (h *serviceHandler) ListJobUpdates(
 		)
 	}
 
-	return &svc.ListJobUpdatesResponse{WorkflowInfos: updateInfos}, nil
+	return &svc.ListJobWorkflowsResponse{WorkflowInfos: updateInfos}, nil
 }
 
 func (h *serviceHandler) GetReplaceJobDiff(

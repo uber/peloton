@@ -834,11 +834,13 @@ func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionSuccess() {
 	suite.statelessClient.
 		EXPECT().
 		RestartJob(gomock.Any(), &svc.RestartJobRequest{
-			JobId:     &v1alphapeloton.JobID{Value: testJobID},
-			Version:   entityVersion,
-			BatchSize: batchSize,
-			Ranges: []*v1alphapod.InstanceIDRange{
-				{From: 0, To: 10},
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+			RestartSpec: &stateless.RestartSpec{
+				BatchSize: batchSize,
+				Ranges: []*v1alphapod.InstanceIDRange{
+					{From: 0, To: 10},
+				},
 			},
 			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		}).
@@ -863,11 +865,13 @@ func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionFailure() {
 	suite.statelessClient.
 		EXPECT().
 		RestartJob(gomock.Any(), &svc.RestartJobRequest{
-			JobId:     &v1alphapeloton.JobID{Value: testJobID},
-			Version:   entityVersion,
-			BatchSize: batchSize,
-			Ranges: []*v1alphapod.InstanceIDRange{
-				{From: 0, To: 10},
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+			RestartSpec: &stateless.RestartSpec{
+				BatchSize: batchSize,
+				Ranges: []*v1alphapod.InstanceIDRange{
+					{From: 0, To: 10},
+				},
 			},
 			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		}).
@@ -885,10 +889,10 @@ func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionFailure() {
 // TestStatelessListUpdatesAction tests the success case of list updates
 func (suite *statelessActionsTestSuite) TestStatelessListUpdatesAction() {
 	suite.statelessClient.EXPECT().
-		ListJobUpdates(suite.ctx, &svc.ListJobUpdatesRequest{
+		ListJobWorkflows(suite.ctx, &svc.ListJobWorkflowsRequest{
 			JobId: &v1alphapeloton.JobID{Value: testJobID},
 		}).
-		Return(&svc.ListJobUpdatesResponse{}, nil)
+		Return(&svc.ListJobWorkflowsResponse{}, nil)
 
 	suite.NoError(suite.client.StatelessListUpdatesAction(testJobID))
 }
@@ -896,7 +900,7 @@ func (suite *statelessActionsTestSuite) TestStatelessListUpdatesAction() {
 // TestStatelessListUpdatesActionError tests the failure case of list updates
 func (suite *statelessActionsTestSuite) TestStatelessListUpdatesActionError() {
 	suite.statelessClient.EXPECT().
-		ListJobUpdates(suite.ctx, &svc.ListJobUpdatesRequest{
+		ListJobWorkflows(suite.ctx, &svc.ListJobWorkflowsRequest{
 			JobId: &v1alphapeloton.JobID{Value: testJobID},
 		}).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))

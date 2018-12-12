@@ -2999,10 +2999,12 @@ func (suite *statelessHandlerTestSuite) TestRestartJobSuccess() {
 	resp, err := suite.handler.RestartJob(
 		context.Background(),
 		&statelesssvc.RestartJobRequest{
-			JobId:      &v1alphapeloton.JobID{Value: testJobID},
-			Version:    entityVersion,
-			BatchSize:  batchSize,
-			Ranges:     ranges,
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+			RestartSpec: &stateless.RestartSpec{
+				BatchSize: batchSize,
+				Ranges:    ranges,
+			},
 			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		},
 	)
@@ -3048,10 +3050,12 @@ func (suite *statelessHandlerTestSuite) TestRestartJobNonLeaderFailure() {
 	resp, err := suite.handler.RestartJob(
 		context.Background(),
 		&statelesssvc.RestartJobRequest{
-			JobId:      &v1alphapeloton.JobID{Value: testJobID},
-			Version:    entityVersion,
-			BatchSize:  batchSize,
-			Ranges:     ranges,
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+			RestartSpec: &stateless.RestartSpec{
+				BatchSize: batchSize,
+				Ranges:    ranges,
+			},
 			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		},
 	)
@@ -3085,10 +3089,12 @@ func (suite *statelessHandlerTestSuite) TestRestartJobGetRuntimeFailure() {
 	resp, err := suite.handler.RestartJob(
 		context.Background(),
 		&statelesssvc.RestartJobRequest{
-			JobId:      &v1alphapeloton.JobID{Value: testJobID},
-			Version:    entityVersion,
-			BatchSize:  batchSize,
-			Ranges:     ranges,
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+			RestartSpec: &stateless.RestartSpec{
+				BatchSize: batchSize,
+				Ranges:    ranges,
+			},
 			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		},
 	)
@@ -3175,10 +3181,12 @@ func (suite *statelessHandlerTestSuite) TestRestartJobNoRangeSuccess() {
 	resp, err := suite.handler.RestartJob(
 		context.Background(),
 		&statelesssvc.RestartJobRequest{
-			JobId:      &v1alphapeloton.JobID{Value: testJobID},
-			Version:    entityVersion,
-			BatchSize:  batchSize,
-			Ranges:     ranges,
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+			RestartSpec: &stateless.RestartSpec{
+				BatchSize: batchSize,
+				Ranges:    ranges,
+			},
 			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		},
 	)
@@ -3186,8 +3194,8 @@ func (suite *statelessHandlerTestSuite) TestRestartJobNoRangeSuccess() {
 	suite.Equal(resp.GetVersion().GetValue(), newEntityVersion.GetValue())
 }
 
-// TestListJobUpdatesSuccess tests the success case of list job updates
-func (suite *statelessHandlerTestSuite) TestListJobUpdatesSuccess() {
+// TestListJobWorkflowsSuccess tests the success case of list job updates
+func (suite *statelessHandlerTestSuite) TestListJobWorkflowsSuccess() {
 	testUpdateID1 := "941ff353-ba82-49fe-8f80-fb5bc649b04r"
 	testUpdateID2 := "941ff353-ba82-49fe-8f80-fb5bc649b04p"
 	workflowEvent1 := &stateless.WorkflowEvent{
@@ -3242,7 +3250,7 @@ func (suite *statelessHandlerTestSuite) TestListJobUpdatesSuccess() {
 		GetJobUpdateEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID2}).
 		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
 
-	resp, err := suite.handler.ListJobUpdates(context.Background(), &statelesssvc.ListJobUpdatesRequest{
+	resp, err := suite.handler.ListJobWorkflows(context.Background(), &statelesssvc.ListJobWorkflowsRequest{
 		JobId: &v1alphapeloton.JobID{Value: testJobID},
 	})
 	suite.NoError(err)
@@ -3280,9 +3288,9 @@ func (suite *statelessHandlerTestSuite) TestListJobUpdatesSuccess() {
 		[]uint32{0, 1, 2})
 }
 
-// TestListJobUpdatesGetUpdatesFailure tests the failure
+// TestListJobWorkflowsGetUpdatesFailure tests the failure
 // case of getting job updates due to fail to read updates of a job
-func (suite *statelessHandlerTestSuite) TestListJobUpdatesGetUpdatesFailure() {
+func (suite *statelessHandlerTestSuite) TestListJobWorkflowsGetUpdatesFailure() {
 	testUpdateID1 := "941ff353-ba82-49fe-8f80-fb5bc649b04r"
 	testUpdateID2 := "941ff353-ba82-49fe-8f80-fb5bc649b04p"
 
@@ -3297,7 +3305,7 @@ func (suite *statelessHandlerTestSuite) TestListJobUpdatesGetUpdatesFailure() {
 		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	resp, err := suite.handler.ListJobUpdates(context.Background(), &statelesssvc.ListJobUpdatesRequest{
+	resp, err := suite.handler.ListJobWorkflows(context.Background(), &statelesssvc.ListJobWorkflowsRequest{
 		JobId: &v1alphapeloton.JobID{Value: testJobID},
 	})
 	suite.Error(err)

@@ -1181,8 +1181,8 @@ func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowInfoRestart(
 		},
 	}
 	suite.Equal(workflowStatus, workflowInfo.GetStatus())
-	suite.Equal(updateModel.GetUpdateConfig().GetBatchSize(), workflowInfo.GetRestartBatchSize())
-	suite.Equal(restartRanges, workflowInfo.GetRestartRanges())
+	suite.Equal(updateModel.GetUpdateConfig().GetBatchSize(), workflowInfo.GetRestartSpec().GetBatchSize())
+	suite.Equal(restartRanges, workflowInfo.GetRestartSpec().GetRanges())
 }
 
 // TestConvertStatelessQuerySpecToJobQuerySpec tests conversion

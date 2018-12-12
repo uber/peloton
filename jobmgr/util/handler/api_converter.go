@@ -454,8 +454,10 @@ func ConvertUpdateModelToWorkflowInfo(
 			StartPaused:                  updateInfo.GetUpdateConfig().GetStartPaused(),
 		}
 	} else if updateInfo.GetType() == models.WorkflowType_RESTART {
-		result.RestartBatchSize = updateInfo.GetUpdateConfig().GetBatchSize()
-		result.RestartRanges = util.ConvertInstanceIDListToInstanceRange(updateInfo.GetInstancesUpdated())
+		result.RestartSpec = &stateless.RestartSpec{
+			BatchSize: updateInfo.GetUpdateConfig().GetBatchSize(),
+			Ranges:    util.ConvertInstanceIDListToInstanceRange(updateInfo.GetInstancesUpdated()),
+		}
 	}
 
 	result.OpaqueData = &v1alphapeloton.OpaqueData{

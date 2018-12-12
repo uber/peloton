@@ -122,12 +122,8 @@ message RestartJobRequest {
   // It is used to implement optimistic concurrency control.
   peloton.EntityVersion version = 2;
 
-  // Batch size for the restart request which controls how
-  // many instances may be restarted at the same time.
-  uint32 batch_size = 3;
-
-  // The pods to restart, default to all.
-  repeated pod.InstanceIDRange ranges = 4;
+  // The restart specification.
+  stateless.RestartSpec restart_spec = 3;
 
   // Opaque data supplied by the client
   peloton.OpaqueData opaque_data = 5;
@@ -404,16 +400,16 @@ message QueryJobsResponse {
   stateless.QuerySpec spec = 3;
 }
 
-// Request message for JobService.ListJobUpdates method.
-message ListJobUpdatesRequest {
+// Request message for JobService.ListJobWorkflows method.
+message ListJobWorkflowsRequest {
   // The job identifier.
   peloton.JobID job_id = 1;
 }
 
-// Response message for JobService.ListJobUpdates method.
+// Response message for JobService.ListJobWorkflows method.
 // Return errors:
 //   NOT_FOUND:         if the job ID is not found.
-message ListJobUpdatesResponse {
+message ListJobWorkflowsResponse {
   repeated stateless.WorkflowInfo workflow_infos = 1;
 }
 
@@ -554,8 +550,8 @@ service JobService {
   // in batches and the stream is closed once all results have been sent.
   rpc ListJobs(ListJobsRequest) returns (stream ListJobsResponse);
 
-  // List all updates (including current and previously completed) for a given job.
-  rpc ListJobUpdates(ListJobUpdatesRequest) returns (ListJobUpdatesResponse);
+  // List all workflows (including current and previously completed) for a given job.
+  rpc ListJobWorkflows(ListJobWorkflowsRequest) returns (ListJobWorkflowsResponse);
 
   // Get the list of instances which will be added/removed/updated if
   // the given job specification is applied via the ReplaceJob API.

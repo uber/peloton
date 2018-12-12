@@ -1695,8 +1695,8 @@ func (h *ServiceHandler) listWorkflows(
 	ctx context.Context,
 	jobID *peloton.JobID,
 ) ([]*stateless.WorkflowInfo, error) {
-	req := &statelesssvc.ListJobUpdatesRequest{JobId: jobID}
-	resp, err := h.jobClient.ListJobUpdates(ctx, req)
+	req := &statelesssvc.ListJobWorkflowsRequest{JobId: jobID}
+	resp, err := h.jobClient.ListJobWorkflows(ctx, req)
 	if err != nil {
 		return nil, err
 	}

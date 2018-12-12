@@ -381,6 +381,16 @@ message CreateSpec {
   bool start_paused = 4;
 }
 
+// Configuration of a job restart
+message RestartSpec {
+  // Batch size for the restart which controls how many
+  // instances may be restarted at the same time.
+  uint32 batch_size = 1;
+
+  // The pods to restart, default to all.
+  repeated pod.InstanceIDRange ranges = 2;
+}
+
 // Information about a workflow including its status and specification
 message WorkflowInfo {
   // Workflow status
@@ -389,11 +399,8 @@ message WorkflowInfo {
   // Update specification for update workflow
   UpdateSpec update_spec = 2;
 
-  // Batch size provided for restart workflow
-  uint32 restart_batch_size = 3;
-
-  // Instance ranges provided for restart workflow
-  repeated pod.InstanceIDRange restart_ranges = 4;
+  // Restart specification provided for restart workflow
+  RestartSpec restart_spec = 3;
 
   // Opaque data supplied by the client
   peloton.OpaqueData opaque_data = 6;

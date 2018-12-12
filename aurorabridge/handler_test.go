@@ -1441,10 +1441,10 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummaries_Success() {
 	suite.expectGetJobIDFromJobName(k, id)
 
 	suite.jobClient.EXPECT().
-		ListJobUpdates(gomock.Any(), &statelesssvc.ListJobUpdatesRequest{
+		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId: id,
 		}).
-		Return(&statelesssvc.ListJobUpdatesResponse{
+		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{fixture.PelotonWorkflowInfo()},
 		}, nil)
 
@@ -1463,7 +1463,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummaries_Error() {
 	suite.expectGetJobIDFromJobName(k, id)
 
 	suite.jobClient.EXPECT().
-		ListJobUpdates(gomock.Any(), &statelesssvc.ListJobUpdatesRequest{
+		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId: id,
 		}).
 		Return(nil, errors.New("some error"))
@@ -1482,7 +1482,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Error() {
 	suite.expectGetJobIDFromJobName(k, id)
 
 	suite.jobClient.EXPECT().
-		ListJobUpdates(gomock.Any(), &statelesssvc.ListJobUpdatesRequest{
+		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId: id,
 		}).
 		Return(nil, errors.New("some error"))
@@ -1520,7 +1520,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_WorkflowsNotFound(
 	suite.expectGetJobIDFromJobName(k, id)
 
 	suite.jobClient.EXPECT().
-		ListJobUpdates(gomock.Any(), &statelesssvc.ListJobUpdatesRequest{
+		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId: id,
 		}).
 		Return(nil, yarpcerrors.NotFoundErrorf("workflows not found"))
@@ -1558,10 +1558,10 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 		}, nil)
 
 	suite.jobClient.EXPECT().
-		ListJobUpdates(gomock.Any(), &statelesssvc.ListJobUpdatesRequest{
+		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId: summaries[0].JobId,
 		}).
-		Return(&statelesssvc.ListJobUpdatesResponse{
+		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{
 				fixture.PelotonWorkflowInfo(),
 				fixture.PelotonWorkflowInfo(),
@@ -1569,10 +1569,10 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 		}, nil)
 
 	suite.jobClient.EXPECT().
-		ListJobUpdates(gomock.Any(), &statelesssvc.ListJobUpdatesRequest{
+		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId: summaries[1].JobId,
 		}).
-		Return(&statelesssvc.ListJobUpdatesResponse{
+		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{
 				fixture.PelotonWorkflowInfo(),
 			},
@@ -1604,10 +1604,10 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_JoinRollbacksByUpd
 	suite.NoError(err)
 
 	suite.jobClient.EXPECT().
-		ListJobUpdates(gomock.Any(), &statelesssvc.ListJobUpdatesRequest{
+		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId: id,
 		}).
-		Return(&statelesssvc.ListJobUpdatesResponse{
+		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{
 				{
 					Status: &stateless.WorkflowStatus{
@@ -1644,10 +1644,10 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_UpdateStatusFilter
 	suite.expectGetJobIDFromJobName(k, id)
 
 	suite.jobClient.EXPECT().
-		ListJobUpdates(gomock.Any(), &statelesssvc.ListJobUpdatesRequest{
+		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId: id,
 		}).
-		Return(&statelesssvc.ListJobUpdatesResponse{
+		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{
 				{
 					Status: &stateless.WorkflowStatus{

@@ -870,10 +870,12 @@ func (c *Client) StatelessRestartJobAction(
 	}
 
 	req := &statelesssvc.RestartJobRequest{
-		JobId:      &v1alphapeloton.JobID{Value: jobID},
-		Version:    &v1alphapeloton.EntityVersion{Value: entityVersion},
-		BatchSize:  batchSize,
-		Ranges:     idInstanceRanges,
+		JobId:   &v1alphapeloton.JobID{Value: jobID},
+		Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
+		RestartSpec: &stateless.RestartSpec{
+			BatchSize: batchSize,
+			Ranges:    idInstanceRanges,
+		},
 		OpaqueData: opaque,
 	}
 
@@ -888,9 +890,9 @@ func (c *Client) StatelessRestartJobAction(
 
 // StatelessListUpdatesAction lists updates of a job
 func (c *Client) StatelessListUpdatesAction(jobID string) error {
-	resp, err := c.statelessClient.ListJobUpdates(
+	resp, err := c.statelessClient.ListJobWorkflows(
 		c.ctx,
-		&statelesssvc.ListJobUpdatesRequest{
+		&statelesssvc.ListJobWorkflowsRequest{
 			JobId: &v1alphapeloton.JobID{Value: jobID},
 		},
 	)
@@ -903,7 +905,7 @@ func (c *Client) StatelessListUpdatesAction(jobID string) error {
 }
 
 func printListUpdatesResponse(
-	resp *statelesssvc.ListJobUpdatesResponse,
+	resp *statelesssvc.ListJobWorkflowsResponse,
 	debug bool) error {
 	updates := resp.GetWorkflowInfos()
 
