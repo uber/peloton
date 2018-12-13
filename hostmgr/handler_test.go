@@ -54,7 +54,7 @@ const (
 	_perHostMem  = 20.0
 	_perHostDisk = 30.0
 
-	_epsilon = 0.00001
+	_delta = 0.00001
 
 	_testJobID  = "bca875f5-322a-4439-b0c9-63e3cf9f982e"
 	_taskIDFmt  = _testJobID + "-%d-abcdef12-abcd-1234-5678-1234567890ab"
@@ -271,10 +271,10 @@ func (suite *HostMgrHandlerTestSuite) assertGaugeValues(
 	for key, value := range values {
 		g, ok := gauges[key]
 		suite.True(ok, "Snapshot %v does not have key %s", gauges, key)
-		suite.InEpsilon(
+		suite.InDelta(
 			value,
 			g.Value(),
-			_epsilon,
+			_delta,
 			"Expected value %f does not match on key %s, full snapshot: %v",
 			value,
 			key,
@@ -1222,8 +1222,8 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 	name := "cpus"
 
 	loader := &host.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.masterOperatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	numAgents := 2
@@ -1311,8 +1311,8 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithoutAg
 		Agents: []*mesos_master.Response_GetAgents_Agent{},
 	}
 	loader := &host.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.masterOperatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
@@ -1358,8 +1358,8 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithQuota
 	quotaVal := 100.0
 
 	loader := &host.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.masterOperatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	numAgents := 2
@@ -2489,8 +2489,8 @@ func (suite *HostMgrHandlerTestSuite) TestGetMesosAgentInfo() {
 	sort.Sort(agentInfo)
 	suite.masterOperatorClient.EXPECT().Agents().Return(agents, nil)
 	loader := &host.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.masterOperatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	loader.Load(nil)

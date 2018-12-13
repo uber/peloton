@@ -50,7 +50,7 @@ var (
 	}
 )
 
-const zeroEpsilon = 0.000001
+const _zeroDelta = 0.000001
 
 func createResource(cpus, gpus, mem, disk float64) Resources {
 	return Resources{
@@ -262,16 +262,16 @@ func TestAdd(t *testing.T) {
 	}
 
 	result := empty.Add(empty)
-	assert.InEpsilon(t, 0.0, result.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, result.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, result.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, result.GPU, zeroEpsilon)
+	assert.InDelta(t, 0.0, result.CPU, _zeroDelta)
+	assert.InDelta(t, 0.0, result.Mem, _zeroDelta)
+	assert.InDelta(t, 0.0, result.Disk, _zeroDelta)
+	assert.InDelta(t, 0.0, result.GPU, _zeroDelta)
 
 	result = r1.Add(Resources{})
-	assert.InEpsilon(t, 1.0, result.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, result.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, result.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, result.GPU, zeroEpsilon)
+	assert.InDelta(t, 1.0, result.CPU, _zeroDelta)
+	assert.InDelta(t, 0.0, result.Mem, _zeroDelta)
+	assert.InDelta(t, 0.0, result.Disk, _zeroDelta)
+	assert.InDelta(t, 0.0, result.GPU, _zeroDelta)
 
 	r2 := Resources{
 		CPU:  4.0,
@@ -280,10 +280,10 @@ func TestAdd(t *testing.T) {
 		GPU:  1.0,
 	}
 	result = r1.Add(r2)
-	assert.InEpsilon(t, 5.0, result.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 3.0, result.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 2.0, result.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 1.0, result.GPU, zeroEpsilon)
+	assert.InDelta(t, 5.0, result.CPU, _zeroDelta)
+	assert.InDelta(t, 3.0, result.Mem, _zeroDelta)
+	assert.InDelta(t, 2.0, result.Disk, _zeroDelta)
+	assert.InDelta(t, 1.0, result.GPU, _zeroDelta)
 }
 
 func TestTrySubtract(t *testing.T) {
@@ -297,10 +297,10 @@ func TestTrySubtract(t *testing.T) {
 
 	res, ok := empty.TrySubtract(empty)
 	assert.True(t, ok)
-	assert.InEpsilon(t, 0.0, res.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, res.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, res.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, res.GPU, zeroEpsilon)
+	assert.InDelta(t, 0.0, res.CPU, _zeroDelta)
+	assert.InDelta(t, 0.0, res.Mem, _zeroDelta)
+	assert.InDelta(t, 0.0, res.Disk, _zeroDelta)
+	assert.InDelta(t, 0.0, res.GPU, _zeroDelta)
 
 	_, ok = empty.TrySubtract(r1)
 	assert.False(t, ok)
@@ -308,17 +308,17 @@ func TestTrySubtract(t *testing.T) {
 	r2 := r1
 	res, ok = r2.TrySubtract(r1)
 	assert.True(t, ok)
-	assert.InEpsilon(t, 0.0, res.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, res.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, res.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, res.GPU, zeroEpsilon)
+	assert.InDelta(t, 0.0, res.CPU, _zeroDelta)
+	assert.InDelta(t, 0.0, res.Mem, _zeroDelta)
+	assert.InDelta(t, 0.0, res.Disk, _zeroDelta)
+	assert.InDelta(t, 0.0, res.GPU, _zeroDelta)
 
 	res, ok = r1.TrySubtract(empty)
 	assert.True(t, ok)
-	assert.InEpsilon(t, 1.0, res.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 2.0, res.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 3.0, res.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, res.GPU, zeroEpsilon)
+	assert.InDelta(t, 1.0, res.CPU, _zeroDelta)
+	assert.InDelta(t, 2.0, res.Mem, _zeroDelta)
+	assert.InDelta(t, 3.0, res.Disk, _zeroDelta)
+	assert.InDelta(t, 4.0, res.GPU, _zeroDelta)
 
 	r3 := Resources{
 		CPU:  5.0,
@@ -328,10 +328,10 @@ func TestTrySubtract(t *testing.T) {
 	}
 	res, ok = r3.TrySubtract(r1)
 	assert.NotNil(t, res)
-	assert.InEpsilon(t, 4.0, res.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, res.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, res.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, res.GPU, zeroEpsilon)
+	assert.InDelta(t, 4.0, res.CPU, _zeroDelta)
+	assert.InDelta(t, 4.0, res.Mem, _zeroDelta)
+	assert.InDelta(t, 4.0, res.Disk, _zeroDelta)
+	assert.InDelta(t, 4.0, res.GPU, _zeroDelta)
 
 	// r3 is more than r1
 	_, ok = r1.TrySubtract(r3)
@@ -352,19 +352,19 @@ func TestFromOfferMap(t *testing.T) {
 	}
 
 	result := FromOfferMap(map[string]*mesos.Offer{"o1": &offer})
-	assert.InEpsilon(t, 1.0, result.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 2.0, result.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 3.0, result.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, result.GPU, zeroEpsilon)
+	assert.InDelta(t, 1.0, result.CPU, _zeroDelta)
+	assert.InDelta(t, 2.0, result.Mem, _zeroDelta)
+	assert.InDelta(t, 3.0, result.Disk, _zeroDelta)
+	assert.InDelta(t, 4.0, result.GPU, _zeroDelta)
 
 	result = FromOfferMap(map[string]*mesos.Offer{
 		"o1": &offer,
 		"o2": &offer,
 	})
-	assert.InEpsilon(t, 2.0, result.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, result.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 6.0, result.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 8.0, result.GPU, zeroEpsilon)
+	assert.InDelta(t, 2.0, result.CPU, _zeroDelta)
+	assert.InDelta(t, 4.0, result.Mem, _zeroDelta)
+	assert.InDelta(t, 6.0, result.Disk, _zeroDelta)
+	assert.InDelta(t, 8.0, result.GPU, _zeroDelta)
 }
 
 func TestFromOffers(t *testing.T) {
@@ -381,19 +381,19 @@ func TestFromOffers(t *testing.T) {
 	}
 
 	result := FromOffers([]*mesos.Offer{&offer})
-	assert.InEpsilon(t, 1.0, result.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 2.0, result.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 3.0, result.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, result.GPU, zeroEpsilon)
+	assert.InDelta(t, 1.0, result.CPU, _zeroDelta)
+	assert.InDelta(t, 2.0, result.Mem, _zeroDelta)
+	assert.InDelta(t, 3.0, result.Disk, _zeroDelta)
+	assert.InDelta(t, 4.0, result.GPU, _zeroDelta)
 
 	result = FromOffers([]*mesos.Offer{
 		&offer,
 		&offer,
 	})
-	assert.InEpsilon(t, 2.0, result.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, result.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 6.0, result.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 8.0, result.GPU, zeroEpsilon)
+	assert.InDelta(t, 2.0, result.CPU, _zeroDelta)
+	assert.InDelta(t, 4.0, result.Mem, _zeroDelta)
+	assert.InDelta(t, 6.0, result.Disk, _zeroDelta)
+	assert.InDelta(t, 8.0, result.GPU, _zeroDelta)
 }
 
 func TestFromResourceConfig(t *testing.T) {
@@ -403,10 +403,10 @@ func TestFromResourceConfig(t *testing.T) {
 		DiskLimitMb: 3.0,
 		GpuLimit:    4.0,
 	})
-	assert.InEpsilon(t, 1.0, result.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 2.0, result.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 3.0, result.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, result.GPU, zeroEpsilon)
+	assert.InDelta(t, 1.0, result.CPU, _zeroDelta)
+	assert.InDelta(t, 2.0, result.Mem, _zeroDelta)
+	assert.InDelta(t, 3.0, result.Disk, _zeroDelta)
+	assert.InDelta(t, 4.0, result.GPU, _zeroDelta)
 }
 
 func TestMinimum(t *testing.T) {
@@ -422,10 +422,10 @@ func TestMinimum(t *testing.T) {
 		},
 	)
 
-	assert.InEpsilon(t, 1.0, r1.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 2.0, r1.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, r1.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, r1.GPU, zeroEpsilon)
+	assert.InDelta(t, 1.0, r1.CPU, _zeroDelta)
+	assert.InDelta(t, 2.0, r1.Mem, _zeroDelta)
+	assert.InDelta(t, 0.0, r1.Disk, _zeroDelta)
+	assert.InDelta(t, 0.0, r1.GPU, _zeroDelta)
 }
 
 func TestNonEmptyFields(t *testing.T) {

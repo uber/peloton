@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const zeroEpsilon = 0.000001
+const _zeroDelta = 0.000001
 
 func TestAdd(t *testing.T) {
 	empty := Resources{}
@@ -42,7 +42,7 @@ func assertEqual(t *testing.T, expected *Resources, result *Resources) {
 		common.MEMORY,
 		common.DISK,
 		common.GPU} {
-		assert.InEpsilon(t, expected.Get(typeRes), result.Get(typeRes), zeroEpsilon)
+		assert.InDelta(t, expected.Get(typeRes), result.Get(typeRes), _zeroDelta)
 	}
 }
 
