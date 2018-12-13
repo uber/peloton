@@ -2147,12 +2147,13 @@ func (suite *JobTestSuite) TestResumeWorkflowSuccess() {
 			Return(nil),
 	)
 
-	newEntityVersion, err := suite.job.ResumeWorkflow(context.Background(), entityVersion)
+	updateIDResult, newEntityVersion, err := suite.job.ResumeWorkflow(context.Background(), entityVersion)
 	suite.NoError(err)
 	suite.Equal(
 		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
 		newEntityVersion,
 	)
+	suite.Equal(updateIDResult, updateID)
 }
 
 // TestResumeWorkflowNilEntityVersionFailure tests the failure case
@@ -2167,9 +2168,10 @@ func (suite *JobTestSuite) TestResumeWorkflowNilEntityVersionFailure() {
 		state:      pbupdate.State_PAUSED,
 	}
 
-	newEntityVersion, err := suite.job.ResumeWorkflow(context.Background(), nil)
+	updateID, newEntityVersion, err := suite.job.ResumeWorkflow(context.Background(), nil)
 	suite.Error(err)
 	suite.Nil(newEntityVersion)
+	suite.Nil(updateID)
 }
 
 // TestResumeWorkflowWrongEntityVersionFailure tests the failure case
@@ -2183,7 +2185,7 @@ func (suite *JobTestSuite) TestResumeWorkflowWrongEntityVersionFailure() {
 		state:      pbupdate.State_ROLLING_FORWARD,
 	}
 
-	newEntityVersion, err := suite.job.ResumeWorkflow(
+	updateID, newEntityVersion, err := suite.job.ResumeWorkflow(
 		context.Background(),
 		jobutil.GetJobEntityVersion(
 			suite.job.runtime.GetConfigurationVersion()+1,
@@ -2191,6 +2193,7 @@ func (suite *JobTestSuite) TestResumeWorkflowWrongEntityVersionFailure() {
 		))
 	suite.Error(err)
 	suite.Nil(newEntityVersion)
+	suite.Nil(updateID)
 }
 
 // TestResumeWorkflowNotExistInCacheSuccess tests the success case
@@ -2224,12 +2227,13 @@ func (suite *JobTestSuite) TestResumeWorkflowNotExistInCacheSuccess() {
 			Return(nil),
 	)
 
-	newEntityVersion, err := suite.job.ResumeWorkflow(context.Background(), entityVersion)
+	updateIDResult, newEntityVersion, err := suite.job.ResumeWorkflow(context.Background(), entityVersion)
 	suite.NoError(err)
 	suite.Equal(
 		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
 		newEntityVersion,
 	)
+	suite.Equal(updateIDResult, updateID)
 }
 
 // TestResumeWorkflowNoUpdate the case of update pause
@@ -2240,9 +2244,10 @@ func (suite *JobTestSuite) TestResumeWorkflowNoUpdate() {
 		suite.job.runtime.GetWorkflowVersion(),
 	)
 
-	newEntityVersion, err := suite.job.ResumeWorkflow(context.Background(), entityVersion)
+	updateID, newEntityVersion, err := suite.job.ResumeWorkflow(context.Background(), entityVersion)
 	suite.Error(err)
 	suite.Nil(newEntityVersion)
+	suite.Nil(updateID)
 }
 
 // TestPauseWorkflowSuccess tests the success case
@@ -2275,12 +2280,13 @@ func (suite *JobTestSuite) TestPauseWorkflowSuccess() {
 			Return(nil),
 	)
 
-	newEntityVersion, err := suite.job.PauseWorkflow(context.Background(), entityVersion)
+	updateIDResult, newEntityVersion, err := suite.job.PauseWorkflow(context.Background(), entityVersion)
 	suite.NoError(err)
 	suite.Equal(
 		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
 		newEntityVersion,
 	)
+	suite.Equal(updateIDResult, updateID)
 }
 
 // TestPauseWorkflowNilEntityVersionFailure tests the failure case
@@ -2294,9 +2300,10 @@ func (suite *JobTestSuite) TestPauseWorkflowNilEntityVersionFailure() {
 		state:      pbupdate.State_ROLLING_FORWARD,
 	}
 
-	newEntityVersion, err := suite.job.PauseWorkflow(context.Background(), nil)
+	updateID, newEntityVersion, err := suite.job.PauseWorkflow(context.Background(), nil)
 	suite.Error(err)
 	suite.Nil(newEntityVersion)
+	suite.Nil(updateID)
 }
 
 // TestPauseWorkflowWrongEntityVersionFailure tests the failure case
@@ -2310,7 +2317,7 @@ func (suite *JobTestSuite) TestPauseWorkflowWrongEntityVersionFailure() {
 		state:      pbupdate.State_ROLLING_FORWARD,
 	}
 
-	newEntityVersion, err := suite.job.PauseWorkflow(
+	updateID, newEntityVersion, err := suite.job.PauseWorkflow(
 		context.Background(),
 		jobutil.GetJobEntityVersion(
 			suite.job.runtime.GetConfigurationVersion()+1,
@@ -2318,6 +2325,7 @@ func (suite *JobTestSuite) TestPauseWorkflowWrongEntityVersionFailure() {
 		))
 	suite.Error(err)
 	suite.Nil(newEntityVersion)
+	suite.Nil(updateID)
 }
 
 // TestPauseWorkflowNotExistInCacheSuccess tests the success case
@@ -2350,12 +2358,13 @@ func (suite *JobTestSuite) TestPauseWorkflowNotExistInCacheSuccess() {
 			Return(nil),
 	)
 
-	newEntityVersion, err := suite.job.PauseWorkflow(context.Background(), entityVersion)
+	updateIDResult, newEntityVersion, err := suite.job.PauseWorkflow(context.Background(), entityVersion)
 	suite.NoError(err)
 	suite.Equal(
 		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
 		newEntityVersion,
 	)
+	suite.Equal(updateIDResult, updateID)
 }
 
 // TestPauseWorkflowNoUpdate tests the case of update pause
@@ -2366,9 +2375,10 @@ func (suite *JobTestSuite) TestPauseWorkflowNoUpdate() {
 		suite.job.runtime.GetWorkflowVersion(),
 	)
 
-	newEntityVersion, err := suite.job.PauseWorkflow(context.Background(), entityVersion)
+	updateID, newEntityVersion, err := suite.job.PauseWorkflow(context.Background(), entityVersion)
 	suite.Error(err)
 	suite.Nil(newEntityVersion)
+	suite.Nil(updateID)
 }
 
 // TestAbortWorkflowSuccess tests the success case
@@ -2401,12 +2411,13 @@ func (suite *JobTestSuite) TestAbortWorkflowSuccess() {
 			Return(nil),
 	)
 
-	newEntityVersion, err := suite.job.AbortWorkflow(context.Background(), entityVersion)
+	updateIDResult, newEntityVersion, err := suite.job.AbortWorkflow(context.Background(), entityVersion)
 	suite.NoError(err)
 	suite.Equal(
 		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
 		newEntityVersion,
 	)
+	suite.Equal(updateID, updateIDResult)
 }
 
 // TestAbortWorkflowWrongEntityVersionFailure tests the failure case
@@ -2420,7 +2431,7 @@ func (suite *JobTestSuite) TestAbortWorkflowWrongEntityVersionFailure() {
 		state:      pbupdate.State_ROLLING_FORWARD,
 	}
 
-	newEntityVersion, err := suite.job.AbortWorkflow(
+	updateID, newEntityVersion, err := suite.job.AbortWorkflow(
 		context.Background(),
 		jobutil.GetJobEntityVersion(
 			suite.job.runtime.GetConfigurationVersion()+1,
@@ -2428,6 +2439,7 @@ func (suite *JobTestSuite) TestAbortWorkflowWrongEntityVersionFailure() {
 		))
 	suite.Error(err)
 	suite.Nil(newEntityVersion)
+	suite.Nil(updateID)
 }
 
 // TestAbortWorkflowNilEntityVersionFailure tests the failure case
@@ -2442,9 +2454,10 @@ func (suite *JobTestSuite) TestAbortWorkflowNilEntityVersionFailure() {
 		state:      pbupdate.State_PAUSED,
 	}
 
-	newEntityVersion, err := suite.job.AbortWorkflow(context.Background(), nil)
+	updateID, newEntityVersion, err := suite.job.AbortWorkflow(context.Background(), nil)
 	suite.Error(err)
 	suite.Nil(newEntityVersion)
+	suite.Nil(updateID)
 }
 
 // TestAbortWorkflowNotExistInCacheSuccess tests the success case
@@ -2479,12 +2492,13 @@ func (suite *JobTestSuite) TestAbortWorkflowNotExistInCacheSuccess() {
 			Return(nil),
 	)
 
-	newEntityVersion, err := suite.job.AbortWorkflow(context.Background(), entityVersion)
+	updateIDResult, newEntityVersion, err := suite.job.AbortWorkflow(context.Background(), entityVersion)
 	suite.NoError(err)
 	suite.Equal(
 		jobutil.GetJobEntityVersion(oldConfigVersion, oldWorkflowVersion+1),
 		newEntityVersion,
 	)
+	suite.Equal(updateIDResult, updateID)
 }
 
 // TestAbortWorkflowNoUpdate tests the case of update pause
@@ -2495,9 +2509,10 @@ func (suite *JobTestSuite) TestAbortWorkflowNoUpdate() {
 		suite.job.runtime.GetWorkflowVersion(),
 	)
 
-	newEntityVersion, err := suite.job.AbortWorkflow(context.Background(), entityVersion)
+	updateID, newEntityVersion, err := suite.job.AbortWorkflow(context.Background(), entityVersion)
 	suite.Nil(newEntityVersion)
 	suite.Error(err)
+	suite.Nil(updateID)
 }
 
 // TestAddExistingWorkflow tests adding an already exist workflow

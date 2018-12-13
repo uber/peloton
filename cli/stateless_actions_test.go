@@ -89,6 +89,84 @@ func (suite *statelessActionsTestSuite) TestStatelessRefreshActionError() {
 	suite.Error(suite.client.StatelessRefreshAction(testJobID))
 }
 
+func (suite *statelessActionsTestSuite) TestStatelessWorkflowPauseAction() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	suite.statelessClient.EXPECT().
+		PauseJobWorkflow(suite.ctx, &svc.PauseJobWorkflowRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+		}).
+		Return(&svc.PauseJobWorkflowResponse{
+			Version: entityVersion,
+		}, nil)
+
+	suite.NoError(suite.client.StatelessWorkflowPauseAction(testJobID, entityVersion.GetValue()))
+}
+
+func (suite *statelessActionsTestSuite) TestStatelessWorkflowPauseActionFailure() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	suite.statelessClient.EXPECT().
+		PauseJobWorkflow(suite.ctx, &svc.PauseJobWorkflowRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+		}).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessWorkflowPauseAction(testJobID, entityVersion.GetValue()))
+}
+
+func (suite *statelessActionsTestSuite) TestStatelessWorkflowResumeAction() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	suite.statelessClient.EXPECT().
+		ResumeJobWorkflow(suite.ctx, &svc.ResumeJobWorkflowRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+		}).
+		Return(&svc.ResumeJobWorkflowResponse{
+			Version: entityVersion,
+		}, nil)
+
+	suite.NoError(suite.client.StatelessWorkflowResumeAction(testJobID, entityVersion.GetValue()))
+}
+
+func (suite *statelessActionsTestSuite) TestStatelessWorkflowResumeActionFailure() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	suite.statelessClient.EXPECT().
+		ResumeJobWorkflow(suite.ctx, &svc.ResumeJobWorkflowRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+		}).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessWorkflowResumeAction(testJobID, entityVersion.GetValue()))
+}
+
+func (suite *statelessActionsTestSuite) TestStatelessWorkflowAbortAction() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	suite.statelessClient.EXPECT().
+		AbortJobWorkflow(suite.ctx, &svc.AbortJobWorkflowRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+		}).
+		Return(&svc.AbortJobWorkflowResponse{
+			Version: entityVersion,
+		}, nil)
+
+	suite.NoError(suite.client.StatelessWorkflowAbortAction(testJobID, entityVersion.GetValue()))
+}
+
+func (suite *statelessActionsTestSuite) TestStatelessWorkflowAbortActionFailure() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	suite.statelessClient.EXPECT().
+		AbortJobWorkflow(suite.ctx, &svc.AbortJobWorkflowRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+		}).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessWorkflowAbortAction(testJobID, entityVersion.GetValue()))
+}
+
 func (suite *statelessActionsTestSuite) TestStatelessQueryActionSuccess() {
 	suite.statelessClient.EXPECT().
 		QueryJobs(gomock.Any(), gomock.Any()).

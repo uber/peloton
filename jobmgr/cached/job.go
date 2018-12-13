@@ -169,19 +169,19 @@ type WorkflowOps interface {
 	PauseWorkflow(
 		ctx context.Context,
 		entityVersion *v1alphapeloton.EntityVersion,
-	) (*v1alphapeloton.EntityVersion, error)
+	) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error)
 
 	// ResumeWorkflow resumes the current workflow, if any
 	ResumeWorkflow(
 		ctx context.Context,
 		entityVersion *v1alphapeloton.EntityVersion,
-	) (*v1alphapeloton.EntityVersion, error)
+	) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error)
 
 	// AbortWorkflow aborts the current workflow, if any
 	AbortWorkflow(
 		ctx context.Context,
 		entityVersion *v1alphapeloton.EntityVersion,
-	) (*v1alphapeloton.EntityVersion, error)
+	) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error)
 
 	// RollbackWorkflow rollbacks the current workflow, if any
 	RollbackWorkflow(ctx context.Context) error
@@ -1323,23 +1323,23 @@ func (j *job) CreateWorkflow(
 func (j *job) PauseWorkflow(
 	ctx context.Context,
 	entityVersion *v1alphapeloton.EntityVersion,
-) (*v1alphapeloton.EntityVersion, error) {
+) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error) {
 	j.Lock()
 	defer j.Unlock()
 
 	currentWorkflow, err := j.getCurrentWorkflow(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if currentWorkflow == nil {
-		return nil, yarpcerrors.NotFoundErrorf("no workflow found")
+		return nil, nil, yarpcerrors.NotFoundErrorf("no workflow found")
 	}
 
 	// update workflow version before mutating workflow, so
 	// when workflow state changes, entity version must be changed
 	// as well
 	if err := j.updateWorkflowVersion(ctx, entityVersion); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	newEntityVersion := jobutil.GetJobEntityVersion(
@@ -1347,29 +1347,29 @@ func (j *job) PauseWorkflow(
 		j.runtime.GetWorkflowVersion(),
 	)
 	err = currentWorkflow.Pause(ctx)
-	return newEntityVersion, err
+	return currentWorkflow.ID(), newEntityVersion, err
 }
 
 func (j *job) ResumeWorkflow(
 	ctx context.Context,
 	entityVersion *v1alphapeloton.EntityVersion,
-) (*v1alphapeloton.EntityVersion, error) {
+) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error) {
 	j.Lock()
 	defer j.Unlock()
 
 	currentWorkflow, err := j.getCurrentWorkflow(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if currentWorkflow == nil {
-		return nil, yarpcerrors.NotFoundErrorf("no workflow found")
+		return nil, nil, yarpcerrors.NotFoundErrorf("no workflow found")
 	}
 
 	// update workflow version before mutating workflow, so
 	// when workflow state changes, entity version must be changed
 	// as well
 	if err := j.updateWorkflowVersion(ctx, entityVersion); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	newEntityVersion := jobutil.GetJobEntityVersion(
@@ -1377,29 +1377,29 @@ func (j *job) ResumeWorkflow(
 		j.runtime.GetWorkflowVersion(),
 	)
 	err = currentWorkflow.Resume(ctx)
-	return newEntityVersion, err
+	return currentWorkflow.ID(), newEntityVersion, err
 }
 
 func (j *job) AbortWorkflow(
 	ctx context.Context,
 	entityVersion *v1alphapeloton.EntityVersion,
-) (*v1alphapeloton.EntityVersion, error) {
+) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error) {
 	j.Lock()
 	defer j.Unlock()
 
 	currentWorkflow, err := j.getCurrentWorkflow(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if currentWorkflow == nil {
-		return nil, yarpcerrors.NotFoundErrorf("no workflow found")
+		return nil, nil, yarpcerrors.NotFoundErrorf("no workflow found")
 	}
 
 	// update workflow version before mutating workflow, so
 	// when workflow state changes, entity version must be changed
 	// as well
 	if err := j.updateWorkflowVersion(ctx, entityVersion); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	newEntityVersion := jobutil.GetJobEntityVersion(
@@ -1407,7 +1407,7 @@ func (j *job) AbortWorkflow(
 		j.runtime.GetWorkflowVersion(),
 	)
 	err = currentWorkflow.Cancel(ctx)
-	return newEntityVersion, err
+	return currentWorkflow.ID(), newEntityVersion, err
 }
 
 func (j *job) RollbackWorkflow(ctx context.Context) error {

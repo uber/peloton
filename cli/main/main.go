@@ -176,6 +176,22 @@ var (
 	statelessRefresh     = stateless.Command("refresh", "refresh a job")
 	statelessRefreshName = statelessRefresh.Arg("job", "job identifier").Required().String()
 
+	workflow                   = stateless.Command("workflow", "manage workflow for stateless job")
+	workflowPause              = workflow.Command("pause", "pause a workflow")
+	workflowPauseName          = workflowPause.Arg("job", "job identifier").Required().String()
+	workflowPauseEntityVersion = workflowPause.Arg("entityVersion",
+		"entity version for concurrency control").Required().String()
+
+	workflowResume              = workflow.Command("resume", "resume a workflow")
+	workflowResumeName          = workflowResume.Arg("job", "job identifier").Required().String()
+	workflowResumeEntityVersion = workflowResume.Arg("entityVersion",
+		"entity version for concurrency control").Required().String()
+
+	workflowAbort              = workflow.Command("abort", "abort a workflow")
+	workflowAbortName          = workflowAbort.Arg("job", "job identifier").Required().String()
+	workflowAbortEntityVersion = workflowAbort.Arg("entityVersion",
+		"entity version for concurrency control").Required().String()
+
 	statelessQuery            = stateless.Command("query", "query stateless jobs by mesos label / respool")
 	statelessQueryLabels      = statelessQuery.Flag("labels", "labels").Default("").Short('l').String()
 	statelessQueryRespoolPath = statelessQuery.Flag("respool", "respool path").Default("").Short('r').String()
@@ -695,6 +711,12 @@ func main() {
 		err = client.StatelessGetCacheAction(*statelessGetCacheName)
 	case statelessRefresh.FullCommand():
 		err = client.StatelessRefreshAction(*statelessRefreshName)
+	case workflowPause.FullCommand():
+		err = client.StatelessWorkflowPauseAction(*workflowPauseName, *workflowPauseEntityVersion)
+	case workflowResume.FullCommand():
+		err = client.StatelessWorkflowResumeAction(*workflowResumeName, *workflowResumeEntityVersion)
+	case workflowAbort.FullCommand():
+		err = client.StatelessWorkflowAbortAction(*workflowAbortName, *workflowAbortEntityVersion)
 	case statelessQuery.FullCommand():
 		err = client.StatelessQueryAction(*statelessQueryLabels, *statelessQueryRespoolPath, *statelessQueryKeywords, *statelessQueryStates, *statelessQueryOwner, *statelessQueryName, *statelessQueryTimeRange, *statelessQueryLimit, *statelessQueryMaxLimit, *statelessQueryOffset, *statelessQuerySortBy, *statelessQuerySortOrder)
 	case statelessReplace.FullCommand():

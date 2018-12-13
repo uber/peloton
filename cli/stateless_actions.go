@@ -41,7 +41,6 @@ func (c *Client) StatelessGetCacheAction(jobID string) error {
 	}
 	fmt.Printf("%v\n", string(out))
 
-	tabWriter.Flush()
 	return nil
 }
 
@@ -62,7 +61,60 @@ func (c *Client) StatelessRefreshAction(jobID string) error {
 	}
 	fmt.Printf("%v\n", string(out))
 
-	tabWriter.Flush()
+	return nil
+}
+
+// StatelessWorkflowPauseAction pauses a workflow
+func (c *Client) StatelessWorkflowPauseAction(jobID string, entityVersion string) error {
+	resp, err := c.statelessClient.PauseJobWorkflow(
+		c.ctx,
+		&statelesssvc.PauseJobWorkflowRequest{
+			JobId:   &v1alphapeloton.JobID{Value: jobID},
+			Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Workflow paused. New EntityVersion: %s\n", resp.GetVersion().GetValue())
+
+	return nil
+}
+
+// StatelessWorkflowResumeAction resumes a workflow
+func (c *Client) StatelessWorkflowResumeAction(jobID string, entityVersion string) error {
+	resp, err := c.statelessClient.ResumeJobWorkflow(
+		c.ctx,
+		&statelesssvc.ResumeJobWorkflowRequest{
+			JobId:   &v1alphapeloton.JobID{Value: jobID},
+			Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Workflow resumed. New EntityVersion: %s\n", resp.GetVersion().GetValue())
+
+	return nil
+}
+
+// StatelessWorkflowAbortAction aborts a workflow
+func (c *Client) StatelessWorkflowAbortAction(jobID string, entityVersion string) error {
+	resp, err := c.statelessClient.AbortJobWorkflow(
+		c.ctx,
+		&statelesssvc.AbortJobWorkflowRequest{
+			JobId:   &v1alphapeloton.JobID{Value: jobID},
+			Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Workflow aborted. New EntityVersion: %s\n", resp.GetVersion().GetValue())
+
 	return nil
 }
 

@@ -909,7 +909,7 @@ func (suite *UpdateSvcTestSuite) TestAbortFail() {
 
 	suite.cachedJob.EXPECT().
 		AbortWorkflow(gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("fake db error"))
+		Return(nil, nil, fmt.Errorf("fake db error"))
 
 	suite.cachedJob.EXPECT().
 		ID().
@@ -944,9 +944,11 @@ func (suite *UpdateSvcTestSuite) TestAbort() {
 
 	suite.cachedJob.EXPECT().
 		AbortWorkflow(gomock.Any(), gomock.Any()).
-		Return(jobutil.GetJobEntityVersion(
-			suite.jobRuntime.GetConfigurationVersion(),
-			suite.jobRuntime.GetWorkflowVersion()+1),
+		Return(
+			suite.updateID,
+			jobutil.GetJobEntityVersion(
+				suite.jobRuntime.GetConfigurationVersion(),
+				suite.jobRuntime.GetWorkflowVersion()+1),
 			nil)
 
 	suite.cachedJob.EXPECT().
@@ -983,6 +985,7 @@ func (suite *UpdateSvcTestSuite) TestPauseSuccess() {
 	suite.cachedJob.EXPECT().
 		PauseWorkflow(gomock.Any(), gomock.Any()).
 		Return(
+			suite.updateID,
 			jobutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion(),
 				suite.jobRuntime.GetWorkflowVersion()+1),
@@ -1022,7 +1025,7 @@ func (suite *UpdateSvcTestSuite) TestPauseProgressUpdateFails() {
 
 	suite.cachedJob.EXPECT().
 		PauseWorkflow(gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("test error"))
+		Return(nil, nil, fmt.Errorf("test error"))
 
 	suite.cachedJob.EXPECT().
 		ID().
@@ -1057,9 +1060,11 @@ func (suite *UpdateSvcTestSuite) TestResumeSuccess() {
 
 	suite.cachedJob.EXPECT().
 		ResumeWorkflow(gomock.Any(), gomock.Any()).
-		Return(jobutil.GetJobEntityVersion(
-			suite.jobRuntime.GetConfigurationVersion(),
-			suite.jobRuntime.GetWorkflowVersion()+1),
+		Return(
+			suite.updateID,
+			jobutil.GetJobEntityVersion(
+				suite.jobRuntime.GetConfigurationVersion(),
+				suite.jobRuntime.GetWorkflowVersion()+1),
 			nil)
 
 	suite.cachedJob.EXPECT().
@@ -1096,7 +1101,7 @@ func (suite *UpdateSvcTestSuite) TestResumeProgressUpdateFails() {
 
 	suite.cachedJob.EXPECT().
 		ResumeWorkflow(gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("test error"))
+		Return(nil, nil, fmt.Errorf("test error"))
 
 	suite.cachedJob.EXPECT().
 		ID().

@@ -292,7 +292,7 @@ func (h *serviceHandler) PauseUpdate(
 		return nil, err
 	}
 
-	if _, err = cachedJob.PauseWorkflow(
+	if _, _, err = cachedJob.PauseWorkflow(
 		ctx,
 		jobutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),
@@ -330,7 +330,7 @@ func (h *serviceHandler) ResumeUpdate(
 		return nil, err
 	}
 
-	if _, err = cachedJob.ResumeWorkflow(
+	if _, _, err = cachedJob.ResumeWorkflow(
 		ctx,
 		jobutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),
@@ -412,7 +412,7 @@ func (h *serviceHandler) AbortUpdate(ctx context.Context,
 		return nil, err
 	}
 
-	if _, err = cachedJob.AbortWorkflow(
+	if _, _, err = cachedJob.AbortWorkflow(
 		ctx,
 		jobutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),

@@ -187,20 +187,95 @@ func (h *serviceHandler) RestartJob(
 
 func (h *serviceHandler) PauseJobWorkflow(
 	ctx context.Context,
-	req *svc.PauseJobWorkflowRequest) (*svc.PauseJobWorkflowResponse, error) {
-	return &svc.PauseJobWorkflowResponse{}, nil
+	req *svc.PauseJobWorkflowRequest) (resp *svc.PauseJobWorkflowResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("JobSVC.PauseJobWorkflow failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Info("JobSVC.PauseJobWorkflow succeeded")
+	}()
+
+	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: req.GetJobId().GetValue()})
+	updateID, newEntityVersion, err := cachedJob.PauseWorkflow(ctx, req.GetVersion())
+
+	if len(updateID.GetValue()) > 0 {
+		h.goalStateDriver.EnqueueUpdate(cachedJob.ID(), updateID, time.Now())
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &svc.PauseJobWorkflowResponse{Version: newEntityVersion}, nil
 }
 
 func (h *serviceHandler) ResumeJobWorkflow(
 	ctx context.Context,
-	req *svc.ResumeJobWorkflowRequest) (*svc.ResumeJobWorkflowResponse, error) {
-	return &svc.ResumeJobWorkflowResponse{}, nil
+	req *svc.ResumeJobWorkflowRequest) (resp *svc.ResumeJobWorkflowResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("JobSVC.ResumeJobWorkflow failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Info("JobSVC.ResumeJobWorkflow succeeded")
+	}()
+
+	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: req.GetJobId().GetValue()})
+	updateID, newEntityVersion, err := cachedJob.ResumeWorkflow(ctx, req.GetVersion())
+
+	if len(updateID.GetValue()) > 0 {
+		h.goalStateDriver.EnqueueUpdate(cachedJob.ID(), updateID, time.Now())
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &svc.ResumeJobWorkflowResponse{Version: newEntityVersion}, nil
 }
 
 func (h *serviceHandler) AbortJobWorkflow(
 	ctx context.Context,
-	req *svc.AbortJobWorkflowRequest) (*svc.AbortJobWorkflowResponse, error) {
-	return &svc.AbortJobWorkflowResponse{}, nil
+	req *svc.AbortJobWorkflowRequest) (resp *svc.AbortJobWorkflowResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("JobSVC.AbortJobWorkflow failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Info("JobSVC.AbortJobWorkflow succeeded")
+	}()
+
+	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: req.GetJobId().GetValue()})
+	updateID, newEntityVersion, err := cachedJob.AbortWorkflow(ctx, req.GetVersion())
+
+	if len(updateID.GetValue()) > 0 {
+		h.goalStateDriver.EnqueueUpdate(cachedJob.ID(), updateID, time.Now())
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &svc.AbortJobWorkflowResponse{Version: newEntityVersion}, nil
 }
 
 func (h *serviceHandler) StartJob(
