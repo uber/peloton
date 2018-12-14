@@ -70,6 +70,7 @@ Recovery of maintenance queue is performed
 */
 type RecoveryHandler struct {
 	metrics         *Metrics
+	scope           tally.Scope
 	jobStore        storage.JobStore
 	taskStore       storage.TaskStore
 	handler         *ServiceHandler
@@ -95,6 +96,7 @@ func NewRecovery(
 		taskStore:     taskStore,
 		handler:       handler,
 		metrics:       NewMetrics(parent),
+		scope:         parent,
 		config:        config,
 		hostmgrClient: hostmgrClient,
 		tracker:       rmtask.GetTracker(),
@@ -131,9 +133,11 @@ func (r *RecoveryHandler) Start() error {
 
 	err := cmn_recovery.RecoverJobsByState(
 		ctx,
+		r.scope,
 		r.jobStore,
 		jobStates,
 		r.requeueTasksInRange,
+		r.config.RecoveryConfig.RecoverFromActiveJobs,
 	)
 	if err != nil {
 		r.metrics.RecoveryFail.Inc(1)

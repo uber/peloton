@@ -17,3 +17,10 @@ type PreemptionConfig struct {
 	// in to reduce the allocation.
 	SustainedOverAllocationCount int `yaml:"sustained_over_allocation_count"`
 }
+
+// RecoveryConfig is the container for recovery related config
+type RecoveryConfig struct {
+	// RecoverFromActiveJobs tells the recovery code to use the active_jobs
+	// table for recovery instead of materialized view
+	RecoverFromActiveJobs bool `yaml:"recover_from_active_jobs"`
+}

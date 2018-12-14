@@ -32,11 +32,12 @@ var (
 )
 
 var mutex = &sync.Mutex{}
+var scope = tally.Scope(tally.NoopScope)
 
 func init() {
 	conf := cassandra.MigrateForTest()
 	var err error
-	csStore, err = cassandra.NewStore(conf, tally.NoopScope)
+	csStore, err = cassandra.NewStore(conf, scope)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -182,6 +183,16 @@ func recoverPendingTask(
 	return
 }
 
+func noopRecover(ctx context.Context,
+	jobID string,
+	jobConfig *pb_job.JobConfig,
+	configAddOn *models.ConfigAddOn,
+	jobRuntime *pb_job.RuntimeInfo,
+	batch TasksBatch,
+	errChan chan<- error) {
+	return
+}
+
 func recoverRunningTask(
 	ctx context.Context,
 	jobID string,
@@ -261,11 +272,14 @@ func TestJobRecoveryWithStore(t *testing.T) {
 	assert.NoError(t, err)
 
 	receivedPendingJobID = nil
-	err = RecoverJobsByState(ctx, csStore, jobStatesPending, recoverPendingTask)
+	err = RecoverJobsByState(
+		ctx, scope, csStore, jobStatesPending, recoverPendingTask, false)
 	assert.NoError(t, err)
-	err = RecoverJobsByState(ctx, csStore, jobStatesRunning, recoverRunningTask)
+	err = RecoverJobsByState(
+		ctx, scope, csStore, jobStatesRunning, recoverRunningTask, false)
 	assert.NoError(t, err)
-	err = RecoverJobsByState(ctx, csStore, jobStatesAll, recoverAllTask)
+	err = RecoverJobsByState(
+		ctx, scope, csStore, jobStatesAll, recoverAllTask, false)
 	assert.NoError(t, err)
 	assert.Equal(t, 4, len(receivedPendingJobID))
 }
@@ -324,7 +338,8 @@ func TestRecoveryAfterJobDelete(t *testing.T) {
 		Return(&jobConfig, &models.ConfigAddOn{}, nil).
 		AnyTimes()
 
-	err = RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
+	err = RecoverJobsByState(
+		ctx, scope, mockJobStore, jobStatesPending, recoverPendingTask, false)
 	assert.NoError(t, err)
 
 	mockJobStore.EXPECT().
@@ -337,7 +352,8 @@ func TestRecoveryAfterJobDelete(t *testing.T) {
 		GetActiveJobs(ctx).
 		Return([]*peloton.JobID{}, fmt.Errorf("")).
 		AnyTimes()
-	err = RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
+	err = RecoverJobsByState(
+		ctx, scope, mockJobStore, jobStatesPending, recoverPendingTask, false)
 	assert.NoError(t, err)
 }
 
@@ -359,7 +375,8 @@ func TestRecoveryErrors(t *testing.T) {
 	mockJobStore.EXPECT().
 		GetJobsByStates(ctx, jobStatesPending).
 		Return(nil, fmt.Errorf("Fake GetJobsByStates error"))
-	err := RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
+	err := RecoverJobsByState(
+		ctx, scope, mockJobStore, jobStatesPending, recoverPendingTask, false)
 	assert.Error(t, err)
 
 	// Test GetJobConfig error
@@ -380,7 +397,8 @@ func TestRecoveryErrors(t *testing.T) {
 		GetJobConfig(ctx, jobID).
 		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
 
-	err = RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
+	err = RecoverJobsByState(
+		ctx, scope, mockJobStore, jobStatesPending, recoverPendingTask, false)
 	assert.Error(t, err)
 
 	// Test active jobs != jobs in MV
@@ -388,11 +406,15 @@ func TestRecoveryErrors(t *testing.T) {
 	mockJobStore.EXPECT().
 		GetJobsByStates(ctx, jobStatesPending).
 		Return(jobIDs, nil)
-	// even if active jobs returns an empty list, the recovery process should
-	// move on without error
+
+	// if active jobs returns an empty list, the recovery process should
+	// move on without error, and we should see the missing job to be added
+	// to the active jobs table
 	mockJobStore.EXPECT().
 		GetActiveJobs(ctx).
 		Return([]*peloton.JobID{}, nil)
+
+	mockJobStore.EXPECT().AddActiveJob(ctx, jobID).Return(nil)
 
 	mockJobStore.EXPECT().
 		GetJobRuntime(ctx, jobID).
@@ -402,7 +424,32 @@ func TestRecoveryErrors(t *testing.T) {
 		GetJobConfig(ctx, jobID).
 		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
 
-	err = RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
+	err = RecoverJobsByState(
+		ctx, scope, mockJobStore, jobStatesPending, recoverPendingTask, false)
+	assert.Error(t, err)
+
+	// Test active jobs != jobs in MV
+	jobIDs = []peloton.JobID{*jobID}
+	mockJobStore.EXPECT().
+		GetJobsByStates(ctx, jobStatesPending).
+		Return(jobIDs, nil)
+	// if active jobs returns a list different than the one fron MV, we should
+	// see the missing jobs being added to active jobs list
+	mockJobStore.EXPECT().
+		GetActiveJobs(ctx).
+		Return([]*peloton.JobID{&peloton.JobID{Value: uuid.New()}}, nil)
+	mockJobStore.EXPECT().AddActiveJob(ctx, jobID).Return(nil)
+
+	mockJobStore.EXPECT().
+		GetJobRuntime(ctx, jobID).
+		Return(&jobRuntime, nil)
+
+	mockJobStore.EXPECT().
+		GetJobConfig(ctx, jobID).
+		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
+
+	err = RecoverJobsByState(
+		ctx, scope, mockJobStore, jobStatesPending, recoverPendingTask, false)
 	assert.Error(t, err)
 }
 
@@ -431,7 +478,8 @@ func TestRecoveryWithFailedJobBatches(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	err = RecoverJobsByState(ctx, csStore, jobStatesAll, recoverTaskRandomly)
+	err = RecoverJobsByState(
+		ctx, scope, csStore, jobStatesAll, recoverTaskRandomly, false)
 	assert.Error(t, err)
 }
 
@@ -448,11 +496,87 @@ func TestJobRecoveryWithUninitializedState(t *testing.T) {
 
 	// Although the state is UNINITIALIZED, config is persisted in db,
 	// so this job can be recovered.
-	_, err = createJob(ctx, pb_job.JobState_UNINITIALIZED, pb_job.JobState_RUNNING)
+	_, err = createJob(
+		ctx, pb_job.JobState_UNINITIALIZED, pb_job.JobState_RUNNING)
 	assert.NoError(t, err)
 
 	receivedPendingJobID = nil
-	err = RecoverJobsByState(ctx, csStore, []pb_job.JobState{pb_job.JobState_UNINITIALIZED}, recoverAllTask)
+	err = RecoverJobsByState(
+		ctx, scope, csStore, []pb_job.JobState{pb_job.JobState_UNINITIALIZED},
+		recoverAllTask, false)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(receivedPendingJobID))
+}
+
+// TestPopulateMissingActiveJobs tests back fill of jobs missing from active
+// jobs list but present in the MV
+func TestPopulateMissingActiveJobs(t *testing.T) {
+	var err error
+	var jobStatesPending = []pb_job.JobState{
+		pb_job.JobState_PENDING,
+	}
+	var jobRuntime = pb_job.RuntimeInfo{
+		State: pb_job.JobState_PENDING,
+	}
+	var jobConfig = pb_job.JobConfig{}
+	var jobID1 = &peloton.JobID{Value: uuid.New()}
+	var jobID2 = &peloton.JobID{Value: uuid.New()}
+	var jobID3 = &peloton.JobID{Value: uuid.New()}
+
+	ctrl := gomock.NewController(t)
+	ctx := context.Background()
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+
+	jobIDs := []peloton.JobID{*jobID1, *jobID2}
+	// active_jobs is missing jobID2
+	activeJobIDs := []*peloton.JobID{jobID1}
+
+	mockJobStore.EXPECT().
+		GetJobsByStates(ctx, jobStatesPending).Return(jobIDs, nil)
+
+	mockJobStore.EXPECT().GetActiveJobs(ctx).Return(activeJobIDs, nil)
+
+	// This tests that the populateMissingActiveJobs adds the missing job
+	// to the active_jobs table
+	mockJobStore.EXPECT().AddActiveJob(ctx, jobID2).Return(nil)
+
+	mockJobStore.EXPECT().GetJobRuntime(ctx, jobID1).Return(&jobRuntime, nil)
+	mockJobStore.EXPECT().GetJobRuntime(ctx, jobID2).Return(&jobRuntime, nil)
+
+	mockJobStore.EXPECT().
+		GetJobConfig(ctx, jobID1).
+		Return(&jobConfig, &models.ConfigAddOn{}, nil)
+
+	mockJobStore.EXPECT().GetJobConfig(ctx, jobID2).
+		Return(&jobConfig, &models.ConfigAddOn{}, nil)
+
+	// recover jobs by state using active jobs list
+	err = RecoverJobsByState(
+		ctx, scope, mockJobStore, jobStatesPending, noopRecover, true)
+	assert.NoError(t, err)
+
+	// Test the actual backfill function for errors
+	// This tests that the populateMissingActiveJobs adds the missing job
+	mockJobStore.EXPECT().AddActiveJob(ctx, jobID1).Return(nil)
+	mockJobStore.EXPECT().AddActiveJob(ctx, jobID2).Return(nil)
+	populateMissingActiveJobs(
+		ctx, mockJobStore, jobIDs, []peloton.JobID{}, NewMetrics(scope))
+
+	// Introduce failure on adding jobID2
+	mockJobStore.EXPECT().AddActiveJob(ctx, jobID1).Return(nil)
+	mockJobStore.EXPECT().AddActiveJob(ctx, jobID2).
+		Return(fmt.Errorf("Fake GetJobConfig error"))
+	populateMissingActiveJobs(
+		ctx, mockJobStore, jobIDs, []peloton.JobID{}, NewMetrics(scope))
+
+	// jobID3 will NOT be added to the active jobs list
+	mockJobStore.EXPECT().AddActiveJob(ctx, jobID1).Return(nil)
+	mockJobStore.EXPECT().AddActiveJob(ctx, jobID2).Return(nil)
+	populateMissingActiveJobs(
+		ctx, mockJobStore, jobIDs, []peloton.JobID{*jobID3}, NewMetrics(scope))
+
+	// jobID3 will be added to the active jobs list
+	mockJobStore.EXPECT().AddActiveJob(ctx, jobID3).Return(nil)
+	populateMissingActiveJobs(
+		ctx, mockJobStore, []peloton.JobID{*jobID3}, jobIDs, NewMetrics(scope))
 }

@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
@@ -195,13 +196,70 @@ func recoverJobsBatch(
 	}
 }
 
+// populateMissingActiveJobs will find out which jobIDs are present in
+// materialzied view, but absent from active_jobs table and then add them to
+// the active_jobs table.
+func populateMissingActiveJobs(
+	ctx context.Context,
+	jobStore storage.JobStore,
+	jobIDsFromMV []peloton.JobID,
+	activeJobIDs []peloton.JobID,
+	mtx *Metrics,
+) {
+	// get jobs that are in jobIDsFromMV but not in activeJobIDs
+	// Add these jobs to active_jobs table
+
+	jobIDsMap := make(map[string]bool)
+	for _, jobID := range activeJobIDs {
+		jobIDsMap[jobID.GetValue()] = true
+	}
+	// All jobs in jobIDsFromMV should be already present in jobIDsMap
+	// If a job is not present, add it to active_jobs table.
+	for _, jobID := range jobIDsFromMV {
+		if _, ok := jobIDsMap[jobID.GetValue()]; !ok {
+			// Just add the job to active_jobs table irrespective of job state
+			// This code is for temporary migration and will be deleted in
+			// subsequent releases, so keeping the logic simple.
+			// adding terminal jobs to active_jobs table will result in them
+			// getting deleted as part of active jobs cleanup action and will
+			// not have any adverse effect on jobmgr
+			log.WithField("job_id", jobID).
+				Info("Add missing job to active_jobs")
+			if err := jobStore.AddActiveJob(
+				ctx, &peloton.JobID{Value: jobID.GetValue()}); err != nil {
+				// Do not error out in recovery because this is not a critical
+				// operation and we should continue with recovery despite this
+				// error.
+				log.WithField("job_id", jobID).
+					WithError(err).Info("Failed to add job to active_jobs")
+				mtx.activeJobsBackfillFail.Inc(1)
+			} else {
+				mtx.activeJobsBackfill.Inc(1)
+			}
+		}
+	}
+}
+
+// getDereferencedJobIDsList dereferences the jobIDs list
+func getDereferencedJobIDsList(jobIDs []*peloton.JobID) []peloton.JobID {
+	result := []peloton.JobID{}
+	for _, jobID := range jobIDs {
+		result = append(result, *jobID)
+	}
+	return result
+}
+
 // RecoverJobsByState is the handler to start a job recovery.
 func RecoverJobsByState(
 	ctx context.Context,
+	parentScope tally.Scope,
 	jobStore storage.JobStore,
 	jobStates []job.JobState,
-	f RecoverBatchTasks) error {
+	f RecoverBatchTasks, recoverFromActiveJobs bool) error {
+
 	log.WithField("job_states", jobStates).Info("job states to recover")
+	mtx := NewMetrics(parentScope.SubScope("recovery"))
+
 	jobsIDs, err := jobStore.GetJobsByStates(ctx, jobStates)
 	if err != nil {
 		log.WithError(err).
@@ -217,23 +275,41 @@ func RecoverJobsByState(
 		log.WithError(err).
 			Error("GetActiveJobs failed")
 	}
+	activeJobIDsCopy := getDereferencedJobIDsList(activeJobIDs)
 
-	if len(activeJobIDs) != len(jobsIDs) {
+	mtx.activeJobsMV.Update(float64(len(jobsIDs)))
+	mtx.activeJobs.Update(float64(len(activeJobIDsCopy)))
+
+	if len(jobsIDs) != len(activeJobIDsCopy) {
 		// Monitor logs to make sure you no longer see this log. Once we get
 		// active_jobs populated by goalstate engine, we should never see this
 		// log and at that time we are ready to switch recovery to use
 		// active_jobs table
+
 		log.WithFields(log.Fields{
 			"total_jobs_from_mv": len(jobsIDs),
 			"total_active_jobs":  len(activeJobIDs),
 		}).Error("active_jobs not equal to jobs in mv_job_by_state")
+
+		// Backfill the missing jobs into active_jobs table.
+		go populateMissingActiveJobs(
+			ctx, jobStore, jobsIDs, activeJobIDsCopy, mtx)
 	}
 
-	log.WithFields(log.Fields{
-		"total_jobs":            len(jobsIDs),
-		"job_ids":               jobsIDs,
-		"job_states_to_recover": jobStates,
-	}).Info("jobs to recover")
+	if recoverFromActiveJobs {
+		// if this flag is set, recover from active_jobs list instead of MV
+		//jobsIDs = getDereferencedJobIDsList(activeJobIDs)
+		log.WithFields(log.Fields{
+			"total_active_jobs": len(activeJobIDsCopy),
+			"job_ids":           jobsIDs,
+		}).Info("jobs to recover")
+	} else {
+		log.WithFields(log.Fields{
+			"total_jobs":            len(jobsIDs),
+			"job_ids":               jobsIDs,
+			"job_states_to_recover": jobStates,
+		}).Info("jobs to recover")
+	}
 
 	jobBatches := createJobBatches(jobsIDs)
 	var bwg sync.WaitGroup

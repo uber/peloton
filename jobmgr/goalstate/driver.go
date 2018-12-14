@@ -156,16 +156,17 @@ func NewDriver(
 			d.ClientConfig(common.PelotonHostManager)),
 		resmgrClient: resmgrsvc.NewResourceManagerServiceYARPCClient(
 			d.ClientConfig(common.PelotonResourceManager)),
-		jobStore:     jobStore,
-		taskStore:    taskStore,
-		volumeStore:  volumeStore,
-		updateStore:  updateStore,
-		jobFactory:   jobFactory,
-		taskLauncher: taskLauncher,
-		mtx:          NewMetrics(scope),
-		cfg:          &cfg,
-		jobType:      jobType,
+		jobStore:                      jobStore,
+		taskStore:                     taskStore,
+		volumeStore:                   volumeStore,
+		updateStore:                   updateStore,
+		jobFactory:                    jobFactory,
+		taskLauncher:                  taskLauncher,
+		mtx:                           NewMetrics(scope),
+		cfg:                           &cfg,
+		jobType:                       jobType,
 		jobRuntimeCalculationViaCache: jobRuntimeCalculationViaCache,
+		jobScope:                      jobScope,
 	}
 }
 
@@ -224,6 +225,8 @@ type driver struct {
 	jobType job.JobType // the type of the job for the driver
 	// feature flag of aggressive runtime updater calculation
 	jobRuntimeCalculationViaCache bool
+	// job scope for goalstate driver
+	jobScope tally.Scope
 }
 
 func (d *driver) EnqueueJob(jobID *peloton.JobID, deadline time.Time) {
@@ -383,7 +386,14 @@ func (d *driver) syncFromDB(ctx context.Context) error {
 	if d.jobType == job.JobType_SERVICE {
 		jobStatesToRecover = serviceJobStatesToRecover
 	}
-	err := recovery.RecoverJobsByState(ctx, d.jobStore, jobStatesToRecover, d.recoverTasks)
+	err := recovery.RecoverJobsByState(
+		ctx,
+		d.jobScope,
+		d.jobStore,
+		jobStatesToRecover,
+		d.recoverTasks,
+		d.cfg.RecoveryConfig.RecoverFromActiveJobs,
+	)
 	if err != nil {
 		return err
 	}

@@ -107,6 +107,7 @@ func (suite *recoveryTestSuite) SetupTest() {
 				PlacingTimeout:   1 * time.Minute,
 				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			},
+			RecoveryConfig: &rc.RecoveryConfig{},
 		}, suite.mockHostmgrClient)
 
 	err := suite.resourceTree.Start()
@@ -335,6 +336,8 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	suite.mockJobStore.EXPECT().
 		GetActiveJobs(gomock.Any()).
 		Return([]*peloton.JobID{}, nil)
+	suite.mockJobStore.EXPECT().
+		AddActiveJob(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	suite.mockJobStore.EXPECT().
 		GetJobRuntime(context.Background(), &jobs[0]).
@@ -447,6 +450,8 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 	suite.mockJobStore.EXPECT().
 		GetActiveJobs(gomock.Any()).
 		Return([]*peloton.JobID{}, nil)
+	suite.mockJobStore.EXPECT().
+		AddActiveJob(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	suite.mockJobStore.EXPECT().
 		GetJobRuntime(context.Background(), &jobs[0]).
