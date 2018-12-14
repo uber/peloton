@@ -162,7 +162,7 @@ imports:
 - name: github.com/prometheus/procfs
   version: fcdb11ccb4389efb1b210b7ffb623ab71c5fdd60
 - name: github.com/rogpeppe/go-internal
-  version: 2031f4bd3ad5f013b336ca27805753320645be09
+  version: dd200567cff41f4d66cc45709a8602403c1beeb6
   subpackages:
   - modfile
   - module
