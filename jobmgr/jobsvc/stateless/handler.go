@@ -419,6 +419,12 @@ func (h *serviceHandler) GetJob(
 	}, nil
 }
 
+func (h *serviceHandler) GetJobIDFromJobName(
+	ctx context.Context,
+	req *svc.GetJobIDFromJobNameRequest) (resp *svc.GetJobIDFromJobNameResponse, err error) {
+	return &svc.GetJobIDFromJobNameResponse{}, nil
+}
+
 func (h *serviceHandler) GetWorkflowEvents(
 	ctx context.Context,
 	req *svc.GetWorkflowEventsRequest) (*svc.GetWorkflowEventsResponse, error) {

@@ -301,6 +301,21 @@ message GetJobResponse {
   stateless.WorkflowInfo workflow_info = 4;
 }
 
+// Request message for JobService.GetJobIDFromJobName method.
+message GetJobIDFromJobNameRequest {
+  // Job name to lookup for job UUID.
+  string job_name = 1;
+}
+
+// Response message for JobService.GetJobIDFromJobName method.
+// Return errors:
+//   NOT_FOUND:         if the job name is not found.
+message GetJobIDFromJobNameResponse {
+  // The job UUIDs for the job name.
+  // Job UUIDs are sorted by descending create timestamp.
+  repeated peloton.JobID job_id = 1;
+}
+
 // Request message for JobService.GetWorkflowEvents
 message GetWorkflowEventsRequest {
   // The job ID to look up the job.
@@ -483,6 +498,9 @@ service JobService {
 
   // Get the configuration and runtime status of a job.
   rpc GetJob(GetJobRequest) returns (GetJobResponse);
+
+  // Get the job UUID from job name.
+  rpc GetJobIDFromJobName(GetJobIDFromJobNameRequest) returns (GetJobIDFromJobNameResponse);
 
   // Get the events of the current / last completed workflow of a job
   rpc GetWorkflowEvents(GetWorkflowEventsRequest) returns (GetWorkflowEventsResponse);
