@@ -113,6 +113,7 @@ class App(object):
         self.slack_resource_types = None
         self.enable_revocable_resources = None
         self.bin_packing = None
+        self.stream_only_mode = True
 
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
