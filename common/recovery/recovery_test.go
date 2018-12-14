@@ -111,6 +111,57 @@ func createJob(ctx context.Context, state pb_job.JobState, goalState pb_job.JobS
 	return jobID, nil
 }
 
+func createPartiallyCreatedJob(ctx context.Context, goalState pb_job.JobState) (*peloton.JobID, error) {
+	var jobID = &peloton.JobID{Value: uuid.New()}
+	var sla = pb_job.SlaConfig{
+		Priority:                22,
+		MaximumRunningInstances: 3,
+		Preemptible:             false,
+	}
+	var taskConfig = pb_task.TaskConfig{
+		Resource: &pb_task.ResourceConfig{
+			CpuLimit:    0.8,
+			MemLimitMb:  800,
+			DiskLimitMb: 1500,
+		},
+	}
+
+	now := time.Now()
+	var jobConfig = pb_job.JobConfig{
+		Name:          "TestValidatorWithStore",
+		OwningTeam:    "team6",
+		LdapGroups:    []string{"money", "team6", "gsg9"},
+		SLA:           &sla,
+		DefaultConfig: &taskConfig,
+		InstanceCount: 2,
+		ChangeLog: &peloton.ChangeLog{
+			CreatedAt: uint64(now.UnixNano()),
+			UpdatedAt: uint64(now.UnixNano()),
+			Version:   1,
+		},
+	}
+
+	initialJobRuntime := pb_job.RuntimeInfo{
+		State:        pb_job.JobState_UNINITIALIZED,
+		CreationTime: now.Format(time.RFC3339Nano),
+		TaskStats:    make(map[string]uint32),
+		GoalState:    goalState,
+		Revision: &peloton.ChangeLog{
+			CreatedAt: uint64(now.UnixNano()),
+			UpdatedAt: uint64(now.UnixNano()),
+			Version:   1,
+		},
+		ConfigurationVersion: jobConfig.GetChangeLog().GetVersion(),
+	}
+
+	err := csStore.CreateJobRuntimeWithConfig(ctx, jobID, &initialJobRuntime, &jobConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return jobID, nil
+}
+
 func recoverPendingTask(
 	ctx context.Context,
 	jobID string,
@@ -209,6 +260,7 @@ func TestJobRecoveryWithStore(t *testing.T) {
 	_, err = createJob(ctx, pb_job.JobState_FAILED, pb_job.JobState_SUCCEEDED)
 	assert.NoError(t, err)
 
+	receivedPendingJobID = nil
 	err = RecoverJobsByState(ctx, csStore, jobStatesPending, recoverPendingTask)
 	assert.NoError(t, err)
 	err = RecoverJobsByState(ctx, csStore, jobStatesRunning, recoverRunningTask)
@@ -381,4 +433,26 @@ func TestRecoveryWithFailedJobBatches(t *testing.T) {
 
 	err = RecoverJobsByState(ctx, csStore, jobStatesAll, recoverTaskRandomly)
 	assert.Error(t, err)
+}
+
+func TestJobRecoveryWithUninitializedState(t *testing.T) {
+	var err error
+
+	ctx := context.Background()
+
+	// these two jobs cannot be recovered
+	_, err = createPartiallyCreatedJob(ctx, pb_job.JobState_RUNNING)
+	assert.NoError(t, err)
+	_, err = createPartiallyCreatedJob(ctx, pb_job.JobState_RUNNING)
+	assert.NoError(t, err)
+
+	// Although the state is UNINITIALIZED, config is persisted in db,
+	// so this job can be recovered.
+	_, err = createJob(ctx, pb_job.JobState_UNINITIALIZED, pb_job.JobState_RUNNING)
+	assert.NoError(t, err)
+
+	receivedPendingJobID = nil
+	err = RecoverJobsByState(ctx, csStore, []pb_job.JobState{pb_job.JobState_UNINITIALIZED}, recoverAllTask)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(receivedPendingJobID))
 }

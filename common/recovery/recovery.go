@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -169,6 +170,13 @@ func recoverJobsBatch(
 
 		jobConfig, configAddOn, err := jobStore.GetJobConfig(ctx, &jobID)
 		if err != nil {
+			// config is not found and job state is uninitialized,
+			// which means job is partially created and cannot be recovered.
+			if yarpcerrors.IsNotFound(err) &&
+				jobRuntime.GetState() == job.JobState_UNINITIALIZED {
+				continue
+			}
+
 			log.WithField("job_id", jobID.Value).
 				WithError(err).
 				Error("Failed to load job config")

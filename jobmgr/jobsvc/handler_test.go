@@ -1784,7 +1784,7 @@ func (suite *JobHandlerTestSuite) TestJobGetActiveJobsFail() {
 // TestJobGetActiveJobs tests failure to get active jobs list from DB
 func (suite *JobHandlerTestSuite) TestJobGetActiveJobs() {
 	expectedJobIDs := []*peloton.JobID{
-		&peloton.JobID{Value: "my-job-1"},
+		{Value: "my-job-1"},
 	}
 	suite.mockedJobStore.EXPECT().
 		GetActiveJobs(context.Background()).
