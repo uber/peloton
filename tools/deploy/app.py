@@ -110,6 +110,7 @@ class App(object):
         self.mem_limit = 16 * GB
         self.disk_limit = 16 * GB
         self.scarce_resource_types = None
+        self.stream_only_mode = True
 
         for k, v in kwargs.iteritems():
             setattr(self, k, v)

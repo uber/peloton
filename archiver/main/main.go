@@ -69,7 +69,7 @@ var (
 
 	streamOnlyMode = app.Flag(
 		"stream-only-mode", "Archiver streams jobs without deleting them").
-		Default("true").
+		Default("false").
 		Envar("STREAM_ONLY_MODE").
 		Bool()
 
