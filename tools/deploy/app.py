@@ -167,6 +167,9 @@ class App(object):
             'ENABLE_PREEMPTION': getattr(
                 self.cluster, 'enable_preemption', 'false'),
             'ENABLE_SECRETS': self.enable_secrets,
+            'JOB_RUNTIME_CALCULATION_VIA_CACHE': getattr(
+                self.cluster, 'job_runtime_calculation_via_cache',
+                'false'),
         }
 
         if self.name == 'placement_stateful':

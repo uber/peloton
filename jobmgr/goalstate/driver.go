@@ -129,7 +129,8 @@ func NewDriver(
 	taskLauncher launcher.Launcher,
 	jobType job.JobType,
 	parentScope tally.Scope,
-	cfg Config) Driver {
+	cfg Config,
+	jobRuntimeCalculationViaCache bool) Driver {
 	cfg.normalize()
 	scope := parentScope.SubScope("goalstate")
 	jobScope := scope.SubScope("job")
@@ -164,6 +165,7 @@ func NewDriver(
 		mtx:          NewMetrics(scope),
 		cfg:          &cfg,
 		jobType:      jobType,
+		jobRuntimeCalculationViaCache: jobRuntimeCalculationViaCache,
 	}
 }
 
@@ -220,6 +222,8 @@ type driver struct {
 	running int32    // whether driver is running or not
 
 	jobType job.JobType // the type of the job for the driver
+	// feature flag of aggressive runtime updater calculation
+	jobRuntimeCalculationViaCache bool
 }
 
 func (d *driver) EnqueueJob(jobID *peloton.JobID, deadline time.Time) {

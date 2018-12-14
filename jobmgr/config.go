@@ -40,4 +40,9 @@ type Config struct {
 
 	// Period in sec for updating active cache
 	ActiveTaskUpdatePeriod time.Duration `yaml:"active_task_update_period"`
+
+	// Enable job runtime re-calculation via cache,
+	// check instances counts between MV and configuration,
+	// if the counts mismatch, we will re-calculate job state from cache
+	JobRuntimeCalculationViaCache bool `yaml:"job_runtime_calculation_via_cache"`
 }

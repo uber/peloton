@@ -377,8 +377,12 @@ func determineJobRuntimeState(
 
 	// Check if a batch job is active for a very long time which may indicate
 	// that the mv_task_by_state for some of the tasks might be out of sync
+	// Also check if total instance count derived from MV is greater than what
+	// configured which indicates MV is out of sync, and if
+	// jobRuntimeCalculationViaCache flag is on
 	// Recalculate job state from cache if this is the case.
-	if shouldRecalculateJobState(cachedJob, config.GetType(), jobState) {
+	if shouldRecalculateJobState(cachedJob, config.GetType(), jobState,
+		stateCounts, goalStateDriver.jobRuntimeCalculationViaCache, config) {
 		jobState, err = recalculateJobStateFromCache(
 			ctx, jobRuntime, cachedJob, jobState, config)
 	}
@@ -648,10 +652,14 @@ func recalculateJobStateFromCache(
 
 // shouldRecalculateJobState is true if the job state needs to be recalculated
 func shouldRecalculateJobState(
-	cachedJob cached.Job, jobType job.JobType, jobState job.JobState) bool {
+	cachedJob cached.Job, jobType job.JobType, jobState job.JobState,
+	stateCounts map[string]uint32,
+	forceRecalculateFromCache bool, config jobmgrcommon.JobConfig) bool {
 	return jobType == job.JobType_BATCH &&
 		!util.IsPelotonJobStateTerminal(jobState) &&
-		isJobStateStale(cachedJob, common.StaleJobStateDurationThreshold)
+		isJobStateStale(cachedJob, common.StaleJobStateDurationThreshold) ||
+		getTotalInstanceCount(stateCounts) > config.GetInstanceCount() &&
+			forceRecalculateFromCache
 }
 
 // isJobStateStale returns true if the job is in active state for more than the

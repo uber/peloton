@@ -67,6 +67,7 @@ func (suite *DriverTestSuite) SetupTest() {
 		mtx:          NewMetrics(tally.NoopScope),
 		cfg:          &Config{},
 		jobType:      job.JobType_BATCH,
+		jobRuntimeCalculationViaCache: false,
 	}
 	suite.goalStateDriver.cfg.normalize()
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
@@ -107,6 +108,7 @@ func (suite *DriverTestSuite) TestNewDriver() {
 		job.JobType_SERVICE,
 		tally.NoopScope,
 		config,
+		false,
 	)
 	suite.NotNil(dr)
 	suite.Equal(dr.(*driver).jobType, job.JobType_SERVICE)
