@@ -730,11 +730,15 @@ message GetPodEventsRequest {
   // The instance ID of the task
   uint32 instanceId = 2;
 
-  // Limit of events
+  // Defines the number of unique run ids for which the pod events will be
+  // returned.
+  // If a specific run id is requested, using runId, then this defaults to 1.
+  // Defaults to 10 otherwise.
   uint64 limit = 3;
 
-  // Unique identifier to fetch pod events (state transition(s))
-  // of an instance for a particular run
+  // Unique identifier to fetch pod events of an instance for a particular run.
+  // This is an optional parameter, if unset limit number of run ids worth of
+  // pod events will be returned.
   string runId = 4;
 }
 

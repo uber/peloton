@@ -360,7 +360,7 @@ func (suite *statelessActionsTestSuite) TestStatelessListJobsActionSuccess() {
 	stream := mocks.NewMockJobServiceServiceListJobsYARPCClient(suite.ctrl)
 	jobs := &svc.ListJobsResponse{
 		Jobs: []*stateless.JobSummary{
-			&stateless.JobSummary{
+			{
 				JobId: &v1alphapeloton.JobID{Value: testJobID},
 				Name:  "test",
 			},
@@ -433,7 +433,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionSuccess
 		}).
 		Return(&svc.GetReplaceJobDiffResponse{
 			InstancesAdded: []*pod.InstanceIDRange{
-				&pod.InstanceIDRange{
+				{
 					From: uint32(0),
 					To:   uint32(5),
 				},

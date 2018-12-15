@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
@@ -140,7 +141,10 @@ func (p *preemptor) performPreemptionCycle() error {
 	return nil
 }
 
-func (p *preemptor) preemptTasks(ctx context.Context, preemptionCandidates []*resmgr.PreemptionCandidate) error {
+func (p *preemptor) preemptTasks(
+	ctx context.Context,
+	preemptionCandidates []*resmgr.PreemptionCandidate,
+) error {
 	errs := new(multierror.Error)
 	for _, task := range preemptionCandidates {
 		log.WithField("task_ID", task.Id.Value).
@@ -178,7 +182,7 @@ func (p *preemptor) preemptTasks(ctx context.Context, preemptionCandidates []*re
 		}
 
 		runtimeDiff := getRuntimeDiffForPreempt(
-			jobID, uint32(instanceID), runtime, preemptPolicy)
+			jobID, cachedJob.GetJobType(), uint32(instanceID), runtime, preemptPolicy)
 		runtimeDiff[jobmgrcommon.ReasonField] = task.GetReason().String()
 
 		// update the task in cache and enqueue to goal state engine
@@ -262,9 +266,10 @@ func (p *preemptor) getTaskPreemptionPolicy(
 
 // getRuntimeDiffForPreempt returns the RuntimeDiff to preempt a task.
 // Given the preempt policy it decides whether the task should be killed
-// or restarted
+// or restarted.
 func getRuntimeDiffForPreempt(
 	jobID *peloton.JobID,
+	jobType pbjob.JobType,
 	instanceID uint32,
 	taskRuntime *pbtask.RuntimeInfo,
 	preemptPolicy *pbtask.PreemptionPolicy) jobmgrcommon.RuntimeDiff {
@@ -272,16 +277,28 @@ func getRuntimeDiffForPreempt(
 		jobmgrcommon.MessageField: "Preempting running task",
 	}
 
-	// kill the task if GetKillOnPreempt is true
 	if preemptPolicy != nil && preemptPolicy.GetKillOnPreempt() {
-		runtimeDiff[jobmgrcommon.GoalStateField] = pbtask.TaskState_KILLED
-	} else {
-		// otherwise restart the task
-		prevRunID, err := util.ParseRunID(taskRuntime.GetMesosTaskId().GetValue())
-		if err != nil {
-			prevRunID = 0
+		if jobType == pbjob.JobType_BATCH {
+			// If its a batch and preemption policy is set to kill then we set the
+			// goal state to preempting. This is a hack for spark.
+			// TaskState_PREEMPTING should not be used as a goalstate.
+			runtimeDiff[jobmgrcommon.GoalStateField] = pbtask.TaskState_PREEMPTING
+		} else {
+			// kill the task if GetKillOnPreempt is true
+			runtimeDiff[jobmgrcommon.GoalStateField] = pbtask.TaskState_KILLED
 		}
-		runtimeDiff[jobmgrcommon.DesiredMesosTaskIDField] = util.CreateMesosTaskID(jobID, instanceID, prevRunID+1)
+		return runtimeDiff
 	}
+
+	// otherwise restart the task
+	prevRunID, err := util.ParseRunID(taskRuntime.GetMesosTaskId().GetValue())
+	if err != nil {
+		prevRunID = 0
+	}
+	runtimeDiff[jobmgrcommon.DesiredMesosTaskIDField] = util.CreateMesosTaskID(
+		jobID,
+		instanceID,
+		prevRunID+1,
+	)
 	return runtimeDiff
 }

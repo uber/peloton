@@ -267,8 +267,8 @@ func ConvertUpdateModelToWorkflowStatus(
 	}
 
 	return &stateless.WorkflowStatus{
-		Type:                  stateless.WorkflowType(updateInfo.GetType()),
-		State:                 stateless.WorkflowState(updateInfo.GetState()),
+		Type:  stateless.WorkflowType(updateInfo.GetType()),
+		State: stateless.WorkflowState(updateInfo.GetState()),
 		NumInstancesCompleted: updateInfo.GetInstancesDone(),
 		NumInstancesRemaining: updateInfo.GetInstancesTotal() - updateInfo.GetInstancesDone() - updateInfo.GetInstancesFailed(),
 		NumInstancesFailed:    updateInfo.GetInstancesFailed(),

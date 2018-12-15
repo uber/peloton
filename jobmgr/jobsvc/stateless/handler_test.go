@@ -1298,7 +1298,7 @@ func (suite *statelessHandlerTestSuite) TestPauseJobWorkflowPauseWorkflowFailure
 // TestListJobsSuccess tests invoking ListJobs API successfully
 func (suite *statelessHandlerTestSuite) TestListJobsSuccess() {
 	jobs := []*pbjob.JobSummary{
-		&pbjob.JobSummary{
+		{
 			Id:   &peloton.JobID{Value: testJobID},
 			Name: "testjob",
 			Runtime: &pbjob.RuntimeInfo{
@@ -1358,7 +1358,7 @@ func (suite *statelessHandlerTestSuite) TestListJobsGetSummaryDBError() {
 // the updae info from DB in the ListJobs API invocation
 func (suite *statelessHandlerTestSuite) TestListJobsGetUpdateError() {
 	jobs := []*pbjob.JobSummary{
-		&pbjob.JobSummary{
+		{
 			Id:   &peloton.JobID{Value: testJobID},
 			Name: "testjob",
 			Runtime: &pbjob.RuntimeInfo{
@@ -1387,7 +1387,7 @@ func (suite *statelessHandlerTestSuite) TestListJobsGetUpdateError() {
 // the stream in the ListJobs API invocation
 func (suite *statelessHandlerTestSuite) TestListJobsSendError() {
 	jobs := []*pbjob.JobSummary{
-		&pbjob.JobSummary{
+		{
 			Id:   &peloton.JobID{Value: testJobID},
 			Name: "testjob",
 			Runtime: &pbjob.RuntimeInfo{

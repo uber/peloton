@@ -128,6 +128,19 @@ var (
 			task.TaskState_KILLING:     TaskStateInvalidAction,
 			task.TaskState_KILLED:      TaskStateInvalidAction,
 		},
+		task.TaskState_PREEMPTING: {
+			// PREEMPTING is used only for batch jobs which need to be killed
+			// on preemption.
+			// TODO @avyas: remove once we have the longer term fix for this.
+			task.TaskState_INITIALIZED: StopAction,
+			task.TaskState_PENDING:     StopAction,
+			task.TaskState_LAUNCHED:    StopAction,
+			task.TaskState_STARTING:    StopAction,
+			task.TaskState_RUNNING:     StopAction,
+			task.TaskState_LOST:        NoTaskAction,
+			task.TaskState_PREEMPTING:  TaskStateInvalidAction,
+			task.TaskState_KILLING:     ExecutorShutdownAction,
+		},
 	}
 )
 

@@ -132,6 +132,7 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 			Error: nil,
 		}, nil,
 	)
+
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(cachedJob).Times(3)
 	cachedJob.EXPECT().
 		AddTask(gomock.Any(), runningTaskInfo.InstanceId).
@@ -143,17 +144,31 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		AddTask(gomock.Any(), noRestartTaskInfo.InstanceId).
 		Return(noRestartCachedTask, nil)
 	suite.mockTaskStore.EXPECT().GetTaskConfig(
-		gomock.Any(), jobID, runningTaskInfo.InstanceId, runningTaskInfo.Runtime.ConfigVersion).
+		gomock.Any(),
+		jobID,
+		runningTaskInfo.InstanceId,
+		runningTaskInfo.Runtime.ConfigVersion).
 		Return(nil, nil, nil)
 	suite.mockTaskStore.EXPECT().GetTaskConfig(
-		gomock.Any(), jobID, noRestartTaskInfo.InstanceId, noRestartTaskInfo.Runtime.ConfigVersion).
+		gomock.Any(), jobID,
+		noRestartTaskInfo.InstanceId, noRestartTaskInfo.Runtime.ConfigVersion).
 		Return(
 			&peloton_task.TaskConfig{
-				PreemptionPolicy: &peloton_task.PreemptionPolicy{KillOnPreempt: true},
+				PreemptionPolicy: &peloton_task.PreemptionPolicy{
+					KillOnPreempt: true,
+				},
 			}, &models.ConfigAddOn{}, nil)
-	runningCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(runningTaskInfo.Runtime, nil)
-	killingCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(killingTaskInfo.Runtime, nil)
-	noRestartCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(noRestartTaskInfo.Runtime, nil)
+	runningCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(
+		runningTaskInfo.Runtime,
+		nil,
+	)
+	killingCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(
+		killingTaskInfo.Runtime,
+		nil)
+	noRestartCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(
+		noRestartTaskInfo.Runtime,
+		nil,
+	)
 
 	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context,
@@ -166,13 +181,13 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context,
 			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
-			suite.EqualValues(peloton_task.TaskState_KILLED,
+			suite.EqualValues(peloton_task.TaskState_PREEMPTING,
 				runtimeDiffs[noRestartTaskInfo.InstanceId][jobmgrcommon.GoalStateField])
 		}).
 		Return(nil)
 
 	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return().Times(2)
-	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).Times(2)
+	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).Times(4)
 	suite.goalStateDriver.EXPECT().
 		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second).Times(2)
@@ -180,18 +195,32 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 
 	err := suite.preemptor.performPreemptionCycle()
 	suite.NoError(err)
+}
 
+func (suite *PreemptorTestSuite) TestPreemptionCycleGetPreemptibleTasksError() {
 	// Test GetPreemptibleTasks error
-	suite.mockResmgr.EXPECT().GetPreemptibleTasks(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("Fake GetPreemptibleTasks error"))
-	err = suite.preemptor.performPreemptionCycle()
+	suite.mockResmgr.EXPECT().GetPreemptibleTasks(
+		gomock.Any(),
+		gomock.Any()).Return(
+		nil,
+		fmt.Errorf("fake GetPreemptibleTasks error"),
+	)
+	err := suite.preemptor.performPreemptionCycle()
 	suite.Error(err)
+}
 
+func (suite *PreemptorTestSuite) TestPreemptionCycleGetRuntimeError() {
+	cachedJob := cachedmocks.NewMockJob(suite.mockCtrl)
+	runningCachedTask := cachedmocks.NewMockTask(suite.mockCtrl)
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+	taskID := fmt.Sprintf("%s-%d", jobID.GetValue(), 0)
+	runningTaskID := &peloton.TaskID{Value: taskID}
 	// Test GetRunTime and PatchTasks error
 	suite.mockResmgr.EXPECT().GetPreemptibleTasks(gomock.Any(), gomock.Any()).Return(
 		&resmgrsvc.GetPreemptibleTasksResponse{
 			PreemptionCandidates: []*resmgr.PreemptionCandidate{
 				{
-					Id:     runningTask.Id,
+					Id:     runningTaskID,
 					Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
 				},
 			},
@@ -202,7 +231,7 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		AddTask(gomock.Any(), uint32(0)).
 		Return(runningCachedTask, nil)
 	runningCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(nil, fmt.Errorf("Fake GetRunTime error"))
-	err = suite.preemptor.performPreemptionCycle()
+	err := suite.preemptor.performPreemptionCycle()
 	suite.Error(err)
 }
 

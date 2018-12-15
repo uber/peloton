@@ -168,11 +168,14 @@ func (m *serviceHandler) Get(
 func (m *serviceHandler) GetPodEvents(
 	ctx context.Context,
 	body *task.GetPodEventsRequest) (*task.GetPodEventsResponse, error) {
+	// Limit defines the number of run id's to return, if the req is asking for
+	// a specific run id then limit is 1.
 	limit := body.GetLimit()
 	if len(body.GetRunId()) != 0 {
 		limit = 1
 	}
 
+	// Default to 10 run IDs
 	if limit == 0 {
 		limit = 10
 	}

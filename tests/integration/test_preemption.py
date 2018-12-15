@@ -3,6 +3,8 @@ from job import Job, kill_jobs
 from common import IntegrationTestConfig
 from pool import Pool
 
+from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
+
 pytestmark = [pytest.mark.default, pytest.mark.preemption]
 
 
@@ -66,7 +68,7 @@ def test__preemption_tasks_reschedules_task(respool_a, respool_b):
         for t in p_job_a.get_tasks().values():
             # tasks should be enqueued back by the jobmanager and once
             # enqueued they should transition to PENDING state
-            if t.state == 2:
+            if t.state == task.PENDING:
                 count += 1
         return count == 6
 
@@ -187,7 +189,7 @@ def test__preemption_non_preemptible_task(respool_a, respool_b):
     def all_tasks_running():
         count = 0
         for t in np_job_a.get_tasks().values():
-            if t.state == 8:
+            if t.state == task.RUNNING:
                 count += 1
         return count == 6
 
@@ -211,6 +213,53 @@ def test__preemption_non_preemptible_task(respool_a, respool_b):
     p_job_a.wait_for_state('RUNNING')
 
     kill_jobs([p_job_a, np_job_a, p_job_b])
+
+
+# Spark driver depends on the task goalstate to detetermine if the task was
+# preempted. This test tests that if "the task is a batch task and has preemption
+# policy set to kill on preempt then the task goaslstate changes to PREEMPTING before
+# it is killed.
+# TODO: avyas@ This is a short term fix
+def test__preemption_spark_goalstate(respool_a, respool_b):
+    p_job_a = Job(job_file='test_preemptible_job_preemption_policy.yaml', pool=respool_a,
+                  config=IntegrationTestConfig(max_retry_attempts=100,
+                                               sleep_time_sec=10))
+
+    p_job_a.create()
+    p_job_a.wait_for_state(goal_state='RUNNING')
+
+    # we should have all 12 tasks in running state
+    def all_running():
+        return all(t.state == 8 for t in p_job_a.get_tasks().values())
+
+    p_job_a.wait_for_condition(all_running)
+
+    preempted_task_set = {}
+
+    # 6(6 CPUs worth) tasks from p_job_a should be preempted
+    def task_preempted():
+        count = 0
+        for t in p_job_a.get_tasks().values():
+            # tasks should be KILLED since killOnPreempt is set to true
+            if t.state == task.KILLED:
+                count += 1
+                preempted_task_set[t] = True
+        return count == 6
+
+    p_job_b = Job(job_file='test_preemptible_job.yaml', pool=respool_b,
+                  config=IntegrationTestConfig())
+    # starting the second job should change the entitlement calculation
+    p_job_b.create()
+
+    # 6 jobs should be preempted from job1 to make space for job2
+    p_job_a.wait_for_condition(task_preempted)
+
+    # check the preempted tasks and check the runtime info.
+    for t in preempted_task_set:
+        assert t.state == task.KILLED
+        assert t.goal_state == task.PREEMPTING
+
+    kill_jobs([p_job_a, p_job_b])
 
 
 def get_reservation(type, pool_info):
