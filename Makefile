@@ -22,7 +22,7 @@ PACKAGE_HASH=`git rev-parse HEAD`
 STABLE_RELEASE=`git describe --abbrev=0 --tags`
 DOCKER_IMAGE ?= uber/peloton
 DC ?= all
-PBGEN_DIR = .gen
+GEN_DIR = .gen
 APIDOC_DIR = docs/_static/
 
 GOCOV = $(go get github.com/axw/gocov/gocov)
@@ -42,9 +42,9 @@ else
   SED := sed -i ''
 endif
 
-.PRECIOUS: $(PBGENS) $(LOCAL_MOCKS) $(VENDOR_MOCKS) mockgens
+.PRECIOUS: $(GENS) $(LOCAL_MOCKS) $(VENDOR_MOCKS) mockgens
 
-all: pbgens placement cli hostmgr resmgr jobmgr archiver aurorabridge
+all: gens placement cli hostmgr resmgr jobmgr archiver aurorabridge
 
 jobmgr:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-jobmgr jobmgr/main/*.go
@@ -103,11 +103,15 @@ cover:
 	./scripts/cover.sh $(shell go list $(PACKAGES))
 	go tool cover -html=cover.out -o cover.html
 
-pbgens: $(VENDOR)
+gens: $(VENDOR)
+	@mkdir -p $(GEN_DIR)
+	go get ./vendor/go.uber.org/thriftrw
+	go get ./vendor/go.uber.org/yarpc/encoding/thrift/thriftrw-plugin-yarpc
+	thriftrw --plugin=yarpc --out=$(GEN_DIR)/thrift/aurora thrift/aurora/api.thrift
+
 	go get ./vendor/github.com/golang/protobuf/protoc-gen-go
 	go get ./vendor/go.uber.org/yarpc/encoding/protobuf/protoc-gen-yarpc-go
-	@mkdir -p $(PBGEN_DIR)
-	./scripts/generate-protobuf.py --generator=go --out-dir=$(PBGEN_DIR)
+	./scripts/generate-protobuf.py --generator=go --out-dir=$(GEN_DIR)
         # Temporarily patch the service name in generated yarpc code
 	./scripts/patch-v0-api-yarpc.sh
 	# Temporarily rename Sla to SLA for lint
@@ -118,7 +122,7 @@ apidoc: $(VENDOR)
 	./scripts/generate-protobuf.py --generator=doc --out-dir=$(APIDOC_DIR)
 
 clean:
-	rm -rf vendor pbgen vendor_mocks $(BIN_DIR) .gen env
+	rm -rf vendor gen vendor_mocks $(BIN_DIR) .gen env
 	find . -path "*/mocks/*.go" | grep -v "./vendor" | xargs rm -f {}
 
 format fmt: ## Runs "gofmt $(FMT_FLAGS) -w" to reformat all Go files
@@ -159,7 +163,7 @@ define vendor_mockgen
   $(call source_mockgen,vendor_mocks/$(dir $(1))mocks/$(notdir $(1)),vendor/$(1))
 endef
 
-mockgens: build-mockgen pbgens $(GOMOCK)
+mockgens: build-mockgen gens $(GOMOCK)
 	$(call local_mockgen,common/background,Manager)
 	$(call local_mockgen,common/constraints,Evaluator)
 	$(call local_mockgen,common/goalstate,Engine)
@@ -212,14 +216,14 @@ mockgens: build-mockgen pbgens $(GOMOCK)
 test-containers:
 	bash docker/run_test_cassandra.sh
 
-test: $(GOCOV) pbgens mockgens test-containers
+test: $(GOCOV) gens mockgens test-containers
 	gocov test -race $(ALL_PKGS) | gocov report
 
-test_pkg: $(GOCOV) $(PBGENS) mockgens test-containers
+test_pkg: $(GOCOV) $(GENS) mockgens test-containers
 	echo 'Running tests for package $(TEST_PKG)'
 	gocov test -race `echo $(ALL_PKGS) | tr ' ' '\n' | grep $(TEST_PKG)` | gocov-html > coverage.html
 
-unit-test: $(GOCOV) $(PBGENS) mockgens
+unit-test: $(GOCOV) $(GENS) mockgens
 	gocov test $(ALL_PKGS) --tags "unit" | gocov report
 
 integ-test:
@@ -326,8 +330,8 @@ lint: format
 	    (echo "Go Fmt Failures, run 'make fmt'" | cat - vet.log | tee -a $(PHAB_COMMENT) && false) \
 	fi;
 
-jenkins: devtools pbgens mockgens lint
-	@chmod -R 777 $(dir $(PBGEN_DIR)) $(dir $(VENDOR_MOCKS)) $(dir $(LOCAL_MOCKS)) ./vendor_mocks
+jenkins: devtools gens mockgens lint
+	@chmod -R 777 $(dir $(GEN_DIR)) $(dir $(VENDOR_MOCKS)) $(dir $(LOCAL_MOCKS)) ./vendor_mocks
 	go test -race -i $(ALL_PKGS)
 	gocov test -v -race $(ALL_PKGS) > coverage.json | sed 's|filename=".*$(PROJECT_ROOT)/|filename="|'
 	gocov-xml < coverage.json > coverage.xml

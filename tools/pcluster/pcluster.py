@@ -489,9 +489,6 @@ def run_peloton_archiver():
 # Run health check for peloton apps
 #
 def wait_for_up(app, port):
-    if app == 'peloton-aurorabridge0' or app == 'peloton-aurorabridge1':
-        return
-
     count = 0
     error = ''
     url = 'http://%s:%s/%s' % (

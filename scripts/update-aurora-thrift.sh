@@ -34,11 +34,3 @@ thrift --gen py:new_style,slots,utf8strings --out tools/deploy/ ${aurora_dir}/ap
 sed '/^  def __hash__(self):/,/^    return value/d' \
     ${aurora_dir}/api/ttypes.py > ${aurora_dir}/api/ttypes.py.new
 mv ${aurora_dir}/api/ttypes.py.new ${aurora_dir}/api/ttypes.py
-
-# Generate Go bindings for aurorabridge.
-thrift -r --gen go:thrift_import="github.com/apache/thrift/lib/go/thrift" --out aurorabridge/aurora/ ${aurora_dir}/api.thrift
-
-# Don't need any of these and thrift generates their imports incorrectly.
-rm -rf aurorabridge/aurora/api/aurora_admin-remote
-rm -rf aurorabridge/aurora/api/aurora_scheduler_manager-remote
-rm -rf aurorabridge/aurora/api/read_only_scheduler-remote

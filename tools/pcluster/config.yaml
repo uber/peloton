@@ -85,6 +85,7 @@ peloton_aurorabridge_container: peloton-aurorabridge
 peloton_aurorabridge_instance_count: 2
 peloton_aurorabridge_ports:
   - 8082
+  - 8282
 
 peloton_placement_container: peloton-placement
 peloton_placement_ports:

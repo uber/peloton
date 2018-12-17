@@ -1,21 +1,22 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"code.uber.internal/infra/peloton/aurorabridge"
-	"code.uber.internal/infra/peloton/aurorabridge/aurora/api"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/buildversion"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
+	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/leader"
+	"code.uber.internal/infra/peloton/yarpc/peer"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/api/transport"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
-	"github.com/apache/thrift/lib/go/thrift"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -56,9 +57,16 @@ var (
 		Envar("DATACENTER").
 		String()
 
-	port = app.Flag(
-		"port", "aurora api port").
-		Default("8082").
+	httpPort = app.Flag(
+		"http-port", "Aurora Bridge HTTP port (aurorabridge.http_port override) "+
+			"(set $PORT to override)").
+		Envar("HTTP_PORT").
+		Int()
+
+	grpcPort = app.Flag(
+		"grpc-port", "Aurora Bridge gRPC port (aurorabridge.grpc_port override) "+
+			"(set $PORT to override)").
+		Envar("GRPC_PORT").
 		Int()
 )
 
@@ -103,18 +111,68 @@ func main() {
 
 	mux.HandleFunc(buildversion.Get, buildversion.Handler(version))
 
+	// Create both HTTP and GRPC inbounds
+	inbounds := rpc.NewAuroraBridgeInbounds(
+		*httpPort,
+		*grpcPort, // dummy grpc port for aurora bridge
+		mux)
+
+	// all leader discovery metrics share a scope (and will be tagged
+	// with role={role})
+	discoveryScope := rootScope.SubScope("discovery")
+	// setup the discovery service to detect jobmgr leaders and
+	// configure the YARPC Peer dynamically
+	t := rpc.NewTransport()
+	jobmgrPeerChooser, err := peer.NewSmartChooser(
+		cfg.Election,
+		discoveryScope,
+		common.JobManagerRole,
+		t,
+	)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
+			Fatal("Could not create smart peer chooser")
+	}
+	defer jobmgrPeerChooser.Stop()
+
+	jobmgrOutbound := t.NewOutbound(jobmgrPeerChooser)
+
+	outbounds := yarpc.Outbounds{
+		common.PelotonJobManager: transport.Outbounds{
+			Unary: jobmgrOutbound,
+		},
+	}
+
+	dispatcher := yarpc.NewDispatcher(yarpc.Config{
+		Name:      common.PelotonAuroraBridge,
+		Inbounds:  inbounds,
+		Outbounds: outbounds,
+		Metrics: yarpc.MetricsConfig{
+			Tally: rootScope,
+		},
+	})
+
 	server := aurorabridge.NewServer(
-		*port,
+		*httpPort,
 	)
 
-	// enable leader election for peloton aurora bridge
 	candidate, err := leader.NewCandidate(
 		cfg.Election,
 		rootScope,
 		common.PelotonAuroraBridgeRole,
-		server)
+		server,
+	)
 	if err != nil {
 		log.Fatalf("Unable to create leader candidate: %v", err)
+	}
+
+	aurorabridge.NewServiceHandler(
+		rootScope,
+		dispatcher)
+
+	// Start dispatch loop
+	if err := dispatcher.Start(); err != nil {
+		log.Fatalf("Could not start rpc server: %v", err)
 	}
 
 	err = candidate.Start()
@@ -123,27 +181,12 @@ func main() {
 	}
 	defer candidate.Stop()
 
-	health.InitHeartbeat(rootScope, cfg.Health, nil)
+	log.WithFields(log.Fields{
+		"httpPort": *httpPort,
+	}).Info("Started Aurora Bridge")
 
-	// start thirft server for supporting aurora apis
-	addr := fmt.Sprintf(":%d", *port)
+	// we can *honestly* say the server is booted up now
+	health.InitHeartbeat(rootScope, cfg.Health, candidate)
 
-	handler := aurorabridge.NewServiceHandler(rootScope)
-	processor := api.NewAuroraSchedulerManagerProcessor(handler)
-	transport, err := thrift.NewTServerSocket(addr)
-	if err != nil {
-		log.Fatalf("Error creating thrift socket: %s", err)
-	}
-
-	thriftserver := thrift.NewTSimpleServer6(
-		processor,
-		transport,
-		thrift.NewTTransportFactory(),                 // Input transport.
-		thrift.NewTTransportFactory(),                 // Output transport.
-		thrift.NewTJSONProtocolFactory(),              // Input protocol.
-		thrift.NewTBinaryProtocolFactory(false, true), // Output protocol.
-	)
-
-	log.Infof("Starting Aurora server on %s...", addr)
-	log.Fatal(thriftserver.Serve())
+	select {}
 }

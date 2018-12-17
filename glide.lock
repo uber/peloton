@@ -1,5 +1,5 @@
-hash: bfad0bf33491d6a3b2bfd853866e8ac351aec91beb39c86e94923ac47ac064fa
-updated: 2018-12-13T13:54:13.574504-08:00
+hash: 674d482ba2e31d845379804edb3c508670c6d2106f33d9618370c9d409aee795
+updated: 2018-12-17T10:15:41.900777-08:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -220,6 +220,17 @@ imports:
   subpackages:
   - internal/runtime
   - maxprocs
+- name: go.uber.org/dig
+  version: 12c8adaa5e6a24ad02198588082d95582ee16e5b
+  subpackages:
+  - internal/digreflect
+  - internal/dot
+- name: go.uber.org/fx
+  version: 9c82e1daccdcbd27387a1f044bd3dc6d3f878bf4
+  subpackages:
+  - internal/fxlog
+  - internal/fxreflect
+  - internal/lifecycle
 - name: go.uber.org/goleak
   version: b12bb1eedf12e90b75899bf8a73ce2d8fc4d9938
   subpackages:
@@ -235,7 +246,13 @@ imports:
 - name: go.uber.org/thriftrw
   version: f21741d67580a27b01451386c3998090905dc243
   subpackages:
+  - envelope
+  - internal/envelope/exception
+  - protocol
+  - protocol/binary
+  - thriftreflect
   - version
+  - wire
 - name: go.uber.org/yarpc
   version: 124245f8b772089faceae70bdbc6e7b9f3bcdf0f
   subpackages:
@@ -245,6 +262,8 @@ imports:
   - api/peer
   - api/transport
   - api/transport/transporttest
+  - encoding/thrift
+  - encoding/thrift/internal
   - internal
   - internal/backoff
   - internal/bufferpool
@@ -264,6 +283,7 @@ imports:
   - internal/yarpcerrors
   - peer
   - peer/hostport
+  - pkg/encoding
   - pkg/errors
   - pkg/lifecycle
   - pkg/procedure
@@ -281,7 +301,6 @@ imports:
   - zapcore
 - name: golang.org/x/net
   version: 891ebc4b82d6e74f468c533b06f983c7be918a96
-  repo: https://github.com/golang/net
   subpackages:
   - bpf
   - context

@@ -21,9 +21,7 @@ type Server struct {
 
 // NewServer creates a aurorabridge Server instance.
 func NewServer(
-	httpPort int,
-
-) *Server {
+	httpPort int) *Server {
 	endpoint := leader.NewEndpoint(httpPort)
 	additionalEndpoints := make(map[string]leader.Endpoint)
 	additionalEndpoints["http"] = endpoint

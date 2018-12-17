@@ -26,6 +26,32 @@ func NewTransport() *grpc.Transport {
 	)
 }
 
+// NewAuroraBridgeInbounds creates both HTTP and gRPC inbounds for the given ports
+func NewAuroraBridgeInbounds(
+	httpPort int,
+	grpcPort int,
+	mux *nethttp.ServeMux) []transport.Inbound {
+
+	// Create both HTTP and gRPC transport
+	ht := http.NewTransport()
+	gt := NewTransport()
+
+	gl, err := net.Listen("tcp", fmt.Sprintf(":%d", grpcPort))
+	if err != nil {
+		log.WithError(err).Fatal("failed to listen to gRPC port")
+	}
+
+	inbounds := []transport.Inbound{
+		ht.NewInbound(
+			fmt.Sprintf(":%d", httpPort),
+			http.Mux("/api", mux),
+		),
+		gt.NewInbound(gl),
+	}
+
+	return inbounds
+}
+
 // NewInbounds creates both HTTP and gRPC inbounds for the given ports
 func NewInbounds(
 	httpPort int,

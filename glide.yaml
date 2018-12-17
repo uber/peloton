@@ -14,9 +14,12 @@ import:
   - proto
   - protoc
   - protoc-gen-go
+- package: go.uber.org/fx
 - package: github.com/jmoiron/sqlx
 - package: github.com/pborman/uuid
   version: master
+- package: golang.org/x/net
+  version: 891ebc4b82d6e74f468c533b06f983c7be918a96
 - package: github.com/stretchr/testify
   version: ^1.2.0
   subpackages:
