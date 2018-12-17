@@ -13,7 +13,6 @@ archiver:
   peloton_client_timeout: 20s
   max_retry_attempts_job_query: 3
   retry_interval_job_query: 10s
-  stream_only_mode: true
 
 election:
   root: "/peloton"
