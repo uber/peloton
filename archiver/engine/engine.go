@@ -234,12 +234,8 @@ func (e *engine) runArchiver(
 	}
 
 	results := queryResp.GetResults()
-	ctx, cancelFunc := context.WithTimeout(
-		context.Background(),
-		e.config.Archiver.PelotonClientTimeout)
-	defer cancelFunc()
 	action(
-		ctx,
+		context.Background(),
 		results)
 	return nil
 }
@@ -278,6 +274,9 @@ func (e *engine) archiveJobs(
 			deleteReq := &job.DeleteRequest{
 				Id: summary.GetId(),
 			}
+			ctx, cancel := context.WithTimeout(
+				ctx, e.config.Archiver.PelotonClientTimeout)
+			defer cancel()
 			_, err := e.jobClient.Delete(ctx, deleteReq)
 			if err != nil {
 				// TODO: have a reasonable threshold for tolerating such failures
