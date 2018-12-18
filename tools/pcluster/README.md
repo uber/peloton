@@ -59,8 +59,7 @@ such as your MacOS laptop. Place the produced binaries in a different directory
 Expected format for this variable is a comma-separated list of items of the form
 \<host-path>:\<container-path>
 
-    BIND_MOUNTS=$PWD/bin-linux:/go/src/code.ubInst Current
-er.internal/infra/peloton/bin \
+    BIND_MOUNTS=$PWD/bin-linux:/go/src/code.uber.internal/infra/peloton/bin \
     $PELOTON_HOME/tools/pcluster/pcluster.py setup -a
 
   Replace $PWD/bin-linux with $PWD/bin if you are building on Linux.

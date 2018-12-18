@@ -84,7 +84,7 @@ var (
 			task.TaskState_SUCCEEDED:   TerminatedRetryAction,
 			task.TaskState_FAILED:      TerminatedRetryAction,
 			task.TaskState_KILLED:      TerminatedRetryAction,
-			task.TaskState_LOST:        InitializeAction,
+			task.TaskState_LOST:        TerminatedRetryAction,
 		},
 		task.TaskState_SUCCEEDED: {
 			task.TaskState_INITIALIZED: StartAction,
@@ -92,7 +92,7 @@ var (
 			task.TaskState_STARTING:    LaunchRetryAction,
 			task.TaskState_FAILED:      FailRetryAction,
 			task.TaskState_KILLED:      FailRetryAction,
-			task.TaskState_LOST:        InitializeAction,
+			task.TaskState_LOST:        FailRetryAction,
 		},
 		task.TaskState_KILLED: {
 			task.TaskState_INITIALIZED: StopAction,

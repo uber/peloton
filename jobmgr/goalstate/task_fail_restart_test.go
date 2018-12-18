@@ -42,8 +42,10 @@ type TaskFailRetryTestSuite struct {
 	cachedUpdate *cachedmocks.MockUpdate
 	cachedTask   *cachedmocks.MockTask
 
-	jobRuntime  *pbjob.RuntimeInfo
-	taskRuntime *pbtask.RuntimeInfo
+	jobRuntime      *pbjob.RuntimeInfo
+	taskRuntime     *pbtask.RuntimeInfo
+	lostTaskRuntime *pbtask.RuntimeInfo
+
 	mesosTaskID string
 }
 
@@ -89,6 +91,14 @@ func (suite *TaskFailRetryTestSuite) SetupTest() {
 		ConfigVersion: 1,
 		Message:       "testFailure",
 		Reason:        mesosv1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
+	}
+	suite.lostTaskRuntime = &pbtask.RuntimeInfo{
+		MesosTaskId:   &mesosv1.TaskID{Value: &suite.mesosTaskID},
+		State:         pbtask.TaskState_LOST,
+		GoalState:     pbtask.TaskState_SUCCEEDED,
+		ConfigVersion: 1,
+		Message:       "Agent peloton-mesos-agent0 removed",
+		Reason:        mesosv1.TaskStatus_REASON_AGENT_REMOVED.String(),
 	}
 	suite.jobRuntime = &pbjob.RuntimeInfo{
 		UpdateID: suite.updateID,
@@ -167,6 +177,81 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailRetry() {
 	suite.jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
+
+	err := TaskFailRetry(context.Background(), suite.taskEnt)
+	suite.NoError(err)
+}
+
+// TestLostTaskRetry tests retry for lost task
+func (suite *TaskFailRetryTestSuite) TestLostTaskRetry() {
+	taskConfig := pbtask.TaskConfig{
+		RestartPolicy: &pbtask.RestartPolicy{
+			MaxFailures: 3,
+		},
+	}
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(suite.cachedTask)
+
+	suite.cachedJob.EXPECT().
+		ID().Return(suite.jobID)
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(suite.lostTaskRuntime, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		Return(&taskConfig, &models.ConfigAddOn{}, nil)
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			runtimeDiff := runtimeDiffs[suite.instanceID]
+			suite.True(
+				runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != suite.mesosTaskID)
+			suite.True(
+				runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == suite.mesosTaskID)
+			suite.True(
+				runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
+		}).
+		Return(nil)
+
+	suite.cachedJob.EXPECT().
+		GetJobType().Return(pbjob.JobType_BATCH)
+
+	suite.taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	err := TaskFailRetry(context.Background(), suite.taskEnt)
+	suite.NoError(err)
+}
+
+// TestLostTaskNoRetry tests that no retry is attempted for lost task
+func (suite *TaskFailRetryTestSuite) TestLostTaskNoRetry() {
+	taskConfig := pbtask.TaskConfig{
+		RestartPolicy: &pbtask.RestartPolicy{
+			MaxFailures: 0,
+		},
+	}
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(suite.cachedTask)
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(suite.lostTaskRuntime, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		Return(&taskConfig, &models.ConfigAddOn{}, nil)
 
 	err := TaskFailRetry(context.Background(), suite.taskEnt)
 	suite.NoError(err)

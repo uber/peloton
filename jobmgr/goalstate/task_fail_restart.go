@@ -30,7 +30,11 @@ func rescheduleTask(
 	jobID := cachedJob.ID()
 	healthState := taskutil.GetInitialHealthState(taskConfig)
 	// reschedule the task
-	goalStateDriver.mtx.taskMetrics.RetryFailedTasksTotal.Inc(1)
+	if taskRuntime.GetState() == task.TaskState_LOST {
+		goalStateDriver.mtx.taskMetrics.RetryLostTasksTotal.Inc(1)
+	} else {
+		goalStateDriver.mtx.taskMetrics.RetryFailedTasksTotal.Inc(1)
+	}
 	runtimeDiff := taskutil.RegenerateMesosTaskIDDiff(
 		jobID,
 		instanceID,

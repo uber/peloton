@@ -579,7 +579,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
 	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 
-	rescheduleMsg := "Rescheduled due to task LOST: testFailure"
+	rescheduleMsg := "Task LOST: testFailure"
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
@@ -593,15 +593,11 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 			runtimeDiff := runtimeDiffs[_instanceID]
 			suite.Equal(
 				runtimeDiff[jobmgrcommon.StateField],
-				task.TaskState_INITIALIZED,
+				task.TaskState_LOST,
 			)
 			suite.Equal(
 				runtimeDiff[jobmgrcommon.MessageField],
 				rescheduleMsg,
-			)
-			suite.Equal(
-				runtimeDiff[jobmgrcommon.HealthyField],
-				task.HealthState_DISABLED,
 			)
 		}).
 		Return(nil)
