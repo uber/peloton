@@ -80,9 +80,8 @@ def output_files_list(res_dir, base_output):
     Returns:
         a list of csv files where perf test results will be written to.
     """
-    prefix = base_output.split('.')[0]
     suffix = [t[1] for t in PERF_TEST_CONDUCTED]
-    output_file_list = [os.path.join(res_dir, prefix+s) for s in suffix]
+    output_file_list = [os.path.join(res_dir, base_output+s) for s in suffix]
     return output_file_list
 
 
