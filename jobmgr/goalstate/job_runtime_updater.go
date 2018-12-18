@@ -248,21 +248,34 @@ func (d *batchJobStateDeterminer) getState(
 	// Also if in the future, similar bug occur again, using totalInstanceCount
 	// would ensure the bug would not make a job stuck.
 	totalInstanceCount := getTotalInstanceCount(d.stateCounts)
+	// all succeeded -> succeeded
 	if d.stateCounts[task.TaskState_SUCCEEDED.String()] == totalInstanceCount {
 		return job.JobState_SUCCEEDED, nil
-	} else if d.stateCounts[task.TaskState_SUCCEEDED.String()]+
-		d.stateCounts[task.TaskState_FAILED.String()] == totalInstanceCount {
+	}
+
+	// some succeeded, some failed, some lost -> failed
+	if d.stateCounts[task.TaskState_SUCCEEDED.String()]+
+		d.stateCounts[task.TaskState_FAILED.String()]+
+		d.stateCounts[task.TaskState_LOST.String()] == totalInstanceCount {
 		return job.JobState_FAILED, nil
-	} else if d.stateCounts[task.TaskState_KILLED.String()] > 0 &&
+	}
+
+	// some killed, some succeeded, some failed, some lost -> killed
+	if d.stateCounts[task.TaskState_KILLED.String()] > 0 &&
 		(d.stateCounts[task.TaskState_SUCCEEDED.String()]+
 			d.stateCounts[task.TaskState_FAILED.String()]+
-			d.stateCounts[task.TaskState_KILLED.String()] == totalInstanceCount) {
+			d.stateCounts[task.TaskState_KILLED.String()]+
+			d.stateCounts[task.TaskState_LOST.String()] == totalInstanceCount) {
 		return job.JobState_KILLED, nil
-	} else if jobRuntime.State == job.JobState_KILLING {
+	}
+
+	if jobRuntime.State == job.JobState_KILLING {
 		// jobState is set to KILLING in JobKill to avoid materialized view delay,
 		// should keep the state to be KILLING unless job transits to terminal state
 		return job.JobState_KILLING, nil
-	} else if d.stateCounts[task.TaskState_RUNNING.String()] > 0 {
+	}
+
+	if d.stateCounts[task.TaskState_RUNNING.String()] > 0 {
 		return job.JobState_RUNNING, nil
 	}
 	return job.JobState_PENDING, nil
@@ -361,6 +374,8 @@ func (d *controllerTaskJobStateDeterminer) getState(
 	switch controllerTaskRuntime.GetState() {
 	case task.TaskState_SUCCEEDED:
 		return job.JobState_SUCCEEDED, nil
+	case task.TaskState_LOST:
+		fallthrough
 	case task.TaskState_FAILED:
 		return job.JobState_FAILED, nil
 	default:

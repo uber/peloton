@@ -85,7 +85,7 @@ var (
 			task.TaskState_STARTING:    LaunchRetryAction,
 			task.TaskState_FAILED:      FailRetryAction,
 			task.TaskState_KILLED:      FailRetryAction,
-			task.TaskState_LOST:        InitializeAction,
+			task.TaskState_LOST:        FailRetryAction,
 		},
 		task.TaskState_KILLED: {
 			task.TaskState_INITIALIZED: StopAction,

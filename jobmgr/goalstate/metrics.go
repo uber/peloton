@@ -41,6 +41,7 @@ type TaskMetrics struct {
 	TaskStartTimeout       tally.Counter
 	RetryFailedLaunchTotal tally.Counter
 	RetryFailedTasksTotal  tally.Counter
+	RetryLostTasksTotal    tally.Counter
 }
 
 // UpdateMetrics contains all counters to track
@@ -106,6 +107,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskInvalidState:       taskScope.Counter("invalid_state"),
 		RetryFailedLaunchTotal: taskScope.Counter("retry_system_failure_total"),
 		RetryFailedTasksTotal:  taskScope.Counter("retry_failed_total"),
+		RetryLostTasksTotal:    taskScope.Counter("retry_lost_total"),
 	}
 
 	updateMetrics := &UpdateMetrics{

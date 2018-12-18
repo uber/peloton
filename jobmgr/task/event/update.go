@@ -16,7 +16,6 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
-	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 
@@ -283,12 +282,12 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			"task_id":           taskID,
 			"db_task_runtime":   taskInfo.GetRuntime(),
 			"task_status_event": event.GetMesosTaskStatus(),
-		}).Info("reschedule lost task")
-		p.metrics.RetryLostTasksTotal.Inc(1)
-		runtimeDiff = taskutil.RegenerateMesosTaskIDDiff(
-			taskInfo.JobId, taskInfo.InstanceId, taskInfo.GetRuntime())
-		runtimeDiff[cached.MessageField] = "Rescheduled due to task LOST: " + statusMsg
-		runtimeDiff[cached.ReasonField] = event.GetMesosTaskStatus().GetReason().String()
+		}).Info("reschedule lost task if needed")
+
+		runtimeDiff[cached.StateField] = pb_task.TaskState_LOST
+		runtimeDiff[cached.MessageField] = "Task LOST: " + statusMsg
+		runtimeDiff[cached.ReasonField] =
+			event.GetMesosTaskStatus().GetReason().String()
 
 		// Calculate resource usage for TaskState_LOST using time.Now() as
 		// completion time

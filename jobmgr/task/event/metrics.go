@@ -10,7 +10,6 @@ import (
 type Metrics struct {
 	RetryFailedTasksTotal  tally.Counter
 	RetryFailedLaunchTotal tally.Counter
-	RetryLostTasksTotal    tally.Counter
 
 	SkipOrphanTasksTotal tally.Counter
 
@@ -30,7 +29,6 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	return &Metrics{
 		RetryFailedTasksTotal:  scope.Counter("retry_failed_total"),
 		RetryFailedLaunchTotal: scope.Counter("retry_system_failure_total"),
-		RetryLostTasksTotal:    scope.Counter("retry_lost_total"),
 
 		SkipOrphanTasksTotal: scope.Counter("skip_orphan_task_total"),
 
