@@ -1440,12 +1440,13 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
 	instanceID uint32, version uint64) (*task.TaskConfig, *models.ConfigAddOn, error) {
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(taskConfigTable).
+	stmt := queryBuilder.Select("*").From(taskConfigV2Table).
 		Where(
 			qb.Eq{
-				"job_id":      id.GetValue(),
-				"version":     version,
-				"instance_id": []interface{}{instanceID, common.DefaultTaskConfigID},
+				"job_id":  id.GetValue(),
+				"version": version,
+				"instance_id": []interface{}{
+					instanceID, common.DefaultTaskConfigID},
 			})
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
@@ -1453,14 +1454,37 @@ func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
 			WithField("instance_id", instanceID).
 			WithField("version", version).
 			WithError(err).
-			Error("Fail to getTaskConfig")
+			Error("Fail to get task config v2")
 		s.metrics.TaskMetrics.TaskGetConfigFail.Inc(1)
 		return nil, nil, err
 	}
 	taskID := fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID))
 
 	if len(allResults) == 0 {
-		return nil, nil, yarpcerrors.NotFoundErrorf("task:%s not found", taskID)
+		// Try to get task configs from legacy task_config table
+		stmt = queryBuilder.Select("*").From(taskConfigTable).
+			Where(
+				qb.Eq{
+					"job_id":  id.GetValue(),
+					"version": version,
+					"instance_id": []interface{}{
+						instanceID, common.DefaultTaskConfigID},
+				})
+		allResults, err = s.executeRead(ctx, stmt)
+		if err != nil {
+			log.WithField("job_id", id.GetValue()).
+				WithField("instance_id", instanceID).
+				WithField("version", version).
+				WithError(err).
+				Error("Fail to get task config")
+			s.metrics.TaskMetrics.TaskGetConfigFail.Inc(1)
+			return nil, nil, err
+		}
+		if len(allResults) == 0 {
+			return nil, nil, yarpcerrors.NotFoundErrorf(
+				"task:%s not found", taskID)
+		}
+		s.metrics.TaskMetrics.TaskGetConfigLegacy.Inc(1)
 	}
 
 	// Use last result (the most specific).
@@ -1498,7 +1522,7 @@ func (s *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
 	}
 	dbInstanceIDs = append(dbInstanceIDs, common.DefaultTaskConfigID)
 
-	stmt := s.DataStore.NewQuery().Select("*").From(taskConfigTable).
+	stmt := s.DataStore.NewQuery().Select("*").From(taskConfigV2Table).
 		Where(
 			qb.Eq{
 				"job_id":      id.GetValue(),
@@ -1517,8 +1541,28 @@ func (s *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
 	}
 
 	if len(allResults) == 0 {
-		log.Info("no results")
-		return taskConfigMap, nil, nil
+		// Try to get task configs from legacy task_config table
+		stmt := s.DataStore.NewQuery().Select("*").From(taskConfigTable).
+			Where(
+				qb.Eq{
+					"job_id":      id.GetValue(),
+					"version":     version,
+					"instance_id": dbInstanceIDs,
+				})
+		allResults, err = s.executeRead(ctx, stmt)
+		if err != nil {
+			log.WithField("job_id", id.GetValue()).
+				WithField("instance_ids", instanceIDs).
+				WithField("version", version).
+				WithError(err).
+				Error("Failed to get task configs")
+			s.metrics.TaskMetrics.TaskGetConfigsFail.Inc(1)
+			return taskConfigMap, nil, err
+		}
+		if len(allResults) == 0 {
+			return taskConfigMap, nil, nil
+		}
+		s.metrics.TaskMetrics.TaskGetConfigLegacy.Inc(1)
 	}
 
 	var defaultConfig *task.TaskConfig

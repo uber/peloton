@@ -43,12 +43,11 @@ func (suite *MockDatastoreTestSuite) SetupTest() {
 
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.mockedDataStore = datastoremocks.NewMockDataStore(suite.ctrl)
-	conf := MigrateForTest()
 
 	suite.store = &Store{
 		DataStore:   suite.mockedDataStore,
 		metrics:     storage.NewMetrics(testScope.SubScope("storage")),
-		Conf:        conf,
+		Conf:        &Config{},
 		retryPolicy: nil,
 	}
 
@@ -327,5 +326,28 @@ func (suite *MockDatastoreTestSuite) TestCreateTaskConfigFailures() {
 	err := suite.store.CreateTaskConfig(context.Background(), jobID,
 		0, &task.TaskConfig{Name: "dummy-task"}, nil, 0)
 
+	suite.Error(err)
+}
+
+// TestDataStoreFailureGetTaskConfigs tests datastore failures in get task
+// config from legacy/v2 tables
+func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetTaskConfigs() {
+	ctx := context.Background()
+	var result datastore.ResultSet
+
+	// Setup mocks for this context
+	// Simulate success for the first query and failure for the second query
+	suite.mockedDataStore.EXPECT().Execute(ctx, gomock.Any()).
+		Return(result, nil)
+	suite.mockedDataStore.EXPECT().Execute(ctx, gomock.Any()).
+		Return(result, errors.New("my-error"))
+	_, _, err := suite.store.GetTaskConfig(ctx, suite.testJobID, uint32(0), 0)
+	suite.Error(err)
+
+	suite.mockedDataStore.EXPECT().Execute(ctx, gomock.Any()).
+		Return(result, nil)
+	suite.mockedDataStore.EXPECT().Execute(ctx, gomock.Any()).
+		Return(result, errors.New("my-error"))
+	_, _, err = suite.store.GetTaskConfigs(ctx, suite.testJobID, []uint32{0}, 0)
 	suite.Error(err)
 }
