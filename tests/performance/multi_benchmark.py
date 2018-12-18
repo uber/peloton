@@ -155,24 +155,22 @@ def main():
     # write results to '$base_path$_job_create.csv'.
     df.to_csv(output_csv_files_list[0], sep='\t')
 
-    t = PerformanceTest(pf_client)
+    t = PerformanceTest(pf_client, peloton_version)
 
     # create 5000 jobs in 100 threads and count num of job.Get() that
     # can be done in 300sec
-    t.perf_test_job_create_get(
-        num_threads=100, jobs_per_thread=50, num_tasks=10)
+    t.perf_test_job_create_get(num_threads=100, jobs_per_thread=50,
+                               num_tasks=10)
 
     # create 1 job with 50k tasks and count num of job.Get() that can be done
     # by 100 threads in 300sec
-    t.perf_test_job_create_get(
-        num_threads=100, num_tasks=50000, get_only=True)
+    t.perf_test_job_create_get(num_threads=100, num_tasks=50000, get_only=True)
 
     # create 1 job with 50k instance configs and count num of job.Get() that
     # can be done by 1 thread in 300sec
     # use 1 thread because using multiple threads causes OOM on vcluster jobmgr
-    t.perf_test_job_create_get(
-        num_threads=1, num_tasks=50000,
-        use_instance_config=True, get_only=True)
+    t.perf_test_job_create_get(num_threads=1, num_tasks=50000,
+                               use_instance_config=True, get_only=True)
 
     # write test_job_create_get results to '$base_path$_job_get.csv'.
     get_df = t.dump_records_to_file()
@@ -202,8 +200,9 @@ class perfCounter():
 
 
 class PerformanceTest ():
-    def __init__(self, client):
+    def __init__(self, client, peloton_version):
         self.client = client
+        self.peloton_version = peloton_version
         self.records = []
 
     def perf_test_job_update(self, num_start_tasks=1, tasks_inc=1,
@@ -242,6 +241,7 @@ class PerformanceTest ():
             'NumStartTasks': num_start_tasks,
             'TaskIncrementEachTime': tasks_inc,
             'NumOfIncrement': num_increment,
+            'Version': self.peloton_version,
             'Sleep(s)': sleep_time,
             'UseInsConf': use_instance_config,
             'TotalTimeInSeconds': total_time_in_seconds,
@@ -250,7 +250,7 @@ class PerformanceTest ():
             record,
             columns=['NumStartTasks', 'TaskIncrementEachTime',
                      'NumOfIncrement', 'Sleep(s)',
-                     'UseInsConf', 'TotalTimeInSeconds']
+                     'UseInsConf', 'Version', 'TotalTimeInSeconds']
         )
         print('Create + Get: %s', df)
         return df
@@ -311,6 +311,7 @@ class PerformanceTest ():
             'TaskNum': num_tasks,
             'Sleep(s)': sleep_time,
             'UseInsConf': use_instance_config,
+            'Version': self.peloton_version,
             'Creates': counts['CREATE'],
             'CreateFails': counts['CREATEFAILS'],
             'Gets': counts['GET'],
@@ -322,8 +323,8 @@ class PerformanceTest ():
         df = pd.DataFrame(
             self.records,
             columns=['TaskNum', 'Sleep(s)',
-                     'UseInsConf', 'Creates',
-                     'CreateFails', 'Gets', 'GetFails']
+                     'UseInsConf', 'Creates', 'Version',
+                     'CreateFails',  'Gets', 'GetFails']
         )
         print('Update: %s', df)
         return df

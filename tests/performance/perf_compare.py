@@ -123,9 +123,13 @@ def compare_get(f1, f2):
     merge_table = pd.merge(
         dataframe_1, dataframe_2,
         how='right',
-        on=['TaskNum', 'Sleep(s)', 'UseInsConf']
+        on=['TaskNum', 'Sleep(s)', 'UseInsConf', 'Creates']
     )
 
+    merge_table['Get Diff'] = merge_table.apply(
+        lambda x: format(
+            (x['Gets_y'] - x['Gets_x']), '.2f'),
+        axis=1)
     return merge_table.to_html()
 
 

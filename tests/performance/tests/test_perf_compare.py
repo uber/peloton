@@ -19,23 +19,23 @@ CREATE_DF_2 = """
 """
 
 GET_DF_1 = """
-\tTaskNum\tSleep(s)\tUseInsConf\tCreates\tCreateFails\tGets\tGetFails
-0\t5000\t10\t70\t3\t73\t0
+\tTaskNum\tSleep(s)\tUseInsConf\tCreates\tVersion\tCreateFails\tGets\tGetFails
+0\t5000\t10\t70\t0.7.8\t3\t73\t0
 """
 
 GET_DF_2 = """
-\tTaskNum\tSleep(s)\tUseInsConf\tCreates\tCreateFails\tGets\tGetFails
-0\t5000\t10\t70\t3\t60\t13
+\tTaskNum\tSleep(s)\tUseInsConf\tCreates\tVersion\tCreateFails\tGets\tGetFails
+0\t5000\t10\t70\t0.7.8-CURRENT\t3\t60\t13
 """
 
 UPDATE_DF_1 = """
-\tNumStartTasks\tTaskIncrementEachTime\tNumOfIncrement\tSleep(s)\tUseInsConf\tTotalTimeInSeconds
-5\t1\t1\t5000\t10\t850
+\tNumStartTasks\tTaskIncrementEachTime\tNumOfIncrement\tSleep(s)\tUseInsConf\tVersion\tTotalTimeInSeconds
+5\t1\t1\t5000\t10\t0.7.9\t850
 """
 
 UPDATE_DF_2 = """
-\tNumStartTasks\tTaskIncrementEachTime\tNumOfIncrement\tSleep(s)\tUseInsConf\tTotalTimeInSeconds
-5\t1\t1\t5000\t10\t950
+\tNumStartTasks\tTaskIncrementEachTime\tNumOfIncrement\tSleep(s)\tUseInsConf\tVersion\tTotalTimeInSeconds
+5\t1\t1\t5000\t10\t0.7.9-CURRENT\t950
 """
 
 
@@ -55,16 +55,20 @@ class PerfCompareTest(unittest.TestCase):
     def test_compare_get(self):
         df1 = pd.read_csv(StringIO(GET_DF_1), '\t', index_col=0)
         df2 = pd.read_csv(StringIO(GET_DF_2), '\t', index_col=0)
-
         df_out = compare_get(df1, df2)
-        shared_fields = ['TaskNum', 'Sleep(s)', 'UseInsConf']
+
+        shared_fields = ['TaskNum', 'Sleep(s)', 'UseInsConf', 'Creates']
         for field in shared_fields:
             self.assertEqual(df_out.iloc[0][field],
                              df_out.iloc[1][field])
+        self.assertEqual(df_out.iloc[0]['Version_x'], '0.7.8')
+        self.assertEqual(df_out.iloc[0]['Version_y'], '0.7.8-CURRENT')
 
     def test_compare_update(self):
         df1 = pd.read_csv(StringIO(UPDATE_DF_1), '\t', index_col=0)
         df2 = pd.read_csv(StringIO(UPDATE_DF_2), '\t', index_col=0)
-
         df_out = compare_update(df1, df2)
+
+        self.assertEqual(df_out.iloc[0]['Version_x'], '0.7.9')
+        self.assertEqual(df_out.iloc[0]['Version_y'], '0.7.9-CURRENT')
         self.assertEqual(df_out.iloc[0]['Time Diff'], '100')
