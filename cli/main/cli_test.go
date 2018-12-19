@@ -89,9 +89,9 @@ func TestRangeParsingError(t *testing.T) {
 func TestParseTaskStartWithRanges(t *testing.T) {
 	job := "foojobid"
 	expected := []*pt.InstanceRange{
-		{uint32(3), uint32(6)},
-		{uint32(0), uint32(50)},
-		{uint32(5), uint32(math.MaxInt32)},
+		{From: uint32(3), To: uint32(6)},
+		{From: uint32(0), To: uint32(50)},
+		{From: uint32(5), To: uint32(math.MaxInt32)},
 	}
 	cmd, err := app.Parse([]string{"task", "start", job, "-r", "3:6", "-r", ":50", "-r", "5:"})
 	assert.Nil(t, err)

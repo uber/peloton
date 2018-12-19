@@ -480,7 +480,7 @@ func (h *ServiceHandler) UpdateResourcePool(
 		h.metrics.UpdateResourcePoolFail.Inc(1)
 		log.WithError(
 			err,
-		).Info(
+		).Infof(
 			"Error updating respoolID: %s in memory tree",
 			resPoolID.Value,
 		)

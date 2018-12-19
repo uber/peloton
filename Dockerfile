@@ -1,4 +1,6 @@
-FROM golang:1.10
+ARG GOLANG_VERSION=1.11.4
+
+FROM golang:$GOLANG_VERSION
 
 ENV CONFIG_DIR /etc/peloton
 ENV ENVIRONMENT development

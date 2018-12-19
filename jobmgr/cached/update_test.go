@@ -668,7 +668,7 @@ func (suite *UpdateTestSuite) TestUpdateRecover_RollingForward() {
 			Version: 1,
 		},
 		InstanceCount: instanceCount,
-		Labels:        []*peloton.Label{{"test-key", "test-value"}},
+		Labels:        []*peloton.Label{{Key: "test-key", Value: "test-value"}},
 	}
 
 	suite.updateStore.EXPECT().
@@ -733,7 +733,7 @@ func (suite *UpdateTestSuite) TestUpdateRecover_Succeeded() {
 			Version: 1,
 		},
 		InstanceCount: instanceCount,
-		Labels:        []*peloton.Label{{"test-key", "test-value"}},
+		Labels:        []*peloton.Label{{Key: "test-key", Value: "test-value"}},
 	}
 
 	suite.updateStore.EXPECT().
@@ -775,7 +775,7 @@ func (suite *UpdateTestSuite) TestUpdateRecover_Initialized() {
 			Version: 1,
 		},
 		InstanceCount: instanceCount,
-		Labels:        []*peloton.Label{{"test-key", "test-value"}},
+		Labels:        []*peloton.Label{{Key: "test-key", Value: "test-value"}},
 	}
 
 	suite.updateStore.EXPECT().
@@ -852,7 +852,7 @@ func (suite *UpdateTestSuite) TestUpdateRecoverGetRuntimeFailure() {
 			Version: 1,
 		},
 		InstanceCount: instanceCount,
-		Labels:        []*peloton.Label{{"test-key", "test-value"}},
+		Labels:        []*peloton.Label{{Key: "test-key", Value: "test-value"}},
 	}
 
 	suite.updateStore.EXPECT().
@@ -898,7 +898,7 @@ func (suite *UpdateTestSuite) TestUpdateRecoverRemoveInstances() {
 			Version: 1,
 		},
 		InstanceCount: instanceCount,
-		Labels:        []*peloton.Label{{"test-key", "test-value"}},
+		Labels:        []*peloton.Label{{Key: "test-key", Value: "test-value"}},
 	}
 
 	suite.updateStore.EXPECT().
@@ -1028,16 +1028,16 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithLabelAddAndU
 	prevJobConfig := &pbjob.JobConfig{
 		InstanceCount: instanceCount,
 		Labels: []*peloton.Label{
-			{"key1", "val1"},
-			{"key2", "val2"},
+			{Key: "key1", Value: "val1"},
+			{Key: "key2", Value: "val2"},
 		},
 	}
 	jobConfig := &pbjob.JobConfig{
 		InstanceCount: instanceCount,
 		Labels: []*peloton.Label{
-			{"key1", "val1"},
-			{"key2", "val2-1"},
-			{"key3", "val3"},
+			{Key: "key1", Value: "val1"},
+			{Key: "key2", Value: "val2-1"},
+			{Key: "key3", Value: "val3"},
 		},
 	}
 
@@ -1082,15 +1082,15 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithLabelUpdated
 	prevJobConfig := &pbjob.JobConfig{
 		InstanceCount: instanceCount,
 		Labels: []*peloton.Label{
-			{"key1", "val1"},
-			{"key2", "val2"},
+			{Key: "key1", Value: "val1"},
+			{Key: "key2", Value: "val2"},
 		},
 	}
 	jobConfig := &pbjob.JobConfig{
 		InstanceCount: instanceCount,
 		Labels: []*peloton.Label{
-			{"key1", "val1"},
-			{"key2", "val2-1"},
+			{Key: "key1", Value: "val1"},
+			{Key: "key2", Value: "val2-1"},
 		},
 	}
 
@@ -1410,15 +1410,15 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateRuntimeError() {
 	prevJobConfig := &pbjob.JobConfig{
 		InstanceCount: instanceCount,
 		Labels: []*peloton.Label{
-			{"key1", "val1"},
-			{"key2", "val2"},
+			{Key: "key1", Value: "val1"},
+			{Key: "key2", Value: "val2"},
 		},
 	}
 	jobConfig := &pbjob.JobConfig{
 		InstanceCount: instanceCount,
 		Labels: []*peloton.Label{
-			{"key1", "val1"},
-			{"key2", "val2-1"},
+			{Key: "key1", Value: "val1"},
+			{Key: "key2", Value: "val2-1"},
 		},
 	}
 

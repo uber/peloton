@@ -77,16 +77,16 @@ func (suite *JobRuntimeUpdaterTestSuite) SetupTest() {
 	suite.cachedConfig = cachedmocks.NewMockJobConfigCache(suite.ctrl)
 	suite.jobRuntimeCalculationViaCache = false
 	suite.goalStateDriver = &driver{
-		jobEngine:    suite.jobGoalStateEngine,
-		taskEngine:   suite.taskGoalStateEngine,
-		updateEngine: suite.updateGoalStateEngine,
-		jobStore:     suite.jobStore,
-		taskStore:    suite.taskStore,
-		updateStore:  suite.updateStore,
-		jobFactory:   suite.jobFactory,
-		resmgrClient: suite.resmgrClient,
-		mtx:          NewMetrics(tally.NoopScope),
-		cfg:          &Config{},
+		jobEngine:                     suite.jobGoalStateEngine,
+		taskEngine:                    suite.taskGoalStateEngine,
+		updateEngine:                  suite.updateGoalStateEngine,
+		jobStore:                      suite.jobStore,
+		taskStore:                     suite.taskStore,
+		updateStore:                   suite.updateStore,
+		jobFactory:                    suite.jobFactory,
+		resmgrClient:                  suite.resmgrClient,
+		mtx:                           NewMetrics(tally.NoopScope),
+		cfg:                           &Config{},
 		jobRuntimeCalculationViaCache: suite.jobRuntimeCalculationViaCache,
 	}
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}

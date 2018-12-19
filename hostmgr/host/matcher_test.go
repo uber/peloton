@@ -43,8 +43,8 @@ func (suite *MatcherTestSuite) SetupTest() {
 // InitializeHosts creates the host map for mesos agents
 func (suite *MatcherTestSuite) InitializeHosts() {
 	loader := &Loader{
-		OperatorClient: suite.operatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.operatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: NewMaintenanceHostInfoMap(),
 	}
 	numAgents := 2
@@ -392,8 +392,8 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithDifferentHosts() {
 func (suite *MatcherTestSuite) TestMatchHostsFilterWithZeroResourceHosts() {
 	// Creating host map with not sufficient resources
 	loader := &Loader{
-		OperatorClient: suite.operatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.operatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: NewMaintenanceHostInfoMap(),
 	}
 	numAgents := 2

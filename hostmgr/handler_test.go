@@ -1222,8 +1222,8 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 	name := "cpus"
 
 	loader := &host.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.masterOperatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	numAgents := 2
@@ -1311,8 +1311,8 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithoutAg
 		Agents: []*mesos_master.Response_GetAgents_Agent{},
 	}
 	loader := &host.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.masterOperatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
@@ -1358,8 +1358,8 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithQuota
 	quotaVal := 100.0
 
 	loader := &host.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.masterOperatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	numAgents := 2
@@ -2489,8 +2489,8 @@ func (suite *HostMgrHandlerTestSuite) TestGetMesosAgentInfo() {
 	sort.Sort(agentInfo)
 	suite.masterOperatorClient.EXPECT().Agents().Return(agents, nil)
 	loader := &host.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
+		OperatorClient:         suite.masterOperatorClient,
+		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	loader.Load(nil)

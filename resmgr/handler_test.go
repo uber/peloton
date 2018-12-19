@@ -1048,7 +1048,7 @@ func (s *HandlerTestSuite) TestUpdateTasksState() {
 		deletefromTracker      bool
 	}{
 		{
-			msg: "Testing valid tasks, test if the state reached to LAUNCHED",
+			msg:                    "Testing valid tasks, test if the state reached to LAUNCHED",
 			updateStateRequestTask: rmTasks[0],
 			updatedTaskState:       task.TaskState_UNKNOWN,
 			mesosTaskID:            nil,
@@ -1056,7 +1056,7 @@ func (s *HandlerTestSuite) TestUpdateTasksState() {
 			expectedTask:           "",
 		},
 		{
-			msg: "Testing update the same task, It should not update the Launched state",
+			msg:                    "Testing update the same task, It should not update the Launched state",
 			updateStateRequestTask: rmTasks[0],
 			updatedTaskState:       task.TaskState_UNKNOWN,
 			mesosTaskID:            nil,
@@ -1064,7 +1064,7 @@ func (s *HandlerTestSuite) TestUpdateTasksState() {
 			expectedTask:           "",
 		},
 		{
-			msg: "Testing if we pass the nil Resource Manager Task",
+			msg:                    "Testing if we pass the nil Resource Manager Task",
 			updateStateRequestTask: nil,
 			updatedTaskState:       task.TaskState_UNKNOWN,
 			mesosTaskID:            nil,
@@ -1072,7 +1072,7 @@ func (s *HandlerTestSuite) TestUpdateTasksState() {
 			expectedTask:           "",
 		},
 		{
-			msg: "Testing RMtask with invalid mesos task id with Terminal state",
+			msg:                    "Testing RMtask with invalid mesos task id with Terminal state",
 			updateStateRequestTask: rmTasks[0],
 			updatedTaskState:       task.TaskState_KILLED,
 			mesosTaskID: &mesos_v1.TaskID{
@@ -1082,7 +1082,7 @@ func (s *HandlerTestSuite) TestUpdateTasksState() {
 			expectedTask:  "",
 		},
 		{
-			msg: "Testing RMtask with invalid mesos task id.",
+			msg:                    "Testing RMtask with invalid mesos task id.",
 			updateStateRequestTask: rmTasks[0],
 			updatedTaskState:       task.TaskState_UNKNOWN,
 			mesosTaskID: &mesos_v1.TaskID{
@@ -1092,7 +1092,7 @@ func (s *HandlerTestSuite) TestUpdateTasksState() {
 			expectedTask:  "not_nil",
 		},
 		{
-			msg: "Testing RMtask with Terminal State",
+			msg:                    "Testing RMtask with Terminal State",
 			updateStateRequestTask: rmTasks[0],
 			updatedTaskState:       task.TaskState_KILLED,
 			mesosTaskID:            nil,
@@ -1100,7 +1100,7 @@ func (s *HandlerTestSuite) TestUpdateTasksState() {
 			expectedTask:           "nil",
 		},
 		{
-			msg: "Testing RMtask with Task deleted from tracker",
+			msg:                    "Testing RMtask with Task deleted from tracker",
 			updateStateRequestTask: rmTasks[1],
 			updatedTaskState:       task.TaskState_UNKNOWN,
 			mesosTaskID:            nil,

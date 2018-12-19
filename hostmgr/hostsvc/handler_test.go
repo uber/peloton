@@ -105,8 +105,8 @@ func (suite *HostSvcHandlerTestSuite) SetupTest() {
 
 	response := suite.makeAgentsResponse()
 	loader := &host.Loader{
-		OperatorClient: suite.mockMasterOperatorClient,
-		Scope:          tally.NewTestScope("", map[string]string{}),
+		OperatorClient:         suite.mockMasterOperatorClient,
+		Scope:                  tally.NewTestScope("", map[string]string{}),
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
@@ -241,8 +241,8 @@ func (suite *HostSvcHandlerTestSuite) TestStartMaintenanceError() {
 
 	// Test 'No registered agents' error
 	loader := &host.Loader{
-		OperatorClient: suite.mockMasterOperatorClient,
-		Scope:          tally.NewTestScope("", map[string]string{}),
+		OperatorClient:         suite.mockMasterOperatorClient,
+		Scope:                  tally.NewTestScope("", map[string]string{}),
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(nil, nil)
@@ -419,8 +419,8 @@ func (suite *HostSvcHandlerTestSuite) TestQueryHostsError() {
 
 	// Test 'No registered agents'
 	loader := &host.Loader{
-		OperatorClient: suite.mockMasterOperatorClient,
-		Scope:          tally.NewTestScope("", map[string]string{}),
+		OperatorClient:         suite.mockMasterOperatorClient,
+		Scope:                  tally.NewTestScope("", map[string]string{}),
 		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
 	}
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(nil, nil)
