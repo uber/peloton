@@ -2,6 +2,7 @@ package stateless
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -35,6 +36,7 @@ import (
 )
 
 const (
+	testJobName  = "test-job"
 	testJobID    = "481d565e-28da-457d-8434-f6bb7faa0e95"
 	testUpdateID = "941ff353-ba82-49fe-8f80-fb5bc649b04d"
 )
@@ -1271,6 +1273,34 @@ func (suite *statelessHandlerTestSuite) TestPauseJobWorkflowSuccess() {
 		})
 	suite.NoError(err)
 	suite.Equal(resp.GetVersion(), newEntityVersion)
+}
+
+// TestGetJobIDFromName tests the job name to job ids look up
+func (suite *statelessHandlerTestSuite) TestGetJobIDFromName() {
+	var jobIDs []*v1alphapeloton.JobID
+	jobIDs = append(jobIDs, &v1alphapeloton.JobID{
+		Value: testJobID,
+	})
+
+	suite.jobStore.EXPECT().
+		GetJobIDFromJobName(gomock.Any(), testJobName).
+		Return(nil, errors.New("failed to get job ids for job name"))
+
+	_, err := suite.handler.GetJobIDFromJobName(context.Background(),
+		&statelesssvc.GetJobIDFromJobNameRequest{
+			JobName: testJobName,
+		})
+	suite.Error(err)
+
+	suite.jobStore.EXPECT().
+		GetJobIDFromJobName(gomock.Any(), testJobName).
+		Return(jobIDs, nil)
+	resp, err := suite.handler.GetJobIDFromJobName(context.Background(),
+		&statelesssvc.GetJobIDFromJobNameRequest{
+			JobName: testJobName,
+		})
+
+	suite.Equal(len(jobIDs), len(resp.GetJobId()))
 }
 
 // TestPauseJobWorkflowPauseWorkflowFailure tests the failure case of pause workflow

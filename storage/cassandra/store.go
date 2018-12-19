@@ -415,7 +415,7 @@ func (s *Store) addJobNameToJobIDMapping(
 // GetJobIDFromJobName gets all job ids associated with following job name
 func (s *Store) GetJobIDFromJobName(
 	ctx context.Context,
-	jobName string) ([]*peloton.JobID, error) {
+	jobName string) ([]*v1alphapeloton.JobID, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(jobNameToIDTable).
 		Where(qb.Eq{"job_name": jobName})
@@ -425,9 +425,9 @@ func (s *Store) GetJobIDFromJobName(
 		return nil, err
 	}
 
-	var jobIDs []*peloton.JobID
+	var jobIDs []*v1alphapeloton.JobID
 	for _, value := range result {
-		jobID := &peloton.JobID{
+		jobID := &v1alphapeloton.JobID{
 			Value: fmt.Sprintf("%s", value["job_id"].(qb.UUID)),
 		}
 		jobIDs = append(jobIDs, jobID)

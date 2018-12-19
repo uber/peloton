@@ -424,10 +424,32 @@ func (h *serviceHandler) GetJob(
 	}, nil
 }
 
+// GetJobIDFromJobName looks up job ids for provided job name and
+// job ids are returned in descending create timestamp
 func (h *serviceHandler) GetJobIDFromJobName(
 	ctx context.Context,
 	req *svc.GetJobIDFromJobNameRequest) (resp *svc.GetJobIDFromJobNameResponse, err error) {
-	return &svc.GetJobIDFromJobNameResponse{}, nil
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Info("StatelessJobSvc.GetJobIDFromJobName failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("req", req).
+			Debug("StatelessJobSvc.GetJobIDFromJobName succeeded")
+	}()
+
+	jobID, err := h.jobStore.GetJobIDFromJobName(ctx, req.GetJobName())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get job identifiers from job name")
+	}
+
+	return &svc.GetJobIDFromJobNameResponse{
+		JobId: jobID,
+	}, nil
 }
 
 func (h *serviceHandler) GetWorkflowEvents(
