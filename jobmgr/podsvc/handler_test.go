@@ -22,6 +22,7 @@ import (
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	logmanagermocks "code.uber.internal/infra/peloton/jobmgr/logmanager/mocks"
+	"code.uber.internal/infra/peloton/jobmgr/util/job"
 	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
@@ -1166,6 +1167,7 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 			PrevPodId: &v1alphapeloton.PodID{
 				Value: testPrevPodID,
 			},
+			Version: job.GetPodEntityVersion(configVersion),
 		},
 	}
 
@@ -1209,6 +1211,14 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 				uint32(testInstanceID),
 				testPrevPodID,
 			).Return(events, nil),
+
+		suite.podStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				pelotonJob,
+				uint32(testInstanceID),
+				configVersion,
+			),
 
 		suite.podStore.EXPECT().
 			GetPodEvents(

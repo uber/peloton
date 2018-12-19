@@ -20,6 +20,7 @@ import (
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	handlerutil "code.uber.internal/infra/peloton/jobmgr/util/handler"
+	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
@@ -415,7 +416,7 @@ func (h *serviceHandler) GetPod(
 			jobID,
 			instanceID,
 			events[0].GetPrevPodId(),
-			currentPodInfo,
+			req.GetStatusOnly(),
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get pod info for previous runs")
@@ -778,7 +779,7 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 	jobID string,
 	instanceID uint32,
 	podID *v1alphapeloton.PodID,
-	latestPodInfo *pbpod.PodInfo,
+	statusOnly bool,
 ) ([]*pbpod.PodInfo, error) {
 	var podInfos []*pbpod.PodInfo
 
@@ -795,13 +796,14 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 
 		prevPodID := events[0].GetPrevPodId().GetValue()
 		agentID := events[0].GetAgentId()
-		podInfos = append(podInfos, &pbpod.PodInfo{
-			Spec: latestPodInfo.GetSpec(),
+		podInfo := &pbpod.PodInfo{
 			Status: &pbpod.PodStatus{
 				State: handlerutil.ConvertTaskStateToPodState(
 					pbtask.TaskState(pbtask.TaskState_value[events[0].GetActualState()]),
 				),
-				DesiredState: latestPodInfo.GetStatus().GetDesiredState(),
+				DesiredState: pbpod.PodState(
+					pbpod.PodState_value[events[0].GetDesiredState()],
+				),
 				PodId: &v1alphapeloton.PodID{
 					Value: events[0].GetPodId().GetValue(),
 				},
@@ -818,9 +820,43 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 				},
 				DesiredPodId: events[0].GetDesiredPodId(),
 			},
-		})
-
+		}
+		podInfos = append(podInfos, podInfo)
 		pID = prevPodID
+
+		if !statusOnly {
+			configVersion, err := jobutil.ParsePodEntityVersion(
+				podInfo.GetStatus().GetVersion(),
+			)
+			if err != nil {
+				return nil,
+					errors.Wrap(err, "failed to get config version for pod run")
+			}
+
+			taskConfig, _, err := h.podStore.GetTaskConfig(
+				ctx,
+				&v0peloton.JobID{Value: jobID},
+				instanceID,
+				configVersion,
+			)
+			if err != nil {
+				// If we aren't able to get pod spec for a particular run,
+				// then we should just continue and fill up whatever
+				// we can instead of throwing an error.
+				if yarpcerrors.IsNotFound(err) {
+					log.WithFields(
+						log.Fields{
+							"job_id":      jobID,
+							"instance_id": instanceID,
+						}).WithError(err).
+						Info("failed to get task config")
+					continue
+				}
+				return nil, errors.Wrap(err, "failed to get task config")
+			}
+
+			podInfo.Spec = handlerutil.ConvertTaskConfigToPodSpec(taskConfig)
+		}
 	}
 
 	return podInfos, nil
