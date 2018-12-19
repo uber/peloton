@@ -514,6 +514,89 @@ func TestValidateBatchTaskConfig(t *testing.T) {
 	}
 }
 
+// TestValidateTaskConfigFailureBatchExecutorConfig tests validation of
+// batch job config, and verifies it throws an error when executor info
+// is present.
+func TestValidateTaskConfigFailureBatchExecutorConfig(t *testing.T) {
+	executorType := mesos.ExecutorInfo_CUSTOM
+	jobConfig := job.JobConfig{
+		Name:          fmt.Sprintf("TestJob_10"),
+		InstanceCount: 10,
+		DefaultConfig: &task.TaskConfig{
+			Command: &mesos.CommandInfo{
+				Value: util.PtrPrintf("echo Hello"),
+			},
+			Executor: &mesos.ExecutorInfo{
+				Type: &executorType,
+			},
+		},
+	}
+	err := ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.Error(t, err, "Batch job task should not include executor config")
+}
+
+// TestValidateTaskConfigStatelessExecutorConfig tests validation of
+// stateless job config, and verifies no error is returned when executor
+// info is present.
+func TestValidateTaskConfigStatelessExecutorConfig(t *testing.T) {
+	executorType := mesos.ExecutorInfo_CUSTOM
+	jobConfig := job.JobConfig{
+		Name:          fmt.Sprintf("TestJob_10"),
+		Type:          job.JobType_SERVICE,
+		InstanceCount: 10,
+		DefaultConfig: &task.TaskConfig{
+			Command: &mesos.CommandInfo{
+				Value: util.PtrPrintf("while true; do echo Hello; sleep 10; done"),
+			},
+			Executor: &mesos.ExecutorInfo{
+				Type: &executorType,
+				Data: []byte{1, 2, 3, 4},
+			},
+		},
+	}
+	err := ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.NoError(t, err)
+}
+
+// TestValidateTaskConfigFailureStatelessExecutorConfig tests validation of
+// stateless job config, and verifies it throws an error when no data is
+// present in the executor info.
+func TestValidateTaskConfigFailureStatelessExecutorConfig(t *testing.T) {
+	executorType := mesos.ExecutorInfo_CUSTOM
+	jobConfig := job.JobConfig{
+		Name:          fmt.Sprintf("TestJob_10"),
+		Type:          job.JobType_SERVICE,
+		InstanceCount: 10,
+		DefaultConfig: &task.TaskConfig{
+			Command: &mesos.CommandInfo{
+				Value: util.PtrPrintf("while true; do echo Hello; sleep 10; done"),
+			},
+			Executor: &mesos.ExecutorInfo{
+				Type: &executorType,
+			},
+		},
+	}
+	err := ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.Error(t, err, "Data field not set in executor config")
+
+	jobConfig = job.JobConfig{
+		Name:          fmt.Sprintf("TestJob_10"),
+		Type:          job.JobType_SERVICE,
+		InstanceCount: 10,
+		DefaultConfig: &task.TaskConfig{
+			Command: &mesos.CommandInfo{
+				Value: util.PtrPrintf("while true; do echo Hello; sleep 10; done"),
+			},
+			Executor: &mesos.ExecutorInfo{
+				Type: &executorType,
+				Data: []byte{},
+			},
+		},
+	}
+	err = ValidateConfig(&jobConfig, maxTasksPerJob)
+	assert.Error(t, err, "Data field not set in executor config")
+}
+
 func TestValidatePreemptionPolicy(t *testing.T) {
 	tt := []struct {
 		name       string

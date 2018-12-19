@@ -253,6 +253,9 @@ message TaskConfig {
   // Command line config of the task
   mesos.v1.CommandInfo command = 5;
 
+  // Custom executor config of the task.
+  mesos.v1.ExecutorInfo executor = 15;
+
   // Health check config of the task
   HealthCheckConfig healthCheck = 6;
 

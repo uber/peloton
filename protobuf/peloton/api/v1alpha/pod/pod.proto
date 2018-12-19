@@ -200,6 +200,9 @@ message ContainerSpec {
   // Command line config of the container
   mesos.v1.CommandInfo command = 4;
 
+  // Custom executor config of the task.
+  mesos.v1.ExecutorInfo executor = 8;
+
   // Liveness health check config of the container
   HealthCheckSpec liveness_check = 5;
 

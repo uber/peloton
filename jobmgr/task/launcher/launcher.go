@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	aurora "code.uber.internal/infra/peloton/.gen/thrift/aurora/api"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/backoff"
@@ -27,6 +29,8 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"go.uber.org/thriftrw/protocol"
+	"go.uber.org/thriftrw/wire"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -49,6 +53,20 @@ type LaunchableTaskInfo struct {
 	*task.TaskInfo
 	// ConfigAddOn is the task config add on
 	ConfigAddOn *models.ConfigAddOn
+}
+
+// Assignment information used to generate "AssignedTask"
+type assignmentInfo struct {
+	// Mesos task id
+	taskID string
+	// Mesos slave id that this task has been assigned to
+	slaveID string
+	// The name of the machine that this task has been assigned to
+	slaveHost string
+	// Ports reserved on the machine while this task is running
+	assignedPorts map[string]int32
+	// The instance ID assigned to this task
+	instanceID int32
 }
 
 // Launcher defines the interface of task launcher which launches
@@ -164,6 +182,20 @@ func (l *launcher) ProcessPlacement(
 	placement *resmgr.Placement,
 ) error {
 	l.metrics.LauncherGoRoutines.Inc(1)
+
+	// Populate custom executor data with placement info
+	for _, launchableTask := range tasks {
+		err := populateExecutorData(launchableTask, placement)
+		if err != nil {
+			l.TryReturnOffers(ctx, err, placement)
+			log.WithError(err).WithFields(log.Fields{
+				"placement":       placement,
+				"launchable_task": launchableTask,
+			}).Error("failed to populate custom executor data while launching tasks")
+			return err
+		}
+	}
+
 	err := l.launchTasks(ctx, tasks, placement)
 	l.TryReturnOffers(ctx, err, placement)
 	if err != nil {
@@ -651,4 +683,86 @@ func (l *launcher) populateSecrets(
 		}
 	}
 	return nil
+}
+
+// populateExecutorData transforms executor data in TaskConfig to data
+// usable by actual custom executor. Currently, it only supports aurora
+// thermos executor, in which case, it will pack the existing executor
+// data along with placement information to binary-serialized AssignedTask
+// thrift struct.
+func populateExecutorData(
+	launchableTask *hostsvc.LaunchableTask,
+	placement *resmgr.Placement) error {
+	executorData := launchableTask.GetConfig().GetExecutor().GetData()
+	if launchableTask.GetConfig().GetExecutor().GetType() !=
+		mesos.ExecutorInfo_CUSTOM || len(executorData) == 0 {
+		return nil
+	}
+
+	taskID := launchableTask.GetTaskId().GetValue()
+	_, instanceID, err := util.ParseJobAndInstanceID(taskID)
+	if err != nil {
+		return err
+	}
+
+	assignedPorts := make(map[string]int32)
+	for name, num := range launchableTask.GetPorts() {
+		assignedPorts[name] = int32(num)
+	}
+	assignment := assignmentInfo{
+		taskID:        taskID,
+		slaveID:       placement.GetAgentId().GetValue(),
+		slaveHost:     placement.GetHostname(),
+		assignedPorts: assignedPorts,
+		instanceID:    int32(instanceID),
+	}
+
+	transformedData, err := generateAssignedTask(executorData, assignment)
+	if err != nil {
+		return err
+	}
+	launchableTask.GetConfig().GetExecutor().Data = transformedData
+
+	return nil
+}
+
+// generateAssignedTask takes in binary form of "TaskConfig" thrift struct
+// along with task assignment information, and generates "AssignedTask"
+// thrift struct in binary form.
+func generateAssignedTask(
+	taskConfigData []byte,
+	assignment assignmentInfo) ([]byte, error) {
+	taskConfigWireValue, err := protocol.Binary.Decode(
+		bytes.NewReader(taskConfigData),
+		wire.TStruct,
+	)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	taskConfig := &aurora.TaskConfig{}
+	err = taskConfig.FromWire(taskConfigWireValue)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	assignedTask := &aurora.AssignedTask{}
+	assignedTask.TaskId = &assignment.taskID
+	assignedTask.SlaveId = &assignment.slaveID
+	assignedTask.SlaveHost = &assignment.slaveHost
+	assignedTask.Task = taskConfig
+	assignedTask.AssignedPorts = assignment.assignedPorts
+	assignedTask.InstanceId = &assignment.instanceID
+
+	assignedTaskWireValue, err := assignedTask.ToWire()
+	if err != nil {
+		return []byte{}, err
+	}
+	var assignedTaskBuffer bytes.Buffer
+	err = protocol.Binary.Encode(assignedTaskWireValue, &assignedTaskBuffer)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return assignedTaskBuffer.Bytes(), nil
 }

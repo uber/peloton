@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"sync"
 	"testing"
 	"time"
@@ -33,10 +34,12 @@ import (
 )
 
 const (
-	taskIDFmt      = _testJobID + "-%d-%s"
-	testPort       = uint32(100)
-	testSecretPath = "/tmp/secret"
-	testSecretStr  = "test-data"
+	taskIDFmt            = _testJobID + "-%d-%s"
+	testPort             = uint32(100)
+	testSecretPath       = "/tmp/secret"
+	testSecretStr        = "test-data"
+	testTaskConfigData   = "../../../example/thermos-executor-task-config.bin"
+	testAssignedTaskData = "../../../example/thermos-executor-assigned-task.bin"
 )
 
 var (
@@ -97,6 +100,22 @@ func createHostOffer(hostID int, resources []*mesos.Resource) *hostsvc.HostOffer
 		Resources: resources,
 		Id:        &peloton.HostOfferID{Value: uuid.New()},
 	}
+}
+
+// getTaskConfigData returns a sample binary-serialized TaskConfig
+// thrift struct from file
+func getTaskConfigData(t *testing.T) []byte {
+	data, err := ioutil.ReadFile(testTaskConfigData)
+	assert.NoError(t, err)
+	return data
+}
+
+// getAssignedTaskData returns a sample binary-serialized AssignedTask
+// thrift struct from file
+func getAssignedTaskData(t *testing.T) []byte {
+	data, err := ioutil.ReadFile(testAssignedTaskData)
+	assert.NoError(t, err)
+	return data
 }
 
 func TestGetLaunchableTasks(t *testing.T) {
@@ -852,6 +871,66 @@ func TestCreateLaunchableTasks(t *testing.T) {
 	assert.Equal(t, len(launchableTasks), 0)
 	// this task is skipped because of the base64 decode error
 	assert.Equal(t, len(skippedTaskInfos), 1)
+}
+
+// TestPopulateExecutorData tests populateExecutorData function to properly
+// fill out executor data in the launchable task, with the placement info
+// passed in.
+func TestPopulateExecutorData(t *testing.T) {
+	taskID := "067687c5-2461-475f-b006-68e717f0493b-3-1"
+	agentID := "ca6bd27e-9abb-4a2e-9860-0a2c2a942510-S0"
+	executorType := mesos.ExecutorInfo_CUSTOM
+	launchableTask := &hostsvc.LaunchableTask{
+		Config: &task.TaskConfig{
+			Executor: &mesos.ExecutorInfo{
+				Type: &executorType,
+				Data: getTaskConfigData(t),
+			},
+		},
+		TaskId: &mesos.TaskID{
+			Value: &taskID,
+		},
+		Ports: map[string]uint32{"test": 12345},
+	}
+	placement := &resmgr.Placement{
+		AgentId: &mesos.AgentID{
+			Value: &agentID,
+		},
+		Hostname: "192.168.33.7",
+	}
+
+	err := populateExecutorData(launchableTask, placement)
+	assert.NoError(t, err)
+}
+
+// TestGenerateAssignedTask tests generateAssignedTask function to verify
+// it can serialize/deserialize thrift objects correctly.
+func TestGenerateAssignedTask(t *testing.T) {
+	taskConfigData := getTaskConfigData(t)
+	assignment := assignmentInfo{
+		taskID:        "067687c5-2461-475f-b006-68e717f0493b",
+		slaveID:       "ca6bd27e-9abb-4a2e-9860-0a2c2a942510-S0",
+		slaveHost:     "192.168.33.7",
+		assignedPorts: map[string]int32{"test": 12345},
+		instanceID:    3,
+	}
+	assignedTask, err := generateAssignedTask(taskConfigData, assignment)
+	assert.NoError(t, err)
+	// Since the ordering of the binary serialized data is slightly different
+	// between thriftrw (used in generateAssignedTask) and official thrift
+	// binding (used in the sample data), only compare the data length here.
+	assert.Equal(t, len(getAssignedTaskData(t)), len(assignedTask))
+}
+
+// TestGenerateAssignedTask tests various errors generateAssignedTask
+// might return.
+func TestGenerateAssignedTaskError(t *testing.T) {
+	assignment := assignmentInfo{}
+
+	// Failed to decode binary data to wire model
+	taskConfigData := []byte{}
+	_, err := generateAssignedTask(taskConfigData, assignment)
+	assert.Error(t, err)
 }
 
 // createPlacementMultipleTasks creates the placement with multiple tasks

@@ -754,6 +754,145 @@ func (suite *BuilderTestSuite) TestPopulateKillPolicy() {
 		expectedGracePeriod.Nanoseconds())
 }
 
+// TestPopulateExecutorInfo tests setting the executor info of tasks.
+func (suite *BuilderTestSuite) TestPopulateExecutorInfo() {
+	numTasks := 1
+	resources := suite.getResources(numTasks)
+	builder := NewBuilder(resources)
+	taskIDValue := "test-task-id"
+	taskID := &mesos.TaskID{
+		Value: &taskIDValue,
+	}
+	executorType := mesos.ExecutorInfo_CUSTOM
+	executorData := []byte{1, 2, 3, 4, 5}
+	executor := &mesos.ExecutorInfo{
+		Type: &executorType,
+		Data: executorData,
+	}
+
+	mesosTask := &mesos.TaskInfo{}
+	builder.populateExecutorInfo(
+		mesosTask,
+		executor,
+		taskID,
+	)
+
+	suite.Equal(mesos.ExecutorInfo_CUSTOM, mesosTask.GetExecutor().GetType())
+	suite.Equal("thermos-"+taskIDValue, mesosTask.GetExecutor().GetExecutorId().GetValue())
+	suite.Equal("AuroraExecutor", mesosTask.GetExecutor().GetName())
+	suite.Equal([]*mesos.Resource{}, mesosTask.GetExecutor().GetResources())
+	suite.Equal(executorData, mesosTask.GetData())
+}
+
+// TestExtractScalarResources tests extracting task resources from cached
+// host resources, and verifies extracted and remaining values are correct.
+func (suite *BuilderTestSuite) TestExtractScalarResources() {
+	numTasks := 1
+	resources := suite.getResources(numTasks)
+	builder := NewBuilder(resources)
+
+	taskResources := &task.ResourceConfig{
+		CpuLimit:    5,
+		MemLimitMb:  10,
+		DiskLimitMb: 7,
+	}
+
+	taskRes, err := builder.extractScalarResources(
+		taskResources,
+		false)
+	suite.NoError(err)
+
+	suite.Equal(3, len(taskRes))
+
+	for _, res := range taskRes {
+		switch resName := res.GetName(); resName {
+		case "cpus":
+			suite.Equal(taskResources.CpuLimit, res.GetScalar().GetValue())
+		case "mem":
+			suite.Equal(taskResources.MemLimitMb, res.GetScalar().GetValue())
+		case "disk":
+			suite.Equal(taskResources.DiskLimitMb, res.GetScalar().GetValue())
+		default:
+			suite.Failf("Unexpected resource", "Unexpected resource %s", resName)
+		}
+	}
+
+	suite.Equal(float64(_cpu-5), builder.scalars["*"].CPU)
+	suite.Equal(float64(_mem-10), builder.scalars["*"].Mem)
+	suite.Equal(float64(_disk-7), builder.scalars["*"].Disk)
+	suite.Equal(float64(0), builder.scalars["*"].GPU)
+
+	suite.Equal(float64(_cpu), builder.revocable.CPU)
+	suite.Equal(float64(0), builder.revocable.Mem)
+	suite.Equal(float64(0), builder.revocable.Disk)
+	suite.Equal(float64(0), builder.revocable.GPU)
+}
+
+// TestExtractScalarResourcesRevocable tests extracting revocable task
+// resources from cached host resources, and verifies extracted and
+// remaining values are correct.
+func (suite *BuilderTestSuite) TestExtractScalarResourcesRevocable() {
+	resources := suite.getResources(1)
+	builder := NewBuilder(resources)
+
+	taskResources := &task.ResourceConfig{
+		CpuLimit:    6,
+		MemLimitMb:  10,
+		DiskLimitMb: 7,
+	}
+
+	taskRes, err := builder.extractScalarResources(
+		taskResources,
+		true)
+	suite.NoError(err)
+
+	suite.Equal(3, len(taskRes))
+
+	for _, res := range taskRes {
+		switch resName := res.GetName(); resName {
+		case "cpus":
+			suite.Equal(taskResources.CpuLimit, res.GetScalar().GetValue())
+			suite.NotNil(res.GetRevocable())
+		case "mem":
+			suite.Equal(taskResources.MemLimitMb, res.GetScalar().GetValue())
+			suite.Nil(res.GetRevocable())
+		case "disk":
+			suite.Equal(taskResources.DiskLimitMb, res.GetScalar().GetValue())
+			suite.Nil(res.GetRevocable())
+		default:
+			suite.Failf("Unexpected resource", "Unexpected resource %s", resName)
+		}
+	}
+
+	suite.Equal(float64(_cpu), builder.scalars["*"].CPU)
+	suite.Equal(float64(_mem-10), builder.scalars["*"].Mem)
+	suite.Equal(float64(_disk-7), builder.scalars["*"].Disk)
+	suite.Equal(float64(0), builder.scalars["*"].GPU)
+
+	suite.Equal(float64(_cpu-6), builder.revocable.CPU)
+	suite.Equal(float64(0), builder.revocable.Mem)
+	suite.Equal(float64(0), builder.revocable.Disk)
+	suite.Equal(float64(0), builder.revocable.GPU)
+}
+
+// TestExtractScalarResourcesOverflow tests extracting task resources
+// exceeding host resources, and verifies an error will be returned.
+func (suite *BuilderTestSuite) TestExtractScalarResourcesOverflow() {
+	resources := suite.getResources(1)
+	builder := NewBuilder(resources)
+
+	taskResources := &task.ResourceConfig{
+		CpuLimit:    11,
+		MemLimitMb:  10,
+		DiskLimitMb: 7,
+	}
+
+	_, err := builder.extractScalarResources(
+		taskResources,
+		false)
+	suite.Error(err)
+}
+
 func TestBuilderTestSuite(t *testing.T) {
 	suite.Run(t, new(BuilderTestSuite))
 }

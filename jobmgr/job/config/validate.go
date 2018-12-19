@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
@@ -38,6 +39,12 @@ var (
 		"Task preemption policy should be false for stateless job")
 	errIncorrectHealthCheck = errors.New(
 		"Batch job task should not set health check ")
+	errIncorrectExecutor = errors.New(
+		"Batch job task should not include executor config")
+	errIncorrectExecutorType = errors.New(
+		"Unsupported type in executor config")
+	errExecutorConfigDataNotPresent = errors.New(
+		"Data field not set in executor config")
 	errIncorrectRevocableSLA = errors.New(
 		"revocable job must be preemptible")
 	errInvalidPreemptionOverride = errors.New(
@@ -290,6 +297,10 @@ func validateBatchTaskConfig(taskConfig *task.TaskConfig) error {
 	if taskConfig.GetHealthCheck() != nil {
 		return errIncorrectHealthCheck
 	}
+	// Batch jobs should not use custom executor (aurora thermos for now)
+	if taskConfig.GetExecutor() != nil {
+		return errIncorrectExecutor
+	}
 	return nil
 }
 
@@ -303,6 +314,16 @@ func validateStatelessTaskConfig(taskConfig *task.TaskConfig) error {
 	// KillOnPreempt should be false for stateless task config
 	if taskConfig.GetPreemptionPolicy().GetKillOnPreempt() != false {
 		return errKillOnPreemptNotFalse
+	}
+	// Only support custom executor use case for now
+	if taskConfig.GetExecutor() != nil &&
+		taskConfig.GetExecutor().GetType() != mesos.ExecutorInfo_CUSTOM {
+		return errIncorrectExecutorType
+	}
+	// Validate data field present in the executor config for stateless
+	if taskConfig.GetExecutor() != nil &&
+		len(taskConfig.GetExecutor().GetData()) == 0 {
+		return errExecutorConfigDataNotPresent
 	}
 	return nil
 }

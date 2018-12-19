@@ -30,6 +30,12 @@ const (
 
 	// Set default task kill grace period to 30 seconds
 	_defaultTaskKillGracePeriod = 30 * time.Second
+
+	// Default custom executor id prefix
+	_defaultCustomExecutorPrefix = "thermos-"
+
+	// Default custom executor name
+	_defaultCustomExecutorName = "AuroraExecutor"
 )
 
 var (
@@ -240,6 +246,11 @@ func (tb *Builder) Build(
 		Resources: lres,
 	}
 
+	tb.populateExecutorInfo(
+		mesosTask,
+		taskConfig.GetExecutor(),
+		taskID,
+	)
 	tb.populateKillPolicy(mesosTask, taskConfig.GetKillGracePeriodSeconds())
 	tb.populateDiscoveryInfo(mesosTask, pick.selectedPorts, jobID)
 	tb.populateCommandInfo(
@@ -298,8 +309,50 @@ func populateReservationVolumeInfo(
 	return resources, nil
 }
 
+// populateExecutorInfo sets up the ExecutorInfo of a Mesos task and copys
+// executor data to Mesos task if present.
+func (tb *Builder) populateExecutorInfo(
+	mesosTask *mesos.TaskInfo,
+	executor *mesos.ExecutorInfo,
+	taskID *mesos.TaskID,
+) {
+	if executor == nil || executor.GetType() != mesos.ExecutorInfo_CUSTOM {
+		// Only allow custom executor - aurora thermos - use case for now.
+		// Maybe consider adding support for Mesos "default" executor in
+		// the future??
+		return
+	}
+
+	// Make a deep copy of pass through fields to avoid changing input.
+	executorInfo := proto.Clone(executor).(*mesos.ExecutorInfo)
+
+	executorIDValue := _defaultCustomExecutorPrefix + taskID.GetValue()
+	executorInfo.ExecutorId = &mesos.ExecutorID{
+		Value: &executorIDValue,
+	}
+
+	executorName := _defaultCustomExecutorName
+	if executorInfo.Name == nil {
+		executorInfo.Name = &executorName
+	}
+
+	// Not populating executor overhead resource, since it is assumed to be
+	// included in the config provided by federation.
+	executorInfo.Resources = []*mesos.Resource{}
+
+	mesosTask.Executor = executorInfo
+
+	// Make a copy of the executor data since aurora thermos executor
+	// reads data from TaskInfo.
+	if executorInfo.Data != nil {
+		mesosTask.Data = make([]byte, len(executorInfo.Data))
+		copy(mesosTask.Data, executorInfo.Data)
+	}
+}
+
 // populateCommandInfo properly sets up the CommandInfo of a Mesos task
-// and populates any optional environment variables in envMap.
+// and populates any optional environment variables in envMap. It populates
+// ExecutorInfo field instead when custom executor is requested.
 func (tb *Builder) populateCommandInfo(
 	mesosTask *mesos.TaskInfo,
 	command *mesos.CommandInfo,
@@ -315,12 +368,12 @@ func (tb *Builder) populateCommandInfo(
 	}
 
 	// Make a deep copy of pass through fields to avoid changing input.
-	mesosTask.Command = proto.Clone(command).(*mesos.CommandInfo)
+	commandInfo := proto.Clone(command).(*mesos.CommandInfo)
 
 	// Populate optional environment variables.
 	// Make sure `Environment` field is initialized.
-	if mesosTask.Command.GetEnvironment().GetVariables() == nil {
-		mesosTask.Command.Environment = &mesos.Environment{
+	if commandInfo.GetEnvironment().GetVariables() == nil {
+		commandInfo.Environment = &mesos.Environment{
 			Variables: []*mesos.Environment_Variable{},
 		}
 	}
@@ -341,7 +394,7 @@ func (tb *Builder) populateCommandInfo(
 	}
 
 	// Add peloton specific environtment variables.
-	mesosTask.Command.Environment.Variables = append(mesosTask.Command.Environment.Variables, pelotonEnvs...)
+	commandInfo.Environment.Variables = append(commandInfo.Environment.Variables, pelotonEnvs...)
 
 	for name, value := range envMap {
 		// Make a copy since taking address of key/value in map
@@ -352,20 +405,36 @@ func (tb *Builder) populateCommandInfo(
 			Name:  &tmpName,
 			Value: &tmpValue,
 		}
-		mesosTask.Command.Environment.Variables =
-			append(mesosTask.Command.Environment.Variables, env)
+		commandInfo.Environment.Variables =
+			append(commandInfo.Environment.Variables, env)
+	}
+
+	if mesosTask.Executor != nil {
+		// We are using custom executor
+		mesosTask.Executor.Command = commandInfo
+	} else {
+		mesosTask.Command = commandInfo
 	}
 }
 
 // populateContainerInfo properly sets up the `ContainerInfo` field of a task.
+// It populates ContainerInfo if custom executor is requested.
 func (tb *Builder) populateContainerInfo(
 	mesosTask *mesos.TaskInfo,
 	container *mesos.ContainerInfo,
 ) {
-	if container != nil {
-		// Make a deep copy to avoid changing input.
-		mesosTask.Container =
-			proto.Clone(container).(*mesos.ContainerInfo)
+	if container == nil {
+		return
+	}
+
+	// Make a deep copy to avoid changing input.
+	containerInfo := proto.Clone(container).(*mesos.ContainerInfo)
+
+	if mesosTask.Executor != nil {
+		// We are using custom executor
+		mesosTask.Executor.Container = containerInfo
+	} else {
+		mesosTask.Container = containerInfo
 	}
 }
 
