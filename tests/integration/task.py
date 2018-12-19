@@ -1,4 +1,8 @@
 class Task(object):
+    """
+    Task represents a peloton task
+    """
+
     def __init__(self, job, instance_id):
         self.job = job
         self.instance_id = instance_id
@@ -18,6 +22,10 @@ class Task(object):
     @property
     def mesos_task_id(self):
         return self.get_info().runtime.mesosTaskId.value
+
+    @property
+    def goal_state(self):
+        return self.get_info().runtime.goalState
 
     @property
     def state(self):
