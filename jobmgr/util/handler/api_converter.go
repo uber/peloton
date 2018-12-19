@@ -208,8 +208,8 @@ func ConvertContainerPorts(ports []*task.PortConfig) []*pod.PortSpec {
 	return containerPorts
 }
 
-// ConvertSecrets converts v0 peloton.Secret to v1alpha peloton.Secret
-func ConvertSecrets(secrets []*peloton.Secret) []*v1alphapeloton.Secret {
+// ConvertV0SecretsToV1Secrets converts v0 peloton.Secret to v1alpha peloton.Secret
+func ConvertV0SecretsToV1Secrets(secrets []*peloton.Secret) []*v1alphapeloton.Secret {
 	var v1secrets []*v1alphapeloton.Secret
 	for _, secret := range secrets {
 		v1secret := &v1alphapeloton.Secret{
@@ -224,6 +224,24 @@ func ConvertSecrets(secrets []*peloton.Secret) []*v1alphapeloton.Secret {
 		v1secrets = append(v1secrets, v1secret)
 	}
 	return v1secrets
+}
+
+// ConvertV1SecretsToV0Secrets converts v1alpha peloton.Secret to v0 peloton.Secret
+func ConvertV1SecretsToV0Secrets(secrets []*v1alphapeloton.Secret) []*peloton.Secret {
+	var v0secrets []*peloton.Secret
+	for _, secret := range secrets {
+		v0secret := &peloton.Secret{
+			Id: &peloton.SecretID{
+				Value: secret.GetSecretId().GetValue(),
+			},
+			Path: secret.GetPath(),
+			Value: &peloton.Secret_Value{
+				Data: secret.GetValue().GetData(),
+			},
+		}
+		v0secrets = append(v0secrets, v0secret)
+	}
+	return v0secrets
 }
 
 // ConvertJobConfigToJobSpec converts v0 job.JobConfig to v1alpha stateless.JobSpec
@@ -267,8 +285,8 @@ func ConvertUpdateModelToWorkflowStatus(
 	}
 
 	return &stateless.WorkflowStatus{
-		Type:  stateless.WorkflowType(updateInfo.GetType()),
-		State: stateless.WorkflowState(updateInfo.GetState()),
+		Type:                  stateless.WorkflowType(updateInfo.GetType()),
+		State:                 stateless.WorkflowState(updateInfo.GetState()),
 		NumInstancesCompleted: updateInfo.GetInstancesDone(),
 		NumInstancesRemaining: updateInfo.GetInstancesTotal() - updateInfo.GetInstancesDone() - updateInfo.GetInstancesFailed(),
 		NumInstancesFailed:    updateInfo.GetInstancesFailed(),
@@ -469,15 +487,14 @@ func ConvertJobSpecToJobConfig(spec *stateless.JobSpec) (*job.JobConfig, error) 
 	}
 
 	if len(spec.GetInstanceSpec()) != 0 {
-		instanceConfigs := make(map[uint32]*task.TaskConfig)
+		result.InstanceConfig = make(map[uint32]*task.TaskConfig)
 		for instanceID, instanceSpec := range spec.GetInstanceSpec() {
 			instanceConfig, err := ConvertPodSpecToTaskConfig(instanceSpec)
 			if err != nil {
 				return nil, err
 			}
-			instanceConfigs[instanceID] = instanceConfig
+			result.InstanceConfig[instanceID] = instanceConfig
 		}
-		result.InstanceConfig = instanceConfigs
 	}
 
 	if spec.GetRespoolId() != nil {

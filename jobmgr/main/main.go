@@ -460,9 +460,11 @@ func main() {
 		store,
 		store,
 		store,
+		store,
 		jobFactory,
 		goalStateDriver,
 		candidate,
+		cfg.JobManager.JobSvcCfg,
 	)
 
 	tasksvc.InitServiceHandler(

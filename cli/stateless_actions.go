@@ -14,7 +14,10 @@ import (
 	pelotonv1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
 	pelotonv1alpharespool "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool"
 
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
+
 	"github.com/golang/protobuf/ptypes"
+	"go.uber.org/yarpc/yarpcerrors"
 	"gopkg.in/yaml.v2"
 )
 
@@ -218,6 +221,199 @@ func (c *Client) StatelessQueryAction(
 	return nil
 }
 
+// StatelessReplaceJobAction updates job by replace its config
+func (c *Client) StatelessReplaceJobAction(
+	jobID string,
+	spec string,
+	batchSize uint32,
+	respoolPath string,
+	entityVersion string,
+	override bool,
+	maxInstanceRetries uint32,
+	maxTolerableInstanceFailures uint32,
+	rollbackOnFailure bool,
+	startPaused bool,
+	opaqueData string,
+) error {
+	// TODO: implement cli override check and get entity version
+	// form job after stateless.Get is ready
+	var jobSpec stateless.JobSpec
+
+	// read the job configuration
+	buffer, err := ioutil.ReadFile(spec)
+	if err != nil {
+		return fmt.Errorf("unable to open file %s: %v", spec, err)
+	}
+	if err := yaml.Unmarshal(buffer, &jobSpec); err != nil {
+		return fmt.Errorf("unable to parse file %s: %v", spec, err)
+	}
+
+	// fetch the resource pool id
+	respoolID, err := c.LookupResourcePoolID(respoolPath)
+	if err != nil {
+		return err
+	}
+	if respoolID == nil {
+		return fmt.Errorf("unable to find resource pool ID for "+
+			":%s", respoolPath)
+	}
+
+	// set the resource pool id
+	jobSpec.RespoolId = &v1alphapeloton.ResourcePoolID{Value: respoolID.GetValue()}
+
+	var opaque *v1alphapeloton.OpaqueData
+	if len(opaqueData) > 0 {
+		opaque = &v1alphapeloton.OpaqueData{Data: opaqueData}
+	}
+
+	req := &statelesssvc.ReplaceJobRequest{
+		JobId:   &v1alphapeloton.JobID{Value: jobID},
+		Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
+		Spec:    &jobSpec,
+		UpdateSpec: &stateless.UpdateSpec{
+			BatchSize:                    batchSize,
+			RollbackOnFailure:            rollbackOnFailure,
+			MaxInstanceRetries:           maxInstanceRetries,
+			MaxTolerableInstanceFailures: maxTolerableInstanceFailures,
+			StartPaused:                  startPaused,
+		},
+		OpaqueData: opaque,
+	}
+
+	resp, err := c.statelessClient.ReplaceJob(c.ctx, req)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("New EntityVersion: %s\n", resp.GetVersion().GetValue())
+
+	return nil
+}
+
+// StatelessCreateAction is the action for creating a stateless job
+func (c *Client) StatelessCreateAction(
+	jobID string,
+	respoolPath string,
+	cfg string,
+	secretPath string,
+	secret []byte,
+) error {
+	respoolID, err := c.LookupResourcePoolID(respoolPath)
+	if err != nil {
+		return err
+	}
+	if respoolID == nil {
+		return fmt.Errorf("unable to find resource pool ID for "+
+			":%s", respoolPath)
+	}
+
+	var jobSpec stateless.JobSpec
+	buffer, err := ioutil.ReadFile(cfg)
+	if err != nil {
+		return fmt.Errorf("unable to open file %s: %v", cfg, err)
+	}
+	if err := yaml.Unmarshal(buffer, &jobSpec); err != nil {
+		return fmt.Errorf("unable to parse file %s: %v", cfg, err)
+	}
+
+	jobSpec.RespoolId = &v1alphapeloton.ResourcePoolID{Value: respoolID.GetValue()}
+
+	var request = &statelesssvc.CreateJobRequest{
+		JobId: &v1alphapeloton.JobID{
+			Value: jobID,
+		},
+		Spec: &jobSpec,
+	}
+
+	// handle secrets
+	if secretPath != "" && len(secret) > 0 {
+		request.Secrets = []*v1alphapeloton.Secret{
+			jobmgrtask.CreateV1AlphaSecretProto("", secretPath, secret),
+		}
+	}
+
+	response, err := c.statelessClient.CreateJob(c.ctx, request)
+
+	printStatelessJobCreateResponse(request, response, err, c.Debug)
+
+	return err
+}
+
+// StatelessReplaceJobDiffAction returns the set of instances which will be
+// added, removed, updated and remain unchanged for a new
+// job specification for a given job
+func (c *Client) StatelessReplaceJobDiffAction(
+	jobID string,
+	spec string,
+	entityVersion string,
+	respoolPath string,
+) error {
+	var jobSpec stateless.JobSpec
+
+	// read the job configuration
+	buffer, err := ioutil.ReadFile(spec)
+	if err != nil {
+		return fmt.Errorf("unable to open file %s: %v", spec, err)
+	}
+	if err := yaml.Unmarshal(buffer, &jobSpec); err != nil {
+		return fmt.Errorf("unable to parse file %s: %v", spec, err)
+	}
+
+	// fetch the resource pool id
+	respoolID, err := c.LookupResourcePoolID(respoolPath)
+	if err != nil {
+		return err
+	}
+	if respoolID == nil {
+		return fmt.Errorf("unable to find resource pool ID for "+
+			":%s", respoolPath)
+	}
+
+	// set the resource pool id
+	jobSpec.RespoolId = &v1alphapeloton.ResourcePoolID{Value: respoolID.GetValue()}
+
+	req := &statelesssvc.GetReplaceJobDiffRequest{
+		JobId:   &v1alphapeloton.JobID{Value: jobID},
+		Spec:    &jobSpec,
+		Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
+	}
+
+	resp, err := c.statelessClient.GetReplaceJobDiff(c.ctx, req)
+	if err != nil {
+		return err
+	}
+
+	printResponseJSON(resp)
+	return nil
+}
+
+// StatelessListJobsAction prints summary of all jobs using the ListJobs API
+func (c *Client) StatelessListJobsAction() error {
+	stream, err := c.statelessClient.ListJobs(
+		c.ctx,
+		&statelesssvc.ListJobsRequest{},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprint(tabWriter, statlessJobSummaryFormatHeader)
+	tabWriter.Flush()
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		printListJobsResponse(resp)
+		tabWriter.Flush()
+	}
+}
+
 func printStatelessQueryResponse(resp *statelesssvc.QueryJobsResponse) {
 	results := resp.GetRecords()
 	if len(results) == 0 {
@@ -332,99 +528,34 @@ func parseOrderBy(sortBy string, sortOrder string) ([]*pelotonv1alphaquery.Order
 	return sort, nil
 }
 
-// StatelessReplaceJobAction updates job by replace its config
-func (c *Client) StatelessReplaceJobAction(
-	jobID string,
-	spec string,
-	batchSize uint32,
-	respoolPath string,
-	entityVersion string,
-	override bool,
-	maxInstanceRetries uint32,
-	maxTolerableInstanceFailures uint32,
-	rollbackOnFailure bool,
-	startPaused bool,
-	opaqueData string,
-) error {
-	// TODO: implement cli override check and get entity version
-	// form job after stateless.Get is ready
-	var jobSpec stateless.JobSpec
-
-	// read the job configuration
-	buffer, err := ioutil.ReadFile(spec)
-	if err != nil {
-		return fmt.Errorf("unable to open file %s: %v", spec, err)
-	}
-	if err := yaml.Unmarshal(buffer, &jobSpec); err != nil {
-		return fmt.Errorf("unable to parse file %s: %v", spec, err)
-	}
-
-	// fetch the resource pool id
-	respoolID, err := c.LookupResourcePoolID(respoolPath)
-	if err != nil {
-		return err
-	}
-	if respoolID == nil {
-		return fmt.Errorf("unable to find resource pool ID for "+
-			":%s", respoolPath)
-	}
-
-	// set the resource pool id
-	jobSpec.RespoolId = &v1alphapeloton.ResourcePoolID{Value: respoolID.GetValue()}
-
-	var opaque *v1alphapeloton.OpaqueData
-	if len(opaqueData) > 0 {
-		opaque = &v1alphapeloton.OpaqueData{Data: opaqueData}
-	}
-
-	req := &statelesssvc.ReplaceJobRequest{
-		JobId:   &v1alphapeloton.JobID{Value: jobID},
-		Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
-		Spec:    &jobSpec,
-		UpdateSpec: &stateless.UpdateSpec{
-			BatchSize:                    batchSize,
-			RollbackOnFailure:            rollbackOnFailure,
-			MaxInstanceRetries:           maxInstanceRetries,
-			MaxTolerableInstanceFailures: maxTolerableInstanceFailures,
-			StartPaused:                  startPaused,
-		},
-		OpaqueData: opaque,
-	}
-
-	resp, err := c.statelessClient.ReplaceJob(c.ctx, req)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("New EntityVersion: %s\n", resp.GetVersion().GetValue())
-
-	return nil
-}
-
-// StatelessListJobsAction prints summary of all jobs using the ListJobs API
-func (c *Client) StatelessListJobsAction() error {
-	stream, err := c.statelessClient.ListJobs(
-		c.ctx,
-		&statelesssvc.ListJobsRequest{},
-	)
-	if err != nil {
-		return err
-	}
-
-	fmt.Fprint(tabWriter, statlessJobSummaryFormatHeader)
-	tabWriter.Flush()
-	for {
-		resp, err := stream.Recv()
-		if err == io.EOF {
-			return nil
-		}
-
+func printStatelessJobCreateResponse(
+	req *statelesssvc.CreateJobRequest,
+	resp *statelesssvc.CreateJobResponse,
+	err error,
+	jsonFormat bool,
+) {
+	defer tabWriter.Flush()
+	if jsonFormat {
+		printResponseJSON(resp)
+	} else {
 		if err != nil {
-			return err
+			if yarpcerrors.IsAlreadyExists(err) {
+				fmt.Fprintf(tabWriter, "Job %s already exists: %s\n",
+					req.GetJobId(), err.Error())
+			} else if yarpcerrors.IsInvalidArgument(err) {
+				fmt.Fprintf(tabWriter, "Invalid job spec: %s\n",
+					err.Error())
+			}
+		} else if resp.GetJobId() != nil {
+			fmt.Fprintf(
+				tabWriter,
+				"Job %s created. Entity Version: %s\n",
+				resp.GetJobId().GetValue(),
+				resp.GetVersion().GetValue(),
+			)
+		} else {
+			fmt.Fprint(tabWriter, "Missing job ID in job create response\n")
 		}
-
-		printListJobsResponse(resp)
-		tabWriter.Flush()
 	}
 }
 
@@ -433,52 +564,4 @@ func printListJobsResponse(resp *statelesssvc.ListJobsResponse) {
 	for _, r := range jobs {
 		printStatelessQueryResult(r)
 	}
-}
-
-// StatelessReplaceJobDiffAction returns the set of instances which will be
-// added, removed, updated and remain unchanged for a new
-// job specification for a given job
-func (c *Client) StatelessReplaceJobDiffAction(
-	jobID string,
-	spec string,
-	entityVersion string,
-	respoolPath string,
-) error {
-	var jobSpec stateless.JobSpec
-
-	// read the job configuration
-	buffer, err := ioutil.ReadFile(spec)
-	if err != nil {
-		return fmt.Errorf("unable to open file %s: %v", spec, err)
-	}
-	if err := yaml.Unmarshal(buffer, &jobSpec); err != nil {
-		return fmt.Errorf("unable to parse file %s: %v", spec, err)
-	}
-
-	// fetch the resource pool id
-	respoolID, err := c.LookupResourcePoolID(respoolPath)
-	if err != nil {
-		return err
-	}
-	if respoolID == nil {
-		return fmt.Errorf("unable to find resource pool ID for "+
-			":%s", respoolPath)
-	}
-
-	// set the resource pool id
-	jobSpec.RespoolId = &v1alphapeloton.ResourcePoolID{Value: respoolID.GetValue()}
-
-	req := &statelesssvc.GetReplaceJobDiffRequest{
-		JobId:   &v1alphapeloton.JobID{Value: jobID},
-		Spec:    &jobSpec,
-		Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
-	}
-
-	resp, err := c.statelessClient.GetReplaceJobDiff(c.ctx, req)
-	if err != nil {
-		return err
-	}
-
-	printResponseJSON(resp)
-	return nil
 }

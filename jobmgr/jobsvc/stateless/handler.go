@@ -2,9 +2,11 @@ package stateless
 
 import (
 	"context"
+	"encoding/base64"
 	"sort"
 	"time"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
@@ -19,6 +21,8 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
+	"code.uber.internal/infra/peloton/jobmgr/job/config"
+	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	handlerutil "code.uber.internal/infra/peloton/jobmgr/util/handler"
 	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
@@ -36,39 +40,152 @@ import (
 type serviceHandler struct {
 	jobStore        storage.JobStore
 	updateStore     storage.UpdateStore
+	secretStore     storage.SecretStore
 	taskStore       storage.TaskStore
 	respoolClient   respool.ResourceManagerYARPCClient
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
 	candidate       leader.Candidate
+	rootCtx         context.Context
+	jobSvcCfg       jobsvc.Config
 }
+
+var (
+	errNullResourcePoolID   = yarpcerrors.InvalidArgumentErrorf("resource pool ID is null")
+	errResourcePoolNotFound = yarpcerrors.NotFoundErrorf("resource pool not found")
+	errRootResourcePoolID   = yarpcerrors.InvalidArgumentErrorf("cannot submit jobs to the `root` resource pool")
+	errNonLeafResourcePool  = yarpcerrors.InvalidArgumentErrorf("cannot submit jobs to a non leaf resource pool")
+)
 
 // InitV1AlphaJobServiceHandler initializes the Job Manager V1Alpha Service Handler
 func InitV1AlphaJobServiceHandler(
 	d *yarpc.Dispatcher,
 	jobStore storage.JobStore,
 	updateStore storage.UpdateStore,
+	secretStore storage.SecretStore,
 	taskStore storage.TaskStore,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
 	candidate leader.Candidate,
+	jobSvcCfg jobsvc.Config,
 ) {
 	handler := &serviceHandler{
 		jobStore:        jobStore,
 		updateStore:     updateStore,
+		secretStore:     secretStore,
 		taskStore:       taskStore,
 		respoolClient:   respool.NewResourceManagerYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		jobFactory:      jobFactory,
 		goalStateDriver: goalStateDriver,
 		candidate:       candidate,
+		jobSvcCfg:       jobSvcCfg,
 	}
 	d.Register(svc.BuildJobServiceYARPCProcedures(handler))
 }
 
 func (h *serviceHandler) CreateJob(
 	ctx context.Context,
-	req *svc.CreateJobRequest) (*svc.CreateJobResponse, error) {
-	return &svc.CreateJobResponse{}, nil
+	req *svc.CreateJobRequest,
+) (resp *svc.CreateJobResponse, err error) {
+	defer func() {
+		jobID := req.GetJobId().GetValue()
+		specVersion := req.GetSpec().GetRevision().GetVersion()
+		instanceCount := req.GetSpec().GetInstanceCount()
+
+		if err != nil {
+			log.WithField("job_id", jobID).
+				WithField("spec_version", specVersion).
+				WithField("instace_count", instanceCount).
+				WithError(err).
+				Warn("JobSVC.CreateJob failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("job_id", jobID).
+			WithField("spec_version", specVersion).
+			WithField("response", resp).
+			WithField("instace_count", instanceCount).
+			Info("JobSVC.CreateJob succeeded")
+	}()
+
+	if !h.candidate.IsLeader() {
+		return nil,
+			yarpcerrors.UnavailableErrorf("JobSVC.CreateJob is not supported on non-leader")
+	}
+
+	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
+
+	// It is possible that jobId is nil since protobuf doesn't enforce it
+	if len(pelotonJobID.GetValue()) == 0 {
+		pelotonJobID = &peloton.JobID{Value: uuid.New()}
+	}
+
+	if uuid.Parse(pelotonJobID.GetValue()) == nil {
+		return nil, yarpcerrors.InvalidArgumentErrorf("jobID is not valid UUID")
+	}
+
+	jobSpec := req.GetSpec()
+
+	respoolPath, err := h.validateResourcePoolForJobCreation(ctx, jobSpec.GetRespoolId())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to validate resource pool")
+	}
+
+	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(jobSpec)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate job config with default task configs
+	err = jobconfig.ValidateConfig(
+		jobConfig,
+		h.jobSvcCfg.MaxTasksPerJob,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid JobSpec")
+	}
+
+	// check secrets and config for input sanity
+	if err = h.validateSecretsAndConfig(jobSpec, req.GetSecrets()); err != nil {
+		return nil, errors.Wrap(err, "input cannot contain secret volume")
+	}
+
+	// create secrets in the DB and add them as secret volumes to defaultconfig
+	err = h.handleCreateSecrets(ctx, pelotonJobID.GetValue(), jobSpec, req.GetSecrets())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to handle create-secrets")
+	}
+
+	// Create job in cache and db
+	cachedJob := h.jobFactory.AddJob(pelotonJobID)
+
+	systemLabels := jobutil.ConstructSystemLabels(jobConfig, respoolPath.GetValue())
+	configAddOn := &models.ConfigAddOn{
+		SystemLabels: systemLabels,
+	}
+	err = cachedJob.Create(ctx, jobConfig, configAddOn, "peloton")
+
+	// enqueue the job into goal state engine even in failure case.
+	// Because the state may be updated, let goal state engine decide what to do
+	h.goalStateDriver.EnqueueJob(pelotonJobID, time.Now())
+
+	if err != nil {
+		return nil, err
+	}
+
+	runtimeInfo, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get job runtime from cache")
+	}
+
+	return &svc.CreateJobResponse{
+		JobId: &v1alphapeloton.JobID{Value: pelotonJobID.GetValue()},
+		Version: jobutil.GetJobEntityVersion(
+			uint64(runtimeInfo.GetConfigurationVersion()),
+			runtimeInfo.GetWorkflowVersion(),
+		),
+	}, nil
 }
 
 func (h *serviceHandler) ReplaceJob(
@@ -459,7 +576,7 @@ func (h *serviceHandler) GetJob(
 			Spec:   handlerutil.ConvertJobConfigToJobSpec(jobConfig),
 			Status: handlerutil.ConvertRuntimeInfoToJobStatus(jobRuntime, updateInfo),
 		},
-		Secrets: handlerutil.ConvertSecrets(
+		Secrets: handlerutil.ConvertV0SecretsToV1Secrets(
 			jobmgrtask.CreateSecretsFromVolumes(secretVolumes)),
 		WorkflowInfo: handlerutil.ConvertUpdateModelToWorkflowInfo(updateInfo),
 	}, nil
@@ -889,6 +1006,161 @@ func convertCacheToWorkflowStatus(
 	workflowStatus.PrevVersion = jobutil.GetPodEntityVersion(cachedWorkflow.GetState().JobVersion)
 	workflowStatus.Version = jobutil.GetPodEntityVersion(cachedWorkflow.GetGoalState().JobVersion)
 	return workflowStatus
+}
+
+// validateResourcePoolForJobCreation validates the resource pool before submitting job
+func (h *serviceHandler) validateResourcePoolForJobCreation(
+	ctx context.Context,
+	respoolID *v1alphapeloton.ResourcePoolID,
+) (*respool.ResourcePoolPath, error) {
+	if respoolID == nil {
+		return nil, errNullResourcePoolID
+	}
+
+	if respoolID.GetValue() == common.RootResPoolID {
+		return nil, errRootResourcePoolID
+	}
+
+	request := &respool.GetRequest{
+		Id: &peloton.ResourcePoolID{Value: respoolID.GetValue()},
+	}
+	response, err := h.respoolClient.GetResourcePool(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if response.GetPoolinfo().GetId() == nil ||
+		response.GetPoolinfo().GetId().GetValue() != respoolID.GetValue() {
+		return nil, errResourcePoolNotFound
+	}
+
+	if len(response.GetPoolinfo().GetChildren()) > 0 {
+		return nil, errNonLeafResourcePool
+	}
+
+	return response.GetPoolinfo().GetPath(), nil
+}
+
+// validateSecretsAndConfig checks the secrets for input sanity and makes sure
+// that config does not contain any existing secret volumes because that is
+// not supported.
+func (h *serviceHandler) validateSecretsAndConfig(
+	spec *stateless.JobSpec, secrets []*v1alphapeloton.Secret) error {
+	// validate secrets payload for input sanity
+	if len(secrets) == 0 {
+		return nil
+	}
+
+	config, err := handlerutil.ConvertJobSpecToJobConfig(spec)
+	if err != nil {
+		return err
+	}
+	// make sure that config doesn't have any secret volumes
+	if util.ConfigHasSecretVolumes(config.GetDefaultConfig()) {
+		return yarpcerrors.InvalidArgumentErrorf(
+			"adding secret volumes directly in config is not allowed",
+		)
+	}
+
+	if !h.jobSvcCfg.EnableSecrets && len(secrets) > 0 {
+		return yarpcerrors.InvalidArgumentErrorf(
+			"secrets not enabled in cluster",
+		)
+	}
+	for _, secret := range secrets {
+		if secret.GetPath() == "" {
+			return yarpcerrors.InvalidArgumentErrorf(
+				"secret does not have a path")
+		}
+		// Validate that secret is base64 encoded
+		_, err := base64.StdEncoding.DecodeString(
+			string(secret.GetValue().GetData()))
+		if err != nil {
+			return yarpcerrors.InvalidArgumentErrorf(
+				"failed to decode secret with error: %v", err,
+			)
+		}
+	}
+	return nil
+}
+
+// validateMesosContainerizerForSecrets returns error if default config doesn't
+// use mesos containerizer. Secrets will be common for all instances in a job.
+// They will be a part of default container config. This means that if a job is
+// created with secrets, we will ensure that the job also has a default config
+// with mesos containerizer. The secrets will be used by all tasks in that job
+// and all tasks must use mesos containerizer for processing secrets.
+// We will not enforce that instance config has mesos containerizer and let
+// instance config override this to keep with existing convention.
+func validateMesosContainerizerForSecrets(jobSpec *stateless.JobSpec) error {
+	// make sure that default config uses mesos containerizer
+	for _, container := range jobSpec.GetDefaultSpec().GetContainers() {
+		if container.GetContainer().GetType() != mesos.ContainerInfo_MESOS {
+			return yarpcerrors.InvalidArgumentErrorf(
+				"container type %v does not match %v",
+				jobSpec.GetDefaultSpec().GetContainers()[0].GetContainer().GetType(),
+				mesos.ContainerInfo_MESOS,
+			)
+		}
+	}
+	return nil
+}
+
+// handleCreateSecrets handles secrets to be added at the time of creating a job
+func (h *serviceHandler) handleCreateSecrets(
+	ctx context.Context, jobID string,
+	spec *stateless.JobSpec, secrets []*v1alphapeloton.Secret,
+) error {
+	// if there are no secrets in the request,
+	// job create doesn't need to handle secrets
+	if len(secrets) == 0 {
+		return nil
+	}
+	// Make sure that the default config is using Mesos containerizer
+	if err := validateMesosContainerizerForSecrets(spec); err != nil {
+		return err
+	}
+	// for each secret, store it in DB and add a secret volume to defaultconfig
+	return h.addSecretsToDBAndConfig(ctx, jobID, spec, secrets, false)
+}
+
+func (h *serviceHandler) addSecretsToDBAndConfig(
+	ctx context.Context, jobID string, jobSpec *stateless.JobSpec,
+	secrets []*v1alphapeloton.Secret, update bool) error {
+	// for each secret, store it in DB and add a secret volume to defaultconfig
+	for _, secret := range handlerutil.ConvertV1SecretsToV0Secrets(secrets) {
+		if secret.GetId().GetValue() == "" {
+			secret.Id = &peloton.SecretID{
+				Value: uuid.New(),
+			}
+			log.WithField("job_id", secret.GetId().GetValue()).
+				Info("Genarating UUID for empty secret ID")
+		}
+		// store secret in DB
+		if update {
+			if err := h.secretStore.UpdateSecret(ctx, secret); err != nil {
+				return err
+			}
+		} else {
+			if err := h.secretStore.CreateSecret(ctx, secret, &peloton.JobID{Value: jobID}); err != nil {
+				return err
+			}
+		}
+		// Add volume/secret to default container config with this secret
+		// Use secretID instead of secret data when storing as
+		// part of default config in DB.
+		// This is done to prevent secrets leaks via logging/API etc.
+		// At the time of task launch, launcher will read the
+		// secret by secret-id and replace it by secret data.
+		for _, container := range jobSpec.GetDefaultSpec().GetContainers() {
+			container.GetContainer().Volumes =
+				append(container.GetContainer().Volumes,
+					util.CreateSecretVolume(secret.GetPath(),
+						secret.GetId().GetValue()),
+				)
+		}
+	}
+	return nil
 }
 
 func convertInstanceIDListToInstanceRange(instIDs []uint32) []*pod.InstanceIDRange {

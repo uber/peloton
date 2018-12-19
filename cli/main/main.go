@@ -246,6 +246,14 @@ var (
 
 	statelessListJobs = stateless.Command("list", "list all jobs")
 
+	statelessCreate            = stateless.Command("create", "create stateless job")
+	statelessCreateResPoolPath = statelessCreate.Arg("respool", "complete path of the "+
+		"resource pool starting from the root").Required().String()
+	statelessCreateSpec       = statelessCreate.Arg("spec", "YAML job specification").Required().ExistingFile()
+	statelessCreateID         = statelessCreate.Flag("jobID", "optional job identifier, must be UUID format").Short('i').String()
+	statelessCreateSecretPath = statelessCreate.Flag("secret-path", "secret mount path").Default("").String()
+	statelessCreateSecret     = statelessCreate.Flag("secret-data", "secret data string").Default("").String()
+
 	statelessReplaceJobDiff = stateless.Command("replace-diff",
 		"dry-run of replace to the the instances to be added/removed/updated/unchanged")
 	statelessReplaceJobDiffJobID       = statelessReplaceJobDiff.Arg("job", "job identifier").Required().String()
@@ -786,6 +794,14 @@ func main() {
 			*statelessReplaceJobDiffSpec,
 			*statelessReplaceJobDiffEntityVersion,
 			*statelessReplaceJobDiffResPoolPath,
+		)
+	case statelessCreate.FullCommand():
+		err = client.StatelessCreateAction(
+			*statelessCreateID,
+			*statelessCreateResPoolPath,
+			*statelessCreateSpec,
+			*statelessCreateSecretPath,
+			[]byte(*statelessCreateSecret),
 		)
 	case podLogsGet.FullCommand():
 		err = client.PodLogsGetAction(*podLogsGetFileName, *podLogsGetPodName, *podLogsGetPodID)

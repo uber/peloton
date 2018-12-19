@@ -23,6 +23,8 @@ message CreateJobRequest {
   // The configuration of the job to be created.
   stateless.JobSpec spec = 2;
 
+  // Experimental: This is a batch feature. The implementation
+  // is subject to change (or removal) from stateless.
   // The list of secrets for this job
   repeated peloton.Secret secrets = 3;
 }

@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common"
@@ -180,6 +181,24 @@ func CreateSecretProto(id, path string, data []byte) *peloton.Secret {
 		},
 		Path: path,
 		Value: &peloton.Secret_Value{
+			Data: data,
+		},
+	}
+}
+
+// CreateV1AlphaSecretProto creates v1alpha secret proto
+// message from secret-id, path and data
+func CreateV1AlphaSecretProto(id, path string, data []byte) *v1alphapeloton.Secret {
+	// base64 encode the secret data
+	if len(data) > 0 {
+		data = []byte(base64.StdEncoding.EncodeToString(data))
+	}
+	return &v1alphapeloton.Secret{
+		SecretId: &v1alphapeloton.SecretID{
+			Value: id,
+		},
+		Path: path,
+		Value: &v1alphapeloton.Secret_Value{
 			Data: data,
 		},
 	}

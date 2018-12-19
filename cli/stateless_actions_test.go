@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io"
+	"io/ioutil"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -14,20 +15,27 @@ import (
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/util/handler"
+
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/yarpc/yarpcerrors"
+	"gopkg.in/yaml.v2"
 )
 
 const (
 	testStatelessSpecConfig = "../example/stateless/testspec.yaml"
+	testRespoolPath         = "/testPath"
+	testEntityVersion       = "1-0"
 )
 
 type statelessActionsTestSuite struct {
 	suite.Suite
-	ctx    context.Context
-	client Client
+	ctx       context.Context
+	client    Client
+	respoolID *v1alphapeloton.ResourcePoolID
 
 	ctrl            *gomock.Controller
 	statelessClient *mocks.MockJobServiceYARPCClient
@@ -39,6 +47,7 @@ func (suite *statelessActionsTestSuite) SetupTest() {
 	suite.statelessClient = mocks.NewMockJobServiceYARPCClient(suite.ctrl)
 	suite.resClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.ctx = context.Background()
+	suite.respoolID = &v1alphapeloton.ResourcePoolID{Value: uuid.New()}
 	suite.client = Client{
 		Debug:           false,
 		statelessClient: suite.statelessClient,
@@ -289,7 +298,6 @@ func (suite *statelessActionsTestSuite) TestStatelessQueryActionError() {
 func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionSuccess() {
 	batchSize := uint32(1)
 	respoolPath := "/testPath"
-	entityVersion := "1-1"
 	override := false
 	maxInstanceRetries := uint32(2)
 	maxTolerableInstanceFailures := uint32(1)
@@ -318,7 +326,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionSuccess() {
 		testStatelessSpecConfig,
 		batchSize,
 		respoolPath,
-		entityVersion,
+		testEntityVersion,
 		override,
 		maxInstanceRetries,
 		maxTolerableInstanceFailures,
@@ -332,8 +340,6 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionSuccess() {
 // job due to look up resource pool fails
 func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionLookupResourcePoolIDFail() {
 	batchSize := uint32(1)
-	respoolPath := "/testPath"
-	entityVersion := "1-1"
 	override := false
 	maxInstanceRetries := uint32(2)
 	maxTolerableInstanceFailures := uint32(1)
@@ -343,7 +349,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionLookupResou
 	suite.resClient.EXPECT().
 		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
 			Path: &respool.ResourcePoolPath{
-				Value: respoolPath,
+				Value: testRespoolPath,
 			},
 		}).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
@@ -352,8 +358,8 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionLookupResou
 		testJobID,
 		testStatelessSpecConfig,
 		batchSize,
-		respoolPath,
-		entityVersion,
+		testRespoolPath,
+		testEntityVersion,
 		override,
 		maxInstanceRetries,
 		maxTolerableInstanceFailures,
@@ -416,6 +422,185 @@ func (suite *statelessActionsTestSuite) TestStatelessListJobsActionRecvError() {
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
 	suite.Error(suite.client.StatelessListJobsAction())
+}
+
+// TestStatelessCreateJobActionSuccess tests the success case of creating a job
+func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionSuccess() {
+	gomock.InOrder(
+		suite.resClient.EXPECT().
+			LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: testRespoolPath,
+				},
+			}).
+			Return(&respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{Value: suite.respoolID.GetValue()},
+			}, nil),
+
+		suite.statelessClient.EXPECT().
+			CreateJob(
+				gomock.Any(),
+				&svc.CreateJobRequest{
+					JobId: &v1alphapeloton.JobID{Value: testJobID},
+					Spec:  suite.getSpec(),
+					Secrets: handler.ConvertV0SecretsToV1Secrets([]*peloton.Secret{
+						jobmgrtask.CreateSecretProto(
+							"", testSecretPath, []byte(testSecretStr),
+						),
+					}),
+				},
+			).Return(&svc.CreateJobResponse{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: &v1alphapeloton.EntityVersion{Value: testEntityVersion},
+		}, nil),
+	)
+
+	suite.NoError(suite.client.StatelessCreateAction(
+		testJobID,
+		testRespoolPath,
+		testStatelessSpecConfig,
+		testSecretPath,
+		[]byte(testSecretStr),
+	))
+}
+
+// TestStatelessCreateJobActionLookupResourcePoolIDFailure tests the failure
+// case of creating a stateless job due to look up resource pool failure
+func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionLookupResourcePoolIDFailure() {
+	suite.resClient.EXPECT().
+		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+			Path: &respool.ResourcePoolPath{
+				Value: testRespoolPath,
+			},
+		}).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessCreateAction(
+		testJobID,
+		testRespoolPath,
+		testStatelessSpecConfig,
+		testSecretPath,
+		[]byte(testSecretStr),
+	))
+}
+
+// TestStatelessCreateJobActionNilResourcePoolID tests the failure case of
+// creating a stateless job due to look up resource pool returns nil respoolID
+func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionNilResourcePoolID() {
+	suite.resClient.EXPECT().
+		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+			Path: &respool.ResourcePoolPath{
+				Value: testRespoolPath,
+			},
+		}).Return(&respool.LookupResponse{}, nil)
+
+	suite.Error(suite.client.StatelessCreateAction(
+		testJobID,
+		testRespoolPath,
+		testStatelessSpecConfig,
+		testSecretPath,
+		[]byte(testSecretStr),
+	))
+}
+
+// TestStatelessCreateJobActionJobAlreadyExists tests the failure case of
+// creating a job when the jobID already exists
+func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionJobAlreadyExists() {
+	gomock.InOrder(
+		suite.resClient.EXPECT().
+			LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: testRespoolPath,
+				},
+			}).
+			Return(&respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{Value: suite.respoolID.GetValue()},
+			}, nil),
+
+		suite.statelessClient.EXPECT().
+			CreateJob(
+				gomock.Any(),
+				&svc.CreateJobRequest{
+					JobId: &v1alphapeloton.JobID{Value: testJobID},
+					Spec:  suite.getSpec(),
+				},
+			).Return(nil, yarpcerrors.AlreadyExistsErrorf("test error")),
+	)
+
+	suite.Error(suite.client.StatelessCreateAction(
+		testJobID,
+		testRespoolPath,
+		testStatelessSpecConfig,
+		"",
+		[]byte(""),
+	))
+}
+
+// TestStatelessCreateJobActionInvalidSpec tests the failure case of
+// creating a job due to invalid spec path
+func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionInvalidSpecPath() {
+	gomock.InOrder(
+		suite.resClient.EXPECT().
+			LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: testRespoolPath,
+				},
+			}).
+			Return(&respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{Value: suite.respoolID.GetValue()},
+			}, nil),
+	)
+
+	suite.Error(suite.client.StatelessCreateAction(
+		testJobID,
+		testRespoolPath,
+		"invalid-path",
+		"",
+		[]byte(""),
+	))
+}
+
+// TestStatelessCreateJobActionUnmarshalFailed tests the failure case of
+// creating a job due to error while unmarshaling job spec
+func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionInvalidSpec() {
+	gomock.InOrder(
+		suite.resClient.EXPECT().
+			LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: testRespoolPath,
+				},
+			}).
+			Return(&respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{Value: suite.respoolID.GetValue()},
+			}, nil),
+
+		suite.statelessClient.EXPECT().
+			CreateJob(
+				gomock.Any(),
+				&svc.CreateJobRequest{
+					JobId: &v1alphapeloton.JobID{Value: testJobID},
+					Spec:  suite.getSpec(),
+				},
+			).Return(nil, yarpcerrors.InvalidArgumentErrorf("test error")),
+	)
+
+	suite.Error(suite.client.StatelessCreateAction(
+		testJobID,
+		testRespoolPath,
+		testStatelessSpecConfig,
+		"",
+		[]byte(""),
+	))
+}
+
+func (suite *statelessActionsTestSuite) getSpec() *stateless.JobSpec {
+	var jobSpec stateless.JobSpec
+	buffer, err := ioutil.ReadFile(testStatelessSpecConfig)
+	suite.NoError(err)
+	err = yaml.Unmarshal(buffer, &jobSpec)
+	suite.NoError(err)
+	jobSpec.RespoolId = suite.respoolID
+	return &jobSpec
 }
 
 // TestStatelessReplaceJobDiffActionSuccess tests successfully invoking

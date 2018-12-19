@@ -2,11 +2,13 @@ package stateless
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
@@ -16,12 +18,17 @@ import (
 	statelesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	statelesssvcmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	pelotonv1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
 	pelotonv1alpharespool "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
+
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
+	handlerutil "code.uber.internal/infra/peloton/jobmgr/util/handler"
 	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
+	"code.uber.internal/infra/peloton/util"
 
 	respoolmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
@@ -36,9 +43,27 @@ import (
 )
 
 const (
-	testJobName  = "test-job"
-	testJobID    = "481d565e-28da-457d-8434-f6bb7faa0e95"
-	testUpdateID = "941ff353-ba82-49fe-8f80-fb5bc649b04d"
+	testJobName              = "test-job"
+	testJobID                = "481d565e-28da-457d-8434-f6bb7faa0e95"
+	testUpdateID             = "941ff353-ba82-49fe-8f80-fb5bc649b04d"
+	testConfigVersion        = int64(1)
+	testEntityVersion        = "1-1"
+	testSecretPath           = "/tmp/secret"
+	testSecretStr            = "top-secret-token"
+	testConfigurationVersion = uint64(1)
+)
+
+var (
+	testRespoolID = &v1alphapeloton.ResourcePoolID{
+		Value: "test-respool",
+	}
+	testCmd               = "echo test"
+	defaultResourceConfig = &pod.ResourceSpec{
+		CpuLimit:    10,
+		MemLimitMb:  10,
+		DiskLimitMb: 10,
+		FdLimit:     10,
+	}
 )
 
 type statelessHandlerTestSuite struct {
@@ -56,6 +81,7 @@ type statelessHandlerTestSuite struct {
 	jobStore        *storemocks.MockJobStore
 	updateStore     *storemocks.MockUpdateStore
 	listJobsServer  *statelesssvcmocks.MockJobServiceServiceListJobsYARPCServer
+	secretStore     *storemocks.MockSecretStore
 	taskStore       *storemocks.MockTaskStore
 }
 
@@ -71,6 +97,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.respoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.listJobsServer = statelesssvcmocks.NewMockJobServiceServiceListJobsYARPCServer(suite.ctrl)
+	suite.secretStore = storemocks.NewMockSecretStore(suite.ctrl)
 	suite.handler = &serviceHandler{
 		jobFactory:      suite.jobFactory,
 		candidate:       suite.candidate,
@@ -79,6 +106,12 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 		updateStore:     suite.updateStore,
 		taskStore:       suite.taskStore,
 		respoolClient:   suite.respoolClient,
+		secretStore:     suite.secretStore,
+		rootCtx:         context.Background(),
+		jobSvcCfg: jobsvc.Config{
+			EnableSecrets:  true,
+			MaxTasksPerJob: 100000,
+		},
 	}
 }
 
@@ -1454,6 +1487,865 @@ func (suite *statelessHandlerTestSuite) TestListJobsSendError() {
 		&statelesssvc.ListJobsRequest{},
 		suite.listJobsServer,
 	)
+	suite.Error(err)
+}
+
+// TestCreateJobSuccess tests the success case of creating a job
+func (suite *statelessHandlerTestSuite) TestCreateJobSuccess() {
+	defaultSpec := &pod.PodSpec{
+		Containers: []*pod.ContainerSpec{
+			{
+				Command: &mesos.CommandInfo{Value: &testCmd},
+			},
+		},
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: defaultSpec,
+		RespoolId:   testRespoolID,
+	}
+
+	request := &statelesssvc.CreateJobRequest{
+		Spec: jobSpec,
+	}
+
+	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(jobSpec)
+	suite.NoError(err)
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(
+			&respool.GetResponse{
+				Poolinfo: &respool.ResourcePoolInfo{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			}, nil),
+
+		suite.jobFactory.EXPECT().
+			AddJob(gomock.Any()).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			Create(gomock.Any(), jobConfig, gomock.Any(), gomock.Any()).
+			Return(nil),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueJob(
+				gomock.Any(),
+				gomock.Any(),
+			),
+
+		suite.cachedJob.EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(&pbjob.RuntimeInfo{
+				ConfigurationVersion: testConfigurationVersion,
+				WorkflowVersion:      1,
+			}, nil),
+	)
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response.GetJobId())
+	suite.Equal(testEntityVersion, response.GetVersion().GetValue())
+}
+
+// TestCreateJobFailNonLeader tests the failure case of creating job
+// due to JobMgr is not leader
+func (suite *statelessHandlerTestSuite) TestCreateJobFailNonLeader() {
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(false)
+
+	resp, err := suite.handler.CreateJob(
+		context.Background(),
+		&statelesssvc.CreateJobRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		})
+	suite.Nil(resp)
+	suite.Error(err)
+}
+
+// TestCreateJobFailInvalidJobID tests the failure case of creating job
+// due to invalid JobID provided in the request
+func (suite *statelessHandlerTestSuite) TestCreateJobFailInvalidJobID() {
+	suite.candidate.EXPECT().IsLeader().Return(true)
+
+	response, err := suite.handler.CreateJob(
+		context.Background(),
+		&statelesssvc.CreateJobRequest{
+			JobId: &v1alphapeloton.JobID{Value: "invalid-Job-ID"},
+		})
+	suite.Nil(response)
+	suite.Error(err)
+}
+
+// TestCreateJobFailNullResourcePool tests the failure case of creating job
+// due to missing resource pool in the request
+func (suite *statelessHandlerTestSuite) TestCreateJobFailNullResourcePool() {
+	suite.candidate.EXPECT().IsLeader().Return(true)
+
+	resp, err := suite.handler.CreateJob(
+		context.Background(),
+		&statelesssvc.CreateJobRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		})
+	suite.Nil(resp)
+	suite.Error(err)
+}
+
+// TestCreateJobFailRootResourcePool tests the failure case of creating job
+// due to root resource pool provided in the request
+func (suite *statelessHandlerTestSuite) TestCreateJobFailRootResourcePool() {
+	suite.candidate.EXPECT().IsLeader().Return(true)
+
+	resp, err := suite.handler.CreateJob(
+		context.Background(),
+		&statelesssvc.CreateJobRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+			Spec: &stateless.JobSpec{
+				RespoolId: &v1alphapeloton.ResourcePoolID{
+					Value: common.RootResPoolID,
+				},
+			},
+		})
+	suite.Nil(resp)
+	suite.Error(err)
+}
+
+// TestCreateJobFailGetResourcePoolFailure tests the failure case of creating job
+// due to error while getting resource pool info
+func (suite *statelessHandlerTestSuite) TestCreateJobFailGetResourcePoolFailure() {
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(nil, yarpcerrors.InternalErrorf("test error")),
+	)
+
+	jobSpec := &stateless.JobSpec{
+		RespoolId: testRespoolID,
+	}
+	request := &statelesssvc.CreateJobRequest{
+		Spec: jobSpec,
+	}
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.Error(err)
+	suite.Nil(response)
+}
+
+// TestCreateJobFailResourcePoolNotFound tests the failure case of creating job
+// due to resource pool not found error
+func (suite *statelessHandlerTestSuite) TestCreateJobFailResourcePoolNotFound() {
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(&respool.GetResponse{}, nil),
+	)
+
+	jobSpec := &stateless.JobSpec{
+		RespoolId: testRespoolID,
+	}
+	request := &statelesssvc.CreateJobRequest{
+		Spec: jobSpec,
+	}
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.Error(err)
+	suite.Nil(response)
+}
+
+// TestCreateJobFailResourcePoolNotFound tests the failure case of creating job
+// due to non-leaf resource pool provided in the request
+func (suite *statelessHandlerTestSuite) TestCreateJobFailNonLeafResourcePool() {
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(&respool.GetResponse{
+			Poolinfo: &respool.ResourcePoolInfo{
+				Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				Children: []*peloton.ResourcePoolID{
+					{
+						Value: "child-respool1",
+					},
+				},
+			},
+		}, nil),
+	)
+
+	jobSpec := &stateless.JobSpec{
+		RespoolId: testRespoolID,
+	}
+	request := &statelesssvc.CreateJobRequest{
+		Spec: jobSpec,
+	}
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.Error(err)
+	suite.Nil(response)
+}
+
+// TestCreateJobFailJobSpecToJobConfigConversionFailure tests the failure case of creating job
+// due to error while converting job spec to job config
+func (suite *statelessHandlerTestSuite) TestCreateJobFailJobSpecToJobConfigConversionFailure() {
+	defaultSpec := &pod.PodSpec{
+		Containers: []*pod.ContainerSpec{
+			{
+				Command: &mesos.CommandInfo{Value: &testCmd},
+			},
+			{
+				Command: &mesos.CommandInfo{Value: &testCmd},
+			},
+		},
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: defaultSpec,
+		RespoolId:   testRespoolID,
+	}
+	request := &statelesssvc.CreateJobRequest{
+		Spec: jobSpec,
+	}
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(
+			&respool.GetResponse{
+				Poolinfo: &respool.ResourcePoolInfo{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			}, nil),
+	)
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.Error(err)
+	suite.Nil(response)
+}
+
+// TestCreateJobFailInvalidJobConfig tests the failure case of creating job
+// due to invalid job config
+func (suite *statelessHandlerTestSuite) TestCreateJobFailInvalidJobConfig() {
+	jobSpec := &stateless.JobSpec{
+		RespoolId:     testRespoolID,
+		InstanceCount: suite.handler.jobSvcCfg.MaxTasksPerJob + 1,
+	}
+	request := &statelesssvc.CreateJobRequest{
+		Spec: jobSpec,
+	}
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(
+			&respool.GetResponse{
+				Poolinfo: &respool.ResourcePoolInfo{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			}, nil),
+	)
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.Error(err)
+	suite.Nil(response)
+}
+
+// TestCreateJobWithSecretsSuccess tests success scenario
+// of creating a job with secrets
+func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsSuccess() {
+	testCmd := "echo test"
+	mesosContainerizer := mesos.ContainerInfo_MESOS
+	dockerContainerizer := mesos.ContainerInfo_DOCKER
+	defaultSpec := &pod.PodSpec{
+		Containers: []*pod.ContainerSpec{
+			{
+				Command:   &mesos.CommandInfo{Value: &testCmd},
+				Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+			},
+		},
+	}
+	respoolID := &v1alphapeloton.ResourcePoolID{
+		Value: "test-respool",
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: defaultSpec,
+		RespoolId:   respoolID,
+	}
+
+	jobSpec.InstanceSpec = make(map[uint32]*pod.PodSpec)
+	for i := uint32(0); i < 25; i++ {
+		jobSpec.InstanceSpec[i] = &pod.PodSpec{
+			Containers: []*pod.ContainerSpec{
+				{
+					Resource:  defaultResourceConfig,
+					Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+				},
+			},
+		}
+	}
+	// Create job where one instance is using docker containerizer.
+	// The create should succeed and this instance will be
+	// launched without secrets because container info in default
+	// config is overridden.
+	jobSpec.InstanceSpec[10].Containers[0].Container =
+		&mesos.ContainerInfo{Type: &dockerContainerizer}
+
+	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(jobSpec)
+	suite.NoError(err)
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(
+			&respool.GetResponse{
+				Poolinfo: &respool.ResourcePoolInfo{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			}, nil),
+
+		suite.secretStore.EXPECT().CreateSecret(
+			gomock.Any(), gomock.Any(), &peloton.JobID{Value: testJobID}).
+			Return(nil),
+
+		suite.jobFactory.EXPECT().
+			AddJob(gomock.Any()).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			Create(gomock.Any(), jobConfig, gomock.Any(), gomock.Any()).
+			Return(nil),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueJob(
+				gomock.Any(),
+				gomock.Any(),
+			),
+
+		suite.cachedJob.EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(&pbjob.RuntimeInfo{
+				ConfigurationVersion: testConfigurationVersion,
+			}, nil),
+	)
+
+	secret := &v1alphapeloton.Secret{
+		Path: testSecretPath,
+		Value: &v1alphapeloton.Secret_Value{
+			Data: []byte(base64.StdEncoding.EncodeToString(
+				[]byte(testSecretStr))),
+		},
+	}
+
+	// Create a job with a secret
+	request := &statelesssvc.CreateJobRequest{
+		JobId:   &v1alphapeloton.JobID{Value: testJobID},
+		Spec:    jobSpec,
+		Secrets: []*v1alphapeloton.Secret{secret},
+	}
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+	suite.Equal(testJobID, response.GetJobId().GetValue())
+}
+
+// TestCreateJobWithSecretsFailureSecretsAddedToSpec tests failure scenario of
+// creating a job with secrets when secret volumes are directly added to job spec
+func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsFailureSecretsAddedToSpec() {
+	testCmd := "echo test"
+	mesosContainerizer := mesos.ContainerInfo_MESOS
+	defaultSpec := &pod.PodSpec{
+		Containers: []*pod.ContainerSpec{
+			{
+				Command:   &mesos.CommandInfo{Value: &testCmd},
+				Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+			},
+		},
+	}
+	respoolID := &v1alphapeloton.ResourcePoolID{
+		Value: "test-respool",
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: defaultSpec,
+		RespoolId:   respoolID,
+	}
+
+	secret := &peloton.Secret{
+		Path: testSecretPath,
+		Value: &peloton.Secret_Value{
+			Data: []byte(base64.StdEncoding.EncodeToString(
+				[]byte(testSecretStr))),
+		},
+	}
+
+	jobSpec.GetDefaultSpec().GetContainers()[0].GetContainer().Volumes =
+		append(
+			jobSpec.GetDefaultSpec().GetContainers()[0].GetContainer().Volumes,
+			util.CreateSecretVolume(secret.GetPath(),
+				secret.GetId().GetValue()),
+		)
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(
+			&respool.GetResponse{
+				Poolinfo: &respool.ResourcePoolInfo{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			}, nil),
+	)
+
+	request := &statelesssvc.CreateJobRequest{
+		JobId:   &v1alphapeloton.JobID{Value: testJobID},
+		Spec:    jobSpec,
+		Secrets: handlerutil.ConvertV0SecretsToV1Secrets([]*peloton.Secret{secret}),
+	}
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.Nil(response)
+	suite.Error(err)
+}
+
+// TestCreateJobWithSecretsCreateSecretsFailure tests failure scenario of
+// creating a job with secrets due to db error
+func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsCreateSecretsFailure() {
+	testCmd := "echo test"
+	mesosContainerizer := mesos.ContainerInfo_MESOS
+	defaultSpec := &pod.PodSpec{
+		Containers: []*pod.ContainerSpec{
+			{
+				Command:   &mesos.CommandInfo{Value: &testCmd},
+				Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+			},
+		},
+	}
+	respoolID := &v1alphapeloton.ResourcePoolID{
+		Value: "test-respool",
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: defaultSpec,
+		RespoolId:   respoolID,
+	}
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(
+			&respool.GetResponse{
+				Poolinfo: &respool.ResourcePoolInfo{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			}, nil),
+
+		suite.secretStore.EXPECT().CreateSecret(
+			gomock.Any(), gomock.Any(), &peloton.JobID{Value: testJobID}).
+			Return(yarpcerrors.InternalErrorf("test error")),
+	)
+
+	secret := &v1alphapeloton.Secret{
+		Path: testSecretPath,
+		Value: &v1alphapeloton.Secret_Value{
+			Data: []byte(base64.StdEncoding.EncodeToString(
+				[]byte(testSecretStr))),
+		},
+	}
+
+	request := &statelesssvc.CreateJobRequest{
+		JobId:   &v1alphapeloton.JobID{Value: testJobID},
+		Spec:    jobSpec,
+		Secrets: []*v1alphapeloton.Secret{secret},
+	}
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.Nil(response)
+	suite.Error(err)
+}
+
+// TestCreateJobWithSecretsFailureNoContainerizer tests failure scenario of
+// creating a job with secrets when default spec doesn't contain any containers
+func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsFailureNoContainerizer() {
+	testCmd := "echo test"
+	defaultSpec := &pod.PodSpec{
+		Containers: []*pod.ContainerSpec{
+			{
+				Command: &mesos.CommandInfo{Value: &testCmd},
+			},
+		},
+	}
+	respoolID := &v1alphapeloton.ResourcePoolID{
+		Value: "test-respool",
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: defaultSpec,
+		RespoolId:   respoolID,
+	}
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(
+			&respool.GetResponse{
+				Poolinfo: &respool.ResourcePoolInfo{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			}, nil),
+	)
+
+	secret := &v1alphapeloton.Secret{
+		Path: testSecretPath,
+		Value: &v1alphapeloton.Secret_Value{
+			Data: []byte(base64.StdEncoding.EncodeToString(
+				[]byte(testSecretStr))),
+		},
+	}
+
+	request := &statelesssvc.CreateJobRequest{
+		JobId:   &v1alphapeloton.JobID{Value: testJobID},
+		Spec:    jobSpec,
+		Secrets: []*v1alphapeloton.Secret{secret},
+	}
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.Nil(response)
+	suite.Error(err)
+}
+
+// TestCreateJobWithSecretsFailureEncodingError tests failure scenario of
+// creating a job with secrets that are not base64 encoded
+func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsFailureEncodingError() {
+	testCmd := "echo test"
+	defaultSpec := &pod.PodSpec{
+		Containers: []*pod.ContainerSpec{
+			{
+				Command: &mesos.CommandInfo{Value: &testCmd},
+			},
+		},
+	}
+	respoolID := &v1alphapeloton.ResourcePoolID{
+		Value: "test-respool",
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: defaultSpec,
+		RespoolId:   respoolID,
+	}
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(
+			&respool.GetResponse{
+				Poolinfo: &respool.ResourcePoolInfo{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			}, nil),
+	)
+
+	secret := &v1alphapeloton.Secret{
+		Path: testSecretPath,
+		Value: &v1alphapeloton.Secret_Value{
+			Data: []byte(testSecretStr),
+		},
+	}
+
+	request := &statelesssvc.CreateJobRequest{
+		JobId:   &v1alphapeloton.JobID{Value: testJobID},
+		Spec:    jobSpec,
+		Secrets: []*v1alphapeloton.Secret{secret},
+	}
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.Nil(response)
+	suite.Error(err)
+}
+
+// TestCreateJobWithSecretsFailureNonMesosContainerizer tests failure scenario of
+// creating a job with secrets when default spec doesn't use Mesos containerizer
+func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsFailureNonMesosContainerizer() {
+	testCmd := "echo test"
+	dockerContainerizer := mesos.ContainerInfo_DOCKER
+	defaultSpec := &pod.PodSpec{
+		Containers: []*pod.ContainerSpec{
+			{
+				Command:   &mesos.CommandInfo{Value: &testCmd},
+				Container: &mesos.ContainerInfo{Type: &dockerContainerizer},
+			},
+		},
+	}
+	respoolID := &v1alphapeloton.ResourcePoolID{
+		Value: "test-respool",
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: defaultSpec,
+		RespoolId:   respoolID,
+	}
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(
+			&respool.GetResponse{
+				Poolinfo: &respool.ResourcePoolInfo{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			}, nil),
+	)
+
+	secret := &v1alphapeloton.Secret{
+		Path: testSecretPath,
+		Value: &v1alphapeloton.Secret_Value{
+			Data: []byte(testSecretStr),
+		},
+	}
+
+	request := &statelesssvc.CreateJobRequest{
+		JobId:   &v1alphapeloton.JobID{Value: testJobID},
+		Spec:    jobSpec,
+		Secrets: []*v1alphapeloton.Secret{secret},
+	}
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.Nil(response)
+	suite.Error(err)
+}
+
+// TestCreateJobWithSecretsFailureSecretsDisabled tests failure scenario of
+// creating a job with secrets when secrets are not enabled in JobSvcCfg
+func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsFailureSecretsDisabled() {
+	testCmd := "echo test"
+	mesosContainerizer := mesos.ContainerInfo_MESOS
+	defaultSpec := &pod.PodSpec{
+		Containers: []*pod.ContainerSpec{
+			{
+				Command:   &mesos.CommandInfo{Value: &testCmd},
+				Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+			},
+		},
+	}
+	respoolID := &v1alphapeloton.ResourcePoolID{
+		Value: "test-respool",
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: defaultSpec,
+		RespoolId:   respoolID,
+	}
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(
+			&respool.GetResponse{
+				Poolinfo: &respool.ResourcePoolInfo{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			}, nil),
+	)
+
+	secret := &v1alphapeloton.Secret{
+		Path: testSecretPath,
+		Value: &v1alphapeloton.Secret_Value{
+			Data: []byte(testSecretStr),
+		},
+	}
+
+	request := &statelesssvc.CreateJobRequest{
+		JobId:   &v1alphapeloton.JobID{Value: testJobID},
+		Spec:    jobSpec,
+		Secrets: []*v1alphapeloton.Secret{secret},
+	}
+
+	suite.handler.jobSvcCfg.EnableSecrets = false
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.Nil(response)
+	suite.Error(err)
+}
+
+// TestCreateJobWithSecretsFailureJobCacheCreateError tests failure scenario of
+// creating a job with secrets due to error while creating job in cache
+func (suite *statelessHandlerTestSuite) TestCreateJobFailureJobCacheCreateError() {
+	respoolID := &v1alphapeloton.ResourcePoolID{
+		Value: "test-respool",
+	}
+	jobSpec := &stateless.JobSpec{
+		RespoolId: respoolID,
+	}
+
+	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(jobSpec)
+	suite.NoError(err)
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(
+			&respool.GetResponse{
+				Poolinfo: &respool.ResourcePoolInfo{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			}, nil),
+
+		suite.jobFactory.EXPECT().
+			AddJob(gomock.Any()).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			Create(gomock.Any(), jobConfig, gomock.Any(), gomock.Any()).
+			Return(yarpcerrors.InternalErrorf("test error")),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueJob(
+				gomock.Any(),
+				gomock.Any(),
+			),
+	)
+
+	request := &statelesssvc.CreateJobRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+		Spec:  jobSpec,
+	}
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.Nil(response)
+	suite.Error(err)
+}
+
+// TestCreateJobFailureGetJobRuntimeError tests failure scenario of
+// creating a job due to error while getting job runtime
+func (suite *statelessHandlerTestSuite) TestCreateJobFailureGetJobRuntimeError() {
+	respoolID := &v1alphapeloton.ResourcePoolID{
+		Value: "test-respool",
+	}
+	jobSpec := &stateless.JobSpec{
+		RespoolId: respoolID,
+	}
+
+	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(jobSpec)
+	suite.NoError(err)
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
+		suite.respoolClient.EXPECT().
+			GetResourcePool(
+				gomock.Any(),
+				&respool.GetRequest{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			).Return(
+			&respool.GetResponse{
+				Poolinfo: &respool.ResourcePoolInfo{
+					Id: &peloton.ResourcePoolID{Value: testRespoolID.GetValue()},
+				},
+			}, nil),
+
+		suite.jobFactory.EXPECT().
+			AddJob(gomock.Any()).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			Create(gomock.Any(), jobConfig, gomock.Any(), gomock.Any()).
+			Return(nil),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueJob(
+				gomock.Any(),
+				gomock.Any(),
+			),
+
+		suite.cachedJob.EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(nil, yarpcerrors.InternalErrorf("test error")),
+	)
+
+	request := &statelesssvc.CreateJobRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+		Spec:  jobSpec,
+	}
+
+	response, err := suite.handler.CreateJob(context.Background(), request)
+	suite.Nil(response)
 	suite.Error(err)
 }
 
