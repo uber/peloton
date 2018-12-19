@@ -43,11 +43,11 @@ def test__preempt_revocable_job_to_run_non_revocable_job():
     revocable_job.wait_for_condition(zero_tasks_running)
 
     revocable_job.stop()
-    revocable_job.wait_for_state(goal_state='KILLED')
+    revocable_job.wait_for_terminated()
     non_revocable_job1.stop()
-    non_revocable_job1.wait_for_state(goal_state='KILLED')
+    non_revocable_job1.wait_for_terminated()
     non_revocable_job2.stop()
-    non_revocable_job2.wait_for_state(goal_state='KILLED')
+    non_revocable_job2.wait_for_terminated()
 
 
 # Resouce Pool reservation memory: 1000MB
@@ -70,7 +70,7 @@ def test__revocable_job_slack_limit():
 
     # cleanup job from jobmgr
     revocable_job.stop()
-    revocable_job.wait_for_state(goal_state='KILLED')
+    revocable_job.wait_for_terminated()
 
 
 # Entitlement: MEMORY: 2000 (1000 reservation and 1000 limit)
@@ -107,7 +107,7 @@ def test__stop_nonrevocable_job_to_free_resources_for_revocable_job():
 
     # stop non_revocable job to free up resources for revocable job
     non_revocable_job2.stop()
-    non_revocable_job2.wait_for_state(goal_state='KILLED')
+    non_revocable_job2.wait_for_terminated()
 
     # After non_revocable job is killed, all revocable tasks should be running
     revocable_job.wait_for_all_tasks_running()
@@ -115,8 +115,8 @@ def test__stop_nonrevocable_job_to_free_resources_for_revocable_job():
     # cleanup jobs from jobmgr
     non_revocable_job1.stop()
     revocable_job.stop()
-    non_revocable_job1.wait_for_state(goal_state='KILLED')
-    revocable_job.wait_for_state(goal_state='KILLED')
+    non_revocable_job1.wait_for_terminated()
+    revocable_job.wait_for_terminated()
 
 
 # Simple scenario, where revocable and non-revocable job
@@ -145,9 +145,9 @@ def test__create_revocable_job():
     revocable_job1.stop()
     revocable_job2.stop()
     non_revocable_job.stop()
-    revocable_job1.wait_for_state(goal_state='KILLED')
-    revocable_job2.wait_for_state(goal_state='KILLED')
-    non_revocable_job.wait_for_state(goal_state='KILLED')
+    revocable_job1.wait_for_terminated()
+    revocable_job2.wait_for_terminated()
+    non_revocable_job.wait_for_terminated()
 
 
 # Revocable tasks are moved to revocable queue, so they do not block
@@ -183,6 +183,6 @@ def test__revocable_tasks_move_to_revocable_queue():
     revocable_job1.stop()
     revocable_job2.stop()
     non_revocable_job.stop()
-    revocable_job1.wait_for_state(goal_state='KILLED')
-    revocable_job2.wait_for_state(goal_state='KILLED')
-    non_revocable_job.wait_for_state(goal_state='KILLED')
+    revocable_job1.wait_for_terminated()
+    revocable_job2.wait_for_terminated()
+    non_revocable_job.wait_for_terminated()
