@@ -3,7 +3,6 @@ package stateless
 import (
 	"context"
 	"encoding/base64"
-	"sort"
 	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -13,7 +12,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	pelotonv1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
@@ -823,10 +821,10 @@ func (h *serviceHandler) GetReplaceJobDiff(
 	}
 
 	return &svc.GetReplaceJobDiffResponse{
-		InstancesAdded:     convertInstanceIDListToInstanceRange(added),
-		InstancesRemoved:   convertInstanceIDListToInstanceRange(removed),
-		InstancesUpdated:   convertInstanceIDListToInstanceRange(updated),
-		InstancesUnchanged: convertInstanceIDListToInstanceRange(unchanged),
+		InstancesAdded:     handlerutil.ConvertInstanceIDListToInstanceRange(added),
+		InstancesRemoved:   handlerutil.ConvertInstanceIDListToInstanceRange(removed),
+		InstancesUpdated:   handlerutil.ConvertInstanceIDListToInstanceRange(updated),
+		InstancesUnchanged: handlerutil.ConvertInstanceIDListToInstanceRange(unchanged),
 	}, nil
 }
 
@@ -1161,43 +1159,4 @@ func (h *serviceHandler) addSecretsToDBAndConfig(
 		}
 	}
 	return nil
-}
-
-func convertInstanceIDListToInstanceRange(instIDs []uint32) []*pod.InstanceIDRange {
-	var instanceIDRange []*pod.InstanceIDRange
-	var instanceRange *pod.InstanceIDRange
-	var prevInstID uint32
-
-	instIDSortLess := func(i, j int) bool {
-		return instIDs[i] < instIDs[j]
-	}
-
-	sort.Slice(instIDs, instIDSortLess)
-
-	for _, instID := range instIDs {
-		if instanceRange == nil {
-			// create a new range
-			instanceRange = &pod.InstanceIDRange{
-				From: instID,
-			}
-		} else {
-			// range already exists
-			if instID != prevInstID+1 {
-				// finish the previous range and start a new one
-				instanceRange.To = prevInstID
-				instanceIDRange = append(instanceIDRange, instanceRange)
-				instanceRange = &pod.InstanceIDRange{
-					From: instID,
-				}
-			}
-		}
-		prevInstID = instID
-	}
-
-	// finish the last instance range
-	if instanceRange != nil {
-		instanceRange.To = prevInstID
-		instanceIDRange = append(instanceIDRange, instanceRange)
-	}
-	return instanceIDRange
 }

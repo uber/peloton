@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"sort"
+
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pelotonv0query "code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
@@ -58,7 +60,8 @@ func ConvertTaskStateToPodState(state task.TaskState) pod.PodState {
 	return pod.PodState_POD_STATE_INVALID
 }
 
-// ConvertTaskRuntimeToPodStatus converts v0 task.RuntimeInfo to pod.PodStatus
+// ConvertTaskRuntimeToPodStatus converts
+// v0 task.RuntimeInfo to v1alpha pod.PodStatus
 func ConvertTaskRuntimeToPodStatus(runtime *task.RuntimeInfo) *pod.PodStatus {
 	return &pod.PodStatus{
 		State:          ConvertTaskStateToPodState(runtime.GetState()),
@@ -128,7 +131,7 @@ func ConvertTaskConfigToPodSpec(taskConfig *task.TaskConfig) *pod.PodSpec {
 						UnshareEnvironments: taskConfig.GetHealthCheck().GetCommandCheck().GetUnshareEnvironments(),
 					},
 				},
-				Ports: ConvertContainerPorts(taskConfig.GetPorts()),
+				Ports: ConvertPortConfigsToPortSpecs(taskConfig.GetPorts()),
 			},
 		},
 		Constraint: constraint,
@@ -176,6 +179,7 @@ func ConvertTaskConstraintsToPodConstraints(constraints []*task.Constraint) []*p
 					constraint.GetLabelConstraint().GetCondition(),
 				),
 				Label: &v1alphapeloton.Label{
+					Key:   constraint.GetLabelConstraint().GetLabel().GetKey(),
 					Value: constraint.GetLabelConstraint().GetLabel().GetValue(),
 				},
 				Requirement: constraint.GetLabelConstraint().GetRequirement(),
@@ -191,9 +195,9 @@ func ConvertTaskConstraintsToPodConstraints(constraints []*task.Constraint) []*p
 	return podConstraints
 }
 
-// ConvertContainerPorts converts v0 task.PortConfig array to
+// ConvertPortConfigsToPortSpecs converts v0 task.PortConfig array to
 // v1alpha pod.PortSpec array
-func ConvertContainerPorts(ports []*task.PortConfig) []*pod.PortSpec {
+func ConvertPortConfigsToPortSpecs(ports []*task.PortConfig) []*pod.PortSpec {
 	var containerPorts []*pod.PortSpec
 	for _, p := range ports {
 		containerPorts = append(
@@ -356,7 +360,7 @@ func ConvertUpdateModelToWorkflowInfo(
 		}
 	} else if updateInfo.GetType() == models.WorkflowType_RESTART {
 		result.RestartBatchSize = updateInfo.GetUpdateConfig().GetBatchSize()
-		// TODO store and implement the restart ranges provided in the configuration
+		result.RestartRanges = ConvertInstanceIDListToInstanceRange(updateInfo.GetInstancesCurrent())
 	}
 
 	result.OpaqueData = &v1alphapeloton.OpaqueData{
@@ -603,6 +607,11 @@ func ConvertPodSpecToTaskConfig(spec *pod.PodSpec) (*task.TaskConfig, error) {
 		result.PreemptionPolicy = &task.PreemptionPolicy{
 			KillOnPreempt: spec.GetPreemptionPolicy().GetKillOnPreempt(),
 		}
+		if result.GetPreemptionPolicy().GetKillOnPreempt() {
+			result.PreemptionPolicy.Type = task.PreemptionPolicy_TYPE_PREEMPTIBLE
+		} else {
+			result.PreemptionPolicy.Type = task.PreemptionPolicy_TYPE_NON_PREEMPTIBLE
+		}
 	}
 
 	return result, nil
@@ -664,4 +673,45 @@ func ConvertUpdateSpecToUpdateConfig(spec *stateless.UpdateSpec) *update.UpdateC
 		MaxFailureInstances: spec.GetMaxTolerableInstanceFailures(),
 		StartPaused:         spec.GetStartPaused(),
 	}
+}
+
+// ConvertInstanceIDListToInstanceRange converts list
+// of instance ids to list of instance ranges
+func ConvertInstanceIDListToInstanceRange(instIDs []uint32) []*pod.InstanceIDRange {
+	var instanceIDRange []*pod.InstanceIDRange
+	var instanceRange *pod.InstanceIDRange
+	var prevInstID uint32
+
+	instIDSortLess := func(i, j int) bool {
+		return instIDs[i] < instIDs[j]
+	}
+
+	sort.Slice(instIDs, instIDSortLess)
+
+	for _, instID := range instIDs {
+		if instanceRange == nil {
+			// create a new range
+			instanceRange = &pod.InstanceIDRange{
+				From: instID,
+			}
+		} else {
+			// range already exists
+			if instID != prevInstID+1 {
+				// finish the previous range and start a new one
+				instanceRange.To = prevInstID
+				instanceIDRange = append(instanceIDRange, instanceRange)
+				instanceRange = &pod.InstanceIDRange{
+					From: instID,
+				}
+			}
+		}
+		prevInstID = instID
+	}
+
+	// finish the last instance range
+	if instanceRange != nil {
+		instanceRange.To = prevInstID
+		instanceIDRange = append(instanceIDRange, instanceRange)
+	}
+	return instanceIDRange
 }

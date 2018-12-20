@@ -290,53 +290,31 @@ func (c *Client) StatelessReplaceJobAction(
 	return nil
 }
 
-// StatelessCreateAction is the action for creating a stateless job
-func (c *Client) StatelessCreateAction(
-	jobID string,
-	respoolPath string,
-	cfg string,
-	secretPath string,
-	secret []byte,
-) error {
-	respoolID, err := c.LookupResourcePoolID(respoolPath)
+// StatelessListJobsAction prints summary of all jobs using the ListJobs API
+func (c *Client) StatelessListJobsAction() error {
+	stream, err := c.statelessClient.ListJobs(
+		c.ctx,
+		&statelesssvc.ListJobsRequest{},
+	)
 	if err != nil {
 		return err
 	}
-	if respoolID == nil {
-		return fmt.Errorf("unable to find resource pool ID for "+
-			":%s", respoolPath)
-	}
 
-	var jobSpec stateless.JobSpec
-	buffer, err := ioutil.ReadFile(cfg)
-	if err != nil {
-		return fmt.Errorf("unable to open file %s: %v", cfg, err)
-	}
-	if err := yaml.Unmarshal(buffer, &jobSpec); err != nil {
-		return fmt.Errorf("unable to parse file %s: %v", cfg, err)
-	}
-
-	jobSpec.RespoolId = &v1alphapeloton.ResourcePoolID{Value: respoolID.GetValue()}
-
-	var request = &statelesssvc.CreateJobRequest{
-		JobId: &v1alphapeloton.JobID{
-			Value: jobID,
-		},
-		Spec: &jobSpec,
-	}
-
-	// handle secrets
-	if secretPath != "" && len(secret) > 0 {
-		request.Secrets = []*v1alphapeloton.Secret{
-			jobmgrtask.CreateV1AlphaSecretProto("", secretPath, secret),
+	fmt.Fprint(tabWriter, statlessJobSummaryFormatHeader)
+	tabWriter.Flush()
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			return nil
 		}
+
+		if err != nil {
+			return err
+		}
+
+		printListJobsResponse(resp)
+		tabWriter.Flush()
 	}
-
-	response, err := c.statelessClient.CreateJob(c.ctx, request)
-
-	printStatelessJobCreateResponse(request, response, err, c.Debug)
-
-	return err
 }
 
 // StatelessReplaceJobDiffAction returns the set of instances which will be
@@ -387,31 +365,89 @@ func (c *Client) StatelessReplaceJobDiffAction(
 	return nil
 }
 
-// StatelessListJobsAction prints summary of all jobs using the ListJobs API
-func (c *Client) StatelessListJobsAction() error {
-	stream, err := c.statelessClient.ListJobs(
+// StatelessCreateAction is the action for creating a stateless job
+func (c *Client) StatelessCreateAction(
+	jobID string,
+	respoolPath string,
+	cfg string,
+	secretPath string,
+	secret []byte,
+) error {
+	respoolID, err := c.LookupResourcePoolID(respoolPath)
+	if err != nil {
+		return err
+	}
+	if respoolID == nil {
+		return fmt.Errorf("unable to find resource pool ID for "+
+			":%s", respoolPath)
+	}
+
+	var jobSpec stateless.JobSpec
+	buffer, err := ioutil.ReadFile(cfg)
+	if err != nil {
+		return fmt.Errorf("unable to open file %s: %v", cfg, err)
+	}
+	if err := yaml.Unmarshal(buffer, &jobSpec); err != nil {
+		return fmt.Errorf("unable to parse file %s: %v", cfg, err)
+	}
+
+	jobSpec.RespoolId = &v1alphapeloton.ResourcePoolID{Value: respoolID.GetValue()}
+
+	var request = &statelesssvc.CreateJobRequest{
+		JobId: &v1alphapeloton.JobID{
+			Value: jobID,
+		},
+		Spec: &jobSpec,
+	}
+
+	// handle secrets
+	if secretPath != "" && len(secret) > 0 {
+		request.Secrets = []*v1alphapeloton.Secret{
+			jobmgrtask.CreateV1AlphaSecretProto("", secretPath, secret),
+		}
+	}
+
+	response, err := c.statelessClient.CreateJob(c.ctx, request)
+
+	printStatelessJobCreateResponse(request, response, err, c.Debug)
+
+	return err
+}
+
+// StatelessGetAction is the action for getting status
+// and spec (or only summary) of a stateless job
+func (c *Client) StatelessGetAction(
+	jobID string,
+	version string,
+	summaryOnly bool,
+) error {
+	request := statelesssvc.GetJobRequest{
+		JobId: &v1alphapeloton.JobID{
+			Value: jobID,
+		},
+		SummaryOnly: summaryOnly,
+	}
+
+	if version != "" {
+		request.Version = &v1alphapeloton.EntityVersion{
+			Value: version,
+		}
+	}
+
+	resp, err := c.statelessClient.GetJob(
 		c.ctx,
-		&statelesssvc.ListJobsRequest{},
-	)
+		&request)
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprint(tabWriter, statlessJobSummaryFormatHeader)
-	tabWriter.Flush()
-	for {
-		resp, err := stream.Recv()
-		if err == io.EOF {
-			return nil
-		}
-
-		if err != nil {
-			return err
-		}
-
-		printListJobsResponse(resp)
-		tabWriter.Flush()
+	out, err := marshallResponse(defaultResponseFormat, resp)
+	if err != nil {
+		return err
 	}
+	fmt.Printf("%v\n", string(out))
+
+	return nil
 }
 
 func printStatelessQueryResponse(resp *statelesssvc.QueryJobsResponse) {

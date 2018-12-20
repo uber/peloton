@@ -692,6 +692,40 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionLookupR
 	))
 }
 
+// TestClientJobGetSuccess test the success case of
+// getting status and spec of a stateless job
+func (suite *statelessActionsTestSuite) TestClientJobGetSuccess() {
+	suite.statelessClient.EXPECT().
+		GetJob(gomock.Any(), gomock.Any()).
+		Return(&svc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				JobId: &v1alphapeloton.JobID{
+					Value: testJobID,
+				},
+				Spec: &stateless.JobSpec{
+					Name: testJobID,
+					DefaultSpec: &pod.PodSpec{
+						Revocable: true,
+					},
+				},
+				Status: &stateless.JobStatus{
+					State: stateless.JobState_JOB_STATE_RUNNING,
+				},
+			},
+		}, nil)
+
+	suite.NoError(suite.client.StatelessGetAction(testJobID, "3-1", false))
+}
+
+// TestClientPodGetCacheSuccess test the failure case of getting cache
+func (suite *statelessActionsTestSuite) TestClientJobGetFail() {
+	suite.statelessClient.EXPECT().
+		GetJob(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessGetAction(testJobID, "3-1", false))
+}
+
 func TestStatelessActions(t *testing.T) {
 	suite.Run(t, new(statelessActionsTestSuite))
 }

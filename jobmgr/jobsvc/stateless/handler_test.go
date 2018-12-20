@@ -2349,20 +2349,6 @@ func (suite *statelessHandlerTestSuite) TestCreateJobFailureGetJobRuntimeError()
 	suite.Error(err)
 }
 
-func (suite *statelessHandlerTestSuite) TestConvertInstanceListToRange() {
-	instList := []uint32{2, 6, 5, 1}
-	instRange := convertInstanceIDListToInstanceRange(instList)
-	suite.Equal(len(instRange), 2)
-	for _, r := range instRange {
-		if r.From == 1 {
-			suite.Equal(r.To, uint32(2))
-		} else {
-			suite.Equal(r.From, uint32(5))
-			suite.Equal(r.To, uint32(6))
-		}
-	}
-}
-
 func TestStatelessServiceHandler(t *testing.T) {
 	suite.Run(t, new(statelessHandlerTestSuite))
 }

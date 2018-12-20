@@ -176,6 +176,11 @@ var (
 	statelessGetCache     = stateless.Command("cache", "get a job cache")
 	statelessGetCacheName = statelessGetCache.Arg("job", "job identifier").Required().String()
 
+	statelessGet            = stateless.Command("get", "get stateless")
+	statelessGetJobID       = statelessGet.Arg("job", "job identifier").Required().String()
+	statelessGetVersion     = statelessGet.Flag("jobversion", "job specification version").Default("").String()
+	statelessGetSummaryOnly = statelessGet.Flag("summaryonly", "only return the job summary").Default("false").Bool()
+
 	statelessRefresh     = stateless.Command("refresh", "refresh a job")
 	statelessRefreshName = statelessRefresh.Arg("job", "job identifier").Required().String()
 
@@ -813,6 +818,8 @@ func main() {
 		err = client.PodGetAction(*podGetPodName, *podGetStatusOnly)
 	case podDeleteEvents.FullCommand():
 		err = client.PodDeleteEvents(*podDeleteEventsPodName, *podDeleteEventsPodID)
+	case statelessGet.FullCommand():
+		err = client.StatelessGetAction(*statelessGetJobID, *statelessGetVersion, *statelessGetSummaryOnly)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}
