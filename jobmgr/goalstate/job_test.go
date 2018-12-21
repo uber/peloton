@@ -1,12 +1,11 @@
 package goalstate
 
 import (
-	"context"
-	"fmt"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/jobmgr/cached"
 
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 
@@ -51,10 +50,10 @@ func TestJobStateAndGoalState(t *testing.T) {
 		Return(cachedJob)
 
 	cachedJob.EXPECT().
-		GetRuntime(context.Background()).Return(runtime, nil)
-
+		CurrentState().
+		Return(cached.JobStateVector{State: runtime.State})
 	actState := jobEnt.GetState()
-	assert.Equal(t, runtime.State, actState.(job.JobState))
+	assert.Equal(t, runtime.State, actState.(cached.JobStateVector).State)
 
 	// Test fetching the entity goal state
 	jobFactory.EXPECT().
@@ -62,31 +61,11 @@ func TestJobStateAndGoalState(t *testing.T) {
 		Return(cachedJob)
 
 	cachedJob.EXPECT().
-		GetRuntime(context.Background()).Return(runtime, nil)
-
+		GoalState().
+		Return(cached.JobStateVector{State: runtime.GoalState})
 	actGoalState := jobEnt.GetGoalState()
-	assert.Equal(t, runtime.State, actState.(job.JobState))
+	assert.Equal(t, runtime.GoalState, actGoalState.(cached.JobStateVector).State)
 
-	// Fetching job runtime gives an error
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetRuntime(context.Background()).Return(nil, fmt.Errorf("fake error"))
-
-	actState = jobEnt.GetState()
-	assert.Equal(t, job.JobState_UNKNOWN, actState.(job.JobState))
-
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetRuntime(context.Background()).Return(nil, fmt.Errorf("fake error"))
-
-	actGoalState = jobEnt.GetGoalState()
-	assert.Equal(t, job.JobState_UNKNOWN, actGoalState.(job.JobState))
 }
 
 func TestJobGetActionList(t *testing.T) {
@@ -95,19 +74,40 @@ func TestJobGetActionList(t *testing.T) {
 	jobEnt := &jobEntity{
 		id: jobID,
 	}
-	_, _, actions := jobEnt.GetActionList(job.JobState_UNKNOWN, job.JobState_UNKNOWN)
+	_, _, actions := jobEnt.GetActionList(
+		cached.JobStateVector{State: job.JobState_UNKNOWN},
+		cached.JobStateVector{State: job.JobState_UNKNOWN},
+	)
 	assert.Equal(t, 1, len(actions))
 
-	_, _, actions = jobEnt.GetActionList(job.JobState_SUCCEEDED, job.JobState_SUCCEEDED)
+	_, _, actions = jobEnt.GetActionList(
+		cached.JobStateVector{State: job.JobState_SUCCEEDED},
+		cached.JobStateVector{State: job.JobState_SUCCEEDED},
+	)
 	assert.Equal(t, 1, len(actions))
 
-	_, _, actions = jobEnt.GetActionList(job.JobState_UNINITIALIZED, job.JobState_SUCCEEDED)
+	_, _, actions = jobEnt.GetActionList(
+		cached.JobStateVector{State: job.JobState_UNINITIALIZED},
+		cached.JobStateVector{State: job.JobState_SUCCEEDED},
+	)
 	assert.Equal(t, 1, len(actions))
 
-	_, _, actions = jobEnt.GetActionList(job.JobState_RUNNING, job.JobState_SUCCEEDED)
+	_, _, actions = jobEnt.GetActionList(
+		cached.JobStateVector{State: job.JobState_RUNNING},
+		cached.JobStateVector{State: job.JobState_SUCCEEDED},
+	)
 	assert.Equal(t, 3, len(actions))
 
-	_, _, actions = jobEnt.GetActionList(job.JobState_RUNNING, job.JobState_KILLED)
+	_, _, actions = jobEnt.GetActionList(
+		cached.JobStateVector{State: job.JobState_RUNNING},
+		cached.JobStateVector{State: job.JobState_KILLED},
+	)
+	assert.Equal(t, 4, len(actions))
+
+	_, _, actions = jobEnt.GetActionList(
+		cached.JobStateVector{State: job.JobState_RUNNING, StateVersion: 0},
+		cached.JobStateVector{State: job.JobState_KILLED, StateVersion: 1},
+	)
 	assert.Equal(t, 4, len(actions))
 }
 
@@ -117,24 +117,57 @@ func TestEngineJobSuggestAction(t *testing.T) {
 		id: jobID,
 	}
 
-	a := jobEnt.suggestJobAction(job.JobState_INITIALIZED, job.JobState_SUCCEEDED)
+	a := jobEnt.suggestJobAction(
+		cached.JobStateVector{State: job.JobState_INITIALIZED},
+		cached.JobStateVector{State: job.JobState_SUCCEEDED},
+	)
 	assert.Equal(t, CreateTasksAction, a)
 
-	a = jobEnt.suggestJobAction(job.JobState_SUCCEEDED, job.JobState_SUCCEEDED)
+	a = jobEnt.suggestJobAction(
+		cached.JobStateVector{State: job.JobState_SUCCEEDED},
+		cached.JobStateVector{State: job.JobState_SUCCEEDED},
+	)
 	assert.Equal(t, UntrackAction, a)
 
-	a = jobEnt.suggestJobAction(job.JobState_RUNNING, job.JobState_KILLED)
+	a = jobEnt.suggestJobAction(
+		cached.JobStateVector{State: job.JobState_RUNNING},
+		cached.JobStateVector{State: job.JobState_KILLED},
+	)
 	assert.Equal(t, KillAction, a)
 
-	a = jobEnt.suggestJobAction(job.JobState_RUNNING, job.JobState_SUCCEEDED)
+	a = jobEnt.suggestJobAction(
+		cached.JobStateVector{State: job.JobState_RUNNING, StateVersion: 0},
+		cached.JobStateVector{State: job.JobState_KILLED, StateVersion: 1},
+	)
+	assert.Equal(t, KillAction, a)
+
+	a = jobEnt.suggestJobAction(
+		cached.JobStateVector{State: job.JobState_RUNNING},
+		cached.JobStateVector{State: job.JobState_SUCCEEDED},
+	)
 	assert.Equal(t, NoJobAction, a)
 
-	a = jobEnt.suggestJobAction(job.JobState_KILLING, job.JobState_SUCCEEDED)
+	a = jobEnt.suggestJobAction(
+		cached.JobStateVector{State: job.JobState_KILLING},
+		cached.JobStateVector{State: job.JobState_SUCCEEDED},
+	)
 	assert.Equal(t, JobStateInvalidAction, a)
 
-	a = jobEnt.suggestJobAction(job.JobState_KILLING, job.JobState_FAILED)
+	a = jobEnt.suggestJobAction(
+		cached.JobStateVector{State: job.JobState_KILLING},
+		cached.JobStateVector{State: job.JobState_FAILED},
+	)
 	assert.Equal(t, JobStateInvalidAction, a)
 
-	a = jobEnt.suggestJobAction(job.JobState_UNINITIALIZED, job.JobState_SUCCEEDED)
+	a = jobEnt.suggestJobAction(
+		cached.JobStateVector{State: job.JobState_UNINITIALIZED},
+		cached.JobStateVector{State: job.JobState_SUCCEEDED},
+	)
 	assert.Equal(t, RecoverAction, a)
+
+	a = jobEnt.suggestJobAction(
+		cached.JobStateVector{State: job.JobState_KILLED, StateVersion: 0},
+		cached.JobStateVector{State: job.JobState_KILLED, StateVersion: 0},
+	)
+	assert.Equal(t, UntrackAction, a)
 }

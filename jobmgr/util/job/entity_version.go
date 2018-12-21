@@ -11,18 +11,22 @@ import (
 )
 
 // GetJobEntityVersion builds the job entity version from its components
-func GetJobEntityVersion(configVersion uint64, workflowVersion uint64) *v1alphapeloton.EntityVersion {
+func GetJobEntityVersion(
+	configVersion uint64,
+	desiredStateVersion uint64,
+	workflowVersion uint64,
+) *v1alphapeloton.EntityVersion {
 	return &v1alphapeloton.EntityVersion{
-		Value: fmt.Sprintf("%d-%d", configVersion, workflowVersion),
+		Value: fmt.Sprintf("%d-%d-%d", configVersion, desiredStateVersion, workflowVersion),
 	}
 }
 
 // ParseJobEntityVersion parses job entity version into components
 func ParseJobEntityVersion(
 	entityVersion *v1alphapeloton.EntityVersion,
-) (configVersion uint64, workflowVersion uint64, err error) {
+) (configVersion uint64, desiredStateVersion uint64, workflowVersion uint64, err error) {
 	results := strings.Split(entityVersion.GetValue(), "-")
-	if len(results) != 2 {
+	if len(results) != 3 {
 		err = yarpcerrors.InvalidArgumentErrorf("entityVersion has wrong format")
 		return
 	}
@@ -32,7 +36,12 @@ func ParseJobEntityVersion(
 		err = yarpcerrors.InvalidArgumentErrorf("entityVersion has wrong format: %s", err.Error())
 	}
 
-	workflowVersion, err = strconv.ParseUint(results[1], 10, 64)
+	desiredStateVersion, err = strconv.ParseUint(results[1], 10, 64)
+	if err != nil {
+		err = yarpcerrors.InvalidArgumentErrorf("entityVersion has wrong format: %s", err.Error())
+	}
+
+	workflowVersion, err = strconv.ParseUint(results[2], 10, 64)
 	if err != nil {
 		err = yarpcerrors.InvalidArgumentErrorf("entityVersion has wrong format: %s", err.Error())
 	}

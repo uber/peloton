@@ -156,6 +156,7 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 			suite.updateID,
 			jobutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion()+1,
+				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion()),
 			nil)
 
@@ -200,6 +201,7 @@ func (suite *UpdateSvcTestSuite) TestAddInstancesSuccess() {
 		Return(suite.updateID,
 			jobutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion()+1,
+				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion(),
 			),
 			nil)
@@ -248,6 +250,7 @@ func (suite *UpdateSvcTestSuite) TestUpdateLabelsSuccess() {
 		Return(suite.updateID,
 			jobutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion(),
+				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion()+1),
 			nil)
 
@@ -454,6 +457,7 @@ func (suite *UpdateSvcTestSuite) TestCreateReduceInstanceCount() {
 			suite.updateID,
 			jobutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion()+1,
+				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion()),
 			nil)
 
@@ -958,6 +962,7 @@ func (suite *UpdateSvcTestSuite) TestAbort() {
 			suite.updateID,
 			jobutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion(),
+				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion()+1),
 			nil)
 
@@ -998,6 +1003,7 @@ func (suite *UpdateSvcTestSuite) TestPauseSuccess() {
 			suite.updateID,
 			jobutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion(),
+				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion()+1),
 			nil)
 
@@ -1074,6 +1080,7 @@ func (suite *UpdateSvcTestSuite) TestResumeSuccess() {
 			suite.updateID,
 			jobutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion(),
+				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion()+1),
 			nil)
 

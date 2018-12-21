@@ -159,6 +159,7 @@ func (h *serviceHandler) CreateUpdate(
 		req.GetUpdateConfig(),
 		jobutil.GetJobEntityVersion(
 			jobRuntime.GetConfigurationVersion(),
+			jobRuntime.GetDesiredStateVersion(),
 			jobRuntime.GetWorkflowVersion()),
 		cached.WithConfig(jobConfig, prevJobConfig, configAddOn),
 		cached.WithOpaqueData(req.GetOpaqueData()),
@@ -298,6 +299,7 @@ func (h *serviceHandler) PauseUpdate(
 		ctx,
 		jobutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),
+			runtime.GetDesiredStateVersion(),
 			runtime.GetWorkflowVersion()),
 		cached.WithOpaqueData(req.GetOpaqueData()),
 	); err != nil {
@@ -337,6 +339,7 @@ func (h *serviceHandler) ResumeUpdate(
 		ctx,
 		jobutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),
+			runtime.GetDesiredStateVersion(),
 			runtime.GetWorkflowVersion()),
 		cached.WithOpaqueData(req.GetOpaqueData()),
 	); err != nil {
@@ -420,6 +423,7 @@ func (h *serviceHandler) AbortUpdate(ctx context.Context,
 		ctx,
 		jobutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),
+			runtime.GetDesiredStateVersion(),
 			runtime.GetWorkflowVersion()),
 		cached.WithOpaqueData(req.GetOpaqueData()),
 	); err != nil {

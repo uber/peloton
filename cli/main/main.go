@@ -268,6 +268,11 @@ var (
 	statelessReplaceJobDiffEntityVersion = statelessReplaceJobDiff.Arg("entityVersion",
 		"entity version for concurrency control").Required().String()
 
+	statelessStop              = stateless.Command("stop", "stop all pods in a job")
+	statelessStopJobID         = statelessStop.Arg("job", "job identifier").Required().String()
+	statelessStopEntityVersion = statelessStop.Arg("entityVersion",
+		"entity version for concurrency control").Required().String()
+
 	// Top level pod command
 	pod = app.Command("pod", "CLI reflects pod(s) actions, such as get pod details, create/restart/update a pod...")
 
@@ -800,6 +805,8 @@ func main() {
 			*statelessReplaceJobDiffEntityVersion,
 			*statelessReplaceJobDiffResPoolPath,
 		)
+	case statelessStop.FullCommand():
+		err = client.StatelessStopJobAction(*statelessStopJobID, *statelessStopEntityVersion)
 	case statelessCreate.FullCommand():
 		err = client.StatelessCreateAction(
 			*statelessCreateID,

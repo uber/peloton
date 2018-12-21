@@ -10,51 +10,54 @@ import (
 
 func TestGetJobEntityVersion(t *testing.T) {
 	tests := []struct {
-		configVersion   uint64
-		workflowVersion uint64
-		entityVersion   string
+		configVersion       uint64
+		desiredStateVersion uint64
+		workflowVersion     uint64
+		entityVersion       string
 	}{
 		{
-			configVersion: 1, workflowVersion: 2, entityVersion: "1-2",
+			configVersion: 1, desiredStateVersion: 2, workflowVersion: 2, entityVersion: "1-2-2",
 		},
 		{
-			configVersion: 10, workflowVersion: 3, entityVersion: "10-3",
+			configVersion: 10, desiredStateVersion: 4, workflowVersion: 3, entityVersion: "10-4-3",
 		},
 	}
 
 	for _, test := range tests {
 		assert.Equal(t,
-			GetJobEntityVersion(test.configVersion, test.workflowVersion).GetValue(),
+			GetJobEntityVersion(test.configVersion, test.desiredStateVersion, test.workflowVersion).GetValue(),
 			test.entityVersion)
 	}
 }
 
 func TestParseJobEntityVersion(t *testing.T) {
 	tests := []struct {
-		entityVersion   string
-		configVersion   uint64
-		workflowVersion uint64
-		hasError        bool
+		entityVersion       string
+		configVersion       uint64
+		desiredStateVersion uint64
+		workflowVersion     uint64
+		hasError            bool
 	}{
 		{
-			entityVersion: "1-1", configVersion: 1, workflowVersion: 1, hasError: false,
+			entityVersion: "1-1-1", configVersion: 1, desiredStateVersion: 1, workflowVersion: 1, hasError: false,
 		},
 		{
-			entityVersion: "10-3", configVersion: 10, workflowVersion: 3, hasError: false,
+			entityVersion: "10-2-3", configVersion: 10, desiredStateVersion: 2, workflowVersion: 3, hasError: false,
 		},
 		{
-			entityVersion: "a", configVersion: 0, workflowVersion: 0, hasError: true,
+			entityVersion: "a", configVersion: 0, desiredStateVersion: 0, workflowVersion: 0, hasError: true,
 		},
 	}
 
 	for _, test := range tests {
-		configVersion, workflowVersion, err := ParseJobEntityVersion(&v1alphapeloton.EntityVersion{
+		configVersion, desiredStateVersion, workflowVersion, err := ParseJobEntityVersion(&v1alphapeloton.EntityVersion{
 			Value: test.entityVersion,
 		})
 		if test.hasError {
 			assert.Error(t, err)
 		} else {
 			assert.Equal(t, configVersion, test.configVersion)
+			assert.Equal(t, desiredStateVersion, test.desiredStateVersion)
 			assert.Equal(t, workflowVersion, test.workflowVersion)
 		}
 	}

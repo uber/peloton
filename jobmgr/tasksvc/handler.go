@@ -609,56 +609,65 @@ func (m *serviceHandler) stopJob(
 	ctx context.Context,
 	jobID *peloton.JobID,
 	instanceCount uint32) (*task.StopResponse, error) {
-
 	var instanceList []uint32
+	var count uint32
 
 	for i := uint32(0); i < instanceCount; i++ {
 		instanceList = append(instanceList, i)
 	}
 
 	cachedJob := m.jobFactory.AddJob(jobID)
-	jobRuntime, err := cachedJob.GetRuntime(ctx)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			Error("failed to get job run time")
-		m.metrics.TaskStopFail.Inc(int64(instanceCount))
-		return &task.StopResponse{
-			Error: &task.StopResponse_Error{
-				UpdateError: &task.TaskUpdateError{
-					Message: fmt.Sprintf("Job state fetch failed for %v", err),
+	for {
+		jobRuntime, err := cachedJob.GetRuntime(ctx)
+		if err != nil {
+			log.WithError(err).
+				WithField("job_id", jobID.GetValue()).
+				Error("failed to get job run time")
+			m.metrics.TaskStopFail.Inc(int64(instanceCount))
+			return &task.StopResponse{
+				Error: &task.StopResponse_Error{
+					UpdateError: &task.TaskUpdateError{
+						Message: fmt.Sprintf("Job state fetch failed for %v", err),
+					},
 				},
-			},
-			InvalidInstanceIds: instanceList,
-		}, nil
-	}
+				InvalidInstanceIds: instanceList,
+			}, nil
+		}
 
-	if jobRuntime.GoalState == pb_job.JobState_KILLED {
-		return &task.StopResponse{
-			StoppedInstanceIds: instanceList,
-		}, nil
-	}
+		if jobRuntime.GoalState == pb_job.JobState_KILLED {
+			return &task.StopResponse{
+				StoppedInstanceIds: instanceList,
+			}, nil
+		}
 
-	jobRuntimeUpdate := &pb_job.RuntimeInfo{
-		GoalState: pb_job.JobState_KILLED,
-	}
-	err = cachedJob.Update(ctx, &pb_job.JobInfo{
-		Runtime: jobRuntimeUpdate,
-	}, nil,
-		cached.UpdateCacheAndDB)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			Error("failed to update job run time")
-		m.metrics.TaskStopFail.Inc(int64(instanceCount))
-		return &task.StopResponse{
-			Error: &task.StopResponse_Error{
-				UpdateError: &task.TaskUpdateError{
-					Message: fmt.Sprintf("Job state update failed for %v", err),
+		jobRuntime.DesiredStateVersion++
+		jobRuntime.GoalState = pb_job.JobState_KILLED
+
+		_, err = cachedJob.CompareAndSetRuntime(ctx, jobRuntime)
+		if err != nil {
+			if err == jobmgrcommon.UnexpectedVersionError {
+				// concurrency error; retry MaxConcurrencyErrorRetry times
+				count = count + 1
+				if count < jobmgrcommon.MaxConcurrencyErrorRetry {
+					continue
+				}
+			}
+
+			log.WithError(err).
+				WithField("job_id", jobID.GetValue()).
+				Error("failed to update job run time")
+			m.metrics.TaskStopFail.Inc(int64(instanceCount))
+			return &task.StopResponse{
+				Error: &task.StopResponse_Error{
+					UpdateError: &task.TaskUpdateError{
+						Message: fmt.Sprintf("Job state update failed for %v", err),
+					},
 				},
-			},
-			InvalidInstanceIds: instanceList,
-		}, nil
+				InvalidInstanceIds: instanceList,
+			}, nil
+		}
+
+		break
 	}
 
 	m.goalStateDriver.EnqueueJob(jobID, time.Now())

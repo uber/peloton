@@ -218,6 +218,12 @@ message RuntimeInfo
   // The version reflects the version of the workflow, it is an opaque value
   // which is used internally only
   uint64 workflowVersion = 12;
+
+  // The state version currently used by the runtime.
+  uint64 stateVersion = 13;
+
+  // The desired state version that should be used by the runtime.
+  uint64 desiredStateVersion = 14;
 }
 
 /**

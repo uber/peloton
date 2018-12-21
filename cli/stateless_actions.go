@@ -152,6 +152,24 @@ func (c *Client) StatelessWorkflowAbortAction(
 	return nil
 }
 
+// StatelessStopJobAction stops a job
+func (c *Client) StatelessStopJobAction(jobID string, entityVersion string) error {
+	resp, err := c.statelessClient.StopJob(
+		c.ctx,
+		&statelesssvc.StopJobRequest{
+			JobId:   &v1alphapeloton.JobID{Value: jobID},
+			Version: &v1alphapeloton.EntityVersion{Value: entityVersion},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Job stopped. New EntityVersion: %s\n", resp.GetVersion().GetValue())
+
+	return nil
+}
+
 // StatelessQueryAction queries a job given the spec
 func (c *Client) StatelessQueryAction(
 	labels string,

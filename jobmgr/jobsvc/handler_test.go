@@ -1800,6 +1800,7 @@ func (suite *JobHandlerTestSuite) TestJobGetActiveJobs() {
 func (suite *JobHandlerTestSuite) TestRestartJobSuccess() {
 	var configurationVersion uint64 = 1
 	var workflowVersion uint64 = 2
+	var desiredStateVersion uint64 = 1
 	var batchSize uint32 = 1
 
 	suite.mockedCandidate.EXPECT().
@@ -1839,7 +1840,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccess() {
 		).
 		Return(
 			&peloton.UpdateID{Value: uuid.New()},
-			jobutil.GetJobEntityVersion(configurationVersion+1, workflowVersion),
+			jobutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
 			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
@@ -1869,6 +1870,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccess() {
 func (suite *JobHandlerTestSuite) TestRestartJobSuccessWithRange() {
 	var configurationVersion uint64 = 1
 	var workflowVersion uint64 = 2
+	var desiredStateVersion uint64 = 1
 	var batchSize uint32 = 1
 	restartRanges := []*task.InstanceRange{
 		{
@@ -1918,7 +1920,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccessWithRange() {
 		).
 		Return(
 			&peloton.UpdateID{Value: uuid.New()},
-			jobutil.GetJobEntityVersion(configurationVersion+1, workflowVersion),
+			jobutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
 			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
@@ -1949,6 +1951,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccessWithRange() {
 func (suite *JobHandlerTestSuite) TestRestartJobOutsideOfRangeSuccess() {
 	var configurationVersion uint64 = 1
 	var workflowVersion uint64 = 2
+	var desiredStateVersion uint64 = 1
 	var batchSize uint32 = 1
 	restartRanges := []*task.InstanceRange{
 		{
@@ -1999,7 +2002,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobOutsideOfRangeSuccess() {
 		).
 		Return(
 			&peloton.UpdateID{Value: uuid.New()},
-			jobutil.GetJobEntityVersion(configurationVersion+1, workflowVersion),
+			jobutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
 			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
@@ -2190,6 +2193,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobCreateUpdateFailure() {
 func (suite *JobHandlerTestSuite) TestRestartJobGetCachedConfigFailure() {
 	var configurationVersion uint64 = 1
 	var workflowVersion uint64 = 2
+	var desiredStateVersion uint64 = 1
 	var batchSize uint32 = 1
 
 	suite.mockedCandidate.EXPECT().
@@ -2230,7 +2234,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobGetCachedConfigFailure() {
 		).
 		Return(
 			&peloton.UpdateID{Value: uuid.New()},
-			jobutil.GetJobEntityVersion(configurationVersion+1, workflowVersion),
+			jobutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
 			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
@@ -2303,6 +2307,7 @@ func (suite *JobHandlerTestSuite) TestRestartNonServiceJobFailure() {
 func (suite *JobHandlerTestSuite) TestStartJobSuccess() {
 	var configurationVersion uint64 = 1
 	var workflowVersion uint64 = 2
+	var desiredStateVersion uint64 = 1
 	var batchSize uint32 = 1
 
 	suite.mockedCandidate.EXPECT().
@@ -2343,7 +2348,7 @@ func (suite *JobHandlerTestSuite) TestStartJobSuccess() {
 		).
 		Return(
 			&peloton.UpdateID{Value: uuid.New()},
-			jobutil.GetJobEntityVersion(configurationVersion+1, workflowVersion),
+			jobutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
 			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
@@ -2372,6 +2377,7 @@ func (suite *JobHandlerTestSuite) TestStartJobSuccess() {
 func (suite *JobHandlerTestSuite) TestStopJobSuccess() {
 	var configurationVersion uint64 = 1
 	var workflowVersion uint64 = 2
+	var desiredStateVersion uint64 = 1
 	var batchSize uint32 = 1
 
 	suite.mockedCandidate.EXPECT().
@@ -2411,7 +2417,7 @@ func (suite *JobHandlerTestSuite) TestStopJobSuccess() {
 		).
 		Return(
 			&peloton.UpdateID{Value: uuid.New()},
-			jobutil.GetJobEntityVersion(configurationVersion+1, workflowVersion),
+			jobutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
 			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().

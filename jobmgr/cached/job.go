@@ -155,6 +155,12 @@ type Job interface {
 	// RecalculateResourceUsage recalculates the resource usage of a job
 	// by adding together resource usage of all terminal tasks of this job.
 	RecalculateResourceUsage(ctx context.Context)
+
+	// CurrentState of the job.
+	CurrentState() JobStateVector
+
+	// GoalState of the job.
+	GoalState() JobStateVector
 }
 
 // WorkflowOps defines operations on workflow
@@ -213,6 +219,13 @@ type WorkflowOps interface {
 type JobConfigCache interface {
 	jobmgrcommon.JobConfig
 	HasControllerTask() bool
+}
+
+// JobStateVector defines the state of a job.
+// This encapsulates both the actual state and the goal state.
+type JobStateVector struct {
+	State        pbjob.JobState
+	StateVersion uint64
 }
 
 // newJob creates a new cache job object
@@ -663,6 +676,8 @@ func (j *job) createJobRuntime(ctx context.Context, config *pbjob.JobConfig) err
 		ConfigurationVersion: config.GetChangeLog().GetVersion(),
 		ResourceUsage:        createEmptyResourceUsageMap(),
 		WorkflowVersion:      1,
+		StateVersion:         1,
+		DesiredStateVersion:  1,
 	}
 	// Init the task stats to reflect that all tasks are in initialized state
 	initialJobRuntime.TaskStats[pbtask.TaskState_INITIALIZED.String()] = config.InstanceCount
@@ -728,6 +743,28 @@ func (j *job) CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, 
 	defer j.Unlock()
 
 	return j.compareAndSetConfig(ctx, config, configAddOn)
+}
+
+// CurrentState of the job.
+func (j *job) CurrentState() JobStateVector {
+	j.RLock()
+	defer j.RUnlock()
+
+	return JobStateVector{
+		State:        j.runtime.GetState(),
+		StateVersion: j.runtime.GetStateVersion(),
+	}
+}
+
+// GoalState of the job.
+func (j *job) GoalState() JobStateVector {
+	j.RLock()
+	defer j.RUnlock()
+
+	return JobStateVector{
+		State:        j.runtime.GetGoalState(),
+		StateVersion: j.runtime.GetDesiredStateVersion(),
+	}
 }
 
 func (j *job) compareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn) (jobmgrcommon.JobConfig, error) {
@@ -1071,6 +1108,14 @@ func (j *job) mergeRuntime(newRuntime *pbjob.RuntimeInfo) *pbjob.RuntimeInfo {
 		runtime.WorkflowVersion = newRuntime.GetWorkflowVersion()
 	}
 
+	if newRuntime.GetDesiredStateVersion() > 0 {
+		runtime.DesiredStateVersion = newRuntime.GetDesiredStateVersion()
+	}
+
+	if newRuntime.GetStateVersion() > 0 {
+		runtime.StateVersion = newRuntime.GetStateVersion()
+	}
+
 	if runtime.Revision == nil {
 		// should never enter here
 		log.WithField("job_id", j.id.GetValue()).
@@ -1331,6 +1376,7 @@ func (j *job) CreateWorkflow(
 	// entity version is changed due to change in config version
 	newEntityVersion := jobutil.GetJobEntityVersion(
 		j.runtime.GetConfigurationVersion(),
+		j.runtime.GetDesiredStateVersion(),
 		j.runtime.GetWorkflowVersion(),
 	)
 
@@ -1375,6 +1421,7 @@ func (j *job) PauseWorkflow(
 
 	newEntityVersion := jobutil.GetJobEntityVersion(
 		j.runtime.GetConfigurationVersion(),
+		j.runtime.GetDesiredStateVersion(),
 		j.runtime.GetWorkflowVersion(),
 	)
 	err = currentWorkflow.Pause(ctx, opts.opaqueData)
@@ -1411,6 +1458,7 @@ func (j *job) ResumeWorkflow(
 
 	newEntityVersion := jobutil.GetJobEntityVersion(
 		j.runtime.GetConfigurationVersion(),
+		j.runtime.GetDesiredStateVersion(),
 		j.runtime.GetWorkflowVersion(),
 	)
 	err = currentWorkflow.Resume(ctx, opts.opaqueData)
@@ -1447,6 +1495,7 @@ func (j *job) AbortWorkflow(
 
 	newEntityVersion := jobutil.GetJobEntityVersion(
 		j.runtime.GetConfigurationVersion(),
+		j.runtime.GetDesiredStateVersion(),
 		j.runtime.GetWorkflowVersion(),
 	)
 	err = currentWorkflow.Cancel(ctx, opts.opaqueData)
@@ -1854,14 +1903,13 @@ func (j *job) ValidateEntityVersion(
 		return err
 	}
 
-	configVersion, workflowVersion, err := jobutil.ParseJobEntityVersion(version)
-	if err != nil {
-		return err
-	}
+	curEntityVersion := jobutil.GetJobEntityVersion(
+		j.runtime.GetConfigurationVersion(),
+		j.runtime.GetDesiredStateVersion(),
+		j.runtime.GetWorkflowVersion())
 
-	if configVersion != j.runtime.GetConfigurationVersion() ||
-		workflowVersion != j.runtime.GetWorkflowVersion() {
-		return yarpcerrors.InvalidArgumentErrorf("unexpected entity version")
+	if curEntityVersion.GetValue() != version.GetValue() {
+		return jobmgrcommon.InvalidEntityVersionError
 	}
 	return nil
 }
@@ -1875,7 +1923,7 @@ func (j *job) updateWorkflowVersion(
 	if err := j.ValidateEntityVersion(ctx, version); err != nil {
 		return err
 	}
-	_, workflowVersion, err := jobutil.ParseJobEntityVersion(version)
+	_, _, workflowVersion, err := jobutil.ParseJobEntityVersion(version)
 	if err != nil {
 		return err
 	}

@@ -838,7 +838,8 @@ func (suite *APIConverterTestSuite) TestConvertRuntimeInfoToJobStatus() {
 	creationTime := "now"
 	configVersion := uint64(2)
 	workflowVersion := uint64(2)
-	entityVersion := "2-2"
+	desiredStateVersion := uint64(2)
+	entityVersion := "2-2-2"
 
 	runtime := &job.RuntimeInfo{
 		State:        job.JobState_RUNNING,
@@ -853,6 +854,7 @@ func (suite *APIConverterTestSuite) TestConvertRuntimeInfoToJobStatus() {
 		GoalState:            job.JobState_RUNNING,
 		ConfigurationVersion: configVersion,
 		WorkflowVersion:      workflowVersion,
+		DesiredStateVersion:  desiredStateVersion,
 	}
 
 	jobConfigVersion := uint64(3)
@@ -902,7 +904,8 @@ func (suite *APIConverterTestSuite) TestConvertJobSummary() {
 	creationTime := "now"
 	configVersion := uint64(2)
 	workflowVersion := uint64(2)
-	entityVersion := "2-2"
+	desiredStateVersion := uint64(2)
+	entityVersion := "2-2-2"
 
 	runtime := &job.RuntimeInfo{
 		State:        job.JobState_RUNNING,
@@ -917,6 +920,7 @@ func (suite *APIConverterTestSuite) TestConvertJobSummary() {
 		GoalState:            job.JobState_RUNNING,
 		ConfigurationVersion: configVersion,
 		WorkflowVersion:      workflowVersion,
+		DesiredStateVersion:  desiredStateVersion,
 	}
 
 	jobConfigVersion := uint64(3)

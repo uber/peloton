@@ -93,10 +93,6 @@ install:
 $(VENDOR): install
 
 cli:
-	go get -u github.com/gobuffalo/packr/packr
-	go get -u github.com/gobuffalo/packr
-	packr clean
-	packr
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton cli/main/*.go
 
 cover:

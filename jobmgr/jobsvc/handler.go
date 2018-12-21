@@ -653,6 +653,7 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 		},
 		jobutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),
+			runtime.GetDesiredStateVersion(),
 			runtime.GetWorkflowVersion()),
 		cached.WithInstanceToProcess(
 			nil,

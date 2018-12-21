@@ -7,7 +7,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
-
+	"code.uber.internal/infra/peloton/jobmgr/cached"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -73,14 +73,15 @@ var (
 			job.JobState_UNINITIALIZED: RecoverAction,
 		},
 		job.JobState_KILLED: {
-			job.JobState_UNKNOWN:       KillAction,
-			job.JobState_INITIALIZED:   KillAction,
-			job.JobState_PENDING:       KillAction,
-			job.JobState_RUNNING:       KillAction,
 			job.JobState_SUCCEEDED:     UntrackAction,
 			job.JobState_FAILED:        UntrackAction,
 			job.JobState_KILLED:        UntrackAction,
 			job.JobState_UNINITIALIZED: UntrackAction,
+			// TODO: revisit the rules after new job kill
+			// code is checked in
+			job.JobState_INITIALIZED: KillAction,
+			job.JobState_PENDING:     KillAction,
+			job.JobState_RUNNING:     KillAction,
 		},
 		job.JobState_FAILED: {
 			job.JobState_INITIALIZED:   JobStateInvalidAction,
@@ -115,37 +116,12 @@ func (j *jobEntity) GetID() string {
 
 func (j *jobEntity) GetState() interface{} {
 	cachedJob := j.driver.jobFactory.AddJob(j.id)
-
-	jobRuntime, err := cachedJob.GetRuntime(context.Background())
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", j.id.GetValue()).
-			Error("failed to fetch job runtime while determining state")
-		// return UNKNOWN state if cannot fetch job runtime so that job is enqueued
-		// for re-evaluation.
-		return job.JobState_UNKNOWN
-	}
-
-	// return job state
-	return jobRuntime.GetState()
+	return cachedJob.CurrentState()
 }
 
 func (j *jobEntity) GetGoalState() interface{} {
 	cachedJob := j.driver.jobFactory.AddJob(j.id)
-
-	jobRuntime, err := cachedJob.GetRuntime(context.Background())
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", j.id.GetValue()).
-			Error("failed to fetch job runtime while determining goal state")
-		// return UNKNOWN state if cannot fetch job runtime so that job is enqueued
-		// for re-evaluation.
-		// TODO remove JobState_UNKNOWN after write-through cache implementation.
-		return job.JobState_UNKNOWN
-	}
-
-	// return job goal state
-	return jobRuntime.GetGoalState()
+	return cachedJob.GoalState()
 }
 
 func (j *jobEntity) GetActionList(
@@ -156,10 +132,10 @@ func (j *jobEntity) GetActionList(
 	[]goalstate.Action) {
 	var actions []goalstate.Action
 
-	jobState := state.(job.JobState)
-	jobGoalState := goalState.(job.JobState)
+	jobState := state.(cached.JobStateVector)
+	jobGoalState := goalState.(cached.JobStateVector)
 
-	if jobState == job.JobState_UNKNOWN || jobGoalState == job.JobState_UNKNOWN {
+	if jobState.State == job.JobState_UNKNOWN || jobGoalState.State == job.JobState_UNKNOWN {
 		// State or goal state could not be loaded from DB, so enqueue the job
 		// back into the goal state engine so that the states can be fetched again.
 		actions = append(actions, goalstate.Action{
@@ -173,8 +149,10 @@ func (j *jobEntity) GetActionList(
 	action := _jobActionsMaps[actionStr]
 
 	log.WithField("job_id", j.id.GetValue()).
-		WithField("current_state", jobState.String()).
-		WithField("goal_state", jobGoalState.String()).
+		WithField("current_state", jobState.State.String()).
+		WithField("goal_state", jobGoalState.State.String()).
+		WithField("current_state_version", jobState.StateVersion).
+		WithField("goal_state_version", jobGoalState.StateVersion).
 		WithField("job_action", actionStr).
 		Info("running job action")
 
@@ -209,9 +187,12 @@ func (j *jobEntity) GetActionList(
 }
 
 // suggestJobAction provides the job action for a given state and goal state
-func (j *jobEntity) suggestJobAction(state job.JobState, goalstate job.JobState) JobAction {
-	if tr, ok := _isoVersionsJobRules[goalstate]; ok {
-		if a, ok := tr[state]; ok {
+func (j *jobEntity) suggestJobAction(state cached.JobStateVector, goalstate cached.JobStateVector) JobAction {
+	// TODO: after all job kill is controlled by job state version and desired state version,
+	// consider move rules out of _isoVersionsJobRules and check
+	// sate version and desired state version here
+	if tr, ok := _isoVersionsJobRules[goalstate.State]; ok {
+		if a, ok := tr[state.State]; ok {
 			return a
 		}
 	}

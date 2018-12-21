@@ -180,7 +180,8 @@ func (h *serviceHandler) CreateJob(
 	return &svc.CreateJobResponse{
 		JobId: &v1alphapeloton.JobID{Value: pelotonJobID.GetValue()},
 		Version: jobutil.GetJobEntityVersion(
-			uint64(runtimeInfo.GetConfigurationVersion()),
+			runtimeInfo.GetConfigurationVersion(),
+			runtimeInfo.GetDesiredStateVersion(),
 			runtimeInfo.GetWorkflowVersion(),
 		),
 	}, nil
@@ -446,9 +447,70 @@ func (h *serviceHandler) StartJob(
 }
 func (h *serviceHandler) StopJob(
 	ctx context.Context,
-	req *svc.StopJobRequest) (*svc.StopJobResponse, error) {
-	return &svc.StopJobResponse{}, nil
+	req *svc.StopJobRequest) (resp *svc.StopJobResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("JobSVC.StopJob failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Info("JobSVC.StopJob succeeded")
+	}()
+
+	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
+
+	var jobRuntime *pbjob.RuntimeInfo
+	count := 0
+	cachedJob := h.jobFactory.AddJob(pelotonJobID)
+
+	for {
+		jobRuntime, err = cachedJob.GetRuntime(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "fail to get runtime")
+		}
+		entityVersion := jobutil.GetJobEntityVersion(
+			jobRuntime.GetConfigurationVersion(),
+			jobRuntime.GetDesiredStateVersion(),
+			jobRuntime.GetWorkflowVersion(),
+		)
+		if entityVersion.GetValue() !=
+			req.GetVersion().GetValue() {
+			return nil, jobmgrcommon.InvalidEntityVersionError
+		}
+
+		jobRuntime.GoalState = pbjob.JobState_KILLED
+		jobRuntime.DesiredStateVersion++
+
+		if jobRuntime, err = cachedJob.CompareAndSetRuntime(ctx, jobRuntime); err != nil {
+			if err == jobmgrcommon.UnexpectedVersionError {
+				// concurrency error; retry MaxConcurrencyErrorRetry times
+				count = count + 1
+				if count < jobmgrcommon.MaxConcurrencyErrorRetry {
+					continue
+				}
+			}
+			// it is uncertain whether job runtime is updated successfully,
+			// let goal state engine figure it out.
+			h.goalStateDriver.EnqueueJob(pelotonJobID, time.Now())
+			return nil, errors.Wrap(err, "fail to update job runtime")
+		}
+
+		h.goalStateDriver.EnqueueJob(pelotonJobID, time.Now())
+		return &svc.StopJobResponse{
+			Version: jobutil.GetJobEntityVersion(
+				jobRuntime.GetConfigurationVersion(),
+				jobRuntime.GetDesiredStateVersion(),
+				jobRuntime.GetWorkflowVersion(),
+			),
+		}, nil
+	}
 }
+
 func (h *serviceHandler) DeleteJob(
 	ctx context.Context,
 	req *svc.DeleteJobRequest) (*svc.DeleteJobResponse, error) {
@@ -486,7 +548,7 @@ func (h *serviceHandler) getJobConfigurationWithVersion(
 	ctx context.Context,
 	jobID *v1alphapeloton.JobID,
 	version *v1alphapeloton.EntityVersion) (*svc.GetJobResponse, error) {
-	configVersion, _, err := jobutil.ParseJobEntityVersion(version)
+	configVersion, _, _, err := jobutil.ParseJobEntityVersion(version)
 	if err != nil {
 		return nil, err
 	}
@@ -984,6 +1046,7 @@ func convertCacheToJobStatus(
 	result.DesiredState = stateless.JobState(runtime.GetGoalState())
 	result.Version = jobutil.GetJobEntityVersion(
 		runtime.GetConfigurationVersion(),
+		runtime.GetDesiredStateVersion(),
 		runtime.GetWorkflowVersion())
 	return result
 }
@@ -991,6 +1054,10 @@ func convertCacheToJobStatus(
 func convertCacheToWorkflowStatus(
 	cachedWorkflow cached.Update,
 ) *stateless.WorkflowStatus {
+	if cachedWorkflow == nil {
+		return nil
+	}
+
 	workflowStatus := &stateless.WorkflowStatus{}
 	workflowStatus.Type = stateless.WorkflowType(cachedWorkflow.GetWorkflowType())
 	workflowStatus.State = stateless.WorkflowState(cachedWorkflow.GetState().State)

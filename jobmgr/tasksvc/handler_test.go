@@ -27,13 +27,13 @@ import (
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	cachedtest "code.uber.internal/infra/peloton/jobmgr/cached/test"
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/golang/mock/gomock"
+	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
@@ -88,8 +88,10 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 		Type:          job.JobType_BATCH,
 	}
 	suite.testJobRuntime = &job.RuntimeInfo{
-		State:     job.JobState_RUNNING,
-		GoalState: job.JobState_SUCCEEDED,
+		State:               job.JobState_RUNNING,
+		GoalState:           job.JobState_SUCCEEDED,
+		StateVersion:        1,
+		DesiredStateVersion: 1,
 	}
 	var taskInfos = make(map[uint32]*task.TaskInfo)
 	for i := uint32(0); i < testInstanceCount; i++ {
@@ -323,13 +325,9 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 		expectedTaskIds[taskInfo.GetRuntime().GetMesosTaskId()] = true
 	}
 
-	expectedJobRuntime := &job.RuntimeInfo{
-		GoalState: job.JobState_KILLED,
-	}
-
-	expectedJobInfo := &job.JobInfo{
-		Runtime: expectedJobRuntime,
-	}
+	expectedJobRuntime := proto.Clone(suite.testJobRuntime).(*job.RuntimeInfo)
+	expectedJobRuntime.GoalState = job.JobState_KILLED
+	expectedJobRuntime.DesiredStateVersion++
 
 	gomock.InOrder(
 		suite.mockedCandidate.EXPECT().IsLeader().Return(true),
@@ -346,8 +344,8 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 			GetRuntime(gomock.Any()).
 			Return(suite.testJobRuntime, nil),
 		suite.mockedCachedJob.EXPECT().
-			Update(gomock.Any(), expectedJobInfo, gomock.Any(), cached.UpdateCacheAndDB).
-			Return(nil),
+			CompareAndSetRuntime(gomock.Any(), expectedJobRuntime).
+			Return(expectedJobRuntime, nil),
 		suite.mockedGoalStateDrive.EXPECT().
 			EnqueueJob(suite.testJobID, gomock.Any()).Return(),
 	)
@@ -545,7 +543,8 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasksWithUpdateFailure() {
 			GetRuntime(gomock.Any()).
 			Return(suite.testJobRuntime, nil),
 		suite.mockedCachedJob.EXPECT().
-			Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(fmt.Errorf("db update failure")),
+			CompareAndSetRuntime(gomock.Any(), gomock.Any()).
+			Return(nil, yarpcerrors.InternalErrorf("test error")),
 	)
 
 	var request = &task.StopRequest{

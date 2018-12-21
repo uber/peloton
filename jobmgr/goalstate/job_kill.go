@@ -27,6 +27,15 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
+	// Get job runtime and update job state to killing
+	jobRuntime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id).
+			Error("failed to get job runtime during job kill")
+		return err
+	}
+
 	// Update task runtimes in DB and cache to kill task
 	runtimeDiffNonTerminatedTasks, _, runtimeDiffAll, err :=
 		createRuntimeDiffForKill(ctx, cachedJob)
@@ -66,15 +75,6 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 		EnqueueJobWithDefaultDelay(jobID, goalStateDriver, cachedJob)
 	}
 
-	// Get job runtime and update job state to killing
-	jobRuntime, err := cachedJob.GetRuntime(ctx)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id).
-			Error("failed to get job runtime during job kill")
-		return err
-	}
-
 	jobState := calculateJobState(
 		ctx,
 		cachedJob,
@@ -82,8 +82,16 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 		jobRuntime,
 		runtimeDiffNonTerminatedTasks,
 	)
+	// update job sate as well as state version,
+	// once state version == desired state version,
+	// goal state engine knows that the all the tasks
+	// are being sent to task goal state engine to kill and
+	// no further action is needed.
 	err = cachedJob.Update(ctx, &job.JobInfo{
-		Runtime: &job.RuntimeInfo{State: jobState},
+		Runtime: &job.RuntimeInfo{
+			State:        jobState,
+			StateVersion: jobRuntime.DesiredStateVersion,
+		},
 	}, nil,
 		cached.UpdateCacheAndDB)
 	if err != nil {
@@ -105,7 +113,10 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 // state (to prevent restart),
 // runtimeDiffAll which is a union of runtimeDiffNonTerminatedTasks and
 // runtimeDiffTerminatedTasks
-func createRuntimeDiffForKill(ctx context.Context, cachedJob cached.Job) (
+func createRuntimeDiffForKill(
+	ctx context.Context,
+	cachedJob cached.Job,
+) (
 	runtimeDiffNonTerminatedTasks map[uint32]jobmgrcommon.RuntimeDiff,
 	runtimeDiffTerminatedTasks map[uint32]jobmgrcommon.RuntimeDiff,
 	runtimeDiffAll map[uint32]jobmgrcommon.RuntimeDiff,

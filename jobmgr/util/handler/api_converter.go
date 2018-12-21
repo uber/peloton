@@ -289,8 +289,8 @@ func ConvertUpdateModelToWorkflowStatus(
 	}
 
 	return &stateless.WorkflowStatus{
-		Type:                  stateless.WorkflowType(updateInfo.GetType()),
-		State:                 stateless.WorkflowState(updateInfo.GetState()),
+		Type:  stateless.WorkflowType(updateInfo.GetType()),
+		State: stateless.WorkflowState(updateInfo.GetState()),
 		NumInstancesCompleted: updateInfo.GetInstancesDone(),
 		NumInstancesRemaining: updateInfo.GetInstancesTotal() - updateInfo.GetInstancesDone() - updateInfo.GetInstancesFailed(),
 		NumInstancesFailed:    updateInfo.GetInstancesFailed(),
@@ -319,6 +319,7 @@ func ConvertRuntimeInfoToJobStatus(
 	result.DesiredState = stateless.JobState(runtime.GetGoalState())
 	result.Version = jobutil.GetJobEntityVersion(
 		runtime.GetConfigurationVersion(),
+		runtime.GetDesiredStateVersion(),
 		runtime.GetWorkflowVersion(),
 	)
 	result.WorkflowStatus = ConvertUpdateModelToWorkflowStatus(updateInfo)
