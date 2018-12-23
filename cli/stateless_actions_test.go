@@ -9,11 +9,13 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	respoolmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
+	pelotonv1alphapod "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/util/handler"
@@ -752,6 +754,64 @@ func (suite *statelessActionsTestSuite) TestClientJobGetFail() {
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
 	suite.Error(suite.client.StatelessGetAction(testJobID, "3-1", false))
+}
+
+// TestStatelessRestartJobActionSuccess tests the success path of restart job
+func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionSuccess() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	opaque := "test"
+	batchSize := uint32(1)
+	instanceRanges := []*task.InstanceRange{{From: 0, To: 10}}
+
+	suite.statelessClient.
+		EXPECT().
+		RestartJob(gomock.Any(), &svc.RestartJobRequest{
+			JobId:     &v1alphapeloton.JobID{Value: testJobID},
+			Version:   entityVersion,
+			BatchSize: batchSize,
+			Ranges: []*pelotonv1alphapod.InstanceIDRange{
+				{From: 0, To: 10},
+			},
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
+		}).
+		Return(&svc.RestartJobResponse{Version: entityVersion}, nil)
+
+	suite.NoError(suite.client.StatelessRestartJobAction(
+		testJobID,
+		batchSize,
+		entityVersion.GetValue(),
+		instanceRanges,
+		opaque,
+	))
+}
+
+// TestStatelessRestartJobActionFailure tests the failure path of restart job
+func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionFailure() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	opaque := "test"
+	batchSize := uint32(1)
+	instanceRanges := []*task.InstanceRange{{From: 0, To: 10}}
+
+	suite.statelessClient.
+		EXPECT().
+		RestartJob(gomock.Any(), &svc.RestartJobRequest{
+			JobId:     &v1alphapeloton.JobID{Value: testJobID},
+			Version:   entityVersion,
+			BatchSize: batchSize,
+			Ranges: []*pelotonv1alphapod.InstanceIDRange{
+				{From: 0, To: 10},
+			},
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
+		}).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessRestartJobAction(
+		testJobID,
+		batchSize,
+		entityVersion.GetValue(),
+		instanceRanges,
+		opaque,
+	))
 }
 
 func TestStatelessActions(t *testing.T) {

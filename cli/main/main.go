@@ -10,7 +10,6 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	pt "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-
 	pc "code.uber.internal/infra/peloton/cli"
 
 	"code.uber.internal/infra/peloton/common"
@@ -267,6 +266,14 @@ var (
 		"resource pool starting from the root").Required().String()
 	statelessReplaceJobDiffEntityVersion = statelessReplaceJobDiff.Arg("entityVersion",
 		"entity version for concurrency control").Required().String()
+
+	statelessRestartJob            = stateless.Command("restart", "restart instances in the job")
+	statelessRestartName           = statelessRestartJob.Arg("job", "job identifier").Required().String()
+	statelessRestartVersion        = statelessRestartJob.Arg("entityVersion", "entity version for concurrency control").Required().String()
+	statelessRestartInstanceRanges = taskRangeListFlag(statelessRestartJob.Flag("range", "restart range of instances (specify multiple times) (from:to syntax, default ALL)").Default(":").Short('r'))
+	statelessRestartOpaqueData     = statelessRestartJob.Flag("opaque-data",
+		"opaque data provided by the user").Default("").String()
+	statelessRestartBatchSize = statelessRestartJob.Flag("batch-size", "batch size for the restart").Default("0").Uint32()
 
 	statelessStop              = stateless.Command("stop", "stop all pods in a job")
 	statelessStopJobID         = statelessStop.Arg("job", "job identifier").Required().String()
@@ -814,6 +821,14 @@ func main() {
 			*statelessCreateSpec,
 			*statelessCreateSecretPath,
 			[]byte(*statelessCreateSecret),
+		)
+	case statelessRestartJob.FullCommand():
+		err = client.StatelessRestartJobAction(
+			*statelessRestartName,
+			*statelessRestartBatchSize,
+			*statelessRestartVersion,
+			*statelessRestartInstanceRanges,
+			*statelessRestartOpaqueData,
 		)
 	case podLogsGet.FullCommand():
 		err = client.PodLogsGetAction(*podLogsGetFileName, *podLogsGetPodName, *podLogsGetPodID)

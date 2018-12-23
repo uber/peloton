@@ -2574,6 +2574,143 @@ func (suite *statelessHandlerTestSuite) TestStopJobCompareAndSetRuntimeFailure()
 	suite.Nil(resp)
 }
 
+// TestRestartJobSuccess tests the success case of restarting a job
+func (suite *statelessHandlerTestSuite) TestRestartJobSuccess() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	newEntityVersion := &v1alphapeloton.EntityVersion{Value: "1-2"}
+	batchSize := uint32(1)
+	opaque := "test"
+	ranges := []*pod.InstanceIDRange{
+		{From: 0, To: 2},
+		{From: 4, To: 6},
+	}
+
+	configVersion := uint64(2)
+
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.jobFactory.EXPECT().
+		AddJob(&peloton.JobID{Value: testJobID}).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbjob.RuntimeInfo{
+			ConfigurationVersion: configVersion,
+		}, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			&peloton.JobID{Value: testJobID},
+			configVersion,
+		).
+		Return(&pbjob.JobConfig{
+			ChangeLog: &peloton.ChangeLog{Version: configVersion},
+		}, nil, nil)
+
+	suite.cachedJob.EXPECT().
+		CreateWorkflow(
+			gomock.Any(),
+			models.WorkflowType_RESTART,
+			&pbupdate.UpdateConfig{
+				BatchSize: batchSize,
+			},
+			entityVersion,
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any()).
+		Return(&peloton.UpdateID{Value: testUpdateID}, newEntityVersion, nil)
+
+	suite.goalStateDriver.EXPECT().
+		EnqueueUpdate(
+			&peloton.JobID{Value: testJobID},
+			&peloton.UpdateID{Value: testUpdateID},
+			gomock.Any(),
+		)
+
+	resp, err := suite.handler.RestartJob(
+		context.Background(),
+		&statelesssvc.RestartJobRequest{
+			JobId:      &v1alphapeloton.JobID{Value: testJobID},
+			Version:    entityVersion,
+			BatchSize:  batchSize,
+			Ranges:     ranges,
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
+		},
+	)
+	suite.NoError(err)
+	suite.Equal(resp.GetVersion().GetValue(), newEntityVersion.GetValue())
+}
+
+// TestRestartJobNonLeaderFailure tests the success case of fail to restart
+// a job due to jobmgr is not leader
+func (suite *statelessHandlerTestSuite) TestRestartJobNonLeaderFailure() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	batchSize := uint32(1)
+	opaque := "test"
+	ranges := []*pod.InstanceIDRange{
+		{From: 0, To: 2},
+		{From: 4, To: 6},
+	}
+
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(false)
+
+	resp, err := suite.handler.RestartJob(
+		context.Background(),
+		&statelesssvc.RestartJobRequest{
+			JobId:      &v1alphapeloton.JobID{Value: testJobID},
+			Version:    entityVersion,
+			BatchSize:  batchSize,
+			Ranges:     ranges,
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
+		},
+	)
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestRestartJobGetRuntimeFailure tests the failure case of restarting a job
+// due to get runtime error
+func (suite *statelessHandlerTestSuite) TestRestartJobGetRuntimeFailure() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	batchSize := uint32(1)
+	opaque := "test"
+	ranges := []*pod.InstanceIDRange{
+		{From: 0, To: 2},
+		{From: 4, To: 6},
+	}
+
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.jobFactory.EXPECT().
+		AddJob(&peloton.JobID{Value: testJobID}).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	resp, err := suite.handler.RestartJob(
+		context.Background(),
+		&statelesssvc.RestartJobRequest{
+			JobId:      &v1alphapeloton.JobID{Value: testJobID},
+			Version:    entityVersion,
+			BatchSize:  batchSize,
+			Ranges:     ranges,
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
+		},
+	)
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
 func TestStatelessServiceHandler(t *testing.T) {
 	suite.Run(t, new(statelessHandlerTestSuite))
 }

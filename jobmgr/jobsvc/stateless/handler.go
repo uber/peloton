@@ -1,6 +1,7 @@
 package stateless
 
 import (
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"context"
 	"encoding/base64"
 	"time"
@@ -9,6 +10,7 @@ import (
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -310,8 +312,93 @@ func (h *serviceHandler) PatchJob(
 
 func (h *serviceHandler) RestartJob(
 	ctx context.Context,
-	req *svc.RestartJobRequest) (*svc.RestartJobResponse, error) {
-	return &svc.RestartJobResponse{}, nil
+	req *svc.RestartJobRequest) (resp *svc.RestartJobResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("JobSVC.RestartJob failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Info("JobSVC.RestartJob succeeded")
+	}()
+
+	if !h.candidate.IsLeader() {
+		return nil, yarpcerrors.UnavailableErrorf("JobSVC.RestartJob is not supported on non-leader")
+	}
+
+	jobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
+	cachedJob := h.jobFactory.AddJob(jobID)
+	runtime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "fail to get job runtime")
+	}
+
+	jobConfig, configAddOn, err := h.jobStore.GetJobConfigWithVersion(
+		ctx,
+		jobID,
+		runtime.GetConfigurationVersion(),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "fail to get job config")
+	}
+
+	// copy the config with provided resource version number
+	newConfig := *jobConfig
+	now := time.Now()
+	newConfig.ChangeLog = &peloton.ChangeLog{
+		Version:   jobConfig.GetChangeLog().GetVersion(),
+		CreatedAt: uint64(now.UnixNano()),
+		UpdatedAt: uint64(now.UnixNano()),
+	}
+
+	opaque := cached.WithOpaqueData(nil)
+	if req.GetOpaqueData() != nil {
+		opaque = cached.WithOpaqueData(&peloton.OpaqueData{
+			Data: req.GetOpaqueData().GetData(),
+		})
+	}
+
+	updateID, newEntityVersion, err := cachedJob.CreateWorkflow(
+		ctx,
+		models.WorkflowType_RESTART,
+		&pbupdate.UpdateConfig{
+			BatchSize: req.GetBatchSize(),
+		},
+		req.GetVersion(),
+		cached.WithInstanceToProcess(
+			nil,
+			convertInstanceIDRangesToSlice(req.GetRanges(), newConfig.GetInstanceCount()),
+			nil),
+		cached.WithConfig(
+			&newConfig,
+			jobConfig,
+			configAddOn,
+		),
+		opaque,
+	)
+
+	// In case of error, since it is not clear if job runtime was
+	// persisted with the update ID or not, enqueue the update to
+	// the goal state. If the update ID got persisted, update should
+	// start running, else, it should be aborted. Enqueueing it into
+	// the goal state will ensure both. In case the update was not
+	// persisted, clear the cache as well so that it is reloaded
+	// from DB and cleaned up.
+	// Add update to goal state engine to start it
+	if len(updateID.GetValue()) > 0 {
+		h.goalStateDriver.EnqueueUpdate(jobID, updateID, time.Now())
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &svc.RestartJobResponse{Version: newEntityVersion}, nil
 }
 
 func (h *serviceHandler) PauseJobWorkflow(
@@ -1226,4 +1313,27 @@ func (h *serviceHandler) addSecretsToDBAndConfig(
 		}
 	}
 	return nil
+}
+
+// convertInstanceIDRangesToSlice merges ranges into a single slice and remove
+// any duplicated item
+// need the instanceCount because cli may send max uint32 when range is not specified.
+func convertInstanceIDRangesToSlice(ranges []*pod.InstanceIDRange, instanceCount uint32) []uint32 {
+	var result []uint32
+	set := make(map[uint32]bool)
+
+	for _, instanceRange := range ranges {
+		for i := instanceRange.GetFrom(); i < instanceRange.GetTo(); i++ {
+			// ignore instances above instanceCount
+			if i >= instanceCount {
+				break
+			}
+			// dedup result
+			if !set[i] {
+				result = append(result, i)
+				set[i] = true
+			}
+		}
+	}
+	return result
 }

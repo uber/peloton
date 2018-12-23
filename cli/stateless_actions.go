@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
+	pelotonv1alphapod "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	pelotonv1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
 	pelotonv1alpharespool "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool"
 
@@ -618,4 +620,42 @@ func printListJobsResponse(resp *statelesssvc.ListJobsResponse) {
 	for _, r := range jobs {
 		printStatelessQueryResult(r)
 	}
+}
+
+// StatelessRestartJobAction restarts a job
+func (c *Client) StatelessRestartJobAction(
+	jobID string,
+	batchSize uint32,
+	entityVersion string,
+	instanceRanges []*task.InstanceRange,
+	opaqueData string,
+) error {
+	var opaque *v1alphapeloton.OpaqueData
+	if len(opaqueData) > 0 {
+		opaque = &v1alphapeloton.OpaqueData{Data: opaqueData}
+	}
+
+	var idInstanceRanges []*pelotonv1alphapod.InstanceIDRange
+	for _, instanceRange := range instanceRanges {
+		idInstanceRanges = append(idInstanceRanges, &pelotonv1alphapod.InstanceIDRange{
+			From: instanceRange.GetFrom(),
+			To:   instanceRange.GetTo(),
+		})
+	}
+
+	req := &statelesssvc.RestartJobRequest{
+		JobId:      &v1alphapeloton.JobID{Value: jobID},
+		Version:    &v1alphapeloton.EntityVersion{Value: entityVersion},
+		BatchSize:  batchSize,
+		Ranges:     idInstanceRanges,
+		OpaqueData: opaque,
+	}
+
+	resp, err := c.statelessClient.RestartJob(c.ctx, req)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Job restarted. New EntityVersion: %s\n", resp.GetVersion().GetValue())
+	return nil
 }
