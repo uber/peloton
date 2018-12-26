@@ -103,12 +103,16 @@ cover:
 	./scripts/cover.sh $(shell go list $(PACKAGES))
 	go tool cover -html=cover.out -o cover.html
 
-gens: $(VENDOR)
+gens: thriftgens pbgens
+
+thriftgens: $(VENDOR)
 	@mkdir -p $(GEN_DIR)
 	go get ./vendor/go.uber.org/thriftrw
 	go get ./vendor/go.uber.org/yarpc/encoding/thrift/thriftrw-plugin-yarpc
 	thriftrw --plugin=yarpc --out=$(GEN_DIR)/thrift/aurora thrift/aurora/api.thrift
 
+pbgens: $(VENDOR)
+	@mkdir -p $(GEN_DIR)
 	go get ./vendor/github.com/golang/protobuf/protoc-gen-go
 	go get ./vendor/go.uber.org/yarpc/encoding/protobuf/protoc-gen-yarpc-go
 	./scripts/generate-protobuf.py --generator=go --out-dir=$(GEN_DIR)
