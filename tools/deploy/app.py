@@ -114,6 +114,8 @@ class App(object):
         self.enable_revocable_resources = None
         self.bin_packing = None
         self.stream_only_mode = True
+        self.enable_sla_tracking = False
+        self.enable_preemption = False
 
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
@@ -142,6 +144,8 @@ class App(object):
         mesos_zk_path = 'zk://%s/%s' % (
             ','.join(self.cluster.zookeeper), self.cluster.mesos_zk_path)
         peloton_zk_endpoints = '\n'.join(self.cluster.zookeeper)
+
+        # add common variables
         env_vars = {
             'ENVIRONMENT': 'production',
             'CONFIG_DIR': './config',
@@ -164,46 +168,13 @@ class App(object):
                 self.cluster, 'secret_config_dir', ''),
             'MESOS_SECRET_FILE': getattr(
                 self.cluster, 'mesos_secret_file', ''),
-            'ENABLE_PREEMPTION': getattr(
-                self.cluster, 'enable_preemption', 'false'),
             'ENABLE_SECRETS': self.enable_secrets,
             'JOB_RUNTIME_CALCULATION_VIA_CACHE': getattr(
                 self.cluster, 'job_runtime_calculation_via_cache',
                 'false'),
         }
 
-        if self.name == 'placement_stateful':
-            env_vars['TASK_TYPE'] = 'STATEFUL'
-            env_vars['APP'] = 'placement'
-
-        if self.name == 'placement_stateless':
-            env_vars['TASK_TYPE'] = 'STATELESS'
-            env_vars['APP'] = 'placement'
-
-        if self.name == 'jobmgr':
-            env_vars['JOB_TYPE'] = getattr(self, "job_type", "BATCH")
-
-        if self.name == 'archiver':
-            env_vars['ENABLE_ARCHIVER'] = self.enable_archiver
-            env_vars['STREAM_ONLY_MODE'] = self.stream_only_mode
-            env_vars['POD_EVENTS_CLEANUP'] = self.pod_events_cleanup
-            env_vars['ARCHIVE_AGE'] = self.archive_age
-            env_vars['ARCHIVE_INTERVAL'] = self.archive_interval
-            env_vars['ARCHIVE_STEP_SIZE'] = self.archive_step_size
-            env_vars['KAFKA_TOPIC'] = self.kafka_topic
-
-        if self.name == 'hostmgr':
-            if self.scarce_resource_types:
-                env_vars['SCARCE_RESOURCE_TYPES'] = ','.join(
-                    self.scarce_resource_types)
-            if self.slack_resource_types:
-                env_vars['SLACK_RESOURCE_TYPES'] = ','.join(
-                    self.slack_resource_types)
-            if self.enable_revocable_resources:
-                env_vars['ENABLE_REVOCABLE_RESOURCES'] = \
-                    self.enable_revocable_resources
-            if self.bin_packing:
-                env_vars['BIN_PACKING'] = self.bin_packing
+        self.add_app_specific_vars(env_vars)
 
         params = [
             DockerParameter(name='env', value='%s=%s' % (key, val))
@@ -228,6 +199,54 @@ class App(object):
         )
 
         return params
+
+    def add_app_specific_vars(self, env_vars):
+        """
+        Adds env variables specific to the application
+        """
+        if self.name == 'placement_stateful':
+            env_vars['TASK_TYPE'] = 'STATEFUL'
+            env_vars['APP'] = 'placement'
+
+        if self.name == 'placement_stateless':
+            env_vars['TASK_TYPE'] = 'STATELESS'
+            env_vars['APP'] = 'placement'
+
+        if self.name == 'jobmgr':
+            env_vars['JOB_TYPE'] = getattr(self, "job_type", "BATCH")
+
+        if self.name == 'archiver':
+            env_vars['ENABLE_ARCHIVER'] = self.enable_archiver
+            env_vars['STREAM_ONLY_MODE'] = self.stream_only_mode
+            env_vars['POD_EVENTS_CLEANUP'] = self.pod_events_cleanup
+            env_vars['ARCHIVE_AGE'] = self.archive_age
+            env_vars['ARCHIVE_INTERVAL'] = self.archive_interval
+            env_vars['ARCHIVE_STEP_SIZE'] = self.archive_step_size
+            env_vars['KAFKA_TOPIC'] = self.kafka_topic
+
+        if self.name == 'resmgr':
+            env_vars['ENABLE_SLA_TRACKING'] = getattr(
+                self,
+                "enable_sla_tracking", False,
+            )
+            env_vars['ENABLE_PREEMPTION'] = getattr(
+                self,
+                "enable_preemption",
+                False,
+            )
+
+        if self.name == 'hostmgr':
+            if self.scarce_resource_types:
+                env_vars['SCARCE_RESOURCE_TYPES'] = ','.join(
+                    self.scarce_resource_types)
+            if self.slack_resource_types:
+                env_vars['SLACK_RESOURCE_TYPES'] = ','.join(
+                    self.slack_resource_types)
+            if self.enable_revocable_resources:
+                env_vars['ENABLE_REVOCABLE_RESOURCES'] = \
+                    self.enable_revocable_resources
+            if self.bin_packing:
+                env_vars['BIN_PACKING'] = self.bin_packing
 
     def get_docker_image(self):
         """

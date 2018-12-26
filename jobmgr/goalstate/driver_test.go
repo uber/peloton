@@ -71,7 +71,7 @@ func (suite *DriverTestSuite) SetupTest() {
 				RecoverFromActiveJobs: false,
 			},
 		},
-		jobType:                       job.JobType_BATCH,
+		jobType: job.JobType_BATCH,
 		jobRuntimeCalculationViaCache: false,
 	}
 	suite.goalStateDriver.cfg.normalize()

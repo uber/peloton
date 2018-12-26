@@ -437,7 +437,7 @@ func TestRecoveryErrors(t *testing.T) {
 	// see the missing jobs being added to active jobs list
 	mockJobStore.EXPECT().
 		GetActiveJobs(ctx).
-		Return([]*peloton.JobID{&peloton.JobID{Value: uuid.New()}}, nil)
+		Return([]*peloton.JobID{{Value: uuid.New()}}, nil)
 	mockJobStore.EXPECT().AddActiveJob(ctx, jobID).Return(nil)
 
 	mockJobStore.EXPECT().
