@@ -11,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/storage/cassandra/impl"
 	"code.uber.internal/infra/peloton/storage/objects/base"
 
+	"github.com/gocql/gocql"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 )
@@ -89,8 +90,9 @@ func init() {
 	connector = conn.(*cassandraConnector)
 }
 
-// TestCreateGet creates a row in the test table and reads it back
-func (suite *CassandraConnSuite) TestCreateGet() {
+// TestCreateGetDelete creates a row in the test table and reads it back
+// Then it deletes it and verifies that row was deleted
+func (suite *CassandraConnSuite) TestCreateGetDelete() {
 	// Definition stores schema information about an Object
 	obj := &base.Definition{
 		Name: testTableName,
@@ -113,4 +115,13 @@ func (suite *CassandraConnSuite) TestCreateGet() {
 	row, err := connector.Get(context.Background(), obj, keyRow)
 	suite.NoError(err)
 	suite.Len(row, 3)
+
+	// delete the test row from C*
+	err = connector.Delete(context.Background(), obj, keyRow)
+	suite.NoError(err)
+
+	// read the row from C* test table for given keys
+	row, err = connector.Get(context.Background(), obj, keyRow)
+	suite.Error(err)
+	suite.Equal(err, gocql.ErrNotFound)
 }

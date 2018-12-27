@@ -17,6 +17,7 @@ func TestCassandraConnSuite(t *testing.T) {
 	suite.Run(t, new(CassandraConnSuite))
 }
 
+// TestInsertStmt tests constructing insert CQL query
 func (suite *CassandraConnSuite) TestInsertStmt() {
 	data := []struct {
 		table   string
@@ -48,6 +49,7 @@ func (suite *CassandraConnSuite) TestInsertStmt() {
 	}
 }
 
+// TestSelectStmt tests constructing select CQL query
 func (suite *CassandraConnSuite) TestSelectStmt() {
 
 	data := []struct {
@@ -80,6 +82,36 @@ func (suite *CassandraConnSuite) TestSelectStmt() {
 		stmt, err := SelectStmt(
 			Table(d.table),
 			Columns(d.cols),
+			Conditions(d.keyCols),
+		)
+		suite.NoError(err)
+		suite.Equal(stmt, d.stmt)
+	}
+}
+
+// TestDeleteStmt tests constructing delete CQL query
+func (suite *CassandraConnSuite) TestDeleteStmt() {
+
+	data := []struct {
+		table   string
+		cols    []string
+		keyCols []string
+		stmt    string
+	}{
+		{
+			table:   "table1",
+			keyCols: []string{"c3", "c4"},
+			stmt:    "DELETE FROM \"table1\" WHERE c3=? AND c4=?;",
+		},
+		{
+			table:   "table2",
+			keyCols: []string{"c4"},
+			stmt:    "DELETE FROM \"table2\" WHERE c4=?;",
+		},
+	}
+	for _, d := range data {
+		stmt, err := DeleteStmt(
+			Table(d.table),
 			Conditions(d.keyCols),
 		)
 		suite.NoError(err)

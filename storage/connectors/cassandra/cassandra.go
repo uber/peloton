@@ -244,3 +244,34 @@ func (c *cassandraConnector) Get(
 	c.metrics.ExecuteSuccess.Inc(1)
 	return getRowFromResult(e, colNamesToRead, result), nil
 }
+
+// Delete deletes a record from DB using primary keys
+func (c *cassandraConnector) Delete(
+	ctx context.Context, e *base.Definition,
+	keyCols []base.Column) error {
+
+	// split keyCols into a list of names and values to compose query stmt using
+	// names and use values in the session query call, so the order needs to be
+	// maintained.
+	keyColNames, keyColValues := splitColumnNameValue(keyCols)
+
+	// Prepare delete statement
+	stmt, err := DeleteStmt(
+		Table(e.Name),
+		Conditions(keyColNames),
+	)
+	if err != nil {
+		return err
+	}
+
+	q := c.Session.Query(stmt, keyColValues...).WithContext(ctx)
+	defer c.sendLatency(ctx, "execute_latency", time.Duration(q.Latency()))
+
+	if err := q.Exec(); err != nil {
+		c.metrics.ExecuteFail.Inc(1)
+		return err
+	}
+
+	c.metrics.ExecuteSuccess.Inc(1)
+	return nil
+}

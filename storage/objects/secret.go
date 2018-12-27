@@ -81,3 +81,13 @@ func (s *Store) GetSecret(
 	err := s.oClient.Get(ctx, secretObject)
 	return secretObject, err
 }
+
+// DeleteSecret deletes a secret object in db
+func (s *Store) DeleteSecret(
+	ctx context.Context, secretID string) error {
+	secretObject := &SecretObject{
+		SecretID: secretID,
+		Valid:    true,
+	}
+	return s.oClient.Delete(ctx, secretObject)
+}

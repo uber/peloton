@@ -22,9 +22,13 @@ const (
 	insertTemplate = `INSERT INTO {{.Table}} ({{ColumnFunc .Columns ", "}})` +
 		` VALUES ({{QuestionMark .Values ", "}});`
 
-	// selectTemplate is used to construct an select query
+	// selectTemplate is used to construct a select query
 	selectTemplate = `SELECT {{ColumnFunc .Columns ", "}} FROM {{.Table}}` +
 		`{{WhereFunc .Conditions}}{{ConditionsFunc .Conditions " AND "}};`
+
+	// deleteTemplate is used to construct a delete query
+	deleteTemplate = `DELETE FROM {{.Table}} WHERE ` +
+		`{{ConditionsFunc .Conditions " AND "}};`
 )
 
 var (
@@ -42,6 +46,9 @@ var (
 	// select CQL query template implementation
 	selectTmpl = template.Must(
 		template.New("select").Funcs(funcMap).Parse(selectTemplate))
+	// delete CQL query template implementation
+	deleteTmpl = template.Must(
+		template.New("delete").Funcs(funcMap).Parse(deleteTemplate))
 )
 
 // questionMarkFunc adds ? to the insert query in place of values to be inserted
@@ -127,5 +134,16 @@ func SelectStmt(opts ...OptFunc) (string, error) {
 		opt(option)
 	}
 	err := selectTmpl.Execute(&bb, option)
+	return bb.String(), err
+}
+
+// DeleteStmt creates delete statement
+func DeleteStmt(opts ...OptFunc) (string, error) {
+	var bb bytes.Buffer
+	option := Option{}
+	for _, opt := range opts {
+		opt(option)
+	}
+	err := deleteTmpl.Execute(&bb, option)
 	return bb.String(), err
 }

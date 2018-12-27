@@ -8,6 +8,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/storage/cassandra"
 
+	"github.com/gocql/gocql"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -52,4 +53,11 @@ func (suite *ObjectsTestSuite) TestSecretObject() {
 	suite.Equal(secret.Valid, expectedSecret.Valid)
 	suite.Equal(secret.Data, expectedSecret.Data)
 	suite.Equal(secret.Path, expectedSecret.Path)
+
+	// Delete secret object from DB
+	err = estore.DeleteSecret(context.Background(), secretID)
+	suite.NoError(err)
+	_, err = estore.GetSecret(context.Background(), secretID)
+	suite.Error(err)
+	suite.Equal(err, gocql.ErrNotFound)
 }

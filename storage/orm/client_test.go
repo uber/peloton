@@ -37,6 +37,21 @@ var testRow = []base.Column{
 	},
 }
 
+// keyRow in DB representation looks like this:
+//
+// 	*	id	| 	 name
+//  1.   1  	"test"
+var keyRow = []base.Column{
+	{
+		Name:  "id",
+		Value: uint64(1),
+	},
+	{
+		Name:  "name",
+		Value: "test",
+	},
+}
+
 // testValidObject is the storage object representation of the above row
 var testValidObject = &ValidObject{
 	ID:   uint64(1),
@@ -130,5 +145,25 @@ func (suite *ORMTestSuite) TestClientGet() {
 	suite.Equal(testRow[2].Value, e.Data)
 
 	err = client.Get(suite.ctx, &InvalidObject1{})
+	suite.Error(err)
+}
+
+// TestClientDelete tests client delete operation on valid and invalid entities
+func (suite *ORMTestSuite) TestClientDelete() {
+	defer suite.ctrl.Finish()
+	conn := ormmocks.NewMockConnector(suite.ctrl)
+
+	conn.EXPECT().Delete(suite.ctx, gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *base.Definition, row []base.Column) {
+			suite.ensureRowsEqual(row, keyRow)
+		}).Return(nil)
+
+	client, err := NewClient(conn, &ValidObject{})
+	suite.NoError(err)
+
+	err = client.Delete(suite.ctx, testValidObject)
+	suite.NoError(err)
+
+	err = client.Delete(suite.ctx, &InvalidObject1{})
 	suite.Error(err)
 }

@@ -15,6 +15,8 @@ type Client interface {
 	Create(ctx context.Context, e base.Object) error
 	// Create gets the storage object from the database
 	Get(ctx context.Context, e base.Object) error
+	// Delete deletes the storage object from the database
+	Delete(ctx context.Context, e base.Object) error
 }
 
 type client struct {
@@ -84,4 +86,19 @@ func (c *client) Get(ctx context.Context, e base.Object) error {
 	table.SetObjectFromRow(e, row)
 
 	return nil
+}
+
+// Delete deletes the storage object in the database
+func (c *client) Delete(ctx context.Context, e base.Object) error {
+	// lookup if a table exists for this object, return error if not found
+	table, err := c.getTable(e)
+	if err != nil {
+		return err
+	}
+
+	// build a primary key row from storage object
+	keyRow := table.GetKeyRowFromObject(e)
+
+	// Tell the connector to delete the row in the DB using this keyRow
+	return c.connector.Delete(ctx, &table.Definition, keyRow)
 }
