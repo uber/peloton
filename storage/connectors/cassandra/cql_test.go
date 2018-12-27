@@ -96,22 +96,36 @@ func (suite *CassandraConnSuite) TestDeleteStmt() {
 		table   string
 		cols    []string
 		keyCols []string
+		values  []interface{}
 		stmt    string
 	}{
 		{
 			table:   "table1",
+			cols:    []string{"c1", "c2"},
 			keyCols: []string{"c3", "c4"},
+			values:  []interface{}{"val1", "val2"},
 			stmt:    "DELETE FROM \"table1\" WHERE c3=? AND c4=?;",
 		},
 		{
 			table:   "table2",
+			cols:    []string{"c1", "c2"},
 			keyCols: []string{"c4"},
+			values:  []interface{}{"val1", "val2"},
 			stmt:    "DELETE FROM \"table2\" WHERE c4=?;",
 		},
 	}
 	for _, d := range data {
 		stmt, err := DeleteStmt(
 			Table(d.table),
+			Conditions(d.keyCols),
+		)
+		suite.NoError(err)
+		suite.Equal(stmt, d.stmt)
+		// negative tests. Add unexpected clauses to the mix.
+		stmt, err = DeleteStmt(
+			Table(d.table),
+			Columns(d.cols),
+			Values(d.values),
 			Conditions(d.keyCols),
 		)
 		suite.NoError(err)

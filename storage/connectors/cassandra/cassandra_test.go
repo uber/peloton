@@ -124,4 +124,9 @@ func (suite *CassandraConnSuite) TestCreateGetDelete() {
 	row, err = connector.Get(context.Background(), obj, keyRow)
 	suite.Error(err)
 	suite.Equal(err, gocql.ErrNotFound)
+
+	// delete this row again from C*. It is a noop for C*
+	// this should not result in error.
+	err = connector.Delete(context.Background(), obj, keyRow)
+	suite.NoError(err)
 }
