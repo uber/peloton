@@ -593,6 +593,148 @@ func (suite *statelessHandlerTestSuite) TestRefreshJobSuccess() {
 	suite.NoError(err)
 }
 
+// TestGetWorkflowEventsFails tests the failure to fetch job runtime
+// for update id.
+func (suite *statelessHandlerTestSuite) TestGetWorkflowEventsJobRuntimeFail() {
+
+	// invalid job UUID
+	workflowEvents, err := suite.handler.GetWorkflowEvents(
+		context.Background(), &statelesssvc.GetWorkflowEventsRequest{
+			JobId: &v1alphapeloton.JobID{
+				Value: testJobName,
+			},
+			InstanceId: 0,
+		})
+	suite.Error(err)
+	suite.Nil(workflowEvents)
+
+	getWorkflowEventsReq := &statelesssvc.GetWorkflowEventsRequest{
+		JobId: &v1alphapeloton.JobID{
+			Value: testJobID,
+		},
+		InstanceId: 0,
+	}
+
+	v0JobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	// No job runtime exists
+	suite.jobFactory.EXPECT().
+		AddJob(v0JobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(nil, errors.New("unable to get job runtime"))
+
+	workflowEvents, err = suite.handler.GetWorkflowEvents(
+		context.Background(),
+		getWorkflowEventsReq)
+	suite.Error(err)
+	suite.Nil(workflowEvents)
+
+	// no update id exists for the job
+	jobRuntime := &pbjob.RuntimeInfo{
+		State: pbjob.JobState_RUNNING,
+	}
+	suite.jobFactory.EXPECT().
+		AddJob(v0JobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	workflowEvents, err = suite.handler.GetWorkflowEvents(
+		context.Background(),
+		getWorkflowEventsReq)
+	suite.Error(err)
+	suite.Nil(workflowEvents)
+}
+
+// TestGetWorkflowEventsFail tests fail to fetch workflow events when job runtime exists
+func (suite statelessHandlerTestSuite) TestGetWorkflowEventsFail() {
+	getWorkflowEventsReq := &statelesssvc.GetWorkflowEventsRequest{
+		JobId: &v1alphapeloton.JobID{
+			Value: testJobID,
+		},
+		InstanceId: 0,
+	}
+
+	v0JobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	// no update id exists for the job
+	jobRuntime := &pbjob.RuntimeInfo{
+		State: pbjob.JobState_RUNNING,
+	}
+
+	suite.jobFactory.EXPECT().
+		AddJob(v0JobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	workflowEvents, err := suite.handler.GetWorkflowEvents(
+		context.Background(),
+		getWorkflowEventsReq)
+	suite.Error(err)
+	suite.Nil(workflowEvents)
+}
+
+// TestGetWorkflowEvents test for the successful case of fetching
+// workflow events
+func (suite *statelessHandlerTestSuite) TestGetWorkflowEvents() {
+	getWorkflowEventsReq := &statelesssvc.GetWorkflowEventsRequest{
+		JobId: &v1alphapeloton.JobID{
+			Value: testJobID,
+		},
+		InstanceId: 0,
+	}
+
+	v0JobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	var events []*stateless.WorkflowEvent
+	jobRuntime := &pbjob.RuntimeInfo{
+		State: pbjob.JobState_RUNNING,
+		UpdateID: &peloton.UpdateID{
+			Value: testUpdateID,
+		},
+	}
+	workflowEvent := &stateless.WorkflowEvent{
+		Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+		State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD}
+	events = append(events, workflowEvent)
+
+	suite.jobFactory.EXPECT().
+		AddJob(v0JobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+	suite.updateStore.EXPECT().
+		GetWorkflowEvents(gomock.Any(), jobRuntime.GetUpdateID(), uint32(0)).
+		Return(nil, errors.New("unable to get workflow events from DB"))
+	_, err := suite.handler.GetWorkflowEvents(context.Background(), getWorkflowEventsReq)
+	suite.Error(err)
+
+	suite.jobFactory.EXPECT().
+		AddJob(v0JobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+	suite.updateStore.EXPECT().
+		GetWorkflowEvents(gomock.Any(), jobRuntime.GetUpdateID(), uint32(0)).
+		Return(events, nil)
+	workflowEvents, err := suite.handler.GetWorkflowEvents(context.Background(), getWorkflowEventsReq)
+	suite.NoError(err)
+	suite.Equal(1, len(workflowEvents.GetEvents()))
+}
+
 // TestRefreshJobFailNonLeader tests the failure case of refreshing job
 // due to JobMgr is not leader
 func (suite *statelessHandlerTestSuite) TestRefreshJobFailNonLeader() {

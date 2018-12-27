@@ -2365,6 +2365,14 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.NoError(err)
 	suite.Equal(len(updateList), 0)
 
+	// no workflow events present for an update
+	workflowEvents, err := store.GetWorkflowEvents(
+		context.Background(),
+		updateID,
+		0)
+	suite.NoError(err)
+	suite.Equal(0, len(workflowEvents))
+
 	// create a new update
 	suite.NoError(store.CreateUpdate(
 		context.Background(),
@@ -2381,6 +2389,15 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			Type:                 models.WorkflowType_UPDATE,
 			OpaqueData:           &peloton.OpaqueData{Data: opaque},
 		},
+	))
+
+	// add workflow event for instance 0 as initialized state
+	suite.NoError(store.AddWorkflowEvent(
+		context.Background(),
+		updateID,
+		0,
+		models.WorkflowType_UPDATE,
+		state,
 	))
 
 	// create an update with bad updateConfig
@@ -2452,6 +2469,15 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.Equal(updateInfo.GetInstancesDone(), uint32(0))
 	suite.Equal(len(updateInfo.GetInstancesCurrent()), 0)
 
+	// TODO: Add validation for workflow event and state
+	// Once update models are converged from v0 -> v1alpha
+	workflowEvents, err = store.GetWorkflowEvents(
+		context.Background(),
+		updateID,
+		0)
+	suite.NoError(err)
+	suite.Equal(1, len(workflowEvents))
+
 	// write new progress
 	prevState := update.State_INITIALIZED
 	state = update.State_ROLLING_FORWARD
@@ -2472,6 +2498,14 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 		},
 	)
 	suite.NoError(err)
+
+	// for instance 0 add workflow operation event
+	suite.NoError(store.AddWorkflowEvent(
+		context.Background(),
+		updateID,
+		0,
+		models.WorkflowType_UPDATE,
+		update.State_ROLLING_FORWARD))
 
 	// get the update
 	updateInfo, err = store.GetUpdate(
@@ -2503,6 +2537,22 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.Equal(updateInfo.GetInstancesDone(), instancesDone)
 	suite.Equal(updateInfo.GetInstancesFailed(), instancesFailed)
 	suite.Equal(updateInfo.GetInstancesCurrent(), instanceCurrent)
+
+	workflowEvents, err = store.GetWorkflowEvents(
+		context.Background(),
+		updateID,
+		0)
+	suite.NoError(err)
+	suite.Equal(2, len(workflowEvents))
+
+	suite.NoError(store.deleteWorkflowEvents(context.Background(), updateID, 0))
+
+	workflowEvents, err = store.GetWorkflowEvents(
+		context.Background(),
+		updateID,
+		0)
+	suite.NoError(err)
+	suite.Equal(0, len(workflowEvents))
 
 	// fetch update for job
 	updateList, err = store.GetUpdatesForJob(context.Background(), jobID)
@@ -2613,6 +2663,14 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	// delete the first update
 	err = store.DeleteUpdate(context.Background(), updateID, jobID, jobVersion)
 	suite.NoError(err)
+
+	// update is deleted with its workflow events
+	workflowEvents, err = store.GetWorkflowEvents(
+		context.Background(),
+		updateID,
+		0)
+	suite.NoError(err)
+	suite.Equal(0, len(workflowEvents))
 
 	// delete the job
 	store.DeleteJob(context.Background(), jobID)

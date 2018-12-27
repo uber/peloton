@@ -10,6 +10,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/storage"
 	datastore "code.uber.internal/infra/peloton/storage/cassandra/api"
@@ -23,8 +25,9 @@ import (
 )
 
 const (
-	testJobName = "uber"
-	testJob     = "941ff353-ba82-49fe-8f80-fb5bc649b04d"
+	testJobName  = "uber"
+	testJob      = "941ff353-ba82-49fe-8f80-fb5bc649b04d"
+	testUpdateID = "141ff353-ba82-49fe-8f80-fb5bc649b042"
 )
 
 type MockDatastoreTestSuite struct {
@@ -325,7 +328,27 @@ func (suite *MockDatastoreTestSuite) TestCreateTaskConfigFailures() {
 
 	err := suite.store.CreateTaskConfig(context.Background(), jobID,
 		0, &task.TaskConfig{Name: "dummy-task"}, nil, 0)
+	suite.Error(err)
+}
 
+// TestWorkflowEventsFailures tests failure scenarios for workflow events
+func (suite *MockDatastoreTestSuite) TestWorkflowEventsFailures() {
+	updateID := &peloton.UpdateID{
+		Value: testUpdateID,
+	}
+
+	err := suite.store.AddWorkflowEvent(
+		context.Background(),
+		updateID,
+		0,
+		models.WorkflowType_UPDATE,
+		update.State_ROLLING_FORWARD)
+	suite.Error(err)
+
+	err = suite.store.deleteWorkflowEvents(context.Background(), updateID, 0)
+	suite.Error(err)
+
+	_, err = suite.store.GetWorkflowEvents(context.Background(), updateID, 0)
 	suite.Error(err)
 }
 

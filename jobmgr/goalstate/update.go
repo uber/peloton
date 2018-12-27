@@ -120,6 +120,7 @@ func (u *updateEntity) GetActionList(
 		log.Fields{
 			"update_id":       u.id.GetValue(),
 			"current_state":   updateState.State.String(),
+			"goal_state":      updateGoalState.State.String(),
 			"instances_total": len(updateGoalState.Instances),
 			"instances_done":  len(updateState.Instances),
 			"update_action":   actionStr,

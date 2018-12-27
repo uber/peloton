@@ -322,6 +322,9 @@ message GetJobIDFromJobNameResponse {
 message GetWorkflowEventsRequest {
   // The job ID to look up the job.
   peloton.JobID job_id = 1;
+
+  // The instance to get workflow events.
+  uint32 instance_id = 2;
 }
 
 // Response message for JobService.GetWorkflowEvents

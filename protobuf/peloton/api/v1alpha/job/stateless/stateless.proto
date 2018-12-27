@@ -359,13 +359,4 @@ message WorkflowEvent {
 
   // Current runtime state of the workflow.
   WorkflowState state = 3;
-
-  // Instances which have successfully completed.
-  repeated uint32 instances_completed = 4;
-
-  // Instances which have failed to come up after the workflow.
-  repeated uint32 instances_failed = 5;
-
-  // Current instances being operated on.
-  repeated uint32 instances_current = 6;
 }

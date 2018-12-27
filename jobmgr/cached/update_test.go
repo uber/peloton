@@ -86,6 +86,7 @@ func (suite *UpdateTestSuite) TestModifyValid() {
 	instancesUpdated := []uint32{0, 1, 2}
 	instancesRemoved := []uint32{5}
 
+	suite.update.workflowType = models.WorkflowType_UPDATE
 	suite.update.state = pbupdate.State_ROLLING_FORWARD
 
 	suite.updateStore.EXPECT().
@@ -96,6 +97,14 @@ func (suite *UpdateTestSuite) TestModifyValid() {
 			suite.Equal(instancesUpdated, updateModel.InstancesUpdated)
 			suite.Equal(instancesRemoved, updateModel.InstancesRemoved)
 		}).Return(nil)
+
+	suite.updateStore.EXPECT().
+		AddWorkflowEvent(
+			gomock.Any(),
+			suite.updateID,
+			gomock.Any(),
+			suite.update.workflowType,
+			suite.update.state).Return(nil).Times(6)
 
 	err := suite.update.Modify(
 		context.Background(),
@@ -117,6 +126,15 @@ func (suite *UpdateTestSuite) TestModifyDBError() {
 	instancesRemoved := []uint32{5}
 
 	suite.update.state = pbupdate.State_ROLLING_FORWARD
+
+	suite.updateStore.EXPECT().
+		AddWorkflowEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_ROLLING_FORWARD).
+		Return(nil).Times(6)
 
 	suite.updateStore.EXPECT().
 		ModifyUpdate(gomock.Any(), gomock.Any()).
@@ -149,6 +167,9 @@ func (suite *UpdateTestSuite) TestValidWriteProgress() {
 	instancesCurrent := []uint32{4, 5}
 	instanceFailed := []uint32{6, 7}
 
+	suite.update.instancesCurrent = []uint32{3, 6}
+
+	suite.update.workflowType = models.WorkflowType_UPDATE
 	suite.update.state = pbupdate.State_ROLLING_FORWARD
 
 	suite.updateStore.EXPECT().
@@ -161,6 +182,13 @@ func (suite *UpdateTestSuite) TestValidWriteProgress() {
 			suite.Equal(uint32(len(instanceFailed)), updateModel.InstancesFailed)
 		}).
 		Return(nil)
+	suite.updateStore.EXPECT().
+		AddWorkflowEvent(
+			gomock.Any(),
+			suite.updateID,
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any()).Return(nil).Times(4)
 
 	err := suite.update.WriteProgress(
 		context.Background(),
@@ -235,9 +263,8 @@ func (suite *UpdateTestSuite) TestWriteProgressRecoverFail() {
 // TestConsecutiveWriteProgressPrevState tests after consecutive call to
 // WriteProgress, prevState is correcct
 func (suite *UpdateTestSuite) TestConsecutiveWriteProgressPrevState() {
-	instancesDone := []uint32{0, 1, 2, 3}
-	instancesCurrent := []uint32{4, 5}
-	instanceFailed := []uint32{}
+	suite.update.instancesAdded = []uint32{0, 1, 2, 3, 4, 5}
+	suite.update.workflowType = models.WorkflowType_UPDATE
 
 	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
@@ -248,12 +275,34 @@ func (suite *UpdateTestSuite) TestConsecutiveWriteProgressPrevState() {
 	suite.NoError(suite.update.WriteProgress(
 		context.Background(),
 		pbupdate.State_ROLLING_FORWARD,
-		instancesDone,
-		instancesCurrent,
-		instanceFailed,
+		[]uint32{},
+		[]uint32{},
+		[]uint32{},
 	))
 	suite.Equal(suite.update.prevState, pbupdate.State_INITIALIZED)
 	suite.Equal(suite.update.state, pbupdate.State_ROLLING_FORWARD)
+
+	instancesDone := []uint32{}
+	instancesCurrent := []uint32{0, 1}
+	instanceFailed := []uint32{}
+
+	suite.updateStore.EXPECT().
+		AddWorkflowEvent(
+			gomock.Any(),
+			suite.updateID,
+			uint32(0),
+			models.WorkflowType_UPDATE,
+			pbupdate.State_ROLLING_FORWARD).
+		Return(nil)
+
+	suite.updateStore.EXPECT().
+		AddWorkflowEvent(
+			gomock.Any(),
+			suite.updateID,
+			uint32(1),
+			models.WorkflowType_UPDATE,
+			pbupdate.State_ROLLING_FORWARD).
+		Return(nil)
 
 	// prev state should still be INITIALIZED after we write
 	// State_ROLLING_FORWARD twice
@@ -261,28 +310,91 @@ func (suite *UpdateTestSuite) TestConsecutiveWriteProgressPrevState() {
 		context.Background(),
 		pbupdate.State_ROLLING_FORWARD,
 		instancesDone,
-		instancesCurrent,
 		instanceFailed,
+		instancesCurrent,
 	))
 	suite.Equal(suite.update.prevState, pbupdate.State_INITIALIZED)
 	suite.Equal(suite.update.state, pbupdate.State_ROLLING_FORWARD)
+
+	instancesDone = []uint32{0, 1}
+	instancesCurrent = []uint32{2, 3}
+	instanceFailed = []uint32{}
+
+	suite.updateStore.EXPECT().
+		AddWorkflowEvent(
+			gomock.Any(),
+			suite.updateID,
+			uint32(0),
+			models.WorkflowType_UPDATE,
+			pbupdate.State_SUCCEEDED).
+		Return(nil)
+
+	suite.updateStore.EXPECT().
+		AddWorkflowEvent(
+			gomock.Any(),
+			suite.updateID,
+			uint32(1),
+			models.WorkflowType_UPDATE,
+			pbupdate.State_SUCCEEDED).
+		Return(nil)
+
+	suite.updateStore.EXPECT().
+		AddWorkflowEvent(
+			gomock.Any(),
+			suite.updateID,
+			uint32(2),
+			models.WorkflowType_UPDATE,
+			pbupdate.State_ROLLING_FORWARD).
+		Return(nil)
+
+	suite.updateStore.EXPECT().
+		AddWorkflowEvent(
+			gomock.Any(),
+			suite.updateID,
+			uint32(3),
+			models.WorkflowType_UPDATE,
+			pbupdate.State_ROLLING_FORWARD).
+		Return(nil)
 
 	suite.NoError(suite.update.WriteProgress(
 		context.Background(),
 		pbupdate.State_ROLLING_FORWARD,
 		instancesDone,
-		instancesCurrent,
 		instanceFailed,
+		instancesCurrent,
 	))
 	suite.Equal(suite.update.prevState, pbupdate.State_INITIALIZED)
 	suite.Equal(suite.update.state, pbupdate.State_ROLLING_FORWARD)
+
+	// Write rolling backward for instances that are not in terminal state
+	instancesDone = []uint32{0, 1}
+	instancesCurrent = []uint32{2, 3}
+	instanceFailed = []uint32{}
+
+	suite.updateStore.EXPECT().
+		AddWorkflowEvent(
+			gomock.Any(),
+			suite.updateID,
+			uint32(2),
+			models.WorkflowType_UPDATE,
+			pbupdate.State_ROLLING_BACKWARD).
+		Return(nil)
+
+	suite.updateStore.EXPECT().
+		AddWorkflowEvent(
+			gomock.Any(),
+			suite.updateID,
+			uint32(3),
+			models.WorkflowType_UPDATE,
+			pbupdate.State_ROLLING_BACKWARD).
+		Return(nil)
 
 	suite.NoError(suite.update.WriteProgress(
 		context.Background(),
 		pbupdate.State_ROLLING_BACKWARD,
 		instancesDone,
-		instancesCurrent,
 		instanceFailed,
+		instancesCurrent,
 	))
 	suite.Equal(suite.update.prevState, pbupdate.State_ROLLING_FORWARD)
 	suite.Equal(suite.update.state, pbupdate.State_ROLLING_BACKWARD)
@@ -290,6 +402,7 @@ func (suite *UpdateTestSuite) TestConsecutiveWriteProgressPrevState() {
 
 // TestPauseSuccess tests successfully pause an update
 func (suite *UpdateTestSuite) TestPauseSuccess() {
+	suite.update.workflowType = models.WorkflowType_UPDATE
 	suite.update.state = pbupdate.State_ROLLING_FORWARD
 	opaque := "test"
 	suite.updateStore.EXPECT().
@@ -330,21 +443,27 @@ func (suite *UpdateTestSuite) TestPauseResumeRollingForwardUpdate() {
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
+
 	suite.update.state = pbupdate.State_ROLLING_FORWARD
 	suite.NoError(suite.update.Pause(context.Background(), nil))
+	suite.Equal(pbupdate.State_PAUSED, suite.update.state)
+
 	suite.NoError(suite.update.Resume(context.Background(), nil))
 	suite.Equal(suite.update.state, pbupdate.State_ROLLING_FORWARD)
 }
 
-// TestPauseResumeRollingForwardUpdate tests pause and resume a rolling
+// TestPauseResumeRollingBackwardUpdate tests pause and resume a rolling
 // backward update
 func (suite *UpdateTestSuite) TestPauseResumeRollingBackwardUpdate() {
 	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
+
 	suite.update.state = pbupdate.State_ROLLING_BACKWARD
 	suite.NoError(suite.update.Pause(context.Background(), nil))
+	suite.Equal(pbupdate.State_PAUSED, suite.update.state)
+
 	suite.NoError(suite.update.Resume(context.Background(), nil))
 	suite.Equal(suite.update.state, pbupdate.State_ROLLING_BACKWARD)
 }
@@ -356,8 +475,11 @@ func (suite *UpdateTestSuite) TestPauseResumeInitializedUpdate() {
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
+
 	suite.update.state = pbupdate.State_INITIALIZED
 	suite.NoError(suite.update.Pause(context.Background(), nil))
+	suite.Equal(pbupdate.State_PAUSED, suite.update.state)
+
 	suite.NoError(suite.update.Resume(context.Background(), nil))
 	suite.Equal(suite.update.state, pbupdate.State_INITIALIZED)
 }
@@ -376,10 +498,25 @@ func (suite *UpdateTestSuite) TestResumeRecoverFail() {
 func (suite *UpdateTestSuite) TestCancelValid() {
 	instancesDone := []uint32{1, 2, 3, 4, 5}
 	instancesCurrent := []uint32{6, 7}
+	suite.update.instancesAdded = []uint32{1, 2, 3, 4, 5, 6, 7}
+	suite.update.workflowType = models.WorkflowType_UPDATE
 	suite.update.state = pbupdate.State_INITIALIZED
 	suite.update.instancesDone = instancesDone
 	suite.update.instancesCurrent = instancesCurrent
 	opaque := "test"
+	suite.update.instancesFailed = []uint32{}
+	suite.update.instancesUpdated = []uint32{}
+	suite.update.instancesRemoved = []uint32{}
+
+	for _, i := range instancesCurrent {
+		suite.updateStore.EXPECT().
+			AddWorkflowEvent(
+				gomock.Any(),
+				suite.updateID,
+				i,
+				suite.update.workflowType,
+				pbupdate.State_ABORTED)
+	}
 
 	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
@@ -1411,6 +1548,15 @@ func (suite *UpdateTestSuite) TestUpdateCreateSuccess() {
 			suite.Equal(updateInfo.GetOpaqueData().GetData(), opaque)
 		}).
 		Return(nil)
+	for _, instance := range instancesUpdated {
+		suite.updateStore.EXPECT().
+			AddWorkflowEvent(
+				gomock.Any(),
+				gomock.Any(),
+				instance,
+				workflowType,
+				pbupdate.State_INITIALIZED).Return(nil)
+	}
 
 	suite.NoError(suite.update.Create(
 		context.Background(),
@@ -1427,7 +1573,7 @@ func (suite *UpdateTestSuite) TestUpdateCreateSuccess() {
 	))
 }
 
-// TestUpdateCreateSuccess tests the success case of creating update
+// TestUpdateCreatePausedSuccess tests the success case of creating update
 func (suite *UpdateTestSuite) TestUpdateCreatePausedSuccess() {
 	var instancesAdded []uint32
 	var instnacesRemoved []uint32
@@ -1462,6 +1608,16 @@ func (suite *UpdateTestSuite) TestUpdateCreatePausedSuccess() {
 			suite.Equal(updateInfo.GetUpdateConfig(), updateConfig)
 		}).
 		Return(nil)
+
+	for _, instance := range instancesUpdated {
+		suite.updateStore.EXPECT().
+			AddWorkflowEvent(
+				gomock.Any(),
+				gomock.Any(),
+				instance,
+				workflowType,
+				pbupdate.State_PAUSED).Return(nil)
+	}
 
 	suite.NoError(suite.update.Create(
 		context.Background(),

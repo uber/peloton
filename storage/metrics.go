@@ -227,6 +227,18 @@ type ErrorMetrics struct {
 	CASNotApplied      tally.Counter
 }
 
+// WorkflowMetrics is a struct for tracking all the workflow operations/events
+type WorkflowMetrics struct {
+	WorkflowEventsAdd     tally.Counter
+	WorkflowEventsAddFail tally.Counter
+
+	WorkflowEventsGet     tally.Counter
+	WorkflowEventsGetFail tally.Counter
+
+	WorkflowEventsDelete     tally.Counter
+	WorkflowEventsDeleteFail tally.Counter
+}
+
 // Metrics is a struct for tracking all the general purpose counters that have relevance to the storage
 // layer, i.e. how many jobs and tasks were created/deleted in the storage layer
 type Metrics struct {
@@ -238,6 +250,7 @@ type Metrics struct {
 	VolumeMetrics         *VolumeMetrics
 	SecretMetrics         *SecretMetrics
 	ErrorMetrics          *ErrorMetrics
+	WorkflowMetrics       *WorkflowMetrics
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized and rooted at the given tally.Scope
@@ -246,6 +259,10 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	jobSuccessScope := jobScope.Tagged(map[string]string{"result": "success"})
 	jobFailScope := jobScope.Tagged(map[string]string{"result": "fail"})
 	jobNotFoundScope := jobScope.Tagged(map[string]string{"result": "not_found"})
+
+	workflowScope := scope.SubScope("workflow")
+	workflowSuccessScope := workflowScope.Tagged(map[string]string{"result": "success"})
+	workflowFailScope := workflowScope.Tagged(map[string]string{"result": "fail"})
 
 	taskScope := scope.SubScope("task")
 	taskSuccessScope := taskScope.Tagged(map[string]string{"result": "success"})
@@ -464,6 +481,17 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		CASNotApplied:      storageErrorScope.Counter("cas_not_applied"),
 	}
 
+	workflowMetrics := &WorkflowMetrics{
+		WorkflowEventsAdd:     workflowSuccessScope.Counter("add"),
+		WorkflowEventsAddFail: workflowFailScope.Counter("add"),
+
+		WorkflowEventsDelete:     workflowSuccessScope.Counter("delete"),
+		WorkflowEventsDeleteFail: workflowFailScope.Counter("delete"),
+
+		WorkflowEventsGet:     workflowSuccessScope.Counter("get"),
+		WorkflowEventsGetFail: workflowFailScope.Counter("get"),
+	}
+
 	metrics := &Metrics{
 		JobMetrics:            jobMetrics,
 		TaskMetrics:           taskMetrics,
@@ -473,6 +501,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		VolumeMetrics:         volumeMetrics,
 		SecretMetrics:         secretMetrics,
 		ErrorMetrics:          errorMetrics,
+		WorkflowMetrics:       workflowMetrics,
 	}
 
 	return metrics

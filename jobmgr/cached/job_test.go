@@ -1845,6 +1845,16 @@ func (suite *JobTestSuite) TestJobCreateWorkflowSuccess() {
 	jobConfig := prevConfig
 	configAddOn := &models.ConfigAddOn{}
 
+	for _, i := range instancesUpdated {
+		suite.updateStore.EXPECT().
+			AddWorkflowEvent(
+				gomock.Any(),
+				gomock.Any(),
+				i,
+				workflowType,
+				pbupdate.State_INITIALIZED).Return(nil)
+	}
+
 	gomock.InOrder(
 		suite.jobStore.EXPECT().
 			GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
@@ -1991,6 +2001,17 @@ func (suite *JobTestSuite) TestJobCreateWorkflowWorkflowCreationFailure() {
 	jobConfig := prevConfig
 	configAddOn := &models.ConfigAddOn{}
 
+	for _, i := range instancesUpdated {
+		suite.updateStore.EXPECT().
+			AddWorkflowEvent(
+				gomock.Any(),
+				gomock.Any(),
+				uint32(i),
+				models.WorkflowType_START,
+				pbupdate.State_INITIALIZED).
+			Return(nil)
+	}
+
 	gomock.InOrder(
 		suite.jobStore.EXPECT().
 			GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
@@ -2066,6 +2087,16 @@ func (suite *JobTestSuite) TestJobCreateWorkflowUpdateRuntimeFailure() {
 	}
 	jobConfig := prevConfig
 	configAddOn := &models.ConfigAddOn{}
+
+	for _, i := range instancesUpdated {
+		suite.updateStore.EXPECT().
+			AddWorkflowEvent(
+				gomock.Any(),
+				gomock.Any(),
+				i,
+				workflowType,
+				pbupdate.State_INITIALIZED).Return(nil)
+	}
 
 	gomock.InOrder(
 		suite.jobStore.EXPECT().
@@ -2707,6 +2738,17 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccess() {
 			Return(&pbtask.TaskConfig{}, nil, nil)
 	}
 
+	for i := uint32(0); i < jobConfig.GetInstanceCount(); i++ {
+		suite.updateStore.EXPECT().
+			AddWorkflowEvent(
+				gomock.Any(),
+				gomock.Any(),
+				i,
+				models.WorkflowType_UPDATE,
+				pbupdate.State_ROLLING_BACKWARD).
+			Return(nil)
+	}
+
 	suite.updateStore.EXPECT().
 		ModifyUpdate(gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, updateInfo *models.UpdateModel) {
@@ -3039,6 +3081,17 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 			Return(&pbtask.TaskConfig{}, nil, nil)
 	}
 
+	for i := uint32(0); i < jobConfig.GetInstanceCount(); i++ {
+		suite.updateStore.EXPECT().
+			AddWorkflowEvent(
+				gomock.Any(),
+				gomock.Any(),
+				uint32(i),
+				models.WorkflowType_UPDATE,
+				pbupdate.State_ROLLING_BACKWARD).
+			Return(nil)
+	}
+
 	suite.updateStore.EXPECT().
 		ModifyUpdate(gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, updateInfo *models.UpdateModel) {
@@ -3053,6 +3106,17 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 	suite.Error(suite.job.RollbackWorkflow(context.Background()))
 
 	newMaxJobVersion := jobVersion + 1
+
+	for i := uint32(0); i < jobConfig.GetInstanceCount(); i++ {
+		suite.updateStore.EXPECT().
+			AddWorkflowEvent(
+				gomock.Any(),
+				gomock.Any(),
+				uint32(i),
+				models.WorkflowType_UPDATE,
+				pbupdate.State_ROLLING_BACKWARD).
+			Return(nil)
+	}
 
 	gomock.InOrder(
 		suite.updateStore.EXPECT().
@@ -3203,6 +3267,17 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeUpdateDBWri
 			Return(&pbtask.TaskConfig{}, nil, nil)
 	}
 
+	for i := uint32(0); i < jobConfig.GetInstanceCount(); i++ {
+		suite.updateStore.EXPECT().
+			AddWorkflowEvent(
+				gomock.Any(),
+				gomock.Any(),
+				uint32(i),
+				models.WorkflowType_UPDATE,
+				pbupdate.State_ROLLING_BACKWARD).
+			Return(nil).AnyTimes()
+	}
+
 	suite.updateStore.EXPECT().
 		ModifyUpdate(gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, updateInfo *models.UpdateModel) {
@@ -3320,6 +3395,17 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeDBWriteSucc
 		suite.taskStore.EXPECT().
 			GetTaskConfig(gomock.Any(), suite.jobID, i, jobPrevVersion).
 			Return(&pbtask.TaskConfig{}, nil, nil)
+	}
+
+	for i := uint32(0); i < jobConfig.GetInstanceCount(); i++ {
+		suite.updateStore.EXPECT().
+			AddWorkflowEvent(
+				gomock.Any(),
+				gomock.Any(),
+				uint32(i),
+				models.WorkflowType_UPDATE,
+				pbupdate.State_ROLLING_BACKWARD).
+			Return(nil).AnyTimes()
 	}
 
 	suite.updateStore.EXPECT().

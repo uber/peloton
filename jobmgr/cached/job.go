@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
@@ -20,6 +19,7 @@ import (
 	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
+	taskuitl "code.uber.internal/infra/peloton/jobmgr/util/task"
 	stringsutil "code.uber.internal/infra/peloton/util/strings"
 
 	"github.com/golang/protobuf/proto"
@@ -421,7 +421,10 @@ func (j *job) CreateTaskConfigs(
 		}
 	}
 
-	return j.runInParallel(instanceIDList, createSingleTaskConfig)
+	return taskuitl.RunInParallel(
+		j.ID().GetValue(),
+		instanceIDList,
+		createSingleTaskConfig)
 }
 
 func (j *job) CreateTaskRuntimes(
@@ -444,7 +447,10 @@ func (j *job) CreateTaskRuntimes(
 		t := j.addTaskToJobMap(id)
 		return t.CreateRuntime(ctx, runtime, owner)
 	}
-	return j.runInParallel(getIdsFromRuntimeMap(runtimes), createSingleTask)
+	return taskuitl.RunInParallel(
+		j.ID().GetValue(),
+		getIdsFromRuntimeMap(runtimes),
+		createSingleTask)
 }
 
 func (j *job) PatchTasks(
@@ -459,7 +465,10 @@ func (j *job) PatchTasks(
 		return t.PatchRuntime(ctx, runtimeDiffs[id])
 	}
 
-	return j.runInParallel(getIdsFromDiffs(runtimeDiffs), patchSingleTask)
+	return taskuitl.RunInParallel(
+		j.ID().GetValue(),
+		getIdsFromDiffs(runtimeDiffs),
+		patchSingleTask)
 }
 
 func (j *job) ReplaceTasks(
@@ -471,89 +480,10 @@ func (j *job) ReplaceTasks(
 		return t.ReplaceRuntime(runtimes[id], forceReplace)
 	}
 
-	return j.runInParallel(getIdsFromRuntimeMap(runtimes), replaceSingleTask)
-}
-
-// runInParallel runs go routines which will create/update runtime/config of tasks
-func (j *job) runInParallel(idList []uint32, task singleTask) error {
-	var transientError int32
-
-	nTasks := uint32(len(idList))
-	// indicates if the runtime create/update hit a transient error
-	transientError = 0
-
-	// how many tasks failed to run due to errors
-	tasksNotRun := uint32(0)
-
-	// Each go routine will update at least (nTasks / _defaultMaxParallelBatches)
-	// number of tasks. In addition if nTasks % _defaultMaxParallelBatches > 0,
-	// the first increment number of go routines are going to run
-	// one additional task.
-	increment := nTasks % _defaultMaxParallelBatches
-
-	timeStart := time.Now()
-	wg := new(sync.WaitGroup)
-	prevEnd := uint32(0)
-
-	// run the parallel batches
-	for i := uint32(0); i < _defaultMaxParallelBatches; i++ {
-		// start of the batch
-		updateStart := prevEnd
-		// end of the batch
-		updateEnd := updateStart + (nTasks / _defaultMaxParallelBatches)
-		if increment > 0 {
-			updateEnd++
-			increment--
-		}
-
-		if updateEnd > nTasks {
-			updateEnd = nTasks
-		}
-		prevEnd = updateEnd
-		if updateStart == updateEnd {
-			continue
-		}
-		wg.Add(1)
-
-		// Start a go routine to update all tasks in a batch
-		go func() {
-			defer wg.Done()
-			for k := updateStart; k < updateEnd; k++ {
-				id := idList[k]
-				err := task(id)
-				if err != nil {
-					log.WithError(err).
-						WithFields(log.Fields{
-							"job_id":      j.ID().GetValue(),
-							"instance_id": id,
-						}).Info("failed to write task config/runtime")
-					atomic.AddUint32(&tasksNotRun, 1)
-					if common.IsTransientError(err) {
-						atomic.StoreInt32(&transientError, 1)
-					}
-					return
-				}
-			}
-		}()
-	}
-	// wait for all batches to complete
-	wg.Wait()
-
-	if tasksNotRun != 0 {
-		msg := fmt.Sprintf(
-			"Updated %d task runtimes for %v, and was unable to write %d tasks in %v",
-			nTasks-tasksNotRun,
-			j.ID(),
-			tasksNotRun,
-			time.Since(timeStart))
-		if transientError > 0 {
-			// return a transient error if a transient error is encountered
-			// while creating/updating any task
-			return yarpcerrors.AbortedErrorf(msg)
-		}
-		return yarpcerrors.InternalErrorf(msg)
-	}
-	return nil
+	return taskuitl.RunInParallel(
+		j.ID().GetValue(),
+		getIdsFromRuntimeMap(runtimes),
+		replaceSingleTask)
 }
 
 func (j *job) GetTask(id uint32) Task {

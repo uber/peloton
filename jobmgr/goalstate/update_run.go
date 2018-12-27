@@ -764,33 +764,10 @@ func getUnprocessedInstances(
 	instancesProcessed := append(instancesCurrent, instancesDone...)
 	instancesProcessed = append(instancesProcessed, instancesFailed...)
 
-	instancesRemainToAdd = subtractSlice(update.GetInstancesAdded(), instancesProcessed)
-	instancesRemainToUpdate = subtractSlice(update.GetInstancesUpdated(), instancesProcessed)
-	instancesRemainToRemove = subtractSlice(update.GetInstancesRemoved(), instancesProcessed)
+	instancesRemainToAdd = util.SubtractSlice(update.GetInstancesAdded(), instancesProcessed)
+	instancesRemainToUpdate = util.SubtractSlice(update.GetInstancesUpdated(), instancesProcessed)
+	instancesRemainToRemove = util.SubtractSlice(update.GetInstancesRemoved(), instancesProcessed)
 	return
-}
-
-// subtractSlice get return the result of slice1 - slice2
-// if an element is in slice2 but not in slice1, it would be ignored
-func subtractSlice(slice1 []uint32, slice2 []uint32) []uint32 {
-	if slice1 == nil {
-		return nil
-	}
-
-	var result []uint32
-	slice2Set := make(map[uint32]bool)
-
-	for _, v := range slice2 {
-		slice2Set[v] = true
-	}
-
-	for _, v := range slice1 {
-		if !slice2Set[v] {
-			result = append(result, v)
-		}
-	}
-
-	return result
 }
 
 // updateWithRecentRunID has primary use case to sync runID from persistent storage

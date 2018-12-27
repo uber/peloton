@@ -814,6 +814,31 @@ func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionFailure() {
 	))
 }
 
+// TestStatelessWorkflowEventsAction tests the success path
+// for get workflow events
+func (suite *statelessActionsTestSuite) TestStatelessWorkflowEventsAction() {
+	suite.statelessClient.EXPECT().
+		GetWorkflowEvents(suite.ctx, &svc.GetWorkflowEventsRequest{
+			JobId:      &v1alphapeloton.JobID{Value: testJobID},
+			InstanceId: 0,
+		}).
+		Return(&svc.GetWorkflowEventsResponse{}, nil)
+
+	suite.NoError(suite.client.StatlessWorkflowEventsAction(testJobID, 0))
+}
+
+// TestStatelessWorkflowEventsActionError tests the failure path
+// for get workflow events
+func (suite *statelessActionsTestSuite) TestStatelessWorkflowEventsActionError() {
+	suite.statelessClient.EXPECT().
+		GetWorkflowEvents(suite.ctx, &svc.GetWorkflowEventsRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		}).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatlessWorkflowEventsAction(testJobID, 0))
+}
+
 func TestStatelessActions(t *testing.T) {
 	suite.Run(t, new(statelessActionsTestSuite))
 }

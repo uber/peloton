@@ -1,9 +1,9 @@
 package stateless
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	pelotonv1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
@@ -757,11 +758,55 @@ func (h *serviceHandler) GetJobIDFromJobName(
 	}, nil
 }
 
+// GetWorkflowEvents gets most recent workflow events for an instance of a job
 func (h *serviceHandler) GetWorkflowEvents(
 	ctx context.Context,
-	req *svc.GetWorkflowEventsRequest) (*svc.GetWorkflowEventsResponse, error) {
-	return &svc.GetWorkflowEventsResponse{}, nil
+	req *svc.GetWorkflowEventsRequest) (resp *svc.GetWorkflowEventsResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Info("StatelessJobSvc.GetWorkflowEvents failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("req", req).
+			Debug("StatelessJobSvc.GetWorkflowEvents succeeded")
+	}()
+
+	jobUUID := uuid.Parse(req.GetJobId().GetValue())
+	if jobUUID == nil {
+		return nil, yarpcerrors.InvalidArgumentErrorf("job ID must be of UUID format")
+	}
+
+	jobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
+	cachedJob := h.jobFactory.AddJob(jobID)
+	jobRuntime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get job runtime")
+	}
+
+	// check if any active or completed workflow exists for this job
+	if len(jobRuntime.GetUpdateID().GetValue()) == 0 {
+		return nil, yarpcerrors.UnavailableErrorf("job runtime does not have workflow")
+	}
+
+	workflowEvents, err := h.updateStore.GetWorkflowEvents(
+		ctx,
+		jobRuntime.GetUpdateID(),
+		req.GetInstanceId())
+	if err != nil {
+		return nil, errors.Wrap(err,
+			fmt.Sprintf("failed to get workflow events for an update %s",
+				jobRuntime.GetUpdateID().GetValue()))
+	}
+
+	return &svc.GetWorkflowEventsResponse{
+		Events: workflowEvents,
+	}, nil
 }
+
 func (h *serviceHandler) ListPods(
 	req *svc.ListPodsRequest,
 	stream svc.JobServiceServiceListPodsYARPCServer) error {

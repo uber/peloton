@@ -63,6 +63,42 @@ func TestConvertLabels(t *testing.T) {
 	assert.Equal(t, pelotonLabels[0].GetValue(), mesosLabels.GetLabels()[0].GetValue())
 }
 
+// TestSubtractSliceNil tests the subtract of nil slice as input
+func TestSubtractSliceNil(t *testing.T) {
+	var s1, s2 []uint32
+
+	assert.Nil(t, SubtractSlice(s1, s2))
+}
+
+// TestSubtractSlice tests subtract of two slices s1 - s2
+func TestSubtractSlice(t *testing.T) {
+	slice1 := []uint32{0, 1, 2, 3}
+	slice2 := []uint32{3, 4, 5}
+
+	result := SubtractSlice(slice1, slice2)
+	assert.Equal(t, 3, len(result))
+	assert.Equal(t, uint32(0), result[0])
+	assert.Equal(t, uint32(1), result[1])
+	assert.Equal(t, uint32(2), result[2])
+}
+
+// TestIntersectSliceNil tests intersect of nil slice as input
+func TestIntersectSliceNil(t *testing.T) {
+	var s1, s2 []uint32
+
+	assert.Nil(t, IntersectSlice(s1, s2))
+}
+
+// TestIntersectSlice tests the intersect of s1 n s2
+func TestIntersectSlice(t *testing.T) {
+	slice1 := []uint32{0, 1, 2, 3}
+	slice2 := []uint32{3, 4, 5}
+
+	result := IntersectSlice(slice1, slice2)
+	assert.Equal(t, 1, len(result))
+	assert.Equal(t, uint32(3), result[0])
+}
+
 func TestParseRunID(t *testing.T) {
 	mesosTaskID := uuid.New() + "-1-" + uuid.New()
 	runID, err := ParseRunID(mesosTaskID)

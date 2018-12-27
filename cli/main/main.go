@@ -205,6 +205,14 @@ var (
 	workflowAbortOpaqueData = workflowAbort.Flag("opaque-data",
 		"opaque data provided by the user").Default("").String()
 
+	workflowEvents = workflow.Command("events",
+		"list workflow events in descending create time, "+
+			"for the most recet workflow operation on the job ")
+	workflowEventsJob = workflowEvents.Arg("job",
+		"job identifier").Required().String()
+	workflowEventsInstance = workflowEvents.Arg("instance",
+		"instance ID").Required().Uint32()
+
 	statelessQuery            = stateless.Command("query", "query stateless jobs by mesos label / respool")
 	statelessQueryLabels      = statelessQuery.Flag("labels", "labels").Default("").Short('l').String()
 	statelessQueryRespoolPath = statelessQuery.Flag("respool", "respool path").Default("").Short('r').String()
@@ -830,6 +838,10 @@ func main() {
 			*statelessRestartInstanceRanges,
 			*statelessRestartOpaqueData,
 		)
+	case workflowEvents.FullCommand():
+		err = client.StatlessWorkflowEventsAction(
+			*workflowEventsJob,
+			*workflowEventsInstance)
 	case podLogsGet.FullCommand():
 		err = client.PodLogsGetAction(*podLogsGetFileName, *podLogsGetPodName, *podLogsGetPodID)
 	case podRestart.FullCommand():

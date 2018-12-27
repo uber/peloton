@@ -50,6 +50,52 @@ func PtrPrintf(format string, a ...interface{}) *string {
 	return &str
 }
 
+// SubtractSlice returns the result of slice1 - slice2
+// if an element is in slice2 but not in slice1, it would be ignored
+func SubtractSlice(slice1 []uint32, slice2 []uint32) []uint32 {
+	if slice1 == nil {
+		return nil
+	}
+
+	var result []uint32
+	slice2Set := make(map[uint32]bool)
+
+	for _, v := range slice2 {
+		slice2Set[v] = true
+	}
+
+	for _, v := range slice1 {
+		if !slice2Set[v] {
+			result = append(result, v)
+		}
+	}
+
+	return result
+}
+
+// IntersectSlice get return the result of slice1 ∩ slice2
+// element must be present in both slices
+func IntersectSlice(slice1 []uint32, slice2 []uint32) []uint32 {
+	if slice1 == nil {
+		return nil
+	}
+
+	var result []uint32
+	slice2Set := make(map[uint32]bool)
+
+	for _, v := range slice2 {
+		slice2Set[v] = true
+	}
+
+	for _, v := range slice1 {
+		if slice2Set[v] {
+			result = append(result, v)
+		}
+	}
+
+	return result
+}
+
 // GetOfferScalarResourceSummary generates a summary for all the scalar values: role -> offerName-> Value
 // first level : role -> map(resource type-> resouce value)
 func GetOfferScalarResourceSummary(offer *mesos.Offer) map[string]map[string]float64 {

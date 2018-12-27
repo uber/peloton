@@ -28,6 +28,9 @@ const (
 		"Running\tSucceeded\tFailed\tKilled\t" +
 		"Workflow Status\tCompleted\tFailed\tCurrent\n"
 	statelessSummaryFormatBody = "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\t%d\t\n"
+
+	workflowEventsV1AlphaFormatHeader = "Workflow State\tWorkflow Type\tTimestamp\n"
+	workflowEventsV1AlphaFormatBody   = "%s\t%s\t%s\n"
 )
 
 // StatelessGetCacheAction get cache of stateless job
@@ -658,4 +661,40 @@ func (c *Client) StatelessRestartJobAction(
 
 	fmt.Printf("Job restarted. New EntityVersion: %s\n", resp.GetVersion().GetValue())
 	return nil
+}
+
+// StatlessWorkflowEventsAction gets most recent active or
+// completed workflow events for a job
+func (c *Client) StatlessWorkflowEventsAction(
+	jobID string,
+	instanceID uint32,
+) error {
+	resp, err := c.statelessClient.GetWorkflowEvents(
+		c.ctx,
+		&statelesssvc.GetWorkflowEventsRequest{
+			JobId:      &v1alphapeloton.JobID{Value: jobID},
+			InstanceId: instanceID,
+		})
+
+	if err != nil {
+		return err
+	}
+
+	printWorkflowEventsV1AlphaResponse(resp)
+	return nil
+}
+
+func printWorkflowEventsV1AlphaResponse(r *statelesssvc.GetWorkflowEventsResponse) {
+	defer tabWriter.Flush()
+
+	fmt.Fprint(tabWriter, workflowEventsV1AlphaFormatHeader)
+	for _, event := range r.GetEvents() {
+		fmt.Fprintf(
+			tabWriter,
+			workflowEventsV1AlphaFormatBody,
+			event.GetState(),
+			event.GetType(),
+			event.GetTimestamp(),
+		)
+	}
 }

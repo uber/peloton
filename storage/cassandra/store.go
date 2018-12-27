@@ -21,6 +21,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	pb_volume "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
@@ -48,25 +49,26 @@ const (
 	taskIDFmt = "%s-%d"
 
 	// DB table names
-	activeJobsTable       = "active_jobs"
-	jobConfigTable        = "job_config"
-	jobNameToIDTable      = "job_name_to_id"
-	jobRuntimeTable       = "job_runtime"
-	jobIndexTable         = "job_index"
-	taskConfigTable       = "task_config"
-	taskConfigV2Table     = "task_config_v2"
-	taskRuntimeTable      = "task_runtime"
-	taskStateChangesTable = "task_state_changes"
-	podEventsTable        = "pod_events"
-	updatesTable          = "update_info"
-	frameworksTable       = "frameworks"
-	taskJobStateView      = "mv_task_by_state"
-	jobByStateView        = "mv_job_by_state"
-	updatesByJobView      = "mv_updates_by_job"
-	resPoolsTable         = "respools"
-	resPoolsOwnerView     = "mv_respools_by_owner"
-	volumeTable           = "persistent_volumes"
-	secretInfoTable       = "secret_info"
+	activeJobsTable        = "active_jobs"
+	jobConfigTable         = "job_config"
+	jobNameToIDTable       = "job_name_to_id"
+	jobRuntimeTable        = "job_runtime"
+	jobIndexTable          = "job_index"
+	taskConfigTable        = "task_config"
+	taskConfigV2Table      = "task_config_v2"
+	taskRuntimeTable       = "task_runtime"
+	taskStateChangesTable  = "task_state_changes"
+	podEventsTable         = "pod_events"
+	updatesTable           = "update_info"
+	podWorkflowEventsTable = "pod_workflow_events"
+	frameworksTable        = "frameworks"
+	taskJobStateView       = "mv_task_by_state"
+	jobByStateView         = "mv_job_by_state"
+	updatesByJobView       = "mv_updates_by_job"
+	resPoolsTable          = "respools"
+	resPoolsOwnerView      = "mv_respools_by_owner"
+	volumeTable            = "persistent_volumes"
+	secretInfoTable        = "secret_info"
 
 	// DB field names
 	creationTimeField   = "creation_time"
@@ -3031,6 +3033,89 @@ func (s *Store) CreateUpdate(
 	return nil
 }
 
+// AddWorkflowEvent adds workflow events for an update and instance
+// to track the progress
+func (s *Store) AddWorkflowEvent(
+	ctx context.Context,
+	updateID *peloton.UpdateID,
+	instanceID uint32,
+	workflowType models.WorkflowType,
+	workflowState update.State) error {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(podWorkflowEventsTable).
+		Columns(
+			"update_id",
+			"instance_id",
+			"type",
+			"state",
+			"create_time").
+		Values(
+			updateID.GetValue(),
+			int(instanceID),
+			workflowType.String(),
+			workflowState.String(),
+			qb.UUID{UUID: gocql.UUIDFromTime(time.Now())})
+	err := s.applyStatement(ctx, stmt, updateID.GetValue())
+	if err != nil {
+		s.metrics.WorkflowMetrics.WorkflowEventsAddFail.Inc(1)
+		return err
+	}
+
+	s.metrics.WorkflowMetrics.WorkflowEventsAdd.Inc(1)
+	return nil
+}
+
+// GetWorkflowEvents gets workflow events for an update and instance,
+// events are sorted in descending create timestamp
+func (s *Store) GetWorkflowEvents(
+	ctx context.Context,
+	updateID *peloton.UpdateID,
+	instanceID uint32) ([]*stateless.WorkflowEvent, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("*").From(podWorkflowEventsTable).
+		Where(qb.Eq{"update_id": updateID.GetValue()}).
+		Where(qb.Eq{"instance_id": int(instanceID)})
+	result, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		s.metrics.WorkflowMetrics.WorkflowEventsGetFail.Inc(1)
+		return nil, err
+	}
+
+	var workflowEvents []*stateless.WorkflowEvent
+	for _, value := range result {
+		workflowEvent := &stateless.WorkflowEvent{
+			Type: stateless.WorkflowType(
+				models.WorkflowType_value[value["type"].(string)]),
+			State: stateless.WorkflowState(
+				update.State_value[value["state"].(string)]),
+			Timestamp: value["create_time"].(qb.UUID).Time().Format(time.RFC3339),
+		}
+
+		workflowEvents = append(workflowEvents, workflowEvent)
+	}
+
+	s.metrics.WorkflowMetrics.WorkflowEventsGet.Inc(1)
+	return workflowEvents, nil
+}
+
+// deleteWorkflowEvents deletes the workflow events for an update and instance
+func (s *Store) deleteWorkflowEvents(
+	ctx context.Context,
+	id *peloton.UpdateID,
+	instanceID uint32) error {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Delete(podWorkflowEventsTable).
+		Where(qb.Eq{"update_id": id.GetValue()}).
+		Where(qb.Eq{"instance_id": int(instanceID)})
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		s.metrics.WorkflowMetrics.WorkflowEventsDeleteFail.Inc(1)
+		return err
+	}
+
+	s.metrics.WorkflowMetrics.WorkflowEventsDelete.Inc(1)
+	return nil
+}
+
 // TODO determine if this function should be part of storage or api handler.
 // cleanupPreviousUpdatesForJob cleans up the old job configurations
 // and updates. This is called when a new update is created, and ensures
@@ -3182,8 +3267,32 @@ func (s *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
 	return nil, yarpcerrors.NotFoundErrorf("update not found")
 }
 
-// deleteSingleUpdate deletes a given update from the update_info table.
+// deleteSingleUpdate deletes a given update from the update_info table,
+// along with workflow events for all instances included in the update
 func (s *Store) deleteSingleUpdate(ctx context.Context, id *peloton.UpdateID) error {
+	update, err := s.GetUpdate(ctx, id)
+	if err != nil {
+		s.metrics.UpdateMetrics.UpdateDeleteFail.Inc(1)
+		log.WithFields(log.Fields{
+			"update_id": id.GetValue(),
+		}).WithError(err).Info("failed to get update for deleting workflow events")
+		return err
+	}
+
+	instances := append(update.GetInstancesUpdated(),
+		update.GetInstancesAdded()...)
+	instances = append(instances, update.GetInstancesRemoved()...)
+	for _, instance := range instances {
+		if err := s.deleteWorkflowEvents(ctx, id, instance); err != nil {
+			log.WithFields(log.Fields{
+				"update_id":   id.GetValue(),
+				"instance_id": instance,
+			}).WithError(err).Info("failed to delete workflow events")
+			s.metrics.UpdateMetrics.UpdateDeleteFail.Inc(1)
+			return err
+		}
+	}
+
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Delete(updatesTable).Where(qb.Eq{
 		"update_id": id.GetValue()})

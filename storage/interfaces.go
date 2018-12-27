@@ -8,7 +8,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
@@ -193,6 +195,24 @@ type UpdateStore interface {
 	// GetUpdatesForJob returns the list of job updates created for a given job
 	GetUpdatesForJob(ctx context.Context, jobID *peloton.JobID) (
 		[]*peloton.UpdateID, error)
+
+	// AddWorkflowEvent adds a workflow event for an update and instance
+	// to track the progress
+	AddWorkflowEvent(
+		ctx context.Context,
+		updateID *peloton.UpdateID,
+		instanceID uint32,
+		updateType models.WorkflowType,
+		updateState update.State,
+	) error
+
+	// GetWorkflowEvents gets workflow events for an update and instance,
+	// events are sorted in descending create timestamp
+	GetWorkflowEvents(
+		ctx context.Context,
+		updateID *peloton.UpdateID,
+		instanceID uint32,
+	) ([]*stateless.WorkflowEvent, error)
 }
 
 // FrameworkInfoStore is the interface to store mesosStreamID for peloton frameworks
