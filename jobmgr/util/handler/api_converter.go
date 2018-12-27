@@ -119,6 +119,7 @@ func ConvertTaskConfigToPodSpec(taskConfig *task.TaskConfig) *pod.PodSpec {
 				},
 				Container: taskConfig.GetContainer(),
 				Command:   taskConfig.GetCommand(),
+				Executor:  taskConfig.GetExecutor(),
 				LivenessCheck: &pod.HealthCheckSpec{
 					Enabled:                taskConfig.GetHealthCheck().GetEnabled(),
 					InitialIntervalSecs:    taskConfig.GetHealthCheck().GetInitialIntervalSecs(),
@@ -528,6 +529,7 @@ func ConvertPodSpecToTaskConfig(spec *pod.PodSpec) (*task.TaskConfig, error) {
 		Name:                   spec.GetPodName().GetValue(),
 		Container:              mainContainer.GetContainer(),
 		Command:                mainContainer.GetCommand(),
+		Executor:               mainContainer.GetExecutor(),
 		Controller:             spec.GetController(),
 		KillGracePeriodSeconds: spec.GetKillGracePeriodSeconds(),
 		Revocable:              spec.GetRevocable(),

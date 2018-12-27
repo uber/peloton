@@ -192,6 +192,11 @@ func (suite *APIConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 	testCmd := "echo test"
 	portName := "test-port"
 	portValue := uint32(5292)
+	executorType := mesos.ExecutorInfo_CUSTOM
+	executorIDValue := "executor_id"
+	executorID := mesos.ExecutorID{
+		Value: &executorIDValue,
+	}
 
 	taskConfig := &task.TaskConfig{
 		Name:   taskName,
@@ -208,6 +213,10 @@ func (suite *APIConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 		},
 		Command: &mesos.CommandInfo{
 			Value: &testCmd,
+		},
+		Executor: &mesos.ExecutorInfo{
+			Type:       &executorType,
+			ExecutorId: &executorID,
 		},
 		HealthCheck: &task.HealthCheckConfig{
 			Enabled:      false,
@@ -265,6 +274,7 @@ func (suite *APIConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 				},
 				Container: taskConfig.GetContainer(),
 				Command:   taskConfig.GetCommand(),
+				Executor:  taskConfig.GetExecutor(),
 				LivenessCheck: &pod.HealthCheckSpec{
 					Enabled:      taskConfig.GetHealthCheck().GetEnabled(),
 					CommandCheck: &pod.HealthCheckSpec_CommandCheck{},
