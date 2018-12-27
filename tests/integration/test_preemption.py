@@ -1,9 +1,9 @@
 import pytest
+
 from job import Job, kill_jobs
 from common import IntegrationTestConfig
-from pool import Pool
-
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
+from pool import Pool
 
 pytestmark = [pytest.mark.default, pytest.mark.preemption]
 
@@ -78,7 +78,7 @@ def test__preemption_tasks_reschedules_task(respool_a, respool_b):
     # starting the second job should change the entitlement calculation
     p_job_b.create()
 
-    # 6 jobs should be preempted from job1 to make space for job2
+    # 6 tasks should be preempted from job1 to make space for job2
     p_job_a.wait_for_condition(task_preempted)
 
     # p_job_b should succeed
@@ -221,7 +221,8 @@ def test__preemption_non_preemptible_task(respool_a, respool_b):
 # it is killed.
 # TODO: avyas@ This is a short term fix
 def test__preemption_spark_goalstate(respool_a, respool_b):
-    p_job_a = Job(job_file='test_preemptible_job_preemption_policy.yaml', pool=respool_a,
+    p_job_a = Job(job_file='test_preemptible_job_preemption_policy.yaml',
+                  pool=respool_a,
                   config=IntegrationTestConfig(max_retry_attempts=100,
                                                sleep_time_sec=10))
 
@@ -258,6 +259,77 @@ def test__preemption_spark_goalstate(respool_a, respool_b):
     for t in preempted_task_set:
         assert t.state == task.KILLED
         assert t.goal_state == task.PREEMPTING
+
+    kill_jobs([p_job_a, p_job_b])
+
+
+# Tests preemption override at task level
+# Scenario
+# 1. respool_a = Reservation(cpu=6), Entitlement(cpu=12)
+# 2. start a preemptible job in resource pool a which has all the even task IDs
+#    overridden to be non-preemptible i.e. 6 tasks are preemptible and 6 tasks
+#    non-preemptible.
+# 4. create respool_b = Reservation(cpu=6), Entitlement(0)
+# 5. create preemptible job in respool_b, this should increase the
+#    entitlement of respool_b and decrease entitlement of respool_a.
+#    Entitlement(cpu=6) for both resource pools.
+# 6. preemptible job in respool_a should be preempted, since
+#    allocation>entitlement.
+# 7. check the instance_id of tasks which were preempted and not preempted to
+#    assert the preemption config at task level.
+def test__preemption_task_level(respool_a, respool_b):
+    p_job_a = Job(job_file='test_preemptible_job_preemption_override.yaml',
+                  pool=respool_a,
+                  config=IntegrationTestConfig(max_retry_attempts=100,
+                                               sleep_time_sec=10))
+
+    p_job_a.create()
+    p_job_a.wait_for_state(goal_state='RUNNING')
+
+    # we should have all 12 tasks in running state
+    def all_running():
+        return all(t.state == 8 for t in p_job_a.get_tasks().values())
+
+    p_job_a.wait_for_condition(all_running)
+
+    # odd instance ids should be preempted
+    expected_preempted_tasks = set([1, 3, 5, 7, 9, 11])
+    # even instance ids should be running
+    expected_running_tasks = set([0, 2, 4, 6, 8, 10])
+
+    preempted_task_set, running_task_set = set([]), set([])
+
+    # 6(6 CPUs worth) tasks from p_job_a should be preempted
+    def task_preempted():
+        preempted_task_set.clear()
+        running_task_set.clear()
+        preempted_count, running_count = 0, 0
+        for t in p_job_a.get_tasks().values():
+            # tasks should be KILLED since killOnPreempt is set to true
+            if t.state == task.KILLED:
+                preempted_count += 1
+                preempted_task_set.add(t.instance_id)
+            if t.state == task.RUNNING:
+                running_count += 1
+                running_task_set.add(t.instance_id)
+
+        return running_count == 6 and preempted_count == 6
+
+    p_job_b = Job(job_file='test_preemptible_job.yaml', pool=respool_b,
+                  config=IntegrationTestConfig())
+    # starting the second job should change the entitlement calculation and
+    # start preempting tasks from p_job_a
+    p_job_b.create()
+
+    # 6 tasks(odd instance ids) should be preempted from job1 to make space for job2
+    p_job_a.wait_for_condition(task_preempted)
+
+    # check the preempted tasks and check instance ids should be odd.
+    assert preempted_task_set == expected_preempted_tasks
+    assert running_task_set == expected_running_tasks
+
+    # wait for p_job_b to start running
+    p_job_b.wait_for_state('RUNNING')
 
     kill_jobs([p_job_a, p_job_b])
 

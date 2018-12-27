@@ -5,7 +5,7 @@ ldapGroups:
 - money
 - team6
 - otto
-description: "preemption test: preemptible job"
+description: "preemption test: restart policy"
 labels:
 - key: testKey0
   value: testVal0
@@ -17,7 +17,7 @@ instanceCount: 12
 sla:
   priority: 22
   maximumRunningInstances: 12
-  preemptible: true # preemptible job
+  preemptible: true
 defaultConfig:
   labels:
   - key: testKey3
@@ -35,4 +35,6 @@ defaultConfig:
   ports: []
   command:
     shell: true
-    value: 'echo testing & sleep 120'
+    value: 'echo testing & sleep 500'
+  preemptionPolicy:
+    killOnPreempt: true # Kill after preempt

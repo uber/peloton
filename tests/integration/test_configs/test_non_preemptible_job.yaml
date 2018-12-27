@@ -5,7 +5,7 @@ ldapGroups:
 - money
 - team6
 - otto
-description: "A dummy test job for peloton integration tests"
+description: "preemption test: non preemptible job"
 labels:
 - key: testKey0
   value: testVal0
@@ -17,7 +17,7 @@ instanceCount: 2
 sla:
   priority: 22
   maximumRunningInstances: 2
-  preemptible: false
+  preemptible: false # non preemptible job
 defaultConfig:
   labels:
   - key: testKey3
@@ -35,4 +35,4 @@ defaultConfig:
   ports: []
   command:
     shell: true
-    value: 'echo lol & sleep 200'
+    value: 'echo testing & sleep 200'
