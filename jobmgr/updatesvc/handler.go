@@ -365,7 +365,7 @@ func (h *serviceHandler) ListUpdates(ctx context.Context,
 		return nil, yarpcerrors.InvalidArgumentErrorf("no job ID provided")
 	}
 
-	updateIDs, err := h.updateStore.GetUpdatesForJob(ctx, jobID)
+	updateIDs, err := h.updateStore.GetUpdatesForJob(ctx, jobID.GetValue())
 	if err != nil {
 		h.metrics.UpdateListFail.Inc(1)
 		return nil, err

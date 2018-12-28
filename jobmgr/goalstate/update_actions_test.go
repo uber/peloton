@@ -235,7 +235,7 @@ func (suite *UpdateActionsTestSuite) TestUpdateReloadNotExists() {
 		})
 
 	suite.updateStore.EXPECT().
-		GetUpdatesForJob(gomock.Any(), suite.jobID).
+		GetUpdatesForJob(gomock.Any(), suite.jobID.GetValue()).
 		Return([]*peloton.UpdateID{}, nil)
 
 	err := UpdateReload(context.Background(), suite.updateEnt)
@@ -463,7 +463,7 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrack() {
 		Return()
 
 	suite.updateStore.EXPECT().
-		GetUpdatesForJob(gomock.Any(), suite.jobID).
+		GetUpdatesForJob(gomock.Any(), suite.jobID.GetValue()).
 		Return(prevUpdateIDs, nil)
 
 	suite.updateStore.EXPECT().
@@ -511,7 +511,7 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrackTerminatedJob() {
 		Return()
 
 	suite.updateStore.EXPECT().
-		GetUpdatesForJob(gomock.Any(), suite.jobID).
+		GetUpdatesForJob(gomock.Any(), suite.jobID.GetValue()).
 		Return(prevUpdateIDs, nil)
 
 	suite.updateStore.EXPECT().

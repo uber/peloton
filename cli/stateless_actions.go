@@ -24,10 +24,13 @@ import (
 )
 
 const (
-	statlessJobSummaryFormatHeader = "ID\tName\tOwner\tState\tCreation Time\tTotal\t" +
+	statelessJobSummaryFormatHeader = "ID\tName\tOwner\tState\tCreation Time\tTotal\t" +
 		"Running\tSucceeded\tFailed\tKilled\t" +
 		"Workflow Status\tCompleted\tFailed\tCurrent\n"
 	statelessSummaryFormatBody = "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\t%d\t\n"
+
+	statelessUpdateEventsFormatHeader = "Type\tTimestamp\tState\t\n"
+	statelessUpdateEventsFormatBody   = "%s\t%s\t%s\t\n"
 
 	workflowEventsV1AlphaFormatHeader = "Workflow State\tWorkflow Type\tTimestamp\n"
 	workflowEventsV1AlphaFormatBody   = "%s\t%s\t%s\n"
@@ -323,7 +326,7 @@ func (c *Client) StatelessListJobsAction() error {
 		return err
 	}
 
-	fmt.Fprint(tabWriter, statlessJobSummaryFormatHeader)
+	fmt.Fprint(tabWriter, statelessJobSummaryFormatHeader)
 	tabWriter.Flush()
 	for {
 		resp, err := stream.Recv()
@@ -480,7 +483,7 @@ func printStatelessQueryResponse(resp *statelesssvc.QueryJobsResponse) {
 		return
 	}
 
-	fmt.Fprint(tabWriter, statlessJobSummaryFormatHeader)
+	fmt.Fprint(tabWriter, statelessJobSummaryFormatHeader)
 	for _, r := range results {
 		printStatelessQueryResult(r)
 	}
@@ -663,9 +666,64 @@ func (c *Client) StatelessRestartJobAction(
 	return nil
 }
 
-// StatlessWorkflowEventsAction gets most recent active or
+// StatelessListUpdatesAction lists updates of a job
+func (c *Client) StatelessListUpdatesAction(jobID string) error {
+	resp, err := c.statelessClient.ListJobUpdates(
+		c.ctx,
+		&statelesssvc.ListJobUpdatesRequest{
+			JobId: &v1alphapeloton.JobID{Value: jobID},
+		},
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return printListUpdatesResponse(resp)
+}
+
+func printListUpdatesResponse(resp *statelesssvc.ListJobUpdatesResponse) error {
+	updates := resp.GetUpdates()
+	if len(updates) == 0 {
+		fmt.Println("No update for job")
+	} else {
+		for i, u := range updates {
+			fmt.Printf("Index %d:\n", i)
+			if err := printUpdateInfo(u); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func printUpdateInfo(updateInfo *statelesssvc.ListJobUpdatesResponse_UpdateInfo) error {
+	out, err := marshallResponse(defaultResponseFormat, updateInfo)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v\n", string(out))
+
+	if len(updateInfo.GetEvents()) != 0 {
+		fmt.Fprint(tabWriter, statelessUpdateEventsFormatHeader)
+		for _, event := range updateInfo.GetEvents() {
+			fmt.Fprintf(
+				tabWriter,
+				statelessUpdateEventsFormatBody,
+				event.GetType().String(),
+				event.GetTimestamp(),
+				event.GetState().String(),
+			)
+		}
+		tabWriter.Flush()
+	}
+	return nil
+}
+
+// StatelessWorkflowEventsAction gets most recent active or
 // completed workflow events for a job
-func (c *Client) StatlessWorkflowEventsAction(
+func (c *Client) StatelessWorkflowEventsAction(
 	jobID string,
 	instanceID uint32,
 ) error {

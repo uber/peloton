@@ -149,7 +149,7 @@ func UpdateUntrack(ctx context.Context, entity goalstate.Entity) error {
 
 	// No more job update to run, so use the time to clean up any old
 	// updates if they have not reached a terminal state yet
-	updates, err := goalStateDriver.updateStore.GetUpdatesForJob(ctx, jobID)
+	updates, err := goalStateDriver.updateStore.GetUpdatesForJob(ctx, jobID.GetValue())
 	if err != nil {
 		return nil
 	}

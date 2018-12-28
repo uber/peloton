@@ -2154,7 +2154,7 @@ func (s *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
 	}
 
 	// Delete all updates for the job
-	updateIDs, err := s.GetUpdatesForJob(ctx, id)
+	updateIDs, err := s.GetUpdatesForJob(ctx, id.GetValue())
 	if err != nil {
 		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
@@ -3128,7 +3128,7 @@ func (s *Store) cleanupPreviousUpdatesForJob(
 	var nonUpdateList []*SortUpdateInfo
 
 	// first fetch the updates for the job
-	updates, err := s.GetUpdatesForJob(ctx, jobID)
+	updates, err := s.GetUpdatesForJob(ctx, jobID.GetValue())
 	if err != nil {
 		return err
 	}
@@ -3469,17 +3469,19 @@ func (s *Store) GetUpdateProgress(ctx context.Context, id *peloton.UpdateID) (
 }
 
 // GetUpdatesForJob returns the list of job updates created for a given job.
-func (s *Store) GetUpdatesForJob(ctx context.Context,
-	jobID *peloton.JobID) ([]*peloton.UpdateID, error) {
+func (s *Store) GetUpdatesForJob(
+	ctx context.Context,
+	jobID string,
+) ([]*peloton.UpdateID, error) {
 	var updateIDs []*peloton.UpdateID
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("update_id").From(updatesByJobView).
-		Where(qb.Eq{"job_id": jobID.GetValue()})
+		Where(qb.Eq{"job_id": jobID})
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
+			WithField("job_id", jobID).
 			Info("failed to fetch updates for a given job")
 		s.metrics.UpdateMetrics.UpdateGetForJobFail.Inc(1)
 		return nil, err
@@ -3490,7 +3492,7 @@ func (s *Store) GetUpdatesForJob(ctx context.Context,
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.WithError(err).
-				WithField("job_id", jobID.GetValue()).
+				WithField("job_id", jobID).
 				Info("failed to fill update record for the job")
 			s.metrics.UpdateMetrics.UpdateGetForJobFail.Inc(1)
 			return nil, err

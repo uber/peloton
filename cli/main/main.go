@@ -288,6 +288,9 @@ var (
 	statelessStopEntityVersion = statelessStop.Arg("entityVersion",
 		"entity version for concurrency control").Required().String()
 
+	statelessListUpdates     = stateless.Command("list-updates", "list updates")
+	statelessListUpdatesName = statelessListUpdates.Arg("job", "job identifier").Required().String()
+
 	// Top level pod command
 	pod = app.Command("pod", "CLI reflects pod(s) actions, such as get pod details, create/restart/update a pod...")
 
@@ -838,8 +841,10 @@ func main() {
 			*statelessRestartInstanceRanges,
 			*statelessRestartOpaqueData,
 		)
+	case statelessListUpdates.FullCommand():
+		err = client.StatelessListUpdatesAction(*statelessListUpdatesName)
 	case workflowEvents.FullCommand():
-		err = client.StatlessWorkflowEventsAction(
+		err = client.StatelessWorkflowEventsAction(
 			*workflowEventsJob,
 			*workflowEventsInstance)
 	case podLogsGet.FullCommand():

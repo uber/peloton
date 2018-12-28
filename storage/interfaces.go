@@ -193,8 +193,7 @@ type UpdateStore interface {
 	)
 
 	// GetUpdatesForJob returns the list of job updates created for a given job
-	GetUpdatesForJob(ctx context.Context, jobID *peloton.JobID) (
-		[]*peloton.UpdateID, error)
+	GetUpdatesForJob(ctx context.Context, jobID string) ([]*peloton.UpdateID, error)
 
 	// AddWorkflowEvent adds a workflow event for an update and instance
 	// to track the progress

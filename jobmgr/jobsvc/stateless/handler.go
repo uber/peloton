@@ -939,8 +939,44 @@ func (h *serviceHandler) ListJobs(
 
 func (h *serviceHandler) ListJobUpdates(
 	ctx context.Context,
-	req *svc.ListJobUpdatesRequest) (*svc.ListJobUpdatesResponse, error) {
-	return &svc.ListJobUpdatesResponse{}, nil
+	req *svc.ListJobUpdatesRequest) (resp *svc.ListJobUpdatesResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("JobSVC.ListJobUpdates failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("num_of_updates", len(resp.GetUpdates())).
+			Debug("JobSVC.ListJobUpdates succeeded")
+	}()
+
+	if len(req.GetJobId().GetValue()) == 0 {
+		return nil, yarpcerrors.InvalidArgumentErrorf("no job id provided")
+	}
+
+	updateIDs, err := h.updateStore.GetUpdatesForJob(ctx, req.GetJobId().GetValue())
+	if err != nil {
+		return nil, err
+	}
+
+	var updateInfos []*svc.ListJobUpdatesResponse_UpdateInfo
+	for _, updateID := range updateIDs {
+		updateModel, err := h.updateStore.GetUpdate(ctx, updateID)
+		if err != nil {
+			return nil, err
+		}
+		// TODO: fill in update events
+		updateInfos = append(updateInfos, &svc.ListJobUpdatesResponse_UpdateInfo{
+			Info: handlerutil.ConvertUpdateModelToWorkflowInfo(updateModel),
+		})
+
+	}
+
+	return &svc.ListJobUpdatesResponse{Updates: updateInfos}, nil
 }
 
 func (h *serviceHandler) GetReplaceJobDiff(

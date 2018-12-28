@@ -2361,7 +2361,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.True(yarpcerrors.IsNotFound(err))
 
 	// make sure job has no updates
-	updateList, err := store.GetUpdatesForJob(context.Background(), jobID)
+	updateList, err := store.GetUpdatesForJob(context.Background(), jobID.GetValue())
 	suite.NoError(err)
 	suite.Equal(len(updateList), 0)
 
@@ -2555,7 +2555,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.Equal(0, len(workflowEvents))
 
 	// fetch update for job
-	updateList, err = store.GetUpdatesForJob(context.Background(), jobID)
+	updateList, err = store.GetUpdatesForJob(context.Background(), jobID.GetValue())
 	suite.NoError(err)
 	suite.Equal(len(updateList), 1)
 	suite.Equal(updateList[0].GetValue(), updateID.GetValue())

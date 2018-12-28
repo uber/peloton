@@ -260,7 +260,9 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetUpdate() {
 		context.Background(), &peloton.UpdateID{Value: "test"})
 	suite.Error(err)
 
-	_, err = suite.store.GetUpdatesForJob(context.Background(), suite.testJobID)
+	_, err = suite.store.GetUpdatesForJob(
+		context.Background(),
+		suite.testJobID.GetValue())
 	suite.Error(err)
 }
 

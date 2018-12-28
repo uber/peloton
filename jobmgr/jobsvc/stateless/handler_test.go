@@ -2853,6 +2853,106 @@ func (suite *statelessHandlerTestSuite) TestRestartJobGetRuntimeFailure() {
 	suite.Nil(resp)
 }
 
+// TestListJobUpdatesSuccess tests the success case of list job updates
+func (suite *statelessHandlerTestSuite) TestListJobUpdatesSuccess() {
+	testUpdateID1 := "941ff353-ba82-49fe-8f80-fb5bc649b04r"
+	testUpdateID2 := "941ff353-ba82-49fe-8f80-fb5bc649b04p"
+
+	suite.updateStore.EXPECT().
+		GetUpdatesForJob(gomock.Any(), testJobID).
+		Return([]*peloton.UpdateID{
+			{Value: testUpdateID1},
+			{Value: testUpdateID2},
+		}, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}).
+		Return(&models.UpdateModel{
+			Type:                 models.WorkflowType_UPDATE,
+			State:                pbupdate.State_ROLLING_FORWARD,
+			InstancesDone:        1,
+			InstancesFailed:      3,
+			InstancesTotal:       20,
+			InstancesCurrent:     []uint32{0, 1},
+			JobConfigVersion:     2,
+			PrevJobConfigVersion: 1,
+		}, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID2}).
+		Return(&models.UpdateModel{
+			Type:                 models.WorkflowType_UPDATE,
+			State:                pbupdate.State_SUCCEEDED,
+			InstancesDone:        10,
+			InstancesFailed:      2,
+			InstancesTotal:       20,
+			InstancesCurrent:     []uint32{0, 1, 2},
+			JobConfigVersion:     3,
+			PrevJobConfigVersion: 2,
+		}, nil)
+
+	resp, err := suite.handler.ListJobUpdates(context.Background(), &statelesssvc.ListJobUpdatesRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+	})
+	suite.NoError(err)
+	suite.Equal(
+		resp.GetUpdates()[0].GetInfo().GetStatus().GetState(),
+		stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+	)
+	suite.Equal(
+		resp.GetUpdates()[0].GetInfo().GetStatus().GetNumInstancesCompleted(),
+		uint32(1))
+	suite.Equal(
+		resp.GetUpdates()[0].GetInfo().GetStatus().GetNumInstancesFailed(),
+		uint32(3))
+	suite.Equal(
+		resp.GetUpdates()[0].GetInfo().GetStatus().GetNumInstancesRemaining(),
+		uint32(16))
+	suite.Equal(
+		resp.GetUpdates()[0].GetInfo().GetStatus().GetInstancesCurrent(),
+		[]uint32{0, 1})
+
+	suite.Equal(
+		resp.GetUpdates()[1].GetInfo().GetStatus().GetState(),
+		stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED)
+	suite.Equal(
+		resp.GetUpdates()[1].GetInfo().GetStatus().GetNumInstancesCompleted(),
+		uint32(10))
+	suite.Equal(
+		resp.GetUpdates()[1].GetInfo().GetStatus().GetNumInstancesFailed(),
+		uint32(2))
+	suite.Equal(
+		resp.GetUpdates()[1].GetInfo().GetStatus().GetNumInstancesRemaining(),
+		uint32(8))
+	suite.Equal(
+		resp.GetUpdates()[1].GetInfo().GetStatus().GetInstancesCurrent(),
+		[]uint32{0, 1, 2})
+}
+
+// TestListJobUpdatesGetUpdatesFailure tests the failure
+// case of getting job updates due to fail to read updates of a job
+func (suite *statelessHandlerTestSuite) TestListJobUpdatesGetUpdatesFailure() {
+	testUpdateID1 := "941ff353-ba82-49fe-8f80-fb5bc649b04r"
+	testUpdateID2 := "941ff353-ba82-49fe-8f80-fb5bc649b04p"
+
+	suite.updateStore.EXPECT().
+		GetUpdatesForJob(gomock.Any(), testJobID).
+		Return([]*peloton.UpdateID{
+			{Value: testUpdateID1},
+			{Value: testUpdateID2},
+		}, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	resp, err := suite.handler.ListJobUpdates(context.Background(), &statelesssvc.ListJobUpdatesRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+	})
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
 func TestStatelessServiceHandler(t *testing.T) {
 	suite.Run(t, new(statelessHandlerTestSuite))
 }

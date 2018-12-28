@@ -806,7 +806,7 @@ func (suite *UpdateSvcTestSuite) TestListNoJobID() {
 // DB while fetching all updates for a job
 func (suite *UpdateSvcTestSuite) TestListGetUpdatesForJobFail() {
 	suite.updateStore.EXPECT().
-		GetUpdatesForJob(gomock.Any(), suite.jobID).
+		GetUpdatesForJob(gomock.Any(), suite.jobID.GetValue()).
 		Return([]*peloton.UpdateID{}, fmt.Errorf("fake db error"))
 
 	_, err := suite.h.ListUpdates(
@@ -838,7 +838,7 @@ func (suite *UpdateSvcTestSuite) TestListGetUpdateFail() {
 	}
 
 	suite.updateStore.EXPECT().
-		GetUpdatesForJob(gomock.Any(), suite.jobID).
+		GetUpdatesForJob(gomock.Any(), suite.jobID.GetValue()).
 		Return(updates, nil)
 
 	suite.updateStore.EXPECT().
@@ -873,7 +873,7 @@ func (suite *UpdateSvcTestSuite) TestList() {
 	}
 
 	suite.updateStore.EXPECT().
-		GetUpdatesForJob(gomock.Any(), suite.jobID).
+		GetUpdatesForJob(gomock.Any(), suite.jobID.GetValue()).
 		Return(updates, nil)
 
 	for _, updateID := range updates {

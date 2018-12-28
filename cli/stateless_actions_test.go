@@ -30,7 +30,7 @@ import (
 const (
 	testStatelessSpecConfig = "../example/stateless/testspec.yaml"
 	testRespoolPath         = "/testPath"
-	testEntityVersion       = "1-0"
+	testEntityVersion       = "1-1-1"
 )
 
 type statelessActionsTestSuite struct {
@@ -104,7 +104,7 @@ func (suite *statelessActionsTestSuite) TestStatelessRefreshActionError() {
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessWorkflowPauseAction() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: testEntityVersion}
 	opaque := "test"
 	suite.statelessClient.EXPECT().
 		PauseJobWorkflow(suite.ctx, &svc.PauseJobWorkflowRequest{
@@ -120,7 +120,7 @@ func (suite *statelessActionsTestSuite) TestStatelessWorkflowPauseAction() {
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessWorkflowPauseActionFailure() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: testEntityVersion}
 	suite.statelessClient.EXPECT().
 		PauseJobWorkflow(suite.ctx, &svc.PauseJobWorkflowRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
@@ -133,7 +133,7 @@ func (suite *statelessActionsTestSuite) TestStatelessWorkflowPauseActionFailure(
 
 func (suite *statelessActionsTestSuite) TestStatelessWorkflowResumeAction() {
 	opaque := "test"
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: testEntityVersion}
 	suite.statelessClient.EXPECT().
 		ResumeJobWorkflow(suite.ctx, &svc.ResumeJobWorkflowRequest{
 			JobId:      &v1alphapeloton.JobID{Value: testJobID},
@@ -148,7 +148,7 @@ func (suite *statelessActionsTestSuite) TestStatelessWorkflowResumeAction() {
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessWorkflowResumeActionFailure() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: testEntityVersion}
 	suite.statelessClient.EXPECT().
 		ResumeJobWorkflow(suite.ctx, &svc.ResumeJobWorkflowRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
@@ -161,7 +161,7 @@ func (suite *statelessActionsTestSuite) TestStatelessWorkflowResumeActionFailure
 
 func (suite *statelessActionsTestSuite) TestStatelessWorkflowAbortAction() {
 	opaque := "test"
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: testEntityVersion}
 	suite.statelessClient.EXPECT().
 		AbortJobWorkflow(suite.ctx, &svc.AbortJobWorkflowRequest{
 			JobId:      &v1alphapeloton.JobID{Value: testJobID},
@@ -176,7 +176,7 @@ func (suite *statelessActionsTestSuite) TestStatelessWorkflowAbortAction() {
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessWorkflowAbortActionFailure() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: testEntityVersion}
 	suite.statelessClient.EXPECT().
 		AbortJobWorkflow(suite.ctx, &svc.AbortJobWorkflowRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
@@ -320,7 +320,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionSuccess() {
 	suite.statelessClient.EXPECT().
 		ReplaceJob(gomock.Any(), gomock.Any()).
 		Return(&svc.ReplaceJobResponse{
-			Version: &v1alphapeloton.EntityVersion{Value: "2-2"},
+			Version: &v1alphapeloton.EntityVersion{Value: testEntityVersion},
 		}, nil)
 
 	suite.NoError(suite.client.StatelessReplaceJobAction(
@@ -609,7 +609,6 @@ func (suite *statelessActionsTestSuite) getSpec() *stateless.JobSpec {
 // the GetReplaceJobDiff API
 func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionSuccess() {
 	respoolPath := "/testPath"
-	entityVersion := "1-1-1"
 
 	suite.resClient.EXPECT().
 		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
@@ -624,7 +623,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionSuccess
 	suite.statelessClient.EXPECT().
 		GetReplaceJobDiff(gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, req *svc.GetReplaceJobDiffRequest) {
-			suite.Equal(req.GetVersion().GetValue(), entityVersion)
+			suite.Equal(req.GetVersion().GetValue(), testEntityVersion)
 			suite.Equal(req.GetJobId().GetValue(), testJobID)
 		}).
 		Return(&svc.GetReplaceJobDiffResponse{
@@ -639,7 +638,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionSuccess
 	suite.NoError(suite.client.StatelessReplaceJobDiffAction(
 		testJobID,
 		testStatelessSpecConfig,
-		entityVersion,
+		testEntityVersion,
 		respoolPath,
 	))
 }
@@ -648,7 +647,6 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionSuccess
 // the GetReplaceJobDiff API
 func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionFail() {
 	respoolPath := "/testPath"
-	entityVersion := "1-1-1"
 
 	suite.resClient.EXPECT().
 		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
@@ -667,7 +665,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionFail() 
 	suite.Error(suite.client.StatelessReplaceJobDiffAction(
 		testJobID,
 		testStatelessSpecConfig,
-		entityVersion,
+		testEntityVersion,
 		respoolPath,
 	))
 }
@@ -676,7 +674,6 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionFail() 
 // of the GetReplaceJobDiff API due to the look up resource pool failing
 func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionLookupRPFail() {
 	respoolPath := "/testPath"
-	entityVersion := "1-1-1"
 
 	suite.resClient.EXPECT().
 		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
@@ -689,14 +686,14 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionLookupR
 	suite.Error(suite.client.StatelessReplaceJobDiffAction(
 		testJobID,
 		testStatelessSpecConfig,
-		entityVersion,
+		testEntityVersion,
 		respoolPath,
 	))
 }
 
 // TestStatelessStopJobActionSuccess tests the success case of stopping job
 func (suite *statelessActionsTestSuite) TestStatelessStopJobActionSuccess() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: testEntityVersion}
 	suite.statelessClient.EXPECT().
 		StopJob(suite.ctx, &svc.StopJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
@@ -711,7 +708,7 @@ func (suite *statelessActionsTestSuite) TestStatelessStopJobActionSuccess() {
 
 // TestStatelessStopJobActionFailure tests the failure of stopping job
 func (suite *statelessActionsTestSuite) TestStatelessStopJobActionFailure() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: testEntityVersion}
 	suite.statelessClient.EXPECT().
 		StopJob(suite.ctx, &svc.StopJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
@@ -753,12 +750,12 @@ func (suite *statelessActionsTestSuite) TestClientJobGetFail() {
 		GetJob(gomock.Any(), gomock.Any()).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.Error(suite.client.StatelessGetAction(testJobID, "3-1", false))
+	suite.Error(suite.client.StatelessGetAction(testJobID, "3-1-1", false))
 }
 
 // TestStatelessRestartJobActionSuccess tests the success path of restart job
 func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionSuccess() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: testEntityVersion}
 	opaque := "test"
 	batchSize := uint32(1)
 	instanceRanges := []*task.InstanceRange{{From: 0, To: 10}}
@@ -787,7 +784,7 @@ func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionSuccess() {
 
 // TestStatelessRestartJobActionFailure tests the failure path of restart job
 func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionFailure() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: testEntityVersion}
 	opaque := "test"
 	batchSize := uint32(1)
 	instanceRanges := []*task.InstanceRange{{From: 0, To: 10}}
@@ -814,6 +811,28 @@ func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionFailure() {
 	))
 }
 
+// TestStatelessListUpdatesAction tests the success case of list updates
+func (suite *statelessActionsTestSuite) TestStatelessListUpdatesAction() {
+	suite.statelessClient.EXPECT().
+		ListJobUpdates(suite.ctx, &svc.ListJobUpdatesRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		}).
+		Return(&svc.ListJobUpdatesResponse{}, nil)
+
+	suite.NoError(suite.client.StatelessListUpdatesAction(testJobID))
+}
+
+// TestStatelessListUpdatesActionError tests the failure case of list updates
+func (suite *statelessActionsTestSuite) TestStatelessListUpdatesActionError() {
+	suite.statelessClient.EXPECT().
+		ListJobUpdates(suite.ctx, &svc.ListJobUpdatesRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		}).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessListUpdatesAction(testJobID))
+}
+
 // TestStatelessWorkflowEventsAction tests the success path
 // for get workflow events
 func (suite *statelessActionsTestSuite) TestStatelessWorkflowEventsAction() {
@@ -824,7 +843,7 @@ func (suite *statelessActionsTestSuite) TestStatelessWorkflowEventsAction() {
 		}).
 		Return(&svc.GetWorkflowEventsResponse{}, nil)
 
-	suite.NoError(suite.client.StatlessWorkflowEventsAction(testJobID, 0))
+	suite.NoError(suite.client.StatelessWorkflowEventsAction(testJobID, 0))
 }
 
 // TestStatelessWorkflowEventsActionError tests the failure path
@@ -836,7 +855,7 @@ func (suite *statelessActionsTestSuite) TestStatelessWorkflowEventsActionError()
 		}).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.Error(suite.client.StatlessWorkflowEventsAction(testJobID, 0))
+	suite.Error(suite.client.StatelessWorkflowEventsAction(testJobID, 0))
 }
 
 func TestStatelessActions(t *testing.T) {
