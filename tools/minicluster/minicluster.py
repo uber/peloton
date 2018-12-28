@@ -57,22 +57,14 @@ def print_warn(message):
 
 
 #
-# Get eth0 ip of the host
-# TODO: see if we can do better than running ipconfig/ifconfig
+# Get container local ip.
+# IP address returned is only reachable on the local machine and within
+# the container.
 #
-def get_host_ip():
-    uname = os.uname()[0]
-    if uname == "Darwin":
-        ip = os.popen('ipconfig getifaddr en0').read()
-    else:
-        # The command hostname -I gives a list of ip's for all network
-        # interfaces on the host and we just pick the first ip from that
-        # list. On a Debian Jessi box this returns:
-        #   10.162.17.29 10.162.81.29 172.17.0.1
-        # On a Ubuntu Trusty Tahr box this returns:
-        #   172.24.98.94 172.17.0.1
-        ip = os.popen('hostname -I').read().strip().split(' ')[0]
-    return ip.strip()
+def get_container_ip(container_name):
+    return os.popen('''
+        docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' %s
+    ''' % container_name).read().strip()
 
 
 #
@@ -87,7 +79,6 @@ def load_config():
     return config
 
 
-host_ip = get_host_ip()
 zk_url = None
 cli = Client(base_url='unix://var/run/docker.sock')
 work_dir = os.path.dirname(os.path.abspath(__file__))
@@ -181,12 +172,11 @@ def run_mesos():
             'MESOS_LOG_DIR=' + config['log_dir'],
             'MESOS_PORT=' + repr(config['master_port']),
             'MESOS_ZK=zk://{0}:{1}/mesos'.format(
-                host_ip,
-                config['local_zk_port']),
+                get_container_ip(config['zk_container']),
+                config['default_zk_port']),
             'MESOS_QUORUM=' + repr(config['quorum']),
             'MESOS_REGISTRY=' + config['registry'],
             'MESOS_WORK_DIR=' + config['work_dir'],
-            'MESOS_ADVERTISE_IP={}'.format(host_ip),
         ],
         image=config['mesos_master_image'],
         entrypoint='bash /files/run_mesos_master.sh',
@@ -220,8 +210,8 @@ def run_mesos():
             environment=[
                 'MESOS_PORT=' + repr(port),
                 'MESOS_MASTER=zk://{0}:{1}/mesos'.format(
-                    host_ip,
-                    config['local_zk_port']
+                    get_container_ip(config['zk_container']),
+                    config['default_zk_port']
                 ),
                 'MESOS_SWITCH_USER=' + repr(config['switch_user']),
                 'MESOS_CONTAINERIZERS=' + config['containers'],
@@ -343,20 +333,20 @@ def start_and_wait(application_name, container_name, ports, extra_env=None):
         mesos_zk_path = 'zk://{0}/mesos'.format(zk_url)
     else:
         election_zk_servers = '{0}:{1}'.format(
-            host_ip,
-            config['local_zk_port'])
+            get_container_ip(config['zk_container']),
+            config['default_zk_port'])
         mesos_zk_path = 'zk://{0}:{1}/mesos'.format(
-            host_ip,
-            config['local_zk_port'])
+            get_container_ip(config['zk_container']),
+            config['default_zk_port'])
     env = {
         'CONFIG_DIR': 'config',
         'APP': application_name,
         'HTTP_PORT': ports[0],
-        'DB_HOST': host_ip,
+        'DB_HOST': get_container_ip(config['cassandra_container']),
         'ELECTION_ZK_SERVERS': election_zk_servers,
         'MESOS_ZK_PATH': mesos_zk_path,
         'MESOS_SECRET_FILE': '/files/hostmgr_mesos_secret',
-        'CASSANDRA_HOSTS': host_ip,
+        'CASSANDRA_HOSTS': get_container_ip(config['cassandra_container']),
         'ENABLE_DEBUG_LOGGING': config['debug'],
         'DATACENTER': '',
         # used to migrate the schema;used inside host manager
