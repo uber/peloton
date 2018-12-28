@@ -55,10 +55,31 @@ func (t *Table) GetKeyRowFromObject(
 }
 
 // GetRowFromObject is a helper for generating a row from the storage object
-func (t *Table) GetRowFromObject(e base.Object) []base.Column {
+// selectedFields will be used to restrict the number of columns in that row
+// This will be used to convert only select fields of an object to a row.
+// selectedFields if empty will be ignored. It will be empty in case this
+// function is called when handling Create operation since in that case, all
+// fields of the object must be converted to a row. Update can be used to
+// update specific fields of the object
+func (t *Table) GetRowFromObject(
+	e base.Object, selectedFields ...string) []base.Column {
 	v := reflect.ValueOf(e).Elem()
 	row := []base.Column{}
+	selectedFieldMap := make(map[string]struct{})
+
+	// create a map of select fields that we are interested in. For example,
+	// caller will tell us to convert only fields A, B, C from object to the
+	// []base.Column but ignore field D.
+	for _, field := range selectedFields {
+		selectedFieldMap[field] = struct{}{}
+	}
 	for columnName, fieldName := range t.ColToField {
+		if len(selectedFields) > 0 {
+			if _, ok := selectedFieldMap[fieldName]; !ok {
+				// field is not selected, skip it
+				continue
+			}
+		}
 		value := v.FieldByName(fieldName)
 		row = append(row, base.Column{
 			Name:  columnName,

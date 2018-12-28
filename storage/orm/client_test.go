@@ -148,6 +148,45 @@ func (suite *ORMTestSuite) TestClientGet() {
 	suite.Error(err)
 }
 
+// TestClientUpdate tests client update operation on valid and invalid entities
+func (suite *ORMTestSuite) TestClientUpdate() {
+	defer suite.ctrl.Finish()
+	conn := ormmocks.NewMockConnector(suite.ctrl)
+
+	conn.EXPECT().Update(suite.ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *base.Definition,
+			row []base.Column, keyRow []base.Column) {
+			suite.Equal("name", row[0].Name)
+			suite.Equal("test", row[0].Value)
+			suite.Equal("data", row[1].Name)
+			suite.Equal("testdata", row[1].Value)
+			suite.Equal("id", keyRow[0].Name)
+			suite.Equal(uint64(1), keyRow[0].Value)
+		}).Return(nil)
+
+	client, err := NewClient(conn, &ValidObject{})
+	suite.NoError(err)
+
+	// Update Data and Name fields in testValidObject
+	err = client.Update(suite.ctx, testValidObject, "Name", "Data")
+	suite.NoError(err)
+
+	conn.EXPECT().Update(suite.ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *base.Definition,
+			row []base.Column, keyRow []base.Column) {
+			suite.Equal("data", row[0].Name)
+			suite.Equal("testdata", row[0].Value)
+			suite.Equal("id", keyRow[0].Name)
+			suite.Equal(uint64(1), keyRow[0].Value)
+		}).Return(nil)
+	// Update Data field in testValidObject
+	err = client.Update(suite.ctx, testValidObject, "Data")
+	suite.NoError(err)
+
+	err = client.Update(suite.ctx, &InvalidObject1{})
+	suite.Error(err)
+}
+
 // TestClientDelete tests client delete operation on valid and invalid entities
 func (suite *ORMTestSuite) TestClientDelete() {
 	defer suite.ctrl.Finish()

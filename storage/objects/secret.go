@@ -82,6 +82,17 @@ func (s *Store) GetSecret(
 	return secretObject, err
 }
 
+// UpdateSecretData updates a secret data in db
+func (s *Store) UpdateSecretData(
+	ctx context.Context, secretID, secretString string) error {
+	secretObject := &SecretObject{
+		SecretID: secretID,
+		Valid:    true,
+		Data:     secretString,
+	}
+	return s.oClient.Update(ctx, secretObject, "Data")
+}
+
 // DeleteSecret deletes a secret object in db
 func (s *Store) DeleteSecret(
 	ctx context.Context, secretID string) error {

@@ -275,3 +275,45 @@ func (c *cassandraConnector) Delete(
 	c.metrics.ExecuteSuccess.Inc(1)
 	return nil
 }
+
+// Update updates an existing row in DB.
+func (c *cassandraConnector) Update(
+	ctx context.Context, e *base.Definition, row []base.Column,
+	keyCols []base.Column) error {
+
+	// split keyCols into a list of names and values to compose query stmt using
+	// names and use values in the session query call, so the order needs to be
+	// maintained.
+	keyColNames, keyColValues := splitColumnNameValue(keyCols)
+
+	// split row into a list of names and values to compose query stmt using
+	// names and use values in the session query call, so the order needs to be
+	// maintained.
+	colNames, colValues := splitColumnNameValue(row)
+
+	// Prepare update statement
+	stmt, err := UpdateStmt(
+		Table(e.Name),
+		Updates(colNames),
+		Conditions(keyColNames),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	// list of values to be supplied in the query
+	updateVals := append(colValues, keyColValues...)
+
+	q := c.Session.Query(
+		stmt, updateVals...).WithContext(ctx)
+	defer c.sendLatency(ctx, "execute_latency", time.Duration(q.Latency()))
+
+	if err := q.Exec(); err != nil {
+		c.metrics.ExecuteFail.Inc(1)
+		return err
+	}
+
+	c.metrics.ExecuteSuccess.Inc(1)
+	return nil
+}

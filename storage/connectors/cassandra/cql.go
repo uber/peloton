@@ -17,6 +17,8 @@ const (
 	columns = "Columns"
 	// conditions is used to indicate <,>,= conditions in the query
 	conditions = "Conditions"
+	// updateCols is used to indicate update column names in the query
+	updates = "Updates"
 
 	// insertTemplate is used to construct an insert query
 	insertTemplate = `INSERT INTO {{.Table}} ({{ColumnFunc .Columns ", "}})` +
@@ -29,6 +31,10 @@ const (
 	// deleteTemplate is used to construct a delete query
 	deleteTemplate = `DELETE FROM {{.Table}} WHERE ` +
 		`{{ConditionsFunc .Conditions " AND "}};`
+
+	// updateTemplate is used to construct update query
+	updateTemplate = `UPDATE {{.Table}} SET {{ConditionsFunc .Updates ", "}}` +
+		`{{WhereFunc .Conditions}}{{ConditionsFunc .Conditions " AND "}};`
 )
 
 var (
@@ -49,6 +55,9 @@ var (
 	// delete CQL query template implementation
 	deleteTmpl = template.Must(
 		template.New("delete").Funcs(funcMap).Parse(deleteTemplate))
+	// update CQL query template implementation
+	updateTmpl = template.Must(
+		template.New("update").Funcs(funcMap).Parse(updateTemplate))
 )
 
 // questionMarkFunc adds ? to the insert query in place of values to be inserted
@@ -115,6 +124,13 @@ func Conditions(v interface{}) OptFunc {
 	}
 }
 
+// Updates set the `SET` clause to the cql statement
+func Updates(v interface{}) OptFunc {
+	return func(opt Option) {
+		opt[updates] = v
+	}
+}
+
 // InsertStmt creates insert statement
 func InsertStmt(opts ...OptFunc) (string, error) {
 	var bb bytes.Buffer
@@ -145,5 +161,16 @@ func DeleteStmt(opts ...OptFunc) (string, error) {
 		opt(option)
 	}
 	err := deleteTmpl.Execute(&bb, option)
+	return bb.String(), err
+}
+
+// UpdateStmt creates update statement
+func UpdateStmt(opts ...OptFunc) (string, error) {
+	var bb bytes.Buffer
+	option := Option{}
+	for _, opt := range opts {
+		opt(option)
+	}
+	err := updateTmpl.Execute(&bb, option)
 	return bb.String(), err
 }

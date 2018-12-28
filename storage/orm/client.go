@@ -15,6 +15,12 @@ type Client interface {
 	Create(ctx context.Context, e base.Object) error
 	// Create gets the storage object from the database
 	Get(ctx context.Context, e base.Object) error
+	// Update updates the storage object in the database
+	// The fields to be updated can be specified as fieldsToUpdate which is
+	// a variable list of field names and is to be optionally specified by
+	// the caller. If not specified, all fields in the object will be updated
+	// to the DB
+	Update(ctx context.Context, e base.Object, fieldsToUpdate ...string) error
 	// Delete deletes the storage object from the database
 	Delete(ctx context.Context, e base.Object) error
 }
@@ -86,6 +92,25 @@ func (c *client) Get(ctx context.Context, e base.Object) error {
 	table.SetObjectFromRow(e, row)
 
 	return nil
+}
+
+// Update updates the storage object in the database
+func (c *client) Update(
+	ctx context.Context, e base.Object, fieldsToUpdate ...string) error {
+	// lookup if a table exists for this object, return error if not found
+	table, err := c.getTable(e)
+	if err != nil {
+		return err
+	}
+
+	// translate the storage object into a row (list of column)
+	row := table.GetRowFromObject(e, fieldsToUpdate...)
+
+	// build a primary key row from storage object
+	keyRow := table.GetKeyRowFromObject(e)
+
+	// Tell the connector to update a row in the DB using this row
+	return c.connector.Update(ctx, &table.Definition, row, keyRow)
 }
 
 // Delete deletes the storage object in the database

@@ -54,6 +54,20 @@ func (suite *ObjectsTestSuite) TestSecretObject() {
 	suite.Equal(secret.Data, expectedSecret.Data)
 	suite.Equal(secret.Path, expectedSecret.Path)
 
+	// update secret object to DB
+	err = estore.UpdateSecretData(context.Background(), secretID, "new data")
+	suite.NoError(err)
+
+	// read secret object from DB
+	secret, err = estore.GetSecret(context.Background(), secretID)
+	suite.NoError(err)
+	suite.Equal(secret.SecretID, expectedSecret.SecretID)
+	suite.Equal(secret.JobID, expectedSecret.JobID)
+	suite.Equal(secret.Version, expectedSecret.Version)
+	suite.Equal(secret.Valid, expectedSecret.Valid)
+	suite.Equal(secret.Path, expectedSecret.Path)
+	suite.Equal(secret.Data, "new data")
+
 	// Delete secret object from DB
 	err = estore.DeleteSecret(context.Background(), secretID)
 	suite.NoError(err)

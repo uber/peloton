@@ -132,3 +132,49 @@ func (suite *CassandraConnSuite) TestDeleteStmt() {
 		suite.Equal(stmt, d.stmt)
 	}
 }
+
+// TestUpdateStmt tests constructing the update statement
+func (suite *CassandraConnSuite) TestUpdateStmt() {
+	data := []struct {
+		table   string
+		cols    []string
+		keyCols []string
+		values  []interface{}
+		stmt    string
+	}{
+		{
+			table:   "table1",
+			cols:    []string{"c1", "c2"},
+			keyCols: []string{"c3", "c4"},
+			values:  []interface{}{1, 2},
+			stmt:    "UPDATE \"table1\" SET c1=?, c2=? WHERE c3=? AND c4=?;",
+		},
+
+		{
+			table:   "table2",
+			cols:    []string{"c1", "c2", "c3"},
+			keyCols: []string{"c4"},
+			stmt: "UPDATE \"table2\" SET c1=?, c2=?, c3=? " +
+				"WHERE c4=?;",
+		},
+	}
+	for _, d := range data {
+		stmt, err := UpdateStmt(
+			Table(d.table),
+			Updates(d.cols),
+			Conditions(d.keyCols),
+		)
+		suite.NoError(err)
+		suite.Equal(stmt, d.stmt)
+
+		// Negative test. UpdateStmt with Values which should be ignored.
+		stmt, err = UpdateStmt(
+			Table(d.table),
+			Updates(d.cols),
+			Conditions(d.keyCols),
+			Values(d.values),
+		)
+		suite.NoError(err)
+		suite.Equal(stmt, d.stmt)
+	}
+}

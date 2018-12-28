@@ -73,6 +73,10 @@ func (suite *ORMTestSuite) TestGetRowFromObject() {
 
 	row := table.GetRowFromObject(e)
 	suite.ensureRowsEqual(row, testRow)
+
+	fieldsToUpdate := []string{"ID", "Name"}
+	selectedFieldsRow := table.GetRowFromObject(e, fieldsToUpdate...)
+	suite.ensureRowsEqual(selectedFieldsRow, keyRow)
 }
 
 // TestGetKeyRowFromObject tests getting primary key row (list of primary key

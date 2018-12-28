@@ -106,7 +106,6 @@ func (suite *CassandraConnSuite) TestCreateGetDelete() {
 			"name": reflect.TypeOf("name"),
 		},
 	}
-
 	// create the test row in C*
 	err := connector.Create(context.Background(), obj, testRow)
 	suite.NoError(err)
@@ -129,4 +128,63 @@ func (suite *CassandraConnSuite) TestCreateGetDelete() {
 	// this should not result in error.
 	err = connector.Delete(context.Background(), obj, keyRow)
 	suite.NoError(err)
+}
+
+func (suite *CassandraConnSuite) TestCreateUpdateGet() {
+	// Definition stores schema information about an Object
+	obj := &base.Definition{
+		Name: testTableName,
+		Key: &base.PrimaryKey{
+			PartitionKeys: []string{"id"},
+		},
+		// Column name to data type mapping of the object
+		ColumnToType: map[string]reflect.Type{
+			"id":   reflect.TypeOf(1),
+			"data": reflect.TypeOf("data"),
+			"name": reflect.TypeOf("name"),
+		},
+	}
+	// create the test row in C*
+	err := connector.Create(context.Background(), obj, testRow)
+	suite.NoError(err)
+
+	// update the test row in C* where we update only the "Name" field and not
+	// "Data" field of the object
+	// testUpdateRow just updates the Name field
+	testUpdateRow := []base.Column{
+		{
+			Name:  "name",
+			Value: "test-update",
+		},
+	}
+	err = connector.Update(context.Background(), obj, testUpdateRow, keyRow)
+	suite.NoError(err)
+
+	// read the row from C* test table for given keys
+	row, err := connector.Get(context.Background(), obj, keyRow)
+	suite.NoError(err)
+	suite.Len(row, 3)
+	for _, col := range row {
+		if col.Name == "name" {
+			name := col.Value.(*string)
+			suite.Equal("test-update", *name)
+		}
+	}
+
+	// testUpdateRowWithPrimaryKey used for update operation, this should fail
+	// because you cannot use SET with primary key
+	testUpdateRowWithPrimaryKey := []base.Column{
+		{
+			Name:  "id",
+			Value: uint64(1),
+		},
+		{
+			Name:  "name",
+			Value: "test-update",
+		},
+	}
+	err = connector.Update(
+		context.Background(), obj, testUpdateRowWithPrimaryKey, keyRow)
+	suite.Error(err)
+	suite.Equal(err.Error(), "PRIMARY KEY part id found in SET part")
 }
