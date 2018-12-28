@@ -1,3 +1,6 @@
+from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
+
+
 class Task(object):
     """
     Task represents a peloton task
@@ -30,3 +33,7 @@ class Task(object):
     @property
     def state(self):
         return self.get_info().runtime.state
+
+    @property
+    def state_str(self):
+        return task.TaskState.Name(self.state)

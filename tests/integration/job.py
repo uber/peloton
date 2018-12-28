@@ -39,14 +39,6 @@ class Job(object):
             json_format.ParseDict(job_config_dump, job_config)
         self.job_config = job_config
 
-    def create_per_task_configs(self):
-        """
-        creates task config for each task for the job
-        """
-        for i in xrange(self.job_config.instanceCount):
-            self.job_config.instanceConfig[i].CopyFrom(
-                self.job_config.defaultConfig)
-
     def create(self):
         """
         creates a job based on the config

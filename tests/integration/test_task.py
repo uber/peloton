@@ -35,15 +35,13 @@ def test__stop_start_partial_tests_with_single_range(test_job):
     setattr(range, 'from', 0)
 
     def wait_for_instance_to_stop():
-        tasks = test_job.list_tasks().value
-        return (tasks[0].runtime.state == task_pb2.TaskState.Value('KILLED'))
+        return test_job.get_task(0).state_str == 'KILLED'
 
     test_job.stop(ranges=[range])
     test_job.wait_for_condition(wait_for_instance_to_stop)
 
     def wait_for_instance_to_run():
-        tasks = test_job.list_tasks().value
-        return (tasks[0].runtime.state == task_pb2.TaskState.Value('RUNNING'))
+        return test_job.get_task(0).state_str == 'RUNNING'
 
     test_job.start(ranges=[range])
     test_job.wait_for_condition(wait_for_instance_to_run)
@@ -63,19 +61,15 @@ def test__stop_start_partial_tests_with_multiple_ranges(test_job):
     setattr(range2, 'from', 1)
 
     def wait_for_instance_to_stop():
-        tasks = test_job.list_tasks().value
-        return (tasks[0].runtime.state ==
-                task_pb2.TaskState.Value('KILLED') and
-                tasks[1].runtime.state == task_pb2.TaskState.Value('KILLED'))
+        return (test_job.get_task(0).state_str == 'KILLED' and
+                test_job.get_task(1).state_str == 'KILLED')
 
     test_job.stop(ranges=[range1, range2])
     test_job.wait_for_condition(wait_for_instance_to_stop)
 
     def wait_for_instance_to_run():
-        tasks = test_job.list_tasks().value
-        return (tasks[0].runtime.state ==
-                task_pb2.TaskState.Value('RUNNING') and
-                tasks[1].runtime.state == task_pb2.TaskState.Value('RUNNING'))
+        return (test_job.get_task(0).state_str == 'RUNNING' and
+                test_job.get_task(1).state_str == 'RUNNING')
     test_job.start(ranges=[range1, range2])
     test_job.wait_for_condition(wait_for_instance_to_run)
 
@@ -116,8 +110,7 @@ def test__stop_start_tasks_when_mesos_master_down_kills_tasks_when_started(
     setattr(range, 'from', 0)
 
     def wait_for_instance_to_stop():
-        tasks = test_job.list_tasks().value
-        return (tasks[0].runtime.state == task_pb2.TaskState.Value('KILLED'))
+        return test_job.get_task(0).state_str == 'KILLED'
 
     mesos_master.stop()
     test_job.stop(ranges=[range])
@@ -125,8 +118,7 @@ def test__stop_start_tasks_when_mesos_master_down_kills_tasks_when_started(
     test_job.wait_for_condition(wait_for_instance_to_stop)
 
     def wait_for_instance_to_run():
-        tasks = test_job.list_tasks().value
-        return (tasks[0].runtime.state == task_pb2.TaskState.Value('RUNNING'))
+        return test_job.get_task(0).state_str == 'RUNNING'
 
     mesos_master.stop()
     test_job.start(ranges=[range])
@@ -149,8 +141,7 @@ def test__stop_start_tasks_when_mesos_master_down_and_jobmgr_restarts(
     setattr(range, 'from', 0)
 
     def wait_for_instance_to_stop():
-        tasks = test_job.list_tasks().value
-        return (tasks[0].runtime.state == task_pb2.TaskState.Value('KILLED'))
+        return test_job.get_task(0).state_str == 'KILLED'
 
     mesos_master.stop()
     test_job.stop(ranges=[range])
@@ -159,8 +150,7 @@ def test__stop_start_tasks_when_mesos_master_down_and_jobmgr_restarts(
     test_job.wait_for_condition(wait_for_instance_to_stop)
 
     def wait_for_instance_to_run():
-        tasks = test_job.list_tasks().value
-        return (tasks[0].runtime.state == task_pb2.TaskState.Value('RUNNING'))
+        return test_job.get_task(0).state_str == 'RUNNING'
 
     mesos_master.stop()
     test_job.start(ranges=[range])

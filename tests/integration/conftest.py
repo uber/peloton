@@ -8,6 +8,7 @@ import time
 from docker import Client
 from tools.pcluster.pcluster import setup, teardown
 from job import Job
+from stateless_job import StatelessJob
 from m3.client import M3
 from m3.emitter import BatchedEmitter
 from google.protobuf import json_format
@@ -198,6 +199,20 @@ def large_stateless_job(request):
 
 
 @pytest.fixture
+def stateless_job_v1alpha(request):
+    job = StatelessJob()
+
+    # teardown
+    def kill_stateless_job():
+        print "\nstopping stateless job"
+        job.stop()
+
+    request.addfinalizer(kill_stateless_job)
+
+    return job
+
+
+@pytest.fixture
 def host_affinity_job(request):
     job = Job(job_file='test_job_host_affinity_constraint.yaml')
 
@@ -212,7 +227,7 @@ def host_affinity_job(request):
 
 # For unit tests running with test_job, it would be tested with both
 # long_running_job and stateless_job
-@pytest.fixture(params=[long_running_job, stateless_job])
+@pytest.fixture(params=[long_running_job, stateless_job_v1alpha])
 def test_job(request):
     return request.param(request)
 

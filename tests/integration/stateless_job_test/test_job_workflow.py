@@ -1,7 +1,7 @@
 import pytest
 import grpc
 
-from tests.integration.stateless_job.util import \
+from tests.integration.stateless_job_test.util import \
     assert_task_mesos_id_changed, assert_task_config_equal, assert_task_mesos_id_equal
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 

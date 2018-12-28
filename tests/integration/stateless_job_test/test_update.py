@@ -7,7 +7,7 @@ from peloton_client.pbgen.peloton.api.v0.job.job_pb2 import JobConfig
 
 from google.protobuf import json_format
 
-from tests.integration.stateless_job.util import \
+from tests.integration.stateless_job_test.util import \
     assert_task_config_changed, assert_task_mesos_id_changed, \
     assert_task_config_equal, assert_tasks_failed
 from tests.integration.update import Update
