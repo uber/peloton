@@ -57,11 +57,11 @@ func (suite *TestActiveRMTasks) TearDownTest() {
 }
 
 func (suite *TestActiveRMTasks) TestGetActiveTasks() {
-	taskEntry := suite.activeRMTasks.GetActiveTasks("TASK_3")
+	taskEntry := suite.activeRMTasks.GetTask("TASK_3")
 	assert.NotNil(suite.T(), taskEntry)
 	assert.Equal(suite.T(), taskEntry.Reason, "REASON_3")
 
-	taskEntry = suite.activeRMTasks.GetActiveTasks("TASK_11")
+	taskEntry = suite.activeRMTasks.GetTask("TASK_11")
 	assert.Nil(suite.T(), taskEntry)
 
 	emptyActiveRMTasks := activeRMTasks{
@@ -69,7 +69,7 @@ func (suite *TestActiveRMTasks) TestGetActiveTasks() {
 		metrics:      nil,
 		taskCache:    nil,
 	}
-	taskEntry = emptyActiveRMTasks.GetActiveTasks("TASK_0")
+	taskEntry = emptyActiveRMTasks.GetTask("TASK_0")
 	assert.Nil(suite.T(), taskEntry)
 }
 

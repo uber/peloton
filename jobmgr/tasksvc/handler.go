@@ -295,7 +295,7 @@ func (m *serviceHandler) List(
 		}, nil
 	}
 
-	m.fillTaskInfoFromResourceManager(ctx, body.GetJobId(), convertTaskMapToSlice(result))
+	m.fillReasonForPendingTasksFromResMgr(ctx, body.GetJobId(), convertTaskMapToSlice(result))
 	m.metrics.TaskList.Inc(1)
 	resp := &task.ListResponse{
 		Result: &task.ListResponse_Result{
@@ -889,7 +889,7 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 		}, nil
 	}
 
-	result, total, err := m.taskStore.QueryTasks(ctx, req.JobId, req.GetSpec())
+	result, total, err := m.taskStore.QueryTasks(ctx, req.GetJobId(), req.GetSpec())
 	if err != nil {
 		m.metrics.TaskQueryFail.Inc(1)
 		return &task.QueryResponse{
@@ -902,7 +902,7 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 		}, nil
 	}
 
-	m.fillTaskInfoFromResourceManager(ctx, req.GetJobId(), result)
+	m.fillReasonForPendingTasksFromResMgr(ctx, req.GetJobId(), result)
 	m.metrics.TaskQuery.Inc(1)
 	resp := &task.QueryResponse{
 		Records: result,
@@ -1181,28 +1181,30 @@ func (m *serviceHandler) BrowseSandbox(
 }
 
 // TODO: remove this function once eventstream is enabled in RM
-// fillTaskInfoFromResourceManager takes a map of taskinfo and update it
-// with result from ResourceManager. All the task in the input should belong
-// to the same jobID passed in
-func (m *serviceHandler) fillTaskInfoFromResourceManager(
+// fillReasonForPendingTasksFromResMgr takes a list of taskinfo and
+// fills in the reason for pending tasks from ResourceManager.
+// All the tasks in `taskInfos` should belong to the same job
+func (m *serviceHandler) fillReasonForPendingTasksFromResMgr(
 	ctx context.Context,
 	jobID *peloton.JobID,
-	taskMap []*task.TaskInfo) {
+	taskInfos []*task.TaskInfo,
+) {
 	// only need to consult ResourceManager for PENDING tasks,
 	// because only tasks with PENDING states are being processed by ResourceManager
-	pendingTasks := make(map[string]*task.TaskInfo)
-	for _, taskInfo := range taskMap {
+	for _, taskInfo := range taskInfos {
 		if taskInfo.GetRuntime().GetState() == task.TaskState_PENDING {
-			taskID := fmt.Sprintf("%s-%d", jobID.GetValue(), taskInfo.GetInstanceId())
-			pendingTasks[taskID] = taskInfo
 			// attach the reason from the taskEntry in activeRMTasks
-			taskEntry := m.activeRMTasks.GetActiveTasks(taskID)
+			taskEntry := m.activeRMTasks.GetTask(
+				util.CreatePelotonTaskID(
+					jobID.GetValue(),
+					taskInfo.GetInstanceId(),
+				),
+			)
 			if taskEntry != nil {
-				pendingTasks[taskID].GetRuntime().Reason = taskEntry.GetReason()
+				taskInfo.GetRuntime().Reason = taskEntry.GetReason()
 			}
 		}
 	}
-	return
 }
 
 // GetFrameworkID returns the frameworkID.

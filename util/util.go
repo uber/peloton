@@ -286,6 +286,14 @@ func CreateMesosTaskID(jobID *peloton.JobID,
 	return &mesos.TaskID{Value: &mesosID}
 }
 
+// CreatePelotonTaskID creates a PelotonTaskID given jobID and instanceID
+func CreatePelotonTaskID(
+	jobID string,
+	instanceID uint32,
+) string {
+	return fmt.Sprintf("%s-%d", jobID, instanceID)
+}
+
 // ParseRunID parse the runID from mesosTaskID
 func ParseRunID(mesosTaskID string) (uint64, error) {
 	splitMesosTaskID := strings.Split(mesosTaskID, "-")

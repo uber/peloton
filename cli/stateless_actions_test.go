@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"testing"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
@@ -14,8 +15,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
-	pelotonv1alphapod "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
+	v1alphapod "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
+	v1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
 
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/util/handler"
@@ -627,7 +628,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobDiffActionSuccess
 			suite.Equal(req.GetJobId().GetValue(), testJobID)
 		}).
 		Return(&svc.GetReplaceJobDiffResponse{
-			InstancesAdded: []*pod.InstanceIDRange{
+			InstancesAdded: []*v1alphapod.InstanceIDRange{
 				{
 					From: uint32(0),
 					To:   uint32(5),
@@ -731,7 +732,7 @@ func (suite *statelessActionsTestSuite) TestClientJobGetSuccess() {
 				},
 				Spec: &stateless.JobSpec{
 					Name: testJobID,
-					DefaultSpec: &pod.PodSpec{
+					DefaultSpec: &v1alphapod.PodSpec{
 						Revocable: true,
 					},
 				},
@@ -766,7 +767,7 @@ func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionSuccess() {
 			JobId:     &v1alphapeloton.JobID{Value: testJobID},
 			Version:   entityVersion,
 			BatchSize: batchSize,
-			Ranges: []*pelotonv1alphapod.InstanceIDRange{
+			Ranges: []*v1alphapod.InstanceIDRange{
 				{From: 0, To: 10},
 			},
 			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
@@ -795,7 +796,7 @@ func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionFailure() {
 			JobId:     &v1alphapeloton.JobID{Value: testJobID},
 			Version:   entityVersion,
 			BatchSize: batchSize,
-			Ranges: []*pelotonv1alphapod.InstanceIDRange{
+			Ranges: []*v1alphapod.InstanceIDRange{
 				{From: 0, To: 10},
 			},
 			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
@@ -856,6 +857,125 @@ func (suite *statelessActionsTestSuite) TestStatelessWorkflowEventsActionError()
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
 	suite.Error(suite.client.StatelessWorkflowEventsAction(testJobID, 0))
+}
+
+// TestStatelessQueryPodsActionSuccess tests the success case of querying pods
+func (suite *statelessActionsTestSuite) TestStatelessQueryPodsActionSuccess() {
+	podState := "POD_STATE_RUNNING"
+	host := "peloton-mesos-agent0"
+	name := "test-pod"
+	sortBy := "creation_time"
+	pagination := &v1alphaquery.PaginationSpec{
+		Offset: 0,
+		Limit:  100,
+		OrderBy: []*v1alphaquery.OrderBy{
+			{
+				Order: v1alphaquery.OrderBy_ORDER_BY_ASC,
+				Property: &v1alphaquery.PropertyPath{
+					Value: sortBy,
+				},
+			},
+		},
+	}
+
+	request := &svc.QueryPodsRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+		Spec: &v1alphapod.QuerySpec{
+			Pagination: pagination,
+			PodStates:  []v1alphapod.PodState{v1alphapod.PodState_POD_STATE_RUNNING},
+			Hosts:      []string{host},
+			Names:      []*v1alphapeloton.PodName{{Value: name}},
+		},
+		Pagination: pagination,
+	}
+
+	suite.statelessClient.EXPECT().
+		QueryPods(gomock.Any(), request).
+		Return(&svc.QueryPodsResponse{
+			Pods: []*v1alphapod.PodInfo{
+				{
+					Status: &v1alphapod.PodStatus{
+						PodId: &v1alphapeloton.PodID{Value: testPodID},
+						State: v1alphapod.PodState_POD_STATE_RUNNING,
+						Host:  host,
+						ContainersStatus: []*v1alphapod.ContainerStatus{
+							{
+								Name:  name,
+								State: v1alphapod.ContainerState_CONTAINER_STATE_RUNNING,
+								Healthy: &v1alphapod.HealthStatus{
+									State: v1alphapod.HealthState_HEALTH_STATE_HEALTHY,
+								},
+								StartTime: time.Now().Format(time.RFC3339Nano),
+							},
+						},
+					},
+				},
+			},
+		}, nil)
+
+	suite.NoError(suite.client.StatelessQueryPodsAction(
+		testJobID,
+		podState,
+		name,
+		host,
+		100,
+		0,
+		sortBy,
+		"ASC",
+	))
+}
+
+// TestStatelessQueryPodsActionNoResult tests the case
+// where there are no pods matching the query criteria
+func (suite *statelessActionsTestSuite) TestStatelessQueryPodsActionNoResult() {
+	suite.statelessClient.EXPECT().
+		QueryPods(gomock.Any(), gomock.Any()).
+		Return(&svc.QueryPodsResponse{}, nil)
+
+	suite.NoError(suite.client.StatelessQueryPodsAction(
+		testJobID,
+		"",
+		"",
+		"",
+		100,
+		0,
+		"",
+		"ASC",
+	))
+}
+
+// TestStatelessQueryPodsActionJobNotFound tests the failure
+// case of querying pods due to job not found error
+func (suite *statelessActionsTestSuite) TestStatelessQueryPodsActionJobNotFound() {
+	suite.statelessClient.EXPECT().
+		QueryPods(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.NotFoundErrorf("test error"))
+
+	suite.Error(suite.client.StatelessQueryPodsAction(
+		testJobID,
+		"",
+		"",
+		"",
+		100,
+		0,
+		"",
+		"ASC",
+	))
+}
+
+// TestStatelessQueryPodsActionInvalidSortOrder tests the failure
+// case of querying pods due to invalid sort order
+func (suite *statelessActionsTestSuite) TestStatelessQueryPodsActionInvalidSortOrder() {
+	suite.Error(suite.client.StatelessQueryPodsAction(
+		testJobID,
+		"",
+		"",
+		"",
+		100,
+		0,
+		"",
+		"",
+	))
 }
 
 func TestStatelessActions(t *testing.T) {

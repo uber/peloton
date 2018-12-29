@@ -332,6 +332,26 @@ var (
 	podDeleteEventsPodName = podDeleteEvents.Arg("name", "pod name").Required().String()
 	podDeleteEventsPodID   = podDeleteEvents.Arg("id", "pod identifier").Required().String()
 
+	podQueryPods         = pod.Command("query", "query pods")
+	podQueryPodsJobID    = podQueryPods.Arg("job", "job identifier").Required().String()
+	podQueryPodsStates   = podQueryPods.Flag("states", "pod states").Default("").Short('s').String()
+	podQueryPodsPodNames = podQueryPods.Flag("names", "pod names").Default("").String()
+	podQueryPodsHosts    = podQueryPods.Flag("hosts", "pod hosts").Default("").String()
+	podQueryPodsLimit    = podQueryPods.Flag("limit", "limit").Default("100").Short('n').Uint32()
+	podQueryPodsOffset   = podQueryPods.Flag("offset", "offset").Default("0").Short('o').Uint32()
+	podQueryPodsSortBy   = podQueryPods.Flag("sort", "sort by property "+
+		"(creation_time, host, instance_id, message, name, reason, state)").
+		Short('p').
+		Enum("creation_time",
+			"host",
+			"instance_id",
+			"message",
+			"name",
+			"reason",
+			"state")
+	podQueryPodsSortOrder = podQueryPods.Flag("sortorder", "sort order "+
+		"(ASC or DESC)").Short('a').Default("ASC").Enum("ASC", "DESC")
+
 	// Top level task command
 	task = app.Command("task", "manage tasks")
 
@@ -859,6 +879,17 @@ func main() {
 		err = client.PodDeleteEvents(*podDeleteEventsPodName, *podDeleteEventsPodID)
 	case statelessGet.FullCommand():
 		err = client.StatelessGetAction(*statelessGetJobID, *statelessGetVersion, *statelessGetSummaryOnly)
+	case podQueryPods.FullCommand():
+		err = client.StatelessQueryPodsAction(
+			*podQueryPodsJobID,
+			*podQueryPodsStates,
+			*podQueryPodsPodNames,
+			*podQueryPodsHosts,
+			*podQueryPodsLimit,
+			*podQueryPodsOffset,
+			*podQueryPodsSortBy,
+			*podQueryPodsSortOrder,
+		)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

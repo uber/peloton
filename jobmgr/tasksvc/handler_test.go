@@ -2103,7 +2103,7 @@ func (suite *TaskHandlerTestSuite) TestListTask() {
 		GetTasksForJob(gomock.Any(), suite.testJobID).
 		Return(taskInfos, nil)
 	suite.mockedActiveRMTasks.EXPECT().
-		GetActiveTasks(gomock.Any()).
+		GetTask(gomock.Any()).
 		Return(&resmgrsvc.GetActiveTasksResponse_TaskEntry{
 			Reason: "TEST_REASON",
 		}).Times(2)
@@ -2137,7 +2137,7 @@ func (suite *TaskHandlerTestSuite) TestListTaskQueryByRange() {
 		Return(taskInfos, nil)
 
 	suite.mockedActiveRMTasks.EXPECT().
-		GetActiveTasks(gomock.Any()).
+		GetTask(gomock.Any()).
 		Return(&resmgrsvc.GetActiveTasksResponse_TaskEntry{
 			Reason: "TEST_REASON",
 		}).Times(2)
@@ -2176,7 +2176,7 @@ func (suite *TaskHandlerTestSuite) TestListTaskNoTaskInCache() {
 		GetTasksForJob(gomock.Any(), suite.testJobID).
 		Return(taskInfos, nil)
 	suite.mockedActiveRMTasks.EXPECT().
-		GetActiveTasks(gomock.Any()).
+		GetTask(gomock.Any()).
 		Return(&resmgrsvc.GetActiveTasksResponse_TaskEntry{
 			Reason: "TEST_REASON",
 		}).Times(2)
@@ -2217,7 +2217,7 @@ func (suite *TaskHandlerTestSuite) TestQueryTask() {
 		QueryTasks(gomock.Any(), suite.testJobID, nil).
 		Return(taskInfos, uint32(testInstanceCount), nil)
 	suite.mockedActiveRMTasks.EXPECT().
-		GetActiveTasks(gomock.Any()).
+		GetTask(gomock.Any()).
 		Return(&resmgrsvc.GetActiveTasksResponse_TaskEntry{
 			Reason: "TEST_REASON",
 		}).Times(2)

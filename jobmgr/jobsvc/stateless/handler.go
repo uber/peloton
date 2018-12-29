@@ -10,12 +10,13 @@ import (
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
-	pelotonv1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
+	v1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	"code.uber.internal/infra/peloton/common"
@@ -25,6 +26,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/job/config"
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/task/activermtask"
 	handlerutil "code.uber.internal/infra/peloton/jobmgr/util/handler"
 	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
 	"code.uber.internal/infra/peloton/leader"
@@ -49,6 +51,7 @@ type serviceHandler struct {
 	candidate       leader.Candidate
 	rootCtx         context.Context
 	jobSvcCfg       jobsvc.Config
+	activeRMTasks   activermtask.ActiveRMTasks
 }
 
 var (
@@ -69,17 +72,21 @@ func InitV1AlphaJobServiceHandler(
 	goalStateDriver goalstate.Driver,
 	candidate leader.Candidate,
 	jobSvcCfg jobsvc.Config,
+	activeRMTasks activermtask.ActiveRMTasks,
 ) {
 	handler := &serviceHandler{
-		jobStore:        jobStore,
-		updateStore:     updateStore,
-		secretStore:     secretStore,
-		taskStore:       taskStore,
-		respoolClient:   respool.NewResourceManagerYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
+		jobStore:    jobStore,
+		updateStore: updateStore,
+		secretStore: secretStore,
+		taskStore:   taskStore,
+		respoolClient: respool.NewResourceManagerYARPCClient(
+			d.ClientConfig(common.PelotonResourceManager),
+		),
 		jobFactory:      jobFactory,
 		goalStateDriver: goalStateDriver,
 		candidate:       candidate,
 		jobSvcCfg:       jobSvcCfg,
+		activeRMTasks:   activeRMTasks,
 	}
 	d.Register(svc.BuildJobServiceYARPCProcedures(handler))
 }
@@ -812,10 +819,57 @@ func (h *serviceHandler) ListPods(
 	stream svc.JobServiceServiceListPodsYARPCServer) error {
 	return nil
 }
+
 func (h *serviceHandler) QueryPods(
 	ctx context.Context,
-	req *svc.QueryPodsRequest) (*svc.QueryPodsResponse, error) {
-	return &svc.QueryPodsResponse{}, nil
+	req *svc.QueryPodsRequest,
+) (resp *svc.QueryPodsResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("JobSVC.QueryPods failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("num_of_results", len(resp.GetPods())).
+			Debug("JobSVC.QueryPods succeeded")
+	}()
+
+	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
+
+	_, _, err = h.jobStore.GetJobConfig(
+		ctx,
+		pelotonJobID,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to find job")
+	}
+
+	taskQuerySpec := handlerutil.ConvertPodQuerySpecToTaskQuerySpec(
+		req.GetSpec(),
+	)
+	taskInfos, total, err := h.taskStore.QueryTasks(ctx, pelotonJobID, taskQuerySpec)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query tasks from DB")
+	}
+
+	h.fillReasonForPendingTasksFromResMgr(
+		ctx,
+		req.GetJobId().GetValue(),
+		taskInfos,
+	)
+
+	return &svc.QueryPodsResponse{
+		Pods: handlerutil.ConvertTaskInfosToPodInfos(taskInfos),
+		Pagination: &v1alphaquery.Pagination{
+			Offset: req.GetPagination().GetOffset(),
+			Limit:  req.GetPagination().GetLimit(),
+			Total:  total,
+		},
+	}, nil
 }
 
 func (h *serviceHandler) QueryJobs(
@@ -882,7 +936,7 @@ func (h *serviceHandler) QueryJobs(
 
 	return &svc.QueryJobsResponse{
 		Records: statelessJobSummaries,
-		Pagination: &pelotonv1alphaquery.Pagination{
+		Pagination: &v1alphaquery.Pagination{
 			Offset: req.GetSpec().GetPagination().GetOffset(),
 			Limit:  req.GetSpec().GetPagination().GetLimit(),
 			Total:  total,
@@ -1417,4 +1471,31 @@ func convertInstanceIDRangesToSlice(ranges []*pod.InstanceIDRange, instanceCount
 		}
 	}
 	return result
+}
+
+// TODO: remove this function once eventstream is enabled in RM
+// fillReasonForPendingTasksFromResMgr takes a list of taskinfo and
+// fills in the reason for pending tasks from ResourceManager.
+// All the tasks in `taskInfos` should belong to the same job
+func (h *serviceHandler) fillReasonForPendingTasksFromResMgr(
+	ctx context.Context,
+	jobID string,
+	taskInfos []*task.TaskInfo,
+) {
+	// only need to consult ResourceManager for PENDING tasks,
+	// because only tasks with PENDING states are being processed by ResourceManager
+	for _, taskInfo := range taskInfos {
+		if taskInfo.GetRuntime().GetState() == task.TaskState_PENDING {
+			// attach the reason from the taskEntry in activeRMTasks
+			taskEntry := h.activeRMTasks.GetTask(
+				util.CreatePelotonTaskID(
+					jobID,
+					taskInfo.GetInstanceId(),
+				),
+			)
+			if taskEntry != nil {
+				taskInfo.GetRuntime().Reason = taskEntry.GetReason()
+			}
+		}
+	}
 }

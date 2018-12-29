@@ -17,11 +17,9 @@ import (
 const (
 	taskListFormatHeader = "Instance\tName\tState\tHealthy\tStart Time\tRun Time\t" +
 		"Host\tMessage\tReason\t\n"
-	taskListFormatBody     = "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
-	taskEventsFormatHeader = "Mesos Task Id\tDesired Mesos Task Id\tState\tEvent Time\tHost\tMessage\tReason\t\n"
-	taskEventsFormatBody   = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
-	podEventsFormatHeader  = "Mesos Task Id\tDesired Mesos Task Id\tActual State\tGoal State\tConfig Version\tDesired Config Version\tHealthy\tHost\tMessage\tReason\tUpdate Time\t\n"
-	podEventsFormatBody    = "%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t\n"
+	taskListFormatBody    = "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
+	podEventsFormatHeader = "Mesos Task Id\tDesired Mesos Task Id\tActual State\tGoal State\tConfig Version\tDesired Config Version\tHealthy\tHost\tMessage\tReason\tUpdate Time\t\n"
+	podEventsFormatBody   = "%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t\n"
 )
 
 // sortedTaskInfoList makes TaskInfo implement sortable interface

@@ -19,9 +19,10 @@ import (
 	statelesssvcmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
-	pelotonv1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
-	pelotonv1alpharespool "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool"
+	v1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
+	v1alpharespool "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
@@ -34,6 +35,7 @@ import (
 	respoolmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
+	activermtaskmocks "code.uber.internal/infra/peloton/jobmgr/task/activermtask/mocks"
 	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
@@ -64,6 +66,9 @@ var (
 		DiskLimitMb: 10,
 		FdLimit:     10,
 	}
+	testPrevMesosTaskID = "941ff353-ba82-49fe-8f80-fb5bc649b04d-1-2"
+	testMesosTaskID     = "941ff353-ba82-49fe-8f80-fb5bc649b04d-1-3"
+	testAgentID         = "agent-id"
 )
 
 type statelessHandlerTestSuite struct {
@@ -83,6 +88,7 @@ type statelessHandlerTestSuite struct {
 	listJobsServer  *statelesssvcmocks.MockJobServiceServiceListJobsYARPCServer
 	secretStore     *storemocks.MockSecretStore
 	taskStore       *storemocks.MockTaskStore
+	activeRMTasks   *activermtaskmocks.MockActiveRMTasks
 }
 
 func (suite *statelessHandlerTestSuite) SetupTest() {
@@ -98,6 +104,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.respoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.listJobsServer = statelesssvcmocks.NewMockJobServiceServiceListJobsYARPCServer(suite.ctrl)
 	suite.secretStore = storemocks.NewMockSecretStore(suite.ctrl)
+	suite.activeRMTasks = activermtaskmocks.NewMockActiveRMTasks(suite.ctrl)
 	suite.handler = &serviceHandler{
 		jobFactory:      suite.jobFactory,
 		candidate:       suite.candidate,
@@ -112,6 +119,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 			EnableSecrets:  true,
 			MaxTasksPerJob: 100000,
 		},
+		activeRMTasks: suite.activeRMTasks,
 	}
 }
 
@@ -795,13 +803,13 @@ func (suite *statelessHandlerTestSuite) TestRefreshJobGetRuntimeFail() {
 
 // TestQueryJobsSuccess tests the success case of query jobs
 func (suite *statelessHandlerTestSuite) TestQueryJobsSuccess() {
-	pagination := &pelotonv1alphaquery.PaginationSpec{
+	pagination := &v1alphaquery.PaginationSpec{
 		Offset: 0,
 		Limit:  10,
-		OrderBy: []*pelotonv1alphaquery.OrderBy{
+		OrderBy: []*v1alphaquery.OrderBy{
 			{
-				Order:    pelotonv1alphaquery.OrderBy_ORDER_BY_ASC,
-				Property: &pelotonv1alphaquery.PropertyPath{Value: "creation_time"},
+				Order:    v1alphaquery.OrderBy_ORDER_BY_ASC,
+				Property: &v1alphaquery.PropertyPath{Value: "creation_time"},
 			},
 		},
 		MaxLimit: 100,
@@ -809,7 +817,7 @@ func (suite *statelessHandlerTestSuite) TestQueryJobsSuccess() {
 	labels := []*v1alphapeloton.Label{{Key: "k1", Value: "v1"}}
 	keywords := []string{"key1", "key2"}
 	jobstates := []stateless.JobState{stateless.JobState_JOB_STATE_RUNNING}
-	respoolPath := &pelotonv1alpharespool.ResourcePoolPath{
+	respoolPath := &v1alpharespool.ResourcePoolPath{
 		Value: "/testPath",
 	}
 	owner := "owner1"
@@ -877,7 +885,7 @@ func (suite *statelessHandlerTestSuite) TestQueryJobsSuccess() {
 		},
 	)
 	suite.NotNil(resp)
-	suite.Equal(resp.GetPagination(), &pelotonv1alphaquery.Pagination{
+	suite.Equal(resp.GetPagination(), &v1alphaquery.Pagination{
 		Offset: pagination.GetOffset(),
 		Limit:  pagination.GetLimit(),
 		Total:  totalResult,
@@ -907,13 +915,13 @@ func (suite *statelessHandlerTestSuite) TestQueryJobsSuccess() {
 // TestQueryJobsGetRespoolIDFail tests the failure case of query jobs
 // due to get respool id
 func (suite *statelessHandlerTestSuite) TestQueryJobsGetRespoolIdFail() {
-	pagination := &pelotonv1alphaquery.PaginationSpec{
+	pagination := &v1alphaquery.PaginationSpec{
 		Offset: 0,
 		Limit:  10,
-		OrderBy: []*pelotonv1alphaquery.OrderBy{
+		OrderBy: []*v1alphaquery.OrderBy{
 			{
-				Order:    pelotonv1alphaquery.OrderBy_ORDER_BY_ASC,
-				Property: &pelotonv1alphaquery.PropertyPath{Value: "creation_time"},
+				Order:    v1alphaquery.OrderBy_ORDER_BY_ASC,
+				Property: &v1alphaquery.PropertyPath{Value: "creation_time"},
 			},
 		},
 		MaxLimit: 100,
@@ -921,7 +929,7 @@ func (suite *statelessHandlerTestSuite) TestQueryJobsGetRespoolIdFail() {
 	labels := []*v1alphapeloton.Label{{Key: "k1", Value: "v1"}}
 	keywords := []string{"key1", "key2"}
 	jobstates := []stateless.JobState{stateless.JobState_JOB_STATE_RUNNING}
-	respoolPath := &pelotonv1alpharespool.ResourcePoolPath{
+	respoolPath := &v1alpharespool.ResourcePoolPath{
 		Value: "/testPath",
 	}
 	owner := "owner1"
@@ -2951,6 +2959,179 @@ func (suite *statelessHandlerTestSuite) TestListJobUpdatesGetUpdatesFailure() {
 	})
 	suite.Error(err)
 	suite.Nil(resp)
+}
+
+// TestQueryPodsSuccess tests success case of querying pods of a job
+func (suite *statelessHandlerTestSuite) TestQueryPodsSuccess() {
+	pelotonJobID := &peloton.JobID{Value: testJobID}
+	taskInfos := []*pbtask.TaskInfo{
+		{
+			Config: &pbtask.TaskConfig{
+				Name: "peloton",
+				Resource: &pbtask.ResourceConfig{
+					CpuLimit:    4,
+					MemLimitMb:  200,
+					DiskLimitMb: 400,
+					FdLimit:     100,
+					GpuLimit:    10,
+				},
+				RestartPolicy: &pbtask.RestartPolicy{
+					MaxFailures: 5,
+				},
+				Volume: &pbtask.PersistentVolumeConfig{
+					ContainerPath: "test/container/path",
+					SizeMB:        100,
+				},
+				PreemptionPolicy: &pbtask.PreemptionPolicy{
+					Type:          pbtask.PreemptionPolicy_TYPE_NON_PREEMPTIBLE,
+					KillOnPreempt: false,
+				},
+				Controller:             false,
+				KillGracePeriodSeconds: 5,
+				Revocable:              false,
+			},
+			Runtime: &pbtask.RuntimeInfo{
+				State: pbtask.TaskState_RUNNING,
+				MesosTaskId: &mesos.TaskID{
+					Value: &testMesosTaskID,
+				},
+				GoalState: pbtask.TaskState_SUCCEEDED,
+				AgentID: &mesos.AgentID{
+					Value: &testAgentID,
+				},
+				Revision: &peloton.ChangeLog{
+					Version:   1,
+					CreatedAt: 2,
+					UpdatedAt: 3,
+					UpdatedBy: "peloton",
+				},
+				PrevMesosTaskId: &mesos.TaskID{
+					Value: &testPrevMesosTaskID,
+				},
+				Healthy: pbtask.HealthState_HEALTHY,
+				DesiredMesosTaskId: &mesos.TaskID{
+					Value: &testMesosTaskID,
+				},
+			},
+		},
+		{
+			Config: &pbtask.TaskConfig{
+				Name: "test",
+				Resource: &pbtask.ResourceConfig{
+					CpuLimit:    2,
+					MemLimitMb:  100,
+					DiskLimitMb: 200,
+					FdLimit:     50,
+					GpuLimit:    5,
+				},
+			},
+			Runtime: &pbtask.RuntimeInfo{
+				State:     pbtask.TaskState_PENDING,
+				GoalState: pbtask.TaskState_SUCCEEDED,
+			},
+		},
+	}
+
+	request := &statelesssvc.QueryPodsRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+		Spec: &pod.QuerySpec{
+			PodStates: []pod.PodState{
+				pod.PodState_POD_STATE_RUNNING,
+				pod.PodState_POD_STATE_PENDING,
+			},
+		},
+	}
+
+	gomock.InOrder(
+		suite.jobStore.EXPECT().
+			GetJobConfig(gomock.Any(), pelotonJobID).
+			Return(&pbjob.JobConfig{}, nil, nil),
+
+		suite.taskStore.EXPECT().
+			QueryTasks(
+				gomock.Any(),
+				pelotonJobID,
+				handlerutil.ConvertPodQuerySpecToTaskQuerySpec(request.GetSpec()),
+			).Return(taskInfos, uint32(len(taskInfos)), nil),
+
+		suite.activeRMTasks.EXPECT().
+			GetTask(gomock.Any()).
+			Return(&resmgrsvc.GetActiveTasksResponse_TaskEntry{
+				Reason: "test reason",
+			}),
+	)
+
+	pagination := &v1alphaquery.Pagination{
+		Offset: request.GetPagination().GetOffset(),
+		Limit:  request.GetPagination().GetLimit(),
+		Total:  uint32(len(taskInfos)),
+	}
+
+	response, err := suite.handler.QueryPods(context.Background(), request)
+	suite.NoError(err)
+	suite.Len(response.GetPods(), len(taskInfos))
+	for i, podInfo := range response.GetPods() {
+		if podInfo.GetStatus().GetState() == pod.PodState_POD_STATE_PENDING {
+			taskInfos[i].GetRuntime().Reason = podInfo.GetStatus().GetReason()
+		}
+	}
+	suite.Equal(handlerutil.ConvertTaskInfosToPodInfos(taskInfos), response.GetPods())
+	suite.Equal(pagination, response.GetPagination())
+}
+
+// TestQueryPodsFailureJobRuntimeError tests failure case of
+// querying pods of a job due to error while getting job runtime
+func (suite *statelessHandlerTestSuite) TestQueryPodsFailureJobRuntimeError() {
+	pelotonJobID := &peloton.JobID{Value: testJobID}
+	request := &statelesssvc.QueryPodsRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+		Spec: &pod.QuerySpec{
+			PodStates: []pod.PodState{
+				pod.PodState_POD_STATE_RUNNING,
+				pod.PodState_POD_STATE_PENDING,
+			},
+		},
+	}
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), pelotonJobID).
+		Return(nil, nil, yarpcerrors.InternalErrorf("test error"))
+
+	response, err := suite.handler.QueryPods(context.Background(), request)
+	suite.Error(err)
+	suite.Nil(response)
+}
+
+// TestQueryPodsFailureQueryTasksError tests failure case of
+// querying pods of a job due to error while querying tasks from DB
+func (suite *statelessHandlerTestSuite) TestQueryPodsFailureQueryTasksError() {
+	pelotonJobID := &peloton.JobID{Value: testJobID}
+	request := &statelesssvc.QueryPodsRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+		Spec: &pod.QuerySpec{
+			PodStates: []pod.PodState{
+				pod.PodState_POD_STATE_RUNNING,
+				pod.PodState_POD_STATE_PENDING,
+			},
+		},
+	}
+
+	gomock.InOrder(
+		suite.jobStore.EXPECT().
+			GetJobConfig(gomock.Any(), pelotonJobID).
+			Return(&pbjob.JobConfig{}, nil, nil),
+
+		suite.taskStore.EXPECT().
+			QueryTasks(
+				gomock.Any(),
+				pelotonJobID,
+				handlerutil.ConvertPodQuerySpecToTaskQuerySpec(request.GetSpec()),
+			).Return(nil, uint32(0), yarpcerrors.InternalErrorf("test error")),
+	)
+
+	response, err := suite.handler.QueryPods(context.Background(), request)
+	suite.Error(err)
+	suite.Nil(response)
 }
 
 func TestStatelessServiceHandler(t *testing.T) {

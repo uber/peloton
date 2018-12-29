@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
 
 	jobutil "code.uber.internal/infra/peloton/jobmgr/util/job"
@@ -60,6 +61,47 @@ func ConvertTaskStateToPodState(state task.TaskState) pod.PodState {
 	return pod.PodState_POD_STATE_INVALID
 }
 
+// ConvertPodStateToTaskState converts v0 task.TaskState to v1alpha pod.PodState
+func ConvertPodStateToTaskState(state pod.PodState) task.TaskState {
+	switch state {
+	case pod.PodState_POD_STATE_INVALID:
+		return task.TaskState_UNKNOWN
+	case pod.PodState_POD_STATE_INITIALIZED:
+		return task.TaskState_INITIALIZED
+	case pod.PodState_POD_STATE_PENDING:
+		return task.TaskState_PENDING
+	case pod.PodState_POD_STATE_READY:
+		return task.TaskState_READY
+	case pod.PodState_POD_STATE_PLACING:
+		return task.TaskState_PLACING
+	case pod.PodState_POD_STATE_PLACED:
+		return task.TaskState_PLACED
+	case pod.PodState_POD_STATE_LAUNCHING:
+		return task.TaskState_LAUNCHING
+	case pod.PodState_POD_STATE_LAUNCHED:
+		return task.TaskState_LAUNCHED
+	case pod.PodState_POD_STATE_STARTING:
+		return task.TaskState_STARTING
+	case pod.PodState_POD_STATE_RUNNING:
+		return task.TaskState_RUNNING
+	case pod.PodState_POD_STATE_SUCCEEDED:
+		return task.TaskState_SUCCEEDED
+	case pod.PodState_POD_STATE_FAILED:
+		return task.TaskState_FAILED
+	case pod.PodState_POD_STATE_LOST:
+		return task.TaskState_LOST
+	case pod.PodState_POD_STATE_PREEMPTING:
+		return task.TaskState_PREEMPTING
+	case pod.PodState_POD_STATE_KILLING:
+		return task.TaskState_KILLING
+	case pod.PodState_POD_STATE_KILLED:
+		return task.TaskState_KILLED
+	case pod.PodState_POD_STATE_DELETED:
+		return task.TaskState_DELETED
+	}
+	return task.TaskState_UNKNOWN
+}
+
 // ConvertTaskRuntimeToPodStatus converts
 // v0 task.RuntimeInfo to v1alpha pod.PodStatus
 func ConvertTaskRuntimeToPodStatus(runtime *task.RuntimeInfo) *pod.PodStatus {
@@ -75,6 +117,10 @@ func ConvertTaskRuntimeToPodStatus(runtime *task.RuntimeInfo) *pod.PodStatus {
 				Healthy: &pod.HealthStatus{
 					State: pod.HealthState(runtime.GetHealthy()),
 				},
+				StartTime:      runtime.GetStartTime(),
+				CompletionTime: runtime.GetCompletionTime(),
+				Message:        runtime.GetMessage(),
+				Reason:         runtime.GetReason(),
 			},
 		},
 		DesiredState:   ConvertTaskStateToPodState(runtime.GetGoalState()),
@@ -374,22 +420,12 @@ func ConvertUpdateModelToWorkflowInfo(
 // ConvertStatelessQuerySpecToJobQuerySpec converts query spec for stateless svc to
 // job query spec
 func ConvertStatelessQuerySpecToJobQuerySpec(spec *stateless.QuerySpec) *job.QuerySpec {
-	var orderBy []*pelotonv0query.OrderBy
 	var labels []*peloton.Label
 	var jobStates []job.JobState
 	var creationTimeRange *peloton.TimeRange
 	var completionTimeRange *peloton.TimeRange
 	var respoolPath *pelotonv0respool.ResourcePoolPath
 	var paginationSpec *pelotonv0query.PaginationSpec
-
-	for _, ele := range spec.GetPagination().GetOrderBy() {
-		orderBy = append(orderBy, &pelotonv0query.OrderBy{
-			Order: pelotonv0query.OrderBy_Order(ele.GetOrder()),
-			Property: &pelotonv0query.PropertyPath{
-				Value: ele.GetProperty().GetValue(),
-			},
-		})
-	}
 
 	for _, label := range spec.GetLabels() {
 		labels = append(labels, &peloton.Label{
@@ -423,12 +459,9 @@ func ConvertStatelessQuerySpecToJobQuerySpec(spec *stateless.QuerySpec) *job.Que
 	}
 
 	if spec.GetPagination() != nil {
-		paginationSpec = &pelotonv0query.PaginationSpec{
-			Offset:   spec.GetPagination().GetOffset(),
-			Limit:    spec.GetPagination().GetLimit(),
-			OrderBy:  orderBy,
-			MaxLimit: spec.GetPagination().GetMaxLimit(),
-		}
+		paginationSpec = convertV1AlphaPaginationSpecToV0PaginationSpec(
+			spec.GetPagination(),
+		)
 	}
 
 	return &job.QuerySpec{
@@ -717,4 +750,70 @@ func ConvertInstanceIDListToInstanceRange(instIDs []uint32) []*pod.InstanceIDRan
 		instanceIDRange = append(instanceIDRange, instanceRange)
 	}
 	return instanceIDRange
+}
+
+// ConvertPodQuerySpecToTaskQuerySpec converts
+// v1alpha pod.QuerySpec to v0 task.QuerySpec
+func ConvertPodQuerySpecToTaskQuerySpec(spec *pod.QuerySpec) *task.QuerySpec {
+	var taskStates []task.TaskState
+	var taskNames []string
+	if spec.GetPodStates() != nil {
+		for _, state := range spec.GetPodStates() {
+			taskStates = append(taskStates, ConvertPodStateToTaskState(state))
+		}
+	}
+
+	if spec.GetNames() != nil {
+		for _, podName := range spec.GetNames() {
+			taskNames = append(taskNames, podName.GetValue())
+		}
+	}
+
+	return &task.QuerySpec{
+		Pagination: convertV1AlphaPaginationSpecToV0PaginationSpec(
+			spec.GetPagination(),
+		),
+		TaskStates: taskStates,
+		Names:      taskNames,
+		Hosts:      spec.GetHosts(),
+	}
+}
+
+// ConvertTaskInfosToPodInfos converts a list of
+// v0 task info to a list of v1alpha pod info
+func ConvertTaskInfosToPodInfos(taskInfos []*task.TaskInfo) []*pod.PodInfo {
+	var podInfos []*pod.PodInfo
+	for _, taskInfo := range taskInfos {
+		podInfos = append(podInfos, &pod.PodInfo{
+			Spec:   ConvertTaskConfigToPodSpec(taskInfo.GetConfig()),
+			Status: ConvertTaskRuntimeToPodStatus(taskInfo.GetRuntime()),
+		})
+	}
+
+	return podInfos
+}
+
+func convertV1AlphaPaginationSpecToV0PaginationSpec(
+	pagination *query.PaginationSpec,
+) *pelotonv0query.PaginationSpec {
+	if pagination == nil {
+		return nil
+	}
+
+	var orderBy []*pelotonv0query.OrderBy
+	for _, ele := range pagination.GetOrderBy() {
+		orderBy = append(orderBy, &pelotonv0query.OrderBy{
+			Order: pelotonv0query.OrderBy_Order(ele.GetOrder()),
+			Property: &pelotonv0query.PropertyPath{
+				Value: ele.GetProperty().GetValue(),
+			},
+		})
+	}
+
+	return &pelotonv0query.PaginationSpec{
+		Offset:   pagination.GetOffset(),
+		Limit:    pagination.GetLimit(),
+		OrderBy:  orderBy,
+		MaxLimit: pagination.GetMaxLimit(),
+	}
 }

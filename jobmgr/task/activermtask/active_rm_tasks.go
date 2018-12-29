@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 
@@ -17,8 +18,8 @@ import (
 
 // ActiveRMTasks is the entrypoint object into the cache which store active tasks from ResMgr.
 type ActiveRMTasks interface {
-	// GetActiveTasks finds the task with taskID
-	GetActiveTasks(taskID string) *resmgrsvc.GetActiveTasksResponse_TaskEntry
+	// GetTask returns the task entry for the given taskID
+	GetTask(taskID string) *resmgrsvc.GetActiveTasksResponse_TaskEntry
 
 	// UpdateActiveTasks fills the cache with all tasks from Resmgr
 	UpdateActiveTasks()
@@ -49,8 +50,8 @@ func NewActiveRMTasks(
 	}
 }
 
-// GetActiveTasks finds the task with taskID
-func (cache *activeRMTasks) GetActiveTasks(
+// GetTask finds the task with taskID
+func (cache *activeRMTasks) GetTask(
 	taskID string) *resmgrsvc.GetActiveTasksResponse_TaskEntry {
 	cache.RLock()
 	defer cache.RUnlock()

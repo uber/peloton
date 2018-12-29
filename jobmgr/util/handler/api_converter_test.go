@@ -36,8 +36,8 @@ type APIConverterTestSuite struct {
 }
 
 // TestConvertTaskStateToPodState tests conversion from
-// v0 task.TaskState to v1alpha pod.PodState
-func (suite *APIConverterTestSuite) TestConvertTaskStateToPodState() {
+// v0 task.TaskState to v1alpha pod.PodState and vice versa
+func (suite *APIConverterTestSuite) TestConvertTaskStateToPodStateAndViceVersa() {
 	taskStates := []task.TaskState{
 		task.TaskState_UNKNOWN,
 		task.TaskState_INITIALIZED,
@@ -80,6 +80,10 @@ func (suite *APIConverterTestSuite) TestConvertTaskStateToPodState() {
 
 	for i, taskState := range taskStates {
 		suite.Equal(podStates[i], ConvertTaskStateToPodState(taskState))
+	}
+
+	for i, podState := range podStates {
+		suite.Equal(taskStates[i], ConvertPodStateToTaskState(podState))
 	}
 }
 
@@ -148,6 +152,9 @@ func (suite *APIConverterTestSuite) TestConvertTaskRuntimeToPodStatus() {
 				Healthy: &pod.HealthStatus{
 					State: pod.HealthState_HEALTH_STATE_HEALTHY,
 				},
+				Message:   message,
+				Reason:    reason,
+				StartTime: startTime,
 			},
 		},
 		DesiredState: pod.PodState_POD_STATE_SUCCEEDED,
@@ -1222,6 +1229,110 @@ func (suite *APIConverterTestSuite) TestConvertInstanceIDListToInstanceRange() {
 	}
 
 	suite.Equal(instanceIDRanges, ConvertInstanceIDListToInstanceRange(instanceIDs))
+}
+
+// TestConvertPodQuerySpecToTaskQuerySpec tests conversion
+// from v1alpha pod.QuerySpec to v0 task.QuerySpec
+func (suite *APIConverterTestSuite) TestConvertPodQuerySpecToTaskQuerySpec() {
+	testPod := "test-pod"
+	testHost := "test-host"
+
+	podQuerySpec := &pod.QuerySpec{
+		PodStates: []pod.PodState{pod.PodState_POD_STATE_RUNNING},
+		Names:     []*v1alphapeloton.PodName{{Value: testPod}},
+		Hosts:     []string{testHost},
+	}
+
+	taskQuerySpec := &task.QuerySpec{
+		TaskStates: []task.TaskState{task.TaskState_RUNNING},
+		Names:      []string{testPod},
+		Hosts:      []string{testHost},
+	}
+
+	suite.Equal(taskQuerySpec, ConvertPodQuerySpecToTaskQuerySpec(podQuerySpec))
+}
+
+// TestConvertTaskInfosToPodInfos tests conversion from
+// a list of v0 task info to a list of v1alpha pod info
+func (suite *APIConverterTestSuite) TestConvertTaskInfosToPodInfos() {
+	taskInfos := []*task.TaskInfo{
+		{
+			Config: &task.TaskConfig{
+				Name: "peloton",
+				Resource: &task.ResourceConfig{
+					CpuLimit:    4,
+					MemLimitMb:  200,
+					DiskLimitMb: 400,
+					FdLimit:     100,
+					GpuLimit:    10,
+				},
+				RestartPolicy: &task.RestartPolicy{
+					MaxFailures: 5,
+				},
+				Volume: &task.PersistentVolumeConfig{
+					ContainerPath: "test/container/path",
+					SizeMB:        100,
+				},
+				PreemptionPolicy: &task.PreemptionPolicy{
+					Type:          task.PreemptionPolicy_TYPE_NON_PREEMPTIBLE,
+					KillOnPreempt: false,
+				},
+				Controller:             false,
+				KillGracePeriodSeconds: 5,
+				Revocable:              false,
+			},
+			Runtime: &task.RuntimeInfo{
+				State: task.TaskState_RUNNING,
+				MesosTaskId: &mesos.TaskID{
+					Value: &testMesosTaskID,
+				},
+				GoalState: task.TaskState_SUCCEEDED,
+				AgentID: &mesos.AgentID{
+					Value: &testAgentID,
+				},
+				Revision: &peloton.ChangeLog{
+					Version:   1,
+					CreatedAt: 2,
+					UpdatedAt: 3,
+					UpdatedBy: "peloton",
+				},
+				PrevMesosTaskId: &mesos.TaskID{
+					Value: &testPrevMesosTaskID,
+				},
+				Healthy: task.HealthState_HEALTHY,
+				DesiredMesosTaskId: &mesos.TaskID{
+					Value: &testMesosTaskID,
+				},
+			},
+		},
+		{
+			Config: &task.TaskConfig{
+				Name: "test",
+				Resource: &task.ResourceConfig{
+					CpuLimit:    2,
+					MemLimitMb:  100,
+					DiskLimitMb: 200,
+					FdLimit:     50,
+					GpuLimit:    5,
+				},
+			},
+			Runtime: &task.RuntimeInfo{
+				State:     task.TaskState_INITIALIZED,
+				GoalState: task.TaskState_SUCCEEDED,
+			},
+		},
+	}
+
+	var podInfos []*pod.PodInfo
+
+	for _, taskInfo := range taskInfos {
+		podInfos = append(podInfos, &pod.PodInfo{
+			Spec:   ConvertTaskConfigToPodSpec(taskInfo.GetConfig()),
+			Status: ConvertTaskRuntimeToPodStatus(taskInfo.GetRuntime()),
+		})
+	}
+
+	suite.Equal(podInfos, ConvertTaskInfosToPodInfos(taskInfos))
 }
 
 func TestAPIConverter(t *testing.T) {

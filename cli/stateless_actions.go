@@ -12,9 +12,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	pelotonv1alphapod "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
-	pelotonv1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
-	pelotonv1alpharespool "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool"
+	v1alphapod "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
+	v1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
+	v1alpharespool "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool"
 
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 
@@ -34,6 +34,10 @@ const (
 
 	workflowEventsV1AlphaFormatHeader = "Workflow State\tWorkflow Type\tTimestamp\n"
 	workflowEventsV1AlphaFormatBody   = "%s\t%s\t%s\n"
+
+	queryPodsFormatHeader = "Pod ID\tName\tState\tContainer Name\tContainer State\tHealthy\tStart Time\tRun Time\t" +
+		"Host\tMessage\tReason\t\n"
+	queryPodsFormatBody = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
 )
 
 // StatelessGetCacheAction get cache of stateless job
@@ -203,7 +207,7 @@ func (c *Client) StatelessQueryAction(
 	}
 
 	spec := &stateless.QuerySpec{
-		Pagination: &pelotonv1alphaquery.PaginationSpec{
+		Pagination: &v1alphaquery.PaginationSpec{
 			Offset:   offset,
 			Limit:    limit,
 			OrderBy:  orderBy,
@@ -217,7 +221,7 @@ func (c *Client) StatelessQueryAction(
 	}
 
 	if len(respoolPath) > 0 {
-		spec.Respool = &pelotonv1alpharespool.ResourcePoolPath{
+		spec.Respool = &v1alpharespool.ResourcePoolPath{
 			Value: respoolPath,
 		}
 	}
@@ -476,6 +480,90 @@ func (c *Client) StatelessGetAction(
 	return nil
 }
 
+// StatelessQueryPodsAction is the action for querying pods of a job
+func (c *Client) StatelessQueryPodsAction(
+	jobID string,
+	states string,
+	names string,
+	hosts string,
+	limit uint32,
+	offset uint32,
+	sortBy string,
+	sortOrder string,
+) error {
+	var podStates []v1alphapod.PodState
+	var podNames []*v1alphapeloton.PodName
+	var podHosts []string
+	for _, k := range strings.Split(states, labelSeparator) {
+		if k != "" {
+			p, ok := v1alphapod.PodState_value[k]
+			if !ok {
+				return yarpcerrors.InvalidArgumentErrorf("invalid pod state %s", k)
+			}
+			podStates = append(podStates, v1alphapod.PodState(p))
+		}
+	}
+
+	for _, host := range strings.Split(hosts, labelSeparator) {
+		if host != "" {
+			podHosts = append(podHosts, host)
+		}
+	}
+
+	for _, name := range strings.Split(names, labelSeparator) {
+		if name != "" {
+			podNames = append(podNames, &v1alphapeloton.PodName{Value: name})
+		}
+	}
+
+	order := v1alphaquery.OrderBy_ORDER_BY_DESC
+	if sortOrder == "ASC" {
+		order = v1alphaquery.OrderBy_ORDER_BY_ASC
+	} else if sortOrder != "DESC" {
+		return yarpcerrors.InvalidArgumentErrorf("Invalid sort order " + sortOrder)
+	}
+
+	var sort []*v1alphaquery.OrderBy
+	for _, s := range strings.Split(sortBy, labelSeparator) {
+		if s != "" {
+			propertyPath := &v1alphaquery.PropertyPath{
+				Value: s,
+			}
+			sort = append(sort, &v1alphaquery.OrderBy{
+				Order:    order,
+				Property: propertyPath,
+			})
+		}
+	}
+
+	var request = &statelesssvc.QueryPodsRequest{
+		JobId: &v1alphapeloton.JobID{
+			Value: jobID,
+		},
+		Spec: &v1alphapod.QuerySpec{
+			PodStates: podStates,
+			Names:     podNames,
+			Hosts:     podHosts,
+			Pagination: &v1alphaquery.PaginationSpec{
+				Limit:   limit,
+				Offset:  offset,
+				OrderBy: sort,
+			},
+		},
+		Pagination: &v1alphaquery.PaginationSpec{
+			Limit:   limit,
+			Offset:  offset,
+			OrderBy: sort,
+		},
+	}
+
+	response, err := c.statelessClient.QueryPods(c.ctx, request)
+
+	printQueryPodsResponse(response, err, c.Debug)
+
+	return err
+}
+
 func printStatelessQueryResponse(resp *statelesssvc.QueryJobsResponse) {
 	results := resp.GetRecords()
 	if len(results) == 0 {
@@ -563,25 +651,25 @@ func parseJobStates(states string) []stateless.JobState {
 	return pelotonStates
 }
 
-func parseOrderBy(sortBy string, sortOrder string) ([]*pelotonv1alphaquery.OrderBy, error) {
+func parseOrderBy(sortBy string, sortOrder string) ([]*v1alphaquery.OrderBy, error) {
 	if len(sortBy) == 0 || len(sortOrder) == 0 {
 		return nil, nil
 	}
 
-	order := pelotonv1alphaquery.OrderBy_ORDER_BY_DESC
+	order := v1alphaquery.OrderBy_ORDER_BY_DESC
 	if sortOrder == "ASC" {
-		order = pelotonv1alphaquery.OrderBy_ORDER_BY_ASC
+		order = v1alphaquery.OrderBy_ORDER_BY_ASC
 	} else if sortOrder != "DESC" {
 		return nil, errors.New("Invalid sort order " + sortOrder)
 	}
-	var sort []*pelotonv1alphaquery.OrderBy
+	var sort []*v1alphaquery.OrderBy
 	for _, s := range strings.Split(sortBy, labelSeparator) {
 		if s != "" {
 
-			propertyPath := &pelotonv1alphaquery.PropertyPath{
+			propertyPath := &v1alphaquery.PropertyPath{
 				Value: s,
 			}
-			sort = append(sort, &pelotonv1alphaquery.OrderBy{
+			sort = append(sort, &v1alphaquery.OrderBy{
 				Order:    order,
 				Property: propertyPath,
 			})
@@ -641,9 +729,9 @@ func (c *Client) StatelessRestartJobAction(
 		opaque = &v1alphapeloton.OpaqueData{Data: opaqueData}
 	}
 
-	var idInstanceRanges []*pelotonv1alphapod.InstanceIDRange
+	var idInstanceRanges []*v1alphapod.InstanceIDRange
 	for _, instanceRange := range instanceRanges {
-		idInstanceRanges = append(idInstanceRanges, &pelotonv1alphapod.InstanceIDRange{
+		idInstanceRanges = append(idInstanceRanges, &v1alphapod.InstanceIDRange{
 			From: instanceRange.GetFrom(),
 			To:   instanceRange.GetTo(),
 		})
@@ -753,6 +841,75 @@ func printWorkflowEventsV1AlphaResponse(r *statelesssvc.GetWorkflowEventsRespons
 			event.GetState(),
 			event.GetType(),
 			event.GetTimestamp(),
+		)
+	}
+}
+
+func printQueryPodsResponse(r *statelesssvc.QueryPodsResponse, err error, debug bool) {
+	defer tabWriter.Flush()
+
+	if debug {
+		printResponseJSON(r)
+		return
+	}
+
+	if yarpcerrors.IsNotFound(err) {
+		fmt.Fprintf(tabWriter, "Job was not found\n")
+		return
+	}
+
+	if len(r.GetPods()) == 0 {
+		fmt.Fprint(tabWriter, "No pods found\n")
+		return
+	}
+
+	fmt.Fprint(tabWriter, queryPodsFormatHeader)
+	for _, t := range r.GetPods() {
+		printPod(t)
+	}
+}
+
+func printPod(p *v1alphapod.PodInfo) {
+	spec := p.GetSpec()
+	status := p.GetStatus()
+
+	for _, container := range status.GetContainersStatus() {
+		// Calculate the start time and run time of the container
+		startTimeStr := ""
+		durationStr := ""
+		startTime, err := time.Parse(time.RFC3339Nano, container.GetStartTime())
+		if err == nil {
+			startTimeStr = startTime.Format(time.RFC3339)
+			completionTime, err := time.Parse(time.RFC3339Nano, container.GetCompletionTime())
+			var duration time.Duration
+			if err == nil {
+				duration = completionTime.Sub(startTime)
+			} else {
+				duration = time.Now().Sub(startTime)
+			}
+			durationStr = fmt.Sprintf(
+				"%02d:%02d:%02d",
+				uint(duration.Hours()),
+				uint(duration.Minutes())%60,
+				uint(duration.Seconds())%60,
+			)
+		}
+
+		// Print the container record
+		fmt.Fprintf(
+			tabWriter,
+			queryPodsFormatBody,
+			status.GetPodId().GetValue(),
+			spec.GetPodName().GetValue(),
+			status.GetState().String(),
+			container.GetName(),
+			container.GetState().String(),
+			container.GetHealthy().GetState().String(),
+			startTimeStr,
+			durationStr,
+			status.GetHost(),
+			container.GetMessage(),
+			container.GetReason(),
 		)
 	}
 }
