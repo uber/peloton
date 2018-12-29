@@ -564,6 +564,32 @@ func (c *Client) StatelessQueryPodsAction(
 	return err
 }
 
+// StatelessStartJobAction is the action for starting a stateless job
+func (c *Client) StatelessStartJobAction(
+	jobID string,
+	entityVersion string,
+) error {
+	request := statelesssvc.StartJobRequest{
+		JobId: &v1alphapeloton.JobID{
+			Value: jobID,
+		},
+		Version: &v1alphapeloton.EntityVersion{
+			Value: entityVersion,
+		},
+	}
+
+	resp, err := c.statelessClient.StartJob(
+		c.ctx,
+		&request)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Job started. New EntityVersion: %s\n", resp.GetVersion().GetValue())
+
+	return nil
+}
+
 func printStatelessQueryResponse(resp *statelesssvc.QueryJobsResponse) {
 	results := resp.GetRecords()
 	if len(results) == 0 {

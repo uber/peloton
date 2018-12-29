@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
-
 	log "github.com/sirupsen/logrus"
 )
 

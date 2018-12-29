@@ -84,6 +84,7 @@ var (
 			task.TaskState_SUCCEEDED:   TerminatedRetryAction,
 			task.TaskState_FAILED:      TerminatedRetryAction,
 			task.TaskState_KILLED:      TerminatedRetryAction,
+			task.TaskState_KILLING:     ExecutorShutdownAction,
 			task.TaskState_LOST:        TerminatedRetryAction,
 		},
 		task.TaskState_SUCCEEDED: {

@@ -978,6 +978,28 @@ func (suite *statelessActionsTestSuite) TestStatelessQueryPodsActionInvalidSortO
 	))
 }
 
+// TestClientStartJobSuccess tests the success case of starting a stateless job
+func (suite *statelessActionsTestSuite) TestClientStartJobSuccess() {
+	suite.statelessClient.EXPECT().
+		StartJob(gomock.Any(), gomock.Any()).
+		Return(&svc.StartJobResponse{
+			Version: &v1alphapeloton.EntityVersion{
+				Value: testEntityVersion,
+			},
+		}, nil)
+
+	suite.NoError(suite.client.StatelessStartJobAction(testJobID, testEntityVersion))
+}
+
+// TestClientStartJobFail tests the failure case of starting a stateless job
+func (suite *statelessActionsTestSuite) TestClientStartJobFail() {
+	suite.statelessClient.EXPECT().
+		StartJob(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessStartJobAction(testJobID, testEntityVersion))
+}
+
 func TestStatelessActions(t *testing.T) {
 	suite.Run(t, new(statelessActionsTestSuite))
 }

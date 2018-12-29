@@ -5,11 +5,14 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
+	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
 	"code.uber.internal/infra/peloton/util"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -145,4 +148,61 @@ func DeleteJobFromActiveJobs(
 		}
 	}
 	return nil
+}
+
+// JobStart starts the non-running terminal tasks of the job
+func JobStart(
+	ctx context.Context,
+	entity goalstate.Entity,
+) error {
+	jobEnt := entity.(*jobEntity)
+	goalStateDriver := entity.(*jobEntity).driver
+
+	cachedJob := goalStateDriver.jobFactory.GetJob(jobEnt.id)
+	if cachedJob == nil {
+		return nil
+	}
+
+	runtimeDiff := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	for i := range cachedJob.GetAllTasks() {
+		runtimeDiff[i] = jobmgrcommon.RuntimeDiff{
+			jobmgrcommon.GoalStateField: task.TaskState_RUNNING,
+		}
+	}
+
+	err := cachedJob.PatchTasks(ctx, runtimeDiff)
+	if err != nil {
+		return err
+	}
+
+	for i := range runtimeDiff {
+		goalStateDriver.EnqueueTask(cachedJob.ID(), i, time.Now())
+	}
+
+	var jobRuntime *job.RuntimeInfo
+	count := 0
+	for {
+		jobRuntime, err = cachedJob.GetRuntime(ctx)
+		if err != nil {
+			return err
+		}
+
+		jobRuntime.State = job.JobState_PENDING
+		jobRuntime.StateVersion = jobRuntime.GetDesiredStateVersion()
+		_, err = cachedJob.CompareAndSetRuntime(ctx, jobRuntime)
+		if err == jobmgrcommon.UnexpectedVersionError {
+			// concurrency error; retry MaxConcurrencyErrorRetry times
+			count = count + 1
+			if count < jobmgrcommon.MaxConcurrencyErrorRetry {
+				continue
+			}
+		}
+
+		if err != nil {
+			return errors.Wrap(err, "fail to update job runtime")
+		}
+
+		goalStateDriver.EnqueueJob(cachedJob.ID(), time.Now())
+		return nil
+	}
 }

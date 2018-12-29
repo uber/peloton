@@ -291,6 +291,11 @@ var (
 	statelessListUpdates     = stateless.Command("list-updates", "list updates")
 	statelessListUpdatesName = statelessListUpdates.Arg("job", "job identifier").Required().String()
 
+	statelessStart              = stateless.Command("start", "start job")
+	statelessStartJobID         = statelessStart.Arg("job", "job identifier").Required().String()
+	statelessStartEntityVersion = statelessStart.Arg("entityVersion",
+		"entity version for concurrency control").Required().String()
+
 	// Top level pod command
 	pod = app.Command("pod", "CLI reflects pod(s) actions, such as get pod details, create/restart/update a pod...")
 
@@ -890,6 +895,8 @@ func main() {
 			*podQueryPodsSortBy,
 			*podQueryPodsSortOrder,
 		)
+	case statelessStart.FullCommand():
+		err = client.StatelessStartJobAction(*statelessStartJobID, *statelessStartEntityVersion)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

@@ -39,6 +39,8 @@ const (
 	// DeleteFromActiveJobsAction deletes a jobID from active jobs list if
 	// the job is a terminal BATCH job
 	DeleteFromActiveJobsAction JobAction = "delete_from_active_jobs"
+	// StartTasksAction starts all tasks of a job
+	StartTasksAction JobAction = "job_start"
 )
 
 // _jobActionsMaps maps the JobAction string to the Action function.
@@ -50,6 +52,7 @@ var (
 		UntrackAction:         JobUntrack,
 		JobStateInvalidAction: JobStateInvalid,
 		RecoverAction:         JobRecover,
+		StartTasksAction:      JobStart,
 	}
 )
 
@@ -188,9 +191,25 @@ func (j *jobEntity) GetActionList(
 
 // suggestJobAction provides the job action for a given state and goal state
 func (j *jobEntity) suggestJobAction(state cached.JobStateVector, goalstate cached.JobStateVector) JobAction {
+	if state.StateVersion < goalstate.StateVersion {
+		// This condition is true currently only for stateless jobs.
+		if goalstate.State == job.JobState_RUNNING {
+			if state.State == job.JobState_INITIALIZED {
+				return CreateTasksAction
+			}
+			return StartTasksAction
+		}
+		log.WithFields(log.Fields{
+			"job_id":             j.GetID(),
+			"state_version":      state.StateVersion,
+			"goal_state_version": goalstate.StateVersion,
+			"goal_state":         goalstate.State,
+		}).Warn("unexpected divergence of state version from goal state version")
+	}
+
 	// TODO: after all job kill is controlled by job state version and desired state version,
 	// consider move rules out of _isoVersionsJobRules and check
-	// sate version and desired state version here
+	// state version and desired state version here
 	if tr, ok := _isoVersionsJobRules[goalstate.State]; ok {
 		if a, ok := tr[state.State]; ok {
 			return a

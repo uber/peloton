@@ -537,9 +537,71 @@ func (h *serviceHandler) AbortJobWorkflow(
 
 func (h *serviceHandler) StartJob(
 	ctx context.Context,
-	req *svc.StartJobRequest) (*svc.StartJobResponse, error) {
-	return &svc.StartJobResponse{}, nil
+	req *svc.StartJobRequest,
+) (resp *svc.StartJobResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("JobSVC.StartJob failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Info("JobSVC.StartJob succeeded")
+	}()
+
+	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
+
+	var jobRuntime *pbjob.RuntimeInfo
+	count := 0
+	cachedJob := h.jobFactory.AddJob(pelotonJobID)
+
+	for {
+		jobRuntime, err = cachedJob.GetRuntime(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "fail to get runtime")
+		}
+		entityVersion := jobutil.GetJobEntityVersion(
+			jobRuntime.GetConfigurationVersion(),
+			jobRuntime.GetDesiredStateVersion(),
+			jobRuntime.GetWorkflowVersion(),
+		)
+		if entityVersion.GetValue() !=
+			req.GetVersion().GetValue() {
+			return nil, jobmgrcommon.InvalidEntityVersionError
+		}
+
+		jobRuntime.GoalState = pbjob.JobState_RUNNING
+		jobRuntime.DesiredStateVersion++
+
+		if jobRuntime, err = cachedJob.CompareAndSetRuntime(ctx, jobRuntime); err != nil {
+			if err == jobmgrcommon.UnexpectedVersionError {
+				// concurrency error; retry MaxConcurrencyErrorRetry times
+				count = count + 1
+				if count < jobmgrcommon.MaxConcurrencyErrorRetry {
+					continue
+				}
+			}
+			// it is uncertain whether job runtime is updated successfully,
+			// let goal state engine figure it out.
+			h.goalStateDriver.EnqueueJob(pelotonJobID, time.Now())
+			return nil, errors.Wrap(err, "fail to update job runtime")
+		}
+
+		h.goalStateDriver.EnqueueJob(pelotonJobID, time.Now())
+		return &svc.StartJobResponse{
+			Version: jobutil.GetJobEntityVersion(
+				jobRuntime.GetConfigurationVersion(),
+				jobRuntime.GetDesiredStateVersion(),
+				jobRuntime.GetWorkflowVersion(),
+			),
+		}, nil
+	}
 }
+
 func (h *serviceHandler) StopJob(
 	ctx context.Context,
 	req *svc.StopJobRequest) (resp *svc.StopJobResponse, err error) {
