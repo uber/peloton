@@ -156,10 +156,13 @@ func (suite *ORMTestSuite) TestClientUpdate() {
 	conn.EXPECT().Update(suite.ctx, gomock.Any(), gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, _ *base.Definition,
 			row []base.Column, keyRow []base.Column) {
-			suite.Equal("name", row[0].Name)
-			suite.Equal("test", row[0].Value)
-			suite.Equal("data", row[1].Name)
-			suite.Equal("testdata", row[1].Value)
+			if "name" == row[0].Name {
+				suite.Equal("test", row[0].Value)
+				suite.Equal("testdata", row[1].Value)
+			} else {
+				suite.Equal("testdata", row[0].Value)
+				suite.Equal("test", row[1].Value)
+			}
 			suite.Equal("id", keyRow[0].Name)
 			suite.Equal(uint64(1), keyRow[0].Value)
 		}).Return(nil)
