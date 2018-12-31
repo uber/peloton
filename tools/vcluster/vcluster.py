@@ -87,7 +87,12 @@ def cassandra_operation(config, keyspace, create=True):
 
 class VCluster(object):
 
-    APP_ORDER = ['hostmgr', 'resmgr', 'placement', 'jobmgr']
+    APP_ORDER = [
+        'hostmgr',
+        'resmgr',
+        'placement',
+        'placement_stateless',
+        'jobmgr']
 
     def __init__(self, config, label_name, zk_server, respool_path):
         """
@@ -222,6 +227,9 @@ class VCluster(object):
                 dynamic_env_master['ENABLE_REVOCABLE_RESOURCES'] = \
                     str(self.config.get('peloton').get(app).get(
                         'enable_revocable_resources'))
+            if app == "placement_stateless":
+                dynamic_env_master['APP'] = 'placement'
+                dynamic_env_master['TASK_TYPE'] = 'STATELESS'
 
             peloton_app_count = int(
                 self.config.get('peloton').get(app).get('instance_count'))

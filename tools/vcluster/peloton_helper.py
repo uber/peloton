@@ -134,6 +134,7 @@ class PelotonClientHelper(object):
         request = job.CreateRequest(
             config=job.JobConfig(
                 name=name,
+                type=job.SERVICE,
                 labels=[
                     peloton.Label(
                         key='cluster_name',

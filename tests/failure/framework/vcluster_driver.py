@@ -43,7 +43,7 @@ class VClusterDriver(driver_base.ClusterDriverABC):
             components.JobMgr().name: "jobmgr",
             components.ResMgr().name: "resmgr",
             components.BatchPlacementEngine().name: "placement",
-            components.StatelessPlacementEngine().name: "placement",
+            components.StatelessPlacementEngine().name: "placement_stateless",
         })
 
     def teardown(self, *args, **kwargs):

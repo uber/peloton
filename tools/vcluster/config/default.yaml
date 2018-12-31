@@ -149,6 +149,8 @@ peloton:
     instance_count: 2
   placement:
     instance_count: 2
+  placement_stateless:
+    instance_count: 2
   fetch_files:
     - source: 'https://gist.githubusercontent.com/scy0208/08a66afe3a7837e5e1c1528d16b47e6f/raw/2119f0fe20b7a1e827e4e43b288545799d6b4e5e/hostmgr_mesos_secret'
       name: 'hostmgr_mesos_secret'
