@@ -244,7 +244,7 @@ def main():
         agent_number = args.agent_number
         peloton_version = args.peloton_version
         if args.clean_setup:
-            vcluster.teardown(remove=True)
+            vcluster.teardown()
         vcluster.start_all(agent_number, peloton_version,
                            skip_respool=args.skip_respool)
 

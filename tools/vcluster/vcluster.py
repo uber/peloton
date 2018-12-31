@@ -18,7 +18,6 @@ from modules import (
     MesosMaster,
     MesosSlave,
     Peloton,
-    ModuleLaunchFailedException,
 )
 
 
@@ -246,11 +245,6 @@ class VCluster(object):
 
         # create a default resource pool
         if not skip_respool:
-            # Sleep 30 seconds before creating respool in order to
-            # give resmgr time to account for all resources from mesos
-            # slaves so that respool creation doesn't fail due to
-            # lack of resources.
-            time.sleep(30)
             create_respool_for_new_peloton(
                 self.config,
                 zk_server=virtual_zookeeper,
@@ -267,8 +261,8 @@ class VCluster(object):
             self.start_peloton(virtual_zookeeper, agent_num, peloton_version,
                                skip_respool=skip_respool)
             self.output_vcluster_data()
-        except ModuleLaunchFailedException as e:
-            print 'vcluster launch faild: %s' % e
+        except Exception as e:
+            print 'Failed to create/configure vcluster: %s' % e
             self.teardown()
             raise
 

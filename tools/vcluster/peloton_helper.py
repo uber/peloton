@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from deepdiff import DeepDiff
 import datetime
+from retry import retry
 import time
 
 from peloton_client.client import PelotonClient
@@ -24,11 +25,12 @@ default_timeout = 60
 RESPOOL_PATH = 'DefaultResPool'
 
 
+@retry(tries=10, delay=10)
 def create_respool_for_new_peloton(
         config,
         zk_server,
         agent_num,
-        repool_name=RESPOOL_PATH):
+        respool_name=RESPOOL_PATH):
     """
     Create A respool for a cluster according the cluster size
     type config: dict
@@ -49,7 +51,7 @@ def create_respool_for_new_peloton(
     resource_config = config.get('mesos-slave').get('resource')
 
     respool_config = create_pool_config(
-        name=repool_name,
+        name=respool_name,
         cpu=agent_num * resource_config.get('cpuLimit') * 0.9,
         memory=agent_num * resource_config.get('memLimitMb') * 0.9,
         disk=agent_num * resource_config.get('diskLimitMb') * 0.9,
@@ -63,9 +65,12 @@ def create_respool_for_new_peloton(
         metadata=client.resmgr_metadata,
         timeout=default_timeout,
     )
-    respool_id = resp.result.value
-    assert respool_id
-    return respool_id
+    if resp.HasField('error'):
+        print_fail(
+            'Failed to create resource pool %s: %s' % (
+                respool_name, resp))
+        raise Exception("Resource pool creation failed")
+    return resp.result.value
 
 
 class PelotonClientHelper(object):
