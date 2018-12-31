@@ -116,7 +116,7 @@ class StatelessJob(object):
                     timeout=self.config.rpc_timeout_sec,
                 )
 
-        log.info('starting pods in job {0} with ranges {1}'
+        log.info('stopping pods in job {0} with ranges {1}'
                  .format(self.job_id, ranges))
         return pod_svc.StopPodResponse()
 
@@ -192,10 +192,19 @@ class StatelessJob(object):
 
     def get_task(self, instance_id):
         """
+        name it as get_task for compatibility with batch job, so
+        some tests can be shared
         :param instance_id: The instance id of the task
         :return: The Task of the job based on the instance id
         """
-        return Pod(self, instance_id)
+        return self.get_pod(instance_id)
+
+    def get_pod(self, pod_id):
+        """
+        :param pod_id: The pod id of the pod
+        :return: The Pod of the job based on the instance id
+        """
+        return Pod(self, pod_id)
 
     def get_pod_status(self, instance_id):
         """
@@ -214,3 +223,29 @@ class StatelessJob(object):
         )
 
         return resp.current.status
+
+    def get_job(self):
+        """
+        :return: the configuration and runtime status of a job.
+        """
+        request = statelesssvc.GetJobRequest(
+            job_id=v1alpha_peloton.JobID(value=self.job_id),
+        )
+        resp = self.client.stateless_svc.GetJob(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        return resp
+
+    def get_info(self):
+        """
+        :return: info of a job.
+        """
+        return self.get_job().job_info
+
+    def get_status(self):
+        """
+        :return: status of a job.
+        """
+        return self.get_info().status
