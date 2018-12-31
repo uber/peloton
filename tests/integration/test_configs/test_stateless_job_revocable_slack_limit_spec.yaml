@@ -1,0 +1,30 @@
+name: TestRevocableJobSlackLimit
+owner: testUser
+owningTeam: testTeam
+ldapGroups:
+- team6
+- otto
+description: "A dummy test stateless job for Peloton integration test"
+labels:
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
+instanceCount: 3
+sla:
+  priority: 22
+  preemptible: true
+  revocable: true
+defaultSpec:
+  revocable: true
+  containers:
+  - resource:
+      cpuLimit: 1
+      memLimitMb: 100
+      diskLimitMb: 100
+      fdLimit: 2
+    command:
+      shell: true
+      value: 'while :; do echo running; sleep 10; done'

@@ -16,6 +16,7 @@ from peloton_client.pbgen.peloton.api.v1alpha.job.stateless import \
 from peloton_client.pbgen.peloton.api.v1alpha.job.stateless.svc import \
     stateless_svc_pb2 as statelesssvc
 from peloton_client.pbgen.peloton.api.v1alpha.pod.svc import pod_svc_pb2 as pod_svc
+from peloton_client.pbgen.peloton.api.v1alpha.pod import pod_pb2 as pod
 
 log = logging.getLogger(__name__)
 
@@ -249,3 +250,70 @@ class StatelessJob(object):
         :return: status of a job.
         """
         return self.get_info().status
+
+    def wait_for_all_pods_running(self):
+        """
+        Waits for all pods in the job in RUNNING state
+        """
+        attempts = 0
+        start = time.time()
+        while attempts < self.config.max_retry_attempts:
+            try:
+                count = 0
+                for pod_id in range(0, self.job_spec.instance_count):
+                    pod_state = self.get_pod(pod_id).get_pod_status().state
+                    if pod_state == pod.POD_STATE_RUNNING:
+                        count += 1
+
+                if count == self.job_spec.instance_count:
+                    log.info('%s job has %s running pods', self.job_id, count)
+                    break
+            except Exception as e:
+                log.warn(e)
+
+            time.sleep(self.config.sleep_time_sec)
+            attempts += 1
+
+        if attempts == self.config.max_retry_attempts:
+            log.info('max attempts reached to wait for all tasks running')
+            assert False
+
+        end = time.time()
+        elapsed = end - start
+        log.info('%s job has all running pods in %s seconds', self.job_id, elapsed)
+
+    def wait_for_terminated(self):
+        """
+        Waits for the job to be terminated
+        """
+        state = ''
+        attempts = 0
+        log.info('%s waiting for terminal state', self.job_id)
+        terminated = False
+        while attempts < self.config.max_retry_attempts:
+            try:
+                status = self.get_status()
+                new_state = stateless.JobState.Name(status.state)
+                if state != new_state:
+                    log.info('%s transitioned to state %s', self.job_id,
+                             new_state)
+                state = new_state
+                if state in ['JOB_STATE_SUCCEEDED',
+                             'JOB_STATE_FAILED',
+                             'JOB_STATE_KILLED']:
+                    terminated = True
+                    break
+            except Exception as e:
+                log.warn(e)
+            finally:
+                time.sleep(self.config.sleep_time_sec)
+                attempts += 1
+        if terminated:
+            log.info('%s job terminated', self.job_id)
+            assert True
+
+        if attempts == self.config.max_retry_attempts:
+            log.info('%s max attempts reached to wait for goal state',
+                     self.job_id)
+            log.info('current_state:%s', state)
+            assert False
