@@ -49,8 +49,10 @@ vcluster_name="v${COMMIT_HASH:0:12}"
 # start vCluster
 tools/vcluster/main.py -z zookeeper-mesos-preprod01.pit-irn-1.uberatc.net -p /DefaultResPool -n ${vcluster_name} setup -s 1000 -v ${VERSION}
 
-# run benchmark
-tests/performance/multi_benchmark.py -i ".${vcluster_name}" -o "PERF_${VERSION}"
+# run benchmark. Make a note of the return code instead of failing this script
+# so that vcluster teardown is run even if the benchmark fails.
+RC=0
+tests/performance/multi_benchmark.py -i ".${vcluster_name}" -o "PERF_${VERSION}" || RC=$?
 
 # teardown vCluster
 tools/vcluster/main.py -z zookeeper-mesos-preprod01.pit-irn-1.uberatc.net -p /DefaultResPool -n ${vcluster_name} teardown
@@ -58,3 +60,5 @@ tools/vcluster/main.py -z zookeeper-mesos-preprod01.pit-irn-1.uberatc.net -p /De
 deactivate
 
 popd
+
+exit $RC
