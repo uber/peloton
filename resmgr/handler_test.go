@@ -850,11 +850,10 @@ func (s *HandlerTestSuite) TestTransitTasksInPlacement() {
 	}
 	rmTask, err := rm_task.CreateRMTask(t, nil,
 		resp,
-		rm_task.DefaultTransitionObserver(
+		rm_task.NewTransitionObserver(
 			false,
 			tally.NoopScope,
-			t,
-			resp,
+			resp.GetPath(),
 		),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
@@ -1274,11 +1273,10 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 	}
 	rmTask, err := rm_task.CreateRMTask(t, nil,
 		resp,
-		rm_task.DefaultTransitionObserver(
+		rm_task.NewTransitionObserver(
 			true,
 			tally.NoopScope,
-			t,
-			resp,
+			resp.GetPath(),
 		),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
@@ -1308,11 +1306,10 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 		t,
 		nil,
 		resp,
-		rm_task.DefaultTransitionObserver(
+		rm_task.NewTransitionObserver(
 			false,
 			tally.NoopScope,
-			t,
-			resp,
+			resp.GetPath(),
 		),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
@@ -1392,11 +1389,10 @@ func (s *HandlerTestSuite) TestHandleRunningEventError() {
 		t,
 		nil,
 		resp,
-		rm_task.DefaultTransitionObserver(
+		rm_task.NewTransitionObserver(
 			true,
 			tally.NoopScope,
-			t,
-			resp,
+			resp.GetPath(),
 		),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
@@ -1548,11 +1544,10 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasksError() {
 		t,
 		nil,
 		resp,
-		rm_task.DefaultTransitionObserver(
+		rm_task.NewTransitionObserver(
 			false,
 			tally.NoopScope,
-			t,
-			resp,
+			resp.GetPath(),
 		),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,

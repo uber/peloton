@@ -37,7 +37,6 @@ resmgr:
     backoff_policy_name: exponential-policy
     # This flag enable/disable the placement backoff
     enable_placement_backoff: true
-
   preemption:
     task_preemption_period: 60s
     sustained_over_allocation_count: 5

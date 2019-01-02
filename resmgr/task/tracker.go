@@ -144,11 +144,10 @@ func (tr *tracker) AddTask(
 		t,
 		handler,
 		respool,
-		DefaultTransitionObserver(
+		NewTransitionObserver(
 			config.EnableSLATracking,
 			tr.scope,
-			t,
-			respool,
+			respool.GetPath(),
 		),
 		config)
 	if err != nil {

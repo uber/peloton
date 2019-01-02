@@ -4,11 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-
 	"code.uber.internal/infra/peloton/common/statemachine"
 	"code.uber.internal/infra/peloton/resmgr/respool/mocks"
 
@@ -79,26 +75,13 @@ func TestTransObs_Observe(t *testing.T) {
 	}
 }
 
-func TestNewDefaultTransitionObserver(t *testing.T) {
+func TestNewTransitionObserver(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockResPool := mocks.NewMockResPool(ctrl)
 	mockResPool.EXPECT().GetPath().Return("/").Times(1)
 
-	tid := "abcdef12-abcd-1234-5678-1234567890ab-0-abcdef12-abcd-1234-5678" +
-		"-1234567890ab"
-	jid := "abcdef12-abcd-1234-5678-1234567890ab"
-	fakeTask := &resmgr.Task{
-		JobId: &peloton.JobID{
-			Value: jid,
-		},
-		TaskId: &mesos_v1.TaskID{
-			Value: &tid,
-		},
-	}
-
-	dto := DefaultTransitionObserver(true, tally.NoopScope, fakeTask,
-		mockResPool)
+	dto := NewTransitionObserver(true, tally.NoopScope, mockResPool.GetPath())
 	assert.NotNil(t, dto)
 }

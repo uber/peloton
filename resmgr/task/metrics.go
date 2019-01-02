@@ -4,17 +4,15 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-
 	"code.uber.internal/infra/peloton/common/scalar"
 	"code.uber.internal/infra/peloton/common/statemachine"
-	"code.uber.internal/infra/peloton/resmgr/respool"
 	"github.com/uber-go/tally"
 )
 
 // tags for state transition metrics
 const (
-	respoolPath = "respool_path"
+	_respoolPath = "respool_path"
+	_states      = "states"
 )
 
 // TransitionObserver is the interface for observing a state transition
@@ -83,13 +81,12 @@ var defaultRules = map[statemachine.State][]statemachine.State{
 		statemachine.State(
 			task.TaskState_KILLED.String())}}
 
-// DefaultTransitionObserver returns the default observers for the respool and
+// NewTransitionObserver returns the a new observer for the respool and
 // the task tagged with the relevant tags
-func DefaultTransitionObserver(
+func NewTransitionObserver(
 	enabled bool,
 	scope tally.Scope,
-	t *resmgr.Task,
-	respool respool.ResPool,
+	respoolPath string,
 ) TransitionObserver {
 
 	tags := make(map[string]string)
@@ -97,7 +94,7 @@ func DefaultTransitionObserver(
 		// only get the tags only if the observer is enabled otherwise
 		// there's no point
 		tags = map[string]string{
-			respoolPath: respool.GetPath(),
+			_respoolPath: respoolPath,
 		}
 	}
 
@@ -151,7 +148,7 @@ func (obs *TransObs) Observe(currentState statemachine.State) {
 			timer, ok := obs.timers[key]
 			if !ok {
 				// lazily instantiate the recorder
-				obs.tags["states"] = string(key)
+				obs.tags[_states] = string(key)
 				timer = obs.timerGenerator(obs.scope.Tagged(obs.tags))
 				obs.timers[key] = timer
 			}

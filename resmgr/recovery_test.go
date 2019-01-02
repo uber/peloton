@@ -568,11 +568,10 @@ func (suite *recoveryTestSuite) TestAddRunningTasks() {
 		t,
 		nil,
 		node,
-		rm_task.DefaultTransitionObserver(
+		rm_task.NewTransitionObserver(
 			false,
 			tally.NoopScope,
-			t,
-			node,
+			node.GetPath(),
 		),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
