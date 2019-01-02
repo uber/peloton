@@ -170,8 +170,8 @@ def test__revocable_tasks_move_to_revocable_queue():
     # 1 task is running out of 3
     def partial_tasks_running():
         count = 0
-        for pod_id in range(0, revocable_job1.job_spec.instance_count):
-            pod_state = revocable_job1.get_pod(pod_id).get_pod_status().state
+        for pod_id in range(0, revocable_job2.job_spec.instance_count):
+            pod_state = revocable_job2.get_pod(pod_id).get_pod_status().state
             if pod_state == pod.POD_STATE_RUNNING:
                 count += 1
         return count == 1
