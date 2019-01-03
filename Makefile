@@ -122,7 +122,7 @@ pbgens: $(VENDOR)
 	./scripts/rename-job-sla.sh
 
 apidoc: $(VENDOR)
-	go get -u github.com/pseudomuto/protoc-gen-doc/cmd/...
+	go get github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc
 	./scripts/generate-protobuf.py --generator=doc --out-dir=$(APIDOC_DIR)
 
 clean:

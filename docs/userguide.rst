@@ -121,7 +121,7 @@ Preemption FAQ
 
    By Default the task will be rescheduled.
 
-* Will my task be restarted after preemption?
+* How does task priority affect preemption?
 
    Priority is used by scheduler in 2 different places:
 
