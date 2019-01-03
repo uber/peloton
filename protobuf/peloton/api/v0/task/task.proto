@@ -380,6 +380,38 @@ enum HealthState {
   UNHEALTHY   = 4;
 }
 
+// TerminationStatus contains details about termination of a task. It mainly
+// contains Peloton-specific reasons for termination.
+message TerminationStatus {
+   // Reason lists various causes for a task termination
+   enum Reason {
+     // Default value.
+     TERMINATION_STATUS_REASON_INVALID = 0;
+
+     // Task was killed because a stop request was received from a client.
+     TERMINATION_STATUS_REASON_KILLED_ON_REQUEST = 1;
+
+     // Task failed. See also TerminationStatus.exit_code,
+     // TerminationStatus.signal and ContainerStatus.message.
+     TERMINATION_STATUS_REASON_FAILED = 2;
+
+     // Task was killed to put the host in to maintenance.
+     TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE = 3;
+
+     // Tasked was killed to reclaim resources allocated to it.
+     TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES = 4;
+   }
+
+  // Reason for termination.
+  Reason reason = 1;
+
+  // If non-zero, exit status when the container terminated.
+  uint32 exit_code = 2;
+
+  // Name of signal received by the container when it terminated.
+  string signal = 3;
+}
+
 /**
  *  Runtime info of an task instance in a Job
  */
@@ -452,6 +484,10 @@ message RuntimeInfo {
 
   // The desired mesos task ID for this instance
   mesos.v1.TaskID desiredMesosTaskId = 19;
+
+  // Termination status of the task. Set only if the task is in a non-successful
+  // terminal state such as KILLED or FAILED.
+  TerminationStatus terminationStatus = 20;
 }
 
 
