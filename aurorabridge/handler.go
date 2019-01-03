@@ -4,72 +4,80 @@ import (
 	"context"
 	"errors"
 
+	statelesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
 	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api"
-	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api/auroraschedulermanagerserver"
-	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api/readonlyschedulerserver"
+	"code.uber.internal/infra/peloton/aurorabridge/atop"
+
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
+	"go.uber.org/thriftrw/ptr"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 var errUnimplemented = errors.New("rpc is unimplemented")
 
 // ServiceHandler implements a partial Aurora API. Various unneeded methods have
 // been left intentionally unimplemented.
-type serviceHandler struct {
-	metrics *Metrics
+type ServiceHandler struct {
+	metrics   *Metrics
+	jobClient statelesssvc.JobServiceYARPCClient
+	respoolID *peloton.ResourcePoolID
 }
 
-// NewServiceHandler returns a new ServiceHandler.
+// NewServiceHandler creates a new ServiceHandler.
 func NewServiceHandler(
 	parent tally.Scope,
-	d *yarpc.Dispatcher) {
-	handler := &serviceHandler{
-		metrics: NewMetrics(parent.SubScope("aurorabridge").SubScope("api")),
+	jobClient statelesssvc.JobServiceYARPCClient,
+	respoolID *peloton.ResourcePoolID,
+) *ServiceHandler {
+	return &ServiceHandler{
+		metrics:   NewMetrics(parent.SubScope("aurorabridge").SubScope("api")),
+		jobClient: jobClient,
+		respoolID: respoolID,
 	}
-	d.Register(auroraschedulermanagerserver.New(handler))
-	d.Register(readonlyschedulerserver.New(handler))
 }
 
 // GetJobSummary returns a summary of jobs, optionally only those owned by a specific role.
-func (h *serviceHandler) GetJobSummary(
-	context context.Context,
+func (h *ServiceHandler) GetJobSummary(
+	ctx context.Context,
 	role *string) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // GetTasksWithoutConfigs is the same as getTaskStatus but without the TaskConfig.ExecutorConfig
 // data set.
-func (h *serviceHandler) GetTasksWithoutConfigs(
-	context context.Context,
+func (h *ServiceHandler) GetTasksWithoutConfigs(
+	ctx context.Context,
 	query *api.TaskQuery) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // GetConfigSummary fetches the configuration summary of active tasks for the specified job.
-func (h *serviceHandler) GetConfigSummary(
-	context context.Context,
+func (h *ServiceHandler) GetConfigSummary(
+	ctx context.Context,
 	job *api.JobKey) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // GetJobs fetches the status of jobs. ownerRole is optional, in which case all jobs are returned.
-func (h *serviceHandler) GetJobs(
-	context context.Context,
+func (h *ServiceHandler) GetJobs(
+	ctx context.Context,
 	ownerRole *string) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // GetJobUpdateSummaries gets job update summaries.
-func (h *serviceHandler) GetJobUpdateSummaries(
-	context context.Context,
+func (h *ServiceHandler) GetJobUpdateSummaries(
+	ctx context.Context,
 	jobUpdateQuery *api.JobUpdateQuery) (*api.Response, error) {
 
 	return nil, errUnimplemented
 }
 
 // GetJobUpdateDetails gets job update details.
-func (h *serviceHandler) GetJobUpdateDetails(
-	context context.Context,
+func (h *ServiceHandler) GetJobUpdateDetails(
+	ctx context.Context,
 	key *api.JobUpdateKey,
 	query *api.JobUpdateQuery) (*api.Response, error) {
 
@@ -77,21 +85,21 @@ func (h *serviceHandler) GetJobUpdateDetails(
 }
 
 // GetJobUpdateDiff gets the diff between client (desired) and server (current) job states.
-func (h *serviceHandler) GetJobUpdateDiff(
-	context context.Context,
+func (h *ServiceHandler) GetJobUpdateDiff(
+	ctx context.Context,
 	request *api.JobUpdateRequest) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // GetTierConfigs is a no-op. It is only used to determine liveness of the scheduler.
-func (h *serviceHandler) GetTierConfigs(
-	context context.Context) (*api.Response, error) {
+func (h *ServiceHandler) GetTierConfigs(
+	ctx context.Context) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // KillTasks initiates a kill on tasks.
-func (h *serviceHandler) KillTasks(
-	context context.Context,
+func (h *ServiceHandler) KillTasks(
+	ctx context.Context,
 	job *api.JobKey,
 	instances map[int32]struct{},
 	message *string) (*api.Response, error) {
@@ -100,17 +108,133 @@ func (h *serviceHandler) KillTasks(
 }
 
 // StartJobUpdate starts update of the existing service job.
-func (h *serviceHandler) StartJobUpdate(
-	context context.Context,
+func (h *ServiceHandler) StartJobUpdate(
+	ctx context.Context,
 	request *api.JobUpdateRequest,
-	message *string) (*api.Response, error) {
+	message *string,
+) (*api.Response, error) {
 
-	return nil, errUnimplemented
+	result, err := h.startJobUpdate(ctx, request, message)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"params": log.Fields{
+				"request": request,
+				"message": message,
+			},
+			"code":  err.responseCode,
+			"error": err.msg,
+		}).Error("StartJobUpdate error")
+	}
+	return newResponse(result, err), nil
+}
+
+func (h *ServiceHandler) startJobUpdate(
+	ctx context.Context,
+	request *api.JobUpdateRequest,
+	message *string,
+) (*api.Result, *auroraError) {
+
+	jobKey := request.GetTaskConfig().GetJob()
+
+	jobSpec, err := atop.NewJobSpecFromJobUpdateRequest(request, h.respoolID)
+	if err != nil {
+		return nil, auroraErrorf("new job spec: %s", err)
+	}
+
+	// TODO(codyg): We'll use the new job's entity version as the update id.
+	// Not sure if this will work.
+	var newVersion *peloton.EntityVersion
+
+	id, err := h.getJobID(ctx, jobKey)
+	if err != nil {
+		if yarpcerrors.IsNotFound(err) {
+			// Job does not exist. Create it.
+			req := &statelesssvc.CreateJobRequest{
+				Spec: jobSpec,
+			}
+			resp, err := h.jobClient.CreateJob(ctx, req)
+			if err != nil {
+				if yarpcerrors.IsAlreadyExists(err) {
+					// Upgrade conflict.
+					return nil, auroraErrorf(
+						"create job: %s", err).
+						code(api.ResponseCodeInvalidRequest)
+				}
+				return nil, auroraErrorf("create job: %s", err)
+			}
+			newVersion = resp.GetVersion()
+		} else {
+			return nil, auroraErrorf("get job id: %s", err)
+		}
+	} else {
+		// Job already exists. Replace it.
+		v, err := h.getCurrentJobVersion(ctx, id)
+		if err != nil {
+			return nil, auroraErrorf("get current job version: %s", err)
+		}
+		req := &statelesssvc.ReplaceJobRequest{
+			JobId:      id,
+			Spec:       jobSpec,
+			UpdateSpec: atop.NewUpdateSpec(request.GetSettings()),
+			Version:    v,
+		}
+		resp, err := h.jobClient.ReplaceJob(ctx, req)
+		if err != nil {
+			if yarpcerrors.IsAborted(err) {
+				// Upgrade conflict.
+				return nil, auroraErrorf(
+					"replace job: %s", err).
+					code(api.ResponseCodeInvalidRequest)
+			}
+			return nil, auroraErrorf("replace job: %s", err)
+		}
+		newVersion = resp.GetVersion()
+	}
+
+	return &api.Result{
+		StartJobUpdateResult: &api.StartJobUpdateResult{
+			Key: &api.JobUpdateKey{
+				Job: jobKey,
+				ID:  ptr.String(newVersion.String()),
+			},
+			UpdateSummary: nil, // TODO(codyg): Should we set this?
+		},
+	}, nil
+}
+
+func (h *ServiceHandler) getJobID(
+	ctx context.Context,
+	k *api.JobKey,
+) (*peloton.JobID, error) {
+
+	req := &statelesssvc.GetJobIDFromJobNameRequest{
+		JobName: atop.NewJobName(k),
+	}
+	resp, err := h.jobClient.GetJobIDFromJobName(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetJobId()[0], nil // Return the latest id.
+}
+
+func (h *ServiceHandler) getCurrentJobVersion(
+	ctx context.Context,
+	id *peloton.JobID,
+) (*peloton.EntityVersion, error) {
+
+	req := &statelesssvc.GetJobRequest{
+		JobId: id,
+	}
+	resp, err := h.jobClient.GetJob(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetJobInfo().GetStatus().GetVersion(), nil
 }
 
 // PauseJobUpdate pauses the specified job update. Can be resumed by resumeUpdate call.
-func (h *serviceHandler) PauseJobUpdate(
-	context context.Context,
+func (h *ServiceHandler) PauseJobUpdate(
+	ctx context.Context,
 	key *api.JobUpdateKey,
 	message *string) (*api.Response, error) {
 
@@ -118,16 +242,16 @@ func (h *serviceHandler) PauseJobUpdate(
 }
 
 // ResumeJobUpdate resumes progress of a previously paused job update.
-func (h *serviceHandler) ResumeJobUpdate(
-	context context.Context,
+func (h *ServiceHandler) ResumeJobUpdate(
+	ctx context.Context,
 	key *api.JobUpdateKey, message *string) (*api.Response, error) {
 
 	return nil, errUnimplemented
 }
 
 // AbortJobUpdate permanently aborts the job update. Does not remove the update history.
-func (h *serviceHandler) AbortJobUpdate(
-	context context.Context,
+func (h *ServiceHandler) AbortJobUpdate(
+	ctx context.Context,
 	key *api.JobUpdateKey,
 	message *string) (*api.Response, error) {
 
@@ -135,8 +259,8 @@ func (h *serviceHandler) AbortJobUpdate(
 }
 
 // RollbackJobUpdate rollbacks the specified active job update to the initial state.
-func (h *serviceHandler) RollbackJobUpdate(
-	context context.Context,
+func (h *ServiceHandler) RollbackJobUpdate(
+	ctx context.Context,
 	key *api.JobUpdateKey,
 	message *string) (*api.Response, error) {
 
@@ -146,8 +270,8 @@ func (h *serviceHandler) RollbackJobUpdate(
 // PulseJobUpdate allows progress of the job update in case blockIfNoPulsesAfterMs is specified in
 // JobUpdateSettings. Unblocks progress if the update was previously blocked.
 // Responds with ResponseCode.INVALID_REQUEST in case an unknown update key is specified.
-func (h *serviceHandler) PulseJobUpdate(
-	context context.Context,
+func (h *ServiceHandler) PulseJobUpdate(
+	ctx context.Context,
 	key *api.JobUpdateKey) (*api.Response, error) {
 	return nil, errUnimplemented
 }
@@ -155,71 +279,71 @@ func (h *serviceHandler) PulseJobUpdate(
 // ==== UNUSED RPCS ====
 
 // GetRoleSummary will remain unimplemented.
-func (h *serviceHandler) GetRoleSummary(
-	context context.Context) (*api.Response, error) {
+func (h *ServiceHandler) GetRoleSummary(
+	ctx context.Context) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // GetTasksStatus will remain unimplemented.
-func (h *serviceHandler) GetTasksStatus(
-	context context.Context,
+func (h *ServiceHandler) GetTasksStatus(
+	ctx context.Context,
 	query *api.TaskQuery) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // GetPendingReason will remain unimplemented.
-func (h *serviceHandler) GetPendingReason(
-	context context.Context,
+func (h *ServiceHandler) GetPendingReason(
+	ctx context.Context,
 	query *api.TaskQuery) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // GetQuota will remain unimplemented.
-func (h *serviceHandler) GetQuota(
-	context context.Context,
+func (h *ServiceHandler) GetQuota(
+	ctx context.Context,
 	ownerRole *string) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // PopulateJobConfig will remain unimplemented.
-func (h *serviceHandler) PopulateJobConfig(
-	context context.Context,
+func (h *ServiceHandler) PopulateJobConfig(
+	ctx context.Context,
 	description *api.JobConfiguration) (*api.Response, error) {
 
 	return nil, errUnimplemented
 }
 
 // CreateJob will remain unimplemented.
-func (h *serviceHandler) CreateJob(
-	context context.Context,
+func (h *ServiceHandler) CreateJob(
+	ctx context.Context,
 	description *api.JobConfiguration) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // ScheduleCronJob will remain unimplemented.
-func (h *serviceHandler) ScheduleCronJob(
-	context context.Context,
+func (h *ServiceHandler) ScheduleCronJob(
+	ctx context.Context,
 	description *api.JobConfiguration) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // DescheduleCronJob will remain unimplemented.
-func (h *serviceHandler) DescheduleCronJob(
-	context context.Context,
+func (h *ServiceHandler) DescheduleCronJob(
+	ctx context.Context,
 	job *api.JobKey) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // StartCronJob will remain unimplemented.
-func (h *serviceHandler) StartCronJob(
-	context context.Context,
+func (h *ServiceHandler) StartCronJob(
+	ctx context.Context,
 	job *api.JobKey) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // RestartShards will remain unimplemented.
-func (h *serviceHandler) RestartShards(
-	context context.Context,
+func (h *ServiceHandler) RestartShards(
+	ctx context.Context,
 	job *api.JobKey,
 	shardIds map[int32]struct{}) (*api.Response, error) {
 
@@ -227,16 +351,16 @@ func (h *serviceHandler) RestartShards(
 }
 
 // AddInstances will remain unimplemented.
-func (h *serviceHandler) AddInstances(
-	context context.Context,
+func (h *ServiceHandler) AddInstances(
+	ctx context.Context,
 	key *api.InstanceKey,
 	count *int32) (*api.Response, error) {
 	return nil, errUnimplemented
 }
 
 // ReplaceCronTemplate will remain unimplemented.
-func (h *serviceHandler) ReplaceCronTemplate(
-	context context.Context,
+func (h *ServiceHandler) ReplaceCronTemplate(
+	ctx context.Context,
 	config *api.JobConfiguration) (*api.Response, error) {
 	return nil, errUnimplemented
 }

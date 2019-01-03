@@ -50,3 +50,6 @@ docker/pip.conf
 \#*\#
 .unison.*.tmp
 workspace/
+
+# Vim
+tags

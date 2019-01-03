@@ -2,7 +2,12 @@ package main
 
 import (
 	"os"
+	"time"
 
+	statelesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
+	respoolsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool/svc"
+	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api/auroraschedulermanagerserver"
+	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api/readonlyschedulerserver"
 	"code.uber.internal/infra/peloton/aurorabridge"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/buildversion"
@@ -120,26 +125,45 @@ func main() {
 	// all leader discovery metrics share a scope (and will be tagged
 	// with role={role})
 	discoveryScope := rootScope.SubScope("discovery")
+
 	// setup the discovery service to detect jobmgr leaders and
 	// configure the YARPC Peer dynamically
-	t := rpc.NewTransport()
+	jobmgrTransport := rpc.NewTransport()
 	jobmgrPeerChooser, err := peer.NewSmartChooser(
 		cfg.Election,
 		discoveryScope,
 		common.JobManagerRole,
-		t,
+		jobmgrTransport,
 	)
 	if err != nil {
-		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
-			Fatal("Could not create smart peer chooser")
+		log.WithFields(log.Fields{
+			"error": err,
+			"role":  common.JobManagerRole,
+		}).Fatal("Could not create smart peer chooser")
 	}
 	defer jobmgrPeerChooser.Stop()
 
-	jobmgrOutbound := t.NewOutbound(jobmgrPeerChooser)
+	resmgrTransport := rpc.NewTransport()
+	resmgrPeerChooser, err := peer.NewSmartChooser(
+		cfg.Election,
+		discoveryScope,
+		common.ResourceManagerRole,
+		resmgrTransport,
+	)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+			"role":  common.ResourceManagerRole,
+		}).Fatal("Could not create smart peer chooser")
+	}
+	defer resmgrPeerChooser.Stop()
 
 	outbounds := yarpc.Outbounds{
 		common.PelotonJobManager: transport.Outbounds{
-			Unary: jobmgrOutbound,
+			Unary: jobmgrTransport.NewOutbound(jobmgrPeerChooser),
+		},
+		common.PelotonResourceManager: transport.Outbounds{
+			Unary: resmgrTransport.NewOutbound(resmgrPeerChooser),
 		},
 	}
 
@@ -152,9 +176,23 @@ func main() {
 		},
 	})
 
-	server := aurorabridge.NewServer(
-		*httpPort,
-	)
+	jobClient := statelesssvc.NewJobServiceYARPCClient(
+		dispatcher.ClientConfig(common.PelotonJobManager))
+
+	respoolClient := respoolsvc.NewResourcePoolServiceYARPCClient(
+		dispatcher.ClientConfig(common.PelotonResourceManager))
+
+	// Start the dispatcher before we register the aurorabridge handler, since we'll
+	// need to make some outbound requests to get things setup.
+	if err := dispatcher.Start(); err != nil {
+		log.Fatalf("Could not start rpc server: %v", err)
+	}
+
+	// Give some time for dispatcher to start so we can bootstrap...
+	// TODO(codyg): Figure out a way around this.
+	time.Sleep(5 * time.Second)
+
+	server := aurorabridge.NewServer(*httpPort)
 
 	candidate, err := leader.NewCandidate(
 		cfg.Election,
@@ -166,17 +204,21 @@ func main() {
 		log.Fatalf("Unable to create leader candidate: %v", err)
 	}
 
-	aurorabridge.NewServiceHandler(
-		rootScope,
-		dispatcher)
-
-	// Start dispatch loop
-	if err := dispatcher.Start(); err != nil {
-		log.Fatalf("Could not start rpc server: %v", err)
+	bootstrapper := aurorabridge.NewBootstrapper(cfg.Bootstrap, respoolClient)
+	respoolID, err := bootstrapper.BootstrapRespool()
+	if err != nil {
+		log.Fatalf("Unable to boostrap respool: %s", err)
 	}
 
-	err = candidate.Start()
-	if err != nil {
+	handler := aurorabridge.NewServiceHandler(
+		rootScope,
+		jobClient,
+		respoolID,
+	)
+	dispatcher.Register(auroraschedulermanagerserver.New(handler))
+	dispatcher.Register(readonlyschedulerserver.New(handler))
+
+	if err := candidate.Start(); err != nil {
 		log.Fatalf("Unable to start leader candidate: %v", err)
 	}
 	defer candidate.Stop()
