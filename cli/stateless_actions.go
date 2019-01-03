@@ -812,7 +812,7 @@ func printListUpdatesResponse(resp *statelesssvc.ListJobUpdatesResponse) error {
 	return nil
 }
 
-func printUpdateInfo(updateInfo *statelesssvc.ListJobUpdatesResponse_UpdateInfo) error {
+func printUpdateInfo(updateInfo *stateless.UpdateInfo) error {
 	out, err := marshallResponse(defaultResponseFormat, updateInfo)
 	if err != nil {
 		return err

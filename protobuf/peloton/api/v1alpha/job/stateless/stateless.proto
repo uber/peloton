@@ -349,6 +349,8 @@ message WorkflowInfo {
   peloton.OpaqueData opaque_data = 6;
 }
 
+// WorkflowEvents are workflow state change events for a job or pod
+// on workflow operations
 message WorkflowEvent {
   // Workflow type.
   WorkflowType type = 1;
@@ -359,4 +361,14 @@ message WorkflowEvent {
 
   // Current runtime state of the workflow.
   WorkflowState state = 3;
+}
+
+// Information about an update including its specification, status
+// and events
+message UpdateInfo {
+  // workflow information including status and specification
+  stateless.WorkflowInfo info = 1;
+
+  // workflow events
+  repeated stateless.WorkflowEvent events = 2;
 }

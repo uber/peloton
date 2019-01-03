@@ -402,6 +402,145 @@ func (suite *statelessHandlerTestSuite) TestGetJobUpdateGetError() {
 	suite.Nil(resp)
 }
 
+// TestGetJobUpdateSuccess tests the success for fetching job update
+// details for provided job
+func (suite *statelessHandlerTestSuite) TestGetJobUpdateSuccess() {
+	v0JobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	updateModel := &models.UpdateModel{
+		UpdateID: &peloton.UpdateID{
+			Value: testUpdateID,
+		},
+		JobConfigVersion:     uint64(2),
+		PrevJobConfigVersion: uint64(1),
+	}
+
+	jobConfig := &pbjob.JobConfig{
+		Name:          testJobName,
+		InstanceCount: 10,
+	}
+
+	prevJobConfig := &pbjob.JobConfig{
+		Name:          testJobName,
+		InstanceCount: 5,
+	}
+
+	expectedResp := &statelesssvc.GetJobUpdateResponse{
+		UpdateInfo: &stateless.UpdateInfo{
+			Info:   handlerutil.ConvertUpdateModelToWorkflowInfo(updateModel),
+			Events: nil,
+		},
+		JobSpec:     handlerutil.ConvertJobConfigToJobSpec(jobConfig),
+		PrevJobSpec: handlerutil.ConvertJobConfigToJobSpec(prevJobConfig),
+	}
+
+	suite.jobFactory.EXPECT().
+		AddJob(v0JobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbjob.RuntimeInfo{
+			State: pbjob.JobState_RUNNING,
+			UpdateID: &peloton.UpdateID{
+				Value: testUpdateID,
+			},
+		}, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), &peloton.UpdateID{
+			Value: testUpdateID,
+		}).
+		Return(updateModel, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(gomock.Any(), v0JobID, uint64(2)).
+		Return(jobConfig, nil, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(gomock.Any(), v0JobID, uint64(1)).
+		Return(prevJobConfig, nil, nil)
+
+	resp, err := suite.handler.GetJobUpdate(
+		context.Background(),
+		&statelesssvc.GetJobUpdateRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		})
+	suite.NoError(err)
+	suite.Equal(expectedResp, resp)
+}
+
+// TestGetJobUpdateFailure tests failure of fetching job update, and
+// job config for provided job
+func (suite *statelessHandlerTestSuite) TestGetJobUpdateFailure() {
+	req := &statelesssvc.GetJobUpdateRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+	}
+	v0JobID := &peloton.JobID{
+		Value: testJobID,
+	}
+
+	suite.jobFactory.EXPECT().
+		AddJob(v0JobID).
+		Return(suite.cachedJob).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(nil, errors.New("failed to get job runtime"))
+	_, err := suite.handler.GetJobUpdate(
+		context.Background(),
+		req)
+	suite.Error(err)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbjob.RuntimeInfo{
+			State: pbjob.JobState_RUNNING,
+			UpdateID: &peloton.UpdateID{
+				Value: testUpdateID,
+			},
+		}, nil)
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), &peloton.UpdateID{
+			Value: testUpdateID,
+		}).
+		Return(nil, errors.New("failed to get job update"))
+	_, err = suite.handler.GetJobUpdate(
+		context.Background(),
+		req)
+	suite.Error(err)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbjob.RuntimeInfo{
+			State: pbjob.JobState_RUNNING,
+			UpdateID: &peloton.UpdateID{
+				Value: testUpdateID,
+			},
+		}, nil)
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), &peloton.UpdateID{
+			Value: testUpdateID,
+		}).
+		Return(&models.UpdateModel{
+			UpdateID: &peloton.UpdateID{
+				Value: testUpdateID,
+			},
+			JobConfigVersion:     uint64(2),
+			PrevJobConfigVersion: uint64(1),
+		}, nil)
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(gomock.Any(), v0JobID, uint64(2)).
+		Return(nil, nil, errors.New("failed to get job config"))
+	_, err = suite.handler.GetJobUpdate(
+		context.Background(),
+		req)
+	suite.Error(err)
+}
+
 // TestGetJobCacheWithUpdateSuccess test the success case of getting job
 // cache which has update
 func (suite *statelessHandlerTestSuite) TestGetJobCacheWithUpdateSuccess() {
