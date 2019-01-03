@@ -1,7 +1,96 @@
 # Changelog for Peloton
 
-0.8.0 (unreleased)
+0.8.1 (unreleased)
 ------------------
+
+0.8.0
+------------------
+
+* 2019-01-02    Fix SLA tracking for tasks in resmgr                                                   avyas@uber.com
+* 2019-01-02    Update to token aware host policy with dc aware round robin                            varung@uber.com
+* 2019-01-02    Add engdocs for preemption                                                             avyas@uber.com
+* 2019-01-02    Fix revocable integ test typo error                                                    varung@uber.com
+* 2019-01-02    Implement JobService.QueryPods v1alpha API                                             sachins@uber.com
+* 2018-12-31    Ensure vcluster is cleaned-up when perf test fails                                     amitbose@uber.com
+* 2018-12-31    Improve vcluster error handling                                                        amitbose@uber.com
+* 2018-12-31    vcluster changes for stateless jobs                                                    amitbose@uber.com
+* 2018-12-31    Migrate tests in stateless_job_test/test_job_revocable.py to v1 alpha API              zhixin@uber.com
+* 2018-12-31    Fix unit test for orm client                                                           adityacb@uber.com
+* 2018-12-31    Migrate tests in stateless_job_test/test_job.py to v1 alpha API                        zhixin@uber.com
+* 2018-12-28    Update golang version to 1.11.4                                                        avyas@uber.com
+* 2018-12-28    Migrate part of stateless job integration tests to v1 alpha api                        zhixin@uber.com
+* 2018-12-28    Implement ORM update functionality                                                     adityacb@uber.com
+* 2018-12-28    Implement ListJobUpdates                                                               zhixin@uber.com
+* 2018-12-28    Add integration test for task level preemption                                         avyas@uber.com
+* 2018-12-27    Fix review comments in ORM delete path                                                 adityacb@uber.com
+* 2018-12-27    Wire up ExecutorInfo in ContainerSpec when calling v1 Create/ReplaceJob api            kevinxu@uber.com
+* 2018-12-27    Implement ORM Delete functionality                                                     adityacb@uber.com
+* 2018-12-26    Fix job cleanup for revocable integ test                                               varung@uber.com
+* 2018-12-26    Add implementation to read/write workflow events per instance                          varung@uber.com
+* 2018-12-26    Add sla tracking config to deploy script                                               avyas@uber.com
+* 2018-12-26    Get task configs from task_config_v2 first                                             adityacb@uber.com
+* 2018-12-26    Fix update-protobuf gens                                                               varung@uber.com
+* 2018-12-24    Remove -u flag from packr installation                                                 sishi@uber.com
+* 2018-12-23    Implement job restart                                                                  zhixin@uber.com
+* 2018-12-21    Part III: Setup recovery from active_jobs table                                        adityacb@uber.com
+* 2018-12-21    Implement JobSVC.Stop                                                                  zhixin@uber.com
+* 2018-12-20    Add GetJob CLI and unit tests                                                          sachins@uber.com
+* 2018-12-20    Implement JobService.CreateJob API                                                     sachins@uber.com
+* 2018-12-19    Support Thermos Executor in Peloton                                                    kevinxu@uber.com
+* 2018-12-19    Re-generate Aurora thrift bindings with thriftrw dev branch                            codyg@uber.com
+* 2018-12-19    GetPod should populate the right PodSpec for previous runs                             sachins@uber.com
+* 2018-12-19    Add support to store opaque data along with an update                                  apoorvaj@uber.com
+* 2018-12-19    Add handler implementation for job name to job id                                      varung@uber.com
+* 2018-12-19    Use `PREEMPTING` as goal state in job manager for batch                                avyas@uber.com
+* 2018-12-18    Honor retry policy for lost tasks                                                      amitbose@uber.com
+* 2018-12-18    Add PERF_version.no_(BASE | CURRENT) to Performance Report table.                      yuweit@uber.com
+* 2018-12-18    Generate yarpc binding for aurora thrift api                                           varung@uber.com
+* 2018-12-18    Ignore UNITILIAZED job without config upon recovery                                    zhixin@uber.com
+* 2018-12-17    Fix performance test version issues.                                                   yuweit@uber.com
+* 2018-12-17    Use deadline queue in the goal state engine as the queue serving the worker pool       apoorvaj@uber.com
+* 2018-12-17    Add ReplaceJobDiff API to find the instances being added/removed/updated in a replace API invocation apoorvaj@uber.com
+* 2018-12-17    Fix archiver flag, and context timeout issue                                           adityacb@uber.com
+* 2018-12-17    Add get job id from job name interface definition                                      varung@uber.com
+* 2018-12-14    Add support for task level preemption                                                  avyas@uber.com
+* 2018-12-14    Feature flag to calculate job runtime from cache if MV diverged                        sishi@uber.com
+* 2018-12-14    Manually patch glide.lock to correct commit id for go-internal                         adityacb@uber.com
+* 2018-12-14    Implement v1alpha ListJobs streaming API                                               apoorvaj@uber.com
+* 2018-12-13    Add znode for peloton-aurora-bridge to mock Aurora Leader                              varung@uber.com
+* 2018-12-13    Change archiver stream_only_mode flag default value                                    adityacb@uber.com
+* 2018-12-13    Upgrade testify to 1.2.0                                                               codyg@uber.com
+* 2018-12-13    Part II: Recover jobs from active_jobs table                                           adityacb@uber.com
+* 2018-12-13    Add pause/resume/abort job workflow                                                    zhixin@uber.com
+* 2018-12-12    Get zk configuration file into go binary                                               sishi@uber.com
+* 2018-12-12    In Perf tests, Wait 30 Sec Before Creating Respool.                                    yuweit@uber.com
+* 2018-12-12    Add task_config_v2 table partitioned by job_id, version, instance_id                   adityacb@uber.com
+* 2018-12-10    Implement stateless service QueryJobs                                                  zhixin@uber.com
+* 2018-12-10    Fix bin_packing setting in deploy script                                               adityacb@uber.com
+* 2018-12-10    Handle hostmgr bin packing flag in deploy script                                       adityacb@uber.com
+* 2018-12-10    Create task configs in parallel                                                        sachins@uber.com
+* 2018-12-10    Add ReplaceJob handler                                                                 zhixin@uber.com
+* 2018-12-10    Scaffold aurorabridge daemon                                                           codyg@uber.com
+* 2018-12-10    Add short term fixes to improve performance of SLA tracking                            avyas@uber.com
+* 2018-12-07    Add two tables (job.Get and job.Update) to Peloton performance report.                 yuweit@uber.com
+* 2018-12-06    Add storage APIs for job id from job name                                              varung@uber.com
+* 2018-12-06    Implement v1alpha GetJob API                                                           apoorvaj@uber.com
+* 2018-12-05    Add PodService.DeletePodEvents handler                                                 sachins@uber.com
+* 2018-12-04    Add entity version validation to workflow operations                                   zhixin@uber.com
+* 2018-12-04    Add APIs to fetch workflow information and events                                      apoorvaj@uber.com
+* 2018-12-03    Add CLI support to list all the available hosts                                        kevinxu@uber.com
+* 2018-12-03    Enhance optional arguments for customized pcluster usage                               kulkarni@uber.com
+* 2018-12-03    Add changelog for 0.7.8.1                                                              avyas@uber.com
+* 2018-12-03    Support starting an update in paused state                                             apoorvaj@uber.com
+* 2018-12-03    Disable bin packing by default                                                         avyas@uber.com
+* 2018-11-30    Move Requeue of un-placed tasks inside rmtask                                          avyas@uber.com
+* 2018-11-30    Create performance test for batch job update                                           sishi@uber.com
+* 2018-11-30    Reenable job factory metrics                                                           zhixin@uber.com
+* 2018-11-30    Fix data race when job factory publish metrics                                         zhixin@uber.com
+* 2018-11-30    Refactor JobMgr cache to guard workflow cache by job cache lock                        zhixin@uber.com
+* 2018-11-30    Storage Architecture v2 first cut                                                      adityacb@uber.com
+* 2018-11-30    Add job_name to job_id mapping                                                         varung@uber.com
+* 2018-11-29    [Refactor] Job's wait_for_condition method                                             yuweit@uber.com
+* 2018-11-29    Part I: Use active_jobs table instead of mv_jobs_by_state for recovery                 adityacb@uber.com
+* 2018-11-29    Add changelog for 0.7.8                                                                avyas@uber.com
 
 0.7.8.1
 ------------------
