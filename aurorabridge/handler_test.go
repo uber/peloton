@@ -107,30 +107,13 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobConflict() {
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobSuccess() {
 	req := fixture.AuroraJobUpdateRequest()
 	k := req.GetTaskConfig().GetJob()
-	name := atop.NewJobName(k)
 	curv := fixture.PelotonEntityVersion()
 	newv := fixture.PelotonEntityVersion()
 	id := fixture.PelotonJobID()
 
-	suite.jobClient.EXPECT().
-		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
-			JobName: name,
-		}).
-		Return(&statelesssvc.GetJobIDFromJobNameResponse{
-			JobId: []*peloton.JobID{id},
-		}, nil)
+	suite.expectGetJobIDFromJobName(k, id)
 
-	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
-			JobId: id,
-		}).
-		Return(&statelesssvc.GetJobResponse{
-			JobInfo: &stateless.JobInfo{
-				Status: &stateless.JobStatus{
-					Version: curv,
-				},
-			},
-		}, nil)
+	suite.expectGetJobVersion(id, curv)
 
 	suite.jobClient.EXPECT().
 		ReplaceJob(suite.ctx, gomock.Any()).
@@ -152,29 +135,12 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobSuccess() {
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobConflict() {
 	req := fixture.AuroraJobUpdateRequest()
 	k := req.GetTaskConfig().GetJob()
-	name := atop.NewJobName(k)
 	curv := fixture.PelotonEntityVersion()
 	id := fixture.PelotonJobID()
 
-	suite.jobClient.EXPECT().
-		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
-			JobName: name,
-		}).
-		Return(&statelesssvc.GetJobIDFromJobNameResponse{
-			JobId: []*peloton.JobID{id},
-		}, nil)
+	suite.expectGetJobIDFromJobName(k, id)
 
-	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
-			JobId: id,
-		}).
-		Return(&statelesssvc.GetJobResponse{
-			JobInfo: &stateless.JobInfo{
-				Status: &stateless.JobStatus{
-					Version: curv,
-				},
-			},
-		}, nil)
+	suite.expectGetJobVersion(id, curv)
 
 	suite.jobClient.EXPECT().
 		ReplaceJob(suite.ctx, gomock.Any()).
@@ -183,4 +149,49 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobConflict() {
 	resp, err := suite.handler.StartJobUpdate(suite.ctx, req, ptr.String("some message"))
 	suite.NoError(err)
 	suite.Equal(api.ResponseCodeInvalidRequest, resp.GetResponseCode())
+}
+
+func (suite *ServiceHandlerTestSuite) TestPauseJobUpdate_Success() {
+	k := fixture.AuroraJobUpdateKey()
+	id := fixture.PelotonJobID()
+	v := fixture.PelotonEntityVersion()
+
+	suite.expectGetJobIDFromJobName(k.GetJob(), id)
+
+	suite.expectGetJobVersion(id, v)
+
+	suite.jobClient.EXPECT().
+		PauseJobWorkflow(suite.ctx, &statelesssvc.PauseJobWorkflowRequest{
+			JobId:   id,
+			Version: v,
+		}).
+		Return(nil, nil)
+
+	resp, err := suite.handler.PauseJobUpdate(suite.ctx, k, ptr.String("some message"))
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+}
+
+func (suite *ServiceHandlerTestSuite) expectGetJobIDFromJobName(k *api.JobKey, id *peloton.JobID) {
+	suite.jobClient.EXPECT().
+		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
+			JobName: atop.NewJobName(k),
+		}).
+		Return(&statelesssvc.GetJobIDFromJobNameResponse{
+			JobId: []*peloton.JobID{id},
+		}, nil)
+}
+
+func (suite *ServiceHandlerTestSuite) expectGetJobVersion(id *peloton.JobID, v *peloton.EntityVersion) {
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			JobId: id,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Status: &stateless.JobStatus{
+					Version: v,
+				},
+			},
+		}, nil)
 }

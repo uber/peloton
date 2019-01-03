@@ -30,3 +30,11 @@ func AuroraJobUpdateRequest() *api.JobUpdateRequest {
 		TaskConfig: AuroraTaskConfig(),
 	}
 }
+
+// AuroraJobUpdateKey returns a random JobUpdateKey.
+func AuroraJobUpdateKey() *api.JobUpdateKey {
+	return &api.JobUpdateKey{
+		Job: AuroraJobKey(),
+		ID:  ptr.String(fmt.Sprintf("update-id-%s", randutil.Text(6))),
+	}
+}

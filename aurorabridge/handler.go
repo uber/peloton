@@ -202,43 +202,49 @@ func (h *ServiceHandler) startJobUpdate(
 	}, nil
 }
 
-func (h *ServiceHandler) getJobID(
-	ctx context.Context,
-	k *api.JobKey,
-) (*peloton.JobID, error) {
-
-	req := &statelesssvc.GetJobIDFromJobNameRequest{
-		JobName: atop.NewJobName(k),
-	}
-	resp, err := h.jobClient.GetJobIDFromJobName(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	return resp.GetJobId()[0], nil // Return the latest id.
-}
-
-func (h *ServiceHandler) getCurrentJobVersion(
-	ctx context.Context,
-	id *peloton.JobID,
-) (*peloton.EntityVersion, error) {
-
-	req := &statelesssvc.GetJobRequest{
-		JobId: id,
-	}
-	resp, err := h.jobClient.GetJob(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	return resp.GetJobInfo().GetStatus().GetVersion(), nil
-}
-
 // PauseJobUpdate pauses the specified job update. Can be resumed by resumeUpdate call.
 func (h *ServiceHandler) PauseJobUpdate(
 	ctx context.Context,
 	key *api.JobUpdateKey,
-	message *string) (*api.Response, error) {
+	message *string,
+) (*api.Response, error) {
 
-	return nil, errUnimplemented
+	result, err := h.pauseJobUpdate(ctx, key, message)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"params": log.Fields{
+				"key":     key,
+				"message": message,
+			},
+			"code":  err.responseCode,
+			"error": err.msg,
+		}).Error("PauseJobUpdate error")
+	}
+	return newResponse(result, err), nil
+}
+
+func (h *ServiceHandler) pauseJobUpdate(
+	ctx context.Context,
+	key *api.JobUpdateKey,
+	message *string,
+) (*api.Result, *auroraError) {
+
+	id, err := h.getJobID(ctx, key.GetJob())
+	if err != nil {
+		return nil, auroraErrorf("get job id: %s", err)
+	}
+	v, err := h.getCurrentJobVersion(ctx, id)
+	if err != nil {
+		return nil, auroraErrorf("get current job version: %s", err)
+	}
+	req := &statelesssvc.PauseJobWorkflowRequest{
+		JobId:   id,
+		Version: v,
+	}
+	if _, err := h.jobClient.PauseJobWorkflow(ctx, req); err != nil {
+		return nil, auroraErrorf("pause job workflow: %s", err)
+	}
+	return &api.Result{}, nil
 }
 
 // ResumeJobUpdate resumes progress of a previously paused job update.
@@ -276,91 +282,32 @@ func (h *ServiceHandler) PulseJobUpdate(
 	return nil, errUnimplemented
 }
 
-// ==== UNUSED RPCS ====
+func (h *ServiceHandler) getJobID(
+	ctx context.Context,
+	k *api.JobKey,
+) (*peloton.JobID, error) {
 
-// GetRoleSummary will remain unimplemented.
-func (h *ServiceHandler) GetRoleSummary(
-	ctx context.Context) (*api.Response, error) {
-	return nil, errUnimplemented
+	req := &statelesssvc.GetJobIDFromJobNameRequest{
+		JobName: atop.NewJobName(k),
+	}
+	resp, err := h.jobClient.GetJobIDFromJobName(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetJobId()[0], nil // Return the latest id.
 }
 
-// GetTasksStatus will remain unimplemented.
-func (h *ServiceHandler) GetTasksStatus(
+func (h *ServiceHandler) getCurrentJobVersion(
 	ctx context.Context,
-	query *api.TaskQuery) (*api.Response, error) {
-	return nil, errUnimplemented
-}
+	id *peloton.JobID,
+) (*peloton.EntityVersion, error) {
 
-// GetPendingReason will remain unimplemented.
-func (h *ServiceHandler) GetPendingReason(
-	ctx context.Context,
-	query *api.TaskQuery) (*api.Response, error) {
-	return nil, errUnimplemented
-}
-
-// GetQuota will remain unimplemented.
-func (h *ServiceHandler) GetQuota(
-	ctx context.Context,
-	ownerRole *string) (*api.Response, error) {
-	return nil, errUnimplemented
-}
-
-// PopulateJobConfig will remain unimplemented.
-func (h *ServiceHandler) PopulateJobConfig(
-	ctx context.Context,
-	description *api.JobConfiguration) (*api.Response, error) {
-
-	return nil, errUnimplemented
-}
-
-// CreateJob will remain unimplemented.
-func (h *ServiceHandler) CreateJob(
-	ctx context.Context,
-	description *api.JobConfiguration) (*api.Response, error) {
-	return nil, errUnimplemented
-}
-
-// ScheduleCronJob will remain unimplemented.
-func (h *ServiceHandler) ScheduleCronJob(
-	ctx context.Context,
-	description *api.JobConfiguration) (*api.Response, error) {
-	return nil, errUnimplemented
-}
-
-// DescheduleCronJob will remain unimplemented.
-func (h *ServiceHandler) DescheduleCronJob(
-	ctx context.Context,
-	job *api.JobKey) (*api.Response, error) {
-	return nil, errUnimplemented
-}
-
-// StartCronJob will remain unimplemented.
-func (h *ServiceHandler) StartCronJob(
-	ctx context.Context,
-	job *api.JobKey) (*api.Response, error) {
-	return nil, errUnimplemented
-}
-
-// RestartShards will remain unimplemented.
-func (h *ServiceHandler) RestartShards(
-	ctx context.Context,
-	job *api.JobKey,
-	shardIds map[int32]struct{}) (*api.Response, error) {
-
-	return nil, errUnimplemented
-}
-
-// AddInstances will remain unimplemented.
-func (h *ServiceHandler) AddInstances(
-	ctx context.Context,
-	key *api.InstanceKey,
-	count *int32) (*api.Response, error) {
-	return nil, errUnimplemented
-}
-
-// ReplaceCronTemplate will remain unimplemented.
-func (h *ServiceHandler) ReplaceCronTemplate(
-	ctx context.Context,
-	config *api.JobConfiguration) (*api.Response, error) {
-	return nil, errUnimplemented
+	req := &statelesssvc.GetJobRequest{
+		JobId: id,
+	}
+	resp, err := h.jobClient.GetJob(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetJobInfo().GetStatus().GetVersion(), nil
 }
