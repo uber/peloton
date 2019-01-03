@@ -27,8 +27,6 @@ import time
 from performance_test_client import (
     PerformanceTestClient,
     ResPoolNotFoundException,
-    JobCreateFailedException,
-    JobUpdateFailedException
 )
 
 # Perf tests conducted. Serves as a single source of truth.
@@ -123,10 +121,11 @@ def main():
                         num_tasks, sleep_time, instance_config,
                     )
                     succeeded, start, completion = pf_client.monitoring(job_id)
-                except JobCreateFailedException:
-                    print "TaskNum %s && SleepTime %s && InstanceConfig %s" % (
-                        num_tasks, sleep_time, instance_config,
-                    ) + "Test launch failed!"
+                except Exception as e:
+                    msg = "TaskNum %s && SleepTime %s && InstanceConfig %s" % (
+                        num_tasks, sleep_time, instance_config)
+                    print "test create job: job creation failed: %s (%s)" % (
+                        e, msg)
                     continue
                 record = {
                     'TaskNum': num_tasks,
@@ -150,6 +149,7 @@ def main():
                  'UseInsConf', 'Version', 'Start(s)',
                  'Exec(s)']
     )
+    print ('Test Create')
     print(df)
 
     # write results to '$base_path$_job_create.csv'.
@@ -174,13 +174,15 @@ def main():
 
     # write test_job_create_get results to '$base_path$_job_get.csv'.
     get_df = t.dump_records_to_file()
-    get_df.to_csv(output_csv_files_list[1], sep='\t')
+    if get_df is not None:
+        get_df.to_csv(output_csv_files_list[1], sep='\t')
 
     # write test_job_update results to '$base_path$_job_update.csv'.
     update_df = t.perf_test_job_update(num_start_tasks=1, tasks_inc=10,
                                        num_increment=500,
                                        sleep_time=10, use_instance_config=True)
-    update_df.to_csv(output_csv_files_list[2], sep='\t')
+    if update_df is not None:
+        update_df.to_csv(output_csv_files_list[2], sep='\t')
 
 
 class perfCounter():
@@ -217,22 +219,24 @@ class PerformanceTest ():
         the total time.
         """
         start_time = datetime.datetime.now()
+
         try:
             job_id = self.client.create_job(
                 num_start_tasks, sleep_time, use_instance_config)
-        except JobCreateFailedException:
-            print "Num_start_tasks %s && SleepTime %s && InstanceConfig %s" % (
-                num_start_tasks, sleep_time, use_instance_config,
-            ) + "Create Job failed in perf_test_job_update!"
+        except Exception as e:
+            msg = "Num_start_tasks %s && SleepTime %s && InstanceConfig %s" % (
+                num_start_tasks, sleep_time, use_instance_config)
+            print "test_job_update: create job failed: %s (%s)" % (e, msg)
             return
         for counter in xrange(num_increment):
             try:
                 self.client.update_job(job_id, tasks_inc, use_instance_config,
                                        sleep_time)
-            except JobUpdateFailedException:
-                print "NumStartTasks %s && TasksInc %s && NumIncrement %s" % (
-                    num_start_tasks, tasks_inc, num_increment,
-                ) + " Update Job failed in perf_test_job_update!"
+            except Exception as e:
+                msg = "NumStartTasks %s && TasksInc %s && NumIncrement %s" % (
+                    num_start_tasks, tasks_inc, num_increment)
+                print "test_job_update: update job failed: %s (%s)" % (
+                    e, msg)
                 return
         end_time = datetime.datetime.now()
         total_time_in_seconds = (end_time - start_time).total_seconds()
@@ -252,7 +256,8 @@ class PerformanceTest ():
                      'NumOfIncrement', 'Sleep(s)',
                      'UseInsConf', 'Version', 'TotalTimeInSeconds']
         )
-        print('Create + Get: %s', df)
+        print('Test Update')
+        print(df)
         return df
 
     def perf_test_job_create_get(self, num_threads=10, jobs_per_thread=5,
@@ -277,10 +282,11 @@ class PerformanceTest ():
                 job_id = self.client.create_job(
                     num_tasks, sleep_time, use_instance_config)
                 self.counter.inc('CREATE')
-            except JobCreateFailedException:
-                print "TaskNum %s && SleepTime %s && InstanceConfig %s" % (
-                    num_tasks, sleep_time, use_instance_config,
-                ) + "Test launch failed!"
+            except Exception as e:
+                msg = "TaskNum %s && SleepTime %s && InstanceConfig %s" % (
+                    num_tasks, sleep_time, use_instance_config)
+                print "test_job_create_get: create job failed: %s (%s)" % (
+                    e, msg)
                 self.counter.inc('CREATEFAILS')
                 return
         else:
@@ -326,7 +332,8 @@ class PerformanceTest ():
                      'UseInsConf', 'Creates', 'Version',
                      'CreateFails',  'Gets', 'GetFails']
         )
-        print('Update: %s', df)
+        print('Test Create + Get')
+        print(df)
         return df
 
 
@@ -361,10 +368,11 @@ class jobWorker (threading.Thread):
                         self.use_instance_config)
                     self.counter.inc('CREATE')
                     job_ids.append(job_id)
-                except JobCreateFailedException:
-                    print "TaskNum %s && SleepTime %s && InstanceConfig %s" % (
+                except Exception as e:
+                    msg = "TaskNum=%s && SleepTime %s && InstanceConfig %s" % (
                         self.num_tasks, self.sleep_time,
-                        self.use_instance_config) + "Test launch failed!"
+                        self.use_instance_config)
+                    print "jobWorker: create job failed: %s (%s)" % (e, msg)
                     self.counter.inc('CREATEFAILS')
                     return
         else:

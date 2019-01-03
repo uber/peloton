@@ -24,14 +24,6 @@ class ResPoolNotFoundException(Exception):
     pass
 
 
-class JobCreateFailedException(Exception):
-    pass
-
-
-class JobUpdateFailedException(Exception):
-    pass
-
-
 def create_task_config(sleep_time, dynamic_factor):
     return task.TaskConfig(
         resource=task.ResourceConfig(
@@ -82,9 +74,7 @@ class PerformanceTestClient(object):
 
         respool_id = resp.id.value
 
-        try:
-            assert respool_id
-        except AssertionError:
+        if not respool_id:
             raise ResPoolNotFoundException
 
         return respool_id
@@ -93,28 +83,22 @@ class PerformanceTestClient(object):
         request = job.GetRequest(
             id=peloton.JobID(value=job_id),
         )
-        try:
-            resp = self.client.job_svc.Get(
-                request,
-                metadata=self.client.jobmgr_metadata,
-                timeout=default_timeout,
-            )
-            return resp.jobInfo
-        except Exception:
-            raise
+        resp = self.client.job_svc.Get(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=default_timeout,
+        )
+        return resp.jobInfo
 
     def stop_job(self, job_id):
         request = task.StopRequest(
             jobId=peloton.JobID(value=job_id),
         )
-        try:
-            self.client.task_svc.Stop(
-                request,
-                metadata=self.client.jobmgr_metadata,
-                timeout=default_timeout,
-            )
-        except Exception:
-            raise
+        self.client.task_svc.Stop(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=default_timeout,
+        )
 
     def update_job(self, job_id, instance_inc, use_instance_config,
                    sleep_time):
@@ -128,18 +112,15 @@ class PerformanceTestClient(object):
                                                             'instance %s' % i)
             job_config.instanceConfig.MergeFrom(instance_config)
         job_config.instanceCount = job_config.instanceCount + instance_inc
-        try:
-            request = job.UpdateRequest(
-                id=peloton.JobID(value=job_id),
-                config=job_config,
-            )
-            self.client.job_svc.Update(
-                request,
-                metadata=self.client.jobmgr_metadata,
-                timeout=default_timeout,
-            )
-        except Exception:
-            raise JobUpdateFailedException
+        request = job.UpdateRequest(
+            id=peloton.JobID(value=job_id),
+            config=job_config,
+        )
+        self.client.job_svc.Update(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=default_timeout,
+        )
 
     def create_job(self, instance_num, sleep_time, use_instance_config=False):
         default_config = create_task_config(sleep_time, 'static')
@@ -181,14 +162,11 @@ class PerformanceTestClient(object):
             ),
         )
 
-        try:
-            resp = self.client.job_svc.Create(
-                request,
-                metadata=self.client.jobmgr_metadata,
-                timeout=default_timeout,
-            )
-        except Exception:
-            raise JobCreateFailedException
+        resp = self.client.job_svc.Create(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=default_timeout,
+        )
         return resp.jobId.value
 
     def monitoring(self, job_id, stable_timeout=600):
