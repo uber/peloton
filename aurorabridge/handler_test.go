@@ -151,6 +151,7 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobConflict() {
 	suite.Equal(api.ResponseCodeInvalidRequest, resp.GetResponseCode())
 }
 
+// Ensures PauseJobUpdate successfully maps to PauseJobWorkflow.
 func (suite *ServiceHandlerTestSuite) TestPauseJobUpdate_Success() {
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
@@ -172,6 +173,43 @@ func (suite *ServiceHandlerTestSuite) TestPauseJobUpdate_Success() {
 	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
 }
 
+// Ensures ResumeJobUpdate successfully maps to ResumeJobWorkflow.
+func (suite *ServiceHandlerTestSuite) TestResumeJobUpdate_Success() {
+	k := fixture.AuroraJobUpdateKey()
+	id := fixture.PelotonJobID()
+	v := fixture.PelotonEntityVersion()
+
+	suite.expectGetJobIDFromJobName(k.GetJob(), id)
+
+	suite.expectGetJobVersion(id, v)
+
+	suite.jobClient.EXPECT().
+		ResumeJobWorkflow(suite.ctx, &statelesssvc.ResumeJobWorkflowRequest{
+			JobId:   id,
+			Version: v,
+		}).
+		Return(nil, nil)
+
+	resp, err := suite.handler.ResumeJobUpdate(suite.ctx, k, ptr.String("some message"))
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+}
+
+// Tests error handling for ResumeJobUpdate.
+func (suite *ServiceHandlerTestSuite) TestResumeJobUpdate_Error() {
+	k := fixture.AuroraJobUpdateKey()
+
+	suite.jobClient.EXPECT().
+		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
+			JobName: atop.NewJobName(k.GetJob()),
+		}).
+		Return(nil, yarpcerrors.UnknownErrorf("some error"))
+
+	resp, err := suite.handler.ResumeJobUpdate(suite.ctx, k, ptr.String("some message"))
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
+}
+
 func (suite *ServiceHandlerTestSuite) expectGetJobIDFromJobName(k *api.JobKey, id *peloton.JobID) {
 	suite.jobClient.EXPECT().
 		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
@@ -185,10 +223,11 @@ func (suite *ServiceHandlerTestSuite) expectGetJobIDFromJobName(k *api.JobKey, i
 func (suite *ServiceHandlerTestSuite) expectGetJobVersion(id *peloton.JobID, v *peloton.EntityVersion) {
 	suite.jobClient.EXPECT().
 		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
-			JobId: id,
+			SummaryOnly: true,
+			JobId:       id,
 		}).
 		Return(&statelesssvc.GetJobResponse{
-			JobInfo: &stateless.JobInfo{
+			Summary: &stateless.JobSummary{
 				Status: &stateless.JobStatus{
 					Version: v,
 				},

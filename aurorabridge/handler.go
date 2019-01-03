@@ -250,9 +250,46 @@ func (h *ServiceHandler) pauseJobUpdate(
 // ResumeJobUpdate resumes progress of a previously paused job update.
 func (h *ServiceHandler) ResumeJobUpdate(
 	ctx context.Context,
-	key *api.JobUpdateKey, message *string) (*api.Response, error) {
+	key *api.JobUpdateKey,
+	message *string,
+) (*api.Response, error) {
 
-	return nil, errUnimplemented
+	result, err := h.resumeJobUpdate(ctx, key, message)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"params": log.Fields{
+				"key":     key,
+				"message": message,
+			},
+			"code":  err.responseCode,
+			"error": err.msg,
+		}).Error("ResumeJobUpdate error")
+	}
+	return newResponse(result, err), nil
+}
+
+func (h *ServiceHandler) resumeJobUpdate(
+	ctx context.Context,
+	key *api.JobUpdateKey,
+	message *string,
+) (*api.Result, *auroraError) {
+
+	id, err := h.getJobID(ctx, key.GetJob())
+	if err != nil {
+		return nil, auroraErrorf("get job id: %s", err)
+	}
+	v, err := h.getCurrentJobVersion(ctx, id)
+	if err != nil {
+		return nil, auroraErrorf("get current job version: %s", err)
+	}
+	req := &statelesssvc.ResumeJobWorkflowRequest{
+		JobId:   id,
+		Version: v,
+	}
+	if _, err := h.jobClient.ResumeJobWorkflow(ctx, req); err != nil {
+		return nil, auroraErrorf("resume job workflow: %s", err)
+	}
+	return &api.Result{}, nil
 }
 
 // AbortJobUpdate permanently aborts the job update. Does not remove the update history.
@@ -303,11 +340,12 @@ func (h *ServiceHandler) getCurrentJobVersion(
 ) (*peloton.EntityVersion, error) {
 
 	req := &statelesssvc.GetJobRequest{
-		JobId: id,
+		SummaryOnly: true,
+		JobId:       id,
 	}
 	resp, err := h.jobClient.GetJob(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return resp.GetJobInfo().GetStatus().GetVersion(), nil
+	return resp.GetSummary().GetStatus().GetVersion(), nil
 }
