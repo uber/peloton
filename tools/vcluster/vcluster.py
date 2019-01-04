@@ -20,6 +20,8 @@ from modules import (
     Peloton,
 )
 
+DEFAULT_PELOTON_NUM_LOG_FILES = 10
+
 
 @retry(tries=3, delay=10)
 def cassandra_operation(config, keyspace, create=True):
@@ -195,6 +197,8 @@ class VCluster(object):
 
         # Setup Peloton
         print_okgreen('Step: Create Peloton, version: %s' % version)
+        num_logs = self.config.get('peloton').get(
+            'num_log_files', DEFAULT_PELOTON_NUM_LOG_FILES)
 
         for app in self.APP_ORDER:
             print_okblue('Creating peloton application: %s' % app)
@@ -207,6 +211,8 @@ class VCluster(object):
                 'CASSANDRA_HOSTS': host,
                 'CASSANDRA_PORT': self.config.get('cassandra').get(
                     'port', '9042'),
+                'CONTAINER_LOGGER_LOGROTATE_STDERR_OPTIONS':
+                'rotate %s' % num_logs,
             }
             mesos_slave_config = self.config.get('mesos-slave', {})
             mesos_work_dir = [

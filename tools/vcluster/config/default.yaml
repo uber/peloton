@@ -136,6 +136,7 @@ peloton:
     - name: 'MESOS_SECRET_FILE'
       value: '/mnt/mesos/sandbox/hostmgr_mesos_secret'
   start_command: 'bash /bin/entrypoint.sh'
+#  num_log_files: 10
   hostmgr:
     instance_count: 2
     scarce_resource_types:

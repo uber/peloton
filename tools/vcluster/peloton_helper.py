@@ -70,6 +70,7 @@ def create_respool_for_new_peloton(
             'Failed to create resource pool %s: %s' % (
                 respool_name, resp))
         raise Exception("Resource pool creation failed")
+    print_okblue('Created resource pool %s' % respool_name)
     return resp.result.value
 
 
