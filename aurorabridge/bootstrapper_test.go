@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/yarpc/yarpcerrors"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool/svc"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool/svc/mocks"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/respool/svc"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/respool/svc/mocks"
 )
 
 type BootstrapperTestSuite struct {

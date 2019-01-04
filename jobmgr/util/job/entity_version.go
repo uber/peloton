@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
+	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 
 	"go.uber.org/yarpc/yarpcerrors"
 )

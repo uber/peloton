@@ -9,19 +9,19 @@ import (
 	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/transport/grpc"
 
-	hostsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	updatesvc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc"
-	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume/svc"
-	statelesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
-	podsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
-	hostmgr_svc "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	hostsvc "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	updatesvc "github.com/uber/peloton/.gen/peloton/api/v0/update/svc"
+	volume_svc "github.com/uber/peloton/.gen/peloton/api/v0/volume/svc"
+	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
+	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
+	hostmgr_svc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/leader"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/leader"
 )
 
 // Client is a JSON Client with associated dispatcher and context

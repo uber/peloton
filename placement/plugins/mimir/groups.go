@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/mimir-lib/model/labels"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // OfferToGroup will convert an offer to a group.

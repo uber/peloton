@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/storage/cassandra"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/storage/cassandra"
 
 	"github.com/gocql/gocql"
 	"github.com/pborman/uuid"

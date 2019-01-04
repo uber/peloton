@@ -3,8 +3,8 @@ package resmgr
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/resmgr/common"
-	"code.uber.internal/infra/peloton/resmgr/task"
+	"github.com/uber/peloton/resmgr/common"
+	"github.com/uber/peloton/resmgr/task"
 )
 
 // Config is Resource Manager specific configuration

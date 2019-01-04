@@ -3,13 +3,13 @@ package config
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/common/health"
-	"code.uber.internal/infra/peloton/common/logging"
-	"code.uber.internal/infra/peloton/common/metrics"
-	"code.uber.internal/infra/peloton/hostmgr/mesos"
-	"code.uber.internal/infra/peloton/leader"
-	"code.uber.internal/infra/peloton/storage/config"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/common/health"
+	"github.com/uber/peloton/common/logging"
+	"github.com/uber/peloton/common/metrics"
+	"github.com/uber/peloton/hostmgr/mesos"
+	"github.com/uber/peloton/leader"
+	"github.com/uber/peloton/storage/config"
 )
 
 const (

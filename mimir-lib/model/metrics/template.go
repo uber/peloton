@@ -22,7 +22,7 @@
 package metrics
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
+	"github.com/uber/peloton/mimir-lib/generation"
 )
 
 // Template represents a metric template which can be instantiated with different values. A template can create

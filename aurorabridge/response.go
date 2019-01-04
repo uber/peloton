@@ -3,7 +3,7 @@ package aurorabridge
 import (
 	"fmt"
 
-	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
 	"go.uber.org/thriftrw/ptr"
 )
 

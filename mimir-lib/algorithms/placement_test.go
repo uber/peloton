@@ -27,12 +27,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"code.uber.internal/infra/peloton/mimir-lib/examples"
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
-	"code.uber.internal/infra/peloton/mimir-lib/generation/orderings"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	source "code.uber.internal/infra/peloton/mimir-lib/model/orderings"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/examples"
+	"github.com/uber/peloton/mimir-lib/generation"
+	"github.com/uber/peloton/mimir-lib/generation/orderings"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
+	source "github.com/uber/peloton/mimir-lib/model/orderings"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 func setup(concurrency int) (placer Placer, relocator Relocator, groups []*placement.Group, store1dbs, store2dbs []*placement.Entity) {

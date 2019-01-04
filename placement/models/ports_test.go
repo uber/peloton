@@ -3,8 +3,8 @@ package models
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/.gen/mesos/v1"
 )
 
 func setupPortRangeVariables() *PortRange {

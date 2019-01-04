@@ -24,9 +24,9 @@ package algorithms
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 func setupTwoGroupsTwoAssignments(concurrency int) (placer Placer, relocator Relocator, assignment1, assignment2 *placement.Assignment,

@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/update"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 
-	"code.uber.internal/infra/peloton/common/goalstate"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	"github.com/uber/peloton/common/goalstate"
+	"github.com/uber/peloton/jobmgr/cached"
+	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
 
 	log "github.com/sirupsen/logrus"
 )

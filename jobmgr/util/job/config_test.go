@@ -3,7 +3,7 @@ package job
 import (
 	"testing"
 
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 
 	"github.com/stretchr/testify/assert"
 )

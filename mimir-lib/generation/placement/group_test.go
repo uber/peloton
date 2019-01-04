@@ -24,10 +24,10 @@ package placement_test
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/mimir-lib/examples"
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/mimir-lib/examples"
+	"github.com/uber/peloton/mimir-lib/generation"
+	"github.com/uber/peloton/mimir-lib/model/labels"
 )
 
 func TestGroupBuilder_Generate(t *testing.T) {

@@ -9,16 +9,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
+	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	offerpool_mocks "code.uber.internal/infra/peloton/hostmgr/offer/offerpool/mocks"
-	"code.uber.internal/infra/peloton/hostmgr/summary"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-	"code.uber.internal/infra/peloton/util"
-	mpb_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	offerpool_mocks "github.com/uber/peloton/hostmgr/offer/offerpool/mocks"
+	"github.com/uber/peloton/hostmgr/summary"
+	store_mocks "github.com/uber/peloton/storage/mocks"
+	"github.com/uber/peloton/util"
+	mpb_mocks "github.com/uber/peloton/yarpc/encoding/mpb/mocks"
 )
 
 const (

@@ -24,10 +24,10 @@ package placement
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/generation"
+	"github.com/uber/peloton/mimir-lib/model/labels"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // EntityBuilder is used to generate new entities for use in tests and benchmarks.

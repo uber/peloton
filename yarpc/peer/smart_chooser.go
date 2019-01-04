@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"sync"
 
-	"code.uber.internal/infra/peloton/leader"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"github.com/uber/peloton/leader"
 	"go.uber.org/yarpc/api/peer"
 	"go.uber.org/yarpc/api/transport"
 )

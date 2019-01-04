@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/mesos-go/upid"
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/mesos-go/upid"
 	"golang.org/x/net/context"
 )
 

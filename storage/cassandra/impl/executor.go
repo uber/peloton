@@ -6,9 +6,9 @@ import (
 
 	"github.com/gocql/gocql"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/storage/cassandra/api"
-	qb "code.uber.internal/infra/peloton/storage/querybuilder"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/storage/cassandra/api"
+	qb "github.com/uber/peloton/storage/querybuilder"
 
 	log "github.com/sirupsen/logrus"
 )

@@ -22,7 +22,7 @@
 package orderings
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // Negate will negate the given tuple.

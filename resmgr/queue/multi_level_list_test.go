@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"

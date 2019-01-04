@@ -1,7 +1,7 @@
 package respool
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 )
 
 const (

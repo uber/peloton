@@ -24,7 +24,7 @@ package placement
 import (
 	"sync"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
+	"github.com/uber/peloton/mimir-lib/model/labels"
 )
 
 // NewScopeSet creates a new scope set for use in computations that need the label or relation scope of a group.

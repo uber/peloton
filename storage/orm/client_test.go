@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"code.uber.internal/infra/peloton/storage/objects/base"
-	ormmocks "code.uber.internal/infra/peloton/storage/orm/mocks"
+	"github.com/uber/peloton/storage/objects/base"
+	ormmocks "github.com/uber/peloton/storage/orm/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"

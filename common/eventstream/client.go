@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	pbeventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	pbeventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 
-	"code.uber.internal/infra/peloton/common/lifecycle"
-	"code.uber.internal/infra/peloton/common/metrics"
+	"github.com/uber/peloton/common/lifecycle"
+	"github.com/uber/peloton/common/metrics"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"

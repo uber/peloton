@@ -1,7 +1,7 @@
 package task
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"math"
 )
 

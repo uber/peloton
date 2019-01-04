@@ -24,7 +24,7 @@ package orderings
 import (
 	"math"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // Inverse will invert the given tuple.

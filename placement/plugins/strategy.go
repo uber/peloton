@@ -1,8 +1,8 @@
 package plugins
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"code.uber.internal/infra/peloton/placement/models"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/placement/models"
 )
 
 // Strategy is a placment strategy that will do all the placement logic of

@@ -1,9 +1,9 @@
 package reservation
 
 import (
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"github.com/uber/peloton/hostmgr/scalar"
 )
 
 const (

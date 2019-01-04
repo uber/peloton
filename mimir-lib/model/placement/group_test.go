@@ -24,9 +24,9 @@ package placement
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/mimir-lib/model/labels"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
 )
 
 func TestGroup_Update_remove_entity_will_decrease_load_on_group(t *testing.T) {

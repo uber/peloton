@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	"code.uber.internal/infra/peloton/common/lifecycle"
-	"code.uber.internal/infra/peloton/resmgr/scalar"
-	"code.uber.internal/infra/peloton/storage"
+	"github.com/uber/peloton/common/lifecycle"
+	"github.com/uber/peloton/resmgr/scalar"
+	"github.com/uber/peloton/storage"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"

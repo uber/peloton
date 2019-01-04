@@ -3,12 +3,12 @@ package goalstate
 import (
 	"context"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 
-	"code.uber.internal/infra/peloton/common/goalstate"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
 	log "github.com/sirupsen/logrus"
+	"github.com/uber/peloton/common/goalstate"
+	"github.com/uber/peloton/jobmgr/cached"
 )
 
 // JobAction is a string for job actions.

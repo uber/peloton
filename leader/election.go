@@ -8,12 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"code.uber.internal/infra/peloton/common"
 	"github.com/docker/leadership"
 	"github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/zookeeper"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"github.com/uber/peloton/common"
 )
 
 const (

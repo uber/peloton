@@ -5,14 +5,14 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/mimir-lib/algorithms"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
-	"code.uber.internal/infra/peloton/placement/config"
-	"code.uber.internal/infra/peloton/placement/models"
-	"code.uber.internal/infra/peloton/placement/plugins"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/mimir-lib/algorithms"
+	"github.com/uber/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/placement/config"
+	"github.com/uber/peloton/placement/models"
+	"github.com/uber/peloton/placement/plugins"
 )
 
 var _offersFactor = map[resmgr.TaskType]float64{

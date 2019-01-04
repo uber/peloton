@@ -3,7 +3,7 @@ package orm
 import (
 	"context"
 
-	"code.uber.internal/infra/peloton/storage/objects/base"
+	"github.com/uber/peloton/storage/objects/base"
 )
 
 // Connector is the interface that must be implemented for a backend service

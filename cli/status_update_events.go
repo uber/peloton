@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 )
 
 // EventStreamAction prints all task status update events present in the event stream.

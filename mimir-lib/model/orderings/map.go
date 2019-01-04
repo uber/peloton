@@ -22,7 +22,7 @@
 package orderings
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // Map will change the tuple according to which bucket each entry of the tuple falls.

@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 )
 
 // ResourcePoolPathDelim is the resource pool path delimiter

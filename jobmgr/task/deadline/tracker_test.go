@@ -7,17 +7,17 @@ import (
 	"testing"
 	"time"
 
-	peloton_job "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	peloton_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	peloton_job "github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	peloton_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	"code.uber.internal/infra/peloton/common/lifecycle"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
-	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"github.com/uber/peloton/common/lifecycle"
+	"github.com/uber/peloton/jobmgr/cached"
+	cachedmocks "github.com/uber/peloton/jobmgr/cached/mocks"
+	goalstatemocks "github.com/uber/peloton/jobmgr/goalstate/mocks"
+	storage_mocks "github.com/uber/peloton/storage/mocks"
 
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"

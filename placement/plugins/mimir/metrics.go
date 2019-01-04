@@ -1,6 +1,6 @@
 package mimir
 
-import "code.uber.internal/infra/peloton/mimir-lib/model/metrics"
+import "github.com/uber/peloton/mimir-lib/model/metrics"
 
 var (
 	// CPUAvailable represents the available cpu in a host offer, each cpu adds 100 %, so a 24 core machine will

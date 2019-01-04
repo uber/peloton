@@ -5,12 +5,12 @@ import (
 	"sort"
 	"strings"
 
-	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
-	host_svc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	host "github.com/uber/peloton/.gen/peloton/api/v0/host"
+	host_svc "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
+	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"github.com/uber/peloton/hostmgr/scalar"
 )
 
 const (

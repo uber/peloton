@@ -3,7 +3,7 @@ package aurorabridge
 import (
 	"context"
 
-	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
 )
 
 // This file contains the unused RPCs which we will not be implementing, but are

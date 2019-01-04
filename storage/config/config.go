@@ -1,7 +1,7 @@
 package config
 
 import (
-	"code.uber.internal/infra/peloton/storage/cassandra"
+	"github.com/uber/peloton/storage/cassandra"
 )
 
 // Config contains the different DB config values for each

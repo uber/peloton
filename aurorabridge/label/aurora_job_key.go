@@ -3,7 +3,7 @@ package label
 import (
 	"fmt"
 
-	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
 )
 
 const _auroraJobKeyKey = "aurora_job_key"

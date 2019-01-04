@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	volumemocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume/svc/mocks"
+	volumemocks "github.com/uber/peloton/.gen/peloton/api/v0/volume/svc/mocks"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume/svc"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
+	"github.com/uber/peloton/.gen/peloton/api/v0/volume/svc"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"

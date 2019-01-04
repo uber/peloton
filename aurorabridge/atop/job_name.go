@@ -3,7 +3,7 @@ package atop
 import (
 	"fmt"
 
-	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
 )
 
 // NewJobName creates a new job name.

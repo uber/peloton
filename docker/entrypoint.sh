@@ -10,7 +10,7 @@ app="${APP}"
 env="${ENVIRONMENT:-development}"
 cfgdir="${CONFIG_DIR:-/etc/peloton}"
 secretcfgdir="${SECRET_CONFIG_DIR}"
-dir="${BUILD_DIR:-/go/src/code.uber.internal/infra/peloton}"
+dir="${BUILD_DIR:-/go/src/github.com/uber/peloton}"
 # make sure to cd into the BUILD_DIR, because aurora chainses us by changing into
 # the sandbox
 cd "${dir}"

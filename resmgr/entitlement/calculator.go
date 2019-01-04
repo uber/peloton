@@ -11,15 +11,15 @@ import (
 	uat "github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pb_res "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	pb_res "github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"code.uber.internal/infra/peloton/common"
-	res_common "code.uber.internal/infra/peloton/resmgr/common"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	"code.uber.internal/infra/peloton/resmgr/scalar"
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/common"
+	res_common "github.com/uber/peloton/resmgr/common"
+	"github.com/uber/peloton/resmgr/respool"
+	"github.com/uber/peloton/resmgr/scalar"
+	"github.com/uber/peloton/util"
 )
 
 // Calculator is responsible for calculating the entitlements for all the

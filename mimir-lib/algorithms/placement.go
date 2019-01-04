@@ -24,7 +24,7 @@ package algorithms
 import (
 	"math"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // Placer can create assignments for entities.

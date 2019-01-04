@@ -3,9 +3,9 @@ package resmgr
 import (
 	"sync"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/leader"
-	"code.uber.internal/infra/peloton/resmgr/task"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/leader"
+	"github.com/uber/peloton/resmgr/task"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"

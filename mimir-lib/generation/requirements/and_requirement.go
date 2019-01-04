@@ -24,10 +24,10 @@ package requirements
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
-	gPlacement "code.uber.internal/infra/peloton/mimir-lib/generation/placement"
-	mPlacement "code.uber.internal/infra/peloton/mimir-lib/model/placement"
-	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
+	"github.com/uber/peloton/mimir-lib/generation"
+	gPlacement "github.com/uber/peloton/mimir-lib/generation/placement"
+	mPlacement "github.com/uber/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/requirements"
 )
 
 // NewAndRequirementBuilder will create a new and requirement builder for generating and requirements.

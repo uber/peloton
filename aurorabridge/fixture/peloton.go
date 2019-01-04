@@ -3,8 +3,8 @@ package fixture
 import (
 	"fmt"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	"code.uber.internal/infra/peloton/util/randutil"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/util/randutil"
 )
 
 // PelotonEntityVersion returns a random EntityVersion.

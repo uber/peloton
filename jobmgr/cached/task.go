@@ -5,13 +5,13 @@ import (
 	"sync"
 	"time"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
-	"code.uber.internal/infra/peloton/util"
+	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
+	"github.com/uber/peloton/util"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/pborman/uuid"

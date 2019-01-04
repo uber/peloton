@@ -3,8 +3,8 @@ package zoo
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/mesos-go/detector"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/mesos-go/detector"
 )
 
 // validate plugin registration for zk:// prefix is working

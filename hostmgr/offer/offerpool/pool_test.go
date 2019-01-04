@@ -13,19 +13,19 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/goleak"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/hostmgr/binpacking"
-	hostmgr_mesos_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
-	"code.uber.internal/infra/peloton/hostmgr/summary"
-	hostmgr_summary_mocks "code.uber.internal/infra/peloton/hostmgr/summary/mocks"
-	hmutil "code.uber.internal/infra/peloton/hostmgr/util"
-	"code.uber.internal/infra/peloton/util"
-	mpb_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/hostmgr/binpacking"
+	hostmgr_mesos_mocks "github.com/uber/peloton/hostmgr/mesos/mocks"
+	"github.com/uber/peloton/hostmgr/scalar"
+	"github.com/uber/peloton/hostmgr/summary"
+	hostmgr_summary_mocks "github.com/uber/peloton/hostmgr/summary/mocks"
+	hmutil "github.com/uber/peloton/hostmgr/util"
+	"github.com/uber/peloton/util"
+	mpb_mocks "github.com/uber/peloton/yarpc/encoding/mpb/mocks"
 )
 
 const (

@@ -5,8 +5,8 @@ import (
 	"io/ioutil"
 	"testing"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
 
 	"go.uber.org/yarpc/api/transport"
 	transport_mocks "go.uber.org/yarpc/api/transport/transporttest"

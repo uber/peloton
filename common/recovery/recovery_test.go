@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
+	pb_job "github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 
-	"code.uber.internal/infra/peloton/storage/cassandra"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"github.com/uber/peloton/storage/cassandra"
+	store_mocks "github.com/uber/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"

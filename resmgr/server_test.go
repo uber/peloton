@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"code.uber.internal/infra/peloton/leader"
-	"code.uber.internal/infra/peloton/resmgr/task"
-	"code.uber.internal/infra/peloton/resmgr/task/mocks"
+	"github.com/uber/peloton/leader"
+	"github.com/uber/peloton/resmgr/task"
+	"github.com/uber/peloton/resmgr/task/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"

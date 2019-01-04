@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/placement/config"
+	"github.com/uber/peloton/placement/config"
 
 	"github.com/stretchr/testify/assert"
 )

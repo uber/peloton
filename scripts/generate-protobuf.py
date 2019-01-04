@@ -67,7 +67,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description='Generate types, yarpc stubs and doc from protobuf files')
     parser.add_argument('-l', '--go-loc', help='go location of generated code',
-                        default='code.uber.internal/infra/peloton/.gen/')
+                        default='github.com/uber/peloton/.gen/')
     parser.add_argument('-o', '--out-dir', help='output dir of generated code',
                         default='.gen')
     parser.add_argument('-g', '--generator', help='protoc generator to use'

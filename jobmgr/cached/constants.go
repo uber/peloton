@@ -3,7 +3,7 @@ package cached
 import (
 	"time"
 
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 
 	"go.uber.org/yarpc/yarpcerrors"
 )

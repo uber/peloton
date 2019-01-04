@@ -25,7 +25,7 @@ import (
 	"fmt"
 	"strings"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // AndRequirement represents an "and" of a set of sub affinity requirements which can be another and, or, label or relation

@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 )
 
 // NewTask will create a new placement task from a resource manager task,

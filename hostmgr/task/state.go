@@ -13,17 +13,17 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
+	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/cirbuf"
-	"code.uber.internal/infra/peloton/common/eventstream"
-	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"github.com/google/uuid"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/common/cirbuf"
+	"github.com/uber/peloton/common/eventstream"
+	hostmgr_mesos "github.com/uber/peloton/hostmgr/mesos"
+	"github.com/uber/peloton/yarpc/encoding/mpb"
 )
 
 const (

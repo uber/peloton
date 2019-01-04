@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/common/config"
+	"github.com/uber/peloton/common/config"
 
 	"github.com/stretchr/testify/assert"
 )

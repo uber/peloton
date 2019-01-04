@@ -6,10 +6,10 @@ import (
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc"
 
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
 
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"github.com/uber/peloton/storage"
+	"github.com/uber/peloton/yarpc/encoding/mpb"
 )
 
 // InitManager initializes the mesosManager

@@ -25,15 +25,15 @@ import (
 	"fmt"
 	"time"
 
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
-	"code.uber.internal/infra/peloton/mimir-lib/generation/orderings"
-	"code.uber.internal/infra/peloton/mimir-lib/generation/placement"
-	"code.uber.internal/infra/peloton/mimir-lib/generation/requirements"
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	source "code.uber.internal/infra/peloton/mimir-lib/model/orderings"
-	mPlacement "code.uber.internal/infra/peloton/mimir-lib/model/placement"
-	mRequirements "code.uber.internal/infra/peloton/mimir-lib/model/requirements"
+	"github.com/uber/peloton/mimir-lib/generation"
+	"github.com/uber/peloton/mimir-lib/generation/orderings"
+	"github.com/uber/peloton/mimir-lib/generation/placement"
+	"github.com/uber/peloton/mimir-lib/generation/requirements"
+	"github.com/uber/peloton/mimir-lib/model/labels"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
+	source "github.com/uber/peloton/mimir-lib/model/orderings"
+	mPlacement "github.com/uber/peloton/mimir-lib/model/placement"
+	mRequirements "github.com/uber/peloton/mimir-lib/model/requirements"
 )
 
 // CreateSchemalessEntityBuilder creates an entity builder for creating entities representing Schemaless databases.

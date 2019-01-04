@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	storemocks "code.uber.internal/infra/peloton/storage/mocks"
+	cachedmocks "github.com/uber/peloton/jobmgr/cached/mocks"
+	storemocks "github.com/uber/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"

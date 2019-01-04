@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/mimir-lib/generation"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 func TestNameOrdering_Generate(t *testing.T) {

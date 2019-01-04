@@ -5,7 +5,7 @@ import (
 	"net"
 	nethttp "net/http"
 
-	"code.uber.internal/infra/peloton/common"
+	"github.com/uber/peloton/common"
 	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/transport/grpc"
 	"go.uber.org/yarpc/transport/http"

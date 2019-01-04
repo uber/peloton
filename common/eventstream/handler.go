@@ -6,9 +6,9 @@ import (
 	"math"
 	"sync"
 
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 
-	"code.uber.internal/infra/peloton/common/cirbuf"
+	"github.com/uber/peloton/common/cirbuf"
 
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"

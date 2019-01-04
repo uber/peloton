@@ -22,8 +22,8 @@
 package placement
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
+	"github.com/uber/peloton/mimir-lib/model/labels"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
 )
 
 // Entity represents an task, process or some entity that should run on a group.

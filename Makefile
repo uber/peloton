@@ -1,7 +1,7 @@
 .PHONY: all placement install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers archiver failure-test-pcluster failure-test-vcluster aurorabridge
 .DEFAULT_GOAL := all
 
-PROJECT_ROOT  = code.uber.internal/infra/peloton
+PROJECT_ROOT  = github.com/uber/peloton
 
 VENDOR = vendor
 

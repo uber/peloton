@@ -10,11 +10,11 @@ import (
 	"strings"
 	"sync"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	util "code.uber.internal/infra/peloton/mesos-go/mesosutil"
-	"code.uber.internal/infra/peloton/mesos-go/upid"
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	util "github.com/uber/peloton/mesos-go/mesosutil"
+	"github.com/uber/peloton/mesos-go/upid"
 )
 
 var (

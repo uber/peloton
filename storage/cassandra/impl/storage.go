@@ -6,8 +6,8 @@ import (
 	"github.com/gocql/gocql"
 	log "github.com/sirupsen/logrus"
 
-	"code.uber.internal/infra/peloton/storage/cassandra/api"
 	"github.com/uber-go/tally"
+	"github.com/uber/peloton/storage/cassandra/api"
 )
 
 // CreateStore is to create clusters and connections

@@ -6,11 +6,11 @@ import (
 	"errors"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	"code.uber.internal/infra/peloton/placement/metrics"
-	"code.uber.internal/infra/peloton/placement/models"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
+	"github.com/uber/peloton/placement/metrics"
+	"github.com/uber/peloton/placement/models"
 
 	log "github.com/sirupsen/logrus"
 )

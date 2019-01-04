@@ -19,8 +19,8 @@
 package mesosutil
 
 import (
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"github.com/golang/protobuf/proto"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 )
 
 func NewMasterInfo(id string, ip, port uint32) *mesos.MasterInfo {

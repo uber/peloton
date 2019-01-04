@@ -24,11 +24,11 @@ package orderings
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	"code.uber.internal/infra/peloton/mimir-lib/model/orderings"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/generation"
+	"github.com/uber/peloton/mimir-lib/model/labels"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
+	"github.com/uber/peloton/mimir-lib/model/orderings"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // Metric creates a custom ordering builder which orders groups based on their value of the given metric type.

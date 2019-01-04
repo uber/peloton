@@ -196,9 +196,9 @@ Peloton
 <h2>Install<a class="headerlink" href="#install" title="Permalink to this headline">¶</a></h2>
 <p>Installations of protoc/proto/protoc-gen-go are required, run bootstrap.sh once so all build dependencies will be installed.  Want to build debian package or docker image ? Follow packaging/README.md</p>
 <p>$ cd $GOPATH</p>
-<p>$ mkdir -p src/code.uber.internal/infra/</p>
-<p>$ git clone <a class="reference external" href="mailto:gitolite&#37;&#52;&#48;code&#46;uber&#46;internal">gitolite<span>&#64;</span>code<span>&#46;</span>uber<span>&#46;</span>internal</a>:infra/peloton src/code.uber.internal/infra/peloton</p>
-<p>$ cd $GOPATH/src/code.uber.internal/infra/peloton</p>
+<p>$ mkdir -p src/github.com/uber/</p>
+<p>$ git clone <a class="reference external" href="mailto:gitolite&#37;&#52;&#48;code&#46;uber&#46;internal">gitolite<span>&#64;</span>code<span>&#46;</span>uber<span>&#46;</span>internal</a>:infra/peloton src/github.com/uber/peloton</p>
+<p>$ cd $GOPATH/src/github.com/uber/peloton</p>
 <p>$ ./bootstrap.sh</p>
 <p>$ glide install</p>
 <p>$ make devtools</p>
@@ -337,7 +337,7 @@ sudo docker inspect -f {{.State.Pid}} &lt;DOCKER_IMAGE_ID&gt;</p>
 <p>2. Run a bash shell in the container:
 nsenter -t &lt;PID&gt; -m -p bash</p>
 <p>3. Setup source code directory symlink:
-mkdir -p /workspace/src/code.uber.internal/infra/
+mkdir -p /workspace/src/github.com/uber/
 ln -s /peloton-install /workspace/src/$(make project-name)</p>
 <p>4. Start the gdb in the bash shell:
 gdb peloton-install/bin/peloton-[hostmgr|jobmgr|resmgr|placement] &lt;PID&gt;</p>

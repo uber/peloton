@@ -3,11 +3,11 @@ package host
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/common/lifecycle"
-	"code.uber.internal/infra/peloton/hostmgr/queue"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"github.com/uber/peloton/common/lifecycle"
+	"github.com/uber/peloton/hostmgr/queue"
+	"github.com/uber/peloton/yarpc/encoding/mpb"
 
-	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
+	host "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
 	log "github.com/sirupsen/logrus"
 )

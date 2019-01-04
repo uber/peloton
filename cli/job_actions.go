@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/query"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	"code.uber.internal/infra/peloton/common/stringset"
-	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/common/stringset"
+	jobmgrtask "github.com/uber/peloton/jobmgr/task"
+	"github.com/uber/peloton/util"
 
 	"github.com/golang/protobuf/ptypes"
 	"go.uber.org/multierr"

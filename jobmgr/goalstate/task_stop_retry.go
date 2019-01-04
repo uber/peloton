@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"code.uber.internal/infra/peloton/common/goalstate"
-	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
+	"github.com/uber/peloton/common/goalstate"
+	jobmgrtask "github.com/uber/peloton/jobmgr/task"
 
 	log "github.com/sirupsen/logrus"
 )

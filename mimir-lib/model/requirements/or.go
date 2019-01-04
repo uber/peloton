@@ -25,7 +25,7 @@ import (
 	"fmt"
 	"strings"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // OrRequirement represents an "or" of a set of sub affinity requirements which can be another or, and, label or relation

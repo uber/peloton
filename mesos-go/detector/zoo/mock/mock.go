@@ -3,10 +3,10 @@ package mock
 import (
 	"sync"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/mesos-go/detector/zoo"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/mock"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/mesos-go/detector/zoo"
 )
 
 type Client struct {

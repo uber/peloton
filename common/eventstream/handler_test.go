@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
-	"code.uber.internal/infra/peloton/common/cirbuf"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	"github.com/uber/peloton/common/cirbuf"
 )
 
 type PurgeEventCollector struct {

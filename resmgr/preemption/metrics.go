@@ -1,7 +1,7 @@
 package preemption
 
 import (
-	"code.uber.internal/infra/peloton/common/scalar"
+	"github.com/uber/peloton/common/scalar"
 
 	"github.com/uber-go/tally"
 )

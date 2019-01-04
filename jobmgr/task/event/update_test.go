@@ -16,23 +16,23 @@ import (
 	"go.uber.org/yarpc/transport/http"
 	"go.uber.org/yarpc/yarpcerrors"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
+	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
-	"code.uber.internal/infra/peloton/common"
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	"github.com/uber/peloton/common"
+	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
 
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
-	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
-	event_mocks "code.uber.internal/infra/peloton/jobmgr/task/event/mocks"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	cachedmocks "github.com/uber/peloton/jobmgr/cached/mocks"
+	goalstatemocks "github.com/uber/peloton/jobmgr/goalstate/mocks"
+	jobmgrtask "github.com/uber/peloton/jobmgr/task"
+	event_mocks "github.com/uber/peloton/jobmgr/task/event/mocks"
+	store_mocks "github.com/uber/peloton/storage/mocks"
 )
 
 const (

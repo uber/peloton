@@ -14,11 +14,11 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
 
-	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	storage_mocks "github.com/uber/peloton/storage/mocks"
+	"github.com/uber/peloton/yarpc/encoding/mpb"
 )
 
 const (

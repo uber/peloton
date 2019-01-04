@@ -1,9 +1,9 @@
 package test
 
 import (
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	cachedmocks "github.com/uber/peloton/jobmgr/cached/mocks"
 
 	"github.com/golang/mock/gomock"
 )

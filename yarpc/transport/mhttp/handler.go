@@ -3,7 +3,7 @@ package mhttp
 import (
 	"reflect"
 
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"github.com/uber/peloton/yarpc/encoding/mpb"
 	"go.uber.org/yarpc/api/transport"
 	"golang.org/x/net/context"
 )

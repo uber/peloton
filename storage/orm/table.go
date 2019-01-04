@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"strings"
 
-	"code.uber.internal/infra/peloton/storage/objects/base"
+	"github.com/uber/peloton/storage/objects/base"
 
 	"go.uber.org/yarpc/yarpcerrors"
 )

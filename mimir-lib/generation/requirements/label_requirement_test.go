@@ -25,10 +25,10 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/mimir-lib/generation"
+	"github.com/uber/peloton/mimir-lib/model/labels"
+	"github.com/uber/peloton/mimir-lib/model/requirements"
 )
 
 func TestLabelRequirementBuilder_Generate(t *testing.T) {

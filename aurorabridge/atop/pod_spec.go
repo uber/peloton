@@ -3,12 +3,12 @@ package atop
 import (
 	"fmt"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
-	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api"
-	"code.uber.internal/infra/peloton/aurorabridge/common"
-	"code.uber.internal/infra/peloton/aurorabridge/label"
+	"github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/aurorabridge/common"
+	"github.com/uber/peloton/aurorabridge/label"
 
 	"go.uber.org/thriftrw/ptr"
 )

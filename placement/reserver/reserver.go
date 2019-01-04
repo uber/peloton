@@ -10,15 +10,15 @@ import (
 	"sync"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
-	"code.uber.internal/infra/peloton/common/async"
-	"code.uber.internal/infra/peloton/common/queue"
-	"code.uber.internal/infra/peloton/placement/config"
-	"code.uber.internal/infra/peloton/placement/hosts"
-	tally_metrics "code.uber.internal/infra/peloton/placement/metrics"
-	"code.uber.internal/infra/peloton/placement/models"
+	"github.com/uber/peloton/common/async"
+	"github.com/uber/peloton/common/queue"
+	"github.com/uber/peloton/placement/config"
+	"github.com/uber/peloton/placement/hosts"
+	tally_metrics "github.com/uber/peloton/placement/metrics"
+	"github.com/uber/peloton/placement/models"
 
 	log "github.com/sirupsen/logrus"
 )

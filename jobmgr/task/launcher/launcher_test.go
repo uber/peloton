@@ -16,21 +16,21 @@ import (
 
 	"go.uber.org/yarpc/yarpcerrors"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	"github.com/uber/peloton/.gen/peloton/private/models"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
-	"code.uber.internal/infra/peloton/common/backoff"
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
-	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/common/backoff"
+	cachedmocks "github.com/uber/peloton/jobmgr/cached/mocks"
+	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
+	jobmgrtask "github.com/uber/peloton/jobmgr/task"
+	store_mocks "github.com/uber/peloton/storage/mocks"
+	"github.com/uber/peloton/util"
 )
 
 const (

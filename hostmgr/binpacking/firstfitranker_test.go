@@ -3,9 +3,9 @@ package binpacking
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
-	"code.uber.internal/infra/peloton/hostmgr/summary"
-	hmutil "code.uber.internal/infra/peloton/hostmgr/util"
+	"github.com/uber/peloton/hostmgr/scalar"
+	"github.com/uber/peloton/hostmgr/summary"
+	hmutil "github.com/uber/peloton/hostmgr/util"
 
 	"github.com/stretchr/testify/suite"
 )

@@ -24,11 +24,11 @@ package orderings
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/mimir-lib/internal"
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/mimir-lib/internal"
+	"github.com/uber/peloton/mimir-lib/model/labels"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 func TestOrderByRelationThenReverseFreeDisk(t *testing.T) {

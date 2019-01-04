@@ -3,12 +3,12 @@ package respool
 import (
 	"strings"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 
-	"code.uber.internal/infra/peloton/common"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"github.com/uber/peloton/common"
 )
 
 // Validator performs validations on the resource config pool

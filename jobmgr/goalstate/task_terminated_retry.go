@@ -4,14 +4,14 @@ import (
 	"context"
 	"time"
 
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
+	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	pbupdate "github.com/uber/peloton/.gen/peloton/api/v0/update"
 
-	"code.uber.internal/infra/peloton/common/goalstate"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
-	updateutil "code.uber.internal/infra/peloton/jobmgr/util/update"
+	"github.com/uber/peloton/common/goalstate"
+	"github.com/uber/peloton/jobmgr/cached"
+	taskutil "github.com/uber/peloton/jobmgr/util/task"
+	updateutil "github.com/uber/peloton/jobmgr/util/update"
 
 	log "github.com/sirupsen/logrus"
 )

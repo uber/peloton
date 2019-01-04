@@ -3,8 +3,8 @@ package mimir
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
 )
 
 func TestDerivation_Calculate(t *testing.T) {

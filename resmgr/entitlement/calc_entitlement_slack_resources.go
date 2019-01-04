@@ -3,10 +3,10 @@ package entitlement
 import (
 	log "github.com/sirupsen/logrus"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	"code.uber.internal/infra/peloton/resmgr/scalar"
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/resmgr/respool"
+	"github.com/uber/peloton/resmgr/scalar"
+	"github.com/uber/peloton/util"
 )
 
 // Setting slack entitlement is a 3 phase process for revocable resources

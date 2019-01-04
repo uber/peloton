@@ -3,7 +3,7 @@ package queue
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 
 	"github.com/stretchr/testify/suite"
 )

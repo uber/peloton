@@ -6,9 +6,9 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/util"
 )
 
 const (

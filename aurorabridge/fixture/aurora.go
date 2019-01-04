@@ -3,8 +3,8 @@ package fixture
 import (
 	"fmt"
 
-	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api"
-	"code.uber.internal/infra/peloton/util/randutil"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/util/randutil"
 	"go.uber.org/thriftrw/ptr"
 )
 

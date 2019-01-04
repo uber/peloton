@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
-	updatesvc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/update"
+	updatesvc "github.com/uber/peloton/.gen/peloton/api/v0/update/svc"
 
 	"go.uber.org/yarpc/yarpcerrors"
 	"gopkg.in/yaml.v2"

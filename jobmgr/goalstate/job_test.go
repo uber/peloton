@@ -3,11 +3,11 @@ package goalstate
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/jobmgr/cached"
 
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	cachedmocks "github.com/uber/peloton/jobmgr/cached/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"

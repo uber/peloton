@@ -6,16 +6,16 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	resource_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
-	"code.uber.internal/infra/peloton/placement/config"
-	"code.uber.internal/infra/peloton/placement/metrics"
-	"code.uber.internal/infra/peloton/placement/models"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
+	resource_mocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
+	"github.com/uber/peloton/placement/config"
+	"github.com/uber/peloton/placement/metrics"
+	"github.com/uber/peloton/placement/models"
 )
 
 const (

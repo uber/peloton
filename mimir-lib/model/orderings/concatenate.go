@@ -22,7 +22,7 @@
 package orderings
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // Concatenate will take a list of orderings and then make a concatenation that will behave like a lexicographic

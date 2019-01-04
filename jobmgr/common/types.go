@@ -1,8 +1,8 @@
 package common
 
 import (
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 )
 
 // JobConfig stores the job configurations in cache which is fetched multiple

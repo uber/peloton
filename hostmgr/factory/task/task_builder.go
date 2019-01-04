@@ -9,15 +9,15 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
-	hostmgrutil "code.uber.internal/infra/peloton/hostmgr/util"
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/hostmgr/scalar"
+	hostmgrutil "github.com/uber/peloton/hostmgr/util"
+	"github.com/uber/peloton/util"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 )
 
 const (

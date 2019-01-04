@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 
-	hostmgr_offer_offerpool_mocks "code.uber.internal/infra/peloton/hostmgr/offer/offerpool/mocks"
+	hostmgr_offer_offerpool_mocks "github.com/uber/peloton/hostmgr/offer/offerpool/mocks"
 )
 
 func TestPrune(t *testing.T) {

@@ -3,7 +3,7 @@ package offerpool
 import (
 	"github.com/uber-go/tally"
 
-	"code.uber.internal/infra/peloton/common/scalar"
+	"github.com/uber/peloton/common/scalar"
 )
 
 // Metrics tracks various metrics at offer pool level.

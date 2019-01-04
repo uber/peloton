@@ -1,8 +1,8 @@
 package update
 
 import (
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
+	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 )
 
 // HasUpdate returns if a job has any update going

@@ -9,19 +9,19 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"code.uber.internal/infra/peloton/common"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/common"
 
-	"code.uber.internal/infra/peloton/common/constraints"
-	"code.uber.internal/infra/peloton/hostmgr/binpacking"
-	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
-	"code.uber.internal/infra/peloton/hostmgr/summary"
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"github.com/uber/peloton/common/constraints"
+	"github.com/uber/peloton/hostmgr/binpacking"
+	hostmgr_mesos "github.com/uber/peloton/hostmgr/mesos"
+	"github.com/uber/peloton/hostmgr/scalar"
+	"github.com/uber/peloton/hostmgr/summary"
+	"github.com/uber/peloton/storage"
+	"github.com/uber/peloton/yarpc/encoding/mpb"
 )
 
 // Pool caches a set of offers received from Mesos master. It is

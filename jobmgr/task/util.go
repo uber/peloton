@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/taskconfig"
-	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/common/taskconfig"
+	taskutil "github.com/uber/peloton/jobmgr/util/task"
+	"github.com/uber/peloton/util"
 
 	log "github.com/sirupsen/logrus"
 )

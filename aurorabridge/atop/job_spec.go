@@ -3,11 +3,11 @@ package atop
 import (
 	"fmt"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api"
-	"code.uber.internal/infra/peloton/aurorabridge/common"
-	"code.uber.internal/infra/peloton/aurorabridge/label"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/aurorabridge/common"
+	"github.com/uber/peloton/aurorabridge/label"
 )
 
 // NewJobSpecFromJobUpdateRequest creates a new JobSpec.

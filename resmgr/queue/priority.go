@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
 	log "github.com/sirupsen/logrus"
 )

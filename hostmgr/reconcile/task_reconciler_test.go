@@ -13,15 +13,15 @@ import (
 	"github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-	"code.uber.internal/infra/peloton/util"
-	mock_mpb "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
+	store_mocks "github.com/uber/peloton/storage/mocks"
+	"github.com/uber/peloton/util"
+	mock_mpb "github.com/uber/peloton/yarpc/encoding/mpb/mocks"
 )
 
 const (

@@ -6,8 +6,8 @@ import (
 	"github.com/gocql/gocql"
 	log "github.com/sirupsen/logrus"
 
-	"code.uber.internal/infra/peloton/storage/cassandra/api"
-	qb "code.uber.internal/infra/peloton/storage/querybuilder"
+	"github.com/uber/peloton/storage/cassandra/api"
+	qb "github.com/uber/peloton/storage/querybuilder"
 )
 
 // ResultSet is the result of a executed query

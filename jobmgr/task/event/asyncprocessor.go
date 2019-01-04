@@ -6,12 +6,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	pbeventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/lifecycle"
+	pbeventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/common/lifecycle"
 
-	"code.uber.internal/infra/peloton/util"
 	log "github.com/sirupsen/logrus"
+	"github.com/uber/peloton/util"
 )
 
 const (

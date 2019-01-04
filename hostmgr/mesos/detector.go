@@ -9,11 +9,11 @@ import (
 	"strings"
 	"sync"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 
-	"code.uber.internal/infra/peloton/mesos-go/detector"
-	_ "code.uber.internal/infra/peloton/mesos-go/detector/zoo" // To register zookeeper based plugin.
-	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
+	"github.com/uber/peloton/mesos-go/detector"
+	_ "github.com/uber/peloton/mesos-go/detector/zoo" // To register zookeeper based plugin.
+	"github.com/uber/peloton/yarpc/transport/mhttp"
 )
 
 const (

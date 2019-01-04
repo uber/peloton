@@ -1,12 +1,12 @@
 package main
 
 import (
-	"code.uber.internal/infra/peloton/common/health"
-	"code.uber.internal/infra/peloton/common/logging"
-	"code.uber.internal/infra/peloton/common/metrics"
-	"code.uber.internal/infra/peloton/jobmgr"
-	"code.uber.internal/infra/peloton/leader"
-	storage "code.uber.internal/infra/peloton/storage/config"
+	"github.com/uber/peloton/common/health"
+	"github.com/uber/peloton/common/logging"
+	"github.com/uber/peloton/common/metrics"
+	"github.com/uber/peloton/jobmgr"
+	"github.com/uber/peloton/leader"
+	storage "github.com/uber/peloton/storage/config"
 )
 
 // Config holds all config to run a peloton-jobmgr server.

@@ -7,22 +7,22 @@ import (
 	"testing"
 	"time"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	mesos_maintenance "code.uber.internal/infra/peloton/.gen/mesos/v1/maintenance"
-	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/util"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	mesos_maintenance "github.com/uber/peloton/.gen/mesos/v1/maintenance"
+	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/util"
 
 	"go.uber.org/yarpc/api/transport"
 	transport_mocks "go.uber.org/yarpc/api/transport/transporttest"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1/quota"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
+	"github.com/uber/peloton/.gen/mesos/v1/quota"
 )
 
 const (

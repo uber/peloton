@@ -4,14 +4,14 @@ import (
 	"context"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
-	"code.uber.internal/infra/peloton/common/backoff"
-	"code.uber.internal/infra/peloton/common/lifecycle"
-	"code.uber.internal/infra/peloton/common/stringset"
-	"code.uber.internal/infra/peloton/resmgr/preemption"
-	rmtask "code.uber.internal/infra/peloton/resmgr/task"
+	"github.com/uber/peloton/common/backoff"
+	"github.com/uber/peloton/common/lifecycle"
+	"github.com/uber/peloton/common/stringset"
+	"github.com/uber/peloton/resmgr/preemption"
+	rmtask "github.com/uber/peloton/resmgr/task"
 
 	"github.com/hashicorp/go-multierror"
 	log "github.com/sirupsen/logrus"

@@ -5,11 +5,11 @@ import (
 	"reflect"
 	"time"
 
-	"code.uber.internal/infra/peloton/common/backoff"
-	pelotoncassandra "code.uber.internal/infra/peloton/storage/cassandra"
-	"code.uber.internal/infra/peloton/storage/cassandra/impl"
-	"code.uber.internal/infra/peloton/storage/objects/base"
-	"code.uber.internal/infra/peloton/storage/orm"
+	"github.com/uber/peloton/common/backoff"
+	pelotoncassandra "github.com/uber/peloton/storage/cassandra"
+	"github.com/uber/peloton/storage/cassandra/impl"
+	"github.com/uber/peloton/storage/objects/base"
+	"github.com/uber/peloton/storage/orm"
 
 	"github.com/gocql/gocql"
 	log "github.com/sirupsen/logrus"

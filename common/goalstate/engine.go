@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"code.uber.internal/infra/peloton/common/async"
-	queue "code.uber.internal/infra/peloton/common/deadline_queue"
+	"github.com/uber/peloton/common/async"
+	queue "github.com/uber/peloton/common/deadline_queue"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"

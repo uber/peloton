@@ -13,17 +13,17 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	pb_respool "github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
-	"code.uber.internal/infra/peloton/common"
-	res_common "code.uber.internal/infra/peloton/resmgr/common"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	"code.uber.internal/infra/peloton/resmgr/scalar"
-	"code.uber.internal/infra/peloton/resmgr/tasktestutil"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"github.com/uber/peloton/common"
+	res_common "github.com/uber/peloton/resmgr/common"
+	"github.com/uber/peloton/resmgr/respool"
+	"github.com/uber/peloton/resmgr/scalar"
+	"github.com/uber/peloton/resmgr/tasktestutil"
+	store_mocks "github.com/uber/peloton/storage/mocks"
 )
 
 type EntitlementCalculatorTestSuite struct {

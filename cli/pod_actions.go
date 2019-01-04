@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	podsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
+	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 )
 
 const (

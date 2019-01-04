@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
-	statelesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api"
-	"code.uber.internal/infra/peloton/aurorabridge/atop"
+	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/aurorabridge/atop"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"

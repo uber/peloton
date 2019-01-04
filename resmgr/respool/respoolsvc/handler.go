@@ -4,15 +4,15 @@ import (
 	"context"
 	"sync"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/lifecycle"
-	rc "code.uber.internal/infra/peloton/resmgr/common"
-	res "code.uber.internal/infra/peloton/resmgr/respool"
-	"code.uber.internal/infra/peloton/resmgr/scalar"
-	"code.uber.internal/infra/peloton/storage"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/common/lifecycle"
+	rc "github.com/uber/peloton/resmgr/common"
+	res "github.com/uber/peloton/resmgr/respool"
+	"github.com/uber/peloton/resmgr/scalar"
+	"github.com/uber/peloton/storage"
 
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"

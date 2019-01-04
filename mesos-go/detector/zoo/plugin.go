@@ -1,7 +1,7 @@
 package zoo
 
 import (
-	"code.uber.internal/infra/peloton/mesos-go/detector"
+	"github.com/uber/peloton/mesos-go/detector"
 )
 
 func init() {

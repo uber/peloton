@@ -24,8 +24,8 @@ package requirements
 import (
 	"fmt"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/labels"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // RelationRequirement represents a requirement on the number of occurrences for a specific relation on a group.

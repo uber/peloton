@@ -3,10 +3,10 @@ package preemption
 import (
 	"sort"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	"code.uber.internal/infra/peloton/resmgr/scalar"
-	rm_task "code.uber.internal/infra/peloton/resmgr/task"
+	"github.com/uber/peloton/resmgr/scalar"
+	rm_task "github.com/uber/peloton/resmgr/task"
 
 	log "github.com/sirupsen/logrus"
 )

@@ -6,17 +6,17 @@ import (
 	"testing"
 	"time"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	taskmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task/mocks"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	taskmocks "github.com/uber/peloton/.gen/peloton/api/v0/task/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 
-	pberr "code.uber.internal/infra/peloton/.gen/peloton/api/v0/errors"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	pberr "github.com/uber/peloton/.gen/peloton/api/v0/errors"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/query"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 )
 
 const (

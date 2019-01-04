@@ -3,7 +3,7 @@ package util
 import (
 	"sort"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 )
 
 // ExtractPortSet is helper function to extract available port set

@@ -1,11 +1,11 @@
 package stores
 
 import (
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/storage/cassandra"
-	storage_config "code.uber.internal/infra/peloton/storage/config"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"github.com/uber/peloton/storage"
+	"github.com/uber/peloton/storage/cassandra"
+	storage_config "github.com/uber/peloton/storage/config"
 )
 
 // MustCreateStore creates a generic store that is needed by peloton

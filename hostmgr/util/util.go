@@ -3,10 +3,10 @@ package util
 import (
 	"strings"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"github.com/uber/peloton/hostmgr/scalar"
 
 	log "github.com/sirupsen/logrus"
 )

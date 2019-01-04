@@ -1,10 +1,10 @@
 package respool
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/resmgr/scalar"
+	"github.com/uber/peloton/resmgr/scalar"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"

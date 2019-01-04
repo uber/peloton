@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"testing"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
-	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
+	host "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/util"
-	mock_mpb "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/util"
+	mock_mpb "github.com/uber/peloton/yarpc/encoding/mpb/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"

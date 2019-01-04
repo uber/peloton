@@ -9,9 +9,9 @@ import (
 	"github.com/gocql/gocql"
 	log "github.com/sirupsen/logrus"
 
-	"code.uber.internal/infra/peloton/storage/cassandra/api"
-	qb "code.uber.internal/infra/peloton/storage/querybuilder"
 	"github.com/uber-go/tally"
+	"github.com/uber/peloton/storage/cassandra/api"
+	qb "github.com/uber/peloton/storage/querybuilder"
 )
 
 // Store represents connections with Cassandra server nodes.

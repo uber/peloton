@@ -8,17 +8,17 @@ import (
 	"sync"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"code.uber.internal/infra/peloton/common/async"
-	"code.uber.internal/infra/peloton/common/queue"
-	"code.uber.internal/infra/peloton/hostmgr/config"
-	"code.uber.internal/infra/peloton/hostmgr/metrics"
-	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
-	"code.uber.internal/infra/peloton/hostmgr/summary"
-	"code.uber.internal/infra/peloton/hostmgr/util"
+	"github.com/uber/peloton/common/async"
+	"github.com/uber/peloton/common/queue"
+	"github.com/uber/peloton/hostmgr/config"
+	"github.com/uber/peloton/hostmgr/metrics"
+	"github.com/uber/peloton/hostmgr/offer/offerpool"
+	"github.com/uber/peloton/hostmgr/scalar"
+	"github.com/uber/peloton/hostmgr/summary"
+	"github.com/uber/peloton/hostmgr/util"
 
 	log "github.com/sirupsen/logrus"
 )

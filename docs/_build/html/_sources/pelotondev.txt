@@ -13,11 +13,11 @@ Installations of protoc/proto/protoc-gen-go are required, run bootstrap.sh once 
 
 $ cd $GOPATH
 
-$ mkdir -p src/code.uber.internal/infra/
+$ mkdir -p src/github.com/uber/
 
-$ git clone gitolite@code.uber.internal:infra/peloton src/code.uber.internal/infra/peloton
+$ git clone gitolite@code.uber.internal:infra/peloton src/github.com/uber/peloton
 
-$ cd $GOPATH/src/code.uber.internal/infra/peloton
+$ cd $GOPATH/src/github.com/uber/peloton
 
 $ ./bootstrap.sh
 
@@ -172,7 +172,7 @@ sudo docker inspect -f {{.State.Pid}} <DOCKER_IMAGE_ID>
 nsenter -t <PID> -m -p bash
 
 3. Setup source code directory symlink:
-mkdir -p /workspace/src/code.uber.internal/infra/
+mkdir -p /workspace/src/github.com/uber/
 ln -s /peloton-install /workspace/src/$(make project-name)
 
 4. Start the gdb in the bash shell:

@@ -4,7 +4,7 @@ set -eo pipefail
 
 # Constants
 [[ $(uname) == Darwin || -n $JENKINS_HOME ]] && docker_cmd='docker' || docker_cmd='sudo docker'
-package_path=code.uber.internal/infra/peloton
+package_path=github.com/uber/peloton
 
 # Builds the peloton docker container with all the dependencies
 build_peloton_container() {

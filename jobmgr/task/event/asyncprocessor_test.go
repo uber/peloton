@@ -11,17 +11,17 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	pbeventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	pbeventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
-	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
-	eventsmocks "code.uber.internal/infra/peloton/jobmgr/task/event/mocks"
-	storemocks "code.uber.internal/infra/peloton/storage/mocks"
+	cachedmocks "github.com/uber/peloton/jobmgr/cached/mocks"
+	goalstatemocks "github.com/uber/peloton/jobmgr/goalstate/mocks"
+	jobmgrtask "github.com/uber/peloton/jobmgr/task"
+	eventsmocks "github.com/uber/peloton/jobmgr/task/event/mocks"
+	storemocks "github.com/uber/peloton/storage/mocks"
 
 	"go.uber.org/yarpc/yarpcerrors"
 )

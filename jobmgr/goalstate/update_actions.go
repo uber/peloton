@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
+	pbupdate "github.com/uber/peloton/.gen/peloton/api/v0/update"
 
-	"code.uber.internal/infra/peloton/common/goalstate"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/common/goalstate"
+	"github.com/uber/peloton/jobmgr/cached"
+	"github.com/uber/peloton/util"
 
 	"go.uber.org/yarpc/yarpcerrors"
 )

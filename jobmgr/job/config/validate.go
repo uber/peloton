@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"reflect"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	"code.uber.internal/infra/peloton/common/taskconfig"
+	"github.com/uber/peloton/common/taskconfig"
 
 	"github.com/hashicorp/go-multierror"
 )

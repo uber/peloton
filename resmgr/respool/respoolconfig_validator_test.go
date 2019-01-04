@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	pb_respool "github.com/uber/peloton/.gen/peloton/api/v0/respool"
 
-	"code.uber.internal/infra/peloton/common"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"github.com/uber/peloton/common"
+	store_mocks "github.com/uber/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"

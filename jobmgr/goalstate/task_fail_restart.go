@@ -5,12 +5,12 @@ import (
 	"math"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	"code.uber.internal/infra/peloton/common/goalstate"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
-	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
+	"github.com/uber/peloton/common/goalstate"
+	"github.com/uber/peloton/jobmgr/cached"
+	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
+	taskutil "github.com/uber/peloton/jobmgr/util/task"
 
 	log "github.com/sirupsen/logrus"
 )

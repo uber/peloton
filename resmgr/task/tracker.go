@@ -3,15 +3,15 @@ package task
 import (
 	"sync"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
-	"code.uber.internal/infra/peloton/common/eventstream"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	"code.uber.internal/infra/peloton/resmgr/scalar"
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/common/eventstream"
+	"github.com/uber/peloton/resmgr/respool"
+	"github.com/uber/peloton/resmgr/scalar"
+	"github.com/uber/peloton/util"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"

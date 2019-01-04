@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strconv"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/util"
 )
 
 var (

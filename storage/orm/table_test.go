@@ -1,7 +1,7 @@
 package orm
 
 import (
-	"code.uber.internal/infra/peloton/storage/objects/base"
+	"github.com/uber/peloton/storage/objects/base"
 )
 
 // ValidObject is a representation of the orm annotations

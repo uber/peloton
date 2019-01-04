@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"code.uber.internal/infra/peloton/leader"
+	"github.com/uber/peloton/leader"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"

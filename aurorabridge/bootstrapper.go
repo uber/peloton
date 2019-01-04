@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool/svc"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/respool/svc"
 	"go.uber.org/yarpc/yarpcerrors"
 )
 

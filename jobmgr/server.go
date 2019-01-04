@@ -3,16 +3,16 @@ package jobmgr
 import (
 	"sync"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/background"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	"code.uber.internal/infra/peloton/jobmgr/goalstate"
-	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
-	"code.uber.internal/infra/peloton/jobmgr/task/event"
-	"code.uber.internal/infra/peloton/jobmgr/task/placement"
-	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
-	"code.uber.internal/infra/peloton/leader"
 	log "github.com/sirupsen/logrus"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/common/background"
+	"github.com/uber/peloton/jobmgr/cached"
+	"github.com/uber/peloton/jobmgr/goalstate"
+	"github.com/uber/peloton/jobmgr/task/deadline"
+	"github.com/uber/peloton/jobmgr/task/event"
+	"github.com/uber/peloton/jobmgr/task/placement"
+	"github.com/uber/peloton/jobmgr/task/preemptor"
+	"github.com/uber/peloton/leader"
 )
 
 // Server contains all structs necessary to run a jobmgr server.

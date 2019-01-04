@@ -7,7 +7,7 @@ import (
 	"github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 
-	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
+	"github.com/uber/peloton/hostmgr/offer/offerpool"
 )
 
 // HostPruner is the interface to prune hosts set to PlacingOffer status for

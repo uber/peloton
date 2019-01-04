@@ -5,10 +5,10 @@ import (
 	"sort"
 	"strings"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 
-	"code.uber.internal/infra/peloton/common/stringset"
+	"github.com/uber/peloton/common/stringset"
 )
 
 // LookupResourcePoolID returns the resource pool ID for a given path

@@ -1,6 +1,6 @@
 package models
 
-import "code.uber.internal/infra/peloton/.gen/mesos/v1"
+import "github.com/uber/peloton/.gen/mesos/v1"
 
 // PortRange represents a modifiable closed-open port range [begin:end[ used when assigning ports to tasks.
 type PortRange struct {

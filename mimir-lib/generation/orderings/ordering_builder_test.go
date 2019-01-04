@@ -27,11 +27,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
-	"code.uber.internal/infra/peloton/mimir-lib/internal"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	mOrderings "code.uber.internal/infra/peloton/mimir-lib/model/orderings"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/generation"
+	"github.com/uber/peloton/mimir-lib/internal"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
+	mOrderings "github.com/uber/peloton/mimir-lib/model/orderings"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 func TestOrderingBuilder_Generate(t *testing.T) {

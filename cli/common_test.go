@@ -10,9 +10,9 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
-	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	respool_mocks "github.com/uber/peloton/.gen/peloton/api/v0/respool/mocks"
 )
 
 type commonTestSuite struct {

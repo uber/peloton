@@ -3,9 +3,9 @@ package binpacking
 import (
 	"sync"
 
-	"code.uber.internal/infra/peloton/common/sorter"
-	"code.uber.internal/infra/peloton/hostmgr/summary"
-	"code.uber.internal/infra/peloton/hostmgr/util"
+	"github.com/uber/peloton/common/sorter"
+	"github.com/uber/peloton/hostmgr/summary"
+	"github.com/uber/peloton/hostmgr/util"
 
 	log "github.com/sirupsen/logrus"
 )

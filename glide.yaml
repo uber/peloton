@@ -1,4 +1,4 @@
-package: code.uber.internal/infra/peloton
+package: github.com/uber/peloton
 ignore:
 - peloton
 - mesos/v1

@@ -8,15 +8,15 @@ import (
 	"strings"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
-	statelesssvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
-	v1alphapeloton "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	v1alphapod "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
-	v1alphaquery "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/query"
-	v1alpharespool "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
+	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
+	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	v1alphapod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	v1alphaquery "github.com/uber/peloton/.gen/peloton/api/v1alpha/query"
+	v1alpharespool "github.com/uber/peloton/.gen/peloton/api/v1alpha/respool"
 
-	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
+	jobmgrtask "github.com/uber/peloton/jobmgr/task"
 
 	"github.com/golang/protobuf/ptypes"
 	"go.uber.org/yarpc/yarpcerrors"

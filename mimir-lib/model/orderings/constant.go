@@ -22,7 +22,7 @@
 package orderings
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // Constant will return a tuple score which will always return a tuple of length one with the given constant.

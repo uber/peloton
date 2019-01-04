@@ -8,19 +8,19 @@ import (
 	"github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
-	"code.uber.internal/infra/peloton/hostmgr/factory/operation"
-	hostmgrmesos "code.uber.internal/infra/peloton/hostmgr/mesos"
-	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
-	"code.uber.internal/infra/peloton/hostmgr/reservation"
-	"code.uber.internal/infra/peloton/hostmgr/summary"
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
+	"github.com/uber/peloton/hostmgr/factory/operation"
+	hostmgrmesos "github.com/uber/peloton/hostmgr/mesos"
+	"github.com/uber/peloton/hostmgr/offer/offerpool"
+	"github.com/uber/peloton/hostmgr/reservation"
+	"github.com/uber/peloton/hostmgr/summary"
+	"github.com/uber/peloton/storage"
+	"github.com/uber/peloton/yarpc/encoding/mpb"
 )
 
 const (

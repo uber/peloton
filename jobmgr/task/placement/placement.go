@@ -10,20 +10,20 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
-	mesosv1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	mesosv1 "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/lifecycle"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
-	"code.uber.internal/infra/peloton/jobmgr/goalstate"
-	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
-	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/common/lifecycle"
+	"github.com/uber/peloton/jobmgr/cached"
+	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
+	"github.com/uber/peloton/jobmgr/goalstate"
+	"github.com/uber/peloton/jobmgr/task/launcher"
+	taskutil "github.com/uber/peloton/jobmgr/util/task"
+	"github.com/uber/peloton/util"
 )
 
 // Config is placement processor specific config

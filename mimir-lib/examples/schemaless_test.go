@@ -24,13 +24,13 @@ package examples
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/mimir-lib/algorithms"
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
-	"code.uber.internal/infra/peloton/mimir-lib/generation/orderings"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	mOrderings "code.uber.internal/infra/peloton/mimir-lib/model/orderings"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/mimir-lib/algorithms"
+	"github.com/uber/peloton/mimir-lib/generation"
+	"github.com/uber/peloton/mimir-lib/generation/orderings"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
+	mOrderings "github.com/uber/peloton/mimir-lib/model/orderings"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 func Test(t *testing.T) {

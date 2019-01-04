@@ -7,13 +7,13 @@ import (
 	"strconv"
 	"strings"
 
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/util"
 
-	pt "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	pc "code.uber.internal/infra/peloton/cli"
+	pt "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	pc "github.com/uber/peloton/cli"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/leader"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/leader"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 )

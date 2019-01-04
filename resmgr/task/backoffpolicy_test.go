@@ -1,8 +1,8 @@
 package task
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"github.com/stretchr/testify/suite"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"testing"
 	"time"
 )

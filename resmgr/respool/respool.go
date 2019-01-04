@@ -5,14 +5,14 @@ import (
 	"math"
 	"sync"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/common"
-	rc "code.uber.internal/infra/peloton/resmgr/common"
-	"code.uber.internal/infra/peloton/resmgr/queue"
-	"code.uber.internal/infra/peloton/resmgr/scalar"
+	"github.com/uber/peloton/common"
+	rc "github.com/uber/peloton/resmgr/common"
+	"github.com/uber/peloton/resmgr/queue"
+	"github.com/uber/peloton/resmgr/scalar"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"

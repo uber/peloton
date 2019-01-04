@@ -3,7 +3,7 @@ package config
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/hostmgr/reconcile"
+	"github.com/uber/peloton/hostmgr/reconcile"
 )
 
 // Config is Host Manager specific configuration

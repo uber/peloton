@@ -3,13 +3,13 @@ package atop
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
-	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api"
-	"code.uber.internal/infra/peloton/aurorabridge/common"
-	"code.uber.internal/infra/peloton/aurorabridge/fixture"
-	"code.uber.internal/infra/peloton/aurorabridge/label"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/aurorabridge/common"
+	"github.com/uber/peloton/aurorabridge/fixture"
+	"github.com/uber/peloton/aurorabridge/label"
 	"go.uber.org/thriftrw/ptr"
 )
 
@@ -24,10 +24,10 @@ func TestNewPodSpec_ContainersResource(t *testing.T) {
 
 	p, err := NewPodSpec(&api.TaskConfig{
 		Resources: []*api.Resource{
-			&api.Resource{NumCpus: &cpu},
-			&api.Resource{RamMb: &mem},
-			&api.Resource{DiskMb: &disk},
-			&api.Resource{NumGpus: &gpu},
+			{NumCpus: &cpu},
+			{RamMb: &mem},
+			{DiskMb: &disk},
+			{NumGpus: &gpu},
 		},
 	})
 	assert.NoError(t, err)
@@ -90,8 +90,8 @@ func TestNewPodSpec_ValueConstraints(t *testing.T) {
 			Constraint: &api.TaskConstraint{
 				Value: &api.ValueConstraint{
 					Values: map[string]struct{}{
-						v1: struct{}{},
-						v2: struct{}{},
+						v1: {},
+						v2: {},
 					},
 				},
 			},

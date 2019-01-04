@@ -1,10 +1,10 @@
 package objects
 
 import (
-	pelotonstore "code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/storage/cassandra"
-	escassandra "code.uber.internal/infra/peloton/storage/connectors/cassandra"
-	"code.uber.internal/infra/peloton/storage/orm"
+	pelotonstore "github.com/uber/peloton/storage"
+	"github.com/uber/peloton/storage/cassandra"
+	escassandra "github.com/uber/peloton/storage/connectors/cassandra"
+	"github.com/uber/peloton/storage/orm"
 
 	"github.com/uber-go/tally"
 )

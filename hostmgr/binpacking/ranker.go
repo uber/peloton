@@ -1,6 +1,6 @@
 package binpacking
 
-import "code.uber.internal/infra/peloton/hostmgr/summary"
+import "github.com/uber/peloton/hostmgr/summary"
 
 // Ranker is the interface for bin packing strategy for ranking the host
 // it returns the list of ordered list of hosts summary. Caller of the

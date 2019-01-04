@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	mesosv1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	mesosv1 "github.com/uber/peloton/.gen/mesos/v1"
+	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	storemocks "code.uber.internal/infra/peloton/storage/mocks"
+	storemocks "github.com/uber/peloton/storage/mocks"
 
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
+	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"

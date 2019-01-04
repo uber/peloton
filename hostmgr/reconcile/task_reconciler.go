@@ -8,13 +8,13 @@ import (
 	"github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	hostmgr_mesos "github.com/uber/peloton/hostmgr/mesos"
+	"github.com/uber/peloton/storage"
+	"github.com/uber/peloton/yarpc/encoding/mpb"
 )
 
 // TaskReconciler is the interface to initiate task reconciliation to mesos master.

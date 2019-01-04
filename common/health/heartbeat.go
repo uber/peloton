@@ -8,7 +8,7 @@ import (
 	"github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 
-	"code.uber.internal/infra/peloton/leader"
+	"github.com/uber/peloton/leader"
 )
 
 // Heartbeat is the heartbeat interface

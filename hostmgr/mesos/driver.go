@@ -14,13 +14,13 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
 
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
-	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
+	"github.com/uber/peloton/storage"
+	"github.com/uber/peloton/util"
+	"github.com/uber/peloton/yarpc/encoding/mpb"
+	"github.com/uber/peloton/yarpc/transport/mhttp"
 )
 
 const (

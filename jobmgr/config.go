@@ -3,11 +3,11 @@ package jobmgr
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/jobmgr/goalstate"
-	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
-	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
-	"code.uber.internal/infra/peloton/jobmgr/task/placement"
-	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
+	"github.com/uber/peloton/jobmgr/goalstate"
+	"github.com/uber/peloton/jobmgr/jobsvc"
+	"github.com/uber/peloton/jobmgr/task/deadline"
+	"github.com/uber/peloton/jobmgr/task/placement"
+	"github.com/uber/peloton/jobmgr/task/preemptor"
 )
 
 // Config is JobManager specific configuration

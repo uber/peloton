@@ -18,8 +18,8 @@ import (
 	"context"
 	"errors"
 
-	qb "code.uber.internal/infra/peloton/storage/querybuilder"
 	"github.com/gocql/gocql"
+	qb "github.com/uber/peloton/storage/querybuilder"
 )
 
 // Statement represents a query against the backend data store.

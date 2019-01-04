@@ -7,15 +7,15 @@ import (
 	"strings"
 	"time"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
 
 	"go.uber.org/yarpc/api/transport"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1/maintenance"
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"github.com/uber/peloton/.gen/mesos/v1/maintenance"
 )
 
 const (

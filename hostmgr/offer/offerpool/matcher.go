@@ -6,10 +6,10 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"code.uber.internal/infra/peloton/common/constraints"
-	"code.uber.internal/infra/peloton/hostmgr/summary"
+	"github.com/uber/peloton/common/constraints"
+	"github.com/uber/peloton/hostmgr/summary"
 )
 
 // effectiveHostLimit is common helper function to determine effective limit on

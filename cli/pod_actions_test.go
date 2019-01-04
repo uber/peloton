@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod"
-	podsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/pod/svc/mocks"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"

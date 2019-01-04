@@ -3,12 +3,12 @@ package task
 import (
 	"strings"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
-	"code.uber.internal/infra/peloton/util"
+	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
+	"github.com/uber/peloton/util"
 )
 
 // GetInitialHealthState returns the initial health State

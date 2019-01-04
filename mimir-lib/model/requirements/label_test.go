@@ -24,9 +24,9 @@ package requirements
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/mimir-lib/model/labels"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 func hostWithoutIssue() (*labels.Bag, *labels.Bag) {

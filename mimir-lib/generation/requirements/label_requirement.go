@@ -24,11 +24,11 @@ package requirements
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
-	gPlacement "code.uber.internal/infra/peloton/mimir-lib/generation/placement"
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	mPlacement "code.uber.internal/infra/peloton/mimir-lib/model/placement"
-	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
+	"github.com/uber/peloton/mimir-lib/generation"
+	gPlacement "github.com/uber/peloton/mimir-lib/generation/placement"
+	"github.com/uber/peloton/mimir-lib/model/labels"
+	mPlacement "github.com/uber/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/requirements"
 )
 
 // NewLabelRequirementBuilder will create a new label requirement builder requiring that the labels occurrences to

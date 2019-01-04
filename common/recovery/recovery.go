@@ -5,12 +5,12 @@ import (
 	"context"
 	"sync"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/storage"
+	"github.com/uber/peloton/util"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"

@@ -24,10 +24,10 @@ package placement_test
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/orderings"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
-	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
+	"github.com/uber/peloton/mimir-lib/model/labels"
+	"github.com/uber/peloton/mimir-lib/model/orderings"
+	"github.com/uber/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/requirements"
 
 	"github.com/stretchr/testify/assert"
 )

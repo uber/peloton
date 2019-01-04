@@ -24,8 +24,8 @@ package requirements
 import (
 	"fmt"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // MetricRequirement represents a hard requirement for placing a Database in a given PlacementGroup which should have

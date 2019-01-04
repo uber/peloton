@@ -5,11 +5,11 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	pb_res "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	"code.uber.internal/infra/peloton/resmgr/scalar"
-	"code.uber.internal/infra/peloton/util"
+	pb_res "github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/resmgr/respool"
+	"github.com/uber/peloton/resmgr/scalar"
+	"github.com/uber/peloton/util"
 )
 
 // Setting total entitlement is a 3 phase process for non-revocable resources

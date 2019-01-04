@@ -24,8 +24,8 @@ package placement
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/generation"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // OrderingBuilder is used to generate new ordering for use in tests and benchmarks.

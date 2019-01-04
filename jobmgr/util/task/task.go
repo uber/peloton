@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"code.uber.internal/infra/peloton/common"
+	"github.com/uber/peloton/common"
 
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"

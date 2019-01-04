@@ -4,12 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/mimir-lib/algorithms"
-	"code.uber.internal/infra/peloton/placement/config"
-	"code.uber.internal/infra/peloton/placement/models"
-	"code.uber.internal/infra/peloton/placement/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/mimir-lib/algorithms"
+	"github.com/uber/peloton/placement/config"
+	"github.com/uber/peloton/placement/models"
+	"github.com/uber/peloton/placement/testutil"
 )
 
 func setupStrategy() *mimir {

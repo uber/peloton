@@ -4,12 +4,12 @@ import (
 	"strconv"
 	"testing"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/common"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/common"
 
-	"code.uber.internal/infra/peloton/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/util"
 )
 
 var (

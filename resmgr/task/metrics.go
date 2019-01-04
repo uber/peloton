@@ -3,10 +3,10 @@ package task
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/common/scalar"
-	"code.uber.internal/infra/peloton/common/statemachine"
 	"github.com/uber-go/tally"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/common/scalar"
+	"github.com/uber/peloton/common/statemachine"
 )
 
 // tags for state transition metrics

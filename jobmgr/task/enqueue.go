@@ -7,11 +7,11 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
-	taskutil "code.uber.internal/infra/peloton/util/task"
+	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
+	taskutil "github.com/uber/peloton/util/task"
 )
 
 // EnqueueGangs enqueues all tasks organized in gangs to respool in resmgr.

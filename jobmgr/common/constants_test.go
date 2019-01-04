@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 
 	"github.com/stretchr/testify/assert"
 )

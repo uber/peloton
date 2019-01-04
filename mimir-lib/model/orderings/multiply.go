@@ -24,7 +24,7 @@ package orderings
 import (
 	"math"
 
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // Multiply will take the tuples of the sub expressions and return a tuple which will have the length of the smallest

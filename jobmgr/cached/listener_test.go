@@ -1,9 +1,9 @@
 package cached
 
 import (
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 )
 
 type FakeJobListener struct {

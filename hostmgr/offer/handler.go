@@ -9,15 +9,15 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
-	"code.uber.internal/infra/peloton/common/background"
-	"code.uber.internal/infra/peloton/hostmgr/binpacking"
-	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
-	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
-	"code.uber.internal/infra/peloton/hostmgr/prune"
-	"code.uber.internal/infra/peloton/hostmgr/reservation/cleaner"
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
+	"github.com/uber/peloton/common/background"
+	"github.com/uber/peloton/hostmgr/binpacking"
+	hostmgr_mesos "github.com/uber/peloton/hostmgr/mesos"
+	"github.com/uber/peloton/hostmgr/offer/offerpool"
+	"github.com/uber/peloton/hostmgr/prune"
+	"github.com/uber/peloton/hostmgr/reservation/cleaner"
+	"github.com/uber/peloton/storage"
+	"github.com/uber/peloton/yarpc/encoding/mpb"
 )
 
 const (

@@ -1,8 +1,8 @@
 package event
 
 import (
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"github.com/uber-go/tally"
+	"github.com/uber/peloton/.gen/mesos/v1"
 )
 
 // Metrics is the struct containing all the counters that track

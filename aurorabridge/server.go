@@ -3,9 +3,9 @@ package aurorabridge
 import (
 	"sync"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/leader"
 	log "github.com/sirupsen/logrus"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/leader"
 )
 
 // Server contains all structs necessary to run a aurorabrdige server.

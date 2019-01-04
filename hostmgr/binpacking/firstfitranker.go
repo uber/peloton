@@ -1,7 +1,7 @@
 package binpacking
 
 import (
-	"code.uber.internal/infra/peloton/hostmgr/summary"
+	"github.com/uber/peloton/hostmgr/summary"
 
 	log "github.com/sirupsen/logrus"
 )

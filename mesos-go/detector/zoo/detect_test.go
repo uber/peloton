@@ -6,16 +6,16 @@ import (
 	"testing"
 	"time"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/mesos-go/detector"
-	mock_zkdetector "code.uber.internal/infra/peloton/mesos-go/detector/zoo/mock"
-	util "code.uber.internal/infra/peloton/mesos-go/mesosutil"
 	"github.com/golang/protobuf/proto"
 	"github.com/samuel/go-zookeeper/zk"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/mesos-go/detector"
+	mock_zkdetector "github.com/uber/peloton/mesos-go/detector/zoo/mock"
+	util "github.com/uber/peloton/mesos-go/mesosutil"
 
-	. "code.uber.internal/infra/peloton/mesos-go/detector/zoo"
+	. "github.com/uber/peloton/mesos-go/detector/zoo"
 )
 
 const (

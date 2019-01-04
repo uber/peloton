@@ -25,8 +25,8 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/mimir-lib/generation"
 )
 
 func TestMetricTemplate_Bind(t *testing.T) {

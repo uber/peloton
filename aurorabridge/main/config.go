@@ -1,11 +1,11 @@
 package main
 
 import (
-	"code.uber.internal/infra/peloton/aurorabridge"
-	"code.uber.internal/infra/peloton/common/health"
-	"code.uber.internal/infra/peloton/common/logging"
-	"code.uber.internal/infra/peloton/common/metrics"
-	"code.uber.internal/infra/peloton/leader"
+	"github.com/uber/peloton/aurorabridge"
+	"github.com/uber/peloton/common/health"
+	"github.com/uber/peloton/common/logging"
+	"github.com/uber/peloton/common/metrics"
+	"github.com/uber/peloton/leader"
 )
 
 // Config defines aurorabridge configuration.

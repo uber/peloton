@@ -5,14 +5,14 @@ import (
 	"sync"
 	"sync/atomic"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
-	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
+	host "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
-	"code.uber.internal/infra/peloton/hostmgr/util"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/hostmgr/scalar"
+	"github.com/uber/peloton/hostmgr/util"
+	"github.com/uber/peloton/yarpc/encoding/mpb"
 
 	log "github.com/sirupsen/logrus"
 	uatomic "github.com/uber-go/atomic"

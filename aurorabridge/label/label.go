@@ -1,7 +1,7 @@
 package label
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 )
 
 // Label defines a label.

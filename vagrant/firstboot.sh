@@ -1,6 +1,6 @@
 #!/bin/bash -ex
 
-PELOTON_HOME=/workspace/src/code.uber.internal/infra/peloton
+PELOTON_HOME=/workspace/src/github.com/uber/peloton
 
 function install_mesos_config {
   modprobe overlay || true
@@ -22,7 +22,7 @@ function setup_workspace {
 
 export GOPATH=/workspace
 export PATH=$PATH:/workspace/bin
-export PELOTON_HOME=/workspace/src/code.uber.internal/infra/peloton
+export PELOTON_HOME=/workspace/src/github.com/uber/peloton
 export UBER_CONFIG_DIR=$PELOTON_HOME/config/master
 export UBER_ENVIRONMENT=development
 

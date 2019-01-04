@@ -5,19 +5,19 @@ import (
 	"fmt"
 	"testing"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
-	hostsvc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc"
-	hostmocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc/mocks"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	hostmgrsvc "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	hostmgrMocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	host "github.com/uber/peloton/.gen/peloton/api/v0/host"
+	hostsvc "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
+	hostmocks "github.com/uber/peloton/.gen/peloton/api/v0/host/svc/mocks"
+	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	hostmgrsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	hostmgrMocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
 	"github.com/golang/mock/gomock"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/util"
 )
 
 type hostmgrActionsTestSuite struct {

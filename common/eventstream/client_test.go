@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/common/lifecycle"
+	"github.com/uber/peloton/common/lifecycle"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/private/eventstream"
 
 	"go.uber.org/yarpc"
 

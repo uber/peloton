@@ -1,14 +1,14 @@
 package cached
 
 import (
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	pbupdate "code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
+	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
+	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	pbupdate "github.com/uber/peloton/.gen/peloton/api/v0/update"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
-	updateutil "code.uber.internal/infra/peloton/jobmgr/util/update"
-	"code.uber.internal/infra/peloton/util"
+	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
+	updateutil "github.com/uber/peloton/jobmgr/util/update"
+	"github.com/uber/peloton/util"
 )
 
 const (

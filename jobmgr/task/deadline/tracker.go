@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	"code.uber.internal/infra/peloton/common/lifecycle"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	jobmgrcommon "code.uber.internal/infra/peloton/jobmgr/common"
-	"code.uber.internal/infra/peloton/jobmgr/goalstate"
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/common/lifecycle"
+	"github.com/uber/peloton/jobmgr/cached"
+	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
+	"github.com/uber/peloton/jobmgr/goalstate"
+	"github.com/uber/peloton/storage"
+	"github.com/uber/peloton/util"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"

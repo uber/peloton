@@ -29,10 +29,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/mesos-go/detector"
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/mesos-go/detector"
 )
 
 const (

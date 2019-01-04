@@ -5,14 +5,14 @@ import (
 	"strconv"
 	"testing"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"code.uber.internal/infra/peloton/util"
 	log "github.com/sirupsen/logrus"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/util"
 
-	hostMocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
+	hostMocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 )
 
 var (

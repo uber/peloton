@@ -1,8 +1,8 @@
 package atop
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/job/stateless"
-	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
 )
 
 // NewUpdateSpec creates a new UpdateSpec.

@@ -3,10 +3,10 @@ package launcher
 import (
 	"errors"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"code.uber.internal/infra/peloton/common/reservation"
-	"code.uber.internal/infra/peloton/util"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/common/reservation"
+	"github.com/uber/peloton/util"
 )
 
 var (

@@ -24,11 +24,11 @@ package requirements
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/mimir-lib/generation"
-	gPlacement "code.uber.internal/infra/peloton/mimir-lib/generation/placement"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	mPlacement "code.uber.internal/infra/peloton/mimir-lib/model/placement"
-	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
+	"github.com/uber/peloton/mimir-lib/generation"
+	gPlacement "github.com/uber/peloton/mimir-lib/generation/placement"
+	"github.com/uber/peloton/mimir-lib/model/metrics"
+	mPlacement "github.com/uber/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/requirements"
 )
 
 // NewMetricRequirementBuilder will create a new metrics requirement builder requiring the metric to fulfill the

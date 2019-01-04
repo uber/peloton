@@ -1,12 +1,12 @@
 package hostmgr
 
 import (
-	"code.uber.internal/infra/peloton/hostmgr/host"
-	"code.uber.internal/infra/peloton/hostmgr/metrics"
-	"code.uber.internal/infra/peloton/hostmgr/queue"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"github.com/uber/peloton/hostmgr/host"
+	"github.com/uber/peloton/hostmgr/metrics"
+	"github.com/uber/peloton/hostmgr/queue"
+	"github.com/uber/peloton/yarpc/encoding/mpb"
 
-	hpb "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
+	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"

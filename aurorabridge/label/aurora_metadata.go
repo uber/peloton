@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"code.uber.internal/infra/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
 )
 
 const _auroraMetadataKey = "aurora_metadata"

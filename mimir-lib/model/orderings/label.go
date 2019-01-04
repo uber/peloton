@@ -22,8 +22,8 @@
 package orderings
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/mimir-lib/model/labels"
+	"github.com/uber/peloton/mimir-lib/model/placement"
 )
 
 // Label will create an ordering which will order groups based on the number of their labels matching

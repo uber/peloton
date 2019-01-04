@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"code.uber.internal/infra/peloton/common"
+	"github.com/uber/peloton/common"
 
 	"github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/zookeeper"

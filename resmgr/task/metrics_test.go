@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/common/statemachine"
-	"code.uber.internal/infra/peloton/resmgr/respool/mocks"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/common/statemachine"
+	"github.com/uber/peloton/resmgr/respool/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"

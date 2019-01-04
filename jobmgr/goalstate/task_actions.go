@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"code.uber.internal/infra/peloton/common/goalstate"
 	log "github.com/sirupsen/logrus"
+	"github.com/uber/peloton/common/goalstate"
 )
 
 // TaskReloadRuntime reloads task runtime into cache.

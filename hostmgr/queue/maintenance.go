@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"code.uber.internal/infra/peloton/common/queue"
-	"code.uber.internal/infra/peloton/common/stringset"
+	"github.com/uber/peloton/common/queue"
+	"github.com/uber/peloton/common/stringset"
 
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/multierr"

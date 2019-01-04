@@ -7,12 +7,12 @@ import (
 	"strings"
 	"sync"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 
-	"code.uber.internal/infra/peloton/common"
-	rc "code.uber.internal/infra/peloton/resmgr/common"
-	"code.uber.internal/infra/peloton/storage"
+	"github.com/uber/peloton/common"
+	rc "github.com/uber/peloton/resmgr/common"
+	"github.com/uber/peloton/storage"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"

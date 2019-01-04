@@ -7,8 +7,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"code.uber.internal/infra/peloton/storage/cassandra/api"
 	"github.com/opentracing/opentracing-go"
+	"github.com/uber/peloton/storage/cassandra/api"
 )
 
 // Decorate invokes all the decorators on the function, usage:

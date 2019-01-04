@@ -5,15 +5,15 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
-	rmock "code.uber.internal/infra/peloton/resmgr/respool/mocks"
-	"code.uber.internal/infra/peloton/resmgr/scalar"
-	rm_task "code.uber.internal/infra/peloton/resmgr/task"
+	rmock "github.com/uber/peloton/resmgr/respool/mocks"
+	"github.com/uber/peloton/resmgr/scalar"
+	rm_task "github.com/uber/peloton/resmgr/task"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"

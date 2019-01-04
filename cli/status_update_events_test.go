@@ -4,16 +4,16 @@ import (
 	"context"
 	"testing"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
-	hostMocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
+	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
+	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	hostMocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 )
 
 type eventStreamTestSuite struct {

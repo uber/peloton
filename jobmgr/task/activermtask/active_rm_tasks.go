@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
+	"github.com/uber/peloton/common"
+	"github.com/uber/peloton/jobmgr/cached"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"

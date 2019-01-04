@@ -8,12 +8,12 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/yarpcerrors"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume/svc"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	volume_svc "github.com/uber/peloton/.gen/peloton/api/v0/volume/svc"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
+	"github.com/uber/peloton/storage"
+	"github.com/uber/peloton/util"
 )
 
 var (

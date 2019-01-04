@@ -3,7 +3,7 @@ package aurorabridge
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v1alpha/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/respool"
 )
 
 // BootstrapConfig defines configuration for boostrapping bridge.

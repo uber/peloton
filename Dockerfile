@@ -5,7 +5,7 @@ FROM golang:$GOLANG_VERSION
 ENV CONFIG_DIR /etc/peloton
 ENV ENVIRONMENT development
 ENV PROTOC_VERSION 3.5.1
-ENV BUILD_DIR /go/src/code.uber.internal/infra/peloton
+ENV BUILD_DIR /go/src/github.com/uber/peloton
 ENV PATH $BUILD_DIR/bin:$PATH
 
 # NOTE: python-dev is required for peloton to be launched with Aurora
@@ -30,8 +30,8 @@ RUN wget https://github.com/google/protobuf/releases/download/v$PROTOC_VERSION/p
   && go get -u github.com/golang/protobuf/protoc-gen-go
 
 # TODO(gabe) update this path when we get a public namespace
-COPY . /go/src/code.uber.internal/infra/peloton
-WORKDIR /go/src/code.uber.internal/infra/peloton
+COPY . /go/src/github.com/uber/peloton
+WORKDIR /go/src/github.com/uber/peloton
 # Copy pip.conf to be able to install internal packages
 RUN mkdir /root/.pip
 COPY ./docker/pip.conf /root/.pip/pip.conf

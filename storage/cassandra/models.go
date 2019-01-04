@@ -6,14 +6,14 @@ import (
 	"strings"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/models"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v0/update"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 
-	"code.uber.internal/infra/peloton/storage/querybuilder"
-	"code.uber.internal/infra/peloton/util"
+	"github.com/uber/peloton/storage/querybuilder"
+	"github.com/uber/peloton/util"
 
 	"github.com/gogo/protobuf/proto"
 	log "github.com/sirupsen/logrus"

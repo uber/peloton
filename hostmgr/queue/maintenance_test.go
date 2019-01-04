@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/common/queue/mocks"
-	"code.uber.internal/infra/peloton/common/stringset"
+	"github.com/uber/peloton/common/queue/mocks"
+	"github.com/uber/peloton/common/stringset"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"

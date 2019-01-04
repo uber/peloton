@@ -5,15 +5,15 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	hostmocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	"github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	hostmocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
-	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	"code.uber.internal/infra/peloton/util"
+	goalstatemocks "github.com/uber/peloton/common/goalstate/mocks"
+	cachedmocks "github.com/uber/peloton/jobmgr/cached/mocks"
+	"github.com/uber/peloton/util"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
