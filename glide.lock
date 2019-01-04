@@ -1,5 +1,5 @@
-hash: afef55585cc3a387ec0c8ef1ed65ae206e500812a582a9a9d50392f55bbe9ce4
-updated: 2018-12-19T13:06:46.021464-08:00
+hash: 3eb779132dc0cfb508c6145819e2b60893c4848c2b3e78fbb346a5ad23df7a92
+updated: 2019-01-03T16:16:27.696501-08:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -48,16 +48,6 @@ imports:
   - pipe
 - name: github.com/getsentry/raven-go
   version: d175f85701dfbf44cb0510114c9943e665e60907
-- name: github.com/gobuffalo/envy
-  version: 801d7253ade1f895f74596b9a96147ed2d3b087e
-- name: github.com/gobuffalo/packd
-  version: eca3b8fd66872a76119b189bbe0f58f776a2a39f
-- name: github.com/gobuffalo/packr
-  version: 679459352e18b4c74274a979d695fe13b68730c1
-  subpackages:
-  - packr
-- name: github.com/gobuffalo/syncx
-  version: 558ac7de985fc4f4057bff27c7bdf99e92fe0750
 - name: github.com/gocql/gocql
   version: 56a164ee9f3135e9cfe725a6d25939f24cb2d044
   subpackages:
@@ -98,8 +88,6 @@ imports:
   version: ed905158d87462226a13fe39ddf685ea65f1c11f
 - name: github.com/jmoiron/sqlx
   version: cac998c4f0959c19c638c523e374fa8e4e0bcfe3
-- name: github.com/joho/godotenv
-  version: 69ed1d913aa885da390dd6de9febf063d101b097
 - name: github.com/lann/builder
   version: f22ce00fd9394014049dad11c244859432bd6820
 - name: github.com/lann/ps
@@ -121,8 +109,6 @@ imports:
   - model
 - name: github.com/m3db/prometheus_procfs
   version: 1878d9fbb537119d24b21ca07effd591627cd160
-- name: github.com/markbates/oncer
-  version: bf2de49a0be218916e69a11d22866e6cd0a560f2
 - name: github.com/mattn/go-colorable
   version: efa589957cd060542a26d2dd7832fd6a6c6c3ade
 - name: github.com/mattn/go-isatty
@@ -161,12 +147,6 @@ imports:
   - model
 - name: github.com/prometheus/procfs
   version: fcdb11ccb4389efb1b210b7ffb623ab71c5fdd60
-- name: github.com/rogpeppe/go-internal
-  version: dd200567cff41f4d66cc45709a8602403c1beeb6
-  subpackages:
-  - modfile
-  - module
-  - semver
 - name: github.com/samuel/go-zookeeper
   version: 059fe7f9753e88663c3437e6e633ad7a95c118b6
   repo: https://github.com/nomis52/go-zookeeper.git
@@ -237,7 +217,10 @@ imports:
 - name: go.uber.org/thriftrw
   version: e3ffd28d09442d072634364b25eb367abc888468
   subpackages:
+  - protocol
+  - protocol/binary
   - version
+  - wire
 - name: go.uber.org/yarpc
   version: 124245f8b772089faceae70bdbc6e7b9f3bcdf0f
   subpackages:

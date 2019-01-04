@@ -6,8 +6,6 @@ ignore:
 excludeDirs:
 - pbgen
 import:
-- package: github.com/gobuffalo/packr/packr
-- package: github.com/gobuffalo/packr
 - package: github.com/golang/protobuf
   version: 8ee79997227bf9b34611aee7946ae64735e6fd93
   subpackages:

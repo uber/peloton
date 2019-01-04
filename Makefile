@@ -47,10 +47,6 @@ endif
 all: gens placement cli hostmgr resmgr jobmgr archiver aurorabridge
 
 cli:
-	go get ./vendor/github.com/gobuffalo/packr/packr
-	go get ./vendor/github.com/gobuffalo/packr
-	packr clean
-	packr
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton cli/main/*.go
 
 jobmgr:

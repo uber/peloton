@@ -21,13 +21,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/uber/peloton/util"
-
 	pt "github.com/uber/peloton/.gen/peloton/api/v0/task"
-	pc "github.com/uber/peloton/cli"
 
+	pc "github.com/uber/peloton/cli"
+	"github.com/uber/peloton/cli/config"
 	"github.com/uber/peloton/common"
 	"github.com/uber/peloton/leader"
+	"github.com/uber/peloton/util"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -75,7 +75,9 @@ var (
 	clusterName = app.Flag(
 		"clusterName",
 		"name of the cluster you want to connect to."+
-			"e.g pit1-preprod01").
+			"To use this feature, please create a "+
+			"clusters.json file or clone it from a cluster config repo into"+
+			" ~/.peloton or /etc/peloton dir").
 		Short('e').
 		Envar("CLUSTER_NAME").
 		String()
@@ -672,7 +674,11 @@ func main() {
 
 	if len(*clusterName) > 0 {
 		var zkInfo string
-		zkInfo, err = pc.GetZkInfoFromClusterName(*clusterName)
+		zkJSONBytes, err := config.ReadZKConfigFile()
+		if err != nil {
+			app.FatalIfError(err, "Fail to get zookeeper info")
+		}
+		zkInfo, err = config.GetZkInfoFromClusterName(*clusterName, zkJSONBytes)
 		if err != nil {
 			app.FatalIfError(err, "Fail to get zk info for this cluster")
 		}
