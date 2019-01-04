@@ -296,9 +296,45 @@ func (h *ServiceHandler) resumeJobUpdate(
 func (h *ServiceHandler) AbortJobUpdate(
 	ctx context.Context,
 	key *api.JobUpdateKey,
-	message *string) (*api.Response, error) {
+	message *string,
+) (*api.Response, error) {
 
-	return nil, errUnimplemented
+	result, err := h.abortJobUpdate(ctx, key, message)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"params": log.Fields{
+				"key":     key,
+				"message": message,
+			},
+			"code":  err.responseCode,
+			"error": err.msg,
+		}).Error("AbortJobUpdate error")
+	}
+	return newResponse(result, err), nil
+}
+
+func (h *ServiceHandler) abortJobUpdate(
+	ctx context.Context,
+	key *api.JobUpdateKey,
+	message *string,
+) (*api.Result, *auroraError) {
+
+	id, err := h.getJobID(ctx, key.GetJob())
+	if err != nil {
+		return nil, auroraErrorf("get job id: %s", err)
+	}
+	v, err := h.getCurrentJobVersion(ctx, id)
+	if err != nil {
+		return nil, auroraErrorf("get current job version: %s", err)
+	}
+	req := &statelesssvc.AbortJobWorkflowRequest{
+		JobId:   id,
+		Version: v,
+	}
+	if _, err := h.jobClient.AbortJobWorkflow(ctx, req); err != nil {
+		return nil, auroraErrorf("abort job workflow: %s", err)
+	}
+	return &api.Result{}, nil
 }
 
 // RollbackJobUpdate rollbacks the specified active job update to the initial state.
