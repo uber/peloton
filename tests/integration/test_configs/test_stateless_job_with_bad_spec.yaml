@@ -1,10 +1,10 @@
-name: TestSpec
+name: TestBadSpec
 owner: testUser
 owningTeam: testTeam
 ldapGroups:
 - team6
 - otto
-description: "A test stateless job for Peloton integration test which health check is blessed to succeed"
+description: "A dummy test stateless job for peloton with bad spec"
 labels:
 - key: testKey0
   value: testVal0
@@ -23,12 +23,11 @@ defaultSpec:
       type: 1
       enabled: true
       initialIntervalSecs: 1
-      intervalSecs: 3
+      intervalSecs: 1
       timeoutSecs: 5
-      maxConsecutiveFailures: 3
+      maxConsecutiveFailures: 5
       commandCheck:
         command: 'ls'
     command:
       shell: true
-      value: 'while :; do echo running and health check would succeed; sleep 10; done'
-
+      value: 'exit 1'

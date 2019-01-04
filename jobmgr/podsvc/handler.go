@@ -195,10 +195,14 @@ func (h *serviceHandler) startPod(
 			return errors.Wrap(err, "fail to get pod runtime")
 		}
 
-		// for pod not going to be killed, ignore the request.
-		if taskRuntime.GetGoalState() != pbtask.TaskState_KILLED {
+		// for pod that goal state is running, ignore the kill request
+		if taskRuntime.GetGoalState() == jobmgrtask.GetDefaultTaskGoalState(jobType) {
+			return nil
+		}
+
+		if taskRuntime.GetGoalState() == pbtask.TaskState_DELETED {
 			return yarpcerrors.InvalidArgumentErrorf(
-				"pod goal state is not killed, ignore the start request")
+				"cannot start a pod going to be deleted")
 		}
 
 		taskConfig, _, err := h.podStore.GetTaskConfig(

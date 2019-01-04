@@ -1,6 +1,3 @@
-from peloton_client.pbgen.peloton.api.v0.task import task_pb2
-
-
 def assert_task_mesos_id_changed(old_task_infos, new_task_infos):
     """""
     assert if the mesos ids in old_task_infos change in
@@ -37,9 +34,40 @@ def assert_task_config_equal(old_instance_config, new_instance_config):
     assert old_instance_config.command.value == new_instance_config.command.value
 
 
-def assert_tasks_failed(task_infos):
+def assert_pod_spec_changed(old_pod_spec, new_pod_spec):
     """
-    assert that all instances are in FAILED state
+    assert that the command in the pod spec is different
     """
-    for instance_id, task_info in task_infos.items():
-        assert task_info.runtime.state == task_pb2.FAILED
+    assert old_pod_spec.containers[0].command.value != \
+        new_pod_spec.containers[0].command.value
+
+
+def assert_pod_spec_equal(old_pod_spec, new_pod_spec):
+    """
+    assert that the command in the pod spec is same
+    """
+    assert old_pod_spec.containers[0].command.value == \
+        new_pod_spec.containers[0].command.value
+
+
+def assert_pod_id_changed(old_pod_infos, new_pod_infos):
+    """""
+    assert if the pod id in old_pod_infos change in
+    new_pod_infos
+    """
+    # TODO: find a better way to get pod name
+    old_pod_dict = {}
+    new_pod_dict = {}
+
+    for old_pod_info in old_pod_infos:
+        split_index = old_pod_info.status.pod_id.value.rfind('-')
+        pod_name = old_pod_info.status.pod_id.value[:split_index]
+        old_pod_dict[pod_name] = old_pod_info.status.pod_id.value
+
+    for new_pod_info in new_pod_infos:
+        split_index = new_pod_info.status.pod_id.value.rfind('-')
+        pod_name = new_pod_info.status.pod_id.value[:split_index]
+        new_pod_dict[pod_name] = new_pod_info.status.pod_id.value
+
+    for pod_name, pod_id in old_pod_dict.items():
+        assert not new_pod_dict[pod_name] == pod_id

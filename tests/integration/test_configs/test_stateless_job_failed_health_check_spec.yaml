@@ -19,7 +19,7 @@ defaultSpec:
       cpuLimit: 0.1
       memLimitMb: 2.0
       diskLimitMb: 10
-    liveness_check:
+    livenessCheck:
       type: 1
       enabled: true
       initialIntervalSecs: 1

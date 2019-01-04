@@ -14,7 +14,7 @@ from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 from peloton_client.pbgen.peloton.api.v1alpha.job.stateless import \
     stateless_pb2 as stateless
 from peloton_client.pbgen.peloton.api.v1alpha.job.stateless.svc import \
-    stateless_svc_pb2 as statelesssvc
+    stateless_svc_pb2 as stateless_svc
 from peloton_client.pbgen.peloton.api.v1alpha.pod.svc import pod_svc_pb2 as pod_svc
 from peloton_client.pbgen.peloton.api.v1alpha.pod import pod_pb2 as pod
 
@@ -51,7 +51,7 @@ class StatelessJob(object):
         respool_id = self.pool.ensure_exists()
 
         self.job_spec.respool_id.value = respool_id
-        request = statelesssvc.CreateJobRequest(
+        request = stateless_svc.CreateJobRequest(
             spec=self.job_spec,
         )
         resp = self.client.stateless_svc.CreateJob(
@@ -138,7 +138,7 @@ class StatelessJob(object):
         failed_state = 'JOB_STATE_' + failed_state
         while attempts < self.config.max_retry_attempts:
             try:
-                request = statelesssvc.GetJobRequest(
+                request = stateless_svc.GetJobRequest(
                     job_id=v1alpha_peloton.JobID(value=self.job_id),
                 )
                 resp = self.client.stateless_svc.GetJob(
@@ -229,7 +229,7 @@ class StatelessJob(object):
         """
         :return: the configuration and runtime status of a job.
         """
-        request = statelesssvc.GetJobRequest(
+        request = stateless_svc.GetJobRequest(
             job_id=v1alpha_peloton.JobID(value=self.job_id),
         )
         resp = self.client.stateless_svc.GetJob(
@@ -317,3 +317,79 @@ class StatelessJob(object):
                      self.job_id)
             log.info('current_state:%s', state)
             assert False
+
+    def wait_for_workflow_state(self, goal_state='SUCCEEDED', failed_state='FAILED'):
+        """
+        Waits for the job workflow to reach a particular state
+        :param goal_state: The state to reach
+        :param failed_state: The failed state of the job
+        """
+        state = ''
+        attempts = 0
+        start = time.time()
+        log.info('%s waiting for state workflow %s', self.job_id, goal_state)
+        state_transition_failure = False
+        # convert the name from v0 state name to v1 alpha state name,
+        # so the function signature can be shared between the apis
+        goal_state = 'WORKFLOW_STATE_' + goal_state
+        failed_state = 'WORKFLOW_STATE_' + failed_state
+        while attempts < self.config.max_retry_attempts:
+            try:
+                request = stateless_svc.GetJobRequest(
+                    job_id=v1alpha_peloton.JobID(value=self.job_id),
+                )
+                resp = self.client.stateless_svc.GetJob(
+                    request,
+                    metadata=self.client.jobmgr_metadata,
+                    timeout=self.config.rpc_timeout_sec,
+                )
+                status = resp.workflow_info.status
+                new_state = stateless.WorkflowState.Name(status.state)
+                if state != new_state:
+                    log.info('%s transitioned to state %s', self.job_id,
+                             new_state)
+                state = new_state
+                if state == goal_state:
+                    break
+                # If we assert here, we will log the exception,
+                # and continue with the finally block. Set a flag
+                # here to indicate failure and then break the loop
+                # in the finally block
+                if state == failed_state:
+                    state_transition_failure = True
+            except Exception as e:
+                log.warn(e)
+            finally:
+                if state_transition_failure:
+                    break
+                time.sleep(self.config.sleep_time_sec)
+                attempts += 1
+
+        if state_transition_failure:
+            log.info('goal_state:%s current_state:%s attempts: %s',
+                     goal_state, state, str(attempts))
+            assert False
+
+        if attempts == self.config.max_retry_attempts:
+            log.info('%s max attempts reached to wait for goal state',
+                     self.job_id)
+            log.info('goal_state:%s current_state:%s', goal_state, state)
+            assert False
+
+        end = time.time()
+        elapsed = end - start
+        log.info('%s state transition took %s seconds', self.job_id, elapsed)
+
+    def query_pods(self):
+        """
+        :return: list of pod info of all matching pod
+        """
+        request = stateless_svc.QueryPodsRequest(
+            job_id=v1alpha_peloton.JobID(value=self.job_id),
+        )
+        resp = self.client.stateless_svc.QueryPods(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        return resp.pods

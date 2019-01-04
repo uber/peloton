@@ -15,7 +15,34 @@ class Pod(object):
         self.instance_id = instance_id
 
     def get_pod_status(self):
-        return self.stateless_job.get_pod_status(self.instance_id)
+        """
+        Get status of a pod
+        """
+        return self.get_pod_info().status
+
+    def get_pod_spec(self):
+        """
+        Get spec of a pod
+        """
+        return self.get_pod_info().spec
+
+    def get_pod_info(self):
+        """
+        Get info of a pod
+        """
+        pod_name = self.stateless_job.job_id + '-' + str(self.instance_id)
+        request = pod_svc.GetPodRequest(
+            pod_name=v1alpha_peloton.PodName(value=pod_name),
+            status_only=False,
+        )
+
+        resp = self.stateless_job.client.pod_svc.GetPod(
+            request,
+            metadata=self.stateless_job.client.jobmgr_metadata,
+            timeout=self.stateless_job.config.rpc_timeout_sec,
+        )
+
+        return resp.current
 
     def get_pod_events(self):
         pod_name = self.stateless_job.job_id + '-' + str(self.instance_id)
