@@ -354,14 +354,14 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		AddActiveJob(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	suite.mockJobStore.EXPECT().
-		GetJobRuntime(context.Background(), &jobs[0]).
+		GetJobRuntime(context.Background(), jobs[0].GetValue()).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_RUNNING,
 			GoalState: job.JobState_SUCCEEDED,
 		}, nil)
 
 	suite.mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), &jobs[0]).
+		GetJobConfig(context.Background(), jobs[0].GetValue()).
 		Return(suite.createJob(&jobs[0], 10, 1), &models.ConfigAddOn{}, nil)
 	suite.mockTaskStore.EXPECT().
 		GetTasksForJobByRange(context.Background(), &jobs[0], &task.InstanceRange{
@@ -371,14 +371,14 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		Return(suite.createTasks(&jobs[0], 9, task.TaskState_INITIALIZED), nil)
 
 	suite.mockJobStore.EXPECT().
-		GetJobRuntime(context.Background(), &jobs[1]).
+		GetJobRuntime(context.Background(), jobs[1].GetValue()).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_RUNNING,
 			GoalState: job.JobState_SUCCEEDED,
 		}, nil)
 
 	suite.mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), &jobs[1]).
+		GetJobConfig(context.Background(), jobs[1].GetValue()).
 		Return(suite.createJob(&jobs[1], 10, 10), &models.ConfigAddOn{}, nil)
 	suite.mockTaskStore.EXPECT().
 		GetTasksForJobByRange(context.Background(), &jobs[1], &task.InstanceRange{
@@ -388,14 +388,14 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		Return(suite.createTasks(&jobs[1], 9, task.TaskState_PENDING), nil)
 
 	suite.mockJobStore.EXPECT().
-		GetJobRuntime(context.Background(), &jobs[2]).
+		GetJobRuntime(context.Background(), jobs[2].GetValue()).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_RUNNING,
 			GoalState: job.JobState_SUCCEEDED,
 		}, nil)
 
 	suite.mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), &jobs[2]).
+		GetJobConfig(context.Background(), jobs[2].GetValue()).
 		Return(suite.createJob(&jobs[2], 10, 1), &models.ConfigAddOn{}, nil)
 	suite.mockTaskStore.EXPECT().
 		GetTasksForJobByRange(context.Background(), &jobs[2], &task.InstanceRange{
@@ -405,14 +405,14 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		Return(suite.createTasks(&jobs[2], 9, task.TaskState_RUNNING), nil)
 
 	suite.mockJobStore.EXPECT().
-		GetJobRuntime(context.Background(), &jobs[3]).
+		GetJobRuntime(context.Background(), jobs[3].GetValue()).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_RUNNING,
 			GoalState: job.JobState_SUCCEEDED,
 		}, nil)
 
 	suite.mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), &jobs[3]).
+		GetJobConfig(context.Background(), jobs[3].GetValue()).
 		Return(suite.createJob(&jobs[3], 10, 1), &models.ConfigAddOn{}, nil)
 	suite.mockTaskStore.EXPECT().
 		GetTasksForJobByRange(context.Background(), &jobs[3], &task.InstanceRange{
@@ -468,7 +468,7 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 		AddActiveJob(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	suite.mockJobStore.EXPECT().
-		GetJobRuntime(context.Background(), &jobs[0]).
+		GetJobRuntime(context.Background(), jobs[0].GetValue()).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_PENDING,
 			GoalState: job.JobState_SUCCEEDED,
@@ -479,7 +479,7 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 	jobConfig.RespoolID = &peloton.ResourcePoolID{Value: "respool10"}
 
 	suite.mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), &jobs[0]).
+		GetJobConfig(context.Background(), jobs[0].GetValue()).
 		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.mockTaskStore.EXPECT().

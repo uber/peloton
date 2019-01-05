@@ -234,6 +234,7 @@ func (suite *DriverTestSuite) TestRecoverJobStates() {
 		job.JobState_SUCCEEDED,
 		job.JobState_FAILED,
 		job.JobState_KILLED,
+		job.JobState_DELETED,
 	}
 
 	jobStatesToRecover := append(serviceJobStatesToRecover, batchJobStatesToRecover...)
@@ -273,14 +274,14 @@ func (suite *DriverTestSuite) prepareTestSyncDB(jobType job.JobType) {
 		Return([]*peloton.JobID{suite.jobID}, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_RUNNING,
 			GoalState: job.JobState_SUCCEEDED,
 		}, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().
@@ -393,14 +394,14 @@ func (suite *DriverTestSuite) TestSyncFromDBWithMaxRunningInstancesSLA() {
 		Return([]*peloton.JobID{suite.jobID}, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_RUNNING,
 			GoalState: job.JobState_SUCCEEDED,
 		}, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().
@@ -473,14 +474,14 @@ func (suite *DriverTestSuite) TestInitializedJobSyncFromDB() {
 		Return([]*peloton.JobID{suite.jobID}, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_INITIALIZED,
 			GoalState: job.JobState_SUCCEEDED,
 		}, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().
@@ -546,7 +547,7 @@ func (suite *DriverTestSuite) TestSyncFromDBRecoverUpdate() {
 		Return([]*peloton.JobID{suite.jobID}, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_RUNNING,
 			GoalState: job.JobState_SUCCEEDED,
@@ -554,7 +555,7 @@ func (suite *DriverTestSuite) TestSyncFromDBRecoverUpdate() {
 		}, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().

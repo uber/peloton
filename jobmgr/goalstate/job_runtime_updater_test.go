@@ -2088,7 +2088,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 		Times(2)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.taskStore.EXPECT().
@@ -2136,7 +2136,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 		Return(suite.cachedJob)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -2161,7 +2161,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 		Return(suite.cachedJob)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().

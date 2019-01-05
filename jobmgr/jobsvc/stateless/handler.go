@@ -265,7 +265,7 @@ func (h *serviceHandler) ReplaceJob(
 	}
 	prevJobConfig, prevConfigAddOn, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
-		jobID,
+		jobID.GetValue(),
 		jobRuntime.GetConfigurationVersion())
 	if err != nil {
 		return nil, err
@@ -362,7 +362,7 @@ func (h *serviceHandler) RestartJob(
 
 	jobConfig, configAddOn, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
-		jobID,
+		jobID.GetValue(),
 		runtime.GetConfigurationVersion(),
 	)
 	if err != nil {
@@ -618,7 +618,8 @@ func (h *serviceHandler) StartJob(
 
 func (h *serviceHandler) StopJob(
 	ctx context.Context,
-	req *svc.StopJobRequest) (resp *svc.StopJobResponse, err error) {
+	req *svc.StopJobRequest,
+) (resp *svc.StopJobResponse, err error) {
 	defer func() {
 		if err != nil {
 			log.WithField("request", req).
@@ -632,15 +633,13 @@ func (h *serviceHandler) StopJob(
 			WithField("response", resp).
 			Info("JobSVC.StopJob succeeded")
 	}()
+	cachedJob := h.jobFactory.AddJob(&peloton.JobID{
+		Value: req.GetJobId().GetValue(),
+	})
 
-	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
-
-	var jobRuntime *pbjob.RuntimeInfo
 	count := 0
-	cachedJob := h.jobFactory.AddJob(pelotonJobID)
-
 	for {
-		jobRuntime, err = cachedJob.GetRuntime(ctx)
+		jobRuntime, err := cachedJob.GetRuntime(ctx)
 		if err != nil {
 			return nil, errors.Wrap(err, "fail to get runtime")
 		}
@@ -667,11 +666,11 @@ func (h *serviceHandler) StopJob(
 			}
 			// it is uncertain whether job runtime is updated successfully,
 			// let goal state engine figure it out.
-			h.goalStateDriver.EnqueueJob(pelotonJobID, time.Now())
+			h.goalStateDriver.EnqueueJob(cachedJob.ID(), time.Now())
 			return nil, errors.Wrap(err, "fail to update job runtime")
 		}
 
-		h.goalStateDriver.EnqueueJob(pelotonJobID, time.Now())
+		h.goalStateDriver.EnqueueJob(cachedJob.ID(), time.Now())
 		return &svc.StopJobResponse{
 			Version: jobutil.GetJobEntityVersion(
 				jobRuntime.GetConfigurationVersion(),
@@ -684,8 +683,56 @@ func (h *serviceHandler) StopJob(
 
 func (h *serviceHandler) DeleteJob(
 	ctx context.Context,
-	req *svc.DeleteJobRequest) (*svc.DeleteJobResponse, error) {
-	return &svc.DeleteJobResponse{}, nil
+	req *svc.DeleteJobRequest,
+) (resp *svc.DeleteJobResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.WithField("request", req).
+				WithError(err).
+				Warn("JobSVC.DeleteJob failed")
+			err = handlerutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			Info("JobSVC.DeleteJob succeeded")
+	}()
+	cachedJob := h.jobFactory.AddJob(&peloton.JobID{
+		Value: req.GetJobId().GetValue(),
+	})
+
+	count := 0
+	for {
+		runtime, err := cachedJob.GetRuntime(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get job runtime")
+		}
+
+		if !req.GetForce() && runtime.GetGoalState() != pbjob.JobState_KILLED {
+			return nil, yarpcerrors.AbortedErrorf("job is not in terminal state")
+		}
+
+		runtime.GoalState = pbjob.JobState_DELETED
+		runtime.DesiredStateVersion++
+
+		if runtime, err = cachedJob.CompareAndSetRuntime(ctx, runtime); err != nil {
+			if err == jobmgrcommon.UnexpectedVersionError {
+				// concurrency error; retry MaxConcurrencyErrorRetry times
+				count = count + 1
+				if count < jobmgrcommon.MaxConcurrencyErrorRetry {
+					continue
+				}
+			}
+			// it is uncertain whether job runtime is updated successfully,
+			// let goal state engine figure it out.
+			h.goalStateDriver.EnqueueJob(cachedJob.ID(), time.Now())
+			return nil, errors.Wrap(err, "fail to update job runtime")
+		}
+
+		h.goalStateDriver.EnqueueJob(cachedJob.ID(), time.Now())
+		return &svc.DeleteJobResponse{}, nil
+	}
 }
 
 func (h *serviceHandler) getJobSummary(
@@ -726,7 +773,7 @@ func (h *serviceHandler) getJobConfigurationWithVersion(
 
 	jobConfig, _, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
-		&peloton.JobID{Value: jobID.GetValue()},
+		jobID.GetValue(),
 		configVersion,
 	)
 	if err != nil {
@@ -770,7 +817,7 @@ func (h *serviceHandler) GetJob(
 	// Get the latest configuration and runtime
 	jobConfig, _, err := h.jobStore.GetJobConfig(
 		ctx,
-		&peloton.JobID{Value: req.GetJobId().GetValue()},
+		req.GetJobId().GetValue(),
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get job spec")
@@ -784,7 +831,7 @@ func (h *serviceHandler) GetJob(
 
 	jobRuntime, err := h.jobStore.GetJobRuntime(
 		ctx,
-		&peloton.JobID{Value: req.GetJobId().GetValue()},
+		req.GetJobId().GetValue(),
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get job status")
@@ -932,7 +979,7 @@ func (h *serviceHandler) GetJobUpdate(
 	// Get Job Spec
 	jobConfig, _, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
-		jobID,
+		jobID.GetValue(),
 		updateModel.GetJobConfigVersion())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get job config")
@@ -941,7 +988,7 @@ func (h *serviceHandler) GetJobUpdate(
 	// Get Prev Job Spec
 	prevJobConfig, _, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
-		jobID,
+		jobID.GetValue(),
 		updateModel.GetPrevJobConfigVersion())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get previous job config")
@@ -985,7 +1032,7 @@ func (h *serviceHandler) QueryPods(
 
 	_, _, err = h.jobStore.GetJobConfig(
 		ctx,
-		pelotonJobID,
+		req.GetJobId().GetValue(),
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to find job")
@@ -1225,7 +1272,7 @@ func (h *serviceHandler) GetReplaceJobDiff(
 
 	prevJobConfig, _, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
-		jobID,
+		jobID.GetValue(),
 		jobRuntime.GetConfigurationVersion())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get previous configuration")
@@ -1279,12 +1326,12 @@ func (h *serviceHandler) RefreshJob(
 
 	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
 
-	jobConfig, configAddOn, err := h.jobStore.GetJobConfig(ctx, pelotonJobID)
+	jobConfig, configAddOn, err := h.jobStore.GetJobConfig(ctx, req.GetJobId().GetValue())
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to get job config")
 	}
 
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, pelotonJobID)
+	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.GetJobId().GetValue())
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to get job runtime")
 	}

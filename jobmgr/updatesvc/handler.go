@@ -121,7 +121,7 @@ func (h *serviceHandler) CreateUpdate(
 	}
 
 	// Validate that the job does exist
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
+	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID.GetValue())
 	if err != nil {
 		h.metrics.UpdateCreateFail.Inc(1)
 		return nil, yarpcerrors.NotFoundErrorf("job not found")
@@ -136,7 +136,7 @@ func (h *serviceHandler) CreateUpdate(
 	jobConfig := req.GetJobConfig()
 
 	// Get previous job configuration
-	prevJobConfig, prevConfigAddOn, err := h.jobStore.GetJobConfig(ctx, jobID)
+	prevJobConfig, prevConfigAddOn, err := h.jobStore.GetJobConfig(ctx, jobID.GetValue())
 	if err != nil {
 		h.metrics.UpdateCreateFail.Inc(1)
 		return nil, err

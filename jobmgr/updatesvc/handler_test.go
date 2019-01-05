@@ -150,12 +150,12 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 		Return(suite.cachedJob)
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobRuntime, nil)
 
 	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobConfig, configAddOn, nil)
 
 	suite.cachedJob.EXPECT().
@@ -196,11 +196,11 @@ func (suite *UpdateSvcTestSuite) TestAddInstancesSuccess() {
 		Return(suite.cachedJob)
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobRuntime, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -245,11 +245,11 @@ func (suite *UpdateSvcTestSuite) TestUpdateLabelsSuccess() {
 		Return(suite.cachedJob)
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobRuntime, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -302,7 +302,7 @@ func (suite *UpdateSvcTestSuite) TestCreateBadJobUUID() {
 // in the create update request
 func (suite *UpdateSvcTestSuite) TestCreateFailJobNotFound() {
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(nil, fmt.Errorf("fake db error"))
 	_, err := suite.h.CreateUpdate(
 		context.Background(),
@@ -321,7 +321,7 @@ func (suite *UpdateSvcTestSuite) TestCreateFailJobNotFound() {
 func (suite *UpdateSvcTestSuite) TestCreateInitializedJob() {
 	suite.jobRuntime.State = job.JobState_INITIALIZED
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobRuntime, nil)
 
 	_, err := suite.h.CreateUpdate(
@@ -342,11 +342,11 @@ func (suite *UpdateSvcTestSuite) TestCreateInitializedJob() {
 // from DB during update create request
 func (suite *UpdateSvcTestSuite) TestCreateGetJobConfigFail() {
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobRuntime, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(nil, nil, fmt.Errorf("fake db error"))
 
 	_, err := suite.h.CreateUpdate(
@@ -365,11 +365,11 @@ func (suite *UpdateSvcTestSuite) TestCreateBatchJob() {
 	suite.jobConfig.Type = job.JobType_BATCH
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobRuntime, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	_, err := suite.h.CreateUpdate(
@@ -392,11 +392,11 @@ func (suite *UpdateSvcTestSuite) TestCreateMissingChangeLog() {
 	suite.newJobConfig.ChangeLog = nil
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobRuntime, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	_, err := suite.h.CreateUpdate(
@@ -419,11 +419,11 @@ func (suite *UpdateSvcTestSuite) TestCreateChangeJobType() {
 	suite.newJobConfig.Type = job.JobType_BATCH
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobRuntime, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	_, err := suite.h.CreateUpdate(
@@ -450,12 +450,12 @@ func (suite *UpdateSvcTestSuite) TestCreateReduceInstanceCount() {
 		Return(suite.cachedJob)
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobRuntime, nil)
 
 	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobConfig, configAddOn, nil)
 
 	suite.cachedJob.EXPECT().
@@ -497,11 +497,11 @@ func (suite *UpdateSvcTestSuite) TestCreateChangeRespoolID() {
 	}
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobRuntime, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	_, err := suite.h.CreateUpdate(
@@ -526,11 +526,11 @@ func (suite *UpdateSvcTestSuite) TestCreateAddUpdateFail() {
 		Return(suite.cachedJob)
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobRuntime, nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().

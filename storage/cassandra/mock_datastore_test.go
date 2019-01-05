@@ -92,17 +92,17 @@ func (suite *MockDatastoreTestSuite) TestDataStoreDeleteJob() {
 	// Failure test for GetJobConfig
 	suite.mockedDataStore.EXPECT().Execute(ctx, gomock.Any()).
 		Return(nil, errors.New("my-error"))
-	suite.Error(suite.store.DeleteJob(ctx, jobID))
+	suite.Error(suite.store.DeleteJob(ctx, jobID.GetValue()))
 }
 
 // TestDataStoreFailureGetJobConfig tests datastore failures in getting job cfg
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobConfig() {
 	_, _, err := suite.store.GetJobConfigWithVersion(
-		context.Background(), suite.testJobID, 0)
+		context.Background(), suite.testJobID.GetValue(), 0)
 	suite.Error(err)
 
 	_, _, err = suite.store.GetJobConfig(
-		context.Background(), suite.testJobID)
+		context.Background(), suite.testJobID.GetValue())
 	suite.Error(err)
 
 }
@@ -117,7 +117,7 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobRuntime() {
 		&job.JobConfig{}))
 
 	_, err := suite.store.GetJobRuntime(
-		context.Background(), suite.testJobID)
+		context.Background(), suite.testJobID.GetValue())
 	suite.Error(err)
 }
 
@@ -152,7 +152,7 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJob() {
 	suite.Error(err)
 
 	_, err = suite.store.GetMaxJobConfigVersion(
-		context.Background(), suite.testJobID)
+		context.Background(), suite.testJobID.GetValue())
 	suite.Error(err)
 }
 

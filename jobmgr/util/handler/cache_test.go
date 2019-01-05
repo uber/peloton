@@ -87,7 +87,7 @@ func (suite *HandlerCacheTestSuite) TestGetJobRuntime_CacheHitWithErr() {
 
 func (suite *HandlerCacheTestSuite) TestGetJobRuntime_CacheMiss() {
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(nil)
-	suite.jobStore.EXPECT().GetJobRuntime(gomock.Any(), suite.jobID).
+	suite.jobStore.EXPECT().GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.runtimeInfo, nil)
 	runtime, err := GetJobRuntimeWithoutFillingCache(
 		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)
@@ -97,7 +97,7 @@ func (suite *HandlerCacheTestSuite) TestGetJobRuntime_CacheMiss() {
 
 func (suite *HandlerCacheTestSuite) TestGetJobRuntime_CacheMissWithErr() {
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(nil)
-	suite.jobStore.EXPECT().GetJobRuntime(gomock.Any(), suite.jobID).
+	suite.jobStore.EXPECT().GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(nil, fmt.Errorf("db error"))
 	runtime, err := GetJobRuntimeWithoutFillingCache(
 		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)
@@ -127,7 +127,7 @@ func (suite *HandlerCacheTestSuite) TestGetJobConfig_CacheHitWithErr() {
 
 func (suite *HandlerCacheTestSuite) TestGetJobConfig_CacheMiss() {
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(nil)
-	suite.jobStore.EXPECT().GetJobConfig(gomock.Any(), suite.jobID).
+	suite.jobStore.EXPECT().GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.config, &models.ConfigAddOn{}, nil)
 	config, err := GetJobConfigWithoutFillingCache(
 		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)
@@ -137,7 +137,7 @@ func (suite *HandlerCacheTestSuite) TestGetJobConfig_CacheMiss() {
 
 func (suite *HandlerCacheTestSuite) TestGetJobConfig_CacheMissWithErr() {
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(nil)
-	suite.jobStore.EXPECT().GetJobConfig(gomock.Any(), suite.jobID).
+	suite.jobStore.EXPECT().GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(nil, nil, fmt.Errorf("db error"))
 	config, err := GetJobConfigWithoutFillingCache(
 		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)

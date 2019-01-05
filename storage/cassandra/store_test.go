@@ -354,7 +354,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 		suite.NoError(err)
 
 		// Update job runtime to different values
-		runtime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
+		runtime, err := jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
 		suite.NoError(err)
 
 		runtime.State = job.JobState(i + 1)
@@ -442,7 +442,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	_, _ = suite.queryJobs(spec, int(_defaultQueryMaxLimit), int(_defaultQueryMaxLimit))
 
 	for _, jobID := range jobIDs {
-		suite.NoError(jobStore.DeleteJob(context.Background(), jobID))
+		suite.NoError(jobStore.DeleteJob(context.Background(), jobID.GetValue()))
 	}
 }
 
@@ -473,7 +473,7 @@ func (suite *CassandraStoreTestSuite) TestJobQueryStaleLuceneIndex() {
 	err := suite.createJob(context.Background(), &jobID, &jobConfig, configAddOn, "uber")
 	suite.NoError(err)
 
-	runtime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
+	runtime, err := jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
 	suite.NoError(err)
 
 	// set job creation time to two days ago
@@ -737,7 +737,7 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummaryByTimeRange() {
 	// The 1 hour old job here will show up in this query
 	_, _ = suite.queryJobs(spec, 1, 1)
 
-	suite.NoError(jobStore.DeleteJob(context.Background(), &jobID))
+	suite.NoError(jobStore.DeleteJob(context.Background(), jobID.GetValue()))
 }
 
 func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
@@ -833,7 +833,7 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
 	suite.Equal(0, len(summary))
 	suite.Equal(0, int(total))
 
-	suite.NoError(jobStore.DeleteJob(context.Background(), &jobID))
+	suite.NoError(jobStore.DeleteJob(context.Background(), jobID.GetValue()))
 }
 
 func (suite *CassandraStoreTestSuite) TestQueryJob() {
@@ -893,7 +893,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		suite.NoError(err)
 
 		// Update job runtime to different values
-		runtime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
+		runtime, err := jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
 		suite.NoError(err)
 
 		runtime.State = job.JobState(i + 1)
@@ -1150,7 +1150,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 
 	// Query for multiple states
 	for i := 0; i < records; i++ {
-		runtime, err := jobStore.GetJobRuntime(context.Background(), jobIDs[i])
+		runtime, err := jobStore.GetJobRuntime(context.Background(), jobIDs[i].GetValue())
 		suite.NoError(err)
 		runtime.State = job.JobState(i)
 		store.UpdateJobRuntime(context.Background(), jobIDs[i], runtime)
@@ -1176,7 +1176,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	}
 	_, _ = suite.queryJobs(spec, len(jobStates), len(jobStates))
 	for _, jobID := range jobIDs {
-		suite.NoError(jobStore.DeleteJob(context.Background(), jobID))
+		suite.NoError(jobStore.DeleteJob(context.Background(), jobID.GetValue()))
 	}
 }
 
@@ -1259,7 +1259,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		_, _ = suite.queryJobs(spec, 1, 1)
 
 		var jobconf *job.JobConfig
-		jobconf, _, err = jobStore.GetJobConfig(context.Background(), &jobID)
+		jobconf, _, err = jobStore.GetJobConfig(context.Background(), jobID.GetValue())
 		suite.NoError(err)
 		suite.Equal(jobconf.Name, jobID.GetValue())
 		suite.Equal(len(jobconf.Labels), 4)
@@ -1272,10 +1272,10 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 			suite.Equal(configAddOn.SystemLabels[i].Value, addOn.SystemLabels[i].Value)
 		}
 
-		suite.NoError(jobStore.DeleteJob(context.Background(), &jobID))
+		suite.NoError(jobStore.DeleteJob(context.Background(), jobID.GetValue()))
 
 		for i := 0; i < maxAttempts; i++ {
-			jobconf, addOn, err = jobStore.GetJobConfig(context.Background(), &jobID)
+			jobconf, addOn, err = jobStore.GetJobConfig(context.Background(), jobID.GetValue())
 			if err != nil {
 				break
 			}
@@ -1286,7 +1286,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 
 		var jobRuntime *job.RuntimeInfo
 		for i = 0; i < maxAttempts; i++ {
-			jobRuntime, err = jobStore.GetJobRuntime(context.Background(), &jobID)
+			jobRuntime, err = jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
 			if err != nil {
 				break
 			}
@@ -1776,7 +1776,7 @@ func (suite *CassandraStoreTestSuite) TestActiveJobsForRecovery() {
 func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, to int) {
 	var taskStore storage.TaskStore
 	taskStore = store
-	jobConfig, _, err := store.GetJobConfig(context.Background(), jobID)
+	jobConfig, _, err := store.GetJobConfig(context.Background(), jobID.GetValue())
 	suite.NoError(err)
 
 	if to > int(jobConfig.InstanceCount) {
@@ -2079,7 +2079,7 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	// Test invalid jobID error
 	_, err := jobStore.GetJobRuntime(
 		context.Background(),
-		&peloton.JobID{Value: "dummy_jobID"})
+		"dummy_jobID")
 	suite.Error(err)
 
 	// CreateJob should create the default job runtime
@@ -2090,7 +2090,7 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	err = suite.createJob(context.Background(), &jobID, jobConfig, configAddOn, "uber")
 	suite.NoError(err)
 
-	runtime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
+	runtime, err := jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
 	suite.NoError(err)
 	suite.Equal(job.JobState_INITIALIZED, runtime.State)
 	suite.Equal(1, len(runtime.TaskStats))
@@ -2106,7 +2106,7 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
 	suite.NoError(err)
 
-	runtime, err = jobStore.GetJobRuntime(context.Background(), &jobID)
+	runtime, err = jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
 	suite.NoError(err)
 	suite.Equal(job.JobState_RUNNING, runtime.State)
 	suite.Equal(5, len(runtime.TaskStats))
@@ -2152,11 +2152,11 @@ func (suite *CassandraStoreTestSuite) TestJobConfig() {
 	err := suite.createJob(context.Background(), &jobID, jobConfig, configAddOn, "uber")
 	suite.NoError(err)
 
-	jobRuntime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
+	jobRuntime, err := jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
 	suite.NoError(err)
 	suite.Equal(jobConfig.InstanceCount, jobRuntime.TaskStats[task.TaskState_INITIALIZED.String()])
 
-	jobConfig, addOn, err := jobStore.GetJobConfig(context.Background(), &jobID)
+	jobConfig, addOn, err := jobStore.GetJobConfig(context.Background(), jobID.GetValue())
 	suite.NoError(err)
 	suite.Equal(uint32(oldInstanceCount), jobConfig.InstanceCount)
 	suite.Len(addOn.SystemLabels, len(configAddOn.SystemLabels))
@@ -2195,7 +2195,7 @@ func (suite *CassandraStoreTestSuite) TestJobConfig() {
 	suite.NoError(err)
 	suite.Equal(uint32(newInstanceCount), jobSummary.GetInstanceCount())
 
-	jobConfig, _, err = jobStore.GetJobConfig(context.Background(), &jobID)
+	jobConfig, _, err = jobStore.GetJobConfig(context.Background(), jobID.GetValue())
 	suite.NoError(err)
 	suite.Equal(uint32(newInstanceCount), jobConfig.InstanceCount)
 }
@@ -2240,7 +2240,7 @@ func (suite *CassandraStoreTestSuite) TestGetJobConfigOfDifferentVersions() {
 		"test-owner")
 	suite.NoError(err)
 
-	jobConfig, addOn, err := jobStore.GetJobConfigWithVersion(context.Background(), &jobID, 0)
+	jobConfig, addOn, err := jobStore.GetJobConfigWithVersion(context.Background(), jobID.GetValue(), 0)
 	suite.NoError(err)
 	suite.Equal(uint32(oldInstanceCount), jobConfig.InstanceCount)
 	suite.Len(addOn.SystemLabels, len(configAddOn.SystemLabels))
@@ -2249,7 +2249,7 @@ func (suite *CassandraStoreTestSuite) TestGetJobConfigOfDifferentVersions() {
 		suite.Equal(configAddOn.SystemLabels[i].Value, addOn.SystemLabels[i].Value)
 	}
 
-	jobConfig, addOn, err = jobStore.GetJobConfigWithVersion(context.Background(), &jobID, 1)
+	jobConfig, addOn, err = jobStore.GetJobConfigWithVersion(context.Background(), jobID.GetValue(), 1)
 	suite.NoError(err)
 	suite.Equal(uint32(newInstanceCount), jobConfig.InstanceCount)
 	suite.Len(addOn.SystemLabels, len(configAddOn.SystemLabels))
@@ -2687,7 +2687,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.Equal(0, len(workflowEvents))
 
 	// delete the job
-	store.DeleteJob(context.Background(), jobID)
+	store.DeleteJob(context.Background(), jobID.GetValue())
 
 	// make sure update is not found
 	_, err = store.GetUpdate(

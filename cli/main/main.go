@@ -310,6 +310,12 @@ var (
 	statelessStartEntityVersion = statelessStart.Arg("entityVersion",
 		"entity version for concurrency control").Required().String()
 
+	statelessDelete              = stateless.Command("delete", "delete a stateless job")
+	statelessDeleteJobID         = statelessDelete.Arg("job", "job identifier").Required().String()
+	statelessDeleteEntityVersion = statelessDelete.Arg("entityVersion",
+		"entity version for concurrency control").Required().String()
+	statelessDeleteForce = statelessDelete.Flag("force", "force delete").Default("false").Short('f').Bool()
+
 	// Top level pod command
 	pod = app.Command("pod", "CLI reflects pod(s) actions, such as get pod details, create/restart/update a pod...")
 
@@ -911,6 +917,12 @@ func main() {
 		)
 	case statelessStart.FullCommand():
 		err = client.StatelessStartJobAction(*statelessStartJobID, *statelessStartEntityVersion)
+	case statelessDelete.FullCommand():
+		err = client.StatelessDeleteAction(
+			*statelessDeleteJobID,
+			*statelessDeleteEntityVersion,
+			*statelessDeleteForce,
+		)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

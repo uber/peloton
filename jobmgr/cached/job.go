@@ -33,7 +33,7 @@ import (
 	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
 	goalstateutil "github.com/uber/peloton/jobmgr/util/goalstate"
 	jobutil "github.com/uber/peloton/jobmgr/util/job"
-	taskuitl "github.com/uber/peloton/jobmgr/util/task"
+	taskutil "github.com/uber/peloton/jobmgr/util/task"
 	stringsutil "github.com/uber/peloton/util/strings"
 
 	"github.com/golang/protobuf/proto"
@@ -175,6 +175,9 @@ type Job interface {
 
 	// GoalState of the job.
 	GoalState() JobStateVector
+
+	// Delete deletes the job from DB and clears the cache
+	Delete(ctx context.Context) error
 }
 
 // WorkflowOps defines operations on workflow
@@ -319,7 +322,7 @@ func (j *job) populateCurrentJobConfig(ctx context.Context) error {
 			j.runtime.GetConfigurationVersion() {
 		config, _, err := j.jobFactory.jobStore.GetJobConfigWithVersion(
 			ctx,
-			j.ID(),
+			j.ID().GetValue(),
 			j.runtime.GetConfigurationVersion(),
 		)
 		if err != nil {
@@ -435,7 +438,7 @@ func (j *job) CreateTaskConfigs(
 		}
 	}
 
-	return taskuitl.RunInParallel(
+	return taskutil.RunInParallel(
 		j.ID().GetValue(),
 		instanceIDList,
 		createSingleTaskConfig)
@@ -461,7 +464,7 @@ func (j *job) CreateTaskRuntimes(
 		t := j.addTaskToJobMap(id)
 		return t.CreateRuntime(ctx, runtime, owner)
 	}
-	return taskuitl.RunInParallel(
+	return taskutil.RunInParallel(
 		j.ID().GetValue(),
 		getIdsFromRuntimeMap(runtimes),
 		createSingleTask)
@@ -479,7 +482,7 @@ func (j *job) PatchTasks(
 		return t.PatchRuntime(ctx, runtimeDiffs[id])
 	}
 
-	return taskuitl.RunInParallel(
+	return taskutil.RunInParallel(
 		j.ID().GetValue(),
 		getIdsFromDiffs(runtimeDiffs),
 		patchSingleTask)
@@ -494,7 +497,7 @@ func (j *job) ReplaceTasks(
 		return t.ReplaceRuntime(runtimes[id], forceReplace)
 	}
 
-	return taskuitl.RunInParallel(
+	return taskutil.RunInParallel(
 		j.ID().GetValue(),
 		getIdsFromRuntimeMap(runtimes),
 		replaceSingleTask)
@@ -831,7 +834,7 @@ func (j *job) getUpdatedJobConfigCache(
 	req UpdateRequest) (*pbjob.JobConfig, error) {
 	if req == UpdateCacheAndDB {
 		if j.config == nil {
-			config, _, err := j.jobFactory.jobStore.GetJobConfig(ctx, j.ID())
+			config, _, err := j.jobFactory.jobStore.GetJobConfig(ctx, j.ID().GetValue())
 			if err != nil {
 				return nil, err
 			}
@@ -869,7 +872,7 @@ func (j *job) validateAndMergeConfig(
 	}
 
 	newConfig := *config
-	maxVersion, err := j.jobFactory.jobStore.GetMaxJobConfigVersion(ctx, j.id)
+	maxVersion, err := j.jobFactory.jobStore.GetMaxJobConfigVersion(ctx, j.id.GetValue())
 	if err != nil {
 		return nil, err
 	}
@@ -1491,7 +1494,7 @@ func (j *job) RollbackWorkflow(ctx context.Context) error {
 
 	// get the old job config before the workflow is run
 	prevJobConfig, configAddOn, err := j.jobFactory.jobStore.
-		GetJobConfigWithVersion(ctx, j.id, currentWorkflow.GetState().JobVersion)
+		GetJobConfigWithVersion(ctx, j.id.GetValue(), currentWorkflow.GetState().JobVersion)
 	if err != nil {
 		return errors.Wrap(err,
 			"failed to get job config to copy for workflow rolling back")
@@ -1507,7 +1510,7 @@ func (j *job) RollbackWorkflow(ctx context.Context) error {
 
 	// get the job config the workflow is targeted at before rollback
 	currentConfig, _, err := j.jobFactory.jobStore.
-		GetJobConfigWithVersion(ctx, j.id, currentWorkflow.GetGoalState().JobVersion)
+		GetJobConfigWithVersion(ctx, j.id.GetValue(), currentWorkflow.GetGoalState().JobVersion)
 	if err != nil {
 		return errors.Wrap(err,
 			"failed to get current job config for workflow rolling back")
@@ -1808,7 +1811,7 @@ func (j *job) RecalculateResourceUsage(ctx context.Context) {
 
 func (j *job) populateRuntime(ctx context.Context) error {
 	if j.runtime == nil {
-		runtime, err := j.jobFactory.jobStore.GetJobRuntime(ctx, j.ID())
+		runtime, err := j.jobFactory.jobStore.GetJobRuntime(ctx, j.ID().GetValue())
 		if err != nil {
 			return err
 		}
@@ -1882,6 +1885,14 @@ func (j *job) updateWorkflowVersion(
 
 	j.runtime = newRuntime
 	return nil
+}
+
+// Delete deletes the job from DB and clears the cache
+func (j *job) Delete(ctx context.Context) error {
+	err := j.jobFactory.jobStore.DeleteJob(ctx, j.ID().GetValue())
+	j.invalidateCache()
+
+	return err
 }
 
 func createEmptyResourceUsageMap() map[string]float64 {

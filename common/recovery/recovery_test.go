@@ -111,7 +111,7 @@ func createJob(ctx context.Context, state pb_job.JobState, goalState pb_job.JobS
 		return nil, err
 	}
 
-	jobRuntime, err := csStore.GetJobRuntime(ctx, jobID)
+	jobRuntime, err := csStore.GetJobRuntime(ctx, jobID.GetValue())
 	if err != nil {
 		return nil, err
 	}
@@ -338,17 +338,17 @@ func TestRecoveryAfterJobDelete(t *testing.T) {
 		AnyTimes()
 
 	mockJobStore.EXPECT().
-		GetJobRuntime(ctx, missingJobID).
+		GetJobRuntime(ctx, missingJobID.GetValue()).
 		Return(nil, fmt.Errorf("Cannot find job wth jobID %v", missingJobID.GetValue())).
 		AnyTimes()
 
 	mockJobStore.EXPECT().
-		GetJobRuntime(ctx, pendingJobID).
+		GetJobRuntime(ctx, pendingJobID.GetValue()).
 		Return(&jobRuntime, nil).
 		AnyTimes()
 
 	mockJobStore.EXPECT().
-		GetJobConfig(ctx, pendingJobID).
+		GetJobConfig(ctx, pendingJobID.GetValue()).
 		Return(&jobConfig, &models.ConfigAddOn{}, nil).
 		AnyTimes()
 
@@ -404,11 +404,11 @@ func TestRecoveryErrors(t *testing.T) {
 		Return([]*peloton.JobID{jobID}, nil)
 
 	mockJobStore.EXPECT().
-		GetJobRuntime(ctx, jobID).
+		GetJobRuntime(ctx, jobID.GetValue()).
 		Return(&jobRuntime, nil)
 
 	mockJobStore.EXPECT().
-		GetJobConfig(ctx, jobID).
+		GetJobConfig(ctx, jobID.GetValue()).
 		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
 
 	err = RecoverJobsByState(
@@ -431,11 +431,11 @@ func TestRecoveryErrors(t *testing.T) {
 	mockJobStore.EXPECT().AddActiveJob(ctx, jobID).Return(nil)
 
 	mockJobStore.EXPECT().
-		GetJobRuntime(ctx, jobID).
+		GetJobRuntime(ctx, jobID.GetValue()).
 		Return(&jobRuntime, nil)
 
 	mockJobStore.EXPECT().
-		GetJobConfig(ctx, jobID).
+		GetJobConfig(ctx, jobID.GetValue()).
 		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
 
 	err = RecoverJobsByState(
@@ -455,11 +455,11 @@ func TestRecoveryErrors(t *testing.T) {
 	mockJobStore.EXPECT().AddActiveJob(ctx, jobID).Return(nil)
 
 	mockJobStore.EXPECT().
-		GetJobRuntime(ctx, jobID).
+		GetJobRuntime(ctx, jobID.GetValue()).
 		Return(&jobRuntime, nil)
 
 	mockJobStore.EXPECT().
-		GetJobConfig(ctx, jobID).
+		GetJobConfig(ctx, jobID.GetValue()).
 		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
 
 	err = RecoverJobsByState(
@@ -554,14 +554,19 @@ func TestPopulateMissingActiveJobs(t *testing.T) {
 	// to the active_jobs table
 	mockJobStore.EXPECT().AddActiveJob(ctx, jobID2).Return(nil)
 
-	mockJobStore.EXPECT().GetJobRuntime(ctx, jobID1).Return(&jobRuntime, nil)
-	mockJobStore.EXPECT().GetJobRuntime(ctx, jobID2).Return(&jobRuntime, nil)
+	mockJobStore.EXPECT().
+		GetJobRuntime(ctx, jobID1.GetValue()).
+		Return(&jobRuntime, nil)
 
 	mockJobStore.EXPECT().
-		GetJobConfig(ctx, jobID1).
+		GetJobRuntime(ctx, jobID2.GetValue()).
+		Return(&jobRuntime, nil)
+
+	mockJobStore.EXPECT().
+		GetJobConfig(ctx, jobID1.GetValue()).
 		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
-	mockJobStore.EXPECT().GetJobConfig(ctx, jobID2).
+	mockJobStore.EXPECT().GetJobConfig(ctx, jobID2.GetValue()).
 		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
 	// recover jobs by state using active jobs list

@@ -45,7 +45,7 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 	jobID := &peloton.JobID{Value: id}
 	goalStateDriver := entity.(*jobEntity).driver
 
-	jobConfig, configAddOn, err := goalStateDriver.jobStore.GetJobConfig(ctx, jobID)
+	jobConfig, configAddOn, err := goalStateDriver.jobStore.GetJobConfig(ctx, jobID.GetValue())
 	if err != nil {
 		goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
 		log.WithError(err).

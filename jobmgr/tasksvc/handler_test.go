@@ -2037,7 +2037,8 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
 	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
+		GetJobConfig(gomock.Any(), suite.testJobID.GetValue()).
+		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 	suite.mockedTaskStore.EXPECT().
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
 			From: 0,
@@ -2064,13 +2065,15 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
 	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID).Return(nil, nil, fmt.Errorf("fake db error"))
+		GetJobConfig(gomock.Any(), suite.testJobID.GetValue()).
+		Return(nil, nil, fmt.Errorf("fake db error"))
 	_, err = suite.handler.Refresh(context.Background(), request)
 	suite.Error(err)
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
 	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
+		GetJobConfig(gomock.Any(), suite.testJobID.GetValue()).
+		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 	suite.mockedTaskStore.EXPECT().
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
 			From: 0,
@@ -2081,7 +2084,7 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
 	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID).
+		GetJobConfig(gomock.Any(), suite.testJobID.GetValue()).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 	suite.mockedTaskStore.EXPECT().
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{

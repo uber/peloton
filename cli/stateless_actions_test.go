@@ -1014,6 +1014,32 @@ func (suite *statelessActionsTestSuite) TestClientStartJobFail() {
 	suite.Error(suite.client.StatelessStartJobAction(testJobID, testEntityVersion))
 }
 
+// TestStatelessDeleteActionSuccess tests the success case of deleting a job
+func (suite *statelessActionsTestSuite) TestStatelessDeleteActionSuccess() {
+	suite.statelessClient.EXPECT().
+		DeleteJob(suite.ctx, &svc.DeleteJobRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: &v1alphapeloton.EntityVersion{Value: testEntityVersion},
+			Force:   true,
+		}).
+		Return(&svc.DeleteJobResponse{}, nil)
+
+	suite.NoError(suite.client.StatelessDeleteAction(testJobID, testEntityVersion, true))
+}
+
+// TestStatelessDeleteActionFailure tests the failure case of deleting a job
+func (suite *statelessActionsTestSuite) TestStatelessDeleteActionFailure() {
+	suite.statelessClient.EXPECT().
+		DeleteJob(suite.ctx, &svc.DeleteJobRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: &v1alphapeloton.EntityVersion{Value: testEntityVersion},
+			Force:   true,
+		}).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessDeleteAction(testJobID, testEntityVersion, true))
+}
+
 func TestStatelessActions(t *testing.T) {
 	suite.Run(t, new(statelessActionsTestSuite))
 }

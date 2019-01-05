@@ -155,7 +155,7 @@ func recoverJobsBatch(
 	errChan chan<- error,
 	f RecoverBatchTasks) {
 	for _, jobID := range batch.jobs {
-		jobRuntime, err := jobStore.GetJobRuntime(ctx, &jobID)
+		jobRuntime, err := jobStore.GetJobRuntime(ctx, jobID.GetValue())
 		if err != nil {
 			log.WithField("job_id", jobID.Value).
 				WithError(err).
@@ -183,7 +183,7 @@ func recoverJobsBatch(
 			continue
 		}
 
-		jobConfig, configAddOn, err := jobStore.GetJobConfig(ctx, &jobID)
+		jobConfig, configAddOn, err := jobStore.GetJobConfig(ctx, jobID.GetValue())
 		if err != nil {
 			// config is not found and job state is uninitialized,
 			// which means job is partially created and cannot be recovered.

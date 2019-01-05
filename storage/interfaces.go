@@ -52,30 +52,31 @@ type Store interface {
 }
 
 // JobStore is the interface to store job states
+// TODO: Move all arguments from proto pointers to golang data types
 type JobStore interface {
 	// CreateJobConfig creates the job configuration
 	CreateJobConfig(ctx context.Context, id *peloton.JobID, config *job.JobConfig, configAddOn *models.ConfigAddOn, version uint64, createBy string) error
 	// CreateJobRuntimeWithConfig creates the job runtime
 	CreateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobID, initialRuntime *job.RuntimeInfo, config *job.JobConfig) error
 	// GetJobConfig fetches the job configuration for a given job
-	GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, *models.ConfigAddOn, error)
+	GetJobConfig(ctx context.Context, jobID string) (*job.JobConfig, *models.ConfigAddOn, error)
 	// GetJobConfigWithVersion fetches the job configuration for a given job of a given version
-	GetJobConfigWithVersion(ctx context.Context, id *peloton.JobID, version uint64) (*job.JobConfig, *models.ConfigAddOn, error)
+	GetJobConfigWithVersion(ctx context.Context, jobID string, version uint64) (*job.JobConfig, *models.ConfigAddOn, error)
 	// QueryJobs queries for all jobs which match the query in the QuerySpec
 	QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec, summaryOnly bool) ([]*job.JobInfo, []*job.JobSummary, uint32, error)
 	// UpdateJobConfig updates the job configuration of an existing job
 	UpdateJobConfig(ctx context.Context, id *peloton.JobID, Config *job.JobConfig, configAddOn *models.ConfigAddOn) error
 	// DeleteJob deletes the job configuration, runtime
 	// and all tasks in DB of a given job
-	DeleteJob(ctx context.Context, id *peloton.JobID) error
+	DeleteJob(ctx context.Context, jobID string) error
 	// GetJobRuntime gets the job runtime of a given job
-	GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.RuntimeInfo, error)
+	GetJobRuntime(ctx context.Context, jobID string) (*job.RuntimeInfo, error)
 	// GetJobsByStates gets all jobs in a given state
 	GetJobsByStates(ctx context.Context, state []job.JobState) ([]peloton.JobID, error)
 	// UpdateJobRuntime updates the runtime of a given job
 	UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error
 	// GetMaxJobConfigVersion returns the maximum version of configs of a given job
-	GetMaxJobConfigVersion(ctx context.Context, id *peloton.JobID) (uint64, error)
+	GetMaxJobConfigVersion(ctx context.Context, jobID string) (uint64, error)
 	// GetJobSummaryFromIndex gets the job summary from job index table
 	GetJobSummaryFromIndex(ctx context.Context, id *peloton.JobID) (*job.JobSummary, error)
 	// GetAllJobsInJobIndex returns job summary for all the jobs in the job index table
@@ -93,6 +94,7 @@ type JobStore interface {
 }
 
 // TaskStore is the interface to store task states
+// TODO: Move all arguments from proto pointers to golang data types
 type TaskStore interface {
 	// CreateTaskRuntime creates the runtime of a given task
 	CreateTaskRuntime(

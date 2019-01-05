@@ -604,6 +604,30 @@ func (c *Client) StatelessStartJobAction(
 	return nil
 }
 
+// StatelessDeleteAction is the action for deleting a stateless job
+func (c *Client) StatelessDeleteAction(
+	jobID string,
+	version string,
+	forceDelete bool,
+) error {
+	_, err := c.statelessClient.DeleteJob(
+		c.ctx,
+		&statelesssvc.DeleteJobRequest{
+			JobId:   &v1alphapeloton.JobID{Value: jobID},
+			Version: &v1alphapeloton.EntityVersion{Value: version},
+			Force:   forceDelete,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Job deleted\n")
+
+	return nil
+
+}
+
 func printStatelessQueryResponse(resp *statelesssvc.QueryJobsResponse) {
 	results := resp.GetRecords()
 	if len(results) == 0 {

@@ -31,14 +31,6 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-// JobEnqueue enqueues the job back into the goal state engine.
-func JobEnqueue(ctx context.Context, entity goalstate.Entity) error {
-	jobEnt := entity.(*jobEntity)
-	goalStateDriver := entity.(*jobEntity).driver
-	goalStateDriver.EnqueueJob(jobEnt.id, time.Now())
-	return nil
-}
-
 // JobUntrack deletes the job and tasks from the goal state engine and the cache.
 func JobUntrack(ctx context.Context, entity goalstate.Entity) error {
 	jobEnt := entity.(*jobEntity)
@@ -164,7 +156,7 @@ func DeleteJobFromActiveJobs(
 	return nil
 }
 
-// JobStart starts the non-running terminal tasks of the job
+// JobStart starts all tasks of the job
 func JobStart(
 	ctx context.Context,
 	entity goalstate.Entity,
@@ -219,4 +211,64 @@ func JobStart(
 		goalStateDriver.EnqueueJob(cachedJob.ID(), time.Now())
 		return nil
 	}
+}
+
+// JobDelete deletes a job from cache and DB
+func JobDelete(
+	ctx context.Context,
+	entity goalstate.Entity,
+) error {
+	jobEnt := entity.(*jobEntity)
+	goalStateDriver := entity.(*jobEntity).driver
+
+	cachedJob := goalStateDriver.jobFactory.GetJob(jobEnt.id)
+	if cachedJob == nil {
+		return nil
+	}
+
+	err := cachedJob.Delete(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to delete job from store")
+	}
+
+	// Delete job from goalstate and cache
+	taskMap := cachedJob.GetAllTasks()
+	for instID := range taskMap {
+		goalStateDriver.DeleteTask(cachedJob.ID(), instID)
+	}
+	goalStateDriver.DeleteJob(cachedJob.ID())
+	goalStateDriver.jobFactory.ClearJob(cachedJob.ID())
+
+	return nil
+}
+
+// JobReloadRuntime reloads the job runtime into the cache
+func JobReloadRuntime(
+	ctx context.Context,
+	entity goalstate.Entity,
+) error {
+	jobEnt := entity.(*jobEntity)
+	goalStateDriver := entity.(*jobEntity).driver
+
+	cachedJob := goalStateDriver.jobFactory.AddJob(jobEnt.id)
+
+	jobRuntime, err := goalStateDriver.jobStore.GetJobRuntime(ctx, jobEnt.GetID())
+	if yarpcerrors.IsNotFound(err) {
+		return JobUntrack(ctx, entity)
+	}
+
+	err = cachedJob.Update(
+		ctx,
+		&job.JobInfo{
+			Runtime: jobRuntime,
+		}, nil,
+		cached.UpdateCacheOnly,
+	)
+	if err != nil {
+		return err
+	}
+
+	goalStateDriver.EnqueueJob(jobEnt.id, time.Now())
+
+	return nil
 }

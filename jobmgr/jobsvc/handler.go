@@ -245,7 +245,7 @@ func (h *serviceHandler) Update(
 	}
 
 	newConfig := req.GetConfig()
-	oldConfig, oldConfigAddOn, err := h.jobStore.GetJobConfig(ctx, jobID)
+	oldConfig, oldConfigAddOn, err := h.jobStore.GetJobConfig(ctx, jobID.GetValue())
 
 	if err != nil {
 		log.WithError(err).
@@ -346,7 +346,7 @@ func (h *serviceHandler) Get(
 	log.WithField("request", req).Debug("JobManager.Get called")
 	h.metrics.JobAPIGet.Inc(1)
 
-	jobConfig, _, err := h.jobStore.GetJobConfig(ctx, req.GetId())
+	jobConfig, _, err := h.jobStore.GetJobConfig(ctx, req.GetId().GetValue())
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
@@ -409,7 +409,7 @@ func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (
 		return nil, yarpcerrors.UnavailableErrorf("Job Refresh API not suppported on non-leader")
 	}
 
-	jobConfig, configAddOn, err := h.jobStore.GetJobConfig(ctx, req.GetId())
+	jobConfig, configAddOn, err := h.jobStore.GetJobConfig(ctx, req.GetId().GetValue())
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", req.GetId().GetValue()).
@@ -418,7 +418,7 @@ func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (
 		return &job.RefreshResponse{}, yarpcerrors.NotFoundErrorf("job not found")
 	}
 
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.GetId())
+	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.GetId().GetValue())
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", req.GetId().GetValue()).
@@ -502,7 +502,7 @@ func (h *serviceHandler) Delete(
 	}
 
 	// Delete job from DB
-	if err := h.jobStore.DeleteJob(ctx, req.Id); err != nil {
+	if err := h.jobStore.DeleteJob(ctx, req.GetId().GetValue()); err != nil {
 		h.metrics.JobDeleteFail.Inc(1)
 		log.Errorf("Delete job failed with error %v", err)
 		return nil, err
@@ -633,7 +633,7 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 
 	jobConfig, configAddOn, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
-		jobID,
+		jobID.GetValue(),
 		runtime.GetConfigurationVersion(),
 	)
 	if err != nil {

@@ -162,6 +162,9 @@ enum JobState {
 
   // The job is partially created and is not ready to be scheduled
   UNINITIALIZED = 8;
+
+  // The job has been deleted.
+  DELETED = 9;
 }
 
 

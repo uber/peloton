@@ -324,7 +324,10 @@ func (d *driver) recoverTasks(
 	id string,
 	jobConfig *job.JobConfig,
 	configAddOn *models.ConfigAddOn,
-	jobRuntime *job.RuntimeInfo, batch recovery.TasksBatch, errChan chan<- error) {
+	jobRuntime *job.RuntimeInfo,
+	batch recovery.TasksBatch,
+	errChan chan<- error,
+) {
 
 	jobID := &peloton.JobID{Value: id}
 

@@ -18,8 +18,9 @@ import (
 	"context"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/uber/peloton/common/goalstate"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // TaskReloadRuntime reloads task runtime into cache.

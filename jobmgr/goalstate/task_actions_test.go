@@ -21,6 +21,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
+
 	"github.com/uber/peloton/jobmgr/cached"
 
 	goalstatemocks "github.com/uber/peloton/common/goalstate/mocks"

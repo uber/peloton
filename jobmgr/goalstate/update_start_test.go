@@ -228,7 +228,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStartJobConfigGetFail() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.jobConfig.ChangeLog.Version).
 		Return(nil, nil, fmt.Errorf("fake db error"))
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
@@ -262,7 +262,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStartTaskConfigCreateFail() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -297,7 +297,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStartWriteProgressFail() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -354,7 +354,7 @@ func (suite *UpdateStartTestSuite) TestUpdateContainsUnchangedInstance() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -429,7 +429,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStart_ContainsUnchangedInstance_Pat
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -484,7 +484,7 @@ func (suite *UpdateStartTestSuite) TestUpdateStart_NoUnchangedInstance() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -561,7 +561,7 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdate() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -580,7 +580,7 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdate() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.prevJobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.prevJobConfig.ChangeLog.Version).
 		Return(suite.prevJobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -669,7 +669,7 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdatePrevJobConfigGetError
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -688,7 +688,7 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdatePrevJobConfigGetError
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.prevJobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.prevJobConfig.ChangeLog.Version).
 		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("fake db error"))
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
@@ -727,7 +727,7 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdateGetRuntimeError() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -746,7 +746,7 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdateGetRuntimeError() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.prevJobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.prevJobConfig.ChangeLog.Version).
 		Return(suite.prevJobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -802,7 +802,7 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdateModifyError() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.jobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.jobConfig.ChangeLog.Version).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -821,7 +821,7 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdateModifyError() {
 
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
-			gomock.Any(), suite.jobID, suite.prevJobConfig.ChangeLog.Version).
+			gomock.Any(), suite.jobID.GetValue(), suite.prevJobConfig.ChangeLog.Version).
 		Return(suite.prevJobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().

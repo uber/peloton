@@ -332,7 +332,7 @@ func (m *serviceHandler) Refresh(ctx context.Context, req *task.RefreshRequest) 
 		return nil, yarpcerrors.UnavailableErrorf("Task Refresh API not suppported on non-leader")
 	}
 
-	jobConfig, _, err := m.jobStore.GetJobConfig(ctx, req.GetJobId())
+	jobConfig, _, err := m.jobStore.GetJobConfig(ctx, req.GetJobId().GetValue())
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", req.GetJobId().GetValue()).

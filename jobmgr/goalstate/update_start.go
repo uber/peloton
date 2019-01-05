@@ -133,7 +133,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 	// fetch the job configuration first
 	jobConfig, configAddOn, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
 		ctx,
-		jobID,
+		jobID.GetValue(),
 		cachedWorkflow.GetGoalState().JobVersion)
 	if err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)
@@ -160,7 +160,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 
 		prevJobConfig, _, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
 			ctx,
-			jobID,
+			jobID.GetValue(),
 			cachedWorkflow.GetState().JobVersion,
 		)
 		if err != nil {

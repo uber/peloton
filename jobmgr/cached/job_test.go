@@ -241,7 +241,7 @@ func (suite *JobTestSuite) TestJobAddTaskNotFound() {
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
 			gomock.Any(),
-			suite.jobID,
+			suite.jobID.GetValue(),
 			suite.job.runtime.GetConfigurationVersion()).
 		Return(jobConfig, &models.ConfigAddOn{}, nil)
 	suite.taskStore.EXPECT().
@@ -265,7 +265,7 @@ func (suite *JobTestSuite) TestJobAddTaskJobConfigGetError() {
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
 			gomock.Any(),
-			suite.jobID,
+			suite.jobID.GetValue(),
 			suite.job.runtime.GetConfigurationVersion()).
 		Return(nil, nil, fmt.Errorf("fake db error"))
 
@@ -335,7 +335,7 @@ func (suite *JobTestSuite) TestJobDBError() {
 
 	// Test db error in fetching job runtime
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(nil, dbError)
 	// reset runtime to trigger load from db
 	suite.job.runtime = nil
@@ -343,7 +343,7 @@ func (suite *JobTestSuite) TestJobDBError() {
 	suite.Error(err)
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&pbjob.RuntimeInfo{
 			State:     pbjob.JobState_INITIALIZED,
 			GoalState: pbjob.JobState_SUCCEEDED,
@@ -392,7 +392,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeWithNoCache() {
 	}
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&pbjob.RuntimeInfo{
 			State:     pbjob.JobState_INITIALIZED,
 			GoalState: pbjob.JobState_SUCCEEDED,
@@ -568,7 +568,7 @@ func (suite *JobTestSuite) TestJobCompareAndSetRuntimeNoCache() {
 	suite.job.runtime = nil
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&pbjob.RuntimeInfo{
 			State:     pbjob.JobState_INITIALIZED,
 			GoalState: pbjob.JobState_SUCCEEDED,
@@ -614,7 +614,7 @@ func (suite *JobTestSuite) TestJobCompareAndSetRuntimeUpdateRuntimeFailure() {
 	suite.job.runtime = nil
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&pbjob.RuntimeInfo{
 			State:     pbjob.JobState_INITIALIZED,
 			GoalState: pbjob.JobState_SUCCEEDED,
@@ -658,7 +658,7 @@ func (suite *JobTestSuite) TestJobUpdateConfig() {
 	}
 
 	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.job.config.changeLog.Version, nil)
 
 	suite.jobStore.EXPECT().
@@ -740,7 +740,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndConfig() {
 	}
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&pbjob.RuntimeInfo{
 			State:     pbjob.JobState_INITIALIZED,
 			GoalState: pbjob.JobState_SUCCEEDED,
@@ -753,7 +753,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndConfig() {
 		}, nil)
 
 	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.job.config.changeLog.Version, nil)
 
 	suite.jobStore.EXPECT().
@@ -805,10 +805,10 @@ func (suite *JobTestSuite) TestJobUpdateConfigAndRecoverConfig() {
 
 	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(&initialConfig, configAddOn, nil)
 	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(initialConfig.ChangeLog.Version, nil)
 	suite.jobStore.EXPECT().
 		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
@@ -865,10 +865,10 @@ func (suite *JobTestSuite) TestJobUpdateConfigAndRecoverRuntime() {
 
 	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(&initialConfig, configAddOn, nil)
 	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(initialConfig.ChangeLog.Version, nil)
 	suite.jobStore.EXPECT().
 		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
@@ -927,10 +927,10 @@ func (suite *JobTestSuite) TestJobUpdateConfigAndRecoverConfigPlusRuntime() {
 
 	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(&initialConfig, configAddOn, nil)
 	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(initialConfig.ChangeLog.Version, nil)
 	suite.jobStore.EXPECT().
 		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
@@ -986,7 +986,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndRecoverRuntime() {
 	}
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&initialRuntime, nil)
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
@@ -1049,7 +1049,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndRecoverConfig() {
 	}
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&initialRuntime, nil)
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
@@ -1112,7 +1112,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndRecoverConfigPlusRuntime() {
 	}
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&initialRuntime, nil)
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
@@ -1174,13 +1174,13 @@ func (suite *JobTestSuite) TestJobUpdateRuntimePlusConfigAndRecover() {
 
 	configAddOn := &models.ConfigAddOn{}
 	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
 		Return(&initialConfig, configAddOn, nil)
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&initialRuntime, nil)
 	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(initialConfig.ChangeLog.Version, nil)
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
@@ -1333,7 +1333,7 @@ func (suite *JobTestSuite) TestJobGetRuntimeRefillCache() {
 		GoalState: pbjob.JobState_SUCCEEDED,
 	}
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.job.id).
+		GetJobRuntime(gomock.Any(), suite.job.id.GetValue()).
 		Return(jobRuntime, nil)
 	suite.job.runtime = nil
 	runtime, err := suite.job.GetRuntime(context.Background())
@@ -1348,7 +1348,7 @@ func (suite *JobTestSuite) TestJobGetConfigDBError() {
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
 			gomock.Any(),
-			suite.jobID,
+			suite.jobID.GetValue(),
 			suite.job.runtime.GetConfigurationVersion()).
 		Return(nil, nil, fmt.Errorf("test error"))
 
@@ -1371,7 +1371,7 @@ func (suite *JobTestSuite) TestJobGetConfigSuccess() {
 	suite.jobStore.EXPECT().
 		GetJobConfigWithVersion(
 			gomock.Any(),
-			suite.jobID,
+			suite.jobID.GetValue(),
 			suite.job.runtime.GetConfigurationVersion()).
 		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
@@ -1416,7 +1416,7 @@ func (suite *JobTestSuite) TestJobIsControllerTask() {
 		suite.jobStore.EXPECT().
 			GetJobConfigWithVersion(
 				gomock.Any(),
-				suite.jobID,
+				suite.jobID.GetValue(),
 				suite.job.runtime.GetConfigurationVersion()).
 			Return(test.config, &models.ConfigAddOn{}, nil)
 
@@ -1797,7 +1797,7 @@ func (suite *JobTestSuite) TestJobRemoveTask() {
 // CompareAndSetConfig
 func (suite *JobTestSuite) TestJobCompareAndSetConfigSuccess() {
 	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(suite.job.config.changeLog.Version, nil)
 
 	suite.jobStore.EXPECT().
@@ -1871,7 +1871,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowSuccess() {
 
 	gomock.InOrder(
 		suite.jobStore.EXPECT().
-			GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+			GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 			Return(prevConfig.GetChangeLog().GetVersion(), nil),
 
 		suite.jobStore.EXPECT().
@@ -1957,7 +1957,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowUpdateConfigFailure() {
 
 	gomock.InOrder(
 		suite.jobStore.EXPECT().
-			GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+			GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 			Return(prevConfig.GetChangeLog().GetVersion(), nil),
 
 		suite.jobStore.EXPECT().
@@ -2028,7 +2028,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowWorkflowCreationFailure() {
 
 	gomock.InOrder(
 		suite.jobStore.EXPECT().
-			GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+			GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 			Return(prevConfig.GetChangeLog().GetVersion(), nil),
 
 		suite.jobStore.EXPECT().
@@ -2114,7 +2114,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowUpdateRuntimeFailure() {
 
 	gomock.InOrder(
 		suite.jobStore.EXPECT().
-			GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+			GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 			Return(prevConfig.GetChangeLog().GetVersion(), nil),
 
 		suite.jobStore.EXPECT().
@@ -2714,11 +2714,11 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccess() {
 	}
 
 	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobPrevVersion).
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobPrevVersion).
 		Return(jobPrevConfig, nil, nil)
 
 	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(jobVersion, nil)
 
 	suite.jobStore.EXPECT().
@@ -2739,7 +2739,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccess() {
 		).Return(nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobVersion).
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobVersion).
 		Return(jobConfig, nil, nil)
 
 	suite.taskStore.EXPECT().
@@ -2850,7 +2850,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowGetPrevConfigFailure() {
 	}
 
 	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobPrevVersion).
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobPrevVersion).
 		Return(jobPrevConfig, nil, yarpcerrors.InternalErrorf("test error"))
 
 	suite.Error(suite.job.RollbackWorkflow(context.Background()))
@@ -2897,11 +2897,11 @@ func (suite *JobTestSuite) TestRollbackWorkflowGetTargetConfigFailure() {
 	}
 
 	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobPrevVersion).
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobPrevVersion).
 		Return(jobPrevConfig, nil, nil)
 
 	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(jobVersion, nil)
 
 	suite.jobStore.EXPECT().
@@ -2922,7 +2922,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowGetTargetConfigFailure() {
 		).Return(nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobVersion).
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobVersion).
 		Return(jobConfig, nil, yarpcerrors.InternalErrorf("test error"))
 
 	suite.Error(suite.job.RollbackWorkflow(context.Background()))
@@ -2969,11 +2969,11 @@ func (suite *JobTestSuite) TestRollbackWorkflowCopyConfigFailure() {
 	}
 
 	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobPrevVersion).
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobPrevVersion).
 		Return(jobPrevConfig, nil, nil)
 
 	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(jobVersion, nil)
 
 	suite.jobStore.EXPECT().
@@ -3057,11 +3057,11 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 	}
 
 	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobPrevVersion).
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobPrevVersion).
 		Return(proto.Clone(jobPrevConfig).(*pbjob.JobConfig), nil, nil)
 
 	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(jobVersion, nil)
 
 	suite.jobStore.EXPECT().
@@ -3082,7 +3082,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 		).Return(nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobVersion).
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobVersion).
 		Return(proto.Clone(jobConfig).(*pbjob.JobConfig), nil, nil)
 
 	suite.taskStore.EXPECT().
@@ -3144,15 +3144,15 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 				}, nil),
 
 		suite.jobStore.EXPECT().
-			GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobPrevVersion).
+			GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobPrevVersion).
 			Return(proto.Clone(jobPrevConfig).(*pbjob.JobConfig), nil, nil),
 
 		suite.jobStore.EXPECT().
-			GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobPrevVersion).
+			GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobPrevVersion).
 			Return(proto.Clone(jobPrevConfig).(*pbjob.JobConfig), nil, nil),
 
 		suite.jobStore.EXPECT().
-			GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+			GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 			Return(newMaxJobVersion, nil),
 
 		suite.jobStore.EXPECT().
@@ -3173,7 +3173,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 			).Return(nil).AnyTimes(),
 
 		suite.jobStore.EXPECT().
-			GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobVersion).
+			GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobVersion).
 			Return(proto.Clone(jobConfig).(*pbjob.JobConfig), nil, nil),
 
 		suite.taskStore.EXPECT().
@@ -3243,11 +3243,11 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeUpdateDBWri
 	}
 
 	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobPrevVersion).
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobPrevVersion).
 		Return(jobPrevConfig, nil, nil)
 
 	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(jobVersion, nil)
 
 	suite.jobStore.EXPECT().
@@ -3268,7 +3268,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeUpdateDBWri
 		).Return(nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobVersion).
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobVersion).
 		Return(jobConfig, nil, nil)
 
 	suite.taskStore.EXPECT().
@@ -3315,7 +3315,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeUpdateDBWri
 	newMaxJobVersion := jobVersion + 1
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&pbjob.RuntimeInfo{
 			ConfigurationVersion: jobVersion,
 			UpdateID:             &peloton.UpdateID{Value: testUpdateID},
@@ -3373,11 +3373,11 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeDBWriteSucc
 	}
 
 	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobPrevVersion).
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobPrevVersion).
 		Return(jobPrevConfig, nil, nil)
 
 	suite.jobStore.EXPECT().
-		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(jobVersion, nil)
 
 	suite.jobStore.EXPECT().
@@ -3398,7 +3398,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeDBWriteSucc
 		).Return(nil)
 
 	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), suite.jobID, jobVersion).
+		GetJobConfigWithVersion(gomock.Any(), suite.jobID.GetValue(), jobVersion).
 		Return(jobConfig, nil, nil)
 
 	suite.taskStore.EXPECT().
@@ -3445,7 +3445,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeDBWriteSucc
 	newMaxJobVersion := jobVersion + 1
 
 	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID).
+		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
 		Return(&pbjob.RuntimeInfo{
 			ConfigurationVersion: newMaxJobVersion,
 			UpdateID:             &peloton.UpdateID{Value: testUpdateID},

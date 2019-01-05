@@ -559,14 +559,14 @@ func (s *Store) CreateJobRuntimeWithConfig(
 // GetMaxJobConfigVersion returns the maximum version of configs of a given job
 func (s *Store) GetMaxJobConfigVersion(
 	ctx context.Context,
-	id *peloton.JobID) (uint64, error) {
+	jobID string) (uint64, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("MAX(version)").From(jobConfigTable).
-		Where(qb.Eq{"job_id": id.GetValue()})
+		Where(qb.Eq{"job_id": jobID})
 
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
-		log.Errorf("Fail to get max version of job %v: %v", id.GetValue(), err)
+		log.Errorf("Fail to get max version of job %v: %v", jobID, err)
 		return 0, err
 	}
 
@@ -605,8 +605,8 @@ func (s *Store) UpdateJobConfig(
 // TODO(zhixin): GetJobConfig takes version as param when write through cache is implemented
 func (s *Store) GetJobConfig(
 	ctx context.Context,
-	id *peloton.JobID) (*job.JobConfig, *models.ConfigAddOn, error) {
-	r, err := s.GetJobRuntime(ctx, id)
+	jobID string) (*job.JobConfig, *models.ConfigAddOn, error) {
+	r, err := s.GetJobRuntime(ctx, jobID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -618,16 +618,15 @@ func (s *Store) GetJobConfig(
 		r.ConfigurationVersion = uint64(r.ConfigVersion)
 	}
 
-	return s.GetJobConfigWithVersion(ctx, id, r.GetConfigurationVersion())
+	return s.GetJobConfigWithVersion(ctx, jobID, r.GetConfigurationVersion())
 }
 
 // GetJobConfigWithVersion fetches the job configuration for a given
 // job of a given version
 func (s *Store) GetJobConfigWithVersion(ctx context.Context,
-	id *peloton.JobID,
+	jobID string,
 	version uint64,
 ) (*job.JobConfig, *models.ConfigAddOn, error) {
-	jobID := id.GetValue()
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("config", "config_addon").From(jobConfigTable).
 		Where(qb.Eq{"job_id": jobID, "version": version})
@@ -674,7 +673,7 @@ func (s *Store) GetJobConfigWithVersion(ctx context.Context,
 			// Older job which does not have changelog.
 			// TODO (zhixin): remove this after no more job in the system
 			// does not have a changelog version.
-			v, err := s.GetMaxJobConfigVersion(ctx, id)
+			v, err := s.GetMaxJobConfigVersion(ctx, jobID)
 			if err != nil {
 				s.metrics.JobMetrics.JobGetFail.Inc(1)
 				return nil, nil, err
@@ -969,7 +968,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 			Value: id.String(),
 		}
 
-		jobRuntime, err := s.GetJobRuntime(ctx, jobID)
+		jobRuntime, err := s.GetJobRuntime(ctx, jobID.GetValue())
 		if err != nil {
 			log.WithError(err).
 				WithField("job_id", id.String()).
@@ -977,7 +976,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 			continue
 		}
 		// TODO (chunyang.shen): use job/task cache to get JobConfig T1760469
-		jobConfig, _, err := s.GetJobConfig(ctx, jobID)
+		jobConfig, _, err := s.GetJobConfig(ctx, jobID.GetValue())
 		if err != nil {
 			log.WithField("labels", spec.GetLabels()).
 				WithField("job_id", id.String()).
@@ -2108,10 +2107,10 @@ func (s *Store) DeleteTaskRuntime(
 // If pod event not exist means pod events are deleted for all shrunk instances
 func (s *Store) deletePodEventsOnDeleteJob(
 	ctx context.Context,
-	id *peloton.JobID) error {
+	jobID string) error {
 	queryBuilder := s.DataStore.NewQuery()
 	instanceCount := uint32(0)
-	jobConfig, _, err := s.GetJobConfig(ctx, id)
+	jobConfig, _, err := s.GetJobConfig(ctx, jobID)
 	if err != nil {
 		return err
 	}
@@ -2123,7 +2122,7 @@ func (s *Store) deletePodEventsOnDeleteJob(
 			instanceCount%_defaultPodEventsLimit == 0 {
 			events, err := s.GetPodEvents(
 				ctx,
-				id.GetValue(),
+				jobID,
 				instanceCount)
 			if err != nil {
 				s.metrics.JobMetrics.JobDeleteFail.Inc(1)
@@ -2134,10 +2133,10 @@ func (s *Store) deletePodEventsOnDeleteJob(
 			}
 		}
 		stmt := queryBuilder.Delete(podEventsTable).
-			Where(qb.Eq{"job_id": id.GetValue()}).
+			Where(qb.Eq{"job_id": jobID}).
 			Where(qb.Eq{"instance_id": instanceCount})
 
-		if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		if err := s.applyStatement(ctx, stmt, jobID); err != nil {
 			s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 			return err
 		}
@@ -2149,26 +2148,26 @@ func (s *Store) deletePodEventsOnDeleteJob(
 // DeleteJob deletes a job and associated tasks, by job id.
 // TODO: This implementation is not perfect, as if it's getting an transient
 // error, the job or some tasks may not be fully deleted.
-func (s *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
-	if err := s.deletePodEventsOnDeleteJob(ctx, id); err != nil {
+func (s *Store) DeleteJob(ctx context.Context, jobID string) error {
+	if err := s.deletePodEventsOnDeleteJob(ctx, jobID); err != nil {
 		return err
 	}
 
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Delete(taskRuntimeTable).Where(qb.Eq{"job_id": id.GetValue()})
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+	stmt := queryBuilder.Delete(taskRuntimeTable).Where(qb.Eq{"job_id": jobID})
+	if err := s.applyStatement(ctx, stmt, jobID); err != nil {
 		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
 	}
 
-	stmt = queryBuilder.Delete(taskConfigTable).Where(qb.Eq{"job_id": id.GetValue()})
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+	stmt = queryBuilder.Delete(taskConfigTable).Where(qb.Eq{"job_id": jobID})
+	if err := s.applyStatement(ctx, stmt, jobID); err != nil {
 		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
 	}
 
 	// Delete all updates for the job
-	updateIDs, err := s.GetUpdatesForJob(ctx, id.GetValue())
+	updateIDs, err := s.GetUpdatesForJob(ctx, jobID)
 	if err != nil {
 		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
@@ -2180,20 +2179,20 @@ func (s *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
 		}
 	}
 
-	stmt = queryBuilder.Delete(jobIndexTable).Where(qb.Eq{"job_id": id.GetValue()})
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+	stmt = queryBuilder.Delete(jobIndexTable).Where(qb.Eq{"job_id": jobID})
+	if err := s.applyStatement(ctx, stmt, jobID); err != nil {
 		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
 	}
 
-	stmt = queryBuilder.Delete(jobConfigTable).Where(qb.Eq{"job_id": id.GetValue()})
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+	stmt = queryBuilder.Delete(jobConfigTable).Where(qb.Eq{"job_id": jobID})
+	if err := s.applyStatement(ctx, stmt, jobID); err != nil {
 		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
 	}
 
-	stmt = queryBuilder.Delete(jobRuntimeTable).Where(qb.Eq{"job_id": id.GetValue()})
-	err = s.applyStatement(ctx, stmt, id.GetValue())
+	stmt = queryBuilder.Delete(jobRuntimeTable).Where(qb.Eq{"job_id": jobID})
+	err = s.applyStatement(ctx, stmt, jobID)
 	if err != nil {
 		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 	} else {
@@ -2506,14 +2505,14 @@ func (s *Store) GetResourcePoolsByOwner(ctx context.Context, owner string) (map[
 }
 
 // GetJobRuntime returns the job runtime info
-func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.RuntimeInfo, error) {
+func (s *Store) GetJobRuntime(ctx context.Context, jobID string) (*job.RuntimeInfo, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(jobRuntimeTable).
-		Where(qb.Eq{"job_id": id.GetValue()})
+		Where(qb.Eq{"job_id": jobID})
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", id.GetValue()).
+			WithField("job_id", jobID).
 			Error("GetJobRuntime failed")
 		s.metrics.JobMetrics.JobGetRuntimeFail.Inc(1)
 		return nil, err
@@ -2524,7 +2523,7 @@ func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.WithError(err).
-				WithField("job_id", id.GetValue()).
+				WithField("job_id", jobID).
 				WithField("value", value).
 				Error("Failed to get JobRuntimeRecord from record")
 			s.metrics.JobMetrics.JobGetRuntimeFail.Inc(1)
@@ -2549,7 +2548,7 @@ func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 	}
 	s.metrics.JobMetrics.JobNotFound.Inc(1)
 	return nil, yarpcerrors.NotFoundErrorf(
-		"job:%s not found", id.GetValue())
+		"job:%s not found", jobID)
 }
 
 // updateJobIndex updates the job index table with job runtime
@@ -3631,7 +3630,7 @@ func (s *Store) getJobSummaryFromResultMap(
 
 func (s *Store) getJobSummaryFromConfig(ctx context.Context, id *peloton.JobID) (*job.JobSummary, error) {
 	summary := &job.JobSummary{}
-	jobConfig, _, err := s.GetJobConfig(ctx, id)
+	jobConfig, _, err := s.GetJobConfig(ctx, id.GetValue())
 	if err != nil {
 		log.WithError(err).
 			Info("failed to get jobconfig")
@@ -3645,7 +3644,7 @@ func (s *Store) getJobSummaryFromConfig(ctx context.Context, id *peloton.JobID) 
 	summary.Labels = jobConfig.GetLabels()
 	summary.InstanceCount = jobConfig.GetInstanceCount()
 	summary.RespoolID = jobConfig.GetRespoolID()
-	summary.Runtime, err = s.GetJobRuntime(ctx, id)
+	summary.Runtime, err = s.GetJobRuntime(ctx, id.GetValue())
 	if err != nil {
 		log.WithError(err).
 			Info("failed to get job runtime")

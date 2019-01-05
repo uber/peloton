@@ -36,7 +36,7 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-type JobActionsTestSuite struct {
+type jobActionsTestSuite struct {
 	suite.Suite
 
 	ctrl                *gomock.Controller
@@ -46,16 +46,21 @@ type JobActionsTestSuite struct {
 	goalStateDriver     *driver
 	jobID               *peloton.JobID
 	jobEnt              *jobEntity
+	cachedJob           *cachedmocks.MockJob
+	cachedTask          *cachedmocks.MockTask
+	jobStore            *storemocks.MockJobStore
 }
 
-func (suite *JobActionsTestSuite) SetupTest() {
+func (suite *jobActionsTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 
 	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
+	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 
 	suite.goalStateDriver = &driver{
+		jobStore:   suite.jobStore,
 		jobEngine:  suite.jobGoalStateEngine,
 		taskEngine: suite.taskGoalStateEngine,
 		jobFactory: suite.jobFactory,
@@ -69,38 +74,29 @@ func (suite *JobActionsTestSuite) SetupTest() {
 		id:     suite.jobID,
 		driver: suite.goalStateDriver,
 	}
+	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
+	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 }
 
-func (suite *JobActionsTestSuite) TearDownTest() {
+func (suite *jobActionsTestSuite) TearDownTest() {
 	suite.ctrl.Finish()
 }
 
-func (suite *JobActionsTestSuite) TestJobEnqueue() {
-	suite.jobGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-
-	err := JobEnqueue(context.Background(), suite.jobEnt)
-	suite.NoError(err)
-}
-
-func (suite *JobActionsTestSuite) TestUntrackJobBatch() {
-	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
-	cachedTask := cachedmocks.NewMockTask(suite.ctrl)
+func (suite *jobActionsTestSuite) TestUntrackJobBatch() {
 	taskMap := make(map[uint32]cached.Task)
-	taskMap[0] = cachedTask
+	taskMap[0] = suite.cachedTask
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
-		Return(cachedJob)
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetConfig(gomock.Any()).
 		Return(&job.JobConfig{
 			Type: job.JobType_BATCH,
 		}, nil)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetAllTasks().
 		Return(taskMap)
 
@@ -119,14 +115,12 @@ func (suite *JobActionsTestSuite) TestUntrackJobBatch() {
 	suite.NoError(err)
 }
 
-func (suite *JobActionsTestSuite) TestUntrackJobStateless() {
-	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
-
+func (suite *jobActionsTestSuite) TestUntrackJobStateless() {
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
-		Return(cachedJob)
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetConfig(gomock.Any()).
 		Return(&job.JobConfig{
 			Type: job.JobType_SERVICE,
@@ -137,14 +131,12 @@ func (suite *JobActionsTestSuite) TestUntrackJobStateless() {
 }
 
 // Test JobStateInvalid workflow is as expected
-func (suite *JobActionsTestSuite) TestJobStateInvalidAction() {
-	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
-
+func (suite *jobActionsTestSuite) TestJobStateInvalidAction() {
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
-		Return(cachedJob)
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetRuntime(context.Background()).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_KILLING,
@@ -155,18 +147,16 @@ func (suite *JobActionsTestSuite) TestJobStateInvalidAction() {
 	suite.NoError(err)
 }
 
-func (suite *JobActionsTestSuite) TestJobRecoverActionSuccess() {
-	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
-
+func (suite *jobActionsTestSuite) TestJobRecoverActionSuccess() {
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
-		Return(cachedJob)
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetConfig(gomock.Any()).
 		Return(&job.JobConfig{}, nil)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		Update(gomock.Any(), &job.JobInfo{
 			Runtime: &job.RuntimeInfo{State: job.JobState_INITIALIZED},
 		}, nil, cached.UpdateCacheAndDB).
@@ -179,27 +169,24 @@ func (suite *JobActionsTestSuite) TestJobRecoverActionSuccess() {
 	suite.NoError(err)
 }
 
-func (suite *JobActionsTestSuite) TestJobRecoverActionFailToRecover() {
-	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
-	cachedTask := cachedmocks.NewMockTask(suite.ctrl)
-
+func (suite *jobActionsTestSuite) TestJobRecoverActionFailToRecover() {
 	taskMap := make(map[uint32]cached.Task)
-	taskMap[0] = cachedTask
+	taskMap[0] = suite.cachedTask
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
-		Return(cachedJob)
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetConfig(gomock.Any()).
 		Return(&job.JobConfig{}, yarpcerrors.NotFoundErrorf("config not found")).
 		Times(2)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
-		Return(cachedJob)
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetAllTasks().
 		Return(taskMap)
 
@@ -220,12 +207,7 @@ func (suite *JobActionsTestSuite) TestJobRecoverActionFailToRecover() {
 
 // TestDeleteJobFromActiveJobs tests DeleteJobFromActiveJobs goalstate
 // action results
-func (suite *JobActionsTestSuite) TestDeleteJobFromActiveJobs() {
-	jobStore := storemocks.NewMockJobStore(suite.ctrl)
-	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
-
-	suite.goalStateDriver.jobStore = jobStore
-
+func (suite *jobActionsTestSuite) TestDeleteJobFromActiveJobs() {
 	tt := []struct {
 		typ          job.JobType
 		state        job.JobState
@@ -260,12 +242,12 @@ func (suite *JobActionsTestSuite) TestDeleteJobFromActiveJobs() {
 		},
 	}
 	for _, test := range tt {
-		suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(cachedJob)
-		cachedJob.EXPECT().GetRuntime(context.Background()).
+		suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(suite.cachedJob)
+		suite.cachedJob.EXPECT().GetRuntime(context.Background()).
 			Return(&job.RuntimeInfo{
 				State: test.state,
 			}, nil)
-		cachedJob.EXPECT().
+		suite.cachedJob.EXPECT().
 			GetConfig(gomock.Any()).
 			Return(&job.JobConfig{
 				Type: test.typ,
@@ -273,81 +255,77 @@ func (suite *JobActionsTestSuite) TestDeleteJobFromActiveJobs() {
 
 		// cachedJob.EXPECT().GetJobType().Return(test.typ)
 		if test.shouldDelete {
-			jobStore.EXPECT().DeleteActiveJob(gomock.Any(), suite.jobID).Return(nil)
+			suite.jobStore.EXPECT().DeleteActiveJob(gomock.Any(), suite.jobID).Return(nil)
 		}
 		err := DeleteJobFromActiveJobs(context.Background(), suite.jobEnt)
 		suite.NoError(err)
 	}
-
 }
 
 // TestDeleteJobFromActiveJobsFailures tests failure scenarios for
 // DeleteJobFromActiveJobs goalstate action
-func (suite *JobActionsTestSuite) TestDeleteJobFromActiveJobsFailures() {
-	jobStore := storemocks.NewMockJobStore(suite.ctrl)
-	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
-
-	suite.goalStateDriver.jobStore = jobStore
-
+func (suite *jobActionsTestSuite) TestDeleteJobFromActiveJobsFailures() {
 	// set cached job to nil. this should not return error
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(nil)
 	err := DeleteJobFromActiveJobs(context.Background(), suite.jobEnt)
 	suite.NoError(err)
 
-	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(cachedJob).AnyTimes()
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		AnyTimes()
 
 	// simulate GetRuntime error
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetRuntime(context.Background()).
 		Return(nil, fmt.Errorf("runtime error"))
 	err = DeleteJobFromActiveJobs(context.Background(), suite.jobEnt)
 	suite.Error(err)
 
 	// Simulate GetConfig error
-	cachedJob.EXPECT().GetRuntime(context.Background()).
+	suite.cachedJob.EXPECT().GetRuntime(context.Background()).
 		Return(&job.RuntimeInfo{
 			State: job.JobState_FAILED,
 		}, nil)
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetConfig(gomock.Any()).
 		Return(nil, fmt.Errorf("config error"))
 	err = DeleteJobFromActiveJobs(context.Background(), suite.jobEnt)
 	suite.Error(err)
 
 	// Simulate storage error
-	cachedJob.EXPECT().GetRuntime(context.Background()).
+	suite.cachedJob.EXPECT().
+		GetRuntime(context.Background()).
 		Return(&job.RuntimeInfo{
 			State: job.JobState_FAILED,
 		}, nil)
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetConfig(gomock.Any()).
 		Return(&job.JobConfig{
 			Type: job.JobType_BATCH,
 		}, nil)
-	jobStore.EXPECT().DeleteActiveJob(gomock.Any(), suite.jobID).
+	suite.jobStore.EXPECT().DeleteActiveJob(gomock.Any(), suite.jobID).
 		Return(fmt.Errorf("DB error"))
 	err = DeleteJobFromActiveJobs(context.Background(), suite.jobEnt)
 	suite.Error(err)
 }
 
 // TestStartJobSuccess tests the success case of start job action
-func (suite *JobActionsTestSuite) TestStartJobSuccess() {
-	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
-	cachedTask := cachedmocks.NewMockTask(suite.ctrl)
+func (suite *jobActionsTestSuite) TestStartJobSuccess() {
 	taskMap := make(map[uint32]cached.Task)
-	taskMap[0] = cachedTask
+	taskMap[0] = suite.cachedTask
 	jobRuntime := &job.RuntimeInfo{
 		StateVersion: 1,
 		State:        job.JobState_RUNNING,
 	}
 
-	cachedJob.EXPECT().ID().Return(suite.jobID).AnyTimes()
-	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(cachedJob)
-	cachedJob.EXPECT().GetAllTasks().Return(taskMap)
-	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Return(nil)
+	suite.cachedJob.EXPECT().ID().Return(suite.jobID).AnyTimes()
+	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().GetAllTasks().Return(taskMap)
+	suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Return(nil)
 	suite.taskGoalStateEngine.EXPECT().Enqueue(gomock.Any(), gomock.Any())
-	cachedJob.EXPECT().GetRuntime(gomock.Any()).Return(jobRuntime, nil)
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().GetRuntime(gomock.Any()).Return(jobRuntime, nil)
+	suite.cachedJob.EXPECT().
 		CompareAndSetRuntime(gomock.Any(), jobRuntime).
 		Return(nil, nil)
 	suite.jobGoalStateEngine.EXPECT().Enqueue(gomock.Any(), gomock.Any())
@@ -357,7 +335,7 @@ func (suite *JobActionsTestSuite) TestStartJobSuccess() {
 
 // TestStartJobGetJobFailure tests the failure case of start job action
 // due to failure to get job from the job factory.
-func (suite *JobActionsTestSuite) TestStartJobGetJobFailure() {
+func (suite *jobActionsTestSuite) TestStartJobGetJobFailure() {
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(nil)
 
 	suite.NoError(JobStart(context.Background(), suite.jobEnt))
@@ -365,7 +343,7 @@ func (suite *JobActionsTestSuite) TestStartJobGetJobFailure() {
 
 // TestStartJobPatchTasksFailure tests the failure case
 // of start job action due to error while patching tasks
-func (suite *JobActionsTestSuite) TestStartJobPatchTasksFailure() {
+func (suite *jobActionsTestSuite) TestStartJobPatchTasksFailure() {
 	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 	cachedTask := cachedmocks.NewMockTask(suite.ctrl)
 	taskMap := make(map[uint32]cached.Task)
@@ -382,7 +360,7 @@ func (suite *JobActionsTestSuite) TestStartJobPatchTasksFailure() {
 
 // TestStartJobGetRuntimeFailure tests the failure case
 // of start job action due to error getting job runtime
-func (suite *JobActionsTestSuite) TestStartJobGetRuntimeFailure() {
+func (suite *jobActionsTestSuite) TestStartJobGetRuntimeFailure() {
 	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 	cachedTask := cachedmocks.NewMockTask(suite.ctrl)
 	taskMap := make(map[uint32]cached.Task)
@@ -402,7 +380,7 @@ func (suite *JobActionsTestSuite) TestStartJobGetRuntimeFailure() {
 
 // TestStartJobRuntimeUpdateFailure tests the failure case
 // of start job action due to error updating job runtime
-func (suite *JobActionsTestSuite) TestStartJobRuntimeUpdateFailure() {
+func (suite *jobActionsTestSuite) TestStartJobRuntimeUpdateFailure() {
 	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 	cachedTask := cachedmocks.NewMockTask(suite.ctrl)
 	taskMap := make(map[uint32]cached.Task)
@@ -430,5 +408,198 @@ func (suite *JobActionsTestSuite) TestStartJobRuntimeUpdateFailure() {
 }
 
 func TestJobActions(t *testing.T) {
-	suite.Run(t, new(JobActionsTestSuite))
+	suite.Run(t, new(jobActionsTestSuite))
+}
+
+// TestJobDeleteSuccess tests success case of deleting a running job
+func (suite *jobActionsTestSuite) TestJobDeleteSuccess() {
+	cachedTask := cachedmocks.NewMockTask(suite.ctrl)
+	cachedTasks := make(map[uint32]cached.Task)
+	cachedTasks[0] = cachedTask
+
+	suite.cachedJob.EXPECT().ID().Return(suite.jobID).AnyTimes()
+
+	gomock.InOrder(
+		suite.jobFactory.EXPECT().
+			GetJob(suite.jobID).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			Delete(gomock.Any()).
+			Return(nil),
+
+		suite.cachedJob.EXPECT().
+			GetAllTasks().
+			Return(cachedTasks),
+
+		suite.taskGoalStateEngine.EXPECT().
+			Delete(gomock.Any()),
+
+		suite.jobGoalStateEngine.EXPECT().
+			Delete(suite.jobEnt),
+
+		suite.jobFactory.EXPECT().
+			ClearJob(suite.jobID),
+	)
+
+	suite.NoError(JobDelete(context.Background(), suite.jobEnt))
+}
+
+// TestJobDeleteGetJobFailure tests the failure case of deleting
+// job due to failure getting the job from cache
+func (suite *jobActionsTestSuite) TestJobDeleteGetJobFailure() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(nil)
+
+	suite.NoError(JobDelete(context.Background(), suite.jobEnt))
+}
+
+// TestJobDeleteStoreError tests the failure case of
+// deleting job due to error while deleting job from store
+func (suite *jobActionsTestSuite) TestJobDeleteStoreError() {
+	gomock.InOrder(
+		suite.jobFactory.EXPECT().
+			GetJob(suite.jobID).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			Delete(gomock.Any()).
+			Return(yarpcerrors.InternalErrorf("test error")),
+	)
+
+	suite.Error(JobDelete(context.Background(), suite.jobEnt))
+}
+
+// TestJobReloadRuntimeSuccess tests the success
+// case of reloading job runtime into cache
+func (suite *jobActionsTestSuite) TestJobReloadRuntimeSuccess() {
+	jobRuntime := &job.RuntimeInfo{
+		State:     job.JobState_RUNNING,
+		GoalState: job.JobState_SUCCEEDED,
+	}
+
+	gomock.InOrder(
+		suite.jobFactory.EXPECT().
+			AddJob(suite.jobID).
+			Return(suite.cachedJob),
+
+		suite.jobStore.EXPECT().
+			GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+			Return(jobRuntime, nil),
+
+		suite.cachedJob.EXPECT().
+			Update(
+				gomock.Any(),
+				&job.JobInfo{
+					Runtime: jobRuntime,
+				},
+				nil,
+				cached.UpdateCacheOnly,
+			).Return(nil),
+
+		suite.jobGoalStateEngine.EXPECT().
+			Enqueue(gomock.Any(), gomock.Any()),
+	)
+
+	suite.NoError(JobReloadRuntime(context.Background(), suite.jobEnt))
+}
+
+// TestJobReloadGetJobRuntimeFailure tests the failure case of reloading
+// job runtime into cache due to error while getting job runtime from store
+func (suite *jobActionsTestSuite) TestJobReloadGetJobRuntimeFailure() {
+	gomock.InOrder(
+		suite.jobFactory.EXPECT().
+			AddJob(suite.jobID).
+			Return(suite.cachedJob),
+
+		suite.jobStore.EXPECT().
+			GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+			Return(nil, yarpcerrors.InternalErrorf("test error")),
+
+		suite.cachedJob.EXPECT().
+			Update(
+				gomock.Any(),
+				&job.JobInfo{},
+				nil,
+				cached.UpdateCacheOnly,
+			).Return(nil),
+
+		suite.jobGoalStateEngine.EXPECT().
+			Enqueue(gomock.Any(), gomock.Any()),
+	)
+
+	suite.NoError(JobReloadRuntime(context.Background(), suite.jobEnt))
+}
+
+// TestJobReloadRuntimeUpdateFailure tests the failure case of
+// reloading job runtime into cache due to error while updating cache
+func (suite *jobActionsTestSuite) TestJobReloadRuntimeUpdateFailure() {
+	jobRuntime := &job.RuntimeInfo{
+		State:     job.JobState_RUNNING,
+		GoalState: job.JobState_SUCCEEDED,
+	}
+
+	gomock.InOrder(
+		suite.jobFactory.EXPECT().
+			AddJob(suite.jobID).
+			Return(suite.cachedJob),
+
+		suite.jobStore.EXPECT().
+			GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+			Return(jobRuntime, nil),
+
+		suite.cachedJob.EXPECT().
+			Update(
+				gomock.Any(),
+				&job.JobInfo{
+					Runtime: jobRuntime,
+				}, nil,
+				cached.UpdateCacheOnly,
+			).Return(yarpcerrors.InternalErrorf("test error")),
+	)
+
+	suite.Error(JobReloadRuntime(context.Background(), suite.jobEnt))
+}
+
+// TestJobReloadRuntimeJobNotFound tests the failure case of
+// reloading job runtime into cache due to runtime not found error
+func (suite *jobActionsTestSuite) TestJobReloadRuntimeJobNotFound() {
+	taskMap := make(map[uint32]cached.Task)
+	taskMap[0] = suite.cachedTask
+
+	gomock.InOrder(
+		suite.jobFactory.EXPECT().
+			AddJob(suite.jobID).
+			Return(suite.cachedJob),
+
+		suite.jobStore.EXPECT().
+			GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+			Return(nil, yarpcerrors.NotFoundErrorf("test error")),
+
+		suite.jobFactory.EXPECT().
+			GetJob(suite.jobID).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			GetConfig(gomock.Any()).
+			Return(&job.JobConfig{
+				Type: job.JobType_BATCH,
+			}, nil),
+
+		suite.cachedJob.EXPECT().
+			GetAllTasks().
+			Return(taskMap),
+
+		suite.taskGoalStateEngine.EXPECT().
+			Delete(gomock.Any()),
+
+		suite.jobGoalStateEngine.EXPECT().
+			Delete(gomock.Any()),
+
+		suite.jobFactory.EXPECT().
+			ClearJob(suite.jobID),
+	)
+
+	suite.NoError(JobReloadRuntime(context.Background(), suite.jobEnt))
 }

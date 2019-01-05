@@ -40,7 +40,7 @@ func GetJobConfigWithoutFillingCache(
 		return cachedJob.GetConfig(ctx)
 	}
 
-	jobConfig, _, err := store.GetJobConfig(ctx, id)
+	jobConfig, _, err := store.GetJobConfig(ctx, id.GetValue())
 	return jobConfig, err
 }
 
@@ -59,5 +59,5 @@ func GetJobRuntimeWithoutFillingCache(
 		return cachedJob.GetRuntime(ctx)
 	}
 
-	return store.GetJobRuntime(ctx, id)
+	return store.GetJobRuntime(ctx, id.GetValue())
 }
