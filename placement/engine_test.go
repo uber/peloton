@@ -471,14 +471,6 @@ func TestEngineCleanup(t *testing.T) {
 		).
 		Return()
 
-	mockTaskService.EXPECT().
-		Enqueue(
-			gomock.Any(),
-			assignments,
-			_failedToPlaceTaskAfterTimeout,
-		).
-		Return()
-
 	engine.cleanup(context.Background(), assignments, nil, assignments, hosts)
 }
 

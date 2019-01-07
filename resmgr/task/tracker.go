@@ -46,11 +46,8 @@ type Tracker interface {
 	// GetTask gets the RM task for taskID
 	GetTask(t *peloton.TaskID) *RMTask
 
-	// Sets the hostname where the task is placed.
-	SetPlacement(t *peloton.TaskID, hostname string)
-
-	// SetPlacementHost Sets the hostname for the placement
-	SetPlacementHost(placement *resmgr.Placement, hostname string)
+	// SetPlacementHost Sets the placement for the tasks.
+	SetPlacement(placement *resmgr.Placement)
 
 	// DeleteTask deletes the task from the map
 	DeleteTask(t *peloton.TaskID)
@@ -235,19 +232,12 @@ func (tr *tracker) clearPlacement(rmTask *RMTask) {
 	}
 }
 
-// SetPlacement will set the hostname that the task is currently placed on.
-func (tr *tracker) SetPlacement(t *peloton.TaskID, hostname string) {
-	tr.lock.Lock()
-	defer tr.lock.Unlock()
-	tr.setPlacement(t, hostname)
-}
-
 // SetPlacementHost will set the hostname that the task is currently placed on.
-func (tr *tracker) SetPlacementHost(placement *resmgr.Placement, hostname string) {
+func (tr *tracker) SetPlacement(placement *resmgr.Placement) {
 	tr.lock.Lock()
 	defer tr.lock.Unlock()
 	for _, t := range placement.GetTasks() {
-		tr.setPlacement(t, hostname)
+		tr.setPlacement(t, placement.GetHostname())
 	}
 }
 

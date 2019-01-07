@@ -443,14 +443,6 @@ func (e *engine) cleanup(
 		unassigned,
 	)
 
-	// For now we are double sending the unassigned placements to resource
-	// manager.
-	// TODO avyas: remove this once we migrate to the SetPlacements API
-	if len(unassigned) > 0 {
-		// Return tasks that failed to get placed.
-		e.taskService.Enqueue(ctx, unassigned, _failedToPlaceTaskAfterTimeout)
-	}
-
 	// Find the unused offers.
 	unusedOffers := e.findUnusedHosts(assigned, retryable, offers)
 

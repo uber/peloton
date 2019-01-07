@@ -124,11 +124,13 @@ func (suite *recoveryTestSuite) SetupTest() {
 			RecoveryConfig: &rc.RecoveryConfig{},
 		}, suite.mockHostmgrClient)
 
-	err := suite.resourceTree.Start()
-	suite.NoError(err)
+	suite.NoError(suite.resourceTree.Start())
+	suite.NoError(suite.taskScheduler.Start())
+}
 
-	err = suite.taskScheduler.Start()
-	suite.NoError(err)
+func (suite *recoveryTestSuite) TearDownTest() {
+	suite.NoError(suite.resourceTree.Stop())
+	suite.NoError(suite.taskScheduler.Stop())
 }
 
 // Returns resource pools

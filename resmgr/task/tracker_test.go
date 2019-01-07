@@ -182,7 +182,10 @@ func (suite *TrackerTestSuite) TestSetPlacement() {
 	oldHostname := suite.hostname
 	for i := 0; i < 5; i++ {
 		newHostname := fmt.Sprintf("new-hostname-%v", i)
-		suite.tracker.SetPlacement(suite.task.Id, newHostname)
+		suite.tracker.SetPlacement(&resmgr.Placement{
+			Tasks:    []*peloton.TaskID{suite.task.Id},
+			Hostname: newHostname,
+		})
 
 		result := suite.tracker.TasksByHosts([]string{newHostname}, suite.task.Type)
 		suite.Equal(1, len(result))
@@ -196,7 +199,6 @@ func (suite *TrackerTestSuite) TestSetPlacement() {
 
 func (suite *TrackerTestSuite) TestSetPlacementHost() {
 	suite.tracker.Clear()
-	placement := &resmgr.Placement{}
 	var tasks []*peloton.TaskID
 	for i := 0; i < 5; i++ {
 		taskID := fmt.Sprintf("job1-%d", i)
@@ -204,8 +206,10 @@ func (suite *TrackerTestSuite) TestSetPlacementHost() {
 		tasks = append(tasks, t)
 		suite.addTaskToTracker(suite.createTask(i))
 	}
-	placement.Tasks = tasks
-	suite.tracker.SetPlacementHost(placement, suite.hostname)
+	suite.tracker.SetPlacement(&resmgr.Placement{
+		Tasks:    tasks,
+		Hostname: suite.hostname,
+	})
 	result := suite.tracker.TasksByHosts([]string{suite.hostname}, suite.task.Type)
 	suite.Equal(5, len(result[suite.hostname]))
 	suite.tracker.Clear()
@@ -570,7 +574,10 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 		fmt.Println("calling SetPlacement")
 		// call SetPlacement which acquires Lock on tracker(see #3
 		// in test comments)
-		testTracker.SetPlacement(&peloton.TaskID{Value: "job1-1"}, "hostname")
+		testTracker.SetPlacement(&resmgr.Placement{
+			Tasks:    []*peloton.TaskID{{Value: "job1-1"}},
+			Hostname: "hostname",
+		})
 		fmt.Println("SetPlacement returned")
 	}()
 

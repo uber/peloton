@@ -47,7 +47,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
-	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -72,6 +71,7 @@ type HandlerTestSuite struct {
 
 func (s *HandlerTestSuite) SetupSuite() {
 	s.ctrl = gomock.NewController(s.T())
+
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.ctrl)
 	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
 		Return(s.getResPools(), nil).AnyTimes()
@@ -94,7 +94,7 @@ func (s *HandlerTestSuite) SetupSuite() {
 		tasktestutil.CreateTaskConfig())
 
 	s.rmTaskTracker = rm_task.GetTracker()
-	rm_task.InitScheduler(tally.NoopScope, 1*time.Second, s.rmTaskTracker)
+	rm_task.InitScheduler(tally.NoopScope, 100*time.Millisecond, s.rmTaskTracker)
 	s.taskScheduler = rm_task.GetScheduler()
 
 	s.handler = &ServiceHandler{
@@ -127,271 +127,17 @@ func (s *HandlerTestSuite) TearDownSuite() {
 
 func (s *HandlerTestSuite) SetupTest() {
 	s.context = context.Background()
-	err := s.resTree.Start()
-	s.NoError(err)
-
-	err = s.taskScheduler.Start()
-	s.NoError(err)
-
+	s.NoError(s.resTree.Start())
+	s.NoError(s.taskScheduler.Start())
 }
 
 func (s *HandlerTestSuite) TearDownTest() {
-	log.Info("tearing down")
-
-	err := respool.GetTree().Stop()
-	s.NoError(err)
-	err = rm_task.GetScheduler().Stop()
-	s.NoError(err)
+	s.NoError(respool.GetTree().Stop())
+	s.NoError(rm_task.GetScheduler().Stop())
 }
 
 func TestResManagerHandler(t *testing.T) {
 	suite.Run(t, new(HandlerTestSuite))
-}
-
-func (s *HandlerTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
-
-	resConfigs := []*pb_respool.ResourceConfig{
-		{
-			Share:       1,
-			Kind:        "cpu",
-			Reservation: 100,
-			Limit:       1000,
-		},
-		{
-			Share:       1,
-			Kind:        "memory",
-			Reservation: 100,
-			Limit:       1000,
-		},
-		{
-			Share:       1,
-			Kind:        "disk",
-			Reservation: 100,
-			Limit:       1000,
-		},
-		{
-			Share:       1,
-			Kind:        "gpu",
-			Reservation: 2,
-			Limit:       4,
-		},
-	}
-	return resConfigs
-}
-
-func (s *HandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
-
-	rootID := peloton.ResourcePoolID{Value: "root"}
-	policy := pb_respool.SchedulingPolicy_PriorityFIFO
-
-	return map[string]*pb_respool.ResourcePoolConfig{
-		"root": {
-			Name:      "root",
-			Parent:    nil,
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool1": {
-			Name:      "respool1",
-			Parent:    &rootID,
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool2": {
-			Name:      "respool2",
-			Parent:    &rootID,
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool3": {
-			Name:      "respool3",
-			Parent:    &rootID,
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool11": {
-			Name:      "respool11",
-			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool12": {
-			Name:      "respool12",
-			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool21": {
-			Name:      "respool21",
-			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool22": {
-			Name:      "respool22",
-			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-	}
-}
-
-func (s *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
-	var gang resmgrsvc.Gang
-	uuidStr := "uuidstr-1"
-	jobID := "job1"
-	instance := 1
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
-	gang.Tasks = []*resmgr.Task{
-		{
-			Name:     "job1-1",
-			Priority: 0,
-			JobId:    &peloton.JobID{Value: "job1"},
-			Id:       &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobID, instance)},
-			Resource: &task.ResourceConfig{
-				CpuLimit:    1,
-				DiskLimitMb: 10,
-				GpuLimit:    0,
-				MemLimitMb:  100,
-			},
-			TaskId: &mesos_v1.TaskID{
-				Value: &mesosTaskID,
-			},
-			Preemptible:             true,
-			PlacementTimeoutSeconds: 60,
-			PlacementRetryCount:     1,
-		},
-	}
-	return &gang
-}
-
-func (s *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
-	var gang resmgrsvc.Gang
-	uuidStr := "uuidstr-1"
-	jobID := "job1"
-	instance := 2
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
-	gang.Tasks = []*resmgr.Task{
-		{
-			Name:     "job1-1",
-			Priority: 1,
-			JobId:    &peloton.JobID{Value: "job1"},
-			Id:       &peloton.TaskID{Value: "job1-2"},
-			Resource: &task.ResourceConfig{
-				CpuLimit:    1,
-				DiskLimitMb: 10,
-				GpuLimit:    0,
-				MemLimitMb:  100,
-			},
-			Preemptible: true,
-			TaskId: &mesos_v1.TaskID{
-				Value: &mesosTaskID,
-			},
-			PlacementTimeoutSeconds: 60,
-			PlacementRetryCount:     1,
-		},
-	}
-	return &gang
-}
-
-func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
-	var gang resmgrsvc.Gang
-	uuidStr := "uuidstr-1"
-	jobID := "job1"
-	instance := 2
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
-	gang.Tasks = []*resmgr.Task{
-		{
-			Name:         "job2-1",
-			Priority:     2,
-			MinInstances: 2,
-			JobId:        &peloton.JobID{Value: "job2"},
-			Id:           &peloton.TaskID{Value: "job2-1"},
-			Resource: &task.ResourceConfig{
-				CpuLimit:    1,
-				DiskLimitMb: 10,
-				GpuLimit:    0,
-				MemLimitMb:  100,
-			},
-			TaskId: &mesos_v1.TaskID{
-				Value: &mesosTaskID,
-			},
-			Preemptible:             true,
-			PlacementTimeoutSeconds: 60,
-			PlacementRetryCount:     1,
-		},
-		{
-			Name:         "job2-2",
-			Priority:     2,
-			MinInstances: 2,
-			JobId:        &peloton.JobID{Value: "job2"},
-			Id:           &peloton.TaskID{Value: "job2-2"},
-			Resource: &task.ResourceConfig{
-				CpuLimit:    1,
-				DiskLimitMb: 10,
-				GpuLimit:    0,
-				MemLimitMb:  100,
-			},
-			TaskId: &mesos_v1.TaskID{
-				Value: &mesosTaskID,
-			},
-			Preemptible:             true,
-			PlacementTimeoutSeconds: 60,
-			PlacementRetryCount:     1,
-		},
-	}
-	return &gang
-}
-
-func (s *HandlerTestSuite) pendingGangWithoutPlacement() *resmgrsvc.Gang {
-	var gang resmgrsvc.Gang
-	uuidStr := "uuidstr-1"
-	jobID := "job9"
-	instance := 1
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
-	gang.Tasks = []*resmgr.Task{
-		{
-			Name:     "job9-1",
-			Priority: 0,
-			JobId:    &peloton.JobID{Value: "job9"},
-			Id:       &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobID, instance)},
-			Resource: &task.ResourceConfig{
-				CpuLimit:    1,
-				DiskLimitMb: 10,
-				GpuLimit:    0,
-				MemLimitMb:  100,
-			},
-			TaskId: &mesos_v1.TaskID{
-				Value: &mesosTaskID,
-			},
-			Preemptible:             true,
-			PlacementTimeoutSeconds: 60,
-			PlacementRetryCount:     3,
-		},
-	}
-	return &gang
-}
-
-func (s *HandlerTestSuite) pendingGangsWithoutPlacement() []*resmgrsvc.Gang {
-	gangs := make([]*resmgrsvc.Gang, 1)
-	gangs[0] = s.pendingGangWithoutPlacement()
-	return gangs
-}
-
-func (s *HandlerTestSuite) pendingGangs() []*resmgrsvc.Gang {
-	gangs := make([]*resmgrsvc.Gang, 3)
-	gangs[0] = s.pendingGang0()
-	gangs[1] = s.pendingGang1()
-	gangs[2] = s.pendingGang2()
-	return gangs
-}
-
-func (s *HandlerTestSuite) expectedGangs() []*resmgrsvc.Gang {
-	gangs := make([]*resmgrsvc.Gang, 3)
-	gangs[0] = s.pendingGang2()
-	gangs[1] = s.pendingGang1()
-	gangs[2] = s.pendingGang0()
-	return gangs
 }
 
 func (s *HandlerTestSuite) TestNewServiceHandler() {
@@ -415,9 +161,10 @@ func (s *HandlerTestSuite) TestNewServiceHandler() {
 }
 
 func (s *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
+	gangs := s.pendingGangs()
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
-		Gangs:   s.pendingGangs(),
+		Gangs:   gangs,
 	}
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
@@ -427,34 +174,14 @@ func (s *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
 	s.NoError(err)
 	s.Nil(enqResp.GetError())
 
-	deqReq := &resmgrsvc.DequeueGangsRequest{
-		Limit:   10,
-		Timeout: 2 * 1000, // 2 sec
-	}
-	// There is a race condition in the test due to the Scheduler.scheduleTasks
-	// method is run asynchronously.
-	time.Sleep(2 * time.Second)
-
-	deqResp, err := s.handler.DequeueGangs(s.context, deqReq)
-	s.NoError(err)
-	s.Nil(deqResp.GetError())
-	s.Equal(s.expectedGangs(), deqResp.GetGangs())
-}
-
-func (s *HandlerTestSuite) TestReEnqueueGangNonExistingGangFails() {
-	enqReq := &resmgrsvc.EnqueueGangsRequest{
-		Gangs: s.pendingGangs(),
-	}
-	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
-	s.NoError(err)
-	s.NotNil(enqResp.GetError())
-	s.NotNil(enqResp.GetError().GetFailure().GetFailed())
+	s.assertTasksAdmitted(gangs)
 }
 
 func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacement() {
+	gangs := s.pendingGangs()
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
-		Gangs:   s.pendingGangs(),
+		Gangs:   gangs,
 	}
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
@@ -467,63 +194,44 @@ func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacement() {
 	// method is run asynchronously.
 	time.Sleep(2 * time.Second)
 
-	// Re-enqueue the gangs without a resource pool
-	enqReq.ResPool = nil
-	enqResp, err = s.handler.EnqueueGangs(s.context, enqReq)
-	s.NoError(err)
-	s.Nil(enqResp.GetError())
+	// SetFailedPlacements for re-enqueue
+	s.assertSetFailedPlacement(gangs)
 
-	// Make sure we dequeue the gangs again for the next test to work
-	deqReq := &resmgrsvc.DequeueGangsRequest{
-		Limit:   10,
-		Timeout: 2 * 1000, // 2 sec
-	}
-	// Scheduler.scheduleTasks method is run asynchronously.
-	// We need to wait here
-	time.Sleep(timeout)
-	// Checking whether we get the task from ready queue
-	deqResp, err := s.handler.DequeueGangs(s.context, deqReq)
-	s.NoError(err)
-	s.Nil(deqResp.GetError())
+	s.assertTasksAdmitted(gangs)
 }
 
+// Tests that the tasks should move back to PENDING state(and the pending queue)
+// after they have been tried to be placed a configured number of times.
 func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacementManyTimes() {
-	enqReq := &resmgrsvc.EnqueueGangsRequest{
-		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
-		Gangs:   s.pendingGangsWithoutPlacement(),
-	}
+	// setup the resource pool with enough entitlement
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
 	node.SetNonSlackEntitlement(s.getEntitlement())
+
+	gangs := s.pendingGangsWithoutPlacement()
+
+	// enqueue the gangs
+	enqReq := &resmgrsvc.EnqueueGangsRequest{
+		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
+		Gangs:   gangs,
+	}
 	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
 	s.NoError(err)
 	s.Nil(enqResp.GetError())
 
-	// There is a race condition in the test due to the Scheduler.scheduleTasks
-	// method is run asynchronously.
-	time.Sleep(2 * time.Second)
+	// check weather all tasks have been admitted
+	s.assertTasksAdmitted(gangs)
 
-	// Make sure we dequeue the gangs again for the next test to work
-	deqReq := &resmgrsvc.DequeueGangsRequest{
-		Limit:   10,
-		Timeout: 2 * 1000, // 2 sec
+	// Return failed placements for re-enqueue
+	s.assertSetFailedPlacement(gangs)
+
+	// The tasks should move to pending state since the threshold to place it
+	// has been crossed
+	for _, gang := range gangs {
+		// we only have 1 task per gang
+		rmTask := s.handler.rmTracker.GetTask(gang.Tasks[0].Id)
+		s.EqualValues(rmTask.GetCurrentState().String(), task.TaskState_PENDING.String())
 	}
-	// Scheduler.scheduleTasks method is run asynchronously.
-	// We need to wait here
-	time.Sleep(timeout)
-	// Checking whether we get the task from ready queue
-	deqResp, err := s.handler.DequeueGangs(s.context, deqReq)
-	s.NoError(err)
-	s.Nil(deqResp.GetError())
-
-	// Re-enqueue the gangs without a resource pool
-	enqReq.ResPool = nil
-	enqResp, err = s.handler.EnqueueGangs(s.context, enqReq)
-	s.NoError(err)
-	s.Nil(enqResp.GetError())
-
-	rmTask := s.handler.rmTracker.GetTask(s.pendingGangsWithoutPlacement()[0].Tasks[0].Id)
-	s.EqualValues(rmTask.GetCurrentState().String(), task.TaskState_PENDING.String())
 }
 
 // This tests the requeue of the same task with same mesos task id as well
@@ -559,10 +267,9 @@ func (s *HandlerTestSuite) TestRequeue() {
 	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
 	s.NoError(err)
 	s.NotNil(enqResp.GetError())
-	log.Error(err)
-	log.Error(enqResp.GetError())
 	s.EqualValues(enqResp.GetError().GetFailure().GetFailed()[0].Errorcode,
 		resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST)
+
 	// Testing to see if we can send different Mesos taskID
 	// in the enqueue request then it should move task to
 	// ready state and ready queue
@@ -570,27 +277,17 @@ func (s *HandlerTestSuite) TestRequeue() {
 	jobID := "job1"
 	instance := 1
 	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
-	enqReq.Gangs[0].Tasks[0].TaskId = &mesos_v1.TaskID{
+	gangs[0].Tasks[0].TaskId = &mesos_v1.TaskID{
 		Value: &mesosTaskID,
 	}
+	enqReq.Gangs = gangs
+
 	enqResp, err = s.handler.EnqueueGangs(s.context, enqReq)
 	s.NoError(err)
 	s.Nil(enqResp.GetError())
 	s.Nil(enqResp.GetError().GetFailure().GetFailed())
 
-	rmtask = s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
-	s.EqualValues(rmtask.GetCurrentState(), task.TaskState_READY)
-
-	deqReq := &resmgrsvc.DequeueGangsRequest{
-		Limit:   10,
-		Timeout: 2 * 1000, // 2 sec
-	}
-	// Checking whether we get the task from ready queue
-	deqResp, err := s.handler.DequeueGangs(s.context, deqReq)
-	s.NoError(err)
-	s.Nil(deqResp.GetError())
-	log.Info(*deqResp.GetGangs()[0].Tasks[0].TaskId.Value)
-	s.Equal(mesosTaskID, *deqResp.GetGangs()[0].Tasks[0].TaskId.Value)
+	s.assertTasksAdmitted(gangs)
 }
 
 // TestRequeueTaskNotPresent tests the requeue but if the task is been
@@ -710,88 +407,79 @@ func (s *HandlerTestSuite) TestAddingToPendingQueueFailure() {
 	s.rmTaskTracker.Clear()
 }
 
-func (s *HandlerTestSuite) TestRequeuePlacementFailure() {
+// test Setting failed placement
+func (s *HandlerTestSuite) TestSetFailedPlacement() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
 
+	gang := s.pendingGang0()
+	gangs := []*resmgrsvc.Gang{gang}
+	ttask := gang.Tasks[0]
+
+	// Add task to tracker and move to PLACED
 	s.rmTaskTracker.AddTask(
-		s.pendingGang0().Tasks[0],
+		ttask,
 		nil,
 		node,
 		tasktestutil.CreateTaskConfig())
-	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
-	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
-		*s.pendingGang0().Tasks[0].TaskId.Value))
+	rmTask := s.rmTaskTracker.GetTask(ttask.Id)
+	err = rmTask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
+		*ttask.TaskId.Value))
 	s.NoError(err)
-	tasktestutil.ValidateStateTransitions(rmtask, []task.TaskState{
+	tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
-		task.TaskState_PLACED})
-	enqReq := &resmgrsvc.EnqueueGangsRequest{
-		ResPool: nil,
-		Gangs:   []*resmgrsvc.Gang{s.pendingGang0()},
-	}
+	})
 
-	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
-	s.NoError(err)
-	s.NotNil(enqResp.GetError())
+	s.assertSetFailedPlacement(gangs)
+
+	// Task should move to PENDING
+	// check the task states
+	for _, gang := range gangs {
+		// we only have 1 task per gang
+		rmTask := s.handler.rmTracker.GetTask(gang.Tasks[0].Id)
+		s.EqualValues(
+			rmTask.GetCurrentState().String(),
+			task.TaskState_PENDING.String(),
+		)
+	}
 }
 
 func (s *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {
 	respool.InitTree(tally.NoopScope, nil, nil, nil, s.cfg)
 
-	respoolID := &peloton.ResourcePoolID{Value: "respool10"}
-	enqReq := &resmgrsvc.EnqueueGangsRequest{
-		ResPool: respoolID,
-		Gangs:   s.pendingGangs(),
+	tt := []struct {
+		respoolID      *peloton.ResourcePoolID
+		wantErrMessage string
+	}{
+		{
+			respoolID:      nil,
+			wantErrMessage: "resource pool ID can't be nil",
+		},
+		{
+			respoolID:      &peloton.ResourcePoolID{Value: "respool10"},
+			wantErrMessage: "resource pool (respool10) not found",
+		},
 	}
-	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
-	s.NoError(err)
-	log.Infof("%v", enqResp)
-	notFound := &resmgrsvc.ResourcePoolNotFound{
-		Id:      respoolID,
-		Message: "resource pool (respool10) not found",
+
+	for _, t := range tt {
+		enqReq := &resmgrsvc.EnqueueGangsRequest{
+			ResPool: t.respoolID,
+			Gangs:   s.pendingGangs(),
+		}
+		enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
+		s.NoError(err)
+		notFound := &resmgrsvc.ResourcePoolNotFound{
+			Id:      t.respoolID,
+			Message: t.wantErrMessage,
+		}
+		s.Equal(notFound, enqResp.GetError().GetNotFound())
 	}
-	s.Equal(notFound, enqResp.GetError().GetNotFound())
 }
 
 func (s *HandlerTestSuite) TestEnqueueGangsFailure() {
 	// TODO: Mock ResPool.Enqueue task to simulate task enqueue failures
 	s.True(true)
-}
-
-func (s *HandlerTestSuite) getPlacements() []*resmgr.Placement {
-	var placements []*resmgr.Placement
-	resp, err := respool.NewRespool(
-		tally.NoopScope,
-		"respool-1",
-		nil,
-		&pb_respool.ResourcePoolConfig{
-			Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
-		},
-		s.cfg,
-	)
-	s.NoError(err, "create resource pool shouldn't fail")
-
-	for i := 0; i < 10; i++ {
-		var tasks []*peloton.TaskID
-		for j := 0; j < 5; j++ {
-			task := &peloton.TaskID{
-				Value: fmt.Sprintf("task-%d-%d", i, j),
-			}
-			tasks = append(tasks, task)
-			s.rmTaskTracker.AddTask(&resmgr.Task{
-				Id: task,
-			}, nil, resp, tasktestutil.CreateTaskConfig())
-		}
-
-		placement := &resmgr.Placement{
-			Tasks:    tasks,
-			Hostname: fmt.Sprintf("host-%d", i),
-		}
-		placements = append(placements, placement)
-	}
-	return placements
 }
 
 func (s *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
@@ -971,41 +659,6 @@ func (s *HandlerTestSuite) TestRemoveTasksFromGang() {
 	s.Equal(len(newGang.Tasks), 3)
 }
 
-func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
-	var tasks []*peloton.TaskID
-	var rmTasks []*resmgr.Task
-	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil,
-		&pb_respool.ResourcePoolConfig{
-			Name:      "respool1",
-			Parent:    nil,
-			Resources: s.getResourceConfig(),
-			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
-		}, s.cfg)
-	for j := 0; j < 5; j++ {
-		mesosTaskID := "mesosID"
-		taskID := &peloton.TaskID{
-			Value: fmt.Sprintf("task-1-%d", j),
-		}
-		tasks = append(tasks, taskID)
-		rmTask := &resmgr.Task{
-			Id: taskID,
-			Resource: &task.ResourceConfig{
-				CpuLimit:    1,
-				DiskLimitMb: 10,
-				GpuLimit:    0,
-				MemLimitMb:  100,
-			},
-			TaskId: &mesos_v1.TaskID{
-				Value: &mesosTaskID,
-			},
-		}
-		s.rmTaskTracker.AddTask(rmTask, nil, resp,
-			tasktestutil.CreateTaskConfig())
-		rmTasks = append(rmTasks, rmTask)
-	}
-	return rmTasks, tasks
-}
-
 func (s *HandlerTestSuite) TestKillTasks() {
 	s.rmTaskTracker.Clear()
 	_, tasks := s.createRMTasks()
@@ -1147,24 +800,6 @@ func (s *HandlerTestSuite) TestUpdateTasksState() {
 		default:
 			break
 		}
-	}
-}
-
-// createUpdateTasksStateRequest creates UpdateTaskstate Request
-// based on the resource manager task specified
-func (s *HandlerTestSuite) createUpdateTasksStateRequest(
-	rmTask *resmgr.Task,
-) *resmgrsvc.UpdateTasksStateRequest {
-	taskList := make([]*resmgrsvc.UpdateTasksStateRequest_UpdateTaskStateEntry, 0, 1)
-	if rmTask != nil {
-		taskList = append(taskList, &resmgrsvc.UpdateTasksStateRequest_UpdateTaskStateEntry{
-			State:       task.TaskState_LAUNCHED,
-			MesosTaskId: rmTask.GetTaskId(),
-			Task:        rmTask.GetId(),
-		})
-	}
-	return &resmgrsvc.UpdateTasksStateRequest{
-		TaskStates: taskList,
 	}
 }
 
@@ -1432,15 +1067,6 @@ func (s *HandlerTestSuite) TestHandleRunningEventError() {
 
 	s.handler.rmTracker = rm_task.GetTracker()
 
-}
-
-func (s *HandlerTestSuite) getEntitlement() *scalar.Resources {
-	return &scalar.Resources{
-		CPU:    100,
-		MEMORY: 1000,
-		DISK:   100,
-		GPU:    2,
-	}
 }
 
 func (s *HandlerTestSuite) TestGetActiveTasks() {
@@ -1794,5 +1420,406 @@ func (s *HandlerTestSuite) TestGetPendingTasks() {
 				s.Equal(expectedTaskID, tid)
 			}
 		}
+	}
+}
+
+// Test helpers
+// -----------------
+
+func (s *HandlerTestSuite) getEntitlement() *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    100,
+		MEMORY: 1000,
+		DISK:   100,
+		GPU:    2,
+	}
+}
+
+func (s *HandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
+
+	rootID := peloton.ResourcePoolID{Value: "root"}
+	policy := pb_respool.SchedulingPolicy_PriorityFIFO
+
+	return map[string]*pb_respool.ResourcePoolConfig{
+		"root": {
+			Name:      "root",
+			Parent:    nil,
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool1": {
+			Name:      "respool1",
+			Parent:    &rootID,
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool2": {
+			Name:      "respool2",
+			Parent:    &rootID,
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool3": {
+			Name:      "respool3",
+			Parent:    &rootID,
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool11": {
+			Name:      "respool11",
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool12": {
+			Name:      "respool12",
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool21": {
+			Name:      "respool21",
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool22": {
+			Name:      "respool22",
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+	}
+}
+
+func (s *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
+	var gang resmgrsvc.Gang
+	uuidStr := "uuidstr-1"
+	jobID := "job1"
+	instance := 1
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	gang.Tasks = []*resmgr.Task{
+		{
+			Name:     "job1-1",
+			Priority: 0,
+			JobId:    &peloton.JobID{Value: "job1"},
+			Id:       &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobID, instance)},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
+			},
+			Preemptible:             true,
+			PlacementTimeoutSeconds: 60,
+			PlacementRetryCount:     1,
+		},
+	}
+	return &gang
+}
+
+func (s *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
+	var gang resmgrsvc.Gang
+	uuidStr := "uuidstr-1"
+	jobID := "job1"
+	instance := 2
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	gang.Tasks = []*resmgr.Task{
+		{
+			Name:     "job1-1",
+			Priority: 1,
+			JobId:    &peloton.JobID{Value: "job1"},
+			Id:       &peloton.TaskID{Value: "job1-2"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
+			Preemptible: true,
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
+			},
+			PlacementTimeoutSeconds: 60,
+			PlacementRetryCount:     1,
+		},
+	}
+	return &gang
+}
+
+func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
+	var gang resmgrsvc.Gang
+	uuidStr := "uuidstr-1"
+	jobID := "job1"
+	instance := 2
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	gang.Tasks = []*resmgr.Task{
+		{
+			Name:         "job2-1",
+			Priority:     2,
+			MinInstances: 2,
+			JobId:        &peloton.JobID{Value: "job2"},
+			Id:           &peloton.TaskID{Value: "job2-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
+			},
+			Preemptible:             true,
+			PlacementTimeoutSeconds: 60,
+			PlacementRetryCount:     1,
+		},
+		{
+			Name:         "job2-2",
+			Priority:     2,
+			MinInstances: 2,
+			JobId:        &peloton.JobID{Value: "job2"},
+			Id:           &peloton.TaskID{Value: "job2-2"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
+			},
+			Preemptible:             true,
+			PlacementTimeoutSeconds: 60,
+			PlacementRetryCount:     1,
+		},
+	}
+	return &gang
+}
+
+func (s *HandlerTestSuite) pendingGangWithoutPlacement() *resmgrsvc.Gang {
+	var gang resmgrsvc.Gang
+	uuidStr := "uuidstr-1"
+	jobID := "job9"
+	instance := 1
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	gang.Tasks = []*resmgr.Task{
+		{
+			Name:     "job9-1",
+			Priority: 0,
+			JobId:    &peloton.JobID{Value: "job9"},
+			Id:       &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobID, instance)},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
+			},
+			Preemptible:             true,
+			PlacementTimeoutSeconds: 60,
+			PlacementRetryCount:     3,
+		},
+	}
+	return &gang
+}
+
+func (s *HandlerTestSuite) pendingGangsWithoutPlacement() []*resmgrsvc.Gang {
+	gangs := make([]*resmgrsvc.Gang, 1)
+	gangs[0] = s.pendingGangWithoutPlacement()
+	return gangs
+}
+
+func (s *HandlerTestSuite) pendingGangs() []*resmgrsvc.Gang {
+	gangs := make([]*resmgrsvc.Gang, 3)
+	gangs[0] = s.pendingGang0()
+	gangs[1] = s.pendingGang1()
+	gangs[2] = s.pendingGang2()
+	return gangs
+}
+
+func (s *HandlerTestSuite) expectedGangs() []*resmgrsvc.Gang {
+	gangs := make([]*resmgrsvc.Gang, 3)
+	gangs[0] = s.pendingGang2()
+	gangs[1] = s.pendingGang1()
+	gangs[2] = s.pendingGang0()
+	return gangs
+}
+
+func (s *HandlerTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
+
+	resConfigs := []*pb_respool.ResourceConfig{
+		{
+			Share:       1,
+			Kind:        "cpu",
+			Reservation: 100,
+			Limit:       1000,
+		},
+		{
+			Share:       1,
+			Kind:        "memory",
+			Reservation: 100,
+			Limit:       1000,
+		},
+		{
+			Share:       1,
+			Kind:        "disk",
+			Reservation: 100,
+			Limit:       1000,
+		},
+		{
+			Share:       1,
+			Kind:        "gpu",
+			Reservation: 2,
+			Limit:       4,
+		},
+	}
+	return resConfigs
+}
+
+// asserts that the tasks have been admitted and move to PLACING after dequeue
+func (s *HandlerTestSuite) assertTasksAdmitted(gangs []*resmgrsvc.Gang) {
+	// There is a race condition in the test due to the Scheduler.scheduleTasks
+	// method is run asynchronously.
+	// TODO Fix
+	time.Sleep(2 * time.Second)
+
+	// check the task states
+	for _, gang := range gangs {
+		// we only have 1 task per gang
+		rmTask := s.handler.rmTracker.GetTask(gang.Tasks[0].Id)
+		s.EqualValues(
+			rmTask.GetCurrentState().String(),
+			task.TaskState_READY.String(),
+		)
+	}
+
+	deqReq := &resmgrsvc.DequeueGangsRequest{
+		Limit:   10,
+		Timeout: 2 * 1000, // 2 sec
+	}
+
+	// Checking whether we get the task from ready queue
+	deqResp, err := s.handler.DequeueGangs(s.context, deqReq)
+	s.NoError(err)
+	s.Nil(deqResp.GetError())
+
+	// check the task states
+	for _, gang := range gangs {
+		// we only have 1 task per gang
+		rmTask := s.handler.rmTracker.GetTask(gang.Tasks[0].Id)
+		s.EqualValues(
+			rmTask.GetCurrentState().String(),
+			task.TaskState_PLACING.String(),
+		)
+	}
+}
+
+// asserts the failed placements call
+func (s *HandlerTestSuite) assertSetFailedPlacement(gangs []*resmgrsvc.Gang) {
+	var failedPlacements []*resmgrsvc.SetPlacementsRequest_FailedPlacement
+	for _, gang := range gangs {
+		failedPlacements = append(
+			failedPlacements,
+			&resmgrsvc.SetPlacementsRequest_FailedPlacement{
+				Gang: gang,
+			})
+	}
+	setPlacementReq := &resmgrsvc.SetPlacementsRequest{
+		FailedPlacements: failedPlacements,
+	}
+	setPlacementResp, err := s.handler.SetPlacements(s.context, setPlacementReq)
+	s.NoError(err)
+	s.Nil(setPlacementResp.GetError())
+}
+
+func (s *HandlerTestSuite) getPlacements() []*resmgr.Placement {
+	var placements []*resmgr.Placement
+	resp, err := respool.NewRespool(
+		tally.NoopScope,
+		"respool-1",
+		nil,
+		&pb_respool.ResourcePoolConfig{
+			Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
+		},
+		s.cfg,
+	)
+	s.NoError(err, "create resource pool shouldn't fail")
+
+	for i := 0; i < 10; i++ {
+		var tasks []*peloton.TaskID
+		for j := 0; j < 5; j++ {
+			task := &peloton.TaskID{
+				Value: fmt.Sprintf("task-%d-%d", i, j),
+			}
+			tasks = append(tasks, task)
+			s.rmTaskTracker.AddTask(&resmgr.Task{
+				Id: task,
+			}, nil, resp, tasktestutil.CreateTaskConfig())
+		}
+
+		placement := &resmgr.Placement{
+			Tasks:    tasks,
+			Hostname: fmt.Sprintf("host-%d", i),
+		}
+		placements = append(placements, placement)
+	}
+	return placements
+}
+
+func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
+	var tasks []*peloton.TaskID
+	var rmTasks []*resmgr.Task
+	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil,
+		&pb_respool.ResourcePoolConfig{
+			Name:      "respool1",
+			Parent:    nil,
+			Resources: s.getResourceConfig(),
+			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+		}, s.cfg)
+	for j := 0; j < 5; j++ {
+		mesosTaskID := "mesosID"
+		taskID := &peloton.TaskID{
+			Value: fmt.Sprintf("task-1-%d", j),
+		}
+		tasks = append(tasks, taskID)
+		rmTask := &resmgr.Task{
+			Id: taskID,
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
+			},
+		}
+		s.rmTaskTracker.AddTask(rmTask, nil, resp,
+			tasktestutil.CreateTaskConfig())
+		rmTasks = append(rmTasks, rmTask)
+	}
+	return rmTasks, tasks
+}
+
+// createUpdateTasksStateRequest creates UpdateTaskstate Request
+// based on the resource manager task specified
+func (s *HandlerTestSuite) createUpdateTasksStateRequest(
+	rmTask *resmgr.Task,
+) *resmgrsvc.UpdateTasksStateRequest {
+	taskList := make([]*resmgrsvc.UpdateTasksStateRequest_UpdateTaskStateEntry, 0, 1)
+	if rmTask != nil {
+		taskList = append(taskList, &resmgrsvc.UpdateTasksStateRequest_UpdateTaskStateEntry{
+			State:       task.TaskState_LAUNCHED,
+			MesosTaskId: rmTask.GetTaskId(),
+			Task:        rmTask.GetId(),
+		})
+	}
+	return &resmgrsvc.UpdateTasksStateRequest{
+		TaskStates: taskList,
 	}
 }
