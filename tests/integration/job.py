@@ -471,14 +471,19 @@ class Job(object):
                 attempts += 1
 
         if state_transition_failure:
-            log.info('goal_state:%s current_state:%s attempts: %s',
-                     goal_state, state, str(attempts))
+            task_fail_reason = self._get_task_failure_reason()
+            log.info('%s goal_state:%s current_state:%s attempts: %s',
+                     self.job_id, goal_state, state, str(attempts))
+            for t, reason in task_fail_reason.iteritems():
+                log.info('%s task id:%s failed for reason:%s',
+                         self.job_id, t, reason)
             assert False
 
         if attempts == self.config.max_retry_attempts:
             log.info('%s max attempts reached to wait for goal state',
                      self.job_id)
-            log.info('goal_state:%s current_state:%s', goal_state, state)
+            log.info('%s goal_state:%s current_state:%s', self.job_id,
+                     goal_state, state)
             assert False
 
         end = time.time()
@@ -500,6 +505,18 @@ class Job(object):
         """
         self.job_config.instanceCount = count
         self.job_config.sla.maximumRunningInstances = count
+
+    def _get_task_failure_reason(self):
+        """
+        Returns a dict of task id to reason for task failures for a job.
+        useful when finding out the reason for job failure.
+        :return: a dict of task id to reason
+        """
+        task_id_reason_dict = {}
+        for t in self.get_tasks().values():
+            if t.state == task.FAILED:
+                task_id_reason_dict[t.instance_id] = t.get_info().runtime.reason
+        return task_id_reason_dict
 
 
 def kill_jobs(jobs):
