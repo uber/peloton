@@ -22,11 +22,11 @@ import (
 	"github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
-	"github.com/uber/peloton/mimir-lib/model/labels"
-	"github.com/uber/peloton/mimir-lib/model/metrics"
-	"github.com/uber/peloton/mimir-lib/model/orderings"
-	"github.com/uber/peloton/mimir-lib/model/placement"
-	"github.com/uber/peloton/mimir-lib/model/requirements"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/labels"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/metrics"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/orderings"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/placement"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/requirements"
 )
 
 // TaskToEntity will convert a task to an entity.

@@ -247,11 +247,8 @@ pcluster-teardown:
 	@./tools/pcluster/pcluster.py teardown
 
 # Clone the newest mimir-lib code. Do not manually edit anything under mimir-lib/*
-update-mimir:
-	@rm -rf mimir-lib
-	@git clone gitolite@code.uber.internal:infra/mimir-lib
-	@chmod u+x ./mimir-transform.sh
-	@./mimir-transform.sh
+update-mimir-lib:
+	@./scripts/update-mimir-lib.sh
 
 devtools:
 	@echo "Installing tools"

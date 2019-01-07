@@ -20,9 +20,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
-	"github.com/uber/peloton/mimir-lib/algorithms"
 	"github.com/uber/peloton/placement/config"
 	"github.com/uber/peloton/placement/models"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/algorithms"
 	"github.com/uber/peloton/placement/testutil"
 )
 

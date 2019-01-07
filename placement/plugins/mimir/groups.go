@@ -20,9 +20,9 @@ import (
 
 	"github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"github.com/uber/peloton/mimir-lib/model/labels"
-	"github.com/uber/peloton/mimir-lib/model/metrics"
-	"github.com/uber/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/labels"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/metrics"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/placement"
 )
 
 // OfferToGroup will convert an offer to a group.

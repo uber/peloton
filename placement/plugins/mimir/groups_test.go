@@ -19,8 +19,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/uber/peloton/mimir-lib/model/labels"
-	"github.com/uber/peloton/mimir-lib/model/metrics"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/labels"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/metrics"
 	"github.com/uber/peloton/placement/testutil"
 )
 

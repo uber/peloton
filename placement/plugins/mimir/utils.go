@@ -17,9 +17,9 @@ package mimir
 import (
 	"fmt"
 
-	"github.com/uber/peloton/mimir-lib/model/labels"
-	"github.com/uber/peloton/mimir-lib/model/metrics"
-	"github.com/uber/peloton/mimir-lib/model/placement"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/labels"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/metrics"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/placement"
 )
 
 // Group is a helper to be able to make structured logging of the Mimir library types.

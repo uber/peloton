@@ -22,11 +22,11 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
-	"github.com/uber/peloton/mimir-lib/algorithms"
-	"github.com/uber/peloton/mimir-lib/model/placement"
 	"github.com/uber/peloton/placement/config"
 	"github.com/uber/peloton/placement/models"
 	"github.com/uber/peloton/placement/plugins"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/algorithms"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/model/placement"
 )
 
 var _offersFactor = map[resmgr.TaskType]float64{

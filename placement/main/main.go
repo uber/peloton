@@ -18,7 +18,7 @@ import (
 	"os"
 
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
-	"github.com/uber/peloton/mimir-lib/algorithms"
+	"github.com/uber/peloton/placement/plugins/mimir/lib/algorithms"
 
 	"github.com/uber/peloton/common"
 	"github.com/uber/peloton/common/async"
