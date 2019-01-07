@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"testing"
 
+	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 
@@ -142,7 +143,12 @@ func (suite *TaskActionTestSuite) TestTaskDeleteAction() {
 	suite.taskStore.EXPECT().
 		DeleteTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
 		Return(nil)
-
+	suite.cachedJob.EXPECT().
+		GetJobType().
+		Return(pbjob.JobType_SERVICE)
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
 	suite.NoError(TaskDelete(context.Background(), suite.taskEnt))
 }
 

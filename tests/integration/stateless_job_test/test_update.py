@@ -788,3 +788,30 @@ def test_manual_rollback_increase_instances(stateless_job_v1alpha):
     assert len(old_pod_infos) == len(new_pod_infos)
     new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
     assert_pod_spec_equal(old_instance_zero_spec, new_instance_zero_spec)
+
+
+# test_auto_rollback_reduce_instances
+#  rolls back a failed update when
+# the instance count is reduced in the rollback.
+def test_auto_rollback_reduce_instances(stateless_job_v1alpha):
+    stateless_job_v1alpha.create()
+    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+
+    job_spec_dump = load_test_config(UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC)
+    updated_job_spec = JobSpec()
+    json_format.ParseDict(job_spec_dump, updated_job_spec)
+
+    # change the command to trigger a rollback
+    updated_job_spec.default_spec.containers[0].command.value = 'exit 1;'
+
+    update = StatelessUpdate(
+        stateless_job_v1alpha,
+        updated_job_spec=updated_job_spec,
+        roll_back_on_failure=True,
+        max_instance_attempts=1,
+        max_failure_instances=1,
+    )
+    update.create()
+    update.wait_for_state(goal_state='ROLLED_BACK')
+    assert len(stateless_job_v1alpha.query_pods()) == \
+        stateless_job_v1alpha.job_spec.instance_count

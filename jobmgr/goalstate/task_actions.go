@@ -84,6 +84,12 @@ func TaskDelete(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	cachedJob.RemoveTask(taskEnt.instanceID)
-	return goalStateDriver.taskStore.DeleteTaskRuntime(
-		ctx, taskEnt.jobID, taskEnt.instanceID)
+	if err := goalStateDriver.taskStore.DeleteTaskRuntime(
+		ctx, taskEnt.jobID, taskEnt.instanceID); err != nil {
+		return err
+	}
+
+	// enqueue the job in case the delete is due to an update
+	EnqueueJobWithDefaultDelay(taskEnt.jobID, goalStateDriver, cachedJob)
+	return nil
 }
