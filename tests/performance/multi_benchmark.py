@@ -16,7 +16,6 @@ from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
 from collections import Counter
 
-import datetime
 import json
 import os
 import pandas as pd
@@ -180,7 +179,7 @@ def main():
     # write test_job_update results to '$base_path$_job_update.csv'.
     update_df = t.perf_test_job_update(num_start_tasks=1, tasks_inc=10,
                                        num_increment=500,
-                                       sleep_time=10, use_instance_config=True)
+                                       sleep_time=30, use_instance_config=True)
     if update_df is not None:
         update_df.to_csv(output_csv_files_list[2], sep='\t')
 
@@ -209,20 +208,22 @@ class PerformanceTest ():
 
     def perf_test_job_update(self, num_start_tasks=1, tasks_inc=1,
                              num_increment=300,
-                             sleep_time=10, use_instance_config=False):
+                             sleep_time=30, use_instance_config=False):
         """
         perf_test_job_update can be used for testing create job and then
         update the job to increase instances.
-        The test starts by creating one job with num_start_tasks, and then
+        The test starts by creating one job with num_start_tasks(this task
+        sleeps 120 seconds), and then
         loop num_increment times to add number of
-        tasks_inc each time, each task is sleeping for 10 seconds, and caculate
-        the total time.
+        tasks_inc each time, each of the newly added tasks is sleeping for 30
+        seconds,
+        and calculate
+        the total time it used to create and finish the job.
         """
-        start_time = datetime.datetime.now()
-
+        total_time_in_seconds = 0
         try:
             job_id = self.client.create_job(
-                num_start_tasks, sleep_time, use_instance_config)
+                num_start_tasks, 120, use_instance_config)
         except Exception as e:
             msg = "Num_start_tasks %s && SleepTime %s && InstanceConfig %s" % (
                 num_start_tasks, sleep_time, use_instance_config)
@@ -238,8 +239,10 @@ class PerformanceTest ():
                 print "test_job_update: update job failed: %s (%s)" % (
                     e, msg)
                 return
-        end_time = datetime.datetime.now()
-        total_time_in_seconds = (end_time - start_time).total_seconds()
+
+        succeed, start, completion = self.client.monitoring(job_id)
+        if succeed:
+            total_time_in_seconds = completion
 
         record = [{
             'NumStartTasks': num_start_tasks,
