@@ -5,9 +5,11 @@ import (
 	"time"
 
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
+	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	respoolsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/respool/svc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/auroraschedulermanagerserver"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/readonlyschedulerserver"
+
 	"github.com/uber/peloton/aurorabridge"
 	"github.com/uber/peloton/common"
 	"github.com/uber/peloton/common/buildversion"
@@ -18,11 +20,11 @@ import (
 	"github.com/uber/peloton/common/rpc"
 	"github.com/uber/peloton/leader"
 	"github.com/uber/peloton/yarpc/peer"
+
+	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
-
-	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -179,6 +181,9 @@ func main() {
 	jobClient := statelesssvc.NewJobServiceYARPCClient(
 		dispatcher.ClientConfig(common.PelotonJobManager))
 
+	podClient := podsvc.NewPodServiceYARPCClient(
+		dispatcher.ClientConfig(common.PelotonJobManager))
+
 	respoolClient := respoolsvc.NewResourcePoolServiceYARPCClient(
 		dispatcher.ClientConfig(common.PelotonResourceManager))
 
@@ -213,6 +218,7 @@ func main() {
 	handler := aurorabridge.NewServiceHandler(
 		rootScope,
 		jobClient,
+		podClient,
 		respoolID,
 	)
 	dispatcher.Register(auroraschedulermanagerserver.New(handler))

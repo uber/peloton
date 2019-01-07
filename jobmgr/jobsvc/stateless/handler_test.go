@@ -1638,6 +1638,16 @@ func (suite *statelessHandlerTestSuite) TestGetJobIDFromName() {
 		})
 
 	suite.Equal(len(jobIDs), len(resp.GetJobId()))
+
+	suite.jobStore.EXPECT().
+		GetJobIDFromJobName(gomock.Any(), testJobName).
+		Return([]*v1alphapeloton.JobID{}, nil)
+	_, err = suite.handler.GetJobIDFromJobName(context.Background(),
+		&statelesssvc.GetJobIDFromJobNameRequest{
+			JobName: testJobName,
+		})
+	suite.Error(err)
+	suite.True(yarpcerrors.IsNotFound(err))
 }
 
 // TestPauseJobWorkflowPauseWorkflowFailure tests the failure case of pause workflow

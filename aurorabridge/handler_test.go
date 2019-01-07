@@ -2,18 +2,23 @@ package aurorabridge
 
 import (
 	"context"
+	"errors"
 	"testing"
 
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	jobmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	podmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc/mocks"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
 	"github.com/uber/peloton/aurorabridge/atop"
 	"github.com/uber/peloton/aurorabridge/fixture"
+	"github.com/uber/peloton/aurorabridge/label"
+
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 	"go.uber.org/thriftrw/ptr"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -25,6 +30,7 @@ type ServiceHandlerTestSuite struct {
 
 	ctrl      *gomock.Controller
 	jobClient *jobmocks.MockJobServiceYARPCClient
+	podClient *podmocks.MockPodServiceYARPCClient
 
 	respoolID *peloton.ResourcePoolID
 
@@ -36,12 +42,14 @@ func (suite *ServiceHandlerTestSuite) SetupTest() {
 
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.jobClient = jobmocks.NewMockJobServiceYARPCClient(suite.ctrl)
+	suite.podClient = podmocks.NewMockPodServiceYARPCClient(suite.ctrl)
 
 	suite.respoolID = fixture.PelotonResourcePoolID()
 
 	suite.handler = NewServiceHandler(
 		tally.NoopScope,
 		suite.jobClient,
+		suite.podClient,
 		suite.respoolID,
 	)
 }
@@ -256,6 +264,25 @@ func (suite *ServiceHandlerTestSuite) expectGetJobIDFromJobName(k *api.JobKey, i
 		}, nil)
 }
 
+func (suite *ServiceHandlerTestSuite) expectQueryJobsWithLabels(
+	labels []*peloton.Label,
+	jobIDs []*peloton.JobID,
+) {
+	var summaries []*stateless.JobSummary
+	for _, jobID := range jobIDs {
+		summaries = append(summaries, &stateless.JobSummary{JobId: jobID})
+	}
+
+	suite.jobClient.EXPECT().
+		QueryJobs(suite.ctx,
+			&statelesssvc.QueryJobsRequest{
+				Spec: &stateless.QuerySpec{
+					Labels: labels,
+				},
+			}).
+		Return(&statelesssvc.QueryJobsResponse{Records: summaries}, nil)
+}
+
 func (suite *ServiceHandlerTestSuite) expectGetJobVersion(id *peloton.JobID, v *peloton.EntityVersion) {
 	suite.jobClient.EXPECT().
 		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
@@ -269,4 +296,157 @@ func (suite *ServiceHandlerTestSuite) expectGetJobVersion(id *peloton.JobID, v *
 				},
 			},
 		}, nil)
+}
+
+// TestGetJobIDsFromTaskQuery_ErrorQuery checks getJobIDsFromTaskQuery
+// when query is not valid.
+func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_ErrorQuery() {
+	jobIDs, err := suite.handler.getJobIDsFromTaskQuery(suite.ctx, nil)
+	suite.Nil(jobIDs)
+	suite.Error(err)
+
+	query := &api.TaskQuery{}
+
+	jobIDs, err = suite.handler.getJobIDsFromTaskQuery(suite.ctx, query)
+	suite.Nil(jobIDs)
+	suite.Error(err)
+}
+
+// TestGetJobIDsFromTaskQuery_JobKeysOnly checks getJobIDsFromTaskQuery
+// returns result when input query only contains JobKeys.
+func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_JobKeysOnly() {
+	jobKey1 := &api.JobKey{
+		Role:        ptr.String("role1"),
+		Environment: ptr.String("env1"),
+		Name:        ptr.String("name1"),
+	}
+	jobKey2 := &api.JobKey{
+		Role:        ptr.String("role1"),
+		Environment: ptr.String("env1"),
+		Name:        ptr.String("name2"),
+	}
+	jobID1 := fixture.PelotonJobID()
+	jobID2 := fixture.PelotonJobID()
+
+	suite.expectGetJobIDFromJobName(jobKey1, jobID1)
+	suite.expectGetJobIDFromJobName(jobKey2, jobID2)
+
+	query := &api.TaskQuery{JobKeys: []*api.JobKey{jobKey1, jobKey2}}
+
+	jobIDs, err := suite.handler.getJobIDsFromTaskQuery(suite.ctx, query)
+	suite.NoError(err)
+	suite.Equal(2, len(jobIDs))
+	for _, jobID := range jobIDs {
+		if jobID.GetValue() != jobID1.GetValue() &&
+			jobID.GetValue() != jobID2.GetValue() {
+			suite.Fail("unexpected job id: \"%s\"", jobID.GetValue())
+		}
+	}
+}
+
+// TestGetJobIDsFromTaskQuery_JobKeysOnlyError checks getJobIDsFromTaskQuery
+// returns error when the query fails and input query only consists
+// of JobKeys.
+func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_JobKeysOnlyError() {
+	jobKey := &api.JobKey{
+		Role:        ptr.String("role1"),
+		Environment: ptr.String("env1"),
+		Name:        ptr.String("name1"),
+	}
+
+	// when GetJobIDFromJobName returns error
+	suite.jobClient.EXPECT().
+		GetJobIDFromJobName(suite.ctx,
+			&statelesssvc.GetJobIDFromJobNameRequest{
+				JobName: atop.NewJobName(jobKey),
+			}).
+		Return(nil, errors.New("failed to get job identifiers from job name"))
+
+	query := &api.TaskQuery{JobKeys: []*api.JobKey{jobKey}}
+
+	jobIDs, err := suite.handler.getJobIDsFromTaskQuery(suite.ctx, query)
+	suite.Nil(jobIDs)
+	suite.Error(err)
+}
+
+// TestGetJobIDsFromTaskQuery_FullJobKey checks getJobIDsFromTaskQuery
+// returns result when input query contains full job key parameters -
+// role, environment, and job_name.
+func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_FullJobKey() {
+	role := "role1"
+	env := "env1"
+	name := "name1"
+	jobKey := &api.JobKey{
+		Role:        ptr.String(role),
+		Environment: ptr.String(env),
+		Name:        ptr.String(name),
+	}
+	jobID := fixture.PelotonJobID()
+
+	suite.expectGetJobIDFromJobName(jobKey, jobID)
+
+	query := &api.TaskQuery{
+		Role:        ptr.String(role),
+		Environment: ptr.String(env),
+		JobName:     ptr.String(name),
+	}
+
+	jobIDs, err := suite.handler.getJobIDsFromTaskQuery(suite.ctx, query)
+	suite.NoError(err)
+	suite.Equal(1, len(jobIDs))
+	suite.Equal(jobID.GetValue(), jobIDs[0].GetValue())
+}
+
+// TestGetJobIDsFromTaskQuery_PartialJobKey checks getJobIDsFromTaskQuery
+// returns result when input query only contains partial job key parameters -
+// role, environment, and/or job_name.
+func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKey() {
+	role := "role1"
+	env := "env1"
+	labels := label.BuildMany(label.BuildAuroraJobKeyLabels(role, env, ""))
+	jobID1 := fixture.PelotonJobID()
+	jobID2 := fixture.PelotonJobID()
+
+	suite.expectQueryJobsWithLabels(labels, []*peloton.JobID{jobID1, jobID2})
+
+	query := &api.TaskQuery{
+		Role:        ptr.String(role),
+		Environment: ptr.String(env),
+	}
+
+	jobIDs, err := suite.handler.getJobIDsFromTaskQuery(suite.ctx, query)
+	suite.NoError(err)
+	suite.Equal(2, len(jobIDs))
+	for _, jobID := range jobIDs {
+		if jobID.Value != jobID1.Value && jobID.Value != jobID2.Value {
+			suite.Fail("unexpected job id: \"%s\"", jobID.Value)
+		}
+	}
+}
+
+// TestGetJobIDsFromTaskQuery_PartialJobKeyErrorchecks getJobIDsFromTaskQuery
+// returns error when the query fails and input query only contains partial
+// job key parameters - role, environment, and/or job_name.
+func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyError() {
+	role := "role1"
+	name := "name1"
+	labels := label.BuildMany(label.BuildAuroraJobKeyLabels(role, "", name))
+
+	suite.jobClient.EXPECT().
+		QueryJobs(suite.ctx,
+			&statelesssvc.QueryJobsRequest{
+				Spec: &stateless.QuerySpec{
+					Labels: labels,
+				},
+			}).
+		Return(nil, errors.New("failed to get job summary"))
+
+	query := &api.TaskQuery{
+		Role:    ptr.String(role),
+		JobName: ptr.String(name),
+	}
+
+	jobIDs, err := suite.handler.getJobIDsFromTaskQuery(suite.ctx, query)
+	suite.Nil(jobIDs)
+	suite.Error(err)
 }

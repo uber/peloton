@@ -817,13 +817,17 @@ func (h *serviceHandler) GetJobIDFromJobName(
 			Debug("StatelessJobSvc.GetJobIDFromJobName succeeded")
 	}()
 
-	jobID, err := h.jobStore.GetJobIDFromJobName(ctx, req.GetJobName())
+	jobIDs, err := h.jobStore.GetJobIDFromJobName(ctx, req.GetJobName())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get job identifiers from job name")
 	}
 
+	if len(jobIDs) == 0 {
+		return nil, yarpcerrors.NotFoundErrorf("job id for job name not found: \"%s\"", req.GetJobName())
+	}
+
 	return &svc.GetJobIDFromJobNameResponse{
-		JobId: jobID,
+		JobId: jobIDs,
 	}, nil
 }
 

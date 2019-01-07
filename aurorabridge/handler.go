@@ -2,13 +2,17 @@ package aurorabridge
 
 import (
 	"context"
-	"errors"
 
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
-	"github.com/uber/peloton/aurorabridge/atop"
 
+	"github.com/uber/peloton/aurorabridge/atop"
+	"github.com/uber/peloton/aurorabridge/label"
+
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/thriftrw/ptr"
@@ -22,6 +26,7 @@ var errUnimplemented = errors.New("rpc is unimplemented")
 type ServiceHandler struct {
 	metrics   *Metrics
 	jobClient statelesssvc.JobServiceYARPCClient
+	podClient podsvc.PodServiceYARPCClient
 	respoolID *peloton.ResourcePoolID
 }
 
@@ -29,11 +34,13 @@ type ServiceHandler struct {
 func NewServiceHandler(
 	parent tally.Scope,
 	jobClient statelesssvc.JobServiceYARPCClient,
+	podClient podsvc.PodServiceYARPCClient,
 	respoolID *peloton.ResourcePoolID,
 ) *ServiceHandler {
 	return &ServiceHandler{
 		metrics:   NewMetrics(parent.SubScope("aurorabridge").SubScope("api")),
 		jobClient: jobClient,
+		podClient: podClient,
 		respoolID: respoolID,
 	}
 }
@@ -45,7 +52,7 @@ func (h *ServiceHandler) GetJobSummary(
 	return nil, errUnimplemented
 }
 
-// GetTasksWithoutConfigs is the same as getTaskStatus but without the TaskConfig.ExecutorConfig
+// GetTasksWithoutConfigs is the same as getTasksStatus but without the TaskConfig.ExecutorConfig
 // data set.
 func (h *ServiceHandler) GetTasksWithoutConfigs(
 	ctx context.Context,
@@ -355,33 +362,150 @@ func (h *ServiceHandler) PulseJobUpdate(
 	return nil, errUnimplemented
 }
 
+// getJobIDs return Peloton JobID based on Aurora JobKey passed in.
+//
+// Currently, two querying mechanisms are implemented:
+// 1. If all parameters in JobKey (role, environemnt, name) are present,
+//    it uses GetJobIDFromJobName api directly. Expect one JobID to be
+//    returned. If the job id cannot be found, then an error will return.
+// 2. If only partial parameters are present, it uses QueryJobs api with
+//    labels. Expect zero or many JobIDs to be returned.
+//
+// Option 1 will be dropped, if option 2 is proved to be stable and
+// with minimal performance impact.
+func (h *ServiceHandler) getJobIDs(
+	ctx context.Context,
+	k *api.JobKey,
+) ([]*peloton.JobID, error) {
+	if k.IsSetRole() && k.IsSetEnvironment() && k.IsSetName() {
+		req := &statelesssvc.GetJobIDFromJobNameRequest{
+			JobName: atop.NewJobName(k),
+		}
+		resp, err := h.jobClient.GetJobIDFromJobName(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		// results are sorted chronologically, return the latest one
+		return []*peloton.JobID{resp.GetJobId()[0]}, nil
+	}
+
+	labels := label.BuildMany(
+		label.BuildAuroraJobKeyLabels(
+			k.GetRole(),
+			k.GetEnvironment(),
+			k.GetName()))
+
+	// TODO(kevinxu): do we need to return all job ids in this case?
+	if len(labels) == 0 {
+		return nil, errors.New("cannot get job ids from empty job key")
+	}
+
+	req := &statelesssvc.QueryJobsRequest{
+		Spec: &stateless.QuerySpec{
+			Labels: labels,
+		},
+	}
+	resp, err := h.jobClient.QueryJobs(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	jobIDs := make([]*peloton.JobID, 0, len(resp.GetRecords()))
+	for _, record := range resp.GetRecords() {
+		jobIDs = append(jobIDs, record.GetJobId())
+	}
+	return jobIDs, nil
+}
+
+// getJobID is a wrapper for getJobIDs when we expect only one peloton
+// job id, e.g. when full job key is passed in. If the job id cannot be
+// found, an error will return.
 func (h *ServiceHandler) getJobID(
 	ctx context.Context,
 	k *api.JobKey,
 ) (*peloton.JobID, error) {
-
-	req := &statelesssvc.GetJobIDFromJobNameRequest{
-		JobName: atop.NewJobName(k),
-	}
-	resp, err := h.jobClient.GetJobIDFromJobName(ctx, req)
+	ids, err := h.getJobIDs(ctx, k)
 	if err != nil {
 		return nil, err
 	}
-	return resp.GetJobId()[0], nil // Return the latest id.
+	return ids[0], nil
+}
+
+// getJobIDsFromTaskQuery queries peloton job ids based on aurora TaskQuery.
+func (h *ServiceHandler) getJobIDsFromTaskQuery(
+	ctx context.Context,
+	query *api.TaskQuery,
+) (jobIDs []*peloton.JobID, err error) {
+	if query == nil {
+		err = errors.New("TaskQuery is nil")
+		return
+	}
+
+	// use job_keys to query if present
+	if query.IsSetJobKeys() {
+		for _, jobKey := range query.GetJobKeys() {
+			ids, err := h.getJobIDs(ctx, jobKey)
+			if err != nil {
+				return nil, errors.Wrapf(err,
+					"failed to get job id for \"%s\"", jobKey.String())
+			}
+			jobIDs = append(jobIDs, ids[0])
+		}
+		return
+	}
+
+	// use job key parameters to query
+	jobKey := &api.JobKey{
+		Role:        query.Role,
+		Environment: query.Environment,
+		Name:        query.JobName,
+	}
+	jobIDs, err = h.getJobIDs(ctx, jobKey)
+	if err != nil {
+		return nil, errors.Wrapf(err,
+			"failed to get job ids for \"%s\"", jobKey.String())
+	}
+	return
 }
 
 func (h *ServiceHandler) getCurrentJobVersion(
 	ctx context.Context,
 	id *peloton.JobID,
 ) (*peloton.EntityVersion, error) {
+	summary, err := h.getJobSummary(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return summary.GetStatus().GetVersion(), nil
+}
 
+// getJobInfo calls jobmgr to get JobInfo based on JobID.
+func (h *ServiceHandler) getJobInfo(
+	ctx context.Context,
+	jobID *peloton.JobID,
+) (*stateless.JobInfo, error) {
 	req := &statelesssvc.GetJobRequest{
-		SummaryOnly: true,
-		JobId:       id,
+		JobId:       jobID,
+		SummaryOnly: false,
 	}
 	resp, err := h.jobClient.GetJob(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return resp.GetSummary().GetStatus().GetVersion(), nil
+	return resp.GetJobInfo(), nil
+}
+
+// getJobSummary calls jobmgr to get JobSummary based on JobID.
+func (h *ServiceHandler) getJobSummary(
+	ctx context.Context,
+	jobID *peloton.JobID,
+) (*stateless.JobSummary, error) {
+	req := &statelesssvc.GetJobRequest{
+		JobId:       jobID,
+		SummaryOnly: true,
+	}
+	resp, err := h.jobClient.GetJob(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetSummary(), nil
 }

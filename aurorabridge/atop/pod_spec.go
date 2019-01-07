@@ -16,6 +16,15 @@ import (
 // NewPodSpec creates a new PodSpec.
 func NewPodSpec(t *api.TaskConfig) (*pod.PodSpec, error) {
 	jobKeyLabel := label.Build(label.NewAuroraJobKey(t.GetJob()))
+	// build labels for role, environment and job_name, used for task
+	// querying by getTasksWithoutConfigs.
+	additionalJobKeyLabels := label.BuildMany(label.BuildAuroraJobKeyLabels(
+		t.GetJob().GetRole(),
+		t.GetJob().GetEnvironment(),
+		t.GetJob().GetName(),
+	))
+	labels := []*peloton.Label{jobKeyLabel}
+	labels = append(labels, additionalJobKeyLabels...)
 
 	constraint, err := newConstraint(jobKeyLabel, t.GetConstraints())
 	if err != nil {
@@ -24,7 +33,7 @@ func NewPodSpec(t *api.TaskConfig) (*pod.PodSpec, error) {
 
 	return &pod.PodSpec{
 		PodName:        nil, // Unused.
-		Labels:         []*peloton.Label{jobKeyLabel},
+		Labels:         labels,
 		InitContainers: nil, // Unused.
 		Containers: []*pod.ContainerSpec{{
 			Name:           "", // Unused.
