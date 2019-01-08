@@ -15,7 +15,7 @@ CONTAINER_ID=$($docker_cmd run --name $CASSANDRA_TEST_CONTAINER -d \
   -p $TEST_CASSANDRA_CQL_PORT:$CASSANDRA_CQL_PORT \
   -p $TEST_CASSANDRA_THRIFT_PORT:$CASSANDRA_THRIFT_PORT \
   -e MAX_HEAP_SIZE=1G -e HEAP_NEWSIZE=256M \
-  -v $PWD/../tools/pcluster/files:/files \
+  -v $PWD/../tools/minicluster/files:/files \
   --entrypoint='/files/run_cassandra_with_stratio_index.sh' \
   cassandra:$CASSANDRA_VERSION)
 

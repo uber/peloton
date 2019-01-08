@@ -4,7 +4,7 @@ from abc import abstractmethod
 class ClusterDriverABC(object):
     """
     The failure-testing framework can work with many different
-    kinds of Peloton deployments (pcluster, vcluster etc(=) through
+    kinds of Peloton deployments (minicluster, vcluster etc(=) through
     the use of drivers. This class defines an abstract interface
     that must be implemented by all drivers.
     """
@@ -105,7 +105,8 @@ class ClusterDriverABC(object):
     def get_peloton_client(self, name):
         """
         Get a PelotonClient for the cluster.
-        TODO This function is required to work around a limitation of pcluster.
+        TODO This function is required to work around a limitation of
+        TODO minicluster.
         Once that is removed, replace this with a function to get the host:port
         of the Zookeeper component of Peloton cluster and move the
         responsibility of creating the client to the framework.

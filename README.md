@@ -72,7 +72,7 @@ $ IMAGE=uber/peloton make docker
 
 Launch all dependencies and peloton apps in containers:
 ```
-$ PELOTON=app make pcluster
+$ PELOTON=app make minicluster
 ```
 
 ## Test Peloton
@@ -121,7 +121,7 @@ $ make test
 
 ## Run integration tests
 
-Against local pcluster:
+Against local minicluster:
 ```
 $ make integ-test
 ```
@@ -164,10 +164,10 @@ arguments: `-c "/etc/peloton/${APP}/base.yaml" -c "/etc/peloton/${APP}/${ENVIRON
 NOTE: you need to make sure the container has access to all the dependencies it needs, like mesos-master,
 zookeeper, cassandra, etc. Check your configs!
 
-#### Master with pcluster
+#### Master with minicluster
 
 ```
-$ make pcluster
+$ make minicluster
 $ docker run --rm --name peloton -it -e APP=master -e ENVIRONMENT=development --link peloton-mesos-master:mesos-master --link peloton-zk:zookeeper --link peloton-cassandra:cassandra peloton
 ```
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo 'This script is being deprecated, run "pcluster.py setup" instead'
+echo 'This script is being deprecated, run "minicluster.py setup" instead'
 
 pushd $(dirname $0)
 source config

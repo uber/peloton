@@ -29,9 +29,9 @@ if [[ -z "${TAGS}" ]]; then
 fi
 
 # If TAGS is not set, all tests from default group will run
-# set up pcluster with BATCH type for tests not under stateless_job_test/
+# set up minicluster with BATCH type for tests not under stateless_job_test/
 JOB_TYPE=BATCH pytest -vsrx tests/integration --ignore tests/integration/stateless_job_test/ --junit-xml=integration-test-report.xml -m "$TAGS"
-# set up pcluster with SERVICE type for tests under stateless_job/
+# set up minicluster with SERVICE type for tests under stateless_job/
 JOB_TYPE=SERVICE pytest -vsrx tests/integration/stateless_job_test/ --junit-xml=integration-test-report.xml -m "$TAGS"
 
 deactivate

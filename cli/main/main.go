@@ -46,7 +46,7 @@ var (
 		Default("false").
 		Bool()
 
-	// TODO: deprecate jobMgrURL/resMgrURL/hostMgrURL once we fix pcluster container network
+	// TODO: deprecate jobMgrURL/resMgrURL/hostMgrURL once we fix minicluster container network
 	//       and make sure that local cli can access Uber Prodution hostname/ip
 	jobMgrURL = app.Flag(
 		"jobmgr",

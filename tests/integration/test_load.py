@@ -9,7 +9,7 @@ pytestmark = pytest.mark.load
 
 def test_large_job():
     """
-    Load test against a cluster, not local pcluster friendly
+    Load test against a cluster, not local minicluster friendly
     """
     job = Job(job_file='test_job_no_container.yaml',
               config=IntegrationTestConfig(max_retry_attempts=1000))

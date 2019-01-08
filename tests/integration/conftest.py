@@ -4,7 +4,7 @@ import pytest
 import time
 
 from docker import Client
-from tools.pcluster.pcluster import setup, teardown
+from tools.minicluster.minicluster import setup, teardown
 from job import Job
 from stateless_job import StatelessJob
 from m3.client import M3
@@ -43,7 +43,7 @@ def setup_cluster(request):
     if os.getenv('CLUSTER', ''):
         log.info('cluster mode')
     else:
-        log.info('local pcluster mode')
+        log.info('local minicluster mode')
         setup(enable_peloton=True)
         time.sleep(5)
 

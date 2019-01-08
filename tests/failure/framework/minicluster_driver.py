@@ -6,7 +6,7 @@ from peloton_client.client import PelotonClient
 
 import components
 import driver_base
-from tools.pcluster import pcluster
+from tools.minicluster import minicluster
 
 log = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ class PelotonClientWrapper(PelotonClient):
     Wrapper on the standard Peloton client to patch certain
     parts of the data retrieved from Zookeeper. This is
     needed to workaround the fact that Docker containers
-    created by pcluster cannot be directly addressed with
+    created by minicluster cannot be directly addressed with
     the information found in Zookeeper.
     """
     def _on_job_mgr_leader_change(self, data, stat, event):
@@ -47,10 +47,10 @@ class PelotonClientWrapper(PelotonClient):
         return data
 
 
-class PClusterDriver(driver_base.ClusterDriverABC):
+class MiniClusterDriver(driver_base.ClusterDriverABC):
     """
     Driver to make failure-testing framework work with a Peloton
-    cluster set up on pcluster. Expects the Peloton cluster to
+    cluster set up on minicluster. Expects the Peloton cluster to
     already exist using the default configuration.
     Component instance identifier: String that contains the Docker
     container ID.
@@ -82,7 +82,7 @@ class PClusterDriver(driver_base.ClusterDriverABC):
 
     def find(self, component_name, running_only=True):
         cont_name = self._resolve_component_name(component_name)
-        containers = pcluster.cli.containers(all=not running_only)
+        containers = minicluster.cli.containers(all=not running_only)
         ids = {}
         for c in containers:
             for n in c["Names"]:
@@ -92,22 +92,22 @@ class PClusterDriver(driver_base.ClusterDriverABC):
 
     def start(self, cid):
         try:
-            pcluster.cli.start(cid)
+            minicluster.cli.start(cid)
         except docker_errors.APIError as e:
             if e.response.status_code != self.ERROR_NOT_MODIFIED:
                 raise
 
     def stop(self, cid):
         try:
-            pcluster.cli.stop(cid)
+            minicluster.cli.stop(cid)
         except docker_errors.APIError as e:
             if e.response.status_code != self.ERROR_NOT_MODIFIED:
                 raise
 
     def execute(self, cid, *cmd_and_args):
-        ex = pcluster.cli.exec_create(cid, " ".join(cmd_and_args),
-                                      stdout=True, stderr=True)
-        pcluster.cli.exec_start(ex, tty=True)
+        ex = minicluster.cli.exec_create(cid, " ".join(cmd_and_args),
+                                              stdout=True, stderr=True)
+        minicluster.cli.exec_start(ex, tty=True)
 
     def match_zk_info(self, cid, cinfo, zk_node_info):
         return cinfo == "/" + zk_node_info["hostname"]

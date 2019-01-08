@@ -1,7 +1,7 @@
 This directory contains integration tests that involve component failures
 ("failure testing"). The tests can be run against a Peloton cluster that has
 been set up in a few different ways:
-- local developer setup (pcluster)
+- local developer setup (minicluster)
 - virtualized Peloton cluster (vcluster)
 
 Tests are written in Python and use pytest as the test runner. See file
@@ -9,12 +9,12 @@ test_resmgr_failure.py as an example.
 
 Usage
 -----
-* Testing against pcluster
+* Testing against minicluster
  1. Build a local docker image for Peloton
     IMAGE=uber/peloton make docker
- 2. Setup pcluster and execute the tests
-    $PELOTON_HOME/tests/run-failure-tests.sh pcluster
- 3. If all tests pass, the created pcluster will be cleaned up.
+ 2. Setup minicluster and execute the tests
+    $PELOTON_HOME/tests/run-failure-tests.sh minicluster
+ 3. If all tests pass, the created minicluster will be cleaned up.
 
 * Testing against vcluster
   1. Ensure environment variable GOPATH is set and $GOPATH/bin is in your PATH
@@ -42,5 +42,5 @@ Usage
      to avoid waiting for the Peloton cluster to be created/destroyed.
   3. Options provided on the command-line after the driver-name are passed on to
      pytest. This can be used to run only a subset of tests, for example
-     $PELOTON_HOME/tests/run-failure-tests.sh pcluster tests/failure/test_resmgr_failure.py::TestResMgrFailure::test_resmgr_restart_job_succeeds
+     $PELOTON_HOME/tests/run-failure-tests.sh minicluster tests/failure/test_resmgr_failure.py::TestResMgrFailure::test_resmgr_restart_job_succeeds
      will run only the test TestResMgrFailure.test_resmgr_restart_job_succeeds in file test_resmgr_failure.py

@@ -1,4 +1,4 @@
-.PHONY: all placement install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers archiver failure-test-pcluster failure-test-vcluster aurorabridge
+.PHONY: all placement install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers archiver failure-test-minicluster failure-test-vcluster aurorabridge
 .DEFAULT_GOAL := all
 
 PROJECT_ROOT  = github.com/uber/peloton
@@ -235,16 +235,16 @@ integ-test:
 	@./tests/run-integration-tests.sh
 
 # launch peloton with PELOTON={any value}, default to none
-pcluster:
-# installaltion of docker-py is required, see "bootstrap.sh" or ""tools/pcluster/README.md" for more info
+minicluster:
+# installaltion of docker-py is required, see "bootstrap.sh" or ""tools/minicluster/README.md" for more info
 ifndef PELOTON
-	@./tools/pcluster/pcluster.py setup
+	@./tools/minicluster/minicluster.py setup
 else
-	@./tools/pcluster/pcluster.py setup -a
+	@./tools/minicluster/minicluster.py setup -a
 endif
 
-pcluster-teardown:
-	@./tools/pcluster/pcluster.py teardown
+minicluster-teardown:
+	@./tools/minicluster/minicluster.py teardown
 
 # Clone the newest mimir-lib code. Do not manually edit anything under mimir-lib/*
 update-mimir-lib:
@@ -305,9 +305,9 @@ else
 	@./tools/packaging/docker-push.sh $(IMAGE)
 endif
 
-failure-test-pcluster:
+failure-test-minicluster:
 	IMAGE=uber/peloton $(MAKE) -f $(THIS_FILE) docker
-	@./tests/run-failure-tests.sh pcluster
+	@./tests/run-failure-tests.sh minicluster
 
 failure-test-vcluster:
 	IMAGE= $(MAKE) -f $(THIS_FILE) docker docker-push

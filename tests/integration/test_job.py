@@ -41,7 +41,7 @@ def test__run_failing_job():
 
     results = job.get_task_runs(0)
     assert len(results) == 4
-    # TBD uncomment after the ability to fetch logs from mesos in pcluster
+    # TBD uncomment after the ability to fetch logs from mesos in minicluster
     # for i in range(0, len(results)):
     # result = results[i]
     # browse_response = \

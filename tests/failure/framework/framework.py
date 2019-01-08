@@ -3,7 +3,7 @@ import logging
 import os
 import re
 
-from pcluster_driver import PClusterDriver
+from cluster_driver import MiniClusterDriver
 from vcluster_driver import VClusterDriver
 
 log = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ class FailureFramework(object):
     A framework for inducing failures on different components
     of a Peloton cluster. Works with Peloton deployed on
     a variety of situations, such as local development cluster
-    (pcluster), virtualized Peloton (vcluster) etc.
+    (minicluster), virtualized Peloton (vcluster) etc.
     The framework mainly provides methods to start and stop
     component instances. These methods allow selecting the
     instances to operate on in the following ways:
@@ -30,7 +30,7 @@ class FailureFramework(object):
         Initialize the framework for use. The driver is to use
         is determined from "driver" keyword argument. If that is not
         provided, environment variable DRIVER is used. The default
-        driver is pcluster.
+        driver is minicluster.
         :param args: Positional arguments for driver setup. These
         arguments are driver specific and passed on the driver
         unchanged; see a particular driver for details.
@@ -38,10 +38,10 @@ class FailureFramework(object):
         arguments are driver specific and passed on the driver
         unchanged; see a particular driver for details.
         """
-        kind = os.environ.get("DRIVER", "pcluster")
+        kind = os.environ.get("DRIVER", "minicluster")
         kind = kwargs.get("driver", kind)
-        if kind == "pcluster":
-            self.driver = PClusterDriver()
+        if kind == "minicluster":
+            self.driver = MiniClusterDriver()
         elif kind == "vcluster":
             self.driver = VClusterDriver()
         else:

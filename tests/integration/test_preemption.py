@@ -30,7 +30,7 @@ def respool_b(request):
 
 
 # Tests task preemption with the following scenario:
-# Total cluster CPU resources (local pcluster) : 12
+# Total cluster CPU resources (local minicluster) : 12
 # 2 Jobs with 12 instances(1 CPU per instance)
 # 2 Resource pools with 6 CPU reservation each
 # Procedure:

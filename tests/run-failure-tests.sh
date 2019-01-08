@@ -7,7 +7,7 @@ function print_help {
   echo
   echo "Positional parameters"
   echo "  driver      Type of driver to set up Peloton cluster."
-  echo "              Supported values: pcluster, vcluster"
+  echo "              Supported values: minicluster, vcluster"
   echo
   echo "Options"
   echo "  -h, --help      Display usage"
@@ -42,7 +42,7 @@ export DRIVER=$1
 shift
 
 case ${DRIVER} in
-   pcluster|vcluster)
+   minicluster|vcluster)
      ;;
    *)
      echo "Unknown driver type ${DRIVER}, see help (-h)"
@@ -95,9 +95,9 @@ export VCLUSTER_INFO=CONF_${VCLUSTER_LABEL}
 
 if [[ ${SKIP_SETUP} -eq 0 ]]; then
   case ${DRIVER} in
-    pcluster)
-      echo "Setting up pcluster with Peloton image uber/peloton:latest"
-      python tools/pcluster/pcluster.py setup -a
+    minicluster)
+      echo "Setting up minicluster with Peloton image uber/peloton:latest"
+      python tools/minicluster/minicluster.py setup -a
       ;;
     vcluster)
       if [[ -z "${GOPATH}" ]]; then
@@ -119,9 +119,9 @@ pytest -vsrx $@ --junit-xml=failure-test-report.xml
 
 if [[ $? -eq 0 && ${SKIP_CLEANUP} -eq 0 ]]; then
   case ${DRIVER} in
-    pcluster)
-      echo "Tearing down pcluster"
-      python tools/pcluster/pcluster.py teardown
+    minicluster)
+      echo "Tearing down minicluster"
+      python tools/minicluster/minicluster.py teardown
       ;;
     vcluster)
       echo "Tearing down vcluster, label ${VCLUSTER_LABEL}"
