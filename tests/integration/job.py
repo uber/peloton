@@ -471,12 +471,12 @@ class Job(object):
                 attempts += 1
 
         if state_transition_failure:
-            task_fail_reason = self._get_task_failure_reason()
+            task_failure = self._get_task_failure()
             log.info('%s goal_state:%s current_state:%s attempts: %s',
                      self.job_id, goal_state, state, str(attempts))
-            for t, reason in task_fail_reason.iteritems():
-                log.info('%s task id:%s failed for reason:%s',
-                         self.job_id, t, reason)
+            for t, failure in task_failure.iteritems():
+                log.info('%s task id:%s failed for reason:%s message:%s',
+                         self.job_id, t, failure["reason"], failure["message"])
             assert False
 
         if attempts == self.config.max_retry_attempts:
@@ -506,16 +506,26 @@ class Job(object):
         self.job_config.instanceCount = count
         self.job_config.sla.maximumRunningInstances = count
 
-    def _get_task_failure_reason(self):
+    def _get_task_failure(self):
         """
-        Returns a dict of task id to reason for task failures for a job.
-        useful when finding out the reason for job failure.
-        :return: a dict of task id to reason
+        Returns a dict of task id to task failure reason and message.
+        Useful when finding out the reason for job failure.
+        :return: a dict of task id to failure dict
+        {
+          "5cd91f76-0846-44a5-b62f-d8c1054969dd" : {
+                "reason" : TASK_LOST,
+                "message": "task lost due to...",
+          },
+        }
         """
         task_id_reason_dict = {}
         for t in self.get_tasks().values():
             if t.state == task.FAILED:
-                task_id_reason_dict[t.instance_id] = t.get_info().runtime.reason
+                t_runtime = t.get_info().runtime
+                task_id_reason_dict[t.instance_id] = {
+                    "reason": t_runtime.reason,
+                    "message": t_runtime.message,
+                }
         return task_id_reason_dict
 
 
