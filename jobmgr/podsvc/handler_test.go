@@ -1246,6 +1246,11 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 	response, err := suite.handler.GetPod(context.Background(), request)
 	suite.NoError(err)
 	suite.NotNil(response)
+	suite.Equal(request.GetPodName(), response.GetCurrent().GetSpec().GetPodName())
+	for _, info := range response.GetPrevious() {
+		suite.Equal(request.GetPodName(), info.GetSpec().GetPodName())
+	}
+
 }
 
 // TestGetPodInvalidPodName tests PodName

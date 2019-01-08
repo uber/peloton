@@ -415,6 +415,7 @@ func (h *serviceHandler) GetPod(
 		}
 
 		podSpec = handlerutil.ConvertTaskConfigToPodSpec(taskConfig)
+		podSpec.PodName = req.GetPodName()
 	}
 
 	currentPodInfo := &pbpod.PodInfo{
@@ -873,7 +874,11 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 				return nil, errors.Wrap(err, "failed to get task config")
 			}
 
-			podInfo.Spec = handlerutil.ConvertTaskConfigToPodSpec(taskConfig)
+			spec := handlerutil.ConvertTaskConfigToPodSpec(taskConfig)
+			spec.PodName = &v1alphapeloton.PodName{
+				Value: util.CreatePelotonTaskID(jobID, instanceID),
+			}
+			podInfo.Spec = spec
 		}
 	}
 
