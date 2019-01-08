@@ -64,13 +64,16 @@ def setup_cluster(request):
         elif os.getenv('NO_TEARDOWN', ''):
             log.info('skip teardown')
         else:
-            log.info('teardown, writing logs')
+            log.info('tearing down')
+            # TODO Uncomment once the docker log issue has been fixed
+            '''
             try:
                 cli = Client(base_url='unix://var/run/docker.sock')
                 log.info(cli.logs('peloton-jobmgr0'))
                 log.info(cli.logs('peloton-jobmgr1'))
             except Exception as e:
                 log.info(e)
+            '''
             teardown()
 
     request.addfinalizer(teardown_cluster)
