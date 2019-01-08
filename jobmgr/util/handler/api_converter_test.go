@@ -34,6 +34,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	jobutil "github.com/uber/peloton/jobmgr/util/job"
+	"github.com/uber/peloton/util"
 
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/stretchr/testify/suite"
@@ -1340,10 +1341,17 @@ func (suite *APIConverterTestSuite) TestConvertTaskInfosToPodInfos() {
 	var podInfos []*pod.PodInfo
 
 	for _, taskInfo := range taskInfos {
-		podInfos = append(podInfos, &pod.PodInfo{
+		podInfo := &pod.PodInfo{
 			Spec:   ConvertTaskConfigToPodSpec(taskInfo.GetConfig()),
 			Status: ConvertTaskRuntimeToPodStatus(taskInfo.GetRuntime()),
-		})
+		}
+		podInfo.Spec.PodName = &v1alphapeloton.PodName{
+			Value: util.CreatePelotonTaskID(
+				taskInfo.GetJobId().GetValue(),
+				taskInfo.GetInstanceId(),
+			),
+		}
+		podInfos = append(podInfos, podInfo)
 	}
 
 	suite.Equal(podInfos, ConvertTaskInfosToPodInfos(taskInfos))

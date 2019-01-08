@@ -30,6 +30,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	jobutil "github.com/uber/peloton/jobmgr/util/job"
+	"github.com/uber/peloton/util"
 
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -798,10 +799,17 @@ func ConvertPodQuerySpecToTaskQuerySpec(spec *pod.QuerySpec) *task.QuerySpec {
 func ConvertTaskInfosToPodInfos(taskInfos []*task.TaskInfo) []*pod.PodInfo {
 	var podInfos []*pod.PodInfo
 	for _, taskInfo := range taskInfos {
-		podInfos = append(podInfos, &pod.PodInfo{
+		podInfo := &pod.PodInfo{
 			Spec:   ConvertTaskConfigToPodSpec(taskInfo.GetConfig()),
 			Status: ConvertTaskRuntimeToPodStatus(taskInfo.GetRuntime()),
-		})
+		}
+		podInfo.Spec.PodName = &v1alphapeloton.PodName{
+			Value: util.CreatePelotonTaskID(
+				taskInfo.GetJobId().GetValue(),
+				taskInfo.GetInstanceId(),
+			),
+		}
+		podInfos = append(podInfos, podInfo)
 	}
 
 	return podInfos
