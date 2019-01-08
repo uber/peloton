@@ -109,7 +109,7 @@ thriftgens: $(VENDOR)
 	@mkdir -p $(GEN_DIR)
 	go get ./vendor/go.uber.org/thriftrw
 	go get ./vendor/go.uber.org/yarpc/encoding/thrift/thriftrw-plugin-yarpc
-	thriftrw --plugin=yarpc --out=$(GEN_DIR)/thrift/aurora thrift/aurora/api.thrift
+	thriftrw --plugin=yarpc --out=$(GEN_DIR)/thrift/aurora aurorabridge/thrift/api.thrift
 
 pbgens: $(VENDOR)
 	@mkdir -p $(GEN_DIR)
