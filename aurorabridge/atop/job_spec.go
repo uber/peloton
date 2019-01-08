@@ -47,7 +47,7 @@ func NewJobSpecFromJobUpdateRequest(
 		OwningTeam:    "",  // Unused.
 		LdapGroups:    nil, // Unused.
 		Description:   "",  // Unused.
-		Labels:        []*peloton.Label{label.Build(aml)},
+		Labels:        []*peloton.Label{aml},
 		InstanceCount: uint32(r.GetInstanceCount()),
 		Sla:           newSLASpec(r.GetTaskConfig(), r.GetSettings().GetMaxFailedInstances()),
 		DefaultSpec:   p,

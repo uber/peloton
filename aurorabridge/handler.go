@@ -403,14 +403,9 @@ func (h *ServiceHandler) getJobIDs(
 		return []*peloton.JobID{resp.GetJobId()[0]}, nil
 	}
 
-	labels := label.BuildMany(
-		label.BuildAuroraJobKeyLabels(
-			k.GetRole(),
-			k.GetEnvironment(),
-			k.GetName()))
-
-	// TODO(kevinxu): do we need to return all job ids in this case?
+	labels := label.BuildPartialAuroraJobKeyLabels(k)
 	if len(labels) == 0 {
+		// TODO(kevinxu): do we need to return all job ids in this case?
 		return nil, errors.New("cannot get job ids from empty job key")
 	}
 

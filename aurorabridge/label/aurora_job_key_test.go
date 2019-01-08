@@ -4,100 +4,59 @@ import (
 	"testing"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"go.uber.org/thriftrw/ptr"
 
 	"github.com/stretchr/testify/assert"
 )
 
-// TestBuildAuroraJobKeyLabels checks BuildAuroraJobKeyLabels returns
-// labels correctly based on number of non-empty parameters.
-func TestBuildAuroraJobKeyLabels(t *testing.T) {
-	role := "test-role"
-	env := "test-env"
-	name := "test-name"
+func TestBuildPartialAuroraJobKeyLabels(t *testing.T) {
+	const (
+		role = "test-role"
+		env  = "test-env"
+		name = "test-name"
+	)
 
-	// role + environment + name
-	labels := BuildAuroraJobKeyLabels(role, env, name)
-	assert.Equal(t, 3, len(labels))
-	for _, label := range labels {
-		switch label.Key() {
-		case _auroraJobKeyRoleKey:
-			assert.Equal(t, label.Value(), role)
-		case _auroraJobKeyEnvironmentKey:
-			assert.Equal(t, label.Value(), env)
-		case _auroraJobKeyNameKey:
-			assert.Equal(t, label.Value(), name)
-		default:
-			assert.Fail(t, "unexpected label key: \"%s\"", label.Key())
-		}
+	testCases := []struct {
+		name       string
+		key        *api.JobKey
+		wantLabels []*peloton.Label
+	}{
+		{
+			"all fields set",
+			&api.JobKey{
+				Role:        ptr.String(role),
+				Environment: ptr.String(env),
+				Name:        ptr.String(name),
+			},
+			[]*peloton.Label{
+				NewAuroraJobKeyRole(role),
+				NewAuroraJobKeyEnvironment(env),
+				NewAuroraJobKeyName(name),
+			},
+		}, {
+			"only role set",
+			&api.JobKey{
+				Role: ptr.String(role),
+			},
+			[]*peloton.Label{
+				NewAuroraJobKeyRole(role),
+			},
+		}, {
+			"role and environment set",
+			&api.JobKey{
+				Role:        ptr.String(role),
+				Environment: ptr.String(env),
+			},
+			[]*peloton.Label{
+				NewAuroraJobKeyRole(role),
+				NewAuroraJobKeyEnvironment(env),
+			},
+		},
 	}
-
-	// role + environment
-	labels = BuildAuroraJobKeyLabels(role, env, "")
-	assert.Equal(t, 2, len(labels))
-	for _, label := range labels {
-		switch label.Key() {
-		case _auroraJobKeyRoleKey:
-			assert.Equal(t, label.Value(), role)
-		case _auroraJobKeyEnvironmentKey:
-			assert.Equal(t, label.Value(), env)
-		default:
-			assert.Fail(t, "unexpected label key: \"%s\"", label.Key())
-		}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.wantLabels, BuildPartialAuroraJobKeyLabels(tc.key))
+		})
 	}
-
-	// role
-	labels = BuildAuroraJobKeyLabels(role, "", "")
-	assert.Equal(t, 1, len(labels))
-	for _, label := range labels {
-		switch label.Key() {
-		case _auroraJobKeyRoleKey:
-			assert.Equal(t, label.Value(), role)
-		default:
-			assert.Fail(t, "unexpected label key: \"%s\"", label.Key())
-		}
-	}
-}
-
-// TestBuildAuroraJobKeyFromLabels checks BuildAuroraJobKeyFromLabels
-// returns aurora JobKey correctly based on input peloton labels.
-func TestBuildAuroraJobKeyFromLabels(t *testing.T) {
-	role := "test-role"
-	env := "test-env"
-	name := "test-name"
-	roleLabel := &peloton.Label{
-		Key:   _auroraJobKeyRoleKey,
-		Value: role,
-	}
-	envLabel := &peloton.Label{
-		Key:   _auroraJobKeyEnvironmentKey,
-		Value: env,
-	}
-	nameLabel := &peloton.Label{
-		Key:   _auroraJobKeyNameKey,
-		Value: name,
-	}
-
-	// role + environment + name
-	labels := []*peloton.Label{roleLabel, envLabel, nameLabel}
-	jobKey := BuildAuroraJobKeyFromLabels(labels)
-	assert.NotNil(t, jobKey)
-	assert.Equal(t, role, *jobKey.Role)
-	assert.Equal(t, env, *jobKey.Environment)
-	assert.Equal(t, name, *jobKey.Name)
-
-	// role + environment
-	labels = []*peloton.Label{roleLabel, envLabel}
-	jobKey = BuildAuroraJobKeyFromLabels(labels)
-	assert.NotNil(t, jobKey)
-	assert.Equal(t, role, *jobKey.Role)
-	assert.Equal(t, env, *jobKey.Environment)
-	assert.Nil(t, jobKey.Name)
-
-	// role + environment
-	labels = []*peloton.Label{roleLabel}
-	jobKey = BuildAuroraJobKeyFromLabels(labels)
-	assert.NotNil(t, jobKey)
-	assert.Equal(t, role, *jobKey.Role)
-	assert.Nil(t, jobKey.Environment)
-	assert.Nil(t, jobKey.Name)
 }

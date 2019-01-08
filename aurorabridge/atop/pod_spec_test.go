@@ -63,7 +63,7 @@ func TestNewPodSpec_HostLimitConstraint(t *testing.T) {
 		k       = fixture.AuroraJobKey()
 	)
 
-	jobKeyLabel := label.Build(label.NewAuroraJobKey(k))
+	jobKeyLabel := label.NewAuroraJobKey(k)
 
 	p, err := NewPodSpec(&api.TaskConfig{
 		Job: k,
@@ -140,25 +140,4 @@ func TestNewPodSpec_ValueConstraints(t *testing.T) {
 			},
 		},
 	}, c.GetOrConstraint().GetConstraints())
-}
-
-// TestNewPodSpec_Labels ensures labels are translated correctly from
-// Aurora JobKey.
-func TestNewPodSpec_Labels(t *testing.T) {
-	jobKey := fixture.AuroraJobKey()
-
-	jobKeyLabel := label.Build(label.NewAuroraJobKey(jobKey))
-	additionalJobKeyLabels := label.BuildMany(label.BuildAuroraJobKeyLabels(
-		jobKey.GetRole(),
-		jobKey.GetEnvironment(),
-		jobKey.GetName(),
-	))
-
-	podSpec, err := NewPodSpec(&api.TaskConfig{Job: jobKey})
-	assert.NoError(t, err)
-
-	assert.Contains(t, podSpec.Labels, jobKeyLabel)
-	for _, label := range additionalJobKeyLabels {
-		assert.Contains(t, podSpec.Labels, label)
-	}
 }

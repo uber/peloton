@@ -417,10 +417,13 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_FullJobKey() {
 func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKey() {
 	role := "role1"
 	env := "env1"
-	labels := label.BuildMany(label.BuildAuroraJobKeyLabels(role, env, ""))
 	jobID1 := fixture.PelotonJobID()
 	jobID2 := fixture.PelotonJobID()
 
+	labels := label.BuildPartialAuroraJobKeyLabels(&api.JobKey{
+		Role:        ptr.String(role),
+		Environment: ptr.String(env),
+	})
 	suite.expectQueryJobsWithLabels(labels, []*peloton.JobID{jobID1, jobID2})
 
 	query := &api.TaskQuery{
@@ -444,7 +447,10 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKey()
 func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyError() {
 	role := "role1"
 	name := "name1"
-	labels := label.BuildMany(label.BuildAuroraJobKeyLabels(role, "", name))
+	labels := label.BuildPartialAuroraJobKeyLabels(&api.JobKey{
+		Role: ptr.String(role),
+		Name: ptr.String(name),
+	})
 
 	suite.jobClient.EXPECT().
 		QueryJobs(suite.ctx,
