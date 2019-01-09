@@ -44,8 +44,8 @@ for dist in $DISTRIBUTION ; do
   echo "Building debs for $dist"
   outputdir="debs/$dist"
   [[ -d $outputdir ]] || mkdir -p $outputdir
-  $docker_cmd build -t "$image_name" -f Dockerfile.deb.$dist .
-  $docker_cmd run --rm -v "$(pwd)/${outputdir}":/output -t "$image_name"
+  $docker_cmd build --network=host -t "$image_name" -f Dockerfile.deb.$dist .
+  $docker_cmd run --net=host --rm -v "$(pwd)/${outputdir}":/output -t "$image_name"
   echo -e "\n\nDebs built:"
   find $outputdir -type f -name '*.deb' -ls
   echo ""
