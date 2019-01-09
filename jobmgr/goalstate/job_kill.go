@@ -163,6 +163,9 @@ func createRuntimeDiffForKill(
 			jobmgrcommon.GoalStateField: task.TaskState_KILLED,
 			jobmgrcommon.MessageField:   "Task stop API request",
 			jobmgrcommon.ReasonField:    "",
+			jobmgrcommon.TerminationStatusField: &task.TerminationStatus{
+				Reason: task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+			},
 		}
 		runtimeDiffAll[instanceID] = runtimeDiff
 		if util.IsPelotonStateTerminal(runtime.GetState()) {

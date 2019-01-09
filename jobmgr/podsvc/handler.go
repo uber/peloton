@@ -301,6 +301,9 @@ func (h *serviceHandler) StopPod(
 		jobmgrcommon.GoalStateField: pbtask.TaskState_KILLED,
 		jobmgrcommon.MessageField:   "Task stop API request",
 		jobmgrcommon.ReasonField:    "",
+		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+		},
 	}
 	err = cachedJob.PatchTasks(ctx, runtimeDiff)
 

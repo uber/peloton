@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
@@ -31,6 +31,7 @@ import (
 	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
 	"github.com/uber/peloton/jobmgr/goalstate"
 	jobmgr_task "github.com/uber/peloton/jobmgr/task"
+	taskutil "github.com/uber/peloton/jobmgr/util/task"
 	"github.com/uber/peloton/storage"
 	"github.com/uber/peloton/util"
 
@@ -39,6 +40,11 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/yarpcerrors"
+)
+
+const (
+	// Mesos event message that indicates duplicate task ID
+	_msgMesosDuplicateID = "Task has duplicate ID"
 )
 
 // Declare a Now function so that we can mock it in unit tests.
@@ -188,14 +194,35 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 
 	switch updateEvent.state {
 	case pb_task.TaskState_FAILED:
-		if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_TASK_INVALID &&
-			strings.Contains(event.GetMesosTaskStatus().GetMessage(), "Task has duplicate ID") {
+		reason := event.GetMesosTaskStatus().GetReason()
+		msg := event.GetMesosTaskStatus().GetMessage()
+		if reason == mesos_v1.TaskStatus_REASON_TASK_INVALID &&
+			strings.Contains(msg, _msgMesosDuplicateID) {
 			log.WithField("task_id", updateEvent.taskID).
 				Info("ignoring duplicate task id failure")
 			return nil
 		}
-		runtimeDiff[jobmgrcommon.ReasonField] = event.GetMesosTaskStatus().GetReason().String()
+		runtimeDiff[jobmgrcommon.ReasonField] = reason.String()
 		runtimeDiff[jobmgrcommon.StateField] = updateEvent.state
+		runtimeDiff[jobmgrcommon.MessageField] = msg
+		termStatus := &pb_task.TerminationStatus{
+			Reason: pb_task.TerminationStatus_TERMINATION_STATUS_REASON_FAILED,
+		}
+		if code, err := taskutil.GetExitStatusFromMessage(msg); err == nil {
+			termStatus.ExitCode = code
+		} else if yarpcerrors.IsNotFound(err) == false {
+			log.WithField("task_id", updateEvent.taskID).
+				WithField("error", err).
+				Debug("Failed to extract exit status from message")
+		}
+		if sig, err := taskutil.GetSignalFromMessage(msg); err == nil {
+			termStatus.Signal = sig
+		} else if yarpcerrors.IsNotFound(err) == false {
+			log.WithField("task_id", updateEvent.taskID).
+				WithField("error", err).
+				Debug("Failed to extract termination signal from message")
+		}
+		runtimeDiff[jobmgrcommon.TerminationStatusField] = termStatus
 
 	case pb_task.TaskState_LOST:
 		runtimeDiff[jobmgrcommon.ReasonField] = event.GetMesosTaskStatus().GetReason().String()

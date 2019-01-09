@@ -217,3 +217,70 @@ func TestIsSystemFailure(t *testing.T) {
 		assert.Equal(t, IsSystemFailure(test.taskRuntime), test.isSystemFailure)
 	}
 }
+
+// TestGetExitStatusFromMessage tests various cases for
+// GetExitStatusFromMessage
+func TestGetExitStatusFromMessage(t *testing.T) {
+	testTable := []struct {
+		message       string
+		expectedIsErr bool
+		expectedCode  uint32
+	}{
+		{
+			message:       "Command exited with status 127",
+			expectedIsErr: false,
+			expectedCode:  127,
+		},
+		{
+			message:       "Command exited with status A1234",
+			expectedIsErr: true,
+		},
+		{
+			message:       "some error happened",
+			expectedIsErr: true,
+		},
+	}
+	for _, test := range testTable {
+		code, err := GetExitStatusFromMessage(test.message)
+		if test.expectedIsErr {
+			assert.NotNil(t, err)
+		} else {
+			assert.Nil(t, err)
+			assert.Equal(t, test.expectedCode, code)
+		}
+	}
+}
+
+// TestGetSignalFromMessage tests various cases for
+// GetSignalFromMessage
+func TestGetSignalFromMessage(t *testing.T) {
+	testTable := []struct {
+		message        string
+		expectedIsErr  bool
+		expectedSignal string
+	}{
+		{
+			message:        "Command terminated with signal Segmentation fault",
+			expectedIsErr:  false,
+			expectedSignal: "Segmentation fault",
+		},
+		{
+			message:        "Container terminated with signal Broken pipe",
+			expectedIsErr:  false,
+			expectedSignal: "Broken pipe",
+		},
+		{
+			message:       "some error happened",
+			expectedIsErr: true,
+		},
+	}
+	for _, test := range testTable {
+		sig, err := GetSignalFromMessage(test.message)
+		if test.expectedIsErr {
+			assert.NotNil(t, err)
+		} else {
+			assert.Nil(t, err)
+			assert.Equal(t, test.expectedSignal, sig)
+		}
+	}
+}

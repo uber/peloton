@@ -31,11 +31,16 @@ import (
 	"github.com/uber/peloton/storage"
 	"github.com/uber/peloton/util"
 
-	"github.com/hashicorp/go-multierror"
+	multierror "github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
+)
+
+const (
+	// Task runtime message that indicates task is being pre-empted.
+	_msgPreemptingRunningTask = "Preempting running task"
 )
 
 // Config is Task preemptor specific config
@@ -196,8 +201,12 @@ func (p *preemptor) preemptTasks(
 		}
 
 		runtimeDiff := getRuntimeDiffForPreempt(
-			jobID, cachedJob.GetJobType(), uint32(instanceID), runtime, preemptPolicy)
-		runtimeDiff[jobmgrcommon.ReasonField] = task.GetReason().String()
+			jobID,
+			cachedJob.GetJobType(),
+			uint32(instanceID),
+			task.GetReason(),
+			runtime,
+			preemptPolicy)
 
 		// update the task in cache and enqueue to goal state engine
 		err = cachedJob.PatchTasks(ctx, map[uint32]jobmgrcommon.RuntimeDiff{uint32(instanceID): runtimeDiff})
@@ -285,10 +294,12 @@ func getRuntimeDiffForPreempt(
 	jobID *peloton.JobID,
 	jobType pbjob.JobType,
 	instanceID uint32,
+	taskReason resmgr.PreemptionReason,
 	taskRuntime *pbtask.RuntimeInfo,
 	preemptPolicy *pbtask.PreemptionPolicy) jobmgrcommon.RuntimeDiff {
 	runtimeDiff := jobmgrcommon.RuntimeDiff{
-		jobmgrcommon.MessageField: "Preempting running task",
+		jobmgrcommon.MessageField: _msgPreemptingRunningTask,
+		jobmgrcommon.ReasonField:  taskReason.String(),
 	}
 
 	if preemptPolicy != nil && preemptPolicy.GetKillOnPreempt() {
@@ -301,6 +312,15 @@ func getRuntimeDiffForPreempt(
 			// kill the task if GetKillOnPreempt is true
 			runtimeDiff[jobmgrcommon.GoalStateField] = pbtask.TaskState_KILLED
 		}
+		tsReason := pbtask.TerminationStatus_TERMINATION_STATUS_REASON_INVALID
+		switch taskReason {
+		case resmgr.PreemptionReason_PREEMPTION_REASON_HOST_MAINTENANCE:
+			tsReason = pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE
+		case resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES:
+			tsReason = pbtask.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES
+		}
+		runtimeDiff[jobmgrcommon.TerminationStatusField] =
+			&pbtask.TerminationStatus{Reason: tsReason}
 		return runtimeDiff
 	}
 

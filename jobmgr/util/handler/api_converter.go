@@ -136,6 +136,8 @@ func ConvertTaskRuntimeToPodStatus(runtime *task.RuntimeInfo) *pod.PodStatus {
 				CompletionTime: runtime.GetCompletionTime(),
 				Message:        runtime.GetMessage(),
 				Reason:         runtime.GetReason(),
+				TerminationStatus: convertTaskTerminationStatusToPodTerminationStatus(
+					runtime.TerminationStatus),
 			},
 		},
 		DesiredState:   ConvertTaskStateToPodState(runtime.GetGoalState()),
@@ -837,5 +839,30 @@ func convertV1AlphaPaginationSpecToV0PaginationSpec(
 		Limit:    pagination.GetLimit(),
 		OrderBy:  orderBy,
 		MaxLimit: pagination.GetMaxLimit(),
+	}
+}
+
+func convertTaskTerminationStatusToPodTerminationStatus(
+	termStatus *task.TerminationStatus,
+) *pod.TerminationStatus {
+	if termStatus == nil {
+		return nil
+	}
+
+	podReason := pod.TerminationStatus_TERMINATION_STATUS_REASON_INVALID
+	switch termStatus.GetReason() {
+	case task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST:
+		podReason = pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST
+	case task.TerminationStatus_TERMINATION_STATUS_REASON_FAILED:
+		podReason = pod.TerminationStatus_TERMINATION_STATUS_REASON_FAILED
+	case task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE:
+		podReason = pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE
+	case task.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES:
+		podReason = pod.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES
+	}
+	return &pod.TerminationStatus{
+		Reason:   podReason,
+		ExitCode: termStatus.GetExitCode(),
+		Signal:   termStatus.GetSignal(),
 	}
 }

@@ -387,6 +387,17 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 		},
 	}
 
+	termStatus := &task.TerminationStatus{
+		Reason: task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+	}
+	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiffs[1] = map[string]interface{}{
+		jobmgrcommon.GoalStateField:         task.TaskState_KILLED,
+		jobmgrcommon.MessageField:           "Task stop API request",
+		jobmgrcommon.ReasonField:            "",
+		jobmgrcommon.TerminationStatusField: termStatus,
+	}
+
 	gomock.InOrder(
 		suite.mockedCandidate.EXPECT().IsLeader().Return(true),
 		suite.mockedJobFactory.EXPECT().
@@ -397,7 +408,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 		suite.mockedTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		suite.mockedCachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
+			PatchTasks(gomock.Any(), runtimeDiffs).Return(nil),
 		suite.mockedGoalStateDrive.EXPECT().
 			EnqueueTask(suite.testJobID, uint32(1), gomock.Any()).Return(),
 		suite.mockedCachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),

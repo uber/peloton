@@ -152,6 +152,11 @@ func (suite *APIConverterTestSuite) TestConvertTaskRuntimeToPodStatus() {
 		DesiredMesosTaskId: &mesos.TaskID{
 			Value: &testMesosTaskID,
 		},
+		TerminationStatus: &task.TerminationStatus{
+			Reason:   task.TerminationStatus_TERMINATION_STATUS_REASON_FAILED,
+			ExitCode: 128,
+			Signal:   "Broken pipe",
+		},
 	}
 
 	podStatus := &pod.PodStatus{
@@ -170,6 +175,11 @@ func (suite *APIConverterTestSuite) TestConvertTaskRuntimeToPodStatus() {
 				Message:   message,
 				Reason:    reason,
 				StartTime: startTime,
+				TerminationStatus: &pod.TerminationStatus{
+					Reason:   pod.TerminationStatus_TERMINATION_STATUS_REASON_FAILED,
+					ExitCode: 128,
+					Signal:   "Broken pipe",
+				},
 			},
 		},
 		DesiredState: pod.PodState_POD_STATE_SUCCEEDED,
@@ -1355,6 +1365,29 @@ func (suite *APIConverterTestSuite) TestConvertTaskInfosToPodInfos() {
 	}
 
 	suite.Equal(podInfos, ConvertTaskInfosToPodInfos(taskInfos))
+}
+
+// TestConvertTerminationStatusReason verifies that all TerminationStatus
+// reason enums are converted correctly from v0 to v1alpha.
+func (suite *APIConverterTestSuite) TestConvertTerminationStatusReason() {
+	expmap := map[task.TerminationStatus_Reason]pod.TerminationStatus_Reason{
+		task.TerminationStatus_TERMINATION_STATUS_REASON_INVALID:                 pod.TerminationStatus_TERMINATION_STATUS_REASON_INVALID,
+		task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST:       pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+		task.TerminationStatus_TERMINATION_STATUS_REASON_FAILED:                  pod.TerminationStatus_TERMINATION_STATUS_REASON_FAILED,
+		task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE: pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE,
+		task.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES:     pod.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES,
+	}
+	// ensure that we have a test-case for every legal value of v0 reason
+	suite.Equal(len(task.TerminationStatus_Reason_name), len(expmap))
+	for k, v := range expmap {
+		_, ok := task.TerminationStatus_Reason_name[int32(k)]
+		suite.True(ok)
+		podTermStatus := convertTaskTerminationStatusToPodTerminationStatus(
+			&task.TerminationStatus{
+				Reason: k,
+			})
+		suite.Equal(v, podTermStatus.GetReason())
+	}
 }
 
 func TestAPIConverter(t *testing.T) {

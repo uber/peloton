@@ -761,6 +761,10 @@ func (suite *podHandlerTestSuite) TestStopPodSuccess() {
 		jobmgrcommon.GoalStateField: pbtask.TaskState_KILLED,
 		jobmgrcommon.MessageField:   "Task stop API request",
 		jobmgrcommon.ReasonField:    "",
+
+		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+		},
 	}
 
 	suite.cachedJob.EXPECT().
@@ -810,12 +814,6 @@ func (suite *podHandlerTestSuite) TestStopPodAlreadyStoppedPod() {
 		MesosTaskId: &mesos.TaskID{
 			Value: &mesosTaskID,
 		},
-	}
-	runtimeDiff := make(map[uint32]jobmgrcommon.RuntimeDiff)
-	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
-		jobmgrcommon.GoalStateField: pbtask.TaskState_KILLED,
-		jobmgrcommon.MessageField:   "Task stop API request",
-		jobmgrcommon.ReasonField:    "",
 	}
 
 	suite.cachedJob.EXPECT().
@@ -931,6 +929,10 @@ func (suite *podHandlerTestSuite) TestStopPodPatchTasksFailure() {
 		jobmgrcommon.GoalStateField: pbtask.TaskState_KILLED,
 		jobmgrcommon.MessageField:   "Task stop API request",
 		jobmgrcommon.ReasonField:    "",
+
+		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+		},
 	}
 
 	suite.cachedJob.EXPECT().

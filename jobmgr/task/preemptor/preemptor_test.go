@@ -118,10 +118,24 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		},
 	}
 
+	taskID = fmt.Sprintf("%s-%d", jobID.GetValue(), 3)
+	noRestartMaintTaskID := &peloton.TaskID{Value: taskID}
+	noRestartMaintTask := &resmgr.Task{
+		Id: noRestartMaintTaskID,
+	}
+	noRestartMaintTaskInfo := &peloton_task.TaskInfo{
+		InstanceId: 3,
+		Runtime: &peloton_task.RuntimeInfo{
+			State:     peloton_task.TaskState_RUNNING,
+			GoalState: peloton_task.TaskState_RUNNING,
+		},
+	}
+
 	cachedJob := cachedmocks.NewMockJob(suite.mockCtrl)
 	runningCachedTask := cachedmocks.NewMockTask(suite.mockCtrl)
 	killingCachedTask := cachedmocks.NewMockTask(suite.mockCtrl)
 	noRestartCachedTask := cachedmocks.NewMockTask(suite.mockCtrl)
+	noRestartMaintCachedTask := cachedmocks.NewMockTask(suite.mockCtrl)
 	runtimes := make(map[uint32]*peloton_task.RuntimeInfo)
 	runtimes[0] = runningTaskInfo.Runtime
 	runtimes[1] = killingTaskInfo.Runtime
@@ -141,13 +155,17 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 					Id:     noRestartTask.Id,
 					Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
 				},
+				{
+					Id:     noRestartMaintTask.Id,
+					Reason: resmgr.PreemptionReason_PREEMPTION_REASON_HOST_MAINTENANCE,
+				},
 			},
 
 			Error: nil,
 		}, nil,
 	)
 
-	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(cachedJob).Times(3)
+	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(cachedJob).Times(4)
 	cachedJob.EXPECT().
 		AddTask(gomock.Any(), runningTaskInfo.InstanceId).
 		Return(runningCachedTask, nil)
@@ -157,6 +175,9 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 	cachedJob.EXPECT().
 		AddTask(gomock.Any(), noRestartTaskInfo.InstanceId).
 		Return(noRestartCachedTask, nil)
+	cachedJob.EXPECT().
+		AddTask(gomock.Any(), noRestartMaintTaskInfo.InstanceId).
+		Return(noRestartMaintCachedTask, nil)
 	suite.mockTaskStore.EXPECT().GetTaskConfig(
 		gomock.Any(),
 		jobID,
@@ -166,6 +187,16 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 	suite.mockTaskStore.EXPECT().GetTaskConfig(
 		gomock.Any(), jobID,
 		noRestartTaskInfo.InstanceId, noRestartTaskInfo.Runtime.ConfigVersion).
+		Return(
+			&peloton_task.TaskConfig{
+				PreemptionPolicy: &peloton_task.PreemptionPolicy{
+					KillOnPreempt: true,
+				},
+			}, &models.ConfigAddOn{}, nil)
+	suite.mockTaskStore.EXPECT().GetTaskConfig(
+		gomock.Any(), jobID,
+		noRestartMaintTaskInfo.InstanceId,
+		noRestartMaintTaskInfo.Runtime.ConfigVersion).
 		Return(
 			&peloton_task.TaskConfig{
 				PreemptionPolicy: &peloton_task.PreemptionPolicy{
@@ -183,6 +214,10 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		noRestartTaskInfo.Runtime,
 		nil,
 	)
+	noRestartMaintCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(
+		noRestartMaintTaskInfo.Runtime,
+		nil,
+	)
 
 	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context,
@@ -192,20 +227,53 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		}).
 		Return(nil)
 
+	termStatusResource := &peloton_task.TerminationStatus{
+		Reason: peloton_task.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES,
+	}
+	termStatusMaint := &peloton_task.TerminationStatus{
+		Reason: peloton_task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE,
+	}
+	runtimeDiffsNoRestartTask := map[string]interface{}{
+		jobmgrcommon.GoalStateField: peloton_task.TaskState_PREEMPTING,
+		jobmgrcommon.ReasonField:    "PREEMPTION_REASON_REVOKE_RESOURCES",
+		jobmgrcommon.MessageField:   _msgPreemptingRunningTask,
+
+		jobmgrcommon.TerminationStatusField: termStatusResource,
+	}
+	runtimeDiffsNoRestartMaintTask := map[string]interface{}{
+		jobmgrcommon.GoalStateField: peloton_task.TaskState_PREEMPTING,
+		jobmgrcommon.ReasonField:    "PREEMPTION_REASON_HOST_MAINTENANCE",
+		jobmgrcommon.MessageField:   _msgPreemptingRunningTask,
+
+		jobmgrcommon.TerminationStatusField: termStatusMaint,
+	}
 	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context,
 			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
-			suite.EqualValues(peloton_task.TaskState_PREEMPTING,
-				runtimeDiffs[noRestartTaskInfo.InstanceId][jobmgrcommon.GoalStateField])
+			suite.EqualValues(runtimeDiffsNoRestartTask,
+				runtimeDiffs[noRestartTaskInfo.InstanceId])
+		}).
+		Return(nil)
+	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context,
+			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.EqualValues(runtimeDiffsNoRestartMaintTask,
+				runtimeDiffs[noRestartMaintTaskInfo.InstanceId])
 		}).
 		Return(nil)
 
-	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return().Times(2)
-	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).Times(4)
+	suite.goalStateDriver.EXPECT().
+		EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return().
+		Times(3)
+	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).Times(6)
 	suite.goalStateDriver.EXPECT().
 		JobRuntimeDuration(job.JobType_BATCH).
-		Return(1 * time.Second).Times(2)
-	suite.goalStateDriver.EXPECT().EnqueueJob(gomock.Any(), gomock.Any()).Return().Times(2)
+		Return(1 * time.Second).Times(3)
+	suite.goalStateDriver.EXPECT().
+		EnqueueJob(gomock.Any(), gomock.Any()).
+		Return().
+		Times(3)
 
 	err := suite.preemptor.performPreemptionCycle()
 	suite.NoError(err)

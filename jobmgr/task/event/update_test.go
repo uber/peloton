@@ -64,8 +64,11 @@ var (
 	_pelotonJobID      = &peloton.JobID{
 		Value: _jobID,
 	}
-	_failureMsg  = "testFailure"
-	_currentTime = "2017-01-02T15:04:05.456789016Z"
+	_failureMsg            = "testFailure"
+	_failureMsgExitCode    = "Command exited with status 250"
+	_failureMsgBadExitCode = "Command exited with status abc"
+	_failureMsgSignal      = "Command terminated with signal Segmentation fault"
+	_currentTime           = "2017-01-02T15:04:05.456789016Z"
 )
 
 var nowMock = func() time.Time {
@@ -539,10 +542,45 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipSameStateWithHealt
 
 // Test processing task failure status update w/ retry.
 func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdate() {
+	suite.doTestProcessTaskFailedStatusUpdate(_failureMsg,
+		&task.TerminationStatus{
+			Reason: task.TerminationStatus_TERMINATION_STATUS_REASON_FAILED,
+		})
+}
+
+// Test processing task failure status update with exit-code.
+func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateCode() {
+	suite.doTestProcessTaskFailedStatusUpdate(_failureMsgExitCode,
+		&task.TerminationStatus{
+			Reason:   task.TerminationStatus_TERMINATION_STATUS_REASON_FAILED,
+			ExitCode: 250,
+		})
+}
+
+// Test processing task failure status update with invalid exit-code.
+func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateBadCode() {
+	suite.doTestProcessTaskFailedStatusUpdate(_failureMsgBadExitCode,
+		&task.TerminationStatus{
+			Reason: task.TerminationStatus_TERMINATION_STATUS_REASON_FAILED,
+		})
+}
+
+// Test processing task failure status update with signal.
+func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateSignal() {
+	suite.doTestProcessTaskFailedStatusUpdate(_failureMsgSignal,
+		&task.TerminationStatus{
+			Reason: task.TerminationStatus_TERMINATION_STATUS_REASON_FAILED,
+			Signal: "Segmentation fault",
+		})
+}
+
+func (suite *TaskUpdaterTestSuite) doTestProcessTaskFailedStatusUpdate(
+	failureMsg string, expectedTermStatus *task.TerminationStatus) {
 	defer suite.ctrl.Finish()
 
 	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_FAILED)
+	event.MesosTaskStatus.Message = &failureMsg
 	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 
 	suite.mockTaskStore.EXPECT().
@@ -557,16 +595,20 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdate() {
 		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			runtimeDiff := runtimeDiffs[_instanceID]
 			suite.Equal(
-				runtimeDiff[jobmgrcommon.StateField],
 				task.TaskState_FAILED,
+				runtimeDiff[jobmgrcommon.StateField],
 			)
 			suite.Equal(
-				runtimeDiff[jobmgrcommon.ReasonField],
 				_mesosReason.String(),
+				runtimeDiff[jobmgrcommon.ReasonField],
 			)
 			suite.Equal(
+				failureMsg,
 				runtimeDiff[jobmgrcommon.MessageField],
-				_failureMsg,
+			)
+			suite.Equal(
+				expectedTermStatus,
+				runtimeDiff[jobmgrcommon.TerminationStatusField],
 			)
 		}).
 		Return(nil)

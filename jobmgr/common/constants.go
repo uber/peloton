@@ -36,6 +36,7 @@ const (
 	StartTimeField            = "StartTime"
 	StateField                = "State"
 	VolumeIDField             = "VolumeID"
+	TerminationStatusField    = "TerminationStatus"
 )
 
 const (

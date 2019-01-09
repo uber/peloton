@@ -769,6 +769,9 @@ func (m *serviceHandler) Stop(
 			jobmgrcommon.GoalStateField: task.TaskState_KILLED,
 			jobmgrcommon.MessageField:   "Task stop API request",
 			jobmgrcommon.ReasonField:    "",
+			jobmgrcommon.TerminationStatusField: &task.TerminationStatus{
+				Reason: task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+			},
 		}
 		runtimeDiffs[taskInfo.InstanceId] = runtimeDiff
 		instanceIds = append(instanceIds, taskInfo.InstanceId)

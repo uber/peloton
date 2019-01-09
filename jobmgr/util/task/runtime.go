@@ -15,6 +15,7 @@
 package task
 
 import (
+	"strconv"
 	"strings"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
@@ -23,6 +24,16 @@ import (
 
 	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
 	"github.com/uber/peloton/util"
+	"go.uber.org/yarpc/yarpcerrors"
+)
+
+const (
+	// _exitStatusPrefix is prefix of Mesos message that contains exit status
+	_exitStatusPrefix = "Command exited with status "
+
+	// _termSignalMsg is the signature portion of Mesos message that contains
+	// termination signal
+	_termSignalMsg = " terminated with signal "
 )
 
 // GetInitialHealthState returns the initial health State
@@ -113,4 +124,22 @@ func IsSystemFailure(runtime *task.RuntimeInfo) bool {
 		}
 	}
 	return false
+}
+
+// GetExitStatusFromMessage extracts the container exit code from message.
+func GetExitStatusFromMessage(message string) (uint32, error) {
+	if strings.HasPrefix(message, _exitStatusPrefix) {
+		s := message[len(_exitStatusPrefix):]
+		code64, err := strconv.ParseUint(s, 10, 32)
+		return uint32(code64), err
+	}
+	return 0, yarpcerrors.NotFoundErrorf("Exit status not found")
+}
+
+// GetSignalFromMessage extracts the container termination signal from message.
+func GetSignalFromMessage(message string) (string, error) {
+	if idx := strings.Index(message, _termSignalMsg); idx != -1 {
+		return message[idx+len(_termSignalMsg):], nil
+	}
+	return "", yarpcerrors.NotFoundErrorf("Termination signal not found")
 }
