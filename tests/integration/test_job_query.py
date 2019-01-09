@@ -7,7 +7,7 @@ from peloton_client.pbgen.peloton.api.v0.query import query_pb2 as query
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 from peloton_client.google.protobuf import timestamp_pb2
 
-from conftest import NUM_JOBS_PER_STATE
+from conf_util import NUM_JOBS_PER_STATE
 
 # Mark test module so that we can run tests by tags
 pytestmark = [pytest.mark.default, pytest.mark.jobquery]
