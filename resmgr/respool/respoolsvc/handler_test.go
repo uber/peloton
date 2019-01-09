@@ -56,8 +56,7 @@ func (s *resPoolHandlerTestSuite) SetupSuite() {
 		Return(s.getResPools(), nil).AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
-	res.InitTree(tally.NoopScope, s.mockResPoolStore, mockJobStore, mockTaskStore, rc.PreemptionConfig{Enabled: false})
-	s.resourceTree = res.GetTree()
+	s.resourceTree = res.NewTree(tally.NoopScope, s.mockResPoolStore, mockJobStore, mockTaskStore, rc.PreemptionConfig{Enabled: false})
 	resourcePoolConfigValidator, err := res.NewResourcePoolConfigValidator(s.resourceTree)
 	s.NoError(err)
 	s.resourcePoolConfigValidator = resourcePoolConfigValidator
@@ -228,8 +227,12 @@ func (s *resPoolHandlerTestSuite) getResPools() map[string]*pb_respool.ResourceP
 }
 
 func (s *resPoolHandlerTestSuite) TestNewServiceHandler() {
-	handler := NewServiceHandler(nil, tally.NoopScope, s.mockResPoolStore,
-		nil, nil, rc.PreemptionConfig{Enabled: false})
+	handler := NewServiceHandler(
+		nil,
+		tally.NoopScope,
+		s.resourceTree,
+		s.mockResPoolStore,
+	)
 	s.NotNil(handler)
 }
 

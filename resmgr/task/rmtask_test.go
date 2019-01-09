@@ -38,7 +38,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -62,12 +61,10 @@ func (s *RMTaskTestSuite) SetupSuite() {
 	mockJobStore := store_mocks.NewMockJobStore(s.ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.ctrl)
 
-	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore,
+	s.resTree = respool.NewTree(tally.NoopScope, mockResPoolStore, mockJobStore,
 		mockTaskStore, rc.PreemptionConfig{
 			Enabled: false,
 		})
-
-	s.resTree = respool.GetTree()
 
 	InitTaskTracker(tally.NoopScope, &Config{
 		EnablePlacementBackoff: true,
@@ -90,11 +87,8 @@ func (s *RMTaskTestSuite) SetupTest() {
 }
 
 func (s *RMTaskTestSuite) TearDownTest() {
-	log.Info("tearing down")
-	err := respool.GetTree().Stop()
-	s.NoError(err)
-	err = GetScheduler().Stop()
-	s.NoError(err)
+	s.NoError(s.resTree.Stop())
+	s.NoError(GetScheduler().Stop())
 }
 
 func (s *RMTaskTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {

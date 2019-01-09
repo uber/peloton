@@ -48,63 +48,77 @@ func mockSchedulerWithErr(err error, t *testing.T) func() task.Scheduler {
 func TestServer_GainedLeadershipCallback(t *testing.T) {
 
 	tt := []struct {
-		s   *Server
-		err error
+		s       *Server
+		wantErr error
 	}{
+		{
+			s: &Server{
+				role:    "testResMgr",
+				metrics: NewMetrics(tally.NoopScope),
+				resTree: &FakeServerProcess{errFake},
+			},
+			wantErr: errFake,
+		},
 		{
 			s: &Server{
 				role:           "testResMgr",
 				metrics:        NewMetrics(tally.NoopScope),
+				resTree:        &FakeServerProcess{nil},
 				resPoolHandler: &FakeServerProcess{errFake},
 			},
-			err: errFake,
+			wantErr: errFake,
 		},
 		{
 			s: &Server{
 				role:            "testResMgr",
 				metrics:         NewMetrics(tally.NoopScope),
+				resTree:         &FakeServerProcess{nil},
 				resPoolHandler:  &FakeServerProcess{nil},
 				recoveryHandler: &FakeServerProcess{errFake},
 			},
-			err: errFake,
+			wantErr: errFake,
 		},
 		{
 			s: &Server{
 				role:             "testResMgr",
 				metrics:          NewMetrics(tally.NoopScope),
+				resTree:          &FakeServerProcess{nil},
 				resPoolHandler:   &FakeServerProcess{nil},
 				recoveryHandler:  &FakeServerProcess{nil},
 				getTaskScheduler: mockSchedulerWithErr(errFake, t),
 			},
-			err: errFake,
+			wantErr: errFake,
 		},
 		{
 			s: &Server{
 				role:                  "testResMgr",
 				metrics:               NewMetrics(tally.NoopScope),
+				resTree:               &FakeServerProcess{nil},
 				resPoolHandler:        &FakeServerProcess{nil},
 				recoveryHandler:       &FakeServerProcess{nil},
 				getTaskScheduler:      mockSchedulerWithErr(nil, t),
 				entitlementCalculator: &FakeServerProcess{errFake},
 			},
-			err: errFake,
+			wantErr: errFake,
 		},
 		{
 			s: &Server{
 				role:                  "testResMgr",
 				metrics:               NewMetrics(tally.NoopScope),
+				resTree:               &FakeServerProcess{nil},
 				resPoolHandler:        &FakeServerProcess{nil},
 				recoveryHandler:       &FakeServerProcess{nil},
 				getTaskScheduler:      mockSchedulerWithErr(nil, t),
 				entitlementCalculator: &FakeServerProcess{nil},
 				reconciler:            &FakeServerProcess{errFake},
 			},
-			err: errFake,
+			wantErr: errFake,
 		},
 		{
 			s: &Server{
 				role:                  "testResMgr",
 				metrics:               NewMetrics(tally.NoopScope),
+				resTree:               &FakeServerProcess{nil},
 				resPoolHandler:        &FakeServerProcess{nil},
 				recoveryHandler:       &FakeServerProcess{nil},
 				getTaskScheduler:      mockSchedulerWithErr(nil, t),
@@ -112,12 +126,13 @@ func TestServer_GainedLeadershipCallback(t *testing.T) {
 				reconciler:            &FakeServerProcess{nil},
 				preemptor:             &FakeServerProcess{errFake},
 			},
-			err: errFake,
+			wantErr: errFake,
 		},
 		{
 			s: &Server{
 				role:                  "testResMgr",
 				metrics:               NewMetrics(tally.NoopScope),
+				resTree:               &FakeServerProcess{nil},
 				resPoolHandler:        &FakeServerProcess{nil},
 				recoveryHandler:       &FakeServerProcess{nil},
 				getTaskScheduler:      mockSchedulerWithErr(nil, t),
@@ -126,12 +141,13 @@ func TestServer_GainedLeadershipCallback(t *testing.T) {
 				preemptor:             &FakeServerProcess{nil},
 				drainer:               &FakeServerProcess{errFake},
 			},
-			err: errFake,
+			wantErr: errFake,
 		},
 		{
 			s: &Server{
 				role:                  "testResMgr",
 				metrics:               NewMetrics(tally.NoopScope),
+				resTree:               &FakeServerProcess{nil},
 				resPoolHandler:        &FakeServerProcess{nil},
 				recoveryHandler:       &FakeServerProcess{nil},
 				getTaskScheduler:      mockSchedulerWithErr(nil, t),
@@ -140,124 +156,140 @@ func TestServer_GainedLeadershipCallback(t *testing.T) {
 				preemptor:             &FakeServerProcess{nil},
 				drainer:               &FakeServerProcess{nil},
 			},
-			err: nil,
+			wantErr: nil,
 		},
 	}
 
 	for _, test := range tt {
-		if test.err == nil {
+		if test.wantErr == nil {
 			assert.NoError(t, test.s.GainedLeadershipCallback())
 			continue
 		}
-		assert.EqualError(t, test.err, test.s.GainedLeadershipCallback().Error())
+		assert.EqualError(t, test.wantErr, test.s.GainedLeadershipCallback().Error())
 	}
 }
 
 func TestServer_LostLeadershipCallback(t *testing.T) {
 
 	tt := []struct {
-		s   *Server
-		err error
+		s       *Server
+		wantErr error
 	}{
 		{
 			s: &Server{
-				role:           "testResMgr",
-				metrics:        NewMetrics(tally.NoopScope),
-				resPoolHandler: &FakeServerProcess{errFake},
+				role:    "testResMgr",
+				metrics: NewMetrics(tally.NoopScope),
+				drainer: &FakeServerProcess{errFake},
 			},
-			err: errFake,
+			wantErr: errFake,
 		},
 		{
 			s: &Server{
-				role:            "testResMgr",
-				metrics:         NewMetrics(tally.NoopScope),
-				resPoolHandler:  &FakeServerProcess{nil},
-				recoveryHandler: &FakeServerProcess{errFake},
+				role:      "testResMgr",
+				metrics:   NewMetrics(tally.NoopScope),
+				drainer:   &FakeServerProcess{nil},
+				preemptor: &FakeServerProcess{errFake},
 			},
-			err: errFake,
+			wantErr: errFake,
 		},
 		{
 			s: &Server{
-				role:             "testResMgr",
-				metrics:          NewMetrics(tally.NoopScope),
-				resPoolHandler:   &FakeServerProcess{nil},
-				recoveryHandler:  &FakeServerProcess{nil},
-				getTaskScheduler: mockSchedulerWithErr(errFake, t),
+				role:       "testResMgr",
+				metrics:    NewMetrics(tally.NoopScope),
+				drainer:    &FakeServerProcess{nil},
+				preemptor:  &FakeServerProcess{nil},
+				reconciler: &FakeServerProcess{errFake},
 			},
-			err: errFake,
+			wantErr: errFake,
 		},
 		{
 			s: &Server{
 				role:                  "testResMgr",
 				metrics:               NewMetrics(tally.NoopScope),
-				resPoolHandler:        &FakeServerProcess{nil},
-				recoveryHandler:       &FakeServerProcess{nil},
-				getTaskScheduler:      mockSchedulerWithErr(nil, t),
+				drainer:               &FakeServerProcess{nil},
+				preemptor:             &FakeServerProcess{nil},
+				reconciler:            &FakeServerProcess{nil},
 				entitlementCalculator: &FakeServerProcess{errFake},
 			},
-			err: errFake,
+			wantErr: errFake,
 		},
 		{
 			s: &Server{
 				role:                  "testResMgr",
 				metrics:               NewMetrics(tally.NoopScope),
-				resPoolHandler:        &FakeServerProcess{nil},
-				recoveryHandler:       &FakeServerProcess{nil},
-				getTaskScheduler:      mockSchedulerWithErr(nil, t),
-				entitlementCalculator: &FakeServerProcess{nil},
-				reconciler:            &FakeServerProcess{errFake},
-			},
-			err: errFake,
-		},
-		{
-			s: &Server{
-				role:                  "testResMgr",
-				metrics:               NewMetrics(tally.NoopScope),
-				resPoolHandler:        &FakeServerProcess{nil},
-				recoveryHandler:       &FakeServerProcess{nil},
-				getTaskScheduler:      mockSchedulerWithErr(nil, t),
-				entitlementCalculator: &FakeServerProcess{nil},
-				reconciler:            &FakeServerProcess{nil},
-				preemptor:             &FakeServerProcess{errFake},
-			},
-			err: errFake,
-		},
-		{
-			s: &Server{
-				role:                  "testResMgr",
-				metrics:               NewMetrics(tally.NoopScope),
-				resPoolHandler:        &FakeServerProcess{nil},
-				recoveryHandler:       &FakeServerProcess{nil},
-				getTaskScheduler:      mockSchedulerWithErr(nil, t),
-				entitlementCalculator: &FakeServerProcess{nil},
-				reconciler:            &FakeServerProcess{nil},
-				preemptor:             &FakeServerProcess{nil},
-				drainer:               &FakeServerProcess{errFake},
-			},
-			err: errFake,
-		},
-		{
-			s: &Server{
-				role:                  "testResMgr",
-				metrics:               NewMetrics(tally.NoopScope),
-				resPoolHandler:        &FakeServerProcess{nil},
-				recoveryHandler:       &FakeServerProcess{nil},
-				getTaskScheduler:      mockSchedulerWithErr(nil, t),
-				entitlementCalculator: &FakeServerProcess{nil},
-				reconciler:            &FakeServerProcess{nil},
-				preemptor:             &FakeServerProcess{nil},
 				drainer:               &FakeServerProcess{nil},
+				preemptor:             &FakeServerProcess{nil},
+				reconciler:            &FakeServerProcess{nil},
+				entitlementCalculator: &FakeServerProcess{nil},
+				getTaskScheduler:      mockSchedulerWithErr(errFake, t),
 			},
-			err: nil,
+			wantErr: errFake,
+		},
+		{
+			s: &Server{
+				role:                  "testResMgr",
+				metrics:               NewMetrics(tally.NoopScope),
+				drainer:               &FakeServerProcess{nil},
+				preemptor:             &FakeServerProcess{nil},
+				reconciler:            &FakeServerProcess{nil},
+				entitlementCalculator: &FakeServerProcess{nil},
+				getTaskScheduler:      mockSchedulerWithErr(nil, t),
+				recoveryHandler:       &FakeServerProcess{errFake},
+			},
+			wantErr: errFake,
+		},
+		{
+			s: &Server{
+				role:                  "testResMgr",
+				metrics:               NewMetrics(tally.NoopScope),
+				drainer:               &FakeServerProcess{nil},
+				preemptor:             &FakeServerProcess{nil},
+				reconciler:            &FakeServerProcess{nil},
+				entitlementCalculator: &FakeServerProcess{nil},
+				getTaskScheduler:      mockSchedulerWithErr(nil, t),
+				recoveryHandler:       &FakeServerProcess{nil},
+				resPoolHandler:        &FakeServerProcess{errFake},
+			},
+			wantErr: errFake,
+		},
+		{
+			s: &Server{
+				role:                  "testResMgr",
+				metrics:               NewMetrics(tally.NoopScope),
+				drainer:               &FakeServerProcess{nil},
+				preemptor:             &FakeServerProcess{nil},
+				reconciler:            &FakeServerProcess{nil},
+				entitlementCalculator: &FakeServerProcess{nil},
+				getTaskScheduler:      mockSchedulerWithErr(nil, t),
+				recoveryHandler:       &FakeServerProcess{nil},
+				resPoolHandler:        &FakeServerProcess{nil},
+				resTree:               &FakeServerProcess{errFake},
+			},
+			wantErr: errFake,
+		},
+		{
+			s: &Server{
+				role:                  "testResMgr",
+				metrics:               NewMetrics(tally.NoopScope),
+				drainer:               &FakeServerProcess{nil},
+				preemptor:             &FakeServerProcess{nil},
+				reconciler:            &FakeServerProcess{nil},
+				entitlementCalculator: &FakeServerProcess{nil},
+				getTaskScheduler:      mockSchedulerWithErr(nil, t),
+				recoveryHandler:       &FakeServerProcess{nil},
+				resPoolHandler:        &FakeServerProcess{nil},
+				resTree:               &FakeServerProcess{nil},
+			},
+			wantErr: nil,
 		},
 	}
 
 	for _, test := range tt {
-		if test.err == nil {
+		if test.wantErr == nil {
 			assert.NoError(t, test.s.LostLeadershipCallback())
 			continue
 		}
-		assert.EqualError(t, test.err, test.s.LostLeadershipCallback().Error())
+		assert.EqualError(t, test.wantErr, test.s.LostLeadershipCallback().Error())
 	}
 }
 
@@ -266,6 +298,7 @@ func TestServer_GetID(t *testing.T) {
 		tally.NoopScope,
 		80,
 		5290,
+		&FakeServerProcess{nil},
 		&FakeServerProcess{nil},
 		&FakeServerProcess{nil},
 		&FakeServerProcess{nil},
@@ -289,6 +322,7 @@ func TestServer_ShutDownCallback(t *testing.T) {
 		tally.NoopScope,
 		80,
 		5290,
+		&FakeServerProcess{nil},
 		&FakeServerProcess{nil},
 		&FakeServerProcess{nil},
 		&FakeServerProcess{nil},

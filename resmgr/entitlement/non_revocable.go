@@ -339,7 +339,7 @@ func (c *Calculator) distributeUnclaimedResources(
 					"respool_name":      n.Name(),
 					"respool_resources": n.Resources(),
 					"final_assignment":  assignments[n.ID()],
-				}).Info("Thrid pass completed for respool")
+				}).Info("Third pass completed for respool")
 			}
 		}
 	}

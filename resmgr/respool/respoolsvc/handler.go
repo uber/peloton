@@ -47,15 +47,13 @@ type ServiceHandler struct {
 
 	cfg rc.PreemptionConfig
 
-	store      storage.ResourcePoolStore
+	store storage.ResourcePoolStore
+
 	metrics    *res.Metrics
 	dispatcher *yarpc.Dispatcher
 
 	resPoolTree            res.Tree
 	resPoolConfigValidator res.Validator
-
-	jobStore  storage.JobStore
-	taskStore storage.TaskStore
 
 	// lifecycle manager
 	lifeCycle lifecycle.LifeCycle
@@ -65,19 +63,15 @@ type ServiceHandler struct {
 func NewServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
+	tree res.Tree,
 	store storage.ResourcePoolStore,
-	jobStore storage.JobStore,
-	taskStore storage.TaskStore,
-	cfg rc.PreemptionConfig) *ServiceHandler {
+) *ServiceHandler {
 
 	scope := parent.SubScope("respool")
 	metrics := res.NewMetrics(scope)
 
-	// Initializing Resource Pool Tree.
-	res.InitTree(scope, store, jobStore, taskStore, cfg)
-
 	// Initialize Resource Pool Config Validator.
-	resPoolConfigValidator, err := res.NewResourcePoolConfigValidator(res.GetTree())
+	resPoolConfigValidator, err := res.NewResourcePoolConfigValidator(tree)
 
 	if err != nil {
 		log.Fatalf(
@@ -88,14 +82,12 @@ func NewServiceHandler(
 	}
 
 	return &ServiceHandler{
-		store:                  store,
 		metrics:                metrics,
 		dispatcher:             d,
-		resPoolTree:            res.GetTree(),
+		resPoolTree:            tree,
 		resPoolConfigValidator: resPoolConfigValidator,
-		jobStore:               jobStore,
-		taskStore:              taskStore,
 		lifeCycle:              lifecycle.NewLifeCycle(),
+		store:                  store,
 	}
 }
 

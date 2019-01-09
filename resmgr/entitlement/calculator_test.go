@@ -76,10 +76,9 @@ func (s *EntitlementCalculatorTestSuite) initRespoolTree() {
 		mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Any()).
 			Return(nil, nil).AnyTimes(),
 	)
-	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore,
+	s.resTree = respool.NewTree(tally.NoopScope, mockResPoolStore, mockJobStore,
 		mockTaskStore, res_common.PreemptionConfig{Enabled: false})
 
-	s.resTree = respool.GetTree()
 	s.calculator.resPoolTree = s.resTree
 }
 
@@ -851,6 +850,7 @@ func (s *EntitlementCalculatorTestSuite) TestNewCalculator() {
 		10*time.Millisecond,
 		tally.NoopScope,
 		mockHostMgr,
+		s.resTree,
 	)
 	s.NotNil(calc)
 }
@@ -889,16 +889,6 @@ func (s *EntitlementCalculatorTestSuite) TestUpdateCapacityError() {
 
 // Testing the Static respools and their entitlement
 func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
-
-	// Stopping and destroying the test suite's tree as
-	// for this test we are building another tree
-
-	err := s.resTree.Stop()
-
-	respool.Destroy()
-
-	s.NoError(err)
-
 	// Building Local Tree for this test suite
 	mockCtrl := gomock.NewController(s.T())
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(mockCtrl)
@@ -914,10 +904,8 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 			Return(nil, nil).AnyTimes(),
 	)
 
-	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore,
+	resTree := respool.NewTree(tally.NoopScope, mockResPoolStore, mockJobStore,
 		mockTaskStore, res_common.PreemptionConfig{Enabled: false})
-
-	resTree := respool.GetTree()
 
 	// Creating local Calculator object
 	calculator := &Calculator{
@@ -980,7 +968,6 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 	err = resTree.Stop()
 	s.NoError(err)
 	mockCtrl.Finish()
-	respool.Destroy()
 	s.initRespoolTree()
 }
 

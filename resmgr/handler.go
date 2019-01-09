@@ -77,13 +77,14 @@ func NewServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	rmTracker rmtask.Tracker,
+	tree respool.Tree,
 	preemptionQueue preemption.Queue,
 	conf Config) *ServiceHandler {
 
 	var maxOffset uint64
 	handler := &ServiceHandler{
 		metrics:     NewMetrics(parent.SubScope("resmgr")),
-		resPoolTree: respool.GetTree(),
+		resPoolTree: tree,
 		placements: queue.NewQueue(
 			"placement-queue",
 			reflect.TypeOf(resmgr.Placement{}),
@@ -147,7 +148,7 @@ func (h *ServiceHandler) EnqueueGangs(
 	}
 
 	// Lookup respool from the resource pool tree
-	resourcePool, err = respool.GetTree().Get(respoolID)
+	resourcePool, err = h.resPoolTree.Get(respoolID)
 	if err != nil {
 		h.metrics.EnqueueGangFail.Inc(1)
 		return &resmgrsvc.EnqueueGangsResponse{

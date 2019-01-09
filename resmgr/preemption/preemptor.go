@@ -96,6 +96,7 @@ func NewPreemptor(
 	parent tally.Scope,
 	cfg *common.PreemptionConfig,
 	tracker task.Tracker,
+	resTree respool.Tree,
 ) *Preemptor {
 
 	return &Preemptor{
@@ -103,7 +104,7 @@ func NewPreemptor(
 		enabled:                      cfg.Enabled,
 		preemptionPeriod:             cfg.TaskPreemptionPeriod,
 		sustainedOverAllocationCount: cfg.SustainedOverAllocationCount,
-		resTree:                      respool.GetTree(),
+		resTree:                      resTree,
 		respoolState:                 make(map[string]int),
 		taskSet:                      stringset.New(),
 		preemptionQueue: queue.NewQueue(

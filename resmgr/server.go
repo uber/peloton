@@ -42,6 +42,7 @@ type Server struct {
 	metrics *Metrics
 
 	// the processes which need to start with the leader
+	resTree               ServerProcess
 	resPoolHandler        ServerProcess
 	entitlementCalculator ServerProcess
 	recoveryHandler       ServerProcess
@@ -58,6 +59,7 @@ func NewServer(
 	parent tally.Scope,
 	httpPort,
 	grpcPort int,
+	tree ServerProcess,
 	resPoolHandler ServerProcess,
 	entitlementCalculator ServerProcess,
 	recoveryHandler ServerProcess,
@@ -67,6 +69,7 @@ func NewServer(
 	return &Server{
 		ID:                    leader.NewID(httpPort, grpcPort),
 		role:                  common.ResourceManagerRole,
+		resTree:               tree,
 		resPoolHandler:        resPoolHandler,
 		getTaskScheduler:      task.GetScheduler,
 		entitlementCalculator: entitlementCalculator,
@@ -87,6 +90,13 @@ func (s *Server) GainedLeadershipCallback() error {
 	log.WithField("role", s.role).
 		Info("Gained leadership")
 	s.metrics.Elected.Update(1.0)
+
+	if err := s.resTree.Start(); err != nil {
+		log.
+			WithError(err).
+			Error("Failed to initialize the resource pool tree")
+		return err
+	}
 
 	if err := s.resPoolHandler.Start(); err != nil {
 		log.
@@ -145,28 +155,8 @@ func (s *Server) LostLeadershipCallback() error {
 	log.WithField("role", s.role).Info("Lost leadership")
 	s.metrics.Elected.Update(0.0)
 
-	if err := s.resPoolHandler.Stop(); err != nil {
-		log.WithError(err).Error("Failed to stop respool service handler")
-		return err
-	}
-
-	if err := s.recoveryHandler.Stop(); err != nil {
-		log.Errorf("Failed to stop recovery handler")
-		return err
-	}
-
-	if err := s.getTaskScheduler().Stop(); err != nil {
-		log.Errorf("Failed to stop task scheduler")
-		return err
-	}
-
-	if err := s.entitlementCalculator.Stop(); err != nil {
-		log.Errorf("Failed to stop entitlement calculator")
-		return err
-	}
-
-	if err := s.reconciler.Stop(); err != nil {
-		log.Errorf("Failed to stop task reconciler")
+	if err := s.drainer.Stop(); err != nil {
+		log.Errorf("Failed to stop host drainer")
 		return err
 	}
 
@@ -175,8 +165,33 @@ func (s *Server) LostLeadershipCallback() error {
 		return err
 	}
 
-	if err := s.drainer.Stop(); err != nil {
-		log.Errorf("Failed to stop host drainer")
+	if err := s.reconciler.Stop(); err != nil {
+		log.Errorf("Failed to stop task reconciler")
+		return err
+	}
+
+	if err := s.entitlementCalculator.Stop(); err != nil {
+		log.Errorf("Failed to stop entitlement calculator")
+		return err
+	}
+
+	if err := s.getTaskScheduler().Stop(); err != nil {
+		log.Errorf("Failed to stop task scheduler")
+		return err
+	}
+
+	if err := s.recoveryHandler.Stop(); err != nil {
+		log.Errorf("Failed to stop recovery handler")
+		return err
+	}
+
+	if err := s.resPoolHandler.Stop(); err != nil {
+		log.WithError(err).Error("Failed to stop respool service handler")
+		return err
+	}
+
+	if err := s.resTree.Stop(); err != nil {
+		log.Errorf("Failed to stop resource pool tree")
 		return err
 	}
 

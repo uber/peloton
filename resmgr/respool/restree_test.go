@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/uber/peloton/storage"
 	"testing"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
@@ -41,192 +42,53 @@ import (
 
 type resTreeTestSuite struct {
 	suite.Suite
-	resourceTree     Tree
-	dispatcher       yarpc.Dispatcher
-	resPools         map[string]*respool.ResourcePoolConfig
-	allNodes         map[string]*ResPool
-	root             *ResPool
-	newRoot          *ResPool
-	mockCtrl         *gomock.Controller
-	mockResPoolStore *store_mocks.MockResourcePoolStore
+	resourceTree Tree
+	dispatcher   yarpc.Dispatcher
+	resPools     map[string]*respool.ResourcePoolConfig
+	allNodes     map[string]*ResPool
+	root         *ResPool
+	newRoot      *ResPool
+	mockCtrl     *gomock.Controller
 }
 
 func (s *resTreeTestSuite) SetupSuite() {
-	fmt.Println("setting up resTreeTestSuite")
-	s.initTree()
-}
-
-// initTree creates the tree object and store in suite
-func (s *resTreeTestSuite) initTree() {
 	s.mockCtrl = gomock.NewController(s.T())
-	s.resourceTree, s.mockResPoolStore = s.getResourceTreeAndResPoolStore()
-	s.mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
-		Return(s.getResPools(), nil).AnyTimes()
+	s.resourceTree = s.getTree(s.withStore(s.getResPools(), nil))
 }
 
 func (s *resTreeTestSuite) TearDownSuite() {
 	s.mockCtrl.Finish()
-	Destroy()
 }
 
-// This function destroy test the initialize and destroy
-// of the tree.
-func (s *resTreeTestSuite) TestInitDestroyTree() {
-	// Stopping the current tree from suite
-	s.resourceTree.Stop()
-	Destroy()
+// This function test the initialization of the tree.
+func (s *resTreeTestSuite) TestNewTree() {
 	// Creating local mocks and stores for new tree
 	mockCtrl := gomock.NewController(s.T())
+	defer mockCtrl.Finish()
+
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(mockCtrl)
 	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
 		Return(s.getResPools(), nil).AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(mockCtrl)
+
 	// Initialize the local tree
-	InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore,
-		rc.PreemptionConfig{Enabled: false})
-	resTree := GetTree()
+	resTree := NewTree(
+		tally.NoopScope,
+		mockResPoolStore,
+		mockJobStore,
+		mockTaskStore,
+		rc.PreemptionConfig{Enabled: false},
+	)
 	s.NotNil(resTree)
-	// Init again to see if we get the same object
-	InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore, rc.PreemptionConfig{Enabled: false})
-	resTreeNew := GetTree()
-	s.Equal(resTree, resTreeNew)
-	// Stopping and destroying local tree
-	resTree.Stop()
-	Destroy()
-	s.Nil(respoolTree)
-	// Reinitialize the test suite tree again for rest of test suite
-	s.initTree()
 }
 
 func (s *resTreeTestSuite) SetupTest() {
-	err := s.resourceTree.Start()
-	s.NoError(err)
+	s.NoError(s.resourceTree.Start())
 }
 
 func (s *resTreeTestSuite) TearDownTest() {
-	err := s.resourceTree.Stop()
-	s.NoError(err)
-}
-
-// Returns resource configs
-func (s *resTreeTestSuite) getResourceConfig() []*respool.ResourceConfig {
-
-	resConfigs := []*respool.ResourceConfig{
-		{
-			Share:       1,
-			Kind:        "cpu",
-			Reservation: 100,
-			Limit:       1000,
-		},
-		{
-			Share:       1,
-			Kind:        "memory",
-			Reservation: 100,
-			Limit:       1000,
-		},
-		{
-			Share:       1,
-			Kind:        "disk",
-			Reservation: 100,
-			Limit:       1000,
-		},
-		{
-			Share:       1,
-			Kind:        "gpu",
-			Reservation: 2,
-			Limit:       4,
-		},
-	}
-	return resConfigs
-}
-
-// Returns resource pools
-func (s *resTreeTestSuite) getResPools() map[string]*respool.ResourcePoolConfig {
-
-	rootID := peloton.ResourcePoolID{Value: common.RootResPoolID}
-	policy := respool.SchedulingPolicy_PriorityFIFO
-
-	return map[string]*respool.ResourcePoolConfig{
-		// NB: root resource pool node is not stored in the database
-		"respool1": {
-			Name:      "respool1",
-			Parent:    &rootID,
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool2": {
-			Name:      "respool2",
-			Parent:    &rootID,
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool3": {
-			Name:      "respool3",
-			Parent:    &rootID,
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool11": {
-			Name:      "respool11",
-			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool12": {
-			Name:      "respool12",
-			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool21": {
-			Name:      "respool21",
-			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool22": {
-			Name:      "respool22",
-			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: s.getResourceConfig(),
-			Policy:    policy,
-		},
-		"respool23": {
-			Name:   "respool23",
-			Parent: &peloton.ResourcePoolID{Value: "respool22"},
-			Resources: []*respool.ResourceConfig{
-				{
-					Kind:        "cpu",
-					Reservation: 50,
-					Limit:       100,
-					Share:       1,
-				},
-			},
-			Policy: policy,
-		},
-		"respool99": {
-			Name:   "respool99",
-			Parent: &peloton.ResourcePoolID{Value: "respool21"},
-			Resources: []*respool.ResourceConfig{
-				{
-					Kind:        "cpu",
-					Reservation: 50,
-					Limit:       100,
-					Share:       1,
-				},
-			},
-			Policy: policy,
-		},
-	}
-}
-
-func (s *resTreeTestSuite) getEntitlement() *scalar.Resources {
-	return &scalar.Resources{
-		CPU:    100,
-		MEMORY: 1000,
-		DISK:   100,
-		GPU:    2,
-	}
+	s.NoError(s.resourceTree.Stop())
 }
 
 func (s *resTreeTestSuite) TestGetChildren() {
@@ -588,9 +450,8 @@ func (s *resTreeTestSuite) TestConvertTask() {
 func (s *resTreeTestSuite) TestDelete() {
 	mockCtrl := gomock.NewController(s.T())
 	defer mockCtrl.Finish()
-	resourceTree, mockResPoolStore := s.getResourceTreeAndResPoolStore()
-	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
-		Return(s.getResPools(), nil).AnyTimes()
+
+	resourceTree := s.getTree(s.withStore(s.getResPools(), nil))
 	resourceTree.Start()
 
 	s.Equal(10, resourceTree.GetAllNodes(false).Len())
@@ -614,35 +475,33 @@ func TestPelotonResPool(t *testing.T) {
 func (s *resTreeTestSuite) TestStartError() {
 
 	tt := []struct {
-		msg    string
-		config map[string]*respool.ResourcePoolConfig
-		err    error
-		reterr error
+		msg         string
+		poolConfigs map[string]*respool.ResourcePoolConfig
+		err         error
+		reterr      error
 	}{
 		{
-			msg:    "error from store",
-			config: nil,
-			err:    errors.New("error from store"),
-			reterr: nil,
+			msg:         "error from store",
+			poolConfigs: nil,
+			err:         errors.New("error from store"),
+			reterr:      nil,
 		},
 		{
-			msg:    "tree start failure",
-			config: nil,
-			err:    nil,
-			reterr: errors.New("failed to start tree"),
+			msg:         "tree start failure",
+			poolConfigs: nil,
+			err:         nil,
+			reterr:      errors.New("failed to start tree"),
 		},
 		{
-			msg:    "tree start successful",
-			config: make(map[string]*respool.ResourcePoolConfig),
-			err:    nil,
-			reterr: nil,
+			msg:         "tree start successful",
+			poolConfigs: make(map[string]*respool.ResourcePoolConfig),
+			err:         nil,
+			reterr:      nil,
 		},
 	}
 
 	for _, t := range tt {
-		resourceTree, mockResPoolStore := s.getResourceTreeAndResPoolStore()
-		mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
-			Return(t.config, t.err)
+		resourceTree := s.getTree(s.withStore(t.poolConfigs, t.err))
 		err := resourceTree.Start()
 		if t.err != nil || t.reterr != nil {
 			s.Error(err, t.msg)
@@ -661,19 +520,33 @@ func (s *resTreeTestSuite) TestStartError() {
 func (s *resTreeTestSuite) TestBuildTreeError() {
 	mockCtrl := gomock.NewController(s.T())
 	defer mockCtrl.Finish()
-	resourceTree, mockResPoolStore := s.getResourceTreeAndResPoolStore()
-	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
-		Return(nil, nil)
+	resourceTree := s.getTree(
+		s.withStore(nil, nil),
+	)
 	_, err := resourceTree.buildTree("", nil, make(map[string]*respool.ResourcePoolConfig))
 	s.Error(err)
 	s.Contains(err.Error(), "error creating resource pool")
 }
 
-// Creates and retuens the Tree with respool store
-func (s *resTreeTestSuite) getResourceTreeAndResPoolStore() (*tree, *store_mocks.MockResourcePoolStore) {
+// Test utils -----
+// ________________
+
+func (s *resTreeTestSuite) withStore(
+	pool map[string]*respool.ResourcePoolConfig,
+	err error) storage.ResourcePoolStore {
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.mockCtrl)
+	mockResPoolStore.
+		EXPECT().
+		GetAllResourcePools(context.Background()).
+		Return(pool, err).
+		AnyTimes()
+	return mockResPoolStore
+}
+
+// Creates and returns the Tree with respool store
+func (s *resTreeTestSuite) getTree(store storage.ResourcePoolStore) *tree {
 	return &tree{
-		store:       mockResPoolStore,
+		store:       store,
 		root:        nil,
 		metrics:     NewMetrics(tally.NoopScope),
 		resPools:    make(map[string]ResPool),
@@ -681,5 +554,125 @@ func (s *resTreeTestSuite) getResourceTreeAndResPoolStore() (*tree, *store_mocks
 		taskStore:   nil,
 		scope:       tally.NoopScope,
 		updatedChan: make(chan struct{}, 1),
-	}, mockResPoolStore
+	}
+}
+
+// Returns resource configs
+func (s *resTreeTestSuite) getResourceConfig() []*respool.ResourceConfig {
+
+	resConfigs := []*respool.ResourceConfig{
+		{
+			Share:       1,
+			Kind:        "cpu",
+			Reservation: 100,
+			Limit:       1000,
+		},
+		{
+			Share:       1,
+			Kind:        "memory",
+			Reservation: 100,
+			Limit:       1000,
+		},
+		{
+			Share:       1,
+			Kind:        "disk",
+			Reservation: 100,
+			Limit:       1000,
+		},
+		{
+			Share:       1,
+			Kind:        "gpu",
+			Reservation: 2,
+			Limit:       4,
+		},
+	}
+	return resConfigs
+}
+
+// Returns resource pools
+func (s *resTreeTestSuite) getResPools() map[string]*respool.ResourcePoolConfig {
+
+	rootID := peloton.ResourcePoolID{Value: common.RootResPoolID}
+	policy := respool.SchedulingPolicy_PriorityFIFO
+
+	return map[string]*respool.ResourcePoolConfig{
+		// NB: root resource pool node is not stored in the database
+		"respool1": {
+			Name:      "respool1",
+			Parent:    &rootID,
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool2": {
+			Name:      "respool2",
+			Parent:    &rootID,
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool3": {
+			Name:      "respool3",
+			Parent:    &rootID,
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool11": {
+			Name:      "respool11",
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool12": {
+			Name:      "respool12",
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool21": {
+			Name:      "respool21",
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool22": {
+			Name:      "respool22",
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool23": {
+			Name:   "respool23",
+			Parent: &peloton.ResourcePoolID{Value: "respool22"},
+			Resources: []*respool.ResourceConfig{
+				{
+					Kind:        "cpu",
+					Reservation: 50,
+					Limit:       100,
+					Share:       1,
+				},
+			},
+			Policy: policy,
+		},
+		"respool99": {
+			Name:   "respool99",
+			Parent: &peloton.ResourcePoolID{Value: "respool21"},
+			Resources: []*respool.ResourceConfig{
+				{
+					Kind:        "cpu",
+					Reservation: 50,
+					Limit:       100,
+					Share:       1,
+				},
+			},
+			Policy: policy,
+		},
+	}
+}
+
+func (s *resTreeTestSuite) getEntitlement() *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    100,
+		MEMORY: 1000,
+		DISK:   100,
+		GPU:    2,
+	}
 }

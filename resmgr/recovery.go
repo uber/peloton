@@ -91,9 +91,14 @@ type RecoveryHandler struct {
 	config          Config
 	hostmgrClient   hostsvc.InternalHostServiceYARPCClient
 	nonRunningTasks []*resmgrsvc.EnqueueGangsRequest
-	finished        chan bool //used for testing
 	tracker         rmtask.Tracker
-	lifecycle       lifecycle.LifeCycle // Lifecycle manager
+	resTree         respool.Tree
+
+	//used for testing
+	finished chan bool
+
+	// Lifecycle manager
+	lifecycle lifecycle.LifeCycle
 }
 
 // NewRecovery initializes the RecoveryHandler
@@ -102,18 +107,20 @@ func NewRecovery(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	handler *ServiceHandler,
+	tree respool.Tree,
 	config Config,
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
 ) *RecoveryHandler {
 	return &RecoveryHandler{
-		jobStore:      jobStore,
-		taskStore:     taskStore,
-		handler:       handler,
 		metrics:       NewMetrics(parent),
 		scope:         parent,
 		config:        config,
+		jobStore:      jobStore,
+		taskStore:     taskStore,
+		handler:       handler,
 		hostmgrClient: hostmgrClient,
 		tracker:       rmtask.GetTracker(),
+		resTree:       tree,
 		finished:      make(chan bool),
 		lifecycle:     lifecycle.NewLifeCycle(),
 	}
@@ -276,7 +283,7 @@ func (r *RecoveryHandler) addRunningTasks(
 		return runningTasksAdded, nil
 	}
 
-	resPool, err := respool.GetTree().Get(config.RespoolID)
+	resPool, err := r.resTree.Get(config.RespoolID)
 	if err != nil {
 		return runningTasksAdded, errors.Errorf("respool %s does not exist",
 			config.RespoolID.Value)

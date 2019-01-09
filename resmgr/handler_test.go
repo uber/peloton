@@ -27,7 +27,6 @@ import (
 	pb_respool "github.com/uber/peloton/.gen/peloton/api/v0/respool"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
-	host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -59,14 +58,15 @@ const (
 
 type HandlerTestSuite struct {
 	suite.Suite
+
+	ctrl    *gomock.Controller
+	context context.Context
+
 	handler       *ServiceHandler
-	context       context.Context
 	resTree       respool.Tree
-	taskScheduler rm_task.Scheduler
-	ctrl          *gomock.Controller
 	rmTaskTracker rm_task.Tracker
-	cfg           rc.PreemptionConfig
-	hostMgrClient *host_mocks.MockInternalHostServiceYARPCClient
+
+	cfg rc.PreemptionConfig
 }
 
 func (s *HandlerTestSuite) SetupSuite() {
@@ -82,28 +82,33 @@ func (s *HandlerTestSuite) SetupSuite() {
 		Enabled: false,
 	}
 
-	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore,
-		mockTaskStore, s.cfg)
+	// setup resource pool tree
+	s.resTree = respool.NewTree(
+		tally.NoopScope,
+		mockResPoolStore,
+		mockJobStore,
+		mockTaskStore,
+		s.cfg)
 
-	s.resTree = respool.GetTree()
-
-	s.hostMgrClient = host_mocks.NewMockInternalHostServiceYARPCClient(s.ctrl)
 	// Initializing the resmgr state machine
 	rm_task.InitTaskTracker(
 		tally.NoopScope,
 		tasktestutil.CreateTaskConfig())
 
 	s.rmTaskTracker = rm_task.GetTracker()
+
+	// Initialize the task scheduler
 	rm_task.InitScheduler(
 		tally.NoopScope,
 		s.resTree,
 		1*time.Second,
-		s.rmTaskTracker)
-	s.taskScheduler = rm_task.GetScheduler()
+		s.rmTaskTracker,
+	)
 
+	// Initialize the handler
 	s.handler = &ServiceHandler{
 		metrics:     NewMetrics(tally.NoopScope),
-		resPoolTree: respool.GetTree(),
+		resPoolTree: s.resTree,
 		placements: queue.NewQueue(
 			"placement-queue",
 			reflect.TypeOf(resmgr.Placement{}),
@@ -132,11 +137,11 @@ func (s *HandlerTestSuite) TearDownSuite() {
 func (s *HandlerTestSuite) SetupTest() {
 	s.context = context.Background()
 	s.NoError(s.resTree.Start())
-	s.NoError(s.taskScheduler.Start())
+	s.NoError(rm_task.GetScheduler().Start())
 }
 
 func (s *HandlerTestSuite) TearDownTest() {
-	s.NoError(respool.GetTree().Stop())
+	s.NoError(s.resTree.Stop())
 	s.NoError(rm_task.GetScheduler().Stop())
 }
 
@@ -156,8 +161,13 @@ func (s *HandlerTestSuite) TestNewServiceHandler() {
 
 	tracker := task_mocks.NewMockTracker(s.ctrl)
 	mockPreemptionQueue := mocks.NewMockQueue(s.ctrl)
-	handler := NewServiceHandler(dispatcher, tally.NoopScope, tracker,
-		mockPreemptionQueue, Config{})
+	handler := NewServiceHandler(
+		dispatcher,
+		tally.NoopScope,
+		tracker,
+		s.resTree,
+		mockPreemptionQueue,
+		Config{})
 	s.NotNil(handler)
 
 	streamHandler := s.handler.GetStreamHandler()
@@ -450,8 +460,6 @@ func (s *HandlerTestSuite) TestSetFailedPlacement() {
 }
 
 func (s *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {
-	respool.InitTree(tally.NoopScope, nil, nil, nil, s.cfg)
-
 	tt := []struct {
 		respoolID      *peloton.ResourcePoolID
 		wantErrMessage string

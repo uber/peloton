@@ -70,12 +70,11 @@ func (suite *recoveryTestSuite) SetupSuite() {
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.mockCtrl)
 	suite.mockHostmgrClient = host_mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
 
-	rp.InitTree(tally.NoopScope, suite.mockResPoolStore, suite.mockJobStore,
+	suite.resourceTree = rp.NewTree(tally.NoopScope, suite.mockResPoolStore, suite.mockJobStore,
 		suite.mockTaskStore,
 		rc.PreemptionConfig{
 			Enabled: false,
 		})
-	suite.resourceTree = rp.GetTree()
 	// Initializing the resmgr state machine
 	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{
 		EnablePlacementBackoff: true,
@@ -120,6 +119,7 @@ func (suite *recoveryTestSuite) SetupSuite() {
 func (suite *recoveryTestSuite) SetupTest() {
 	suite.recovery = NewRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore,
 		suite.handler,
+		suite.resourceTree,
 		Config{
 			RmTaskConfig: &rm_task.Config{
 				LaunchingTimeout: 1 * time.Minute,

@@ -65,10 +65,11 @@ type Calculator struct {
 func NewCalculator(
 	calculationPeriod time.Duration,
 	parent tally.Scope,
-	hostMgrClient hostsvc.InternalHostServiceYARPCClient) *Calculator {
+	hostMgrClient hostsvc.InternalHostServiceYARPCClient,
+	tree respool.Tree) *Calculator {
 
 	return &Calculator{
-		resPoolTree:          respool.GetTree(),
+		resPoolTree:          tree,
 		runningState:         res_common.RunningStateNotStarted,
 		calculationPeriod:    calculationPeriod,
 		stopChan:             make(chan struct{}, 1),

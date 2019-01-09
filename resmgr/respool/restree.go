@@ -83,24 +83,15 @@ type tree struct {
 	updatedChan chan struct{}      // Channel to update all the changes in tree
 }
 
-// Singleton resource pool tree
-var respoolTree *tree
-
-// InitTree will be initializing the respool tree
-func InitTree(
+// NewTree will initializing the respool tree
+func NewTree(
 	scope tally.Scope,
 	store storage.ResourcePoolStore,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	cfg rc.PreemptionConfig,
-) {
-
-	if respoolTree != nil {
-		log.Warning("Resource pool tree has already been initialized")
-		return
-	}
-
-	respoolTree = &tree{
+) Tree {
+	return &tree{
 		store:            store,
 		root:             nil,
 		metrics:          NewMetrics(scope),
@@ -111,24 +102,6 @@ func InitTree(
 		updatedChan:      make(chan struct{}, 1),
 		preemptionConfig: cfg,
 	}
-}
-
-// Destroy will destroy the tree , Once this is called , Tree has
-// to be initialized again
-// TODO This is been done for tests and should be removed after
-// we remove the singleton
-func Destroy() {
-	respoolTree = nil
-}
-
-// GetTree returns the interface of a Resource Pool Tree. This
-// function assumes the tree has been initialized as part of the
-// InitTree function.
-func GetTree() Tree {
-	if respoolTree == nil {
-		log.Fatal("resource pool tree is not initialized")
-	}
-	return respoolTree
 }
 
 // Start will start the respool tree by loading respools and tasks

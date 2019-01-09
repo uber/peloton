@@ -256,14 +256,20 @@ func main() {
 			common.PelotonHostManager),
 	)
 
-	// Initialize resource pool service handlers
-	respoolHandler := respoolsvc.NewServiceHandler(
-		dispatcher,
+	// Initializing Resource Pool Tree.
+	tree := respool.NewTree(
 		rootScope,
 		store, // store implements RespoolStore
 		store, // store implements JobStore
 		store, // store implements TaskStore
-		*cfg.ResManager.PreemptionConfig,
+		*cfg.ResManager.PreemptionConfig)
+
+	// Initialize resource pool service handlers
+	respoolHandler := respoolsvc.NewServiceHandler(
+		dispatcher,
+		rootScope,
+		tree,
+		store, // store implements RespoolStore
 	)
 
 	// Initializing the resmgr state machine
@@ -275,7 +281,7 @@ func main() {
 	// Initializing the task scheduler
 	task.InitScheduler(
 		rootScope,
-		respool.GetTree(),
+		tree,
 		cfg.ResManager.TaskSchedulingPeriod,
 		task.GetTracker(),
 	)
@@ -285,6 +291,7 @@ func main() {
 		cfg.ResManager.EntitlementCaculationPeriod,
 		rootScope,
 		hostmgrClient,
+		tree,
 	)
 
 	// Initializing the task reconciler
@@ -300,6 +307,7 @@ func main() {
 		rootScope,
 		cfg.ResManager.PreemptionConfig,
 		task.GetTracker(),
+		tree,
 	)
 
 	// Initializing the host drainer
@@ -315,6 +323,7 @@ func main() {
 		dispatcher,
 		rootScope,
 		task.GetTracker(),
+		tree,
 		preemptor,
 		cfg.ResManager,
 	)
@@ -325,14 +334,17 @@ func main() {
 		store, // store implements JobStore
 		store, // store implements TaskStore
 		serviceHandler,
+		tree,
 		cfg.ResManager,
 		hostmgrClient,
 	)
 
+	// Initialize the server
 	server := resmgr.NewServer(
 		rootScope,
 		cfg.ResManager.HTTPPort,
 		cfg.ResManager.GRPCPort,
+		tree,
 		respoolHandler,
 		calculator,
 		recoveryHandler,

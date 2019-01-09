@@ -838,12 +838,14 @@ func (suite *PreemptorTestSuite) TestPreemptorEnqueue() {
 }
 
 func (suite *PreemptorTestSuite) TestNewPreemptor() {
-	suite.initResourceTree()
 	p := NewPreemptor(tally.NoopScope, &res_common.PreemptionConfig{
 		Enabled:                      true,
 		TaskPreemptionPeriod:         100 * time.Hour,
 		SustainedOverAllocationCount: 100,
-	}, suite.tracker)
+	},
+		suite.tracker,
+		suite.getResourceTree(),
+	)
 	suite.NotNil(p)
 }
 
@@ -1010,7 +1012,7 @@ func TestPreemptor(t *testing.T) {
 }
 
 // Have to do this because the preemptor depends on the resTree
-func (suite *PreemptorTestSuite) initResourceTree() {
+func (suite *PreemptorTestSuite) getResourceTree() respool.Tree {
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
 	gomock.InOrder(
 		mockResPoolStore.EXPECT().
@@ -1022,7 +1024,7 @@ func (suite *PreemptorTestSuite) initResourceTree() {
 		mockJobStore.EXPECT().GetJobsByStates(context.Background(),
 			gomock.Any()).Return(nil, nil).AnyTimes(),
 	)
-	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore,
+	return respool.NewTree(tally.NoopScope, mockResPoolStore, mockJobStore,
 		mockTaskStore, res_common.PreemptionConfig{
 			Enabled: true,
 		})
