@@ -474,6 +474,13 @@ func TestEngineSuggestActionRestart(t *testing.T) {
 			desiredState:       pbtask.TaskState_KILLED,
 			mesosTaskID:        "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
 			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2",
+			action:             NoTaskAction,
+		},
+		{
+			currentState:       pbtask.TaskState_KILLED,
+			desiredState:       pbtask.TaskState_RUNNING,
+			mesosTaskID:        "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2",
 			action:             InitializeAction,
 		},
 		{
@@ -482,6 +489,13 @@ func TestEngineSuggestActionRestart(t *testing.T) {
 			mesosTaskID:        "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
 			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
 			action:             NoTaskAction,
+		},
+		{
+			currentState:       pbtask.TaskState_RUNNING,
+			desiredState:       pbtask.TaskState_KILLED,
+			mesosTaskID:        "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+			desiredMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2",
+			action:             StopAction,
 		},
 	}
 

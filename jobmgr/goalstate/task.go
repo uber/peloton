@@ -293,5 +293,7 @@ func requireRestart(currentState cached.TaskStateVector,
 	goalState cached.TaskStateVector) bool {
 	return currentState.MesosTaskID.GetValue() !=
 		goalState.MesosTaskID.GetValue() &&
-		goalState.MesosTaskID.GetValue() != ""
+		goalState.MesosTaskID.GetValue() != "" &&
+		goalState.State != task.TaskState_KILLED &&
+		goalState.State != task.TaskState_DELETED
 }
