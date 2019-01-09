@@ -27,7 +27,9 @@ class Job(object):
                  client=None,
                  config=None,
                  pool=None,
-                 job_config=None):
+                 job_config=None,
+                 options=[],
+                 ):
 
         self.config = config or IntegrationTestConfig()
         self.client = client or Client()
@@ -37,6 +39,11 @@ class Job(object):
             job_config_dump = load_test_config(job_file)
             job_config = job.JobConfig()
             json_format.ParseDict(job_config_dump, job_config)
+
+        # apply options
+        for o in options:
+            o(job_config)
+
         self.job_config = job_config
 
     def create(self):

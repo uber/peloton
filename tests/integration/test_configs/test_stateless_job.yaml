@@ -26,6 +26,8 @@ defaultConfig:
     value: testVal4
   - key: testKey5
     value: testVal5
+  - key: job.name
+    value: peloton_stateless_job
   resource:
     cpuLimit: 0.1
     memLimitMb: 0.1

@@ -10,19 +10,62 @@ from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 pytestmark = [pytest.mark.default, pytest.mark.placement]
 
 
-def test__create_stateful_job():
-    job = Job(job_file='test_stateful_job.yaml',
-              config=IntegrationTestConfig(max_retry_attempts=100))
-    job.create()
-    job.wait_for_state()
+def _label_constraint(key, value):
+    """
+    Returns a label constraint for host limit 1
+    :param key: The key fo the label
+    :param value: The value of the label
+    """
+    return task_pb2.Constraint(
+        type=1,
+        labelConstraint=task_pb2.LabelConstraint(
+            kind=1,
+            condition=2,
+            requirement=0,
+            label=peloton_pb2.Label(
+                # Tasks of my own job
+                key=key,
+                value=value,
+            ),
+        ),
+    )
 
-    # ToDo: Clean up persistent volumes from the test.
+
+def _with_constraint(constraint):
+    def apply(job_config):
+        job_config.defaultConfig.constraint.CopyFrom(
+            constraint
+        )
+    return apply
 
 
-def test__create_a_stateful_job_with_3_tasks_on_3_different_hosts():
-    job = Job(job_file='test_stateful_job.yaml',
-              config=IntegrationTestConfig(max_retry_attempts=100))
-    job.job_config.instanceCount = 3
+def _with_instance_count(count):
+    def apply(job_config):
+        job_config.instanceCount = count
+    return apply
+
+
+def _with_job_name(name):
+    def apply(job_config):
+        job_config.name = name
+    return apply
+
+
+def test__create_a_stateless_job_with_3_tasks_on_3_different_hosts():
+    label_key = "job.name"
+    label_value = "peloton_stateless_job"
+
+    job = Job(
+                job_file='test_stateless_job.yaml',
+                config=IntegrationTestConfig(
+                    max_retry_attempts=100,
+                ),
+                options=[
+                    _with_constraint(_label_constraint(label_key, label_value)),
+                    _with_instance_count(3),
+                ]
+            )
+
     job.create()
 
     job.wait_for_state(goal_state='RUNNING')
@@ -34,18 +77,27 @@ def test__create_a_stateful_job_with_3_tasks_on_3_different_hosts():
 
     kill_jobs([job])
 
-    # ToDo: Clean up persistent volumes from the test.
-
     # Ensure that the tasks run on 3 different hosts
     assert len(hosts) == 3
 
 
-def test__create_2_stateful_jobs_with_task_to_task_anti_affinity_between_jobs():  # noqa
+def test__create_2_stateless_jobs_with_task_to_task_anti_affinity_between_jobs(): # noqa
+    label_key = "job.name"
+    label_value = "peloton_stateless_job"
+
     jobs = []
     for i in range(2):
-        job = Job(job_file='test_stateful_job.yaml',
-                  config=IntegrationTestConfig(max_retry_attempts=100))
-        job.job_config.name = 'TestPelotonDockerJob_PersistentVolume' + repr(i)
+        job = Job(
+            job_file='test_stateless_job.yaml',
+            config=IntegrationTestConfig(
+                max_retry_attempts=100,
+            ),
+            options=[
+                _with_constraint(_label_constraint(label_key, label_value)),
+                _with_job_name('TestPelotonDockerJob_Stateless' + repr(i)),
+                _with_instance_count(1),
+            ]
+        )
         job.job_config.defaultConfig.constraint.CopyFrom(
             task_pb2.Constraint(
                 type=2,
@@ -59,8 +111,8 @@ def test__create_2_stateful_jobs_with_task_to_task_anti_affinity_between_jobs():
                                 requirement=0,
                                 label=peloton_pb2.Label(
                                     # Tasks of my own job
-                                    key='stateful_job',
-                                    value='mystore%s' % i,
+                                    key='job.name',
+                                    value='peloton_stateless_job%s' % i,
                                 ),
                             ),
                         ),
@@ -72,8 +124,8 @@ def test__create_2_stateful_jobs_with_task_to_task_anti_affinity_between_jobs():
                                 requirement=0,
                                 label=peloton_pb2.Label(
                                     # Avoid tasks of the other job
-                                    key='stateful_job',
-                                    value='mystore%s' % ((i + 1) % 2),
+                                    key='job.name',
+                                    value='peloton_stateless_job%s' % ((i + 1) % 2),
                                 ),
                             ),
                         ),
@@ -96,8 +148,6 @@ def test__create_2_stateful_jobs_with_task_to_task_anti_affinity_between_jobs():
             hosts = hosts.union(set({task_info.runtime.host}))
 
     kill_jobs(jobs)
-
-    # ToDo: Clean up persistent volumes from the test.
 
     # Ensure that the tasks run on 2 different hosts
     assert len(hosts) == 2
