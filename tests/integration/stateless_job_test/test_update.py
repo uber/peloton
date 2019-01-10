@@ -797,12 +797,13 @@ def test_auto_rollback_reduce_instances(stateless_job_v1alpha):
     stateless_job_v1alpha.create()
     stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
 
-    job_spec_dump = load_test_config(UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC)
+    job_spec_dump = load_test_config(UPDATE_STATELESS_JOB_BAD_HEALTH_CHECK_SPEC)
     updated_job_spec = JobSpec()
     json_format.ParseDict(job_spec_dump, updated_job_spec)
 
-    # change the command to trigger a rollback
-    updated_job_spec.default_spec.containers[0].command.value = 'exit 1;'
+    # increase the instance count
+    updated_job_spec.instance_count = \
+        stateless_job_v1alpha.job_spec.instance_count + 3
 
     update = StatelessUpdate(
         stateless_job_v1alpha,
@@ -810,6 +811,7 @@ def test_auto_rollback_reduce_instances(stateless_job_v1alpha):
         roll_back_on_failure=True,
         max_instance_attempts=1,
         max_failure_instances=1,
+        batch_size=1,
     )
     update.create()
     update.wait_for_state(goal_state='ROLLED_BACK')
