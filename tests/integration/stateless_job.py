@@ -1,4 +1,5 @@
 import logging
+import grpc
 import time
 
 from client import Client
@@ -10,7 +11,6 @@ from util import load_test_config
 from google.protobuf import json_format
 
 from peloton_client.pbgen.peloton.api.v1alpha import peloton_pb2 as v1alpha_peloton
-from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 from peloton_client.pbgen.peloton.api.v1alpha.job.stateless import \
     stateless_pb2 as stateless
 from peloton_client.pbgen.peloton.api.v1alpha.job.stateless.svc import \
@@ -19,6 +19,8 @@ from peloton_client.pbgen.peloton.api.v1alpha.pod.svc import pod_svc_pb2 as pod_
 from peloton_client.pbgen.peloton.api.v1alpha.pod import pod_pb2 as pod
 
 log = logging.getLogger(__name__)
+
+INVALID_ENTITY_VERSION_ERR_MESSAGE = 'unexpected entity version'
 
 
 class StatelessJob(object):
@@ -65,17 +67,48 @@ class StatelessJob(object):
         log.info('created job %s with entity version %s',
                  self.job_id, self.entity_version)
 
-    def start(self, ranges=None):
+    def start(self, ranges=None, entity_version=None):
         """
-        Starts certain pods based on the ranges
+        Starts certain pods based on the ranges.
+        If ranges is not provided it starts all pods of the job
+
+        Job level start does not support range.
+        We are using pod api for range operation.
+        We do this for backward compatibility of existing tests
+
         :param ranges: the instance ranges to start
-        :return: pod start response from the API
+        :return: start response from the API
         """
-        # pod service does not take range as input,
-        # the code uses sends separate requests for
-        # each pod to simulate the behavior
         if ranges is None:
-            ranges = [task.InstanceRange(to=self.job_spec.instance_count)]
+            job_entity_version = entity_version or \
+                                 self.entity_version or \
+                                 self.get_status().version.value
+
+            while True:
+                request = stateless_svc.StartJobRequest(
+                    job_id=v1alpha_peloton.JobID(value=self.job_id),
+                    version=v1alpha_peloton.EntityVersion(value=job_entity_version),
+                )
+                try:
+                    resp = self.client.stateless_svc.StartJob(
+                        request,
+                        metadata=self.client.jobmgr_metadata,
+                        timeout=self.config.rpc_timeout_sec,
+                    )
+                except grpc.RpcError as e:
+                    # if entity version is incorrect, get entity version from job status
+                    # and try again.
+                    if e.code() == grpc.StatusCode.INVALID_ARGUMENT \
+                            and e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE \
+                            and entity_version is None:
+                        job_entity_version = entity_version or \
+                                             self.get_status().version.value
+                        continue
+                    raise
+                break
+            self.entity_version = resp.version.value
+            log.info('job started, new entity version: %s', self.entity_version)
+            return resp
 
         for pod_range in ranges:
             for pod_id in range(getattr(pod_range, 'from'), pod_range.to):
@@ -93,17 +126,48 @@ class StatelessJob(object):
                  .format(self.job_id, ranges))
         return pod_svc.StartPodResponse()
 
-    def stop(self, ranges=None):
+    def stop(self, ranges=None, entity_version=None):
         """
-        Stops certain pods based on the ranges
+        Stops certain pods based on the ranges.
+        If ranges is not provided then it stops the job
+
+        Job level stop does not support range.
+        We are using pod api for range operation.
+        We do this for backward compatibility of existing tests
+
         :param ranges: the instance ranges to stop
-        :return: pod stop response from the API
+        :return: stop response from the API
         """
-        # pod service does not take range as input,
-        # the code uses sends separate requests for
-        # each pod to simulate the behavior
         if ranges is None:
-            ranges = [task.InstanceRange(to=self.job_spec.instance_count)]
+            job_entity_version = entity_version or \
+                                 self.entity_version or \
+                                 self.get_status().version.value
+
+            while True:
+                request = stateless_svc.StopJobRequest(
+                    job_id=v1alpha_peloton.JobID(value=self.job_id),
+                    version=v1alpha_peloton.EntityVersion(value=job_entity_version),
+                )
+                try:
+                    resp = self.client.stateless_svc.StopJob(
+                        request,
+                        metadata=self.client.jobmgr_metadata,
+                        timeout=self.config.rpc_timeout_sec,
+                    )
+                except grpc.RpcError as e:
+                    # if entity version is incorrect, get entity version from job status
+                    # and try again.
+                    if e.code() == grpc.StatusCode.INVALID_ARGUMENT \
+                            and e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE \
+                            and entity_version is None:
+                        job_entity_version = entity_version or \
+                                             self.get_status().version.value
+                        continue
+                    raise
+                break
+            self.entity_version = resp.version.value
+            log.info('job stopped, new entity version: %s', self.entity_version)
+            return resp
 
         for pod_range in ranges:
             for pod_id in range(getattr(pod_range, 'from'), pod_range.to):

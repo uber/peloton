@@ -1,8 +1,10 @@
+import grpc
 import pytest
 import time
 
 from tests.integration.stateless_job import StatelessJob
 from tests.integration.common import IntegrationTestConfig
+from tests.integration.stateless_job import INVALID_ENTITY_VERSION_ERR_MESSAGE
 
 pytestmark = [pytest.mark.default, pytest.mark.stateless]
 
@@ -10,6 +12,26 @@ pytestmark = [pytest.mark.default, pytest.mark.stateless]
 @pytest.mark.smoketest
 def test__create_job(stateless_job_v1alpha):
     stateless_job_v1alpha.create()
+    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+
+
+@pytest.mark.smoketest
+def test__stop_stateless_job(stateless_job_v1alpha):
+    stateless_job_v1alpha.create()
+    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+    stateless_job_v1alpha.stop()
+    stateless_job_v1alpha.wait_for_state(goal_state='KILLED')
+
+
+@pytest.mark.smoketest
+def test__stop_start_all_tasks_stateless_kills_tasks_and_job(stateless_job_v1alpha):
+    stateless_job_v1alpha.create()
+    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+
+    stateless_job_v1alpha.stop()
+    stateless_job_v1alpha.wait_for_state(goal_state='KILLED')
+
+    stateless_job_v1alpha.start()
     stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
 
 
@@ -103,3 +125,52 @@ def test__failed_task_throttled_by_exponential_backoff():
     pod_id = pod_events[0].pod_id.value
     run_id = int(pod_id[pod_id.rindex('-')+1:])
     assert 1 < run_id < 20
+
+
+def test__start_job_in_killing_state(stateless_job_v1alpha, mesos_master):
+    stateless_job_v1alpha.create()
+    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+
+    # stop mesos master to ensure job doesn't transition to KILLED
+    mesos_master.stop()
+    stateless_job_v1alpha.stop()
+    stateless_job_v1alpha.wait_for_state(goal_state='KILLING')
+
+    stateless_job_v1alpha.start()
+    mesos_master.start()
+    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+
+
+def test__start_job_in_initialized_state(stateless_job_v1alpha):
+    stateless_job_v1alpha.create()
+    stateless_job_v1alpha.wait_for_state(goal_state='INITIALIZED')
+
+    # it is possible that the job might have transitioned to PENDING
+    # since there is no way to ensure this transition doesn't happen
+    stateless_job_v1alpha.start()
+    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+
+
+def test__start_job_bad_version(stateless_job_v1alpha):
+    stateless_job_v1alpha.create()
+
+    try:
+        stateless_job_v1alpha.start(entity_version='1-2-3')
+    except grpc.RpcError as e:
+        assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
+        assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
+        return
+    raise Exception("entity version mismatch error not received")
+
+
+def test__stop_job_bad_version(stateless_job_v1alpha):
+    stateless_job_v1alpha.create()
+    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+
+    try:
+        stateless_job_v1alpha.stop(entity_version='1-2-3')
+    except grpc.RpcError as e:
+        assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
+        assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
+        return
+    raise Exception("entity version mismatch error not received")

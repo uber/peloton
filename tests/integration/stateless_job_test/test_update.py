@@ -14,10 +14,10 @@ from tests.integration.stateless_update import StatelessUpdate
 from tests.integration.util import load_test_config
 from tests.integration.stateless_job import StatelessJob
 from tests.integration.common import IntegrationTestConfig
+from tests.integration.stateless_job import INVALID_ENTITY_VERSION_ERR_MESSAGE
 
 pytestmark = [pytest.mark.default, pytest.mark.stateless, pytest.mark.update]
 
-INVALID_VERSION_ERR_MESSAGE = 'unexpected entity version'
 UPDATE_STATELESS_JOB_SPEC = "test_update_stateless_job_spec.yaml"
 UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC = \
     "test_update_stateless_job_add_instances_spec.yaml"
@@ -191,7 +191,7 @@ def test__create_update_bad_version(stateless_job_v1alpha):
         update.create(entity_version='1-2-3')
     except grpc.RpcError as e:
         assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
-        assert e.details() == INVALID_VERSION_ERR_MESSAGE
+        assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
         return
     raise Exception("entity version mismatch error not received")
 
@@ -209,7 +209,7 @@ def test__pause_update_bad_version(stateless_job_v1alpha):
         update.pause(entity_version='1-2-3')
     except grpc.RpcError as e:
         assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
-        assert e.details() == INVALID_VERSION_ERR_MESSAGE
+        assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
         return
     raise Exception("entity version mismatch error not received")
 
@@ -228,7 +228,7 @@ def test__resume_update_bad_version(stateless_job_v1alpha):
         update.resume(entity_version='1-2-3')
     except grpc.RpcError as e:
         assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
-        assert e.details() == INVALID_VERSION_ERR_MESSAGE
+        assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
         return
     raise Exception("entity version mismatch error not received")
 
@@ -246,7 +246,7 @@ def test__abort_update_bad_version(stateless_job_v1alpha):
         update.abort(entity_version='1-2-3')
     except grpc.RpcError as e:
         assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
-        assert e.details() == INVALID_VERSION_ERR_MESSAGE
+        assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
         return
     raise Exception("entity version mismatch error not received")
 

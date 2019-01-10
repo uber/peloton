@@ -14,10 +14,9 @@ from peloton_client.pbgen.peloton.api.v1alpha.job.stateless.svc import \
 from peloton_client.pbgen.peloton.api.v1alpha import peloton_pb2 as v1alpha_peloton
 from peloton_client.pbgen.peloton.api.v1alpha.job.stateless import \
     stateless_pb2 as stateless
+from stateless_job import INVALID_ENTITY_VERSION_ERR_MESSAGE
 
 log = logging.getLogger(__name__)
-
-INVALID_ENTITY_VERSION_ERR_MESSAGE = 'unexpected entity version'
 
 
 class StatelessUpdate(object):
