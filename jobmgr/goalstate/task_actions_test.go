@@ -33,6 +33,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 type TaskActionTestSuite struct {
@@ -104,6 +105,24 @@ func (suite *TaskActionTestSuite) TestTaskReloadRuntime() {
 	suite.NoError(err)
 }
 
+// TestTaskReloadRuntimeNotFoundError tests task runtime is not found
+// when task is reloaded
+func (suite *TaskActionTestSuite) TestTaskReloadRuntimeNotFoundError() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), suite.instanceID).
+		Return(suite.cachedTask, nil)
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
+		Return(nil, yarpcerrors.NotFoundErrorf("test error"))
+	suite.cachedJob.EXPECT().
+		RemoveTask(suite.instanceID)
+	err := TaskReloadRuntime(context.Background(), suite.taskEnt)
+	suite.NoError(err)
+}
+
 func (suite *TaskActionTestSuite) TestTaskStateInvalidAction() {
 	newRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
 	newRuntimes[0] = &pbtask.RuntimeInfo{
@@ -162,6 +181,11 @@ func (suite *TaskActionTestSuite) TestTaskDeleteActionDBError() {
 	suite.taskStore.EXPECT().
 		DeleteTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
 		Return(fmt.Errorf("fake db error"))
-
+	suite.cachedJob.EXPECT().
+		GetJobType().
+		Return(pbjob.JobType_SERVICE)
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
 	suite.Error(TaskDelete(context.Background(), suite.taskEnt))
 }

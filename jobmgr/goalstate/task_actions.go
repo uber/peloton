@@ -21,6 +21,7 @@ import (
 	"github.com/uber/peloton/common/goalstate"
 
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // TaskReloadRuntime reloads task runtime into cache.
@@ -38,6 +39,13 @@ func TaskReloadRuntime(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	runtime, err := goalStateDriver.taskStore.GetTaskRuntime(ctx, taskEnt.jobID, taskEnt.instanceID)
+
+	// task already deleted, no action needed
+	if yarpcerrors.IsNotFound(err) {
+		cachedJob.RemoveTask(taskEnt.instanceID)
+		return nil
+	}
+
 	if err != nil {
 		return err
 	}
@@ -84,12 +92,12 @@ func TaskDelete(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	cachedJob.RemoveTask(taskEnt.instanceID)
-	if err := goalStateDriver.taskStore.DeleteTaskRuntime(
-		ctx, taskEnt.jobID, taskEnt.instanceID); err != nil {
-		return err
-	}
+	err := goalStateDriver.taskStore.DeleteTaskRuntime(
+		ctx, taskEnt.jobID, taskEnt.instanceID)
 
-	// enqueue the job in case the delete is due to an update
+	// enqueue the job in case the delete is due to an update,
+	// this is done even if db op has error, because the entry may
+	// actually be removed
 	EnqueueJobWithDefaultDelay(taskEnt.jobID, goalStateDriver, cachedJob)
-	return nil
+	return err
 }
