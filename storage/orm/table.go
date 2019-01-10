@@ -76,7 +76,9 @@ func (t *Table) GetKeyRowFromObject(
 // fields of the object must be converted to a row. Update can be used to
 // update specific fields of the object
 func (t *Table) GetRowFromObject(
-	e base.Object, selectedFields ...string) []base.Column {
+	e base.Object,
+	selectedFields ...string,
+) []base.Column {
 	v := reflect.ValueOf(e).Elem()
 	row := []base.Column{}
 	selectedFieldMap := make(map[string]struct{})
@@ -105,9 +107,7 @@ func (t *Table) GetRowFromObject(
 
 // SetObjectFromRow is a helper for populating storage object from the
 // given row
-func (t *Table) SetObjectFromRow(
-	e base.Object, row []base.Column) {
-
+func (t *Table) SetObjectFromRow(e base.Object, row []base.Column) {
 	columnsMap := make(map[string]interface{})
 	for _, column := range row {
 		columnsMap[column.Name] = column.Value

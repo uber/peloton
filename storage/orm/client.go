@@ -110,7 +110,10 @@ func (c *client) Get(ctx context.Context, e base.Object) error {
 
 // Update updates the storage object in the database
 func (c *client) Update(
-	ctx context.Context, e base.Object, fieldsToUpdate ...string) error {
+	ctx context.Context,
+	e base.Object,
+	fieldsToUpdate ...string,
+) error {
 	// lookup if a table exists for this object, return error if not found
 	table, err := c.getTable(e)
 	if err != nil {

@@ -36,7 +36,8 @@ const (
 )
 
 var (
-	primaryKeyTagPattern = regexp.MustCompile(`primaryKey\s*=\s*([^=]*)((\s+.*=)|$)`)
+	primaryKeyTagPattern = regexp.MustCompile(
+		`primaryKey\s*=\s*([^=]*)((\s+.*=)|$)`)
 	// primaryKeyPattern is regex for the format((PK1,PK2..), CK1, CK2..)
 	primaryKeyPattern = regexp.MustCompile(`\(\s*\((.*)\)(.*)\)`)
 	namePattern       = regexp.MustCompile(`name\s*=\s*(\S*)`)

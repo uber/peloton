@@ -55,7 +55,9 @@ type SecretObject struct {
 
 // NewSecretObject creates a new secret object
 func NewSecretObject(
-	id *peloton.JobID, now time.Time, secretID, secretString, secretPath string,
+	id *peloton.JobID,
+	now time.Time,
+	secretID, secretString, secretPath string,
 ) *SecretObject {
 	return &SecretObject{
 		SecretID:     secretID,
@@ -81,13 +83,17 @@ func (s *SecretObject) ToProto() *peloton.Secret {
 
 // CreateSecret creates a secret object in db
 func (s *Store) CreateSecret(
-	ctx context.Context, secretObject *SecretObject) error {
+	ctx context.Context,
+	secretObject *SecretObject,
+) error {
 	return s.oClient.Create(ctx, secretObject)
 }
 
 // GetSecret gets a secret object from db
 func (s *Store) GetSecret(
-	ctx context.Context, secretID string) (*SecretObject, error) {
+	ctx context.Context,
+	secretID string,
+) (*SecretObject, error) {
 	secretObject := &SecretObject{
 		SecretID: secretID,
 		Valid:    true,
@@ -98,7 +104,9 @@ func (s *Store) GetSecret(
 
 // UpdateSecretData updates a secret data in db
 func (s *Store) UpdateSecretData(
-	ctx context.Context, secretID, secretString string) error {
+	ctx context.Context,
+	secretID, secretString string,
+) error {
 	secretObject := &SecretObject{
 		SecretID: secretID,
 		Valid:    true,
@@ -109,7 +117,9 @@ func (s *Store) UpdateSecretData(
 
 // DeleteSecret deletes a secret object in db
 func (s *Store) DeleteSecret(
-	ctx context.Context, secretID string) error {
+	ctx context.Context,
+	secretID string,
+) error {
 	secretObject := &SecretObject{
 		SecretID: secretID,
 		Valid:    true,

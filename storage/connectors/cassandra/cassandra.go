@@ -191,7 +191,10 @@ func (c *cassandraConnector) sendLatency(
 
 // Create creates a new row in DB.
 func (c *cassandraConnector) Create(
-	ctx context.Context, e *base.Definition, row []base.Column) error {
+	ctx context.Context,
+	e *base.Definition,
+	row []base.Column,
+) error {
 
 	// split row into a list of names and values to compose query stmt using
 	// names and use values in the session query call, so the order needs to be
@@ -220,8 +223,10 @@ func (c *cassandraConnector) Create(
 
 // Get fetches a record from DB using primary keys
 func (c *cassandraConnector) Get(
-	ctx context.Context, e *base.Definition,
-	keyCols []base.Column) ([]base.Column, error) {
+	ctx context.Context,
+	e *base.Definition,
+	keyCols []base.Column,
+) ([]base.Column, error) {
 
 	colNamesToRead := []string{}
 	for col := range e.ColumnToType {
@@ -261,8 +266,10 @@ func (c *cassandraConnector) Get(
 
 // Delete deletes a record from DB using primary keys
 func (c *cassandraConnector) Delete(
-	ctx context.Context, e *base.Definition,
-	keyCols []base.Column) error {
+	ctx context.Context,
+	e *base.Definition,
+	keyCols []base.Column,
+) error {
 
 	// split keyCols into a list of names and values to compose query stmt using
 	// names and use values in the session query call, so the order needs to be
@@ -292,8 +299,11 @@ func (c *cassandraConnector) Delete(
 
 // Update updates an existing row in DB.
 func (c *cassandraConnector) Update(
-	ctx context.Context, e *base.Definition, row []base.Column,
-	keyCols []base.Column) error {
+	ctx context.Context,
+	e *base.Definition,
+	row []base.Column,
+	keyCols []base.Column,
+) error {
 
 	// split keyCols into a list of names and values to compose query stmt using
 	// names and use values in the session query call, so the order needs to be

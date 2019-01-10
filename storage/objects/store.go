@@ -31,7 +31,9 @@ type Store struct {
 
 // NewCassandraStore creates a new Cassandra storage client
 func NewCassandraStore(
-	config *cassandra.Config, scope tally.Scope) (*Store, error) {
+	config *cassandra.Config,
+	scope tally.Scope,
+) (*Store, error) {
 	connector, err := escassandra.NewCassandraConnector(config, scope)
 	if err != nil {
 		return nil, err
