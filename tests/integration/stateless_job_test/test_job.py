@@ -100,4 +100,6 @@ def test__failed_task_throttled_by_exponential_backoff():
     # if throttle is effective, the task should not create many
     # pod events. Otherwise it can generate many pod events, during
     # the time window
-    assert 1 < len(pod_events) < 20
+    pod_id = pod_events[0].pod_id.value
+    run_id = int(pod_id[pod_id.rindex('-')+1:])
+    assert 1 < run_id < 20
