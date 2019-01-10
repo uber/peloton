@@ -31,6 +31,11 @@ import (
 func NewPodSpec(t *api.TaskConfig) (*pod.PodSpec, error) {
 	jobKeyLabel := label.NewAuroraJobKey(t.GetJob())
 
+	aml, err := label.NewAuroraMetadata(t.GetMetadata())
+	if err != nil {
+		return nil, fmt.Errorf("new aurora metadata label: %s", err)
+	}
+
 	constraint, err := newConstraint(jobKeyLabel, t.GetConstraints())
 	if err != nil {
 		return nil, fmt.Errorf("new constraint: %s", err)
@@ -40,9 +45,7 @@ func NewPodSpec(t *api.TaskConfig) (*pod.PodSpec, error) {
 		PodName: nil, // Unused.
 		Labels: []*peloton.Label{
 			jobKeyLabel,
-			label.NewAuroraJobKeyRole(t.GetJob().GetRole()),
-			label.NewAuroraJobKeyEnvironment(t.GetJob().GetEnvironment()),
-			label.NewAuroraJobKeyName(t.GetJob().GetName()),
+			aml,
 		},
 		InitContainers: nil, // Unused.
 		Containers: []*pod.ContainerSpec{{

@@ -20,11 +20,13 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
 	"github.com/uber/peloton/aurorabridge/atop"
 	"github.com/uber/peloton/aurorabridge/label"
+	"github.com/uber/peloton/aurorabridge/ptoa"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -70,8 +72,83 @@ func (h *ServiceHandler) GetJobSummary(
 // data set.
 func (h *ServiceHandler) GetTasksWithoutConfigs(
 	ctx context.Context,
-	query *api.TaskQuery) (*api.Response, error) {
-	return nil, errUnimplemented
+	query *api.TaskQuery,
+) (*api.Response, error) {
+
+	result, err := h.getTasksWithoutConfigs(ctx, query)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"params": log.Fields{
+				"query": query,
+			},
+			"code":  err.responseCode,
+			"error": err.msg,
+		}).Error("GetTasksWithoutConfigs error")
+	}
+	return newResponse(result, err), nil
+}
+
+func (h *ServiceHandler) getTasksWithoutConfigs(
+	ctx context.Context,
+	query *api.TaskQuery,
+) (*api.Result, *auroraError) {
+
+	var scheduledTasks []*api.ScheduledTask
+	var podStates []pod.PodState
+
+	for s := range query.GetStatuses() {
+		p, err := atop.NewPodState(s)
+		if err != nil {
+			return nil, auroraErrorf("new pod state: %s", err)
+		}
+		podStates = append(podStates, p)
+	}
+
+	jobIDs, err := h.getJobIDsFromTaskQuery(ctx, query)
+	if err != nil {
+		return nil, auroraErrorf("get job ids from task query: %s", err)
+	}
+
+	for _, jobID := range jobIDs {
+		jobInfo, err := h.getJobInfo(ctx, jobID)
+		if err != nil {
+			return nil, auroraErrorf("get job info for job id %q: %s",
+				jobID.GetValue(), err)
+		}
+
+		// TODO(kevinxu): QueryPods api only returns pods from latest run,
+		// while aurora returns tasks from all previous runs. Do we need
+		// to make it consistent with aurora's behavior?
+		pods, err := h.queryPods(ctx, jobID, podStates)
+		if err != nil {
+			return nil, auroraErrorf(
+				"query pods for job id %q with pod states %q: %s",
+				jobID.GetValue(), podStates, err)
+		}
+
+		// TODO(kevinxu): make the calls to query pods parallel
+		for _, podInfo := range pods {
+			n := podInfo.GetSpec().GetPodName()
+			podEvents, err := h.getPodEvents(ctx, n)
+			if err != nil {
+				return nil, auroraErrorf("get pod events for pod %q: %s",
+					n.GetValue(), err)
+			}
+
+			t, err := ptoa.NewScheduledTask(jobInfo, podInfo, podEvents)
+			if err != nil {
+				return nil, auroraErrorf("new scheduled task: %s", err)
+			}
+
+			scheduledTasks = append(scheduledTasks, t)
+		}
+	}
+
+	return &api.Result{
+		ScheduleStatusResult: &api.ScheduleStatusResult{
+			Tasks: scheduledTasks,
+		},
+	}, nil
 }
 
 // GetConfigSummary fetches the configuration summary of active tasks for the specified job.
@@ -406,7 +483,7 @@ func (h *ServiceHandler) getJobIDs(
 	labels := label.BuildPartialAuroraJobKeyLabels(k)
 	if len(labels) == 0 {
 		// TODO(kevinxu): do we need to return all job ids in this case?
-		return nil, errors.New("cannot get job ids from empty job key")
+		return nil, errors.New("empty job key")
 	}
 
 	req := &statelesssvc.QueryJobsRequest{
@@ -440,26 +517,35 @@ func (h *ServiceHandler) getJobID(
 }
 
 // getJobIDsFromTaskQuery queries peloton job ids based on aurora TaskQuery.
+// Note that it will not throw error when no job is found. The current
+// behavior for querying:
+// 1. If TaskQuery.JobKeys is present, the job keys there to query job ids
+// 2. Otherwise use TaskQuery.Role, TaskQuery.Environment and
+//    TaskQuery.JobName to construct a job key (those 3 fields may not be
+//    all present), and use it to query job ids.
 func (h *ServiceHandler) getJobIDsFromTaskQuery(
 	ctx context.Context,
 	query *api.TaskQuery,
-) (jobIDs []*peloton.JobID, err error) {
+) ([]*peloton.JobID, error) {
 	if query == nil {
-		err = errors.New("TaskQuery is nil")
-		return
+		return nil, errors.New("task query is nil")
 	}
+
+	var jobIDs []*peloton.JobID
 
 	// use job_keys to query if present
 	if query.IsSetJobKeys() {
 		for _, jobKey := range query.GetJobKeys() {
 			ids, err := h.getJobIDs(ctx, jobKey)
 			if err != nil {
-				return nil, errors.Wrapf(err,
-					"failed to get job id for \"%s\"", jobKey.String())
+				if yarpcerrors.IsNotFound(err) {
+					continue
+				}
+				return nil, errors.Wrapf(err, "get job id for %q", jobKey)
 			}
 			jobIDs = append(jobIDs, ids[0])
 		}
-		return
+		return jobIDs, nil
 	}
 
 	// use job key parameters to query
@@ -468,12 +554,15 @@ func (h *ServiceHandler) getJobIDsFromTaskQuery(
 		Environment: query.Environment,
 		Name:        query.JobName,
 	}
-	jobIDs, err = h.getJobIDs(ctx, jobKey)
+	jobIDs, err := h.getJobIDs(ctx, jobKey)
 	if err != nil {
-		return nil, errors.Wrapf(err,
-			"failed to get job ids for \"%s\"", jobKey.String())
+		if yarpcerrors.IsNotFound(err) {
+			// ignore not found error and return empty job ids
+			return nil, nil
+		}
+		return nil, errors.Wrapf(err, "get job ids for %q", jobKey)
 	}
-	return
+	return jobIDs, nil
 }
 
 func (h *ServiceHandler) getCurrentJobVersion(
@@ -517,4 +606,38 @@ func (h *ServiceHandler) getJobSummary(
 		return nil, err
 	}
 	return resp.GetSummary(), nil
+}
+
+// queryPods calls jobmgr to query a list of PodInfo based on input JobID.
+func (h *ServiceHandler) queryPods(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	states []pod.PodState,
+) ([]*pod.PodInfo, error) {
+	req := &statelesssvc.QueryPodsRequest{
+		JobId: jobID,
+		Spec: &pod.QuerySpec{
+			PodStates: states,
+		},
+	}
+	resp, err := h.jobClient.QueryPods(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetPods(), nil
+}
+
+// getPodEvents calls jobmgr to get a list of PodEvent based on PodName.
+func (h *ServiceHandler) getPodEvents(
+	ctx context.Context,
+	podName *peloton.PodName,
+) ([]*pod.PodEvent, error) {
+	req := &podsvc.GetPodEventsRequest{
+		PodName: podName,
+	}
+	resp, err := h.podClient.GetPodEvents(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetEvents(), nil
 }

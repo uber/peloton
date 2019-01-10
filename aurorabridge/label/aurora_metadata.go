@@ -36,3 +36,20 @@ func NewAuroraMetadata(md []*api.Metadata) (*peloton.Label, error) {
 		Value: string(b),
 	}, nil
 }
+
+// ParseAuroraMetadata converts Peloton label to a list of
+// Aurora Metadata. The label for aurora metadata must be present, otherwise
+// an error will be returned.
+func ParseAuroraMetadata(ls []*peloton.Label) ([]*api.Metadata, error) {
+	for _, l := range ls {
+		if l.GetKey() == _auroraMetadataKey {
+			var m []*api.Metadata
+			err := json.Unmarshal([]byte(l.GetValue()), &m)
+			if err != nil {
+				return nil, err
+			}
+			return m, nil
+		}
+	}
+	return nil, fmt.Errorf("missing label: %q", _auroraMetadataKey)
+}

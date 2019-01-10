@@ -19,10 +19,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	jobmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	podmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc/mocks"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
@@ -367,6 +370,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_JobKeysOnlyErro
 		Environment: ptr.String("env1"),
 		Name:        ptr.String("name1"),
 	}
+	query := &api.TaskQuery{JobKeys: []*api.JobKey{jobKey}}
 
 	// when GetJobIDFromJobName returns error
 	suite.jobClient.EXPECT().
@@ -376,11 +380,21 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_JobKeysOnlyErro
 			}).
 		Return(nil, errors.New("failed to get job identifiers from job name"))
 
-	query := &api.TaskQuery{JobKeys: []*api.JobKey{jobKey}}
-
 	jobIDs, err := suite.handler.getJobIDsFromTaskQuery(suite.ctx, query)
-	suite.Nil(jobIDs)
 	suite.Error(err)
+	suite.Nil(jobIDs)
+
+	// when GetJobIDFromJobName returns not found error
+	suite.jobClient.EXPECT().
+		GetJobIDFromJobName(suite.ctx,
+			&statelesssvc.GetJobIDFromJobNameRequest{
+				JobName: atop.NewJobName(jobKey),
+			}).
+		Return(nil, yarpcerrors.NotFoundErrorf("job id for job name not found"))
+
+	jobIDs, err = suite.handler.getJobIDsFromTaskQuery(suite.ctx, query)
+	suite.NoError(err)
+	suite.Empty(jobIDs)
 }
 
 // TestGetJobIDsFromTaskQuery_FullJobKey checks getJobIDsFromTaskQuery
@@ -441,7 +455,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKey()
 	}
 }
 
-// TestGetJobIDsFromTaskQuery_PartialJobKeyErrorchecks getJobIDsFromTaskQuery
+// TestGetJobIDsFromTaskQuery_PartialJobKeyError checks getJobIDsFromTaskQuery
 // returns error when the query fails and input query only contains partial
 // job key parameters - role, environment, and/or job_name.
 func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyError() {
@@ -469,4 +483,73 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyEr
 	jobIDs, err := suite.handler.getJobIDsFromTaskQuery(suite.ctx, query)
 	suite.Nil(jobIDs)
 	suite.Error(err)
+}
+
+// TestGetTasksWithoutConfigs checks GetTasksWithoutConfigs works correctly.
+func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs() {
+	query := fixture.AuroraTaskQuery()
+	jobKey := query.GetJobKeys()[0]
+	jobID := fixture.PelotonJobID()
+	podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
+
+	mdLabel, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
+	suite.NoError(err)
+	jkLabel := label.NewAuroraJobKey(jobKey)
+
+	suite.expectGetJobIDFromJobName(jobKey, jobID)
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			SummaryOnly: false,
+			JobId:       jobID,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					Name: atop.NewJobName(jobKey),
+					Sla: &stateless.SlaSpec{
+						Preemptible: false,
+						Revocable:   false,
+					},
+					Labels: label.BuildPartialAuroraJobKeyLabels(jobKey),
+				},
+			},
+		}, nil)
+	suite.jobClient.EXPECT().
+		QueryPods(suite.ctx, &statelesssvc.QueryPodsRequest{
+			JobId: jobID,
+			Spec:  &pod.QuerySpec{PodStates: nil},
+		}).
+		Return(&statelesssvc.QueryPodsResponse{
+			Pods: []*pod.PodInfo{
+				{
+					Spec: &pod.PodSpec{
+						PodName: podName,
+						Labels:  []*peloton.Label{mdLabel, jkLabel},
+					},
+					Status: &pod.PodStatus{
+						PodId: &peloton.PodID{Value: podName.GetValue() + "-1"},
+						Host:  "peloton-host-0",
+						State: pod.PodState_POD_STATE_RUNNING,
+					},
+				},
+			},
+		}, nil)
+	suite.podClient.EXPECT().
+		GetPodEvents(suite.ctx, &podsvc.GetPodEventsRequest{
+			PodName: podName,
+		}).
+		Return(&podsvc.GetPodEventsResponse{
+			Events: []*pod.PodEvent{
+				{
+					Timestamp:   "2019-01-03T22:14:58Z",
+					Message:     "",
+					ActualState: task.TaskState_RUNNING.String(),
+				},
+			},
+		}, nil)
+
+	resp, err := suite.handler.GetTasksWithoutConfigs(suite.ctx, query)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+	suite.Len(resp.GetResult().GetScheduleStatusResult().GetTasks(), 1)
 }

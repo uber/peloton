@@ -12,32 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package fixture
+package label
 
 import (
-	"fmt"
+	"testing"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
-	"github.com/uber/peloton/util/randutil"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
-	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/thriftrw/ptr"
 )
 
-// PelotonEntityVersion returns a random EntityVersion.
-func PelotonEntityVersion() *peloton.EntityVersion {
-	return &peloton.EntityVersion{
-		Value: fmt.Sprintf("version-%s", randutil.Text(8)),
+func TestAuroraMetadata(t *testing.T) {
+	input := []*api.Metadata{
+		&api.Metadata{
+			Key:   ptr.String("test-key-1"),
+			Value: ptr.String("test-value-1"),
+		},
+		&api.Metadata{
+			Key:   ptr.String("test-key-2"),
+			Value: ptr.String("test-value-2"),
+		},
 	}
-}
 
-// PelotonJobID returns a random JobID.
-func PelotonJobID() *peloton.JobID {
-	return &peloton.JobID{Value: uuid.New()}
-}
+	l, err := NewAuroraMetadata(input)
+	assert.NoError(t, err)
 
-// PelotonResourcePoolID returns a random ResourcePoolID.
-func PelotonResourcePoolID() *peloton.ResourcePoolID {
-	return &peloton.ResourcePoolID{
-		Value: fmt.Sprintf("respool-%s", randutil.Text(8)),
-	}
+	output, err := ParseAuroraMetadata([]*peloton.Label{l})
+	assert.NoError(t, err)
+	assert.Equal(t, input, output)
 }

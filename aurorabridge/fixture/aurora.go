@@ -52,3 +52,24 @@ func AuroraJobUpdateKey() *api.JobUpdateKey {
 		ID:  ptr.String(fmt.Sprintf("update-id-%s", randutil.Text(6))),
 	}
 }
+
+// AuroraTaskQuery returns a random TaskQuery containing a random job_key.
+func AuroraTaskQuery() *api.TaskQuery {
+	return &api.TaskQuery{
+		JobKeys: []*api.JobKey{
+			AuroraJobKey(),
+		},
+	}
+}
+
+// AuroraMetadata returns a list of random Metadata.
+func AuroraMetadata() []*api.Metadata {
+	var m []*api.Metadata
+	for i := 0; i < 6; i++ {
+		m = append(m, &api.Metadata{
+			Key:   ptr.String(fmt.Sprintf("key-%s", randutil.Text(6))),
+			Value: ptr.String(fmt.Sprintf("val-%s", randutil.Text(6))),
+		})
+	}
+	return m
+}

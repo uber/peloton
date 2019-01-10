@@ -10,9 +10,9 @@ import (
 
 var errUnimplemented = errors.New("unimplemented aurora schedule status")
 
-// ConvertScheduleStatusToPodState converts Aurora ScheduleStatus enum
+// NewPodState converts Aurora ScheduleStatus enum
 // to Peloton PodState enum.
-func ConvertScheduleStatusToPodState(
+func NewPodState(
 	scheduleStatus api.ScheduleStatus) (pod.PodState, error) {
 	switch scheduleStatus {
 	case api.ScheduleStatusPending:

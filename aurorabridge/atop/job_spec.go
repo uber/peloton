@@ -35,9 +35,12 @@ func NewJobSpecFromJobUpdateRequest(
 		return nil, fmt.Errorf("new pod spec: %s", err)
 	}
 
-	aml, err := label.NewAuroraMetadata(r.GetTaskConfig().GetMetadata())
-	if err != nil {
-		return nil, fmt.Errorf("new aurora metadata label: %s", err)
+	// build labels for role, environment and job_name, used for task
+	// querying by partial job key (e.g. getTasksWithoutConfigs)
+	l := []*peloton.Label{
+		label.NewAuroraJobKeyRole(r.GetTaskConfig().GetJob().GetRole()),
+		label.NewAuroraJobKeyEnvironment(r.GetTaskConfig().GetJob().GetEnvironment()),
+		label.NewAuroraJobKeyName(r.GetTaskConfig().GetJob().GetName()),
 	}
 
 	return &stateless.JobSpec{
@@ -47,7 +50,7 @@ func NewJobSpecFromJobUpdateRequest(
 		OwningTeam:    "",  // Unused.
 		LdapGroups:    nil, // Unused.
 		Description:   "",  // Unused.
-		Labels:        []*peloton.Label{aml},
+		Labels:        l,
 		InstanceCount: uint32(r.GetInstanceCount()),
 		Sla:           newSLASpec(r.GetTaskConfig(), r.GetSettings().GetMaxFailedInstances()),
 		DefaultSpec:   p,
