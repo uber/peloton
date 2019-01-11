@@ -20,3 +20,4 @@ Home
    introduction
    security
    api_ref
+   hostmaintenance
