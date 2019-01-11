@@ -24,3 +24,4 @@ Home
    clients
    architecture
    job_config
+   type_jobs
