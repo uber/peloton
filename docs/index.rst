@@ -18,3 +18,4 @@ Home
    training
    pelotondev
    introduction
+   security
