@@ -23,3 +23,4 @@ Home
    hostmaintenance
    clients
    architecture
+   job_config
