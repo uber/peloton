@@ -1,5 +1,4 @@
-Training
-========
+# Training
 
 Please folow the below links for presentations for Peloton
 

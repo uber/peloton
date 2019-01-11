@@ -1,11 +1,9 @@
-Peloton Dev
-===========
+# Peloton Dev
 
 -   [Project Page](http://t.uber.com/peloton)
 -   [Runbook](https://code.uberinternal.com/w/runbooks/peloton/)
 
-Install
-=======
+## Install
 
 Installations of protoc/proto/protoc-gen-go are required, run
 bootstrap.sh once so all build dependencies will be installed. Want to
@@ -28,8 +26,7 @@ src/github.com/uber/peloton
 
 \$ make
 
-Run Peloton apps in containers
-==============================
+## Run Peloton apps in containers
 
 Build docker image:
 
@@ -39,8 +36,7 @@ Launch all dependencies and peloton apps in containers:
 
     $ PELOTON=app make pcluster
 
-Test Peloton
-============
+## Test Peloton
 
 Create resource pool by providing the path(respool is required for job
 creation):
@@ -57,15 +53,13 @@ Get tasks:
 
     $ bin/peloton task list <job ID>
 
-Run unit tests
-==============
+## Run unit tests
 
 Run unit tests:
 
     $ make test
 
-Run integration tests
-=====================
+## Run integration tests
 
 Against local pcluster:
 
@@ -79,11 +73,9 @@ dca1/sjc1 (run this from any compute host in the target dc):
 
     $ CLUSTER=<name of the cluster, i.e. dca1-devel01> make integ-test
 
-Run peloton from docker container
----------------------------------
+### Run peloton from docker container
 
-Build
-=====
+#### Build
 
 Build:
 
@@ -94,8 +86,7 @@ Build:
 If you want to build an image with a different name: [IMAGE=foo/bar:baz
 make docker]{.title-ref}
 
-Run
-===
+#### Run
 
 The docker container takes a few environment variables to configure how
 it will run. Each peloton app is launchable by setting
@@ -113,24 +104,21 @@ NOTE: you need to make sure the container has access to all the
 dependencies it needs, like mesos-master, zookeeper, cassandra, etc.
 Check your configs!
 
-Master with pcluster
-====================
+## Master with pcluster
 
 Master with pcluster:
 
     $ make pcluster
     $ docker run --rm --name peloton -it -e APP=master -e ENVIRONMENT=development --link peloton-mesos-master:mesos-master --link peloton-zk:zookeeper --link peloton-cassandra:cassandra peloton
 
-Client
-======
+### Client
 
 Launching the client is similar (replace [-m]{.title-ref} argument with
 whereever your peloton-master runs:
 
     $ docker run --rm -it --link peloton:peloton -e APP=client peloton job -m http://peloton:5289/ create test1 test/testjob.yaml
 
-Packaging
-=========
+## Packaging
 
 Build debs for supported distributions. Output will be placed into
 [./debs]{.title-ref}. You can specify the DISTRIBUTION by passing
@@ -139,8 +127,7 @@ Defaults to [all]{.title-ref}.:
 
     $ make debs
 
-Tagging a new release
-=====================
+### Tagging a new release
 
 Releases are managed by git tags, using semantic versioning. To tag a
 new release:
@@ -157,8 +144,7 @@ tag. Then, increment the version and tag, then push tags:
     ...
     $ git push origin --tags
 
-Pushing docker containers
-=========================
+### Pushing docker containers
 
 [make docker-push]{.title-ref} will build docker containers, and push
 them to both ATG and SJC1 registries. You can push to only one DC with
@@ -169,8 +155,7 @@ To build and deploy docker containers everywhere:
 
     make docker docker-push
 
-Debug Peloton Apps in Docker Container
---------------------------------------
+## Debug Peloton Apps in Docker Container
 
 1\. Find docker container process ID: sudo docker inspect -f
 {{.State.Pid}} \<DOCKER\_IMAGE\_ID\>

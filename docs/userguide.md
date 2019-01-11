@@ -1,13 +1,10 @@
-User Guide
-===========
+# User Guide
 
-Api Doc
-=======
+## Api Doc
 
 -   See the complete [API documentation](_static/apidoc.html)
 
-Resource Pools
-==============
+## Resource Pools
 
 Resource Pool is a logical abstraction for a subset of resources in a
 cluster. All resources in a cluster can be divided into hierarchical
@@ -64,8 +61,7 @@ Simulation resource pool. However AvMaps has two child resource pools
 for AV-Build and AV-Release, so the resources in AVMaps will be further
 divided based on the resource pool settings of AV-Build and AV-Release.
 
-Preemption
-==========
+## Preemption
 
 One of the features of Peloton is its ability to distribute unused
 resources to other resource pools that have higher demand. These unused
@@ -97,8 +93,7 @@ dimensions
 6.  Demand - Demand specifies the number of resources waiting to be
     admitted to the resource pool.
 
-Resource Sharing between Resource Pools
----------------------------------------
+### Resource Sharing between Resource Pools
 
 To understand how resource sharing works, let's work through an example.
 
@@ -154,8 +149,7 @@ resources; 10/2=5 will be taken away from each competing resource pool
 
 ![image](_static/preemption-resource-pool-3.png)
 
-Preemption Order
-----------------
+### Preemption Order
 
 Once a resource pool is marked for preemption---i.e. it is using more
 than its entitlement---then the scheduler will find and rank tasks for
@@ -171,16 +165,14 @@ following order:
 
 Once the tasks are filtered and ranked they are sent for preemption.
 
-Job Level Preemption
---------------------
+### Job Level Preemption
 
 Currently peloton only supports preemption at the Job level. This means
 that if the job is marked as preemptible in the Job\'s
 [SlaConfig](_static/apidoc.html#peloton.api.job.SlaConfig) then all
 tasks in the job will be preemptible as well and vice versa.
 
-Preemption FAQ
---------------
+### Preemption FAQ
 
 -   Should I mark my jobs as preemptible or non-preemptible?
 
@@ -255,8 +247,7 @@ Preemption FAQ
     Peloton currently only supports \"Inter resource pool preemption\".
     \"Intra resource pool preemption\" should be added in H1 2019.
 
-Peloton Resources
-=================
+## Peloton Resources
 
 -   [Peloton
     RFC](https://docs.google.com/document/d/174TjLbnJ7z9HdgMKvbeddCq4D8iScR5kVG4u2HANl6c/edit?usp=sharing)

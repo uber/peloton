@@ -1,5 +1,4 @@
-Overview
-========
+# Overview
 
 As Uber compute clusters scale, it is important to make efficient use of
 cluster resources by colocating long-running and batch workloads on same
@@ -11,8 +10,7 @@ hierarchical max-min fairness guarantees for different teams. Peloton
 can scale upto millions of tasks by using an active-active and scale-out
 architecture.
 
-Introduction
-============
+## Introduction
 
 We have identified four categories of compute workloads running in Uber
 datacenters, i.e. stateless services, stateful services, batch jobs and
@@ -47,8 +45,7 @@ resources more efficiently and make global scheduling decisions faster,
 Peloton uses hierarchical resource pools to manage elastic resources
 among different organizations and teams.
 
-Architecture
-============
+## Architecture
 
 ![image](_static/Peloton-Architecture.png)
 
