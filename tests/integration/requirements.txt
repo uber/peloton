@@ -5,3 +5,4 @@ pyyaml
 enum
 m3>=3.0.0
 protobuf
+thriftrw==1.7.1

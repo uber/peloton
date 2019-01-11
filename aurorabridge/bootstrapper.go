@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/respool"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/respool/svc"
+	v0peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	v1peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
@@ -30,13 +30,13 @@ import (
 // cluster.
 type Bootstrapper struct {
 	config        BootstrapConfig
-	respoolClient svc.ResourcePoolServiceYARPCClient
+	respoolClient respool.ResourceManagerYARPCClient
 }
 
 // NewBootstrapper creates a new Bootstrapper.
 func NewBootstrapper(
 	config BootstrapConfig,
-	respoolClient svc.ResourcePoolServiceYARPCClient,
+	respoolClient respool.ResourceManagerYARPCClient,
 ) *Bootstrapper {
 	config.normalize()
 	return &Bootstrapper{config, respoolClient}
@@ -44,7 +44,7 @@ func NewBootstrapper(
 
 // BootstrapRespool returns the ResourcePoolID for the configured path if it
 // exists, else it creates a new respool using the configured spec.
-func (b *Bootstrapper) BootstrapRespool() (*peloton.ResourcePoolID, error) {
+func (b *Bootstrapper) BootstrapRespool() (*v1peloton.ResourcePoolID, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), b.config.Timeout)
 	defer cancel()
 
@@ -63,34 +63,36 @@ func (b *Bootstrapper) BootstrapRespool() (*peloton.ResourcePoolID, error) {
 			return nil, fmt.Errorf("lookup %s id: %s", b.config.RespoolPath, err)
 		}
 	}
-	return id, nil
+	return &v1peloton.ResourcePoolID{
+		Value: id.GetValue(),
+	}, nil
 }
 
 func (b *Bootstrapper) lookupRespoolID(
 	ctx context.Context,
 	path string,
-) (*peloton.ResourcePoolID, error) {
+) (*v0peloton.ResourcePoolID, error) {
 
-	req := &svc.LookupResourcePoolIDRequest{
+	req := &respool.LookupRequest{
 		Path: &respool.ResourcePoolPath{Value: path},
 	}
 	resp, err := b.respoolClient.LookupResourcePoolID(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return resp.GetRespoolId(), nil
+	return resp.GetId(), nil
 }
 
 func (b *Bootstrapper) createDefaultRespool(
 	ctx context.Context,
-) (*peloton.ResourcePoolID, error) {
+) (*v0peloton.ResourcePoolID, error) {
 
 	root, err := b.lookupRespoolID(ctx, "/")
 	if err != nil {
 		return nil, fmt.Errorf("lookup root id: %s", err)
 	}
-	req := &svc.CreateResourcePoolRequest{
-		Spec: &respool.ResourcePoolSpec{
+	req := &respool.CreateRequest{
+		Config: &respool.ResourcePoolConfig{
 			Name:            strings.TrimPrefix(b.config.RespoolPath, "/"),
 			OwningTeam:      b.config.DefaultRespoolSpec.OwningTeam,
 			LdapGroups:      b.config.DefaultRespoolSpec.LDAPGroups,
@@ -106,5 +108,5 @@ func (b *Bootstrapper) createDefaultRespool(
 	if err != nil {
 		return nil, fmt.Errorf("create resource pool: %s", err)
 	}
-	return resp.GetRespoolId(), nil
+	return resp.GetResult(), nil
 }

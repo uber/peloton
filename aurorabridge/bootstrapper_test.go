@@ -21,17 +21,16 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/yarpc/yarpcerrors"
 
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/respool"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/respool/svc"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/respool/svc/mocks"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool/mocks"
 )
 
 type BootstrapperTestSuite struct {
 	suite.Suite
 
 	ctrl          *gomock.Controller
-	respoolClient *mocks.MockResourcePoolServiceYARPCClient
+	respoolClient *mocks.MockResourceManagerYARPCClient
 
 	config BootstrapConfig
 
@@ -40,7 +39,7 @@ type BootstrapperTestSuite struct {
 
 func (suite *BootstrapperTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
-	suite.respoolClient = mocks.NewMockResourcePoolServiceYARPCClient(suite.ctrl)
+	suite.respoolClient = mocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 
 	suite.config = BootstrapConfig{
 		RespoolPath: "/AuroraBridge",
@@ -48,13 +47,13 @@ func (suite *BootstrapperTestSuite) SetupTest() {
 			OwningTeam:  "some-team",
 			LDAPGroups:  []string{"some-group"},
 			Description: "some description",
-			Resources: []*respool.ResourceSpec{{
+			Resources: []*respool.ResourceConfig{{
 				Kind:        "cpu",
 				Reservation: 12,
 				Limit:       12,
 				Share:       1,
 			}},
-			Policy: respool.SchedulingPolicy_SCHEDULING_POLICY_PRIORITY_FIFO,
+			Policy: respool.SchedulingPolicy_PriorityFIFO,
 			ControllerLimit: &respool.ControllerLimit{
 				MaxPercent: 30,
 			},
@@ -79,16 +78,16 @@ func (suite *BootstrapperTestSuite) TestBootstrapRespool_ExistingPool() {
 	id := &peloton.ResourcePoolID{Value: "bridge-id"}
 
 	suite.respoolClient.EXPECT().
-		LookupResourcePoolID(gomock.Any(), &svc.LookupResourcePoolIDRequest{
+		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
 			Path: &respool.ResourcePoolPath{Value: suite.config.RespoolPath},
 		}).
-		Return(&svc.LookupResourcePoolIDResponse{
-			RespoolId: id,
+		Return(&respool.LookupResponse{
+			Id: id,
 		}, nil)
 
 	result, err := suite.bootstrapper.BootstrapRespool()
 	suite.NoError(err)
-	suite.Equal(id, result)
+	suite.Equal(id.GetValue(), result.GetValue())
 }
 
 func (suite *BootstrapperTestSuite) TestBootstrapRespool_NewPoolUsesDefaults() {
@@ -96,22 +95,22 @@ func (suite *BootstrapperTestSuite) TestBootstrapRespool_NewPoolUsesDefaults() {
 	id := &peloton.ResourcePoolID{Value: "bridge-id"}
 
 	suite.respoolClient.EXPECT().
-		LookupResourcePoolID(gomock.Any(), &svc.LookupResourcePoolIDRequest{
+		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
 			Path: &respool.ResourcePoolPath{Value: suite.config.RespoolPath},
 		}).
 		Return(nil, yarpcerrors.NotFoundErrorf(""))
 
 	suite.respoolClient.EXPECT().
-		LookupResourcePoolID(gomock.Any(), &svc.LookupResourcePoolIDRequest{
+		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
 			Path: &respool.ResourcePoolPath{Value: "/"},
 		}).
-		Return(&svc.LookupResourcePoolIDResponse{
-			RespoolId: rootID,
+		Return(&respool.LookupResponse{
+			Id: rootID,
 		}, nil)
 
 	suite.respoolClient.EXPECT().
-		CreateResourcePool(gomock.Any(), &svc.CreateResourcePoolRequest{
-			Spec: &respool.ResourcePoolSpec{
+		CreateResourcePool(gomock.Any(), &respool.CreateRequest{
+			Config: &respool.ResourcePoolConfig{
 				Name:            "AuroraBridge",
 				OwningTeam:      suite.config.DefaultRespoolSpec.OwningTeam,
 				LdapGroups:      suite.config.DefaultRespoolSpec.LDAPGroups,
@@ -123,11 +122,11 @@ func (suite *BootstrapperTestSuite) TestBootstrapRespool_NewPoolUsesDefaults() {
 				SlackLimit:      suite.config.DefaultRespoolSpec.SlackLimit,
 			},
 		}).
-		Return(&svc.CreateResourcePoolResponse{
-			RespoolId: id,
+		Return(&respool.CreateResponse{
+			Result: id,
 		}, nil)
 
 	result, err := suite.bootstrapper.BootstrapRespool()
 	suite.NoError(err)
-	suite.Equal(id, result)
+	suite.Equal(id.GetValue(), result.GetValue())
 }

@@ -18,9 +18,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
-	respoolsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/respool/svc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/auroraschedulermanagerserver"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/readonlyschedulerserver"
 
@@ -198,7 +198,7 @@ func main() {
 	podClient := podsvc.NewPodServiceYARPCClient(
 		dispatcher.ClientConfig(common.PelotonJobManager))
 
-	respoolClient := respoolsvc.NewResourcePoolServiceYARPCClient(
+	respoolClient := respool.NewResourceManagerYARPCClient(
 		dispatcher.ClientConfig(common.PelotonResourceManager))
 
 	// Start the dispatcher before we register the aurorabridge handler, since we'll
