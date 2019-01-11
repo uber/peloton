@@ -37,6 +37,7 @@ jenkins.xml
 .gen
 .vscode/
 /env_docs/
+docs/_build/*
 
 # Ignore any mocks sub-directory.
 mocks/

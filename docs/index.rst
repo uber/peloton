@@ -19,3 +19,4 @@ Home
    pelotondev
    introduction
    security
+   api_ref

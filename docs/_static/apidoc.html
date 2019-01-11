@@ -740,6 +740,10 @@
                   <a href="#peloton.api.v0.task.TaskUpdateError"><span class="badge">M</span>TaskUpdateError</a>
                 </li>
               
+                <li>
+                  <a href="#peloton.api.v0.task.TerminationStatus"><span class="badge">M</span>TerminationStatus</a>
+                </li>
+              
               
                 <li>
                   <a href="#peloton.api.v0.task.Constraint.Type"><span class="badge">E</span>Constraint.Type</a>
@@ -771,6 +775,10 @@
               
                 <li>
                   <a href="#peloton.api.v0.task.TaskState"><span class="badge">E</span>TaskState</a>
+                </li>
+              
+                <li>
+                  <a href="#peloton.api.v0.task.TerminationStatus.Reason"><span class="badge">E</span>TerminationStatus.Reason</a>
                 </li>
               
               
@@ -1151,6 +1159,10 @@
                   <a href="#peloton.api.v1alpha.pod.RestartPolicy"><span class="badge">M</span>RestartPolicy</a>
                 </li>
               
+                <li>
+                  <a href="#peloton.api.v1alpha.pod.TerminationStatus"><span class="badge">M</span>TerminationStatus</a>
+                </li>
+              
               
                 <li>
                   <a href="#peloton.api.v1alpha.pod.Constraint.Type"><span class="badge">E</span>Constraint.Type</a>
@@ -1178,6 +1190,10 @@
               
                 <li>
                   <a href="#peloton.api.v1alpha.pod.PodState"><span class="badge">E</span>PodState</a>
+                </li>
+              
+                <li>
+                  <a href="#peloton.api.v1alpha.pod.TerminationStatus.Reason"><span class="badge">E</span>TerminationStatus.Reason</a>
                 </li>
               
               
@@ -1989,6 +2005,10 @@
                 </li>
               
                 <li>
+                  <a href="#peloton.api.v1alpha.job.stateless.UpdateInfo"><span class="badge">M</span>UpdateInfo</a>
+                </li>
+              
+                <li>
                   <a href="#peloton.api.v1alpha.job.stateless.UpdateSpec"><span class="badge">M</span>UpdateSpec</a>
                 </li>
               
@@ -2150,6 +2170,14 @@
                 </li>
               
                 <li>
+                  <a href="#peloton.api.v1alpha.job.stateless.svc.GetJobUpdateRequest"><span class="badge">M</span>GetJobUpdateRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#peloton.api.v1alpha.job.stateless.svc.GetJobUpdateResponse"><span class="badge">M</span>GetJobUpdateResponse</a>
+                </li>
+              
+                <li>
                   <a href="#peloton.api.v1alpha.job.stateless.svc.GetReplaceJobDiffRequest"><span class="badge">M</span>GetReplaceJobDiffRequest</a>
                 </li>
               
@@ -2171,10 +2199,6 @@
               
                 <li>
                   <a href="#peloton.api.v1alpha.job.stateless.svc.ListJobUpdatesResponse"><span class="badge">M</span>ListJobUpdatesResponse</a>
-                </li>
-              
-                <li>
-                  <a href="#peloton.api.v1alpha.job.stateless.svc.ListJobUpdatesResponse.UpdateInfo"><span class="badge">M</span>ListJobUpdatesResponse.UpdateInfo</a>
                 </li>
               
                 <li>
@@ -6112,6 +6136,14 @@ and finishes in 10 seconds, this map will contain &lt;&#34;cpu&#34;:10&gt; </p><
                   <td><p>The desired mesos task ID for this instance </p></td>
                 </tr>
               
+                <tr>
+                  <td>terminationStatus</td>
+                  <td><a href="#peloton.api.v0.task.TerminationStatus">TerminationStatus</a></td>
+                  <td></td>
+                  <td><p>Termination status of the task. Set only if the task is in a non-successful
+terminal state such as KILLED or FAILED. </p></td>
+                </tr>
+              
             </tbody>
           </table>
         
@@ -6750,6 +6782,43 @@ unique and contiguous within a job. The ID is in the range of
 
         
       
+        <h3 id="peloton.api.v0.task.TerminationStatus">TerminationStatus</h3>
+        <p>TerminationStatus contains details about termination of a task. It mainly</p><p>contains Peloton-specific reasons for termination.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>reason</td>
+                  <td><a href="#peloton.api.v0.task.TerminationStatus.Reason">TerminationStatus.Reason</a></td>
+                  <td></td>
+                  <td><p>Reason for termination. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>exit_code</td>
+                  <td><a href="#uint32">uint32</a></td>
+                  <td></td>
+                  <td><p>If non-zero, exit status when the container terminated. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>signal</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Name of signal received by the container when it terminated. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+        
+
+        
+      
 
       
         <h3 id="peloton.api.v0.task.Constraint.Type">Constraint.Type</h3>
@@ -7108,6 +7177,48 @@ TODO: We need to correct the numbering</p></td>
                 <td>DELETED</td>
                 <td>16</td>
                 <td><p>The task is to be deleted after termination</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="peloton.api.v0.task.TerminationStatus.Reason">TerminationStatus.Reason</h3>
+        <p>Reason lists various causes for a task termination</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>TERMINATION_STATUS_REASON_INVALID</td>
+                <td>0</td>
+                <td><p>Default value.</p></td>
+              </tr>
+            
+              <tr>
+                <td>TERMINATION_STATUS_REASON_KILLED_ON_REQUEST</td>
+                <td>1</td>
+                <td><p>Task was killed because a stop request was received from a client.</p></td>
+              </tr>
+            
+              <tr>
+                <td>TERMINATION_STATUS_REASON_FAILED</td>
+                <td>2</td>
+                <td><p>Task failed. See also TerminationStatus.exit_code,
+TerminationStatus.signal and ContainerStatus.message.</p></td>
+              </tr>
+            
+              <tr>
+                <td>TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE</td>
+                <td>3</td>
+                <td><p>Task was killed to put the host in to maintenance.</p></td>
+              </tr>
+            
+              <tr>
+                <td>TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES</td>
+                <td>4</td>
+                <td><p>Tasked was killed to reclaim resources allocated to it.</p></td>
               </tr>
             
           </tbody>
@@ -8927,6 +9038,12 @@ tasks in the job is killed by the user.</p></td>
                 <td><p>The job is partially created and is not ready to be scheduled</p></td>
               </tr>
             
+              <tr>
+                <td>DELETED</td>
+                <td>9</td>
+                <td><p>The job has been deleted.</p></td>
+              </tr>
+            
           </tbody>
         </table>
       
@@ -9736,17 +9853,11 @@ RFC3339 form with UTC timezone. </p></td>
                 </tr>
               
                 <tr>
-                  <td>exit_code</td>
-                  <td><a href="#int32">int32</a></td>
+                  <td>terminationStatus</td>
+                  <td><a href="#peloton.api.v1alpha.pod.TerminationStatus">TerminationStatus</a></td>
                   <td></td>
-                  <td><p>Exit status when the container terminated. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>signal</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p>Signal from when the container terminated. </p></td>
+                  <td><p>Termination status of the task. Set only if the task is in a non-successful
+terminal state such as CONTAINER_STATE_FAILED or CONTAINER_STATE_KILLED. </p></td>
                 </tr>
               
             </tbody>
@@ -10700,6 +10811,43 @@ backoff for now. Default 0 means no retry on failures. </p></td>
 
         
       
+        <h3 id="peloton.api.v1alpha.pod.TerminationStatus">TerminationStatus</h3>
+        <p>TerminationStatus contains details about termination of a task. It mainly</p><p>contains Peloton-specific reasons for termination.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>reason</td>
+                  <td><a href="#peloton.api.v1alpha.pod.TerminationStatus.Reason">TerminationStatus.Reason</a></td>
+                  <td></td>
+                  <td><p>Reason for termination. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>exit_code</td>
+                  <td><a href="#uint32">uint32</a></td>
+                  <td></td>
+                  <td><p>If non-zero, exit status when the container terminated. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>signal</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Name of signal received by the container when it terminated. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+        
+
+        
+      
 
       
         <h3 id="peloton.api.v1alpha.pod.Constraint.Type">Constraint.Type</h3>
@@ -11060,6 +11208,48 @@ in the pod are being started by Mesos agent</p></td>
                 <td>POD_STATE_DELETED</td>
                 <td>16</td>
                 <td><p>The pod is to be deleted after termination</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="peloton.api.v1alpha.pod.TerminationStatus.Reason">TerminationStatus.Reason</h3>
+        <p>Reason lists various causes for a task termination</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>TERMINATION_STATUS_REASON_INVALID</td>
+                <td>0</td>
+                <td><p>Default value.</p></td>
+              </tr>
+            
+              <tr>
+                <td>TERMINATION_STATUS_REASON_KILLED_ON_REQUEST</td>
+                <td>1</td>
+                <td><p>Task was killed because a stop request was received from a client.</p></td>
+              </tr>
+            
+              <tr>
+                <td>TERMINATION_STATUS_REASON_FAILED</td>
+                <td>2</td>
+                <td><p>Task failed. See also TerminationStatus.exit_code,
+TerminationStatus.signal and ContainerStatus.message.</p></td>
+              </tr>
+            
+              <tr>
+                <td>TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE</td>
+                <td>3</td>
+                <td><p>Task was killed to put the host in to maintenance.</p></td>
+              </tr>
+            
+              <tr>
+                <td>TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES</td>
+                <td>4</td>
+                <td><p>Tasked was killed to reclaim resources allocated to it.</p></td>
               </tr>
             
           </tbody>
@@ -16223,6 +16413,36 @@ configuration in the pod spec. </p></td>
 
         
       
+        <h3 id="peloton.api.v1alpha.job.stateless.UpdateInfo">UpdateInfo</h3>
+        <p>Information about an update including its specification, status</p><p>and events</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>info</td>
+                  <td><a href="#peloton.api.v1alpha.job.stateless.WorkflowInfo">WorkflowInfo</a></td>
+                  <td></td>
+                  <td><p>workflow information including status and specification </p></td>
+                </tr>
+              
+                <tr>
+                  <td>events</td>
+                  <td><a href="#peloton.api.v1alpha.job.stateless.WorkflowEvent">WorkflowEvent</a></td>
+                  <td>repeated</td>
+                  <td><p>workflow events </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+        
+
+        
+      
         <h3 id="peloton.api.v1alpha.job.stateless.UpdateSpec">UpdateSpec</h3>
         <p>Configuration of a job update.</p>
 
@@ -16285,7 +16505,7 @@ in the paused state, requiring an explicit resume to roll forward. </p></td>
         
       
         <h3 id="peloton.api.v1alpha.job.stateless.WorkflowEvent">WorkflowEvent</h3>
-        <p></p>
+        <p>WorkflowEvents are workflow state change events for a job or pod</p><p>on workflow operations</p>
 
         
           <table class="field-table">
@@ -16510,6 +16730,12 @@ tasks in the job is killed by the user.</p></td>
                 <td>JOB_STATE_UNINITIALIZED</td>
                 <td>8</td>
                 <td><p>The job is partially created and is not ready to be scheduled</p></td>
+              </tr>
+            
+              <tr>
+                <td>JOB_STATE_DELETED</td>
+                <td>9</td>
+                <td><p>The job has been deleted.</p></td>
               </tr>
             
           </tbody>
@@ -17364,6 +17590,67 @@ including its state and specification. </p></td>
 
         
       
+        <h3 id="peloton.api.v1alpha.job.stateless.svc.GetJobUpdateRequest">GetJobUpdateRequest</h3>
+        <p>Request message for JobService.GetJobUpdate method.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>job_id</td>
+                  <td><a href="#peloton.api.v1alpha.peloton.JobID">peloton.api.v1alpha.peloton.JobID</a></td>
+                  <td></td>
+                  <td><p>The job ID to look up the job. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+        
+
+        
+      
+        <h3 id="peloton.api.v1alpha.job.stateless.svc.GetJobUpdateResponse">GetJobUpdateResponse</h3>
+        <p>Response message for JobService.GetJobUpdate method.</p><p>Return errors:</p><p>NOT_FOUND:         if the update is not found.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>update_info</td>
+                  <td><a href="#peloton.api.v1alpha.job.stateless.UpdateInfo">peloton.api.v1alpha.job.stateless.UpdateInfo</a></td>
+                  <td></td>
+                  <td><p>Information about the job update, which includes update specification,
+status and events. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prev_job_spec</td>
+                  <td><a href="#peloton.api.v1alpha.job.stateless.JobSpec">peloton.api.v1alpha.job.stateless.JobSpec</a></td>
+                  <td></td>
+                  <td><p>Job configuration before update. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>job_spec</td>
+                  <td><a href="#peloton.api.v1alpha.job.stateless.JobSpec">peloton.api.v1alpha.job.stateless.JobSpec</a></td>
+                  <td></td>
+                  <td><p>Job configuration after update. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+        
+
+        
+      
         <h3 id="peloton.api.v1alpha.job.stateless.svc.GetReplaceJobDiffRequest">GetReplaceJobDiffRequest</h3>
         <p>Request message for JobService.GetReplaceJobDiffRequest method.</p>
 
@@ -17533,39 +17820,9 @@ including its state and specification. </p></td>
               
                 <tr>
                   <td>updates</td>
-                  <td><a href="#peloton.api.v1alpha.job.stateless.svc.ListJobUpdatesResponse.UpdateInfo">ListJobUpdatesResponse.UpdateInfo</a></td>
+                  <td><a href="#peloton.api.v1alpha.job.stateless.UpdateInfo">peloton.api.v1alpha.job.stateless.UpdateInfo</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-        
-
-        
-      
-        <h3 id="peloton.api.v1alpha.job.stateless.svc.ListJobUpdatesResponse.UpdateInfo">ListJobUpdatesResponse.UpdateInfo</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>info</td>
-                  <td><a href="#peloton.api.v1alpha.job.stateless.WorkflowInfo">peloton.api.v1alpha.job.stateless.WorkflowInfo</a></td>
-                  <td></td>
-                  <td><p>workflow information including status and specification </p></td>
-                </tr>
-              
-                <tr>
-                  <td>events</td>
-                  <td><a href="#peloton.api.v1alpha.job.stateless.WorkflowEvent">peloton.api.v1alpha.job.stateless.WorkflowEvent</a></td>
-                  <td>repeated</td>
-                  <td><p>workflow events </p></td>
                 </tr>
               
             </tbody>
@@ -18448,6 +18705,14 @@ in batches and the stream is closed once all results have been sent.</p></td>
                 <td><a href="#peloton.api.v1alpha.job.stateless.svc.GetReplaceJobDiffResponse">GetReplaceJobDiffResponse</a></td>
                 <td><p>Get the list of instances which will be added/removed/updated if
 the given job specification is applied via the ReplaceJob API.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetJobUpdate</td>
+                <td><a href="#peloton.api.v1alpha.job.stateless.svc.GetJobUpdateRequest">GetJobUpdateRequest</a></td>
+                <td><a href="#peloton.api.v1alpha.job.stateless.svc.GetJobUpdateResponse">GetJobUpdateResponse</a></td>
+                <td><p>Get the current update for the job which includes update specification,
+status, events, new and old job specification.</p></td>
               </tr>
             
               <tr>
