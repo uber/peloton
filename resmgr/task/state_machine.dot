@@ -1,0 +1,53 @@
+// This is a graphviz dot file. To render the drawing run:
+//   $ dot -Tpng state_machine.dot  -o state_machine.png
+//
+// The turquoise nodes represent the `stable` states where we wait for an event.
+//
+// The pink nodes represent `timeout` states where we wait for a timeout or
+// an event.
+digraph {
+    graph [rankdir=LR] // left-right layout, not top-down
+
+    init [shape = point ]
+    init -> PENDING [label="EnqueueGangs()"]
+
+    // States
+    PENDING     [shape=doublecircle, fontcolor=black, style=filled, fillcolor=Turquoise]
+    READY       [shape=circle, fontcolor=black, style=filled, fillcolor=Turquoise]
+    PLACING     [shape=circle, fontcolor=black, style=filled, fillcolor=deeppink]
+    PLACED      [shape=circle, fontcolor=black, style=filled, fillcolor=Turquoise]
+    LAUNCHING   [shape=circle, fontcolor=black, style=filled, fillcolor=deeppink]
+    LAUNCHED    [shape=circle, fontcolor=black, style=filled, fillcolor=Turquoise]
+    PREEMPTING  [shape=circle, fontcolor=black, style=filled, fillcolor=Turquoise]
+    RUNNING     [shape=circle, fontcolor=black, style=filled, fillcolor=Turquoise]
+    TERMINATED  [shape=doublecircle, fontcolor=black, style=filled, fillcolor=Turquoise]
+
+    // Edges
+    PENDING   -> READY      [style=bold, label="admission control"]
+    READY     -> PLACING    [style=bold, label="DequeueGangs()"]
+    PLACING   -> PLACED     [style=bold, label="SetPlacements()"]
+    PLACED    -> LAUNCHING  [style=bold, label="GetPlacements()"]
+    LAUNCHING -> LAUNCHED   [style=bold, label="launched on host"]
+    LAUNCHED  -> RUNNING    [style=bold, label="running on host"]
+    RUNNING   -> TERMINATED [style=bold, label="lost/killed/failed"]
+
+    // Preemption
+    READY      -> PENDING     [color=red, label="Preempting for resources"]
+    PLACING    -> PENDING     [color=red, label="Preempting for resources"]
+    RUNNING    ->  PREEMPTING [color=red, label="Preempting for resources"]
+    PREEMPTING -> init        [color=red, label="Reschedule"]
+    PREEMPTING -> TERMINATED  [color=red, label="Kill"]
+
+    // Timeouts
+    PLACING -> READY    [style=dotted, label="Timed out Placing"]
+    PLACING -> PENDING  [style=dotted, label="Timed out Placing too many times"]
+    LAUNCHING -> READY  [style=dotted, label="Timed out Launching"]
+
+    // Termination sub graph
+    subgraph {
+        "*"         [shape=circle, fontcolor=black, style=filled, fillcolor=Turquoise]         // short for all states
+        TERMINATED  [shape=doublecircle, fontcolor=black, style=filled, fillcolor=Turquoise]
+
+        "*" -> TERMINATED
+    }
+}

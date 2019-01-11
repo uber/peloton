@@ -1,8 +1,77 @@
 # User Guide
 
-## Api Doc
+##  Job and Task Definitions
 
--   See the complete [API documentation](_static/apidoc.html)
+In Peloton, a Job is one or more instances of the same executable, running on a 
+Cluster. Each instance of a Job is called a Task that contains the executable to
+ run, the arguments to the executable, and other metadata such as resource 
+ requirements, container image, and port configuration, etc.
+
+![image](_static/job_task_peloton.png)
+
+A Job or Task’s resource requirements are in the form of a vector of multiple 
+resource types <cpu, memory, disk-size, gpu>. 
+In a Job definition the user can specify how many resources they need for each 
+Task and how many Tasks they need. Note that resource requirements are the upper
+limit of how much resource a Task might use. 
+In reality, the runtime of a Task might use much less resources than the limit. 
+The difference between the limit and the actual usage is called Slack which 
+could be future allocated to other lower-priority Tasks via revocable offers 
+from Mesos.
+
+Each Job has an SLA configuration that specifies the Priority, Preemptibility, 
+and  Revocability of a Job. 
+
+A Job can also be restricted to a subset of the hosts by specifying a list of 
+Constraints. Peloton will take those constraints into account when computing 
+the placement decisions for the tasks. These constraints can be of the form of 
+soft and hard constraints. For soft constraints, Peloton will try its best to 
+place those tasks on the desired hosts with the requested capabilities. 
+If the soft constraints can not be satisfied after a configured timeout, the 
+tasks will be placed to other hosts. 
+For hard constraints, the tasks will not be scheduled until the constraints are 
+satisfied, which could lead to higher latency and potential task starvation.
+
+
+### Job and Task Lifecycle
+
+In Peloton, a job represents a set of tasks that will be scheduled to run on a 
+cluster. It contains both the common and the per-task specific configurations. 
+When a job is submitted to Peloton via job manager, the job configuration is 
+first written into Cassandra as the goal state. Then job manager parses and adds
+each individual task into the pending task queue of the given resource pool in 
+resource manager. When there is available resource in the resource pool, the 
+pending tasks will be transited to ready state and dequeued by one of the 
+placement engines for calculating placement decision. Then job manager will use 
+the placements to launch tasks on Mesos via host manager. 
+
+Next shows the detailed sequence diagram of a job creation workflow in Peloton
+
+  
+![image](_static/job_task_creation_peloton.png)
+
+
+#### Job State Machine
+
+For each job, Peloton use a state machine to represent its state, and the logic
+to transition state according to various events happened to the tasks of the job. 
+Peloton defines the following states for job, shown in the following state 
+transition diagram:
+
+![image](_static/job_lifecycle_peloton.png)
+
+
+#### Task State Machine
+
+For each task, Peloton use a state machine to represent its state, and the 
+logic to transition state according to various events happened to the task. 
+Peloton defines the following states for task, shown in the following state 
+transition diagram: 
+
+
+![image](_static/task_lifecycle_peloton.png)
+
+
 
 ## Resource Pools
 
