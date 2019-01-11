@@ -21,3 +21,4 @@ Home
    security
    api_ref
    hostmaintenance
+   clients
