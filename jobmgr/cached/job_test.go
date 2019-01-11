@@ -1854,7 +1854,8 @@ func (suite *JobTestSuite) TestJobCreateWorkflowSuccess() {
 		oldWorkflowVersion,
 	)
 	prevConfig := &pbjob.JobConfig{
-		ChangeLog: &peloton.ChangeLog{Version: 1},
+		DefaultConfig: &pbtask.TaskConfig{},
+		ChangeLog:     &peloton.ChangeLog{Version: 1},
 	}
 	jobConfig := prevConfig
 	configAddOn := &models.ConfigAddOn{}
@@ -2678,6 +2679,9 @@ func (suite *JobTestSuite) TestClearWorkflow() {
 func (suite *JobTestSuite) TestRollbackWorkflowSuccess() {
 	jobPrevVersion := uint64(1)
 	jobPrevConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{
+			Revocable: true,
+		},
 		ChangeLog: &peloton.ChangeLog{
 			Version: jobPrevVersion,
 		},
@@ -2686,6 +2690,9 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccess() {
 
 	jobVersion := uint64(2)
 	jobConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{
+			Revocable: false,
+		},
 		ChangeLog: &peloton.ChangeLog{
 			Version: jobVersion,
 		},
@@ -2861,6 +2868,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowGetPrevConfigFailure() {
 func (suite *JobTestSuite) TestRollbackWorkflowGetTargetConfigFailure() {
 	jobPrevVersion := uint64(1)
 	jobPrevConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{},
 		ChangeLog: &peloton.ChangeLog{
 			Version: jobPrevVersion,
 		},
@@ -2869,6 +2877,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowGetTargetConfigFailure() {
 
 	jobVersion := uint64(2)
 	jobConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{},
 		ChangeLog: &peloton.ChangeLog{
 			Version: jobVersion,
 		},
@@ -2933,6 +2942,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowGetTargetConfigFailure() {
 func (suite *JobTestSuite) TestRollbackWorkflowCopyConfigFailure() {
 	jobPrevVersion := uint64(1)
 	jobPrevConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{},
 		ChangeLog: &peloton.ChangeLog{
 			Version: jobPrevVersion,
 		},
@@ -2941,6 +2951,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowCopyConfigFailure() {
 
 	jobVersion := uint64(2)
 	jobConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{},
 		ChangeLog: &peloton.ChangeLog{
 			Version: jobVersion,
 		},
@@ -3021,6 +3032,9 @@ func (suite *JobTestSuite) TestRollbackWorkflowNoWorkflow() {
 func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 	jobPrevVersion := uint64(1)
 	jobPrevConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{
+			Revocable: true,
+		},
 		ChangeLog: &peloton.ChangeLog{
 			Version: jobPrevVersion,
 		},
@@ -3029,6 +3043,9 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 
 	jobVersion := uint64(2)
 	jobConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{
+			Revocable: false,
+		},
 		ChangeLog: &peloton.ChangeLog{
 			Version: jobVersion,
 		},
@@ -3207,6 +3224,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeUpdateDBWriteFails() {
 	jobPrevVersion := uint64(1)
 	jobPrevConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{},
 		ChangeLog: &peloton.ChangeLog{
 			Version: jobPrevVersion,
 		},
@@ -3215,6 +3233,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeUpdateDBWri
 
 	jobVersion := uint64(2)
 	jobConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{},
 		ChangeLog: &peloton.ChangeLog{
 			Version: jobVersion,
 		},
@@ -3337,6 +3356,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeUpdateDBWri
 func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeDBWriteSucceedsWithError() {
 	jobPrevVersion := uint64(1)
 	jobPrevConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{},
 		ChangeLog: &peloton.ChangeLog{
 			Version: jobPrevVersion,
 		},
@@ -3345,6 +3365,7 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeDBWriteSucc
 
 	jobVersion := uint64(2)
 	jobConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{},
 		ChangeLog: &peloton.ChangeLog{
 			Version: jobVersion,
 		},
@@ -3502,6 +3523,60 @@ func (suite *JobTestSuite) TestJobCreateTaskConfigsSuccess() {
 			gomock.Any(),
 			jobConfig.GetChangeLog().GetVersion()).
 		Return(nil)
+
+	for i, taskConfig := range jobConfig.GetInstanceConfig() {
+		suite.taskStore.EXPECT().
+			CreateTaskConfig(
+				gomock.Any(),
+				suite.jobID,
+				int64(i),
+				taskConfig,
+				gomock.Any(),
+				jobConfig.GetChangeLog().GetVersion()).
+			Return(nil)
+	}
+
+	suite.NoError(
+		suite.job.CreateTaskConfigs(
+			context.Background(),
+			suite.jobID,
+			jobConfig,
+			&models.ConfigAddOn{},
+		),
+	)
+}
+
+// TestJobCreateTaskConfigsNoDefaultConfigSuccess tests success case of
+// creating task configurations without task config
+func (suite *JobTestSuite) TestJobCreateTaskConfigsNoDefaultConfigSuccess() {
+	instanceCount := uint32(10)
+	jobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 1,
+		},
+		OwningTeam:    "uber",
+		LdapGroups:    []string{"money", "team6", "otto"},
+		InstanceCount: instanceCount,
+		InstanceConfig: map[uint32]*pbtask.TaskConfig{
+			2: {
+				Name: "instance2",
+				Resource: &pbtask.ResourceConfig{
+					CpuLimit:    1,
+					MemLimitMb:  500,
+					DiskLimitMb: 1000,
+				},
+			},
+
+			4: {
+				Name: "instance4",
+				Resource: &pbtask.ResourceConfig{
+					CpuLimit:    1,
+					MemLimitMb:  600,
+					DiskLimitMb: 1200,
+				},
+			},
+		},
+	}
 
 	for i, taskConfig := range jobConfig.GetInstanceConfig() {
 		suite.taskStore.EXPECT().

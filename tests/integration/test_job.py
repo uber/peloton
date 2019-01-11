@@ -23,6 +23,19 @@ def test__create_job():
 
 
 @pytest.mark.smoketest
+def test__create_job_without_default_config():
+    job = Job(config=IntegrationTestConfig(max_retry_attempts=100))
+    default_config = job.job_config.defaultConfig
+    job.job_config.ClearField('defaultConfig')
+
+    for i in range(0, job.job_config.instanceCount):
+        job.job_config.instanceConfig[i].CopyFrom(default_config)
+
+    job.create()
+    job.wait_for_state()
+
+
+@pytest.mark.smoketest
 def test__stop_long_running_batch_job_immediately(long_running_job):
     long_running_job.config = IntegrationTestConfig(max_retry_attempts=100)
     long_running_job.job_config.instanceCount = 100

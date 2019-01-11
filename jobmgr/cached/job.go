@@ -394,21 +394,23 @@ func (j *job) CreateTaskConfigs(
 	jobConfig *pbjob.JobConfig,
 	configAddOn *models.ConfigAddOn,
 ) error {
-	// Create default task config in DB
-	if err := j.jobFactory.taskStore.CreateTaskConfig(
-		ctx,
-		jobID,
-		common.DefaultTaskConfigID,
-		jobConfig.GetDefaultConfig(),
-		configAddOn,
-		jobConfig.GetChangeLog().GetVersion(),
-	); err != nil {
-		log.WithError(err).
-			WithFields(log.Fields{
-				"job_id":      j.ID().GetValue(),
-				"instance_id": common.DefaultTaskConfigID,
-			}).Info("failed to write default task config")
-		return yarpcerrors.InternalErrorf(err.Error())
+	if jobConfig.GetDefaultConfig() != nil {
+		// Create default task config in DB
+		if err := j.jobFactory.taskStore.CreateTaskConfig(
+			ctx,
+			jobID,
+			common.DefaultTaskConfigID,
+			jobConfig.GetDefaultConfig(),
+			configAddOn,
+			jobConfig.GetChangeLog().GetVersion(),
+		); err != nil {
+			log.WithError(err).
+				WithFields(log.Fields{
+					"job_id":      j.ID().GetValue(),
+					"instance_id": common.DefaultTaskConfigID,
+				}).Info("failed to write default task config")
+			return yarpcerrors.InternalErrorf(err.Error())
+		}
 	}
 
 	createSingleTaskConfig := func(id uint32) error {
