@@ -22,3 +22,4 @@ Home
    api_ref
    hostmaintenance
    clients
+   architecture
