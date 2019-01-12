@@ -48,4 +48,4 @@ class Client(object):
                 code=res.status_code,
                 reason=res.reason,
                 body=res.text))
-        return api.loads(method.response, res.content)
+        return api.loads(method.response, res.content).success

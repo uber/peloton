@@ -16,7 +16,6 @@ package main
 
 import (
 	"os"
-	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
@@ -206,10 +205,6 @@ func main() {
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
-
-	// Give some time for dispatcher to start so we can bootstrap...
-	// TODO(codyg): Figure out a way around this.
-	time.Sleep(5 * time.Second)
 
 	server := aurorabridge.NewServer(*httpPort)
 

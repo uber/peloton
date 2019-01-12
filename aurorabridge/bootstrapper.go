@@ -19,7 +19,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	log "github.com/sirupsen/logrus"
 	v0peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 	v1peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -45,12 +47,34 @@ func NewBootstrapper(
 // BootstrapRespool returns the ResourcePoolID for the configured path if it
 // exists, else it creates a new respool using the configured spec.
 func (b *Bootstrapper) BootstrapRespool() (*v1peloton.ResourcePoolID, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), b.config.Timeout)
-	defer cancel()
+	log.Info("Boostrapping respool")
 
 	if b.config.RespoolPath == "" {
 		return nil, errors.New("no path configured")
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), b.config.Timeout)
+	defer cancel()
+
+	for {
+		id, err := b.bootstrapRespool(ctx)
+		if err != nil {
+			select {
+			case <-time.After(b.config.RetryInterval):
+				// Retry.
+				continue
+			case <-ctx.Done():
+				// Timed out while waiting to retry.
+				return nil, err
+			}
+		}
+		return id, nil
+	}
+}
+
+func (b *Bootstrapper) bootstrapRespool(
+	ctx context.Context,
+) (*v1peloton.ResourcePoolID, error) {
 
 	id, err := b.lookupRespoolID(ctx, b.config.RespoolPath)
 	if err != nil {
@@ -59,9 +83,16 @@ func (b *Bootstrapper) BootstrapRespool() (*v1peloton.ResourcePoolID, error) {
 			if err != nil {
 				return nil, fmt.Errorf("create default: %s", err)
 			}
+			log.WithFields(log.Fields{
+				"id": id.GetValue(),
+			}).Info("Created default respool")
 		} else {
 			return nil, fmt.Errorf("lookup %s id: %s", b.config.RespoolPath, err)
 		}
+	} else {
+		log.WithFields(log.Fields{
+			"id": id.GetValue(),
+		}).Info("Reusing pre-existing respool")
 	}
 	return &v1peloton.ResourcePoolID{
 		Value: id.GetValue(),
@@ -79,6 +110,15 @@ func (b *Bootstrapper) lookupRespoolID(
 	resp, err := b.respoolClient.LookupResourcePoolID(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+	rerr := resp.GetError()
+	if rerr != nil {
+		// Convert these embedded response errors to YARPC errors since this API
+		// is getting deprecated.
+		if rerr.GetNotFound() != nil {
+			return nil, yarpcerrors.NotFoundErrorf(rerr.String())
+		}
+		return nil, yarpcerrors.UnknownErrorf(rerr.String())
 	}
 	return resp.GetId(), nil
 }
@@ -107,6 +147,10 @@ func (b *Bootstrapper) createDefaultRespool(
 	resp, err := b.respoolClient.CreateResourcePool(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("create resource pool: %s", err)
+	}
+	rerr := resp.GetError()
+	if rerr != nil {
+		return nil, yarpcerrors.UnknownErrorf(rerr.String())
 	}
 	return resp.GetResult(), nil
 }

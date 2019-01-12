@@ -15,7 +15,9 @@
 package aurorabridge
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -42,7 +44,9 @@ func (suite *BootstrapperTestSuite) SetupTest() {
 	suite.respoolClient = mocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 
 	suite.config = BootstrapConfig{
-		RespoolPath: "/AuroraBridge",
+		Timeout:       time.Second,
+		RetryInterval: 50 * time.Millisecond,
+		RespoolPath:   "/AuroraBridge",
 		DefaultRespoolSpec: DefaultRespoolSpec{
 			OwningTeam:  "some-team",
 			LDAPGroups:  []string{"some-group"},
@@ -129,4 +133,41 @@ func (suite *BootstrapperTestSuite) TestBootstrapRespool_NewPoolUsesDefaults() {
 	result, err := suite.bootstrapper.BootstrapRespool()
 	suite.NoError(err)
 	suite.Equal(id.GetValue(), result.GetValue())
+}
+
+func (suite *BootstrapperTestSuite) TestBoostrapperRespool_Retry() {
+	id := &peloton.ResourcePoolID{Value: "bridge-id"}
+
+	// We should retry on error if within timeout.
+	gomock.InOrder(
+		suite.respoolClient.EXPECT().
+			LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{Value: suite.config.RespoolPath},
+			}).
+			Return(nil, errors.New("some leader not found error")),
+		suite.respoolClient.EXPECT().
+			LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{Value: suite.config.RespoolPath},
+			}).
+			Return(&respool.LookupResponse{
+				Id: id,
+			}, nil),
+	)
+
+	result, err := suite.bootstrapper.BootstrapRespool()
+	suite.NoError(err)
+	suite.Equal(id.GetValue(), result.GetValue())
+}
+
+func (suite *BootstrapperTestSuite) TestBoostrapperRespool_Error() {
+	// We should return error if this lookup keeps failing after timeout.
+	suite.respoolClient.EXPECT().
+		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+			Path: &respool.ResourcePoolPath{Value: suite.config.RespoolPath},
+		}).
+		Return(nil, errors.New("some leader not found error")).
+		MinTimes(1)
+
+	_, err := suite.bootstrapper.BootstrapRespool()
+	suite.Error(err)
 }
