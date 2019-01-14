@@ -131,6 +131,11 @@ def mesos_agent():
 
 
 @pytest.fixture()
+def placement_engines():
+    return Container(util.PLACEMENT_ENGINES)
+
+
+@pytest.fixture()
 def jobmgr():
     # TODO: We need to pick up the count dynamically.
     return Container(util.JOB_MGRS)

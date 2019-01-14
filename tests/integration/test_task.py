@@ -2,8 +2,9 @@ import grpc
 import pytest
 import time
 
-from job import IntegrationTestConfig, Job, kill_jobs
+from job import IntegrationTestConfig, Job, kill_jobs, with_instance_count
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
+from client import Client, with_private_stubs
 
 
 pytestmark = [pytest.mark.default, pytest.mark.task]
@@ -260,3 +261,44 @@ def test_job_succeeds_if_controller_task_succeeds():
     cjob.wait_for_state(goal_state='SUCCEEDED')
 
     kill_jobs([cjob])
+
+
+def test_task_killed_in_ready_succeeds_when_re_enqueued(placement_engines):
+    # Tests that a if task is deleted which is in READY state in resource
+    # manager and if is re-enqueued succeeds.
+
+    # stop the placement engines to keep the tasks in READY state
+    placement_engines.stop()
+
+    # decorate the client to add peloton private API stubs
+    c = with_private_stubs(Client())
+
+    # create long running job with 2 instances
+    long_running_job = Job(
+        job_file='long_running_job.yaml',
+        options=[
+            with_instance_count(2),
+        ],
+        client=c,
+    )
+
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state='PENDING')
+
+    task = long_running_job.get_task(0)
+    # wait for task to reach READY
+    task.wait_for_pending_state(goal_state='READY')
+
+    # kill the task
+    task.stop()
+
+    # re-enqueue the task
+    task.start()
+
+    # gentlemen, start your (placement) engines
+    placement_engines.start()
+
+    def wait_for_instance_to_run():
+        return long_running_job.get_task(0).state_str == 'RUNNING'
+
+    long_running_job.wait_for_condition(wait_for_instance_to_run)

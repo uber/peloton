@@ -26,11 +26,11 @@ import (
 
 func TestAuroraMetadata(t *testing.T) {
 	input := []*api.Metadata{
-		&api.Metadata{
+		{
 			Key:   ptr.String("test-key-1"),
 			Value: ptr.String("test-value-1"),
 		},
-		&api.Metadata{
+		{
 			Key:   ptr.String("test-key-2"),
 			Value: ptr.String("test-value-2"),
 		},

@@ -18,6 +18,39 @@ from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 log = logging.getLogger(__name__)
 
 
+# Options to mutate the job config
+
+def with_labels(labels):
+    def apply(job_config):
+        for lk, lv in labels.iteritems():
+            job_config.defaultConfig.labels.extend([
+                peloton.Label(
+                    key=lk,
+                    value=lv,
+                )],)
+    return apply
+
+
+def with_constraint(constraint):
+    def apply(job_config):
+        job_config.defaultConfig.constraint.CopyFrom(
+            constraint
+        )
+    return apply
+
+
+def with_instance_count(count):
+    def apply(job_config):
+        job_config.instanceCount = count
+    return apply
+
+
+def with_job_name(name):
+    def apply(job_config):
+        job_config.name = name
+    return apply
+
+
 class Job(object):
     """
     Job represents a peloton job

@@ -31,6 +31,7 @@ import (
 	"github.com/uber/peloton/resmgr/entitlement"
 	maintenance "github.com/uber/peloton/resmgr/host"
 	"github.com/uber/peloton/resmgr/preemption"
+	"github.com/uber/peloton/resmgr/respool"
 	"github.com/uber/peloton/resmgr/respool/respoolsvc"
 	"github.com/uber/peloton/resmgr/task"
 	"github.com/uber/peloton/storage/stores"
@@ -274,6 +275,7 @@ func main() {
 	// Initializing the task scheduler
 	task.InitScheduler(
 		rootScope,
+		respool.GetTree(),
 		cfg.ResManager.TaskSchedulingPeriod,
 		task.GetTracker(),
 	)

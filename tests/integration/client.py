@@ -1,6 +1,10 @@
 import os
+from urlparse import urlparse
 
 from peloton_client.client import PelotonClient
+from peloton_client.pbgen.peloton.private.resmgrsvc import resmgrsvc_pb2_grpc \
+    as resmgr_grpc
+
 from util import load_config
 
 
@@ -8,6 +12,7 @@ class Client(object):
     _client = None
 
     def __new__(class_, *args, **kwargs):
+        global _client
         if not class_._client:
             config = load_config('config.yaml')['client']
             if os.getenv('CLUSTER', ''):
@@ -31,3 +36,14 @@ class Client(object):
                     hm_url=config['hostmgr_url'],
                 )
         return _client
+
+
+# Decorator which adds private API stubs to the client by monkey patching
+# Only implements the resource manager service as of yet.
+def with_private_stubs(client):
+    rm_loc = urlparse(client.rm_url).netloc
+    channel = PelotonClient.resmgr_channel_pool[rm_loc]
+    client.resmgr_svc = resmgr_grpc.ResourceManagerServiceStub(
+        channel=channel,
+    )
+    return client

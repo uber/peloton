@@ -959,57 +959,52 @@ func (h *ServiceHandler) KillTasks(
 	var tasksNotFound []*peloton.TaskID
 	var tasksNotKilled []*peloton.TaskID
 	for _, taskTobeKilled := range listTasks {
-		killedRmTask := h.rmTracker.GetTask(taskTobeKilled)
+		rmTaskToKill := h.rmTracker.GetTask(taskTobeKilled)
 
-		if killedRmTask == nil {
+		if rmTaskToKill == nil {
 			tasksNotFound = append(tasksNotFound, taskTobeKilled)
 			continue
 		}
 
-		err := h.rmTracker.MarkItInvalid(taskTobeKilled, *(killedRmTask.Task().TaskId.Value))
+		err := h.rmTracker.MarkItInvalid(
+			taskTobeKilled,
+			*(rmTaskToKill.Task().TaskId.Value))
 		if err != nil {
 			tasksNotKilled = append(tasksNotKilled, taskTobeKilled)
 			continue
 		}
 		log.WithFields(log.Fields{
 			"task_id":       taskTobeKilled.Value,
-			"current_state": killedRmTask.GetCurrentState().String(),
+			"current_state": rmTaskToKill.GetCurrentState().String(),
 		}).Info("Task is Killed and removed from tracker")
 		h.rmTracker.UpdateCounters(
-			killedRmTask.GetCurrentState(),
+			rmTaskToKill.GetCurrentState(),
 			t.TaskState_KILLED,
 		)
 	}
+
 	if len(tasksNotKilled) == 0 && len(tasksNotFound) == 0 {
 		return &resmgrsvc.KillTasksResponse{}, nil
 	}
 
 	var killResponseErr []*resmgrsvc.KillTasksResponse_Error
-
-	if len(tasksNotFound) != 0 {
-		log.
-			WithField("tasks", tasksNotFound).
-			Info("tasks can't be found")
-		for _, task := range tasksNotFound {
-			killResponseErr = append(killResponseErr,
-				&resmgrsvc.KillTasksResponse_Error{
-					NotFound: &resmgrsvc.TasksNotFound{
-						Message: "Task Not Found",
-						Task:    task,
-					},
-				})
-		}
-	} else {
-		log.WithField("tasks", tasksNotKilled).Error("tasks can't be killed")
-		for _, task := range tasksNotKilled {
-			killResponseErr = append(killResponseErr,
-				&resmgrsvc.KillTasksResponse_Error{
-					KillError: &resmgrsvc.KillTasksError{
-						Message: "Task can't be killed",
-						Task:    task,
-					},
-				})
-		}
+	for _, task := range tasksNotFound {
+		killResponseErr = append(killResponseErr,
+			&resmgrsvc.KillTasksResponse_Error{
+				NotFound: &resmgrsvc.TasksNotFound{
+					Message: "Task Not Found",
+					Task:    task,
+				},
+			})
+	}
+	for _, task := range tasksNotKilled {
+		killResponseErr = append(killResponseErr,
+			&resmgrsvc.KillTasksResponse_Error{
+				KillError: &resmgrsvc.KillTasksError{
+					Message: "Task can't be killed",
+					Task:    task,
+				},
+			})
 	}
 
 	return &resmgrsvc.KillTasksResponse{

@@ -286,17 +286,21 @@ func (tr *tracker) MarkItInvalid(tID *peloton.TaskID, mesosTaskID string) error 
 		return errors.Errorf("task %s is not in tracker", tID)
 	}
 
-	// remove the tracker
+	// remove from the tracker
 	err := tr.markItDone(t, mesosTaskID)
 	if err != nil {
 		return err
 	}
 
-	// We only need to invalidate tasks if they are in PENDING or
-	// INITIALIZED STATE as Pending queue only will have these tasks
-	if t.GetCurrentState() == task.TaskState_PENDING ||
-		t.GetCurrentState() == task.TaskState_INITIALIZED {
+	switch t.GetCurrentState() {
+	case task.TaskState_PENDING, task.TaskState_INITIALIZED:
+		// If task is in INITIALIZED or PENDING state we need to invalidate
+		// it from in pending queue
 		t.respool.AddInvalidTask(tID)
+	case task.TaskState_READY:
+		// If task is in READY state we need to invalidate
+		// it from in ready queue
+		GetScheduler().AddInvalidTask(tID)
 	}
 
 	return nil

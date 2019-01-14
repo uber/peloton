@@ -1,7 +1,8 @@
 import pytest
 import time
 
-from job import Job, kill_jobs
+from job import Job, kill_jobs, with_constraint, with_instance_count, \
+    with_job_name, with_labels
 from common import IntegrationTestConfig
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
@@ -31,37 +32,6 @@ def _label_constraint(key, value):
     )
 
 
-def _with_constraint(constraint):
-    def apply(job_config):
-        job_config.defaultConfig.constraint.CopyFrom(
-            constraint
-        )
-    return apply
-
-
-def _with_labels(labels):
-    def apply(job_config):
-        for lk, lv in labels.iteritems():
-            job_config.defaultConfig.labels.extend([
-                peloton_pb2.Label(
-                    key=lk,
-                    value=lv,
-                )],)
-    return apply
-
-
-def _with_instance_count(count):
-    def apply(job_config):
-        job_config.instanceCount = count
-    return apply
-
-
-def _with_job_name(name):
-    def apply(job_config):
-        job_config.name = name
-    return apply
-
-
 def test__create_a_stateless_job_with_3_tasks_on_3_different_hosts():
     label_key = "job.name"
     label_value = "peloton_stateless_job"
@@ -72,11 +42,11 @@ def test__create_a_stateless_job_with_3_tasks_on_3_different_hosts():
                     max_retry_attempts=100,
                 ),
                 options=[
-                    _with_labels({
+                    with_labels({
                         label_key: label_value,
                     }),
-                    _with_constraint(_label_constraint(label_key, label_value)),
-                    _with_instance_count(3),
+                    with_constraint(_label_constraint(label_key, label_value)),
+                    with_instance_count(3),
                 ]
             )
 
@@ -87,7 +57,7 @@ def test__create_a_stateless_job_with_3_tasks_on_3_different_hosts():
     hosts = set()
     for _, task in job.get_tasks().iteritems():
         task_info = task.get_info()
-        hosts = hosts.union(set({task_info.runtime.host}))
+        hosts = hosts.union({task_info.runtime.host})
 
     kill_jobs([job])
 
@@ -106,11 +76,11 @@ def test__create_2_stateless_jobs_with_task_to_task_anti_affinity_between_jobs()
                 max_retry_attempts=100,
             ),
             options=[
-                _with_labels({
+                with_labels({
                     label_key: "peloton_stateless_job%s" % i
                 }),
-                _with_job_name('TestPelotonDockerJob_Stateless' + repr(i)),
-                _with_instance_count(1),
+                with_job_name('TestPelotonDockerJob_Stateless' + repr(i)),
+                with_instance_count(1),
             ]
         )
         job.job_config.defaultConfig.constraint.CopyFrom(
