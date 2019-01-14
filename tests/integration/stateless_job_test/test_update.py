@@ -33,62 +33,62 @@ UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_SPEC = \
     "test_stateless_job_successful_health_check_spec.yaml"
 
 
-def test__create_update(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
-    update = StatelessUpdate(stateless_job_v1alpha,
+def test__create_update(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
+    update = StatelessUpdate(stateless_job,
                              updated_job_file=UPDATE_STATELESS_JOB_SPEC)
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_pod_infos = stateless_job.query_pods()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert_pod_id_changed(old_pod_infos, new_pod_infos)
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
 
 
-def test__create_update_add_instances(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
+def test__create_update_add_instances(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC,
     )
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
+    new_pod_infos = stateless_job.query_pods()
     assert len(old_pod_infos) == 3
     assert len(new_pod_infos) == 5
 
 
-def test__create_update_update_and_add_instances(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__create_update_update_and_add_instances(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
     )
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_pod_infos = stateless_job.query_pods()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert len(old_pod_infos) == 3
     assert len(new_pod_infos) == 5
     assert_pod_id_changed(old_pod_infos, new_pod_infos)
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
 
 
-def test__create_update_update_start_paused(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__create_update_update_start_paused(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
         start_paused=True,
     )
@@ -96,94 +96,94 @@ def test__create_update_update_start_paused(stateless_job_v1alpha):
     update.wait_for_state(goal_state='PAUSED')
     update.resume()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_pod_infos = stateless_job.query_pods()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert len(old_pod_infos) == 3
     assert len(new_pod_infos) == 5
     assert_pod_id_changed(old_pod_infos, new_pod_infos)
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
 
 
-def test__create_update_with_batch_size(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__create_update_with_batch_size(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_SPEC,
         batch_size=1,
     )
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_pod_infos = stateless_job.query_pods()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert_pod_id_changed(old_pod_infos, new_pod_infos)
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
 
 
-def test__create_update_add_instances_with_batch_size(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
+def test__create_update_add_instances_with_batch_size(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC,
         batch_size=1,
     )
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
+    new_pod_infos = stateless_job.query_pods()
     assert len(old_pod_infos) == 3
     assert len(new_pod_infos) == 5
 
 
-def test__create_update_update_and_add_instances_with_batch(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__create_update_update_and_add_instances_with_batch(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
         batch_size=1,
     )
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_pod_infos = stateless_job.query_pods()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert len(old_pod_infos) == 3
     assert len(new_pod_infos) == 5
     assert_pod_id_changed(old_pod_infos, new_pod_infos)
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
 
 
-def test__create_update_update_restart_jobmgr(stateless_job_v1alpha, jobmgr):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__create_update_update_restart_jobmgr(stateless_job, jobmgr):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
         batch_size=1,
     )
     update.create()
     jobmgr.restart()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_pod_infos = stateless_job.query_pods()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert len(old_pod_infos) == 3
     assert len(new_pod_infos) == 5
     assert_pod_id_changed(old_pod_infos, new_pod_infos)
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
 
 
-def test__create_update_bad_version(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+def test__create_update_bad_version(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
         batch_size=1,
     )
@@ -196,11 +196,11 @@ def test__create_update_bad_version(stateless_job_v1alpha):
     raise Exception("entity version mismatch error not received")
 
 
-def test__pause_update_bad_version(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+def test__pause_update_bad_version(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
         batch_size=1,
     )
@@ -214,11 +214,11 @@ def test__pause_update_bad_version(stateless_job_v1alpha):
     raise Exception("entity version mismatch error not received")
 
 
-def test__resume_update_bad_version(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+def test__resume_update_bad_version(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
         start_paused=True,
         batch_size=1,
@@ -233,11 +233,11 @@ def test__resume_update_bad_version(stateless_job_v1alpha):
     raise Exception("entity version mismatch error not received")
 
 
-def test__abort_update_bad_version(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+def test__abort_update_bad_version(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
         batch_size=1,
     )
@@ -251,85 +251,85 @@ def test__abort_update_bad_version(stateless_job_v1alpha):
     raise Exception("entity version mismatch error not received")
 
 
-def test__create_update_stopped_job(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
-    stateless_job_v1alpha.stop()
-    stateless_job_v1alpha.wait_for_state(goal_state='KILLED')
+def test__create_update_stopped_job(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
+    stateless_job.stop()
+    stateless_job.wait_for_state(goal_state='KILLED')
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
         batch_size=1,
     )
     update.create()
-    stateless_job_v1alpha.start()
+    stateless_job.start()
     update.wait_for_state(goal_state='SUCCEEDED')
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    new_pod_infos = stateless_job.query_pods()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert len(old_pod_infos) == 3
     assert len(new_pod_infos) == 5
     assert_pod_id_changed(old_pod_infos, new_pod_infos)
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
 
 
-def test__create_update_stopped_tasks(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__create_update_stopped_tasks(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     ranges = task_pb2.InstanceRange(to=2)
     setattr(ranges, 'from', 0)
-    stateless_job_v1alpha.stop(ranges=[ranges])
+    stateless_job.stop(ranges=[ranges])
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
         batch_size=1,
     )
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
-    stateless_job_v1alpha.start()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    stateless_job.start()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    new_pod_infos = stateless_job.query_pods()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert len(old_pod_infos) == 3
     assert len(new_pod_infos) == 5
     assert_pod_id_changed(old_pod_infos, new_pod_infos)
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
 
 
-def test__create_multiple_consecutive_updates(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__create_multiple_consecutive_updates(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     update1 = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC,
     )
     update1.create()
     update2 = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
         batch_size=1,
     )
     update2.create()
     update2.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_pod_infos = stateless_job.query_pods()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert len(old_pod_infos) == 3
     assert len(new_pod_infos) == 5
     assert_pod_id_changed(old_pod_infos, new_pod_infos)
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
 
 
-def test__abort_update(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+def test__abort_update(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
         batch_size=1,
     )
@@ -339,105 +339,105 @@ def test__abort_update(stateless_job_v1alpha):
     update.wait_for_state(goal_state='ABORTED')
 
 
-def test__update_reduce_instances(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
+def test__update_reduce_instances(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
     assert len(old_pod_infos) == 3
     # first increase instances
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC,
     )
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
+    new_pod_infos = stateless_job.query_pods()
     assert len(new_pod_infos) == 5
     # now reduce instances
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_REDUCE_INSTANCES_SPEC)
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
+    new_pod_infos = stateless_job.query_pods()
     assert len(new_pod_infos) == 3
     # now increase back again
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC)
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
+    new_pod_infos = stateless_job.query_pods()
     assert len(new_pod_infos) == 5
 
 
-def test__update_reduce_instances_stopped_tasks(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
+def test__update_reduce_instances_stopped_tasks(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
     assert len(old_pod_infos) == 3
     # first increase instances
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC,
     )
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
+    new_pod_infos = stateless_job.query_pods()
     assert len(new_pod_infos) == 5
     # now stop last 2 tasks
     ranges = task_pb2.InstanceRange(to=5)
     setattr(ranges, 'from', 3)
-    stateless_job_v1alpha.stop(ranges=[ranges])
+    stateless_job.stop(ranges=[ranges])
     # now reduce instance count
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_REDUCE_INSTANCES_SPEC,
     )
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
+    new_pod_infos = stateless_job.query_pods()
     assert len(new_pod_infos) == 3
 
 
 # test__create_update_bad_config tests creating an update with bad config
 # without rollback
-def test__create_update_with_bad_config(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__create_update_with_bad_config(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
 
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_BAD_SPEC,
         max_failure_instances=3,
         max_instance_attempts=1,
     )
     update.create()
     update.wait_for_state(goal_state='FAILED', failed_state='SUCCEEDED')
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
 
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
-    for pod_info in stateless_job_v1alpha.query_pods():
+    for pod_info in stateless_job.query_pods():
         assert pod_info.status.state == pod_pb2.POD_STATE_FAILED
 
 
 # test__create_update_add_instances_with_bad_config
 # tests creating an update with bad config and more instances
 # without rollback
-def test__create_update_add_instances_with_bad_config(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+def test__create_update_add_instances_with_bad_config(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
 
     job_spec_dump = load_test_config(UPDATE_STATELESS_JOB_BAD_SPEC)
     updated_job_spec = JobSpec()
     json_format.ParseDict(job_spec_dump, updated_job_spec)
 
     updated_job_spec.instance_count = \
-        stateless_job_v1alpha.job_spec.instance_count + 3
+        stateless_job.job_spec.instance_count + 3
 
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         batch_size=1,
         updated_job_spec=updated_job_spec,
         max_failure_instances=1,
@@ -446,27 +446,27 @@ def test__create_update_add_instances_with_bad_config(stateless_job_v1alpha):
     update.wait_for_state(goal_state='FAILED', failed_state='SUCCEEDED')
 
     # only one instance should be added
-    assert len(stateless_job_v1alpha.query_pods()) ==\
-        stateless_job_v1alpha.job_spec.instance_count + 1
+    assert len(stateless_job.query_pods()) ==\
+        stateless_job.job_spec.instance_count + 1
 
 
 # test__create_update_reduce_instances_with_bad_config
 # tests creating an update with bad config and fewer instances
 # without rollback
-def test__create_update_reduce_instances_with_bad_config(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
+def test__create_update_reduce_instances_with_bad_config(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
 
     job_spec_dump = load_test_config(UPDATE_STATELESS_JOB_BAD_SPEC)
     updated_job_spec = JobSpec()
     json_format.ParseDict(job_spec_dump, updated_job_spec)
 
     updated_job_spec.instance_count = \
-        stateless_job_v1alpha.job_spec.instance_count - 1
+        stateless_job.job_spec.instance_count - 1
 
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_spec=updated_job_spec,
         batch_size=1,
         max_failure_instances=1,
@@ -474,19 +474,19 @@ def test__create_update_reduce_instances_with_bad_config(stateless_job_v1alpha):
     )
     update.create()
     update.wait_for_state(goal_state='FAILED', failed_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
+    new_pod_infos = stateless_job.query_pods()
     assert len(old_pod_infos) == len(new_pod_infos)
 
 
 # test__create_update_with_failed_health_check
 # tests an update fails even if the new task state is RUNNING,
 # as long as the health check fails
-def test__create_update_with_failed_health_check(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+def test__create_update_with_failed_health_check(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
 
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_BAD_HEALTH_CHECK_SPEC,
         max_failure_instances=1,
         max_instance_attempts=1)
@@ -591,20 +591,20 @@ def test__create_update_to_change_health_check_config():
 
 # test__auto_rollback_update_with_bad_config tests creating an update with bad config
 # with rollback
-def test__auto_rollback_update_with_bad_config(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__auto_rollback_update_with_bad_config(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
 
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_BAD_SPEC,
         roll_back_on_failure=True,
         max_failure_instances=1,
         max_instance_attempts=1)
     update.create()
     update.wait_for_state(goal_state='ROLLED_BACK')
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
 
     assert_pod_spec_equal(old_instance_zero_spec, new_instance_zero_spec)
 
@@ -612,94 +612,94 @@ def test__auto_rollback_update_with_bad_config(stateless_job_v1alpha):
 # test__auto_rollback_update_add_instances_with_bad_config
 # tests creating an update with bad config and more instances
 # with rollback
-def test__auto_rollback_update_add_instances_with_bad_config(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__auto_rollback_update_add_instances_with_bad_config(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
 
     job_spec_dump = load_test_config(UPDATE_STATELESS_JOB_BAD_SPEC)
     updated_job_spec = JobSpec()
     json_format.ParseDict(job_spec_dump, updated_job_spec)
 
     updated_job_spec.instance_count = \
-        stateless_job_v1alpha.job_spec.instance_count + 3
+        stateless_job.job_spec.instance_count + 3
 
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_spec=updated_job_spec,
         roll_back_on_failure=True,
         max_failure_instances=1,
         max_instance_attempts=1)
     update.create()
     update.wait_for_state(goal_state='ROLLED_BACK')
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
 
     # no instance should be added
-    assert len(stateless_job_v1alpha.query_pods()) == \
-        stateless_job_v1alpha.job_spec.instance_count
+    assert len(stateless_job.query_pods()) == \
+        stateless_job.job_spec.instance_count
     assert_pod_spec_equal(old_instance_zero_spec, new_instance_zero_spec)
 
 
 # test__auto_rollback_update_reduce_instances_with_bad_config
 # tests creating an update with bad config and fewer instances
 # with rollback
-def test__auto_rollback_update_reduce_instances_with_bad_config(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__auto_rollback_update_reduce_instances_with_bad_config(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
 
     job_spec_dump = load_test_config(UPDATE_STATELESS_JOB_BAD_SPEC)
     updated_job_spec = JobSpec()
     json_format.ParseDict(job_spec_dump, updated_job_spec)
 
     updated_job_spec.instance_count = \
-        stateless_job_v1alpha.job_spec.instance_count - 1
+        stateless_job.job_spec.instance_count - 1
 
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_spec=updated_job_spec,
         roll_back_on_failure=True,
         max_failure_instances=1,
         max_instance_attempts=1)
     update.create()
     update.wait_for_state(goal_state='ROLLED_BACK')
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
 
     # no instance should be removed
-    assert len(stateless_job_v1alpha.query_pods()) == \
-        stateless_job_v1alpha.job_spec.instance_count
+    assert len(stateless_job.query_pods()) == \
+        stateless_job.job_spec.instance_count
     assert_pod_spec_equal(old_instance_zero_spec, new_instance_zero_spec)
 
 
 # test__auto_rollback_update_with_failed_health_check
 # tests an update fails even if the new task state is RUNNING,
 # as long as the health check fails
-def test__auto_rollback_update_with_failed_health_check(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__auto_rollback_update_with_failed_health_check(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
 
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_BAD_HEALTH_CHECK_SPEC,
         roll_back_on_failure=True,
         max_failure_instances=1,
         max_instance_attempts=1)
     update.create()
     update.wait_for_state(goal_state='ROLLED_BACK')
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert_pod_spec_equal(old_instance_zero_spec, new_instance_zero_spec)
 
 
 # test__pause_resume_initialized_update test pause and resume
 #  an update in initialized state
-def test__pause_resume_initialized_update(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__pause_resume_initialized_update(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         batch_size=1,
         updated_job_file=UPDATE_STATELESS_JOB_SPEC)
     update.create()
@@ -708,20 +708,20 @@ def test__pause_resume_initialized_update(stateless_job_v1alpha):
     update.wait_for_state(goal_state='PAUSED')
     update.resume()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_pod_infos = stateless_job.query_pods()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert_pod_id_changed(old_pod_infos, new_pod_infos)
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
 
 
 # test__pause_resume_initialized_update test pause and resume an update
-def test__pause_resume__update(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test__pause_resume__update(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         batch_size=1,
         updated_job_file=UPDATE_STATELESS_JOB_SPEC)
     update.create()
@@ -731,8 +731,8 @@ def test__pause_resume__update(stateless_job_v1alpha):
     update.wait_for_state(goal_state='PAUSED')
     update.resume()
     update.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_pod_infos = stateless_job.query_pods()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert_pod_id_changed(old_pod_infos, new_pod_infos)
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
 
@@ -741,61 +741,61 @@ def test__pause_resume__update(stateless_job_v1alpha):
 # the instance count is reduced in the rollback.
 # Note that manual rollback in peloton is just updating to the
 # previous job configuration
-def test_manual_rollback_reduce_instances(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+def test_manual_rollback_reduce_instances(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC)
     update.create()
     # manually rollback the update
     update2 = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_REDUCE_INSTANCES_SPEC)
     update2.create()
     update2.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
+    new_pod_infos = stateless_job.query_pods()
     assert len(old_pod_infos) == len(new_pod_infos)
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert_pod_spec_equal(old_instance_zero_spec, new_instance_zero_spec)
 
 
 # test_manual_rollback manually rolls back a running update when
 # the instance count is increased in the rollback
-def test_manual_rollback_increase_instances(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+def test_manual_rollback_increase_instances(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC)
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
-    old_pod_infos = stateless_job_v1alpha.query_pods()
-    old_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    old_pod_infos = stateless_job.query_pods()
+    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     # reduce instance count and then roll it back
     update2 = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_REDUCE_INSTANCES_SPEC)
     update2.create()
     update3 = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC)
     update3.create()
     update3.wait_for_state(goal_state='SUCCEEDED')
-    new_pod_infos = stateless_job_v1alpha.query_pods()
+    new_pod_infos = stateless_job.query_pods()
     assert len(old_pod_infos) == len(new_pod_infos)
-    new_instance_zero_spec = stateless_job_v1alpha.get_pod(0).get_pod_spec()
+    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     assert_pod_spec_equal(old_instance_zero_spec, new_instance_zero_spec)
 
 
 # test_auto_rollback_reduce_instances
 #  rolls back a failed update when
 # the instance count is reduced in the rollback.
-def test_auto_rollback_reduce_instances(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+def test_auto_rollback_reduce_instances(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
 
     job_spec_dump = load_test_config(UPDATE_STATELESS_JOB_BAD_HEALTH_CHECK_SPEC)
     updated_job_spec = JobSpec()
@@ -803,10 +803,10 @@ def test_auto_rollback_reduce_instances(stateless_job_v1alpha):
 
     # increase the instance count
     updated_job_spec.instance_count = \
-        stateless_job_v1alpha.job_spec.instance_count + 3
+        stateless_job.job_spec.instance_count + 3
 
     update = StatelessUpdate(
-        stateless_job_v1alpha,
+        stateless_job,
         updated_job_spec=updated_job_spec,
         roll_back_on_failure=True,
         max_instance_attempts=1,
@@ -815,5 +815,5 @@ def test_auto_rollback_reduce_instances(stateless_job_v1alpha):
     )
     update.create()
     update.wait_for_state(goal_state='ROLLED_BACK')
-    assert len(stateless_job_v1alpha.query_pods()) == \
-        stateless_job_v1alpha.job_spec.instance_count
+    assert len(stateless_job.query_pods()) == \
+        stateless_job.job_spec.instance_count

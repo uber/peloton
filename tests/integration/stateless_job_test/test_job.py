@@ -5,45 +5,49 @@ import time
 from tests.integration.stateless_job import StatelessJob
 from tests.integration.common import IntegrationTestConfig
 from tests.integration.stateless_job import INVALID_ENTITY_VERSION_ERR_MESSAGE
+from tests.integration.stateless_job_test.util import \
+    assert_pod_id_changed, assert_pod_id_equal
+
+from peloton_client.pbgen.peloton.api.v1alpha.pod import pod_pb2
 
 pytestmark = [pytest.mark.default, pytest.mark.stateless]
 
 
 @pytest.mark.smoketest
-def test__create_job(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+def test__create_job(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
 
 
 @pytest.mark.smoketest
-def test__stop_stateless_job(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
-    stateless_job_v1alpha.stop()
-    stateless_job_v1alpha.wait_for_state(goal_state='KILLED')
+def test__stop_stateless_job(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    stateless_job.stop()
+    stateless_job.wait_for_state(goal_state='KILLED')
 
 
 @pytest.mark.smoketest
-def test__stop_start_all_tasks_stateless_kills_tasks_and_job(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+def test__create_job_without_default_spec(stateless_job):
+    default_spec = stateless_job.job_spec.default_spec
+    stateless_job.job_spec.ClearField('default_spec')
+    for i in range(0, stateless_job.job_spec.instance_count):
+        stateless_job.job_spec.instance_spec[i].CopyFrom(default_spec)
 
-    stateless_job_v1alpha.stop()
-    stateless_job_v1alpha.wait_for_state(goal_state='KILLED')
-
-    stateless_job_v1alpha.start()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
 
 
 @pytest.mark.smoketest
-def test__create_job_without_default_spec(stateless_job_v1alpha):
-    default_spec = stateless_job_v1alpha.job_spec.default_spec
-    stateless_job_v1alpha.job_spec.ClearField('default_spec')
-    for i in range(0, stateless_job_v1alpha.job_spec.instance_count):
-        stateless_job_v1alpha.job_spec.instance_spec[i].CopyFrom(default_spec)
+def test__stop_start_all_tasks_stateless_kills_tasks_and_job(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
 
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+    stateless_job.stop()
+    stateless_job.wait_for_state(goal_state='KILLED')
+
+    stateless_job.start()
+    stateless_job.wait_for_all_pods_running()
 
 
 def test__exit_task_automatically_restart():
@@ -138,35 +142,34 @@ def test__failed_task_throttled_by_exponential_backoff():
     assert 1 < run_id < 20
 
 
-def test__start_job_in_killing_state(stateless_job_v1alpha, mesos_master):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+def test__start_job_in_killing_state(stateless_job, mesos_master):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
 
     # stop mesos master to ensure job doesn't transition to KILLED
     mesos_master.stop()
-    stateless_job_v1alpha.stop()
-    stateless_job_v1alpha.wait_for_state(goal_state='KILLING')
+    stateless_job.stop()
+    stateless_job.wait_for_state(goal_state='KILLING')
 
-    stateless_job_v1alpha.start()
+    stateless_job.start()
     mesos_master.start()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+    stateless_job.wait_for_all_pods_running()
 
 
-def test__start_job_in_initialized_state(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='INITIALIZED')
+def test__start_job_in_initialized_state(stateless_job):
+    stateless_job.create()
 
-    # it is possible that the job might have transitioned to PENDING
-    # since there is no way to ensure this transition doesn't happen
-    stateless_job_v1alpha.start()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+    # it is possible that the job might have transitioned to INITIALIZED/PENDING
+    # since there is no way to fine control the transitions
+    stateless_job.start()
+    stateless_job.wait_for_all_pods_running()
 
 
-def test__start_job_bad_version(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
+def test__start_job_bad_version(stateless_job):
+    stateless_job.create()
 
     try:
-        stateless_job_v1alpha.start(entity_version='1-2-3')
+        stateless_job.start(entity_version='1-2-3')
     except grpc.RpcError as e:
         assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
         assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
@@ -174,12 +177,12 @@ def test__start_job_bad_version(stateless_job_v1alpha):
     raise Exception("entity version mismatch error not received")
 
 
-def test__stop_job_bad_version(stateless_job_v1alpha):
-    stateless_job_v1alpha.create()
-    stateless_job_v1alpha.wait_for_state(goal_state='RUNNING')
+def test__stop_job_bad_version(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
 
     try:
-        stateless_job_v1alpha.stop(entity_version='1-2-3')
+        stateless_job.stop(entity_version='1-2-3')
     except grpc.RpcError as e:
         assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
         assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
@@ -274,3 +277,183 @@ def test__delete_job_bad_version():
         assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
         return
     raise Exception("entity version mismatch error not received")
+
+
+# test starting an already running job. Should be a noop
+def test__start_running_job(stateless_job):
+    stateless_job.create()
+
+    stateless_job.wait_for_all_pods_running()
+    old_pod_infos = stateless_job.query_pods()
+
+    stateless_job.start()
+    new_pod_infos = stateless_job.query_pods()
+    # start should be a noop for already running instances
+    assert_pod_id_equal(old_pod_infos, new_pod_infos)
+
+
+# test starting a killed job
+def test__start_killed_job(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+
+    stateless_job.stop()
+    stateless_job.wait_for_state(goal_state='KILLED')
+
+    stateless_job.start()
+    stateless_job.wait_for_all_pods_running()
+
+    new_pod_infos = stateless_job.query_pods()
+    assert_pod_id_changed(old_pod_infos, new_pod_infos)
+
+
+# test start succeeds during jobmgr restart
+def test__start_restart_jobmgr(stateless_job, jobmgr):
+    stateless_job.create()
+    stateless_job.stop()
+    stateless_job.wait_for_state(goal_state='KILLED')
+
+    stateless_job.start()
+    jobmgr.restart()
+
+    stateless_job.wait_for_all_pods_running()
+
+
+# test stopping a job during jobmgr restart
+def test__stop_restart_jobmgr(stateless_job, jobmgr):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    stateless_job.stop()
+
+    jobmgr.restart()
+
+    stateless_job.wait_for_state(goal_state='KILLED')
+
+
+# test restarting running job, with batch size,
+def test__restart_running_job_with_batch_size(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+
+    stateless_job.restart(batch_size=1)
+    stateless_job.wait_for_workflow_state(goal_state='SUCCEEDED')
+
+    stateless_job.wait_for_all_pods_running()
+
+    new_pod_infos = stateless_job.query_pods()
+    # restart should kill and start already running instances
+    assert_pod_id_changed(old_pod_infos, new_pod_infos)
+
+
+# test restarting a killed job with batch size,
+def test__restart_killed_job_with_batch_size(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+
+    stateless_job.stop()
+    stateless_job.wait_for_state(goal_state='KILLED')
+    old_pod_infos = stateless_job.query_pods()
+
+    stateless_job.restart(batch_size=1)
+
+    stateless_job.wait_for_all_pods_running()
+
+    new_pod_infos = stateless_job.query_pods()
+    assert_pod_id_changed(old_pod_infos, new_pod_infos)
+
+
+# test restarting running job without batch size,
+def test__restart_running_job(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+
+    stateless_job.restart()
+    stateless_job.wait_for_workflow_state(goal_state='SUCCEEDED')
+
+    stateless_job.wait_for_all_pods_running()
+
+    new_pod_infos = stateless_job.query_pods()
+    # restart should kill and start already running instances
+    assert_pod_id_changed(old_pod_infos, new_pod_infos)
+
+
+# test restarting killed job without batch size,
+def test__restart_killed_job(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+
+    stateless_job.stop()
+    stateless_job.wait_for_state(goal_state='KILLED')
+
+    stateless_job.restart()
+
+    stateless_job.wait_for_all_pods_running()
+
+    new_pod_infos = stateless_job.query_pods()
+    assert_pod_id_changed(old_pod_infos, new_pod_infos)
+
+
+# test restarting a partial set of tasks of the job
+def test__restart_partial_job(stateless_job):
+    ranges = [pod_pb2.InstanceIDRange(to=2)]
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+
+    old_pod_infos = stateless_job.query_pods()
+
+    old_pod_dict = {}
+    for old_pod_info in old_pod_infos:
+        split_index = old_pod_info.status.pod_id.value.rfind('-')
+        pod_name = old_pod_info.status.pod_id.value[:split_index]
+        old_pod_dict[pod_name] = old_pod_info.status.pod_id.value
+        assert old_pod_info.status.state == pod_pb2.POD_STATE_RUNNING
+
+    stateless_job.restart(batch_size=1, ranges=ranges)
+    stateless_job.wait_for_workflow_state(goal_state='SUCCEEDED')
+
+    stateless_job.wait_for_all_pods_running()
+    new_pod_infos = stateless_job.query_pods()
+    for new_pod_info in new_pod_infos:
+        new_pod_id = new_pod_info.status.pod_id.value
+
+        split_index = new_pod_info.status.pod_id.value.rfind('-')
+        pod_name = new_pod_info.status.pod_id.value[:split_index]
+        old_pod_id = old_pod_dict[pod_name]
+        # only pods in range [0-2) are restarted
+        if int(pod_name[pod_name.rfind('-')+1:]) < 2:
+            assert old_pod_id != new_pod_id
+        else:
+            assert old_pod_id == new_pod_id
+
+
+# test restarting job during jobmgr restart
+def test__restart_restart_jobmgr(stateless_job, jobmgr):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    old_pod_infos = stateless_job.query_pods()
+    stateless_job.restart()
+
+    jobmgr.restart()
+    stateless_job.wait_for_workflow_state(goal_state='SUCCEEDED')
+
+    stateless_job.wait_for_all_pods_running()
+
+    new_pod_infos = stateless_job.query_pods()
+    assert_pod_id_changed(old_pod_infos, new_pod_infos)
+
+
+# test restarting a job with wrong entity version
+def test__restart_bad_version(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+
+    try:
+        stateless_job.restart(entity_version='1-2-3')
+    except grpc.RpcError as e:
+        assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
+        return
+    raise Exception("configuration version mismatch error not received")

@@ -62,3 +62,7 @@ class Pod(object):
         # trim the prefix so pod state is the same as old task state,
         # and the api can be used for both job tests
         return state_name[len(POD_STATE_PREFIX):]
+
+    @property
+    def state(self):
+        return self.get_pod_status().state

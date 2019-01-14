@@ -169,34 +169,6 @@ def long_running_job(request):
 
 @pytest.fixture
 def stateless_job(request):
-    job = Job(job_file='test_stateless_job.yaml')
-
-    # teardown
-    def kill_stateless_job():
-        print "\nstopping stateless job"
-        job.stop()
-
-    request.addfinalizer(kill_stateless_job)
-
-    return job
-
-
-@pytest.fixture
-def large_stateless_job(request):
-    job = Job(job_file='test_stateless_job_large.yaml')
-
-    # teardown
-    def kill_large_stateless_job():
-        print "\nstopping stateless job"
-        job.stop()
-
-    request.addfinalizer(kill_large_stateless_job)
-
-    return job
-
-
-@pytest.fixture
-def stateless_job_v1alpha(request):
     job = StatelessJob()
 
     # teardown
@@ -224,7 +196,7 @@ def host_affinity_job(request):
 
 # For unit tests running with test_job, it would be tested with both
 # long_running_job and stateless_job
-@pytest.fixture(params=[long_running_job, stateless_job_v1alpha])
+@pytest.fixture(params=[long_running_job, stateless_job])
 def test_job(request):
     return request.param(request)
 

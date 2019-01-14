@@ -86,8 +86,8 @@ class StatelessJob(object):
         """
         if ranges is None:
             job_entity_version = entity_version or \
-                                 self.entity_version or \
-                                 self.get_status().version.value
+                self.entity_version or \
+                self.get_status().version.value
 
             while True:
                 request = stateless_svc.StartJobRequest(
@@ -107,7 +107,7 @@ class StatelessJob(object):
                             and e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE \
                             and entity_version is None:
                         job_entity_version = entity_version or \
-                                             self.get_status().version.value
+                            self.get_status().version.value
                         continue
                     raise
                 break
@@ -150,8 +150,8 @@ class StatelessJob(object):
         """
         if ranges is None:
             job_entity_version = entity_version or \
-                                 self.entity_version or \
-                                 self.get_status().version.value
+                self.entity_version or \
+                self.get_status().version.value
 
             while True:
                 request = stateless_svc.StopJobRequest(
@@ -171,7 +171,7 @@ class StatelessJob(object):
                             and e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE \
                             and entity_version is None:
                         job_entity_version = entity_version or \
-                                             self.get_status().version.value
+                            self.get_status().version.value
                         continue
                     raise
                 break
@@ -194,6 +194,45 @@ class StatelessJob(object):
         log.info('stopping pods in job {0} with ranges {1}'
                  .format(self.job_id, ranges))
         return pod_svc.StopPodResponse()
+
+    def restart(self, entity_version=None, batch_size=None, ranges=None):
+        """
+        Restart pods based on the ranges.
+        If ranges is not provided then it restarts all pods of the job
+
+        :return: restart response from the API
+        """
+        job_entity_version = entity_version or \
+            self.entity_version or \
+            self.get_status().version.value
+
+        while True:
+            request = stateless_svc.RestartJobRequest(
+                job_id=v1alpha_peloton.JobID(value=self.job_id),
+                version=v1alpha_peloton.EntityVersion(value=job_entity_version),
+                batch_size=batch_size,
+                ranges=ranges,
+            )
+            try:
+                resp = self.client.stateless_svc.RestartJob(
+                    request,
+                    metadata=self.client.jobmgr_metadata,
+                    timeout=self.config.rpc_timeout_sec,
+                )
+            except grpc.RpcError as e:
+                # if entity version is incorrect, get entity version from job status
+                # and try again.
+                if e.code() == grpc.StatusCode.INVALID_ARGUMENT \
+                        and e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE \
+                        and entity_version is None:
+                    job_entity_version = entity_version or \
+                        self.get_status().version.value
+                    continue
+                raise
+            break
+        self.entity_version = resp.version.value
+        log.info('job restarted, new entity version: %s', self.entity_version)
+        return resp
 
     def wait_for_state(self, goal_state='SUCCEEDED', failed_state='FAILED'):
         """
@@ -510,3 +549,9 @@ class StatelessJob(object):
                 raise
             break
         log.info('job %s deleted', self.job_id)
+
+    def get_pods(self):
+        """
+        :return: All the pods of the job
+        """
+        return {Pod(self, iid) for iid in xrange(self.job_spec.instance_count)}
