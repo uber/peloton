@@ -5,6 +5,7 @@ import random
 import string
 import time
 
+import conf_util as util
 from docker import Client
 from tools.pcluster.pcluster import setup, teardown
 from job import Job
@@ -139,8 +140,12 @@ def jobmgr():
 
 @pytest.fixture()
 def resmgr():
-    # TODO: We need to pick up the count dynamically.
     return Container(['peloton-resmgr0', 'peloton-resmgr1'])
+
+
+@pytest.fixture()
+def placement_engines():
+    return Container(util.PLACEMENT_ENGINES)
 
 
 @pytest.fixture()

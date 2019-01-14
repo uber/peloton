@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pt "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -40,20 +41,30 @@ type Scheduler interface {
 	EnqueueGang(gang *resmgrsvc.Gang) error
 	// Dequeues gang (task list) from the resource pool ready queue
 	DequeueGang(maxWaitTime time.Duration, taskType resmgr.TaskType) (*resmgrsvc.Gang, error)
+	// Adds an invalid task so that it can be removed from the ready queue later.
+	AddInvalidTask(task *peloton.TaskID)
 }
 
 // scheduler implements the TaskScheduler interface
 type scheduler struct {
-	lock             sync.Mutex
-	condition        *sync.Cond
-	runningState     int32
-	resPoolTree      respool.Tree
+	lock         sync.Mutex
+	condition    *sync.Cond
+	runningState int32
+
+	// the resource pool hierarchy.
+	resPoolTree respool.Tree
+	// queue of READY gangs which have passed admission control.
+	queue queue.MultiLevelList
+	// task tracker for rmtasks.
+	rmTaskTracker Tracker
+	// set of invalid tasks which will be discarded during dequeue.
+	invalidTasks sync.Map
+
 	schedulingPeriod time.Duration
-	stopChan         chan struct{}
-	queue            queue.MultiLevelList
-	rmTaskTracker    Tracker
 	metrics          *Metrics
 	random           *rand.Rand
+
+	stopChan chan struct{}
 }
 
 var sched *scheduler
@@ -61,6 +72,7 @@ var sched *scheduler
 // InitScheduler initializes a Task Scheduler
 func InitScheduler(
 	parent tally.Scope,
+	tree respool.Tree,
 	taskSchedulingPeriod time.Duration,
 	rmTaskTracker Tracker) {
 
@@ -70,14 +82,14 @@ func InitScheduler(
 	}
 	sched = &scheduler{
 		condition:        sync.NewCond(&sync.Mutex{}),
-		resPoolTree:      respool.GetTree(),
 		runningState:     common.RunningStateNotStarted,
-		schedulingPeriod: taskSchedulingPeriod,
-		stopChan:         make(chan struct{}, 1),
 		queue:            queue.NewMultiLevelList("ready-queue", maxReadyQueueSize),
 		rmTaskTracker:    rmTaskTracker,
+		resPoolTree:      tree,
+		schedulingPeriod: taskSchedulingPeriod,
 		metrics:          NewMetrics(parent.SubScope("task_scheduler")),
 		random:           rand.New(rand.NewSource(time.Now().UnixNano())),
+		stopChan:         make(chan struct{}, 1),
 	}
 	log.Info("Task scheduler is initialized")
 }
@@ -334,6 +346,48 @@ func (s *scheduler) EnqueueGang(gang *resmgrsvc.Gang) error {
 	return err
 }
 
+// AddInvalidTask adds an invalid task so that it can remove them from the
+// ready queue later
+func (s *scheduler) AddInvalidTask(id *peloton.TaskID) {
+	s.invalidTasks.Store(id.GetValue(), true)
+}
+
+// DequeueGang dequeues a gang, which is a task list of 1 or more (same priority)
+// tasks of type task type, from the ready queue. If task type is UNKNOWN then
+// gangs with tasks of any task type will be returned.
+func (s *scheduler) DequeueGang(
+	maxWaitTime time.Duration,
+	taskType resmgr.TaskType) (*resmgrsvc.Gang, error) {
+
+	level := int(taskType)
+	if taskType == resmgr.TaskType_UNKNOWN {
+		levels := s.queue.Levels()
+		if len(levels) > 0 {
+			level = levels[s.getRandLevel(len(levels))]
+		}
+	}
+
+	gang, err := s.dequeueWithTimeout(maxWaitTime, level)
+	if err != nil {
+		return gang, err
+	}
+
+	// Make sure all the tasks in the gang are valid.
+	// A task can be invalid if it was deleted. To reduce the performance
+	// penalty of removing the task from the ready queue we remove the task
+	// during dequeue.
+	var validTasks []*resmgr.Task
+	for _, t := range gang.GetTasks() {
+		if _, ok := s.invalidTasks.Load(t.GetId().GetValue()); ok {
+			s.invalidTasks.Delete(t.GetId().GetValue())
+			continue
+		}
+		validTasks = append(validTasks, t)
+	}
+
+	return &resmgrsvc.Gang{Tasks: validTasks}, nil
+}
+
 // thread safe way to get random level
 func (s *scheduler) getRandLevel(n int) int {
 	s.lock.Lock()
@@ -342,17 +396,9 @@ func (s *scheduler) getRandLevel(n int) int {
 	return l
 }
 
-// DequeueGang dequeues a gang, which is a task list of 1 or more (same priority)
-// tasks of type task type, from the ready queue. If task type is UNKNOWN then
-// gangs with tasks of any task type will be returned.
-func (s *scheduler) DequeueGang(maxWaitTime time.Duration, taskType resmgr.TaskType) (*resmgrsvc.Gang, error) {
-	level := int(taskType)
-	if taskType == resmgr.TaskType_UNKNOWN {
-		levels := s.queue.Levels()
-		if len(levels) > 0 {
-			level = levels[s.getRandLevel(len(levels))]
-		}
-	}
+func (s *scheduler) dequeueWithTimeout(
+	maxWaitTime time.Duration,
+	level int) (*resmgrsvc.Gang, error) {
 	s.condition.L.Lock()
 	defer s.condition.L.Unlock()
 	pastDeadline := uint32(0)

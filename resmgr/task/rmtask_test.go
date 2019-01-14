@@ -59,7 +59,11 @@ func (s *RMTaskTestSuite) SetupSuite() {
 		EnablePlacementBackoff: true,
 	})
 	s.tracker = GetTracker()
-	InitScheduler(tally.NoopScope, 1*time.Second, s.tracker)
+	InitScheduler(
+		tally.NoopScope,
+		s.resTree,
+		1*time.Second,
+		s.tracker)
 	s.taskScheduler = GetScheduler()
 }
 

@@ -80,7 +80,11 @@ func (s *HandlerTestSuite) SetupSuite() {
 		tasktestutil.CreateTaskConfig())
 
 	s.rmTaskTracker = rm_task.GetTracker()
-	rm_task.InitScheduler(tally.NoopScope, 1*time.Second, s.rmTaskTracker)
+	rm_task.InitScheduler(
+		tally.NoopScope,
+		s.resTree,
+		1*time.Second,
+		s.rmTaskTracker)
 	s.taskScheduler = rm_task.GetScheduler()
 
 	s.handler = &ServiceHandler{

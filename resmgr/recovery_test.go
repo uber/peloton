@@ -68,7 +68,12 @@ func (suite *recoveryTestSuite) SetupSuite() {
 	})
 
 	suite.rmTaskTracker = rm_task.GetTracker()
-	rm_task.InitScheduler(tally.NoopScope, 100*time.Second, suite.rmTaskTracker)
+	rm_task.InitScheduler(
+		tally.NoopScope,
+		suite.resourceTree,
+		100*time.Second,
+		suite.rmTaskTracker,
+	)
 	suite.taskScheduler = rm_task.GetScheduler()
 
 	suite.handler = &ServiceHandler{

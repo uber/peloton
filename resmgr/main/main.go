@@ -17,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/entitlement"
 	maintenance "code.uber.internal/infra/peloton/resmgr/host"
 	"code.uber.internal/infra/peloton/resmgr/preemption"
+	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/respool/respoolsvc"
 	"code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/storage/stores"
@@ -260,6 +261,7 @@ func main() {
 	// Initializing the task scheduler
 	task.InitScheduler(
 		rootScope,
+		respool.GetTree(),
 		cfg.ResManager.TaskSchedulingPeriod,
 		task.GetTracker(),
 	)
