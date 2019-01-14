@@ -368,6 +368,26 @@ func (suite *MockDatastoreTestSuite) TestWorkflowEventsFailures() {
 	suite.Error(err)
 }
 
+// TestJobUpdateEventsFailures tests failure scenarios for job update events
+func (suite *MockDatastoreTestSuite) TestJobUpdateEventsFailures() {
+	updateID := &peloton.UpdateID{
+		Value: testUpdateID,
+	}
+
+	err := suite.store.AddJobUpdateEvent(
+		context.Background(),
+		updateID,
+		models.WorkflowType_UPDATE,
+		update.State_ROLLING_FORWARD)
+	suite.Error(err)
+
+	err = suite.store.deleteJobUpdateEvents(context.Background(), updateID)
+	suite.Error(err)
+
+	_, err = suite.store.GetJobUpdateEvents(context.Background(), updateID)
+	suite.Error(err)
+}
+
 // TestDataStoreFailureGetTaskConfigs tests datastore failures in get task
 // config from legacy/v2 tables
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetTaskConfigs() {

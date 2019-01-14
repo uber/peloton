@@ -74,6 +74,7 @@ const (
 	taskStateChangesTable  = "task_state_changes"
 	podEventsTable         = "pod_events"
 	updatesTable           = "update_info"
+	jobUpdateEvents        = "job_update_events"
 	podWorkflowEventsTable = "pod_workflow_events"
 	frameworksTable        = "frameworks"
 	taskJobStateView       = "mv_task_by_state"
@@ -3046,6 +3047,84 @@ func (s *Store) CreateUpdate(
 	return nil
 }
 
+// AddJobUpdateEvent adds an update state change event for a job
+func (s *Store) AddJobUpdateEvent(
+	ctx context.Context,
+	updateID *peloton.UpdateID,
+	updateType models.WorkflowType,
+	updateState update.State,
+) error {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(jobUpdateEvents).
+		Columns(
+			"update_id",
+			"type",
+			"state",
+			"create_time").
+		Values(
+			updateID.GetValue(),
+			updateType.String(),
+			updateState.String(),
+			qb.UUID{UUID: gocql.UUIDFromTime(time.Now())})
+	err := s.applyStatement(ctx, stmt, updateID.GetValue())
+	if err != nil {
+		s.metrics.UpdateMetrics.JobUpdateEventAddFail.Inc(1)
+		return err
+	}
+
+	s.metrics.UpdateMetrics.JobUpdateEventAdd.Inc(1)
+	return nil
+}
+
+// GetJobUpdateEvents gets update state change events for a job
+// in descending create timestamp order
+func (s *Store) GetJobUpdateEvents(
+	ctx context.Context,
+	updateID *peloton.UpdateID,
+) ([]*stateless.WorkflowEvent, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("*").From(jobUpdateEvents).
+		Where(qb.Eq{"update_id": updateID.GetValue()})
+	result, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		s.metrics.UpdateMetrics.JobUpdateEventGetFail.Inc(1)
+		return nil, err
+	}
+
+	var workflowEvents []*stateless.WorkflowEvent
+	for _, value := range result {
+		workflowEvent := &stateless.WorkflowEvent{
+			Type: stateless.WorkflowType(
+				models.WorkflowType_value[value["type"].(string)]),
+			State: stateless.WorkflowState(
+				update.State_value[value["state"].(string)]),
+			Timestamp: value["create_time"].(qb.UUID).Time().Format(time.RFC3339),
+		}
+
+		workflowEvents = append(workflowEvents, workflowEvent)
+	}
+
+	s.metrics.UpdateMetrics.JobUpdateEventGet.Inc(1)
+	return workflowEvents, nil
+}
+
+// deleteJobUpdateEvents deletes job update events for an update of a job
+func (s *Store) deleteJobUpdateEvents(
+	ctx context.Context,
+	updateID *peloton.UpdateID,
+) error {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Delete(jobUpdateEvents).
+		Where(qb.Eq{"update_id": updateID.GetValue()})
+	if err := s.applyStatement(ctx, stmt, updateID.GetValue()); err != nil {
+		s.metrics.UpdateMetrics.JobUpdateEventDeleteFail.Inc(1)
+		return err
+	}
+
+	s.metrics.UpdateMetrics.JobUpdateEventDelete.Inc(1)
+	return nil
+}
+
 // AddWorkflowEvent adds workflow events for an update and instance
 // to track the progress
 func (s *Store) AddWorkflowEvent(
@@ -3280,8 +3359,10 @@ func (s *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
 	return nil, yarpcerrors.NotFoundErrorf("update not found")
 }
 
-// deleteSingleUpdate deletes a given update from the update_info table,
-// along with workflow events for all instances included in the update
+// deleteSingleUpdate deletes a given update from following tables
+// - pod_workflow_events table for all instances included in the update
+// - job_update_events table for update state change events
+// - update_info table
 func (s *Store) deleteSingleUpdate(ctx context.Context, id *peloton.UpdateID) error {
 	update, err := s.GetUpdate(ctx, id)
 	if err != nil {
@@ -3304,6 +3385,14 @@ func (s *Store) deleteSingleUpdate(ctx context.Context, id *peloton.UpdateID) er
 			s.metrics.UpdateMetrics.UpdateDeleteFail.Inc(1)
 			return err
 		}
+	}
+
+	if err := s.deleteJobUpdateEvents(ctx, id); err != nil {
+		log.WithFields(log.Fields{
+			"update_id": id.GetValue(),
+		}).WithError(err).Info("failed to delete job update events")
+		s.metrics.UpdateMetrics.UpdateDeleteFail.Inc(1)
+		return err
 	}
 
 	queryBuilder := s.DataStore.NewQuery()

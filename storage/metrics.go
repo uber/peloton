@@ -173,6 +173,15 @@ type UpdateMetrics struct {
 
 	UpdateDeleteFail tally.Counter
 	UpdateDelete     tally.Counter
+
+	JobUpdateEventAdd     tally.Counter
+	JobUpdateEventAddFail tally.Counter
+
+	JobUpdateEventGet     tally.Counter
+	JobUpdateEventGetFail tally.Counter
+
+	JobUpdateEventDelete     tally.Counter
+	JobUpdateEventDeleteFail tally.Counter
 }
 
 // ResourcePoolMetrics is a struct for tracking resource pool related counters in the storage layer
@@ -434,6 +443,15 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		UpdateDelete:     updateSuccessScope.Counter("delete"),
 		UpdateDeleteFail: updateFailScope.Counter("delete"),
+
+		JobUpdateEventAdd:     updateSuccessScope.Counter("job_update_event_add"),
+		JobUpdateEventAddFail: updateFailScope.Counter("job_update_event_add"),
+
+		JobUpdateEventGet:     updateSuccessScope.Counter("job_update_event_get"),
+		JobUpdateEventGetFail: updateFailScope.Counter("job_update_event_get"),
+
+		JobUpdateEventDelete:     updateSuccessScope.Counter("job_update_event_delete"),
+		JobUpdateEventDeleteFail: updateFailScope.Counter("job_update_event_delete"),
 	}
 
 	resourcePoolMetrics := &ResourcePoolMetrics{

@@ -986,6 +986,13 @@ func (h *serviceHandler) GetJobUpdate(
 		return nil, errors.Wrap(err, "fail to get update")
 	}
 
+	jobUpdateEvents, err := h.updateStore.GetJobUpdateEvents(
+		ctx,
+		jobRuntime.GetUpdateID())
+	if err != nil {
+		return nil, errors.Wrap(err, "fail to get job update events")
+	}
+
 	// Get Job Spec
 	jobConfig, _, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
@@ -1007,7 +1014,7 @@ func (h *serviceHandler) GetJobUpdate(
 	return &svc.GetJobUpdateResponse{
 		UpdateInfo: &stateless.UpdateInfo{
 			Info:   handlerutil.ConvertUpdateModelToWorkflowInfo(updateModel),
-			Events: nil, // TODO: Add job update events
+			Events: jobUpdateEvents,
 		},
 		JobSpec:     handlerutil.ConvertJobConfigToJobSpec(jobConfig),
 		PrevJobSpec: handlerutil.ConvertJobConfigToJobSpec(prevJobConfig),
@@ -1223,11 +1230,18 @@ func (h *serviceHandler) ListJobUpdates(
 		if err != nil {
 			return nil, err
 		}
-		// TODO: fill in update events
-		updateInfos = append(updateInfos, &stateless.UpdateInfo{
-			Info: handlerutil.ConvertUpdateModelToWorkflowInfo(updateModel),
-		})
 
+		jobUpdateEvents, err := h.updateStore.GetJobUpdateEvents(
+			ctx,
+			updateID)
+		if err != nil {
+			return nil, errors.Wrap(err, "fail to get job update events")
+		}
+
+		updateInfos = append(updateInfos, &stateless.UpdateInfo{
+			Info:   handlerutil.ConvertUpdateModelToWorkflowInfo(updateModel),
+			Events: jobUpdateEvents,
+		})
 	}
 
 	return &svc.ListJobUpdatesResponse{Updates: updateInfos}, nil

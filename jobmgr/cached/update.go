@@ -26,7 +26,7 @@ import (
 
 	"github.com/uber/peloton/common/taskconfig"
 	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
-	taskuitl "github.com/uber/peloton/jobmgr/util/task"
+	taskutil "github.com/uber/peloton/jobmgr/util/task"
 	"github.com/uber/peloton/storage"
 	"github.com/uber/peloton/util"
 
@@ -269,12 +269,12 @@ func (u *update) Create(
 	// write initialized workflow state for instances on create update
 	instancesInUpdate := append(instanceAdded, instanceUpdated...)
 	instancesInUpdate = append(instancesInUpdate, instanceRemoved...)
-	if err := u.addWorkflowEventForInstances(
+	if err := u.writeWorkflowEvents(
 		ctx,
-		u.id,
+		instancesInUpdate,
 		workflowType,
 		state,
-		instancesInUpdate); err != nil {
+	); err != nil {
 		return err
 	}
 
@@ -319,12 +319,12 @@ func (u *update) Modify(
 	// write current workflow state for all instances on modify update
 	instancesInUpdate := append(instancesAdded, instancesUpdated...)
 	instancesInUpdate = append(instancesInUpdate, instancesRemoved...)
-	if err := u.addWorkflowEventForInstances(
+	if err := u.writeWorkflowEvents(
 		ctx,
-		u.id,
+		instancesInUpdate,
 		u.workflowType,
 		u.state,
-		instancesInUpdate); err != nil {
+	); err != nil {
 		u.clearCache()
 		return err
 	}
@@ -454,6 +454,16 @@ func (u *update) writeProgress(
 	prevState := u.prevState
 	if u.state != state {
 		prevState = u.state
+
+		// write job update event on update's state change
+		if err := u.jobFactory.updateStore.AddJobUpdateEvent(
+			ctx,
+			u.id,
+			u.workflowType,
+			state); err != nil {
+			u.clearCache()
+			return err
+		}
 	}
 
 	if err := u.jobFactory.updateStore.WriteUpdateProgress(
@@ -618,12 +628,12 @@ func (u *update) Rollback(
 	// have not gone through rollback yet.
 	instancesInUpdate := append(instancesAdded, instancesUpdated...)
 	instancesInUpdate = append(instancesInUpdate, instancesRemoved...)
-	if err := u.addWorkflowEventForInstances(
+	if err := u.writeWorkflowEvents(
 		ctx,
-		u.id,
+		instancesInUpdate,
 		u.workflowType,
 		pbupdate.State_ROLLING_BACKWARD,
-		instancesInUpdate); err != nil {
+	); err != nil {
 		u.clearCache()
 		return err
 	}
@@ -986,6 +996,39 @@ func GetInstancesToProcessForUpdate(
 	return
 }
 
+// writeWorkflowEvents writes update state event for job and impacted instances
+// Persistenting job update event is required on any workflow action, and
+// if error occurs in this function, caller must retry an update
+// such that update events for instance and job are guaranteed to be persisted
+// Currently, this function is called on CREATE, MODIFY and ROLLING_BACKWARD
+// a workflow.
+func (u *update) writeWorkflowEvents(
+	ctx context.Context,
+	instances []uint32,
+	workflowType models.WorkflowType,
+	state pbupdate.State,
+) error {
+
+	if err := u.addWorkflowEventForInstances(
+		ctx,
+		u.id,
+		workflowType,
+		state,
+		instances); err != nil {
+		return err
+	}
+
+	if err := u.jobFactory.updateStore.AddJobUpdateEvent(
+		ctx,
+		u.id,
+		workflowType,
+		state); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // writeWorkflowProgressForInstances writes workflow progress for instances,
 // in process of updating or are already updated (success/failure).
 // - Add instances that succeeded
@@ -1059,7 +1102,7 @@ func (u *update) addWorkflowEventForInstances(
 	}
 
 	// add workflow events for provided instances in parallel batches.
-	return taskuitl.RunInParallel(u.id.GetValue(), instances, addWorkflowEvent)
+	return taskutil.RunInParallel(u.id.GetValue(), instances, addWorkflowEvent)
 }
 
 // labelsChangeCheck returns true if the labels have changed

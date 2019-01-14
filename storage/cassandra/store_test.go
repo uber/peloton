@@ -32,6 +32,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/common"
@@ -2740,6 +2741,14 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 		}
 	}
 
+	// add INITIALIZED update state to job update events
+	suite.NoError(store.AddJobUpdateEvent(
+		context.Background(),
+		updateID,
+		models.WorkflowType_UPDATE,
+		state,
+	))
+
 	// create a new update
 	suite.NoError(store.CreateUpdate(
 		context.Background(),
@@ -2755,6 +2764,14 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 			InstancesAdded:       instancesAdded,
 			Type:                 models.WorkflowType_UPDATE,
 		},
+	))
+
+	// add ROLLING_BACKWARD update state to job update events
+	suite.NoError(store.AddJobUpdateEvent(
+		context.Background(),
+		updateID,
+		models.WorkflowType_UPDATE,
+		update.State_ROLLING_BACKWARD,
 	))
 
 	suite.NoError(store.ModifyUpdate(
@@ -2784,6 +2801,39 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 	suite.Equal(updateResult.GetPrevState(), state)
 	suite.Equal(updateResult.GetJobConfigVersion(), jobVersion+1)
 	suite.Equal(updateResult.GetPrevJobConfigVersion(), jobVersion)
+
+	// Get job update events, events are in descending create timestamp order
+	jobUpdateEvents, err := store.GetJobUpdateEvents(
+		context.Background(),
+		updateID)
+	suite.NoError(err)
+	suite.Equal(2, len(jobUpdateEvents))
+	suite.Equal(stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD,
+		jobUpdateEvents[0].GetState())
+	suite.Equal(stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
+		jobUpdateEvents[1].GetState())
+
+	// delete update
+	suite.NoError(store.DeleteUpdate(
+		context.Background(),
+		updateID,
+		jobID,
+		jobVersion+1,
+	))
+
+	// delete the job
+	store.DeleteJob(context.Background(), jobID.GetValue())
+
+	updateResult, err = store.GetUpdate(context.Background(), updateID)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsNotFound(err))
+
+	// job update events are deleted as well with update
+	jobUpdateEvents, err = store.GetJobUpdateEvents(
+		context.Background(),
+		updateID)
+	suite.NoError(err)
+	suite.Equal(0, len(jobUpdateEvents))
 }
 
 func createJobConfig() *job.JobConfig {

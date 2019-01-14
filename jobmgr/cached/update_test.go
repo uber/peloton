@@ -118,7 +118,17 @@ func (suite *UpdateTestSuite) TestModifyValid() {
 			suite.updateID,
 			gomock.Any(),
 			suite.update.workflowType,
-			suite.update.state).Return(nil).Times(6)
+			suite.update.state).
+		Return(nil).
+		Times(6)
+
+	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_ROLLING_FORWARD).
+		Return(nil)
 
 	err := suite.update.Modify(
 		context.Background(),
@@ -149,6 +159,13 @@ func (suite *UpdateTestSuite) TestModifyDBError() {
 			gomock.Any(),
 			pbupdate.State_ROLLING_FORWARD).
 		Return(nil).Times(6)
+	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_ROLLING_FORWARD).
+		Return(nil)
 
 	suite.updateStore.EXPECT().
 		ModifyUpdate(gomock.Any(), gomock.Any()).
@@ -240,6 +257,34 @@ func (suite *UpdateTestSuite) TestWriteProgressAbortedUpdate() {
 	suite.Equal(suite.update.state, pbupdate.State_ABORTED)
 }
 
+// TestWriteJobUpdateEventError tests failure case to write job
+// update event
+func (suite *UpdateTestSuite) TestWriteJobUpdateEventError() {
+	state := pbupdate.State_ROLLING_FORWARD
+	instancesDone := []uint32{0, 1, 2, 3}
+	instancesCurrent := []uint32{4, 5}
+	instanceFailed := []uint32{}
+
+	suite.update.state = pbupdate.State_INITIALIZED
+
+	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_ROLLING_FORWARD).
+		Return(fmt.Errorf("fake db error"))
+
+	err := suite.update.WriteProgress(
+		context.Background(),
+		state,
+		instancesDone,
+		instancesCurrent,
+		instanceFailed,
+	)
+	suite.EqualError(err, "fake db error")
+}
+
 // TestValidWriteProgress tests failing to persist the status
 // of an update into the DB.
 func (suite *UpdateTestSuite) TestWriteProgressDBError() {
@@ -281,6 +326,14 @@ func (suite *UpdateTestSuite) TestConsecutiveWriteProgressPrevState() {
 	suite.update.workflowType = models.WorkflowType_UPDATE
 
 	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_ROLLING_FORWARD).
+		Return(nil)
+
+	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
@@ -320,6 +373,8 @@ func (suite *UpdateTestSuite) TestConsecutiveWriteProgressPrevState() {
 
 	// prev state should still be INITIALIZED after we write
 	// State_ROLLING_FORWARD twice
+	// state is progressing
+	// Job Update Event is only written once, as ROLLING_FORWARD
 	suite.NoError(suite.update.WriteProgress(
 		context.Background(),
 		pbupdate.State_ROLLING_FORWARD,
@@ -403,6 +458,14 @@ func (suite *UpdateTestSuite) TestConsecutiveWriteProgressPrevState() {
 			pbupdate.State_ROLLING_BACKWARD).
 		Return(nil)
 
+	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_ROLLING_BACKWARD).
+		Return(nil)
+
 	suite.NoError(suite.update.WriteProgress(
 		context.Background(),
 		pbupdate.State_ROLLING_BACKWARD,
@@ -419,6 +482,14 @@ func (suite *UpdateTestSuite) TestPauseSuccess() {
 	suite.update.workflowType = models.WorkflowType_UPDATE
 	suite.update.state = pbupdate.State_ROLLING_FORWARD
 	opaque := "test"
+
+	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			suite.updateID,
+			gomock.Any(),
+			pbupdate.State_PAUSED).
+		Return(nil)
 	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, updateModel *models.UpdateModel) {
@@ -454,6 +525,13 @@ func (suite *UpdateTestSuite) TestPausePausedUpdate() {
 // forward update
 func (suite *UpdateTestSuite) TestPauseResumeRollingForwardUpdate() {
 	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_PAUSED).
+		Return(nil)
+	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
@@ -462,6 +540,13 @@ func (suite *UpdateTestSuite) TestPauseResumeRollingForwardUpdate() {
 	suite.NoError(suite.update.Pause(context.Background(), nil))
 	suite.Equal(pbupdate.State_PAUSED, suite.update.state)
 
+	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_ROLLING_FORWARD).
+		Return(nil)
 	suite.NoError(suite.update.Resume(context.Background(), nil))
 	suite.Equal(suite.update.state, pbupdate.State_ROLLING_FORWARD)
 }
@@ -469,6 +554,13 @@ func (suite *UpdateTestSuite) TestPauseResumeRollingForwardUpdate() {
 // TestPauseResumeRollingBackwardUpdate tests pause and resume a rolling
 // backward update
 func (suite *UpdateTestSuite) TestPauseResumeRollingBackwardUpdate() {
+	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_PAUSED).
+		Return(nil)
 	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
 		Return(nil).
@@ -478,6 +570,13 @@ func (suite *UpdateTestSuite) TestPauseResumeRollingBackwardUpdate() {
 	suite.NoError(suite.update.Pause(context.Background(), nil))
 	suite.Equal(pbupdate.State_PAUSED, suite.update.state)
 
+	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_ROLLING_BACKWARD).
+		Return(nil)
 	suite.NoError(suite.update.Resume(context.Background(), nil))
 	suite.Equal(suite.update.state, pbupdate.State_ROLLING_BACKWARD)
 }
@@ -486,6 +585,14 @@ func (suite *UpdateTestSuite) TestPauseResumeRollingBackwardUpdate() {
 // initialized update
 func (suite *UpdateTestSuite) TestPauseResumeInitializedUpdate() {
 	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_PAUSED).
+		Return(nil)
+
+	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
@@ -493,6 +600,14 @@ func (suite *UpdateTestSuite) TestPauseResumeInitializedUpdate() {
 	suite.update.state = pbupdate.State_INITIALIZED
 	suite.NoError(suite.update.Pause(context.Background(), nil))
 	suite.Equal(pbupdate.State_PAUSED, suite.update.state)
+
+	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_INITIALIZED).
+		Return(nil)
 
 	suite.NoError(suite.update.Resume(context.Background(), nil))
 	suite.Equal(suite.update.state, pbupdate.State_INITIALIZED)
@@ -533,6 +648,14 @@ func (suite *UpdateTestSuite) TestCancelValid() {
 	}
 
 	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_ABORTED).
+		Return(nil)
+
+	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, updateModel *models.UpdateModel) {
 			suite.Equal(suite.updateID, updateModel.UpdateID)
@@ -559,6 +682,13 @@ func (suite *UpdateTestSuite) TestCancelDBError() {
 	suite.update.instancesDone = instancesDone
 	suite.update.instancesCurrent = instancesCurrent
 
+	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_ABORTED).
+		Return(nil)
 	suite.updateStore.EXPECT().
 		WriteUpdateProgress(gomock.Any(), gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
@@ -981,6 +1111,14 @@ func (suite *UpdateTestSuite) TestUpdateRollbackSuccess() {
 		Return(nil, nil)
 
 	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_ROLLING_BACKWARD).
+		Return(nil)
+
+	suite.updateStore.EXPECT().
 		ModifyUpdate(gomock.Any(), gomock.Any()).
 		Return(nil)
 
@@ -1002,6 +1140,14 @@ func (suite *UpdateTestSuite) TestUpdateRollbackModifyUpdateFailure() {
 	suite.taskStore.EXPECT().
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
 		Return(nil, nil)
+
+	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_ROLLING_BACKWARD).
+		Return(nil)
 
 	suite.updateStore.EXPECT().
 		ModifyUpdate(gomock.Any(), gomock.Any()).
@@ -1545,6 +1691,14 @@ func (suite *UpdateTestSuite) TestUpdateCreateSuccess() {
 	configAddOn := &models.ConfigAddOn{}
 
 	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_INITIALIZED).
+		Return(nil)
+
+	suite.updateStore.EXPECT().
 		CreateUpdate(gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, updateInfo *models.UpdateModel) {
 			suite.Equal(updateInfo.GetJobConfigVersion(),
@@ -1604,6 +1758,14 @@ func (suite *UpdateTestSuite) TestUpdateCreatePausedSuccess() {
 	}
 	jobConfig := prevConfig
 	configAddOn := &models.ConfigAddOn{}
+
+	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			pbupdate.State_PAUSED).
+		Return(nil)
 
 	suite.updateStore.EXPECT().
 		CreateUpdate(gomock.Any(), gomock.Any()).
