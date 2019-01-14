@@ -695,9 +695,9 @@ func (h *serviceHandler) DeleteJob(
 		}
 
 		log.WithField("request", req).
-			WithField("response", resp).
 			Info("JobSVC.DeleteJob succeeded")
 	}()
+
 	cachedJob := h.jobFactory.AddJob(&peloton.JobID{
 		Value: req.GetJobId().GetValue(),
 	})
@@ -709,7 +709,17 @@ func (h *serviceHandler) DeleteJob(
 			return nil, errors.Wrap(err, "failed to get job runtime")
 		}
 
-		if !req.GetForce() && runtime.GetGoalState() != pbjob.JobState_KILLED {
+		entityVersion := jobutil.GetJobEntityVersion(
+			runtime.GetConfigurationVersion(),
+			runtime.GetDesiredStateVersion(),
+			runtime.GetWorkflowVersion(),
+		)
+		if entityVersion.GetValue() !=
+			req.GetVersion().GetValue() {
+			return nil, jobmgrcommon.InvalidEntityVersionError
+		}
+
+		if !req.GetForce() && runtime.GetState() != pbjob.JobState_KILLED {
 			return nil, yarpcerrors.AbortedErrorf("job is not in terminal state")
 		}
 

@@ -3186,6 +3186,36 @@ func (suite *statelessHandlerTestSuite) TestDeleteJobGetRuntimeFailure() {
 }
 
 // TestDeleteJobNonTerminalJobFailure tests failure case
+// of deleting a job due to entity version mismatch
+func (suite *statelessHandlerTestSuite) TestDeleteJobBadVersion() {
+	jobRuntime := &pbjob.RuntimeInfo{
+		ConfigurationVersion: testConfigurationVersion,
+		DesiredStateVersion:  testDesiredStateVersion,
+		WorkflowVersion:      testWorkflowVersion,
+	}
+
+	gomock.InOrder(
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.cachedJob.EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(jobRuntime, nil),
+	)
+
+	resp, err := suite.handler.DeleteJob(
+		context.Background(),
+		&statelesssvc.DeleteJobRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: &v1alphapeloton.EntityVersion{Value: "1-2-3"},
+		},
+	)
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestDeleteJobNonTerminalJobFailure tests failure case
 // of deleting a job due to job being in non-terminal state
 func (suite *statelessHandlerTestSuite) TestDeleteJobNonTerminalJobFailure() {
 	jobRuntime := &pbjob.RuntimeInfo{

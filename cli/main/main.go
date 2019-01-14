@@ -314,7 +314,10 @@ var (
 	statelessDeleteJobID         = statelessDelete.Arg("job", "job identifier").Required().String()
 	statelessDeleteEntityVersion = statelessDelete.Arg("entityVersion",
 		"entity version for concurrency control").Required().String()
-	statelessDeleteForce = statelessDelete.Flag("force", "force delete").Default("false").Short('f').Bool()
+	statelessDeleteForce = statelessDelete.Flag("force", "force delete the job even if it is running. "+
+		" The job will be first stopped and deleted. This step cannot be undone, "+
+		"and the job cannot be re-created (with same uuid) till the delete is complete. "+
+		"USE WITH CAUTION!").Default("false").Short('f').Bool()
 
 	// Top level pod command
 	pod = app.Command("pod", "CLI reflects pod(s) actions, such as get pod details, create/restart/update a pod...")

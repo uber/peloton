@@ -120,7 +120,7 @@ var (
 			job.JobState_RUNNING:       KillAction,
 			job.JobState_FAILED:        DeleteJobAction,
 			job.JobState_KILLED:        DeleteJobAction,
-			job.JobState_KILLING:       DeleteJobAction,
+			job.JobState_KILLING:       KillAction,
 		},
 	}
 )

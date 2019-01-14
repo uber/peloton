@@ -623,9 +623,7 @@ func (c *Client) StatelessDeleteAction(
 	}
 
 	fmt.Printf("Job deleted\n")
-
 	return nil
-
 }
 
 func printStatelessQueryResponse(resp *statelesssvc.QueryJobsResponse) {

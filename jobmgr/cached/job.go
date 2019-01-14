@@ -1892,6 +1892,8 @@ func (j *job) updateWorkflowVersion(
 // Delete deletes the job from DB and clears the cache
 func (j *job) Delete(ctx context.Context) error {
 	err := j.jobFactory.jobStore.DeleteJob(ctx, j.ID().GetValue())
+	// It is possible to receive a timeout error although the delete was successful.
+	// Hence, invalidate the cache irrespective of whether an error occurred or not
 	j.invalidateCache()
 
 	return err
