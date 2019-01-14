@@ -727,7 +727,7 @@ func (h *serviceHandler) DeleteJob(
 		}
 
 		if !req.GetForce() && runtime.GetState() != pbjob.JobState_KILLED {
-			return nil, yarpcerrors.AbortedErrorf("job is not in terminal state")
+			return nil, yarpcerrors.AbortedErrorf("job is not stopped")
 		}
 
 		runtime.GoalState = pbjob.JobState_DELETED

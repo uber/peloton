@@ -185,3 +185,92 @@ def test__stop_job_bad_version(stateless_job_v1alpha):
         assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
         return
     raise Exception("entity version mismatch error not received")
+
+
+# test__delete_killed_job tests deleting a killed job
+def test__delete_killed_job():
+    job = StatelessJob()
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+
+    job.stop()
+    job.wait_for_state(goal_state='KILLED')
+
+    job.delete()
+    time.sleep(10)
+
+    try:
+        job.get_job()
+    except grpc.RpcError as e:
+        assert e.code() == grpc.StatusCode.NOT_FOUND
+        return
+    raise Exception("job not found error not received")
+
+
+# test__delete_running_job_with_force_flag tests force deleting a running job
+def test__delete_running_job_with_force_flag():
+    job = StatelessJob()
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+
+    job.delete(force_delete=True)
+    time.sleep(10)
+
+    try:
+        job.get_job()
+    except grpc.RpcError as e:
+        assert e.code() == grpc.StatusCode.NOT_FOUND
+        return
+    raise Exception("job not found error not received")
+
+
+# test__delete_running_job_without_force_flag tests
+# deleting a running job (without force flag set)
+def test__delete_running_job_without_force_flag():
+    job = StatelessJob()
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+
+    try:
+        job.delete()
+    except grpc.RpcError as e:
+        assert e.code() == grpc.StatusCode.ABORTED
+        return
+    raise Exception("job in non-terminal state error not received")
+
+
+# test__delete_initialized_job_with_force_flag tests
+# deleting a INITIALIZED/PENDING job
+def test__delete_initialized_job_with_force_flag():
+    job = StatelessJob()
+    job.create()
+    # the job might have transitioned to INITIALIZED/PENDING
+    # since there is no way to fine control the job transitions
+    job.delete(force_delete=True)
+    time.sleep(10)
+
+    try:
+        job.get_job()
+    except grpc.RpcError as e:
+        assert e.code() == grpc.StatusCode.NOT_FOUND
+        return
+    raise Exception("job not found error not received")
+
+
+# test__delete_job_bad_version tests the failure case of deleting
+# a job due to incorrect entity version provided in the request
+def test__delete_job_bad_version():
+    job = StatelessJob()
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+
+    job.stop()
+    job.wait_for_state(goal_state='KILLED')
+
+    try:
+        job.delete(entity_version='1-2-3')
+    except grpc.RpcError as e:
+        assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
+        assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
+        return
+    raise Exception("entity version mismatch error not received")

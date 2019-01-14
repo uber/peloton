@@ -77,6 +77,11 @@ class StatelessJob(object):
         We do this for backward compatibility of existing tests
 
         :param ranges: the instance ranges to start
+        :param entity_version: the entity version of the job, for concurrency control.
+            If entity_version is provided, start will use the provided value,
+            and raise an exception if version is wrong.
+            if entity_version is not provided, start will query job runtime to
+            get config version and retry until version is correct.
         :return: start response from the API
         """
         if ranges is None:
@@ -136,6 +141,11 @@ class StatelessJob(object):
         We do this for backward compatibility of existing tests
 
         :param ranges: the instance ranges to stop
+        :param entity_version: the entity version of the job, for concurrency control.
+            If entity_version is provided, stop will use the provided value,
+            and raise an exception if version is wrong.
+            if entity_version is not provided, stop will query job runtime to
+            get config version and retry until version is correct.
         :return: stop response from the API
         """
         if ranges is None:
@@ -457,3 +467,46 @@ class StatelessJob(object):
             timeout=self.config.rpc_timeout_sec,
         )
         return resp.pods
+
+    def delete(self, entity_version=None, force_delete=False):
+        """
+        Delete the job
+
+        :param entity_version: the entity version of the job, for concurrency control.
+            If entity_version is provided,  start will use the provided value,
+            and raise an exception if version is wrong.
+            if entity_version is not provided, start will query job runtime to
+            get config version and retry until version is correct.
+        :param force_delete: force delete a job.  If set to true, it will force
+            a delete of the job even if it is running.The job will be first
+            stopped and deleted. This step cannot be undone, and the job cannot
+            be re-created (with same uuid) till the delete is complete.
+        """
+        job_entity_version = entity_version or \
+            self.entity_version or \
+            self.get_status().version.value
+
+        while True:
+            request = stateless_svc.DeleteJobRequest(
+                job_id=v1alpha_peloton.JobID(value=self.job_id),
+                version=v1alpha_peloton.EntityVersion(value=job_entity_version),
+                force=force_delete,
+            )
+            try:
+                self.client.stateless_svc.DeleteJob(
+                    request,
+                    metadata=self.client.jobmgr_metadata,
+                    timeout=self.config.rpc_timeout_sec,
+                )
+            except grpc.RpcError as e:
+                # if entity version is incorrect, get entity version from job status
+                # and try again.
+                if e.code() == grpc.StatusCode.INVALID_ARGUMENT \
+                        and e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE \
+                        and entity_version is None:
+                    job_entity_version = entity_version or \
+                        self.get_status().version.value
+                    continue
+                raise
+            break
+        log.info('job %s deleted', self.job_id)
