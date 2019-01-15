@@ -5,6 +5,7 @@ from tests.integration.aurorabridge_test.client import Client, api
 pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
 
 
+@pytest.mark.skip(reason='resource pool bootstrapping disabled')
 def test__start_job_update():
     # This is basically just a simple smoketest to ensure aurorabridge is wired
     # up correctly.
