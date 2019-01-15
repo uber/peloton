@@ -39,6 +39,17 @@ def _with_constraint(constraint):
     return apply
 
 
+def _with_labels(labels):
+    def apply(job_config):
+        for lk, lv in labels.iteritems():
+            job_config.defaultConfig.labels.extend([
+                peloton_pb2.Label(
+                    key=lk,
+                    value=lv,
+                )],)
+    return apply
+
+
 def _with_instance_count(count):
     def apply(job_config):
         job_config.instanceCount = count
@@ -61,6 +72,9 @@ def test__create_a_stateless_job_with_3_tasks_on_3_different_hosts():
                     max_retry_attempts=100,
                 ),
                 options=[
+                    _with_labels({
+                        label_key: label_value,
+                    }),
                     _with_constraint(_label_constraint(label_key, label_value)),
                     _with_instance_count(3),
                 ]
@@ -83,7 +97,6 @@ def test__create_a_stateless_job_with_3_tasks_on_3_different_hosts():
 
 def test__create_2_stateless_jobs_with_task_to_task_anti_affinity_between_jobs(): # noqa
     label_key = "job.name"
-    label_value = "peloton_stateless_job"
 
     jobs = []
     for i in range(2):
@@ -93,7 +106,9 @@ def test__create_2_stateless_jobs_with_task_to_task_anti_affinity_between_jobs()
                 max_retry_attempts=100,
             ),
             options=[
-                _with_constraint(_label_constraint(label_key, label_value)),
+                _with_labels({
+                    label_key: "peloton_stateless_job%s" % i
+                }),
                 _with_job_name('TestPelotonDockerJob_Stateless' + repr(i)),
                 _with_instance_count(1),
             ]
