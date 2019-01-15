@@ -16,6 +16,9 @@ package aurorabridge
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"sync/atomic"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
@@ -23,6 +26,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/common/async"
 
 	"github.com/uber/peloton/aurorabridge/atop"
 	"github.com/uber/peloton/aurorabridge/label"
@@ -33,6 +37,12 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/thriftrw/ptr"
 	"go.uber.org/yarpc/yarpcerrors"
+)
+
+const (
+	// number of workers to create in async pool, which defines number of
+	// getJobUpdateDetails can be processed in parallel
+	_defaultGetJobUpdateWorkers = 25
 )
 
 var errUnimplemented = errors.New("rpc is unimplemented")
@@ -166,14 +176,45 @@ func (h *ServiceHandler) GetJobs(
 }
 
 // GetJobUpdateSummaries gets job update summaries.
+// This is the sequence in which jobUpdateQuery filters updates.
+// - Get JobIDs using job key role and filter their updates
+// - Get JobIDs using job key and filter their updates
+// - If only update statuses are provided then filter all job updates
 func (h *ServiceHandler) GetJobUpdateSummaries(
 	ctx context.Context,
-	jobUpdateQuery *api.JobUpdateQuery) (*api.Response, error) {
+	jobUpdateQuery *api.JobUpdateQuery,
+) (*api.Response, error) {
 
-	return nil, errUnimplemented
+	jobUpdateDetails, err := h.getJobUpdateDetails(
+		ctx,
+		jobUpdateQuery,
+		true, /* summary only */
+	)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"params": log.Fields{
+				"key": jobUpdateQuery,
+			},
+			"code":  err.responseCode,
+			"error": err.msg,
+		}).Error("GetJobUpdateSummaries error")
+	}
+
+	var jobUpdateSummaries []*api.JobUpdateSummary
+	for _, jobUpdateDetail := range jobUpdateDetails {
+		jobUpdateSummaries = append(jobUpdateSummaries, jobUpdateDetail.GetUpdate().GetSummary())
+	}
+
+	return newResponse(&api.Result{
+		GetJobUpdateSummariesResult: &api.GetJobUpdateSummariesResult{
+			UpdateSummaries: jobUpdateSummaries,
+		},
+	}, err), nil
 }
 
 // GetJobUpdateDetails gets job update details.
+// jobUpdateKey is marked to be deprecated from Aurora, and not used Aggregator
+// It will be ignored to get job update details
 func (h *ServiceHandler) GetJobUpdateDetails(
 	ctx context.Context,
 	key *api.JobUpdateKey,
@@ -270,6 +311,7 @@ func (h *ServiceHandler) startJobUpdate(
 		if err != nil {
 			return nil, auroraErrorf("get current job version: %s", err)
 		}
+
 		req := &statelesssvc.ReplaceJobRequest{
 			JobId:      id,
 			Spec:       jobSpec,
@@ -453,6 +495,212 @@ func (h *ServiceHandler) PulseJobUpdate(
 	return nil, errUnimplemented
 }
 
+// Result represents output value returned on channel
+// to get job update detail if not filtered
+// and error if occured
+type Result struct {
+	detail     *api.JobUpdateDetails
+	isFiltered bool /* set true, if job update state not in expected update statuses */
+	err        error
+}
+
+// getJobUpdateDetails gets job detils concurrently
+func (h *ServiceHandler) getJobUpdateDetails(
+	ctx context.Context,
+	jobUpdateQuery *api.JobUpdateQuery,
+	summaryOnly bool,
+) ([]*api.JobUpdateDetails, *auroraError) {
+	var jobUpdateDetails []*api.JobUpdateDetails
+
+	jobSummaries, err := h.getJobSummariesFromJobUpdateQuery(
+		ctx,
+		jobUpdateQuery)
+	if err != nil {
+		return jobUpdateDetails, nil
+	}
+
+	outchan := make(chan *Result)
+	pool := async.NewPool(async.PoolOptions{
+		MaxWorkers: _defaultGetJobUpdateWorkers,
+	}, nil)
+	pool.Start()
+
+	getJobDetailsErrors := uint32(0)
+	var wg sync.WaitGroup
+	for _, jobSummary := range jobSummaries {
+		wg.Add(1)
+		go func(jobSummary *stateless.JobSummary) {
+			defer wg.Done()
+			pool.Enqueue(async.JobFunc(func(context.Context) {
+				// stop fetching more getJobUpdateDetails on first error.
+				if atomic.LoadUint32(&getJobDetailsErrors) > 0 {
+					outchan <- &Result{}
+					return
+				}
+				jobUpdateDetail, isFiltered, err := h.getJobUpdateDetail(
+					ctx,
+					jobUpdateQuery,
+					jobSummary,
+					summaryOnly)
+
+				outchan <- &Result{
+					detail:     jobUpdateDetail,
+					isFiltered: isFiltered,
+					err:        err,
+				}
+			}))
+		}(jobSummary)
+	}
+	wg.Wait()
+
+	for i := 0; i < len(jobSummaries); i++ {
+		result := <-outchan
+
+		if result.err != nil {
+			log.WithError(result.err).Error("failed to get jobUpdateDetail from jobSummary")
+			atomic.AddUint32(&getJobDetailsErrors, 1)
+			continue
+		}
+
+		// isFiltered set to true, if workflow is in INITIALIZED state
+		// or workflow state is filtered on provided update query
+		if result.isFiltered == true {
+			continue
+		}
+
+		jobUpdateDetails = append(jobUpdateDetails, result.detail)
+	}
+
+	if getJobDetailsErrors > 0 {
+		return nil, auroraErrorf("failed to get jobUpdateDetails for %d jobs", getJobDetailsErrors)
+	}
+
+	return jobUpdateDetails, nil
+}
+
+// getJobUpdateDetail get details of most recent workflow of the job
+func (h *ServiceHandler) getJobUpdateDetail(
+	ctx context.Context,
+	jobUpdateQuery *api.JobUpdateQuery,
+	jobSummary *stateless.JobSummary,
+	summaryOnly bool,
+) (*api.JobUpdateDetails, bool, error) {
+
+	// Get job update
+	resp, err := h.jobClient.GetJobUpdate(
+		ctx,
+		&statelesssvc.GetJobUpdateRequest{
+			JobId: jobSummary.GetJobId(),
+		})
+	if err != nil {
+		return nil, false, fmt.Errorf("getJobUpdate failed: %s", err)
+	}
+
+	// INITIALIZED workflows are ignored to take action upon because Aurora
+	// does not support this state
+	// Assumption is that jobmgr's goal state engine will process these
+	// workflows and take appropriate action to make progress on
+	// workflow operations
+	if resp.GetUpdateInfo().GetInfo().GetStatus().GetState() ==
+		stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED {
+		return nil, true, nil /* update is filtered */
+	}
+
+	// Filter by job update state
+	ok, err := isUpdateInfoInStatuses(
+		resp.GetUpdateInfo(),
+		jobUpdateQuery.GetUpdateStatuses())
+	if err != nil {
+		return nil, false, err
+	}
+	if !ok {
+		return nil, true, nil /* update is filtered */
+	}
+
+	// Get Job Update Summary
+	jobKey, err := ptoa.NewJobKey(jobSummary.GetName())
+	if err != nil {
+		return nil, false, err
+	}
+	jobUpdateSummary, err := ptoa.NewJobUpdateSummary(
+		jobKey,
+		resp.GetUpdateInfo())
+	if err != nil {
+		return nil, false, err
+	}
+
+	// Get job update details if summaryOnly is set false
+	// TODO:
+	// 1. instance workflow events
+	// 2. job update events
+	// 3. update spec
+	// 4. job specs
+	if !summaryOnly {
+	}
+
+	return &api.JobUpdateDetails{
+		Update: &api.JobUpdate{
+			Summary:      jobUpdateSummary,
+			Instructions: nil,
+		},
+		UpdateEvents:   nil,
+		InstanceEvents: nil,
+	}, false, nil
+}
+
+// getJobSummariesFromJobUpdateQuery queries peloton jobs based on
+// Aurora's JobUpdateQuery.
+// 1. Query Peloton Jobs using only jobkey's Role. This can return a
+// list of jobs.
+// 2. If jobkey's Role is not set in Aurora's jobUpdateQuery, but entire
+// jobkey is provided as input, then fetch corresponding job.
+// JobSummary contains job information such as unique indentifier, name,
+// instances, state and more. This information is populated for client
+// for further filtering if required.
+func (h *ServiceHandler) getJobSummariesFromJobUpdateQuery(
+	ctx context.Context,
+	jobUpdateQuery *api.JobUpdateQuery,
+) ([]*stateless.JobSummary, error) {
+	var jobKey *api.JobKey
+
+	// TODO: remove partial key scenario for fetching jobIDs
+	if jobUpdateQuery.IsSetRole() {
+		jobKey = &api.JobKey{
+			Role:        ptr.String(jobUpdateQuery.GetRole()),
+			Environment: nil,
+			Name:        nil,
+		}
+	}
+
+	if jobKey == nil && jobUpdateQuery.IsSetJobKey() {
+		jobKey = jobUpdateQuery.GetJobKey()
+	}
+
+	jobSummaries, err := h.getJobSummaries(ctx, jobKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return jobSummaries, nil
+}
+
+// isUpdateInfoInStatuses checks if job update state is present
+// in expected list of job update states
+func isUpdateInfoInStatuses(
+	updateInfo *stateless.UpdateInfo,
+	updateStatus map[api.JobUpdateStatus]struct{},
+) (bool, error) {
+
+	pelotonUpdateState := updateInfo.GetInfo().GetStatus().GetState()
+	auroraUpdateState, err := ptoa.NewJobUpdateStatus(pelotonUpdateState)
+	if err != nil {
+		return false, err
+	}
+
+	_, ok := updateStatus[auroraUpdateState]
+	return ok, nil
+}
+
 // getJobIDs return Peloton JobID based on Aurora JobKey passed in.
 //
 // Currently, two querying mechanisms are implemented:
@@ -464,6 +712,10 @@ func (h *ServiceHandler) PulseJobUpdate(
 //
 // Option 1 will be dropped, if option 2 is proved to be stable and
 // with minimal performance impact.
+// TODO: To be deprecated in favor of getJobSummaries.
+// Aggregator expects job key environment to be set in response of
+// GetJobUpdateDetails to filter by deployment_id. On filtering via job key
+// role, original peloton job name is not known to set job key environment.
 func (h *ServiceHandler) getJobIDs(
 	ctx context.Context,
 	k *api.JobKey,
@@ -500,6 +752,49 @@ func (h *ServiceHandler) getJobIDs(
 		jobIDs = append(jobIDs, record.GetJobId())
 	}
 	return jobIDs, nil
+}
+
+// getJobSummaries returns Peloton JobSummary based on Aurora JobKey passed in.
+//
+// Currently, two querying mechanisms are implemented:
+// 1. If all parameters in JobKey (role, environemnt, name) are present,
+//    it uses GetJobIDFromJobName api directly. Expect one JobID to be
+//    returned. If the job id cannot be found, then an error will return.
+// 2. If only partial parameters are present, it uses QueryJobs api with
+//    labels. Expect zero or many JobIDs to be returned.
+// 3. If jobkey is not present, then QueryJobs will return all jobs.
+func (h *ServiceHandler) getJobSummaries(
+	ctx context.Context,
+	k *api.JobKey,
+) ([]*stateless.JobSummary, error) {
+	if k.IsSetRole() && k.IsSetEnvironment() && k.IsSetName() {
+		req := &statelesssvc.GetJobIDFromJobNameRequest{
+			JobName: atop.NewJobName(k),
+		}
+		resp, err := h.jobClient.GetJobIDFromJobName(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		// results are sorted chronologically, return the latest one
+		return []*stateless.JobSummary{
+			&stateless.JobSummary{
+				JobId: resp.GetJobId()[0],
+				Name:  atop.NewJobName(k),
+			},
+		}, nil
+	}
+
+	req := &statelesssvc.QueryJobsRequest{
+		Spec: &stateless.QuerySpec{
+			Labels: label.BuildPartialAuroraJobKeyLabels(k),
+		},
+	}
+	resp, err := h.jobClient.QueryJobs(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.GetRecords(), nil
 }
 
 // getJobID is a wrapper for getJobIDs when we expect only one peloton

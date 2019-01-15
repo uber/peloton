@@ -18,12 +18,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	jobmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	podmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc/mocks"
@@ -77,6 +79,453 @@ func (suite *ServiceHandlerTestSuite) TearDownTest() {
 
 func TestServiceHandler(t *testing.T) {
 	suite.Run(t, &ServiceHandlerTestSuite{})
+}
+
+// Test fetch job update summaries using fully populated job key
+func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesWithJobKey() {
+	jobID := fixture.PelotonJobID()
+	jobKey := fixture.AuroraJobKey()
+	updateStatuses := make(map[api.JobUpdateStatus]struct{})
+	updateStatuses[api.JobUpdateStatusRollingForward] = struct{}{}
+	jobUpdateQuery := &api.JobUpdateQuery{
+		JobKey:         jobKey,
+		UpdateStatuses: updateStatuses,
+	}
+
+	workflowEvents := []*stateless.WorkflowEvent{&stateless.WorkflowEvent{
+		Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+		State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+		Timestamp: time.Now().Format(time.RFC3339),
+	}}
+
+	suite.expectGetJobIDFromJobName(jobKey, jobID)
+	suite.jobClient.EXPECT().
+		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+			JobId: jobID,
+		}).
+		Return(&statelesssvc.GetJobUpdateResponse{
+			UpdateInfo: &stateless.UpdateInfo{
+				Info: &stateless.WorkflowInfo{
+					Status: &stateless.WorkflowStatus{
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+					},
+					UpdateSpec: &stateless.UpdateSpec{
+						BatchSize:         1,
+						RollbackOnFailure: false,
+					},
+					OpaqueData: nil,
+				},
+				Events: workflowEvents,
+			},
+		}, nil)
+
+	resp, err := suite.handler.GetJobUpdateSummaries(
+		context.Background(),
+		jobUpdateQuery,
+	)
+	suite.NoError(err)
+	suite.Equal(1,
+		len(resp.GetResult().GetJobUpdateSummariesResult.GetUpdateSummaries()))
+	suite.Equal(api.JobUpdateStatusRollingForward,
+		resp.GetResult().GetJobUpdateSummariesResult.GetUpdateSummaries()[0].GetState().GetStatus())
+}
+
+// Tests fetching job update summaries with job key's role only
+func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesWithJobKeyRole() {
+	jobID1 := fixture.PelotonJobID()
+	jobID2 := fixture.PelotonJobID()
+	jobID3 := fixture.PelotonJobID()
+	jobKey := fixture.AuroraJobKey()
+	updateStatuses := make(map[api.JobUpdateStatus]struct{})
+	updateStatuses[api.JobUpdateStatusRollingForward] = struct{}{}
+	updateStatuses[api.JobUpdateStatusRollingBack] = struct{}{}
+	jobUpdateQuery := &api.JobUpdateQuery{
+		Role:           jobKey.Role,
+		JobKey:         nil,
+		UpdateStatuses: updateStatuses,
+	}
+
+	labels := label.BuildPartialAuroraJobKeyLabels(&api.JobKey{
+		Role: ptr.String(jobKey.GetRole()),
+	})
+
+	// Role based search returned multiple jobs
+	suite.expectQueryJobsWithLabels(labels, []*peloton.JobID{jobID1, jobID2, jobID3}, jobKey)
+
+	// fetch update for job1
+	suite.jobClient.EXPECT().
+		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+			JobId: jobID1,
+		}).
+		Return(&statelesssvc.GetJobUpdateResponse{
+			UpdateInfo: &stateless.UpdateInfo{
+				Info: &stateless.WorkflowInfo{
+					Status: &stateless.WorkflowStatus{
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+					},
+					UpdateSpec: &stateless.UpdateSpec{
+						BatchSize:         1,
+						RollbackOnFailure: false,
+					},
+					OpaqueData: nil,
+				},
+				Events: nil,
+			},
+		}, nil)
+
+	// fetch update for job2
+	suite.jobClient.EXPECT().
+		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+			JobId: jobID2,
+		}).
+		Return(&statelesssvc.GetJobUpdateResponse{
+			UpdateInfo: &stateless.UpdateInfo{
+				Info: &stateless.WorkflowInfo{
+					Status: &stateless.WorkflowStatus{
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+					},
+					UpdateSpec: &stateless.UpdateSpec{
+						BatchSize:         1,
+						RollbackOnFailure: false,
+					},
+					OpaqueData: nil,
+				},
+				Events: nil,
+			},
+		}, nil)
+
+	// fetch update for job2, and will be ignored as it is in INITIALIZED state
+	suite.jobClient.EXPECT().
+		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+			JobId: jobID3,
+		}).
+		Return(&statelesssvc.GetJobUpdateResponse{
+			UpdateInfo: &stateless.UpdateInfo{
+				Info: &stateless.WorkflowInfo{
+					Status: &stateless.WorkflowStatus{
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State: stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
+					},
+					UpdateSpec: &stateless.UpdateSpec{
+						BatchSize:         1,
+						RollbackOnFailure: false,
+					},
+					OpaqueData: nil,
+				},
+				Events: nil,
+			},
+		}, nil)
+
+	resp, err := suite.handler.GetJobUpdateSummaries(
+		context.Background(),
+		jobUpdateQuery,
+	)
+	suite.NoError(err)
+	suite.Equal(2, len(resp.GetResult().GetGetJobUpdateSummariesResult().GetUpdateSummaries()))
+}
+
+// Test fetch job update summaries by job update statuses only,
+// with job key not present
+func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesUpdateStatuses() {
+	jobID1 := fixture.PelotonJobID() // Update is ROLLING_FORWARD
+	jobID2 := fixture.PelotonJobID() // Update is ROLLING_BACKWARD and will be filtered
+	jobKey := fixture.AuroraJobKey()
+
+	updateStatuses := make(map[api.JobUpdateStatus]struct{})
+	updateStatuses[api.JobUpdateStatusRollingForward] = struct{}{}
+	jobUpdateQuery := &api.JobUpdateQuery{
+		Role:           nil,
+		JobKey:         nil,
+		UpdateStatuses: updateStatuses,
+	}
+
+	// Query all the jobs
+	suite.expectQueryJobsWithLabels(nil, []*peloton.JobID{jobID1, jobID2}, jobKey)
+
+	// Get updates for all jobs and filter those updates using update query state
+	suite.jobClient.EXPECT().
+		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+			JobId: jobID1,
+		}).
+		Return(&statelesssvc.GetJobUpdateResponse{
+			UpdateInfo: &stateless.UpdateInfo{
+				Info: &stateless.WorkflowInfo{
+					Status: &stateless.WorkflowStatus{
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+					},
+					UpdateSpec: &stateless.UpdateSpec{
+						BatchSize:         1,
+						RollbackOnFailure: false,
+					},
+					OpaqueData: nil,
+				},
+				Events: nil,
+			},
+		}, nil)
+	suite.jobClient.EXPECT().
+		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+			JobId: jobID2,
+		}).
+		Return(&statelesssvc.GetJobUpdateResponse{
+			UpdateInfo: &stateless.UpdateInfo{
+				Info: &stateless.WorkflowInfo{
+					Status: &stateless.WorkflowStatus{
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD,
+					},
+					UpdateSpec: &stateless.UpdateSpec{
+						BatchSize:         1,
+						RollbackOnFailure: false,
+					},
+					OpaqueData: nil,
+				},
+				Events: nil,
+			},
+		}, nil)
+
+	resp, err := suite.handler.GetJobUpdateSummaries(
+		context.Background(),
+		jobUpdateQuery,
+	)
+	suite.NoError(err)
+	suite.Equal(1, len(resp.GetResult().GetGetJobUpdateSummariesResult().GetUpdateSummaries()))
+}
+
+// Tests failure scenarios for fetching get job update summaries
+func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesFailure() {
+	testJobKeyRole := "dummy_role"
+	jobKey := &api.JobKey{
+		Role: &testJobKeyRole,
+	}
+	jobUpdateQuery := &api.JobUpdateQuery{
+		Role: &testJobKeyRole,
+	}
+
+	suite.jobClient.EXPECT().
+		QueryJobs(
+			suite.ctx,
+			&statelesssvc.QueryJobsRequest{
+				Spec: &stateless.QuerySpec{
+					Labels: label.BuildPartialAuroraJobKeyLabels(jobKey),
+				},
+			}).
+		Return(nil, yarpcerrors.NotFoundErrorf(""))
+
+	resp, err := suite.handler.GetJobUpdateSummaries(
+		context.Background(),
+		jobUpdateQuery,
+	)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+
+	jobID := fixture.PelotonJobID()
+	jobIDs := []*v1alphapeloton.JobID{jobID}
+	records := []*stateless.JobSummary{&stateless.JobSummary{
+		JobId: jobID,
+	}}
+
+	suite.jobClient.EXPECT().
+		QueryJobs(
+			suite.ctx,
+			&statelesssvc.QueryJobsRequest{
+				Spec: &stateless.QuerySpec{
+					Labels: label.BuildPartialAuroraJobKeyLabels(jobKey),
+				},
+			}).
+		Return(&statelesssvc.QueryJobsResponse{
+			Records: records,
+		}, nil)
+	suite.jobClient.EXPECT().
+		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+			JobId: jobIDs[0],
+		}).Return(nil, errors.New("unable to list job updates"))
+
+	resp, err = suite.handler.GetJobUpdateSummaries(
+		context.Background(),
+		jobUpdateQuery,
+	)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
+}
+
+// Tests parallelism for getJobUpdateDetails success scenario
+func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismSuccess() {
+	var jobIDs []*v1alphapeloton.JobID
+	for i := 0; i < 1000; i++ {
+		jobID := fixture.PelotonJobID()
+		jobIDs = append(jobIDs, jobID)
+	}
+
+	jobKey := fixture.AuroraJobKey()
+	updateStatuses := make(map[api.JobUpdateStatus]struct{})
+	updateStatuses[api.JobUpdateStatusRollingForward] = struct{}{}
+	jobUpdateQuery := &api.JobUpdateQuery{
+		UpdateStatuses: updateStatuses,
+	}
+
+	suite.expectQueryJobsWithLabels(nil, jobIDs, jobKey)
+
+	for i := 0; i < 1000; i++ {
+		suite.jobClient.EXPECT().
+			GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+				JobId: jobIDs[i],
+			}).
+			Return(&statelesssvc.GetJobUpdateResponse{
+				UpdateInfo: &stateless.UpdateInfo{
+					Info: &stateless.WorkflowInfo{
+						Status: &stateless.WorkflowStatus{
+							Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+							State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+						},
+						UpdateSpec: &stateless.UpdateSpec{
+							BatchSize:         1,
+							RollbackOnFailure: false,
+						},
+						OpaqueData: nil,
+					},
+					Events: nil,
+				},
+			}, nil)
+	}
+
+	resp, _ := suite.handler.getJobUpdateDetails(
+		suite.ctx,
+		jobUpdateQuery,
+		false)
+	suite.Equal(1000, len(resp))
+}
+
+// Tests parallelism for getJobUpdateDetails with few updates not present
+// in expected update statuses
+func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismFilterUpdates() {
+	var jobIDs []*v1alphapeloton.JobID
+	for i := 0; i < 1000; i++ {
+		jobID := fixture.PelotonJobID()
+		jobIDs = append(jobIDs, jobID)
+	}
+
+	jobKey := fixture.AuroraJobKey()
+	updateStatuses := make(map[api.JobUpdateStatus]struct{})
+	updateStatuses[api.JobUpdateStatusRollingForward] = struct{}{}
+	jobUpdateQuery := &api.JobUpdateQuery{
+		UpdateStatuses: updateStatuses,
+	}
+
+	suite.expectQueryJobsWithLabels(nil, jobIDs, jobKey)
+
+	for i := 0; i < 1000; i++ {
+		if i%100 == 0 {
+			suite.jobClient.EXPECT().
+				GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+					JobId: jobIDs[i],
+				}).
+				Return(&statelesssvc.GetJobUpdateResponse{
+					UpdateInfo: &stateless.UpdateInfo{
+						Info: &stateless.WorkflowInfo{
+							Status: &stateless.WorkflowStatus{
+								Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+								State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD,
+							},
+						},
+					},
+				}, nil)
+			continue
+		}
+		suite.jobClient.EXPECT().
+			GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+				JobId: jobIDs[i],
+			}).
+			Return(&statelesssvc.GetJobUpdateResponse{
+				UpdateInfo: &stateless.UpdateInfo{
+					Info: &stateless.WorkflowInfo{
+						Status: &stateless.WorkflowStatus{
+							Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+							State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+						},
+					},
+				},
+			}, nil)
+	}
+
+	resp, _ := suite.handler.getJobUpdateDetails(
+		suite.ctx,
+		jobUpdateQuery,
+		false)
+	suite.Equal(990, len(resp))
+}
+
+// Tests parallelism for getJobUpdateDetails with few updates not present
+// in expected update statuses and few throwing error
+func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismFailure() {
+	var jobIDs []*v1alphapeloton.JobID
+	for i := 0; i < 1000; i++ {
+		jobID := fixture.PelotonJobID()
+		jobIDs = append(jobIDs, jobID)
+	}
+
+	jobKey := fixture.AuroraJobKey()
+	updateStatuses := make(map[api.JobUpdateStatus]struct{})
+	updateStatuses[api.JobUpdateStatusRollingForward] = struct{}{}
+	jobUpdateQuery := &api.JobUpdateQuery{
+		UpdateStatuses: updateStatuses,
+	}
+
+	suite.expectQueryJobsWithLabels(nil, jobIDs, jobKey)
+
+	for i := 0; i < 1000; i++ {
+		if i == 500 {
+			suite.jobClient.EXPECT().
+				GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+					JobId: jobIDs[i],
+				}).
+				Return(nil, errors.New("unable to get update"))
+			continue
+		}
+		if i%100 == 0 {
+			suite.jobClient.EXPECT().
+				GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+					JobId: jobIDs[i],
+				}).
+				Return(&statelesssvc.GetJobUpdateResponse{
+					UpdateInfo: &stateless.UpdateInfo{
+						Info: &stateless.WorkflowInfo{
+							Status: &stateless.WorkflowStatus{
+								Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+								State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD,
+							},
+						},
+					},
+				}, nil).
+				AnyTimes()
+			continue
+		}
+		suite.jobClient.EXPECT().
+			GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+				JobId: jobIDs[i],
+			}).
+			Return(&statelesssvc.GetJobUpdateResponse{
+				UpdateInfo: &stateless.UpdateInfo{
+					Info: &stateless.WorkflowInfo{
+						Status: &stateless.WorkflowStatus{
+							Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+							State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+						},
+					},
+				},
+			}, nil).
+			AnyTimes()
+	}
+
+	resp, err := suite.handler.getJobUpdateDetails(
+		suite.ctx,
+		jobUpdateQuery,
+		false)
+	suite.Equal(0, len(resp))
+	suite.NotEmpty(err.msg)
 }
 
 // Ensures StartJobUpdate creates jobs which don't exist.
@@ -284,10 +733,14 @@ func (suite *ServiceHandlerTestSuite) expectGetJobIDFromJobName(k *api.JobKey, i
 func (suite *ServiceHandlerTestSuite) expectQueryJobsWithLabels(
 	labels []*peloton.Label,
 	jobIDs []*peloton.JobID,
+	jobKey *api.JobKey,
 ) {
 	var summaries []*stateless.JobSummary
 	for _, jobID := range jobIDs {
-		summaries = append(summaries, &stateless.JobSummary{JobId: jobID})
+		summaries = append(summaries, &stateless.JobSummary{
+			JobId: jobID,
+			Name:  atop.NewJobName(jobKey),
+		})
 	}
 
 	suite.jobClient.EXPECT().
@@ -438,7 +891,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKey()
 		Role:        ptr.String(role),
 		Environment: ptr.String(env),
 	})
-	suite.expectQueryJobsWithLabels(labels, []*peloton.JobID{jobID1, jobID2})
+	suite.expectQueryJobsWithLabels(labels, []*peloton.JobID{jobID1, jobID2}, nil)
 
 	query := &api.TaskQuery{
 		Role:        ptr.String(role),
