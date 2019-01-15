@@ -118,14 +118,13 @@ func (s *service) Acquire(
 		}
 
 		// Log tasks already running on Hosts whose offers are acquired.
-		// TODO: (varung) - remove in long term
 		log.WithFields(log.Fields{
 			"host_offers":         hostOffers,
 			"filter":              filter,
 			"filter_results_json": string(filterRes),
 			"task_type":           taskType,
 			"host_task_map":       hostTasksMap,
-		}).Info("Tasks already running on hosts")
+		}).Debug("Tasks already running on hosts")
 	}
 
 	log.WithFields(log.Fields{
@@ -181,7 +180,7 @@ func (s *service) Release(
 		log.WithFields(log.Fields{
 			"release_host_request":  request,
 			"release_host_response": response,
-		}).Info("release host offers request returned")
+		}).Debug("release host offers request returned")
 	}
 }
 

@@ -178,7 +178,7 @@ func (e *engine) Place(ctx context.Context) time.Duration {
 // processCompletedReservations will be processing completed reservations
 // and it will set the placements in resmgr
 func (e *engine) processCompletedReservations(ctx context.Context) error {
-	reservations, err := e.reserver.GetCompletetedReservation(ctx)
+	reservations, err := e.reserver.GetCompletedReservation(ctx)
 	if err != nil {
 		return err
 	}
@@ -214,7 +214,7 @@ func (e *engine) placeAssignmentGroup(
 			"filter":          filter,
 			"len_assignments": len(assignments),
 			"assignments":     assignments,
-		}).Debug("placing assignment group")
+		}).Info("placing assignment group")
 
 		// Get hosts with available resources and tasks currently running.
 		hosts, reason := e.offerService.Acquire(

@@ -152,27 +152,27 @@ func (suite *ReserverTestSuite) TestReservationErrorInReservation() {
 	suite.Contains(err.Error(), "error in reserve hosts")
 }
 
-// TestGetCompletetedReservation tests the completed reservation call
-func (suite *ReserverTestSuite) TestGetCompletetedReservation() {
+// TestGetCompletedReservation tests the completed reservation call
+func (suite *ReserverTestSuite) TestGetCompletedReservation() {
 	reserver, _, completedQueue := suite.getReserver()
 	// Testing if queue returns error
 	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(nil, errors.New("error"))
-	_, err := reserver.GetCompletetedReservation(context.Background())
+	_, err := reserver.GetCompletedReservation(context.Background())
 	suite.Error(err)
-	suite.Equal(err.Error(), errNoValidCompletedReservation.Error())
+	suite.Equal("error", err.Error())
 
 	// testing if queue have a valid completed reservation
 	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(suite.getCompletedReservation(), nil)
-	res, err := reserver.GetCompletetedReservation(context.Background())
+	res, err := reserver.GetCompletedReservation(context.Background())
 	suite.NoError(err)
 	suite.Equal(len(res), 1)
 
 	// testing if queue have a invalid item.
 	var item interface{}
 	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(item, nil)
-	res, err = reserver.GetCompletetedReservation(context.Background())
+	res, err = reserver.GetCompletedReservation(context.Background())
 	suite.Error(err)
-	suite.Equal(err.Error(), errNoValidCompletedReservation.Error())
+	suite.Equal("invalid item in queue", err.Error())
 	suite.Equal(len(res), 0)
 }
 
@@ -181,28 +181,27 @@ func (suite *ReserverTestSuite) TestFindCompletedReservation() {
 	// testing hostservice completed reservation have error
 	reserver, _, completedQueue := suite.getReserver()
 	suite.hostService.EXPECT().GetCompletedReservation(gomock.Any()).Return(nil, errors.New("error"))
-	err := reserver.findCompletedReservation(context.Background())
+	err := reserver.enqueueCompletedReservation(context.Background())
 	suite.Error(err)
 	suite.Equal(err.Error(), "error")
 
 	// testing hostservice completed reservation return no reservations
 	var res []*hostsvc.CompletedReservation
 	suite.hostService.EXPECT().GetCompletedReservation(gomock.Any()).Return(res, nil)
-	err = reserver.findCompletedReservation(context.Background())
-	suite.Error(err)
-	suite.Equal(err.Error(), "no completed reservations found")
+	err = reserver.enqueueCompletedReservation(context.Background())
+	suite.NoError(err)
 
 	// testing the valid completed reservation
 	res = append(res, suite.getCompletedReservation())
 	suite.hostService.EXPECT().GetCompletedReservation(gomock.Any()).Return(res, nil)
 	completedQueue.EXPECT().Enqueue(gomock.Any()).Return(nil)
-	err = reserver.findCompletedReservation(context.Background())
+	err = reserver.enqueueCompletedReservation(context.Background())
 	suite.NoError(err)
 
 	// testing error in completed queue enqueue operation
 	suite.hostService.EXPECT().GetCompletedReservation(gomock.Any()).Return(res, nil)
 	completedQueue.EXPECT().Enqueue(gomock.Any()).Return(errors.New("error"))
-	err = reserver.findCompletedReservation(context.Background())
+	err = reserver.enqueueCompletedReservation(context.Background())
 	suite.NoError(err)
 }
 
@@ -215,13 +214,13 @@ func (suite *ReserverTestSuite) TestReserveAgain() {
 	res[0].HostOffers = []*hostsvc.HostOffer{}
 	suite.hostService.EXPECT().GetCompletedReservation(gomock.Any()).Return(res, nil)
 	reserveQueue.EXPECT().Enqueue(gomock.Any()).Return(nil)
-	err := reserver.findCompletedReservation(context.Background())
+	err := reserver.enqueueCompletedReservation(context.Background())
 	suite.NoError(err)
 
 	// Testing requeue have error
 	suite.hostService.EXPECT().GetCompletedReservation(gomock.Any()).Return(res, nil)
 	reserveQueue.EXPECT().Enqueue(gomock.Any()).Return(errors.New("error"))
-	err = reserver.findCompletedReservation(context.Background())
+	err = reserver.enqueueCompletedReservation(context.Background())
 	suite.NoError(err)
 }
 

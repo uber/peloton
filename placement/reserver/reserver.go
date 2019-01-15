@@ -50,8 +50,6 @@ const (
 	_maxReservationQueueSize = 10000
 	// reservation queue name
 	_reservationQueue = "reservation-queue"
-	// number of completed reservations to process
-	_completedReservations = 1
 )
 
 var (
@@ -78,10 +76,10 @@ type Reserver interface {
 
 	// GetCompletedReservation gets the completed tasks with offers
 	// by that placement can be created
-	GetCompletetedReservation(ctx context.Context) ([]*hostsvc.CompletedReservation, error)
+	GetCompletedReservation(ctx context.Context) ([]*hostsvc.CompletedReservation, error)
 }
 
-// reserver is the struct which impelements Reserver interface
+// reserver is the struct which implements Reserver interface
 type reserver struct {
 	lock sync.Mutex
 	// Placement config for the reserver
@@ -91,16 +89,16 @@ type reserver struct {
 	// hostService for accessing the host manager for getting host list
 	// as well as reserving host
 	hostService hosts.Service
-	// daemon object for making reservecr a daemon process
+	// daemon object for making reserver a daemon process
 	daemon async.Daemon
 	// reservation queue for getting the tasks from placement engine
 	// to make the reservation
 	reservationQueue queue.Queue
-	// completedreservation queue
+	// completed reservation queue
 	completedReservationQueue queue.Queue
 	// task-> reservation mapping
 	reservations map[string][]*models.Host
-	// tasks map indexed by taskiD
+	// tasks map indexed by taskID
 	tasks map[string]*resmgr.Task
 }
 
@@ -115,16 +113,21 @@ func NewReserver(
 		config:      cfg,
 		hostService: hostsService,
 		metrics:     metrics,
+		reservationQueue: queue.NewQueue(
+			_reservationQueue,
+			reflect.TypeOf(resmgr.Task{}),
+			_maxReservationQueueSize,
+		),
+		completedReservationQueue: queue.NewQueue(
+			_completedReservationQueue,
+			reflect.TypeOf(hostsvc.CompletedReservation{}),
+			_maxReservationQueueSize,
+		),
+		reservations: make(map[string][]*models.Host),
+		tasks:        make(map[string]*resmgr.Task),
 	}
 	reserver.daemon = async.NewDaemon("Placement Engine Reserver", reserver)
-	reserver.reservationQueue = queue.NewQueue(
-		_reservationQueue,
-		reflect.TypeOf(resmgr.Task{}), _maxReservationQueueSize)
-	reserver.completedReservationQueue = queue.NewQueue(
-		_completedReservationQueue,
-		reflect.TypeOf(hostsvc.CompletedReservation{}), _maxReservationQueueSize)
-	reserver.reservations = make(map[string][]*models.Host)
-	reserver.tasks = make(map[string]*resmgr.Task)
+
 	return reserver
 }
 
@@ -152,9 +155,9 @@ func (r *reserver) Run(ctx context.Context) error {
 		if err != nil {
 			log.WithError(err).Info("tasks can't reserve hosts")
 		}
-		err = r.findCompletedReservation(ctx)
+		err = r.enqueueCompletedReservation(ctx)
 		if err != nil {
-			log.WithError(err).Info("error finding resrevation")
+			log.WithError(err).Error("error finding completed reservation")
 		}
 		timer.Reset(delay)
 	}
@@ -192,7 +195,7 @@ func (r *reserver) Reserve(ctx context.Context) (time.Duration, error) {
 		log.WithFields(log.Fields{
 			"host_filter": hostFilter,
 			"task":        task.Id,
-		}).Info("Couldn't aquire hosts for task")
+		}).Info("Couldn't acquire hosts for task")
 		return _noHostsTimeoutPenalty, err
 	}
 
@@ -231,14 +234,14 @@ func (r *reserver) findHost(hosts []*models.Host) *models.Host {
 // from the list of hosts provided
 func (r *reserver) findHostWithMinTasks(hosts []*models.Host) *models.Host {
 	min := taskLen(hosts[0])
-	minindex := 0
+	minIndex := 0
 	for i, host := range hosts {
 		if min >= taskLen(host) {
 			min = taskLen(host)
-			minindex = i
+			minIndex = i
 		}
 	}
-	return hosts[minindex]
+	return hosts[minIndex]
 }
 
 func taskLen(host *models.Host) int {
@@ -271,44 +274,44 @@ func (r *reserver) GetReservationQueue() queue.Queue {
 	return r.reservationQueue
 }
 
-func (r *reserver) GetCompletetedReservation(ctx context.Context,
+func (r *reserver) GetCompletedReservation(ctx context.Context,
 ) ([]*hostsvc.CompletedReservation, error) {
 	var reservations []*hostsvc.CompletedReservation
-	for i := 0; i < _completedReservations; i++ {
-		item, err := r.completedReservationQueue.Dequeue(100 * time.Millisecond)
-		if err != nil {
-			break
+	item, err := r.completedReservationQueue.Dequeue(100 * time.Millisecond)
+	if err != nil {
+		if _, isTimeout := err.(queue.DequeueTimeOutError); !isTimeout {
+			// error is not due to timeout so return
+			return reservations, err
 		}
-		res, ok := item.(*hostsvc.CompletedReservation)
-		if !ok {
-			continue
-		}
-		reservations = append(reservations, res)
+		// we timed out, lets return
+		return reservations, nil
 	}
-	if len(reservations) == 0 {
-		return nil, errNoValidCompletedReservation
+
+	res, ok := item.(*hostsvc.CompletedReservation)
+	if !ok {
+		// this should never happen
+		return reservations, errors.New("invalid item in queue")
 	}
+	reservations = append(reservations, res)
 	return reservations, nil
 }
 
-// findCompletedReservation finds out the completed reservations from
-// hosts service and if found enqueue them into completed reservation
-// queue by that handler can create placements out of them
-func (r *reserver) findCompletedReservation(ctx context.Context) error {
+// enqueueCompletedReservation gets out the completed reservations from
+// hosts service and if any, enqueues them into completed reservation
+// queue so that the  handler can create placements out of them.
+func (r *reserver) enqueueCompletedReservation(ctx context.Context) error {
 	// Call hosts service to find the reservation
 	reservations, err := r.hostService.GetCompletedReservation(ctx)
 	if err != nil {
 		return err
 	}
-	if len(reservations) == 0 {
-		return errors.New("no completed reservations found")
-	}
+
 	// Taking a lock here on reserver
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	// found the valid reservations
 	for _, res := range reservations {
-		// Check if reservation is succedded or not
+		// Check if reservation is succeeded or not
 		// by looking at the offers length
 		// if offers length is zero that means
 		// we need to reserve

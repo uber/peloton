@@ -210,14 +210,9 @@ func (s *service) SetPlacements(
 		return
 	}
 
-	log.WithFields(log.Fields{
-		"set_placements_request":  request,
-		"set_placements_response": response,
-	}).Debug("set placements called")
-
 	log.WithField("num_placements", len(placements)).
 		WithField("num_failed_placements", len(failedPlacements)).
-		Info("Set placements succeeded")
+		Debug("Set placements succeeded")
 
 	setPlacementDuration := time.Since(setPlacementStart)
 	s.metrics.SetPlacementDuration.Record(setPlacementDuration)

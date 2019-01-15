@@ -42,12 +42,13 @@ func (batch *batch) PlaceOnce(unassigned []*models.Assignment, hosts []*models.H
 		}).Debug("PlaceOnce batch strategy called")
 
 		unassigned = batch.fillOffer(host, unassigned)
-
-		log.WithFields(log.Fields{
-			"unassigned": unassigned,
-			"hosts":      hosts,
-		}).Debug("PlaceOnce batch strategy returned")
 	}
+
+	log.WithFields(log.Fields{
+		"unassigned": unassigned,
+		"hosts":      hosts,
+		"strategy":   "batch",
+	}).Info("PlaceOnce batch strategy returned")
 }
 
 func (batch *batch) availablePorts(resources []*mesos_v1.Resource) uint64 {

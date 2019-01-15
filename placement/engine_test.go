@@ -623,14 +623,14 @@ func TestProcessCompletedReservations(t *testing.T) {
 		reserver:     mockReserver,
 	}
 	// Testing the scenario where GetCompletedReservation returns error
-	mockReserver.EXPECT().GetCompletetedReservation(gomock.Any()).Return(nil, errors.New("error"))
+	mockReserver.EXPECT().GetCompletedReservation(gomock.Any()).Return(nil, errors.New("error"))
 	err := engine.processCompletedReservations(context.Background())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error")
 
 	// Testing the scenario where GetCompletedReservation returns with no reservations
 	var reservations []*hostsvc.CompletedReservation
-	mockReserver.EXPECT().GetCompletetedReservation(gomock.Any()).Return(reservations, nil)
+	mockReserver.EXPECT().GetCompletedReservation(gomock.Any()).Return(reservations, nil)
 	err = engine.processCompletedReservations(context.Background())
 	assert.Contains(t, err.Error(), "no valid reservations")
 
@@ -651,7 +651,7 @@ func TestProcessCompletedReservations(t *testing.T) {
 			},
 		},
 	})
-	mockReserver.EXPECT().GetCompletetedReservation(gomock.Any()).Return(reservations, nil)
+	mockReserver.EXPECT().GetCompletedReservation(gomock.Any()).Return(reservations, nil)
 	mockTaskService.EXPECT().SetPlacements(gomock.Any(), gomock.Any(), gomock.Any())
 	err = engine.processCompletedReservations(context.Background())
 	assert.NoError(t, err)
