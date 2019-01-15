@@ -156,7 +156,7 @@ class PerformanceTestClient(object):
                 # sla is required by resmgr
                 sla=job.SlaConfig(
                     priority=1,
-                    preemptible=True,
+                    preemptible=False,
                 ),
                 respoolID=peloton.ResourcePoolID(value=self.respool_id),
             ),
