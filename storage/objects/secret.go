@@ -30,6 +30,11 @@ const (
 	secretValid = true
 )
 
+// Init to add the secret object instance to the global list of storage objects
+func init() {
+	Objs = append(Objs, &SecretObject{})
+}
+
 // SecretObject corresponds to a peloton secret. All fields should be exported.
 // SecretObject contains base.Object which has ORM annotations
 // that describe the secret_info table and each column name as well as primary

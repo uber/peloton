@@ -18,10 +18,16 @@ import (
 	pelotonstore "github.com/uber/peloton/storage"
 	"github.com/uber/peloton/storage/cassandra"
 	escassandra "github.com/uber/peloton/storage/connectors/cassandra"
+	"github.com/uber/peloton/storage/objects/base"
 	"github.com/uber/peloton/storage/orm"
 
 	"github.com/uber-go/tally"
 )
+
+// Objs is a global list of storage objects. Every storage object will be added
+// using an init method to this list. This list will be used when creating the
+// ORM client.
+var Objs []base.Object
 
 // Store contains ORM client as well as metrics
 type Store struct {
@@ -40,8 +46,7 @@ func NewCassandraStore(
 	}
 	// TODO: Load up all objects automatically instead of explicitly adding
 	// them here. Might need to add some Go init() magic to do this.
-	oclient, err := orm.NewClient(
-		connector, &SecretObject{})
+	oclient, err := orm.NewClient(connector, Objs...)
 	if err != nil {
 		return nil, err
 	}
