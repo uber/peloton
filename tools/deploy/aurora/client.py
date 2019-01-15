@@ -1,7 +1,9 @@
 from __future__ import absolute_import
 
+import base64
 import json
 import logging
+import os
 
 from kazoo.client import KazooClient
 from thrift.protocol.TJSONProtocol import TJSONProtocol
@@ -32,13 +34,25 @@ class AuroraClient(object):
     """
 
     @classmethod
-    def create(cls, host, port=DEFAULT_AURORA_PORT, encoding='json'):
+    def create(
+            cls, host, port=DEFAULT_AURORA_PORT, encoding='json'):
         """
            Parses a host name and sets up Torando and Thrift client
         """
         # To recieve and send binary thrift to the Aurora master we need to set
         # headers appropriately.
         transport = THttpClient('http://%s:%s/api' % (host, str(port)))
+
+        # Set aurora credentials in transport header if the environment
+        # variables have been set
+        if os.getenv('AURORA_USERNAME') and os.getenv('AURORA_PASSWORD'):
+            username = os.getenv('AURORA_USERNAME')
+            password = os.getenv('AURORA_PASSWORD')
+            credentials = base64.encodestring(
+                '%s:%s' % (username, password)).replace('\n', '')
+            auth_header = "Basic %s" % credentials
+            transport.setCustomHeaders({'Authorization': auth_header})
+
         if encoding == 'binary':
             transport.setCustomHeaders({
                 'Content-Type': 'application/vnd.apache.thrift.binary',
@@ -74,7 +88,8 @@ class AuroraClientZK(object):
 
     """
     @classmethod
-    def create(cls, zk_endpoints, encoding='json', zk_path='/aurora/scheduler'):
+    def create(
+            cls, zk_endpoints, encoding='json', zk_path='/aurora/scheduler'):
         """
            Parses a host name and port to a ZK cluster, resolve the current
            Aurora master, and sets up Thrift client for Aurora scheduler.
@@ -119,7 +134,8 @@ class AuroraClientZK(object):
                     leader_node_name = znode_name
 
             if not leader_node_name:
-                raise AuroraClientZKError('leader name is not defined %s' % zk_endpoints)
+                raise AuroraClientZKError(
+                    'leader name is not defined %s' % zk_endpoints)
 
             leader_node_info = zk_client.get(
                 '%s/%s' % (zk_path, leader_node_name)
