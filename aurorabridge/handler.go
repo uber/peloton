@@ -491,8 +491,53 @@ func (h *ServiceHandler) RollbackJobUpdate(
 // Responds with ResponseCode.INVALID_REQUEST in case an unknown update key is specified.
 func (h *ServiceHandler) PulseJobUpdate(
 	ctx context.Context,
-	key *api.JobUpdateKey) (*api.Response, error) {
-	return nil, errUnimplemented
+	key *api.JobUpdateKey,
+) (*api.Response, error) {
+
+	result, err := h.pulseJobUpdate(ctx, key)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"params": log.Fields{
+				"key": key,
+			},
+			"code":  err.responseCode,
+			"error": err.msg,
+		}).Error("PulseJobUpdate error")
+	}
+	return newResponse(result, err), nil
+}
+
+func (h *ServiceHandler) pulseJobUpdate(
+	ctx context.Context,
+	key *api.JobUpdateKey,
+) (*api.Result, *auroraError) {
+
+	// TODO(codyg): Leverage opaque data to replicate pulsed state. If
+	// blockIfNoPulsesAfterMs is set, then the update will start in an AWAITING_PULSE
+	// state. Updates in a PAUSED state cannot be pulsed, however updates in an
+	// AWAITING_PULSE state can be pulsed, even though internally, both updates
+	// are "paused".
+
+	id, err := h.getJobID(ctx, key.GetJob())
+	if err != nil {
+		return nil, auroraErrorf("get job id: %s", err)
+	}
+	v, err := h.getCurrentJobVersion(ctx, id)
+	if err != nil {
+		return nil, auroraErrorf("get current job version: %s", err)
+	}
+	req := &statelesssvc.ResumeJobWorkflowRequest{
+		JobId:   id,
+		Version: v,
+	}
+	if _, err := h.jobClient.ResumeJobWorkflow(ctx, req); err != nil {
+		return nil, auroraErrorf("resume job workflow: %s", err)
+	}
+	return &api.Result{
+		PulseJobUpdateResult: &api.PulseJobUpdateResult{
+			Status: api.JobUpdatePulseStatusOk.Ptr(),
+		},
+	}, nil
 }
 
 // Result represents output value returned on channel

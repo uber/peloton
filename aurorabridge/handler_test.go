@@ -720,6 +720,44 @@ func (suite *ServiceHandlerTestSuite) TestAbortJobUpdate_Error() {
 	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
 }
 
+// Ensures PulseJobUpdate successfully maps to ResumeJobWorkflow.
+func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_Success() {
+	k := fixture.AuroraJobUpdateKey()
+	id := fixture.PelotonJobID()
+	v := fixture.PelotonEntityVersion()
+
+	suite.expectGetJobIDFromJobName(k.GetJob(), id)
+
+	suite.expectGetJobVersion(id, v)
+
+	suite.jobClient.EXPECT().
+		ResumeJobWorkflow(suite.ctx, &statelesssvc.ResumeJobWorkflowRequest{
+			JobId:   id,
+			Version: v,
+		}).
+		Return(nil, nil)
+
+	resp, err := suite.handler.PulseJobUpdate(suite.ctx, k)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+	suite.Equal(api.JobUpdatePulseStatusOk, resp.GetResult().GetPulseJobUpdateResult().GetStatus())
+}
+
+// Tests error handling for PulseJobUpdate.
+func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_Error() {
+	k := fixture.AuroraJobUpdateKey()
+
+	suite.jobClient.EXPECT().
+		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
+			JobName: atop.NewJobName(k.GetJob()),
+		}).
+		Return(nil, yarpcerrors.UnknownErrorf("some error"))
+
+	resp, err := suite.handler.PulseJobUpdate(suite.ctx, k)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
+}
+
 func (suite *ServiceHandlerTestSuite) expectGetJobIDFromJobName(k *api.JobKey, id *peloton.JobID) {
 	suite.jobClient.EXPECT().
 		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
