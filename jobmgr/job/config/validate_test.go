@@ -146,8 +146,8 @@ func TestValidateTaskConfigFailureBatch(t *testing.T) {
 	}
 	err := ValidateConfig(&jobConfig, maxTasksPerJob)
 	assert.Error(t, err)
-	assert.EqualError(t, err, "Invalid config for instance 0, "+
-		"Batch job task should not set health check ")
+	assert.EqualError(t, err, "code:invalid-argument message:Invalid config for instance 0, "+
+		"code:invalid-argument message:Batch job task should not set health check ")
 }
 
 func TestValidateTaskConfigFailureMaxInstances(t *testing.T) {
@@ -437,7 +437,7 @@ func TestValidateInvalidUpdateConfigWithoutCmd(t *testing.T) {
 	assert.Error(t, err)
 	expectedErrors := `1 error occurred:
 
-* missing command info for instance 3`
+* code:invalid-argument message:missing command info for instance 3`
 	assert.Equal(t, err.Error(), expectedErrors)
 }
 
@@ -452,7 +452,7 @@ func TestValidateInvalidUpdateConfigJobType(t *testing.T) {
 	expectedErrors := `2 errors occurred:
 
 * updating Type not supported
-* invalid job type: DAEMON`
+* code:invalid-argument message:invalid job type: DAEMON`
 	assert.Equal(t, err.Error(), expectedErrors)
 }
 

@@ -236,11 +236,29 @@ func (h *serviceHandler) ReplaceJob(
 			Info("JobSVC.ReplaceJob succeeded")
 	}()
 
+	if !h.candidate.IsLeader() {
+		return nil,
+			yarpcerrors.UnavailableErrorf("JobSVC.ReplaceJob is not supported on non-leader")
+	}
+
 	// TODO: handle secretes
 	jobUUID := uuid.Parse(req.GetJobId().GetValue())
 	if jobUUID == nil {
 		return nil, yarpcerrors.InvalidArgumentErrorf(
 			"JobID must be of UUID format")
+	}
+
+	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(req.GetSpec())
+	if err != nil {
+		return nil, err
+	}
+
+	err = jobconfig.ValidateConfig(
+		jobConfig,
+		h.jobSvcCfg.MaxTasksPerJob,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid JobSpec")
 	}
 
 	jobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
@@ -259,10 +277,6 @@ func (h *serviceHandler) ReplaceJob(
 			"cannot update partially created job")
 	}
 
-	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(req.GetSpec())
-	if err != nil {
-		return nil, err
-	}
 	prevJobConfig, prevConfigAddOn, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
 		jobID.GetValue(),

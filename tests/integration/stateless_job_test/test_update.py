@@ -31,6 +31,8 @@ UPDATE_STATELESS_JOB_BAD_HEALTH_CHECK_SPEC = \
     "test_stateless_job_failed_health_check_spec.yaml"
 UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_SPEC = \
     "test_stateless_job_successful_health_check_spec.yaml"
+UPDATE_STATELESS_JOB_INVALID_SPEC = \
+    "test_stateless_job_spec_invalid.yaml"
 
 
 def test__create_update(stateless_job):
@@ -817,3 +819,21 @@ def test_auto_rollback_reduce_instances(stateless_job):
     update.wait_for_state(goal_state='ROLLED_BACK')
     assert len(stateless_job.query_pods()) == \
         stateless_job.job_spec.instance_count
+
+
+# test_update_create_failure_invalid_spec tests the
+# update create failure due to invalid spec in request
+def test_update_create_failure_invalid_spec(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+
+    update = StatelessUpdate(
+        stateless_job,
+        updated_job_file=UPDATE_STATELESS_JOB_INVALID_SPEC,
+    )
+    try:
+        update.create()
+    except grpc.RpcError as e:
+        assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
+        return
+    raise Exception("job spec validation error not received")

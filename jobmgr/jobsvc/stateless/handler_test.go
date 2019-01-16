@@ -1182,6 +1182,10 @@ func (suite *statelessHandlerTestSuite) TestReplaceJobSuccess() {
 	batchSize := uint32(1)
 	opaque := "test"
 
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(true)
+
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
 		Return(suite.cachedJob)
@@ -1247,6 +1251,22 @@ func (suite *statelessHandlerTestSuite) TestReplaceJobSuccess() {
 	suite.Equal(resp.GetVersion(), jobutil.GetJobEntityVersion(configVersion+1, desiredStateVersion, workflowVersion+1))
 }
 
+// TestCreateJobFailNonLeader tests the failure case of creating job
+// due to JobMgr is not leader
+func (suite *statelessHandlerTestSuite) TestReplaceJobFailNonLeader() {
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(false)
+
+	resp, err := suite.handler.ReplaceJob(
+		context.Background(),
+		&statelesssvc.ReplaceJobRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		})
+	suite.Nil(resp)
+	suite.Error(err)
+}
+
 // TestReplaceJobInitializedJobFailure tests the failure case of replacing job
 // due to job is in INITIALIZED state
 func (suite *statelessHandlerTestSuite) TestReplaceJobInitializedJobFailure() {
@@ -1254,6 +1274,10 @@ func (suite *statelessHandlerTestSuite) TestReplaceJobInitializedJobFailure() {
 	workflowVersion := uint64(1)
 	desiredStateVersion := uint64(1)
 	batchSize := uint32(1)
+
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(true)
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
@@ -1286,6 +1310,10 @@ func (suite *statelessHandlerTestSuite) TestReplaceJobInitializedJobFailure() {
 // due to not able to get job config
 func (suite *statelessHandlerTestSuite) TestReplaceJobGetJobConfigFailure() {
 	batchSize := uint32(1)
+
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(true)
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).

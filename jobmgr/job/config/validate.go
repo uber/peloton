@@ -26,6 +26,7 @@ import (
 	"github.com/uber/peloton/common/taskconfig"
 
 	"github.com/hashicorp/go-multierror"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -35,33 +36,33 @@ const (
 )
 
 var (
-	errPortNameMissing = errors.New(
+	errPortNameMissing = yarpcerrors.InvalidArgumentErrorf(
 		"Port name is missing")
-	errPortEnvNameMissing = errors.New(
+	errPortEnvNameMissing = yarpcerrors.InvalidArgumentErrorf(
 		"Env name is missing for dynamic port")
-	errMaxInstancesTooBig = errors.New(
+	errMaxInstancesTooBig = yarpcerrors.InvalidArgumentErrorf(
 		"Job specified MaximumRunningInstances > InstanceCount")
-	errIncorrectMaxInstancesSLA = errors.New(
+	errIncorrectMaxInstancesSLA = yarpcerrors.InvalidArgumentErrorf(
 		"MaximumRunningInstances should be 0 for stateless job")
-	errMinInstancesTooBig = errors.New(
+	errMinInstancesTooBig = yarpcerrors.InvalidArgumentErrorf(
 		"Job specified MinimumRunningInstances > MaximumRunningInstances")
-	errIncorrectMinInstancesSLA = errors.New(
+	errIncorrectMinInstancesSLA = yarpcerrors.InvalidArgumentErrorf(
 		"MinimumRunningInstances should be 0 for stateless job")
-	errIncorrectMaxRunningTimeSLA = errors.New(
+	errIncorrectMaxRunningTimeSLA = yarpcerrors.InvalidArgumentErrorf(
 		"MaxRunningTime should be 0 for stateless job")
-	errKillOnPreemptNotFalse = errors.New(
+	errKillOnPreemptNotFalse = yarpcerrors.InvalidArgumentErrorf(
 		"Task preemption policy should be false for stateless job")
-	errIncorrectHealthCheck = errors.New(
+	errIncorrectHealthCheck = yarpcerrors.InvalidArgumentErrorf(
 		"Batch job task should not set health check ")
-	errIncorrectExecutor = errors.New(
+	errIncorrectExecutor = yarpcerrors.InvalidArgumentErrorf(
 		"Batch job task should not include executor config")
-	errIncorrectExecutorType = errors.New(
+	errIncorrectExecutorType = yarpcerrors.InvalidArgumentErrorf(
 		"Unsupported type in executor config")
 	errExecutorConfigDataNotPresent = errors.New(
 		"Data field not set in executor config")
-	errIncorrectRevocableSLA = errors.New(
+	errIncorrectRevocableSLA = yarpcerrors.InvalidArgumentErrorf(
 		"revocable job must be preemptible")
-	errInvalidPreemptionOverride = errors.New(
+	errInvalidPreemptionOverride = yarpcerrors.InvalidArgumentErrorf(
 		"can't override the preemption policy of a task" +
 			" which is going to be a part of a gang having tasks with" +
 			" a different preemption policy")
@@ -166,7 +167,7 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 	jobType := jobConfig.GetType()
 	validator, ok := _jobTypeJobValidate[jobType]
 	if !ok {
-		return fmt.Errorf("invalid job type: %v", jobType)
+		return yarpcerrors.InvalidArgumentErrorf("invalid job type: %v", jobType)
 	}
 
 	// validate job config based on type
@@ -189,7 +190,7 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 	// to prevent such large partitions. After changing the data model we can tweak
 	// this limit from the job service config or decide to remove the limit altogether.
 	if jobConfig.InstanceCount > maxTasksPerJob {
-		err := fmt.Errorf(
+		err := yarpcerrors.InvalidArgumentErrorf(
 			"Requested tasks: %v for job is greater than supported: %v tasks/job",
 			jobConfig.InstanceCount, maxTasksPerJob)
 		return err
@@ -200,8 +201,8 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 		taskConfig := taskconfig.Merge(
 			defaultConfig, jobConfig.GetInstanceConfig()[i])
 		if taskConfig == nil {
-			err := fmt.Errorf("missing task config for instance %v", i)
-			return err
+			return yarpcerrors.InvalidArgumentErrorf(
+				"missing task config for instance %v", i)
 		}
 
 		//TODO: uncomment the following once all Peloton clients have been
@@ -226,11 +227,11 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 		}
 
 		if taskConfig.GetCommand() == nil {
-			return fmt.Errorf("missing command info for instance %v", i)
+			return yarpcerrors.InvalidArgumentErrorf("missing command info for instance %v", i)
 		}
 
 		if taskConfig.GetController() && i != 0 {
-			return fmt.Errorf("only task 0 can be controller task")
+			return yarpcerrors.InvalidArgumentErrorf("only task 0 can be controller task")
 		}
 
 		if err := _jobTypeTaskValidate[jobType](taskConfig); err != nil {
@@ -259,7 +260,7 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 }
 
 func errInvalidTaskConfig(instanceID uint32, err error) error {
-	return fmt.Errorf(
+	return yarpcerrors.InvalidArgumentErrorf(
 		"Invalid config for instance %v, %v", instanceID, err)
 }
 

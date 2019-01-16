@@ -430,7 +430,7 @@ func (suite *JobHandlerTestSuite) TestCreateJob_ValidationErr() {
 	expectedErr := &job.CreateResponse_Error{
 		InvalidConfig: &job.InvalidJobConfig{
 			Id: suite.testJobID,
-			Message: "Requested tasks: 2 for job is " +
+			Message: "code:invalid-argument message:Requested tasks: 2 for job is " +
 				"greater than supported: 1 tasks/job",
 		},
 	}
@@ -557,7 +557,7 @@ func (suite *JobHandlerTestSuite) TestCreateJob_MoreThanOneControllerTask() {
 	expectedErr := &job.CreateResponse_Error{
 		InvalidConfig: &job.InvalidJobConfig{
 			Id:      req.Id,
-			Message: "only task 0 can be controller task",
+			Message: "code:invalid-argument message:only task 0 can be controller task",
 		},
 	}
 	suite.Equal(expectedErr, resp.GetError())
@@ -598,7 +598,7 @@ func (suite *JobHandlerTestSuite) TestCreateJob_ControllerTaskAtNonZeroPosition(
 	expectedErr := &job.CreateResponse_Error{
 		InvalidConfig: &job.InvalidJobConfig{
 			Id:      req.Id,
-			Message: "only task 0 can be controller task",
+			Message: "code:invalid-argument message:only task 0 can be controller task",
 		},
 	}
 	suite.Equal(expectedErr, resp.GetError())
