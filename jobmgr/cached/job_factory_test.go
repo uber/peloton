@@ -94,13 +94,58 @@ func TestPublishMetrics(t *testing.T) {
 		running: true,
 	}
 
-	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
+	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f5222"}
 	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-	runtimes[0] = &pbtask.RuntimeInfo{}
+	runtimes[0] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_RUNNING,
+		Revision:  &peloton.ChangeLog{Version: 1},
+	}
+	runtimes[1] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_PENDING,
+		GoalState: pbtask.TaskState_RUNNING,
+		Revision:  &peloton.ChangeLog{Version: 1},
+	}
+	runtimes[2] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_INITIALIZED,
+		GoalState: pbtask.TaskState_DELETED,
+		Revision:  &peloton.ChangeLog{Version: 1},
+	}
 	j := f.AddJob(jobID)
-	j.ReplaceTasks(runtimes, false)
+	j.ReplaceTasks(runtimes, true)
 
-	f.publishMetrics()
+	jobID = &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f111"}
+	runtimes[0] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_PENDING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
+		Revision:  &peloton.ChangeLog{Version: 1},
+	}
+	runtimes[1] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_PENDING,
+		GoalState: pbtask.TaskState_RUNNING,
+		Revision:  &peloton.ChangeLog{Version: 1},
+	}
+	runtimes[2] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_INITIALIZED,
+		GoalState: pbtask.TaskState_DELETED,
+		Revision:  &peloton.ChangeLog{Version: 1},
+	}
+	j = f.AddJob(jobID)
+	j.ReplaceTasks(runtimes, true)
+
+	stateCount := f.publishMetrics()
+	assert.Equal(t,
+		stateCount[pbtask.TaskState_RUNNING][pbtask.TaskState_RUNNING],
+		1)
+	assert.Equal(t,
+		stateCount[pbtask.TaskState_PENDING][pbtask.TaskState_RUNNING],
+		2)
+	assert.Equal(t,
+		stateCount[pbtask.TaskState_INITIALIZED][pbtask.TaskState_DELETED],
+		2)
+	assert.Equal(t,
+		stateCount[pbtask.TaskState_PENDING][pbtask.TaskState_SUCCEEDED],
+		1)
 }
 
 // BenchmarkPublishMetrics benchmarks the time needed to call publishMetrics

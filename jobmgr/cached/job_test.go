@@ -3752,3 +3752,31 @@ func (suite *JobTestSuite) TestGetCurrentAndGoalState() {
 	suite.Equal(goalState.StateVersion, suite.job.runtime.GetDesiredStateVersion())
 	suite.Equal(goalState.State, suite.job.runtime.GetGoalState())
 }
+
+func (suite *JobTestSuite) TestGetStateCount() {
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
+	runtimes[0] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_PENDING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
+		Revision:  &peloton.ChangeLog{Version: 1},
+	}
+	runtimes[1] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_PENDING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
+		Revision:  &peloton.ChangeLog{Version: 1},
+	}
+	runtimes[2] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_INITIALIZED,
+		GoalState: pbtask.TaskState_DELETED,
+		Revision:  &peloton.ChangeLog{Version: 1},
+	}
+	suite.job.ReplaceTasks(runtimes, true)
+
+	stateCount := suite.job.GetStateCount()
+	suite.Equal(
+		stateCount[pbtask.TaskState_PENDING][pbtask.TaskState_SUCCEEDED],
+		2)
+	suite.Equal(
+		stateCount[pbtask.TaskState_INITIALIZED][pbtask.TaskState_DELETED],
+		1)
+}

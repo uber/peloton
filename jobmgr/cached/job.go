@@ -178,6 +178,10 @@ type Job interface {
 
 	// Delete deletes the job from DB and clears the cache
 	Delete(ctx context.Context) error
+
+	// GetStateCount returns the state/goal state count of all
+	// tasks in a job
+	GetStateCount() map[pbtask.TaskState]map[pbtask.TaskState]int
 }
 
 // WorkflowOps defines operations on workflow
@@ -1561,6 +1565,24 @@ func (j *job) ClearWorkflow(updateID *peloton.UpdateID) {
 	defer j.Unlock()
 
 	delete(j.workflows, updateID.GetValue())
+}
+
+func (j *job) GetStateCount() map[pbtask.TaskState]map[pbtask.TaskState]int {
+	result := make(map[pbtask.TaskState]map[pbtask.TaskState]int)
+
+	j.RLock()
+	defer j.RUnlock()
+
+	for _, t := range j.tasks {
+		curState := t.CurrentState().State
+		goalState := t.GoalState().State
+		if _, ok := result[curState]; !ok {
+			result[curState] = make(map[pbtask.TaskState]int)
+		}
+		result[curState][goalState]++
+	}
+
+	return result
 }
 
 // copyJobAndTaskConfig copies the provided job config and

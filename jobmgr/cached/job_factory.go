@@ -191,49 +191,44 @@ func (f *jobFactory) runPublishMetrics(stopChan <-chan struct{}) {
 }
 
 // publishMetrics is the routine which publishes cache metrics to M3
-func (f *jobFactory) publishMetrics() {
+// return state count for test purpose
+func (f *jobFactory) publishMetrics() map[pbtask.TaskState]map[pbtask.TaskState]int {
+	stopWatch := f.mtx.scope.Timer("publish_duration").Start()
+	defer stopWatch.Stop()
+
 	// Initialise tasks count map for all possible pairs of (state, goal_state)
-	tCount := map[pbtask.TaskState]map[pbtask.TaskState]float64{}
+	tCount := map[pbtask.TaskState]map[pbtask.TaskState]int{}
 	for s := range pbtask.TaskState_name {
-		tCount[pbtask.TaskState(s)] = map[pbtask.TaskState]float64{}
+		tCount[pbtask.TaskState(s)] = map[pbtask.TaskState]int{}
 		for gs := range pbtask.TaskState_name {
-			tCount[pbtask.TaskState(s)][pbtask.TaskState(gs)] = 0.0
+			tCount[pbtask.TaskState(s)][pbtask.TaskState(gs)] = 0
 		}
 	}
 
 	// Iterate through jobs, tasks and count
-	jobsCopy := f.getJobs()
-	for _, j := range jobsCopy {
-		j.RLock()
-		for _, t := range j.tasks {
-			t.RLock()
-			tCount[t.runtime.GetState()][t.runtime.GetGoalState()]++
-			t.RUnlock()
+	jobs := f.GetAllJobs()
+	for _, j := range jobs {
+		stateCount := j.GetStateCount()
+		for currentState, goalStateMap := range stateCount {
+			for goalState, count := range goalStateMap {
+				if _, ok := tCount[currentState]; !ok {
+					// should not reach here, just for safety
+					tCount[currentState] = map[pbtask.TaskState]int{}
+				}
+				tCount[currentState][goalState] += count
+			}
 		}
-		j.RUnlock()
 	}
 
 	// Publish
-	f.mtx.scope.Gauge("jobs_count").Update(float64(len(jobsCopy)))
+	f.mtx.scope.Gauge("jobs_count").Update(float64(len(jobs)))
 	for s, sm := range tCount {
 		for gs, tc := range sm {
-			f.mtx.scope.Tagged(map[string]string{"state": s.String(), "goal_state": gs.String()}).Gauge("tasks_count").Update(tc)
+			f.mtx.scope.Tagged(map[string]string{"state": s.String(), "goal_state": gs.String()}).Gauge("tasks_count").Update(float64(tc))
 		}
 	}
-}
 
-// getJobs returns a copy of the internal map of job
-func (f *jobFactory) getJobs() map[string]*job {
-	result := make(map[string]*job)
-	f.RLock()
-	defer f.RUnlock()
-
-	for k, v := range f.jobs {
-		result[k] = &job{
-			tasks: v.tasks,
-		}
-	}
-	return result
+	return tCount
 }
 
 func (f *jobFactory) notifyJobRuntimeChanged(
