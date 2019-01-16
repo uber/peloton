@@ -24,6 +24,7 @@ import (
 	"github.com/uber/peloton/common/goalstate"
 	"github.com/uber/peloton/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
+	updateutil "github.com/uber/peloton/jobmgr/util/update"
 	"github.com/uber/peloton/util"
 
 	"github.com/pkg/errors"
@@ -270,5 +271,48 @@ func JobReloadRuntime(
 
 	goalStateDriver.EnqueueJob(jobEnt.id, time.Now())
 
+	return nil
+}
+
+// EnqueueJobUpdate enqueues an ongoing update, if any,
+// for a stateless job. It is noop for batch jobs.
+func EnqueueJobUpdate(
+	ctx context.Context,
+	entity goalstate.Entity,
+) error {
+	jobEnt := entity.(*jobEntity)
+	goalStateDriver := entity.(*jobEntity).driver
+
+	cachedJob := goalStateDriver.jobFactory.GetJob(jobEnt.id)
+	if cachedJob == nil {
+		return nil
+	}
+
+	jobConfig, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	if jobConfig.GetType() != job.JobType_SERVICE {
+		return nil
+	}
+
+	jobRuntime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		return err
+	}
+
+	if !updateutil.HasUpdate(jobRuntime) {
+		return nil
+	}
+
+	updateInfo, err := goalStateDriver.updateStore.GetUpdateProgress(ctx, jobRuntime.GetUpdateID())
+	if err != nil {
+		return err
+	}
+
+	if !cached.IsUpdateStateTerminal(updateInfo.GetState()) {
+		goalStateDriver.EnqueueUpdate(jobEnt.id, jobRuntime.GetUpdateID(), time.Now())
+	}
 	return nil
 }

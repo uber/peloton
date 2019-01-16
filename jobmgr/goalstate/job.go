@@ -162,7 +162,8 @@ func (j *jobEntity) GetActionList(
 	jobState := state.(cached.JobStateVector)
 	jobGoalState := goalState.(cached.JobStateVector)
 
-	if jobState.State == job.JobState_UNKNOWN || jobGoalState.State == job.JobState_UNKNOWN {
+	if jobState.State == job.JobState_UNKNOWN ||
+		jobGoalState.State == job.JobState_UNKNOWN {
 		// State or goal state could not be loaded from DB, so
 		// reload the job so that the states can be fetched again.
 		actions = append(actions, goalstate.Action{
@@ -190,6 +191,13 @@ func (j *jobEntity) GetActionList(
 			Execute: action,
 		})
 	}
+
+	// Run this action always.
+	actions = append(actions,
+		goalstate.Action{
+			Name:    "EnqueueJobUpdate",
+			Execute: EnqueueJobUpdate,
+		})
 
 	if actionStr != UntrackAction && actionStr != RecoverAction {
 		// These should always be run

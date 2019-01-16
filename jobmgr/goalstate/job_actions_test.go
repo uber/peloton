@@ -21,6 +21,8 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/update"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
@@ -39,16 +41,18 @@ import (
 type jobActionsTestSuite struct {
 	suite.Suite
 
-	ctrl                *gomock.Controller
-	jobGoalStateEngine  *goalstatemocks.MockEngine
-	taskGoalStateEngine *goalstatemocks.MockEngine
-	jobFactory          *cachedmocks.MockJobFactory
-	goalStateDriver     *driver
-	jobID               *peloton.JobID
-	jobEnt              *jobEntity
-	cachedJob           *cachedmocks.MockJob
-	cachedTask          *cachedmocks.MockTask
-	jobStore            *storemocks.MockJobStore
+	ctrl                  *gomock.Controller
+	jobGoalStateEngine    *goalstatemocks.MockEngine
+	taskGoalStateEngine   *goalstatemocks.MockEngine
+	updateGoalStateEngine *goalstatemocks.MockEngine
+	jobFactory            *cachedmocks.MockJobFactory
+	goalStateDriver       *driver
+	jobID                 *peloton.JobID
+	jobEnt                *jobEntity
+	cachedJob             *cachedmocks.MockJob
+	cachedTask            *cachedmocks.MockTask
+	jobStore              *storemocks.MockJobStore
+	updateStore           *storemocks.MockUpdateStore
 }
 
 func (suite *jobActionsTestSuite) SetupTest() {
@@ -58,14 +62,18 @@ func (suite *jobActionsTestSuite) SetupTest() {
 	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
+	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
+	suite.updateGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 
 	suite.goalStateDriver = &driver{
-		jobStore:   suite.jobStore,
-		jobEngine:  suite.jobGoalStateEngine,
-		taskEngine: suite.taskGoalStateEngine,
-		jobFactory: suite.jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
+		updateStore:  suite.updateStore,
+		updateEngine: suite.updateGoalStateEngine,
+		jobStore:     suite.jobStore,
+		jobEngine:    suite.jobGoalStateEngine,
+		taskEngine:   suite.taskGoalStateEngine,
+		jobFactory:   suite.jobFactory,
+		mtx:          NewMetrics(tally.NoopScope),
+		cfg:          &Config{},
 	}
 	suite.goalStateDriver.cfg.normalize()
 
@@ -602,4 +610,182 @@ func (suite *jobActionsTestSuite) TestJobReloadRuntimeJobNotFound() {
 	)
 
 	suite.NoError(JobReloadRuntime(context.Background(), suite.jobEnt))
+}
+
+// TestEnqueueJobUpdateStatelessSuccess tests the success
+// case of enqueuing a job update for a stateless job
+func (suite *jobActionsTestSuite) TestEnqueueJobUpdateStatelessSuccess() {
+	testUpdateID := &peloton.UpdateID{
+		Value: uuid.NewRandom().String(),
+	}
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			Type: job.JobType_SERVICE,
+		}, nil)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			UpdateID: testUpdateID,
+		}, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdateProgress(gomock.Any(), testUpdateID).
+		Return(&models.UpdateModel{
+			State: update.State_ROLLING_FORWARD,
+		}, nil)
+
+	suite.updateGoalStateEngine.
+		EXPECT().
+		Enqueue(gomock.Any(), gomock.Any())
+
+	suite.NoError(EnqueueJobUpdate(context.Background(), suite.jobEnt))
+}
+
+// TestEnqueueJobUpdateStatelessSuccess tests the
+// EnqueueJobUpdate action for a batch job
+func (suite *jobActionsTestSuite) TestEnqueueJobUpdateBatchNoop() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			Type: job.JobType_BATCH,
+		}, nil)
+
+	suite.NoError(EnqueueJobUpdate(context.Background(), suite.jobEnt))
+}
+
+// TestEnqueueJobUpdateGetJobFailure tests the failure case of
+// enqueuing job update due to failure to get job from cache
+func (suite *jobActionsTestSuite) TestEnqueueJobUpdateGetJobFailure() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(nil)
+
+	suite.NoError(EnqueueJobUpdate(context.Background(), suite.jobEnt))
+}
+
+// TestEnqueueJobUpdateGetConfigFailure tests the failure case
+// of enqueuing job update due to error while getting job config
+func (suite *jobActionsTestSuite) TestEnqueueJobUpdateGetConfigFailure() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(EnqueueJobUpdate(context.Background(), suite.jobEnt))
+}
+
+// TestEnqueueJobUpdateStatelessGetRuntimeFailure tests the failure case of
+// enqueuing a job update for a stateless job due to error while getting job runtime
+func (suite *jobActionsTestSuite) TestEnqueueJobUpdateStatelessGetRuntimeFailure() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			Type: job.JobType_SERVICE,
+		}, nil)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(EnqueueJobUpdate(context.Background(), suite.jobEnt))
+}
+
+// TestEnqueueJobUpdateStatelessNoUpdate tests the enqueue-job-update
+// action for a stateless job when the job does not have any update
+func (suite *jobActionsTestSuite) TestEnqueueJobUpdateStatelessNoUpdate() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			Type: job.JobType_SERVICE,
+		}, nil)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{}, nil)
+
+	suite.NoError(EnqueueJobUpdate(context.Background(), suite.jobEnt))
+}
+
+// TestEnqueueJobUpdateStatelessUpdateGetFailure tests the failure case
+// of enqueuing job update due to error while reading update info from DB
+func (suite *jobActionsTestSuite) TestEnqueueJobUpdateStatelessUpdateGetFailure() {
+	testUpdateID := &peloton.UpdateID{
+		Value: uuid.NewRandom().String(),
+	}
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			Type: job.JobType_SERVICE,
+		}, nil)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			UpdateID: testUpdateID,
+		}, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdateProgress(gomock.Any(), testUpdateID).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(EnqueueJobUpdate(context.Background(), suite.jobEnt))
+}
+
+// TestEnqueueJobUpdateStatelessTerminalUpdate tests the enqueue-job-update
+// action for a stateless job when there is no active update
+func (suite *jobActionsTestSuite) TestEnqueueJobUpdateStatelessTerminalUpdate() {
+	testUpdateID := &peloton.UpdateID{
+		Value: uuid.NewRandom().String(),
+	}
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			Type: job.JobType_SERVICE,
+		}, nil)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			UpdateID: testUpdateID,
+		}, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdateProgress(gomock.Any(), testUpdateID).
+		Return(&models.UpdateModel{
+			State: update.State_SUCCEEDED,
+		}, nil)
+
+	suite.NoError(EnqueueJobUpdate(context.Background(), suite.jobEnt))
 }

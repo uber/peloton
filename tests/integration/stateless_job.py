@@ -364,6 +364,12 @@ class StatelessJob(object):
         """
         return self.get_info().status
 
+    def get_spec(self):
+        """
+        :return: spec of a job.
+        """
+        return self.get_info().spec
+
     def wait_for_all_pods_running(self):
         """
         Waits for all pods in the job in RUNNING state

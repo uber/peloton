@@ -508,16 +508,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 			WithField("task_stats", stateCounts).
 			Debug("Task stats did not change, return")
 
-		// if an update is running for this job, enqueue it to goal state
-		// TODO change this to use watch functionality from the cache
-		err = enqueueJobUpdate(ctx, jobID, jobRuntime, goalStateDriver)
-		if err != nil {
-			log.WithError(err).
-				WithField("job_id", id).
-				Error("failed to fetch update info in runtime updater")
-			goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
-		}
-		return err
+		return nil
 	}
 
 	jobRuntimeUpdate = setStartTime(
@@ -561,17 +552,6 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		log.WithError(err).
 			WithField("job_id", id).
 			Error("failed to update jobRuntime in runtime updater")
-		goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
-		return err
-	}
-
-	// if an update is running for this job, enqueue it as well
-	// TODO change this to use watch functionality from the cache
-	err = enqueueJobUpdate(ctx, jobID, jobRuntime, goalStateDriver)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id).
-			Error("failed to fetch update info in runtime updater")
 		goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
 		return err
 	}
@@ -701,27 +681,4 @@ func isJobStateStale(cachedJob cached.Job, threshold time.Duration) bool {
 		return true
 	}
 	return false
-}
-
-// enqueueJobUpdate enqueues the update to the goal state engine if a job
-// update exists in the runtime, and it is not in terminal state
-func enqueueJobUpdate(
-	ctx context.Context,
-	jobID *peloton.JobID,
-	jobRuntime *job.RuntimeInfo,
-	goalStateDriver *driver) error {
-	if !updateutil.HasUpdate(jobRuntime) {
-		return nil
-	}
-
-	updateInfo, err := goalStateDriver.updateStore.GetUpdateProgress(
-		ctx, jobRuntime.GetUpdateID())
-	if err != nil {
-		return err
-	}
-
-	if !cached.IsUpdateStateTerminal(updateInfo.GetState()) {
-		goalStateDriver.EnqueueUpdate(jobID, jobRuntime.GetUpdateID(), time.Now())
-	}
-	return nil
 }

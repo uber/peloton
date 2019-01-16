@@ -98,31 +98,31 @@ func TestJobGetActionList(t *testing.T) {
 		cached.JobStateVector{State: job.JobState_SUCCEEDED},
 		cached.JobStateVector{State: job.JobState_SUCCEEDED},
 	)
-	assert.Equal(t, 1, len(actions))
+	assert.Equal(t, 2, len(actions))
 
 	_, _, actions = jobEnt.GetActionList(
 		cached.JobStateVector{State: job.JobState_UNINITIALIZED},
 		cached.JobStateVector{State: job.JobState_SUCCEEDED},
 	)
-	assert.Equal(t, 1, len(actions))
+	assert.Equal(t, 2, len(actions))
 
 	_, _, actions = jobEnt.GetActionList(
 		cached.JobStateVector{State: job.JobState_RUNNING},
 		cached.JobStateVector{State: job.JobState_SUCCEEDED},
 	)
-	assert.Equal(t, 3, len(actions))
+	assert.Equal(t, 4, len(actions))
 
 	_, _, actions = jobEnt.GetActionList(
 		cached.JobStateVector{State: job.JobState_RUNNING},
 		cached.JobStateVector{State: job.JobState_KILLED},
 	)
-	assert.Equal(t, 4, len(actions))
+	assert.Equal(t, 5, len(actions))
 
 	_, _, actions = jobEnt.GetActionList(
 		cached.JobStateVector{State: job.JobState_RUNNING, StateVersion: 0},
 		cached.JobStateVector{State: job.JobState_KILLED, StateVersion: 1},
 	)
-	assert.Equal(t, 4, len(actions))
+	assert.Equal(t, 5, len(actions))
 }
 
 func TestEngineJobSuggestAction(t *testing.T) {

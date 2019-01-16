@@ -3,6 +3,7 @@ import grpc
 import time
 
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
+from peloton_client.pbgen.peloton.api.v1alpha.job.stateless import stateless_pb2
 from peloton_client.pbgen.peloton.api.v1alpha.job.stateless.stateless_pb2 import JobSpec
 from peloton_client.pbgen.peloton.api.v1alpha.pod import pod_pb2
 
@@ -258,6 +259,11 @@ def test__create_update_stopped_job(stateless_job):
     stateless_job.wait_for_state(goal_state='RUNNING')
     old_pod_infos = stateless_job.query_pods()
     old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
+
+    old_pod_states = set()
+    for pod_info in old_pod_infos:
+        old_pod_states.add(pod_info.spec.pod_name.value)
+
     stateless_job.stop()
     stateless_job.wait_for_state(goal_state='KILLED')
     update = StatelessUpdate(
@@ -275,6 +281,13 @@ def test__create_update_stopped_job(stateless_job):
     assert len(new_pod_infos) == 5
     assert_pod_id_changed(old_pod_infos, new_pod_infos)
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
+
+    # Only new instances should be RUNNING
+    for pod_info in new_pod_infos:
+        if pod_info.spec.pod_name.value in new_pod_infos:
+            assert pod_info.status.state == pod_pb2.POD_STATE_KILLED
+        else:
+            assert pod_info.status.state == pod_pb2.POD_STATE_RUNNING
 
 
 def test__create_update_stopped_tasks(stateless_job):
@@ -837,3 +850,23 @@ def test_update_create_failure_invalid_spec(stateless_job):
         assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
         return
     raise Exception("job spec validation error not received")
+
+
+# test_update_killed_job tests updating a killed job.
+# The job should be updated but still remain in killed state
+def test_update_killed_job():
+    job = StatelessJob(job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC)
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+
+    job.stop()
+    job.wait_for_state(goal_state='KILLED')
+
+    update = StatelessUpdate(
+        job,
+        updated_job_file=UPDATE_STATELESS_JOB_UPDATE_REDUCE_INSTANCES_SPEC)
+    update.create()
+    update.wait_for_state(goal_state='SUCCEEDED')
+
+    assert job.get_spec().instance_count == 3
+    assert job.get_status().state == stateless_pb2.JOB_STATE_KILLED

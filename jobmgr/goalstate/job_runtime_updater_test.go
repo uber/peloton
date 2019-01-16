@@ -24,7 +24,6 @@ import (
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
-	pbupdate "github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
@@ -303,12 +302,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_RUNNING() {
 			suite.Equal(jobInfo.Runtime.TaskStats[pbtask.TaskState_SUCCEEDED.String()], instanceCount/4)
 		}).
 		Return(nil)
-
-	suite.updateStore.EXPECT().
-		GetUpdateProgress(gomock.Any(), updateID).
-		Return(&models.UpdateModel{
-			State: pbupdate.State_SUCCEEDED,
-		}, nil)
 
 	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
@@ -1677,16 +1670,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInsta
 			_ cached.UpdateRequest) {
 			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_RUNNING)
 		}).Return(nil)
-
-	suite.updateStore.EXPECT().
-		GetUpdateProgress(gomock.Any(), jobRuntime.UpdateID).
-		Return(&models.UpdateModel{
-			State: pbupdate.State_ROLLING_FORWARD,
-		}, nil)
-
-	suite.updateGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
 
 	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
