@@ -385,6 +385,13 @@ func (h *serviceHandler) RestartJob(
 		})
 	}
 
+	instancesToUpdate := convertInstanceIDRangesToSlice(req.GetRanges(), newConfig.GetInstanceCount())
+	if len(instancesToUpdate) == 0 {
+		for i := uint32(0); i < newConfig.GetInstanceCount(); i++ {
+			instancesToUpdate = append(instancesToUpdate, i)
+		}
+	}
+
 	updateID, newEntityVersion, err := cachedJob.CreateWorkflow(
 		ctx,
 		models.WorkflowType_RESTART,
@@ -394,7 +401,7 @@ func (h *serviceHandler) RestartJob(
 		req.GetVersion(),
 		cached.WithInstanceToProcess(
 			nil,
-			convertInstanceIDRangesToSlice(req.GetRanges(), newConfig.GetInstanceCount()),
+			instancesToUpdate,
 			nil),
 		cached.WithConfig(
 			&newConfig,
@@ -1665,8 +1672,8 @@ func (h *serviceHandler) addSecretsToDBAndConfig(
 }
 
 // convertInstanceIDRangesToSlice merges ranges into a single slice and remove
-// any duplicated item
-// need the instanceCount because cli may send max uint32 when range is not specified.
+// any duplicated item. Instance count is needed because cli may send max uint32
+// when range is not specified.
 func convertInstanceIDRangesToSlice(ranges []*pod.InstanceIDRange, instanceCount uint32) []uint32 {
 	var result []uint32
 	set := make(map[uint32]bool)

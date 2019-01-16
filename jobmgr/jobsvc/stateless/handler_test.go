@@ -2920,8 +2920,8 @@ func (suite *statelessHandlerTestSuite) TestStopJobCompareAndSetRuntimeFailure()
 
 // TestRestartJobSuccess tests the success case of restarting a job
 func (suite *statelessHandlerTestSuite) TestRestartJobSuccess() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
-	newEntityVersion := &v1alphapeloton.EntityVersion{Value: "1-2"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+	newEntityVersion := &v1alphapeloton.EntityVersion{Value: "2-1-2"}
 	batchSize := uint32(1)
 	opaque := "test"
 	ranges := []*pod.InstanceIDRange{
@@ -2992,7 +2992,7 @@ func (suite *statelessHandlerTestSuite) TestRestartJobSuccess() {
 // TestRestartJobNonLeaderFailure tests the success case of fail to restart
 // a job due to jobmgr is not leader
 func (suite *statelessHandlerTestSuite) TestRestartJobNonLeaderFailure() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
 	batchSize := uint32(1)
 	opaque := "test"
 	ranges := []*pod.InstanceIDRange{
@@ -3021,7 +3021,7 @@ func (suite *statelessHandlerTestSuite) TestRestartJobNonLeaderFailure() {
 // TestRestartJobGetRuntimeFailure tests the failure case of restarting a job
 // due to get runtime error
 func (suite *statelessHandlerTestSuite) TestRestartJobGetRuntimeFailure() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
 	batchSize := uint32(1)
 	opaque := "test"
 	ranges := []*pod.InstanceIDRange{
@@ -3053,6 +3053,96 @@ func (suite *statelessHandlerTestSuite) TestRestartJobGetRuntimeFailure() {
 	)
 	suite.Error(err)
 	suite.Nil(resp)
+}
+
+// TestRestartJobNoRangeSuccess tests the success case
+// of restarting job when no range is provided
+func (suite *statelessHandlerTestSuite) TestRestartJobNoRangeSuccess() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+	newEntityVersion := &v1alphapeloton.EntityVersion{Value: "2-1-2"}
+	batchSize := uint32(1)
+	opaque := "test"
+	ranges := []*pod.InstanceIDRange{
+		{From: 0, To: 0},
+	}
+	instanceCount := uint32(10)
+
+	configVersion := uint64(2)
+
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(true)
+
+	suite.jobFactory.EXPECT().
+		AddJob(&peloton.JobID{Value: testJobID}).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbjob.RuntimeInfo{
+			ConfigurationVersion: configVersion,
+		}, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
+			gomock.Any(),
+			testJobID,
+			configVersion,
+		).
+		Return(&pbjob.JobConfig{
+			InstanceCount: instanceCount,
+		}, nil, nil)
+
+	suite.cachedJob.EXPECT().
+		CreateWorkflow(
+			gomock.Any(),
+			models.WorkflowType_RESTART,
+			&pbupdate.UpdateConfig{
+				BatchSize: batchSize,
+			},
+			entityVersion,
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any()).
+		Do(
+			func(
+				_ context.Context,
+				_ models.WorkflowType,
+				_ *pbupdate.UpdateConfig,
+				_ *v1alphapeloton.EntityVersion,
+				option ...cached.Option,
+			) {
+				var instancesToUpdate []uint32
+				for i := uint32(0); i < instanceCount; i++ {
+					instancesToUpdate = append(instancesToUpdate, i)
+				}
+				suite.Equal(
+					cached.WithInstanceToProcess(nil, instancesToUpdate, nil),
+					option[0],
+				)
+			},
+		).
+		Return(&peloton.UpdateID{Value: testUpdateID}, newEntityVersion, nil)
+
+	suite.goalStateDriver.EXPECT().
+		EnqueueUpdate(
+			&peloton.JobID{Value: testJobID},
+			&peloton.UpdateID{Value: testUpdateID},
+			gomock.Any(),
+		)
+
+	resp, err := suite.handler.RestartJob(
+		context.Background(),
+		&statelesssvc.RestartJobRequest{
+			JobId:      &v1alphapeloton.JobID{Value: testJobID},
+			Version:    entityVersion,
+			BatchSize:  batchSize,
+			Ranges:     ranges,
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
+		},
+	)
+	suite.NoError(err)
+	suite.Equal(resp.GetVersion().GetValue(), newEntityVersion.GetValue())
 }
 
 // TestListJobUpdatesSuccess tests the success case of list job updates

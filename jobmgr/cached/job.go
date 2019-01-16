@@ -1303,7 +1303,7 @@ func (j *job) CreateWorkflow(
 		return nil, nil, err
 	}
 
-	err = j.updateJobConfigAndUpdateID(
+	err = j.updateJobRuntime(
 		ctx,
 		newConfig.GetChangeLog().GetVersion(),
 		j.runtime.GetWorkflowVersion()+1,
@@ -1486,7 +1486,7 @@ func (j *job) RollbackWorkflow(ctx context.Context) error {
 		}
 
 		// just update job runtime config version
-		return j.updateJobConfigAndUpdateID(
+		return j.updateJobRuntime(
 			ctx,
 			currentWorkflow.GetGoalState().JobVersion,
 			j.runtime.GetWorkflowVersion(),
@@ -1522,7 +1522,7 @@ func (j *job) RollbackWorkflow(ctx context.Context) error {
 		return err
 	}
 
-	return j.updateJobConfigAndUpdateID(
+	return j.updateJobRuntime(
 		ctx,
 		configCopy.GetChangeLog().GetVersion(),
 		j.runtime.GetWorkflowVersion(),
@@ -1601,11 +1601,11 @@ func (j *job) copyJobAndTaskConfig(
 	return jobConfig, nil
 }
 
-// updateJobConfigAndUpdateID updates job runtime with newConfigVersion and
-// set the runtime updateID to u.id.
-// It validates if the workflowType update is valid.
+// updateJobRuntime updates job runtime with newConfigVersion and
+// set the runtime updateID to u.id. It validates if the workflowType
+// update is valid. It also updates the job goal state if necessary.
 // It must be called with job lock held.
-func (j *job) updateJobConfigAndUpdateID(
+func (j *job) updateJobRuntime(
 	ctx context.Context,
 	newConfigVersion uint64,
 	newWorkflowVersion uint64,
@@ -1634,6 +1634,9 @@ func (j *job) updateJobConfigAndUpdateID(
 	}
 	runtime.ConfigurationVersion = newConfigVersion
 	runtime.WorkflowVersion = newWorkflowVersion
+	if newWorkflow.GetWorkflowType() == models.WorkflowType_RESTART {
+		runtime.GoalState = pbjob.JobState_RUNNING
+	}
 	if err := j.jobFactory.jobStore.UpdateJobRuntime(
 		ctx,
 		j.id,
