@@ -95,7 +95,7 @@ func (suite *JobRuntimeUpdaterTestSuite) SetupTest() {
 		driver: suite.goalStateDriver,
 	}
 	suite.lastUpdateTs = float64(
-		time.Now().Add(time.Duration(-1) * time.Hour).UnixNano())
+		time.Now().Add(time.Duration(-1) * time.Hour).Unix())
 	suite.goalStateDriver.cfg.normalize()
 	suite.cachedJob.EXPECT().
 		GetResourceUsage().Return(
@@ -1716,7 +1716,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeStateStaleJob() 
 	suite.cachedConfig.EXPECT().HasControllerTask().Return(false).AnyTimes()
 	suite.cachedJob.EXPECT().IsPartiallyCreated(false).AnyTimes()
 	suite.cachedJob.EXPECT().GetLastTaskUpdateTime().
-		Return(float64(time.Now().AddDate(0, 0, -5).UnixNano())).AnyTimes()
+		Return(float64(time.Now().AddDate(0, 0, -5).Second())).AnyTimes()
 
 	jobState, _, err := determineJobRuntimeState(
 		context.Background(), jobRuntime, stateCounts, suite.cachedConfig,
@@ -2182,7 +2182,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestshouldRecalculateJobStateTerminalJo
 // determine if the job state is stale and needs to be recalculated
 func (suite *JobRuntimeUpdaterTestSuite) TestShouldRecalculateJobState() {
 	// assume last update to the job state was 5 days ago
-	lastUpdateTs := float64(time.Now().AddDate(0, 0, -5).UnixNano())
+	lastUpdateTs := float64(time.Now().AddDate(0, 0, -5).Unix())
 	suite.cachedJob.EXPECT().GetLastTaskUpdateTime().Return(lastUpdateTs)
 	stateCounts := suite.prepareInstanceCount(false)
 	suite.True(shouldRecalculateJobState(

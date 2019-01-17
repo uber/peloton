@@ -680,10 +680,10 @@ func shouldRecalculateJobState(
 // isJobStateStale returns true if the job is in active state for more than the
 // threshold duration
 func isJobStateStale(cachedJob cached.Job, threshold time.Duration) bool {
-	lastTaskUpdateTime := cachedJob.GetLastTaskUpdateTime()
-	durationInCurrState := int64(
-		float64(time.Now().UnixNano()) - lastTaskUpdateTime)
-	if durationInCurrState >= threshold.Nanoseconds() {
+	lastTaskUpdateTimeInSecs := cachedJob.GetLastTaskUpdateTime()
+	durationInCurrState :=
+		float64(time.Now().Unix()) - lastTaskUpdateTimeInSecs
+	if durationInCurrState >= threshold.Seconds() {
 		return true
 	}
 	return false
