@@ -822,7 +822,7 @@ func (h *ServiceHandler) getJobSummaries(
 		}
 		// results are sorted chronologically, return the latest one
 		return []*stateless.JobSummary{
-			&stateless.JobSummary{
+			{
 				JobId: resp.GetJobId()[0],
 				Name:  atop.NewJobName(k),
 			},

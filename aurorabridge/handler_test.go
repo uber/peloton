@@ -92,7 +92,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesWithJobKey() {
 		UpdateStatuses: updateStatuses,
 	}
 
-	workflowEvents := []*stateless.WorkflowEvent{&stateless.WorkflowEvent{
+	workflowEvents := []*stateless.WorkflowEvent{{
 		Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
 		State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 		Timestamp: time.Now().Format(time.RFC3339),
@@ -324,7 +324,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesFailure() {
 
 	jobID := fixture.PelotonJobID()
 	jobIDs := []*v1alphapeloton.JobID{jobID}
-	records := []*stateless.JobSummary{&stateless.JobSummary{
+	records := []*stateless.JobSummary{{
 		JobId: jobID,
 	}}
 
