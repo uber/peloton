@@ -39,6 +39,7 @@ collect_metrics = TestMetrics()
 #
 @pytest.fixture(scope="module", autouse=True)
 def setup_cluster(request):
+    tests_failed_before_module = request.session.testsfailed
     log.info('setup cluster')
     if os.getenv('CLUSTER', ''):
         log.info('cluster mode')
@@ -55,15 +56,16 @@ def setup_cluster(request):
             log.info('skip teardown')
         else:
             log.info('tearing down')
-            # TODO Uncomment once the docker log issue has been fixed
-            '''
-            try:
-                cli = Client(base_url='unix://var/run/docker.sock')
-                log.info(cli.logs('peloton-jobmgr0'))
-                log.info(cli.logs('peloton-jobmgr1'))
-            except Exception as e:
-                log.info(e)
-            '''
+
+            # dump logs only if tests have failed in the current module
+            if (request.session.testsfailed - tests_failed_before_module) > 0:
+                try:
+                    cli = Client(base_url='unix://var/run/docker.sock')
+                    log.info(cli.logs('peloton-jobmgr0'))
+                    log.info(cli.logs('peloton-jobmgr1'))
+                except Exception as e:
+                    log.info(e)
+
             teardown()
 
     request.addfinalizer(teardown_cluster)
