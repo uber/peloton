@@ -574,15 +574,19 @@ func ConvertPodSpecToTaskConfig(spec *pod.PodSpec) (*task.TaskConfig, error) {
 			yarpcerrors.UnimplementedErrorf("init containers are not supported")
 	}
 
-	mainContainer := spec.GetContainers()[0]
 	result := &task.TaskConfig{
 		Name:                   spec.GetPodName().GetValue(),
-		Container:              mainContainer.GetContainer(),
-		Command:                mainContainer.GetCommand(),
-		Executor:               mainContainer.GetExecutor(),
 		Controller:             spec.GetController(),
 		KillGracePeriodSeconds: spec.GetKillGracePeriodSeconds(),
 		Revocable:              spec.GetRevocable(),
+	}
+
+	var mainContainer *pod.ContainerSpec
+	if len(spec.GetContainers()) > 0 {
+		mainContainer = spec.GetContainers()[0]
+		result.Container = mainContainer.GetContainer()
+		result.Command = mainContainer.GetCommand()
+		result.Executor = mainContainer.GetExecutor()
 	}
 
 	if spec.GetLabels() != nil {

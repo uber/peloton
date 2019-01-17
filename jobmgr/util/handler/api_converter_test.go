@@ -46,13 +46,13 @@ var (
 	testAgentID         = "agent-id"
 )
 
-type APIConverterTestSuite struct {
+type apiConverterTestSuite struct {
 	suite.Suite
 }
 
 // TestConvertTaskStateToPodState tests conversion from
 // v0 task.TaskState to v1alpha pod.PodState and vice versa
-func (suite *APIConverterTestSuite) TestConvertTaskStateToPodStateAndViceVersa() {
+func (suite *apiConverterTestSuite) TestConvertTaskStateToPodStateAndViceVersa() {
 	taskStates := []task.TaskState{
 		task.TaskState_UNKNOWN,
 		task.TaskState_INITIALIZED,
@@ -104,7 +104,7 @@ func (suite *APIConverterTestSuite) TestConvertTaskStateToPodStateAndViceVersa()
 
 // TestConvertTaskRuntimeToPodStatus tests conversion from
 // v0 task.RuntimeInfo to v1alpha pod.PodStatus
-func (suite *APIConverterTestSuite) TestConvertTaskRuntimeToPodStatus() {
+func (suite *apiConverterTestSuite) TestConvertTaskRuntimeToPodStatus() {
 	ports := make(map[string]uint32)
 	ports["test"] = 1000
 	resourceUsage := make(map[string]float64)
@@ -214,7 +214,7 @@ func (suite *APIConverterTestSuite) TestConvertTaskRuntimeToPodStatus() {
 
 // TestTaskConfigToPodSpecAndViceVersa tests conversion from
 // v0 task.TaskConfig to v1alpha pod.PodSpec and vice versa
-func (suite *APIConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa() {
+func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa() {
 	taskName := "test-task"
 	label := &peloton.Label{
 		Key:   "test-key",
@@ -353,9 +353,53 @@ func (suite *APIConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 	suite.Equal(taskConfig, convertedTaskConfig)
 }
 
+// TestConvertPodSpecToTaskConfigNoContainers tests the conversion from
+// pod spec to task config when pod spec doesn't contain any containers
+func (suite *apiConverterTestSuite) TestConvertPodSpecToTaskConfigNoContainers() {
+	label := &peloton.Label{
+		Key:   "test-key",
+		Value: "test-value",
+	}
+
+	podSpec := &pod.PodSpec{
+		Constraint: &pod.Constraint{
+			Type: pod.Constraint_CONSTRAINT_TYPE_LABEL,
+			LabelConstraint: &pod.LabelConstraint{
+				Label: &v1alphapeloton.Label{
+					Key:   label.GetKey(),
+					Value: label.GetValue(),
+				},
+			},
+		},
+		PreemptionPolicy: &pod.PreemptionPolicy{
+			KillOnPreempt: false,
+		},
+	}
+
+	convertedTaskConfig, err := ConvertPodSpecToTaskConfig(podSpec)
+	suite.NoError(err)
+
+	suite.Equal(
+		task.Constraint_Type(podSpec.GetConstraint().GetType()),
+		convertedTaskConfig.GetConstraint().GetType(),
+	)
+	suite.Equal(
+		podSpec.GetConstraint().GetLabelConstraint().GetLabel().GetKey(),
+		convertedTaskConfig.GetConstraint().GetLabelConstraint().GetLabel().GetKey(),
+	)
+	suite.Equal(
+		podSpec.GetConstraint().GetLabelConstraint().GetLabel().GetValue(),
+		convertedTaskConfig.GetConstraint().GetLabelConstraint().GetLabel().GetValue(),
+	)
+	suite.Equal(
+		podSpec.GetPreemptionPolicy().GetKillOnPreempt(),
+		convertedTaskConfig.GetPreemptionPolicy().GetKillOnPreempt(),
+	)
+}
+
 // TestConvertLabels tests conversion from v0 peloton.Label
 // array to v1alpha peloton.Label array
-func (suite *APIConverterTestSuite) TestConvertLabels() {
+func (suite *apiConverterTestSuite) TestConvertLabels() {
 	labels := []struct {
 		Key   string
 		Value string
@@ -391,7 +435,7 @@ func (suite *APIConverterTestSuite) TestConvertLabels() {
 
 // TestTaskConstraintsToPodConstraintsAndViceVersa tests conversion
 // from v0 task constraints to v1alpha pod constraints and vice versa
-func (suite *APIConverterTestSuite) TestConvertTaskConstraintsToPodConstraintsAndViceVersa() {
+func (suite *apiConverterTestSuite) TestConvertTaskConstraintsToPodConstraintsAndViceVersa() {
 	labels := []*peloton.Label{
 		{
 			Key:   "test-key1",
@@ -574,7 +618,7 @@ func (suite *APIConverterTestSuite) TestConvertTaskConstraintsToPodConstraintsAn
 
 // TestConvertContainerPorts tests conversion from v0 task.PortConfig array to
 // v1alpha pod.PortSpec array
-func (suite *APIConverterTestSuite) TestConvertContainerPorts() {
+func (suite *apiConverterTestSuite) TestConvertContainerPorts() {
 	ports := []*task.PortConfig{
 		{
 			Name:    "test-port1",
@@ -597,7 +641,7 @@ func (suite *APIConverterTestSuite) TestConvertContainerPorts() {
 
 // TestConvertV0SecretsToV1Secrets tests conversion from
 // v0 peloton.Secret to v1alpha peloton.Secret
-func (suite *APIConverterTestSuite) TestConvertV0SecretsToV1Secrets() {
+func (suite *apiConverterTestSuite) TestConvertV0SecretsToV1Secrets() {
 	v0Secrets := []*peloton.Secret{
 		{
 			Id: &peloton.SecretID{
@@ -628,7 +672,7 @@ func (suite *APIConverterTestSuite) TestConvertV0SecretsToV1Secrets() {
 
 // TestConvertV1SecretsToV0Secrets tests conversion from
 // v1alpha peloton.Secret to v0 peloton.Secret
-func (suite *APIConverterTestSuite) TestConvertV1SecretsToV0Secrets() {
+func (suite *apiConverterTestSuite) TestConvertV1SecretsToV0Secrets() {
 	v1Secrets := []*v1alphapeloton.Secret{
 		{
 			SecretId: &v1alphapeloton.SecretID{
@@ -659,7 +703,7 @@ func (suite *APIConverterTestSuite) TestConvertV1SecretsToV0Secrets() {
 
 // TestJobConfigToJobSpecAndViceVersa tests conversion
 // from v0 JobConfig to v1alpha JobSpec
-func (suite *APIConverterTestSuite) TestConvertJobConfigToJobSpec() {
+func (suite *apiConverterTestSuite) TestConvertJobConfigToJobSpec() {
 	labelKey := "test-key"
 	labelValue := "test-value"
 	controllerCmd := "echo hello & sleep 100"
@@ -744,7 +788,7 @@ func (suite *APIConverterTestSuite) TestConvertJobConfigToJobSpec() {
 
 // TestConvertJobSpecToJobConfig tests conversion
 // from v1alpha JobSpec to v0 JobConfig
-func (suite *APIConverterTestSuite) TestConvertJobSpecToJobConfig() {
+func (suite *apiConverterTestSuite) TestConvertJobSpecToJobConfig() {
 	controllerCmd := "echo hello & sleep 100"
 	command := "echo hello"
 	instanceSpecMap := make(map[uint32]*pod.PodSpec)
@@ -837,7 +881,7 @@ func (suite *APIConverterTestSuite) TestConvertJobSpecToJobConfig() {
 	suite.Equal(jobSpec.GetRespoolId().GetValue(), jobConfig.GetRespoolID().GetValue())
 }
 
-func (suite *APIConverterTestSuite) TestConvertUpdateModelToWorkflowStatus() {
+func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowStatus() {
 	suite.Nil(ConvertUpdateModelToWorkflowStatus(nil))
 
 	jobConfigVersion := uint64(3)
@@ -873,7 +917,7 @@ func (suite *APIConverterTestSuite) TestConvertUpdateModelToWorkflowStatus() {
 
 // TestConvertRuntimeInfoToJobStatus tests conversion from
 // v0 job.RuntimeInfo and private UpdateModel to v1alpha stateless.JobStatus
-func (suite *APIConverterTestSuite) TestConvertRuntimeInfoToJobStatus() {
+func (suite *apiConverterTestSuite) TestConvertRuntimeInfoToJobStatus() {
 	taskStats := make(map[string]uint32)
 	taskStats["RUNNING"] = 3
 	taskStats["FAILED"] = 2
@@ -939,7 +983,7 @@ func (suite *APIConverterTestSuite) TestConvertRuntimeInfoToJobStatus() {
 
 // TestConvertJobSummary tests conversion from v0 job.JobSummary
 // and private UpdateModel to v1alpha stateless.JobSummary
-func (suite *APIConverterTestSuite) TestConvertJobSummary() {
+func (suite *apiConverterTestSuite) TestConvertJobSummary() {
 	taskStats := make(map[string]uint32)
 	taskStats["RUNNING"] = 3
 	taskStats["FAILED"] = 2
@@ -1033,7 +1077,7 @@ func (suite *APIConverterTestSuite) TestConvertJobSummary() {
 
 // TestConvertUpdateModelToWorkflowInfo tests conversion from
 // private UpdateModel to v1alpha stateless.WorkflowInfo
-func (suite *APIConverterTestSuite) TestConvertUpdateModelToWorkflowInfo() {
+func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowInfo() {
 	jobConfigVersion := uint64(3)
 	prevJobConfigVersion := uint64(2)
 	updateModel := &models.UpdateModel{
@@ -1083,7 +1127,7 @@ func (suite *APIConverterTestSuite) TestConvertUpdateModelToWorkflowInfo() {
 
 // TestConvertUpdateModelToWorkflowInfoRestart tests conversion from
 // private UpdateModel to v1alpha stateless.WorkflowInfo for restart workflow type
-func (suite *APIConverterTestSuite) TestConvertUpdateModelToWorkflowInfoRestart() {
+func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowInfoRestart() {
 	jobConfigVersion := uint64(3)
 	prevJobConfigVersion := uint64(2)
 	updateModel := &models.UpdateModel{
@@ -1134,7 +1178,7 @@ func (suite *APIConverterTestSuite) TestConvertUpdateModelToWorkflowInfoRestart(
 
 // TestConvertStatelessQuerySpecToJobQuerySpec tests conversion
 // from v1alpha stateless job query spec to v0 job query spec
-func (suite *APIConverterTestSuite) TestConvertStatelessQuerySpecToJobQuerySpec() {
+func (suite *apiConverterTestSuite) TestConvertStatelessQuerySpecToJobQuerySpec() {
 	testOrderProperty := "/asc/property/path"
 	statelessQuerySpec := &stateless.QuerySpec{
 		Pagination: &v1alphaquery.PaginationSpec{
@@ -1216,7 +1260,7 @@ func (suite *APIConverterTestSuite) TestConvertStatelessQuerySpecToJobQuerySpec(
 }
 
 // TestConvertUpdateSpecToUpdateConfig tests conversion from v1alpha update spec to v0 update config
-func (suite *APIConverterTestSuite) TestConvertUpdateSpecToUpdateConfig() {
+func (suite *apiConverterTestSuite) TestConvertUpdateSpecToUpdateConfig() {
 	spec := &stateless.UpdateSpec{
 		BatchSize:                    10,
 		RollbackOnFailure:            true,
@@ -1236,7 +1280,7 @@ func (suite *APIConverterTestSuite) TestConvertUpdateSpecToUpdateConfig() {
 
 // TestConvertInstanceIDListToInstanceRange tests conversion from
 // list of instance ids to list of instance ranges
-func (suite *APIConverterTestSuite) TestConvertInstanceIDListToInstanceRange() {
+func (suite *apiConverterTestSuite) TestConvertInstanceIDListToInstanceRange() {
 	instanceIDs := []uint32{1, 2, 3, 4, 7, 9, 10}
 	instanceIDRanges := []*pod.InstanceIDRange{
 		{
@@ -1258,7 +1302,7 @@ func (suite *APIConverterTestSuite) TestConvertInstanceIDListToInstanceRange() {
 
 // TestConvertPodQuerySpecToTaskQuerySpec tests conversion
 // from v1alpha pod.QuerySpec to v0 task.QuerySpec
-func (suite *APIConverterTestSuite) TestConvertPodQuerySpecToTaskQuerySpec() {
+func (suite *apiConverterTestSuite) TestConvertPodQuerySpecToTaskQuerySpec() {
 	testPod := "test-pod"
 	testHost := "test-host"
 
@@ -1279,7 +1323,7 @@ func (suite *APIConverterTestSuite) TestConvertPodQuerySpecToTaskQuerySpec() {
 
 // TestConvertTaskInfosToPodInfos tests conversion from
 // a list of v0 task info to a list of v1alpha pod info
-func (suite *APIConverterTestSuite) TestConvertTaskInfosToPodInfos() {
+func (suite *apiConverterTestSuite) TestConvertTaskInfosToPodInfos() {
 	taskInfos := []*task.TaskInfo{
 		{
 			Config: &task.TaskConfig{
@@ -1369,7 +1413,7 @@ func (suite *APIConverterTestSuite) TestConvertTaskInfosToPodInfos() {
 
 // TestConvertTerminationStatusReason verifies that all TerminationStatus
 // reason enums are converted correctly from v0 to v1alpha.
-func (suite *APIConverterTestSuite) TestConvertTerminationStatusReason() {
+func (suite *apiConverterTestSuite) TestConvertTerminationStatusReason() {
 	expmap := map[task.TerminationStatus_Reason]pod.TerminationStatus_Reason{
 		task.TerminationStatus_TERMINATION_STATUS_REASON_INVALID:                 pod.TerminationStatus_TERMINATION_STATUS_REASON_INVALID,
 		task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST:       pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
@@ -1391,5 +1435,5 @@ func (suite *APIConverterTestSuite) TestConvertTerminationStatusReason() {
 }
 
 func TestAPIConverter(t *testing.T) {
-	suite.Run(t, new(APIConverterTestSuite))
+	suite.Run(t, new(apiConverterTestSuite))
 }
