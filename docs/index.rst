@@ -25,3 +25,4 @@ Home
    architecture
    job_config
    type_jobs
+   submit_job
