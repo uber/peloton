@@ -15,6 +15,7 @@
 package ptoa
 
 import (
+	"fmt"
 	"time"
 
 	"go.uber.org/thriftrw/ptr"
@@ -22,23 +23,28 @@ import (
 	"github.com/pkg/errors"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/aurorabridge/opaquedata"
 )
 
 // NewJobUpdateSummary creates a new aurora job update summary using update info.
 func NewJobUpdateSummary(
 	jobKey *api.JobKey,
-	updateInfo *stateless.UpdateInfo,
+	u *stateless.UpdateInfo,
 ) (*api.JobUpdateSummary, error) {
 	var createTime int64
 	var lastModifiedTime int64
 
-	aState, err := NewJobUpdateStatus(updateInfo.GetInfo().GetStatus().GetState())
+	d, err := opaquedata.Deserialize(u.GetInfo().GetOpaqueData())
+	if err != nil {
+		return nil, fmt.Errorf("deserialize opaque data: %s", err)
+	}
+	aState, err := NewJobUpdateStatus(u.GetInfo().GetStatus().GetState(), d)
 	if err != nil {
 		return nil, err
 	}
 
-	events := updateInfo.GetEvents()
-	eventsLen := len(updateInfo.GetEvents())
+	events := u.GetEvents()
+	eventsLen := len(u.GetEvents())
 	if eventsLen > 0 {
 		cTime, err := time.Parse(time.RFC3339, events[0].GetTimestamp())
 		if err != nil {

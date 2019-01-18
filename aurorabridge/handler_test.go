@@ -35,6 +35,8 @@ import (
 	"github.com/uber/peloton/aurorabridge/atop"
 	"github.com/uber/peloton/aurorabridge/fixture"
 	"github.com/uber/peloton/aurorabridge/label"
+	"github.com/uber/peloton/aurorabridge/mockutil"
+	"github.com/uber/peloton/aurorabridge/opaquedata"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -742,8 +744,8 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobConflict() {
 	suite.Equal(api.ResponseCodeInvalidRequest, resp.GetResponseCode())
 }
 
-// Ensures StartJobUpdate replaces jobs which already exist.
-func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobSuccess() {
+// Ensures StartJobUpdate replaces jobs which already exist with no pulse.
+func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobNoPulseSuccess() {
 	req := fixture.AuroraJobUpdateRequest()
 	k := req.GetTaskConfig().GetJob()
 	curv := fixture.PelotonEntityVersion()
@@ -755,7 +757,47 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobSuccess() {
 	suite.expectGetJobVersion(id, curv)
 
 	suite.jobClient.EXPECT().
-		ReplaceJob(suite.ctx, gomock.Any()).
+		ReplaceJob(
+			suite.ctx,
+			mockutil.MatchReplaceJobRequestOpaqueData(&opaquedata.Data{})).
+		Return(&statelesssvc.ReplaceJobResponse{
+			Version: newv,
+		}, nil)
+
+	resp, err := suite.handler.StartJobUpdate(suite.ctx, req, ptr.String("some message"))
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+
+	result := resp.GetResult().GetStartJobUpdateResult()
+	suite.Equal(k, result.GetKey().GetJob())
+	suite.Equal(newv.String(), result.GetKey().GetID())
+}
+
+// Ensures StartJobUpdate replaces jobs which already exist with pulse.
+func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobWithPulseSuccess() {
+	req := &api.JobUpdateRequest{
+		TaskConfig: fixture.AuroraTaskConfig(),
+		Settings: &api.JobUpdateSettings{
+			BlockIfNoPulsesAfterMs: ptr.Int32(1000),
+		},
+	}
+	k := req.GetTaskConfig().GetJob()
+	curv := fixture.PelotonEntityVersion()
+	newv := fixture.PelotonEntityVersion()
+	id := fixture.PelotonJobID()
+
+	suite.expectGetJobIDFromJobName(k, id)
+
+	suite.expectGetJobVersion(id, curv)
+
+	suite.jobClient.EXPECT().
+		ReplaceJob(
+			suite.ctx,
+			mockutil.MatchReplaceJobRequestOpaqueData(&opaquedata.Data{
+				UpdateActions: []opaquedata.UpdateAction{
+					opaquedata.StartPulsed,
+				},
+			})).
 		Return(&statelesssvc.ReplaceJobResponse{
 			Version: newv,
 		}, nil)
@@ -885,22 +927,72 @@ func (suite *ServiceHandlerTestSuite) TestAbortJobUpdate_Error() {
 	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
 }
 
-// Ensures PulseJobUpdate successfully maps to ResumeJobWorkflow.
-func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_Success() {
+// Ensures PulseJobUpdate calls ResumeJobWorkflow if the update is awaiting pulse.
+func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_ResumesIfAwaitingPulse() {
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 	v := fixture.PelotonEntityVersion()
 
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
-	suite.expectGetJobVersion(id, v)
+	od, err := opaquedata.SerializeActions(opaquedata.StartPulsed)
+	suite.NoError(err)
+
+	suite.jobClient.EXPECT().
+		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+			JobId: id,
+		}).
+		Return(&statelesssvc.GetJobUpdateResponse{
+			UpdateInfo: &stateless.UpdateInfo{
+				Info: &stateless.WorkflowInfo{
+					OpaqueData: od,
+					Status: &stateless.WorkflowStatus{
+						State:   stateless.WorkflowState_WORKFLOW_STATE_PAUSED,
+						Version: v,
+					},
+				},
+			},
+		}, nil)
+
+	newOD, err := opaquedata.SerializeActions(opaquedata.StartPulsed, opaquedata.Pulse)
+	suite.NoError(err)
 
 	suite.jobClient.EXPECT().
 		ResumeJobWorkflow(suite.ctx, &statelesssvc.ResumeJobWorkflowRequest{
-			JobId:   id,
-			Version: v,
+			JobId:      id,
+			Version:    v,
+			OpaqueData: newOD,
 		}).
 		Return(nil, nil)
+
+	resp, err := suite.handler.PulseJobUpdate(suite.ctx, k)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+	suite.Equal(api.JobUpdatePulseStatusOk, resp.GetResult().GetPulseJobUpdateResult().GetStatus())
+}
+
+// Ensures PulseJobUpdate no-ops if update is not awaiting pulse.
+func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_NoopsIfNotAwaitingPulse() {
+	k := fixture.AuroraJobUpdateKey()
+	id := fixture.PelotonJobID()
+	v := fixture.PelotonEntityVersion()
+
+	suite.expectGetJobIDFromJobName(k.GetJob(), id)
+
+	suite.jobClient.EXPECT().
+		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+			JobId: id,
+		}).
+		Return(&statelesssvc.GetJobUpdateResponse{
+			UpdateInfo: &stateless.UpdateInfo{
+				Info: &stateless.WorkflowInfo{
+					Status: &stateless.WorkflowStatus{
+						State:   stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+						Version: v,
+					},
+				},
+			},
+		}, nil)
 
 	resp, err := suite.handler.PulseJobUpdate(suite.ctx, k)
 	suite.NoError(err)
@@ -921,6 +1013,21 @@ func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_Error() {
 	resp, err := suite.handler.PulseJobUpdate(suite.ctx, k)
 	suite.NoError(err)
 	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
+}
+
+// Tests error handling for PulseJobUpdate.
+func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_NotFoundJobIsInvalidRequest() {
+	k := fixture.AuroraJobUpdateKey()
+
+	suite.jobClient.EXPECT().
+		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
+			JobName: atop.NewJobName(k.GetJob()),
+		}).
+		Return(nil, yarpcerrors.NotFoundErrorf(""))
+
+	resp, err := suite.handler.PulseJobUpdate(suite.ctx, k)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeInvalidRequest, resp.GetResponseCode())
 }
 
 func (suite *ServiceHandlerTestSuite) expectGetJobIDFromJobName(k *api.JobKey, id *peloton.JobID) {

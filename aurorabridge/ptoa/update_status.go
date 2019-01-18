@@ -19,6 +19,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/aurorabridge/opaquedata"
 )
 
 // NewJobUpdateStatus translates peloton job update state to
@@ -30,11 +31,19 @@ import (
 // since Aurora identifies PAUSED state for them separately whereas
 // Peloton does not.
 func NewJobUpdateStatus(
-	ustate stateless.WorkflowState) (api.JobUpdateStatus, error) {
+	s stateless.WorkflowState,
+	d *opaquedata.Data,
+) (api.JobUpdateStatus, error) {
 
-	switch ustate {
+	switch s {
 	case stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD:
 		return api.JobUpdateStatusRollingForward, nil
+	case stateless.WorkflowState_WORKFLOW_STATE_PAUSED:
+		// TODO(codyg): Paused rollback states.
+		if d.IsLatestUpdateAction(opaquedata.StartPulsed) {
+			return api.JobUpdateStatusRollForwardAwaitingPulse, nil
+		}
+		return api.JobUpdateStatusRollForwardPaused, nil
 	case stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD:
 		return api.JobUpdateStatusRollingBack, nil
 	case stateless.WorkflowState_WORKFLOW_STATE_ROLLED_BACK:
@@ -47,6 +56,6 @@ func NewJobUpdateStatus(
 		return api.JobUpdateStatusFailed, nil
 	default:
 		return api.JobUpdateStatusError,
-			fmt.Errorf("unknown peloton workflow state %d", ustate)
+			fmt.Errorf("unknown peloton workflow state %d", s)
 	}
 }

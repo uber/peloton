@@ -30,6 +30,7 @@ import (
 
 	"github.com/uber/peloton/aurorabridge/atop"
 	"github.com/uber/peloton/aurorabridge/label"
+	"github.com/uber/peloton/aurorabridge/opaquedata"
 	"github.com/uber/peloton/aurorabridge/ptoa"
 
 	"github.com/pkg/errors"
@@ -482,11 +483,21 @@ func (h *ServiceHandler) startJobUpdate(
 			return nil, auroraErrorf("get current job version: %s", err)
 		}
 
+		d := &opaquedata.Data{}
+		if request.GetSettings().GetBlockIfNoPulsesAfterMs() > 0 {
+			d.AppendUpdateAction(opaquedata.StartPulsed)
+		}
+		od, err := d.Serialize()
+		if err != nil {
+			return nil, auroraErrorf("serialize opaque data: %s", err)
+		}
+
 		req := &statelesssvc.ReplaceJobRequest{
 			JobId:      id,
 			Spec:       jobSpec,
 			UpdateSpec: atop.NewUpdateSpec(request.GetSettings()),
 			Version:    v,
+			OpaqueData: od,
 		}
 		resp, err := h.jobClient.ReplaceJob(ctx, req)
 		if err != nil {
@@ -682,26 +693,48 @@ func (h *ServiceHandler) pulseJobUpdate(
 	key *api.JobUpdateKey,
 ) (*api.Result, *auroraError) {
 
-	// TODO(codyg): Leverage opaque data to replicate pulsed state. If
-	// blockIfNoPulsesAfterMs is set, then the update will start in an AWAITING_PULSE
-	// state. Updates in a PAUSED state cannot be pulsed, however updates in an
-	// AWAITING_PULSE state can be pulsed, even though internally, both updates
-	// are "paused".
-
 	id, err := h.getJobID(ctx, key.GetJob())
 	if err != nil {
-		return nil, auroraErrorf("get job id: %s", err)
+		aerr := auroraErrorf("get job id: %s", err)
+		if yarpcerrors.IsNotFound(err) {
+			// Unknown update.
+			// TODO(codyg): We should support some form of update ID.
+			aerr.code(api.ResponseCodeInvalidRequest)
+		}
+		return nil, aerr
 	}
-	v, err := h.getCurrentJobVersion(ctx, id)
+	w, err := h.getWorkflowInfo(ctx, id)
 	if err != nil {
-		return nil, auroraErrorf("get current job version: %s", err)
+		return nil, auroraErrorf("get workflow info: %s", err)
 	}
-	req := &statelesssvc.ResumeJobWorkflowRequest{
-		JobId:   id,
-		Version: v,
+	d, err := opaquedata.Deserialize(w.GetOpaqueData())
+	if err != nil {
+		return nil, auroraErrorf("deserialize opaque data: %s", err)
 	}
-	if _, err := h.jobClient.ResumeJobWorkflow(ctx, req); err != nil {
-		return nil, auroraErrorf("resume job workflow: %s", err)
+	status, err := ptoa.NewJobUpdateStatus(w.GetStatus().GetState(), d)
+	if err != nil {
+		return nil, auroraErrorf("new job update status: %s", err)
+	}
+
+	// Only resume if we're in an AWAITING_PULSE state. Else, pulseJobUpdate is
+	// a no-op.
+	if status == api.JobUpdateStatusRollForwardAwaitingPulse ||
+		status == api.JobUpdateStatusRollBackAwaitingPulse {
+
+		d.AppendUpdateAction(opaquedata.Pulse)
+		od, err := d.Serialize()
+		if err != nil {
+			return nil, auroraErrorf("serialize opaque data: %s", err)
+		}
+
+		req := &statelesssvc.ResumeJobWorkflowRequest{
+			JobId:      id,
+			Version:    w.GetStatus().GetVersion(),
+			OpaqueData: od,
+		}
+		if _, err := h.jobClient.ResumeJobWorkflow(ctx, req); err != nil {
+			return nil, auroraErrorf("resume job workflow: %s", err)
+		}
 	}
 	return &api.Result{
 		PulseJobUpdateResult: &api.PulseJobUpdateResult{
@@ -902,17 +935,19 @@ func (h *ServiceHandler) getJobSummariesFromJobUpdateQuery(
 // isUpdateInfoInStatuses checks if job update state is present
 // in expected list of job update states
 func isUpdateInfoInStatuses(
-	updateInfo *stateless.UpdateInfo,
-	updateStatus map[api.JobUpdateStatus]struct{},
+	u *stateless.UpdateInfo,
+	statuses map[api.JobUpdateStatus]struct{},
 ) (bool, error) {
 
-	pelotonUpdateState := updateInfo.GetInfo().GetStatus().GetState()
-	auroraUpdateState, err := ptoa.NewJobUpdateStatus(pelotonUpdateState)
+	d, err := opaquedata.Deserialize(u.GetInfo().GetOpaqueData())
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("deserialize opaque data: %s", err)
 	}
-
-	_, ok := updateStatus[auroraUpdateState]
+	s, err := ptoa.NewJobUpdateStatus(u.GetInfo().GetStatus().GetState(), d)
+	if err != nil {
+		return false, fmt.Errorf("new job update status: %s", err)
+	}
+	_, ok := statuses[s]
 	return ok, nil
 }
 
@@ -1116,6 +1151,20 @@ func (h *ServiceHandler) getJobInfoSummary(
 		return nil, err
 	}
 	return resp.GetSummary(), nil
+}
+
+func (h *ServiceHandler) getWorkflowInfo(
+	ctx context.Context,
+	jobID *peloton.JobID,
+) (*stateless.WorkflowInfo, error) {
+	req := &statelesssvc.GetJobUpdateRequest{
+		JobId: jobID,
+	}
+	resp, err := h.jobClient.GetJobUpdate(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetUpdateInfo().GetInfo(), nil
 }
 
 // queryPods calls jobmgr to query a list of PodInfo based on input JobID.
