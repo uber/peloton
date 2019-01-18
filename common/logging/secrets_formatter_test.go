@@ -54,6 +54,17 @@ func TestDbStatementsFormatting(t *testing.T) {
 	assert.Contains(t, string(b), redactedStr)
 }
 
+// validate that the byte buffer does not have secret data
+func validateSecretFormatting(s string, t *testing.T) {
+	// make sure the secret path is kept as it is and is not redacted
+	assert.Contains(t, s, testPath)
+	// make sure the log string contains redactedStr and not the original secret
+	assert.NotContains(t, s,
+		base64.StdEncoding.EncodeToString([]byte(testSecretStr)))
+	assert.Contains(t, s,
+		base64.StdEncoding.EncodeToString([]byte(redactedStr)))
+}
+
 // TestLaunchableTasksFormatting tests that logs containing LaunchableTask or
 // LaunchTasksRequest are filtered and if a taskconfig contains secret volume,
 // the secret data is redacted in the log
@@ -81,31 +92,14 @@ func TestLaunchableTasksFormatting(t *testing.T) {
 	// launchableTasksRequest contains secret data, it should be redacted
 	b, err := formatter.Format(logrus.WithField("req", launchableTasksRequest))
 	assert.NoError(t, err)
-	// make sure the secret path is kept as it is and is not redacted
-	assert.Contains(t, string(b), testPath)
-	// make sure the log string contains redactedStr and not the original secret
-	assert.NotContains(t, string(b),
-		base64.StdEncoding.EncodeToString([]byte(testSecretStr)))
-	assert.Contains(t, string(b),
-		base64.StdEncoding.EncodeToString([]byte(redactedStr)))
+	validateSecretFormatting(string(b), t)
 
 	b, err = formatter.Format(logrus.WithField("list", launchableTasksList))
 	assert.NoError(t, err)
-	// make sure the secret path is kept as it is and is not redacted
-	assert.Contains(t, string(b), testPath)
-	// make sure the log string contains redactedStr and not the original secret
-	assert.NotContains(t, string(b),
-		base64.StdEncoding.EncodeToString([]byte(testSecretStr)))
-	assert.Contains(t, string(b),
-		base64.StdEncoding.EncodeToString([]byte(redactedStr)))
+	validateSecretFormatting(string(b), t)
 
-	b, err = formatter.Format(logrus.WithField("task", launchableTaskWithSecret))
+	b, err = formatter.Format(
+		logrus.WithField("task", launchableTaskWithSecret))
 	assert.NoError(t, err)
-	// make sure the secret path is kept as it is and is not redacted
-	assert.Contains(t, string(b), testPath)
-	// make sure the log string contains redactedStr and not the original secret
-	assert.NotContains(t, string(b),
-		base64.StdEncoding.EncodeToString([]byte(testSecretStr)))
-	assert.Contains(t, string(b),
-		base64.StdEncoding.EncodeToString([]byte(redactedStr)))
+	validateSecretFormatting(string(b), t)
 }
