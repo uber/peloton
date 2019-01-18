@@ -24,6 +24,8 @@ import (
 
 // Config defines aurorabridge configuration.
 type Config struct {
+	HTTPPort     int                          `yaml:"http_port"`
+	GRPCPort     int                          `yaml:"grpc_port"`
 	Metrics      metrics.Config               `yaml:"metrics"`
 	Health       health.Config                `yaml:"health"`
 	SentryConfig logging.SentryConfig         `yaml:"sentry"`

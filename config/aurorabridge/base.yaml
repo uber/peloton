@@ -1,4 +1,7 @@
 
+aurorabridge:
+  http_port: 8082
+
 election:
   root: "/peloton"
 

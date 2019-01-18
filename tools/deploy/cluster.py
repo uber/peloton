@@ -23,7 +23,8 @@ PELOTON_APPS = [
     'placement_stateful',
     'placement_stateless',
     'jobmgr',
-    'archiver'
+    'archiver',
+    'aurorabridge'
 ]
 CRON_APPS = ['watchdog']
 

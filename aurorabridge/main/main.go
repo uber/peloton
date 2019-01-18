@@ -81,6 +81,7 @@ var (
 	httpPort = app.Flag(
 		"http-port", "Aurora Bridge HTTP port (aurorabridge.http_port override) "+
 			"(set $PORT to override)").
+		Default("8082").
 		Envar("HTTP_PORT").
 		Int()
 
@@ -117,6 +118,14 @@ func main() {
 		cfg.Election.ZKServers = *electionZkServers
 	}
 
+	if *httpPort != 0 {
+		cfg.HTTPPort = *httpPort
+	}
+
+	if *grpcPort != 0 {
+		cfg.GRPCPort = *grpcPort
+	}
+
 	log.WithField("config", cfg).Info("Loaded AuroraBridge configuration")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
@@ -134,8 +143,8 @@ func main() {
 
 	// Create both HTTP and GRPC inbounds
 	inbounds := rpc.NewAuroraBridgeInbounds(
-		*httpPort,
-		*grpcPort, // dummy grpc port for aurora bridge
+		cfg.HTTPPort,
+		cfg.GRPCPort, // dummy grpc port for aurora bridge
 		mux)
 
 	// all leader discovery metrics share a scope (and will be tagged
@@ -207,7 +216,7 @@ func main() {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
 
-	server := aurorabridge.NewServer(*httpPort)
+	server := aurorabridge.NewServer(cfg.HTTPPort)
 
 	candidate, err := leader.NewCandidate(
 		cfg.Election,
@@ -244,7 +253,7 @@ func main() {
 	defer candidate.Stop()
 
 	log.WithFields(log.Fields{
-		"httpPort": *httpPort,
+		"httpPort": cfg.HTTPPort,
 	}).Info("Started Aurora Bridge")
 
 	// we can *honestly* say the server is booted up now
