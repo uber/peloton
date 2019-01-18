@@ -268,10 +268,74 @@ func (h *ServiceHandler) GetJobUpdateDetails(
 }
 
 // GetJobUpdateDiff gets the diff between client (desired) and server (current) job states.
+// TaskConfig is not set in GetJobUpdateDiffResult, since caller is not using it
+// and fetching previous podspec is expensive
 func (h *ServiceHandler) GetJobUpdateDiff(
 	ctx context.Context,
 	request *api.JobUpdateRequest) (*api.Response, error) {
-	return nil, errUnimplemented
+
+	result, err := h.getJobUpdateDiff(ctx, request)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"params": log.Fields{
+				"request": request,
+			},
+			"code":  err.responseCode,
+			"error": err.msg,
+		}).Error("GetJobUpdateDiff error")
+	}
+
+	return newResponse(result, err), nil
+}
+
+func (h *ServiceHandler) getJobUpdateDiff(
+	ctx context.Context,
+	request *api.JobUpdateRequest,
+) (*api.Result, *auroraError) {
+
+	jobKey := request.GetTaskConfig().GetJob()
+	jobID, err := h.getJobID(ctx, jobKey)
+	if err != nil {
+		return nil, auroraErrorf("get jobID: %s", err)
+	}
+
+	jobSummary, err := h.getJobSummary(ctx, jobID)
+	if err != nil {
+		return nil, auroraErrorf("get job summary: %s", err)
+	}
+
+	jobSpec, err := atop.NewJobSpecFromJobUpdateRequest(request, h.respoolID)
+	if err != nil {
+		return nil, auroraErrorf("new job spec: %s", err)
+	}
+
+	resp, err := h.jobClient.GetReplaceJobDiff(
+		ctx,
+		&statelesssvc.GetReplaceJobDiffRequest{
+			JobId:   jobID,
+			Version: jobSummary.GetStatus().GetVersion(),
+			Spec:    jobSpec,
+		})
+	if err != nil {
+		return nil, auroraErrorf("get replace job diff: %s", err)
+	}
+
+	return &api.Result{
+		GetJobUpdateDiffResult: &api.GetJobUpdateDiffResult{
+			Add: []*api.ConfigGroup{&api.ConfigGroup{
+				Instances: ptoa.NewRange(resp.GetInstancesAdded()),
+			}},
+			Update: []*api.ConfigGroup{&api.ConfigGroup{
+				Instances: ptoa.NewRange(resp.GetInstancesUpdated()),
+			}},
+			Remove: []*api.ConfigGroup{&api.ConfigGroup{
+				Instances: ptoa.NewRange(resp.GetInstancesRemoved()),
+			}},
+			Unchanged: []*api.ConfigGroup{&api.ConfigGroup{
+				Instances: ptoa.NewRange(resp.GetInstancesUnchanged()),
+			}},
+		},
+	}, nil
 }
 
 // GetTierConfigs is a no-op. It is only used to determine liveness of the scheduler.

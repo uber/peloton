@@ -593,6 +593,80 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
 	suite.Equal(1, len(resp.GetResult().GetConfigSummaryResult().GetSummary().GetGroups()))
 }
 
+// Tests get job update diff
+func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff() {
+	jobUpdateRequest := fixture.AuroraJobUpdateRequest()
+	jobID := fixture.PelotonJobID()
+	jobKey := jobUpdateRequest.GetTaskConfig().GetJob()
+	entityVersion := fixture.PelotonEntityVersion()
+	jobSpec, _ := atop.NewJobSpecFromJobUpdateRequest(jobUpdateRequest, suite.handler.respoolID)
+
+	addedInstancesIDRange := []*pod.InstanceIDRange{
+		&pod.InstanceIDRange{
+			From: uint32(5),
+			To:   uint32(10),
+		},
+	}
+	instancesAdded := &api.ConfigGroup{
+		Config: fixture.AuroraTaskConfig(),
+		Instances: []*api.Range{
+			&api.Range{
+				First: ptr.Int32(5),
+				Last:  ptr.Int32(10),
+			},
+		},
+	}
+
+	suite.expectGetJobIDFromJobName(jobKey, jobID)
+	suite.expectGetJobVersion(jobID, entityVersion)
+	suite.jobClient.EXPECT().
+		GetReplaceJobDiff(
+			suite.ctx,
+			&statelesssvc.GetReplaceJobDiffRequest{
+				JobId:   jobID,
+				Version: entityVersion,
+				Spec:    jobSpec,
+			}).Return(&statelesssvc.GetReplaceJobDiffResponse{
+		InstancesAdded: addedInstancesIDRange,
+	}, nil)
+
+	resp, err := suite.handler.GetJobUpdateDiff(
+		suite.ctx,
+		jobUpdateRequest,
+	)
+	suite.NoError(err)
+	suite.Equal(instancesAdded.GetInstances(),
+		resp.GetResult().GetGetJobUpdateDiffResult().GetAdd()[0].GetInstances())
+}
+
+// Tests the failure scenarios for get job update diff
+func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiffFailure() {
+	jobUpdateRequest := fixture.AuroraJobUpdateRequest()
+	jobID := fixture.PelotonJobID()
+	jobKey := jobUpdateRequest.GetTaskConfig().GetJob()
+	entityVersion := fixture.PelotonEntityVersion()
+	jobSpec, _ := atop.NewJobSpecFromJobUpdateRequest(jobUpdateRequest, suite.handler.respoolID)
+
+	suite.expectGetJobIDFromJobName(jobKey, jobID)
+	suite.expectGetJobVersion(jobID, entityVersion)
+
+	suite.jobClient.EXPECT().
+		GetReplaceJobDiff(
+			suite.ctx,
+			&statelesssvc.GetReplaceJobDiffRequest{
+				JobId:   jobID,
+				Version: entityVersion,
+				Spec:    jobSpec,
+			}).Return(nil, errors.New("unable to get replace job diff"))
+
+	resp, err := suite.handler.GetJobUpdateDiff(
+		suite.ctx,
+		jobUpdateRequest,
+	)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
+}
+
 // Ensures StartJobUpdate creates jobs which don't exist.
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobSuccess() {
 	req := fixture.AuroraJobUpdateRequest()

@@ -17,6 +17,7 @@ package ptoa
 import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/util"
 )
 
 // NewConfigGroup gets new config group for provided instance ranges and
@@ -27,7 +28,7 @@ func NewConfigGroup(
 	podSpec *pod.PodSpec,
 ) (*api.ConfigGroup, error) {
 
-	ranges := NewRange(instanceIDList)
+	ranges := NewRange(util.ConvertInstanceIDListToInstanceRange(instanceIDList))
 
 	taskConfig, err := NewTaskConfig(jobKey, podSpec)
 	if err != nil {

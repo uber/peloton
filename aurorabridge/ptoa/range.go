@@ -15,18 +15,17 @@
 package ptoa
 
 import (
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
-	"github.com/uber/peloton/util"
 	"go.uber.org/thriftrw/ptr"
 )
 
 // NewRange converts peloton's instance id list to aurora's range
 func NewRange(
-	instanceIDList []uint32,
+	instanceIDRange []*pod.InstanceIDRange,
 ) []*api.Range {
 
 	var ranges []*api.Range
-	instanceIDRange := util.ConvertInstanceIDListToInstanceRange(instanceIDList)
 
 	for _, instanceRange := range instanceIDRange {
 		ranges = append(ranges, &api.Range{
