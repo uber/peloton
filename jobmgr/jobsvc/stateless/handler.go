@@ -1340,10 +1340,10 @@ func (h *serviceHandler) GetReplaceJobDiff(
 	}
 
 	return &svc.GetReplaceJobDiffResponse{
-		InstancesAdded:     handlerutil.ConvertInstanceIDListToInstanceRange(added),
-		InstancesRemoved:   handlerutil.ConvertInstanceIDListToInstanceRange(removed),
-		InstancesUpdated:   handlerutil.ConvertInstanceIDListToInstanceRange(updated),
-		InstancesUnchanged: handlerutil.ConvertInstanceIDListToInstanceRange(unchanged),
+		InstancesAdded:     util.ConvertInstanceIDListToInstanceRange(added),
+		InstancesRemoved:   util.ConvertInstanceIDListToInstanceRange(removed),
+		InstancesUpdated:   util.ConvertInstanceIDListToInstanceRange(updated),
+		InstancesUnchanged: util.ConvertInstanceIDListToInstanceRange(unchanged),
 	}, nil
 }
 

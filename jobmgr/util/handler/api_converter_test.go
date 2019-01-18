@@ -1297,7 +1297,7 @@ func (suite *apiConverterTestSuite) TestConvertInstanceIDListToInstanceRange() {
 		},
 	}
 
-	suite.Equal(instanceIDRanges, ConvertInstanceIDListToInstanceRange(instanceIDs))
+	suite.Equal(instanceIDRanges, util.ConvertInstanceIDListToInstanceRange(instanceIDs))
 }
 
 // TestConvertPodQuerySpecToTaskQuerySpec tests conversion

@@ -17,6 +17,7 @@ package aurorabridge
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -526,6 +527,70 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismFailure(
 		false)
 	suite.Equal(0, len(resp))
 	suite.NotEmpty(err.msg)
+}
+
+// Tests for failure scenario for get config summary
+func (suite *ServiceHandlerTestSuite) TestGetConfigSummaryFailure() {
+	jobID := fixture.PelotonJobID()
+	jobKey := fixture.AuroraJobKey()
+
+	suite.expectGetJobIDFromJobName(jobKey, jobID)
+	suite.jobClient.EXPECT().
+		QueryPods(suite.ctx, &statelesssvc.QueryPodsRequest{
+			JobId: jobID,
+			Spec:  &pod.QuerySpec{},
+		}).
+		Return(nil, errors.New("unable to query pods"))
+
+	resp, err := suite.handler.GetConfigSummary(
+		suite.ctx,
+		jobKey)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
+}
+
+func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
+	jobID := fixture.PelotonJobID()
+	jobKey := fixture.AuroraJobKey()
+	entityVersion := fixture.PelotonEntityVersion()
+	podName := fmt.Sprintf("%s-%d", jobID.GetValue(), 0)
+	podID := fmt.Sprintf("%s-%d", podName, 1)
+	mdLabel, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
+	suite.NoError(err)
+
+	podInfos := []*pod.PodInfo{&pod.PodInfo{
+		Spec: &pod.PodSpec{
+			PodName: &peloton.PodName{
+				Value: podName,
+			},
+			Labels: []*peloton.Label{
+				mdLabel,
+			},
+		},
+		Status: &pod.PodStatus{
+			PodId: &peloton.PodID{
+				Value: podID,
+			},
+			Version: entityVersion,
+		},
+	}}
+
+	suite.expectGetJobIDFromJobName(jobKey, jobID)
+	suite.jobClient.EXPECT().
+		QueryPods(suite.ctx, &statelesssvc.QueryPodsRequest{
+			JobId: jobID,
+			Spec:  &pod.QuerySpec{},
+		}).
+		Return(&statelesssvc.QueryPodsResponse{
+			Pods: podInfos,
+		}, nil)
+
+	resp, err := suite.handler.GetConfigSummary(
+		suite.ctx,
+		jobKey)
+	suite.NoError(err)
+	// Creates two config groups indicating set of pods which have same entity version (same pod spec)
+	suite.Equal(1, len(resp.GetResult().GetConfigSummaryResult().GetSummary().GetGroups()))
 }
 
 // Ensures StartJobUpdate creates jobs which don't exist.

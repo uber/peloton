@@ -15,8 +15,6 @@
 package handler
 
 import (
-	"sort"
-
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pelotonv0query "github.com/uber/peloton/.gen/peloton/api/v0/query"
@@ -353,8 +351,8 @@ func ConvertUpdateModelToWorkflowStatus(
 	}
 
 	return &stateless.WorkflowStatus{
-		Type:                  stateless.WorkflowType(updateInfo.GetType()),
-		State:                 stateless.WorkflowState(updateInfo.GetState()),
+		Type:  stateless.WorkflowType(updateInfo.GetType()),
+		State: stateless.WorkflowState(updateInfo.GetState()),
 		NumInstancesCompleted: updateInfo.GetInstancesDone(),
 		NumInstancesRemaining: updateInfo.GetInstancesTotal() - updateInfo.GetInstancesDone() - updateInfo.GetInstancesFailed(),
 		NumInstancesFailed:    updateInfo.GetInstancesFailed(),
@@ -425,7 +423,7 @@ func ConvertUpdateModelToWorkflowInfo(
 		}
 	} else if updateInfo.GetType() == models.WorkflowType_RESTART {
 		result.RestartBatchSize = updateInfo.GetUpdateConfig().GetBatchSize()
-		result.RestartRanges = ConvertInstanceIDListToInstanceRange(updateInfo.GetInstancesCurrent())
+		result.RestartRanges = util.ConvertInstanceIDListToInstanceRange(updateInfo.GetInstancesCurrent())
 	}
 
 	result.OpaqueData = &v1alphapeloton.OpaqueData{
@@ -730,47 +728,6 @@ func ConvertUpdateSpecToUpdateConfig(spec *stateless.UpdateSpec) *update.UpdateC
 		MaxFailureInstances: spec.GetMaxTolerableInstanceFailures(),
 		StartPaused:         spec.GetStartPaused(),
 	}
-}
-
-// ConvertInstanceIDListToInstanceRange converts list
-// of instance ids to list of instance ranges
-func ConvertInstanceIDListToInstanceRange(instIDs []uint32) []*pod.InstanceIDRange {
-	var instanceIDRange []*pod.InstanceIDRange
-	var instanceRange *pod.InstanceIDRange
-	var prevInstID uint32
-
-	instIDSortLess := func(i, j int) bool {
-		return instIDs[i] < instIDs[j]
-	}
-
-	sort.Slice(instIDs, instIDSortLess)
-
-	for _, instID := range instIDs {
-		if instanceRange == nil {
-			// create a new range
-			instanceRange = &pod.InstanceIDRange{
-				From: instID,
-			}
-		} else {
-			// range already exists
-			if instID != prevInstID+1 {
-				// finish the previous range and start a new one
-				instanceRange.To = prevInstID
-				instanceIDRange = append(instanceIDRange, instanceRange)
-				instanceRange = &pod.InstanceIDRange{
-					From: instID,
-				}
-			}
-		}
-		prevInstID = instID
-	}
-
-	// finish the last instance range
-	if instanceRange != nil {
-		instanceRange.To = prevInstID
-		instanceIDRange = append(instanceIDRange, instanceRange)
-	}
-	return instanceIDRange
 }
 
 // ConvertPodQuerySpecToTaskQuerySpec converts

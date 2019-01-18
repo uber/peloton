@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 )
 
@@ -108,6 +110,47 @@ func IntersectSlice(slice1 []uint32, slice2 []uint32) []uint32 {
 	}
 
 	return result
+}
+
+// ConvertInstanceIDListToInstanceRange converts list
+// of instance ids to list of instance ranges
+func ConvertInstanceIDListToInstanceRange(instIDs []uint32) []*pod.InstanceIDRange {
+	var instanceIDRange []*pod.InstanceIDRange
+	var instanceRange *pod.InstanceIDRange
+	var prevInstID uint32
+
+	instIDSortLess := func(i, j int) bool {
+		return instIDs[i] < instIDs[j]
+	}
+
+	sort.Slice(instIDs, instIDSortLess)
+
+	for _, instID := range instIDs {
+		if instanceRange == nil {
+			// create a new range
+			instanceRange = &pod.InstanceIDRange{
+				From: instID,
+			}
+		} else {
+			// range already exists
+			if instID != prevInstID+1 {
+				// finish the previous range and start a new one
+				instanceRange.To = prevInstID
+				instanceIDRange = append(instanceIDRange, instanceRange)
+				instanceRange = &pod.InstanceIDRange{
+					From: instID,
+				}
+			}
+		}
+		prevInstID = instID
+	}
+
+	// finish the last instance range
+	if instanceRange != nil {
+		instanceRange.To = prevInstID
+		instanceIDRange = append(instanceIDRange, instanceRange)
+	}
+	return instanceIDRange
 }
 
 // GetOfferScalarResourceSummary generates a summary for all the scalar values: role -> offerName-> Value

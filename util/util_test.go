@@ -328,6 +328,12 @@ func TestGPUResources(t *testing.T) {
 	assert.Equal(t, 4, len(rs))
 }
 
+func TestConvertInstanceIDListToInstanceIDRange(t *testing.T) {
+	instances := []uint32{0, 1, 4, 5, 6, 10}
+	instanceRange := ConvertInstanceIDListToInstanceRange(instances)
+	assert.Equal(t, 3, len(instanceRange))
+}
+
 func TestContains(t *testing.T) {
 	list := []string{"a", "b", "c"}
 	assert.True(t, Contains(list, "a"))

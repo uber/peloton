@@ -165,7 +165,51 @@ func (h *ServiceHandler) getTasksWithoutConfigs(
 func (h *ServiceHandler) GetConfigSummary(
 	ctx context.Context,
 	job *api.JobKey) (*api.Response, error) {
-	return nil, errUnimplemented
+
+	result, err := h.getConfigSummary(ctx, job)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"params": log.Fields{
+				"job": job,
+			},
+			"code":  err.responseCode,
+			"error": err.msg,
+		}).Error("GetConfigSummary error")
+	}
+	return newResponse(result, err), nil
+}
+
+func (h *ServiceHandler) getConfigSummary(
+	ctx context.Context,
+	jobKey *api.JobKey,
+) (*api.Result, *auroraError) {
+	jobID, err := h.getJobID(
+		ctx,
+		jobKey)
+	if err != nil {
+		return nil, auroraErrorf("unable to get jobID from jobKey: %s", err)
+	}
+
+	podInfos, err := h.queryPods(
+		ctx,
+		jobID,
+		nil)
+	if err != nil {
+		return nil, auroraErrorf("unable to query pods using jobID: %s", err)
+	}
+
+	configSummary, err := ptoa.NewConfigSummary(
+		jobKey,
+		podInfos)
+	if err != nil {
+		return nil, auroraErrorf("unable to get config summary from podInfos: %s", err)
+	}
+
+	return &api.Result{
+		ConfigSummaryResult: &api.ConfigSummaryResult{
+			Summary: configSummary,
+		},
+	}, nil
 }
 
 // GetJobs fetches the status of jobs. ownerRole is optional, in which case all jobs are returned.
