@@ -17,18 +17,26 @@ package ptoa
 import (
 	"fmt"
 
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
 	"github.com/uber/peloton/util"
 )
 
 // NewConfigSummary returns aurora config summary for provided list of
 // peloton pod infos
 func NewConfigSummary(
-	jobKey *api.JobKey,
-	podInfos []*pod.PodInfo) (*api.ConfigSummary, error) {
+	jobInfo *stateless.JobInfo,
+	podInfos []*pod.PodInfo,
+) (*api.ConfigSummary, error) {
 	podInfosByVersion := make(map[string][]*pod.PodInfo)
 	var configGroups []*api.ConfigGroup
+
+	jobKey, err := NewJobKey(jobInfo.GetSpec().GetName())
+	if err != nil {
+		return nil, err
+	}
 
 	// get pods with same entity version
 	for _, podInfo := range podInfos {
@@ -54,9 +62,10 @@ func NewConfigSummary(
 		}
 
 		configGroup, err := NewConfigGroup(
-			jobKey,
+			jobInfo,
+			pods[0].GetSpec(),
 			instanceIDList,
-			pods[0].GetSpec())
+		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to get config group %s", err)
 		}

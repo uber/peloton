@@ -74,8 +74,65 @@ func NewServiceHandler(
 // GetJobSummary returns a summary of jobs, optionally only those owned by a specific role.
 func (h *ServiceHandler) GetJobSummary(
 	ctx context.Context,
-	role *string) (*api.Response, error) {
-	return nil, errUnimplemented
+	role *string,
+) (*api.Response, error) {
+
+	result, err := h.getJobSummary(ctx, role)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"params": log.Fields{
+				"role": role,
+			},
+			"code":  err.responseCode,
+			"error": err.msg,
+		}).Error("GetJobSummary error")
+	}
+	return newResponse(result, err), nil
+}
+
+func (h *ServiceHandler) getJobSummary(
+	ctx context.Context,
+	role *string,
+) (*api.Result, *auroraError) {
+
+	var jobSummaries []*api.JobSummary
+
+	query := &api.TaskQuery{Role: role}
+
+	jobIDs, err := h.getJobIDsFromTaskQuery(ctx, query)
+	if err != nil {
+		return nil, auroraErrorf("get job ids from task query: %s", err)
+	}
+
+	for _, jobID := range jobIDs {
+		jobInfo, err := h.getJobInfo(ctx, jobID)
+		if err != nil {
+			return nil, auroraErrorf("get job info for job id %q: %s",
+				jobID.GetValue(), err)
+		}
+
+		// In Aurora, JobSummary.JobConfiguration.TaskConfig
+		// is generated using latest "active" task. Reference:
+		// https://github.com/apache/aurora/blob/master/src/main/java/org/apache/aurora/scheduler/base/Tasks.java#L133
+		// but use JobInfo.JobSpec.DefaultSpec here to simplify
+		// the querying logic.
+		// TODO(kevinxu): Need to match Aurora's behavior?
+		// TODO(kevinxu): Need to inspect InstanceSpec as well?
+		podSpec := jobInfo.GetSpec().GetDefaultSpec()
+
+		s, err := ptoa.NewJobSummary(jobInfo, podSpec)
+		if err != nil {
+			return nil, auroraErrorf("new job summary: %s", err)
+		}
+
+		jobSummaries = append(jobSummaries, s)
+	}
+
+	return &api.Result{
+		JobSummaryResult: &api.JobSummaryResult{
+			Summaries: jobSummaries,
+		},
+	}, nil
 }
 
 // GetTasksWithoutConfigs is the same as getTasksStatus but without the TaskConfig.ExecutorConfig
@@ -190,6 +247,11 @@ func (h *ServiceHandler) getConfigSummary(
 		return nil, auroraErrorf("unable to get jobID from jobKey: %s", err)
 	}
 
+	jobInfo, err := h.getJobInfo(ctx, jobID)
+	if err != nil {
+		return nil, auroraErrorf("unable to get jobInfo from jobID: %s", err)
+	}
+
 	podInfos, err := h.queryPods(
 		ctx,
 		jobID,
@@ -199,7 +261,7 @@ func (h *ServiceHandler) getConfigSummary(
 	}
 
 	configSummary, err := ptoa.NewConfigSummary(
-		jobKey,
+		jobInfo,
 		podInfos)
 	if err != nil {
 		return nil, auroraErrorf("unable to get config summary from podInfos: %s", err)
@@ -299,7 +361,7 @@ func (h *ServiceHandler) getJobUpdateDiff(
 		return nil, auroraErrorf("get jobID: %s", err)
 	}
 
-	jobSummary, err := h.getJobSummary(ctx, jobID)
+	jobSummary, err := h.getJobInfoSummary(ctx, jobID)
 	if err != nil {
 		return nil, auroraErrorf("get job summary: %s", err)
 	}
@@ -1017,7 +1079,7 @@ func (h *ServiceHandler) getCurrentJobVersion(
 	ctx context.Context,
 	id *peloton.JobID,
 ) (*peloton.EntityVersion, error) {
-	summary, err := h.getJobSummary(ctx, id)
+	summary, err := h.getJobInfoSummary(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -1040,8 +1102,8 @@ func (h *ServiceHandler) getJobInfo(
 	return resp.GetJobInfo(), nil
 }
 
-// getJobSummary calls jobmgr to get JobSummary based on JobID.
-func (h *ServiceHandler) getJobSummary(
+// getJobInfoSummary calls jobmgr to get JobSummary based on JobID.
+func (h *ServiceHandler) getJobInfoSummary(
 	ctx context.Context,
 	jobID *peloton.JobID,
 ) (*stateless.JobSummary, error) {

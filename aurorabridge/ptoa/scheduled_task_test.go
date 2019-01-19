@@ -54,11 +54,7 @@ func TestNewScheduledTask(t *testing.T) {
 	// pod 1
 	j := &stateless.JobInfo{
 		Spec: &stateless.JobSpec{
-			Name: atop.NewJobName(jobKey),
-			Sla: &stateless.SlaSpec{
-				Preemptible: false,
-				Revocable:   false,
-			},
+			Name:   atop.NewJobName(jobKey),
 			Labels: label.BuildPartialAuroraJobKeyLabels(jobKey),
 		},
 	}
@@ -108,9 +104,10 @@ func TestNewScheduledTask(t *testing.T) {
 			TaskId:    ptr.String(podID1.GetValue()),
 			SlaveHost: ptr.String(host),
 			Task: &api.TaskConfig{
-				Job:      jobKey,
-				Tier:     ptr.String("preferred"),
-				Metadata: metadata,
+				Job:       jobKey,
+				IsService: ptr.Bool(true),
+				Tier:      ptr.String("preferred"),
+				Metadata:  metadata,
 			},
 			AssignedPorts: map[string]int32{}, // TODO(kevinxu)
 			InstanceId:    ptr.Int32(0),
@@ -213,9 +210,10 @@ func TestNewScheduledTask(t *testing.T) {
 			TaskId:    ptr.String(podID2.GetValue()),
 			SlaveHost: ptr.String(host),
 			Task: &api.TaskConfig{
-				Job:      jobKey,
-				Tier:     ptr.String("preferred"),
-				Metadata: metadata,
+				Job:       jobKey,
+				IsService: ptr.Bool(true),
+				Tier:      ptr.String("preferred"),
+				Metadata:  metadata,
 			},
 			AssignedPorts: map[string]int32{}, // TODO(kevinxu)
 			InstanceId:    ptr.Int32(1),

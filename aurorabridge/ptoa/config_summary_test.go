@@ -18,12 +18,15 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+
+	"github.com/uber/peloton/aurorabridge/atop"
 	"github.com/uber/peloton/aurorabridge/fixture"
 	"github.com/uber/peloton/aurorabridge/label"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // Tests the success scenario to get config summary for provided
@@ -31,6 +34,12 @@ import (
 func TestNewConfigSumamry_Success(t *testing.T) {
 	jobKey := fixture.AuroraJobKey()
 	jobID := fixture.PelotonJobID()
+
+	jobInfo := &stateless.JobInfo{
+		Spec: &stateless.JobSpec{
+			Name: atop.NewJobName(jobKey),
+		},
+	}
 
 	var podInfos []*pod.PodInfo
 	for i := 0; i < 6; i++ {
@@ -69,7 +78,7 @@ func TestNewConfigSumamry_Success(t *testing.T) {
 	}
 
 	configSummary, err := NewConfigSummary(
-		jobKey,
+		jobInfo,
 		podInfos,
 	)
 	assert.NoError(t, err)
@@ -85,6 +94,12 @@ func TestNewConfigSummary_InvalidTaskID(t *testing.T) {
 	podID := fmt.Sprintf("%s-%d", podName, 1)
 	entityVersion := fixture.PelotonEntityVersion()
 
+	jobInfo := &stateless.JobInfo{
+		Spec: &stateless.JobSpec{
+			Name: atop.NewJobName(jobKey),
+		},
+	}
+
 	podInfos := []*pod.PodInfo{&pod.PodInfo{
 		Spec: &pod.PodSpec{
 			PodName: &peloton.PodName{
@@ -98,7 +113,7 @@ func TestNewConfigSummary_InvalidTaskID(t *testing.T) {
 			Version: entityVersion,
 		},
 	}}
-	_, err := NewConfigSummary(jobKey, podInfos)
+	_, err := NewConfigSummary(jobInfo, podInfos)
 	assert.Error(t, err)
 }
 
@@ -110,6 +125,12 @@ func TestNewConfigSummary_ConfigGroupError(t *testing.T) {
 	podID := fmt.Sprintf("%s-%d", podName, 1)
 	entityVersion := fixture.PelotonEntityVersion()
 
+	jobInfo := &stateless.JobInfo{
+		Spec: &stateless.JobSpec{
+			Name: atop.NewJobName(jobKey),
+		},
+	}
+
 	podInfos := []*pod.PodInfo{&pod.PodInfo{
 		Spec: &pod.PodSpec{
 			PodName: &peloton.PodName{
@@ -123,6 +144,6 @@ func TestNewConfigSummary_ConfigGroupError(t *testing.T) {
 			Version: entityVersion,
 		},
 	}}
-	_, err := NewConfigSummary(jobKey, podInfos)
+	_, err := NewConfigSummary(jobInfo, podInfos)
 	assert.Error(t, err)
 }

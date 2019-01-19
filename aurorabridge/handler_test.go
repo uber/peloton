@@ -541,6 +541,19 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummaryFailure() {
 			Spec:  &pod.QuerySpec{},
 		}).
 		Return(nil, errors.New("unable to query pods"))
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			SummaryOnly: false,
+			JobId:       jobID,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					Name:   atop.NewJobName(jobKey),
+					Labels: label.BuildPartialAuroraJobKeyLabels(jobKey),
+				},
+			},
+		}, nil)
 
 	resp, err := suite.handler.GetConfigSummary(
 		suite.ctx,
@@ -583,6 +596,19 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
 		}).
 		Return(&statelesssvc.QueryPodsResponse{
 			Pods: podInfos,
+		}, nil)
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			SummaryOnly: false,
+			JobId:       jobID,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					Name:   atop.NewJobName(jobKey),
+					Labels: label.BuildPartialAuroraJobKeyLabels(jobKey),
+				},
+			},
 		}, nil)
 
 	resp, err := suite.handler.GetConfigSummary(
@@ -1135,11 +1161,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs() {
 		Return(&statelesssvc.GetJobResponse{
 			JobInfo: &stateless.JobInfo{
 				Spec: &stateless.JobSpec{
-					Name: atop.NewJobName(jobKey),
-					Sla: &stateless.SlaSpec{
-						Preemptible: false,
-						Revocable:   false,
-					},
+					Name:   atop.NewJobName(jobKey),
 					Labels: label.BuildPartialAuroraJobKeyLabels(jobKey),
 				},
 			},

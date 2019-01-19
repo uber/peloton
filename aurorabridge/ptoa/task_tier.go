@@ -22,8 +22,8 @@ import (
 
 // NewTaskTier converts Peloton SlaSpec to Aurora TaskTier string.
 func NewTaskTier(s *stateless.SlaSpec) *string {
-	if s.Preemptible {
-		if s.Revocable {
+	if s.GetPreemptible() {
+		if s.GetRevocable() {
 			return ptr.String("revocable")
 		}
 		return ptr.String("preemptible")
