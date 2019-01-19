@@ -18,6 +18,8 @@ type JobMetrics struct {
 	JobRuntimeUpdated                tally.Counter
 	JobRuntimeUpdateFailed           tally.Counter
 	JobMaxRunningInstancesExcceeding tally.Counter
+
+	JobRecalculateFromCache tally.Counter
 }
 
 // TaskMetrics contains all counters to track task metrics in goal state.
@@ -75,6 +77,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobRuntimeUpdated:                jobScope.Counter("runtime_update_success"),
 		JobRuntimeUpdateFailed:           jobScope.Counter("runtime_update_fail"),
 		JobMaxRunningInstancesExcceeding: jobScope.Counter("max_running_instances_exceeded"),
+		JobRecalculateFromCache: jobScope.Counter(
+			"job_recalculate_from_cache"),
 	}
 
 	taskMetrics := &TaskMetrics{
