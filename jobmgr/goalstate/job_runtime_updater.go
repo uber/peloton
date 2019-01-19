@@ -80,6 +80,26 @@ var taskStatesScheduled = []task.TaskState{
 	task.TaskState_KILLING,
 }
 
+var allTaskStates = []task.TaskState{
+	task.TaskState_UNKNOWN,
+	task.TaskState_INITIALIZED,
+	task.TaskState_PENDING,
+	task.TaskState_READY,
+	task.TaskState_PLACING,
+	task.TaskState_PLACED,
+	task.TaskState_LAUNCHING,
+	task.TaskState_LAUNCHED,
+	task.TaskState_STARTING,
+	task.TaskState_RUNNING,
+	task.TaskState_SUCCEEDED,
+	task.TaskState_FAILED,
+	task.TaskState_LOST,
+	task.TaskState_PREEMPTING,
+	task.TaskState_KILLING,
+	task.TaskState_KILLED,
+	task.TaskState_DELETED,
+}
+
 // formatTime converts a Unix timestamp to a string format of the
 // given layout in UTC. See https://golang.org/pkg/time/ for possible
 // time layout in golang. For example, it will return RFC3339 format
@@ -395,13 +415,15 @@ func determineJobRuntimeState(
 	stateCounts map[string]uint32,
 	config jobmgrcommon.JobConfig,
 	goalStateDriver *driver,
-	cachedJob cached.Job) (job.JobState, transitionType, error) {
+	cachedJob cached.Job) (job.JobState, map[string]uint32, transitionType,
+	error) {
 	prevState := jobRuntime.GetState()
 	jobStateDeterminer := jobStateDeterminerFactory(
 		jobRuntime, stateCounts, cachedJob, config)
 	jobState, err := jobStateDeterminer.getState(ctx, jobRuntime)
+	currStateCounts := stateCounts
 	if err != nil {
-		return job.JobState_UNKNOWN, transitionTypeUnknown, err
+		return job.JobState_UNKNOWN, nil, transitionTypeUnknown, err
 	}
 
 	// Check if a batch job is active for a very long time which may indicate
@@ -410,10 +432,15 @@ func determineJobRuntimeState(
 	// configured which indicates MV is out of sync, and if
 	// jobRuntimeCalculationViaCache flag is on
 	// Recalculate job state from cache if this is the case.
-	if shouldRecalculateJobState(cachedJob, config.GetType(), jobState,
-		stateCounts, goalStateDriver.jobRuntimeCalculationViaCache, config) {
-		jobState, err = recalculateJobStateFromCache(
-			ctx, jobRuntime, cachedJob, jobState, config)
+	if shouldRecalculateJobStateFromCache(cachedJob,
+		config.GetType(),
+		jobState,
+		stateCounts,
+		goalStateDriver.jobRuntimeCalculationViaCache,
+		config) {
+		jobState, currStateCounts, err = recalculateJobStateFromCache(
+			ctx, jobRuntime, cachedJob, jobState, stateCounts, config)
+		goalStateDriver.mtx.jobMetrics.JobRecalculateFromCache.Inc(1)
 	}
 
 	switch jobState {
@@ -425,7 +452,8 @@ func determineJobRuntimeState(
 		goalStateDriver.mtx.jobMetrics.JobKilled.Inc(1)
 
 	}
-	return jobState, getTransitionType(jobState, prevState), nil
+	return jobState, currStateCounts, getTransitionType(jobState,
+		prevState), nil
 }
 
 // JobRuntimeUpdater updates the job runtime.
@@ -459,6 +487,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	stateCounts, err := goalStateDriver.taskStore.GetTaskStateSummaryForJob(ctx, jobID)
+	currStateCounts := stateCounts
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).
@@ -468,7 +497,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 
 	var jobState job.JobState
 	jobRuntimeUpdate := &job.RuntimeInfo{}
-	totalInstanceCount := getTotalInstanceCount(stateCounts)
+	totalInstanceCount := getTotalInstanceCount(currStateCounts)
 	// if job is KILLED: do nothing
 	// if job is partially created: set job to INITIALIZED and enqueue the job
 	// else: return error and reschedule the job
@@ -495,17 +524,17 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	// determineJobRuntimeState would handle both
 	// totalInstanceCount > config.GetInstanceCount() and
 	// partially created job
-	jobState, transition, err := determineJobRuntimeState(
+	jobState, currStateCounts, transition, err := determineJobRuntimeState(
 		ctx, jobRuntime, stateCounts, config, goalStateDriver, cachedJob)
 	if err != nil {
 		return err
 	}
 
 	if jobRuntime.GetTaskStats() != nil &&
-		reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) &&
+		reflect.DeepEqual(currStateCounts, jobRuntime.GetTaskStats()) &&
 		jobRuntime.GetState() == jobState {
 		log.WithField("job_id", id).
-			WithField("task_stats", stateCounts).
+			WithField("task_stats", currStateCounts).
 			Debug("Task stats did not change, return")
 
 		return nil
@@ -514,7 +543,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	jobRuntimeUpdate = setStartTime(
 		cachedJob,
 		jobRuntime,
-		stateCounts,
+		currStateCounts,
 		jobRuntimeUpdate,
 	)
 
@@ -526,7 +555,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		jobRuntimeUpdate,
 	)
 
-	jobRuntimeUpdate.TaskStats = stateCounts
+	jobRuntimeUpdate.TaskStats = currStateCounts
 
 	jobRuntimeUpdate.ResourceUsage = cachedJob.GetResourceUsage()
 
@@ -632,43 +661,75 @@ func setCompletionTime(
 // desirable to do this all the time because this has potential to slow down
 // event handling for these tasks.
 func recalculateJobStateFromCache(
-	ctx context.Context, jobRuntime *job.RuntimeInfo, cachedJob cached.Job,
-	jobState job.JobState, config jobmgrcommon.JobConfig) (job.JobState, error) {
+	ctx context.Context,
+	jobRuntime *job.RuntimeInfo,
+	cachedJob cached.Job,
+	jobState job.JobState,
+	stateCounts map[string]uint32,
+	config jobmgrcommon.JobConfig) (job.JobState, map[string]uint32, error) {
 
 	tasks := cachedJob.GetAllTasks()
 	stateCountsFromCache := make(map[string]uint32)
+	// initialize the stateCounts, mark each task state count to be zero
+	for _, taskStatus := range allTaskStates {
+		stateCountsFromCache[taskStatus.String()] = 0
+	}
 	for _, task := range tasks {
 		state := task.CurrentState().State.String()
-		if _, ok := stateCountsFromCache[state]; ok {
-			stateCountsFromCache[state]++
-		} else {
-			stateCountsFromCache[state] = 1
-		}
+		stateCountsFromCache[state]++
 	}
 
 	// in case we have a task with state unknown, it means that the task was not
 	// present in cache. In this case, return the original state
 	if _, ok := stateCountsFromCache[task.TaskState_UNKNOWN.String()]; ok {
-		return jobState, nil
+		if stateCountsFromCache[task.TaskState_UNKNOWN.String()] > 0 {
+			return jobState, stateCounts, nil
+		}
 	}
 
 	// recalculate jobState based on the new task state count
 	jobStateDeterminer := jobStateDeterminerFactory(
 		jobRuntime, stateCountsFromCache, cachedJob, config)
 	jobState, err := jobStateDeterminer.getState(ctx, jobRuntime)
-	return jobState, err
+	return jobState, stateCountsFromCache, err
 }
 
-// shouldRecalculateJobState is true if the job state needs to be recalculated
-func shouldRecalculateJobState(
-	cachedJob cached.Job, jobType job.JobType, jobState job.JobState,
+// shouldRecalculateJobStateFromCache is true if the job state needs to be recalculated
+func shouldRecalculateJobStateFromCache(
+	cachedJob cached.Job,
+	jobType job.JobType,
+	jobState job.JobState,
 	stateCounts map[string]uint32,
-	forceRecalculateFromCache bool, config jobmgrcommon.JobConfig) bool {
-	return jobType == job.JobType_BATCH &&
-		!util.IsPelotonJobStateTerminal(jobState) &&
-		isJobStateStale(cachedJob, common.StaleJobStateDurationThreshold) ||
-		getTotalInstanceCount(stateCounts) > config.GetInstanceCount() &&
-			forceRecalculateFromCache
+	forceRecalculateFromCache bool,
+	config jobmgrcommon.JobConfig) bool {
+
+	// no job runtime recalculation for non-batch jobs
+	if jobType != job.JobType_BATCH {
+		return false
+	}
+
+	// no job runtime recalculation for jobs in terminal state
+	if util.IsPelotonJobStateTerminal(jobState) {
+		return false
+	}
+
+	// job runtime recalculation for stale batch job
+	if isJobStateStale(cachedJob, common.StaleJobStateDurationThreshold) {
+		log.WithField("job_id", cachedJob.ID()).
+			Info("recalculate job state from cache for stale job ")
+		return true
+	}
+
+	// job runtime recalculation in case of jobRuntimeCalculationViaCache
+	// flag on and MV diverged
+	if forceRecalculateFromCache &&
+		getTotalInstanceCount(stateCounts) > config.GetInstanceCount() {
+		log.WithField("job_id", cachedJob.ID()).
+			Info("force recalculate job state from cache")
+		return true
+	}
+
+	return false
 }
 
 // isJobStateStale returns true if the job is in active state for more than the
