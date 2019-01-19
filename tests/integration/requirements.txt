@@ -1,8 +1,0 @@
-pytest==3.0.7
-peloton-client~=0.7.0
-docker-py==1.7.2
-pyyaml
-enum
-m3>=3.0.0
-protobuf
-thriftrw==1.7.1

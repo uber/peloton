@@ -3,3 +3,9 @@
 docker-py==1.7.2
 peloton-client~=0.7.0
 pyyaml
+
+# Integration tests requirements.
+pytest==3.0.7
+enum
+m3>=3.0.0
+protobuf

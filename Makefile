@@ -89,7 +89,7 @@ install:
 		virtualenv env ; \
 		. env/bin/activate ; \
 		pip install --upgrade pip ; \
-		pip install -r tests/integration/requirements.txt ; \
+		pip install -r requirements.txt ; \
 		deactivate ; \
 	fi
 
