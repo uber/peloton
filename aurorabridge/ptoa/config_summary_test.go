@@ -100,7 +100,7 @@ func TestNewConfigSummary_InvalidTaskID(t *testing.T) {
 		},
 	}
 
-	podInfos := []*pod.PodInfo{&pod.PodInfo{
+	podInfos := []*pod.PodInfo{{
 		Spec: &pod.PodSpec{
 			PodName: &peloton.PodName{
 				Value: podName,
@@ -131,7 +131,7 @@ func TestNewConfigSummary_ConfigGroupError(t *testing.T) {
 		},
 	}
 
-	podInfos := []*pod.PodInfo{&pod.PodInfo{
+	podInfos := []*pod.PodInfo{{
 		Spec: &pod.PodSpec{
 			PodName: &peloton.PodName{
 				Value: podName,

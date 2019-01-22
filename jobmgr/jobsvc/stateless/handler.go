@@ -1012,7 +1012,7 @@ func (h *serviceHandler) ListPods(
 	for instID, taskRuntime := range taskRuntimes {
 		resp := &svc.ListPodsResponse{
 			Pods: []*pod.PodSummary{
-				&pod.PodSummary{
+				{
 					PodName: &v1alphapeloton.PodName{
 						Value: util.CreatePelotonTaskID(req.GetJobId().GetValue(), instID),
 					},

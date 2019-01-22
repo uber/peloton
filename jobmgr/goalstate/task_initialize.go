@@ -75,10 +75,7 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 
 	// update task runtime
 	runtimeDiff[jobmgrcommon.GoalStateField] = jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())
-	runtimeDiff[jobmgrcommon.StartTimeField] = ""
-	runtimeDiff[jobmgrcommon.CompletionTimeField] = ""
 	runtimeDiff[jobmgrcommon.MessageField] = "Initialize task"
-	runtimeDiff[jobmgrcommon.ReasonField] = ""
 
 	// If the task is being updated, then move the configuration version to
 	// the desired configuration version.

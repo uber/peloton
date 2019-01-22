@@ -239,7 +239,6 @@ func (h *serviceHandler) startPod(
 		taskRuntime.GoalState =
 			jobmgrtask.GetDefaultTaskGoalState(jobType)
 		taskRuntime.Message = "PodSVC.StartPod request"
-		taskRuntime.Reason = ""
 
 		if _, err = cachedTask.CompareAndSetRuntime(
 			ctx, taskRuntime, jobType); err == nil {

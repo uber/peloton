@@ -576,7 +576,7 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
 	mdLabel, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
 	suite.NoError(err)
 
-	podInfos := []*pod.PodInfo{&pod.PodInfo{
+	podInfos := []*pod.PodInfo{{
 		Spec: &pod.PodSpec{
 			PodName: &peloton.PodName{
 				Value: podName,
@@ -635,7 +635,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff() {
 	jobSpec, _ := atop.NewJobSpecFromJobUpdateRequest(jobUpdateRequest, respoolID)
 
 	addedInstancesIDRange := []*pod.InstanceIDRange{
-		&pod.InstanceIDRange{
+		{
 			From: uint32(5),
 			To:   uint32(10),
 		},
@@ -643,7 +643,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff() {
 	instancesAdded := &api.ConfigGroup{
 		Config: fixture.AuroraTaskConfig(),
 		Instances: []*api.Range{
-			&api.Range{
+			{
 				First: ptr.Int32(5),
 				Last:  ptr.Int32(10),
 			},

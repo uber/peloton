@@ -575,7 +575,6 @@ func (m *serviceHandler) Start(
 			taskRuntime.GoalState =
 				jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())
 			taskRuntime.Message = "Task start API request"
-			taskRuntime.Reason = ""
 
 			// Directly call task level APIs instead of calling job level API
 			// as one transaction (like PatchTasks calls) because

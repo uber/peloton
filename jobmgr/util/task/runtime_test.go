@@ -78,6 +78,13 @@ func TestRegenerateMesosTaskRuntime(t *testing.T) {
 		assert.Equal(t, *runtime.MesosTaskId.Value, tt.newMesosTaskID)
 		assert.Equal(t, *runtime.DesiredMesosTaskId.Value, tt.newMesosTaskID)
 		assert.Equal(t, runtime.Healthy, tt.initHealthState)
+
+		assert.Empty(t, runtime.AgentID)
+		assert.Empty(t, runtime.StartTime)
+		assert.Empty(t, runtime.CompletionTime)
+		assert.Empty(t, runtime.Host)
+		assert.Empty(t, runtime.Ports)
+		assert.Empty(t, runtime.TerminationStatus)
 	}
 }
 
@@ -136,6 +143,13 @@ func TestRegenerateMesosTaskIDDiff(t *testing.T) {
 		assert.Equal(t, *diff[jobmgrcommon.DesiredMesosTaskIDField].(*mesos.TaskID).Value,
 			tt.newMesosTaskID)
 		assert.Equal(t, diff[jobmgrcommon.HealthyField], tt.initHealthState)
+
+		assert.Empty(t, diff[jobmgrcommon.AgentIDField])
+		assert.Empty(t, diff[jobmgrcommon.StartTimeField])
+		assert.Empty(t, diff[jobmgrcommon.CompletionTimeField])
+		assert.Empty(t, diff[jobmgrcommon.HostField])
+		assert.Empty(t, diff[jobmgrcommon.PortsField])
+		assert.Empty(t, diff[jobmgrcommon.TerminationStatusField])
 	}
 }
 

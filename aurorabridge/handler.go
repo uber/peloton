@@ -390,16 +390,16 @@ func (h *ServiceHandler) getJobUpdateDiff(
 
 	return &api.Result{
 		GetJobUpdateDiffResult: &api.GetJobUpdateDiffResult{
-			Add: []*api.ConfigGroup{&api.ConfigGroup{
+			Add: []*api.ConfigGroup{{
 				Instances: ptoa.NewRange(resp.GetInstancesAdded()),
 			}},
-			Update: []*api.ConfigGroup{&api.ConfigGroup{
+			Update: []*api.ConfigGroup{{
 				Instances: ptoa.NewRange(resp.GetInstancesUpdated()),
 			}},
-			Remove: []*api.ConfigGroup{&api.ConfigGroup{
+			Remove: []*api.ConfigGroup{{
 				Instances: ptoa.NewRange(resp.GetInstancesRemoved()),
 			}},
-			Unchanged: []*api.ConfigGroup{&api.ConfigGroup{
+			Unchanged: []*api.ConfigGroup{{
 				Instances: ptoa.NewRange(resp.GetInstancesUnchanged()),
 			}},
 		},

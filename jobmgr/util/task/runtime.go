@@ -61,6 +61,15 @@ func RegenerateMesosTaskRuntime(
 	taskRuntime.MesosTaskId = mesosTaskID
 	taskRuntime.DesiredMesosTaskId = mesosTaskID
 	taskRuntime.Healthy = initHealthyField
+
+	taskRuntime.AgentID = nil
+	taskRuntime.StartTime = ""
+	taskRuntime.CompletionTime = ""
+	taskRuntime.Host = ""
+	taskRuntime.Ports = make(map[string]uint32)
+	taskRuntime.TerminationStatus = nil
+	taskRuntime.Reason = ""
+	taskRuntime.Message = ""
 }
 
 // RegenerateMesosTaskIDDiff returns a diff for patch with the previous mesos
@@ -79,6 +88,15 @@ func RegenerateMesosTaskIDDiff(
 		jobmgrcommon.MesosTaskIDField:        mesosTaskID,
 		jobmgrcommon.DesiredMesosTaskIDField: mesosTaskID,
 		jobmgrcommon.HealthyField:            initHealthyField,
+
+		jobmgrcommon.AgentIDField:           nil,
+		jobmgrcommon.StartTimeField:         "",
+		jobmgrcommon.CompletionTimeField:    "",
+		jobmgrcommon.HostField:              "",
+		jobmgrcommon.PortsField:             make(map[string]uint32),
+		jobmgrcommon.TerminationStatusField: nil,
+		jobmgrcommon.MessageField:           "",
+		jobmgrcommon.ReasonField:            "",
 	}
 }
 

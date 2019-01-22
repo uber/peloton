@@ -18,13 +18,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
-	mesosv1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
@@ -375,8 +373,6 @@ func (p *processor) enqueueTasksToResMgr(ctx context.Context, tasks map[string]*
 			t.JobId, t.InstanceId, t.GetRuntime(), healthState)
 		runtimeDiff[jobmgrcommon.MessageField] = "Regenerate placement"
 		runtimeDiff[jobmgrcommon.ReasonField] = "REASON_HOST_REJECT_OFFER"
-		runtimeDiff[jobmgrcommon.AgentIDField] = &mesosv1.AgentID{Value: proto.String("")}
-		runtimeDiff[jobmgrcommon.PortsField] = make(map[string]uint32)
 		retry := 0
 		for retry < maxRetryCount {
 			cachedJob := p.jobFactory.AddJob(t.JobId)
