@@ -71,7 +71,6 @@ const (
 	taskConfigTable        = "task_config"
 	taskConfigV2Table      = "task_config_v2"
 	taskRuntimeTable       = "task_runtime"
-	taskStateChangesTable  = "task_state_changes"
 	podEventsTable         = "pod_events"
 	updatesTable           = "update_info"
 	jobUpdateEvents        = "job_update_events"
@@ -81,7 +80,6 @@ const (
 	jobByStateView         = "mv_job_by_state"
 	updatesByJobView       = "mv_updates_by_job"
 	resPoolsTable          = "respools"
-	resPoolsOwnerView      = "mv_respools_by_owner"
 	volumeTable            = "persistent_volumes"
 	secretInfoTable        = "secret_info"
 
@@ -112,9 +110,6 @@ const (
 	// _defaultPodEventsLimit is default number of pod events
 	// to read if not provided for jobID + instanceID
 	_defaultPodEventsLimit = 100
-
-	// invalidRunID is used to read pod events for all runs
-	invalidRunID = uint64(0)
 )
 
 // Config is the config for cassandra Store
@@ -2452,39 +2447,6 @@ func (s *Store) GetAllResourcePools(ctx context.Context) (map[string]*respool.Re
 		return nil, err
 	}
 	var resultMap = make(map[string]*respool.ResourcePoolConfig)
-	for _, value := range allResults {
-		var record ResourcePoolRecord
-		err := FillObject(value, &record, reflect.TypeOf(record))
-		if err != nil {
-			log.Errorf("Failed to Fill into ResourcePoolRecord, err= %v", err)
-			s.metrics.ResourcePoolMetrics.ResourcePoolGetFail.Inc(1)
-			return nil, err
-		}
-		resourcePoolConfig, err := record.GetResourcePoolConfig()
-		if err != nil {
-			log.Errorf("Failed to get ResourceConfig from record, err= %v", err)
-			s.metrics.ResourcePoolMetrics.ResourcePoolGetFail.Inc(1)
-			return nil, err
-		}
-		resultMap[record.RespoolID] = resourcePoolConfig
-		s.metrics.ResourcePoolMetrics.ResourcePoolGet.Inc(1)
-	}
-	return resultMap, nil
-}
-
-// GetResourcePoolsByOwner Get all the resource pool b owner
-func (s *Store) GetResourcePoolsByOwner(ctx context.Context, owner string) (map[string]*respool.ResourcePoolConfig, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("respool_id", "owner", "respool_config", "creation_time", "update_time").From(resPoolsOwnerView).
-		Where(qb.Eq{"owner": owner})
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		log.Errorf("Fail to GetResourcePoolsByOwner %v, err=%v", owner, err)
-		s.metrics.ResourcePoolMetrics.ResourcePoolGetFail.Inc(1)
-		return nil, err
-	}
-	var resultMap = make(map[string]*respool.ResourcePoolConfig)
-
 	for _, value := range allResults {
 		var record ResourcePoolRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))

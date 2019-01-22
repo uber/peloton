@@ -234,15 +234,6 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureTaskQuery() {
 	suite.Error(err)
 }
 
-// TestDataStoreFailureGetRespools tests datastore failures in get respools
-func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetRespools() {
-	_, err := suite.store.GetAllResourcePools(context.Background())
-	suite.Error(err)
-
-	_, err = suite.store.GetResourcePoolsByOwner(context.Background(), "dummy")
-	suite.Error(err)
-}
-
 // TestDataStoreFailureFramework tests datastore failures in get frameworks
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureFramework() {
 	_, err := suite.store.getFrameworkInfo(context.Background(), "framwork-id")

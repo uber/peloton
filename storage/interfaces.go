@@ -258,8 +258,6 @@ type ResourcePoolStore interface {
 	CreateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, Config *respool.ResourcePoolConfig, createdBy string) error
 	DeleteResourcePool(ctx context.Context, id *peloton.ResourcePoolID) error
 	UpdateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, Config *respool.ResourcePoolConfig) error
-	// TODO change to return ResourcePoolInfo
-	GetResourcePoolsByOwner(ctx context.Context, owner string) (map[string]*respool.ResourcePoolConfig, error)
 	GetAllResourcePools(ctx context.Context) (map[string]*respool.ResourcePoolConfig, error)
 }
 

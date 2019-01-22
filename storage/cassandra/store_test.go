@@ -1974,65 +1974,6 @@ func (suite *CassandraStoreTestSuite) TestGetAllResourcePoolsEmptyResourcePool()
 	suite.Len(resourcePools, 0)
 }
 
-// TestGetResourcePoolsByOwner tests getting resource pools by owner
-func (suite *CassandraStoreTestSuite) TestGetResourcePoolsByOwner() {
-	var resourcePoolStore storage.ResourcePoolStore
-	resourcePoolStore = store
-	nResourcePools := 2
-	owner := "test-owner"
-
-	// todo move to setup once ^^^ issue resolves
-	for i := 0; i < nResourcePools; i++ {
-		resourcePoolID := &peloton.ResourcePoolID{
-			Value: fmt.Sprintf("%s%d", owner, i)}
-		resourcePoolConfig := createResourcePoolConfig()
-		resourcePoolConfig.Name = resourcePoolID.Value
-		err := resourcePoolStore.CreateResourcePool(context.Background(),
-			resourcePoolID, resourcePoolConfig, owner)
-		suite.Nil(err)
-	}
-
-	testCases := []struct {
-		expectedErr    error
-		owner          string
-		nResourcePools int
-		msg            string
-	}{
-		{
-			expectedErr:    nil,
-			owner:          "idon'texist",
-			nResourcePools: 0,
-			msg:            "testcase: fetch resource pools by non existent owner",
-		},
-		{
-			expectedErr:    nil,
-			owner:          owner,
-			nResourcePools: nResourcePools,
-			msg:            "testcase: fetch resource pools owner",
-		},
-	}
-
-	for _, tc := range testCases {
-		resourcePools, actualErr := resourcePoolStore.GetResourcePoolsByOwner(
-			context.Background(), tc.owner)
-		if tc.expectedErr == nil {
-			suite.Nil(actualErr, tc.msg)
-			suite.Len(resourcePools, tc.nResourcePools, tc.msg)
-		} else {
-			suite.EqualError(actualErr, tc.expectedErr.Error(), tc.msg)
-		}
-	}
-
-	// cleanup resource pools
-	for i := 0; i < nResourcePools; i++ {
-		resourcePoolID := &peloton.ResourcePoolID{
-			Value: fmt.Sprintf("%s%d", owner, i)}
-		err := resourcePoolStore.DeleteResourcePool(
-			context.Background(), resourcePoolID)
-		suite.NoError(err)
-	}
-}
-
 func (suite *CassandraStoreTestSuite) TestUpdateResourcePool() {
 	var resourcePoolStore storage.ResourcePoolStore
 	resourcePoolStore = store
@@ -2050,8 +1991,8 @@ func (suite *CassandraStoreTestSuite) TestUpdateResourcePool() {
 		resourcePoolID, resourcePoolConfig)
 	suite.NoError(err)
 
-	resourcePools, err := resourcePoolStore.GetResourcePoolsByOwner(context.Background(),
-		"Update")
+	// GetAllResourcePools
+	resourcePools, err := resourcePoolStore.GetAllResourcePools(context.Background())
 	suite.NoError(err)
 	suite.Equal("Updated description", resourcePools[resourcePoolID.Value].Description)
 
