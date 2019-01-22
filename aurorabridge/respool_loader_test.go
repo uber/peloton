@@ -15,6 +15,7 @@
 package aurorabridge
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -28,23 +29,25 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/respool/mocks"
 )
 
-type BootstrapperTestSuite struct {
+type RespoolLoaderTestSuite struct {
 	suite.Suite
 
 	ctrl          *gomock.Controller
 	respoolClient *mocks.MockResourceManagerYARPCClient
 
-	config BootstrapConfig
+	config RespoolLoaderConfig
 
-	bootstrapper *Bootstrapper
+	loader RespoolLoader
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
-func (suite *BootstrapperTestSuite) SetupTest() {
+func (suite *RespoolLoaderTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.respoolClient = mocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 
-	suite.config = BootstrapConfig{
-		Timeout:       time.Second,
+	suite.config = RespoolLoaderConfig{
 		RetryInterval: 50 * time.Millisecond,
 		RespoolPath:   "/AuroraBridge",
 		DefaultRespoolSpec: DefaultRespoolSpec{
@@ -64,21 +67,24 @@ func (suite *BootstrapperTestSuite) SetupTest() {
 		},
 	}
 
-	suite.bootstrapper = NewBootstrapper(
+	suite.loader = NewRespoolLoader(
 		suite.config,
 		suite.respoolClient,
 	)
+
+	suite.ctx, suite.cancel = context.WithTimeout(context.Background(), time.Second)
 }
 
-func (suite *BootstrapperTestSuite) TearDownTest() {
+func (suite *RespoolLoaderTestSuite) TearDownTest() {
 	suite.ctrl.Finish()
+	suite.cancel()
 }
 
 func TestBootstrapper(t *testing.T) {
-	suite.Run(t, &BootstrapperTestSuite{})
+	suite.Run(t, &RespoolLoaderTestSuite{})
 }
 
-func (suite *BootstrapperTestSuite) TestBootstrapRespool_ExistingPool() {
+func (suite *RespoolLoaderTestSuite) TestLoad_ExistingPool() {
 	id := &peloton.ResourcePoolID{Value: "bridge-id"}
 
 	suite.respoolClient.EXPECT().
@@ -89,12 +95,12 @@ func (suite *BootstrapperTestSuite) TestBootstrapRespool_ExistingPool() {
 			Id: id,
 		}, nil)
 
-	result, err := suite.bootstrapper.BootstrapRespool()
+	result, err := suite.loader.Load(suite.ctx)
 	suite.NoError(err)
 	suite.Equal(id.GetValue(), result.GetValue())
 }
 
-func (suite *BootstrapperTestSuite) TestBootstrapRespool_NewPoolUsesDefaults() {
+func (suite *RespoolLoaderTestSuite) TestLoad_NewPoolUsesDefaults() {
 	rootID := &peloton.ResourcePoolID{Value: "root-id"}
 	id := &peloton.ResourcePoolID{Value: "bridge-id"}
 
@@ -130,12 +136,12 @@ func (suite *BootstrapperTestSuite) TestBootstrapRespool_NewPoolUsesDefaults() {
 			Result: id,
 		}, nil)
 
-	result, err := suite.bootstrapper.BootstrapRespool()
+	result, err := suite.loader.Load(suite.ctx)
 	suite.NoError(err)
 	suite.Equal(id.GetValue(), result.GetValue())
 }
 
-func (suite *BootstrapperTestSuite) TestBoostrapperRespool_Retry() {
+func (suite *RespoolLoaderTestSuite) TestBoostrapperRespool_Retry() {
 	id := &peloton.ResourcePoolID{Value: "bridge-id"}
 
 	// We should retry on error if within timeout.
@@ -154,12 +160,12 @@ func (suite *BootstrapperTestSuite) TestBoostrapperRespool_Retry() {
 			}, nil),
 	)
 
-	result, err := suite.bootstrapper.BootstrapRespool()
+	result, err := suite.loader.Load(suite.ctx)
 	suite.NoError(err)
 	suite.Equal(id.GetValue(), result.GetValue())
 }
 
-func (suite *BootstrapperTestSuite) TestBoostrapperRespool_Error() {
+func (suite *RespoolLoaderTestSuite) TestBoostrapperRespool_Error() {
 	// We should return error if this lookup keeps failing after timeout.
 	suite.respoolClient.EXPECT().
 		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
@@ -168,6 +174,6 @@ func (suite *BootstrapperTestSuite) TestBoostrapperRespool_Error() {
 		Return(nil, errors.New("some leader not found error")).
 		MinTimes(1)
 
-	_, err := suite.bootstrapper.BootstrapRespool()
+	_, err := suite.loader.Load(suite.ctx)
 	suite.Error(err)
 }

@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -28,58 +29,71 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-// Bootstrapper performs required bootstrapping to start aurorabridge in a
-// cluster.
-type Bootstrapper struct {
-	config        BootstrapConfig
-	respoolClient respool.ResourceManagerYARPCClient
+// RespoolLoader lazily loads a resource pool. If the resource pool does not
+// exist, it boostraps one with provided defaults.
+type RespoolLoader interface {
+	Load(context.Context) (*v1peloton.ResourcePoolID, error)
 }
 
-// NewBootstrapper creates a new Bootstrapper.
-func NewBootstrapper(
-	config BootstrapConfig,
-	respoolClient respool.ResourceManagerYARPCClient,
-) *Bootstrapper {
+type respoolLoader struct {
+	config RespoolLoaderConfig
+	client respool.ResourceManagerYARPCClient
+
+	// Cached respoolID for lazy lookup.
+	mu        sync.Mutex
+	respoolID *v1peloton.ResourcePoolID
+}
+
+// NewRespoolLoader creates a new RespoolLoader.
+func NewRespoolLoader(
+	config RespoolLoaderConfig,
+	client respool.ResourceManagerYARPCClient,
+) RespoolLoader {
 	config.normalize()
-	return &Bootstrapper{config, respoolClient}
+	return &respoolLoader{
+		config: config,
+		client: client,
+	}
 }
 
-// BootstrapRespool returns the ResourcePoolID for the configured path if it
-// exists, else it creates a new respool using the configured spec.
-func (b *Bootstrapper) BootstrapRespool() (*v1peloton.ResourcePoolID, error) {
-	log.Info("Boostrapping respool")
+// Load lazily loads a respool using the configured configured path if it exists,
+// else it creates a new respool using the configured spec.
+func (l *respoolLoader) Load(ctx context.Context) (*v1peloton.ResourcePoolID, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
-	if b.config.RespoolPath == "" {
-		return nil, errors.New("no path configured")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), b.config.Timeout)
-	defer cancel()
-
-	for {
-		id, err := b.bootstrapRespool(ctx)
-		if err != nil {
-			select {
-			case <-time.After(b.config.RetryInterval):
-				// Retry.
-				continue
-			case <-ctx.Done():
-				// Timed out while waiting to retry.
-				return nil, err
-			}
+	if l.respoolID == nil {
+		// respoolID has not been initialized yet, attempt to bootstrap.
+		if l.config.RespoolPath == "" {
+			return nil, errors.New("no path configured")
 		}
-		return id, nil
+		for {
+			id, err := l.bootstrapRespool(ctx)
+			if err != nil {
+				select {
+				case <-time.After(l.config.RetryInterval):
+					// Retry.
+					continue
+				case <-ctx.Done():
+					// Timed out while waiting to retry.
+					return nil, err
+				}
+			}
+			l.respoolID = id
+			break
+		}
 	}
+	return &v1peloton.ResourcePoolID{Value: l.respoolID.GetValue()}, nil
 }
 
-func (b *Bootstrapper) bootstrapRespool(
+func (l *respoolLoader) bootstrapRespool(
 	ctx context.Context,
 ) (*v1peloton.ResourcePoolID, error) {
 
-	id, err := b.lookupRespoolID(ctx, b.config.RespoolPath)
+	id, err := l.lookupRespoolID(ctx, l.config.RespoolPath)
 	if err != nil {
 		if yarpcerrors.IsNotFound(err) {
-			id, err = b.createDefaultRespool(ctx)
+			id, err = l.createDefaultRespool(ctx)
 			if err != nil {
 				return nil, fmt.Errorf("create default: %s", err)
 			}
@@ -87,7 +101,7 @@ func (b *Bootstrapper) bootstrapRespool(
 				"id": id.GetValue(),
 			}).Info("Created default respool")
 		} else {
-			return nil, fmt.Errorf("lookup %s id: %s", b.config.RespoolPath, err)
+			return nil, fmt.Errorf("lookup %s id: %s", l.config.RespoolPath, err)
 		}
 	} else {
 		log.WithFields(log.Fields{
@@ -99,7 +113,7 @@ func (b *Bootstrapper) bootstrapRespool(
 	}, nil
 }
 
-func (b *Bootstrapper) lookupRespoolID(
+func (l *respoolLoader) lookupRespoolID(
 	ctx context.Context,
 	path string,
 ) (*v0peloton.ResourcePoolID, error) {
@@ -107,7 +121,7 @@ func (b *Bootstrapper) lookupRespoolID(
 	req := &respool.LookupRequest{
 		Path: &respool.ResourcePoolPath{Value: path},
 	}
-	resp, err := b.respoolClient.LookupResourcePoolID(ctx, req)
+	resp, err := l.client.LookupResourcePoolID(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -123,28 +137,28 @@ func (b *Bootstrapper) lookupRespoolID(
 	return resp.GetId(), nil
 }
 
-func (b *Bootstrapper) createDefaultRespool(
+func (l *respoolLoader) createDefaultRespool(
 	ctx context.Context,
 ) (*v0peloton.ResourcePoolID, error) {
 
-	root, err := b.lookupRespoolID(ctx, "/")
+	root, err := l.lookupRespoolID(ctx, "/")
 	if err != nil {
 		return nil, fmt.Errorf("lookup root id: %s", err)
 	}
 	req := &respool.CreateRequest{
 		Config: &respool.ResourcePoolConfig{
-			Name:            strings.TrimPrefix(b.config.RespoolPath, "/"),
-			OwningTeam:      b.config.DefaultRespoolSpec.OwningTeam,
-			LdapGroups:      b.config.DefaultRespoolSpec.LDAPGroups,
-			Description:     b.config.DefaultRespoolSpec.Description,
-			Resources:       b.config.DefaultRespoolSpec.Resources,
+			Name:            strings.TrimPrefix(l.config.RespoolPath, "/"),
+			OwningTeam:      l.config.DefaultRespoolSpec.OwningTeam,
+			LdapGroups:      l.config.DefaultRespoolSpec.LDAPGroups,
+			Description:     l.config.DefaultRespoolSpec.Description,
+			Resources:       l.config.DefaultRespoolSpec.Resources,
 			Parent:          root,
-			Policy:          b.config.DefaultRespoolSpec.Policy,
-			ControllerLimit: b.config.DefaultRespoolSpec.ControllerLimit,
-			SlackLimit:      b.config.DefaultRespoolSpec.SlackLimit,
+			Policy:          l.config.DefaultRespoolSpec.Policy,
+			ControllerLimit: l.config.DefaultRespoolSpec.ControllerLimit,
+			SlackLimit:      l.config.DefaultRespoolSpec.SlackLimit,
 		},
 	}
-	resp, err := b.respoolClient.CreateResourcePool(ctx, req)
+	resp, err := l.client.CreateResourcePool(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("create resource pool: %s", err)
 	}

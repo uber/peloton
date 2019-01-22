@@ -51,10 +51,10 @@ var errUnimplemented = errors.New("rpc is unimplemented")
 // ServiceHandler implements a partial Aurora API. Various unneeded methods have
 // been left intentionally unimplemented.
 type ServiceHandler struct {
-	metrics   *Metrics
-	jobClient statelesssvc.JobServiceYARPCClient
-	podClient podsvc.PodServiceYARPCClient
-	respoolID *peloton.ResourcePoolID
+	metrics       *Metrics
+	jobClient     statelesssvc.JobServiceYARPCClient
+	podClient     podsvc.PodServiceYARPCClient
+	respoolLoader RespoolLoader
 }
 
 // NewServiceHandler creates a new ServiceHandler.
@@ -62,13 +62,13 @@ func NewServiceHandler(
 	parent tally.Scope,
 	jobClient statelesssvc.JobServiceYARPCClient,
 	podClient podsvc.PodServiceYARPCClient,
-	respoolID *peloton.ResourcePoolID,
+	respoolLoader RespoolLoader,
 ) *ServiceHandler {
 	return &ServiceHandler{
-		metrics:   NewMetrics(parent.SubScope("aurorabridge").SubScope("api")),
-		jobClient: jobClient,
-		podClient: podClient,
-		respoolID: respoolID,
+		metrics:       NewMetrics(parent.SubScope("aurorabridge").SubScope("api")),
+		jobClient:     jobClient,
+		podClient:     podClient,
+		respoolLoader: respoolLoader,
 	}
 }
 
@@ -356,6 +356,11 @@ func (h *ServiceHandler) getJobUpdateDiff(
 	request *api.JobUpdateRequest,
 ) (*api.Result, *auroraError) {
 
+	respoolID, err := h.respoolLoader.Load(ctx)
+	if err != nil {
+		return nil, auroraErrorf("load respool: %s", err)
+	}
+
 	jobKey := request.GetTaskConfig().GetJob()
 	jobID, err := h.getJobID(ctx, jobKey)
 	if err != nil {
@@ -367,7 +372,7 @@ func (h *ServiceHandler) getJobUpdateDiff(
 		return nil, auroraErrorf("get job summary: %s", err)
 	}
 
-	jobSpec, err := atop.NewJobSpecFromJobUpdateRequest(request, h.respoolID)
+	jobSpec, err := atop.NewJobSpecFromJobUpdateRequest(request, respoolID)
 	if err != nil {
 		return nil, auroraErrorf("new job spec: %s", err)
 	}
@@ -444,9 +449,14 @@ func (h *ServiceHandler) startJobUpdate(
 	message *string,
 ) (*api.Result, *auroraError) {
 
+	respoolID, err := h.respoolLoader.Load(ctx)
+	if err != nil {
+		return nil, auroraErrorf("load respool: %s", err)
+	}
+
 	jobKey := request.GetTaskConfig().GetJob()
 
-	jobSpec, err := atop.NewJobSpecFromJobUpdateRequest(request, h.respoolID)
+	jobSpec, err := atop.NewJobSpecFromJobUpdateRequest(request, respoolID)
 	if err != nil {
 		return nil, auroraErrorf("new job spec: %s", err)
 	}

@@ -20,14 +20,9 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 )
 
-// BootstrapConfig defines configuration for boostrapping bridge.
-type BootstrapConfig struct {
-	// Timeout is the max boostrapping timeout including retries.
-	Timeout time.Duration `yaml:"timeout"`
-
-	// RetryInterval is the duration between retries.
-	RetryInterval time.Duration `yaml:"retry_interval"`
-
+// RespoolLoaderConfig defines RespoolLoader configuration.
+type RespoolLoaderConfig struct {
+	RetryInterval      time.Duration      `yaml:"retry_interval"`
 	RespoolPath        string             `yaml:"respool_path"`
 	DefaultRespoolSpec DefaultRespoolSpec `yaml:"default_respool_spec"`
 }
@@ -44,10 +39,7 @@ type DefaultRespoolSpec struct {
 	SlackLimit      *respool.SlackLimit       `yaml:"slack_limit"`
 }
 
-func (c *BootstrapConfig) normalize() {
-	if c.Timeout == 0 {
-		c.Timeout = 60 * time.Second
-	}
+func (c *RespoolLoaderConfig) normalize() {
 	if c.RetryInterval == 0 {
 		c.RetryInterval = 5 * time.Second
 	}

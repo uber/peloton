@@ -22,7 +22,6 @@ import (
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/auroraschedulermanagerserver"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/readonlyschedulerserver"
-	"github.com/uber/peloton/aurorabridge/fixture"
 
 	"github.com/uber/peloton/aurorabridge"
 	"github.com/uber/peloton/common"
@@ -228,21 +227,13 @@ func main() {
 		log.Fatalf("Unable to create leader candidate: %v", err)
 	}
 
-	// TODO(codyg): Re-enable resource pool bootstrapping once integration test
-	// situation is figured out.
-	//bootstrapper := aurorabridge.NewBootstrapper(cfg.Bootstrap, respoolClient)
-	//respoolID, err := bootstrapper.BootstrapRespool()
-	//if err != nil {
-	//log.Fatalf("Unable to boostrap respool: %s", err)
-	//}
-	println(respoolClient) // Appease compiler.
-	respoolID := fixture.PelotonResourcePoolID()
+	respoolLoader := aurorabridge.NewRespoolLoader(cfg.RespoolLoader, respoolClient)
 
 	handler := aurorabridge.NewServiceHandler(
 		rootScope,
 		jobClient,
 		podClient,
-		respoolID,
+		respoolLoader,
 	)
 	dispatcher.Register(auroraschedulermanagerserver.New(handler))
 	dispatcher.Register(readonlyschedulerserver.New(handler))

@@ -31,6 +31,7 @@ import (
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	podmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc/mocks"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	aurorabridgemocks "github.com/uber/peloton/aurorabridge/mocks"
 
 	"github.com/uber/peloton/aurorabridge/atop"
 	"github.com/uber/peloton/aurorabridge/fixture"
@@ -50,11 +51,10 @@ type ServiceHandlerTestSuite struct {
 
 	ctx context.Context
 
-	ctrl      *gomock.Controller
-	jobClient *jobmocks.MockJobServiceYARPCClient
-	podClient *podmocks.MockPodServiceYARPCClient
-
-	respoolID *peloton.ResourcePoolID
+	ctrl          *gomock.Controller
+	jobClient     *jobmocks.MockJobServiceYARPCClient
+	podClient     *podmocks.MockPodServiceYARPCClient
+	respoolLoader *aurorabridgemocks.MockRespoolLoader
 
 	handler *ServiceHandler
 }
@@ -66,13 +66,13 @@ func (suite *ServiceHandlerTestSuite) SetupTest() {
 	suite.jobClient = jobmocks.NewMockJobServiceYARPCClient(suite.ctrl)
 	suite.podClient = podmocks.NewMockPodServiceYARPCClient(suite.ctrl)
 
-	suite.respoolID = fixture.PelotonResourcePoolID()
+	suite.respoolLoader = aurorabridgemocks.NewMockRespoolLoader(suite.ctrl)
 
 	suite.handler = NewServiceHandler(
 		tally.NoopScope,
 		suite.jobClient,
 		suite.podClient,
-		suite.respoolID,
+		suite.respoolLoader,
 	)
 }
 
@@ -623,11 +623,13 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
 
 // Tests get job update diff
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff() {
+	respoolID := fixture.PelotonResourcePoolID()
 	jobUpdateRequest := fixture.AuroraJobUpdateRequest()
 	jobID := fixture.PelotonJobID()
 	jobKey := jobUpdateRequest.GetTaskConfig().GetJob()
 	entityVersion := fixture.PelotonEntityVersion()
-	jobSpec, _ := atop.NewJobSpecFromJobUpdateRequest(jobUpdateRequest, suite.handler.respoolID)
+
+	jobSpec, _ := atop.NewJobSpecFromJobUpdateRequest(jobUpdateRequest, respoolID)
 
 	addedInstancesIDRange := []*pod.InstanceIDRange{
 		&pod.InstanceIDRange{
@@ -644,6 +646,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff() {
 			},
 		},
 	}
+
+	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 	suite.expectGetJobVersion(jobID, entityVersion)
@@ -669,11 +673,14 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff() {
 
 // Tests the failure scenarios for get job update diff
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiffFailure() {
+	respoolID := fixture.PelotonResourcePoolID()
 	jobUpdateRequest := fixture.AuroraJobUpdateRequest()
 	jobID := fixture.PelotonJobID()
 	jobKey := jobUpdateRequest.GetTaskConfig().GetJob()
 	entityVersion := fixture.PelotonEntityVersion()
-	jobSpec, _ := atop.NewJobSpecFromJobUpdateRequest(jobUpdateRequest, suite.handler.respoolID)
+	jobSpec, _ := atop.NewJobSpecFromJobUpdateRequest(jobUpdateRequest, respoolID)
+
+	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 	suite.expectGetJobVersion(jobID, entityVersion)
@@ -697,10 +704,13 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiffFailure() {
 
 // Ensures StartJobUpdate creates jobs which don't exist.
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobSuccess() {
+	respoolID := fixture.PelotonResourcePoolID()
 	req := fixture.AuroraJobUpdateRequest()
 	k := req.GetTaskConfig().GetJob()
 	name := atop.NewJobName(k)
 	newv := fixture.PelotonEntityVersion()
+
+	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
 
 	suite.jobClient.EXPECT().
 		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
@@ -726,8 +736,11 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobSuccess() {
 // Ensures StartJobUpdate returns an INVALID_REQUEST error if there is a conflict
 // when trying to create a job which doesn't exist.
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobConflict() {
+	respoolID := fixture.PelotonResourcePoolID()
 	req := fixture.AuroraJobUpdateRequest()
 	name := atop.NewJobName(req.GetTaskConfig().GetJob())
+
+	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
 
 	suite.jobClient.EXPECT().
 		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
@@ -746,11 +759,14 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobConflict() {
 
 // Ensures StartJobUpdate replaces jobs which already exist with no pulse.
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobNoPulseSuccess() {
+	respoolID := fixture.PelotonResourcePoolID()
 	req := fixture.AuroraJobUpdateRequest()
 	k := req.GetTaskConfig().GetJob()
 	curv := fixture.PelotonEntityVersion()
 	newv := fixture.PelotonEntityVersion()
 	id := fixture.PelotonJobID()
+
+	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(k, id)
 
@@ -775,6 +791,7 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobNoPulseSucces
 
 // Ensures StartJobUpdate replaces jobs which already exist with pulse.
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobWithPulseSuccess() {
+	respoolID := fixture.PelotonResourcePoolID()
 	req := &api.JobUpdateRequest{
 		TaskConfig: fixture.AuroraTaskConfig(),
 		Settings: &api.JobUpdateSettings{
@@ -785,6 +802,8 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobWithPulseSucc
 	curv := fixture.PelotonEntityVersion()
 	newv := fixture.PelotonEntityVersion()
 	id := fixture.PelotonJobID()
+
+	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(k, id)
 
@@ -814,10 +833,13 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobWithPulseSucc
 // Ensures StartJobUpdate returns an INVALID_REQUEST error if there is a conflict
 // when trying to replace a job which has changed version.
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobConflict() {
+	respoolID := fixture.PelotonResourcePoolID()
 	req := fixture.AuroraJobUpdateRequest()
 	k := req.GetTaskConfig().GetJob()
 	curv := fixture.PelotonEntityVersion()
 	id := fixture.PelotonJobID()
+
+	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(k, id)
 

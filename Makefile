@@ -164,6 +164,7 @@ define vendor_mockgen
 endef
 
 mockgens: build-mockgen gens $(GOMOCK)
+	$(call local_mockgen,aurorabridge,RespoolLoader)
 	$(call local_mockgen,common/background,Manager)
 	$(call local_mockgen,common/constraints,Evaluator)
 	$(call local_mockgen,common/goalstate,Engine)
