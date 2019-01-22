@@ -29,16 +29,17 @@ import (
 // NewJobUpdateSummary creates a new aurora job update summary using update info.
 func NewJobUpdateSummary(
 	jobKey *api.JobKey,
-	u *stateless.UpdateInfo,
+	u *stateless.WorkflowInfo,
 ) (*api.JobUpdateSummary, error) {
 	var createTime int64
 	var lastModifiedTime int64
 
-	d, err := opaquedata.Deserialize(u.GetInfo().GetOpaqueData())
+	d, err := opaquedata.Deserialize(u.GetOpaqueData())
 	if err != nil {
 		return nil, fmt.Errorf("deserialize opaque data: %s", err)
 	}
-	aState, err := NewJobUpdateStatus(u.GetInfo().GetStatus().GetState(), d)
+
+	aState, err := NewJobUpdateStatus(u.GetStatus().GetState(), d)
 	if err != nil {
 		return nil, err
 	}

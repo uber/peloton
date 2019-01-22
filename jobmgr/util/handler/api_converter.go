@@ -424,11 +424,16 @@ func ConvertJobSummary(
 // ConvertUpdateModelToWorkflowInfo converts private UpdateModel
 // to v1alpha stateless.WorkflowInfo
 func ConvertUpdateModelToWorkflowInfo(
-	updateInfo *models.UpdateModel) *stateless.WorkflowInfo {
+	updateInfo *models.UpdateModel,
+	workflowEvents []*stateless.WorkflowEvent) *stateless.WorkflowInfo {
 	result := &stateless.WorkflowInfo{}
 	result.Status = ConvertUpdateModelToWorkflowStatus(updateInfo)
 
 	if updateInfo.GetType() == models.WorkflowType_UPDATE {
+		result.InstancesAdded = util.ConvertInstanceIDListToInstanceRange(updateInfo.GetInstancesAdded())
+		result.InstancesRemoved = util.ConvertInstanceIDListToInstanceRange(updateInfo.GetInstancesRemoved())
+		result.InstancesUpdated = util.ConvertInstanceIDListToInstanceRange(updateInfo.GetInstancesUpdated())
+
 		result.UpdateSpec = &stateless.UpdateSpec{
 			BatchSize:                    updateInfo.GetUpdateConfig().GetBatchSize(),
 			RollbackOnFailure:            updateInfo.GetUpdateConfig().GetRollbackOnFailure(),
@@ -438,12 +443,14 @@ func ConvertUpdateModelToWorkflowInfo(
 		}
 	} else if updateInfo.GetType() == models.WorkflowType_RESTART {
 		result.RestartBatchSize = updateInfo.GetUpdateConfig().GetBatchSize()
-		result.RestartRanges = util.ConvertInstanceIDListToInstanceRange(updateInfo.GetInstancesCurrent())
+		result.RestartRanges = util.ConvertInstanceIDListToInstanceRange(updateInfo.GetInstancesUpdated())
 	}
 
 	result.OpaqueData = &v1alphapeloton.OpaqueData{
 		Data: updateInfo.GetOpaqueData().GetData(),
 	}
+
+	result.Events = workflowEvents
 	return result
 }
 

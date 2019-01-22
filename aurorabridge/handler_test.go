@@ -103,23 +103,21 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesWithJobKey() {
 
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 	suite.jobClient.EXPECT().
-		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 			JobId: jobID,
 		}).
-		Return(&statelesssvc.GetJobUpdateResponse{
-			UpdateInfo: &stateless.UpdateInfo{
-				Info: &stateless.WorkflowInfo{
-					Status: &stateless.WorkflowStatus{
-						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
-					},
-					UpdateSpec: &stateless.UpdateSpec{
-						BatchSize:         1,
-						RollbackOnFailure: false,
-					},
-					OpaqueData: nil,
+		Return(&statelesssvc.GetJobResponse{
+			WorkflowInfo: &stateless.WorkflowInfo{
+				Status: &stateless.WorkflowStatus{
+					Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+					State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 				},
-				Events: workflowEvents,
+				UpdateSpec: &stateless.UpdateSpec{
+					BatchSize:         1,
+					RollbackOnFailure: false,
+				},
+				OpaqueData: nil,
+				Events:     workflowEvents,
 			},
 		}, nil)
 
@@ -158,67 +156,61 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesWithJobKeyRole() 
 
 	// fetch update for job1
 	suite.jobClient.EXPECT().
-		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 			JobId: jobID1,
 		}).
-		Return(&statelesssvc.GetJobUpdateResponse{
-			UpdateInfo: &stateless.UpdateInfo{
-				Info: &stateless.WorkflowInfo{
-					Status: &stateless.WorkflowStatus{
-						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
-					},
-					UpdateSpec: &stateless.UpdateSpec{
-						BatchSize:         1,
-						RollbackOnFailure: false,
-					},
-					OpaqueData: nil,
+		Return(&statelesssvc.GetJobResponse{
+			WorkflowInfo: &stateless.WorkflowInfo{
+				Status: &stateless.WorkflowStatus{
+					Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+					State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 				},
-				Events: nil,
+				UpdateSpec: &stateless.UpdateSpec{
+					BatchSize:         1,
+					RollbackOnFailure: false,
+				},
+				OpaqueData: nil,
+				Events:     nil,
 			},
 		}, nil)
 
 	// fetch update for job2
 	suite.jobClient.EXPECT().
-		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 			JobId: jobID2,
 		}).
-		Return(&statelesssvc.GetJobUpdateResponse{
-			UpdateInfo: &stateless.UpdateInfo{
-				Info: &stateless.WorkflowInfo{
-					Status: &stateless.WorkflowStatus{
-						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
-					},
-					UpdateSpec: &stateless.UpdateSpec{
-						BatchSize:         1,
-						RollbackOnFailure: false,
-					},
-					OpaqueData: nil,
+		Return(&statelesssvc.GetJobResponse{
+			WorkflowInfo: &stateless.WorkflowInfo{
+				Status: &stateless.WorkflowStatus{
+					Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+					State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 				},
-				Events: nil,
+				UpdateSpec: &stateless.UpdateSpec{
+					BatchSize:         1,
+					RollbackOnFailure: false,
+				},
+				OpaqueData: nil,
+				Events:     nil,
 			},
 		}, nil)
 
-	// fetch update for job2, and will be ignored as it is in INITIALIZED state
+	// fetch update for job3, and will be ignored as it is in INITIALIZED state
 	suite.jobClient.EXPECT().
-		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 			JobId: jobID3,
 		}).
-		Return(&statelesssvc.GetJobUpdateResponse{
-			UpdateInfo: &stateless.UpdateInfo{
-				Info: &stateless.WorkflowInfo{
-					Status: &stateless.WorkflowStatus{
-						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-						State: stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
-					},
-					UpdateSpec: &stateless.UpdateSpec{
-						BatchSize:         1,
-						RollbackOnFailure: false,
-					},
-					OpaqueData: nil,
+		Return(&statelesssvc.GetJobResponse{
+			WorkflowInfo: &stateless.WorkflowInfo{
+				Status: &stateless.WorkflowStatus{
+					Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+					State: stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
 				},
-				Events: nil,
+				UpdateSpec: &stateless.UpdateSpec{
+					BatchSize:         1,
+					RollbackOnFailure: false,
+				},
+				OpaqueData: nil,
+				Events:     nil,
 			},
 		}, nil)
 
@@ -250,43 +242,40 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesUpdateStatuses() 
 
 	// Get updates for all jobs and filter those updates using update query state
 	suite.jobClient.EXPECT().
-		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 			JobId: jobID1,
 		}).
-		Return(&statelesssvc.GetJobUpdateResponse{
-			UpdateInfo: &stateless.UpdateInfo{
-				Info: &stateless.WorkflowInfo{
-					Status: &stateless.WorkflowStatus{
-						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
-					},
-					UpdateSpec: &stateless.UpdateSpec{
-						BatchSize:         1,
-						RollbackOnFailure: false,
-					},
-					OpaqueData: nil,
+		Return(&statelesssvc.GetJobResponse{
+			WorkflowInfo: &stateless.WorkflowInfo{
+				Status: &stateless.WorkflowStatus{
+					Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+					State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 				},
-				Events: nil,
+				UpdateSpec: &stateless.UpdateSpec{
+					BatchSize:         1,
+					RollbackOnFailure: false,
+				},
+				OpaqueData: nil,
+				Events:     nil,
 			},
 		}, nil)
+
 	suite.jobClient.EXPECT().
-		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 			JobId: jobID2,
 		}).
-		Return(&statelesssvc.GetJobUpdateResponse{
-			UpdateInfo: &stateless.UpdateInfo{
-				Info: &stateless.WorkflowInfo{
-					Status: &stateless.WorkflowStatus{
-						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD,
-					},
-					UpdateSpec: &stateless.UpdateSpec{
-						BatchSize:         1,
-						RollbackOnFailure: false,
-					},
-					OpaqueData: nil,
+		Return(&statelesssvc.GetJobResponse{
+			WorkflowInfo: &stateless.WorkflowInfo{
+				Status: &stateless.WorkflowStatus{
+					Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+					State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD,
 				},
-				Events: nil,
+				UpdateSpec: &stateless.UpdateSpec{
+					BatchSize:         1,
+					RollbackOnFailure: false,
+				},
+				OpaqueData: nil,
+				Events:     nil,
 			},
 		}, nil)
 
@@ -343,7 +332,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesFailure() {
 			Records: records,
 		}, nil)
 	suite.jobClient.EXPECT().
-		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 			JobId: jobIDs[0],
 		}).Return(nil, errors.New("unable to list job updates"))
 
@@ -374,23 +363,21 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismSuccess(
 
 	for i := 0; i < 1000; i++ {
 		suite.jobClient.EXPECT().
-			GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+			GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 				JobId: jobIDs[i],
 			}).
-			Return(&statelesssvc.GetJobUpdateResponse{
-				UpdateInfo: &stateless.UpdateInfo{
-					Info: &stateless.WorkflowInfo{
-						Status: &stateless.WorkflowStatus{
-							Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-							State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
-						},
-						UpdateSpec: &stateless.UpdateSpec{
-							BatchSize:         1,
-							RollbackOnFailure: false,
-						},
-						OpaqueData: nil,
+			Return(&statelesssvc.GetJobResponse{
+				WorkflowInfo: &stateless.WorkflowInfo{
+					Status: &stateless.WorkflowStatus{
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 					},
-					Events: nil,
+					UpdateSpec: &stateless.UpdateSpec{
+						BatchSize:         1,
+						RollbackOnFailure: false,
+					},
+					OpaqueData: nil,
+					Events:     nil,
 				},
 			}, nil)
 	}
@@ -423,33 +410,41 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismFilterUp
 	for i := 0; i < 1000; i++ {
 		if i%100 == 0 {
 			suite.jobClient.EXPECT().
-				GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+				GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 					JobId: jobIDs[i],
 				}).
-				Return(&statelesssvc.GetJobUpdateResponse{
-					UpdateInfo: &stateless.UpdateInfo{
-						Info: &stateless.WorkflowInfo{
-							Status: &stateless.WorkflowStatus{
-								Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-								State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD,
-							},
+				Return(&statelesssvc.GetJobResponse{
+					WorkflowInfo: &stateless.WorkflowInfo{
+						Status: &stateless.WorkflowStatus{
+							Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+							State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD,
 						},
+						UpdateSpec: &stateless.UpdateSpec{
+							BatchSize:         1,
+							RollbackOnFailure: false,
+						},
+						OpaqueData: nil,
+						Events:     nil,
 					},
 				}, nil)
 			continue
 		}
 		suite.jobClient.EXPECT().
-			GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+			GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 				JobId: jobIDs[i],
 			}).
-			Return(&statelesssvc.GetJobUpdateResponse{
-				UpdateInfo: &stateless.UpdateInfo{
-					Info: &stateless.WorkflowInfo{
-						Status: &stateless.WorkflowStatus{
-							Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-							State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
-						},
+			Return(&statelesssvc.GetJobResponse{
+				WorkflowInfo: &stateless.WorkflowInfo{
+					Status: &stateless.WorkflowStatus{
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 					},
+					UpdateSpec: &stateless.UpdateSpec{
+						BatchSize:         1,
+						RollbackOnFailure: false,
+					},
+					OpaqueData: nil,
+					Events:     nil,
 				},
 			}, nil)
 	}
@@ -482,7 +477,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismFailure(
 	for i := 0; i < 1000; i++ {
 		if i == 500 {
 			suite.jobClient.EXPECT().
-				GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+				GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 					JobId: jobIDs[i],
 				}).
 				Return(nil, errors.New("unable to get update"))
@@ -490,34 +485,42 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismFailure(
 		}
 		if i%100 == 0 {
 			suite.jobClient.EXPECT().
-				GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+				GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 					JobId: jobIDs[i],
 				}).
-				Return(&statelesssvc.GetJobUpdateResponse{
-					UpdateInfo: &stateless.UpdateInfo{
-						Info: &stateless.WorkflowInfo{
-							Status: &stateless.WorkflowStatus{
-								Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-								State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD,
-							},
+				Return(&statelesssvc.GetJobResponse{
+					WorkflowInfo: &stateless.WorkflowInfo{
+						Status: &stateless.WorkflowStatus{
+							Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+							State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD,
 						},
+						UpdateSpec: &stateless.UpdateSpec{
+							BatchSize:         1,
+							RollbackOnFailure: false,
+						},
+						OpaqueData: nil,
+						Events:     nil,
 					},
 				}, nil).
 				AnyTimes()
 			continue
 		}
 		suite.jobClient.EXPECT().
-			GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+			GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 				JobId: jobIDs[i],
 			}).
-			Return(&statelesssvc.GetJobUpdateResponse{
-				UpdateInfo: &stateless.UpdateInfo{
-					Info: &stateless.WorkflowInfo{
-						Status: &stateless.WorkflowStatus{
-							Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-							State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
-						},
+			Return(&statelesssvc.GetJobResponse{
+				WorkflowInfo: &stateless.WorkflowInfo{
+					Status: &stateless.WorkflowStatus{
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 					},
+					UpdateSpec: &stateless.UpdateSpec{
+						BatchSize:         1,
+						RollbackOnFailure: false,
+					},
+					OpaqueData: nil,
+					Events:     nil,
 				},
 			}, nil).
 			AnyTimes()
@@ -961,17 +964,15 @@ func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_ResumesIfAwaitingPulse(
 	suite.NoError(err)
 
 	suite.jobClient.EXPECT().
-		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 			JobId: id,
 		}).
-		Return(&statelesssvc.GetJobUpdateResponse{
-			UpdateInfo: &stateless.UpdateInfo{
-				Info: &stateless.WorkflowInfo{
-					OpaqueData: od,
-					Status: &stateless.WorkflowStatus{
-						State:   stateless.WorkflowState_WORKFLOW_STATE_PAUSED,
-						Version: v,
-					},
+		Return(&statelesssvc.GetJobResponse{
+			WorkflowInfo: &stateless.WorkflowInfo{
+				OpaqueData: od,
+				Status: &stateless.WorkflowStatus{
+					State:   stateless.WorkflowState_WORKFLOW_STATE_PAUSED,
+					Version: v,
 				},
 			},
 		}, nil)
@@ -1002,16 +1003,14 @@ func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_NoopsIfNotAwaitingPulse
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
 	suite.jobClient.EXPECT().
-		GetJobUpdate(suite.ctx, &statelesssvc.GetJobUpdateRequest{
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 			JobId: id,
 		}).
-		Return(&statelesssvc.GetJobUpdateResponse{
-			UpdateInfo: &stateless.UpdateInfo{
-				Info: &stateless.WorkflowInfo{
-					Status: &stateless.WorkflowStatus{
-						State:   stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
-						Version: v,
-					},
+		Return(&statelesssvc.GetJobResponse{
+			WorkflowInfo: &stateless.WorkflowInfo{
+				Status: &stateless.WorkflowStatus{
+					State:   stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+					Version: v,
 				},
 			},
 		}, nil)

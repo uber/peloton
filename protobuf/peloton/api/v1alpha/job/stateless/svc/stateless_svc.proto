@@ -409,7 +409,7 @@ message ListJobUpdatesRequest {
 // Return errors:
 //   NOT_FOUND:         if the job ID is not found.
 message ListJobUpdatesResponse {
-  repeated stateless.UpdateInfo updates = 1;
+  repeated stateless.WorkflowInfo workflow_infos = 1;
 }
 
 // Request message for JobService.GetReplaceJobDiffRequest method.
@@ -478,27 +478,6 @@ message ListJobsRequest {}
 message ListJobsResponse {
   // List of all jobs.
   repeated stateless.JobSummary jobs = 1;
-}
-
-// Request message for JobService.GetJobUpdate method.
-message GetJobUpdateRequest {
-  // The job ID to look up the job.
-  peloton.JobID job_id = 1;
-}
-
-// Response message for JobService.GetJobUpdate method.
-// Return errors:
-//   NOT_FOUND:         if the update is not found.
-message GetJobUpdateResponse {
-  // Information about the job update, which includes update specification,
-  // status and events.
-  stateless.UpdateInfo update_info = 1;
-
-  // Job configuration before update.
-  stateless.JobSpec prev_job_spec = 2;
-
-  // Job configuration after update.
-  stateless.JobSpec job_spec = 3;
 }
 
 // Job service defines the job related methods such as create, get, query and kill jobs.
@@ -576,10 +555,6 @@ service JobService {
   // Get the list of instances which will be added/removed/updated if
   // the given job specification is applied via the ReplaceJob API.
   rpc GetReplaceJobDiff(GetReplaceJobDiffRequest) returns (GetReplaceJobDiffResponse);
-
-  // Get the current update for the job which includes update specification,
-  // status, events, new and old job specification.
-  rpc GetJobUpdate(GetJobUpdateRequest) returns (GetJobUpdateResponse);
 
   // Debug only methods.
   // TODO move to private job manager APIs.

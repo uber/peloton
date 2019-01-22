@@ -1115,7 +1115,7 @@ func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowInfo() {
 		},
 	}
 
-	workflowInfo := ConvertUpdateModelToWorkflowInfo(updateModel)
+	workflowInfo := ConvertUpdateModelToWorkflowInfo(updateModel, nil)
 
 	suite.Equal(workflowStatus, workflowInfo.GetStatus())
 	suite.Equal(updateModel.GetUpdateConfig().GetBatchSize(), workflowInfo.GetUpdateSpec().GetBatchSize())
@@ -1133,7 +1133,7 @@ func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowInfoRestart(
 	updateModel := &models.UpdateModel{
 		Type:                 models.WorkflowType_RESTART,
 		State:                update.State_ROLLING_FORWARD,
-		InstancesCurrent:     []uint32{5, 6, 7, 10},
+		InstancesUpdated:     []uint32{5, 6, 7, 10},
 		InstancesDone:        10,
 		InstancesTotal:       25,
 		InstancesFailed:      3,
@@ -1159,7 +1159,7 @@ func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowInfoRestart(
 		},
 	}
 
-	workflowInfo := ConvertUpdateModelToWorkflowInfo(updateModel)
+	workflowInfo := ConvertUpdateModelToWorkflowInfo(updateModel, nil)
 
 	restartRanges := []*pod.InstanceIDRange{
 		{

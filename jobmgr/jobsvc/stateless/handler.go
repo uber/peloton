@@ -869,6 +869,7 @@ func (h *serviceHandler) GetJob(
 	}
 
 	var updateInfo *models.UpdateModel
+	var workflowEvents []*stateless.WorkflowEvent
 	if len(jobRuntime.GetUpdateID().GetValue()) > 0 {
 		updateInfo, err = h.updateStore.GetUpdate(
 			ctx,
@@ -876,6 +877,13 @@ func (h *serviceHandler) GetJob(
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get update information")
+		}
+
+		workflowEvents, err = h.updateStore.GetJobUpdateEvents(
+			ctx,
+			jobRuntime.GetUpdateID())
+		if err != nil {
+			return nil, errors.Wrap(err, "fail to get job update events")
 		}
 	}
 
@@ -887,7 +895,7 @@ func (h *serviceHandler) GetJob(
 		},
 		Secrets: handlerutil.ConvertV0SecretsToV1Secrets(
 			jobmgrtask.CreateSecretsFromVolumes(secretVolumes)),
-		WorkflowInfo: handlerutil.ConvertUpdateModelToWorkflowInfo(updateInfo),
+		WorkflowInfo: handlerutil.ConvertUpdateModelToWorkflowInfo(updateInfo, workflowEvents),
 	}, nil
 }
 
@@ -969,76 +977,6 @@ func (h *serviceHandler) GetWorkflowEvents(
 
 	return &svc.GetWorkflowEventsResponse{
 		Events: workflowEvents,
-	}, nil
-}
-
-func (h *serviceHandler) GetJobUpdate(
-	ctx context.Context,
-	req *svc.GetJobUpdateRequest,
-) (resp *svc.GetJobUpdateResponse, err error) {
-	defer func() {
-		if err != nil {
-			log.WithField("request", req).
-				WithError(err).
-				Info("StatelessJobSvc.GetJobUpdate failed")
-			err = handlerutil.ConvertToYARPCError(err)
-			return
-		}
-
-		log.WithField("req", req).
-			Debug("StatelessJobSvc.GetJobUpdate succeeded")
-	}()
-
-	jobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
-	cachedJob := h.jobFactory.AddJob(jobID)
-	jobRuntime, err := cachedJob.GetRuntime(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get job runtime")
-	}
-
-	// check if any active or completed workflow exists for this job
-	if len(jobRuntime.GetUpdateID().GetValue()) == 0 {
-		return nil, yarpcerrors.UnavailableErrorf("job runtime does not have workflow")
-	}
-
-	// Get Update
-	updateModel, err := h.updateStore.GetUpdate(ctx, jobRuntime.GetUpdateID())
-	if err != nil {
-		return nil, errors.Wrap(err, "fail to get update")
-	}
-
-	jobUpdateEvents, err := h.updateStore.GetJobUpdateEvents(
-		ctx,
-		jobRuntime.GetUpdateID())
-	if err != nil {
-		return nil, errors.Wrap(err, "fail to get job update events")
-	}
-
-	// Get Job Spec
-	jobConfig, _, err := h.jobStore.GetJobConfigWithVersion(
-		ctx,
-		jobID.GetValue(),
-		updateModel.GetJobConfigVersion())
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get job config")
-	}
-
-	// Get Prev Job Spec
-	prevJobConfig, _, err := h.jobStore.GetJobConfigWithVersion(
-		ctx,
-		jobID.GetValue(),
-		updateModel.GetPrevJobConfigVersion())
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get previous job config")
-	}
-
-	return &svc.GetJobUpdateResponse{
-		UpdateInfo: &stateless.UpdateInfo{
-			Info:   handlerutil.ConvertUpdateModelToWorkflowInfo(updateModel),
-			Events: jobUpdateEvents,
-		},
-		JobSpec:     handlerutil.ConvertJobConfigToJobSpec(jobConfig),
-		PrevJobSpec: handlerutil.ConvertJobConfigToJobSpec(prevJobConfig),
 	}, nil
 }
 
@@ -1275,7 +1213,7 @@ func (h *serviceHandler) ListJobUpdates(
 		}
 
 		log.WithField("request", req).
-			WithField("num_of_updates", len(resp.GetUpdates())).
+			WithField("num_of_updates", len(resp.GetWorkflowInfos())).
 			Debug("JobSVC.ListJobUpdates succeeded")
 	}()
 
@@ -1288,27 +1226,26 @@ func (h *serviceHandler) ListJobUpdates(
 		return nil, err
 	}
 
-	var updateInfos []*stateless.UpdateInfo
+	var updateInfos []*stateless.WorkflowInfo
 	for _, updateID := range updateIDs {
 		updateModel, err := h.updateStore.GetUpdate(ctx, updateID)
 		if err != nil {
 			return nil, err
 		}
 
-		jobUpdateEvents, err := h.updateStore.GetJobUpdateEvents(
+		workflowEvents, err := h.updateStore.GetJobUpdateEvents(
 			ctx,
 			updateID)
 		if err != nil {
 			return nil, errors.Wrap(err, "fail to get job update events")
 		}
 
-		updateInfos = append(updateInfos, &stateless.UpdateInfo{
-			Info:   handlerutil.ConvertUpdateModelToWorkflowInfo(updateModel),
-			Events: jobUpdateEvents,
-		})
+		updateInfos = append(updateInfos,
+			handlerutil.ConvertUpdateModelToWorkflowInfo(updateModel, workflowEvents),
+		)
 	}
 
-	return &svc.ListJobUpdatesResponse{Updates: updateInfos}, nil
+	return &svc.ListJobUpdatesResponse{WorkflowInfos: updateInfos}, nil
 }
 
 func (h *serviceHandler) GetReplaceJobDiff(

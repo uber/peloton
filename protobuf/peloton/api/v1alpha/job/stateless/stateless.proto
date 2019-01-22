@@ -182,6 +182,17 @@ message WorkflowStatus {
 
   // Previous job version of the job object.
   peloton.EntityVersion prev_version = 8;
+
+  // The time when the workflow was created. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string creation_time = 9;
+
+  // The time when the workflow was last updated. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string update_time = 10;
+
+  // Previous runtime state of the workflow.
+  WorkflowState prev_state = 11;
 }
 
 
@@ -350,6 +361,18 @@ message WorkflowInfo {
 
   // Opaque data supplied by the client
   peloton.OpaqueData opaque_data = 6;
+
+  // job workflow events represents update state changes
+  repeated stateless.WorkflowEvent events = 7;
+
+  // Instances added by update workflow
+  repeated pod.InstanceIDRange instances_added = 8;
+
+  // Instances removed by update workflow
+  repeated pod.InstanceIDRange instances_removed = 9;
+
+  // Instances updated by update workflow
+  repeated pod.InstanceIDRange instances_updated = 10;
 }
 
 // WorkflowEvents are workflow state change events for a job or pod
@@ -364,14 +387,4 @@ message WorkflowEvent {
 
   // Current runtime state of the workflow.
   WorkflowState state = 3;
-}
-
-// Information about an update including its specification, status
-// and events
-message UpdateInfo {
-  // workflow information including status and specification
-  stateless.WorkflowInfo info = 1;
-
-  // workflow events
-  repeated stateless.WorkflowEvent events = 2;
 }

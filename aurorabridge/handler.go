@@ -713,14 +713,17 @@ func (h *ServiceHandler) pulseJobUpdate(
 		}
 		return nil, aerr
 	}
+
 	w, err := h.getWorkflowInfo(ctx, id)
 	if err != nil {
 		return nil, auroraErrorf("get workflow info: %s", err)
 	}
+
 	d, err := opaquedata.Deserialize(w.GetOpaqueData())
 	if err != nil {
 		return nil, auroraErrorf("deserialize opaque data: %s", err)
 	}
+
 	status, err := ptoa.NewJobUpdateStatus(w.GetStatus().GetState(), d)
 	if err != nil {
 		return nil, auroraErrorf("new job update status: %s", err)
@@ -746,6 +749,7 @@ func (h *ServiceHandler) pulseJobUpdate(
 			return nil, auroraErrorf("resume job workflow: %s", err)
 		}
 	}
+
 	return &api.Result{
 		PulseJobUpdateResult: &api.PulseJobUpdateResult{
 			Status: api.JobUpdatePulseStatusOk.Ptr(),
@@ -845,9 +849,9 @@ func (h *ServiceHandler) getJobUpdateDetail(
 ) (*api.JobUpdateDetails, bool, error) {
 
 	// Get job update
-	resp, err := h.jobClient.GetJobUpdate(
+	resp, err := h.jobClient.GetJob(
 		ctx,
-		&statelesssvc.GetJobUpdateRequest{
+		&statelesssvc.GetJobRequest{
 			JobId: jobSummary.GetJobId(),
 		})
 	if err != nil {
@@ -859,14 +863,14 @@ func (h *ServiceHandler) getJobUpdateDetail(
 	// Assumption is that jobmgr's goal state engine will process these
 	// workflows and take appropriate action to make progress on
 	// workflow operations
-	if resp.GetUpdateInfo().GetInfo().GetStatus().GetState() ==
+	if resp.GetWorkflowInfo().GetStatus().GetState() ==
 		stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED {
 		return nil, true, nil /* update is filtered */
 	}
 
 	// Filter by job update state
 	ok, err := isUpdateInfoInStatuses(
-		resp.GetUpdateInfo(),
+		resp.GetWorkflowInfo(),
 		jobUpdateQuery.GetUpdateStatuses())
 	if err != nil {
 		return nil, false, err
@@ -880,9 +884,10 @@ func (h *ServiceHandler) getJobUpdateDetail(
 	if err != nil {
 		return nil, false, err
 	}
+
 	jobUpdateSummary, err := ptoa.NewJobUpdateSummary(
 		jobKey,
-		resp.GetUpdateInfo())
+		resp.GetWorkflowInfo())
 	if err != nil {
 		return nil, false, err
 	}
@@ -945,15 +950,15 @@ func (h *ServiceHandler) getJobSummariesFromJobUpdateQuery(
 // isUpdateInfoInStatuses checks if job update state is present
 // in expected list of job update states
 func isUpdateInfoInStatuses(
-	u *stateless.UpdateInfo,
+	u *stateless.WorkflowInfo,
 	statuses map[api.JobUpdateStatus]struct{},
 ) (bool, error) {
 
-	d, err := opaquedata.Deserialize(u.GetInfo().GetOpaqueData())
+	d, err := opaquedata.Deserialize(u.GetOpaqueData())
 	if err != nil {
 		return false, fmt.Errorf("deserialize opaque data: %s", err)
 	}
-	s, err := ptoa.NewJobUpdateStatus(u.GetInfo().GetStatus().GetState(), d)
+	s, err := ptoa.NewJobUpdateStatus(u.GetStatus().GetState(), d)
 	if err != nil {
 		return false, fmt.Errorf("new job update status: %s", err)
 	}
@@ -1167,14 +1172,17 @@ func (h *ServiceHandler) getWorkflowInfo(
 	ctx context.Context,
 	jobID *peloton.JobID,
 ) (*stateless.WorkflowInfo, error) {
-	req := &statelesssvc.GetJobUpdateRequest{
+
+	req := &statelesssvc.GetJobRequest{
 		JobId: jobID,
 	}
-	resp, err := h.jobClient.GetJobUpdate(ctx, req)
+
+	resp, err := h.jobClient.GetJob(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return resp.GetUpdateInfo().GetInfo(), nil
+
+	return resp.GetWorkflowInfo(), nil
 }
 
 // queryPods calls jobmgr to query a list of PodInfo based on input JobID.

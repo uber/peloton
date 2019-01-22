@@ -307,11 +307,23 @@ func (suite *statelessHandlerTestSuite) TestGetJobSuccess() {
 	suite.updateStore.EXPECT().
 		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
 		Return(&models.UpdateModel{
-			UpdateID: &peloton.UpdateID{Value: testUpdateID},
-			State:    pbupdate.State_ROLLING_FORWARD,
+			UpdateID:         &peloton.UpdateID{Value: testUpdateID},
+			Type:             models.WorkflowType_UPDATE,
+			State:            pbupdate.State_ROLLING_FORWARD,
+			InstancesAdded:   []uint32{3, 4},
+			InstancesUpdated: []uint32{0, 1, 2},
 		}, nil)
 
-	resp, err := suite.handler.GetJob(context.Background(),
+	suite.updateStore.EXPECT().
+		GetJobUpdateEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
+		Return([]*stateless.WorkflowEvent{&stateless.WorkflowEvent{
+			Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+			State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+			Timestamp: time.Now().Format(time.RFC3339),
+		}}, nil)
+
+	resp, err := suite.handler.GetJob(
+		context.Background(),
 		&statelesssvc.GetJobRequest{
 			JobId: &v1alphapeloton.JobID{Value: testJobID},
 		})
@@ -330,6 +342,10 @@ func (suite *statelessHandlerTestSuite) TestGetJobSuccess() {
 		resp.GetJobInfo().GetStatus().GetWorkflowStatus().GetState(),
 		stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 	)
+	suite.Equal(uint32(0), resp.GetWorkflowInfo().GetInstancesUpdated()[0].GetFrom())
+	suite.Equal(uint32(2), resp.GetWorkflowInfo().GetInstancesUpdated()[0].GetTo())
+	suite.Equal(uint32(3), resp.GetWorkflowInfo().GetInstancesAdded()[0].GetFrom())
+	suite.Equal(uint32(4), resp.GetWorkflowInfo().GetInstancesAdded()[0].GetTo())
 }
 
 // TestGetJobConfigGetError tests invoking GetJob API to get job
@@ -418,196 +434,6 @@ func (suite *statelessHandlerTestSuite) TestGetJobUpdateGetError() {
 		})
 	suite.Error(err)
 	suite.Nil(resp)
-}
-
-// TestGetJobUpdateSuccess tests the success for fetching job update
-// details for provided job
-func (suite *statelessHandlerTestSuite) TestGetJobUpdateSuccess() {
-	v0JobID := &peloton.JobID{
-		Value: testJobID,
-	}
-
-	updateModel := &models.UpdateModel{
-		UpdateID: &peloton.UpdateID{
-			Value: testUpdateID,
-		},
-		JobConfigVersion:     uint64(2),
-		PrevJobConfigVersion: uint64(1),
-	}
-
-	jobConfig := &pbjob.JobConfig{
-		Name:          testJobName,
-		InstanceCount: 10,
-	}
-
-	prevJobConfig := &pbjob.JobConfig{
-		Name:          testJobName,
-		InstanceCount: 5,
-	}
-
-	workflowEvent1 := &stateless.WorkflowEvent{
-		Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-		State:     stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
-		Timestamp: time.Now().Format(time.RFC3339),
-	}
-	workflowEvent2 := &stateless.WorkflowEvent{
-		Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-		State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
-		Timestamp: time.Now().Format(time.RFC3339),
-	}
-
-	expectedResp := &statelesssvc.GetJobUpdateResponse{
-		UpdateInfo: &stateless.UpdateInfo{
-			Info:   handlerutil.ConvertUpdateModelToWorkflowInfo(updateModel),
-			Events: []*stateless.WorkflowEvent{workflowEvent2, workflowEvent1},
-		},
-		JobSpec:     handlerutil.ConvertJobConfigToJobSpec(jobConfig),
-		PrevJobSpec: handlerutil.ConvertJobConfigToJobSpec(prevJobConfig),
-	}
-
-	suite.jobFactory.EXPECT().
-		AddJob(v0JobID).
-		Return(suite.cachedJob)
-
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(&pbjob.RuntimeInfo{
-			State: pbjob.JobState_RUNNING,
-			UpdateID: &peloton.UpdateID{
-				Value: testUpdateID,
-			},
-		}, nil)
-
-	suite.updateStore.EXPECT().
-		GetUpdate(gomock.Any(), &peloton.UpdateID{
-			Value: testUpdateID,
-		}).
-		Return(updateModel, nil)
-
-	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), v0JobID.GetValue(), uint64(2)).
-		Return(jobConfig, nil, nil)
-
-	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), v0JobID.GetValue(), uint64(1)).
-		Return(prevJobConfig, nil, nil)
-
-	suite.updateStore.EXPECT().
-		GetJobUpdateEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
-		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
-
-	resp, err := suite.handler.GetJobUpdate(
-		context.Background(),
-		&statelesssvc.GetJobUpdateRequest{
-			JobId: &v1alphapeloton.JobID{Value: testJobID},
-		})
-	suite.NoError(err)
-	suite.Equal(expectedResp, resp)
-}
-
-// TestGetJobUpdateFailure tests failure of fetching job update, and
-// job config for provided job
-func (suite *statelessHandlerTestSuite) TestGetJobUpdateFailure() {
-	req := &statelesssvc.GetJobUpdateRequest{
-		JobId: &v1alphapeloton.JobID{Value: testJobID},
-	}
-	v0JobID := &peloton.JobID{
-		Value: testJobID,
-	}
-
-	suite.jobFactory.EXPECT().
-		AddJob(v0JobID).
-		Return(suite.cachedJob).
-		AnyTimes()
-
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(nil, errors.New("failed to get job runtime"))
-	_, err := suite.handler.GetJobUpdate(
-		context.Background(),
-		req)
-	suite.Error(err)
-
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(&pbjob.RuntimeInfo{
-			State: pbjob.JobState_RUNNING,
-			UpdateID: &peloton.UpdateID{
-				Value: testUpdateID,
-			},
-		}, nil)
-	suite.updateStore.EXPECT().
-		GetUpdate(gomock.Any(), &peloton.UpdateID{
-			Value: testUpdateID,
-		}).
-		Return(nil, errors.New("failed to get job update"))
-	_, err = suite.handler.GetJobUpdate(
-		context.Background(),
-		req)
-	suite.Error(err)
-
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(&pbjob.RuntimeInfo{
-			State: pbjob.JobState_RUNNING,
-			UpdateID: &peloton.UpdateID{
-				Value: testUpdateID,
-			},
-		}, nil)
-	suite.updateStore.EXPECT().
-		GetUpdate(gomock.Any(), &peloton.UpdateID{
-			Value: testUpdateID,
-		}).
-		Return(&models.UpdateModel{
-			UpdateID: &peloton.UpdateID{
-				Value: testUpdateID,
-			},
-			JobConfigVersion:     uint64(2),
-			PrevJobConfigVersion: uint64(1),
-		}, nil)
-	suite.updateStore.EXPECT().
-		GetJobUpdateEvents(
-			gomock.Any(), &peloton.UpdateID{
-				Value: testUpdateID,
-			}).
-		Return(nil, errors.New("unable to get job update events"))
-	_, err = suite.handler.GetJobUpdate(
-		context.Background(),
-		req)
-	suite.Error(err)
-
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(&pbjob.RuntimeInfo{
-			State: pbjob.JobState_RUNNING,
-			UpdateID: &peloton.UpdateID{
-				Value: testUpdateID,
-			},
-		}, nil)
-	suite.updateStore.EXPECT().
-		GetUpdate(gomock.Any(), &peloton.UpdateID{
-			Value: testUpdateID,
-		}).
-		Return(&models.UpdateModel{
-			UpdateID: &peloton.UpdateID{
-				Value: testUpdateID,
-			},
-			JobConfigVersion:     uint64(2),
-			PrevJobConfigVersion: uint64(1),
-		}, nil)
-	suite.updateStore.EXPECT().
-		GetJobUpdateEvents(
-			gomock.Any(), &peloton.UpdateID{
-				Value: testUpdateID,
-			}).
-		Return(nil, nil)
-	suite.jobStore.EXPECT().
-		GetJobConfigWithVersion(gomock.Any(), v0JobID.GetValue(), uint64(2)).
-		Return(nil, nil, errors.New("failed to get job config"))
-	_, err = suite.handler.GetJobUpdate(
-		context.Background(),
-		req)
-	suite.Error(err)
 }
 
 // TestGetJobCacheWithUpdateSuccess test the success case of getting job
@@ -3325,36 +3151,36 @@ func (suite *statelessHandlerTestSuite) TestListJobUpdatesSuccess() {
 	})
 	suite.NoError(err)
 	suite.Equal(
-		resp.GetUpdates()[0].GetInfo().GetStatus().GetState(),
+		resp.GetWorkflowInfos()[0].GetStatus().GetState(),
 		stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 	)
 	suite.Equal(
-		resp.GetUpdates()[0].GetInfo().GetStatus().GetNumInstancesCompleted(),
+		resp.GetWorkflowInfos()[0].GetStatus().GetNumInstancesCompleted(),
 		uint32(1))
 	suite.Equal(
-		resp.GetUpdates()[0].GetInfo().GetStatus().GetNumInstancesFailed(),
+		resp.GetWorkflowInfos()[0].GetStatus().GetNumInstancesFailed(),
 		uint32(3))
 	suite.Equal(
-		resp.GetUpdates()[0].GetInfo().GetStatus().GetNumInstancesRemaining(),
+		resp.GetWorkflowInfos()[0].GetStatus().GetNumInstancesRemaining(),
 		uint32(16))
 	suite.Equal(
-		resp.GetUpdates()[0].GetInfo().GetStatus().GetInstancesCurrent(),
+		resp.GetWorkflowInfos()[0].GetStatus().GetInstancesCurrent(),
 		[]uint32{0, 1})
 
 	suite.Equal(
-		resp.GetUpdates()[1].GetInfo().GetStatus().GetState(),
+		resp.GetWorkflowInfos()[1].GetStatus().GetState(),
 		stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED)
 	suite.Equal(
-		resp.GetUpdates()[1].GetInfo().GetStatus().GetNumInstancesCompleted(),
+		resp.GetWorkflowInfos()[1].GetStatus().GetNumInstancesCompleted(),
 		uint32(10))
 	suite.Equal(
-		resp.GetUpdates()[1].GetInfo().GetStatus().GetNumInstancesFailed(),
+		resp.GetWorkflowInfos()[1].GetStatus().GetNumInstancesFailed(),
 		uint32(2))
 	suite.Equal(
-		resp.GetUpdates()[1].GetInfo().GetStatus().GetNumInstancesRemaining(),
+		resp.GetWorkflowInfos()[1].GetStatus().GetNumInstancesRemaining(),
 		uint32(8))
 	suite.Equal(
-		resp.GetUpdates()[1].GetInfo().GetStatus().GetInstancesCurrent(),
+		resp.GetWorkflowInfos()[1].GetStatus().GetInstancesCurrent(),
 		[]uint32{0, 1, 2})
 }
 

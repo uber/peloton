@@ -878,11 +878,19 @@ func (c *Client) StatelessListUpdatesAction(jobID string) error {
 		return err
 	}
 
-	return printListUpdatesResponse(resp)
+	return printListUpdatesResponse(resp, c.Debug)
 }
 
-func printListUpdatesResponse(resp *statelesssvc.ListJobUpdatesResponse) error {
-	updates := resp.GetUpdates()
+func printListUpdatesResponse(
+	resp *statelesssvc.ListJobUpdatesResponse,
+	debug bool) error {
+	updates := resp.GetWorkflowInfos()
+
+	if debug {
+		printResponseJSON(resp)
+		return nil
+	}
+
 	if len(updates) == 0 {
 		fmt.Println("No update for job")
 	} else {
@@ -897,16 +905,16 @@ func printListUpdatesResponse(resp *statelesssvc.ListJobUpdatesResponse) error {
 	return nil
 }
 
-func printUpdateInfo(updateInfo *stateless.UpdateInfo) error {
-	out, err := marshallResponse(defaultResponseFormat, updateInfo)
+func printUpdateInfo(workflowInfo *stateless.WorkflowInfo) error {
+	out, err := marshallResponse(defaultResponseFormat, workflowInfo)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("%v\n", string(out))
 
-	if len(updateInfo.GetEvents()) != 0 {
+	if len(workflowInfo.GetEvents()) != 0 {
 		fmt.Fprint(tabWriter, statelessUpdateEventsFormatHeader)
-		for _, event := range updateInfo.GetEvents() {
+		for _, event := range workflowInfo.GetEvents() {
 			fmt.Fprintf(
 				tabWriter,
 				statelessUpdateEventsFormatBody,
