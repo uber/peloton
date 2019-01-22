@@ -278,8 +278,65 @@ func (h *ServiceHandler) getConfigSummary(
 // GetJobs fetches the status of jobs. ownerRole is optional, in which case all jobs are returned.
 func (h *ServiceHandler) GetJobs(
 	ctx context.Context,
-	ownerRole *string) (*api.Response, error) {
-	return nil, errUnimplemented
+	ownerRole *string,
+) (*api.Response, error) {
+
+	result, err := h.getJobs(ctx, ownerRole)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"params": log.Fields{
+				"ownerRole": ownerRole,
+			},
+			"code":  err.responseCode,
+			"error": err.msg,
+		}).Error("GetJobs error")
+	}
+	return newResponse(result, err), nil
+}
+
+func (h *ServiceHandler) getJobs(
+	ctx context.Context,
+	ownerRole *string,
+) (*api.Result, *auroraError) {
+
+	var configs []*api.JobConfiguration
+
+	query := &api.TaskQuery{Role: ownerRole}
+
+	jobIDs, err := h.getJobIDsFromTaskQuery(ctx, query)
+	if err != nil {
+		return nil, auroraErrorf("get job ids from task query: %s", err)
+	}
+
+	for _, jobID := range jobIDs {
+		jobInfo, err := h.getJobInfo(ctx, jobID)
+		if err != nil {
+			return nil, auroraErrorf("get job info for job id %q: %s",
+				jobID.GetValue(), err)
+		}
+
+		// In Aurora, JobConfiguration.TaskConfig
+		// is generated using latest "active" task. Reference:
+		// https://github.com/apache/aurora/blob/master/src/main/java/org/apache/aurora/scheduler/base/Tasks.java#L133
+		// but use JobInfo.JobSpec.DefaultSpec here to simplify
+		// the querying logic.
+		// TODO(kevinxu): Need to match Aurora's behavior?
+		// TODO(kevinxu): Need to inspect InstanceSpec as well?
+		podSpec := jobInfo.GetSpec().GetDefaultSpec()
+
+		c, err := ptoa.NewJobConfiguration(jobInfo, podSpec)
+		if err != nil {
+			return nil, auroraErrorf("new job configuration: %s", err)
+		}
+
+		configs = append(configs, c)
+	}
+
+	return &api.Result{
+		GetJobsResult: &api.GetJobsResult{
+			Configs: configs,
+		},
+	}, nil
 }
 
 // GetJobUpdateSummaries gets job update summaries.

@@ -84,6 +84,47 @@ func TestServiceHandler(t *testing.T) {
 	suite.Run(t, &ServiceHandlerTestSuite{})
 }
 
+// Tests for success scenario for GetJobSummary
+func (suite *ServiceHandlerTestSuite) TestGetJobSummary() {
+	role := "role1"
+	jobKey := fixture.AuroraJobKey()
+	jobID := fixture.PelotonJobID()
+	instanceCount := uint32(1)
+	podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
+
+	mdLabel, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
+	suite.NoError(err)
+	jkLabel := label.NewAuroraJobKey(jobKey)
+
+	ql := label.BuildPartialAuroraJobKeyLabels(&api.JobKey{
+		Role: ptr.String(role),
+	})
+	suite.expectQueryJobsWithLabels(ql, []*peloton.JobID{jobID}, jobKey)
+
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			SummaryOnly: false,
+			JobId:       jobID,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					Name:          atop.NewJobName(jobKey),
+					Labels:        label.BuildPartialAuroraJobKeyLabels(jobKey),
+					InstanceCount: instanceCount,
+					DefaultSpec: &pod.PodSpec{
+						PodName: podName,
+						Labels:  []*peloton.Label{mdLabel, jkLabel},
+					},
+				},
+			},
+		}, nil)
+
+	resp, err := suite.handler.GetJobSummary(suite.ctx, &role)
+	suite.NoError(err)
+	suite.Len(resp.GetResult().GetJobSummaryResult().GetSummaries(), 1)
+}
+
 // Test fetch job update summaries using fully populated job key
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesWithJobKey() {
 	jobID := fixture.PelotonJobID()
@@ -592,6 +633,47 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
 	suite.NoError(err)
 	// Creates two config groups indicating set of pods which have same entity version (same pod spec)
 	suite.Equal(1, len(resp.GetResult().GetConfigSummaryResult().GetSummary().GetGroups()))
+}
+
+// Tests for success scenario for GetJobs
+func (suite *ServiceHandlerTestSuite) TestGetJobs() {
+	role := "role1"
+	jobKey := fixture.AuroraJobKey()
+	jobID := fixture.PelotonJobID()
+	instanceCount := uint32(1)
+	podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
+
+	mdLabel, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
+	suite.NoError(err)
+	jkLabel := label.NewAuroraJobKey(jobKey)
+
+	ql := label.BuildPartialAuroraJobKeyLabels(&api.JobKey{
+		Role: ptr.String(role),
+	})
+	suite.expectQueryJobsWithLabels(ql, []*peloton.JobID{jobID}, jobKey)
+
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			SummaryOnly: false,
+			JobId:       jobID,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					Name:          atop.NewJobName(jobKey),
+					Labels:        label.BuildPartialAuroraJobKeyLabels(jobKey),
+					InstanceCount: instanceCount,
+					DefaultSpec: &pod.PodSpec{
+						PodName: podName,
+						Labels:  []*peloton.Label{mdLabel, jkLabel},
+					},
+				},
+			},
+		}, nil)
+
+	resp, err := suite.handler.GetJobs(suite.ctx, &role)
+	suite.NoError(err)
+	suite.Len(resp.GetResult().GetGetJobsResult().GetConfigs(), 1)
 }
 
 // Tests get job update diff
