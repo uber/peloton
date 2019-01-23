@@ -96,9 +96,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobSummary() {
 	suite.NoError(err)
 	jkLabel := label.NewAuroraJobKey(jobKey)
 
-	ql := label.BuildPartialAuroraJobKeyLabels(&api.JobKey{
-		Role: ptr.String(role),
-	})
+	ql := label.BuildPartialAuroraJobKeyLabels(role, "", "")
 	suite.expectQueryJobsWithLabels(ql, []*peloton.JobID{jobID}, jobKey)
 
 	suite.jobClient.EXPECT().
@@ -110,7 +108,6 @@ func (suite *ServiceHandlerTestSuite) TestGetJobSummary() {
 			JobInfo: &stateless.JobInfo{
 				Spec: &stateless.JobSpec{
 					Name:          atop.NewJobName(jobKey),
-					Labels:        label.BuildPartialAuroraJobKeyLabels(jobKey),
 					InstanceCount: instanceCount,
 					DefaultSpec: &pod.PodSpec{
 						PodName: podName,
@@ -647,9 +644,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobs() {
 	suite.NoError(err)
 	jkLabel := label.NewAuroraJobKey(jobKey)
 
-	ql := label.BuildPartialAuroraJobKeyLabels(&api.JobKey{
-		Role: ptr.String(role),
-	})
+	ql := label.BuildPartialAuroraJobKeyLabels(role, "", "")
 	suite.expectQueryJobsWithLabels(ql, []*peloton.JobID{jobID}, jobKey)
 
 	suite.jobClient.EXPECT().
@@ -661,7 +656,6 @@ func (suite *ServiceHandlerTestSuite) TestGetJobs() {
 			JobInfo: &stateless.JobInfo{
 				Spec: &stateless.JobSpec{
 					Name:          atop.NewJobName(jobKey),
-					Labels:        label.BuildPartialAuroraJobKeyLabels(jobKey),
 					InstanceCount: instanceCount,
 					DefaultSpec: &pod.PodSpec{
 						PodName: podName,
