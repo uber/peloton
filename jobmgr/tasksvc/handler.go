@@ -137,20 +137,15 @@ func (m *serviceHandler) Get(
 	}
 
 	var lastTaskInfo *task.TaskInfo
-	result, err := m.taskStore.GetTaskForJob(ctx, body.JobId.GetValue(), body.InstanceId)
+	result, err := m.taskStore.GetTaskForJob(
+		ctx, body.JobId.GetValue(), body.InstanceId)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, taskInfo := range result {
 		lastTaskInfo = taskInfo
 		break
-	}
-
-	if lastTaskInfo == nil {
-		m.metrics.TaskGetFail.Inc(1)
-		return &task.GetResponse{
-			OutOfRange: &task.InstanceIdOutOfRange{
-				JobId:         body.JobId,
-				InstanceCount: jobConfig.GetInstanceCount(),
-			},
-		}, nil
 	}
 
 	eventList, err := m.getPodEvents(

@@ -328,9 +328,10 @@ func (suite *TaskHandlerTestSuite) TestGetTasks_GetTaskFail() {
 		InstanceId: instanceID,
 	}
 
-	resp, err := suite.handler.Get(context.Background(), req)
-	suite.NoError(err)
-	suite.NotNil(resp.GetOutOfRange())
+	_, err := suite.handler.Get(context.Background(), req)
+	suite.Error(err)
+	suite.Equal(yarpcerrors.ErrorMessage(err),
+		"test err")
 }
 
 func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
