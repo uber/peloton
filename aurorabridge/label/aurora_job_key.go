@@ -72,17 +72,17 @@ func NewAuroraJobKeyName(name string) *peloton.Label {
 }
 
 // BuildPartialAuroraJobKeyLabels is a utility for creating labels for each set
-// field of k. Useful for job queries.
-func BuildPartialAuroraJobKeyLabels(k *api.JobKey) []*peloton.Label {
+// parameter. Useful for job queries.
+func BuildPartialAuroraJobKeyLabels(role, env, name string) []*peloton.Label {
 	var ls []*peloton.Label
-	if k.GetRole() != "" {
-		ls = append(ls, NewAuroraJobKeyRole(k.GetRole()))
+	if role != "" {
+		ls = append(ls, NewAuroraJobKeyRole(role))
 	}
-	if k.GetEnvironment() != "" {
-		ls = append(ls, NewAuroraJobKeyEnvironment(k.GetEnvironment()))
+	if env != "" {
+		ls = append(ls, NewAuroraJobKeyEnvironment(env))
 	}
-	if k.GetName() != "" {
-		ls = append(ls, NewAuroraJobKeyName(k.GetName()))
+	if name != "" {
+		ls = append(ls, NewAuroraJobKeyName(name))
 	}
 	return ls
 }

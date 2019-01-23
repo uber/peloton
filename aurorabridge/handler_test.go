@@ -147,9 +147,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesWithJobKeyRole() 
 		UpdateStatuses: updateStatuses,
 	}
 
-	labels := label.BuildPartialAuroraJobKeyLabels(&api.JobKey{
-		Role: ptr.String(jobKey.GetRole()),
-	})
+	labels := []*peloton.Label{label.NewAuroraJobKeyRole(jobKey.GetRole())}
 
 	// Role based search returned multiple jobs
 	suite.expectQueryJobsWithLabels(labels, []*peloton.JobID{jobID1, jobID2, jobID3}, jobKey)
@@ -289,57 +287,29 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesUpdateStatuses() 
 
 // Tests failure scenarios for fetching get job update summaries
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesFailure() {
-	testJobKeyRole := "dummy_role"
-	jobKey := &api.JobKey{
-		Role: &testJobKeyRole,
-	}
-	jobUpdateQuery := &api.JobUpdateQuery{
-		Role: &testJobKeyRole,
-	}
-
-	suite.jobClient.EXPECT().
-		QueryJobs(
-			suite.ctx,
-			&statelesssvc.QueryJobsRequest{
-				Spec: &stateless.QuerySpec{
-					Labels: label.BuildPartialAuroraJobKeyLabels(jobKey),
-				},
-			}).
-		Return(nil, yarpcerrors.NotFoundErrorf(""))
-
-	resp, err := suite.handler.GetJobUpdateSummaries(
-		context.Background(),
-		jobUpdateQuery,
-	)
-	suite.NoError(err)
-	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
-
+	role := "dummy_role"
+	q := &api.JobUpdateQuery{Role: &role}
 	jobID := fixture.PelotonJobID()
-	jobIDs := []*v1alphapeloton.JobID{jobID}
-	records := []*stateless.JobSummary{{
-		JobId: jobID,
-	}}
 
 	suite.jobClient.EXPECT().
 		QueryJobs(
 			suite.ctx,
 			&statelesssvc.QueryJobsRequest{
 				Spec: &stateless.QuerySpec{
-					Labels: label.BuildPartialAuroraJobKeyLabels(jobKey),
+					Labels: []*peloton.Label{label.NewAuroraJobKeyRole(role)},
 				},
 			}).
 		Return(&statelesssvc.QueryJobsResponse{
-			Records: records,
+			Records: []*stateless.JobSummary{{JobId: jobID}},
 		}, nil)
+
 	suite.jobClient.EXPECT().
 		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
-			JobId: jobIDs[0],
-		}).Return(nil, errors.New("unable to list job updates"))
+			JobId: jobID,
+		}).
+		Return(nil, errors.New("some error"))
 
-	resp, err = suite.handler.GetJobUpdateSummaries(
-		context.Background(),
-		jobUpdateQuery,
-	)
+	resp, err := suite.handler.GetJobUpdateSummaries(suite.ctx, q)
 	suite.NoError(err)
 	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
 }
@@ -540,12 +510,14 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummaryFailure() {
 	jobKey := fixture.AuroraJobKey()
 
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
+
 	suite.jobClient.EXPECT().
 		QueryPods(suite.ctx, &statelesssvc.QueryPodsRequest{
 			JobId: jobID,
 			Spec:  &pod.QuerySpec{},
 		}).
 		Return(nil, errors.New("unable to query pods"))
+
 	suite.jobClient.EXPECT().
 		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 			SummaryOnly: false,
@@ -554,8 +526,7 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummaryFailure() {
 		Return(&statelesssvc.GetJobResponse{
 			JobInfo: &stateless.JobInfo{
 				Spec: &stateless.JobSpec{
-					Name:   atop.NewJobName(jobKey),
-					Labels: label.BuildPartialAuroraJobKeyLabels(jobKey),
+					Name: atop.NewJobName(jobKey),
 				},
 			},
 		}, nil)
@@ -610,8 +581,7 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
 		Return(&statelesssvc.GetJobResponse{
 			JobInfo: &stateless.JobInfo{
 				Spec: &stateless.JobSpec{
-					Name:   atop.NewJobName(jobKey),
-					Labels: label.BuildPartialAuroraJobKeyLabels(jobKey),
+					Name: atop.NewJobName(jobKey),
 				},
 			},
 		}, nil)
@@ -1181,9 +1151,6 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_JobKeysOnlyErro
 	suite.Empty(jobIDs)
 }
 
-// TestGetJobIDsFromTaskQuery_FullJobKey checks getJobIDsFromTaskQuery
-// returns result when input query contains full job key parameters -
-// role, environment, and job_name.
 func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_FullJobKey() {
 	role := "role1"
 	env := "env1"
@@ -1218,10 +1185,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKey()
 	jobID1 := fixture.PelotonJobID()
 	jobID2 := fixture.PelotonJobID()
 
-	labels := label.BuildPartialAuroraJobKeyLabels(&api.JobKey{
-		Role:        ptr.String(role),
-		Environment: ptr.String(env),
-	})
+	labels := label.BuildPartialAuroraJobKeyLabels(role, env, "")
+
 	suite.expectQueryJobsWithLabels(labels, []*peloton.JobID{jobID1, jobID2}, nil)
 
 	query := &api.TaskQuery{
@@ -1245,10 +1210,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKey()
 func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyError() {
 	role := "role1"
 	name := "name1"
-	labels := label.BuildPartialAuroraJobKeyLabels(&api.JobKey{
-		Role: ptr.String(role),
-		Name: ptr.String(name),
-	})
+
+	labels := label.BuildPartialAuroraJobKeyLabels(role, "", name)
 
 	suite.jobClient.EXPECT().
 		QueryJobs(suite.ctx,
@@ -1289,8 +1252,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs() {
 		Return(&statelesssvc.GetJobResponse{
 			JobInfo: &stateless.JobInfo{
 				Spec: &stateless.JobSpec{
-					Name:   atop.NewJobName(jobKey),
-					Labels: label.BuildPartialAuroraJobKeyLabels(jobKey),
+					Name: atop.NewJobName(jobKey),
 				},
 			},
 		}, nil)

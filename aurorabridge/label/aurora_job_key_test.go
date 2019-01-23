@@ -18,8 +18,6 @@ import (
 	"testing"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
-	"github.com/uber/peloton/.gen/thrift/aurora/api"
-	"go.uber.org/thriftrw/ptr"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -32,17 +30,13 @@ func TestBuildPartialAuroraJobKeyLabels(t *testing.T) {
 	)
 
 	testCases := []struct {
-		name       string
-		key        *api.JobKey
-		wantLabels []*peloton.Label
+		desc            string
+		role, env, name string
+		wantLabels      []*peloton.Label
 	}{
 		{
 			"all fields set",
-			&api.JobKey{
-				Role:        ptr.String(role),
-				Environment: ptr.String(env),
-				Name:        ptr.String(name),
-			},
+			role, env, name,
 			[]*peloton.Label{
 				NewAuroraJobKeyRole(role),
 				NewAuroraJobKeyEnvironment(env),
@@ -50,18 +44,13 @@ func TestBuildPartialAuroraJobKeyLabels(t *testing.T) {
 			},
 		}, {
 			"only role set",
-			&api.JobKey{
-				Role: ptr.String(role),
-			},
+			role, "", "",
 			[]*peloton.Label{
 				NewAuroraJobKeyRole(role),
 			},
 		}, {
 			"role and environment set",
-			&api.JobKey{
-				Role:        ptr.String(role),
-				Environment: ptr.String(env),
-			},
+			role, env, "",
 			[]*peloton.Label{
 				NewAuroraJobKeyRole(role),
 				NewAuroraJobKeyEnvironment(env),
@@ -69,8 +58,10 @@ func TestBuildPartialAuroraJobKeyLabels(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.wantLabels, BuildPartialAuroraJobKeyLabels(tc.key))
+		t.Run(tc.desc, func(t *testing.T) {
+			assert.Equal(t,
+				tc.wantLabels,
+				BuildPartialAuroraJobKeyLabels(tc.role, tc.env, tc.name))
 		})
 	}
 }

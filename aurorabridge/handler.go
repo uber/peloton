@@ -913,38 +913,15 @@ func (h *ServiceHandler) getJobUpdateDetail(
 
 // getJobSummariesFromJobUpdateQuery queries peloton jobs based on
 // Aurora's JobUpdateQuery.
-// 1. Query Peloton Jobs using only jobkey's Role. This can return a
-// list of jobs.
-// 2. If jobkey's Role is not set in Aurora's jobUpdateQuery, but entire
-// jobkey is provided as input, then fetch corresponding job.
-// JobSummary contains job information such as unique indentifier, name,
-// instances, state and more. This information is populated for client
-// for further filtering if required.
 func (h *ServiceHandler) getJobSummariesFromJobUpdateQuery(
 	ctx context.Context,
-	jobUpdateQuery *api.JobUpdateQuery,
+	q *api.JobUpdateQuery,
 ) ([]*stateless.JobSummary, error) {
-	var jobKey *api.JobKey
 
-	// TODO: remove partial key scenario for fetching jobIDs
-	if jobUpdateQuery.IsSetRole() {
-		jobKey = &api.JobKey{
-			Role:        ptr.String(jobUpdateQuery.GetRole()),
-			Environment: nil,
-			Name:        nil,
-		}
+	if q.IsSetJobKey() {
+		return h.getJobSummaries(ctx, q.GetJobKey())
 	}
-
-	if jobKey == nil && jobUpdateQuery.IsSetJobKey() {
-		jobKey = jobUpdateQuery.GetJobKey()
-	}
-
-	jobSummaries, err := h.getJobSummaries(ctx, jobKey)
-	if err != nil {
-		return nil, err
-	}
-
-	return jobSummaries, nil
+	return h.queryJobSummaries(ctx, q.GetRole(), "", "")
 }
 
 // isUpdateInfoInStatuses checks if job update state is present
@@ -966,41 +943,52 @@ func isUpdateInfoInStatuses(
 	return ok, nil
 }
 
-// getJobIDs return Peloton JobID based on Aurora JobKey passed in.
+// getJobID maps k to a job id.
 //
-// Currently, two querying mechanisms are implemented:
-// 1. If all parameters in JobKey (role, environemnt, name) are present,
-//    it uses GetJobIDFromJobName api directly. Expect one JobID to be
-//    returned. If the job id cannot be found, then an error will return.
-// 2. If only partial parameters are present, it uses QueryJobs api with
-//    labels. Expect zero or many JobIDs to be returned.
-//
-// Option 1 will be dropped, if option 2 is proved to be stable and
-// with minimal performance impact.
 // TODO: To be deprecated in favor of getJobSummaries.
 // Aggregator expects job key environment to be set in response of
 // GetJobUpdateDetails to filter by deployment_id. On filtering via job key
 // role, original peloton job name is not known to set job key environment.
-func (h *ServiceHandler) getJobIDs(
+func (h *ServiceHandler) getJobID(
 	ctx context.Context,
 	k *api.JobKey,
+) (*peloton.JobID, error) {
+	req := &statelesssvc.GetJobIDFromJobNameRequest{
+		JobName: atop.NewJobName(k),
+	}
+	resp, err := h.jobClient.GetJobIDFromJobName(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	// results are sorted chronologically, return the latest one
+	return resp.GetJobId()[0], nil
+}
+
+// queryJobIDs takes optional job key components and returns the Peloton job ids
+// which match the set parameters. E.g. queryJobIDs("myservice", "", "") will return
+// job ids which match role=myservice.
+func (h *ServiceHandler) queryJobIDs(
+	ctx context.Context,
+	role, env, name string,
 ) ([]*peloton.JobID, error) {
-	if k.IsSetRole() && k.IsSetEnvironment() && k.IsSetName() {
-		req := &statelesssvc.GetJobIDFromJobNameRequest{
-			JobName: atop.NewJobName(k),
-		}
-		resp, err := h.jobClient.GetJobIDFromJobName(ctx, req)
+
+	if role != "" && env != "" && name != "" {
+		// All job key components set, just use a job key query directly.
+		id, err := h.getJobID(ctx, &api.JobKey{
+			Role:        ptr.String(role),
+			Environment: ptr.String(env),
+			Name:        ptr.String(name),
+		})
 		if err != nil {
 			return nil, err
 		}
-		// results are sorted chronologically, return the latest one
-		return []*peloton.JobID{resp.GetJobId()[0]}, nil
+		return []*peloton.JobID{id}, nil
 	}
 
-	labels := label.BuildPartialAuroraJobKeyLabels(k)
+	labels := label.BuildPartialAuroraJobKeyLabels(role, env, name)
 	if len(labels) == 0 {
 		// TODO(kevinxu): do we need to return all job ids in this case?
-		return nil, errors.New("empty job key")
+		return nil, errors.New("no filters set")
 	}
 
 	req := &statelesssvc.QueryJobsRequest{
@@ -1020,60 +1008,43 @@ func (h *ServiceHandler) getJobIDs(
 }
 
 // getJobSummaries returns Peloton JobSummary based on Aurora JobKey passed in.
-//
-// Currently, two querying mechanisms are implemented:
-// 1. If all parameters in JobKey (role, environemnt, name) are present,
-//    it uses GetJobIDFromJobName api directly. Expect one JobID to be
-//    returned. If the job id cannot be found, then an error will return.
-// 2. If only partial parameters are present, it uses QueryJobs api with
-//    labels. Expect zero or many JobIDs to be returned.
-// 3. If jobkey is not present, then QueryJobs will return all jobs.
 func (h *ServiceHandler) getJobSummaries(
 	ctx context.Context,
 	k *api.JobKey,
 ) ([]*stateless.JobSummary, error) {
-	if k.IsSetRole() && k.IsSetEnvironment() && k.IsSetName() {
-		req := &statelesssvc.GetJobIDFromJobNameRequest{
-			JobName: atop.NewJobName(k),
-		}
-		resp, err := h.jobClient.GetJobIDFromJobName(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		// results are sorted chronologically, return the latest one
-		return []*stateless.JobSummary{
-			{
-				JobId: resp.GetJobId()[0],
-				Name:  atop.NewJobName(k),
-			},
-		}, nil
+	req := &statelesssvc.GetJobIDFromJobNameRequest{
+		JobName: atop.NewJobName(k),
 	}
+	resp, err := h.jobClient.GetJobIDFromJobName(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	// results are sorted chronologically, return the latest one
+	return []*stateless.JobSummary{
+		{
+			JobId: resp.GetJobId()[0],
+			Name:  atop.NewJobName(k),
+		},
+	}, nil
+}
 
+// queryJobSummaries takes optional job key components and returns the Peloton
+// job summaries which match the set parameters. E.g. queryJobSummaries("myservice", "", "")
+// will return summaries which match role=myservice.
+func (h *ServiceHandler) queryJobSummaries(
+	ctx context.Context,
+	role, env, name string,
+) ([]*stateless.JobSummary, error) {
 	req := &statelesssvc.QueryJobsRequest{
 		Spec: &stateless.QuerySpec{
-			Labels: label.BuildPartialAuroraJobKeyLabels(k),
+			Labels: label.BuildPartialAuroraJobKeyLabels(role, env, name),
 		},
 	}
 	resp, err := h.jobClient.QueryJobs(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-
 	return resp.GetRecords(), nil
-}
-
-// getJobID is a wrapper for getJobIDs when we expect only one peloton
-// job id, e.g. when full job key is passed in. If the job id cannot be
-// found, an error will return.
-func (h *ServiceHandler) getJobID(
-	ctx context.Context,
-	k *api.JobKey,
-) (*peloton.JobID, error) {
-	ids, err := h.getJobIDs(ctx, k)
-	if err != nil {
-		return nil, err
-	}
-	return ids[0], nil
 }
 
 // getJobIDsFromTaskQuery queries peloton job ids based on aurora TaskQuery.
@@ -1091,38 +1062,32 @@ func (h *ServiceHandler) getJobIDsFromTaskQuery(
 		return nil, errors.New("task query is nil")
 	}
 
-	var jobIDs []*peloton.JobID
-
 	// use job_keys to query if present
 	if query.IsSetJobKeys() {
+		var ids []*peloton.JobID
 		for _, jobKey := range query.GetJobKeys() {
-			ids, err := h.getJobIDs(ctx, jobKey)
+			id, err := h.getJobID(ctx, jobKey)
 			if err != nil {
 				if yarpcerrors.IsNotFound(err) {
 					continue
 				}
 				return nil, errors.Wrapf(err, "get job id for %q", jobKey)
 			}
-			jobIDs = append(jobIDs, ids[0])
+			ids = append(ids, id)
 		}
-		return jobIDs, nil
+		return ids, nil
 	}
 
-	// use job key parameters to query
-	jobKey := &api.JobKey{
-		Role:        query.Role,
-		Environment: query.Environment,
-		Name:        query.JobName,
-	}
-	jobIDs, err := h.getJobIDs(ctx, jobKey)
+	ids, err := h.queryJobIDs(
+		ctx, query.GetRole(), query.GetEnvironment(), query.GetJobName())
 	if err != nil {
 		if yarpcerrors.IsNotFound(err) {
 			// ignore not found error and return empty job ids
 			return nil, nil
 		}
-		return nil, errors.Wrapf(err, "get job ids for %q", jobKey)
+		return nil, errors.Wrapf(err, "get job ids")
 	}
-	return jobIDs, nil
+	return ids, nil
 }
 
 func (h *ServiceHandler) getCurrentJobVersion(
