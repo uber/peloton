@@ -1,7 +1,107 @@
 # Changelog for Peloton
 
-0.8.1 (unreleased)
+0.8.2 (unreleased)
 ------------------
+
+0.8.1
+------------------
+* 2019-01-23    Fixing merge conflict                                                                  kevinxu@uber.com
+* 2019-01-23    Implement GetJobs                                                                      kevinxu@uber.com
+* 2019-01-23    Remove partial job key usage                                                           codyg@uber.com
+* 2019-01-23    Remove materialized view `mv_respool_by_owner`                                         avyas@uber.com
+* 2019-01-22    Reset hostname when task is reinitialized                                              zhixin@uber.com
+* 2019-01-22    Refactor workflow info & workflow status                                               varung@uber.com
+* 2019-01-22    Use `testify.suite` library in `launcher_test.go`.                                     yuweit@uber.com
+* 2019-01-22    Lazily bootstrap respool in aurorabridge                                               codyg@uber.com
+* 2019-01-22    Add support for ListPods API                                                           apoorvaj@uber.com
+* 2019-01-22    address comments.                                                                      yuweit@uber.com
+* 2019-01-22    Add opaquedata package for simulated unsupported update actions                        codyg@uber.com
+* 2019-01-22    Add aurorabridge deploy                                                                varung@uber.com
+* 2019-01-22    Implement GetJobSummary                                                                kevinxu@uber.com
+* 2019-01-22    Add documentation on how to submit peloton jobs                                        apoorvaj@uber.com
+* 2019-01-22    Add doc for types of jobs supported in peloton.                                        apoorvaj@uber.com
+* 2019-01-18    Get taskStats from cache and add logging/metric on re-calculate job runtime from cache sishi@uber.com
+* 2019-01-18    Implement getJobUpdateDiff                                                             varung@uber.com
+* 2019-01-18    Implement getConfigSummary                                                             varung@uber.com
+* 2019-01-18    [Resource Manager] Refactor resource tree to not be a singleton                        avyas@uber.com
+* 2019-01-17    Fix styling nits from secret formatter code                                            adityacb@uber.com
+* 2019-01-17    Fix isJobStateStale                                                                    zhixin@uber.com
+* 2019-01-17    Always enqueue ongoing update for stateless jobs                                       sachins@uber.com
+* 2019-01-17    Dump jobmgr logs in integration tests only on test failure                             sachins@uber.com
+* 2019-01-17    Fix ConvertPodSpecToTaskConfig to not panic on empty containers                        sachins@uber.com
+* 2019-01-17    Validate new job spec in JobService.ReplaceJob v1alpha API                             sachins@uber.com
+* 2019-01-17    Implement pulseJobUpdate w/ TODO                                                       codyg@uber.com
+* 2019-01-16    Make jobs created by performance tests non-preemptile.                                 yuweit@uber.com
+* 2019-01-16    Refactor placemenet engine log level settings                                          avyas@uber.com
+* 2019-01-16    Migrate stateless_job_test/test_job_workflow to v1alpha                                sachins@uber.com
+* 2019-01-16    Use interface methods to publish metrics                                               zhixin@uber.com
+* 2019-01-16    Job config documentation                                                               amitbose@uber.com
+* 2019-01-16    Check invalid tasks when dequeueing for placing                                        avyas@uber.com
+* 2019-01-16    Make generte-protobuf.py run on python2                                                echung@uber.com
+* 2019-01-15    Add scaffolding code to help ORM migration                                             adityacb@uber.com
+* 2019-01-15    Add integration tests for v1alpha JobService.DeleteJob                                 sachins@uber.com
+* 2019-01-15    Fix RestartJob - update JobState on restarting KILLED job                              sachins@uber.com
+* 2019-01-15    Adding architecture section                                                            mabansal@uber.com
+* 2019-01-15    Add aurora auth support for deploy script                                              adityacb@uber.com
+* 2019-01-15    Add job update state change events                                                     varung@uber.com
+* 2019-01-15    Update Cli to read config from a well defined set of paths                             sishi@uber.com
+* 2019-01-15    Implement getJobUpdateSummaries                                                        varung@uber.com
+* 2019-01-15    Second attempt at fixing the placement integration test                                avyas@uber.com
+* 2019-01-15    Add aurorabridge/fixture documentation                                                 codyg@uber.com
+* 2019-01-15    Fix integration tests                                                                  codyg@uber.com
+* 2019-01-14    Implement task/pod termination status                                                  amitbose@uber.com
+* 2019-01-14    Add engdocs for Peloton Clients                                                        adityacb@uber.com
+* 2019-01-14    Address issues in v1alpha JobService.DeleteJob                                         sachins@uber.com
+* 2019-01-14    Use SetPlacment API to return failed placements                                        avyas@uber.com
+* 2019-01-14    Make aurorabridge bootstrapper retry until resmgr leader found                         codyg@uber.com
+* 2019-01-11    Add docs for job and task lifecycle                                                    avyas@uber.com
+* 2019-01-11    Add doc for host maintenance                                                           sachins@uber.com
+* 2019-01-11    Write aurorabridge integration test client                                             codyg@uber.com
+* 2019-01-11    Add section for API reference                                                          amitbose@uber.com
+* 2019-01-11    Add security engdocs for secrets management feature                                    adityacb@uber.com
+* 2019-01-11    Adding introduction section and fixing the eng doc format                              mabansal@uber.com
+* 2019-01-11    Do not persist default config into db if not exist                                     zhixin@uber.com
+* 2019-01-10    Implement GetTasksWithoutConfigs                                                       kevinxu@uber.com
+* 2019-01-10    Migrate stateless job start/stop to v1alpha                                            sachins@uber.com
+* 2019-01-10    Fix style nits in ORM code                                                             adityacb@uber.com
+* 2019-01-10    Removing rst files and adding md files                                                 mabansal@uber.com
+* 2019-01-10    Renaming pcluster to minicluster                                                       mabansal@uber.com
+* 2019-01-10    Fix flaky test_auto_rollback_reduce_instances                                          zhixin@uber.com
+* 2019-01-10    Fix flaky test__failed_task_throttled_by_exponential_backoff                           zhixin@uber.com
+* 2019-01-10    Fix err handling for task delete timeout                                               zhixin@uber.com
+* 2019-01-09    Fix integration test for placement engine                                              avyas@uber.com
+* 2019-01-09    Restart checks if goal state is terminal                                               zhixin@uber.com
+* 2019-01-09    Add TerminationStatus to task/pod runtime status                                       amitbose@uber.com
+* 2019-01-09    Delete unused benchmark configs                                                        min@uber.com
+* 2019-01-09    Adapt building script for new build machines                                           rcharles@uber.com
+* 2019-01-09    Move mimir lib to placement/plugins/mimir/lib                                          min@uber.com
+* 2019-01-09    Add integration tests for task query.                                                  yuweit@uber.com
+* 2019-01-08    Move aurora thrift file into aurorabridge folder                                       kevinxu@uber.com
+* 2019-01-08    Enqueue job when task delete                                                           zhixin@uber.com
+* 2019-01-08    Add failure message along with reason in integration test                              avyas@uber.com
+* 2019-01-08    Set PodSpec.PodName in QueryPodsResponse                                               sachins@uber.com
+* 2019-01-08    Implement JobService.DeleteJob v1aplha API                                             sachins@uber.com
+* 2019-01-08    Set PodSpec.PodName in GetPodResponse                                                  sachins@uber.com
+* 2019-01-08    Disable log dump in integration tests on cluster teardown                              sachins@uber.com
+* 2019-01-08    Fix job update performance test timing issue                                           sishi@uber.com
+* 2019-01-07    Clean up aurorabridge labels                                                           codyg@uber.com
+* 2019-01-07    Add Apache license to source files                                                     min@uber.com
+* 2019-01-07    Revert "Fix command print."                                                            min@uber.com
+* 2019-01-07    Update integ test framework to show failure reason when a job fails                    avyas@uber.com
+* 2019-01-07    Implement get job ids from aurora task query                                           kevinxu@uber.com
+* 2019-01-06    Implement AbortJobUpdate                                                               codyg@uber.com
+* 2019-01-04    Keep more logs for Peloton components in vcluster                                      amitbose@uber.com
+* 2019-01-04    Change git repo name to github.com/uber/peloton                                        min@uber.com
+* 2019-01-04    Migrate tests in stateless_job_test/test_update.py to v1 alpha API                     zhixin@uber.com
+* 2019-01-04    Implement ResumeJobUpdate                                                              codyg@uber.com
+* 2019-01-04    Add go runtime metrics                                                                 avyas@uber.com
+* 2019-01-03    Improve logging in perf tests                                                          amitbose@uber.com
+* 2019-01-03    Implement PauseJobUpdate                                                               codyg@uber.com
+* 2019-01-03    Add changelog 0.8.0                                                                    varung@uber.com
+* 2019-01-03    Implement startJobUpdate                                                               codyg@uber.com
+* 2019-01-03    Add GetJobUpdate API                                                                   varung@uber.com
+* 2019-01-03    Update API docs                                                                        avyas@uber.com
+* 2019-01-03    Implement JobService.StartJob v1alpha API                                              sachins@uber.com
 
 0.8.0
 ------------------
