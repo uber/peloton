@@ -172,7 +172,7 @@ def test__start_job_bad_version(stateless_job):
         stateless_job.start(entity_version='1-2-3')
     except grpc.RpcError as e:
         assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
-        assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
+        assert INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details()
         return
     raise Exception("entity version mismatch error not received")
 
@@ -185,7 +185,7 @@ def test__stop_job_bad_version(stateless_job):
         stateless_job.stop(entity_version='1-2-3')
     except grpc.RpcError as e:
         assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
-        assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
+        assert INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details()
         return
     raise Exception("entity version mismatch error not received")
 
@@ -274,7 +274,7 @@ def test__delete_job_bad_version():
         job.delete(entity_version='1-2-3')
     except grpc.RpcError as e:
         assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
-        assert e.details() == INVALID_ENTITY_VERSION_ERR_MESSAGE
+        assert INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details()
         return
     raise Exception("entity version mismatch error not received")
 

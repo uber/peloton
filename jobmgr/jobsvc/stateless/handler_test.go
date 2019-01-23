@@ -1367,11 +1367,31 @@ func (suite *statelessHandlerTestSuite) TestGetReplaceJobDiffGetConfigError() {
 	suite.Error(err)
 }
 
+// TestResumeJobWorkflowFailNonLeader tests the failure case of resume workflow
+// due to jobmgr is not leader
+func (suite *statelessHandlerTestSuite) TestResumeJobWorkflowFailNonLeader() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+	opaque := "test"
+
+	suite.candidate.EXPECT().IsLeader().Return(false)
+
+	resp, err := suite.handler.ResumeJobWorkflow(context.Background(),
+		&statelesssvc.ResumeJobWorkflowRequest{
+			JobId:      &v1alphapeloton.JobID{Value: testJobID},
+			Version:    entityVersion,
+			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
+		})
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
 // TestResumeJobWorkflowSuccess tests the success case of resume workflow
 func (suite *statelessHandlerTestSuite) TestResumeJobWorkflowSuccess() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
-	newEntityVersion := &v1alphapeloton.EntityVersion{Value: "1-2"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+	newEntityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-2"}
 	opaque := "test"
+
+	suite.candidate.EXPECT().IsLeader().Return(true)
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
@@ -1401,7 +1421,9 @@ func (suite *statelessHandlerTestSuite) TestResumeJobWorkflowSuccess() {
 // TestResumeJobWorkflowFailure tests the failure case of resume workflow
 // due to fail to resume workflow
 func (suite *statelessHandlerTestSuite) TestResumeJobWorkflowResumeWorkflowFailure() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+
+	suite.candidate.EXPECT().IsLeader().Return(true)
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
@@ -1422,9 +1444,11 @@ func (suite *statelessHandlerTestSuite) TestResumeJobWorkflowResumeWorkflowFailu
 
 // TestAbortJobWorkflowSuccess tests the success case of abort workflow
 func (suite *statelessHandlerTestSuite) TestAbortJobWorkflowSuccess() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
-	newEntityVersion := &v1alphapeloton.EntityVersion{Value: "1-2"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+	newEntityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-2"}
 	opaque := "test"
+
+	suite.candidate.EXPECT().IsLeader().Return(true)
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
@@ -1454,7 +1478,9 @@ func (suite *statelessHandlerTestSuite) TestAbortJobWorkflowSuccess() {
 // TestAbortJobWorkflowAbortWorkflowFailure tests the failure case of abort workflow
 // due to fail to abort workflow
 func (suite *statelessHandlerTestSuite) TestAbortJobWorkflowAbortWorkflowFailure() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+
+	suite.candidate.EXPECT().IsLeader().Return(true)
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
@@ -1475,8 +1501,8 @@ func (suite *statelessHandlerTestSuite) TestAbortJobWorkflowAbortWorkflowFailure
 
 // TestPauseJobWorkflowSuccess tests the success case of pause workflow
 func (suite *statelessHandlerTestSuite) TestPauseJobWorkflowSuccess() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
-	newEntityVersion := &v1alphapeloton.EntityVersion{Value: "1-2"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+	newEntityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-2"}
 	opaque := "test"
 
 	suite.jobFactory.EXPECT().
@@ -1545,7 +1571,7 @@ func (suite *statelessHandlerTestSuite) TestGetJobIDFromName() {
 // TestPauseJobWorkflowPauseWorkflowFailure tests the failure case of pause workflow
 // due to fail to pause workflow
 func (suite *statelessHandlerTestSuite) TestPauseJobWorkflowPauseWorkflowFailure() {
-	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1"}
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
@@ -2647,6 +2673,8 @@ func (suite *statelessHandlerTestSuite) TestStopJobSuccess() {
 		WorkflowVersion:      testWorkflowVersion,
 	}
 
+	suite.candidate.EXPECT().IsLeader().Return(true)
+
 	suite.cachedJob.EXPECT().
 		ID().
 		Return(&peloton.JobID{Value: testJobID}).
@@ -2688,6 +2716,26 @@ func (suite *statelessHandlerTestSuite) TestStopJobSuccess() {
 		jobutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion+1, testWorkflowVersion))
 }
 
+// TestStopJobNonLeaderFailure tests the failure case of stop
+// a job due to jobmgr is not leader
+func (suite *statelessHandlerTestSuite) TestStopJobNonLeaderFailure() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(false)
+
+	resp, err := suite.handler.StopJob(
+		context.Background(),
+		&statelesssvc.StopJobRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+		},
+	)
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
 // TestStopJobInvalidEntityVersionFailure tests the failure
 // case of stopping job due to invalid entity version
 func (suite *statelessHandlerTestSuite) TestStopJobInvalidEntityVersionFailure() {
@@ -2698,6 +2746,8 @@ func (suite *statelessHandlerTestSuite) TestStopJobInvalidEntityVersionFailure()
 		DesiredStateVersion:  testDesiredStateVersion,
 		WorkflowVersion:      testWorkflowVersion,
 	}
+
+	suite.candidate.EXPECT().IsLeader().Return(true)
 
 	suite.cachedJob.EXPECT().
 		ID().
@@ -2725,6 +2775,8 @@ func (suite *statelessHandlerTestSuite) TestStopJobInvalidEntityVersionFailure()
 // TestStopJobSuccessWithCompareAndSetRuntimeRetry tests the success
 // case of stopping job after CompareAndSetRuntime retries due to UnexpectedVersionError
 func (suite *statelessHandlerTestSuite) TestStopJobSuccessWithCompareAndSetRuntimeRetry() {
+	suite.candidate.EXPECT().IsLeader().Return(true)
+
 	suite.cachedJob.EXPECT().
 		ID().
 		Return(&peloton.JobID{Value: testJobID}).
@@ -2792,6 +2844,8 @@ func (suite *statelessHandlerTestSuite) TestStopJobSuccessWithCompareAndSetRunti
 // TestStopJobGetRuntimeFailure tests the failure case of stopping job
 // due to runtime failure
 func (suite *statelessHandlerTestSuite) TestStopJobGetRuntimeFailure() {
+	suite.candidate.EXPECT().IsLeader().Return(true)
+
 	suite.cachedJob.EXPECT().
 		ID().
 		Return(&peloton.JobID{Value: testJobID}).
@@ -2825,6 +2879,8 @@ func (suite *statelessHandlerTestSuite) TestStopJobCompareAndSetRuntimeFailure()
 		DesiredStateVersion:  testDesiredStateVersion,
 		WorkflowVersion:      testWorkflowVersion,
 	}
+
+	suite.candidate.EXPECT().IsLeader().Return(true)
 
 	suite.cachedJob.EXPECT().
 		ID().
@@ -2876,9 +2932,7 @@ func (suite *statelessHandlerTestSuite) TestRestartJobSuccess() {
 
 	configVersion := uint64(2)
 
-	suite.candidate.EXPECT().
-		IsLeader().
-		Return(true)
+	suite.candidate.EXPECT().IsLeader().Return(true)
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
@@ -2932,6 +2986,26 @@ func (suite *statelessHandlerTestSuite) TestRestartJobSuccess() {
 	)
 	suite.NoError(err)
 	suite.Equal(resp.GetVersion().GetValue(), newEntityVersion.GetValue())
+}
+
+// TestStartJobNonLeaderFailure tests the failure case of start
+// a job due to jobmgr is not leader
+func (suite *statelessHandlerTestSuite) TestStartJobNonLeaderFailure() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+
+	suite.candidate.EXPECT().
+		IsLeader().
+		Return(false)
+
+	resp, err := suite.handler.StartJob(
+		context.Background(),
+		&statelesssvc.StartJobRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+		},
+	)
+	suite.Error(err)
+	suite.Nil(resp)
 }
 
 // TestRestartJobNonLeaderFailure tests the success case of fail to restart
@@ -3222,6 +3296,8 @@ func (suite *statelessHandlerTestSuite) TestDeleteJobSuccess() {
 	taskMap := make(map[uint32]cached.Task)
 	taskMap[0] = cachedTask
 
+	suite.candidate.EXPECT().IsLeader().Return(true)
+
 	suite.cachedJob.EXPECT().
 		ID().
 		Return(&peloton.JobID{Value: testJobID}).
@@ -3265,10 +3341,28 @@ func (suite *statelessHandlerTestSuite) TestDeleteJobSuccess() {
 	suite.NotNil(resp)
 }
 
+// TestDeleteJobFailNonLeader tests the failure case of delete job
+// due to jobmgr is not leader
+func (suite *statelessHandlerTestSuite) TestDeleteJobFailNonLeader() {
+	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}
+
+	suite.candidate.EXPECT().IsLeader().Return(false)
+
+	resp, err := suite.handler.DeleteJob(context.Background(),
+		&statelesssvc.DeleteJobRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: entityVersion,
+		})
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
 // TestDeleteJobGetRuntimeFailure tests the failure case of
 // deleting a job due to error while getting job runtime
 func (suite *statelessHandlerTestSuite) TestDeleteJobGetRuntimeFailure() {
 	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
 		suite.jobFactory.EXPECT().
 			AddJob(&peloton.JobID{Value: testJobID}).
 			Return(suite.cachedJob),
@@ -3289,7 +3383,7 @@ func (suite *statelessHandlerTestSuite) TestDeleteJobGetRuntimeFailure() {
 	suite.Nil(resp)
 }
 
-// TestDeleteJobNonTerminalJobFailure tests failure case
+// TestDeleteJobBadVersion tests failure case
 // of deleting a job due to entity version mismatch
 func (suite *statelessHandlerTestSuite) TestDeleteJobBadVersion() {
 	jobRuntime := &pbjob.RuntimeInfo{
@@ -3299,6 +3393,8 @@ func (suite *statelessHandlerTestSuite) TestDeleteJobBadVersion() {
 	}
 
 	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
 		suite.jobFactory.EXPECT().
 			AddJob(&peloton.JobID{Value: testJobID}).
 			Return(suite.cachedJob),
@@ -3331,6 +3427,8 @@ func (suite *statelessHandlerTestSuite) TestDeleteJobNonTerminalJobFailure() {
 	}
 
 	gomock.InOrder(
+		suite.candidate.EXPECT().IsLeader().Return(true),
+
 		suite.jobFactory.EXPECT().
 			AddJob(&peloton.JobID{Value: testJobID}).
 			Return(suite.cachedJob),
@@ -3357,6 +3455,8 @@ func (suite *statelessHandlerTestSuite) TestDeleteJobRuntimeUpdateFailure() {
 	cachedTask := cachedmocks.NewMockTask(suite.ctrl)
 	taskMap := make(map[uint32]cached.Task)
 	taskMap[0] = cachedTask
+
+	suite.candidate.EXPECT().IsLeader().Return(true)
 
 	suite.cachedJob.EXPECT().
 		ID().
@@ -3655,6 +3755,8 @@ func (suite *statelessHandlerTestSuite) TestStartJobSuccess() {
 		WorkflowVersion:      workflowVersion,
 	}
 
+	suite.candidate.EXPECT().IsLeader().Return(true)
+
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
 		Return(suite.cachedJob)
@@ -3698,6 +3800,8 @@ func (suite *statelessHandlerTestSuite) TestStartJobGetRuntimeFailure() {
 	desiredStateVersion := uint64(3)
 	workflowVersion := uint64(4)
 
+	suite.candidate.EXPECT().IsLeader().Return(true)
+
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
 		Return(suite.cachedJob)
@@ -3730,6 +3834,8 @@ func (suite *statelessHandlerTestSuite) TestStartJobCompareAndSetRuntimeFailure(
 		DesiredStateVersion:  desiredStateVersion,
 		WorkflowVersion:      workflowVersion,
 	}
+
+	suite.candidate.EXPECT().IsLeader().Return(true)
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
@@ -3774,6 +3880,8 @@ func (suite *statelessHandlerTestSuite) TestStartJobInvalidEntityVersionError() 
 		WorkflowVersion:      workflowVersion,
 	}
 
+	suite.candidate.EXPECT().IsLeader().Return(true)
+
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).
 		Return(suite.cachedJob)
@@ -3806,6 +3914,8 @@ func (suite *statelessHandlerTestSuite) TestStartJobConcurrencyErrorRetry() {
 		DesiredStateVersion:  desiredStateVersion,
 		WorkflowVersion:      workflowVersion,
 	}
+
+	suite.candidate.EXPECT().IsLeader().Return(true)
 
 	suite.jobFactory.EXPECT().
 		AddJob(&peloton.JobID{Value: testJobID}).

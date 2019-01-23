@@ -117,7 +117,7 @@ func (h *serviceHandler) CreateJob(
 		if err != nil {
 			log.WithField("job_id", jobID).
 				WithField("spec_version", specVersion).
-				WithField("instace_count", instanceCount).
+				WithField("instance_count", instanceCount).
 				WithError(err).
 				Warn("JobSVC.CreateJob failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -127,7 +127,7 @@ func (h *serviceHandler) CreateJob(
 		log.WithField("job_id", jobID).
 			WithField("spec_version", specVersion).
 			WithField("response", resp).
-			WithField("instace_count", instanceCount).
+			WithField("instance_count", instanceCount).
 			Info("JobSVC.CreateJob succeeded")
 	}()
 
@@ -156,7 +156,7 @@ func (h *serviceHandler) CreateJob(
 
 	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(jobSpec)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to convert job spec")
 	}
 
 	// Validate job config with default task configs
@@ -165,7 +165,7 @@ func (h *serviceHandler) CreateJob(
 		h.jobSvcCfg.MaxTasksPerJob,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "invalid JobSpec")
+		return nil, errors.Wrap(err, "invalid job spec")
 	}
 
 	// check secrets and config for input sanity
@@ -193,7 +193,7 @@ func (h *serviceHandler) CreateJob(
 	h.goalStateDriver.EnqueueJob(pelotonJobID, time.Now())
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to create job in db")
 	}
 
 	runtimeInfo, err := cachedJob.GetRuntime(ctx)
@@ -250,7 +250,7 @@ func (h *serviceHandler) ReplaceJob(
 
 	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(req.GetSpec())
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to convert job spec")
 	}
 
 	err = jobconfig.ValidateConfig(
@@ -258,7 +258,7 @@ func (h *serviceHandler) ReplaceJob(
 		h.jobSvcCfg.MaxTasksPerJob,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "invalid JobSpec")
+		return nil, errors.Wrap(err, "invalid job spec")
 	}
 
 	jobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
@@ -266,7 +266,7 @@ func (h *serviceHandler) ReplaceJob(
 	cachedJob := h.jobFactory.AddJob(jobID)
 	jobRuntime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get job runtime from cache")
 	}
 
 	// do not allow update initialized job for now, because
@@ -282,11 +282,11 @@ func (h *serviceHandler) ReplaceJob(
 		jobID.GetValue(),
 		jobRuntime.GetConfigurationVersion())
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get previous job spec")
 	}
 
 	if err := validateJobConfigUpdate(prevJobConfig, jobConfig); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to validate spec update")
 	}
 
 	// get the new configAddOn
@@ -334,7 +334,7 @@ func (h *serviceHandler) ReplaceJob(
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to create update workload")
 	}
 
 	return &svc.ReplaceJobResponse{Version: newEntityVersion}, nil
@@ -480,7 +480,7 @@ func (h *serviceHandler) PauseJobWorkflow(
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to pause workload")
 	}
 
 	return &svc.PauseJobWorkflowResponse{Version: newEntityVersion}, nil
@@ -503,6 +503,10 @@ func (h *serviceHandler) ResumeJobWorkflow(
 			Info("JobSVC.ResumeJobWorkflow succeeded")
 	}()
 
+	if !h.candidate.IsLeader() {
+		return nil, yarpcerrors.UnavailableErrorf("JobSVC.ResumeJobWorkflow is not supported on non-leader")
+	}
+
 	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: req.GetJobId().GetValue()})
 	opaque := cached.WithOpaqueData(nil)
 	if req.GetOpaqueData() != nil {
@@ -522,7 +526,7 @@ func (h *serviceHandler) ResumeJobWorkflow(
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to resume workload")
 	}
 
 	return &svc.ResumeJobWorkflowResponse{Version: newEntityVersion}, nil
@@ -545,6 +549,10 @@ func (h *serviceHandler) AbortJobWorkflow(
 			Info("JobSVC.AbortJobWorkflow succeeded")
 	}()
 
+	if !h.candidate.IsLeader() {
+		return nil, yarpcerrors.UnavailableErrorf("JobSVC.AbortJobWorkflow is not supported on non-leader")
+	}
+
 	cachedJob := h.jobFactory.AddJob(&peloton.JobID{Value: req.GetJobId().GetValue()})
 	opaque := cached.WithOpaqueData(nil)
 	if req.GetOpaqueData() != nil {
@@ -564,7 +572,7 @@ func (h *serviceHandler) AbortJobWorkflow(
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to abort workflow")
 	}
 
 	return &svc.AbortJobWorkflowResponse{Version: newEntityVersion}, nil
@@ -587,6 +595,10 @@ func (h *serviceHandler) StartJob(
 			WithField("response", resp).
 			Info("JobSVC.StartJob succeeded")
 	}()
+
+	if !h.candidate.IsLeader() {
+		return nil, yarpcerrors.UnavailableErrorf("JobSVC.StartJob is not supported on non-leader")
+	}
 
 	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
 
@@ -654,6 +666,11 @@ func (h *serviceHandler) StopJob(
 			WithField("response", resp).
 			Info("JobSVC.StopJob succeeded")
 	}()
+
+	if !h.candidate.IsLeader() {
+		return nil, yarpcerrors.UnavailableErrorf("JobSVC.StopJob is not supported on non-leader")
+	}
+
 	cachedJob := h.jobFactory.AddJob(&peloton.JobID{
 		Value: req.GetJobId().GetValue(),
 	})
@@ -718,6 +735,10 @@ func (h *serviceHandler) DeleteJob(
 		log.WithField("request", req).
 			Info("JobSVC.DeleteJob succeeded")
 	}()
+
+	if !h.candidate.IsLeader() {
+		return nil, yarpcerrors.UnavailableErrorf("JobSVC.DeleteJob is not supported on non-leader")
+	}
 
 	cachedJob := h.jobFactory.AddJob(&peloton.JobID{
 		Value: req.GetJobId().GetValue(),
@@ -826,7 +847,7 @@ func (h *serviceHandler) GetJob(
 		if err != nil {
 			log.WithField("request", req).
 				WithError(err).
-				Info("StatelessJobSvc.GetJob failed")
+				Warn("StatelessJobSvc.GetJob failed")
 			err = handlerutil.ConvertToYARPCError(err)
 			return
 		}
@@ -908,7 +929,7 @@ func (h *serviceHandler) GetJobIDFromJobName(
 		if err != nil {
 			log.WithField("request", req).
 				WithError(err).
-				Info("StatelessJobSvc.GetJobIDFromJobName failed")
+				Warn("StatelessJobSvc.GetJobIDFromJobName failed")
 			err = handlerutil.ConvertToYARPCError(err)
 			return
 		}
@@ -939,7 +960,7 @@ func (h *serviceHandler) GetWorkflowEvents(
 		if err != nil {
 			log.WithField("request", req).
 				WithError(err).
-				Info("StatelessJobSvc.GetWorkflowEvents failed")
+				Warn("StatelessJobSvc.GetWorkflowEvents failed")
 			err = handlerutil.ConvertToYARPCError(err)
 			return
 		}
@@ -1160,7 +1181,7 @@ func (h *serviceHandler) ListJobs(
 	defer func() {
 		if err != nil {
 			log.WithError(err).
-				Info("JobSVC.ListJobs failed")
+				Warn("JobSVC.ListJobs failed")
 			err = handlerutil.ConvertToYARPCError(err)
 			return
 		}
@@ -1260,7 +1281,7 @@ func (h *serviceHandler) GetReplaceJobDiff(
 			log.WithField("job_id", jobID).
 				WithField("entity_version", entityVersion).
 				WithError(err).
-				Info("JobSVC.GetReplaceJobDifffailed")
+				Warn("JobSVC.GetReplaceJobDiff failed")
 			err = handlerutil.ConvertToYARPCError(err)
 			return
 		}
