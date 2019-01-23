@@ -292,7 +292,7 @@ func (tr *tracker) MarkItInvalid(tID *peloton.TaskID, mesosTaskID string) error 
 		return err
 	}
 
-	switch t.GetCurrentState() {
+	switch t.GetCurrentState().State {
 	case task.TaskState_PENDING, task.TaskState_INITIALIZED:
 		// If task is in INITIALIZED or PENDING state we need to invalidate
 		// it from in pending queue
@@ -319,16 +319,16 @@ func (tr *tracker) markItDone(t *RMTask, mesosTaskID string) error {
 
 	// We need to skip the tasks from resource counting which are in pending and
 	// and initialized state
-	if !(t.GetCurrentState().String() == task.TaskState_PENDING.String() ||
-		t.GetCurrentState().String() == task.TaskState_INITIALIZED.String()) {
+	if !(t.GetCurrentState().State == task.TaskState_PENDING ||
+		t.GetCurrentState().State == task.TaskState_INITIALIZED) {
 		err := t.respool.SubtractFromAllocation(scalar.GetTaskAllocation(t.Task()))
 		if err != nil {
 			return errors.Errorf("failed update task %s ", tID)
 		}
 	}
 
-	// stop the state machine
-	t.StateMachine().Terminate()
+	// terminate the rm task
+	t.Terminate()
 
 	log.WithField("task_id", tID.Value).Info("Deleting the task from Tracker")
 	tr.deleteTask(tID)
@@ -418,7 +418,7 @@ func (tr *tracker) GetActiveTasks(
 			continue
 		}
 
-		taskState := t.GetCurrentState().String()
+		taskState := t.GetCurrentState().State.String()
 		// filter by task states
 		if len(states) > 0 && !util.Contains(states, taskState) {
 			continue

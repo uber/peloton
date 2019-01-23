@@ -353,12 +353,12 @@ func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) (*resmgrsvc.Enqu
 			Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST,
 		}, errSameTaskPresent
 	}
-	currentTaskState := rmTask.GetCurrentState()
+	currentTaskState := rmTask.GetCurrentState().State
 
 	// If state is Launching, Launched or Running then only
 	// put task to ready queue with update of
 	// mesos task id otherwise ignore
-	if h.isTaskInTransitRunning(rmTask.GetCurrentState()) {
+	if h.isTaskInTransitRunning(currentTaskState) {
 		// Updating the New Mesos Task ID
 		rmTask.Task().TaskId = requeuedTask.TaskId
 		// Transitioning back to Ready State
@@ -669,7 +669,7 @@ func (h *ServiceHandler) transitTasksInPlacement(
 			invalidTasks[taskID.Value] = taskID
 			continue
 		}
-		state := rmTask.GetCurrentState()
+		state := rmTask.GetCurrentState().State
 		if state != expectedState {
 			log.WithFields(log.Fields{
 				"task_id":        taskID.GetValue(),
@@ -788,11 +788,12 @@ func (h *ServiceHandler) acknowledgeEvent(offset uint64) {
 
 func (h *ServiceHandler) fillTaskEntry(task *rmtask.RMTask,
 ) *resmgrsvc.GetActiveTasksResponse_TaskEntry {
+	rmTaskState := task.GetCurrentState()
 	taskEntry := &resmgrsvc.GetActiveTasksResponse_TaskEntry{
 		TaskID:         task.Task().GetId().GetValue(),
-		TaskState:      task.GetCurrentState().String(),
-		Reason:         task.StateMachine().GetReason(),
-		LastUpdateTime: task.StateMachine().GetLastUpdateTime().String(),
+		TaskState:      rmTaskState.State.String(),
+		Reason:         rmTaskState.Reason,
+		LastUpdateTime: rmTaskState.LastUpdateTime.String(),
 	}
 	return taskEntry
 }
@@ -976,10 +977,10 @@ func (h *ServiceHandler) KillTasks(
 		}
 		log.WithFields(log.Fields{
 			"task_id":       taskTobeKilled.Value,
-			"current_state": rmTaskToKill.GetCurrentState().String(),
+			"current_state": rmTaskToKill.GetCurrentState().State.String(),
 		}).Info("Task is Killed and removed from tracker")
 		h.rmTracker.UpdateCounters(
-			rmTaskToKill.GetCurrentState(),
+			rmTaskToKill.GetCurrentState().State,
 			t.TaskState_KILLED,
 		)
 	}

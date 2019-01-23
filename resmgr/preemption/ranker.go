@@ -197,8 +197,8 @@ func startTimeCmp(t1, t2 *rm_task.RMTask) int {
 		WithField("task_2_ID", t2.Task().Id.Value).
 		Debug("comparing start times of tasks")
 
-	if t1.GetCurrentState() == task.TaskState_READY ||
-		t2.GetCurrentState() == task.TaskState_READY {
+	if t1.GetCurrentState().State == task.TaskState_READY ||
+		t2.GetCurrentState().State == task.TaskState_READY {
 		// ready tasks don't have a start time
 		return 0
 	}

@@ -244,7 +244,7 @@ func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacementManyTimes() {
 	for _, gang := range gangs {
 		// we only have 1 task per gang
 		rmTask := s.handler.rmTracker.GetTask(gang.Tasks[0].Id)
-		s.EqualValues(rmTask.GetCurrentState().String(), task.TaskState_PENDING.String())
+		s.EqualValues(rmTask.GetCurrentState().State, task.TaskState_PENDING)
 	}
 }
 
@@ -453,8 +453,8 @@ func (s *HandlerTestSuite) TestSetFailedPlacement() {
 		// we only have 1 task per gang
 		rmTask := s.handler.rmTracker.GetTask(gang.Tasks[0].Id)
 		s.EqualValues(
-			rmTask.GetCurrentState().String(),
-			task.TaskState_PENDING.String(),
+			rmTask.GetCurrentState().State,
+			task.TaskState_PENDING,
 		)
 	}
 }
@@ -802,7 +802,8 @@ func (s *HandlerTestSuite) TestUpdateTasksState() {
 		_, err := s.handler.UpdateTasksState(s.context, req)
 		s.NoError(err)
 		if tt.expectedState != task.TaskState_UNKNOWN {
-			s.Equal(tt.expectedState, s.rmTaskTracker.GetTask(tt.updateStateRequestTask.Id).GetCurrentState())
+			s.Equal(tt.expectedState, s.rmTaskTracker.GetTask(
+				tt.updateStateRequestTask.Id).GetCurrentState().State)
 		}
 		switch tt.expectedTask {
 		case "nil":
@@ -1341,7 +1342,7 @@ func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {
 	// and should be able to requeue and get to READY state
 	time.Sleep(timeout)
 	rmtask = s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
-	s.EqualValues(rmtask.GetCurrentState(), task.TaskState_READY)
+	s.EqualValues(rmtask.GetCurrentState().State, task.TaskState_READY)
 }
 
 func (s *HandlerTestSuite) TestGetPendingTasks() {
@@ -1705,8 +1706,8 @@ func (s *HandlerTestSuite) assertTasksAdmitted(gangs []*resmgrsvc.Gang) {
 		// we only have 1 task per gang
 		rmTask := s.handler.rmTracker.GetTask(gang.Tasks[0].Id)
 		s.EqualValues(
-			rmTask.GetCurrentState().String(),
-			task.TaskState_READY.String(),
+			rmTask.GetCurrentState().State,
+			task.TaskState_READY,
 		)
 	}
 
@@ -1725,8 +1726,8 @@ func (s *HandlerTestSuite) assertTasksAdmitted(gangs []*resmgrsvc.Gang) {
 		// we only have 1 task per gang
 		rmTask := s.handler.rmTracker.GetTask(gang.Tasks[0].Id)
 		s.EqualValues(
-			rmTask.GetCurrentState().String(),
-			task.TaskState_PLACING.String(),
+			rmTask.GetCurrentState().State,
+			task.TaskState_PLACING,
 		)
 	}
 }

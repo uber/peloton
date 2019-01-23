@@ -49,6 +49,16 @@ type RunTimeStats struct {
 	StartTime time.Time
 }
 
+// RMTaskState represents the state of the rm task
+type RMTaskState struct {
+	// The state the task is in
+	State task.TaskState
+	// The reason for being in the state
+	Reason string
+	// Last time the state was updated
+	LastUpdateTime time.Time
+}
+
 // RMTask is the wrapper around resmgr.task for state machine
 type RMTask struct {
 	mu sync.Mutex // Mutex for synchronization
@@ -283,7 +293,7 @@ func (rmTask *RMTask) TransitFromTo(
 	rmTask.mu.Lock()
 	defer rmTask.mu.Unlock()
 
-	if rmTask.GetCurrentState().String() != stateFrom {
+	if rmTask.getCurrentState().State.String() != stateFrom {
 		return errTaskNotInCorrectState
 	}
 
@@ -299,13 +309,26 @@ func (rmTask *RMTask) TransitFromTo(
 // TransitTo transitions to the target state
 func (rmTask *RMTask) TransitTo(stateTo string, options ...state.Option) error {
 	err := rmTask.stateMachine.TransitTo(state.State(stateTo), options...)
-	if err == nil {
-		GetTracker().UpdateCounters(
-			rmTask.GetCurrentState(),
-			task.TaskState(task.TaskState_value[stateTo]),
-		)
+	if err != nil {
+		if err == state.ErrNoOpTransition {
+			// the task is already in the desired state
+			return nil
+		}
+		return errors.Wrap(err, "failed to transition rmtask")
 	}
-	return err
+
+	GetTracker().UpdateCounters(
+		rmTask.getCurrentState().State,
+		task.TaskState(task.TaskState_value[stateTo]),
+	)
+	return nil
+}
+
+// Terminate the rm task
+func (rmTask *RMTask) Terminate() {
+	rmTask.mu.Lock()
+	defer rmTask.mu.Unlock()
+	rmTask.stateMachine.Terminate()
 }
 
 // Task returns the task of the RMTask.
@@ -313,16 +336,21 @@ func (rmTask *RMTask) Task() *resmgr.Task {
 	return rmTask.task
 }
 
-// StateMachine returns the state machine of the RMTask.
-func (rmTask *RMTask) StateMachine() state.StateMachine {
-	return rmTask.stateMachine
+// GetCurrentState returns the current state
+func (rmTask *RMTask) GetCurrentState() RMTaskState {
+	rmTask.mu.Lock()
+	defer rmTask.mu.Unlock()
+	return rmTask.getCurrentState()
 }
 
-// GetCurrentState returns the current state
-func (rmTask *RMTask) GetCurrentState() task.TaskState {
-	return task.TaskState(
-		task.TaskState_value[string(
-			rmTask.stateMachine.GetCurrentState())])
+func (rmTask *RMTask) getCurrentState() RMTaskState {
+	return RMTaskState{
+		State: task.TaskState(
+			task.TaskState_value[string(
+				rmTask.stateMachine.GetCurrentState())]),
+		Reason:         rmTask.stateMachine.GetReason(),
+		LastUpdateTime: rmTask.stateMachine.GetLastUpdateTime(),
+	}
 }
 
 // Respool returns the respool of the RMTask.
@@ -377,7 +405,7 @@ func (rmTask *RMTask) RequeueUnPlaced(reason string) error {
 	rmTask.mu.Lock()
 	defer rmTask.mu.Unlock()
 
-	cState := rmTask.GetCurrentState()
+	cState := rmTask.getCurrentState().State
 
 	// If the task is in READY/PENDING state we don't need to do anything.
 	// This can happen if the state machine recovered from PLACING state

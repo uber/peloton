@@ -27,6 +27,11 @@ const (
 	createStateReasonString = "task created"
 )
 
+var (
+	// ErrNoOpTransition is returned when the transition is a no-op
+	ErrNoOpTransition = errors.Errorf("no-op transition")
+)
+
 // Rule is struct to define the transition rules
 // Rule is from one source state to multiple destination states
 // This can define callback function from 1:1 basis from src->dest state
@@ -334,9 +339,9 @@ func (sm *statemachine) isValidTransition(to State) error {
 	// Checking if the current state is same as destination
 	// Then no need to transition and return error
 	if sm.current == to {
-		return errors.Errorf("already reached to state %s no need to "+
-			"transition", to)
+		return ErrNoOpTransition
 	}
+
 	if val, ok := sm.rules[sm.current]; ok {
 		if val.From != sm.current {
 			return errors.Errorf("invalid transition for %s "+

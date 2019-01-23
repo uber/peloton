@@ -313,7 +313,8 @@ func (p *Preemptor) processTasks(
 
 	var errs error
 	for _, t := range tasks {
-		switch t.GetCurrentState() {
+		state := t.GetCurrentState().State
+		switch state {
 		case peloton_task.TaskState_RUNNING:
 			err := p.processRunningTask(t, reason)
 			if err != nil {
@@ -331,7 +332,7 @@ func (p *Preemptor) processTasks(
 					errs, errors.Wrapf(err,
 						"failed to process non-running task:%s with "+
 							"state:%s",
-						t.Task().GetId().Value, t.GetCurrentState().String()))
+						t.Task().GetId().Value, state.String()))
 			}
 		}
 	}

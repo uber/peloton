@@ -310,14 +310,14 @@ func (s *RMTaskTestSuite) TestReadyBackoff() {
 	// There is a race condition in the test due to the Scheduler.scheduleTasks
 	// method is run asynchronously.
 	time.Sleep(2 * time.Second)
-	s.EqualValues(rmtask.GetCurrentState().String(), task.TaskState_READY.String())
+	s.EqualValues(rmtask.GetCurrentState().State, task.TaskState_READY)
 	rmtask.AddBackoff()
 	err = rmtask.TransitTo(task.TaskState_PLACING.String())
 	s.NoError(err)
 	// Testing the timeout hence sleep
 	time.Sleep(5 * time.Second)
 	// First Backoff and transition it should go to Ready state
-	s.EqualValues(rmtask.GetCurrentState().String(), task.TaskState_READY.String())
+	s.EqualValues(rmtask.GetCurrentState().State, task.TaskState_READY)
 }
 
 func (s *RMTaskTestSuite) TestPendingBackoff() {
@@ -339,9 +339,9 @@ func (s *RMTaskTestSuite) TestPendingBackoff() {
 			EnablePlacementBackoff: true,
 		})
 
-	respool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	pool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	respool.EnqueueGang(s.pendingGang0())
+	pool.EnqueueGang(s.pendingGang0())
 	rmtask := s.tracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo("mesos_task_id",
 		*s.pendingGang0().Tasks[0].TaskId.Value))
@@ -350,7 +350,7 @@ func (s *RMTaskTestSuite) TestPendingBackoff() {
 	// There is a race condition in the test due to the Scheduler.scheduleTasks
 	// method is run asynchronously.
 	time.Sleep(2 * time.Second)
-	s.EqualValues(rmtask.GetCurrentState().String(), task.TaskState_READY.String())
+	s.EqualValues(rmtask.GetCurrentState().State, task.TaskState_READY)
 	rmtask.task.PlacementRetryCount = 2
 	rmtask.AddBackoff()
 	err = rmtask.TransitTo(task.TaskState_PLACING.String())
@@ -359,7 +359,7 @@ func (s *RMTaskTestSuite) TestPendingBackoff() {
 	// Testing the timeout hence sleep
 	time.Sleep(5 * time.Second)
 	// Third Backoff and transition it should go to Pending state
-	s.EqualValues(rmtask.GetCurrentState().String(), task.TaskState_PENDING.String())
+	s.EqualValues(rmtask.GetCurrentState().State, task.TaskState_PENDING)
 }
 
 func (s *RMTaskTestSuite) TestBackOffDisabled() {
@@ -393,7 +393,7 @@ func (s *RMTaskTestSuite) TestBackOffDisabled() {
 	// Waiting for scheduler to kick in by that the Scheduler.scheduleTasks runs
 	// and we can test time out.
 	time.Sleep(2 * time.Second)
-	s.EqualValues(rmtask.GetCurrentState().String(), task.TaskState_READY.String())
+	s.EqualValues(rmtask.GetCurrentState().State, task.TaskState_READY)
 	// Making PlacementRetryCount to 2 by that next backoff can make it to PENDING
 	// In case of backoff enabled and if thats not enabled it should make to READY
 	rmtask.task.PlacementRetryCount = 2
@@ -405,7 +405,7 @@ func (s *RMTaskTestSuite) TestBackOffDisabled() {
 	// Testing the timeout hence sleep
 	time.Sleep(5 * time.Second)
 	// Third Backoff and transition it should go to READY state
-	s.EqualValues(rmtask.GetCurrentState().String(), task.TaskState_READY.String())
+	s.EqualValues(rmtask.GetCurrentState().State, task.TaskState_READY)
 }
 
 func (s *RMTaskTestSuite) TestLaunchingTimeout() {
@@ -441,7 +441,7 @@ func (s *RMTaskTestSuite) TestLaunchingTimeout() {
 	s.NoError(err)
 	// Testing the launching timeout hence sleep
 	time.Sleep(3 * time.Second)
-	s.EqualValues(rmtask.GetCurrentState().String(), task.TaskState_READY.String())
+	s.EqualValues(rmtask.GetCurrentState().State, task.TaskState_READY)
 
 }
 
@@ -538,11 +538,11 @@ func (s *RMTaskTestSuite) TestRMTaskTransitToError() {
 			PlacementRetryBackoff: 1 * time.Second,
 			PolicyName:            ExponentialBackOffPolicy,
 		})
-	s.NotNil(rmTask.StateMachine())
+	s.NotNil(rmTask.stateMachine)
 	rmTask.stateMachine = errStateMachine
 
 	err = rmTask.TransitTo(task.TaskState_RUNNING.String())
-	s.EqualError(err, fErr.Error())
+	s.EqualValues("failed to transition rmtask: fake error", err.Error())
 }
 
 func (s *RMTaskTestSuite) TestAddBackOffError() {
@@ -564,7 +564,7 @@ func (s *RMTaskTestSuite) TestAddBackOffError() {
 			PolicyName:             ExponentialBackOffPolicy,
 			EnablePlacementBackoff: true,
 		})
-	s.NotNil(rmTask.StateMachine())
+	s.NotNil(rmTask.stateMachine)
 	rmTask.stateMachine = errStateMachine
 
 	err = rmTask.AddBackoff()
@@ -601,7 +601,6 @@ func (s *RMTaskTestSuite) TestRMTaskCallBackNilChecks() {
 }
 
 func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskNotInPlacing() {
-
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
 	rmTask, err := CreateRMTask(s.createTask(1),
@@ -616,7 +615,7 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskNotInPlacing() {
 			PolicyName:             ExponentialBackOffPolicy,
 			EnablePlacementBackoff: true,
 		})
-	s.NotNil(rmTask.StateMachine())
+	s.NotNil(rmTask.stateMachine)
 
 	tt := []struct {
 		tState task.TaskState
@@ -641,11 +640,18 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskNotInPlacing() {
 	}
 
 	for _, t := range tt {
+		// setup mock
 		mockStateMachine := sm_mock.NewMockStateMachine(s.ctrl)
-		mockStateMachine.EXPECT().GetCurrentState().Return(statemachine.State(t.
-			tState.String()))
-		rmTask.stateMachine = mockStateMachine
+		mockStateMachine.EXPECT().GetCurrentState().Return(
+			statemachine.State(t.tState.String()))
+		mockStateMachine.
+			EXPECT().GetReason().
+			Return("testing").AnyTimes()
+		mockStateMachine.
+			EXPECT().GetLastUpdateTime().
+			Return(time.Now()).AnyTimes()
 
+		rmTask.stateMachine = mockStateMachine
 		err := rmTask.RequeueUnPlaced("")
 		s.Equal(t.err, err, t.test)
 	}
@@ -678,6 +684,12 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToReady() {
 	mockStateMachine.
 		EXPECT().GetCurrentState().
 		Return(statemachine.State(task.TaskState_PLACING.String()))
+	mockStateMachine.
+		EXPECT().GetReason().
+		Return("testing").AnyTimes()
+	mockStateMachine.
+		EXPECT().GetLastUpdateTime().
+		Return(time.Now()).AnyTimes()
 	// transit to READY
 	mockStateMachine.
 		EXPECT().TransitTo(
@@ -725,6 +737,12 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToReadyErr() {
 	mockStateMachine.
 		EXPECT().GetCurrentState().
 		Return(statemachine.State(task.TaskState_PLACING.String())).AnyTimes()
+	mockStateMachine.
+		EXPECT().GetReason().
+		Return("testing").AnyTimes()
+	mockStateMachine.
+		EXPECT().GetLastUpdateTime().
+		Return(time.Now()).AnyTimes()
 	// transit to READY
 	mockStateMachine.
 		EXPECT().TransitTo(
@@ -738,7 +756,15 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToReadyErr() {
 			PolicyName: ExponentialBackOffPolicy,
 		},
 		mockStateMachine)
-	s.Equal(fakeError, err, "placing to ready requeue should fail")
+
+	s.Equal(
+		"failed to transition rmtask: fake error",
+		err.Error(),
+		"placing to ready requeue should fail")
+	s.Equal(
+		"fake error",
+		errors.Cause(err).Error(),
+		"placing to ready requeue should fail because of fake error")
 }
 
 func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToPending() {
@@ -767,6 +793,12 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToPending() {
 	mockStateMachine.
 		EXPECT().GetCurrentState().
 		Return(statemachine.State(task.TaskState_PLACING.String())).AnyTimes()
+	mockStateMachine.
+		EXPECT().GetReason().
+		Return("testing").AnyTimes()
+	mockStateMachine.
+		EXPECT().GetLastUpdateTime().
+		Return(time.Now()).AnyTimes()
 	// Enqueue gang
 	mockNode.EXPECT().
 		EnqueueGang(gomock.Any()).Return(nil)

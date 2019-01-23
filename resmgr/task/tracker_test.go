@@ -382,8 +382,8 @@ func (suite *TrackerTestSuite) TestMarkItDone_StateMachine() {
 	time.Sleep(1 * time.Second)
 
 	// the state machine's timer should be stopped
-	suite.Equal(task.TaskState_LAUNCHING.String(),
-		string(rmTask.StateMachine().GetCurrentState()))
+	suite.Equal(task.TaskState_LAUNCHING,
+		rmTask.GetCurrentState().State)
 }
 
 func (suite *TrackerTestSuite) TestMarkItInvalid() {
@@ -518,6 +518,8 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 	// mock the GetCurrentState
 	smLock := sync.RWMutex{}
 	mSm := mocks.NewMockStateMachine(ctrl)
+	mSm.EXPECT().GetReason().Return("testing").AnyTimes()
+	mSm.EXPECT().GetLastUpdateTime().Return(time.Now()).AnyTimes()
 	mSm.EXPECT().GetCurrentState().Do(func() {
 		defer smLock.RUnlock()
 

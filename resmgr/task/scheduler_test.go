@@ -186,9 +186,9 @@ func (suite *SchedulerTestSuite) TestTaskStates() {
 		item, err := suite.readyQueue.Pop(suite.readyQueue.Levels()[0])
 		suite.NoError(err)
 		gang := item.(*resmgrsvc.Gang)
-		task := gang.Tasks[0]
-		rmTask := suite.rmTaskTracker.GetTask(task.Id)
-		suite.Equal(rmTask.GetCurrentState().String(), "READY")
+		t := gang.Tasks[0]
+		rmTask := suite.rmTaskTracker.GetTask(t.Id)
+		suite.EqualValues(rmTask.GetCurrentState().State, task.TaskState_READY)
 	}
 }
 
