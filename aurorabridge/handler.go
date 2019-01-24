@@ -31,6 +31,7 @@ import (
 	"github.com/uber/peloton/util"
 
 	"github.com/uber/peloton/aurorabridge/atop"
+	"github.com/uber/peloton/aurorabridge/common"
 	"github.com/uber/peloton/aurorabridge/label"
 	"github.com/uber/peloton/aurorabridge/opaquedata"
 	"github.com/uber/peloton/aurorabridge/ptoa"
@@ -557,8 +558,37 @@ func (h *ServiceHandler) getJobUpdateDiff(
 
 // GetTierConfigs is a no-op. It is only used to determine liveness of the scheduler.
 func (h *ServiceHandler) GetTierConfigs(
-	ctx context.Context) (*api.Response, error) {
-	return nil, errUnimplemented
+	ctx context.Context,
+) (*api.Response, error) {
+
+	return newResponse(&api.Result{
+		GetTierConfigResult: &api.GetTierConfigResult{
+			DefaultTierName: ptr.String(common.Preemptible),
+			Tiers: []*api.TierConfig{
+				{
+					Name: ptr.String(common.Revocable),
+					Settings: map[string]string{
+						common.Preemptible: "true",
+						common.Revocable:   "true",
+					},
+				},
+				{
+					Name: ptr.String(common.Preferred),
+					Settings: map[string]string{
+						common.Preemptible: "false",
+						common.Revocable:   "false",
+					},
+				},
+				{
+					Name: ptr.String(common.Preemptible),
+					Settings: map[string]string{
+						common.Preemptible: "true",
+						common.Revocable:   "false",
+					},
+				},
+			},
+		},
+	}, nil), nil
 }
 
 // KillTasks initiates a kill on tasks.

@@ -20,6 +20,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
 	"github.com/uber/peloton/aurorabridge/common"
 	"github.com/uber/peloton/aurorabridge/label"
 )
@@ -60,10 +61,25 @@ func NewJobSpecFromJobUpdateRequest(
 }
 
 func newSLASpec(t *api.TaskConfig, maxFailedInstances int32) *stateless.SlaSpec {
+	preemptible := false
+	revocable := false
+
+	switch t.GetTier() {
+	case common.Preemptible:
+		preemptible = true
+		revocable = false
+	case common.Revocable:
+		preemptible = true
+		revocable = true
+	case common.Preferred:
+		preemptible = false
+		revocable = false
+	}
+
 	return &stateless.SlaSpec{
 		Priority:                    uint32(t.GetPriority()),
-		Preemptible:                 t.GetTier() == common.Preemptible,
-		Revocable:                   t.GetTier() == common.Revocable,
+		Preemptible:                 preemptible,
+		Revocable:                   revocable,
 		MaximumUnavailableInstances: uint32(maxFailedInstances),
 	}
 }

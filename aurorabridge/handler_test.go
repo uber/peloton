@@ -749,6 +749,12 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiffFailure() {
 	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
 }
 
+func (suite *ServiceHandlerTestSuite) TestGetTierConfigs() {
+	resp, err := suite.handler.GetTierConfigs(suite.ctx)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+}
+
 // Ensures StartJobUpdate creates jobs which don't exist.
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobSuccess() {
 	respoolID := fixture.PelotonResourcePoolID()

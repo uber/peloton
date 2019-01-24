@@ -18,6 +18,7 @@ package common
 const (
 	Preemptible = "preemptible"
 	Revocable   = "revocable"
+	Preferred   = "preferred"
 )
 
 // MesosHostAttr is the Mesos attribute for hostname.

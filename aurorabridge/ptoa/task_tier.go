@@ -17,6 +17,8 @@ package ptoa
 import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 
+	"github.com/uber/peloton/aurorabridge/common"
+
 	"go.uber.org/thriftrw/ptr"
 )
 
@@ -24,9 +26,9 @@ import (
 func NewTaskTier(s *stateless.SlaSpec) *string {
 	if s.GetPreemptible() {
 		if s.GetRevocable() {
-			return ptr.String("revocable")
+			return ptr.String(common.Revocable)
 		}
-		return ptr.String("preemptible")
+		return ptr.String(common.Preemptible)
 	}
-	return ptr.String("preferred")
+	return ptr.String(common.Preferred)
 }
