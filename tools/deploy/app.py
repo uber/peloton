@@ -225,6 +225,7 @@ class App(object):
             env_vars['KAFKA_TOPIC'] = self.kafka_topic
 
         if self.name == 'resmgr':
+            env_vars['TASK_PREEMPTION_PERIOD'] = self.task_preemption_period
             env_vars['ENABLE_SLA_TRACKING'] = getattr(
                 self,
                 "enable_sla_tracking", False,

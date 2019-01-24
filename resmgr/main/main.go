@@ -122,6 +122,13 @@ var (
 		Envar("ENABLE_PREEMPTION").
 		Bool()
 
+	taskPreemptionPeriodSeconds = app.Flag(
+		"task_preemption_period",
+		"Setting task preemption period").
+		Default("60s").
+		Envar("TASK_PREEMPTION_PERIOD").
+		Duration()
+
 	enableSLATracking = app.Flag(
 		"enable_sla_tracking", "Enabling SLA tracking").
 		Default("false").
@@ -168,6 +175,9 @@ func getConfig(cfgFiles ...string) Config {
 	}
 	if *enablePreemption {
 		cfg.ResManager.PreemptionConfig.Enabled = *enablePreemption
+	}
+	if *taskPreemptionPeriodSeconds != 0 {
+		cfg.ResManager.PreemptionConfig.TaskPreemptionPeriod = *taskPreemptionPeriodSeconds
 	}
 	if *enableSLATracking {
 		cfg.ResManager.RmTaskConfig.EnableSLATracking = *enableSLATracking
