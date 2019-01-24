@@ -1,34 +1,43 @@
 package mockutil
 
 import (
+	"fmt"
+
 	"github.com/golang/mock/gomock"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/aurorabridge/opaquedata"
 )
 
-type replaceJobRequestOpaqueDataMatcher struct {
-	expected *peloton.OpaqueData
+type replaceJobRequestUpdateActionsMatcher struct {
+	expected []opaquedata.UpdateAction
 }
 
-// MatchReplaceJobRequestOpaqueData matches against the OpaqueData field of
+// MatchReplaceJobRequestUpdateActions matches against the OpaqueData field of
 // ReplaceJobRequests.
-func MatchReplaceJobRequestOpaqueData(d *opaquedata.Data) gomock.Matcher {
-	od, err := d.Serialize()
-	if err != nil {
-		panic(err)
-	}
-	return &replaceJobRequestOpaqueDataMatcher{od}
+func MatchReplaceJobRequestUpdateActions(actions []opaquedata.UpdateAction) gomock.Matcher {
+	return &replaceJobRequestUpdateActionsMatcher{actions}
 }
 
-func (m *replaceJobRequestOpaqueDataMatcher) String() string {
-	return m.expected.GetData()
+func (m *replaceJobRequestUpdateActionsMatcher) String() string {
+	return fmt.Sprintf("%+v", m.expected)
 }
 
-func (m *replaceJobRequestOpaqueDataMatcher) Matches(x interface{}) bool {
+func (m *replaceJobRequestUpdateActionsMatcher) Matches(x interface{}) bool {
 	r, ok := x.(*svc.ReplaceJobRequest)
 	if !ok {
 		return false
 	}
-	return r.GetOpaqueData().GetData() == m.expected.GetData()
+	d, err := opaquedata.Deserialize(r.GetOpaqueData())
+	if err != nil {
+		return false
+	}
+	if len(d.UpdateActions) != len(m.expected) {
+		return false
+	}
+	for i := range d.UpdateActions {
+		if d.UpdateActions[i] != m.expected[i] {
+			return false
+		}
+	}
+	return true
 }

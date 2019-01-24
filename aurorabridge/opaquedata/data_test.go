@@ -9,6 +9,7 @@ import (
 
 func TestSerializeAndDeserializeData(t *testing.T) {
 	input := &Data{
+		UpdateID: "some-update-id",
 		UpdateActions: []UpdateAction{
 			StartPulsed,
 			Pulse,
@@ -27,13 +28,4 @@ func TestDeserializeEmptyOpaqueData(t *testing.T) {
 	d, err := Deserialize(od)
 	require.NoError(t, err)
 	require.Equal(t, &Data{}, d)
-}
-
-func TestSerializeActions(t *testing.T) {
-	od, err := SerializeActions(StartPulsed, Pulse)
-	require.NoError(t, err)
-
-	d, err := Deserialize(od)
-	require.NoError(t, err)
-	require.Equal(t, []UpdateAction{StartPulsed, Pulse}, d.UpdateActions)
 }

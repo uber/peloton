@@ -20,6 +20,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/pborman/uuid"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -811,7 +812,9 @@ func (h *ServiceHandler) startJobUpdate(
 			return nil, auroraErrorf("get current job version: %s", err)
 		}
 
-		d := &opaquedata.Data{}
+		d := &opaquedata.Data{
+			UpdateID: uuid.New(),
+		}
 		if request.GetSettings().GetBlockIfNoPulsesAfterMs() > 0 {
 			d.AppendUpdateAction(opaquedata.StartPulsed)
 		}
@@ -882,9 +885,9 @@ func (h *ServiceHandler) pauseJobUpdate(
 	if err != nil {
 		return nil, auroraErrorf("get job id: %s", err)
 	}
-	v, err := h.getCurrentJobVersion(ctx, id)
-	if err != nil {
-		return nil, auroraErrorf("get current job version: %s", err)
+	v, aerr := h.matchJobUpdateID(ctx, id, key.GetID())
+	if aerr != nil {
+		return nil, aerr
 	}
 	req := &statelesssvc.PauseJobWorkflowRequest{
 		JobId:   id,
@@ -927,9 +930,9 @@ func (h *ServiceHandler) resumeJobUpdate(
 	if err != nil {
 		return nil, auroraErrorf("get job id: %s", err)
 	}
-	v, err := h.getCurrentJobVersion(ctx, id)
-	if err != nil {
-		return nil, auroraErrorf("get current job version: %s", err)
+	v, aerr := h.matchJobUpdateID(ctx, id, key.GetID())
+	if aerr != nil {
+		return nil, aerr
 	}
 	req := &statelesssvc.ResumeJobWorkflowRequest{
 		JobId:   id,
@@ -972,9 +975,9 @@ func (h *ServiceHandler) abortJobUpdate(
 	if err != nil {
 		return nil, auroraErrorf("get job id: %s", err)
 	}
-	v, err := h.getCurrentJobVersion(ctx, id)
-	if err != nil {
-		return nil, auroraErrorf("get current job version: %s", err)
+	v, aerr := h.matchJobUpdateID(ctx, id, key.GetID())
+	if aerr != nil {
+		return nil, aerr
 	}
 	req := &statelesssvc.AbortJobWorkflowRequest{
 		JobId:   id,
@@ -1040,6 +1043,11 @@ func (h *ServiceHandler) pulseJobUpdate(
 	d, err := opaquedata.Deserialize(w.GetOpaqueData())
 	if err != nil {
 		return nil, auroraErrorf("deserialize opaque data: %s", err)
+	}
+
+	if d.UpdateID != key.GetID() {
+		return nil, auroraErrorf("update id does not match current update").
+			code(api.ResponseCodeInvalidRequest)
 	}
 
 	status, err := ptoa.NewJobUpdateStatus(w.GetStatus().GetState(), d)
@@ -1417,6 +1425,30 @@ func (h *ServiceHandler) getCurrentJobVersion(
 		return nil, err
 	}
 	return summary.GetStatus().GetVersion(), nil
+}
+
+// matchJobUpdateID matches a jobID workflow against updateID. Returns the entity
+// version the workflow is moving towards. If the current workflow does not
+// match updateID, returns an INVALID_REQUEST Aurora error.
+func (h *ServiceHandler) matchJobUpdateID(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	updateID string,
+) (*peloton.EntityVersion, *auroraError) {
+
+	w, err := h.getWorkflowInfo(ctx, jobID)
+	if err != nil {
+		return nil, auroraErrorf("get workflow info: %s", err)
+	}
+	d, err := opaquedata.Deserialize(w.GetOpaqueData())
+	if err != nil {
+		return nil, auroraErrorf("deserialize opaque data: %s", err)
+	}
+	if d.UpdateID != updateID {
+		return nil, auroraErrorf("update id does not match current update").
+			code(api.ResponseCodeInvalidRequest)
+	}
+	return w.GetStatus().GetVersion(), nil
 }
 
 // getJobInfo calls jobmgr to get JobInfo based on JobID.

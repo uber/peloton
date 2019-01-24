@@ -27,6 +27,7 @@ const (
 // be used when converting Peloton objects into Aurora objects to reconstruct
 // Aurora states which do not exist in Peloton.
 type Data struct {
+	UpdateID      string         `json:"update_id"`
 	UpdateActions []UpdateAction `json:"update_actions"`
 }
 
@@ -59,14 +60,4 @@ func (d *Data) Serialize() (*peloton.OpaqueData, error) {
 		return nil, fmt.Errorf("json marshal: %s", err)
 	}
 	return &peloton.OpaqueData{Data: string(b)}, nil
-}
-
-// SerializeActions is a convenience function for directly serializing a list
-// of update actions.
-func SerializeActions(actions ...UpdateAction) (*peloton.OpaqueData, error) {
-	d := &Data{}
-	for _, a := range actions {
-		d.AppendUpdateAction(a)
-	}
-	return d.Serialize()
 }
