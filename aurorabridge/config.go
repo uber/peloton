@@ -22,13 +22,17 @@ import (
 
 // ServiceHandlerConfig defines ServiceHandler configuration.
 type ServiceHandlerConfig struct {
-	GetJobUpdateWorkers int `yaml:"get_job_update_workers"`
-	StopPodWorkers      int `yaml:"stop_pod_workers"`
+	GetJobUpdateWorkers           int `yaml:"get_job_update_workers"`
+	GetTasksWithoutConfigsWorkers int `yaml:"get_tasks_without_configs_workers"`
+	StopPodWorkers                int `yaml:"stop_pod_workers"`
 }
 
 func (c *ServiceHandlerConfig) normalize() {
 	if c.GetJobUpdateWorkers == 0 {
 		c.GetJobUpdateWorkers = 25
+	}
+	if c.GetTasksWithoutConfigsWorkers == 0 {
+		c.GetTasksWithoutConfigsWorkers = 25
 	}
 	if c.StopPodWorkers == 0 {
 		c.StopPodWorkers = 25

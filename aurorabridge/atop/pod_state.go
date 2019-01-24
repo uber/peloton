@@ -44,7 +44,7 @@ func NewPodState(
 		return pod.PodState_POD_STATE_LOST, nil
 	case api.ScheduleStatusAssigned:
 		// Task has been assigned to a slave.
-		return pod.PodState_POD_STATE_PLACED, nil
+		return pod.PodState_POD_STATE_LAUNCHED, nil
 	case api.ScheduleStatusInit:
 		// Initial state for a task. A task will remain in this state
 		// until it has been persisted.
@@ -58,7 +58,11 @@ func NewPodState(
 	case api.ScheduleStatusThrottled:
 		// The task will be rescheduled, but is being throttled for
 		// restarting too frequently.
-		return pod.PodState_POD_STATE_FAILED, nil
+		// TODO(kevinxu): currently we do not have direct mapping
+		// for aurora "throttled" state in peloton, throw an error
+		// for now.
+		return pod.PodState_POD_STATE_INVALID,
+			fmt.Errorf("cannot map schedule status: %d", scheduleStatus)
 	case api.ScheduleStatusDraining:
 		// The task is being restarted in response to a host maintenance
 		// request.

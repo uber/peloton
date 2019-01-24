@@ -45,8 +45,9 @@ func TestNewScheduledTask(t *testing.T) {
 	podName2, podID2 := &peloton.PodName{
 		Value: jobID.GetValue() + "-1",
 	}, &peloton.PodID{
-		Value: jobID.GetValue() + "-1-1",
+		Value: jobID.GetValue() + "-1-2",
 	}
+	ancestorID2 := ptr.String(jobID.GetValue() + "-1-1")
 	ml, err := label.NewAuroraMetadata(metadata)
 	assert.NoError(t, err)
 	kl := label.NewAuroraJobKey(jobKey)
@@ -61,6 +62,9 @@ func TestNewScheduledTask(t *testing.T) {
 		Spec: &pod.PodSpec{
 			PodName: podName1,
 			Labels:  []*peloton.Label{ml, kl},
+			Containers: []*pod.ContainerSpec{
+				&pod.ContainerSpec{},
+			},
 		},
 		Status: &pod.PodStatus{
 			PodId: podID1,
@@ -108,7 +112,7 @@ func TestNewScheduledTask(t *testing.T) {
 				Tier:      ptr.String("preferred"),
 				Metadata:  metadata,
 			},
-			AssignedPorts: map[string]int32{}, // TODO(kevinxu)
+			AssignedPorts: map[string]int32{},
 			InstanceId:    ptr.Int32(0),
 		},
 		Status: api.ScheduleStatusRunning.Ptr(),
@@ -144,7 +148,7 @@ func TestNewScheduledTask(t *testing.T) {
 				Scheduler: ptr.String("peloton"),
 			},
 		},
-		AncestorId: nil, // TODO(kevinxu)
+		AncestorId: nil,
 	}, s)
 
 	// pod 2
@@ -152,6 +156,20 @@ func TestNewScheduledTask(t *testing.T) {
 		Spec: &pod.PodSpec{
 			PodName: podName2,
 			Labels:  []*peloton.Label{ml, kl},
+			Containers: []*pod.ContainerSpec{
+				&pod.ContainerSpec{
+					Ports: []*pod.PortSpec{
+						{
+							Name:  "http",
+							Value: 12345,
+						},
+						{
+							Name:  "tchannel",
+							Value: 54321,
+						},
+					},
+				},
+			},
 		},
 		Status: &pod.PodStatus{
 			PodId: podID2,
@@ -214,8 +232,11 @@ func TestNewScheduledTask(t *testing.T) {
 				Tier:      ptr.String("preferred"),
 				Metadata:  metadata,
 			},
-			AssignedPorts: map[string]int32{}, // TODO(kevinxu)
-			InstanceId:    ptr.Int32(1),
+			AssignedPorts: map[string]int32{
+				"http":     12345,
+				"tchannel": 54321,
+			},
+			InstanceId: ptr.Int32(1),
 		},
 		Status: api.ScheduleStatusKilled.Ptr(),
 		TaskEvents: []*api.TaskEvent{
@@ -268,6 +289,6 @@ func TestNewScheduledTask(t *testing.T) {
 				Scheduler: ptr.String("peloton"),
 			},
 		},
-		AncestorId: nil, // TODO(kevinxu)
+		AncestorId: ancestorID2,
 	}, s)
 }

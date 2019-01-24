@@ -30,6 +30,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	podmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc/mocks"
+	pbquery "github.com/uber/peloton/.gen/peloton/api/v1alpha/query"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 	aurorabridgemocks "github.com/uber/peloton/aurorabridge/mocks"
 	"github.com/uber/peloton/util"
@@ -554,13 +555,21 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismFailure(
 func (suite *ServiceHandlerTestSuite) TestGetConfigSummaryFailure() {
 	jobID := fixture.PelotonJobID()
 	jobKey := fixture.AuroraJobKey()
+	instanceCount := uint32(2)
 
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 
 	suite.jobClient.EXPECT().
 		QueryPods(suite.ctx, &statelesssvc.QueryPodsRequest{
 			JobId: jobID,
-			Spec:  &pod.QuerySpec{},
+			Spec: &pod.QuerySpec{
+				Pagination: &pbquery.PaginationSpec{
+					Limit: instanceCount,
+				},
+			},
+			Pagination: &pbquery.PaginationSpec{
+				Limit: instanceCount,
+			},
 		}).
 		Return(nil, errors.New("unable to query pods"))
 
@@ -572,7 +581,8 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummaryFailure() {
 		Return(&statelesssvc.GetJobResponse{
 			JobInfo: &stateless.JobInfo{
 				Spec: &stateless.JobSpec{
-					Name: atop.NewJobName(jobKey),
+					Name:          atop.NewJobName(jobKey),
+					InstanceCount: instanceCount,
 				},
 			},
 		}, nil)
@@ -589,36 +599,15 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
 	jobKey := fixture.AuroraJobKey()
 	entityVersion := fixture.PelotonEntityVersion()
 	podName := fmt.Sprintf("%s-%d", jobID.GetValue(), 0)
-	podID := fmt.Sprintf("%s-%d", podName, 1)
 	mdLabel, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
 	suite.NoError(err)
 
-	podInfos := []*pod.PodInfo{{
-		Spec: &pod.PodSpec{
-			PodName: &peloton.PodName{
-				Value: podName,
-			},
-			Labels: []*peloton.Label{
-				mdLabel,
-			},
-		},
-		Status: &pod.PodStatus{
-			PodId: &peloton.PodID{
-				Value: podID,
-			},
-			Version: entityVersion,
-		},
-	}}
-
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
-	suite.jobClient.EXPECT().
-		QueryPods(suite.ctx, &statelesssvc.QueryPodsRequest{
-			JobId: jobID,
-			Spec:  &pod.QuerySpec{},
-		}).
-		Return(&statelesssvc.QueryPodsResponse{
-			Pods: podInfos,
-		}, nil)
+	suite.expectQueryPods(jobID,
+		[]*peloton.PodName{{Value: podName}},
+		[]*peloton.Label{mdLabel},
+		entityVersion,
+	)
 	suite.jobClient.EXPECT().
 		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
 			SummaryOnly: false,
@@ -627,7 +616,8 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
 		Return(&statelesssvc.GetJobResponse{
 			JobInfo: &stateless.JobInfo{
 				Spec: &stateless.JobSpec{
-					Name: atop.NewJobName(jobKey),
+					Name:          atop.NewJobName(jobKey),
+					InstanceCount: uint32(1),
 				},
 			},
 		}, nil)
@@ -1316,17 +1306,11 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyEr
 	suite.Error(err)
 }
 
-// TestGetTasksWithoutConfigs checks GetTasksWithoutConfigs works correctly.
-func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs() {
-	query := fixture.AuroraTaskQuery()
-	jobKey := query.GetJobKeys()[0]
-	jobID := fixture.PelotonJobID()
-	podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
-
-	mdLabel, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
-	suite.NoError(err)
-	jkLabel := label.NewAuroraJobKey(jobKey)
-
+func (suite *ServiceHandlerTestSuite) expectGetJob(
+	jobKey *api.JobKey,
+	jobID *peloton.JobID,
+	instanceCount uint32,
+) {
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 	suite.jobClient.EXPECT().
 		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
@@ -1336,48 +1320,153 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs() {
 		Return(&statelesssvc.GetJobResponse{
 			JobInfo: &stateless.JobInfo{
 				Spec: &stateless.JobSpec{
-					Name: atop.NewJobName(jobKey),
+					Name:          atop.NewJobName(jobKey),
+					InstanceCount: instanceCount,
 				},
 			},
 		}, nil)
+}
+
+func (suite *ServiceHandlerTestSuite) expectQueryPods(
+	jobID *peloton.JobID,
+	podNames []*peloton.PodName,
+	labels []*peloton.Label,
+	entityVersion *peloton.EntityVersion,
+) {
+	var pods []*pod.PodInfo
+	for _, podName := range podNames {
+		pods = append(pods, &pod.PodInfo{
+			Spec: &pod.PodSpec{
+				PodName:    podName,
+				Labels:     labels,
+				Containers: []*pod.ContainerSpec{{}},
+			},
+			Status: &pod.PodStatus{
+				PodId:   &peloton.PodID{Value: podName.GetValue() + "-1"},
+				Host:    "peloton-host-0",
+				State:   pod.PodState_POD_STATE_RUNNING,
+				Version: entityVersion,
+			},
+		})
+	}
+
 	suite.jobClient.EXPECT().
 		QueryPods(suite.ctx, &statelesssvc.QueryPodsRequest{
 			JobId: jobID,
-			Spec:  &pod.QuerySpec{PodStates: nil},
-		}).
-		Return(&statelesssvc.QueryPodsResponse{
-			Pods: []*pod.PodInfo{
-				{
-					Spec: &pod.PodSpec{
-						PodName: podName,
-						Labels:  []*peloton.Label{mdLabel, jkLabel},
-					},
-					Status: &pod.PodStatus{
-						PodId: &peloton.PodID{Value: podName.GetValue() + "-1"},
-						Host:  "peloton-host-0",
-						State: pod.PodState_POD_STATE_RUNNING,
-					},
+			Spec: &pod.QuerySpec{
+				PodStates: nil,
+				Pagination: &pbquery.PaginationSpec{
+					Limit: uint32(len(podNames)),
 				},
 			},
-		}, nil)
-	suite.podClient.EXPECT().
-		GetPodEvents(suite.ctx, &podsvc.GetPodEventsRequest{
-			PodName: podName,
-		}).
-		Return(&podsvc.GetPodEventsResponse{
-			Events: []*pod.PodEvent{
-				{
-					Timestamp:   "2019-01-03T22:14:58Z",
-					Message:     "",
-					ActualState: task.TaskState_RUNNING.String(),
-				},
+			Pagination: &pbquery.PaginationSpec{
+				Limit: uint32(len(podNames)),
 			},
-		}, nil)
+		}).
+		Return(&statelesssvc.QueryPodsResponse{Pods: pods}, nil)
+}
+
+// TestGetTasksWithoutConfigs_ParallelismSuccess tests parallelism for
+// GetTasksWithoutConfig success scenario
+func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismSuccess() {
+	query := fixture.AuroraTaskQuery()
+	jobKey := query.GetJobKeys()[0]
+	jobID := fixture.PelotonJobID()
+	entityVersion := fixture.PelotonEntityVersion()
+
+	mdl, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
+	suite.NoError(err)
+	jkl := label.NewAuroraJobKey(jobKey)
+	labels := []*peloton.Label{mdl, jkl}
+
+	suite.expectGetJob(jobKey, jobID, 1000)
+
+	var podNames []*peloton.PodName
+	for i := 0; i < 1000; i++ {
+		podName := &peloton.PodName{
+			Value: util.CreatePelotonTaskID(jobID.GetValue(), uint32(i)),
+		}
+		podNames = append(podNames, podName)
+
+		suite.podClient.EXPECT().
+			GetPodEvents(gomock.Any(), &podsvc.GetPodEventsRequest{
+				PodName: podName,
+			}).
+			Return(&podsvc.GetPodEventsResponse{
+				Events: []*pod.PodEvent{
+					{
+						Timestamp:   "2019-01-03T22:14:58Z",
+						Message:     "",
+						ActualState: task.TaskState_RUNNING.String(),
+					},
+				},
+			}, nil)
+	}
+
+	suite.expectQueryPods(jobID, podNames, labels, entityVersion)
 
 	resp, err := suite.handler.GetTasksWithoutConfigs(suite.ctx, query)
 	suite.NoError(err)
 	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
-	suite.Len(resp.GetResult().GetScheduleStatusResult().GetTasks(), 1)
+	suite.Len(resp.GetResult().GetScheduleStatusResult().GetTasks(), 1000)
+}
+
+// TestGetTasksWithoutConfigs_ParallelismFailure tests parallelism for
+// GetTasksWithoutConfig failure scenario
+func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismFailure() {
+	query := fixture.AuroraTaskQuery()
+	jobKey := query.GetJobKeys()[0]
+	jobID := fixture.PelotonJobID()
+	entityVersion := fixture.PelotonEntityVersion()
+
+	mdl, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
+	suite.NoError(err)
+	jkl := label.NewAuroraJobKey(jobKey)
+	labels := []*peloton.Label{mdl, jkl}
+
+	suite.expectGetJob(jobKey, jobID, 1000)
+
+	var podNames []*peloton.PodName
+	for i := 0; i < 1000; i++ {
+		podName := &peloton.PodName{
+			Value: util.CreatePelotonTaskID(jobID.GetValue(), uint32(i)),
+		}
+		podNames = append(podNames, podName)
+
+		if i%100 == 0 {
+			suite.podClient.EXPECT().
+				GetPodEvents(gomock.Any(), &podsvc.GetPodEventsRequest{
+					PodName: podName,
+				}).
+				Return(&podsvc.GetPodEventsResponse{},
+					errors.New("failed to get pod events")).
+				MaxTimes(1)
+			continue
+		}
+
+		suite.podClient.EXPECT().
+			GetPodEvents(gomock.Any(), &podsvc.GetPodEventsRequest{
+				PodName: podName,
+			}).
+			Return(&podsvc.GetPodEventsResponse{
+				Events: []*pod.PodEvent{
+					{
+						Timestamp:   "2019-01-03T22:14:58Z",
+						Message:     "",
+						ActualState: task.TaskState_RUNNING.String(),
+					},
+				},
+			}, nil).
+			MaxTimes(1)
+	}
+
+	suite.expectQueryPods(jobID, podNames, labels, entityVersion)
+
+	resp, err := suite.handler.GetTasksWithoutConfigs(suite.ctx, query)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
+	suite.Len(resp.GetResult().GetScheduleStatusResult().GetTasks(), 0)
+	suite.NotEmpty(resp.GetDetails())
 }
 
 // Ensures that KillTasks maps to StopPods correctly.
