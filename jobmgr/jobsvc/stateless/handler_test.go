@@ -316,7 +316,7 @@ func (suite *statelessHandlerTestSuite) TestGetJobSuccess() {
 
 	suite.updateStore.EXPECT().
 		GetJobUpdateEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
-		Return([]*stateless.WorkflowEvent{&stateless.WorkflowEvent{
+		Return([]*stateless.WorkflowEvent{{
 			Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
 			State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 			Timestamp: time.Now().Format(time.RFC3339),

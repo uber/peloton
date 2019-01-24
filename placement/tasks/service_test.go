@@ -29,11 +29,6 @@ import (
 	resource_mocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	"github.com/uber/peloton/placement/config"
 	"github.com/uber/peloton/placement/metrics"
-	"github.com/uber/peloton/placement/models"
-)
-
-const (
-	_testReason = "Test Placement Reason"
 )
 
 func setupService(t *testing.T) (Service, *resource_mocks.MockResourceManagerServiceYARPCClient, *gomock.Controller) {
@@ -220,58 +215,4 @@ func TestTaskService_SetPlacements(t *testing.T) {
 			),
 	)
 	service.SetPlacements(ctx, placements, nil)
-}
-
-func TestTaskService_Enqueue(t *testing.T) {
-	service, mockResourceManager, ctrl := setupService(t)
-	defer ctrl.Finish()
-	ctx := context.Background()
-	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs: []*resmgrsvc.Gang{
-			{
-				Tasks: []*resmgr.Task{
-					{
-						Name: "task",
-					},
-				},
-			},
-		},
-		Reason: _testReason,
-	}
-	rmTask := &resmgr.Task{
-		Name: "task",
-	}
-	gang := &resmgrsvc.Gang{
-		Tasks: []*resmgr.Task{rmTask},
-	}
-	task := models.NewTask(gang, rmTask, time.Now().Add(10*time.Second), 1)
-	assignments := []*models.Assignment{models.NewAssignment(task)}
-
-	// Placement engine enqueue nil assignments
-	service.Enqueue(ctx, nil, _testReason)
-
-	// Placement engine enqueue resmgr enqueue gangs request errors
-	mockResourceManager.EXPECT().EnqueueGangs(
-		gomock.Any(),
-		request,
-	).Return(nil, errors.New("enqueue gangs request failed"))
-	service.Enqueue(ctx, assignments, _testReason)
-
-	response := &resmgrsvc.EnqueueGangsResponse{
-		Error: &resmgrsvc.EnqueueGangsResponse_Error{},
-	}
-	mockResourceManager.EXPECT().EnqueueGangs(
-		gomock.Any(),
-		request,
-	).Return(response, nil)
-	service.Enqueue(ctx, assignments, _testReason)
-
-	// Placement engine enqueue success case
-	gomock.InOrder(
-		mockResourceManager.EXPECT().EnqueueGangs(
-			gomock.Any(),
-			request,
-		),
-	)
-	service.Enqueue(ctx, assignments, _testReason)
 }

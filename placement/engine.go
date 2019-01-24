@@ -243,12 +243,11 @@ func (e *engine) placeAssignmentGroup(
 			log.WithFields(log.Fields{
 				"filter":      filter,
 				"assignments": assignments,
-			}).Warn("failed to place tasks due to offer starvation")
-			e.metrics.OfferStarved.Inc(1)
-			// Return the tasks
-			e.taskService.Enqueue(ctx, assignments, reason)
+			}).Info("failed to place tasks due to offer starvation")
+			e.returnStarvedAssignments(ctx, assignments, reason)
 			return
 		}
+
 		e.metrics.OfferGet.Inc(1)
 
 		// PlaceOnce the tasks on the hosts by delegating to the placement strategy.
@@ -271,6 +270,19 @@ func (e *engine) placeAssignmentGroup(
 		// Set placements and return unused offers and failed tasks
 		e.cleanup(ctx, assigned, retryable, unassigned, hosts)
 	}
+}
+
+// returns the starved assignments back to the task service
+func (e *engine) returnStarvedAssignments(
+	ctx context.Context,
+	failedAssignments []*models.Assignment,
+	reason string) {
+	e.metrics.OfferStarved.Inc(1)
+	// set the same reason for the failed assignments
+	for _, a := range failedAssignments {
+		a.Reason = reason
+	}
+	e.taskService.SetPlacements(ctx, nil, failedAssignments)
 }
 
 func (e *engine) getTaskIDs(tasks []*models.Task) []*peloton.TaskID {

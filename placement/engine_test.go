@@ -228,11 +228,6 @@ func TestEnginePlaceSubsetOfTasksDueToInsufficientResources(t *testing.T) {
 		gomock.Any(),
 		gomock.Any()).
 		Return().AnyTimes()
-	mockTaskService.EXPECT().Enqueue(
-		gomock.Any(),
-		gomock.Any(),
-		gomock.Any()).
-		Return()
 
 	engine.strategy = batch.New()
 	engine.Place(context.Background())
@@ -268,10 +263,10 @@ func TestEnginePlaceNoHostsMakesTaskExceedDeadline(t *testing.T) {
 		Return(nil, _testReason)
 
 	mockTaskService.EXPECT().
-		Enqueue(
+		SetPlacements(
 			gomock.Any(),
+			nil,
 			gomock.Any(),
-			_testReason,
 		).Times(1).
 		Return()
 
@@ -372,7 +367,7 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 		Return(false)
 
 	mockTaskService.EXPECT().
-		Enqueue(
+		SetPlacements(
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),

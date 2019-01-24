@@ -36,13 +36,10 @@ const (
 
 // Service will manage gangs/tasks and placements used by any placement strategy.
 type Service interface {
-	// Dequeue fetches some tasks from the resource manager.
+	// Dequeue fetches some tasks from the service.
 	Dequeue(ctx context.Context, taskType resmgr.TaskType, batchSize int, timeout int) (assignments []*models.Assignment)
 
-	// Enqueue returns dequeued tasks back to resource manager which as they were not placed.
-	Enqueue(ctx context.Context, assignments []*models.Assignment, reason string)
-
-	// SetPlacements sets placements in the resource manager.
+	// SetPlacements sets successful and unsuccessful placements back to the service.
 	SetPlacements(
 		ctx context.Context,
 		successFullPlacements []*resmgr.Placement,
@@ -217,61 +214,6 @@ func (s *service) SetPlacements(
 	setPlacementDuration := time.Since(setPlacementStart)
 	s.metrics.SetPlacementDuration.Record(setPlacementDuration)
 	s.metrics.SetPlacementSuccess.Inc(int64(len(placements)))
-}
-
-// Enqueue calls resource manager to return those tasks which could not be placed
-func (s *service) Enqueue(
-	ctx context.Context,
-	assignments []*models.Assignment,
-	reason string) {
-	if len(assignments) == 0 {
-		log.WithFields(log.Fields{
-			"assignments": assignments,
-		}).Debug("no assignments to enqueue for resource manager")
-		return
-	}
-
-	ctx, cancelFunc := context.WithTimeout(ctx, _timeout)
-	defer cancelFunc()
-
-	gangs := make([]*resmgrsvc.Gang, 0, len(assignments))
-	for _, assignment := range assignments {
-		gangs = append(gangs, &resmgrsvc.Gang{
-			Tasks: []*resmgr.Task{assignment.GetTask().GetTask()},
-		})
-	}
-
-	var request = &resmgrsvc.EnqueueGangsRequest{
-		Gangs:  gangs,
-		Reason: reason,
-	}
-	response, err := s.resourceManager.EnqueueGangs(ctx, request)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"gangs_len":              len(gangs),
-			"gangs":                  gangs,
-			"enqueue_gangs_request":  request,
-			"enqueue_gangs_response": response,
-		}).WithError(err).Error(_failedToEnqueueTasks)
-		return
-	}
-
-	if response.GetError() != nil {
-		log.WithFields(log.Fields{
-			"gangs_len":              len(gangs),
-			"gangs":                  gangs,
-			"enqueue_gangs_request":  request,
-			"enqueue_gangs_response": response,
-		}).WithError(errors.New(response.Error.String())).Error(_failedToEnqueueTasks)
-		return
-	}
-
-	log.WithFields(log.Fields{
-		"gangs_len":              len(gangs),
-		"gangs":                  gangs,
-		"enqueue_gangs_request":  request,
-		"enqueue_gangs_response": response,
-	}).Debug("enqueue gangs returned from resmgr call")
 }
 
 func (s *service) createTasks(gang *resmgrsvc.Gang, now time.Time) []*models.Task {

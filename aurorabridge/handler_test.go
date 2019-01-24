@@ -1653,9 +1653,9 @@ func (suite *ServiceHandlerTestSuite) TestKillTasks_StopAll() {
 	id := fixture.PelotonJobID()
 	v := fixture.PelotonEntityVersion()
 	instances := map[int32]struct{}{
-		0: struct{}{},
-		1: struct{}{},
-		2: struct{}{},
+		0: {},
+		1: {},
+		2: {},
 	}
 
 	suite.expectGetJobIDFromJobName(k, id)

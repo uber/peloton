@@ -63,7 +63,7 @@ func TestNewScheduledTask(t *testing.T) {
 			PodName: podName1,
 			Labels:  []*peloton.Label{ml, kl},
 			Containers: []*pod.ContainerSpec{
-				&pod.ContainerSpec{},
+				{},
 			},
 		},
 		Status: &pod.PodStatus{
@@ -157,7 +157,7 @@ func TestNewScheduledTask(t *testing.T) {
 			PodName: podName2,
 			Labels:  []*peloton.Label{ml, kl},
 			Containers: []*pod.ContainerSpec{
-				&pod.ContainerSpec{
+				{
 					Ports: []*pod.PortSpec{
 						{
 							Name:  "http",
