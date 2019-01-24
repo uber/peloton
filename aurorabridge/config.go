@@ -20,6 +20,21 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 )
 
+// ServiceHandlerConfig defines ServiceHandler configuration.
+type ServiceHandlerConfig struct {
+	GetJobUpdateWorkers int `yaml:"get_job_update_workers"`
+	StopPodWorkers      int `yaml:"stop_pod_workers"`
+}
+
+func (c *ServiceHandlerConfig) normalize() {
+	if c.GetJobUpdateWorkers == 0 {
+		c.GetJobUpdateWorkers = 25
+	}
+	if c.StopPodWorkers == 0 {
+		c.StopPodWorkers = 25
+	}
+}
+
 // RespoolLoaderConfig defines RespoolLoader configuration.
 type RespoolLoaderConfig struct {
 	RetryInterval      time.Duration      `yaml:"retry_interval"`

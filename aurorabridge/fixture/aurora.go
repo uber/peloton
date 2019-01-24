@@ -73,3 +73,27 @@ func AuroraMetadata() []*api.Metadata {
 	}
 	return m
 }
+
+// AuroraInstanceSet returns n random instances whose values are less than
+// max with no duplicates. Panics if n > max.
+func AuroraInstanceSet(n, max int) map[int32]struct{} {
+	if n > max {
+		panic("n must be less than max")
+	}
+
+	// Map of all possible choices.
+	choices := make(map[int32]struct{})
+	for i := 0; i < max; i++ {
+		choices[int32(i)] = struct{}{}
+	}
+
+	// Add first n instances of choices in random order.
+	set := make(map[int32]struct{})
+	for i := range choices {
+		if len(set) == n {
+			break
+		}
+		set[i] = struct{}{}
+	}
+	return set
+}

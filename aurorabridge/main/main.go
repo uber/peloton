@@ -230,6 +230,7 @@ func main() {
 	respoolLoader := aurorabridge.NewRespoolLoader(cfg.RespoolLoader, respoolClient)
 
 	handler := aurorabridge.NewServiceHandler(
+		cfg.ServiceHandler,
 		rootScope,
 		jobClient,
 		podClient,

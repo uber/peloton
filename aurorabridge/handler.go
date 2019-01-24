@@ -27,6 +27,7 @@ import (
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 	"github.com/uber/peloton/common/async"
+	"github.com/uber/peloton/util"
 
 	"github.com/uber/peloton/aurorabridge/atop"
 	"github.com/uber/peloton/aurorabridge/label"
@@ -41,9 +42,8 @@ import (
 )
 
 const (
-	// number of workers to create in async pool, which defines number of
-	// getJobUpdateDetails can be processed in parallel
-	_defaultGetJobUpdateWorkers = 25
+	// Number of workers used for stopping pods in parallel.
+	_defaultStopPodWorkers = 25
 )
 
 var errUnimplemented = errors.New("rpc is unimplemented")
@@ -51,6 +51,7 @@ var errUnimplemented = errors.New("rpc is unimplemented")
 // ServiceHandler implements a partial Aurora API. Various unneeded methods have
 // been left intentionally unimplemented.
 type ServiceHandler struct {
+	config        ServiceHandlerConfig
 	metrics       *Metrics
 	jobClient     statelesssvc.JobServiceYARPCClient
 	podClient     podsvc.PodServiceYARPCClient
@@ -59,12 +60,15 @@ type ServiceHandler struct {
 
 // NewServiceHandler creates a new ServiceHandler.
 func NewServiceHandler(
+	config ServiceHandlerConfig,
 	parent tally.Scope,
 	jobClient statelesssvc.JobServiceYARPCClient,
 	podClient podsvc.PodServiceYARPCClient,
 	respoolLoader RespoolLoader,
 ) *ServiceHandler {
+	config.normalize()
 	return &ServiceHandler{
+		config:        config,
 		metrics:       NewMetrics(parent.SubScope("aurorabridge").SubScope("api")),
 		jobClient:     jobClient,
 		podClient:     podClient,
@@ -474,9 +478,148 @@ func (h *ServiceHandler) KillTasks(
 	ctx context.Context,
 	job *api.JobKey,
 	instances map[int32]struct{},
-	message *string) (*api.Response, error) {
+	message *string,
+) (*api.Response, error) {
 
-	return nil, errUnimplemented
+	result, err := h.killTasks(ctx, job, instances, message)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"params": log.Fields{
+				"job":       job,
+				"instances": instances,
+				"message":   message,
+			},
+			"code":  err.responseCode,
+			"error": err.msg,
+		}).Error("KillTasks error")
+	}
+	return newResponse(result, err), nil
+}
+
+func (h *ServiceHandler) killTasks(
+	ctx context.Context,
+	job *api.JobKey,
+	instances map[int32]struct{},
+	message *string,
+) (*api.Result, *auroraError) {
+
+	id, err := h.getJobID(ctx, job)
+	if err != nil {
+		return nil, auroraErrorf("get job id: %s", err)
+	}
+	summary, err := h.getJobInfoSummary(ctx, id)
+	if err != nil {
+		return nil, auroraErrorf("get job info summary: %s", err)
+	}
+
+	stopAll := false
+	if uint32(len(instances)) == summary.GetInstanceCount() {
+		// Sanity check to make sure we don't stop everything if instances
+		// are out of bounds.
+		low, high := instanceBounds(instances)
+		if low == 0 && high == int32(len(instances)-1) {
+			stopAll = true
+		}
+	}
+
+	if stopAll {
+		// If all instances are specified, issue a single StopJob instead of
+		// multiple StopPods for performance reasons.
+		req := &statelesssvc.StopJobRequest{
+			JobId:   id,
+			Version: summary.GetStatus().GetVersion(),
+		}
+		if _, err := h.jobClient.StopJob(ctx, req); err != nil {
+			return nil, auroraErrorf("stop job: %s", err)
+		}
+	} else {
+		if err := h.stopPodsConcurrently(ctx, id, instances); err != nil {
+			return nil, auroraErrorf("stop pods in parallel: %s", err)
+		}
+	}
+	return &api.Result{}, nil
+}
+
+func (h *ServiceHandler) stopPodsConcurrently(
+	ctx context.Context,
+	id *peloton.JobID,
+	instances map[int32]struct{},
+) error {
+
+	instc := make(chan int32)
+	errc := make(chan error)
+
+	// Ensure all channel sends/recvs have a release valve if we encounter
+	// an early error.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	for w := 0; w < h.config.StopPodWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			for {
+				select {
+				case i, ok := <-instc:
+					if !ok {
+						return
+					}
+					name := util.CreatePelotonTaskID(id.GetValue(), uint32(i))
+					req := &podsvc.StopPodRequest{
+						PodName: &peloton.PodName{Value: name},
+					}
+					if _, err := h.podClient.StopPod(ctx, req); err != nil {
+						select {
+						case errc <- fmt.Errorf("stop pod %d: %s", i, err):
+						case <-ctx.Done():
+							return
+						}
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	go func() {
+		for i := range instances {
+			select {
+			case instc <- i:
+			case <-ctx.Done():
+				return
+			}
+		}
+		close(instc) // Signal to workers there are no more inputs.
+		wg.Wait()    // Wait for workers to finish in-progress work.
+		close(errc)  // Signal to consumer that work is finished.
+	}()
+
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// instanceBounds returns the lowest and highest instance id of
+// instances. If instances is empty, returns -1.
+func instanceBounds(instances map[int32]struct{}) (low, high int32) {
+	if len(instances) == 0 {
+		return -1, -1
+	}
+	for i := range instances {
+		if i < low {
+			low = i
+		}
+		if i > high {
+			high = i
+		}
+	}
+	return low, high
 }
 
 // StartJobUpdate starts update of the existing service job.
@@ -840,7 +983,7 @@ func (h *ServiceHandler) getJobUpdateDetails(
 
 	outchan := make(chan *Result)
 	pool := async.NewPool(async.PoolOptions{
-		MaxWorkers: _defaultGetJobUpdateWorkers,
+		MaxWorkers: h.config.GetJobUpdateWorkers,
 	}, nil)
 	pool.Start()
 

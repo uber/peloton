@@ -24,11 +24,12 @@ import (
 
 // Config defines aurorabridge configuration.
 type Config struct {
-	HTTPPort      int                              `yaml:"http_port"`
-	GRPCPort      int                              `yaml:"grpc_port"`
-	Metrics       metrics.Config                   `yaml:"metrics"`
-	Health        health.Config                    `yaml:"health"`
-	SentryConfig  logging.SentryConfig             `yaml:"sentry"`
-	Election      leader.ElectionConfig            `yaml:"election"`
-	RespoolLoader aurorabridge.RespoolLoaderConfig `yaml:"respool_loader"`
+	HTTPPort       int                               `yaml:"http_port"`
+	GRPCPort       int                               `yaml:"grpc_port"`
+	Metrics        metrics.Config                    `yaml:"metrics"`
+	Health         health.Config                     `yaml:"health"`
+	SentryConfig   logging.SentryConfig              `yaml:"sentry"`
+	Election       leader.ElectionConfig             `yaml:"election"`
+	RespoolLoader  aurorabridge.RespoolLoaderConfig  `yaml:"respool_loader"`
+	ServiceHandler aurorabridge.ServiceHandlerConfig `yaml:"service_handler"`
 }

@@ -32,6 +32,7 @@ import (
 	podmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc/mocks"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 	aurorabridgemocks "github.com/uber/peloton/aurorabridge/mocks"
+	"github.com/uber/peloton/util"
 
 	"github.com/uber/peloton/aurorabridge/atop"
 	"github.com/uber/peloton/aurorabridge/fixture"
@@ -56,6 +57,8 @@ type ServiceHandlerTestSuite struct {
 	podClient     *podmocks.MockPodServiceYARPCClient
 	respoolLoader *aurorabridgemocks.MockRespoolLoader
 
+	config ServiceHandlerConfig
+
 	handler *ServiceHandler
 }
 
@@ -65,10 +68,15 @@ func (suite *ServiceHandlerTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.jobClient = jobmocks.NewMockJobServiceYARPCClient(suite.ctrl)
 	suite.podClient = podmocks.NewMockPodServiceYARPCClient(suite.ctrl)
-
 	suite.respoolLoader = aurorabridgemocks.NewMockRespoolLoader(suite.ctrl)
 
+	suite.config = ServiceHandlerConfig{
+		GetJobUpdateWorkers: 25,
+		StopPodWorkers:      25,
+	}
+
 	suite.handler = NewServiceHandler(
+		suite.config,
 		tally.NoopScope,
 		suite.jobClient,
 		suite.podClient,
@@ -1099,7 +1107,7 @@ func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_NotFoundJobIsInvalidReq
 
 func (suite *ServiceHandlerTestSuite) expectGetJobIDFromJobName(k *api.JobKey, id *peloton.JobID) {
 	suite.jobClient.EXPECT().
-		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
+		GetJobIDFromJobName(gomock.Any(), &statelesssvc.GetJobIDFromJobNameRequest{
 			JobName: atop.NewJobName(k),
 		}).
 		Return(&statelesssvc.GetJobIDFromJobNameResponse{
@@ -1370,4 +1378,168 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs() {
 	suite.NoError(err)
 	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
 	suite.Len(resp.GetResult().GetScheduleStatusResult().GetTasks(), 1)
+}
+
+// Ensures that KillTasks maps to StopPods correctly.
+func (suite *ServiceHandlerTestSuite) TestKillTasks_Success() {
+	k := fixture.AuroraJobKey()
+	id := fixture.PelotonJobID()
+	instances := fixture.AuroraInstanceSet(50, 100)
+
+	suite.expectGetJobIDFromJobName(k, id)
+
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			JobId:       id,
+			SummaryOnly: true,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			Summary: &stateless.JobSummary{
+				InstanceCount: 100,
+			},
+		}, nil)
+
+	for i := range instances {
+		suite.podClient.EXPECT().
+			StopPod(gomock.Any(), &podsvc.StopPodRequest{
+				PodName: &peloton.PodName{
+					Value: util.CreatePelotonTaskID(id.GetValue(), uint32(i)),
+				},
+			}).
+			Return(&podsvc.StopPodResponse{}, nil)
+	}
+
+	resp, err := suite.handler.KillTasks(suite.ctx, k, instances, nil)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+}
+
+func pickN(m map[int32]struct{}, n int) map[int32]struct{} {
+	p := make(map[int32]struct{})
+	for i := range m {
+		if len(p) == n {
+			break
+		}
+		p[i] = struct{}{}
+	}
+	return p
+}
+
+// Ensures that if a StopPod request fails, the concurrency exits gracefully.
+func (suite *ServiceHandlerTestSuite) TestKillTasks_StopPodError() {
+	k := fixture.AuroraJobKey()
+	id := fixture.PelotonJobID()
+	instances := fixture.AuroraInstanceSet(50, 100)
+
+	suite.expectGetJobIDFromJobName(k, id)
+
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			JobId:       id,
+			SummaryOnly: true,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			Summary: &stateless.JobSummary{
+				InstanceCount: 100,
+			},
+		}, nil)
+
+	// Out of the 50 instances, pick 10 to produce StopPod errors.
+	shouldError := pickN(instances, 10)
+
+	for i := range instances {
+		if _, ok := shouldError[i]; ok {
+			suite.podClient.EXPECT().
+				StopPod(gomock.Any(), &podsvc.StopPodRequest{
+					PodName: &peloton.PodName{
+						Value: util.CreatePelotonTaskID(
+							id.GetValue(), uint32(i)),
+					},
+				}).
+				Return(nil, errors.New("some error")).
+				MaxTimes(1)
+		} else {
+			suite.podClient.EXPECT().
+				StopPod(gomock.Any(), &podsvc.StopPodRequest{
+					PodName: &peloton.PodName{
+						Value: util.CreatePelotonTaskID(
+							id.GetValue(), uint32(i)),
+					},
+				}).
+				Return(&podsvc.StopPodResponse{}, nil).
+				MaxTimes(1)
+		}
+	}
+
+	resp, err := suite.handler.KillTasks(suite.ctx, k, instances, nil)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
+}
+
+// Ensures that if the context is cancelled externally, the concurrency exits
+// gracefully.
+func (suite *ServiceHandlerTestSuite) TestKillTasks_CancelledContextError() {
+	k := fixture.AuroraJobKey()
+	id := fixture.PelotonJobID()
+	instances := fixture.AuroraInstanceSet(50, 100)
+
+	ctx, cancel := context.WithCancel(suite.ctx)
+	cancel()
+
+	suite.expectGetJobIDFromJobName(k, id)
+
+	suite.jobClient.EXPECT().
+		GetJob(ctx, &statelesssvc.GetJobRequest{
+			JobId:       id,
+			SummaryOnly: true,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			Summary: &stateless.JobSummary{
+				InstanceCount: 100,
+			},
+		}, nil)
+
+	resp, err := suite.handler.KillTasks(ctx, k, instances, nil)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
+}
+
+// Ensures that if all instances are specified in KillTasks, then StopJob
+// is used instead of individual StopPods.
+func (suite *ServiceHandlerTestSuite) TestKillTasks_StopAll() {
+	k := fixture.AuroraJobKey()
+	id := fixture.PelotonJobID()
+	v := fixture.PelotonEntityVersion()
+	instances := map[int32]struct{}{
+		0: struct{}{},
+		1: struct{}{},
+		2: struct{}{},
+	}
+
+	suite.expectGetJobIDFromJobName(k, id)
+
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			JobId:       id,
+			SummaryOnly: true,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			Summary: &stateless.JobSummary{
+				InstanceCount: 3,
+				Status: &stateless.JobStatus{
+					Version: v,
+				},
+			},
+		}, nil)
+
+	suite.jobClient.EXPECT().
+		StopJob(suite.ctx, &statelesssvc.StopJobRequest{
+			JobId:   id,
+			Version: v,
+		}).
+		Return(&statelesssvc.StopJobResponse{}, nil)
+
+	resp, err := suite.handler.KillTasks(suite.ctx, k, instances, nil)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
 }
