@@ -35,3 +35,11 @@ func TestTextRandomness(t *testing.T) {
 	}
 	assert.Len(t, results, n)
 }
+
+func TestRange(t *testing.T) {
+	for i := 0; i < 1000; i++ {
+		x := Range(5, 10)
+		assert.True(t, x >= 5)
+		assert.True(t, x < 10)
+	}
+}

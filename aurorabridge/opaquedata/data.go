@@ -36,6 +36,16 @@ func (d *Data) AppendUpdateAction(a UpdateAction) {
 	d.UpdateActions = append(d.UpdateActions, a)
 }
 
+// ContainsUpdateAction returns true if d contains a.
+func (d *Data) ContainsUpdateAction(a UpdateAction) bool {
+	for _, da := range d.UpdateActions {
+		if da == a {
+			return true
+		}
+	}
+	return false
+}
+
 // IsLatestUpdateAction returns true if a is the latest UpdateAction in d.
 func (d *Data) IsLatestUpdateAction(a UpdateAction) bool {
 	return len(d.UpdateActions) > 0 && d.UpdateActions[len(d.UpdateActions)-1] == a

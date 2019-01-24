@@ -3,6 +3,7 @@ package opaquedata
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 )
@@ -28,4 +29,78 @@ func TestDeserializeEmptyOpaqueData(t *testing.T) {
 	d, err := Deserialize(od)
 	require.NoError(t, err)
 	require.Equal(t, &Data{}, d)
+}
+
+func TestIsLatestUpdateAction(t *testing.T) {
+	testCases := []struct {
+		name    string
+		actions []UpdateAction
+		input   UpdateAction
+		want    bool
+	}{
+		{
+			"latest of multiple actions",
+			[]UpdateAction{StartPulsed, Pulse},
+			Pulse,
+			true,
+		}, {
+			"not latest of multiple actions",
+			[]UpdateAction{StartPulsed, Pulse},
+			StartPulsed,
+			false,
+		}, {
+			"latest of single action",
+			[]UpdateAction{StartPulsed},
+			StartPulsed,
+			true,
+		}, {
+			"not latest of single action",
+			[]UpdateAction{StartPulsed},
+			Pulse,
+			false,
+		}, {
+			"empty actions",
+			nil,
+			Pulse,
+			false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Data{UpdateActions: tc.actions}
+			assert.Equal(t, tc.want, d.IsLatestUpdateAction(tc.input))
+		})
+	}
+}
+
+func TestContainsUpdateAction(t *testing.T) {
+	testCases := []struct {
+		name    string
+		actions []UpdateAction
+		input   UpdateAction
+		want    bool
+	}{
+		{
+			"contains",
+			[]UpdateAction{StartPulsed, Pulse},
+			Pulse,
+			true,
+		}, {
+			"not contains",
+			[]UpdateAction{StartPulsed},
+			Pulse,
+			false,
+		}, {
+			"empty",
+			nil,
+			Pulse,
+			false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Data{UpdateActions: tc.actions}
+			assert.Equal(t, tc.want, d.ContainsUpdateAction(tc.input))
+		})
+	}
 }

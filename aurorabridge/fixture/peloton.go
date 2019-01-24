@@ -17,6 +17,7 @@ package fixture
 import (
 	"fmt"
 
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/util/randutil"
 
@@ -39,5 +40,14 @@ func PelotonJobID() *peloton.JobID {
 func PelotonResourcePoolID() *peloton.ResourcePoolID {
 	return &peloton.ResourcePoolID{
 		Value: fmt.Sprintf("respool-%s", randutil.Text(8)),
+	}
+}
+
+// PelotonUpdateSpec returns a random UpdateSpec.
+func PelotonUpdateSpec() *stateless.UpdateSpec {
+	return &stateless.UpdateSpec{
+		BatchSize:                    uint32(randutil.Range(5, 10)),
+		MaxInstanceRetries:           uint32(randutil.Range(1, 3)),
+		MaxTolerableInstanceFailures: uint32(randutil.Range(1, 3)),
 	}
 }

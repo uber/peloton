@@ -925,9 +925,74 @@ func (h *ServiceHandler) abortJobUpdate(
 func (h *ServiceHandler) RollbackJobUpdate(
 	ctx context.Context,
 	key *api.JobUpdateKey,
-	message *string) (*api.Response, error) {
+	message *string,
+) (*api.Response, error) {
 
-	return nil, errUnimplemented
+	result, err := h.rollbackJobUpdate(ctx, key, message)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"params": log.Fields{
+				"key":     key,
+				"message": message,
+			},
+			"code":  err.responseCode,
+			"error": err.msg,
+		}).Error("RollbackJobUpdate error")
+	}
+	return newResponse(result, err), nil
+}
+
+func (h *ServiceHandler) rollbackJobUpdate(
+	ctx context.Context,
+	key *api.JobUpdateKey,
+	message *string,
+) (*api.Result, *auroraError) {
+
+	id, err := h.getJobID(ctx, key.GetJob())
+	if err != nil {
+		return nil, auroraErrorf("get job id: %s", err)
+	}
+
+	w, err := h.getWorkflowInfo(ctx, id)
+	if err != nil {
+		return nil, auroraErrorf("get workflow info: %s", err)
+	}
+
+	d, err := opaquedata.Deserialize(w.GetOpaqueData())
+	if err != nil {
+		return nil, auroraErrorf("deserialize opaque data: %s", err)
+	}
+	if d.UpdateID != key.GetID() {
+		return nil, auroraErrorf("update id does not match current update").
+			code(api.ResponseCodeInvalidRequest)
+	}
+	if d.ContainsUpdateAction(opaquedata.Rollback) {
+		return nil, auroraErrorf("update already being rolled back").
+			code(api.ResponseCodeInvalidRequest)
+	}
+	d.AppendUpdateAction(opaquedata.Rollback)
+	od, err := d.Serialize()
+	if err != nil {
+		return nil, auroraErrorf("serialize opaque data: %s", err)
+	}
+
+	prevJob, err := h.getFullJobInfoByVersion(ctx, id, w.GetStatus().GetPrevVersion())
+	if err != nil {
+		return nil, auroraErrorf("get previous job: %s", err)
+	}
+
+	req := &statelesssvc.ReplaceJobRequest{
+		JobId:   id,
+		Version: w.GetStatus().GetVersion(),
+		Spec:    prevJob.GetSpec(),
+		//Secrets: nil,
+		UpdateSpec: w.GetUpdateSpec(),
+		OpaqueData: od,
+	}
+	if _, err := h.jobClient.ReplaceJob(ctx, req); err != nil {
+		return nil, auroraErrorf("replace job: %s", err)
+	}
+	return &api.Result{}, nil
 }
 
 // PulseJobUpdate allows progress of the job update in case blockIfNoPulsesAfterMs is specified in
@@ -1391,6 +1456,22 @@ func (h *ServiceHandler) getJobInfo(
 	req := &statelesssvc.GetJobRequest{
 		JobId:       jobID,
 		SummaryOnly: false,
+	}
+	resp, err := h.jobClient.GetJob(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetJobInfo(), nil
+}
+
+func (h *ServiceHandler) getFullJobInfoByVersion(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	v *peloton.EntityVersion,
+) (*stateless.JobInfo, error) {
+	req := &statelesssvc.GetJobRequest{
+		JobId:   jobID,
+		Version: v,
 	}
 	resp, err := h.jobClient.GetJob(ctx, req)
 	if err != nil {

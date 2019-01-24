@@ -38,3 +38,8 @@ const text = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 func Text(n int) []byte {
 	return choose(n, text)
 }
+
+// Range returns a random int in [start, stop).
+func Range(start, stop int) int {
+	return start + rand.Intn(stop-start)
+}

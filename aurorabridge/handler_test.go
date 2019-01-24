@@ -1685,3 +1685,128 @@ func (suite *ServiceHandlerTestSuite) TestKillTasks_StopAll() {
 	suite.NoError(err)
 	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
 }
+
+// Ensures that RollbackJobUpdate calls ReplaceJob using the previous JobSpec.
+func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
+	k := fixture.AuroraJobUpdateKey()
+	id := fixture.PelotonJobID()
+
+	prevVersion := fixture.PelotonEntityVersion()
+	curVersion := fixture.PelotonEntityVersion()
+
+	updateSpec := fixture.PelotonUpdateSpec()
+
+	prevSpec := &stateless.JobSpec{
+		Name:        atop.NewJobName(k.GetJob()),
+		Description: "the previous job spec",
+	}
+
+	d := &opaquedata.Data{UpdateID: k.GetID()}
+
+	curOD, err := d.Serialize()
+	suite.NoError(err)
+
+	d.AppendUpdateAction(opaquedata.Rollback)
+
+	newOD, err := d.Serialize()
+	suite.NoError(err)
+
+	suite.expectGetJobIDFromJobName(k.GetJob(), id)
+
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			JobId: id,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			WorkflowInfo: &stateless.WorkflowInfo{
+				OpaqueData: curOD,
+				Status: &stateless.WorkflowStatus{
+					Version:     curVersion,
+					PrevVersion: prevVersion,
+				},
+				UpdateSpec: updateSpec,
+			},
+		}, nil)
+
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: prevVersion,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: prevSpec,
+			},
+		}, nil)
+
+	suite.jobClient.EXPECT().
+		ReplaceJob(suite.ctx, &statelesssvc.ReplaceJobRequest{
+			JobId:      id,
+			Version:    curVersion,
+			Spec:       prevSpec,
+			UpdateSpec: updateSpec,
+			OpaqueData: newOD,
+		}).
+		Return(&statelesssvc.ReplaceJobResponse{}, nil)
+
+	resp, err := suite.handler.RollbackJobUpdate(suite.ctx, k, nil)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+}
+
+// Ensures RollbackJobUpdate returns INVALID_REQUEST if the update id does not
+// match the current workflow.
+func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_InvalidUpdateID() {
+	k := fixture.AuroraJobUpdateKey()
+	id := fixture.PelotonJobID()
+
+	d := &opaquedata.Data{UpdateID: "some other update id"}
+
+	od, err := d.Serialize()
+	suite.NoError(err)
+
+	suite.expectGetJobIDFromJobName(k.GetJob(), id)
+
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			JobId: id,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			WorkflowInfo: &stateless.WorkflowInfo{
+				OpaqueData: od,
+			},
+		}, nil)
+
+	resp, err := suite.handler.RollbackJobUpdate(suite.ctx, k, nil)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeInvalidRequest, resp.GetResponseCode())
+}
+
+// Ensures RollbackJobUpdate returns INVALID_REQUEST if the update was already
+// rolled back.
+func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_UpdateAlreadyRolledBack() {
+	k := fixture.AuroraJobUpdateKey()
+	id := fixture.PelotonJobID()
+
+	d := &opaquedata.Data{UpdateID: k.GetID()}
+	d.AppendUpdateAction(opaquedata.Rollback)
+
+	od, err := d.Serialize()
+	suite.NoError(err)
+
+	suite.expectGetJobIDFromJobName(k.GetJob(), id)
+
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			JobId: id,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			WorkflowInfo: &stateless.WorkflowInfo{
+				OpaqueData: od,
+			},
+		}, nil)
+
+	resp, err := suite.handler.RollbackJobUpdate(suite.ctx, k, nil)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeInvalidRequest, resp.GetResponseCode())
+}
