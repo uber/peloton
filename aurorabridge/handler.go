@@ -33,6 +33,7 @@ import (
 
 	"github.com/uber/peloton/aurorabridge/atop"
 	"github.com/uber/peloton/aurorabridge/common"
+	"github.com/uber/peloton/aurorabridge/concurrency"
 	"github.com/uber/peloton/aurorabridge/label"
 	"github.com/uber/peloton/aurorabridge/opaquedata"
 	"github.com/uber/peloton/aurorabridge/ptoa"
@@ -231,66 +232,30 @@ func (h *ServiceHandler) getScheduledTasks(
 	jobInfo *stateless.JobInfo,
 	podInfos []*pod.PodInfo,
 ) ([]*api.ScheduledTask, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
-	podc := make(chan *pod.PodInfo)
-	resultc := make(chan *getScheduledTaskResult)
-
-	var wg sync.WaitGroup
-	for w := 0; w < h.config.GetTasksWithoutConfigsWorkers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			for {
-				select {
-				case p, ok := <-podc:
-					if !ok {
-						return
-					}
-					t, err := h.getScheduledTask(ctx, jobInfo, p)
-					select {
-					case resultc <- &getScheduledTaskResult{t, err}:
-					case <-ctx.Done():
-						return
-					}
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
+	var inputs []interface{}
+	for _, p := range podInfos {
+		inputs = append(inputs, p)
 	}
 
-	go func() {
-		for _, p := range podInfos {
-			select {
-			case podc <- p:
-			case <-ctx.Done():
-				return
-			}
-		}
-		close(podc)
-		wg.Wait()
-		close(resultc)
-	}()
+	f := func(ctx context.Context, input interface{}) (interface{}, error) {
+		return h.getScheduledTask(ctx, jobInfo, input.(*pod.PodInfo))
+	}
+
+	outputs, err := concurrency.Map(
+		ctx,
+		concurrency.MapperFunc(f),
+		inputs,
+		h.config.GetTasksWithoutConfigsWorkers)
+	if err != nil {
+		return nil, err
+	}
 
 	var tasks []*api.ScheduledTask
-	for {
-		select {
-		case r, ok := <-resultc:
-			if !ok {
-				return tasks, nil
-			}
-
-			if r.err != nil {
-				return nil, r.err
-			}
-			tasks = append(tasks, r.task)
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
+	for _, o := range outputs {
+		tasks = append(tasks, o.(*api.ScheduledTask))
 	}
+	return tasks, nil
 }
 
 // getScheduledTask calls getPodEvents and returns Aurora ScheduledTask.
@@ -665,63 +630,30 @@ func (h *ServiceHandler) stopPodsConcurrently(
 	instances map[int32]struct{},
 ) error {
 
-	instc := make(chan int32)
-	errc := make(chan error)
-
-	// Ensure all channel sends/recvs have a release valve if we encounter
-	// an early error.
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	var wg sync.WaitGroup
-	for w := 0; w < h.config.StopPodWorkers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			for {
-				select {
-				case i, ok := <-instc:
-					if !ok {
-						return
-					}
-					name := util.CreatePelotonTaskID(id.GetValue(), uint32(i))
-					req := &podsvc.StopPodRequest{
-						PodName: &peloton.PodName{Value: name},
-					}
-					if _, err := h.podClient.StopPod(ctx, req); err != nil {
-						select {
-						case errc <- fmt.Errorf("stop pod %d: %s", i, err):
-						case <-ctx.Done():
-							return
-						}
-					}
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
+	var inputs []interface{}
+	for i := range instances {
+		inputs = append(inputs, i)
 	}
 
-	go func() {
-		for i := range instances {
-			select {
-			case instc <- i:
-			case <-ctx.Done():
-				return
-			}
+	f := func(ctx context.Context, input interface{}) (interface{}, error) {
+		instanceID := input.(int32)
+		name := util.CreatePelotonTaskID(id.GetValue(), uint32(instanceID))
+		req := &podsvc.StopPodRequest{
+			PodName: &peloton.PodName{Value: name},
 		}
-		close(instc) // Signal to workers there are no more inputs.
-		wg.Wait()    // Wait for workers to finish in-progress work.
-		close(errc)  // Signal to consumer that work is finished.
-	}()
-
-	select {
-	case err := <-errc:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
+		if _, err := h.podClient.StopPod(ctx, req); err != nil {
+			return nil, fmt.Errorf("stop pod %d: %s", instanceID, err)
+		}
+		return nil, nil
 	}
+
+	_, err := concurrency.Map(
+		ctx,
+		concurrency.MapperFunc(f),
+		inputs,
+		h.config.StopPodWorkers)
+
+	return err
 }
 
 // instanceBounds returns the lowest and highest instance id of
