@@ -114,6 +114,7 @@ class App(object):
         self.enable_revocable_resources = None
         self.bin_packing = None
         self.stream_only_mode = True
+        self.task_preemption_period = '60s'
         self.enable_sla_tracking = False
         self.enable_preemption = False
 
@@ -225,7 +226,10 @@ class App(object):
             env_vars['KAFKA_TOPIC'] = self.kafka_topic
 
         if self.name == 'resmgr':
-            env_vars['TASK_PREEMPTION_PERIOD'] = self.task_preemption_period
+            env_vars['TASK_PREEMPTION_PERIOD'] = getattr(
+                self,
+                "task_preemption_period", '60s',
+            )
             env_vars['ENABLE_SLA_TRACKING'] = getattr(
                 self,
                 "enable_sla_tracking", False,
