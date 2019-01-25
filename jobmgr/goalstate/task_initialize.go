@@ -20,7 +20,6 @@ import (
 
 	"github.com/uber/peloton/common/goalstate"
 	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
-	jobmgr_task "github.com/uber/peloton/jobmgr/task"
 	taskutil "github.com/uber/peloton/jobmgr/util/task"
 
 	log "github.com/sirupsen/logrus"
@@ -52,14 +51,6 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	cachedConfig, err := cachedJob.GetConfig(ctx)
-	if err != nil {
-		log.WithField("job_id", taskEnt.jobID).
-			WithError(err).
-			Debug("Failed to get job config")
-		return err
-	}
-
 	taskConfig, _, err := goalStateDriver.taskStore.GetTaskConfig(
 		ctx,
 		taskEnt.jobID,
@@ -74,7 +65,6 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 		taskEnt.jobID, taskEnt.instanceID, runtime, healthState)
 
 	// update task runtime
-	runtimeDiff[jobmgrcommon.GoalStateField] = jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())
 	runtimeDiff[jobmgrcommon.MessageField] = "Initialize task"
 
 	// If the task is being updated, then move the configuration version to
