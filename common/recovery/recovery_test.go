@@ -287,13 +287,13 @@ func TestJobRecoveryWithStore(t *testing.T) {
 
 	receivedPendingJobID = nil
 	err = RecoverJobsByState(
-		ctx, scope, csStore, jobStatesPending, recoverPendingTask, false)
+		ctx, scope, csStore, jobStatesPending, recoverPendingTask, false, false)
 	assert.NoError(t, err)
 	err = RecoverJobsByState(
-		ctx, scope, csStore, jobStatesRunning, recoverRunningTask, false)
+		ctx, scope, csStore, jobStatesRunning, recoverRunningTask, false, false)
 	assert.NoError(t, err)
 	err = RecoverJobsByState(
-		ctx, scope, csStore, jobStatesAll, recoverAllTask, false)
+		ctx, scope, csStore, jobStatesAll, recoverAllTask, false, false)
 	assert.NoError(t, err)
 	assert.Equal(t, 4, len(receivedPendingJobID))
 }
@@ -353,7 +353,14 @@ func TestRecoveryAfterJobDelete(t *testing.T) {
 		AnyTimes()
 
 	err = RecoverJobsByState(
-		ctx, scope, mockJobStore, jobStatesPending, recoverPendingTask, false)
+		ctx,
+		scope,
+		mockJobStore,
+		jobStatesPending,
+		recoverPendingTask,
+		false,
+		false,
+	)
 	assert.NoError(t, err)
 
 	mockJobStore.EXPECT().
@@ -367,7 +374,14 @@ func TestRecoveryAfterJobDelete(t *testing.T) {
 		Return([]*peloton.JobID{}, fmt.Errorf("")).
 		AnyTimes()
 	err = RecoverJobsByState(
-		ctx, scope, mockJobStore, jobStatesPending, recoverPendingTask, false)
+		ctx,
+		scope,
+		mockJobStore,
+		jobStatesPending,
+		recoverPendingTask,
+		false,
+		false,
+	)
 	assert.NoError(t, err)
 }
 
@@ -390,7 +404,14 @@ func TestRecoveryErrors(t *testing.T) {
 		GetJobsByStates(ctx, jobStatesPending).
 		Return(nil, fmt.Errorf("Fake GetJobsByStates error"))
 	err := RecoverJobsByState(
-		ctx, scope, mockJobStore, jobStatesPending, recoverPendingTask, false)
+		ctx,
+		scope,
+		mockJobStore,
+		jobStatesPending,
+		recoverPendingTask,
+		false,
+		false,
+	)
 	assert.Error(t, err)
 
 	// Test GetJobConfig error
@@ -412,7 +433,14 @@ func TestRecoveryErrors(t *testing.T) {
 		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
 
 	err = RecoverJobsByState(
-		ctx, scope, mockJobStore, jobStatesPending, recoverPendingTask, false)
+		ctx,
+		scope,
+		mockJobStore,
+		jobStatesPending,
+		recoverPendingTask,
+		false,
+		false,
+	)
 	assert.Error(t, err)
 
 	// Test active jobs != jobs in MV
@@ -439,7 +467,14 @@ func TestRecoveryErrors(t *testing.T) {
 		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
 
 	err = RecoverJobsByState(
-		ctx, scope, mockJobStore, jobStatesPending, recoverPendingTask, false)
+		ctx,
+		scope,
+		mockJobStore,
+		jobStatesPending,
+		recoverPendingTask,
+		false,
+		false,
+	)
 	assert.Error(t, err)
 
 	// Test active jobs != jobs in MV
@@ -463,7 +498,14 @@ func TestRecoveryErrors(t *testing.T) {
 		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
 
 	err = RecoverJobsByState(
-		ctx, scope, mockJobStore, jobStatesPending, recoverPendingTask, false)
+		ctx,
+		scope,
+		mockJobStore,
+		jobStatesPending,
+		recoverPendingTask,
+		false,
+		false,
+	)
 	assert.Error(t, err)
 }
 
@@ -493,7 +535,7 @@ func TestRecoveryWithFailedJobBatches(t *testing.T) {
 	}
 
 	err = RecoverJobsByState(
-		ctx, scope, csStore, jobStatesAll, recoverTaskRandomly, false)
+		ctx, scope, csStore, jobStatesAll, recoverTaskRandomly, false, false)
 	assert.Error(t, err)
 }
 
@@ -516,8 +558,14 @@ func TestJobRecoveryWithUninitializedState(t *testing.T) {
 
 	receivedPendingJobID = nil
 	err = RecoverJobsByState(
-		ctx, scope, csStore, []pb_job.JobState{pb_job.JobState_UNINITIALIZED},
-		recoverAllTask, false)
+		ctx,
+		scope,
+		csStore,
+		[]pb_job.JobState{pb_job.JobState_UNINITIALIZED},
+		recoverAllTask,
+		false,
+		false,
+	)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(receivedPendingJobID))
 }
@@ -571,7 +619,7 @@ func TestPopulateMissingActiveJobs(t *testing.T) {
 
 	// recover jobs by state using active jobs list
 	err = RecoverJobsByState(
-		ctx, scope, mockJobStore, jobStatesPending, noopRecover, true)
+		ctx, scope, mockJobStore, jobStatesPending, noopRecover, true, true)
 	assert.NoError(t, err)
 
 	// Test the actual backfill function for errors

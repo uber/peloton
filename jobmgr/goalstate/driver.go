@@ -410,6 +410,9 @@ func (d *driver) syncFromDB(ctx context.Context) error {
 		jobStatesToRecover,
 		d.recoverTasks,
 		d.cfg.RecoveryConfig.RecoverFromActiveJobs,
+		// Jobmgr should not backfill active jobs. It will be done by resmgr
+		// during recovery.
+		false,
 	)
 	if err != nil {
 		return err
