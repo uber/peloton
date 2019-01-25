@@ -155,8 +155,6 @@ func (suite *TestTaskInitializeSuite) TestTaskInitialize() {
 		suite.cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(suite.runtime, nil)
 
-		suite.cachedJob.EXPECT().GetConfig(gomock.Any()).Return(suite.cachedConfig, nil)
-
 		suite.taskStore.EXPECT().GetTaskConfig(
 			gomock.Any(), suite.jobID, suite.instanceID, suite.newConfigVersion).
 			Return(tt.taskConfig, &models.ConfigAddOn{}, nil)
@@ -167,10 +165,6 @@ func (suite *TestTaskInitializeSuite) TestTaskInitialize() {
 					suite.Equal(
 						pbtask.TaskState_INITIALIZED,
 						runtimeDiff[jobmgrcommon.StateField],
-					)
-					suite.Equal(
-						pbtask.TaskState_SUCCEEDED,
-						runtimeDiff[jobmgrcommon.GoalStateField],
 					)
 					suite.Equal(
 						suite.newConfigVersion,
@@ -240,23 +234,6 @@ func (suite *TestTaskInitializeSuite) TestTaskInitializeNoTaskRuntime() {
 	suite.Error(err)
 }
 
-// Test TaskInitialize when no job config exist
-func (suite *TestTaskInitializeSuite) TestTaskInitializeNoJobConfig() {
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).Return(suite.cachedJob)
-
-	suite.cachedJob.EXPECT().
-		GetTask(suite.instanceID).Return(suite.cachedTask)
-
-	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.runtime, nil)
-
-	suite.cachedJob.EXPECT().GetConfig(gomock.Any()).Return(nil, errors.New(""))
-
-	err := TaskInitialize(context.Background(), suite.taskEnt)
-	suite.Error(err)
-}
-
 // Test TaskInitialize when task config exist
 func (suite *TestTaskInitializeSuite) TestTaskInitializeNoTaskConfig() {
 	suite.jobFactory.EXPECT().
@@ -267,8 +244,6 @@ func (suite *TestTaskInitializeSuite) TestTaskInitializeNoTaskConfig() {
 
 	suite.cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).Return(suite.runtime, nil)
-
-	suite.cachedJob.EXPECT().GetConfig(gomock.Any()).Return(suite.cachedConfig, nil)
 
 	suite.taskStore.EXPECT().GetTaskConfig(
 		gomock.Any(), suite.jobID, suite.instanceID, suite.newConfigVersion).Return(nil, nil, errors.New(""))
