@@ -1184,6 +1184,42 @@ func (suite *TaskUpdaterTestSuite) TestProcessFailedTaskRunningStatusUpdate() {
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
+// Test case of processing status update for lost event.
+func (suite *TaskUpdaterTestSuite) TestProcessLostEventStatusUpdate() {
+	defer suite.ctrl.Finish()
+
+	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
+	timeNow := float64(time.Now().UnixNano())
+	event.MesosTaskStatus.Timestamp = &timeNow
+	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+
+	gomock.InOrder(
+		suite.mockTaskStore.EXPECT().
+			GetTaskByID(context.Background(), _pelotonTaskID).
+			Return(taskInfo, nil),
+		suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob),
+		cachedJob.EXPECT().SetTaskUpdateTime(event.MesosTaskStatus.Timestamp).Return(),
+		cachedJob.
+			EXPECT().
+			PatchTasks(context.Background(), gomock.Any()).
+			Do(func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+				runtimeDiff := runtimeDiffs[_instanceID]
+				suite.NotNil(runtimeDiff[jobmgrcommon.CompletionTimeField])
+			}).Return(nil),
+		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
+		suite.goalStateDriver.EXPECT().
+			JobRuntimeDuration(job.JobType_BATCH).
+			Return(1*time.Second),
+		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
+		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
+	)
+
+	now = nowMock
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+}
+
 func (suite *TaskUpdaterTestSuite) TestUpdaterProcessListeners() {
 	defer suite.ctrl.Finish()
 

@@ -280,8 +280,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	}
 
 	// Update task start and completion timestamps
-	switch runtimeDiff[jobmgrcommon.StateField] {
-	case pb_task.TaskState_RUNNING:
+	if runtimeDiff[jobmgrcommon.StateField].(pb_task.TaskState) == pb_task.TaskState_RUNNING {
 		// StartTime is set at the time of first RUNNING event
 		// CompletionTime may have been set (e.g. task has been set),
 		// which could make StartTime larger than CompletionTime.
@@ -290,10 +289,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			runtimeDiff[jobmgrcommon.StartTimeField] = now().UTC().Format(time.RFC3339Nano)
 			runtimeDiff[jobmgrcommon.CompletionTimeField] = ""
 		}
-	case pb_task.TaskState_SUCCEEDED,
-		pb_task.TaskState_FAILED,
-		pb_task.TaskState_KILLED:
-
+	} else if util.IsPelotonStateTerminal(runtimeDiff[jobmgrcommon.StateField].(pb_task.TaskState)) {
 		completionTime := now().UTC().Format(time.RFC3339Nano)
 		runtimeDiff[jobmgrcommon.CompletionTimeField] = completionTime
 
