@@ -197,17 +197,7 @@ Apply background color if the performance results differ by more than 0,1
 between the two versions.
 
 If the new version improves more than 10%, the result is colored green.
-If the new version has more than 10% performance regression, the result is
-colored red. For the rest of the results, no background color is applied.
-
-Args:
-  df: pandas.DataFrame
-  col_name: results from which column to look at
-
-Return:
-  rendered HTML object
 """
-
 
 def apply_bgcolor(df, df_type, col_name):
     def _results_style(row, df_type, col_name):
