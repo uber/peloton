@@ -130,7 +130,6 @@ def main():
                     'TaskNum': num_tasks,
                     'Sleep(s)': sleep_time,
                     'UseInsConf': instance_config,
-                    'Version': peloton_version,
                     'Cores': agent_num,
                 }
                 if succeeded:
@@ -145,7 +144,7 @@ def main():
     df = pd.DataFrame(
         records,
         columns=['Cores', 'TaskNum', 'Sleep(s)',
-                 'UseInsConf', 'Version', 'Start(s)',
+                 'UseInsConf', 'Start(s)',
                  'Exec(s)']
     )
     print ('Test Create')
@@ -173,6 +172,7 @@ def main():
 
     # write test_job_create_get results to '$base_path$_job_get.csv'.
     get_df = t.dump_records_to_file()
+
     if get_df is not None:
         get_df.to_csv(output_csv_files_list[1], sep='\t')
 
@@ -180,6 +180,7 @@ def main():
     update_df = t.perf_test_job_update(num_start_tasks=1, tasks_inc=10,
                                        num_increment=500,
                                        sleep_time=30, use_instance_config=True)
+
     if update_df is not None:
         update_df.to_csv(output_csv_files_list[2], sep='\t')
 
@@ -248,7 +249,6 @@ class PerformanceTest ():
             'NumStartTasks': num_start_tasks,
             'TaskIncrementEachTime': tasks_inc,
             'NumOfIncrement': num_increment,
-            'Version': self.peloton_version,
             'Sleep(s)': sleep_time,
             'UseInsConf': use_instance_config,
             'TotalTimeInSeconds': total_time_in_seconds,
@@ -257,7 +257,7 @@ class PerformanceTest ():
             record,
             columns=['NumStartTasks', 'TaskIncrementEachTime',
                      'NumOfIncrement', 'Sleep(s)',
-                     'UseInsConf', 'Version', 'TotalTimeInSeconds']
+                     'UseInsConf', 'TotalTimeInSeconds']
         )
         print('Test Update')
         print(df)
@@ -320,7 +320,6 @@ class PerformanceTest ():
             'TaskNum': num_tasks,
             'Sleep(s)': sleep_time,
             'UseInsConf': use_instance_config,
-            'Version': self.peloton_version,
             'Creates': counts['CREATE'],
             'CreateFails': counts['CREATEFAILS'],
             'Gets': counts['GET'],
@@ -332,7 +331,7 @@ class PerformanceTest ():
         df = pd.DataFrame(
             self.records,
             columns=['TaskNum', 'Sleep(s)',
-                     'UseInsConf', 'Creates', 'Version',
+                     'UseInsConf', 'Creates',
                      'CreateFails',  'Gets', 'GetFails']
         )
         print('Test Create + Get')

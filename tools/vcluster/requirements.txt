@@ -13,6 +13,7 @@ kazoo>=2.2.1
 # Data framework to process performance data
 pandas>=0.21.0
 tabulate>=0.7.7
+bs4>=0.0.1
 
 # DB migration
 cqlsh>=5.0.4

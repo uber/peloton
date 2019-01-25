@@ -10,6 +10,7 @@ import smtplib
 import sys
 
 from multi_benchmark import output_files_list
+import report_styling as styling
 
 PERF_DIR = 'tests/performance/PERF_RES'
 
@@ -80,18 +81,22 @@ def parse_arguments(args):
     return parser.parse_args(args)
 
 
-def compare_create(f1, f2):
-    """
-    Returns the benchmark results of comparing perf executions in
-    html table format.
+"""
+Returns the benchmark results of comparing perf executions in
+html table format.
 
-    Args:
-        f1: pandas.DataFrame, benchmark result on one run
-        f2: pandas.DataFrame, benchmark result on the second run
+Args:
+    base_version: Peloton perf test base verion
+    current_version: current Peloton perf test version
+    f1: pandas.DataFrame, benchmark result on one run
+    f2: pandas.DataFrame, benchmark result on the second run
 
-    Returns:
-        html table object.
-    """
+Returns:
+    html table object.
+"""
+
+
+def compare_create(base_version, current_version, f1, f2):
     dataframe_1, dataframe_2 = to_df(f1), to_df(f2)
     merge_table = pd.merge(
         dataframe_1, dataframe_2,
@@ -99,52 +104,71 @@ def compare_create(f1, f2):
         on=['Cores', 'Sleep(s)', 'UseInsConf', 'TaskNum']
     )
 
-    merge_table['Perf Change'] = merge_table.apply(
+    merge_table['Execution Duration Change (%)'] = merge_table.apply(
         lambda x: format(
-            (x['Exec(s)_y'] - x['Exec(s)_x']) / x['Exec(s)_x'], '.4f'),
+            (x['Exec(s)_y'] - x['Exec(s)_x']) / x['Exec(s)_x'] * 100, '.2f'),
         axis=1)
 
-    return merge_table.to_html()
+    enriched_table = styling.enrich_table_layout(
+        merge_table, 'Execution Duration Change (%)', 'create',
+        base_version, current_version
+    )
+
+    return enriched_table
 
 
-def compare_get(f1, f2):
-    """
-    Returns the benchmark results of comparing job's GET counts in
-    html table format.
+"""
+Returns the benchmark results of comparing job's GET counts in
+html table format.
 
-    Args:
-        f1: pandas.DataFrame, benchmark result on job get
-        f2: pandas.DataFrame, benchmark result on job get
+Args:
+    base_version: Peloton perf test base verion
+    current_version: current Peloton perf test version
+    f1: pandas.DataFrame, benchmark result on job get
+    f2: pandas.DataFrame, benchmark result on job get
 
-    Returns:
-        html table object.
-    """
+Returns:
+    html table object.
+"""
+
+
+def compare_get(base_version, current_version, f1, f2):
     dataframe_1, dataframe_2 = to_df(f1), to_df(f2)
     merge_table = pd.merge(
         dataframe_1, dataframe_2,
         how='right',
-        on=['TaskNum', 'Sleep(s)', 'UseInsConf', 'Creates']
+        on=['TaskNum', 'Sleep(s)', 'UseInsConf']
     )
 
-    merge_table['Get Diff'] = merge_table.apply(
+    merge_table['Get Counts Change (%)'] = merge_table.apply(
         lambda x: format(
-            (x['Gets_y'] - x['Gets_x']), '.2f'),
+            (x['Gets_y'] - x['Gets_x']) / x['Gets_x'] * 100, '.2f'),
         axis=1)
-    return merge_table.to_html()
+
+    enriched_table = styling.enrich_table_layout(
+        merge_table, 'Get Counts Change (%)', 'get',
+        base_version, current_version
+    )
+
+    return enriched_table
 
 
-def compare_update(f1, f2):
-    """
+"""
     Returns the benchmark results of updating a job and its comparison in
     html table format.
 
     Args:
+        base_version: Peloton perf test base verion
+        current_version: current Peloton perf test version
         f1: pandas.DataFrame, benchmark result on job update
         f2: pandas.DataFrame, benchmark result on job update
 
     Returns:
         html table object.
-    """
+"""
+
+
+def compare_update(base_version, current_version, f1, f2):
     dataframe_1, dataframe_2 = to_df(f1), to_df(f2)
     merge_table = pd.merge(
         dataframe_1, dataframe_2,
@@ -153,12 +177,45 @@ def compare_update(f1, f2):
             'Sleep(s)', 'UseInsConf']
     )
 
-    merge_table['Time Diff'] = merge_table.apply(
+    merge_table['Execution Duration Change (%)'] = merge_table.apply(
         lambda x: format(
-            (x['TotalTimeInSeconds_y'] - x['TotalTimeInSeconds_x']), '.2f'),
+            (x['TotalTimeInSeconds_y'] - x['TotalTimeInSeconds_x']) /
+            x['TotalTimeInSeconds_x'] * 100, '.2f'),
         axis=1)
 
-    return merge_table.to_html()
+    enriched_table = styling.enrich_table_layout(
+        merge_table, 'Execution Duration Change (%)', 'update',
+        base_version, current_version
+    )
+
+    return enriched_table
+
+
+"""
+Returns a list of formatted `create`, `get`, and `update` results in HTML
+table format.
+
+Args:
+    base_version: Peloton perf test base verion
+    current_version: current Peloton perf test version
+    f1: pandas.DataFrame, benchmark result on job update
+    f2: pandas.DataFrame, benchmark result on job update
+
+Returns:
+    a list of HTML perf test results.
+"""
+
+
+def generate_test_results(base_version, current_version, base_results,
+                          current_results):
+    operations, results = [compare_create,
+                           compare_get, compare_update], [None] * 3
+
+    # Aggregates data source with its function operation.
+    for i, combo in enumerate(zip(operations, base_results, current_results)):
+        func, f1, f2 = combo
+        results[i] = func(base_version, current_version, f1, f2)
+    return results
 
 
 def send_email(html_msg):
@@ -183,22 +240,28 @@ def send_email(html_msg):
 
 def main():
     args = parse_arguments(sys.argv[1:])
+    # Get arguments that are passed in.
+    base_arg = args.file_1
+    current_arg = args.file_2
 
-    # Aggregates data source with its function operation.
-    operations = [compare_create, compare_get, compare_update]
-    file_set_1 = output_files_list(PERF_DIR + '/', args.file_1)
-    file_set_2 = output_files_list(PERF_DIR + '/', args.file_2)
-    result_htmls = [None] * 3
+    # Get version info.
+    base_version = base_arg[5:-5]
+    current_version = current_arg[5:-8]
 
-    # Compare and generate html tables.
-    for i, combo in enumerate(zip(operations, file_set_1, file_set_2)):
-        func, f1, f2 = combo
-        result_htmls[i] = func(f1, f2)
+    # Get file to read.
+    base_results = test_file_path(base_arg)
+    current_results = test_file_path(current_arg)
+
+    results = generate_test_results(
+        base_version, current_version, base_results, current_results)
+    create_html = results[0]
+    get_html = results[1]
+    update_html = results[2]
 
     commit_info = os.environ.get(COMMIT_INFO) or 'N/A'
     build_url = os.environ.get(BUILD_URL) or 'N/A'
     msg = HTML_TEMPLATE % (commit_info, build_url,
-                           result_htmls[0], result_htmls[1], result_htmls[2])
+                           create_html, get_html, update_html)
     print(msg)
     if TO:
         send_email(msg)
@@ -206,6 +269,10 @@ def main():
 
 # Helper function. Converts csv contents to dataframe.
 def to_df(csv_file): return pd.read_csv(csv_file, '\t', index_col=0)
+
+
+def test_file_path(input_arg): return output_files_list(
+    PERF_DIR + '/', input_arg)
 
 
 if __name__ == "__main__":
