@@ -269,7 +269,10 @@ func RecoverJobsByState(
 	parentScope tally.Scope,
 	jobStore storage.JobStore,
 	jobStates []job.JobState,
-	f RecoverBatchTasks, recoverFromActiveJobs bool) error {
+	f RecoverBatchTasks,
+	recoverFromActiveJobs,
+	backfillFromMV bool,
+) error {
 
 	log.WithField("job_states", jobStates).Info("job states to recover")
 	mtx := NewMetrics(parentScope.SubScope("recovery"))
@@ -305,9 +308,11 @@ func RecoverJobsByState(
 			"total_active_jobs":  len(activeJobIDs),
 		}).Error("active_jobs not equal to jobs in mv_job_by_state")
 
-		// Backfill the missing jobs into active_jobs table.
-		go populateMissingActiveJobs(
-			ctx, jobStore, jobsIDs, activeJobIDsCopy, mtx)
+		if backfillFromMV {
+			// Backfill the missing jobs into active_jobs table.
+			go populateMissingActiveJobs(
+				ctx, jobStore, jobsIDs, activeJobIDsCopy, mtx)
+		}
 	}
 
 	if recoverFromActiveJobs {
