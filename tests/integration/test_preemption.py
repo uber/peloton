@@ -51,7 +51,8 @@ def respool_b(request):
 #                                for tasks in respool_b
 def test__preemption_tasks_reschedules_task(respool_a, respool_b):
     p_job_a = Job(job_file='test_preemptible_job.yaml', pool=respool_a,
-                  config=IntegrationTestConfig())
+                  config=IntegrationTestConfig(max_retry_attempts=100,
+                                               sleep_time_sec=5))
 
     p_job_a.create()
     p_job_a.wait_for_state(goal_state='RUNNING')
