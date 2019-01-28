@@ -24,36 +24,57 @@ import (
 
 // NewJobUpdateStatus translates peloton job update state to
 // aurora job update status.
-// Peloton workflows in INITIALIZED state are to be ignored, and state translation
-// must not be performed on this state.
-// TODO: If workflow state is in PAUSED state, use opaque data
-// to identify if workflow was ROLLING_FORWARD or ROLLING_BACKWARD
-// since Aurora identifies PAUSED state for them separately whereas
-// Peloton does not.
 func NewJobUpdateStatus(
 	s stateless.WorkflowState,
 	d *opaquedata.Data,
 ) (api.JobUpdateStatus, error) {
 
+	rollback := d.ContainsUpdateAction(opaquedata.Rollback)
+
+	awaitingPulse :=
+		d.ContainsUpdateAction(opaquedata.StartPulsed) &&
+			!d.ContainsUpdateAction(opaquedata.Pulse)
+
 	switch s {
-	case stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD:
+	// Treat INITIALIZED and ROLLING_FORWARD as the same state, since there is
+	// no equivalent INITIALIZED state in Aurora. Note, updates started in
+	// a paused state (e.g. awaiting pulse) skip INITIALIZED.
+	case stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
+		stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD:
+		if rollback {
+			return api.JobUpdateStatusRollingBack, nil
+		}
 		return api.JobUpdateStatusRollingForward, nil
+
 	case stateless.WorkflowState_WORKFLOW_STATE_PAUSED:
-		// TODO(codyg): Paused rollback states.
-		if d.IsLatestUpdateAction(opaquedata.StartPulsed) {
+		if rollback && awaitingPulse {
+			return api.JobUpdateStatusRollBackAwaitingPulse, nil
+		} else if rollback && !awaitingPulse {
+			return api.JobUpdateStatusRollBackPaused, nil
+		} else if !rollback && awaitingPulse {
 			return api.JobUpdateStatusRollForwardAwaitingPulse, nil
 		}
+		// !rollback && !awaitingPulse
 		return api.JobUpdateStatusRollForwardPaused, nil
+
 	case stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD:
 		return api.JobUpdateStatusRollingBack, nil
+
 	case stateless.WorkflowState_WORKFLOW_STATE_ROLLED_BACK:
 		return api.JobUpdateStatusRolledBack, nil
+
 	case stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED:
+		if rollback {
+			return api.JobUpdateStatusRolledBack, nil
+		}
 		return api.JobUpdateStatusRolledForward, nil
+
 	case stateless.WorkflowState_WORKFLOW_STATE_ABORTED:
 		return api.JobUpdateStatusAborted, nil
+
 	case stateless.WorkflowState_WORKFLOW_STATE_FAILED:
 		return api.JobUpdateStatusFailed, nil
+
 	default:
 		return api.JobUpdateStatusError,
 			fmt.Errorf("unknown peloton workflow state %d", s)

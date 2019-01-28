@@ -942,6 +942,14 @@ func (h *ServiceHandler) RollbackJobUpdate(
 	return newResponse(result, err), nil
 }
 
+// _validRollbackStatuses enumerates the statuses which a job update must be in
+// for rollback to be valid.
+var _validRollbackStatuses = common.NewJobUpdateStatusSet(
+	api.JobUpdateStatusRollingForward,
+	api.JobUpdateStatusRollForwardPaused,
+	api.JobUpdateStatusRollForwardAwaitingPulse,
+)
+
 func (h *ServiceHandler) rollbackJobUpdate(
 	ctx context.Context,
 	key *api.JobUpdateKey,
@@ -962,14 +970,23 @@ func (h *ServiceHandler) rollbackJobUpdate(
 	if err != nil {
 		return nil, auroraErrorf("deserialize opaque data: %s", err)
 	}
+
 	if d.UpdateID != key.GetID() {
-		return nil, auroraErrorf("update id does not match current update").
+		return nil, auroraErrorf(
+			"update id does not match current update").
 			code(api.ResponseCodeInvalidRequest)
 	}
-	if d.ContainsUpdateAction(opaquedata.Rollback) {
-		return nil, auroraErrorf("update already being rolled back").
+
+	status, err := ptoa.NewJobUpdateStatus(w.GetStatus().GetState(), d)
+	if err != nil {
+		return nil, auroraErrorf("new job update status: %s", err)
+	}
+	if !_validRollbackStatuses.Has(status) {
+		return nil, auroraErrorf(
+			"invalid rollback: update must be in %s", _validRollbackStatuses).
 			code(api.ResponseCodeInvalidRequest)
 	}
+
 	d.AppendUpdateAction(opaquedata.Rollback)
 	od, err := d.Serialize()
 	if err != nil {
@@ -1016,6 +1033,13 @@ func (h *ServiceHandler) PulseJobUpdate(
 	return newResponse(result, err), nil
 }
 
+// _validPulseStatuses enumerates the statuses which a job update must be in
+// for pulse to be valid.
+var _validPulseStatuses = common.NewJobUpdateStatusSet(
+	api.JobUpdateStatusRollForwardAwaitingPulse,
+	api.JobUpdateStatusRollBackAwaitingPulse,
+)
+
 func (h *ServiceHandler) pulseJobUpdate(
 	ctx context.Context,
 	key *api.JobUpdateKey,
@@ -1052,11 +1076,9 @@ func (h *ServiceHandler) pulseJobUpdate(
 		return nil, auroraErrorf("new job update status: %s", err)
 	}
 
-	// Only resume if we're in an AWAITING_PULSE state. Else, pulseJobUpdate is
+	// Only resume if we're in a valid status. Else, pulseJobUpdate is
 	// a no-op.
-	if status == api.JobUpdateStatusRollForwardAwaitingPulse ||
-		status == api.JobUpdateStatusRollBackAwaitingPulse {
-
+	if _validPulseStatuses.Has(status) {
 		d.AppendUpdateAction(opaquedata.Pulse)
 		od, err := d.Serialize()
 		if err != nil {

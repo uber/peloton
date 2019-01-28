@@ -1721,6 +1721,7 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
 			WorkflowInfo: &stateless.WorkflowInfo{
 				OpaqueData: curOD,
 				Status: &stateless.WorkflowStatus{
+					State:       stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 					Version:     curVersion,
 					PrevVersion: prevVersion,
 				},
@@ -1773,6 +1774,9 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_InvalidUpdateID() {
 		}).
 		Return(&statelesssvc.GetJobResponse{
 			WorkflowInfo: &stateless.WorkflowInfo{
+				Status: &stateless.WorkflowStatus{
+					State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+				},
 				OpaqueData: od,
 			},
 		}, nil)
@@ -1802,6 +1806,9 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_UpdateAlreadyRolledB
 		}).
 		Return(&statelesssvc.GetJobResponse{
 			WorkflowInfo: &stateless.WorkflowInfo{
+				Status: &stateless.WorkflowStatus{
+					State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+				},
 				OpaqueData: od,
 			},
 		}, nil)
