@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/common/statemachine"
 	"github.com/uber/peloton/resmgr/respool/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -56,29 +55,29 @@ func TestTransObs_Observe(t *testing.T) {
 	assert.Equal(t, fr.duration, time.Duration(0))
 
 	tt := []struct {
-		currentState   statemachine.State
+		currentState   task.TaskState
 		expectDuration bool
 	}{
 		{
 			// This is starting state to record so the duration should be zero
-			currentState:   statemachine.State(task.TaskState_READY.String()),
+			currentState:   task.TaskState_READY,
 			expectDuration: false,
 		},
 		{
 			// The rules don't include LAUNCHING to be recorded so it should
 			// be zero
-			currentState:   statemachine.State(task.TaskState_LAUNCHING.String()),
+			currentState:   task.TaskState_LAUNCHING,
 			expectDuration: false,
 		},
 		{
 			// This is the end state to record so the duration > 0
-			currentState:   statemachine.State(task.TaskState_RUNNING.String()),
+			currentState:   task.TaskState_RUNNING,
 			expectDuration: true,
 		},
 	}
 
 	for _, test := range tt {
-		tobs.Observe(test.currentState)
+		tobs.Observe("", test.currentState)
 		if test.expectDuration {
 			assert.NotEqual(t, fr.duration, time.Duration(0),
 				"duration should be greater than zero")
@@ -96,6 +95,9 @@ func TestNewTransitionObserver(t *testing.T) {
 	mockResPool := mocks.NewMockResPool(ctrl)
 	mockResPool.EXPECT().GetPath().Return("/").Times(1)
 
-	dto := NewTransitionObserver(true, tally.NoopScope, mockResPool.GetPath())
+	dto := NewTransitionObserver(
+		true,
+		tally.NoopScope,
+		mockResPool.GetPath())
 	assert.NotNil(t, dto)
 }

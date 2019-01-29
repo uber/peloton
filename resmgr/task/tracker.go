@@ -152,14 +152,10 @@ func (tr *tracker) AddTask(
 ) error {
 
 	rmTask, err := CreateRMTask(
+		tr.scope.SubScope("rmtask"),
 		t,
 		handler,
 		respool,
-		NewTransitionObserver(
-			config.EnableSLATracking,
-			tr.scope,
-			respool.GetPath(),
-		),
 		config)
 	if err != nil {
 		return err

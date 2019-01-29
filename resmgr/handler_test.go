@@ -562,13 +562,10 @@ func (s *HandlerTestSuite) TestTransitTasksInPlacement() {
 			Value: fmt.Sprintf("%s-%d", uuidStr, 0),
 		},
 	}
-	rmTask, err := rm_task.CreateRMTask(t, nil,
+	rmTask, err := rm_task.CreateRMTask(
+		tally.NoopScope,
+		t, nil,
 		resp,
-		rm_task.NewTransitionObserver(
-			false,
-			tally.NoopScope,
-			resp.GetPath(),
-		),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
@@ -933,13 +930,11 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 			Value: &mesosTaskID,
 		},
 	}
-	rmTask, err := rm_task.CreateRMTask(t, nil,
+	rmTask, err := rm_task.CreateRMTask(
+		tally.NoopScope,
+		t,
+		nil,
 		resp,
-		rm_task.NewTransitionObserver(
-			true,
-			tally.NoopScope,
-			resp.GetPath(),
-		),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
@@ -965,14 +960,10 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 		},
 	}
 	wrmTask, err := rm_task.CreateRMTask(
+		tally.NoopScope,
 		t,
 		nil,
 		resp,
-		rm_task.NewTransitionObserver(
-			false,
-			tally.NoopScope,
-			resp.GetPath(),
-		),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
@@ -1048,14 +1039,10 @@ func (s *HandlerTestSuite) TestHandleRunningEventError() {
 		},
 	}
 	rmTask, err := rm_task.CreateRMTask(
+		tally.NoopScope,
 		t,
 		nil,
 		resp,
-		rm_task.NewTransitionObserver(
-			true,
-			tally.NoopScope,
-			resp.GetPath(),
-		),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
@@ -1194,14 +1181,10 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasksError() {
 		},
 	}
 	rmTask, err := rm_task.CreateRMTask(
+		tally.NoopScope,
 		t,
 		nil,
 		resp,
-		rm_task.NewTransitionObserver(
-			false,
-			tally.NoopScope,
-			resp.GetPath(),
-		),
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,

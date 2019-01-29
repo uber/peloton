@@ -487,10 +487,11 @@ func (s *RMTaskTestSuite) TestRunTimeStats() {
 
 func (s *RMTaskTestSuite) TestPushTaskForReadmissionError() {
 	runWithMockNode := func(mnode respool.ResPool, err error) {
-		rmTask, err := CreateRMTask(s.createTask(1),
+		rmTask, err := CreateRMTask(
+			tally.NoopScope,
+			s.createTask(1),
 			nil,
 			mnode,
-			nil,
 			&Config{
 				LaunchingTimeout:      2 * time.Second,
 				PlacingTimeout:        2 * time.Second,
@@ -511,6 +512,7 @@ func (s *RMTaskTestSuite) TestPushTaskForReadmissionError() {
 
 	// Mock Enqueue Failure
 	mockNode.EXPECT().EnqueueGang(gomock.Any()).Return(fErr).Times(1)
+	mockNode.EXPECT().GetPath().Return("/mocknode").Times(2)
 	runWithMockNode(mockNode, fErr)
 
 	// Mock Subtract Allocation failure
@@ -527,10 +529,11 @@ func (s *RMTaskTestSuite) TestRMTaskTransitToError() {
 
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	rmTask, err := CreateRMTask(s.createTask(1),
+	rmTask, err := CreateRMTask(
+		tally.NoopScope,
+		s.createTask(1),
 		nil,
 		node,
-		nil,
 		&Config{
 			LaunchingTimeout:      2 * time.Second,
 			PlacingTimeout:        2 * time.Second,
@@ -552,10 +555,11 @@ func (s *RMTaskTestSuite) TestAddBackOffError() {
 
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	rmTask, err := CreateRMTask(s.createTask(1),
+	rmTask, err := CreateRMTask(
+		tally.NoopScope,
+		s.createTask(1),
 		nil,
 		node,
-		nil,
 		&Config{
 			LaunchingTimeout:       2 * time.Second,
 			PlacingTimeout:         2 * time.Second,
@@ -603,10 +607,11 @@ func (s *RMTaskTestSuite) TestRMTaskCallBackNilChecks() {
 func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskNotInPlacing() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	rmTask, err := CreateRMTask(s.createTask(1),
+	rmTask, err := CreateRMTask(
+		tally.NoopScope,
+		s.createTask(1),
 		nil,
 		node,
-		nil,
 		&Config{
 			LaunchingTimeout:       2 * time.Second,
 			PlacingTimeout:         2 * time.Second,
@@ -665,10 +670,11 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToReady() {
 		mnode respool.ResPool,
 		config *Config,
 		sm statemachine.StateMachine) error {
-		rmTask, err := CreateRMTask(s.createTask(1),
+		rmTask, err := CreateRMTask(
+			tally.NoopScope,
+			s.createTask(1),
 			nil,
 			mnode,
-			nil,
 			config,
 		)
 		rmTask.stateMachine = sm
@@ -678,6 +684,8 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToReady() {
 	}
 
 	mockNode := mocks.NewMockResPool(s.ctrl)
+	mockNode.EXPECT().GetPath().Return("/mocknode").Times(1)
+
 	mockStateMachine := sm_mock.NewMockStateMachine(s.ctrl)
 
 	// task is in PLACING state
@@ -717,10 +725,11 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToReadyErr() {
 		mnode respool.ResPool,
 		config *Config,
 		sm statemachine.StateMachine) error {
-		rmTask, err := CreateRMTask(s.createTask(1),
+		rmTask, err := CreateRMTask(
+			tally.NoopScope,
+			s.createTask(1),
 			nil,
 			mnode,
-			nil,
 			config,
 		)
 		rmTask.stateMachine = sm
@@ -730,6 +739,8 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToReadyErr() {
 	}
 
 	mockNode := mocks.NewMockResPool(s.ctrl)
+	mockNode.EXPECT().GetPath().Return("/mocknode").Times(1)
+
 	mockStateMachine := sm_mock.NewMockStateMachine(s.ctrl)
 	fakeError := errors.New("fake error")
 
@@ -774,10 +785,11 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToPending() {
 		mnode respool.ResPool,
 		config *Config,
 		sm statemachine.StateMachine) error {
-		rmTask, err := CreateRMTask(s.createTask(1),
+		rmTask, err := CreateRMTask(
+			tally.NoopScope,
+			s.createTask(1),
 			nil,
 			mnode,
-			nil,
 			config,
 		)
 		rmTask.stateMachine = sm
@@ -787,6 +799,8 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToPending() {
 	}
 
 	mockNode := mocks.NewMockResPool(s.ctrl)
+	mockNode.EXPECT().GetPath().Return("/mocknode").Times(1)
+
 	mockStateMachine := sm_mock.NewMockStateMachine(s.ctrl)
 
 	// task is in PLACING state

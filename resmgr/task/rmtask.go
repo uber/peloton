@@ -15,6 +15,7 @@
 package task
 
 import (
+	"github.com/uber-go/tally"
 	"strings"
 	"sync"
 	"time"
@@ -80,21 +81,25 @@ type RMTask struct {
 
 // CreateRMTask creates the RM task from resmgr.task
 func CreateRMTask(
+	scope tally.Scope,
 	t *resmgr.Task,
 	handler *eventstream.Handler,
 	respool respool.ResPool,
-	transitionObserver TransitionObserver,
-	config *Config) (*RMTask, error) {
+	taskConfig *Config) (*RMTask, error) {
 
 	r := &RMTask{
 		task:                t,
 		statusUpdateHandler: handler,
 		respool:             respool,
-		config:              config,
+		config:              taskConfig,
 		runTimeStats: &RunTimeStats{
 			StartTime: time.Time{},
 		},
-		transitionObserver: transitionObserver,
+		transitionObserver: NewTransitionObserver(
+			taskConfig.EnableSLATracking,
+			scope.SubScope("state_transition"),
+			respool.GetPath(),
+		),
 	}
 
 	err := r.initStateMachine()
@@ -105,15 +110,15 @@ func CreateRMTask(
 	// As this is when task is being created , retry should be 0
 	r.Task().PlacementRetryCount = 0
 	// Placement timeout should be equal to placing timeout by default
-	r.Task().PlacementTimeoutSeconds = config.PlacingTimeout.Seconds()
+	r.Task().PlacementTimeoutSeconds = taskConfig.PlacingTimeout.Seconds()
 	// Checking if placement backoff is enabled
-	if !config.EnablePlacementBackoff {
+	if !taskConfig.EnablePlacementBackoff {
 		return r, nil
 	}
 
-	// Creating the backoff policy specified in config
+	// Creating the backoff policy specified in taskConfig
 	// and will be used for further backoff calculations.
-	r.policy, err = GetFactory().CreateBackOffPolicy(config)
+	r.policy, err = GetFactory().CreateBackOffPolicy(taskConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -537,10 +542,14 @@ func (rmTask *RMTask) transitionCallBack(t *state.Transition) error {
 		return errTaskNotPresent
 	}
 
-	rmTask.transitionObserver.Observe(t.To)
+	tState := task.TaskState(task.TaskState_value[string(t.To)])
+
+	rmTask.transitionObserver.Observe(
+		rmTask.Task().GetTaskId().GetValue(),
+		tState)
 
 	// we only care about running state here
-	if t.To == state.State(task.TaskState_RUNNING.String()) {
+	if tState == task.TaskState_RUNNING {
 		// update the start time
 		rmTask.UpdateStartTime(time.Now().UTC())
 	}
