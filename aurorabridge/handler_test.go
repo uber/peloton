@@ -72,10 +72,11 @@ func (suite *ServiceHandlerTestSuite) SetupTest() {
 	suite.respoolLoader = aurorabridgemocks.NewMockRespoolLoader(suite.ctrl)
 
 	suite.config = ServiceHandlerConfig{
-		GetJobUpdateWorkers: 25,
-		StopPodWorkers:      25,
+		GetJobUpdateWorkers:           25,
+		GetTasksWithoutConfigsWorkers: 25,
+		StopPodWorkers:                25,
+		PodRunsDepth:                  2,
 	}
-
 	suite.handler = NewServiceHandler(
 		suite.config,
 		tally.NoopScope,
@@ -1604,6 +1605,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismSucc
 		podName := &peloton.PodName{
 			Value: util.CreatePelotonTaskID(jobID.GetValue(), uint32(i)),
 		}
+		podID := &peloton.PodID{Value: podName.GetValue() + "-1"}
 		podNames = append(podNames, podName)
 
 		suite.podClient.EXPECT().
@@ -1613,9 +1615,11 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismSucc
 			Return(&podsvc.GetPodEventsResponse{
 				Events: []*pod.PodEvent{
 					{
+						PodId:       podID,
 						Timestamp:   "2019-01-03T22:14:58Z",
 						Message:     "",
 						ActualState: task.TaskState_RUNNING.String(),
+						Hostname:    "peloton-host-0",
 					},
 				},
 			}, nil)
@@ -1649,6 +1653,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismFail
 		podName := &peloton.PodName{
 			Value: util.CreatePelotonTaskID(jobID.GetValue(), uint32(i)),
 		}
+		podID := &peloton.PodID{Value: podName.GetValue() + "-1"}
 		podNames = append(podNames, podName)
 
 		if i%100 == 0 {
@@ -1669,9 +1674,11 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismFail
 			Return(&podsvc.GetPodEventsResponse{
 				Events: []*pod.PodEvent{
 					{
+						PodId:       podID,
 						Timestamp:   "2019-01-03T22:14:58Z",
 						Message:     "",
 						ActualState: task.TaskState_RUNNING.String(),
+						Hostname:    "peloton-host-0",
 					},
 				},
 			}, nil).

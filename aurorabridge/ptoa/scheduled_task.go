@@ -32,35 +32,56 @@ func NewScheduledTask(
 	podInfo *pod.PodInfo,
 	podEvents []*pod.PodEvent,
 ) (*api.ScheduledTask, error) {
-	podSpec := podInfo.GetSpec()
+	if jobInfo == nil {
+		return nil, fmt.Errorf("job info is nil")
+	}
+	if podInfo == nil {
+		return nil, fmt.Errorf("pod info is nil")
+	}
+	if len(podEvents) == 0 {
+		return nil, fmt.Errorf("pod events is empty")
+	}
 
-	auroraTaskID := podInfo.GetStatus().GetPodId().GetValue()
-	auroraSlaveHost := podInfo.GetStatus().GetHost()
+	return newScheduledTask(jobInfo, podInfo, podEvents)
+}
 
-	taskID := podInfo.GetSpec().GetPodName().GetValue()
-	_, instanceID, err := util.ParseTaskID(podSpec.GetPodName().GetValue())
+// NewScheduledTaskForPrevRun creates a ScheduledTask object for pods from previous run.
+func NewScheduledTaskForPrevRun(
+	podEvents []*pod.PodEvent,
+) (*api.ScheduledTask, error) {
+	if len(podEvents) == 0 {
+		return nil, fmt.Errorf("pod events is empty")
+	}
+
+	return newScheduledTask(nil, nil, podEvents)
+}
+
+func newScheduledTask(
+	jobInfo *stateless.JobInfo,
+	podInfo *pod.PodInfo,
+	podEvents []*pod.PodEvent,
+) (*api.ScheduledTask, error) {
+	auroraTaskID := podEvents[0].GetPodId().GetValue()
+	auroraSlaveHost := podEvents[0].GetHostname()
+
+	pelotonTaskID, err := util.ParseTaskIDFromMesosTaskID(auroraTaskID)
+	if err != nil {
+		return nil, fmt.Errorf("parse task id from mesos task id: %s", err)
+	}
+	_, instanceID, err := util.ParseTaskID(pelotonTaskID)
 	if err != nil {
 		return nil, fmt.Errorf("parse task id: %s", err)
 	}
 
-	auroraTaskConfig, err := NewTaskConfig(jobInfo, podSpec)
+	ancestorID, err := newAncestorID(podEvents)
 	if err != nil {
-		return nil, fmt.Errorf("new task config: %s", err)
+		return nil, fmt.Errorf("new ancestor id: %s", err)
 	}
 
-	runID, err := util.ParseRunID(auroraTaskID)
+	auroraStatus, err := convertTaskStateStringToScheduleStatus(
+		podEvents[0].GetActualState())
 	if err != nil {
-		return nil, fmt.Errorf("parse task id: %s", err)
-	}
-
-	var ancestorID *string
-	if runID > 1 {
-		ancestorID = ptr.String(fmt.Sprintf("%s-%d", taskID, runID-1))
-	}
-
-	auroraStatus, err := NewScheduleStatus(podInfo.GetStatus().GetState())
-	if err != nil {
-		return nil, fmt.Errorf("new schedule status: %s", err)
+		return nil, err
 	}
 
 	auroraTaskEvents := make([]*api.TaskEvent, 0, len(podEvents))
@@ -74,22 +95,31 @@ func NewScheduledTask(
 		auroraTaskEvents = append(auroraTaskEvents, e)
 	}
 
+	var auroraTaskConfig *api.TaskConfig
 	auroraAssignedPorts := make(map[string]int32)
-	c := podInfo.GetSpec().GetContainers()
-	if len(c) == 0 {
-		return nil, fmt.Errorf("pod spec does not have any containers")
-	}
-	for _, p := range c[0].GetPorts() {
-		auroraAssignedPorts[p.GetName()] = int32(p.GetValue())
+
+	if jobInfo != nil && podInfo != nil {
+		auroraTaskConfig, err = NewTaskConfig(jobInfo, podInfo.GetSpec())
+		if err != nil {
+			return nil, fmt.Errorf("new task config: %s", err)
+		}
+
+		c := podInfo.GetSpec().GetContainers()
+		if len(c) == 0 {
+			return nil, fmt.Errorf("pod spec does not have any containers")
+		}
+		for _, p := range c[0].GetPorts() {
+			auroraAssignedPorts[p.GetName()] = int32(p.GetValue())
+		}
 	}
 
 	return &api.ScheduledTask{
 		AssignedTask: &api.AssignedTask{
 			TaskId:        &auroraTaskID,
 			SlaveHost:     &auroraSlaveHost,
+			InstanceId:    ptr.Int32(int32(instanceID)),
 			Task:          auroraTaskConfig,
 			AssignedPorts: auroraAssignedPorts,
-			InstanceId:    ptr.Int32(int32(instanceID)),
 			//SlaveId:   nil,
 		},
 		Status:     auroraStatus,
@@ -97,4 +127,29 @@ func NewScheduledTask(
 		AncestorId: ancestorID,
 		//FailureCount: nil,
 	}, nil
+}
+
+// newAncestorID extracts previous pod id from pod events.
+func newAncestorID(podEvents []*pod.PodEvent) (*string, error) {
+	if len(podEvents) == 0 {
+		return nil, fmt.Errorf("empty pod events")
+	}
+
+	ppid := podEvents[0].GetPrevPodId().GetValue()
+	if ppid == "" {
+		return nil, nil
+	}
+
+	runID, err := util.ParseRunID(ppid)
+	if err != nil {
+		return nil, err
+	}
+
+	if runID == 0 {
+		// in pod events, it may contain run id of 0, we need to
+		// manually filter it out
+		return nil, nil
+	}
+
+	return &ppid, nil
 }

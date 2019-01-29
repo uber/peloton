@@ -238,7 +238,56 @@ func (h *ServiceHandler) getScheduledTasks(
 	}
 
 	f := func(ctx context.Context, input interface{}) (interface{}, error) {
-		return h.getScheduledTask(ctx, jobInfo, input.(*pod.PodInfo))
+		podInfo, ok := input.(*pod.PodInfo)
+		if !ok {
+			return nil, fmt.Errorf("failed to cast input to pod info")
+		}
+
+		var ts []*api.ScheduledTask
+		podName := podInfo.GetSpec().GetPodName()
+
+		for i := 0; i < h.config.PodRunsDepth; i++ {
+			var ancestorID *string
+			var podID *peloton.PodID
+
+			if len(ts) > 0 {
+				if ancestorID = ts[len(ts)-1].AncestorId; ancestorID == nil {
+					// No more ancestor tasks
+					break
+				}
+			}
+
+			if ancestorID != nil {
+				podID = &peloton.PodID{Value: *ancestorID}
+			}
+
+			podEvents, err := h.getPodEvents(
+				ctx,
+				podName,
+				podID,
+			)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"get pod events for pod %q with pod id %q: %s",
+					podName.GetValue(), podID.GetValue(), err)
+			}
+			if len(podEvents) == 0 {
+				break
+			}
+
+			var t *api.ScheduledTask
+			if i >= 1 {
+				t, err = ptoa.NewScheduledTaskForPrevRun(podEvents)
+			} else {
+				t, err = ptoa.NewScheduledTask(jobInfo, podInfo, podEvents)
+			}
+			if err != nil {
+				return nil, fmt.Errorf(
+					"new scheduled task: %s", err)
+			}
+			ts = append(ts, t)
+		}
+		return ts, nil
 	}
 
 	outputs, err := concurrency.Map(
@@ -252,28 +301,9 @@ func (h *ServiceHandler) getScheduledTasks(
 
 	var tasks []*api.ScheduledTask
 	for _, o := range outputs {
-		tasks = append(tasks, o.(*api.ScheduledTask))
+		tasks = append(tasks, o.([]*api.ScheduledTask)...)
 	}
 	return tasks, nil
-}
-
-// getScheduledTask calls getPodEvents and returns Aurora ScheduledTask.
-func (h *ServiceHandler) getScheduledTask(
-	ctx context.Context,
-	jobInfo *stateless.JobInfo,
-	podInfo *pod.PodInfo,
-) (*api.ScheduledTask, error) {
-	n := podInfo.GetSpec().GetPodName()
-	podEvents, err := h.getPodEvents(ctx, n)
-	if err != nil {
-		return nil, fmt.Errorf("get pod events for pod %q: %s",
-			n.GetValue(), err)
-	}
-	t, err := ptoa.NewScheduledTask(jobInfo, podInfo, podEvents)
-	if err != nil {
-		return nil, fmt.Errorf("new scheduled task: %s", err)
-	}
-	return t, nil
 }
 
 // GetConfigSummary fetches the configuration summary of active tasks for the specified job.
@@ -1657,9 +1687,11 @@ func (h *ServiceHandler) queryPods(
 func (h *ServiceHandler) getPodEvents(
 	ctx context.Context,
 	podName *peloton.PodName,
+	podID *peloton.PodID,
 ) ([]*pod.PodEvent, error) {
 	req := &podsvc.GetPodEventsRequest{
 		PodName: podName,
+		PodId:   podID,
 	}
 	resp, err := h.podClient.GetPodEvents(ctx, req)
 	if err != nil {

@@ -7,3 +7,6 @@ election:
 
 health:
   heartbeat_interval: 5s
+
+service_handler:
+  pod_runs_depth: 2
