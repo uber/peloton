@@ -17,6 +17,7 @@ Home
    troubleshoot
    training
    pelotondev
+   update_states
    introduction
    security
    api_ref
