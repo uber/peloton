@@ -1286,10 +1286,22 @@ func (h *ServiceHandler) MarkHostsDrained(
 			h.metrics.MarkHostsDrainedFail.Inc(1)
 			continue
 		}
-		h.maintenanceHostInfoMap.UpdateHostState(
+
+		if err := h.maintenanceHostInfoMap.UpdateHostState(
 			machineID.GetHostname(),
 			hpb.HostState_HOST_STATE_DRAINING,
-			hpb.HostState_HOST_STATE_DOWN)
+			hpb.HostState_HOST_STATE_DOWN); err != nil {
+			// log error and add this host to the list of downedHosts since
+			// the Mesos StartMaintenance call was successful. The maintenance
+			// map will converge on reconciliation with Mesos master.
+			log.WithFields(
+				log.Fields{
+					"hostname": machineID.GetHostname(),
+					"from":     hpb.HostState_HOST_STATE_DRAINING.String(),
+					"to":       hpb.HostState_HOST_STATE_DOWN.String(),
+				}).WithError(err).
+				Error("failed to update host state in host map")
+		}
 		downedHosts = append(downedHosts, machineID.GetHostname())
 	}
 

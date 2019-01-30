@@ -21,10 +21,9 @@ import (
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	mesos_maintenance "github.com/uber/peloton/.gen/mesos/v1/maintenance"
 	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
-	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
-	"github.com/uber/peloton/hostmgr/host"
-	"github.com/uber/peloton/hostmgr/queue/mocks"
+	host_mocks "github.com/uber/peloton/hostmgr/host/mocks"
+	qm "github.com/uber/peloton/hostmgr/queue/mocks"
 	mpb_mocks "github.com/uber/peloton/yarpc/encoding/mpb/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -37,11 +36,11 @@ type RecoveryTestSuite struct {
 	suite.Suite
 	mockCtrl                 *gomock.Controller
 	recoveryHandler          RecoveryHandler
-	mockMaintenanceQueue     *mocks.MockMaintenanceQueue
+	mockMaintenanceQueue     *qm.MockMaintenanceQueue
 	mockMasterOperatorClient *mpb_mocks.MockMasterOperatorClient
 	drainingMachines         []*mesos.MachineID
 	downMachines             []*mesos.MachineID
-	maintenanceHostInfoMap   host.MaintenanceHostInfoMap
+	maintenanceHostInfoMap   *host_mocks.MockMaintenanceHostInfoMap
 }
 
 func (suite *RecoveryTestSuite) SetupSuite() {
@@ -66,10 +65,10 @@ func (suite *RecoveryTestSuite) SetupSuite() {
 func (suite *RecoveryTestSuite) SetupTest() {
 	log.Info("setting up test")
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockMaintenanceQueue = mocks.NewMockMaintenanceQueue(suite.mockCtrl)
+	suite.mockMaintenanceQueue = qm.NewMockMaintenanceQueue(suite.mockCtrl)
 	suite.mockMasterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.mockCtrl)
 
-	suite.maintenanceHostInfoMap = host.NewMaintenanceHostInfoMap()
+	suite.maintenanceHostInfoMap = host_mocks.NewMockMaintenanceHostInfoMap(suite.mockCtrl)
 	suite.recoveryHandler = NewRecoveryHandler(tally.NoopScope,
 		suite.mockMaintenanceQueue,
 		suite.mockMasterOperatorClient,
@@ -101,45 +100,28 @@ func (suite *RecoveryTestSuite) TestStart() {
 
 	suite.mockMaintenanceQueue.EXPECT().Clear()
 	suite.mockMasterOperatorClient.EXPECT().
-		GetMaintenanceStatus().Return(&mesos_master.Response_GetMaintenanceStatus{
-		Status: clusterStatus,
-	}, nil)
+		GetMaintenanceStatus().
+		Return(&mesos_master.Response_GetMaintenanceStatus{
+			Status: clusterStatus,
+		}, nil)
 
 	var drainingHostnames []string
 	for _, machine := range suite.drainingMachines {
 		drainingHostnames = append(drainingHostnames, machine.GetHostname())
 	}
-	suite.mockMaintenanceQueue.EXPECT().
-		Enqueue(gomock.Any()).
-		Return(nil).Do(func(hostnames []string) {
-		suite.EqualValues(drainingHostnames, hostnames)
-	})
+
+	gomock.InOrder(
+		suite.maintenanceHostInfoMap.EXPECT().
+			ClearAndFillMap(gomock.Any()),
+
+		suite.mockMaintenanceQueue.EXPECT().
+			Enqueue(gomock.Any()).
+			Return(nil).Do(func(hostnames []string) {
+			suite.EqualValues(drainingHostnames, hostnames)
+		}),
+	)
 	err := suite.recoveryHandler.Start()
 	suite.NoError(err)
-
-	drainingHostInfoMap := make(map[string]*hpb.HostInfo)
-	for _, hostInfo := range suite.maintenanceHostInfoMap.GetDrainingHostInfos([]string{}) {
-		drainingHostInfoMap[hostInfo.GetHostname()] = hostInfo
-	}
-	for _, drainingMachine := range suite.drainingMachines {
-		hostInfo := drainingHostInfoMap[drainingMachine.GetHostname()]
-		suite.NotNil(hostInfo)
-		suite.Equal(drainingMachine.GetHostname(), hostInfo.GetHostname())
-		suite.Equal(drainingMachine.GetIp(), hostInfo.GetIp())
-		suite.Equal(hpb.HostState_HOST_STATE_DRAINING, hostInfo.GetState())
-	}
-
-	downHostInfoMap := make(map[string]*hpb.HostInfo)
-	for _, hostInfo := range suite.maintenanceHostInfoMap.GetDownHostInfos([]string{}) {
-		downHostInfoMap[hostInfo.GetHostname()] = hostInfo
-	}
-	for _, downMachine := range suite.downMachines {
-		hostInfo := downHostInfoMap[downMachine.GetHostname()]
-		suite.NotNil(hostInfo)
-		suite.Equal(downMachine.GetHostname(), hostInfo.GetHostname())
-		suite.Equal(downMachine.GetIp(), hostInfo.GetIp())
-		suite.Equal(hpb.HostState_HOST_STATE_DOWN, hostInfo.GetState())
-	}
 }
 
 func (suite *RecoveryTestSuite) TestStart_Error() {

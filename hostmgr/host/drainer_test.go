@@ -25,6 +25,7 @@ import (
 	host "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
 	"github.com/uber/peloton/common/lifecycle"
+	host_mocks "github.com/uber/peloton/hostmgr/host/mocks"
 	mq_mocks "github.com/uber/peloton/hostmgr/queue/mocks"
 	mpb_mocks "github.com/uber/peloton/yarpc/encoding/mpb/mocks"
 
@@ -36,17 +37,19 @@ const (
 	drainerPeriod = 100 * time.Millisecond
 )
 
-type DrainerTestSuite struct {
+type drainerTestSuite struct {
 	suite.Suite
 	drainer                  *drainer
 	mockCtrl                 *gomock.Controller
 	mockMasterOperatorClient *mpb_mocks.MockMasterOperatorClient
 	mockMaintenanceQueue     *mq_mocks.MockMaintenanceQueue
+	mockMaintenanceMap       *host_mocks.MockMaintenanceHostInfoMap
 	drainingMachines         []*mesos.MachineID
 	downMachines             []*mesos.MachineID
+	hostInfos                []*host.HostInfo
 }
 
-func (suite *DrainerTestSuite) SetupSuite() {
+func (suite *drainerTestSuite) SetupSuite() {
 	testDownMachines := []struct {
 		host string
 		ip   string
@@ -80,46 +83,68 @@ func (suite *DrainerTestSuite) SetupSuite() {
 				Ip:       &test.ip,
 			})
 	}
+
+	for _, drainingMachine := range suite.drainingMachines {
+		suite.hostInfos = append(suite.hostInfos,
+			&host.HostInfo{
+				Hostname: drainingMachine.GetHostname(),
+				Ip:       drainingMachine.GetIp(),
+				State:    host.HostState_HOST_STATE_DRAINING,
+			})
+	}
+
+	for _, downMachine := range suite.downMachines {
+		suite.hostInfos = append(suite.hostInfos,
+			&host.HostInfo{
+				Hostname: downMachine.GetHostname(),
+				Ip:       downMachine.GetIp(),
+				State:    host.HostState_HOST_STATE_DOWN,
+			})
+	}
 }
 
-func (suite *DrainerTestSuite) SetupTest() {
+func (suite *drainerTestSuite) SetupTest() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mockMasterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.mockCtrl)
 	suite.mockMaintenanceQueue = mq_mocks.NewMockMaintenanceQueue(suite.mockCtrl)
+	suite.mockMaintenanceMap = host_mocks.NewMockMaintenanceHostInfoMap(suite.mockCtrl)
+
 	suite.drainer = &drainer{
 		drainerPeriod:          drainerPeriod,
 		masterOperatorClient:   suite.mockMasterOperatorClient,
 		maintenanceQueue:       suite.mockMaintenanceQueue,
 		lifecycle:              lifecycle.NewLifeCycle(),
-		maintenanceHostInfoMap: NewMaintenanceHostInfoMap(),
+		maintenanceHostInfoMap: suite.mockMaintenanceMap,
 	}
 }
 
-func (suite *DrainerTestSuite) TearDownTest() {
+func (suite *drainerTestSuite) TearDownTest() {
 	suite.mockCtrl.Finish()
 }
 
 func TestDrainer(t *testing.T) {
-	suite.Run(t, new(DrainerTestSuite))
+	suite.Run(t, new(drainerTestSuite))
 }
 
 //TestNewDrainer test creation of new host drainer
-func (suite *DrainerTestSuite) TestNewDrainer() {
+func (suite *drainerTestSuite) TestDrainerNewDrainer() {
 	drainer := NewDrainer(drainerPeriod,
 		suite.mockMasterOperatorClient,
 		suite.mockMaintenanceQueue,
-		NewMaintenanceHostInfoMap())
+		host_mocks.NewMockMaintenanceHostInfoMap(suite.mockCtrl))
 	suite.NotNil(drainer)
 }
 
-// TestStart tests starting the host drainer
-func (suite *DrainerTestSuite) TestStart() {
+// TestDrainerStartSuccess tests the success case of starting the host drainer
+func (suite *drainerTestSuite) TestDrainerStartSuccess() {
 	response := mesos_master.Response_GetMaintenanceStatus{
 		Status: &mesos_maintenance.ClusterStatus{
 			DrainingMachines: []*mesos_maintenance.ClusterStatus_DrainingMachine{},
 			DownMachines:     suite.downMachines,
 		},
 	}
+
+	var drainingHostnames []string
 	for _, drainingMachine := range suite.drainingMachines {
 		response.Status.DrainingMachines = append(
 			response.Status.DrainingMachines,
@@ -129,78 +154,97 @@ func (suite *DrainerTestSuite) TestStart() {
 					Ip:       drainingMachine.Ip,
 				},
 			})
+
+		drainingHostnames = append(drainingHostnames, drainingMachine.GetHostname())
 	}
-	var drainingHostnames []string
-	for _, machine := range suite.drainingMachines {
-		drainingHostnames = append(drainingHostnames, machine.GetHostname())
-	}
+
 	suite.mockMasterOperatorClient.EXPECT().
 		GetMaintenanceStatus().
 		Return(&response, nil).
 		MinTimes(1).
 		MaxTimes(2)
+
+	suite.mockMaintenanceMap.EXPECT().
+		ClearAndFillMap(suite.hostInfos).
+		MinTimes(1).
+		MaxTimes(2)
+
 	suite.mockMaintenanceQueue.EXPECT().
 		Enqueue(drainingHostnames).
 		Return(nil).
 		MinTimes(1).
 		MaxTimes(2)
+
 	suite.drainer.Start()
 	// Starting drainer again should be no-op
 	suite.drainer.Start()
 	time.Sleep(2 * drainerPeriod)
-	drainingHostInfoMap := make(map[string]*host.HostInfo)
-	for _, hostInfo := range suite.drainer.maintenanceHostInfoMap.GetDrainingHostInfos([]string{}) {
-		drainingHostInfoMap[hostInfo.GetHostname()] = hostInfo
-	}
-	for _, drainingMachine := range suite.drainingMachines {
-		hostInfo := drainingHostInfoMap[drainingMachine.GetHostname()]
-		suite.NotNil(hostInfo)
-		suite.Equal(drainingMachine.GetHostname(), hostInfo.GetHostname())
-		suite.Equal(drainingMachine.GetIp(), hostInfo.GetIp())
-		suite.Equal(host.HostState_HOST_STATE_DRAINING, hostInfo.GetState())
-	}
-
-	downHostInfoMap := make(map[string]*host.HostInfo)
-	for _, hostInfo := range suite.drainer.maintenanceHostInfoMap.GetDownHostInfos([]string{}) {
-		downHostInfoMap[hostInfo.GetHostname()] = hostInfo
-	}
-	for _, downMachine := range suite.downMachines {
-		hostInfo := downHostInfoMap[downMachine.GetHostname()]
-		suite.NotNil(hostInfo)
-		suite.Equal(downMachine.GetHostname(), hostInfo.GetHostname())
-		suite.Equal(downMachine.GetIp(), hostInfo.GetIp())
-		suite.Equal(host.HostState_HOST_STATE_DOWN, hostInfo.GetState())
-	}
 	suite.drainer.Stop()
+}
 
-	// Test GetMaintenanceStatus error
+// TestDrainerStartGetMaintenanceStatusFailure tests the failure case of
+// starting the host drainer due to error while getting maintenance status
+func (suite *drainerTestSuite) TestDrainerStartGetMaintenanceStatusFailure() {
 	suite.mockMasterOperatorClient.EXPECT().
 		GetMaintenanceStatus().
 		Return(nil, fmt.Errorf("Fake GetMaintenanceStatus error")).
 		MinTimes(1).
 		MaxTimes(2)
+
 	suite.drainer.Start()
 	time.Sleep(2 * drainerPeriod)
 	suite.drainer.Stop()
+}
 
-	// Test Enqueue error
+// TestDrainerStartEnqueueFailure tests the failure case of starting the
+// host drainer due to error while enqueuing hostnames into maintenance queue
+func (suite *drainerTestSuite) TestDrainerStartEnqueueFailure() {
+	var drainingHostnames []string
+	response := mesos_master.Response_GetMaintenanceStatus{
+		Status: &mesos_maintenance.ClusterStatus{
+			DrainingMachines: []*mesos_maintenance.ClusterStatus_DrainingMachine{},
+			DownMachines:     suite.downMachines,
+		},
+	}
+
+	for _, drainingMachine := range suite.drainingMachines {
+		response.Status.DrainingMachines = append(
+			response.Status.DrainingMachines,
+			&mesos_maintenance.ClusterStatus_DrainingMachine{
+				Id: &mesos.MachineID{
+					Hostname: drainingMachine.Hostname,
+					Ip:       drainingMachine.Ip,
+				},
+			})
+
+		drainingHostnames = append(drainingHostnames,
+			drainingMachine.GetHostname())
+	}
+
 	suite.mockMasterOperatorClient.EXPECT().
 		GetMaintenanceStatus().
 		Return(&response, nil).
 		MinTimes(1).
 		MaxTimes(2)
+
+	suite.mockMaintenanceMap.EXPECT().
+		ClearAndFillMap(suite.hostInfos).
+		MinTimes(1).
+		MaxTimes(2)
+
 	suite.mockMaintenanceQueue.EXPECT().
 		Enqueue(drainingHostnames).
 		Return(fmt.Errorf("Fake Enqueue error")).
 		MinTimes(1).
 		MaxTimes(2)
+
 	suite.drainer.Start()
 	time.Sleep(2 * drainerPeriod)
 	suite.drainer.Stop()
 }
 
 // TestStop tests stopping the host drainer
-func (suite *DrainerTestSuite) TestStop() {
+func (suite *drainerTestSuite) TestStop() {
 	suite.drainer.Stop()
 	<-suite.drainer.lifecycle.StopCh()
 }

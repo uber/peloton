@@ -27,6 +27,7 @@ import (
 
 	"github.com/uber/peloton/common/stringset"
 	"github.com/uber/peloton/hostmgr/host"
+	hm "github.com/uber/peloton/hostmgr/host/mocks"
 	qm "github.com/uber/peloton/hostmgr/queue/mocks"
 	ym "github.com/uber/peloton/yarpc/encoding/mpb/mocks"
 
@@ -48,6 +49,7 @@ type HostSvcHandlerTestSuite struct {
 	handler                  *serviceHandler
 	mockMasterOperatorClient *ym.MockMasterOperatorClient
 	mockMaintenanceQueue     *qm.MockMaintenanceQueue
+	mockMaintenanceMap       *hm.MockMaintenanceHostInfoMap
 }
 
 func (suite *HostSvcHandlerTestSuite) SetupSuite() {
@@ -113,16 +115,21 @@ func (suite *HostSvcHandlerTestSuite) SetupTest() {
 	suite.ctx = context.Background()
 	suite.mockMasterOperatorClient = ym.NewMockMasterOperatorClient(suite.mockCtrl)
 	suite.mockMaintenanceQueue = qm.NewMockMaintenanceQueue(suite.mockCtrl)
+	suite.mockMaintenanceMap = hm.NewMockMaintenanceHostInfoMap(suite.mockCtrl)
 	suite.handler.operatorMasterClient = suite.mockMasterOperatorClient
 	suite.handler.maintenanceQueue = suite.mockMaintenanceQueue
-	suite.handler.maintenanceHostInfoMap = host.NewMaintenanceHostInfoMap()
+	suite.handler.maintenanceHostInfoMap = suite.mockMaintenanceMap
 
 	response := suite.makeAgentsResponse()
 	loader := &host.Loader{
 		OperatorClient:         suite.mockMasterOperatorClient,
 		Scope:                  tally.NewTestScope("", map[string]string{}),
-		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
+		MaintenanceHostInfoMap: suite.mockMaintenanceMap,
 	}
+	suite.mockMaintenanceMap.EXPECT().
+		GetDrainingHostInfos(gomock.Any()).
+		Return([]*hpb.HostInfo{}).
+		Times(len(suite.upMachines) + len(suite.drainingMachines))
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
 	loader.Load(nil)
 }
@@ -164,9 +171,18 @@ func (suite *HostSvcHandlerTestSuite) TearDownTest() {
 }
 
 func (suite *HostSvcHandlerTestSuite) TestStartMaintenance() {
-	var hosts []string
+	var (
+		hosts     []string
+		hostInfos []*hpb.HostInfo
+	)
+
 	for _, machine := range suite.upMachines {
 		hosts = append(hosts, machine.GetHostname())
+		hostInfos = append(hostInfos, &hpb.HostInfo{
+			Hostname: machine.GetHostname(),
+			Ip:       machine.GetIp(),
+			State:    hpb.HostState_HOST_STATE_DRAINING,
+		})
 	}
 
 	gomock.InOrder(
@@ -176,6 +192,8 @@ func (suite *HostSvcHandlerTestSuite) TestStartMaintenance() {
 			}, nil),
 		suite.mockMasterOperatorClient.EXPECT().
 			UpdateMaintenanceSchedule(gomock.Any()).Return(nil),
+		suite.mockMaintenanceMap.EXPECT().
+			AddHostInfos(hostInfos),
 		suite.mockMaintenanceQueue.EXPECT().
 			Enqueue(hosts).Return(nil),
 	)
@@ -188,12 +206,22 @@ func (suite *HostSvcHandlerTestSuite) TestStartMaintenance() {
 }
 
 func (suite *HostSvcHandlerTestSuite) TestStartMaintenanceError() {
-	var hosts []string
+	var (
+		hosts     []string
+		hostInfos []*hpb.HostInfo
+	)
+
 	for _, machine := range suite.upMachines {
 		hosts = append(hosts, machine.GetHostname())
+		hostInfos = append(hostInfos, &hpb.HostInfo{
+			Hostname: machine.GetHostname(),
+			Ip:       machine.GetIp(),
+			State:    hpb.HostState_HOST_STATE_DRAINING,
+		})
 	}
 	// Test error while getting maintenance schedule
-	suite.mockMasterOperatorClient.EXPECT().GetMaintenanceSchedule().
+	suite.mockMasterOperatorClient.EXPECT().
+		GetMaintenanceSchedule().
 		Return(nil, fmt.Errorf("fake GetMaintenanceSchedule error"))
 	response, err := suite.handler.StartMaintenance(suite.ctx,
 		&svcpb.StartMaintenanceRequest{
@@ -227,6 +255,8 @@ func (suite *HostSvcHandlerTestSuite) TestStartMaintenanceError() {
 			}, nil),
 		suite.mockMasterOperatorClient.EXPECT().
 			UpdateMaintenanceSchedule(gomock.Any()).Return(nil),
+		suite.mockMaintenanceMap.EXPECT().
+			AddHostInfos(hostInfos),
 		suite.mockMaintenanceQueue.EXPECT().
 			Enqueue(hosts).Return(fmt.Errorf("fake Enqueue error")),
 	)
@@ -257,7 +287,7 @@ func (suite *HostSvcHandlerTestSuite) TestStartMaintenanceError() {
 	loader := &host.Loader{
 		OperatorClient:         suite.mockMasterOperatorClient,
 		Scope:                  tally.NewTestScope("", map[string]string{}),
-		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
+		MaintenanceHostInfoMap: hm.NewMockMaintenanceHostInfoMap(suite.mockCtrl),
 	}
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(nil, nil)
 	loader.Load(nil)
@@ -269,8 +299,13 @@ func (suite *HostSvcHandlerTestSuite) TestStartMaintenanceError() {
 }
 
 func (suite *HostSvcHandlerTestSuite) TestCompleteMaintenance() {
-	var hostInfos []*hpb.HostInfo
+	var (
+		hosts     []string
+		hostInfos []*hpb.HostInfo
+	)
+
 	for _, machine := range suite.downMachines {
+		hosts = append(hosts, machine.GetHostname())
 		hostInfos = append(hostInfos,
 			&hpb.HostInfo{
 				Hostname: machine.GetHostname(),
@@ -278,9 +313,15 @@ func (suite *HostSvcHandlerTestSuite) TestCompleteMaintenance() {
 				State:    hpb.HostState_HOST_STATE_DOWN,
 			})
 	}
-	suite.handler.maintenanceHostInfoMap.AddHostInfos(hostInfos)
+
+	suite.mockMaintenanceMap.EXPECT().
+		GetDownHostInfos([]string{}).
+		Return(hostInfos)
 	suite.mockMasterOperatorClient.EXPECT().
 		StopMaintenance(suite.downMachines).Return(nil)
+	suite.mockMaintenanceMap.EXPECT().
+		RemoveHostInfos(hosts)
+
 	resp, err := suite.handler.CompleteMaintenance(suite.ctx,
 		&svcpb.CompleteMaintenanceRequest{
 			Hostnames: suite.hostsToDown,
@@ -291,8 +332,13 @@ func (suite *HostSvcHandlerTestSuite) TestCompleteMaintenance() {
 
 func (suite *HostSvcHandlerTestSuite) TestCompleteMaintenanceError() {
 	// Test error while stopping maintenance
-	var hostInfos []*hpb.HostInfo
+	var (
+		hosts     []string
+		hostInfos []*hpb.HostInfo
+	)
+
 	for _, machine := range suite.downMachines {
+		hosts = append(hosts, machine.GetHostname())
 		hostInfos = append(hostInfos,
 			&hpb.HostInfo{
 				Hostname: machine.GetHostname(),
@@ -300,10 +346,14 @@ func (suite *HostSvcHandlerTestSuite) TestCompleteMaintenanceError() {
 				State:    hpb.HostState_HOST_STATE_DOWN,
 			})
 	}
-	suite.handler.maintenanceHostInfoMap.AddHostInfos(hostInfos)
+
+	suite.mockMaintenanceMap.EXPECT().
+		GetDownHostInfos([]string{}).
+		Return(hostInfos)
 	suite.mockMasterOperatorClient.EXPECT().
 		StopMaintenance(suite.downMachines).
 		Return(fmt.Errorf("fake StopMaintenance error"))
+
 	resp, err := suite.handler.CompleteMaintenance(suite.ctx,
 		&svcpb.CompleteMaintenanceRequest{
 			Hostnames: suite.hostsToDown,
@@ -316,8 +366,9 @@ func (suite *HostSvcHandlerTestSuite) TestCompleteMaintenanceError() {
 	for _, hostInfo := range hostInfos {
 		hostnames = append(hostnames, hostInfo.GetHostname())
 	}
-	suite.handler.maintenanceHostInfoMap.
-		RemoveHostInfos(hostnames)
+	suite.mockMaintenanceMap.EXPECT().
+		GetDownHostInfos([]string{}).
+		Return([]*hpb.HostInfo{})
 	resp, err = suite.handler.CompleteMaintenance(suite.ctx,
 		&svcpb.CompleteMaintenanceRequest{
 			Hostnames: suite.hostsToDown,
@@ -327,25 +378,46 @@ func (suite *HostSvcHandlerTestSuite) TestCompleteMaintenanceError() {
 }
 
 func (suite *HostSvcHandlerTestSuite) TestQueryHosts() {
-	var hostInfos []*hpb.HostInfo
+	var (
+		hostInfos         []*hpb.HostInfo
+		drainingHostInfos []*hpb.HostInfo
+		downHostsInfos    []*hpb.HostInfo
+	)
+
 	for _, machine := range suite.downMachines {
-		hostInfos = append(hostInfos,
-			&hpb.HostInfo{
-				Hostname: machine.GetHostname(),
-				Ip:       machine.GetIp(),
-				State:    hpb.HostState_HOST_STATE_DOWN,
-			})
-	}
-	for _, machine := range suite.drainingMachines {
-		hostInfos = append(hostInfos,
-			&hpb.HostInfo{
-				Hostname: machine.GetHostname(),
-				Ip:       machine.GetIp(),
-				State:    hpb.HostState_HOST_STATE_DRAINING,
-			})
+		downHostsInfos = append(downHostsInfos, &hpb.HostInfo{
+			Hostname: machine.GetHostname(),
+			Ip:       machine.GetIp(),
+			State:    hpb.HostState_HOST_STATE_DRAINING,
+		})
+		hostInfos = append(hostInfos, &hpb.HostInfo{
+			Hostname: machine.GetHostname(),
+			Ip:       machine.GetIp(),
+			State:    hpb.HostState_HOST_STATE_DRAINING,
+		})
 	}
 
-	suite.handler.maintenanceHostInfoMap.AddHostInfos(hostInfos)
+	for _, machine := range suite.drainingMachines {
+		drainingHostInfos = append(drainingHostInfos, &hpb.HostInfo{
+			Hostname: machine.GetHostname(),
+			Ip:       machine.GetIp(),
+			State:    hpb.HostState_HOST_STATE_DRAINING,
+		})
+		hostInfos = append(hostInfos, &hpb.HostInfo{
+			Hostname: machine.GetHostname(),
+			Ip:       machine.GetIp(),
+			State:    hpb.HostState_HOST_STATE_DRAINING,
+		})
+	}
+
+	suite.mockMaintenanceMap.EXPECT().
+		GetDrainingHostInfos([]string{}).
+		Return(drainingHostInfos).
+		AnyTimes()
+	suite.mockMaintenanceMap.EXPECT().
+		GetDownHostInfos([]string{}).
+		Return(downHostsInfos).
+		AnyTimes()
 	resp, err := suite.handler.QueryHosts(suite.ctx, &svcpb.QueryHostsRequest{
 		HostStates: []hpb.HostState{
 			hpb.HostState_HOST_STATE_UP,
@@ -361,6 +433,7 @@ func (suite *HostSvcHandlerTestSuite) TestQueryHosts() {
 			len(suite.downMachines),
 		len(resp.GetHostInfos()),
 	)
+
 	hostnameSet := stringset.New()
 	for _, hostInfo := range resp.GetHostInfos() {
 		hostnameSet.Add(hostInfo.GetHostname())
@@ -398,6 +471,7 @@ func (suite *HostSvcHandlerTestSuite) TestQueryHosts() {
 			len(suite.downMachines),
 		len(resp.GetHostInfos()),
 	)
+
 	hostnameSet.Clear()
 	for _, hostInfo := range resp.GetHostInfos() {
 		hostnameSet.Add(hostInfo.GetHostname())
@@ -423,6 +497,14 @@ func (suite *HostSvcHandlerTestSuite) TestQueryHostsError() {
 		},
 		Pid: &pid,
 	}
+
+	suite.mockMaintenanceMap.EXPECT().
+		GetDrainingHostInfos(gomock.Any()).
+		Return([]*hpb.HostInfo{})
+	suite.mockMaintenanceMap.EXPECT().
+		GetDownHostInfos(gomock.Any()).
+		Return([]*hpb.HostInfo{})
+
 	resp, err := suite.handler.QueryHosts(suite.ctx, &svcpb.QueryHostsRequest{
 		HostStates: []hpb.HostState{
 			hpb.HostState_HOST_STATE_UP,
@@ -435,10 +517,21 @@ func (suite *HostSvcHandlerTestSuite) TestQueryHostsError() {
 	loader := &host.Loader{
 		OperatorClient:         suite.mockMasterOperatorClient,
 		Scope:                  tally.NewTestScope("", map[string]string{}),
-		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
+		MaintenanceHostInfoMap: suite.mockMaintenanceMap,
 	}
+
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(nil, nil)
 	loader.Load(nil)
+
+	gomock.InOrder(
+		suite.mockMaintenanceMap.EXPECT().
+			GetDrainingHostInfos(gomock.Any()).
+			Return([]*hpb.HostInfo{}),
+		suite.mockMaintenanceMap.EXPECT().
+			GetDownHostInfos(gomock.Any()).
+			Return([]*hpb.HostInfo{}),
+	)
+
 	resp, err = suite.handler.QueryHosts(suite.ctx, &svcpb.QueryHostsRequest{
 		HostStates: []hpb.HostState{
 			hpb.HostState_HOST_STATE_UP,

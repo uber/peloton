@@ -399,7 +399,7 @@ func main() {
 		cfg.HostManager.TaskReconcilerConfig,
 	)
 
-	maintenanceHostInfoMap := host.NewMaintenanceHostInfoMap()
+	maintenanceHostInfoMap := host.NewMaintenanceHostInfoMap(rootScope)
 
 	loader := host.Loader{
 		OperatorClient:         masterOperatorClient,
