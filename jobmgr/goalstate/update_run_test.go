@@ -35,7 +35,6 @@ import (
 	"github.com/uber/peloton/jobmgr/cached"
 	cachedmocks "github.com/uber/peloton/jobmgr/cached/mocks"
 	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
-	goalstateutil "github.com/uber/peloton/jobmgr/util/goalstate"
 	storemocks "github.com/uber/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -744,6 +743,18 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddInstances() {
 			suite.Empty(instancesDone)
 		}).Return(nil)
 
+	for _, instID := range newSlice(oldInstanceNumber, oldInstanceNumber+batchSize) {
+		suite.cachedJob.EXPECT().
+			GetTask(instID).
+			Return(suite.cachedTask)
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&pbtask.RuntimeInfo{
+				State:     pbtask.TaskState_PENDING,
+				GoalState: pbtask.TaskState_RUNNING,
+			}, nil)
+	}
+
 	err := UpdateRun(context.Background(), suite.updateEnt)
 	suite.NoError(err)
 }
@@ -898,6 +909,18 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddShrinkInstances() {
 				newSlice(oldInstanceNumber, oldInstanceNumber+batchSize))
 			suite.Empty(instancesDone)
 		}).Return(nil)
+
+	for _, instID := range newSlice(oldInstanceNumber, oldInstanceNumber+batchSize) {
+		suite.cachedJob.EXPECT().
+			GetTask(instID).
+			Return(suite.cachedTask)
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&pbtask.RuntimeInfo{
+				State:     pbtask.TaskState_PENDING,
+				GoalState: pbtask.TaskState_RUNNING,
+			}, nil)
+	}
 
 	err := UpdateRun(context.Background(), suite.updateEnt)
 	suite.NoError(err)
@@ -1457,14 +1480,6 @@ func (suite *UpdateRunTestSuite) TestUpdateRunKilledJobAddInstances() {
 		GetRuntime(gomock.Any()).
 		Return(&pbjob.RuntimeInfo{GoalState: pbjob.JobState_KILLED}, nil)
 
-	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(_ context.Context, jobInfo *pbjob.JobInfo, _ *models.ConfigAddOn, _ cached.UpdateRequest) {
-			suite.Equal(jobInfo.Runtime.GoalState,
-				goalstateutil.GetDefaultJobGoalState(pbjob.JobType_SERVICE))
-		}).
-		Return(nil)
-
 	for _, instID := range newSlice(oldInstanceNumber, oldInstanceNumber+batchSize) {
 		suite.cachedJob.EXPECT().
 			GetTask(instID).
@@ -1480,19 +1495,23 @@ func (suite *UpdateRunTestSuite) TestUpdateRunKilledJobAddInstances() {
 			suite.Len(runtimes, int(batchSize))
 		}).Return(nil)
 
-	suite.resmgrClient.EXPECT().
-		EnqueueGangs(gomock.Any(), gomock.Any()).
-		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
-
-	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(nil)
-
 	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
+
+	for _, instID := range newSlice(oldInstanceNumber, oldInstanceNumber+batchSize) {
+		suite.cachedJob.EXPECT().
+			GetTask(instID).
+			Return(suite.cachedTask)
+		suite.cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(&pbtask.RuntimeInfo{
+				State:     pbtask.TaskState_PENDING,
+				GoalState: pbtask.TaskState_RUNNING,
+			}, nil)
+	}
 
 	suite.cachedUpdate.EXPECT().
 		WriteProgress(

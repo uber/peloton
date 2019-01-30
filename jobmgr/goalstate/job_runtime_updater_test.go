@@ -1129,7 +1129,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PendingJobWithMor
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_SERVICE)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -1145,16 +1145,12 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PendingJobWithMor
 		Return(startTimeUnix)
 
 	suite.cachedJob.EXPECT().
-		GetLastTaskUpdateTime().
-		Return(float64(0))
-
-	suite.cachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Do(func(_ context.Context,
 			jobInfo *pbjob.JobInfo,
 			_ *models.ConfigAddOn,
 			_ cached.UpdateRequest) {
-			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_FAILED)
+			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_PENDING)
 		}).Return(nil)
 
 	suite.jobGoalStateEngine.EXPECT().
@@ -1805,10 +1801,10 @@ func (suite *JobRuntimeUpdaterTestSuite) determineJobRuntimeHelper(flag bool) {
 		}
 		suite.cachedJob.EXPECT().GetAllTasks().Return(cachedTasks)
 		suite.cachedConfig.EXPECT().GetInstanceCount().
-			Return(instanceCount).Times(3)
+			Return(instanceCount).Times(5)
 	} else {
 		suite.cachedConfig.EXPECT().GetInstanceCount().
-			Return(instanceCount).Times(1)
+			Return(instanceCount).Times(2)
 	}
 	suite.cachedConfig.EXPECT().HasControllerTask().Return(false).AnyTimes()
 	suite.cachedJob.EXPECT().IsPartiallyCreated(false).AnyTimes()

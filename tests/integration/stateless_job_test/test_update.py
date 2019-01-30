@@ -295,9 +295,7 @@ def test__create_update_stopped_tasks(stateless_job):
     stateless_job.wait_for_state(goal_state='RUNNING')
     old_pod_infos = stateless_job.query_pods()
     old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
-    ranges = task_pb2.InstanceRange(to=2)
-    setattr(ranges, 'from', 0)
-    stateless_job.stop(ranges=[ranges])
+    stateless_job.stop()
     update = StatelessUpdate(
         stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
@@ -305,6 +303,7 @@ def test__create_update_stopped_tasks(stateless_job):
     )
     update.create()
     update.wait_for_state(goal_state='SUCCEEDED')
+    stateless_job.wait_for_state(goal_state='KILLED')
     stateless_job.start()
     stateless_job.wait_for_state(goal_state='RUNNING')
     new_pod_infos = stateless_job.query_pods()

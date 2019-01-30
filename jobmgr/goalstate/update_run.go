@@ -30,7 +30,6 @@ import (
 	"github.com/uber/peloton/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
 	"github.com/uber/peloton/jobmgr/task"
-	goalstateutil "github.com/uber/peloton/jobmgr/util/goalstate"
 	"github.com/uber/peloton/util"
 
 	log "github.com/sirupsen/logrus"
@@ -153,6 +152,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 		ctx,
 		cachedJob,
 		cachedWorkflow,
+		instancesToAdd,
 		instancesToUpdate,
 		instancesToRemove,
 		instancesDone,
@@ -254,6 +254,7 @@ func postUpdateAction(
 	ctx context.Context,
 	cachedJob cached.Job,
 	cachedUpdate cached.Update,
+	instancesAddedInCurrentRun []uint32,
 	instancesUpdatedInCurrentRun []uint32,
 	instancesRemovedInCurrentRun []uint32,
 	instancesDone []uint32,
@@ -269,8 +270,9 @@ func postUpdateAction(
 		return nil
 	}
 
-	instancesInCurrentRun := append(instancesUpdatedInCurrentRun,
-		instancesRemovedInCurrentRun...)
+	instancesInCurrentRun :=
+		append(instancesAddedInCurrentRun,
+			append(instancesUpdatedInCurrentRun, instancesRemovedInCurrentRun...)...)
 
 	// if any of the task updated/removed in this round is a killed task or
 	// has already finished update/kill, reenqueue the update, because
@@ -410,21 +412,9 @@ func addInstancesInUpdate(
 	}
 
 	// move job goal state from KILLED to RUNNING
-	runtime, err := cachedJob.GetRuntime(ctx)
+	jobRuntime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
 		return err
-	}
-
-	if runtime.GetGoalState() == pbjob.JobState_KILLED {
-		err = cachedJob.Update(ctx, &pbjob.JobInfo{
-			Runtime: &pbjob.RuntimeInfo{
-				GoalState: goalstateutil.GetDefaultJobGoalState(
-					pbjob.JobType_SERVICE)},
-		}, nil,
-			cached.UpdateCacheAndDB)
-		if err != nil {
-			return err
-		}
 	}
 
 	// now lets add the new instances
@@ -472,17 +462,25 @@ func addInstancesInUpdate(
 			runtime.ConfigVersion = jobConfig.GetChangeLog().GetVersion()
 			runtime.DesiredConfigVersion =
 				jobConfig.GetChangeLog().GetVersion()
-			runtimes[instID] = runtime
-
-			taskInfo := &pbtask.TaskInfo{
-				JobId:      cachedJob.ID(),
-				InstanceId: instID,
-				Runtime:    runtime,
-				Config: taskconfig.Merge(
-					jobConfig.GetDefaultConfig(),
-					jobConfig.GetInstanceConfig()[instID]),
+			// job goal state is KILLED, set task cur and desired state to KILLED to
+			// avoid unnecessary task creation
+			if jobRuntime.GetGoalState() == pbjob.JobState_KILLED {
+				runtime.State = pbtask.TaskState_KILLED
+				runtime.GoalState = pbtask.TaskState_KILLED
 			}
-			tasks = append(tasks, taskInfo)
+			// do not send to resmgr if task goal state is KILLED
+			if runtime.GetGoalState() != pbtask.TaskState_KILLED {
+				taskInfo := &pbtask.TaskInfo{
+					JobId:      cachedJob.ID(),
+					InstanceId: instID,
+					Runtime:    runtime,
+					Config: taskconfig.Merge(
+						jobConfig.GetDefaultConfig(),
+						jobConfig.GetInstanceConfig()[instID]),
+				}
+				tasks = append(tasks, taskInfo)
+			}
+			runtimes[instID] = runtime
 		}
 	}
 

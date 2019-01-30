@@ -258,36 +258,39 @@ func jobStateDeterminerFactory(
 	}
 
 	if cached.HasControllerTask(config) {
-		return newControllerTaskJobStateDeterminer(
-			cachedJob, stateCounts)
+		return newControllerTaskJobStateDeterminer(cachedJob, stateCounts, config)
 	}
 
-	return newJobStateDeterminer(stateCounts)
+	return newJobStateDeterminer(stateCounts, config)
 }
 
 func newJobStateDeterminer(
 	stateCounts map[string]uint32,
+	config jobmgrcommon.JobConfig,
 ) *jobStateDeterminer {
 	return &jobStateDeterminer{
 		stateCounts: stateCounts,
+		config:      config,
 	}
 }
 
 type jobStateDeterminer struct {
 	stateCounts map[string]uint32
+	config      jobmgrcommon.JobConfig
 }
 
 func (d *jobStateDeterminer) getState(
 	ctx context.Context,
 	jobRuntime *job.RuntimeInfo,
 ) (job.JobState, error) {
-	// use totalInstanceCount instead of config.GetInstanceCount,
-	// because totalInstanceCount can be larger than config.GetInstanceCount
-	// due to a race condition bug. Although the bug is fixed, the change is
-	// needed to unblock affected jobs.
-	// Also if in the future, similar bug occur again, using totalInstanceCount
-	// would ensure the bug would not make a job stuck.
-	totalInstanceCount := getTotalInstanceCount(d.stateCounts)
+	totalInstanceCount := d.config.GetInstanceCount()
+
+	// state counts from mv is greater than configured due to possible divergence,
+	// return PENDING and wait for the convergence
+	if getTotalInstanceCount(d.stateCounts) > totalInstanceCount {
+		return job.JobState_PENDING, nil
+	}
+
 	// all succeeded -> succeeded
 	if d.stateCounts[task.TaskState_SUCCEEDED.String()] == totalInstanceCount {
 		return job.JobState_SUCCEEDED, nil
@@ -338,10 +341,11 @@ func (d *partiallyCreatedJobStateDeterminer) getState(
 func newControllerTaskJobStateDeterminer(
 	cachedJob cached.Job,
 	stateCounts map[string]uint32,
+	config jobmgrcommon.JobConfig,
 ) *controllerTaskJobStateDeterminer {
 	return &controllerTaskJobStateDeterminer{
 		cachedJob:       cachedJob,
-		batchDeterminer: newJobStateDeterminer(stateCounts),
+		batchDeterminer: newJobStateDeterminer(stateCounts, config),
 	}
 }
 
