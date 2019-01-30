@@ -150,7 +150,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesWithJobKey() {
 
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId: jobID,
 		}).
 		Return(&statelesssvc.GetJobResponse{
@@ -184,6 +184,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesWithJobKeyRole() 
 	jobID1 := fixture.PelotonJobID()
 	jobID2 := fixture.PelotonJobID()
 	jobID3 := fixture.PelotonJobID()
+	jobID4 := fixture.PelotonJobID()
 	jobKey := fixture.AuroraJobKey()
 	updateStatuses := make(map[api.JobUpdateStatus]struct{})
 	updateStatuses[api.JobUpdateStatusRollingForward] = struct{}{}
@@ -197,11 +198,11 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesWithJobKeyRole() 
 	labels := []*peloton.Label{label.NewAuroraJobKeyRole(jobKey.GetRole())}
 
 	// Role based search returned multiple jobs
-	suite.expectQueryJobsWithLabels(labels, []*peloton.JobID{jobID1, jobID2, jobID3}, jobKey)
+	suite.expectQueryJobsWithLabels(labels, []*peloton.JobID{jobID1, jobID2, jobID3, jobID4}, jobKey)
 
 	// fetch update for job1
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId: jobID1,
 		}).
 		Return(&statelesssvc.GetJobResponse{
@@ -221,7 +222,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesWithJobKeyRole() 
 
 	// fetch update for job2
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId: jobID2,
 		}).
 		Return(&statelesssvc.GetJobResponse{
@@ -241,7 +242,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesWithJobKeyRole() 
 
 	// fetch update for job3, and will be ignored as it is in INITIALIZED state
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId: jobID3,
 		}).
 		Return(&statelesssvc.GetJobResponse{
@@ -257,6 +258,14 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesWithJobKeyRole() 
 				OpaqueData: nil,
 				Events:     nil,
 			},
+		}, nil)
+	// job does not have any workflow
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId: jobID4,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			WorkflowInfo: &stateless.WorkflowInfo{},
 		}, nil)
 
 	resp, err := suite.handler.GetJobUpdateSummaries(
@@ -287,7 +296,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesUpdateStatuses() 
 
 	// Get updates for all jobs and filter those updates using update query state
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId: jobID1,
 		}).
 		Return(&statelesssvc.GetJobResponse{
@@ -306,7 +315,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesUpdateStatuses() 
 		}, nil)
 
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId: jobID2,
 		}).
 		Return(&statelesssvc.GetJobResponse{
@@ -340,7 +349,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesFailure() {
 
 	suite.jobClient.EXPECT().
 		QueryJobs(
-			suite.ctx,
+			gomock.Any(),
 			&statelesssvc.QueryJobsRequest{
 				Spec: &stateless.QuerySpec{
 					Labels: []*peloton.Label{label.NewAuroraJobKeyRole(role)},
@@ -351,7 +360,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummariesFailure() {
 		}, nil)
 
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId: jobID,
 		}).
 		Return(nil, errors.New("some error"))
@@ -380,7 +389,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismSuccess(
 
 	for i := 0; i < 1000; i++ {
 		suite.jobClient.EXPECT().
-			GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 				JobId: jobIDs[i],
 			}).
 			Return(&statelesssvc.GetJobResponse{
@@ -427,7 +436,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismFilterUp
 	for i := 0; i < 1000; i++ {
 		if i%100 == 0 {
 			suite.jobClient.EXPECT().
-				GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 					JobId: jobIDs[i],
 				}).
 				Return(&statelesssvc.GetJobResponse{
@@ -447,7 +456,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismFilterUp
 			continue
 		}
 		suite.jobClient.EXPECT().
-			GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 				JobId: jobIDs[i],
 			}).
 			Return(&statelesssvc.GetJobResponse{
@@ -494,7 +503,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismFailure(
 	for i := 0; i < 1000; i++ {
 		if i == 500 {
 			suite.jobClient.EXPECT().
-				GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 					JobId: jobIDs[i],
 				}).
 				Return(nil, errors.New("unable to get update"))
@@ -502,7 +511,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismFailure(
 		}
 		if i%100 == 0 {
 			suite.jobClient.EXPECT().
-				GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 					JobId: jobIDs[i],
 				}).
 				Return(&statelesssvc.GetJobResponse{
@@ -523,7 +532,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismFailure(
 			continue
 		}
 		suite.jobClient.EXPECT().
-			GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 				JobId: jobIDs[i],
 			}).
 			Return(&statelesssvc.GetJobResponse{
@@ -549,6 +558,162 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetailsParallelismFailure(
 		false)
 	suite.Equal(0, len(resp))
 	suite.NotEmpty(err.msg)
+}
+
+// Tests get job update details error on fetching workflow events
+func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Error() {
+	jobID := fixture.PelotonJobID()
+	jobUpdateKey := fixture.AuroraJobUpdateKey()
+	updateStatuses := make(map[api.JobUpdateStatus]struct{})
+	updateStatuses[api.JobUpdateStatusRollingForward] = struct{}{}
+	jobUpdateQuery := &api.JobUpdateQuery{
+		UpdateStatuses: updateStatuses,
+	}
+
+	suite.expectGetJobIDFromJobName(jobUpdateKey.GetJob(), jobID)
+
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId: jobID,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: nil,
+			WorkflowInfo: &stateless.WorkflowInfo{
+				Status: &stateless.WorkflowStatus{
+					Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+					State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+				},
+				Events: []*stateless.WorkflowEvent{
+					&stateless.WorkflowEvent{
+						Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+						Timestamp: time.Now().Format(time.RFC3339),
+					},
+				},
+				InstancesUpdated: []*pod.InstanceIDRange{
+					&pod.InstanceIDRange{
+						From: uint32(0),
+						To:   uint32(50),
+					},
+				},
+			},
+		}, nil)
+
+	for i := uint32(0); i < uint32(50); i++ {
+		if i%5 == 0 {
+			suite.jobClient.EXPECT().
+				GetWorkflowEvents(gomock.Any(), &statelesssvc.GetWorkflowEventsRequest{
+					JobId:      jobID,
+					InstanceId: i,
+				}).Return(nil, errors.New("unable to get instance workflow events")).
+				MaxTimes(1)
+			continue
+		}
+		suite.jobClient.EXPECT().
+			GetWorkflowEvents(gomock.Any(), &statelesssvc.GetWorkflowEventsRequest{
+				JobId:      jobID,
+				InstanceId: i,
+			}).Return(&statelesssvc.GetWorkflowEventsResponse{
+			Events: []*stateless.WorkflowEvent{
+				&stateless.WorkflowEvent{
+					Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+					State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+					Timestamp: time.Now().Format(time.RFC3339),
+				},
+				// TODO: handle initialized state in workflow event
+				// &stateless.WorkflowEvent{
+				// 	Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+				// 	State:     stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
+				// 	Timestamp: time.Now().Format(time.RFC3339),
+				// },
+			},
+		}, nil).
+			MaxTimes(1)
+	}
+
+	resp, err := suite.handler.GetJobUpdateDetails(
+		suite.ctx,
+		jobUpdateKey,
+		jobUpdateQuery)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
+}
+
+// Tests the success scenario for get job update details
+func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Success() {
+	jobID := fixture.PelotonJobID()
+	jobUpdateKey := fixture.AuroraJobUpdateKey()
+	updateStatuses := make(map[api.JobUpdateStatus]struct{})
+	updateStatuses[api.JobUpdateStatusRollingForward] = struct{}{}
+	jobUpdateQuery := &api.JobUpdateQuery{
+		UpdateStatuses: updateStatuses,
+	}
+
+	suite.expectGetJobIDFromJobName(jobUpdateKey.GetJob(), jobID)
+
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId: jobID,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: nil,
+			WorkflowInfo: &stateless.WorkflowInfo{
+				Status: &stateless.WorkflowStatus{
+					Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+					State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+				},
+				Events: []*stateless.WorkflowEvent{
+					&stateless.WorkflowEvent{
+						Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+						Timestamp: time.Now().Format(time.RFC3339),
+					},
+					// TODO: handle initialized state in workflow event
+					// &stateless.WorkflowEvent{
+					// 	Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+					// 	State:     stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
+					// 	Timestamp: time.Now().Format(time.RFC3339),
+					// },
+				},
+				InstancesAdded: []*pod.InstanceIDRange{
+					&pod.InstanceIDRange{
+						From: uint32(0),
+						To:   uint32(50),
+					},
+				},
+			},
+		}, nil)
+
+	for i := uint32(0); i < uint32(50); i++ {
+		suite.jobClient.EXPECT().
+			GetWorkflowEvents(gomock.Any(), &statelesssvc.GetWorkflowEventsRequest{
+				JobId:      jobID,
+				InstanceId: i,
+			}).Return(&statelesssvc.GetWorkflowEventsResponse{
+			Events: []*stateless.WorkflowEvent{
+				&stateless.WorkflowEvent{
+					Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+					State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+					Timestamp: time.Now().Format(time.RFC3339),
+				},
+				// TODO: handle initialized state in workflow event
+				// &stateless.WorkflowEvent{
+				// 	Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+				// 	State:     stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
+				// 	Timestamp: time.Now().Format(time.RFC3339),
+				// },
+			},
+		}, nil)
+	}
+
+	resp, err := suite.handler.GetJobUpdateDetails(
+		suite.ctx,
+		jobUpdateKey,
+		jobUpdateQuery)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+	suite.Equal(1, len(resp.GetResult().GetGetJobUpdateDetailsResult().GetDetailsList()))
+	suite.Equal(50, len(resp.GetResult().GetGetJobUpdateDetailsResult().GetDetailsList()[0].GetInstanceEvents()))
 }
 
 // Tests for failure scenario for get config summary
