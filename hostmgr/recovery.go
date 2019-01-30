@@ -111,6 +111,6 @@ func (r *recoveryHandler) recoverMaintenanceState() error {
 				State:    hpb.HostState_HOST_STATE_DOWN,
 			})
 	}
-	r.maintenanceHostInfoMap.AddHostInfos(hostInfos)
+	r.maintenanceHostInfoMap.ClearAndFillMap(hostInfos)
 	return r.maintenanceQueue.Enqueue(drainingHosts)
 }

@@ -24,6 +24,7 @@ import (
 	host "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
 	"github.com/uber/peloton/common"
+	hm "github.com/uber/peloton/hostmgr/host/mocks"
 	"github.com/uber/peloton/util"
 	mock_mpb "github.com/uber/peloton/yarpc/encoding/mpb/mocks"
 
@@ -101,11 +102,12 @@ func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
 func (suite *HostMapTestSuite) TestRefresh() {
 	defer suite.ctrl.Finish()
 
+	mockMaintenanceMap := hm.NewMockMaintenanceHostInfoMap(suite.ctrl)
 	loader := &Loader{
 		OperatorClient:         suite.operatorClient,
 		Scope:                  suite.testScope,
 		SlackResourceTypes:     []string{common.MesosCPU},
-		MaintenanceHostInfoMap: NewMaintenanceHostInfoMap(),
+		MaintenanceHostInfoMap: mockMaintenanceMap,
 	}
 
 	gomock.InOrder(
@@ -116,14 +118,22 @@ func (suite *HostMapTestSuite) TestRefresh() {
 
 	numAgents := 2000
 	response := makeAgentsResponse(numAgents)
-	loader.MaintenanceHostInfoMap.AddHostInfos([]*host.HostInfo{
-		{
-			Hostname: *response.Agents[numAgents-1].AgentInfo.Hostname,
-			State:    host.HostState_HOST_STATE_DRAINING,
-		},
-	})
+
+	mockMaintenanceMap.EXPECT().
+		GetDrainingHostInfos(gomock.Any()).
+		Return([]*host.HostInfo{}).Times(len(response.GetAgents()) - 1)
+
 	gomock.InOrder(
 		suite.operatorClient.EXPECT().Agents().Return(response, nil),
+
+		mockMaintenanceMap.EXPECT().
+			GetDrainingHostInfos([]string{*response.Agents[numAgents-1].AgentInfo.Hostname}).
+			Return([]*host.HostInfo{
+				{
+					Hostname: *response.Agents[numAgents-1].AgentInfo.Hostname,
+					State:    host.HostState_HOST_STATE_DRAINING,
+				},
+			}),
 	)
 	loader.Load(nil)
 
@@ -133,7 +143,7 @@ func (suite *HostMapTestSuite) TestRefresh() {
 
 	id1 := "id-1"
 	a1 := GetAgentInfo(id1)
-	suite.NotEmpty(a1.Resources)
+	suite.NotEmpty(a1.GetResources())
 	id2 := "id-20000"
 	a2 := GetAgentInfo(id2)
 	suite.Nil(a2)
@@ -154,7 +164,7 @@ func (suite *HostMapTestSuite) TestRefresh() {
 }
 
 func (suite *HostMapTestSuite) TestMaintenanceHostInfoMap() {
-	maintenanceHostInfoMap := NewMaintenanceHostInfoMap()
+	maintenanceHostInfoMap := NewMaintenanceHostInfoMap(tally.NoopScope)
 	suite.NotNil(maintenanceHostInfoMap)
 
 	drainingHostInfos := []*host.HostInfo{
@@ -274,6 +284,21 @@ func (suite *HostMapTestSuite) TestMaintenanceHostInfoMap() {
 	maintenanceHostInfoMap.RemoveHostInfos(downHosts)
 	suite.Empty(maintenanceHostInfoMap.GetDrainingHostInfos([]string{}))
 	suite.Empty(maintenanceHostInfoMap.GetDownHostInfos([]string{}))
+
+	// Test ClearAndFillMap
+	maintenanceHostInfoMap.AddHostInfos(drainingHostInfos)
+	suite.NotEmpty(maintenanceHostInfoMap.GetDrainingHostInfos(drainingHosts))
+
+	maintenanceHostInfoMap.AddHostInfos(downHostInfos)
+	suite.NotEmpty(maintenanceHostInfoMap.GetDownHostInfos(downHosts))
+
+	maintenanceHostInfoMap.ClearAndFillMap(drainingHostInfos)
+	suite.NotEmpty(maintenanceHostInfoMap.GetDrainingHostInfos([]string{}))
+	suite.Empty(maintenanceHostInfoMap.GetDownHostInfos([]string{}))
+
+	maintenanceHostInfoMap.ClearAndFillMap(downHostInfos)
+	suite.NotEmpty(maintenanceHostInfoMap.GetDownHostInfos([]string{}))
+	suite.Empty(maintenanceHostInfoMap.GetDrainingHostInfos([]string{}))
 }
 
 func TestHostMapTestSuite(t *testing.T) {

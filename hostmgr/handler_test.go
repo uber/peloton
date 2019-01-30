@@ -31,18 +31,19 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
+	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/common/queue"
 	"github.com/uber/peloton/common/reservation"
 	bin_packing "github.com/uber/peloton/hostmgr/binpacking"
 	"github.com/uber/peloton/hostmgr/config"
 	"github.com/uber/peloton/hostmgr/host"
+	hm "github.com/uber/peloton/hostmgr/host/mocks"
 	hostmgr_mesos_mocks "github.com/uber/peloton/hostmgr/mesos/mocks"
 	"github.com/uber/peloton/hostmgr/metrics"
 	"github.com/uber/peloton/hostmgr/offer/offerpool"
-	"github.com/uber/peloton/hostmgr/queue/mocks"
+	qm "github.com/uber/peloton/hostmgr/queue/mocks"
 	"github.com/uber/peloton/hostmgr/reserver"
 	reserver_mocks "github.com/uber/peloton/hostmgr/reserver/mocks"
 	task_state_mocks "github.com/uber/peloton/hostmgr/task/mocks"
@@ -196,10 +197,10 @@ type HostMgrHandlerTestSuite struct {
 	frameworkID            *mesos.FrameworkID
 	mesosDetector          *hostmgr_mesos_mocks.MockMasterDetector
 	reserver               reserver.Reserver
-	maintenanceQueue       *mocks.MockMaintenanceQueue
+	maintenanceQueue       *qm.MockMaintenanceQueue
 	drainingMachines       []*mesos.MachineID
 	downMachines           []*mesos.MachineID
-	maintenanceHostInfoMap host.MaintenanceHostInfoMap
+	maintenanceHostInfoMap *hm.MockMaintenanceHostInfoMap
 	taskStateManager       *task_state_mocks.MockStateManager
 }
 
@@ -251,8 +252,8 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		bin_packing.CreateRanker("FIRST_FIT"),
 	)
 
-	suite.maintenanceQueue = mocks.NewMockMaintenanceQueue(suite.ctrl)
-	suite.maintenanceHostInfoMap = host.NewMaintenanceHostInfoMap()
+	suite.maintenanceQueue = qm.NewMockMaintenanceQueue(suite.ctrl)
+	suite.maintenanceHostInfoMap = hm.NewMockMaintenanceHostInfoMap(suite.ctrl)
 
 	suite.handler = &ServiceHandler{
 		schedulerClient:        suite.schedulerClient,
@@ -1238,11 +1239,15 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 	loader := &host.Loader{
 		OperatorClient:         suite.masterOperatorClient,
 		Scope:                  suite.testScope,
-		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
+		MaintenanceHostInfoMap: suite.maintenanceHostInfoMap,
 	}
 	numAgents := 2
 	response := makeAgentsResponse(numAgents)
 	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
+	suite.maintenanceHostInfoMap.EXPECT().
+		GetDrainingHostInfos(gomock.Any()).
+		Return([]*hpb.HostInfo{}).
+		Times(len(response.GetAgents()))
 
 	loader.Load(nil)
 
@@ -1327,7 +1332,7 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithoutAg
 	loader := &host.Loader{
 		OperatorClient:         suite.masterOperatorClient,
 		Scope:                  suite.testScope,
-		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
+		MaintenanceHostInfoMap: hm.NewMockMaintenanceHostInfoMap(suite.ctrl),
 	}
 	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
 	loader.Load(nil)
@@ -1374,11 +1379,15 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithQuota
 	loader := &host.Loader{
 		OperatorClient:         suite.masterOperatorClient,
 		Scope:                  suite.testScope,
-		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
+		MaintenanceHostInfoMap: suite.maintenanceHostInfoMap,
 	}
 	numAgents := 2
 	response := makeAgentsResponse(numAgents)
 	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
+	suite.maintenanceHostInfoMap.EXPECT().
+		GetDrainingHostInfos(gomock.Any()).
+		Return([]*hpb.HostInfo{}).
+		Times(len(response.GetAgents()))
 
 	loader.Load(nil)
 
@@ -1837,8 +1846,6 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerMarkHostsDrained() {
 		},
 	}
 
-	suite.maintenanceHostInfoMap.AddHostInfos(hostInfos)
-
 	var drainingMachines []*mesos_maintenance.ClusterStatus_DrainingMachine
 	for _, hostInfo := range hostInfos {
 		machineID := &mesos.MachineID{
@@ -1851,14 +1858,27 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerMarkHostsDrained() {
 			})
 	}
 
-	suite.masterOperatorClient.EXPECT().
-		StartMaintenance(gomock.Any()).
-		Return(nil).
-		Do(func(machineIds []*mesos.MachineID) {
-			for i := range drainingMachines {
-				suite.Exactly(drainingMachines[i].Id, machineIds[i])
-			}
-		})
+	gomock.InOrder(
+		suite.maintenanceHostInfoMap.EXPECT().
+			GetDrainingHostInfos([]string{}).
+			Return(hostInfos),
+
+		suite.masterOperatorClient.EXPECT().
+			StartMaintenance(gomock.Any()).
+			Return(nil).
+			Do(func(machineIds []*mesos.MachineID) {
+				for i := range drainingMachines {
+					suite.Exactly(drainingMachines[i].Id, machineIds[i])
+				}
+			}),
+	)
+
+	for _, hostInfo := range hostInfos {
+		suite.maintenanceHostInfoMap.EXPECT().UpdateHostState(
+			hostInfo.GetHostname(),
+			hpb.HostState_HOST_STATE_DRAINING,
+			hpb.HostState_HOST_STATE_DOWN)
+	}
 
 	var hostnames []string
 	for _, hostInfo := range hostInfos {
@@ -1873,6 +1893,10 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerMarkHostsDrained() {
 	suite.NotNil(resp)
 
 	// Test host-not-DRAINING
+	suite.maintenanceHostInfoMap.EXPECT().
+		GetDrainingHostInfos([]string{}).
+		Return([]*hpb.HostInfo{})
+
 	resp, err = suite.handler.MarkHostsDrained(
 		context.Background(),
 		&hostsvc.MarkHostsDrainedRequest{
@@ -1881,13 +1905,16 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerMarkHostsDrained() {
 	suite.Nil(resp.GetMarkedHosts())
 
 	// Test StartMaintenance error
-	suite.maintenanceHostInfoMap.AddHostInfos([]*hpb.HostInfo{
-		{
-			Hostname: "host1",
-			Ip:       "0.0.0.0",
-			State:    hpb.HostState_HOST_STATE_DRAINING,
-		},
-	})
+	suite.maintenanceHostInfoMap.EXPECT().
+		GetDrainingHostInfos([]string{}).
+		Return([]*hpb.HostInfo{
+			{
+				Hostname: "host1",
+				Ip:       "0.0.0.0",
+				State:    hpb.HostState_HOST_STATE_DRAINING,
+			},
+		})
+
 	suite.masterOperatorClient.EXPECT().
 		StartMaintenance(gomock.Any()).
 		Return(fmt.Errorf("fake StartMaintenance error"))
@@ -2185,15 +2212,19 @@ func TestHostManagerTestSuite(t *testing.T) {
 
 // InitializeHosts adds the hosts to host map
 func (suite *HostMgrHandlerTestSuite) InitializeHosts(numAgents int) {
+	mockMaintenanceMap := hm.NewMockMaintenanceHostInfoMap(suite.ctrl)
 	loader := &host.Loader{
 		OperatorClient:         suite.masterOperatorClient,
 		Scope:                  suite.testScope,
 		SlackResourceTypes:     []string{"cpus"},
-		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
+		MaintenanceHostInfoMap: mockMaintenanceMap,
 	}
 	response := makeAgentsResponse(numAgents)
 	gomock.InOrder(
 		suite.masterOperatorClient.EXPECT().Agents().Return(response, nil),
+		mockMaintenanceMap.EXPECT().
+			GetDrainingHostInfos(gomock.Any()).
+			Return([]*hpb.HostInfo{}).Times(len(response.GetAgents())),
 	)
 	loader.Load(nil)
 }
@@ -2498,14 +2529,15 @@ func (a AgentSlice) Swap(i, j int) {
 // Test GetMesosAgentInfo with and without hostname specified
 func (suite *HostMgrHandlerTestSuite) TestGetMesosAgentInfo() {
 
-	agents := makeAgentsResponse(3)
-	agentInfo := AgentSlice(agents.GetAgents())
+	response := makeAgentsResponse(3)
+	agentInfo := AgentSlice(response.GetAgents())
 	sort.Sort(agentInfo)
-	suite.masterOperatorClient.EXPECT().Agents().Return(agents, nil)
+	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
+	suite.maintenanceHostInfoMap.EXPECT().GetDrainingHostInfos(gomock.Any()).Return([]*hpb.HostInfo{}).Times(len(response.GetAgents()))
 	loader := &host.Loader{
 		OperatorClient:         suite.masterOperatorClient,
 		Scope:                  suite.testScope,
-		MaintenanceHostInfoMap: host.NewMaintenanceHostInfoMap(),
+		MaintenanceHostInfoMap: suite.maintenanceHostInfoMap,
 	}
 	loader.Load(nil)
 

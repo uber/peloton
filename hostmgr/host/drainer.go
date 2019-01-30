@@ -128,6 +128,6 @@ func (d *drainer) reconcileMaintenanceState() error {
 				State:    host.HostState_HOST_STATE_DOWN,
 			})
 	}
-	d.maintenanceHostInfoMap.AddHostInfos(hostInfos)
+	d.maintenanceHostInfoMap.ClearAndFillMap(hostInfos)
 	return d.maintenanceQueue.Enqueue(drainingHosts)
 }
