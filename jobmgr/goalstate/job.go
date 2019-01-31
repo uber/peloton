@@ -231,14 +231,14 @@ func (j *jobEntity) suggestJobAction(state cached.JobStateVector, goalstate cach
 				return CreateTasksAction
 			}
 			return StartTasksAction
-		case job.JobState_DELETED:
+		case job.JobState_DELETED, job.JobState_KILLED:
 			// Don't do anything. The rules are specified in _isoVersionsJobRules
 		default:
 			log.WithFields(log.Fields{
 				"job_id":             j.GetID(),
 				"state_version":      state.StateVersion,
 				"goal_state_version": goalstate.StateVersion,
-				"goal_state":         goalstate.State,
+				"goal_state":         goalstate.State.String(),
 			}).Warn("unexpected divergence of state version from goal state version")
 		}
 	}

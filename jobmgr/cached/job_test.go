@@ -3780,3 +3780,262 @@ func (suite *JobTestSuite) TestGetStateCount() {
 		stateCount[pbtask.TaskState_INITIALIZED][pbtask.TaskState_DELETED],
 		1)
 }
+
+// TestJobRollingCreateSuccess tests job
+// rolling create in cache and db
+func (suite *JobTestSuite) TestJobRollingCreateSuccess() {
+	jobConfig := &pbjob.JobConfig{
+		InstanceCount: 10,
+		Type:          pbjob.JobType_SERVICE,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
+	}
+
+	createdBy := "test"
+	configAddOn := &models.ConfigAddOn{
+		SystemLabels: []*peloton.Label{
+			{
+				Key: fmt.Sprintf(
+					common.SystemLabelKeyTemplate,
+					common.SystemLabelPrefix,
+					common.SystemLabelJobOwner),
+				Value: createdBy,
+			},
+			{
+				Key: fmt.Sprintf(
+					common.SystemLabelKeyTemplate,
+					common.SystemLabelPrefix,
+					common.SystemLabelJobType),
+				Value: jobConfig.Type.String(),
+			},
+		},
+	}
+
+	suite.jobStore.EXPECT().
+		AddActiveJob(gomock.Any(), suite.jobID).Return(nil)
+
+	suite.jobStore.EXPECT().
+		CreateJobRuntimeWithConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, initialRuntime *pbjob.RuntimeInfo, config *pbjob.JobConfig) {
+			suite.Equal(initialRuntime.State, pbjob.JobState_UNINITIALIZED)
+			suite.Equal(initialRuntime.GoalState, pbjob.JobState_RUNNING)
+			suite.Equal(initialRuntime.Revision.Version, uint64(1))
+			suite.Equal(initialRuntime.ConfigurationVersion, config.ChangeLog.Version)
+			suite.Equal(initialRuntime.TaskStats[pbjob.JobState_INITIALIZED.String()], jobConfig.InstanceCount)
+			suite.Equal(len(initialRuntime.TaskStats), 1)
+
+			suite.Equal(config.ChangeLog.Version, uint64(1))
+			suite.Equal(config.InstanceCount, jobConfig.InstanceCount)
+			suite.Equal(config.Type, jobConfig.Type)
+		}).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		CreateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any(), gomock.Any(), createdBy).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig, addOn *models.ConfigAddOn, version uint64, createBy string) {
+			suite.Equal(version, uint64(jobmgrcommon.DummyConfigVersion))
+			suite.Equal(config.ChangeLog.Version, uint64(jobmgrcommon.DummyConfigVersion))
+			suite.Zero(config.InstanceCount)
+			suite.Equal(config.Type, jobConfig.Type)
+			suite.Len(addOn.SystemLabels, len(configAddOn.SystemLabels))
+			for i := 0; i < len(configAddOn.SystemLabels); i++ {
+				suite.Equal(configAddOn.SystemLabels[i].GetKey(), addOn.SystemLabels[i].GetKey())
+				suite.Equal(configAddOn.SystemLabels[i].GetValue(), addOn.SystemLabels[i].GetValue())
+			}
+			suite.Nil(config.DefaultConfig)
+			suite.Nil(config.InstanceConfig)
+		}).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		CreateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any(), gomock.Any(), createdBy).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig, addOn *models.ConfigAddOn, version uint64, createBy string) {
+			suite.Equal(version, uint64(1))
+			suite.Equal(config.ChangeLog.Version, uint64(1))
+			suite.Equal(config.InstanceCount, jobConfig.InstanceCount)
+			suite.Equal(config.Type, jobConfig.Type)
+			suite.Len(addOn.SystemLabels, len(configAddOn.SystemLabels))
+			for i := 0; i < len(configAddOn.SystemLabels); i++ {
+				suite.Equal(configAddOn.SystemLabels[i].GetKey(), addOn.SystemLabels[i].GetKey())
+				suite.Equal(configAddOn.SystemLabels[i].GetValue(), addOn.SystemLabels[i].GetValue())
+			}
+		}).
+		Return(nil)
+
+	suite.updateStore.EXPECT().
+		AddWorkflowEvent(
+			gomock.Any(), gomock.Any(),
+			gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil).
+		Times(int(jobConfig.InstanceCount))
+
+	suite.updateStore.EXPECT().
+		AddJobUpdateEvent(
+			gomock.Any(), gomock.Any(),
+			gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.updateStore.EXPECT().
+		CreateUpdate(gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+			suite.Equal(runtime.GetState(), pbjob.JobState_PENDING)
+		}).Return(nil)
+
+	err := suite.job.RollingCreate(
+		context.Background(),
+		jobConfig,
+		configAddOn,
+		0,
+		false,
+		nil,
+		createdBy)
+	suite.NoError(err)
+	config, err := suite.job.GetConfig(context.Background())
+	suite.NoError(err)
+	suite.Equal(config.GetInstanceCount(), uint32(10))
+	suite.Equal(config.GetChangeLog().Version, uint64(1))
+	suite.Equal(config.GetType(), pbjob.JobType_SERVICE)
+	runtime, err := suite.job.GetRuntime(context.Background())
+	suite.NoError(err)
+	suite.Equal(runtime.GetRevision().GetVersion(), uint64(1))
+	suite.Equal(runtime.GetConfigurationVersion(), uint64(1))
+	suite.Equal(runtime.GetState(), pbjob.JobState_PENDING)
+	suite.Equal(runtime.GetGoalState(), pbjob.JobState_RUNNING)
+	suite.checkListeners()
+}
+
+// TestJobRollingCreateNilConfigFailure tests job
+// rolling create in cache and db fails due to nil
+// config
+func (suite *JobTestSuite) TestJobRollingCreateNilConfigFailure() {
+	createdBy := "test"
+	configAddOn := &models.ConfigAddOn{
+		SystemLabels: []*peloton.Label{
+			{
+				Key: fmt.Sprintf(
+					common.SystemLabelKeyTemplate,
+					common.SystemLabelPrefix,
+					common.SystemLabelJobOwner),
+				Value: createdBy,
+			},
+		},
+	}
+
+	err := suite.job.RollingCreate(
+		context.Background(),
+		nil,
+		configAddOn,
+		0,
+		false,
+		nil,
+		createdBy)
+	suite.Error(err)
+}
+
+// TestJobRollingCreateAddActiveJobFailure tests job
+// rolling create in cache and db fails due to call
+// to AddActiveJob fails
+func (suite *JobTestSuite) TestJobRollingCreateAddActiveJobFailure() {
+	jobConfig := &pbjob.JobConfig{
+		InstanceCount: 10,
+		Type:          pbjob.JobType_SERVICE,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
+	}
+
+	createdBy := "test"
+	configAddOn := &models.ConfigAddOn{
+		SystemLabels: []*peloton.Label{
+			{
+				Key: fmt.Sprintf(
+					common.SystemLabelKeyTemplate,
+					common.SystemLabelPrefix,
+					common.SystemLabelJobOwner),
+				Value: createdBy,
+			},
+			{
+				Key: fmt.Sprintf(
+					common.SystemLabelKeyTemplate,
+					common.SystemLabelPrefix,
+					common.SystemLabelJobType),
+				Value: jobConfig.Type.String(),
+			},
+		},
+	}
+
+	suite.jobStore.EXPECT().
+		AddActiveJob(gomock.Any(), suite.jobID).
+		Return(yarpcerrors.InternalErrorf("test error"))
+
+	err := suite.job.RollingCreate(
+		context.Background(),
+		jobConfig,
+		configAddOn,
+		0,
+		false,
+		nil,
+		createdBy)
+	suite.Error(err)
+}
+
+// TestJobRollingCreateJobRuntimeWithConfigFailure
+// tests job rolling create in cache and db fails due to
+// CreateJobRuntimeWithConfig fails
+func (suite *JobTestSuite) TestJobRollingCreateJobRuntimeWithConfigFailure() {
+	jobConfig := &pbjob.JobConfig{
+		InstanceCount: 10,
+		Type:          pbjob.JobType_SERVICE,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
+	}
+
+	createdBy := "test"
+	configAddOn := &models.ConfigAddOn{
+		SystemLabels: []*peloton.Label{
+			{
+				Key: fmt.Sprintf(
+					common.SystemLabelKeyTemplate,
+					common.SystemLabelPrefix,
+					common.SystemLabelJobOwner),
+				Value: createdBy,
+			},
+			{
+				Key: fmt.Sprintf(
+					common.SystemLabelKeyTemplate,
+					common.SystemLabelPrefix,
+					common.SystemLabelJobType),
+				Value: jobConfig.Type.String(),
+			},
+		},
+	}
+
+	suite.jobStore.EXPECT().
+		AddActiveJob(gomock.Any(), suite.jobID).Return(nil)
+
+	suite.jobStore.EXPECT().
+		CreateJobRuntimeWithConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, initialRuntime *pbjob.RuntimeInfo, config *pbjob.JobConfig) {
+			suite.Equal(initialRuntime.State, pbjob.JobState_UNINITIALIZED)
+			suite.Equal(initialRuntime.GoalState, pbjob.JobState_RUNNING)
+			suite.Equal(initialRuntime.Revision.Version, uint64(1))
+			suite.Equal(initialRuntime.ConfigurationVersion, config.ChangeLog.Version)
+			suite.Equal(initialRuntime.TaskStats[pbjob.JobState_INITIALIZED.String()], jobConfig.InstanceCount)
+			suite.Equal(len(initialRuntime.TaskStats), 1)
+
+			suite.Equal(config.ChangeLog.Version, uint64(1))
+			suite.Equal(config.InstanceCount, jobConfig.InstanceCount)
+			suite.Equal(config.Type, jobConfig.Type)
+		}).
+		Return(yarpcerrors.InternalErrorf("test error"))
+
+	err := suite.job.RollingCreate(
+		context.Background(),
+		jobConfig,
+		configAddOn,
+		0,
+		false,
+		nil,
+		createdBy)
+	suite.Error(err)
+}

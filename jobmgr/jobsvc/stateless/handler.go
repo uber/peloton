@@ -186,7 +186,16 @@ func (h *serviceHandler) CreateJob(
 	configAddOn := &models.ConfigAddOn{
 		SystemLabels: systemLabels,
 	}
-	err = cachedJob.Create(ctx, jobConfig, configAddOn, "peloton")
+	// TODO: modify handler API to pass in the fields for workflow
+	err = cachedJob.RollingCreate(
+		ctx,
+		jobConfig,
+		configAddOn,
+		0,         /*batchSize*/
+		false,     /*startPaused*/
+		nil,       /*opaqueData*/
+		"peloton", /*createBy*/
+	)
 
 	// enqueue the job into goal state engine even in failure case.
 	// Because the state may be updated, let goal state engine decide what to do

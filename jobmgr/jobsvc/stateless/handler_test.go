@@ -1845,7 +1845,9 @@ func (suite *statelessHandlerTestSuite) TestCreateJobSuccess() {
 			Return(suite.cachedJob),
 
 		suite.cachedJob.EXPECT().
-			Create(gomock.Any(), jobConfig, gomock.Any(), gomock.Any()).
+			RollingCreate(
+				gomock.Any(), jobConfig, gomock.Any(),
+				gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil),
 
 		suite.goalStateDriver.EXPECT().
@@ -2166,7 +2168,8 @@ func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsSuccess() {
 			Return(suite.cachedJob),
 
 		suite.cachedJob.EXPECT().
-			Create(gomock.Any(), jobConfig, gomock.Any(), gomock.Any()).
+			RollingCreate(gomock.Any(), jobConfig, gomock.Any(),
+				gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil),
 
 		suite.goalStateDriver.EXPECT().
@@ -2585,7 +2588,8 @@ func (suite *statelessHandlerTestSuite) TestCreateJobFailureJobCacheCreateError(
 			Return(suite.cachedJob),
 
 		suite.cachedJob.EXPECT().
-			Create(gomock.Any(), jobConfig, gomock.Any(), gomock.Any()).
+			RollingCreate(gomock.Any(), jobConfig, gomock.Any(),
+				gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(yarpcerrors.InternalErrorf("test error")),
 
 		suite.goalStateDriver.EXPECT().
@@ -2639,7 +2643,8 @@ func (suite *statelessHandlerTestSuite) TestCreateJobFailureGetJobRuntimeError()
 			Return(suite.cachedJob),
 
 		suite.cachedJob.EXPECT().
-			Create(gomock.Any(), jobConfig, gomock.Any(), gomock.Any()).
+			RollingCreate(gomock.Any(), jobConfig, gomock.Any(),
+				gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil),
 
 		suite.goalStateDriver.EXPECT().

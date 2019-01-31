@@ -30,10 +30,10 @@ func NewJobUpdateInstructions(
 
 	return &api.JobUpdateInstructions{
 		InitialState: []*api.InstanceTaskConfig{
-			&api.InstanceTaskConfig{
+			{
 				Instances: NewRange(instancesInUpdate),
 			},
-			&api.InstanceTaskConfig{
+			{
 				Instances: NewRange(w.GetInstancesRemoved()),
 			},
 		},

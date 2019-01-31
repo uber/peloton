@@ -311,6 +311,9 @@ def test__start_killed_job(stateless_job):
 # test start succeeds during jobmgr restart
 def test__start_restart_jobmgr(stateless_job, jobmgr):
     stateless_job.create()
+    # TODO: remove this line after update and kill race
+    # condition is fixed
+    stateless_job.wait_for_all_pods_running()
     stateless_job.stop()
     stateless_job.wait_for_state(goal_state='KILLED')
 

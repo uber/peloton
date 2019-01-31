@@ -584,14 +584,14 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Error() {
 					State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 				},
 				Events: []*stateless.WorkflowEvent{
-					&stateless.WorkflowEvent{
+					{
 						Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
 						State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 						Timestamp: time.Now().Format(time.RFC3339),
 					},
 				},
 				InstancesUpdated: []*pod.InstanceIDRange{
-					&pod.InstanceIDRange{
+					{
 						From: uint32(0),
 						To:   uint32(50),
 					},
@@ -615,7 +615,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Error() {
 				InstanceId: i,
 			}).Return(&statelesssvc.GetWorkflowEventsResponse{
 			Events: []*stateless.WorkflowEvent{
-				&stateless.WorkflowEvent{
+				{
 					Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
 					State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 					Timestamp: time.Now().Format(time.RFC3339),
@@ -663,7 +663,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Success() {
 					State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 				},
 				Events: []*stateless.WorkflowEvent{
-					&stateless.WorkflowEvent{
+					{
 						Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
 						State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 						Timestamp: time.Now().Format(time.RFC3339),
@@ -676,7 +676,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Success() {
 					// },
 				},
 				InstancesAdded: []*pod.InstanceIDRange{
-					&pod.InstanceIDRange{
+					{
 						From: uint32(0),
 						To:   uint32(50),
 					},
@@ -691,7 +691,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Success() {
 				InstanceId: i,
 			}).Return(&statelesssvc.GetWorkflowEventsResponse{
 			Events: []*stateless.WorkflowEvent{
-				&stateless.WorkflowEvent{
+				{
 					Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
 					State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 					Timestamp: time.Now().Format(time.RFC3339),

@@ -49,3 +49,10 @@ const (
 	// system failures
 	MaxSystemFailureAttempts = 4
 )
+
+const (
+	// DummyConfigVersion is the config version of the dummy config which is used
+	// for job creation. Config with this version means that the config has nothing,
+	// and is used merely as a placeholder.
+	DummyConfigVersion = 0
+)

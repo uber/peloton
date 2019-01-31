@@ -97,31 +97,71 @@ func JobRecover(ctx context.Context, entity goalstate.Entity) error {
 	goalStateDriver := jobEnt.driver
 	cachedJob := goalStateDriver.jobFactory.AddJob(jobEnt.id)
 
-	_, err := cachedJob.GetConfig(ctx)
-	// config exists, it means the job is created, move the state to initialized
-	if err == nil {
-		log.WithFields(log.Fields{
-			"job_id": jobEnt.GetID(),
-		}).Info("job config is found and job is recoverable")
-
-		if err := cachedJob.Update(ctx, &job.JobInfo{
-			Runtime: &job.RuntimeInfo{State: job.JobState_INITIALIZED},
-		}, nil, cached.UpdateCacheAndDB); err != nil {
-			return err
-		}
-		goalStateDriver.EnqueueJob(jobEnt.id, time.Now())
-		return nil
-	}
+	config, err := cachedJob.GetConfig(ctx)
 
 	// config is not created, job cannot be recovered.
 	if yarpcerrors.IsNotFound(err) {
 		log.WithFields(log.Fields{
 			"job_id": jobEnt.GetID(),
 		}).Info("job is not recoverable due to missing config")
+
+		runtime, err := cachedJob.GetRuntime(ctx)
+		// runtime may already be removed, ignore not found
+		// error here
+		if err != nil && !yarpcerrors.IsNotFound(err) {
+			return err
+		}
+
+		// remove the update
+		if err := goalStateDriver.updateStore.DeleteUpdate(
+			ctx,
+			runtime.GetUpdateID(),
+			cachedJob.ID(),
+			runtime.GetConfigurationVersion(),
+		); err != nil {
+			return err
+		}
+
+		if err := goalStateDriver.jobStore.DeleteJob(
+			ctx,
+			cachedJob.ID().GetValue(),
+		); err != nil {
+			return err
+		}
+
+		// delete from active job in the end, after this step,
+		// we would not have any reference to the job.
+		if err := goalStateDriver.jobStore.DeleteActiveJob(
+			ctx,
+			cachedJob.ID(),
+		); err != nil {
+			return err
+		}
+
 		return JobUntrack(ctx, entity)
 	}
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	// config exists, it means the job is created
+	log.WithFields(log.Fields{
+		"job_id": jobEnt.GetID(),
+	}).Info("job config is found and job is recoverable")
+
+	jobState := job.JobState_INITIALIZED
+	if config.GetType() == job.JobType_SERVICE {
+		// stateless job uses workflow to create the job,
+		// so directly move to PENDING state
+		jobState = job.JobState_PENDING
+	}
+	if _, err := cachedJob.CompareAndSetRuntime(
+		ctx, &job.RuntimeInfo{State: jobState}); err != nil {
+		return err
+	}
+	goalStateDriver.EnqueueJob(jobEnt.id, time.Now())
+	return nil
 }
 
 // DeleteJobFromActiveJobs deletes a terminal batch job from active jobs

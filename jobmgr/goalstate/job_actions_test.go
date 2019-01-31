@@ -48,6 +48,7 @@ type jobActionsTestSuite struct {
 	jobFactory            *cachedmocks.MockJobFactory
 	goalStateDriver       *driver
 	jobID                 *peloton.JobID
+	updateID              *peloton.UpdateID
 	jobEnt                *jobEntity
 	cachedJob             *cachedmocks.MockJob
 	cachedTask            *cachedmocks.MockTask
@@ -78,6 +79,7 @@ func (suite *jobActionsTestSuite) SetupTest() {
 	suite.goalStateDriver.cfg.normalize()
 
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
+	suite.updateID = &peloton.UpdateID{Value: uuid.NewRandom().String()}
 	suite.jobEnt = &jobEntity{
 		id:     suite.jobID,
 		driver: suite.goalStateDriver,
@@ -155,20 +157,46 @@ func (suite *jobActionsTestSuite) TestJobStateInvalidAction() {
 	suite.NoError(err)
 }
 
-func (suite *jobActionsTestSuite) TestJobRecoverActionSuccess() {
+// TestJobRecoverBachJobSuccess tests the success case of recovering
+// batch job from UNINITIALIZED state
+func (suite *jobActionsTestSuite) TestJobRecoverBachJobSuccess() {
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
 		GetConfig(gomock.Any()).
-		Return(&job.JobConfig{}, nil)
+		Return(&job.JobConfig{
+			Type: job.JobType_BATCH,
+		}, nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), &job.JobInfo{
-			Runtime: &job.RuntimeInfo{State: job.JobState_INITIALIZED},
-		}, nil, cached.UpdateCacheAndDB).
-		Return(nil)
+		CompareAndSetRuntime(gomock.Any(), &job.RuntimeInfo{State: job.JobState_INITIALIZED}).
+		Return(nil, nil)
+
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any())
+
+	err := JobRecover(context.Background(), suite.jobEnt)
+	suite.NoError(err)
+}
+
+// TestJobRecoverBachJobSuccess tests the success case of recovering
+// service job from UNINITIALIZED state
+func (suite *jobActionsTestSuite) TestJobRecoverServiceJobSuccess() {
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			Type: job.JobType_SERVICE,
+		}, nil)
+
+	suite.cachedJob.EXPECT().
+		CompareAndSetRuntime(gomock.Any(), &job.RuntimeInfo{State: job.JobState_PENDING}).
+		Return(nil, nil)
 
 	suite.jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any())
@@ -178,6 +206,7 @@ func (suite *jobActionsTestSuite) TestJobRecoverActionSuccess() {
 }
 
 func (suite *jobActionsTestSuite) TestJobRecoverActionFailToRecover() {
+	var configurationVersion uint64 = 1
 	taskMap := make(map[uint32]cached.Task)
 	taskMap[0] = suite.cachedTask
 
@@ -186,9 +215,33 @@ func (suite *jobActionsTestSuite) TestJobRecoverActionFailToRecover() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
 		GetConfig(gomock.Any()).
 		Return(&job.JobConfig{}, yarpcerrors.NotFoundErrorf("config not found")).
 		Times(2)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			UpdateID:             suite.updateID,
+			ConfigurationVersion: configurationVersion,
+		}, nil)
+
+	suite.updateStore.EXPECT().
+		DeleteUpdate(gomock.Any(), suite.updateID, suite.jobID, configurationVersion).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		DeleteJob(gomock.Any(), suite.jobID.GetValue()).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		DeleteActiveJob(gomock.Any(), suite.jobID).
+		Return(nil)
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).

@@ -43,8 +43,6 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-type singleTask func(id uint32) error
-
 // Job in the cache.
 // TODO there a lot of methods in this interface. To determine if
 // this can be broken up into smaller pieces.
@@ -101,6 +99,19 @@ type Job interface {
 	// Create and Update need to be different functions as the backing
 	// storage calls are different.
 	Create(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn, createBy string) error
+
+	// RollingCreate is used to create the job configuration and runtime in DB.
+	// It would create a workflow to manage the job creation, therefore the creation
+	// process can be paused/resumed/aborted.
+	RollingCreate(
+		ctx context.Context,
+		config *pbjob.JobConfig,
+		configAddOn *models.ConfigAddOn,
+		batchSize uint32,
+		startPaused bool,
+		opaqueData *peloton.OpaqueData,
+		createBy string,
+	) error
 
 	// Update updates job with the new runtime and config. If the request is to update
 	// both DB and cache, it first attempts to persist the request in storage,
@@ -563,7 +574,7 @@ func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, configAddOn *
 	}
 
 	// create job runtime and set state to UNINITIALIZED
-	if err := j.createJobRuntime(ctx, config); err != nil {
+	if err := j.createJobRuntime(ctx, config, nil); err != nil {
 		j.invalidateCache()
 		return err
 	}
@@ -585,6 +596,118 @@ func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, configAddOn *
 		j.invalidateCache()
 		return err
 	}
+
+	runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
+	return nil
+}
+
+func (j *job) RollingCreate(
+	ctx context.Context,
+	config *pbjob.JobConfig,
+	configAddOn *models.ConfigAddOn,
+	batchSize uint32,
+	startPaused bool,
+	opaqueData *peloton.OpaqueData,
+	createBy string,
+) error {
+	var runtimeCopy *pbjob.RuntimeInfo
+	var jobType pbjob.JobType
+
+	// notify listeners after dropping the lock
+	defer func() {
+		j.jobFactory.notifyJobRuntimeChanged(j.ID(), jobType,
+			runtimeCopy)
+	}()
+
+	j.Lock()
+	defer j.Unlock()
+
+	if config == nil {
+		return yarpcerrors.InvalidArgumentErrorf("missing config in jobInfo")
+	}
+
+	// Add jobID to active jobs table before creating job runtime. This should
+	// happen every time a job is first created.
+	if err := j.jobFactory.jobStore.AddActiveJob(
+		ctx, j.ID()); err != nil {
+		j.invalidateCache()
+		return err
+	}
+
+	config = populateConfigChangeLog(config)
+
+	// dummy config is used as the starting config for update workflow
+	dummyConfig := proto.Clone(config).(*pbjob.JobConfig)
+	dummyConfig.InstanceCount = 0
+	dummyConfig.ChangeLog.Version = jobmgrcommon.DummyConfigVersion
+	dummyConfig.DefaultConfig = nil
+	dummyConfig.InstanceConfig = nil
+
+	instancesAdded := make([]uint32, config.InstanceCount)
+	for i := uint32(0); i < config.InstanceCount; i++ {
+		instancesAdded[i] = i
+	}
+
+	// create workflow which is going to initialize the job
+	updateID := &peloton.UpdateID{Value: uuid.New()}
+
+	// create job runtime and set state to UNINITIALIZED with updateID,
+	// so on error recovery, update config such as batch size can be
+	// recovered
+	if err := j.createJobRuntime(ctx, config, updateID); err != nil {
+		j.invalidateCache()
+		return err
+	}
+
+	newWorkflow := newUpdate(updateID, j.jobFactory)
+	if err := newWorkflow.Create(
+		ctx,
+		j.id,
+		config,
+		dummyConfig,
+		configAddOn,
+		instancesAdded,
+		nil,
+		nil,
+		models.WorkflowType_UPDATE,
+		&pbupdate.UpdateConfig{
+			BatchSize:   batchSize,
+			StartPaused: startPaused,
+		},
+		opaqueData,
+	); err != nil {
+		j.invalidateCache()
+		return err
+	}
+
+	// create the dummy config in db, it is possible that the dummy config already
+	// exists in db when doing error retry. So ignore already exist error here
+	if err := j.createJobConfig(ctx, dummyConfig, configAddOn, createBy); err != nil && yarpcerrors.IsAlreadyExists(errors.Cause(err)) {
+		j.invalidateCache()
+		return err
+	}
+
+	// create the real config as the target config for update workflow.
+	// Once the config is persisted successfully in db, the job is considered
+	// as created successfully, and should be able to recover from
+	// rest of the error. Calling RollingCreate after this call succeeds again,
+	// would result in AlreadyExist error
+	if err := j.createJobConfig(ctx, config, configAddOn, createBy); err != nil {
+		j.invalidateCache()
+		return err
+	}
+	jobType = j.jobType
+
+	// both config and runtime are created, move the state to PENDING
+	j.runtime.State = pbjob.JobState_PENDING
+	if err := j.jobFactory.jobStore.UpdateJobRuntime(
+		ctx,
+		j.id,
+		j.runtime); err != nil {
+		j.invalidateCache()
+		return err
+	}
+	j.workflows[updateID.GetValue()] = newWorkflow
 
 	runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
 	return nil
@@ -613,7 +736,7 @@ func (j *job) createJobConfig(ctx context.Context, config *pbjob.JobConfig, conf
 // createJobRuntime creates job runtime in db and cache,
 // job state is set to UNINITIALIZED, because job config is persisted after
 // calling createJobRuntime and job creation is not complete
-func (j *job) createJobRuntime(ctx context.Context, config *pbjob.JobConfig) error {
+func (j *job) createJobRuntime(ctx context.Context, config *pbjob.JobConfig, updateID *peloton.UpdateID) error {
 	goalState := goalstateutil.GetDefaultJobGoalState(config.Type)
 	now := time.Now().UTC()
 	initialJobRuntime := &pbjob.RuntimeInfo{
@@ -631,6 +754,7 @@ func (j *job) createJobRuntime(ctx context.Context, config *pbjob.JobConfig) err
 		WorkflowVersion:      1,
 		StateVersion:         1,
 		DesiredStateVersion:  1,
+		UpdateID:             updateID,
 	}
 	// Init the task stats to reflect that all tasks are in initialized state
 	initialJobRuntime.TaskStats[pbtask.TaskState_INITIALIZED.String()] = config.InstanceCount
