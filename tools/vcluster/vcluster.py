@@ -261,6 +261,8 @@ class VCluster(object):
         """
         type agent_num: int
         """
+        print 'Current peloton_version is: %s' % peloton_version
+        print type(peloton_version)
         try:
             host, port = self.start_mesos(agent_num)
             virtual_zookeeper = '%s:%s' % (host, port)
