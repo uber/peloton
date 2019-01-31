@@ -110,6 +110,13 @@ var (
 		Envar("CASSANDRA_PORT").
 		Int()
 
+	pelotonSecretFile = app.Flag(
+		"peloton-secret-file",
+		"Secret file containing all Peloton secrets").
+		Default("").
+		Envar("PELOTON_SECRET_FILE").
+		String()
+
 	datacenter = app.Flag(
 		"datacenter", "Datacenter name").
 		Default("").
@@ -166,6 +173,20 @@ func getConfig(cfgFiles ...string) Config {
 	if *datacenter != "" {
 		cfg.Storage.Cassandra.CassandraConn.DataCenter = *datacenter
 	}
+	// Parse and setup peloton secrets
+	if *pelotonSecretFile != "" {
+		var secretsCfg config.PelotonSecretsConfig
+		if err := config.Parse(&secretsCfg, *pelotonSecretFile); err != nil {
+			log.WithError(err).
+				WithField("peloton_secret_file", *pelotonSecretFile).
+				Fatal("Cannot parse secret config")
+		}
+		cfg.Storage.Cassandra.CassandraConn.Username =
+			secretsCfg.CassandraUsername
+		cfg.Storage.Cassandra.CassandraConn.Password =
+			secretsCfg.CassandraPassword
+	}
+
 	if *enablePreemption {
 		cfg.ResManager.PreemptionConfig.Enabled = *enablePreemption
 	}

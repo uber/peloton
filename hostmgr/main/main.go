@@ -150,6 +150,13 @@ var (
 		Envar("MESOS_SECRET_FILE").
 		String()
 
+	pelotonSecretFile = app.Flag(
+		"peloton-secret-file",
+		"Secret file containing all Peloton secrets").
+		Default("").
+		Envar("PELOTON_SECRET_FILE").
+		String()
+
 	scarceResourceTypes = app.Flag(
 		"scarce-resource-type", "Scarce Resource Type.").
 		Envar("SCARCE_RESOURCE_TYPES").
@@ -218,6 +225,20 @@ func main() {
 
 	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
 		cfg.Storage.Cassandra.CassandraConn.ContactPoints = *cassandraHosts
+	}
+
+	// Parse and setup peloton secrets
+	if *pelotonSecretFile != "" {
+		var secretsCfg config.PelotonSecretsConfig
+		if err := config.Parse(&secretsCfg, *pelotonSecretFile); err != nil {
+			log.WithError(err).
+				WithField("peloton_secret_file", *pelotonSecretFile).
+				Fatal("Cannot parse secret config")
+		}
+		cfg.Storage.Cassandra.CassandraConn.Username =
+			secretsCfg.CassandraUsername
+		cfg.Storage.Cassandra.CassandraConn.Password =
+			secretsCfg.CassandraPassword
 	}
 
 	if *cassandraStore != "" {

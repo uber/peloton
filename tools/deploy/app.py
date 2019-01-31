@@ -168,6 +168,8 @@ class App(object):
                 self.cluster, 'secret_config_dir', ''),
             'MESOS_SECRET_FILE': getattr(
                 self.cluster, 'mesos_secret_file', ''),
+            'PELOTON_SECRET_FILE': getattr(
+                self.cluster, 'peloton_secret_file', ''),
             'ENABLE_SECRETS': self.enable_secrets,
             'JOB_RUNTIME_CALCULATION_VIA_CACHE': getattr(
                 self.cluster, 'job_runtime_calculation_via_cache',
