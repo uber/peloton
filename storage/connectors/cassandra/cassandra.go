@@ -96,7 +96,7 @@ func buildResultRow(e *base.Definition, columns []string) []interface{} {
 		case reflect.String:
 			var value *string
 			results[i] = &value
-		case reflect.Int32, reflect.Uint32:
+		case reflect.Int32, reflect.Uint32, reflect.Int:
 			// C* internally uses int and int64
 			var value *int
 			results[i] = &value
@@ -140,6 +140,8 @@ func getRowFromResult(
 		}
 
 		switch rv := columnVals[i].(type) {
+		case **int:
+			column.Value = *rv
 		case **int64:
 			column.Value = *rv
 		case **string:

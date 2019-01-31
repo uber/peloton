@@ -106,7 +106,7 @@ func createJob(ctx context.Context, state pb_job.JobState, goalState pb_job.JobS
 		return nil, err
 	}
 
-	err = csStore.CreateJobRuntimeWithConfig(ctx, jobID, &initialJobRuntime, &jobConfig)
+	err = csStore.CreateJobRuntime(ctx, jobID, &initialJobRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +169,7 @@ func createPartiallyCreatedJob(ctx context.Context, goalState pb_job.JobState) (
 		ConfigurationVersion: jobConfig.GetChangeLog().GetVersion(),
 	}
 
-	err := csStore.CreateJobRuntimeWithConfig(ctx, jobID, &initialJobRuntime, &jobConfig)
+	err := csStore.CreateJobRuntime(ctx, jobID, &initialJobRuntime)
 	if err != nil {
 		return nil, err
 	}

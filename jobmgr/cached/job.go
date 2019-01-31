@@ -595,6 +595,14 @@ func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, configAddOn *
 		j.invalidateCache()
 		return err
 	}
+	if err := j.jobFactory.jobIndexOps.Create(
+		ctx, j.ID(),
+		config,
+		j.runtime,
+	); err != nil {
+		j.invalidateCache()
+		return err
+	}
 
 	runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
 	return nil
@@ -706,6 +714,15 @@ func (j *job) RollingCreate(
 		j.invalidateCache()
 		return err
 	}
+	if err := j.jobFactory.jobIndexOps.Create(
+		ctx,
+		j.id,
+		config,
+		j.runtime,
+	); err != nil {
+		j.invalidateCache()
+		return err
+	}
 	j.workflows[updateID.GetValue()] = newWorkflow
 
 	runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
@@ -758,7 +775,7 @@ func (j *job) createJobRuntime(ctx context.Context, config *pbjob.JobConfig, upd
 	// Init the task stats to reflect that all tasks are in initialized state
 	initialJobRuntime.TaskStats[pbtask.TaskState_INITIALIZED.String()] = config.InstanceCount
 
-	err := j.jobFactory.jobStore.CreateJobRuntimeWithConfig(ctx, j.id, initialJobRuntime, config)
+	err := j.jobFactory.jobStore.CreateJobRuntime(ctx, j.id, initialJobRuntime)
 	if err != nil {
 		return err
 	}
@@ -802,6 +819,15 @@ func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.Runtim
 	if err := j.jobFactory.jobStore.UpdateJobRuntime(
 		ctx,
 		j.id,
+		&newRuntime,
+	); err != nil {
+		j.invalidateCache()
+		return nil, err
+	}
+	if err := j.jobFactory.jobIndexOps.Update(
+		ctx,
+		j.id,
+		nil,
 		&newRuntime,
 	); err != nil {
 		j.invalidateCache()
@@ -858,6 +884,15 @@ func (j *job) compareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, 
 	// write the config into DB
 	if err := j.jobFactory.jobStore.
 		UpdateJobConfig(ctx, j.ID(), updatedConfig, configAddOn); err != nil {
+		j.invalidateCache()
+		return nil, err
+	}
+	if err := j.jobFactory.jobIndexOps.Update(
+		ctx,
+		j.ID(),
+		updatedConfig,
+		nil,
+	); err != nil {
 		j.invalidateCache()
 		return nil, err
 	}
@@ -948,6 +983,19 @@ func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, configAddOn *m
 				return err
 			}
 			runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
+		}
+
+		if updatedConfig != nil || updatedRuntime != nil {
+			if err := j.jobFactory.jobIndexOps.Update(
+				ctx,
+				j.ID(),
+				updatedConfig,
+				updatedRuntime,
+			); err != nil {
+				j.invalidateCache()
+				runtimeCopy = nil
+				return err
+			}
 		}
 	}
 	jobType = j.jobType
@@ -1794,6 +1842,15 @@ func (j *job) updateJobRuntime(
 		j.invalidateCache()
 		return err
 	}
+	if err := j.jobFactory.jobIndexOps.Update(
+		ctx,
+		j.id,
+		nil,
+		runtime,
+	); err != nil {
+		j.invalidateCache()
+		return err
+	}
 
 	j.runtime = runtime
 
@@ -2036,6 +2093,15 @@ func (j *job) updateWorkflowVersion(
 		j.runtime = nil
 		return err
 	}
+	if err := j.jobFactory.jobIndexOps.Update(
+		ctx,
+		j.id,
+		nil,
+		newRuntime,
+	); err != nil {
+		j.runtime = nil
+		return err
+	}
 
 	j.runtime = newRuntime
 	return nil
@@ -2044,6 +2110,9 @@ func (j *job) updateWorkflowVersion(
 // Delete deletes the job from DB and clears the cache
 func (j *job) Delete(ctx context.Context) error {
 	err := j.jobFactory.jobStore.DeleteJob(ctx, j.ID().GetValue())
+	if err == nil {
+		err = j.jobFactory.jobIndexOps.Delete(ctx, j.ID())
+	}
 	// It is possible to receive a timeout error although the delete was successful.
 	// Hence, invalidate the cache irrespective of whether an error occurred or not
 	j.invalidateCache()

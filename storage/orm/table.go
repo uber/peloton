@@ -121,7 +121,7 @@ func (t *Table) SetObjectFromRow(e base.Object, row []base.Column) {
 		var fv reflect.Value
 		if columnValue != nil {
 			fv = reflect.ValueOf(columnValue)
-			val.Set(reflect.Indirect(fv))
+			val.Set(reflect.Indirect(fv).Convert(val.Type()))
 		}
 	}
 }

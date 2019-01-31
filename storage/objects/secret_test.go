@@ -20,33 +20,25 @@ import (
 	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
-	"github.com/uber/peloton/storage/cassandra"
 
 	"github.com/gocql/gocql"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
 )
 
-type ObjectsTestSuite struct {
+type SecretObjectTestSuite struct {
 	suite.Suite
 }
 
-func (suite *ObjectsTestSuite) SetupTest() {
+func (suite *SecretObjectTestSuite) SetupTest() {
 }
 
-func TestObjectsTestSuite(t *testing.T) {
-	suite.Run(t, new(ObjectsTestSuite))
+func TestSecretObjectSuite(t *testing.T) {
+	suite.Run(t, new(SecretObjectTestSuite))
 }
 
 // TestSecretObject create and get from DB
-func (suite *ObjectsTestSuite) TestSecretObject() {
-	conf := cassandra.MigrateForTest()
-	var testScope = tally.NewTestScope("", map[string]string{})
-
-	estore, err := NewCassandraStore(conf, testScope)
-	suite.NoError(err)
-
+func (suite *SecretObjectTestSuite) TestSecretObject() {
 	jobID := &peloton.JobID{Value: uuid.New()}
 	secretID := uuid.New()
 	now := time.Now().UTC()
@@ -55,11 +47,11 @@ func (suite *ObjectsTestSuite) TestSecretObject() {
 		jobID, now, secretID, "some data", "path")
 
 	// write the secret object to DB
-	err = estore.CreateSecret(context.Background(), expectedSecret)
+	err := testStore.CreateSecret(context.Background(), expectedSecret)
 	suite.NoError(err)
 
 	// read secret object from DB
-	secret, err := estore.GetSecret(context.Background(), secretID)
+	secret, err := testStore.GetSecret(context.Background(), secretID)
 	suite.NoError(err)
 	suite.Equal(secret.SecretID, expectedSecret.SecretID)
 	suite.Equal(secret.JobID, expectedSecret.JobID)
@@ -69,11 +61,14 @@ func (suite *ObjectsTestSuite) TestSecretObject() {
 	suite.Equal(secret.Path, expectedSecret.Path)
 
 	// update secret object to DB
-	err = estore.UpdateSecretData(context.Background(), secretID, "new data")
+	err = testStore.UpdateSecretData(
+		context.Background(),
+		secretID,
+		"new data")
 	suite.NoError(err)
 
 	// read secret object from DB
-	secret, err = estore.GetSecret(context.Background(), secretID)
+	secret, err = testStore.GetSecret(context.Background(), secretID)
 	suite.NoError(err)
 	suite.Equal(secret.SecretID, expectedSecret.SecretID)
 	suite.Equal(secret.JobID, expectedSecret.JobID)
@@ -83,9 +78,9 @@ func (suite *ObjectsTestSuite) TestSecretObject() {
 	suite.Equal(secret.Data, "new data")
 
 	// Delete secret object from DB
-	err = estore.DeleteSecret(context.Background(), secretID)
+	err = testStore.DeleteSecret(context.Background(), secretID)
 	suite.NoError(err)
-	_, err = estore.GetSecret(context.Background(), secretID)
+	_, err = testStore.GetSecret(context.Background(), secretID)
 	suite.Error(err)
 	suite.Equal(err, gocql.ErrNotFound)
 }

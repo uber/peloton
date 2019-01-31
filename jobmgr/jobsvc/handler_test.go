@@ -41,6 +41,7 @@ import (
 	jobutil "github.com/uber/peloton/jobmgr/util/job"
 	leadermocks "github.com/uber/peloton/leader/mocks"
 	storemocks "github.com/uber/peloton/storage/mocks"
+	objectmocks "github.com/uber/peloton/storage/objects/mocks"
 	"github.com/uber/peloton/util"
 	taskutil "github.com/uber/peloton/util/task"
 
@@ -91,6 +92,7 @@ type JobHandlerTestSuite struct {
 	mockedJobStore        *storemocks.MockJobStore
 	mockedTaskStore       *storemocks.MockTaskStore
 	mockedSecretStore     *storemocks.MockSecretStore
+	mockedJobIndexOps     *objectmocks.MockJobIndexOps
 }
 
 // helper to initialize mocks in JobHandlerTestSuite
@@ -107,10 +109,12 @@ func (suite *JobHandlerTestSuite) initializeMocks() {
 	suite.mockedCandidate = leadermocks.NewMockCandidate(suite.ctrl)
 	suite.mockedSecretStore = storemocks.NewMockSecretStore(suite.ctrl)
 	suite.mockedTaskStore = storemocks.NewMockTaskStore(suite.ctrl)
+	suite.mockedJobIndexOps = objectmocks.NewMockJobIndexOps(suite.ctrl)
 
 	suite.handler.jobStore = suite.mockedJobStore
 	suite.handler.secretStore = suite.mockedSecretStore
 	suite.handler.taskStore = suite.mockedTaskStore
+	suite.handler.jobIndexOps = suite.mockedJobIndexOps
 	suite.handler.jobFactory = suite.mockedJobFactory
 	suite.handler.goalStateDriver = suite.mockedGoalStateDriver
 	suite.handler.respoolClient = suite.mockedRespoolClient
@@ -1629,6 +1633,9 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 	suite.mockedJobStore.EXPECT().
 		DeleteJob(context.Background(), id.GetValue()).
 		Return(nil)
+	suite.mockedJobIndexOps.EXPECT().
+		Delete(context.Background(), id).
+		Return(nil)
 
 	suite.mockedCachedJob.EXPECT().
 		GetAllTasks().
@@ -1674,6 +1681,7 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 	expectedErr = yarpcerrors.NotFoundErrorf("job not found")
 	suite.Equal(expectedErr, err)
 
+	// Test JobDelete failure
 	suite.mockedJobFactory.EXPECT().GetJob(id).
 		Return(suite.mockedCachedJob)
 
@@ -1689,6 +1697,23 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 	suite.Error(err)
 	expectedErr = yarpcerrors.InternalErrorf("fake db error")
 	suite.Equal(expectedErr, err)
+
+	// Test JobIndex delete failure
+	suite.mockedJobFactory.EXPECT().GetJob(id).
+		Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{State: job.JobState_SUCCEEDED}, nil)
+	suite.mockedJobStore.EXPECT().
+		DeleteJob(context.Background(), id.GetValue()).
+		Return(nil)
+	suite.mockedJobIndexOps.EXPECT().
+		Delete(context.Background(), id).
+		Return(yarpcerrors.InternalErrorf("fake db error: job_index"))
+
+	res, err = suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
+	suite.Nil(res)
+	suite.Error(err)
+	expectedErr = yarpcerrors.InternalErrorf("fake db error: job_index")
 }
 
 func (suite *JobHandlerTestSuite) TestJobRefresh() {

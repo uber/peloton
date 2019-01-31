@@ -83,6 +83,19 @@ type JobMetrics struct {
 	GetActiveJobsDuration   tally.Timer
 }
 
+// OrmJobMetrics tracks counters for job related tables accessed through ORM layer
+type OrmJobMetrics struct {
+	// job_index
+	JobIndexCreate     tally.Counter
+	JobIndexCreateFail tally.Counter
+	JobIndexGet        tally.Counter
+	JobIndexGetFail    tally.Counter
+	JobIndexUpdate     tally.Counter
+	JobIndexUpdateFail tally.Counter
+	JobIndexDelete     tally.Counter
+	JobIndexDeleteFail tally.Counter
+}
+
 // TaskMetrics is a struct for tracking all the task related counters in the storage layer
 type TaskMetrics struct {
 	TaskCreate     tally.Counter
@@ -274,6 +287,7 @@ type Metrics struct {
 	SecretMetrics         *SecretMetrics
 	ErrorMetrics          *ErrorMetrics
 	WorkflowMetrics       *WorkflowMetrics
+	OrmJobMetrics         *OrmJobMetrics
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized and rooted at the given tally.Scope
@@ -524,6 +538,25 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		WorkflowEventsGetFail: workflowFailScope.Counter("get"),
 	}
 
+	ormScope := scope.SubScope("orm")
+
+	jobIndexScope := ormScope.SubScope("job_index")
+	jobIndexSuccessScope := jobIndexScope.Tagged(
+		map[string]string{"result": "success"})
+	jobIndexFailScope := jobIndexScope.Tagged(
+		map[string]string{"result": "fail"})
+
+	ormJobMetrics := &OrmJobMetrics{
+		JobIndexCreate:     jobIndexSuccessScope.Counter("create"),
+		JobIndexCreateFail: jobIndexFailScope.Counter("create"),
+		JobIndexGet:        jobIndexSuccessScope.Counter("get"),
+		JobIndexGetFail:    jobIndexFailScope.Counter("get"),
+		JobIndexUpdate:     jobIndexSuccessScope.Counter("update"),
+		JobIndexUpdateFail: jobIndexFailScope.Counter("update"),
+		JobIndexDelete:     jobIndexSuccessScope.Counter("delete"),
+		JobIndexDeleteFail: jobIndexFailScope.Counter("delete"),
+	}
+
 	metrics := &Metrics{
 		JobMetrics:            jobMetrics,
 		TaskMetrics:           taskMetrics,
@@ -534,6 +567,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		SecretMetrics:         secretMetrics,
 		ErrorMetrics:          errorMetrics,
 		WorkflowMetrics:       workflowMetrics,
+		OrmJobMetrics:         ormJobMetrics,
 	}
 
 	return metrics

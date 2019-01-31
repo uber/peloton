@@ -22,6 +22,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/storage"
+	ormobjects "github.com/uber/peloton/storage/objects"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -61,6 +62,7 @@ type jobFactory struct {
 	taskStore   storage.TaskStore             // storage task store object
 	updateStore storage.UpdateStore           // storage update store object
 	volumeStore storage.PersistentVolumeStore // storage volume store object
+	jobIndexOps ormobjects.JobIndexOps        // DB ops for job_index table
 	mtx         *Metrics                      // cache metrics
 	// Tob/task listeners. This list is immutable after object is created.
 	// So it can read without a lock.
@@ -75,6 +77,7 @@ func InitJobFactory(
 	taskStore storage.TaskStore,
 	updateStore storage.UpdateStore,
 	volumeStore storage.PersistentVolumeStore,
+	ormStore *ormobjects.Store,
 	parentScope tally.Scope,
 	listeners []JobTaskListener) JobFactory {
 	return &jobFactory{
@@ -83,6 +86,7 @@ func InitJobFactory(
 		taskStore:   taskStore,
 		updateStore: updateStore,
 		volumeStore: volumeStore,
+		jobIndexOps: ormobjects.NewJobIndexOps(ormStore),
 		mtx:         NewMetrics(parentScope.SubScope("cache")),
 		listeners:   listeners,
 	}

@@ -34,12 +34,13 @@ import (
 	"github.com/uber/peloton/common"
 	"github.com/uber/peloton/jobmgr/cached"
 	"github.com/uber/peloton/jobmgr/goalstate"
-	"github.com/uber/peloton/jobmgr/job/config"
+	jobconfig "github.com/uber/peloton/jobmgr/job/config"
 	jobmgrtask "github.com/uber/peloton/jobmgr/task"
 	"github.com/uber/peloton/jobmgr/util/handler"
 	jobutil "github.com/uber/peloton/jobmgr/util/job"
 	"github.com/uber/peloton/leader"
 	"github.com/uber/peloton/storage"
+	ormobjects "github.com/uber/peloton/storage/objects"
 	"github.com/uber/peloton/util"
 
 	"github.com/pborman/uuid"
@@ -65,6 +66,7 @@ func InitServiceHandler(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	secretStore storage.SecretStore,
+	ormStore *ormobjects.Store,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
 	candidate leader.Candidate,
@@ -76,6 +78,7 @@ func InitServiceHandler(
 		jobStore:        jobStore,
 		taskStore:       taskStore,
 		secretStore:     secretStore,
+		jobIndexOps:     ormobjects.NewJobIndexOps(ormStore),
 		respoolClient:   respool.NewResourceManagerYARPCClient(d.ClientConfig(clientName)),
 		resmgrClient:    resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(clientName)),
 		rootCtx:         context.Background(),
@@ -94,6 +97,7 @@ type serviceHandler struct {
 	jobStore        storage.JobStore
 	taskStore       storage.TaskStore
 	secretStore     storage.SecretStore
+	jobIndexOps     ormobjects.JobIndexOps
 	respoolClient   respool.ResourceManagerYARPCClient
 	resmgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
 	rootCtx         context.Context
@@ -505,6 +509,12 @@ func (h *serviceHandler) Delete(
 	if err := h.jobStore.DeleteJob(ctx, req.GetId().GetValue()); err != nil {
 		h.metrics.JobDeleteFail.Inc(1)
 		log.Errorf("Delete job failed with error %v", err)
+		return nil, err
+	}
+	if err := h.jobIndexOps.Delete(ctx, req.GetId()); err != nil {
+		h.metrics.JobDeleteFail.Inc(1)
+		log.WithField("job_id", req.GetId()).
+			WithError(err).Error("Failed to delete job from job_index")
 		return nil, err
 	}
 

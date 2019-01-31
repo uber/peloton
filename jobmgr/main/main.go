@@ -47,6 +47,7 @@ import (
 	"github.com/uber/peloton/jobmgr/updatesvc"
 	"github.com/uber/peloton/jobmgr/volumesvc"
 	"github.com/uber/peloton/leader"
+	ormobjects "github.com/uber/peloton/storage/objects"
 	"github.com/uber/peloton/storage/stores"
 	"github.com/uber/peloton/yarpc/peer"
 
@@ -55,7 +56,7 @@ import (
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
-	"gopkg.in/alecthomas/kingpin.v2"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
@@ -297,6 +298,12 @@ func main() {
 	// store implements JobStore, TaskStore, VolumeStore, UpdateStore
 	// and FrameworkInfoStore
 	store := stores.MustCreateStore(&cfg.Storage, rootScope)
+	ormStore, ormErr := ormobjects.NewCassandraStore(
+		&cfg.Storage.Cassandra,
+		rootScope)
+	if ormErr != nil {
+		log.WithError(ormErr).Fatal("Failed to create ORM store for Cassandra")
+	}
 
 	// Create both HTTP and GRPC inbounds
 	inbounds := rpc.NewInbounds(
@@ -380,6 +387,7 @@ func main() {
 		store, // store implements TaskStore
 		store, // store implements UpdateStore
 		store, // store implements VolumeStore
+		ormStore,
 		rootScope,
 		nil)
 
@@ -482,6 +490,7 @@ func main() {
 		store, // store implements JobStore
 		store, // store implements TaskStore
 		store, // store implements SecretStore
+		ormStore,
 		jobFactory,
 		goalStateDriver,
 		candidate,
@@ -495,6 +504,7 @@ func main() {
 		store,
 		store,
 		store,
+		ormStore,
 		jobFactory,
 		goalStateDriver,
 		candidate,

@@ -110,11 +110,10 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobConfig() {
 // TestDataStoreFailureGetJobRuntime tests datastore failures in getting
 // job runtime
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobRuntime() {
-	suite.Error(suite.store.CreateJobRuntimeWithConfig(
+	suite.Error(suite.store.CreateJobRuntime(
 		context.Background(),
 		suite.testJobID,
-		&job.RuntimeInfo{},
-		&job.JobConfig{}))
+		&job.RuntimeInfo{}))
 
 	_, err := suite.store.GetJobRuntime(
 		context.Background(), suite.testJobID.GetValue())
@@ -136,7 +135,7 @@ func (suite *MockDatastoreTestSuite) TestGetStreamID() {
 // TestDataStoreFailureGetJobSummary tests datastore failures in getting
 // job summary
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobSummary() {
-	_, err := suite.store.GetJobSummaryFromIndex(
+	_, err := suite.store.getJobSummaryFromIndex(
 		context.Background(), suite.testJobID)
 	suite.Error(err)
 

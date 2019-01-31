@@ -56,8 +56,8 @@ type Store interface {
 type JobStore interface {
 	// CreateJobConfig creates the job configuration
 	CreateJobConfig(ctx context.Context, id *peloton.JobID, config *job.JobConfig, configAddOn *models.ConfigAddOn, version uint64, createBy string) error
-	// CreateJobRuntimeWithConfig creates the job runtime
-	CreateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobID, initialRuntime *job.RuntimeInfo, config *job.JobConfig) error
+	// CreateJobRuntime creates the job runtime
+	CreateJobRuntime(ctx context.Context, id *peloton.JobID, initialRuntime *job.RuntimeInfo) error
 	// GetJobConfig fetches the job configuration for a given job
 	GetJobConfig(ctx context.Context, jobID string) (*job.JobConfig, *models.ConfigAddOn, error)
 	// GetJobConfigWithVersion fetches the job configuration for a given job of a given version
@@ -77,8 +77,6 @@ type JobStore interface {
 	UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error
 	// GetMaxJobConfigVersion returns the maximum version of configs of a given job
 	GetMaxJobConfigVersion(ctx context.Context, jobID string) (uint64, error)
-	// GetJobSummaryFromIndex gets the job summary from job index table
-	GetJobSummaryFromIndex(ctx context.Context, id *peloton.JobID) (*job.JobSummary, error)
 	// GetAllJobsInJobIndex returns job summary for all the jobs in the job index table
 	GetAllJobsInJobIndex(ctx context.Context) ([]*job.JobSummary, error)
 

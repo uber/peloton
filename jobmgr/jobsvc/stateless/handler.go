@@ -37,7 +37,7 @@ import (
 	"github.com/uber/peloton/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
 	"github.com/uber/peloton/jobmgr/goalstate"
-	"github.com/uber/peloton/jobmgr/job/config"
+	jobconfig "github.com/uber/peloton/jobmgr/job/config"
 	"github.com/uber/peloton/jobmgr/jobsvc"
 	jobmgrtask "github.com/uber/peloton/jobmgr/task"
 	"github.com/uber/peloton/jobmgr/task/activermtask"
@@ -45,6 +45,7 @@ import (
 	jobutil "github.com/uber/peloton/jobmgr/util/job"
 	"github.com/uber/peloton/leader"
 	"github.com/uber/peloton/storage"
+	ormobjects "github.com/uber/peloton/storage/objects"
 	"github.com/uber/peloton/util"
 
 	"github.com/pborman/uuid"
@@ -59,6 +60,7 @@ type serviceHandler struct {
 	updateStore     storage.UpdateStore
 	secretStore     storage.SecretStore
 	taskStore       storage.TaskStore
+	jobIndexOps     ormobjects.JobIndexOps
 	respoolClient   respool.ResourceManagerYARPCClient
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
@@ -82,6 +84,7 @@ func InitV1AlphaJobServiceHandler(
 	updateStore storage.UpdateStore,
 	secretStore storage.SecretStore,
 	taskStore storage.TaskStore,
+	ormStore *ormobjects.Store,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
 	candidate leader.Candidate,
@@ -93,6 +96,7 @@ func InitV1AlphaJobServiceHandler(
 		updateStore: updateStore,
 		secretStore: secretStore,
 		taskStore:   taskStore,
+		jobIndexOps: ormobjects.NewJobIndexOps(ormStore),
 		respoolClient: respool.NewResourceManagerYARPCClient(
 			d.ClientConfig(common.PelotonResourceManager),
 		),
@@ -809,12 +813,10 @@ func (h *serviceHandler) DeleteJob(
 func (h *serviceHandler) getJobSummary(
 	ctx context.Context,
 	jobID *v1alphapeloton.JobID) (*svc.GetJobResponse, error) {
-	jobSummary, err := h.jobStore.GetJobSummaryFromIndex(
-		ctx,
-		&peloton.JobID{Value: jobID.GetValue()},
-	)
+	jobSummary, err := h.jobIndexOps.GetSummary(
+		ctx, &peloton.JobID{Value: jobID.GetValue()})
 	if err != nil {
-		return nil, errors.Wrap(err, "fail to get job summary")
+		return nil, errors.Wrap(err, "failed to get job summary from DB")
 	}
 
 	var updateInfo *models.UpdateModel

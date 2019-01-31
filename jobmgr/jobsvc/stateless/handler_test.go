@@ -52,6 +52,7 @@ import (
 	activermtaskmocks "github.com/uber/peloton/jobmgr/task/activermtask/mocks"
 	leadermocks "github.com/uber/peloton/leader/mocks"
 	storemocks "github.com/uber/peloton/storage/mocks"
+	objectmocks "github.com/uber/peloton/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/golang/protobuf/ptypes"
@@ -105,6 +106,7 @@ type statelessHandlerTestSuite struct {
 	listPodsServer  *statelesssvcmocks.MockJobServiceServiceListPodsYARPCServer
 	secretStore     *storemocks.MockSecretStore
 	taskStore       *storemocks.MockTaskStore
+	jobIndexOps     *objectmocks.MockJobIndexOps
 	activeRMTasks   *activermtaskmocks.MockActiveRMTasks
 }
 
@@ -118,6 +120,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
+	suite.jobIndexOps = objectmocks.NewMockJobIndexOps(suite.ctrl)
 	suite.respoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.listJobsServer = statelesssvcmocks.NewMockJobServiceServiceListJobsYARPCServer(suite.ctrl)
 	suite.listPodsServer = statelesssvcmocks.NewMockJobServiceServiceListPodsYARPCServer(suite.ctrl)
@@ -130,6 +133,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 		jobStore:        suite.jobStore,
 		updateStore:     suite.updateStore,
 		taskStore:       suite.taskStore,
+		jobIndexOps:     suite.jobIndexOps,
 		respoolClient:   suite.respoolClient,
 		secretStore:     suite.secretStore,
 		rootCtx:         context.Background(),
@@ -148,8 +152,8 @@ func (suite *statelessHandlerTestSuite) TearDownTest() {
 // TestGetJobWithSummarySuccess tests invoking
 // GetJob API to get job summary
 func (suite *statelessHandlerTestSuite) TestGetJobWithSummarySuccess() {
-	suite.jobStore.EXPECT().
-		GetJobSummaryFromIndex(gomock.Any(), &peloton.JobID{Value: testJobID}).
+	suite.jobIndexOps.EXPECT().
+		GetSummary(gomock.Any(), &peloton.JobID{Value: testJobID}).
 		Return(&pbjob.JobSummary{
 			Id:   &peloton.JobID{Value: testJobID},
 			Name: "testjob",
@@ -187,8 +191,8 @@ func (suite *statelessHandlerTestSuite) TestGetJobWithSummarySuccess() {
 // TestGetJobWithSummaryGetConfigError tests invoking
 // GetJob API to get job summary with DB error
 func (suite *statelessHandlerTestSuite) TestGetJobWithSummaryGetConfigError() {
-	suite.jobStore.EXPECT().
-		GetJobSummaryFromIndex(gomock.Any(), &peloton.JobID{Value: testJobID}).
+	suite.jobIndexOps.EXPECT().
+		GetSummary(gomock.Any(), &peloton.JobID{Value: testJobID}).
 		Return(nil, fmt.Errorf("fake db error"))
 
 	resp, err := suite.handler.GetJob(context.Background(),
@@ -204,8 +208,8 @@ func (suite *statelessHandlerTestSuite) TestGetJobWithSummaryGetConfigError() {
 // TestGetJobWithSummaryGetUpdateError tests invoking
 // GetJob API to get job summary with DB error when fetching update info
 func (suite *statelessHandlerTestSuite) TestGetJobWithSummaryGetUpdateError() {
-	suite.jobStore.EXPECT().
-		GetJobSummaryFromIndex(gomock.Any(), &peloton.JobID{Value: testJobID}).
+	suite.jobIndexOps.EXPECT().
+		GetSummary(gomock.Any(), &peloton.JobID{Value: testJobID}).
 		Return(&pbjob.JobSummary{
 			Id:   &peloton.JobID{Value: testJobID},
 			Name: "testjob",

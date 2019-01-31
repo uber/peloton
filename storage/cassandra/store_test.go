@@ -19,6 +19,7 @@ package cassandra
 import (
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -198,7 +199,11 @@ func (suite *CassandraStoreTestSuite) createJob(
 	initialJobRuntime.TaskStats[task.TaskState_INITIALIZED.String()] = jobConfig.InstanceCount
 
 	// Create the initial job runtime record
-	err := store.CreateJobRuntimeWithConfig(ctx, id, &initialJobRuntime, jobConfig)
+	err := store.CreateJobRuntime(ctx, id, &initialJobRuntime)
+	if err != nil {
+		return err
+	}
+	err = updateJobIndex(ctx, id, jobConfig, &initialJobRuntime)
 	if err != nil {
 		return err
 	}
@@ -274,6 +279,87 @@ func createTaskConfigsLegacy(
 		}
 	}
 	return nil
+}
+
+// updateJobIndex creates/updates job_index row for a job. This method
+// is provided for tests related to QueryJobs(), and should not be used
+// for anything else.
+// TODO Remove when QueryJobs() is moved to ORM.
+func updateJobIndex(
+	ctx context.Context,
+	id *peloton.JobID,
+	config *job.JobConfig,
+	runtime *job.RuntimeInfo,
+) error {
+	if runtime == nil && config == nil {
+		return nil
+	}
+
+	queryBuilder := store.DataStore.NewQuery()
+	stmt := queryBuilder.Update(jobIndexTable).
+		Where(qb.Eq{"job_id": id.GetValue()})
+
+	if runtime != nil {
+		runtimeBuffer, err := json.Marshal(runtime)
+		if err != nil {
+			return err
+		}
+
+		completeTime := time.Time{}
+		if runtime.GetCompletionTime() != "" {
+			completeTime, _ = time.Parse(
+				time.RFC3339Nano,
+				runtime.GetCompletionTime())
+		}
+
+		stmt = stmt.Set("runtime_info", runtimeBuffer).
+			Set("state", runtime.GetState().String()).
+			Set("creation_time", parseTime(runtime.GetCreationTime())).
+			Set("completion_time", completeTime).
+			Set("update_time", time.Now())
+	}
+
+	if config != nil {
+		// Do not save the instance config with the job
+		// configuration in the job_index table.
+		instanceConfig := config.GetInstanceConfig()
+		config.InstanceConfig = nil
+		configBuffer, err := json.Marshal(config)
+		config.InstanceConfig = instanceConfig
+		if err != nil {
+			return err
+		}
+
+		labelBuffer, err := json.Marshal(config.Labels)
+		if err != nil {
+			return err
+		}
+
+		stmt = stmt.Set("config", configBuffer).
+			Set("respool_id", config.GetRespoolID().GetValue()).
+			Set("owner", config.GetOwningTeam()).
+			Set("name", config.GetName()).
+			Set("job_type", uint32(config.GetType())).
+			Set("instance_count", uint32(config.GetInstanceCount())).
+			Set("labels", labelBuffer)
+	}
+
+	err := store.applyStatement(ctx, stmt, id.GetValue())
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// updateJobIndex deletes job_index row for a job. This method
+// is provided for tests related to QueryJobs(), and should not be used
+// for anything else.
+// TODO Remove when QueryJobs() is moved to ORM.
+func deleteJobIndex(ctx context.Context, id *peloton.JobID) error {
+	queryBuilder := store.DataStore.NewQuery()
+	stmt := queryBuilder.Delete(jobIndexTable).
+		Where(qb.Eq{"job_id": id.GetValue()})
+	return store.applyStatement(ctx, stmt, id.GetValue())
 }
 
 // Run the following query to trigger lucene index refresh
@@ -444,6 +530,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 
 	for _, jobID := range jobIDs {
 		suite.NoError(jobStore.DeleteJob(context.Background(), jobID.GetValue()))
+		suite.NoError(deleteJobIndex(context.Background(), jobID))
 	}
 }
 
@@ -482,6 +569,8 @@ func (suite *CassandraStoreTestSuite) TestJobQueryStaleLuceneIndex() {
 	runtime.CreationTime = creationTime
 	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
 	suite.NoError(err)
+	err = updateJobIndex(context.Background(), &jobID, nil, runtime)
+	suite.NoError(err)
 	suite.refreshLuceneIndex()
 
 	jobStates := []job.JobState{
@@ -493,9 +582,11 @@ func (suite *CassandraStoreTestSuite) TestJobQueryStaleLuceneIndex() {
 	_, summary := suite.queryJobs(spec, 1, 1)
 	suite.Equal(creationTime, summary[0].GetRuntime().GetCreationTime())
 
-	// Set runtime state to succeeded. This will also update the job_index
+	// Set runtime state to succeeded and update the job_index
 	runtime.State = job.JobState_SUCCEEDED
 	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
+	suite.NoError(err)
+	err = updateJobIndex(context.Background(), &jobID, nil, runtime)
 	suite.NoError(err)
 
 	// Now we have query from lucnene index showing the job as PENDING for 5days
@@ -739,6 +830,7 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummaryByTimeRange() {
 	_, _ = suite.queryJobs(spec, 1, 1)
 
 	suite.NoError(jobStore.DeleteJob(context.Background(), jobID.GetValue()))
+	suite.NoError(deleteJobIndex(context.Background(), &jobID))
 }
 
 func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
@@ -835,6 +927,7 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
 	suite.Equal(0, int(total))
 
 	suite.NoError(jobStore.DeleteJob(context.Background(), jobID.GetValue()))
+	suite.NoError(deleteJobIndex(context.Background(), &jobID))
 }
 
 func (suite *CassandraStoreTestSuite) TestQueryJob() {
@@ -899,6 +992,9 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 
 		runtime.State = job.JobState(i + 1)
 		err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
+		suite.NoError(err)
+
+		err = updateJobIndex(context.Background(), &jobID, nil, runtime)
 		suite.NoError(err)
 	}
 
@@ -1178,6 +1274,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	_, _ = suite.queryJobs(spec, len(jobStates), len(jobStates))
 	for _, jobID := range jobIDs {
 		suite.NoError(jobStore.DeleteJob(context.Background(), jobID.GetValue()))
+		suite.NoError(deleteJobIndex(context.Background(), jobID))
 	}
 }
 
@@ -1274,6 +1371,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		}
 
 		suite.NoError(jobStore.DeleteJob(context.Background(), jobID.GetValue()))
+		suite.NoError(deleteJobIndex(context.Background(), &jobID))
 
 		for i := 0; i < maxAttempts; i++ {
 			jobconf, addOn, err = jobStore.GetJobConfig(context.Background(), jobID.GetValue())
@@ -1939,6 +2037,10 @@ func (suite *CassandraStoreTestSuite) TestGetAllResourcePools() {
 	resourcePoolStore = store
 	nResourcePools := 2
 
+	initResourcePools, err := resourcePoolStore.GetAllResourcePools(
+		context.Background())
+	suite.NoError(err)
+
 	// todo move to setup once ^^^ issue resolves
 	for i := 0; i < nResourcePools; i++ {
 		resourcePoolID := &peloton.ResourcePoolID{
@@ -1953,7 +2055,7 @@ func (suite *CassandraStoreTestSuite) TestGetAllResourcePools() {
 	resourcePools, err := resourcePoolStore.GetAllResourcePools(
 		context.Background())
 	suite.NoError(err)
-	suite.Len(resourcePools, nResourcePools)
+	suite.Len(resourcePools, len(initResourcePools)+nResourcePools)
 
 	// cleanup created resource pools
 	for i := 0; i < nResourcePools; i++ {
@@ -2130,12 +2232,6 @@ func (suite *CassandraStoreTestSuite) TestJobConfig() {
 	jobRuntime.ConfigurationVersion = uint64(2)
 	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, jobRuntime)
 	suite.NoError(err)
-
-	// ensure that the job index table has been updated as well
-	var jobSummary *job.JobSummary
-	jobSummary, err = jobStore.GetJobSummaryFromIndex(context.Background(), &jobID)
-	suite.NoError(err)
-	suite.Equal(uint32(newInstanceCount), jobSummary.GetInstanceCount())
 
 	jobConfig, _, err = jobStore.GetJobConfig(context.Background(), jobID.GetValue())
 	suite.NoError(err)
@@ -2630,6 +2726,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 
 	// delete the job
 	store.DeleteJob(context.Background(), jobID.GetValue())
+	suite.NoError(deleteJobIndex(context.Background(), jobID))
 
 	// make sure update is not found
 	_, err = store.GetUpdate(
@@ -2764,6 +2861,7 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 
 	// delete the job
 	store.DeleteJob(context.Background(), jobID.GetValue())
+	suite.NoError(deleteJobIndex(context.Background(), jobID))
 
 	updateResult, err = store.GetUpdate(context.Background(), updateID)
 	suite.Error(err)
