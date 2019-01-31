@@ -148,6 +148,13 @@ var (
 		Envar("CASSANDRA_PORT").
 		Int()
 
+	pelotonSecretFile = app.Flag(
+		"peloton-secret-file",
+		"Secret file containing all Peloton secrets").
+		Default("").
+		Envar("PELOTON_SECRET_FILE").
+		String()
+
 	mesosAgentWorkDir = app.Flag(
 		"mesos-agent-work-dir", "Mesos agent work dir").
 		Default("/var/lib/mesos/agent").
@@ -255,6 +262,20 @@ func main() {
 
 	if *datacenter != "" {
 		cfg.Storage.Cassandra.CassandraConn.DataCenter = *datacenter
+	}
+
+	// Parse and setup peloton secrets
+	if *pelotonSecretFile != "" {
+		var secretsCfg config.PelotonSecretsConfig
+		if err := config.Parse(&secretsCfg, *pelotonSecretFile); err != nil {
+			log.WithError(err).
+				WithField("peloton_secret_file", *pelotonSecretFile).
+				Fatal("Cannot parse secret config")
+		}
+		cfg.Storage.Cassandra.CassandraConn.Username =
+			secretsCfg.CassandraUsername
+		cfg.Storage.Cassandra.CassandraConn.Password =
+			secretsCfg.CassandraPassword
 	}
 
 	log.WithField("config", cfg).Info("Loaded Job Manager configuration")

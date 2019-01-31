@@ -24,6 +24,13 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// PelotonSecretsConfig will be used to interpret secrets mounted
+// for Peloton service
+type PelotonSecretsConfig struct {
+	CassandraUsername string `yaml:"peloton_cassandra_username"`
+	CassandraPassword string `yaml:"peloton_cassandra_password"`
+}
+
 // ValidationError is the returned when a configuration fails to pass validation
 type ValidationError struct {
 	errorMap validator.ErrorMap
