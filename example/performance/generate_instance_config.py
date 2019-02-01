@@ -15,17 +15,17 @@ def generate(val, sleep):
         c['value'] = 'echo Hello instance 0 && sleep ' + str(sleep)
         r['command'] = c
         t = {}
-        t['cpulimit'] = 0.1
-        t['disklimitmb'] = 10
-        t['fdlimit'] = 10
-        t['gpulimit'] = 0
-        t['memlimitmb'] = 2.0
+        t['cpuLimit'] = 0.1
+        t['diskLimitMb'] = 10
+        t['fdLimit'] = 10
+        t['gpuLimit'] = 0
+        t['memLimitMb'] = 2.0
         r['resource'] = t
         k[i] = r
-    l = {}
-    l['instanceconfig'] = k
-    l['instancecount'] = val
-    y = yaml.dump(l, default_flow_style=False)
+    li = {}
+    li['instanceConfig'] = k
+    li['instanceCount'] = val
+    y = yaml.dump(li, default_flow_style=False)
     return y
 
 
