@@ -106,8 +106,8 @@ def compare_create(base_version, current_version, f1, f2):
 
     merge_table['Execution Duration Change (%)'] = merge_table.apply(
         lambda x: format(
-            (x['Exec(s)_y'] - x['Exec(s)_x']) / x['Exec(s)_x'] * 100, '.2f'),
-        axis=1)
+            (x['Exec(s)_y'] - x['Exec(s)_x']) /
+            float(x['Exec(s)_x']) * 100, '.2f'), axis=1)
 
     enriched_table = styling.enrich_table_layout(
         merge_table, 'Execution Duration Change (%)', 'create',
@@ -142,7 +142,7 @@ def compare_get(base_version, current_version, f1, f2):
 
     merge_table['Get Counts Change (%)'] = merge_table.apply(
         lambda x: format(
-            (x['Gets_y'] - x['Gets_x']) / x['Gets_x'] * 100, '.2f'),
+            (x['Gets_y'] - x['Gets_x']) / float(x['Gets_x']) * 100, '.2f'),
         axis=1)
 
     enriched_table = styling.enrich_table_layout(
@@ -180,7 +180,7 @@ def compare_update(base_version, current_version, f1, f2):
     merge_table['Execution Duration Change (%)'] = merge_table.apply(
         lambda x: format(
             (x['TotalTimeInSeconds_y'] - x['TotalTimeInSeconds_x']) /
-            x['TotalTimeInSeconds_x'] * 100, '.2f'),
+            float(x['TotalTimeInSeconds_x']) * 100, '.2f'),
         axis=1)
 
     enriched_table = styling.enrich_table_layout(
