@@ -120,6 +120,10 @@ func (h *serviceHandler) CreateUpdate(
 			"JobID must be of UUID format")
 	}
 
+	if req.GetUpdateConfig().GetInPlace() {
+		return nil, yarpcerrors.UnimplementedErrorf("in-place update is not supported yet")
+	}
+
 	// Validate that the job does exist
 	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID.GetValue())
 	if err != nil {

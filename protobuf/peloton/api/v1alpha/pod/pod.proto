@@ -534,6 +534,10 @@ message PodStatus {
 
   // The desired pod ID for this pod
   peloton.PodID desired_pod_id = 19;
+
+  // The name of the host where the pod should be running on upon restart.
+  // It is used for best effort in-place update/restart.
+  string desiredHost = 20;
 }
 
 // Info of a pod in a Job

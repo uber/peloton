@@ -343,6 +343,11 @@ message UpdateSpec {
   // If set to true, indicates that the update should start
   // in the paused state, requiring an explicit resume to roll forward.
   bool start_paused = 5;
+
+  // If set to true, peloton would try to place the task
+  // restarted/updated on the host it previously run on.
+  // It is best effort, and has no guarantee of success.
+  bool in_place = 6;
 }
 
 // Information about a workflow including its status and specification

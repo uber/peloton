@@ -120,6 +120,7 @@ func ConvertTaskToResMgrTask(
 		Labels:       util.ConvertLabels(taskInfo.GetConfig().GetLabels()),
 		Controller:   taskInfo.GetConfig().GetController(),
 		Revocable:    taskInfo.GetConfig().GetRevocable(),
+		DesiredHost:  taskInfo.GetRuntime().GetDesiredHost(),
 	}
 
 	taskState := taskInfo.GetRuntime().GetState()

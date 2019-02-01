@@ -44,6 +44,11 @@ message UpdateConfig {
   // and the update is marked successful even if all of the instances
   // fail.
   uint32 maxFailureInstances = 7;
+
+  // If set to true, peloton would try to place the task
+  // restarted/updated on the host it previously run on.
+  // It is best effort, and has no guarantee of success.
+  bool inPlace = 8;
 }
 
 // Runtime state of a job update

@@ -158,6 +158,7 @@ func (mimir *mimir) Filters(assignments []*models.Assignment) map[*hostsvc.HostF
 	assignmentsCopy := make([]*models.Assignment, 0, len(assignments))
 	var maxCPU, maxGPU, maxMemory, maxDisk, maxPorts float64
 	var revocable bool
+	var hostHints []*hostsvc.FilterHint_Host
 	for _, assignment := range assignments {
 		assignmentsCopy = append(assignmentsCopy, assignment)
 		resmgrTask := assignment.GetTask().GetTask()
@@ -167,6 +168,12 @@ func (mimir *mimir) Filters(assignments []*models.Assignment) map[*hostsvc.HostF
 		maxDisk = math.Max(maxDisk, resmgrTask.Resource.DiskLimitMb)
 		maxPorts = math.Max(maxPorts, float64(resmgrTask.NumPorts))
 		revocable = resmgrTask.Revocable
+		if len(resmgrTask.GetDesiredHost()) != 0 {
+			hostHints = append(hostHints, &hostsvc.FilterHint_Host{
+				Hostname: resmgrTask.GetDesiredHost(),
+				TaskID:   resmgrTask.GetId(),
+			})
+		}
 	}
 	maxOffers := mimir.config.OfferDequeueLimit
 	factor := _offersFactor[mimir.config.TaskType]
@@ -188,6 +195,9 @@ func (mimir *mimir) Filters(assignments []*models.Assignment) map[*hostsvc.HostF
 			},
 			Quantity: &hostsvc.QuantityControl{
 				MaxHosts: uint32(maxOffers),
+			},
+			Hint: &hostsvc.FilterHint{
+				HostHint: hostHints,
 			},
 		}: assignmentsCopy,
 	}

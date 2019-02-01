@@ -21,6 +21,7 @@ const (
 	CompletionTimeField       = "CompletionTime"
 	ConfigVersionField        = "ConfigVersion"
 	DesiredConfigVersionField = "DesiredConfigVersion"
+	DesiredHostField          = "DesiredHost"
 	DesiredMesosTaskIDField   = "DesiredMesosTaskId"
 	FailureCountField         = "FailureCount"
 	GoalStateField            = "GoalState"

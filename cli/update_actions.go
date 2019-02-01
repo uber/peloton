@@ -65,7 +65,8 @@ func (c *Client) UpdateCreateAction(
 	maxFailureInstances uint32,
 	updateRollbackOnFailure bool,
 	updateStartInPausedState bool,
-	opaqueData string) error {
+	opaqueData string,
+	inPlace bool) error {
 	var jobConfig job.JobConfig
 	var response *updatesvc.CreateUpdateResponse
 
@@ -157,6 +158,7 @@ func (c *Client) UpdateCreateAction(
 				MaxFailureInstances: maxFailureInstances,
 				RollbackOnFailure:   updateRollbackOnFailure,
 				StartPaused:         updateStartInPausedState,
+				InPlace:             inPlace,
 			},
 			OpaqueData: opaque,
 		}

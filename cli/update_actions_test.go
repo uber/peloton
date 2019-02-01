@@ -210,6 +210,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreate() {
 			false,
 			false,
 			"",
+			false,
 		)
 
 		if t.err != nil {
@@ -274,6 +275,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateResPoolErrors() {
 			false,
 			false,
 			"",
+			false,
 		)
 		suite.Error(err)
 	}
@@ -383,6 +385,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateJobGetErrors() {
 			false,
 			false,
 			"",
+			false,
 		)
 		suite.Error(err)
 	}
@@ -489,6 +492,7 @@ func (suite *updateActionsTestSuite) TestClientUpdateCreateRetry() {
 		false,
 		false,
 		"",
+		false,
 	)
 	suite.NoError(err)
 }

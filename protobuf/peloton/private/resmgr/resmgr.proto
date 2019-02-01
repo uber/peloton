@@ -111,6 +111,12 @@ message Task {
   // Revocable tasks will be killed by QoS controller, if resources
   // are required by tasks to which initial allocation was done.
   bool revocable = 17;
+
+  // The name of the host where the instance should be running on upon restart.
+  // It is used for best effort in-place update/restart.
+  // When this field is set upon enqueuegang, the task would directly move to
+  // ready queue.
+  string desiredHost = 18;
 }
 
 /**

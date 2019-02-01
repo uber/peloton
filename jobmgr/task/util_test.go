@@ -183,7 +183,7 @@ func (suite *JobmgrTaskUtilTestSuite) TestKillTaskInvalidTaskIDs() {
 	}
 	suite.mockHostMgr.EXPECT().KillTasks(
 		gomock.Any(), suite.buildKillTasksReq()).Return(resp, nil)
-	err := KillTask(suite.ctx, suite.mockHostMgr, taskID)
+	err := KillTask(suite.ctx, suite.mockHostMgr, taskID, "")
 	suite.Error(err)
 	suite.Equal(err.Error(), randomErrorStr)
 }
@@ -202,7 +202,7 @@ func (suite *JobmgrTaskUtilTestSuite) TestKillTaskKillFailure() {
 	}
 	suite.mockHostMgr.EXPECT().KillTasks(
 		gomock.Any(), suite.buildKillTasksReq()).Return(resp, nil)
-	err := KillTask(suite.ctx, suite.mockHostMgr, taskID)
+	err := KillTask(suite.ctx, suite.mockHostMgr, taskID, "")
 	suite.Error(err)
 	suite.Equal(err.Error(), randomErrorStr)
 }

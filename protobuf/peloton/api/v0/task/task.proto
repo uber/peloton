@@ -488,6 +488,10 @@ message RuntimeInfo {
   // Termination status of the task. Set only if the task is in a non-successful
   // terminal state such as KILLED or FAILED.
   TerminationStatus terminationStatus = 20;
+
+  // The name of the host where the instance should be running on upon restart.
+  // It is used for best effort in-place update/restart.
+  string desiredHost = 21;
 }
 
 

@@ -170,7 +170,12 @@ func stopMesosTask(ctx context.Context, taskEnt *taskEntity, runtime *task.Runti
 	}
 
 	// Send kill signal to mesos first time
-	err := jobmgrtask.KillTask(ctx, goalStateDriver.hostmgrClient, runtime.GetMesosTaskId())
+	err := jobmgrtask.KillTask(
+		ctx,
+		goalStateDriver.hostmgrClient,
+		runtime.GetMesosTaskId(),
+		runtime.GetDesiredHost(),
+	)
 	if err != nil {
 		return err
 	}

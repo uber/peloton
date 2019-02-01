@@ -138,6 +138,89 @@ func TestTaskStop(t *testing.T) {
 	assert.EqualError(t, err, "fake error")
 }
 
+func TestTaskStopForInPlaceUpdate(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
+	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
+	hostMock := hostmocks.NewMockInternalHostServiceYARPCClient(ctrl)
+
+	goalStateDriver := &driver{
+		jobEngine:     jobGoalStateEngine,
+		taskEngine:    taskGoalStateEngine,
+		jobFactory:    jobFactory,
+		hostmgrClient: hostMock,
+		mtx:           NewMetrics(tally.NoopScope),
+		cfg:           &Config{},
+	}
+	goalStateDriver.cfg.normalize()
+
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+	instanceID := uint32(0)
+
+	taskEnt := &taskEntity{
+		jobID:      jobID,
+		instanceID: instanceID,
+		driver:     goalStateDriver,
+	}
+
+	taskID := &mesos_v1.TaskID{
+		Value: &[]string{"3c8a3c3e-71e3-49c5-9aed-2929823f595c-1-3c8a3c3e-71e3-49c5-9aed-2929823f5957"}[0],
+	}
+
+	runtime := &pbtask.RuntimeInfo{
+		State:       pbtask.TaskState_RUNNING,
+		MesosTaskId: taskID,
+		DesiredHost: "host1",
+	}
+
+	jobFactory.EXPECT().
+		GetJob(jobID).Return(cachedJob)
+
+	cachedJob.EXPECT().
+		GetTask(instanceID).Return(cachedTask).Times(2)
+
+	cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(runtime, nil)
+
+	jobFactory.EXPECT().
+		GetJob(jobID).Return(cachedJob)
+
+	expectedRuntimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.StateField:   pbtask.TaskState_KILLING,
+		jobmgrcommon.MessageField: "Killing the task",
+		jobmgrcommon.ReasonField:  "",
+	}
+	cachedJob.EXPECT().PatchTasks(gomock.Any(), map[uint32]jobmgrcommon.RuntimeDiff{
+		instanceID: expectedRuntimeDiff,
+	})
+
+	hostMock.EXPECT().KillAndReserveTasks(gomock.Any(), gomock.Any()).Return(nil, nil)
+
+	cachedJob.EXPECT().
+		GetJobType().Return(pbjob.JobType_BATCH)
+
+	taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Do(func(entity goalstate.Entity, deadline time.Time) {
+			// The test should not take more than one min
+			assert.True(t, deadline.Sub(time.Now()).Round(time.Minute) ==
+				_defaultShutdownExecutorTimeout)
+		}).
+		Return()
+
+	jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	err := TaskStop(context.Background(), taskEnt)
+	assert.NoError(t, err)
+}
+
 func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

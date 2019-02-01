@@ -911,6 +911,31 @@ func validateShutdownExecutors(request *hostsvc.ShutdownExecutorsRequest) error 
 	return nil
 }
 
+// KillAndReserveTasks implements InternalHostService.KillAndReserveTasks.
+func (h *ServiceHandler) KillAndReserveTasks(
+	ctx context.Context,
+	body *hostsvc.KillAndReserveTasksRequest,
+) (*hostsvc.KillAndReserveTasksResponse, error) {
+	// TODO: fill in the real implementation, now only do kill
+	var taskIDs []*mesos.TaskID
+	for _, entry := range body.GetEntries() {
+		taskIDs = append(taskIDs, entry.GetTaskId())
+	}
+	resp, err := h.KillTasks(ctx, &hostsvc.KillTasksRequest{
+		TaskIds: taskIDs,
+	})
+
+	if resp.GetError() != nil {
+		return nil, fmt.Errorf(resp.GetError().String())
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &hostsvc.KillAndReserveTasksResponse{}, nil
+}
+
 // KillTasks implements InternalHostService.KillTasks.
 func (h *ServiceHandler) KillTasks(
 	ctx context.Context,

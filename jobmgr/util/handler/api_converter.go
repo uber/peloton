@@ -170,6 +170,7 @@ func ConvertTaskRuntimeToPodStatus(runtime *task.RuntimeInfo) *pod.PodStatus {
 		PrevPodId:     &v1alphapeloton.PodID{Value: runtime.GetPrevMesosTaskId().GetValue()},
 		ResourceUsage: runtime.GetResourceUsage(),
 		DesiredPodId:  &v1alphapeloton.PodID{Value: runtime.GetDesiredMesosTaskId().GetValue()},
+		DesiredHost:   runtime.GetDesiredHost(),
 	}
 }
 
@@ -749,6 +750,7 @@ func ConvertUpdateSpecToUpdateConfig(spec *stateless.UpdateSpec) *update.UpdateC
 		MaxInstanceAttempts: spec.GetMaxInstanceRetries(),
 		MaxFailureInstances: spec.GetMaxTolerableInstanceFailures(),
 		StartPaused:         spec.GetStartPaused(),
+		InPlace:             spec.GetInPlace(),
 	}
 }
 

@@ -282,6 +282,7 @@ func (c *Client) StatelessReplaceJobAction(
 	rollbackOnFailure bool,
 	startPaused bool,
 	opaqueData string,
+	inPlace bool,
 ) error {
 	// TODO: implement cli override check and get entity version
 	// form job after stateless.Get is ready
@@ -324,6 +325,7 @@ func (c *Client) StatelessReplaceJobAction(
 			MaxInstanceRetries:           maxInstanceRetries,
 			MaxTolerableInstanceFailures: maxTolerableInstanceFailures,
 			StartPaused:                  startPaused,
+			InPlace:                      inPlace,
 		},
 		OpaqueData: opaque,
 	}

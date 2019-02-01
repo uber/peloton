@@ -271,6 +271,8 @@ var (
 		"start the update in a paused state").Default("false").Bool()
 	statelessReplaceOpaqueData = statelessReplace.Flag("opaque-data",
 		"opaque data provided by the user").Default("").String()
+	statelessReplaceInPlace = statelessReplace.Flag("in-place",
+		"start the update with best effort in-place update").Default("false").Bool()
 
 	statelessListJobs = stateless.Command("list", "list all jobs")
 
@@ -527,6 +529,8 @@ var (
 		"start the update in a paused state").Default("false").Bool()
 	updateCreateOpaqueData = updateCreate.Flag("opaque-data",
 		"opaque data provided by the user").Default("").String()
+	updateCreateInPlace = updateCreate.Flag("in-place",
+		"start the update with best effort in-place update").Default("false").Bool()
 
 	// command to fetch the status of a job update
 	updateGet   = update.Command("get", "get status of a job update")
@@ -805,6 +809,7 @@ func main() {
 			*updateRollbackOnFailure,
 			*updateStartInPausedState,
 			*updateCreateOpaqueData,
+			*updateCreateInPlace,
 		)
 	case updateGet.FullCommand():
 		err = client.UpdateGetAction(*updateGetID)
@@ -875,6 +880,7 @@ func main() {
 			*statelessReplaceRollbackOnFailure,
 			*statelessReplaceStartPaused,
 			*statelessReplaceOpaqueData,
+			*statelessReplaceInPlace,
 		)
 	case statelessReplaceJobDiff.FullCommand():
 		err = client.StatelessReplaceJobDiffAction(

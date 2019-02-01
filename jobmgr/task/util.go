@@ -95,7 +95,7 @@ func KillOrphanTask(
 		if state == task.TaskState_KILLING {
 			err = ShutdownMesosExecutor(ctx, hostmgrClient, mesosTaskID, agentID)
 		} else {
-			err = KillTask(ctx, hostmgrClient, mesosTaskID)
+			err = KillTask(ctx, hostmgrClient, mesosTaskID, "")
 		}
 		if err != nil {
 			log.WithError(err).
@@ -108,7 +108,12 @@ func KillOrphanTask(
 }
 
 // KillTask kills a task given its mesos task ID
-func KillTask(ctx context.Context, hostmgrClient hostsvc.InternalHostServiceYARPCClient, taskID *mesos_v1.TaskID) error {
+func KillTask(
+	ctx context.Context,
+	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
+	taskID *mesos_v1.TaskID,
+	hostToReserve string,
+) error {
 	newCtx := ctx
 	_, ok := ctx.Deadline()
 	if !ok {
@@ -116,10 +121,22 @@ func KillTask(ctx context.Context, hostmgrClient hostsvc.InternalHostServiceYARP
 		newCtx, cancelFunc = context.WithTimeout(context.Background(), _defaultKillTaskActionTimeout)
 		defer cancelFunc()
 	}
+
+	if len(hostToReserve) != 0 {
+		return killAndReserveHost(newCtx, hostmgrClient, taskID, hostToReserve)
+	}
+
+	return killHost(newCtx, hostmgrClient, taskID)
+}
+
+func killHost(
+	ctx context.Context,
+	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
+	taskID *mesos_v1.TaskID) error {
 	req := &hostsvc.KillTasksRequest{
 		TaskIds: []*mesos_v1.TaskID{taskID},
 	}
-	res, err := hostmgrClient.KillTasks(newCtx, req)
+	res, err := hostmgrClient.KillTasks(ctx, req)
 	if err != nil {
 		return err
 	} else if e := res.GetError(); e != nil {
@@ -132,7 +149,33 @@ func KillTask(ctx context.Context, hostmgrClient hostsvc.InternalHostServiceYARP
 			return fmt.Errorf(e.String())
 		}
 	}
+	return nil
+}
 
+func killAndReserveHost(
+	ctx context.Context,
+	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
+	taskID *mesos_v1.TaskID,
+	hostToReserve string,
+) error {
+	req := &hostsvc.KillAndReserveTasksRequest{
+		Entries: []*hostsvc.KillAndReserveTasksRequest_Entry{
+			{TaskId: taskID, HostToReserve: hostToReserve},
+		},
+	}
+	res, err := hostmgrClient.KillAndReserveTasks(ctx, req)
+	if err != nil {
+		return err
+	} else if e := res.GetError(); e != nil {
+		switch {
+		case e.KillFailure != nil:
+			return fmt.Errorf(e.KillFailure.Message)
+		case e.InvalidTaskIDs != nil:
+			return fmt.Errorf(e.InvalidTaskIDs.Message)
+		default:
+			return fmt.Errorf(e.String())
+		}
+	}
 	return nil
 }
 

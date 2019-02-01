@@ -544,6 +544,12 @@ func processInstancesInUpdate(
 				return err
 			}
 
+			if cachedUpdate.GetUpdateConfig().GetInPlace() {
+				runtimeDiff[jobmgrcommon.DesiredHostField] = runtime.GetHost()
+			} else {
+				runtimeDiff[jobmgrcommon.DesiredHostField] = ""
+			}
+
 			if runtime.GetGoalState() == pbtask.TaskState_DELETED {
 				runtimeDiff[jobmgrcommon.GoalStateField] = pbtask.TaskState_RUNNING
 			}

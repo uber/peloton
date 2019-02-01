@@ -250,6 +250,10 @@ func (h *serviceHandler) ReplaceJob(
 			yarpcerrors.UnavailableErrorf("JobSVC.ReplaceJob is not supported on non-leader")
 	}
 
+	if req.GetUpdateSpec().GetInPlace() {
+		return nil, yarpcerrors.UnimplementedErrorf("in-place update is not supported yet")
+	}
+
 	// TODO: handle secretes
 	jobUUID := uuid.Parse(req.GetJobId().GetValue())
 	if jobUUID == nil {

@@ -350,6 +350,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionSuccess() {
 		rollbackOnFailure,
 		startPaused,
 		opaque,
+		false,
 	))
 }
 
@@ -383,6 +384,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionLookupResou
 		rollbackOnFailure,
 		startPaused,
 		"",
+		false,
 	))
 }
 

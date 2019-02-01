@@ -1085,6 +1085,63 @@ func (suite *HostMgrHandlerTestSuite) TestShutdownExecutorsFailure() {
 	}
 }
 
+// Test happy case of killing and reserve task
+func (suite *HostMgrHandlerTestSuite) TestKillAndReserveTask() {
+	defer suite.ctrl.Finish()
+
+	t1 := "t1"
+	t2 := "t2"
+	entries := []*hostsvc.KillAndReserveTasksRequest_Entry{
+		{TaskId: &mesos.TaskID{Value: &t1}, HostToReserve: "host1"},
+		{TaskId: &mesos.TaskID{Value: &t2}, HostToReserve: "host2"},
+	}
+	killAndReserveReq := &hostsvc.KillAndReserveTasksRequest{
+		Entries: entries,
+	}
+	killedTaskIds := make(map[string]bool)
+	mockMutex := &sync.Mutex{}
+
+	// Set expectations on provider
+	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
+		suite.frameworkID,
+	).Times(2)
+	suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(
+		_streamID,
+	).Times(2)
+
+	// Set expectations on scheduler schedulerClient
+	suite.schedulerClient.EXPECT().
+		Call(
+			gomock.Eq(_streamID),
+			gomock.Any(),
+		).
+		Do(func(_ string, msg proto.Message) {
+			// Verify clientCall message.
+			call := msg.(*sched.Call)
+			suite.Equal(sched.Call_KILL, call.GetType())
+			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+
+			tid := call.GetKill().GetTaskId()
+			suite.NotNil(tid)
+			mockMutex.Lock()
+			defer mockMutex.Unlock()
+			killedTaskIds[tid.GetValue()] = true
+		}).
+		Return(nil).
+		Times(2)
+
+	resp, err := suite.handler.KillAndReserveTasks(rootCtx, killAndReserveReq)
+	suite.NoError(err)
+	suite.Nil(resp.GetError())
+	suite.Equal(
+		map[string]bool{"t1": true, "t2": true},
+		killedTaskIds)
+
+	suite.Equal(
+		int64(2),
+		suite.testScope.Snapshot().Counters()["kill_tasks+"].Value())
+}
+
 // Test happy case of killing task
 func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 	defer suite.ctrl.Finish()

@@ -107,22 +107,37 @@ message ExecutorOnAgent {
  * host offers need to be returned.
  */
 message QuantityControl {
-  // Optinoal maximum number of hosts to return. Default zero value is no-op.
-  uint32 maxHosts = 1;
+    // Optinoal maximum number of hosts to return. Default zero value is no-op.
+    uint32 maxHosts = 1;
 
-  // TODO(zhitao): Enable the following two fields.
-  // Optional minimum number of hosts to return. This can be used to make sure
-  // tasks can be well spread.
-  // Default zero value is no-op.
-  // Note that there is not guarantee hostmgr can return so many hosts, but
-  // caller can use HostFilterResult included in response to understand.
-  // uint32 minHosts = 2;
+    // TODO(zhitao): Enable the following two fields.
+    // Optional minimum number of hosts to return. This can be used to make sure
+    // tasks can be well spread.
+    // Default zero value is no-op.
+    // Note that there is not guarantee hostmgr can return so many hosts, but
+    // caller can use HostFilterResult included in response to understand.
+    // uint32 minHosts = 2;
 
-  // Original number of placements requested by PE. This cannot
-  // be zero, otherwise hostmgr may return empty result.
-  // uint32 numPlacements = 3;
+    // Original number of placements requested by PE. This cannot
+    // be zero, otherwise hostmgr may return empty result.
+    // uint32 numPlacements = 3;
 }
 
+/** FilterHint includes hint provided to host manager to decide
+ *  which hosts to return. The hint is provided as an optimization
+ *  and host manager can ignore them if hint cannot be satisfied.
+ */
+message FilterHint {
+    // Hint for which host to return
+    message Host {
+        // return the host if it satisfies constraints
+        string hostname = 1;
+        // indicates for which task the host is for
+        api.v0.peloton.TaskID taskID = 2;
+    }
+
+    repeated Host hostHint = 1;
+}
 
 /**
  * HostFilter can be used to control whether offers from a given host should
@@ -140,6 +155,10 @@ message HostFilter {
   // Extra quantity control message which can be used to influence how many
   // host offers are returned.
   QuantityControl quantity = 4;
+
+  // Provides hint to about which hosts should return, host manager may
+  // ignore the hint
+  FilterHint hint = 5;
 }
 
 /**
@@ -346,6 +365,11 @@ service InternalHostService
 
   // Kill tasks that are running on Mesos cluster
   rpc KillTasks(KillTasksRequest) returns (KillTasksResponse);
+
+  // Kill tasks that are running on Mesos cluster, and reserve the host
+  // for new task placement.
+  // This is used for in-place update/restart.
+  rpc KillAndReserveTasks(KillAndReserveTasksRequest) returns (KillAndReserveTasksResponse);
 
   // Shutdown executors that running on a Mesos agent
   rpc ShutdownExecutors(ShutdownExecutorsRequest) returns (ShutdownExecutorsResponse);
@@ -660,6 +684,23 @@ message ShutdownExecutorsResponse {
   }
 
   Error error = 1;
+}
+
+message KillAndReserveTasksRequest {
+    message Entry {
+        mesos.v1.TaskID taskId = 1;
+        string hostToReserve = 2;
+    }
+    repeated Entry entries = 1;
+}
+
+message KillAndReserveTasksResponse {
+    message Error {
+        InvalidTaskIDs invalidTaskIDs = 1;
+        KillFailure killFailure = 2;
+    }
+
+    Error error = 1;
 }
 
 message KillTasksRequest {
