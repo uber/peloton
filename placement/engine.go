@@ -348,7 +348,7 @@ func (e *engine) filterAssignments(
 			// found a host
 			task.IncRounds()
 			// lets check if we can find a better one
-			if e.isAssignmentGoodEnough(task, now) {
+			if e.isAssignmentGoodEnough(task, assignment.GetHost().GetOffer(), now) {
 				// tried enough, this match is good enough
 				assigned = append(assigned, assignment)
 				continue
@@ -362,9 +362,12 @@ func (e *engine) filterAssignments(
 	return assigned, retryable, unassigned
 }
 
-// returns true if we have tried past max rounds or reached the deadline.
-func (e *engine) isAssignmentGoodEnough(task *models.Task, now time.Time) bool {
-	return task.PastMaxRounds() || task.PastDeadline(now)
+// returns true if we have tried past max rounds or reached the deadline or
+// the host is already placed on the desired host.
+func (e *engine) isAssignmentGoodEnough(task *models.Task, offer *hostsvc.HostOffer, now time.Time) bool {
+	return task.PastMaxRounds() || task.PastDeadline(now) ||
+		(len(task.GetTask().GetDesiredHost()) != 0 &&
+			task.GetTask().GetDesiredHost() == offer.GetHostname())
 }
 
 // findUsedHosts will find the hosts that are used by the retryable assignments.

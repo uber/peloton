@@ -36,12 +36,22 @@ func TaskToEntity(task *resmgr.Task, isLaunched bool) *placement.Entity {
 		addMetrics(task, entity.Metrics)
 	}
 	addRelations(task.GetLabels(), entity.Relations)
-	entity.Ordering = orderings.Concatenate(
+
+	var order []placement.Ordering
+	// if the task has a desired host, add the host as the highest priority when picking group
+	if len(task.GetDesiredHost()) != 0 {
+		order = append(order, orderings.Negate(orderings.Label(nil, labels.NewLabel(HostName, task.DesiredHost))))
+	}
+
+	order = append(order,
 		orderings.Negate(orderings.Metric(orderings.GroupSource, DiskFree)),
 		orderings.Negate(orderings.Metric(orderings.GroupSource, MemoryFree)),
 		orderings.Negate(orderings.Metric(orderings.GroupSource, CPUFree)),
 		orderings.Negate(orderings.Metric(orderings.GroupSource, GPUFree)),
 	)
+
+	entity.Ordering = orderings.Concatenate(order...)
+
 	var req []placement.Requirement
 	req = append(req, makeAffinityRequirements(task.GetConstraint()))
 	req = append(req, makeMetricRequirements(task)...)

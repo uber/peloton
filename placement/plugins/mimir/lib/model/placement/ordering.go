@@ -44,7 +44,11 @@ func Less(tuple1, tuple2 []float64) bool {
 	for i := 0; i < length; i++ {
 		if tuple1[i] < tuple2[i] {
 			return true
+		} else if tuple1[i] > tuple2[i] {
+			return false
 		}
+
+		// in case of equal, compare the rest of the elements
 	}
 	if len(tuple1) < len(tuple2) {
 		return true

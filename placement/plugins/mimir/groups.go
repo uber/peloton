@@ -29,7 +29,7 @@ import (
 func OfferToGroup(hostOffer *hostsvc.HostOffer) *placement.Group {
 	group := placement.NewGroup(hostOffer.Hostname)
 	group.Metrics = makeMetrics(hostOffer.GetResources())
-	group.Labels = makeLabels(hostOffer.Attributes)
+	group.Labels = makeLabels(hostOffer)
 	return group
 }
 
@@ -69,7 +69,8 @@ func makeMetrics(resources []*mesos_v1.Resource) *metrics.Set {
 // A text attribute with name n and value t will be turned into the label ["n", "t"].
 // A ranges attribute with name n and ranges [r_1a:r_1b], ..., [r_na:r_nb] will be turned into
 // the label ["n", "[r_1a-r1b];...[r_na-r_nb]"].
-func makeLabels(attributes []*mesos_v1.Attribute) *labels.Bag {
+func makeLabels(hostOffer *hostsvc.HostOffer) *labels.Bag {
+	attributes := hostOffer.GetAttributes()
 	result := labels.NewBag()
 	for _, attribute := range attributes {
 		var value string
@@ -92,5 +93,6 @@ func makeLabels(attributes []*mesos_v1.Attribute) *labels.Bag {
 		names = append(names, value)
 		result.Add(labels.NewLabel(names...))
 	}
+	result.Add(labels.NewLabel(HostName, hostOffer.GetHostname()))
 	return result
 }

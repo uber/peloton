@@ -44,6 +44,10 @@ func TestLess_if_tuple2_is_equal_to_a_prefix_of_tuple1_then_tuple1_is_not_least(
 	assert.False(t, Less([]float64{0.0, 1.0}, []float64{0.0}))
 }
 
+func TestLess_if_tuple1_first_element_is_larger_rest_are_less(t *testing.T) {
+	assert.False(t, Less([]float64{0.0, 2.0}, []float64{-1.0, 3.0}))
+}
+
 func TestNameOrdering(t *testing.T) {
 	group1 := NewGroup("a")
 	group2 := NewGroup("b")
