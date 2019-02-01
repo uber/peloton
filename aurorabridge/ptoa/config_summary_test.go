@@ -65,6 +65,7 @@ func TestNewConfigSumamry_Success(t *testing.T) {
 				Labels: []*peloton.Label{
 					mdLabel,
 				},
+				Containers: []*pod.ContainerSpec{{}},
 			},
 			Status: &pod.PodStatus{
 				PodId: &peloton.PodID{
@@ -105,6 +106,7 @@ func TestNewConfigSummary_InvalidTaskID(t *testing.T) {
 			PodName: &peloton.PodName{
 				Value: podName,
 			},
+			Containers: []*pod.ContainerSpec{{}},
 		},
 		Status: &pod.PodStatus{
 			PodId: &peloton.PodID{
@@ -136,6 +138,7 @@ func TestNewConfigSummary_ConfigGroupError(t *testing.T) {
 			PodName: &peloton.PodName{
 				Value: podName,
 			},
+			Containers: []*pod.ContainerSpec{{}},
 		},
 		Status: &pod.PodStatus{
 			PodId: &peloton.PodID{

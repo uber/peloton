@@ -41,20 +41,58 @@ func TestNewTaskConfig(t *testing.T) {
 	j := &stateless.JobInfo{
 		Spec: &stateless.JobSpec{
 			Name: atop.NewJobName(jobKey),
+			Sla: &stateless.SlaSpec{
+				Priority: 6,
+			},
+			Owner: "owner",
 		},
 	}
 	p := &pod.PodSpec{
-		Labels: []*peloton.Label{ml},
+		Labels:     []*peloton.Label{ml},
+		Containers: []*pod.ContainerSpec{{}},
 	}
 
 	c, err := NewTaskConfig(j, p)
 	assert.NoError(t, err)
 	assert.Equal(t, &api.TaskConfig{
 		Job:       jobKey,
+		Owner:     &api.Identity{User: ptr.String("owner")},
 		IsService: ptr.Bool(true),
 		Tier:      ptr.String("preferred"),
 		Metadata:  metadata,
+		Priority:  ptr.Int32(6),
 	}, c)
+}
+
+func TestNewResources(t *testing.T) {
+	c := &pod.ContainerSpec{
+		Resource: &pod.ResourceSpec{
+			CpuLimit:    1.5,
+			MemLimitMb:  1024,
+			DiskLimitMb: 128,
+			GpuLimit:    2.0,
+		},
+		Ports: []*pod.PortSpec{
+			{
+				Name:  "http",
+				Value: 12345,
+			},
+			{
+				Name:  "tchannel",
+				Value: 54321,
+			},
+		},
+	}
+
+	r := newResources(c)
+	assert.Equal(t, []*api.Resource{
+		{NumCpus: ptr.Float64(1.5)},
+		{RamMb: ptr.Int64(1024)},
+		{DiskMb: ptr.Int64(128)},
+		{NumGpus: ptr.Int64(2)},
+		{NamedPort: ptr.String("http")},
+		{NamedPort: ptr.String("tchannel")},
+	}, r)
 }
 
 func TestNewContainer_Mesos(t *testing.T) {

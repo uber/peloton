@@ -120,8 +120,9 @@ func (suite *ServiceHandlerTestSuite) TestGetJobSummary() {
 					Name:          atop.NewJobName(jobKey),
 					InstanceCount: instanceCount,
 					DefaultSpec: &pod.PodSpec{
-						PodName: podName,
-						Labels:  []*peloton.Label{mdLabel, jkLabel},
+						PodName:    podName,
+						Labels:     []*peloton.Label{mdLabel, jkLabel},
+						Containers: []*pod.ContainerSpec{{}},
 					},
 				},
 			},
@@ -822,8 +823,9 @@ func (suite *ServiceHandlerTestSuite) TestGetJobs() {
 					Name:          atop.NewJobName(jobKey),
 					InstanceCount: instanceCount,
 					DefaultSpec: &pod.PodSpec{
-						PodName: podName,
-						Labels:  []*peloton.Label{mdLabel, jkLabel},
+						PodName:    podName,
+						Labels:     []*peloton.Label{mdLabel, jkLabel},
+						Containers: []*pod.ContainerSpec{{}},
 					},
 				},
 			},

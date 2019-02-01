@@ -54,6 +54,8 @@ func NewJobConfiguration(
 	// TODO(kevinxu): Need to match Aurora's behavior?
 	instanceCount := jobInfo.GetSpec().GetInstanceCount()
 
+	auroraOwner := NewIdentity(jobInfo.GetSpec().GetOwner())
+
 	jobKey, err := NewJobKey(jobInfo.GetSpec().GetName())
 	if err != nil {
 		return nil, err
@@ -66,9 +68,9 @@ func NewJobConfiguration(
 
 	return &api.JobConfiguration{
 		Key:           jobKey,
+		Owner:         auroraOwner,
 		TaskConfig:    taskConfig,
 		InstanceCount: ptr.Int32(int32(instanceCount)),
-		//Owner:               nil,
 		//CronSchedule:        nil,
 		//CronCollisionPolicy: nil,
 	}, nil

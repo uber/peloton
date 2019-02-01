@@ -44,7 +44,8 @@ func TestNewJobSummary(t *testing.T) {
 		},
 	}
 	p := &pod.PodSpec{
-		Labels: []*peloton.Label{ml},
+		Labels:     []*peloton.Label{ml},
+		Containers: []*pod.ContainerSpec{{}},
 	}
 
 	c, err := NewJobSummary(j, p)
@@ -65,15 +66,18 @@ func TestNewJobConfiguration(t *testing.T) {
 		Spec: &stateless.JobSpec{
 			Name:          atop.NewJobName(jobKey),
 			InstanceCount: instanceCount,
+			Owner:         "owner",
 		},
 	}
 	p := &pod.PodSpec{
-		Labels: []*peloton.Label{ml},
+		Labels:     []*peloton.Label{ml},
+		Containers: []*pod.ContainerSpec{{}},
 	}
 
 	c, err := NewJobConfiguration(j, p)
 	assert.NoError(t, err)
 	assert.Equal(t, jobKey, c.GetKey())
+	assert.Equal(t, "owner", c.GetOwner().GetUser())
 	assert.Equal(t, instanceCount, uint32(c.GetInstanceCount()))
 	assert.NotNil(t, c.GetTaskConfig())
 }

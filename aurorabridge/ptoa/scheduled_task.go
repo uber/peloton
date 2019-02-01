@@ -95,10 +95,15 @@ func newScheduledTask(
 		auroraTaskEvents = append(auroraTaskEvents, e)
 	}
 
+	var auroraSlaveID *string
 	var auroraTaskConfig *api.TaskConfig
-	auroraAssignedPorts := make(map[string]int32)
+	var auroraAssignedPorts map[string]int32
 
 	if jobInfo != nil && podInfo != nil {
+		if agentID := podInfo.GetStatus().GetAgentId().GetValue(); agentID != "" {
+			auroraSlaveID = &agentID
+		}
+
 		auroraTaskConfig, err = NewTaskConfig(jobInfo, podInfo.GetSpec())
 		if err != nil {
 			return nil, fmt.Errorf("new task config: %s", err)
@@ -109,6 +114,9 @@ func newScheduledTask(
 			return nil, fmt.Errorf("pod spec does not have any containers")
 		}
 		for _, p := range c[0].GetPorts() {
+			if auroraAssignedPorts == nil {
+				auroraAssignedPorts = make(map[string]int32)
+			}
 			auroraAssignedPorts[p.GetName()] = int32(p.GetValue())
 		}
 	}
@@ -120,7 +128,7 @@ func newScheduledTask(
 			InstanceId:    ptr.Int32(int32(instanceID)),
 			Task:          auroraTaskConfig,
 			AssignedPorts: auroraAssignedPorts,
-			//SlaveId:   nil,
+			SlaveId:       auroraSlaveID,
 		},
 		Status:     auroraStatus,
 		TaskEvents: auroraTaskEvents,

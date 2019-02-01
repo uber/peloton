@@ -17,6 +17,7 @@ package ptoa
 import (
 	"testing"
 
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -36,6 +37,7 @@ func TestNewScheduledTask(t *testing.T) {
 	jobID := fixture.PelotonJobID()
 	metadata := fixture.AuroraMetadata()
 	host := "peloton-host-0"
+	hostID := "6a2fe3f4-504c-48e9-b04f-9db7c02aa484-S0"
 
 	podName1, podID1 := &peloton.PodName{
 		Value: jobID.GetValue() + "-0",
@@ -64,6 +66,14 @@ func TestNewScheduledTask(t *testing.T) {
 			Labels:  []*peloton.Label{ml, kl},
 			Containers: []*pod.ContainerSpec{
 				{},
+			},
+		},
+		Status: &pod.PodStatus{
+			PodId: podID1,
+			Host:  host,
+			State: pod.PodState_POD_STATE_RUNNING,
+			AgentId: &mesos.AgentID{
+				Value: ptr.String(hostID),
 			},
 		},
 	}
@@ -116,14 +126,14 @@ func TestNewScheduledTask(t *testing.T) {
 		AssignedTask: &api.AssignedTask{
 			TaskId:    ptr.String(podID1.GetValue()),
 			SlaveHost: ptr.String(host),
+			SlaveId:   ptr.String(hostID),
 			Task: &api.TaskConfig{
 				Job:       jobKey,
 				IsService: ptr.Bool(true),
 				Tier:      ptr.String("preferred"),
 				Metadata:  metadata,
 			},
-			AssignedPorts: map[string]int32{},
-			InstanceId:    ptr.Int32(0),
+			InstanceId: ptr.Int32(0),
 		},
 		Status: api.ScheduleStatusRunning.Ptr(),
 		TaskEvents: []*api.TaskEvent{
@@ -178,7 +188,21 @@ func TestNewScheduledTask(t *testing.T) {
 							Value: 54321,
 						},
 					},
+					Resource: &pod.ResourceSpec{
+						CpuLimit:    1.5,
+						MemLimitMb:  1024,
+						DiskLimitMb: 128,
+						GpuLimit:    2.0,
+					},
 				},
+			},
+		},
+		Status: &pod.PodStatus{
+			PodId: podID2,
+			Host:  host,
+			State: pod.PodState_POD_STATE_KILLED,
+			AgentId: &mesos.AgentID{
+				Value: ptr.String(hostID),
 			},
 		},
 	}
@@ -255,11 +279,27 @@ func TestNewScheduledTask(t *testing.T) {
 		AssignedTask: &api.AssignedTask{
 			TaskId:    ptr.String(podID2.GetValue()),
 			SlaveHost: ptr.String(host),
+			SlaveId:   ptr.String(hostID),
 			Task: &api.TaskConfig{
-				Job:       jobKey,
+				Job:     jobKey,
+				NumCpus: ptr.Float64(1.5),
+				RamMb:   ptr.Int64(1024),
+				DiskMb:  ptr.Int64(128),
+				RequestedPorts: map[string]struct{}{
+					"http":     struct{}{},
+					"tchannel": struct{}{},
+				},
 				IsService: ptr.Bool(true),
 				Tier:      ptr.String("preferred"),
 				Metadata:  metadata,
+				Resources: []*api.Resource{
+					{NumCpus: ptr.Float64(1.5)},
+					{RamMb: ptr.Int64(1024)},
+					{DiskMb: ptr.Int64(128)},
+					{NumGpus: ptr.Int64(2)},
+					{NamedPort: ptr.String("http")},
+					{NamedPort: ptr.String("tchannel")},
+				},
 			},
 			AssignedPorts: map[string]int32{
 				"http":     12345,

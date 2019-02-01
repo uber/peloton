@@ -33,7 +33,17 @@ func NewTaskConfig(
 	jobInfo *stateless.JobInfo,
 	podSpec *pod.PodSpec,
 ) (*api.TaskConfig, error) {
+	if len(podSpec.GetContainers()) == 0 {
+		return nil, fmt.Errorf("pod spec does not contain containers")
+	}
+
 	auroraTier := NewTaskTier(jobInfo.GetSpec().GetSla())
+	auroraOwner := NewIdentity(jobInfo.GetSpec().GetOwner())
+
+	var auroraPriority *int32
+	if sla := jobInfo.GetSpec().GetSla(); sla != nil {
+		auroraPriority = ptr.Int32(int32(sla.GetPriority()))
+	}
 
 	auroraJobKey, err := NewJobKey(jobInfo.GetSpec().GetName())
 	if err != nil {
@@ -46,34 +56,87 @@ func NewTaskConfig(
 		return nil, fmt.Errorf("parse aurora metadata: %s", err)
 	}
 
-	var auroraContainer *api.Container
-	if len(podSpec.GetContainers()) > 0 {
-		auroraContainer, err = newContainer(podSpec.GetContainers()[0])
-		if err != nil {
-			return nil, err
+	auroraContainer, err := newContainer(podSpec.GetContainers()[0])
+	if err != nil {
+		return nil, err
+	}
+
+	auroraConstraints, err := NewConstraints(podSpec.GetConstraint())
+	if err != nil {
+		return nil, fmt.Errorf("new constraints: %s", err)
+	}
+
+	var numCpus *float64
+	var ramMb *int64
+	var diskMb *int64
+	var requestedPorts map[string]struct{}
+	auroraResources := newResources(podSpec.GetContainers()[0])
+	for _, r := range auroraResources {
+		if r.IsSetNumCpus() {
+			numCpus = r.NumCpus
+		} else if r.IsSetRamMb() {
+			ramMb = r.RamMb
+		} else if r.IsSetDiskMb() {
+			diskMb = r.DiskMb
+		} else if r.IsSetNamedPort() {
+			if requestedPorts == nil {
+				requestedPorts = make(map[string]struct{})
+			}
+			requestedPorts[r.GetNamedPort()] = struct{}{}
 		}
 	}
 
 	return &api.TaskConfig{
-		Job:       auroraJobKey,
-		IsService: ptr.Bool(true),
-		Tier:      auroraTier,
-		Metadata:  auroraMetadata,
-		Container: auroraContainer,
-		//Owner:            nil,
-		//NumCpus:          nil,
-		//RamMb:            nil,
-		//DiskMb:           nil,
-		//Priority:         nil,
+		Job:            auroraJobKey,
+		Owner:          auroraOwner,
+		IsService:      ptr.Bool(true),
+		NumCpus:        numCpus,
+		RamMb:          ramMb,
+		DiskMb:         diskMb,
+		RequestedPorts: requestedPorts,
+		Tier:           auroraTier,
+		Metadata:       auroraMetadata,
+		Container:      auroraContainer,
+		Resources:      auroraResources,
+		Constraints:    auroraConstraints,
+		Priority:       auroraPriority,
 		//MaxTaskFailures:  nil,
-		//Resources:        nil,
-		//Constraints:      nil,
-		//RequestedPorts:   map[string]struct{}{},
 		//MesosFetcherUris: nil,
 		//TaskLinks:        map[string]string{},
 		//ContactEmail:     nil,
 		//ExecutorConfig: nil,
 	}, nil
+}
+
+// newContainer creates a list of Resource objects.
+func newResources(container *pod.ContainerSpec) []*api.Resource {
+	var resources []*api.Resource
+	if cpuLimit := container.GetResource().GetCpuLimit(); cpuLimit > 0 {
+		resources = append(resources, &api.Resource{
+			NumCpus: ptr.Float64(cpuLimit),
+		})
+	}
+	if memLimitMb := container.GetResource().GetMemLimitMb(); memLimitMb > 0 {
+		resources = append(resources, &api.Resource{
+			RamMb: ptr.Int64(int64(memLimitMb)),
+		})
+	}
+	if diskLimitMb := container.GetResource().GetDiskLimitMb(); diskLimitMb > 0 {
+		resources = append(resources, &api.Resource{
+			DiskMb: ptr.Int64(int64(diskLimitMb)),
+		})
+	}
+	if gpuLimit := container.GetResource().GetGpuLimit(); gpuLimit > 0 {
+		resources = append(resources, &api.Resource{
+			NumGpus: ptr.Int64(int64(gpuLimit)),
+		})
+	}
+	for _, port := range container.GetPorts() {
+		resources = append(resources, &api.Resource{
+			NamedPort: ptr.String(port.GetName()),
+		})
+	}
+	return resources
 }
 
 // newContainer creates a Container object.
