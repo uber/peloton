@@ -17,6 +17,12 @@ main() {
             "--db" )
                 db="$2"
                 shift 2 ;;
+            "--username" )
+                username="$2"
+                shift 2 ;;
+            "--password" )
+                password="$2"
+                shift 2 ;;
             "--path" )
                 path="$2"
                 shift 2 ;;
@@ -25,6 +31,9 @@ main() {
                 shift 2 ;;
         esac
     done
+
+    # Set username & password if specified
+    [ ! -z $username ] && [ ! -z $password ] && host="${username}:${password}@${host}"
 
     [ -z $option ] && echo "Option missing: please specify up / down" && exit 1
 
@@ -52,6 +61,7 @@ EOF
 usage() {
     echo "usage: $0 [--option MIGRATION_OPTION (up or down)]"
     echo "[--host CASSANDRA_HOST_PORT] [--db CASSANDRA_DB_NAME]"
+    echo "[--username USER] [--password PASSWORD]"
     echo "[--path PATH_TO_MIGRATION_FILES]"
 }
 
