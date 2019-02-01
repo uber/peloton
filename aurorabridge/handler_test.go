@@ -1868,7 +1868,11 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
 	prevVersion := fixture.PelotonEntityVersion()
 	curVersion := fixture.PelotonEntityVersion()
 
-	updateSpec := fixture.PelotonUpdateSpec()
+	updateSpec := &stateless.UpdateSpec{
+		BatchSize:         1,
+		StartPaused:       true,
+		RollbackOnFailure: true,
+	}
 
 	prevSpec := &stateless.JobSpec{
 		Name:        atop.NewJobName(k.GetJob()),
@@ -1916,10 +1920,14 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
 
 	suite.jobClient.EXPECT().
 		ReplaceJob(suite.ctx, &statelesssvc.ReplaceJobRequest{
-			JobId:      id,
-			Version:    curVersion,
-			Spec:       prevSpec,
-			UpdateSpec: updateSpec,
+			JobId:   id,
+			Version: curVersion,
+			Spec:    prevSpec,
+			UpdateSpec: &stateless.UpdateSpec{
+				BatchSize:         1,
+				StartPaused:       false,
+				RollbackOnFailure: false,
+			},
 			OpaqueData: newOD,
 		}).
 		Return(&statelesssvc.ReplaceJobResponse{}, nil)

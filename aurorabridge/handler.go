@@ -1055,12 +1055,23 @@ func (h *ServiceHandler) rollbackJobUpdate(
 		return nil, auroraErrorf("get previous job: %s", err)
 	}
 
+	updateSpec := w.GetUpdateSpec()
+
+	// Never rollback a rollback.
+	updateSpec.RollbackOnFailure = false
+
+	// If the update is currently in paused state, the rollback update must start
+	// in a paused state.
+	updateSpec.StartPaused =
+		status == api.JobUpdateStatusRollForwardPaused ||
+			status == api.JobUpdateStatusRollForwardAwaitingPulse
+
 	req := &statelesssvc.ReplaceJobRequest{
 		JobId:   id,
 		Version: w.GetStatus().GetVersion(),
 		Spec:    prevJob.GetSpec(),
 		//Secrets: nil,
-		UpdateSpec: w.GetUpdateSpec(),
+		UpdateSpec: updateSpec,
 		OpaqueData: od,
 	}
 	if _, err := h.jobClient.ReplaceJob(ctx, req); err != nil {
