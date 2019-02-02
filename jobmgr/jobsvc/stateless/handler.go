@@ -186,14 +186,20 @@ func (h *serviceHandler) CreateJob(
 	configAddOn := &models.ConfigAddOn{
 		SystemLabels: systemLabels,
 	}
-	// TODO: modify handler API to pass in the fields for workflow
+
+	var opaqueData *peloton.OpaqueData
+	if len(req.GetOpaqueData().GetData()) != 0 {
+		opaqueData = &peloton.OpaqueData{
+			Data: req.GetOpaqueData().GetData(),
+		}
+	}
+
 	err = cachedJob.RollingCreate(
 		ctx,
 		jobConfig,
 		configAddOn,
-		0,         /*batchSize*/
-		false,     /*startPaused*/
-		nil,       /*opaqueData*/
+		handlerutil.ConvertCreateSpecToUpdateConfig(req.GetCreateSpec()),
+		opaqueData,
 		"peloton", /*createBy*/
 	)
 

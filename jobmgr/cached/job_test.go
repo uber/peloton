@@ -3888,8 +3888,7 @@ func (suite *JobTestSuite) TestJobRollingCreateSuccess() {
 		context.Background(),
 		jobConfig,
 		configAddOn,
-		0,
-		false,
+		nil,
 		nil,
 		createdBy)
 	suite.NoError(err)
@@ -3928,8 +3927,7 @@ func (suite *JobTestSuite) TestJobRollingCreateNilConfigFailure() {
 		context.Background(),
 		nil,
 		configAddOn,
-		0,
-		false,
+		nil,
 		nil,
 		createdBy)
 	suite.Error(err)
@@ -3973,8 +3971,7 @@ func (suite *JobTestSuite) TestJobRollingCreateAddActiveJobFailure() {
 		context.Background(),
 		jobConfig,
 		configAddOn,
-		0,
-		false,
+		nil,
 		nil,
 		createdBy)
 	suite.Error(err)
@@ -4033,8 +4030,7 @@ func (suite *JobTestSuite) TestJobRollingCreateJobRuntimeWithConfigFailure() {
 		context.Background(),
 		jobConfig,
 		configAddOn,
-		0,
-		false,
+		nil,
 		nil,
 		createdBy)
 	suite.Error(err)

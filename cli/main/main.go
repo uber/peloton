@@ -283,10 +283,24 @@ var (
 	statelessCreate            = stateless.Command("create", "create stateless job")
 	statelessCreateResPoolPath = statelessCreate.Arg("respool", "complete path of the "+
 		"resource pool starting from the root").Required().String()
-	statelessCreateSpec       = statelessCreate.Arg("spec", "YAML job specification").Required().ExistingFile()
-	statelessCreateID         = statelessCreate.Flag("jobID", "optional job identifier, must be UUID format").Short('i').String()
-	statelessCreateSecretPath = statelessCreate.Flag("secret-path", "secret mount path").Default("").String()
-	statelessCreateSecret     = statelessCreate.Flag("secret-data", "secret data string").Default("").String()
+	statelessCreateSpec               = statelessCreate.Arg("spec", "YAML job specification").Required().ExistingFile()
+	statelessCreateBatchSize          = statelessCreate.Arg("batch-size", "batch size for the create process").Required().Uint32()
+	statelessCreateID                 = statelessCreate.Flag("jobID", "optional job identifier, must be UUID format").Short('i').String()
+	statelessCreateSecretPath         = statelessCreate.Flag("secret-path", "secret mount path").Default("").String()
+	statelessCreateSecret             = statelessCreate.Flag("secret-data", "secret data string").Default("").String()
+	statelessCreateStartInPausedState = statelessCreate.Flag("start-paused",
+		"start the create in a paused state").Default("false").Bool()
+	statelessCreateOpaqueData = statelessCreate.Flag("opaque-data",
+		"opaque data provided by the user").Default("").String()
+	statelessCreateMaxInstanceRetries = statelessCreate.Flag(
+		"maxInstanceRetries",
+		"maximum instance retries to bring up the instance after creating before marking it failed."+
+			"If the value is 0, the instance can be retried for infinite times.").Default("0").Uint32()
+	statelessCreateMaxTolerableInstanceFailures = statelessCreate.Flag(
+		"maxTolerableInstanceFailures",
+		"maximum number of instance failures tolerable before failing the create."+
+			"If the value is 0, there is no limit for max failure instances and"+
+			"the update is marked successful even if all of the instances fail.").Default("0").Uint32()
 
 	statelessReplaceJobDiff = stateless.Command("replace-diff",
 		"dry-run of replace to the the instances to be added/removed/updated/unchanged")
@@ -895,9 +909,14 @@ func main() {
 		err = client.StatelessCreateAction(
 			*statelessCreateID,
 			*statelessCreateResPoolPath,
+			*statelessCreateBatchSize,
 			*statelessCreateSpec,
 			*statelessCreateSecretPath,
 			[]byte(*statelessCreateSecret),
+			*statelessCreateOpaqueData,
+			*statelessCreateStartInPausedState,
+			*statelessCreateMaxInstanceRetries,
+			*statelessCreateMaxTolerableInstanceFailures,
 		)
 	case statelessRestartJob.FullCommand():
 		err = client.StatelessRestartJobAction(

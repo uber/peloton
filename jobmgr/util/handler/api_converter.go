@@ -754,6 +754,16 @@ func ConvertUpdateSpecToUpdateConfig(spec *stateless.UpdateSpec) *update.UpdateC
 	}
 }
 
+// ConvertCreateSpecToUpdateConfig converts create spec to update config
+func ConvertCreateSpecToUpdateConfig(spec *stateless.CreateSpec) *update.UpdateConfig {
+	return &update.UpdateConfig{
+		BatchSize:           spec.GetBatchSize(),
+		MaxInstanceAttempts: spec.GetMaxInstanceRetries(),
+		MaxFailureInstances: spec.GetMaxTolerableInstanceFailures(),
+		StartPaused:         spec.GetStartPaused(),
+	}
+}
+
 // ConvertPodQuerySpecToTaskQuerySpec converts
 // v1alpha pod.QuerySpec to v0 task.QuerySpec
 func ConvertPodQuerySpecToTaskQuerySpec(spec *pod.QuerySpec) *task.QuerySpec {

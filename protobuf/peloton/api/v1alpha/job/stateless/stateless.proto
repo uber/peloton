@@ -350,6 +350,30 @@ message UpdateSpec {
   bool in_place = 6;
 }
 
+// Configuration of a job creation.
+message CreateSpec {
+  // Batch size for the creation which controls how many
+  // instances may be created at the same time.
+  uint32 batch_size = 1;
+
+  // Maximum number of times a failing instance will
+  // be retried during the creation.
+  // If the value is 0, the instance can be retried for infinite
+  // times.
+  uint32 max_instance_retries = 2;
+
+  // Maximum number of instance failures before
+  // the creation is declared to be failed.
+  // If the value is 0, there is no limit for max failure instances
+  // and the creation is marked successful even if all of the instances
+  // fail.
+  uint32 max_tolerable_instance_failures = 3;
+
+  // If set to true, indicates that the creation should start
+  // in the paused state, requiring an explicit resume to roll forward.
+  bool start_paused = 4;
+}
+
 // Information about a workflow including its status and specification
 message WorkflowInfo {
   // Workflow status

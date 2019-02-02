@@ -107,8 +107,7 @@ type Job interface {
 		ctx context.Context,
 		config *pbjob.JobConfig,
 		configAddOn *models.ConfigAddOn,
-		batchSize uint32,
-		startPaused bool,
+		updateConfig *pbupdate.UpdateConfig,
 		opaqueData *peloton.OpaqueData,
 		createBy string,
 	) error
@@ -605,8 +604,7 @@ func (j *job) RollingCreate(
 	ctx context.Context,
 	config *pbjob.JobConfig,
 	configAddOn *models.ConfigAddOn,
-	batchSize uint32,
-	startPaused bool,
+	updateConfig *pbupdate.UpdateConfig,
 	opaqueData *peloton.OpaqueData,
 	createBy string,
 ) error {
@@ -624,6 +622,10 @@ func (j *job) RollingCreate(
 
 	if config == nil {
 		return yarpcerrors.InvalidArgumentErrorf("missing config in jobInfo")
+	}
+
+	if updateConfig.GetRollbackOnFailure() == true {
+		return yarpcerrors.InvalidArgumentErrorf("job creation cannot rollback on failure")
 	}
 
 	// Add jobID to active jobs table before creating job runtime. This should
@@ -670,10 +672,7 @@ func (j *job) RollingCreate(
 		nil,
 		nil,
 		models.WorkflowType_UPDATE,
-		&pbupdate.UpdateConfig{
-			BatchSize:   batchSize,
-			StartPaused: startPaused,
-		},
+		updateConfig,
 		opaqueData,
 	); err != nil {
 		j.invalidateCache()

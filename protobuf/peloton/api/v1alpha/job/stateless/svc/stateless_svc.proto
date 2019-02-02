@@ -12,7 +12,6 @@ import "peloton/api/v1alpha/query/query.proto";
 import "peloton/api/v1alpha/job/stateless/stateless.proto";
 import "peloton/api/v1alpha/pod/pod.proto";
 
-
 // Request message for JobService.CreateJob method.
 message CreateJobRequest {
   // The unique job UUID specified by the client. This can be used by
@@ -27,6 +26,12 @@ message CreateJobRequest {
   // is subject to change (or removal) from stateless.
   // The list of secrets for this job
   repeated peloton.Secret secrets = 3;
+
+  // The creation SLA specification.
+  stateless.CreateSpec create_spec = 4;
+
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 5;
 }
 
 // Response message for JobService.CreateJob method.

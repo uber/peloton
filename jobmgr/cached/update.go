@@ -243,7 +243,7 @@ func (u *update) Create(
 	var state pbupdate.State
 	var prevState pbupdate.State
 
-	if updateConfig.StartPaused == true {
+	if updateConfig.GetStartPaused() == true {
 		state = pbupdate.State_PAUSED
 		prevState = pbupdate.State_INITIALIZED
 	} else {

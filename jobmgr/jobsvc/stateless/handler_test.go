@@ -1805,6 +1805,10 @@ func (suite *statelessHandlerTestSuite) TestListJobsSendError() {
 
 // TestCreateJobSuccess tests the success case of creating a job
 func (suite *statelessHandlerTestSuite) TestCreateJobSuccess() {
+	var testBatchSize uint32 = 10
+	startPaused := true
+	opaqueData := "test opaque data"
+
 	defaultSpec := &pod.PodSpec{
 		Containers: []*pod.ContainerSpec{
 			{
@@ -1818,7 +1822,12 @@ func (suite *statelessHandlerTestSuite) TestCreateJobSuccess() {
 	}
 
 	request := &statelesssvc.CreateJobRequest{
-		Spec: jobSpec,
+		Spec:       jobSpec,
+		OpaqueData: &v1alphapeloton.OpaqueData{Data: opaqueData},
+		CreateSpec: &stateless.CreateSpec{
+			BatchSize:   testBatchSize,
+			StartPaused: startPaused,
+		},
 	}
 
 	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(jobSpec)
@@ -1847,7 +1856,11 @@ func (suite *statelessHandlerTestSuite) TestCreateJobSuccess() {
 		suite.cachedJob.EXPECT().
 			RollingCreate(
 				gomock.Any(), jobConfig, gomock.Any(),
-				gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				&pbupdate.UpdateConfig{
+					BatchSize:   testBatchSize,
+					StartPaused: startPaused,
+				},
+				&peloton.OpaqueData{Data: opaqueData}, gomock.Any()).
 			Return(nil),
 
 		suite.goalStateDriver.EXPECT().
@@ -2169,7 +2182,7 @@ func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsSuccess() {
 
 		suite.cachedJob.EXPECT().
 			RollingCreate(gomock.Any(), jobConfig, gomock.Any(),
-				gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil),
 
 		suite.goalStateDriver.EXPECT().
@@ -2589,7 +2602,7 @@ func (suite *statelessHandlerTestSuite) TestCreateJobFailureJobCacheCreateError(
 
 		suite.cachedJob.EXPECT().
 			RollingCreate(gomock.Any(), jobConfig, gomock.Any(),
-				gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(yarpcerrors.InternalErrorf("test error")),
 
 		suite.goalStateDriver.EXPECT().
@@ -2644,7 +2657,7 @@ func (suite *statelessHandlerTestSuite) TestCreateJobFailureGetJobRuntimeError()
 
 		suite.cachedJob.EXPECT().
 			RollingCreate(gomock.Any(), jobConfig, gomock.Any(),
-				gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil),
 
 		suite.goalStateDriver.EXPECT().

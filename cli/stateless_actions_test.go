@@ -43,9 +43,12 @@ import (
 )
 
 const (
-	testStatelessSpecConfig = "../example/stateless/testspec.yaml"
-	testRespoolPath         = "/testPath"
-	testEntityVersion       = "1-1-1"
+	testStatelessSpecConfig          = "../example/stateless/testspec.yaml"
+	testRespoolPath                  = "/testPath"
+	testEntityVersion                = "1-1-1"
+	testOpaqueData                   = "opaqueData"
+	testMaxInstanceRetries           = uint32(2)
+	testMaxTolerableInstanceFailures = uint32(3)
 )
 
 type statelessActionsTestSuite struct {
@@ -467,6 +470,13 @@ func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionSuccess() {
 							"", testSecretPath, []byte(testSecretStr),
 						),
 					}),
+					OpaqueData: &v1alphapeloton.OpaqueData{Data: testOpaqueData},
+					CreateSpec: &stateless.CreateSpec{
+						StartPaused:                  false,
+						BatchSize:                    0,
+						MaxTolerableInstanceFailures: testMaxTolerableInstanceFailures,
+						MaxInstanceRetries:           testMaxInstanceRetries,
+					},
 				},
 			).Return(&svc.CreateJobResponse{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
@@ -477,9 +487,14 @@ func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionSuccess() {
 	suite.NoError(suite.client.StatelessCreateAction(
 		testJobID,
 		testRespoolPath,
+		0,
 		testStatelessSpecConfig,
 		testSecretPath,
 		[]byte(testSecretStr),
+		testOpaqueData,
+		false,
+		testMaxInstanceRetries,
+		testMaxTolerableInstanceFailures,
 	))
 }
 
@@ -497,9 +512,14 @@ func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionLookupResour
 	suite.Error(suite.client.StatelessCreateAction(
 		testJobID,
 		testRespoolPath,
+		0,
 		testStatelessSpecConfig,
 		testSecretPath,
 		[]byte(testSecretStr),
+		testOpaqueData,
+		false,
+		testMaxInstanceRetries,
+		testMaxTolerableInstanceFailures,
 	))
 }
 
@@ -516,9 +536,14 @@ func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionNilResourceP
 	suite.Error(suite.client.StatelessCreateAction(
 		testJobID,
 		testRespoolPath,
+		0,
 		testStatelessSpecConfig,
 		testSecretPath,
 		[]byte(testSecretStr),
+		testOpaqueData,
+		false,
+		testMaxInstanceRetries,
+		testMaxTolerableInstanceFailures,
 	))
 }
 
@@ -540,8 +565,15 @@ func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionJobAlreadyEx
 			CreateJob(
 				gomock.Any(),
 				&svc.CreateJobRequest{
-					JobId: &v1alphapeloton.JobID{Value: testJobID},
-					Spec:  suite.getSpec(),
+					JobId:      &v1alphapeloton.JobID{Value: testJobID},
+					Spec:       suite.getSpec(),
+					OpaqueData: &v1alphapeloton.OpaqueData{Data: testOpaqueData},
+					CreateSpec: &stateless.CreateSpec{
+						StartPaused:                  false,
+						BatchSize:                    0,
+						MaxTolerableInstanceFailures: testMaxTolerableInstanceFailures,
+						MaxInstanceRetries:           testMaxInstanceRetries,
+					},
 				},
 			).Return(nil, yarpcerrors.AlreadyExistsErrorf("test error")),
 	)
@@ -549,9 +581,14 @@ func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionJobAlreadyEx
 	suite.Error(suite.client.StatelessCreateAction(
 		testJobID,
 		testRespoolPath,
+		0,
 		testStatelessSpecConfig,
 		"",
 		[]byte(""),
+		testOpaqueData,
+		false,
+		testMaxInstanceRetries,
+		testMaxTolerableInstanceFailures,
 	))
 }
 
@@ -573,9 +610,14 @@ func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionInvalidSpecP
 	suite.Error(suite.client.StatelessCreateAction(
 		testJobID,
 		testRespoolPath,
+		0,
 		"invalid-path",
 		"",
 		[]byte(""),
+		testOpaqueData,
+		false,
+		testMaxInstanceRetries,
+		testMaxTolerableInstanceFailures,
 	))
 }
 
@@ -597,8 +639,15 @@ func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionInvalidSpec(
 			CreateJob(
 				gomock.Any(),
 				&svc.CreateJobRequest{
-					JobId: &v1alphapeloton.JobID{Value: testJobID},
-					Spec:  suite.getSpec(),
+					JobId:      &v1alphapeloton.JobID{Value: testJobID},
+					Spec:       suite.getSpec(),
+					OpaqueData: &v1alphapeloton.OpaqueData{Data: testOpaqueData},
+					CreateSpec: &stateless.CreateSpec{
+						StartPaused:                  false,
+						BatchSize:                    0,
+						MaxTolerableInstanceFailures: testMaxTolerableInstanceFailures,
+						MaxInstanceRetries:           testMaxInstanceRetries,
+					},
 				},
 			).Return(nil, yarpcerrors.InvalidArgumentErrorf("test error")),
 	)
@@ -606,9 +655,14 @@ func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionInvalidSpec(
 	suite.Error(suite.client.StatelessCreateAction(
 		testJobID,
 		testRespoolPath,
+		0,
 		testStatelessSpecConfig,
 		"",
 		[]byte(""),
+		testOpaqueData,
+		false,
+		testMaxInstanceRetries,
+		testMaxTolerableInstanceFailures,
 	))
 }
 

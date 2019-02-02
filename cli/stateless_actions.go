@@ -419,9 +419,14 @@ func (c *Client) StatelessReplaceJobDiffAction(
 func (c *Client) StatelessCreateAction(
 	jobID string,
 	respoolPath string,
+	batchSize uint32,
 	cfg string,
 	secretPath string,
 	secret []byte,
+	opaque string,
+	startPaused bool,
+	maxInstanceRetries uint32,
+	maxTolerableInstanceFailures uint32,
 ) error {
 	respoolID, err := c.LookupResourcePoolID(respoolPath)
 	if err != nil {
@@ -443,11 +448,25 @@ func (c *Client) StatelessCreateAction(
 
 	jobSpec.RespoolId = &v1alphapeloton.ResourcePoolID{Value: respoolID.GetValue()}
 
+	var opaqueData *v1alphapeloton.OpaqueData
+	if len(opaque) != 0 {
+		opaqueData = &v1alphapeloton.OpaqueData{
+			Data: opaque,
+		}
+	}
+
 	var request = &statelesssvc.CreateJobRequest{
 		JobId: &v1alphapeloton.JobID{
 			Value: jobID,
 		},
-		Spec: &jobSpec,
+		Spec:       &jobSpec,
+		OpaqueData: opaqueData,
+		CreateSpec: &stateless.CreateSpec{
+			BatchSize:                    batchSize,
+			MaxInstanceRetries:           maxInstanceRetries,
+			MaxTolerableInstanceFailures: maxTolerableInstanceFailures,
+			StartPaused:                  startPaused,
+		},
 	}
 
 	// handle secrets
