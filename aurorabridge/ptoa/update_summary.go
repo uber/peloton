@@ -69,7 +69,7 @@ func NewJobUpdateSummary(
 				Environment: ptr.String(jobKey.GetEnvironment()),
 				Name:        ptr.String(jobKey.GetName()),
 			},
-			ID: nil, // TODO: check if aggregator does not consume UpdateID
+			ID: ptr.String(d.UpdateID),
 		},
 		User: nil,
 		State: &api.JobUpdateState{

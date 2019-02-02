@@ -25,20 +25,15 @@ func NewJobUpdateInstructions(
 	w *stateless.WorkflowInfo,
 ) *api.JobUpdateInstructions {
 
-	instancesInUpdate := append(w.GetRestartRanges(),
-		w.GetInstancesUpdated()...)
-
 	return &api.JobUpdateInstructions{
 		InitialState: []*api.InstanceTaskConfig{
-			{
-				Instances: NewRange(instancesInUpdate),
-			},
-			{
-				Instances: NewRange(w.GetInstancesRemoved()),
+			&api.InstanceTaskConfig{
+				Instances: NewRange(append(w.GetInstancesUpdated(),
+					w.GetInstancesRemoved()...)),
 			},
 		},
 		DesiredState: &api.InstanceTaskConfig{
-			Instances: NewRange(append(instancesInUpdate,
+			Instances: NewRange(append(w.GetInstancesUpdated(),
 				w.GetInstancesAdded()...)),
 		},
 	}

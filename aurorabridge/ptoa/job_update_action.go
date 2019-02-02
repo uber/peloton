@@ -19,31 +19,46 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/aurorabridge/opaquedata"
 )
 
 // NewJobUpdateAction returns the job update action for aurora
-// from peloton update action
-// TODO: use opaque data to identify is peloton workflow failed on
-// rolling forward or rolling backward. For now peloton workflow failed
-// is mapped to rolling forward failed for Aurora.
+// from peloton workflow state
 func NewJobUpdateAction(
 	s stateless.WorkflowState,
+	d *opaquedata.Data,
 ) (*api.JobUpdateAction, error) {
 
+	rollback := d.ContainsUpdateAction(opaquedata.Rollback)
+
 	switch s {
-	case stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD:
+	case stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
+		stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+		stateless.WorkflowState_WORKFLOW_STATE_PAUSED:
+		if rollback {
+			return api.JobUpdateActionInstanceRollingBack.Ptr(), nil
+		}
 		return api.JobUpdateActionInstanceUpdating.Ptr(), nil
+
 	case stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED:
+		if rollback {
+			return api.JobUpdateActionInstanceRolledBack.Ptr(), nil
+		}
 		return api.JobUpdateActionInstanceUpdated.Ptr(), nil
+
+	case stateless.WorkflowState_WORKFLOW_STATE_FAILED,
+		stateless.WorkflowState_WORKFLOW_STATE_ABORTED:
+		if rollback {
+			return api.JobUpdateActionInstanceRollbackFailed.Ptr(), nil
+		}
+		return api.JobUpdateActionInstanceUpdateFailed.Ptr(), nil
+
 	case stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD:
 		return api.JobUpdateActionInstanceRollingBack.Ptr(), nil
 	case stateless.WorkflowState_WORKFLOW_STATE_ROLLED_BACK:
 		return api.JobUpdateActionInstanceRolledBack.Ptr(), nil
-	case stateless.WorkflowState_WORKFLOW_STATE_ABORTED:
-		return api.JobUpdateActionInstanceUpdateFailed.Ptr(), nil
-	case stateless.WorkflowState_WORKFLOW_STATE_FAILED:
-		return api.JobUpdateActionInstanceUpdateFailed.Ptr(), nil
+
 	default:
-		return nil, fmt.Errorf("unknown job update state %d", s)
+		return nil, fmt.Errorf("unknown peloton workflow state %d", s)
 	}
 }

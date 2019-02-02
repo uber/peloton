@@ -615,21 +615,21 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Error() {
 			GetWorkflowEvents(gomock.Any(), &statelesssvc.GetWorkflowEventsRequest{
 				JobId:      jobID,
 				InstanceId: i,
-			}).Return(&statelesssvc.GetWorkflowEventsResponse{
-			Events: []*stateless.WorkflowEvent{
-				{
-					Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-					State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
-					Timestamp: time.Now().Format(time.RFC3339),
+			}).
+			Return(&statelesssvc.GetWorkflowEventsResponse{
+				Events: []*stateless.WorkflowEvent{
+					&stateless.WorkflowEvent{
+						Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+						Timestamp: time.Now().Format(time.RFC3339),
+					},
+					&stateless.WorkflowEvent{
+						Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State:     stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
+						Timestamp: time.Now().Format(time.RFC3339),
+					},
 				},
-				// TODO: handle initialized state in workflow event
-				// &stateless.WorkflowEvent{
-				// 	Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-				// 	State:     stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
-				// 	Timestamp: time.Now().Format(time.RFC3339),
-				// },
-			},
-		}, nil).
+			}, nil).
 			MaxTimes(1)
 	}
 
@@ -645,8 +645,10 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Error() {
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Success() {
 	jobID := fixture.PelotonJobID()
 	jobUpdateKey := fixture.AuroraJobUpdateKey()
+	instancesAdded := uint32(49)
 	updateStatuses := make(map[api.JobUpdateStatus]struct{})
 	updateStatuses[api.JobUpdateStatusRollingForward] = struct{}{}
+	updateStatuses[api.JobUpdateStatusRollingBack] = struct{}{}
 	jobUpdateQuery := &api.JobUpdateQuery{
 		UpdateStatuses: updateStatuses,
 	}
@@ -670,42 +672,63 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Success() {
 						State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 						Timestamp: time.Now().Format(time.RFC3339),
 					},
-					// TODO: handle initialized state in workflow event
-					// &stateless.WorkflowEvent{
-					// 	Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-					// 	State:     stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
-					// 	Timestamp: time.Now().Format(time.RFC3339),
-					// },
+					&stateless.WorkflowEvent{
+						Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State:     stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
+						Timestamp: time.Now().Format(time.RFC3339),
+					},
 				},
 				InstancesAdded: []*pod.InstanceIDRange{
 					{
 						From: uint32(0),
-						To:   uint32(50),
+						To:   instancesAdded,
 					},
 				},
 			},
 		}, nil)
 
-	for i := uint32(0); i < uint32(50); i++ {
+	for i := uint32(0); i <= instancesAdded; i++ {
+		if i%10 == 0 {
+			suite.jobClient.EXPECT().
+				GetWorkflowEvents(gomock.Any(), &statelesssvc.GetWorkflowEventsRequest{
+					JobId:      jobID,
+					InstanceId: i,
+				}).
+				Return(&statelesssvc.GetWorkflowEventsResponse{
+					Events: []*stateless.WorkflowEvent{
+						&stateless.WorkflowEvent{
+							Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+							State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD,
+							Timestamp: time.Now().Format(time.RFC3339),
+						},
+						&stateless.WorkflowEvent{
+							Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+							State:     stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
+							Timestamp: time.Now().Format(time.RFC3339),
+						},
+					},
+				}, nil)
+			continue
+		}
 		suite.jobClient.EXPECT().
 			GetWorkflowEvents(gomock.Any(), &statelesssvc.GetWorkflowEventsRequest{
 				JobId:      jobID,
 				InstanceId: i,
-			}).Return(&statelesssvc.GetWorkflowEventsResponse{
-			Events: []*stateless.WorkflowEvent{
-				{
-					Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-					State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
-					Timestamp: time.Now().Format(time.RFC3339),
+			}).
+			Return(&statelesssvc.GetWorkflowEventsResponse{
+				Events: []*stateless.WorkflowEvent{
+					&stateless.WorkflowEvent{
+						Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+						Timestamp: time.Now().Format(time.RFC3339),
+					},
+					&stateless.WorkflowEvent{
+						Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+						State:     stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
+						Timestamp: time.Now().Format(time.RFC3339),
+					},
 				},
-				// TODO: handle initialized state in workflow event
-				// &stateless.WorkflowEvent{
-				// 	Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
-				// 	State:     stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
-				// 	Timestamp: time.Now().Format(time.RFC3339),
-				// },
-			},
-		}, nil)
+			}, nil)
 	}
 
 	resp, err := suite.handler.GetJobUpdateDetails(
@@ -715,7 +738,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Success() {
 	suite.NoError(err)
 	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
 	suite.Equal(1, len(resp.GetResult().GetGetJobUpdateDetailsResult().GetDetailsList()))
-	suite.Equal(50, len(resp.GetResult().GetGetJobUpdateDetailsResult().GetDetailsList()[0].GetInstanceEvents()))
+	suite.Equal(100, len(resp.GetResult().GetGetJobUpdateDetailsResult().GetDetailsList()[0].GetInstanceEvents()))
 }
 
 // Tests for failure scenario for get config summary

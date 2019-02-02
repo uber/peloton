@@ -1301,10 +1301,8 @@ func (h *ServiceHandler) getJobUpdateDetail(
 
 		jobInstructions = ptoa.NewJobUpdateInstructions(resp.GetWorkflowInfo())
 
-		instancesInUpdate := append(resp.GetWorkflowInfo().GetRestartRanges(),
+		instancesInUpdate := append(resp.GetWorkflowInfo().GetInstancesAdded(),
 			resp.GetWorkflowInfo().GetInstancesUpdated()...)
-		instancesInUpdate = append(instancesInUpdate,
-			resp.GetWorkflowInfo().GetInstancesAdded()...)
 		instancesInUpdate = append(instancesInUpdate,
 			resp.GetWorkflowInfo().GetInstancesRemoved()...)
 
@@ -1313,6 +1311,7 @@ func (h *ServiceHandler) getJobUpdateDetail(
 			ctx,
 			instancesInUpdate,
 			jobSummary,
+			opaqueData,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to get instance workflow events %s", err)
@@ -1334,11 +1333,12 @@ func (h *ServiceHandler) getJobInstanceUpdateEvents(
 	ctx context.Context,
 	instanceRanges []*pod.InstanceIDRange,
 	jobSummary *stateless.JobSummary,
+	d *opaquedata.Data,
 ) ([]*api.JobInstanceUpdateEvent, error) {
 
 	var inputs []interface{}
 	for _, instanceRange := range instanceRanges {
-		for j := instanceRange.From; j < instanceRange.To; j++ {
+		for j := instanceRange.From; j <= instanceRange.To; j++ {
 			inputs = append(inputs, j)
 		}
 	}
@@ -1356,7 +1356,10 @@ func (h *ServiceHandler) getJobInstanceUpdateEvents(
 
 		var jobInstanceUpdateEvents []*api.JobInstanceUpdateEvent
 		for _, instanceEvent := range resp.GetEvents() {
-			jobInstanceUpdateEvent, err := ptoa.NewJobInstanceUpdateEvent(input.(uint32), instanceEvent)
+			jobInstanceUpdateEvent, err := ptoa.NewJobInstanceUpdateEvent(
+				input.(uint32),
+				instanceEvent,
+				d)
 			if err != nil {
 				return nil, err
 			}

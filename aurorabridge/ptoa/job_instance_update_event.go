@@ -20,6 +20,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/aurorabridge/opaquedata"
 	"go.uber.org/thriftrw/ptr"
 )
 
@@ -28,9 +29,10 @@ import (
 func NewJobInstanceUpdateEvent(
 	instanceID uint32,
 	e *stateless.WorkflowEvent,
+	d *opaquedata.Data,
 ) (*api.JobInstanceUpdateEvent, error) {
 
-	jobUpdateAction, err := NewJobUpdateAction(e.GetState())
+	jobUpdateAction, err := NewJobUpdateAction(e.GetState(), d)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get job update action for instance update event %s", err)
 	}
