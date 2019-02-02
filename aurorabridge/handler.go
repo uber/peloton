@@ -769,6 +769,17 @@ func (h *ServiceHandler) startJobUpdate(
 		return nil, auroraErrorf("new job spec: %s", err)
 	}
 
+	d := &opaquedata.Data{
+		UpdateID: uuid.New(),
+	}
+	if request.GetSettings().GetBlockIfNoPulsesAfterMs() > 0 {
+		d.AppendUpdateAction(opaquedata.StartPulsed)
+	}
+	od, err := d.Serialize()
+	if err != nil {
+		return nil, auroraErrorf("serialize opaque data: %s", err)
+	}
+
 	// TODO(codyg): We'll use the new job's entity version as the update id.
 	// Not sure if this will work.
 	var newVersion *peloton.EntityVersion
@@ -778,7 +789,9 @@ func (h *ServiceHandler) startJobUpdate(
 		if yarpcerrors.IsNotFound(err) {
 			// Job does not exist. Create it.
 			req := &statelesssvc.CreateJobRequest{
-				Spec: jobSpec,
+				Spec:       jobSpec,
+				CreateSpec: atop.NewCreateSpec(request.GetSettings()),
+				OpaqueData: od,
 			}
 			resp, err := h.jobClient.CreateJob(ctx, req)
 			if err != nil {
@@ -799,17 +812,6 @@ func (h *ServiceHandler) startJobUpdate(
 		v, err := h.getCurrentJobVersion(ctx, id)
 		if err != nil {
 			return nil, auroraErrorf("get current job version: %s", err)
-		}
-
-		d := &opaquedata.Data{
-			UpdateID: uuid.New(),
-		}
-		if request.GetSettings().GetBlockIfNoPulsesAfterMs() > 0 {
-			d.AppendUpdateAction(opaquedata.StartPulsed)
-		}
-		od, err := d.Serialize()
-		if err != nil {
-			return nil, auroraErrorf("serialize opaque data: %s", err)
 		}
 
 		req := &statelesssvc.ReplaceJobRequest{
