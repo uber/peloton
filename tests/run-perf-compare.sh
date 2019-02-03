@@ -78,7 +78,7 @@ tools/vcluster/main.py \
   ${VCLUSTER_ARGS} \
   setup \
   -s ${NUM_SLAVES} \
-  -v ${PELOTON_IMAGE_BASELINE}
+  -i ${PELOTON_IMAGE_BASELINE}
 RC=0
 tests/performance/multi_benchmark.py \
   -i "CONF_${vcluster_name}" \
