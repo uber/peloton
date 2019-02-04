@@ -1060,11 +1060,7 @@ func (h *ServiceHandler) rollbackJobUpdate(
 	// Never rollback a rollback.
 	updateSpec.RollbackOnFailure = false
 
-	// If the update is currently in paused state, the rollback update must start
-	// in a paused state.
-	updateSpec.StartPaused =
-		status == api.JobUpdateStatusRollForwardPaused ||
-			status == api.JobUpdateStatusRollForwardAwaitingPulse
+	updateSpec.StartPaused = status == api.JobUpdateStatusRollForwardAwaitingPulse
 
 	req := &statelesssvc.ReplaceJobRequest{
 		JobId:   id,
