@@ -33,7 +33,11 @@ from performance_test_client import (
 # second item shows the corresponding csv file structure.
 PERF_TEST_CONDUCTED = [('JOB_CREATE', '_job_create.csv'),
                        ('JOB_GET', '_job_get.csv'),
-                       ('JOB_UPDATE', '_job_update.csv')]
+                       ('JOB_UPDATE', '_job_update.csv'),
+                       ('JOB_STATELESS_CREATE', '_job_stateless_create.csv'),
+                       ('JOB_STATELESS_UPDATE', '_job_stateless_update.csv'),
+                       ('JOB_PARALLEL_STATELESS_UPDATE',
+                        '_job_parallel_stateless_update.csv')]
 
 NUM_TASKS = [10000, 50000]
 SLEEP_TIME_SEC = [10, 60]
@@ -116,10 +120,11 @@ def main():
         for sleep_time in SLEEP_TIME_SEC:
             for instance_config in USE_INSTANCE_CONFIG:
                 try:
-                    job_id = pf_client.create_job(
-                        num_tasks, sleep_time, instance_config,
-                    )
-                    succeeded, start, completion = pf_client.monitoring(job_id)
+                    job = pf_client.get_batch_job()
+                    pf_client.create_job(job, num_tasks,
+                                         instance_config, sleep_time)
+                    succeeded, start, completion = \
+                        pf_client.monitoring_job(job)
                 except Exception as e:
                     msg = "TaskNum %s && SleepTime %s && InstanceConfig %s" % (
                         num_tasks, sleep_time, instance_config)
@@ -184,6 +189,22 @@ def main():
     if update_df is not None:
         update_df.to_csv(output_csv_files_list[2], sep='\t')
 
+    # create one large stateless job (uses 90% of capacity)
+    create_df = t.perf_test_stateless_job_create()
+    if create_df is not None:
+        create_df.to_csv(output_csv_files_list[3], sep='\t')
+
+    # update one large stateless job (uses 90% of capacity)
+    update_df = t.perf_test_stateless_job_update()
+    if update_df is not None:
+        update_df.to_csv(output_csv_files_list[4], sep='\t')
+
+    # update multiple smaller stateless jobs in parallel
+    # (total use 90% of capacity)
+    pupdate_df = t.perf_test_stateless_parallel_updates()
+    if pupdate_df is not None:
+        pupdate_df.to_csv(output_csv_files_list[5], sep='\t')
+
 
 class perfCounter():
     def __init__(self):
@@ -195,6 +216,20 @@ class perfCounter():
             return
         with self.lock:
             self.counter[key] += 1
+
+    def get(self):
+        with self.lock:
+            return self.counter
+
+
+class completionCounter():
+    def __init__(self):
+        self.counter = 0
+        self.lock = threading.Lock()
+
+    def inc(self, value):
+        with self.lock:
+            self.counter += value
 
     def get(self):
         with self.lock:
@@ -223,8 +258,9 @@ class PerformanceTest ():
         """
         total_time_in_seconds = 0
         try:
-            job_id = self.client.create_job(
-                num_start_tasks, 120, use_instance_config)
+            job = self.client.get_batch_job()
+            self.client.create_job(job, num_start_tasks,
+                                   use_instance_config, 120)
         except Exception as e:
             msg = "Num_start_tasks %s && SleepTime %s && InstanceConfig %s" % (
                 num_start_tasks, sleep_time, use_instance_config)
@@ -232,7 +268,8 @@ class PerformanceTest ():
             return
         for counter in xrange(num_increment):
             try:
-                self.client.update_job(job_id, tasks_inc, use_instance_config,
+                self.client.update_job(job, tasks_inc, 0,
+                                       use_instance_config,
                                        sleep_time)
             except Exception as e:
                 msg = "NumStartTasks %s && TasksInc %s && NumIncrement %s" % (
@@ -241,7 +278,7 @@ class PerformanceTest ():
                     e, msg)
                 return
 
-        succeed, start, completion = self.client.monitoring(job_id)
+        succeed, start, completion = self.client.monitoring_job(job)
         if succeed:
             total_time_in_seconds = completion
 
@@ -260,6 +297,164 @@ class PerformanceTest ():
                      'UseInsConf', 'TotalTimeInSeconds']
         )
         print('Test Update')
+        print(df)
+        return df
+
+    def perf_test_stateless_job_create(self, num_tasks=9000, sleep_time=1000):
+        """
+        perf_test_stateless_job_create is used to test creating a stateless
+        job. The test creates one job with num_tasks and measures the time
+        it takes for all tasks to become RUNNING. It should be run to
+        consume no more than 90% of the respool capacity.
+        """
+        total_time_in_seconds = 0
+        try:
+            job = self.client.get_stateless_job()
+            self.client.create_job(job, num_tasks, False, sleep_time)
+        except Exception as e:
+            msg = "Num_start_tasks %s && SleepTime %s" % (
+                num_tasks, sleep_time)
+            print "test_job_stateless_create: create job failed: " \
+                  "%s (%s)" % (e, msg)
+            return
+
+        succeed, _, completion = self.client.monitoring_job(job)
+        if succeed:
+            total_time_in_seconds = completion
+
+        try:
+            self.client.stop_job(job, wait_for_kill=True)
+        except Exception as e:
+            msg = "Num_start_tasks %s && SleepTime %s" % (
+                num_tasks, sleep_time)
+            print "test_job_stateless_create: stop job failed: " \
+                  "%s (%s)" % (e, msg)
+            return
+
+        record = [{
+            'NumStartTasks': num_tasks,
+            'Sleep(s)': sleep_time,
+            'TotalTimeInSeconds': total_time_in_seconds,
+        }]
+        df = pd.DataFrame(
+            record,
+            columns=['NumStartTasks', 'Sleep(s)', 'TotalTimeInSeconds']
+        )
+        print('Test StatelessCreate')
+        print(df)
+        return df
+
+    def perf_test_stateless_job_update(self, num_tasks=9000,
+                                       batch_size=9000, sleep_time=1000):
+        """
+        perf_test_stateless_job_update is used to test updating a stateless
+        job. The test creates one job with num_tasks and measures the time
+        it takes to update all tasks to a new version. It should be run to
+        consume no more than 90% of the respool capacity.
+        """
+        total_time_in_seconds = 0
+        try:
+            job = self.client.get_stateless_job()
+            self.client.create_job(job, num_tasks, False, sleep_time - 100)
+        except Exception as e:
+            msg = "Num_start_tasks %s && SleepTime %s" % (
+                num_tasks, sleep_time)
+            print "test_job_stateless_update: create job failed: " \
+                "%s (%s)" % (e, msg)
+            return
+
+        succeed, _, _ = self.client.monitoring_job(job)
+        if succeed is False:
+            print "test_job_stateless_update: job failed to start"
+            return
+
+        try:
+            self.client.update_job(
+                job, 0, batch_size, False, sleep_time)
+        except Exception as e:
+            msg = "Num_tasks %s && SleepTime %s && BatchSize %s" % (
+                num_tasks, sleep_time, batch_size)
+            print "test_job_stateless_update: update job failed: %s (%s)" % (
+                e, msg)
+            return
+
+        succeed, _, completion = self.client.monitoring_job(job)
+        if succeed:
+            total_time_in_seconds = completion
+
+        try:
+            self.client.stop_job(job, wait_for_kill=True)
+        except Exception as e:
+            msg = "Num_start_tasks %s && SleepTime %s" % (
+                num_tasks, sleep_time)
+            print "test_job_stateless_create: stop job failed: " \
+                "%s (%s)" % (e, msg)
+            return
+
+        record = [{
+            'NumStartTasks': num_tasks,
+            'Sleep(s)': sleep_time,
+            'BatchSize': batch_size,
+            'TotalTimeInSeconds': total_time_in_seconds,
+        }]
+        df = pd.DataFrame(
+            record,
+            columns=['NumStartTasks', 'Sleep(s)', 'BatchSize',
+                     'TotalTimeInSeconds']
+        )
+        print('Test StatelessUpdate')
+        print(df)
+        return df
+
+    def perf_test_stateless_parallel_updates(self, num_jobs=100, num_tasks=90,
+                                             batch_size=10, sleep_time=1000):
+        """
+        perf_test_stateless_parallel_updates is used to test updating
+        num_jobs number of stateless job in parallel. Each job has num_tasks,
+        and the test measures the average completion time for updating
+        each job using batch_size as the update batch size. It should be run
+        to consume no more than 90% of the respool capacity.
+        """
+        counter = completionCounter()
+        failure_counter = completionCounter()
+        threads = []
+
+        # Create a thread to create and update one job
+        for i in range(num_jobs):
+            t = statelessUpdateWorker(i, self.client, counter, failure_counter,
+                                      num_tasks=num_tasks,
+                                      batch_size=batch_size,
+                                      sleep_time=sleep_time)
+            threads.append(t)
+
+        # Start all threads
+        for t in threads:
+            t.start()
+
+        for t in threads:
+            t.join()
+
+        failure_count = failure_counter.get()
+        if failure_count > 0:
+            msg = "statelessUpdateWorkers failed %s" % (failure_count)
+            print "perf_test_stateless_parallel_updates: update parallel " \
+                  "jobs failed: (%s)" % (msg)
+            return
+
+        average_time_in_seconds = counter.get()/num_jobs
+        record = [{
+            'NumJobs': num_jobs,
+            'NumStartTasks': num_tasks,
+            'Sleep(s)': sleep_time,
+            'BatchSize': batch_size,
+            'AverageTimeInSeconds': average_time_in_seconds,
+        }]
+        df = pd.DataFrame(
+            record,
+            columns=['NumJobs', 'NumStartTasks', 'Sleep(s)', 'BatchSize',
+                     'AverageTimeInSeconds']
+        )
+        print('Test ParallelStatelessUpdate')
         print(df)
         return df
 
@@ -282,8 +477,9 @@ class PerformanceTest ():
 
         if get_only:
             try:
-                job_id = self.client.create_job(
-                    num_tasks, sleep_time, use_instance_config)
+                job = self.client.get_batch_job()
+                self.client.create_job(job, num_tasks,
+                                       use_instance_config, sleep_time)
                 self.counter.inc('CREATE')
             except Exception as e:
                 msg = "TaskNum %s && SleepTime %s && InstanceConfig %s" % (
@@ -293,11 +489,11 @@ class PerformanceTest ():
                 self.counter.inc('CREATEFAILS')
                 return
         else:
-            job_id = None
+            job = None
 
         for i in xrange(num_threads):
             t = jobWorker(self.client, num_tasks, jobs_per_thread, stopper,
-                          use_instance_config, job_id, sleep_time,
+                          use_instance_config, job, sleep_time,
                           self.counter)
             threads.append(t)
 
@@ -339,6 +535,70 @@ class PerformanceTest ():
         return df
 
 
+class statelessUpdateWorker(threading.Thread):
+    """
+    statelessUpdateWorker is a worker class which creates a
+    new job and then updates it to a new version
+    """
+
+    def __init__(self, index, client, counter, failure_counter,
+                 num_tasks=10000, batch_size=10000, sleep_time=1000):
+        threading.Thread.__init__(self)
+        self.index = index
+        self.client = client
+        self.counter = counter
+        self.failure_counter = failure_counter
+        self.num_tasks = num_tasks
+        self.batch_size = batch_size
+        self.sleep_time = sleep_time
+
+    def run(self):
+        total_time_in_seconds = 0
+        try:
+            job = self.client.get_stateless_job()
+            self.client.create_job(job, self.num_tasks, False,
+                                   self.sleep_time - 100)
+        except Exception as e:
+            msg = "index %s" % (self.index)
+            print "statelessUpdateWorker: create job failed: %s (%s)" % (
+                e, msg)
+            self.failure_counter.inc(1)
+            return
+
+        succeed, _, _ = self.client.monitoring_job(job)
+        if succeed is False:
+            msg = "index %s" % (self.index)
+            print "statelessUpdateWorker: job failed to start: %s" % (msg)
+            self.failure_counter.inc(1)
+            return
+
+        try:
+            self.client.update_job(job, 0, self.batch_size,
+                                   False, self.sleep_time)
+        except Exception as e:
+            msg = "index %s && BatchSize %s" % (
+                self.index, self.batch_size)
+            print "statelessUpdateWorker: update job failed: %s (%s)" % (
+                e, msg)
+            self.failure_counter.inc(1)
+            return
+
+        succeed, _, completion = self.client.monitoring_job(job)
+        if succeed:
+            total_time_in_seconds = completion
+
+        try:
+            self.client.stop_job(job, wait_for_kill=True)
+        except Exception as e:
+            msg = "index %s" % (self.index)
+            print "statelessUpdateWorker: stop job failed: %s (%s)" % (e, msg)
+            self.failure_counter.inc(1)
+            return
+
+        self.counter.inc(total_time_in_seconds)
+        return
+
+
 class jobWorker (threading.Thread):
     """
     jobWorker is a worker class that can be used to perform job.Create() and
@@ -347,7 +607,7 @@ class jobWorker (threading.Thread):
 
     def __init__(
             self, client, num_tasks, jobs_per_thread, stopper,
-            use_instance_config=False, job_id=None, sleep_time=10,
+            use_instance_config=False, job=None, sleep_time=10,
             counter=None):
         threading.Thread.__init__(self)
         self.client = client
@@ -355,21 +615,22 @@ class jobWorker (threading.Thread):
         self.jobs_per_thread = jobs_per_thread
         self.stopper = stopper
         self.use_instance_config = use_instance_config
-        self.job_id = job_id
+        self.job = job
         self.sleep_time = sleep_time
         self.counter = counter
 
     def run(self):
-        job_ids = []
-        if self.job_id is None:
+        jobs = []
+        if self.job is None:
             # create job then run job.Get()
             for i in xrange(self.jobs_per_thread):
                 try:
-                    job_id = self.client.create_job(
-                        self.num_tasks, self.sleep_time,
-                        self.use_instance_config)
+                    job = self.client.get_batch_job()
+                    self.client.create_job(
+                        job, self.num_tasks,
+                        self.use_instance_config, self.sleep_time)
                     self.counter.inc('CREATE')
-                    job_ids.append(job_id)
+                    jobs.append(job)
                 except Exception as e:
                     msg = "TaskNum=%s && SleepTime %s && InstanceConfig %s" % (
                         self.num_tasks, self.sleep_time,
@@ -379,19 +640,19 @@ class jobWorker (threading.Thread):
                     return
         else:
             # job is already created
-            job_ids.append(self.job_id)
+            jobs.append(self.job)
 
         # do as many job gets as possible until thread is explictly stopped
         while not self.stopper.is_set():
-            for job_id in job_ids:
+            for job in jobs:
                 try:
-                    self.client.get_job_info(job_id)
+                    self.client.get_job_info(job)
                     self.counter.inc('GET')
                 except Exception:
                     self.counter.inc('GETFAILS')
         # cleanup this job
-        for job_id in job_ids:
-            self.client.stop_job(job_id)
+        for job in jobs:
+            self.client.stop_job(job)
 
 
 if __name__ == "__main__":
