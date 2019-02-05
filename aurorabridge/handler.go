@@ -770,7 +770,8 @@ func (h *ServiceHandler) startJobUpdate(
 	}
 
 	d := &opaquedata.Data{
-		UpdateID: uuid.New(),
+		UpdateID:       uuid.New(),
+		UpdateMetadata: request.GetMetadata(),
 	}
 	if request.GetSettings().GetBlockIfNoPulsesAfterMs() > 0 {
 		d.AppendUpdateAction(opaquedata.StartPulsed)

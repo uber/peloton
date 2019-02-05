@@ -5,7 +5,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/thriftrw/ptr"
+
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
 )
 
 func TestSerializeAndDeserializeData(t *testing.T) {
@@ -14,6 +17,10 @@ func TestSerializeAndDeserializeData(t *testing.T) {
 		UpdateActions: []UpdateAction{
 			StartPulsed,
 			Pulse,
+		},
+		UpdateMetadata: []*api.Metadata{
+			{Key: ptr.String("some key"), Value: ptr.String("some value")},
+			{Key: ptr.String("another key"), Value: ptr.String("another value")},
 		},
 	}
 	od, err := input.Serialize()

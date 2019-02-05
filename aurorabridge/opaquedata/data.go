@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
 )
 
 // UpdateAction is an Aurora update action which has no equivalent in Peloton.
@@ -27,8 +28,9 @@ const (
 // be used when converting Peloton objects into Aurora objects to reconstruct
 // Aurora states which do not exist in Peloton.
 type Data struct {
-	UpdateID      string         `json:"update_id"`
-	UpdateActions []UpdateAction `json:"update_actions"`
+	UpdateID       string          `json:"update_id,omitempty"`
+	UpdateActions  []UpdateAction  `json:"update_actions,omitempty"`
+	UpdateMetadata []*api.Metadata `json:"update_metadata,omitempty"`
 }
 
 // AppendUpdateAction appends a to d's update actions.

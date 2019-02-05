@@ -20,7 +20,6 @@ import (
 
 	"go.uber.org/thriftrw/ptr"
 
-	"github.com/pkg/errors"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 	"github.com/uber/peloton/aurorabridge/opaquedata"
@@ -28,55 +27,55 @@ import (
 
 // NewJobUpdateSummary creates a new aurora job update summary using update info.
 func NewJobUpdateSummary(
-	jobKey *api.JobKey,
-	u *stateless.WorkflowInfo,
+	k *api.JobKey,
+	w *stateless.WorkflowInfo,
 ) (*api.JobUpdateSummary, error) {
-	var createTime int64
-	var lastModifiedTime int64
 
-	d, err := opaquedata.Deserialize(u.GetOpaqueData())
+	d, err := opaquedata.Deserialize(w.GetOpaqueData())
 	if err != nil {
 		return nil, fmt.Errorf("deserialize opaque data: %s", err)
 	}
 
-	aState, err := NewJobUpdateStatus(u.GetStatus().GetState(), d)
+	status, err := NewJobUpdateStatus(w.GetStatus().GetState(), d)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new job update status: %s", err)
 	}
 
-	events := u.GetEvents()
-	eventsLen := len(u.GetEvents())
-	if eventsLen > 0 {
-		cTime, err := time.Parse(time.RFC3339, events[0].GetTimestamp())
+	var createTime int64
+	var lastModifiedTime int64
+	numEvents := len(w.GetEvents())
+	if numEvents > 0 {
+		createTime, err = getTimestampMs(w.GetEvents()[0])
 		if err != nil {
-			return nil, errors.Wrapf(err, "unable to parse for create timestamp: %s", events[0].GetTimestamp())
+			return nil, err
 		}
-		createTime = cTime.UnixNano() / int64(time.Millisecond)
 		lastModifiedTime = createTime
 	}
-	if eventsLen > 1 {
-		mTime, err := time.Parse(time.RFC3339, events[eventsLen-1].GetTimestamp())
+	if numEvents > 1 {
+		lastModifiedTime, err = getTimestampMs(w.GetEvents()[numEvents-1])
 		if err != nil {
-			return nil, errors.Wrapf(err, "unable to parse for modified timestamp: %s", events[1].GetTimestamp())
+			return nil, err
 		}
-		lastModifiedTime = mTime.UnixNano() / int64(time.Millisecond)
 	}
 
 	return &api.JobUpdateSummary{
 		Key: &api.JobUpdateKey{
-			Job: &api.JobKey{
-				Role:        ptr.String(jobKey.GetRole()),
-				Environment: ptr.String(jobKey.GetEnvironment()),
-				Name:        ptr.String(jobKey.GetName()),
-			},
-			ID: ptr.String(d.UpdateID),
+			Job: k,
+			ID:  ptr.String(d.UpdateID),
 		},
-		User: nil,
 		State: &api.JobUpdateState{
-			Status:                  &aState,
+			Status:                  &status,
 			CreatedTimestampMs:      &createTime,
 			LastModifiedTimestampMs: &lastModifiedTime,
 		},
-		Metadata: nil, // TODO: convert opaque data to array to metadata(key-value pair)
+		Metadata: d.UpdateMetadata,
 	}, nil
+}
+
+func getTimestampMs(e *stateless.WorkflowEvent) (int64, error) {
+	t, err := time.Parse(time.RFC3339, e.GetTimestamp())
+	if err != nil {
+		return 0, fmt.Errorf("parse timestamp: %s", err)
+	}
+	return t.UnixNano() / int64(time.Millisecond), nil
 }
