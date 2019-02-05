@@ -227,6 +227,11 @@ message RuntimeInfo
 
   // The desired state version that should be used by the runtime.
   uint64 desiredStateVersion = 14;
+
+  // The number of tasks grouped by which configuration version they are on.
+  // The map key is the job configuration version and the map value is the
+  // number of tasks using that particular job configuration version.
+  map<uint64, uint32> taskConfigVersionStats = 15;
 }
 
 /**

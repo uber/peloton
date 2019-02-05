@@ -728,13 +728,19 @@ func (suite *JobTestSuite) TestJobUpdateConfigIncorectChangeLog() {
 // TestJobUpdateRuntimeAndConfig tests update both runtime
 // and config at the same time
 func (suite *JobTestSuite) TestJobUpdateRuntimeAndConfig() {
+	instanceCount := uint32(10)
+	configVersion := uint64(1)
+	configVersionStats := make(map[uint64]uint32)
+	configVersionStats[configVersion] = instanceCount
+
 	jobRuntime := &pbjob.RuntimeInfo{
-		State:     pbjob.JobState_RUNNING,
-		GoalState: pbjob.JobState_SUCCEEDED,
+		State:                  pbjob.JobState_RUNNING,
+		GoalState:              pbjob.JobState_SUCCEEDED,
+		TaskConfigVersionStats: configVersionStats,
 	}
 
 	jobConfig := &pbjob.JobConfig{
-		InstanceCount: 10,
+		InstanceCount: instanceCount,
 		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 		ChangeLog:     &peloton.ChangeLog{Version: 1},
 	}
@@ -749,7 +755,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndConfig() {
 				UpdatedAt: uint64(time.Now().UnixNano()),
 				Version:   1,
 			},
-			ConfigurationVersion: 1,
+			ConfigurationVersion: configVersion,
 		}, nil)
 
 	suite.jobStore.EXPECT().
@@ -781,7 +787,9 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndConfig() {
 	suite.checkListeners()
 	suite.Equal(suite.job.runtime.State, jobRuntime.State)
 	suite.Equal(suite.job.runtime.GoalState, jobRuntime.GoalState)
-	suite.Equal(suite.job.config.instanceCount, jobConfig.InstanceCount)
+	suite.Equal(suite.job.config.instanceCount, instanceCount)
+	suite.Equal(len(suite.job.runtime.TaskConfigVersionStats), 1)
+	suite.Equal(suite.job.runtime.TaskConfigVersionStats[configVersion], instanceCount)
 }
 
 // Test the case job update config when there is no config in cache,

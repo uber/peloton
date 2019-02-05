@@ -385,6 +385,7 @@ func ConvertRuntimeInfoToJobStatus(
 	updateInfo *models.UpdateModel,
 ) *stateless.JobStatus {
 	result := &stateless.JobStatus{}
+	podConfigVersionStats := make(map[string]uint32)
 	result.Revision = &v1alphapeloton.Revision{
 		Version:   runtime.GetRevision().GetVersion(),
 		CreatedAt: runtime.GetRevision().GetCreatedAt(),
@@ -401,6 +402,16 @@ func ConvertRuntimeInfoToJobStatus(
 		runtime.GetWorkflowVersion(),
 	)
 	result.WorkflowStatus = ConvertUpdateModelToWorkflowStatus(updateInfo)
+
+	for configVersion, taskStats := range runtime.GetTaskConfigVersionStats() {
+		entityVersion := jobutil.GetJobEntityVersion(
+			configVersion,
+			runtime.GetDesiredStateVersion(),
+			runtime.GetWorkflowVersion(),
+		)
+		podConfigVersionStats[entityVersion.GetValue()] = taskStats
+	}
+	result.PodConfigurationVersionStats = podConfigVersionStats
 	return result
 }
 

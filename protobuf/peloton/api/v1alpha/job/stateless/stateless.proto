@@ -226,6 +226,13 @@ message JobStatus
 
   // Status of ongoing update/restart workflow.
   WorkflowStatus workflow_status = 7;
+
+  // The number of tasks grouped by which configuration version they are on.
+  // The map key is the job configuration version and the map value is the
+  // number of tasks using that particular job configuration version.
+  // The job configuration version in the map key can be fed as the value of
+  // the entity version in the GetJobRequest to fetch the job configuration.
+  map<string, uint32> pod_configuration_version_stats = 8;
 }
 
 // Information of a job, such as job spec and status

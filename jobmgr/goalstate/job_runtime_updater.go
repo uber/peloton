@@ -407,27 +407,33 @@ func getTransitionType(newState, oldState job.JobState) transitionType {
 	return transitionTypeActiveActive
 }
 
-// determineJobRuntimeState determines the job state based on current
+// determineJobRuntimeStateAndCounts determines the job state based on current
 // job runtime state and task state counts.
+// For stateless jobs, it computes the config version stats and the
+// task state counts from the cache.
 // This function is not expected to be called when
 // totalInstanceCount < config.GetInstanceCount.
 // UNKNOWN state would be returned if no enough info is presented in
 // cache. Caller should retry later after cache is filled in.
-func determineJobRuntimeState(
+func determineJobRuntimeStateAndCounts(
 	ctx context.Context,
 	jobRuntime *job.RuntimeInfo,
 	stateCounts map[string]uint32,
 	config jobmgrcommon.JobConfig,
 	goalStateDriver *driver,
-	cachedJob cached.Job) (job.JobState, map[string]uint32, transitionType,
+	cachedJob cached.Job,
+) (job.JobState, map[string]uint32, map[uint64]uint32, transitionType,
 	error) {
+	var configVersionCounts map[uint64]uint32
+
 	prevState := jobRuntime.GetState()
 	jobStateDeterminer := jobStateDeterminerFactory(
 		jobRuntime, stateCounts, cachedJob, config)
 	jobState, err := jobStateDeterminer.getState(ctx, jobRuntime)
 	currStateCounts := stateCounts
+
 	if err != nil {
-		return job.JobState_UNKNOWN, nil, transitionTypeUnknown, err
+		return job.JobState_UNKNOWN, nil, nil, transitionTypeUnknown, err
 	}
 
 	// Check if a batch job is active for a very long time which may indicate
@@ -440,8 +446,16 @@ func determineJobRuntimeState(
 		config.GetType(),
 		jobState,
 		goalStateDriver.jobRuntimeCalculationViaCache) {
-		jobState, currStateCounts, err = recalculateJobStateFromCache(
-			ctx, jobRuntime, cachedJob, jobState, stateCounts, config)
+		jobState, currStateCounts, configVersionCounts, err =
+			recalculateJobStateAndCountsFromCache(
+				ctx,
+				jobRuntime,
+				config.GetType(),
+				cachedJob,
+				jobState,
+				stateCounts,
+				config,
+			)
 		goalStateDriver.mtx.jobMetrics.JobRecalculateFromCache.Inc(1)
 	}
 
@@ -454,7 +468,7 @@ func determineJobRuntimeState(
 		goalStateDriver.mtx.jobMetrics.JobKilled.Inc(1)
 
 	}
-	return jobState, currStateCounts, getTransitionType(jobState,
+	return jobState, currStateCounts, configVersionCounts, getTransitionType(jobState,
 		prevState), nil
 }
 
@@ -523,11 +537,12 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 			Debug("total instance count is greater than expected")
 	}
 
-	// determineJobRuntimeState would handle both
+	// determineJobRuntimeStateAndCounts would handle both
 	// totalInstanceCount > config.GetInstanceCount() and
 	// partially created job
-	jobState, currStateCounts, transition, err := determineJobRuntimeState(
-		ctx, jobRuntime, stateCounts, config, goalStateDriver, cachedJob)
+	jobState, currStateCounts, configVersionCounts, transition, err :=
+		determineJobRuntimeStateAndCounts(
+			ctx, jobRuntime, stateCounts, config, goalStateDriver, cachedJob)
 	if err != nil {
 		return err
 	}
@@ -560,6 +575,10 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	jobRuntimeUpdate.TaskStats = currStateCounts
 
 	jobRuntimeUpdate.ResourceUsage = cachedJob.GetResourceUsage()
+
+	if len(configVersionCounts) > 0 {
+		jobRuntimeUpdate.TaskConfigVersionStats = configVersionCounts
+	}
 
 	// add to active jobs list BEFORE writing state to job runtime table.
 	// Also write to active jobs list only when the job is being transitioned
@@ -656,36 +675,46 @@ func setCompletionTime(
 	return jobRuntimeUpdate
 }
 
-// recalculateJobStateFromCache gets the state counts from cached tasks instead
-// of materialized view. We don't do this all the time because this requires
-// walking through the list of ALL tasks of the job one by one and in acquiring
-// the lock for each task once when fetching the current state. It is not
-// desirable to do this all the time because this has potential to slow down
-// event handling for these tasks.
-func recalculateJobStateFromCache(
+// recalculateJobStateAndCountsFromCache gets the state counts and the config
+// version counts from cached tasks. This requires walking through the list of
+// ALL tasks of the job one by one and fetching the current state and config version.
+func recalculateJobStateAndCountsFromCache(
 	ctx context.Context,
 	jobRuntime *job.RuntimeInfo,
+	jobType job.JobType,
 	cachedJob cached.Job,
 	jobState job.JobState,
 	stateCounts map[string]uint32,
-	config jobmgrcommon.JobConfig) (job.JobState, map[string]uint32, error) {
+	config jobmgrcommon.JobConfig,
+) (job.JobState, map[string]uint32, map[uint64]uint32, error) {
 
 	tasks := cachedJob.GetAllTasks()
 	stateCountsFromCache := make(map[string]uint32)
+	configVersionCounts := make(map[uint64]uint32)
 	// initialize the stateCounts, mark each task state count to be zero
 	for _, taskStatus := range allTaskStates {
 		stateCountsFromCache[taskStatus.String()] = 0
 	}
 	for _, task := range tasks {
+		// update the state count map
 		state := task.CurrentState().State.String()
 		stateCountsFromCache[state]++
+
+		// update the configuration version map for stateless jobs
+		if jobType == job.JobType_SERVICE {
+			runtime, err := task.GetRunTime(ctx)
+			if err != nil {
+				return job.JobState_UNKNOWN, nil, nil, err
+			}
+			configVersionCounts[runtime.GetConfigVersion()]++
+		}
 	}
 
 	// in case we have a task with state unknown, it means that the task was not
 	// present in cache. In this case, return the original state
 	if _, ok := stateCountsFromCache[task.TaskState_UNKNOWN.String()]; ok {
 		if stateCountsFromCache[task.TaskState_UNKNOWN.String()] > 0 {
-			return jobState, stateCounts, nil
+			return jobState, stateCounts, configVersionCounts, nil
 		}
 	}
 
@@ -693,7 +722,7 @@ func recalculateJobStateFromCache(
 	jobStateDeterminer := jobStateDeterminerFactory(
 		jobRuntime, stateCountsFromCache, cachedJob, config)
 	jobState, err := jobStateDeterminer.getState(ctx, jobRuntime)
-	return jobState, stateCountsFromCache, err
+	return jobState, stateCountsFromCache, configVersionCounts, err
 }
 
 // shouldRecalculateJobStateFromCache is true if the job state needs to be recalculated
@@ -702,6 +731,11 @@ func shouldRecalculateJobStateFromCache(
 	jobType job.JobType,
 	jobState job.JobState,
 	forceRecalculateFromCache bool) bool {
+
+	if jobType == job.JobType_SERVICE {
+		// always compute from cache for stateless services
+		return true
+	}
 
 	// no job runtime recalculation for batch jobs in terminal state
 	if jobType == job.JobType_BATCH && util.IsPelotonJobStateTerminal(

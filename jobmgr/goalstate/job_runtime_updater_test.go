@@ -1129,7 +1129,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PendingJobWithMor
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_SERVICE)
+		Return(pbjob.JobType_BATCH)
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -1143,6 +1143,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PendingJobWithMor
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
 		Return(startTimeUnix)
+
+	suite.cachedJob.EXPECT().
+		GetLastTaskUpdateTime().
+		Return(suite.lastUpdateTs)
 
 	suite.cachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
@@ -1647,7 +1651,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInsta
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_SERVICE)
+		Return(pbjob.JobType_BATCH)
 
 	suite.cachedJob.EXPECT().
 		IsPartiallyCreated(gomock.Any()).
@@ -1657,6 +1661,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInsta
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
 		Return(startTimeUnix)
+
+	suite.cachedJob.EXPECT().
+		GetLastTaskUpdateTime().
+		Return(suite.lastUpdateTs)
 
 	suite.cachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
@@ -1718,7 +1726,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeStateStaleJob() 
 		Return(float64(time.Now().AddDate(0, 0, -5).Second())).AnyTimes()
 	suite.cachedJob.EXPECT().ID().Return(
 		&peloton.JobID{Value: uuid.New()}).Times(2)
-	jobState, currentStateCounts, _, err := determineJobRuntimeState(
+	jobState, currentStateCounts, _, _, err := determineJobRuntimeStateAndCounts(
 		context.Background(), jobRuntime, stateCounts, suite.cachedConfig,
 		suite.goalStateDriver, suite.cachedJob)
 	suite.NoError(err)
@@ -1734,7 +1742,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeStateStaleJob() 
 		})
 	}
 
-	jobState, currentStateCounts, _, err = determineJobRuntimeState(
+	jobState, currentStateCounts, _, _, err = determineJobRuntimeStateAndCounts(
 		context.Background(), jobRuntime, stateCounts, suite.cachedConfig,
 		suite.goalStateDriver, suite.cachedJob)
 	suite.NoError(err)
@@ -1779,7 +1787,6 @@ func (suite *JobRuntimeUpdaterTestSuite) determineJobRuntimeHelper(flag bool) {
 	jobRuntime := &pbjob.RuntimeInfo{
 		State: pbjob.JobState_KILLED,
 	}
-	suite.cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH).Times(1)
 	if flag {
 		cachedTasks := make(map[uint32]cached.Task)
 		mockTasks := make(map[uint32]*cachedmocks.MockTask)
@@ -1795,10 +1802,12 @@ func (suite *JobRuntimeUpdaterTestSuite) determineJobRuntimeHelper(flag bool) {
 				State: pbtask.TaskState_KILLED,
 			})
 		}
+		suite.cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH).Times(2)
 		suite.cachedJob.EXPECT().GetAllTasks().Return(cachedTasks)
 		suite.cachedConfig.EXPECT().GetInstanceCount().
 			Return(instanceCount).Times(4)
 	} else {
+		suite.cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH).Times(1)
 		suite.cachedConfig.EXPECT().GetInstanceCount().
 			Return(instanceCount).Times(2)
 	}
@@ -1806,7 +1815,7 @@ func (suite *JobRuntimeUpdaterTestSuite) determineJobRuntimeHelper(flag bool) {
 	suite.cachedJob.EXPECT().IsPartiallyCreated(false).AnyTimes()
 	suite.cachedJob.EXPECT().GetLastTaskUpdateTime().
 		Return(suite.lastUpdateTs).Times(1)
-	jobState, currentStateCounts, _, err := determineJobRuntimeState(
+	jobState, currentStateCounts, _, _, err := determineJobRuntimeStateAndCounts(
 		context.Background(), jobRuntime, stateCounts, suite.cachedConfig,
 		suite.goalStateDriver, suite.cachedJob)
 	suite.NoError(err)
@@ -1820,13 +1829,12 @@ func (suite *JobRuntimeUpdaterTestSuite) determineJobRuntimeHelper(flag bool) {
 	}
 }
 
-// TestDetermineJobRuntimeState tests determining JobRuntimeState
-func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
+// TestDetermineBatchJobRuntimeState tests determining JobRuntimeState for batch jobs
+func (suite *JobRuntimeUpdaterTestSuite) TestDetermineBatchJobRuntimeState() {
 	var instanceCount uint32 = 100
 	tests := []struct {
 		stateCounts             map[string]uint32
 		configuredInstanceCount uint32
-		jobType                 pbjob.JobType
 		currentState            pbjob.JobState
 		expectedState           pbjob.JobState
 		message                 string
@@ -1837,7 +1845,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 				pbtask.TaskState_SUCCEEDED.String(): instanceCount / 2,
 			},
 			instanceCount,
-			pbjob.JobType_BATCH,
 			pbjob.JobState_PENDING,
 			pbjob.JobState_FAILED,
 			"Batch job terminated with failed task should be FAILED",
@@ -1848,7 +1855,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 				pbtask.TaskState_SUCCEEDED.String(): instanceCount / 2,
 			},
 			instanceCount,
-			pbjob.JobType_BATCH,
 			pbjob.JobState_PENDING,
 			pbjob.JobState_RUNNING,
 			"Batch job with tasks running should be RUNNING",
@@ -1858,7 +1864,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 				pbtask.TaskState_SUCCEEDED.String(): instanceCount,
 			},
 			instanceCount,
-			pbjob.JobType_BATCH,
 			pbjob.JobState_PENDING,
 			pbjob.JobState_SUCCEEDED,
 			"Batch job with all tasks succeed should be SUCCEEDED",
@@ -1869,7 +1874,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 				pbtask.TaskState_PENDING.String():   instanceCount / 2,
 			},
 			instanceCount,
-			pbjob.JobType_BATCH,
 			pbjob.JobState_PENDING,
 			pbjob.JobState_PENDING,
 			"Batch job with tasks pending should be PENDING",
@@ -1880,7 +1884,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 				pbtask.TaskState_KILLING.String():   instanceCount / 2,
 			},
 			instanceCount,
-			pbjob.JobType_BATCH,
 			pbjob.JobState_KILLING,
 			pbjob.JobState_KILLING,
 			"Batch job with killing state should be KILLING",
@@ -1891,7 +1894,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 				pbtask.TaskState_KILLED.String(): instanceCount / 2,
 			},
 			instanceCount,
-			pbjob.JobType_BATCH,
 			pbjob.JobState_PENDING,
 			pbjob.JobState_KILLED,
 			"Batch job with terminated with killed task should be KILLED",
@@ -1902,96 +1904,9 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 				pbtask.TaskState_KILLED.String(): instanceCount/2 - 1,
 			},
 			instanceCount,
-			pbjob.JobType_BATCH,
 			pbjob.JobState_PENDING,
 			pbjob.JobState_INITIALIZED,
 			"Batch job partially created should be INITIALIZED",
-		},
-		{
-			map[string]uint32{
-				pbtask.TaskState_FAILED.String():    instanceCount / 2,
-				pbtask.TaskState_SUCCEEDED.String(): instanceCount / 2,
-			},
-			instanceCount,
-			pbjob.JobType_SERVICE,
-			pbjob.JobState_PENDING,
-			pbjob.JobState_FAILED,
-			"Service job completed with task FAILED should be FAILED",
-		},
-		{
-			map[string]uint32{
-				pbtask.TaskState_RUNNING.String():   instanceCount / 2,
-				pbtask.TaskState_SUCCEEDED.String(): instanceCount / 2,
-			},
-			instanceCount,
-			pbjob.JobType_SERVICE,
-			pbjob.JobState_PENDING,
-			pbjob.JobState_RUNNING,
-			"Service job with tasks running should be RUNNING",
-		},
-		{
-			map[string]uint32{
-				pbtask.TaskState_SUCCEEDED.String(): instanceCount,
-			},
-			instanceCount,
-			pbjob.JobType_SERVICE,
-			pbjob.JobState_PENDING,
-			pbjob.JobState_SUCCEEDED,
-			"Service job with all tasks SUCCEEDED should be SUCCEEDED",
-		},
-		{
-			map[string]uint32{
-				pbtask.TaskState_SUCCEEDED.String(): instanceCount / 2,
-				pbtask.TaskState_PENDING.String():   instanceCount / 2,
-			},
-			instanceCount,
-			pbjob.JobType_SERVICE,
-			pbjob.JobState_PENDING,
-			pbjob.JobState_PENDING,
-			"Service job with tasks pending should be PENDING",
-		},
-		{
-			map[string]uint32{
-				pbtask.TaskState_SUCCEEDED.String(): instanceCount / 2,
-				pbtask.TaskState_KILLING.String():   instanceCount / 2,
-			},
-			instanceCount,
-			pbjob.JobType_SERVICE,
-			pbjob.JobState_KILLING,
-			pbjob.JobState_KILLING,
-			"Service job with killing state should be KILLING",
-		},
-		{
-			map[string]uint32{
-				pbtask.TaskState_FAILED.String(): instanceCount / 2,
-				pbtask.TaskState_KILLED.String(): instanceCount / 2,
-			},
-			instanceCount,
-			pbjob.JobType_SERVICE,
-			pbjob.JobState_PENDING,
-			pbjob.JobState_KILLED,
-			"Service job terminated with tasks KILLED should be KILLED",
-		},
-		{
-			map[string]uint32{
-				pbtask.TaskState_FAILED.String(): instanceCount/2 - 1,
-				pbtask.TaskState_KILLED.String(): instanceCount/2 - 1,
-			},
-			instanceCount,
-			pbjob.JobType_SERVICE,
-			pbjob.JobState_PENDING,
-			pbjob.JobState_INITIALIZED,
-			"Service job partially created should be INITIALIZED",
-		},
-		{
-			map[string]uint32{
-				pbtask.TaskState_KILLED.String(): instanceCount,
-			},
-			instanceCount,
-			pbjob.JobType_SERVICE,
-			pbjob.JobState_PENDING,
-			pbjob.JobState_KILLED,
-			"Service job with all tasks killed should be KILLED",
 		},
 	}
 
@@ -2003,7 +1918,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 		cachedConfig := cachedmocks.NewMockJobConfigCache(ctrl)
 		cachedJob := cachedmocks.NewMockJob(ctrl)
 
-		cachedConfig.EXPECT().GetType().Return(test.jobType).AnyTimes()
+		cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH).AnyTimes()
 
 		cachedConfig.EXPECT().GetInstanceCount().
 			Return(test.configuredInstanceCount).AnyTimes()
@@ -2016,7 +1931,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 		cachedJob.EXPECT().GetLastTaskUpdateTime().
 			Return(suite.lastUpdateTs).AnyTimes()
 
-		jobState, currentStateCount, _, _ := determineJobRuntimeState(
+		jobState, currentStateCount, _, _, _ := determineJobRuntimeStateAndCounts(
 			context.Background(),
 			jobRuntime,
 			test.stateCounts,
@@ -2030,6 +1945,233 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeState() {
 
 		ctrl.Finish()
 	}
+}
+
+// TestDetermineServiceJobRuntimeState tests determining JobRuntimeState for service jobs
+func (suite *JobRuntimeUpdaterTestSuite) TestDetermineServiceJobRuntimeState() {
+	var instanceCount uint32 = 100
+	var configVersion uint64 = 4
+
+	tests := []struct {
+		stateCounts             map[pbtask.TaskState]uint32
+		configuredInstanceCount uint32
+		currentState            pbjob.JobState
+		expectedState           pbjob.JobState
+		message                 string
+	}{
+		{
+			map[pbtask.TaskState]uint32{
+				pbtask.TaskState_FAILED:    instanceCount / 2,
+				pbtask.TaskState_SUCCEEDED: instanceCount / 2,
+			},
+			instanceCount,
+			pbjob.JobState_PENDING,
+			pbjob.JobState_FAILED,
+			"Service job completed with task FAILED should be FAILED",
+		},
+		{
+			map[pbtask.TaskState]uint32{
+				pbtask.TaskState_RUNNING:   instanceCount / 2,
+				pbtask.TaskState_SUCCEEDED: instanceCount / 2,
+			},
+			instanceCount,
+			pbjob.JobState_PENDING,
+			pbjob.JobState_RUNNING,
+			"Service job with tasks running should be RUNNING",
+		},
+		{
+			map[pbtask.TaskState]uint32{
+				pbtask.TaskState_SUCCEEDED: instanceCount,
+			},
+			instanceCount,
+			pbjob.JobState_PENDING,
+			pbjob.JobState_SUCCEEDED,
+			"Service job with all tasks SUCCEEDED should be SUCCEEDED",
+		},
+		{
+			map[pbtask.TaskState]uint32{
+				pbtask.TaskState_SUCCEEDED: instanceCount / 2,
+				pbtask.TaskState_PENDING:   instanceCount / 2,
+			},
+			instanceCount,
+			pbjob.JobState_PENDING,
+			pbjob.JobState_PENDING,
+			"Service job with tasks pending should be PENDING",
+		},
+		{
+			map[pbtask.TaskState]uint32{
+				pbtask.TaskState_SUCCEEDED: instanceCount / 2,
+				pbtask.TaskState_KILLING:   instanceCount / 2,
+			},
+			instanceCount,
+			pbjob.JobState_KILLING,
+			pbjob.JobState_KILLING,
+			"Service job with killing state should be KILLING",
+		},
+		{
+			map[pbtask.TaskState]uint32{
+				pbtask.TaskState_FAILED: instanceCount / 2,
+				pbtask.TaskState_KILLED: instanceCount / 2,
+			},
+			instanceCount,
+			pbjob.JobState_PENDING,
+			pbjob.JobState_KILLED,
+			"Service job terminated with tasks KILLED should be KILLED",
+		},
+		{
+			map[pbtask.TaskState]uint32{
+				pbtask.TaskState_FAILED: instanceCount/2 - 1,
+				pbtask.TaskState_KILLED: instanceCount/2 - 1,
+			},
+			instanceCount,
+			pbjob.JobState_PENDING,
+			pbjob.JobState_INITIALIZED,
+			"Service job partially created should be INITIALIZED",
+		},
+		{
+			map[pbtask.TaskState]uint32{
+				pbtask.TaskState_KILLED: instanceCount,
+			},
+			instanceCount,
+			pbjob.JobState_PENDING,
+			pbjob.JobState_KILLED,
+			"Service job with all tasks killed should be KILLED",
+		},
+	}
+
+	for index, test := range tests {
+		ctrl := gomock.NewController(suite.T())
+		jobRuntime := &pbjob.RuntimeInfo{
+			State: test.currentState,
+		}
+		cachedConfig := cachedmocks.NewMockJobConfigCache(ctrl)
+		cachedJob := cachedmocks.NewMockJob(ctrl)
+		cachedTasks := make(map[uint32]cached.Task)
+		taskStateCounts := make(map[string]uint32)
+
+		for _, taskStatus := range allTaskStates {
+			taskStateCounts[taskStatus.String()] = 0
+		}
+
+		count := 0
+		instCount := uint32(0)
+		for state, numInstances := range test.stateCounts {
+			cachedTask := cachedmocks.NewMockTask(ctrl)
+			cachedTask.EXPECT().
+				CurrentState().
+				Return(cached.TaskStateVector{
+					State: state,
+				}).
+				AnyTimes()
+
+			cachedTask.EXPECT().
+				GetRunTime(gomock.Any()).
+				Return(&pbtask.RuntimeInfo{
+					State:         state,
+					ConfigVersion: configVersion,
+				}, nil).
+				AnyTimes()
+
+			for j := uint32(0); j < numInstances; j++ {
+				cachedTasks[instCount] = cachedTask
+				instCount++
+			}
+			taskStateCounts[state.String()] = numInstances
+			count++
+		}
+
+		cachedConfig.EXPECT().GetType().Return(pbjob.JobType_SERVICE).AnyTimes()
+
+		cachedConfig.EXPECT().GetInstanceCount().
+			Return(test.configuredInstanceCount).AnyTimes()
+
+		cachedConfig.EXPECT().HasControllerTask().Return(false).AnyTimes()
+
+		cachedJob.EXPECT().
+			GetAllTasks().
+			Return(cachedTasks)
+
+		cachedJob.EXPECT().IsPartiallyCreated(gomock.Any()).
+			Return(getTotalInstanceCount(taskStateCounts) <
+				test.configuredInstanceCount).AnyTimes()
+
+		jobState, currentStateCount, _, _, _ := determineJobRuntimeStateAndCounts(
+			context.Background(),
+			jobRuntime,
+			taskStateCounts,
+			cachedConfig,
+			suite.goalStateDriver,
+			cachedJob,
+		)
+
+		suite.Equal(jobState, test.expectedState, "Test %d: %s", index, test.message)
+		suite.Equal(currentStateCount, taskStateCounts)
+
+		ctrl.Finish()
+	}
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestDetermineStatelessJobRuntimeState() {
+	suite.goalStateDriver.jobRuntimeCalculationViaCache = true
+	instanceCount := uint32(100)
+	stateCounts := make(map[string]uint32)
+	stateCounts[pbtask.TaskState_RUNNING.String()] = instanceCount
+	jobRuntime := &pbjob.RuntimeInfo{
+		State: pbjob.JobState_RUNNING,
+	}
+	configVersion := uint64(4)
+
+	cachedTasks := make(map[uint32]cached.Task)
+	for i := uint32(0); i < instanceCount; i++ {
+		cachedTasks[i] = suite.cachedTask
+	}
+
+	suite.cachedConfig.EXPECT().
+		GetType().
+		Return(pbjob.JobType_SERVICE).
+		AnyTimes()
+
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
+
+	suite.cachedConfig.EXPECT().
+		HasControllerTask().
+		Return(false).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetAllTasks().
+		Return(cachedTasks)
+
+	suite.cachedTask.EXPECT().
+		CurrentState().
+		Return(cached.TaskStateVector{
+			State: pbtask.TaskState_RUNNING,
+		}).
+		Times(int(instanceCount))
+
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(&pbtask.RuntimeInfo{
+			State:         pbtask.TaskState_RUNNING,
+			ConfigVersion: configVersion,
+		}, nil).
+		Times(int(instanceCount))
+
+	jobState, _, taskConfigCount, _, _ := determineJobRuntimeStateAndCounts(
+		context.Background(),
+		jobRuntime,
+		stateCounts,
+		suite.cachedConfig,
+		suite.goalStateDriver,
+		suite.cachedJob,
+	)
+
+	suite.Equal(jobState, pbjob.JobState_RUNNING)
+	suite.Equal(len(taskConfigCount), 1)
+	suite.Equal(taskConfigCount[configVersion], instanceCount)
 }
 
 // TestJobEvaluateMaxRunningInstances tests
@@ -2172,7 +2314,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 // TestShouldRecalculateJobStateNonBatch tests shouldRecalculateJobStateFromCache
 // function for a service job
 func (suite *JobRuntimeUpdaterTestSuite) TestShouldRecalculateJobStateNonBatch() {
-	suite.False(shouldRecalculateJobStateFromCache(
+	suite.True(shouldRecalculateJobStateFromCache(
 		suite.cachedJob, pbjob.JobType_SERVICE, pbjob.JobState_RUNNING,
 		suite.goalStateDriver.jobRuntimeCalculationViaCache))
 }
