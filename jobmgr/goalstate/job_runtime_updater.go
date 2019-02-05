@@ -439,9 +439,7 @@ func determineJobRuntimeState(
 	if shouldRecalculateJobStateFromCache(cachedJob,
 		config.GetType(),
 		jobState,
-		stateCounts,
-		goalStateDriver.jobRuntimeCalculationViaCache,
-		config) {
+		goalStateDriver.jobRuntimeCalculationViaCache) {
 		jobState, currStateCounts, err = recalculateJobStateFromCache(
 			ctx, jobRuntime, cachedJob, jobState, stateCounts, config)
 		goalStateDriver.mtx.jobMetrics.JobRecalculateFromCache.Inc(1)
@@ -703,37 +701,25 @@ func shouldRecalculateJobStateFromCache(
 	cachedJob cached.Job,
 	jobType job.JobType,
 	jobState job.JobState,
-	stateCounts map[string]uint32,
-	forceRecalculateFromCache bool,
-	config jobmgrcommon.JobConfig) bool {
+	forceRecalculateFromCache bool) bool {
 
-	// no job runtime recalculation for non-batch jobs
-	if jobType != job.JobType_BATCH {
-		return false
-	}
-
-	// no job runtime recalculation for jobs in terminal state
-	if util.IsPelotonJobStateTerminal(jobState) {
+	// no job runtime recalculation for batch jobs in terminal state
+	if jobType == job.JobType_BATCH && util.IsPelotonJobStateTerminal(
+		jobState) {
 		return false
 	}
 
 	// job runtime recalculation for stale batch job
-	if isJobStateStale(cachedJob, common.StaleJobStateDurationThreshold) {
+	if jobType == job.JobType_BATCH && isJobStateStale(cachedJob,
+		common.StaleJobStateDurationThreshold) {
 		log.WithField("job_id", cachedJob.ID()).
 			Info("recalculate job state from cache for stale job ")
 		return true
 	}
 
 	// job runtime recalculation in case of jobRuntimeCalculationViaCache
-	// flag on and MV diverged
-	if forceRecalculateFromCache &&
-		getTotalInstanceCount(stateCounts) > config.GetInstanceCount() {
-		log.WithField("job_id", cachedJob.ID()).
-			Info("force recalculate job state from cache")
-		return true
-	}
-
-	return false
+	// flag
+	return forceRecalculateFromCache
 }
 
 // isJobStateStale returns true if the job is in active state for more than the

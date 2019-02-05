@@ -1743,13 +1743,9 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeStateStaleJob() 
 }
 
 // TestDetermineJobRuntimeFlagOn tests determining job runtime state
-// with total instance count derived from MV is greater than what configured
-// which indicates MV is out of sync
-// and jobRuntimeCalculationViaCache flag for this Peloton cluster is on.
+// jobRuntimeCalculationViaCache flag for this Peloton cluster is on.
 // Verify job runtime state will be calculated from cache
 func (suite *JobRuntimeUpdaterTestSuite) TestDetermineJobRuntimeFlagOn() {
-	suite.cachedJob.EXPECT().ID().Return(
-		&peloton.JobID{Value: uuid.New()}).Times(1)
 	suite.determineJobRuntimeHelper(true)
 }
 
@@ -1801,7 +1797,7 @@ func (suite *JobRuntimeUpdaterTestSuite) determineJobRuntimeHelper(flag bool) {
 		}
 		suite.cachedJob.EXPECT().GetAllTasks().Return(cachedTasks)
 		suite.cachedConfig.EXPECT().GetInstanceCount().
-			Return(instanceCount).Times(5)
+			Return(instanceCount).Times(4)
 	} else {
 		suite.cachedConfig.EXPECT().GetInstanceCount().
 			Return(instanceCount).Times(2)
@@ -2176,21 +2172,17 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 // TestShouldRecalculateJobStateNonBatch tests shouldRecalculateJobStateFromCache
 // function for a service job
 func (suite *JobRuntimeUpdaterTestSuite) TestShouldRecalculateJobStateNonBatch() {
-	stateCounts := suite.prepareInstanceCount(false)
 	suite.False(shouldRecalculateJobStateFromCache(
 		suite.cachedJob, pbjob.JobType_SERVICE, pbjob.JobState_RUNNING,
-		stateCounts, suite.goalStateDriver.jobRuntimeCalculationViaCache,
-		suite.cachedConfig))
+		suite.goalStateDriver.jobRuntimeCalculationViaCache))
 }
 
 // TestshouldRecalculateJobStateTerminalJob tests shouldRecalculateJobStateFromCache
 // function for a terminal job
 func (suite *JobRuntimeUpdaterTestSuite) TestshouldRecalculateJobStateTerminalJob() {
-	stateCounts := suite.prepareInstanceCount(false)
 	suite.False(shouldRecalculateJobStateFromCache(
 		suite.cachedJob, pbjob.JobType_BATCH, pbjob.JobState_SUCCEEDED,
-		stateCounts, suite.goalStateDriver.jobRuntimeCalculationViaCache,
-		suite.cachedConfig))
+		suite.goalStateDriver.jobRuntimeCalculationViaCache))
 }
 
 // TestShouldRecalculateJobState tests shouldRecalculateJobStateFromCache function to
@@ -2201,17 +2193,14 @@ func (suite *JobRuntimeUpdaterTestSuite) TestShouldRecalculateJobState() {
 	suite.cachedJob.EXPECT().GetLastTaskUpdateTime().Return(lastUpdateTs)
 	suite.cachedJob.EXPECT().ID().Return(
 		&peloton.JobID{Value: uuid.New()}).Times(1)
-	stateCounts := suite.prepareInstanceCount(false)
 	suite.True(shouldRecalculateJobStateFromCache(
 		suite.cachedJob, pbjob.JobType_BATCH, pbjob.JobState_PENDING,
-		stateCounts, suite.goalStateDriver.jobRuntimeCalculationViaCache,
-		suite.cachedConfig))
+		suite.goalStateDriver.jobRuntimeCalculationViaCache))
 
 	suite.cachedJob.EXPECT().GetLastTaskUpdateTime().Return(suite.lastUpdateTs)
 	suite.False(shouldRecalculateJobStateFromCache(
 		suite.cachedJob, pbjob.JobType_BATCH, pbjob.JobState_PENDING,
-		stateCounts, suite.goalStateDriver.jobRuntimeCalculationViaCache,
-		suite.cachedConfig))
+		suite.goalStateDriver.jobRuntimeCalculationViaCache))
 }
 
 // TestShouldRecalculateJobStateFlagOnMVDiverged tests
@@ -2220,15 +2209,9 @@ func (suite *JobRuntimeUpdaterTestSuite) TestShouldRecalculateJobState() {
 func (suite *JobRuntimeUpdaterTestSuite) TestShouldRecalculateJobStateFlagOnMVDiverged() {
 	suite.goalStateDriver.jobRuntimeCalculationViaCache = true
 	suite.cachedJob.EXPECT().GetLastTaskUpdateTime().Return(suite.lastUpdateTs)
-	stateCounts := suite.prepareInstanceCount(true)
-	suite.cachedConfig.EXPECT().GetInstanceCount().
-		Return(uint32(10)).Times(1)
-	suite.cachedJob.EXPECT().ID().Return(
-		&peloton.JobID{Value: uuid.New()}).Times(1)
 	suite.True(shouldRecalculateJobStateFromCache(
 		suite.cachedJob, pbjob.JobType_BATCH, pbjob.JobState_PENDING,
-		stateCounts, suite.goalStateDriver.jobRuntimeCalculationViaCache,
-		suite.cachedConfig))
+		suite.goalStateDriver.jobRuntimeCalculationViaCache))
 }
 
 // TestShouldRecalculateJobStateFlagOffMVDiverged tests
@@ -2237,30 +2220,9 @@ func (suite *JobRuntimeUpdaterTestSuite) TestShouldRecalculateJobStateFlagOnMVDi
 func (suite *JobRuntimeUpdaterTestSuite) TestShouldRecalculateJobStateFlagOffMVDiverged() {
 	suite.goalStateDriver.jobRuntimeCalculationViaCache = false
 	suite.cachedJob.EXPECT().GetLastTaskUpdateTime().Return(suite.lastUpdateTs)
-	stateCounts := suite.prepareInstanceCount(true)
 	suite.False(shouldRecalculateJobStateFromCache(
 		suite.cachedJob, pbjob.JobType_BATCH, pbjob.JobState_PENDING,
-		stateCounts, suite.goalStateDriver.jobRuntimeCalculationViaCache,
-		suite.cachedConfig))
-}
-
-func (suite *JobRuntimeUpdaterTestSuite) prepareInstanceCount(
-	diverged bool) map[string]uint32 {
-	instanceCount := uint32(10)
-	stateCounts := make(map[string]uint32)
-	if !diverged {
-		stateCounts = map[string]uint32{
-			pbtask.TaskState_PENDING.String(): instanceCount,
-		}
-	} else {
-		stateCounts = map[string]uint32{
-			pbtask.TaskState_RUNNING.String(): instanceCount,
-			pbtask.TaskState_PENDING.String(): instanceCount,
-		}
-	}
-	suite.cachedConfig.EXPECT().GetInstanceCount().
-		Return(instanceCount).Times(0)
-	return stateCounts
+		suite.goalStateDriver.jobRuntimeCalculationViaCache))
 }
 
 func (suite *JobRuntimeUpdaterTestSuite) initTaskStats(
