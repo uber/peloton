@@ -704,6 +704,7 @@ func (h *ServiceHandler) LaunchTasks(
 		if err != nil {
 			log.WithFields(log.Fields{
 				"tasks_total":    len(req.GetTasks()),
+				"task":           t.String(),
 				"host_resources": scalar.FromOfferMap(offers),
 				"hostname":       req.GetHostname(),
 				"host_offer_id":  req.GetId().GetValue(),

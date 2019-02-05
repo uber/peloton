@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
@@ -323,7 +323,10 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 	hosts := []*models.HostOffers{host}
 	assignment := testutil.SetupAssignment(time.Now(), 1)
 	assignment.SetHost(host)
-	assignments := []*models.Assignment{assignment}
+	assignment2 := testutil.SetupAssignment(time.Now(), 1)
+	assignment2.SetHost(host)
+	assignment2.Task.Task.Revocable = true
+	assignments := []*models.Assignment{assignment, assignment2}
 
 	mockTaskService.EXPECT().
 		Dequeue(
@@ -351,15 +354,19 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 	mockStrategy.EXPECT().
 		PlaceOnce(
 			gomock.Any(),
-			gomock.Any(),
-		).
+			gomock.Any()).
+		AnyTimes().
 		Return()
 
 	mockStrategy.EXPECT().
 		Filters(
-			gomock.Any(),
-		).MinTimes(1).
-		Return(map[*hostsvc.HostFilter][]*models.Assignment{nil: assignments})
+			gomock.Any()).
+		Return(map[*hostsvc.HostFilter][]*models.Assignment{nil: []*models.Assignment{assignment}})
+
+	mockStrategy.EXPECT().
+		Filters(
+			gomock.Any()).
+		Return(map[*hostsvc.HostFilter][]*models.Assignment{nil: []*models.Assignment{assignment2}})
 
 	mockStrategy.EXPECT().
 		ConcurrencySafe().

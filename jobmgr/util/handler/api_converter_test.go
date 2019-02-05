@@ -857,6 +857,7 @@ func (suite *apiConverterTestSuite) TestConvertJobSpecToJobConfig() {
 	suite.Equal(jobSpec.GetOwningTeam(), jobConfig.GetOwningTeam())
 	suite.Equal(jobSpec.GetLdapGroups(), jobConfig.GetLdapGroups())
 	suite.Equal(jobSpec.GetDescription(), jobConfig.GetDescription())
+	suite.Equal(jobSpec.GetSla().GetRevocable(), jobConfig.GetDefaultConfig().GetRevocable())
 
 	configLabels := jobConfig.GetLabels()
 	suite.Len(configLabels, len(jobSpec.GetLabels()))
@@ -875,6 +876,7 @@ func (suite *apiConverterTestSuite) TestConvertJobSpecToJobConfig() {
 	suite.Len(jobConfig.GetInstanceConfig(), len(instanceSpecMap))
 	for i, config := range jobConfig.GetInstanceConfig() {
 		suite.Equal(instanceSpecMap[i].GetController(), config.GetController())
+		suite.Equal(jobConfig.GetSLA().GetRevocable(), config.GetRevocable())
 		suite.Equal(instanceSpecMap[i].GetContainers()[0].GetCommand().GetValue(), config.GetCommand().GetValue())
 	}
 

@@ -153,7 +153,48 @@ func (e *engine) Place(ctx context.Context) time.Duration {
 		return _noTasksTimeoutPenalty
 	}
 
-	filters := e.strategy.Filters(assignments)
+	// process revocable assignments
+	e.processAssignments(
+		ctx,
+		assignments,
+		func(assignment *models.Assignment) bool {
+			return assignment.GetTask().GetTask().GetRevocable()
+		})
+
+	// process non-revocable assignments
+	e.processAssignments(
+		ctx,
+		assignments,
+		func(assignment *models.Assignment) bool {
+			return !assignment.GetTask().GetTask().GetRevocable()
+		})
+
+	// We need to process the completed reservations
+	err := e.processCompletedReservations(ctx)
+	if err != nil {
+		log.WithError(err).Info("error in processing completed reservations")
+	}
+	return time.Duration(0)
+}
+
+// processAssignments processes assignments by creating correct host filters and
+// then finding host to place them on.
+func (e *engine) processAssignments(
+	ctx context.Context,
+	assignments []*models.Assignment,
+	f func(*models.Assignment) bool) {
+	var result []*models.Assignment
+
+	for _, assignment := range assignments {
+		if f(assignment) {
+			result = append(result, assignment)
+		}
+	}
+	if len(result) == 0 {
+		return
+	}
+
+	filters := e.strategy.Filters(result)
 	for f, b := range filters {
 		filter, batch := f, b
 		// Run the placement of each batch in parallel
@@ -166,13 +207,6 @@ func (e *engine) Place(ctx context.Context) time.Duration {
 		// Wait for all batches to be processed
 		e.pool.WaitUntilProcessed()
 	}
-
-	// We need to process the completed reservations
-	err := e.processCompletedReservations(ctx)
-	if err != nil {
-		log.WithError(err).Info("error in processing completed reservations")
-	}
-	return time.Duration(0)
 }
 
 // processCompletedReservations will be processing completed reservations

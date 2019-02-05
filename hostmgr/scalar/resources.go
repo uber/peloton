@@ -15,6 +15,7 @@
 package scalar
 
 import (
+	"fmt"
 	"math"
 	"sync"
 
@@ -168,6 +169,12 @@ func (r Resources) NonEmptyFields() []string {
 // Empty returns whether all fields are empty now.
 func (r Resources) Empty() bool {
 	return len(r.NonEmptyFields()) == 0
+}
+
+// String returns a formatted string for scalar resources
+func (r Resources) String() string {
+	return fmt.Sprintf("CPU:%.2f MEM:%.2f DISK:%.2f GPU:%.2f",
+		r.GetCPU(), r.GetMem(), r.GetDisk(), r.GetGPU())
 }
 
 // HasResourceType validates requested resource type is present agent resource type.

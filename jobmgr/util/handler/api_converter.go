@@ -563,12 +563,19 @@ func ConvertJobSpecToJobConfig(spec *stateless.JobSpec) (*job.JobConfig, error) 
 		result.DefaultConfig = defaultConfig
 	}
 
+	if spec.GetSla() != nil && spec.GetDefaultSpec() != nil {
+		result.DefaultConfig.Revocable = spec.GetSla().GetRevocable()
+	}
+
 	if len(spec.GetInstanceSpec()) != 0 {
 		result.InstanceConfig = make(map[uint32]*task.TaskConfig)
 		for instanceID, instanceSpec := range spec.GetInstanceSpec() {
 			instanceConfig, err := ConvertPodSpecToTaskConfig(instanceSpec)
 			if err != nil {
 				return nil, err
+			}
+			if spec.GetSla() != nil && spec.GetDefaultSpec() != nil {
+				instanceConfig.Revocable = spec.GetSla().GetRevocable()
 			}
 			result.InstanceConfig[instanceID] = instanceConfig
 		}

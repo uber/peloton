@@ -676,11 +676,11 @@ func (tb *Builder) extractScalarResources(
 
 	if !requiredScalar.Empty() {
 		log.WithFields(log.Fields{
-			"resources_left_to_match": requiredScalar,
-			"requested_resources":     taskResources,
-			"revocable_resources":     tb.revocable,
-			"non_revocable_resources": tb.scalars,
-		}).Error("resources are still left to match")
+			"task_resource_requested":       scalar.FromResourceConfig(taskResources).String(),
+			"task_resources_left_to_match":  requiredScalar.String(),
+			"total_revocable_resources":     tb.revocable.String(),
+			"total_non_revocable_resources": tb.scalars,
+		}).Error("task resources are still left to match")
 		return nil, ErrNotEnoughResource
 	}
 	return launchResources, nil
