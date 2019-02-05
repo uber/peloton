@@ -34,6 +34,8 @@ UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_SPEC = \
     "test_stateless_job_successful_health_check_spec.yaml"
 UPDATE_STATELESS_JOB_INVALID_SPEC = \
     "test_stateless_job_spec_invalid.yaml"
+UPDATE_STATELESS_JOB_NO_ERR = \
+    "test_stateless_job_exit_without_err_spec.yaml"
 
 
 def test__create_update(stateless_job):
@@ -869,3 +871,85 @@ def test_update_killed_job():
 
     assert job.get_spec().instance_count == 3
     assert job.get_status().state == stateless_pb2.JOB_STATE_KILLED
+
+
+# test_start_job_with_active_update tests
+# starting a job with an active update
+def test_start_job_with_active_update(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    assert len(stateless_job.query_pods()) == 3
+    stateless_job.stop()
+
+    update = StatelessUpdate(
+        stateless_job,
+        updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
+        batch_size=1,
+    )
+    update.create()
+    stateless_job.start()
+
+    update.wait_for_state(goal_state='SUCCEEDED')
+    stateless_job.wait_for_all_pods_running()
+    assert len(stateless_job.query_pods()) == 5
+
+
+# test_stop_running_job_with_active_update_add_instances tests
+# stopping a running job with an active update(add instances)
+def test_stop_running_job_with_active_update_add_instances(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    assert len(stateless_job.query_pods()) == 3
+
+    update = StatelessUpdate(
+        stateless_job,
+        updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
+        batch_size=1,
+    )
+    update.create()
+    update.wait_for_state(goal_state='ROLLING_FORWARD')
+
+    stateless_job.stop()
+    update.wait_for_state(goal_state='SUCCEEDED')
+    assert stateless_job.get_spec().instance_count == 5
+
+
+# test_stop_running_job_with_active_update_remove_instances tests
+# stopping a running job with an active update(remove instances)
+def test_stop_running_job_with_active_update_remove_instances():
+    stateless_job = StatelessJob(job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC)
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+    assert len(stateless_job.query_pods()) == 5
+
+    update = StatelessUpdate(
+        stateless_job,
+        updated_job_file=UPDATE_STATELESS_JOB_UPDATE_REDUCE_INSTANCES_SPEC,
+        batch_size=1,
+    )
+    update.create()
+    update.wait_for_state(goal_state='ROLLING_FORWARD')
+
+    stateless_job.stop()
+    update.wait_for_state(goal_state='SUCCEEDED')
+    assert stateless_job.get_spec().instance_count == 3
+
+
+# test_stop_running_job_with_active_update_same_instance_count tests stopping
+# a running job with an active update that doesn't change instance count
+def test_stop_running_job_with_active_update_same_instance_count(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state='RUNNING')
+
+    stateless_job.job_spec.default_spec.containers[0].command.value = 'sleep 100'
+    update = StatelessUpdate(
+        stateless_job,
+        updated_job_spec=stateless_job.job_spec,
+        max_failure_instances=1,
+        max_instance_attempts=1)
+    update.create()
+    stateless_job.stop()
+    update.wait_for_state(goal_state='SUCCEEDED')
+    assert stateless_job.get_spec().instance_count == 3
+    assert stateless_job.get_spec().default_spec.containers[0].command.value == \
+        'sleep 100'
