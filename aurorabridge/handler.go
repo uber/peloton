@@ -431,40 +431,42 @@ func (h *ServiceHandler) getJobs(
 }
 
 // GetJobUpdateSummaries gets job update summaries.
-// This is the sequence in which jobUpdateQuery filters updates.
-// - Get JobIDs using job key role and filter their updates
-// - Get JobIDs using job key and filter their updates
-// - If only update statuses are provided then filter all job updates
 func (h *ServiceHandler) GetJobUpdateSummaries(
 	ctx context.Context,
-	jobUpdateQuery *api.JobUpdateQuery,
+	query *api.JobUpdateQuery,
 ) (*api.Response, error) {
 
-	jobUpdateDetails, err := h.getJobUpdateDetails(
-		ctx,
-		jobUpdateQuery,
-		true, /* summary only */
-	)
+	result, err := h.getJobUpdateSummaries(ctx, query)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"params": log.Fields{
-				"key": jobUpdateQuery,
+				"query": query,
 			},
 			"code":  err.responseCode,
 			"error": err.msg,
 		}).Error("GetJobUpdateSummaries error")
 	}
+	return newResponse(result, err), nil
+}
 
-	var jobUpdateSummaries []*api.JobUpdateSummary
-	for _, jobUpdateDetail := range jobUpdateDetails {
-		jobUpdateSummaries = append(jobUpdateSummaries, jobUpdateDetail.GetUpdate().GetSummary())
+func (h *ServiceHandler) getJobUpdateSummaries(
+	ctx context.Context,
+	query *api.JobUpdateQuery,
+) (*api.Result, *auroraError) {
+
+	details, err := h.queryJobUpdates(ctx, query, true /* summaryOnly */)
+	if err != nil {
+		return nil, auroraErrorf("query job updates: %s", err)
 	}
-
-	return newResponse(&api.Result{
+	var summaries []*api.JobUpdateSummary
+	for _, d := range details {
+		summaries = append(summaries, d.GetUpdate().GetSummary())
+	}
+	return &api.Result{
 		GetJobUpdateSummariesResult: &api.GetJobUpdateSummariesResult{
-			UpdateSummaries: jobUpdateSummaries,
+			UpdateSummaries: summaries,
 		},
-	}, err), nil
+	}, nil
 }
 
 // GetJobUpdateDetails gets job update details.
@@ -476,15 +478,7 @@ func (h *ServiceHandler) GetJobUpdateDetails(
 	query *api.JobUpdateQuery,
 ) (*api.Response, error) {
 
-	if key.IsSetJob() {
-		query.JobKey = key.GetJob()
-	}
-
-	jobUpdateDetails, err := h.getJobUpdateDetails(
-		ctx,
-		query,
-		false, /* summary only */
-	)
+	result, err := h.getJobUpdateDetails(ctx, key, query)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"params": log.Fields{
@@ -495,12 +489,27 @@ func (h *ServiceHandler) GetJobUpdateDetails(
 			"error": err.msg,
 		}).Error("GetJobUpdateDetails error")
 	}
+	return newResponse(result, err), nil
+}
 
-	return newResponse(&api.Result{
+func (h *ServiceHandler) getJobUpdateDetails(
+	ctx context.Context,
+	key *api.JobUpdateKey,
+	query *api.JobUpdateQuery,
+) (*api.Result, *auroraError) {
+
+	if key.IsSetJob() {
+		query.JobKey = key.GetJob()
+	}
+	details, err := h.queryJobUpdates(ctx, query, false /* summaryOnly */)
+	if err != nil {
+		return nil, auroraErrorf("query job updates: %s", err)
+	}
+	return &api.Result{
 		GetJobUpdateDetailsResult: &api.GetJobUpdateDetailsResult{
-			DetailsList: jobUpdateDetails,
+			DetailsList: details,
 		},
-	}, err), nil
+	}, nil
 }
 
 // GetJobUpdateDiff gets the diff between client (desired) and server (current) job states.
@@ -1194,32 +1203,35 @@ func (h *ServiceHandler) pulseJobUpdate(
 	}, nil
 }
 
-// getJobUpdateDetails gets job detils concurrently
-func (h *ServiceHandler) getJobUpdateDetails(
+// queryJobUpdates is an awkward helper which returns JobUpdateDetails which
+// will omit instance events if summaryOnly is set.
+func (h *ServiceHandler) queryJobUpdates(
 	ctx context.Context,
-	jobUpdateQuery *api.JobUpdateQuery,
+	query *api.JobUpdateQuery,
 	summaryOnly bool,
-) ([]*api.JobUpdateDetails, *auroraError) {
-	var jobUpdateDetails []*api.JobUpdateDetails
+) ([]*api.JobUpdateDetails, error) {
 
-	jobSummaries, err := h.getJobSummariesFromJobUpdateQuery(
-		ctx,
-		jobUpdateQuery)
+	filter := &updateFilter{
+		id:       query.GetKey().GetID(),
+		statuses: query.GetUpdateStatuses(),
+	}
+
+	jobs, err := h.getJobSummariesFromJobUpdateQuery(ctx, query)
 	if err != nil {
-		return jobUpdateDetails, nil
+		if yarpcerrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get job summaries: %s", err)
 	}
 
 	var inputs []interface{}
-	for _, j := range jobSummaries {
+	for _, j := range jobs {
 		inputs = append(inputs, j)
 	}
 
 	f := func(ctx context.Context, input interface{}) (interface{}, error) {
-		return h.getJobUpdateDetail(
-			ctx,
-			jobUpdateQuery,
-			input.(*stateless.JobSummary),
-			summaryOnly)
+		return h.getFilteredJobUpdateDetails(
+			ctx, input.(*stateless.JobSummary), filter)
 	}
 
 	outputs, err := concurrency.Map(
@@ -1228,191 +1240,105 @@ func (h *ServiceHandler) getJobUpdateDetails(
 		inputs,
 		h.config.GetJobUpdateWorkers)
 	if err != nil {
-		return nil, auroraErrorf("failed to get jobUpdateDetails: %s", err)
+		return nil, fmt.Errorf("build job update details: %s", err)
 	}
 
+	var results []*api.JobUpdateDetails
 	for _, o := range outputs {
-		if o.(*api.JobUpdateDetails) == nil {
+		for _, d := range o.([]*api.JobUpdateDetails) {
+			results = append(results, d)
+		}
+	}
+
+	return results, nil
+}
+
+type updateFilter struct {
+	id       string
+	statuses map[api.JobUpdateStatus]struct{}
+}
+
+// include returns true if s is allowed by the filter.
+func (f *updateFilter) include(s *api.JobUpdateSummary) bool {
+	if f.id != "" && f.id != s.GetKey().GetID() {
+		return false
+	}
+	if len(f.statuses) > 0 {
+		if _, ok := f.statuses[s.GetState().GetStatus()]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// getFilteredJobUpdateDetails fetches updates for job and prunes them according to
+// the filter.
+func (h *ServiceHandler) getFilteredJobUpdateDetails(
+	ctx context.Context,
+	job *stateless.JobSummary,
+	filter *updateFilter,
+) ([]*api.JobUpdateDetails, error) {
+
+	k, err := ptoa.NewJobKey(job.GetName())
+	if err != nil {
+		return nil, fmt.Errorf("new job key: %s", err)
+	}
+
+	workflows, err := h.listWorkflows(ctx, job.GetJobId())
+	if err != nil {
+		if yarpcerrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("list workflows: %s", err)
+	}
+
+	// Group updates by update id.
+	detailsByID := make(map[string][]*api.JobUpdateDetails)
+	for _, w := range workflows {
+		d, err := ptoa.NewJobUpdateDetails(k, w)
+		if err != nil {
+			return nil, fmt.Errorf("new job update details: %s", err)
+		}
+		id := d.GetUpdate().GetSummary().GetKey().GetID()
+		detailsByID[id] = append(detailsByID[id], d)
+	}
+
+	var results []*api.JobUpdateDetails
+	for _, details := range detailsByID {
+		var d *api.JobUpdateDetails
+		switch len(details) {
+		case 1:
+			// NOTE: It is possible that this single update is actually a
+			// rollback whose original update has already been pruned from
+			// Peloton. This is *probably* fine, since the consumer of this API
+			// usually just cares if an update has been rolled back.
+			d = details[0]
+		case 2:
+			// If two updates have the same id, it means one was an update and
+			// the other was a rollback.
+			d = ptoa.JoinRollbackJobUpdateDetails(details[0], details[1])
+		default:
+			// Nothing to do here but make noise and ignore the update.
+			log.WithFields(log.Fields{
+				"job_id":  job.GetJobId(),
+				"details": details,
+			}).Error("Invariant violation: expected exactly 1 or 2 updates with same update id")
 			continue
 		}
-
-		jobUpdateDetails = append(jobUpdateDetails, o.(*api.JobUpdateDetails))
-	}
-
-	return jobUpdateDetails, nil
-}
-
-// getJobUpdateDetail get details of most recent workflow of the job
-func (h *ServiceHandler) getJobUpdateDetail(
-	ctx context.Context,
-	jobUpdateQuery *api.JobUpdateQuery,
-	jobSummary *stateless.JobSummary,
-	summaryOnly bool,
-) (*api.JobUpdateDetails, error) {
-
-	// Get job update
-	resp, err := h.jobClient.GetJob(
-		ctx,
-		&statelesssvc.GetJobRequest{
-			JobId: jobSummary.GetJobId(),
-		})
-	if err != nil {
-		return nil, fmt.Errorf("getJobUpdate failed: %s", err)
-	}
-
-	// No workflow exists for a job
-	if resp.GetWorkflowInfo().GetStatus().GetState() ==
-		stateless.WorkflowState_WORKFLOW_STATE_INVALID {
-		return nil, nil
-	}
-
-	// INITIALIZED workflows are ignored to take action upon because Aurora
-	// does not support this state
-	// Assumption is that jobmgr's goal state engine will process these
-	// workflows and take appropriate action to make progress on
-	// workflow operations
-	if resp.GetWorkflowInfo().GetStatus().GetState() ==
-		stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED {
-		return nil, nil /* update is filtered */
-	}
-
-	// Filter by job update state
-	ok, err := isUpdateInfoInStatuses(
-		resp.GetWorkflowInfo(),
-		jobUpdateQuery.GetUpdateStatuses())
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, nil /* update is filtered */
-	}
-
-	// Get Job Update Summary
-	jobKey, err := ptoa.NewJobKey(jobSummary.GetName())
-	if err != nil {
-		return nil, err
-	}
-
-	jobUpdateSummary, err := ptoa.NewJobUpdateSummary(
-		jobKey,
-		resp.GetWorkflowInfo())
-	if err != nil {
-		return nil, err
-	}
-
-	var jobUpdateEvents []*api.JobUpdateEvent
-	var jobInstancesUpdateEvents []*api.JobInstanceUpdateEvent
-	var jobInstructions *api.JobUpdateInstructions
-
-	// Get job update details if summaryOnly is set false
-	if !summaryOnly {
-		opaqueData, err := opaquedata.Deserialize(resp.GetWorkflowInfo().GetOpaqueData())
-		if err != nil {
-			return nil, fmt.Errorf("deserialize opaque data: %s", err)
-		}
-
-		// Get Job Update Events
-		for _, updateEvent := range resp.GetWorkflowInfo().GetEvents() {
-			jobUpdateEvent, err := ptoa.NewJobUpdateEvent(
-				updateEvent,
-				opaqueData)
-			if err != nil {
-				return nil, fmt.Errorf("unable to get job update event %s", err)
-			}
-
-			jobUpdateEvents = append(jobUpdateEvents, jobUpdateEvent)
-		}
-
-		jobInstructions = ptoa.NewJobUpdateInstructions(resp.GetWorkflowInfo())
-
-		instancesInUpdate := append(resp.GetWorkflowInfo().GetInstancesAdded(),
-			resp.GetWorkflowInfo().GetInstancesUpdated()...)
-		instancesInUpdate = append(instancesInUpdate,
-			resp.GetWorkflowInfo().GetInstancesRemoved()...)
-
-		// Get Job Instance Update Events
-		jobInstancesUpdateEvents, err = h.getJobInstanceUpdateEvents(
-			ctx,
-			instancesInUpdate,
-			jobSummary,
-			opaqueData,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("unable to get instance workflow events %s", err)
+		if filter.include(d.GetUpdate().GetSummary()) {
+			results = append(results, d)
 		}
 	}
 
-	return &api.JobUpdateDetails{
-		Update: &api.JobUpdate{
-			Summary:      jobUpdateSummary,
-			Instructions: jobInstructions,
-		},
-		UpdateEvents:   jobUpdateEvents,
-		InstanceEvents: jobInstancesUpdateEvents,
-	}, nil
-}
+	// TODO(codyg): Populate instance update events.
 
-// getJobInstanceUpdateEvents gets the update state change events for an instance
-func (h *ServiceHandler) getJobInstanceUpdateEvents(
-	ctx context.Context,
-	instanceRanges []*pod.InstanceIDRange,
-	jobSummary *stateless.JobSummary,
-	d *opaquedata.Data,
-) ([]*api.JobInstanceUpdateEvent, error) {
-
-	var inputs []interface{}
-	for _, instanceRange := range instanceRanges {
-		for j := instanceRange.From; j <= instanceRange.To; j++ {
-			inputs = append(inputs, j)
-		}
-	}
-
-	f := func(ctx context.Context, input interface{}) (interface{}, error) {
-		resp, err := h.jobClient.GetWorkflowEvents(
-			ctx,
-			&statelesssvc.GetWorkflowEventsRequest{
-				JobId:      jobSummary.GetJobId(),
-				InstanceId: input.(uint32),
-			})
-		if err != nil {
-			return nil, err
-		}
-
-		var jobInstanceUpdateEvents []*api.JobInstanceUpdateEvent
-		for _, instanceEvent := range resp.GetEvents() {
-			jobInstanceUpdateEvent, err := ptoa.NewJobInstanceUpdateEvent(
-				input.(uint32),
-				instanceEvent,
-				d)
-			if err != nil {
-				return nil, err
-			}
-
-			jobInstanceUpdateEvents = append(jobInstanceUpdateEvents, jobInstanceUpdateEvent)
-		}
-
-		return jobInstanceUpdateEvents, nil
-	}
-
-	outputs, err := concurrency.Map(
-		ctx,
-		concurrency.MapperFunc(f),
-		inputs,
-		h.config.GetJobUpdateWorkers)
-	if err != nil {
-		return nil, err
-	}
-
-	var jobInstancesUpdateEvents []*api.JobInstanceUpdateEvent
-	for _, o := range outputs {
-		jobInstancesUpdateEvents = append(jobInstancesUpdateEvents, o.([]*api.JobInstanceUpdateEvent)...)
-	}
-
-	return jobInstancesUpdateEvents, nil
+	return results, nil
 }
 
 // getJobSummariesFromJobUpdateQuery queries peloton jobs based on
 // Aurora's JobUpdateQuery.
+//
+// Returns a yarpc NOT_FOUND error if no jobs match the query.
 func (h *ServiceHandler) getJobSummariesFromJobUpdateQuery(
 	ctx context.Context,
 	q *api.JobUpdateQuery,
@@ -1423,27 +1349,6 @@ func (h *ServiceHandler) getJobSummariesFromJobUpdateQuery(
 	}
 
 	return h.queryJobSummaries(ctx, q.GetRole(), "", "")
-}
-
-// isUpdateInfoInStatuses checks if job update state is present
-// in expected list of job update states
-func isUpdateInfoInStatuses(
-	u *stateless.WorkflowInfo,
-	statuses map[api.JobUpdateStatus]struct{},
-) (bool, error) {
-
-	d, err := opaquedata.Deserialize(u.GetOpaqueData())
-	if err != nil {
-		return false, fmt.Errorf("deserialize opaque data: %s", err)
-	}
-
-	s, err := ptoa.NewJobUpdateStatus(u.GetStatus().GetState(), d)
-	if err != nil {
-		return false, fmt.Errorf("new job update status: %s", err)
-	}
-
-	_, ok := statuses[s]
-	return ok, nil
 }
 
 // getJobID maps k to a job id.
@@ -1738,6 +1643,21 @@ func (h *ServiceHandler) getPodEvents(
 		return nil, err
 	}
 	return resp.GetEvents(), nil
+}
+
+// listWorkflows lists recent workflows for jobID.
+//
+// Returns yarpc NOT_FOUND error if no workflows found.
+func (h *ServiceHandler) listWorkflows(
+	ctx context.Context,
+	jobID *peloton.JobID,
+) ([]*stateless.WorkflowInfo, error) {
+	req := &statelesssvc.ListJobUpdatesRequest{JobId: jobID}
+	resp, err := h.jobClient.ListJobUpdates(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetWorkflowInfos(), nil
 }
 
 func max(a, b int32) int32 {

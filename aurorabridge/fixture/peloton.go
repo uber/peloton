@@ -19,6 +19,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/aurorabridge/opaquedata"
 	"github.com/uber/peloton/util/randutil"
 
 	"github.com/pborman/uuid"
@@ -49,5 +50,32 @@ func PelotonUpdateSpec() *stateless.UpdateSpec {
 		BatchSize:                    uint32(randutil.Range(5, 10)),
 		MaxInstanceRetries:           uint32(randutil.Range(1, 3)),
 		MaxTolerableInstanceFailures: uint32(randutil.Range(1, 3)),
+	}
+}
+
+// PelotonOpaqueData returns opaque data with a random update id.
+func PelotonOpaqueData() *peloton.OpaqueData {
+	d := &opaquedata.Data{UpdateID: uuid.New()}
+	od, err := d.Serialize()
+	if err != nil {
+		panic(err)
+	}
+	return od
+}
+
+// PelotonWorkflowInfo returns a random WorkflowInfo.
+func PelotonWorkflowInfo() *stateless.WorkflowInfo {
+	// Pick a random state. These were chosen fairly arbitrarily.
+	var s stateless.WorkflowState
+	for s = range map[stateless.WorkflowState]struct{}{
+		stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD: struct{}{},
+		stateless.WorkflowState_WORKFLOW_STATE_ROLLED_BACK:     struct{}{},
+		stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED:       struct{}{},
+		stateless.WorkflowState_WORKFLOW_STATE_ABORTED:         struct{}{},
+	} {
+	}
+	return &stateless.WorkflowInfo{
+		Status:     &stateless.WorkflowStatus{State: s},
+		OpaqueData: PelotonOpaqueData(),
 	}
 }
