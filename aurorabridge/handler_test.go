@@ -940,6 +940,35 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiffFailure() {
 	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
 }
 
+func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff_JobNotFound() {
+	respoolID := fixture.PelotonResourcePoolID()
+	k := fixture.AuroraJobKey()
+
+	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
+
+	suite.jobClient.EXPECT().
+		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
+			JobName: atop.NewJobName(k),
+		}).
+		Return(nil, yarpcerrors.NotFoundErrorf("job not found"))
+
+	resp, err := suite.handler.GetJobUpdateDiff(
+		suite.ctx,
+		&api.JobUpdateRequest{
+			TaskConfig:    &api.TaskConfig{Job: k},
+			InstanceCount: ptr.Int32(10),
+		})
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+
+	result := resp.GetResult().GetGetJobUpdateDiffResult()
+	suite.Equal(int32(0), result.GetAdd()[0].GetInstances()[0].GetFirst())
+	suite.Equal(int32(9), result.GetAdd()[0].GetInstances()[0].GetLast())
+	suite.Empty(result.GetUpdate())
+	suite.Empty(result.GetRemove())
+	suite.Empty(result.GetUnchanged())
+}
+
 func (suite *ServiceHandlerTestSuite) TestGetTierConfigs() {
 	resp, err := suite.handler.GetTierConfigs(suite.ctx)
 	suite.NoError(err)

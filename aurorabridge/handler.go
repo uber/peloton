@@ -531,10 +531,24 @@ func (h *ServiceHandler) getJobUpdateDiff(
 		return nil, auroraErrorf("load respool: %s", err)
 	}
 
-	jobKey := request.GetTaskConfig().GetJob()
-	jobID, err := h.getJobID(ctx, jobKey)
+	jobID, err := h.getJobID(ctx, request.GetTaskConfig().GetJob())
 	if err != nil {
-		return nil, auroraErrorf("get jobID: %s", err)
+		if yarpcerrors.IsNotFound(err) {
+			// Peloton returns errors for non-existent jobs in GetReplaceJobDiff,
+			// so construct the diff manually in this case.
+			last := max(0, request.GetInstanceCount()-1)
+			return &api.Result{
+				GetJobUpdateDiffResult: &api.GetJobUpdateDiffResult{
+					Add: []*api.ConfigGroup{{
+						Instances: []*api.Range{{
+							First: ptr.Int32(0),
+							Last:  ptr.Int32(last),
+						}},
+					}},
+				},
+			}, nil
+		}
+		return nil, auroraErrorf("get job id: %s", err)
 	}
 
 	jobSummary, err := h.getJobInfoSummary(ctx, jobID)
@@ -1423,6 +1437,8 @@ func isUpdateInfoInStatuses(
 
 // getJobID maps k to a job id.
 //
+// Returns yarpc NOT_FOUND error if k does not exist.
+//
 // TODO: To be deprecated in favor of getJobSummaries.
 // Aggregator expects job key environment to be set in response of
 // GetJobUpdateDetails to filter by deployment_id. On filtering via job key
@@ -1711,4 +1727,11 @@ func (h *ServiceHandler) getPodEvents(
 		return nil, err
 	}
 	return resp.GetEvents(), nil
+}
+
+func max(a, b int32) int32 {
+	if a > b {
+		return a
+	}
+	return b
 }
