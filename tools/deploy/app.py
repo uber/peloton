@@ -172,9 +172,6 @@ class App(object):
             'PELOTON_SECRET_FILE': getattr(
                 self.cluster, 'peloton_secret_file', ''),
             'ENABLE_SECRETS': self.enable_secrets,
-            'JOB_RUNTIME_CALCULATION_VIA_CACHE': getattr(
-                self.cluster, 'job_runtime_calculation_via_cache',
-                'false'),
         }
 
         self.add_app_specific_vars(env_vars)
@@ -217,6 +214,9 @@ class App(object):
 
         if self.name == 'jobmgr':
             env_vars['JOB_TYPE'] = getattr(self, "job_type", "BATCH")
+            env_vars['JOB_RUNTIME_CALCULATION_VIA_CACHE'] = getattr(
+                self,
+                "job_runtime_calculation_via_cache", False,)
 
         if self.name == 'archiver':
             env_vars['ENABLE_ARCHIVER'] = self.enable_archiver
