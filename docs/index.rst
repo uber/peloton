@@ -27,3 +27,4 @@ Home
    job_config
    type_jobs
    submit_job
+   cli
