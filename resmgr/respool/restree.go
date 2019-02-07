@@ -35,8 +35,8 @@ import (
 
 // Tree defines the interface for a Resource Pool Tree
 type Tree interface {
-	// Start starts a respooltree by loading all respools
-	// and pending tasks from DB. This should be called when a
+	// Start initializes the respool tree by loading all resource pools
+	// from DB. This should be called when a
 	// resource manager gains the leadership.
 	Start() error
 
@@ -104,8 +104,8 @@ func NewTree(
 	}
 }
 
-// Start will start the respool tree by loading respools and tasks
-// from storage
+// Start initializes the in-memory respool tree by loading resource pools
+// from storage.
 func (t *tree) Start() error {
 	resPoolConfigs, err := t.store.GetAllResourcePools(context.Background())
 	if err != nil {

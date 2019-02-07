@@ -43,6 +43,7 @@ type Server struct {
 
 	// the processes which need to start with the leader
 	resTree               ServerProcess
+	resMgrHandler         ServerProcess
 	resPoolHandler        ServerProcess
 	entitlementCalculator ServerProcess
 	recoveryHandler       ServerProcess
@@ -60,16 +61,18 @@ func NewServer(
 	httpPort,
 	grpcPort int,
 	tree ServerProcess,
+	recoveryHandler ServerProcess,
+	resMgrHandler ServerProcess,
 	resPoolHandler ServerProcess,
 	entitlementCalculator ServerProcess,
-	recoveryHandler ServerProcess,
-	drainer ServerProcess,
 	reconciler ServerProcess,
-	preemptor ServerProcess) *Server {
+	preemptor ServerProcess,
+	drainer ServerProcess) *Server {
 	return &Server{
 		ID:                    leader.NewID(httpPort, grpcPort),
 		role:                  common.ResourceManagerRole,
 		resTree:               tree,
+		resMgrHandler:         resMgrHandler,
 		resPoolHandler:        resPoolHandler,
 		getTaskScheduler:      task.GetScheduler,
 		entitlementCalculator: entitlementCalculator,
@@ -91,6 +94,7 @@ func (s *Server) GainedLeadershipCallback() error {
 		Info("Gained leadership")
 	s.metrics.Elected.Update(1.0)
 
+	// Initialize the in-memory resource tree
 	if err := s.resTree.Start(); err != nil {
 		log.
 			WithError(err).
@@ -98,13 +102,7 @@ func (s *Server) GainedLeadershipCallback() error {
 		return err
 	}
 
-	if err := s.resPoolHandler.Start(); err != nil {
-		log.
-			WithError(err).
-			Error("Failed to start respool service handler")
-		return err
-	}
-
+	// Recover tasks before accepting any API requests
 	if err := s.recoveryHandler.Start(); err != nil {
 		// If we can not recover then we need to do suicide
 		log.
@@ -113,6 +111,31 @@ func (s *Server) GainedLeadershipCallback() error {
 		return err
 	}
 
+	// Start accepting resource manager requests
+	if err := s.resMgrHandler.Start(); err != nil {
+		// If we can not recover then we need to do suicide
+		log.
+			WithError(err).
+			Error("Failed to start recovery handler")
+		return err
+	}
+
+	// Start accepting resource pool requests
+	if err := s.resPoolHandler.Start(); err != nil {
+		log.
+			WithError(err).
+			Error("Failed to start respool service handler")
+		return err
+	}
+
+	// Start entitlement calculation
+	if err := s.entitlementCalculator.Start(); err != nil {
+		log.WithError(err).
+			Error("Failed to start entitlement calculator")
+		return err
+	}
+
+	// Start scheduling
 	if err := s.getTaskScheduler().Start(); err != nil {
 		log.
 			WithError(err).
@@ -120,24 +143,21 @@ func (s *Server) GainedLeadershipCallback() error {
 		return err
 	}
 
-	if err := s.entitlementCalculator.Start(); err != nil {
-		log.WithError(err).
-			Error("Failed to start entitlement calculator")
-		return err
-	}
-
+	// Start reconciliation in the background
 	if err := s.reconciler.Start(); err != nil {
 		log.WithError(err).
 			Error("Failed to start task reconciler")
 		return err
 	}
 
+	// Start the preemptor
 	if err := s.preemptor.Start(); err != nil {
 		log.WithError(err).
 			Error("Failed to start task preemptor")
 		return err
 	}
 
+	// Start the drainer
 	if err := s.drainer.Start(); err != nil {
 		log.WithError(err).
 			Error("Failed to start host drainer")
@@ -170,13 +190,13 @@ func (s *Server) LostLeadershipCallback() error {
 		return err
 	}
 
-	if err := s.entitlementCalculator.Stop(); err != nil {
-		log.Errorf("Failed to stop entitlement calculator")
+	if err := s.getTaskScheduler().Stop(); err != nil {
+		log.Errorf("Failed to stop task scheduler")
 		return err
 	}
 
-	if err := s.getTaskScheduler().Stop(); err != nil {
-		log.Errorf("Failed to stop task scheduler")
+	if err := s.entitlementCalculator.Stop(); err != nil {
+		log.Errorf("Failed to stop entitlement calculator")
 		return err
 	}
 
@@ -187,6 +207,11 @@ func (s *Server) LostLeadershipCallback() error {
 
 	if err := s.resPoolHandler.Stop(); err != nil {
 		log.WithError(err).Error("Failed to stop respool service handler")
+		return err
+	}
+
+	if err := s.resMgrHandler.Stop(); err != nil {
+		log.WithError(err).Error("Failed to stop resource manager handler")
 		return err
 	}
 

@@ -32,7 +32,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -52,11 +51,20 @@ type resPoolHandlerTestSuite struct {
 func (s *resPoolHandlerTestSuite) SetupSuite() {
 	s.mockCtrl = gomock.NewController(s.T())
 	s.mockResPoolStore = store_mocks.NewMockResourcePoolStore(s.mockCtrl)
-	s.mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
-		Return(s.getResPools(), nil).AnyTimes()
+	s.mockResPoolStore.
+		EXPECT().
+		GetAllResourcePools(context.Background()).
+		Return(s.getResPools(), nil).
+		AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
-	s.resourceTree = res.NewTree(tally.NoopScope, s.mockResPoolStore, mockJobStore, mockTaskStore, rc.PreemptionConfig{Enabled: false})
+	s.resourceTree = res.NewTree(
+		tally.NoopScope,
+		s.mockResPoolStore,
+		mockJobStore,
+		mockTaskStore,
+		rc.PreemptionConfig{Enabled: false},
+	)
 	resourcePoolConfigValidator, err := res.NewResourcePoolConfigValidator(s.resourceTree)
 	s.NoError(err)
 	s.resourcePoolConfigValidator = resourcePoolConfigValidator
@@ -85,16 +93,13 @@ func (s *resPoolHandlerTestSuite) SetupTest() {
 		resPoolConfigValidator: s.resourcePoolConfigValidator,
 		lifeCycle:              lifecycle.NewLifeCycle(),
 	}
-	err := s.handler.Start()
-	s.NoError(err)
+	s.NoError(s.handler.Start())
+	s.NoError(s.resourceTree.Start())
 }
 
 func (s *resPoolHandlerTestSuite) TearDownTest() {
-	log.Info("tearing down")
-	err := s.resourceTree.Stop()
-	s.NoError(err)
-	err = s.handler.Stop()
-	s.NoError(err)
+	s.NoError(s.resourceTree.Stop())
+	s.NoError(s.handler.Stop())
 }
 
 // Returns resource configs

@@ -302,7 +302,7 @@ func main() {
 		store, // store implements RespoolStore
 	)
 
-	// Initializing the resmgr state machine
+	// Initializing the rmtasks in-memory tracker
 	task.InitTaskTracker(
 		rootScope,
 		cfg.ResManager.RmTaskConfig,
@@ -370,17 +370,17 @@ func main() {
 	)
 
 	// Initialize the server
-	server := resmgr.NewServer(
-		rootScope,
+	server := resmgr.NewServer(rootScope,
 		cfg.ResManager.HTTPPort,
 		cfg.ResManager.GRPCPort,
 		tree,
+		recoveryHandler,
+		serviceHandler,
 		respoolHandler,
 		calculator,
-		recoveryHandler,
-		drainer,
 		reconciler,
 		preemptor,
+		drainer,
 	)
 
 	candidate, err := leader.NewCandidate(

@@ -613,12 +613,7 @@ func (h *ServiceHandler) Query(
 	return resp, nil
 }
 
-// registerProcs will register all API's for end points.
-func (h *ServiceHandler) registerProcs(d *yarpc.Dispatcher) {
-	d.Register(respool.BuildResourceManagerYARPCProcedures(h))
-}
-
-// Start will start resource manager.
+// Start will start resource pool handler.
 func (h *ServiceHandler) Start() error {
 	if !h.lifeCycle.Start() {
 		log.Warn("Resource pool handler is already started, no" +
@@ -627,8 +622,8 @@ func (h *ServiceHandler) Start() error {
 	}
 
 	log.Info("Registering the respool procedures")
-	h.registerProcs(h.dispatcher)
-	return h.resPoolTree.Start()
+	h.dispatcher.Register(respool.BuildResourceManagerYARPCProcedures(h))
+	return nil
 }
 
 // Stop will stop resource manager.

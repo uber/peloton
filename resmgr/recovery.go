@@ -159,8 +159,7 @@ func (r *RecoveryHandler) Start() error {
 		jobStates,
 		r.requeueTasksInRange,
 		r.config.RecoveryConfig.RecoverFromActiveJobs,
-		// Backfill missing active jobs during recovery
-		true,
+		true, // Back fill missing active jobs during recovery
 	)
 	if err != nil {
 		r.metrics.RecoveryFail.Inc(1)
