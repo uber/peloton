@@ -2109,15 +2109,25 @@ func (j *job) updateWorkflowVersion(
 
 // Delete deletes the job from DB and clears the cache
 func (j *job) Delete(ctx context.Context) error {
-	err := j.jobFactory.jobStore.DeleteJob(ctx, j.ID().GetValue())
-	if err == nil {
-		err = j.jobFactory.jobIndexOps.Delete(ctx, j.ID())
-	}
-	// It is possible to receive a timeout error although the delete was successful.
-	// Hence, invalidate the cache irrespective of whether an error occurred or not
-	j.invalidateCache()
+	// It is possible to receive a timeout error although the delete was
+	// successful. Hence, invalidate the cache irrespective of whether an error
+	// occurred or not
+	defer j.invalidateCache()
 
-	return err
+	if err := j.jobFactory.jobStore.DeleteJob(
+		ctx,
+		j.ID().GetValue(),
+	); err == nil {
+		return err
+	}
+
+	// delete from job_index
+	if err := j.jobFactory.jobIndexOps.Delete(ctx, j.ID()); err != nil {
+		return err
+	}
+
+	// delete from active_jobs
+	return j.jobFactory.jobStore.DeleteActiveJob(ctx, j.ID())
 }
 
 func createEmptyResourceUsageMap() map[string]float64 {

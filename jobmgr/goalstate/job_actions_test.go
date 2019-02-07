@@ -519,11 +519,12 @@ func (suite *jobActionsTestSuite) TestJobDeleteGetJobFailure() {
 // TestJobDeleteStoreError tests the failure case of
 // deleting job due to error while deleting job from store
 func (suite *jobActionsTestSuite) TestJobDeleteStoreError() {
+	suite.cachedJob.EXPECT().ID().Return(suite.jobID).AnyTimes()
+
 	gomock.InOrder(
 		suite.jobFactory.EXPECT().
 			GetJob(suite.jobID).
 			Return(suite.cachedJob),
-
 		suite.cachedJob.EXPECT().
 			Delete(gomock.Any()).
 			Return(yarpcerrors.InternalErrorf("test error")),

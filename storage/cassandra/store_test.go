@@ -1870,6 +1870,11 @@ func (suite *CassandraStoreTestSuite) TestActiveJobsForRecovery() {
 	actualJobIDs, err = jobStore.GetActiveJobs(ctx)
 	suite.NoError(err)
 	suite.Len(actualJobIDs, 0)
+
+	// Delete job id which is not present in active_jobs table
+	err = jobStore.DeleteActiveJob(
+		context.Background(), &peloton.JobID{Value: uuid.New()})
+	suite.NoError(err)
 }
 
 func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, to int) {
