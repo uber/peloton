@@ -58,7 +58,8 @@ type ServiceHandlerTestSuite struct {
 	podClient     *podmocks.MockPodServiceYARPCClient
 	respoolLoader *aurorabridgemocks.MockRespoolLoader
 
-	config ServiceHandlerConfig
+	config        ServiceHandlerConfig
+	thermosConfig atop.ThermosExecutorConfig
 
 	handler *ServiceHandler
 }
@@ -76,14 +77,19 @@ func (suite *ServiceHandlerTestSuite) SetupTest() {
 		GetTasksWithoutConfigsWorkers: 25,
 		StopPodWorkers:                25,
 		PodRunsDepth:                  2,
+		ThermosExecutor: atop.ThermosExecutorConfig{
+			Path: "/usr/share/aurora/bin/thermos_executor.pex",
+		},
 	}
-	suite.handler = NewServiceHandler(
+	handler, err := NewServiceHandler(
 		suite.config,
 		tally.NoopScope,
 		suite.jobClient,
 		suite.podClient,
 		suite.respoolLoader,
 	)
+	suite.NoError(err)
+	suite.handler = handler
 }
 
 func (suite *ServiceHandlerTestSuite) TearDownTest() {
@@ -867,7 +873,11 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff() {
 	jobKey := jobUpdateRequest.GetTaskConfig().GetJob()
 	entityVersion := fixture.PelotonEntityVersion()
 
-	jobSpec, _ := atop.NewJobSpecFromJobUpdateRequest(jobUpdateRequest, respoolID)
+	jobSpec, _ := atop.NewJobSpecFromJobUpdateRequest(
+		jobUpdateRequest,
+		respoolID,
+		suite.config.ThermosExecutor,
+	)
 
 	addedInstancesIDRange := []*pod.InstanceIDRange{
 		{
@@ -916,7 +926,11 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiffFailure() {
 	jobID := fixture.PelotonJobID()
 	jobKey := jobUpdateRequest.GetTaskConfig().GetJob()
 	entityVersion := fixture.PelotonEntityVersion()
-	jobSpec, _ := atop.NewJobSpecFromJobUpdateRequest(jobUpdateRequest, respoolID)
+	jobSpec, _ := atop.NewJobSpecFromJobUpdateRequest(
+		jobUpdateRequest,
+		respoolID,
+		suite.config.ThermosExecutor,
+	)
 
 	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
 

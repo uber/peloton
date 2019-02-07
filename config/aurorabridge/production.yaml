@@ -22,3 +22,9 @@ sentry:
   enabled: true
   tags:
     component: aurorabridge
+
+service_handler:
+  thermos_executor:
+    path: "/usr/local/sbin/executor_wrapper.sh"
+    resources: "/usr/share/aurora/bin/thermos_executor.pex,/etc/aurora/announcer-auth.json,/usr/bin/filebundle-syncdownload,/usr/bin/filebundle-ocha-syncregister"
+    flags: "--preserve_env --nosetuid-health-checks --nosetuid --no-create-user --runner-logger-mode=rotate --runner-rotate-log-size-mb=200 --runner-rotate-log-backups=5"

@@ -61,9 +61,12 @@ func NewServiceHandler(
 	jobClient statelesssvc.JobServiceYARPCClient,
 	podClient podsvc.PodServiceYARPCClient,
 	respoolLoader RespoolLoader,
-) *ServiceHandler {
+) (*ServiceHandler, error) {
 
 	config.normalize()
+	if err := config.validate(); err != nil {
+		return nil, err
+	}
 
 	return &ServiceHandler{
 		config:        config,
@@ -71,7 +74,7 @@ func NewServiceHandler(
 		jobClient:     jobClient,
 		podClient:     podClient,
 		respoolLoader: respoolLoader,
-	}
+	}, nil
 }
 
 // GetJobSummary returns a summary of jobs, optionally only those owned by a specific role.
@@ -556,7 +559,11 @@ func (h *ServiceHandler) getJobUpdateDiff(
 		return nil, auroraErrorf("get job summary: %s", err)
 	}
 
-	jobSpec, err := atop.NewJobSpecFromJobUpdateRequest(request, respoolID)
+	jobSpec, err := atop.NewJobSpecFromJobUpdateRequest(
+		request,
+		respoolID,
+		h.config.ThermosExecutor,
+	)
 	if err != nil {
 		return nil, auroraErrorf("new job spec: %s", err)
 	}
@@ -778,7 +785,11 @@ func (h *ServiceHandler) startJobUpdate(
 
 	jobKey := request.GetTaskConfig().GetJob()
 
-	jobSpec, err := atop.NewJobSpecFromJobUpdateRequest(request, respoolID)
+	jobSpec, err := atop.NewJobSpecFromJobUpdateRequest(
+		request,
+		respoolID,
+		h.config.ThermosExecutor,
+	)
 	if err != nil {
 		return nil, auroraErrorf("new job spec: %s", err)
 	}

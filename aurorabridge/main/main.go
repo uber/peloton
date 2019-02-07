@@ -229,13 +229,17 @@ func main() {
 
 	respoolLoader := aurorabridge.NewRespoolLoader(cfg.RespoolLoader, respoolClient)
 
-	handler := aurorabridge.NewServiceHandler(
+	handler, err := aurorabridge.NewServiceHandler(
 		cfg.ServiceHandler,
 		rootScope,
 		jobClient,
 		podClient,
 		respoolLoader,
 	)
+	if err != nil {
+		log.Fatalf("Unable to create service handler: %v", err)
+	}
+
 	dispatcher.Register(auroraschedulermanagerserver.New(handler))
 	dispatcher.Register(readonlyschedulerserver.New(handler))
 

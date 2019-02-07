@@ -30,14 +30,17 @@ func TestNewPodSpec_ContainersResource(t *testing.T) {
 		gpu  int64   = 1
 	)
 
-	p, err := NewPodSpec(&api.TaskConfig{
-		Resources: []*api.Resource{
-			{NumCpus: &cpu},
-			{RamMb: &mem},
-			{DiskMb: &disk},
-			{NumGpus: &gpu},
+	p, err := NewPodSpec(
+		&api.TaskConfig{
+			Resources: []*api.Resource{
+				{NumCpus: &cpu},
+				{RamMb: &mem},
+				{DiskMb: &disk},
+				{NumGpus: &gpu},
+			},
 		},
-	})
+		ThermosExecutorConfig{},
+	)
 	assert.NoError(t, err)
 
 	assert.Len(t, p.Containers, 1)
@@ -47,4 +50,7 @@ func TestNewPodSpec_ContainersResource(t *testing.T) {
 	assert.Equal(t, float64(mem), r.GetMemLimitMb())
 	assert.Equal(t, float64(disk), r.GetDiskLimitMb())
 	assert.Equal(t, float64(gpu), r.GetGpuLimit())
+
+	assert.NotNil(t, p.Containers[0].GetCommand())
+	assert.NotNil(t, p.Containers[0].GetExecutor())
 }

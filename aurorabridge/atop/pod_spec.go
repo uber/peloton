@@ -15,6 +15,7 @@
 package atop
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/uber/peloton/.gen/mesos/v1"
@@ -24,11 +25,15 @@ import (
 	"github.com/uber/peloton/aurorabridge/common"
 	"github.com/uber/peloton/aurorabridge/label"
 
+	"go.uber.org/thriftrw/protocol"
 	"go.uber.org/thriftrw/ptr"
 )
 
 // NewPodSpec creates a new PodSpec.
-func NewPodSpec(t *api.TaskConfig) (*pod.PodSpec, error) {
+func NewPodSpec(
+	t *api.TaskConfig,
+	c ThermosExecutorConfig,
+) (*pod.PodSpec, error) {
 	jobKeyLabel := label.NewAuroraJobKey(t.GetJob())
 
 	aml, err := label.NewAuroraMetadata(t.GetMetadata())
@@ -39,6 +44,18 @@ func NewPodSpec(t *api.TaskConfig) (*pod.PodSpec, error) {
 	constraint, err := NewConstraint(jobKeyLabel, t.GetConstraints())
 	if err != nil {
 		return nil, fmt.Errorf("new constraint: %s", err)
+	}
+
+	// Taking aurora TaskConfig struct from JobUpdateRequest, and
+	// serialize it using Thrift binary protocol. The resulting
+	// byte array will be attached to ExecutorInfo.Data.
+	//
+	// After task placement, jobmgr will deserialize the byte array,
+	// combine it with placement info, and generates aurora AssignedTask
+	// struct, which will be eventually be consumed by thermos executor.
+	executorData, err := encodeTaskConfig(t)
+	if err != nil {
+		return nil, fmt.Errorf("encode task config: %s", err)
 	}
 
 	return &pod.PodSpec{
@@ -52,7 +69,8 @@ func NewPodSpec(t *api.TaskConfig) (*pod.PodSpec, error) {
 			Name:           "", // Unused.
 			Resource:       newResourceSpec(t.GetResources()),
 			Container:      newMesosContainerInfo(t.GetContainer()),
-			Command:        nil, // TODO(codyg): Executor data instead?
+			Command:        NewThermosCommandInfo(c),
+			Executor:       NewThermosExecutorInfo(c, executorData),
 			LivenessCheck:  nil, // TODO(codyg): Figure this default.
 			ReadinessCheck: nil, // Unused.
 			Ports:          newPortSpecs(t.GetResources()),
@@ -175,4 +193,19 @@ func newMesosDockerParameters(ps []*api.DockerParameter) []*mesos_v1.Parameter {
 		})
 	}
 	return result
+}
+
+func encodeTaskConfig(t *api.TaskConfig) ([]byte, error) {
+	w, err := t.ToWire()
+	if err != nil {
+		return nil, fmt.Errorf("convert task config to wire value: %s", err)
+	}
+
+	var b bytes.Buffer
+	err = protocol.Binary.Encode(w, &b)
+	if err != nil {
+		return nil, fmt.Errorf("serialize task config to binary: %s", err)
+	}
+
+	return b.Bytes(), nil
 }

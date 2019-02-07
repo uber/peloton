@@ -29,9 +29,14 @@ import (
 func NewJobSpecFromJobUpdateRequest(
 	r *api.JobUpdateRequest,
 	respoolID *peloton.ResourcePoolID,
+	c ThermosExecutorConfig,
 ) (*stateless.JobSpec, error) {
 
-	p, err := NewPodSpec(r.GetTaskConfig())
+	if !r.IsSetTaskConfig() {
+		return nil, fmt.Errorf("task config is not set in job update request")
+	}
+
+	p, err := NewPodSpec(r.GetTaskConfig(), c)
 	if err != nil {
 		return nil, fmt.Errorf("new pod spec: %s", err)
 	}

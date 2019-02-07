@@ -37,15 +37,18 @@ func TestNewPodSpec_HostLimitConstraint(t *testing.T) {
 
 	jobKeyLabel := label.NewAuroraJobKey(k)
 
-	p, err := NewPodSpec(&api.TaskConfig{
-		Job: k,
-		Constraints: []*api.Constraint{{
-			Name: ptr.String(common.MesosHostAttr),
-			Constraint: &api.TaskConstraint{
-				Limit: &api.LimitConstraint{Limit: &n},
-			},
-		}},
-	})
+	p, err := NewPodSpec(
+		&api.TaskConfig{
+			Job: k,
+			Constraints: []*api.Constraint{{
+				Name: ptr.String(common.MesosHostAttr),
+				Constraint: &api.TaskConstraint{
+					Limit: &api.LimitConstraint{Limit: &n},
+				},
+			}},
+		},
+		ThermosExecutorConfig{},
+	)
 	assert.NoError(t, err)
 
 	assert.Contains(t, p.Labels, jobKeyLabel)
@@ -70,19 +73,22 @@ func TestNewPodSpec_ValueConstraints(t *testing.T) {
 		v2   = "xyz456"
 	)
 
-	p, err := NewPodSpec(&api.TaskConfig{
-		Constraints: []*api.Constraint{{
-			Name: &name,
-			Constraint: &api.TaskConstraint{
-				Value: &api.ValueConstraint{
-					Values: map[string]struct{}{
-						v1: {},
-						v2: {},
+	p, err := NewPodSpec(
+		&api.TaskConfig{
+			Constraints: []*api.Constraint{{
+				Name: &name,
+				Constraint: &api.TaskConstraint{
+					Value: &api.ValueConstraint{
+						Values: map[string]struct{}{
+							v1: {},
+							v2: {},
+						},
 					},
 				},
-			},
-		}},
-	})
+			}},
+		},
+		ThermosExecutorConfig{},
+	)
 	assert.NoError(t, err)
 
 	c := p.GetConstraint()

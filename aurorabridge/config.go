@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
+
+	"github.com/uber/peloton/aurorabridge/atop"
 )
 
 // ServiceHandlerConfig defines ServiceHandler configuration.
@@ -35,6 +37,8 @@ type ServiceHandlerConfig struct {
 	// keep the complete history of pods, this parameter is used to limit
 	// the number of pods returned.
 	PodRunsDepth int `yaml:"pod_runs_depth"`
+
+	ThermosExecutor atop.ThermosExecutorConfig `yaml:"thermos_executor"`
 }
 
 func (c *ServiceHandlerConfig) normalize() {
@@ -50,6 +54,13 @@ func (c *ServiceHandlerConfig) normalize() {
 	if c.PodRunsDepth <= 0 {
 		c.PodRunsDepth = 1
 	}
+}
+
+func (c *ServiceHandlerConfig) validate() error {
+	if err := c.ThermosExecutor.Validate(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // RespoolLoaderConfig defines RespoolLoader configuration.
