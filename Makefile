@@ -1,4 +1,8 @@
-.PHONY: all placement install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers archiver failure-test-minicluster failure-test-vcluster aurorabridge
+.PHONY: all placement install cli test unit_test cover lint clean \
+	hostmgr jobmgr resmgr docker version debs docker-push \
+	test-containers archiver failure-test-minicluster \
+	failure-test-vcluster aurorabridge docs
+
 .DEFAULT_GOAL := all
 
 PROJECT_ROOT  = github.com/uber/peloton
@@ -23,7 +27,6 @@ STABLE_RELEASE=`git describe --abbrev=0 --tags`
 DOCKER_IMAGE ?= uber/peloton
 DC ?= all
 GEN_DIR = .gen
-APIDOC_DIR = docs/_static/
 
 GOCOV = $(go get github.com/axw/gocov/gocov)
 GOCOV_XML = $(go get github.com/AlekSi/gocov-xml)
@@ -119,7 +122,7 @@ pbgens: $(VENDOR)
 
 apidoc: $(VENDOR)
 	go get github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc
-	./scripts/generate-protobuf.py --generator=doc --out-dir=$(APIDOC_DIR)
+	./scripts/generate-protobuf.py --generator=doc --out-dir=docs
 
 clean:
 	rm -rf vendor gen vendor_mocks $(BIN_DIR) .gen env
@@ -335,3 +338,7 @@ jenkins: devtools gens mockgens lint
 	go test -race -i $(ALL_PKGS)
 	gocov test -v -race $(ALL_PKGS) > coverage.json | sed 's|filename=".*$(PROJECT_ROOT)/|filename="|'
 	gocov-xml < coverage.json > coverage.xml
+
+
+docs:
+	@./scripts/mkdocs.sh -q serve

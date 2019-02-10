@@ -19,7 +19,9 @@ protoc_cmd = (
     'protoc --proto_path /usr/local/include/ --proto_path={proto_path} '
     '--{gen}_out={mflags}:{out_dir} --{gen}_opt={gen_opt} {file}'
 )
-doc_opt = 'html,apidoc.html:mesos/*,private/*'
+doc_opt = (
+    'markdown,api-reference.md:mesos/*,private/*,api/v0/*,timestamp.proto'
+)
 
 
 def protos():

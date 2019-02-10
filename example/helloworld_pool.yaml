@@ -1,0 +1,26 @@
+name: HelloWorldPool
+owningteam: MyTeam
+ldapgroups:
+- MyGroup
+description: "My first resource pool on Peloton"
+resources:
+- kind: cpu
+  reservation: 4
+  limit: 8
+- kind: memory
+  reservation: 2048
+  limit: 4096
+  share: 1
+- kind: disk
+  reservation: 2048
+  limit: 4096
+  share: 1
+- kind: gpu
+  reservation: 0
+  limit: 0
+  share: 1
+controllerlimit:
+  maxpercent: 10
+slacklimit:
+  maxpercent: 30
+policy: 1

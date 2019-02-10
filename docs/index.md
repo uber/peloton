@@ -39,7 +39,7 @@ post](https://eng.uber.com/peloton/).
 
 ## Getting Started
 
-Check out the [Peloton tutorial](docs/tutorial.md) for step-by-step
+Check out the [Peloton tutorial](tutorial.md) for step-by-step
 instructions to start a local minicluster and submit a HelloWorld job
 to Peloton.
 
@@ -53,7 +53,7 @@ on Zookeeper for service discovery and leader election.
 
 Figure , below, shows the high-level architecture of Peloton built on
 top of Mesos, Zookeeper, and Cassandra:
-![image](docs/figures/architecture.png)
+![image](figures/architecture.png)
 
 
 ### Components:
@@ -92,7 +92,7 @@ Peloton consists of the following components:
 ## References
 
 ### User Guide
-See [Peloton User Guide](docs/user-guide.md) for more detailed
+See [Peloton User Guide](user-guide.md) for more detailed
 information on how to use Peloton.
 
 ### Peloton CLI
@@ -113,7 +113,7 @@ to access the APIs. For detailed Peloton API definition, see the
 [Peloton API reference](api-reference.md).
 
 ## Contributing
-See the [Developer Guide](docs/development.md) on how to build Peloton
+See the [Developer Guide](development.md) on how to build Peloton
 from source code.
 
 

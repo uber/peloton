@@ -1,4 +1,4 @@
-# Peloton Secrets Management
+# Secrets Management
 
 This section describes distributing containers secrets at runtime via Peloton
 
@@ -43,13 +43,13 @@ The secret proto message to describe job secrets looks like this:
 ```
 
 Job Create/Update/Get API will support this secret proto message.
-For further info, see the complete [API documentation](_static/apidoc.html)
+For further info, see the complete [API documentation](api-reference.md)
 
 ### Spark on Peloton workflow
 
 Spark containers specifically use this as described below:
 
-![image](_static/peloton-secrets-workflow.png)
+![image](figures/secrets-workflow.png)
 
 1.  Spark driver task is created on Peloton. At the time of creation, a
     delegation token is provided as a secret proto message to Peloton.

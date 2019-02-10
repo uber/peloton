@@ -12,3 +12,6 @@ protobuf
 
 # Performance tests requirements.
 Jinja2>=1.1.0
+
+# Mkdocs requirements.
+mkdocs

@@ -1,13 +1,40 @@
 # User Guide
 
+Peloton supports for the following four types of jobs - batch,
+stateless, stateful and daemon.
+
+- **Batch Jobs** are jobs which typically take a few seconds to a few
+days to complete. There are a broad category of batch jobs for
+developer experience, data analytics, machine learning etc such as
+Spark, Hive, Tensorflow etc. These jobs tend to be less sensitive to
+short-term performance fluctuations due to cluster resource shortage,
+and quite often are preemptible by nature.
+
+- **Stateless Jobs** are long running services which should never go
+down and have no persistent state on local disk. Most web backend
+applications belong to this category. These jobs have a strict SLA and
+only few of the instances of this job are allowed to be unavailable at
+a given time.
+
+- **Stateful Jobs** are also long running services which should never go
+down, but these jobs have persistent states on local disks. Examples
+of such jobs include Cassandra, Redis, MySQL etc. These jobs are not
+only not preemptible but are also very expensive to relocate to other
+hosts due to their local persistent states.
+
+- **Daemon Jobs** are the agents running on each host for infrastructure
+components such as for statistics collection. Daemon jobs are neither
+preemptible nor relocatable.
+
 ##  Job and Task Definitions
 
-In Peloton, a Job is one or more instances of the same executable, running on a 
-Cluster. Each instance of a Job is called a Task that contains the executable to
- run, the arguments to the executable, and other metadata such as resource 
- requirements, container image, and port configuration, etc.
+In Peloton, a Job is one or more instances of the same executable,
+running on a Cluster. Each instance of a Job is called a Task that
+contains the executable to run, the arguments to the executable, and
+other metadata such as resource requirements, container image, and
+port configuration, etc.
 
-![image](_static/job_task_peloton.png)
+![image](figures/job-task-definition.png)
 
 A Job or Task’s resource requirements are in the form of a vector of multiple 
 resource types <cpu, memory, disk-size, gpu>. 
@@ -48,7 +75,7 @@ the placements to launch tasks on Mesos via host manager.
 Next shows the detailed sequence diagram of a job creation workflow in Peloton
 
   
-![image](_static/job_task_creation_peloton.png)
+![image](figures/job-creation-workflow.png)
 
 
 #### Job State Machine
@@ -58,7 +85,7 @@ to transition state according to various events happened to the tasks of the job
 Peloton defines the following states for job, shown in the following state 
 transition diagram:
 
-![image](_static/job_lifecycle_peloton.png)
+![image](figures/job-state-machine.png)
 
 
 #### Task State Machine
@@ -69,8 +96,51 @@ Peloton defines the following states for task, shown in the following state
 transition diagram: 
 
 
-![image](_static/task_lifecycle_peloton.png)
+![image](figures/task-state-machine.png)
 
+
+### Stateless Job Update Lifecycle
+
+When Peloton receives a request to update a stateless job, it will
+persist the request into storage and mark update as
+`INITIALIZED`. Then the state would change according to runtime
+state and update configuration.
+
+![image](figures/job-update-states.png)
+
+#### ROLLING FORWARD To SUCCEEDED:
+
+As soon as an update is processed by Peloton, it would transit to
+**ROLLING FORWARD** state. It means tasks in the job are being
+updated, respecting update spec and job SLA.  As soon as all the tasks
+needed to be updated in the job have been processed, update would
+transit into **SUCCEEDED** state.
+
+#### ROLLING BACKWARD, ROLLED BACK And FAILED
+
+Peloton decides whether an update is successful given the UpdateSpec
+provided.
+
+If **RollbackOnFailure** is set in UpdateSpec, update would enter
+**ROLLING BACKWARD** state. Peloton would try to rollback the job to
+the previous configuration. If rolling back fails, update would enter
+**FAILED** state. If rollback back succeeds, update would terminated
+with **ROLLED BACK** state.
+
+If **RollbackOnFailure** is set in UpdateSpec, update would enter **FAILED** state
+directly.
+
+#### ABORTED and PAUSED
+
+Any non-terminal state can transit to **ABORTED**/**PAUSED** state
+upon user's request. The major difference is that update can still
+resume with original state after it enters **PAUSED** state, but once
+update enters **ABORTED** state it would end up with the state.
+
+Another difference is that, update would be in **PAUSED** state only
+when user explicitly pauses an update. But, update can be in
+**ABORTED** state not only when user aborts an update but also when it
+is overwritten by a new update.
 
 
 ## Resource Pools
@@ -120,15 +190,16 @@ free resources in the cluster at that moment.
 Allocation is the amount of resources which each resource pool is using
 (Allocated) at any given point of time.
 
-![image](_static/Resource-Pool.png)
+![image](figures/resource-pool-tree.png)
 
-Picture above shows a ATG resource pool with two child resource pools,
-i.e. AVMaps and Simulation. All resources in the cluster will be divided
-between these two organizations. Simulation is a leaf resource pool
-since it does not have any teams. So users are allowed to submit jobs at
-Simulation resource pool. However AvMaps has two child resource pools
-for AV-Build and AV-Release, so the resources in AVMaps will be further
-divided based on the resource pool settings of AV-Build and AV-Release.
+Picture above shows an example resource pool tree with two child
+resource pools, i.e. AVMaps and Simulation. All resources in the
+cluster will be divided between these two organizations. Simulation is
+a leaf resource pool since it does not have any teams. So users are
+allowed to submit jobs at Simulation resource pool. However AvMaps has
+two child resource pools for AV-Build and AV-Release, so the resources
+in AVMaps will be further divided based on the resource pool settings
+of AV-Build and AV-Release.
 
 ## Preemption
 
@@ -170,7 +241,7 @@ Example 1: Let's say there are 100 resource units (e.g. CPU cores) in
 the cluster. We have three resource pools with Reservation of 20, Limit
 of 100, and Share of 1.
 
-![image](_static/preemption-resource-pool-1.png)
+![image](figures/preemption-resource-pool-1.png)
 
 If there is enough demand in each resource pool, then 40 unreserved
 resource units and any free resources will be divided equally to each
@@ -189,7 +260,7 @@ unreserved resource units and 10 unused from RP1, so the total 50
 resource units will be divided equally between RP2 and RP3 since they
 have the same share of 1.
 
-![image](_static/preemption-resource-pool-2.png)
+![image](figures/preemption-resource-pool-2.png)
 
 Based on the above example we see that resource pools can share unused
 resources amongst each other depending on the demand. However, once
@@ -216,7 +287,7 @@ resources; 10/2=5 will be taken away from each competing resource pool
     ensure all three pools have the same entitlement: 13/2=6.5 will be
     taken away from each competing resource pool (again, RP2 and RP3).
 
-![image](_static/preemption-resource-pool-3.png)
+![image](figures/preemption-resource-pool-3.png)
 
 ### Preemption Order
 
@@ -238,7 +309,7 @@ Once the tasks are filtered and ranked they are sent for preemption.
 
 Currently peloton only supports preemption at the Job level. This means
 that if the job is marked as preemptible in the Job\'s
-[SlaConfig](_static/apidoc.html#peloton.api.job.SlaConfig) then all
+[SlaSpec](apidoc.md/#peloton.api.v1alpha.job.stateless.SlaSpec) then all
 tasks in the job will be preemptible as well and vice versa.
 
 ### Preemption FAQ
@@ -316,8 +387,4 @@ tasks in the job will be preemptible as well and vice versa.
     Peloton currently only supports \"Inter resource pool preemption\".
     \"Intra resource pool preemption\" should be added in H1 2019.
 
-## Peloton Resources
 
--   [Peloton
-    RFC](https://docs.google.com/document/d/174TjLbnJ7z9HdgMKvbeddCq4D8iScR5kVG4u2HANl6c/edit?usp=sharing)
--   [Preemption](https://docs.google.com/document/d/1M-tTDJn6YLH4pDmZUv5tPz3sBUU5cWJPX-BvPHrWcXg/edit?usp=sharing)

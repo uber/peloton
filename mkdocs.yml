@@ -1,0 +1,9 @@
+site_name: Peloton Documentation
+nav:
+    - Home: index.md
+    - Tutorial: tutorial.md
+    - Architecture: architecture.md
+    - User Guide: user-guide.md
+    - Development: development.md
+    - API Reference: api-reference.md
+theme: readthedocs

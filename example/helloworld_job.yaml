@@ -1,0 +1,29 @@
+name: HelloWorld
+owningteam: MyTeam
+ldapgroups:
+- MyGroup
+description: "A Hello World batch job on Peloton"
+instancecount: 10
+defaultconfig:
+  resource:
+    cpulimit: 1
+    memlimitmb: 1024
+    disklimitmb: 1024
+    fdlimit: 10
+  container:
+    type: 1
+    docker:
+      image: "debian"
+      parameters:
+        - key: env
+          value: MESSAGE=HelloWorld
+        - key: env
+          value: SLEEP_SECONDS=300
+    volumes:
+      - containerpath: /tmp
+        hostpath: /tmp
+        mode: 1
+  command:
+    shell: true
+    value: 'echo $MESSAGE && sleep $SLEEP_SECONDS'
+

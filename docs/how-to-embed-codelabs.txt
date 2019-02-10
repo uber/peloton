@@ -1,9 +1,0 @@
-
-<!--Code for embeding tutorials, PPTs, codelabs, and other external content. For videos, you must wrap the <iframe> in a <div>-->
-
-.. raw:: html
-
-  <iframe src="https://engtraining.uberinternal.com/codelabs/golang/201" width="800", height="800" frameborder="0" scrolling="no" marginheight="0" marginwidth="0">
-  <p>Your browser does not support iframes.</p>
-
-  </iframe>
