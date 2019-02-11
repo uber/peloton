@@ -52,6 +52,16 @@ type PrimaryKey struct {
 	ClusteringKeys []*ClusteringKey
 }
 
+// GetColumnsToRead returns a list of column names to be read for this object
+// in a select operation
+func (o *Definition) GetColumnsToRead() []string {
+	colNamesToRead := []string{}
+	for col := range o.ColumnToType {
+		colNamesToRead = append(colNamesToRead, col)
+	}
+	return colNamesToRead
+}
+
 // Object is a marker interface method that is used to add connector specific
 // annotations to storage objects. Users can embed this interface in any
 // storage object structure definition.

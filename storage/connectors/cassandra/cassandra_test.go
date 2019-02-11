@@ -37,7 +37,8 @@ var config *pelotoncassandra.Config
 var connector *cassandraConnector
 
 // test table name to be created for this test
-var testTableName string
+var testTableName1 string
+var testTableName2 string
 
 // testRow in DB representation looks like this:
 //
@@ -55,6 +56,50 @@ var testRow = []base.Column{
 	{
 		Name:  "data",
 		Value: "testdata",
+	},
+}
+
+// testRowWithCK in DB representation looks like this:
+// here, primary key is "id" and clustering key is "ck"
+// 	*	id	| 	 ck	   | 	name	|  	 data
+//  1.   1  	 20	       "test"      "testdata20"
+//  2.   1  	 10	       "test"      "testdata10"
+var testRowsWithCK = [][]base.Column{
+	{
+		{
+			Name:  "id",
+			Value: uint64(1),
+		},
+		{
+			Name:  "ck",
+			Value: uint64(10),
+		},
+		{
+			Name:  "name",
+			Value: "test",
+		},
+		{
+			Name:  "data",
+			Value: "testdata20",
+		},
+	},
+	{
+		{
+			Name:  "id",
+			Value: uint64(1),
+		},
+		{
+			Name:  "ck",
+			Value: uint64(20),
+		},
+		{
+			Name:  "name",
+			Value: "test",
+		},
+		{
+			Name:  "data",
+			Value: "testdata10",
+		},
 	},
 }
 
@@ -85,13 +130,23 @@ func init() {
 		log.Fatal(err)
 	}
 
-	testTableName = fmt.Sprintf("test_table_%d", rand.Intn(100))
+	testTableName1 = fmt.Sprintf("test_table_%d", rand.Intn(1000))
+	testTableName2 = fmt.Sprintf("test_table_%d", rand.Intn(1000))
 
 	// create a test table
-	table := fmt.Sprintf("CREATE TABLE peloton_test.%s"+
-		" (id int, name text, data text, PRIMARY KEY (id))", testTableName)
+	table1 := fmt.Sprintf("CREATE TABLE peloton_test.%s"+
+		" (id int, name text, data text, PRIMARY KEY (id))", testTableName1)
 
-	if err := session.Query(table).Exec(); err != nil {
+	if err := session.Query(table1).Exec(); err != nil {
+		log.Fatal(err)
+	}
+
+	// create a test table with partition key "id" and clustering key "ck"
+	table2 := fmt.Sprintf("CREATE TABLE peloton_test.%s"+
+		" (id int, ck int, name text, data text, PRIMARY KEY ((id), ck))",
+		testTableName2)
+
+	if err := session.Query(table2).Exec(); err != nil {
 		log.Fatal(err)
 	}
 
@@ -109,7 +164,7 @@ func init() {
 func (suite *CassandraConnSuite) TestCreateGetDelete() {
 	// Definition stores schema information about an Object
 	obj := &base.Definition{
-		Name: testTableName,
+		Name: testTableName1,
 		Key: &base.PrimaryKey{
 			PartitionKeys: []string{"id"},
 		},
@@ -147,7 +202,7 @@ func (suite *CassandraConnSuite) TestCreateGetDelete() {
 func (suite *CassandraConnSuite) TestCreateUpdateGet() {
 	// Definition stores schema information about an Object
 	obj := &base.Definition{
-		Name: testTableName,
+		Name: testTableName1,
 		Key: &base.PrimaryKey{
 			PartitionKeys: []string{"id"},
 		},
@@ -201,4 +256,57 @@ func (suite *CassandraConnSuite) TestCreateUpdateGet() {
 		context.Background(), obj, testUpdateRowWithPrimaryKey, keyRow)
 	suite.Error(err)
 	suite.Equal(err.Error(), "PRIMARY KEY part id found in SET part")
+}
+
+// TestCreateGetAll tests the GetAll operation
+func (suite *CassandraConnSuite) TestCreateGetAll() {
+	// Definition stores schema information about an Object
+	obj := &base.Definition{
+		Name: testTableName2,
+		Key: &base.PrimaryKey{
+			PartitionKeys: []string{"id"},
+			ClusteringKeys: []*base.ClusteringKey{
+				{
+					Name:       "ck",
+					Descending: true,
+				},
+			},
+		},
+		// Column name to data type mapping of the object
+		ColumnToType: map[string]reflect.Type{
+			"id":   reflect.TypeOf(1),
+			"ck":   reflect.TypeOf(1),
+			"data": reflect.TypeOf("data"),
+			"name": reflect.TypeOf("name"),
+		},
+	}
+
+	// create the test rows in C*
+	for _, row := range testRowsWithCK {
+		err := connector.Create(context.Background(), obj, row)
+		suite.NoError(err)
+	}
+
+	// read the row from C* test table for given keys
+	rows, err := connector.GetAll(context.Background(), obj, keyRow)
+	suite.NoError(err)
+	suite.Len(rows, 2)
+
+	for _, row := range rows {
+		for _, col := range row {
+			if col.Name == "ck" {
+				ck := col.Value.(*int)
+				suite.True(*ck == 10 || *ck == 20)
+			} else if col.Name == "name" {
+				testStr := "test"
+				suite.Equal(col.Value, &testStr)
+			} else if col.Name == "data" {
+				data := col.Value.(*string)
+				suite.True(*data == "testdata20" || *data == "testdata10")
+			} else {
+				id := col.Value.(*int)
+				suite.Equal(*id, 1)
+			}
+		}
+	}
 }

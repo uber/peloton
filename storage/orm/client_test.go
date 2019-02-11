@@ -51,6 +51,41 @@ var testRow = []base.Column{
 	},
 }
 
+// testRows that would be returned as part of GetAll query where partition key
+// is "id" and clustering key is "name"
+var testRows = [][]base.Column{
+	// row 0
+	{
+		{
+			Name:  "id",
+			Value: uint64(1),
+		},
+		{
+			Name:  "name",
+			Value: "test1",
+		},
+		{
+			Name:  "data",
+			Value: "testdata1",
+		},
+	},
+	// row 1
+	{
+		{
+			Name:  "id",
+			Value: uint64(1),
+		},
+		{
+			Name:  "name",
+			Value: "test2",
+		},
+		{
+			Name:  "data",
+			Value: "testdata2",
+		},
+	},
+}
+
 // keyRow in DB representation looks like this:
 //
 // 	*	id	| 	 name
@@ -159,6 +194,43 @@ func (suite *ORMTestSuite) TestClientGet() {
 	suite.Equal(testRow[2].Value, e.Data)
 
 	err = client.Get(suite.ctx, &InvalidObject1{})
+	suite.Error(err)
+}
+
+// TestClientGetAll tests client GetAll operation on valid and invalid entities
+func (suite *ORMTestSuite) TestClientGetAll() {
+	defer suite.ctrl.Finish()
+	conn := ormmocks.NewMockConnector(suite.ctrl)
+
+	// ValidObject instance with only primary key set
+	e := &ValidObject{
+		ID: uint64(1),
+	}
+
+	conn.EXPECT().GetAll(suite.ctx, gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *base.Definition,
+			row []base.Column) {
+			suite.Equal("id", row[0].Name)
+			suite.Equal(e.ID, row[0].Value)
+		}).Return(testRows, nil)
+
+	client, err := NewClient(conn, &ValidObject{})
+	suite.NoError(err)
+
+	// Do a get on the ValidObject instance and verify that the list of objects
+	// returned is valid
+	objs, err := client.GetAll(suite.ctx, e)
+	suite.NoError(err)
+	suite.Len(objs, 2)
+
+	for i, obj := range objs {
+		validObj := obj.(*ValidObject)
+		// compare the values from testRow to that of the entity fields
+		suite.Equal(testRows[i][1].Value, validObj.Name)
+		suite.Equal(testRows[i][2].Value, validObj.Data)
+	}
+
+	_, err = client.GetAll(suite.ctx, &InvalidObject1{})
 	suite.Error(err)
 }
 

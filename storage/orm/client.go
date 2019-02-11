@@ -27,8 +27,10 @@ import (
 type Client interface {
 	// Create creates the storage object in the database
 	Create(ctx context.Context, e base.Object) error
-	// Create gets the storage object from the database
+	// Get gets the storage object from the database
 	Get(ctx context.Context, e base.Object) error
+	// Get gets all the storage objects for the partition key from the database
+	GetAll(ctx context.Context, e base.Object) ([]base.Object, error)
 	// Update updates the storage object in the database
 	// The fields to be updated can be specified as fieldsToUpdate which is
 	// a variable list of field names and is to be optionally specified by
@@ -106,6 +108,30 @@ func (c *client) Get(ctx context.Context, e base.Object) error {
 	table.SetObjectFromRow(e, row)
 
 	return nil
+}
+
+// GetAll fetches a list of base objects for the given partition key
+// The base object provided must contain the value of its partition key
+func (c *client) GetAll(
+	ctx context.Context,
+	e base.Object,
+) ([]base.Object, error) {
+
+	// lookup if a table exists for this object, return error if not found
+	table, err := c.getTable(e)
+	if err != nil {
+		return nil, err
+	}
+
+	// build a primary key row from storage object
+	keyRow := table.GetKeyRowFromObject(e)
+
+	rows, err := c.connector.GetAll(ctx, &table.Definition, keyRow)
+	if err != nil {
+		return nil, err
+	}
+
+	return table.BuildObjectsFromRows(e, rows), nil
 }
 
 // Update updates the storage object in the database

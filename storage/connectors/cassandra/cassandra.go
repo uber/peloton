@@ -223,17 +223,13 @@ func (c *cassandraConnector) Create(
 	return nil
 }
 
-// Get fetches a record from DB using primary keys
-func (c *cassandraConnector) Get(
+// buildSelectQuery builds a select query using base object and key columns
+func (c *cassandraConnector) buildSelectQuery(
 	ctx context.Context,
 	e *base.Definition,
 	keyCols []base.Column,
-) ([]base.Column, error) {
-
-	colNamesToRead := []string{}
-	for col := range e.ColumnToType {
-		colNamesToRead = append(colNamesToRead, col)
-	}
+	colNamesToRead []string,
+) (*gocql.Query, error) {
 
 	// split keyCols into a list of names and values to compose query stmt using
 	// names and use values in the session query call, so the order needs to be
@@ -250,11 +246,26 @@ func (c *cassandraConnector) Get(
 		return nil, err
 	}
 
+	return c.Session.Query(stmt, keyColValues...).WithContext(ctx), nil
+}
+
+// Get fetches a record from DB using primary keys
+func (c *cassandraConnector) Get(
+	ctx context.Context,
+	e *base.Definition,
+	keyCols []base.Column,
+) ([]base.Column, error) {
+
+	colNamesToRead := e.GetColumnsToRead()
+
+	q, err := c.buildSelectQuery(ctx, e, keyCols, colNamesToRead)
+	if err != nil {
+		return nil, err
+	}
+	defer c.sendLatency(ctx, "execute_latency", time.Duration(q.Latency()))
+
 	// build a result row
 	result := buildResultRow(e, colNamesToRead)
-
-	q := c.Session.Query(stmt, keyColValues...).WithContext(ctx)
-	defer c.sendLatency(ctx, "execute_latency", time.Duration(q.Latency()))
 
 	if err := q.Scan(result...); err != nil {
 		c.metrics.ExecuteFail.Inc(1)
@@ -264,6 +275,36 @@ func (c *cassandraConnector) Get(
 	// translate the read result into a row ([]base.Column)
 	c.metrics.ExecuteSuccess.Inc(1)
 	return getRowFromResult(e, colNamesToRead, result), nil
+}
+
+// GetAll fetches all rows from DB using partition keys
+func (c *cassandraConnector) GetAll(
+	ctx context.Context,
+	e *base.Definition,
+	keyCols []base.Column,
+) ([][]base.Column, error) {
+
+	colNamesToRead := e.GetColumnsToRead()
+
+	q, err := c.buildSelectQuery(ctx, e, keyCols, colNamesToRead)
+	if err != nil {
+		return nil, err
+	}
+	defer c.sendLatency(ctx, "execute_latency", time.Duration(q.Latency()))
+
+	// execute query and get Iterator
+	iter := q.Iter()
+	defer iter.Close()
+
+	rows := [][]base.Column{}
+
+	for result := buildResultRow(e, colNamesToRead); iter.Scan(result...); {
+		rows = append(rows, getRowFromResult(e, colNamesToRead, result))
+	}
+
+	// translate the read result into a row ([]base.Column)
+	c.metrics.ExecuteSuccess.Inc(1)
+	return rows, nil
 }
 
 // Delete deletes a record from DB using primary keys
