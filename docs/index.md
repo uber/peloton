@@ -39,7 +39,7 @@ post](https://eng.uber.com/peloton/).
 
 ## Getting Started
 
-Check out the [Peloton tutorial](tutorial.md) for step-by-step
+See the [Tutorial](tutorial.md) for step-by-step
 instructions to start a local minicluster and submit a HelloWorld job
 to Peloton.
 
@@ -92,14 +92,13 @@ Peloton consists of the following components:
 ## References
 
 ### User Guide
-See [Peloton User Guide](user-guide.md) for more detailed
+See the [User Guide](user-guide.md) for more detailed
 information on how to use Peloton.
 
 ### Peloton CLI
 Peloton CLI is a command line interface for interacting with Peloton
 clusters, such as creating jobs, check job status etc. For detailed
-Peloton CLI commands and arguments, see [Peloton CLI
-Reference](cli.md).
+Peloton CLI commands and arguments, see [CLI Reference](cli.md).
 
 
 ### Peloton API
@@ -110,7 +109,7 @@ supported by gRPC should work as well.
 
 See the [client examples](clients.md) for how to use Peloton clients
 to access the APIs. For detailed Peloton API definition, see the
-[Peloton API reference](api-reference.md).
+[API Reference](api-reference.md).
 
 ## Contributing
 See the [Developer Guide](development.md) on how to build Peloton

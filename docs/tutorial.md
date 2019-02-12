@@ -1,13 +1,14 @@
 # Tutorial
 
-This tutorial will walk you step-by-step through using Peloton throughing:
+This tutorial will walk you step-by-step through using Peloton:
 
-- Start a local minicluster
+- Start a local minicluster (local cluster with peloton running)
 - Install Peloton CLI
-- Create a resource pool
+- Create a Resource Pool
 - Create a HelloWorld job
 - Check job status
 - List all job instances
+- Check the logs for a particular instance
 
 
 ## Start a minicluster
@@ -141,9 +142,8 @@ taskStats:
 ```
 
 ##  List job instances
-
 ```
-min-macbook:peloton min$ bin/peloton task list  3a6d6cfe-4b25-4137-af65-61d3070d4ac3
+$ bin/peloton task list  3a6d6cfe-4b25-4137-af65-61d3070d4ac3
   Instance|  Name|    State|   Healthy|            Start Time|  Run Time|                  Host|                  Message|  Reason|
          0|      |  RUNNING|  DISABLED|  2019-02-09T02:32:27Z|  00:00:11|  peloton-mesos-agent2|                         |        |
          1|      |  RUNNING|  DISABLED|  2019-02-09T02:32:27Z|  00:00:11|  peloton-mesos-agent2|                         |        |
@@ -155,4 +155,12 @@ min-macbook:peloton min$ bin/peloton task list  3a6d6cfe-4b25-4137-af65-61d3070d
          7|      |  PENDING|  DISABLED|                      |          |                      |  Task sent for placement|        |
          8|      |  PENDING|  DISABLED|                      |          |                      |  Task sent for placement|        |
          9|      |  PENDING|  DISABLED|                      |          |                      |  Task sent for placement|        |
+```
+
+##  Check the logs for a particular instance
+The stdout / stderr can be streamed over the commandline. 
+Note: the stdout is keep in the Mesos Sandbox which is automatically cleaned when space is running out
+```
+$ bin/peloton task logs 3a6d6cfe-4b25-4137-af65-61d3070d4ac3 0 --filename="stderr"
+HelloWorld
 ```
