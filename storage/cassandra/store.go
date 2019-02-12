@@ -473,41 +473,8 @@ func (s *Store) CreateTaskConfig(
 	}
 
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Insert(taskConfigTable).
-		Columns(
-			"job_id",
-			"version",
-			"instance_id",
-			"creation_time",
-			"config",
-			"config_addon").
-		Values(
-			id.GetValue(),
-			version,
-			instanceID,
-			time.Now().UTC(),
-			configBuffer,
-			addOnBuffer)
 
-	// IfNotExist() will cause Writing task configs to Cassandra concurrently
-	// failed with Operation timed out issue when batch size is small, e.g. 1.
-	// For now, we have to drop the IfNotExist()
-
-	err = s.applyStatement(ctx, stmt, id.GetValue())
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id.GetValue()).
-			Error("createTaskConfig failed")
-		s.metrics.TaskMetrics.TaskCreateConfigFail.Inc(1)
-		return err
-	}
-
-	// Enable dual writes for task_config_v2 table.
-	// TODO: remove writes to task_config once we are ready to switch over
-	// Even if the second write fails, we would not have consistency issues
-	// because the create task configs goalstate action would be retried
-	// and would create the DB entry on retry (assuming DB is stable)
-	stmt = queryBuilder.Insert(taskConfigV2Table).
+	stmt := queryBuilder.Insert(taskConfigV2Table).
 		Columns(
 			"job_id",
 			"version",
