@@ -113,6 +113,9 @@ func (h *ServiceHandler) getJobSummary(
 	for _, jobID := range jobIDs {
 		jobInfo, err := h.getJobInfo(ctx, jobID)
 		if err != nil {
+			if yarpcerrors.IsNotFound(err) {
+				continue
+			}
 			return nil, auroraErrorf("get job info for job id %q: %s",
 				jobID.GetValue(), err)
 		}
@@ -194,6 +197,9 @@ func (h *ServiceHandler) getTasksWithoutConfigs(
 	for _, jobID := range jobIDs {
 		jobInfo, err := h.getJobInfo(ctx, jobID)
 		if err != nil {
+			if yarpcerrors.IsNotFound(err) {
+				continue
+			}
 			return nil, auroraErrorf("get job info for job id %q: %s",
 				jobID.GetValue(), err)
 		}
@@ -402,6 +408,9 @@ func (h *ServiceHandler) getJobs(
 	for _, jobID := range jobIDs {
 		jobInfo, err := h.getJobInfo(ctx, jobID)
 		if err != nil {
+			if yarpcerrors.IsNotFound(err) {
+				continue
+			}
 			return nil, auroraErrorf("get job info for job id %q: %s",
 				jobID.GetValue(), err)
 		}
@@ -543,28 +552,37 @@ func (h *ServiceHandler) getJobUpdateDiff(
 		return nil, auroraErrorf("load respool: %s", err)
 	}
 
+	newJobResult := func() (*api.Result, *auroraError) {
+		last := max(0, request.GetInstanceCount()-1)
+		return &api.Result{
+			GetJobUpdateDiffResult: &api.GetJobUpdateDiffResult{
+				Add: []*api.ConfigGroup{{
+					Instances: []*api.Range{{
+						First: ptr.Int32(0),
+						Last:  ptr.Int32(last),
+					}},
+				}},
+			},
+		}, nil
+	}
+
 	jobID, err := h.getJobID(ctx, request.GetTaskConfig().GetJob())
 	if err != nil {
 		if yarpcerrors.IsNotFound(err) {
 			// Peloton returns errors for non-existent jobs in GetReplaceJobDiff,
 			// so construct the diff manually in this case.
-			last := max(0, request.GetInstanceCount()-1)
-			return &api.Result{
-				GetJobUpdateDiffResult: &api.GetJobUpdateDiffResult{
-					Add: []*api.ConfigGroup{{
-						Instances: []*api.Range{{
-							First: ptr.Int32(0),
-							Last:  ptr.Int32(last),
-						}},
-					}},
-				},
-			}, nil
+			return newJobResult()
 		}
 		return nil, auroraErrorf("get job id: %s", err)
 	}
 
 	jobSummary, err := h.getJobInfoSummary(ctx, jobID)
 	if err != nil {
+		if yarpcerrors.IsNotFound(err) {
+			// Peloton returns errors for non-existent jobs in GetReplaceJobDiff,
+			// so construct the diff manually in this case.
+			return newJobResult()
+		}
 		return nil, auroraErrorf("get job summary: %s", err)
 	}
 
@@ -781,6 +799,40 @@ func (h *ServiceHandler) StartJobUpdate(
 	return newResponse(result, err), nil
 }
 
+func (h *ServiceHandler) createJob(
+	ctx context.Context,
+	req *statelesssvc.CreateJobRequest,
+) (*peloton.EntityVersion, *auroraError) {
+	resp, err := h.jobClient.CreateJob(ctx, req)
+	if err != nil {
+		if yarpcerrors.IsAlreadyExists(err) {
+			// Upgrade conflict.
+			return nil, auroraErrorf(
+				"create job: %s", err).
+				code(api.ResponseCodeInvalidRequest)
+		}
+		return nil, auroraErrorf("create job: %s", err)
+	}
+	return resp.GetVersion(), nil
+}
+
+func (h *ServiceHandler) replaceJob(
+	ctx context.Context,
+	req *statelesssvc.ReplaceJobRequest,
+) (*peloton.EntityVersion, *auroraError) {
+	resp, err := h.jobClient.ReplaceJob(ctx, req)
+	if err != nil {
+		if yarpcerrors.IsAborted(err) {
+			// Upgrade conflict.
+			return nil, auroraErrorf(
+				"replace job: %s", err).
+				code(api.ResponseCodeInvalidRequest)
+		}
+		return nil, auroraErrorf("replace job: %s", err)
+	}
+	return resp.GetVersion(), nil
+}
+
 func (h *ServiceHandler) startJobUpdate(
 	ctx context.Context,
 	request *api.JobUpdateRequest,
@@ -818,55 +870,45 @@ func (h *ServiceHandler) startJobUpdate(
 	// TODO(codyg): We'll use the new job's entity version as the update id.
 	// Not sure if this will work.
 	var newVersion *peloton.EntityVersion
+	var aerr *auroraError
+
+	createReq := &statelesssvc.CreateJobRequest{
+		Spec:       jobSpec,
+		CreateSpec: atop.NewCreateSpec(request.GetSettings()),
+		OpaqueData: od,
+	}
 
 	id, err := h.getJobID(ctx, jobKey)
 	if err != nil {
-		if yarpcerrors.IsNotFound(err) {
-			// Job does not exist. Create it.
-			req := &statelesssvc.CreateJobRequest{
-				Spec:       jobSpec,
-				CreateSpec: atop.NewCreateSpec(request.GetSettings()),
-				OpaqueData: od,
-			}
-			resp, err := h.jobClient.CreateJob(ctx, req)
-			if err != nil {
-				if yarpcerrors.IsAlreadyExists(err) {
-					// Upgrade conflict.
-					return nil, auroraErrorf(
-						"create job: %s", err).
-						code(api.ResponseCodeInvalidRequest)
-				}
-				return nil, auroraErrorf("create job: %s", err)
-			}
-			newVersion = resp.GetVersion()
-		} else {
+		if !yarpcerrors.IsNotFound(err) {
 			return nil, auroraErrorf("get job id: %s", err)
+		}
+		// Job does not exist. Create it.
+		newVersion, aerr = h.createJob(ctx, createReq)
+		if aerr != nil {
+			return nil, aerr
 		}
 	} else {
 		// Job already exists. Replace it.
 		v, err := h.getCurrentJobVersion(ctx, id)
 		if err != nil {
-			return nil, auroraErrorf("get current job version: %s", err)
-		}
-
-		req := &statelesssvc.ReplaceJobRequest{
-			JobId:      id,
-			Spec:       jobSpec,
-			UpdateSpec: atop.NewUpdateSpec(request.GetSettings()),
-			Version:    v,
-			OpaqueData: od,
-		}
-		resp, err := h.jobClient.ReplaceJob(ctx, req)
-		if err != nil {
-			if yarpcerrors.IsAborted(err) {
-				// Upgrade conflict.
-				return nil, auroraErrorf(
-					"replace job: %s", err).
-					code(api.ResponseCodeInvalidRequest)
+			if !yarpcerrors.IsNotFound(err) {
+				return nil, auroraErrorf("get current job version: %s", err)
 			}
-			return nil, auroraErrorf("replace job: %s", err)
+			newVersion, aerr = h.createJob(ctx, createReq)
+		} else {
+			replaceReq := &statelesssvc.ReplaceJobRequest{
+				JobId:      id,
+				Spec:       jobSpec,
+				UpdateSpec: atop.NewUpdateSpec(request.GetSettings()),
+				Version:    v,
+				OpaqueData: od,
+			}
+			newVersion, aerr = h.replaceJob(ctx, replaceReq)
+			if aerr != nil {
+				return nil, aerr
+			}
 		}
-		newVersion = resp.GetVersion()
 	}
 
 	return &api.Result{
@@ -1353,7 +1395,9 @@ func (h *ServiceHandler) getJobSummariesFromJobUpdateQuery(
 
 // getJobID maps k to a job id.
 //
-// Returns yarpc NOT_FOUND error if k does not exist.
+// Note: Since we do not delete job name to id mapping when a job
+// is deleted, we cannot rely on not-found error to determine the
+// existence of a job.
 //
 // TODO: To be deprecated in favor of getJobSummaries.
 // Aggregator expects job key environment to be set in response of
@@ -1466,6 +1510,10 @@ func (h *ServiceHandler) queryJobSummaries(
 // 2. Otherwise use TaskQuery.Role, TaskQuery.Environment and
 //    TaskQuery.JobName to construct a job key (those 3 fields may not be
 //    all present), and use it to query job ids.
+//
+// Note: Due to getJobID() may return invalid job ids, e.g. job ids that
+// already deleted, be sure to check whether the error is "not-found" after
+// querying using the job id.
 func (h *ServiceHandler) getJobIDsFromTaskQuery(
 	ctx context.Context,
 	query *api.TaskQuery,

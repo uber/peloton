@@ -48,6 +48,7 @@ import (
 	ormobjects "github.com/uber/peloton/storage/objects"
 	"github.com/uber/peloton/util"
 
+	"github.com/gocql/gocql"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -816,6 +817,9 @@ func (h *serviceHandler) getJobSummary(
 	jobSummary, err := h.jobIndexOps.GetSummary(
 		ctx, &peloton.JobID{Value: jobID.GetValue()})
 	if err != nil {
+		if err == gocql.ErrNotFound {
+			return nil, yarpcerrors.NotFoundErrorf("job:%s not found", jobID)
+		}
 		return nil, errors.Wrap(err, "failed to get job summary from DB")
 	}
 
