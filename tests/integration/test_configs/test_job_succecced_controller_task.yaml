@@ -32,17 +32,6 @@ defaultConfig:
     fdLimit: 2
   healthCheck: null
   ports: []
-  container:
-    type: 1
-    docker:
-      image: "debian"
-      parameters:
-        - key: env
-          value: UBER_CLUSTER=dca1-devel01
-        - key: env
-          value: UBER_DATACENTER=dca1
-        - key: volume
-          value: /tmp:/test-tmp:rw
   command:
     shell: true
     value: 'sleep 1; exit 1'
