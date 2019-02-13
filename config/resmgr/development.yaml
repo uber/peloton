@@ -22,3 +22,5 @@ resmgr:
     sustained_over_allocation_count: 3
     task_preemption_period: 10s
   host_drainer_period: 10s
+  task:
+    enable_sla_tracking: true

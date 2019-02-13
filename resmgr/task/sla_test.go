@@ -26,21 +26,16 @@ import (
 	"github.com/uber-go/tally"
 )
 
-type fakeTimer struct {
-	duration      time.Duration
-	doneRecording chan struct{}
+type fakeRecorder struct {
+	duration time.Duration
 }
 
-func (fr *fakeTimer) Record(duration time.Duration) { fr.duration = duration }
+func (fr *fakeRecorder) RecordDuration(duration time.Duration) { fr.duration = duration }
 
-func (fr *fakeTimer) Start() tally.Stopwatch { return tally.Stopwatch{} }
-
-var fr = &fakeTimer{
-	doneRecording: make(chan struct{}),
-}
-
-func fakeTimerGenerator(_ tally.Scope) tally.Timer {
-	return fr
+func withRecorder(r recorder) recorderGenerator {
+	return func(_ tally.Scope) recorder {
+		return r
+	}
 }
 
 func TestTransObs_Observe(t *testing.T) {
@@ -50,7 +45,8 @@ func TestTransObs_Observe(t *testing.T) {
 		defaultRules,
 		true,
 	)
-	tobs.timerGenerator = fakeTimerGenerator
+	fr := &fakeRecorder{}
+	tobs.recorderGenerator = withRecorder(fr)
 
 	assert.Equal(t, fr.duration, time.Duration(0))
 

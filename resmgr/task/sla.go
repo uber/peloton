@@ -23,7 +23,34 @@ import (
 	"github.com/uber-go/tally"
 )
 
-// default SLAs for different transitions. RM Tasks which breach these will be
+// 22 buckets starting at 50 ms
+//
+// 1   0.05
+// 2   0.1
+// 3   0.2
+// 4   0.4
+// 5   0.8
+// 6   1.6
+// 7   3.2
+// 8   6.4
+// 9   12.8
+// 10  25.6
+// 11  51.2
+// 12  102.4
+// 13  204.8
+// 14  409.6
+// 15  819.2
+// 16  1638.4
+// 17  3276.8
+// 18  6553.6
+// 19  13107.2
+// 20  26214.4
+// 21  52428.8
+// 22  104857.6
+var _buckets = tally.MustMakeExponentialDurationBuckets(
+	50*time.Millisecond, 2, 22)
+
+// Default SLAs for different transitions. RM Tasks which breach these will be
 // logged.
 const (
 	_pendingToReady     = 1 * time.Hour
@@ -32,7 +59,7 @@ const (
 	_preemptingToKilled = 10 * time.Minute
 )
 
-// represents the states for which the duration needs to be recorded along with
+// Represents the states for which the duration needs to be recorded along with
 // an optional SLA for those transitions.
 var defaultRules = map[task.TaskState]map[task.TaskState]time.Duration{
 	task.TaskState_PENDING: {
@@ -57,10 +84,11 @@ var defaultRules = map[task.TaskState]map[task.TaskState]time.Duration{
 	},
 }
 
-// tags for state transition metrics
+// Tags for state transition metrics
 const (
 	_respoolPath = "respool_path"
-	_states      = "states"
+	_from        = "from"
+	_to          = "to"
 )
 
 // TransitionObserver is the interface for observing a state transition
@@ -68,16 +96,29 @@ type TransitionObserver interface {
 	Observe(taskID string, transitedTo task.TaskState)
 }
 
-// the key of the timer of the form startState_endState Eg PENDING_READY
-type timerKey string
+// The key of the recorder of the form startState_endState Eg PENDING_READY
+type recordKey string
 
-// timeRecord is the recorded time when the task transitioned to a state
-type timeRecord struct {
+// record is the recorded time when the rm task transitioned to a state
+type record struct {
+	// The Mesos task ID when the state was recorded. This can change during the
+	// lifetime of an rmtask so we need to keep a track of it.
 	mesosTaskID string
-	// the state when the time was recorded
+	// The state when the time was recorded
 	startState task.TaskState
-	// the time when the task reached the state
+	// The time when the task reached the state
 	startTime time.Time
+}
+
+type recorder interface {
+	// RecordDuration records a specific duration directly.
+	RecordDuration(value time.Duration)
+}
+
+type recorderGenerator func(scope tally.Scope) recorder
+
+func tallyHistogramGenerator(scope tally.Scope) recorder {
+	return scope.Histogram("duration", _buckets)
 }
 
 // TransObs implements TransitionObserver
@@ -85,22 +126,21 @@ type TransObs struct {
 	// boolean to enable/disable the observer
 	enabled bool
 
-	// rules represents the transitions to record as map of start state
+	// Represents the transitions to record as map of start state
 	// -> list of end states
 	rules map[task.TaskState]map[task.TaskState]time.Duration
 
 	// map of in progress transitions which need to be recorded.
 	// Its keyed by the end state which it is waiting on.
-	inProgress map[task.TaskState][]timeRecord
+	inProgress map[task.TaskState][]record
 
-	// generator for timer
-	timerGenerator timerGenerator
-	// timers is a map of record-key -> timers
-	timers map[timerKey]tally.Timer
+	// Generator for recorder
+	recorderGenerator recorderGenerator
+	recorders         map[recordKey]recorder
 
-	// the metrics scope
+	// The metrics scope
 	scope tally.Scope
-	// the tags for the metrics which represent the task uniquely
+	// The tags for the metrics which represent the task uniquely
 	tags map[string]string
 }
 
@@ -111,10 +151,9 @@ func NewTransitionObserver(
 	scope tally.Scope,
 	respoolPath string,
 ) TransitionObserver {
-
 	tags := make(map[string]string)
 	if enabled {
-		// only get the tags only if the observer is enabled otherwise
+		// Only get the tags only if the observer is enabled otherwise
 		// there's no point
 		tags = map[string]string{
 			_respoolPath: respoolPath,
@@ -131,16 +170,19 @@ func newTransitionObserver(
 	scope tally.Scope,
 	rules map[task.TaskState]map[task.TaskState]time.Duration,
 	enabled bool) *TransObs {
-
 	return &TransObs{
-		inProgress:     make(map[task.TaskState][]timeRecord),
-		timers:         make(map[timerKey]tally.Timer),
-		rules:          rules,
-		tags:           tags,
-		scope:          scope.SubScope("state_transition"),
-		timerGenerator: tallyTimerGenerator,
-		enabled:        enabled,
+		inProgress:        make(map[task.TaskState][]record),
+		recorders:         make(map[recordKey]recorder),
+		rules:             rules,
+		tags:              tags,
+		scope:             scope.SubScope("state_transition"),
+		recorderGenerator: tallyHistogramGenerator,
+		enabled:           enabled,
 	}
+}
+
+func getRecorderKey(from task.TaskState, to task.TaskState) recordKey {
+	return recordKey(from.String() + "_" + to.String())
 }
 
 // Observe implements TransitionObserver
@@ -149,12 +191,12 @@ func (obs *TransObs) Observe(mesosTaskID string, currentState task.TaskState) {
 		return
 	}
 
-	// go through all the rules and see if currentState is the start state
+	// Go through all the rules and see if currentState is the start state
 	// for any of the rules.
 	if endStates, ok := obs.rules[currentState]; ok {
 		for endState := range endStates {
 			obs.inProgress[endState] = append(obs.inProgress[endState],
-				timeRecord{
+				record{
 					mesosTaskID: mesosTaskID,
 					startState:  currentState,
 					startTime:   time.Now(),
@@ -162,24 +204,27 @@ func (obs *TransObs) Observe(mesosTaskID string, currentState task.TaskState) {
 		}
 	}
 
-	// go through all the in progress transitions and see if any one is
+	// Go through all the in progress transitions and see if any one is
 	// waiting on the current_state, if so record it and remove it from the map.
 	if inProgressRecords, ok := obs.inProgress[currentState]; ok {
 		for _, inProgressRecord := range inProgressRecords {
 			key := getRecorderKey(
 				inProgressRecord.startState, currentState)
 
-			timer, ok := obs.timers[key]
+			recorder, ok := obs.recorders[key]
 			if !ok {
-				// lazily instantiate the recorder
-				obs.tags[_states] = string(key)
-				timer = obs.timerGenerator(obs.scope.Tagged(obs.tags))
-				obs.timers[key] = timer
+				// Add the state tags
+				obs.tags[_from] = inProgressRecord.startState.String()
+				obs.tags[_to] = currentState.String()
+
+				// lazily instantiate the recorders
+				recorder = obs.recorderGenerator(obs.scope.Tagged(obs.tags))
+				obs.recorders[key] = recorder
 			}
 
 			// get the time and record it
 			sub := time.Now().Sub(inProgressRecord.startTime)
-			timer.Record(sub)
+			recorder.RecordDuration(sub)
 
 			// if time elapsed breached sla lets log it.
 			sla := obs.rules[inProgressRecord.startState][currentState]
@@ -193,17 +238,7 @@ func (obs *TransObs) Observe(mesosTaskID string, currentState task.TaskState) {
 					Info("RMTask SLA breached")
 			}
 		}
-		// not in progress anymore
+		// Not in progress anymore
 		delete(obs.inProgress, currentState)
 	}
-}
-
-func getRecorderKey(from task.TaskState, to task.TaskState) timerKey {
-	return timerKey(string(from) + "_" + string(to))
-}
-
-type timerGenerator func(scope tally.Scope) tally.Timer
-
-func tallyTimerGenerator(scope tally.Scope) tally.Timer {
-	return scope.Timer("duration")
 }
