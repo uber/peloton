@@ -94,6 +94,12 @@ type OrmJobMetrics struct {
 	JobIndexUpdateFail tally.Counter
 	JobIndexDelete     tally.Counter
 	JobIndexDeleteFail tally.Counter
+
+	// job_name_to_id
+	JobNameToIDCreate     tally.Counter
+	JobNameToIDCreateFail tally.Counter
+	JobNameToIDGetAll     tally.Counter
+	JobNameToIDGetAllFail tally.Counter
 }
 
 // TaskMetrics is a struct for tracking all the task related counters in the storage layer
@@ -546,6 +552,12 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	jobIndexFailScope := jobIndexScope.Tagged(
 		map[string]string{"result": "fail"})
 
+	jobNameToIDScope := ormScope.SubScope("job_name_to_id")
+	jobNameToIDSuccessScope := jobNameToIDScope.Tagged(
+		map[string]string{"result": "success"})
+	jobNameToIDFailScope := jobNameToIDScope.Tagged(
+		map[string]string{"result": "fail"})
+
 	ormJobMetrics := &OrmJobMetrics{
 		JobIndexCreate:     jobIndexSuccessScope.Counter("create"),
 		JobIndexCreateFail: jobIndexFailScope.Counter("create"),
@@ -555,6 +567,11 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobIndexUpdateFail: jobIndexFailScope.Counter("update"),
 		JobIndexDelete:     jobIndexSuccessScope.Counter("delete"),
 		JobIndexDeleteFail: jobIndexFailScope.Counter("delete"),
+
+		JobNameToIDCreate:     jobNameToIDSuccessScope.Counter("create"),
+		JobNameToIDCreateFail: jobNameToIDFailScope.Counter("create"),
+		JobNameToIDGetAll:     jobNameToIDSuccessScope.Counter("get_all"),
+		JobNameToIDGetAllFail: jobNameToIDFailScope.Counter("get_all"),
 	}
 
 	metrics := &Metrics{

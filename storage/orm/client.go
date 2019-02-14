@@ -123,8 +123,8 @@ func (c *client) GetAll(
 		return nil, err
 	}
 
-	// build a primary key row from storage object
-	keyRow := table.GetKeyRowFromObject(e)
+	// build a partition key row from storage object
+	keyRow := table.GetPartitionKeyRowFromObject(e)
 
 	rows, err := c.connector.GetAll(ctx, &table.Definition, keyRow)
 	if err != nil {

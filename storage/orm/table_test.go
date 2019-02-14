@@ -109,3 +109,19 @@ func (suite *ORMTestSuite) TestGetKeyRowFromObject() {
 	suite.Equal(e.Name, keyRow[1].Value)
 	suite.Equal(len(keyRow), 2)
 }
+
+// TestGetPartitionKeyRowFromObject tests getting partition key row
+// (list of primary key base.Column) from base object
+func (suite *ORMTestSuite) TestGetPartitionKeyRowFromObject() {
+	e := &ValidObject{
+		ID:   uint64(1),
+		Name: "test",
+		Data: "junk",
+	}
+	table, err := TableFromObject(e)
+	suite.NoError(err)
+
+	keyRow := table.GetPartitionKeyRowFromObject(e)
+	suite.Equal(e.ID, keyRow[0].Value)
+	suite.Equal(len(keyRow), 1)
+}

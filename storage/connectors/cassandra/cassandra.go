@@ -86,12 +86,14 @@ func NewCassandraConnector(
 func buildResultRow(e *base.Definition, columns []string) []interface{} {
 
 	results := make([]interface{}, len(columns))
+	timeType := reflect.ValueOf(time.Now())
+	gocqlUUIDType := reflect.ValueOf(gocql.UUIDFromTime(time.Now()))
 
 	for i, column := range columns {
 		// get the type of the field from the ColumnToType mapping for object
 		// That we we can allocate appropriate memory for this field
 		typ := e.ColumnToType[column]
-		timeType := reflect.ValueOf(time.Now())
+
 		switch typ.Kind() {
 		case reflect.String:
 			var value *string
@@ -112,6 +114,9 @@ func buildResultRow(e *base.Definition, columns []string) []interface{} {
 			results[i] = &value
 		case timeType.Kind():
 			var value *time.Time
+			results[i] = &value
+		case gocqlUUIDType.Kind():
+			var value *gocql.UUID
 			results[i] = &value
 		default:
 			// This should only happen if we start using a new cassandra type
@@ -147,8 +152,7 @@ func getRowFromResult(
 		case **string:
 			column.Value = *rv
 		case **gocql.UUID:
-			uuid := (**rv).String()
-			column.Value = &uuid
+			column.Value = *rv
 		case **time.Time:
 			column.Value = *rv
 		case **bool:

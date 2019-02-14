@@ -68,6 +68,25 @@ func (t *Table) GetKeyRowFromObject(
 	return row
 }
 
+// GetPartitionKeyRowFromObject is a helper for generating a row of partition
+// key column values to be used in a GetAll query.
+func (t *Table) GetPartitionKeyRowFromObject(
+	e base.Object) []base.Column {
+	v := reflect.ValueOf(e).Elem()
+	row := []base.Column{}
+
+	// populate partition key values
+	for _, pk := range t.Key.PartitionKeys {
+		fieldName := t.ColToField[pk]
+		value := v.FieldByName(fieldName)
+		row = append(row, base.Column{
+			Name:  pk,
+			Value: value.Interface(),
+		})
+	}
+	return row
+}
+
 // GetRowFromObject is a helper for generating a row from the storage object
 // selectedFields will be used to restrict the number of columns in that row
 // This will be used to convert only select fields of an object to a row.
