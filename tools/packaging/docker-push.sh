@@ -26,7 +26,7 @@ for dc in $DC ; do
     else
       # Although it is pushed to dca1 kraken zone, it will 
       # be replicated globally (sjc1, irn and wbu2)
-      registry="kraken-origin.dca1.uber.internal:5367"
+      registry="docker-push.dca1.uber.internal:5055"
     fi
     # pull version from the image, assume latest if not present
     ver="${image##*:}"
