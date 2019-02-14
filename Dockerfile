@@ -9,7 +9,8 @@ ENV BUILD_DIR /go/src/github.com/uber/peloton
 ENV PATH $BUILD_DIR/bin:$PATH
 
 # NOTE: python-dev is required for peloton to be launched with Aurora
-RUN apt-get -yqq update && DEBIAN_FRONTEND=noninteractive apt-get -yqq install \
+RUN apt-get --allow-unauthenticated -yqq update \
+  && DEBIAN_FRONTEND=noninteractive apt-get --allow-unauthenticated -yqq install \
   unzip \
   curl \
   vim \
@@ -29,12 +30,15 @@ RUN wget https://github.com/google/protobuf/releases/download/v$PROTOC_VERSION/p
   && go get -u github.com/golang/protobuf/proto \
   && go get -u github.com/golang/protobuf/protoc-gen-go
 
-# TODO(gabe) update this path when we get a public namespace
-COPY . /go/src/github.com/uber/peloton
+ARG GIT_REPO=git-repo
+
+ADD $GIT_REPO /go/src/github.com/uber/peloton
 WORKDIR /go/src/github.com/uber/peloton
-# Copy pip.conf to be able to install internal packages
-RUN mkdir /root/.pip
-COPY ./docker/pip.conf /root/.pip/pip.conf
+
+# setup config environment with default configurations
+RUN mkdir /etc/peloton
+COPY $GIT_REPO/docker/default-config/ /etc/peloton/
+COPY $GIT_REPO/docker/entrypoint.sh /bin/entrypoint.sh
 
 # TODO(gabe): reenable me when we have no more closed source dependencies, and
 # readd vendor/ to .dockerignore. For now, this relies on having an updated
@@ -44,11 +48,6 @@ COPY ./docker/pip.conf /root/.pip/pip.conf
 # RUN make install
 
 RUN make
-
-# setup config environment with default configurations
-RUN mkdir /etc/peloton
-COPY ./docker/default-config/ /etc/peloton/
-COPY ./docker/entrypoint.sh /bin/entrypoint.sh
 
 RUN ( echo "Built Peloton" && peloton-jobmgr --version ) >&2 && cp ./bin/* /usr/bin/
 
