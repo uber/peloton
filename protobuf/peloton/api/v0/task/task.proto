@@ -400,6 +400,9 @@ message TerminationStatus {
 
      // Tasked was killed to reclaim resources allocated to it.
      TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES = 4;
+
+     // Task was killed due to deadline tracker exceeding task timeout
+     TERMINATION_STATUS_REASON_DEADLINE_TIMEOUT_EXCEEDED = 5;
    }
 
   // Reason for termination.

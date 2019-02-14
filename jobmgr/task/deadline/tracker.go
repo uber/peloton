@@ -199,6 +199,9 @@ func (t *tracker) stopTask(ctx context.Context, task *peloton.TaskID) error {
 	runtimeDiff := jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.GoalStateField: pb_task.TaskState_KILLED,
 		jobmgrcommon.ReasonField:    "Deadline exceeded",
+		jobmgrcommon.TerminationStatusField: &pb_task.TerminationStatus{
+			Reason: pb_task.TerminationStatus_TERMINATION_STATUS_REASON_DEADLINE_TIMEOUT_EXCEEDED,
+		},
 	}
 
 	id, instanceID, err := util.ParseTaskID(task.GetValue())

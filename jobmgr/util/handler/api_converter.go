@@ -872,6 +872,8 @@ func convertTaskTerminationStatusToPodTerminationStatus(
 		podReason = pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE
 	case task.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES:
 		podReason = pod.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES
+	case task.TerminationStatus_TERMINATION_STATUS_REASON_DEADLINE_TIMEOUT_EXCEEDED:
+		podReason = pod.TerminationStatus_TERMINATION_STATUS_REASON_DEADLINE_TIMEOUT_EXCEEDED
 	}
 	return &pod.TerminationStatus{
 		Reason:   podReason,

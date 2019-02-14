@@ -109,6 +109,9 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 	suite.mockJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			suite.Equal(peloton_task.TaskState_KILLED, runtimeDiffs[1][jobmgrcommon.GoalStateField])
+			suite.Equal(
+				peloton_task.TerminationStatus_TERMINATION_STATUS_REASON_DEADLINE_TIMEOUT_EXCEEDED,
+				runtimeDiffs[1][jobmgrcommon.TerminationStatusField].(*peloton_task.TerminationStatus).GetReason())
 		}).
 		Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return()
