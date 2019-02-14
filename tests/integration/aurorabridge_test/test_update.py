@@ -1,23 +1,22 @@
 import pytest
 
-from tests.integration.aurorabridge_test.client import Client, api
+from tests.integration.aurorabridge_test.client import api
+from tests.integration.aurorabridge_test.util import (
+    check_response_ok,
+    gen_job_key,
+    wait_for_rolled_forward,
+)
 
 pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
 
 
-@pytest.mark.skip(reason='resource pool bootstrapping disabled')
-def test__start_job_update():
-    # This is basically just a simple smoketest to ensure aurorabridge is wired
-    # up correctly.
-    c = Client()
-    res = c.start_job_update(api.JobUpdateRequest(
+def test__start_job_update_rolled_forward(client):
+    res = client.start_job_update(api.JobUpdateRequest(
         taskConfig=api.TaskConfig(
-            job=api.JobKey(
-                role='test-role',
-                environment='test-environment',
-                name='test-name',
-            ),
+            job=gen_job_key(),
             resources=[api.Resource(numCpus=1)],
         ),
     ), 'some message')
-    assert res.responseCode == api.ResponseCode.OK
+    check_response_ok(res)
+
+    wait_for_rolled_forward(client, res.result.startJobUpdateResult.key)

@@ -396,14 +396,16 @@ func (h *ServiceHandler) getJobs(
 	ownerRole *string,
 ) (*api.Result, *auroraError) {
 
-	var configs []*api.JobConfiguration
-
 	query := &api.TaskQuery{Role: ownerRole}
 
 	jobIDs, err := h.getJobIDsFromTaskQuery(ctx, query)
 	if err != nil {
 		return nil, auroraErrorf("get job ids from task query: %s", err)
 	}
+
+	// Initialize slice so that the thrift object has an empty list, instead
+	// of nil (which causes problems downstream for Python clients).
+	configs := []*api.JobConfiguration{}
 
 	for _, jobID := range jobIDs {
 		jobInfo, err := h.getJobInfo(ctx, jobID)
@@ -723,7 +725,11 @@ func (h *ServiceHandler) killTasks(
 			return nil, auroraErrorf("stop pods in parallel: %s", err)
 		}
 	}
-	return &api.Result{}, nil
+	return &api.Result{
+		// killTasks doesn't return any result, however YARPC won't allow
+		// an empty union, so we use this dummy result value.
+		GetTierConfigResult: &api.GetTierConfigResult{},
+	}, nil
 }
 
 func (h *ServiceHandler) stopPodsConcurrently(
@@ -802,35 +808,32 @@ func (h *ServiceHandler) StartJobUpdate(
 func (h *ServiceHandler) createJob(
 	ctx context.Context,
 	req *statelesssvc.CreateJobRequest,
-) (*peloton.EntityVersion, *auroraError) {
-	resp, err := h.jobClient.CreateJob(ctx, req)
-	if err != nil {
+) *auroraError {
+	if _, err := h.jobClient.CreateJob(ctx, req); err != nil {
 		if yarpcerrors.IsAlreadyExists(err) {
-			// Upgrade conflict.
-			return nil, auroraErrorf(
+			return auroraErrorf(
 				"create job: %s", err).
 				code(api.ResponseCodeInvalidRequest)
 		}
-		return nil, auroraErrorf("create job: %s", err)
+		return auroraErrorf("create job: %s", err)
 	}
-	return resp.GetVersion(), nil
+	return nil
 }
 
 func (h *ServiceHandler) replaceJob(
 	ctx context.Context,
 	req *statelesssvc.ReplaceJobRequest,
-) (*peloton.EntityVersion, *auroraError) {
-	resp, err := h.jobClient.ReplaceJob(ctx, req)
-	if err != nil {
+) *auroraError {
+	if _, err := h.jobClient.ReplaceJob(ctx, req); err != nil {
 		if yarpcerrors.IsAborted(err) {
 			// Upgrade conflict.
-			return nil, auroraErrorf(
+			return auroraErrorf(
 				"replace job: %s", err).
 				code(api.ResponseCodeInvalidRequest)
 		}
-		return nil, auroraErrorf("replace job: %s", err)
+		return auroraErrorf("replace job: %s", err)
 	}
-	return resp.GetVersion(), nil
+	return nil
 }
 
 func (h *ServiceHandler) startJobUpdate(
@@ -867,11 +870,6 @@ func (h *ServiceHandler) startJobUpdate(
 		return nil, auroraErrorf("serialize opaque data: %s", err)
 	}
 
-	// TODO(codyg): We'll use the new job's entity version as the update id.
-	// Not sure if this will work.
-	var newVersion *peloton.EntityVersion
-	var aerr *auroraError
-
 	createReq := &statelesssvc.CreateJobRequest{
 		Spec:       jobSpec,
 		CreateSpec: atop.NewCreateSpec(request.GetSettings()),
@@ -884,8 +882,7 @@ func (h *ServiceHandler) startJobUpdate(
 			return nil, auroraErrorf("get job id: %s", err)
 		}
 		// Job does not exist. Create it.
-		newVersion, aerr = h.createJob(ctx, createReq)
-		if aerr != nil {
+		if aerr := h.createJob(ctx, createReq); aerr != nil {
 			return nil, aerr
 		}
 	} else {
@@ -895,7 +892,10 @@ func (h *ServiceHandler) startJobUpdate(
 			if !yarpcerrors.IsNotFound(err) {
 				return nil, auroraErrorf("get current job version: %s", err)
 			}
-			newVersion, aerr = h.createJob(ctx, createReq)
+			// Job was present in name->id index, but did not exist. Create it.
+			if aerr := h.createJob(ctx, createReq); aerr != nil {
+				return nil, aerr
+			}
 		} else {
 			replaceReq := &statelesssvc.ReplaceJobRequest{
 				JobId:      id,
@@ -904,8 +904,7 @@ func (h *ServiceHandler) startJobUpdate(
 				Version:    v,
 				OpaqueData: od,
 			}
-			newVersion, aerr = h.replaceJob(ctx, replaceReq)
-			if aerr != nil {
+			if aerr := h.replaceJob(ctx, replaceReq); aerr != nil {
 				return nil, aerr
 			}
 		}
@@ -915,7 +914,7 @@ func (h *ServiceHandler) startJobUpdate(
 		StartJobUpdateResult: &api.StartJobUpdateResult{
 			Key: &api.JobUpdateKey{
 				Job: jobKey,
-				ID:  ptr.String(newVersion.String()),
+				ID:  ptr.String(d.UpdateID),
 			},
 			UpdateSummary: nil, // TODO(codyg): Should we set this?
 		},
@@ -1386,10 +1385,12 @@ func (h *ServiceHandler) getJobSummariesFromJobUpdateQuery(
 	q *api.JobUpdateQuery,
 ) ([]*stateless.JobSummary, error) {
 
+	if q.IsSetKey() {
+		return h.getJobSummaries(ctx, q.GetKey().GetJob())
+	}
 	if q.IsSetJobKey() {
 		return h.getJobSummaries(ctx, q.GetJobKey())
 	}
-
 	return h.queryJobSummaries(ctx, q.GetRole(), "", "")
 }
 
@@ -1439,15 +1440,9 @@ func (h *ServiceHandler) queryJobIDs(
 		return []*peloton.JobID{id}, nil
 	}
 
-	labels := label.BuildPartialAuroraJobKeyLabels(role, env, name)
-	if len(labels) == 0 {
-		// TODO(kevinxu): do we need to return all job ids in this case?
-		return nil, errors.New("no filters set")
-	}
-
 	req := &statelesssvc.QueryJobsRequest{
 		Spec: &stateless.QuerySpec{
-			Labels: labels,
+			Labels: label.BuildPartialAuroraJobKeyLabels(role, env, name),
 		},
 	}
 	resp, err := h.jobClient.QueryJobs(ctx, req)

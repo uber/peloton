@@ -1,5 +1,5 @@
 logging:
-  level: info
+  level: debug
 
 metrics:
   multi_reporter: true

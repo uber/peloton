@@ -17,16 +17,34 @@ class Client(object):
     def __init__(self, addr='localhost:8082'):
         self.addr = addr
 
-    def start_job_update(self, *args):
+    def get_job_update_summaries(self, *args):
         return self._send(
-            AuroraSchedulerManager,
-            AuroraSchedulerManager.startJobUpdate,
+            ReadOnlyScheduler,
+            ReadOnlyScheduler.getJobUpdateSummaries,
+            *args)
+
+    def get_jobs(self, *args):
+        return self._send(
+            ReadOnlyScheduler,
+            ReadOnlyScheduler.getJobs,
             *args)
 
     def get_tasks_without_configs(self, *args):
         return self._send(
             ReadOnlyScheduler,
             ReadOnlyScheduler.getTasksWithoutConfigs,
+            *args)
+
+    def kill_tasks(self, *args):
+        return self._send(
+            AuroraSchedulerManager,
+            AuroraSchedulerManager.killTasks,
+            *args)
+
+    def start_job_update(self, *args):
+        return self._send(
+            AuroraSchedulerManager,
+            AuroraSchedulerManager.startJobUpdate,
             *args)
 
     def _send(self, service, method, *args):

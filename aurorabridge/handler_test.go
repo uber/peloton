@@ -386,7 +386,6 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobSuccess() {
 	req := fixture.AuroraJobUpdateRequest()
 	k := req.GetTaskConfig().GetJob()
 	name := atop.NewJobName(k)
-	newv := fixture.PelotonEntityVersion()
 
 	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
 
@@ -398,9 +397,7 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobSuccess() {
 
 	suite.jobClient.EXPECT().
 		CreateJob(suite.ctx, gomock.Any()).
-		Return(&statelesssvc.CreateJobResponse{
-			Version: newv,
-		}, nil)
+		Return(&statelesssvc.CreateJobResponse{}, nil)
 
 	resp, err := suite.handler.StartJobUpdate(suite.ctx, req, ptr.String("some message"))
 	suite.NoError(err)
@@ -408,7 +405,6 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobSuccess() {
 
 	result := resp.GetResult().GetStartJobUpdateResult()
 	suite.Equal(k, result.GetKey().GetJob())
-	suite.Equal(newv.String(), result.GetKey().GetID())
 }
 
 // Ensures StartJobUpdate returns an INVALID_REQUEST error if there is a conflict
@@ -441,7 +437,6 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobNoPulseSucces
 	req := fixture.AuroraJobUpdateRequest()
 	k := req.GetTaskConfig().GetJob()
 	curv := fixture.PelotonEntityVersion()
-	newv := fixture.PelotonEntityVersion()
 	id := fixture.PelotonJobID()
 
 	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
@@ -454,9 +449,7 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobNoPulseSucces
 		ReplaceJob(
 			suite.ctx,
 			mockutil.MatchReplaceJobRequestUpdateActions(nil)).
-		Return(&statelesssvc.ReplaceJobResponse{
-			Version: newv,
-		}, nil)
+		Return(&statelesssvc.ReplaceJobResponse{}, nil)
 
 	resp, err := suite.handler.StartJobUpdate(suite.ctx, req, ptr.String("some message"))
 	suite.NoError(err)
@@ -464,7 +457,6 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobNoPulseSucces
 
 	result := resp.GetResult().GetStartJobUpdateResult()
 	suite.Equal(k, result.GetKey().GetJob())
-	suite.Equal(newv.String(), result.GetKey().GetID())
 }
 
 // Ensures StartJobUpdate replaces jobs which already exist with pulse.
@@ -478,7 +470,6 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobWithPulseSucc
 	}
 	k := req.GetTaskConfig().GetJob()
 	curv := fixture.PelotonEntityVersion()
-	newv := fixture.PelotonEntityVersion()
 	id := fixture.PelotonJobID()
 
 	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
@@ -493,9 +484,7 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobWithPulseSucc
 			mockutil.MatchReplaceJobRequestUpdateActions([]opaquedata.UpdateAction{
 				opaquedata.StartPulsed,
 			})).
-		Return(&statelesssvc.ReplaceJobResponse{
-			Version: newv,
-		}, nil)
+		Return(&statelesssvc.ReplaceJobResponse{}, nil)
 
 	resp, err := suite.handler.StartJobUpdate(suite.ctx, req, ptr.String("some message"))
 	suite.NoError(err)
@@ -503,7 +492,6 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobWithPulseSucc
 
 	result := resp.GetResult().GetStartJobUpdateResult()
 	suite.Equal(k, result.GetKey().GetJob())
-	suite.Equal(newv.String(), result.GetKey().GetID())
 }
 
 // Ensures StartJobUpdate returns an INVALID_REQUEST error if there is a conflict
@@ -819,20 +807,6 @@ func (suite *ServiceHandlerTestSuite) expectGetWorkflowInfo(
 				},
 			},
 		}, nil)
-}
-
-// TestGetJobIDsFromTaskQuery_ErrorQuery checks getJobIDsFromTaskQuery
-// when query is not valid.
-func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_ErrorQuery() {
-	jobIDs, err := suite.handler.getJobIDsFromTaskQuery(suite.ctx, nil)
-	suite.Nil(jobIDs)
-	suite.Error(err)
-
-	query := &api.TaskQuery{}
-
-	jobIDs, err = suite.handler.getJobIDsFromTaskQuery(suite.ctx, query)
-	suite.Nil(jobIDs)
-	suite.Error(err)
 }
 
 // TestGetJobIDsFromTaskQuery_JobKeysOnly checks getJobIDsFromTaskQuery
