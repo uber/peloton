@@ -437,7 +437,9 @@ func ConvertJobSummary(
 // to v1alpha stateless.WorkflowInfo
 func ConvertUpdateModelToWorkflowInfo(
 	updateInfo *models.UpdateModel,
-	workflowEvents []*stateless.WorkflowEvent) *stateless.WorkflowInfo {
+	workflowEvents []*stateless.WorkflowEvent,
+	instanceWorkflowEvents []*stateless.WorkflowInfoInstanceWorkflowEvents,
+) *stateless.WorkflowInfo {
 	result := &stateless.WorkflowInfo{}
 	result.Status = ConvertUpdateModelToWorkflowStatus(updateInfo)
 
@@ -465,6 +467,7 @@ func ConvertUpdateModelToWorkflowInfo(
 	}
 
 	result.Events = workflowEvents
+	result.InstanceEvents = instanceWorkflowEvents
 	return result
 }
 

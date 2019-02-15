@@ -3219,6 +3219,7 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsSuccess() {
 	suite.updateStore.EXPECT().
 		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}).
 		Return(&models.UpdateModel{
+			UpdateID:             &peloton.UpdateID{Value: testUpdateID1},
 			Type:                 models.WorkflowType_UPDATE,
 			State:                pbupdate.State_ROLLING_FORWARD,
 			InstancesDone:        1,
@@ -3227,6 +3228,8 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsSuccess() {
 			InstancesCurrent:     []uint32{0, 1},
 			JobConfigVersion:     2,
 			PrevJobConfigVersion: 1,
+			InstancesAdded:       []uint32{1},
+			InstancesUpdated:     []uint32{0},
 		}, nil)
 
 	suite.updateStore.EXPECT().
@@ -3234,8 +3237,17 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsSuccess() {
 		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
 
 	suite.updateStore.EXPECT().
+		GetWorkflowEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}, uint32(0)).
+		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
+
+	suite.updateStore.EXPECT().
+		GetWorkflowEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}, uint32(1)).
+		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
+
+	suite.updateStore.EXPECT().
 		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID2}).
 		Return(&models.UpdateModel{
+			UpdateID:             &peloton.UpdateID{Value: testUpdateID2},
 			Type:                 models.WorkflowType_UPDATE,
 			State:                pbupdate.State_SUCCEEDED,
 			InstancesDone:        10,
@@ -3244,14 +3256,21 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsSuccess() {
 			InstancesCurrent:     []uint32{0, 1, 2},
 			JobConfigVersion:     3,
 			PrevJobConfigVersion: 2,
+			InstancesRemoved:     []uint32{1},
 		}, nil)
 
 	suite.updateStore.EXPECT().
 		GetJobUpdateEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID2}).
 		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
 
+	suite.updateStore.EXPECT().
+		GetWorkflowEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID2}, uint32(1)).
+		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
+
 	resp, err := suite.handler.ListJobWorkflows(context.Background(), &statelesssvc.ListJobWorkflowsRequest{
-		JobId: &v1alphapeloton.JobID{Value: testJobID},
+		JobId:          &v1alphapeloton.JobID{Value: testJobID},
+		UpdatesLimit:   4,
+		InstanceEvents: true,
 	})
 	suite.NoError(err)
 	suite.Equal(
@@ -3286,6 +3305,8 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsSuccess() {
 	suite.Equal(
 		resp.GetWorkflowInfos()[1].GetStatus().GetInstancesCurrent(),
 		[]uint32{0, 1, 2})
+	suite.Equal(2, len(resp.GetWorkflowInfos()[0].GetInstanceEvents()))
+	suite.Equal(1, len(resp.GetWorkflowInfos()[1].GetInstanceEvents()))
 }
 
 // TestListJobWorkflowsGetUpdatesFailure tests the failure

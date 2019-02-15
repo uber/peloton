@@ -404,6 +404,13 @@ message QueryJobsResponse {
 message ListJobWorkflowsRequest {
   // The job identifier.
   peloton.JobID job_id = 1;
+
+  // Limits the number of updates to list for a job.
+  uint32 updates_limit = 2;
+
+  // Flag to indicate whether to fetch instance workflow events
+  // for that job update.
+  bool instance_events = 3;
 }
 
 // Response message for JobService.ListJobWorkflows method.
@@ -551,6 +558,9 @@ service JobService {
   rpc ListJobs(ListJobsRequest) returns (stream ListJobsResponse);
 
   // List all workflows (including current and previously completed) for a given job.
+  // Optional parameters to limit the number of updates to list and whether to include
+  // instance workflow events can be set. Default is to list of all the updates and
+  // do not to fetch instance workflow events.
   rpc ListJobWorkflows(ListJobWorkflowsRequest) returns (ListJobWorkflowsResponse);
 
   // Get the list of instances which will be added/removed/updated if

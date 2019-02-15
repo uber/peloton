@@ -23,7 +23,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
-	"github.com/uber/peloton/aurorabridge/concurrency/mocks"
+	"github.com/uber/peloton/common/concurrency/mocks"
 )
 
 func TestMap_Success(t *testing.T) {

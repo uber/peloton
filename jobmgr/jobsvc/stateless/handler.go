@@ -32,6 +32,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	v1alphaquery "github.com/uber/peloton/.gen/peloton/api/v1alpha/query"
 	"github.com/uber/peloton/.gen/peloton/private/models"
+	"github.com/uber/peloton/common/concurrency"
 
 	"github.com/uber/peloton/common"
 	"github.com/uber/peloton/jobmgr/cached"
@@ -76,6 +77,11 @@ var (
 	errResourcePoolNotFound = yarpcerrors.NotFoundErrorf("resource pool not found")
 	errRootResourcePoolID   = yarpcerrors.InvalidArgumentErrorf("cannot submit jobs to the `root` resource pool")
 	errNonLeafResourcePool  = yarpcerrors.InvalidArgumentErrorf("cannot submit jobs to a non leaf resource pool")
+)
+
+const (
+	// Represents number of goroutine workers to fetch instance workflow events
+	_defaultInstanceWorkflowEventsWorker = 25
 )
 
 // InitV1AlphaJobServiceHandler initializes the Job Manager V1Alpha Service Handler
@@ -941,7 +947,7 @@ func (h *serviceHandler) GetJob(
 		},
 		Secrets: handlerutil.ConvertV0SecretsToV1Secrets(
 			jobmgrtask.CreateSecretsFromVolumes(secretVolumes)),
-		WorkflowInfo: handlerutil.ConvertUpdateModelToWorkflowInfo(updateInfo, workflowEvents),
+		WorkflowInfo: handlerutil.ConvertUpdateModelToWorkflowInfo(updateInfo, workflowEvents, nil),
 	}, nil
 }
 
@@ -1272,6 +1278,10 @@ func (h *serviceHandler) ListJobWorkflows(
 		return nil, err
 	}
 
+	if req.GetUpdatesLimit() > 0 {
+		updateIDs = updateIDs[:util.Min(uint32(len(updateIDs)), req.GetUpdatesLimit())]
+	}
+
 	var updateInfos []*stateless.WorkflowInfo
 	for _, updateID := range updateIDs {
 		updateModel, err := h.updateStore.GetUpdate(ctx, updateID)
@@ -1286,12 +1296,75 @@ func (h *serviceHandler) ListJobWorkflows(
 			return nil, errors.Wrap(err, "fail to get job workflow events")
 		}
 
+		var instanceWorkflowEvents []*stateless.WorkflowInfoInstanceWorkflowEvents
+		if req.GetInstanceEvents() {
+			instanceWorkflowEvents, err = h.getInstanceWorkflowEvents(
+				ctx,
+				updateModel)
+			if err != nil {
+				return nil, errors.Wrap(err, "fail to get instance workflow events")
+			}
+		}
+
 		updateInfos = append(updateInfos,
-			handlerutil.ConvertUpdateModelToWorkflowInfo(updateModel, workflowEvents),
-		)
+			handlerutil.ConvertUpdateModelToWorkflowInfo(updateModel,
+				workflowEvents,
+				instanceWorkflowEvents))
 	}
 
 	return &svc.ListJobWorkflowsResponse{WorkflowInfos: updateInfos}, nil
+}
+
+// getInstanceWorkflowEvents gets the workflow events for instances that were
+// included in an update or restart.
+// Fixed number of go routine workers are spawed to get per instance workflow
+// events, and if an error occurs all workers are aborted.
+func (h *serviceHandler) getInstanceWorkflowEvents(
+	ctx context.Context,
+	updateModel *models.UpdateModel,
+) ([]*stateless.WorkflowInfoInstanceWorkflowEvents, error) {
+
+	f := func(ctx context.Context, instance_id interface{}) (interface{}, error) {
+		workflowEvents, err := h.updateStore.GetWorkflowEvents(
+			ctx,
+			updateModel.GetUpdateID(),
+			instance_id.(uint32))
+		if err != nil {
+			return nil, errors.Wrap(err,
+				fmt.Sprintf("failed to get workflow events for update %s, instance %d",
+					updateModel.GetUpdateID(),
+					instance_id.(uint32)))
+		}
+
+		return &stateless.WorkflowInfoInstanceWorkflowEvents{
+			InstanceId: instance_id.(uint32),
+			Events:     workflowEvents,
+		}, nil
+	}
+
+	instances := append(updateModel.GetInstancesAdded(), updateModel.GetInstancesRemoved()...)
+	instances = append(instances, updateModel.GetInstancesUpdated()...)
+
+	var inputs []interface{}
+	for _, i := range instances {
+		inputs = append(inputs, i)
+	}
+
+	outputs, err := concurrency.Map(
+		ctx,
+		concurrency.MapperFunc(f),
+		inputs,
+		_defaultInstanceWorkflowEventsWorker)
+	if err != nil {
+		return nil, err
+	}
+
+	var events []*stateless.WorkflowInfoInstanceWorkflowEvents
+	for _, o := range outputs {
+		events = append(events, o.(*stateless.WorkflowInfoInstanceWorkflowEvents))
+	}
+
+	return events, nil
 }
 
 func (h *serviceHandler) GetReplaceJobDiff(

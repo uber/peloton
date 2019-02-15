@@ -168,7 +168,7 @@ endef
 
 mockgens: build-mockgen gens $(GOMOCK)
 	$(call local_mockgen,aurorabridge,RespoolLoader)
-	$(call local_mockgen,aurorabridge/concurrency,Mapper)
+	$(call local_mockgen,common/concurrency,Mapper)
 	$(call local_mockgen,common/background,Manager)
 	$(call local_mockgen,common/constraints,Evaluator)
 	$(call local_mockgen,common/goalstate,Engine)

@@ -30,10 +30,10 @@ import (
 
 	"github.com/uber/peloton/aurorabridge/atop"
 	"github.com/uber/peloton/aurorabridge/common"
-	"github.com/uber/peloton/aurorabridge/concurrency"
 	"github.com/uber/peloton/aurorabridge/label"
 	"github.com/uber/peloton/aurorabridge/opaquedata"
 	"github.com/uber/peloton/aurorabridge/ptoa"
+	"github.com/uber/peloton/common/concurrency"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"

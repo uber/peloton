@@ -393,6 +393,14 @@ message RestartSpec {
 
 // Information about a workflow including its status and specification
 message WorkflowInfo {
+  message instance_workflow_events {
+    // The instance ID
+    uint32 instance_id = 1;
+
+    // Instance workflow events
+    repeated stateless.WorkflowEvent events = 2;
+  }
+
   // Workflow status
   WorkflowStatus status = 1;
 
@@ -416,6 +424,8 @@ message WorkflowInfo {
 
   // Instances updated by update workflow
   repeated pod.InstanceIDRange instances_updated = 10;
+
+  repeated instance_workflow_events instance_events = 11;
 }
 
 // WorkflowEvents are workflow state change events for a job or pod
