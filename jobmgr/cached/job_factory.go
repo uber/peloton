@@ -56,14 +56,15 @@ type jobFactory struct {
 	sync.RWMutex //  Mutex to acquire before accessing any variables in the job factory object
 
 	// map of active jobs (job identifier -> cache job object) in the system
-	jobs        map[string]*job
-	running     bool                          // whether job factory is running
-	jobStore    storage.JobStore              // storage job store object
-	taskStore   storage.TaskStore             // storage task store object
-	updateStore storage.UpdateStore           // storage update store object
-	volumeStore storage.PersistentVolumeStore // storage volume store object
-	jobIndexOps ormobjects.JobIndexOps        // DB ops for job_index table
-	mtx         *Metrics                      // cache metrics
+	jobs           map[string]*job
+	running        bool                          // whether job factory is running
+	jobStore       storage.JobStore              // storage job store object
+	taskStore      storage.TaskStore             // storage task store object
+	updateStore    storage.UpdateStore           // storage update store object
+	volumeStore    storage.PersistentVolumeStore // storage volume store object
+	jobIndexOps    ormobjects.JobIndexOps        // DB ops for job_index table
+	jobNameToIDOps ormobjects.JobNameToIDOps     // DB ops for job_name_to_id table
+	mtx            *Metrics                      // cache metrics
 	// Tob/task listeners. This list is immutable after object is created.
 	// So it can read without a lock.
 	listeners []JobTaskListener
@@ -81,14 +82,15 @@ func InitJobFactory(
 	parentScope tally.Scope,
 	listeners []JobTaskListener) JobFactory {
 	return &jobFactory{
-		jobs:        map[string]*job{},
-		jobStore:    jobStore,
-		taskStore:   taskStore,
-		updateStore: updateStore,
-		volumeStore: volumeStore,
-		jobIndexOps: ormobjects.NewJobIndexOps(ormStore),
-		mtx:         NewMetrics(parentScope.SubScope("cache")),
-		listeners:   listeners,
+		jobs:           map[string]*job{},
+		jobStore:       jobStore,
+		taskStore:      taskStore,
+		updateStore:    updateStore,
+		volumeStore:    volumeStore,
+		jobIndexOps:    ormobjects.NewJobIndexOps(ormStore),
+		jobNameToIDOps: ormobjects.NewJobNameToIDOps(ormStore),
+		mtx:            NewMetrics(parentScope.SubScope("cache")),
+		listeners:      listeners,
 	}
 }
 

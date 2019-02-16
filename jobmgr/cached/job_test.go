@@ -49,14 +49,15 @@ const (
 type JobTestSuite struct {
 	suite.Suite
 
-	ctrl        *gomock.Controller
-	jobStore    *storemocks.MockJobStore
-	taskStore   *storemocks.MockTaskStore
-	updateStore *storemocks.MockUpdateStore
-	jobIndexOps *objectmocks.MockJobIndexOps
-	jobID       *peloton.JobID
-	job         *job
-	listeners   []*FakeJobListener
+	ctrl           *gomock.Controller
+	jobStore       *storemocks.MockJobStore
+	taskStore      *storemocks.MockTaskStore
+	updateStore    *storemocks.MockUpdateStore
+	jobIndexOps    *objectmocks.MockJobIndexOps
+	jobNameToIDOps *objectmocks.MockJobNameToIDOps
+	jobID          *peloton.JobID
+	job            *job
+	listeners      []*FakeJobListener
 }
 
 func TestJob(t *testing.T) {
@@ -69,6 +70,7 @@ func (suite *JobTestSuite) SetupTest() {
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
 	suite.jobIndexOps = objectmocks.NewMockJobIndexOps(suite.ctrl)
+	suite.jobNameToIDOps = objectmocks.NewMockJobNameToIDOps(suite.ctrl)
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
 	suite.listeners = append(suite.listeners,
 		new(FakeJobListener),
@@ -78,6 +80,7 @@ func (suite *JobTestSuite) SetupTest() {
 		suite.taskStore,
 		suite.updateStore,
 		suite.jobIndexOps,
+		suite.jobNameToIDOps,
 		suite.jobID)
 }
 
@@ -91,17 +94,19 @@ func (suite *JobTestSuite) initializeJob(
 	taskStore *storemocks.MockTaskStore,
 	updateStore *storemocks.MockUpdateStore,
 	jobIndexOps *objectmocks.MockJobIndexOps,
+	jobNameToIDOps *objectmocks.MockJobNameToIDOps,
 	jobID *peloton.JobID) *job {
 	j := &job{
 		id: jobID,
 		jobFactory: &jobFactory{
-			mtx:         NewMetrics(tally.NoopScope),
-			jobStore:    jobStore,
-			taskStore:   taskStore,
-			updateStore: updateStore,
-			jobIndexOps: jobIndexOps,
-			running:     true,
-			jobs:        map[string]*job{},
+			mtx:            NewMetrics(tally.NoopScope),
+			jobStore:       jobStore,
+			taskStore:      taskStore,
+			updateStore:    updateStore,
+			jobIndexOps:    jobIndexOps,
+			jobNameToIDOps: jobNameToIDOps,
+			running:        true,
+			jobs:           map[string]*job{},
 		},
 		tasks: map[uint32]*task{},
 		config: &cachedConfig{
@@ -3950,6 +3955,10 @@ func (suite *JobTestSuite) TestJobRollingCreateSuccess() {
 			suite.Equal(initialRuntime.TaskStats[pbjob.JobState_INITIALIZED.String()], jobConfig.InstanceCount)
 			suite.Equal(len(initialRuntime.TaskStats), 1)
 		}).
+		Return(nil)
+
+	suite.jobNameToIDOps.EXPECT().
+		Create(gomock.Any(), gomock.Any(), suite.jobID).
 		Return(nil)
 
 	suite.jobStore.EXPECT().

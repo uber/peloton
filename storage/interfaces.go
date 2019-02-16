@@ -25,7 +25,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
-	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 )
@@ -86,9 +85,6 @@ type JobStore interface {
 	GetActiveJobs(ctx context.Context) ([]*peloton.JobID, error)
 	// DeleteActiveJob deletes job from active jobs table
 	DeleteActiveJob(ctx context.Context, id *peloton.JobID) error
-
-	// GetJobIDFromJobName resolves the job ID from job name.
-	GetJobIDFromJobName(ctx context.Context, jobName string) ([]*v1alphapeloton.JobID, error)
 }
 
 // TaskStore is the interface to store task states

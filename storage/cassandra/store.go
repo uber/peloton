@@ -341,14 +341,6 @@ func (s *Store) CreateJobConfig(
 	configAddOn *models.ConfigAddOn, version uint64, owner string) error {
 	jobID := id.GetValue()
 
-	if jobConfig.GetType() == job.JobType_SERVICE {
-		if err := s.addJobNameToJobIDMapping(ctx, id, jobConfig); err != nil {
-			log.WithError(err).Error("failed to create job name to job uuid mapping")
-			s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
-			return err
-		}
-	}
-
 	configBuffer, err := proto.Marshal(jobConfig)
 	if err != nil {
 		log.WithError(err).Error("Failed to marshal jobConfig")
@@ -398,55 +390,6 @@ func (s *Store) CreateJobConfig(
 
 	s.metrics.JobMetrics.JobCreateConfig.Inc(1)
 	return nil
-}
-
-// Adds the job name to job uuid mapping for indexing purposes
-func (s *Store) addJobNameToJobIDMapping(
-	ctx context.Context,
-	id *peloton.JobID,
-	jobConfig *job.JobConfig) error {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Insert(jobNameToIDTable).
-		Columns(
-			"job_name",
-			"job_id",
-			"update_time").
-		Values(
-			jobConfig.GetName(),
-			id.GetValue(),
-			qb.UUID{UUID: gocql.UUIDFromTime(time.Now())})
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
-		s.metrics.JobMetrics.JobNameToIDFail.Inc(1)
-		return err
-	}
-
-	s.metrics.JobMetrics.JobNameToID.Inc(1)
-	return nil
-}
-
-// GetJobIDFromJobName gets all job ids associated with following job name
-func (s *Store) GetJobIDFromJobName(
-	ctx context.Context,
-	jobName string) ([]*v1alphapeloton.JobID, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(jobNameToIDTable).
-		Where(qb.Eq{"job_name": jobName})
-	result, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		s.metrics.JobMetrics.JobGetNameToIDFail.Inc(1)
-		return nil, err
-	}
-
-	var jobIDs []*v1alphapeloton.JobID
-	for _, value := range result {
-		jobID := &v1alphapeloton.JobID{
-			Value: fmt.Sprintf("%s", value["job_id"].(qb.UUID)),
-		}
-		jobIDs = append(jobIDs, jobID)
-	}
-
-	s.metrics.JobMetrics.JobGetNameToID.Inc(1)
-	return jobIDs, nil
 }
 
 // CreateTaskConfig creates the task configuration

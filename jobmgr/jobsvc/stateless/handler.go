@@ -63,6 +63,7 @@ type serviceHandler struct {
 	secretStore     storage.SecretStore
 	taskStore       storage.TaskStore
 	jobIndexOps     ormobjects.JobIndexOps
+	jobNameToIDOps  ormobjects.JobNameToIDOps
 	respoolClient   respool.ResourceManagerYARPCClient
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
@@ -99,11 +100,12 @@ func InitV1AlphaJobServiceHandler(
 	activeRMTasks activermtask.ActiveRMTasks,
 ) {
 	handler := &serviceHandler{
-		jobStore:    jobStore,
-		updateStore: updateStore,
-		secretStore: secretStore,
-		taskStore:   taskStore,
-		jobIndexOps: ormobjects.NewJobIndexOps(ormStore),
+		jobStore:       jobStore,
+		updateStore:    updateStore,
+		secretStore:    secretStore,
+		taskStore:      taskStore,
+		jobIndexOps:    ormobjects.NewJobIndexOps(ormStore),
+		jobNameToIDOps: ormobjects.NewJobNameToIDOps(ormStore),
 		respoolClient: respool.NewResourceManagerYARPCClient(
 			d.ClientConfig(common.PelotonResourceManager),
 		),
@@ -969,13 +971,20 @@ func (h *serviceHandler) GetJobIDFromJobName(
 			Debug("StatelessJobSvc.GetJobIDFromJobName succeeded")
 	}()
 
-	jobIDs, err := h.jobStore.GetJobIDFromJobName(ctx, req.GetJobName())
+	jobNameToIDs, err := h.jobNameToIDOps.GetAll(ctx, req.GetJobName())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get job identifiers from job name")
 	}
 
-	if len(jobIDs) == 0 {
+	if len(jobNameToIDs) == 0 {
 		return nil, yarpcerrors.NotFoundErrorf("job id for job name not found: \"%s\"", req.GetJobName())
+	}
+
+	var jobIDs []*v1alphapeloton.JobID
+	for _, jobNameToID := range jobNameToIDs {
+		jobIDs = append(jobIDs, &v1alphapeloton.JobID{
+			Value: jobNameToID.JobID,
+		})
 	}
 
 	return &svc.GetJobIDFromJobNameResponse{

@@ -578,6 +578,20 @@ func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, configAddOn *
 		return err
 	}
 
+	// create job name to job id mapping.
+	// if the creation fails here, since job config is not created yet,
+	// the job will be cleaned up in goalstate engine JobRecover action.
+	if config.GetType() == pbjob.JobType_SERVICE {
+		if err := j.jobFactory.jobNameToIDOps.Create(
+			ctx,
+			config.GetName(),
+			j.ID(),
+		); err != nil {
+			j.invalidateCache()
+			return err
+		}
+	}
+
 	// create job config
 	err := j.createJobConfig(ctx, config, configAddOn, createBy)
 	if err != nil {
@@ -667,6 +681,20 @@ func (j *job) RollingCreate(
 	if err := j.createJobRuntime(ctx, config, updateID); err != nil {
 		j.invalidateCache()
 		return err
+	}
+
+	// create job name to job id mapping.
+	// if the creation fails here, since job config is not created yet,
+	// the job will be cleaned up in goalstate engine JobRecover action.
+	if config.GetType() == pbjob.JobType_SERVICE {
+		if err := j.jobFactory.jobNameToIDOps.Create(
+			ctx,
+			config.GetName(),
+			j.ID(),
+		); err != nil {
+			j.invalidateCache()
+			return err
+		}
 	}
 
 	newWorkflow := newUpdate(updateID, j.jobFactory)

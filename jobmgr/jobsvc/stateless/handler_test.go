@@ -44,6 +44,7 @@ import (
 	"github.com/uber/peloton/jobmgr/jobsvc"
 	handlerutil "github.com/uber/peloton/jobmgr/util/handler"
 	jobutil "github.com/uber/peloton/jobmgr/util/job"
+	ormobjects "github.com/uber/peloton/storage/objects"
 	"github.com/uber/peloton/util"
 
 	respoolmocks "github.com/uber/peloton/.gen/peloton/api/v0/respool/mocks"
@@ -107,6 +108,7 @@ type statelessHandlerTestSuite struct {
 	secretStore     *storemocks.MockSecretStore
 	taskStore       *storemocks.MockTaskStore
 	jobIndexOps     *objectmocks.MockJobIndexOps
+	jobNameToIDOps  *objectmocks.MockJobNameToIDOps
 	activeRMTasks   *activermtaskmocks.MockActiveRMTasks
 }
 
@@ -121,6 +123,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.jobIndexOps = objectmocks.NewMockJobIndexOps(suite.ctrl)
+	suite.jobNameToIDOps = objectmocks.NewMockJobNameToIDOps(suite.ctrl)
 	suite.respoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.listJobsServer = statelesssvcmocks.NewMockJobServiceServiceListJobsYARPCServer(suite.ctrl)
 	suite.listPodsServer = statelesssvcmocks.NewMockJobServiceServiceListPodsYARPCServer(suite.ctrl)
@@ -134,6 +137,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 		updateStore:     suite.updateStore,
 		taskStore:       suite.taskStore,
 		jobIndexOps:     suite.jobIndexOps,
+		jobNameToIDOps:  suite.jobNameToIDOps,
 		respoolClient:   suite.respoolClient,
 		secretStore:     suite.secretStore,
 		rootCtx:         context.Background(),
@@ -1536,13 +1540,15 @@ func (suite *statelessHandlerTestSuite) TestPauseJobWorkflowSuccess() {
 
 // TestGetJobIDFromName tests the job name to job ids look up
 func (suite *statelessHandlerTestSuite) TestGetJobIDFromName() {
-	var jobIDs []*v1alphapeloton.JobID
-	jobIDs = append(jobIDs, &v1alphapeloton.JobID{
-		Value: testJobID,
-	})
+	jobNameToIDs := []*ormobjects.JobNameToIDObject{
+		{
+			JobName: testJobName,
+			JobID:   testJobID,
+		},
+	}
 
-	suite.jobStore.EXPECT().
-		GetJobIDFromJobName(gomock.Any(), testJobName).
+	suite.jobNameToIDOps.EXPECT().
+		GetAll(gomock.Any(), testJobName).
 		Return(nil, errors.New("failed to get job ids for job name"))
 
 	_, err := suite.handler.GetJobIDFromJobName(context.Background(),
@@ -1551,19 +1557,19 @@ func (suite *statelessHandlerTestSuite) TestGetJobIDFromName() {
 		})
 	suite.Error(err)
 
-	suite.jobStore.EXPECT().
-		GetJobIDFromJobName(gomock.Any(), testJobName).
-		Return(jobIDs, nil)
+	suite.jobNameToIDOps.EXPECT().
+		GetAll(gomock.Any(), testJobName).
+		Return(jobNameToIDs, nil)
 	resp, err := suite.handler.GetJobIDFromJobName(context.Background(),
 		&statelesssvc.GetJobIDFromJobNameRequest{
 			JobName: testJobName,
 		})
 
-	suite.Equal(len(jobIDs), len(resp.GetJobId()))
+	suite.Equal(len(jobNameToIDs), len(resp.GetJobId()))
 
-	suite.jobStore.EXPECT().
-		GetJobIDFromJobName(gomock.Any(), testJobName).
-		Return([]*v1alphapeloton.JobID{}, nil)
+	suite.jobNameToIDOps.EXPECT().
+		GetAll(gomock.Any(), testJobName).
+		Return([]*ormobjects.JobNameToIDObject{}, nil)
 	_, err = suite.handler.GetJobIDFromJobName(context.Background(),
 		&statelesssvc.GetJobIDFromJobNameRequest{
 			JobName: testJobName,

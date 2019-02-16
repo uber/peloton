@@ -308,23 +308,6 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureActiveJobs() {
 	suite.Error(err)
 }
 
-// TestJobNameToIDMapFailures tests failure scenarios for job name to job uuid
-func (suite *MockDatastoreTestSuite) TestJobNameToIDMapFailures() {
-	jobID := &peloton.JobID{
-		Value: testJob,
-	}
-
-	jobConfig := &job.JobConfig{
-		Name: testJobName,
-		Type: job.JobType_SERVICE,
-	}
-	err := suite.store.addJobNameToJobIDMapping(context.Background(), jobID, jobConfig)
-	suite.Error(err)
-
-	_, err = suite.store.GetJobIDFromJobName(context.Background(), testJobName)
-	suite.Error(err)
-}
-
 // TestCreateTaskConfigFailures tests failure scenarios for create task configs
 func (suite *MockDatastoreTestSuite) TestCreateTaskConfigFailures() {
 

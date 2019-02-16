@@ -852,16 +852,8 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
 		Description:   fmt.Sprintf("get jobs summary"),
 	}
 
-	jobIDs, err := jobStore.GetJobIDFromJobName(context.Background(), jobConfig.GetName())
+	err := suite.createJob(context.Background(), &jobID, &jobConfig, configAddOn, "uber")
 	suite.NoError(err)
-	suite.Equal(0, len(jobIDs))
-
-	err = suite.createJob(context.Background(), &jobID, &jobConfig, configAddOn, "uber")
-	suite.NoError(err)
-
-	jobIDs, err = jobStore.GetJobIDFromJobName(context.Background(), jobConfig.GetName())
-	suite.NoError(err)
-	suite.Equal(0, len(jobIDs))
 
 	where := fmt.Sprintf(`expr(job_index_lucene_v2,` +
 		`'{refresh:true, filter: [` +
@@ -3718,23 +3710,14 @@ func (suite *CassandraStoreTestSuite) TestHandleDataStoreError() {
 
 func (suite *CassandraStoreTestSuite) TestCreateTaskRuntimeForServiceJob() {
 	taskStore := store
-	jobStore := store
 	var jobID = peloton.JobID{Value: uuid.New()}
 	configAddOn := &models.ConfigAddOn{}
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = 1
 	jobConfig.Type = job.JobType_SERVICE
 
-	jobIDs, err := jobStore.GetJobIDFromJobName(context.Background(), jobConfig.GetName())
+	err := suite.createJob(context.Background(), &jobID, jobConfig, configAddOn, "uber")
 	suite.NoError(err)
-	suite.Equal(0, len(jobIDs))
-
-	err = suite.createJob(context.Background(), &jobID, jobConfig, configAddOn, "uber")
-	suite.NoError(err)
-
-	jobIDs, err = jobStore.GetJobIDFromJobName(context.Background(), jobConfig.GetName())
-	suite.NoError(err)
-	suite.Equal(1, len(jobIDs))
 
 	taskInfo := createTaskInfo(jobConfig, &jobID, 0)
 	taskInfo.Runtime.DesiredMesosTaskId = taskInfo.Runtime.MesosTaskId
