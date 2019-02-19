@@ -2145,7 +2145,7 @@ func (j *job) Delete(ctx context.Context) error {
 	if err := j.jobFactory.jobStore.DeleteJob(
 		ctx,
 		j.ID().GetValue(),
-	); err == nil {
+	); err != nil {
 		return err
 	}
 

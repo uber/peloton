@@ -1791,6 +1791,57 @@ func (suite *JobTestSuite) TestJobUpdateResourceUsage() {
 	suite.Equal(updatedResourceUsage, suite.job.GetResourceUsage())
 }
 
+// TestDelete tests deleting a job
+func (suite *JobTestSuite) TestDelete() {
+	suite.jobStore.EXPECT().
+		DeleteJob(gomock.Any(), suite.jobID.GetValue()).
+		Return(nil)
+	suite.jobIndexOps.EXPECT().
+		Delete(gomock.Any(), suite.jobID).
+		Return(nil)
+	suite.jobStore.EXPECT().
+		DeleteActiveJob(gomock.Any(), suite.jobID).
+		Return(nil)
+
+	suite.job.Delete(context.Background())
+}
+
+// TestDelete tests failure deleting a job
+func (suite *JobTestSuite) TestDeleteFailure() {
+	// DeleteJob failure
+	suite.jobStore.EXPECT().
+		DeleteJob(gomock.Any(), suite.jobID.GetValue()).
+		Return(yarpcerrors.InternalErrorf("DeleteJob error"))
+	err := suite.job.Delete(context.Background())
+	suite.Error(err)
+	suite.Equal("DeleteJob error", yarpcerrors.ErrorMessage(err))
+
+	// jobIndexOp failure
+	suite.jobStore.EXPECT().
+		DeleteJob(gomock.Any(), suite.jobID.GetValue()).
+		Return(nil)
+	suite.jobIndexOps.EXPECT().
+		Delete(gomock.Any(), suite.jobID).
+		Return(yarpcerrors.InternalErrorf("jobIndexOps error"))
+	err = suite.job.Delete(context.Background())
+	suite.Error(err)
+	suite.Equal("jobIndexOps error", yarpcerrors.ErrorMessage(err))
+
+	// DeleteActiveJob error
+	suite.jobStore.EXPECT().
+		DeleteJob(gomock.Any(), suite.jobID.GetValue()).
+		Return(nil)
+	suite.jobIndexOps.EXPECT().
+		Delete(gomock.Any(), suite.jobID).
+		Return(nil)
+	suite.jobStore.EXPECT().
+		DeleteActiveJob(gomock.Any(), suite.jobID).
+		Return(yarpcerrors.InternalErrorf("DeleteActiveJob error"))
+	err = suite.job.Delete(context.Background())
+	suite.Error(err)
+	suite.Equal("DeleteActiveJob error", yarpcerrors.ErrorMessage(err))
+}
+
 // TestRecalculateResourceUsage tests recalculating the resource usage for job
 // on recovery
 func (suite *JobTestSuite) TestRecalculateResourceUsage() {
