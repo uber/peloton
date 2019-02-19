@@ -135,7 +135,7 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailNoRetry() {
 		GetTask(suite.instanceID).Return(suite.cachedTask)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
 
 	suite.taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
@@ -162,7 +162,7 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailRetry() {
 		ID().Return(suite.jobID)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
 
 	suite.taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
@@ -213,7 +213,7 @@ func (suite *TaskFailRetryTestSuite) TestLostTaskRetry() {
 		ID().Return(suite.jobID)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.lostTaskRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.lostTaskRuntime, nil)
 
 	suite.taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
@@ -261,7 +261,7 @@ func (suite *TaskFailRetryTestSuite) TestLostTaskNoRetry() {
 		GetTask(suite.instanceID).Return(suite.cachedTask)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.lostTaskRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.lostTaskRuntime, nil)
 
 	suite.taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
@@ -312,7 +312,7 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailSystemFailure() {
 			ID().Return(suite.jobID)
 
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(taskRuntime, nil)
+			GetRuntime(gomock.Any()).Return(taskRuntime, nil)
 
 		suite.taskStore.EXPECT().
 			GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
@@ -356,7 +356,7 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailDBError() {
 		GetTask(suite.instanceID).Return(suite.cachedTask)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
 
 	suite.taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
@@ -397,7 +397,7 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailRetryNoTaskRuntime() {
 		GetTask(suite.instanceID).Return(suite.cachedTask)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(nil, fmt.Errorf("runtime error"))
+		GetRuntime(gomock.Any()).Return(nil, fmt.Errorf("runtime error"))
 
 	err := TaskFailRetry(context.Background(), suite.taskEnt)
 	suite.Error(err)
@@ -420,7 +420,7 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailRetryFailedPatch() {
 		ID().Return(suite.jobID)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
 
 	suite.taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).

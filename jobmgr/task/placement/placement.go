@@ -252,7 +252,7 @@ func (p *processor) createTaskInfos(
 			continue
 		}
 
-		cachedRuntime, err := cachedTask.GetRunTime(ctx)
+		cachedRuntime, err := cachedTask.GetRuntime(ctx)
 		if err != nil {
 			log.WithError(err).
 				WithField("task_id", taskID).
@@ -277,7 +277,7 @@ func (p *processor) createTaskInfos(
 						uint32(instanceID): launchableTask.RuntimeDiff,
 					})
 				if err == nil {
-					runtime, _ := cachedTask.GetRunTime(ctx)
+					runtime, _ := cachedTask.GetRuntime(ctx)
 					taskInfos[taskID] = &launcher.LaunchableTaskInfo{
 						TaskInfo: &task.TaskInfo{
 							Runtime:    runtime,

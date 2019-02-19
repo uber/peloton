@@ -330,7 +330,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
 		}).Return(nil)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(runtime, nil)
 
 	suite.mockTaskLauncher.EXPECT().

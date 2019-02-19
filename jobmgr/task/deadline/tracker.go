@@ -145,7 +145,7 @@ func (t *tracker) trackDeadline() {
 		}
 
 		for instance, info := range cachedJob.GetAllTasks() {
-			runtime, err := info.GetRunTime(context.Background())
+			runtime, err := info.GetRuntime(context.Background())
 			if err != nil {
 				log.WithError(err).
 					WithFields(log.Fields{

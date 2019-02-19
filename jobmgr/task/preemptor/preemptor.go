@@ -183,7 +183,7 @@ func (p *preemptor) preemptTasks(
 			continue
 		}
 
-		runtime, err := cachedTask.GetRunTime(ctx)
+		runtime, err := cachedTask.GetRuntime(ctx)
 		if err != nil {
 			errs = multierror.Append(errs, err)
 			continue

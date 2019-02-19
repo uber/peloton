@@ -354,7 +354,7 @@ func (j *job) addTaskToJobMap(id uint32) *task {
 
 	t, ok := j.tasks[id]
 	if !ok {
-		t = newTask(j.ID(), id, j.jobFactory)
+		t = newTask(j.ID(), id, j.jobFactory, j.jobType)
 	}
 	j.tasks[id] = t
 	return t
@@ -372,10 +372,10 @@ func (j *job) AddTask(
 
 	t, ok := j.tasks[id]
 	if !ok {
-		t = newTask(j.ID(), id, j.jobFactory)
+		t = newTask(j.ID(), id, j.jobFactory, j.jobType)
 
 		// first fetch the runtime of the task
-		_, err := t.GetRunTime(ctx)
+		_, err := t.GetRuntime(ctx)
 		if err != nil {
 			// if task runtime is not found and instance id is larger than
 			// instance count, then throw a different error
@@ -2034,7 +2034,7 @@ func (j *job) RecalculateResourceUsage(ctx context.Context) {
 	// and memory
 	j.resourceUsage = createEmptyResourceUsageMap()
 	for id, task := range j.tasks {
-		if runtime, err := task.GetRunTime(ctx); err == nil {
+		if runtime, err := task.GetRuntime(ctx); err == nil {
 			for k, v := range runtime.GetResourceUsage() {
 				j.resourceUsage[k] += v
 			}

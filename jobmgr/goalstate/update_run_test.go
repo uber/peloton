@@ -701,7 +701,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddInstances() {
 			GetTask(instID).
 			Return(suite.cachedTask)
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
+			GetRuntime(gomock.Any()).
 			Return(nil, yarpcerrors.NotFoundErrorf("not found"))
 		suite.taskStore.EXPECT().
 			GetPodEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -748,7 +748,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddInstances() {
 			GetTask(instID).
 			Return(suite.cachedTask)
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
+			GetRuntime(gomock.Any()).
 			Return(&pbtask.RuntimeInfo{
 				State:     pbtask.TaskState_PENDING,
 				GoalState: pbtask.TaskState_RUNNING,
@@ -915,7 +915,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddShrinkInstances() {
 			GetTask(instID).
 			Return(suite.cachedTask)
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
+			GetRuntime(gomock.Any()).
 			Return(&pbtask.RuntimeInfo{
 				State:     pbtask.TaskState_PENDING,
 				GoalState: pbtask.TaskState_RUNNING,
@@ -971,7 +971,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 			}, nil)
 	}
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			State:                pbtask.TaskState_RUNNING,
 			ConfigVersion:        jobVersion,
@@ -1152,7 +1152,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 		AnyTimes()
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			State:                pbtask.TaskState_KILLED,
 			GoalState:            pbtask.TaskState_KILLED,
@@ -1219,7 +1219,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 		GetTask(uint32(0)).
 		Return(task0)
 	task0.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			State:                pbtask.TaskState_KILLED,
 			GoalState:            pbtask.TaskState_KILLED,
@@ -1300,7 +1300,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() 
 		AnyTimes()
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			State:                pbtask.TaskState_KILLED,
 			GoalState:            pbtask.TaskState_KILLED,
@@ -1367,7 +1367,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() 
 		GetTask(uint32(0)).
 		Return(task0)
 	task0.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			State:                pbtask.TaskState_FAILED,
 			GoalState:            pbtask.TaskState_KILLED,
@@ -1506,7 +1506,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunKilledJobAddInstances() {
 			GetTask(instID).
 			Return(suite.cachedTask)
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
+			GetRuntime(gomock.Any()).
 			Return(&pbtask.RuntimeInfo{
 				State:     pbtask.TaskState_PENDING,
 				GoalState: pbtask.TaskState_RUNNING,
@@ -1713,7 +1713,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunDBErrorUpdateInstances() {
 		AnyTimes()
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			State: pbtask.TaskState_RUNNING,
 		}, nil).
@@ -1818,7 +1818,7 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstances() {
 		AnyTimes()
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(runtimeTerminated, nil).
 		AnyTimes()
 
@@ -1958,7 +1958,7 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstancesDBError() {
 		AnyTimes()
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(runtimeTerminated, nil).
 		AnyTimes()
 
@@ -2694,23 +2694,23 @@ func (suite *UpdateRunTestSuite) TestConfirmInstancesStatus() {
 		}).AnyTimes()
 
 	cachedTasks[2].EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(nil, yarpcerrors.NotFoundErrorf("not-found"))
 
 	cachedTasks[3].EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			ConfigVersion: 3,
 		}, nil)
 
 	cachedTasks[4].EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			ConfigVersion: 2,
 		}, nil)
 
 	cachedTasks[1].EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(nil, yarpcerrors.NotFoundErrorf("not-found"))
 
 	newInstancesToAdd, newInstancesToUpdate, newInstancesToRemove,

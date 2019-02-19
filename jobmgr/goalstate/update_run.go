@@ -282,7 +282,7 @@ func postUpdateAction(
 		if cachedTask == nil {
 			continue
 		}
-		runtime, err := cachedTask.GetRunTime(ctx)
+		runtime, err := cachedTask.GetRuntime(ctx)
 		if err != nil {
 			return err
 		}
@@ -508,7 +508,7 @@ func getTaskRuntimeIfExisted(
 	if cachedTask == nil {
 		return nil, nil
 	}
-	runtime, err := cachedTask.GetRunTime(ctx)
+	runtime, err := cachedTask.GetRuntime(ctx)
 	if yarpcerrors.IsNotFound(err) {
 		return nil, nil
 	}
@@ -539,7 +539,7 @@ func processInstancesInUpdate(
 				return err
 			}
 
-			runtime, err := cachedTask.GetRunTime(ctx)
+			runtime, err := cachedTask.GetRuntime(ctx)
 			if err != nil {
 				return err
 			}
@@ -624,7 +624,7 @@ func confirmInstancesStatus(
 
 		cachedTask, err = cachedJob.AddTask(ctx, instID)
 		if err == nil {
-			runtime, err = cachedTask.GetRunTime(ctx)
+			runtime, err = cachedTask.GetRuntime(ctx)
 			if err != nil {
 				if yarpcerrors.IsNotFound(err) {
 					// runtime does not exist, lets try to add it
@@ -672,7 +672,7 @@ func confirmInstancesStatus(
 			return
 		}
 
-		_, err = cachedTask.GetRunTime(ctx)
+		_, err = cachedTask.GetRuntime(ctx)
 		if err != nil {
 			if yarpcerrors.IsNotFound(err) {
 				// not found, add it

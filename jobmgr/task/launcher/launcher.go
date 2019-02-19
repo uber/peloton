@@ -271,7 +271,7 @@ func (l *launcher) GetLaunchableTasks(
 			continue
 		}
 
-		cachedRuntime, err := cachedTask.GetRunTime(ctx)
+		cachedRuntime, err := cachedTask.GetRuntime(ctx)
 		if err != nil {
 			log.WithError(err).
 				WithFields(log.Fields{

@@ -690,7 +690,7 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 			AddTask(gomock.Any(), i).
 			Return(suite.mockedCachedTask, nil)
 		suite.mockedCachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
+			GetRuntime(gomock.Any()).
 			Return(taskInfos[i].Runtime, nil)
 		if i != runningInstanceID {
 			suite.mockedCachedTask.EXPECT().
@@ -990,7 +990,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksCompareAndSetGetRuntimeFailure(
 		AddTask(gomock.Any(), gomock.Any()).
 		Return(suite.mockedCachedTask, nil).AnyTimes()
 	suite.mockedCachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(nil, fmt.Errorf("fake db error")).AnyTimes()
 
 	suite.mockedCachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
@@ -1059,7 +1059,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksCompareAndSetFailure() {
 			Return(suite.mockedCachedTask, nil)
 		for l := 0; l < jobmgrcommon.MaxConcurrencyErrorRetry; l++ {
 			suite.mockedCachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
+				GetRuntime(gomock.Any()).
 				Return(&task.RuntimeInfo{
 					MesosTaskId: &mesos.TaskID{
 						Value: &taskID,
@@ -1139,7 +1139,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 		AddTask(gomock.Any(), gomock.Any()).
 		Return(suite.mockedCachedTask, nil)
 	suite.mockedCachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(singleTaskInfo[1].Runtime, nil)
 	suite.mockedCachedTask.EXPECT().
 		CompareAndSetRuntime(gomock.Any(), gomock.Any(), gomock.Any()).
@@ -2338,7 +2338,7 @@ func (suite *TaskHandlerTestSuite) TestGetCache_FailToLoadRuntime() {
 	suite.mockedCachedJob.EXPECT().
 		GetTask(instanceID).Return(suite.mockedTask)
 	suite.mockedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(nil, fmt.Errorf("test err"))
+		GetRuntime(gomock.Any()).Return(nil, fmt.Errorf("test err"))
 	_, err := suite.handler.GetCache(context.Background(), &task.GetCacheRequest{
 		JobId:      suite.testJobID,
 		InstanceId: instanceID,
@@ -2355,7 +2355,7 @@ func (suite *TaskHandlerTestSuite) TestGetCache_SUCCESS() {
 	suite.mockedCachedJob.EXPECT().
 		GetTask(instanceID).Return(suite.mockedTask)
 	suite.mockedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.taskInfos[instanceID].Runtime, nil)
+		GetRuntime(gomock.Any()).Return(suite.taskInfos[instanceID].Runtime, nil)
 	resp, err := suite.handler.GetCache(context.Background(), &task.GetCacheRequest{
 		JobId:      suite.testJobID,
 		InstanceId: instanceID,

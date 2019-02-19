@@ -32,7 +32,7 @@ func TaskExecutorShutdown(ctx context.Context, entity goalstate.Entity) error {
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
 	cachedTask := cachedJob.GetTask(taskEnt.instanceID)
 
-	runtime, err := cachedTask.GetRunTime(ctx)
+	runtime, err := cachedTask.GetRuntime(ctx)
 	if err != nil {
 		return err
 	}

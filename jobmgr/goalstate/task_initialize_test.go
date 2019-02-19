@@ -153,7 +153,7 @@ func (suite *TestTaskInitializeSuite) TestTaskInitialize() {
 			GetTask(suite.instanceID).Return(suite.cachedTask)
 
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(suite.runtime, nil)
+			GetRuntime(gomock.Any()).Return(suite.runtime, nil)
 
 		suite.taskStore.EXPECT().GetTaskConfig(
 			gomock.Any(), suite.jobID, suite.instanceID, suite.newConfigVersion).
@@ -228,7 +228,7 @@ func (suite *TestTaskInitializeSuite) TestTaskInitializeNoTaskRuntime() {
 		GetTask(suite.instanceID).Return(suite.cachedTask)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(nil, errors.New(""))
+		GetRuntime(gomock.Any()).Return(nil, errors.New(""))
 
 	err := TaskInitialize(context.Background(), suite.taskEnt)
 	suite.Error(err)
@@ -243,7 +243,7 @@ func (suite *TestTaskInitializeSuite) TestTaskInitializeNoTaskConfig() {
 		GetTask(suite.instanceID).Return(suite.cachedTask)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.runtime, nil)
+		GetRuntime(gomock.Any()).Return(suite.runtime, nil)
 
 	suite.taskStore.EXPECT().GetTaskConfig(
 		gomock.Any(), suite.jobID, suite.instanceID, suite.newConfigVersion).Return(nil, nil, errors.New(""))

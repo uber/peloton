@@ -238,11 +238,11 @@ func (suite *PlacementTestSuite) TestTaskPlacementNoError() {
 			AddTask(gomock.Any(), uint32(0)).
 			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.taskLauncher.EXPECT().
 			CreateLaunchableTasks(gomock.Any(), gomock.Any()).Return(nil, nil),
 		suite.taskLauncher.EXPECT().
@@ -311,7 +311,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledTask() {
 			AddTask(gomock.Any(), uint32(0)).
 			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.resMgrClient.EXPECT().
 			KillTasks(gomock.Any(), req).
 			Return(resp, nil),
@@ -392,7 +392,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledRunningTask() {
 			AddTask(gomock.Any(), uint32(0)).
 			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.goalStateDriver.EXPECT().
 			EnqueueTask(testTask.JobId, gomock.Any(), gomock.Any()).Return(),
 		suite.resMgrClient.EXPECT().
@@ -431,7 +431,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementDBError() {
 			AddTask(gomock.Any(), uint32(0)).
 			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake db error")),
 	)
@@ -467,11 +467,11 @@ func (suite *PlacementTestSuite) TestTaskPlacementError() {
 			AddTask(gomock.Any(), uint32(0)).
 			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.taskLauncher.EXPECT().
 			CreateLaunchableTasks(gomock.Any(), gomock.Any()).Return(nil, nil),
 		suite.taskLauncher.EXPECT().
@@ -520,11 +520,11 @@ func (suite *PlacementTestSuite) TestTaskPlacementPlacementResMgrError() {
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), uint32(0)).Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.taskLauncher.EXPECT().
 			CreateLaunchableTasks(gomock.Any(), gomock.Any()).Return(nil, nil),
 		suite.taskLauncher.EXPECT().

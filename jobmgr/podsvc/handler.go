@@ -204,7 +204,7 @@ func (h *serviceHandler) startPod(
 	count := 0
 
 	for {
-		taskRuntime, err := cachedTask.GetRunTime(ctx)
+		taskRuntime, err := cachedTask.GetRuntime(ctx)
 		if err != nil {
 			return errors.Wrap(err, "fail to get pod runtime")
 		}
@@ -655,7 +655,7 @@ func (h *serviceHandler) GetPodCache(
 			yarpcerrors.NotFoundErrorf("task not found in cache")
 	}
 
-	runtime, err := cachedTask.GetRunTime(ctx)
+	runtime, err := cachedTask.GetRuntime(ctx)
 	if err != nil {
 		return nil,
 			errors.Wrap(err, "fail to get task runtime")

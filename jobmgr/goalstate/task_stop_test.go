@@ -88,7 +88,7 @@ func TestTaskStop(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask).Times(2)
 
 	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
@@ -132,7 +132,7 @@ func TestTaskStop(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(nil, fmt.Errorf("fake error"))
+		GetRuntime(gomock.Any()).Return(nil, fmt.Errorf("fake error"))
 
 	err = TaskStop(context.Background(), taskEnt)
 	assert.EqualError(t, err, "fake error")
@@ -185,7 +185,7 @@ func TestTaskStopForInPlaceUpdate(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask).Times(2)
 
 	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
@@ -277,7 +277,7 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
@@ -294,7 +294,7 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
@@ -371,7 +371,7 @@ func TestTaskStopIfPendingCallsKillOnResmgr(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
@@ -388,7 +388,7 @@ func TestTaskStopIfPendingCallsKillOnResmgr(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).

@@ -81,7 +81,7 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	cachedRuntime, err := cachedTask.GetRunTime(ctx)
+	cachedRuntime, err := cachedTask.GetRuntime(ctx)
 	if err != nil {
 		return err
 	}

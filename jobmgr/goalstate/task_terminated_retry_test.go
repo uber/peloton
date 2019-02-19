@@ -172,7 +172,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTaskRuntime(
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(nil, fmt.Errorf(""))
+		GetRuntime(gomock.Any()).Return(nil, fmt.Errorf(""))
 	err := TaskTerminatedRetry(context.Background(), suite.taskEnt)
 	suite.Error(err)
 }
@@ -186,7 +186,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTaskConfig()
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
 	suite.taskStore.EXPECT().GetTaskConfig(
 		gomock.Any(),
 		suite.jobID,
@@ -209,7 +209,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.taskRuntime.FailureCount = 2
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
 	suite.taskConfig = &pbtask.TaskConfig{
 		RestartPolicy: &pbtask.RestartPolicy{
 			MaxFailures: 3,
@@ -270,7 +270,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
 	suite.taskStore.EXPECT().GetTaskConfig(
 		gomock.Any(),
 		suite.jobID,
@@ -336,7 +336,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTooManyFailuresNoRetry() {
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
 	suite.taskStore.EXPECT().GetTaskConfig(
 		gomock.Any(),
 		suite.jobID,
@@ -377,7 +377,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestLostTaskRetry() {
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.lostTaskRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.lostTaskRuntime, nil)
 	suite.taskStore.EXPECT().GetTaskConfig(
 		gomock.Any(),
 		suite.jobID,
@@ -444,7 +444,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestLostTaskTooManyFailures() {
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.lostTaskRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.lostTaskRuntime, nil)
 	suite.taskStore.EXPECT().GetTaskConfig(
 		gomock.Any(),
 		suite.jobID,
@@ -481,7 +481,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryUpdateTerminat
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(suite.taskRuntime, nil)
+		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
 	suite.taskStore.EXPECT().GetTaskConfig(
 		gomock.Any(),
 		suite.jobID,

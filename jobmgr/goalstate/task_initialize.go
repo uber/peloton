@@ -46,7 +46,7 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 		}).Error("task is nil in cache with valid job")
 		return nil
 	}
-	runtime, err := cachedTask.GetRunTime(ctx)
+	runtime, err := cachedTask.GetRuntime(ctx)
 	if err != nil {
 		return err
 	}

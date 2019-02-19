@@ -104,7 +104,7 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 	suite.jobFactory.EXPECT().GetAllJobs().Return(suite.mockJobs)
 	suite.mockJob.EXPECT().GetConfig(gomock.Any()).Return(suite.mockJobConfig, nil)
 	suite.mockJob.EXPECT().GetAllTasks().Return(suite.mockTasks)
-	suite.mockTask.EXPECT().GetRunTime(gomock.Any()).Return(taskInfo.Runtime, nil)
+	suite.mockTask.EXPECT().GetRuntime(gomock.Any()).Return(taskInfo.Runtime, nil)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(suite.mockJob)
 	suite.mockJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
@@ -140,7 +140,7 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle_GetSLAErr() {
 	suite.tracker.trackDeadline()
 }
 
-// TestDeadlineTrackingCycle_GetRunTime tests trackDeadline when GetRunTime has error
+// TestDeadlineTrackingCycle_GetRunTime tests trackDeadline when GetRuntime has error
 func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle_GetRunTimeErr() {
 	suite.mockJobConfig.EXPECT().GetSLA().
 		Return(&peloton_job.SlaConfig{
@@ -149,7 +149,7 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle_GetRunTimeErr()
 	suite.jobFactory.EXPECT().GetAllJobs().Return(suite.mockJobs)
 	suite.mockJob.EXPECT().GetConfig(gomock.Any()).Return(suite.mockJobConfig, nil)
 	suite.mockJob.EXPECT().GetAllTasks().Return(suite.mockTasks)
-	suite.mockTask.EXPECT().GetRunTime(gomock.Any()).Return(nil, fmt.Errorf("Fake RunTime error"))
+	suite.mockTask.EXPECT().GetRuntime(gomock.Any()).Return(nil, fmt.Errorf("Fake Runtime error"))
 	suite.tracker.trackDeadline()
 }
 
@@ -169,7 +169,7 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle_PatchTasksErr()
 	suite.jobFactory.EXPECT().GetAllJobs().Return(suite.mockJobs)
 	suite.mockJob.EXPECT().GetConfig(gomock.Any()).Return(suite.mockJobConfig, nil)
 	suite.mockJob.EXPECT().GetAllTasks().Return(suite.mockTasks)
-	suite.mockTask.EXPECT().GetRunTime(gomock.Any()).Return(taskInfo.Runtime, nil)
+	suite.mockTask.EXPECT().GetRuntime(gomock.Any()).Return(taskInfo.Runtime, nil)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(suite.mockJob)
 	suite.mockJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("Fake PatchTasks error"))
 	suite.tracker.trackDeadline()
@@ -222,7 +222,7 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackGetRuntimeException() {
 		Return(&peloton_job.SlaConfig{
 			MaxRunningTime: 5,
 		})
-	suite.mockTask.EXPECT().GetRunTime(gomock.Any()).Return(nil, errors.New(""))
+	suite.mockTask.EXPECT().GetRuntime(gomock.Any()).Return(nil, errors.New(""))
 	suite.tracker.trackDeadline()
 
 }
@@ -243,7 +243,7 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackNotRunning() {
 		Return(&peloton_job.SlaConfig{
 			MaxRunningTime: 5,
 		})
-	suite.mockTask.EXPECT().GetRunTime(gomock.Any()).Return(taskInfo.Runtime, nil)
+	suite.mockTask.EXPECT().GetRuntime(gomock.Any()).Return(taskInfo.Runtime, nil)
 
 	suite.tracker.trackDeadline()
 }
@@ -265,7 +265,7 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackStopFailed() {
 		Return(&peloton_job.SlaConfig{
 			MaxRunningTime: 5,
 		}).Times(3)
-	suite.mockTask.EXPECT().GetRunTime(gomock.Any()).Return(taskInfo.Runtime, nil)
+	suite.mockTask.EXPECT().GetRuntime(gomock.Any()).Return(taskInfo.Runtime, nil)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(suite.mockJob)
 	suite.mockJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {

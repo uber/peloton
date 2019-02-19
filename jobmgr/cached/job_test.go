@@ -1537,7 +1537,7 @@ func (suite *JobTestSuite) TestJobCreateTaskRuntimes() {
 	for i := uint32(0); i < instanceCount; i++ {
 		tt := suite.job.GetTask(i)
 		suite.NotNil(tt)
-		actRuntime, _ := tt.GetRunTime(context.Background())
+		actRuntime, _ := tt.GetRuntime(context.Background())
 		suite.NotNil(actRuntime)
 		suite.Equal(pbtask.TaskState_INITIALIZED, actRuntime.GetState())
 		suite.Equal(uint64(1), actRuntime.GetRevision().GetVersion())
@@ -1583,7 +1583,7 @@ func (suite *JobTestSuite) TestSetGetTasksInJobInCacheSingle() {
 	// Validate the state of the tasks in cache is correct
 	for i := uint32(0); i < instanceCount; i++ {
 		tt := suite.job.GetTask(i)
-		actRuntime, _ := tt.GetRunTime(context.Background())
+		actRuntime, _ := tt.GetRuntime(context.Background())
 		suite.Equal(runtime, *actRuntime)
 	}
 }
@@ -1598,7 +1598,7 @@ func (suite *JobTestSuite) TestSetGetTasksInJobInCacheBlock() {
 	// Validate the state of the tasks in cache is correct
 	for instID, runtime := range runtimes {
 		tt := suite.job.GetTask(instID)
-		actRuntime, _ := tt.GetRunTime(context.Background())
+		actRuntime, _ := tt.GetRuntime(context.Background())
 		suite.Equal(runtime, actRuntime)
 	}
 }
@@ -1667,7 +1667,7 @@ func (suite *JobTestSuite) TestPatchTasks_SetGetTasksSingle() {
 	// Validate the state of the tasks in cache is correct
 	for i := uint32(0); i < instanceCount; i++ {
 		tt := suite.job.GetTask(i)
-		actRuntime, _ := tt.GetRunTime(context.Background())
+		actRuntime, _ := tt.GetRuntime(context.Background())
 		suite.Equal(pbtask.TaskState_RUNNING, actRuntime.State)
 	}
 }
@@ -1682,7 +1682,7 @@ func (suite *JobTestSuite) TestReplaceTasks() {
 	// Validate the state of the tasks in cache is correct
 	for instID, runtime := range runtimes {
 		tt := suite.job.GetTask(instID)
-		actRuntime, _ := tt.GetRunTime(context.Background())
+		actRuntime, _ := tt.GetRuntime(context.Background())
 		suite.Equal(runtime, actRuntime)
 	}
 }
@@ -1714,7 +1714,7 @@ func (suite *JobTestSuite) TestPatchTasksSetGetTasksMultiple() {
 	for instID := range diffs {
 		tt := suite.job.GetTask(instID)
 		suite.NotNil(tt)
-		actRuntime, _ := tt.GetRunTime(context.Background())
+		actRuntime, _ := tt.GetRuntime(context.Background())
 		suite.NotNil(actRuntime)
 		suite.Equal(pbtask.TaskState_RUNNING, actRuntime.GetState())
 		suite.Equal(uint64(2), actRuntime.GetRevision().GetVersion())
@@ -1766,7 +1766,7 @@ func (suite *JobTestSuite) TestPatchTasksSingleTask() {
 
 	// Validate the state of the task in cache is correct
 	att := suite.job.GetTask(0)
-	actRuntime, _ := att.GetRunTime(context.Background())
+	actRuntime, _ := att.GetRuntime(context.Background())
 	suite.Equal(pbtask.TaskState_RUNNING, actRuntime.GetState())
 	suite.Equal(uint64(2), actRuntime.GetRevision().GetVersion())
 }

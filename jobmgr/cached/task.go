@@ -85,8 +85,8 @@ type Task interface {
 	// forceReplace is used for Refresh, which is for debugging only
 	ReplaceRuntime(runtime *pbtask.RuntimeInfo, forceReplace bool) error
 
-	// GetRunTime returns the task run time
-	GetRunTime(ctx context.Context) (*pbtask.RuntimeInfo, error)
+	// GetRuntime returns the task run time
+	GetRuntime(ctx context.Context) (*pbtask.RuntimeInfo, error)
 
 	// GetLastRuntimeUpdateTime returns the last time the task runtime was updated.
 	GetLastRuntimeUpdateTime() time.Time
@@ -107,10 +107,11 @@ type TaskStateVector struct {
 }
 
 // newTask creates a new cache task object
-func newTask(jobID *peloton.JobID, id uint32, jobFactory *jobFactory) *task {
+func newTask(jobID *peloton.JobID, id uint32, jobFactory *jobFactory, jobType pbjob.JobType) *task {
 	task := &task{
 		jobID:      jobID,
 		id:         id,
+		jobType:    jobType,
 		jobFactory: jobFactory,
 	}
 
@@ -121,8 +122,9 @@ func newTask(jobID *peloton.JobID, id uint32, jobFactory *jobFactory) *task {
 type task struct {
 	sync.RWMutex // Mutex to acquire before accessing any task information in cache
 
-	jobID *peloton.JobID // Parent job identifier
-	id    uint32         // instance identifier
+	jobID   *peloton.JobID // Parent job identifier
+	id      uint32         // instance identifier
+	jobType pbjob.JobType  // Parent job type
 
 	jobFactory *jobFactory // Pointer to the parent job factory object
 
@@ -264,29 +266,10 @@ func (t *task) validateState(newRuntime *pbtask.RuntimeInfo) bool {
 }
 
 func (t *task) CreateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, owner string) error {
-	// get jobConfig first to avoid deadlock
-	// (lock is in the sequence of jobFactory -> job -> task)
-	// TODO: figure out long term fix
-	// fetch job configuration to get job type
-	var jobType pbjob.JobType
-	cachedJob := t.jobFactory.GetJob(t.JobID())
-	if cachedJob != nil {
-		jobConfig, err := cachedJob.GetConfig(ctx)
-		if err != nil {
-			return err
-		}
-		jobType = jobConfig.GetType()
-	} else {
-		log.WithFields(log.Fields{
-			"job_id":      t.jobID.Value,
-			"instance_id": t.id,
-		}).Warn("create task runtime when job is nil in cache")
-	}
-
 	var runtimeCopy *pbtask.RuntimeInfo
 	// notify listeners after dropping the lock
 	defer func() {
-		t.jobFactory.notifyTaskRuntimeChanged(t.JobID(), t.ID(), jobType,
+		t.jobFactory.notifyTaskRuntimeChanged(t.JobID(), t.ID(), t.jobType,
 			runtimeCopy)
 	}()
 	t.Lock()
@@ -299,7 +282,7 @@ func (t *task) CreateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, o
 		t.id,
 		runtime,
 		owner,
-		jobType)
+		t.jobType)
 	if err != nil {
 		t.runtime = nil
 		return err
@@ -324,29 +307,10 @@ func (t *task) PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) 
 			"unexpected Revision field in diff")
 	}
 
-	// get jobConfig first to avoid deadlock
-	// (lock is in the sequence of jobFactory -> job -> task)
-	// TODO: figure out long term fix
-	// fetch job configuration to get job type
-	var jobType pbjob.JobType
-	cachedJob := t.jobFactory.GetJob(t.JobID())
-	if cachedJob != nil {
-		jobConfig, err := cachedJob.GetConfig(ctx)
-		if err != nil {
-			return err
-		}
-		jobType = jobConfig.GetType()
-	} else {
-		log.WithFields(log.Fields{
-			"job_id":      t.jobID.Value,
-			"instance_id": t.id,
-		}).Warn("patch task runtime when job is nil in cache")
-	}
-
 	var runtimeCopy *pbtask.RuntimeInfo
 	// notify listeners after dropping the lock
 	defer func() {
-		t.jobFactory.notifyTaskRuntimeChanged(t.JobID(), t.ID(), jobType,
+		t.jobFactory.notifyTaskRuntimeChanged(t.JobID(), t.ID(), t.jobType,
 			runtimeCopy)
 	}()
 	t.Lock()
@@ -383,7 +347,7 @@ func (t *task) PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) 
 		t.jobID,
 		t.id,
 		newRuntimePtr,
-		jobType)
+		t.jobType)
 	if err != nil {
 		// clean the runtime in cache on DB write failure
 		t.runtime = nil
@@ -504,7 +468,7 @@ func (t *task) updateRevision(runtime *pbtask.RuntimeInfo) {
 	runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
 }
 
-func (t *task) GetRunTime(ctx context.Context) (*pbtask.RuntimeInfo, error) {
+func (t *task) GetRuntime(ctx context.Context) (*pbtask.RuntimeInfo, error) {
 	t.Lock()
 	defer t.Unlock()
 

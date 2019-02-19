@@ -49,7 +49,7 @@ func TaskTerminatedRetry(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	taskRuntime, err := cachedTask.GetRunTime(ctx)
+	taskRuntime, err := cachedTask.GetRuntime(ctx)
 	if err != nil {
 		return err
 	}

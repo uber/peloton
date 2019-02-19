@@ -375,7 +375,7 @@ func (d *controllerTaskJobStateDeterminer) getState(
 		return job.JobState_UNKNOWN, err
 	}
 
-	controllerTaskRuntime, err := controllerTask.GetRunTime(ctx)
+	controllerTaskRuntime, err := controllerTask.GetRuntime(ctx)
 	if err != nil {
 		return job.JobState_UNKNOWN, err
 	}
@@ -702,7 +702,7 @@ func recalculateJobStateAndCountsFromCache(
 
 		// update the configuration version map for stateless jobs
 		if jobType == job.JobType_SERVICE {
-			runtime, err := task.GetRunTime(ctx)
+			runtime, err := task.GetRuntime(ctx)
 			if err != nil {
 				return job.JobState_UNKNOWN, nil, nil, err
 			}

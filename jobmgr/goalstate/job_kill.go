@@ -142,7 +142,7 @@ func createRuntimeDiffForKill(
 
 	tasks := cachedJob.GetAllTasks()
 	for instanceID, cachedTask := range tasks {
-		runtime, err := cachedTask.GetRunTime(ctx)
+		runtime, err := cachedTask.GetRuntime(ctx)
 		if err != nil {
 			log.WithError(err).
 				WithField("job_id", cachedJob.ID().Value).
@@ -192,7 +192,7 @@ func calculateJobState(
 		jobRuntime.GetState() == job.JobState_INITIALIZED &&
 		cachedJob.IsPartiallyCreated(config) {
 		for _, cachedTask := range cachedJob.GetAllTasks() {
-			runtime, err := cachedTask.GetRunTime(ctx)
+			runtime, err := cachedTask.GetRuntime(ctx)
 			if err != nil || !util.IsPelotonStateTerminal(runtime.GetState()) {
 				return job.JobState_KILLING
 			}

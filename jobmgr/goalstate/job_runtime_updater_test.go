@@ -1219,7 +1219,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskSuc
 		Return(suite.cachedTask, nil)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			State: pbtask.TaskState_SUCCEEDED,
 		}, nil)
@@ -1351,7 +1351,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdaterControllerTaskFail
 		Return(suite.cachedTask, nil)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(nil, yarpcerrors.UnavailableErrorf("test error"))
 
 	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
@@ -1414,7 +1414,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskFai
 		Return(suite.cachedTask, nil)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			State: pbtask.TaskState_FAILED,
 		}, nil)
@@ -1501,7 +1501,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskLos
 		Return(suite.cachedTask, nil)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			State: pbtask.TaskState_LOST,
 		}, nil)
@@ -2065,7 +2065,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineServiceJobRuntimeState() {
 				AnyTimes()
 
 			cachedTask.EXPECT().
-				GetRunTime(gomock.Any()).
+				GetRuntime(gomock.Any()).
 				Return(&pbtask.RuntimeInfo{
 					State:         state,
 					ConfigVersion: configVersion,
@@ -2153,7 +2153,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineStatelessJobRuntimeState()
 		Times(int(instanceCount))
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			State:         pbtask.TaskState_RUNNING,
 			ConfigVersion: configVersion,

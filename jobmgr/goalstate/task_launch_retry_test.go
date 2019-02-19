@@ -115,7 +115,7 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskLaunchTimeout() {
 			GetTask(suite.instanceID).Return(suite.cachedTask)
 
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(runtime, nil)
+			GetRuntime(gomock.Any()).Return(runtime, nil)
 
 		suite.cachedTask.EXPECT().
 			GetLastRuntimeUpdateTime().Return(time.Now().Add(-suite.goalStateDriver.cfg.LaunchTimeout))
@@ -127,7 +127,7 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskLaunchTimeout() {
 			GetTask(suite.instanceID).Return(suite.cachedTask)
 
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(runtime, nil)
+			GetRuntime(gomock.Any()).Return(runtime, nil)
 
 		suite.jobConfig.EXPECT().GetType().Return(pb_job.JobType_BATCH)
 
@@ -188,7 +188,7 @@ func (suite *TestTaskLaunchRetrySuite) TestLaunchedTaskSendLaunchInfoResMgr() {
 		GetLastRuntimeUpdateTime().Return(time.Now())
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	suite.resmgrClient.EXPECT().
 		UpdateTasksState(gomock.Any(), gomock.Any()).
@@ -220,7 +220,7 @@ func (suite *TestTaskLaunchRetrySuite) TestLaunchRetryError() {
 		GetLastRuntimeUpdateTime().Return(time.Now())
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	suite.resmgrClient.EXPECT().
 		UpdateTasksState(gomock.Any(), gomock.Any()).
@@ -261,10 +261,10 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeout() {
 		GetTask(suite.instanceID).Return(suite.cachedTask)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	suite.jobConfig.EXPECT().GetType().Return(pb_job.JobType_BATCH)
 
@@ -312,7 +312,7 @@ func (suite *TestTaskLaunchRetrySuite) TestStartingTaskReenqueue() {
 		GetLastRuntimeUpdateTime().Return(time.Now())
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	suite.taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
@@ -335,7 +335,7 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskWithUnexpectedStateReenqueue() {
 		GetTask(suite.instanceID).Return(suite.cachedTask)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	suite.taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).

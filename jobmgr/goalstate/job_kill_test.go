@@ -190,7 +190,7 @@ func (suite JobKillTestSuite) TestJobKill() {
 
 	for i := uint32(0); i < instanceCount; i++ {
 		mockTasks[i].EXPECT().
-			GetRunTime(gomock.Any()).
+			GetRuntime(gomock.Any()).
 			Return(runtimes[i], nil)
 	}
 
@@ -275,7 +275,7 @@ func (suite JobKillTestSuite) TestJobKillNoRumtimes() {
 		GetAllTasks().
 		Return(cachedTasks)
 	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(nil, errors.New(""))
 	err := JobKill(context.Background(), suite.jobEnt)
 	suite.Error(err)
@@ -312,10 +312,10 @@ func (suite JobKillTestSuite) TestJobKillPatchFailed() {
 		GetAllTasks().
 		Return(cachedTasks)
 	cachedTask0.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(runtimes[0], nil)
 	cachedTask1.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(runtimes[1], nil)
 	suite.cachedJob.EXPECT().
 		GetConfig(gomock.Any()).
@@ -405,7 +405,7 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 
 	for i := uint32(2); i < 4; i++ {
 		mockTasks[i].EXPECT().
-			GetRunTime(gomock.Any()).
+			GetRuntime(gomock.Any()).
 			Return(runtimes[i], nil).Times(2)
 	}
 
@@ -454,7 +454,7 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 
 	for i := uint32(2); i < 4; i++ {
 		mockTasks[i].EXPECT().
-			GetRunTime(gomock.Any()).
+			GetRuntime(gomock.Any()).
 			Return(runtimes[i], nil).AnyTimes()
 	}
 
@@ -525,7 +525,7 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob_AllTerminated() {
 
 	for i := uint32(2); i < instanceCount; i++ {
 		mockTasks[i].EXPECT().
-			GetRunTime(gomock.Any()).
+			GetRuntime(gomock.Any()).
 			Return(runtimes[i], nil).Times(2)
 	}
 

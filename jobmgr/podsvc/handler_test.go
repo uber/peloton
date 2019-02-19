@@ -112,7 +112,7 @@ func (suite *podHandlerTestSuite) TestGetPodCacheSuccess() {
 		Return(suite.cachedTask)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(&pbtask.RuntimeInfo{
 			State:     pbtask.TaskState_RUNNING,
 			GoalState: pbtask.TaskState_KILLED,
@@ -194,7 +194,7 @@ func (suite *podHandlerTestSuite) TestGetPodCacheFailToGetRuntime() {
 		Return(suite.cachedTask)
 
 	suite.cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).
+		GetRuntime(gomock.Any()).
 		Return(nil, yarpcerrors.UnavailableErrorf("test error"))
 
 	resp, err := suite.handler.GetPodCache(context.Background(),
@@ -397,7 +397,7 @@ func (suite *podHandlerTestSuite) TestStartPodSuccess() {
 			Return(suite.cachedTask, nil),
 
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
+			GetRuntime(gomock.Any()).
 			Return(&pbtask.RuntimeInfo{
 				State:         pbtask.TaskState_KILLED,
 				GoalState:     pbtask.TaskState_KILLED,
@@ -518,7 +518,7 @@ func (suite *podHandlerTestSuite) TestStartPodSuccessWithJobRuntimeUnexpectedVer
 			Return(suite.cachedTask, nil),
 
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
+			GetRuntime(gomock.Any()).
 			Return(&pbtask.RuntimeInfo{
 				State:         pbtask.TaskState_KILLED,
 				GoalState:     pbtask.TaskState_KILLED,
@@ -615,7 +615,7 @@ func (suite *podHandlerTestSuite) TestStartPodSuccessWithPodRuntimeUnexpectedVer
 			Return(suite.cachedTask, nil),
 
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
+			GetRuntime(gomock.Any()).
 			Return(&pbtask.RuntimeInfo{
 				State:         pbtask.TaskState_KILLED,
 				GoalState:     pbtask.TaskState_KILLED,
@@ -639,7 +639,7 @@ func (suite *podHandlerTestSuite) TestStartPodSuccessWithPodRuntimeUnexpectedVer
 			Return(nil, jobmgrcommon.UnexpectedVersionError),
 
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).
+			GetRuntime(gomock.Any()).
 			Return(&pbtask.RuntimeInfo{
 				State:         pbtask.TaskState_KILLED,
 				GoalState:     pbtask.TaskState_KILLED,

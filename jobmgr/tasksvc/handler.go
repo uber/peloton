@@ -539,7 +539,7 @@ func (m *serviceHandler) Start(
 
 		count := 0
 		for {
-			taskRuntime, err := cachedTask.GetRunTime(ctx)
+			taskRuntime, err := cachedTask.GetRuntime(ctx)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"job_id":      body.GetJobId().GetValue(),
@@ -944,7 +944,7 @@ func (m *serviceHandler) GetCache(
 			yarpcerrors.NotFoundErrorf("Task not found in cache")
 	}
 
-	runtime, err := cachedTask.GetRunTime(ctx)
+	runtime, err := cachedTask.GetRuntime(ctx)
 	if err != nil {
 		return nil,
 			yarpcerrors.InternalErrorf("Cannot get task cache with err: %v", err)

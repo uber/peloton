@@ -112,7 +112,7 @@ func TaskFailRetry(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	runtime, err := cachedTask.GetRunTime(ctx)
+	runtime, err := cachedTask.GetRuntime(ctx)
 	if err != nil {
 		return err
 	}

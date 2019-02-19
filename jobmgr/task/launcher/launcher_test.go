@@ -216,7 +216,7 @@ func (suite *LauncherTestSuite) TestGetLaunchableTasks() {
 			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
 			Return(taskInfos[tasks[i].GetValue()].GetConfig(), &models.ConfigAddOn{}, nil)
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
+			GetRuntime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
 	}
 	for _, taskID := range unknownTasks {
 		jobID, _, err := util.ParseTaskID(taskID.GetValue())
@@ -278,7 +278,7 @@ func (suite *LauncherTestSuite) TestGetLaunchableTasksStateful() {
 			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
 			Return(taskInfos[tasks[i].GetValue()].GetConfig(), &models.ConfigAddOn{}, nil)
 		suite.cachedTask.EXPECT().
-			GetRunTime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
+			GetRuntime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
 	}
 	for _, taskID := range unknownTasks {
 		jobID, _, err := util.ParseTaskID(taskID.GetValue())

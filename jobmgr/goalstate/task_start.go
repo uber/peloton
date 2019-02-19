@@ -108,7 +108,7 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		return err
 	}
 
-	newRuntime, err := cachedTask.GetRunTime(ctx)
+	newRuntime, err := cachedTask.GetRuntime(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", taskEnt.jobID).

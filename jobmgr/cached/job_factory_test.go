@@ -275,7 +275,7 @@ func createJobFactoryWithMockTasks(
 		jobID := &peloton.JobID{Value: uuid.New()}
 		cachedJob := f.AddJob(jobID)
 		for j := uint32(0); j < uint32(numberOfTaskPerJob); j++ {
-			cachedTask := newTask(jobID, j, f)
+			cachedTask := newTask(jobID, j, f, cachedJob.GetJobType())
 			// randomly populate the states
 			cachedTask.runtime = &pbtask.RuntimeInfo{
 				State:     pbtask.TaskState(uint32(rand.Intn(len(pbtask.TaskState_name)))),

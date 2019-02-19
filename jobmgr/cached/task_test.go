@@ -96,6 +96,7 @@ func (suite *TaskTestSuite) initializeTask(
 			running:   true,
 			jobs:      map[string]*job{},
 		},
+		jobType: pbjob.JobType_BATCH,
 	}
 	for _, l := range suite.listeners {
 		tt.jobFactory.listeners = append(tt.jobFactory.listeners, l)
@@ -142,7 +143,6 @@ func (suite *TaskTestSuite) TestCreateRuntime() {
 		suite.instanceID, nil)
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
-	jobType := pbjob.JobType_BATCH
 
 	suite.taskStore.EXPECT().
 		CreateTaskRuntime(
@@ -151,12 +151,12 @@ func (suite *TaskTestSuite) TestCreateRuntime() {
 			suite.instanceID,
 			runtime,
 			gomock.Any(),
-			jobType).
+			tt.jobType).
 		Return(nil)
 
 	err := tt.CreateRuntime(context.Background(), runtime, "team10")
 	suite.Nil(err)
-	suite.checkListeners(tt, jobType)
+	suite.checkListeners(tt, tt.jobType)
 }
 
 // TestTaskPatchRuntime tests updating the task runtime without any DB errors
@@ -186,12 +186,13 @@ func (suite *TaskTestSuite) TestPatchRuntime() {
 			suite.Equal(runtime.GetState(), pbtask.TaskState_RUNNING)
 			suite.Equal(runtime.Revision.Version, uint64(3))
 			suite.Equal(runtime.GetGoalState(), pbtask.TaskState_SUCCEEDED)
+			suite.Equal(tt.jobType, jobType)
 		}).
 		Return(nil)
 
 	err := tt.PatchRuntime(context.Background(), diff)
 	suite.Nil(err)
-	suite.checkListeners(tt, pbjob.JobType_BATCH)
+	suite.checkListeners(tt, tt.jobType)
 }
 
 // TestTaskPatchRuntime tests updating the task runtime without any DB errors
