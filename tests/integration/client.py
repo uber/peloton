@@ -15,7 +15,8 @@ class Client(object):
         global _client
         if not class_._client:
             config = load_config('config.yaml')['client']
-            if os.getenv('CLUSTER', ''):
+            cluster = os.getenv('CLUSTER')
+            if cluster is not None and cluster != 'local':
                 cluster = os.getenv('CLUSTER')
                 if os.getenv('ELECTION_ZK_SERVERS', ''):
                     zk_servers = os.getenv('ELECTION_ZK_SERVERS').split(":")[0]

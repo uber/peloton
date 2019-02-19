@@ -1,9 +1,7 @@
 import pytest
 
 from tests.integration.aurorabridge_test.client import Client
-from tests.integration.aurorabridge_test.util import (
-    check_response_ok,
-)
+from tests.integration.stateless_job import query_jobs, StatelessJob
 
 
 @pytest.fixture
@@ -12,9 +10,13 @@ def client():
 
     yield client
 
-    # Teardown all jobs.
-    res = client.get_jobs('')
-    check_response_ok(res)
-    for config in res.result.getJobsResult.configs:
-        res = client.kill_tasks(config.key, range(config.instanceCount), 'teardown jobs')
-        check_response_ok(res)
+    # Delete all jobs
+    delete_jobs()
+
+
+def delete_jobs(respool_path='/AuroraBridge'):
+    resp = query_jobs(respool_path)
+
+    for j in resp.records:
+        job = StatelessJob(job_id=j.job_id.value)
+        job.delete(force_delete=True)

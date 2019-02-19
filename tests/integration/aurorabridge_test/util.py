@@ -2,7 +2,12 @@ import random
 import string
 import time
 
+from tests.integration.util import (
+    load_config,
+)
 from tests.integration.aurorabridge_test.client import api
+
+TEST_CONFIG_DIR = '/aurorabridge_test/test_configs'
 
 
 def _gen_random_str(length):
@@ -39,7 +44,6 @@ def wait_for_update_status(
         allowed_intermediate_statuses,
         status,
         timeout_secs=240):
-
     deadline = time.time() + timeout_secs
     while time.time() < deadline:
         latest = get_update_status(client, job_update_key)
@@ -64,3 +68,9 @@ def get_update_status(client, job_update_key):
     assert summary.key == job_update_key
 
     return summary.state.status
+
+
+def get_job_update_request(config):
+    config_dump = load_config(config, TEST_CONFIG_DIR)
+    req = api.JobUpdateRequest.from_primitive(config_dump)
+    return req

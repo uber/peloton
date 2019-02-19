@@ -17,6 +17,8 @@ from peloton_client.pbgen.peloton.api.v1alpha.job.stateless.svc import \
     stateless_svc_pb2 as stateless_svc
 from peloton_client.pbgen.peloton.api.v1alpha.pod.svc import pod_svc_pb2 as pod_svc
 from peloton_client.pbgen.peloton.api.v1alpha.pod import pod_pb2 as pod
+from peloton_client.pbgen.peloton.api.v1alpha.respool import \
+    respool_pb2 as respool
 
 log = logging.getLogger(__name__)
 
@@ -32,18 +34,24 @@ class StatelessJob(object):
                  client=None,
                  config=None,
                  pool=None,
-                 job_config=None):
+                 job_config=None,
+                 job_id=None):
 
         self.config = config or IntegrationTestConfig()
         self.client = client or Client()
         self.pool = pool or Pool(self.config, self.client)
-        self.job_id = None
+        self.job_id = job_id
         self.entity_version = None
-        if job_config is None:
+        self.job_spec = None
+
+        if job_id is not None:
+            self.job_spec = self.get_spec()
+
+        if self.job_spec is None and job_config is None:
             job_spec_dump = load_test_config(job_file)
             job_spec = stateless.JobSpec()
             json_format.ParseDict(job_spec_dump, job_spec)
-        self.job_spec = job_spec
+            self.job_spec = job_spec
 
     def create(self):
         """
@@ -561,3 +569,20 @@ class StatelessJob(object):
         :return: All the pods of the job
         """
         return {Pod(self, iid) for iid in xrange(self.job_spec.instance_count)}
+
+
+def query_jobs(respool_path=None):
+    client = Client()
+    request = stateless_svc.QueryJobsRequest(
+        spec=stateless.QuerySpec(
+            respool=respool.ResourcePoolPath(
+                value=respool_path
+            )
+        )
+    )
+    resp = client.stateless_svc.QueryJobs(
+        request,
+        metadata=client.jobmgr_metadata,
+        timeout=60,
+    )
+    return resp

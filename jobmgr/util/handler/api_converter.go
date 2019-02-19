@@ -564,10 +564,10 @@ func ConvertJobSpecToJobConfig(spec *stateless.JobSpec) (*job.JobConfig, error) 
 
 	if spec.GetSla() != nil {
 		result.SLA = &job.SlaConfig{
-			Priority:                spec.GetSla().GetPriority(),
-			Preemptible:             spec.GetSla().GetPreemptible(),
-			Revocable:               spec.GetSla().GetRevocable(),
-			MaximumRunningInstances: spec.GetSla().GetMaximumUnavailableInstances(),
+			Priority:                    spec.GetSla().GetPriority(),
+			Preemptible:                 spec.GetSla().GetPreemptible(),
+			Revocable:                   spec.GetSla().GetRevocable(),
+			MaximumUnavailableInstances: spec.GetSla().GetMaximumUnavailableInstances(),
 		}
 	}
 

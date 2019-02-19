@@ -4,7 +4,7 @@ import requests
 import thriftrw
 
 
-api = thriftrw.load(os.path.join(
+api = thriftrw.install(os.path.join(
     os.path.dirname(os.path.realpath(__file__)),
     '../../../aurorabridge/thrift/api.thrift'))
 
