@@ -1,5 +1,10 @@
 from __future__ import absolute_import
 
+import os
+import os.path
+
+import subprocess
+
 from enum import Enum
 from time import sleep, time
 
@@ -123,6 +128,8 @@ class App(object):
 
         self.client = self.cluster.client
 
+        self.prod_yaml_location = self.cluster.cfg_file
+
         if self.num_instances < 1:
             raise Exception('App %s has no instances' % self.name)
 
@@ -175,6 +182,12 @@ class App(object):
         }
 
         self.add_app_specific_vars(env_vars)
+
+        prod_config_path = self.get_app_path().format(self.name)
+
+        env_vars['PRODUCTION_CONFIG'] = subprocess.Popen(
+            "cat %s | base64" % prod_config_path, shell=True,
+            stdout=subprocess.PIPE).stdout.read()
 
         params = [
             DockerParameter(name='env', value='%s=%s' % (key, val))
@@ -254,6 +267,15 @@ class App(object):
                     self.enable_revocable_resources
             if self.bin_packing:
                 env_vars['BIN_PACKING'] = self.bin_packing
+
+    def get_app_path(self):
+        """
+        Returns the formatted path for app config
+        """
+        dirname = os.path.dirname(self.prod_yaml_location)
+        path = os.path.join(dirname, "../..",
+                            "config", "{}", "production.yaml")
+        return path
 
     def get_docker_image(self):
         """

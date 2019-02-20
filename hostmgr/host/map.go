@@ -113,7 +113,6 @@ func (loader *Loader) Load(_ *uatomic.Bool) {
 			continue
 		}
 		m.RegisteredAgents[hostname] = agent
-
 		count++
 		go getResourcesByType(
 			agent.GetTotalResources(),

@@ -15,17 +15,34 @@ dir="${BUILD_DIR:-/go/src/github.com/uber/peloton}"
 # the sandbox
 cd "${dir}"
 
+if [[ ! -z ${PRODUCTION_CONFIG} ]]; then
+    echo "${PRODUCTION_CONFIG}" | base64 --decode > "${cfgdir}/${app}/production.yaml"
+fi
+
 if [[ $app == "client" ]] ; then
   exec peloton "$@"
 elif [ ! -z "$secretcfgdir" ]; then
-  exec "peloton-${app}" \
-    -c "${cfgdir}/${app}/base.yaml" \
-    -c "${cfgdir}/${app}/${env}.yaml" \
-    -c "/langley/udocker/peloton/current/secrets.yaml" \
-    "$@"
+  if [[ ${env} == "development" ]]; then
+        exec "peloton-${app}" \
+            -c "${cfgdir}/${app}/base.yaml" \
+            -c "${cfgdir}/${app}/${env}.yaml" \
+            -c "/langley/udocker/peloton/current/secrets.yaml" \
+            "$@"
+  else
+        exec "peloton-${app}" \
+            -c "${cfgdir}/${app}/base.yaml" \
+            -c "/langley/udocker/peloton/current/secrets.yaml" \
+            "$@"
+  fi
 else
-  exec "peloton-${app}" \
-    -c "${cfgdir}/${app}/base.yaml" \
-    -c "${cfgdir}/${app}/${env}.yaml" \
-    "$@"
+  if [[ ${env} == "development" ]]; then
+        exec "peloton-${app}" \
+            -c "${cfgdir}/${app}/base.yaml" \
+            -c "${cfgdir}/${app}/${env}.yaml" \
+            "$@"
+  else
+        exec "peloton-${app}" \
+            -c "${cfgdir}/${app}/base.yaml" \
+            "$@"
+  fi
 fi

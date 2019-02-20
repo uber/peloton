@@ -45,7 +45,7 @@ class Cluster(object):
     Representation of a Peloton cluster
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, cfg_file, **kwargs):
         self.auto_migrate = False
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
@@ -53,6 +53,7 @@ class Cluster(object):
         self.client = AuroraClientZK.create(
             zk_endpoints=self.zookeeper, zk_path=self.aurora_zk_path)
 
+        self.cfg_file = cfg_file
         self.apps = []
         for app in PELOTON_APPS:
             app_cfg = getattr(self, app, None)
@@ -79,7 +80,7 @@ class Cluster(object):
                 print 'Failed to unmarshal cluster config %s' % cfg_file
                 raise ex
 
-        return Cluster(**cfg)
+        return Cluster(cfg_file, **cfg)
 
     def diff_config(self, app, verbose=False):
         """

@@ -49,6 +49,7 @@ def respool_b(request):
 #                                CPUs). Since respool_a has 12 tasks RUNNING,
 #                                6 of them should be preempted to make space
 #                                for tasks in respool_b
+
 def test__preemption_tasks_reschedules_task(respool_a, respool_b):
     p_job_a = Job(job_file='test_preemptible_job.yaml', pool=respool_a,
                   config=IntegrationTestConfig(max_retry_attempts=100,
