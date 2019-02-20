@@ -37,18 +37,22 @@ func (suite *CassandraConnSuite) TestInsertStmt() {
 		table   string
 		columns []string
 		values  []interface{}
+		cas     bool
 		stmt    string
 	}{
 		{
 			table:   "table1",
 			columns: []string{"c1", "c2"},
 			values:  []interface{}{"val1", "val2"},
-			stmt:    "INSERT INTO \"table1\" (\"c1\", \"c2\") VALUES (?, ?);",
+			cas:     true,
+			stmt: "INSERT INTO \"table1\" (\"c1\", \"c2\") VALUES (?, ?)" +
+				" IF NOT EXISTS;",
 		},
 		{
 			table:   "table2",
 			columns: []string{"c1", "c2"},
 			values:  []interface{}{1, 2},
+			cas:     false,
 			stmt:    "INSERT INTO \"table2\" (\"c1\", \"c2\") VALUES (?, ?);",
 		},
 	}
@@ -57,6 +61,7 @@ func (suite *CassandraConnSuite) TestInsertStmt() {
 			Table(d.table),
 			Columns(d.columns),
 			Values(d.values),
+			IfNotExist(d.cas),
 		)
 		suite.NoError(err)
 		suite.Equal(stmt, d.stmt)

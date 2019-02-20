@@ -25,6 +25,9 @@ import (
 
 // Client defines the methods to operate with storage objects
 type Client interface {
+	// CreateIfNotExists creates the storage object in the database if it
+	// doesn't already exist
+	CreateIfNotExists(ctx context.Context, e base.Object) error
 	// Create creates the storage object in the database
 	Create(ctx context.Context, e base.Object) error
 	// Get gets the storage object from the database
@@ -71,6 +74,24 @@ func (c *client) getTable(e base.Object) (*Table, error) {
 	return table, nil
 }
 
+// CreateIfNotExists creates the storage object in the database if it doesn't
+// already exist
+func (c *client) CreateIfNotExists(ctx context.Context, e base.Object) error {
+	// lookup if a table exists for this object, return error if not found
+	table, err := c.getTable(e)
+	if err != nil {
+		return err
+	}
+
+	// Tell the connector to create a row in the DB using this row if it
+	// doesn't already exist
+	return c.connector.CreateIfNotExists(
+		ctx,
+		&table.Definition,
+		table.GetRowFromObject(e),
+	)
+}
+
 // Create creates the storage object in the database
 func (c *client) Create(ctx context.Context, e base.Object) error {
 	// lookup if a table exists for this object, return error if not found
@@ -79,11 +100,8 @@ func (c *client) Create(ctx context.Context, e base.Object) error {
 		return err
 	}
 
-	// translate the storage object into a row (list of column)
-	row := table.GetRowFromObject(e)
-
 	// Tell the connector to create a row in the DB using this row
-	return c.connector.Create(ctx, &table.Definition, row)
+	return c.connector.Create(ctx, &table.Definition, table.GetRowFromObject(e))
 }
 
 // Get fetches an base by primary key, The base provided must contain

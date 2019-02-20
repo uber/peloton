@@ -28,11 +28,14 @@ import (
 	"github.com/gocql/gocql"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
 	_defaultRetryTimeout  = 50 * time.Millisecond
 	_defaultRetryAttempts = 5
+
+	useCasWrite = true
 )
 
 type cassandraConnector struct {
@@ -195,13 +198,30 @@ func (c *cassandraConnector) sendLatency(
 	c.scope.Timer(name).Record(d)
 }
 
+// Create creates a new row in DB if it already doesn't exist. Uses CAS write.
+func (c *cassandraConnector) CreateIfNotExists(
+	ctx context.Context,
+	e *base.Definition,
+	row []base.Column,
+) error {
+	return c.create(ctx, e, row, useCasWrite)
+}
+
 // Create creates a new row in DB.
 func (c *cassandraConnector) Create(
 	ctx context.Context,
 	e *base.Definition,
 	row []base.Column,
 ) error {
+	return c.create(ctx, e, row, !useCasWrite)
+}
 
+func (c *cassandraConnector) create(
+	ctx context.Context,
+	e *base.Definition,
+	row []base.Column,
+	casWrite bool,
+) error {
 	// split row into a list of names and values to compose query stmt using
 	// names and use values in the session query call, so the order needs to be
 	// maintained.
@@ -209,7 +229,10 @@ func (c *cassandraConnector) Create(
 
 	// Prepare insert statement
 	stmt, err := InsertStmt(
-		Table(e.Name), Columns(colNames), Values(colValues),
+		Table(e.Name),
+		Columns(colNames),
+		Values(colValues),
+		IfNotExist(casWrite),
 	)
 	if err != nil {
 		return err
@@ -218,9 +241,20 @@ func (c *cassandraConnector) Create(
 	q := c.Session.Query(stmt, colValues...).WithContext(ctx)
 	defer c.sendLatency(ctx, "execute_latency", time.Duration(q.Latency()))
 
-	if err := q.Exec(); err != nil {
-		c.metrics.ExecuteFail.Inc(1)
-		return err
+	if casWrite {
+		applied, err := q.MapScanCAS(map[string]interface{}{})
+		if err != nil {
+			c.metrics.ExecuteFail.Inc(1)
+			return err
+		}
+		if !applied {
+			return yarpcerrors.AlreadyExistsErrorf("item already exists")
+		}
+	} else {
+		if err := q.Exec(); err != nil {
+			c.metrics.ExecuteFail.Inc(1)
+			return err
+		}
 	}
 
 	c.metrics.ExecuteSuccess.Inc(1)

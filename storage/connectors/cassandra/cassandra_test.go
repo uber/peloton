@@ -28,6 +28,7 @@ import (
 	"github.com/gocql/gocql"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // C* config
@@ -309,4 +310,63 @@ func (suite *CassandraConnSuite) TestCreateGetAll() {
 			}
 		}
 	}
+}
+
+// TestCreateIfNotExists tests the CreateIfNotExists operation
+func (suite *CassandraConnSuite) TestCreateIfNotExists() {
+	// Definition stores schema information about an Object
+	obj := &base.Definition{
+		Name: testTableName1,
+		Key: &base.PrimaryKey{
+			PartitionKeys: []string{"id"},
+		},
+		// Column name to data type mapping of the object
+		ColumnToType: map[string]reflect.Type{
+			"id":   reflect.TypeOf(1),
+			"data": reflect.TypeOf("data"),
+			"name": reflect.TypeOf("name"),
+		},
+	}
+	// create the test row in C* if it doesn't already exist using CAS.
+	err := connector.CreateIfNotExists(context.Background(), obj, testRow)
+	suite.NoError(err)
+
+	// Create the same test row in C* with CAS. This should fail.
+	err = connector.CreateIfNotExists(context.Background(), obj, testRow)
+	suite.True(yarpcerrors.IsAlreadyExists(err))
+}
+
+// TestCreateDBFailures tests failures executing DB query
+func (suite *CassandraConnSuite) TestDBFailures() {
+	// Definition stores schema information about an Object
+	obj := &base.Definition{
+		Name: "table_does_not_exist",
+		Key: &base.PrimaryKey{
+			PartitionKeys: []string{"id"},
+		},
+		ColumnToType: map[string]reflect.Type{
+			"id": reflect.TypeOf(1),
+		},
+	}
+
+	ctx := context.Background()
+	// create the test row using wrong table name
+	err := connector.Create(ctx, obj, testRow)
+	suite.Error(err)
+
+	// create the test row using wrong table name for CAS write
+	err = connector.CreateIfNotExists(ctx, obj, testRow)
+	suite.Error(err)
+
+	// get using wrong table name
+	_, err = connector.Get(ctx, obj, keyRow)
+	suite.Error(err)
+
+	// update using wrong table name
+	err = connector.Update(ctx, obj, testRow, keyRow)
+	suite.Error(err)
+
+	// delete using wrong table name
+	err = connector.Delete(ctx, obj, keyRow)
+	suite.Error(err)
 }

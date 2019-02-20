@@ -33,10 +33,12 @@ const (
 	conditions = "Conditions"
 	// updateCols is used to indicate update column names in the query
 	updates = "Updates"
+	// ifNotExist is used to indicate CAS write in the insert query
+	ifNotExist = "IfNotExist"
 
 	// insertTemplate is used to construct an insert query
 	insertTemplate = `INSERT INTO {{.Table}} ({{ColumnFunc .Columns ", "}})` +
-		` VALUES ({{QuestionMark .Values ", "}});`
+		` VALUES ({{QuestionMark .Values ", "}}){{ExistsFunc .IfNotExist}};`
 
 	// selectTemplate is used to construct a select query
 	selectTemplate = `SELECT {{ColumnFunc .Columns ", "}} FROM {{.Table}}` +
@@ -58,6 +60,7 @@ var (
 		"QuestionMark":   questionMarkFunc,
 		"ConditionsFunc": conditionsFunc,
 		"WhereFunc":      whereFunc,
+		"ExistsFunc":     existsFunc,
 	}
 
 	// insert CQL query template implementation
@@ -96,6 +99,14 @@ func conditionsFunc(conds []string, sep string) string {
 func whereFunc(conds []string) string {
 	if len(conds) > 0 {
 		return " WHERE "
+	}
+	return ""
+}
+
+// existsFunc adds an if not exists clause to the insert query
+func existsFunc(exists bool) string {
+	if exists {
+		return " IF NOT EXISTS"
 	}
 	return ""
 }
@@ -142,6 +153,13 @@ func Conditions(v interface{}) OptFunc {
 func Updates(v interface{}) OptFunc {
 	return func(opt Option) {
 		opt[updates] = v
+	}
+}
+
+// IfNotExist sets the `if not exist` clause to the cql statement
+func IfNotExist(v interface{}) OptFunc {
+	return func(opt Option) {
+		opt[ifNotExist] = v
 	}
 }
 

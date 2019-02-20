@@ -22,6 +22,14 @@ import (
 
 // Connector is the interface that must be implemented for a backend service
 type Connector interface {
+	// CreateIfNotExists creates a row in the DB for the base object if it
+	// doesn't already exist
+	CreateIfNotExists(
+		ctx context.Context,
+		e *base.Definition,
+		values []base.Column,
+	) error
+
 	// Create creates a row in the DB for the base object
 	Create(ctx context.Context, e *base.Definition, values []base.Column) error
 
