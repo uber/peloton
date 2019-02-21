@@ -127,7 +127,7 @@ func newCluster(storeConfig *CassandraConn) *gocql.ClusterConfig {
 		cluster.ProtoVersion = defaultProtoVersion
 	} else if cluster.ProtoVersion != 3 {
 		log.Warn("protocol version 2/4 is not compatible between " +
-			"2.2.x and 3.y. use 3 instead. https://code.uberinternal.com/T607909")
+			"2.2.x and 3.y. use 3 instead.")
 	}
 
 	cluster.SocketKeepalive = config.SocketKeepalive

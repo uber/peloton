@@ -62,12 +62,12 @@ package() {(
         --description
 "Peloton is Uber's meta-framework for managing, scheduling and upgrading jobs on Mesos clusters.
  It has a few unique design principles that differentiates itself from other Mesos meta-frameworks"
-        --url=https://code.uberinternal.com/w/repo/infra/peloton/
+        --url=http://github.com/uber/peloton
         --license Uber
         -a amd64
         --category misc
         --vendor "Uber Technologies"
-        -m peloton-dev@uber.com
+        -m peloton@uber.com
         --prefix=$PREFIX
         --force
         -t deb

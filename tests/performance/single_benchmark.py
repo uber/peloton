@@ -8,9 +8,6 @@ from performance_test_client import PerformanceTestClient
 This is a script for launch a benchmark job with the given zookeeper,
 instance number and sleep time.
 
-Details are in
-https://code.uberinternal.com/w/projects/peloton/performance-test/
-how to run this script.
 """
 
 

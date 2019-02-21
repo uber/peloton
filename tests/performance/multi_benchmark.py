@@ -8,9 +8,6 @@ on the cluster configured in the file '.vcluster'. The file
 '.vcluster' contains keys 'Zookeeper', 'Peloton Version' and
 'Mesos Slave Number'.
 
-Details are in
-https://code.uberinternal.com/w/projects/peloton/performance-test/
-how to run this script.
 """
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
