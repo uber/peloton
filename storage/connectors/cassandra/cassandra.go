@@ -320,8 +320,7 @@ func (c *cassandraConnector) GetAll(
 	ctx context.Context,
 	e *base.Definition,
 	keyCols []base.Column,
-) ([][]base.Column, error) {
-
+) (rows [][]base.Column, errors error) {
 	colNamesToRead := e.GetColumnsToRead()
 
 	q, err := c.buildSelectQuery(ctx, e, keyCols, colNamesToRead)
@@ -332,9 +331,9 @@ func (c *cassandraConnector) GetAll(
 
 	// execute query and get Iterator
 	iter := q.Iter()
-	defer iter.Close()
-
-	rows := [][]base.Column{}
+	defer func() {
+		errors = iter.Close()
+	}()
 
 	for result := buildResultRow(e, colNamesToRead); iter.Scan(result...); {
 		rows = append(rows, getRowFromResult(e, colNamesToRead, result))

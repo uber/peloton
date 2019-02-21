@@ -289,6 +289,14 @@ type WorkflowMetrics struct {
 	WorkflowEventsDeleteFail tally.Counter
 }
 
+// OrmTaskMetrics tracks counters for pod related tables
+type OrmTaskMetrics struct {
+	PodEventsAdd     tally.Counter
+	PodEventsAddFail tally.Counter
+	PodEventsGet     tally.Counter
+	PodEventsGetFail tally.Counter
+}
+
 // Metrics is a struct for tracking all the general purpose counters that have relevance to the storage
 // layer, i.e. how many jobs and tasks were created/deleted in the storage layer
 type Metrics struct {
@@ -302,6 +310,7 @@ type Metrics struct {
 	ErrorMetrics          *ErrorMetrics
 	WorkflowMetrics       *WorkflowMetrics
 	OrmJobMetrics         *OrmJobMetrics
+	OrmTaskMetrics        *OrmTaskMetrics
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized and rooted at the given tally.Scope
@@ -572,6 +581,12 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	jobConfigFailScope := jobConfigScope.Tagged(
 		map[string]string{"result": "fail"})
 
+	podEventsScope := ormScope.SubScope("pod_events")
+	podEventsSuccessScope := podEventsScope.Tagged(
+		map[string]string{"result": "success"})
+	podEventsFailScope := podEventsScope.Tagged(
+		map[string]string{"result": "fail"})
+
 	ormJobMetrics := &OrmJobMetrics{
 		JobIndexCreate:     jobIndexSuccessScope.Counter("create"),
 		JobIndexCreateFail: jobIndexFailScope.Counter("create"),
@@ -595,6 +610,13 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobConfigDeleteFail: jobConfigFailScope.Counter("delete"),
 	}
 
+	ormTaskMetrics := &OrmTaskMetrics{
+		PodEventsAdd:     podEventsSuccessScope.Counter("add"),
+		PodEventsAddFail: podEventsFailScope.Counter("add"),
+		PodEventsGet:     podEventsSuccessScope.Counter("get"),
+		PodEventsGetFail: podEventsFailScope.Counter("get"),
+	}
+
 	metrics := &Metrics{
 		JobMetrics:            jobMetrics,
 		TaskMetrics:           taskMetrics,
@@ -606,6 +628,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		ErrorMetrics:          errorMetrics,
 		WorkflowMetrics:       workflowMetrics,
 		OrmJobMetrics:         ormJobMetrics,
+		OrmTaskMetrics:        ormTaskMetrics,
 	}
 
 	return metrics
