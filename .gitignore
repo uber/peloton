@@ -8,6 +8,7 @@
 *.tmp
 .tmp/
 .build/
+.arcconfig
 docker/pip.conf
 /pbgen
 /vendor
