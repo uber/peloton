@@ -361,12 +361,12 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 	mockStrategy.EXPECT().
 		Filters(
 			gomock.Any()).
-		Return(map[*hostsvc.HostFilter][]*models.Assignment{nil: []*models.Assignment{assignment}})
+		Return(map[*hostsvc.HostFilter][]*models.Assignment{nil: {assignment}})
 
 	mockStrategy.EXPECT().
 		Filters(
 			gomock.Any()).
-		Return(map[*hostsvc.HostFilter][]*models.Assignment{nil: []*models.Assignment{assignment2}})
+		Return(map[*hostsvc.HostFilter][]*models.Assignment{nil: {assignment2}})
 
 	mockStrategy.EXPECT().
 		ConcurrencySafe().

@@ -79,7 +79,7 @@ func TaskTerminatedRetry(ctx context.Context, entity goalstate.Entity) error {
 		return rescheduleTask(
 			ctx,
 			cachedJob,
-			taskEnt.instanceID,
+			cachedTask,
 			taskRuntime,
 			taskConfig,
 			goalStateDriver,

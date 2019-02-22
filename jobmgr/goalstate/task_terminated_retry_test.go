@@ -28,7 +28,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/models"
 	"github.com/uber/peloton/jobmgr/cached"
 
-	"github.com/uber/peloton/common/goalstate"
 	goalstatemocks "github.com/uber/peloton/common/goalstate/mocks"
 	cachedmocks "github.com/uber/peloton/jobmgr/cached/mocks"
 	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
@@ -201,6 +200,11 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTaskConfig()
 func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 	jobRuntime := &pbjob.RuntimeInfo{}
 
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(0)).
+		AnyTimes()
+
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
 	suite.cachedJob.EXPECT().
@@ -224,6 +228,10 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 	suite.cachedJob.EXPECT().
 		ID().Return(suite.jobID)
 
+	suite.cachedTask.EXPECT().
+		GetLastRuntimeUpdateTime().
+		Return(time.Now().Add(-3 * time.Minute))
+
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
@@ -242,9 +250,6 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 
 	suite.taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
-		Do(func(_ goalstate.Entity, deadline time.Time) {
-			suite.True(deadline.After(time.Now()))
-		}).
 		Return()
 
 	suite.jobGoalStateEngine.EXPECT().
@@ -262,6 +267,11 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 	}
 
 	suite.taskRuntime.FailureCount = 0
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(0)).
+		AnyTimes()
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
@@ -293,6 +303,10 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 
 	suite.cachedJob.EXPECT().
 		ID().Return(suite.jobID)
+
+	suite.cachedTask.EXPECT().
+		GetLastRuntimeUpdateTime().
+		Return(time.Now())
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
@@ -370,6 +384,11 @@ func (suite *TaskTerminatedRetryTestSuite) TestLostTaskRetry() {
 
 	suite.lostTaskRuntime.FailureCount = 0
 
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(0)).
+		AnyTimes()
+
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
 	suite.cachedJob.EXPECT().
@@ -400,6 +419,10 @@ func (suite *TaskTerminatedRetryTestSuite) TestLostTaskRetry() {
 
 	suite.cachedJob.EXPECT().
 		ID().Return(suite.jobID)
+
+	suite.cachedTask.EXPECT().
+		GetLastRuntimeUpdateTime().
+		Return(time.Now())
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
@@ -472,7 +495,12 @@ func (suite *TaskTerminatedRetryTestSuite) TestLostTaskTooManyFailures() {
 
 // TestTaskTerminatedRetryUpdateTerminated tests restart when update is terminal
 func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryUpdateTerminated() {
-	suite.taskRuntime.FailureCount = 5
+	suite.taskRuntime.FailureCount = 2
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(0)).
+		AnyTimes()
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
@@ -503,6 +531,9 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryUpdateTerminat
 	suite.cachedJob.EXPECT().
 		ID().
 		Return(suite.jobID)
+	suite.cachedTask.EXPECT().
+		GetLastRuntimeUpdateTime().
+		Return(time.Now().Add(-3 * time.Minute))
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()

@@ -152,6 +152,12 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailRetry() {
 			MaxFailures: 3,
 		},
 	}
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(0)).
+		AnyTimes()
+
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
 
@@ -203,6 +209,12 @@ func (suite *TaskFailRetryTestSuite) TestLostTaskRetry() {
 			MaxFailures: 3,
 		},
 	}
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(0)).
+		AnyTimes()
+
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
 
@@ -299,6 +311,11 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailSystemFailure() {
 			MaxFailures: 0,
 		},
 	}
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(0)).
+		AnyTimes()
 
 	for _, taskRuntime := range testTable {
 
@@ -410,6 +427,12 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailRetryFailedPatch() {
 			MaxFailures: 3,
 		},
 	}
+
+	suite.cachedTask.EXPECT().
+		ID().
+		Return(uint32(0)).
+		AnyTimes()
+
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
 

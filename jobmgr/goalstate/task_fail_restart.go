@@ -29,13 +29,18 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	_rescheduleMessage = "Rescheduled after task terminated"
+	_throttleMessage   = "Task throttled due to failure"
+)
+
 // rescheduleTask patch the new job runtime and enqueue the task into goalstate engine
 // When JobMgr restarts, the task would be throttled again. Therefore, a task can be throttled
 // for more than the duration returned by getBackoff.
 func rescheduleTask(
 	ctx context.Context,
 	cachedJob cached.Job,
-	instanceID uint32,
+	cachedTask cached.Task,
 	taskRuntime *task.RuntimeInfo,
 	taskConfig *task.TaskConfig,
 	goalStateDriver *driver,
@@ -49,36 +54,73 @@ func rescheduleTask(
 	} else {
 		goalStateDriver.mtx.taskMetrics.RetryFailedTasksTotal.Inc(1)
 	}
-	runtimeDiff := taskutil.RegenerateMesosTaskIDDiff(
-		jobID,
-		instanceID,
+
+	var runtimeDiff jobmgrcommon.RuntimeDiff
+	scheduleDelay := getScheduleDelay(
+		cachedTask,
 		taskRuntime,
-		healthState)
-	runtimeDiff[jobmgrcommon.MessageField] = "Rescheduled after task terminated"
-	log.WithField("job_id", jobID).
-		WithField("instance_id", instanceID).
-		Debug("restarting terminated task")
-	err := cachedJob.PatchTasks(ctx,
-		map[uint32]jobmgrcommon.RuntimeDiff{instanceID: runtimeDiff})
-	if err != nil {
-		return err
-	}
-	if throttleOnFailure {
-		goalStateDriver.EnqueueTask(
+		goalStateDriver.cfg.InitialTaskBackoff,
+		goalStateDriver.cfg.MaxTaskBackoff,
+		throttleOnFailure,
+	)
+
+	if scheduleDelay <= time.Duration(0) {
+		// scheduleDelay is negative, which means the task
+		// should have been scheduled. Reinit the task right away.
+		runtimeDiff = taskutil.RegenerateMesosTaskIDDiff(
 			jobID,
-			instanceID,
-			time.Now().Add(getBackoff(taskRuntime,
-				goalStateDriver.cfg.InitialTaskBackoff,
-				goalStateDriver.cfg.MaxTaskBackoff)))
-	} else {
-		goalStateDriver.EnqueueTask(jobID, instanceID, time.Now())
+			cachedTask.ID(),
+			taskRuntime,
+			healthState)
+		runtimeDiff[jobmgrcommon.MessageField] = _rescheduleMessage
+		log.WithField("job_id", jobID).
+			WithField("instance_id", cachedTask.ID()).
+			Debug("restarting terminated task")
+	} else if taskRuntime.GetMessage() != _throttleMessage {
+		// only update the message when the throttled task enters
+		// this func for the first time
+		runtimeDiff = jobmgrcommon.RuntimeDiff{
+			jobmgrcommon.MessageField: _throttleMessage,
+		}
 	}
 
+	if len(runtimeDiff) != 0 {
+		err := cachedJob.PatchTasks(ctx,
+			map[uint32]jobmgrcommon.RuntimeDiff{cachedTask.ID(): runtimeDiff})
+		if err != nil {
+			return err
+		}
+	}
+
+	goalStateDriver.EnqueueTask(jobID, cachedTask.ID(), time.Now().Add(scheduleDelay))
 	EnqueueJobWithDefaultDelay(jobID, goalStateDriver, cachedJob)
+
 	return nil
 }
 
-func getBackoff(taskRuntime *task.RuntimeInfo,
+// getScheduleDelay returns how much delay
+// the task should be scheduled after.
+// zero or negative value means no delay,
+// and the task should be rescheduled immediately
+func getScheduleDelay(
+	cachedTask cached.Task,
+	taskRuntime *task.RuntimeInfo,
+	initialTaskBackOff time.Duration,
+	maxTaskBackOff time.Duration,
+	throttleOnFailure bool,
+) time.Duration {
+	if !throttleOnFailure {
+		return time.Duration(0)
+	}
+
+	backOff := getBackoff(taskRuntime, initialTaskBackOff, maxTaskBackOff)
+	ddl := cachedTask.GetLastRuntimeUpdateTime().Add(backOff)
+
+	return ddl.Sub(time.Now())
+}
+
+func getBackoff(
+	taskRuntime *task.RuntimeInfo,
 	initialTaskBackOff time.Duration,
 	maxTaskBackOff time.Duration) time.Duration {
 	if taskRuntime.GetFailureCount() == 0 {
@@ -143,7 +185,7 @@ func TaskFailRetry(ctx context.Context, entity goalstate.Entity) error {
 	return rescheduleTask(
 		ctx,
 		cachedJob,
-		taskEnt.instanceID,
+		cachedTask,
 		runtime,
 		taskConfig,
 		goalStateDriver,

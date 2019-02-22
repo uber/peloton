@@ -106,7 +106,7 @@ func TestNewConstraints_ValueConstraintSingle(t *testing.T) {
 			Constraint: &api.TaskConstraint{
 				Value: &api.ValueConstraint{
 					Values: map[string]struct{}{
-						"host-1": struct{}{},
+						"host-1": {},
 					},
 				},
 			},
@@ -134,8 +134,8 @@ func TestNewConstraints_ValueConstraintMultiple(t *testing.T) {
 			Constraint: &api.TaskConstraint{
 				Value: &api.ValueConstraint{
 					Values: map[string]struct{}{
-						"host-1": struct{}{},
-						"host-2": struct{}{},
+						"host-1": {},
+						"host-2": {},
 					},
 				},
 			},
@@ -163,8 +163,8 @@ func TestNewConstraints_MultipleConstraints(t *testing.T) {
 			Constraint: &api.TaskConstraint{
 				Value: &api.ValueConstraint{
 					Values: map[string]struct{}{
-						"host-1": struct{}{},
-						"host-2": struct{}{},
+						"host-1": {},
+						"host-2": {},
 					},
 				},
 			},

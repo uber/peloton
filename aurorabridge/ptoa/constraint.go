@@ -109,7 +109,7 @@ func newConstraint(constraint *pod.Constraint) (*api.Constraint, error) {
 				Constraint: &api.TaskConstraint{
 					Value: &api.ValueConstraint{
 						Values: map[string]struct{}{
-							constraint.GetLabelConstraint().GetLabel().GetValue(): struct{}{},
+							constraint.GetLabelConstraint().GetLabel().GetValue(): {},
 						},
 					},
 				},

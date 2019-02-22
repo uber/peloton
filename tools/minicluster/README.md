@@ -53,7 +53,8 @@ Bootstrap a minicluster with Peloton apps, excluding one or more apps:
 ```
 $PELOTON_HOME/tools/minicluster/minicluster.py setup -a --no-<app name, i.e jobmgr,resmgr,hostmgr,placement, specify multiple times for multiple apps>
 
-```
+``  if scheduleDelay <= time.Duration(0) {
+`
 
 
 To bootstrap the Peloton only components (no Mesos and ZK) by pointing to an existing ZK:

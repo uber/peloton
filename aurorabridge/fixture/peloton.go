@@ -68,10 +68,10 @@ func PelotonWorkflowInfo() *stateless.WorkflowInfo {
 	// Pick a random state. These were chosen fairly arbitrarily.
 	var s stateless.WorkflowState
 	for s = range map[stateless.WorkflowState]struct{}{
-		stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD: struct{}{},
-		stateless.WorkflowState_WORKFLOW_STATE_ROLLED_BACK:     struct{}{},
-		stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED:       struct{}{},
-		stateless.WorkflowState_WORKFLOW_STATE_ABORTED:         struct{}{},
+		stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD: {},
+		stateless.WorkflowState_WORKFLOW_STATE_ROLLED_BACK:     {},
+		stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED:       {},
+		stateless.WorkflowState_WORKFLOW_STATE_ABORTED:         {},
 	} {
 	}
 	return &stateless.WorkflowInfo{

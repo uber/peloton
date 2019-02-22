@@ -286,8 +286,8 @@ func TestNewScheduledTask(t *testing.T) {
 				RamMb:   ptr.Int64(1024),
 				DiskMb:  ptr.Int64(128),
 				RequestedPorts: map[string]struct{}{
-					"http":     struct{}{},
-					"tchannel": struct{}{},
+					"http":     {},
+					"tchannel": {},
 				},
 				IsService: ptr.Bool(true),
 				Tier:      ptr.String("preferred"),

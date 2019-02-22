@@ -1669,7 +1669,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_UpdateStatusFilter
 		&api.JobUpdateQuery{
 			JobKey: k,
 			UpdateStatuses: map[api.JobUpdateStatus]struct{}{
-				api.JobUpdateStatusRolledForward: struct{}{},
+				api.JobUpdateStatusRolledForward: {},
 			},
 		})
 	suite.NoError(err)
