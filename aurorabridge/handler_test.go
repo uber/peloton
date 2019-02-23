@@ -526,7 +526,7 @@ func (suite *ServiceHandlerTestSuite) TestPauseJobUpdate_Success() {
 
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
-	suite.expectGetWorkflowInfo(id, k.GetID(), v)
+	suite.expectGetJobAndWorkflow(id, k.GetID(), v)
 
 	suite.jobClient.EXPECT().
 		PauseJobWorkflow(suite.ctx, &statelesssvc.PauseJobWorkflowRequest{
@@ -548,7 +548,7 @@ func (suite *ServiceHandlerTestSuite) TestPauseJobUpdate_InvalidUpdateID() {
 
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
-	suite.expectGetWorkflowInfo(id, "some other id", v)
+	suite.expectGetJobAndWorkflow(id, "some other id", v)
 
 	resp, err := suite.handler.PauseJobUpdate(suite.ctx, k, ptr.String("some message"))
 	suite.NoError(err)
@@ -563,7 +563,7 @@ func (suite *ServiceHandlerTestSuite) TestResumeJobUpdate_Success() {
 
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
-	suite.expectGetWorkflowInfo(id, k.GetID(), v)
+	suite.expectGetJobAndWorkflow(id, k.GetID(), v)
 
 	suite.jobClient.EXPECT().
 		ResumeJobWorkflow(suite.ctx, &statelesssvc.ResumeJobWorkflowRequest{
@@ -585,7 +585,7 @@ func (suite *ServiceHandlerTestSuite) TestResumeJobUpdate_InvalidUpdateID() {
 
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
-	suite.expectGetWorkflowInfo(id, "some other id", v)
+	suite.expectGetJobAndWorkflow(id, "some other id", v)
 
 	resp, err := suite.handler.ResumeJobUpdate(suite.ctx, k, ptr.String("some message"))
 	suite.NoError(err)
@@ -600,7 +600,7 @@ func (suite *ServiceHandlerTestSuite) TestAbortJobUpdate_Success() {
 
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
-	suite.expectGetWorkflowInfo(id, k.GetID(), v)
+	suite.expectGetJobAndWorkflow(id, k.GetID(), v)
 
 	suite.jobClient.EXPECT().
 		AbortJobWorkflow(suite.ctx, &statelesssvc.AbortJobWorkflowRequest{
@@ -622,7 +622,7 @@ func (suite *ServiceHandlerTestSuite) TestAbortJobUpdate_InvalidUpdateID() {
 
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
-	suite.expectGetWorkflowInfo(id, "some other id", v)
+	suite.expectGetJobAndWorkflow(id, "some other id", v)
 
 	resp, err := suite.handler.AbortJobUpdate(suite.ctx, k, ptr.String("some message"))
 	suite.NoError(err)
@@ -653,11 +653,15 @@ func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_ResumesIfAwaitingPulse(
 			JobId: id,
 		}).
 		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Status: &stateless.JobStatus{
+					Version: v,
+				},
+			},
 			WorkflowInfo: &stateless.WorkflowInfo{
 				OpaqueData: curOD,
 				Status: &stateless.WorkflowStatus{
-					State:   stateless.WorkflowState_WORKFLOW_STATE_PAUSED,
-					Version: v,
+					State: stateless.WorkflowState_WORKFLOW_STATE_PAUSED,
 				},
 			},
 		}, nil)
@@ -716,7 +720,7 @@ func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_InvalidUpdateID() {
 
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
-	suite.expectGetWorkflowInfo(id, "some other id", v)
+	suite.expectGetJobAndWorkflow(id, "some other id", v)
 
 	resp, err := suite.handler.PulseJobUpdate(suite.ctx, k)
 	suite.NoError(err)
@@ -786,7 +790,7 @@ func (suite *ServiceHandlerTestSuite) expectGetJobVersion(id *peloton.JobID, v *
 		}, nil)
 }
 
-func (suite *ServiceHandlerTestSuite) expectGetWorkflowInfo(
+func (suite *ServiceHandlerTestSuite) expectGetJobAndWorkflow(
 	jobID *peloton.JobID,
 	updateID string,
 	v *peloton.EntityVersion,
@@ -800,11 +804,13 @@ func (suite *ServiceHandlerTestSuite) expectGetWorkflowInfo(
 			JobId: jobID,
 		}).
 		Return(&statelesssvc.GetJobResponse{
-			WorkflowInfo: &stateless.WorkflowInfo{
-				OpaqueData: od,
-				Status: &stateless.WorkflowStatus{
+			JobInfo: &stateless.JobInfo{
+				Status: &stateless.JobStatus{
 					Version: v,
 				},
+			},
+			WorkflowInfo: &stateless.WorkflowInfo{
+				OpaqueData: od,
 			},
 		}, nil)
 }
@@ -1327,11 +1333,15 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
 			JobId: id,
 		}).
 		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Status: &stateless.JobStatus{
+					Version: curVersion,
+				},
+			},
 			WorkflowInfo: &stateless.WorkflowInfo{
 				OpaqueData: curOD,
 				Status: &stateless.WorkflowStatus{
 					State:       stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
-					Version:     curVersion,
 					PrevVersion: prevVersion,
 				},
 				UpdateSpec: updateSpec,

@@ -34,7 +34,7 @@ def wait_for_rolled_forward(client, job_update_key):
     wait_for_update_status(
         client,
         job_update_key,
-        set([api.JobUpdateStatus.ROLLING_FORWARD]),
+        {api.JobUpdateStatus.ROLLING_FORWARD},
         api.JobUpdateStatus.ROLLED_FORWARD)
 
 
@@ -44,6 +44,7 @@ def wait_for_update_status(
         allowed_intermediate_statuses,
         status,
         timeout_secs=240):
+
     deadline = time.time() + timeout_secs
     while time.time() < deadline:
         latest = get_update_status(client, job_update_key)

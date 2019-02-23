@@ -1096,9 +1096,9 @@ func (h *ServiceHandler) rollbackJobUpdate(
 		return nil, auroraErrorf("get job id: %s", err)
 	}
 
-	w, err := h.getWorkflowInfo(ctx, id)
+	j, w, err := h.getJobAndWorkflow(ctx, id)
 	if err != nil {
-		return nil, auroraErrorf("get workflow info: %s", err)
+		return nil, auroraErrorf("get job: %s", err)
 	}
 
 	d, err := opaquedata.Deserialize(w.GetOpaqueData())
@@ -1142,7 +1142,7 @@ func (h *ServiceHandler) rollbackJobUpdate(
 
 	req := &statelesssvc.ReplaceJobRequest{
 		JobId:   id,
-		Version: w.GetStatus().GetVersion(),
+		Version: j.GetVersion(),
 		Spec:    prevJob.GetSpec(),
 		//Secrets: nil,
 		UpdateSpec: updateSpec,
@@ -1198,9 +1198,9 @@ func (h *ServiceHandler) pulseJobUpdate(
 		return nil, aerr
 	}
 
-	w, err := h.getWorkflowInfo(ctx, id)
+	j, w, err := h.getJobAndWorkflow(ctx, id)
 	if err != nil {
-		return nil, auroraErrorf("get workflow info: %s", err)
+		return nil, auroraErrorf("get job status: %s", err)
 	}
 
 	d, err := opaquedata.Deserialize(w.GetOpaqueData())
@@ -1229,7 +1229,7 @@ func (h *ServiceHandler) pulseJobUpdate(
 
 		req := &statelesssvc.ResumeJobWorkflowRequest{
 			JobId:      id,
-			Version:    w.GetStatus().GetVersion(),
+			Version:    j.GetVersion(),
 			OpaqueData: od,
 		}
 		if _, err := h.jobClient.ResumeJobWorkflow(ctx, req); err != nil {
@@ -1565,9 +1565,9 @@ func (h *ServiceHandler) matchJobUpdateID(
 	updateID string,
 ) (*peloton.EntityVersion, *auroraError) {
 
-	w, err := h.getWorkflowInfo(ctx, jobID)
+	j, w, err := h.getJobAndWorkflow(ctx, jobID)
 	if err != nil {
-		return nil, auroraErrorf("get workflow info: %s", err)
+		return nil, auroraErrorf("get job status: %s", err)
 	}
 	d, err := opaquedata.Deserialize(w.GetOpaqueData())
 	if err != nil {
@@ -1577,7 +1577,7 @@ func (h *ServiceHandler) matchJobUpdateID(
 		return nil, auroraErrorf("update id does not match current update").
 			code(api.ResponseCodeInvalidRequest)
 	}
-	return w.GetStatus().GetVersion(), nil
+	return j.GetVersion(), nil
 }
 
 // getJobInfo calls jobmgr to get JobInfo based on JobID.
@@ -1628,21 +1628,16 @@ func (h *ServiceHandler) getJobInfoSummary(
 	return resp.GetSummary(), nil
 }
 
-func (h *ServiceHandler) getWorkflowInfo(
+func (h *ServiceHandler) getJobAndWorkflow(
 	ctx context.Context,
-	jobID *peloton.JobID,
-) (*stateless.WorkflowInfo, error) {
+	id *peloton.JobID,
+) (*stateless.JobStatus, *stateless.WorkflowInfo, error) {
 
-	req := &statelesssvc.GetJobRequest{
-		JobId: jobID,
-	}
-
-	resp, err := h.jobClient.GetJob(ctx, req)
+	resp, err := h.jobClient.GetJob(ctx, &statelesssvc.GetJobRequest{JobId: id})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
-	return resp.GetWorkflowInfo(), nil
+	return resp.GetJobInfo().GetStatus(), resp.GetWorkflowInfo(), nil
 }
 
 // queryPods calls jobmgr to query a list of PodInfo based on input JobID.

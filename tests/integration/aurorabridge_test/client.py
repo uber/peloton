@@ -41,6 +41,12 @@ class Client(object):
             AuroraSchedulerManager.killTasks,
             *args)
 
+    def pulse_job_update(self, *args):
+        return self._send(
+            AuroraSchedulerManager,
+            AuroraSchedulerManager.pulseJobUpdate,
+            *args)
+
     def start_job_update(self, *args):
         return self._send(
             AuroraSchedulerManager,
