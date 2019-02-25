@@ -128,6 +128,8 @@ from source code.
 - [MesosCon 2018, San Francisco](https://sched.co/HYTn)
 - [MesosCon 2017, Los Angeles](https://sched.co/BYaD) ([Slides](http://events17.linuxfoundation.org/sites/events/files/slides/MesosCon_Distributed_Deep_Learning_v4.pdf), [Video](https://www.youtube.com/watch?v=Ktc3GjshHcc))
 
+## Contact
+To contact us, please join our [Slack channel](https://join.slack.com/t/peloton-scheduler/shared_invite/enQtNTU5ODIzOTY4NDMyLTY2NmEwN2Y5ZGMzMzk4ZDE1NTNlYjE4M2E4Njg2OWY1MTk5M2U2NTgxZDUyMjAwYWE4ZjY5M2JlZGU1ZTc2MjI).
 
 ## License
 Peloton is under the Apache 2.0 license. See the LICENSE file for details.
