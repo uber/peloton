@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	//"code.uber.internal/go-common.git/x/log"
 )
 
 func TestSelectBuilderToSql(t *testing.T) {

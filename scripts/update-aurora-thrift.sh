@@ -10,7 +10,7 @@ mkdir -p tmp
 # Check out Uber apache-aurora repo
 rm -rf ${aurora_tree}
 
-git clone code.uber.internal:infra/apache-aurora.git ${aurora_tree}
+git clone github.com/apache/aurora.git ${aurora_tree}
 
 cp ${aurora_tree}/src/main/python/apache/aurora/config/schema/base.py \
     ${aurora_dir}/schema/aurora/base.py

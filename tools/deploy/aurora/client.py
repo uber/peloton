@@ -77,7 +77,7 @@ class AuroraClientZK(object):
 
     def foo():
         c = AuroraClientZK.create(
-            'zookeeper-mesos-prod.local.uber.internal',
+            '<zookeeper-url>',
             2181
         )
         r = c.getJobs('www-data')

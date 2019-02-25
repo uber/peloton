@@ -17,7 +17,7 @@ The Peloton repo has to be checked out to the specific source directory
 ```
 $ cd $GOPATH
 $ mkdir -p src/github.com/uber/
-$ git clone gitolite@code.uber.internal:infra/peloton src/github.com/uber/peloton
+$ git clone git@github.com:uber/peloton.git src/github.com/uber/peloton
 ```
 
 ## Setup environment

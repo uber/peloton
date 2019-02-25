@@ -1,6 +1,7 @@
 #!/bin/bash
 
 
+MIMIR_REPO=$1
 MIMIR_HOME=placement/plugins/mimir/lib
 FILES_TO_REMOVE="
 	.arcconfig
@@ -13,9 +14,15 @@ FILES_TO_REMOVE="
     	README.md
 "
     
-    
+if [ -z $MIMIR_REPO ]
+then
+    echo "Usage: $(basename $0) mimir_git_repo"
+    exit
+fi
+
+
 rm -rf $MIMIR_HOME
-git clone gitolite@code.uber.internal:infra/mimir-lib $MIMIR_HOME
+git clone $MIMIR_REPO $MIMIR_HOME
 
 # Find the current mimir version
 pushd .
