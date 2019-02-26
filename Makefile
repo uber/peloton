@@ -301,9 +301,9 @@ endif
 # override the image to push with IMAGE=
 docker-push:
 ifndef IMAGE
-	@./tools/packaging/docker-push.sh $(DOCKER_IMAGE):$(PACKAGE_VERSION) $(REGISTRY)
+	@./tools/packaging/docker-push.sh $(REGISTRY) $(DOCKER_IMAGE):$(PACKAGE_VERSION)
 else
-	@./tools/packaging/docker-push.sh $(IMAGE) $(REGISTRY)
+	@./tools/packaging/docker-push.sh $(REGISTRY) $(IMAGE)
 endif
 
 failure-test-minicluster:

@@ -3,13 +3,20 @@
 # pushes to some registries.
 #
 # Usage:
-# REGISTRY=[docker-registry] ./docker-push
+# ./docker-push [registry] [image1] [image2]
 
-[[ -z "${REGISTRY}" ]] && echo "No REGISTRY set" && exit 1;
+if [[ $# -lt 2 ]] ; then
+   echo "No registry and image passed" >&2
+   exit 1
+fi
+
+# first argument is registry
+REGISTRY=${1}
 
 [[ $(uname) == Darwin || -n ${JENKINS_HOME} ]] && docker_cmd='docker' || docker_cmd='sudo docker'
 
-for image in "${@}" ; do
+# second argument onwards are images
+for image in "${@:2}" ; do
   echo "Pushing $image to ${REGISTRY}..."
 
   new_image="vendor/peloton"
