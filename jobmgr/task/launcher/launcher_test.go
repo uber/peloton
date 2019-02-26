@@ -16,7 +16,7 @@ package launcher
 
 import (
 	"context"
-	"errors"
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"sync"
@@ -25,10 +25,10 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
-
 	"go.uber.org/yarpc/yarpcerrors"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
@@ -39,6 +39,8 @@ import (
 	host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/storage/objects"
+	objectmocks "github.com/uber/peloton/storage/objects/mocks"
 
 	"github.com/uber/peloton/common/backoff"
 	cachedmocks "github.com/uber/peloton/jobmgr/cached/mocks"
@@ -77,7 +79,7 @@ type LauncherTestSuite struct {
 	cachedJob       *cachedmocks.MockJob
 	cachedTask      *cachedmocks.MockTask
 	mockVolumeStore *store_mocks.MockPersistentVolumeStore
-	mockSecretStore *store_mocks.MockSecretStore
+	secretInfoOps   *objectmocks.MockSecretInfoOps
 	testScope       tally.TestScope
 	metrics         *Metrics
 	taskLauncher    launcher
@@ -96,7 +98,7 @@ func (suite *LauncherTestSuite) SetupTest() {
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 	suite.mockVolumeStore = store_mocks.NewMockPersistentVolumeStore(suite.ctrl)
-	suite.mockSecretStore = store_mocks.NewMockSecretStore(suite.ctrl)
+	suite.secretInfoOps = objectmocks.NewMockSecretInfoOps(suite.ctrl)
 
 	suite.testScope = tally.NewTestScope("", map[string]string{})
 	suite.metrics = NewMetrics(suite.testScope)
@@ -105,7 +107,7 @@ func (suite *LauncherTestSuite) SetupTest() {
 		jobFactory:    suite.jobFactory,
 		volumeStore:   suite.mockVolumeStore,
 		taskStore:     suite.mockTaskStore,
-		secretStore:   suite.mockSecretStore,
+		secretInfoOps: suite.secretInfoOps,
 		metrics:       suite.metrics,
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
@@ -673,6 +675,15 @@ func (suite *LauncherTestSuite) TestCreateLaunchableTasks() {
 	// Expected Secret
 	secret := jobmgrtask.CreateSecretProto("", testSecretPath, []byte(testSecretStr))
 	mesosContainerizer := mesos.ContainerInfo_MESOS
+	secretInfoObject := &objects.SecretInfoObject{
+		SecretID:     secret.Id.Value,
+		JobID:        _testJobID,
+		Version:      0,
+		Valid:        true,
+		Path:         testSecretPath,
+		Data:         base64.StdEncoding.EncodeToString([]byte(testSecretStr)),
+		CreationTime: time.Now(),
+	}
 
 	// generate 5 test tasks
 	numTasks := 5
@@ -691,9 +702,9 @@ func (suite *LauncherTestSuite) TestCreateLaunchableTasks() {
 			}
 			tmp.GetConfig().GetContainer().Volumes = []*mesos.Volume{
 				util.CreateSecretVolume(testSecretPath, idStr)}
-			suite.mockSecretStore.EXPECT().
-				GetSecret(gomock.Any(), &peloton.SecretID{Value: idStr}).
-				Return(secret, nil)
+			suite.secretInfoOps.EXPECT().
+				GetSecret(gomock.Any(), idStr).
+				Return(secretInfoObject, nil)
 		}
 		taskInfos[taskID.Value] = tmp
 	}
@@ -731,8 +742,8 @@ func (suite *LauncherTestSuite) TestCreateLaunchableTasks() {
 			tmp.GetConfig().GetContainer().Volumes = []*mesos.Volume{
 				util.CreateSecretVolume(testSecretPath, idStr),
 			}
-			suite.mockSecretStore.EXPECT().
-				GetSecret(gomock.Any(), &peloton.SecretID{Value: idStr}).
+			suite.secretInfoOps.EXPECT().
+				GetSecret(gomock.Any(), idStr).
 				Return(nil, errors.New("get secret error"))
 		}
 		taskInfos[taskID.Value] = tmp
@@ -750,7 +761,7 @@ func (suite *LauncherTestSuite) TestCreateLaunchableTasks() {
 		suite.Nil(task.GetConfig().GetContainer().GetVolumes())
 	}
 
-	// test secret not found error. make sure, task goalstate is set to killed
+	// test secret not found error; make sure task goalstate is set to killed.
 	taskInfos = make(map[string]*LaunchableTaskInfo)
 	idStr := fmt.Sprintf("no-secret-id")
 	tmp := createTestTask(0)
@@ -771,8 +782,8 @@ func (suite *LauncherTestSuite) TestCreateLaunchableTasks() {
 			suite.Equal("REASON_SECRET_NOT_FOUND", runtimeDiffs[0][jobmgrcommon.ReasonField])
 		}).
 		Return(nil)
-	suite.mockSecretStore.EXPECT().
-		GetSecret(gomock.Any(), &peloton.SecretID{Value: idStr}).
+	suite.secretInfoOps.EXPECT().
+		GetSecret(gomock.Any(), idStr).
 		Return(nil, yarpcerrors.NotFoundErrorf(
 			"Cannot find secret wth id %v", idStr))
 
@@ -787,10 +798,10 @@ func (suite *LauncherTestSuite) TestCreateLaunchableTasks() {
 
 	// simulate error in base64 decoding of secret data.
 	// use non-base64 encoded data in the secret
-	secret.GetValue().Data = []byte(testSecretStr)
-	suite.mockSecretStore.EXPECT().
-		GetSecret(gomock.Any(), &peloton.SecretID{Value: idStr}).
-		Return(secret, nil)
+	secretInfoObject.Data = "testSecretStr"
+	suite.secretInfoOps.EXPECT().
+		GetSecret(gomock.Any(), idStr).
+		Return(secretInfoObject, nil)
 	launchableTasks, skippedTaskInfos = suite.taskLauncher.CreateLaunchableTasks(
 		context.Background(), taskInfos)
 	suite.Equal(len(launchableTasks), 0)

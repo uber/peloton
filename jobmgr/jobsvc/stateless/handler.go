@@ -60,10 +60,10 @@ import (
 type serviceHandler struct {
 	jobStore        storage.JobStore
 	updateStore     storage.UpdateStore
-	secretStore     storage.SecretStore
 	taskStore       storage.TaskStore
 	jobIndexOps     ormobjects.JobIndexOps
 	jobNameToIDOps  ormobjects.JobNameToIDOps
+	secretInfoOps   ormobjects.SecretInfoOps
 	respoolClient   respool.ResourceManagerYARPCClient
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
@@ -90,7 +90,6 @@ func InitV1AlphaJobServiceHandler(
 	d *yarpc.Dispatcher,
 	jobStore storage.JobStore,
 	updateStore storage.UpdateStore,
-	secretStore storage.SecretStore,
 	taskStore storage.TaskStore,
 	ormStore *ormobjects.Store,
 	jobFactory cached.JobFactory,
@@ -102,10 +101,10 @@ func InitV1AlphaJobServiceHandler(
 	handler := &serviceHandler{
 		jobStore:       jobStore,
 		updateStore:    updateStore,
-		secretStore:    secretStore,
 		taskStore:      taskStore,
 		jobIndexOps:    ormobjects.NewJobIndexOps(ormStore),
 		jobNameToIDOps: ormobjects.NewJobNameToIDOps(ormStore),
+		secretInfoOps:  ormobjects.NewSecretInfoOps(ormStore),
 		respoolClient: respool.NewResourceManagerYARPCClient(
 			d.ClientConfig(common.PelotonResourceManager),
 		),
@@ -949,7 +948,8 @@ func (h *serviceHandler) GetJob(
 		},
 		Secrets: handlerutil.ConvertV0SecretsToV1Secrets(
 			jobmgrtask.CreateSecretsFromVolumes(secretVolumes)),
-		WorkflowInfo: handlerutil.ConvertUpdateModelToWorkflowInfo(updateInfo, workflowEvents, nil),
+		WorkflowInfo: handlerutil.ConvertUpdateModelToWorkflowInfo(updateInfo, workflowEvents,
+			nil),
 	}, nil
 }
 
@@ -1768,11 +1768,22 @@ func (h *serviceHandler) addSecretsToDBAndConfig(
 		}
 		// store secret in DB
 		if update {
-			if err := h.secretStore.UpdateSecret(ctx, secret); err != nil {
+			if err := h.secretInfoOps.UpdateSecretData(
+				ctx,
+				jobID,
+				string(secret.Value.Data),
+			); err != nil {
 				return err
 			}
 		} else {
-			if err := h.secretStore.CreateSecret(ctx, secret, &peloton.JobID{Value: jobID}); err != nil {
+			if err := h.secretInfoOps.CreateSecret(
+				ctx,
+				jobID,
+				time.Now(),
+				secret.Id.Value,
+				string(secret.Value.Data),
+				secret.Path,
+			); err != nil {
 				return err
 			}
 		}

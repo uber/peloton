@@ -91,8 +91,8 @@ type JobHandlerTestSuite struct {
 	mockedGoalStateDriver *goalstatemocks.MockDriver
 	mockedJobStore        *storemocks.MockJobStore
 	mockedTaskStore       *storemocks.MockTaskStore
-	mockedSecretStore     *storemocks.MockSecretStore
 	mockedJobIndexOps     *objectmocks.MockJobIndexOps
+	mockedSecretInfoOps   *objectmocks.MockSecretInfoOps
 }
 
 // helper to initialize mocks in JobHandlerTestSuite
@@ -107,14 +107,14 @@ func (suite *JobHandlerTestSuite) initializeMocks() {
 	suite.mockedRespoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.mockedResmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 	suite.mockedCandidate = leadermocks.NewMockCandidate(suite.ctrl)
-	suite.mockedSecretStore = storemocks.NewMockSecretStore(suite.ctrl)
 	suite.mockedTaskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.mockedJobIndexOps = objectmocks.NewMockJobIndexOps(suite.ctrl)
+	suite.mockedSecretInfoOps = objectmocks.NewMockSecretInfoOps(suite.ctrl)
 
 	suite.handler.jobStore = suite.mockedJobStore
-	suite.handler.secretStore = suite.mockedSecretStore
 	suite.handler.taskStore = suite.mockedTaskStore
 	suite.handler.jobIndexOps = suite.mockedJobIndexOps
+	suite.handler.secretInfoOps = suite.mockedSecretInfoOps
 	suite.handler.jobFactory = suite.mockedJobFactory
 	suite.handler.goalStateDriver = suite.mockedGoalStateDriver
 	suite.handler.respoolClient = suite.mockedRespoolClient
@@ -647,6 +647,13 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 	jobID := &peloton.JobID{
 		Value: uuid.New(),
 	}
+	secret := &peloton.Secret{
+		Path: testSecretPath,
+		Value: &peloton.Secret_Value{
+			Data: []byte(base64.StdEncoding.EncodeToString(
+				[]byte(testSecretStr))),
+		},
+	}
 	mesosContainerizer := mesos.ContainerInfo_MESOS
 	dockerContainerizer := mesos.ContainerInfo_DOCKER
 	defaultConfig := &task.TaskConfig{
@@ -674,17 +681,17 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 	suite.setupMocks(jobID, respoolID)
 
 	// setup mocks specific to this test
-	suite.mockedSecretStore.EXPECT().CreateSecret(
-		gomock.Any(), gomock.Any(), jobID).Return(nil)
+	suite.mockedSecretInfoOps.EXPECT().CreateSecret(
+		gomock.Any(),
+		jobID.Value,               // jobID
+		gomock.Any(),              // now
+		gomock.Any(),              // secretID
+		string(secret.Value.Data), // secretString
+		testSecretPath).           // secretPath
+		Return(nil)
+
 	suite.mockedCachedJob.EXPECT().Create(
 		gomock.Any(), jobConfig, gomock.Any(), "peloton").Return(nil)
-	secret := &peloton.Secret{
-		Path: testSecretPath,
-		Value: &peloton.Secret_Value{
-			Data: []byte(base64.StdEncoding.EncodeToString(
-				[]byte(testSecretStr))),
-		},
-	}
 
 	// Create a job with a secret. This should pass
 	req := &job.CreateRequest{
@@ -710,8 +717,14 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 		Config:  jobConfig,
 		Secrets: []*peloton.Secret{secret},
 	}
-	suite.mockedSecretStore.EXPECT().CreateSecret(
-		gomock.Any(), gomock.Any(), jobID).Return(nil)
+	suite.mockedSecretInfoOps.EXPECT().CreateSecret(
+		gomock.Any(),
+		jobID.Value,               // jobID
+		gomock.Any(),              // now
+		gomock.Any(),              // secretID
+		string(secret.Value.Data), // secretString
+		testSecretPath).           // secretPath
+		Return(nil)
 	suite.mockedCachedJob.EXPECT().Create(
 		gomock.Any(), jobConfig, gomock.Any(), "peloton").Return(nil)
 	resp, err = suite.handler.Create(suite.context, req)
@@ -732,8 +745,13 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 
 	jobConfig.GetDefaultConfig().GetContainer().Volumes = nil
 	// Simulate DB failure in CreateSecret
-	suite.mockedSecretStore.EXPECT().CreateSecret(
-		gomock.Any(), gomock.Any(), jobID).
+	suite.mockedSecretInfoOps.EXPECT().CreateSecret(
+		gomock.Any(),
+		jobID.Value,               // jobID
+		gomock.Any(),              // now
+		gomock.Any(),              // secretID
+		string(secret.Value.Data), // secretString
+		testSecretPath).           // secretPath
 		Return(errors.New("DB error"))
 	resp, err = suite.handler.Create(suite.context, req)
 	suite.Error(err)
@@ -1292,8 +1310,14 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	// secret, new secret should be created and config should be populated with
 	// this new secret volume even if instance count remains unchanged.
 	req.Secrets = []*peloton.Secret{secret}
-	suite.mockedSecretStore.EXPECT().CreateSecret(
-		gomock.Any(), secret, jobID).Return(nil)
+	suite.mockedSecretInfoOps.EXPECT().CreateSecret(
+		gomock.Any(),
+		jobID.Value,               // jobID
+		gomock.Any(),              // now
+		gomock.Any(),              // secretID
+		string(secret.Value.Data), // secretString
+		testSecretPath).           // secretPath
+		Return(nil)
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID.GetValue()).
 		Return(oldJobConfig, &models.ConfigAddOn{}, nil)
@@ -1345,8 +1369,11 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	// Even if ID is empty, the existing secret volume will contain same path as
 	// supplied secret. So we will update the existing secret with new data.
 	// This should result in once call to update updatedSecret in DB
-	suite.mockedSecretStore.EXPECT().UpdateSecret(
-		gomock.Any(), updatedSecret).Return(nil)
+	suite.mockedSecretInfoOps.EXPECT().UpdateSecretData(
+		gomock.Any(),
+		gomock.Any(),
+		string(updatedSecret.Value.Data),
+	).Return(nil)
 	resp, err = suite.handler.Update(suite.context, req)
 	suite.NoError(err)
 	suite.NotNil(resp)
@@ -1372,10 +1399,19 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	req.Secrets = []*peloton.Secret{addedSecret, updatedSecret}
 	// This should result in once call to create addedSecret in DB and one
 	// call to update updatedSecret in DB
-	suite.mockedSecretStore.EXPECT().CreateSecret(
-		gomock.Any(), addedSecret, jobID).Return(nil)
-	suite.mockedSecretStore.EXPECT().UpdateSecret(
-		gomock.Any(), updatedSecret).Return(nil)
+	suite.mockedSecretInfoOps.EXPECT().CreateSecret(
+		gomock.Any(),
+		jobID.Value,                       // jobID
+		gomock.Any(),                      // now
+		gomock.Any(),                      // secretID
+		string(req.Secrets[0].Value.Data), // secretString
+		testSecretPath).                   // secretPath
+		Return(nil)
+	suite.mockedSecretInfoOps.EXPECT().UpdateSecretData(
+		gomock.Any(),
+		gomock.Any(),
+		string(updatedSecret.Value.Data)).
+		Return(nil)
 	suite.mockedCachedJob.EXPECT().
 		CompareAndSetConfig(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(&job.JobConfig{
@@ -1423,8 +1459,14 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 				Version: 2,
 			},
 		}, nil)
-	suite.mockedSecretStore.EXPECT().CreateSecret(
-		gomock.Any(), gomock.Any(), jobID).Return(nil)
+	suite.mockedSecretInfoOps.EXPECT().CreateSecret(
+		gomock.Any(),
+		jobID.Value,               // jobID
+		gomock.Any(),              // now
+		gomock.Any(),              // secretID
+		string(secret.Value.Data), // secretString
+		testSecretPath).           // secretPath
+		Return(nil)
 	resp, err = suite.handler.Update(suite.context, req)
 	suite.NoError(err)
 	suite.NotNil(resp)
@@ -1538,8 +1580,10 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 		Return(oldJobConfig, &models.ConfigAddOn{}, nil)
 	req.Secrets = []*peloton.Secret{addedSecret}
 	// Simulate DB failure in UpdateSecret
-	suite.mockedSecretStore.EXPECT().UpdateSecret(
-		gomock.Any(), addedSecret).
+	suite.mockedSecretInfoOps.EXPECT().UpdateSecretData(
+		gomock.Any(),
+		gomock.Any(),
+		string(addedSecret.Value.Data)).
 		Return(errors.New("DB error"))
 	resp, err = suite.handler.Update(suite.context, req)
 	suite.Error(err)
@@ -1558,8 +1602,13 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 		Return(oldJobConfig, &models.ConfigAddOn{}, nil)
 	req.Secrets = []*peloton.Secret{addedSecret}
 	// Simulate DB failure in CreateSecret
-	suite.mockedSecretStore.EXPECT().CreateSecret(
-		gomock.Any(), addedSecret, jobID).
+	suite.mockedSecretInfoOps.EXPECT().CreateSecret(
+		gomock.Any(),
+		jobID.Value,                    // jobID
+		gomock.Any(),                   // now
+		gomock.Any(),                   // secretID
+		string(addedSecret.Value.Data), // secretString
+		testSecretPath).                // secretPath
 		Return(errors.New("DB error"))
 
 	resp, err = suite.handler.Update(suite.context, req)

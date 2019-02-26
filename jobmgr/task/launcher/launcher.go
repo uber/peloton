@@ -37,6 +37,7 @@ import (
 	"github.com/uber/peloton/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/jobmgr/common"
 	"github.com/uber/peloton/storage"
+	ormobjects "github.com/uber/peloton/storage/objects"
 	"github.com/uber/peloton/util"
 
 	"github.com/pborman/uuid"
@@ -131,7 +132,7 @@ type launcher struct {
 	jobFactory    cached.JobFactory
 	taskStore     storage.TaskStore
 	volumeStore   storage.PersistentVolumeStore
-	secretStore   storage.SecretStore
+	secretInfoOps ormobjects.SecretInfoOps
 	metrics       *Metrics
 	retryPolicy   backoff.RetryPolicy
 }
@@ -140,8 +141,8 @@ const (
 	// Time out for the function to time out
 	_rpcTimeout = 10 * time.Second
 
-	// default secret store cassandra timeout
-	_defaultSecretStoreTimeout = 10 * time.Second
+	// default secret operations cassandra timeout
+	_defaultSecretInfoOpsTimeout = 10 * time.Second
 )
 
 var (
@@ -159,7 +160,7 @@ func InitTaskLauncher(
 	jobFactory cached.JobFactory,
 	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
-	secretStore storage.SecretStore,
+	ormStore *ormobjects.Store,
 	parent tally.Scope,
 ) {
 	onceInitTaskLauncher.Do(func() {
@@ -173,7 +174,7 @@ func InitTaskLauncher(
 			jobFactory:    jobFactory,
 			taskStore:     taskStore,
 			volumeStore:   volumeStore,
-			secretStore:   secretStore,
+			secretInfoOps: ormobjects.NewSecretInfoOps(ormStore),
 			metrics:       NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 			// TODO: make launch retry policy config.
 			retryPolicy: backoff.NewRetryPolicy(3, 15*time.Second),
@@ -674,20 +675,20 @@ func (l *launcher) populateSecrets(
 			// persisted in any place other than the secret_info table
 			// (for example as part of job/task config)
 			ctx, cancel := context.WithTimeout(
-				context.Background(), _defaultSecretStoreTimeout)
+				context.Background(), _defaultSecretInfoOpsTimeout)
 			defer cancel()
-			secret, err := l.secretStore.GetSecret(
-				ctx, &peloton.SecretID{
-					Value: string(volume.GetSource().GetSecret().GetValue().
-						GetData()),
-				},
+
+			secretID := string(volume.GetSource().GetSecret().GetValue().GetData())
+			secretInfoObj, err := l.secretInfoOps.GetSecret(
+				ctx,
+				secretID,
 			)
+
 			if err != nil {
 				l.metrics.TaskPopulateSecretFail.Inc(1)
 				return err
 			}
-			secretStr, err := base64.StdEncoding.DecodeString(
-				string(secret.GetValue().GetData()))
+			secretStr, err := base64.StdEncoding.DecodeString(secretInfoObj.Data)
 			if err != nil {
 				l.metrics.TaskPopulateSecretFail.Inc(1)
 				return err

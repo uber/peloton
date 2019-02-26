@@ -81,7 +81,6 @@ const (
 	updatesByJobView       = "mv_updates_by_job"
 	resPoolsTable          = "respools"
 	volumeTable            = "persistent_volumes"
-	secretInfoTable        = "secret_info"
 
 	// DB field names
 	creationTimeField   = "creation_time"
@@ -94,9 +93,6 @@ const (
 	messageField    = "message"
 	nameField       = "name"
 	reasonField     = "reason"
-
-	secretVersion0 = 0
-	secretValid    = true
 
 	_defaultQueryLimit    uint32 = 10
 	_defaultQueryMaxLimit uint32 = 100
@@ -166,7 +162,7 @@ func (c *Config) MigrateString() string {
 }
 
 // Store implements JobStore, TaskStore, UpdateStore, FrameworkInfoStore,
-// ResourcePoolStore, PersistentVolumeStore and SecretStore using a cassandra backend
+// ResourcePoolStore, and PersistentVolumeStore using a cassandra backend
 // TODO: Break this up into different files (and or structs) that implement
 // each of these interfaces to keep code modular.
 type Store struct {
@@ -3523,141 +3519,6 @@ func (s *Store) getJobSummaryFromConfig(ctx context.Context, id *peloton.JobID) 
 		return nil, err
 	}
 	return summary, nil
-}
-
-// CreateSecret stores a secret in the secret_info table
-// DO NOT LOG SECRETS in this function
-func (s *Store) CreateSecret(
-	ctx context.Context,
-	secret *peloton.Secret,
-	id *peloton.JobID,
-) error {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Insert(secretInfoTable).
-		Columns(
-			"secret_id",
-			"job_id",
-			"path",
-			"data",
-			"creation_time",
-			"version",
-			"valid").
-		Values(
-			secret.GetId().GetValue(),
-			id.GetValue(),
-			secret.GetPath(),
-			secret.GetValue().GetData(),
-			time.Now().UTC(),
-			secretVersion0,
-			secretValid,
-		).
-		IfNotExist()
-	err := s.applyStatement(ctx, stmt, id.GetValue())
-	if err != nil {
-		s.metrics.SecretMetrics.SecretCreateFail.Inc(1)
-		return err
-	}
-	s.metrics.SecretMetrics.SecretCreate.Inc(1)
-	return nil
-}
-
-// UpdateSecret updates a secret in the secret_info table
-// DO NOT LOG SECRETS in this function
-func (s *Store) UpdateSecret(
-	ctx context.Context,
-	secret *peloton.Secret,
-) error {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.
-		Update(secretInfoTable).
-		Set("data", secret.GetValue().GetData()).
-		Set("path", secret.GetPath()).
-		Where(qb.Eq{"secret_id": secret.GetId().GetValue(),
-			"valid": secretValid})
-
-	err := s.applyStatement(ctx, stmt, secret.GetId().GetValue())
-	if err != nil {
-		s.metrics.SecretMetrics.SecretUpdateFail.Inc(1)
-		return err
-	}
-	s.metrics.SecretMetrics.SecretUpdate.Inc(1)
-	return nil
-}
-
-// GetSecret gets a secret from the secret_info table
-// DO NOT LOG SECRETS in this function
-func (s *Store) GetSecret(ctx context.Context, id *peloton.SecretID) (*peloton.Secret, error) {
-	queryBuilder := s.DataStore.NewQuery()
-
-	stmt := queryBuilder.Select(
-		"path",
-		"data").
-		From(secretInfoTable).
-		Where(qb.Eq{
-			"secret_id": id.GetValue(),
-			"valid":     secretValid,
-		})
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		s.metrics.SecretMetrics.SecretGetFail.Inc(1)
-		return nil, err
-	}
-	return s.createSecretFromResults(id, allResults)
-}
-
-// createSecretFromResults will create a peloton secret
-// proto message from the cql query results (from cql query
-// to secret_info table)
-func (s *Store) createSecretFromResults(
-	id *peloton.SecretID,
-	allResults []map[string]interface{},
-) (*peloton.Secret, error) {
-	// allResults contain the cql query results after querying
-	// secret_info table.
-
-	// One secret id should have only one row (one secret)
-	// associated with it.
-	if len(allResults) > 1 {
-		s.metrics.SecretMetrics.SecretGetFail.Inc(1)
-		return nil, yarpcerrors.AlreadyExistsErrorf(
-			"found %d secrets for secret id %v",
-			len(allResults), id.GetValue())
-	}
-
-	// loop through the results and construct peloton secret
-	for _, value := range allResults {
-		// key 'data' in the map should contain secret data
-		dataStr, ok := value["data"].(string)
-		if !ok {
-			s.metrics.SecretMetrics.SecretGetFail.Inc(1)
-			return nil, yarpcerrors.InternalErrorf(
-				"could not retrieve secret data for id %v",
-				id.GetValue())
-		}
-		// key 'path' in the map should contain secret path
-		pathStr, ok := value["path"].(string)
-		if !ok {
-			s.metrics.SecretMetrics.SecretGetFail.Inc(1)
-			return nil, yarpcerrors.InternalErrorf(
-				"could not retrieve secret path for id %v",
-				id.GetValue())
-		}
-		s.metrics.SecretMetrics.SecretGet.Inc(1)
-		// construct the peloton secret proto message and return
-		return &peloton.Secret{
-			Id:   id,
-			Path: pathStr,
-			Value: &peloton.Secret_Value{
-				Data: []byte(dataStr),
-			},
-		}, nil
-	}
-	// If allResults doesn't have any rows, it means
-	// that the secret was not found. Send an error back.
-	s.metrics.SecretMetrics.SecretNotFound.Inc(1)
-	return nil, yarpcerrors.NotFoundErrorf(
-		"Cannot find secret wth id %v",
-		id.GetValue())
 }
 
 // SortedTaskInfoList makes TaskInfo implement sortable interface

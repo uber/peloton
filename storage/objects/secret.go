@@ -18,6 +18,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/storage/objects/base"
 )
@@ -32,14 +33,14 @@ const (
 
 // Init to add the secret object instance to the global list of storage objects
 func init() {
-	Objs = append(Objs, &SecretObject{})
+	Objs = append(Objs, &SecretInfoObject{})
 }
 
-// SecretObject corresponds to a peloton secret. All fields should be exported.
-// SecretObject contains base.Object which has ORM annotations
+// SecretInfoObject corresponds to a peloton secret. All fields should be exported.
+// SecretInfoObject contains base.Object which has ORM annotations
 // that describe the secret_info table and each column name as well as primary
 // key information. This is used by ORM when creating DB queries.
-type SecretObject struct {
+type SecretInfoObject struct {
 	// DB specific annotations
 	base.Object `cassandra:"name=secret_info, primaryKey=((secret_id), valid)"`
 	// SecretID is the ID of the secret being created
@@ -58,25 +59,68 @@ type SecretObject struct {
 	Valid bool `column:"name=valid"`
 }
 
+// SecretInfoOps provides methods for manipulating secret table.
+type SecretInfoOps interface {
+	// Create inserts the SecretInfoObject in the table.
+	CreateSecret(
+		ctx context.Context,
+		jobID string,
+		now time.Time,
+		secretID, secretString, secretPath string,
+	) error
+
+	// Get retrieves the SecretInfoObject from the table.
+	GetSecret(
+		ctx context.Context,
+		secretID string,
+	) (*SecretInfoObject, error)
+
+	// Update modifies the SecretInfoObject in the table.
+	UpdateSecretData(
+		ctx context.Context,
+		secretID, secretString string,
+	) error
+
+	// Delete removes the SecretInfoObject from the table.
+	DeleteSecret(
+		ctx context.Context,
+		secretID string,
+	) error
+}
+
+// secretInfoOps implements SecretInfoOps interface using a particular Store.
+type secretInfoOps struct {
+	store *Store
+}
+
+// NewSecretInfoOps constructs a SecretInfoOps object for provided Store.
+func NewSecretInfoOps(s *Store) SecretInfoOps {
+	return &secretInfoOps{store: s}
+}
+
+// ensure that default implementation (secretInfoOps) satisfies the interface
+var _ SecretInfoOps = (*secretInfoOps)(nil)
+
 // NewSecretObject creates a new secret object
-func NewSecretObject(
-	id *peloton.JobID,
+func newSecretObject(
+	jobID string,
 	now time.Time,
 	secretID, secretString, secretPath string,
-) *SecretObject {
-	return &SecretObject{
+) (*SecretInfoObject, error) {
+	secretInfoObj := &SecretInfoObject{
 		SecretID:     secretID,
-		JobID:        id.GetValue(),
+		JobID:        jobID,
 		Version:      secretVersion0,
 		Valid:        secretValid,
 		Data:         secretString,
 		Path:         secretPath,
 		CreationTime: now,
 	}
+	return secretInfoObj, nil
 }
 
 // ToProto returns the unmarshaled *peloton.Secret
-func (s *SecretObject) ToProto() *peloton.Secret {
+func (s *SecretInfoObject) ToProto() *peloton.Secret {
 	return &peloton.Secret{
 		Id:   &peloton.SecretID{Value: s.SecretID},
 		Path: s.Path,
@@ -87,47 +131,74 @@ func (s *SecretObject) ToProto() *peloton.Secret {
 }
 
 // CreateSecret creates a secret object in db
-func (s *Store) CreateSecret(
+func (s *secretInfoOps) CreateSecret(
 	ctx context.Context,
-	secretObject *SecretObject,
+	jobID string,
+	now time.Time,
+	secretID, secretString, secretPath string,
 ) error {
-	return s.oClient.Create(ctx, secretObject)
+	obj, err := newSecretObject(jobID, now, secretID, secretString, secretPath)
+	if err != nil {
+		s.store.metrics.OrmJobMetrics.SecretInfoCreateFail.Inc(1)
+		return errors.Wrap(err, "Failed to construct SecretInfoObject")
+	}
+	if err = s.store.oClient.Create(ctx, obj); err != nil {
+		s.store.metrics.OrmJobMetrics.SecretInfoCreateFail.Inc(1)
+		return err
+	}
+	s.store.metrics.OrmJobMetrics.SecretInfoCreate.Inc(1)
+	return nil
 }
 
 // GetSecret gets a secret object from db
-func (s *Store) GetSecret(
+func (s *secretInfoOps) GetSecret(
 	ctx context.Context,
 	secretID string,
-) (*SecretObject, error) {
-	secretObject := &SecretObject{
+) (*SecretInfoObject, error) {
+	secretInfoObject := &SecretInfoObject{
 		SecretID: secretID,
 		Valid:    true,
 	}
-	err := s.oClient.Get(ctx, secretObject)
-	return secretObject, err
+	if err := s.store.oClient.Get(ctx, secretInfoObject); err != nil {
+		s.store.metrics.OrmJobMetrics.SecretInfoGetFail.Inc(1)
+		return nil, err
+	}
+	s.store.metrics.OrmJobMetrics.SecretInfoGet.Inc(1)
+	return secretInfoObject, nil
 }
 
 // UpdateSecretData updates a secret data in db
-func (s *Store) UpdateSecretData(
+func (s *secretInfoOps) UpdateSecretData(
 	ctx context.Context,
 	secretID, secretString string,
 ) error {
-	secretObject := &SecretObject{
+	secretInfoObject := &SecretInfoObject{
 		SecretID: secretID,
 		Valid:    true,
 		Data:     secretString,
 	}
-	return s.oClient.Update(ctx, secretObject, "Data")
+	fieldToUpdate := []string{"Data"}
+	if err := s.store.oClient.Update(ctx, secretInfoObject, fieldToUpdate...); err != nil {
+		s.store.metrics.OrmJobMetrics.SecretInfoUpdateFail.Inc(1)
+		return err
+	}
+	s.store.metrics.OrmJobMetrics.SecretInfoUpdate.Inc(1)
+	return nil
 }
 
 // DeleteSecret deletes a secret object in db
-func (s *Store) DeleteSecret(
+func (s *secretInfoOps) DeleteSecret(
 	ctx context.Context,
 	secretID string,
 ) error {
-	secretObject := &SecretObject{
+	secretInfoObject := &SecretInfoObject{
 		SecretID: secretID,
 		Valid:    true,
 	}
-	return s.oClient.Delete(ctx, secretObject)
+	if err := s.store.oClient.Delete(ctx, secretInfoObject); err != nil {
+		s.store.metrics.OrmJobMetrics.SecretInfoDeleteFail.Inc(1)
+		return err
+	}
+	s.store.metrics.OrmJobMetrics.SecretInfoDelete.Inc(1)
+	return nil
 }

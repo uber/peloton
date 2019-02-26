@@ -398,7 +398,7 @@ func main() {
 		jobFactory,
 		store, // store implements TaskStore
 		store, // store implements VolumeStore
-		store, // store implements SecretStore
+		ormStore,
 		rootScope,
 	)
 
@@ -489,7 +489,6 @@ func main() {
 		rootScope,
 		store, // store implements JobStore
 		store, // store implements TaskStore
-		store, // store implements SecretStore
 		ormStore,
 		jobFactory,
 		goalStateDriver,
@@ -500,7 +499,6 @@ func main() {
 
 	stateless.InitV1AlphaJobServiceHandler(
 		dispatcher,
-		store,
 		store,
 		store,
 		store,

@@ -16,71 +16,71 @@ package objects
 
 import (
 	"context"
+	"encoding/base64"
 	"testing"
 	"time"
-
-	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 
 	"github.com/gocql/gocql"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 )
 
-type SecretObjectTestSuite struct {
+type SecretInfoObjectTestSuite struct {
 	suite.Suite
 }
 
-func (suite *SecretObjectTestSuite) SetupTest() {
+func (suite *SecretInfoObjectTestSuite) SetupTest() {
 }
 
 func TestSecretObjectSuite(t *testing.T) {
-	suite.Run(t, new(SecretObjectTestSuite))
+	suite.Run(t, new(SecretInfoObjectTestSuite))
 }
 
-// TestSecretObject create and get from DB
-func (suite *SecretObjectTestSuite) TestSecretObject() {
-	jobID := &peloton.JobID{Value: uuid.New()}
+// TestSecretInfoOps tests SecretObject CRUD operations.
+func (suite *SecretInfoObjectTestSuite) TestSecretInfoOps() {
+	db := NewSecretInfoOps(testStore)
+	ctx := context.Background()
+
+	jobID := uuid.New()
 	secretID := uuid.New()
 	now := time.Now().UTC()
+	testSecretStr := "some secrets"
+	testSecretByteStr := base64.StdEncoding.
+		EncodeToString([]byte(testSecretStr))
+	testSecretPath := "some path"
 
-	expectedSecret := NewSecretObject(
-		jobID, now, secretID, "some data", "path")
-
-	// write the secret object to DB
-	err := testStore.CreateSecret(context.Background(), expectedSecret)
+	// CREATE and GET ops.
+	err := db.CreateSecret(ctx, jobID, now, secretID, testSecretByteStr, testSecretPath)
 	suite.NoError(err)
 
-	// read secret object from DB
-	secret, err := testStore.GetSecret(context.Background(), secretID)
+	secretInfoObj, err := db.GetSecret(ctx, secretID)
 	suite.NoError(err)
-	suite.Equal(secret.SecretID, expectedSecret.SecretID)
-	suite.Equal(secret.JobID, expectedSecret.JobID)
-	suite.Equal(secret.Version, expectedSecret.Version)
-	suite.Equal(secret.Valid, expectedSecret.Valid)
-	suite.Equal(secret.Data, expectedSecret.Data)
-	suite.Equal(secret.Path, expectedSecret.Path)
+	suite.Equal(secretInfoObj.JobID, jobID)
+	suite.Equal(secretInfoObj.SecretID, secretID)
+	suite.Equal(secretInfoObj.Data, testSecretByteStr)
+	suite.Equal(secretInfoObj.Path, testSecretPath)
 
-	// update secret object to DB
-	err = testStore.UpdateSecretData(
-		context.Background(),
-		secretID,
-		"new data")
+	// UPDATE and GET ops.
+	testUpdatedSecretStr := "new secret"
+	testUpdatedSecretByteStr := base64.StdEncoding.
+		EncodeToString([]byte(testUpdatedSecretStr))
+
+	err = db.UpdateSecretData(ctx, secretID, testUpdatedSecretByteStr)
 	suite.NoError(err)
 
-	// read secret object from DB
-	secret, err = testStore.GetSecret(context.Background(), secretID)
+	secretInfoObj, err = db.GetSecret(ctx, secretID)
 	suite.NoError(err)
-	suite.Equal(secret.SecretID, expectedSecret.SecretID)
-	suite.Equal(secret.JobID, expectedSecret.JobID)
-	suite.Equal(secret.Version, expectedSecret.Version)
-	suite.Equal(secret.Valid, expectedSecret.Valid)
-	suite.Equal(secret.Path, expectedSecret.Path)
-	suite.Equal(secret.Data, "new data")
+	suite.Equal(secretInfoObj.JobID, jobID)
+	suite.Equal(secretInfoObj.SecretID, secretID)
+	suite.Equal(secretInfoObj.Data, testUpdatedSecretByteStr)
+	suite.Equal(secretInfoObj.Path, testSecretPath)
 
-	// Delete secret object from DB
-	err = testStore.DeleteSecret(context.Background(), secretID)
+	// DELETE op.
+	err = db.DeleteSecret(ctx, secretID)
 	suite.NoError(err)
-	_, err = testStore.GetSecret(context.Background(), secretID)
+
+	// Not found error, because secret is deleted.
+	_, err = db.GetSecret(ctx, secretID)
 	suite.Error(err)
 	suite.Equal(err, gocql.ErrNotFound)
 }

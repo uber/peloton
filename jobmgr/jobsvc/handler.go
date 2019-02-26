@@ -65,7 +65,6 @@ func InitServiceHandler(
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	secretStore storage.SecretStore,
 	ormStore *ormobjects.Store,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
@@ -77,8 +76,8 @@ func InitServiceHandler(
 	handler := &serviceHandler{
 		jobStore:        jobStore,
 		taskStore:       taskStore,
-		secretStore:     secretStore,
 		jobIndexOps:     ormobjects.NewJobIndexOps(ormStore),
+		secretInfoOps:   ormobjects.NewSecretInfoOps(ormStore),
 		respoolClient:   respool.NewResourceManagerYARPCClient(d.ClientConfig(clientName)),
 		resmgrClient:    resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(clientName)),
 		rootCtx:         context.Background(),
@@ -96,8 +95,8 @@ func InitServiceHandler(
 type serviceHandler struct {
 	jobStore        storage.JobStore
 	taskStore       storage.TaskStore
-	secretStore     storage.SecretStore
 	jobIndexOps     ormobjects.JobIndexOps
+	secretInfoOps   ormobjects.SecretInfoOps
 	respoolClient   respool.ResourceManagerYARPCClient
 	resmgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
 	rootCtx         context.Context
@@ -925,11 +924,22 @@ func (h *serviceHandler) addSecretsToDBAndConfig(
 		}
 		// store secret in DB
 		if update {
-			if err := h.secretStore.UpdateSecret(ctx, secret); err != nil {
+			if err := h.secretInfoOps.UpdateSecretData(
+				ctx,
+				jobID.GetValue(),
+				string(secret.GetValue().GetData()),
+			); err != nil {
 				return err
 			}
 		} else {
-			if err := h.secretStore.CreateSecret(ctx, secret, jobID); err != nil {
+			if err := h.secretInfoOps.CreateSecret(
+				ctx,
+				jobID.GetValue(),
+				time.Now(),
+				secret.Id.GetValue(),
+				string(secret.GetValue().GetData()),
+				secret.Path,
+			); err != nil {
 				return err
 			}
 		}

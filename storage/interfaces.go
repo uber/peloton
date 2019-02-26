@@ -47,7 +47,6 @@ type Store interface {
 	FrameworkInfoStore
 	ResourcePoolStore
 	PersistentVolumeStore
-	SecretStore
 }
 
 // JobStore is the interface to store job states
@@ -260,22 +259,4 @@ type PersistentVolumeStore interface {
 	CreatePersistentVolume(ctx context.Context, volumeInfo *volume.PersistentVolumeInfo) error
 	UpdatePersistentVolume(ctx context.Context, volumeInfo *volume.PersistentVolumeInfo) error
 	GetPersistentVolume(ctx context.Context, volumeID *peloton.VolumeID) (*volume.PersistentVolumeInfo, error)
-}
-
-// SecretStore is the interface to store job secrets.
-type SecretStore interface {
-	// Create a secret described by peloton secret proto message in the database
-	// Returns error in case the storage backend is unable to store the
-	// secret in the database
-	CreateSecret(ctx context.Context, secret *peloton.Secret, id *peloton.JobID) error
-	// Get a secret described by peloton secret id from the database
-	// Returns secret formatted as peloton secret proto message
-	// Returns error in case the storage backend is unable to retrieve the
-	// secret from the database
-	GetSecret(ctx context.Context, id *peloton.SecretID) (*peloton.Secret, error)
-
-	// Update a secret described by peloton secret proto message in the database
-	// Returns error in case the storage backend is unable to store the
-	// secret in the database
-	UpdateSecret(ctx context.Context, secret *peloton.Secret) error
 }

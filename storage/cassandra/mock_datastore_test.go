@@ -247,13 +247,6 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetPersistentVolume() {
 	suite.Error(err)
 }
 
-// TestDataStoreFailureGetSecret tests datastore failures in get secret
-func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetSecret() {
-	_, err := suite.store.GetSecret(
-		context.Background(), &peloton.SecretID{Value: "test"})
-	suite.Error(err)
-}
-
 // TestDataStoreFailureGetUpdate tests datastore failures in get update
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetUpdate() {
 	_, err := suite.store.GetUpdate(

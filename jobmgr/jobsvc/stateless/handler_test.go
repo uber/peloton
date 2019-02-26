@@ -105,10 +105,10 @@ type statelessHandlerTestSuite struct {
 	updateStore     *storemocks.MockUpdateStore
 	listJobsServer  *statelesssvcmocks.MockJobServiceServiceListJobsYARPCServer
 	listPodsServer  *statelesssvcmocks.MockJobServiceServiceListPodsYARPCServer
-	secretStore     *storemocks.MockSecretStore
 	taskStore       *storemocks.MockTaskStore
 	jobIndexOps     *objectmocks.MockJobIndexOps
 	jobNameToIDOps  *objectmocks.MockJobNameToIDOps
+	secretInfoOps   *objectmocks.MockSecretInfoOps
 	activeRMTasks   *activermtaskmocks.MockActiveRMTasks
 }
 
@@ -124,10 +124,10 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.jobIndexOps = objectmocks.NewMockJobIndexOps(suite.ctrl)
 	suite.jobNameToIDOps = objectmocks.NewMockJobNameToIDOps(suite.ctrl)
+	suite.secretInfoOps = objectmocks.NewMockSecretInfoOps(suite.ctrl)
 	suite.respoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.listJobsServer = statelesssvcmocks.NewMockJobServiceServiceListJobsYARPCServer(suite.ctrl)
 	suite.listPodsServer = statelesssvcmocks.NewMockJobServiceServiceListPodsYARPCServer(suite.ctrl)
-	suite.secretStore = storemocks.NewMockSecretStore(suite.ctrl)
 	suite.activeRMTasks = activermtaskmocks.NewMockActiveRMTasks(suite.ctrl)
 	suite.handler = &serviceHandler{
 		jobFactory:      suite.jobFactory,
@@ -138,8 +138,8 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 		taskStore:       suite.taskStore,
 		jobIndexOps:     suite.jobIndexOps,
 		jobNameToIDOps:  suite.jobNameToIDOps,
+		secretInfoOps:   suite.secretInfoOps,
 		respoolClient:   suite.respoolClient,
-		secretStore:     suite.secretStore,
 		rootCtx:         context.Background(),
 		jobSvcCfg: jobsvc.Config{
 			EnableSecrets:  true,
@@ -2166,6 +2166,13 @@ func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsSuccess() {
 	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(jobSpec)
 	suite.NoError(err)
 
+	secret := &v1alphapeloton.Secret{
+		Path: testSecretPath,
+		Value: &v1alphapeloton.Secret_Value{
+			Data: []byte(base64.StdEncoding.EncodeToString(
+				[]byte(testSecretStr))),
+		},
+	}
 	gomock.InOrder(
 		suite.candidate.EXPECT().IsLeader().Return(true),
 
@@ -2182,8 +2189,10 @@ func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsSuccess() {
 				},
 			}, nil),
 
-		suite.secretStore.EXPECT().CreateSecret(
-			gomock.Any(), gomock.Any(), &peloton.JobID{Value: testJobID}).
+		suite.secretInfoOps.EXPECT().CreateSecret(
+			gomock.Any(),
+			// jobID, now, secretID, secretString, secretPath
+			testJobID, gomock.Any(), gomock.Any(), string(secret.Value.Data), testSecretPath).
 			Return(nil),
 
 		suite.jobFactory.EXPECT().
@@ -2207,14 +2216,6 @@ func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsSuccess() {
 				ConfigurationVersion: testConfigurationVersion,
 			}, nil),
 	)
-
-	secret := &v1alphapeloton.Secret{
-		Path: testSecretPath,
-		Value: &v1alphapeloton.Secret_Value{
-			Data: []byte(base64.StdEncoding.EncodeToString(
-				[]byte(testSecretStr))),
-		},
-	}
 
 	// Create a job with a secret
 	request := &statelesssvc.CreateJobRequest{
@@ -2313,7 +2314,13 @@ func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsCreateSecretsFai
 		DefaultSpec: defaultSpec,
 		RespoolId:   respoolID,
 	}
-
+	secret := &v1alphapeloton.Secret{
+		Path: testSecretPath,
+		Value: &v1alphapeloton.Secret_Value{
+			Data: []byte(base64.StdEncoding.EncodeToString(
+				[]byte(testSecretStr))),
+		},
+	}
 	gomock.InOrder(
 		suite.candidate.EXPECT().IsLeader().Return(true),
 
@@ -2330,18 +2337,12 @@ func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsCreateSecretsFai
 				},
 			}, nil),
 
-		suite.secretStore.EXPECT().CreateSecret(
-			gomock.Any(), gomock.Any(), &peloton.JobID{Value: testJobID}).
+		suite.secretInfoOps.EXPECT().CreateSecret(
+			gomock.Any(),
+			// jobID, now, secretID, secretString, secretPath
+			testJobID, gomock.Any(), gomock.Any(), string(secret.Value.Data), testSecretPath).
 			Return(yarpcerrors.InternalErrorf("test error")),
 	)
-
-	secret := &v1alphapeloton.Secret{
-		Path: testSecretPath,
-		Value: &v1alphapeloton.Secret_Value{
-			Data: []byte(base64.StdEncoding.EncodeToString(
-				[]byte(testSecretStr))),
-		},
-	}
 
 	request := &statelesssvc.CreateJobRequest{
 		JobId:   &v1alphapeloton.JobID{Value: testJobID},

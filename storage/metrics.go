@@ -108,6 +108,16 @@ type OrmJobMetrics struct {
 	JobConfigGetFail    tally.Counter
 	JobConfigDelete     tally.Counter
 	JobConfigDeleteFail tally.Counter
+
+	// secret_info
+	SecretInfoCreate     tally.Counter
+	SecretInfoCreateFail tally.Counter
+	SecretInfoGet        tally.Counter
+	SecretInfoGetFail    tally.Counter
+	SecretInfoUpdate     tally.Counter
+	SecretInfoUpdateFail tally.Counter
+	SecretInfoDelete     tally.Counter
+	SecretInfoDeleteFail tally.Counter
 }
 
 // TaskMetrics is a struct for tracking all the task related counters in the storage layer
@@ -587,6 +597,12 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	podEventsFailScope := podEventsScope.Tagged(
 		map[string]string{"result": "fail"})
 
+	secretInfoScope := ormScope.SubScope("secret_info")
+	secretInfoSuccessScope := secretInfoScope.Tagged(
+		map[string]string{"result": "success"})
+	secretInfoFailScope := secretInfoScope.Tagged(
+		map[string]string{"result": "fail"})
+
 	ormJobMetrics := &OrmJobMetrics{
 		JobIndexCreate:     jobIndexSuccessScope.Counter("create"),
 		JobIndexCreateFail: jobIndexFailScope.Counter("create"),
@@ -608,6 +624,15 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobConfigGetFail:    jobConfigFailScope.Counter("get"),
 		JobConfigDelete:     jobConfigSuccessScope.Counter("delete"),
 		JobConfigDeleteFail: jobConfigFailScope.Counter("delete"),
+
+		SecretInfoCreate:     secretInfoSuccessScope.Counter("create"),
+		SecretInfoCreateFail: secretInfoFailScope.Counter("create"),
+		SecretInfoGet:        secretInfoSuccessScope.Counter("get"),
+		SecretInfoGetFail:    secretInfoFailScope.Counter("get"),
+		SecretInfoUpdate:     secretInfoSuccessScope.Counter("update"),
+		SecretInfoUpdateFail: secretInfoFailScope.Counter("update"),
+		SecretInfoDelete:     secretInfoSuccessScope.Counter("delete"),
+		SecretInfoDeleteFail: secretInfoFailScope.Counter("delete"),
 	}
 
 	ormTaskMetrics := &OrmTaskMetrics{
