@@ -27,7 +27,14 @@ $ PELOTON=app make minicluster
 ```
 
 ## Install Peloton CLI
-[TO BE DONE]
+Peloton CLI package will be available, in the mean time please build peloton locally
+```
+$ make
+```
+Peloton CLI is available on
+```
+$ {$home}/bin/peloton
+```
 
 ## Create a resource pool
 A resource pool is required before starting any jobs in a Peloton

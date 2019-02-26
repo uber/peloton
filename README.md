@@ -124,7 +124,7 @@ from source code.
 
 ### Tech Talks
 
-- [KubeCon 2018, Seattle](https://sched.co/GrTx) ([Slides](https://schd.ws/hosted_files/kccna18/29/Peloton_%20KubeCon%202018.pdf))
+- [KubeCon 2018, Seattle](https://sched.co/GrTx) ([Slides](https://schd.ws/hosted_files/kccna18/29/Peloton_%20KubeCon%202018.pdf), [Video](https://www.youtube.com/watch?v=USgbj87Ztlk))
 - [MesosCon 2018, San Francisco](https://sched.co/HYTn)
 - [MesosCon 2017, Los Angeles](https://sched.co/BYaD) ([Slides](http://events17.linuxfoundation.org/sites/events/files/slides/MesosCon_Distributed_Deep_Learning_v4.pdf), [Video](https://www.youtube.com/watch?v=Ktc3GjshHcc))
 
