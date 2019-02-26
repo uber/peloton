@@ -1446,18 +1446,14 @@ func (h *ServiceHandler) queryJobIDs(
 		return []*peloton.JobID{id}, nil
 	}
 
-	req := &statelesssvc.QueryJobsRequest{
-		Spec: &stateless.QuerySpec{
-			Labels: label.BuildPartialAuroraJobKeyLabels(role, env, name),
-		},
-	}
-	resp, err := h.jobClient.QueryJobs(ctx, req)
+	summaries, err := h.queryJobSummaries(ctx, role, env, name)
 	if err != nil {
 		return nil, err
 	}
-	jobIDs := make([]*peloton.JobID, 0, len(resp.GetRecords()))
-	for _, record := range resp.GetRecords() {
-		jobIDs = append(jobIDs, record.GetJobId())
+
+	jobIDs := make([]*peloton.JobID, 0, len(summaries))
+	for _, summary := range summaries {
+		jobIDs = append(jobIDs, summary.GetJobId())
 	}
 	return jobIDs, nil
 }
@@ -1492,16 +1488,47 @@ func (h *ServiceHandler) queryJobSummaries(
 	ctx context.Context,
 	role, env, name string,
 ) ([]*stateless.JobSummary, error) {
+	labels := append(
+		label.BuildPartialAuroraJobKeyLabels(role, env, name),
+		common.BridgeJobLabel,
+	)
+
 	req := &statelesssvc.QueryJobsRequest{
 		Spec: &stateless.QuerySpec{
-			Labels: label.BuildPartialAuroraJobKeyLabels(role, env, name),
+			Labels: labels,
 		},
 	}
 	resp, err := h.jobClient.QueryJobs(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return resp.GetRecords(), nil
+
+	// In peloton, query job by labels is implemented by "string contains",
+	// so need to filter unexpected jobs.
+	var summaries []*stateless.JobSummary
+	for _, s := range resp.GetRecords() {
+		// since we expect bridge-specific label keys to be present at most
+		// once, using a map is good enough here.
+		labelMap := make(map[string]string)
+		for _, l := range s.GetLabels() {
+			labelMap[l.GetKey()] = l.GetValue()
+		}
+
+		match := true
+		for _, el := range labels {
+			v, ok := labelMap[el.GetKey()]
+			if !ok || v != el.GetValue() {
+				match = false
+				break
+			}
+		}
+
+		if match {
+			summaries = append(summaries, s)
+		}
+	}
+
+	return summaries, nil
 }
 
 // getJobIDsFromTaskQuery queries peloton job ids based on aurora TaskQuery.

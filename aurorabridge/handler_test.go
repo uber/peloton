@@ -35,6 +35,7 @@ import (
 	"github.com/uber/peloton/util"
 
 	"github.com/uber/peloton/aurorabridge/atop"
+	"github.com/uber/peloton/aurorabridge/common"
 	"github.com/uber/peloton/aurorabridge/fixture"
 	"github.com/uber/peloton/aurorabridge/label"
 	"github.com/uber/peloton/aurorabridge/mockutil"
@@ -111,7 +112,10 @@ func (suite *ServiceHandlerTestSuite) TestGetJobSummary() {
 	suite.NoError(err)
 	jkLabel := label.NewAuroraJobKey(jobKey)
 
-	ql := label.BuildPartialAuroraJobKeyLabels(role, "", "")
+	ql := append(
+		label.BuildPartialAuroraJobKeyLabels(role, "", ""),
+		common.BridgeJobLabel,
+	)
 	suite.expectQueryJobsWithLabels(ql, []*peloton.JobID{jobID}, jobKey)
 
 	suite.jobClient.EXPECT().
@@ -229,7 +233,10 @@ func (suite *ServiceHandlerTestSuite) TestGetJobs() {
 	suite.NoError(err)
 	jkLabel := label.NewAuroraJobKey(jobKey)
 
-	ql := label.BuildPartialAuroraJobKeyLabels(role, "", "")
+	ql := append(
+		label.BuildPartialAuroraJobKeyLabels(role, "", ""),
+		common.BridgeJobLabel,
+	)
 	suite.expectQueryJobsWithLabels(ql, []*peloton.JobID{jobID}, jobKey)
 
 	suite.jobClient.EXPECT().
@@ -760,8 +767,9 @@ func (suite *ServiceHandlerTestSuite) expectQueryJobsWithLabels(
 	var summaries []*stateless.JobSummary
 	for _, jobID := range jobIDs {
 		summaries = append(summaries, &stateless.JobSummary{
-			JobId: jobID,
-			Name:  atop.NewJobName(jobKey),
+			JobId:  jobID,
+			Name:   atop.NewJobName(jobKey),
+			Labels: labels,
 		})
 	}
 
@@ -917,9 +925,73 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKey()
 	jobID1 := fixture.PelotonJobID()
 	jobID2 := fixture.PelotonJobID()
 
-	labels := label.BuildPartialAuroraJobKeyLabels(role, env, "")
-
+	labels := append(
+		label.BuildPartialAuroraJobKeyLabels(role, env, ""),
+		common.BridgeJobLabel,
+	)
 	suite.expectQueryJobsWithLabels(labels, []*peloton.JobID{jobID1, jobID2}, nil)
+
+	query := &api.TaskQuery{
+		Role:        ptr.String(role),
+		Environment: ptr.String(env),
+	}
+
+	jobIDs, err := suite.handler.getJobIDsFromTaskQuery(suite.ctx, query)
+	suite.NoError(err)
+	suite.Equal(2, len(jobIDs))
+	for _, jobID := range jobIDs {
+		if jobID.Value != jobID1.Value && jobID.Value != jobID2.Value {
+			suite.Fail("unexpected job id: \"%s\"", jobID.Value)
+		}
+	}
+}
+
+// TestGetJobIDsFromTaskQuery_PartialJobKeyFilterUnexpected checks
+// getJobIDsFromTaskQuery returns result when input query only contains
+// partial job key parameters - role, environment, and/or job_name,
+// meanwhile jobs that does not contain expected labels are filtered out.
+func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyFilterUnexpected() {
+	role := "role1"
+	env := "env1"
+	jobID1 := fixture.PelotonJobID()
+	jobID2 := fixture.PelotonJobID()
+	jobID3 := fixture.PelotonJobID()
+
+	labels := append(
+		label.BuildPartialAuroraJobKeyLabels(role, env, ""),
+		common.BridgeJobLabel,
+	)
+
+	var summaries []*stateless.JobSummary
+	for _, jobID := range []*peloton.JobID{jobID1, jobID2} {
+		summaries = append(summaries, &stateless.JobSummary{
+			JobId:  jobID,
+			Name:   atop.NewJobName(nil),
+			Labels: labels,
+		})
+	}
+
+	var unexpctedLabels []*peloton.Label
+	for _, l := range labels {
+		unexpctedLabels = append(unexpctedLabels, &peloton.Label{
+			Key:   l.GetKey(),
+			Value: l.GetValue() + "_unexpcted",
+		})
+	}
+	summaries = append(summaries, &stateless.JobSummary{
+		JobId:  jobID3,
+		Name:   atop.NewJobName(nil),
+		Labels: unexpctedLabels,
+	})
+
+	suite.jobClient.EXPECT().
+		QueryJobs(suite.ctx,
+			&statelesssvc.QueryJobsRequest{
+				Spec: &stateless.QuerySpec{
+					Labels: labels,
+				},
+			}).
+		Return(&statelesssvc.QueryJobsResponse{Records: summaries}, nil)
 
 	query := &api.TaskQuery{
 		Role:        ptr.String(role),
@@ -943,7 +1015,10 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyEr
 	role := "role1"
 	name := "name1"
 
-	labels := label.BuildPartialAuroraJobKeyLabels(role, "", name)
+	labels := append(
+		label.BuildPartialAuroraJobKeyLabels(role, "", name),
+		common.BridgeJobLabel,
+	)
 
 	suite.jobClient.EXPECT().
 		QueryJobs(suite.ctx,
@@ -1547,20 +1622,25 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_WorkflowsNotFound(
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess() {
 	role := "some-role"
 
+	labels := []*peloton.Label{
+		label.NewAuroraJobKeyRole(role),
+		common.BridgeJobLabel,
+	}
+
 	keys := []*api.JobKey{
 		{Role: &role, Environment: ptr.String("env-1"), Name: ptr.String("job-1")},
 		{Role: &role, Environment: ptr.String("env-2"), Name: ptr.String("job-2")},
 	}
 
 	summaries := []*stateless.JobSummary{
-		{JobId: fixture.PelotonJobID(), Name: atop.NewJobName(keys[0])},
-		{JobId: fixture.PelotonJobID(), Name: atop.NewJobName(keys[1])},
+		{JobId: fixture.PelotonJobID(), Name: atop.NewJobName(keys[0]), Labels: labels},
+		{JobId: fixture.PelotonJobID(), Name: atop.NewJobName(keys[1]), Labels: labels},
 	}
 
 	suite.jobClient.EXPECT().
 		QueryJobs(suite.ctx, &statelesssvc.QueryJobsRequest{
 			Spec: &stateless.QuerySpec{
-				Labels: []*peloton.Label{label.NewAuroraJobKeyRole(role)},
+				Labels: labels,
 			},
 		}).
 		Return(&statelesssvc.QueryJobsResponse{

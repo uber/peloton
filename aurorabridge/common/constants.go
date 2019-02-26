@@ -14,6 +14,10 @@
 
 package common
 
+import (
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+)
+
 // Aurora scheduling tiers.
 const (
 	Preemptible = "preemptible"
@@ -23,3 +27,10 @@ const (
 
 // MesosHostAttr is the Mesos attribute for hostname.
 const MesosHostAttr = "host"
+
+// BridgeJobLabel is the common Peloton job level label for all jobs
+// created by aurora bridge.
+var BridgeJobLabel = &peloton.Label{
+	Key:   "aurora_bridge",
+	Value: "com.uber.peloton.internal.aurorabridge",
+}

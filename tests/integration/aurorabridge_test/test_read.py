@@ -193,22 +193,20 @@ def test__start_job_update__get_tasks_without_configs(client):
     for t in tasks:
         assert test_dc_labrat_key == t.assignedTask.task.job
 
-    # TODO(kevinxu): QueryJobs by labels is broken?
     # tests get_tasks_without_configs with role, env
-    #
-    # resp = client.get_tasks_without_configs(api.TaskQuery(
-    #     role=test_dc_labrat_key.role,
-    #     environment=test_dc_labrat_key.environment,
-    # ))
-    # check_response_ok(resp)
-    # result = resp.result
-    # assert result.scheduleStatusResult is not None
-    # tasks = result.scheduleStatusResult.tasks
-    # assert (3 * 3) == len(tasks)
-    # for t in tasks:
-    #     assert test_dc_labrat_key == t.assignedTask.task.job or \
-    #         test_dc_labrat_0_key == t.assignedTask.task.job or \
-    #         test_dc_labrat_1_key == t.assignedTask.task.job
+    resp = client.get_tasks_without_configs(api.TaskQuery(
+        role=test_dc_labrat_key.role,
+        environment=test_dc_labrat_key.environment,
+    ))
+    check_response_ok(resp)
+    result = resp.result
+    assert result.scheduleStatusResult is not None
+    tasks = result.scheduleStatusResult.tasks
+    assert (3 * 3) == len(tasks)
+    for t in tasks:
+        assert test_dc_labrat_key == t.assignedTask.task.job or \
+            test_dc_labrat_0_key == t.assignedTask.task.job or \
+            test_dc_labrat_1_key == t.assignedTask.task.job
 
     # tests get_tasks_without_configs with role
     resp = client.get_tasks_without_configs(api.TaskQuery(

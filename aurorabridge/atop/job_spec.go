@@ -47,6 +47,7 @@ func NewJobSpecFromJobUpdateRequest(
 		label.NewAuroraJobKeyRole(r.GetTaskConfig().GetJob().GetRole()),
 		label.NewAuroraJobKeyEnvironment(r.GetTaskConfig().GetJob().GetEnvironment()),
 		label.NewAuroraJobKeyName(r.GetTaskConfig().GetJob().GetName()),
+		common.BridgeJobLabel,
 	}
 
 	return &stateless.JobSpec{
