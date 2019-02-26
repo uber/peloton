@@ -7,9 +7,8 @@ from tests.integration.aurorabridge_test.util import (
     wait_for_killed,
 )
 
-# TODO(kevinxu): Add back default tag until we figure out why
-# https://code.uberinternal.com/harbormaster/unit/view/4561699401/
-# is failing
+# TODO(kevinxu): Add back default tag until we figure out why _delete_jobs()
+# is failing at some times.
 # pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
 pytestmark = [pytest.mark.aurorabridge]
 
