@@ -1,8 +1,8 @@
 taskConfig:
     job:
         role: test
-        environment: dc
-        name: labrat
+        environment: dc0
+        name: labrat1
     isService: true
     priority: 0
     tier: preemptible
@@ -18,7 +18,7 @@ taskConfig:
                 "cluster": "peloton",
                 "cron_collision_policy": "KILL_EXISTING",
                 "enable_hooks": false,
-                "environment": "dc",
+                "environment": "dc0",
                 "executor_config": {
                     "data": "",
                     "name": "AuroraExecutor"
@@ -48,7 +48,7 @@ taskConfig:
                 },
                 "max_task_failures": 1,
                 "metadata": [],
-                "name": "labrat",
+                "name": "labrat1",
                 "priority": 0,
                 "production": false,
                 "role": "test",

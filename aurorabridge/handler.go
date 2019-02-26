@@ -103,7 +103,10 @@ func (h *ServiceHandler) getJobSummary(
 
 	var jobSummaries []*api.JobSummary
 
-	query := &api.TaskQuery{Role: role}
+	query := &api.TaskQuery{}
+	if role != nil && *role != "" {
+		query.Role = role
+	}
 
 	jobIDs, err := h.getJobIDsFromTaskQuery(ctx, query)
 	if err != nil {
@@ -396,7 +399,10 @@ func (h *ServiceHandler) getJobs(
 	ownerRole *string,
 ) (*api.Result, *auroraError) {
 
-	query := &api.TaskQuery{Role: ownerRole}
+	query := &api.TaskQuery{}
+	if ownerRole != nil && *ownerRole != "" {
+		query.Role = ownerRole
+	}
 
 	jobIDs, err := h.getJobIDsFromTaskQuery(ctx, query)
 	if err != nil {

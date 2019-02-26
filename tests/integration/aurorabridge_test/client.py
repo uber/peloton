@@ -23,6 +23,12 @@ class Client(object):
             ReadOnlyScheduler.getJobUpdateSummaries,
             *args)
 
+    def get_job_summary(self, *args):
+        return self._send(
+            ReadOnlyScheduler,
+            ReadOnlyScheduler.getJobSummary,
+            *args)
+
     def get_jobs(self, *args):
         return self._send(
             ReadOnlyScheduler,

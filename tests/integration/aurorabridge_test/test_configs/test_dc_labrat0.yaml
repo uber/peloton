@@ -2,7 +2,7 @@ taskConfig:
     job:
         role: test
         environment: dc
-        name: labrat
+        name: labrat0
     isService: true
     priority: 0
     tier: preemptible
@@ -48,7 +48,7 @@ taskConfig:
                 },
                 "max_task_failures": 1,
                 "metadata": [],
-                "name": "labrat",
+                "name": "labrat0",
                 "priority": 0,
                 "production": false,
                 "role": "test",

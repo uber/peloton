@@ -8,13 +8,13 @@ taskConfig:
     tier: preemptible
     production: false
     resources:
-        - numCpus: 1
+        - numCpus: 0.25
         - ramMb: 32
         - diskMb: 128
     executorConfig:
         name: AuroraExecutor
-        data:
-            '{
+        data: |-
+            {
                 "cluster": "peloton",
                 "cron_collision_policy": "KILL_EXISTING",
                 "enable_hooks": false,
@@ -77,14 +77,14 @@ taskConfig:
                         }
                     ],
                     "resources": {
-                        "cpu": 1,
+                        "cpu": 0.25,
                         "disk": 134217728,
                         "gpu": 0,
                         "ram": 33554432
                     }
                 },
                 "tier": "preemptible"
-            }'
+            }
 instanceCount: 3
 settings:
     updateGroupSize: 1

@@ -5,7 +5,7 @@ from tests.integration.aurorabridge_test.util import (
     check_response_ok,
     get_job_update_request,
     get_update_status,
-    wait_for_rolled_forward,
+    start_job_update,
     wait_for_update_status,
 )
 
@@ -13,17 +13,16 @@ pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
 
 
 def test__start_job_update_rolled_forward(client):
-    res = client.start_job_update(
-        get_job_update_request('test_dc_labrat.yaml'),
-        'some message')
-    check_response_ok(res)
-    wait_for_rolled_forward(client, res.result.startJobUpdateResult.key)
+    start_job_update(
+        client,
+        'test_dc_labrat.yaml',
+        'start job update test/dc/labrat',
+    )
 
 
 def test__start_job_update_with_pulse(client):
-    res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_pulsed.yaml'),
-        'some message')
+    req = get_job_update_request('test_dc_labrat_pulsed.yaml')
+    res = client.start_job_update(req, 'start pulsed job update test/dc/labrat')
     check_response_ok(res)
     key = res.result.startJobUpdateResult.key
     assert get_update_status(client, key) == \
