@@ -20,29 +20,16 @@ if [[ ! -z ${PRODUCTION_CONFIG} ]]; then
 fi
 
 if [[ $app == "client" ]] ; then
-  exec peloton "$@"
+    exec peloton "$@"
 elif [ ! -z "$secretcfgdir" ]; then
-  if [[ ${env} == "development" ]]; then
-        exec "peloton-${app}" \
-            -c "${cfgdir}/${app}/base.yaml" \
-            -c "${cfgdir}/${app}/${env}.yaml" \
-            -c "/langley/udocker/peloton/current/secrets.yaml" \
-            "$@"
-  else
-        exec "peloton-${app}" \
-            -c "${cfgdir}/${app}/base.yaml" \
-            -c "/langley/udocker/peloton/current/secrets.yaml" \
-            "$@"
-  fi
+    exec "peloton-${app}" \
+        -c "${cfgdir}/${app}/base.yaml" \
+        -c "${cfgdir}/${app}/${env}.yaml" \
+        -c "/langley/udocker/peloton/current/secrets.yaml" \
+        "$@"
 else
-  if [[ ${env} == "development" ]]; then
-        exec "peloton-${app}" \
-            -c "${cfgdir}/${app}/base.yaml" \
-            -c "${cfgdir}/${app}/${env}.yaml" \
-            "$@"
-  else
-        exec "peloton-${app}" \
-            -c "${cfgdir}/${app}/base.yaml" \
-            "$@"
-  fi
+    exec "peloton-${app}" \
+        -c "${cfgdir}/${app}/base.yaml" \
+        -c "${cfgdir}/${app}/${env}.yaml" \
+        "$@"
 fi
