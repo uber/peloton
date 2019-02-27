@@ -208,6 +208,11 @@ func ConvertTaskConfigToPodSpec(taskConfig *task.TaskConfig) *pod.PodSpec {
 						Command:             taskConfig.GetHealthCheck().GetCommandCheck().GetCommand(),
 						UnshareEnvironments: taskConfig.GetHealthCheck().GetCommandCheck().GetUnshareEnvironments(),
 					},
+					HttpCheck: &pod.HealthCheckSpec_HTTPCheck{
+						Scheme: taskConfig.GetHealthCheck().GetHttpCheck().GetScheme(),
+						Port:   taskConfig.GetHealthCheck().GetHttpCheck().GetPort(),
+						Path:   taskConfig.GetHealthCheck().GetHttpCheck().GetPath(),
+					},
 				},
 				Ports: ConvertPortConfigsToPortSpecs(taskConfig.GetPorts()),
 			},
@@ -667,6 +672,14 @@ func ConvertPodSpecToTaskConfig(spec *pod.PodSpec) (*task.TaskConfig, error) {
 			healthCheck.CommandCheck = &task.HealthCheckConfig_CommandCheck{
 				Command:             mainContainer.GetLivenessCheck().GetCommandCheck().GetCommand(),
 				UnshareEnvironments: mainContainer.GetLivenessCheck().GetCommandCheck().GetUnshareEnvironments(),
+			}
+		}
+
+		if mainContainer.GetLivenessCheck().GetHttpCheck() != nil {
+			healthCheck.HttpCheck = &task.HealthCheckConfig_HTTPCheck{
+				Scheme: mainContainer.GetLivenessCheck().GetHttpCheck().GetScheme(),
+				Port:   mainContainer.GetLivenessCheck().GetHttpCheck().GetPort(),
+				Path:   mainContainer.GetLivenessCheck().GetHttpCheck().GetPath(),
 			}
 		}
 

@@ -593,6 +593,19 @@ func (tb *Builder) populateHealthCheck(
 			).(*mesos.Environment)
 		}
 		mh.Command = cmd
+	case task.HealthCheckConfig_HTTP:
+		cc := health.GetHttpCheck()
+		t := mesos.HealthCheck_HTTP
+		mh.Type = &t
+		scheme := cc.GetScheme()
+		port := cc.GetPort()
+		path := cc.GetPath()
+		h := &mesos.HealthCheck_HTTPCheckInfo{
+			Scheme: &scheme,
+			Port:   &port,
+			Path:   &path,
+		}
+		mh.Http = h
 	default:
 		log.WithField("type", health.GetType()).
 			Warn("Unknown health check type")

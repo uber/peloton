@@ -253,6 +253,11 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 		HealthCheck: &task.HealthCheckConfig{
 			Enabled:      false,
 			CommandCheck: &task.HealthCheckConfig_CommandCheck{},
+			HttpCheck: &task.HealthCheckConfig_HTTPCheck{
+				Scheme: "http",
+				Port:   uint32(100),
+				Path:   "/health",
+			},
 		},
 		Ports: []*task.PortConfig{
 			{
@@ -310,6 +315,11 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 				LivenessCheck: &pod.HealthCheckSpec{
 					Enabled:      taskConfig.GetHealthCheck().GetEnabled(),
 					CommandCheck: &pod.HealthCheckSpec_CommandCheck{},
+					HttpCheck: &pod.HealthCheckSpec_HTTPCheck{
+						Scheme: taskConfig.GetHealthCheck().GetHttpCheck().GetScheme(),
+						Port:   taskConfig.GetHealthCheck().GetHttpCheck().GetPort(),
+						Path:   taskConfig.GetHealthCheck().GetHttpCheck().GetPath(),
+					},
 				},
 				Ports: []*pod.PortSpec{
 					{

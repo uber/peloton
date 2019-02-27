@@ -76,10 +76,28 @@ message HealthCheckSpec {
     bool unshare_environments = 2;
   }
 
+  message HTTPCheck {
+    // HTTP health check to be executed.
+    // Sends a GET request to scheme://<host>:port/path. Host is not
+    // configurable and is resolved automatically.
+
+    // Currently http and https are supported.
+    string scheme = 1;
+
+    // Port to send the HTTP GET.
+    uint32 port = 2;
+
+    // The request path.
+    string path = 3;
+  }
+
   HealthCheckType type = 6;
 
   // Only applicable when type is `COMMAND`.
   CommandCheck command_check = 7;
+
+  // Only applicable when type is 'HTTP'.
+  HTTPCheck http_check = 8;
 }
 
 

@@ -440,6 +440,42 @@ func (suite *BuilderTestSuite) TestCommandHealthCheck() {
 	suite.Len(hc.GetEnvironment().GetVariables(), 3)
 }
 
+// This tests task with http health can be created.
+func (suite *BuilderTestSuite) TestHTTPHealthCheck() {
+	numTasks := 1
+	resources := suite.getResources(numTasks)
+	builder := NewBuilder(resources)
+	tid := suite.createTestTaskIDs(numTasks)[0]
+	c := createTestTaskConfigs(numTasks)[0]
+
+	scheme := "http"
+	port := uint32(100)
+	path := "/health"
+	httpCfg := &task.HealthCheckConfig_HTTPCheck{
+		Scheme: scheme,
+		Port:   port,
+		Path:   path,
+	}
+	c.HealthCheck = &task.HealthCheckConfig{
+		Type:      task.HealthCheckConfig_HTTP,
+		HttpCheck: httpCfg,
+	}
+	task := &hostsvc.LaunchableTask{
+		TaskId: tid,
+		Config: c,
+		Ports:  nil,
+		Volume: nil,
+	}
+	info, err := builder.Build(task, nil, nil)
+	suite.NoError(err)
+	suite.Equal(tid, info.GetTaskId())
+	hc := info.GetHealthCheck().GetHttp()
+	suite.NotNil(hc)
+	suite.Equal(scheme, hc.GetScheme())
+	suite.Equal(port, hc.GetPort())
+	suite.Equal(path, hc.GetPath())
+}
+
 func (suite *BuilderTestSuite) TestRevocableTask() {
 	numTasks := 1
 	resources := suite.getResources(numTasks)
