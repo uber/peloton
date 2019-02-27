@@ -355,6 +355,79 @@ func (suite JobKillTestSuite) TestJobKillNoJobRuntime() {
 	suite.Error(err)
 }
 
+// Tests to delete a partially create stateless job if current state is pending
+func (suite JobKillTestSuite) TestJobKillPartiallyCreated_StatelessJob() {
+	cachedTasks := make(map[uint32]cached.Task)
+	mockTasks := make(map[uint32]*cachedmocks.MockTask)
+	for i := uint32(0); i < 1; i++ {
+		cachedTask := cachedmocks.NewMockTask(suite.ctrl)
+		mockTasks[i] = cachedTask
+		cachedTasks[i] = cachedTask
+	}
+
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
+	runtimes[0] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_KILLED,
+		GoalState: pbtask.TaskState_KILLED,
+	}
+
+	jobRuntime := &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_PENDING,
+		GoalState: pbjob.JobState_DELETED,
+	}
+
+	suite.cachedJob.EXPECT().
+		GetJobType().
+		Return(pbjob.JobType_SERVICE).
+		AnyTimes()
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetAllTasks().
+		Return(cachedTasks).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context,
+			jobInfo *pbjob.JobInfo,
+			_ *models.ConfigAddOn,
+			_ cached.UpdateRequest) {
+			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_KILLED)
+		}).
+		Return(nil)
+
+	for i := uint32(0); i < 1; i++ {
+		mockTasks[i].EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(runtimes[i], nil).
+			AnyTimes()
+	}
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
+
+	suite.cachedJob.EXPECT().
+		IsPartiallyCreated(gomock.Any()).
+		Return(true)
+
+	err := JobKill(context.Background(), suite.jobEnt)
+	suite.NoError(err)
+}
+
 // TestJobKillPartiallyCreatedJob tests killing partially created jobs
 func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 	cachedTasks := make(map[uint32]cached.Task)
@@ -378,6 +451,11 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 		State:     pbjob.JobState_INITIALIZED,
 		GoalState: pbjob.JobState_KILLED,
 	}
+
+	suite.cachedJob.EXPECT().
+		GetJobType().
+		Return(pbjob.JobType_BATCH).
+		AnyTimes()
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
@@ -499,6 +577,11 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob_AllTerminated() {
 		State:     pbjob.JobState_INITIALIZED,
 		GoalState: pbjob.JobState_KILLED,
 	}
+
+	suite.cachedJob.EXPECT().
+		GetJobType().
+		Return(pbjob.JobType_BATCH).
+		AnyTimes()
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).

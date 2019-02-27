@@ -1171,8 +1171,8 @@ func (h *serviceHandler) QueryJobs(
 	}
 
 	querySpec := handlerutil.ConvertStatelessQuerySpecToJobQuerySpec(req.GetSpec())
-	log.WithField("spec", querySpec).
-		Info("converted spec")
+	log.WithField("spec", querySpec).Debug("converted spec")
+
 	_, jobSummaries, total, err := h.jobStore.QueryJobs(
 		ctx,
 		respoolID,

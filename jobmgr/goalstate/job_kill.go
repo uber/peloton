@@ -188,9 +188,17 @@ func calculateJobState(
 	// If not all instances have been created,
 	// and all instances to be killed are already in terminal state,
 	// then directly update the job state to KILLED.
+	// Partially create batch job can be killed only on INITIALIZED state.
+	// Partially created stateless job can be killed on
+	// INITIALIZED & PENDING states.
 	if len(runtimeDiffNonTerminatedTasks) == 0 &&
-		jobRuntime.GetState() == job.JobState_INITIALIZED &&
 		cachedJob.IsPartiallyCreated(config) {
+
+		if cachedJob.GetJobType() == job.JobType_BATCH &&
+			jobRuntime.GetState() != job.JobState_INITIALIZED {
+			return job.JobState_KILLING
+		}
+
 		for _, cachedTask := range cachedJob.GetAllTasks() {
 			runtime, err := cachedTask.GetRuntime(ctx)
 			if err != nil || !util.IsPelotonStateTerminal(runtime.GetState()) {
@@ -199,5 +207,6 @@ func calculateJobState(
 		}
 		return job.JobState_KILLED
 	}
+
 	return job.JobState_KILLING
 }
