@@ -14,7 +14,7 @@ ReadOnlyScheduler = api.ReadOnlyScheduler
 
 class Client(object):
 
-    def __init__(self, addr='localhost:8082'):
+    def __init__(self, addr='localhost:5396'):
         self.addr = addr
 
     def get_job_update_summaries(self, *args):

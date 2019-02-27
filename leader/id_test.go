@@ -25,17 +25,17 @@ func TestServiceInstance(t *testing.T) {
 
 	endpoint := Endpoint{
 		Host: "10.102.141.24",
-		Port: 8082,
+		Port: 5396,
 	}
 	aEndpoint := Endpoint{
 		Host: "10.102.141.24",
-		Port: 8082,
+		Port: 5396,
 	}
 	additionalEndpoints["http"] = aEndpoint
 
 	serviceInstance := NewServiceInstance(endpoint, additionalEndpoints)
 
 	// Expected aurora znode format
-	expected := "{\"serviceEndpoint\":{\"host\":\"10.102.141.24\",\"port\":8082},\"additionalEndpoints\":{\"http\":{\"host\":\"10.102.141.24\",\"port\":8082}},\"status\":\"ALIVE\"}"
+	expected := "{\"serviceEndpoint\":{\"host\":\"10.102.141.24\",\"port\":5396},\"additionalEndpoints\":{\"http\":{\"host\":\"10.102.141.24\",\"port\":5396}},\"status\":\"ALIVE\"}"
 	assert.Equal(t, expected, serviceInstance)
 }

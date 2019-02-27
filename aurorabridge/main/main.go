@@ -80,7 +80,7 @@ var (
 	httpPort = app.Flag(
 		"http-port", "Aurora Bridge HTTP port (aurorabridge.http_port override) "+
 			"(set $PORT to override)").
-		Default("8082").
+		Default("5396").
 		Envar("HTTP_PORT").
 		Int()
 
