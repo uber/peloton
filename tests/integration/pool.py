@@ -1,4 +1,5 @@
 import logging
+import time
 
 from client import Client
 from peloton_client.pbgen.peloton.api.v0.respool import respool_pb2 as respool
@@ -35,15 +36,24 @@ class Pool(object):
             request = respool.CreateRequest(
                 config=self.config.respool_config,
             )
-            resp = self.client.respool_svc.CreateResourcePool(
-                request,
-                metadata=self.client.resmgr_metadata,
-                timeout=self.config.rpc_timeout_sec,
-            )
-            assert not resp.HasField('error'), resp
+            deadline = time.time() + self.config.rpc_timeout_sec
+            while time.time() < deadline:
+                resp = self.client.respool_svc.CreateResourcePool(
+                    request,
+                    metadata=self.client.resmgr_metadata,
+                    timeout=self.config.rpc_timeout_sec,
+                )
+                if resp.HasField('error'):
+                    time.sleep(0.5)
+                    continue
+                break
+            else:
+                assert False, resp
             id = resp.result.value
+            log.info('created respool %s (%s)', respool_name, id)
         else:
             id = resp.id.value
+            log.info('found respool %s (%s)', respool_name, id)
 
         assert id
         self.id = id

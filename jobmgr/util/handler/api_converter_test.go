@@ -735,6 +735,7 @@ func (suite *apiConverterTestSuite) TestConvertJobConfigToJobSpec() {
 		},
 		Name:        "testName",
 		Type:        job.JobType_SERVICE,
+		Owner:       "testOwner",
 		OwningTeam:  "team123",
 		LdapGroups:  []string{"peloton"},
 		Description: "test Description",
@@ -769,6 +770,7 @@ func (suite *apiConverterTestSuite) TestConvertJobConfigToJobSpec() {
 	suite.Equal(jobConfig.GetChangeLog().GetUpdatedAt(), jobSpec.GetRevision().GetUpdatedAt())
 	suite.Equal(jobConfig.GetChangeLog().GetUpdatedBy(), jobSpec.GetRevision().GetUpdatedBy())
 	suite.Equal(jobConfig.GetName(), jobSpec.GetName())
+	suite.Equal(jobConfig.GetOwner(), jobSpec.GetOwner())
 	suite.Equal(jobConfig.GetOwningTeam(), jobSpec.GetOwningTeam())
 	suite.Equal(jobConfig.GetLdapGroups(), jobSpec.GetLdapGroups())
 	suite.Equal(jobConfig.GetDescription(), jobSpec.GetDescription())
@@ -822,6 +824,7 @@ func (suite *apiConverterTestSuite) TestConvertJobSpecToJobConfig() {
 			UpdatedBy: "peloton",
 		},
 		Name:        "test-name",
+		Owner:       "test-owner",
 		OwningTeam:  "team123",
 		LdapGroups:  []string{"peloton"},
 		Description: "test description",
@@ -864,6 +867,7 @@ func (suite *apiConverterTestSuite) TestConvertJobSpecToJobConfig() {
 	suite.Equal(jobSpec.GetRevision().GetUpdatedAt(), jobConfig.GetChangeLog().GetUpdatedAt())
 	suite.Equal(jobSpec.GetRevision().GetUpdatedBy(), jobConfig.GetChangeLog().GetUpdatedBy())
 	suite.Equal(jobSpec.GetName(), jobConfig.GetName())
+	suite.Equal(jobSpec.GetOwner(), jobConfig.GetOwner())
 	suite.Equal(jobSpec.GetOwningTeam(), jobConfig.GetOwningTeam())
 	suite.Equal(jobSpec.GetLdapGroups(), jobConfig.GetLdapGroups())
 	suite.Equal(jobSpec.GetDescription(), jobConfig.GetDescription())

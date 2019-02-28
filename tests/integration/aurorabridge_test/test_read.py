@@ -7,10 +7,7 @@ from tests.integration.aurorabridge_test.util import (
     wait_for_killed,
 )
 
-# TODO(kevinxu): Add back default tag until we figure out why _delete_jobs()
-# is failing at some times.
-# pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
-pytestmark = [pytest.mark.aurorabridge]
+pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
 
 
 def test__start_job_update__get_jobs__get_job_summary(client):
@@ -43,7 +40,7 @@ def test__start_job_update__get_jobs__get_job_summary(client):
     assert result.getJobsResult.configs is None or \
         0 == len(result.getJobsResult.configs)
 
-    # create two jobs
+    # create jobs
     test_dc_labrat_key = start_job_update(
         client,
         'test_dc_labrat.yaml',
@@ -92,6 +89,80 @@ def test__start_job_update__get_jobs__get_job_summary(client):
 
 def test__start_job_update__get_tasks_without_configs(client):
     '''
+    test__start_job_update__get_tasks_without_configs tests creating a
+    test job and verifies the fields returned are expected.
+
+    steps:
+    1. start job update for test/dc/labrat, wait for rolled forward
+    2. test get_tasks_with_configs returns fields as expected
+    '''
+
+    # create two jobs
+    job_key = start_job_update(
+        client,
+        'test_dc_labrat.yaml',
+        'start job update test/dc/labrat',
+    ).job
+
+    # query using get_tasks_without_configs
+    resp = client.get_tasks_without_configs(api.TaskQuery(
+        jobKeys=set([job_key]),
+    ))
+    check_response_ok(resp)
+    result = resp.result
+    assert result.scheduleStatusResult is not None
+    tasks = result.scheduleStatusResult.tasks
+
+    # verify result
+    assert 3 == len(tasks)
+    for t in tasks:
+        # ScheduledTask
+        assert api.ScheduleStatus.RUNNING == t.status
+        assert t.ancestorId is None
+
+        # ScheduledTask.TaskEvent
+        assert api.ScheduleStatus.RUNNING == t.taskEvents[-1].status
+        assert "peloton" == t.taskEvents[-1].scheduler
+
+        # ScheduledTask.AssignedTask
+        assert t.assignedTask.taskId is not None
+        assert t.assignedTask.slaveId is not None
+        assert t.assignedTask.slaveHost is not None
+        assert t.assignedTask.instanceId in (0, 1, 2)
+
+        # ScheduledTask.AssignedTask.TaskConfig
+        assert 'test' == t.assignedTask.task.job.role
+        assert 'dc' == t.assignedTask.task.job.environment
+        assert 'labrat' == t.assignedTask.task.job.name
+        assert 'testuser' == t.assignedTask.task.owner.user
+        assert t.assignedTask.task.isService
+        assert 5 == t.assignedTask.task.priority
+        assert 'preemptible' == t.assignedTask.task.tier
+        assert 2 == len(t.assignedTask.task.metadata)
+        for m in t.assignedTask.task.metadata:
+            if 'test_key_1' == m.key:
+                assert 'test_value_1' == m.value
+            elif 'test_key_2' == m.key:
+                assert 'test_value_2' == m.value
+            else:
+                assert False, 'unexpected metadata {}'.format(m)
+        assert 3 == len(t.assignedTask.task.resources)
+        for r in t.assignedTask.task.resources:
+            if r.numCpus > 0:
+                assert 0.25 == r.numCpus
+            elif r.ramMb > 0:
+                assert 32 == r.ramMb
+            elif r.diskMb > 0:
+                assert 128 == r.diskMb
+            else:
+                assert False, 'unexpected resource {}'.format(r)
+        assert 1 == len(t.assignedTask.task.constraints)
+        assert 'host' == list(t.assignedTask.task.constraints)[0].name
+        assert 1 == list(t.assignedTask.task.constraints)[0].constraint.limit.limit
+
+
+def test__start_job_update__get_tasks_without_configs__task_query(client):
+    '''
     test__start_job_update__get_tasks_without_configs tests creating multiple
     jobs and verifies get_tasks_without_configs return the tasks from the
     correct job based on query.
@@ -125,7 +196,7 @@ def test__start_job_update__get_tasks_without_configs(client):
     assert result.scheduleStatusResult.tasks is None or \
         0 == len(result.scheduleStatusResult.tasks)
 
-    # create two jobs
+    # create jobs
     test_dc_labrat_key = start_job_update(
         client,
         'test_dc_labrat.yaml',
@@ -172,8 +243,6 @@ def test__start_job_update__get_tasks_without_configs(client):
     assert (3 * 3) == len(tasks)
 
     for t in tasks:
-        assert api.ScheduleStatus.RUNNING == t.status
-        assert api.ScheduleStatus.RUNNING == t.taskEvents[-1].status
         assert test_dc_labrat_key == t.assignedTask.task.job or \
             test_dc_labrat_0_key == t.assignedTask.task.job or \
             test2_dc2_labrat2_key == t.assignedTask.task.job

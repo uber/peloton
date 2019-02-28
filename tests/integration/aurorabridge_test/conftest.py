@@ -1,3 +1,4 @@
+import grpc
 import time
 
 import pytest
@@ -27,9 +28,20 @@ def _delete_jobs(respool_path='/AuroraBridge',
     # wait for job deletion to complete
     deadline = time.time() + timeout_secs
     while time.time() < deadline:
-        resp = query_jobs(respool_path)
-        if len(resp.records) == 0:
-            return
-        time.sleep(2)
+        try:
+            resp = query_jobs(respool_path)
+            if len(resp.records) == 0:
+                return
+            time.sleep(2)
+        except grpc.RpcError as e:
+            # catch "not-found" error here because QueryJobs endpoint does
+            # two db queries in sequence: "QueryJobs" and "GetUpdate".
+            # However, when we delete a job, updates are deleted first,
+            # there is a slight chance QueryJobs will fail to query the
+            # update, returning "not-found" error.
+            if e.code() == grpc.StatusCode.NOT_FOUND:
+                time.sleep(2)
+                continue
+            raise
 
     assert False, 'timed out waiting for jobs to be deleted'
