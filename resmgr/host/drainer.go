@@ -122,6 +122,11 @@ func (d *Drainer) Stop() error {
 }
 
 func (d *Drainer) performDrainCycle() error {
+	// Clear the set of drainingHosts on every run to not work on stale
+	// set of hosts.
+	// TODO: remove the set altogether since its not doing anything useful.
+	d.drainingHosts.Clear()
+
 	request := &hostsvc.GetDrainingHostsRequest{
 		Limit:   drainingHostsLimit,
 		Timeout: drainingHostsTimeout,
@@ -193,6 +198,8 @@ func (d *Drainer) markHostsDrained(hosts []string) error {
 				})
 			for _, host := range response.GetMarkedHosts() {
 				d.drainingHosts.Remove(host)
+				log.WithField("hostname", host).
+					Info("successfully marked host as drained, removing from queue")
 			}
 			return err
 		},
@@ -201,8 +208,9 @@ func (d *Drainer) markHostsDrained(hosts []string) error {
 			time.Duration(markHostDrainedBackoffRetryInterval),
 		),
 		func(error) bool {
-			return true
+			return true // isRetryable
 		},
 	)
+
 	return err
 }

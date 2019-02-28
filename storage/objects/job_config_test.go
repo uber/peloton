@@ -120,8 +120,8 @@ func (s *JobConfigObjectTestSuite) buildConfig() {
 		LdapGroups:  []string{"compute", "infra"},
 		Description: "simple job",
 		Labels: []*peloton.Label{
-			&peloton.Label{Key: "org", Value: "peloton"},
-			&peloton.Label{Key: "rack", Value: "top"},
+			{Key: "org", Value: "peloton"},
+			{Key: "rack", Value: "top"},
 		},
 		InstanceCount: 10,
 		DefaultConfig: &task.TaskConfig{
@@ -132,13 +132,13 @@ func (s *JobConfigObjectTestSuite) buildConfig() {
 		},
 		RespoolID: &peloton.ResourcePoolID{Value: "infinite"},
 		InstanceConfig: map[uint32]*task.TaskConfig{
-			2: &task.TaskConfig{
+			2: {
 				Name: "two",
 				Command: &mesos_v1.CommandInfo{
 					Value: &cmd2,
 				},
 			},
-			5: &task.TaskConfig{Name: "five"},
+			5: {Name: "five"},
 		},
 	}
 
