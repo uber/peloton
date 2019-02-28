@@ -90,14 +90,17 @@ func (suite *DrainerTestSuite) SetupTest() {
 		Hostname: hostname,
 	}
 
+	suite.addTaskToTracker(t)
+	suite.hostnames = []string{hostname}
+}
+
+func (suite *DrainerTestSuite) addTaskToTracker(t *resmgr.Task) {
 	mockRespool := res_mocks.NewMockResPool(suite.mockCtrl)
 	mockRespool.EXPECT().GetPath().Return("mockRespoolPath")
 	suite.tracker.AddTask(
 		t, suite.eventStreamHandler,
 		mockRespool,
 		&rm_task.Config{})
-
-	suite.hostnames = []string{hostname}
 }
 
 func TestDrainer(t *testing.T) {
@@ -152,22 +155,40 @@ func (suite *DrainerTestSuite) TestDrainCycle_EnqueueError() {
 }
 
 func (suite *DrainerTestSuite) TestDrainCycle() {
-	suite.mockHostmgr.EXPECT().
-		GetDrainingHosts(gomock.Any(), gomock.Any()).
-		Return(&hostsvc.GetDrainingHostsResponse{
-			Hostnames: suite.hostnames,
-		}, nil)
+	suite.tracker.Clear()
+
 	suite.preemptor.EXPECT().
 		EnqueueTasks(gomock.Any(), gomock.Any()).
-		Return(nil)
-	err := suite.drainer.performDrainCycle()
-	suite.NoError(err)
-	suite.Len(suite.drainer.drainingHosts.ToSlice(), len(suite.hostnames))
-	for _, host := range suite.hostnames {
-		suite.Equal(true, suite.drainer.drainingHosts.Contains(host))
+		Return(nil).Times(2)
+
+	// simulate 2 cycles
+	for i := 0; i < 2; i++ {
+		// add tasks to tracker
+		hostname := fmt.Sprintf("hostname-%d", i)
+		suite.addTaskToTracker(&resmgr.Task{
+			Name:     taskName,
+			JobId:    &peloton.JobID{Value: "job1"},
+			Id:       &peloton.TaskID{Value: taskName},
+			Hostname: hostname,
+		})
+		hosts := []string{hostname}
+
+		suite.mockHostmgr.EXPECT().
+			GetDrainingHosts(gomock.Any(), gomock.Any()).
+			Return(&hostsvc.GetDrainingHostsResponse{
+				Hostnames: hosts,
+			}, nil).Times(1)
+
+		err := suite.drainer.performDrainCycle()
+		suite.NoError(err)
+
+		// the drainer should only have the newest host.
+		suite.Len(suite.drainer.drainingHosts.ToSlice(), len(suite.hostnames))
+		for _, host := range hosts {
+			suite.Equal(true, suite.drainer.drainingHosts.Contains(host))
+		}
 	}
 }
-
 func (suite *DrainerTestSuite) TestDrainCycle_NoHostsToDrain() {
 	suite.mockHostmgr.EXPECT().
 		GetDrainingHosts(gomock.Any(), gomock.Any()).
@@ -195,18 +216,4 @@ func (suite *DrainerTestSuite) TestDrainCycle_MarkHostsDrained() {
 		Return(&hostsvc.MarkHostsDrainedResponse{}, nil)
 	err := suite.drainer.performDrainCycle()
 	suite.NoError(err)
-}
-
-func (suite *DrainerTestSuite) TestDrainCycle_MarkHostsDrainedError() {
-	suite.mockHostmgr.EXPECT().
-		GetDrainingHosts(gomock.Any(), gomock.Any()).
-		Return(&hostsvc.GetDrainingHostsResponse{
-			Hostnames: []string{"dummyhost"},
-		}, nil)
-	suite.mockHostmgr.EXPECT().
-		MarkHostsDrained(gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("fake MarkHostsDrained error")).
-		Times(markHostDrainedBackoffRetryCount)
-	err := suite.drainer.performDrainCycle()
-	suite.Error(err)
 }
