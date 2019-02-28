@@ -19,6 +19,9 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
+	"github.com/uber/peloton/aurorabridge/label"
 	"github.com/uber/peloton/aurorabridge/opaquedata"
 	"github.com/uber/peloton/util/randutil"
 
@@ -78,4 +81,13 @@ func PelotonWorkflowInfo() *stateless.WorkflowInfo {
 		Status:     &stateless.WorkflowStatus{State: s},
 		OpaqueData: PelotonOpaqueData(),
 	}
+}
+
+// DefaultPelotonJobLabels returns a list of default labels for peloton jobs
+func DefaultPelotonJobLabels(jobKey *api.JobKey) []*peloton.Label {
+	mdl, err := label.NewAuroraMetadata(AuroraMetadata())
+	if err != nil {
+		panic(err)
+	}
+	return []*peloton.Label{mdl, label.NewAuroraJobKey(jobKey)}
 }

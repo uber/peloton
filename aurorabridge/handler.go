@@ -181,15 +181,6 @@ func (h *ServiceHandler) getTasksWithoutConfigs(
 ) (*api.Result, *auroraError) {
 
 	var scheduledTasks []*api.ScheduledTask
-	var podStates []pod.PodState
-
-	for s := range query.GetStatuses() {
-		p, err := atop.NewPodState(s)
-		if err != nil {
-			return nil, auroraErrorf("new pod state: %s", err)
-		}
-		podStates = append(podStates, p)
-	}
 
 	jobIDs, err := h.getJobIDsFromTaskQuery(ctx, query)
 	if err != nil {
@@ -207,22 +198,22 @@ func (h *ServiceHandler) getTasksWithoutConfigs(
 				jobID.GetValue(), err)
 		}
 
-		// TODO(kevinxu): QueryPods api only returns pods from latest run,
-		// while aurora returns tasks from all previous runs. Do we need
-		// to make it consistent with aurora's behavior?
 		pods, err := h.queryPods(
 			ctx,
 			jobID,
-			podStates,
 			jobInfo.GetSpec().GetInstanceCount(),
 		)
 		if err != nil {
 			return nil, auroraErrorf(
-				"query pods for job id %q with pod states %q: %s",
-				jobID.GetValue(), podStates, err)
+				"query pods for job id %q: %s", jobID.GetValue(), err)
 		}
 
-		tasks, err := h.getScheduledTasks(ctx, jobInfo, pods)
+		tasks, err := h.getScheduledTasks(
+			ctx,
+			jobInfo,
+			pods,
+			&taskFilter{statuses: query.GetStatuses()},
+		)
 		if err != nil {
 			return nil, auroraErrorf("get tasks without configs: %s", err)
 		}
@@ -236,12 +227,27 @@ func (h *ServiceHandler) getTasksWithoutConfigs(
 	}, nil
 }
 
+type taskFilter struct {
+	statuses map[api.ScheduleStatus]struct{}
+}
+
+// include returns true if s is allowed by the filter.
+func (f *taskFilter) include(t *api.ScheduledTask) bool {
+	if len(f.statuses) > 0 {
+		if _, ok := f.statuses[t.GetStatus()]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // getScheduledTasks generates a list of Aurora ScheduledTask in a worker
 // pool.
 func (h *ServiceHandler) getScheduledTasks(
 	ctx context.Context,
 	jobInfo *stateless.JobInfo,
 	podInfos []*pod.PodInfo,
+	filter *taskFilter,
 ) ([]*api.ScheduledTask, error) {
 
 	var inputs []interface{}
@@ -258,6 +264,8 @@ func (h *ServiceHandler) getScheduledTasks(
 		var ts []*api.ScheduledTask
 		podName := podInfo.GetSpec().GetPodName()
 
+		// when PodRunsDepth set to 1, query only current run pods, when set
+		// to larger than 1, will query current plus previous run pods
 		for i := 0; i < h.config.PodRunsDepth; i++ {
 			var ancestorID *string
 			var podID *peloton.PodID
@@ -288,16 +296,21 @@ func (h *ServiceHandler) getScheduledTasks(
 			}
 
 			var t *api.ScheduledTask
+
 			if i >= 1 {
 				t, err = ptoa.NewScheduledTaskForPrevRun(podEvents)
 			} else {
 				t, err = ptoa.NewScheduledTask(jobInfo, podInfo, podEvents)
 			}
+
 			if err != nil {
 				return nil, fmt.Errorf(
 					"new scheduled task: %s", err)
 			}
-			ts = append(ts, t)
+
+			if filter.include(t) {
+				ts = append(ts, t)
+			}
 		}
 		return ts, nil
 	}
@@ -355,7 +368,6 @@ func (h *ServiceHandler) getConfigSummary(
 	podInfos, err := h.queryPods(
 		ctx,
 		jobID,
-		nil,
 		jobInfo.GetSpec().GetInstanceCount())
 	if err != nil {
 		return nil, auroraErrorf("unable to query pods using jobID: %s", err)
@@ -1677,13 +1689,11 @@ func (h *ServiceHandler) getJobAndWorkflow(
 func (h *ServiceHandler) queryPods(
 	ctx context.Context,
 	jobID *peloton.JobID,
-	states []pod.PodState,
 	limit uint32,
 ) ([]*pod.PodInfo, error) {
 	req := &statelesssvc.QueryPodsRequest{
 		JobId: jobID,
 		Spec: &pod.QuerySpec{
-			PodStates: states,
 			Pagination: &pbquery.PaginationSpec{
 				Limit: limit,
 			},

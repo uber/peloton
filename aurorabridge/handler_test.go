@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/pborman/uuid"
@@ -105,12 +106,9 @@ func (suite *ServiceHandlerTestSuite) TestGetJobSummary() {
 	role := "role1"
 	jobKey := fixture.AuroraJobKey()
 	jobID := fixture.PelotonJobID()
+	labels := fixture.DefaultPelotonJobLabels(jobKey)
 	instanceCount := uint32(1)
 	podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
-
-	mdLabel, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
-	suite.NoError(err)
-	jkLabel := label.NewAuroraJobKey(jobKey)
 
 	ql := append(
 		label.BuildPartialAuroraJobKeyLabels(role, "", ""),
@@ -130,7 +128,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobSummary() {
 					InstanceCount: instanceCount,
 					DefaultSpec: &pod.PodSpec{
 						PodName:    podName,
-						Labels:     []*peloton.Label{mdLabel, jkLabel},
+						Labels:     labels,
 						Containers: []*pod.ContainerSpec{{}},
 					},
 				},
@@ -198,6 +196,7 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
 		[]*peloton.PodName{{Value: podName}},
 		[]*peloton.Label{mdLabel},
 		entityVersion,
+		1,
 	)
 	suite.jobClient.EXPECT().
 		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
@@ -1065,6 +1064,7 @@ func (suite *ServiceHandlerTestSuite) expectQueryPods(
 	podNames []*peloton.PodName,
 	labels []*peloton.Label,
 	entityVersion *peloton.EntityVersion,
+	currentRunID int,
 ) {
 	var pods []*pod.PodInfo
 	for _, podName := range podNames {
@@ -1075,7 +1075,7 @@ func (suite *ServiceHandlerTestSuite) expectQueryPods(
 				Containers: []*pod.ContainerSpec{{}},
 			},
 			Status: &pod.PodStatus{
-				PodId:   &peloton.PodID{Value: podName.GetValue() + "-1"},
+				PodId:   &peloton.PodID{Value: podName.GetValue() + "-" + strconv.Itoa(currentRunID)},
 				Host:    "peloton-host-0",
 				State:   pod.PodState_POD_STATE_RUNNING,
 				Version: entityVersion,
@@ -1106,11 +1106,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismSucc
 	jobKey := query.GetJobKeys()[0]
 	jobID := fixture.PelotonJobID()
 	entityVersion := fixture.PelotonEntityVersion()
-
-	mdl, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
-	suite.NoError(err)
-	jkl := label.NewAuroraJobKey(jobKey)
-	labels := []*peloton.Label{mdl, jkl}
+	labels := fixture.DefaultPelotonJobLabels(jobKey)
 
 	suite.expectGetJob(jobKey, jobID, 1000)
 
@@ -1139,7 +1135,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismSucc
 			}, nil)
 	}
 
-	suite.expectQueryPods(jobID, podNames, labels, entityVersion)
+	suite.expectQueryPods(jobID, podNames, labels, entityVersion, 1)
 
 	resp, err := suite.handler.GetTasksWithoutConfigs(suite.ctx, query)
 	suite.NoError(err)
@@ -1154,11 +1150,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismFail
 	jobKey := query.GetJobKeys()[0]
 	jobID := fixture.PelotonJobID()
 	entityVersion := fixture.PelotonEntityVersion()
-
-	mdl, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
-	suite.NoError(err)
-	jkl := label.NewAuroraJobKey(jobKey)
-	labels := []*peloton.Label{mdl, jkl}
+	labels := fixture.DefaultPelotonJobLabels(jobKey)
 
 	suite.expectGetJob(jobKey, jobID, 1000)
 
@@ -1199,13 +1191,177 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismFail
 			MaxTimes(1)
 	}
 
-	suite.expectQueryPods(jobID, podNames, labels, entityVersion)
+	suite.expectQueryPods(jobID, podNames, labels, entityVersion, 1)
 
 	resp, err := suite.handler.GetTasksWithoutConfigs(suite.ctx, query)
 	suite.NoError(err)
 	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
 	suite.Len(resp.GetResult().GetScheduleStatusResult().GetTasks(), 0)
 	suite.NotEmpty(resp.GetDetails())
+}
+
+type podRun struct {
+	runID int
+}
+
+// TestGetTasksWithoutConfigs_QueryPreviousRuns tests GetTasksWithoutConfig
+// returns pods from previous runs correctly based on PodRunsDepth config
+func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRuns() {
+	query := fixture.AuroraTaskQuery()
+	jobKey := query.GetJobKeys()[0]
+	query.Statuses = map[api.ScheduleStatus]struct{}{
+		api.ScheduleStatusRunning: struct{}{},
+	}
+	jobID := fixture.PelotonJobID()
+	entityVersion := fixture.PelotonEntityVersion()
+	labels := fixture.DefaultPelotonJobLabels(jobKey)
+
+	// Sets up jobKey to jobID mapping, and returns a basic JobInfo
+	// for the specific jobID
+	suite.expectGetJob(jobKey, jobID, 2)
+
+	// Sets up GetPodEvents queries for all the pods (pod 0 and 1) from
+	// all the runs (run 1, 2, 3) - PodEvent will be used to construct
+	// aurora ScheduledTask struct
+	expectPods := []struct {
+		instanceID     string
+		runID          string
+		prevRunID      string
+		currentRun     bool
+		taskState      task.TaskState
+		expectInResult bool
+	}{
+		{
+			// pod 0 latest run
+			// expect to be included in output
+			instanceID:     "0",
+			runID:          "3",
+			prevRunID:      "2",
+			currentRun:     true,
+			taskState:      task.TaskState_RUNNING,
+			expectInResult: true,
+		},
+		{
+			// pod 0 previous run
+			// expect to be included in output since PodRunsDepth = 2
+			instanceID:     "0",
+			runID:          "2",
+			prevRunID:      "1",
+			currentRun:     false,
+			taskState:      task.TaskState_RUNNING,
+			expectInResult: true,
+		},
+		{
+			// pod 0 oldest run
+			// do not expect to be included in output since PodRunsDepth = 2
+			instanceID:     "0",
+			runID:          "1",
+			prevRunID:      "",
+			currentRun:     false,
+			taskState:      task.TaskState_RUNNING,
+			expectInResult: false,
+		},
+		{
+			// pod 1 latest run
+			// expect to be included in output
+			instanceID:     "1",
+			runID:          "3",
+			prevRunID:      "2",
+			currentRun:     true,
+			taskState:      task.TaskState_RUNNING,
+			expectInResult: true,
+		},
+		{
+			// pod 1 previous run
+			// do not expect to be included in output since task state is FAILED
+			instanceID:     "1",
+			runID:          "2",
+			prevRunID:      "1",
+			currentRun:     false,
+			taskState:      task.TaskState_FAILED,
+			expectInResult: false,
+		},
+		{
+			// pod 1 oldest run
+			// do not expect to be included in output since PodRunsDepth = 2
+			instanceID:     "1",
+			runID:          "1",
+			prevRunID:      "",
+			currentRun:     false,
+			taskState:      task.TaskState_RUNNING,
+			expectInResult: false,
+		},
+	}
+
+	expectedPodNames := make(map[string]struct{})
+	expectedTaskIds := make(map[string]struct{})
+
+	for _, e := range expectPods {
+		podName := &peloton.PodName{Value: jobID.GetValue() + "-" + e.instanceID}
+		expectedPodNames[podName.GetValue()] = struct{}{}
+
+		podID := &peloton.PodID{Value: podName.GetValue() + "-" + e.runID}
+
+		var prevPodID *peloton.PodID
+		if e.prevRunID != "" {
+			prevPodID = &peloton.PodID{Value: podName.GetValue() + "-" + e.prevRunID}
+		}
+
+		if e.expectInResult {
+			expectedTaskIds[podID.GetValue()] = struct{}{}
+		}
+
+		podEvents := []*pod.PodEvent{
+			{
+				PodId:       podID,
+				PrevPodId:   prevPodID,
+				Timestamp:   "2019-01-03T22:14:58Z",
+				Message:     "",
+				ActualState: e.taskState.String(),
+				Hostname:    "peloton-host-0",
+			},
+		}
+
+		if e.currentRun {
+			suite.podClient.EXPECT().
+				GetPodEvents(gomock.Any(), &podsvc.GetPodEventsRequest{
+					PodName: podName,
+				}).
+				Return(&podsvc.GetPodEventsResponse{
+					Events: podEvents,
+				}, nil)
+		} else {
+			suite.podClient.EXPECT().
+				GetPodEvents(gomock.Any(), &podsvc.GetPodEventsRequest{
+					PodName: podName,
+					PodId:   podID,
+				}).
+				Return(&podsvc.GetPodEventsResponse{
+					Events: podEvents,
+				}, nil).
+				MaxTimes(1)
+		}
+	}
+
+	// Sets up QueryPods for the specific jobID - the result
+	// contains a list of pods from current run
+	var podNames []*peloton.PodName
+	for p := range expectedPodNames {
+		podNames = append(podNames, &peloton.PodName{Value: p})
+	}
+	suite.expectQueryPods(jobID, podNames, labels, entityVersion, 2)
+
+	resp, err := suite.handler.GetTasksWithoutConfigs(suite.ctx, query)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+	// Expect 3 tasks: 2 instances from current + one previous run (4)
+	// minus one failed task (1)
+	suite.Len(resp.GetResult().GetScheduleStatusResult().GetTasks(), 3)
+	for _, t := range resp.GetResult().GetScheduleStatusResult().GetTasks() {
+		suite.Equal(api.ScheduleStatusRunning, t.GetStatus())
+		_, ok := expectedTaskIds[t.GetAssignedTask().GetTaskId()]
+		suite.True(ok)
+	}
 }
 
 // Ensures that KillTasks maps to StopPods correctly.
