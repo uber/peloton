@@ -1,0 +1,381 @@
+/**
+ *  Resource Pool Manager API
+ */
+
+
+syntax = "proto3";
+
+package peloton.api.v0.respool;
+
+option go_package = "peloton/api/v0/respool";
+option java_package = "peloton.api.v0.respool";
+
+import "peloton/api/v0/peloton.proto";
+import "peloton/api/v0/changelog/changelog.proto";
+
+/**
+ *   A fully qualified path to a resource pool in a resource pool hierrarchy.
+ *   The path to a resource pool can be defined as an absolute path,
+ *   starting from the root node and separated by a slash.
+ *
+ *   The resource hierarchy is anchored at a node called the root,
+ *   designated by a slash "/".
+ *
+ *   For the below resource hierarchy ; the "compute" resource pool would be
+ *   desgignated by path: /infrastructure/compute
+ *               root
+ *                ├─ infrastructure
+ *                │  └─ compute
+ *                └─ marketplace
+ */
+message ResourcePoolPath {
+  string value = 1;
+}
+
+/**
+ *  Resource configuration for a resource
+ */
+message ResourceConfig {
+
+  // Type of the resource
+  string kind = 1;
+
+  // Reservation/min of the resource
+  double reservation = 2;
+
+  // Limit of the resource
+  double limit = 3;
+
+  // Share on the resource pool
+  double share = 4;
+
+  // ReservationType indicates the the type of reservation
+  // There are two kind of reservation
+  // 1. ELASTIC
+  // 2. STATIC
+  ReservationType type = 5;
+}
+
+/**
+  * ReservationType indicates reservation type for the resourcepool
+  */
+enum ReservationType {
+  UNKNOWN_TYPE = 0;
+
+  // ELASTIC reservation enables resource pool to be elastic
+  // in reservation , which means other resource pool
+  // can take resources from this resource pool as well
+  // as this resource pool also can take resources from
+  // any other resource pool. This is the by default behavior
+  // for the resource pool
+  ELASTIC = 1;
+
+  // STATIC reservation enables resource pool to be static
+  // in reservation , which means irrespective of the demand
+  // this resource pool will have atleast reservation as entitlement
+  // value. No other resource pool can take resources from this
+  // resource pool. If demand for this resource pool is high
+  // it can take resources from other resource pools.
+  // By default value for reservation type ELASTIC.
+  STATIC = 2;
+}
+
+/**
+  * Scheduling policy for Resource Pool.
+  */
+enum SchedulingPolicy {
+  UNKNOWN = 0;
+
+  // This scheduling policy will return item for highest priority in FIFO order
+  PriorityFIFO = 1;
+}
+
+/**
+ *  Resource Pool configuration
+ */
+message ResourcePoolConfig {
+
+  // Change log entry of the Resource Pool config
+  // TODO use peloton.Changelog
+  changelog.ChangeLog changeLog = 1;
+
+  // Name of the resource pool
+  string name = 2;
+
+  // Owning team of the pool
+  string owningTeam = 3;
+
+  // LDAP groups of the pool
+  repeated string ldapGroups = 4;
+
+  // Description of the resource pool
+  string description = 5;
+
+  // Resource config of the Resource Pool
+  repeated ResourceConfig resources = 6;
+
+  // Resource Pool's parent
+  peloton.ResourcePoolID parent = 7;
+
+  // Task Scheduling policy
+  SchedulingPolicy policy = 8;
+
+  // The controller limit for this resource pool
+  ControllerLimit controllerLimit = 9;
+
+  // Cap on max non-slack resources[mem,disk] in percentage
+  // that can be used by revocable task.
+  SlackLimit slackLimit = 10;
+}
+
+// The max limit of resources `CONTROLLER`(see TaskType) tasks can use in
+// this resource pool. This is defined as a percentage of the resource pool's
+// reservation. If undefined there is no maximum limit for controller tasks
+// i.e. controller tasks will not be treated differently. For eg if the
+// resource pool's reservation is defined as:
+//
+//      cpu:100
+//      mem:1000
+//      disk:1000
+//      gpu:10
+//
+// And the ControllerLimit = 10 ,Then the maximum resources the controller
+// tasks can use is 10% of the reservation, i.e.
+//
+//      cpu:10
+//      mem:100
+//      disk:100
+//      gpu:1
+//
+message ControllerLimit {
+  double maxPercent = 1 ;
+}
+
+// The max limit of resources `REVOCABLE`(see TaskType) tasks can use in
+// this resource pool. This is defined as a percentage of the resource pool's
+// reservation. If undefined there is no maximum limit for revocable tasks
+// i.e. revocable tasks will not be treated differently. For eg if the
+// resource pool's reservation is defined as:
+//
+//      cpu:100
+//      mem:1000
+//      disk:1000
+//
+// And the SlackLimit = 10 ,Then the maximum resources the revocable
+// tasks can use is 10% of the reservation, i.e.
+//
+//      mem:100
+//      disk:100
+//
+// For cpu, it will use revocable resources.
+message SlackLimit {
+  double maxPercent = 1 ;
+}
+
+message ResourceUsage {
+  // Type of the resource
+  string kind = 1;
+
+  // Allocation of the resource
+  double allocation = 2;
+
+  // slack is the resource which is allocated
+  // but not used and mesos will give those resources as
+  // revocable offers
+  double slack = 3;
+}
+
+message ResourcePoolInfo {
+  // Resource Pool Id
+  peloton.ResourcePoolID id = 1;
+
+  // ResourcePool config
+  ResourcePoolConfig config = 2;
+
+  // Resource Pool's parent
+  //TODO: parent duplicated from ResourcePoolConfig
+  peloton.ResourcePoolID parent = 3;
+
+  // Resource Pool's children
+  repeated peloton.ResourcePoolID children = 4;
+
+  // Resource usage for each resource kind
+  repeated ResourceUsage usage = 5;
+
+  // Resource Pool Path
+  ResourcePoolPath path = 6;
+}
+
+/**
+ *  DEPRECATED by peloton.api.v0.respool.svc.ResourcePoolService
+ *  Resource Manager service interface
+ */
+service ResourceManager
+{
+  // Create a resource pool entity for a given config
+  rpc CreateResourcePool(CreateRequest) returns (CreateResponse);
+
+  // Get the resource pool entity
+  rpc GetResourcePool(GetRequest) returns (GetResponse);
+
+  // Delete a resource pool entity
+  rpc DeleteResourcePool(DeleteRequest) returns (DeleteResponse);
+
+  // modify a resource pool entity
+  rpc UpdateResourcePool(UpdateRequest) returns (UpdateResponse);
+
+  // Lookup the resource pool ID for a given resource pool path
+  rpc LookupResourcePoolID(LookupRequest) returns (LookupResponse);
+
+  // Query the resource pool.
+  rpc Query(QueryRequest) returns (QueryResponse);
+}
+
+// DEPRECATED by google.rpc.ALREADY_EXISTS error
+message ResourcePoolAlreadyExists {
+  peloton.ResourcePoolID id = 1;
+  string message = 2;
+}
+
+// DEPRECATED by google.rpc.ALREADY_EXISTS error
+message InvalidResourcePoolConfig {
+  peloton.ResourcePoolID id = 1;
+  string message = 2;
+}
+
+// DEPRECATED by google.rpc.NOT_FOUND error
+message ResourcePoolNotFound {
+  peloton.ResourcePoolID id = 1;
+  string message = 2;
+}
+
+// DEPRECATED by google.rpc.NOT_FOUND error
+message ResourcePoolPathNotFound {
+  ResourcePoolPath path = 1;
+  string message = 2;
+}
+
+// DEPRECATED by google.rpc.INVALID_ARGUMENT error
+message InvalidResourcePoolPath {
+  ResourcePoolPath path = 1;
+  string message = 2;
+}
+
+// DEPRECATED by google.rpc.FAILED_PRECONDITION error
+message ResourcePoolIsBusy {
+  peloton.ResourcePoolID id = 1;
+  string message = 2;
+}
+
+// DEPRECATED by google.rpc.INVALID_ARGUMENT error
+message ResourcePoolIsNotLeaf {
+  peloton.ResourcePoolID id = 1;
+  string message = 2;
+}
+
+// DEPRECATED by google.rpc.INTERNAL error
+message ResourcePoolNotDeleted {
+  peloton.ResourcePoolID id = 1;
+  string message = 2;
+}
+
+// DEPRECATED by peloton.api.v0.respool.svc.CreateResourcePoolRequest
+message CreateRequest {
+  ResourcePoolConfig config = 2;
+}
+
+// DEPRECATED by peloton.api.v0.respool.svc.CreateResourcePoolResponse
+message CreateResponse {
+  message Error {
+    ResourcePoolAlreadyExists alreadyExists = 1;
+    InvalidResourcePoolConfig invalidResourcePoolConfig = 2;
+  }
+
+  Error error = 1;
+  peloton.ResourcePoolID result = 2;
+
+}
+
+// DEPRECATED by peloton.api.v0.respool.svc.GetResourcePoolRequest
+message GetRequest {
+  // The ID of the resource pool to get
+  peloton.ResourcePoolID id = 1;
+
+  // Whether or not to include the resource pool info of the direct
+  // children
+  bool includeChildPools = 2;
+}
+
+// DEPRECATED by peloton.api.v0.respool.svc.GetResourcePoolRequest
+message GetResponse {
+  message Error {
+    ResourcePoolNotFound notFound = 1;
+  }
+
+  Error error = 1;
+  ResourcePoolInfo poolinfo = 2;
+  repeated ResourcePoolInfo childPools = 3;
+}
+
+// DEPRECATED by peloton.api.v0.respool.svc.DeleteResourcePoolRequest
+message DeleteRequest {
+  ResourcePoolPath path = 1;
+}
+
+// DEPRECATED by peloton.api.v0.respool.svc.DeleteResourcePoolResponse
+message DeleteResponse {
+  message Error {
+    ResourcePoolPathNotFound notFound = 1;
+    ResourcePoolIsBusy isBusy = 2;
+    ResourcePoolIsNotLeaf isNotLeaf = 3;
+    ResourcePoolNotDeleted notDeleted = 4;
+  }
+
+  Error error = 1;
+}
+
+// DEPRECATED by peloton.api.v0.respool.svc.UpdateResourcePoolRequest
+message UpdateRequest {
+  peloton.ResourcePoolID id = 1;
+  ResourcePoolConfig config = 2;
+}
+
+// DEPRECATED by peloton.api.v0.respool.svc.UpdateResourcePoolResponse
+message UpdateResponse {
+  message Error {
+    ResourcePoolNotFound notFound = 1;
+    InvalidResourcePoolConfig invalidResourcePoolConfig = 2;
+  }
+
+  Error error = 1;
+}
+
+// DEPRECATED by peloton.api.v0.respool.svc.LookupResourcePoolIDRequest
+message LookupRequest {
+  ResourcePoolPath path = 1;
+}
+
+// DEPRECATED by peloton.api.v0.respool.svc.LookupResourcePoolIDResponse
+message LookupResponse {
+  message Error {
+    ResourcePoolPathNotFound notFound = 1;
+    InvalidResourcePoolPath invalidPath = 2;
+  }
+
+  Error error = 1;
+  peloton.ResourcePoolID id = 2;
+}
+
+// DEPRECATED by peloton.api.v0.respool.svc.QueryResourcePoolRequest
+message QueryRequest {
+  // TODO Filters
+}
+
+// DEPRECATED by peloton.api.v0.respool.svc.QueryResourcePoolResponse
+message QueryResponse {
+  message Error {
+    // TODO add error types
+  }
+  Error error = 1;
+  repeated ResourcePoolInfo resourcePools = 2;
+}

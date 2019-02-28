@@ -1,0 +1,54 @@
+// This file defines the Query related messages in Peloton API
+
+syntax = "proto3";
+
+package peloton.api.v1alpha.query;
+
+option go_package = "peloton/api/v1alpha/query";
+option java_package = "peloton.api.v1alpha.query";
+
+// A dot separated path to a object property such as config.name or
+// runtime.creationTime for a job object.
+message PropertyPath {
+  string value = 1;
+}
+
+// Order by clause of a query
+message OrderBy {
+  enum Order {
+    ORDER_BY_INVALID = 0;
+    ORDER_BY_ASC = 1;
+    ORDER_BY_DESC = 2;
+  }
+
+  Order order = 1;
+  PropertyPath property = 2;
+}
+
+// Pagination query spec used as argument to queries that returns a Pagination result.
+message PaginationSpec {
+  // Offset of the query for pagination
+  uint32 offset = 1;
+
+  // Limit per page of the query for pagination
+  uint32 limit = 2;
+
+  // List of fields to be order by in sequence
+  repeated OrderBy order_by = 3;
+
+  // Max limit of the pagination result.
+  uint32 max_limit = 4;
+}
+
+
+// Generic pagination for a list of records to be returned by a query
+message Pagination {
+  // Offset of the pagination for a query result
+  uint32 offset = 1;
+
+  // Limit of the pagination for a query result
+  uint32 limit = 2;
+
+  // Total number of records for a query result
+  uint32 total = 3;
+}

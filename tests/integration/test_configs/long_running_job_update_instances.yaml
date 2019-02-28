@@ -1,0 +1,16 @@
+name: TestPelotonLongRunningJob_integration
+owningTeam: team6
+description: "A dummy test long running job for peloton integration tests"
+instanceCount: 4
+defaultConfig:
+  resource:
+    # Keep resource limits not too low to avoid potentially hitting quota limit
+    cpuLimit: 1.0
+    memLimitMb: 24.0
+    diskLimitMb: 24.0
+    fdLimit: 2
+  healthCheck: null
+  ports: []
+  command:
+    shell: true
+    value: 'sleep 1000'

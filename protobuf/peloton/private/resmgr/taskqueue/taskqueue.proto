@@ -1,0 +1,41 @@
+/**
+ *  Task Queue API
+ */
+
+
+syntax = "proto3";
+
+package peloton.private.resmgr.taskqueue;
+
+option go_package = "peloton/private/resmgr/taskqueue";
+
+import "peloton/api/v0/task/task.proto";
+
+service TaskQueue {
+
+  // Enqueue a list of tasks
+  rpc Enqueue(EnqueueRequest) returns (EnqueueResponse);
+
+  // Dequeue a list of tasks
+  rpc Dequeue(DequeueRequest) returns (DequeueResponse);
+}
+
+
+message EnqueueRequest {
+  // The list of tasks to enqueue
+  repeated api.v0.task.TaskInfo tasks = 1;
+}
+
+message EnqueueResponse {
+  // TODO: Add error handling here
+}
+
+message DequeueRequest {
+  // Max number of tasks to dequeue
+  uint32 limit = 1;
+}
+
+message DequeueResponse {
+  // The list of tasks that have been dequeued
+  repeated api.v0.task.TaskInfo tasks = 1;
+}

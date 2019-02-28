@@ -1,0 +1,1 @@
+cpus(peloton-master):0.5;cpus(*):3.5;mem(peloton-master):1024;disk(*):20000;mem(*):1024;ports(peloton-master):[31000-32000]

@@ -1,0 +1,99 @@
+package: github.com/uber/peloton
+ignore:
+- peloton
+- mesos/v1
+- go/doc
+excludeDirs:
+- pbgen
+import:
+- package: github.com/golang/protobuf
+  version: 8ee79997227bf9b34611aee7946ae64735e6fd93
+  subpackages:
+  - proto
+  - protoc
+  - protoc-gen-go
+- package: go.uber.org/fx
+- package: github.com/jmoiron/sqlx
+- package: github.com/pborman/uuid
+  version: master
+- package: golang.org/x/net
+  version: 891ebc4b82d6e74f468c533b06f983c7be918a96
+- package: github.com/stretchr/testify
+  version: ^1.2.0
+  subpackages:
+  - assert
+  - require
+  - suite
+- package: github.com/samuel/go-zookeeper
+  version: master
+  repo: https://github.com/nomis52/go-zookeeper.git
+  vcs: git
+  subpackages:
+  - zk
+- package: gopkg.in/alecthomas/kingpin.v2
+  version: ^2.2.3
+- package: go.uber.org/goleak
+  version: b12bb1eedf12e90b75899bf8a73ce2d8fc4d9938
+  subpackages:
+  - internal/stack
+- package: go.uber.org/yarpc
+  version: 1.28.0
+  subpackages:
+  - internal/protoplugin
+- package: github.com/cactus/go-statsd-client
+  version: ^3.1.0
+  subpackages:
+  - statsd
+- package: github.com/uber-go/tally
+  version: ^3.0.1
+  subpackages:
+  - statsd
+- package: github.com/sirupsen/logrus
+  version: 1.0.0
+- package: gopkg.in/validator.v2
+  version: 0a9835d809fb647a62611d30cb792e0b5dd65b11
+- package: gopkg.in/yaml.v2
+  version: a5b47d31c556af34a302ce5d659e6fea44d90de0
+- package: github.com/uber-common/bark
+  version: 8841a0f8e7ca869284ccb29c08a14cf3f4310f46
+- package: github.com/gemnasium/migrate
+  version: v1.4.1
+- package: github.com/docker/leadership
+  version: ^0.1.1
+  repo: https://github.com/craimbert/leadership.git
+- package: github.com/docker/libkv
+  version: ^0.2.2
+  repo: https://github.com/craimbert/libkv.git
+- package: github.com/gocql/gocql
+  version: 56a164ee9f3135e9cfe725a6d25939f24cb2d044
+- package: github.com/alecthomas/template
+- package: github.com/alecthomas/units
+- package: github.com/gogo/protobuf
+  version: v0.4
+  subpackages:
+  - jsonpb
+- package: github.com/opentracing/opentracing-go
+  version: v1.0.1
+- package: github.com/evalphobia/logrus_sentry
+  version: b78b27461c8163c45abf4ab3a8330d2b1ee9456a
+- package: github.com/golang/mock
+  version: ^v1.0.0
+  subpackages:
+  - mockgen
+- package: github.com/uber-go/automaxprocs
+  version: ^v1.1.0
+- package: gopkg.in/cheggaaa/pb.v1
+  version: ^2.0.6
+- package: golang.org/x/sys
+  version: 4e1fef5609515ec7a2cee7b5de30ba6d9b438cbf
+  subpackages:
+  - unix
+- package: github.com/apache/thrift
+  version: '>=0.9.3, <0.11.0'
+  subpackages:
+  - lib/go/thrift
+- package: google.golang.org/grpc
+  version: 8dea3dc473e90c8179e519d91302d0597c0ca1d1
+  repo: https://github.com/grpc/grpc-go
+- package: go.uber.org/thriftrw
+  version: dev

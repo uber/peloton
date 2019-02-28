@@ -1,0 +1,15 @@
+logging:
+  level: info
+
+mesos:
+  host_port: "mesos-master:5050"
+  zk_path: "zk://zookeeper:2181/mesos"
+  framework:
+    gpu_supported: true
+
+metrics:
+  prometheus:
+    enable: true
+
+storage:
+  use_cassandra: true

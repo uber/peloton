@@ -1,0 +1,397 @@
+/**
+ *  This file defines the Task Service in Peloton API
+ */
+
+syntax = "proto3";
+
+package peloton.api.v0.task.svc;
+
+option go_package = "peloton/api/v0/task/svc";
+option java_package = "peloton.api.v0.task.svc";
+
+import "peloton/api/v0/peloton.proto";
+import "peloton/api/v0/query/query.proto";
+import "peloton/api/v0/task/task.proto";
+
+/**
+ *  Task service defines the task related methods such as get, list,
+ *  start, stop and restart tasks.
+ */
+service TaskService
+{
+  // Get the info of a task in job.
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+
+  // List a set of tasks in a job for a given range of instance IDs.
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+
+  // Start a set of tasks for a job. Will be no-op for tasks that
+  // are currently running. The tasks are started asynchronously after
+  // the API call returns.
+  rpc StartTasks(StartTasksRequest) returns (StartTasksResponse);
+
+  // Stop a set of tasks for a job. Will be no-op for tasks that
+  // are currently stopped. The tasks are stopped asynchronously after
+  // the API call returns.
+  rpc StopTasks(StopTasksRequest) returns (StopTasksResponse);
+
+  // Restart a set of tasks for a job. Will start tasks that are
+  // currently stopped. This is an asynchronous call.
+  rpc RestartTasks(RestartTasksRequest) returns (RestartTasksResponse);
+
+  // Query task info in a job, using a set of filters.
+  rpc QueryTasks(QueryTasksRequest) returns (QueryTasksResponse);
+
+  // BrowseSandbox returns list of file paths inside sandbox. The
+  // client can use the Mesos Agent HTTP endpoints to read and download
+  // the files. http://mesos.apache.org/documentation/latest/endpoints/
+  rpc BrowseSandbox(BrowseSandboxRequest) returns (BrowseSandboxResponse);
+
+  // Debug only method. Allows user to load task runtime state from DB
+  // and re-execute the action associated with current state.
+  rpc RefreshTasks(RefreshTasksRequest) returns (RefreshTasksResponse);
+
+  // Debug only method. Get the cache of a task stored in Peloton.
+  rpc GetTaskCache(GetTaskCacheRequest) returns(GetTaskCacheResponse);
+
+  // GetPodEvents returns pod events (state transition for a pod),
+  // in reverse chronological order. pod is singular instance of a Peloton job.
+  rpc GetPodEvents(GetPodEventsRequest) returns (GetPodEventsResponse);
+}
+
+
+/**
+ *  Request message for TaskService.GetTask method.
+ */
+message GetTaskRequest {
+  // The job ID of the task to get.
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task to get.
+  uint32 instanceId = 2;
+}
+
+
+/**
+ *  Response message for TaskService.GetTask method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:     if the job or task not found.
+ *    OUT_OF_RANGE:  if the instance ID is out of range.
+ */
+message GetTaskResponse {
+  // The task info of the task.
+  // DEPRECATED
+  TaskInfo result = 1;
+
+  // Returns all active and completed tasks of the given instance.
+  repeated TaskInfo results = 2;
+}
+
+
+/**
+ *  Request message for TaskService.ListTasks method.
+ */
+message ListTasksRequest {
+  // The job ID of the tasks to list.
+  peloton.JobID jobId = 1;
+
+  // The instance ID range of the tasks to list.
+  task.InstanceRange range = 2;
+}
+
+
+/**
+ *  Response message for TaskService.GetTask method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:  if the job ID is not found.
+ *    OUT_OF_RANGE:  if the instance IDs are out of range.
+ */
+message ListTasksResponse {
+  // The map of instance ID to task info for all matching tasks.
+  map<uint32, TaskInfo> tasks = 1;
+}
+
+
+/**
+ *  Request message for TaskService.StartTasks method.
+ */
+message StartTasksRequest {
+  // The job ID of the tasks to start.
+  peloton.JobID jobId = 1;
+
+  // The instance ID ranges of the tasks to start.
+  repeated task.InstanceRange ranges = 2;
+}
+
+
+/**
+ *  Response message for TaskService.StartTasks method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:     if the job ID is not found.
+ *    OUT_OF_RANGE:  if the instance IDs are out of range.
+ *    INTERNAL:      if the tasks fail to start for internal errors.
+ */
+message StartTasksResponse {
+  // The set of instance IDs that have been started.
+  repeated uint32 started = 1;
+
+  // The set of instance IDs that are failed to start.
+  repeated uint32 failed = 2;
+}
+
+
+/**
+ *  Request message for TaskService.StopTasks method.
+ */
+message StopTasksRequest {
+  // The job ID of the tasks to stop.
+  peloton.JobID jobId = 1;
+
+  // The instance ID ranges of the tasks to stop. If you dont specify any range
+  // it will signal all instance IDs to stop.
+  repeated task.InstanceRange ranges = 2;
+}
+
+
+/**
+ *  Response message for TaskService.StopTasks method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:     if the job ID is not found in Peloton.
+ *    OUT_OF_RANGE:  if the instance IDs are out of range.
+ *    INTERNAL:      if the tasks fail to stop for internal errors.
+ */
+message StopTasksResponse {
+  // The set of instance IDs that have been signalled to be stopped.
+  // These instanced IDs will be asynchronously stopped.
+  repeated uint32 stopped = 1;
+
+  // The set of instance IDs that have failed to be signalled successfuly.
+  repeated uint32 failed = 2;
+}
+
+
+/**
+ *  Request message for TaskService.RestartTasks method.
+ */
+message RestartTasksRequest {
+  // The job ID of the tasks to restart.
+  peloton.JobID jobId = 1;
+
+  // The instance ID ranges of the tasks to restart.
+  repeated task.InstanceRange ranges = 2;
+}
+
+
+/**
+ *  Response message for TaskService.RestartTasks method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:     if the job ID is not found.
+ *    OUT_OF_RANGE:  if the instance IDs are out of range.
+ *    INTERNAL:      if the tasks fail to restart for internal errors.
+ */
+message RestartTasksResponse {
+  // The set of instance IDs that have been stopped.
+  repeated uint32 stopped = 1;
+
+  // The set of instance IDs that are failed to stop.
+  repeated uint32 failed = 2;
+}
+
+
+/**
+ *  Request message for TaskService.QueryTasks method.
+ */
+message QueryTasksRequest {
+  // The job ID of the tasks to query.
+  peloton.JobID jobId = 1;
+
+  // The spec of query criteria for the tasks.
+  task.QuerySpec spec = 2;
+
+  // The spec of how to do pagination for the query results.
+  query.PaginationSpec pagination = 3;
+}
+
+
+/**
+ *  Response message for TaskService.QueryTasks method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:     if the job ID is not found.
+ *    INTERNAL:      if fail to query the tasks for internal errors.
+ */
+message QueryTasksResponse {
+  // List of tasks that match the task query criteria.
+  repeated TaskInfo records = 1;
+
+  // Pagination result of the task query.
+  query.Pagination pagination = 2;
+}
+
+
+/**
+ *  Request message for TaskService.BrowseSandbox method.
+ */
+message BrowseSandboxRequest {
+  // The job ID of the task to browse the sandbox.
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task to browse the sandbox.
+  uint32 instanceId = 2;
+
+  // Get the sandbox path of a particular task of an instance.
+  // This should be set to the mesos task id in the runtime of
+  // the task for which the sandbox is being requested.
+  // If not provided, the path of the latest task is returned.
+  string taskId = 3;
+}
+
+
+/**
+ *  Response message for TaskService.BrowseSandbox method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:     if the job ID is not found.
+ *    OUT_OF_RANGE:  if the instance IDs are out of range.
+ *    INTERNAL:      if fail to browse the sandbox for internal errors.
+ *    FAILED_PRECONDITION:  if the task has not been run yet.
+ */
+message BrowseSandboxResponse {
+  // The hostname of the sandbox.
+  string hostname = 2;
+
+  // The port of the sandbox.
+  string port = 3;
+
+  // The list of sandbox file paths.
+  // TODO: distinguish files and directories in the sandbox
+  repeated string paths = 4;
+
+  // Mesos Master hostname and port.
+  string mesosMasterHostname = 5;
+  string mesosMasterPort = 6;
+}
+
+message TaskEventsError {
+  string message = 1;
+}
+
+/**
+ *  Pod event of a Peloton pod instance.
+ */
+message PodEvent {
+  // The task ID of the task event.
+  peloton.TaskID taskId = 1;
+
+  // Actual state of an instance
+  string actualState = 2;
+
+  // Goal State of an instance
+  string goalState = 3;
+
+  // The time when the event was created. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string timestamp = 4;
+
+  // The config version currently used by the runtime.
+  uint64 configVersion = 5;
+
+  // The desired config version that should be used by the runtime.
+  uint64 desiredConfigVersion = 6;
+
+  // The agentID for the task
+  string agentID = 7;
+
+  // The host on which the task is running
+  string hostname = 8;
+
+  // Short human friendly message explaining state.
+  string message = 9;
+
+  // The short reason for the task event
+  string reason = 10;
+
+  // The previous task ID of the pod event.
+  peloton.TaskID prevTaskId = 11;
+
+  // The health check state of the task
+  string healthy = 12;
+}
+
+/**
+ *  Request message for TaskService.GetPodEvents method.
+ */
+message GetPodEventsRequest {
+  // The job ID of the task
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task
+  uint32 instanceId = 2;
+
+  // Limit of events
+  uint64 limit = 3;
+}
+
+/**
+ *  Response message for TaskService.GetPodEvents method.
+ *
+ *  Return errors:
+ *    INTERNAL:      if failed to get pod events for internal errors.
+ */
+message GetPodEventsResponse {
+  repeated PodEvent result = 1;
+
+  message Error {
+    string message = 1;
+  }
+
+  Error error = 2;
+}
+
+/**
+ *  Request message for TaskService.RefreshTasks method.
+ */
+message RefreshTasksRequest {
+  // The job ID of the tasks to list.
+  peloton.JobID jobId = 1;
+
+  // The instance ID range of the tasks to refresh.
+  task.InstanceRange range = 2;
+}
+
+
+/**
+ *  Response message for TaskService.RefreshTasks method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:  if the job or tasks are not found.
+ */
+message RefreshTasksResponse {}
+
+/**
+ *  Request message for TaskService.GetTaskCache method.
+ */
+message GetTaskCacheRequest {
+  // The job ID to look up the task.
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task to get.
+  uint32 instanceId = 2;
+}
+
+/**
+ *  Response message for TaskService.GetTaskCache method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:      if the job or task not found in cache.
+ *    INTERNAL_ERROR: if fail to read cache due to internal error.
+ */
+message GetTaskCacheResponse {
+  // The task runtime of the task.
+  RuntimeInfo runtime = 1;
+}

@@ -1,0 +1,443 @@
+// This file defines the stateless job related messages in Peloton API.
+// Stateless job is a long running job with no persistent volume.
+
+syntax = "proto3";
+
+package peloton.api.v1alpha.job.stateless;
+
+option go_package = "peloton/api/v1alpha/job/stateless";
+option java_package = "peloton.api.v1alpha.job.stateless";
+
+import "peloton/api/v1alpha/peloton.proto";
+import "peloton/api/v1alpha/pod/pod.proto";
+import "peloton/api/v1alpha/query/query.proto";
+import "peloton/api/v1alpha/respool/respool.proto";
+
+// SLA configuration for a stateless job
+message SlaSpec {
+  // Priority of a job. Higher value takes priority over lower value
+  // when making scheduling decisions as well as preemption decisions.
+  uint32 priority = 1;
+
+  // Whether all the job instances are preemptible. If so, it might
+  // be scheduled elastic resources from other resource pools and
+  // subject to preemption when the demands of other resource pools increase.
+  // For stateless jobs, this field will overrule preemptible
+  // configuration in the pod spec.
+  bool preemptible = 2;
+
+  // Whether all the job instances are revocable. If so, it might
+  // be scheduled using revocable resources and subject to preemption
+  // when there is resource contention on the host.
+  // For stateless jobs, this field will overrule revocable
+  // configuration in the pod spec.
+  bool revocable = 3;
+
+  // Maximum number of job instances which can be unavailable at a given time.
+  uint32 maximum_unavailable_instances = 4;
+}
+
+// Stateless job configuration.
+message JobSpec {
+  // Revision of the job config
+  peloton.Revision revision = 1;
+
+  // Name of the job
+  string name = 2;
+
+  // Owner of the job
+  string owner = 3;
+
+  // Owning team of the job
+  string owning_team = 4;
+
+  // LDAP groups of the job
+  repeated string ldap_groups = 5;
+
+  // Description of the job
+  string description = 6;
+
+  // List of user-defined labels for the job
+  repeated peloton.Label labels = 7;
+
+  // Number of instances of the job
+  uint32 instance_count = 8;
+
+  // SLA config of the job
+  SlaSpec sla = 9;
+
+  // Default pod configuration of the job
+  pod.PodSpec default_spec = 10;
+
+  // Instance specific pod config which overwrites the default one
+  map<uint32, pod.PodSpec> instance_spec = 11;
+
+  // Resource Pool ID where this job belongs to
+  peloton.ResourcePoolID respool_id= 12;
+}
+
+
+// Runtime states of a Job.
+enum JobState {
+  // Invalid job state.
+  JOB_STATE_INVALID = 0;
+
+  // The job has been initialized and persisted in DB.
+  JOB_STATE_INITIALIZED = 1;
+
+  // All tasks have been created and persisted in DB,
+  // but no task is RUNNING yet.
+  JOB_STATE_PENDING = 2;
+
+  // Any of the tasks in the job is in RUNNING state.
+  JOB_STATE_RUNNING = 3;
+
+  // All tasks in the job are in SUCCEEDED state.
+  JOB_STATE_SUCCEEDED = 4;
+
+  // All tasks in the job are in terminated state and one or more
+  // tasks is in FAILED state.
+  JOB_STATE_FAILED = 5;
+
+  // All tasks in the job are in terminated state and one or more
+  // tasks in the job is killed by the user.
+  JOB_STATE_KILLED = 6;
+
+  // All tasks in the job have been requested to be killed by the user.
+  JOB_STATE_KILLING = 7;
+
+  // The job is partially created and is not ready to be scheduled
+  JOB_STATE_UNINITIALIZED = 8;
+
+  // The job has been deleted.
+  JOB_STATE_DELETED = 9;
+}
+
+
+// The different types of job rolling workflows supported.
+enum WorkflowType {
+  // Invalid protobuf value.
+  WORKFLOW_TYPE_INVALID = 0;
+
+  // Job update workflow.
+  WORKFLOW_TYPE_UPDATE = 1;
+
+  // Restart pods in a job.
+  WORKFLOW_TYPE_RESTART = 2;
+}
+
+// Runtime state of a job workflow.
+enum WorkflowState {
+  // Invalid protobuf value
+  WORKFLOW_STATE_INVALID = 0;
+
+  // The operation has been created but not started yet.
+  WORKFLOW_STATE_INITIALIZED = 1;
+
+  // The workflow is rolling forward
+  WORKFLOW_STATE_ROLLING_FORWARD = 2;
+
+  // The workflow has been paused
+  WORKFLOW_STATE_PAUSED = 3;
+
+  // The workflow has completed successfully
+  WORKFLOW_STATE_SUCCEEDED = 4;
+
+  // The update was aborted/cancelled
+  WORKFLOW_STATE_ABORTED = 5;
+
+  // The workflow has failed to complete.
+  WORKFLOW_STATE_FAILED = 6;
+
+  // The update is rolling backward
+  WORKFLOW_STATE_ROLLING_BACKWARD = 7;
+
+  // The update was rolled back due to failure
+  WORKFLOW_STATE_ROLLED_BACK = 8;
+}
+
+
+// Runtime status of a job workflow.
+message WorkflowStatus {
+  // Workflow type.
+  WorkflowType type = 1;
+
+  // Current runtime state of the workflow.
+  WorkflowState state = 2;
+
+  // Number of instances completed.
+  uint32 num_instances_completed = 3;
+
+  // Number of instances remaining.
+  uint32 num_instances_remaining = 4;
+
+  // Number of instances which failed to come up after the workflow.
+  uint32 num_instances_failed = 5;
+
+  // Current instances being operated on.
+  repeated uint32 instances_current = 6;
+
+  // Job version the workflow moved the job object to.
+  peloton.EntityVersion version = 7;
+
+  // Previous job version of the job object.
+  peloton.EntityVersion prev_version = 8;
+
+  // The time when the workflow was created. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string creation_time = 9;
+
+  // The time when the workflow was last updated. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string update_time = 10;
+
+  // Previous runtime state of the workflow.
+  WorkflowState prev_state = 11;
+}
+
+
+// The current runtime status of a Job.
+message JobStatus
+{
+  // Revision of the current job status. Version in the revision is incremented
+  // every time job status changes. Thus, it can be used to order the different
+  // job status updates.
+  peloton.Revision revision = 1;
+
+  // State of the job
+  JobState state = 2;
+
+  // The time when the job was created. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string creation_time = 3;
+
+  // The number of pods grouped by each pod state. The map key is
+  // the pod.PodState in string format and the map value is the number
+  // of tasks in the particular state.
+  map<string, uint32> pod_stats = 4;
+
+  // Goal state of the job.
+  JobState desired_state = 5;
+
+  // The current version of the job. It is used to implement optimistic
+  // concurrency control for all job write APIs. The current job
+  // configuration can be fetched based on the current resource version.
+  peloton.EntityVersion version = 6;
+
+  // Status of ongoing update/restart workflow.
+  WorkflowStatus workflow_status = 7;
+
+  // The number of tasks grouped by which configuration version they are on.
+  // The map key is the job configuration version and the map value is the
+  // number of tasks using that particular job configuration version.
+  // The job configuration version in the map key can be fed as the value of
+  // the entity version in the GetJobRequest to fetch the job configuration.
+  map<string, uint32> pod_configuration_version_stats = 8;
+}
+
+// Information of a job, such as job spec and status
+message JobInfo
+{
+  // Job ID
+  peloton.JobID job_id = 1;
+
+  // Job configuration
+  JobSpec spec = 2;
+
+  // Job runtime status
+  JobStatus status = 3;
+}
+
+// Summary of job spec and status. The summary will be returned by List
+// or Query API calls. These calls will return a large number of jobs,
+// so the content in the job summary has to be kept minimal.
+message JobSummary
+{
+  // Job ID
+  peloton.JobID job_id = 1;
+
+  // Name of the job
+  string name = 2;
+
+  // Owner of the job
+  string owner = 4;
+
+  // Owning team of the job
+  string owning_team = 5;
+
+  // List of user-defined labels for the job
+  repeated peloton.Label labels = 6;
+
+  // Number of instances of the job
+  uint32 instance_count = 7;
+
+  // Resource Pool ID where this job belongs to
+  peloton.ResourcePoolID respool_id = 8;
+
+  // Job runtime status
+  JobStatus status = 9;
+}
+
+// QuerySpec specifies the list of query criteria for jobs. All
+// indexed fields should be part of this message. And all fields
+// in this message have to be indexed too.
+message QuerySpec {
+  // The spec of how to do pagination for the query results.
+  query.PaginationSpec pagination = 1;
+
+  // List of labels to query the jobs. Will match all jobs if the
+  // list is empty.
+  repeated peloton.Label labels = 2;
+
+  // List of keywords to query the jobs. Will match all jobs if
+  // the list is empty. When set, will do a wildcard match on
+  // owner, name, labels, description.
+  repeated string keywords = 3;
+
+  // List of job states to query the jobs. Will match all jobs if
+  // the list is empty.
+  repeated JobState job_states = 4;
+
+  // The resource pool to query the jobs. Will match jobs from all
+  // resource pools if unset.
+  respool.ResourcePoolPath respool = 5;
+
+  // Query jobs by owner. This is case sensitive and will
+  // look for jobs with owner matching the exact owner string.
+  // Will match all jobs if owner is unset.
+  string owner = 6;
+
+  // Query jobs by name. This is case sensitive and will
+  // look for jobs with name matching the name string. Will
+  // support partial name match. Will match all jobs if
+  // name is unset.
+  string name = 7;
+
+  // Query jobs by creation time range. This will look for all jobs
+  // that were created within a specified time range. This
+  // search will operate based on job creation time.
+  peloton.TimeRange creation_time_range = 8;
+
+  // Query jobs by completion time range. This will look for all jobs
+  // that were completed within a specified time range. This
+  // search will operate based on job completion time.
+  peloton.TimeRange completion_time_range = 9;
+}
+
+// Configuration of a job update.
+message UpdateSpec {
+  // Batch size for the update which controls how many
+  // instances may be updated at the same time.
+  uint32 batch_size = 1;
+
+  // If configured, the update be automatically rolled back
+  // to the previous job configuration on failure.
+  bool rollback_on_failure = 2;
+
+  // Maximum number of times a failing instance will
+  // be retried during the update.
+  // If the value is 0, the instance can be retried for infinite
+  // times.
+  uint32 max_instance_retries = 3;
+
+  // Maximum number of instance failures before
+  // the update is declared to be failed.
+  // If the value is 0, there is no limit for max failure instances
+  // and the update is marked successful even if all of the instances
+  // fail.
+  uint32 max_tolerable_instance_failures = 4;
+
+  // If set to true, indicates that the update should start
+  // in the paused state, requiring an explicit resume to roll forward.
+  bool start_paused = 5;
+
+  // If set to true, peloton would try to place the task
+  // restarted/updated on the host it previously run on.
+  // It is best effort, and has no guarantee of success.
+  bool in_place = 6;
+}
+
+// Configuration of a job creation.
+message CreateSpec {
+  // Batch size for the creation which controls how many
+  // instances may be created at the same time.
+  uint32 batch_size = 1;
+
+  // Maximum number of times a failing instance will
+  // be retried during the creation.
+  // If the value is 0, the instance can be retried for infinite
+  // times.
+  uint32 max_instance_retries = 2;
+
+  // Maximum number of instance failures before
+  // the creation is declared to be failed.
+  // If the value is 0, there is no limit for max failure instances
+  // and the creation is marked successful even if all of the instances
+  // fail.
+  uint32 max_tolerable_instance_failures = 3;
+
+  // If set to true, indicates that the creation should start
+  // in the paused state, requiring an explicit resume to roll forward.
+  bool start_paused = 4;
+}
+
+// Configuration of a job restart
+message RestartSpec {
+  // Batch size for the restart which controls how many
+  // instances may be restarted at the same time.
+  uint32 batch_size = 1;
+
+  // The pods to restart, default to all.
+  repeated pod.InstanceIDRange ranges = 2;
+}
+
+// Information about a workflow including its status and specification
+message WorkflowInfo {
+  message instance_workflow_events {
+    // The instance ID
+    uint32 instance_id = 1;
+
+    // Instance workflow events
+    repeated stateless.WorkflowEvent events = 2;
+  }
+
+  // Workflow status
+  WorkflowStatus status = 1;
+
+  // Update specification for update workflow
+  UpdateSpec update_spec = 2;
+
+  // Restart specification provided for restart workflow
+  RestartSpec restart_spec = 3;
+
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 6;
+
+  // job workflow events represents update state changes
+  repeated stateless.WorkflowEvent events = 7;
+
+  // Instances added by update workflow
+  repeated pod.InstanceIDRange instances_added = 8;
+
+  // Instances removed by update workflow
+  repeated pod.InstanceIDRange instances_removed = 9;
+
+  // Instances updated by update workflow
+  repeated pod.InstanceIDRange instances_updated = 10;
+
+  repeated instance_workflow_events instance_events = 11;
+}
+
+// WorkflowEvents are workflow state change events for a job or pod
+// on workflow operations
+message WorkflowEvent {
+  // Workflow type.
+  WorkflowType type = 1;
+
+  // Timestamp of the event represented in RFC3339
+  // form with UTC timezone.
+  string timestamp = 2;
+
+  // Current runtime state of the workflow.
+  WorkflowState state = 3;
+}

@@ -1,0 +1,28 @@
+logging:
+  level: info
+
+metrics:
+  multi_reporter: true
+  prometheus:
+    enable: true
+
+archiver:
+  enable: false
+  pod_events_cleanup: true
+  http_port: 5295
+  grpc_port: 5395
+  # This means run archiver every 1min
+  archive_interval: 1m
+  # Restrict archiving to 5k entries per run
+  max_archive_entries: 5000
+  # Archive only 1m or older
+  archive_age: 1m
+  # Archive 1 day worth of entries per run
+  archive_step_size: 30s
+
+  peloton_client_timeout: 20s
+  max_retry_attempts_job_query: 3
+  retry_interval_job_query: 10s
+
+election:
+  zk_servers: ["localhost:8192"]

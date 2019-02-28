@@ -1,0 +1,25 @@
+
+syntax = "proto3";
+
+package peloton.api.v0.changelog;
+
+option go_package = "peloton/api/v0/changelog";
+option java_package = "peloton.api.v0.changelog";
+
+/**
+ *  Change log of the entity info
+ */
+message ChangeLog {
+  // Version number of the entity info which is monotonically increasing.
+  // Clients can use this to guide against race conditions using MVCC.
+  int64 version = 1;
+
+  // The timestamp when the entity info is created
+  int64 createdAt = 2;
+
+  // The timestamp when the entity info is updated
+  int64 updatedAt = 3;
+
+  // The entity of the user that updated the entity info
+  string updatedBy = 4;
+}

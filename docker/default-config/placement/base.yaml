@@ -1,0 +1,48 @@
+logging:
+  level: info
+  stdout: true
+
+placement:
+  http_port: 5293
+  grpc_port: 5393
+  task_dequeue_limit: 20
+  task_dequeue_timeout: 100
+  offer_dequeue_limit: 10
+  max_placement_duration: 300s
+  task_type: 0
+  fetch_offer_tasks: false
+  strategy: batch
+  concurrency: 4
+  max_rounds:
+    unknown: 1
+    batch: 1
+    stateless: 5
+    daemon: 5
+    stateless: 0  # 0 Means no limit
+  max_durations:
+    unknown: 5m
+    batch: 5m
+    stateless: 5m
+    daemon: 5m
+    stateless: 5m
+
+election:
+  zk_servers: ["zookeeper:2181"]
+  root: "/peloton/development"
+
+# TODO: remove storage and mesos config when we
+# completely switch to hostMgr launch task api
+storage:
+
+mesos:
+  host_port: "mesos-master:5050"
+  zk_path: "zk://zookeeper:2181/mesos"
+  encoding: "x-protobuf"
+  framework:
+    user: "root"
+    name: "Peloton"
+    # TODO : add roles for other components
+    role: "peloton-master"
+    principal: "peloton"
+    # ~100 weeks to failover
+    failover_timeout: 60000000

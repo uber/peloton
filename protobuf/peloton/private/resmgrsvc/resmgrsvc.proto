@@ -1,0 +1,440 @@
+/**
+ *  Internal API for Peloton Resource Manager
+ */
+
+syntax = "proto3";
+
+package peloton.private.resmgr;
+
+option go_package = "peloton/private/resmgrsvc";
+
+import "mesos/v1/mesos.proto";
+import "peloton/api/v0/peloton.proto";
+import "peloton/api/v0/task/task.proto";
+import "peloton/private/resmgr/resmgr.proto";
+import "peloton/private/eventstream/eventstream.proto";
+
+
+/**
+ * ResourceManagerService describes the internal interface of
+ * Resource Manager to other Peloton applications such as Job Manager
+ * and Placement Engine. This includes the EnqueueGangs and GetPlacements
+ * APIs called by Job Manager, and DequeueGangs and SetPlacements APIs
+ * called by Placement Engine.
+ */
+service ResourceManagerService {
+
+  /**
+   *  Enqueue a list of Gangs, each of which is a list of
+   *  one or more tasks, to a given leaf resource pool for
+   *  scheduling. The Gangs will be in PENDING state first and then
+   *  transit to READY state when the resource pool has available
+   *  resources. This method will be called by Job Manager when a new
+   *  job is created or new Gangs are added. If any Gangs
+   *  fail to enqueue, Job Manager should retry those failed Gangs.
+   */
+  rpc EnqueueGangs(EnqueueGangsRequest) returns (EnqueueGangsResponse);
+
+  /**
+   *  Dequeue a list of Gangs, each comprised of tasks that are in READY
+   *  state for placement.  The tasks will transit from READY to PLACING
+   *  state after the return of this method. This method will be called by
+   *  Placement Engine to retrieve a list of gangs for computing placement.
+   *  If tasks are in PLACING state for too long in case of Placement
+   *  Engine failures, the tasks will be timed out and transit back
+   *  to READY state.
+   */
+  rpc DequeueGangs(DequeueGangsRequest) returns (DequeueGangsResponse);
+
+  /**
+   *  Sets the placement information for successfully placed tasks and
+   *  the reason for unsuccessful tasks. For successfully placed tasks the
+   *  tasks will transit from PLACING to PLACED state after this call. This
+   *  method will be called by Placement Engine after it computes the placement
+   *  decision for those tasks.
+   *  For unsuccessful tasks the tasks are returned back to the resource manager
+   *  along with the reason for the failure. These tasks will be tried again
+   *  at a later time for placement again.
+   */
+  rpc SetPlacements(SetPlacementsRequest) returns (SetPlacementsResponse);
+
+  /**
+   *  Get the placement information for a list of tasks. The tasks will
+   *  transit from PLACED to LAUNCHING state after this call. This method
+   *  is called by Job Manager to launch the tasks on Mesos. If the tasks
+   *  are in LAUNCHING state for too long without transiting to RUNNING
+   *  state, the tasks will be timedout and transit back to PLACED state.
+   */
+  rpc GetPlacements(GetPlacementsRequest) returns (GetPlacementsResponse);
+
+  /**
+   * Notifies task status updates to resource manager. This will be called by
+   * Host manager to notify resource manager on task status updates.
+   */
+  rpc NotifyTaskUpdates(NotifyTaskUpdatesRequest) returns (NotifyTaskUpdatesResponse);
+
+  /**
+   * Get the list of Tasks running on the the list of host provided. This
+   * information is needed from the placement engines to find out which tasks
+   * are running on which hosts so the placement engine can place tasks taking
+   * this information into account.
+   */
+  rpc GetTasksByHosts(GetTasksByHostsRequest) returns (GetTasksByHostsResponse);
+
+  /**
+   * Get task to state map. This information is helpful for debug purpose.
+   */
+  rpc GetActiveTasks(GetActiveTasksRequest) returns (GetActiveTasksResponse);
+
+  /**
+  * Returns the tasks which are waiting on resources in a resource pool in the
+  * order in which they were added, up to a max limit number of gangs.
+  * Eg specifying a limit of 10 would return pending tasks from the first 10
+  * gangs in the queue.
+  * The tasks are grouped according to their gang membership since one gang
+  * can contain multiple tasks and it is the unit of scheduling.
+  */
+  rpc GetPendingTasks(GetPendingTasksRequest) returns (GetPendingTasksResponse);
+
+  /**
+   * Kill Tasks kills/Delete the tasks in Resource Manager
+   */
+  rpc KillTasks(KillTasksRequest) returns (KillTasksResponse);
+
+  /**
+  * Get the list of tasks to preempt. The tasks will transition from RUNNING to PREEMPTING
+  * state after the return of this method. This method will be called by the
+  * job manager to kill the tasks and re-enqueue them.
+  */
+  rpc GetPreemptibleTasks(GetPreemptibleTasksRequest) returns (GetPreemptibleTasksResponse);
+
+  /**
+   * UpdateTasksState is used to let the resource manager know that the
+   * tasks in the request have been moved to corresponding state.
+   */
+  rpc UpdateTasksState(UpdateTasksStateRequest) returns (UpdateTasksStateResponse);
+}
+
+message GetPreemptibleTasksFailure {
+  string message = 1;
+}
+
+message GetPreemptibleTasksRequest {
+  // Max number of running tasks to dequeue
+  uint32 limit = 1;
+
+  // Timeout in milliseconds if no tasks are ready
+  uint32 timeout = 2;
+}
+
+message GetPreemptibleTasksResponse {
+  message Error {
+    RequestTimedout timedout = 1;
+    GetPreemptibleTasksFailure failure = 2;
+  }
+  Error error = 1;
+
+  // DEPRECATED by preemptionCandidates
+  // The list of tasks that have been dequeued
+  repeated resmgr.Task tasks = 2;
+
+  // The list of tasks to be preempted
+  repeated resmgr.PreemptionCandidate preemptionCandidates = 3;
+}
+
+message ResourcePoolNotFound {
+  api.v0.peloton.ResourcePoolID id = 1;
+  string message = 2;
+}
+
+message ResourcePoolNoPermission {
+  api.v0.peloton.ResourcePoolID id = 1;
+  string message = 2;
+}
+
+// EnqueueGangsFailure will be return as part of failure
+// in enqueue Gangs
+message EnqueueGangsFailure {
+  // ErrorCode returns the errorcode for the failure
+  enum ErrorCode {
+    // Error code UNKNOWN
+    ENQUEUE_GANGS_FAILURE_ERROR_CODE_UNKNOWN = 0;
+    // Error code if task is failed to be enqueued/requeued
+    ENQUEUE_GANGS_FAILURE_ERROR_CODE_INTERNAL = 1;
+    // Error code if same task is already present
+    ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST = 2;
+    // Error code if other tasks in gang failed
+    ENQUEUE_GANGS_FAILURE_ERROR_CODE_FAILED_DUE_TO_GANG_FAILED = 3;
+  }
+  message FailedTask {
+    // Resmgr task which is failed to enqueue/requeue
+    resmgr.Task task = 1;
+    // Error message with failed reason
+    string message = 2;
+    // Error code associated with the failure
+    // by that caller can identify the failure
+    ErrorCode errorcode = 3;
+  }
+
+  // List of failed tasks in gangs which are failed to
+  // enqueue/requeue
+  repeated FailedTask failed = 1;
+}
+
+message Gang {
+  // List of tasks to be scheduled together
+  repeated resmgr.Task tasks = 1;
+}
+
+message EnqueueGangsRequest {
+  // ResourcePool
+  api.v0.peloton.ResourcePoolID resPool = 1;
+
+  // The list of gangs to enqueue
+  repeated Gang gangs = 2;
+
+  // The reason for enqueuing the gang, needed for resmgr internal task state
+  // debugging. e.g. tasks returned by placement engine should have specific
+  // reason for why task cannot be placed thus returned.
+  string reason = 3;
+}
+
+message EnqueueGangsResponse {
+  message Error {
+    ResourcePoolNotFound notFound = 1;
+    ResourcePoolNoPermission noPermission = 2;
+    EnqueueGangsFailure failure = 3;
+  }
+  Error error = 1;
+}
+
+message RequestTimedout {
+  string message = 1;
+}
+
+message DequeueGangsFailure {
+  string message = 1;
+}
+
+message DequeueGangsRequest {
+  // Max number of ready gangs to dequeue
+  uint32 limit = 1;
+
+  // Timeout in milliseconds if no gangs are ready
+  uint32 timeout = 2;
+
+  // Task Type to identify which kind of tasks need to be dequeued
+  TaskType type = 3;
+}
+
+message DequeueGangsResponse {
+  message Error {
+    RequestTimedout timedout = 1;
+    DequeueGangsFailure failure = 2;
+  }
+  Error error = 1;
+
+  // The list of gangs that have been dequeued
+  repeated Gang gangs = 2;
+}
+
+message SetPlacementsFailure {
+  message FailedPlacement{
+    resmgr.Placement placement = 1;
+    string message = 2;
+  }
+  repeated FailedPlacement failed = 1;
+}
+
+message SetPlacementsRequest {
+  // Represents a failed gang which couldn't be placed.
+  message FailedPlacement {
+    // The reason for the failure.
+    string reason = 1;
+    // The gang which couldn't be placed.
+    Gang gang = 2;
+  }
+
+  // List of successful task placements to set
+  repeated resmgr.Placement placements = 1;
+
+  // List of failed task placements to return
+  repeated FailedPlacement failedPlacements = 2;
+}
+
+message SetPlacementsResponse {
+  message Error {
+    SetPlacementsFailure failure = 1;
+  }
+  Error error = 1;
+}
+
+message GetPlacementsFailure {
+  string message = 1;
+}
+
+message GetPlacementsRequest {
+  // Max number of placements to retrieve
+  uint32 limit = 1;
+
+  // Timeout in milliseconds if no placements
+  uint32 timeout = 2;
+}
+
+message GetPlacementsResponse {
+  message Error {
+    GetPlacementsFailure failure = 1;
+  }
+  Error error = 1;
+
+  // List of task placements to return
+  repeated resmgr.Placement placements = 2;
+}
+
+message NotifyTaskUpdatesError {
+  string message = 1;
+}
+
+message NotifyTaskUpdatesRequest {
+  repeated eventstream.Event events = 1;
+}
+
+message NotifyTaskUpdatesResponse {
+  message Error {
+    NotifyTaskUpdatesError error = 1;
+  }
+  Error error = 1;
+  uint64 purgeOffset = 2;
+}
+
+// GetTasksByHostsRequest will always returns the currently running tasks
+message GetTasksByHostsRequest {
+  repeated string hostnames = 1;
+
+  // Task Type to identify which kind of tasks need to
+  // be dequeued, if this is left out all tasks wil be returned.
+  TaskType type = 2;
+}
+
+message TaskList {
+  repeated resmgr.Task tasks = 1;
+}
+
+message GetTasksByHostsResponse {
+  message Error {
+    string message = 1;
+  }
+  Error error = 1;
+  // This will return a map from hostname to a list of tasks running on the host.
+  map <string,TaskList> hostTasksMap = 2;
+}
+
+message GetActiveTasksRequest {
+  // optional jobID to filter out tasks
+  string jobID = 1;
+
+  // optional respoolID to filter out tasks
+  string respoolID = 2;
+
+  // optional states to filter out tasks
+  repeated string states = 3;
+}
+
+message GetActiveTasksResponse {
+  message Error {
+    string message = 1;
+  }
+  message TaskEntry {
+    string taskID = 1;
+    string taskState = 2;
+    string reason = 3;
+    string lastUpdateTime = 4;
+  }
+  message TaskEntries {
+    repeated TaskEntry taskEntry= 1;
+  }
+
+  Error error = 1;
+
+  // This will return a map from task id to state.
+  // DEPRECATED
+  map <string,string> taskStatesMap = 2;
+
+  // This will return a map from state to list of tasks.
+  map <string, TaskEntries> tasksByState = 4;
+}
+
+// Returns the pending tasks in a resource pool in the order in which they
+// will be processed, grouped by the gang in which they belong.
+message GetPendingTasksRequest {
+  // respoolID of the pool
+  api.v0.peloton.ResourcePoolID respoolID = 1;
+  // limit is the number of gangs to be returned.
+  uint32 limit = 2;
+}
+
+/**
+ * Response message for GetPendingTasks method
+ * Return errors:
+ *    NOT_FOUND:            if the resource pool is not found.
+ *    INVALID_ARGUMENT:     if the resource pool is not supplied or is not a
+ *                          leaf node
+ *    INTERNAL:             if failed to get pending tasks because of internal errors.
+ */
+message GetPendingTasksResponse {
+  // List of pending tasks IDs in a gang
+  message PendingGang {
+    repeated string taskIDs = 1;
+  }
+
+  // List of pending gangs
+  message PendingGangs {
+    repeated PendingGang pendingGangs = 1;
+  }
+
+  // This will return a map from queue type to the pending gangs
+  map <string, PendingGangs> pendingGangsByQueue = 2;
+}
+
+message KillTasksRequest {
+  // Peloton Task Ids for
+  repeated api.v0.peloton.TaskID tasks = 1;
+}
+
+message TasksNotFound {
+  api.v0.peloton.TaskID task = 1;
+  string message = 2;
+}
+
+message KillTasksError {
+  api.v0.peloton.TaskID task = 1;
+  string message = 2;
+}
+
+message KillTasksResponse {
+  message Error {
+   TasksNotFound notFound = 1;
+   KillTasksError killError =2;
+  }
+  repeated Error error = 1;
+}
+
+// UpdateTasksStateRequest is the request message for updating
+// task's state to a desired state in resource manager
+message UpdateTasksStateRequest {
+    // UpdateTaskStateEntry is the entry for UpdateTaskState
+    // Request will have list of UpdateTaskStateEntry
+    message UpdateTaskStateEntry{
+         // Peloton Task ID
+         api.v0.peloton.TaskID task = 1;
+         // Mesos task ID for this instance
+           mesos.v1.TaskID mesosTaskId = 2;
+         // Desired state for the resource manager task
+         api.v0.task.TaskState state = 3;
+    }
+  // List of UpdateTaskEntry
+  repeated UpdateTaskStateEntry taskStates = 1;
+}
+
+// UpdateTasksStateResponse is the response message for UpdateTasksState
+message UpdateTasksStateResponse {}

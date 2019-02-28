@@ -1,0 +1,108 @@
+# TODO: make the configs hierarchical for each component
+
+
+# ZK configs
+zk_image: library/zookeeper:3.4
+default_zk_port: 2181
+local_zk_port: 8192
+zk_container: peloton-zk
+
+
+# Mesos configs
+mesos_master_image: mesosphere/mesos-master:1.6.0-rc1
+mesos_slave_image: mesosphere/mesos-slave:1.6.0-rc1
+mesos_master_container: peloton-mesos-master
+mesos_agent_container: peloton-mesos-agent
+num_agents: 3
+
+# Mesos master configs
+master_port: 5050
+quorum: 1
+registry: replicated_log
+
+# Mesos slave configs
+# Values for oversubscription are recommend at below documentation.
+# https://github.com/apache/mesos/blob/004fb5fa27c2992b11a2fa51a8ec5a3f3de404db/docs/oversubscription.md
+default_agent_port: 5051
+local_agent_port: 5051
+switch_user: 0
+containers: docker,mesos
+log_dir: /var/log/mesos
+isolation: filesystem/linux,namespaces/pid,docker/runtime,cgroups/cpu,cgroups/mem,disk/du,volume/secret
+image_providers: appc,docker
+image_provisioner_backend: copy
+appc_store_dir: /tmp/mesos/images/appc
+work_dir: /var/lib/mesos
+resources: cpus(peloton):0.5;cpus(*):3.5;mem(peloton):1024;disk(*):20000;mem(*):1024;ports(peloton):[31000-32000];fds(*):20
+attributes: datacenter:tdc1;rack:tdc1-t0001;zone:tpl1-tdc1
+modules: file:///etc/mesos-slave/modules
+resource_estimator: org_apache_mesos_FixedResourceEstimator
+qos_controller: org_apache_mesos_LoadQoSController
+qos_correction_interval_min: 20secs
+oversubscribed_resources_interval: 15secs
+
+
+# Cassandra configs
+cassandra_image: cassandra:3.0.14
+cassandra_container: peloton-cassandra
+cassandra_cql_port: 9042
+cassandra_thrift_port: 9160
+cassandra_test_db: peloton_test
+
+
+# Peloton configs
+# peloton image is expected to be available before running container,
+# it can be built with command below:
+#    IMAGE=uber/peloton make docker
+# refer to "$PELOTON_HOME/tools/packaging/peloton-release/README.md" for more details
+peloton_image: uber/peloton
+
+scarce_resource_types:
+  - GPU
+slack_resource_types:
+  - cpus
+
+# Peloton app specific configs
+peloton_resmgr_container: peloton-resmgr
+peloton_resmgr_ports:
+  - 5290
+  - 5394
+peloton_resmgr_instance_count: 2
+
+peloton_hostmgr_container: peloton-hostmgr
+peloton_hostmgr_ports:
+  - 5291
+  - 5391
+peloton_hostmgr_instance_count: 2
+
+peloton_jobmgr_container: peloton-jobmgr
+peloton_jobmgr_ports:
+  - 5292
+  - 5392
+peloton_jobmgr_instance_count: 2
+
+peloton_aurorabridge_container: peloton-aurorabridge
+peloton_aurorabridge_instance_count: 2
+peloton_aurorabridge_ports:
+  - 5396
+  - 8282
+
+peloton_placement_container: peloton-placement
+peloton_placement_ports:
+  - 5293
+  - 5393
+peloton_placement_instances:
+  - BATCH
+  - STATEFUL
+  - STATELESS
+
+peloton_archiver_container: peloton-archiver
+peloton_archiver_ports:
+  - 5295
+  - 5395
+peloton_archiver_instance_count: 1
+
+# auto migrates the database schema on host manager startup
+auto_migrate: "true"
+# log verbose level, set to true for debug
+debug: "false"

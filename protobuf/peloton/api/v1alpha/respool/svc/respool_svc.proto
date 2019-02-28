@@ -1,0 +1,131 @@
+// This file defines the ResourcePool Service in Peloton API
+
+syntax = "proto3";
+
+package peloton.api.v1alpha.respool;
+
+option go_package = "peloton/api/v1alpha/respool/svc";
+option java_package = "peloton.api.v1alpha.respool.svc";
+
+import "peloton/api/v1alpha/peloton.proto";
+import "peloton/api/v1alpha/respool/respool.proto";
+
+// Request message for ResourcePoolService.CreateResourcePool method.
+message CreateResourcePoolRequest {
+  // The unique resource pool UUID specified by the client. This can
+  // be used by the client to re-create a failed resource pool without
+  // the side-effect of creating duplicated resource pool. If unset,
+  // the server will create a new UUID for the resource pool.
+  peloton.ResourcePoolID respool_id = 1;
+
+  // The detailed configuration of the resource pool be to created.
+  ResourcePoolSpec spec = 2;
+}
+
+// Response message for ResourcePoolService.CreateResourcePool method.
+// Return errors:
+//   ALREADY_EXISTS:   if the resource pool already exists.
+//   INVALID_ARGUMENT: if the resource pool config is invalid.
+message CreateResourcePoolResponse {
+  // The ID of the newly created resource pool.
+  peloton.ResourcePoolID respool_id = 1;
+}
+
+// Request message for ResourcePoolService.GetResourcePool method.
+message GetResourcePoolRequest {
+  // The ID of the resource pool to get the detailed information.
+  peloton.ResourcePoolID respool_id = 1;
+
+  // Whether or not to include the resource pool info of the direct
+  // children
+  bool include_child_pools = 2;
+}
+
+// Response message for ResourcePoolService.GetResourcePool method.
+// Return errors:
+//   NOT_FOUND:   if the resource pool is not found.
+message GetResourcePoolResponse {
+  // The detailed information of the resource pool.
+  ResourcePoolInfo respool = 1;
+
+  // The list of child resource pools.
+  repeated ResourcePoolInfo child_respools = 2;
+}
+
+// Request message for ResourcePoolService.DeleteResourcePool method.
+message DeleteResourcePoolRequest {
+  // The ID of the resource pool to be deleted.
+  peloton.ResourcePoolID respool_id = 1;
+}
+
+// Response message for ResourcePoolService.DeleteResourcePool method.
+// Return errors:
+//   NOT_FOUND:           if the resource pool is not found.
+//   INVALID_ARGUMENT:    if the resource pool is not leaf node.
+//   FAILED_PRECONDITION: if the resource pool is busy.
+//   INTERNAL:            if the resource pool fail to delete for internal errors.
+message DeleteResourcePoolResponse {}
+
+// Request message for ResourcePoolService.UpdateResourcePool method.
+message UpdateResourcePoolRequest{
+  // The ID of the resource pool to update the configuration.
+  peloton.ResourcePoolID respool_id = 1;
+
+  // The configuration of the resource pool to be updated.
+  ResourcePoolSpec spec = 2;
+}
+
+// Response message for ResourcePoolService.UpdateResourcePool method.
+// Return errors:
+//   NOT_FOUND:   if the resource pool is not found.
+message UpdateResourcePoolResponse {}
+
+// Request message for ResourcePoolService.LookupResourcePoolID method.
+message LookupResourcePoolIDRequest {
+  // The resource pool path to look up the resource pool ID.
+  ResourcePoolPath path = 1;
+}
+
+// Response message for ResourcePoolService.LookupResourcePoolID method.
+// Response message for ResourcePoolService.UpdateResourcePool method.
+// Return errors:
+//   NOT_FOUND:         if the resource pool is not found.
+//   INVALID_ARGUMENT:  if the resource pool path is invalid.
+message LookupResourcePoolIDResponse {
+  // The resource pool ID for the given resource pool path.
+  peloton.ResourcePoolID respool_id = 1;
+}
+
+// Request message for ResourcePoolService.QueryResourcePools method.
+message QueryResourcePoolsRequest {
+  // TODO Filters
+}
+
+// Response message for ResourcePoolService.QueryResourcePools method.
+// Return errors:
+message QueryResourcePoolsResponse {
+  repeated ResourcePoolInfo respools = 1;
+}
+
+// ResourcePoolService defines the resource pool related methods
+// such as create, get, delete and upgrade resource pools.
+service ResourcePoolService
+{
+  // Create a resource pool entity for a given config
+  rpc CreateResourcePool(CreateResourcePoolRequest) returns (CreateResourcePoolResponse);
+
+  // Get the resource pool entity
+  rpc GetResourcePool(GetResourcePoolRequest) returns (GetResourcePoolResponse);
+
+  // Delete a resource pool entity
+  rpc DeleteResourcePool(DeleteResourcePoolRequest) returns (DeleteResourcePoolResponse);
+
+  // Modify a resource pool entity
+  rpc UpdateResourcePool(UpdateResourcePoolRequest) returns (UpdateResourcePoolResponse);
+
+  // Lookup the resource pool ID for a given resource pool path
+  rpc LookupResourcePoolID(LookupResourcePoolIDRequest) returns (LookupResourcePoolIDResponse);
+
+  // Query the resource pools.
+  rpc QueryResourcePools(QueryResourcePoolsRequest) returns (QueryResourcePoolsResponse);
+}

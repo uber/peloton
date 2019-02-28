@@ -1,0 +1,40 @@
+changeLog: null
+name: TestPelotonJob_integration
+owningTeam: team6
+ldapGroups:
+- money
+- team6
+- otto
+description: "preemption test: restart policy"
+labels:
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
+instanceCount: 12
+sla:
+  priority: 22
+  maximumRunningInstances: 12
+  preemptible: true
+defaultConfig:
+  labels:
+  - key: testKey3
+    value: testVal3
+  - key: testKey4
+    value: testVal4
+  - key: testKey5
+    value: testVal5
+  resource:
+    cpuLimit: 1.0
+    memLimitMb: 0.1
+    diskLimitMb: 0.1
+    fdLimit: 2
+  healthCheck: null
+  ports: []
+  command:
+    shell: true
+    value: 'echo testing & sleep 500'
+  preemptionPolicy:
+    killOnPreempt: true # Kill after preempt

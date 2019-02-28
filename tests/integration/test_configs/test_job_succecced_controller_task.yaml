@@ -1,0 +1,44 @@
+changeLog: null
+name: TestPelotonJob_integration
+owningTeam: team6
+ldapGroups:
+- money
+- team6
+- otto
+description: "A test controller job for peloton integration tests with succeeded controller task"
+labels:
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
+instanceCount: 3
+sla:
+  priority: 22
+  preemptible: true
+defaultConfig:
+  labels:
+  - key: testKey3
+    value: testVal3
+  - key: testKey4
+    value: testVal4
+  - key: testKey5
+    value: testVal5
+  resource:
+    cpuLimit: 0.1
+    memLimitMb: 0.1
+    diskLimitMb: 0.1
+    fdLimit: 2
+  healthCheck: null
+  ports: []
+  command:
+    shell: true
+    value: 'sleep 1; exit 1'
+instanceConfig:
+  0:
+    name: instance0
+    controller: true
+    command:
+      shell: true
+      value: 'sleep 2; echo I have control'

@@ -1,0 +1,200 @@
+// This file defines the Pod Service in Peloton API
+
+syntax = "proto3";
+
+package peloton.api.v1alpha.pod.svc;
+
+option go_package = "peloton/api/v1alpha/pod/svc";
+option java_package = "peloton.api.v1alpha.pod.svc";
+
+import "peloton/api/v1alpha/peloton.proto";
+import "peloton/api/v1alpha/pod/pod.proto";
+
+// Request message for PodService.StartPod method
+message StartPodRequest {
+  // The pod name.
+  peloton.PodName pod_name = 1;
+}
+
+// Response message for PodService.StartPod method
+// Return errors:
+//   NOT_FOUND:   if the pod is not found.
+message StartPodResponse {}
+
+// Request message for PodService.StopPod method
+message StopPodRequest {
+  // The pod name.
+  peloton.PodName pod_name = 1;
+}
+
+// Response message for PodService.StopPod method
+// Return errors:
+//   NOT_FOUND:   if the pod is not found.
+message StopPodResponse {}
+
+// Request message for PodService.RestartPod method
+message RestartPodRequest {
+  // The pod name.
+  peloton.PodName pod_name = 1;
+}
+
+// Response message for PodService.RestartPod method
+// Return errors:
+//   NOT_FOUND:   if the pod is not found.
+message RestartPodResponse {}
+
+// Request message for PodService.GetPod method
+message GetPodRequest {
+  // The pod name.
+  peloton.PodName pod_name = 1;
+
+  // If set to true, only return the pod status and not the configuration.
+  bool status_only = 2;
+}
+
+// Response message for PodService.GetPod method
+// Return errors:
+//   NOT_FOUND:   if the pod is not found.
+message GetPodResponse {
+  // Returns the status and configuration (if requested)
+  // for the current run of the pod.
+  PodInfo current = 1;
+
+  // Returns the status and configuration (if requested)
+  // for previous runs of the pod.
+  repeated PodInfo previous = 2;
+}
+
+// Request message for PodService.GetPodEvents method
+message GetPodEventsRequest {
+  // The pod name.
+  peloton.PodName pod_name = 1;
+
+  // Get the events of a particular pod identified using the pod identifier.
+  // If not provided, events for the latest pod are returned.
+  peloton.PodID pod_id = 2;
+}
+
+// Response message for PodService.GetPodEvents method
+// Return errors:
+//   NOT_FOUND:   if the pod is not found.
+message GetPodEventsResponse {
+  repeated pod.PodEvent events = 1;
+}
+
+// Request message for PodService.BrowsePodSandbox method
+message BrowsePodSandboxRequest {
+  // The pod name.
+  peloton.PodName pod_name = 1;
+
+  // Get the sandbox path of a particular pod identified using the pod identifier.
+  // If not provided, the sandbox path for the latest pod is returned.
+  peloton.PodID pod_id = 2;
+}
+
+// Response message for PodService.BrowsePodSandbox method
+// Return errors:
+//   NOT_FOUND:   if the pod is not found.
+//   ABORT:       if the pod has not been run.
+message BrowsePodSandboxResponse {
+  // The hostname of the sandbox.
+  string hostname = 1;
+
+  // The port of the sandbox.
+  string port = 2;
+
+  // The list of sandbox file paths.
+  // TODO: distinguish files and directories in the sandbox
+  repeated string paths = 3;
+
+  // Mesos Master hostname and port.
+  string mesos_master_hostname = 4;
+  string mesos_master_port = 5;
+}
+
+// Request message for PodService.RefreshPod method
+message RefreshPodRequest {
+  // The pod name.
+  peloton.PodName pod_name = 1;
+}
+
+// Response message for PodService.RefreshPod method
+// Return errors:
+//   NOT_FOUND:   if the pod is not found.
+message RefreshPodResponse {}
+
+// Request message for PodService.GetPodCache method
+message GetPodCacheRequest {
+  // The pod name.
+  peloton.PodName pod_name = 1;
+}
+
+// Response message for PodService.GetPodCache method
+// Return errors:
+//   NOT_FOUND:   if the pod is not found.
+message GetPodCacheResponse {
+  // The runtime status of the pod.
+  pod.PodStatus status = 1;
+}
+
+// Request message for PodService.DeletePodEvents method
+message DeletePodEventsRequest {
+  // The pod name.
+  peloton.PodName pod_name = 1;
+
+  // Delete the events of a particular pod identified using the pod identifier.
+  peloton.PodID pod_id = 2;
+}
+
+// Response message for PodService.DeletePodEvents method
+// Return errors:
+//   NOT_FOUND:   if the pod is not found.
+message DeletePodEventsResponse {}
+
+// Pod service defines the pod related methods.
+service PodService
+{
+  // Methods which mutate the state of the pod.
+
+  // Start the pod. Will be a no-op for pod that is currently running.
+  // The pod is started asynchronously after the API call returns.
+  rpc StartPod(StartPodRequest) returns (StartPodResponse);
+
+  // Stop the pod. Will be no-op for a pod that is currently stopped.
+  // The pod is stopped asynchronously after the API call returns.
+  rpc StopPod(StopPodRequest) returns (StopPodResponse);
+
+  // Restart a the pod. Will start a pod that is currently stopped.
+  // Will first stop the pod that is currently running and then start it again.
+  // This is an asynchronous call.
+  rpc RestartPod(RestartPodRequest) returns (RestartPodResponse);
+
+  // Read methods.
+
+  // Get the info of a pod in a job. Return the current run as well as the
+  // terminal state of previous runs.
+  rpc GetPod(GetPodRequest) returns (GetPodResponse);
+
+  // Get the state transitions for a pod (pod events) for a
+  // given run of the pod.
+  rpc GetPodEvents(GetPodEventsRequest) returns (GetPodEventsResponse);
+
+  // Return the list of file paths inside the sandbox for a given
+  // run of a pod. The client can use the Mesos Agent HTTP endpoints to read
+  // and download the files. http://mesos.apache.org/documentation/latest/endpoints/
+  rpc BrowsePodSandbox(BrowsePodSandboxRequest) returns (BrowsePodSandboxResponse);
+
+  // Debug only methods.
+  // TODO move to private job manager APIs.
+
+  // Allows user to load pod runtime state from DB
+  // and re-execute the action associated with current state.
+  rpc RefreshPod(RefreshPodRequest) returns (RefreshPodResponse);
+
+  // Get the cache of a pod stored in Peloton.
+  rpc GetPodCache(GetPodCacheRequest) returns(GetPodCacheResponse);
+
+  // Delete the events of a given run of a pod.
+  // This is used to prevent the events for a given pod from growing without bounds.
+  rpc DeletePodEvents(DeletePodEventsRequest) returns (DeletePodEventsResponse);
+}

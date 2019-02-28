@@ -1,0 +1,17 @@
+# Until T663752 is resolved, use an older version of docker-py which
+# is compatible with docker 1.9.1 (jenkins box) and 1.12.x (Laptop).
+docker-py==1.7.2
+peloton-client~=0.7.0
+pyyaml
+
+# Integration tests requirements.
+pytest==3.0.7
+enum
+m3>=3.0.0
+protobuf
+
+# Performance tests requirements.
+Jinja2>=1.1.0
+
+# Mkdocs requirements.
+mkdocs

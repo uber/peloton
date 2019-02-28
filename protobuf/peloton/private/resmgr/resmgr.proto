@@ -1,0 +1,174 @@
+/**
+ *  Internal API for Peloton Resource Manager
+ */
+
+syntax = "proto3";
+
+package peloton.private.resmgr;
+
+option go_package = "peloton/private/resmgr";
+
+import "mesos/v1/mesos.proto";
+import "peloton/api/v0/peloton.proto";
+import "peloton/api/v0/task/task.proto";
+
+
+/**
+ *  TaskType task type definition such as batch, service and infra agent.
+ */
+enum TaskType {
+
+  // This is unknown type, this is also used in DequeueGangsRequest to
+  // indicate that we want tasks of any task type back.
+  UNKNOWN = 0;
+
+  // Normal batch task
+  BATCH = 1;
+
+  // STATELESS task which is long running and will be restarted upon failures.
+  STATELESS = 2;
+
+  // STATEFUL task which is using persistent volume and is long running
+  STATEFUL = 3;
+
+  // DAEMON task which has one instance running on each host for infra
+  // agents like muttley, m3collector etc.
+  DAEMON = 4;
+}
+
+/**
+ *  Task describes a task instance at Resource Manager layer. Only
+ *  includes the minimal set of fields required for Resource Manager
+ *  and Placement Engine, such as resource config, constraint etc.
+ */
+message Task {
+  // Name of the task
+  string name = 1;
+
+  // The unique ID of the task
+  api.v0.peloton.TaskID id = 2;
+
+  // The Job ID of the task for use cases like gang scheduling
+  api.v0.peloton.JobID jobId = 3;
+
+  // The mesos task ID of the task
+  mesos.v1.TaskID taskId = 4;
+
+  // Resource config of the task
+  api.v0.task.ResourceConfig resource = 5;
+
+  //
+  // Priority of a task. Higher value takes priority over lower value
+  // when making scheduling decisions as well as preemption decisions
+  //
+  uint32 priority = 6;
+
+  //
+  // Whether the task is preemptible. If a task is not preemptible, then
+  // it will have to be launched using reserved resources.
+  //
+  bool preemptible = 7;
+
+  // List of user-defined labels for the task, these are used to enforce
+  // the constraint. These are copied from the TaskConfig.
+  mesos.v1.Labels labels = 8;
+
+  // Constraint on the labels of the host or tasks on the host that this
+  // task should run on. This is copied from the TaskConfig.
+  api.v0.task.Constraint constraint = 9;
+
+  // Type of the Task
+  TaskType type = 10;
+
+  // Number of dynamic ports
+  uint32 numPorts = 11;
+
+  // Minimum number of running instances.  Value > 1 indicates task is in
+  // scheduling gang of that size; task instanceID is in [0..minInstances-1].
+  // If value <= 1, task is not in scheduling gang and is scheduled singly.
+  uint32 minInstances = 12;
+
+  // Hostname of the host on which the task is running on.
+  string hostname = 13;
+
+  // Whether this is a controler task. A controller is a special batch task
+  // which controls other tasks inside a job. E.g. spark driver tasks in a spark
+  // job will be a controller task.
+  bool controller = 14;
+
+  // This is the timeout for the placement, it needs to be set for different
+  // timeout value for each placement iteration. Also it will also be used
+  // for communicating between placement engine in case of Host reservation.
+  double placementTimeoutSeconds = 15;
+
+  // Retry count for how many times this task is failed to be Placed. This is
+  // needed for calculating next backoff period and decide when we need
+  // to do Host reservation.
+  double placementRetryCount = 16;
+
+  // Whether the task is revocable. If true, then it will be launched
+  // with usage slack resources.
+  // Revocable tasks will be killed by QoS controller, if resources
+  // are required by tasks to which initial allocation was done.
+  bool revocable = 17;
+
+  // The name of the host where the instance should be running on upon restart.
+  // It is used for best effort in-place update/restart.
+  // When this field is set upon enqueuegang, the task would directly move to
+  // ready queue.
+  string desiredHost = 18;
+}
+
+/**
+ *  Placement describes the mapping of a list of tasks to a host
+ *  so that Job Manager can launch the tasks on the host.
+ */
+message Placement {
+  // The list of tasks to be placed
+  repeated api.v0.peloton.TaskID tasks = 1;
+
+  // The name of the host where the tasks are placed
+  string hostname = 2;
+
+  // The Mesos agent ID of the host where the tasks are placed
+  mesos.v1.AgentID agentId = 3;
+
+  // The list of Mesos offers of the placed tasks
+  // DEPRECATED: see `HostOfferID`
+  repeated mesos.v1.OfferID offerIds = 4 [deprecated=true];
+
+  // The list of allocated ports which should be sufficient for all placed tasks
+  repeated uint32 ports = 5;
+
+  // Type of the tasks in the placement. Note all tasks must belong to same type.
+  // By default the type is batch task.
+  TaskType type = 6;
+
+  // The unique offer id of the offers on the host where the tasks are placed
+  api.v0.peloton.HostOfferID hostOfferID = 7;
+}
+
+/*
+ *  PreemptionCandidate represents a task which has been chosen to be preempted
+*/
+message PreemptionCandidate {
+  // The unique ID of the task
+  api.v0.peloton.TaskID id = 1;
+
+  // The reason for choosing the task for preemption
+  PreemptionReason reason = 2;
+}
+
+/*
+ *  The reason for choosing the task for preemption
+*/
+enum PreemptionReason {
+  // Reserved for compatibility
+  PREEMPTION_REASON_UNKNOWN = 0;
+
+  // Resource Preemption
+  PREEMPTION_REASON_REVOKE_RESOURCES = 1;
+
+  // Host maintenance
+  PREEMPTION_REASON_HOST_MAINTENANCE = 2;
+}

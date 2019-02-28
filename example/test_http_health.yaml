@@ -1,0 +1,68 @@
+changelog: null
+name: TestHttpHealthCheckJob
+owningteam: team6
+ldapgroups:
+- money
+- team6
+- otto
+description: "A dummy test job using python to test various aspect of health check"
+instancecount: 3
+defaultconfig:
+  resource:
+    cpulimit: 0.1
+    memlimitmb: 2.0
+    disklimitmb: 10
+    fdlimit: 10
+  ports:
+  - name: "http"
+    envname: "UBER_HTTP_PORT"
+  container: null
+  command:
+    shell: true
+    value: 'ls -al ${MESOS_SANDBOX} && python ${MESOS_SANDBOX}/test_health_http_server.py'
+    environment:
+      variables:
+        - name: "INITIAL_COOLOFF_SECS"
+          value: "60"
+        - name: "CONSECUTIVE_SUCCESSES"
+          value: "4"
+        - name: "CONSECUTIVE_FAILURES"
+          value: "2"
+    uris:
+    - value: "https://gist.githubusercontent.com/zhitaoli/ec36c6d6874621846fbc410d742e95c2/raw/20d131e87a7b0bada35da0d67949750a21b98f2d/test_health_http_server.py"
+      executable: false
+      cache: false
+  labels:
+  - key: "org.apache.aurora.metadata.uns"
+    value: '["/peloton_test_http1/us1/peloton_test_http_health_check"]'
+instanceconfig:
+  0:
+    name: instance0
+    healthcheck:
+      type: 1
+      initialintervalsecs: 70
+      intervalsecs: 1
+      timeoutsecs: 1
+      maxconsecutivefailures: 3
+      commandcheck:
+        command: "date && curl -f localhost:$UBER_HTTP_PORT"
+  1:
+    name: instance1
+    healthcheck:
+      type: 1
+      initialintervalsecs: 1
+      intervalsecs: 1
+      timeoutsecs: 1
+      maxconsecutivefailures: 3
+      commandcheck:
+        command: "date && curl -f localhost:$UBER_HTTP_PORT"
+  2:
+    name: instance2
+    healthcheck:
+      type: 1
+      initialintervalsecs: 70
+      intervalsecs: 1
+      timeoutsecs: 1
+      maxconsecutivefailures: 1
+      commandcheck:
+        command: "date && curl -f localhost:$UBER_HTTP_PORT"

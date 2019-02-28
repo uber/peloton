@@ -1,0 +1,974 @@
+/**
+ *  This file defines the Task related messages in Peloton API
+ */
+
+syntax = "proto3";
+
+package peloton.api.v0.task;
+
+option go_package = "peloton/api/v0/task";
+option java_package = "peloton.api.v0.task";
+
+import "mesos/v1/mesos.proto";
+import "peloton/api/v0/peloton.proto";
+import "peloton/api/v0/errors/errors.proto";
+import "peloton/api/v0/query/query.proto";
+
+
+/**
+ *  Resource configuration for a task.
+ */
+message ResourceConfig {
+
+  // CPU limit in number of CPU cores
+  double cpuLimit = 1;
+
+  // Memory limit in MB
+  double memLimitMb = 2;
+
+  // Disk limit in MB
+  double diskLimitMb = 3;
+
+  // File descriptor limit
+  uint32 fdLimit = 4;
+
+  // GPU limit in number of GPUs
+  double gpuLimit = 5;
+}
+
+
+/**
+ *  Health check configuration for a task
+ */
+message HealthCheckConfig {
+
+  // Whether the health check is enabled.
+  bool enabled = 1;
+
+  // Start time wait in seconds.
+  // Zero or empty value would use default value of 15 from Mesos.
+  uint32 initialIntervalSecs = 2;
+
+  // Interval in seconds between two health checks.
+  // Zero or empty value would use default value of 10 from Mesos.
+  uint32 intervalSecs = 3;
+
+  // Max number of consecutive failures before failing health check.
+  // Zero or empty value would use default value of 3 from Mesos.
+  uint32 maxConsecutiveFailures = 4;
+
+  // Health check command timeout in seconds.
+  // Zero or empty value would use default value of 20 from Mesos.
+  uint32 timeoutSecs = 5;
+
+  enum Type {
+    // Reserved for future compatibility of new types.
+    UNKNOWN = 0;
+
+    // Command line based health check
+    COMMAND = 1;
+
+    // HTTP endpoint based health check
+    HTTP = 2;
+
+    // GRPC endpoint based health check
+    GRPC = 3;
+  }
+
+  message CommandCheck {
+    // Health check command to be executed.
+    // Note that this command by default inherits all environment varibles from
+    // the task it's monitoring, unless `unshare_environments` is set to true.
+    string command = 1;
+
+    // If set, this check will not share the environment variables of the task.
+    bool unshareEnvironments = 2;
+  }
+
+  message HTTPCheck {
+    // HTTP health check to be executed.
+    // Sends a GET request to scheme://<host>:port/path. Host is not
+    // configurable and is resolved automatically.
+
+    // Currently http and https are supported.
+    string scheme = 1;
+
+    // Port to send the HTTP GET.
+    uint32 port = 2;
+
+    // The request path.
+    string path = 3;
+  }
+
+  Type type = 6;
+
+  // Only applicable when type is `COMMAND`.
+  CommandCheck commandCheck = 7;
+
+  // Only applicable when type is 'HTTP'.
+  HTTPCheck httpCheck = 8;
+}
+
+
+/**
+ *  Network port configuration for a task
+ */
+message PortConfig {
+
+  // Name of the network port, e.g. http, tchannel. Required field.
+  string name = 1;
+
+  // Static port number if any. If unset, will be dynamically allocated
+  // by the scheduler
+  uint32 value = 2;
+
+  // Environment variable name to be exported when running a task for this port.
+  // Required field for dynamic port.
+  string envName = 3;
+}
+
+/**
+ * Constraint represents a host label constraint or a related tasks label constraint.
+ * This is used to require that a host have certain label constraints or to require
+ * that the tasks already running on the host have certain label constraints.
+ */
+message Constraint {
+  enum Type {
+    // Reserved for compatibility.
+    UNKNOWN_CONSTRAINT = 0;
+    LABEL_CONSTRAINT   = 1;
+    AND_CONSTRAINT     = 2;
+    OR_CONSTRAINT      = 3;
+  }
+
+  Type type = 1;
+
+  LabelConstraint labelConstraint = 2;
+  AndConstraint   andConstraint   = 3;
+  OrConstraint    orConstraint    = 4;
+}
+
+/**
+ * AndConstraint represents a logical 'and' of constraints.
+ */
+message AndConstraint {
+  repeated Constraint constraints  = 1;
+}
+
+/**
+ * OrConstraint represents a logical 'or' of constraints.
+ */
+message OrConstraint {
+  repeated Constraint constraints  = 1;
+}
+
+/**
+ * LabelConstraint represents a constraint on the number of occurrences of a given
+ * label from the set of host labels or task labels present on the host.
+ */
+message LabelConstraint {
+  /**
+   * Condition represents a constraint on the number of occurrences of the label.
+   */
+  enum Condition {
+    // Reserved for compatibility.
+    CONDITION_UNKNOWN               = 0;
+    CONDITION_LESS_THAN             = 1;
+    CONDITION_EQUAL                 = 2;
+    CONDITION_GREATER_THAN          = 3;
+  }
+
+  /**
+   * Kind represents whatever the constraint applies to the labels on the host
+   * or to the labels of the tasks that are located on the host.
+   */
+  enum Kind {
+    // Reserved for compatibility.
+    UNKNOWN = 0;
+    TASK    = 1;
+    HOST    = 2;
+  }
+
+  // Determines which labels the constraint should apply to.
+  Kind           kind        = 1;
+  // Determines which constraint there should be on the number of occurrences of the label.
+  Condition      condition   = 2;
+  // The label which this defines a constraint on:
+  // For Kind == HOST, each attribute on Mesos agent is transformed to a label,
+  // with `hostname` as a special label which is always inferred from agent
+  // hostname and set.
+  peloton.Label label       = 3;
+  // A limit on the number of occurrences of the label.
+  uint32         requirement = 4;
+}
+
+/**
+ *  Restart policy for a task.
+ */
+message RestartPolicy {
+
+  // Max number of task failures can occur before giving up scheduling retry, no
+  // backoff for now. Default 0 means no retry on failures.
+  uint32 maxFailures = 1;
+}
+
+/**
+ * Preemption policy for a task
+ */
+message PreemptionPolicy {
+  /**
+   * Type represents whether the instance is preemptible. If so, it might
+   * be scheduled using elastic resources from other resource pools and
+   * subject to preemption when the demands of other resource pools increase.
+   * If it is non-preemptible it will be scheduled using the reserved
+   * resources only.
+   * This can override the preemptible sla configuration at the job level.
+   */
+  enum Type {
+    TYPE_INVALID         = 0;
+    TYPE_PREEMPTIBLE     = 1;
+    TYPE_NON_PREEMPTIBLE = 2;
+  }
+  Type type = 1;
+
+  // This policy defines if the task should be restarted after it is
+  // preempted. If set to true the task will not be rescheduled
+  // after it is preempted. If set to false the task will be rescheduled.
+  // Defaults to false
+  // This only takes effect if the task is preemptible.
+  bool killOnPreempt = 2;
+}
+
+/**
+ *  Persistent volume configuration for a task.
+ */
+message PersistentVolumeConfig {
+    // Volume mount path inside container.
+    string containerPath = 1;
+
+    // Volume size in MB.
+    uint32 sizeMB = 2;
+}
+
+/**
+ *  Task configuration for a given job instance
+ *  Note that only add string/slice/ptr type into TaskConfig directly due to
+ *  the limitation of go reflection inside our task specific config logic.
+ */
+message TaskConfig {
+  // Name of the task
+  string name = 1;
+
+  // List of user-defined labels for the task
+  repeated peloton.Label labels = 2;
+
+  // Resource config of the task
+  ResourceConfig resource = 3;
+
+  // Container config of the task.
+  mesos.v1.ContainerInfo container = 4;
+
+  // Command line config of the task
+  mesos.v1.CommandInfo command = 5;
+
+  // Custom executor config of the task.
+  mesos.v1.ExecutorInfo executor = 15;
+
+  // Health check config of the task
+  HealthCheckConfig healthCheck = 6;
+
+  // List of network ports to be allocated for the task
+  repeated PortConfig ports = 7;
+
+  // Constraint on the attributes of the host or labels on tasks on the host
+  // that this task should run on.
+  // Use `AndConstraint`/`OrConstraint` to compose multiple constraints if
+  // necessary.
+  Constraint constraint = 8;
+
+  // Task restart policy on failures
+  RestartPolicy restartPolicy = 9;
+
+  // Persistent volume config of the task.
+  PersistentVolumeConfig volume = 10;
+
+  // Preemption policy of the task
+  PreemptionPolicy preemptionPolicy = 11;
+
+  // Whether this is a controller task. A controller is a special batch task
+  // which controls other tasks inside a job. E.g. spark driver tasks in a spark
+  // job will be a controller task.
+  bool controller = 12;
+
+  // This is used to set the amount of time between when the executor sends the
+  // SIGTERM message to gracefully terminate a task and when it kills it by
+  // sending SIGKILL. If you do not set the grace period duration the default is
+  // 30 seconds.
+  uint32 killGracePeriodSeconds = 13;
+
+  // Whether the instance is revocable. If so, it might
+  // be scheduled using revocable resources and subject to preemption
+  // when there is resource contention on the host.
+  // This can override the revocable configuration at the job level.
+  bool revocable = 14;
+}
+
+/**
+ *  Runtime states of a task instance
+ */
+enum TaskState {
+  // Reserved for future compatibility of new states.
+  UNKNOWN     = 0;
+
+  // The task is being initialized
+  INITIALIZED = 1;
+
+  // The task is pending and waiting for resources
+  PENDING     = 2;
+
+  // The task has been allocated with resources and ready for placement
+  READY       = 3;
+
+  // The task is being placed to a host based on its resource
+  // requirements and constraints
+  PLACING     = 4;
+
+  // The task has been assigned to a host matching the resource
+  // requirements and constraints
+  PLACED      = 5;
+
+  // The task is taken from resmgr to be launched
+  LAUNCHING   = 6;
+
+  // The task is being launched in Job manager
+  // TODO: We need to correct the numbering
+  LAUNCHED    = 15;
+
+  // The task is being started by Mesos agent
+  STARTING    = 7;
+
+  // The task is running on a Mesos host
+  RUNNING     = 8;
+
+  // The task terminated with an exit code of zero
+  SUCCEEDED   = 9;
+
+  // The task terminated with a non-zero exit code
+  FAILED      = 10;
+
+  // The task is lost
+  LOST        = 11;
+
+  // The task is being preempted by another one on the node
+  PREEMPTING  = 12;
+
+  // The task is being killed
+  KILLING     = 13;
+
+  // Execution of the task was terminated by the system
+  KILLED      = 14;
+
+  // The task is to be deleted after termination
+  DELETED     = 16;
+}
+
+/**
+ *  HealthState is the health check state of a task
+ */
+enum HealthState {
+  // Default value.
+  INVALID     = 0;
+
+  // If the health check config is not enabled in the task config,
+  // the initial value of the health state is DISABLED.
+  DISABLED  = 1;
+
+  // If the health check config is enabled in the task config,
+  // the initial value of the health state is HEALTH_UNKNOWN.
+  HEALTH_UNKNOWN = 2;
+
+  // In a Mesos event, If the healthy field is true and
+  // the reason field is REASON_TASK_HEALTH_CHECK_STATUS_UPDATED
+  // the health state of the task is HEALTHY
+  HEALTHY     = 3;
+
+  // In a Mesos event, If the healthy field is false and
+  // the reason field is REASON_TASK_HEALTH_CHECK_STATUS_UPDATED
+  // the health state of the task is UNHEALTHY
+  UNHEALTHY   = 4;
+}
+
+// TerminationStatus contains details about termination of a task. It mainly
+// contains Peloton-specific reasons for termination.
+message TerminationStatus {
+   // Reason lists various causes for a task termination
+   enum Reason {
+     // Default value.
+     TERMINATION_STATUS_REASON_INVALID = 0;
+
+     // Task was killed because a stop request was received from a client.
+     TERMINATION_STATUS_REASON_KILLED_ON_REQUEST = 1;
+
+     // Task failed. See also TerminationStatus.exit_code,
+     // TerminationStatus.signal and ContainerStatus.message.
+     TERMINATION_STATUS_REASON_FAILED = 2;
+
+     // Task was killed to put the host in to maintenance.
+     TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE = 3;
+
+     // Tasked was killed to reclaim resources allocated to it.
+     TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES = 4;
+
+     // Task was killed due to deadline tracker exceeding task timeout
+     TERMINATION_STATUS_REASON_DEADLINE_TIMEOUT_EXCEEDED = 5;
+   }
+
+  // Reason for termination.
+  Reason reason = 1;
+
+  // If non-zero, exit status when the container terminated.
+  uint32 exit_code = 2;
+
+  // Name of signal received by the container when it terminated.
+  string signal = 3;
+}
+
+/**
+ *  Runtime info of an task instance in a Job
+ */
+message RuntimeInfo {
+  // Runtime status of the task
+  TaskState state = 1;
+
+  // The mesos task ID for this instance
+  mesos.v1.TaskID mesosTaskId = 2;
+
+  // The time when the instance starts to run. Will be unset if the
+  // instance hasn't started running yet. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string startTime = 3;
+
+  // The time when the instance is completed. Will be unset if the
+  // instance hasn't completed yet. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string completionTime = 4;
+
+  // The name of the host where the instance is running
+  string host = 5;
+
+  // Dynamic ports reserved on the host while this instance is running
+  map<string, uint32> ports = 6;
+
+  // The desired state of the task which should be eventually reached
+  // by the system.
+  TaskState goalState = 7;
+
+  // The message that explains the current state of a task such as why
+  // the task is failed. Only track the latest one if the task has been
+  // retried and failed multiple times.
+  string message = 8;
+
+  // The reason that explains the current state of a task. Only track
+  // the latest one if the task has been retried and failed multiple times.
+  // See Mesos TaskStatus.Reason for more details.
+  string reason = 9;
+
+  // The number of times the task has failed after retries.
+  uint32 failureCount = 10;
+
+  // persistent volume id
+  peloton.VolumeID volumeID = 11;
+
+  // The config version currently used by the runtime.
+  uint64 configVersion = 12;
+
+  // The desired config version that should be used by the runtime.
+  uint64 desiredConfigVersion = 13;
+
+  // the id of mesos agent on the host to be launched.
+  mesos.v1.AgentID agentID = 14;
+
+  // Revision of the current task info.
+  peloton.ChangeLog revision = 15;
+
+  // The mesos task id of the previous task run of the instance.
+  mesos.v1.TaskID prevMesosTaskId = 16;
+
+  // The resource usage for this task. The map key is each resource kind
+  // in string format and the map value is the number of unit-seconds
+  // of that resource used by the job. Example: if a task that uses 1 CPU
+  // and finishes in 10 seconds, this map will contain <"cpu":10>
+  map<string, double> resourceUsage = 17;
+
+  // The result of the health check
+  HealthState healthy = 18;
+
+  // The desired mesos task ID for this instance
+  mesos.v1.TaskID desiredMesosTaskId = 19;
+
+  // Termination status of the task. Set only if the task is in a non-successful
+  // terminal state such as KILLED or FAILED.
+  TerminationStatus terminationStatus = 20;
+
+  // The name of the host where the instance should be running on upon restart.
+  // It is used for best effort in-place update/restart.
+  string desiredHost = 21;
+}
+
+
+/**
+ *  Info of a task instance in a Job
+ */
+message TaskInfo {
+  // The numerical ID assigned to this instance. Instance IDs must be
+  // unique and contiguous within a job. The ID is in the range of
+  // [0, N-1] for a job with instance count of N.
+  uint32 instanceId = 1;
+
+  // Job ID of the task
+  peloton.JobID jobId = 2;
+
+  // Configuration of the task
+  TaskConfig config = 3;
+
+  // Runtime info of the instance
+  RuntimeInfo runtime = 4;
+}
+
+
+/**
+ *  Task InstanceID range [from, to)
+ */
+message InstanceRange {
+  uint32 from = 1;
+  uint32 to = 2;
+}
+
+
+/**
+ *  QuerySpec specifies the list of query criteria for tasks. All
+ *  indexed fields should be part of this message. And all fields
+ *  in this message have to be indexed too.
+ */
+message QuerySpec {
+  // DEPRECATED: use QueryJobRequest.pagination instead.
+  // The spec of how to do pagination for the query results.
+  query.PaginationSpec pagination = 1;
+
+  // List of task states to query the tasks. Will match all tasks if
+  // the list is empty.
+  repeated TaskState taskStates = 2;
+
+  // List of task names to query the tasks. Will match all names if
+  // the list is empty.
+  repeated string names = 3;
+
+  // List of hosts to query the tasks. Will match all hosts if
+  // the list is empty.
+  repeated string hosts = 4;
+
+}
+
+
+/**
+ *  Task event of a Peloton task instance.
+ */
+message TaskEvent {
+  // Describes the source of the task event
+  enum Source {
+    SOURCE_UNKNOWN = 0;
+    SOURCE_JOBMGR = 1;
+    SOURCE_RESMGR = 2;
+    SOURCE_HOSTMGR = 3;
+  }
+
+  // TODO add reason
+  // with detailed reason for the task event
+
+  // The task ID of the task event.
+  peloton.TaskID taskId = 1;
+
+  // The task state of the task event.
+  TaskState state = 2;
+
+  // Short human friendly message explaining state.
+  string message = 3;
+
+  // The time when the event was created. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string timestamp = 4;
+
+  // The source that generated the task event.
+  Source source = 5;
+
+  // The host on which the task is running
+  string hostname = 6;
+
+  // The short reason for the task event
+  string reason = 7;
+
+  // The agentID for the task
+  string agentId = 8;
+
+  // The previous mesos task ID of the task event.
+  peloton.TaskID prevTaskId = 9;
+
+  // The health check result of the task
+  HealthState healthy = 10;
+
+  // The desired mesos task ID of the task event.
+  peloton.TaskID desiredTaskId = 11;
+}
+
+/**
+ *  Pod event of a Peloton pod instance.
+ */
+message PodEvent {
+  // The task ID of the task event.
+  mesos.v1.TaskID taskId = 1;
+
+  // Actual state of an instance
+  string actualState = 2;
+
+  // Goal State of an instance
+  string goalState = 3;
+
+  // The time when the event was created. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string timestamp = 4;
+
+  // The config version currently used by the runtime.
+  uint64 configVersion = 5;
+
+  // The desired config version that should be used by the runtime.
+  uint64 desiredConfigVersion = 6;
+
+  // The agentID for the task
+  string agentID = 7;
+
+  // The host on which the task is running
+  string hostname = 8;
+
+  // Short human friendly message explaining state.
+  string message = 9;
+
+  // The short reason for the task event
+  string reason = 10;
+
+  // The previous task ID of the pod event.
+  mesos.v1.TaskID prevTaskId = 11;
+
+  // The health check result of the task
+  string healthy = 12;
+
+  // The desired mesos task ID of the task event.
+  mesos.v1.TaskID desriedTaskId = 13;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.TaskService.
+/**
+ *  Task manager interface
+ */
+service TaskManager
+{
+  // Get the info of a task in job.
+  rpc Get(GetRequest) returns (GetResponse);
+
+  // List all task info in a job.
+  rpc List(ListRequest) returns (ListResponse);
+
+  // Start a set of tasks for a job. Will be no-op for tasks that
+  // are currently running.
+  rpc Start(StartRequest) returns (StartResponse);
+
+  // Stop a set of tasks for a job. Will be no-op for tasks that
+  // are currently stopped.
+  rpc Stop(StopRequest) returns (StopResponse);
+
+  // Restart a set of tasks for a job. Will start tasks that are
+  // currently stopped.
+  rpc Restart(RestartRequest) returns (RestartResponse);
+
+  // Query task info in a job, using a set of filters.
+  rpc Query(QueryRequest) returns (QueryResponse);
+
+  // BrowseSandbox returns list of file paths inside sandbox.
+  rpc BrowseSandbox(BrowseSandboxRequest) returns (BrowseSandboxResponse);
+
+  // Debug only method. Allows user to load task runtime state from DB
+  // and re-execute the action associated with current state.
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
+
+  // Debug only method. Get the cache of a task stored in Peloton.
+  rpc GetCache(GetCacheRequest) returns(GetCacheResponse);
+
+  // GetPodEvents returns pod events (state transition for a pod),
+  // in reverse chronological order. pod is singular instance of a Peloton job.
+  rpc GetPodEvents(GetPodEventsRequest) returns (GetPodEventsResponse);
+
+  // DeletePodEvents, deletes the pod events for provided request, which is for
+  // a jobID + instanceID + less than equal to runID.
+  // Response will be successful or error on unable to delete events for input.
+  rpc DeletePodEvents(DeletePodEventsRequest) returns (DeletePodEventsResponse);
+}
+
+// DEPRECATED by google.rpc.INTERNAL error.
+/**
+ *  Failures for browsing sandbox files requests to mesos call.
+ */
+message BrowseSandboxFailure {
+  string message = 1;
+}
+
+// DEPRECATED by google.rpc.FAILED_PRECONDITION error.
+/**
+ *  Task not running error.
+ */
+message TaskNotRunning {
+  string message = 1;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.BrowseSandboxRequest.
+message BrowseSandboxRequest {
+  peloton.JobID jobId = 1;
+  uint32 instanceId = 2;
+  // Get the sandbox path of a particular task of an instance.
+  // This should be set to the mesos task id in the runtime of
+  // the task for which the sandbox is being requested.
+  // If not provided, the path of the latest task is returned.
+  string taskId = 3;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.BrowseSandboxResponse.
+message BrowseSandboxResponse {
+  message Error {
+    errors.JobNotFound notFound = 1;
+    InstanceIdOutOfRange outOfRange = 2;
+    TaskNotRunning notRunning = 3;
+    BrowseSandboxFailure failure = 4;
+  }
+
+  Error error = 1;
+  string hostname = 2;
+  string port = 3;
+  repeated string paths = 4;
+
+  // Mesos Master hostname and port.
+  string mesosMasterHostname = 5;
+  string mesosMasterPort = 6;
+}
+
+// DEPRECATED by google.rpc.OUT_OF_RANGE error.
+message InstanceIdOutOfRange
+{
+  // Entity ID of the job
+  peloton.JobID jobId = 1;
+
+  // Instance count of the job
+  uint32 instanceCount = 2;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.GetTaskRequest.
+message GetRequest {
+  peloton.JobID jobId = 1;
+  uint32 instanceId = 2;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.GetTaskResponse.
+message GetResponse {
+  // DEPRECATED by repeated TaskInfo
+  TaskInfo result = 1;
+  errors.JobNotFound notFound = 2;
+  InstanceIdOutOfRange outOfRange = 3;
+  // Returns all active and completed tasks of the given instance.
+  repeated TaskInfo results = 4;
+}
+
+/**
+ *  Request message for TaskService.GetPodEvents method.
+ */
+message GetPodEventsRequest {
+  // The job ID of the task
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task
+  uint32 instanceId = 2;
+
+  // Defines the number of unique run ids for which the pod events will be
+  // returned.
+  // If a specific run id is requested, using runId, then this defaults to 1.
+  // Defaults to 10 otherwise.
+  uint64 limit = 3;
+
+  // Unique identifier to fetch pod events of an instance for a particular run.
+  // This is an optional parameter, if unset limit number of run ids worth of
+  // pod events will be returned.
+  string runId = 4;
+}
+
+/**
+ *  Response message for TaskService.GetPodEvents method.
+ *
+ *  Return errors:
+ *    INTERNAL:      if failed to get task events for internal errors.
+ */
+message GetPodEventsResponse {
+  repeated PodEvent result = 1;
+
+  message Error {
+    string message = 1;
+  }
+
+  Error error = 2;
+}
+
+/**
+ *  Request message for TaskService.DeletePodEvents method.
+ */
+message DeletePodEventsRequest {
+  // The job ID of the task
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task
+  uint32 instanceId = 2;
+
+  // deletes the run less than equal to runId.
+  uint64 runId = 3;
+}
+
+/**
+ *  Response message for TaskService.DeletePodEvents method.
+ *
+ *  Return errors:
+ *    INTERNAL:      if failed to delete task events for internal errors.
+ */
+message DeletePodEventsResponse {
+}
+
+// DEPRECATED by google.rpc.INTERNAL error.
+message TaskEventsError {
+  string message = 1;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.ListTasksRequest.
+message ListRequest {
+  peloton.JobID jobId = 1;
+  InstanceRange range = 2;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.ListTasksResponse.
+message ListResponse {
+  message Result {
+    map<uint32, TaskInfo> value = 1;
+  }
+  Result result = 1;
+  errors.JobNotFound notFound = 2;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.StartTasksRequest.
+message StartRequest {
+  peloton.JobID jobId = 1;
+  repeated InstanceRange ranges = 2;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.StartTasksResponse.
+message StartResponse {
+   message Error {
+    errors.JobNotFound notFound = 1;
+    InstanceIdOutOfRange outOfRange = 2;
+    TaskStartFailure failure = 3;
+  }
+
+  Error error = 1;
+  repeated uint32 startedInstanceIds = 2;
+  repeated uint32 invalidInstanceIds = 3;
+}
+
+// DEPRECATED by google.rpc.INTERNAL error.
+/**
+ * Error when TaskStart failed.
+ */
+message TaskStartFailure {
+  string message = 1;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.StopTasksRequest.
+// If no ranges specified, then stop all the tasks in the job.
+message StopRequest {
+  peloton.JobID jobId = 1;
+  repeated InstanceRange ranges = 2;
+}
+
+// DEPRECATED by google.rpc.INTERNAL error.
+message TaskUpdateError {
+  string message = 1;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.StopTasksResponse.
+message StopResponse {
+  message Error {
+    errors.JobNotFound notFound = 1;
+    InstanceIdOutOfRange outOfRange = 2;
+    TaskUpdateError updateError = 3;
+  }
+
+  Error error = 1;
+  repeated uint32 stoppedInstanceIds = 2;
+  repeated uint32 invalidInstanceIds = 3;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.RestartTasksRequest.
+message RestartRequest {
+  peloton.JobID jobId = 1;
+  repeated InstanceRange ranges = 2;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.RestartTasksResponse.
+message RestartResponse {
+  errors.JobNotFound notFound = 1;
+  InstanceIdOutOfRange outOfRange = 2;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.QueryTasksRequest.
+message QueryRequest {
+  peloton.JobID jobId = 1;
+
+  QuerySpec spec = 2;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.QueryTasksResponse.
+message QueryResponse {
+  message Error {
+    errors.JobNotFound notFound = 1;
+  }
+
+  Error error = 1;
+
+  repeated TaskInfo records = 2;
+
+  query.Pagination pagination = 3;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.RefreshTasksRequest.
+message RefreshRequest {
+  peloton.JobID jobId = 1;
+  InstanceRange range = 2;
+}
+
+// DEPRECATED by peloton.api.v0.task.svc.RefreshTasksResponse.
+message RefreshResponse {}
+
+// DEPRECATED by peloton.api.task.svc.GetTaskCacheRequest.
+message GetCacheRequest {
+  // The job ID to look up the task.
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task to get.
+  uint32 instanceId = 2;
+}
+
+// DEPRECATED by peloton.api.task.svc.GetTaskCacheResponse.
+message GetCacheResponse {
+  // The task runtime of the task.
+  RuntimeInfo runtime = 1;
+}

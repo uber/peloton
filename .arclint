@@ -1,0 +1,27 @@
+{
+  "linters": {
+    "flake8": {
+      "type": "flake8",
+      "include": "(\\.py$)",
+      "exclude": ["(tools/deploy/aurora/api)", "(tools/deploy/aurora/schema)"]
+    },
+    "gofmt": {
+      "type": "gofmt",
+      "include": "(\\.go$)"
+    },
+    "golint": {
+      "type": "golint",
+      "include": "(\\.go$)",
+      "exclude": ["(^mesos-go/.+\\.go$)", "(^pbgen/.+\\.go$)", "(^\\.gen/.+\\.go$)", "(aurorabridge/aurora/api)"]
+    },
+    "govet": {
+      "type": "govet",
+      "include": "(\\.go$)",
+      "exclude": ["(^mesos-go/.+.go$)", "(^\\.gen/.+\\.go$)"]
+    },
+    "json": {
+      "type": "json",
+      "include": "(\\.json$)"
+    }
+  }
+}

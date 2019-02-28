@@ -1,0 +1,70 @@
+/**
+ *  This file defines the Host Service in Peloton API
+ */
+
+syntax = "proto3";
+
+import "peloton/api/v0/host/host.proto";
+
+package peloton.api.v0.host.svc;
+
+option go_package = "svcpb";
+option java_package = "com.peloton.api.v0.host.svc.pb";
+
+/**
+ *  Request message for HostService.QueryHosts method.
+ */
+message QueryHostsRequest {
+    // List of host states to query the hosts. Will return all hosts if the list is empty.
+    repeated host.HostState host_states = 1;
+}
+
+/**
+ *  Response message for HostService.QueryHosts method.
+ */
+message QueryHostsResponse {
+    // List of hosts that match the host query criteria.
+    repeated host.HostInfo host_infos = 1;
+}
+
+/**
+ *  Request message for HostService.StartMaintenance method.
+ */
+message StartMaintenanceRequest {
+    // List of hosts to be put into maintenance
+    repeated string hostnames = 1;
+}
+
+/**
+ *  Response message for HostService.StartMaintenance method.
+ */
+message StartMaintenanceResponse {}
+
+/**
+ *  Request message for HostService.CompleteMaintenance method.
+ */
+message CompleteMaintenanceRequest {
+    // List of hosts put be brought back up
+    repeated string hostnames = 1;
+}
+
+/**
+ *  Response message for HostService.CompleteMaintenance method.
+ */
+message CompleteMaintenanceResponse {}
+
+/**
+ *  HostService defines the host related methods such as query hosts, start maintenance,
+ *  complete maintenance etc.
+ */
+service HostService
+{
+    // Get hosts which are in one of the specified states
+    rpc QueryHosts(QueryHostsRequest) returns (QueryHostsResponse);
+
+    // Start maintenance on the specified hosts
+    rpc StartMaintenance(StartMaintenanceRequest) returns (StartMaintenanceResponse);
+
+    // Complete maintenance on the specified hosts
+    rpc CompleteMaintenance(CompleteMaintenanceRequest) returns (CompleteMaintenanceResponse);
+}

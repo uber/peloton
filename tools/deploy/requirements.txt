@@ -1,0 +1,7 @@
+thrift==0.10.0
+kazoo==2.4.0
+pystachio==0.8.3
+prompter==0.3.10
+json-delta==2.0
+pyyaml==3.12
+enum34==1.1.6

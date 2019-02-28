@@ -1,0 +1,166 @@
+zookeeper:
+  docker_registry: ''
+  image_path: library/zookeeper
+  version: 3.4.10
+  instance_count: 1
+  ports:
+    - ZOO_PORT
+  volume:
+    - '/files'
+  static_env:
+    - name: 'ZOO_MAX_CLIENT_CNXNS'
+      value: '30000'
+  start_command: 'bash /docker-entrypoint.sh zkServer.sh start-foreground'
+  resource:
+    cpuLimit: 4.0
+    memLimitMb: 10000.0
+    diskLimitMb: 10000.0
+
+mesos-master:
+  docker_registry: ''
+  image_path: mesosphere/mesos-master
+  version: 1.6.0-rc1
+  image: mesosphere/mesos-master:1.6.0-rc1
+  instance_count: 3
+  ports:
+    - MESOS_PORT
+  resource:
+    cpuLimit: 4.0
+    memLimitMb: 10240.0
+    diskLimitMb: 10240.0
+  static_env:
+    - name: 'MESOS_AUTHENTICATE_HTTP_READWRITE'
+      value: 'false'
+    - name: 'MESOS_AUTHENTICATE_FRAMEWORKS'
+      value: 'true'
+    - name: 'MESOS_AUTHENTICATE_HTTP_FRAMEWORKS'
+      value: 'true'
+    - name: 'MESOS_HTTP_FRAMEWORK_AUTHENTICATORS'
+      value: 'basic'
+    - name: 'MESOS_CREDENTIALS'
+      value: '/mnt/mesos/sandbox/credentials.json'
+    - name: 'MESOS_LOG_DIR'
+      value: '/var/log/mesos'
+    - name: 'MESOS_QUORUM'
+      value: '1'
+    - name: 'MESOS_REGISTRY'
+      value: 'replicated_log'
+    - name: 'MESOS_WORK_DIR'
+      value: '/mnt/mesos/sandbox/vcluster_master_workdir'
+    - name: 'GLOG_v'
+      value: '1'
+  dynamic_env: 'MESOS_ZK'
+  start_command: 'mesos-master'
+  fetch_files:
+    - source: 'https://gist.githubusercontent.com/scy0208/57b36a3b76144f5102246733579be53d/raw/9c65580d5d3b58bd8226678c60c9ae4e97c5a863/credentials.json'
+      name: 'credentials.json'
+
+mesos-slave:
+  docker_registry: ''
+  image_path: mesosphere/mesos-slave
+  version: 1.6.0-rc1
+  image: mesosphere/mesos-slave:1.6.0-rc1
+  instance_count: 500
+  ports:
+    - MESOS_PORT
+  resource:
+    cpuLimit: 1.0
+    memLimitMb: 1024
+    diskLimitMb: 1024
+  static_env:
+    - name: 'MESOS_SWITCH_USER'
+      value: '0'
+    - name: 'MESOS_CONTAINERIZERS'
+      value: 'mesos'
+    - name: 'MESOS_LOG_DIR'
+      value: '/var/log/mesos'
+    - name: 'MESOS_ISOLATION'
+      value: 'posix/cpu,posix/mem'
+    - name: 'MESOS_LAUNCHER'
+      value: 'posix'
+    - name: 'MESOS_WORK_DIR'
+      value: '/mnt/mesos/sandbox/vcluster_agent_workdir'
+#    Make announced resource same as real physical resource.
+#    Each agent would expose this amount of virtual HW,
+#    and so the total virtual cluster HW accounted for in
+#    Mesos Master is num_agents * cpus for total cores for example,
+#    which is also the size of the Peloton root RP.
+    - name: 'MESOS_RESOURCES'
+      value: 'cpus(*):1.0;mem(*):1024;disk(*):1024;ports(*):[31000-32000]'
+    - name: 'MESOS_SYSTEMD_ENABLE_SUPPORT'
+      value: 'false'
+    - name: 'GLOG_v'
+      value: '1'
+  dynamic_env: 'MESOS_MASTER'
+  start_command: 'rm -rf /var/lib/mesos/meta/slaves/latest && mesos-slave'
+  fetch_files:
+    - source: 'https://gist.githubusercontent.com/scy0208/8aac814650845e778de9a8cb6e744645/raw/294bb7c6b0a788cea68013b55e359be9699b95ad/modules.json'
+      name: 'modules.json'
+
+
+cassandra:
+  docker_registry: ''
+  image_path: cassandra
+  version: 3.0.14
+#  keyspace: vcluster
+  instance_count: 1
+  ports:
+    - CQL_PORT
+    - THRIFT_PORT
+  start_command: 'bash /mnt/mesos/sandbox/peloton_vcluster_run_cassandra.sh'
+  resource:
+    cpuLimit: 8.0
+    memLimitMb: 20480.0
+    diskLimitMb: 32768.0
+  fetch_files:
+    - source: 'https://gist.githubusercontent.com/amittbose/a3b0fe9f7bc41750ee2a8f0fb0d39202/raw/8206f7dedea2507557d095d6c73f3b207100ed24/peloton_vcluster_run_cassandra.sh'
+      name: 'peloton_vcluster_run_cassandra.sh'
+      executable: true
+    - source: 'http://central.maven.org/maven2/com/stratio/cassandra/cassandra-lucene-index-plugin/3.0.14.0/cassandra-lucene-index-plugin-3.0.14.0.jar'
+      name: 'cassandra-lucene-index-plugin-3.0.14.0.jar'
+      cached: true
+
+peloton:
+  docker_registry: ''
+  image_path: uber/peloton
+  version: 0.8.0
+  ports:
+    - HTTP_PORT
+    - GRPC_PORT
+  resource:
+    cpuLimit: 2.0
+    memLimitMb: 4096
+    diskLimitMb: 2048
+  dynamic_env:
+    - APP
+    - DB_HOST
+    - ELECTION_ZK_SERVERS
+    - MESOS_ZK_PATH
+    - CASSANDRA_HOSTS
+  static_env:
+    - name: 'CONFIG_DIR'
+      value: 'config'
+    - name: 'AUTO_MIGRATE'
+      value: 'true'
+    - name: 'MESOS_SECRET_FILE'
+      value: '/mnt/mesos/sandbox/hostmgr_mesos_secret'
+  start_command: 'bash /bin/entrypoint.sh'
+#  num_log_files: 10
+  hostmgr:
+    instance_count: 2
+    scarce_resource_types:
+      - GPU
+    slack_resource_types:
+      - cpus
+    enable_revocable_resources: true
+  resmgr:
+    instance_count: 2
+  jobmgr:
+    instance_count: 2
+  placement:
+    instance_count: 2
+  placement_stateless:
+    instance_count: 2
+  fetch_files:
+    - source: 'https://gist.githubusercontent.com/scy0208/08a66afe3a7837e5e1c1528d16b47e6f/raw/2119f0fe20b7a1e827e4e43b288545799d6b4e5e/hostmgr_mesos_secret'
+      name: 'hostmgr_mesos_secret'

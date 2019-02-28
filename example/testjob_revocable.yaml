@@ -1,0 +1,38 @@
+changelog: null
+name: TestPelotonJob_Batch_Revocable
+owningteam: team6
+ldapgroups:
+- money
+- team6
+- otto
+description: "A dummy test job for peloton"
+labels:
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
+instancecount: 10
+sla:
+  priority: 22
+  minimuminstancecount: 12
+  minimuminstancepercent: 50
+  preemptible: true
+  maxrunningtime: 300
+  revocable: true
+defaultconfig:
+  # For non-revocable resources [mem,disk,gpu] check slack limit
+  # for resource pool. Default is 20%.
+  resource:
+    cpulimit: 1.0
+    memlimitmb: 2.0
+    disklimitmb: 10
+    fdlimit: 10
+  healthcheck: null
+  ports: []
+  container: null
+  revocable: true
+  command:
+    shell: true
+    value: 'echo "Job $PELOTON_JOB_ID instance $PELOTON_INSTANCE_ID: $PELOTON_TASK_ID" && sleep 30'

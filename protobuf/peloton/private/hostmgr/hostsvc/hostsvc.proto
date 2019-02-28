@@ -1,0 +1,930 @@
+    /**
+ *  Internal Host Service API
+ */
+
+
+syntax = "proto3";
+
+package peloton.private.hostmgr.hostsvc;
+
+option go_package = "peloton/private/hostmgr/hostsvc";
+
+import "mesos/v1/mesos.proto";
+import "mesos/v1/master/master.proto";
+import "peloton/api/v0/peloton.proto";
+import "peloton/api/v0/task/task.proto";
+import "peloton/private/resmgr/resmgr.proto";
+import "peloton/private/eventstream/eventstream.proto";
+
+
+/**
+ *  HostOffer describes the resources available on a host by aggregating
+ *  a list of Mesos offers to avoid offer defragmentation issue.
+ */
+message HostOffer {
+  string hostname = 1;
+  mesos.v1.AgentID agentId = 2;
+  repeated mesos.v1.Resource resources = 3;
+  repeated mesos.v1.Attribute attributes = 4;
+  api.v0.peloton.HostOfferID id = 5;
+}
+
+/**
+ * HostInfo describes physical capacity of the hosts
+ * with all their attributes defined
+ */
+message HostInfo {
+    // name of the host
+    string hostname = 1;
+    // agentId is mesos defined agentID
+    mesos.v1.AgentID agentId = 2;
+    // List of mesos resources for the host
+    repeated mesos.v1.Resource resources = 3;
+    // List of attributes defined for that host
+    repeated mesos.v1.Attribute attributes = 4;
+}
+
+/**
+ * Reservation is the messege between placement engine
+ * and host manager where placement engine asks
+ * hostmanager to reserve one host from certain hosts
+ * In the return host manager reserves the host and once
+ * resources are fulfilled , it fills the messege with
+ * valid offers
+ */
+message Reservation {
+    // List of hosts which needs to be reserved
+    repeated HostInfo hosts = 1;
+    // resmgr task for which we need to reserve
+    resmgr.Task task = 2;
+}
+
+/**
+ * CompleteReservation is the messege between placement engine
+ * and host manager host manager.
+ * hostmanager will reserve one host from and once reservation
+ * is fulfilled it will send the completed reservation to
+ * placement engine
+ */
+message CompletedReservation {
+    // List of hosts which needs to be reserved
+    HostInfo host = 1;
+    // resmgr task for which we need to reserve
+    resmgr.Task task = 2;
+    // list of offers which needs to be filled
+    // once reservation is fulfilled
+    repeated HostOffer hostOffers = 3;
+}
+
+/**
+ *  LaunchableTask describes the task to be launched by host manager including Mesos
+ *  task id and task config.
+ */
+message LaunchableTask {
+  mesos.v1.TaskID taskId = 1;
+  api.v0.task.TaskConfig config = 2;
+
+  // Dynamic ports reserved on the host while this instance is running. The key
+  // is port name, value is port number.
+  map<string, uint32> ports = 3;
+
+  // Persistent volume used to launch task.
+  Volume volume = 4;
+}
+
+
+/**
+ *  ExecutorOnAgent describes the executor to be shutdown by host manager including Mesos
+ *  agent id and executor id.
+ */
+message ExecutorOnAgent {
+  mesos.v1.ExecutorID executorId = 1;
+  mesos.v1.AgentID agentId = 2;
+}
+
+
+/** QuantityControl includes input from placement engine to control how many
+ * host offers need to be returned.
+ */
+message QuantityControl {
+    // Optinoal maximum number of hosts to return. Default zero value is no-op.
+    uint32 maxHosts = 1;
+
+    // TODO(zhitao): Enable the following two fields.
+    // Optional minimum number of hosts to return. This can be used to make sure
+    // tasks can be well spread.
+    // Default zero value is no-op.
+    // Note that there is not guarantee hostmgr can return so many hosts, but
+    // caller can use HostFilterResult included in response to understand.
+    // uint32 minHosts = 2;
+
+    // Original number of placements requested by PE. This cannot
+    // be zero, otherwise hostmgr may return empty result.
+    // uint32 numPlacements = 3;
+}
+
+/** FilterHint includes hint provided to host manager to decide
+ *  which hosts to return. The hint is provided as an optimization
+ *  and host manager can ignore them if hint cannot be satisfied.
+ */
+message FilterHint {
+    // Hint for which host to return
+    message Host {
+        // return the host if it satisfies constraints
+        string hostname = 1;
+        // indicates for which task the host is for
+        api.v0.peloton.TaskID taskID = 2;
+    }
+
+    repeated Host hostHint = 1;
+}
+
+/**
+ * HostFilter can be used to control whether offers from a given host should
+ * be returned to placement engine to use.
+ */
+message HostFilter {
+  // Resource constraint which must be satisfied.
+  ResourceConstraint resourceConstraint = 2;
+
+  // Attribute based affinity/anti-affinity scheduling constraints, which is
+  // typically copied from original task scheduling constraint.
+  // Only constraint with kind == HOST will be considered.
+  api.v0.task.Constraint schedulingConstraint = 3;
+
+  // Extra quantity control message which can be used to influence how many
+  // host offers are returned.
+  QuantityControl quantity = 4;
+
+  // Provides hint to about which hosts should return, host manager may
+  // ignore the hint
+  FilterHint hint = 5;
+}
+
+/**
+ * HostFilterResult describes result of filtering hosts.
+ */
+enum HostFilterResult {
+    // Reserved in case new result is unrecognized.
+    UNKNOWN = 0;
+
+    // Host is matched by filter and returned in HostOffer.
+    MATCH = 1;
+
+    // Host has enough total resources but offered resources
+    // is insufficient (signal for fragmentation).
+    INSUFFICIENT_OFFER_RESOURCES = 2;
+
+    // Host is filtered out because of mismatched task -> host constraint.
+    MISMATCH_CONSTRAINTS = 3;
+
+    // Host has GPU so reserved for GPU only task.
+    MISMATCH_GPU = 4;
+
+    // Host is in mismatch status (i.e, another placement engine)
+    // has a hold of the host.
+    MISMATCH_STATUS = 5;
+
+    // Host is filtered out because maxHosts limit is reached.
+    MISMATCH_MAX_HOST_LIMIT = 6;
+
+    // Host has no available offer to be matched. Usually this means the host is
+    // fully used already.
+    NO_OFFER = 7;
+
+    // Host has insufficiant resources to match the GetHosts Request.
+    INSUFFICIENT_RESOURCES = 8;
+
+    // Host is filtered out because numPlacements * resourceConstraint
+    // can already to satisfied.
+    // MISMATCH_SUFFICIENT_TASKS ;
+
+    // Host has not enough total resources.
+    // INSUFFICIENT_TOTAL_RESOURCES ;
+
+    // Host has scarce resources which are to be used by exclusive task (needing those resources).
+    SCARCE_RESOURCES = 9;
+}
+
+/**
+ * ResourceConstraint describes a condition for which aggregated resources from
+ * a host must meet in order for it to be returned in `AcquireHostOffers`.
+ */
+message ResourceConstraint {
+  // Minimum amount of resources
+  // NOTE: gpu resources are specially protected in the following way:
+  //   - if `gpuLimit` is specified, only hosts with enough gpu resources are returned;
+  //   - if `gpuLimit` is not specified, only hosts without gpu resource will be returned.
+  api.v0.task.ResourceConfig minimum = 1;
+
+  // Number of dynamic ports
+  uint32 numPorts = 2;
+
+  // revocable adds a constraint to use revocable/non-revocable resources.
+  bool revocable = 3;
+
+  // TODO(zhitao): Consider adding Maximum amount of resources constraint to
+  // avoid fragmentation.
+}
+
+/**
+ * Error for invalid argument.
+ */
+message InvalidArgument {
+  string message = 1;
+
+  // Any LaunchableTask whose content is invalid.
+  repeated LaunchableTask invalidTasks = 2;
+}
+
+/**
+ * Error for invalid task ids.
+ */
+message InvalidTaskIDs {
+  string message = 1;
+
+  // Any LaunchableTask whose content is invalid.
+  repeated mesos.v1.TaskID taskIds = 2;
+}
+
+/**
+ * Error for invalid offers.
+ */
+message InvalidOffers {
+  string message = 1;
+}
+
+/**
+ * Error for invalid shutdown executors.
+ */
+message InvalidExecutors{
+    string message = 1;
+    repeated ExecutorOnAgent executors = 2;
+}
+
+/**
+ * Error for failed shutdown executors.
+ */
+message ShutdownFailure{
+    string message = 1;
+    repeated ExecutorOnAgent executors = 2;
+}
+
+/**
+ * Error when actually tasks launch failed.
+ */
+message LaunchFailure {
+  string message = 1;
+}
+
+/**
+ * Error when actually tasks kill failed.
+ */
+message KillFailure {
+  string message = 1;
+  repeated mesos.v1.TaskID taskIds = 2;
+}
+
+/**
+ * Error for invalid filter.
+ */
+message InvalidHostFilter {
+  string message = 1;
+
+  // Invalid filter from input.
+  HostFilter invalid = 2;
+}
+
+/**
+ * Error when AcquireHostOffers failed.
+ */
+message AcquireHostOffersFailure {
+  string message = 1;
+}
+
+/**
+ * Error when GetHosts failed.
+ */
+message GetHostsFailure {
+  string message = 1;
+}
+
+/**
+* Error when cluster is Unavailable
+*/
+message ClusterUnavailable {
+  string message = 1;
+}
+
+/**
+ *  Internal host service interface to be used by JobManager and
+ *  PlacementEngine for task, reservation, volume and offer operations
+ *
+ *  TODO: figure out a better name for InternalHostService
+ */
+service InternalHostService
+{
+  /**
+   *  Acquire a set of host offers from the host manager. Each host offer will
+   *  only be used by one client at a given time.
+   */
+  rpc AcquireHostOffers(AcquireHostOffersRequest) returns (AcquireHostOffersResponse);
+
+
+  /**
+   *  Get a list of hosts from the host manager which matches the request
+   *  This is just the get operation and there is no lock placed
+   *  on any host.
+   */
+  rpc GetHosts(GetHostsRequest) returns (GetHostsResponse);
+
+  /*
+   * ReserveHosts reserves the host for a specified task in the request.
+   * Host Manager will keep the host offers to itself till the time
+   * it does not have enough offers to itself and once that's fulfilled
+   * it will return the reservation with the offer to placement engine.
+   * till the time reservation is fulfilled or reservation timeout ,
+   * offers from that host will not be given to any other placement engine.
+   */
+  rpc ReserveHosts(ReserveHostsRequest) returns (ReserveHostsResponse);
+
+  /*
+   * GetCompletedReservations gets the completed host reservations from
+   * reserver. Based on the reserver it returns the list of completed
+   * Reservations (hostsvc.CompletedReservation) or return the NoFound Error.
+   */
+  rpc GetCompletedReservations(GetCompletedReservationRequest) returns (GetCompletedReservationResponse);
+
+  /**
+   *  Release unused host offers to the host manager.
+   */
+  rpc ReleaseHostOffers(ReleaseHostOffersRequest) returns (ReleaseHostOffersResponse);
+
+  // Launch tasks on Mesos cluster
+  rpc LaunchTasks(LaunchTasksRequest) returns (LaunchTasksResponse);
+
+  // Kill tasks that are running on Mesos cluster
+  rpc KillTasks(KillTasksRequest) returns (KillTasksResponse);
+
+  // Kill tasks that are running on Mesos cluster, and reserve the host
+  // for new task placement.
+  // This is used for in-place update/restart.
+  rpc KillAndReserveTasks(KillAndReserveTasksRequest) returns (KillAndReserveTasksResponse);
+
+  // Shutdown executors that running on a Mesos agent
+  rpc ShutdownExecutors(ShutdownExecutorsRequest) returns (ShutdownExecutorsResponse);
+
+  // Reserve resources on a host
+  rpc ReserveResources(ReserveResourcesRequest) returns (ReserveResourcesResponse);
+
+  // Unreserve resources on a host
+  rpc UnreserveResources(UnreserveResourcesRequest) returns (UnreserveResourcesResponse);
+
+  // Create volumes on a Mesos host
+  rpc CreateVolumes(CreateVolumesRequest) returns (CreateVolumesResponse);
+
+  // Destroy volumes on a Mesos host
+  rpc DestroyVolumes(DestroyVolumesRequest) returns (DestroyVolumesResponse);
+
+  // TODO move out to separate service if scope widens
+  // ClusterCapacity fetches the allocated resources to the framework`
+  rpc ClusterCapacity(ClusterCapacityRequest) returns (ClusterCapacityResponse);
+
+  // Performs batch offer operations.
+  rpc OfferOperations(OfferOperationsRequest) returns (OfferOperationsResponse);
+
+  // Return leading mesos masters host:port.
+  rpc GetMesosMasterHostPort(MesosMasterHostPortRequest) returns (MesosMasterHostPortResponse);
+
+  // Return all the outstanding offers present in offer pool.
+  rpc GetOutstandingOffers(GetOutstandingOffersRequest) returns (GetOutstandingOffersResponse);
+
+  // Return all the hosts with available resources matching the query, used in cli only.
+  rpc GetHostsByQuery(GetHostsByQueryRequest) returns (GetHostsByQueryResponse);
+
+  // Return all the outstanding status update events present in the event stream.
+  rpc GetStatusUpdateEvents(GetStatusUpdateEventsRequest) returns(GetStatusUpdateEventsResponse);
+
+  // Get the hosts in DRAINING state. This method is called by Resource Manager
+  // to get hosts which are to be drained.
+  rpc GetDrainingHosts (GetDrainingHostsRequest) returns (GetDrainingHostsResponse);
+
+  // Mark the hosts as drained. This method is called by Resource Manager  to
+  // notify Host Manager that specified DRAINING hosts are cleared of all tasks.
+  rpc MarkHostsDrained (MarkHostsDrainedRequest) returns (MarkHostsDrainedResponse);
+
+  // Return Mesos agent info
+  rpc GetMesosAgentInfo(GetMesosAgentInfoRequest)
+  returns (GetMesosAgentInfoResponse);
+}
+
+/**
+ * Error for offer operations call to mesos failed.
+ */
+message OperationsFailure {
+  string message = 1;
+}
+
+/**
+ * Request for mesos master hostname and port.
+ * NOTE: required for protobuf RPC call.
+ */
+message MesosMasterHostPortRequest {}
+
+/**
+ * Response for leader mesos master hostname and port.
+ */
+message MesosMasterHostPortResponse {
+  string hostname = 1;
+  string port = 2;
+}
+
+/**
+ * Request to get all outstanding offers from offer pool.
+ */
+message GetOutstandingOffersRequest {}
+
+/**
+ * Responds all outstanding offers of offer pool.
+ */
+message GetOutstandingOffersResponse {
+  message Error {
+    NoOffersError noOffers = 1;
+  }
+
+  repeated mesos.v1.Offer offers = 1;
+
+  Error error = 2;
+}
+
+/**
+ * Request to get all the hosts with available resources matching the query,
+ * used in cli.
+ */
+message GetHostsByQueryRequest {
+  // Resource limit, currently only cpu and gpu count are used.
+  // The field is ignore if the value is 0.
+  api.v0.task.ResourceConfig resource = 1;
+
+  // Set to true if wants to return hosts with resources less than provided
+  // in the "resource" field, otherwise returns hosts with resources
+  // greater than and equal to the resources provided.
+  bool cmpLess = 2;
+
+  // Match the agent hostnames if provided.
+  repeated string hostnames = 3;
+}
+
+/**
+ * Responds all the hosts with available resources matching the query,
+ * used in cli.
+ */
+message GetHostsByQueryResponse {
+  // Host information by aggregating a list of Mesos offers
+  message Host {
+    // name of the host
+    string hostname = 1;
+    // list of mesos resources for the host
+    repeated mesos.v1.Resource resources = 2;
+    // host status - ready, placing, reserved
+    string status = 3;
+  }
+
+  repeated Host hosts = 1;
+}
+
+/**
+ * Request to get all pending status update events
+ */
+message GetStatusUpdateEventsRequest {}
+
+/**
+ * Responds all pending status update events.
+ */
+message GetStatusUpdateEventsResponse {
+  message Error {
+    string message = 1;
+  }
+
+  repeated eventstream.Event events = 1;
+
+  Error error = 2;
+}
+
+/**
+ * NoOffersError represents on outstanding offers are present.
+ */
+message NoOffersError {
+  string message = 1;
+}
+
+/**
+ * Volume config used for offer create/launch operation.
+ */
+message Volume {
+    // ID of the persistent volume.
+    api.v0.peloton.VolumeID id = 1;
+
+    // the relative volume path inside the container.
+    string containerPath = 2;
+
+    // Resource needed for the volume.
+    mesos.v1.Resource resource = 3;
+}
+
+message OfferOperation {
+    // Defines an operation that can be performed against offers.
+    enum Type {
+      UNKNOWN = 0;
+      LAUNCH = 1;
+      RESERVE = 2;
+      UNRESERVE = 3;
+      CREATE = 4;
+      DESTROY = 5;
+    }
+
+    message Reserve {
+      // Mesos resources to be reserved.
+      repeated mesos.v1.Resource resources = 1;
+    }
+
+    message Create {
+      // Persistent volume to be created.
+      Volume volume = 1;
+    }
+
+    message Launch {
+      // List of tasks to be launched.
+      repeated LaunchableTask tasks = 1;
+    }
+
+    message Destroy {
+      // Persistent volume ID to be destroyed.
+      string volumeID = 1;
+    }
+
+    message Unreserve {
+      // The reservation label string to be unreserved.
+      string label = 1;
+    }
+
+    // Type of the operation.
+    Type type = 1;
+
+    // Reservation labels used for operations.
+    mesos.v1.Labels reservationLabels = 2;
+
+    Reserve reserve = 3;
+    Create create = 4;
+    Launch launch = 5;
+    Destroy destroy = 6;
+    Unreserve unreserve = 7;
+}
+
+message OfferOperationsRequest {
+    // Repeated Operations will be performed in sequential manner.
+    repeated OfferOperation operations = 1;
+
+    // The host name of the host where the operations will be performed
+    string hostname = 2;
+
+    // The host offer id of the host where the operations will be performed
+    api.v0.peloton.HostOfferID id = 3;
+}
+
+message OfferOperationsResponse {
+    message Error {
+      OperationsFailure failure = 1;
+      InvalidArgument invalidArgument = 2;
+      InvalidOffers invalidOffers = 3;
+    }
+
+    Error error = 1;
+}
+
+message AcquireHostOffersRequest {
+  HostFilter filter = 1;
+}
+
+// GetHostsRequest is the request which is been
+// used to call the GetHosts call
+message GetHostsRequest {
+  // HostFilter required for matching the desired hosts
+  // in cluster
+  HostFilter filter = 1;
+}
+
+message AcquireHostOffersResponse {
+  message Error {
+    InvalidHostFilter invalidHostFilter = 1;
+    AcquireHostOffersFailure failure = 2;
+  }
+
+  Error error = 1;
+  // The list of host offers that have been returned
+  repeated HostOffer hostOffers = 2;
+
+  // key: HostFilterResult's string form, value: count. used for debugging purpose.
+  map<string, uint32> filterResultCounts = 3;
+}
+
+// GetHostsResponse is the reponse for GetHosts call
+// it returns the list of hosts if matched or error
+message GetHostsResponse {
+  // Error for the response
+  message Error {
+    // InvalidHostFilter if the filter is invalid
+    InvalidHostFilter invalidHostFilter = 1;
+    // GetHostsFailure if any other error occurs during
+    // fetching the host map
+    GetHostsFailure failure = 2;
+  }
+
+  Error error = 1;
+  // The list of host that have been matched the HostFilter
+  repeated HostInfo hosts = 2;
+}
+
+message ReleaseHostOffersRequest {
+  repeated HostOffer hostOffers = 1;
+}
+
+message ReleaseHostOffersResponse {
+  message Error {
+  }
+
+  Error error = 1;
+}
+
+message LaunchTasksRequest {
+  string hostname = 1;
+  repeated LaunchableTask tasks = 2;
+  mesos.v1.AgentID agentId = 3;
+  api.v0.peloton.HostOfferID id = 4;
+}
+
+message LaunchTasksResponse {
+  message Error {
+    InvalidArgument invalidArgument = 1;
+    LaunchFailure launchFailure = 2;
+    InvalidOffers invalidOffers = 3;
+  }
+
+  Error error = 1;
+}
+
+message ShutdownExecutorsRequest {
+  repeated ExecutorOnAgent executors = 1;
+}
+
+message ShutdownExecutorsResponse {
+  message Error {
+    InvalidExecutors invalidExecutors = 1;
+    ShutdownFailure    shutdownFailure = 2;
+  }
+
+  Error error = 1;
+}
+
+message KillAndReserveTasksRequest {
+    message Entry {
+        mesos.v1.TaskID taskId = 1;
+        string hostToReserve = 2;
+    }
+    repeated Entry entries = 1;
+}
+
+message KillAndReserveTasksResponse {
+    message Error {
+        InvalidTaskIDs invalidTaskIDs = 1;
+        KillFailure killFailure = 2;
+    }
+
+    Error error = 1;
+}
+
+message KillTasksRequest {
+  repeated mesos.v1.TaskID taskIds = 1;
+}
+
+message KillTasksResponse {
+  message Error {
+    InvalidTaskIDs invalidTaskIDs = 1;
+    KillFailure killFailure = 2;
+  }
+
+  Error error = 1;
+}
+
+message ReserveResourcesRequest {
+  repeated mesos.v1.Resource resources = 1;
+}
+
+message ReserveResourcesResponse {
+  // TODO: Add errors that could fail a reserve resources request
+}
+
+message UnreserveResourcesRequest {
+  repeated mesos.v1.Resource resources = 1;
+}
+
+message UnreserveResourcesResponse {
+  // TODO: Add errors that could fail a unreserve resources request
+}
+
+message CreateVolumesRequest {
+  repeated mesos.v1.Resource volumes = 1;
+}
+
+message CreateVolumesResponse {
+  // TODO: Add errors that could fail a create volumes request
+}
+
+message DestroyVolumesRequest {
+  repeated mesos.v1.Resource volumes = 1;
+}
+
+message DestroyVolumesResponse {
+  // TODO: Add errors that could fail a destroy volumes request
+}
+
+/**
+ *  Resource allocation for a resource
+ */
+message Resource {
+  // Type of the resource
+  string kind = 1;
+
+  // capacity of the resource
+  double capacity = 2;
+}
+
+message ClusterCapacityRequest {}
+
+message ClusterCapacityResponse {
+  message Error {
+    ClusterUnavailable clusterUnavailable = 1;
+  }
+
+  Error error = 1;
+
+  // Resources allocated
+  repeated Resource resources = 2;
+
+  // Resources for total physical capacity.
+  repeated Resource physicalResources = 3;
+
+  // Represents total usage slack alloacted.
+  repeated Resource allocatedSlackResources = 4;
+
+  // Represents total slack resources at Cluster.
+  repeated Resource physicalSlackResources = 5;
+}
+
+/*
+ * ReserveHostsRequest is the request for making reservation for the task
+ */
+message ReserveHostsRequest{
+    // reservation object for the host reservation
+    Reservation reservation = 1;
+}
+
+/*
+ * ReservationFailed is the failed reservation
+ */
+message ReservationFailed {
+    // message for the failed reason
+    string message = 1;
+}
+
+/*
+ * ReservationAlreadyExist error , when reservation already exist
+ */
+message ReservationAlreadyExist {
+    // message for the failed reason
+    string message = 1;
+}
+
+/*
+ * HostUnavailable error , when host is unavailable for reservation
+ */
+message HostUnavailable {
+    // message for the failed reason
+    string message = 1;
+}
+
+/*
+ * HostAlreadyReserved error , when host is already reserved
+ */
+message HostAlreadyReserved {
+    // message for the failed reason
+    string message = 1;
+}
+
+/*
+ * ReserveHostsResponse is the response for the reservation request
+ */
+message ReserveHostsResponse{
+    message Error {
+        // Failed reservation for the request
+        ReservationFailed failed = 1;
+        // Error when reservation already exist
+        ReservationAlreadyExist alreadyExist = 2;
+        // Host is unavailable for the request
+        HostUnavailable hostUnavailable = 3;
+        // Host is already reserved
+        HostAlreadyReserved hostAlreadyReserved = 4;
+    }
+    // Error message if reservation request failed
+    Error error = 1;
+    // Host info which host is reserved
+    HostInfo host = 2;
+}
+
+/*
+ * GetCompletedReservationRequest is the request for GetCompletedReservation
+ */
+message GetCompletedReservationRequest{}
+
+/*
+ * GetCompletedReservationResponse is the response for GetCompletedReservation
+ */
+message GetCompletedReservationResponse{
+    // Error message for GetCompletedReservationResponse
+    message Error{
+        // No completed reservations found
+        NotFound notFound = 1;
+    }
+    Error error = 1;
+    // list of completed reservations
+    repeated CompletedReservation completedReservations = 2;
+}
+
+// NotFound is error message for not valid completed reservation found
+message NotFound {
+    // message for the failed reason
+    string message = 1;
+}
+
+
+/*
+ * GetDrainingHostsRequest is the request message for InternalHostService.GetDrainingHosts
+ */
+message GetDrainingHostsRequest {
+    // Max number of draining hosts to dequeue
+    uint32 limit = 1;
+    // Timeout in milliseconds if no hosts are draining
+    uint32 timeout = 2;
+}
+
+/*
+* GetDrainingHostsResponse is the response message for InternalHostService.GetDrainingHosts
+*/
+message GetDrainingHostsResponse {
+    // Hostnames of the hosts dequeued
+    repeated string hostnames = 1;
+}
+
+/*
+* MarkHostsDrainedRequest is the request message for InternalHostService.MarkHostsDrained
+*/
+message MarkHostsDrainedRequest {
+    // Hostnames of the hosts to be marked as drained
+    repeated string hostnames = 1;
+}
+
+/*
+* MarkHostsDrainedResponse is the response message for InternalHostService.MarkHostsDrained
+*/
+message MarkHostsDrainedResponse {
+    // Hostnames of the hosts successfully marked as drained
+    repeated string marked_hosts = 1;
+}
+
+/**
+ * Request for Mesos agent's information as reported by Mesos.
+ */
+message GetMesosAgentInfoRequest {
+  // Hostname of the agent whose information is being requested.
+  // If not provided, information about all agents will be returned.
+  string hostname = 1;
+}
+
+// HostNotFound is an error message for GetMesosAgentInfo
+message HostNotFound {
+    // Failure message.
+    string message = 1;
+}
+
+/**
+ * Response containing Mesos agents' information.
+ */
+message GetMesosAgentInfoResponse {
+  // Error message for GetMesosAgentInfo
+  message Error{
+      // No information found for host
+      HostNotFound hostNotFound = 1;
+  }
+  Error error = 1;
+  repeated mesos.v1.master.Response.GetAgents.Agent agents = 2;
+}

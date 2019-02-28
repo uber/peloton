@@ -1,0 +1,41 @@
+changelog: null
+name: TestGPUMesosContainerizerJob
+owningteam: team6
+ldapgroups:
+- money
+- team6
+- otto
+description: "A test job using unified containerizer and gpu"
+labels:
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
+instancecount: 1
+defaultconfig:
+  resource:
+    cpulimit: 0.5
+    memlimitmb: 128.0
+    disklimitmb: 1024.0
+    gpulimit: 1
+  healthcheck: null
+  ports: []
+  container:
+    type: 2  # mesos
+    mesos:
+      image:
+        type: 2 # docker
+        docker:
+          name: "nvidia/cuda"
+    volumes:
+      - containerpath: /test-tmp
+        hostpath: /tmp
+        mode: 1
+      - containerpath: /test-var
+        hostpath: /var
+        mode: 2
+  command:
+    shell: true
+    value: 'nvidia-smi && nvcc -V'

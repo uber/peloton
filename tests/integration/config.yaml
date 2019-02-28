@@ -1,0 +1,10 @@
+client:
+  jobmgr_url: grpc://localhost:5392
+  jobmgr_service_name: peloton-jobmgr
+  resmgr_url: grpc://localhost:5394
+  resmgr_service_name: peloton-resmgr
+  hostmgr_url: grpc://localhost:5391
+  hostmgr_service_name: peloton-hostmgr
+  name: peloton-integration-test
+  cluster_zk_servers:
+    local: localhost:8192

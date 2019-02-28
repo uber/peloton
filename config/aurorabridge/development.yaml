@@ -1,0 +1,43 @@
+logging:
+  level: debug
+
+metrics:
+  multi_reporter: true
+  prometheus:
+    enable: true
+
+election:
+  zk_servers: ["localhost:8192"]
+
+respool_loader:
+  respool_path: /AuroraBridge
+
+  # Mostly copied from default_respool.yaml
+  default_respool_spec:
+    owningteam: team6
+    ldapgroups:
+    - team6
+    description: "A dummy test respool for Aurora bridge"
+    resources:
+    - kind: cpu
+      reservation: 12
+      limit: 12
+      share: 1
+    - kind: memory
+      reservation: 6144
+      limit: 6144
+      share: 1
+    - kind: disk
+      reservation: 10240
+      limit: 20480
+      share: 1
+    - kind: gpu
+      reservation: 0
+      limit: 0
+      share: 1
+    controllerlimit:
+      maxpercent: 10
+    slacklimit:
+      maxpercent: 30
+    policy: 1
+

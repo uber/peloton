@@ -1,0 +1,37 @@
+name: TestPelotonDockerJob_Stateless_Constraint
+owningTeam: team6
+ldapGroups:
+- money
+- team6
+- otto
+type: 1
+description: "A dummy test stateless job for Peloton integration test"
+instanceCount: 4
+sla:
+  priority: 22
+  preemptible: false
+defaultConfig:
+  labels:
+  - key: instance
+    value: peloton.production.peloton
+  resource:
+    cpuLimit: 0.1
+    memLimitMb: 0.1
+    diskLimitMb: 0.1
+    fdLimit: 2
+  healthCheck: null
+  ports: []
+  command:
+    shell: true
+    value: 'while :; do echo running; sleep 10; done'
+  constraint:
+    type: 1  # LABEL_CONSTRAINT
+    labelConstraint:
+      kind: 1 # TASK
+      condition: 2 # CONDITION_EQUAL
+      requirement: 0
+      label:
+        key: instance
+        value: peloton.production.peloton
+changeLog:
+  version: 1

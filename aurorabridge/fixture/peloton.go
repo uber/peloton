@@ -1,0 +1,81 @@
+// Copyright (c) 2019 Uber Technologies, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package fixture
+
+import (
+	"fmt"
+
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/aurorabridge/opaquedata"
+	"github.com/uber/peloton/util/randutil"
+
+	"github.com/pborman/uuid"
+)
+
+// PelotonEntityVersion returns a random EntityVersion.
+func PelotonEntityVersion() *peloton.EntityVersion {
+	return &peloton.EntityVersion{
+		Value: fmt.Sprintf("version-%s", randutil.Text(8)),
+	}
+}
+
+// PelotonJobID returns a random JobID.
+func PelotonJobID() *peloton.JobID {
+	return &peloton.JobID{Value: uuid.New()}
+}
+
+// PelotonResourcePoolID returns a random ResourcePoolID.
+func PelotonResourcePoolID() *peloton.ResourcePoolID {
+	return &peloton.ResourcePoolID{
+		Value: fmt.Sprintf("respool-%s", randutil.Text(8)),
+	}
+}
+
+// PelotonUpdateSpec returns a random UpdateSpec.
+func PelotonUpdateSpec() *stateless.UpdateSpec {
+	return &stateless.UpdateSpec{
+		BatchSize:                    uint32(randutil.Range(5, 10)),
+		MaxInstanceRetries:           uint32(randutil.Range(1, 3)),
+		MaxTolerableInstanceFailures: uint32(randutil.Range(1, 3)),
+	}
+}
+
+// PelotonOpaqueData returns opaque data with a random update id.
+func PelotonOpaqueData() *peloton.OpaqueData {
+	d := &opaquedata.Data{UpdateID: uuid.New()}
+	od, err := d.Serialize()
+	if err != nil {
+		panic(err)
+	}
+	return od
+}
+
+// PelotonWorkflowInfo returns a random WorkflowInfo.
+func PelotonWorkflowInfo() *stateless.WorkflowInfo {
+	// Pick a random state. These were chosen fairly arbitrarily.
+	var s stateless.WorkflowState
+	for s = range map[stateless.WorkflowState]struct{}{
+		stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD: {},
+		stateless.WorkflowState_WORKFLOW_STATE_ROLLED_BACK:     {},
+		stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED:       {},
+		stateless.WorkflowState_WORKFLOW_STATE_ABORTED:         {},
+	} {
+	}
+	return &stateless.WorkflowInfo{
+		Status:     &stateless.WorkflowStatus{State: s},
+		OpaqueData: PelotonOpaqueData(),
+	}
+}

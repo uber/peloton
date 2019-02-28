@@ -1,0 +1,34 @@
+name: TestSpec
+owner: testUser
+owningTeam: testTeam
+ldapGroups:
+- team6
+- otto
+description: "A test stateless job for Peloton integration test which health check is blessed to succeed"
+labels:
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
+instanceCount: 3
+defaultSpec:
+  containers:
+  - resource:
+      cpuLimit: 0.1
+      memLimitMb: 2.0
+      diskLimitMb: 10
+    livenessCheck:
+      type: 1
+      enabled: true
+      initialIntervalSecs: 1
+      intervalSecs: 3
+      timeoutSecs: 5
+      maxConsecutiveFailures: 3
+      commandCheck:
+        command: 'ls'
+    command:
+      shell: true
+      value: 'while :; do echo running and health check would succeed; sleep 10; done'
+

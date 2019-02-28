@@ -1,0 +1,2 @@
+DROP MATERIALIZED VIEW IF EXISTS mv_update_by_job;
+DROP TABLE IF EXISTS update_info;

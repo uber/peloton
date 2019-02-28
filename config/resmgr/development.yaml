@@ -1,0 +1,26 @@
+logging:
+  level: info
+
+storage:
+  db_write_concurrency: 40
+
+election:
+  zk_servers: ["localhost:8192"]
+
+metrics:
+  multi_reporter: true
+  prometheus:
+    enable: true
+  #statsd:
+  #  enable: true
+  #  endpoint: localhost:1234
+
+resmgr:
+  entitlement_calculation_period: 5s
+  preemption:
+    enabled: true
+    sustained_over_allocation_count: 3
+    task_preemption_period: 10s
+  host_drainer_period: 10s
+  task:
+    enable_sla_tracking: true

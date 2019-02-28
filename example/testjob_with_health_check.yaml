@@ -1,0 +1,87 @@
+changelog: null
+type: 1
+name: PelotonHealthCheckSimu
+owningteam: team6
+ldapgroups:
+- money
+- team6
+- otto
+description: "A dummy test job for peloton"
+labels:
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
+instancecount: 3
+sla:
+  priority: 22
+  minimuminstancecount: 3
+  minimuminstancepercent: 100
+  preemptible: false
+defaultconfig:
+  resource:
+    cpulimit: 0.2
+    memlimitmb: 2.0
+    disklimitmb: 2.0
+    fdlimit: 10
+  healthcheck:
+      type: 1
+      initialintervalsecs: 30
+      intervalsecs: 5
+      timeoutsecs: 5
+      maxconsecutivefailures: 3
+      commandcheck:
+        command: ''
+  ports: []
+  container: null
+  command:
+    shell: true
+    value: 'echo Hello && sleep 500'
+instanceconfig:
+# Instance 0 will simulate an always healthy instance
+  0:
+    name: controller0
+    command:
+      shell: true
+      value: 'echo Hello && sleep 500'
+    healthcheck:
+      type: 1
+      initialintervalsecs: 30
+      intervalsecs: 5
+      timeoutsecs: 5
+      maxconsecutivefailures: 3
+      commandcheck:
+        # Simulate a always succeed health check 
+        command: "echo OK"
+# Instance 1 will simulate a running instance but with failed health check
+  1:
+    name: controller1
+    command:
+      shell: true
+      value: 'echo Hello && sleep 500'
+    healthcheck:
+      type: 1
+      initialintervalsecs: 30
+      intervalsecs: 5
+      timeoutsecs: 5
+      maxconsecutivefailures: 3
+      commandcheck:
+        # Simulate a always failed health check 
+        command: "curl 127.0.0.1:8080/health"
+  # Instance 2 will simulate a running instance with flapping health check
+  2:
+    name: instance2
+    command:
+      shell: true
+      value: 'echo Hello instance 0 && sleep 500'
+    healthcheck:
+      type: 1
+      initialintervalsecs: 30
+      intervalsecs: 5
+      timeoutsecs: 5
+      maxconsecutivefailures: 3
+      commandcheck:
+        # Simulate a flapping health check 
+        command: " if [ $(((($(date +%s)/10))%2)) -eq 0 ]; then echo OK; else curl 127.0.0.1:8080/health; fi"

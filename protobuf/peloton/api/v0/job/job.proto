@@ -1,0 +1,648 @@
+/**
+ *  This file defines the Job related messages in Peloton API
+ */
+
+
+syntax = "proto3";
+
+package peloton.api.v0.job;
+
+option go_package = "peloton/api/v0/job";
+option java_package = "peloton.api.v0.job";
+
+import "peloton/api/v0/peloton.proto";
+import "peloton/api/v0/errors/errors.proto";
+import "peloton/api/v0/task/task.proto";
+import "peloton/api/v0/query/query.proto";
+import "peloton/api/v0/respool/respool.proto";
+
+/**
+ *  Job type definition such as batch, service and infra agent.
+ */
+enum JobType {
+  // Normal batch job which will run to completion after all instances finishes.
+  BATCH = 0;
+
+  // Service job which is long running and will be restarted upon failures.
+  SERVICE = 1;
+
+  // Daemon job which has one instance running on each host for infra
+  // agents like muttley, m3collector etc.
+  DAEMON = 2;
+}
+
+
+/**
+ *  SLA configuration for a job
+ */
+message SlaConfig {
+
+  //
+  // Priority of a job. Higher value takes priority over lower value
+  // when making scheduling decisions as well as preemption decisions
+  //
+  uint32 priority = 1;
+
+  //
+  // Whether the job instances are preemptible. If so, it might
+  // be scheduled using revocable offers
+  //
+  bool preemptible = 2;
+
+  //
+  // Whether the job instances are revocable. If so, it might
+  // be scheduled using revocable resources and subject to preemption
+  // when other jobs reclaims those resources.
+  //
+  bool revocable = 3;
+
+  //
+  // Maximum number of instances to admit and run at any point in time.
+  // If specified, should be <= instanceCount and >= minimumRunningInstances;
+  // default value is instanceCount.
+  //
+  uint32 maximumRunningInstances = 4;
+
+  //
+  // Minimum number of instances to admit and run at any point in time.
+  // If specified, should be <= maximumRunningInstances <= instanceCount;
+  // default value is 1.  Admission requires the corresponding resource pool
+  // has enough reserved resources for the full set of minimum number of instances.
+  //
+  uint32 minimumRunningInstances = 5;
+
+  //
+  // maxRunningTime represents the max time which all tasks of this job
+  // can run. This timer starts when the task enters into running state.
+  // if the tasks of this job exceeds this run time then they will be killed
+  uint32 maxRunningTime = 6;
+
+  //
+  // Maximum number of job instances which can be unavailable at a given time.
+  uint32 maximumUnavailableInstances = 7;
+}
+
+
+/**
+ *  Job configuration
+ */
+message JobConfig {
+
+  // Change log entry of the job config
+  peloton.ChangeLog changeLog = 1;
+
+  // Name of the job
+  string name = 2;
+
+  // Type of the job
+  JobType type = 3;
+
+  // Owning team of the job
+  string owningTeam = 4;
+
+  // LDAP groups of the job
+  repeated string ldapGroups = 5;
+
+  // Description of the job
+  string description = 6;
+
+  // List of user-defined labels for the job
+  repeated peloton.Label labels = 7;
+
+  // Number of instances of the job
+  uint32 instanceCount = 8;
+
+  // SLA config of the job
+  SlaConfig sla = 9;
+
+  // Default task configuration of the job
+  task.TaskConfig defaultConfig = 10;
+
+  // Instance specific task config which overwrites the default one
+  map<uint32, task.TaskConfig> instanceConfig = 11;
+
+  // Resource Pool ID where this job belongs to
+  peloton.ResourcePoolID respoolID = 12;
+
+  // Owner of the job
+  string owner = 13;
+}
+
+
+/**
+ *  Runtime states of a Job
+ */
+enum JobState {
+  // Reserved for future compatibility of new states.
+  UNKNOWN = 0;
+
+  // The job has been initialized and persisted in DB.
+  INITIALIZED = 1;
+
+  // All tasks have been created and persisted in DB,
+  // but no task is RUNNING yet.
+  PENDING = 2;
+
+  // Any of the tasks in the job is in RUNNING state.
+  RUNNING = 3;
+
+  // All tasks in the job are in SUCCEEDED state.
+  SUCCEEDED = 4;
+
+  // All tasks in the job are in terminated state and one or more
+  // tasks is in FAILED state.
+  FAILED = 5;
+
+  // All tasks in the job are in terminated state and one or more
+  // tasks in the job is killed by the user.
+  KILLED = 6;
+
+  // All tasks in the job have been requested to be killed by the user.
+  KILLING = 7;
+
+  // The job is partially created and is not ready to be scheduled
+  UNINITIALIZED = 8;
+
+  // The job has been deleted.
+  DELETED = 9;
+}
+
+
+/**
+ *  Job RuntimeInfo provides the current runtime status of a Job
+ */
+message RuntimeInfo
+{
+  // State of the job
+  JobState state = 1;
+
+  // The time when the job was created. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string creationTime = 2;
+
+  // The time when the first task of the job starts to run. The time
+  // is represented in RFC3339 form with UTC timezone.
+  string startTime = 3;
+
+  // The time when the last task of the job is completed. The time is
+  // represented in RFC3339 form with UTC timezone.
+  string completionTime = 4;
+
+  // The number of tasks grouped by each task state. The map key is
+  // the task.TaskState in string format and the map value is the number
+  // of tasks in the particular state.
+  map<string, uint32> taskStats = 5;
+
+  // This field is being deprecated and should not be used.
+  int64 configVersion = 6;
+
+  // Goal state of the job.
+  JobState goalState = 7;
+
+  // The version reflects the version of the JobConfig, that is currently
+  // used by the job.
+  uint64 configurationVersion = 8;
+
+  // Changelog entry to version the job runtime.
+  peloton.ChangeLog revision = 9;
+
+  // The identifier of the current job update.
+  // If the field is set to nil, it implies that the job
+  // has no current running job update.
+  peloton.UpdateID updateID = 10;
+
+  // The resource usage for this job. The map key is each resource kind
+  // in string format and the map value is the number of unit-seconds
+  // of that resource used by the job. Example: if a job has one task that
+  // uses 1 CPU and finishes in 10 seconds, this map will contain <"cpu":10>
+  map<string, double> resourceUsage = 11;
+
+
+  // The version reflects the version of the workflow, it is an opaque value
+  // which is used internally only
+  uint64 workflowVersion = 12;
+
+  // The state version currently used by the runtime.
+  uint64 stateVersion = 13;
+
+  // The desired state version that should be used by the runtime.
+  uint64 desiredStateVersion = 14;
+
+  // The number of tasks grouped by which configuration version they are on.
+  // The map key is the job configuration version and the map value is the
+  // number of tasks using that particular job configuration version.
+  map<uint64, uint32> taskConfigVersionStats = 15;
+}
+
+/**
+ *  Information of a job, such as job config and runtime
+ */
+message JobInfo
+{
+  // Job ID
+  peloton.JobID id = 1;
+
+  // Job configuration
+  JobConfig config = 2;
+
+  // Job runtime information
+  RuntimeInfo runtime = 3;
+}
+
+/**
+ *  Summary of a job configuration and runtime.
+ *  Will be returned as part of Job Query API response.
+ */
+message JobSummary
+{
+  // Job ID
+  peloton.JobID id = 1;
+
+  // Name of the job
+  string name = 2;
+
+  // Type of the job
+  JobType type = 3;
+
+  // Owner of the job
+  string owner = 4;
+
+  // Owning team of the job
+  string owningTeam = 5;
+
+  // List of user-defined labels for the job
+  repeated peloton.Label labels = 6;
+
+  // Number of instances of the job
+  uint32 instanceCount = 7;
+
+  // Resource Pool ID where this job belongs to
+  peloton.ResourcePoolID respoolID = 8;
+
+  // Job runtime information
+  RuntimeInfo runtime = 9;
+}
+
+/**
+ *  QuerySpec specifies the list of query criteria for jobs. All
+ *  indexed fields should be part of this message. And all fields
+ *  in this message have to be indexed too.
+ */
+message QuerySpec {
+  // DEPRECATED: use QueryJobRequest.pagination instead.
+  // The spec of how to do pagination for the query results.
+  query.PaginationSpec pagination = 1;
+
+  // List of labels to query the jobs. Will match all jobs if the
+  // list is empty.
+  repeated peloton.Label labels = 2;
+
+  // List of keywords to query the jobs. Will match all jobs if
+  // the list is empty. When set, will do a wildcard match on
+  // owner, name, labels, description.
+  repeated string keywords = 3;
+
+  // List of job states to query the jobs. Will match all jobs if
+  // the list is empty.
+  repeated JobState jobStates = 4;
+
+  // The resource pool to query the jobs. Will match jobs from all
+  // resource pools if unset.
+  respool.ResourcePoolPath respool = 5;
+
+  // Query jobs by owner. This is case sensitive and will
+  // look for jobs with owner matching the exact owner string.
+  // Will match all jobs if owner is unset.
+  string owner = 6;
+
+  // Query jobs by name. This is case sensitive and will
+  // look for jobs with name matching the name string. Will
+  // support partial name match. Will match all jobs if
+  // name is unset.
+  string name = 7;
+
+  // Query jobs by creation time range. This will look for all jobs
+  // that were created within a specified time range. This
+  // search will operate based on job creation time.
+  peloton.TimeRange creationTimeRange = 8;
+
+  // Query jobs by completion time range. This will look for all jobs
+  // that were completed within a specified time range. This
+  // search will operate based on job completion time.
+  peloton.TimeRange completionTimeRange = 9;
+}
+
+/**
+ *  DEPRECATED by peloton.api.v0.job.svc.JobService
+ *  Job Manager service interface
+ */
+service JobManager {
+
+  // Create a Job entity for a given config
+  rpc Create(CreateRequest) returns (CreateResponse);
+
+  // Get the config of a job entity
+  rpc Get(GetRequest) returns (GetResponse);
+
+  // Query the jobs that match a list of labels.
+  rpc Query(QueryRequest) returns (QueryResponse);
+
+  // Delete a job entity and stop all related tasks
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+
+  // Update a Job entity with a new config
+  rpc Update(UpdateRequest) returns (UpdateResponse);
+
+  // Restart the tasks specified in restart request
+  // Experimental only
+  rpc Restart(RestartRequest) returns (RestartResponse);
+
+  // Start the tasks specified in restart request
+  // Experimental only
+  rpc Start(StartRequest) returns (StartResponse);
+
+  // Stop the tasks specified in stop request
+  // Experimental only
+  rpc Stop(StopRequest) returns (StopResponse);
+
+  // Debug only method. Allows user to load job runtime state from DB
+  // and re-execute the action associated with current state.
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
+
+  // Debug only method. Get the cache of a job stored in Peloton.
+  rpc GetCache(GetCacheRequest) returns(GetCacheResponse);
+
+  // Debug only method. Get the list of active job IDs stored in Peloton.
+  // This method is experimental and will be deprecated
+  // It will be temporarily used for testing the consistency between
+  // active_jobs table and mv_job_by_state materialzied view
+  rpc GetActiveJobs(GetActiveJobsRequest) returns(GetActiveJobsResponse);
+}
+
+// DEPRECATED by google.rpc.ALREADY_EXISTS error
+message JobAlreadyExists {
+  peloton.JobID id = 1;
+  string message = 2;
+}
+
+// DEPRECATED by google.rpc.NOT_FOUND error
+message JobNotFound {
+  peloton.JobID id = 1;
+  string message = 2;
+}
+
+// DEPRECATED by google.rpc.INVALID_ARGUMENT error
+message InvalidJobId {
+  peloton.JobID id = 1;
+  string message = 2;
+}
+
+// DEPRECATED by google.rpc.INVALID_ARGUMENT error
+message InvalidJobConfig {
+  peloton.JobID id = 1;
+  string message = 2;
+}
+
+// DEPRECATED by peloton.api.v0.job.svc.CreateJobRequest
+message CreateRequest {
+  peloton.JobID id = 1;
+  JobConfig config = 2;
+
+  // The list of secrets for this job
+  repeated peloton.Secret secrets=3;
+}
+
+// DEPRECATED by peloton.api.v0.job.svc.CreateJobResponse
+message CreateResponse {
+  message Error {
+    JobAlreadyExists alreadyExists = 1;
+    InvalidJobConfig invalidConfig = 2;
+    InvalidJobId     invalidJobId = 3;
+  }
+
+  Error error = 1;
+  peloton.JobID jobId = 2;
+}
+
+// DEPRECATED by peloton.api.v0.job.svc.UpdateJobRequest
+message UpdateRequest {
+  peloton.JobID id = 1;
+  JobConfig config = 2;
+
+  // The list of secrets for this job. This list should contain existing secret
+  // IDs/paths with same or new data. It may also contain additional secrets.
+  repeated peloton.Secret secrets=3;
+}
+
+// DEPRECATED by peloton.api.v0.job.svc.UpdateJobResponse
+message UpdateResponse {
+  message Error {
+    JobNotFound jobNotFound = 1;
+    InvalidJobConfig invalidConfig = 2;
+    InvalidJobId invalidJobId = 3;
+  }
+  Error error = 1;
+  peloton.JobID id = 2;
+  string message = 3;
+}
+
+// DEPRECATED by peloton.api.v0.job.svc.GetJobRequest
+message GetRequest {
+  peloton.JobID id = 1;
+}
+
+// DEPRECATED by peloton.api.v0.job.svc.GetJobResponse
+message GetResponse {
+  message Error {
+    errors.JobNotFound notFound = 1;
+    errors.JobGetRuntimeFail getRuntimeFail = 2;
+  }
+
+  Error error = 1;
+
+  JobInfo jobInfo = 2;
+
+  /*
+    The list of secrets for this job, secret.Value will be empty.
+    SecretID and path will be populated, so that caller
+    can identify which secret is associated with this job.
+   */
+  repeated peloton.Secret secrets = 3;
+}
+
+// DEPRECATED by peloton.api.v0.job.svc.QueryJobsRequest
+message QueryRequest {
+  peloton.ResourcePoolID respoolID = 1;
+
+  // Per instance configuration in the job configuration cannot be  queried.
+  QuerySpec spec = 2;
+
+  // Only return the job summary in the query response
+  // If set, JobInfo in QueryResponse would be set to nil
+  // and only JobSummary in QueryResponse would be populated.
+  bool summaryOnly = 3;
+}
+
+// DEPRECATED by peloton.api.v0.job.svc.QueryJobsResponse
+message QueryResponse {
+   message Error {
+    errors.UnknownError err = 1;
+    errors.InvalidRespool invalidRespool = 2;
+  }
+  Error error = 1;
+
+  // DEPRECATED by peloton.api.v0.job.JobSummary
+  // JobInfo is huge and there is no need to return it in QueryResponse.
+  // NOTE: instanceConfig is not returned as part of jobConfig inside jobInfo
+  // as it can be so huge that exceeds grpc limit size. Use Job.Get() API to get
+  // instanceConfig for job.
+  repeated JobInfo records = 2;
+
+  query.Pagination pagination = 3;
+
+  // The query spec from the request
+  QuerySpec spec = 4;
+
+  // Job summary
+  repeated JobSummary results = 5;
+}
+
+// DEPRECATED by peloton.api.v0.job.svc.DeleteRequest
+message DeleteRequest {
+  peloton.JobID id = 1;
+}
+
+// DEPRECATED by peloton.api.v0.job.svc.DeleteResponse
+message DeleteResponse {
+  message Error {
+    errors.JobNotFound notFound = 1;
+  }
+
+  Error error = 1;
+}
+
+// DEPRECATED by peloton.api.v0.job.svc.RefreshJobRequest
+message RefreshRequest {
+  peloton.JobID id = 1;
+}
+
+// DEPRECATED by peloton.api.v0.job.svc.RefreshJobResponse
+message RefreshResponse {}
+
+// DEPRECATED by peloton.api.job.svc.GetJobCacheRequest
+message GetCacheRequest {
+  // The job ID to look up the job.
+  peloton.JobID id = 1;
+}
+
+// DEPRECATED by peloton.api.job.svc.GetJobCacheResponse
+message GetCacheResponse {
+  // The job configuration in cache of the matching job.
+  JobConfig config = 1;
+
+  // The job runtime in cache of the matching job.
+  RuntimeInfo runtime = 2;
+}
+
+// DEPRECATED by peloton.api.job.svc.GetActiveJobsRequest
+message GetActiveJobsRequest {
+}
+
+// DEPRECATED by peloton.api.job.svc.GetActiveJobsResponse
+message GetActiveJobsResponse {
+  // List of Active Job IDs
+  repeated peloton.JobID ids = 1;
+}
+
+// DEPRECATED by peloton.api.job.svc.RestartConfig
+// Experimental only
+message RestartConfig {
+  // batch size of rolling restart, if unset all tasks specified
+  // will be restarted at the same time.
+  uint32 batchSize = 1;
+}
+
+// DEPRECATED by peloton.api.job.svc.RestartJobRequest
+// Experimental only
+message RestartRequest {
+  // The job to restart
+  peloton.JobID id = 1;
+  // The instances to restart, default to all
+  repeated task.InstanceRange ranges = 2;
+  // The resourceVersion received from last job operation
+  // call for concurrency control
+  uint64 resourceVersion = 3;
+  // The config for restarting a job
+  RestartConfig restartConfig = 4;
+}
+
+// DEPRECATED by peloton.api.job.svc.RestartJobResponse
+// Experimental only
+message RestartResponse {
+  // The new resourceVersion after the operation
+  uint64 resourceVersion = 1;
+  // updateID associated with the restart
+  peloton.UpdateID updateID = 2;
+}
+
+// DEPRECATED by peloton.api.job.svc.StartConfig
+// Experimental only
+message StartConfig {
+  // batch size of rolling start, if unset all tasks specified
+  // will be started at the same time.
+  uint32 batchSize = 1;
+}
+
+// DEPRECATED by peloton.api.job.svc.StartJobRequest
+// Experimental only
+message StartRequest {
+  // The job to start
+  peloton.JobID id = 1;
+  // The instances to start, default to all
+  repeated task.InstanceRange ranges = 2;
+  // The resourceVersion received from last job operation
+  // call for concurrency control
+  uint64 resourceVersion = 3;
+  // The config for starting a job
+  StartConfig startConfig = 4;
+}
+
+// DEPRECATED by peloton.api.job.svc.StartJobResponse
+// Experimental only
+message StartResponse {
+  // The new resourceVersion after the operation
+  uint64 resourceVersion = 1;
+  // updateID associated with the start
+  peloton.UpdateID updateID = 2;
+}
+
+// DEPRECATED by peloton.api.job.svc.StopConfig
+// Experimental only
+message StopConfig {
+  // batch size of rolling stop, if unset all tasks specified
+  // will be restarted at the same time.
+  uint32 batchSize = 1;
+}
+
+// DEPRECATED by peloton.api.job.svc.StopJobRequest
+// Experimental only
+message StopRequest {
+  // The job to restart
+  peloton.JobID id = 1;
+  // The instances to restart, default to all
+  repeated task.InstanceRange ranges = 2;
+  // The resourceVersion received from last job operation
+  // call for concurrency control
+  uint64 resourceVersion = 3;
+  // The config for stopping a job
+  StopConfig stopConfig = 4;
+}
+
+// DEPRECATED by peloton.api.job.svc.StopJobResponse
+// Experimental only
+message StopResponse {
+  // The new resourceVersion after the operation
+  uint64 resourceVersion = 1;
+  // updateID associated with the stop
+  peloton.UpdateID updateID = 2;
+}

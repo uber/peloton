@@ -1,0 +1,26 @@
+{
+  "variables": {
+    "base_box_ovf": null
+  },
+  "builders": [{
+    "type": "virtualbox-ovf",
+    "source_path": "{{user `base_box_ovf`}}",
+    "ssh_username": "vagrant",
+    "ssh_password": "vagrant",
+    "shutdown_command": "echo 'vagrant' | sudo -S shutdown -P now",
+    "headless": true,
+    "vboxmanage": [
+      ["modifyvm", "{{.Name}}", "--memory", "4096"],
+      ["modifyvm", "{{.Name}}", "--cpus", "2"],
+      ["modifyvm", "{{.Name}}", "--uart1", "0x3F8", "4" ]
+    ]
+  }],
+  "provisioners": [{
+    "type": "shell",
+    "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
+    "scripts": [
+      "build-box.sh"
+    ]
+  }],
+  "post-processors": ["vagrant"]
+}

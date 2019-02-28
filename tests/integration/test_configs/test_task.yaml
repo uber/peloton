@@ -1,0 +1,36 @@
+changeLog: null
+name: TestPelotonTasks_integration
+owningTeam: team6
+ldapGroups:
+- money
+- team6
+- otto
+description: "A dummy test job for peloton integration tests."
+sla:
+  priority: 22
+  preemptible: true
+defaultConfig:
+  labels:
+  - key: testKey
+    value: testVal
+  resource:
+    cpuLimit: 0.1
+    memLimitMb: 0.1
+    diskLimitMb: 0.1
+    fdLimit: 2
+  healthCheck: null
+  ports: []
+  container:
+    type: 1
+    docker:
+      image: "debian"
+      parameters:
+        - key: env
+          value: UBER_CLUSTER=dca1-devel01
+        - key: env
+          value: UBER_DATACENTER=dca1
+        - key: volume
+          value: /tmp:/test-tmp:rw
+  command:
+    shell: true
+    value: 'echo lol & sleep 3'

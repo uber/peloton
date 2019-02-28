@@ -1,0 +1,17 @@
+logging:
+  level: info
+
+metrics:
+  prometheus:
+    enable: true
+
+storage:
+  use_cassandra: true
+
+job_manager:
+  goal_state:
+    job_batch_runtime_update_interval: 1s
+    job_service_runtime_update_interval: 1s
+    launch_timeout: 60s
+    start_timeout: 60s
+    max_retry_delay: 60s

@@ -1,0 +1,111 @@
+/**
+ *  Event stream API
+ */
+
+syntax = "proto3";
+
+package peloton.private.eventstream;
+
+option go_package = "peloton/private/eventstream";
+
+import "mesos/v1/mesos.proto";
+import "peloton/api/v0/task/task.proto";
+
+message Event {
+  // offset is the sequence id of the event
+  uint64 offset = 1;
+
+  // Describes the type of event
+  enum Type {
+    UNKNOWN_EVENT_TYPE = 0;
+    MESOS_TASK_STATUS = 1;
+    PELOTON_TASK_EVENT = 2;
+  }
+
+  Type type = 2;
+  mesos.v1.TaskStatus mesosTaskStatus = 3;
+  peloton.api.v0.task.TaskEvent pelotonTaskEvent = 4;
+}
+
+
+service EventStreamService {
+  // Client calls CreateStream to learn about information to consume the stream
+  rpc InitStream(InitStreamRequest) returns (InitStreamResponse);
+  // Wait for some task events
+  rpc WaitForEvents(WaitForEventsRequest) returns (WaitForEventsResponse);
+}
+
+// The intended event offset is out of the event range on the server side
+message OffsetOutOfRange {
+  string streamID = 1;
+  uint64 minOffset = 2;
+  uint64 maxOffset = 3;
+  uint64 offsetRequested = 4;
+}
+
+// Error message for clients that are not expected by the server
+// For now, the server only expects a list of pre-defined clients
+// For example. Hostmgr would expect only Job manager / resource manager
+// to consume the task update event stream.
+message ClientUnsupported {
+  string message = 1;
+}
+
+// Error message for clients that are not expected by the server
+message InvalidStreamID {
+  string currentStreamID = 1;
+}
+
+// Error message for incorrect purge offset
+message InvalidPurgeOffset {
+    uint64 purgeOffset = 1;
+    uint64 beginOffset = 2;
+}
+
+// Client need to call this to init a stream on server side
+message InitStreamRequest {
+  string clientName = 1;
+}
+
+// InitStreamResponse pass back the streamID and the minOffset of the events
+// on server side
+message InitStreamResponse {
+  message Error {
+    ClientUnsupported clientUnsupported = 1;
+  }
+  Error error = 1;
+  // streamID is created by the server and will change when server restarts
+  string streamID = 2;
+  // min Offset of the event in the server side circular buffer
+  uint64 minOffset = 3;
+  // previous purgeOffset for the client, if there is any stored on the server
+  // the client can use previousPurgeOffset as the begin offset for the next
+  // WaitForEventsRequest
+  uint64 previousPurgeOffset = 4;
+}
+
+message WaitForEventsRequest {
+  // Current streamID
+  string streamID = 1;
+  // The offeSet that the client has processed, which can be purged on the server
+  uint64 purgeOffset = 2;
+  // The begin offset of the intended data
+  uint64 beginOffset = 3;
+  // The max number of events limit for current request
+  int32  limit = 4;
+  // Timeout value
+  int32  timeoutMs = 5;
+  // Name of the client
+  string clientName = 6;
+}
+
+message WaitForEventsResponse {
+  message Error {
+    OffsetOutOfRange   outOfRange = 1;
+    ClientUnsupported  clientUnsupported = 2;
+    InvalidStreamID    invalidStreamID = 3;
+    InvalidPurgeOffset invalidPurgeOffset = 4;
+  }
+  Error error = 1;
+  repeated Event events = 2;
+}

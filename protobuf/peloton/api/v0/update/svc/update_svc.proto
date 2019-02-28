@@ -1,0 +1,223 @@
+/**
+ * This file defines the Update service in Peloton API
+ */
+
+syntax = "proto3";
+
+package peloton.api.v0.update.svc;
+
+option go_package = "peloton/api/v0/update/svc";
+option java_package = "peloton.api.v0.update.svc";
+
+import "peloton/api/v0/peloton.proto";
+import "peloton/api/v0/job/job.proto";
+import "peloton/api/v0/update/update.proto";
+
+/**
+ *  Update service interface
+ *  EXPERIMENTAL: This API is not yet stable.
+ */
+service UpdateService
+{
+  // Create a new update for a job.
+  // Only one update can exist for a job at a given time.
+  rpc CreateUpdate(CreateUpdateRequest) returns (CreateUpdateResponse);
+
+  // Get the status of an update.
+  rpc GetUpdate(GetUpdateRequest) returns (GetUpdateResponse);
+
+  // List all updates (including current and previously
+  // completed) for a given job.
+  rpc ListUpdates(ListUpdatesRequest) returns (ListUpdatesResponse);
+
+  // Pause an update.
+  rpc PauseUpdate(PauseUpdateRequest) returns (PauseUpdateResponse);
+
+  // Resume a paused update.
+  rpc ResumeUpdate(ResumeUpdateRequest) returns (ResumeUpdateResponse);
+
+  // Rollback an update.
+  rpc RollbackUpdate(RollbackUpdateRequest) returns (RollbackUpdateResponse);
+
+  // Abort an update.
+  rpc AbortUpdate(AbortUpdateRequest) returns (AbortUpdateResponse);
+
+  // Debug only method. Get the cache of a job update.
+  rpc GetUpdateCache(GetUpdateCacheRequest) returns(GetUpdateCacheResponse);
+}
+
+/**
+ * Request message for UpdateService.CreateUpdate method.
+ */
+message CreateUpdateRequest {
+  // Entity id of the job to be updated.
+  peloton.JobID jobId = 1;
+
+  // New configuration of the job to be updated. The new job config
+  // will be applied to all instances without violating the job SLA.
+  job.JobConfig jobConfig = 2;
+
+  // The options of the update.
+  update.UpdateConfig updateConfig = 3;
+
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 4;
+}
+
+/**
+ * Response message for UpdateService.CreateUpdate method.
+ * Returns errors:
+ *   NOT_FOUND:      if the job with the provided identifier is not found.
+ *   INVALID_ARGUMENT: if the provided job config or update config is invalid.
+ */
+message CreateUpdateResponse {
+  // Identifier for the newly created update.
+  peloton.UpdateID updateID = 1;
+}
+
+/**
+ *  Request message for UpdateService.GetUpdate method.
+ */
+message GetUpdateRequest {
+  peloton.UpdateID updateId = 1;
+  // If set, only return the update status in the response.
+  bool statusOnly = 2;
+}
+
+/**
+ *  Response message for UpdateService.GetUpdate method.
+ *  Returns errors:
+ *    INVALID_ARGUMENT: if the update ID is not provided.
+ */
+message GetUpdateResponse {
+  // Update information.
+  update.UpdateInfo updateInfo = 1;
+}
+
+/**
+ *  Request message for UpdateService.ListUpdates method.
+ */
+message ListUpdatesRequest {
+  // Number of updates to return. Not supported.
+  int32 limit = 1;
+  // Updates will be returned for the given job identifier.
+  peloton.JobID jobID = 2;
+}
+
+/**
+ *  Response message for UpdateService.ListUpdates method.
+ *  Returns errors:
+ *    INVALID_ARGUMENT: if the job ID is not provided.
+ */
+message ListUpdatesResponse {
+  repeated update.UpdateInfo updateInfo = 1;
+}
+
+/**
+ *  Request message for UpdateService.PauseUpdate method.
+ */
+message PauseUpdateRequest {
+  // Identifier of the update to be paused.
+  peloton.UpdateID updateId = 1;
+
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 2;
+}
+
+/**
+ *  Response message for UpdateService.PauseUpdate method.
+ *  Returns errors:
+ *    NOT_FOUND: if the update with the provided identifier is not found.
+ *    UNAVAILABLE: if the update is in a state which cannot be paused.
+ */
+message PauseUpdateResponse {
+}
+
+/**
+ *  Request message for UpdateService.ResumeUpdate method.
+ */
+message ResumeUpdateRequest {
+  // Identifier of the update to be resumed.
+  peloton.UpdateID updateId = 1;
+
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 2;
+}
+
+/**
+ *  Response message for UpdateService.ResumeUpdate method.
+ *  Returns errors:
+ *    NOT_FOUND: if the update with the provided identifier is not found.
+ *    UNAVAILABLE: if the update is in a state which cannot be resumed.
+ */
+message ResumeUpdateResponse {
+}
+
+/**
+ *  Request message for UpdateService.RollbackUpdate method.
+ */
+message RollbackUpdateRequest {
+  // Identifier of the update to be rolled back.
+  peloton.UpdateID updateId = 1;
+}
+
+/**
+ *  Response message for UpdateService.RollbackUpdate method.
+ *  Returns errors:
+ *    NOT_FOUND: if the update with the provided identifier is not found.
+ *    UNAVAILABLE: if the update is in a state which cannot be resumed.
+ */
+message RollbackUpdateResponse {
+}
+
+/**
+ *  Request message for UpdateService.AbortUpdate method.
+ */
+message AbortUpdateRequest {
+  // Identifier of the update to be aborted.
+  peloton.UpdateID updateId = 1;
+  bool softAbort = 2;
+
+  // Opaque data supplied by the client
+  peloton.OpaqueData opaque_data = 3;
+}
+
+/**
+ *  Response message for UpdateService.AbortUpdate method.
+ *  Returns errors:
+ *    NOT_FOUND: if the update with the provided identifier is not found.
+ *    UNAVAILABLE: if the update is in a state which cannot be resumed.
+ */
+message AbortUpdateResponse {
+}
+
+/**
+ *  Request message for UpdateService.GetUpdateCache method.
+ */
+message GetUpdateCacheRequest {
+  peloton.UpdateID updateId = 1;
+}
+
+/**
+ *  Response message for UpdateService.GetUpdateCache method.
+ *  Returns errors:
+ *    INVALID_ARGUMENT: if the update ID is not provided.
+ */
+message GetUpdateCacheResponse {
+  // Job ID of the job update
+  peloton.JobID jobId = 1;
+  // The state of the job update
+  update.State state = 2;
+  // List of instances which will be updated with this update
+  repeated uint32 instancesTotal = 3;
+  // List of instances which have already been updated
+  repeated uint32 instancesDone = 4;
+  // List of instances which are currently being updated
+  repeated uint32 instancesCurrent = 5;
+  // List of instances which have been added with this update
+  repeated uint32 instancesAdded = 6;
+  // List of existing instances which need to be updated with this update
+  repeated uint32 instancesUpdated = 7;
+  // List of existing instances which fail to be updated with this update
+  repeated uint32 instancesFailed = 8;
+}

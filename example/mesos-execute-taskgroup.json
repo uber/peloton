@@ -1,0 +1,116 @@
+{
+  "tasks": [
+    {
+      "name": "producer",
+      "task_id": {
+        "value": "redis1"
+      },
+      "agent_id": {
+        "value": ""
+      },
+      "resources": [
+        {
+          "name": "cpus",
+          "type": "SCALAR",
+          "scalar": {
+            "value": 0.1
+          },
+          "role": "*"
+        },
+        {
+          "name": "mem",
+          "type": "SCALAR",
+          "scalar": {
+            "value": 32
+          },
+          "role": "*"
+        }
+      ],
+      "container": {
+        "type": "MESOS",
+        "mesos": {
+          "image": {
+            "type": "DOCKER",
+            "docker": {
+              "name": "library/redis"
+            }
+          }
+        },
+        "volumes": [
+          {
+            "mode": "RW",
+            "container_path": "shared-volume",
+            "source": {
+              "type": "SANDBOX_PATH",
+              "sandbox_path": {
+                "type": "PARENT",
+                "path": "shared-volume-path"
+              }
+            }
+          }
+        ]
+      },
+      "command": {
+        "user": "root",
+        "value": "touch shared-volume/foo.txt; while true; do date >> shared-volume/foo.txt; sleep 1; done",
+        "shell": true
+      }
+    },
+    {
+      "name": "consumer",
+      "task_id": {
+        "value": "nginx1"
+      },
+      "agent_id": {
+        "value": ""
+      },
+      "resources": [
+        {
+          "name": "cpus",
+          "type": "SCALAR",
+          "scalar": {
+            "value": 0.1
+          },
+          "role": "*"
+        },
+        {
+          "name": "mem",
+          "type": "SCALAR",
+          "scalar": {
+            "value": 32
+          },
+          "role": "*"
+        }
+      ],
+      "container": {
+        "type": "MESOS",
+        "mesos": {
+          "image": {
+            "type": "DOCKER",
+            "docker": {
+              "name": "library/nginx"
+            }
+          }
+        },
+        "volumes": [
+          {
+            "mode": "RW",
+            "container_path": "shared-volume",
+            "source": {
+              "type": "SANDBOX_PATH",
+              "sandbox_path": {
+                "type": "PARENT",
+                "path": "shared-volume-path"
+              }
+            }
+          }
+        ]
+      },
+      "command": {
+        "user": "root",
+        "value": "tail -f shared-volume/foo.txt",
+        "shell": true
+      }
+    }
+  ]
+}

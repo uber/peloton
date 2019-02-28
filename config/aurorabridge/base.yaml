@@ -1,0 +1,15 @@
+
+aurorabridge:
+  http_port: 5396
+
+election:
+  root: "/peloton"
+
+health:
+  heartbeat_interval: 5s
+
+service_handler:
+  pod_runs_depth: 2
+  thermos_executor:
+    path: "/usr/share/aurora/bin/thermos_executor.pex"
+    flags: "--preserve_env --nosetuid-health-checks --nosetuid --no-create-user"

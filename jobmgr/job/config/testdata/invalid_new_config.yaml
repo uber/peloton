@@ -1,0 +1,17 @@
+changelog: null
+name: TestPelotonJob_1234                     #changed name
+owningteam: team7                             #changed team
+ldapgroups:
+- compute                                     # new ldap group
+labels:
+- key: testKey2
+  value: testVal23                            # changed value
+defaultconfig:
+  resource:
+    fdlimit: 100                              # changed fd limit
+instanceconfig:
+  0:
+    name: instance0
+    command:
+      shell: true
+      value: 'echo Bye instance 0'

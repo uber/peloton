@@ -1,0 +1,132 @@
+/**
+ *  This file defines the common types in Peloton API that are imported
+ *  by different subpackages.
+ */ 
+
+syntax = "proto3";
+
+package peloton.api.v0.peloton;
+
+option go_package = "peloton/api/v0/peloton";
+option java_package = "peloton.api.v0";
+
+import "google/protobuf/timestamp.proto";
+
+/**
+ *  A unique ID assigned to a Job. This is a UUID in RFC4122 format.
+ */
+message JobID {
+  string value = 1;
+}
+
+
+/**
+ *  A unique ID assigned to a Task (aka job instance). The task ID is in
+ *  the format of JobID-<InstanceID>.
+ */
+message TaskID {
+  string value = 1;
+}
+
+
+/**
+ *  A unique ID assigned to a Volume. This is a UUID in RFC4122 format.
+ */
+message VolumeID {
+  string value = 1;
+}
+
+
+/**
+ *  A unique ID assigned to a Resource Pool. This is a UUID in RFC4122 format.
+ */
+message ResourcePoolID {
+  string value = 1;
+}
+
+/**
+ *  A unique ID assigned to a Secret. This is a UUID in RFC4122 format.
+ */
+message SecretID {
+  string value = 1;
+}
+
+/**
+ *  A unique ID assigned to a update.
+ */
+message UpdateID {
+  string value = 1;
+}
+
+/**
+ *  A unique ID assigned to offers from a host.
+ */
+message HostOfferID {
+  string value = 1;
+}
+
+/**
+ *  Opaque data passed to Peloton from the client.
+ */
+message OpaqueData {
+  string data = 1;
+}
+
+/**
+ *  Change log of an entity info, such as Job config etc.
+ */
+message ChangeLog {
+
+  /**
+   *  Version number of the entity info which is monotonically increasing.
+   *  Clients can use this to guide against race conditions using MVCC.
+   */
+  uint64 version = 1;
+
+  // The timestamp when the entity info is created
+  uint64 createdAt = 2;
+
+  // The timestamp when the entity info is updated
+  uint64 updatedAt = 3;
+
+  // The user or service that updated the entity info
+  string updatedBy = 4;
+}
+
+/**
+ * Key, value pair used to store free form user-data.
+ */
+message Label {
+  string key = 1;
+  string value = 2;
+}
+
+/**
+ * Time range specified by min and max timestamps.
+ * Time range is left closed and right open: [min, max)
+ */
+message TimeRange {
+  google.protobuf.Timestamp min = 1;
+  google.protobuf.Timestamp max = 2;
+}
+
+/**
+ * Secret is used to store secrets per job and contains
+ * ID, absolute container mount path and base64 encoded secret data
+ */
+message Secret {
+  message Value
+  {
+    // Secret data as byte array
+    bytes data = 1;
+  }
+
+  // UUID of the secret
+  SecretID id = 1;
+
+  // Path at which the secret file will be mounted in the container
+  string path = 2;
+
+  // Secret value
+  Value value = 3;
+}

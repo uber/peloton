@@ -1,0 +1,30 @@
+changelog: null
+name: TestUnsatisfiedJob
+owningteam: team6
+ldapgroups:
+- team6
+description: "A test job which includes host affinity"
+instancecount: 200
+defaultconfig:
+  resource:
+    cpulimit: 1
+    memlimitmb: 2.0
+    disklimitmb: 10
+    fdlimit: 10
+  healthcheck: null
+  ports: []
+  container: null
+  command:
+    shell: true
+    value: 'echo Hello'
+  constraint:
+    type: 1  # LABEL_CONSTRAINT
+    labelconstraint:
+      kind: 2 # HOST
+      condition: 2 # CONDITION_EQUAL
+      requirement: 1
+      label:
+        key: 'hostname'
+        value: 'peloton-mesos-agent0'
+respoolid:
+  value: /respool11

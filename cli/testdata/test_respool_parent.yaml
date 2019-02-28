@@ -1,0 +1,28 @@
+changelog: null
+name: TestPelotonResPool_123
+owningteam: team6
+ldapgroups:
+- money
+- team6
+- otto
+description: "A dummy test respool for peloton"
+resources:
+- kind: cpu
+  reservation: 5
+  limit: 10
+  share: 1
+- kind: memory
+  reservation: 50
+  limit: 100
+  share: 2
+- kind: disk
+  reservation: 250
+  limit: 1000
+  share: 1
+- kind: gpu
+  reservation: 2
+  limit: 4
+  share: 1
+policy: 1
+parent:
+  value: root

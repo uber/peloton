@@ -1,0 +1,16 @@
+logging:
+  level: info
+
+resmgr:
+  db_write_concurrency: 40
+
+election:
+  zk_servers: ["zookeeper:2181"]
+  root: "/peloton/development"
+
+metrics:
+  prometheus:
+    enable: true
+
+storage:
+  use_cassandra: true

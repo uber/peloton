@@ -1,0 +1,193 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto2";
+
+import "mesos/v1/mesos.proto";
+
+package mesos.v1.resource_provider;
+
+option java_package = "org.apache.mesos.v1.resource_provider";
+option java_outer_classname = "Protos";
+
+
+// NOTE: For the time being, this API is subject to change and the related
+// feature is experimental.
+message Event {
+  enum Type {
+    // This must be the first enum value in this list, to
+    // ensure that if 'type' is not set, the default value
+    // is UNKNOWN. This enables enum values to be added
+    // in a backwards-compatible way. See: MESOS-4997.
+    UNKNOWN = 0;
+
+    SUBSCRIBED = 1;                   // See 'Subscribed' below.
+    APPLY_OPERATION = 2;              // See 'ApplyOperation' below.
+    PUBLISH_RESOURCES = 3;            // See 'PublishResources' below.
+    ACKNOWLEDGE_OPERATION_STATUS = 4; // See 'AcknowledgeOperationStatus' below.
+    RECONCILE_OPERATIONS = 5;         // See 'ReconcileOperations' below.
+  }
+
+  // First event received by the resource provider when it subscribes
+  // to the master.
+  message Subscribed {
+    required ResourceProviderID provider_id = 1;
+  }
+
+  // Received when the master wants to send an operation to the
+  // resource provider.
+  message ApplyOperation {
+    optional FrameworkID framework_id = 1;
+    required Offer.Operation info = 2;
+
+    // This is the internal UUID for the operation, which is kept
+    // independently from the framework-specified operation ID, which
+    // is optional.
+    required UUID operation_uuid = 3;
+
+    // Used to establish the relationship between the operation and
+    // the resources that the operation is operating on. Each resource
+    // provider will keep a resource version UUID, and change it when
+    // it believes that the resources from this resource provider are
+    // out of sync from the master's view. The master will keep track
+    // of the last known resource version UUID for each resource
+    // provider, and attach the resource version UUID in each
+    // operation it sends out. The resource provider should reject
+    // operations that have a different resource version UUID than
+    // that it maintains, because this means the operation is
+    // operating on resources that might have already been
+    // invalidated.
+    required UUID resource_version_uuid = 4;
+  }
+
+  // Received when the master wants to launch a task using resources
+  // of this resource provider.
+  message PublishResources {
+    required UUID uuid = 1;
+    repeated Resource resources = 2;
+  }
+
+  // Received when an operation status update is being acknowledged.
+  // Acknowledgements may be generated either by a framework or by the master.
+  message AcknowledgeOperationStatus {
+    // The UUID from the `OperationStatus` being acknowledged.
+    required UUID status_uuid = 1;
+
+    // The UUID from the relevant `Operation`.
+    required UUID operation_uuid = 2;
+  }
+
+  // Received when the resource provider manager wants to reconcile its view of
+  // the resource provider's operation state. The resource provider should
+  // generate operation status updates for any operation UUIDs in this message
+  // which are unknown to the resource provider.
+  message ReconcileOperations {
+    repeated UUID operation_uuids = 1;
+  }
+
+  optional Type type = 1;
+  optional Subscribed subscribed = 2;
+  optional ApplyOperation apply_operation = 3;
+  optional PublishResources publish_resources = 4;
+  optional AcknowledgeOperationStatus acknowledge_operation_status = 5;
+  optional ReconcileOperations reconcile_operations = 6;
+}
+
+
+// NOTE: For the time being, this API is subject to change and the related
+// feature is experimental.
+message Call {
+  enum Type {
+    // This must be the first enum value in this list, to
+    // ensure that if 'type' is not set, the default value
+    // is UNKNOWN. This enables enum values to be added
+    // in a backwards-compatible way. See: MESOS-4997.
+    UNKNOWN = 0;
+
+    SUBSCRIBE = 1;                       // See 'Subscribe'.
+    UPDATE_OPERATION_STATUS = 2;         // See 'UpdateOperationStatus'.
+    UPDATE_STATE = 3;                    // See 'UpdateState'.
+    UPDATE_PUBLISH_RESOURCES_STATUS = 4; // See 'UpdatePublishResourcesStatus'.
+  }
+
+  // Request to subscribe with the master.
+  message Subscribe {
+    required ResourceProviderInfo resource_provider_info = 1;
+  }
+
+  // Notify the master about the status of an operation.
+  message UpdateOperationStatus {
+    optional FrameworkID framework_id = 1;
+    required OperationStatus status = 2;
+    optional OperationStatus latest_status = 3;
+
+    // This is the internal UUID for the operation, which is kept
+    // independently from the framework-specified operation ID, which
+    // is optional.
+    required UUID operation_uuid = 4;
+  }
+
+  // Notify the master about the total resources and pending operations.
+  message UpdateState {
+    // This includes pending operations and those that have
+    // unacknowledged statuses.
+    repeated Operation operations = 1;
+
+    // The total resources provided by this resource provider.
+    repeated Resource resources = 2;
+
+    // Used to establish the relationship between the operation and
+    // the resources that the operation is operating on. Each resource
+    // provider will keep a resource version UUID, and change it when
+    // it believes that the resources from this resource provider are
+    // out of sync from the master's view. The master will keep track
+    // of the last known resource version UUID for each resource
+    // provider, and attach the resource version UUID in each
+    // operation it sends out. The resource provider should reject
+    // operations that have a different resource version UUID than
+    // that it maintains, because this means the operation is
+    // operating on resources that might have already been
+    // invalidated.
+    required UUID resource_version_uuid = 3;
+  }
+
+  message UpdatePublishResourcesStatus {
+    enum Status {
+      UNKNOWN = 0;
+      OK = 1;
+      FAILED = 2;
+    }
+
+    required UUID uuid = 1;
+    required Status status = 2;
+  }
+
+  // Identifies who generated this call.
+  // The 'ResourceProviderManager' assigns a resource provider ID when
+  // a new resource provider subscribes for the first time. Once
+  // assigned, the resource provider must set the 'resource_provider_id'
+  // here and within its 'ResourceProviderInfo' (in any further
+  // 'SUBSCRIBE' calls). This allows the 'ResourceProviderManager' to
+  // identify a resource provider correctly across disconnections,
+  // failovers, etc.
+  optional ResourceProviderID resource_provider_id = 1;
+
+  optional Type type = 2;
+  optional Subscribe subscribe = 3;
+  optional UpdateOperationStatus update_operation_status = 4;
+  optional UpdateState update_state = 5;
+  optional UpdatePublishResourcesStatus update_publish_resources_status = 6;
+}

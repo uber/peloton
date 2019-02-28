@@ -1,0 +1,191 @@
+// Resource Pool Manager API
+
+syntax = "proto3";
+
+package peloton.api.v1alpha.respool;
+
+option go_package = "peloton/api/v1alpha/respool";
+option java_package = "peloton.api.v1alpha.respool";
+
+import "peloton/api/v1alpha/peloton.proto";
+
+// A fully qualified path to a resource pool in a resource pool hierrarchy.
+// The path to a resource pool can be defined as an absolute path,
+// starting from the root node and separated by a slash.
+//
+// The resource hierarchy is anchored at a node called the root,
+// designated by a slash "/".
+//
+// For the below resource hierarchy ; the "compute" resource pool would be
+// desgignated by path: /infrastructure/compute
+//               root
+//                ├─ infrastructure
+//                │  └─ compute
+//                └─ marketplace
+//
+message ResourcePoolPath {
+  string value = 1;
+}
+
+// Resource configuration for a resource
+message ResourceSpec {
+  // Type of the resource
+  string kind = 1;
+
+  // Reservation/min of the resource
+  double reservation = 2;
+
+  // Limit of the resource
+  double limit = 3;
+
+  // Share on the resource pool
+  double share = 4;
+
+  // ReservationType indicates the the type of reservation
+  // There are two kind of reservation
+  // 1. ELASTIC
+  // 2. STATIC
+  ReservationType type = 5;
+}
+
+// ReservationType indicates reservation type for the resourcepool
+enum ReservationType {
+  RESERVATION_TYPE_INVALID = 0;
+
+  // ELASTIC reservation enables resource pool to be elastic
+  // in reservation , which means other resource pool
+  // can take resources from this resource pool as well
+  // as this resource pool also can take resources from
+  // any other resource pool. This is the by default behavior
+  // for the resource pool
+  RESERVATION_TYPE_ELASTIC = 1;
+
+  // STATIC reservation enables resource pool to be static
+  // in reservation , which means irrespective of the demand
+  // this resource pool will have atleast reservation as entitlement
+  // value. No other resource pool can take resources from this
+  // resource pool. If demand for this resource pool is high
+  // it can take resources from other resource pools.
+  // By default value for reservation type ELASTIC.
+  RESERVATION_TYPE_STATIC = 2;
+}
+
+// Scheduling policy for Resource Pool.
+enum SchedulingPolicy {
+  SCHEDULING_POLICY_INVALID = 0;
+
+  // This scheduling policy will return item for highest priority in FIFO order
+  SCHEDULING_POLICY_PRIORITY_FIFO = 1;
+}
+
+// Resource Pool configuration
+message ResourcePoolSpec {
+  // Revision of the Resource Pool config
+  peloton.Revision revision = 1;
+
+  // Name of the resource pool
+  string name = 2;
+
+  // Owning team of the pool
+  string owning_team = 3;
+
+  // LDAP groups of the pool
+  repeated string ldap_groups = 4;
+
+  // Description of the resource pool
+  string description = 5;
+
+  // Resource config of the Resource Pool
+  repeated ResourceSpec resources = 6;
+
+  // Resource Pool's parent
+  peloton.ResourcePoolID parent = 7;
+
+  // Task Scheduling policy
+  SchedulingPolicy policy = 8;
+
+  // The controller limit for this resource pool
+  ControllerLimit controller_limit = 9;
+
+  // Cap on max non-slack resources[mem,disk] in percentage
+  // that can be used by revocable task.
+  SlackLimit slack_limit = 10;
+}
+
+// The max limit of resources `CONTROLLER`(see TaskType) tasks can use in
+// this resource pool. This is defined as a percentage of the resource pool's
+// reservation. If undefined there is no maximum limit for controller tasks
+// i.e. controller tasks will not be treated differently. For eg if the
+// resource pool's reservation is defined as:
+//
+//      cpu:100
+//      mem:1000
+//      disk:1000
+//      gpu:10
+//
+// And the ControllerLimit = 10 ,Then the maximum resources the controller
+// tasks can use is 10% of the reservation, i.e.
+//
+//      cpu:10
+//      mem:100
+//      disk:100
+//      gpu:1
+//
+message ControllerLimit {
+  double max_percent = 1 ;
+}
+
+// The max limit of resources `REVOCABLE`(see TaskType) tasks can use in
+// this resource pool. This is defined as a percentage of the resource pool's
+// reservation. If undefined there is no maximum limit for revocable tasks
+// i.e. revocable tasks will not be treated differently. For eg if the
+// resource pool's reservation is defined as:
+//
+//      cpu:100
+//      mem:1000
+//      disk:1000
+//
+// And the SlackLimit = 10 ,Then the maximum resources the revocable
+// tasks can use is 10% of the reservation, i.e.
+//
+//      mem:100
+//      disk:100
+//
+// For cpu, it will use revocable resources.
+message SlackLimit {
+  double maxPercent = 1 ;
+}
+
+message ResourceUsage {
+  // Type of the resource
+  string kind = 1;
+
+  // Allocation of the resource
+  double allocation = 2;
+
+  // slack is the resource which is allocated
+  // but not used and mesos will give those resources as
+  // revocable offers
+  double slack = 3;
+}
+
+message ResourcePoolInfo {
+  // Resource Pool Id
+  peloton.ResourcePoolID respool_id = 1;
+
+  // ResourcePool spec
+  ResourcePoolSpec spec = 2;
+
+  // Resource Pool's parent
+  //TODO: parent duplicated from ResourcePoolConfig
+  peloton.ResourcePoolID parent = 3;
+
+  // Resource Pool's children
+  repeated peloton.ResourcePoolID children = 4;
+
+  // Resource usage for each resource kind
+  repeated ResourceUsage usages = 5;
+
+  // Resource Pool Path
+  ResourcePoolPath path = 6;
+}

@@ -1,0 +1,32 @@
+{
+   "libraries":[
+      {
+         "file":"/usr/lib/libload_qos_controller-1.6.0.so",
+         "modules":[
+            {
+               "name":"org_apache_mesos_LoadQoSController",
+               "parameters":[
+                  {
+                     "key":"load_threshold_5min",
+                     "value":"6"
+                  },
+                  {
+                     "key":"load_threshold_15min",
+                     "value":"4"
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "file":"/usr/lib/libfixed_resource_estimator-1.6.0.so",
+         "modules":{
+            "name":"org_apache_mesos_FixedResourceEstimator",
+            "parameters":{
+               "key":"resources",
+               "value":"cpus:4"
+            }
+         }
+      }
+   ]
+}

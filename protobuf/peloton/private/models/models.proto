@@ -1,0 +1,88 @@
+/**
+ *  Private structure to model objects internal to Peloton
+ */
+
+syntax = "proto3";
+
+package peloton.private.models;
+
+option go_package = "peloton/private/models";
+option java_package = "peloton.private.models";
+
+import "peloton/api/v0/peloton.proto";
+import "peloton/api/v0/update/update.proto";
+
+enum WorkflowType {
+  UNKNOWN = 0;
+  UPDATE = 1;
+  RESTART = 2;
+  START = 3;
+  STOP = 4;
+}
+
+/**
+ * Object to model a job workflow.
+ */
+message UpdateModel {
+  // the update identifier
+  api.v0.peloton.UpdateID updateID = 1;
+
+  // the update configuration
+  api.v0.update.UpdateConfig updateConfig = 2;
+
+  // the update state
+  api.v0.update.State state = 3;
+
+  // the job identifier
+  api.v0.peloton.JobID jobID = 4;
+
+  // total number of instances being updated/added
+  uint32 instancesTotal = 5;
+
+  // current instances being updated
+  repeated uint32 instancesCurrent = 6;
+
+  // instances which have been successfully updated
+  uint32 instancesDone = 7;
+
+  // the target job configuration version
+  uint64 jobConfigVersion = 8;
+
+  // the previous job configuration version
+  uint64 prevJobConfigVersion = 9;
+
+  // time at which the update was created
+  string creationTime = 10;
+
+  // time at which the update state was last updated
+  string updateTime = 11;
+
+  // instances to be added
+  repeated uint32 instancesAdded = 12;
+
+  // instances to be updated
+  repeated uint32 instancesUpdated = 13;
+
+  // The type for this workflow
+  WorkflowType type = 14;
+
+  // instances to be removed
+  repeated uint32 instancesRemoved = 15;
+
+  // instances which are failed during update
+  uint32 instancesFailed = 16;
+
+  // the previous update state
+  api.v0.update.State prevState = 17;
+
+  // the previous update state
+  api.v0.peloton.OpaqueData opaque_data = 18;
+}
+
+/**
+ * ConfigAddOn defines the add-ons to the user provided configuration
+ */
+message ConfigAddOn {
+  // Peloton added labels
+  repeated api.v0.peloton.Label system_labels = 1;
+}

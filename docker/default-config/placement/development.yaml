@@ -1,0 +1,6 @@
+logging:
+  level: info
+
+metrics:
+  prometheus:
+    enable: true

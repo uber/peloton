@@ -1,0 +1,12 @@
+name: TestPelotonJob_100k
+owningteam: compute
+description: "A dummy test job for peloton"
+instancecount: 100000
+defaultconfig:
+  resource:
+    cpulimit: 0.1
+    memlimitmb: 2.0
+    disklimitmb: 10
+  command:
+    shell: true
+    value: 'echo "Job $PELOTON_JOB_ID instance $PELOTON_INSTANCE_ID: $PELOTON_TASK_ID"'

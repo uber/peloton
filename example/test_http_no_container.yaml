@@ -1,0 +1,26 @@
+changelog: null
+name: TestHttpJob
+owningteam: team6
+ldapgroups:
+- money
+- team6
+- otto
+description: "A dummy test job using python to serve on http"
+instancecount: 1
+defaultconfig:
+  resource:
+    cpulimit: 0.1
+    memlimitmb: 2.0
+    disklimitmb: 10
+    fdlimit: 10
+  healthcheck: null
+  ports:
+  - name: "http"
+    envname: "UBER_HTTP_PORT"
+  container: null
+  command:
+    shell: true
+    value: 'python -m SimpleHTTPServer $UBER_HTTP_PORT'
+  labels:
+  - key: "org.apache.aurora.metadata.uns"
+    value: '["/peloton_test_http1/us1/peloton_test_http1"]'

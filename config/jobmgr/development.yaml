@@ -1,0 +1,31 @@
+logging:
+  level: info
+
+metrics:
+  multi_reporter: true
+  prometheus:
+    enable: true
+  #statsd:
+  #  enable: true
+  #  endpoint: localhost:1234
+
+storage:
+  use_cassandra: true
+
+election:
+  zk_servers: ["localhost:8192"]
+
+job_manager:
+  goal_state:
+    job_batch_runtime_update_interval: 1s
+    job_service_runtime_update_interval: 1s
+    max_retry_delay: 60s
+    launch_timeout: 60s
+    start_timeout: 60s
+  deadline:
+    deadline_tracking_period: 60s
+  job_service:
+    enable_secrets: true
+  active_task_update_period: 100s
+  task_preemptor:
+      preemption_period: 10s

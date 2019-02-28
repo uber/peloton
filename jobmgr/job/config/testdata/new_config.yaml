@@ -1,0 +1,54 @@
+changelog: null
+name: TestPelotonJob_123
+owningteam: team6
+ldapgroups:
+- money
+- team6
+- otto
+description: "A dummy test job for peloton"
+labels:
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
+instancecount: 150
+sla:
+  priority: 22
+  minimuminstancecount: 12
+  minimuminstancepercent: 50
+  preemptible: false
+defaultconfig:
+  resource:
+    cpulimit: 0.1
+    memlimitmb: 2.0
+    disklimitmb: 10
+    fdlimit: 10
+  healthcheck: null
+  ports: []
+  container: null
+  command:
+    shell: true
+    value: 'echo Hello'
+instanceconfig:
+  0:
+    name: instance0
+    command:
+      shell: true
+      value: 'echo Hello instance 0'
+  1:
+    name: instance1
+    command:
+      shell: true
+      value: 'echo Hello instance 1'
+  2:
+    name: instance2
+    command:
+      shell: true
+      value: 'echo Hello instance 2'
+  100:
+    name: instance100
+    command:
+      shell: true
+      value: 'echo Hello instance 100'

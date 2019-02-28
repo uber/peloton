@@ -1,0 +1,22 @@
+archiver:
+  enable: false
+  pod_events_cleanup: false
+  http_port: 5295
+  grpc_port: 5395
+  # This means run archiver every 24 hours
+  archive_interval: 24h
+  # Restrict archiving to 5k entries per run
+  max_archive_entries: 5000
+  # Archive only 30 days or older jobs
+  archive_age: 720h
+  # Archive 1 day worth of entries per run
+  archive_step_size: 24h
+  peloton_client_timeout: 20s
+  max_retry_attempts_job_query: 3
+  retry_interval_job_query: 10s
+
+election:
+  root: "/peloton"
+
+health:
+  heartbeat_interval: 5s

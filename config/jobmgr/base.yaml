@@ -1,0 +1,56 @@
+storage:
+  cassandra:
+    # FIXME: need to increase batch size limit dynamically in cassandra (T968823)
+    max_batch_size_rows: 1
+    max_parallel_batches: 1000
+    max_updates_job: 10
+    connection:
+      contactPoints: ["127.0.0.1"]
+      port: 9042
+      consistency: LOCAL_QUORUM
+      hostPolicy: TokenAwareHostPolicy
+      # Need to increase timeout from 10s to 20s to avoid recovery code from timing out
+      # We saw recovery code timing out when peloton was recovering from a
+      # Cassandra latency spike issue.
+      timeout: 20s
+    store_name: peloton_test
+    migrations: storage/cassandra/migrations/
+  use_cassandra: false
+  db_write_concurrency: 40
+
+job_manager:
+  http_port: 5292
+  grpc_port: 5392
+  goal_state:
+    job_batch_runtime_update_interval: 10s
+    job_service_runtime_update_interval: 1s
+    recovery:
+      recover_from_active_jobs: false
+  task_launcher:
+    placement_dequeue_limit: 10
+    get_placements_timeout_ms: 100
+  task_preemptor:
+    preemption_period: 60s
+    preemption_dequeue_limit: 100
+    preemption_dequeue_timeout_ms: 100
+  deadline:
+    deadline_tracking_period: 30m
+  job_service:
+    # TODO (adityacb): Adjust this limit once we fix T1689063 and T1689077
+    # and have a better data model
+    max_tasks_per_job: 100000
+    enable_secrets: false
+  # Refresh AciveTaskCache every 5 min
+  active_task_update_period: 300s
+  # being deprecated
+  job_runtime_calculation_via_cache: false
+election:
+  root: "/peloton"
+
+health:
+  heartbeat_interval: 5s
+
+metrics:
+  runtime_metrics:
+    enabled: true
+    interval: 10s
