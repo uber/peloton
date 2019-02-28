@@ -346,6 +346,7 @@ func ConvertJobConfigToJobSpec(config *job.JobConfig) *stateless.JobSpec {
 			UpdatedBy: config.GetChangeLog().GetUpdatedBy(),
 		},
 		Name:          config.GetName(),
+		Owner:         config.GetOwner(),
 		OwningTeam:    config.GetOwningTeam(),
 		LdapGroups:    config.GetLdapGroups(),
 		Description:   config.GetDescription(),

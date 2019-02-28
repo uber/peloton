@@ -200,7 +200,7 @@ def get_job_update_request(config_path):
 
 def start_job_update(client, config_path, update_message=''):
     '''Starts a job update and waits for the update to be in "ROLLED_FORWARD"
-    state.
+    state and all tasks in the job are in "RUNNING" state.
 
     Args:
         client: aurora client object
@@ -211,5 +211,7 @@ def start_job_update(client, config_path, update_message=''):
     resp = client.start_job_update(req, update_message)
     check_response_ok(resp)
     assert resp.result.startJobUpdateResult is not None
+    job_update_key = resp.result.startJobUpdateResult.key
     wait_for_rolled_forward(client, resp.result.startJobUpdateResult.key)
-    return resp.result.startJobUpdateResult.key
+    wait_for_running(client, job_update_key.job)
+    return job_update_key
