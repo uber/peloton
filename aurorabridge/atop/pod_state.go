@@ -59,10 +59,10 @@ func NewPodState(
 		// The task will be rescheduled, but is being throttled for
 		// restarting too frequently.
 		// TODO(kevinxu): currently we do not have direct mapping
-		// for aurora "throttled" state in peloton, throw an error
-		// for now.
-		return pod.PodState_POD_STATE_INVALID,
-			fmt.Errorf("cannot map schedule status: %d", scheduleStatus)
+		// for aurora "throttled" state in peloton. since aggregator
+		// queries "throttled" state, map to pod state "failed" for now
+		// to avoid panic.
+		return pod.PodState_POD_STATE_FAILED, nil
 	case api.ScheduleStatusDraining:
 		// The task is being restarted in response to a host maintenance
 		// request.
