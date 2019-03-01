@@ -753,11 +753,7 @@ func (h *ServiceHandler) killTasks(
 			return nil, auroraErrorf("stop pods in parallel: %s", err)
 		}
 	}
-	return &api.Result{
-		// killTasks doesn't return any result, however YARPC won't allow
-		// an empty union, so we use this dummy result value.
-		GetTierConfigResult: &api.GetTierConfigResult{},
-	}, nil
+	return dummyResult(), nil
 }
 
 func (h *ServiceHandler) stopPodsConcurrently(
@@ -991,7 +987,7 @@ func (h *ServiceHandler) pauseJobUpdate(
 	if _, err := h.jobClient.PauseJobWorkflow(ctx, req); err != nil {
 		return nil, auroraErrorf("pause job workflow: %s", err)
 	}
-	return &api.Result{}, nil
+	return dummyResult(), nil
 }
 
 // ResumeJobUpdate resumes progress of a previously paused job update.
@@ -1036,7 +1032,7 @@ func (h *ServiceHandler) resumeJobUpdate(
 	if _, err := h.jobClient.ResumeJobWorkflow(ctx, req); err != nil {
 		return nil, auroraErrorf("resume job workflow: %s", err)
 	}
-	return &api.Result{}, nil
+	return dummyResult(), nil
 }
 
 // AbortJobUpdate permanently aborts the job update. Does not remove the update history.
@@ -1081,7 +1077,7 @@ func (h *ServiceHandler) abortJobUpdate(
 	if _, err := h.jobClient.AbortJobWorkflow(ctx, req); err != nil {
 		return nil, auroraErrorf("abort job workflow: %s", err)
 	}
-	return &api.Result{}, nil
+	return dummyResult(), nil
 }
 
 // RollbackJobUpdate rollbacks the specified active job update to the initial state.
@@ -1179,7 +1175,7 @@ func (h *ServiceHandler) rollbackJobUpdate(
 	if _, err := h.jobClient.ReplaceJob(ctx, req); err != nil {
 		return nil, auroraErrorf("replace job: %s", err)
 	}
-	return &api.Result{}, nil
+	return dummyResult(), nil
 }
 
 // PulseJobUpdate allows progress of the job update in case blockIfNoPulsesAfterMs is specified in
@@ -1756,4 +1752,12 @@ func max(a, b int32) int32 {
 		return a
 	}
 	return b
+}
+
+// dummyResult returns a dummy result since YARPC won't allow
+// an empty union
+func dummyResult() *api.Result {
+	return &api.Result{
+		GetTierConfigResult: &api.GetTierConfigResult{},
+	}
 }
