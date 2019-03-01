@@ -183,7 +183,11 @@ class App(object):
 
         self.add_app_specific_vars(env_vars)
 
-        prod_config_path = self.get_app_path().format(self.name)
+        name = self.name
+        if name.startswith('placement_'):
+            name = 'placement'
+
+        prod_config_path = self.get_app_path().format(name)
 
         env_vars['PRODUCTION_CONFIG'] = subprocess.Popen(
             "cat %s | base64" % prod_config_path, shell=True,
@@ -304,7 +308,7 @@ class App(object):
             cmdline=cmdline,
             logger=ThermosLogger(
                 mode=LoggerMode('rotate'),
-                rotate=RotatePolicy(log_size=1*GB, backups=10),
+                rotate=RotatePolicy(log_size=1 * GB, backups=10),
             ),
         )
         thermos_task = ThermosTask(
