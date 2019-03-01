@@ -664,3 +664,20 @@ def delete_jobs(jobs):
     """
     for job in jobs:
         job.delete(force_delete=True)
+
+
+def list_jobs():
+    """
+    return all jobs in the cluster
+    """
+    client = Client()
+    jobSummaries = []
+    request = stateless_svc.ListJobsRequest()
+    for resp in client.stateless_svc.ListJobs(
+        request,
+        metadata=client.jobmgr_metadata,
+        timeout=60,
+    ):
+        for jobSummary in resp.jobs:
+            jobSummaries.append(jobSummary)
+    return jobSummaries
