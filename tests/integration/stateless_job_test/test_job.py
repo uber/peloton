@@ -4,7 +4,8 @@ import time
 
 from tests.integration.stateless_job import StatelessJob
 from tests.integration.common import IntegrationTestConfig
-from tests.integration.stateless_job import INVALID_ENTITY_VERSION_ERR_MESSAGE
+from tests.integration.stateless_job import \
+    INVALID_ENTITY_VERSION_ERR_MESSAGE, list_jobs
 from tests.integration.stateless_job_test.util import \
     assert_pod_id_changed, assert_pod_id_equal
 
@@ -19,6 +20,20 @@ pytestmark = [pytest.mark.default,
 def test__create_job(stateless_job):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state='RUNNING')
+
+    # ensure ListJobs lists the job
+    jobSummaries = list_jobs()
+    assert len(jobSummaries) > 0
+    statelessJobSummary = None
+    for jobSummary in jobSummaries:
+        if jobSummary.job_id.value == stateless_job.job_id:
+            statelessJobSummary = jobSummary
+            break
+    assert statelessJobSummary is not None
+
+    # ensure ListPods lists all the pods of the job
+    podSummaries = stateless_job.list_pods()
+    assert len(podSummaries) == statelessJobSummary.instance_count
 
 
 @pytest.mark.smoketest

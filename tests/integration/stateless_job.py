@@ -531,6 +531,22 @@ class StatelessJob(object):
         )
         return resp.pods
 
+    def list_pods(self):
+        """
+        return all pods in the job
+        """
+        podSummaries = []
+        request = stateless_svc.ListPodsRequest(
+            job_id=v1alpha_peloton.JobID(value=self.job_id),
+        )
+        for resp in self.client.stateless_svc.ListPods(
+                request,
+                metadata=self.client.jobmgr_metadata,
+                timeout=self.config.rpc_timeout_sec):
+            for podSummary in resp.pods:
+                podSummaries.append(podSummary)
+        return podSummaries
+
     def delete(self, entity_version=None, force_delete=False):
         """
         Delete the job
@@ -633,3 +649,20 @@ def delete_jobs(jobs):
     """
     for job in jobs:
         job.delete(force_delete=True)
+
+
+def list_jobs():
+    """
+    return all jobs in the cluster
+    """
+    client = Client()
+    jobSummaries = []
+    request = stateless_svc.ListJobsRequest()
+    for resp in client.stateless_svc.ListJobs(
+        request,
+        metadata=client.jobmgr_metadata,
+        timeout=60,
+    ):
+        for jobSummary in resp.jobs:
+            jobSummaries.append(jobSummary)
+    return jobSummaries

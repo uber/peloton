@@ -1045,6 +1045,8 @@ func (h *serviceHandler) ListPods(
 	req *svc.ListPodsRequest,
 	stream svc.JobServiceServiceListPodsYARPCServer,
 ) (err error) {
+	var instanceRange *task.InstanceRange
+
 	defer func() {
 		if err != nil {
 			log.WithError(err).
@@ -1058,13 +1060,17 @@ func (h *serviceHandler) ListPods(
 			Debug("JobSVC.ListPods succeeded")
 	}()
 
+	if req.GetRange() != nil {
+		instanceRange = &task.InstanceRange{
+			From: req.GetRange().GetFrom(),
+			To:   req.GetRange().GetTo(),
+		}
+	}
+
 	taskRuntimes, err := h.taskStore.GetTaskRuntimesForJobByRange(
 		context.Background(),
 		&peloton.JobID{Value: req.GetJobId().GetValue()},
-		&task.InstanceRange{
-			From: req.GetRange().GetFrom(),
-			To:   req.GetRange().GetTo(),
-		},
+		instanceRange,
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to get tasks")
