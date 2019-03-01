@@ -101,8 +101,6 @@ func (h *ServiceHandler) getJobSummary(
 	role *string,
 ) (*api.Result, *auroraError) {
 
-	var jobSummaries []*api.JobSummary
-
 	query := &api.TaskQuery{}
 	if role != nil && *role != "" {
 		query.Role = role
@@ -112,6 +110,8 @@ func (h *ServiceHandler) getJobSummary(
 	if err != nil {
 		return nil, auroraErrorf("get job ids from task query: %s", err)
 	}
+
+	summaries := []*api.JobSummary{}
 
 	for _, jobID := range jobIDs {
 		jobInfo, err := h.getJobInfo(ctx, jobID)
@@ -137,12 +137,12 @@ func (h *ServiceHandler) getJobSummary(
 			return nil, auroraErrorf("new job summary: %s", err)
 		}
 
-		jobSummaries = append(jobSummaries, s)
+		summaries = append(summaries, s)
 	}
 
 	return &api.Result{
 		JobSummaryResult: &api.JobSummaryResult{
-			Summaries: jobSummaries,
+			Summaries: summaries,
 		},
 	}, nil
 }
@@ -180,12 +180,21 @@ func (h *ServiceHandler) getTasksWithoutConfigs(
 	query *api.TaskQuery,
 ) (*api.Result, *auroraError) {
 
-	var scheduledTasks []*api.ScheduledTask
+	var podStates []pod.PodState
+	for s := range query.GetStatuses() {
+		p, err := atop.NewPodState(s)
+		if err != nil {
+			return nil, auroraErrorf("new pod state: %s", err)
+		}
+		podStates = append(podStates, p)
+	}
 
 	jobIDs, err := h.getJobIDsFromTaskQuery(ctx, query)
 	if err != nil {
 		return nil, auroraErrorf("get job ids from task query: %s", err)
 	}
+
+	tasks := []*api.ScheduledTask{}
 
 	// TODO(kevinxu): Factor out to seperate function.
 	for _, jobID := range jobIDs {
@@ -208,7 +217,7 @@ func (h *ServiceHandler) getTasksWithoutConfigs(
 				"query pods for job id %q: %s", jobID.GetValue(), err)
 		}
 
-		tasks, err := h.getScheduledTasks(
+		ts, err := h.getScheduledTasks(
 			ctx,
 			jobInfo,
 			pods,
@@ -217,12 +226,12 @@ func (h *ServiceHandler) getTasksWithoutConfigs(
 		if err != nil {
 			return nil, auroraErrorf("get tasks without configs: %s", err)
 		}
-		scheduledTasks = append(scheduledTasks, tasks...)
+		tasks = append(tasks, ts...)
 	}
 
 	return &api.Result{
 		ScheduleStatusResult: &api.ScheduleStatusResult{
-			Tasks: scheduledTasks,
+			Tasks: tasks,
 		},
 	}, nil
 }
@@ -421,8 +430,6 @@ func (h *ServiceHandler) getJobs(
 		return nil, auroraErrorf("get job ids from task query: %s", err)
 	}
 
-	// Initialize slice so that the thrift object has an empty list, instead
-	// of nil (which causes problems downstream for Python clients).
 	configs := []*api.JobConfiguration{}
 
 	for _, jobID := range jobIDs {
@@ -487,7 +494,7 @@ func (h *ServiceHandler) getJobUpdateSummaries(
 	if err != nil {
 		return nil, auroraErrorf("query job updates: %s", err)
 	}
-	var summaries []*api.JobUpdateSummary
+	summaries := []*api.JobUpdateSummary{}
 	for _, d := range details {
 		summaries = append(summaries, d.GetUpdate().GetSummary())
 	}
@@ -533,6 +540,9 @@ func (h *ServiceHandler) getJobUpdateDetails(
 	details, err := h.queryJobUpdates(ctx, query, false /* summaryOnly */)
 	if err != nil {
 		return nil, auroraErrorf("query job updates: %s", err)
+	}
+	if details == nil {
+		details = []*api.JobUpdateDetails{}
 	}
 	return &api.Result{
 		GetJobUpdateDetailsResult: &api.GetJobUpdateDetailsResult{
