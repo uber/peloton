@@ -1210,7 +1210,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 	query := fixture.AuroraTaskQuery()
 	jobKey := query.GetJobKeys()[0]
 	query.Statuses = map[api.ScheduleStatus]struct{}{
-		api.ScheduleStatusRunning: struct{}{},
+		api.ScheduleStatusRunning: {},
 	}
 	jobID := fixture.PelotonJobID()
 	entityVersion := fixture.PelotonEntityVersion()

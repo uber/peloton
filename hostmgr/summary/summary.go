@@ -21,6 +21,7 @@ import (
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"github.com/uber/peloton/common/constraints"
@@ -74,6 +75,8 @@ const (
 	PlacingHost
 	// ReservedHost represents an host is reserved for tasks
 	ReservedHost
+	// HeldHost represents a host is held for tasks, which is used for in-place update
+	HeldHost
 )
 
 // OfferType represents the type of offer in the host summary such as reserved, unreserved, or All.
@@ -96,6 +99,13 @@ const (
 	// emptyOfferID is used when the host is in READY state.
 	emptyOfferID = ""
 )
+
+// HeldTaskChangeListener is called when the task held on the host
+// changes
+type HeldTaskChangeListener interface {
+	OnTaskHoldAdd(hostname string, id *peloton.TaskID)
+	OnTaskHoldRemove(hostname string, id *peloton.TaskID)
+}
 
 // HostSummary is the core component of host manager's internal
 // data structure. It keeps track of offers in various state,
@@ -123,7 +133,9 @@ type HostSummary interface {
 	RemoveMesosOffer(offerID, reason string) (HostStatus, *mesos.Offer)
 
 	// ClaimForLaunch releases unreserved offers for task launch.
-	ClaimForLaunch(hostOfferID string) (map[string]*mesos.Offer, error)
+	// An optional list of task ids is provided if the host is held for
+	// the tasks
+	ClaimForLaunch(hostOfferID string, taskIDs ...*peloton.TaskID) (map[string]*mesos.Offer, error)
 
 	// ClaimReservedOffersForLaunch releases reserved offers for task launch.
 	ClaimReservedOffersForLaunch() (map[string]*mesos.Offer, error)
@@ -150,6 +162,19 @@ type HostSummary interface {
 
 	// GetHostStatus returns the HostStatus of the host
 	GetHostStatus() HostStatus
+
+	// HoldForTask holds the host for the task specified
+	HoldForTask(id *peloton.TaskID) error
+
+	// ReleaseHoldForTask release the hold of host for the task specified
+	ReleaseHoldForTask(id *peloton.TaskID) error
+
+	// ReturnPlacingHost is called when the host in PLACING state is not used,
+	// and is returned by placement engine
+	ReturnPlacingHost() error
+
+	// AddListener adds listener for change of held task
+	AddListener(listener HeldTaskChangeListener)
 }
 
 type offerIDgenerator func() string
@@ -194,6 +219,11 @@ type hostSummary struct {
 
 	// TODO: pass volumeStore in updatePersistentVolume function.
 	volumeStore storage.PersistentVolumeStore
+
+	// a set to present for which tasks the host is held
+	heldTasks map[string]struct{}
+
+	heldTaskChangeListener HeldTaskChangeListener
 }
 
 // New returns a zero initialized hostSummary
@@ -201,11 +231,12 @@ func New(
 	volumeStore storage.PersistentVolumeStore,
 	scarceResourceTypes []string,
 	hostname string,
-	slackResourceTypes []string) HostSummary {
+	slackResourceTypes []string,
+) HostSummary {
 	return &hostSummary{
-		unreservedOffers: make(map[string]*mesos.Offer),
-		reservedOffers:   make(map[string]*mesos.Offer),
-
+		unreservedOffers:    make(map[string]*mesos.Offer),
+		reservedOffers:      make(map[string]*mesos.Offer),
+		heldTasks:           make(map[string]struct{}),
 		scarceResourceTypes: scarceResourceTypes,
 		slackResourceTypes:  slackResourceTypes,
 
@@ -216,6 +247,8 @@ func New(
 		hostname: hostname,
 
 		offerIDgenerator: uuidOfferID,
+
+		heldTaskChangeListener: &dummyListener{},
 	}
 }
 
@@ -352,7 +385,7 @@ func (a *hostSummary) TryMatch(
 	a.Lock()
 	defer a.Unlock()
 
-	if a.status != ReadyHost {
+	if a.status != ReadyHost && a.status != HeldHost {
 		return Match{
 			Result: hostsvc.HostFilterResult_MISMATCH_STATUS,
 		}
@@ -361,6 +394,24 @@ func (a *hostSummary) TryMatch(
 	if !a.HasOffer() {
 		return Match{
 			Result: hostsvc.HostFilterResult_NO_OFFER,
+		}
+	}
+
+	// for host in Held state, it is only a match if the filter
+	// hint contains the host
+	if a.status == HeldHost {
+		var hintFound bool
+		for _, hostHint := range filter.GetHint().GetHostHint() {
+			if hostHint.GetHostname() == a.hostname {
+				hintFound = true
+				break
+			}
+		}
+
+		if !hintFound {
+			return Match{
+				Result: hostsvc.HostFilterResult_MISMATCH_STATUS,
+			}
 		}
 	}
 
@@ -396,7 +447,7 @@ func (a *hostSummary) TryMatch(
 	// tracking of resources on the host and also ensures offers on
 	// this host will not be sent to another `AcquireHostOffers`
 	// call before released.
-	err := a.casStatusLockFree(ReadyHost, PlacingHost)
+	err := a.casStatusLockFree(a.status, PlacingHost)
 	if err != nil {
 		return Match{
 			Result: hostsvc.HostFilterResult_NO_OFFER,
@@ -439,7 +490,7 @@ func (a *hostSummary) AddMesosOffers(
 			a.reservedOffers[offerID] = offer
 		}
 	}
-	if a.status == ReadyHost {
+	if a.status == ReadyHost || a.status == HeldHost {
 		a.readyCount.Store(int32(len(a.unreservedOffers)))
 	}
 
@@ -449,7 +500,7 @@ func (a *hostSummary) AddMesosOffers(
 // ClaimForLaunch atomically check that current hostSummary is in Placing
 // status, release offers so caller can use them to launch tasks, and reset
 // status to ready.
-func (a *hostSummary) ClaimForLaunch(hostOfferID string) (map[string]*mesos.Offer,
+func (a *hostSummary) ClaimForLaunch(hostOfferID string, taskIDs ...*peloton.TaskID) (map[string]*mesos.Offer,
 	error) {
 	a.Lock()
 	defer a.Unlock()
@@ -467,9 +518,23 @@ func (a *hostSummary) ClaimForLaunch(hostOfferID string) (map[string]*mesos.Offe
 	result := make(map[string]*mesos.Offer)
 	result, a.unreservedOffers = a.unreservedOffers, result
 
-	// Reset status to ready so any future offer on the host is considered
-	// as ready.
-	if err := a.casStatusLockFree(PlacingHost, ReadyHost); err != nil {
+	if len(taskIDs) != 0 {
+		for _, taskID := range taskIDs {
+			a.releaseHoldForTaskLockFree(taskID)
+		}
+	}
+
+	newState := a.getResetPlacingStatus()
+
+	log.WithFields(log.Fields{
+		"hostname":   a.hostname,
+		"tasks":      taskIDs,
+		"new_status": newState,
+	}).Debug("host status changes after task launch")
+
+	// Reset status to held/ready depending on if the host is held for
+	// other tasks.
+	if err := a.casStatusLockFree(PlacingHost, newState); err != nil {
 		return nil, errors.Wrap(err,
 			"failed to move host to Ready state")
 	}
@@ -561,6 +626,10 @@ func (a *hostSummary) casStatusLockFree(old, new HostStatus) error {
 		// generate the offer id for a placing host.
 		a.hostOfferID = a.offerIDgenerator()
 		a.readyCount.Store(0)
+	case HeldHost:
+		a.hostOfferID = emptyOfferID
+		a.readyCount.Store(int32(len(a.unreservedOffers)))
+		// TODO: add expiration time here
 	}
 	return nil
 }
@@ -652,3 +721,115 @@ func (a *hostSummary) GetHostStatus() HostStatus {
 	defer a.Unlock()
 	return a.status
 }
+
+// HoldForTask holds the host for the task specified
+func (a *hostSummary) HoldForTask(id *peloton.TaskID) error {
+	a.Lock()
+	defer a.Unlock()
+
+	if a.status == ReservedHost {
+		return errors.Wrap(&InvalidHostStatus{status: a.status},
+			"cannot change host state to Held")
+	}
+
+	if a.status == ReadyHost {
+		if err := a.casStatusLockFree(ReadyHost, HeldHost); err != nil {
+			return err
+		}
+	}
+	// for PLACING and HELD, state no need to change host state
+
+	a.heldTasks[id.GetValue()] = struct{}{}
+
+	a.heldTaskChangeListener.OnTaskHoldAdd(a.hostname, id)
+
+	log.WithFields(log.Fields{
+		"hostname":  a.hostname,
+		"status":    a.status,
+		"host_held": a.heldTasks,
+		"task_id":   id.GetValue(),
+	}).Debug("hold task")
+
+	return nil
+
+}
+
+// ReleaseHoldForTask release the hold of host for the task specified
+func (a *hostSummary) ReleaseHoldForTask(id *peloton.TaskID) error {
+	a.Lock()
+	defer a.Unlock()
+
+	a.releaseHoldForTaskLockFree(id)
+
+	if len(a.heldTasks) == 0 && a.status == HeldHost {
+		log.WithFields(log.Fields{
+			"hostname": a.hostname,
+			"task_id":  id,
+		}).Debug("host is ready after hold release")
+		return a.casStatusLockFree(a.status, ReadyHost)
+	}
+
+	return nil
+}
+
+func (a *hostSummary) releaseHoldForTaskLockFree(id *peloton.TaskID) {
+	if _, exist := a.heldTasks[id.GetValue()]; !exist {
+		// this can happen for various reasons such as
+		// a task is launched again on the same host after timeout
+		log.WithFields(log.Fields{
+			"hostname": a.hostname,
+			"task_id":  id,
+		}).Info("task held is not found on host")
+	} else {
+		delete(a.heldTasks, id.GetValue())
+		a.heldTaskChangeListener.OnTaskHoldRemove(a.hostname, id)
+	}
+
+	log.WithFields(log.Fields{
+		"hostname":  a.hostname,
+		"status":    a.status,
+		"host_held": a.heldTasks,
+		"task_id":   id.GetValue(),
+	}).Debug("release task")
+}
+
+// ReturnPlacingHost is called when the host in PLACING state is not used,
+// and is returned by placement engine
+func (a *hostSummary) ReturnPlacingHost() error {
+	a.Lock()
+	defer a.Unlock()
+
+	if a.status != PlacingHost {
+		return &InvalidHostStatus{status: a.status}
+	}
+
+	newStatus := a.getResetPlacingStatus()
+
+	log.WithFields(log.Fields{
+		"new_status": newStatus,
+		"held_tasks": a.heldTasks,
+	}).Debug("return placing hosts")
+
+	return a.casStatusLockFree(PlacingHost, newStatus)
+}
+
+// getResetPlacingStatus returns the new host status for a host
+// that is going to be reset from PLACING state.
+func (a *hostSummary) getResetPlacingStatus() HostStatus {
+	newStatus := ReadyHost
+	if len(a.heldTasks) != 0 {
+		newStatus = HeldHost
+	}
+
+	return newStatus
+}
+
+func (a *hostSummary) AddListener(listener HeldTaskChangeListener) {
+	a.heldTaskChangeListener = listener
+}
+
+type dummyListener struct{}
+
+func (l *dummyListener) OnTaskHoldAdd(hostname string, id *peloton.TaskID) {}
+
+func (l *dummyListener) OnTaskHoldRemove(hostname string, id *peloton.TaskID) {}

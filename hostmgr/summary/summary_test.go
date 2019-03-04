@@ -24,6 +24,7 @@ import (
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
@@ -782,6 +783,130 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 	}
 }
 
+func (suite *HostOfferSummaryTestSuite) TestTryMatchHostOnHeld() {
+	defer suite.ctrl.Finish()
+	offer := suite.createUnreservedMesosOffer("offer-id")
+	offers := suite.createUnreservedMesosOffers(5)
+
+	seqIDGenerator := func(i string) func() string {
+		return func() string {
+			return i
+		}
+	}
+
+	testTable := map[string]struct {
+		wantResult     hostsvc.HostFilterResult
+		expectedOffers []*mesos.Offer
+		offerID        string
+
+		evaluateRes constraints.EvaluateResult
+		evaluateErr error
+
+		initialStatus HostStatus
+		afterStatus   HostStatus
+		noMock        bool
+		hintedHost    string
+
+		initialOffers []*mesos.Offer
+	}{
+		"matched-correctly-with-host-hint": {
+			wantResult:     hostsvc.HostFilterResult_MATCH,
+			expectedOffers: offers,
+			evaluateRes:    constraints.EvaluateResultMatch,
+			initialStatus:  HeldHost,
+			afterStatus:    PlacingHost,
+			initialOffers:  offers,
+			offerID:        "1",
+			hintedHost:     offer.GetHostname(),
+		},
+		"matched-not-applicable-with-host-hint": {
+			wantResult:     hostsvc.HostFilterResult_MATCH,
+			expectedOffers: []*mesos.Offer{offer},
+			evaluateRes:    constraints.EvaluateResultNotApplicable,
+			initialStatus:  HeldHost,
+			afterStatus:    PlacingHost,
+			initialOffers:  []*mesos.Offer{offer},
+			offerID:        "2",
+			hintedHost:     offer.GetHostname(),
+		},
+		"matched-correctly-without-host-hint": {
+			wantResult:     hostsvc.HostFilterResult_MISMATCH_STATUS,
+			expectedOffers: offers,
+			evaluateRes:    constraints.EvaluateResultMatch,
+			initialStatus:  HeldHost,
+			afterStatus:    HeldHost,
+			initialOffers:  offers,
+			offerID:        emptyOfferID,
+		},
+		"matched-not-applicable-without-host-hint": {
+			wantResult:     hostsvc.HostFilterResult_MISMATCH_STATUS,
+			expectedOffers: []*mesos.Offer{offer},
+			evaluateRes:    constraints.EvaluateResultNotApplicable,
+			initialStatus:  HeldHost,
+			afterStatus:    HeldHost,
+			initialOffers:  []*mesos.Offer{offer},
+			offerID:        emptyOfferID,
+		},
+	}
+
+	for ttName, tt := range testTable {
+		ctrl := gomock.NewController(suite.T())
+		mockEvaluator := constraint_mocks.NewMockEvaluator(ctrl)
+
+		s := New(
+			suite.mockVolumeStore,
+			nil,
+			offer.GetHostname(),
+			supportedSlackResourceTypes).(*hostSummary)
+		s.status = tt.initialStatus
+		s.offerIDgenerator = seqIDGenerator(tt.offerID)
+
+		suite.Equal(
+			tt.initialStatus,
+			s.AddMesosOffers(context.Background(),
+				tt.initialOffers),
+		)
+
+		filter := &hostsvc.HostFilter{
+			SchedulingConstraint: &task.Constraint{
+				Type: task.Constraint_LABEL_CONSTRAINT,
+				LabelConstraint: &task.LabelConstraint{
+					Kind: task.LabelConstraint_TASK,
+				},
+			},
+			Hint: &hostsvc.FilterHint{
+				HostHint: []*hostsvc.FilterHint_Host{{Hostname: tt.hintedHost}},
+			},
+		}
+
+		lv := constraints.GetHostLabelValues(_testAgent, offer.Attributes)
+
+		if !tt.noMock {
+			mockEvaluator.
+				EXPECT().
+				Evaluate(
+					gomock.Eq(filter.SchedulingConstraint),
+					gomock.Eq(lv)).
+				Return(tt.evaluateRes, tt.evaluateErr)
+		}
+
+		match := s.TryMatch(filter, mockEvaluator)
+		suite.Equal(tt.wantResult, match.Result,
+			"test case is %s", ttName)
+
+		suite.Equal(
+			tt.offerID,
+			s.hostOfferID,
+			"test case is %s", ttName)
+
+		if tt.wantResult != hostsvc.HostFilterResult_MATCH {
+			suite.Nil(match.Offer, "test case is %s", ttName)
+		}
+		_, _, afterStatus := s.UnreservedAmount()
+		suite.Equal(tt.afterStatus, afterStatus, "test case is %s", ttName)
+	}
+}
+
 func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	defer suite.ctrl.Finish()
 	// Add offer concurrently.
@@ -969,6 +1094,8 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() 
 		offerID            string
 		expectedReadyCount int32
 		err                error
+		heldTasks          []*peloton.TaskID
+		claimTasks         []*peloton.TaskID
 	}{
 		{
 			name:               "host in ready state should not return offers",
@@ -995,6 +1122,36 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() 
 			expectedReadyCount: 5,
 			err:                errors.New("host offer id does not match"),
 		},
+		{
+			name:               "host in held for tasks and not all tasks are claimed",
+			initialStatus:      PlacingHost,
+			afterStatus:        HeldHost,
+			offerID:            offers[0].GetId().GetValue(),
+			expectedReadyCount: 0,
+			heldTasks:          []*peloton.TaskID{{Value: "t1"}, {Value: "t2"}},
+			claimTasks:         []*peloton.TaskID{{Value: "t1"}},
+			err:                nil,
+		},
+		{
+			name:               "host in held for tasks and all tasks are claimed",
+			initialStatus:      PlacingHost,
+			afterStatus:        ReadyHost,
+			offerID:            offers[0].GetId().GetValue(),
+			expectedReadyCount: 0,
+			heldTasks:          []*peloton.TaskID{{Value: "t1"}, {Value: "t2"}},
+			claimTasks:         []*peloton.TaskID{{Value: "t1"}, {Value: "t2"}},
+			err:                nil,
+		},
+		{
+			name:               "host in held for tasks and more tasks than held are claimed",
+			initialStatus:      PlacingHost,
+			afterStatus:        ReadyHost,
+			offerID:            offers[0].GetId().GetValue(),
+			expectedReadyCount: 0,
+			heldTasks:          []*peloton.TaskID{{Value: "t1"}, {Value: "t2"}},
+			claimTasks:         []*peloton.TaskID{{Value: "t1"}, {Value: "t2"}, {Value: "t3"}},
+			err:                nil,
+		},
 	}
 
 	for _, tt := range testTable {
@@ -1008,7 +1165,11 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() 
 		s.status = tt.initialStatus
 		s.hostOfferID = tt.offerID
 
-		_, err := s.ClaimForLaunch(offers[0].GetId().GetValue())
+		for _, heldTask := range tt.heldTasks {
+			s.HoldForTask(heldTask)
+		}
+
+		_, err := s.ClaimForLaunch(offers[0].GetId().GetValue(), tt.claimTasks...)
 		if err != nil {
 			suite.Equal(err.Error(), tt.err.Error(), tt.name)
 		}
@@ -1038,4 +1199,87 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForReservedOffersForLaunch() {
 	suite.Equal(int(s.readyCount.Load()), 1)
 	summaryOffers := s.GetOffers(Reserved)
 	suite.Equal(len(summaryOffers), 0)
+}
+
+type action int
+
+const (
+	add action = iota
+	remove
+)
+
+type testListenerEntry struct {
+	hostname string
+	id       *peloton.TaskID
+	act      action
+}
+
+type testListener struct {
+	entries []*testListenerEntry
+}
+
+func (t *testListener) OnTaskHoldAdd(hostname string, id *peloton.TaskID) {
+	t.entries = append(t.entries, &testListenerEntry{hostname: hostname, id: id, act: add})
+}
+
+func (t *testListener) OnTaskHoldRemove(hostname string, id *peloton.TaskID) {
+	t.entries = append(t.entries, &testListenerEntry{hostname: hostname, id: id, act: remove})
+}
+
+func (suite *HostOfferSummaryTestSuite) TestHoldAndReleaseTask() {
+	defer suite.ctrl.Finish()
+
+	hostname0 := "hostname-0"
+	listener := &testListener{}
+	hs0 := New(suite.mockVolumeStore, nil, hostname0, supportedSlackResourceTypes).(*hostSummary)
+	hs0.AddListener(listener)
+
+	hostname1 := "hostname-1"
+	hs1 := New(suite.mockVolumeStore, nil, hostname1, supportedSlackResourceTypes).(*hostSummary)
+	hs1.AddListener(listener)
+
+	t1 := &peloton.TaskID{Value: "t1"}
+	t2 := &peloton.TaskID{Value: "t2"}
+	t3 := &peloton.TaskID{Value: "t3"}
+
+	suite.NoError(hs0.HoldForTask(t1))
+	suite.NoError(hs1.HoldForTask(t2))
+	suite.NoError(hs1.HoldForTask(t3))
+
+	suite.Equal(hs0.GetHostStatus(), HeldHost)
+	suite.Equal(hs1.GetHostStatus(), HeldHost)
+
+	suite.NoError(hs0.ReleaseHoldForTask(t1))
+	suite.NoError(hs1.ReleaseHoldForTask(t2))
+
+	suite.Equal(hs0.GetHostStatus(), ReadyHost)
+	suite.Equal(hs1.GetHostStatus(), HeldHost)
+
+	suite.Equal(listener.entries[0], &testListenerEntry{hostname: hostname0, id: t1, act: add})
+	suite.Equal(listener.entries[1], &testListenerEntry{hostname: hostname1, id: t2, act: add})
+	suite.Equal(listener.entries[2], &testListenerEntry{hostname: hostname1, id: t3, act: add})
+	suite.Equal(listener.entries[3], &testListenerEntry{hostname: hostname0, id: t1, act: remove})
+	suite.Equal(listener.entries[4], &testListenerEntry{hostname: hostname1, id: t2, act: remove})
+	suite.Len(listener.entries, 5)
+}
+
+func (suite *HostOfferSummaryTestSuite) TestReturnPlacingHost() {
+	defer suite.ctrl.Finish()
+
+	hs := New(suite.mockVolumeStore, nil, _testAgent, supportedSlackResourceTypes).(*hostSummary)
+	// host in ready state, should fail the call
+	suite.Error(hs.ReturnPlacingHost())
+
+	// task has no host held, go back to ready state
+	hs.status = PlacingHost
+	suite.NoError(hs.ReturnPlacingHost())
+	suite.Equal(hs.GetHostStatus(), ReadyHost)
+
+	// task has host held, go back to placing state
+	hs.status = PlacingHost
+	t1 := &peloton.TaskID{Value: "t1"}
+	suite.NoError(hs.HoldForTask(t1))
+	suite.NoError(hs.ReturnPlacingHost())
+	suite.Equal(hs.GetHostStatus(), HeldHost)
+
 }

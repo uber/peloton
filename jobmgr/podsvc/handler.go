@@ -303,6 +303,7 @@ func (h *serviceHandler) StopPod(
 		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
 			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
 		},
+		jobmgrcommon.DesiredHostField: "",
 	}
 	err = cachedJob.PatchTasks(ctx, runtimeDiff)
 

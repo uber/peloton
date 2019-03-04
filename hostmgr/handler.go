@@ -664,10 +664,48 @@ func (h *ServiceHandler) LaunchTasks(
 		}, nil
 	}
 
+	var taskIDs []*peloton.TaskID
+
+	for _, launchableTask := range req.GetTasks() {
+		hostHeld := h.offerPool.GetHostHeldForTask(launchableTask.GetId())
+		if hostHeld == req.GetHostname() {
+			taskIDs = append(taskIDs, launchableTask.GetId())
+		} else if len(hostHeld) != 0 {
+			log.WithFields(log.Fields{
+				"task_id":       launchableTask.GetId().GetValue(),
+				"host_held":     hostHeld,
+				"host_launched": req.GetHostname(),
+			}).Info("task not launched on the host held")
+
+			// the task is not launched on the host it reserves for,
+			// release the host
+			hs, err := h.offerPool.GetHostSummary(hostHeld)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"task_id":   launchableTask.GetId().GetValue(),
+					"host_held": hostHeld,
+					"error":     err,
+				}).Warn("cannot find host summary to release held host")
+				continue
+			}
+
+			if err := hs.ReleaseHoldForTask(launchableTask.GetId()); err != nil {
+				log.WithFields(log.Fields{
+					"task_id":   launchableTask.GetId().GetValue(),
+					"host_held": hostHeld,
+					"error":     err,
+				}).Warn("cannot release held host when launching task on other hosts")
+				continue
+			}
+		}
+	}
+
 	offers, err := h.offerPool.ClaimForLaunch(
 		req.GetHostname(),
 		false,
-		req.GetId().GetValue())
+		req.GetId().GetValue(),
+		taskIDs...,
+	)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"hostname":        req.GetHostname(),
@@ -744,7 +782,7 @@ func (h *ServiceHandler) LaunchTasks(
 
 		mesosTask.AgentId = req.GetAgentId()
 		mesosTasks = append(mesosTasks, mesosTask)
-		mesosTaskIds = append(mesosTaskIds, *mesosTask.TaskId.Value)
+		mesosTaskIds = append(mesosTaskIds, mesosTask.GetTaskId().GetValue())
 	}
 
 	callType := sched.Call_ACCEPT
@@ -917,24 +955,63 @@ func (h *ServiceHandler) KillAndReserveTasks(
 	ctx context.Context,
 	body *hostsvc.KillAndReserveTasksRequest,
 ) (*hostsvc.KillAndReserveTasksResponse, error) {
-	// TODO: fill in the real implementation, now only do kill
 	var taskIDs []*mesos.TaskID
+
+	// reserve the hosts first
 	for _, entry := range body.GetEntries() {
 		taskIDs = append(taskIDs, entry.GetTaskId())
-	}
-	resp, err := h.KillTasks(ctx, &hostsvc.KillTasksRequest{
-		TaskIds: taskIDs,
-	})
 
-	if resp.GetError() != nil {
-		return nil, fmt.Errorf(resp.GetError().String())
+		// fail to reserve hosts should not fail kill,
+		// just fail the in-place update and move on
+		// to kill the task
+		hs, err := h.offerPool.GetHostSummary(entry.GetHostToReserve())
+		if err != nil {
+			log.WithFields(log.Fields{
+				"hostname": entry.GetHostToReserve(),
+				"task_id":  entry.GetId().GetValue(),
+			}).WithError(err).
+				Warn("fail to get host summary when holding the host")
+			continue
+		}
+
+		if err := hs.HoldForTask(entry.GetId()); err != nil {
+			log.WithFields(log.Fields{
+				"hostname": entry.GetHostToReserve(),
+				"task_id":  entry.GetId().GetValue(),
+			}).WithError(err).
+				Warn("fail to hold the host")
+			continue
+		}
 	}
 
-	if err != nil {
-		return nil, err
+	// then kill the tasks
+	invalidTaskIDs, killFailure := h.killTasks(ctx, taskIDs)
+	if invalidTaskIDs == nil && killFailure == nil {
+		return &hostsvc.KillAndReserveTasksResponse{}, nil
 	}
 
-	return &hostsvc.KillAndReserveTasksResponse{}, nil
+	resp := &hostsvc.KillAndReserveTasksResponse{
+		Error: &hostsvc.KillAndReserveTasksResponse_Error{
+			InvalidTaskIDs: invalidTaskIDs,
+			KillFailure:    killFailure,
+		},
+	}
+
+	// if task kill fails, try to release the tasks
+	// TODO: can release only the failed tasks, for now it is ok, since
+	// one task is killed in each call to the API.
+	for _, entry := range body.GetEntries() {
+		hs, err := h.offerPool.GetHostSummary(entry.GetHostToReserve())
+		if err != nil {
+			return resp, err
+		}
+
+		if err := hs.ReleaseHoldForTask(entry.GetId()); err != nil {
+			return resp, err
+		}
+	}
+
+	return resp, nil
 }
 
 // KillTasks implements InternalHostService.KillTasks.
@@ -944,15 +1021,27 @@ func (h *ServiceHandler) KillTasks(
 	*hostsvc.KillTasksResponse, error) {
 
 	log.WithField("request", body).Debug("KillTasks called.")
-	taskIds := body.GetTaskIds()
-	if len(taskIds) == 0 {
+
+	invalidTaskIDs, killFailure := h.killTasks(ctx, body.GetTaskIds())
+
+	if invalidTaskIDs != nil || killFailure != nil {
 		return &hostsvc.KillTasksResponse{
 			Error: &hostsvc.KillTasksResponse_Error{
-				InvalidTaskIDs: &hostsvc.InvalidTaskIDs{
-					Message: "Empty task ids",
-				},
+				InvalidTaskIDs: invalidTaskIDs,
+				KillFailure:    killFailure,
 			},
 		}, nil
+	}
+
+	return &hostsvc.KillTasksResponse{}, nil
+}
+
+func (h *ServiceHandler) killTasks(
+	ctx context.Context,
+	taskIds []*mesos.TaskID) (
+	*hostsvc.InvalidTaskIDs, *hostsvc.KillFailure) {
+	if len(taskIds) == 0 {
+		return &hostsvc.InvalidTaskIDs{Message: "Empty task ids"}, nil
 	}
 
 	var wg sync.WaitGroup
@@ -996,17 +1085,13 @@ func (h *ServiceHandler) KillTasks(
 	wg.Wait()
 
 	if len(failedTaskIds) > 0 {
-		return &hostsvc.KillTasksResponse{
-			Error: &hostsvc.KillTasksResponse_Error{
-				KillFailure: &hostsvc.KillFailure{
-					Message: strings.Join(errs, ";"),
-					TaskIds: failedTaskIds,
-				},
-			},
-		}, nil
+		return nil, &hostsvc.KillFailure{
+			Message: strings.Join(errs, ";"),
+			TaskIds: failedTaskIds,
+		}
 	}
 
-	return &hostsvc.KillTasksResponse{}, nil
+	return nil, nil
 }
 
 // ReserveResources implements InternalHostService.ReserveResources.
@@ -1396,6 +1481,8 @@ func toHostStatus(hostStatus summary.HostStatus) string {
 		status = "placing"
 	case summary.ReservedHost:
 		status = "reserved"
+	case summary.HeldHost:
+		status = "held"
 	default:
 		status = "unknown"
 	}

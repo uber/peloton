@@ -90,6 +90,9 @@ message LaunchableTask {
 
   // Persistent volume used to launch task.
   Volume volume = 4;
+
+  // Peloton task id of the task to be launched
+  api.v0.peloton.TaskID id = 5;
 }
 
 
@@ -689,7 +692,8 @@ message ShutdownExecutorsResponse {
 message KillAndReserveTasksRequest {
     message Entry {
         mesos.v1.TaskID taskId = 1;
-        string hostToReserve = 2;
+        api.v0.peloton.TaskID id = 2;
+        string hostToReserve = 3;
     }
     repeated Entry entries = 1;
 }

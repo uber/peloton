@@ -25,6 +25,7 @@ import (
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/common"
@@ -74,10 +75,13 @@ type Pool interface {
 	// function are considered used and sent back to Mesos master in a Launch
 	// operation, while result in `ClaimForPlace` are still considered part
 	// of peloton apps.
+	// An optional list of task ids is provided if the host is held for
+	// the tasks
 	ClaimForLaunch(
 		hostname string,
 		useReservedOffers bool,
-		hostOfferID string) (map[string]*mesos.Offer, error)
+		hostOfferID string,
+		taskIDs ...*peloton.TaskID) (map[string]*mesos.Offer, error)
 
 	// ReturnUnusedOffers returns previously placed offers on hostname back
 	// to current offer pool so they can be used by future launch actions.
@@ -114,11 +118,12 @@ type Pool interface {
 
 	// GetHostSummaries returns a map of hostname to host summary object
 	GetHostSummaries(hostnames []string) (map[string]summary.HostSummary, error)
+
+	// GetHostHeldForTask returns the host that is held for the task
+	GetHostHeldForTask(taskID *peloton.TaskID) string
 }
 
 const (
-	_defaultContextTimeout = 10 * time.Second
-
 	// Reject offers from unavailable/maintenance host only before 3 hour of
 	// starting window.
 	// Mesos Master sets unix nano seconds for unavailability start time.
@@ -217,6 +222,10 @@ type offerPool struct {
 	volumeStore storage.PersistentVolumeStore
 	// indicate if bin packing is enabled/disabled
 	binPackingRanker binpacking.Ranker
+
+	// taskHeldIndex --- key: task id,
+	// value: host held for the task
+	taskHeldIndex sync.Map
 }
 
 // ClaimForPlace obtains offers from pool conforming to given constraints.
@@ -234,11 +243,24 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
 		hostFilter,
 		constraints.NewEvaluator(task.LabelConstraint_HOST))
 
+	// if host hint is provided, try to return the hosts in hints first
+	for _, filterHints := range hostFilter.GetHint().GetHostHint() {
+		if hs, ok := p.hostOfferIndex[filterHints.GetHostname()]; ok {
+			matcher.tryMatch(hs.GetHostname(), hs)
+			if matcher.HasEnoughHosts() {
+				break
+			}
+		}
+	}
+
 	// We might want to consider making it a aynchronous process if
 	// this becomes bottleneck, but that might increase the defragmentation
 	// in the cluster, will start with this approach and monitor it based
 	// on the results we will optimize this.
-	sortedSummaryList := p.getRankedHostSummaryList(p.hostOfferIndex)
+	var sortedSummaryList []interface{}
+	if !matcher.HasEnoughHosts() {
+		sortedSummaryList = p.getRankedHostSummaryList(p.hostOfferIndex)
+	}
 	for _, s := range sortedSummaryList {
 		matcher.tryMatch(s.(summary.HostSummary).GetHostname(), s.(summary.HostSummary))
 		if matcher.HasEnoughHosts() {
@@ -273,6 +295,7 @@ func (p *offerPool) ClaimForLaunch(
 	hostname string,
 	useReservedOffers bool,
 	hostOfferID string,
+	taskIDs ...*peloton.TaskID,
 ) (map[string]*mesos.Offer, error) {
 	p.RLock()
 	defer p.RUnlock()
@@ -288,7 +311,7 @@ func (p *offerPool) ClaimForLaunch(
 	if useReservedOffers {
 		offerMap, err = hs.ClaimReservedOffersForLaunch()
 	} else {
-		offerMap, err = hs.ClaimForLaunch(hostOfferID)
+		offerMap, err = hs.ClaimForLaunch(hostOfferID, taskIDs...)
 	}
 
 	if err != nil {
@@ -371,11 +394,13 @@ func (p *offerPool) AddOffers(
 	for hostname := range hostnameToOffers {
 		_, ok := p.hostOfferIndex[hostname]
 		if !ok {
-			p.hostOfferIndex[hostname] = summary.New(
+			hs := summary.New(
 				p.volumeStore,
 				p.scarceResourceTypes,
 				hostname,
 				p.slackResourceTypes)
+			hs.AddListener(p)
+			p.hostOfferIndex[hostname] = hs
 		}
 	}
 	p.Unlock()
@@ -529,7 +554,7 @@ func (p *offerPool) ReturnUnusedOffers(hostname string) error {
 		return nil
 	}
 
-	err := hostOffers.CasStatus(summary.PlacingHost, summary.ReadyHost)
+	err := hostOffers.ReturnPlacingHost()
 	if err != nil {
 		return err
 	}
@@ -698,4 +723,34 @@ func (p *offerPool) GetHostSummaries(
 	}
 
 	return hostSummaries, nil
+}
+
+// GetHostHeldForTask returns the host that is held for the task
+func (p *offerPool) GetHostHeldForTask(taskID *peloton.TaskID) string {
+	val, ok := p.taskHeldIndex.Load(taskID.GetValue())
+	if !ok {
+		return ""
+	}
+
+	return val.(string)
+}
+
+// OnTaskHoldAdd implements HeldTaskChangeListener, it is called when
+// host is on held for a task
+func (p *offerPool) OnTaskHoldAdd(hostname string, id *peloton.TaskID) {
+	oldHost, loaded := p.taskHeldIndex.LoadOrStore(id.GetValue(), hostname)
+	if loaded && oldHost != hostname {
+		log.WithFields(log.Fields{
+			"new_host": hostname,
+			"old_host": oldHost.(string),
+			"task_id":  id.GetValue(),
+		}).Warn("task is held by multiple hosts")
+		p.taskHeldIndex.Store(id.GetValue(), hostname)
+	}
+}
+
+// OnTaskHoldRemove implements HeldTaskChangeListener, it is called when
+// host is removed from held for a host
+func (p *offerPool) OnTaskHoldRemove(hostname string, id *peloton.TaskID) {
+	p.taskHeldIndex.Delete(id.GetValue())
 }

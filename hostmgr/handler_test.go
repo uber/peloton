@@ -46,6 +46,7 @@ import (
 	qm "github.com/uber/peloton/hostmgr/queue/mocks"
 	"github.com/uber/peloton/hostmgr/reserver"
 	reserver_mocks "github.com/uber/peloton/hostmgr/reserver/mocks"
+	"github.com/uber/peloton/hostmgr/summary"
 	task_state_mocks "github.com/uber/peloton/hostmgr/task/mocks"
 	storage_mocks "github.com/uber/peloton/storage/mocks"
 	"github.com/uber/peloton/util"
@@ -792,6 +793,86 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 	suite.checkResourcesGauges(0, "placing")
 }
 
+// This checks the case of acquire -> launch
+// sequence when the target host is not the host held.
+func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOnNonHeldTask() {
+	defer suite.ctrl.Finish()
+
+	numHosts := 1
+	acquiredResp, err := suite.acquireHostOffers(numHosts)
+	suite.NoError(err)
+	suite.Nil(acquiredResp.GetError())
+	acquiredHostOffers := acquiredResp.GetHostOffers()
+	suite.Equal(1, len(acquiredHostOffers))
+
+	// TODO: Add check for number of HostOffers in placing state.
+	suite.checkResourcesGauges(0, "ready")
+	suite.checkResourcesGauges(numHosts, "placing")
+
+	// An empty launch request will trigger an error.
+	launchabelTask := generateLaunchableTasks(1)[0]
+	launchReq := &hostsvc.LaunchTasksRequest{
+		Hostname: acquiredHostOffers[0].GetHostname(),
+		AgentId:  acquiredHostOffers[0].GetAgentId(),
+		Tasks:    []*hostsvc.LaunchableTask{launchabelTask},
+		Id:       acquiredHostOffers[0].GetId(),
+	}
+
+	// launch on host0 but host1 is held for the task
+	suite.pool.AddOffers(context.Background(), generateOffers(2))
+	hs1, err := suite.pool.GetHostSummary("hostname-1")
+	suite.NoError(err)
+	suite.NoError(hs1.HoldForTask(launchabelTask.GetId()))
+	suite.Equal(hs1.GetHostStatus(), summary.HeldHost)
+
+	gomock.InOrder(
+		// Set expectations on provider
+		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
+			suite.frameworkID),
+		// Set expectations on provider
+		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
+		// Set expectations on scheduler schedulerClient
+		suite.schedulerClient.EXPECT().
+			Call(
+				gomock.Eq(_streamID),
+				gomock.Any(),
+			).
+			Do(func(_ string, msg proto.Message) {
+				// Verify clientCall message.
+				call := msg.(*sched.Call)
+				suite.Equal(sched.Call_ACCEPT, call.GetType())
+				suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+
+				accept := call.GetAccept()
+				suite.NotNil(accept)
+				suite.Equal(1, len(accept.GetOfferIds()))
+				suite.Equal("offer-0", accept.GetOfferIds()[0].GetValue())
+				suite.Equal(1, len(accept.GetOperations()))
+				operation := accept.GetOperations()[0]
+				suite.Equal(
+					mesos.Offer_Operation_LAUNCH,
+					operation.GetType())
+				launch := operation.GetLaunch()
+				suite.NotNil(launch)
+				suite.Equal(1, len(launch.GetTaskInfos()))
+				suite.Equal(
+					fmt.Sprintf(_taskIDFmt, 0),
+					launch.GetTaskInfos()[0].GetTaskId().GetValue())
+			}).
+			Return(nil),
+	)
+
+	launchResp, err := suite.handler.LaunchTasks(
+		rootCtx,
+		launchReq,
+	)
+
+	suite.NoError(err)
+	suite.Nil(launchResp.GetError().GetInvalidArgument())
+	// the host should go back to ready state
+	suite.Equal(hs1.GetHostStatus(), summary.ReadyHost)
+}
+
 // This checks the happy case of acquire -> launch sequence using offer operations.
 func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOperation() {
 	defer suite.ctrl.Finish()
@@ -1085,15 +1166,16 @@ func (suite *HostMgrHandlerTestSuite) TestShutdownExecutorsFailure() {
 	}
 }
 
-// Test happy case of killing and reserve task
-func (suite *HostMgrHandlerTestSuite) TestKillAndReserveTask() {
+// TestKillAndReserveTaskWithoutHostSummary test the case that failing
+// to hold the host on kill should not return an error to user
+func (suite *HostMgrHandlerTestSuite) TestKillAndReserveTaskWithoutHostSummary() {
 	defer suite.ctrl.Finish()
 
 	t1 := "t1"
 	t2 := "t2"
 	entries := []*hostsvc.KillAndReserveTasksRequest_Entry{
-		{TaskId: &mesos.TaskID{Value: &t1}, HostToReserve: "host1"},
-		{TaskId: &mesos.TaskID{Value: &t2}, HostToReserve: "host2"},
+		{TaskId: &mesos.TaskID{Value: &t1}, HostToReserve: "hostname-0"},
+		{TaskId: &mesos.TaskID{Value: &t2}, HostToReserve: "hostname-1"},
 	}
 	killAndReserveReq := &hostsvc.KillAndReserveTasksRequest{
 		Entries: entries,
@@ -1140,6 +1222,143 @@ func (suite *HostMgrHandlerTestSuite) TestKillAndReserveTask() {
 	suite.Equal(
 		int64(2),
 		suite.testScope.Snapshot().Counters()["kill_tasks+"].Value())
+}
+
+// TestKillAndReserveTaskKillFailure test the case of fail to kill
+// tasks after the host is placed on hold
+func (suite *HostMgrHandlerTestSuite) TestKillAndReserveTaskKillFailure() {
+	defer suite.ctrl.Finish()
+
+	numHosts := 2
+	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
+
+	t1 := "t1"
+	t2 := "t2"
+	entries := []*hostsvc.KillAndReserveTasksRequest_Entry{
+		{TaskId: &mesos.TaskID{Value: &t1}, HostToReserve: "hostname-0"},
+		{TaskId: &mesos.TaskID{Value: &t2}, HostToReserve: "hostname-1"},
+	}
+	killAndReserveReq := &hostsvc.KillAndReserveTasksRequest{
+		Entries: entries,
+	}
+	killedTaskIds := make(map[string]bool)
+	mockMutex := &sync.Mutex{}
+
+	// Set expectations on provider
+	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
+		suite.frameworkID,
+	).Times(2)
+	suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(
+		_streamID,
+	).Times(2)
+
+	// Set expectations on scheduler schedulerClient
+	suite.schedulerClient.EXPECT().
+		Call(
+			gomock.Eq(_streamID),
+			gomock.Any(),
+		).
+		Do(func(_ string, msg proto.Message) {
+			// Verify clientCall message.
+			call := msg.(*sched.Call)
+			suite.Equal(sched.Call_KILL, call.GetType())
+			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+
+			tid := call.GetKill().GetTaskId()
+			suite.NotNil(tid)
+			mockMutex.Lock()
+			defer mockMutex.Unlock()
+			killedTaskIds[tid.GetValue()] = true
+		}).
+		Return(fmt.Errorf("test error")).
+		Times(2)
+
+	resp, err := suite.handler.KillAndReserveTasks(rootCtx, killAndReserveReq)
+	suite.NoError(err)
+	suite.NotNil(resp.GetError())
+	suite.Equal(
+		map[string]bool{"t1": true, "t2": true},
+		killedTaskIds)
+
+	suite.Equal(
+		int64(0),
+		suite.testScope.Snapshot().Counters()["kill_tasks+"].Value())
+
+	hs0, err := suite.pool.GetHostSummary("hostname-0")
+	suite.NoError(err)
+	suite.Equal(hs0.GetHostStatus(), summary.ReadyHost)
+
+	hs1, err := suite.pool.GetHostSummary("hostname-1")
+	suite.NoError(err)
+	suite.Equal(hs1.GetHostStatus(), summary.ReadyHost)
+}
+
+// TestKillAndReserveTask test the happy path
+func (suite *HostMgrHandlerTestSuite) TestKillAndReserveTask() {
+	defer suite.ctrl.Finish()
+
+	numHosts := 2
+	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
+
+	t1 := "t1"
+	t2 := "t2"
+	entries := []*hostsvc.KillAndReserveTasksRequest_Entry{
+		{TaskId: &mesos.TaskID{Value: &t1}, HostToReserve: "hostname-0"},
+		{TaskId: &mesos.TaskID{Value: &t2}, HostToReserve: "hostname-1"},
+	}
+	killAndReserveReq := &hostsvc.KillAndReserveTasksRequest{
+		Entries: entries,
+	}
+	killedTaskIds := make(map[string]bool)
+	mockMutex := &sync.Mutex{}
+
+	// Set expectations on provider
+	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
+		suite.frameworkID,
+	).Times(2)
+	suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(
+		_streamID,
+	).Times(2)
+
+	// Set expectations on scheduler schedulerClient
+	suite.schedulerClient.EXPECT().
+		Call(
+			gomock.Eq(_streamID),
+			gomock.Any(),
+		).
+		Do(func(_ string, msg proto.Message) {
+			// Verify clientCall message.
+			call := msg.(*sched.Call)
+			suite.Equal(sched.Call_KILL, call.GetType())
+			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+
+			tid := call.GetKill().GetTaskId()
+			suite.NotNil(tid)
+			mockMutex.Lock()
+			defer mockMutex.Unlock()
+			killedTaskIds[tid.GetValue()] = true
+		}).
+		Return(nil).
+		Times(2)
+
+	resp, err := suite.handler.KillAndReserveTasks(rootCtx, killAndReserveReq)
+	suite.NoError(err)
+	suite.Nil(resp.GetError())
+	suite.Equal(
+		map[string]bool{"t1": true, "t2": true},
+		killedTaskIds)
+
+	suite.Equal(
+		int64(2),
+		suite.testScope.Snapshot().Counters()["kill_tasks+"].Value())
+
+	hs0, err := suite.pool.GetHostSummary("hostname-0")
+	suite.NoError(err)
+	suite.Equal(hs0.GetHostStatus(), summary.HeldHost)
+
+	hs1, err := suite.pool.GetHostSummary("hostname-1")
+	suite.NoError(err)
+	suite.Equal(hs1.GetHostStatus(), summary.HeldHost)
 }
 
 // Test happy case of killing task

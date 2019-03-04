@@ -166,6 +166,7 @@ func createRuntimeDiffForKill(
 			jobmgrcommon.TerminationStatusField: &task.TerminationStatus{
 				Reason: task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
 			},
+			jobmgrcommon.DesiredHostField: "",
 		}
 		runtimeDiffAll[instanceID] = runtimeDiff
 		if util.IsPelotonStateTerminal(runtime.GetState()) {

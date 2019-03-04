@@ -758,9 +758,10 @@ func (suite *podHandlerTestSuite) TestStopPodSuccess() {
 	}
 	runtimeDiff := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
-		jobmgrcommon.GoalStateField: pbtask.TaskState_KILLED,
-		jobmgrcommon.MessageField:   "Task stop API request",
-		jobmgrcommon.ReasonField:    "",
+		jobmgrcommon.GoalStateField:   pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:     "Task stop API request",
+		jobmgrcommon.ReasonField:      "",
+		jobmgrcommon.DesiredHostField: "",
 
 		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
 			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
@@ -926,10 +927,10 @@ func (suite *podHandlerTestSuite) TestStopPodPatchTasksFailure() {
 	}
 	runtimeDiff := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
-		jobmgrcommon.GoalStateField: pbtask.TaskState_KILLED,
-		jobmgrcommon.MessageField:   "Task stop API request",
-		jobmgrcommon.ReasonField:    "",
-
+		jobmgrcommon.GoalStateField:   pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:     "Task stop API request",
+		jobmgrcommon.ReasonField:      "",
+		jobmgrcommon.DesiredHostField: "",
 		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
 			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
 		},
