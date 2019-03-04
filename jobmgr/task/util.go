@@ -155,12 +155,17 @@ func killHost(
 func killAndReserveHost(
 	ctx context.Context,
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
-	taskID *mesos_v1.TaskID,
+	mesosTaskID *mesos_v1.TaskID,
 	hostToReserve string,
 ) error {
+	taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID.GetValue())
+	if err != nil {
+		return err
+	}
+
 	req := &hostsvc.KillAndReserveTasksRequest{
 		Entries: []*hostsvc.KillAndReserveTasksRequest_Entry{
-			{TaskId: taskID, HostToReserve: hostToReserve},
+			{Id: &peloton.TaskID{Value: taskID}, TaskId: mesosTaskID, HostToReserve: hostToReserve},
 		},
 	}
 	res, err := hostmgrClient.KillAndReserveTasks(ctx, req)

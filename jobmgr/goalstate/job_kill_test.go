@@ -130,30 +130,35 @@ func (suite JobKillTestSuite) TestJobKill() {
 		jobmgrcommon.MessageField:           "Task stop API request",
 		jobmgrcommon.ReasonField:            "",
 		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
 	}
 	runtimeDiffs[1] = map[string]interface{}{
 		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
 		jobmgrcommon.MessageField:           "Task stop API request",
 		jobmgrcommon.ReasonField:            "",
 		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
 	}
 	runtimeDiffs[2] = map[string]interface{}{
 		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
 		jobmgrcommon.MessageField:           "Task stop API request",
 		jobmgrcommon.ReasonField:            "",
 		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
 	}
 	runtimeDiffs[3] = map[string]interface{}{
 		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
 		jobmgrcommon.MessageField:           "Task stop API request",
 		jobmgrcommon.ReasonField:            "",
 		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
 	}
 	runtimeDiffs[4] = map[string]interface{}{
 		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
 		jobmgrcommon.MessageField:           "Task stop API request",
 		jobmgrcommon.ReasonField:            "",
 		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
 	}
 
 	jobRuntime := &pbjob.RuntimeInfo{

@@ -432,7 +432,7 @@ func TestEngineFilterAssignments(t *testing.T) {
 	assignment1 := testutil.SetupAssignment(deadline1, 1) // assigned
 	assignment1.SetHost(host)
 
-	assignment2 := testutil.SetupAssignment(deadline2, 2) // retryable
+	assignment2 := testutil.SetupAssignment(deadline2, 2) // assigned
 	assignment2.SetHost(host)
 
 	assignment3 := testutil.SetupAssignment(deadline2, 1) // retryable
@@ -443,19 +443,24 @@ func TestEngineFilterAssignments(t *testing.T) {
 	assignment5.Task.Task.DesiredHost = host.GetOffer().GetHostname()
 	assignment5.SetHost(host)
 
+	assignment6 := testutil.SetupAssignment(deadline2, 2) // retryable
+	assignment6.Task.Task.DesiredHost = "another-host"
+	assignment6.SetHost(host)
+
 	assignments := []*models.Assignment{
 		assignment1,
 		assignment2,
 		assignment3,
 		assignment4,
 		assignment5,
+		assignment6,
 	}
 
 	assigned, retryable, unassigned := engine.filterAssignments(now, assignments)
-	assert.Equal(t, 2, len(assigned))
-	assert.Equal(t, []*models.Assignment{assignment1, assignment5}, assigned)
+	assert.Equal(t, 3, len(assigned))
+	assert.Equal(t, []*models.Assignment{assignment1, assignment5, assignment2}, assigned)
 	assert.Equal(t, 2, len(retryable))
-	assert.Equal(t, []*models.Assignment{assignment2, assignment3}, retryable)
+	assert.Equal(t, []*models.Assignment{assignment3, assignment6}, retryable)
 	assert.Equal(t, 1, len(unassigned))
 	assert.Equal(t, []*models.Assignment{assignment4}, unassigned)
 }

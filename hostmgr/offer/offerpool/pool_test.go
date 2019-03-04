@@ -29,6 +29,7 @@ import (
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"github.com/uber/peloton/common"
@@ -954,6 +955,99 @@ func (suite *OfferPoolTestSuite) TestGetHostSummaries() {
 	suite.Equal(2, len(hostSummaries))
 	suite.Equal(hostSummary0, hostSummaries[hostname0])
 	suite.Equal(hostSummary3, hostSummaries[hostname3])
+}
+
+// TestGetHostHeldForTask tests the happy path of
+// get host held for a task
+func (suite *OfferPoolTestSuite) TestGetHostHeldForTask() {
+	t1 := &peloton.TaskID{Value: "t1"}
+	t2 := &peloton.TaskID{Value: "t2"}
+	t3 := &peloton.TaskID{Value: "t3"}
+	t4 := &peloton.TaskID{Value: "t4"}
+
+	hostname0 := "hostname0"
+	offer0 := suite.createOffer(hostname0,
+		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 1})
+	hostname1 := "hostname1"
+	offer1 := suite.createOffer(hostname1,
+		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
+
+	suite.pool.AddOffers(context.Background(),
+		[]*mesos.Offer{offer0, offer1})
+
+	hs0, err := suite.pool.GetHostSummary(hostname0)
+	suite.NoError(err)
+	suite.NoError(hs0.HoldForTask(t1))
+	suite.NoError(hs0.HoldForTask(t3))
+
+	hs1, err := suite.pool.GetHostSummary(hostname1)
+	suite.NoError(err)
+	suite.NoError(hs1.HoldForTask(t2))
+	suite.NoError(hs1.HoldForTask(t4))
+
+	suite.Equal(suite.pool.GetHostHeldForTask(t1), hs0.GetHostname())
+	suite.Equal(suite.pool.GetHostHeldForTask(t2), hs1.GetHostname())
+	suite.Equal(suite.pool.GetHostHeldForTask(t3), hs0.GetHostname())
+	suite.Equal(suite.pool.GetHostHeldForTask(t4), hs1.GetHostname())
+
+	hs0.ReleaseHoldForTask(t1)
+	hs1.ReleaseHoldForTask(t2)
+
+	suite.Empty(suite.pool.GetHostHeldForTask(t1))
+	suite.Empty(suite.pool.GetHostHeldForTask(t2))
+	suite.Equal(suite.pool.GetHostHeldForTask(t3), hs0.GetHostname())
+	suite.Equal(suite.pool.GetHostHeldForTask(t4), hs1.GetHostname())
+
+}
+
+// TestGetHostHeldWhenTaskHeldOnMultipleHosts tests the case of
+// a task is on multiple hosts. Last write should win
+func (suite *OfferPoolTestSuite) TestGetHostHeldWhenTaskHeldOnMultipleHosts() {
+	t1 := &peloton.TaskID{Value: "t1"}
+
+	hostname0 := "hostname0"
+	offer0 := suite.createOffer(hostname0,
+		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 1})
+	hostname1 := "hostname1"
+	offer1 := suite.createOffer(hostname1,
+		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
+
+	suite.pool.AddOffers(context.Background(),
+		[]*mesos.Offer{offer0, offer1})
+
+	hs0, err := suite.pool.GetHostSummary(hostname0)
+	hs1, err := suite.pool.GetHostSummary(hostname1)
+	suite.NoError(err)
+	suite.NoError(hs0.HoldForTask(t1))
+	suite.NoError(hs1.HoldForTask(t1))
+
+	suite.Equal(suite.pool.GetHostHeldForTask(t1), hs1.GetHostname())
+}
+
+// TestClaimForPlaceWithFilterHint tests ClaimForPlace would
+// honor filter hint when possible
+func (suite *OfferPoolTestSuite) TestClaimForPlaceWithFilterHint() {
+	hostname0 := "hostname0"
+	offer0 := suite.createOffer(hostname0,
+		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 1})
+	hostname1 := "hostname1"
+	offer1 := suite.createOffer(hostname1,
+		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
+	hostname2 := "hostname2"
+	offer2 := suite.createOffer(hostname2,
+		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
+
+	suite.pool.AddOffers(context.Background(),
+		[]*mesos.Offer{offer0, offer1, offer2})
+
+	filter := &hostsvc.HostFilter{
+		Hint:     &hostsvc.FilterHint{HostHint: []*hostsvc.FilterHint_Host{{Hostname: hostname2}}},
+		Quantity: &hostsvc.QuantityControl{MaxHosts: 1},
+	}
+	result, _, err := suite.pool.ClaimForPlace(filter)
+	suite.NoError(err)
+	suite.Len(result, 1)
+	suite.NotNil(result[hostname2])
 }
 
 func TestOfferPoolTestSuite(t *testing.T) {

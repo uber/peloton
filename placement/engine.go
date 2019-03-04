@@ -369,6 +369,8 @@ func (e *engine) filterAssignments(
 	now time.Time,
 	assignments []*models.Assignment) (
 	assigned, retryable, unassigned []*models.Assignment) {
+	var pending []*models.Assignment
+	hostAssigned := make(map[string]struct{})
 	for _, assignment := range assignments {
 		task := assignment.GetTask()
 		if assignment.GetHost() == nil {
@@ -379,20 +381,47 @@ func (e *engine) filterAssignments(
 				continue
 			}
 		} else {
+			hostname := assignment.GetHost().GetOffer().GetHostname()
 			// found a host
 			task.IncRounds()
 			// lets check if we can find a better one
 			if e.isAssignmentGoodEnough(task, assignment.GetHost().GetOffer(), now) {
 				// tried enough, this match is good enough
 				assigned = append(assigned, assignment)
+				hostAssigned[hostname] = struct{}{}
 				continue
 			}
 		}
 		// If we come here we have either
 		// 1) found a host but we can try and find a better match
 		// 2) we haven't found a host but we have time to find another one
-		retryable = append(retryable, assignment)
+		pending = append(pending, assignment)
 	}
+
+	for _, assignment := range pending {
+		if assignment.GetHost() == nil {
+			retryable = append(retryable, assignment)
+		} else if _, ok := hostAssigned[assignment.GetHost().GetOffer().GetHostname()]; ok {
+			if len(assignment.GetTask().GetTask().GetDesiredHost()) == 0 {
+				// if the host is already used by one of the
+				// assigned task, launch the task on that host.
+				// Treating the assignment as retryable can be
+				// problematic because the host would not be in PLACING
+				// state, and if PE still decides to launch the task
+				// on that host, an error would be returned
+				assigned = append(assigned, assignment)
+			} else {
+				// for host not placed on the desired host, reset
+				// host offers and add to retryable. Try to find
+				// the desired host in the next rounds.
+				assignment.HostOffers = nil
+				retryable = append(retryable, assignment)
+			}
+		} else {
+			retryable = append(retryable, assignment)
+		}
+	}
+
 	return assigned, retryable, unassigned
 }
 

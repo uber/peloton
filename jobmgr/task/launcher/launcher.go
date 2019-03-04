@@ -459,6 +459,11 @@ func (l *launcher) CreateLaunchableTasks(
 			TaskId: launchableTaskInfo.Runtime.GetMesosTaskId(),
 			Config: launchableTaskInfo.Config,
 			Ports:  launchableTaskInfo.Runtime.GetPorts(),
+			Id: &peloton.TaskID{Value: util.CreatePelotonTaskID(
+				launchableTaskInfo.GetJobId().GetValue(),
+				launchableTaskInfo.GetInstanceId(),
+			),
+			},
 		}
 		if launchableTaskInfo.Config.GetVolume() != nil {
 			diskResource := util.NewMesosResourceBuilder().

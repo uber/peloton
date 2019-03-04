@@ -69,10 +69,15 @@ func (m *Matcher) tryMatchImpl(
 		return hostsvc.HostFilterResult_MISMATCH_MAX_HOST_LIMIT
 	}
 
+	if _, exist := m.hostOffers[hostname]; exist {
+		return hostsvc.HostFilterResult_MATCH
+	}
+
 	match := s.TryMatch(m.hostFilter, m.evaluator)
 	log.WithFields(log.Fields{
 		"host_filter": m.hostFilter,
 		"host":        hostname,
+		"status":      s.GetHostStatus(),
 		"match":       match,
 	}).Debug("Constraint matching result")
 

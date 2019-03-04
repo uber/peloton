@@ -185,6 +185,7 @@ func stopMesosTask(ctx context.Context, taskEnt *taskEntity, runtime *task.Runti
 		jobmgrcommon.MessageField: "Killing the task",
 		jobmgrcommon.ReasonField:  "",
 	}
+
 	err = cachedJob.PatchTasks(ctx,
 		map[uint32]jobmgrcommon.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
 

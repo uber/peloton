@@ -460,6 +460,7 @@ func ConvertUpdateModelToWorkflowInfo(
 			MaxInstanceRetries:           updateInfo.GetUpdateConfig().GetMaxInstanceAttempts(),
 			MaxTolerableInstanceFailures: updateInfo.GetUpdateConfig().GetMaxFailureInstances(),
 			StartPaused:                  updateInfo.GetUpdateConfig().GetStartPaused(),
+			InPlace:                      updateInfo.GetUpdateConfig().GetInPlace(),
 		}
 	} else if updateInfo.GetType() == models.WorkflowType_RESTART {
 		result.RestartSpec = &stateless.RestartSpec{
