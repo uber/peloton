@@ -17,7 +17,10 @@ from tests.integration.stateless_job import StatelessJob
 from tests.integration.common import IntegrationTestConfig
 from tests.integration.stateless_job import INVALID_ENTITY_VERSION_ERR_MESSAGE
 
-pytestmark = [pytest.mark.default, pytest.mark.stateless, pytest.mark.update]
+pytestmark = [pytest.mark.default,
+              pytest.mark.stateless,
+              pytest.mark.update,
+              pytest.mark.random_order(disabled=True)]
 
 UPDATE_STATELESS_JOB_SPEC = "test_update_stateless_job_spec.yaml"
 UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC = \

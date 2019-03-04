@@ -9,7 +9,9 @@ from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 log = logging.getLogger(__name__)
 
 # Mark test module so that we can run tests by tags
-pytestmark = [pytest.mark.default, pytest.mark.jobdelete]
+pytestmark = [pytest.mark.default,
+              pytest.mark.jobdelete,
+              pytest.mark.random_order(disabled=True)]
 
 
 # test job delete API and try to delete a active job, this should fail

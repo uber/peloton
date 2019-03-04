@@ -5,7 +5,9 @@ from common import IntegrationTestConfig
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 from pool import Pool
 
-pytestmark = [pytest.mark.default, pytest.mark.preemption]
+pytestmark = [pytest.mark.default,
+              pytest.mark.preemption,
+              pytest.mark.random_order(disabled=True)]
 
 
 def respool(request, pool_file):

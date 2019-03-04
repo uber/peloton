@@ -7,7 +7,9 @@ from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 from client import Client, with_private_stubs
 
 
-pytestmark = [pytest.mark.default, pytest.mark.task]
+pytestmark = [pytest.mark.default,
+              pytest.mark.task,
+              pytest.mark.random_order(disabled=True)]
 
 
 @pytest.mark.smoketest

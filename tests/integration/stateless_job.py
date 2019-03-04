@@ -44,10 +44,13 @@ class StatelessJob(object):
         self.entity_version = None
         self.job_spec = None
 
+        if job_config is not None:
+            self.job_spec = job_config
+
         if job_id is not None:
             self.job_spec = self.get_spec()
 
-        if self.job_spec is None and job_config is None:
+        if self.job_spec is None:
             job_spec_dump = load_test_config(job_file)
             job_spec = stateless.JobSpec()
             json_format.ParseDict(job_spec_dump, job_spec)
@@ -378,6 +381,12 @@ class StatelessJob(object):
         """
         return self.get_info().spec
 
+    def get_job_id(self):
+        """
+        :return: unique job identifier
+        """
+        return self.job_id
+
     def wait_for_all_pods_running(self):
         """
         Waits for all pods in the job in RUNNING state
@@ -386,6 +395,7 @@ class StatelessJob(object):
         start = time.time()
         while attempts < self.config.max_retry_attempts:
             try:
+                self.job_spec = self.get_spec()
                 count = 0
                 for pod_id in range(0, self.job_spec.instance_count):
                     pod_state = self.get_pod(pod_id).get_pod_status().state
@@ -584,10 +594,31 @@ class StatelessJob(object):
         """
         :return: All the pods of the job
         """
+        self.job_spec = self.get_spec()
         return {Pod(self, iid) for iid in xrange(self.job_spec.instance_count)}
+
+    # Uncomment once 0.8.1 peloton client is released
+    # def list_workflows(self):
+    #     """
+    #     :return: the list of workflows for a job.
+    #     """
+    #     request = stateless_svc.ListJobWorkflowsRequest(
+    #         job_id=v1alpha_peloton.JobID(value=self.job_id),
+    #     )
+    #     resp = self.client.stateless_svc.ListJobWorkflows(
+    #         request,
+    #         metadata=self.client.jobmgr_metadata,
+    #         timeout=self.config.rpc_timeout_sec,
+    #     )
+    #     return resp.workflow_infos
 
 
 def query_jobs(respool_path=None):
+    """
+    Queries all the jobs for provided respool
+
+    :param respool_path: path of the respool to query jobs for
+    """
     client = Client()
     request = stateless_svc.QueryJobsRequest(
         spec=stateless.QuerySpec(
@@ -599,10 +630,14 @@ def query_jobs(respool_path=None):
     resp = client.stateless_svc.QueryJobs(
         request,
         metadata=client.jobmgr_metadata,
-        timeout=60,
+        timeout=600,
     )
-    return resp
-
+   
+    jobs = []
+    for j in resp.records:
+        job = StatelessJob(job_id=j.job_id.value)
+        jobs.append(job)
+    return jobs
 
 def list_jobs():
     """
@@ -619,3 +654,13 @@ def list_jobs():
         for jobSummary in resp.jobs:
             jobSummaries.append(jobSummary)
     return jobSummaries
+
+def delete_jobs(jobs):
+    """
+    Deletes all the provided jobs, it does force delete where all running
+    instances will be stopped if running
+
+    :param jobs: job to delete
+    """
+    for job in jobs:
+        job.delete(force_delete=True)

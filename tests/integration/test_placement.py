@@ -8,7 +8,9 @@ from peloton_client.pbgen.peloton.api.v0 import peloton_pb2
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 
 # Mark test module so that we can run tests by tags
-pytestmark = [pytest.mark.default, pytest.mark.placement]
+pytestmark = [pytest.mark.default,
+              pytest.mark.placement,
+              pytest.mark.random_order(disabled=True)]
 
 
 def _label_constraint(key, value):

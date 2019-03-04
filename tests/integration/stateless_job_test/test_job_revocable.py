@@ -4,7 +4,10 @@ import time
 from tests.integration.stateless_job import StatelessJob
 from peloton_client.pbgen.peloton.api.v1alpha.pod import pod_pb2 as pod
 
-pytestmark = [pytest.mark.default, pytest.mark.stateless, pytest.mark.revocable]
+pytestmark = [pytest.mark.default,
+              pytest.mark.stateless,
+              pytest.mark.revocable,
+              pytest.mark.random_order(disabled=True)]
 
 
 # 1) Resource Pool Memory: 1000 (reservation), 2000 (limit)

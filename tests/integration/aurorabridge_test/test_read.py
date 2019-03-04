@@ -10,7 +10,9 @@ from tests.integration.aurorabridge_test.util import (
     wait_for_killed,
 )
 
-pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
+pytestmark = [pytest.mark.default,
+              pytest.mark.aurorabridge,
+              pytest.mark.random_order(disabled=True)]
 
 
 def test__get_jobs__get_job_summary(client):

@@ -176,62 +176,87 @@ func ConvertTaskRuntimeToPodStatus(runtime *task.RuntimeInfo) *pod.PodStatus {
 
 // ConvertTaskConfigToPodSpec converts v0 task.TaskConfig to v1alpha pod.PodSpec
 func ConvertTaskConfigToPodSpec(taskConfig *task.TaskConfig) *pod.PodSpec {
-	var constraint *pod.Constraint
-	if taskConfig.GetConstraint() != nil {
-		constraint = ConvertTaskConstraintsToPodConstraints([]*task.Constraint{taskConfig.GetConstraint()})[0]
-	}
-
-	return &pod.PodSpec{
-		PodName: &v1alphapeloton.PodName{Value: taskConfig.GetName()},
-		Labels:  ConvertLabels(taskConfig.GetLabels()),
-		Containers: []*pod.ContainerSpec{
-			{
-				Name: taskConfig.GetName(),
-				Resource: &pod.ResourceSpec{
-					CpuLimit:    taskConfig.GetResource().GetCpuLimit(),
-					MemLimitMb:  taskConfig.GetResource().GetMemLimitMb(),
-					DiskLimitMb: taskConfig.GetResource().GetDiskLimitMb(),
-					FdLimit:     taskConfig.GetResource().GetFdLimit(),
-					GpuLimit:    taskConfig.GetResource().GetGpuLimit(),
-				},
-				Container: taskConfig.GetContainer(),
-				Command:   taskConfig.GetCommand(),
-				Executor:  taskConfig.GetExecutor(),
-				LivenessCheck: &pod.HealthCheckSpec{
-					Enabled:                taskConfig.GetHealthCheck().GetEnabled(),
-					InitialIntervalSecs:    taskConfig.GetHealthCheck().GetInitialIntervalSecs(),
-					IntervalSecs:           taskConfig.GetHealthCheck().GetIntervalSecs(),
-					MaxConsecutiveFailures: taskConfig.GetHealthCheck().GetMaxConsecutiveFailures(),
-					TimeoutSecs:            taskConfig.GetHealthCheck().GetTimeoutSecs(),
-					Type:                   pod.HealthCheckSpec_HealthCheckType(taskConfig.GetHealthCheck().GetType()),
-					CommandCheck: &pod.HealthCheckSpec_CommandCheck{
-						Command:             taskConfig.GetHealthCheck().GetCommandCheck().GetCommand(),
-						UnshareEnvironments: taskConfig.GetHealthCheck().GetCommandCheck().GetUnshareEnvironments(),
-					},
-					HttpCheck: &pod.HealthCheckSpec_HTTPCheck{
-						Scheme: taskConfig.GetHealthCheck().GetHttpCheck().GetScheme(),
-						Port:   taskConfig.GetHealthCheck().GetHttpCheck().GetPort(),
-						Path:   taskConfig.GetHealthCheck().GetHttpCheck().GetPath(),
-					},
-				},
-				Ports: ConvertPortConfigsToPortSpecs(taskConfig.GetPorts()),
-			},
-		},
-		Constraint: constraint,
-		RestartPolicy: &pod.RestartPolicy{
-			MaxFailures: taskConfig.GetRestartPolicy().GetMaxFailures(),
-		},
-		Volume: &pod.PersistentVolumeSpec{
-			ContainerPath: taskConfig.GetVolume().GetContainerPath(),
-			SizeMb:        taskConfig.GetVolume().GetSizeMB(),
-		},
-		PreemptionPolicy: &pod.PreemptionPolicy{
-			KillOnPreempt: taskConfig.GetPreemptionPolicy().GetKillOnPreempt(),
-		},
+	result := &pod.PodSpec{
+		PodName:                &v1alphapeloton.PodName{Value: taskConfig.GetName()},
 		Controller:             taskConfig.GetController(),
 		KillGracePeriodSeconds: taskConfig.GetKillGracePeriodSeconds(),
 		Revocable:              taskConfig.GetRevocable(),
 	}
+
+	if taskConfig.GetConstraint() != nil {
+		result.Constraint = ConvertTaskConstraintsToPodConstraints([]*task.Constraint{taskConfig.GetConstraint()})[0]
+	}
+
+	if taskConfig.GetVolume() != nil {
+		result.Volume = &pod.PersistentVolumeSpec{
+			ContainerPath: taskConfig.GetVolume().GetContainerPath(),
+			SizeMb:        taskConfig.GetVolume().GetSizeMB(),
+		}
+	}
+
+	if taskConfig.GetLabels() != nil {
+		result.Labels = ConvertLabels(taskConfig.GetLabels())
+	}
+
+	if taskConfig.GetPreemptionPolicy() != nil {
+		result.PreemptionPolicy = &pod.PreemptionPolicy{
+			KillOnPreempt: taskConfig.GetPreemptionPolicy().GetKillOnPreempt(),
+		}
+	}
+
+	if taskConfig.GetRestartPolicy() != nil {
+		result.RestartPolicy = &pod.RestartPolicy{
+			MaxFailures: taskConfig.GetRestartPolicy().GetMaxFailures(),
+		}
+	}
+
+	container := &pod.ContainerSpec{
+		Name: taskConfig.GetName(),
+		Resource: &pod.ResourceSpec{
+			CpuLimit:    taskConfig.GetResource().GetCpuLimit(),
+			MemLimitMb:  taskConfig.GetResource().GetMemLimitMb(),
+			DiskLimitMb: taskConfig.GetResource().GetDiskLimitMb(),
+			FdLimit:     taskConfig.GetResource().GetFdLimit(),
+			GpuLimit:    taskConfig.GetResource().GetGpuLimit(),
+		},
+		Container: taskConfig.GetContainer(),
+		Command:   taskConfig.GetCommand(),
+		Executor:  taskConfig.GetExecutor(),
+	}
+
+	if taskConfig.GetPorts() != nil {
+		container.Ports = ConvertPortConfigsToPortSpecs(taskConfig.GetPorts())
+	}
+
+	if taskConfig.GetHealthCheck() != nil {
+		container.LivenessCheck = &pod.HealthCheckSpec{
+			Enabled:                taskConfig.GetHealthCheck().GetEnabled(),
+			InitialIntervalSecs:    taskConfig.GetHealthCheck().GetInitialIntervalSecs(),
+			IntervalSecs:           taskConfig.GetHealthCheck().GetIntervalSecs(),
+			MaxConsecutiveFailures: taskConfig.GetHealthCheck().GetMaxConsecutiveFailures(),
+			TimeoutSecs:            taskConfig.GetHealthCheck().GetTimeoutSecs(),
+			Type:                   pod.HealthCheckSpec_HealthCheckType(taskConfig.GetHealthCheck().GetType()),
+		}
+
+		if taskConfig.GetHealthCheck().GetCommandCheck() != nil {
+			container.LivenessCheck.CommandCheck = &pod.HealthCheckSpec_CommandCheck{
+				Command:             taskConfig.GetHealthCheck().GetCommandCheck().GetCommand(),
+				UnshareEnvironments: taskConfig.GetHealthCheck().GetCommandCheck().GetUnshareEnvironments(),
+			}
+		}
+
+		if taskConfig.GetHealthCheck().GetHttpCheck() != nil {
+			container.LivenessCheck.HttpCheck = &pod.HealthCheckSpec_HTTPCheck{
+				Scheme: taskConfig.GetHealthCheck().GetHttpCheck().GetScheme(),
+				Port:   taskConfig.GetHealthCheck().GetHttpCheck().GetPort(),
+				Path:   taskConfig.GetHealthCheck().GetHttpCheck().GetPath(),
+			}
+		}
+	}
+
+	result.Containers = []*pod.ContainerSpec{container}
+
+	return result
 }
 
 // ConvertLabels converts v0 peloton.Label array to
