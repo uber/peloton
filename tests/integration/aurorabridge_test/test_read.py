@@ -1,8 +1,11 @@
+from collections import defaultdict
+
 import pytest
 
 from tests.integration.aurorabridge_test.client import api
 from tests.integration.aurorabridge_test.util import (
-    check_response_ok,
+    assert_keys_equal,
+    remove_duplicate_keys,
     start_job_update,
     wait_for_killed,
 )
@@ -10,112 +13,67 @@ from tests.integration.aurorabridge_test.util import (
 pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
 
 
-def test__start_job_update__get_jobs__get_job_summary(client):
-    '''
-    test__start_job_update__get_jobs__get_job_summary tests creating
-    three jobs and verifies get_jobs and get_job_summary return the
-    correct job.
+def test__get_jobs__get_job_summary(client):
+    # Verify no jobs are returned before jobs are created.
+    res = client.get_job_summary('')
+    assert len(res.summaries) == 0
 
-    steps:
-    1. start job update for test/dc/labrat, wait for rolled forward
-    2. start job update for test/dc/labrat0, wait for rolled forward
-    3. start job update for test2/dc2/labrat2, wait for rolled forward
-    4. verify get_job_summary() returns current result for "test" role
-    5. verify get_jobs() returns correct result for "test" role
-    '''
+    res = client.get_jobs('')
+    assert len(res.configs) == 0
 
-    # verify no jobs returns based on results from both
-    # get_job_summary and get_jobs
-    resp = client.get_job_summary('')
-    check_response_ok(resp)
-    result = resp.result
-    assert result.jobSummaryResult is not None
-    assert result.jobSummaryResult.summaries is None or \
-        0 == len(result.jobSummaryResult.summaries)
-
-    resp = client.get_jobs('')
-    check_response_ok(resp)
-    result = resp.result
-    assert result.getJobsResult is not None
-    assert result.getJobsResult.configs is None or \
-        0 == len(result.getJobsResult.configs)
-
-    # create jobs
+    # Create two jobs under same role.
     test_dc_labrat_key = start_job_update(
         client,
         'test_dc_labrat.yaml',
-        'start job update test/dc/labrat',
-    ).job
+        'start job update test/dc/labrat')
     test_dc_labrat_0_key = start_job_update(
         client,
         'test_dc_labrat0.yaml',
-        'start job update test/dc/labrat0',
-    ).job
+        'start job update test/dc/labrat0')
+
+    # Different role should not show up.
     start_job_update(
         client,
         'test2_dc2_labrat2.yaml',
-        'start job update test2/dc2/labrat2',
-    )
+        'start job update test2/dc2/labrat2')
 
-    # tests get_job_summary
-    resp = client.get_job_summary(test_dc_labrat_key.role)
-    check_response_ok(resp)
-    result = resp.result
-    assert result.jobSummaryResult is not None
-    summaries = list(result.jobSummaryResult.summaries)
-    assert 2 == len(summaries)
+    # Ensure get_job_summary returns both jobs under role=test.
+    res = client.get_job_summary(test_dc_labrat_key.role)
+    assert len(res.summaries) == 2
 
-    for s in summaries:
-        assert 3 == s.stats.activeTaskCount
-        assert test_dc_labrat_key == s.job.key or test_dc_labrat_0_key == s.job.key
-        assert 3 == s.job.instanceCount
-        assert test_dc_labrat_key == s.job.taskConfig.job or \
-            test_dc_labrat_0_key == s.job.taskConfig.job
+    assert_keys_equal(
+        [s.job.key for s in res.summaries],
+        [test_dc_labrat_key, test_dc_labrat_0_key])
 
-    # tests get_jobs
-    resp = client.get_jobs(test_dc_labrat_key.role)
-    check_response_ok(resp)
-    result = resp.result
-    assert result.getJobsResult is not None
-    configs = list(result.getJobsResult.configs)
-    assert 2 == len(configs)
+    for s in res.summaries:
+        assert s.stats.activeTaskCount == 3
+        assert s.job.instanceCount == 3
 
-    for c in configs:
-        assert test_dc_labrat_key == c.key or test_dc_labrat_0_key == c.key
-        assert 3 == c.instanceCount
-        assert test_dc_labrat_key == c.taskConfig.job or \
-            test_dc_labrat_0_key == c.taskConfig.job
+    # Ensure get_jobs returns both jobs under role=test.
+    res = client.get_jobs(test_dc_labrat_key.role)
+    assert len(res.configs) == 2
+
+    assert_keys_equal(
+        [c.taskConfig.job for c in res.configs],
+        [test_dc_labrat_key, test_dc_labrat_0_key])
+
+    for c in res.configs:
+        assert c.instanceCount == 3
 
 
-def test__start_job_update__get_tasks_without_configs(client):
-    '''
-    test__start_job_update__get_tasks_without_configs tests creating a
-    test job and verifies the fields returned are expected.
-
-    steps:
-    1. start job update for test/dc/labrat, wait for rolled forward
-    2. test get_tasks_with_configs returns fields as expected
-    '''
-
-    # create two jobs
+def test__get_tasks_without_configs(client):
+    # Create job.
     job_key = start_job_update(
         client,
         'test_dc_labrat.yaml',
-        'start job update test/dc/labrat',
-    ).job
+        'start job update test/dc/labrat')
 
-    # query using get_tasks_without_configs
-    resp = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys=set([job_key]),
-    ))
-    check_response_ok(resp)
-    result = resp.result
-    assert result.scheduleStatusResult is not None
-    tasks = result.scheduleStatusResult.tasks
+    res = client.get_tasks_without_configs(api.TaskQuery(jobKeys={job_key}))
+    assert len(res.tasks) == 3
 
-    # verify result
-    assert 3 == len(tasks)
-    for t in tasks:
+    host_counts = defaultdict(int)
+
+    for t in res.tasks:
         # ScheduledTask
         assert api.ScheduleStatus.RUNNING == t.status
         assert t.ancestorId is None
@@ -160,151 +118,105 @@ def test__start_job_update__get_tasks_without_configs(client):
         assert 'host' == list(t.assignedTask.task.constraints)[0].name
         assert 1 == list(t.assignedTask.task.constraints)[0].constraint.limit.limit
 
+        host_counts[t.assignedTask.slaveHost] += 1
 
-def test__start_job_update__get_tasks_without_configs__task_query(client):
-    '''
-    test__start_job_update__get_tasks_without_configs tests creating multiple
-    jobs and verifies get_tasks_without_configs return the tasks from the
-    correct job based on query.
+    # Ensure the host limit is enforced.
+    for host, count in host_counts.iteritems():
+        assert count == 1, '{host} has more than 1 task'.format(host=host)
 
-    steps:
-    1. start job update for test/dc/labrat, wait for rolled forward
-    2. start job update for test/dc/labrat0, wait for rolled forward
-    3. start job update for test/dc0/labrat1, wait for rolled forward
-    4. start job update for test/dc/labrat1, wait for rolled forward
-    5. start job update for test/dc2/labrat2, wait for rolled forward
-    6. kill tasks from test/dc/labrat1, wait for tasks to be killed
-    7. query tasks using job keys ["test/dc/labrat", "test/dc/labrat0",
-       "test2/dc2/labrat2"], verify correct tasks are returned
-    8. query tasks using role "test", env "dc", name "labrat", verify only
-       tasks from test/dc/labrat are returned
-    9. query tasks using role "test", env "dc", verify only tasks from
-       test/dc/labrat, test/dc/labrat0 and test/dc/labrat1 are returned
-    10. query tasks using role "test", verify only tasks from
-        test/dc/labrat, test/dc/labrat0, test/dc0/labrat1, test/dc/labrat1
-        are returned
-    11. query tasks using role "test" and schedule status "RUNNING", verify
-        only tasks from test/dc/labrat, test/dc/labrat0, test/dc0/labrat1
-        are returned.
-    '''
 
-    # verify no jobs returns
-    resp = client.get_tasks_without_configs(api.TaskQuery())
-    check_response_ok(resp)
-    result = resp.result
-    assert result.scheduleStatusResult is not None
-    assert result.scheduleStatusResult.tasks is None or \
-        0 == len(result.scheduleStatusResult.tasks)
+def test__get_tasks_without_configs_task_queries(client):
+    # Verify no tasks are returned before creating.
+    res = client.get_tasks_without_configs(api.TaskQuery())
+    assert len(res.tasks) == 0
 
-    # create jobs
+    # Create jobs.
     test_dc_labrat_key = start_job_update(
         client,
         'test_dc_labrat.yaml',
-        'start job update test/dc/labrat',
-    ).job
+        'start job update test/dc/labrat')
     test_dc_labrat_0_key = start_job_update(
         client,
         'test_dc_labrat0.yaml',
-        'start job update test/dc/labrat0',
-    ).job
+        'start job update test/dc/labrat0')
     test_dc_0_labrat_1_key = start_job_update(
         client,
         'test_dc0_labrat1.yaml',
-        'start job update test/dc0/labrat1',
-    ).job
+        'start job update test/dc0/labrat1')
     test_dc_labrat_1_key = start_job_update(
         client,
         'test_dc_labrat1.yaml',
-        'start job update test/dc/labrat1',
-    ).job
+        'start job update test/dc/labrat1')
     test2_dc2_labrat2_key = start_job_update(
         client,
         'test2_dc2_labrat2.yaml',
-        'start job update test2/dc2/labrat2',
-    ).job
+        'start job update test2/dc2/labrat2')
 
-    # stop test/dc/labrat1
-    resp = client.kill_tasks(
+    # Kill one of the jobs.
+    client.kill_tasks(
         test_dc_labrat_1_key,
-        set([0, 1, 2]),
-        'killing all tasks test/dc/labrat1',
-    )
-    check_response_ok(resp)
+        {0, 1, 2},
+        'killing all tasks test/dc/labrat1')
     wait_for_killed(client, test_dc_labrat_1_key)
 
-    # tests get_tasks_without_configs with job keys
-    resp = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys=set([test_dc_labrat_key, test_dc_labrat_0_key, test2_dc2_labrat2_key]),
-    ))
-    check_response_ok(resp)
-    result = resp.result
-    assert result.scheduleStatusResult is not None
-    tasks = result.scheduleStatusResult.tasks
-    assert (3 * 3) == len(tasks)
-
-    for t in tasks:
-        assert test_dc_labrat_key == t.assignedTask.task.job or \
-            test_dc_labrat_0_key == t.assignedTask.task.job or \
-            test2_dc2_labrat2_key == t.assignedTask.task.job
-
-    # tests get_tasks_without_configs with role, env, name
-    resp = client.get_tasks_without_configs(api.TaskQuery(
-        role=test_dc_labrat_key.role,
-        environment=test_dc_labrat_key.environment,
-        jobName=test_dc_labrat_key.name,
-    ))
-    check_response_ok(resp)
-    result = resp.result
-    assert result.scheduleStatusResult is not None
-    tasks = result.scheduleStatusResult.tasks
-    assert 3 == len(tasks)
-
-    for t in tasks:
-        assert test_dc_labrat_key == t.assignedTask.task.job
-
-    # tests get_tasks_without_configs with role, env
-    resp = client.get_tasks_without_configs(api.TaskQuery(
-        role=test_dc_labrat_key.role,
-        environment=test_dc_labrat_key.environment,
-    ))
-    check_response_ok(resp)
-    result = resp.result
-    assert result.scheduleStatusResult is not None
-    tasks = result.scheduleStatusResult.tasks
-    assert (3 * 3) == len(tasks)
-    for t in tasks:
-        assert test_dc_labrat_key == t.assignedTask.task.job or \
-            test_dc_labrat_0_key == t.assignedTask.task.job or \
-            test_dc_labrat_1_key == t.assignedTask.task.job
-
-    # tests get_tasks_without_configs with role
-    resp = client.get_tasks_without_configs(api.TaskQuery(
-        role=test_dc_labrat_key.role,
-    ))
-    check_response_ok(resp)
-    result = resp.result
-    assert result.scheduleStatusResult is not None
-    tasks = result.scheduleStatusResult.tasks
-    assert (4 * 3) == len(tasks)
-
-    for t in tasks:
-        assert test_dc_labrat_key == t.assignedTask.task.job or \
-            test_dc_labrat_0_key == t.assignedTask.task.job or \
-            test_dc_labrat_1_key == t.assignedTask.task.job or \
-            test_dc_0_labrat_1_key == t.assignedTask.task.job
-
-    # tests get_tasks_without_configs with role and statuses
-    resp = client.get_tasks_without_configs(api.TaskQuery(
-        role=test_dc_labrat_key.role,
-        statuses=set([api.ScheduleStatus.RUNNING])
-    ))
-    check_response_ok(resp)
-    result = resp.result
-    assert result.scheduleStatusResult is not None
-    tasks = result.scheduleStatusResult.tasks
-    assert (3 * 3) == len(tasks)
-
-    for t in tasks:
-        assert test_dc_labrat_key == t.assignedTask.task.job or \
-            test_dc_labrat_0_key == t.assignedTask.task.job or \
-            test_dc_0_labrat_1_key == t.assignedTask.task.job
+    for message, query, expected_job_keys in [
+        (
+           'query job keys',
+           api.TaskQuery(jobKeys={
+               test_dc_labrat_key,
+               test_dc_labrat_0_key,
+               test2_dc2_labrat2_key,
+           }),
+           [
+               test_dc_labrat_key,
+               test_dc_labrat_0_key,
+               test2_dc2_labrat2_key,
+           ],
+        ), (
+            'query role + env + name',
+            api.TaskQuery(
+                role=test_dc_labrat_key.role,
+                environment=test_dc_labrat_key.environment,
+                jobName=test_dc_labrat_key.name,
+            ),
+            [test_dc_labrat_key],
+        ), (
+            'query role + env',
+            api.TaskQuery(
+                role=test_dc_labrat_key.role,
+                environment=test_dc_labrat_key.environment,
+            ),
+            [
+                test_dc_labrat_key,
+                test_dc_labrat_0_key,
+                test_dc_labrat_1_key,
+            ],
+        ), (
+            'query role',
+            api.TaskQuery(role=test_dc_labrat_key.role),
+            [
+                test_dc_labrat_key,
+                test_dc_labrat_0_key,
+                test_dc_labrat_1_key,
+                test_dc_0_labrat_1_key,
+            ],
+        ), (
+            'query role + statuses',
+            api.TaskQuery(
+                role=test_dc_labrat_key.role,
+                statuses={api.ScheduleStatus.RUNNING},
+            ),
+            [
+                test_dc_labrat_key,
+                test_dc_labrat_0_key,
+                test_dc_0_labrat_1_key,
+            ],
+        )
+    ]:
+        res = client.get_tasks_without_configs(query)
+        # Expect 3 tasks per job key.
+        assert len(res.tasks) == len(expected_job_keys) * 3, message
+        assert_keys_equal(
+            remove_duplicate_keys(t.assignedTask.task.job for t in res.tasks),
+            expected_job_keys,
+            message=message)
