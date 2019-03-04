@@ -855,6 +855,7 @@ func (c *Client) StatelessRestartJobAction(
 	entityVersion string,
 	instanceRanges []*task.InstanceRange,
 	opaqueData string,
+	inPlace bool,
 ) error {
 	var opaque *v1alphapeloton.OpaqueData
 	if len(opaqueData) > 0 {
@@ -875,6 +876,7 @@ func (c *Client) StatelessRestartJobAction(
 		RestartSpec: &stateless.RestartSpec{
 			BatchSize: batchSize,
 			Ranges:    idInstanceRanges,
+			InPlace:   inPlace,
 		},
 		OpaqueData: opaque,
 	}

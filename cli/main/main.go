@@ -318,6 +318,8 @@ var (
 	statelessRestartOpaqueData     = statelessRestartJob.Flag("opaque-data",
 		"opaque data provided by the user").Default("").String()
 	statelessRestartBatchSize = statelessRestartJob.Flag("batch-size", "batch size for the restart").Default("0").Uint32()
+	statelessRestartInPlace   = statelessRestartJob.Flag("in-place",
+		"start the restart with best effort in-place restart").Default("false").Bool()
 
 	statelessStop              = stateless.Command("stop", "stop all pods in a job")
 	statelessStopJobID         = statelessStop.Arg("job", "job identifier").Required().String()
@@ -925,6 +927,7 @@ func main() {
 			*statelessRestartVersion,
 			*statelessRestartInstanceRanges,
 			*statelessRestartOpaqueData,
+			*statelessRestartInPlace,
 		)
 	case statelessListUpdates.FullCommand():
 		err = client.StatelessListUpdatesAction(*statelessListUpdatesName)
