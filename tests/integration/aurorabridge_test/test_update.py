@@ -8,7 +8,9 @@ from tests.integration.aurorabridge_test.util import (
     wait_for_update_status,
 )
 
-pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
+pytestmark = [pytest.mark.default,
+              pytest.mark.aurorabridge,
+              pytest.mark.random_order(disabled=True)]
 
 
 def test__start_job_update_rolled_forward(client):

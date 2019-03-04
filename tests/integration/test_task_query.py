@@ -10,7 +10,9 @@ from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 from conf_util import TASK_STATES, DEFAUILT_TASKS_COUNT, MESOS_AGENTS
 
 # Mark test module so that we can run tests by tags
-pytestmark = [pytest.mark.default, pytest.mark.taskquery]
+pytestmark = [pytest.mark.default,
+              pytest.mark.taskquery,
+              pytest.mark.random_order(disabled=True)]
 
 log = logging.getLogger(__name__)
 

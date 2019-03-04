@@ -10,7 +10,9 @@ from tests.integration.stateless_job_test.util import \
 
 from peloton_client.pbgen.peloton.api.v1alpha.pod import pod_pb2
 
-pytestmark = [pytest.mark.default, pytest.mark.stateless]
+pytestmark = [pytest.mark.default,
+              pytest.mark.stateless,
+              pytest.mark.random_order(disabled=True)]
 
 
 @pytest.mark.smoketest

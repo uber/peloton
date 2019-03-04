@@ -4,7 +4,9 @@ from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 
 
 # Mark test module so that we can run tests by tags
-pytestmark = [pytest.mark.default, pytest.mark.job]
+pytestmark = [pytest.mark.default,
+              pytest.mark.job,
+              pytest.mark.random_order(disabled=True)]
 
 
 # Start a job with 4 instances with hostlimit:1

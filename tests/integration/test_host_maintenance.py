@@ -8,7 +8,9 @@ from conftest import Container
 from peloton_client.pbgen.peloton.api.v0.host import host_pb2 as hpb
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 
-pytestmark = [pytest.mark.default, pytest.mark.maintenance]
+pytestmark = [pytest.mark.default,
+              pytest.mark.maintenance,
+              pytest.mark.random_order(disabled=True)]
 
 log = logging.getLogger(__name__)
 

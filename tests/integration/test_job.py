@@ -4,7 +4,9 @@ from common import IntegrationTestConfig
 
 
 # Mark test module so that we can run tests by tags
-pytestmark = [pytest.mark.default, pytest.mark.job]
+pytestmark = [pytest.mark.default,
+              pytest.mark.job,
+              pytest.mark.random_order(disabled=True)]
 
 
 @pytest.mark.smoketest

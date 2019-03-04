@@ -19,6 +19,7 @@ docker/pip.conf
 .DS_Store
 *.log*
 *.zip
+file.lock
 *.deb
 .phabricator-comment
 *coverage*

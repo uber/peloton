@@ -10,7 +10,9 @@ from peloton_client.google.protobuf import timestamp_pb2
 from conf_util import NUM_JOBS_PER_STATE
 
 # Mark test module so that we can run tests by tags
-pytestmark = [pytest.mark.default, pytest.mark.jobquery]
+pytestmark = [pytest.mark.default,
+              pytest.mark.jobquery,
+              pytest.mark.random_order(disabled=True)]
 
 
 """

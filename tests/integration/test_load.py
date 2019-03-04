@@ -4,7 +4,7 @@ from job import Job
 from common import IntegrationTestConfig
 
 
-pytestmark = pytest.mark.load
+pytestmark = [pytest.mark.load, pytest.mark.random_order(disabled=True)]
 
 
 def test_large_job():
