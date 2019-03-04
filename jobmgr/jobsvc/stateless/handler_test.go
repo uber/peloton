@@ -2989,6 +2989,7 @@ func (suite *statelessHandlerTestSuite) TestRestartJobSuccess() {
 			models.WorkflowType_RESTART,
 			&pbupdate.UpdateConfig{
 				BatchSize: batchSize,
+				InPlace:   true,
 			},
 			entityVersion,
 			gomock.Any(),
@@ -3011,6 +3012,7 @@ func (suite *statelessHandlerTestSuite) TestRestartJobSuccess() {
 			RestartSpec: &stateless.RestartSpec{
 				BatchSize: batchSize,
 				Ranges:    ranges,
+				InPlace:   true,
 			},
 			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		},

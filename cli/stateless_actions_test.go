@@ -841,6 +841,7 @@ func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionSuccess() {
 				Ranges: []*v1alphapod.InstanceIDRange{
 					{From: 0, To: 10},
 				},
+				InPlace: true,
 			},
 			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		}).
@@ -852,6 +853,7 @@ func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionSuccess() {
 		entityVersion.GetValue(),
 		instanceRanges,
 		opaque,
+		true,
 	))
 }
 
@@ -872,6 +874,7 @@ func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionFailure() {
 				Ranges: []*v1alphapod.InstanceIDRange{
 					{From: 0, To: 10},
 				},
+				InPlace: false,
 			},
 			OpaqueData: &v1alphapeloton.OpaqueData{Data: opaque},
 		}).
@@ -883,6 +886,7 @@ func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionFailure() {
 		entityVersion.GetValue(),
 		instanceRanges,
 		opaque,
+		false,
 	))
 }
 
