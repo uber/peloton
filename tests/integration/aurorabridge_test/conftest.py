@@ -18,14 +18,14 @@ def client():
 
 
 def _delete_jobs(respool_path='/AuroraBridge',
-                 timeout_secs=240):
+                 timeout_secs=20):
     resp = query_jobs(respool_path)
 
     for j in resp.records:
         job = StatelessJob(job_id=j.job_id.value)
         job.delete(force_delete=True)
 
-    # wait for job deletion to complete
+    # Wait for job deletion to complete.
     deadline = time.time() + timeout_secs
     while time.time() < deadline:
         try:
@@ -34,7 +34,7 @@ def _delete_jobs(respool_path='/AuroraBridge',
                 return
             time.sleep(2)
         except grpc.RpcError as e:
-            # catch "not-found" error here because QueryJobs endpoint does
+            # Catch "not-found" error here because QueryJobs endpoint does
             # two db queries in sequence: "QueryJobs" and "GetUpdate".
             # However, when we delete a job, updates are deleted first,
             # there is a slight chance QueryJobs will fail to query the

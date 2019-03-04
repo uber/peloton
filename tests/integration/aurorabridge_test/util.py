@@ -6,19 +6,6 @@ from tests.integration.util import load_config
 TEST_CONFIG_DIR = '/aurorabridge_test/test_configs'
 
 
-def check_response_ok(response):
-    '''Asserts Aurora's response code is "OK".
-
-    Args:
-        response: aurora response
-    '''
-
-    assert response.responseCode == api.ResponseCode.OK, \
-        'bad response: {code} {msg}'.format(
-            code=api.ResponseCode.name_of(response.responseCode),
-            msg=','.join(map(lambda d: d.message, response.details)))
-
-
 def wait_for_rolled_forward(client, job_update_key):
     '''Wait for job update to be in "ROLLED_FORWARD" state, triggers
     assertion failure if timed out.
@@ -40,7 +27,7 @@ def wait_for_update_status(
         job_update_key,
         allowed_intermediate_statuses,
         status,
-        timeout_secs=240):
+        timeout_secs=120):
     '''Wait for job update to be in specific state, triggers assertion
     failure if timed out.
 
@@ -61,7 +48,13 @@ def wait_for_update_status(
         latest = get_update_status(client, job_update_key)
         if latest == status:
             return
-        assert latest in allowed_intermediate_statuses
+        assert latest in allowed_intermediate_statuses, \
+            '{latest} not in {allowed}'.format(
+                latest=api.JobUpdateStatus.name_of(latest),
+                allowed=[
+                    api.JobUpdateStatus.name_of(s)
+                    for s in allowed_intermediate_statuses
+                ])
         time.sleep(2)
 
     assert False, 'timed out waiting for {status}, last status: {latest}'.format(
@@ -81,12 +74,9 @@ def get_update_status(client, job_update_key):
         aurora JobUpdateStatus enum
     '''
     res = client.get_job_update_summaries(api.JobUpdateQuery(key=job_update_key))
-    check_response_ok(res)
+    assert len(res.updateSummaries) == 1
 
-    summaries = res.result.getJobUpdateSummariesResult.updateSummaries
-    assert summaries is not None and len(summaries) == 1
-
-    summary = summaries[0]
+    summary = res.updateSummaries[0]
     assert summary.key == job_update_key
 
     return summary.state.status
@@ -135,7 +125,7 @@ def wait_for_task_status(
         job_key,
         allowed_intermediate_statuses,
         status,
-        timeout_secs=240):
+        timeout_secs=120):
     '''Wait for all tasks in a job to be in specific state, triggers assertion
     failure if timed out.
 
@@ -177,12 +167,10 @@ def get_task_status(client, job_key):
         a list of ScheduleStatus enum representing the state for all tasks
     '''
     res = client.get_tasks_without_configs(api.TaskQuery(jobKeys=[job_key]))
-    check_response_ok(res)
 
-    tasks = res.result.scheduleStatusResult.tasks
-    assert tasks is not None
+    assert res.tasks is not None
 
-    return [t.status for t in tasks]
+    return [t.status for t in res.tasks]
 
 
 def get_job_update_request(config_path):
@@ -208,10 +196,24 @@ def start_job_update(client, config_path, update_message=''):
         update_message: optional message to be passed to the update
     '''
     req = get_job_update_request(config_path)
-    resp = client.start_job_update(req, update_message)
-    check_response_ok(resp)
-    assert resp.result.startJobUpdateResult is not None
-    job_update_key = resp.result.startJobUpdateResult.key
-    wait_for_rolled_forward(client, resp.result.startJobUpdateResult.key)
-    wait_for_running(client, job_update_key.job)
-    return job_update_key
+    res = client.start_job_update(req, update_message)
+    wait_for_rolled_forward(client, res.key)
+    wait_for_running(client, res.key.job)
+    return res.key.job
+
+
+def _to_tuple(job_key):
+    return (job_key.role, job_key.environment, job_key.name)
+
+
+def remove_duplicate_keys(job_keys):
+    # Convert JobKeys to tuples and back to leverage set deduplication.
+    return [
+        api.JobKey(*t) for t in
+        {_to_tuple(k) for k in job_keys}
+    ]
+
+
+def assert_keys_equal(actual, expected, message=''):
+    assert sorted(actual, key=_to_tuple) == sorted(expected, key=_to_tuple), \
+        message
