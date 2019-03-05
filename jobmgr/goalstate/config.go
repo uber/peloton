@@ -19,8 +19,8 @@ import "time"
 const (
 	_defaultMaxRetryDelay            = 60 * time.Minute
 	_defaultFailureRetryDelay        = 10 * time.Second
-	_defaultLaunchTimeRetryDuration  = 20 * time.Minute
-	_defaultStartTimeRetryDuration   = 20 * time.Minute
+	_defaultLaunchTimeRetryDuration  = 180 * time.Minute
+	_defaultStartTimeRetryDuration   = 180 * time.Minute
 	_defaultJobRuntimeUpdateInterval = 1 * time.Second
 	_defaultInitialTaskBackoff       = 30 * time.Second
 	_defaultMaxTaskBackoff           = 60 * time.Minute
