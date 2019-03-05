@@ -97,8 +97,9 @@ func CreateRMTask(
 		},
 		transitionObserver: NewTransitionObserver(
 			taskConfig.EnableSLATracking,
-			scope.SubScope("state_transition"),
+			scope,
 			respool.GetPath(),
+			t.GetJobId().GetValue(),
 		),
 	}
 
