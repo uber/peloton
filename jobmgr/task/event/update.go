@@ -281,13 +281,16 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 
 	// Update task start and completion timestamps
 	if runtimeDiff[jobmgrcommon.StateField].(pb_task.TaskState) == pb_task.TaskState_RUNNING {
-		// StartTime is set at the time of first RUNNING event
-		// CompletionTime may have been set (e.g. task has been set),
-		// which could make StartTime larger than CompletionTime.
-		// Reset CompletionTime every time a task transits to RUNNING state.
 		if updateEvent.state != taskInfo.GetRuntime().GetState() {
+			// StartTime is set at the time of first RUNNING event
+			// CompletionTime may have been set (e.g. task has been set),
+			// which could make StartTime larger than CompletionTime.
+			// Reset CompletionTime every time a task transits to RUNNING state.
 			runtimeDiff[jobmgrcommon.StartTimeField] = now().UTC().Format(time.RFC3339Nano)
 			runtimeDiff[jobmgrcommon.CompletionTimeField] = ""
+			// when task starts running, there is no need to keep desired host field around.
+			// it would be set again upon in-place update using the current running host.
+			runtimeDiff[jobmgrcommon.DesiredHostField] = ""
 		}
 	} else if util.IsPelotonStateTerminal(runtimeDiff[jobmgrcommon.StateField].(pb_task.TaskState)) {
 		completionTime := now().UTC().Format(time.RFC3339Nano)

@@ -544,9 +544,8 @@ func processInstancesInUpdate(
 				return err
 			}
 
-			if cachedUpdate.GetUpdateConfig().GetInPlace() &&
-				runtime.GetState() == pbtask.TaskState_RUNNING {
-				runtimeDiff[jobmgrcommon.DesiredHostField] = runtime.GetHost()
+			if cachedUpdate.GetUpdateConfig().GetInPlace() {
+				runtimeDiff[jobmgrcommon.DesiredHostField] = getDesiredHostField(runtime)
 			} else {
 				runtimeDiff[jobmgrcommon.DesiredHostField] = ""
 			}
@@ -569,6 +568,24 @@ func processInstancesInUpdate(
 	}
 
 	return nil
+}
+
+func getDesiredHostField(runtime *pbtask.RuntimeInfo) string {
+	// desired host field is reset when the task runs again.
+	// if host field is not reset when being updated, it means
+	// either the task was in LAUNCHED/STARTING state or there
+	// is an update overwrite when the task was killed by the prev
+	// update. In either case, we should just reuse the previous
+	// desired host field
+	if len(runtime.GetDesiredHost()) != 0 {
+		return runtime.GetDesiredHost()
+	}
+
+	// host field is set when the task is launched,
+	// it is reset when the task is killed. For all the
+	// states in between, the task maybe running on the host
+	// already. Therefore, set the current host as desired host.
+	return runtime.GetHost()
 }
 
 // removeInstancesInUpdate kills the instances being removed in the update

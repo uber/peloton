@@ -251,6 +251,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 		jobmgrcommon.StateField:          task.TaskState_RUNNING,
 		jobmgrcommon.StartTimeField:      _currentTime,
 		jobmgrcommon.ReasonField:         "",
+		jobmgrcommon.DesiredHostField:    "",
 	}
 	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
@@ -1052,6 +1053,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
 		jobmgrcommon.MessageField:        "testFailure",
 		jobmgrcommon.CompletionTimeField: "",
 		jobmgrcommon.ReasonField:         "",
+		jobmgrcommon.DesiredHostField:    "",
 	}
 	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
@@ -1109,6 +1111,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 		jobmgrcommon.MessageField:        "testFailure",
 		jobmgrcommon.CompletionTimeField: "",
 		jobmgrcommon.ReasonField:         "",
+		jobmgrcommon.DesiredHostField:    "",
 	}
 	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
