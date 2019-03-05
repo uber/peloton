@@ -22,6 +22,7 @@ import (
 	"github.com/uber/peloton/resmgr/respool/mocks"
 
 	"github.com/golang/mock/gomock"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 )
@@ -94,6 +95,8 @@ func TestNewTransitionObserver(t *testing.T) {
 	dto := NewTransitionObserver(
 		true,
 		tally.NoopScope,
-		mockResPool.GetPath())
+		mockResPool.GetPath(),
+		uuid.New().String(), // test job id
+	)
 	assert.NotNil(t, dto)
 }

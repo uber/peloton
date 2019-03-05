@@ -89,6 +89,7 @@ const (
 	_respoolPath = "respool_path"
 	_from        = "from"
 	_to          = "to"
+	_jobID       = "job_id"
 )
 
 // TransitionObserver is the interface for observing a state transition
@@ -150,13 +151,14 @@ func NewTransitionObserver(
 	enabled bool,
 	scope tally.Scope,
 	respoolPath string,
+	jobID string,
 ) TransitionObserver {
 	tags := make(map[string]string)
 	if enabled {
-		// Only get the tags only if the observer is enabled otherwise
-		// there's no point
+		// These tags don't change during the lifetime of the observer.
 		tags = map[string]string{
 			_respoolPath: respoolPath,
+			_jobID:       jobID,
 		}
 	}
 
