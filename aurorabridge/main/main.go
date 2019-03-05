@@ -44,13 +44,6 @@ var (
 	version string
 	app     = kingpin.New("peloton-aurorabridge", "Peloton Aurora bridge")
 
-	debug = app.Flag(
-		"debug", "enable debug mode (print full json responses)").
-		Short('d').
-		Default("false").
-		Envar("ENABLE_DEBUG_LOGGING").
-		Bool()
-
 	enableSentry = app.Flag(
 		"enable-sentry", "enable logging hook up to sentry").
 		Default("false").
@@ -98,12 +91,6 @@ func main() {
 
 	log.SetFormatter(&log.JSONFormatter{})
 
-	initialLevel := log.InfoLevel
-	if *debug {
-		initialLevel = log.DebugLevel
-	}
-	log.SetLevel(initialLevel)
-
 	var cfg Config
 	if err := config.Parse(&cfg, *cfgFiles...); err != nil {
 		log.Fatalf("Error parsing yaml config: %s", err)
@@ -124,6 +111,12 @@ func main() {
 	if *grpcPort != 0 {
 		cfg.GRPCPort = *grpcPort
 	}
+
+	initialLevel := log.InfoLevel
+	if cfg.Debug {
+		initialLevel = log.DebugLevel
+	}
+	log.SetLevel(initialLevel)
 
 	log.WithField("config", cfg).Info("Loaded AuroraBridge configuration")
 

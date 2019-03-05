@@ -84,15 +84,25 @@ func (h *ServiceHandler) GetJobSummary(
 ) (*api.Response, error) {
 
 	result, err := h.getJobSummary(ctx, role)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"role": role,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("GetJobSummary error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"role": role,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("GetJobSummary error")
-	}
+			"result": result,
+		}).Debug("GetJobSummary success")
+	}()
 	return newResponse(result, err), nil
 }
 
@@ -155,15 +165,25 @@ func (h *ServiceHandler) GetTasksWithoutConfigs(
 ) (*api.Response, error) {
 
 	result, err := h.getTasksWithoutConfigs(ctx, query)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"query": query,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("GetTasksWithoutConfigs error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"query": query,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("GetTasksWithoutConfigs error")
-	}
+			"result": result,
+		}).Debug("GetTasksWithoutConfigs success")
+	}()
 	return newResponse(result, err), nil
 }
 
@@ -346,15 +366,25 @@ func (h *ServiceHandler) GetConfigSummary(
 	job *api.JobKey) (*api.Response, error) {
 
 	result, err := h.getConfigSummary(ctx, job)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"job": job,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("GetConfigSummary error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"job": job,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("GetConfigSummary error")
-	}
+			"result": result,
+		}).Debug("GetConfigSummary success")
+	}()
 	return newResponse(result, err), nil
 }
 
@@ -403,15 +433,25 @@ func (h *ServiceHandler) GetJobs(
 ) (*api.Response, error) {
 
 	result, err := h.getJobs(ctx, ownerRole)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"ownerRole": ownerRole,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("GetJobs error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"ownerRole": ownerRole,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("GetJobs error")
-	}
+			"result": result,
+		}).Debug("GetJobs success")
+	}()
 	return newResponse(result, err), nil
 }
 
@@ -473,15 +513,25 @@ func (h *ServiceHandler) GetJobUpdateSummaries(
 ) (*api.Response, error) {
 
 	result, err := h.getJobUpdateSummaries(ctx, query)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"query": query,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("GetJobUpdateSummaries error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"query": query,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("GetJobUpdateSummaries error")
-	}
+			"result": result,
+		}).Debug("GetJobUpdateSummaries success")
+	}()
 	return newResponse(result, err), nil
 }
 
@@ -515,16 +565,27 @@ func (h *ServiceHandler) GetJobUpdateDetails(
 ) (*api.Response, error) {
 
 	result, err := h.getJobUpdateDetails(ctx, key, query)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"key":   key,
+					"query": query,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("GetJobUpdateDetails error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"key":   key,
 				"query": query,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("GetJobUpdateDetails error")
-	}
+			"result": result,
+		}).Debug("GetJobUpdateDetails success")
+	}()
 	return newResponse(result, err), nil
 }
 
@@ -559,16 +620,25 @@ func (h *ServiceHandler) GetJobUpdateDiff(
 	request *api.JobUpdateRequest) (*api.Response, error) {
 
 	result, err := h.getJobUpdateDiff(ctx, request)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"request": request,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("GetJobUpdateDiff error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"request": request,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("GetJobUpdateDiff error")
-	}
-
+			"result": result,
+		}).Debug("GetJobUpdateDiff success")
+	}()
 	return newResponse(result, err), nil
 }
 
@@ -698,17 +768,29 @@ func (h *ServiceHandler) KillTasks(
 ) (*api.Response, error) {
 
 	result, err := h.killTasks(ctx, job, instances, message)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"job":       job,
+					"instances": instances,
+					"message":   message,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("KillTasks error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"job":       job,
 				"instances": instances,
 				"message":   message,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("KillTasks error")
-	}
+			"result": result,
+		}).Debug("KillTasks success")
+	}()
 	return newResponse(result, err), nil
 }
 
@@ -816,16 +898,27 @@ func (h *ServiceHandler) StartJobUpdate(
 ) (*api.Response, error) {
 
 	result, err := h.startJobUpdate(ctx, request, message)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"request": request,
+					"message": message,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("StartJobUpdate error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"request": request,
 				"message": message,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("StartJobUpdate error")
-	}
+			"result": result,
+		}).Debug("StartJobUpdate success")
+	}()
 	return newResponse(result, err), nil
 }
 
@@ -953,16 +1046,27 @@ func (h *ServiceHandler) PauseJobUpdate(
 ) (*api.Response, error) {
 
 	result, err := h.pauseJobUpdate(ctx, key, message)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"key":     key,
+					"message": message,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("PauseJobUpdate error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"key":     key,
 				"message": message,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("PauseJobUpdate error")
-	}
+			"result": result,
+		}).Debug("PauseJobUpdate success")
+	}()
 	return newResponse(result, err), nil
 }
 
@@ -998,16 +1102,27 @@ func (h *ServiceHandler) ResumeJobUpdate(
 ) (*api.Response, error) {
 
 	result, err := h.resumeJobUpdate(ctx, key, message)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"key":     key,
+					"message": message,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("ResumeJobUpdate error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"key":     key,
 				"message": message,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("ResumeJobUpdate error")
-	}
+			"result": result,
+		}).Debug("ResumeJobUpdate success")
+	}()
 	return newResponse(result, err), nil
 }
 
@@ -1043,16 +1158,27 @@ func (h *ServiceHandler) AbortJobUpdate(
 ) (*api.Response, error) {
 
 	result, err := h.abortJobUpdate(ctx, key, message)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"key":     key,
+					"message": message,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("AbortJobUpdate error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"key":     key,
 				"message": message,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("AbortJobUpdate error")
-	}
+			"result": result,
+		}).Debug("AbortJobUpdate success")
+	}()
 	return newResponse(result, err), nil
 }
 
@@ -1088,16 +1214,27 @@ func (h *ServiceHandler) RollbackJobUpdate(
 ) (*api.Response, error) {
 
 	result, err := h.rollbackJobUpdate(ctx, key, message)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"key":     key,
+					"message": message,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("RollbackJobUpdate error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"key":     key,
 				"message": message,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("RollbackJobUpdate error")
-	}
+			"result": result,
+		}).Debug("RollbackJobUpdate")
+	}()
 	return newResponse(result, err), nil
 }
 
@@ -1187,15 +1324,25 @@ func (h *ServiceHandler) PulseJobUpdate(
 ) (*api.Response, error) {
 
 	result, err := h.pulseJobUpdate(ctx, key)
-	if err != nil {
+	defer func() {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"params": log.Fields{
+					"key": key,
+				},
+				"code":  err.responseCode,
+				"error": err.msg,
+			}).Error("PulseJobUpdate error")
+			return
+		}
+
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"key": key,
 			},
-			"code":  err.responseCode,
-			"error": err.msg,
-		}).Error("PulseJobUpdate error")
-	}
+			"result": result,
+		}).Debug("PulseJobUpdate success")
+	}()
 	return newResponse(result, err), nil
 }
 
