@@ -23,6 +23,12 @@ sentry:
   tags:
     component: jobmgr
 
+job_manager:
+  goal_state:
+    max_retry_delay: 60s
+    launch_timeout: 10800s
+    start_timeout: 10800s
+
 storage:
   db_write_concurrency: 400
   use_cassandra: true
