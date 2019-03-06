@@ -3245,6 +3245,13 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsSuccess() {
 		GetJobUpdateEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}).
 		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
 
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), testJobID).
+		Return(&pbjob.RuntimeInfo{
+			State:    pbjob.JobState_RUNNING,
+			UpdateID: &peloton.UpdateID{Value: testUpdateID},
+		}, nil)
+
 	suite.updateStore.EXPECT().
 		GetWorkflowEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}, uint32(0)).
 		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
@@ -3334,6 +3341,40 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsGetUpdatesFailure() 
 	suite.updateStore.EXPECT().
 		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), testJobID).
+		Return(&pbjob.RuntimeInfo{
+			State:    pbjob.JobState_RUNNING,
+			UpdateID: &peloton.UpdateID{Value: testUpdateID},
+		}, nil)
+
+	resp, err := suite.handler.ListJobWorkflows(context.Background(), &statelesssvc.ListJobWorkflowsRequest{
+		JobId: &v1alphapeloton.JobID{Value: testJobID},
+	})
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestListJobWorkflowsGetRuntimeFailure tests the failure
+// case of getting job updates due to failure for getting job runtime.
+func (suite *statelessHandlerTestSuite) TestListJobWorkflowsGetRuntimeFailure() {
+	testUpdateID1 := "941ff353-ba82-49fe-8f80-fb5bc649b04r"
+	testUpdateID2 := "941ff353-ba82-49fe-8f80-fb5bc649b04p"
+
+	suite.updateStore.EXPECT().
+		GetUpdatesForJob(gomock.Any(), testJobID).
+		Return([]*peloton.UpdateID{
+			{Value: testUpdateID1},
+			{Value: testUpdateID2},
+		}, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(
+			gomock.Any(),
+			testJobID,
+		).
+		Return(nil, fmt.Errorf("fake db error"))
 
 	resp, err := suite.handler.ListJobWorkflows(context.Background(), &statelesssvc.ListJobWorkflowsRequest{
 		JobId: &v1alphapeloton.JobID{Value: testJobID},
