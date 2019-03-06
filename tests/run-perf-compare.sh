@@ -49,7 +49,7 @@ fi
 
 # Run current version
 vcluster_name="v${COMMIT_HASH:12:12}"
-VCLUSTER_ARGS="-z ${ZOOKEEPER} -p /DefaultResPool -n ${vcluster_name}"
+VCLUSTER_ARGS="-z ${ZOOKEEPER} -p /PelotonPerformance -n ${vcluster_name}"
 NUM_SLAVES=1000
 
 tools/vcluster/main.py \
@@ -72,7 +72,7 @@ fi
 
 # Run base version
 vcluster_name="v${COMMIT_HASH:0:12}"
-VCLUSTER_ARGS="-z ${ZOOKEEPER} -p /DefaultResPool -n ${vcluster_name}"
+VCLUSTER_ARGS="-z ${ZOOKEEPER} -p /PelotonPerformance -n ${vcluster_name}"
 
 tools/vcluster/main.py \
   ${VCLUSTER_ARGS} \
