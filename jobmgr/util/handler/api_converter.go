@@ -392,10 +392,23 @@ func ConvertJobConfigToJobSpec(config *job.JobConfig) *stateless.JobSpec {
 // ConvertUpdateModelToWorkflowStatus converts private UpdateModel
 // to v1alpha stateless.WorkflowStatus
 func ConvertUpdateModelToWorkflowStatus(
-	updateInfo *models.UpdateModel) *stateless.WorkflowStatus {
+	runtime *job.RuntimeInfo,
+	updateInfo *models.UpdateModel,
+) *stateless.WorkflowStatus {
 	if updateInfo == nil {
 		return nil
 	}
+
+	entityVersion := jobutil.GetJobEntityVersion(
+		updateInfo.GetJobConfigVersion(),
+		runtime.GetDesiredStateVersion(),
+		runtime.GetWorkflowVersion(),
+	)
+	prevVersion := jobutil.GetJobEntityVersion(
+		updateInfo.GetPrevJobConfigVersion(),
+		runtime.GetDesiredStateVersion(),
+		runtime.GetWorkflowVersion(),
+	)
 
 	return &stateless.WorkflowStatus{
 		Type:                  stateless.WorkflowType(updateInfo.GetType()),
@@ -404,8 +417,8 @@ func ConvertUpdateModelToWorkflowStatus(
 		NumInstancesRemaining: updateInfo.GetInstancesTotal() - updateInfo.GetInstancesDone() - updateInfo.GetInstancesFailed(),
 		NumInstancesFailed:    updateInfo.GetInstancesFailed(),
 		InstancesCurrent:      updateInfo.GetInstancesCurrent(),
-		Version:               jobutil.GetPodEntityVersion(updateInfo.GetJobConfigVersion()),
-		PrevVersion:           jobutil.GetPodEntityVersion(updateInfo.GetPrevJobConfigVersion()),
+		Version:               entityVersion,
+		PrevVersion:           prevVersion,
 	}
 }
 
@@ -432,7 +445,7 @@ func ConvertRuntimeInfoToJobStatus(
 		runtime.GetDesiredStateVersion(),
 		runtime.GetWorkflowVersion(),
 	)
-	result.WorkflowStatus = ConvertUpdateModelToWorkflowStatus(updateInfo)
+	result.WorkflowStatus = ConvertUpdateModelToWorkflowStatus(runtime, updateInfo)
 
 	for configVersion, taskStats := range runtime.GetTaskConfigVersionStats() {
 		entityVersion := jobutil.GetJobEntityVersion(
@@ -467,12 +480,13 @@ func ConvertJobSummary(
 // ConvertUpdateModelToWorkflowInfo converts private UpdateModel
 // to v1alpha stateless.WorkflowInfo
 func ConvertUpdateModelToWorkflowInfo(
+	runtime *job.RuntimeInfo,
 	updateInfo *models.UpdateModel,
 	workflowEvents []*stateless.WorkflowEvent,
 	instanceWorkflowEvents []*stateless.WorkflowInfoInstanceWorkflowEvents,
 ) *stateless.WorkflowInfo {
 	result := &stateless.WorkflowInfo{}
-	result.Status = ConvertUpdateModelToWorkflowStatus(updateInfo)
+	result.Status = ConvertUpdateModelToWorkflowStatus(runtime, updateInfo)
 
 	if updateInfo.GetType() == models.WorkflowType_UPDATE {
 		result.InstancesAdded = util.ConvertInstanceIDListToInstanceRange(updateInfo.GetInstancesAdded())

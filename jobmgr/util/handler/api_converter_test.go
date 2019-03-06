@@ -15,7 +15,6 @@
 package handler
 
 import (
-	"strconv"
 	"testing"
 	"time"
 
@@ -38,6 +37,12 @@ import (
 
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/stretchr/testify/suite"
+)
+
+const (
+	_configVersion       = uint64(2)
+	_workflowVersion     = uint64(2)
+	_desiredStateVersion = uint64(2)
 )
 
 var (
@@ -898,7 +903,7 @@ func (suite *apiConverterTestSuite) TestConvertJobSpecToJobConfig() {
 }
 
 func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowStatus() {
-	suite.Nil(ConvertUpdateModelToWorkflowStatus(nil))
+	suite.Nil(ConvertUpdateModelToWorkflowStatus(nil, nil))
 
 	jobConfigVersion := uint64(3)
 	prevJobConfigVersion := uint64(2)
@@ -912,6 +917,11 @@ func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowStatus() {
 		JobConfigVersion:     jobConfigVersion,
 		PrevJobConfigVersion: prevJobConfigVersion,
 	}
+	runtime := &job.RuntimeInfo{
+		ConfigurationVersion: _configVersion,
+		WorkflowVersion:      _workflowVersion,
+		DesiredStateVersion:  _desiredStateVersion,
+	}
 
 	workflowStatus := &stateless.WorkflowStatus{
 		Type:                  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
@@ -920,15 +930,11 @@ func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowStatus() {
 		NumInstancesCompleted: updateModel.GetInstancesDone(),
 		NumInstancesRemaining: updateModel.GetInstancesTotal() - updateModel.GetInstancesDone() - updateModel.GetInstancesFailed(),
 		NumInstancesFailed:    updateModel.GetInstancesFailed(),
-		Version: &v1alphapeloton.EntityVersion{
-			Value: strconv.FormatUint(jobConfigVersion, 10),
-		},
-		PrevVersion: &v1alphapeloton.EntityVersion{
-			Value: strconv.FormatUint(prevJobConfigVersion, 10),
-		},
+		Version:               jobutil.GetJobEntityVersion(jobConfigVersion, _desiredStateVersion, _workflowVersion),
+		PrevVersion:           jobutil.GetJobEntityVersion(prevJobConfigVersion, _desiredStateVersion, _workflowVersion),
 	}
 
-	suite.Equal(workflowStatus, ConvertUpdateModelToWorkflowStatus(updateModel))
+	suite.Equal(workflowStatus, ConvertUpdateModelToWorkflowStatus(runtime, updateModel))
 }
 
 // TestConvertRuntimeInfoToJobStatus tests conversion from
@@ -938,12 +944,9 @@ func (suite *apiConverterTestSuite) TestConvertRuntimeInfoToJobStatus() {
 	taskStats["RUNNING"] = 3
 	taskStats["FAILED"] = 2
 	creationTime := "now"
-	configVersion := uint64(2)
-	workflowVersion := uint64(2)
-	desiredStateVersion := uint64(2)
 	entityVersion := "2-2-2"
 	taskConfigStates := make(map[uint64]uint32)
-	taskConfigStates[configVersion] = 5
+	taskConfigStates[_configVersion] = 5
 
 	runtime := &job.RuntimeInfo{
 		State:        job.JobState_RUNNING,
@@ -956,9 +959,9 @@ func (suite *apiConverterTestSuite) TestConvertRuntimeInfoToJobStatus() {
 		},
 		TaskStats:              taskStats,
 		GoalState:              job.JobState_RUNNING,
-		ConfigurationVersion:   configVersion,
-		WorkflowVersion:        workflowVersion,
-		DesiredStateVersion:    desiredStateVersion,
+		ConfigurationVersion:   _configVersion,
+		WorkflowVersion:        _workflowVersion,
+		DesiredStateVersion:    _desiredStateVersion,
 		TaskConfigVersionStats: taskConfigStates,
 	}
 
@@ -982,12 +985,8 @@ func (suite *apiConverterTestSuite) TestConvertRuntimeInfoToJobStatus() {
 		NumInstancesCompleted: updateModel.GetInstancesDone(),
 		NumInstancesRemaining: updateModel.GetInstancesTotal() - updateModel.GetInstancesDone() - updateModel.GetInstancesFailed(),
 		NumInstancesFailed:    updateModel.GetInstancesFailed(),
-		Version: &v1alphapeloton.EntityVersion{
-			Value: strconv.FormatUint(jobConfigVersion, 10),
-		},
-		PrevVersion: &v1alphapeloton.EntityVersion{
-			Value: strconv.FormatUint(prevJobConfigVersion, 10),
-		},
+		Version:               jobutil.GetJobEntityVersion(jobConfigVersion, _desiredStateVersion, _workflowVersion),
+		PrevVersion:           jobutil.GetJobEntityVersion(prevJobConfigVersion, _desiredStateVersion, _workflowVersion),
 	}
 
 	jobStatus := ConvertRuntimeInfoToJobStatus(runtime, updateModel)
@@ -1009,9 +1008,6 @@ func (suite *apiConverterTestSuite) TestConvertJobSummary() {
 	taskStats["RUNNING"] = 3
 	taskStats["FAILED"] = 2
 	creationTime := "now"
-	configVersion := uint64(2)
-	workflowVersion := uint64(2)
-	desiredStateVersion := uint64(2)
 	entityVersion := "2-2-2"
 	taskConfigStats := make(map[string]uint32)
 
@@ -1026,9 +1022,9 @@ func (suite *apiConverterTestSuite) TestConvertJobSummary() {
 		},
 		TaskStats:            taskStats,
 		GoalState:            job.JobState_RUNNING,
-		ConfigurationVersion: configVersion,
-		WorkflowVersion:      workflowVersion,
-		DesiredStateVersion:  desiredStateVersion,
+		ConfigurationVersion: _configVersion,
+		WorkflowVersion:      _workflowVersion,
+		DesiredStateVersion:  _desiredStateVersion,
 	}
 
 	jobConfigVersion := uint64(3)
@@ -1051,12 +1047,8 @@ func (suite *apiConverterTestSuite) TestConvertJobSummary() {
 		NumInstancesCompleted: updateModel.GetInstancesDone(),
 		NumInstancesRemaining: updateModel.GetInstancesTotal() - updateModel.GetInstancesDone() - updateModel.GetInstancesFailed(),
 		NumInstancesFailed:    updateModel.GetInstancesFailed(),
-		Version: &v1alphapeloton.EntityVersion{
-			Value: strconv.FormatUint(jobConfigVersion, 10),
-		},
-		PrevVersion: &v1alphapeloton.EntityVersion{
-			Value: strconv.FormatUint(prevJobConfigVersion, 10),
-		},
+		Version:               jobutil.GetJobEntityVersion(jobConfigVersion, _desiredStateVersion, _workflowVersion),
+		PrevVersion:           jobutil.GetJobEntityVersion(prevJobConfigVersion, _desiredStateVersion, _workflowVersion),
 	}
 
 	jobStatus := &stateless.JobStatus{
@@ -1122,6 +1114,11 @@ func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowInfo() {
 			MaxInstanceAttempts: 3,
 		},
 	}
+	runtime := &job.RuntimeInfo{
+		ConfigurationVersion: _configVersion,
+		WorkflowVersion:      _workflowVersion,
+		DesiredStateVersion:  _desiredStateVersion,
+	}
 
 	workflowStatus := &stateless.WorkflowStatus{
 		Type:                  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
@@ -1130,15 +1127,11 @@ func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowInfo() {
 		NumInstancesCompleted: updateModel.GetInstancesDone(),
 		NumInstancesRemaining: updateModel.GetInstancesTotal() - updateModel.GetInstancesDone() - updateModel.GetInstancesFailed(),
 		NumInstancesFailed:    updateModel.GetInstancesFailed(),
-		Version: &v1alphapeloton.EntityVersion{
-			Value: strconv.FormatUint(jobConfigVersion, 10),
-		},
-		PrevVersion: &v1alphapeloton.EntityVersion{
-			Value: strconv.FormatUint(prevJobConfigVersion, 10),
-		},
+		Version:               jobutil.GetJobEntityVersion(jobConfigVersion, _desiredStateVersion, _workflowVersion),
+		PrevVersion:           jobutil.GetJobEntityVersion(prevJobConfigVersion, _desiredStateVersion, _workflowVersion),
 	}
 
-	workflowInfo := ConvertUpdateModelToWorkflowInfo(updateModel, nil, nil)
+	workflowInfo := ConvertUpdateModelToWorkflowInfo(runtime, updateModel, nil, nil)
 
 	suite.Equal(workflowStatus, workflowInfo.GetStatus())
 	suite.Equal(updateModel.GetUpdateConfig().GetBatchSize(), workflowInfo.GetUpdateSpec().GetBatchSize())
@@ -1166,6 +1159,11 @@ func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowInfoRestart(
 			BatchSize: 10,
 		},
 	}
+	runtime := &job.RuntimeInfo{
+		ConfigurationVersion: _configVersion,
+		WorkflowVersion:      _workflowVersion,
+		DesiredStateVersion:  _desiredStateVersion,
+	}
 
 	workflowStatus := &stateless.WorkflowStatus{
 		Type:                  stateless.WorkflowType_WORKFLOW_TYPE_RESTART,
@@ -1174,15 +1172,11 @@ func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowInfoRestart(
 		NumInstancesCompleted: updateModel.GetInstancesDone(),
 		NumInstancesRemaining: updateModel.GetInstancesTotal() - updateModel.GetInstancesDone() - updateModel.GetInstancesFailed(),
 		NumInstancesFailed:    updateModel.GetInstancesFailed(),
-		Version: &v1alphapeloton.EntityVersion{
-			Value: strconv.FormatUint(jobConfigVersion, 10),
-		},
-		PrevVersion: &v1alphapeloton.EntityVersion{
-			Value: strconv.FormatUint(prevJobConfigVersion, 10),
-		},
+		Version:               jobutil.GetJobEntityVersion(jobConfigVersion, _desiredStateVersion, _workflowVersion),
+		PrevVersion:           jobutil.GetJobEntityVersion(prevJobConfigVersion, _desiredStateVersion, _workflowVersion),
 	}
 
-	workflowInfo := ConvertUpdateModelToWorkflowInfo(updateModel, nil, nil)
+	workflowInfo := ConvertUpdateModelToWorkflowInfo(runtime, updateModel, nil, nil)
 
 	restartRanges := []*pod.InstanceIDRange{
 		{

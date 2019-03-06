@@ -945,7 +945,10 @@ func (h *serviceHandler) GetJob(
 		},
 		Secrets: handlerutil.ConvertV0SecretsToV1Secrets(
 			jobmgrtask.CreateSecretsFromVolumes(secretVolumes)),
-		WorkflowInfo: handlerutil.ConvertUpdateModelToWorkflowInfo(updateInfo, workflowEvents,
+		WorkflowInfo: handlerutil.ConvertUpdateModelToWorkflowInfo(
+			jobRuntime,
+			updateInfo,
+			workflowEvents,
 			nil),
 	}, nil
 }
@@ -1295,6 +1298,11 @@ func (h *serviceHandler) ListJobWorkflows(
 	}
 
 	var updateInfos []*stateless.WorkflowInfo
+
+	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.GetJobId().GetValue())
+	if err != nil {
+		return nil, errors.Wrap(err, "fail to get job runtime")
+	}
 	for _, updateID := range updateIDs {
 		updateModel, err := h.updateStore.GetUpdate(ctx, updateID)
 		if err != nil {
@@ -1319,7 +1327,9 @@ func (h *serviceHandler) ListJobWorkflows(
 		}
 
 		updateInfos = append(updateInfos,
-			handlerutil.ConvertUpdateModelToWorkflowInfo(updateModel,
+			handlerutil.ConvertUpdateModelToWorkflowInfo(
+				jobRuntime,
+				updateModel,
 				workflowEvents,
 				instanceWorkflowEvents))
 	}
