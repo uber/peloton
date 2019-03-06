@@ -1,0 +1,2 @@
+peloton-client~=0.8.0
+m3>=3.0.0
