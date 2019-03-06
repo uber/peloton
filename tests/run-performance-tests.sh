@@ -54,7 +54,7 @@ echo $COMMIT_HASH
 
 # vCluster name is the first 12 character of the commit
 vcluster_name="v${COMMIT_HASH:0:12}"
-VCLUSTER_ARGS="-z ${ZOOKEEPER} -p /DefaultResPool -n ${vcluster_name}"
+VCLUSTER_ARGS="-z ${ZOOKEEPER} -p /PelotonPerformance -n ${vcluster_name}"
 NUM_SLAVES=1000
 
 # start vCluster
