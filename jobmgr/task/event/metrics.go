@@ -39,7 +39,12 @@ type Metrics struct {
 	TasksUnHealthyTotal tally.Counter
 
 	TasksReconciledTotal tally.Counter
-	TasksFailedReason    map[int32]tally.Counter
+
+	// metrics for in-place update/restart success rate
+	TasksInPlacePlacementTotal   tally.Counter
+	TasksInPlacePlacementSuccess tally.Counter
+
+	TasksFailedReason map[int32]tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
@@ -61,6 +66,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		TasksHealthyTotal:   scope.Counter("tasks_healthy_total"),
 		TasksUnHealthyTotal: scope.Counter("tasks_unhealthy_total"),
+
+		TasksInPlacePlacementTotal:   scope.Counter("tasks_in_place_placement_total"),
+		TasksInPlacePlacementSuccess: scope.Counter("tasks_in_place_placement_success"),
 
 		TasksReconciledTotal: scope.Counter("tasks_reconciled_total"),
 		TasksFailedReason:    newTasksFailedReasonScope(scope),

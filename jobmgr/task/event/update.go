@@ -288,10 +288,22 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			// Reset CompletionTime every time a task transits to RUNNING state.
 			runtimeDiff[jobmgrcommon.StartTimeField] = now().UTC().Format(time.RFC3339Nano)
 			runtimeDiff[jobmgrcommon.CompletionTimeField] = ""
+			// when task is RUNNING, reset the desired host field. Therefore,
+			// the task would be scheduled onto a different host when the task
+			// restarts (e.g due to health check or fail retry)
+			runtimeDiff[jobmgrcommon.DesiredHostField] = ""
+
+			if len(taskInfo.GetRuntime().GetDesiredHost()) != 0 {
+				p.metrics.TasksInPlacePlacementTotal.Inc(1)
+				if taskInfo.GetRuntime().GetDesiredHost() == taskInfo.GetRuntime().GetHost() {
+					p.metrics.TasksInPlacePlacementSuccess.Inc(1)
+				}
+			}
 			// when task starts running, there is no need to keep desired host field around.
 			// it would be set again upon in-place update using the current running host.
 			runtimeDiff[jobmgrcommon.DesiredHostField] = ""
 		}
+
 	} else if util.IsPelotonStateTerminal(runtimeDiff[jobmgrcommon.StateField].(pb_task.TaskState)) {
 		completionTime := now().UTC().Format(time.RFC3339Nano)
 		runtimeDiff[jobmgrcommon.CompletionTimeField] = completionTime

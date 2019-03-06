@@ -280,6 +280,104 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 		suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
 }
 
+// Test case of processing status update for a task going through in-place update
+func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateInPlaceUpdateTask() {
+	defer suite.ctrl.Finish()
+
+	hostname1 := "hostname1"
+	hostname2 := "hostname2"
+	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
+
+	// the task is placed on the desired host
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	timeNow := float64(time.Now().UnixNano())
+	event.MesosTaskStatus.Timestamp = &timeNow
+	taskInfo := createTestTaskInfo(task.TaskState_INITIALIZED)
+	taskInfo.Runtime.Host = hostname1
+	taskInfo.Runtime.DesiredHost = hostname1
+	runtimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.MessageField:        "testFailure",
+		jobmgrcommon.CompletionTimeField: "",
+		jobmgrcommon.StateField:          task.TaskState_RUNNING,
+		jobmgrcommon.StartTimeField:      _currentTime,
+		jobmgrcommon.ReasonField:         "",
+		jobmgrcommon.DesiredHostField:    "",
+	}
+	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiffs[_instanceID] = runtimeDiff
+
+	gomock.InOrder(
+		suite.mockTaskStore.EXPECT().
+			GetTaskByID(context.Background(), _pelotonTaskID).
+			Return(taskInfo, nil),
+		suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob),
+		cachedJob.EXPECT().SetTaskUpdateTime(event.MesosTaskStatus.Timestamp).Return(),
+		cachedJob.EXPECT().PatchTasks(context.Background(), runtimeDiffs).Return(nil),
+		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_SERVICE),
+		suite.goalStateDriver.EXPECT().
+			JobRuntimeDuration(job.JobType_SERVICE).
+			Return(1*time.Second),
+		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
+		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
+	)
+
+	now = nowMock
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+
+	suite.Equal(
+		int64(1),
+		suite.testScope.Snapshot().Counters()["status_updater.tasks_in_place_placement_success+"].Value())
+	suite.Equal(
+		int64(1),
+		suite.testScope.Snapshot().Counters()["status_updater.tasks_in_place_placement_total+"].Value())
+
+	// the task is not placed on the desired host
+	event = createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	event.MesosTaskStatus.Timestamp = &timeNow
+	taskInfo = createTestTaskInfo(task.TaskState_INITIALIZED)
+	taskInfo.Runtime.Host = hostname1
+	taskInfo.Runtime.DesiredHost = hostname2
+	runtimeDiff = jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.MessageField:        "testFailure",
+		jobmgrcommon.CompletionTimeField: "",
+		jobmgrcommon.StateField:          task.TaskState_RUNNING,
+		jobmgrcommon.StartTimeField:      _currentTime,
+		jobmgrcommon.ReasonField:         "",
+		jobmgrcommon.DesiredHostField:    "",
+	}
+	runtimeDiffs = make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiffs[_instanceID] = runtimeDiff
+
+	gomock.InOrder(
+		suite.mockTaskStore.EXPECT().
+			GetTaskByID(context.Background(), _pelotonTaskID).
+			Return(taskInfo, nil),
+		suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob),
+		cachedJob.EXPECT().SetTaskUpdateTime(event.MesosTaskStatus.Timestamp).Return(),
+		cachedJob.EXPECT().PatchTasks(context.Background(), runtimeDiffs).Return(nil),
+		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_SERVICE),
+		suite.goalStateDriver.EXPECT().
+			JobRuntimeDuration(job.JobType_SERVICE).
+			Return(1*time.Second),
+		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
+		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
+	)
+
+	now = nowMock
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+
+	// success count does not increase, while total count increases
+	suite.Equal(
+		int64(1),
+		suite.testScope.Snapshot().Counters()["status_updater.tasks_in_place_placement_success+"].Value())
+	suite.Equal(
+		int64(2),
+		suite.testScope.Snapshot().Counters()["status_updater.tasks_in_place_placement_total+"].Value())
+
+}
+
 // Test processing Health check event
 func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateHealthy() {
 	defer suite.ctrl.Finish()
