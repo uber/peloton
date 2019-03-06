@@ -34,7 +34,7 @@ import (
 // _defaultShutdownExecutorTimeout is the kill message timeout. If a task
 // has not been killed till this duration, then a shutdown is sent to mesos.
 const (
-	_defaultShutdownExecutorTimeout = 10 * time.Minute
+	_defaultShutdownExecutorTimeout = 180 * time.Minute
 )
 
 // TaskStop kills the task.
