@@ -10,6 +10,18 @@ something like:
 - Package and release a new version
 - Deploy to canary and production clusters
 
+## Setup Environment
+We need to setup certain tools inorder to build Peloton
+[Install]
+  - brew install golang [version 1.10.2+ is required]
+  - install [xcode](http://osxdaily.com/2014/02/12/install-command-line-tools-mac-os-x/) [MAC OS Specific]
+  - install [brew](https://brew.sh/)
+  - brew update
+[Configure bash]
+  - vi .bashrc (if using bash shell otherwise set environment)
+  - export GOPATH=$HOME/go-workspace [Set GOPATH](https://github.com/golang/go/wiki/SettingGOPATH)# don't forget to change your path correctly!
+  - export PATH=$PATH:$GOPATH/bin
+
 ## Checkout code
 The Peloton repo has to be checked out to the specific source directory
 `github.com/uber` under a predefined `$GOPATH`.
