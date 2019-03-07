@@ -1,7 +1,129 @@
 # Changelog for Peloton
-
-0.8.2 (unreleased)
+0.8.3 (unreleased)
 ------------------
+
+0.8.2
+------------------
+* 2019-03-06    Removing peloton client and m3 requirement from bootstraping peloton and adding to integration testsmabansal@uber.com
+* 2019-03-06    Change performance tests to use `PelotonPerformance` resource pool                    avyas@uber.com
+* 2019-03-06    Increase retry durations to prevent from overloading mesos master                     apoorvaj@uber.com
+* 2019-03-06    Add metrics for in-place update success rate                                          zhixin@uber.com
+* 2019-03-06    Update Version and PrevVersion format in WorkflowStatus                               yuweit@uber.com
+* 2019-03-05    Add ability to aggregate SLA metrics per job                                          avyas@uber.com
+* 2019-03-05    Integ test revocable job aurora bridge                                                varung@uber.com
+* 2019-03-05    Integ test auto rollback aurora bridge                                                varung@uber.com
+* 2019-03-05    Enable in-place update/restart feature                                                zhixin@uber.com
+* 2019-03-04    Add integration test for ListJob and ListPod API                                      apoorvaj@uber.com
+* 2019-03-04    Add access logging for all endpoints                                                  kevinxu@uber.com
+* 2019-03-04    Set desired host to handle in-place update overwritten                                zhixin@uber.com
+* 2019-03-04    Add canary test framework                                                             varung@uber.com
+* 2019-03-04    Put host on held for in-place update                                                  zhixin@uber.com
+* 2019-03-04    Clean up aurorabridge integration tests                                               codyg@uber.com
+* 2019-03-01    Map ScheduleStatus "THROTTLED" to "FAILED" to workaround error                        kevinxu@uber.com
+* 2019-03-01    Fix production config path for placement_[stateless|stateful] process                 kevinxu@uber.com
+* 2019-03-01    Add dummy result for write aurorabridge endpoints                                     varung@uber.com
+* 2019-02-28    Use empty slices instead of nil in aurorabridge handler                               codyg@uber.com
+* 2019-02-28    Fix getTasksWithoutConfigs status filtering                                           kevinxu@uber.com
+* 2019-02-28    Fix resource manager bug with draining hosts for maintenance                          avyas@uber.com
+* 2019-02-28    Follow up to aurora bridge read path integration tests                                kevinxu@uber.com
+* 2019-02-27    Fixing production config read for docker                                              mabansal@uber.com
+* 2019-02-27    Change aurorabridge port from 8082 to 5396                                            codyg@uber.com
+* 2019-02-27    Delete job if in PENDING state                                                        varung@uber.com
+* 2019-02-27    Change Timer to Histogram for SLA measurement                                         avyas@uber.com
+* 2019-02-26    Fixes regarding AuroraBridge job labels                                               kevinxu@uber.com
+* 2019-02-26    Add HTTP health check support to Peloton                                              apoorvaj@uber.com
+* 2019-02-26    Remove link to phab in bridge integration test                                        kevinxu@uber.com
+* 2019-02-26    Fixing documents                                                                      mabansal@uber.com
+* 2019-02-26    Adding slack channel to readme                                                        mabansal@uber.com
+* 2019-02-26    [resource manager] API handler should be blocked until recovery is completed          avyas@uber.com
+* 2019-02-26    Remove more uber internal links                                                       min@uber.com
+* 2019-02-25    Add integration tests for aurorabridge read path                                      kevinxu@uber.com
+* 2019-02-25    Fix the `docker-push` script                                                          avyas@uber.com
+* 2019-02-25    Cassandra ORM Secret migration.                                                       yuweit@uber.com
+* 2019-02-25    Remove internal docker registry references                                            avyas@uber.com
+* 2019-02-22    Fix version used for workflow actions in aurorabridge                                 codyg@uber.com
+* 2019-02-22    Removing example files and adding them into client repo                               mabansal@uber.com
+* 2019-02-22    Wait for deletion to finish for each aurora bridge integration test                   kevinxu@uber.com
+* 2019-02-22    Fix exponential backoff for failed task retry                                         zhixin@uber.com
+* 2019-02-22    Add PodEvents object to ORM                                                           sishi@uber.com
+* 2019-02-21    Removing arc config from the repo                                                     mabansal@uber.com
+* 2019-02-21    Removing uberinternal references from code                                            mabansal@uber.com
+* 2019-02-20    Add JobConfigOps to ORM code                                                          adityacb@uber.com
+* 2019-02-20    Removing production configs from peloton repo                                         mabansal@uber.com
+* 2019-02-19    Add jobType field to task cache                                                       sachins@uber.com
+* 2019-02-19    Use yaml file for aurora job configs                                                  varung@uber.com
+* 2019-02-19    Fix regression in cached job Delete                                                   adityacb@uber.com
+* 2019-02-15    Fix job name to job id mapping being created multiple times                           kevinxu@uber.com
+* 2019-02-15    Add instance workflow events with list job updates                                    varung@uber.com
+* 2019-02-15    Add performance benchmark tests for stateless                                         apoorvaj@uber.com
+* 2019-02-15    Change minicluster components to talk to each other via local container ip            kevinxu@uber.com
+* 2019-02-14    Add support for job_name_to_id to ORM                                                 adityacb@uber.com
+* 2019-02-14    Cleanup of v1alpha APIs                                                               apoorvaj@uber.com
+* 2019-02-14    Write first aurorabridge integration test w/ utils                                    codyg@uber.com
+* 2019-02-14    Delete stateless job ID from active jobs list on delete                               adityacb@uber.com
+* 2019-02-14    Update push registry in prime                                                         evelynl@uber.com
+* 2019-02-14    Populate reason field for deadline exceeded tasks                                     backer@uber.com
+* 2019-02-13    Migrate peloton build process to uBuild                                               evelynl@uber.com
+* 2019-02-13    Remove container spec from controller integration test                                avyas@uber.com
+* 2019-02-12    Support GetAll ORM operation                                                          adityacb@uber.com
+* 2019-02-12    Remove dual writes for task_config                                                    adityacb@uber.com
+* 2019-02-12    Add additional checks for "not-found" error in aurorabridge                           kevinxu@uber.com
+* 2019-02-12    Fix peloton tutorial documents                                                        avyas@uber.com
+* 2019-02-11    Re-implement GetJobUpdateDetails / GetJobUpdateSummaries w/ rollback handling         codyg@uber.com
+* 2019-02-09    Fix document links in README.md                                                       min@uber.com
+* 2019-02-09    Restructure Peloton documentation                                                     min@uber.com
+* 2019-02-09    Add doc for Cli section                                                               sishi@uber.com
+* 2019-02-07    Implement thermos executor in aurora bridge update path.                              kevinxu@uber.com
+* 2019-02-07    Add more information about tasks which breach SLAs                                    avyas@uber.com
+* 2019-02-06    Handle new job in GetJobUpdateDiff                                                    codyg@uber.com
+* 2019-02-06    Use ORM for mutations to job_index table                                              amitbose@uber.com
+* 2019-02-06    Move flag into jobmgr config                                                          sishi@uber.com
+* 2019-02-06    Maintain a map of entity version to task count for stateless jobs in job status       apoorvaj@uber.com
+* 2019-02-05    Add integration tests for starting/stopping job with an active update                 sachins@uber.com
+* 2019-02-05    Fix host filter for revocable tasks at mimir placement engine                         varung@uber.com
+* 2019-02-05    Force cache recalculation if jobRuntimeCalculationViaCache flag is on                 sishi@uber.com
+* 2019-02-05    Support update metadata                                                               codyg@uber.com
+* 2019-02-04    Placement Engine prioritizes host with desired host name                              zhixin@uber.com
+* 2019-02-04    Support new CreateJob API in startJobUpdate                                           codyg@uber.com
+* 2019-02-04    Only start rollback as paused if awaiting pulse                                       codyg@uber.com
+* 2019-02-03    Provide the correct option to vcluster from perf-compare                              amitbose@uber.com
+* 2019-02-03    Report integer division fix.                                                          yuweit@uber.com
+* 2019-02-02    Remove Uber-specific details from vcluster                                            amitbose@uber.com
+* 2019-02-01    Use opaque data to get job update action                                              varung@uber.com
+* 2019-02-01    Fix rollback update spec                                                              codyg@uber.com
+* 2019-02-01    Implement TODO fields in AuroraBridge.                                                kevinxu@uber.com
+* 2019-02-01    Add create control flags in stateless job create API                                  zhixin@uber.com
+* 2019-02-01    Modify job config generation test script                                              sishi@uber.com
+* 2019-02-01    Change getTasksWithoutConfigs to include pods from previous run                       kevinxu@uber.com
+* 2019-02-01    Pass in-place update hint between components                                          zhixin@uber.com
+* 2019-01-31    Install Jinja2 package in vcluster.                                                   yuweit@uber.com
+* 2019-01-31    stage                                                                                 yuweit@uber.com
+* 2019-01-31    Add ability to pass Cassandra username & password to `migrate-db-schema` script       rcharles@uber.com
+* 2019-01-31    Use secrets.yaml file to read Peloton langley secrets                                 adityacb@uber.com
+* 2019-01-31    Job stop would stop new instances added in update                                     zhixin@uber.com
+* 2019-01-31    Stateless job creation is processed by update workflow                                zhixin@uber.com
+* 2019-01-31    Allow backfill of active jobs only during resmgr recovery                             adityacb@uber.com
+* 2019-01-30    Clear previous contents of maintenanceHostInfoMap when reconciling maintenance state  sachins@uber.com
+* 2019-01-29    Implement getJobUpdateDetails                                                         varung@uber.com
+* 2019-01-29    Add rollback state handling in NewJobUpdateStatus                                     codyg@uber.com
+* 2019-01-29    Add update lifecycle docs                                                             zhixin@uber.com
+* 2019-01-29    Fix state machine errors when transition is a no-op                                   avyas@uber.com
+* 2019-01-28    Do not set goal state on task initialize                                              sachins@uber.com
+* 2019-01-28    [resource manager] Remove default preemption duration from code                       avyas@uber.com
+* 2019-01-27    Improve Performance report layout                                                     yuweit@uber.com
+* 2019-01-25    Set completion time for all terminated task event                                     zhixin@uber.com
+* 2019-01-25    Remove the use of EnqueueGangs from placement engine                                  avyas@uber.com
+* 2019-01-25    Implement RollbackJobUpdate                                                           codyg@uber.com
+* 2019-01-24    Factor out aurorabridge concurrency into utility func                                 codyg@uber.com
+* 2019-01-24    Cherrypick the env variable set.                                                      yuweit@uber.com
+* 2019-01-24    Add Flag `task_preemption_period` to Resource Manager                                 yuweit@uber.com
+* 2019-01-24    Enforce update id checks on all update actions                                        codyg@uber.com
+* 2019-01-24    Implement GetTierConfigs                                                              kevinxu@uber.com
+* 2019-01-24    Fix error code being returned in Task.Get()                                           adityacb@uber.com
+* 2019-01-23    Follow up changes for getTasksWithoutConfigs                                          kevinxu@uber.com
+* 2019-01-23    Implement KillTasks                                                                   codyg@uber.com
+* 2019-01-23    Changelog for release-0.8.1                                                           sachins@uber.com
+* 2019-01-23    Unify stateless handler non leader handle and error                                   zhixin@uber.com                                                      
 
 0.8.1
 ------------------
