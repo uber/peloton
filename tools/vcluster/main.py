@@ -115,6 +115,13 @@ def parse_arguments():
     )
 
     parser_setup.add_argument(
+        '-c',
+        '--peloton-app-config',
+        dest='peloton_apps_config_path',
+        help='the path of the peloton apps config',
+    )
+
+    parser_setup.add_argument(
         '-i',
         '--peloton-image',
         dest='peloton_image',
@@ -217,7 +224,8 @@ def main():
         config,
         args.label_name,
         args.zookeeper_server,
-        args.respool_path
+        args.respool_path,
+        args.peloton_apps_config_path
     )
 
     command = args.command

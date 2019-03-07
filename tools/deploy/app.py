@@ -1,9 +1,8 @@
 from __future__ import absolute_import
 
+import base64
 import os
 import os.path
-
-import subprocess
 
 from enum import Enum
 from time import sleep, time
@@ -187,11 +186,12 @@ class App(object):
         if name.startswith('placement_'):
             name = 'placement'
 
+        # base64 encode the prod config and add it to the PRODUCTION_CONFIG
+        # environment variable inside the container
         prod_config_path = self.get_app_path().format(name)
-
-        env_vars['PRODUCTION_CONFIG'] = subprocess.Popen(
-            "cat %s | base64" % prod_config_path, shell=True,
-            stdout=subprocess.PIPE).stdout.read()
+        with open(prod_config_path, "rb") as config_file:
+            env_vars['PRODUCTION_CONFIG'] = base64.b64encode(
+                config_file.read())
 
         params = [
             DockerParameter(name='env', value='%s=%s' % (key, val))
