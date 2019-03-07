@@ -50,25 +50,25 @@ endif
 all: gens placement cli hostmgr resmgr jobmgr archiver aurorabridge
 
 cli:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton cli/main/*.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton cmd/cli/*.go
 
 jobmgr:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-jobmgr jobmgr/main/*.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-jobmgr cmd/jobmgr/*.go
 
 hostmgr:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-hostmgr hostmgr/main/*.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-hostmgr cmd/hostmgr/*.go
 
 placement:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-placement placement/main/*.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-placement cmd/placement/*.go
 
 resmgr:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-resmgr resmgr/main/*.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-resmgr cmd/resmgr/*.go
 
 archiver:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-archiver archiver/main/*.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-archiver cmd/archiver/*.go
 
 aurorabridge:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-aurorabridge aurorabridge/main/*.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-aurorabridge cmd/aurorabridge/*.go
 
 # Use the same version of mockgen in unit tests as in mock generation
 build-mockgen:
