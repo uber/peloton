@@ -221,8 +221,10 @@ class StatelessJob(object):
             request = stateless_svc.RestartJobRequest(
                 job_id=v1alpha_peloton.JobID(value=self.job_id),
                 version=v1alpha_peloton.EntityVersion(value=job_entity_version),
-                batch_size=batch_size,
-                ranges=ranges,
+                restart_spec=stateless.RestartSpec(
+                    batch_size=batch_size,
+                    ranges=ranges,
+                ),
             )
             try:
                 resp = self.client.stateless_svc.RestartJob(
@@ -639,6 +641,7 @@ def query_jobs(respool_path=None):
         jobs.append(job)
     return jobs
 
+
 def list_jobs():
     """
     return all jobs in the cluster
@@ -654,6 +657,7 @@ def list_jobs():
         for jobSummary in resp.jobs:
             jobSummaries.append(jobSummary)
     return jobSummaries
+
 
 def delete_jobs(jobs):
     """
@@ -664,20 +668,3 @@ def delete_jobs(jobs):
     """
     for job in jobs:
         job.delete(force_delete=True)
-
-
-def list_jobs():
-    """
-    return all jobs in the cluster
-    """
-    client = Client()
-    jobSummaries = []
-    request = stateless_svc.ListJobsRequest()
-    for resp in client.stateless_svc.ListJobs(
-        request,
-        metadata=client.jobmgr_metadata,
-        timeout=60,
-    ):
-        for jobSummary in resp.jobs:
-            jobSummaries.append(jobSummary)
-    return jobSummaries
