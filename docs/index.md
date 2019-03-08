@@ -11,8 +11,7 @@ resource sharing, hierarchical max-min fairness, resource overcommit,
 workload preemption, etc. Peloton is also Cloud agnostic and can be run
 in on-premise datacenters or in the Cloud.
 
-For more details, please see [the Peloton Blog
-post](https://eng.uber.com/peloton/).
+For more details, please see [the Peloton Blog post](https://eng.uber.com/peloton/) and [Peloton online documentation](https://peloton.readthedocs.io/en/latest/).
 
 ## Features
 
@@ -98,7 +97,7 @@ information on how to use Peloton.
 ### Peloton CLI
 Peloton CLI is a command line interface for interacting with Peloton
 clusters, such as creating jobs, check job status etc. For detailed
-Peloton CLI commands and arguments, see [CLI Reference](cli.md).
+Peloton CLI commands and arguments, see [CLI Reference](cli-reference.md).
 
 
 ### Peloton API
@@ -107,16 +106,20 @@ access Peloton API via gRPC. Peloton supports three client bindings by
 default including Python, Golang and Java. Any other language bindings
 supported by gRPC should work as well. 
 
-See the [client examples](clients.md) for how to use Peloton clients
-to access the APIs. For detailed Peloton API definition, see the
-[API Reference](api-reference.md).
+See the [API Guide](api-guide.md) for examples of how to use
+Peloton clients to access the APIs. For detailed Peloton API
+definition, see the [API Reference](api-reference.md).
 
 ## Contributing
-See the [Developer Guide](development.md) on how to build Peloton
+See the [Developer Guide](developer-guide.md) on how to build Peloton
 from source code.
 
 
 ## Resources
+
+### Documentation
+
+- [Peloton Documentation](https://peloton.readthedocs.io/en/latest/)
 
 ### Blogs
 
@@ -124,10 +127,12 @@ from source code.
 
 ### Tech Talks
 
-- [KubeCon 2018, Seattle](https://sched.co/GrTx) ([Slides](https://schd.ws/hosted_files/kccna18/29/Peloton_%20KubeCon%202018.pdf))
+- [KubeCon 2018, Seattle](https://sched.co/GrTx) ([Slides](https://schd.ws/hosted_files/kccna18/29/Peloton_%20KubeCon%202018.pdf), [Video](https://www.youtube.com/watch?v=USgbj87Ztlk))
 - [MesosCon 2018, San Francisco](https://sched.co/HYTn)
 - [MesosCon 2017, Los Angeles](https://sched.co/BYaD) ([Slides](http://events17.linuxfoundation.org/sites/events/files/slides/MesosCon_Distributed_Deep_Learning_v4.pdf), [Video](https://www.youtube.com/watch?v=Ktc3GjshHcc))
 
+## Contact
+To contact us, please join our [Slack channel](https://join.slack.com/t/peloton-scheduler/shared_invite/enQtNTU5ODIzOTY4NDMyLTY2NmEwN2Y5ZGMzMzk4ZDE1NTNlYjE4M2E4Njg2OWY1MTk5M2U2NTgxZDUyMjAwYWE4ZjY5M2JlZGU1ZTc2MjI).
 
 ## License
 Peloton is under the Apache 2.0 license. See the LICENSE file for details.

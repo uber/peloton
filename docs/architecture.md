@@ -1,4 +1,4 @@
-# Architecture
+# Peloton Architecture
 
 Cluster management, a common software infrastructure among technology
 companies, aggregates compute resources from a collection of physical

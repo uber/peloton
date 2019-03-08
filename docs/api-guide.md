@@ -1,6 +1,6 @@
-# Peloton Clients
+# Peloton API Guide
 
-This section describes different clients supported for Peloton.
+This section describes different clients supported for Peloton API.
 Currently, we support three clients: Python, Golang and Java.
 
 There are four types of clients internal to Peloton client: Job, Task, ResPool,

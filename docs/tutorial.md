@@ -1,14 +1,16 @@
-# Tutorial
+# Peloton Tutorial
 
 This tutorial will walk you step-by-step through using Peloton:
 
-- Start a local minicluster (local cluster with peloton running)
-- Install Peloton CLI
-- Create a Resource Pool
-- Create a HelloWorld job
-- Check job status
-- List all job instances
-- Check the logs for a particular instance
+* Start a local minicluster (local cluster with peloton running)
+* Install Peloton CLI
+* HelloWorld Example
+    - Create a Resource Pool
+    - Create a HelloWorld job
+    - Check job status
+    - List all job instances
+    - Check the logs for a particular instance
+* Elastic Resource Pool Example (coming soon)
 
 
 ## Start a minicluster
@@ -18,16 +20,28 @@ Cassandra, Mesos master and agents. A minicluster launches all
 components via docker engine which has to be installed first. Below
 are the steps to start a minicluster:
 
-1. Install docker engine (>=1.12.1) per [instruction here](https://docs.docker.com/v17.12/install/)
-
-2. Start minicluster with the latest Peloton image.
+- Install docker engine (>=1.12.1) per [instruction here](https://docs.docker.com/v17.12/install/)
+- Install `docker-py` python package.
+```
+$ pip install docker-py
+```
+- Pull the latest Peloton image from [docker-hub](https://cloud.docker.com/u/uber/repository/docker/uber/peloton).
+```
+$ docker pull uber/peloton
+```
+- Start minicluster locally.
 
 ```
 $ PELOTON=app make minicluster
 ```
 
 ## Install Peloton CLI
-Peloton CLI package will be available, in the mean time please build peloton locally
+
+Peloton CLI package will be available, in the mean time please build
+peloton locally. Please see the [Peloton Developer
+Guide](developer-guide.md) for how to setup environment and build
+Peloton CLI binary.
+
 ```
 $ make
 ```
@@ -36,7 +50,8 @@ Peloton CLI is available on
 $ {$home}/bin/peloton
 ```
 
-## Create a resource pool
+## Hello World Example
+### Create a resource pool
 A resource pool is required before starting any jobs in a Peloton
 cluster. Each resource pool specifies the reservation, limit and
 shares of the resources for an organization or team. Here is an
@@ -69,7 +84,7 @@ $ bin/peloton respool create /HelloWorldPool example/helloworld_pool.yaml
 Resource Pool fa651fc9-086d-4e8f-a823-d6bf6f144481 created at /HelloWorldPool
 ```
 
-## Create a job
+### Create a job
 A job consists of multiple instances in Peloton. A resource pool and a
 job spec are required to create a job. The resource pool specifies
 where the resources are accounted for the job to run. The job spec
@@ -117,7 +132,7 @@ $ bin/peloton job create /HelloWorldPool example/helloworld_job.yaml
 Job 3a6d6cfe-4b25-4137-af65-61d3070d4ac3 created
 ```
 
-## Check job status
+### Check job status
 
 ```
 $ bin/peloton job status 3a6d6cfe-4b25-4137-af65-61d3070d4ac3
@@ -148,7 +163,7 @@ taskStats:
   UNKNOWN: 0
 ```
 
-##  List job instances
+###  List job instances
 ```
 $ bin/peloton task list  3a6d6cfe-4b25-4137-af65-61d3070d4ac3
   Instance|  Name|    State|   Healthy|            Start Time|  Run Time|                  Host|                  Message|  Reason|
@@ -164,10 +179,14 @@ $ bin/peloton task list  3a6d6cfe-4b25-4137-af65-61d3070d4ac3
          9|      |  PENDING|  DISABLED|                      |          |                      |  Task sent for placement|        |
 ```
 
-##  Check the logs for a particular instance
+###  Check the logs for a particular instance
 The stdout / stderr can be streamed over the commandline. 
 Note: the stdout is keep in the Mesos Sandbox which is automatically cleaned when space is running out
 ```
 $ bin/peloton task logs 3a6d6cfe-4b25-4137-af65-61d3070d4ac3 0 --filename="stderr"
 HelloWorld
 ```
+
+## Elastic Resource Pool Example
+
+Coming soon...

@@ -11,16 +11,35 @@ something like:
 - Deploy to canary and production clusters
 
 ## Setup Environment
-We need to setup certain tools inorder to build Peloton
-[Install]
-  - brew install golang [version 1.10.2+ is required]
-  - install [xcode](http://osxdaily.com/2014/02/12/install-command-line-tools-mac-os-x/) [MAC OS Specific]
-  - install [brew](https://brew.sh/)
-  - brew update
-[Configure bash]
-  - vi .bashrc (if using bash shell otherwise set environment)
-  - export GOPATH=$HOME/go-workspace [Set GOPATH](https://github.com/golang/go/wiki/SettingGOPATH)# don't forget to change your path correctly!
-  - export PATH=$PATH:$GOPATH/bin
+We need to setup certain tools in order to build Peloton.
+
+* For MacOS:
+    - Install [Homebrew](https://brew.sh/) or update brew:
+
+	```
+      $ brew update
+	```
+
+    - Install Command Line Tools via [xcode-select](http://osxdaily.com/2014/02/12/install-command-line-tools-mac-os-x/)
+    ```
+	  $ xcode-select --install
+    ```
+    - Install golang (version 1.10.2+ is required) and glide
+
+    ```
+	  $ brew install golang
+	  $ brew install glide
+	```
+
+* For Linux:
+     - Intall golang (version 1.10.2+ is required) ([instructions](https://golang.org/doc/install#install))
+
+* Setup GOPATH ([instructions](https://github.com/golang/go/wiki/SettingGOPATH))
+
+```
+$ export GOPATH=$HOME/go-workspace
+$ export PATH=$PATH:$GOPATH/bin
+```
 
 ## Checkout code
 The Peloton repo has to be checked out to the specific source directory
@@ -29,7 +48,7 @@ The Peloton repo has to be checked out to the specific source directory
 ```
 $ cd $GOPATH
 $ mkdir -p src/github.com/uber/
-$ git clone git@github.com:uber/peloton.git src/github.com/uber/peloton
+$ git clone https://github.com/uber/peloton.git src/github.com/uber/peloton
 ```
 
 ## Setup environment

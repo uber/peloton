@@ -11,7 +11,9 @@ resource sharing, hierarchical max-min fairness, resource overcommit,
 workload preemption, etc. Peloton is also Cloud agnostic and can be run
 in on-premise datacenters or in the Cloud.
 
-For more details, please see [the Peloton Blog post](https://eng.uber.com/peloton/) and [Peloton online documentation](https://peloton.readthedocs.io/en/latest/).
+For more details, please see the Peloton [Blog
+Post](https://eng.uber.com/peloton/) and
+[Documentation](https://peloton.readthedocs.io/en/latest/).
 
 ## Features
 
@@ -97,7 +99,7 @@ information on how to use Peloton.
 ### Peloton CLI
 Peloton CLI is a command line interface for interacting with Peloton
 clusters, such as creating jobs, check job status etc. For detailed
-Peloton CLI commands and arguments, see [CLI Reference](docs/cli.md).
+Peloton CLI commands and arguments, see [CLI Reference](docs/cli-reference.md).
 
 
 ### Peloton API
@@ -106,12 +108,12 @@ access Peloton API via gRPC. Peloton supports three client bindings by
 default including Python, Golang and Java. Any other language bindings
 supported by gRPC should work as well. 
 
-See the [client examples](docs/clients.md) for how to use Peloton clients
-to access the APIs. For detailed Peloton API definition, see the
-[API Reference](docs/api-reference.md).
+See the [API Guide](docs/api-guide.md) for examples of how to use
+Peloton clients to access the APIs. For detailed Peloton API
+definition, see the [API Reference](docs/api-reference.md).
 
 ## Contributing
-See the [Developer Guide](docs/development.md) on how to build Peloton
+See the [Developer Guide](docs/developer-guide.md) on how to build Peloton
 from source code.
 
 
