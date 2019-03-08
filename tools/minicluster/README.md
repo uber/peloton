@@ -4,7 +4,7 @@ env cluster in containers.
 Dependencies:
 1. docker engine: expected version >=1.12.1
 2. docker-py: run "pip install docker-py" or
-   `$PELOTON_HOME/bootstrap.sh` to install.
+   `$PELOTON_HOME/scripts/bootstrap.sh` to install.
 
 Update 'num_agents' in config.yaml to change number of mesos slaves,
 by default 3 agents.

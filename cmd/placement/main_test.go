@@ -17,7 +17,7 @@ package main
 import (
 	"testing"
 
-	"github.com/uber/peloton/placement/config"
+	"github.com/uber/peloton/pkg/placement/config"
 
 	"github.com/stretchr/testify/assert"
 )

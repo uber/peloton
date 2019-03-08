@@ -9,7 +9,7 @@ storage:
       consistency: LOCAL_QUORUM
       timeout: 10s
     store_name: peloton_test
-    migrations: storage/cassandra/migrations/
+    migrations: pkg/storage/cassandra/migrations/
   use_cassandra: false
 
 resmgr:

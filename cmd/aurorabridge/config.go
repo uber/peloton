@@ -15,11 +15,11 @@
 package main
 
 import (
-	"github.com/uber/peloton/aurorabridge"
-	"github.com/uber/peloton/common/health"
-	"github.com/uber/peloton/common/logging"
-	"github.com/uber/peloton/common/metrics"
-	"github.com/uber/peloton/leader"
+	"github.com/uber/peloton/pkg/aurorabridge"
+	"github.com/uber/peloton/pkg/common/health"
+	"github.com/uber/peloton/pkg/common/leader"
+	"github.com/uber/peloton/pkg/common/logging"
+	"github.com/uber/peloton/pkg/common/metrics"
 )
 
 // Config defines aurorabridge configuration.

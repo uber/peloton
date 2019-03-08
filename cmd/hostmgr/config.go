@@ -15,13 +15,13 @@
 package main
 
 import (
-	"github.com/uber/peloton/common/health"
-	"github.com/uber/peloton/common/logging"
-	"github.com/uber/peloton/common/metrics"
-	"github.com/uber/peloton/hostmgr/config"
-	"github.com/uber/peloton/hostmgr/mesos"
-	"github.com/uber/peloton/leader"
-	storage "github.com/uber/peloton/storage/config"
+	"github.com/uber/peloton/pkg/common/health"
+	"github.com/uber/peloton/pkg/common/leader"
+	"github.com/uber/peloton/pkg/common/logging"
+	"github.com/uber/peloton/pkg/common/metrics"
+	"github.com/uber/peloton/pkg/hostmgr/config"
+	"github.com/uber/peloton/pkg/hostmgr/mesos"
+	storage "github.com/uber/peloton/pkg/storage/config"
 )
 
 // Config holds all configs to run a peloton-hostmgr server.

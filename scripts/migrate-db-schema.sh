@@ -6,7 +6,7 @@ set -ex
 main() {
     host="localhost:9042"
     db="peloton_test"
-    path="storage/cassandra/migrations"
+    path="pkg/storage/cassandra/migrations"
     option=""
 
     while [ $# -gt 0 ] ; do

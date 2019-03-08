@@ -1,0 +1,91 @@
+// Copyright (c) 2019 Uber Technologies, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package atop
+
+import (
+	"fmt"
+
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
+	"github.com/uber/peloton/pkg/aurorabridge/common"
+	"github.com/uber/peloton/pkg/aurorabridge/label"
+)
+
+// NewJobSpecFromJobUpdateRequest creates a new JobSpec.
+func NewJobSpecFromJobUpdateRequest(
+	r *api.JobUpdateRequest,
+	respoolID *peloton.ResourcePoolID,
+	c ThermosExecutorConfig,
+) (*stateless.JobSpec, error) {
+
+	if !r.IsSetTaskConfig() {
+		return nil, fmt.Errorf("task config is not set in job update request")
+	}
+
+	p, err := NewPodSpec(r.GetTaskConfig(), c)
+	if err != nil {
+		return nil, fmt.Errorf("new pod spec: %s", err)
+	}
+
+	// build labels for role, environment and job_name, used for task
+	// querying by partial job key (e.g. getTasksWithoutConfigs)
+	l := []*peloton.Label{
+		label.NewAuroraJobKeyRole(r.GetTaskConfig().GetJob().GetRole()),
+		label.NewAuroraJobKeyEnvironment(r.GetTaskConfig().GetJob().GetEnvironment()),
+		label.NewAuroraJobKeyName(r.GetTaskConfig().GetJob().GetName()),
+		common.BridgeJobLabel,
+	}
+
+	return &stateless.JobSpec{
+		Revision:      nil, // Unused.
+		Name:          NewJobName(r.GetTaskConfig().GetJob()),
+		Owner:         r.GetTaskConfig().GetOwner().GetUser(),
+		OwningTeam:    "",  // Unused.
+		LdapGroups:    nil, // Unused.
+		Description:   "",  // Unused.
+		Labels:        l,
+		InstanceCount: uint32(r.GetInstanceCount()),
+		Sla:           newSLASpec(r.GetTaskConfig(), r.GetSettings().GetMaxFailedInstances()),
+		DefaultSpec:   p,
+		InstanceSpec:  nil, // TODO(codyg): Pinned instance support.
+		RespoolId:     respoolID,
+	}, nil
+}
+
+func newSLASpec(t *api.TaskConfig, maxFailedInstances int32) *stateless.SlaSpec {
+	preemptible := false
+	revocable := false
+
+	switch t.GetTier() {
+	case common.Preemptible:
+		preemptible = true
+		revocable = false
+	case common.Revocable:
+		preemptible = true
+		revocable = true
+	case common.Preferred:
+		preemptible = false
+		revocable = false
+	}
+
+	return &stateless.SlaSpec{
+		Priority:                    uint32(t.GetPriority()),
+		Preemptible:                 preemptible,
+		Revocable:                   revocable,
+		MaximumUnavailableInstances: uint32(maxFailedInstances),
+	}
+}

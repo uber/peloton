@@ -36,7 +36,7 @@ $ git clone git@github.com:uber/peloton.git src/github.com/uber/peloton
 To install all build dependencies required by Peloton, we need to run the bootstrap steps as follows:
 ```
 $ cd $GOPATH/src/github.com/uber/peloton
-$ ./bootstrap.sh
+$ ./scripts/bootstrap.sh
 $ glide install
 $ make devtools
 ```

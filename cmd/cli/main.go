@@ -23,11 +23,11 @@ import (
 
 	pt "github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	pc "github.com/uber/peloton/cli"
-	"github.com/uber/peloton/cli/config"
-	"github.com/uber/peloton/common"
-	"github.com/uber/peloton/leader"
-	"github.com/uber/peloton/util"
+	pc "github.com/uber/peloton/pkg/cli"
+	"github.com/uber/peloton/pkg/cli/config"
+	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/leader"
+	"github.com/uber/peloton/pkg/common/util"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 )

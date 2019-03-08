@@ -14,7 +14,7 @@ storage:
       # Cassandra latency spike issue.
       timeout: 20s
     store_name: peloton_test
-    migrations: storage/cassandra/migrations/
+    migrations: pkg/storage/cassandra/migrations/
   use_cassandra: false
   db_write_concurrency: 40
 
