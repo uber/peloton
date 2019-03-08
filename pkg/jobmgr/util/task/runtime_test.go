@@ -207,6 +207,12 @@ func TestIsSystemFailure(t *testing.T) {
 		},
 		{
 			&task.RuntimeInfo{
+				Reason: mesos.TaskStatus_REASON_INVALID_OFFERS.String(),
+			},
+			true,
+		},
+		{
+			&task.RuntimeInfo{
 				Reason:  mesos.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
 				Message: "Container terminated with signal Broken pipe",
 			},

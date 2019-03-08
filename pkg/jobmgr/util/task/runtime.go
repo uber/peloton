@@ -136,6 +136,10 @@ func IsSystemFailure(runtime *task.RuntimeInfo) bool {
 		return true
 	}
 
+	if runtime.GetReason() == mesos.TaskStatus_REASON_INVALID_OFFERS.String() {
+		return true
+	}
+
 	if runtime.GetReason() == mesos.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String() {
 		if strings.Contains(runtime.GetMessage(), "Container terminated with signal Broken pipe") {
 			return true
