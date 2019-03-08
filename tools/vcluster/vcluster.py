@@ -143,8 +143,8 @@ class VCluster(object):
         """
         Returns the formatted path for app config
         """
-        dirname = os.path.dirname(self.peloton_apps_config_path)
-        path = os.path.join(dirname, "config", "{}", "production.yaml")
+        path = os.path.join(self.peloton_apps_config_path, "config", "{}",
+                            "production.yaml")
         return path
 
     def start_peloton(self, virtual_zookeeper, agent_num, version=None,
