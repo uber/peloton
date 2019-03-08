@@ -29,6 +29,8 @@ make install
 
 . env/bin/activate
 
+pip install -r tests/requirements.txt
+
 # Allow python path override so we can test any local changes in python client
 if [[ -z "${PYTHONPATH}" ]]; then
   PYTHONPATH=$(pwd)
@@ -40,6 +42,6 @@ if [[ -z "${TAGS}" ]]; then
   TAGS='default'
 fi
 
-CLUSTER="${CLUSTER}" ELECTION_ZK_SERVERS="${ZOOKEEPER}" JOB_TYPE=SERVICE pytest -vrsx -n=3 --count=3 --random-order-seed=1 tests/integration/canary_test --junit-xml=integration-test-report.xml
+PATH=$PATH:$(pwd)/bin CLUSTER="${CLUSTER}" ELECTION_ZK_SERVERS="${ZOOKEEPER}" FAILFAST="${FAILFAST}" JOB_TYPE=SERVICE pytest -vrsx -n=3 --count=3 --random-order-seed="$(((RANDOM % 1000) + 1))" tests/integration/canary_test --junit-xml=integration-test-report.xml
 
 deactivate

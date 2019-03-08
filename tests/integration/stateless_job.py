@@ -692,20 +692,39 @@ class StatelessJob(object):
         self.job_spec = self.get_spec()
         return {Pod(self, iid) for iid in xrange(self.job_spec.instance_count)}
 
-    # Uncomment once 0.8.1 peloton client is released
-    # def list_workflows(self):
-    #     """
-    #     :return: the list of workflows for a job.
-    #     """
-    #     request = stateless_svc.ListJobWorkflowsRequest(
-    #         job_id=v1alpha_peloton.JobID(value=self.job_id),
-    #     )
-    #     resp = self.client.stateless_svc.ListJobWorkflows(
-    #         request,
-    #         metadata=self.client.jobmgr_metadata,
-    #         timeout=self.config.rpc_timeout_sec,
-    #     )
-    #     return resp.workflow_infos
+    def list_workflows(self):
+        """
+        :return: the list of workflows for a job.
+        """
+        request = stateless_svc.ListJobWorkflowsRequest(
+            job_id=v1alpha_peloton.JobID(value=self.job_id),
+        )
+        resp = self.client.stateless_svc.ListJobWorkflows(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        return resp.workflow_infos
+
+    def get_replace_job_diff(self, entity_version=None, job_spec=None):
+        """
+        :return: get replace job diff response.
+        """
+        job_entity_version = entity_version or \
+            self.entity_version or \
+            self.get_status().version.value
+
+        request = stateless_svc.GetReplaceJobDiffRequest(
+            job_id=v1alpha_peloton.JobID(value=self.job_id),
+            version=v1alpha_peloton.EntityVersion(value=job_entity_version),
+            spec=job_spec,
+        )
+        resp = self.client.stateless_svc.GetReplaceJobDiff(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        return resp
 
 
 def query_jobs(respool_path=None):

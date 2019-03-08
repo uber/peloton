@@ -82,6 +82,14 @@ def pytest_runtest_makereport(item, call):
     if rep.outcome == "failed" and rep.when == "call":
         collect_metrics.increment_failed(rep.duration)
 
+    rep = outcome.get_result()
+    setattr(item, "rep_" + rep.when, rep)
+
+    if "incremental" in item.keywords:
+        if call.excinfo is not None:
+            parent = item.parent
+            parent._previousfailed = item
+
 
 def pytest_sessionfinish(session, exitstatus):
     emitter = BatchedEmitter()

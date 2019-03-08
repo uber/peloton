@@ -70,19 +70,10 @@ def canary_tester(request):
             os.remove(JOB_IN_USE_FILE)
             os.remove(JOBS)
             log.info("removed metadata")
-    except OSError as e:
-        log.info("clean up for metadata files failed: %s", e)
-        pass
+    except Exception as e:
+        log.info("error on canary setup cleanup: %s", e)
     finally:
         FILE_LOCK.release()
-
-
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(item, call):
-    global collect_metrics
-    outcome = yield
-    rep = outcome.get_result()
-    setattr(item, "rep_" + rep.when, rep)
 
 
 @pytest.fixture
@@ -97,24 +88,29 @@ def canary_job(request):
 
     FILE_LOCK.acquire()
     try:
-        # Test failed, dump job stats
-        if request.node.rep_call.failed:
-            log.info("failed test: %s", request.node.name)
-            dump_job_stats(job)
-
         pytest.job_in_use = read_from_file(JOB_IN_USE_FILE)
         del pytest.job_in_use[job_name]
         write_to_file(JOB_IN_USE_FILE, pytest.job_in_use)
 
-        log.info(
-            "restore job: %s, job_id: %s, after test: %s",
-            job_name,
-            job.job_id,
-            request.node.name,
-        )
-        patch_job(job, read_job_spec(job_name + ".yaml"))
+        # Test failed, dump job stats
+        if request.node.rep_call.failed:
+            log.info("failed test: %s", request.node.name)
+            dump_job_stats(job)
+        else:
+            log.info('restore job: %s, job_id: %s, after test: %s',
+                     job_name, job.job_id, request.node.name)
+            patch_job(job, read_job_spec(job_name+'.yaml'))
     finally:
         FILE_LOCK.release()
+
+
+def pytest_runtest_setup(item):
+    """
+    fail subsequent tests if previous test failed
+    """
+    previousfailed = getattr(item.parent, "_previousfailed", None)
+    if previousfailed is not None:
+        pytest.xfail("previous test failed (%s)" % previousfailed.name)
 
 
 def get_unique_job(request):

@@ -1,4 +1,5 @@
 import logging
+import pytest
 
 from tests.integration.canary_test.util import patch_job
 from tests.integration.stateless_job_test.util import assert_pod_id_changed
@@ -9,6 +10,7 @@ log = logging.getLogger(__name__)
 # rather hard coding same value for each test
 
 
+@pytest.mark.incremental
 def test__add_instances(canary_job):
     spec = canary_job.get_spec()
     old_instance_count = spec.instance_count
@@ -26,6 +28,7 @@ def test__add_instances(canary_job):
     assert new_instance_count == len(canary_job.get_pods())
 
 
+@pytest.mark.incremental
 def test__remove_instances(canary_job):
     spec = canary_job.get_spec()
     old_instance_count = spec.instance_count
@@ -44,6 +47,7 @@ def test__remove_instances(canary_job):
 
 
 # TODO (varung): cleanup using resource_spec
+@pytest.mark.incremental
 def test__update_resource_spec(canary_job):
     spec = canary_job.get_spec()
     spec.default_spec.containers[0].resource.cpu_limit = 0.7
@@ -63,6 +67,7 @@ def test__update_resource_spec(canary_job):
     assert new_spec.default_spec.containers[0].resource.disk_limit_mb == 25
 
 
+@pytest.mark.incremental
 def test__restart_pods(canary_job):
     old_pod_infos = canary_job.query_pods()
 
