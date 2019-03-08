@@ -22,6 +22,7 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/task/deadline"
 	"github.com/uber/peloton/pkg/jobmgr/task/placement"
 	"github.com/uber/peloton/pkg/jobmgr/task/preemptor"
+	"github.com/uber/peloton/pkg/jobmgr/watchsvc"
 )
 
 // Config is JobManager specific configuration
@@ -51,6 +52,9 @@ type Config struct {
 
 	// Job service specific configuration
 	JobSvcCfg jobsvc.Config `yaml:"job_service"`
+
+	// Watch API specific configuration
+	Watch watchsvc.Config `yaml:"watch"`
 
 	// Period in sec for updating active cache
 	ActiveTaskUpdatePeriod time.Duration `yaml:"active_task_update_period"`

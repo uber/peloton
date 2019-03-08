@@ -65,10 +65,12 @@ message WatchRequest
 //    OUT_OF_RANGE: Requested start-revision is too old
 //    INVALID_ARGUMENT: Requested start-revision is newer than server revision
 //    RESOURCE_EXHAUSTED: Number of concurrent watches exceeded
-//    CANCELLED: Watch cancelled
+//    CANCELLED: Watch cancelled by user
+//    DEADLINE_EXCEEDED: Client not reading events fast enough, causing
+//                       internal queue to overflow
 message WatchResponse {
   // Unique identifier for the watch session
-  uint64 watch_id = 1;
+  string watch_id = 1;
 
   // Server revision when the response results were created
   uint64 revision = 2;
@@ -90,7 +92,7 @@ message WatchResponse {
 message CancelRequest
 {
   // ID of the watch session to cancel.
-  uint64 watch_id = 1;
+  string watch_id = 1;
 }
 
 // CancelRequest is response for method WatchService.Cancel

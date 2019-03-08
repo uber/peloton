@@ -48,6 +48,7 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/tasksvc"
 	"github.com/uber/peloton/pkg/jobmgr/updatesvc"
 	"github.com/uber/peloton/pkg/jobmgr/volumesvc"
+	"github.com/uber/peloton/pkg/jobmgr/watchsvc"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 	"github.com/uber/peloton/pkg/storage/stores"
 
@@ -382,6 +383,12 @@ func main() {
 		},
 	)
 
+	watchProcessor := watchsvc.InitV1AlphaWatchServiceHandler(
+		dispatcher,
+		rootScope,
+		cfg.JobManager.Watch,
+	)
+
 	jobFactory := cached.InitJobFactory(
 		store, // store implements JobStore
 		store, // store implements TaskStore
@@ -389,7 +396,8 @@ func main() {
 		store, // store implements VolumeStore
 		ormStore,
 		rootScope,
-		nil)
+		[]cached.JobTaskListener{watchsvc.NewWatchListener(watchProcessor)},
+	)
 
 	// TODO: We need to cleanup the client names
 	launcher.InitTaskLauncher(

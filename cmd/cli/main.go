@@ -199,6 +199,15 @@ var (
 	statelessRefresh     = stateless.Command("refresh", "refresh a job")
 	statelessRefreshName = statelessRefresh.Arg("job", "job identifier").Required().String()
 
+	watch = app.Command("watch", "watch job / pod runtime changes")
+
+	watchPod         = watch.Command("pod", "watch pod runtime changes")
+	watchPodJobID    = watchPod.Arg("job", "job identifier").String()
+	watchPodPodNames = watchPod.Arg("pod", "pod name").Strings()
+
+	watchCancel        = watch.Command("cancel", "cancel watch")
+	watchCancelWatchID = watchCancel.Arg("id", "watch id").Required().String()
+
 	workflow                   = stateless.Command("workflow", "manage workflow for stateless job")
 	workflowPause              = workflow.Command("pause", "pause a workflow")
 	workflowPauseName          = workflowPause.Arg("job", "job identifier").Required().String()
@@ -966,6 +975,10 @@ func main() {
 			*statelessDeleteEntityVersion,
 			*statelessDeleteForce,
 		)
+	case watchPod.FullCommand():
+		err = client.WatchPod(*watchPodJobID, *watchPodPodNames)
+	case watchCancel.FullCommand():
+		err = client.CancelWatch(*watchCancelWatchID)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

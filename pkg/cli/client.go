@@ -31,6 +31,7 @@ import (
 	volume_svc "github.com/uber/peloton/.gen/peloton/api/v0/volume/svc"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
+	watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
 	hostmgr_svc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -44,6 +45,7 @@ type Client struct {
 	taskClient      task.TaskManagerYARPCClient
 	podClient       podsvc.PodServiceYARPCClient
 	statelessClient statelesssvc.JobServiceYARPCClient
+	watchClient     watchsvc.WatchServiceYARPCClient
 	resClient       respool.ResourceManagerYARPCClient
 	resMgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
 	updateClient    updatesvc.UpdateServiceYARPCClient
@@ -130,6 +132,9 @@ func New(
 			dispatcher.ClientConfig(common.PelotonJobManager),
 		),
 		statelessClient: statelesssvc.NewJobServiceYARPCClient(
+			dispatcher.ClientConfig(common.PelotonJobManager),
+		),
+		watchClient: watchsvc.NewWatchServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonJobManager),
 		),
 		dispatcher: dispatcher,
