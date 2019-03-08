@@ -357,9 +357,7 @@ def test__restart_running_job_with_batch_size(stateless_job):
     stateless_job.wait_for_state(goal_state='RUNNING')
     old_pod_infos = stateless_job.query_pods()
 
-    # TODO add back batch size after API update in peloton client
-    # stateless_job.restart(batch_size=1)
-    stateless_job.restart()
+    stateless_job.restart(batch_size=1)
     stateless_job.wait_for_workflow_state(goal_state='SUCCEEDED')
 
     stateless_job.wait_for_all_pods_running()
@@ -378,9 +376,7 @@ def test__restart_killed_job_with_batch_size(stateless_job):
     stateless_job.wait_for_state(goal_state='KILLED')
     old_pod_infos = stateless_job.query_pods()
 
-    # TODO add back batch size after API update in peloton client
-    # stateless_job.restart(batch_size=1)
-    stateless_job.restart()
+    stateless_job.restart(batch_size=1)
 
     stateless_job.wait_for_all_pods_running()
 
@@ -423,7 +419,7 @@ def test__restart_killed_job(stateless_job):
 
 # test restarting a partial set of tasks of the job
 def test__restart_partial_job(stateless_job):
-    # ranges = [pod_pb2.InstanceIDRange(to=2)]
+    ranges = [pod_pb2.InstanceIDRange(to=2)]
     stateless_job.create()
     stateless_job.wait_for_state(goal_state='RUNNING')
 
@@ -436,9 +432,7 @@ def test__restart_partial_job(stateless_job):
         old_pod_dict[pod_name] = old_pod_info.status.pod_id.value
         assert old_pod_info.status.state == pod_pb2.POD_STATE_RUNNING
 
-    # TODO add back batch size and range after API update
-    # stateless_job.restart(batch_size=1, ranges=ranges)
-    stateless_job.restart()
+    stateless_job.restart(batch_size=1, ranges=ranges)
     stateless_job.wait_for_workflow_state(goal_state='SUCCEEDED')
 
     stateless_job.wait_for_all_pods_running()
@@ -450,10 +444,10 @@ def test__restart_partial_job(stateless_job):
         pod_name = new_pod_info.status.pod_id.value[:split_index]
         old_pod_id = old_pod_dict[pod_name]
         # only pods in range [0-2) are restarted
-        # if int(pod_name[pod_name.rfind('-')+1:]) < 2:
-        assert old_pod_id != new_pod_id
-        # else:
-        # assert old_pod_id == new_pod_id
+        if int(pod_name[pod_name.rfind('-')+1:]) < 2:
+            assert old_pod_id != new_pod_id
+        else:
+            assert old_pod_id == new_pod_id
 
 
 # test restarting job during jobmgr restart
