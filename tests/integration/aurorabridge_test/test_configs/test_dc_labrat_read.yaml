@@ -1,16 +1,28 @@
 taskConfig:
     job:
         role: test
-        environment: dc0
-        name: labrat1
+        environment: dc
+        name: labrat
+    owner:
+        user: 'testuser'
     isService: true
-    priority: 0
+    priority: 5
     tier: preemptible
     production: false
     resources:
         - numCpus: 0.25
         - ramMb: 128
         - diskMb: 128
+    metadata:
+        - key: test_key_1
+          value: test_value_1
+        - key: test_key_2
+          value: test_value_2
+    constraints:
+        - name: host
+          constraint:
+            limit:
+                limit: 1
     executorConfig:
         name: AuroraExecutor
         data: |-
@@ -18,7 +30,7 @@ taskConfig:
                 "cluster": "peloton",
                 "cron_collision_policy": "KILL_EXISTING",
                 "enable_hooks": false,
-                "environment": "dc0",
+                "environment": "dc",
                 "executor_config": {
                     "data": "",
                     "name": "AuroraExecutor"
@@ -48,7 +60,7 @@ taskConfig:
                 },
                 "max_task_failures": 1,
                 "metadata": [],
-                "name": "labrat1",
+                "name": "labrat",
                 "priority": 0,
                 "production": false,
                 "role": "test",

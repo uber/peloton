@@ -26,7 +26,7 @@ def test__get_jobs__get_job_summary(client):
     # Create two jobs under same role.
     test_dc_labrat_key = start_job_update(
         client,
-        'test_dc_labrat.yaml',
+        'test_dc_labrat_read.yaml',
         'start job update test/dc/labrat')
     test_dc_labrat_0_key = start_job_update(
         client,
@@ -48,8 +48,8 @@ def test__get_jobs__get_job_summary(client):
         [test_dc_labrat_key, test_dc_labrat_0_key])
 
     for s in res.summaries:
-        assert s.stats.activeTaskCount == 3
-        assert s.job.instanceCount == 3
+        assert s.stats.activeTaskCount == 2
+        assert s.job.instanceCount == 2
 
     # Ensure get_jobs returns both jobs under role=test.
     res = client.get_jobs(test_dc_labrat_key.role)
@@ -60,18 +60,18 @@ def test__get_jobs__get_job_summary(client):
         [test_dc_labrat_key, test_dc_labrat_0_key])
 
     for c in res.configs:
-        assert c.instanceCount == 3
+        assert c.instanceCount == 2
 
 
 def test__get_tasks_without_configs(client):
     # Create job.
     job_key = start_job_update(
         client,
-        'test_dc_labrat.yaml',
+        'test_dc_labrat_read.yaml',
         'start job update test/dc/labrat')
 
     res = client.get_tasks_without_configs(api.TaskQuery(jobKeys={job_key}))
-    assert len(res.tasks) == 3
+    assert len(res.tasks) == 2
 
     host_counts = defaultdict(int)
 
@@ -88,7 +88,7 @@ def test__get_tasks_without_configs(client):
         assert t.assignedTask.taskId is not None
         assert t.assignedTask.slaveId is not None
         assert t.assignedTask.slaveHost is not None
-        assert t.assignedTask.instanceId in (0, 1, 2)
+        assert t.assignedTask.instanceId in (0, 1)
 
         # ScheduledTask.AssignedTask.TaskConfig
         assert 'test' == t.assignedTask.task.job.role
@@ -111,7 +111,7 @@ def test__get_tasks_without_configs(client):
             if r.numCpus > 0:
                 assert 0.25 == r.numCpus
             elif r.ramMb > 0:
-                assert 32 == r.ramMb
+                assert 128 == r.ramMb
             elif r.diskMb > 0:
                 assert 128 == r.diskMb
             else:
@@ -135,7 +135,7 @@ def test__get_tasks_without_configs_task_queries(client):
     # Create jobs.
     test_dc_labrat_key = start_job_update(
         client,
-        'test_dc_labrat.yaml',
+        'test_dc_labrat_read.yaml',
         'start job update test/dc/labrat')
     test_dc_labrat_0_key = start_job_update(
         client,
@@ -157,23 +157,23 @@ def test__get_tasks_without_configs_task_queries(client):
     # Kill one of the jobs.
     client.kill_tasks(
         test_dc_labrat_1_key,
-        {0, 1, 2},
+        {0, 1},
         'killing all tasks test/dc/labrat1')
     wait_for_killed(client, test_dc_labrat_1_key)
 
     for message, query, expected_job_keys in [
         (
-           'query job keys',
-           api.TaskQuery(jobKeys={
-               test_dc_labrat_key,
-               test_dc_labrat_0_key,
-               test2_dc2_labrat2_key,
-           }),
-           [
-               test_dc_labrat_key,
-               test_dc_labrat_0_key,
-               test2_dc2_labrat2_key,
-           ],
+            'query job keys',
+            api.TaskQuery(jobKeys={
+                test_dc_labrat_key,
+                test_dc_labrat_0_key,
+                test2_dc2_labrat2_key,
+            }),
+            [
+                test_dc_labrat_key,
+                test_dc_labrat_0_key,
+                test2_dc2_labrat2_key,
+            ],
         ), (
             'query role + env + name',
             api.TaskQuery(
@@ -217,7 +217,7 @@ def test__get_tasks_without_configs_task_queries(client):
     ]:
         res = client.get_tasks_without_configs(query)
         # Expect 3 tasks per job key.
-        assert len(res.tasks) == len(expected_job_keys) * 3, message
+        assert len(res.tasks) == len(expected_job_keys) * 2, message
         assert_keys_equal(
             remove_duplicate_keys(t.assignedTask.task.job for t in res.tasks),
             expected_job_keys,

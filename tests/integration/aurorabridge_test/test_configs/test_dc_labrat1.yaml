@@ -9,7 +9,7 @@ taskConfig:
     production: false
     resources:
         - numCpus: 0.25
-        - ramMb: 32
+        - ramMb: 128
         - diskMb: 128
     executorConfig:
         name: AuroraExecutor
@@ -80,14 +80,14 @@ taskConfig:
                         "cpu": 0.25,
                         "disk": 134217728,
                         "gpu": 0,
-                        "ram": 33554432
+                        "ram": 134217728
                     }
                 },
                 "tier": "preemptible"
             }
-instanceCount: 3
+instanceCount: 2
 settings:
-    updateGroupSize: 1
+    updateGroupSize: 2
     minWaitInInstanceRunningMs: 45000
     maxFailedInstances: 1
     maxPerInstanceFailures: 1

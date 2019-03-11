@@ -6,7 +6,7 @@ import thriftrw
 
 api = thriftrw.install(os.path.join(
     os.path.dirname(os.path.realpath(__file__)),
-    '../../../aurorabridge/thrift/api.thrift'))
+    '../../../pkg/aurorabridge/thrift/api.thrift'))
 
 AuroraSchedulerManager = api.AuroraSchedulerManager
 ReadOnlyScheduler = api.ReadOnlyScheduler
