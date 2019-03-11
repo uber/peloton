@@ -33,7 +33,7 @@ func setupTaskVariables() (time.Time, *resmgrsvc.Gang, *resmgr.Task, *Task) {
 		},
 	}
 	now, _ := time.Parse("RFC3339", "2006-01-02T15:04:05Z07:00")
-	task := NewTask(resmgrGang, resmgrTask, now.Add(5*time.Second), 3)
+	task := NewTask(resmgrGang, resmgrTask, now.Add(5*time.Second), now, 3)
 
 	return now, resmgrGang, resmgrTask, task
 }

@@ -314,6 +314,47 @@ func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
 	engine.placeAssignmentGroup(context.Background(), filter, assignments)
 }
 
+func TestEnginePlaceTaskExceedMaxPlacementDeadlineGetsPlaced(t *testing.T) {
+	ctrl, engine, mockOfferService, mockTaskService, mockStrategy := setupEngine(t)
+	defer ctrl.Finish()
+	engine.config.MaxPlacementDuration = 1 * time.Second
+
+	host := testutil.SetupHostOffers()
+	offers := []*models.HostOffers{host}
+	assignment := testutil.SetupAssignment(time.Now().Add(1*time.Second), 10)
+	assignment.Task.Task.DesiredHost = "desired-host"
+	assignment.Task.PlacementDeadline = time.Now().Add(-1 * time.Second)
+	assignment.SetHost(host)
+	assignments := []*models.Assignment{assignment}
+
+	mockStrategy.EXPECT().
+		PlaceOnce(
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return()
+
+	mockTaskService.EXPECT().
+		SetPlacements(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).MinTimes(1).
+		Return()
+
+	mockOfferService.EXPECT().
+		Acquire(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).MinTimes(1).
+		Return(offers, _testReason)
+
+	filter := &hostsvc.HostFilter{}
+	engine.placeAssignmentGroup(context.Background(), filter, assignments)
+}
+
 func TestEnginePlaceCallToStrategy(t *testing.T) {
 	ctrl, engine, mockOfferService, mockTaskService, mockStrategy := setupEngine(t)
 	defer ctrl.Finish()

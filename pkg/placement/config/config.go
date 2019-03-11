@@ -94,6 +94,10 @@ type PlacementConfig struct {
 	// MaxDurations is maximal time that a task can use being placed before
 	// it finally gets launched on the current best host for the task.
 	MaxDurations MaxDurationsConfig `yaml:"max_durations"`
+
+	// MaxDesiredHostPlacementDuration is the max time duration to try to
+	// place a task on the desired host.
+	MaxDesiredHostPlacementDuration time.Duration `yaml:"max_desired_host_placement_duration"`
 }
 
 // MaxRoundsConfig is the config of the maximal number of successful rounds

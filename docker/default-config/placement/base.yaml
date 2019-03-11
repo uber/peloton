@@ -25,6 +25,7 @@ placement:
     stateless: 5m
     daemon: 5m
     stateless: 5m
+  max_desired_host_placement_duration: 1m
 
 election:
   zk_servers: ["zookeeper:2181"]

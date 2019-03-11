@@ -28,12 +28,14 @@ func NewTask(
 	gang *resmgrsvc.Gang,
 	task *resmgr.Task,
 	deadline time.Time,
+	placementDeadline time.Time,
 	maxRounds int) *Task {
 	return &Task{
-		Gang:      gang,
-		Task:      task,
-		Deadline:  deadline,
-		MaxRounds: maxRounds,
+		Gang:              gang,
+		Task:              task,
+		Deadline:          deadline,
+		MaxRounds:         maxRounds,
+		PlacementDeadline: placementDeadline,
 	}
 }
 
@@ -47,6 +49,9 @@ type Task struct {
 	MaxRounds int `json:"max_rounds"`
 	// Rounds is the current number of successful placement Rounds.
 	Rounds int `json:"rounds"`
+	// PlacementDeadline when the task should successfully placed
+	// on the desired host or have failed to do so.
+	PlacementDeadline time.Time `json:"placement_deadline"`
 	// data is used by placement strategies to transfer state between calls to the
 	// place once method.
 	data interface{}
@@ -127,7 +132,13 @@ func (task *Task) PastMaxRounds() bool {
 	return task.Rounds >= task.MaxRounds
 }
 
-// PastDeadline will return true iff the deadline for the gang have passed.
+// PastDeadline will return true iff the deadline for the gang has passed.
 func (task *Task) PastDeadline(now time.Time) bool {
 	return now.After(task.Deadline)
+}
+
+// PastDesiredHostPlacementDeadline returns true iff the deadline for
+// placing the task onto its desired host has passed.
+func (task *Task) PastDesiredHostPlacementDeadline(now time.Time) bool {
+	return now.After(task.PlacementDeadline)
 }

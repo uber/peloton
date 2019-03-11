@@ -226,8 +226,12 @@ func (s *service) createTasks(gang *resmgrsvc.Gang, now time.Time) []*models.Tas
 	maxRounds := s.config.MaxRounds.Value(resTasks[0].Type)
 	duration := s.config.MaxDurations.Value(resTasks[0].Type)
 	deadline := now.Add(duration)
+	desiredHostPlacementDeadline := now.Add(s.config.MaxDesiredHostPlacementDuration)
 	for _, task := range resTasks {
-		tasks = append(tasks, models.NewTask(gang, task, deadline, maxRounds))
+		tasks = append(
+			tasks,
+			models.NewTask(gang, task, deadline, desiredHostPlacementDeadline, maxRounds),
+		)
 	}
 	return tasks
 }

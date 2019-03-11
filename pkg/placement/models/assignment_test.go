@@ -45,7 +45,7 @@ func setupAssignmentVariables() (
 			resmgrTask,
 		},
 	}
-	task := NewTask(resmgrGang, resmgrTask, now.Add(5*time.Second), 3)
+	task := NewTask(resmgrGang, resmgrTask, now.Add(5*time.Second), now, 3)
 	assignment := NewAssignment(task)
 	return hostOffer, resmgrGang, resmgrTask, offer, task, assignment
 }

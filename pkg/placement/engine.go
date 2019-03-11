@@ -428,9 +428,16 @@ func (e *engine) filterAssignments(
 // returns true if we have tried past max rounds or reached the deadline or
 // the host is already placed on the desired host.
 func (e *engine) isAssignmentGoodEnough(task *models.Task, offer *hostsvc.HostOffer, now time.Time) bool {
-	return task.PastMaxRounds() || task.PastDeadline(now) ||
-		(len(task.GetTask().GetDesiredHost()) != 0 &&
-			task.GetTask().GetDesiredHost() == offer.GetHostname())
+	if len(task.GetTask().GetDesiredHost()) == 0 {
+		return task.PastMaxRounds() || task.PastDeadline(now)
+	}
+
+	// if a task has desired host, it would try to get placed on
+	// the desired host until it passes desired host placement deadline
+	return task.GetTask().GetDesiredHost() == offer.GetHostname() ||
+		task.PastDesiredHostPlacementDeadline(now) ||
+		task.PastDeadline(now)
+
 }
 
 // findUsedHosts will find the hosts that are used by the retryable assignments.

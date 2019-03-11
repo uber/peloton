@@ -95,6 +95,6 @@ func SetupAssignment(deadline time.Time, maxRounds int) *models.Assignment {
 			resmgrTask,
 		},
 	}
-	task := models.NewTask(resmgrGang, resmgrTask, deadline, maxRounds)
+	task := models.NewTask(resmgrGang, resmgrTask, deadline, deadline, maxRounds)
 	return models.NewAssignment(task)
 }
