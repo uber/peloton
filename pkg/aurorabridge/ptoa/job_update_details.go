@@ -16,6 +16,7 @@ package ptoa
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
@@ -40,21 +41,36 @@ func NewJobUpdateDetails(
 		return nil, fmt.Errorf("deserialize opaque data: %s", err)
 	}
 
-	var events []*api.JobUpdateEvent
+	var updateEvents []*api.JobUpdateEvent
 	for _, pe := range w.GetEvents() {
 		ae, err := NewJobUpdateEvent(pe, d)
 		if err != nil {
 			return nil, fmt.Errorf("new job update event: %s", err)
 		}
-		events = append(events, ae)
+		updateEvents = append(updateEvents, ae)
 	}
+
+	var instanceEvents []*api.JobInstanceUpdateEvent
+	for _, events := range w.GetInstanceEvents() {
+		id := events.GetInstanceId()
+		for _, pe := range events.GetEvents() {
+			ae, err := NewJobInstanceUpdateEvent(id, pe, d)
+			if err != nil {
+				return nil, fmt.Errorf("new job instance update event: %s", err)
+			}
+			instanceEvents = append(instanceEvents, ae)
+		}
+	}
+	// Sorted by descending timestamp for all instances combined.
+	sort.Sort(sort.Reverse(jobInstanceUpdateEventsByTimestamp(instanceEvents)))
 
 	return &api.JobUpdateDetails{
 		Update: &api.JobUpdate{
 			Summary:      summary,
 			Instructions: NewJobUpdateInstructions(w),
 		},
-		UpdateEvents: events,
+		UpdateEvents:   updateEvents,
+		InstanceEvents: instanceEvents,
 	}, nil
 }
 
@@ -80,11 +96,11 @@ func JoinRollbackJobUpdateDetails(d1, d2 *api.JobUpdateDetails) *api.JobUpdateDe
 	}
 
 	// Stitch together the events of the two updates in descending order.
-	var events []*api.JobUpdateEvent
+	var updateEvents []*api.JobUpdateEvent
 	for _, e := range d2.GetUpdateEvents() {
 		// NOTE: Assumes these have already been converted to the proper
 		// rollback statuses due to the presence of rollback opaque data.
-		events = append(events, e)
+		updateEvents = append(updateEvents, e)
 	}
 	for _, e := range d1.GetUpdateEvents() {
 		if _rollbackAndTerminalStatuses.Has(e.GetStatus()) {
@@ -92,7 +108,18 @@ func JoinRollbackJobUpdateDetails(d1, d2 *api.JobUpdateDetails) *api.JobUpdateDe
 			// update's events.
 			continue
 		}
-		events = append(events, e)
+		updateEvents = append(updateEvents, e)
+	}
+
+	// Stitch together the instance events of the two updates in descending order.
+	var instanceEvents []*api.JobInstanceUpdateEvent
+	for _, e := range d2.GetInstanceEvents() {
+		// NOTE: Assumes these have already been converted to the proper
+		// rollback actions due to the presence of rollback opaque data.
+		instanceEvents = append(instanceEvents, e)
+	}
+	for _, e := range d1.GetInstanceEvents() {
+		instanceEvents = append(instanceEvents, e)
 	}
 
 	s1 := d1.GetUpdate().GetSummary()
@@ -112,6 +139,7 @@ func JoinRollbackJobUpdateDetails(d1, d2 *api.JobUpdateDetails) *api.JobUpdateDe
 			},
 			Instructions: d1.GetUpdate().GetInstructions(),
 		},
-		UpdateEvents: events,
+		UpdateEvents:   updateEvents,
+		InstanceEvents: instanceEvents,
 	}
 }

@@ -4,7 +4,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/pkg/aurorabridge/fixture"
 	"go.uber.org/thriftrw/ptr"
 )
 
@@ -24,6 +26,9 @@ func TestJoinRollbackJobUpdateDetails(t *testing.T) {
 			{Status: api.JobUpdateStatusAborted.Ptr()},
 			{Status: api.JobUpdateStatusRollingForward.Ptr()},
 		},
+		InstanceEvents: []*api.JobInstanceUpdateEvent{
+			{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceUpdating.Ptr()},
+		},
 	}
 
 	// Rollback update.
@@ -40,6 +45,10 @@ func TestJoinRollbackJobUpdateDetails(t *testing.T) {
 		UpdateEvents: []*api.JobUpdateEvent{
 			{Status: api.JobUpdateStatusRolledBack.Ptr()},
 			{Status: api.JobUpdateStatusRollingBack.Ptr()},
+		},
+		InstanceEvents: []*api.JobInstanceUpdateEvent{
+			{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceRolledBack.Ptr()},
+			{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceRollingBack.Ptr()},
 		},
 	}
 
@@ -62,6 +71,14 @@ func TestJoinRollbackJobUpdateDetails(t *testing.T) {
 				tc.result.GetUpdateEvents())
 
 			require.Equal(t,
+				[]*api.JobInstanceUpdateEvent{
+					{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceRolledBack.Ptr()},
+					{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceRollingBack.Ptr()},
+					{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceUpdating.Ptr()},
+				},
+				tc.result.GetInstanceEvents())
+
+			require.Equal(t,
 				api.JobUpdateStatusRolledBack,
 				tc.result.GetUpdate().GetSummary().GetState().GetStatus())
 
@@ -74,4 +91,60 @@ func TestJoinRollbackJobUpdateDetails(t *testing.T) {
 				tc.result.GetUpdate().GetSummary().GetState().GetLastModifiedTimestampMs())
 		})
 	}
+}
+
+func TestNewJobUpdateDetailsInstanceEvents(t *testing.T) {
+	k := fixture.AuroraJobKey()
+	w := fixture.PelotonWorkflowInfo()
+	w.InstanceEvents = []*stateless.WorkflowInfoInstanceWorkflowEvents{
+		{
+			InstanceId: 0,
+			Events: []*stateless.WorkflowEvent{
+				{
+					Timestamp: "2019-03-08T00:11:00Z",
+					State:     stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED,
+				},
+				{
+					Timestamp: "2019-03-08T00:10:00Z",
+					State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+				},
+			},
+		}, {
+			InstanceId: 1,
+			Events: []*stateless.WorkflowEvent{
+				{
+					Timestamp: "2019-03-08T00:12:00Z",
+					State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+				},
+				{
+					Timestamp: "2019-03-08T00:13:00Z",
+					State:     stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED,
+				},
+			},
+		},
+	}
+	d, err := NewJobUpdateDetails(k, w)
+	require.NoError(t, err)
+	require.Equal(t, []*api.JobInstanceUpdateEvent{
+		{
+			InstanceId:  ptr.Int32(1),
+			TimestampMs: ptr.Int64(1552003980000),
+			Action:      api.JobUpdateActionInstanceUpdated.Ptr(),
+		},
+		{
+			InstanceId:  ptr.Int32(1),
+			TimestampMs: ptr.Int64(1552003920000),
+			Action:      api.JobUpdateActionInstanceUpdating.Ptr(),
+		},
+		{
+			InstanceId:  ptr.Int32(0),
+			TimestampMs: ptr.Int64(1552003860000),
+			Action:      api.JobUpdateActionInstanceUpdated.Ptr(),
+		},
+		{
+			InstanceId:  ptr.Int32(0),
+			TimestampMs: ptr.Int64(1552003800000),
+			Action:      api.JobUpdateActionInstanceUpdating.Ptr(),
+		},
+	}, d.GetInstanceEvents())
 }

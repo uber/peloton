@@ -540,7 +540,7 @@ func (h *ServiceHandler) getJobUpdateSummaries(
 	query *api.JobUpdateQuery,
 ) (*api.Result, *auroraError) {
 
-	details, err := h.queryJobUpdates(ctx, query, true /* summaryOnly */)
+	details, err := h.queryJobUpdates(ctx, query, false /* includeInstanceEvents */)
 	if err != nil {
 		return nil, auroraErrorf("query job updates: %s", err)
 	}
@@ -598,7 +598,7 @@ func (h *ServiceHandler) getJobUpdateDetails(
 	if key.IsSetJob() {
 		query.JobKey = key.GetJob()
 	}
-	details, err := h.queryJobUpdates(ctx, query, false /* summaryOnly */)
+	details, err := h.queryJobUpdates(ctx, query, true /* includeInstanceEvents */)
 	if err != nil {
 		return nil, auroraErrorf("query job updates: %s", err)
 	}
@@ -1416,11 +1416,11 @@ func (h *ServiceHandler) pulseJobUpdate(
 }
 
 // queryJobUpdates is an awkward helper which returns JobUpdateDetails which
-// will omit instance events if summaryOnly is set.
+// will include instance events if flag is set.
 func (h *ServiceHandler) queryJobUpdates(
 	ctx context.Context,
 	query *api.JobUpdateQuery,
-	summaryOnly bool,
+	includeInstanceEvents bool,
 ) ([]*api.JobUpdateDetails, error) {
 
 	filter := &updateFilter{
@@ -1443,7 +1443,7 @@ func (h *ServiceHandler) queryJobUpdates(
 
 	f := func(ctx context.Context, input interface{}) (interface{}, error) {
 		return h.getFilteredJobUpdateDetails(
-			ctx, input.(*stateless.JobSummary), filter)
+			ctx, input.(*stateless.JobSummary), filter, includeInstanceEvents)
 	}
 
 	outputs, err := concurrency.Map(
@@ -1489,6 +1489,7 @@ func (h *ServiceHandler) getFilteredJobUpdateDetails(
 	ctx context.Context,
 	job *stateless.JobSummary,
 	filter *updateFilter,
+	includeInstanceEvents bool,
 ) ([]*api.JobUpdateDetails, error) {
 
 	k, err := ptoa.NewJobKey(job.GetName())
@@ -1496,7 +1497,7 @@ func (h *ServiceHandler) getFilteredJobUpdateDetails(
 		return nil, fmt.Errorf("new job key: %s", err)
 	}
 
-	workflows, err := h.listWorkflows(ctx, job.GetJobId())
+	workflows, err := h.listWorkflows(ctx, job.GetJobId(), includeInstanceEvents)
 	if err != nil {
 		if yarpcerrors.IsNotFound(err) {
 			return nil, nil
@@ -1541,8 +1542,6 @@ func (h *ServiceHandler) getFilteredJobUpdateDetails(
 			results = append(results, d)
 		}
 	}
-
-	// TODO(codyg): Populate instance update events.
 
 	return results, nil
 }
@@ -1885,8 +1884,12 @@ func (h *ServiceHandler) getPodEvents(
 func (h *ServiceHandler) listWorkflows(
 	ctx context.Context,
 	jobID *peloton.JobID,
+	includeInstanceEvents bool,
 ) ([]*stateless.WorkflowInfo, error) {
-	req := &statelesssvc.ListJobWorkflowsRequest{JobId: jobID}
+	req := &statelesssvc.ListJobWorkflowsRequest{
+		JobId:          jobID,
+		InstanceEvents: includeInstanceEvents,
+	}
 	resp, err := h.jobClient.ListJobWorkflows(ctx, req)
 	if err != nil {
 		return nil, err

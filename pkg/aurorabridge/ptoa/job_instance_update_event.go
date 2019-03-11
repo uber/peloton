@@ -49,3 +49,12 @@ func NewJobInstanceUpdateEvent(
 		Action:      jobUpdateAction,
 	}, nil
 }
+
+// jobInstanceUpdateEventsByTimestamp sorts instance update events by timestamp.
+type jobInstanceUpdateEventsByTimestamp []*api.JobInstanceUpdateEvent
+
+func (s jobInstanceUpdateEventsByTimestamp) Len() int      { return len(s) }
+func (s jobInstanceUpdateEventsByTimestamp) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s jobInstanceUpdateEventsByTimestamp) Less(i, j int) bool {
+	return s[i].GetTimestampMs() < s[j].GetTimestampMs()
+}

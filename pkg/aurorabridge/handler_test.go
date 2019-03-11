@@ -1724,7 +1724,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Error() {
 
 	suite.jobClient.EXPECT().
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
-			JobId: id,
+			JobId:          id,
+			InstanceEvents: true,
 		}).
 		Return(nil, errors.New("some error"))
 
@@ -1762,7 +1763,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_WorkflowsNotFound(
 
 	suite.jobClient.EXPECT().
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
-			JobId: id,
+			JobId:          id,
+			InstanceEvents: true,
 		}).
 		Return(nil, yarpcerrors.NotFoundErrorf("workflows not found"))
 
@@ -1805,7 +1807,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 
 	suite.jobClient.EXPECT().
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
-			JobId: summaries[0].JobId,
+			JobId:          summaries[0].JobId,
+			InstanceEvents: true,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{
@@ -1816,7 +1819,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 
 	suite.jobClient.EXPECT().
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
-			JobId: summaries[1].JobId,
+			JobId:          summaries[1].JobId,
+			InstanceEvents: true,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{
@@ -1851,7 +1855,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_JoinRollbacksByUpd
 
 	suite.jobClient.EXPECT().
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
-			JobId: id,
+			JobId:          id,
+			InstanceEvents: true,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{
@@ -1891,7 +1896,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_UpdateStatusFilter
 
 	suite.jobClient.EXPECT().
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
-			JobId: id,
+			JobId:          id,
+			InstanceEvents: true,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{
