@@ -1,6 +1,7 @@
-import time
-import os
+import base64
 import json
+import os
+import time
 
 from peloton_helper import (
     PelotonClientHelper,
@@ -10,7 +11,6 @@ from color_print import (
     print_okblue,
     print_okgreen,
 )
-
 from modules import (
     Zookeeper,
     MesosMaster,
@@ -23,7 +23,6 @@ DEFAULT_PELOTON_NUM_LOG_FILES = 10
 
 
 class VCluster(object):
-
     APP_ORDER = [
         'hostmgr',
         'resmgr',
@@ -31,22 +30,26 @@ class VCluster(object):
         'placement_stateless',
         'jobmgr']
 
-    def __init__(self, config, label_name, zk_server, respool_path):
+    def __init__(self, config, label_name, zk_server, respool_path,
+                 peloton_apps_config_path):
         """
-        param config: vcluster configuration
-        param label_name: label of the virtual cluster
-        param zk_server: DNS address of the physical zookeeper server
-        param respool_path: the path of the resource pool
+        param config:             vcluster configuration
+        param label_name:         Label of the virtual cluster
+        param zk_server:          DNS address of the physical zookeeper server
+        param respool_path:       The path of the resource pool
+        param peloton_app_config: The path to the peloton apps configs
 
-        type config: dict
-        type label_name: str
-        type zk_server: str
-        type respool: str
+        type config:                dict
+        type label_name:            str
+        type zk_server:             str
+        type respool:               str
+        type peloton_app_config:    str
         """
         self.config = config
         self.label_name = label_name
         self.zk_server = zk_server
         self.respool_path = respool_path
+        self.peloton_apps_config_path = peloton_apps_config_path
 
         self.peloton_helper = PelotonClientHelper(zk_server, respool_path)
 
@@ -136,6 +139,14 @@ class VCluster(object):
             ))
         return host, port, keyspace
 
+    def _get_app_path(self):
+        """
+        Returns the formatted path for app config
+        """
+        path = os.path.join(self.peloton_apps_config_path, "config", "{}",
+                            "production.yaml")
+        return path
+
     def start_peloton(self, virtual_zookeeper, agent_num, version=None,
                       skip_respool=False, peloton_image=None):
         """
@@ -161,7 +172,18 @@ class VCluster(object):
 
         for app in self.APP_ORDER:
             print_okblue('Creating peloton application: %s' % app)
+
+            # placement_[stateless|stateful] is the placement app with the a
+            # different name
+            if app.startswith('placement_'):
+                app = 'placement'
+
+            prod_config_path = self._get_app_path().format(app)
+            with open(prod_config_path, "rb") as config_file:
+                prod_config_base64 = base64.b64encode(config_file.read())
+
             dynamic_env_master = {
+                "PRODUCTION_CONFIG": prod_config_base64,
                 'APP': app,
                 'ENVIRONMENT': 'production',
                 'ELECTION_ZK_SERVERS': virtual_zookeeper,
@@ -170,7 +192,7 @@ class VCluster(object):
                 'CASSANDRA_HOSTS': chost,
                 'CASSANDRA_PORT': str(cport),
                 'CONTAINER_LOGGER_LOGROTATE_STDERR_OPTIONS':
-                'rotate %s' % num_logs,
+                    'rotate %s' % num_logs,
             }
             mesos_slave_config = self.config.get('mesos-slave', {})
             mesos_work_dir = [
@@ -202,7 +224,7 @@ class VCluster(object):
                     self.label_name + '_' + 'peloton-' + app,
                     version,
                     peloton_image,
-                ))
+                    ))
 
         self.vcluster_config.update({
             'Peloton Version': version,

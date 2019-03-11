@@ -115,12 +115,19 @@ def parse_arguments():
     )
 
     parser_setup.add_argument(
+        '-c',
+        '--peloton-app-config',
+        dest='peloton_apps_config_path',
+        help='the path of the peloton apps config',
+    )
+
+    parser_setup.add_argument(
         '-i',
         '--peloton-image',
         dest='peloton_image',
         default=None,
         help='Docker image to use for Peloton. ' +
-        'If specified, overrides option -v',
+             'If specified, overrides option -v',
     )
 
     parser_setup.add_argument(
@@ -195,7 +202,7 @@ def parse_arguments():
         dest='peloton_image',
         default=None,
         help='Docker image to use for Peloton. ' +
-        'If specified, overrides option -v',
+             'If specified, overrides option -v',
     )
 
     subparsers.add_parser(
@@ -217,7 +224,8 @@ def main():
         config,
         args.label_name,
         args.zookeeper_server,
-        args.respool_path
+        args.respool_path,
+        args.peloton_apps_config_path
     )
 
     command = args.command
