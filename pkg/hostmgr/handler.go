@@ -664,37 +664,29 @@ func (h *ServiceHandler) LaunchTasks(
 		}, nil
 	}
 
-	var taskIDs []*peloton.TaskID
-
+	hostToTaskIDs := make(map[string][]*peloton.TaskID)
 	for _, launchableTask := range req.GetTasks() {
 		hostHeld := h.offerPool.GetHostHeldForTask(launchableTask.GetId())
-		if hostHeld == req.GetHostname() {
-			taskIDs = append(taskIDs, launchableTask.GetId())
-		} else if len(hostHeld) != 0 {
+		if len(hostHeld) != 0 {
+			hostToTaskIDs[hostHeld] =
+				append(hostToTaskIDs[hostHeld], launchableTask.GetId())
+		}
+	}
+
+	for hostname, taskIDs := range hostToTaskIDs {
+		if hostname != req.GetHostname() {
 			log.WithFields(log.Fields{
-				"task_id":       launchableTask.GetId().GetValue(),
-				"host_held":     hostHeld,
+				"task_ids":      taskIDs,
+				"host_held":     hostname,
 				"host_launched": req.GetHostname(),
 			}).Info("task not launched on the host held")
 
-			// the task is not launched on the host it reserves for,
-			// release the host
-			hs, err := h.offerPool.GetHostSummary(hostHeld)
-			if err != nil {
+			if err := h.offerPool.ReleaseHoldForTasks(hostname, taskIDs); err != nil {
 				log.WithFields(log.Fields{
-					"task_id":   launchableTask.GetId().GetValue(),
-					"host_held": hostHeld,
+					"task_ids":  taskIDs,
+					"host_held": hostname,
 					"error":     err,
-				}).Warn("cannot find host summary to release held host")
-				continue
-			}
-
-			if err := hs.ReleaseHoldForTask(launchableTask.GetId()); err != nil {
-				log.WithFields(log.Fields{
-					"task_id":   launchableTask.GetId().GetValue(),
-					"host_held": hostHeld,
-					"error":     err,
-				}).Warn("cannot release held host when launching task on other hosts")
+				}).Warn("fail to release held host when launching tasks on other hosts")
 				continue
 			}
 		}
@@ -704,7 +696,7 @@ func (h *ServiceHandler) LaunchTasks(
 		req.GetHostname(),
 		false,
 		req.GetId().GetValue(),
-		taskIDs...,
+		hostToTaskIDs[req.GetHostname()]...,
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -956,28 +948,23 @@ func (h *ServiceHandler) KillAndReserveTasks(
 	body *hostsvc.KillAndReserveTasksRequest,
 ) (*hostsvc.KillAndReserveTasksResponse, error) {
 	var taskIDs []*mesos.TaskID
+	heldHostToTaskIDs := make(map[string][]*peloton.TaskID)
 
-	// reserve the hosts first
 	for _, entry := range body.GetEntries() {
 		taskIDs = append(taskIDs, entry.GetTaskId())
+		heldHostToTaskIDs[entry.GetHostToReserve()] =
+			append(heldHostToTaskIDs[entry.GetHostToReserve()], entry.GetId())
+	}
 
+	// reserve the hosts first
+	for hostname, taskIDs := range heldHostToTaskIDs {
 		// fail to reserve hosts should not fail kill,
 		// just fail the in-place update and move on
 		// to kill the task
-		hs, err := h.offerPool.GetHostSummary(entry.GetHostToReserve())
-		if err != nil {
+		if err := h.offerPool.HoldForTasks(hostname, taskIDs); err != nil {
 			log.WithFields(log.Fields{
-				"hostname": entry.GetHostToReserve(),
-				"task_id":  entry.GetId().GetValue(),
-			}).WithError(err).
-				Warn("fail to get host summary when holding the host")
-			continue
-		}
-
-		if err := hs.HoldForTask(entry.GetId()); err != nil {
-			log.WithFields(log.Fields{
-				"hostname": entry.GetHostToReserve(),
-				"task_id":  entry.GetId().GetValue(),
+				"hostname": hostname,
+				"task_ids": taskIDs,
 			}).WithError(err).
 				Warn("fail to hold the host")
 			continue
@@ -1000,14 +987,14 @@ func (h *ServiceHandler) KillAndReserveTasks(
 	// if task kill fails, try to release the tasks
 	// TODO: can release only the failed tasks, for now it is ok, since
 	// one task is killed in each call to the API.
-	for _, entry := range body.GetEntries() {
-		hs, err := h.offerPool.GetHostSummary(entry.GetHostToReserve())
-		if err != nil {
-			return resp, err
-		}
-
-		if err := hs.ReleaseHoldForTask(entry.GetId()); err != nil {
-			return resp, err
+	for hostname, taskIDs := range heldHostToTaskIDs {
+		if err := h.offerPool.ReleaseHoldForTasks(hostname, taskIDs); err != nil {
+			log.WithFields(log.Fields{
+				"hostname": hostname,
+				"task_ids": taskIDs,
+			}).WithError(err).
+				Warn("fail to release hold on host after task kill fail")
+			continue
 		}
 	}
 

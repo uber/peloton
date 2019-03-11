@@ -822,7 +822,10 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOnNonHeldTask() {
 	suite.pool.AddOffers(context.Background(), generateOffers(2))
 	hs1, err := suite.pool.GetHostSummary("hostname-1")
 	suite.NoError(err)
-	suite.NoError(hs1.HoldForTask(launchabelTask.GetId()))
+	suite.NoError(
+		suite.pool.HoldForTasks(hs1.GetHostname(),
+			[]*peloton.TaskID{launchabelTask.GetId()}),
+	)
 	suite.Equal(hs1.GetHostStatus(), summary.HeldHost)
 
 	gomock.InOrder(

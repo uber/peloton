@@ -24,21 +24,16 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/offer/offerpool"
 )
 
-// HostPruner is the interface to prune hosts set to PlacingOffer status for
-// too long by resetting status to ReadyOffer
-type HostPruner interface {
-	Prune(_ *atomic.Bool)
-}
-
-// hostPruner implements interface HostPruner
-type hostPruner struct {
+// placingHostPruner implements interface HostPruner
+type placingHostPruner struct {
 	offerPool offerpool.Pool
 	scope     tally.Scope
 }
 
-// NewHostPruner initializes the host pruner for an OfferPool
-func NewHostPruner(pool offerpool.Pool, scope tally.Scope) HostPruner {
-	return &hostPruner{
+// NewPlacingHostPruner initializes the host pruner for an OfferPool which
+// prunes expired hosts in Placing state
+func NewPlacingHostPruner(pool offerpool.Pool, scope tally.Scope) HostPruner {
+	return &placingHostPruner{
 		offerPool: pool,
 		scope:     scope,
 	}
@@ -46,11 +41,13 @@ func NewHostPruner(pool offerpool.Pool, scope tally.Scope) HostPruner {
 
 // For each host of the offerPool, the hostSummary status gets reset
 // from PlacingOffer back to ReadyOffer if the PlacingOffer status has expired
-func (h *hostPruner) Prune(_ *atomic.Bool) {
-	log.Debug("Running host pruning")
-	prunedHostnames := h.offerPool.ResetExpiredHostSummaries(time.Now())
+func (h *placingHostPruner) Prune(_ *atomic.Bool) {
+	log.Debug("Running placing host pruning")
+	prunedHostnames := h.offerPool.ResetExpiredPlacingHostSummaries(time.Now())
 	h.scope.Counter("pruned").Inc(int64(len(prunedHostnames)))
 	if len(prunedHostnames) > 0 {
-		log.WithField("hosts", prunedHostnames).Warn("Hosts pruned")
+		log.WithField("hosts", prunedHostnames).
+			WithField("state", "PLACING").
+			Warn("Hosts pruned")
 	}
 }

@@ -24,7 +24,7 @@ import (
 	hostmgr_offer_offerpool_mocks "github.com/uber/peloton/pkg/hostmgr/offer/offerpool/mocks"
 )
 
-func TestPrune(t *testing.T) {
+func TestPlacingHostPrune(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -49,8 +49,8 @@ func TestPrune(t *testing.T) {
 
 	for _, tt := range testTable {
 		testScope := tally.NewTestScope("", map[string]string{})
-		offerPool.EXPECT().ResetExpiredHostSummaries(gomock.Any()).Return(tt.mockResetExpiredHostSummaries)
-		hostPruner := NewHostPruner(offerPool, testScope)
+		offerPool.EXPECT().ResetExpiredPlacingHostSummaries(gomock.Any()).Return(tt.mockResetExpiredHostSummaries)
+		hostPruner := NewPlacingHostPruner(offerPool, testScope)
 		hostPruner.Prune(nil)
 
 		assert.Equal(

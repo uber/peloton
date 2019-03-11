@@ -22,6 +22,7 @@ import (
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/multierr"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
@@ -91,10 +92,15 @@ type Pool interface {
 	//  this in a debugging endpoint.
 	// View() (map[string][]*mesos.Offer, err)
 
-	// ResetExpiredHostSummaries resets the status of each hostSummary of the
+	// ResetExpiredPlacingHostSummaries resets the status of each hostSummary of the
 	// offerPool from PlacingOffer to ReadyOffer if the PlacingOffer status has
 	// expired and returns the hostnames which got reset
-	ResetExpiredHostSummaries(now time.Time) []string
+	ResetExpiredPlacingHostSummaries(now time.Time) []string
+
+	// ResetExpiredHeldHostSummaries resets the status of each hostSummary of the
+	// offerPool from HeldHost to ReadyHost if the HeldHost status has
+	// expired and returns the hostnames which got reset
+	ResetExpiredHeldHostSummaries(now time.Time) []string
 
 	// GetOffers returns hostOffers : map[hostname] -> map(offerid -> offers
 	// & #offers for reserved, unreserved or all offer type.
@@ -121,6 +127,12 @@ type Pool interface {
 
 	// GetHostHeldForTask returns the host that is held for the task
 	GetHostHeldForTask(taskID *peloton.TaskID) string
+
+	// HoldForTasks holds the host for the tasks specified
+	HoldForTasks(hostname string, taskIDs []*peloton.TaskID) error
+
+	// ReleaseHoldForTasks release the hold of host for the tasks specified
+	ReleaseHoldForTasks(hostname string, taskIDs []*peloton.TaskID) error
 }
 
 const (
@@ -334,6 +346,10 @@ func (p *offerPool) ClaimForLaunch(
 		}
 	}
 
+	for _, taskID := range taskIDs {
+		p.removeTaskHold(hostname, taskID)
+	}
+
 	return offerMap, nil
 }
 
@@ -399,7 +415,6 @@ func (p *offerPool) AddOffers(
 				p.scarceResourceTypes,
 				hostname,
 				p.slackResourceTypes)
-			hs.AddListener(p)
 			p.hostOfferIndex[hostname] = hs
 		}
 	}
@@ -563,22 +578,49 @@ func (p *offerPool) ReturnUnusedOffers(hostname string) error {
 	return nil
 }
 
-// ResetExpiredHostSummaries resets the status of each hostSummary of the
+// ResetExpiredPlacingHostSummaries resets the status of each hostSummary of the
 // offerPool from PlacingOffer to ReadyOffer if the PlacingOffer status has
 // expired and returns the hostnames which got reset
-func (p *offerPool) ResetExpiredHostSummaries(now time.Time) []string {
+func (p *offerPool) ResetExpiredPlacingHostSummaries(now time.Time) []string {
 	p.RLock()
 	defer p.RUnlock()
 	var resetHostnames []string
 	for hostname, summ := range p.hostOfferIndex {
-		if reset, res := summ.ResetExpiredPlacingOfferStatus(now); reset {
+		if reset, res, taskExpired := summ.ResetExpiredPlacingOfferStatus(now); reset {
 			resetHostnames = append(resetHostnames, hostname)
-			p.metrics.ResetExpiredHosts.Inc(1)
+			for _, task := range taskExpired {
+				p.removeTaskHold(hostname, task)
+			}
+			p.metrics.ResetExpiredPlacingHosts.Inc(1)
 			log.WithFields(log.Fields{
 				"host":    hostname,
 				"summary": summ,
 				"delta":   res,
-			}).Info("reset expired host summaries.")
+			}).Info("reset expired host summaries in PLACING state.")
+		}
+	}
+	return resetHostnames
+}
+
+// ResetExpiredHeldHostSummaries resets the status of each hostSummary of the
+// offerPool from HeldHost to ReadyOffer if the PlacingOffer status has
+// expired and returns the hostnames which got reset
+func (p *offerPool) ResetExpiredHeldHostSummaries(now time.Time) []string {
+	p.RLock()
+	defer p.RUnlock()
+	var resetHostnames []string
+	for hostname, summ := range p.hostOfferIndex {
+		if reset, res, taskExpired := summ.ResetExpiredHostHeldStatus(now); reset {
+			resetHostnames = append(resetHostnames, hostname)
+			for _, task := range taskExpired {
+				p.removeTaskHold(hostname, task)
+			}
+			p.metrics.ResetExpiredHeldHosts.Inc(1)
+			log.WithFields(log.Fields{
+				"host":    hostname,
+				"summary": summ,
+				"delta":   res,
+			}).Info("reset expired host summaries in HELD state.")
 		}
 	}
 	return resetHostnames
@@ -735,9 +777,54 @@ func (p *offerPool) GetHostHeldForTask(taskID *peloton.TaskID) string {
 	return val.(string)
 }
 
-// OnTaskHoldAdd implements HeldTaskChangeListener, it is called when
-// host is on held for a task
-func (p *offerPool) OnTaskHoldAdd(hostname string, id *peloton.TaskID) {
+// HoldForTasks holds the host for the task specified
+func (p *offerPool) HoldForTasks(hostname string, taskIDs []*peloton.TaskID) error {
+	hs, err := p.GetHostSummary(hostname)
+	if err != nil {
+		return err
+	}
+
+	var errs []error
+	for _, taskID := range taskIDs {
+		if err := hs.HoldForTask(taskID); err != nil {
+			errs = append(errs, err)
+		} else {
+			p.addTaskHold(hostname, taskID)
+		}
+	}
+
+	if len(errs) != 0 {
+		return multierr.Combine(errs...)
+	}
+
+	return nil
+}
+
+// ReleaseHoldForTasks release the hold of host for the tasks specified
+func (p *offerPool) ReleaseHoldForTasks(hostname string, taskIDs []*peloton.TaskID) error {
+	hs, err := p.GetHostSummary(hostname)
+	if err != nil {
+		return err
+	}
+
+	var errs []error
+	for _, taskID := range taskIDs {
+		if err := hs.ReleaseHoldForTask(taskID); err != nil {
+			errs = append(errs, err)
+		} else {
+			p.removeTaskHold(hostname, taskID)
+		}
+	}
+
+	if len(errs) != 0 {
+		return multierr.Combine(errs...)
+	}
+
+	return nil
+}
+
+// addTaskHold update the index when a host is held for a task
+func (p *offerPool) addTaskHold(hostname string, id *peloton.TaskID) {
 	oldHost, loaded := p.taskHeldIndex.LoadOrStore(id.GetValue(), hostname)
 	if loaded && oldHost != hostname {
 		log.WithFields(log.Fields{
@@ -749,8 +836,8 @@ func (p *offerPool) OnTaskHoldAdd(hostname string, id *peloton.TaskID) {
 	}
 }
 
-// OnTaskHoldRemove implements HeldTaskChangeListener, it is called when
-// host is removed from held for a host
-func (p *offerPool) OnTaskHoldRemove(hostname string, id *peloton.TaskID) {
+// removeTaskHold update the index when a host is removed from
+// held for a task
+func (p *offerPool) removeTaskHold(hostname string, id *peloton.TaskID) {
 	p.taskHeldIndex.Delete(id.GetValue())
 }

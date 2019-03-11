@@ -1056,7 +1056,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 		s.statusPlacingOfferExpiration = tt.statusPlacingOfferExpiration
 		s.AddMesosOffers(context.Background(), offers)
 
-		reset, _ := s.ResetExpiredPlacingOfferStatus(now)
+		reset, _, _ := s.ResetExpiredPlacingOfferStatus(now)
 		suite.Equal(tt.resetExpected, reset, tt.msg)
 		suite.Equal(s.readyCount.Load(), int32(tt.readyCount), tt.msg)
 		if tt.resetExpected {
@@ -1075,10 +1075,122 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 	suite.NotEqual(emptyOfferID, s.hostOfferID)
 	suite.Equal(s.readyCount.Load(), int32(0))
 	s.readyCount.Store(int32(5))
-	reset, _ := s.ResetExpiredPlacingOfferStatus(now)
+	reset, _, _ := s.ResetExpiredPlacingOfferStatus(now)
 	suite.Equal(false, reset,
 		"This is negative test, were time has elapsed but Cache Status "+
 			"for Host Summary is not reset from Placing -> Ready")
+}
+
+func (suite *HostOfferSummaryTestSuite) TestResetExpiredHeldOfferStatus() {
+	defer suite.ctrl.Finish()
+
+	now := time.Now()
+
+	t1 := &peloton.TaskID{Value: "t1"}
+	t2 := &peloton.TaskID{Value: "t2"}
+
+	testTable := []struct {
+		initialStatus HostStatus
+		newStatus     HostStatus
+		tasksHeld     []struct {
+			taskHeld                 *peloton.TaskID
+			statusHeldHostExpiration time.Time
+		}
+		resetExpected  bool
+		numTaskExpired int
+		msg            string
+	}{
+		{
+			initialStatus:  ReadyHost,
+			newStatus:      ReadyHost,
+			resetExpected:  false,
+			numTaskExpired: 0,
+			msg:            "HostSummary in ReadyHost status",
+		},
+		{
+			initialStatus: HeldHost,
+			newStatus:     HeldHost,
+			tasksHeld: []struct {
+				taskHeld                 *peloton.TaskID
+				statusHeldHostExpiration time.Time
+			}{
+				{taskHeld: t1, statusHeldHostExpiration: now.Add(10 * time.Minute)},
+				{taskHeld: t2, statusHeldHostExpiration: now.Add(10 * time.Minute)},
+			},
+			resetExpected:  false,
+			numTaskExpired: 0,
+			msg:            "HostSummary in HeldHost status, has not timed out",
+		},
+		{
+			initialStatus: HeldHost,
+			newStatus:     ReadyHost,
+			tasksHeld: []struct {
+				taskHeld                 *peloton.TaskID
+				statusHeldHostExpiration time.Time
+			}{
+				{taskHeld: t1, statusHeldHostExpiration: now.Add(-10 * time.Minute)},
+				{taskHeld: t2, statusHeldHostExpiration: now.Add(-10 * time.Minute)},
+			},
+			resetExpected:  true,
+			numTaskExpired: 2,
+			msg:            "HostSummary in HeldHost status, has timed out",
+		},
+		{
+			initialStatus: HeldHost,
+			newStatus:     HeldHost,
+			tasksHeld: []struct {
+				taskHeld                 *peloton.TaskID
+				statusHeldHostExpiration time.Time
+			}{
+				{taskHeld: t1, statusHeldHostExpiration: now.Add(10 * time.Minute)},
+				{taskHeld: t2, statusHeldHostExpiration: now.Add(-10 * time.Minute)},
+			},
+			resetExpected:  true,
+			numTaskExpired: 1,
+			msg:            "HostSummary in HeldHost status, partially timed out",
+		},
+		{
+			initialStatus: PlacingHost,
+			newStatus:     PlacingHost,
+			tasksHeld: []struct {
+				taskHeld                 *peloton.TaskID
+				statusHeldHostExpiration time.Time
+			}{
+				{taskHeld: t1, statusHeldHostExpiration: now.Add(10 * time.Minute)},
+				{taskHeld: t2, statusHeldHostExpiration: now.Add(-10 * time.Minute)},
+			},
+			resetExpected:  true,
+			numTaskExpired: 1,
+			msg:            "HostSummary in PlacingHost status, partially timed out",
+		},
+		{
+			initialStatus: PlacingHost,
+			newStatus:     PlacingHost,
+			tasksHeld: []struct {
+				taskHeld                 *peloton.TaskID
+				statusHeldHostExpiration time.Time
+			}{
+				{taskHeld: t1, statusHeldHostExpiration: now.Add(-10 * time.Minute)},
+				{taskHeld: t2, statusHeldHostExpiration: now.Add(-10 * time.Minute)},
+			},
+			resetExpected:  true,
+			numTaskExpired: 2,
+			msg:            "HostSummary in PlacingHost status, has timed out",
+		},
+	}
+
+	for _, tt := range testTable {
+		s := New(suite.mockVolumeStore, nil, "host1", supportedSlackResourceTypes).(*hostSummary)
+		s.status = tt.initialStatus
+		for _, task := range tt.tasksHeld {
+			s.heldTasks[task.taskHeld.GetValue()] = task.statusHeldHostExpiration
+		}
+
+		reset, _, taskExpired := s.ResetExpiredHostHeldStatus(now)
+		suite.Equal(tt.newStatus, s.status, tt.msg)
+		suite.Equal(tt.resetExpected, reset, tt.msg)
+		suite.Len(taskExpired, tt.numTaskExpired)
+	}
 }
 
 func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() {
@@ -1201,42 +1313,14 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForReservedOffersForLaunch() {
 	suite.Equal(len(summaryOffers), 0)
 }
 
-type action int
-
-const (
-	add action = iota
-	remove
-)
-
-type testListenerEntry struct {
-	hostname string
-	id       *peloton.TaskID
-	act      action
-}
-
-type testListener struct {
-	entries []*testListenerEntry
-}
-
-func (t *testListener) OnTaskHoldAdd(hostname string, id *peloton.TaskID) {
-	t.entries = append(t.entries, &testListenerEntry{hostname: hostname, id: id, act: add})
-}
-
-func (t *testListener) OnTaskHoldRemove(hostname string, id *peloton.TaskID) {
-	t.entries = append(t.entries, &testListenerEntry{hostname: hostname, id: id, act: remove})
-}
-
 func (suite *HostOfferSummaryTestSuite) TestHoldAndReleaseTask() {
 	defer suite.ctrl.Finish()
 
 	hostname0 := "hostname-0"
-	listener := &testListener{}
 	hs0 := New(suite.mockVolumeStore, nil, hostname0, supportedSlackResourceTypes).(*hostSummary)
-	hs0.AddListener(listener)
 
 	hostname1 := "hostname-1"
 	hs1 := New(suite.mockVolumeStore, nil, hostname1, supportedSlackResourceTypes).(*hostSummary)
-	hs1.AddListener(listener)
 
 	t1 := &peloton.TaskID{Value: "t1"}
 	t2 := &peloton.TaskID{Value: "t2"}
@@ -1254,13 +1338,6 @@ func (suite *HostOfferSummaryTestSuite) TestHoldAndReleaseTask() {
 
 	suite.Equal(hs0.GetHostStatus(), ReadyHost)
 	suite.Equal(hs1.GetHostStatus(), HeldHost)
-
-	suite.Equal(listener.entries[0], &testListenerEntry{hostname: hostname0, id: t1, act: add})
-	suite.Equal(listener.entries[1], &testListenerEntry{hostname: hostname1, id: t2, act: add})
-	suite.Equal(listener.entries[2], &testListenerEntry{hostname: hostname1, id: t3, act: add})
-	suite.Equal(listener.entries[3], &testListenerEntry{hostname: hostname0, id: t1, act: remove})
-	suite.Equal(listener.entries[4], &testListenerEntry{hostname: hostname1, id: t2, act: remove})
-	suite.Len(listener.entries, 5)
 }
 
 func (suite *HostOfferSummaryTestSuite) TestReturnPlacingHost() {

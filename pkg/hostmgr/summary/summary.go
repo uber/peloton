@@ -95,17 +95,13 @@ const (
 const (
 	// hostPlacingOfferStatusTimeout is a timeout for resetting
 	// PlacingHost status back to ReadHost status.
-	hostPlacingOfferStatusTimeout time.Duration = 5 * time.Minute
+	hostPlacingOfferStatusTimeout = 5 * time.Minute
+	// hostHeldHostStatusTimeout is a timeout for resetting
+	// HeldHost status back to ReadyHost status.
+	hostHeldStatusTimeout = 3 * time.Minute
 	// emptyOfferID is used when the host is in READY state.
 	emptyOfferID = ""
 )
-
-// HeldTaskChangeListener is called when the task held on the host
-// changes
-type HeldTaskChangeListener interface {
-	OnTaskHoldAdd(hostname string, id *peloton.TaskID)
-	OnTaskHoldRemove(hostname string, id *peloton.TaskID)
-}
 
 // HostSummary is the core component of host manager's internal
 // data structure. It keeps track of offers in various state,
@@ -149,9 +145,16 @@ type HostSummary interface {
 	UnreservedAmount() (scalar.Resources, scalar.Resources, HostStatus)
 
 	// ResetExpiredPlacingOfferStatus resets a hostSummary status from PlacingOffer
-	// to ReadyOffer if the PlacingOffer status has expired, and returns
-	// whether the hostSummary got reset and resources amount for unreserved offers.
-	ResetExpiredPlacingOfferStatus(now time.Time) (bool, scalar.Resources)
+	// if the PlacingOffer status has expired, and returns
+	// whether the hostSummary got reset, resources amount for unreserved offers and
+	// the tasks held released due to the expiration
+	ResetExpiredPlacingOfferStatus(now time.Time) (bool, scalar.Resources, []*peloton.TaskID)
+
+	// ResetExpiredHostHeldStatus resets a hostSummary status from HeldHost
+	// if the HeldHost status has expired, and returns
+	// whether the hostSummary got reset, resources amount for unreserved offers and
+	// the tasks held released due to the expiration
+	ResetExpiredHostHeldStatus(now time.Time) (bool, scalar.Resources, []*peloton.TaskID)
 
 	// GetOffers returns offers and #offers present for this host, of type reserved, unreserved or all.
 	// Returns map of offerid -> offer
@@ -163,18 +166,19 @@ type HostSummary interface {
 	// GetHostStatus returns the HostStatus of the host
 	GetHostStatus() HostStatus
 
-	// HoldForTask holds the host for the task specified
+	// HoldForTasks holds the host for the task specified.
+	// If an error is returned, hostsummary would guarantee that
+	// the host is not on held for the task
 	HoldForTask(id *peloton.TaskID) error
 
-	// ReleaseHoldForTask release the hold of host for the task specified
+	// ReleaseHoldForTasks release the hold of host for the task specified.
+	// If an error is returned, hostsummary would guarantee that
+	// the host is not on released for the task
 	ReleaseHoldForTask(id *peloton.TaskID) error
 
 	// ReturnPlacingHost is called when the host in PLACING state is not used,
 	// and is returned by placement engine
 	ReturnPlacingHost() error
-
-	// AddListener adds listener for change of held task
-	AddListener(listener HeldTaskChangeListener)
 }
 
 type offerIDgenerator func() string
@@ -220,10 +224,10 @@ type hostSummary struct {
 	// TODO: pass volumeStore in updatePersistentVolume function.
 	volumeStore storage.PersistentVolumeStore
 
-	// a set to present for which tasks the host is held
-	heldTasks map[string]struct{}
-
-	heldTaskChangeListener HeldTaskChangeListener
+	// a map to present for which tasks the host is held,
+	// key is the task id, value is the expiration time
+	// of the hold
+	heldTasks map[string]time.Time
 }
 
 // New returns a zero initialized hostSummary
@@ -236,7 +240,7 @@ func New(
 	return &hostSummary{
 		unreservedOffers:    make(map[string]*mesos.Offer),
 		reservedOffers:      make(map[string]*mesos.Offer),
-		heldTasks:           make(map[string]struct{}),
+		heldTasks:           make(map[string]time.Time),
 		scarceResourceTypes: scarceResourceTypes,
 		slackResourceTypes:  slackResourceTypes,
 
@@ -247,8 +251,6 @@ func New(
 		hostname: hostname,
 
 		offerIDgenerator: uuidOfferID,
-
-		heldTaskChangeListener: &dummyListener{},
 	}
 }
 
@@ -518,13 +520,11 @@ func (a *hostSummary) ClaimForLaunch(hostOfferID string, taskIDs ...*peloton.Tas
 	result := make(map[string]*mesos.Offer)
 	result, a.unreservedOffers = a.unreservedOffers, result
 
-	if len(taskIDs) != 0 {
-		for _, taskID := range taskIDs {
-			a.releaseHoldForTaskLockFree(taskID)
-		}
+	for _, taskID := range taskIDs {
+		a.releaseHoldForTaskLockFree(taskID)
 	}
 
-	newState := a.getResetPlacingStatus()
+	newState := a.getResetStatus()
 
 	log.WithFields(log.Fields{
 		"hostname":   a.hostname,
@@ -629,7 +629,6 @@ func (a *hostSummary) casStatusLockFree(old, new HostStatus) error {
 	case HeldHost:
 		a.hostOfferID = emptyOfferID
 		a.readyCount.Store(int32(len(a.unreservedOffers)))
-		// TODO: add expiration time here
 	}
 	return nil
 }
@@ -650,26 +649,92 @@ func (a *hostSummary) UnreservedAmount() (scalar.Resources, scalar.Resources, Ho
 
 // ResetExpiredPlacingOfferStatus resets a hostSummary status from PlacingOffer
 // to ReadyOffer if the PlacingOffer status has expired, and returns
-// whether the hostSummary got reset
-func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) (bool, scalar.Resources) {
+// whether the hostSummary got reset to READY/HELD
+func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) (bool, scalar.Resources, []*peloton.TaskID) {
 	a.Lock()
 	defer a.Unlock()
+
+	var taskExpired []*peloton.TaskID
 
 	if !a.HasOffer() &&
 		a.status == PlacingHost &&
 		now.After(a.statusPlacingOfferExpiration) {
 
+		// some tasks held on the host may expire during the time,
+		// expire the tasks and calculate the new status
+		taskExpired = a.releaseExpiredHeldTask(now)
+
+		newStatus := a.getResetStatus()
+
 		log.WithFields(log.Fields{
 			"time":            now,
 			"current_status":  a.status,
+			"new_status":      newStatus,
 			"ready_count":     a.readyCount.Load(),
 			"offer_resources": scalar.FromOfferMap(a.unreservedOffers),
-		}).Warn("reset host from placing to ready after timeout")
+			"task_expired":    taskExpired,
+		}).Warn("reset host from placing state after timeout")
 
-		a.casStatusLockFree(PlacingHost, ReadyHost)
-		return true, scalar.FromOfferMap(a.unreservedOffers)
+		a.casStatusLockFree(PlacingHost, newStatus)
+		return true, scalar.FromOfferMap(a.unreservedOffers), taskExpired
 	}
-	return false, scalar.Resources{}
+	return false, scalar.Resources{}, taskExpired
+}
+
+// ResetExpiredHostHeldStatus resets a hostSummary status from HeldHost
+// to ReadyHost if the HeldHost status has expired, and returns
+// whether the hostSummary got reset to READY/HELD
+func (a *hostSummary) ResetExpiredHostHeldStatus(now time.Time) (bool, scalar.Resources, []*peloton.TaskID) {
+	a.Lock()
+	defer a.Unlock()
+
+	var taskExpired []*peloton.TaskID
+
+	taskExpired = a.releaseExpiredHeldTask(now)
+
+	// keep the host status if it is in PLACING/Reserved
+	if len(taskExpired) != 0 && a.status == HeldHost {
+		newStatus := a.getResetStatus()
+
+		log.WithFields(log.Fields{
+			"time":            now,
+			"current_status":  a.status,
+			"new_status":      newStatus,
+			"ready_count":     a.readyCount.Load(),
+			"offer_resources": scalar.FromOfferMap(a.unreservedOffers),
+			"task_expired":    taskExpired,
+		}).Warn("remove expired task for host in held status after timeout")
+
+		a.casStatusLockFree(HeldHost, newStatus)
+
+		// if host is still in held state, then no resource is freed
+		res := scalar.Resources{}
+		if newStatus != HeldHost {
+			res = scalar.FromOfferMap(a.unreservedOffers)
+		}
+		return true, res, taskExpired
+	}
+
+	// reset happens, but host state is not changed,
+	// so no res is released
+	if len(taskExpired) != 0 {
+		return true, scalar.Resources{}, taskExpired
+	}
+
+	return false, scalar.Resources{}, taskExpired
+}
+
+func (a *hostSummary) releaseExpiredHeldTask(now time.Time) []*peloton.TaskID {
+	var taskExpired []*peloton.TaskID
+
+	for taskID, expirationTime := range a.heldTasks {
+		if now.After(expirationTime) {
+			a.releaseHoldForTaskLockFree(&peloton.TaskID{Value: taskID})
+			taskExpired = append(taskExpired, &peloton.TaskID{Value: taskID})
+		}
+	}
+
+	return taskExpired
 }
 
 // GetOffers returns offers, and #offers present for this host, of type reserved, unreserved or all.
@@ -722,7 +787,7 @@ func (a *hostSummary) GetHostStatus() HostStatus {
 	return a.status
 }
 
-// HoldForTask holds the host for the task specified
+// HoldForTasks holds the host for the task specified
 func (a *hostSummary) HoldForTask(id *peloton.TaskID) error {
 	a.Lock()
 	defer a.Unlock()
@@ -738,10 +803,9 @@ func (a *hostSummary) HoldForTask(id *peloton.TaskID) error {
 		}
 	}
 	// for PLACING and HELD, state no need to change host state
-
-	a.heldTasks[id.GetValue()] = struct{}{}
-
-	a.heldTaskChangeListener.OnTaskHoldAdd(a.hostname, id)
+	if _, ok := a.heldTasks[id.GetValue()]; !ok {
+		a.heldTasks[id.GetValue()] = time.Now().Add(hostHeldStatusTimeout)
+	}
 
 	log.WithFields(log.Fields{
 		"hostname":  a.hostname,
@@ -754,20 +818,26 @@ func (a *hostSummary) HoldForTask(id *peloton.TaskID) error {
 
 }
 
-// ReleaseHoldForTask release the hold of host for the task specified
+// ReleaseHoldForTasks release the hold of host for the task specified
 func (a *hostSummary) ReleaseHoldForTask(id *peloton.TaskID) error {
 	a.Lock()
 	defer a.Unlock()
 
-	a.releaseHoldForTaskLockFree(id)
-
-	if len(a.heldTasks) == 0 && a.status == HeldHost {
-		log.WithFields(log.Fields{
-			"hostname": a.hostname,
-			"task_id":  id,
-		}).Debug("host is ready after hold release")
-		return a.casStatusLockFree(a.status, ReadyHost)
+	// try to reset the host status iff the task to be released
+	// is the only task left in held
+	if len(a.heldTasks) == 1 && a.status == HeldHost {
+		if _, ok := a.heldTasks[id.GetValue()]; ok {
+			log.WithFields(log.Fields{
+				"hostname": a.hostname,
+				"task_id":  id,
+			}).Debug("host is ready after hold release")
+			if err := a.casStatusLockFree(a.status, ReadyHost); err != nil {
+				return err
+			}
+		}
 	}
+
+	a.releaseHoldForTaskLockFree(id)
 
 	return nil
 }
@@ -778,11 +848,10 @@ func (a *hostSummary) releaseHoldForTaskLockFree(id *peloton.TaskID) {
 		// a task is launched again on the same host after timeout
 		log.WithFields(log.Fields{
 			"hostname": a.hostname,
-			"task_id":  id,
+			"task_id":  id.GetValue(),
 		}).Info("task held is not found on host")
 	} else {
 		delete(a.heldTasks, id.GetValue())
-		a.heldTaskChangeListener.OnTaskHoldRemove(a.hostname, id)
 	}
 
 	log.WithFields(log.Fields{
@@ -803,7 +872,7 @@ func (a *hostSummary) ReturnPlacingHost() error {
 		return &InvalidHostStatus{status: a.status}
 	}
 
-	newStatus := a.getResetPlacingStatus()
+	newStatus := a.getResetStatus()
 
 	log.WithFields(log.Fields{
 		"new_status": newStatus,
@@ -813,9 +882,9 @@ func (a *hostSummary) ReturnPlacingHost() error {
 	return a.casStatusLockFree(PlacingHost, newStatus)
 }
 
-// getResetPlacingStatus returns the new host status for a host
-// that is going to be reset from PLACING state.
-func (a *hostSummary) getResetPlacingStatus() HostStatus {
+// getResetStatus returns the new host status for a host
+// that is going to be reset from PLACING/HELD state.
+func (a *hostSummary) getResetStatus() HostStatus {
 	newStatus := ReadyHost
 	if len(a.heldTasks) != 0 {
 		newStatus = HeldHost
@@ -823,13 +892,3 @@ func (a *hostSummary) getResetPlacingStatus() HostStatus {
 
 	return newStatus
 }
-
-func (a *hostSummary) AddListener(listener HeldTaskChangeListener) {
-	a.heldTaskChangeListener = listener
-}
-
-type dummyListener struct{}
-
-func (l *dummyListener) OnTaskHoldAdd(hostname string, id *peloton.TaskID) {}
-
-func (l *dummyListener) OnTaskHoldRemove(hostname string, id *peloton.TaskID) {}

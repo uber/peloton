@@ -342,7 +342,7 @@ func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 	suite.pool.ClaimForPlace(filter)
 
 	// Launch Task on Host, who are set from Placing -> Ready
-	hostnames := suite.pool.ResetExpiredHostSummaries(time.Now().Add(2 * time.Hour))
+	hostnames := suite.pool.ResetExpiredPlacingHostSummaries(time.Now().Add(2 * time.Hour))
 	suite.Equal(len(hostnames), 1)
 	offerMap, err = suite.pool.ClaimForLaunch(
 		_testAgent3,
@@ -703,7 +703,7 @@ func (suite *OfferPoolTestSuite) TestAddGetRemoveOffers() {
 	suite.Equal(suite.GetTimedOfferLen(), 0)
 }
 
-func (suite *OfferPoolTestSuite) TestResetExpiredHostSummaries() {
+func (suite *OfferPoolTestSuite) TestResetExpiredPlacingHostSummaries() {
 	defer suite.ctrl.Finish()
 
 	type mockHelper struct {
@@ -768,6 +768,7 @@ func (suite *OfferPoolTestSuite) TestResetExpiredHostSummaries() {
 				Return(
 					helper.mockResetExpiredPlacingOfferStatus,
 					scalar.Resources{},
+					nil,
 				)
 			hostOfferIndex[helper.hostname] = mhs
 		}
@@ -775,7 +776,88 @@ func (suite *OfferPoolTestSuite) TestResetExpiredHostSummaries() {
 			hostOfferIndex: hostOfferIndex,
 			metrics:        NewMetrics(tally.NoopScope),
 		}
-		resetHostnames := pool.ResetExpiredHostSummaries(now)
+		resetHostnames := pool.ResetExpiredPlacingHostSummaries(now)
+		suite.Equal(len(tt.expectedPrunedHostnames), len(resetHostnames), tt.msg)
+		for _, hostname := range resetHostnames {
+			suite.Contains(tt.expectedPrunedHostnames, hostname)
+		}
+	}
+}
+
+func (suite *OfferPoolTestSuite) TestResetExpiredHeldHostSummaries() {
+	defer suite.ctrl.Finish()
+
+	type mockHelper struct {
+		mockResetExpiredHeldOfferStatus bool
+		hostname                        string
+	}
+
+	testTable := []struct {
+		helpers                 []mockHelper
+		expectedPrunedHostnames []string
+		msg                     string
+	}{
+		{
+			helpers:                 []mockHelper{},
+			expectedPrunedHostnames: []string{},
+			msg:                     "Pool with no host",
+		}, {
+			helpers: []mockHelper{
+				{
+					mockResetExpiredHeldOfferStatus: false,
+					hostname:                        "host0",
+				},
+			},
+			expectedPrunedHostnames: []string{},
+			msg:                     "Pool with 1 host, 0 pruned",
+		}, {
+			helpers: []mockHelper{
+				{
+					mockResetExpiredHeldOfferStatus: false,
+					hostname:                        "host0",
+				},
+				{
+					mockResetExpiredHeldOfferStatus: true,
+					hostname:                        "host1",
+				},
+			},
+			expectedPrunedHostnames: []string{"host1"},
+			msg:                     "Pool with 2 hosts, 1 pruned",
+		}, {
+			helpers: []mockHelper{
+				{
+					mockResetExpiredHeldOfferStatus: true,
+					hostname:                        "host0",
+				},
+				{
+					mockResetExpiredHeldOfferStatus: true,
+					hostname:                        "host1",
+				},
+			},
+			expectedPrunedHostnames: []string{"host0", "host1"},
+			msg:                     "Pool with 2 hosts, 2 pruned",
+		},
+	}
+
+	now := time.Now()
+	for _, tt := range testTable {
+		hostOfferIndex := make(map[string]summary.HostSummary)
+		for _, helper := range tt.helpers {
+			mhs := hostmgr_summary_mocks.NewMockHostSummary(suite.ctrl)
+			mhs.EXPECT().
+				ResetExpiredHostHeldStatus(now).
+				Return(
+					helper.mockResetExpiredHeldOfferStatus,
+					scalar.Resources{},
+					nil,
+				)
+			hostOfferIndex[helper.hostname] = mhs
+		}
+		pool := &offerPool{
+			hostOfferIndex: hostOfferIndex,
+			metrics:        NewMetrics(tally.NoopScope),
+		}
+		resetHostnames := pool.ResetExpiredHeldHostSummaries(now)
 		suite.Equal(len(tt.expectedPrunedHostnames), len(resetHostnames), tt.msg)
 		for _, hostname := range resetHostnames {
 			suite.Contains(tt.expectedPrunedHostnames, hostname)
@@ -977,27 +1059,24 @@ func (suite *OfferPoolTestSuite) TestGetHostHeldForTask() {
 
 	hs0, err := suite.pool.GetHostSummary(hostname0)
 	suite.NoError(err)
-	suite.NoError(hs0.HoldForTask(t1))
-	suite.NoError(hs0.HoldForTask(t3))
+	suite.NoError(suite.pool.HoldForTasks(hostname0, []*peloton.TaskID{t1, t3}))
 
 	hs1, err := suite.pool.GetHostSummary(hostname1)
 	suite.NoError(err)
-	suite.NoError(hs1.HoldForTask(t2))
-	suite.NoError(hs1.HoldForTask(t4))
+	suite.NoError(suite.pool.HoldForTasks(hostname1, []*peloton.TaskID{t2, t4}))
 
 	suite.Equal(suite.pool.GetHostHeldForTask(t1), hs0.GetHostname())
 	suite.Equal(suite.pool.GetHostHeldForTask(t2), hs1.GetHostname())
 	suite.Equal(suite.pool.GetHostHeldForTask(t3), hs0.GetHostname())
 	suite.Equal(suite.pool.GetHostHeldForTask(t4), hs1.GetHostname())
 
-	hs0.ReleaseHoldForTask(t1)
-	hs1.ReleaseHoldForTask(t2)
+	suite.pool.ReleaseHoldForTasks(hostname0, []*peloton.TaskID{t1})
+	suite.pool.ReleaseHoldForTasks(hostname0, []*peloton.TaskID{t2})
 
 	suite.Empty(suite.pool.GetHostHeldForTask(t1))
 	suite.Empty(suite.pool.GetHostHeldForTask(t2))
 	suite.Equal(suite.pool.GetHostHeldForTask(t3), hs0.GetHostname())
 	suite.Equal(suite.pool.GetHostHeldForTask(t4), hs1.GetHostname())
-
 }
 
 // TestGetHostHeldWhenTaskHeldOnMultipleHosts tests the case of
@@ -1015,13 +1094,10 @@ func (suite *OfferPoolTestSuite) TestGetHostHeldWhenTaskHeldOnMultipleHosts() {
 	suite.pool.AddOffers(context.Background(),
 		[]*mesos.Offer{offer0, offer1})
 
-	hs0, err := suite.pool.GetHostSummary(hostname0)
-	hs1, err := suite.pool.GetHostSummary(hostname1)
-	suite.NoError(err)
-	suite.NoError(hs0.HoldForTask(t1))
-	suite.NoError(hs1.HoldForTask(t1))
+	suite.NoError(suite.pool.HoldForTasks(hostname0, []*peloton.TaskID{t1}))
+	suite.NoError(suite.pool.HoldForTasks(hostname1, []*peloton.TaskID{t1}))
 
-	suite.Equal(suite.pool.GetHostHeldForTask(t1), hs1.GetHostname())
+	suite.Equal(suite.pool.GetHostHeldForTask(t1), hostname1)
 }
 
 // TestClaimForPlaceWithFilterHint tests ClaimForPlace would

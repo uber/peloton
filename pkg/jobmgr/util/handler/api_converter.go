@@ -505,6 +505,7 @@ func ConvertUpdateModelToWorkflowInfo(
 		result.RestartSpec = &stateless.RestartSpec{
 			BatchSize: updateInfo.GetUpdateConfig().GetBatchSize(),
 			Ranges:    util.ConvertInstanceIDListToInstanceRange(updateInfo.GetInstancesUpdated()),
+			InPlace:   updateInfo.GetUpdateConfig().GetInPlace(),
 		}
 	}
 

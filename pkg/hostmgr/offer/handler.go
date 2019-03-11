@@ -35,7 +35,8 @@ import (
 )
 
 const (
-	_hostPrunerName              = "hostpruner"
+	_heldHostPrunerName          = "heldHostPruner"
+	_placingHostPrunerName       = "placingHostPruner"
 	_binPackingRefresherName     = "binPackingRefresher"
 	_resourceCleanerName         = "resourceCleaner"
 	_resourceCleanerPeriod       = 15 * time.Minute
@@ -80,7 +81,8 @@ func InitEventHandler(
 	schedulerClient mpb.SchedulerClient,
 	volumeStore storage.PersistentVolumeStore,
 	backgroundMgr background.Manager,
-	hostPruningPeriodSec time.Duration,
+	placingHostPruningPeriodSec time.Duration,
+	heldHostPruningPeriodSec time.Duration,
 	scarceResourceTypes []string,
 	slackResourceTypes []string,
 	ranker binpacking.Ranker,
@@ -101,17 +103,31 @@ func InitEventHandler(
 		slackResourceTypes,
 		ranker,
 	)
-	hostPruner := prune.NewHostPruner(
+
+	placingHostPruner := prune.NewPlacingHostPruner(
 		pool,
-		parent.SubScope(_hostPrunerName),
+		parent.SubScope(_placingHostPrunerName),
 	)
 	backgroundMgr.RegisterWorks(
 		background.Work{
-			Name:   _hostPrunerName,
-			Func:   hostPruner.Prune,
-			Period: hostPruningPeriodSec,
+			Name:   _placingHostPrunerName,
+			Func:   placingHostPruner.Prune,
+			Period: placingHostPruningPeriodSec,
 		},
 	)
+
+	heldHostPruner := prune.NewHeldHostPruner(
+		pool,
+		parent.SubScope(_heldHostPrunerName),
+	)
+	backgroundMgr.RegisterWorks(
+		background.Work{
+			Name:   _heldHostPrunerName,
+			Func:   heldHostPruner.Prune,
+			Period: heldHostPruningPeriodSec,
+		},
+	)
+
 	binPackingRefresher := offerpool.NewRefresher(
 		pool,
 	)

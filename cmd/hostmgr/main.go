@@ -481,6 +481,7 @@ func main() {
 		store, // store implements VolumeStore
 		backgroundManager,
 		cfg.HostManager.HostPruningPeriodSec,
+		cfg.HostManager.HeldHostPruningPeriodSec,
 		cfg.HostManager.ScarceResourceTypes,
 		cfg.HostManager.SlackResourceTypes,
 		bin_packing.CreateRanker(cfg.HostManager.BinPacking),

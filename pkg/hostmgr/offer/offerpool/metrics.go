@@ -29,11 +29,12 @@ type Metrics struct {
 	PlacingRevocable scalar.GaugeMaps
 
 	// metrics for number of hosts on each status.
-	ReadyHosts        tally.Gauge
-	PlacingHosts      tally.Gauge
-	AvailableHosts    tally.Gauge
-	ReturnUnusedHosts tally.Counter
-	ResetExpiredHosts tally.Counter
+	ReadyHosts               tally.Gauge
+	PlacingHosts             tally.Gauge
+	AvailableHosts           tally.Gauge
+	ReturnUnusedHosts        tally.Counter
+	ResetExpiredPlacingHosts tally.Counter
+	ResetExpiredHeldHosts    tally.Counter
 
 	// metrics for offers
 	UnavailableOffers tally.Counter
@@ -71,10 +72,11 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		Decline:           offersScope.Counter("decline"),
 		DeclineFail:       offersScope.Counter("decline_fail"),
 
-		ReadyHosts:        hostsScope.Gauge("ready"),
-		PlacingHosts:      hostsScope.Gauge("placing"),
-		AvailableHosts:    hostsScope.Gauge("available"),
-		ReturnUnusedHosts: hostsScope.Counter("return_unused"),
-		ResetExpiredHosts: hostsScope.Counter("reset_expired"),
+		ReadyHosts:               hostsScope.Gauge("ready"),
+		PlacingHosts:             hostsScope.Gauge("placing"),
+		AvailableHosts:           hostsScope.Gauge("available"),
+		ReturnUnusedHosts:        hostsScope.Counter("return_unused"),
+		ResetExpiredPlacingHosts: hostsScope.Counter("reset_expired_placing"),
+		ResetExpiredHeldHosts:    hostsScope.Counter("reset_expired_held"),
 	}
 }
