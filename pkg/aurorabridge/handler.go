@@ -17,6 +17,7 @@ package aurorabridge
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/pborman/uuid"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
@@ -1505,19 +1506,37 @@ func (h *ServiceHandler) getFilteredJobUpdateDetails(
 		return nil, fmt.Errorf("list workflows: %s", err)
 	}
 
+	// Sort workflows by descending time order
+	sort.Stable(sort.Reverse(ptoa.WorkflowsByMaxTS(workflows)))
+
 	// Group updates by update id.
 	detailsByID := make(map[string][]*api.JobUpdateDetails)
-	for _, w := range workflows {
-		d, err := ptoa.NewJobUpdateDetails(k, w)
+	var idOrder []string
+	for i, w := range workflows {
+		j := i + 1
+
+		var prevWorkflow *stateless.WorkflowInfo
+		if j < len(workflows) {
+			prevWorkflow = workflows[j]
+		}
+
+		d, err := ptoa.NewJobUpdateDetails(k, prevWorkflow, w)
 		if err != nil {
 			return nil, fmt.Errorf("new job update details: %s", err)
 		}
 		id := d.GetUpdate().GetSummary().GetKey().GetID()
 		detailsByID[id] = append(detailsByID[id], d)
+		idOrder = append(idOrder, id)
 	}
 
 	var results []*api.JobUpdateDetails
-	for _, details := range detailsByID {
+	for _, id := range idOrder {
+		details, ok := detailsByID[id]
+		if !ok {
+			continue
+		}
+		delete(detailsByID, id)
+
 		var d *api.JobUpdateDetails
 		switch len(details) {
 		case 1:

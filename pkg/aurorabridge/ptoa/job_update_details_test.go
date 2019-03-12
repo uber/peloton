@@ -95,7 +95,7 @@ func TestJoinRollbackJobUpdateDetails(t *testing.T) {
 
 func TestNewJobUpdateDetailsInstanceEvents(t *testing.T) {
 	k := fixture.AuroraJobKey()
-	w := fixture.PelotonWorkflowInfo()
+	w := fixture.PelotonWorkflowInfo("")
 	w.InstanceEvents = []*stateless.WorkflowInfoInstanceWorkflowEvents{
 		{
 			InstanceId: 0,
@@ -123,7 +123,7 @@ func TestNewJobUpdateDetailsInstanceEvents(t *testing.T) {
 			},
 		},
 	}
-	d, err := NewJobUpdateDetails(k, w)
+	d, err := NewJobUpdateDetails(k, nil, w)
 	require.NoError(t, err)
 	require.Equal(t, []*api.JobInstanceUpdateEvent{
 		{

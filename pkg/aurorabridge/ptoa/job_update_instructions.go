@@ -15,26 +15,44 @@
 package ptoa
 
 import (
+	"fmt"
+
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
+	"github.com/uber/peloton/pkg/aurorabridge/opaquedata"
 )
 
 // NewJobUpdateInstructions gets new job update instructions
 // Since Aggregator ignores task config, it is not set.
 func NewJobUpdateInstructions(
-	w *stateless.WorkflowInfo,
-) *api.JobUpdateInstructions {
+	prevWorkflow *stateless.WorkflowInfo,
+	workflow *stateless.WorkflowInfo,
+) (*api.JobUpdateInstructions, error) {
+
+	var initialState []*api.InstanceTaskConfig
+
+	if prevWorkflow != nil {
+		d, err := opaquedata.Deserialize(prevWorkflow.GetOpaqueData())
+		if err != nil {
+			return nil, fmt.Errorf("deserialize opaque data: %s", err)
+		}
+
+		initialState = append(initialState, &api.InstanceTaskConfig{
+			Instances: NewRange(append(workflow.GetInstancesUpdated(),
+				workflow.GetInstancesRemoved()...)),
+			Task: &api.TaskConfig{
+				Metadata: d.UpdateMetadata,
+			},
+		})
+	}
 
 	return &api.JobUpdateInstructions{
-		InitialState: []*api.InstanceTaskConfig{
-			{
-				Instances: NewRange(append(w.GetInstancesUpdated(),
-					w.GetInstancesRemoved()...)),
-			},
-		},
+		InitialState: initialState,
 		DesiredState: &api.InstanceTaskConfig{
-			Instances: NewRange(append(w.GetInstancesUpdated(),
-				w.GetInstancesAdded()...)),
+			Instances: NewRange(append(workflow.GetInstancesUpdated(),
+				workflow.GetInstancesAdded()...)),
 		},
-	}
+		Settings: NewJobUpdateSettings(workflow.GetUpdateSpec()),
+	}, nil
 }

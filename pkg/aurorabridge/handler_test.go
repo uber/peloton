@@ -1686,7 +1686,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummaries_Success() {
 			JobId: id,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
-			WorkflowInfos: []*stateless.WorkflowInfo{fixture.PelotonWorkflowInfo()},
+			WorkflowInfos: []*stateless.WorkflowInfo{fixture.PelotonWorkflowInfo("")},
 		}, nil)
 
 	resp, err := suite.handler.GetJobUpdateSummaries(
@@ -1805,16 +1805,29 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 			Records: summaries,
 		}, nil)
 
+	wf0 := fixture.PelotonWorkflowInfo("2018-10-02T15:00:00Z")
+	wf1 := fixture.PelotonWorkflowInfo("2018-10-02T19:00:00Z")
+	wf2 := fixture.PelotonWorkflowInfo("2018-10-02T14:00:00Z")
+
+	od, err := opaquedata.Deserialize(wf0.GetOpaqueData())
+	suite.NoError(err)
+	wf0updateID := od.UpdateID
+
+	od, err = opaquedata.Deserialize(wf1.GetOpaqueData())
+	suite.NoError(err)
+	wf1updateID := od.UpdateID
+
+	od, err = opaquedata.Deserialize(wf2.GetOpaqueData())
+	suite.NoError(err)
+	wf2updateID := od.UpdateID
+
 	suite.jobClient.EXPECT().
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:          summaries[0].JobId,
 			InstanceEvents: true,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
-			WorkflowInfos: []*stateless.WorkflowInfo{
-				fixture.PelotonWorkflowInfo(),
-				fixture.PelotonWorkflowInfo(),
-			},
+			WorkflowInfos: []*stateless.WorkflowInfo{wf0, wf1, wf2},
 		}, nil)
 
 	suite.jobClient.EXPECT().
@@ -1824,7 +1837,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{
-				fixture.PelotonWorkflowInfo(),
+				fixture.PelotonWorkflowInfo("2018-10-03T14:00:00Z"),
 			},
 		}, nil)
 
@@ -1833,7 +1846,17 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 		suite.ctx, nil, &api.JobUpdateQuery{Role: &role})
 	suite.NoError(err)
 	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
-	suite.Len(resp.GetResult().GetGetJobUpdateDetailsResult().GetDetailsList(), 3)
+	suite.Len(resp.GetResult().GetGetJobUpdateDetailsResult().GetDetailsList(), 4)
+
+	// Verify update details are sorted by time descending per job
+	var updateIDOrder []string
+	for _, details := range resp.GetResult().GetGetJobUpdateDetailsResult().GetDetailsList() {
+		updateKey := details.GetUpdate().GetSummary().GetKey()
+		if keys[0].Equals(updateKey.GetJob()) {
+			updateIDOrder = append(updateIDOrder, updateKey.GetID())
+		}
+	}
+	suite.Equal([]string{wf1updateID, wf0updateID, wf2updateID}, updateIDOrder)
 }
 
 // Ensures that update+rollback workflows which share an UpdateID are joined.

@@ -16,6 +16,8 @@ package fixture
 
 import (
 	"fmt"
+	"math/rand"
+	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -67,7 +69,7 @@ func PelotonOpaqueData() *peloton.OpaqueData {
 }
 
 // PelotonWorkflowInfo returns a random WorkflowInfo.
-func PelotonWorkflowInfo() *stateless.WorkflowInfo {
+func PelotonWorkflowInfo(eventTimestamp string) *stateless.WorkflowInfo {
 	// Pick a random state. These were chosen fairly arbitrarily.
 	var s stateless.WorkflowState
 	for s = range map[stateless.WorkflowState]struct{}{
@@ -77,9 +79,20 @@ func PelotonWorkflowInfo() *stateless.WorkflowInfo {
 		stateless.WorkflowState_WORKFLOW_STATE_ABORTED:         {},
 	} {
 	}
+
+	if len(eventTimestamp) == 0 {
+		eventTimestamp = randomTime()
+	}
+
 	return &stateless.WorkflowInfo{
 		Status:     &stateless.WorkflowStatus{State: s},
 		OpaqueData: PelotonOpaqueData(),
+		Events: []*stateless.WorkflowEvent{
+			{
+				State:     stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED,
+				Timestamp: eventTimestamp,
+			},
+		},
 	}
 }
 
@@ -90,4 +103,13 @@ func DefaultPelotonJobLabels(jobKey *api.JobKey) []*peloton.Label {
 		panic(err)
 	}
 	return []*peloton.Label{mdl, label.NewAuroraJobKey(jobKey)}
+}
+
+func randomTime() string {
+	min := time.Date(2017, 1, 0, 0, 0, 0, 0, time.UTC).Unix()
+	max := time.Date(2020, 1, 0, 0, 0, 0, 0, time.UTC).Unix()
+	delta := max - min
+
+	sec := rand.Int63n(delta) + min
+	return time.Unix(sec, 0).Format(time.RFC3339)
 }
