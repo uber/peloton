@@ -2787,6 +2787,42 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchTasksSchedulerError() {
 		errString)
 }
 
+func (suite *HostMgrHandlerTestSuite) TestReleaseHostsHeldForTasks() {
+	defer suite.ctrl.Finish()
+
+	numOffers := 2
+	offers := suite.pool.AddOffers(context.Background(), generateOffers(numOffers))
+
+	host1 := offers[0].GetHostname()
+	host2 := offers[1].GetHostname()
+	tasks := []*peloton.TaskID{
+		{Value: "task0"},
+		{Value: "task1"},
+		{Value: "task2"},
+		{Value: "task3"},
+	}
+
+	suite.NoError(suite.pool.HoldForTasks(host1, tasks[:2]))
+	suite.NoError(suite.pool.HoldForTasks(host2, tasks[2:]))
+
+	resp, err := suite.handler.ReleaseHostsHeldForTasks(
+		context.Background(),
+		&hostsvc.ReleaseHostsHeldForTasksRequest{
+			Ids: []*peloton.TaskID{tasks[0], tasks[2]},
+		},
+	)
+
+	suite.NoError(err)
+	suite.Nil(resp.GetError())
+
+	// host should be released from held
+	suite.Empty(suite.pool.GetHostHeldForTask(tasks[0]))
+	suite.Empty(suite.pool.GetHostHeldForTask(tasks[2]))
+
+	suite.Equal(suite.pool.GetHostHeldForTask(tasks[1]), host1)
+	suite.Equal(suite.pool.GetHostHeldForTask(tasks[3]), host2)
+}
+
 // Helper type to implement sorting on the slice
 type AgentSlice []*mesos_master.Response_GetAgents_Agent
 

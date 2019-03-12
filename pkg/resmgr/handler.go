@@ -24,6 +24,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	t "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -87,6 +88,8 @@ type ServiceHandler struct {
 	rmTracker rmtask.Tracker
 	// in-memory resource pool tree
 	resPoolTree respool.Tree
+
+	hostmgrClient hostsvc.InternalHostServiceYARPCClient
 }
 
 // NewServiceHandler initializes the handler for ResourceManagerService
@@ -96,6 +99,7 @@ func NewServiceHandler(
 	rmTracker rmtask.Tracker,
 	tree respool.Tree,
 	preemptionQueue preemption.Queue,
+	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
 	conf Config) *ServiceHandler {
 
 	var maxOffset uint64
@@ -118,6 +122,7 @@ func NewServiceHandler(
 			d,
 			_eventStreamBufferSize,
 			parent.SubScope("resmgr")),
+		hostmgrClient: hostmgrClient,
 	}
 
 	return handler
@@ -1025,6 +1030,25 @@ func (h *ServiceHandler) KillTasks(
 			rmTaskToKill.GetCurrentState().State,
 			t.TaskState_KILLED,
 		)
+	}
+
+	// release the hosts held for the tasks killed
+	resp, err := h.hostmgrClient.ReleaseHostsHeldForTasks(ctx, &hostsvc.ReleaseHostsHeldForTasksRequest{
+		Ids: listTasks,
+	})
+	if err != nil || resp.GetError() != nil {
+		// ignore resp.Error to avoid potential infinite retry.
+		// rely on hostmgr periodical clean up if fails to release.
+		// may revisit this decision later
+		log.WithFields(log.Fields{
+			"task_ids": listTasks,
+			"err":      err.Error(),
+			"resp_err": resp.GetError(),
+		}).Warn("Fail to release hosts held for tasks upon kill")
+	}
+
+	if err != nil {
+		return &resmgrsvc.KillTasksResponse{}, err
 	}
 
 	if len(tasksNotKilled) == 0 && len(tasksNotFound) == 0 {

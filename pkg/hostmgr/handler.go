@@ -1439,6 +1439,37 @@ func (h *ServiceHandler) GetMesosAgentInfo(
 	return r, nil
 }
 
+// ReleaseHostsHeldForTasks releases the hosts which are held for the tasks provided
+func (h *ServiceHandler) ReleaseHostsHeldForTasks(
+	ctx context.Context,
+	req *hostsvc.ReleaseHostsHeldForTasksRequest,
+) (*hostsvc.ReleaseHostsHeldForTasksResponse, error) {
+	var errs []error
+	hostHeldForTasks := make(map[string][]*peloton.TaskID)
+	for _, taskID := range req.GetIds() {
+		hostname := h.offerPool.GetHostHeldForTask(taskID)
+		if len(hostname) != 0 {
+			hostHeldForTasks[hostname] = append(hostHeldForTasks[hostname], taskID)
+		}
+	}
+
+	for hostname, taskIDs := range hostHeldForTasks {
+		if err := h.offerPool.ReleaseHoldForTasks(hostname, taskIDs); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	if len(errs) == 0 {
+		return &hostsvc.ReleaseHostsHeldForTasksResponse{}, nil
+	}
+
+	return &hostsvc.ReleaseHostsHeldForTasksResponse{
+		Error: &hostsvc.ReleaseHostsHeldForTasksResponse_Error{
+			Message: multierr.Combine(errs...).Error(),
+		},
+	}, nil
+}
+
 // Helper function to convert scalar.Resource into hostsvc format.
 func toHostSvcResources(rs *scalar.Resources) []*hostsvc.Resource {
 	return []*hostsvc.Resource{

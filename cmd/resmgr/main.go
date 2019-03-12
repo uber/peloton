@@ -355,6 +355,7 @@ func main() {
 		task.GetTracker(),
 		tree,
 		preemptor,
+		hostmgrClient,
 		cfg.ResManager,
 	)
 

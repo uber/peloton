@@ -419,6 +419,10 @@ service InternalHostService
   // Return Mesos agent info
   rpc GetMesosAgentInfo(GetMesosAgentInfoRequest)
   returns (GetMesosAgentInfoResponse);
+
+  // Release the hosts which are held for the tasks provided
+  rpc ReleaseHostsHeldForTasks(ReleaseHostsHeldForTasksRequest)
+  returns (ReleaseHostsHeldForTasksResponse);
 }
 
 /**
@@ -931,4 +935,16 @@ message GetMesosAgentInfoResponse {
   }
   Error error = 1;
   repeated mesos.v1.master.Response.GetAgents.Agent agents = 2;
+}
+
+message ReleaseHostsHeldForTasksRequest {
+    repeated api.v0.peloton.TaskID ids = 1;
+}
+
+message ReleaseHostsHeldForTasksResponse {
+    message Error {
+        string message = 1;
+    }
+
+    Error error = 1;
 }

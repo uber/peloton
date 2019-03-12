@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"reflect"
 	"testing"
 	"time"
@@ -27,6 +28,7 @@ import (
 	pb_respool "github.com/uber/peloton/.gen/peloton/api/v0/respool"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	hostsvc_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -62,9 +64,10 @@ type HandlerTestSuite struct {
 	ctrl    *gomock.Controller
 	context context.Context
 
-	handler       *ServiceHandler
-	resTree       respool.Tree
-	rmTaskTracker rm_task.Tracker
+	handler           *ServiceHandler
+	resTree           respool.Tree
+	rmTaskTracker     rm_task.Tracker
+	mockHostmgrClient *hostsvc_mocks.MockInternalHostServiceYARPCClient
 
 	cfg rc.PreemptionConfig
 }
@@ -77,6 +80,8 @@ func (s *HandlerTestSuite) SetupSuite() {
 		Return(s.getResPools(), nil).AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(s.ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.ctrl)
+
+	s.mockHostmgrClient = hostsvc_mocks.NewMockInternalHostServiceYARPCClient(s.ctrl)
 
 	s.cfg = rc.PreemptionConfig{
 		Enabled: false,
@@ -118,6 +123,7 @@ func (s *HandlerTestSuite) SetupSuite() {
 		config: Config{
 			RmTaskConfig: tasktestutil.CreateTaskConfig(),
 		},
+		hostmgrClient: s.mockHostmgrClient,
 	}
 	s.handler.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,
@@ -161,12 +167,14 @@ func (s *HandlerTestSuite) TestNewServiceHandler() {
 
 	tracker := task_mocks.NewMockTracker(s.ctrl)
 	mockPreemptionQueue := mocks.NewMockQueue(s.ctrl)
+	mockHostmgrClient := hostsvc_mocks.NewMockInternalHostServiceYARPCClient(s.ctrl)
 	handler := NewServiceHandler(
 		dispatcher,
 		tally.NoopScope,
 		tracker,
 		s.resTree,
 		mockPreemptionQueue,
+		mockHostmgrClient,
 		Config{})
 	s.NotNil(handler)
 
@@ -679,12 +687,21 @@ func (s *HandlerTestSuite) TestKillTasks() {
 	killReq := &resmgrsvc.KillTasksRequest{
 		Tasks: killedtasks,
 	}
+	s.mockHostmgrClient.EXPECT().
+		ReleaseHostsHeldForTasks(
+			gomock.Any(),
+			&hostsvc.ReleaseHostsHeldForTasksRequest{
+				Ids: killReq.GetTasks(),
+			},
+		).
+		Return(&hostsvc.ReleaseHostsHeldForTasksResponse{}, nil)
 	// This is a valid list tasks should be deleted
 	// Result is no error and tracker should have remaining 3 tasks
 	res, err := s.handler.KillTasks(s.context, killReq)
 	s.NoError(err)
 	s.Nil(res.Error)
 	s.Equal(s.rmTaskTracker.GetSize(), int64(3))
+
 	var notValidkilledtasks []*peloton.TaskID
 	killReq = &resmgrsvc.KillTasksRequest{
 		Tasks: notValidkilledtasks,
@@ -694,9 +711,18 @@ func (s *HandlerTestSuite) TestKillTasks() {
 	res, err = s.handler.KillTasks(s.context, killReq)
 	s.NotNil(res.Error)
 	notValidkilledtasks = append(notValidkilledtasks, tasks[0])
+
 	killReq = &resmgrsvc.KillTasksRequest{
 		Tasks: notValidkilledtasks,
 	}
+	s.mockHostmgrClient.EXPECT().
+		ReleaseHostsHeldForTasks(
+			gomock.Any(),
+			&hostsvc.ReleaseHostsHeldForTasksRequest{
+				Ids: killReq.GetTasks(),
+			},
+		).
+		Return(&hostsvc.ReleaseHostsHeldForTasksResponse{}, nil)
 	// This list have invalid task in the list which should be not
 	// present in the tracker and should return error
 	res, err = s.handler.KillTasks(s.context, killReq)
