@@ -17,9 +17,9 @@ from util import load_test_config
 CONFIG_FILES = ['test_job.yaml', 'test_task.yaml']
 MESOS_MASTER = ['peloton-mesos-master']
 MESOS_AGENTS = ['peloton-mesos-agent0', 'peloton-mesos-agent1', 'peloton-mesos-agent2']
-JOB_MGRS = ['peloton-jobmgr0', 'peloton-jobmgr1']
-RES_MGRS = ['peloton-resmgr0', 'peloton-resmgr1']
-HOST_MGRS = ['peloton-hostmgr0', 'peloton-hostmgr1']
+JOB_MGRS = ['peloton-jobmgr0']
+RES_MGRS = ['peloton-resmgr0']
+HOST_MGRS = ['peloton-hostmgr0']
 PLACEMENT_ENGINES = ['peloton-placement0', 'peloton-placement1', 'peloton-placement2']
 
 # job_query related constants.
