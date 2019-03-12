@@ -27,6 +27,7 @@ type JobMetrics struct {
 	JobSucceeded    tally.Counter
 	JobKilled       tally.Counter
 	JobFailed       tally.Counter
+	JobDeleted      tally.Counter
 	JobInvalidState tally.Counter
 
 	JobRuntimeUpdated                tally.Counter
@@ -87,6 +88,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobSucceeded:                     jobScope.Counter("job_succeeded"),
 		JobKilled:                        jobScope.Counter("job_killed"),
 		JobFailed:                        jobScope.Counter("job_failed"),
+		JobDeleted:                       jobScope.Counter("job_deleted"),
 		JobInvalidState:                  jobScope.Counter("invalid_state"),
 		JobRuntimeUpdated:                jobScope.Counter("runtime_update_success"),
 		JobRuntimeUpdateFailed:           jobScope.Counter("runtime_update_fail"),

@@ -33,6 +33,7 @@ import (
 	updateutil "github.com/uber/peloton/pkg/jobmgr/util/update"
 
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 //  Runtime states of a Job
@@ -248,13 +249,11 @@ func jobStateDeterminerFactory(
 	cachedJob cached.Job,
 	config jobmgrcommon.JobConfig) stateDeterminer {
 	totalInstanceCount := getTotalInstanceCount(stateCounts)
-	// a job is partially created if:
-	// 1. number of total instance count is smaller than configured
-	// 2. there is no update going on
+	// a batch/service job is partially created if
+	// number of total instance count is smaller than configured
 	if totalInstanceCount < config.GetInstanceCount() &&
-		cachedJob.IsPartiallyCreated(config) &&
-		!updateutil.HasUpdate(jobRuntime) {
-		return newPartiallyCreatedJobStateDeterminer()
+		cachedJob.IsPartiallyCreated(config) {
+		return newPartiallyCreatedJobStateDeterminer(cachedJob, stateCounts)
 	}
 
 	if cached.HasControllerTask(config) {
@@ -325,17 +324,64 @@ func (d *jobStateDeterminer) getState(
 
 }
 
-func newPartiallyCreatedJobStateDeterminer() *partiallyCreatedJobStateDeterminer {
-	return &partiallyCreatedJobStateDeterminer{}
+func newPartiallyCreatedJobStateDeterminer(
+	cachedJob cached.Job,
+	stateCounts map[string]uint32,
+) *partiallyCreatedJobStateDeterminer {
+	return &partiallyCreatedJobStateDeterminer{
+		cachedJob:   cachedJob,
+		stateCounts: stateCounts,
+	}
 }
 
-type partiallyCreatedJobStateDeterminer struct{}
+type partiallyCreatedJobStateDeterminer struct {
+	cachedJob   cached.Job
+	stateCounts map[string]uint32
+}
 
 func (d *partiallyCreatedJobStateDeterminer) getState(
 	ctx context.Context,
 	jobRuntime *job.RuntimeInfo,
 ) (job.JobState, error) {
-	return job.JobState_INITIALIZED, nil
+
+	// partially created instance count
+	instanceCount := getTotalInstanceCount(d.stateCounts)
+
+	switch d.cachedJob.GetJobType() {
+	case job.JobType_BATCH:
+		return job.JobState_INITIALIZED, nil
+	case job.JobType_SERVICE:
+
+		// job goal state is terminal &&
+		// some killed + some succeeded + some failed + some lost -> killed
+		if util.IsPelotonJobStateTerminal(jobRuntime.GetGoalState()) &&
+			d.stateCounts[task.TaskState_KILLED.String()] > 0 &&
+			(d.stateCounts[task.TaskState_KILLED.String()]+
+				d.stateCounts[task.TaskState_SUCCEEDED.String()]+
+				d.stateCounts[task.TaskState_FAILED.String()]+
+				d.stateCounts[task.TaskState_LOST.String()] == instanceCount) {
+			return job.JobState_KILLED, nil
+		}
+
+		// job goal state is terminal && no instance created -> killed
+		if util.IsPelotonJobStateTerminal(jobRuntime.GetGoalState()) &&
+			instanceCount == 0 {
+			return job.JobState_KILLED, nil
+		}
+
+		// job goal state is terminal &&
+		// some failed + some succeeded + some lost -> failed
+		if util.IsPelotonJobStateTerminal(jobRuntime.GetGoalState()) &&
+			(d.stateCounts[task.TaskState_FAILED.String()]+
+				d.stateCounts[task.TaskState_SUCCEEDED.String()]+
+				d.stateCounts[task.TaskState_LOST.String()] == instanceCount) {
+			return job.JobState_FAILED, nil
+		}
+
+		return job.JobState_PENDING, nil
+	}
+
+	return job.JobState_UNKNOWN, yarpcerrors.InternalErrorf("unknown job type")
 }
 
 func newControllerTaskJobStateDeterminer(
@@ -466,8 +512,10 @@ func determineJobRuntimeStateAndCounts(
 		goalStateDriver.mtx.jobMetrics.JobFailed.Inc(1)
 	case job.JobState_KILLED:
 		goalStateDriver.mtx.jobMetrics.JobKilled.Inc(1)
-
+	case job.JobState_DELETED:
+		goalStateDriver.mtx.jobMetrics.JobDeleted.Inc(1)
 	}
+
 	return jobState, currStateCounts, configVersionCounts, getTransitionType(jobState,
 		prevState), nil
 }
@@ -738,14 +786,14 @@ func shouldRecalculateJobStateFromCache(
 	}
 
 	// no job runtime recalculation for batch jobs in terminal state
-	if jobType == job.JobType_BATCH && util.IsPelotonJobStateTerminal(
-		jobState) {
+	if jobType == job.JobType_BATCH &&
+		util.IsPelotonJobStateTerminal(jobState) {
 		return false
 	}
 
 	// job runtime recalculation for stale batch job
-	if jobType == job.JobType_BATCH && isJobStateStale(cachedJob,
-		common.StaleJobStateDurationThreshold) {
+	if jobType == job.JobType_BATCH &&
+		isJobStateStale(cachedJob, common.StaleJobStateDurationThreshold) {
 		log.WithField("job_id", cachedJob.ID()).
 			Info("recalculate job state from cache for stale job ")
 		return true

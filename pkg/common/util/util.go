@@ -315,7 +315,8 @@ func IsPelotonStateTerminal(state task.TaskState) bool {
 // otherwise false
 func IsPelotonJobStateTerminal(state job.JobState) bool {
 	switch state {
-	case job.JobState_SUCCEEDED, job.JobState_FAILED, job.JobState_KILLED:
+	case job.JobState_SUCCEEDED, job.JobState_FAILED,
+		job.JobState_DELETED, job.JobState_KILLED:
 		return true
 	default:
 		return false

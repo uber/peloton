@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
@@ -974,6 +975,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PartiallyCreatedJ
 		Return(suite.cachedConfig, nil)
 
 	suite.cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH)
+	suite.cachedJob.EXPECT().GetJobType().Return(pbjob.JobType_BATCH).AnyTimes()
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -1606,6 +1608,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskRun
 	suite.NoError(err)
 }
 
+// Tests partially created batch job which has an update for adding more instances.
 func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInstancesToJob() {
 	instanceCount := uint32(100)
 	suite.cachedConfig.EXPECT().
@@ -1626,7 +1629,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInsta
 		State:     pbjob.JobState_PENDING,
 		GoalState: pbjob.JobState_SUCCEEDED,
 		TaskStats: stateCounts,
-		UpdateID:  &peloton.UpdateID{Value: uuid.New()},
 	}
 
 	suite.jobFactory.EXPECT().
@@ -1646,12 +1648,13 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInsta
 		Return(stateCounts, nil)
 
 	suite.cachedConfig.EXPECT().
-		HasControllerTask().
-		Return(false)
-
-	suite.cachedConfig.EXPECT().
 		GetType().
 		Return(pbjob.JobType_BATCH)
+
+	suite.cachedJob.EXPECT().
+		GetJobType().
+		Return(pbjob.JobType_BATCH).
+		AnyTimes()
 
 	suite.cachedJob.EXPECT().
 		IsPartiallyCreated(gomock.Any()).
@@ -1672,11 +1675,177 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInsta
 			jobInfo *pbjob.JobInfo,
 			_ *models.ConfigAddOn,
 			_ cached.UpdateRequest) {
-			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_RUNNING)
+			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_INITIALIZED)
 		}).Return(nil)
+
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
 
 	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
+}
+
+// Test partially created service job whose desired state is terminal
+func (suite *JobRuntimeUpdaterTestSuite) TestJobStateDeterminer_PartiallyCreatedServiceJob() {
+	instanceCount := uint32(100)
+	configVersion := uint64(4)
+
+	testTable := []struct {
+		expectedState    job.JobState
+		actualState      job.JobState
+		desiredGoalState job.JobState
+		hasKilled        bool
+		msg              string
+	}{
+		{
+			expectedState:    job.JobState_FAILED,
+			actualState:      job.JobState_PENDING,
+			desiredGoalState: job.JobState_DELETED,
+			hasKilled:        false,
+			msg:              "desired goal is deleted and no tasks are killed, so expected state is failed",
+		},
+		{
+			expectedState:    job.JobState_KILLED,
+			actualState:      job.JobState_PENDING,
+			desiredGoalState: job.JobState_DELETED,
+			hasKilled:        true,
+			msg:              "desired state is deleted and few tasks are killed, so expected state is killed",
+		},
+		{
+			expectedState:    job.JobState_FAILED,
+			actualState:      job.JobState_PENDING,
+			desiredGoalState: job.JobState_KILLED,
+			hasKilled:        false,
+			msg:              "desired goal is killed and no tasks are killed, so expected state is failed",
+		},
+		{
+			expectedState:    job.JobState_KILLED,
+			actualState:      job.JobState_PENDING,
+			desiredGoalState: job.JobState_KILLED,
+			hasKilled:        true,
+			msg:              "desired state is killed and few tasks are killed, so expected state is killed",
+		},
+		{
+			expectedState:    job.JobState_PENDING,
+			actualState:      job.JobState_PENDING,
+			desiredGoalState: job.JobState_RUNNING,
+			hasKilled:        true,
+			msg:              "desired state is running, so defaulting to service job actual state pending",
+		},
+	}
+
+	suite.cachedConfig.EXPECT().
+		GetType().
+		Return(pbjob.JobType_SERVICE).
+		AnyTimes()
+
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		IsPartiallyCreated(gomock.Any()).
+		Return(true).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetJobType().
+		Return(job.JobType_SERVICE).
+		AnyTimes()
+
+	for _, tt := range testTable {
+		// sum of each state is smaller than instanceCount
+		// simulate partially created job
+		stateCounts := make(map[string]uint32)
+		stateCounts[pbtask.TaskState_LOST.String()] = instanceCount / 3
+		stateCounts[pbtask.TaskState_FAILED.String()] = instanceCount / 3
+
+		taskStates := []pbtask.TaskState{pbtask.TaskState_LOST, pbtask.TaskState_FAILED}
+		if tt.hasKilled {
+			stateCounts[pbtask.TaskState_KILLED.String()] = instanceCount / 3
+			taskStates = append(taskStates, pbtask.TaskState_KILLED)
+		}
+
+		first := uint32(0)
+		last := instanceCount / 3
+		cachedTasks := make(map[uint32]cached.Task)
+		for _, state := range taskStates {
+			for i := first; i < last; i++ {
+				cachedTasks[i] = suite.cachedTask
+
+				suite.cachedTask.EXPECT().
+					CurrentState().
+					Return(cached.TaskStateVector{
+						State: state,
+					})
+
+				suite.cachedTask.EXPECT().
+					GetRuntime(gomock.Any()).
+					Return(&pbtask.RuntimeInfo{
+						State:         state,
+						ConfigVersion: configVersion,
+					}, nil)
+			}
+			first = last
+			last = first + instanceCount/3
+		}
+
+		suite.cachedJob.EXPECT().
+			GetAllTasks().
+			Return(cachedTasks)
+
+		jobRuntime := &pbjob.RuntimeInfo{
+			State:     tt.actualState,
+			GoalState: tt.desiredGoalState,
+			UpdateID:  &peloton.UpdateID{Value: uuid.NewRandom().String()},
+		}
+
+		jobState, _, _, _, err := determineJobRuntimeStateAndCounts(context.Background(),
+			jobRuntime, stateCounts, suite.cachedConfig, suite.goalStateDriver, suite.cachedJob)
+		suite.NoError(err)
+		suite.Equal(jobState, tt.expectedState)
+	}
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobStateDeterminer_NoInstancesCreatedServiceJob() {
+	instanceCount := uint32(100)
+	stateCounts := make(map[string]uint32)
+	jobRuntime := &pbjob.RuntimeInfo{
+		State:     job.JobState_KILLED,
+		GoalState: job.JobState_DELETED,
+		UpdateID:  &peloton.UpdateID{Value: uuid.NewRandom().String()},
+	}
+
+	suite.cachedConfig.EXPECT().
+		GetType().
+		Return(pbjob.JobType_SERVICE).
+		AnyTimes()
+
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		IsPartiallyCreated(gomock.Any()).
+		Return(true).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetJobType().
+		Return(job.JobType_SERVICE).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetAllTasks().
+		Return(nil)
+
+	jobState, _, _, _, err := determineJobRuntimeStateAndCounts(context.Background(),
+		jobRuntime, stateCounts, suite.cachedConfig, suite.goalStateDriver, suite.cachedJob)
+	suite.NoError(err)
+	suite.Equal(job.JobState_KILLED, jobState)
 }
 
 // TestDetermineJobRuntimeStateStaleJob tests determining job runtime state
@@ -1919,6 +2088,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineBatchJobRuntimeState() {
 		cachedJob := cachedmocks.NewMockJob(ctrl)
 
 		cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH).AnyTimes()
+		cachedJob.EXPECT().GetJobType().Return(pbjob.JobType_BATCH).AnyTimes()
 
 		cachedConfig.EXPECT().GetInstanceCount().
 			Return(test.configuredInstanceCount).AnyTimes()
@@ -2025,8 +2195,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineServiceJobRuntimeState() {
 			},
 			instanceCount,
 			pbjob.JobState_PENDING,
-			pbjob.JobState_INITIALIZED,
-			"Service job partially created should be INITIALIZED",
+			pbjob.JobState_PENDING,
+			"Service job partially created should be PENDING",
 		},
 		{
 			map[pbtask.TaskState]uint32{
@@ -2081,6 +2251,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineServiceJobRuntimeState() {
 		}
 
 		cachedConfig.EXPECT().GetType().Return(pbjob.JobType_SERVICE).AnyTimes()
+		cachedJob.EXPECT().GetJobType().Return(pbjob.JobType_SERVICE).AnyTimes()
 
 		cachedConfig.EXPECT().GetInstanceCount().
 			Return(test.configuredInstanceCount).AnyTimes()

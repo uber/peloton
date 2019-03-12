@@ -24,7 +24,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/yarpc/yarpcerrors"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
@@ -37,8 +36,8 @@ const (
 )
 
 func TestGetOfferScalarResourceSummary(t *testing.T) {
-	var offer = &mesos_v1.Offer{
-		Resources: []*mesos_v1.Resource{
+	var offer = &mesos.Offer{
+		Resources: []*mesos.Resource{
 			NewMesosResourceBuilder().WithName("cpu").WithRole("peloton").WithValue(3.5).Build(),
 			NewMesosResourceBuilder().WithName("cpu").WithRole("peloton").WithValue(4).
 				WithRevocable(&mesos.Resource_RevocableInfo{}).Build(),
@@ -490,6 +489,7 @@ func TestJobTerminalState(t *testing.T) {
 		job.JobState_FAILED:    true,
 		job.JobState_KILLED:    true,
 		job.JobState_SUCCEEDED: true,
+		job.JobState_DELETED:   true,
 	}
 	for s := range job.JobState_name {
 		_, isTerm := jobTerminalStates[job.JobState(s)]
