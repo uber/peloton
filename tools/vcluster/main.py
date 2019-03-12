@@ -225,7 +225,6 @@ def main():
         args.label_name,
         args.zookeeper_server,
         args.respool_path,
-        args.peloton_apps_config_path
     )
 
     command = args.command
@@ -262,7 +261,9 @@ def main():
             vcluster.teardown()
         vcluster.start_all(agent_number, peloton_version,
                            skip_respool=args.skip_respool,
-                           peloton_image=args.peloton_image)
+                           peloton_image=args.peloton_image,
+                           peloton_apps_config=args.peloton_apps_config_path,
+                           )
 
     elif command == 'teardown':
         option = args.option
