@@ -30,26 +30,22 @@ class VCluster(object):
         'placement_stateless',
         'jobmgr']
 
-    def __init__(self, config, label_name, zk_server, respool_path,
-                 peloton_apps_config_path):
+    def __init__(self, config, label_name, zk_server, respool_path):
         """
         param config:             vcluster configuration
         param label_name:         Label of the virtual cluster
         param zk_server:          DNS address of the physical zookeeper server
         param respool_path:       The path of the resource pool
-        param peloton_app_config: The path to the peloton apps configs
 
         type config:                dict
         type label_name:            str
         type zk_server:             str
         type respool:               str
-        type peloton_app_config:    str
         """
         self.config = config
         self.label_name = label_name
         self.zk_server = zk_server
         self.respool_path = respool_path
-        self.peloton_apps_config_path = peloton_apps_config_path
 
         self.peloton_helper = PelotonClientHelper(zk_server, respool_path)
 
@@ -139,19 +135,34 @@ class VCluster(object):
             ))
         return host, port, keyspace
 
-    def _get_app_path(self):
+    def _get_app_path(self, peloton_apps_config_path):
         """
         Returns the formatted path for app config
+
+        param peloton_app_config  : The path to the peloton apps configs
+
+        type peloton_app_config : str
         """
-        path = os.path.join(self.peloton_apps_config_path, "config", "{}",
+        return os.path.join(peloton_apps_config_path, "config", "{}",
                             "production.yaml")
-        return path
 
     def start_peloton(self, virtual_zookeeper, agent_num, version=None,
-                      skip_respool=False, peloton_image=None):
+                      skip_respool=False, peloton_image=None,
+                      peloton_apps_config=None):
         """
-        type zk_host: str
-        type zk_port: str
+        param virtual_zookeeper   : The zk url and port
+        param agent_num           : The number of mesos agents to start
+        param version             : The peloton version
+        param skip_respool        : To skip creating the default respool or not
+        param peloton_image       : The docker image of peloton
+        param peloton_app_config  : The path to the peloton apps configs
+
+        type virtual_zookeeper  : str
+        type agent_num          : int
+        type version            : str
+        type skip_respool       : bool
+        type peloton_image      : str
+        type peloton_app_config : str
         """
         # Setup Cassandra
         chost, cport, keyspace = self.start_cassandra()
@@ -178,7 +189,8 @@ class VCluster(object):
             if app.startswith('placement_'):
                 app = 'placement'
 
-            prod_config_path = self._get_app_path().format(app)
+            prod_config_path = self._get_app_path(peloton_apps_config). \
+                format(app)
             with open(prod_config_path, "rb") as config_file:
                 prod_config_base64 = base64.b64encode(config_file.read())
 
@@ -224,7 +236,7 @@ class VCluster(object):
                     self.label_name + '_' + 'peloton-' + app,
                     version,
                     peloton_image,
-                ))
+                    ))
 
         self.vcluster_config.update({
             'Peloton Version': version,
@@ -239,7 +251,7 @@ class VCluster(object):
             )
 
     def start_all(self, agent_num, peloton_version, skip_respool=False,
-                  peloton_image=None):
+                  peloton_image=None, peloton_apps_config=None):
         """
         type agent_num: int
         """
@@ -250,7 +262,8 @@ class VCluster(object):
             virtual_zookeeper = '%s:%s' % (host, port)
             self.start_peloton(virtual_zookeeper, agent_num, peloton_version,
                                skip_respool=skip_respool,
-                               peloton_image=peloton_image)
+                               peloton_image=peloton_image,
+                               peloton_apps_config=peloton_apps_config)
             self.output_vcluster_data()
         except Exception as e:
             print 'Failed to create/configure vcluster: %s' % e
