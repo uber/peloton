@@ -96,6 +96,10 @@ type Task interface {
 
 	// GoalState of the task.
 	GoalState() TaskStateVector
+
+	// DeleteTask deletes any state, if any, stored by the task and let the
+	// listeners know that the task is being deleted.
+	DeleteTask()
 }
 
 // TaskStateVector defines the state of a task.
@@ -424,6 +428,31 @@ func (t *task) CompareAndSetRuntime(
 	t.lastRuntimeUpdateTime = time.Now()
 	runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
 	return runtimeCopy, nil
+}
+
+func (t *task) DeleteTask() {
+	// There is no state to clean up as of now.
+	// If the goal state was set to DELETED, then let the
+	// listeners know that the task has been deleted.
+	t.RLock()
+	defer t.RUnlock()
+
+	if t.runtime == nil {
+		return
+	}
+
+	if t.runtime.GetGoalState() != pbtask.TaskState_DELETED {
+		return
+	}
+
+	runtimeCopy := proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
+	runtimeCopy.State = pbtask.TaskState_DELETED
+	t.jobFactory.notifyTaskRuntimeChanged(
+		t.jobID,
+		t.id,
+		t.jobType,
+		runtimeCopy,
+	)
 }
 
 // ReplaceRuntime replaces runtime in cache with runtime input.

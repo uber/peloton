@@ -726,3 +726,36 @@ func TestGetResourceManagerProcessingStates(t *testing.T) {
 
 	assert.Equal(t, expect, states)
 }
+
+// TestDeleteTask tests that listeners receive an event when a task is deleted
+func (suite *TaskTestSuite) TestDeleteTask() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_DELETED, 2)
+	runtime.GoalState = pbtask.TaskState_DELETED
+	tt := suite.initializeTask(suite.taskStore, suite.jobID,
+		suite.instanceID, runtime)
+
+	tt.DeleteTask()
+	suite.checkListeners(tt, tt.jobType)
+}
+
+// TestDeleteTaskNoRuntime tests that listeners receive no event
+// when a task with no runtime is deleted
+func (suite *TaskTestSuite) TestDeleteTaskNoRuntime() {
+	tt := suite.initializeTask(suite.taskStore, suite.jobID,
+		suite.instanceID, nil)
+	tt.runtime = nil
+
+	tt.DeleteTask()
+	suite.checkListenersNotCalled()
+}
+
+// TestDeleteTaskNoRuntime tests that listeners receive no event
+// when a task with no runtime is deleted
+func (suite *TaskTestSuite) TestDeleteRunningTask() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 2)
+	tt := suite.initializeTask(suite.taskStore, suite.jobID,
+		suite.instanceID, runtime)
+
+	tt.DeleteTask()
+	suite.checkListenersNotCalled()
+}

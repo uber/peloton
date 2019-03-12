@@ -534,6 +534,10 @@ func (j *job) RemoveTask(id uint32) {
 	j.Lock()
 	defer j.Unlock()
 
+	if t, ok := j.tasks[id]; ok {
+		t.DeleteTask()
+	}
+
 	delete(j.tasks, id)
 }
 
