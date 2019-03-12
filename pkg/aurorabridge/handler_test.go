@@ -314,6 +314,9 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff() {
 	suite.NoError(err)
 	suite.Equal(instancesAdded.GetInstances(),
 		resp.GetResult().GetGetJobUpdateDiffResult().GetAdd()[0].GetInstances())
+	suite.Nil(resp.GetResult().GetGetJobUpdateDiffResult().GetUpdate())
+	suite.Nil(resp.GetResult().GetGetJobUpdateDiffResult().GetRemove())
+	suite.Nil(resp.GetResult().GetGetJobUpdateDiffResult().GetUnchanged())
 }
 
 // Tests the failure scenarios for get job update diff

@@ -707,22 +707,12 @@ func (h *ServiceHandler) getJobUpdateDiff(
 		return nil, auroraErrorf("get replace job diff: %s", err)
 	}
 
-	return &api.Result{
-		GetJobUpdateDiffResult: &api.GetJobUpdateDiffResult{
-			Add: []*api.ConfigGroup{{
-				Instances: ptoa.NewRange(resp.GetInstancesAdded()),
-			}},
-			Update: []*api.ConfigGroup{{
-				Instances: ptoa.NewRange(resp.GetInstancesUpdated()),
-			}},
-			Remove: []*api.ConfigGroup{{
-				Instances: ptoa.NewRange(resp.GetInstancesRemoved()),
-			}},
-			Unchanged: []*api.ConfigGroup{{
-				Instances: ptoa.NewRange(resp.GetInstancesUnchanged()),
-			}},
-		},
-	}, nil
+	return &api.Result{GetJobUpdateDiffResult: &api.GetJobUpdateDiffResult{
+		Add:       ptoa.NewConfigGroupWithoutTaskConfig(resp.GetInstancesAdded()),
+		Update:    ptoa.NewConfigGroupWithoutTaskConfig(resp.GetInstancesUpdated()),
+		Remove:    ptoa.NewConfigGroupWithoutTaskConfig(resp.GetInstancesRemoved()),
+		Unchanged: ptoa.NewConfigGroupWithoutTaskConfig(resp.GetInstancesUnchanged()),
+	}}, nil
 }
 
 // GetTierConfigs is a no-op. It is only used to determine liveness of the scheduler.

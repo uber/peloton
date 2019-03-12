@@ -41,3 +41,18 @@ func NewConfigGroup(
 		Instances: ranges,
 	}, nil
 }
+
+// NewConfigGroupWithoutTaskConfig returns a list of ConfigGroup without
+// TaskConfig field based on input InstanceIDRange from Peloton.
+// If the input is empty, nil will be returned.
+func NewConfigGroupWithoutTaskConfig(
+	instanceIDRange []*pod.InstanceIDRange,
+) []*api.ConfigGroup {
+	if len(instanceIDRange) == 0 {
+		return nil
+	}
+
+	return []*api.ConfigGroup{{
+		Instances: NewRange(instanceIDRange),
+	}}
+}
