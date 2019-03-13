@@ -1497,38 +1497,53 @@ func (suite *ServiceHandlerTestSuite) TestKillTasks_StopAll() {
 	k := fixture.AuroraJobKey()
 	id := fixture.PelotonJobID()
 	v := fixture.PelotonEntityVersion()
-	instances := map[int32]struct{}{
-		0: {},
-		1: {},
-		2: {},
+
+	tests := []struct {
+		instances map[int32]struct{}
+	}{
+		{
+			instances: map[int32]struct{}{
+				0: {},
+				1: {},
+				2: {},
+			},
+		},
+		{
+			instances: nil,
+		},
+		{
+			instances: map[int32]struct{}{},
+		},
 	}
 
-	suite.expectGetJobIDFromJobName(k, id)
+	for _, t := range tests {
+		suite.expectGetJobIDFromJobName(k, id)
 
-	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
-			JobId:       id,
-			SummaryOnly: true,
-		}).
-		Return(&statelesssvc.GetJobResponse{
-			Summary: &stateless.JobSummary{
-				InstanceCount: 3,
-				Status: &stateless.JobStatus{
-					Version: v,
+		suite.jobClient.EXPECT().
+			GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+				JobId:       id,
+				SummaryOnly: true,
+			}).
+			Return(&statelesssvc.GetJobResponse{
+				Summary: &stateless.JobSummary{
+					InstanceCount: 3,
+					Status: &stateless.JobStatus{
+						Version: v,
+					},
 				},
-			},
-		}, nil)
+			}, nil)
 
-	suite.jobClient.EXPECT().
-		StopJob(suite.ctx, &statelesssvc.StopJobRequest{
-			JobId:   id,
-			Version: v,
-		}).
-		Return(&statelesssvc.StopJobResponse{}, nil)
+		suite.jobClient.EXPECT().
+			StopJob(suite.ctx, &statelesssvc.StopJobRequest{
+				JobId:   id,
+				Version: v,
+			}).
+			Return(&statelesssvc.StopJobResponse{}, nil)
 
-	resp, err := suite.handler.KillTasks(suite.ctx, k, instances, nil)
-	suite.NoError(err)
-	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+		resp, err := suite.handler.KillTasks(suite.ctx, k, t.instances, nil)
+		suite.NoError(err)
+		suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+	}
 }
 
 // Ensures that RollbackJobUpdate calls ReplaceJob using the previous JobSpec.

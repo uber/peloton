@@ -811,6 +811,11 @@ func (h *ServiceHandler) killTasks(
 		}
 	}
 
+	if instances == nil || len(instances) == 0 {
+		// if instances is not passed in, assuming killing all tasks
+		stopAll = true
+	}
+
 	if stopAll {
 		// If all instances are specified, issue a single StopJob instead of
 		// multiple StopPods for performance reasons.
