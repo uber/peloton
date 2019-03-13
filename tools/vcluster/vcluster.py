@@ -135,17 +135,6 @@ class VCluster(object):
             ))
         return host, port, keyspace
 
-    def _get_app_path(self, peloton_apps_config_path):
-        """
-        Returns the formatted path for app config
-
-        param peloton_app_config  : The path to the peloton apps configs
-
-        type peloton_app_config : str
-        """
-        return os.path.join(peloton_apps_config_path, "config", "{}",
-                            "production.yaml")
-
     def start_peloton(self, virtual_zookeeper, agent_num, version=None,
                       skip_respool=False, peloton_image=None,
                       peloton_apps_config=None):
@@ -184,18 +173,9 @@ class VCluster(object):
         for app in self.APP_ORDER:
             print_okblue('Creating peloton application: %s' % app)
 
-            # placement_[stateless|stateful] is the placement app with the a
-            # different name
-            if app.startswith('placement_'):
-                app = 'placement'
-
-            prod_config_path = self._get_app_path(peloton_apps_config).\
-                format(app)
-            with open(prod_config_path, "rb") as config_file:
-                prod_config_base64 = base64.b64encode(config_file.read())
-
             dynamic_env_master = {
-                "PRODUCTION_CONFIG": prod_config_base64,
+                'PRODUCTION_CONFIG': self._get_base64_prod_config(
+                    app, peloton_apps_config),
                 'APP': app,
                 'ENVIRONMENT': 'production',
                 'ELECTION_ZK_SERVERS': virtual_zookeeper,
@@ -249,6 +229,29 @@ class VCluster(object):
                 zk_server=virtual_zookeeper,
                 agent_num=agent_num,
             )
+
+    @staticmethod
+    def _get_base64_prod_config(app, peloton_apps_configs):
+        """
+        Returns the base64 encoded prod config
+        :param app:                  The name of the peloton application
+        :param peloton_apps_configs: The location for the production configs
+
+        :return:                     The base64 encoded prod config
+        """
+        config_path = os.path.join(peloton_apps_configs, "config", "{}",
+                                   "production.yaml")
+
+        # placement_[stateless|stateful] is the placement app with the a
+        # different name
+        app_name = app
+        if app_name.startswith('placement_'):
+            app_name = 'placement'
+
+        prod_config_path = config_path.format(app_name)
+        with open(prod_config_path, "rb") as config_file:
+            prod_config_base64 = base64.b64encode(config_file.read())
+        return prod_config_base64
 
     def start_all(self, agent_num, peloton_version, skip_respool=False,
                   peloton_image=None, peloton_apps_config=None):
@@ -325,7 +328,7 @@ class VCluster(object):
         print_okgreen('Step: stopping all virtual Zookeeper')
         self.zookeeper.teardown(remove=remove)
 
-    def get_vitual_zookeeper(self):
+    def get_virtual_zookeeper(self):
         if self.virtual_zookeeper:
             return self.virtual_zookeeper
         host, port = self.zookeeper.get_host_port()
@@ -333,7 +336,7 @@ class VCluster(object):
         return '%s:%s' % (host, port)
 
     def get_mesos_master(self):
-        zk_server = self.get_vitual_zookeeper()
+        zk_server = self.get_virtual_zookeeper()
         host, port = self.mesos_master.find_leader(zk_server)
         return '%s:%s' % (host, port)
 
