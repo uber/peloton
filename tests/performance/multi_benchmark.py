@@ -186,21 +186,22 @@ def main():
     if update_df is not None:
         update_df.to_csv(output_csv_files_list[2], sep='\t')
 
-    # create one large stateless job (uses 90% of capacity)
-    create_df = t.perf_test_stateless_job_create()
-    if create_df is not None:
-        create_df.to_csv(output_csv_files_list[3], sep='\t')
-
-    # update one large stateless job (uses 90% of capacity)
-    update_df = t.perf_test_stateless_job_update()
-    if update_df is not None:
-        update_df.to_csv(output_csv_files_list[4], sep='\t')
-
-    # update multiple smaller stateless jobs in parallel
-    # (total use 90% of capacity)
-    pupdate_df = t.perf_test_stateless_parallel_updates()
-    if pupdate_df is not None:
-        pupdate_df.to_csv(output_csv_files_list[5], sep='\t')
+    # Commenting out stateless tests for 0.8.2.* release
+    # # create one large stateless job (uses 90% of capacity)
+    # create_df = t.perf_test_stateless_job_create()
+    # if create_df is not None:
+    #     create_df.to_csv(output_csv_files_list[3], sep='\t')
+    #
+    # # update one large stateless job (uses 90% of capacity)
+    # update_df = t.perf_test_stateless_job_update()
+    # if update_df is not None:
+    #     update_df.to_csv(output_csv_files_list[4], sep='\t')
+    #
+    # # update multiple smaller stateless jobs in parallel
+    # # (total use 90% of capacity)
+    # pupdate_df = t.perf_test_stateless_parallel_updates()
+    # if pupdate_df is not None:
+    #     pupdate_df.to_csv(output_csv_files_list[5], sep='\t')
 
 
 class perfCounter():
