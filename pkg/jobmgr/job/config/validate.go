@@ -177,7 +177,7 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 
 	// validate ports
 	defaultConfig := jobConfig.GetDefaultConfig()
-	if err := validatePortConfig(defaultConfig.GetPorts()); err != nil {
+	if err := validatePortConfig(defaultConfig); err != nil {
 		return err
 	}
 
@@ -222,7 +222,7 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 			restartPolicy.MaxFailures = _maxTaskRetries
 		}
 
-		if err := validatePortConfig(taskConfig.GetPorts()); err != nil {
+		if err := validatePortConfig(taskConfig); err != nil {
 			return errInvalidTaskConfig(i, err)
 		}
 
@@ -294,12 +294,14 @@ func validatePreemptionPolicy(instanceID uint32, taskConfig *task.TaskConfig,
 }
 
 // validatePortConfig checks port name and port env name exists for dynamic port.
-func validatePortConfig(portConfigs []*task.PortConfig) error {
+func validatePortConfig(taskConfig *task.TaskConfig) error {
+	portConfigs := taskConfig.GetPorts()
+	customExecutor := taskConfig.GetExecutor().GetType() == mesos.ExecutorInfo_CUSTOM
 	for _, port := range portConfigs {
 		if len(port.GetName()) == 0 {
 			return errPortNameMissing
 		}
-		if port.GetValue() == 0 && len(port.GetEnvName()) == 0 {
+		if !customExecutor && port.GetValue() == 0 && len(port.GetEnvName()) == 0 {
 			return errPortEnvNameMissing
 		}
 	}

@@ -374,15 +374,56 @@ func TestValidateTaskConfigFailureForPortConfig(t *testing.T) {
 	assert.EqualError(t, err, errPortEnvNameMissing.Error())
 }
 
-func TestValidatePortConfigFailure(t *testing.T) {
-	portConfigs := []*task.PortConfig{
-		{
-			Value: uint32(80),
+// TestValidatePortConfig_Failure verifies validatePortConfig
+// throws errPortNameMissing when name is not specified
+// in PortConfig.
+func TestValidatePortConfig_Failure(t *testing.T) {
+	taskConfig := &task.TaskConfig{
+		Ports: []*task.PortConfig{
+			{
+				Value: uint32(80),
+			},
 		},
 	}
 
-	err := validatePortConfig(portConfigs)
+	err := validatePortConfig(taskConfig)
 	assert.Error(t, err, errPortNameMissing.Error())
+}
+
+// TestValidatePortConfig_FailureMissingEnvName verifies
+// validatePortConfig throws errPortEnvNameMissing when
+// using dynamic port allocation but environment name is
+// not specified.
+func TestValidatePortConfig_FailureMissingEnvName(t *testing.T) {
+	taskConfig := &task.TaskConfig{
+		Ports: []*task.PortConfig{
+			{
+				Name: "system",
+			},
+		},
+	}
+
+	err := validatePortConfig(taskConfig)
+	assert.Error(t, err, errPortEnvNameMissing.Error())
+}
+
+// TestValidatePortConfigMissingEnvName_NoFailureCustomExecutor
+// verifies validatePortConfig does not throws errPortEnvNameMissing
+// when custom executor (thermos) is used.
+func TestValidatePortConfigMissingEnvName_NoFailureCustomExecutor(t *testing.T) {
+	taskConfig := &task.TaskConfig{
+		Executor: &mesos.ExecutorInfo{
+			Type: mesos.ExecutorInfo_CUSTOM.Enum(),
+		},
+		Ports: []*task.PortConfig{
+			{
+				Name: "system",
+			},
+		},
+	}
+
+	err := validatePortConfig(taskConfig)
+	assert.NoError(t, err)
 }
 
 func TestValidateTaskConfigWithInvalidFieldType(t *testing.T) {
