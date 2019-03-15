@@ -63,30 +63,37 @@ type Task interface {
 	// Job identifier the task belongs to.
 	JobID() *peloton.JobID
 
-	// CreateRuntime creates the task runtime in DB and cache
-	CreateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, owner string) error
+	// CreateTask creates the task runtime in DB and cache
+	CreateTask(ctx context.Context, runtime *pbtask.RuntimeInfo, owner string) error
 
-	// PatchRuntime patches diff to the existing runtime cache
+	// PatchTask patches diff to the existing runtime cache
 	// in task and persists to DB.
-	PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) error
+	PatchTask(ctx context.Context, diff jobmgrcommon.RuntimeDiff) error
 
-	// CompareAndSetRuntime replaces the exiting task runtime in DB and cache.
+	// CompareAndSetTask replaces the exiting task runtime in DB and cache.
 	// It uses RuntimeInfo.Revision.Version for concurrency control, and it would
 	// update RuntimeInfo.Revision.Version automatically upon success.
 	// Caller should not manually modify the value of RuntimeInfo.Revision.Version.
-	CompareAndSetRuntime(
+	CompareAndSetTask(
 		ctx context.Context,
 		runtime *pbtask.RuntimeInfo,
 		jobType pbjob.JobType,
 	) (*pbtask.RuntimeInfo, error)
 
-	// ReplaceRuntime replaces cache with runtime
-	// forceReplace would decide whether to check version when replacing the runtime
+	// ReplaceTask replaces cache with runtime and config;
+	// forceReplace would decide whether to check version when replacing the runtime and config
 	// forceReplace is used for Refresh, which is for debugging only
-	ReplaceRuntime(runtime *pbtask.RuntimeInfo, forceReplace bool) error
+	ReplaceTask(
+		runtime *pbtask.RuntimeInfo,
+		taskConfig *pbtask.TaskConfig,
+		forceReplace bool,
+	) error
 
 	// GetRuntime returns the task run time
 	GetRuntime(ctx context.Context) (*pbtask.RuntimeInfo, error)
+
+	// GetLabels returns the task labels
+	GetLabels(ctx context.Context) ([]*peloton.Label, error)
 
 	// GetLastRuntimeUpdateTime returns the last time the task runtime was updated.
 	GetLastRuntimeUpdateTime() time.Time
@@ -122,6 +129,13 @@ func newTask(jobID *peloton.JobID, id uint32, jobFactory *jobFactory, jobType pb
 	return task
 }
 
+// taskConfigCache is the structure which defines the
+// subset of task configuration to be stored in the cache
+type taskConfigCache struct {
+	configVersion uint64           // the current configuration version
+	labels        []*peloton.Label // task labels
+}
+
 // task structure holds the information about a given task in the cache.
 type task struct {
 	sync.RWMutex // Mutex to acquire before accessing any task information in cache
@@ -133,6 +147,8 @@ type task struct {
 	jobFactory *jobFactory // Pointer to the parent job factory object
 
 	runtime *pbtask.RuntimeInfo // task runtime information
+
+	config *taskConfigCache // task configuration information
 
 	lastRuntimeUpdateTime time.Time // last time at which the task runtime information was updated
 }
@@ -269,7 +285,35 @@ func (t *task) validateState(newRuntime *pbtask.RuntimeInfo) bool {
 	return false
 }
 
-func (t *task) CreateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, owner string) error {
+// updateConfig is used to update the config in the task cache.
+// It should be called with the write task lock held.
+func (t *task) updateConfig(ctx context.Context, configVersion uint64) error {
+	if t.config != nil && t.config.configVersion == configVersion {
+		// no change, do nothing
+		return nil
+	}
+
+	taskConfig, _, err := t.jobFactory.taskStore.GetTaskConfig(
+		ctx, t.jobID, t.id, configVersion)
+	if err != nil {
+		return err
+	}
+
+	t.config = &taskConfigCache{
+		configVersion: configVersion,
+		labels:        taskConfig.GetLabels(),
+	}
+	return nil
+}
+
+// cleanTaskCache cleans the task runtime and labels in the task cache.
+// It should be called with the write task lock held.
+func (t *task) cleanTaskCache() {
+	t.runtime = nil
+	t.config = nil
+}
+
+func (t *task) CreateTask(ctx context.Context, runtime *pbtask.RuntimeInfo, owner string) error {
 	var runtimeCopy *pbtask.RuntimeInfo
 	// notify listeners after dropping the lock
 	defer func() {
@@ -288,7 +332,15 @@ func (t *task) CreateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, o
 		owner,
 		t.jobType)
 	if err != nil {
-		t.runtime = nil
+		t.cleanTaskCache()
+		return err
+	}
+
+	// Update the config in cache only after creating the runtime in DB
+	// so that cache is not populated if runtime write fails.
+	err = t.updateConfig(ctx, runtime.GetConfigVersion())
+	if err != nil {
+		t.cleanTaskCache()
 		return err
 	}
 
@@ -300,7 +352,7 @@ func (t *task) CreateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, o
 
 // PatchRuntime patches diff to the existing runtime cache
 // in task and persists to DB.
-func (t *task) PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) error {
+func (t *task) PatchTask(ctx context.Context, diff jobmgrcommon.RuntimeDiff) error {
 	if diff == nil {
 		return yarpcerrors.InvalidArgumentErrorf(
 			"unexpected nil diff")
@@ -323,11 +375,10 @@ func (t *task) PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) 
 	// reload cache if there is none
 	if t.runtime == nil {
 		// fetch runtime from db if not present in cache
-		runtime, err := t.jobFactory.taskStore.GetTaskRuntime(ctx, t.jobID, t.id)
+		err := t.updateRuntimeFromDB(ctx)
 		if err != nil {
 			return err
 		}
-		t.runtime = runtime
 	}
 
 	// make a copy of runtime since patch() would update runtime in place
@@ -354,9 +405,16 @@ func (t *task) PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) 
 		t.jobType)
 	if err != nil {
 		// clean the runtime in cache on DB write failure
-		t.runtime = nil
+		t.cleanTaskCache()
 		return err
 	}
+
+	err = t.updateConfig(ctx, newRuntimePtr.GetConfigVersion())
+	if err != nil {
+		t.cleanTaskCache()
+		return err
+	}
+
 	// Store the new runtime in cache
 	t.runtime = newRuntimePtr
 	t.lastRuntimeUpdateTime = time.Now()
@@ -364,7 +422,7 @@ func (t *task) PatchRuntime(ctx context.Context, diff jobmgrcommon.RuntimeDiff) 
 	return nil
 }
 
-func (t *task) CompareAndSetRuntime(
+func (t *task) CompareAndSetTask(
 	ctx context.Context,
 	runtime *pbtask.RuntimeInfo,
 	jobType pbjob.JobType,
@@ -387,11 +445,10 @@ func (t *task) CompareAndSetRuntime(
 	// reload cache if there is none
 	if t.runtime == nil {
 		// fetch runtime from db if not present in cache
-		runtimeDB, err := t.jobFactory.taskStore.GetTaskRuntime(ctx, t.jobID, t.id)
+		err := t.updateRuntimeFromDB(ctx)
 		if err != nil {
 			return nil, err
 		}
-		t.runtime = runtimeDB
 	}
 
 	// validate that the input version is the same as the version in cache
@@ -419,7 +476,13 @@ func (t *task) CompareAndSetRuntime(
 		jobType)
 	if err != nil {
 		// clean the runtime in cache on DB write failure
-		t.runtime = nil
+		t.cleanTaskCache()
+		return nil, err
+	}
+
+	err = t.updateConfig(ctx, runtime.GetConfigVersion())
+	if err != nil {
+		t.cleanTaskCache()
 		return nil, err
 	}
 
@@ -455,13 +518,16 @@ func (t *task) DeleteTask() {
 	)
 }
 
-// ReplaceRuntime replaces runtime in cache with runtime input.
-// forceReplace would decide whether to check version when replacing the runtime,
+// ReplaceTask replaces runtime and config in cache with runtime input.
+// forceReplace would decide whether to check version when replacing the runtime and config,
 // it should only be used in Refresh for debugging purpose
-func (t *task) ReplaceRuntime(runtime *pbtask.RuntimeInfo, forceReplace bool) error {
+func (t *task) ReplaceTask(
+	runtime *pbtask.RuntimeInfo,
+	taskConfig *pbtask.TaskConfig,
+	forceReplace bool) error {
 	if runtime == nil || runtime.GetRevision() == nil {
 		return yarpcerrors.InvalidArgumentErrorf(
-			"ReplaceRuntime expects a non-nil runtime with non-nil Revision")
+			"ReplaceTask expects a non-nil runtime with non-nil Revision")
 	}
 
 	t.Lock()
@@ -474,6 +540,11 @@ func (t *task) ReplaceRuntime(runtime *pbtask.RuntimeInfo, forceReplace bool) er
 	if forceReplace ||
 		t.runtime == nil ||
 		runtime.GetRevision().GetVersion() > t.runtime.GetRevision().GetVersion() {
+		// Update task config and runtime
+		t.config = &taskConfigCache{
+			configVersion: runtime.GetConfigVersion(),
+			labels:        taskConfig.GetLabels(),
+		}
 		t.runtime = runtime
 		return nil
 	}
@@ -497,21 +568,64 @@ func (t *task) updateRevision(runtime *pbtask.RuntimeInfo) {
 	runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
 }
 
+// updateRuntimeFromDB is a helper function to load the runtime from the DB
+// into the cache. This has to be called with the write lock held.
+func (t *task) updateRuntimeFromDB(ctx context.Context) error {
+	if t.runtime != nil {
+		return nil
+	}
+
+	runtime, err := t.jobFactory.taskStore.GetTaskRuntime(ctx, t.jobID, t.id)
+	if err != nil {
+		return err
+	}
+	t.runtime = runtime
+	return nil
+}
+
 func (t *task) GetRuntime(ctx context.Context) (*pbtask.RuntimeInfo, error) {
 	t.Lock()
 	defer t.Unlock()
 
 	if t.runtime == nil {
 		// If runtime is not present in the cache, then fetch from the DB
-		runtime, err := t.jobFactory.taskStore.GetTaskRuntime(ctx, t.jobID, t.id)
+		err := t.updateRuntimeFromDB(ctx)
 		if err != nil {
 			return nil, err
 		}
-		t.runtime = runtime
 	}
 
 	runtime := proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
 	return runtime, nil
+}
+
+func (t *task) GetLabels(ctx context.Context) ([]*peloton.Label, error) {
+	t.Lock()
+	defer t.Unlock()
+
+	if t.runtime == nil {
+		err := t.updateRuntimeFromDB(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.config == nil {
+		err := t.updateConfig(ctx, t.runtime.GetConfigVersion())
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var labelsCopy []*peloton.Label
+	for _, label := range t.config.labels {
+		var l peloton.Label
+
+		l = *label
+		labelsCopy = append(labelsCopy, &l)
+	}
+
+	return labelsCopy, nil
 }
 
 func (t *task) GetLastRuntimeUpdateTime() time.Time {

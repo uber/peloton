@@ -694,7 +694,7 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 			Return(taskInfos[i].Runtime, nil)
 		if i != runningInstanceID {
 			suite.mockedCachedTask.EXPECT().
-				CompareAndSetRuntime(gomock.Any(), gomock.Any(), gomock.Any()).
+				CompareAndSetTask(gomock.Any(), gomock.Any(), gomock.Any()).
 				Do(func(_ context.Context, runtime *task.RuntimeInfo, _ job.JobType) {
 					suite.Equal(runtime.State, task.TaskState_INITIALIZED)
 					suite.Equal(runtime.Healthy, task.HealthState_DISABLED)
@@ -1069,7 +1069,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksCompareAndSetFailure() {
 				}, nil)
 
 			suite.mockedCachedTask.EXPECT().
-				CompareAndSetRuntime(gomock.Any(), gomock.Any(), gomock.Any()).
+				CompareAndSetTask(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil, jobmgrcommon.UnexpectedVersionError)
 		}
 	}
@@ -1142,7 +1142,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 		GetRuntime(gomock.Any()).
 		Return(singleTaskInfo[1].Runtime, nil)
 	suite.mockedCachedTask.EXPECT().
-		CompareAndSetRuntime(gomock.Any(), gomock.Any(), gomock.Any()).
+		CompareAndSetTask(gomock.Any(), gomock.Any(), gomock.Any()).
 		Do(func(_ context.Context, runtime *task.RuntimeInfo, _ job.JobType) {
 			suite.Equal(runtime.State, task.TaskState_INITIALIZED)
 			suite.Equal(runtime.Healthy, task.HealthState_DISABLED)
@@ -2042,24 +2042,19 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccessAgentIP() {
 }
 
 func (suite *TaskHandlerTestSuite) TestRefreshTask() {
-	runtimes := make(map[uint32]*task.RuntimeInfo)
-	for instID, taskInfo := range suite.taskInfos {
-		runtimes[instID] = taskInfo.GetRuntime()
-	}
-
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.testJobID.GetValue()).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 	suite.mockedTaskStore.EXPECT().
-		GetTaskRuntimesForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
+		GetTasksForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
 			From: 0,
 			To:   suite.testJobConfig.GetInstanceCount(),
-		}).Return(runtimes, nil)
+		}).Return(suite.taskInfos, nil)
 	suite.mockedJobFactory.EXPECT().
 		AddJob(suite.testJobID).Return(suite.mockedCachedJob)
 	suite.mockedCachedJob.EXPECT().
-		ReplaceTasks(runtimes, true).Return(nil)
+		ReplaceTasks(suite.taskInfos, true).Return(nil)
 	suite.mockedGoalStateDrive.EXPECT().
 		EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return().Times(int(suite.testJobConfig.GetInstanceCount()))
 	suite.mockedCachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
@@ -2087,7 +2082,7 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 		GetJobConfig(gomock.Any(), suite.testJobID.GetValue()).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 	suite.mockedTaskStore.EXPECT().
-		GetTaskRuntimesForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
+		GetTasksForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
 			From: 0,
 			To:   suite.testJobConfig.GetInstanceCount(),
 		}).Return(nil, fmt.Errorf("fake db error"))
@@ -2099,7 +2094,7 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 		GetJobConfig(gomock.Any(), suite.testJobID.GetValue()).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 	suite.mockedTaskStore.EXPECT().
-		GetTaskRuntimesForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
+		GetTasksForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
 			From: 0,
 			To:   suite.testJobConfig.GetInstanceCount(),
 		}).Return(nil, nil)
@@ -2346,6 +2341,27 @@ func (suite *TaskHandlerTestSuite) TestGetCache_FailToLoadRuntime() {
 	suite.Error(err)
 }
 
+// TestGetCacheFailedToGetLabels tests when fetching labels from cache
+// return an error
+func (suite *TaskHandlerTestSuite) TestGetCacheFailedToGetLabels() {
+	instanceID := uint32(0)
+
+	// Test success path
+	suite.mockedJobFactory.EXPECT().
+		GetJob(gomock.Any()).Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
+		GetTask(instanceID).Return(suite.mockedTask)
+	suite.mockedTask.EXPECT().
+		GetRuntime(gomock.Any()).Return(suite.taskInfos[instanceID].Runtime, nil)
+	suite.mockedTask.EXPECT().
+		GetLabels(gomock.Any()).Return(nil, fmt.Errorf("test err"))
+	_, err := suite.handler.GetCache(context.Background(), &task.GetCacheRequest{
+		JobId:      suite.testJobID,
+		InstanceId: instanceID,
+	})
+	suite.Error(err)
+}
+
 func (suite *TaskHandlerTestSuite) TestGetCache_SUCCESS() {
 	instanceID := uint32(0)
 
@@ -2356,6 +2372,8 @@ func (suite *TaskHandlerTestSuite) TestGetCache_SUCCESS() {
 		GetTask(instanceID).Return(suite.mockedTask)
 	suite.mockedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(suite.taskInfos[instanceID].Runtime, nil)
+	suite.mockedTask.EXPECT().
+		GetLabels(gomock.Any()).Return(nil, nil)
 	resp, err := suite.handler.GetCache(context.Background(), &task.GetCacheRequest{
 		JobId:      suite.testJobID,
 		InstanceId: instanceID,

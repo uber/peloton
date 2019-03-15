@@ -172,6 +172,30 @@ func initializeCurrentRuntimes(instanceCount uint32, state pbtask.TaskState) map
 	return runtimes
 }
 
+func initializeTaskInfos(instanceCount uint32, state pbtask.TaskState) map[uint32]*pbtask.TaskInfo {
+	var labels []*peloton.Label
+
+	labels = append(labels, initializeLabel("key", "value"))
+	taskInfos := make(map[uint32]*pbtask.TaskInfo)
+	for i := uint32(0); i < instanceCount; i++ {
+		taskInfo := &pbtask.TaskInfo{
+			Runtime: &pbtask.RuntimeInfo{
+				State: state,
+				Revision: &peloton.ChangeLog{
+					CreatedAt: uint64(time.Now().UnixNano()),
+					UpdatedAt: uint64(time.Now().UnixNano()),
+					Version:   1,
+				},
+			},
+			Config: &pbtask.TaskConfig{
+				Labels: labels,
+			},
+		}
+		taskInfos[i] = taskInfo
+	}
+	return taskInfos
+}
+
 func initializeDiffs(instanceCount uint32, state pbtask.TaskState) map[uint32]jobmgrcommon.RuntimeDiff {
 	diffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
 	for i := uint32(0); i < instanceCount; i++ {
@@ -1528,6 +1552,14 @@ func (suite *JobTestSuite) TestJobCreateTaskRuntimes() {
 				suite.Equal(pbtask.TaskState_INITIALIZED, runtime.GetState())
 				suite.Equal(uint64(1), runtime.GetRevision().GetVersion())
 			}).Return(nil)
+
+		suite.taskStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				suite.jobID,
+				i,
+				gomock.Any(),
+			).Return(nil, nil, nil)
 	}
 
 	err := suite.job.CreateTaskRuntimes(context.Background(), runtimes, "peloton")
@@ -1567,16 +1599,18 @@ func (suite *JobTestSuite) TestJobCreateTaskRuntimesWithDBError() {
 // TestSetGetTasksInJobInCacheSingle tests setting and getting single task in job in cache.
 func (suite *JobTestSuite) TestSetGetTasksInJobInCacheSingle() {
 	instanceCount := uint32(10)
-	runtime := pbtask.RuntimeInfo{
-		State: pbtask.TaskState_RUNNING,
-		Revision: &peloton.ChangeLog{
-			Version: 1,
+	taskInfo := &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State: pbtask.TaskState_RUNNING,
+			Revision: &peloton.ChangeLog{
+				Version: 1,
+			},
 		},
 	}
 
 	// Test updating tasks one at a time in cache
 	for i := uint32(0); i < instanceCount; i++ {
-		suite.job.ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{i: &runtime}, false)
+		suite.job.ReplaceTasks(map[uint32]*pbtask.TaskInfo{i: taskInfo}, false)
 	}
 	suite.Equal(instanceCount, uint32(len(suite.job.tasks)))
 
@@ -1584,7 +1618,7 @@ func (suite *JobTestSuite) TestSetGetTasksInJobInCacheSingle() {
 	for i := uint32(0); i < instanceCount; i++ {
 		tt := suite.job.GetTask(i)
 		actRuntime, _ := tt.GetRuntime(context.Background())
-		suite.Equal(runtime, *actRuntime)
+		suite.Equal(*taskInfo.GetRuntime(), *actRuntime)
 	}
 }
 
@@ -1592,22 +1626,22 @@ func (suite *JobTestSuite) TestSetGetTasksInJobInCacheSingle() {
 func (suite *JobTestSuite) TestSetGetTasksInJobInCacheBlock() {
 	instanceCount := uint32(10)
 	// Test updating tasks in one call in cache
-	runtimes := initializeCurrentRuntimes(instanceCount, pbtask.TaskState_SUCCEEDED)
-	suite.job.ReplaceTasks(runtimes, false)
+	taskInfos := initializeTaskInfos(instanceCount, pbtask.TaskState_SUCCEEDED)
+	suite.job.ReplaceTasks(taskInfos, false)
 
 	// Validate the state of the tasks in cache is correct
-	for instID, runtime := range runtimes {
+	for instID, taskInfo := range taskInfos {
 		tt := suite.job.GetTask(instID)
 		actRuntime, _ := tt.GetRuntime(context.Background())
-		suite.Equal(runtime, actRuntime)
+		suite.Equal(taskInfo.GetRuntime(), actRuntime)
 	}
 }
 
 // TestTasksGetAllTasks tests getting all tasks.
 func (suite *JobTestSuite) TestTasksGetAllTasks() {
 	instanceCount := uint32(10)
-	runtimes := initializeCurrentRuntimes(instanceCount, pbtask.TaskState_RUNNING)
-	suite.job.ReplaceTasks(runtimes, false)
+	taskInfos := initializeTaskInfos(instanceCount, pbtask.TaskState_RUNNING)
+	suite.job.ReplaceTasks(taskInfos, false)
 
 	// Test get all tasks
 	ttMap := suite.job.GetAllTasks()
@@ -1628,8 +1662,8 @@ func (suite *JobTestSuite) TestTasksGetAllWorkflows() {
 func (suite *JobTestSuite) TestPartialJobCheck() {
 	instanceCount := uint32(10)
 
-	runtimes := initializeCurrentRuntimes(instanceCount, pbtask.TaskState_RUNNING)
-	suite.job.ReplaceTasks(runtimes, false)
+	taskInfos := initializeTaskInfos(instanceCount, pbtask.TaskState_RUNNING)
+	suite.job.ReplaceTasks(taskInfos, false)
 
 	// Test partial job check
 	suite.job.config.instanceCount = 20
@@ -1657,6 +1691,10 @@ func (suite *JobTestSuite) TestPatchTasks_SetGetTasksSingle() {
 			Revision: &peloton.ChangeLog{Version: 1},
 			State:    pbtask.TaskState_INITIALIZED,
 		}, nil).Times(int(instanceCount))
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Return(nil, nil, nil).
+		Times(int(instanceCount))
 
 	// Test updating tasks one at a time in cache
 	for i := uint32(0); i < instanceCount; i++ {
@@ -1676,14 +1714,20 @@ func (suite *JobTestSuite) TestPatchTasks_SetGetTasksSingle() {
 func (suite *JobTestSuite) TestReplaceTasks() {
 	instanceCount := uint32(10)
 	// Test updating tasks in one call in cache
-	runtimes := initializeCurrentRuntimes(instanceCount, pbtask.TaskState_SUCCEEDED)
-	suite.job.ReplaceTasks(runtimes, false)
+	taskInfos := initializeTaskInfos(instanceCount, pbtask.TaskState_SUCCEEDED)
+	suite.job.ReplaceTasks(taskInfos, false)
 
 	// Validate the state of the tasks in cache is correct
-	for instID, runtime := range runtimes {
+	for instID, taskInfo := range taskInfos {
 		tt := suite.job.GetTask(instID)
 		actRuntime, _ := tt.GetRuntime(context.Background())
-		suite.Equal(runtime, actRuntime)
+		suite.Equal(taskInfo.GetRuntime(), actRuntime)
+		actLabels, _ := tt.GetLabels(context.Background())
+		suite.Equal(len(taskInfo.GetConfig().GetLabels()), len(actLabels))
+		for count, label := range taskInfo.GetConfig().GetLabels() {
+			suite.Equal(label.GetKey(), actLabels[count].GetKey())
+			suite.Equal(label.GetValue(), actLabels[count].GetValue())
+		}
 	}
 }
 
@@ -1705,6 +1749,9 @@ func (suite *JobTestSuite) TestPatchTasksSetGetTasksMultiple() {
 				i,
 				gomock.Any(),
 				gomock.Any()).Return(nil)
+		suite.taskStore.EXPECT().
+			GetTaskConfig(gomock.Any(), suite.jobID, i, gomock.Any()).
+			Return(nil, nil, nil)
 	}
 
 	err := suite.job.PatchTasks(context.Background(), diffs)
@@ -1747,10 +1794,16 @@ func (suite *JobTestSuite) TestPatchTasksDBError() {
 
 // TestPatchTasks_SingleTask tests updating task runtime of a single task in DB.
 func (suite *JobTestSuite) TestPatchTasksSingleTask() {
+	var labels []*peloton.Label
+
+	labels = append(labels, initializeLabel("key", "value"))
 	diffs := initializeDiffs(1, pbtask.TaskState_RUNNING)
 	oldRuntime := initializeCurrentRuntime(pbtask.TaskState_LAUNCHED)
 	tt := suite.job.addTaskToJobMap(0)
 	tt.runtime = oldRuntime
+	tt.config = &taskConfigCache{
+		labels: labels,
+	}
 
 	// Update task runtime of only one task
 	suite.taskStore.EXPECT().
@@ -3937,23 +3990,31 @@ func (suite *JobTestSuite) TestGetCurrentAndGoalState() {
 }
 
 func (suite *JobTestSuite) TestGetStateCount() {
-	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-	runtimes[0] = &pbtask.RuntimeInfo{
-		State:     pbtask.TaskState_PENDING,
-		GoalState: pbtask.TaskState_SUCCEEDED,
-		Revision:  &peloton.ChangeLog{Version: 1},
+	taskInfos := make(map[uint32]*pbtask.TaskInfo)
+	taskInfos[0] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_PENDING,
+			GoalState: pbtask.TaskState_SUCCEEDED,
+			Revision:  &peloton.ChangeLog{Version: 1},
+		},
 	}
-	runtimes[1] = &pbtask.RuntimeInfo{
-		State:     pbtask.TaskState_PENDING,
-		GoalState: pbtask.TaskState_SUCCEEDED,
-		Revision:  &peloton.ChangeLog{Version: 1},
+	taskInfos[1] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_PENDING,
+			GoalState: pbtask.TaskState_SUCCEEDED,
+			Revision:  &peloton.ChangeLog{Version: 1},
+		},
 	}
-	runtimes[2] = &pbtask.RuntimeInfo{
-		State:     pbtask.TaskState_INITIALIZED,
-		GoalState: pbtask.TaskState_DELETED,
-		Revision:  &peloton.ChangeLog{Version: 1},
+
+	taskInfos[2] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_INITIALIZED,
+			GoalState: pbtask.TaskState_DELETED,
+			Revision:  &peloton.ChangeLog{Version: 1},
+		},
 	}
-	suite.job.ReplaceTasks(runtimes, true)
+
+	suite.job.ReplaceTasks(taskInfos, true)
 
 	stateCount := suite.job.GetStateCount()
 	suite.Equal(

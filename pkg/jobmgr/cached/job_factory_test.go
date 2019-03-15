@@ -73,13 +73,13 @@ func TestStartStop(t *testing.T) {
 
 	assert.True(t, f.running)
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
-	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-	runtimes[0] = &pbtask.RuntimeInfo{}
-	runtimes[1] = &pbtask.RuntimeInfo{}
-	runtimes[2] = &pbtask.RuntimeInfo{}
+	taskInfos := make(map[uint32]*pbtask.TaskInfo)
+	taskInfos[0] = &pbtask.TaskInfo{}
+	taskInfos[1] = &pbtask.TaskInfo{}
+	taskInfos[2] = &pbtask.TaskInfo{}
 
 	j := f.AddJob(jobID)
-	j.ReplaceTasks(runtimes, false)
+	j.ReplaceTasks(taskInfos, false)
 	assert.Equal(t, 3, len(j.GetAllTasks()))
 
 	f.Stop()
@@ -95,43 +95,55 @@ func TestPublishMetrics(t *testing.T) {
 	}
 
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f5222"}
-	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-	runtimes[0] = &pbtask.RuntimeInfo{
-		State:     pbtask.TaskState_RUNNING,
-		GoalState: pbtask.TaskState_RUNNING,
-		Revision:  &peloton.ChangeLog{Version: 1},
+	taskInfos := make(map[uint32]*pbtask.TaskInfo)
+	taskInfos[0] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_RUNNING,
+			GoalState: pbtask.TaskState_RUNNING,
+			Revision:  &peloton.ChangeLog{Version: 1},
+		},
 	}
-	runtimes[1] = &pbtask.RuntimeInfo{
-		State:     pbtask.TaskState_PENDING,
-		GoalState: pbtask.TaskState_RUNNING,
-		Revision:  &peloton.ChangeLog{Version: 1},
+	taskInfos[1] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_PENDING,
+			GoalState: pbtask.TaskState_RUNNING,
+			Revision:  &peloton.ChangeLog{Version: 1},
+		},
 	}
-	runtimes[2] = &pbtask.RuntimeInfo{
-		State:     pbtask.TaskState_INITIALIZED,
-		GoalState: pbtask.TaskState_DELETED,
-		Revision:  &peloton.ChangeLog{Version: 1},
+	taskInfos[2] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_INITIALIZED,
+			GoalState: pbtask.TaskState_DELETED,
+			Revision:  &peloton.ChangeLog{Version: 1},
+		},
 	}
 	j := f.AddJob(jobID)
-	j.ReplaceTasks(runtimes, true)
+	j.ReplaceTasks(taskInfos, true)
 
 	jobID = &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f111"}
-	runtimes[0] = &pbtask.RuntimeInfo{
-		State:     pbtask.TaskState_PENDING,
-		GoalState: pbtask.TaskState_SUCCEEDED,
-		Revision:  &peloton.ChangeLog{Version: 1},
+	taskInfos[0] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_PENDING,
+			GoalState: pbtask.TaskState_SUCCEEDED,
+			Revision:  &peloton.ChangeLog{Version: 1},
+		},
 	}
-	runtimes[1] = &pbtask.RuntimeInfo{
-		State:     pbtask.TaskState_PENDING,
-		GoalState: pbtask.TaskState_RUNNING,
-		Revision:  &peloton.ChangeLog{Version: 1},
+	taskInfos[1] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_PENDING,
+			GoalState: pbtask.TaskState_RUNNING,
+			Revision:  &peloton.ChangeLog{Version: 1},
+		},
 	}
-	runtimes[2] = &pbtask.RuntimeInfo{
-		State:     pbtask.TaskState_INITIALIZED,
-		GoalState: pbtask.TaskState_DELETED,
-		Revision:  &peloton.ChangeLog{Version: 1},
+	taskInfos[2] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_INITIALIZED,
+			GoalState: pbtask.TaskState_DELETED,
+			Revision:  &peloton.ChangeLog{Version: 1},
+		},
 	}
 	j = f.AddJob(jobID)
-	j.ReplaceTasks(runtimes, true)
+	j.ReplaceTasks(taskInfos, true)
 
 	stateCount := f.publishMetrics()
 	assert.Equal(t,

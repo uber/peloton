@@ -402,7 +402,7 @@ func (suite *JobCreateTestSuite) TestJobRecover() {
 		GetTask(uint32(1)).Return(nil)
 
 	suite.cachedJob.EXPECT().
-		ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{1: taskInfos[1].GetRuntime()}, false).
+		ReplaceTasks(gomock.Any(), false).
 		Return(nil)
 
 	suite.cachedJob.EXPECT().
@@ -610,7 +610,7 @@ func (suite *JobCreateTestSuite) TestJobRecoverMaxRunningInstances() {
 		GetTask(uint32(1)).Return(nil)
 
 	suite.cachedJob.EXPECT().
-		ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{1: taskInfos[1].GetRuntime()}, false).
+		ReplaceTasks(gomock.Any(), false).
 		Return(nil)
 
 	suite.cachedJob.EXPECT().

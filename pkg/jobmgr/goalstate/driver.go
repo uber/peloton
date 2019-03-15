@@ -345,7 +345,7 @@ func (d *driver) recoverTasks(
 	// Enqueue job into goal state
 	d.EnqueueJob(jobID, time.Now().Add(d.JobRuntimeDuration(jobConfig.GetType())))
 
-	runtimes, err := d.taskStore.GetTaskRuntimesForJobByRange(
+	taskInfos, err := d.taskStore.GetTasksForJobByRange(
 		ctx,
 		jobID,
 		&task.InstanceRange{
@@ -362,11 +362,15 @@ func (d *driver) recoverTasks(
 		return
 	}
 
-	for instanceID, runtime := range runtimes {
+	for instanceID, taskInfo := range taskInfos {
 		d.mtx.taskMetrics.TaskRecovered.Inc(1)
+		runtime := taskInfo.GetRuntime()
 		// Do not add the task again if it already exists
 		if cachedJob.GetTask(instanceID) == nil {
-			cachedJob.ReplaceTasks(map[uint32]*task.RuntimeInfo{instanceID: runtime}, false)
+			cachedJob.ReplaceTasks(
+				map[uint32]*task.TaskInfo{instanceID: taskInfo},
+				false,
+			)
 		}
 
 		// Do not evaluate goal state for tasks which will be evaluated using job create tasks action.

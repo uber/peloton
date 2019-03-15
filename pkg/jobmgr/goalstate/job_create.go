@@ -188,29 +188,33 @@ func recoverTasks(
 	taskRuntimeInfoMap := make(map[uint32]*task.RuntimeInfo)
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		if _, ok := taskInfos[i]; ok {
+			taskInfo := &task.TaskInfo{
+				JobId:      jobID,
+				InstanceId: i,
+				Runtime:    taskInfos[i].GetRuntime(),
+				Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[i]),
+			}
+
 			if taskInfos[i].GetRuntime().GetState() == task.TaskState_INITIALIZED {
 				// Task exists, just send to resource manager
 				if maxRunningInstances > 0 && taskInfos[i].GetRuntime().GetState() == task.TaskState_INITIALIZED {
 					// add task to cache if not already present
 					if cachedJob.GetTask(i) == nil {
-						cachedJob.ReplaceTasks(map[uint32]*task.RuntimeInfo{i: taskInfos[i].GetRuntime()}, false)
+						cachedJob.ReplaceTasks(
+							map[uint32]*task.TaskInfo{i: taskInfo},
+							false,
+						)
 					}
 					// run the runtime updater to start instances
 					EnqueueJobWithDefaultDelay(
 						jobID, goalStateDriver, cachedJob)
 				} else {
-					runtimes := make(map[uint32]*task.RuntimeInfo)
-					runtimes[i] = taskInfos[i].GetRuntime()
-					taskInfo := &task.TaskInfo{
-						JobId:      jobID,
-						InstanceId: i,
-						Runtime:    taskInfos[i].GetRuntime(),
-						Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[i]),
-					}
 					tasks = append(tasks, taskInfo)
 					// add task to cache if not already present
 					if cachedJob.GetTask(i) == nil {
-						cachedJob.ReplaceTasks(runtimes, false)
+						replaceTaskInfo := make(map[uint32]*task.TaskInfo)
+						replaceTaskInfo[i] = taskInfo
+						cachedJob.ReplaceTasks(taskInfos, false)
 					}
 				}
 			}

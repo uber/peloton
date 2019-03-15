@@ -240,7 +240,7 @@ func (h *serviceHandler) startPod(
 			jobmgrtask.GetDefaultTaskGoalState(jobType)
 		taskRuntime.Message = "PodSVC.StartPod request"
 
-		if _, err = cachedTask.CompareAndSetRuntime(
+		if _, err = cachedTask.CompareAndSetTask(
 			ctx, taskRuntime, jobType); err == nil {
 			return nil
 		}
@@ -601,16 +601,14 @@ func (h *serviceHandler) RefreshPod(
 	}
 
 	pelotonJobID := &v0peloton.JobID{Value: jobID}
-	runtime, err := h.podStore.GetTaskRuntime(ctx, pelotonJobID, instanceID)
+	taskInfo, err := h.podStore.GetTaskForJob(ctx, jobID, instanceID)
 
 	if err != nil {
-		return nil, errors.Wrap(err, "fail to get task runtime")
+		return nil, errors.Wrap(err, "fail to get task info")
 	}
 
 	cachedJob := h.jobFactory.AddJob(pelotonJobID)
-	if err := cachedJob.ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{
-		instanceID: runtime,
-	}, true); err != nil {
+	if err := cachedJob.ReplaceTasks(taskInfo, true); err != nil {
 		return nil, errors.Wrap(err, "fail to replace task runtime")
 	}
 
@@ -662,8 +660,15 @@ func (h *serviceHandler) GetPodCache(
 			errors.Wrap(err, "fail to get task runtime")
 	}
 
+	labels, err := cachedTask.GetLabels(ctx)
+	if err != nil {
+		return nil,
+			errors.Wrap(err, "fail to get task labels")
+	}
+
 	return &svc.GetPodCacheResponse{
 		Status: handlerutil.ConvertTaskRuntimeToPodStatus(runtime),
+		Labels: handlerutil.ConvertLabels(labels),
 	}, nil
 }
 

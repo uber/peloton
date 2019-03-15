@@ -73,11 +73,11 @@ type Job interface {
 	// cache would be invalidated as well.
 	PatchTasks(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) error
 
-	// ReplaceTasks replaces task runtime with runtimes in cache.
+	// ReplaceTasks replaces task runtime and config in cache.
 	// If forceReplace is false, it would check Revision version
-	// and decide whether to replace the runtime.
-	// If forceReplace is true, the func would always replace the runtime,
-	ReplaceTasks(runtimes map[uint32]*pbtask.RuntimeInfo, forceReplace bool) error
+	// and decide whether to replace the runtime and config.
+	// If forceReplace is true, the func would always replace the runtime and config.
+	ReplaceTasks(taskInfos map[uint32]*pbtask.TaskInfo, forceReplace bool) error
 
 	// AddTask adds a new task to the job, and if already present,
 	// just returns it. In addition if the task is not present, then
@@ -478,7 +478,7 @@ func (j *job) CreateTaskRuntimes(
 		}
 
 		t := j.addTaskToJobMap(id)
-		return t.CreateRuntime(ctx, runtime, owner)
+		return t.CreateTask(ctx, runtime, owner)
 	}
 	return taskutil.RunInParallel(
 		j.ID().GetValue(),
@@ -495,7 +495,7 @@ func (j *job) PatchTasks(
 		if err != nil {
 			return err
 		}
-		return t.PatchRuntime(ctx, runtimeDiffs[id])
+		return t.PatchTask(ctx, runtimeDiffs[id])
 	}
 
 	return taskutil.RunInParallel(
@@ -505,17 +505,21 @@ func (j *job) PatchTasks(
 }
 
 func (j *job) ReplaceTasks(
-	runtimes map[uint32]*pbtask.RuntimeInfo,
+	taskInfos map[uint32]*pbtask.TaskInfo,
 	forceReplace bool) error {
 
 	replaceSingleTask := func(id uint32) error {
 		t := j.addTaskToJobMap(id)
-		return t.ReplaceRuntime(runtimes[id], forceReplace)
+		return t.ReplaceTask(
+			taskInfos[id].GetRuntime(),
+			taskInfos[id].GetConfig(),
+			forceReplace,
+		)
 	}
 
 	return taskutil.RunInParallel(
 		j.ID().GetValue(),
-		getIdsFromRuntimeMap(runtimes),
+		getIdsFromTaskInfoMap(taskInfos),
 		replaceSingleTask)
 }
 
@@ -1976,6 +1980,14 @@ func hasControllerTask(config *pbjob.JobConfig) bool {
 }
 
 func getIdsFromRuntimeMap(input map[uint32]*pbtask.RuntimeInfo) []uint32 {
+	result := make([]uint32, 0, len(input))
+	for k := range input {
+		result = append(result, k)
+	}
+	return result
+}
+
+func getIdsFromTaskInfoMap(input map[uint32]*pbtask.TaskInfo) []uint32 {
 	result := make([]uint32, 0, len(input))
 	for k := range input {
 		result = append(result, k)

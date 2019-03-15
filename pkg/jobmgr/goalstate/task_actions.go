@@ -49,7 +49,19 @@ func TaskReloadRuntime(ctx context.Context, entity goalstate.Entity) error {
 	if err != nil {
 		return err
 	}
-	cachedTask.ReplaceRuntime(runtime, false)
+
+	taskConfig, _, err := goalStateDriver.taskStore.GetTaskConfig(
+		ctx,
+		taskEnt.jobID,
+		taskEnt.instanceID,
+		runtime.GetConfigVersion(),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	cachedTask.ReplaceTask(runtime, taskConfig, false)
 
 	// This function is called when the runtime in cache is nil.
 	// The task needs to re-enqueued into the goal state engine

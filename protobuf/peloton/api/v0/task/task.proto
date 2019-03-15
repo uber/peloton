@@ -971,4 +971,7 @@ message GetCacheRequest {
 message GetCacheResponse {
   // The task runtime of the task.
   RuntimeInfo runtime = 1;
+
+  // The labels of the task.
+  repeated peloton.Label labels = 2;
 }

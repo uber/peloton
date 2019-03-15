@@ -301,11 +301,11 @@ func (suite *DriverTestSuite) prepareTestSyncDB(jobType job.JobType) {
 		Return()
 }
 
-// TestSyncFromDBFailed tests SyncFromDB when GetTaskRuntimesForJobByRange failed
+// TestSyncFromDBFailed tests SyncFromDB when GetTasksForJobByRange failed
 func (suite *DriverTestSuite) TestSyncFromDBFailed() {
 	suite.prepareTestSyncDB(job.JobType_BATCH)
 	suite.taskStore.EXPECT().
-		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
+		GetTasksForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(nil, errors.New(""))
 	suite.Error(suite.goalStateDriver.syncFromDB(context.Background()))
 }
@@ -315,12 +315,14 @@ func (suite *DriverTestSuite) TestSyncFromDBFailed() {
 func (suite *DriverTestSuite) TestSyncFromDBForBatchCluster() {
 	suite.prepareTestSyncDB(job.JobType_BATCH)
 	suite.taskStore.EXPECT().
-		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
-		Return(map[uint32]*task.RuntimeInfo{
+		GetTasksForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
+		Return(map[uint32]*task.TaskInfo{
 			suite.instanceID: {
-				GoalState:            task.TaskState_RUNNING,
-				DesiredConfigVersion: 42,
-				ConfigVersion:        42,
+				Runtime: &task.RuntimeInfo{
+					GoalState:            task.TaskState_RUNNING,
+					DesiredConfigVersion: 42,
+					ConfigVersion:        42,
+				},
 			},
 		}, nil)
 
@@ -346,12 +348,14 @@ func (suite *DriverTestSuite) TestSyncFromDBForServiceCluster() {
 	suite.goalStateDriver.jobType = job.JobType_SERVICE
 	suite.prepareTestSyncDB(job.JobType_SERVICE)
 	suite.taskStore.EXPECT().
-		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
-		Return(map[uint32]*task.RuntimeInfo{
+		GetTasksForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
+		Return(map[uint32]*task.TaskInfo{
 			suite.instanceID: {
-				GoalState:            task.TaskState_RUNNING,
-				DesiredConfigVersion: 42,
-				ConfigVersion:        42,
+				Runtime: &task.RuntimeInfo{
+					GoalState:            task.TaskState_RUNNING,
+					DesiredConfigVersion: 42,
+					ConfigVersion:        42,
+				},
 			},
 		}, nil)
 
@@ -421,17 +425,21 @@ func (suite *DriverTestSuite) TestSyncFromDBWithMaxRunningInstancesSLA() {
 		Return()
 
 	suite.taskStore.EXPECT().
-		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
-		Return(map[uint32]*task.RuntimeInfo{
+		GetTasksForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
+		Return(map[uint32]*task.TaskInfo{
 			instanceID1: {
-				GoalState:            task.TaskState_RUNNING,
-				DesiredConfigVersion: 42,
-				ConfigVersion:        42,
+				Runtime: &task.RuntimeInfo{
+					GoalState:            task.TaskState_RUNNING,
+					DesiredConfigVersion: 42,
+					ConfigVersion:        42,
+				},
 			},
 			instanceID2: {
-				GoalState:            task.TaskState_INITIALIZED,
-				DesiredConfigVersion: 42,
-				ConfigVersion:        42,
+				Runtime: &task.RuntimeInfo{
+					GoalState:            task.TaskState_INITIALIZED,
+					DesiredConfigVersion: 42,
+					ConfigVersion:        42,
+				},
 			},
 		}, nil)
 
@@ -501,13 +509,15 @@ func (suite *DriverTestSuite) TestInitializedJobSyncFromDB() {
 		Return()
 
 	suite.taskStore.EXPECT().
-		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
-		Return(map[uint32]*task.RuntimeInfo{
+		GetTasksForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
+		Return(map[uint32]*task.TaskInfo{
 			suite.instanceID: {
-				State:                task.TaskState_INITIALIZED,
-				GoalState:            task.TaskState_SUCCEEDED,
-				DesiredConfigVersion: 42,
-				ConfigVersion:        42,
+				Runtime: &task.RuntimeInfo{
+					State:                task.TaskState_INITIALIZED,
+					GoalState:            task.TaskState_SUCCEEDED,
+					DesiredConfigVersion: 42,
+					ConfigVersion:        42,
+				},
 			},
 		}, nil)
 
@@ -575,17 +585,21 @@ func (suite *DriverTestSuite) TestSyncFromDBRecoverUpdate() {
 		Return()
 
 	suite.taskStore.EXPECT().
-		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
-		Return(map[uint32]*task.RuntimeInfo{
+		GetTasksForJobByRange(gomock.Any(), suite.jobID, gomock.Any()).
+		Return(map[uint32]*task.TaskInfo{
 			instanceID1: {
-				GoalState:            task.TaskState_RUNNING,
-				DesiredConfigVersion: 42,
-				ConfigVersion:        42,
+				Runtime: &task.RuntimeInfo{
+					GoalState:            task.TaskState_RUNNING,
+					DesiredConfigVersion: 42,
+					ConfigVersion:        42,
+				},
 			},
 			instanceID2: {
-				GoalState:            task.TaskState_INITIALIZED,
-				DesiredConfigVersion: 42,
-				ConfigVersion:        42,
+				Runtime: &task.RuntimeInfo{
+					GoalState:            task.TaskState_INITIALIZED,
+					DesiredConfigVersion: 42,
+					ConfigVersion:        42,
+				},
 			},
 		}, nil)
 

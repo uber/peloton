@@ -215,22 +215,26 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 			continue
 		}
 
-		t := cachedJob.GetTask(instID)
-		if t == nil {
-			// Add the task to cache if not found.
-			cachedJob.ReplaceTasks(map[uint32]*task.RuntimeInfo{instID: taskRuntime}, false)
-		}
-
-		if goalStateDriver.IsScheduledTask(jobID, instID) {
-			continue
-		}
-
 		taskinfo := &task.TaskInfo{
 			JobId:      jobID,
 			InstanceId: instID,
 			Runtime:    taskRuntime,
 			Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[instID]),
 		}
+
+		t := cachedJob.GetTask(instID)
+		if t == nil {
+			// Add the task to cache if not found.
+			cachedJob.ReplaceTasks(
+				map[uint32]*task.TaskInfo{instID: taskinfo},
+				false,
+			)
+		}
+
+		if goalStateDriver.IsScheduledTask(jobID, instID) {
+			continue
+		}
+
 		tasks = append(tasks, taskinfo)
 		tasksToStart--
 	}

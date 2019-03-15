@@ -135,6 +135,9 @@ message GetPodCacheRequest {
 message GetPodCacheResponse {
   // The runtime status of the pod.
   pod.PodStatus status = 1;
+
+  // The labels of the pod.
+  repeated peloton.Label labels = 2;
 }
 
 // Request message for PodService.DeletePodEvents method

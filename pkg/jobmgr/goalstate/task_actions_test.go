@@ -96,8 +96,11 @@ func (suite *TaskActionTestSuite) TestTaskReloadRuntime() {
 	suite.taskStore.EXPECT().
 		GetTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
 		Return(&pbtask.RuntimeInfo{}, nil)
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		Return(&pbtask.TaskConfig{}, nil, nil)
 	suite.cachedTask.EXPECT().
-		ReplaceRuntime(gomock.Any(), gomock.Any())
+		ReplaceTask(gomock.Any(), gomock.Any(), gomock.Any())
 	suite.taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
@@ -121,6 +124,25 @@ func (suite *TaskActionTestSuite) TestTaskReloadRuntimeNotFoundError() {
 		RemoveTask(suite.instanceID)
 	err := TaskReloadRuntime(context.Background(), suite.taskEnt)
 	suite.NoError(err)
+}
+
+// TestTaskReloadRuntimeGetConfigError tests reloading the task into
+// cache and getting a DB error when fetching the task config
+func (suite *TaskActionTestSuite) TestTaskReloadRuntimeGetConfigError() {
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), suite.instanceID).
+		Return(suite.cachedTask, nil)
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
+		Return(&pbtask.RuntimeInfo{}, nil)
+	suite.taskStore.EXPECT().
+		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		Return(nil, nil, fmt.Errorf("fake db error"))
+	err := TaskReloadRuntime(context.Background(), suite.taskEnt)
+	suite.Error(err)
 }
 
 func (suite *TaskActionTestSuite) TestTaskStateInvalidAction() {

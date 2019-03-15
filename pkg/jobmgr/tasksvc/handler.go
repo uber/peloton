@@ -348,27 +348,27 @@ func (m *serviceHandler) Refresh(ctx context.Context, req *task.RefreshRequest) 
 		reqRange.To = jobConfig.InstanceCount
 	}
 
-	runtimes, err := m.taskStore.GetTaskRuntimesForJobByRange(ctx, req.GetJobId(), reqRange)
+	taskInfos, err := m.taskStore.GetTasksForJobByRange(ctx, req.GetJobId(), reqRange)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", req.GetJobId().GetValue()).
 			WithField("range", reqRange).
-			Error("failed to load task runtimes in executing task")
+			Error("failed to load task infos in executing task")
 		m.metrics.TaskRefreshFail.Inc(1)
 		return &task.RefreshResponse{}, yarpcerrors.NotFoundErrorf("tasks not found")
 	}
-	if len(runtimes) == 0 {
+	if len(taskInfos) == 0 {
 		log.WithError(err).
 			WithField("job_id", req.GetJobId().GetValue()).
 			WithField("range", reqRange).
-			Error("no task runtimes found while executing task")
+			Error("no task info found while executing task")
 		m.metrics.TaskRefreshFail.Inc(1)
 		return &task.RefreshResponse{}, yarpcerrors.NotFoundErrorf("tasks not found")
 	}
 
 	cachedJob := m.jobFactory.AddJob(req.GetJobId())
-	cachedJob.ReplaceTasks(runtimes, true)
-	for instID := range runtimes {
+	cachedJob.ReplaceTasks(taskInfos, true)
+	for instID := range taskInfos {
 		m.goalStateDriver.EnqueueTask(req.GetJobId(), instID, time.Now())
 	}
 
@@ -576,7 +576,7 @@ func (m *serviceHandler) Start(
 			// compare and set calls cannot be batched as one transaction
 			// as if task runtime of only one task has changed, then it should
 			// not cause the entire transaction to fail and to be retried again.
-			_, err = cachedTask.CompareAndSetRuntime(
+			_, err = cachedTask.CompareAndSetTask(
 				ctx, taskRuntime, cachedConfig.GetType())
 
 			if err == jobmgrcommon.UnexpectedVersionError {
@@ -950,8 +950,15 @@ func (m *serviceHandler) GetCache(
 			yarpcerrors.InternalErrorf("Cannot get task cache with err: %v", err)
 	}
 
+	labels, err := cachedTask.GetLabels(ctx)
+	if err != nil {
+		return nil,
+			yarpcerrors.InternalErrorf("Cannot get task labels in cache with err: %v", err)
+	}
+
 	return &task.GetCacheResponse{
 		Runtime: runtime,
+		Labels:  labels,
 	}, nil
 }
 
