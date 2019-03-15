@@ -378,9 +378,10 @@ func ConvertJobConfigToJobSpec(config *job.JobConfig) *stateless.JobSpec {
 		Labels:        ConvertLabels(config.GetLabels()),
 		InstanceCount: config.GetInstanceCount(),
 		Sla: &stateless.SlaSpec{
-			Priority:    config.GetSLA().GetPriority(),
-			Preemptible: config.GetSLA().GetPreemptible(),
-			Revocable:   config.GetSLA().GetRevocable(),
+			Priority:                    config.GetSLA().GetPriority(),
+			Preemptible:                 config.GetSLA().GetPreemptible(),
+			Revocable:                   config.GetSLA().GetRevocable(),
+			MaximumUnavailableInstances: config.GetSLA().GetMaximumUnavailableInstances(),
 		},
 		DefaultSpec:  ConvertTaskConfigToPodSpec(config.GetDefaultConfig()),
 		InstanceSpec: instanceSpec,
