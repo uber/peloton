@@ -23,6 +23,34 @@ import (
 	"go.uber.org/thriftrw/ptr"
 )
 
+var _pendingTaskStates = []string{
+	task.TaskState_INITIALIZED.String(),
+	task.TaskState_PENDING.String(),
+}
+
+var _activeTaskStates = []string{
+	task.TaskState_READY.String(),
+	task.TaskState_PLACING.String(),
+	task.TaskState_PLACED.String(),
+	task.TaskState_LAUNCHING.String(),
+	task.TaskState_LAUNCHED.String(),
+	task.TaskState_STARTING.String(),
+	task.TaskState_RUNNING.String(),
+	task.TaskState_KILLING.String(),
+	task.TaskState_PREEMPTING.String(),
+}
+
+var _finishedTaskStates = []string{
+	task.TaskState_SUCCEEDED.String(),
+	task.TaskState_KILLED.String(),
+	task.TaskState_DELETED.String(),
+}
+
+var _failedTaskStates = []string{
+	task.TaskState_FAILED.String(),
+	task.TaskState_LOST.String(),
+}
+
 // NewJobSummary creates a JobSummary object.
 func NewJobSummary(
 	jobInfo *stateless.JobInfo,
@@ -30,7 +58,7 @@ func NewJobSummary(
 ) (*api.JobSummary, error) {
 	stats := newJobStats(jobInfo.GetStatus())
 
-	job, err := NewJobConfiguration(jobInfo, podSpec)
+	job, err := NewJobConfiguration(jobInfo, podSpec, false)
 	if err != nil {
 		return nil, err
 	}
@@ -46,13 +74,23 @@ func NewJobSummary(
 func NewJobConfiguration(
 	jobInfo *stateless.JobInfo,
 	podSpec *pod.PodSpec,
+	activeOnly bool,
 ) (*api.JobConfiguration, error) {
-	// JobSummary.Job.InstanceCount in Aurora represents
-	// the sum of current, completed or failed tasks.
-	// We return current instance count here only. Reference:
-	// https://github.com/apache/aurora/blob/master/src/main/java/org/apache/aurora/scheduler/thrift/ReadOnlySchedulerImpl.java#L465
-	// TODO(kevinxu): Need to match Aurora's behavior?
-	instanceCount := jobInfo.GetSpec().GetInstanceCount()
+	var instanceCount int32
+	if activeOnly {
+		// activeOnly is set to true when called from getJobs endpoint
+		for _, activeState := range _activeTaskStates {
+			instanceCount += int32(jobInfo.GetStatus().GetPodStats()[activeState])
+		}
+	} else {
+		// for getJobSummary endpoint (activeOnly = false)
+		// JobSummary.Job.InstanceCount in Aurora represents
+		// the sum of current, completed and failed tasks.
+		// We return current instance count here only. Reference:
+		// https://github.com/apache/aurora/blob/master/src/main/java/org/apache/aurora/scheduler/thrift/ReadOnlySchedulerImpl.java#L465
+		// TODO(kevinxu): Need to match Aurora's behavior?
+		instanceCount = int32(jobInfo.GetSpec().GetInstanceCount())
+	}
 
 	auroraOwner := NewIdentity(jobInfo.GetSpec().GetOwner())
 
@@ -70,7 +108,7 @@ func NewJobConfiguration(
 		Key:           jobKey,
 		Owner:         auroraOwner,
 		TaskConfig:    taskConfig,
-		InstanceCount: ptr.Int32(int32(instanceCount)),
+		InstanceCount: ptr.Int32(instanceCount),
 		//CronSchedule:        nil,
 		//CronCollisionPolicy: nil,
 	}, nil
@@ -87,48 +125,20 @@ func newJobStats(s *stateless.JobStatus) *api.JobStats {
 		pending  uint32
 	)
 
-	for state, c := range s.GetPodStats() {
-		switch state {
-		// pending
-		case task.TaskState_INITIALIZED.String():
-			fallthrough
-		case task.TaskState_PENDING.String():
-			pending += c
+	for _, state := range _activeTaskStates {
+		active += s.GetPodStats()[state]
+	}
 
-		// active
-		case task.TaskState_READY.String():
-			fallthrough
-		case task.TaskState_PLACING.String():
-			fallthrough
-		case task.TaskState_PLACED.String():
-			fallthrough
-		case task.TaskState_LAUNCHING.String():
-			fallthrough
-		case task.TaskState_LAUNCHED.String():
-			fallthrough
-		case task.TaskState_STARTING.String():
-			fallthrough
-		case task.TaskState_RUNNING.String():
-			fallthrough
-		case task.TaskState_KILLING.String():
-			fallthrough
-		case task.TaskState_PREEMPTING.String():
-			active += c
+	for _, state := range _finishedTaskStates {
+		finished += s.GetPodStats()[state]
+	}
 
-		// finished
-		case task.TaskState_SUCCEEDED.String():
-			fallthrough
-		case task.TaskState_KILLED.String():
-			fallthrough
-		case task.TaskState_DELETED.String():
-			finished += c
+	for _, state := range _failedTaskStates {
+		failed += s.GetPodStats()[state]
+	}
 
-		// failed
-		case task.TaskState_FAILED.String():
-			fallthrough
-		case task.TaskState_LOST.String():
-			failed += c
-		}
+	for _, state := range _pendingTaskStates {
+		pending += s.GetPodStats()[state]
 	}
 
 	return &api.JobStats{

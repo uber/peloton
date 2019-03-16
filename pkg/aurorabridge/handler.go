@@ -492,7 +492,7 @@ func (h *ServiceHandler) getJobs(
 		// TODO(kevinxu): Need to inspect InstanceSpec as well?
 		podSpec := jobInfo.GetSpec().GetDefaultSpec()
 
-		c, err := ptoa.NewJobConfiguration(jobInfo, podSpec)
+		c, err := ptoa.NewJobConfiguration(jobInfo, podSpec, true)
 		if err != nil {
 			return nil, auroraErrorf("new job configuration: %s", err)
 		}

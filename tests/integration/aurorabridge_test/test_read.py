@@ -39,6 +39,13 @@ def test__get_jobs__get_job_summary(client):
         'test2_dc2_labrat2.yaml',
         'start job update test2/dc2/labrat2')
 
+    # reduce instance count by 1 for test/dc/labrat0
+    client.kill_tasks(
+        test_dc_labrat_0_key,
+        {0},
+        'killing instance 0 for task test/dc/labrat0')
+    wait_for_killed(client, test_dc_labrat_0_key, {0})
+
     # Ensure get_job_summary returns both jobs under role=test.
     res = client.get_job_summary(test_dc_labrat_key.role)
     assert len(res.summaries) == 2
@@ -48,7 +55,10 @@ def test__get_jobs__get_job_summary(client):
         [test_dc_labrat_key, test_dc_labrat_0_key])
 
     for s in res.summaries:
-        assert s.stats.activeTaskCount == 2
+        if s.job.key == test_dc_labrat_0_key:
+            assert s.stats.activeTaskCount == 1
+        else:
+            assert s.stats.activeTaskCount == 2
         assert s.job.instanceCount == 2
 
     # Ensure get_jobs returns both jobs under role=test.
@@ -60,7 +70,10 @@ def test__get_jobs__get_job_summary(client):
         [test_dc_labrat_key, test_dc_labrat_0_key])
 
     for c in res.configs:
-        assert c.instanceCount == 2
+        if c.key == test_dc_labrat_0_key:
+            assert c.instanceCount == 1
+        else:
+            assert c.instanceCount == 2
 
 
 def test__get_tasks_without_configs(client):
@@ -157,7 +170,7 @@ def test__get_tasks_without_configs_task_queries(client):
     # Kill one of the jobs.
     client.kill_tasks(
         test_dc_labrat_1_key,
-        {0, 1},
+        None,
         'killing all tasks test/dc/labrat1')
     wait_for_killed(client, test_dc_labrat_1_key)
 

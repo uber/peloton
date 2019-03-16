@@ -57,7 +57,31 @@ func TestNewJobSummary(t *testing.T) {
 func TestNewJobConfiguration(t *testing.T) {
 	jobKey := fixture.AuroraJobKey()
 	metadata := fixture.AuroraMetadata()
-	instanceCount := uint32(12)
+	pendingInstances := uint32(2)
+	startingInstances := uint32(4)
+	runningInstances := uint32(8)
+	failedInstances := uint32(4)
+	instanceCount := pendingInstances +
+		startingInstances +
+		runningInstances +
+		failedInstances
+
+	testCases := []struct {
+		name          string
+		activeOnly    bool
+		instanceCount uint32
+	}{
+		{
+			"active only",
+			true,
+			startingInstances + runningInstances,
+		},
+		{
+			"all task states",
+			false,
+			instanceCount,
+		},
+	}
 
 	ml, err := label.NewAuroraMetadata(metadata)
 	assert.NoError(t, err)
@@ -68,18 +92,30 @@ func TestNewJobConfiguration(t *testing.T) {
 			InstanceCount: instanceCount,
 			Owner:         "owner",
 		},
+		Status: &stateless.JobStatus{
+			PodStats: map[string]uint32{
+				task.TaskState_PENDING.String():  pendingInstances,
+				task.TaskState_STARTING.String(): startingInstances,
+				task.TaskState_RUNNING.String():  runningInstances,
+				task.TaskState_FAILED.String():   failedInstances,
+			},
+		},
 	}
 	p := &pod.PodSpec{
 		Labels:     []*peloton.Label{ml},
 		Containers: []*pod.ContainerSpec{{}},
 	}
 
-	c, err := NewJobConfiguration(j, p)
-	assert.NoError(t, err)
-	assert.Equal(t, jobKey, c.GetKey())
-	assert.Equal(t, "owner", c.GetOwner().GetUser())
-	assert.Equal(t, instanceCount, uint32(c.GetInstanceCount()))
-	assert.NotNil(t, c.GetTaskConfig())
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := NewJobConfiguration(j, p, tc.activeOnly)
+			assert.NoError(t, err)
+			assert.Equal(t, jobKey, c.GetKey())
+			assert.Equal(t, "owner", c.GetOwner().GetUser())
+			assert.Equal(t, tc.instanceCount, uint32(c.GetInstanceCount()))
+			assert.NotNil(t, c.GetTaskConfig())
+		})
+	}
 }
 
 func TestNewJobStats(t *testing.T) {
