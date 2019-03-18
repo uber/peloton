@@ -103,7 +103,7 @@ if [[ ${SKIP_SETUP} -eq 0 ]]; then
   case ${DRIVER} in
     minicluster)
       echo "Setting up minicluster with Peloton image uber/peloton:latest"
-      python tools/minicluster/minicluster.py setup -a
+      python tools/minicluster/main.py setup -a
       ;;
     vcluster)
       echo "Setting up vcluster, label ${VCLUSTER_LABEL}, Peloton image ${VCLUSTER_PELOTON_IMAGE}"
@@ -122,7 +122,7 @@ if [[ $? -eq 0 && ${SKIP_CLEANUP} -eq 0 ]]; then
   case ${DRIVER} in
     minicluster)
       echo "Tearing down minicluster"
-      python tools/minicluster/minicluster.py teardown
+      python tools/minicluster/main.py teardown
       ;;
     vcluster)
       echo "Tearing down vcluster, label ${VCLUSTER_LABEL}"

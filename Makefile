@@ -240,15 +240,10 @@ integ-test:
 
 # launch peloton with PELOTON={any value}, default to none
 minicluster:
-# installaltion of docker-py is required, see "bootstrap.sh" or ""tools/minicluster/README.md" for more info
-ifndef PELOTON
-	@./tools/minicluster/minicluster.py setup
-else
-	@./tools/minicluster/minicluster.py setup -a
-endif
+	PELOTON=$(PELOTON) ./scripts/minicluster.sh setup
 
 minicluster-teardown:
-	@./tools/minicluster/minicluster.py teardown
+	./scripts/minicluster.sh teardown
 
 # Clone the newest mimir-lib code. Do not manually edit anything under mimir-lib/*
 update-mimir-lib:
@@ -263,6 +258,7 @@ devtools:
 	go get github.com/golang/mock/gomock
 	go get github.com/golang/mock/mockgen
 	go get golang.org/x/tools/cmd/goimports
+	go get sigs.k8s.io/kind
     # temp removing: https://github.com/gemnasium/migrate/issues/26
     # go get github.com/gemnasium/migrate
 

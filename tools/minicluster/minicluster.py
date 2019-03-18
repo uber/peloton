@@ -1,59 +1,19 @@
 #!/usr/bin/env python
-"""
- -- Locally run and manage a personal cluster in containers.
-
-This script can be used to manage (setup, teardown) a personal
-Mesos cluster etc in containers, optionally Peloton
-master or apps can be specified to run in containers as well.
-
-@copyright:  2017 Uber Compute Platform. All rights reserved.
-
-@license:    license
-
-@contact:    peloton-dev@uber.com
-"""
 
 import os
 import requests
 import sys
 import time
 import yaml
-from argparse import ArgumentParser
-from argparse import RawDescriptionHelpFormatter
-from collections import OrderedDict
 from docker import Client
 
-__date__ = '2016-12-08'
-__author__ = 'wu'
+import print_utils
+
 
 max_retry_attempts = 20
 sleep_time_secs = 5
 healthcheck_path = '/health'
 default_host = 'localhost'
-
-
-class bcolors:
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    FAIL = '\033[91m'
-    WARNING = '\033[93m'
-    ENDC = '\033[0m'
-
-
-def print_okblue(message):
-    print bcolors.OKBLUE + message + bcolors.ENDC
-
-
-def print_okgreen(message):
-    print bcolors.OKGREEN + message + bcolors.ENDC
-
-
-def print_fail(message):
-    print bcolors.FAIL + message + bcolors.ENDC
-
-
-def print_warn(message):
-    print bcolors.WARNING + message + bcolors.ENDC
 
 
 #
@@ -62,9 +22,9 @@ def print_warn(message):
 # the container.
 #
 def get_container_ip(container_name):
-    return os.popen('''
-        docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' %s
-    ''' % container_name).read().strip()
+    cmd = 'docker inspect '
+    cmd += '-f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" %s'
+    return os.popen(cmd % container_name).read().strip()
 
 
 #
@@ -91,7 +51,7 @@ config = load_config()
 def remove_existing_container(name):
     try:
         cli.remove_container(name, force=True)
-        print_okblue('removed container %s' % name)
+        print_utils.okblue('removed container %s' % name)
     except Exception, e:
         if 'No such container' in str(e):
             return
@@ -139,10 +99,10 @@ def run_mesos():
         detach=True
     )
     cli.start(container=container.get('Id'))
-    print_okgreen('started container %s' % config['zk_container'])
+    print_utils.okgreen('started container %s' % config['zk_container'])
 
     # TODO: add retry
-    print_okblue('sleep 20 secs for zk to come up')
+    print_utils.okblue('sleep 20 secs for zk to come up')
     time.sleep(20)
 
     # Run mesos master
@@ -183,7 +143,8 @@ def run_mesos():
         detach=True,
     )
     cli.start(container=container.get('Id'))
-    print_okgreen('started container %s' % config['mesos_master_container'])
+    master_container = config['mesos_master_container']
+    print_utils.okgreen('started container %s' % master_container)
 
     # Run mesos slaves
     cli.pull(config['mesos_slave_image'])
@@ -239,7 +200,7 @@ def run_mesos():
             detach=True,
         )
         cli.start(container=container.get('Id'))
-        print_okgreen('started container %s' % agent)
+        print_utils.okgreen('started container %s' % agent)
 
 
 #
@@ -267,7 +228,7 @@ def run_cassandra():
         entrypoint='bash /files/run_cassandra_with_stratio_index.sh',
     )
     cli.start(container=container.get('Id'))
-    print_okgreen('started container %s' % config['cassandra_container'])
+    print_utils.okgreen('started container %s' % config['cassandra_container'])
 
     # Create cassandra store
     create_cassandra_store()
@@ -294,30 +255,14 @@ def create_cassandra_store():
         if resp is "":
             resp = cli.exec_start(exec_id=show_exe)
             if "CREATE KEYSPACE peloton_test WITH" in resp:
-                print_okgreen('cassandra store is created')
+                print_utils.okgreen('cassandra store is created')
                 return
-        print_warn('failed to create cassandra store, retrying...')
+        print_utils.warn('failed to create cassandra store, retrying...')
         retry_attempts += 1
 
-    print_fail('Failed to create cassandra store after %d attempts, '
-               'aborting...'
-               % max_retry_attempts)
+    print_utils.fail('Failed to create cassandra store after %d attempts, '
+                     'aborting...' % max_retry_attempts)
     sys.exit(1)
-
-
-#
-# Run peloton
-#
-def run_peloton(applications):
-    print_okblue('docker image "uber/peloton" has to be built first '
-                 'locally by running IMAGE=uber/peloton make docker')
-
-    for app, func in APP_START_ORDER.iteritems():
-        if app in applications:
-            should_disable = applications[app]
-            if should_disable:
-                continue
-        APP_START_ORDER[app]()
 
 
 #
@@ -490,10 +435,10 @@ def wait_for_up(app, port):
         try:
             r = requests.get(url)
             if r.status_code == 200:
-                print_okgreen('started %s' % app)
+                print_utils.okgreen('started %s' % app)
                 return
         except Exception, e:
-            print_warn('app %s is not up yet, retrying...' % app)
+            print_utils.warn('app %s is not up yet, retrying...' % app)
             error = str(e)
             time.sleep(sleep_time_secs)
             count += 1
@@ -506,20 +451,6 @@ def wait_for_up(app, port):
                         error,
                     )
                     )
-
-
-#
-# Set up a personal cluster
-#
-def setup(disable_mesos=False, applications={}, enable_peloton=False):
-    run_cassandra()
-    if not disable_mesos:
-        run_mesos()
-
-    if enable_peloton:
-        run_peloton(
-            applications
-        )
 
 
 #
@@ -560,150 +491,3 @@ def teardown():
     teardown_mesos()
 
     remove_existing_container(config['cassandra_container'])
-
-
-def parse_arguments():
-    program_shortdesc = __import__('__main__').__doc__.split("\n")[1]
-    program_license = '''%s
-
-  Created by %s on %s.
-  Copyright Uber Compute Platform. All rights reserved.
-
-USAGE
-''' % (program_shortdesc, __author__, str(__date__))
-    # Setup argument parser
-    parser = ArgumentParser(
-        description=program_license,
-        formatter_class=RawDescriptionHelpFormatter)
-    subparsers = parser.add_subparsers(help='command help', dest='command')
-    # Subparser for the 'setup' command
-    parser_setup = subparsers.add_parser(
-        'setup',
-        help='set up a personal cluster')
-    parser_setup.add_argument(
-        "--no-mesos",
-        dest="disable_mesos",
-        action='store_true',
-        default=False,
-        help="disable mesos setup"
-    )
-    parser_setup.add_argument(
-        "--zk_url",
-        dest="zk_url",
-        action='store',
-        type=str,
-        default=None,
-        help="zk URL when pointing to a pre-existing zk"
-    )
-    parser_setup.add_argument(
-        "-a",
-        "--enable-peloton",
-        dest="enable_peloton",
-        action='store_true',
-        default=False,
-        help="enable peloton",
-    )
-    parser_setup.add_argument(
-        "--no-resmgr",
-        dest="disable_peloton_resmgr",
-        action='store_true',
-        default=False,
-        help="disable peloton resmgr app"
-    )
-    parser_setup.add_argument(
-        "--no-hostmgr",
-        dest="disable_peloton_hostmgr",
-        action='store_true',
-        default=False,
-        help="disable peloton hostmgr app"
-    )
-    parser_setup.add_argument(
-        "--no-jobmgr",
-        dest="disable_peloton_jobmgr",
-        action='store_true',
-        default=False,
-        help="disable peloton jobmgr app"
-    )
-    parser_setup.add_argument(
-        "--no-placement",
-        dest="disable_peloton_placement",
-        action='store_true',
-        default=False,
-        help="disable peloton placement engine app"
-    )
-    parser_setup.add_argument(
-        "--no-archiver",
-        dest="disable_peloton_archiver",
-        action='store_true',
-        default=False,
-        help="disable peloton archiver app"
-    )
-    parser_setup.add_argument(
-        "--no-aurorabridge",
-        dest="disable_peloton_aurorabridge",
-        action='store_true',
-        default=False,
-        help="disable peloton aurora bridge app"
-    )
-    # Subparser for the 'teardown' command
-    subparsers.add_parser('teardown', help='tear down a personal cluster')
-    # Process arguments
-    return parser.parse_args()
-
-
-class App:
-    """
-    Represents the peloton apps
-    """
-    RESOURCE_MANAGER = 1
-    HOST_MANAGER = 2
-    PLACEMENT_ENGINE = 3
-    JOB_MANAGER = 4
-    ARCHIVER = 5
-    AURORABRIDGE = 6
-
-
-# Defines the order in which the apps are started
-# NB: HOST_MANAGER is tied to database migrations so should be started first
-APP_START_ORDER = OrderedDict([
-    (App.HOST_MANAGER, run_peloton_hostmgr),
-    (App.RESOURCE_MANAGER, run_peloton_resmgr),
-    (App.PLACEMENT_ENGINE, run_peloton_placement),
-    (App.JOB_MANAGER, run_peloton_jobmgr),
-    (App.ARCHIVER, run_peloton_archiver),
-    (App.AURORABRIDGE, run_peloton_aurorabridge)]
-)
-
-
-def main():
-    args = parse_arguments()
-
-    command = args.command
-
-    if command == 'setup':
-        applications = {
-            App.HOST_MANAGER: args.disable_peloton_hostmgr,
-            App.RESOURCE_MANAGER: args.disable_peloton_resmgr,
-            App.PLACEMENT_ENGINE: args.disable_peloton_placement,
-            App.JOB_MANAGER: args.disable_peloton_jobmgr,
-            App.ARCHIVER: args.disable_peloton_archiver,
-            App.AURORABRIDGE: args.disable_peloton_aurorabridge
-        }
-
-        global zk_url
-        zk_url = args.zk_url
-        setup(
-            disable_mesos=args.disable_mesos,
-            enable_peloton=args.enable_peloton,
-            applications=applications
-        )
-    elif command == 'teardown':
-        teardown()
-    else:
-        # Should never get here.  argparser should prevent it.
-        print_fail('Unknown command: %s' % command)
-        return 1
-
-
-if __name__ == "__main__":
-    main()

@@ -37,21 +37,21 @@ Usage:
 Bootstrap a mincluster without Peloton apps:
 
 ```
-$PELOTON_HOME/tools/minicluster/minicluster.py setup
+$PELOTON_HOME/tools/minicluster/main.py setup
 
 ```
 
 Bootstrap a minicluster with all Peloton apps:
 
 ```
-$PELOTON_HOME/tools/minicluster/minicluster.py setup -a
+$PELOTON_HOME/tools/minicluster/main.py setup -a
 
 ```
 
 Bootstrap a minicluster with Peloton apps, excluding one or more apps:
 
 ```
-$PELOTON_HOME/tools/minicluster/minicluster.py setup -a --no-<app name, i.e jobmgr,resmgr,hostmgr,placement, specify multiple times for multiple apps>
+$PELOTON_HOME/tools/minicluster/main.py setup -a --no-<app name, i.e jobmgr,resmgr,hostmgr,placement, specify multiple times for multiple apps>
 
 ``  if scheduleDelay <= time.Duration(0) {
 `
@@ -59,11 +59,11 @@ $PELOTON_HOME/tools/minicluster/minicluster.py setup -a --no-<app name, i.e jobm
 
 To bootstrap the Peloton only components (no Mesos and ZK) by pointing to an existing ZK:
 
-$PELOTON_HOME/tools/minicluster/minicluster.py setup --no-mesos --zk_url="192.168.33.6:2181" -a
+$PELOTON_HOME/tools/minicluster/main.py setup --no-mesos --zk_url="192.168.33.6:2181" -a
 
 To destroy the local dev env cluster (clean up all existing minicluster related containers):
 
-$PELOTON_HOME/tools/minicluster/minicluster.py teardown
+$PELOTON_HOME/tools/minicluster/main.py teardown
 
 To check peloton app logs:
 
@@ -82,6 +82,6 @@ Expected format for this variable is a comma-separated list of items of the form
 \<host-path>:\<container-path>
 
     BIND_MOUNTS=$PWD/bin-linux:/go/src/github.com/uber/peloton/bin \
-    $PELOTON_HOME/tools/minicluster/minicluster.py setup -a
+    $PELOTON_HOME/tools/minicluster/main.py setup -a
 
   Replace $PWD/bin-linux with $PWD/bin if you are building on Linux.

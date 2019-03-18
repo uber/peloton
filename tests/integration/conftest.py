@@ -4,7 +4,8 @@ import pytest
 import time
 
 from docker import Client
-from tools.minicluster.minicluster import setup, teardown
+from tools.minicluster.main import setup
+from tools.minicluster.minicluster import teardown
 from job import Job
 from stateless_job import StatelessJob
 from m3.client import M3
