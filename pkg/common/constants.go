@@ -120,6 +120,10 @@ const (
 	SystemLabelCluster = "cluster"
 	// ClusterEnvVar is the cluster environment variable
 	ClusterEnvVar = "CLUSTER"
+	// PelotonExclusiveAttributeName is the name of Mesos agent attribute
+	// that indicates to Peloton that the agent will be used exclusively
+	// for certain workloads only.
+	PelotonExclusiveAttributeName = "peloton/exclusive"
 )
 
 const (

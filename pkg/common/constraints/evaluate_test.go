@@ -17,10 +17,13 @@ package constraints
 import (
 	"testing"
 
-	"github.com/stretchr/testify/suite"
-
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+
+	"github.com/uber/peloton/pkg/common"
+
+	"github.com/gogo/protobuf/proto"
+	"github.com/stretchr/testify/suite"
 )
 
 type testCase struct {
@@ -310,6 +313,115 @@ func (suite *EvaluatorTestSuite) TestKindEvaluator() {
 			suite.NoError(err)
 		}
 		suite.Equal(tt.expected, actual, tt.msg)
+	}
+}
+
+// TestIsNonExclusiveConstraint tests the function IsNonExclusiveConstraint
+func (suite *EvaluatorTestSuite) TestIsNonExclusiveConstraint() {
+	labelExcl := &task.Constraint{
+		Type: task.Constraint_LABEL_CONSTRAINT,
+		LabelConstraint: &task.LabelConstraint{
+			Kind: task.LabelConstraint_HOST,
+			Label: &peloton.Label{
+				Key:   common.PelotonExclusiveAttributeName,
+				Value: "storage",
+			},
+		},
+	}
+	labelNonExcl := proto.Clone(labelExcl).(*task.Constraint)
+	labelNonExcl.LabelConstraint.Label.Key = "other_key"
+
+	taskLabelExcl := proto.Clone(labelExcl).(*task.Constraint)
+	taskLabelExcl.LabelConstraint.Kind = task.LabelConstraint_TASK
+
+	taskLabelNonExcl := proto.Clone(labelNonExcl).(*task.Constraint)
+	taskLabelExcl.LabelConstraint.Kind = task.LabelConstraint_TASK
+
+	testTable := []struct {
+		msg        string
+		constraint *task.Constraint
+		expected   bool
+	}{
+		{
+			msg:        "Nil constraint",
+			constraint: nil,
+			expected:   true,
+		},
+		{
+			msg:        "Host Label constraint with exclusive",
+			constraint: labelExcl,
+			expected:   false,
+		},
+		{
+			msg:        "Host Label constraint with no exclusive",
+			constraint: labelNonExcl,
+			expected:   true,
+		},
+		{
+			msg:        "Task Label constraint with exclusive",
+			constraint: taskLabelExcl,
+			expected:   true,
+		},
+		{
+			msg:        "Task Label constraint with no exclusive",
+			constraint: taskLabelNonExcl,
+			expected:   true,
+		},
+		{
+			msg: "And constraint with exclusive",
+			constraint: &task.Constraint{
+				Type: task.Constraint_AND_CONSTRAINT,
+				AndConstraint: &task.AndConstraint{
+					Constraints: []*task.Constraint{
+						labelNonExcl, labelExcl, taskLabelNonExcl,
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			msg: "And constraint with no exclusive",
+			constraint: &task.Constraint{
+				Type: task.Constraint_AND_CONSTRAINT,
+				AndConstraint: &task.AndConstraint{
+					Constraints: []*task.Constraint{
+						labelNonExcl, taskLabelExcl, taskLabelNonExcl,
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			msg: "Or constraint with exclusive",
+			constraint: &task.Constraint{
+				Type: task.Constraint_OR_CONSTRAINT,
+				OrConstraint: &task.OrConstraint{
+					Constraints: []*task.Constraint{
+						labelNonExcl, labelExcl, taskLabelNonExcl,
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			msg: "Or constraint with no exclusive",
+			constraint: &task.Constraint{
+				Type: task.Constraint_OR_CONSTRAINT,
+				OrConstraint: &task.OrConstraint{
+					Constraints: []*task.Constraint{
+						labelNonExcl, taskLabelExcl, taskLabelNonExcl,
+					},
+				},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tc := range testTable {
+		suite.Equal(
+			tc.expected,
+			IsNonExclusiveConstraint(tc.constraint),
+			tc.msg)
 	}
 }
 

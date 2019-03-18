@@ -19,8 +19,8 @@ import (
 	"testing"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	"github.com/uber/peloton/pkg/common"
 
+	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/stretchr/testify/assert"
@@ -119,4 +119,71 @@ func createUnreservedMesosOffers(count int) map[string]*mesos.Offer {
 		offers[offerID] = createUnreservedMesosOffer(offerID)
 	}
 	return offers
+}
+
+// TestHasExclusiveAttribute tests function HasExclusiveAttribute
+func TestHasExclusiveAttribute(t *testing.T) {
+	exclName := common.PelotonExclusiveAttributeName
+	otherName := "rack"
+	textType := mesos.Value_TEXT
+	tv1 := "redis"
+	tv2 := "docker"
+
+	excl1 := &mesos.Attribute{
+		Name: &exclName,
+		Type: &textType,
+		Text: &mesos.Value_Text{
+			Value: &tv1,
+		},
+	}
+	excl2 := &mesos.Attribute{
+		Name: &exclName,
+		Type: &textType,
+		Text: &mesos.Value_Text{
+			Value: &tv2,
+		},
+	}
+	other1 := &mesos.Attribute{
+		Name: &otherName,
+		Type: &textType,
+		Text: &mesos.Value_Text{
+			Value: &tv1,
+		},
+	}
+	other2 := &mesos.Attribute{
+		Name: &otherName,
+		Type: &textType,
+		Text: &mesos.Value_Text{
+			Value: &tv2,
+		},
+	}
+
+	testTable := []struct {
+		msg        string
+		attributes []*mesos.Attribute
+		expected   bool
+	}{
+		{
+			msg:        "all exclusive attributes",
+			attributes: []*mesos.Attribute{excl1, excl2},
+			expected:   true,
+		},
+		{
+			msg:        "some exclusive attributes",
+			attributes: []*mesos.Attribute{other1, other2, excl2},
+			expected:   true,
+		},
+		{
+			msg:        "no exclusive attributes",
+			attributes: []*mesos.Attribute{other1, other2},
+			expected:   false,
+		},
+	}
+	for _, tc := range testTable {
+		assert.Equal(
+			t,
+			tc.expected,
+			HasExclusiveAttribute(tc.attributes),
+			tc.msg)
+	}
 }

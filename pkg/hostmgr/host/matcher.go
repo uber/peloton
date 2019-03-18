@@ -22,6 +22,7 @@ import (
 
 	"github.com/uber/peloton/pkg/common/constraints"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
+	"github.com/uber/peloton/pkg/hostmgr/util"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -97,9 +98,19 @@ func (m *Matcher) matchHostFilter(
 		}
 	}
 
+	hc := c.GetSchedulingConstraint()
+	agent := agentMap.RegisteredAgents[hostname].GetAgentInfo()
+
+	// If constraints don't specify an exclusive host, then reject
+	// hosts that are designated as exclusive
+	if constraints.IsNonExclusiveConstraint(hc) &&
+		util.HasExclusiveAttribute(agent.GetAttributes()) {
+		log.WithField("hostname", hostname).Debug("Skipped exclusive host")
+		return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
+	}
+
 	// tries to get the constraints from the host filter
-	if hc := c.GetSchedulingConstraint(); hc != nil {
-		agent := agentMap.RegisteredAgents[hostname].GetAgentInfo()
+	if hc != nil {
 		lv := constraints.GetHostLabelValues(
 			hostname,
 			agent.GetAttributes(),

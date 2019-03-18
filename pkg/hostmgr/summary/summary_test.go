@@ -649,6 +649,14 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 	offer := suite.createUnreservedMesosOffer("offer-id")
 	offers := suite.createUnreservedMesosOffers(5)
 
+	exclHostOffer := suite.createUnreservedMesosOffer("excl-offer-id")
+	exclAttrName := "peloton/exclusive"
+	exclHostOffer.Attributes = []*mesos.Attribute{
+		&mesos.Attribute{
+			Name: &exclAttrName,
+		},
+	}
+
 	seqIDGenerator := func(i string) func() string {
 		return func() string {
 			return i
@@ -668,6 +676,8 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 		noMock        bool
 
 		initialOffers []*mesos.Offer
+
+		exclHostConstraint bool
 	}{
 		"matched-correctly": {
 			wantResult:     hostsvc.HostFilterResult_MATCH,
@@ -727,16 +737,58 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 			initialOffers: []*mesos.Offer{offer},
 			offerID:       emptyOfferID,
 		},
+		"exclusive-host-exclusive-constraint-match": {
+			wantResult:         hostsvc.HostFilterResult_MATCH,
+			expectedOffers:     []*mesos.Offer{exclHostOffer},
+			evaluateRes:        constraints.EvaluateResultMatch,
+			initialStatus:      ReadyHost,
+			afterStatus:        PlacingHost,
+			initialOffers:      []*mesos.Offer{exclHostOffer},
+			offerID:            "3",
+			exclHostConstraint: true,
+		},
+		"exclusive-host-non-exclusive-constraint-mismatch": {
+			wantResult:     hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
+			expectedOffers: []*mesos.Offer{exclHostOffer},
+			noMock:         true, // mockEvaluator should not be called
+			initialStatus:  ReadyHost,
+			afterStatus:    ReadyHost,
+			initialOffers:  []*mesos.Offer{exclHostOffer},
+			offerID:        emptyOfferID,
+		},
+		"non-exclusive-host-exclusive-constraint-mismatch": {
+			wantResult:         hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
+			expectedOffers:     offers,
+			evaluateRes:        constraints.EvaluateResultMismatch,
+			initialStatus:      ReadyHost,
+			afterStatus:        ReadyHost,
+			initialOffers:      offers,
+			offerID:            emptyOfferID,
+			exclHostConstraint: true,
+		},
+		"non-exclusive-host-non-exclusive-constraint-match": {
+			wantResult:     hostsvc.HostFilterResult_MATCH,
+			expectedOffers: offers,
+			evaluateRes:    constraints.EvaluateResultMatch,
+			initialStatus:  ReadyHost,
+			afterStatus:    PlacingHost,
+			initialOffers:  offers,
+			offerID:        "4",
+		},
 	}
 
 	for ttName, tt := range testTable {
 		ctrl := gomock.NewController(suite.T())
 		mockEvaluator := constraint_mocks.NewMockEvaluator(ctrl)
 
+		offer0 := offer
+		if len(tt.initialOffers) > 0 {
+			offer0 = tt.initialOffers[0]
+		}
 		s := New(
 			suite.mockVolumeStore,
 			nil,
-			offer.GetHostname(),
+			offer0.GetHostname(),
 			supportedSlackResourceTypes,
 			time.Duration(30*time.Second)).(*hostSummary)
 		s.status = tt.initialStatus
@@ -748,16 +800,33 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 				tt.initialOffers),
 		)
 
-		filter := &hostsvc.HostFilter{
-			SchedulingConstraint: &task.Constraint{
+		filter := &hostsvc.HostFilter{}
+
+		if tt.exclHostConstraint {
+			filter.SchedulingConstraint = &task.Constraint{
+				Type: task.Constraint_LABEL_CONSTRAINT,
+				LabelConstraint: &task.LabelConstraint{
+					Kind: task.LabelConstraint_HOST,
+					Label: &peloton.Label{
+						Key:   "peloton/exclusive",
+						Value: "web-tier",
+					},
+					Condition:   task.LabelConstraint_CONDITION_EQUAL,
+					Requirement: 1,
+				},
+			}
+		} else {
+			filter.SchedulingConstraint = &task.Constraint{
 				Type: task.Constraint_LABEL_CONSTRAINT,
 				LabelConstraint: &task.LabelConstraint{
 					Kind: task.LabelConstraint_TASK,
 				},
-			},
+			}
 		}
 
-		lv := constraints.GetHostLabelValues(_testAgent, offer.Attributes)
+		lv := constraints.GetHostLabelValues(
+			offer0.GetHostname(),
+			offer0.Attributes)
 
 		if !tt.noMock {
 			mockEvaluator.

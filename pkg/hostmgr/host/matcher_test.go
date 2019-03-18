@@ -25,6 +25,7 @@ import (
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
 	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
@@ -461,4 +462,108 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithZeroResourceHosts() {
 	// this should return error and matching error contents.
 	suite.Contains(err.Message, "could not return matching hosts")
 	suite.Nil(hosts)
+}
+
+// TestMatchHostsFilterExclusiveHosts tests filtering of exclusive hosts
+func (suite *MatcherTestSuite) TestMatchHostsFilterExclusiveHosts() {
+	loader := &Loader{
+		OperatorClient:         suite.operatorClient,
+		Scope:                  suite.testScope,
+		MaintenanceHostInfoMap: suite.mockMaintenanceMap,
+	}
+	response := createAgentsResponse(2, true)
+	// Make agent at index[0] to have exclusive attribute
+	exclAttrName := "peloton/exclusive"
+	exclAttrValue := "web-tier"
+	textType := mesos.Value_TEXT
+	response.GetAgents()[0].GetAgentInfo().Attributes = []*mesos.Attribute{
+		&mesos.Attribute{
+			Name: &exclAttrName,
+			Text: &mesos.Value_Text{
+				Value: &exclAttrValue,
+			},
+			Type: &textType,
+		},
+	}
+
+	gomock.InOrder(
+		suite.operatorClient.EXPECT().Agents().Return(response, nil),
+
+		suite.mockMaintenanceMap.EXPECT().
+			GetDrainingHostInfos(gomock.Any()).
+			Return([]*hpb.HostInfo{}).
+			Times(len(suite.response.GetAgents())),
+	)
+
+	loader.Load(nil)
+
+	testTable := []struct {
+		msg            string
+		agentIndex     int
+		exclConstraint bool
+		expected       hostsvc.HostFilterResult
+	}{
+		{
+			msg:            "excl host, excl constraint -> match",
+			agentIndex:     0,
+			exclConstraint: true,
+			expected:       hostsvc.HostFilterResult_MATCH,
+		},
+		{
+			msg:            "excl host, non-excl constraint -> mismatch",
+			agentIndex:     0,
+			exclConstraint: false,
+			expected:       hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
+		},
+		{
+			msg:            "non-excl host, excl constraint -> mismatch",
+			agentIndex:     1,
+			exclConstraint: true,
+			expected:       hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
+		},
+		{
+			msg:            "non-excl host, non-excl constraint -> match",
+			agentIndex:     1,
+			exclConstraint: false,
+			expected:       hostsvc.HostFilterResult_MATCH,
+		},
+	}
+
+	for _, tt := range testTable {
+		agentInfo := response.GetAgents()[tt.agentIndex].GetAgentInfo()
+		resources := scalar.FromMesosResources(agentInfo.GetResources())
+		hostname := agentInfo.GetHostname()
+
+		filter := &hostsvc.HostFilter{
+			ResourceConstraint: &hostsvc.ResourceConstraint{
+				Minimum: &task.ResourceConfig{},
+			},
+		}
+		if tt.exclConstraint {
+			filter.SchedulingConstraint = &task.Constraint{
+				Type: task.Constraint_LABEL_CONSTRAINT,
+				LabelConstraint: &task.LabelConstraint{
+					Kind: task.LabelConstraint_HOST,
+					Label: &peloton.Label{
+						Key:   "peloton/exclusive",
+						Value: "web-tier",
+					},
+					Condition:   task.LabelConstraint_CONDITION_EQUAL,
+					Requirement: 1,
+				},
+			}
+		}
+		evaluator := constraints.NewEvaluator(task.LabelConstraint_HOST)
+		matcher := getNewMatcher(filter, evaluator)
+		suite.Equal(
+			tt.expected,
+			matcher.matchHostFilter(
+				hostname,
+				resources,
+				filter,
+				evaluator,
+				GetAgentMap()),
+			tt.msg,
+		)
+	}
 }

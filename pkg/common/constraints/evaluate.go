@@ -17,10 +17,12 @@ package constraints
 import (
 	"errors"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+
+	"github.com/uber/peloton/pkg/common"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // Evaluator is the interface to evaluate whether given LabelValueSet satisifies
@@ -174,4 +176,33 @@ func (e evaluator) evaluateLabelConstraint(
 
 func valueCount(label *peloton.Label, labelValues LabelValues) uint32 {
 	return labelValues[label.GetKey()][label.GetValue()]
+}
+
+// IsNonExclusiveConstraint returns true if all components of the constraint
+// specification do not use a host label constraint for exclusive attribute.
+func IsNonExclusiveConstraint(constraint *task.Constraint) bool {
+	if constraint == nil {
+		return true
+	}
+
+	var toEval []*task.Constraint
+	switch constraint.GetType() {
+	case task.Constraint_AND_CONSTRAINT:
+		toEval = constraint.GetAndConstraint().GetConstraints()
+	case task.Constraint_OR_CONSTRAINT:
+		toEval = constraint.GetOrConstraint().GetConstraints()
+	case task.Constraint_LABEL_CONSTRAINT:
+		lc := constraint.GetLabelConstraint()
+		if lc.GetKind() == task.LabelConstraint_HOST &&
+			lc.GetLabel().GetKey() == common.PelotonExclusiveAttributeName {
+			return false
+		}
+		return true
+	}
+	for _, c := range toEval {
+		if !IsNonExclusiveConstraint(c) {
+			return false
+		}
+	}
+	return true
 }

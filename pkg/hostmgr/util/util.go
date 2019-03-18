@@ -20,6 +20,7 @@ import (
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
+	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	log "github.com/sirupsen/logrus"
@@ -78,4 +79,15 @@ func GetResourcesFromOffers(offers map[string]*mesos.Offer) scalar.Resources {
 		resources = append(resources, offer.GetResources()...)
 	}
 	return scalar.FromMesosResources(resources)
+}
+
+// HasExclusiveAttribute returns true if the provided attributes contains
+// the "peloton/exclusive" attribute.
+func HasExclusiveAttribute(attributes []*mesos.Attribute) bool {
+	for _, attr := range attributes {
+		if common.PelotonExclusiveAttributeName == attr.GetName() {
+			return true
+		}
+	}
+	return false
 }

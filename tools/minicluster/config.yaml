@@ -14,6 +14,9 @@ mesos_slave_image: mesosphere/mesos-slave:1.6.0-rc1
 mesos_master_container: peloton-mesos-master
 mesos_agent_container: peloton-mesos-agent
 num_agents: 3
+# optional settings for exclusive hosts
+#num_exclusive_agents: 0
+#exclusive_label_value: ''
 
 # Mesos master configs
 master_port: 5050

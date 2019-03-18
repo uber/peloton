@@ -328,12 +328,6 @@ func matchHostFilter(
 		return hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES
 	}
 
-	hc := c.GetSchedulingConstraint()
-	if hc == nil {
-		// No scheduling constraint, we have a match
-		return hostsvc.HostFilterResult_MATCH
-	}
-
 	// Only try to get first offer in this host because all the offers have
 	// the same host attributes.
 	var firstOffer *mesos.Offer
@@ -343,6 +337,21 @@ func matchHostFilter(
 	}
 
 	hostname := firstOffer.GetHostname()
+	hc := c.GetSchedulingConstraint()
+
+	// If constraints don't specify an exclusive host, then reject
+	// hosts that are designated as exclusive
+	if constraints.IsNonExclusiveConstraint(hc) &&
+		hmutil.HasExclusiveAttribute(firstOffer.GetAttributes()) {
+		log.WithField("hostname", hostname).Debug("Skipped exclusive host")
+		return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
+	}
+
+	if hc == nil {
+		// No scheduling constraint, we have a match
+		return hostsvc.HostFilterResult_MATCH
+	}
+
 	lv := constraints.GetHostLabelValues(
 		hostname,
 		firstOffer.GetAttributes(),

@@ -23,14 +23,23 @@ def teardown_k8s():
     return k8s.teardown()
 
 
+def teardown_mesos_agent(config, agent_index, is_exclusive=False):
+    prefix = config["mesos_agent_container"]
+    if is_exclusive:
+        prefix += "-exclusive"
+    agent = prefix + repr(agent_index)
+    utils.remove_existing_container(agent)
+
+
 #
 # Teardown mesos related containers.
 #
 def teardown_mesos(config):
     # 1 - Remove all Mesos Agents
     for i in range(0, config["num_agents"]):
-        agent = config["mesos_agent_container"] + repr(i)
-        utils.remove_existing_container(agent)
+        teardown_mesos_agent(config, i)
+    for i in range(0, config.get("num_exclusive_agents", 0)):
+        teardown_mesos_agent(config, i, is_exclusive=True)
 
     # 2 - Remove Mesos Master
     utils.remove_existing_container(config["mesos_master_container"])
@@ -116,58 +125,77 @@ def run_mesos(config):
     print_utils.okgreen("started container %s" % master_container)
 
     # Run mesos slaves
-    cli.pull(config["mesos_slave_image"])
-    for i in range(0, config["num_agents"]):
-        agent = config["mesos_agent_container"] + repr(i)
-        port = config["local_agent_port"] + i
-        container = cli.create_container(
-            name=agent,
-            hostname=agent,
-            volumes=["/files", "/var/run/docker.sock"],
-            ports=[repr(config["default_agent_port"])],
-            host_config=cli.create_host_config(
-                port_bindings={config["default_agent_port"]: port},
-                binds=[
-                    work_dir + "/files:/files",
-                    work_dir
-                    + "/mesos_config/etc_mesos-slave:/etc/mesos-slave",
-                    "/var/run/docker.sock:/var/run/docker.sock",
-                ],
-                privileged=True,
-            ),
-            environment=[
-                "MESOS_PORT=" + repr(port),
-                "MESOS_MASTER=zk://{0}:{1}/mesos".format(
-                    utils.get_container_ip(config["zk_container"]),
-                    config["default_zk_port"],
-                ),
-                "MESOS_SWITCH_USER=" + repr(config["switch_user"]),
-                "MESOS_CONTAINERIZERS=" + config["containers"],
-                "MESOS_LOG_DIR=" + config["log_dir"],
-                "MESOS_ISOLATION=" + config["isolation"],
-                "MESOS_SYSTEMD_ENABLE_SUPPORT=false",
-                "MESOS_IMAGE_PROVIDERS=" + config["image_providers"],
-                "MESOS_IMAGE_PROVISIONER_BACKEND={0}".format(
-                    config["image_provisioner_backend"]
-                ),
-                "MESOS_APPC_STORE_DIR=" + config["appc_store_dir"],
-                "MESOS_WORK_DIR=" + config["work_dir"],
-                "MESOS_RESOURCES=" + config["resources"],
-                "MESOS_ATTRIBUTES=" + config["attributes"],
-                "MESOS_MODULES=" + config["modules"],
-                "MESOS_RESOURCE_ESTIMATOR=" + config["resource_estimator"],
-                "MESOS_OVERSUBSCRIBED_RESOURCES_INTERVAL="
-                + config["oversubscribed_resources_interval"],
-                "MESOS_QOS_CONTROLLER=" + config["qos_controller"],
-                "MESOS_QOS_CORRECTION_INTERVAL_MIN="
-                + config["qos_correction_interval_min"],
+    cli.pull(config['mesos_slave_image'])
+    for i in range(0, config['num_agents']):
+        run_mesos_agent(config, i, i)
+    for i in range(0, config.get('num_exclusive_agents', 0)):
+        run_mesos_agent(
+            config,
+            i, config['num_agents'] + i,
+            is_exclusive=True,
+            exclusive_label_value=config.get('exclusive_label_value', ''))
+
+
+#
+# Run a mesos agent
+#
+def run_mesos_agent(config, agent_index, port_offset, is_exclusive=False,
+                    exclusive_label_value=''):
+    prefix = config["mesos_agent_container"]
+    attributes = config["attributes"]
+    if is_exclusive:
+        prefix += "-exclusive"
+        attributes += ";peloton/exclusive:" + exclusive_label_value
+    agent = prefix + repr(agent_index)
+    port = config["local_agent_port"] + port_offset
+    container = cli.create_container(
+        name=agent,
+        hostname=agent,
+        volumes=["/files", "/var/run/docker.sock"],
+        ports=[repr(config["default_agent_port"])],
+        host_config=cli.create_host_config(
+            port_bindings={config["default_agent_port"]: port},
+            binds=[
+                work_dir + "/files:/files",
+                work_dir
+                + "/mesos_config/etc_mesos-slave:/etc/mesos-slave",
+                "/var/run/docker.sock:/var/run/docker.sock",
             ],
-            image=config["mesos_slave_image"],
-            entrypoint="bash /files/run_mesos_slave.sh",
-            detach=True,
-        )
-        cli.start(container=container.get("Id"))
-        print_utils.okgreen("started container %s" % agent)
+            privileged=True,
+        ),
+        environment=[
+            "MESOS_PORT=" + repr(port),
+            "MESOS_MASTER=zk://{0}:{1}/mesos".format(
+                utils.get_container_ip(config["zk_container"]),
+                config["default_zk_port"],
+            ),
+            "MESOS_SWITCH_USER=" + repr(config["switch_user"]),
+            "MESOS_CONTAINERIZERS=" + config["containers"],
+            "MESOS_LOG_DIR=" + config["log_dir"],
+            "MESOS_ISOLATION=" + config["isolation"],
+            "MESOS_SYSTEMD_ENABLE_SUPPORT=false",
+            "MESOS_IMAGE_PROVIDERS=" + config["image_providers"],
+            "MESOS_IMAGE_PROVISIONER_BACKEND={0}".format(
+                config["image_provisioner_backend"]
+            ),
+            "MESOS_APPC_STORE_DIR=" + config["appc_store_dir"],
+            "MESOS_WORK_DIR=" + config["work_dir"],
+            "MESOS_RESOURCES=" + config["resources"],
+            "MESOS_ATTRIBUTES=" + attributes,
+            "MESOS_MODULES=" + config["modules"],
+            "MESOS_RESOURCE_ESTIMATOR=" + config["resource_estimator"],
+            "MESOS_OVERSUBSCRIBED_RESOURCES_INTERVAL="
+            + config["oversubscribed_resources_interval"],
+            "MESOS_QOS_CONTROLLER=" + config["qos_controller"],
+            "MESOS_QOS_CORRECTION_INTERVAL_MIN="
+            + config["qos_correction_interval_min"],
+        ],
+        image=config["mesos_slave_image"],
+        entrypoint="bash /files/run_mesos_slave.sh",
+        detach=True,
+    )
+    cli.start(container=container.get("Id"))
+    print_utils.okgreen("started container %s" % agent)
 
 
 #
