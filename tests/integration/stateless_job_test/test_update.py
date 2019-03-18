@@ -41,14 +41,14 @@ UPDATE_STATELESS_JOB_NO_ERR = \
     "test_stateless_job_exit_without_err_spec.yaml"
 
 
-def test__create_update(stateless_job):
+def test__create_update(stateless_job, in_place):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state='RUNNING')
     old_pod_infos = stateless_job.query_pods()
     old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
     update = StatelessUpdate(stateless_job,
                              updated_job_file=UPDATE_STATELESS_JOB_SPEC)
-    update.create()
+    update.create(in_place=in_place)
     update.wait_for_state(goal_state='SUCCEEDED')
     new_pod_infos = stateless_job.query_pods()
     new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
@@ -56,7 +56,7 @@ def test__create_update(stateless_job):
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
 
 
-def test__create_update_add_instances(stateless_job):
+def test__create_update_add_instances(stateless_job, in_place):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state='RUNNING')
     old_pod_infos = stateless_job.query_pods()
@@ -64,7 +64,7 @@ def test__create_update_add_instances(stateless_job):
         stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC,
     )
-    update.create()
+    update.create(in_place=in_place)
     update.wait_for_state(goal_state='SUCCEEDED')
     new_pod_infos = stateless_job.query_pods()
     assert len(old_pod_infos) == 3
@@ -358,7 +358,7 @@ def test__abort_update(stateless_job):
     update.wait_for_state(goal_state='ABORTED')
 
 
-def test__update_reduce_instances(stateless_job):
+def test__update_reduce_instances(stateless_job, in_place):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state='RUNNING')
     old_pod_infos = stateless_job.query_pods()
@@ -376,7 +376,7 @@ def test__update_reduce_instances(stateless_job):
     update = StatelessUpdate(
         stateless_job,
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_REDUCE_INSTANCES_SPEC)
-    update.create()
+    update.create(in_place=in_place)
     update.wait_for_state(goal_state='SUCCEEDED')
     new_pod_infos = stateless_job.query_pods()
     assert len(new_pod_infos) == 3

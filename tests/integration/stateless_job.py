@@ -206,7 +206,7 @@ class StatelessJob(object):
                  .format(self.job_id, ranges))
         return pod_svc.StopPodResponse()
 
-    def restart(self, entity_version=None, batch_size=None, ranges=None):
+    def restart(self, entity_version=None, batch_size=None, ranges=None, in_place=False):
         """
         Restart pods based on the ranges.
         If ranges is not provided then it restarts all pods of the job
@@ -224,6 +224,7 @@ class StatelessJob(object):
                 restart_spec=stateless.RestartSpec(
                     batch_size=batch_size,
                     ranges=ranges,
+                    in_place=in_place,
                 ),
             )
             try:

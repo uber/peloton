@@ -204,6 +204,13 @@ def test_job(request):
     return request.param(request)
 
 
+# For unit tests of update/restart running with in_place, it would
+# be tested with both in_place feature enabled and disabled
+@pytest.fixture(params=[True, False])
+def in_place(request):
+    return request.param
+
+
 """
 Setup fixture for getting a dict of job objects per state
 """

@@ -51,7 +51,7 @@ class StatelessUpdate(object):
         self.start_paused = start_paused or False
         self.job = job
 
-    def create(self, entity_version=None):
+    def create(self, in_place=False, entity_version=None):
         """
         replace the job spec with the spec provided in StatelessUpdate
         if entity_version is provided,  replace will use the provided value,
@@ -78,6 +78,7 @@ class StatelessUpdate(object):
                     max_instance_retries=self.max_instance_attempts,
                     max_tolerable_instance_failures=self.max_failure_instances,
                     start_paused=self.start_paused,
+                    in_place=in_place,
                 )
             )
             try:
