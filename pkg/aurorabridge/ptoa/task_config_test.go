@@ -19,7 +19,6 @@ import (
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
@@ -35,8 +34,7 @@ func TestNewTaskConfig(t *testing.T) {
 	jobKey := fixture.AuroraJobKey()
 	metadata := fixture.AuroraMetadata()
 
-	ml, err := label.NewAuroraMetadata(metadata)
-	assert.NoError(t, err)
+	ml := label.NewAuroraMetadataLabels(metadata)
 
 	j := &stateless.JobInfo{
 		Spec: &stateless.JobSpec{
@@ -48,7 +46,7 @@ func TestNewTaskConfig(t *testing.T) {
 		},
 	}
 	p := &pod.PodSpec{
-		Labels:     []*peloton.Label{ml},
+		Labels:     ml,
 		Containers: []*pod.ContainerSpec{{}},
 	}
 

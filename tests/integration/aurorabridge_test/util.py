@@ -1,5 +1,7 @@
 import time
 
+import requests
+
 from tests.integration.aurorabridge_test.client import api
 from tests.integration.util import load_config
 
@@ -238,3 +240,9 @@ def remove_duplicate_keys(job_keys):
 def assert_keys_equal(actual, expected, message=''):
     assert sorted(actual, key=_to_tuple) == sorted(expected, key=_to_tuple), \
         message
+
+
+def get_mesos_maser_state(url='http://127.0.0.1:5050/state.json'):
+    resp = requests.get(url)
+    resp.raise_for_status()
+    return resp.json()

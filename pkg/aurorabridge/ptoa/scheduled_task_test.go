@@ -50,8 +50,7 @@ func TestNewScheduledTask(t *testing.T) {
 		Value: jobID.GetValue() + "-1-2",
 	}
 	ancestorID2 := ptr.String(jobID.GetValue() + "-1-1")
-	ml, err := label.NewAuroraMetadata(metadata)
-	assert.NoError(t, err)
+	ml := label.NewAuroraMetadataLabels(metadata)
 	kl := label.NewAuroraJobKey(jobKey)
 
 	// pod 1
@@ -63,7 +62,7 @@ func TestNewScheduledTask(t *testing.T) {
 	p1 := &pod.PodInfo{
 		Spec: &pod.PodSpec{
 			PodName: podName1,
-			Labels:  []*peloton.Label{ml, kl},
+			Labels:  append([]*peloton.Label{kl}, ml...),
 			Containers: []*pod.ContainerSpec{
 				{},
 			},
@@ -175,7 +174,7 @@ func TestNewScheduledTask(t *testing.T) {
 	p2 := &pod.PodInfo{
 		Spec: &pod.PodSpec{
 			PodName: podName2,
-			Labels:  []*peloton.Label{ml, kl},
+			Labels:  append([]*peloton.Label{kl}, ml...),
 			Containers: []*pod.ContainerSpec{
 				{
 					Ports: []*pod.PortSpec{

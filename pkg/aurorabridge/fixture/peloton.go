@@ -98,11 +98,8 @@ func PelotonWorkflowInfo(eventTimestamp string) *stateless.WorkflowInfo {
 
 // DefaultPelotonJobLabels returns a list of default labels for peloton jobs
 func DefaultPelotonJobLabels(jobKey *api.JobKey) []*peloton.Label {
-	mdl, err := label.NewAuroraMetadata(AuroraMetadata())
-	if err != nil {
-		panic(err)
-	}
-	return []*peloton.Label{mdl, label.NewAuroraJobKey(jobKey)}
+	mdl := label.NewAuroraMetadataLabels(AuroraMetadata())
+	return append([]*peloton.Label{label.NewAuroraJobKey(jobKey)}, mdl...)
 }
 
 func randomTime() string {

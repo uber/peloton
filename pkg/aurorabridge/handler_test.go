@@ -188,13 +188,12 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
 	jobKey := fixture.AuroraJobKey()
 	entityVersion := fixture.PelotonEntityVersion()
 	podName := fmt.Sprintf("%s-%d", jobID.GetValue(), 0)
-	mdLabel, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
-	suite.NoError(err)
+	mdLabel := label.NewAuroraMetadataLabels(fixture.AuroraMetadata())
 
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 	suite.expectQueryPods(jobID,
 		[]*peloton.PodName{{Value: podName}},
-		[]*peloton.Label{mdLabel},
+		mdLabel,
 		entityVersion,
 		1,
 	)
@@ -228,8 +227,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobs() {
 	instanceCount := uint32(1)
 	podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
 
-	mdLabel, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
-	suite.NoError(err)
+	mdLabel := label.NewAuroraMetadataLabels(fixture.AuroraMetadata())
 	jkLabel := label.NewAuroraJobKey(jobKey)
 
 	ql := append(
@@ -250,7 +248,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobs() {
 					InstanceCount: instanceCount,
 					DefaultSpec: &pod.PodSpec{
 						PodName:    podName,
-						Labels:     []*peloton.Label{mdLabel, jkLabel},
+						Labels:     append([]*peloton.Label{jkLabel}, mdLabel...),
 						Containers: []*pod.ContainerSpec{{}},
 					},
 				},

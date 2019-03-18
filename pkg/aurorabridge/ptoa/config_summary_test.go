@@ -54,17 +54,14 @@ func TestNewConfigSumamry_Success(t *testing.T) {
 
 		podName := fmt.Sprintf("%s-%d", jobID.GetValue(), i)
 		podID := fmt.Sprintf("%s-%d", podName, 1)
-		mdLabel, err := label.NewAuroraMetadata(fixture.AuroraMetadata())
-		assert.NoError(t, err)
+		mdLabel := label.NewAuroraMetadataLabels(fixture.AuroraMetadata())
 
 		podInfos = append(podInfos, &pod.PodInfo{
 			Spec: &pod.PodSpec{
 				PodName: &peloton.PodName{
 					Value: podName,
 				},
-				Labels: []*peloton.Label{
-					mdLabel,
-				},
+				Labels:     mdLabel,
 				Containers: []*pod.ContainerSpec{{}},
 			},
 			Status: &pod.PodStatus{
@@ -138,7 +135,8 @@ func TestNewConfigSummary_ConfigGroupError(t *testing.T) {
 			PodName: &peloton.PodName{
 				Value: podName,
 			},
-			Containers: []*pod.ContainerSpec{{}},
+			// missing ContainerSpec, expect error
+			Containers: []*pod.ContainerSpec{},
 		},
 		Status: &pod.PodStatus{
 			PodId: &peloton.PodID{

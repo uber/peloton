@@ -15,41 +15,44 @@
 package label
 
 import (
-	"encoding/json"
-	"fmt"
+	"strings"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
+	"go.uber.org/thriftrw/ptr"
 )
 
-const _auroraMetadataKey = "aurora_metadata"
+const (
+	// Used for simulating the Aurora's behavior when creating labels in Mesos
+	_auroraLabelPrefix = "org.apache.aurora.metadata."
+)
 
-// NewAuroraMetadata creates a label for the original Aurora task metadata which
-// was mapped into a Peloton job.
-func NewAuroraMetadata(md []*api.Metadata) (*peloton.Label, error) {
-	b, err := json.Marshal(md)
-	if err != nil {
-		return nil, fmt.Errorf("json marshal: %s", err)
+// NewAuroraMetadataLabels generates a list of labels using Aurora's
+// format for compatibility purposes.
+func NewAuroraMetadataLabels(md []*api.Metadata) []*peloton.Label {
+	var l []*peloton.Label
+	for _, m := range md {
+		l = append(l, &peloton.Label{
+			Key:   _auroraLabelPrefix + m.GetKey(),
+			Value: m.GetValue(),
+		})
 	}
-	return &peloton.Label{
-		Key:   _auroraMetadataKey,
-		Value: string(b),
-	}, nil
+	return l
 }
 
 // ParseAuroraMetadata converts Peloton label to a list of
 // Aurora Metadata. The label for aurora metadata must be present, otherwise
 // an error will be returned.
-func ParseAuroraMetadata(ls []*peloton.Label) ([]*api.Metadata, error) {
+func ParseAuroraMetadata(ls []*peloton.Label) []*api.Metadata {
+	var m []*api.Metadata
 	for _, l := range ls {
-		if l.GetKey() == _auroraMetadataKey {
-			var m []*api.Metadata
-			err := json.Unmarshal([]byte(l.GetValue()), &m)
-			if err != nil {
-				return nil, err
-			}
-			return m, nil
+		if strings.HasPrefix(l.GetKey(), _auroraLabelPrefix) {
+			m = append(m, &api.Metadata{
+				Key:   ptr.String(strings.TrimPrefix(l.GetKey(), _auroraLabelPrefix)),
+				Value: ptr.String(l.GetValue()),
+			})
 		}
 	}
-	return nil, fmt.Errorf("missing label: %q", _auroraMetadataKey)
+	return m
 }

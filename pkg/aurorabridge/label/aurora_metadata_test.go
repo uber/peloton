@@ -36,10 +36,27 @@ func TestAuroraMetadata(t *testing.T) {
 		},
 	}
 
-	l, err := NewAuroraMetadata(input)
-	assert.NoError(t, err)
+	l := NewAuroraMetadataLabels(input)
+	assert.Equal(t, []*peloton.Label{
+		{
+			Key:   "org.apache.aurora.metadata.test-key-1",
+			Value: "test-value-1",
+		},
+		{
+			Key:   "org.apache.aurora.metadata.test-key-2",
+			Value: "test-value-2",
+		},
+	}, l)
 
-	output, err := ParseAuroraMetadata([]*peloton.Label{l})
-	assert.NoError(t, err)
+	// append some noise to make sure ParseAuroraMetadata can filter it
+	// correctly
+	l = append(l, []*peloton.Label{
+		{
+			Key:   "test-extra-key-1",
+			Value: "test-extra-value-1",
+		},
+	}...)
+
+	output := ParseAuroraMetadata(l)
 	assert.Equal(t, input, output)
 }

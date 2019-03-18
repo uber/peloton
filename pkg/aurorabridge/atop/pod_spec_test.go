@@ -17,8 +17,10 @@ package atop
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/thriftrw/ptr"
 )
 
 // Ensures that PodSpec container resources are set.
@@ -30,6 +32,13 @@ func TestNewPodSpec_ContainersResource(t *testing.T) {
 		gpu  int64   = 1
 	)
 
+	md := []*api.Metadata{
+		{
+			Key:   ptr.String("test-key-1"),
+			Value: ptr.String("test-value-1"),
+		},
+	}
+
 	p, err := NewPodSpec(
 		&api.TaskConfig{
 			Resources: []*api.Resource{
@@ -38,6 +47,7 @@ func TestNewPodSpec_ContainersResource(t *testing.T) {
 				{DiskMb: &disk},
 				{NumGpus: &gpu},
 			},
+			Metadata: md,
 		},
 		ThermosExecutorConfig{},
 	)
@@ -53,4 +63,6 @@ func TestNewPodSpec_ContainersResource(t *testing.T) {
 
 	assert.NotNil(t, p.Containers[0].GetCommand())
 	assert.NotNil(t, p.Containers[0].GetExecutor())
+
+	assert.Len(t, p.GetLabels(), 2)
 }

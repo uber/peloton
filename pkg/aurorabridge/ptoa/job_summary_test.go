@@ -19,7 +19,6 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 
 	"github.com/uber/peloton/pkg/aurorabridge/atop"
@@ -34,8 +33,7 @@ func TestNewJobSummary(t *testing.T) {
 	metadata := fixture.AuroraMetadata()
 	instanceCount := uint32(12)
 
-	ml, err := label.NewAuroraMetadata(metadata)
-	assert.NoError(t, err)
+	ml := label.NewAuroraMetadataLabels(metadata)
 
 	j := &stateless.JobInfo{
 		Spec: &stateless.JobSpec{
@@ -44,7 +42,7 @@ func TestNewJobSummary(t *testing.T) {
 		},
 	}
 	p := &pod.PodSpec{
-		Labels:     []*peloton.Label{ml},
+		Labels:     ml,
 		Containers: []*pod.ContainerSpec{{}},
 	}
 
@@ -83,8 +81,7 @@ func TestNewJobConfiguration(t *testing.T) {
 		},
 	}
 
-	ml, err := label.NewAuroraMetadata(metadata)
-	assert.NoError(t, err)
+	ml := label.NewAuroraMetadataLabels(metadata)
 
 	j := &stateless.JobInfo{
 		Spec: &stateless.JobSpec{
@@ -102,7 +99,7 @@ func TestNewJobConfiguration(t *testing.T) {
 		},
 	}
 	p := &pod.PodSpec{
-		Labels:     []*peloton.Label{ml},
+		Labels:     ml,
 		Containers: []*pod.ContainerSpec{{}},
 	}
 

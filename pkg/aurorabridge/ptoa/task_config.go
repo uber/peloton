@@ -50,11 +50,7 @@ func NewTaskConfig(
 		return nil, err
 	}
 
-	// TODO(kevinxu): make metadata optional?
-	auroraMetadata, err := label.ParseAuroraMetadata(podSpec.GetLabels())
-	if err != nil {
-		return nil, fmt.Errorf("parse aurora metadata: %s", err)
-	}
+	auroraMetadata := label.ParseAuroraMetadata(podSpec.GetLabels())
 
 	auroraContainer, err := newContainer(podSpec.GetContainers()[0])
 	if err != nil {
