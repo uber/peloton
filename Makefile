@@ -74,6 +74,8 @@ aurorabridge:
 build-mockgen:
 	go get ./vendor/github.com/golang/mock/mockgen
 
+# NOTE: `glide install` is flaky, so run it 3 times at most to ensure this doesn't fail
+# tests regularly for no reason.
 install:
 	@if [ -z ${GOPATH} ]; then \
 		echo "No $GOPATH"; \
@@ -85,7 +87,7 @@ install:
 	@if [ ! -d "$(VENDOR)" ]; then \
 		echo "Fetching dependencies"; \
 		glide --version || go get -u github.com/Masterminds/glide; \
-		rm -rf vendor && glide cc && glide install; \
+		rm -rf vendor && glide cc && (glide install || glide install || glide install); \
 	fi
 	@if [ ! -d "env" ]; then \
 		which virtualenv || pip install virtualenv ; \
