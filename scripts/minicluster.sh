@@ -17,7 +17,7 @@ pip install -q -r tools/minicluster/requirements.txt
 # Run the deployment script
 extra_flag='-a'
 if [ -z "$PELOTON" ] && [ "$1" = "setup" ]; then extra_flag=''; fi
-PYTHONPATH=tools/minicluster python tools/minicluster/main.py $extra_flag "$@"
+PYTHONPATH=tools/minicluster python tools/minicluster/main.py "$@" $extra_flag
 
 # Exit virtualenv
 deactivate
