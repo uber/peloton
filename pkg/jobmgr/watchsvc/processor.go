@@ -18,9 +18,12 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
+
+	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
@@ -74,7 +77,7 @@ func (t ClientType) String() string {
 type WatchProcessor interface {
 	// NewTaskClient creates a new watch client for task event changes.
 	// Returns the watch id and a new instance of TaskClient.
-	NewTaskClient() (string, *TaskClient, error)
+	NewTaskClient(filter *watch.PodFilter) (string, *TaskClient, error)
 
 	// StopTaskClient stops a task watch client. Returns "not-found" error
 	// if the corresponding watch client is not found.
@@ -82,7 +85,7 @@ type WatchProcessor interface {
 
 	// NotifyTaskChange receives pod event, and notifies all the clients
 	// which are interested in the pod.
-	NotifyTaskChange(pod *pod.PodSummary)
+	NotifyTaskChange(pod *pod.PodSummary, podLabels []*peloton.Label)
 }
 
 // watchProcessor is an implementation of WatchProcessor interface.
@@ -151,7 +154,7 @@ func NewWatchID(clientType ClientType) string {
 
 // NewTaskClient creates a new watch client for task event changes.
 // Returns the watch id and a new instance of TaskClient.
-func (p *watchProcessor) NewTaskClient() (string, *TaskClient, error) {
+func (p *watchProcessor) NewTaskClient(filter *watch.PodFilter) (string, *TaskClient, error) {
 	sw := p.metrics.ProcessorLockDuration.Start()
 	p.Lock()
 	defer p.Unlock()
@@ -167,7 +170,7 @@ func (p *watchProcessor) NewTaskClient() (string, *TaskClient, error) {
 		// Make buffer size 1 so that sender is not blocked when sending
 		// the Signal
 		Signal: make(chan StopSignal, 1),
-		Filter: nil, // TODO(kevinxu): filter is not implemented
+		Filter: filter,
 	}
 
 	log.WithField("watch_id", watchID).Info("task watch client created")
@@ -208,13 +211,76 @@ func (p *watchProcessor) stopTaskClient(
 
 // NotifyTaskChange receives pod event, and notifies all the clients
 // which are interested in the pod.
-func (p *watchProcessor) NotifyTaskChange(pod *pod.PodSummary) {
+func (p *watchProcessor) NotifyTaskChange(
+	pod *pod.PodSummary,
+	podLabels []*peloton.Label) {
 	sw := p.metrics.ProcessorLockDuration.Start()
 	p.Lock()
 	defer p.Unlock()
 	sw.Stop()
 
 	for watchID, c := range p.taskClients {
+		filterCheckPass := true
+
+		if c.Filter != nil {
+
+			// Check the job ID filter
+			if c.Filter.GetJobId() != nil {
+				jobID, _, err := util.ParseTaskID(pod.GetPodName().GetValue())
+				if err != nil {
+					// Cannot parse podName to match the jobID, assume that
+					// filter does not match.
+					filterCheckPass = false
+				}
+
+				if jobID != c.Filter.GetJobId().GetValue() {
+					// job id filter did not match
+					filterCheckPass = false
+				}
+
+				// check the podname filter next
+				if filterCheckPass == true && len(c.Filter.GetPodNames()) > 0 {
+					found := false
+					for _, podName := range c.Filter.GetPodNames() {
+						if podName.GetValue() == pod.GetPodName().GetValue() {
+							found = true
+							break
+						}
+					}
+					if found == false {
+						// pod name filter did not match
+						filterCheckPass = false
+					}
+				}
+			}
+
+			if filterCheckPass == false {
+				continue
+			}
+
+			// Check the pod label filter next
+			for _, labelFilter := range c.Filter.GetLabels() {
+				found := false
+				for _, labelPod := range podLabels {
+					if labelFilter.GetKey() == labelPod.GetKey() &&
+						labelFilter.GetValue() == labelPod.GetValue() {
+						found = true
+						break
+					}
+				}
+
+				if found == false {
+					// label filter did not match
+					filterCheckPass = false
+					break
+				}
+			}
+		}
+
+		if filterCheckPass == false {
+			continue
+		}
+
 		select {
 		case c.Input <- pod:
 		default:

@@ -55,9 +55,13 @@ func (suite *watchActionsTestSuite) TearDownTest() {
 }
 
 func (suite *watchActionsTestSuite) TestWatchPod() {
+	var labels []string
+
 	jobID := "test-job-id"
 	podNames := []string{"test-pod-1", "test-pod-2"}
 	watchID := uuid.New()
+	label1 := "key1:value1"
+	labels = append(labels, label1)
 
 	stream := mocks.NewMockWatchServiceServiceWatchYARPCClient(suite.ctrl)
 	resps := []*watchsvc.WatchResponse{
@@ -87,7 +91,18 @@ func (suite *watchActionsTestSuite) TestWatchPod() {
 
 	gomock.InOrder(calls...)
 
-	suite.NoError(suite.client.WatchPod(jobID, podNames))
+	suite.NoError(suite.client.WatchPod(jobID, podNames, labels))
+}
+
+func (suite *watchActionsTestSuite) TestWatchPodLabelError() {
+	var labels []string
+
+	jobID := "test-job-id"
+	podNames := []string{"test-pod-1", "test-pod-2"}
+	label1 := "key1:value1:value2"
+	labels = append(labels, label1)
+
+	suite.Error(suite.client.WatchPod(jobID, podNames, labels))
 }
 
 func (suite *watchActionsTestSuite) TestCancelWatch() {

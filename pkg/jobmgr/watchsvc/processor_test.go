@@ -16,12 +16,19 @@ package watchsvc
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
+	v0peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
 
+	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
+
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc/yarpcerrors"
@@ -33,7 +40,10 @@ type WatchProcessorTestSuite struct {
 	ctx       context.Context
 	testScope tally.TestScope
 
-	config Config
+	config     Config
+	jobID      *peloton.JobID
+	instanceID uint32
+	podName    *peloton.PodName
 
 	processor WatchProcessor
 }
@@ -46,6 +56,9 @@ func (suite *WatchProcessorTestSuite) SetupTest() {
 		BufferSize: 10,
 		MaxClient:  2,
 	}
+	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
+	suite.instanceID = uint32(1)
+	suite.podName = &peloton.PodName{Value: fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)}
 	suite.processor = newWatchProcessor(suite.config, suite.testScope)
 }
 
@@ -62,7 +75,7 @@ func (suite *WatchProcessorTestSuite) TestInitWatchProcessor() {
 
 // TestTaskClient tests basic setup and teardown of task watch client
 func (suite *WatchProcessorTestSuite) TestTaskClient() {
-	watchID, c, err := suite.processor.NewTaskClient()
+	watchID, c, err := suite.processor.NewTaskClient(nil)
 	suite.NoError(err)
 	suite.NotEmpty(watchID)
 	suite.NotNil(c)
@@ -92,7 +105,7 @@ func (suite *WatchProcessorTestSuite) TestTaskClient() {
 // TestTaskClient_StopNonexistentClient tests an error will be thrown if
 // tearing down a client with unknown watch id.
 func (suite *WatchProcessorTestSuite) TestTaskClient_StopNonexistentClient() {
-	watchID, c, err := suite.processor.NewTaskClient()
+	watchID, c, err := suite.processor.NewTaskClient(nil)
 	suite.NoError(err)
 	suite.NotEmpty(watchID)
 	suite.NotNil(c)
@@ -106,7 +119,7 @@ func (suite *WatchProcessorTestSuite) TestTaskClient_StopNonexistentClient() {
 // creating a new client if max number of clients is reached.
 func (suite *WatchProcessorTestSuite) TestTaskClient_MaxClientReached() {
 	for i := 0; i < 3; i++ {
-		watchID, c, err := suite.processor.NewTaskClient()
+		watchID, c, err := suite.processor.NewTaskClient(nil)
 		if i < 2 {
 			suite.NoError(err)
 			suite.NotEmpty(watchID)
@@ -122,7 +135,7 @@ func (suite *WatchProcessorTestSuite) TestTaskClient_MaxClientReached() {
 // sent to the client and the client will be closed if the client buffer is
 // overflown.
 func (suite *WatchProcessorTestSuite) TestTaskClient_EventOverflow() {
-	watchID, c, err := suite.processor.NewTaskClient()
+	watchID, c, err := suite.processor.NewTaskClient(nil)
 	suite.NoError(err)
 	suite.NotEmpty(watchID)
 	suite.NotNil(c)
@@ -143,13 +156,126 @@ func (suite *WatchProcessorTestSuite) TestTaskClient_EventOverflow() {
 
 	// send number of events equal to buffer size
 	for i := 0; i < 10; i++ {
-		suite.processor.NotifyTaskChange(&pod.PodSummary{})
+		suite.processor.NotifyTaskChange(&pod.PodSummary{}, nil)
 	}
 	time.Sleep(1 * time.Second)
 	suite.Equal(StopSignalUnknown, stopSignal)
 
 	// trigger buffer overflow
-	suite.processor.NotifyTaskChange(&pod.PodSummary{})
+	suite.processor.NotifyTaskChange(&pod.PodSummary{}, nil)
 	wg.Wait()
 	suite.Equal(StopSignalOverflow, stopSignal)
+}
+
+func (suite *WatchProcessorTestSuite) TestTaskClientPodFilter() {
+	filter := &watch.PodFilter{
+		JobId:    suite.jobID,
+		PodNames: []*peloton.PodName{suite.podName},
+	}
+
+	var mutex = &sync.Mutex{}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	received := 0
+
+	watchID, c, err := suite.processor.NewTaskClient(filter)
+	suite.NoError(err)
+	suite.NotEmpty(watchID)
+	suite.NotNil(c)
+
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-c.Input:
+				mutex.Lock()
+				received++
+				mutex.Unlock()
+			case <-c.Signal:
+				return
+			}
+		}
+	}()
+
+	suite.processor.NotifyTaskChange(&pod.PodSummary{
+		PodName: suite.podName,
+	}, nil)
+
+	suite.processor.NotifyTaskChange(&pod.PodSummary{
+		PodName: &peloton.PodName{Value: "abc-1"},
+	}, nil)
+
+	suite.processor.NotifyTaskChange(&pod.PodSummary{
+		PodName: &peloton.PodName{Value: fmt.Sprintf("%s-%d", suite.jobID, 5)},
+	}, nil)
+
+	time.Sleep(1 * time.Second)
+	err = suite.processor.StopTaskClient(watchID)
+	wg.Wait()
+
+	mutex.Lock()
+	suite.Equal(received, 1)
+	mutex.Unlock()
+}
+
+func (suite *WatchProcessorTestSuite) TestTaskClientPodLabelFilter() {
+	label1 := &v0peloton.Label{
+		Key:   "key1",
+		Value: "value1",
+	}
+	label2 := &v0peloton.Label{
+		Key:   "key2",
+		Value: "value2",
+	}
+
+	filter := &watch.PodFilter{
+		Labels: handlerutil.ConvertLabels([]*v0peloton.Label{label1}),
+	}
+
+	var mutex = &sync.Mutex{}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	received := 0
+
+	watchID, c, err := suite.processor.NewTaskClient(filter)
+	suite.NoError(err)
+	suite.NotEmpty(watchID)
+	suite.NotNil(c)
+
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-c.Input:
+				mutex.Lock()
+				received++
+				mutex.Unlock()
+			case <-c.Signal:
+				return
+			}
+		}
+	}()
+
+	suite.processor.NotifyTaskChange(
+		&pod.PodSummary{},
+		[]*v0peloton.Label{label1},
+	)
+
+	suite.processor.NotifyTaskChange(
+		&pod.PodSummary{},
+		[]*v0peloton.Label{label2},
+	)
+
+	suite.processor.NotifyTaskChange(
+		&pod.PodSummary{},
+		[]*v0peloton.Label{label1, label2},
+	)
+
+	time.Sleep(1 * time.Second)
+	err = suite.processor.StopTaskClient(watchID)
+	wg.Wait()
+
+	mutex.Lock()
+	suite.Equal(2, received)
+	mutex.Unlock()
 }

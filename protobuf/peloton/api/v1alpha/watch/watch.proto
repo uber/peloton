@@ -16,14 +16,18 @@ message StatelessJobFilter
   repeated peloton.JobID job_ids = 1;
 }
 
-// PodFilter specifies the pod(s) to watch. Watch on pods is restricted
-// to a single job.
+// PodFilter specifies a filter for the pod(s) to be watched.
 message PodFilter
 {
-  // The JobID of the pods that will be monitored. Mandatory.
+  // The JobID of the pods that will be monitored.
   peloton.JobID job_id = 1;
 
-  // Names of the pods to watch. If empty, all pods in the job will
-  // be monitored.
+  // Names of the pods to watch. This filter is active only if the
+  // job_id filter is defined as well. If empty, all pods in the job will
+  // be watched.
   repeated peloton.PodName pod_names = 2;
+
+  // Filter based on labels in the pod specification. Only pods which
+  // have all the labels provided in the filter will be watched.
+  repeated peloton.Label labels = 3;
 }

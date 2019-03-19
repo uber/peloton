@@ -204,6 +204,7 @@ var (
 	watchPod         = watch.Command("pod", "watch pod runtime changes")
 	watchPodJobID    = watchPod.Arg("job", "job identifier").String()
 	watchPodPodNames = watchPod.Arg("pod", "pod name").Strings()
+	watchLabels      = watchPod.Flag("labels", "filter on labels (key:value pairs)").Strings()
 
 	watchCancel        = watch.Command("cancel", "cancel watch")
 	watchCancelWatchID = watchCancel.Arg("id", "watch id").Required().String()
@@ -979,7 +980,7 @@ func main() {
 			*statelessDeleteForce,
 		)
 	case watchPod.FullCommand():
-		err = client.WatchPod(*watchPodJobID, *watchPodPodNames)
+		err = client.WatchPod(*watchPodJobID, *watchPodPodNames, *watchLabels)
 	case watchCancel.FullCommand():
 		err = client.CancelWatch(*watchCancelWatchID)
 	default:

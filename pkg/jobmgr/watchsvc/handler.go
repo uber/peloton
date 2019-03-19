@@ -72,7 +72,7 @@ func (h *ServiceHandler) Watch(
 		log.WithField("request", req).
 			Debug("starting new pod watch")
 
-		watchID, watchClient, err := h.processor.NewTaskClient()
+		watchID, watchClient, err := h.processor.NewTaskClient(req.GetPodFilter())
 		if err != nil {
 			log.WithError(err).
 				Warn("failed to create pod watch client")

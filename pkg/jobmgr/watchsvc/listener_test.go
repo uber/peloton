@@ -54,7 +54,7 @@ func (suite *WatchListenerTestSuite) TestWatchListenerName() {
 // when TaskRuntimeChanged is called on listener
 func (suite *WatchListenerTestSuite) TestTaskRuntimeChanged() {
 	suite.processor.EXPECT().
-		NotifyTaskChange(gomock.Any()).
+		NotifyTaskChange(gomock.Any(), gomock.Any()).
 		Times(1)
 
 	suite.listener.TaskRuntimeChanged(
@@ -62,6 +62,7 @@ func (suite *WatchListenerTestSuite) TestTaskRuntimeChanged() {
 		0,
 		job.JobType_SERVICE,
 		&task.RuntimeInfo{},
+		[]*v0peloton.Label{},
 	)
 }
 
@@ -76,6 +77,7 @@ func (suite *WatchListenerTestSuite) TestTaskRuntimeChanged_NonServiceType() {
 		0,
 		job.JobType_BATCH,
 		&task.RuntimeInfo{},
+		[]*v0peloton.Label{},
 	)
 }
 
@@ -89,12 +91,14 @@ func (suite *WatchListenerTestSuite) TestTaskRuntimeChanged_NilFields() {
 		0,
 		job.JobType_SERVICE,
 		&task.RuntimeInfo{},
+		[]*v0peloton.Label{},
 	)
 
 	suite.listener.TaskRuntimeChanged(
 		&v0peloton.JobID{Value: "test-job-1"},
 		0,
 		job.JobType_SERVICE,
+		nil,
 		nil,
 	)
 }

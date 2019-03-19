@@ -17,15 +17,18 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
 	watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
+
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // WatchPod is the action for starting a watch stream for pod, specified
 // by job id and pod names.
-func (c *Client) WatchPod(jobID string, podNames []string) error {
+func (c *Client) WatchPod(jobID string, podNames []string, labels []string) error {
 	var j *peloton.JobID
 	if jobID != "" {
 		j = &peloton.JobID{
@@ -40,12 +43,25 @@ func (c *Client) WatchPod(jobID string, podNames []string) error {
 		})
 	}
 
+	var labelFilter []*peloton.Label
+	for _, label := range labels {
+		keyValue := strings.Split(label, ":")
+		if len(keyValue) != 2 {
+			return yarpcerrors.InvalidArgumentErrorf("unable to parse label %v", label)
+		}
+		labelFilter = append(labelFilter, &peloton.Label{
+			Key:   keyValue[0],
+			Value: keyValue[1],
+		})
+	}
+
 	stream, err := c.watchClient.Watch(
 		c.ctx,
 		&watchsvc.WatchRequest{
 			PodFilter: &watch.PodFilter{
 				JobId:    j,
 				PodNames: ps,
+				Labels:   labelFilter,
 			},
 		},
 	)

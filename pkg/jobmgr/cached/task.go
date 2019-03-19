@@ -315,10 +315,12 @@ func (t *task) cleanTaskCache() {
 
 func (t *task) CreateTask(ctx context.Context, runtime *pbtask.RuntimeInfo, owner string) error {
 	var runtimeCopy *pbtask.RuntimeInfo
+	var labelsCopy []*peloton.Label
+
 	// notify listeners after dropping the lock
 	defer func() {
 		t.jobFactory.notifyTaskRuntimeChanged(t.JobID(), t.ID(), t.jobType,
-			runtimeCopy)
+			runtimeCopy, labelsCopy)
 	}()
 	t.Lock()
 	defer t.Unlock()
@@ -347,6 +349,7 @@ func (t *task) CreateTask(ctx context.Context, runtime *pbtask.RuntimeInfo, owne
 	t.runtime = runtime
 	t.lastRuntimeUpdateTime = time.Now()
 	runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
+	labelsCopy = t.copyLabelsInCache()
 	return nil
 }
 
@@ -364,10 +367,12 @@ func (t *task) PatchTask(ctx context.Context, diff jobmgrcommon.RuntimeDiff) err
 	}
 
 	var runtimeCopy *pbtask.RuntimeInfo
+	var labelsCopy []*peloton.Label
+
 	// notify listeners after dropping the lock
 	defer func() {
 		t.jobFactory.notifyTaskRuntimeChanged(t.JobID(), t.ID(), t.jobType,
-			runtimeCopy)
+			runtimeCopy, labelsCopy)
 	}()
 	t.Lock()
 	defer t.Unlock()
@@ -419,6 +424,7 @@ func (t *task) PatchTask(ctx context.Context, diff jobmgrcommon.RuntimeDiff) err
 	t.runtime = newRuntimePtr
 	t.lastRuntimeUpdateTime = time.Now()
 	runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
+	labelsCopy = t.copyLabelsInCache()
 	return nil
 }
 
@@ -433,10 +439,12 @@ func (t *task) CompareAndSetTask(
 	}
 
 	var runtimeCopy *pbtask.RuntimeInfo
+	var labelsCopy []*peloton.Label
+
 	// notify listeners after dropping the lock
 	defer func() {
 		t.jobFactory.notifyTaskRuntimeChanged(t.JobID(), t.ID(), jobType,
-			runtimeCopy)
+			runtimeCopy, labelsCopy)
 	}()
 
 	t.Lock()
@@ -490,6 +498,7 @@ func (t *task) CompareAndSetTask(
 	t.runtime = runtime
 	t.lastRuntimeUpdateTime = time.Now()
 	runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
+	labelsCopy = t.copyLabelsInCache()
 	return runtimeCopy, nil
 }
 
@@ -510,11 +519,13 @@ func (t *task) DeleteTask() {
 
 	runtimeCopy := proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
 	runtimeCopy.State = pbtask.TaskState_DELETED
+	labelsCopy := t.copyLabelsInCache()
 	t.jobFactory.notifyTaskRuntimeChanged(
 		t.jobID,
 		t.id,
 		t.jobType,
 		runtimeCopy,
+		labelsCopy,
 	)
 }
 
@@ -599,6 +610,24 @@ func (t *task) GetRuntime(ctx context.Context) (*pbtask.RuntimeInfo, error) {
 	return runtime, nil
 }
 
+// copyLabelsInCache returns a copy of the labels in the cache.
+// At least a read lock should be held before invoking the API.
+func (t *task) copyLabelsInCache() []*peloton.Label {
+	var labelsCopy []*peloton.Label
+
+	if t.config == nil {
+		return labelsCopy
+	}
+
+	for _, label := range t.config.labels {
+		var l peloton.Label
+
+		l = *label
+		labelsCopy = append(labelsCopy, &l)
+	}
+	return labelsCopy
+}
+
 func (t *task) GetLabels(ctx context.Context) ([]*peloton.Label, error) {
 	t.Lock()
 	defer t.Unlock()
@@ -617,15 +646,7 @@ func (t *task) GetLabels(ctx context.Context) ([]*peloton.Label, error) {
 		}
 	}
 
-	var labelsCopy []*peloton.Label
-	for _, label := range t.config.labels {
-		var l peloton.Label
-
-		l = *label
-		labelsCopy = append(labelsCopy, &l)
-	}
-
-	return labelsCopy, nil
+	return t.copyLabelsInCache(), nil
 }
 
 func (t *task) GetLastRuntimeUpdateTime() time.Time {

@@ -115,7 +115,7 @@ func (suite *WatchServiceHandlerTestSuite) TestTaskWatch() {
 		Signal: make(chan StopSignal, 1),
 	}
 
-	suite.processor.EXPECT().NewTaskClient().
+	suite.processor.EXPECT().NewTaskClient(gomock.Any()).
 		Return(watchID, taskClient, nil)
 	suite.processor.EXPECT().StopTaskClient(watchID)
 
@@ -163,7 +163,7 @@ func (suite *WatchServiceHandlerTestSuite) TestTaskWatch() {
 // TestTaskWatch_MaxClientReached checks Watch will return resource-exhausted
 // error when NewTaskClient reached max client.
 func (suite *WatchServiceHandlerTestSuite) TestTaskWatch_MaxClientReached() {
-	suite.processor.EXPECT().NewTaskClient().
+	suite.processor.EXPECT().NewTaskClient(gomock.Any()).
 		Return("", nil, yarpcerrors.ResourceExhaustedErrorf("max client reached"))
 
 	req := &watchsvc.WatchRequest{
@@ -186,7 +186,7 @@ func (suite *WatchServiceHandlerTestSuite) TestTaskWatch_InitSendError() {
 		Signal: make(chan StopSignal, 1),
 	}
 
-	suite.processor.EXPECT().NewTaskClient().
+	suite.processor.EXPECT().NewTaskClient(gomock.Any()).
 		Return(watchID, taskClient, nil)
 	suite.processor.EXPECT().StopTaskClient(watchID)
 
@@ -221,7 +221,7 @@ func (suite *WatchServiceHandlerTestSuite) TestTaskWatch_SendError() {
 		Signal: make(chan StopSignal, 1),
 	}
 
-	suite.processor.EXPECT().NewTaskClient().
+	suite.processor.EXPECT().NewTaskClient(gomock.Any()).
 		Return(watchID, taskClient, nil)
 	suite.processor.EXPECT().StopTaskClient(watchID)
 

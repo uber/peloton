@@ -254,11 +254,12 @@ func (f *jobFactory) notifyTaskRuntimeChanged(
 	jobID *peloton.JobID,
 	instanceID uint32,
 	jobType pbjob.JobType,
-	runtime *pbtask.RuntimeInfo) {
+	runtime *pbtask.RuntimeInfo,
+	labels []*peloton.Label) {
 
 	if runtime != nil {
 		for _, l := range f.listeners {
-			l.TaskRuntimeChanged(jobID, instanceID, jobType, runtime)
+			l.TaskRuntimeChanged(jobID, instanceID, jobType, runtime, labels)
 		}
 		// TODO add metric for listener execution latency
 	}

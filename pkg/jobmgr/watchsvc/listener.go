@@ -63,6 +63,7 @@ func (l WatchListener) TaskRuntimeChanged(
 	instanceID uint32,
 	jobType job.JobType,
 	runtime *task.RuntimeInfo,
+	labels []*v0peloton.Label,
 ) {
 	// for now watch api only supports stateless
 	if jobType != job.JobType_SERVICE {
@@ -86,5 +87,5 @@ func (l WatchListener) TaskRuntimeChanged(
 		},
 		Status: handlerutil.ConvertTaskRuntimeToPodStatus(runtime),
 	}
-	l.processor.NotifyTaskChange(p)
+	l.processor.NotifyTaskChange(p, labels)
 }

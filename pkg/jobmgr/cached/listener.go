@@ -52,5 +52,6 @@ type JobTaskListener interface {
 		jobID *peloton.JobID,
 		instanceID uint32,
 		jobType pbjob.JobType,
-		runtime *pbtask.RuntimeInfo)
+		runtime *pbtask.RuntimeInfo,
+		labels []*peloton.Label)
 }
