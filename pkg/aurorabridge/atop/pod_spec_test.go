@@ -64,7 +64,7 @@ func TestNewPodSpec_ContainersResource(t *testing.T) {
 	assert.NotNil(t, p.Containers[0].GetCommand())
 	assert.NotNil(t, p.Containers[0].GetExecutor())
 
-	assert.Len(t, p.GetLabels(), 2)
+	assert.Len(t, p.GetLabels(), 3)
 }
 
 // TestEncodeTaskConfig_Consistency make sure encodeTaskConfig generated

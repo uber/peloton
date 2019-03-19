@@ -36,8 +36,12 @@ func NewPodSpec(
 	c ThermosExecutorConfig,
 ) (*pod.PodSpec, error) {
 	jobKeyLabel := label.NewAuroraJobKey(t.GetJob())
-
 	metadataLabels := label.NewAuroraMetadataLabels(t.GetMetadata())
+
+	labels := append([]*peloton.Label{
+		common.BridgePodLabel,
+		jobKeyLabel,
+	}, metadataLabels...)
 
 	constraint, err := NewConstraint(jobKeyLabel, t.GetConstraints())
 	if err != nil {
@@ -58,7 +62,7 @@ func NewPodSpec(
 
 	return &pod.PodSpec{
 		PodName:        nil, // Unused.
-		Labels:         append([]*peloton.Label{jobKeyLabel}, metadataLabels...),
+		Labels:         labels,
 		InitContainers: nil, // Unused.
 		Containers: []*pod.ContainerSpec{{
 			Name:           "", // Unused.

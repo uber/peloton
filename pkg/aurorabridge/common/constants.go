@@ -34,3 +34,10 @@ var BridgeJobLabel = &peloton.Label{
 	Key:   "aurora_bridge",
 	Value: "com.uber.peloton.internal.aurorabridge",
 }
+
+// BridgePodLabel is the common Peloton pod level label for all jobs
+// created by aurora bridge.
+var BridgePodLabel = &peloton.Label{
+	Key:   "aurora_bridge_pod",
+	Value: "com.uber.peloton.internal.aurorabridge_pod",
+}
