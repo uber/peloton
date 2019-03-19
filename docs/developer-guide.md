@@ -105,7 +105,7 @@ how it will run. Each peloton app is launchable by setting `APP=$name`
 in the environment. For example, run peloton-jobmgr as follows:
 
 ```
-$ docker run --rm --name peloton -it -p 5289:5289 -e APP=jobmgr -e ENVIRONMENT=development peloton
+$ docker run --rm --name peloton --net=host -it -p 5289:5289 -e APP=jobmgr -e ENVIRONMENT=development uber/peloton
 ```
 
 
