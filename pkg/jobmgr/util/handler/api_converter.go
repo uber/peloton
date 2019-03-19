@@ -414,12 +414,15 @@ func ConvertUpdateModelToWorkflowStatus(
 	return &stateless.WorkflowStatus{
 		Type:                  stateless.WorkflowType(updateInfo.GetType()),
 		State:                 stateless.WorkflowState(updateInfo.GetState()),
+		PrevState:             stateless.WorkflowState(updateInfo.GetPrevState()),
 		NumInstancesCompleted: updateInfo.GetInstancesDone(),
 		NumInstancesRemaining: updateInfo.GetInstancesTotal() - updateInfo.GetInstancesDone() - updateInfo.GetInstancesFailed(),
 		NumInstancesFailed:    updateInfo.GetInstancesFailed(),
 		InstancesCurrent:      updateInfo.GetInstancesCurrent(),
 		Version:               entityVersion,
 		PrevVersion:           prevVersion,
+		CreationTime:          updateInfo.GetCreationTime(),
+		UpdateTime:            updateInfo.GetUpdateTime(),
 	}
 }
 

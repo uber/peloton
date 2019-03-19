@@ -1639,6 +1639,7 @@ func convertCacheToWorkflowStatus(
 	workflowStatus := &stateless.WorkflowStatus{}
 	workflowStatus.Type = stateless.WorkflowType(cachedWorkflow.GetWorkflowType())
 	workflowStatus.State = stateless.WorkflowState(cachedWorkflow.GetState().State)
+	workflowStatus.PrevState = stateless.WorkflowState(cachedWorkflow.GetPrevState())
 	workflowStatus.NumInstancesCompleted = uint32(len(cachedWorkflow.GetInstancesDone()))
 	workflowStatus.NumInstancesFailed = uint32(len(cachedWorkflow.GetInstancesFailed()))
 	workflowStatus.NumInstancesRemaining =

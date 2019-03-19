@@ -101,6 +101,9 @@ type Update interface {
 	// GetGoalState returns the goal state of the update
 	GetGoalState() *UpdateStateVector
 
+	// GetPrevState returns the previous state of the update
+	GetPrevState() pbupdate.State
+
 	// GetInstancesAdded returns the instance to be added with this update
 	GetInstancesAdded() []uint32
 
@@ -679,6 +682,13 @@ func (u *update) GetGoalState() *UpdateStateVector {
 		Instances:  instances,
 		JobVersion: u.jobVersion,
 	}
+}
+
+func (u *update) GetPrevState() pbupdate.State {
+	u.RLock()
+	defer u.RUnlock()
+
+	return u.prevState
 }
 
 func (u *update) GetInstancesAdded() []uint32 {

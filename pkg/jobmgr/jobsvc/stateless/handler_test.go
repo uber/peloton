@@ -498,6 +498,10 @@ func (suite *statelessHandlerTestSuite) TestGetJobCacheWithUpdateSuccess() {
 		})
 
 	suite.cachedWorkflow.EXPECT().
+		GetPrevState().
+		Return(pbupdate.State_INITIALIZED)
+
+	suite.cachedWorkflow.EXPECT().
 		GetInstancesDone().
 		Return(instancesDone).
 		AnyTimes()
@@ -547,6 +551,8 @@ func (suite *statelessHandlerTestSuite) TestGetJobCacheWithUpdateSuccess() {
 	suite.Equal(resp.GetStatus().GetDesiredState(), stateless.JobState_JOB_STATE_RUNNING)
 	suite.Equal(resp.GetStatus().GetWorkflowStatus().GetState(),
 		stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD)
+	suite.Equal(resp.GetStatus().GetWorkflowStatus().GetPrevState(),
+		stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED)
 	suite.Equal(resp.GetStatus().GetWorkflowStatus().GetType(),
 		stateless.WorkflowType_WORKFLOW_TYPE_UPDATE)
 	suite.Equal(resp.GetStatus().GetWorkflowStatus().GetNumInstancesCompleted(),

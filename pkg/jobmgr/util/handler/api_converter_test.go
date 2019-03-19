@@ -910,12 +910,15 @@ func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowStatus() {
 	updateModel := &models.UpdateModel{
 		Type:                 models.WorkflowType_UPDATE,
 		State:                update.State_ROLLING_FORWARD,
+		PrevState:            update.State_INITIALIZED,
 		InstancesCurrent:     []uint32{5},
 		InstancesDone:        10,
 		InstancesTotal:       25,
 		InstancesFailed:      3,
 		JobConfigVersion:     jobConfigVersion,
 		PrevJobConfigVersion: prevJobConfigVersion,
+		CreationTime:         "2019-01-30T21:25:23Z",
+		UpdateTime:           "2019-01-30T21:35:23Z",
 	}
 	runtime := &job.RuntimeInfo{
 		ConfigurationVersion: _configVersion,
@@ -926,12 +929,15 @@ func (suite *apiConverterTestSuite) TestConvertUpdateModelToWorkflowStatus() {
 	workflowStatus := &stateless.WorkflowStatus{
 		Type:                  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
 		State:                 stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+		PrevState:             stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
 		InstancesCurrent:      updateModel.GetInstancesCurrent(),
 		NumInstancesCompleted: updateModel.GetInstancesDone(),
 		NumInstancesRemaining: updateModel.GetInstancesTotal() - updateModel.GetInstancesDone() - updateModel.GetInstancesFailed(),
 		NumInstancesFailed:    updateModel.GetInstancesFailed(),
 		Version:               jobutil.GetJobEntityVersion(jobConfigVersion, _desiredStateVersion, _workflowVersion),
 		PrevVersion:           jobutil.GetJobEntityVersion(prevJobConfigVersion, _desiredStateVersion, _workflowVersion),
+		CreationTime:          "2019-01-30T21:25:23Z",
+		UpdateTime:            "2019-01-30T21:35:23Z",
 	}
 
 	suite.Equal(workflowStatus, ConvertUpdateModelToWorkflowStatus(runtime, updateModel))
