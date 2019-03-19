@@ -13,17 +13,17 @@ set -exo pipefail
 #                             |-- $PELOTON_CLUSTER_CONFIG
 #                                └── config
 #                                    ├── archiver
-#                                    │   └── production.yaml
+#                                    │   └── production.yaml
 #                                    ├── aurorabridge
-#                                    │   └── production.yaml
+#                                    │   └── production.yaml
 #                                    ├── executor
-#                                    │   └── production.yaml
+#                                    │   └── production.yaml
 #                                    ├── hostmgr
-#                                    │   └── production.yaml
+#                                    │   └── production.yaml
 #                                    ├── jobmgr
-#                                    │   └── production.yaml
+#                                    │   └── production.yaml
 #                                    ├── placement
-#                                    │   └── production.yaml
+#                                    │   └── production.yaml
 #                                    └── resmgr
 #                                        └── production.yaml
 # 4. ZOOKEEPER : The zookeeper of the cluster where to the perf tests will be run.
@@ -93,21 +93,21 @@ run_perf_test()
   vcluster_name="$1"
   vcluster_args="$2"
   image="$3"
-  peloton_config="$4"
+  outfile="$4"
 
   tools/vcluster/main.py \
   ${vcluster_args} \
   setup \
   -s ${num_agents} \
   -i ${image} \
-  -c ${peloton_config}
+  -c ${PELOTON_CLUSTER_CONFIG}
 
   # Make a note of the return code instead of failing this script
   # so that vcluster teardown is run even if the benchmark fails.
   rc=0
   tests/performance/multi_benchmark.py \
   -i "CONF_${vcluster_name}" \
-  -o "PERF_CURRENT" || rc=$?
+  -o ${outfile} || rc=$?
   tools/vcluster/main.py ${vcluster_args} teardown
 
   if [[ ${rc} -ne 0 ]]; then
@@ -125,12 +125,12 @@ cleanup() {
 # Run current version
 vcluster_name="v${COMMIT_HASH:12:12}"
 vcluster_args="-z ${ZOOKEEPER} -p /PelotonPerformance -n ${vcluster_name}"
-run_perf_test "${vcluster_name}" "${vcluster_args}" "${PELOTON_IMAGE_CURRENT}" "${PELOTON_CLUSTER_CONFIG}"
+run_perf_test "${vcluster_name}" "${vcluster_args}" "${PELOTON_IMAGE_CURRENT}" "PERF_CURRENT"
 
 # Run base version
 vcluster_name="v${COMMIT_HASH:0:12}"
 vcluster_args="-z ${ZOOKEEPER} -p /PelotonPerformance -n ${vcluster_name}"
-run_perf_test "${vcluster_name}" "${vcluster_args}" "${PELOTON_IMAGE_BASELINE}" "${PELOTON_CLUSTER_CONFIG}"
+run_perf_test "${vcluster_name}" "${vcluster_args}" "${PELOTON_IMAGE_BASELINE}" "PERF_BASE"
 
 # Compare performance
 tests/performance/perf_compare.py -f1 "PERF_BASE" -f2 "PERF_CURRENT"

@@ -30,11 +30,12 @@ from performance_test_client import (
 # second item shows the corresponding csv file structure.
 PERF_TEST_CONDUCTED = [('JOB_CREATE', '_job_create.csv'),
                        ('JOB_GET', '_job_get.csv'),
-                       ('JOB_UPDATE', '_job_update.csv'),
-                       ('JOB_STATELESS_CREATE', '_job_stateless_create.csv'),
-                       ('JOB_STATELESS_UPDATE', '_job_stateless_update.csv'),
-                       ('JOB_PARALLEL_STATELESS_UPDATE',
-                        '_job_parallel_stateless_update.csv')]
+                       ('JOB_UPDATE', '_job_update.csv')]
+# TODO fix stateless benchmark tests
+# ('JOB_STATELESS_CREATE', '_job_stateless_create.csv'),
+# ('JOB_STATELESS_UPDATE', '_job_stateless_update.csv'),
+# ('JOB_PARALLEL_STATELESS_UPDATE',
+#  '_job_parallel_stateless_update.csv')]
 
 NUM_TASKS = [10000, 50000]
 SLEEP_TIME_SEC = [10, 60]
@@ -186,21 +187,22 @@ def main():
     if update_df is not None:
         update_df.to_csv(output_csv_files_list[2], sep='\t')
 
-    # create one large stateless job (uses 90% of capacity)
-    create_df = t.perf_test_stateless_job_create()
-    if create_df is not None:
-        create_df.to_csv(output_csv_files_list[3], sep='\t')
-
-    # update one large stateless job (uses 90% of capacity)
-    update_df = t.perf_test_stateless_job_update()
-    if update_df is not None:
-        update_df.to_csv(output_csv_files_list[4], sep='\t')
-
-    # update multiple smaller stateless jobs in parallel
-    # (total use 90% of capacity)
-    pupdate_df = t.perf_test_stateless_parallel_updates()
-    if pupdate_df is not None:
-        pupdate_df.to_csv(output_csv_files_list[5], sep='\t')
+    # TODO fix stateless benchmark tests
+    # # create one large stateless job (uses 90% of capacity)
+    # create_df = t.perf_test_stateless_job_create()
+    # if create_df is not None:
+    #     create_df.to_csv(output_csv_files_list[3], sep='\t')
+    #
+    # # update one large stateless job (uses 90% of capacity)
+    # update_df = t.perf_test_stateless_job_update()
+    # if update_df is not None:
+    #     update_df.to_csv(output_csv_files_list[4], sep='\t')
+    #
+    # # update multiple smaller stateless jobs in parallel
+    # # (total use 90% of capacity)
+    # pupdate_df = t.perf_test_stateless_parallel_updates()
+    # if pupdate_df is not None:
+    #     pupdate_df.to_csv(output_csv_files_list[5], sep='\t')
 
 
 class perfCounter():
@@ -357,7 +359,7 @@ class PerformanceTest ():
             msg = "Num_start_tasks %s && SleepTime %s" % (
                 num_tasks, sleep_time)
             print "test_job_stateless_update: create job failed: " \
-                "%s (%s)" % (e, msg)
+                  "%s (%s)" % (e, msg)
             return
 
         succeed, _, _ = self.client.monitoring_job(job)
@@ -385,7 +387,7 @@ class PerformanceTest ():
             msg = "Num_start_tasks %s && SleepTime %s" % (
                 num_tasks, sleep_time)
             print "test_job_stateless_create: stop job failed: " \
-                "%s (%s)" % (e, msg)
+                  "%s (%s)" % (e, msg)
             return
 
         record = [{

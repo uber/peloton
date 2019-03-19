@@ -252,7 +252,9 @@ def main():
             raise Exception("Invalid zk")
         vcluster.start_peloton(
             args.zk, args.agent_number, args.peloton_version,
-            peloton_image=args.peloton_image)
+            skip_respool=args.skip_respool,
+            peloton_image=args.peloton_image,
+            peloton_apps_config=args.peloton_apps_config_path)
 
     elif command == 'setup':
         agent_number = args.agent_number
