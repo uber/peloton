@@ -2,6 +2,10 @@
 0.8.3 (unreleased)
 ------------------
 
+0.8.2.1
+------------------
+* 2019-03-11    Fix vcluster's use of peloton cluster config path                                      avyas@uber.com
+
 0.8.2
 ------------------
 * 2019-03-06    Removing peloton client and m3 requirement from bootstraping peloton and adding to integration testsmabansal@uber.com
