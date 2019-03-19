@@ -442,7 +442,7 @@ func ConvertRuntimeInfoToJobStatus(
 	}
 	result.State = stateless.JobState(runtime.GetState())
 	result.CreationTime = runtime.GetCreationTime()
-	result.PodStats = runtime.TaskStats
+	result.PodStats = convertTaskStatsToPodStats(runtime.TaskStats)
 	result.DesiredState = stateless.JobState(runtime.GetGoalState())
 	result.Version = jobutil.GetJobEntityVersion(
 		runtime.GetConfigurationVersion(),
@@ -944,4 +944,14 @@ func convertTaskTerminationStatusToPodTerminationStatus(
 		ExitCode: termStatus.GetExitCode(),
 		Signal:   termStatus.GetSignal(),
 	}
+}
+
+func convertTaskStatsToPodStats(taskStats map[string]uint32) map[string]uint32 {
+	result := make(map[string]uint32)
+	for stateStr, num := range taskStats {
+		taskState := task.TaskState(task.TaskState_value[stateStr])
+		result[ConvertTaskStateToPodState(taskState).String()] = num
+	}
+
+	return result
 }

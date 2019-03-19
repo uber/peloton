@@ -949,6 +949,9 @@ func (suite *apiConverterTestSuite) TestConvertRuntimeInfoToJobStatus() {
 	taskStats := make(map[string]uint32)
 	taskStats["RUNNING"] = 3
 	taskStats["FAILED"] = 2
+	podStats := make(map[string]uint32)
+	podStats["POD_STATE_RUNNING"] = 3
+	podStats["POD_STATE_FAILED"] = 2
 	creationTime := "now"
 	entityVersion := "2-2-2"
 	taskConfigStates := make(map[uint64]uint32)
@@ -999,7 +1002,7 @@ func (suite *apiConverterTestSuite) TestConvertRuntimeInfoToJobStatus() {
 
 	suite.Equal(stateless.JobState_JOB_STATE_RUNNING, jobStatus.State)
 	suite.Equal(creationTime, jobStatus.GetCreationTime())
-	suite.Equal(taskStats, jobStatus.GetPodStats())
+	suite.Equal(podStats, jobStatus.GetPodStats())
 	suite.Equal(stateless.JobState_JOB_STATE_RUNNING, jobStatus.GetDesiredState())
 	suite.Equal(entityVersion, jobStatus.GetVersion().GetValue())
 	suite.Equal(1, len(jobStatus.GetPodConfigurationVersionStats()))
@@ -1013,6 +1016,10 @@ func (suite *apiConverterTestSuite) TestConvertJobSummary() {
 	taskStats := make(map[string]uint32)
 	taskStats["RUNNING"] = 3
 	taskStats["FAILED"] = 2
+	podStats := make(map[string]uint32)
+	podStats["POD_STATE_RUNNING"] = 3
+	podStats["POD_STATE_FAILED"] = 2
+
 	creationTime := "now"
 	entityVersion := "2-2-2"
 	taskConfigStats := make(map[string]uint32)
@@ -1066,7 +1073,7 @@ func (suite *apiConverterTestSuite) TestConvertJobSummary() {
 		},
 		State:                        stateless.JobState(runtime.GetState()),
 		CreationTime:                 runtime.GetCreationTime(),
-		PodStats:                     runtime.TaskStats,
+		PodStats:                     podStats,
 		PodConfigurationVersionStats: taskConfigStats,
 		DesiredState:                 stateless.JobState(runtime.GetGoalState()),
 		Version:                      &v1alphapeloton.EntityVersion{Value: entityVersion},
