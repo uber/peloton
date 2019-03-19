@@ -17,6 +17,7 @@ package atop
 import (
 	"bytes"
 	"fmt"
+	"sort"
 
 	"github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -190,6 +191,12 @@ func newMesosDockerParameters(ps []*api.DockerParameter) []*mesos_v1.Parameter {
 }
 
 func encodeTaskConfig(t *api.TaskConfig) ([]byte, error) {
+	// Sort golang list types in order to make results consistent
+	sort.Stable(common.MetadataByKey(t.Metadata))
+	sort.Stable(common.ResourceByType(t.Resources))
+	sort.Stable(common.ConstraintByName(t.Constraints))
+	sort.Stable(common.MesosFetcherURIByValue(t.MesosFetcherUris))
+
 	w, err := t.ToWire()
 	if err != nil {
 		return nil, fmt.Errorf("convert task config to wire value: %s", err)
