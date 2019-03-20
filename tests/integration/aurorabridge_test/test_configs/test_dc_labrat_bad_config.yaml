@@ -8,8 +8,8 @@ taskConfig:
     tier: preemptible
     production: false
     resources:
-        - numCpus: 2
-        - ramMb: 64
+        - numCpus: 1
+        - ramMb: 128
         - diskMb: 256
     executorConfig:
         name: AuroraExecutor
@@ -75,10 +75,10 @@ taskConfig:
                         }
                     ],
                     "resources": {
-                        "cpu": 2,
+                        "cpu": 1,
                         "disk": 268435456,
                         "gpu": 0,
-                        "ram": 67108864
+                        "ram": 134217728
                     }
                 },
                 "tier": "preemptible"

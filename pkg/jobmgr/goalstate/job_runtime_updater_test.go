@@ -1053,7 +1053,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_InitializedJobWit
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_BATCH).
+		AnyTimes()
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -1131,7 +1132,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PendingJobWithMor
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH)
+		Return(pbjob.JobType_BATCH).
+		AnyTimes()
 
 	suite.taskStore.EXPECT().
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
@@ -1971,12 +1973,12 @@ func (suite *JobRuntimeUpdaterTestSuite) determineJobRuntimeHelper(flag bool) {
 				State: pbtask.TaskState_KILLED,
 			})
 		}
-		suite.cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH).Times(2)
+		suite.cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH).Times(3)
 		suite.cachedJob.EXPECT().GetAllTasks().Return(cachedTasks)
 		suite.cachedConfig.EXPECT().GetInstanceCount().
 			Return(instanceCount).Times(4)
 	} else {
-		suite.cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH).Times(1)
+		suite.cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH).Times(2)
 		suite.cachedConfig.EXPECT().GetInstanceCount().
 			Return(instanceCount).Times(2)
 	}

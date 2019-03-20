@@ -1,9 +1,9 @@
 import pytest
 
-from job import Job, kill_jobs
-from common import IntegrationTestConfig
+from tests.integration.job import Job, kill_jobs
+from tests.integration.common import IntegrationTestConfig
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
-from pool import Pool
+from tests.integration.pool import Pool
 
 pytestmark = [pytest.mark.default,
               pytest.mark.preemption,

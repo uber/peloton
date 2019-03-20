@@ -90,31 +90,31 @@ func CreateOfferIndex() map[string]summary.HostSummary {
 	offerIndex := make(map[string]summary.HostSummary)
 	hostName0 := "hostname0"
 	offer0 := CreateOffer(hostName0, scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 1})
-	summry0 := summary.New(nil, nil, hostName0, nil)
+	summry0 := summary.New(nil, nil, hostName0, nil, time.Duration(30*time.Second))
 	summry0.AddMesosOffers(context.Background(), []*mesos.Offer{offer0})
 	offerIndex[hostName0] = summry0
 
 	hostName1 := "hostname1"
 	offer1 := CreateOffer(hostName1, scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
-	summry1 := summary.New(nil, nil, hostName1, nil)
+	summry1 := summary.New(nil, nil, hostName1, nil, time.Duration(30*time.Second))
 	summry1.AddMesosOffers(context.Background(), []*mesos.Offer{offer1})
 	offerIndex[hostName1] = summry1
 
 	hostName2 := "hostname2"
 	offer2 := CreateOffer(hostName2, scalar.Resources{CPU: 2, Mem: 2, Disk: 2, GPU: 4})
-	summry2 := summary.New(nil, nil, hostName2, nil)
+	summry2 := summary.New(nil, nil, hostName2, nil, time.Duration(30*time.Second))
 	summry2.AddMesosOffers(context.Background(), []*mesos.Offer{offer2})
 	offerIndex[hostName2] = summry2
 
 	hostName3 := "hostname3"
 	offer3 := CreateOffer(hostName3, scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
-	summry3 := summary.New(nil, nil, hostName3, nil)
+	summry3 := summary.New(nil, nil, hostName3, nil, time.Duration(30*time.Second))
 	summry3.AddMesosOffers(context.Background(), []*mesos.Offer{offer3})
 	offerIndex[hostName3] = summry3
 
 	hostName4 := "hostname4"
 	offer4 := CreateOffer(hostName4, scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
-	summry4 := summary.New(nil, nil, hostName4, nil)
+	summry4 := summary.New(nil, nil, hostName4, nil, time.Duration(30*time.Second))
 	summry4.AddMesosOffers(context.Background(), []*mesos.Offer{offer4})
 	offerIndex[hostName4] = summry4
 	return offerIndex
@@ -123,7 +123,7 @@ func CreateOfferIndex() map[string]summary.HostSummary {
 func AddHostToIndex(id int, offerIndex map[string]summary.HostSummary) {
 	hostName := fmt.Sprintf("hostname%d", id)
 	offer := CreateOffer(hostName, scalar.Resources{CPU: 5, Mem: 5, Disk: 5, GPU: 5})
-	summry := summary.New(nil, nil, hostName, nil)
+	summry := summary.New(nil, nil, hostName, nil, time.Duration(30*time.Second))
 	summry.AddMesosOffers(context.Background(), []*mesos.Offer{offer})
 	offerIndex[hostName] = summry
 }

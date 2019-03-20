@@ -162,7 +162,8 @@ func NewOfferPool(
 	volumeStore storage.PersistentVolumeStore,
 	scarceResourceTypes []string,
 	slackResourceTypes []string,
-	binPackingRanker binpacking.Ranker) Pool {
+	binPackingRanker binpacking.Ranker,
+	hostPlacingOfferStatusTimeout time.Duration) Pool {
 
 	// GPU is only supported scarce resource type.
 	if !reflect.DeepEqual(supportedScarceResourceTypes, scarceResourceTypes) {
@@ -186,7 +187,8 @@ func NewOfferPool(
 		scarceResourceTypes: scarceResourceTypes,
 		slackResourceTypes:  slackResourceTypes,
 
-		offerHoldTime: offerHoldTime,
+		offerHoldTime:                 offerHoldTime,
+		hostPlacingOfferStatusTimeout: hostPlacingOfferStatusTimeout,
 
 		mSchedulerClient:           schedulerClient,
 		mesosFrameworkInfoProvider: frameworkInfoProvider,
@@ -225,6 +227,9 @@ type offerPool struct {
 
 	// Time to hold offer in offer pool
 	offerHoldTime time.Duration
+
+	// Time to hold host in PLACING state
+	hostPlacingOfferStatusTimeout time.Duration
 
 	mSchedulerClient           mpb.SchedulerClient
 	mesosFrameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
@@ -414,7 +419,8 @@ func (p *offerPool) AddOffers(
 				p.volumeStore,
 				p.scarceResourceTypes,
 				hostname,
-				p.slackResourceTypes)
+				p.slackResourceTypes,
+				p.hostPlacingOfferStatusTimeout)
 			p.hostOfferIndex[hostname] = hs
 		}
 	}

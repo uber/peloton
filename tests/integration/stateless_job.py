@@ -62,16 +62,28 @@ class StatelessJob(object):
         :return: the job ID
         """
         respool_id = self.pool.ensure_exists()
-
         self.job_spec.respool_id.value = respool_id
-        request = stateless_svc.CreateJobRequest(
-            spec=self.job_spec,
-        )
-        resp = self.client.stateless_svc.CreateJob(
-            request,
-            metadata=self.client.jobmgr_metadata,
-            timeout=self.config.rpc_timeout_sec,
-        )
+
+        attempts = 0
+        while attempts < self.config.max_retry_attempts:
+            try:
+                request = stateless_svc.CreateJobRequest(
+                    spec=self.job_spec,
+                )
+                resp = self.client.stateless_svc.CreateJob(
+                    request,
+                    metadata=self.client.jobmgr_metadata,
+                    timeout=self.config.rpc_timeout_sec,
+                )
+            except grpc.RpcError as e:
+                # during leader re-election, wait for creat to succeed
+                if e.code() == grpc.StatusCode.UNAVAILABLE:
+                    time.sleep(self.config.sleep_time_sec)
+                    attempts += 1
+                    continue
+                raise
+            break
+
         assert resp.job_id.value
         self.job_id = resp.job_id.value
         self.entity_version = resp.version.value
@@ -635,7 +647,7 @@ def query_jobs(respool_path=None):
         metadata=client.jobmgr_metadata,
         timeout=600,
     )
-   
+
     jobs = []
     for j in resp.records:
         job = StatelessJob(job_id=j.job_id.value)

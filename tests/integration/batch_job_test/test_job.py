@@ -1,6 +1,6 @@
 import pytest
-from job import Job, kill_jobs
-from common import IntegrationTestConfig
+from tests.integration.job import Job, kill_jobs
+from tests.integration.common import IntegrationTestConfig
 
 
 # Mark test module so that we can run tests by tags

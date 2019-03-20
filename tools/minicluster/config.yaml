@@ -93,14 +93,13 @@ peloton_placement_ports:
   - 5393
 peloton_placement_instances:
   - BATCH
-  - STATEFUL
   - STATELESS
 
 peloton_archiver_container: peloton-archiver
 peloton_archiver_ports:
   - 5295
   - 5395
-peloton_archiver_instance_count: 1
+peloton_archiver_instance_count: 0
 
 # auto migrates the database schema on host manager startup
 auto_migrate: "true"

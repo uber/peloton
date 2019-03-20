@@ -1,5 +1,5 @@
 from collections import defaultdict
-
+import time
 import pytest
 
 from tests.integration.aurorabridge_test.client import api
@@ -38,6 +38,9 @@ def test__get_jobs__get_job_summary(client):
         client,
         'test2_dc2_labrat2.yaml',
         'start job update test2/dc2/labrat2')
+
+    # Add some wait time for lucene index to build
+    time.sleep(10)
 
     # reduce instance count by 1 for test/dc/labrat0
     client.kill_tasks(
@@ -82,6 +85,9 @@ def test__get_tasks_without_configs(client):
         client,
         'test_dc_labrat_read.yaml',
         'start job update test/dc/labrat')
+
+    # Add some wait time for lucene index to build
+    time.sleep(10)
 
     res = client.get_tasks_without_configs(api.TaskQuery(jobKeys={job_key}))
     assert len(res.tasks) == 2
@@ -166,6 +172,9 @@ def test__get_tasks_without_configs_task_queries(client):
         client,
         'test2_dc2_labrat2.yaml',
         'start job update test2/dc2/labrat2')
+
+    # Add some wait time for lucene index to build
+    time.sleep(10)
 
     # Kill one of the jobs.
     client.kill_tasks(

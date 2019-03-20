@@ -56,6 +56,9 @@ type Config struct {
 	// Period in sec for running host pruning for host in HELD state
 	HeldHostPruningPeriodSec time.Duration `yaml:"held_host_pruning_period_sec"`
 
+	// Period for which to wait for host in PLACING state before reset.
+	HostPlacingOfferStatusTimeout time.Duration `yaml:"host_placing_offer_status_sec"`
+
 	// Backoff Retry Count to register background worker for Host Manager
 	HostMgrBackoffRetryCount int `yaml:"hostmgr_backoff_retry_count"`
 

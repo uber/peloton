@@ -50,7 +50,7 @@ import (
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
-	"gopkg.in/alecthomas/kingpin.v2"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
@@ -226,6 +226,8 @@ func main() {
 	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
 		cfg.Storage.Cassandra.CassandraConn.ContactPoints = *cassandraHosts
 	}
+
+	log.WithField("config", cfg).Info("Loaded Host Manager configuration")
 
 	// Parse and setup peloton secrets
 	if *pelotonSecretFile != "" {
@@ -486,6 +488,7 @@ func main() {
 		cfg.HostManager.SlackResourceTypes,
 		bin_packing.CreateRanker(cfg.HostManager.BinPacking),
 		cfg.HostManager.BinPackingRefreshIntervalSec,
+		cfg.HostManager.HostPlacingOfferStatusTimeout,
 	)
 
 	maintenanceQueue := queue.NewMaintenanceQueue()

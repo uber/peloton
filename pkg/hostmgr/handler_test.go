@@ -251,6 +251,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		[]string{},        /*scarce_resource_types*/
 		[]string{},        /*slack_resource_types*/
 		bin_packing.CreateRanker("FIRST_FIT"),
+		time.Duration(30*time.Second),
 	)
 
 	suite.maintenanceQueue = qm.NewMockMaintenanceQueue(suite.ctrl)

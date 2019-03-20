@@ -1,9 +1,9 @@
 import pytest
 import time
 
-from job import Job, kill_jobs, with_constraint, with_instance_count, \
+from tests.integration.job import Job, kill_jobs, with_constraint, with_instance_count, \
     with_job_name, with_labels
-from common import IntegrationTestConfig
+from tests.integration.common import IntegrationTestConfig
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 

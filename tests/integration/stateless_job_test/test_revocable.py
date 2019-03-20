@@ -22,12 +22,11 @@ def test__preempt_revocable_job_to_run_non_revocable_job():
         job_file='test_stateless_preemptible_job_memory_large_spec.yaml')
     non_revocable_job1.create()
     non_revocable_job1.wait_for_state(goal_state='RUNNING')
+    non_revocable_job1.wait_for_all_pods_running()
 
     revocable_job = StatelessJob(job_file='test_stateless_job_revocable_spec.yaml')
     revocable_job.create()
     revocable_job.wait_for_state(goal_state='RUNNING')
-
-    non_revocable_job1.wait_for_all_pods_running()
     revocable_job.wait_for_all_pods_running()
 
     # launch second non-revocable job which will pre-empt revocable job
@@ -49,10 +48,10 @@ def test__preempt_revocable_job_to_run_non_revocable_job():
     revocable_job.wait_for_condition(zero_tasks_running)
 
     revocable_job.stop()
-    revocable_job.wait_for_terminated()
     non_revocable_job1.stop()
-    non_revocable_job1.wait_for_terminated()
     non_revocable_job2.stop()
+    revocable_job.wait_for_terminated()
+    non_revocable_job1.wait_for_terminated()
     non_revocable_job2.wait_for_terminated()
 
 
@@ -139,17 +138,16 @@ def test__create_revocable_job():
     revocable_job1 = StatelessJob(job_file='test_stateless_job_revocable_spec.yaml')
     revocable_job1.create()
     revocable_job1.wait_for_state(goal_state='RUNNING')
+    revocable_job1.wait_for_all_pods_running()
 
     revocable_job2 = StatelessJob(job_file='test_stateless_job_revocable_spec.yaml')
     revocable_job2.create()
     revocable_job2.wait_for_state(goal_state='RUNNING')
+    revocable_job2.wait_for_all_pods_running()
 
     non_revocable_job = StatelessJob(job_file='test_stateless_job_cpus_large_spec.yaml')
     non_revocable_job.create()
     non_revocable_job.wait_for_state(goal_state='RUNNING')
-
-    revocable_job1.wait_for_all_pods_running()
-    revocable_job2.wait_for_all_pods_running()
     non_revocable_job.wait_for_all_pods_running()
 
     # cleanup jobs from jobmgr

@@ -1,5 +1,6 @@
 import logging
 import time
+import grpc
 
 from client import Client
 from pool import Pool
@@ -62,12 +63,13 @@ class Job(object):
                  pool=None,
                  job_config=None,
                  options=[],
+                 job_id=None,
                  ):
 
         self.config = config or IntegrationTestConfig()
         self.client = client or Client()
         self.pool = pool or Pool(self.config, self.client)
-        self.job_id = None
+        self.job_id = job_id
         if job_config is None:
             job_config_dump = load_test_config(job_file)
             job_config = job.JobConfig()
@@ -85,11 +87,14 @@ class Job(object):
         :return: the job ID
         """
         respool_id = self.pool.ensure_exists()
-
         self.job_config.respoolID.value = respool_id
+
+        # wait for job manager leader
+        self.wait_for_leader()
+
         request = job.CreateRequest(
-            config=self.job_config,
-        )
+                    config=self.job_config,
+                )
         resp = self.client.job_svc.Create(
             request,
             metadata=self.client.jobmgr_metadata,
@@ -160,6 +165,24 @@ class Job(object):
         )
         log.info('stopping tasks in job {0} with ranges {1}'
                  .format(self.job_id, ranges))
+        return response
+
+    def delete(self):
+        """
+        Deletes a job
+        :return: delete job response from the API
+        """
+        request = job.DeleteRequest(
+            id=peloton.JobID(value=self.job_id),
+        )
+        response = self.client.job_svc.Delete(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        assert not response.HasField('error')
+
+        log.info('deleting job {0}'.format(self.job_id))
         return response
 
     class WorkflowResp:
@@ -538,6 +561,29 @@ class Job(object):
         """
         wait_for_condition(message=self.job_id, condition=condition, config=self.config)
 
+    def wait_for_leader(self):
+        """
+        utility method to wait for job manger leader to come up.
+        good practice to check before all write apis
+        """
+        attempts = 0
+        while attempts < self.config.max_retry_attempts:
+            try:
+                request = job.DeleteRequest(
+                    id=peloton.JobID(value="dummy_job_id"),
+                )
+                self.client.job_svc.Delete(
+                    request,
+                    metadata=self.client.jobmgr_metadata,
+                    timeout=self.config.rpc_timeout_sec,
+                )
+            except grpc.RpcError as e:
+                if e.code() == grpc.StatusCode.UNAVAILABLE:
+                    time.sleep(self.config.sleep_time_sec)
+                    attempts += 1
+                    continue
+            break
+
     def update_instance_count(self, count):
         """
         Updates the instance count of a job
@@ -569,6 +615,27 @@ class Job(object):
         return task_id_reason_dict
 
 
+def query_jobs():
+    """
+    Query all batch jobs`
+    """
+    client = Client()
+    request = job.QueryRequest(
+        summaryOnly=True,
+    )
+    resp = client.job_svc.Query(
+        request,
+        metadata=client.jobmgr_metadata,
+        timeout=10,
+    )
+
+    jobs = []
+    for j in resp.results:
+        j = Job(job_id=j.id.value)
+        jobs.append(j)
+    return jobs
+
+
 def kill_jobs(jobs):
     """
     Kills all the jobs
@@ -579,6 +646,11 @@ def kill_jobs(jobs):
 
     for j in jobs:
         j.wait_for_terminated()
+
+    # opportunistic delete for a batch job, once stopped
+    # to prevent them from query jobs in next test execution
+    for j in jobs:
+        j.delete()
 
 
 def format_stats(stats):

@@ -481,7 +481,7 @@ func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job
 	return resp, nil
 }
 
-// Delete kills all running tasks in a job
+// Delete removes jobs metadata from storage for a terminal job
 func (h *serviceHandler) Delete(
 	ctx context.Context,
 	req *job.DeleteRequest) (*job.DeleteResponse, error) {
@@ -510,6 +510,7 @@ func (h *serviceHandler) Delete(
 		log.Errorf("Delete job failed with error %v", err)
 		return nil, err
 	}
+
 	if err := h.jobIndexOps.Delete(ctx, req.GetId()); err != nil {
 		h.metrics.JobDeleteFail.Inc(1)
 		log.WithField("job_id", req.GetId()).

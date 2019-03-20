@@ -605,6 +605,7 @@ func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
 			nil,
 			offers[0].GetHostname(),
 			supportedSlackResourceTypes,
+			time.Duration(30*time.Second),
 		).(*hostSummary)
 		s.offerIDgenerator = seqIDGenerator(tt.offerID)
 		s.status = tt.initialStatus
@@ -736,7 +737,8 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 			suite.mockVolumeStore,
 			nil,
 			offer.GetHostname(),
-			supportedSlackResourceTypes).(*hostSummary)
+			supportedSlackResourceTypes,
+			time.Duration(30*time.Second)).(*hostSummary)
 		s.status = tt.initialStatus
 		s.offerIDgenerator = seqIDGenerator(tt.offerID)
 
@@ -857,7 +859,8 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchHostOnHeld() {
 			suite.mockVolumeStore,
 			nil,
 			offer.GetHostname(),
-			supportedSlackResourceTypes).(*hostSummary)
+			supportedSlackResourceTypes,
+			time.Duration(30*time.Second)).(*hostSummary)
 		s.status = tt.initialStatus
 		s.offerIDgenerator = seqIDGenerator(tt.offerID)
 
@@ -916,7 +919,11 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	wg := sync.WaitGroup{}
 	wg.Add(nOffers)
 
-	hybridSummary := New(suite.mockVolumeStore, nil, _testAgent, supportedSlackResourceTypes).(*hostSummary)
+	hybridSummary := New(suite.mockVolumeStore,
+		nil,
+		_testAgent,
+		supportedSlackResourceTypes,
+		time.Duration(30*time.Second)).(*hostSummary)
 
 	suite.False(hybridSummary.HasOffer())
 	suite.False(hybridSummary.HasAnyOffer())
@@ -1051,7 +1058,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 	}
 
 	for _, tt := range testTable {
-		s := New(suite.mockVolumeStore, nil, hostname, supportedSlackResourceTypes).(*hostSummary)
+		s := New(suite.mockVolumeStore, nil, hostname, supportedSlackResourceTypes, time.Duration(30*time.Second)).(*hostSummary)
 		s.status = tt.initialStatus
 		s.statusPlacingOfferExpiration = tt.statusPlacingOfferExpiration
 		s.AddMesosOffers(context.Background(), offers)
@@ -1064,7 +1071,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 		}
 	}
 
-	s := New(suite.mockVolumeStore, nil, hostname, supportedSlackResourceTypes).(*hostSummary)
+	s := New(suite.mockVolumeStore, nil, hostname, supportedSlackResourceTypes, time.Duration(30*time.Second)).(*hostSummary)
 	s.AddMesosOffers(context.Background(), offers)
 	s.statusPlacingOfferExpiration = now.Add(-10 * time.Minute)
 	invalidCacheStatus := s.CasStatus(PlacingHost, ReadyHost)
@@ -1180,7 +1187,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredHeldOfferStatus() {
 	}
 
 	for _, tt := range testTable {
-		s := New(suite.mockVolumeStore, nil, "host1", supportedSlackResourceTypes).(*hostSummary)
+		s := New(suite.mockVolumeStore, nil, "host1", supportedSlackResourceTypes, time.Duration(30*time.Second)).(*hostSummary)
 		s.status = tt.initialStatus
 		for _, task := range tt.tasksHeld {
 			s.heldTasks[task.taskHeld.GetValue()] = task.statusHeldHostExpiration
@@ -1271,7 +1278,8 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() 
 			suite.mockVolumeStore,
 			nil,
 			offers[0].GetHostname(),
-			supportedSlackResourceTypes).(*hostSummary)
+			supportedSlackResourceTypes,
+			time.Duration(30*time.Second)).(*hostSummary)
 		s.AddMesosOffers(context.Background(), offers)
 		suite.Equal(s.readyCount.Load(), int32(len(offers)-1))
 		s.status = tt.initialStatus
@@ -1301,7 +1309,7 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForReservedOffersForLaunch() {
 	offers := suite.createReservedMesosOffers(5, true)
 	offers = append(offers, suite.createUnreservedMesosOffer("unreserved-offerid-1"))
 
-	s := New(suite.mockVolumeStore, nil, offers[0].GetHostname(), supportedSlackResourceTypes).(*hostSummary)
+	s := New(suite.mockVolumeStore, nil, offers[0].GetHostname(), supportedSlackResourceTypes, time.Duration(30*time.Second)).(*hostSummary)
 
 	s.AddMesosOffers(context.Background(), offers)
 	suite.Equal(int(s.readyCount.Load()), 1)
@@ -1317,10 +1325,10 @@ func (suite *HostOfferSummaryTestSuite) TestHoldAndReleaseTask() {
 	defer suite.ctrl.Finish()
 
 	hostname0 := "hostname-0"
-	hs0 := New(suite.mockVolumeStore, nil, hostname0, supportedSlackResourceTypes).(*hostSummary)
+	hs0 := New(suite.mockVolumeStore, nil, hostname0, supportedSlackResourceTypes, time.Duration(30*time.Second)).(*hostSummary)
 
 	hostname1 := "hostname-1"
-	hs1 := New(suite.mockVolumeStore, nil, hostname1, supportedSlackResourceTypes).(*hostSummary)
+	hs1 := New(suite.mockVolumeStore, nil, hostname1, supportedSlackResourceTypes, time.Duration(30*time.Second)).(*hostSummary)
 
 	t1 := &peloton.TaskID{Value: "t1"}
 	t2 := &peloton.TaskID{Value: "t2"}
@@ -1343,7 +1351,7 @@ func (suite *HostOfferSummaryTestSuite) TestHoldAndReleaseTask() {
 func (suite *HostOfferSummaryTestSuite) TestReturnPlacingHost() {
 	defer suite.ctrl.Finish()
 
-	hs := New(suite.mockVolumeStore, nil, _testAgent, supportedSlackResourceTypes).(*hostSummary)
+	hs := New(suite.mockVolumeStore, nil, _testAgent, supportedSlackResourceTypes, time.Duration(30*time.Second)).(*hostSummary)
 	// host in ready state, should fail the call
 	suite.Error(hs.ReturnPlacingHost())
 

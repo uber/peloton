@@ -284,21 +284,33 @@ func (d *jobStateDeterminer) getState(
 ) (job.JobState, error) {
 	totalInstanceCount := d.config.GetInstanceCount()
 
-	// state counts from mv is greater than configured due to possible divergence,
-	// return PENDING and wait for the convergence
+	// There are two reasons where state counts can be greater than
+	// configured instance count
+	// 1. storage materialized view is diverged and till it converges
+	// 2. Workflow to reduce instance count and change spec failed/aborted
+	// If Job's goal state is non-terminal then return service job's default
+	// state PENDING
+	// If terminal then continue to evaluate state counts for job runtime state
 	if getTotalInstanceCount(d.stateCounts) > totalInstanceCount {
-		return job.JobState_PENDING, nil
+		if d.config.GetType() == job.JobType_BATCH {
+			return job.JobState_PENDING, nil
+		}
+
+		if d.config.GetType() == job.JobType_SERVICE &&
+			!util.IsPelotonJobStateTerminal(jobRuntime.GetGoalState()) {
+			return job.JobState_PENDING, nil
+		}
 	}
 
 	// all succeeded -> succeeded
-	if d.stateCounts[task.TaskState_SUCCEEDED.String()] == totalInstanceCount {
+	if d.stateCounts[task.TaskState_SUCCEEDED.String()] >= totalInstanceCount {
 		return job.JobState_SUCCEEDED, nil
 	}
 
 	// some succeeded, some failed, some lost -> failed
 	if d.stateCounts[task.TaskState_SUCCEEDED.String()]+
 		d.stateCounts[task.TaskState_FAILED.String()]+
-		d.stateCounts[task.TaskState_LOST.String()] == totalInstanceCount {
+		d.stateCounts[task.TaskState_LOST.String()] >= totalInstanceCount {
 		return job.JobState_FAILED, nil
 	}
 
@@ -307,7 +319,7 @@ func (d *jobStateDeterminer) getState(
 		(d.stateCounts[task.TaskState_SUCCEEDED.String()]+
 			d.stateCounts[task.TaskState_FAILED.String()]+
 			d.stateCounts[task.TaskState_KILLED.String()]+
-			d.stateCounts[task.TaskState_LOST.String()] == totalInstanceCount) {
+			d.stateCounts[task.TaskState_LOST.String()] >= totalInstanceCount) {
 		return job.JobState_KILLED, nil
 	}
 
@@ -320,8 +332,8 @@ func (d *jobStateDeterminer) getState(
 	if d.stateCounts[task.TaskState_RUNNING.String()] > 0 {
 		return job.JobState_RUNNING, nil
 	}
-	return job.JobState_PENDING, nil
 
+	return job.JobState_PENDING, nil
 }
 
 func newPartiallyCreatedJobStateDeterminer(
@@ -743,6 +755,7 @@ func recalculateJobStateAndCountsFromCache(
 	for _, taskStatus := range allTaskStates {
 		stateCountsFromCache[taskStatus.String()] = 0
 	}
+
 	for _, task := range tasks {
 		// update the state count map
 		state := task.CurrentState().State.String()

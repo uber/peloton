@@ -31,10 +31,18 @@ if [[ -z "${TAGS}" ]]; then
 fi
 
 # If TAGS is not set, all tests from default group will run
-# set up minicluster with BATCH type for tests not under stateless_job_test/
-JOB_TYPE=BATCH pytest -p no:random-order -p no:repeat -vsrx tests/integration --ignore tests/integration/stateless_job_test/ --ignore tests/integration/aurorabridge_test/ --junit-xml=integration-test-report.xml -m "$TAGS"
+# set up minicluster with BATCH type for tests under batch_job_test/
+JOB_TYPE=BATCH pytest -p no:random-order -p no:repeat -vsrx --durations=0 tests/integration/batch_job_test --junit-xml=integration-test-report.xml -m "$TAGS"
+
+# set up minicluster with BATCH type for tests under misc_tes/
+JOB_TYPE=BATCH pytest -p no:random-order -p no:repeat -vsrx --durations=0 tests/integration/misc_test --junit-xml=integration-test-report.xml -m "$TAGS"
+
 # set up minicluster with SERVICE type for tests under stateless_job/
-JOB_TYPE=SERVICE pytest -p no:random-order -p no:repeat -vsrx tests/integration/stateless_job_test/ --junit-xml=integration-test-report.xml -m "$TAGS"
+JOB_TYPE=SERVICE pytest -p no:random-order -p no:repeat -vsrx --durations=0 tests/integration/stateless_job_test --junit-xml=integration-test-report.xml -m "$TAGS"
+
+# TODO (varung): Create separate CI for aurorabridge tests
+# set up minicluster with SERVICE type for tests under aurorabridge_job/
+# JOB_TYPE=SERVICE pytest -p no:random-order -p no:repeat -vsrx --durations=0 tests/integration/aurorabridge_test  --junit-xml=integration-test-report.xml  -m "$TAGS"
 
 deactivate
 

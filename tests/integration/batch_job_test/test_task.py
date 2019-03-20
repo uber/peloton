@@ -2,9 +2,13 @@ import grpc
 import pytest
 import time
 
-from job import IntegrationTestConfig, Job, kill_jobs, with_instance_count
+from tests.integration.job import (
+    IntegrationTestConfig,
+    Job,
+    kill_jobs,
+    with_instance_count)
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
-from client import Client, with_private_stubs
+from tests.integration.client import Client, with_private_stubs
 
 
 pytestmark = [pytest.mark.default,
@@ -131,7 +135,7 @@ def test__stop_start_tasks_when_mesos_master_down_kills_tasks_when_started(
     mesos_master.stop()
     test_job.stop()
     mesos_master.start()
-    test_job.wait_for_state(goal_state='KILLED')
+    test_job.wait_for_terminated()
 
 
 @pytest.mark.stateless
@@ -165,7 +169,7 @@ def test__stop_start_tasks_when_mesos_master_down_and_jobmgr_restarts(
     test_job.stop()
     jobmgr.restart()
     mesos_master.start()
-    test_job.wait_for_state(goal_state='KILLED')
+    test_job.wait_for_terminated()
 
 
 @pytest.mark.stateless

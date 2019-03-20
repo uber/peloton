@@ -2,12 +2,17 @@ import logging
 import os
 import pytest
 import time
+import grpc
 
 from docker import Client
 from tools.minicluster.main import setup
 from tools.minicluster.minicluster import teardown
 from job import Job
+from job import query_jobs as batch_query_jobs
+from job import kill_jobs as batch_kill_jobs
 from stateless_job import StatelessJob
+from stateless_job import query_jobs as stateless_query_jobs
+from stateless_job import delete_jobs as stateless_delete_jobs
 from m3.client import M3
 from m3.emitter import BatchedEmitter
 from peloton_client.pbgen.peloton.api.v0.job import job_pb2
@@ -41,35 +46,24 @@ collect_metrics = TestMetrics()
 @pytest.fixture(scope="module", autouse=True)
 def setup_cluster(request):
     tests_failed_before_module = request.session.testsfailed
-    log.info('setup cluster')
-    if os.getenv('CLUSTER', ''):
-        log.info('cluster mode')
-    else:
-        log.info('local minicluster mode')
-        setup(enable_peloton=True)
-        time.sleep(5)
+    setup_minicluster()
 
     def teardown_cluster():
-        log.info('\nteardown cluster')
-        if os.getenv('CLUSTER', ''):
-            log.info('cluster mode, no teardown actions')
-        elif os.getenv('NO_TEARDOWN', ''):
-            log.info('skip teardown')
-        else:
-            log.info('tearing down')
+        dump_logs = False
+        if (request.session.testsfailed - tests_failed_before_module) > 0:
+            dump_logs = True
 
-            # dump logs only if tests have failed in the current module
-            if (request.session.testsfailed - tests_failed_before_module) > 0:
-                try:
-                    cli = Client(base_url='unix://var/run/docker.sock')
-                    log.info(cli.logs('peloton-jobmgr0'))
-                    log.info(cli.logs('peloton-jobmgr1'))
-                except Exception as e:
-                    log.info(e)
-
-            teardown()
+        teardown_minicluster(dump_logs)
 
     request.addfinalizer(teardown_cluster)
+
+
+@pytest.fixture(autouse=True)
+def run_around_tests():
+    # before each test
+    yield
+    # after each test
+    cleanup_batch_jobs()
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -120,6 +114,79 @@ class Container(object):
         for name in self._names:
             self._cli.restart(name, timeout=0)
             log.info('%s restarted', name)
+
+
+def setup_minicluster():
+    """
+    setup minicluster
+    """
+    log.info('setup cluster')
+    if os.getenv('CLUSTER', ''):
+        log.info('cluster mode')
+    else:
+        log.info('local minicluster mode')
+        setup(enable_peloton=True)
+        time.sleep(5)
+
+
+def teardown_minicluster(dump_logs=False):
+    """
+    teardown minicluster
+    """
+    log.info('\nteardown cluster')
+    if os.getenv('CLUSTER', ''):
+        log.info('cluster mode, no teardown actions')
+    elif os.getenv('NO_TEARDOWN', ''):
+        log.info('skip teardown')
+    else:
+        log.info('tearing down')
+
+        # dump logs only if tests have failed in the current module
+        if dump_logs:
+            try:
+                cli = Client(base_url='unix://var/run/docker.sock')
+                log.info(cli.logs('peloton-jobmgr0'))
+            except Exception as e:
+                log.info(e)
+
+        teardown()
+
+
+def cleanup_batch_jobs():
+    """
+    stop all batch jobs from minicluster
+    """
+    jobs = batch_query_jobs()
+    batch_kill_jobs(jobs)
+
+
+def cleanup_stateless_jobs(timeout_secs=10):
+    """
+    delete all service jobs from minicluster
+    """
+    jobs = stateless_query_jobs()
+
+    # opportunistic delete for jobs, if not deleted within
+    # timeout period, it will get cleanup in next test run.
+    stateless_delete_jobs(jobs)
+
+    # Wait for job deletion to complete.
+    deadline = time.time() + timeout_secs
+    while time.time() < deadline:
+        try:
+            jobs = stateless_query_jobs()
+            if len(jobs) == 0:
+                return
+            time.sleep(2)
+        except grpc.RpcError as e:
+            # Catch "not-found" error here because QueryJobs endpoint does
+            # two db queries in sequence: "QueryJobs" and "GetUpdate".
+            # However, when we delete a job, updates are deleted first,
+            # there is a slight chance QueryJobs will fail to query the
+            # update, returning "not-found" error.
+            if e.code() == grpc.StatusCode.NOT_FOUND:
+                time.sleep(2)
+                continue
 
 
 @pytest.fixture()
@@ -243,7 +310,7 @@ def create_jobs(request):
         jobs = jobs_dict[state]
         for job in jobs:
             job.create()
-            if state is 'FAILED':
+            if state == 'FAILED':
                 job.wait_for_state(goal_state='FAILED',
                                    failed_state='SUCCEEDED')
             else:
@@ -300,7 +367,7 @@ def task_test_fixture(request):
 
     # Determine terminating state.
     job_state = task_states[0][0] if not mixed_task_states else 'FAILED'
-    if job_state is 'FAILED':
+    if job_state == 'FAILED':
         job.wait_for_state(goal_state='FAILED',
                            failed_state='SUCCEEDED')
     else:

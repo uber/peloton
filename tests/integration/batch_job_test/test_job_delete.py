@@ -2,7 +2,7 @@ import pytest
 import logging
 import grpc
 
-from client import Client
+from tests.integration.client import Client
 from peloton_client.pbgen.peloton.api.v0.job import job_pb2
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 

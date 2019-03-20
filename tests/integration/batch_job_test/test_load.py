@@ -1,7 +1,7 @@
 import pytest
 
-from job import Job
-from common import IntegrationTestConfig
+from tests.integration.job import Job
+from tests.integration.common import IntegrationTestConfig
 
 
 pytestmark = [pytest.mark.load, pytest.mark.random_order(disabled=True)]

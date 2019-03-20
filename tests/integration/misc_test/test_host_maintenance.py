@@ -1,15 +1,21 @@
-import host
 import logging
 import pytest
 import time
 
-from conftest import Container
+from tests.integration.host import (
+    query_hosts,
+    start_maintenance,
+    complete_maintenance,
+    wait_for_host_state,
+    is_host_in_state,
+    draining_period_sec)
+from tests.integration.conftest import Container
 
 from peloton_client.pbgen.peloton.api.v0.host import host_pb2 as hpb
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 
 pytestmark = [pytest.mark.default,
-              pytest.mark.maintenance,
+              pytest.mark.preemption,
               pytest.mark.random_order(disabled=True)]
 
 log = logging.getLogger(__name__)
@@ -20,7 +26,7 @@ def maintenance(request):
     draining_hosts = []
 
     def start(hosts):
-        resp = host.start_maintenance(hosts)
+        resp = start_maintenance(hosts)
         if not resp:
             log.error("Start maintenance failed:" + resp)
             return resp
@@ -29,7 +35,7 @@ def maintenance(request):
         return resp
 
     def stop(hosts):
-        resp = host.complete_maintenance(hosts)
+        resp = complete_maintenance(hosts)
         if not resp:
             log.error("Complete maintenance failed:" + resp)
             return resp
@@ -46,7 +52,7 @@ def maintenance(request):
         if not draining_hosts:
             return
         for h in draining_hosts:
-            host.wait_for_host_state(h, hpb.HOST_STATE_DOWN)
+            wait_for_host_state(h, hpb.HOST_STATE_DOWN)
         stop(draining_hosts)
     request.addfinalizer(clean_up)
 
@@ -63,7 +69,7 @@ def get_host_in_state(state):
     :param state: host_pb2.HostState
     :return: Hostname of a host in the specified state
     """
-    resp = host.query_hosts([state])
+    resp = query_hosts([state])
     assert len(resp.host_infos) > 0
     return resp.host_infos[0].hostname
 
@@ -129,19 +135,19 @@ def test__host_maintenance_lifecycle(host_affinity_job, maintenance):
     resp = maintenance['start']([test_host])
     assert resp
 
-    assert host.is_host_in_state(test_host, hpb.HOST_STATE_DRAINING)
+    assert is_host_in_state(test_host, hpb.HOST_STATE_DRAINING)
 
     # Wait for host to transition to DOWN
-    host.wait_for_host_state(test_host, hpb.HOST_STATE_DOWN)
+    wait_for_host_state(test_host, hpb.HOST_STATE_DOWN)
 
     # Complete maintenance on the test hosts
     resp = maintenance['stop']([test_host])
     assert resp
 
     # Host should no longer be DOWN
-    assert not host.is_host_in_state(test_host, hpb.HOST_STATE_DOWN)
+    assert not is_host_in_state(test_host, hpb.HOST_STATE_DOWN)
 
-    host.wait_for_host_state(test_host, hpb.HOST_STATE_UP)
+    wait_for_host_state(test_host, hpb.HOST_STATE_UP)
 
 
 # Tests the resumption of draining process on resmgr recovery. The scenario is
@@ -181,12 +187,12 @@ def test__host_draining_resumes_on_resmgr_recovery(host_affinity_job,
     # Stop jobmgr to ensure tasks are not killed
     jobmgr.stop()
     # Sleep for one draining period to ensure maintenance queue is polled
-    time.sleep(host.draining_period_sec)
+    time.sleep(draining_period_sec)
     resmgr.restart()
     jobmgr.start()
 
     # Wait for host to transition to DOWN
-    host.wait_for_host_state(test_host, hpb.HOST_STATE_DOWN)
+    wait_for_host_state(test_host, hpb.HOST_STATE_DOWN)
 
 
 # Tests the resumption of draining process on resmgr recovery. The scenario is
@@ -230,4 +236,4 @@ def test__host_draining_resumes_on_hostmgr_recovery(host_affinity_job,
     resmgr.start()
 
     # Wait for host to transition to DOWN
-    host.wait_for_host_state(test_host, hpb.HOST_STATE_DOWN)
+    wait_for_host_state(test_host, hpb.HOST_STATE_DOWN)

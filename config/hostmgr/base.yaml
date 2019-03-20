@@ -33,6 +33,7 @@ host_manager:
   hostmap_refresh_interval: 10s
   host_pruning_period_sec: 600s
   held_host_pruning_period_sec: 180s
+  host_placing_offer_status_sec: 300s
   hostmgr_backoff_retry_count: 3
   hostmgr_backoff_retry_interval_sec: 15
   host_drainer_period: 900s

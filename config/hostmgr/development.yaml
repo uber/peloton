@@ -22,6 +22,8 @@ storage:
   db_write_concurrency: 40
 
 host_manager:
+  host_pruning_period_sec: 30s
+  host_placing_offer_status_sec: 30s
   #ToDo: move to lower case (match mesos resource type string)
   scarce_resource_types:
     - GPU

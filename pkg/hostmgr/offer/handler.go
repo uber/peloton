@@ -86,7 +86,8 @@ func InitEventHandler(
 	scarceResourceTypes []string,
 	slackResourceTypes []string,
 	ranker binpacking.Ranker,
-	binPackingRefreshIntervalSec time.Duration) {
+	binPackingRefreshIntervalSec time.Duration,
+	hostPlacingOfferStatusTimeout time.Duration) {
 
 	if handler != nil {
 		log.Warning("Offer event handler has already been initialized")
@@ -102,6 +103,7 @@ func InitEventHandler(
 		scarceResourceTypes,
 		slackResourceTypes,
 		ranker,
+		hostPlacingOfferStatusTimeout,
 	)
 
 	placingHostPruner := prune.NewPlacingHostPruner(

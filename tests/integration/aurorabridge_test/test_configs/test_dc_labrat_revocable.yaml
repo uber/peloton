@@ -10,8 +10,8 @@ taskConfig:
     tier: revocable
     production: false
     resources:
-        - numCpus: 1
-        - ramMb: 32
+        - numCpus: 2
+        - ramMb: 128
         - diskMb: 128
     metadata:
         - key: test_key_1
@@ -84,15 +84,15 @@ taskConfig:
                         }
                     ],
                     "resources": {
-                        "cpu": 1,
+                        "cpu": 2,
                         "disk": 134217728,
                         "gpu": 0,
-                        "ram": 33554432
+                        "ram": 134217728
                     }
                 },
                 "tier": "revocable"
             }
-instanceCount: 3
+instanceCount: 2
 settings:
     updateGroupSize: 2
     minWaitInInstanceRunningMs: 45000

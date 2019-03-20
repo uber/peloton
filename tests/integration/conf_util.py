@@ -20,7 +20,7 @@ MESOS_AGENTS = ['peloton-mesos-agent0', 'peloton-mesos-agent1', 'peloton-mesos-a
 JOB_MGRS = ['peloton-jobmgr0']
 RES_MGRS = ['peloton-resmgr0']
 HOST_MGRS = ['peloton-hostmgr0']
-PLACEMENT_ENGINES = ['peloton-placement0', 'peloton-placement1', 'peloton-placement2']
+PLACEMENT_ENGINES = ['peloton-placement0', 'peloton-placement1']
 
 # job_query related constants.
 NUM_JOBS_PER_STATE = 1

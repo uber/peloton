@@ -93,9 +93,6 @@ const (
 )
 
 const (
-	// hostPlacingOfferStatusTimeout is a timeout for resetting
-	// PlacingHost status back to ReadHost status.
-	hostPlacingOfferStatusTimeout = 5 * time.Minute
 	// hostHeldHostStatusTimeout is a timeout for resetting
 	// HeldHost status back to ReadyHost status.
 	hostHeldStatusTimeout = 3 * time.Minute
@@ -209,8 +206,9 @@ type hostSummary struct {
 	// mesos offerID -> reserved offer
 	reservedOffers map[string]*mesos.Offer
 
-	status                       HostStatus
-	statusPlacingOfferExpiration time.Time
+	status                        HostStatus
+	statusPlacingOfferExpiration  time.Time
+	hostPlacingOfferStatusTimeout time.Duration
 
 	// When the host has been matched for placing i.e.
 	// the host status is PLACING or RESERVED a unique host offer ID is
@@ -236,6 +234,7 @@ func New(
 	scarceResourceTypes []string,
 	hostname string,
 	slackResourceTypes []string,
+	hostPlacingOfferStatusTimeout time.Duration,
 ) HostSummary {
 	return &hostSummary{
 		unreservedOffers:    make(map[string]*mesos.Offer),
@@ -243,6 +242,8 @@ func New(
 		heldTasks:           make(map[string]time.Time),
 		scarceResourceTypes: scarceResourceTypes,
 		slackResourceTypes:  slackResourceTypes,
+
+		hostPlacingOfferStatusTimeout: hostPlacingOfferStatusTimeout,
 
 		status: ReadyHost,
 
@@ -620,7 +621,7 @@ func (a *hostSummary) casStatusLockFree(old, new HostStatus) error {
 	case PlacingHost:
 		// generate the offer id for a placing host.
 		a.hostOfferID = a.offerIDgenerator()
-		a.statusPlacingOfferExpiration = time.Now().Add(hostPlacingOfferStatusTimeout)
+		a.statusPlacingOfferExpiration = time.Now().Add(a.hostPlacingOfferStatusTimeout)
 		a.readyCount.Store(0)
 	case ReservedHost:
 		// generate the offer id for a placing host.

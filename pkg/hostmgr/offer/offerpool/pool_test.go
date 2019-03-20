@@ -225,6 +225,7 @@ func (suite *OfferPoolTestSuite) TestSlackResourceTypes() {
 		[]string{"GPU", "DUMMY"},
 		[]string{common.MesosCPU, "DUMMY"},
 		binpacking.CreateRanker("DEFRAG"),
+		time.Duration(30*time.Second),
 	)
 	suite.True(hmutil.IsSlackResourceType(
 		common.MesosCPU,

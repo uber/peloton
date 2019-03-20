@@ -2,7 +2,7 @@ taskConfig:
     job:
         role: test
         environment: dc
-        name: labrat_large
+        name: labrat_cpus_large
     owner:
         user: 'testuser'
     isService: true
@@ -10,8 +10,8 @@ taskConfig:
     tier: preemptible
     production: false
     resources:
-        - numCpus: 1
-        - ramMb: 32
+        - numCpus: 3
+        - ramMb: 128
         - diskMb: 128
     metadata:
         - key: test_key_1
@@ -84,17 +84,17 @@ taskConfig:
                         }
                     ],
                     "resources": {
-                        "cpu": 1,
+                        "cpu": 3,
                         "disk": 134217728,
                         "gpu": 0,
-                        "ram": 33554432
+                        "ram": 134217728
                     }
                 },
                 "tier": "preemptible"
             }
-instanceCount: 10
+instanceCount: 3
 settings:
-    updateGroupSize: 2
+    updateGroupSize: 3
     minWaitInInstanceRunningMs: 45000
     maxFailedInstances: 1
     maxPerInstanceFailures: 1

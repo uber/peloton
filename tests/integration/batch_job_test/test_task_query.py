@@ -2,12 +2,12 @@ import pytest
 import logging
 
 
-from client import Client
+from tests.integration.client import Client
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 from peloton_client.pbgen.peloton.api.v0.query import query_pb2 as query
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 
-from conf_util import TASK_STATES, DEFAUILT_TASKS_COUNT, MESOS_AGENTS
+from tests.integration.conf_util import TASK_STATES, DEFAUILT_TASKS_COUNT, MESOS_AGENTS
 
 # Mark test module so that we can run tests by tags
 pytestmark = [pytest.mark.default,

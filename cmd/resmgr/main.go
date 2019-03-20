@@ -41,7 +41,7 @@ import (
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
-	"gopkg.in/alecthomas/kingpin.v2"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
@@ -223,6 +223,9 @@ func main() {
 	log.SetLevel(initialLevel)
 
 	cfg := getConfig(*cfgFiles...)
+
+	log.WithField("config", cfg).
+		Info("Completed Resource Manager config")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,

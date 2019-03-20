@@ -1,5 +1,5 @@
 import pytest
-from job import IntegrationTestConfig, Job
+from tests.integration.job import IntegrationTestConfig, Job
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 
 
