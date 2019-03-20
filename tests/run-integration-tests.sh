@@ -42,7 +42,7 @@ JOB_TYPE=SERVICE pytest -p no:random-order -p no:repeat -vsrx --durations=0 test
 
 # TODO (varung): Create separate CI for aurorabridge tests
 # set up minicluster with SERVICE type for tests under aurorabridge_job/
-# JOB_TYPE=SERVICE pytest -p no:random-order -p no:repeat -vsrx --durations=0 tests/integration/aurorabridge_test  --junit-xml=integration-test-report.xml  -m "$TAGS"
+JOB_TYPE=SERVICE pytest -p no:random-order -p no:repeat -vsrx --durations=0 tests/integration/aurorabridge_test  --junit-xml=integration-test-report.xml  -m "$TAGS"
 
 deactivate
 

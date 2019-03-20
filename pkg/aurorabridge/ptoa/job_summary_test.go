@@ -17,7 +17,6 @@ package ptoa
 import (
 	"testing"
 
-	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 
@@ -91,10 +90,10 @@ func TestNewJobConfiguration(t *testing.T) {
 		},
 		Status: &stateless.JobStatus{
 			PodStats: map[string]uint32{
-				task.TaskState_PENDING.String():  pendingInstances,
-				task.TaskState_STARTING.String(): startingInstances,
-				task.TaskState_RUNNING.String():  runningInstances,
-				task.TaskState_FAILED.String():   failedInstances,
+				pod.PodState_POD_STATE_PENDING.String():  pendingInstances,
+				pod.PodState_POD_STATE_STARTING.String(): startingInstances,
+				pod.PodState_POD_STATE_RUNNING.String():  runningInstances,
+				pod.PodState_POD_STATE_FAILED.String():   failedInstances,
 			},
 		},
 	}
@@ -118,31 +117,31 @@ func TestNewJobConfiguration(t *testing.T) {
 func TestNewJobStats(t *testing.T) {
 	jobStatus := &stateless.JobStatus{
 		PodStats: map[string]uint32{
-			task.TaskState_INITIALIZED.String(): 1,
-			task.TaskState_PENDING.String():     2,
+			pod.PodState_POD_STATE_INITIALIZED.String(): 1,
+			pod.PodState_POD_STATE_PENDING.String():     2,
+			pod.PodState_POD_STATE_READY.String():       3,
+			pod.PodState_POD_STATE_PLACING.String():     4,
 
-			task.TaskState_READY.String():      3,
-			task.TaskState_PLACING.String():    4,
-			task.TaskState_PLACED.String():     5,
-			task.TaskState_LAUNCHING.String():  6,
-			task.TaskState_LAUNCHED.String():   7,
-			task.TaskState_STARTING.String():   8,
-			task.TaskState_RUNNING.String():    9,
-			task.TaskState_KILLING.String():    10,
-			task.TaskState_PREEMPTING.String(): 11,
+			pod.PodState_POD_STATE_PLACED.String():     5,
+			pod.PodState_POD_STATE_LAUNCHING.String():  6,
+			pod.PodState_POD_STATE_LAUNCHED.String():   7,
+			pod.PodState_POD_STATE_STARTING.String():   8,
+			pod.PodState_POD_STATE_RUNNING.String():    9,
+			pod.PodState_POD_STATE_KILLING.String():    10,
+			pod.PodState_POD_STATE_PREEMPTING.String(): 11,
 
-			task.TaskState_SUCCEEDED.String(): 12,
-			task.TaskState_KILLED.String():    13,
-			task.TaskState_DELETED.String():   14,
+			pod.PodState_POD_STATE_SUCCEEDED.String(): 12,
+			pod.PodState_POD_STATE_KILLED.String():    13,
+			pod.PodState_POD_STATE_DELETED.String():   14,
 
-			task.TaskState_FAILED.String(): 15,
-			task.TaskState_LOST.String():   16,
+			pod.PodState_POD_STATE_FAILED.String(): 15,
+			pod.PodState_POD_STATE_LOST.String():   16,
 		},
 	}
 
 	jobStats := newJobStats(jobStatus)
-	assert.Equal(t, int32(3), jobStats.GetPendingTaskCount())
-	assert.Equal(t, int32(63), jobStats.GetActiveTaskCount())
+	assert.Equal(t, int32(10), jobStats.GetPendingTaskCount())
+	assert.Equal(t, int32(56), jobStats.GetActiveTaskCount())
 	assert.Equal(t, int32(39), jobStats.GetFinishedTaskCount())
 	assert.Equal(t, int32(31), jobStats.GetFailedTaskCount())
 }

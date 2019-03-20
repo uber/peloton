@@ -15,7 +15,6 @@
 package ptoa
 
 import (
-	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
@@ -23,32 +22,32 @@ import (
 	"go.uber.org/thriftrw/ptr"
 )
 
-var _pendingTaskStates = []string{
-	task.TaskState_INITIALIZED.String(),
-	task.TaskState_PENDING.String(),
+var _pendingPodStates = []string{
+	pod.PodState_POD_STATE_INITIALIZED.String(),
+	pod.PodState_POD_STATE_PENDING.String(),
+	pod.PodState_POD_STATE_READY.String(),
+	pod.PodState_POD_STATE_PLACING.String(),
 }
 
-var _activeTaskStates = []string{
-	task.TaskState_READY.String(),
-	task.TaskState_PLACING.String(),
-	task.TaskState_PLACED.String(),
-	task.TaskState_LAUNCHING.String(),
-	task.TaskState_LAUNCHED.String(),
-	task.TaskState_STARTING.String(),
-	task.TaskState_RUNNING.String(),
-	task.TaskState_KILLING.String(),
-	task.TaskState_PREEMPTING.String(),
+var _activePodStates = []string{
+	pod.PodState_POD_STATE_PLACED.String(),
+	pod.PodState_POD_STATE_LAUNCHING.String(),
+	pod.PodState_POD_STATE_LAUNCHED.String(),
+	pod.PodState_POD_STATE_STARTING.String(),
+	pod.PodState_POD_STATE_RUNNING.String(),
+	pod.PodState_POD_STATE_KILLING.String(),
+	pod.PodState_POD_STATE_PREEMPTING.String(),
 }
 
-var _finishedTaskStates = []string{
-	task.TaskState_SUCCEEDED.String(),
-	task.TaskState_KILLED.String(),
-	task.TaskState_DELETED.String(),
+var _finishedPodStates = []string{
+	pod.PodState_POD_STATE_SUCCEEDED.String(),
+	pod.PodState_POD_STATE_KILLED.String(),
+	pod.PodState_POD_STATE_DELETED.String(),
 }
 
-var _failedTaskStates = []string{
-	task.TaskState_FAILED.String(),
-	task.TaskState_LOST.String(),
+var _failedPodStates = []string{
+	pod.PodState_POD_STATE_FAILED.String(),
+	pod.PodState_POD_STATE_LOST.String(),
 }
 
 // NewJobSummary creates a JobSummary object.
@@ -79,7 +78,7 @@ func NewJobConfiguration(
 	var instanceCount int32
 	if activeOnly {
 		// activeOnly is set to true when called from getJobs endpoint
-		for _, activeState := range _activeTaskStates {
+		for _, activeState := range _activePodStates {
 			instanceCount += int32(jobInfo.GetStatus().GetPodStats()[activeState])
 		}
 	} else {
@@ -125,19 +124,19 @@ func newJobStats(s *stateless.JobStatus) *api.JobStats {
 		pending  uint32
 	)
 
-	for _, state := range _activeTaskStates {
+	for _, state := range _activePodStates {
 		active += s.GetPodStats()[state]
 	}
 
-	for _, state := range _finishedTaskStates {
+	for _, state := range _finishedPodStates {
 		finished += s.GetPodStats()[state]
 	}
 
-	for _, state := range _failedTaskStates {
+	for _, state := range _failedPodStates {
 		failed += s.GetPodStats()[state]
 	}
 
-	for _, state := range _pendingTaskStates {
+	for _, state := range _pendingPodStates {
 		pending += s.GetPodStats()[state]
 	}
 
