@@ -168,6 +168,31 @@ func (s *RMTaskTestSuite) createTask(instance int) *resmgr.Task {
 	}
 }
 
+func (s *RMTaskTestSuite) createTask0(placementRetryCount float64) *resmgr.Task {
+	uuidStr := "uuidstr-1"
+	jobID := "job1"
+	instance := 1
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	return &resmgr.Task{
+		Name:     "job1-1",
+		Priority: 0,
+		JobId:    &peloton.JobID{Value: "job1"},
+		Id:       &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobID, instance)},
+		Resource: &task.ResourceConfig{
+			CpuLimit:    1,
+			DiskLimitMb: 10,
+			GpuLimit:    0,
+			MemLimitMb:  100,
+		},
+		TaskId: &mesos_v1.TaskID{
+			Value: &mesosTaskID,
+		},
+		Preemptible:             true,
+		PlacementTimeoutSeconds: 60,
+		PlacementRetryCount:     placementRetryCount,
+	}
+}
+
 // Returns resource configs
 func (s *RMTaskTestSuite) getResourceConfig() []*resp.ResourceConfig {
 
@@ -202,30 +227,10 @@ func (s *RMTaskTestSuite) getResourceConfig() []*resp.ResourceConfig {
 
 func (s *RMTaskTestSuite) pendingGang0() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
-	uuidStr := "uuidstr-1"
-	jobID := "job1"
-	instance := 1
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
 	gang.Tasks = []*resmgr.Task{
-		{
-			Name:     "job1-1",
-			Priority: 0,
-			JobId:    &peloton.JobID{Value: "job1"},
-			Id:       &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobID, instance)},
-			Resource: &task.ResourceConfig{
-				CpuLimit:    1,
-				DiskLimitMb: 10,
-				GpuLimit:    0,
-				MemLimitMb:  100,
-			},
-			TaskId: &mesos_v1.TaskID{
-				Value: &mesosTaskID,
-			},
-			Preemptible:             true,
-			PlacementTimeoutSeconds: 60,
-			PlacementRetryCount:     1,
-		},
+		s.createTask0(1),
 	}
+
 	return &gang
 }
 
@@ -246,6 +251,49 @@ func (s *RMTaskTestSuite) getEntitlement() *scalar.Resources {
 
 func TestRMTask(t *testing.T) {
 	suite.Run(t, new(RMTaskTestSuite))
+}
+
+// This tests CreateRMTask initializes the task properties properly
+func (s *RMTaskTestSuite) TestCreateRMTasks() {
+
+	respool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+
+	rmTask, err := CreateRMTask(
+		tally.NoopScope,
+		s.createTask(1),
+		nil,
+		respool,
+		&Config{
+			LaunchingTimeout:      2 * time.Second,
+			PlacingTimeout:        2 * time.Second,
+			PlacementRetryCycle:   3,
+			PlacementRetryBackoff: 1 * time.Second,
+			PolicyName:            ExponentialBackOffPolicy,
+		},
+	)
+
+	s.NoError(err)
+	s.EqualValues(0, rmTask.Task().PlacementRetryCount)
+	s.EqualValues(2, rmTask.Task().PlacementTimeoutSeconds)
+
+	rmTask, err = CreateRMTask(
+		tally.NoopScope,
+		s.createTask0(1),
+		nil,
+		respool,
+		&Config{
+			LaunchingTimeout:      2 * time.Second,
+			PlacingTimeout:        2 * time.Second,
+			PlacementRetryCycle:   3,
+			PlacementRetryBackoff: 1 * time.Second,
+			PolicyName:            ExponentialBackOffPolicy,
+		},
+	)
+
+	s.NoError(err)
+	s.EqualValues(1, rmTask.Task().PlacementRetryCount)
+	s.EqualValues(2, rmTask.Task().PlacementTimeoutSeconds)
 }
 
 // This tests the requeue of the same task with same mesos task id as well
@@ -787,7 +835,7 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToPending() {
 		sm statemachine.StateMachine) error {
 		rmTask, err := CreateRMTask(
 			tally.NoopScope,
-			s.createTask(1),
+			s.createTask0(3),
 			nil,
 			mnode,
 			config,

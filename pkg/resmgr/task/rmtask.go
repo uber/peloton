@@ -108,8 +108,6 @@ func CreateRMTask(
 		return nil, err
 	}
 
-	// As this is when task is being created , retry should be 0
-	r.Task().PlacementRetryCount = 0
 	// Placement timeout should be equal to placing timeout by default
 	r.Task().PlacementTimeoutSeconds = taskConfig.PlacingTimeout.Seconds()
 	// Checking if placement backoff is enabled
