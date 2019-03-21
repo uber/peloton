@@ -5,8 +5,7 @@ import time
 import grpc
 
 from docker import Client
-from tools.minicluster.main import setup
-from tools.minicluster.minicluster import teardown
+from tools.minicluster.main import setup, teardown
 from job import Job
 from job import query_jobs as batch_query_jobs
 from job import kill_jobs as batch_kill_jobs

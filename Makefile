@@ -74,15 +74,22 @@ aurorabridge:
 build-mockgen:
 	go get ./vendor/github.com/golang/mock/mockgen
 
+get-gokind:
+	mkdir -p bin
+	GOBIN=$(shell pwd)/bin go get sigs.k8s.io/kind
+
 # NOTE: `glide install` is flaky, so run it 3 times at most to ensure this doesn't fail
 # tests regularly for no reason.
 install:
 	@if [ -z ${GOPATH} ]; then \
-		echo "No $GOPATH"; \
+		echo "No $(GOPATH)"; \
 		export GOPATH="$(pwd -P)/workspace"; \
-		mkdir -p "$GOPATH/bin"; \
-		export GOBIN="$GOPATH/bin"; \
-		export PATH=$PATH:$GOBIN; \
+		echo "New GOPATH: $(GOPATH)"; \
+		mkdir -p "$(GOPATH)/bin"; \
+		export GOBIN="$(GOPATH)/bin"; \
+		echo "New GOBIN: $(GOBIN)"; \
+		export PATH="$(PATH):$(GOBIN)"; \
+		echo "New PATH: $(PATH)"; \
 	fi
 	@if [ ! -d "$(VENDOR)" ]; then \
 		echo "Fetching dependencies"; \
@@ -237,14 +244,15 @@ test_pkg: $(GOCOV) $(GENS) mockgens test-containers
 unit-test: $(GOCOV) $(GENS) mockgens
 	gocov test $(ALL_PKGS) --tags "unit" | gocov report
 
-integ-test:
-	@./tests/run-integration-tests.sh
+integ-test: get-gokind 
+	ls -la $(shell pwd)/bin
+	PATH="$(PATH):$(shell pwd)/bin" ./tests/run-integration-tests.sh
 
 # launch peloton with PELOTON={any value}, default to none
-minicluster:
+minicluster: $(GOKIND)
 	PELOTON=$(PELOTON) ./scripts/minicluster.sh setup
 
-minicluster-teardown:
+minicluster-teardown: $(GOKIND)
 	./scripts/minicluster.sh teardown
 
 # Clone the newest mimir-lib code. Do not manually edit anything under mimir-lib/*
@@ -253,6 +261,7 @@ update-mimir-lib:
 
 devtools:
 	@echo "Installing tools"
+	mkdir -p bin
 	go get github.com/axw/gocov/gocov
 	go get github.com/AlekSi/gocov-xml
 	go get github.com/matm/gocov-html
@@ -260,7 +269,6 @@ devtools:
 	go get github.com/golang/mock/gomock
 	go get github.com/golang/mock/mockgen
 	go get golang.org/x/tools/cmd/goimports
-	go get sigs.k8s.io/kind
     # temp removing: https://github.com/gemnasium/migrate/issues/26
     # go get github.com/gemnasium/migrate
 
