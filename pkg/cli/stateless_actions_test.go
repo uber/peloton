@@ -323,6 +323,8 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionSuccess() {
 	maxTolerableInstanceFailures := uint32(1)
 	rollbackOnFailure := false
 	startPaused := true
+	inPlace := false
+	startPods := false
 	opaque := "test"
 
 	suite.resClient.EXPECT().
@@ -353,7 +355,8 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionSuccess() {
 		rollbackOnFailure,
 		startPaused,
 		opaque,
-		false,
+		inPlace,
+		startPods,
 	))
 }
 
@@ -366,6 +369,8 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionLookupResou
 	maxTolerableInstanceFailures := uint32(1)
 	rollbackOnFailure := false
 	startPaused := true
+	inPlace := false
+	startPods := false
 
 	suite.resClient.EXPECT().
 		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
@@ -387,7 +392,8 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionLookupResou
 		rollbackOnFailure,
 		startPaused,
 		"",
-		false,
+		inPlace,
+		startPods,
 	))
 }
 

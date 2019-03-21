@@ -49,6 +49,12 @@ message UpdateConfig {
   // restarted/updated on the host it previously run on.
   // It is best effort, and has no guarantee of success.
   bool inPlace = 8;
+
+  // If set to true, peloton would start tasks updated
+  // if the tasks are killed previously.
+  // By default, killed tasks would remain killed, and
+  // run with new version when running again.
+  bool startTasks = 9;
 }
 
 // Runtime state of a job update

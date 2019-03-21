@@ -283,6 +283,7 @@ func (c *Client) StatelessReplaceJobAction(
 	startPaused bool,
 	opaqueData string,
 	inPlace bool,
+	startPods bool,
 ) error {
 	// TODO: implement cli override check and get entity version
 	// form job after stateless.Get is ready
@@ -326,6 +327,7 @@ func (c *Client) StatelessReplaceJobAction(
 			MaxTolerableInstanceFailures: maxTolerableInstanceFailures,
 			StartPaused:                  startPaused,
 			InPlace:                      inPlace,
+			StartPods:                    startPods,
 		},
 		OpaqueData: opaque,
 	}

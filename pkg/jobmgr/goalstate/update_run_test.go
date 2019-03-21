@@ -297,6 +297,223 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 	suite.NoError(err)
 }
 
+func (suite *UpdateRunTestSuite) TestRunningUpdateWithStartTasksOn() {
+	instancesTotal := []uint32{0, 1}
+	oldJobConfigVer := uint64(3)
+	newJobConfigVer := uint64(4)
+
+	updateConfig := &pbupdate.UpdateConfig{
+		BatchSize:  0,
+		StartTasks: true,
+	}
+
+	runtimeRunning := &pbtask.RuntimeInfo{
+		State:                pbtask.TaskState_RUNNING,
+		GoalState:            pbtask.TaskState_RUNNING,
+		Healthy:              pbtask.HealthState_HEALTHY,
+		ConfigVersion:        oldJobConfigVer,
+		DesiredConfigVersion: oldJobConfigVer,
+	}
+
+	runtimeKilled := &pbtask.RuntimeInfo{
+		State:                pbtask.TaskState_KILLED,
+		GoalState:            pbtask.TaskState_KILLED,
+		Healthy:              pbtask.HealthState_INVALID,
+		ConfigVersion:        oldJobConfigVer,
+		DesiredConfigVersion: oldJobConfigVer,
+	}
+
+	cachedTasks := make(map[uint32]*cachedmocks.MockTask)
+	for _, instID := range instancesTotal {
+		cachedTasks[instID] = cachedmocks.NewMockTask(suite.ctrl)
+	}
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateID).
+		Return(suite.cachedUpdate)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_ROLLING_FORWARD,
+		})
+
+	suite.cachedUpdate.EXPECT().
+		GetGoalState().
+		Return(&cached.UpdateStateVector{
+			Instances:  instancesTotal,
+			JobVersion: uint64(4),
+		}).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesAdded().
+		Return(nil)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesUpdated().
+		Return(instancesTotal)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return(nil).Times(2)
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesFailed().
+		Return([]uint32{})
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesDone().
+		Return([]uint32{})
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesCurrent().
+		Return(instancesTotal)
+
+	suite.cachedUpdate.EXPECT().
+		GetUpdateConfig().
+		Return(updateConfig).
+		AnyTimes()
+
+	for _, instID := range instancesTotal {
+		suite.cachedJob.EXPECT().
+			AddTask(gomock.Any(), instID).
+			Return(cachedTasks[instID], nil).
+			AnyTimes()
+
+		if instID == instancesTotal[0] {
+			cachedTasks[instID].EXPECT().
+				GetRuntime(gomock.Any()).
+				Return(runtimeRunning, nil).
+				AnyTimes()
+		}
+
+		if instID == instancesTotal[1] {
+			cachedTasks[instID].EXPECT().
+				GetRuntime(gomock.Any()).
+				Return(runtimeKilled, nil).
+				AnyTimes()
+		}
+	}
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, instancesTotal[0]).
+		Return(runtimeRunning, nil)
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, instancesTotal[1]).
+		Return(runtimeKilled, nil)
+
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeRunning).
+		Return(false)
+	suite.cachedUpdate.EXPECT().
+		IsInstanceFailed(runtimeRunning, updateConfig.GetMaxInstanceAttempts()).
+		Return(false)
+	suite.cachedUpdate.EXPECT().
+		IsInstanceInProgress(newJobConfigVer, runtimeRunning).
+		Return(false)
+
+	suite.cachedUpdate.EXPECT().
+		IsInstanceComplete(newJobConfigVer, runtimeKilled).
+		Return(false)
+	suite.cachedUpdate.EXPECT().
+		IsInstanceFailed(runtimeKilled, updateConfig.GetMaxInstanceAttempts()).
+		Return(false)
+	suite.cachedUpdate.EXPECT().
+		IsInstanceInProgress(newJobConfigVer, runtimeKilled).
+		Return(false)
+
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(gomock.Any(), gomock.Any(), newJobConfigVer).
+		Return(&pbjob.JobConfig{
+			ChangeLog: &peloton.ChangeLog{Version: newJobConfigVer},
+		}, &models.ConfigAddOn{},
+			nil)
+
+	// using loops instead of .Times function, because the latter
+	// would return a reference to the map. Any modification to the
+	// map would be reflected in other places.
+	for i := 0; i < len(instancesTotal); i++ {
+		suite.cachedUpdate.EXPECT().
+			GetRuntimeDiff(gomock.Any()).
+			Return(jobmgrcommon.RuntimeDiff{
+				jobmgrcommon.DesiredConfigVersionField: newJobConfigVer,
+				jobmgrcommon.FailureCountField:         uint32(0),
+				jobmgrcommon.ReasonField:               "",
+			})
+	}
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, diffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			suite.Equal(len(diffs), len(instancesTotal))
+			suite.Equal(diffs[0][jobmgrcommon.GoalStateField], pbtask.TaskState_RUNNING)
+			suite.Equal(diffs[1][jobmgrcommon.GoalStateField], pbtask.TaskState_RUNNING)
+		}).
+		Return(nil)
+
+	suite.taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Times(2)
+
+	suite.cachedUpdate.EXPECT().
+		GetState().
+		Return(&cached.UpdateStateVector{
+			State: pbupdate.State_ROLLING_FORWARD,
+		})
+
+	suite.cachedUpdate.EXPECT().
+		WriteProgress(
+			gomock.Any(),
+			pbupdate.State_ROLLING_FORWARD,
+			[]uint32{},
+			[]uint32{},
+			[]uint32{0, 1},
+		).Return(nil)
+
+	for _, instID := range instancesTotal {
+		suite.cachedJob.EXPECT().
+			GetTask(instID).
+			Return(cachedTasks[instID]).
+			AnyTimes()
+
+		if instID == instancesTotal[0] {
+			cachedTasks[instID].EXPECT().
+				GetRuntime(gomock.Any()).
+				Return(runtimeRunning, nil).
+				AnyTimes()
+		}
+
+		if instID == instancesTotal[1] {
+			// goal state should be changed to RUNNING by
+			// job.PatchTasks above
+			runtimeKilled.GoalState = pbtask.TaskState_RUNNING
+			cachedTasks[instID].EXPECT().
+				GetRuntime(gomock.Any()).
+				Return(runtimeKilled, nil).
+				AnyTimes()
+		}
+	}
+
+	err := UpdateRun(context.Background(), suite.updateEnt)
+	suite.NoError(err)
+}
+
 func (suite *UpdateRunTestSuite) TestRunningInPlaceUpdate() {
 	instancesTotal := []uint32{0, 1}
 	oldJobConfigVer := uint64(3)

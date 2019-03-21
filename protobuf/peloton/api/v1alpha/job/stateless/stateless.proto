@@ -355,6 +355,12 @@ message UpdateSpec {
   // updated on the host it previously run on.
   // It is best effort, and has no guarantee of success.
   bool in_place = 6;
+
+  // When set to true, peloton would start pods updated,
+  // if the pods are killed previously.
+  // By default, killed pods would remain killed, and
+  // run with new version when running again.
+  bool start_pods = 7;
 }
 
 // Configuration of a job creation.

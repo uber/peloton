@@ -833,6 +833,7 @@ func ConvertUpdateSpecToUpdateConfig(spec *stateless.UpdateSpec) *update.UpdateC
 		MaxFailureInstances: spec.GetMaxTolerableInstanceFailures(),
 		StartPaused:         spec.GetStartPaused(),
 		InPlace:             spec.GetInPlace(),
+		StartTasks:          spec.GetStartPods(),
 	}
 }
 

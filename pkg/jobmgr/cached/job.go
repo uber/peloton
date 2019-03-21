@@ -1867,7 +1867,8 @@ func (j *job) updateJobRuntime(
 	}
 	runtime.ConfigurationVersion = newConfigVersion
 	runtime.WorkflowVersion = newWorkflowVersion
-	if newWorkflow.GetWorkflowType() == models.WorkflowType_RESTART {
+	if newWorkflow.GetWorkflowType() == models.WorkflowType_RESTART ||
+		newWorkflow.GetUpdateConfig().GetStartTasks() {
 		runtime.GoalState = pbjob.JobState_RUNNING
 	}
 	if err := j.jobFactory.jobStore.UpdateJobRuntime(

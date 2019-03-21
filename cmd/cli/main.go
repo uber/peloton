@@ -282,6 +282,8 @@ var (
 		"opaque data provided by the user").Default("").String()
 	statelessReplaceInPlace = statelessReplace.Flag("in-place",
 		"start the update with best effort in-place update").Default("false").Bool()
+	statelessStartPods = statelessReplace.Flag("start-pods",
+		"start pods affected by the update if they are not running").Default("false").Bool()
 
 	statelessListJobs = stateless.Command("list", "list all jobs")
 
@@ -906,6 +908,7 @@ func main() {
 			*statelessReplaceStartPaused,
 			*statelessReplaceOpaqueData,
 			*statelessReplaceInPlace,
+			*statelessStartPods,
 		)
 	case statelessReplaceJobDiff.FullCommand():
 		err = client.StatelessReplaceJobDiffAction(

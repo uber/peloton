@@ -2123,6 +2123,124 @@ func (suite *JobTestSuite) TestJobCreateWorkflowSuccess() {
 	))
 }
 
+// TestJobCreateWorkflowWithStartTasksForStoppedJobSuccess tests the success case of
+// creating workflow with StartTasks flag on for a stopped job
+func (suite *JobTestSuite) TestJobCreateWorkflowWithStartTasksForStoppedJobSuccess() {
+	var instancesAdded []uint32
+	var instnacesRemoved []uint32
+	instancesUpdated := []uint32{0, 1, 2}
+	opaque := "test"
+
+	workflowType := models.WorkflowType_UPDATE
+	updateConfig := &pbupdate.UpdateConfig{
+		BatchSize:  10,
+		StartTasks: true,
+	}
+	oldConfigVersion := suite.job.runtime.GetConfigurationVersion()
+	oldWorkflowVersion := suite.job.runtime.GetWorkflowVersion()
+	desiredStateVersion := suite.job.runtime.GetDesiredStateVersion()
+	entityVersion := jobutil.GetJobEntityVersion(
+		oldConfigVersion,
+		desiredStateVersion,
+		oldWorkflowVersion,
+	)
+	prevConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{},
+		ChangeLog:     &peloton.ChangeLog{Version: 1},
+	}
+	jobConfig := prevConfig
+	configAddOn := &models.ConfigAddOn{}
+
+	for _, i := range instancesUpdated {
+		suite.updateStore.EXPECT().
+			AddWorkflowEvent(
+				gomock.Any(),
+				gomock.Any(),
+				i,
+				workflowType,
+				pbupdate.State_INITIALIZED).Return(nil)
+	}
+
+	gomock.InOrder(
+		suite.jobStore.EXPECT().
+			GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
+			Return(prevConfig.GetChangeLog().GetVersion(), nil),
+
+		suite.jobStore.EXPECT().
+			UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), configAddOn).
+			Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig, _ *models.ConfigAddOn) {
+				suite.Equal(
+					config.GetChangeLog().GetVersion(),
+					prevConfig.GetChangeLog().GetVersion()+1)
+			}).
+			Return(nil),
+		suite.jobIndexOps.EXPECT().
+			Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+			Return(nil),
+		suite.updateStore.EXPECT().
+			AddJobUpdateEvent(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				pbupdate.State_INITIALIZED).
+			Return(nil),
+
+		suite.updateStore.EXPECT().
+			CreateUpdate(gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, updateInfo *models.UpdateModel) {
+				suite.Equal(updateInfo.GetJobConfigVersion(),
+					prevConfig.GetChangeLog().GetVersion()+1)
+				suite.Equal(updateInfo.GetPrevJobConfigVersion(), prevConfig.GetChangeLog().GetVersion())
+				suite.Equal(updateInfo.GetState(), pbupdate.State_INITIALIZED)
+				suite.Equal(updateInfo.GetJobID(), suite.jobID)
+				suite.Equal(updateInfo.GetInstancesAdded(), instancesAdded)
+				suite.Equal(updateInfo.GetInstancesUpdated(), instancesUpdated)
+				suite.Equal(updateInfo.GetInstancesRemoved(), instnacesRemoved)
+				suite.Equal(updateInfo.GetType(), workflowType)
+				suite.Equal(updateInfo.GetUpdateConfig(), updateConfig)
+				suite.Equal(updateInfo.GetOpaqueData().GetData(), opaque)
+			}).
+			Return(nil),
+
+		suite.jobStore.EXPECT().
+			UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+				suite.Equal(runtime.GetGoalState(), pbjob.JobState_RUNNING)
+			}).
+			Return(nil),
+		suite.jobIndexOps.EXPECT().
+			Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+			Return(nil),
+	)
+
+	updateID, newEntityVersion, err := suite.job.CreateWorkflow(
+		context.Background(),
+		workflowType,
+		updateConfig,
+		entityVersion,
+		WithConfig(
+			jobConfig,
+			prevConfig,
+			configAddOn,
+		),
+		WithInstanceToProcess(
+			instancesAdded,
+			instancesUpdated,
+			instnacesRemoved,
+		),
+		WithOpaqueData(&peloton.OpaqueData{Data: opaque}),
+	)
+
+	suite.NotNil(updateID)
+	suite.NoError(err)
+	suite.NotNil(suite.job.workflows[updateID.GetValue()])
+	suite.Equal(newEntityVersion, jobutil.GetJobEntityVersion(
+		oldConfigVersion+1,
+		desiredStateVersion,
+		oldWorkflowVersion+1,
+	))
+}
+
 // TestJobCreateWorkflowUpdateConfigFailure tests the failure case of
 // creating workflow due to update config failure
 func (suite *JobTestSuite) TestJobCreateWorkflowUpdateConfigFailure() {
