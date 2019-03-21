@@ -1109,45 +1109,6 @@ func (suite *statelessHandlerTestSuite) TestReplaceJobFailNonLeader() {
 	suite.Error(err)
 }
 
-// TestReplaceJobInitializedJobFailure tests the failure case of replacing job
-// due to job is in INITIALIZED state
-func (suite *statelessHandlerTestSuite) TestReplaceJobInitializedJobFailure() {
-	configVersion := uint64(1)
-	workflowVersion := uint64(1)
-	desiredStateVersion := uint64(1)
-	batchSize := uint32(1)
-
-	suite.candidate.EXPECT().
-		IsLeader().
-		Return(true)
-
-	suite.jobFactory.EXPECT().
-		AddJob(&peloton.JobID{Value: testJobID}).
-		Return(suite.cachedJob)
-
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(&pbjob.RuntimeInfo{
-			State:                pbjob.JobState_INITIALIZED,
-			WorkflowVersion:      workflowVersion,
-			ConfigurationVersion: configVersion,
-		}, nil)
-
-	resp, err := suite.handler.ReplaceJob(
-		context.Background(),
-		&statelesssvc.ReplaceJobRequest{
-			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(configVersion, desiredStateVersion, workflowVersion),
-			Spec:    &stateless.JobSpec{},
-			UpdateSpec: &stateless.UpdateSpec{
-				BatchSize: batchSize,
-			},
-		},
-	)
-	suite.Error(err)
-	suite.Nil(resp)
-}
-
 // TestReplaceJobGetJobConfigFailure tests the failure case of replacing job
 // due to not able to get job config
 func (suite *statelessHandlerTestSuite) TestReplaceJobGetJobConfigFailure() {

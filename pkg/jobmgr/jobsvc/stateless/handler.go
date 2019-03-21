@@ -296,14 +296,6 @@ func (h *serviceHandler) ReplaceJob(
 		return nil, errors.Wrap(err, "failed to get job runtime from cache")
 	}
 
-	// do not allow update initialized job for now, because
-	// the job would be updated by both job and update goal
-	// state engine. The constraint may be removed later
-	if jobRuntime.GetState() == pbjob.JobState_INITIALIZED {
-		return nil, yarpcerrors.UnavailableErrorf(
-			"cannot update partially created job")
-	}
-
 	prevJobConfig, prevConfigAddOn, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
 		jobID.GetValue(),
