@@ -156,8 +156,11 @@ func JobRecover(ctx context.Context, entity goalstate.Entity) error {
 		// so directly move to PENDING state
 		jobState = job.JobState_PENDING
 	}
-	if _, err := cachedJob.CompareAndSetRuntime(
-		ctx, &job.RuntimeInfo{State: jobState}); err != nil {
+	if err := cachedJob.Update(
+		ctx,
+		&job.JobInfo{Runtime: &job.RuntimeInfo{State: jobState}},
+		nil,
+		cached.UpdateCacheAndDB); err != nil {
 		return err
 	}
 	goalStateDriver.EnqueueJob(jobEnt.id, time.Now())

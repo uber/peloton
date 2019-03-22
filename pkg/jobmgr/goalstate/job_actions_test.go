@@ -171,8 +171,12 @@ func (suite *jobActionsTestSuite) TestJobRecoverBachJobSuccess() {
 		}, nil)
 
 	suite.cachedJob.EXPECT().
-		CompareAndSetRuntime(gomock.Any(), &job.RuntimeInfo{State: job.JobState_INITIALIZED}).
-		Return(nil, nil)
+		Update(
+			gomock.Any(),
+			&job.JobInfo{Runtime: &job.RuntimeInfo{State: job.JobState_INITIALIZED}},
+			nil,
+			cached.UpdateCacheAndDB).
+		Return(nil)
 
 	suite.jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any())
@@ -195,8 +199,12 @@ func (suite *jobActionsTestSuite) TestJobRecoverServiceJobSuccess() {
 		}, nil)
 
 	suite.cachedJob.EXPECT().
-		CompareAndSetRuntime(gomock.Any(), &job.RuntimeInfo{State: job.JobState_PENDING}).
-		Return(nil, nil)
+		Update(
+			gomock.Any(),
+			&job.JobInfo{Runtime: &job.RuntimeInfo{State: job.JobState_PENDING}},
+			nil,
+			cached.UpdateCacheAndDB).
+		Return(nil)
 
 	suite.jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any())
