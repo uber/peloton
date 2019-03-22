@@ -37,7 +37,8 @@ def mflags(files, go_loc):
     pfiles.remove('peloton/api/v0/peloton.proto')
     pfiles.remove('peloton/api/v1alpha/peloton.proto')
 
-    m = string.join(['M' + f + '=' + go_loc +
+    m = 'plugins=grpc,'
+    m += string.join(['M' + f + '=' + go_loc +
                      os.path.dirname(f) for f in pfiles], ',')
     m += ',Mpeloton/api/v0/peloton.proto=%speloton/api/v0/peloton' % go_loc
     m += ',Mpeloton/api/v1alpha/peloton.proto=' \
