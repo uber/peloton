@@ -124,8 +124,8 @@ pbgens: $(VENDOR)
 	go get ./vendor/github.com/golang/protobuf/protoc-gen-go
 	go get ./vendor/go.uber.org/yarpc/encoding/protobuf/protoc-gen-yarpc-go
 	./scripts/generate-protobuf.py --generator=go --out-dir=$(GEN_DIR)
-        # Temporarily patch the service name in generated yarpc code
-	./scripts/patch-v0-api-yarpc.sh
+    # Temporarily patch the service name in generated rpc code for some v0 APIs
+	./scripts/patch-v0-api-rpc.sh
 	# Temporarily rename Sla to SLA for lint
 	./scripts/rename-job-sla.sh
 
@@ -244,7 +244,7 @@ test_pkg: $(GOCOV) $(GENS) mockgens test-containers
 unit-test: $(GOCOV) $(GENS) mockgens
 	gocov test $(ALL_PKGS) --tags "unit" | gocov report
 
-integ-test: get-gokind 
+integ-test: get-gokind
 	ls -la $(shell pwd)/bin
 	PATH="$(PATH):$(shell pwd)/bin" ./tests/run-integration-tests.sh
 
