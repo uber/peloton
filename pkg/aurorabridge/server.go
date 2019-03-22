@@ -15,12 +15,20 @@
 package aurorabridge
 
 import (
+	"path"
+	"strings"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/leader"
+
+	"github.com/docker/libkv/store"
+	"github.com/docker/libkv/store/zookeeper"
+	"github.com/pkg/errors"
 )
+
+const _dummyNode = "_aurorabridge_node"
 
 // Server contains all structs necessary to run a aurorabrdige server.
 // This struct also implements leader.Node interface so that it can
@@ -29,27 +37,54 @@ import (
 type Server struct {
 	sync.Mutex
 
-	ID   string
-	role string
+	ID       string
+	role     string
+	zkClient store.Store
+	zkRoot   string
 }
 
 // NewServer creates a aurorabridge Server instance.
 func NewServer(
-	httpPort int) *Server {
+	httpPort int,
+	cfg leader.ElectionConfig,
+	role string,
+) (*Server, error) {
 	endpoint := leader.NewEndpoint(httpPort)
 	additionalEndpoints := make(map[string]leader.Endpoint)
 	additionalEndpoints["http"] = endpoint
 
-	return &Server{
-		ID:   leader.NewServiceInstance(endpoint, additionalEndpoints),
-		role: common.PelotonAuroraBridgeRole,
+	zkClient, err := zookeeper.New(cfg.ZKServers, nil)
+	if err != nil {
+		return nil, err
 	}
+
+	return &Server{
+		ID:       leader.NewServiceInstance(endpoint, additionalEndpoints),
+		role:     common.PelotonAuroraBridgeRole,
+		zkClient: zkClient,
+		zkRoot:   strings.TrimPrefix(path.Join(cfg.Root, role), "/"),
+	}, nil
 }
 
 // GainedLeadershipCallback is the callback when the current node
 // becomes the leader
 func (s *Server) GainedLeadershipCallback() error {
 	log.WithFields(log.Fields{"role": s.role}).Info("Gained leadership")
+
+	// Re-create a dummy node under /peloton/aurora/scheduler
+	// so that the client can pick up the leadership change when it's
+	// doing a watch. If it fails to re-create the node, throw the
+	// error to give up the leadership.
+	key := path.Join(s.zkRoot, _dummyNode)
+	err := s.zkClient.Delete(key)
+	if err != nil && err != store.ErrKeyNotFound {
+		return errors.Wrap(err, "failed to delete dummy node")
+	}
+
+	err = s.zkClient.Put(key, []byte{}, nil)
+	if err != nil {
+		return errors.Wrap(err, "failed to create dummy node")
+	}
 
 	return nil
 }
@@ -58,6 +93,12 @@ func (s *Server) GainedLeadershipCallback() error {
 // leadership
 func (s *Server) LostLeadershipCallback() error {
 	log.WithField("role", s.role).Info("Lost leadership")
+
+	// Remove the dummy node under /peloton/aurora/scheduler
+	// to trigger a watch event, ignore the deletion error here
+	// since the node is no longer the leader.
+	key := path.Join(s.zkRoot, _dummyNode)
+	s.zkClient.Delete(key)
 
 	return nil
 }

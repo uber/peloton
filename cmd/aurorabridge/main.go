@@ -208,7 +208,14 @@ func main() {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
 
-	server := aurorabridge.NewServer(cfg.HTTPPort)
+	server, err := aurorabridge.NewServer(
+		cfg.HTTPPort,
+		cfg.Election,
+		common.PelotonAuroraBridgeRole,
+	)
+	if err != nil {
+		log.Fatalf("Unable to create server: %v", err)
+	}
 
 	candidate, err := leader.NewCandidate(
 		cfg.Election,
