@@ -525,6 +525,23 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobConflict() {
 	suite.Equal(api.ResponseCodeInvalidRequest, resp.GetResponseCode())
 }
 
+// Ensures StartJobUpdate errors out when seeing pinned instances request
+func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_PinnedInstancesError() {
+	req := fixture.AuroraJobUpdateRequest()
+	req.Settings = &api.JobUpdateSettings{
+		UpdateOnlyTheseInstances: []*api.Range{
+			{
+				First: ptr.Int32(0),
+				Last:  ptr.Int32(0),
+			},
+		},
+	}
+
+	resp, err := suite.handler.StartJobUpdate(suite.ctx, req, ptr.String("some message"))
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeInvalidRequest, resp.GetResponseCode())
+}
+
 // Ensures PauseJobUpdate successfully maps to PauseJobWorkflow.
 func (suite *ServiceHandlerTestSuite) TestPauseJobUpdate_Success() {
 	k := fixture.AuroraJobUpdateKey()

@@ -18,10 +18,13 @@ import "github.com/uber-go/tally"
 
 // Metrics is the struct containing all metrics relevant for aurora api parrity
 type Metrics struct {
+	PinnedInstancesUnsupported tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
 // initialized and rooted at the given tally.Scope
 func NewMetrics(scope tally.Scope) *Metrics {
-	return nil
+	return &Metrics{
+		PinnedInstancesUnsupported: scope.Counter("pinned_instances_unsupported"),
+	}
 }

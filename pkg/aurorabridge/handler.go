@@ -955,6 +955,12 @@ func (h *ServiceHandler) startJobUpdate(
 	message *string,
 ) (*api.Result, *auroraError) {
 
+	if len(request.GetSettings().GetUpdateOnlyTheseInstances()) > 0 {
+		h.metrics.PinnedInstancesUnsupported.Inc(1)
+		return nil, auroraErrorf("pinned instances not supported").
+			code(api.ResponseCodeInvalidRequest)
+	}
+
 	respoolID, err := h.respoolLoader.Load(ctx)
 	if err != nil {
 		return nil, auroraErrorf("load respool: %s", err)
