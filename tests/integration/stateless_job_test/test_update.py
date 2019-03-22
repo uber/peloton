@@ -956,3 +956,16 @@ def test_stop_running_job_with_active_update_same_instance_count(stateless_job):
     assert stateless_job.get_spec().instance_count == 3
     assert stateless_job.get_spec().default_spec.containers[0].command.value == \
         'sleep 100'
+
+
+# test__create_update_before_job_fully_created creates an update
+# right after a job is created. It tests the case that job can be
+# updated before it is fully created
+def test__create_update_before_job_fully_created(stateless_job, in_place):
+    stateless_job.create()
+    update = StatelessUpdate(stateless_job,
+                             updated_job_file=UPDATE_STATELESS_JOB_SPEC)
+    update.create(in_place=in_place)
+    update.wait_for_state(goal_state='SUCCEEDED')
+    assert stateless_job.get_spec().default_spec.containers[0].command.value == \
+        'while :; do echo updated; sleep 10; done'
