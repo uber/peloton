@@ -63,3 +63,18 @@ def test__start_job_update_revocable_job(client):
         statuses={api.ScheduleStatus.RUNNING}
     ))
     assert len(res.tasks) == 2
+
+
+def test__failed_update(client):
+    """
+    update failed
+    """
+    res = client.start_job_update(
+        get_job_update_request('test_dc_labrat_bad_config.yaml'),
+        'rollout bad config')
+
+    wait_for_update_status(
+        client,
+        res.key,
+        {api.JobUpdateStatus.ROLLING_FORWARD},
+        api.JobUpdateStatus.FAILED)
