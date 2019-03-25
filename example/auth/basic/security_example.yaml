@@ -1,0 +1,31 @@
+users:
+- role: default
+- username: peloton
+  password: password1
+  role: root
+- username: admin
+  password: password2
+  role: admin
+
+roles:
+- role: default
+  accept:
+  - 'peloton.api.v1alpha.job.stateless.svc.JobService:Get*'
+  - 'peloton.api.v1alpha.job.stateless.svc.JobService:List*'
+  - 'peloton.api.v1alpha.job.stateless.svc.JobService:Query*'
+  - 'peloton.api.v1alpha.pod.svc.PodService:Get*'
+  - 'peloton.api.v1alpha.pod.svc.PodService:Browse*'
+  reject:
+  - 'peloton.api.v1alpha.job.stateless.svc.JobService:GetJobCache'
+  - 'peloton.api.v1alpha.pod.svc.PodService:GetPodCache'
+- role: root
+  accept:
+  - '*'
+- role: admin
+  accept:
+  - 'peloton.api.v1alpha.job.stateless.svc.JobService:*'
+  - 'peloton.api.v1alpha.pod.svc.PodService:*'
+  - 'peloton.api.v0.host.svc.HostService:*'
+  - 'peloton.api.v0.respool.ResourcePoolService:*'
+  - 'peloton.api.v0.volume.svc.VolumeService:*'
+  - 'peloton.api.v1alpha.watch.svc.WatchService:*'

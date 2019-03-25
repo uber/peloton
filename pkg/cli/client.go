@@ -35,6 +35,7 @@ import (
 	hostmgr_svc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
+	"github.com/uber/peloton/pkg/cli/middleware"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/leader"
 )
@@ -63,6 +64,7 @@ type Client struct {
 func New(
 	discovery leader.Discovery,
 	timeout time.Duration,
+	authConfig *middleware.BasicAuthConfig,
 	debug bool) (*Client, error) {
 
 	jobmgrURL, err := discovery.GetAppURL(common.JobManagerRole)
@@ -82,6 +84,8 @@ func New(
 
 	t := grpc.NewTransport()
 
+	authMiddleware := middleware.NewBasicAuthOutboundMiddleware(authConfig)
+
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name: common.PelotonCLI,
 		Outbounds: yarpc.Outbounds{
@@ -95,6 +99,11 @@ func New(
 			common.PelotonHostManager: transport.Outbounds{
 				Unary: t.NewSingleOutbound(hostmgrURL.Host),
 			},
+		},
+		OutboundMiddleware: yarpc.OutboundMiddleware{
+			Unary:  authMiddleware,
+			Oneway: authMiddleware,
+			Stream: authMiddleware,
 		},
 	})
 

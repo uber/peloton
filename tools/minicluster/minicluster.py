@@ -358,6 +358,8 @@ def run_peloton_jobmgr(config):
             extra_env={
                 "MESOS_AGENT_WORK_DIR": config["work_dir"],
                 "JOB_TYPE": os.getenv("JOB_TYPE", "BATCH"),
+                'AUTH_TYPE': os.getenv('AUTH_TYPE', 'NOOP'),
+                'AUTH_CONFIG_FILE': os.getenv('AUTH_CONFIG_FILE'),
             },
         )
 

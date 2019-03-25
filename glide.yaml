@@ -97,3 +97,5 @@ import:
   repo: https://github.com/grpc/grpc-go
 - package: go.uber.org/thriftrw
   version: dev
+- package: golang.org/x/crypto
+  version: a1f597ede03a7bef967a422b5b3a5bd08805a01e

@@ -1,5 +1,5 @@
-hash: 3eb779132dc0cfb508c6145819e2b60893c4848c2b3e78fbb346a5ad23df7a92
-updated: 2019-01-03T16:16:27.696501-08:00
+hash: 7f194152b258c489aedea6bb3db85296fd2dab645830b9d76a74fbcdadce7d61
+updated: 2019-03-14T12:23:23.244602-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -8,7 +8,7 @@ imports:
 - name: github.com/alecthomas/units
   version: 2efee857e7cfd4f3d0138cc3cbb1b4966962b93a
 - name: github.com/apache/thrift
-  version: b2a4d4ae21c789b689dd162deb819665567f481c
+  version: 53dd39833a08ce33582e5ff31fa18bb4735d6731
   subpackages:
   - lib/go/thrift
 - name: github.com/beorn7/perks
@@ -158,7 +158,7 @@ imports:
 - name: github.com/stretchr/objx
   version: 1a9d0bb9f541897e62256577b352fdbc1fb4fd94
 - name: github.com/stretchr/testify
-  version: f35b8ab0b5a2cef36673838d662e249dd9c94686
+  version: ffdc059bfe9ce6a4e144ba849dbedead332c6053
   subpackages:
   - assert
   - mock
@@ -175,7 +175,7 @@ imports:
   subpackages:
   - internal/mapstructure
 - name: github.com/uber-go/tally
-  version: ff17f3c43c065c3c2991f571e740eee43ea3a14a
+  version: e9a67ec1839e1f6e5133dbcca2f57bec12fdeda2
   subpackages:
   - m3
   - m3/customtransports
@@ -215,10 +215,11 @@ imports:
   - push
   - tallypush
 - name: go.uber.org/thriftrw
-  version: e3ffd28d09442d072634364b25eb367abc888468
+  version: c8df431918b3a030ed15f475ef2247d235f081a8
   subpackages:
   - protocol
   - protocol/binary
+  - ptr
   - version
   - wire
 - name: go.uber.org/yarpc
@@ -264,6 +265,11 @@ imports:
   - internal/color
   - internal/exit
   - zapcore
+- name: golang.org/x/crypto
+  version: a1f597ede03a7bef967a422b5b3a5bd08805a01e
+  subpackages:
+  - bcrypt
+  - blowfish
 - name: golang.org/x/net
   version: 891ebc4b82d6e74f468c533b06f983c7be918a96
   subpackages:

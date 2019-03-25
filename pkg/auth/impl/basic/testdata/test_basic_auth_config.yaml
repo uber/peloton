@@ -1,0 +1,27 @@
+users:
+- username: user1
+  password: password1
+  role: role1
+- username: user2
+  password: password2
+  role: role2
+- role: role3
+
+roles:
+- role: role1
+  accept:
+  - 'peloton.api.v1alpha.job.stateless.svc.JobService:Get*'
+  - 'peloton.api.v1alpha.job.stateless.svc.JobService:List*'
+  - 'peloton.api.v1alpha.job.stateless.svc.JobService:Query*'
+  - 'peloton.api.v1alpha.pod.svc.PodService:Get*'
+  - 'peloton.api.v1alpha.pod.svc.PodService:Browse*'
+  - 'peloton.api.v1alpha.respool.svc.ResourcePoolService:*'
+  reject:
+  - 'peloton.api.v1alpha.job.stateless.svc.JobService:GetJobCache'
+  - 'peloton.api.v1alpha.pod.svc.PodService:GetPodCache'
+- role: role2
+  accept:
+  - '*'
+- role: role3
+  accept:
+  - 'peloton.api.v1alpha.job.stateless.svc.JobService:*'

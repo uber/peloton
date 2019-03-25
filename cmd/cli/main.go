@@ -25,7 +25,9 @@ import (
 
 	pc "github.com/uber/peloton/pkg/cli"
 	"github.com/uber/peloton/pkg/cli/config"
+	"github.com/uber/peloton/pkg/cli/middleware"
 	"github.com/uber/peloton/pkg/common"
+	common_config "github.com/uber/peloton/pkg/common/config"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/util"
 
@@ -96,6 +98,12 @@ var (
 		"zookeeper root path for peloton service discovery(set $ZK_ROOT to override)").
 		Default(common.DefaultLeaderElectionRoot).
 		Envar("ZK_ROOT").
+		String()
+
+	basicAuthConfigFile = app.Flag(
+		"basicAuthConfig",
+		"config file path containing username and password for basic auth feature").
+		Envar("BASIC_AUTH_CONFIG").
 		String()
 
 	timeout = app.Flag(
@@ -739,7 +747,16 @@ func main() {
 		app.FatalIfError(err, "Fail to initialize service discovery")
 	}
 
-	client, err := pc.New(discovery, *timeout, *jsonFormat)
+	var basicAuthConfigPtr *middleware.BasicAuthConfig
+	if len(*basicAuthConfigFile) != 0 {
+		var basicAuthConfig middleware.BasicAuthConfig
+		if err := common_config.Parse(&basicAuthConfig, *basicAuthConfigFile); err != nil {
+			app.FatalIfError(err, "Fail to load auth config file")
+		}
+		basicAuthConfigPtr = &basicAuthConfig
+	}
+
+	client, err := pc.New(discovery, *timeout, basicAuthConfigPtr, *jsonFormat)
 	if err != nil {
 		app.FatalIfError(err, "Fail to initialize client")
 	}

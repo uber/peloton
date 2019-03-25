@@ -22,6 +22,8 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
+	"github.com/uber/peloton/pkg/auth"
+	auth_impl "github.com/uber/peloton/pkg/auth/impl"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/background"
 	"github.com/uber/peloton/pkg/common/buildversion"
@@ -49,6 +51,7 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/updatesvc"
 	"github.com/uber/peloton/pkg/jobmgr/volumesvc"
 	"github.com/uber/peloton/pkg/jobmgr/watchsvc"
+	"github.com/uber/peloton/pkg/middleware/inbound"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 	"github.com/uber/peloton/pkg/storage/stores"
 
@@ -190,6 +193,20 @@ var (
 		Default("false").
 		Envar("JOB_RUNTIME_CALCULATION_VIA_CACHE").
 		Bool()
+
+	authType = app.Flag(
+		"auth-type",
+		"Define the auth type used, default to NOOP").
+		Default("NOOP").
+		Envar("AUTH_TYPE").
+		Enum("NOOP", "BASIC")
+
+	authConfigFile = app.Flag(
+		"auth-config-file",
+		"config file for the auth feature, which is specific to the auth type used").
+		Default("").
+		Envar("AUTH_CONFIG_FILE").
+		String()
 )
 
 func main() {
@@ -358,6 +375,20 @@ func main() {
 		},
 	}
 
+	securityManager, err := auth_impl.CreateNewSecurityManager(
+		auth.Type(*authType),
+		*authConfigFile,
+	)
+	if err != nil {
+		log.WithError(err).
+			Fatal("Could not enable security feature")
+	}
+	log.WithFields(log.Fields{
+		"auth_type":        *authType,
+		"auth_config_file": authConfigFile,
+	}).Info("Loaded auth config")
+
+	authInboundManager := inbound.NewAuthInboundMiddleware(securityManager)
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:      common.PelotonJobManager,
 		Inbounds:  inbounds,
@@ -365,6 +396,7 @@ func main() {
 		Metrics: yarpc.MetricsConfig{
 			Tally: rootScope,
 		},
+		InboundMiddleware: getInboundMiddleware(authInboundManager),
 	})
 
 	// Declare background works
@@ -590,4 +622,12 @@ func main() {
 		cfg.Metrics.RuntimeMetrics.CollectInterval)()
 
 	select {}
+}
+
+func getInboundMiddleware(middleware inbound.DispatcherInboundMiddleWare) yarpc.InboundMiddleware {
+	return yarpc.InboundMiddleware{
+		Unary:  middleware,
+		Oneway: middleware,
+		Stream: middleware,
+	}
 }
