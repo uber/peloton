@@ -26,6 +26,7 @@ func NewUpdateSpec(s *api.JobUpdateSettings) *stateless.UpdateSpec {
 		RollbackOnFailure:            s.GetRollbackOnFailure(),
 		MaxInstanceRetries:           uint32(s.GetMaxPerInstanceFailures()),
 		MaxTolerableInstanceFailures: uint32(s.GetMaxFailedInstances()),
+		StartPods:                    true,
 
 		// Peloton does not support pulsed updates, so if block if no pulse is
 		// set, then we start the update in a paused state such that it must
