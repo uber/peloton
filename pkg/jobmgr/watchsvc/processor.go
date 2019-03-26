@@ -79,6 +79,9 @@ type WatchProcessor interface {
 	// Returns the watch id and a new instance of TaskClient.
 	NewTaskClient(filter *watch.PodFilter) (string, *TaskClient, error)
 
+	// StopTaskClients stops all the task clients on leadership change.
+	StopTaskClients()
+
 	// StopTaskClient stops a task watch client. Returns "not-found" error
 	// if the corresponding watch client is not found.
 	StopTaskClient(watchID string) error
@@ -177,6 +180,16 @@ func (p *watchProcessor) NewTaskClient(filter *watch.PodFilter) (string, *TaskCl
 	return watchID, p.taskClients[watchID], nil
 }
 
+// StopTaskClients stops all the task clients on job manager leader change
+func (p *watchProcessor) StopTaskClients() {
+	p.Lock()
+	defer p.Unlock()
+
+	for watchID := range p.taskClients {
+		p.stopTaskClient(watchID, StopSignalCancel)
+	}
+}
+
 // StopTaskClient stops a task watch client. Returns "not-found" error
 // if the corresponding watch client is not found.
 func (p *watchProcessor) StopTaskClient(watchID string) error {
@@ -200,7 +213,7 @@ func (p *watchProcessor) stopTaskClient(
 
 	log.WithFields(log.Fields{
 		"watch_id": watchID,
-		"Signal":   Signal,
+		"signal":   Signal,
 	}).Info("stopping task watch client")
 
 	c.Signal <- Signal

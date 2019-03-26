@@ -15,11 +15,14 @@
 package main
 
 import (
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
+	watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/auroraschedulermanagerserver"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/readonlyschedulerserver"
 
@@ -37,6 +40,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
+	"go.uber.org/yarpc/transport/grpc"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -139,48 +143,37 @@ func main() {
 		cfg.GRPCPort, // dummy grpc port for aurora bridge
 		mux)
 
-	// all leader discovery metrics share a scope (and will be tagged
-	// with role={role})
-	discoveryScope := rootScope.SubScope("discovery")
-
-	// setup the discovery service to detect jobmgr leaders and
-	// configure the YARPC Peer dynamically
-	jobmgrTransport := rpc.NewTransport()
-	jobmgrPeerChooser, err := peer.NewSmartChooser(
-		cfg.Election,
-		discoveryScope,
-		common.JobManagerRole,
-		jobmgrTransport,
-	)
+	discovery, err := leader.NewZkServiceDiscovery(
+		cfg.Election.ZKServers, cfg.Election.Root)
 	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-			"role":  common.JobManagerRole,
-		}).Fatal("Could not create smart peer chooser")
+		log.WithError(err).
+			Fatal("Could not create zk service discovery")
 	}
-	defer jobmgrPeerChooser.Stop()
 
-	resmgrTransport := rpc.NewTransport()
-	resmgrPeerChooser, err := peer.NewSmartChooser(
-		cfg.Election,
-		discoveryScope,
-		common.ResourceManagerRole,
-		resmgrTransport,
-	)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-			"role":  common.ResourceManagerRole,
-		}).Fatal("Could not create smart peer chooser")
-	}
-	defer resmgrPeerChooser.Stop()
+	clientSendOption := grpc.ClientMaxSendMsgSize(cfg.EventPublisher.GRPCMsgSize)
+	serverSendOption := grpc.ServerMaxSendMsgSize(cfg.EventPublisher.GRPCMsgSize)
+	clientRecvOption := grpc.ClientMaxRecvMsgSize(cfg.EventPublisher.GRPCMsgSize)
+	serverRecvOption := grpc.ServerMaxRecvMsgSize(cfg.EventPublisher.GRPCMsgSize)
+
+	t := grpc.NewTransport(
+		clientSendOption,
+		serverSendOption,
+		clientRecvOption,
+		serverRecvOption)
 
 	outbounds := yarpc.Outbounds{
 		common.PelotonJobManager: transport.Outbounds{
-			Unary: jobmgrTransport.NewOutbound(jobmgrPeerChooser),
+			Unary: t.NewOutbound(
+				peer.NewPeerChooser(t, 1*time.Second, discovery.GetAppURL, common.JobManagerRole),
+			),
+			Stream: t.NewOutbound(
+				peer.NewPeerChooser(t, 1*time.Second, discovery.GetAppURL, common.JobManagerRole),
+			),
 		},
 		common.PelotonResourceManager: transport.Outbounds{
-			Unary: resmgrTransport.NewOutbound(resmgrPeerChooser),
+			Unary: t.NewOutbound(
+				peer.NewPeerChooser(t, 1*time.Second, discovery.GetAppURL, common.ResourceManagerRole),
+			),
 		},
 	}
 
@@ -202,15 +195,28 @@ func main() {
 	respoolClient := respool.NewResourceManagerYARPCClient(
 		dispatcher.ClientConfig(common.PelotonResourceManager))
 
+	watchClient := watchsvc.NewWatchServiceYARPCClient(
+		dispatcher.ClientConfig(common.PelotonJobManager))
+
 	// Start the dispatcher before we register the aurorabridge handler, since we'll
 	// need to make some outbound requests to get things setup.
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
 
+	eventPublisher := aurorabridge.NewEventPublisher(
+		cfg.EventPublisher.KafkaURL,
+		jobClient,
+		podClient,
+		watchClient,
+		&http.Client{},
+		cfg.EventPublisher.PublishEvents,
+	)
+
 	server, err := aurorabridge.NewServer(
 		cfg.HTTPPort,
 		cfg.Election,
+		eventPublisher,
 		common.PelotonAuroraBridgeRole,
 	)
 	if err != nil {

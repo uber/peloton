@@ -33,4 +33,5 @@ type Config struct {
 	Election       leader.ElectionConfig             `yaml:"election"`
 	RespoolLoader  aurorabridge.RespoolLoaderConfig  `yaml:"respool_loader"`
 	ServiceHandler aurorabridge.ServiceHandlerConfig `yaml:"service_handler"`
+	EventPublisher aurorabridge.EventPublisherConfig `yaml:"event_publisher"`
 }

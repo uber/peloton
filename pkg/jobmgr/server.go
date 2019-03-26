@@ -27,6 +27,7 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/task/event"
 	"github.com/uber/peloton/pkg/jobmgr/task/placement"
 	"github.com/uber/peloton/pkg/jobmgr/task/preemptor"
+	"github.com/uber/peloton/pkg/jobmgr/watchsvc"
 )
 
 // Server contains all structs necessary to run a jobmgr server.
@@ -46,6 +47,7 @@ type Server struct {
 	placementProcessor placement.Processor
 	statusUpdate       event.StatusUpdate
 	backgroundManager  background.Manager
+	watchProcessor     watchsvc.WatchProcessor
 }
 
 // NewServer creates a job manager Server instance.
@@ -58,6 +60,7 @@ func NewServer(
 	placementProcessor placement.Processor,
 	statusUpdate event.StatusUpdate,
 	backgroundManager background.Manager,
+	watchProcessor watchsvc.WatchProcessor,
 ) *Server {
 	return &Server{
 		ID:                 leader.NewID(httpPort, grpcPort),
@@ -69,6 +72,7 @@ func NewServer(
 		placementProcessor: placementProcessor,
 		statusUpdate:       statusUpdate,
 		backgroundManager:  backgroundManager,
+		watchProcessor:     watchProcessor,
 	}
 }
 
@@ -109,6 +113,7 @@ func (s *Server) LostLeadershipCallback() error {
 	s.backgroundManager.Stop()
 	s.goalstateDriver.Stop()
 	s.jobFactory.Stop()
+	s.watchProcessor.StopTaskClients()
 
 	return nil
 }
@@ -125,6 +130,7 @@ func (s *Server) ShutDownCallback() error {
 	s.backgroundManager.Stop()
 	s.goalstateDriver.Stop()
 	s.jobFactory.Stop()
+	s.watchProcessor.StopTaskClients()
 
 	return nil
 }

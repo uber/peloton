@@ -87,3 +87,16 @@ func (c *RespoolLoaderConfig) normalize() {
 		c.RetryInterval = 5 * time.Second
 	}
 }
+
+// EventPublisherConfig represents config for publishing task state change
+// events to kafks
+type EventPublisherConfig struct {
+	// KafkaURL represents the stream on which task state changes to publish
+	KafkaURL string `yaml:"kafka_url"`
+
+	// PublishEvents defines whether to publish task state changes to kafka
+	PublishEvents bool `yaml:"publish_events"`
+
+	// GRPCMsgSize defines the max payload size that can be send and recv
+	GRPCMsgSize int `yaml:"grpc_msg_size"`
+}

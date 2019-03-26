@@ -14,3 +14,9 @@ service_handler:
   thermos_executor:
     path: "/usr/share/aurora/bin/thermos_executor.pex"
     flags: "--preserve_env --nosetuid-health-checks --nosetuid --no-create-user"
+
+event_publisher:
+  # This is invalid value and must be set in production.yaml file
+  kafka_url: localhost:1111
+  publish_events: false
+  grpc_msg_size: 4194304

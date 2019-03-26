@@ -41,14 +41,20 @@ type Server struct {
 	role     string
 	zkClient store.Store
 	zkRoot   string
+
+	// event publisher is the back ground worker to publish pod state change
+	// to kafka. Event publisher ensures that only elected leader publishes
+	// the change
+	eventPublisher EventPublisher
 }
 
 // NewServer creates a aurorabridge Server instance.
 func NewServer(
 	httpPort int,
 	cfg leader.ElectionConfig,
-	role string,
-) (*Server, error) {
+	eventPublisher EventPublisher,
+	role string) (*Server, error) {
+
 	endpoint := leader.NewEndpoint(httpPort)
 	additionalEndpoints := make(map[string]leader.Endpoint)
 	additionalEndpoints["http"] = endpoint
@@ -59,10 +65,11 @@ func NewServer(
 	}
 
 	return &Server{
-		ID:       leader.NewServiceInstance(endpoint, additionalEndpoints),
-		role:     common.PelotonAuroraBridgeRole,
-		zkClient: zkClient,
-		zkRoot:   strings.TrimPrefix(path.Join(cfg.Root, role), "/"),
+		ID:             leader.NewServiceInstance(endpoint, additionalEndpoints),
+		role:           common.PelotonAuroraBridgeRole,
+		eventPublisher: eventPublisher,
+		zkClient:       zkClient,
+		zkRoot:         strings.TrimPrefix(path.Join(cfg.Root, role), "/"),
 	}, nil
 }
 
@@ -86,6 +93,9 @@ func (s *Server) GainedLeadershipCallback() error {
 		return errors.Wrap(err, "failed to create dummy node")
 	}
 
+	// start event publisher
+	s.eventPublisher.Start()
+
 	return nil
 }
 
@@ -100,12 +110,16 @@ func (s *Server) LostLeadershipCallback() error {
 	key := path.Join(s.zkRoot, _dummyNode)
 	s.zkClient.Delete(key)
 
+	// stop event publisher
+	s.eventPublisher.Stop()
+
 	return nil
 }
 
 // ShutDownCallback is the callback to shut down gracefully if possible
 func (s *Server) ShutDownCallback() error {
 	log.WithFields(log.Fields{"role": s.role}).Info("Quitting election")
+	s.eventPublisher.Stop()
 
 	return nil
 }

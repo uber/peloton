@@ -512,6 +512,7 @@ func main() {
 		placementProcessor,
 		statusUpdate,
 		backgroundManager,
+		watchProcessor,
 	)
 
 	candidate, err := leader.NewCandidate(

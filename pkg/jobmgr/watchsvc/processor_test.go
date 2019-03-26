@@ -115,6 +115,25 @@ func (suite *WatchProcessorTestSuite) TestTaskClient_StopNonexistentClient() {
 	suite.True(yarpcerrors.IsNotFound(err))
 }
 
+// Test stop all clients on losing leadership
+func (suite *WatchProcessorTestSuite) TestTaskClient_StopAllClients() {
+	watchID1, c, err := suite.processor.NewTaskClient(nil)
+	suite.NoError(err)
+	suite.NotEmpty(watchID1)
+	suite.NotNil(c)
+
+	watchID2, c, err := suite.processor.NewTaskClient(nil)
+	suite.NoError(err)
+	suite.NotEmpty(watchID2)
+	suite.NotNil(c)
+
+	suite.processor.StopTaskClients()
+
+	// all clients are alredy stopped
+	suite.Error(suite.processor.StopTaskClient(watchID1))
+	suite.Error(suite.processor.StopTaskClient(watchID2))
+}
+
 // TestTaskClient_MaxClientReached tests an error will be thrown when
 // creating a new client if max number of clients is reached.
 func (suite *WatchProcessorTestSuite) TestTaskClient_MaxClientReached() {
