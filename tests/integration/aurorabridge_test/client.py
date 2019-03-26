@@ -81,6 +81,20 @@ class Client(object):
             *args)
         return res.result.startJobUpdateResult
 
+    def abort_job_update(self, *args):
+        self._send(
+            AuroraSchedulerManager,
+            AuroraSchedulerManager.abortJobUpdate,
+            *args)
+        # abortJobUpdate has no result
+
+    def pause_job_update(self, *args):
+        self._send(
+            AuroraSchedulerManager,
+            AuroraSchedulerManager.pauseJobUpdate,
+            *args)
+        # pauseJobUpdate has no result
+
     def _send(self, service, method, *args):
         req = method.request(*args)
         res = requests.post(

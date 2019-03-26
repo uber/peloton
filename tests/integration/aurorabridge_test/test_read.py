@@ -51,7 +51,8 @@ def test__get_jobs__get_job_summary(client):
 
     # Ensure get_job_summary returns both jobs under role=test.
     res = client.get_job_summary(test_dc_labrat_key.role)
-    assert len(res.summaries) == 2
+    assert len(res.summaries) == 2, '{jobs}'.format(
+        jobs=[s.key.job for s in res.summaries])
 
     assert_keys_equal(
         [s.job.key for s in res.summaries],

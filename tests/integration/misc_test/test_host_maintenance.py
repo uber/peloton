@@ -203,6 +203,7 @@ def test__host_draining_resumes_on_resmgr_recovery(host_affinity_job,
 #                    maintenance queue is not polled. On hostmgr recovery, the
 #                    draining process should resume and host should transition
 #                    to DOWN
+@pytest.mark.skip(reason="flaky integration test")
 def test__host_draining_resumes_on_hostmgr_recovery(host_affinity_job,
                                                     maintenance,
                                                     resmgr,
