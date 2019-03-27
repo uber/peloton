@@ -426,18 +426,20 @@ func (h *serviceHandler) GetPod(
 		Status: podStatus,
 	}
 
-	events, err := h.podStore.GetPodEvents(ctx, jobID, instanceID)
+	taskEvents, err := h.podStore.GetPodEvents(ctx, jobID, instanceID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get current pod events")
 	}
 
+	podEvents := handlerutil.ConvertTaskEventsToPodEvents(taskEvents)
+
 	var prevPodInfos []*pbpod.PodInfo
-	if len(events) != 0 {
+	if len(podEvents) != 0 {
 		prevPodInfos, err = h.getPodInfoForAllPodRuns(
 			ctx,
 			jobID,
 			instanceID,
-			events[0].GetPrevPodId(),
+			podEvents[0].GetPrevPodId(),
 			req.GetStatusOnly(),
 		)
 		if err != nil {
@@ -473,16 +475,17 @@ func (h *serviceHandler) GetPodEvents(
 		return nil, err
 	}
 
-	events, err := h.podStore.GetPodEvents(
+	taskEvents, err := h.podStore.GetPodEvents(
 		ctx,
 		jobID,
 		instanceID,
 		req.GetPodId().GetValue())
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get pod events from store")
 	}
+
 	return &svc.GetPodEventsResponse{
-		Events: events,
+		Events: handlerutil.ConvertTaskEventsToPodEvents(taskEvents),
 	}, nil
 }
 
@@ -719,18 +722,18 @@ func (h *serviceHandler) getHostInfo(
 	instanceID uint32,
 	podID string,
 ) (hostname, podid, agentID string, err error) {
-	events, err := h.podStore.GetPodEvents(ctx, jobID, instanceID, podID)
+	taskEvents, err := h.podStore.GetPodEvents(ctx, jobID, instanceID, podID)
 	if err != nil {
 		return "", "", "", errors.Wrap(err, "failed to get pod events")
 	}
 
 	hostname = ""
 	agentID = ""
-	for _, event := range events {
-		podid = event.GetPodId().GetValue()
+	for _, event := range taskEvents {
+		podid = event.GetTaskId().GetValue()
 		if event.GetActualState() == jobmgrtask.GetDefaultTaskGoalState(pbjob.JobType_SERVICE).String() {
 			hostname = event.GetHostname()
-			agentID = event.GetAgentId()
+			agentID = event.GetAgentID()
 			break
 		}
 	}
@@ -812,40 +815,42 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 
 	pID := podID.GetValue()
 	for {
-		events, err := h.podStore.GetPodEvents(ctx, jobID, instanceID, pID)
+		taskEvents, err := h.podStore.GetPodEvents(ctx, jobID, instanceID, pID)
 		if err != nil {
 			return nil, err
 		}
 
-		if len(events) == 0 {
+		podEvents := handlerutil.ConvertTaskEventsToPodEvents(taskEvents)
+
+		if len(podEvents) == 0 {
 			break
 		}
 
-		prevPodID := events[0].GetPrevPodId().GetValue()
-		agentID := events[0].GetAgentId()
+		prevPodID := podEvents[0].GetPrevPodId().GetValue()
+		agentID := podEvents[0].GetAgentId()
 		podInfo := &pbpod.PodInfo{
 			Status: &pbpod.PodStatus{
 				State: handlerutil.ConvertTaskStateToPodState(
-					pbtask.TaskState(pbtask.TaskState_value[events[0].GetActualState()]),
+					pbtask.TaskState(pbtask.TaskState_value[podEvents[0].GetActualState()]),
 				),
 				DesiredState: pbpod.PodState(
-					pbpod.PodState_value[events[0].GetDesiredState()],
+					pbpod.PodState_value[podEvents[0].GetDesiredState()],
 				),
 				PodId: &v1alphapeloton.PodID{
-					Value: events[0].GetPodId().GetValue(),
+					Value: podEvents[0].GetPodId().GetValue(),
 				},
-				Host: events[0].GetHostname(),
+				Host: podEvents[0].GetHostname(),
 				AgentId: &mesos.AgentID{
 					Value: &agentID,
 				},
-				Version:        events[0].GetVersion(),
-				DesiredVersion: events[0].GetDesiredVersion(),
-				Message:        events[0].GetMessage(),
-				Reason:         events[0].GetReason(),
+				Version:        podEvents[0].GetVersion(),
+				DesiredVersion: podEvents[0].GetDesiredVersion(),
+				Message:        podEvents[0].GetMessage(),
+				Reason:         podEvents[0].GetReason(),
 				PrevPodId: &v1alphapeloton.PodID{
 					Value: prevPodID,
 				},
-				DesiredPodId: events[0].GetDesiredPodId(),
+				DesiredPodId: podEvents[0].GetDesiredPodId(),
 			},
 		}
 		podInfos = append(podInfos, podInfo)

@@ -1173,7 +1173,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismSucc
 						PodId:       podID,
 						Timestamp:   "2019-01-03T22:14:58Z",
 						Message:     "",
-						ActualState: task.TaskState_RUNNING.String(),
+						ActualState: pod.PodState_POD_STATE_RUNNING.String(),
 						Hostname:    "peloton-host-0",
 					},
 				},
@@ -1273,7 +1273,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 		runID          string
 		prevRunID      string
 		currentRun     bool
-		taskState      task.TaskState
+		taskState      pod.PodState
 		expectInResult bool
 	}{
 		{
@@ -1283,7 +1283,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 			runID:          "3",
 			prevRunID:      "2",
 			currentRun:     true,
-			taskState:      task.TaskState_RUNNING,
+			taskState:      pod.PodState_POD_STATE_RUNNING,
 			expectInResult: true,
 		},
 		{
@@ -1293,7 +1293,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 			runID:          "2",
 			prevRunID:      "1",
 			currentRun:     false,
-			taskState:      task.TaskState_RUNNING,
+			taskState:      pod.PodState_POD_STATE_RUNNING,
 			expectInResult: true,
 		},
 		{
@@ -1303,7 +1303,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 			runID:          "1",
 			prevRunID:      "",
 			currentRun:     false,
-			taskState:      task.TaskState_RUNNING,
+			taskState:      pod.PodState_POD_STATE_RUNNING,
 			expectInResult: false,
 		},
 		{
@@ -1313,7 +1313,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 			runID:          "3",
 			prevRunID:      "2",
 			currentRun:     true,
-			taskState:      task.TaskState_RUNNING,
+			taskState:      pod.PodState_POD_STATE_RUNNING,
 			expectInResult: true,
 		},
 		{
@@ -1323,7 +1323,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 			runID:          "2",
 			prevRunID:      "1",
 			currentRun:     false,
-			taskState:      task.TaskState_FAILED,
+			taskState:      pod.PodState_POD_STATE_FAILED,
 			expectInResult: false,
 		},
 		{
@@ -1333,7 +1333,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 			runID:          "1",
 			prevRunID:      "",
 			currentRun:     false,
-			taskState:      task.TaskState_RUNNING,
+			taskState:      pod.PodState_POD_STATE_RUNNING,
 			expectInResult: false,
 		},
 	}

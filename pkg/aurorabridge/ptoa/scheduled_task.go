@@ -81,7 +81,7 @@ func newScheduledTask(
 		return nil, fmt.Errorf("new ancestor id: %s", err)
 	}
 
-	auroraStatus, err := convertTaskStateStringToScheduleStatus(
+	auroraStatus, err := convertPodStateStringToScheduleStatus(
 		podEvents[0].GetActualState())
 	if err != nil {
 		return nil, err

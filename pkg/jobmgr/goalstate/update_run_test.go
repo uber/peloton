@@ -20,12 +20,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/uber/peloton/.gen/mesos/v1"
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	pbupdate "github.com/uber/peloton/.gen/peloton/api/v0/update"
-	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
@@ -1283,19 +1282,19 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddShrinkInstances() {
 			Return(nil)
 
 		mesosTaskID := fmt.Sprintf("%s-%d-%d", suite.jobID.GetValue(), instID, 50)
-		podID := &v1alphapeloton.PodID{
-			Value: mesosTaskID,
+		podID := &mesos_v1.TaskID{
+			Value: &mesosTaskID,
 		}
 
 		prevMesosTaskID := fmt.Sprintf("%s-%d-%d", suite.jobID.GetValue(), instID, 49)
-		prevPodID := &v1alphapeloton.PodID{
-			Value: prevMesosTaskID,
+		prevPodID := &mesos_v1.TaskID{
+			Value: &prevMesosTaskID,
 		}
 
-		var podEvents []*pod.PodEvent
-		podEvent := &pod.PodEvent{
-			PodId:     podID,
-			PrevPodId: prevPodID,
+		var podEvents []*pbtask.PodEvent
+		podEvent := &pbtask.PodEvent{
+			TaskId:     podID,
+			PrevTaskId: prevPodID,
 		}
 		podEvents = append(podEvents, podEvent)
 

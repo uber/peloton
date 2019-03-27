@@ -25,7 +25,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 )
 
@@ -149,7 +148,7 @@ type TaskStore interface {
 	// limit parameter manages number of pod events to return
 	// and optional runID parameter to fetch pod events only for that run if
 	// not provided or unparseable then return for all runs
-	GetPodEvents(ctx context.Context, jobID string, instanceID uint32, podID ...string) ([]*pod.PodEvent, error)
+	GetPodEvents(ctx context.Context, jobID string, instanceID uint32, podID ...string) ([]*task.PodEvent, error)
 	// DeleteTaskRuntime deletes the task runtime for a given job instance
 	DeleteTaskRuntime(ctx context.Context, id *peloton.JobID, instanceID uint32) error
 	// DeletePodEvents deletes the pod events for provided JobID, InstanceID and RunID in the range [fromRunID-toRunID)

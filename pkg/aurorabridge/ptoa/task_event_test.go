@@ -31,7 +31,7 @@ func TestNewTaskEvent(t *testing.T) {
 	podEvent := &pod.PodEvent{
 		Timestamp:   "2019-01-03T22:14:57Z",
 		Message:     message,
-		ActualState: task.TaskState_RUNNING.String(),
+		ActualState: pod.PodState_POD_STATE_RUNNING.String(),
 	}
 
 	taskEvent, err := NewTaskEvent(podEvent)

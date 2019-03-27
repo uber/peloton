@@ -906,6 +906,46 @@ func ConvertTaskInfosToPodInfos(taskInfos []*task.TaskInfo) []*pod.PodInfo {
 	return podInfos
 }
 
+// ConvertTaskEventsToPodEvents converts v0 task.PodEvents to v1alpha pod.PodEvents
+func ConvertTaskEventsToPodEvents(taskEvents []*task.PodEvent) []*pod.PodEvent {
+	var result []*pod.PodEvent
+	for _, e := range taskEvents {
+		podID := e.GetTaskId().GetValue()
+		prevPodID := e.GetPrevTaskId().GetValue()
+		desiredPodID := e.GetDesriedTaskId().GetValue()
+		entityVersion := jobutil.GetPodEntityVersion(e.GetConfigVersion())
+
+		desiredEntityVersion := jobutil.GetPodEntityVersion(e.GetDesiredConfigVersion())
+
+		result = append(result, &pod.PodEvent{
+			PodId: &v1alphapeloton.PodID{
+				Value: podID,
+			},
+			ActualState: ConvertTaskStateToPodState(
+				task.TaskState(task.TaskState_value[e.GetActualState()]),
+			).String(),
+			DesiredState: ConvertTaskStateToPodState(
+				task.TaskState(task.TaskState_value[e.GetGoalState()]),
+			).String(),
+			Timestamp:      e.GetTimestamp(),
+			Version:        entityVersion,
+			DesiredVersion: desiredEntityVersion,
+			AgentId:        e.GetAgentID(),
+			Hostname:       e.GetHostname(),
+			Message:        e.GetMessage(),
+			Reason:         e.GetReason(),
+			PrevPodId: &v1alphapeloton.PodID{
+				Value: prevPodID,
+			},
+			Healthy: e.GetHealthy(),
+			DesiredPodId: &v1alphapeloton.PodID{
+				Value: desiredPodID,
+			},
+		})
+	}
+	return result
+}
+
 func convertV1AlphaPaginationSpecToV0PaginationSpec(
 	pagination *query.PaginationSpec,
 ) *pelotonv0query.PaginationSpec {

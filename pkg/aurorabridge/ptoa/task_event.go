@@ -31,7 +31,7 @@ func NewTaskEvent(e *pod.PodEvent) (*api.TaskEvent, error) {
 	if err != nil {
 		return nil, err
 	}
-	s, err := convertTaskStateStringToScheduleStatus(e.GetActualState())
+	s, err := convertPodStateStringToScheduleStatus(e.GetActualState())
 	if err != nil {
 		return nil, err
 	}

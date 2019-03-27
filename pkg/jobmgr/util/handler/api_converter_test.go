@@ -1483,6 +1483,68 @@ func (suite *apiConverterTestSuite) TestConvertV1InstanceRangeToV0() {
 	suite.Equal(v0Range[0].To, to)
 }
 
+func (suite *apiConverterTestSuite) TestConvertTaskEventsToPodEvents() {
+	taskState := "RUNNING"
+	desiredTaskState := "SUCCEEDED"
+	podState := "POD_STATE_RUNNING"
+	desiredPodState := "POD_STATE_SUCCEEDED"
+
+	taskEvents := []*task.PodEvent{
+		{
+			TaskId: &mesos.TaskID{
+				Value: &testMesosTaskID,
+			},
+			DesriedTaskId: &mesos.TaskID{
+				Value: &testMesosTaskID,
+			},
+			ConfigVersion:        1,
+			DesiredConfigVersion: 1,
+			AgentID:              testAgentID,
+			Hostname:             "test-host",
+			Message:              "test-message",
+			Reason:               "test-reason",
+			Healthy:              "Healthy",
+			PrevTaskId: &mesos.TaskID{
+				Value: &testPrevMesosTaskID,
+			},
+			ActualState: taskState,
+			GoalState:   desiredTaskState,
+			Timestamp:   "now",
+		},
+	}
+
+	expectedPodEvents := []*pod.PodEvent{
+		{
+			PodId: &v1alphapeloton.PodID{
+				Value: testMesosTaskID,
+			},
+			DesiredPodId: &v1alphapeloton.PodID{
+				Value: testMesosTaskID,
+			},
+			Version: &v1alphapeloton.EntityVersion{
+				Value: "1",
+			},
+			DesiredVersion: &v1alphapeloton.EntityVersion{
+				Value: "1",
+			},
+			AgentId:  testAgentID,
+			Hostname: "test-host",
+			Message:  "test-message",
+			Reason:   "test-reason",
+			Healthy:  "Healthy",
+			PrevPodId: &v1alphapeloton.PodID{
+				Value: testPrevMesosTaskID,
+			},
+			ActualState:  podState,
+			DesiredState: desiredPodState,
+			Timestamp:    "now",
+		},
+	}
+
+	podEvents := ConvertTaskEventsToPodEvents(taskEvents)
+	suite.Equal(expectedPodEvents, podEvents)
+}
+
 func TestAPIConverter(t *testing.T) {
 	suite.Run(t, new(apiConverterTestSuite))
 }

@@ -38,7 +38,7 @@ import (
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	goalstatemocks "github.com/uber/peloton/pkg/jobmgr/goalstate/mocks"
 	logmanagermocks "github.com/uber/peloton/pkg/jobmgr/logmanager/mocks"
-	"github.com/uber/peloton/pkg/jobmgr/util/job"
+	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -1212,17 +1212,19 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 			Kind: pbtask.LabelConstraint_TASK,
 		},
 	}
-	events := []*pod.PodEvent{
+	mesosTaskID := testPodID
+	prevMesosTaskID := testPrevPodID
+	events := []*pbtask.PodEvent{
 		{
-			PodId: &v1alphapeloton.PodID{
-				Value: testPodID,
+			TaskId: &mesos.TaskID{
+				Value: &mesosTaskID,
 			},
-			ActualState:  "RUNNING",
-			DesiredState: "RUNNING",
-			PrevPodId: &v1alphapeloton.PodID{
-				Value: testPrevPodID,
+			ActualState: "RUNNING",
+			GoalState:   "RUNNING",
+			PrevTaskId: &mesos.TaskID{
+				Value: &prevMesosTaskID,
 			},
-			Version: job.GetPodEntityVersion(configVersion),
+			ConfigVersion: configVersion,
 		},
 	}
 
@@ -1410,15 +1412,17 @@ func (suite *podHandlerTestSuite) TestGetPodFailureToGetPreviousPodEvents() {
 	}
 	pelotonJob := &peloton.JobID{Value: testJobID}
 	var configVersion uint64 = 1
-	events := []*pod.PodEvent{
+	mesosTaskID := testPodID
+	prevMesosTaskID := testPrevPodID
+	events := []*pbtask.PodEvent{
 		{
-			PodId: &v1alphapeloton.PodID{
-				Value: testPodID,
+			TaskId: &mesos.TaskID{
+				Value: &mesosTaskID,
 			},
-			ActualState:  "RUNNING",
-			DesiredState: "RUNNING",
-			PrevPodId: &v1alphapeloton.PodID{
-				Value: testPrevPodID,
+			ActualState: "RUNNING",
+			GoalState:   "RUNNING",
+			PrevTaskId: &mesos.TaskID{
+				Value: &prevMesosTaskID,
 			},
 		},
 	}
@@ -1474,20 +1478,19 @@ func (suite *podHandlerTestSuite) TestGetPodEvents() {
 		},
 	}
 
-	events := []*pod.PodEvent{
+	mesosTaskID := testPodID
+	prevMesosTaskID := "0"
+	events := []*pbtask.PodEvent{
 		{
-			PodId: &v1alphapeloton.PodID{
-				Value: testPodID,
+			TaskId: &mesos.TaskID{
+				Value: &mesosTaskID,
 			},
-			ActualState:  "STARTING",
-			DesiredState: "RUNNING",
-			PrevPodId: &v1alphapeloton.PodID{
-				Value: "0",
+			ActualState: "STARTING",
+			GoalState:   "RUNNING",
+			PrevTaskId: &mesos.TaskID{
+				Value: &prevMesosTaskID,
 			},
 		},
-	}
-	response := &svc.GetPodEventsResponse{
-		Events: events,
 	}
 
 	suite.podStore.EXPECT().
@@ -1495,7 +1498,7 @@ func (suite *podHandlerTestSuite) TestGetPodEvents() {
 		Return(events, nil)
 	response, err := suite.handler.GetPodEvents(context.Background(), request)
 	suite.NoError(err)
-	suite.Equal(events, response.GetEvents())
+	suite.Equal(handlerutil.ConvertTaskEventsToPodEvents(events), response.GetEvents())
 }
 
 // TestGetPodEventsPodNameParseError tests PodName parse error
@@ -1543,14 +1546,15 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxSuccess() {
 			Pid: &agentPID,
 		},
 	}
-	events := []*pod.PodEvent{
+	mesosTaskID := testPodID
+	events := []*pbtask.PodEvent{
 		{
-			PodId: &v1alphapeloton.PodID{
-				Value: testPodID,
+			TaskId: &mesos.TaskID{
+				Value: &mesosTaskID,
 			},
 			ActualState: pbtask.TaskState_RUNNING.String(),
 			Hostname:    hostname,
-			AgentId:     agentID,
+			AgentID:     agentID,
 		},
 	}
 	logPaths := []string{}
@@ -1648,14 +1652,15 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetFrameworkIDFailure() {
 		},
 	}
 
-	events := []*pod.PodEvent{
+	mesosTaskID := testPodID
+	events := []*pbtask.PodEvent{
 		{
-			PodId: &v1alphapeloton.PodID{
-				Value: testPodID,
+			TaskId: &mesos.TaskID{
+				Value: &mesosTaskID,
 			},
 			ActualState: pbtask.TaskState_RUNNING.String(),
 			Hostname:    "hostname",
-			AgentId:     "agentID",
+			AgentID:     "agentID",
 		},
 	}
 
@@ -1703,14 +1708,15 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxListSandboxFilesPathsFailu
 	frameworkID := "testFramework"
 	agentID := "agentID"
 	agents := []*mesosmaster.Response_GetAgents_Agent{}
-	events := []*pod.PodEvent{
+	mesosTaskID := testPodID
+	events := []*pbtask.PodEvent{
 		{
-			PodId: &v1alphapeloton.PodID{
-				Value: testPodID,
+			TaskId: &mesos.TaskID{
+				Value: &mesosTaskID,
 			},
 			ActualState: pbtask.TaskState_RUNNING.String(),
 			Hostname:    hostname,
-			AgentId:     agentID,
+			AgentID:     agentID,
 		},
 	}
 
@@ -1767,14 +1773,15 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetMesosMasterHostPortFail
 			Pid: &agentPID,
 		},
 	}
-	events := []*pod.PodEvent{
+	mesosTaskID := testPodID
+	events := []*pbtask.PodEvent{
 		{
-			PodId: &v1alphapeloton.PodID{
-				Value: testPodID,
+			TaskId: &mesos.TaskID{
+				Value: &mesosTaskID,
 			},
 			ActualState: pbtask.TaskState_RUNNING.String(),
 			Hostname:    hostname,
-			AgentId:     agentID,
+			AgentID:     agentID,
 		},
 	}
 	logPaths := []string{}

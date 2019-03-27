@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strconv"
 	"time"
 
 	mesosv1 "github.com/uber/peloton/.gen/mesos/v1"
@@ -27,7 +26,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/query"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -42,8 +40,7 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/task/activermtask"
 	"github.com/uber/peloton/pkg/jobmgr/task/launcher"
 	goalstateutil "github.com/uber/peloton/pkg/jobmgr/util/goalstate"
-	"github.com/uber/peloton/pkg/jobmgr/util/handler"
-	jobutil "github.com/uber/peloton/pkg/jobmgr/util/job"
+	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 	"github.com/uber/peloton/pkg/storage"
 
@@ -121,7 +118,7 @@ func (m *serviceHandler) Get(
 	body *task.GetRequest) (*task.GetResponse, error) {
 
 	m.metrics.TaskAPIGet.Inc(1)
-	jobConfig, err := handler.GetJobConfigWithoutFillingCache(
+	jobConfig, err := handlerutil.GetJobConfigWithoutFillingCache(
 		ctx, body.JobId, m.jobFactory, m.jobStore)
 	if err != nil {
 		log.WithField("job_id", body.JobId.Value).
@@ -189,69 +186,35 @@ func (m *serviceHandler) GetPodEvents(
 		limit = 10
 	}
 
-	podID := body.GetRunId()
+	mesosTaskID := body.GetRunId()
 	var result []*task.PodEvent
 	for i := uint64(0); i < limit; i++ {
-		podEvents, err := m.taskStore.GetPodEvents(
+		taskEvents, err := m.taskStore.GetPodEvents(
 			ctx,
 			body.GetJobId().GetValue(),
 			body.GetInstanceId(),
-			podID)
+			mesosTaskID)
 		if err != nil {
-			return nil, errors.Wrap(err, "error getting pod events from store")
+			return nil, errors.Wrap(err, "error getting task events from store")
 		}
 
-		var prevPodID string
-		for _, e := range podEvents {
-			podID := e.GetPodId().GetValue()
-			prevPodID = e.GetPrevPodId().GetValue()
-			desiredPodID := e.GetDesiredPodId().GetValue()
-			jobVersion, err := strconv.ParseInt(e.GetVersion().GetValue(), 10, 64)
-			if err != nil {
-				return nil, errors.Wrap(err, "error parsing job version")
-			}
-
-			desiredVersion, err := strconv.ParseInt(e.GetDesiredVersion().GetValue(), 10, 64)
-			if err != nil {
-				return nil, errors.Wrap(err, "error parsing desired job version")
-			}
-
-			result = append(result, &task.PodEvent{
-				TaskId: &mesosv1.TaskID{
-					Value: &podID,
-				},
-				ActualState:          e.GetActualState(),
-				GoalState:            e.GetDesiredState(),
-				Timestamp:            e.GetTimestamp(),
-				ConfigVersion:        uint64(jobVersion),
-				DesiredConfigVersion: uint64(desiredVersion),
-				AgentID:              e.GetAgentId(),
-				Hostname:             e.GetHostname(),
-				Message:              e.GetMessage(),
-				Reason:               e.GetReason(),
-				PrevTaskId: &mesosv1.TaskID{
-					Value: &prevPodID,
-				},
-				Healthy: e.GetHealthy(),
-				DesriedTaskId: &mesosv1.TaskID{
-					Value: &desiredPodID,
-				},
-			})
-		}
-
-		if len(prevPodID) == 0 {
+		if len(taskEvents) == 0 {
 			break
 		}
 
-		prevRunID, err := util.ParseRunID(prevPodID)
+		result = append(result, taskEvents...)
+		prevMesosTaskID := taskEvents[0].GetPrevTaskId().GetValue()
+
+		prevRunID, err := util.ParseRunID(prevMesosTaskID)
 		if err != nil {
-			return nil, errors.Wrap(err, "error parsing prevPodID")
+			return nil, errors.Wrap(err, "error parsing prevMesosTaskID")
 		}
 
 		if prevRunID == uint64(0) {
 			break
 		}
-		podID = prevPodID
+
+		mesosTaskID = prevMesosTaskID
 	}
 
 	return &task.GetPodEventsResponse{
@@ -883,7 +846,7 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 	m.metrics.TaskAPIQuery.Inc(1)
 	callStart := time.Now()
 
-	_, err := handler.GetJobRuntimeWithoutFillingCache(
+	_, err := handlerutil.GetJobRuntimeWithoutFillingCache(
 		ctx, req.JobId, m.jobFactory, m.jobStore)
 	if err != nil {
 		log.WithError(err).
@@ -1086,7 +1049,7 @@ func (m *serviceHandler) BrowseSandbox(
 	log.WithField("req", req).Debug("TaskSVC.BrowseSandbox called")
 	m.metrics.TaskAPIListLogs.Inc(1)
 
-	jobConfig, err := handler.GetJobConfigWithoutFillingCache(
+	jobConfig, err := handlerutil.GetJobConfigWithoutFillingCache(
 		ctx, req.JobId, m.jobFactory, m.jobStore)
 	if err != nil {
 		log.WithField("job_id", req.JobId.Value).
@@ -1246,21 +1209,18 @@ func (m *serviceHandler) getPodEvents(
 	runID string) ([]*task.PodEvent, error) {
 	var events []*task.PodEvent
 	for {
-		podEvents, err := m.taskStore.GetPodEvents(ctx, id.GetValue(), instanceID, runID)
+		taskEvents, err := m.taskStore.GetPodEvents(ctx, id.GetValue(), instanceID, runID)
 		if err != nil {
 			return nil, err
 		}
-		if len(podEvents) == 0 {
+
+		if len(taskEvents) == 0 {
 			break
 		}
 
-		taskEvents, err := convertPodEventsFormat(podEvents)
-		if err != nil {
-			return nil, err
-		}
 		events = append(events, taskEvents...)
 
-		prevRunID, err := util.ParseRunID(podEvents[0].GetPrevPodId().GetValue())
+		prevRunID, err := util.ParseRunID(taskEvents[0].GetPrevTaskId().GetValue())
 		if err != nil {
 			return nil, err
 		}
@@ -1268,7 +1228,7 @@ func (m *serviceHandler) getPodEvents(
 		if prevRunID == 0 {
 			break
 		}
-		runID = podEvents[0].GetPrevPodId().GetValue()
+		runID = taskEvents[0].GetPrevTaskId().GetValue()
 	}
 
 	return events, nil
@@ -1321,48 +1281,4 @@ func convertTaskMapToSlice(taskMaps map[uint32]*task.TaskInfo) []*task.TaskInfo 
 		result = append(result, taskInfo)
 	}
 	return result
-}
-
-func convertPodEventsFormat(podEvents []*pod.PodEvent) ([]*task.PodEvent, error) {
-	var result []*task.PodEvent
-	for _, e := range podEvents {
-		podID := e.GetPodId().GetValue()
-		prevPodID := e.GetPrevPodId().GetValue()
-		desiredPodID := e.GetDesiredPodId().GetValue()
-		configVersion, err := jobutil.ParsePodEntityVersion(e.GetVersion())
-		if err != nil {
-			log.WithError(err).
-				Info("Error parsing config version")
-			return nil, err
-		}
-		desiredConfigVersion, err := jobutil.ParsePodEntityVersion(e.GetDesiredVersion())
-		if err != nil {
-			log.WithError(err).
-				Info("Error parsing desired config version")
-			return nil, err
-		}
-
-		result = append(result, &task.PodEvent{
-			TaskId: &mesosv1.TaskID{
-				Value: &podID,
-			},
-			ActualState:          e.GetActualState(),
-			GoalState:            e.GetDesiredState(),
-			Timestamp:            e.GetTimestamp(),
-			ConfigVersion:        uint64(configVersion),
-			DesiredConfigVersion: uint64(desiredConfigVersion),
-			AgentID:              e.GetAgentId(),
-			Hostname:             e.GetHostname(),
-			Message:              e.GetMessage(),
-			Reason:               e.GetReason(),
-			PrevTaskId: &mesosv1.TaskID{
-				Value: &prevPodID,
-			},
-			Healthy: e.GetHealthy(),
-			DesriedTaskId: &mesosv1.TaskID{
-				Value: &desiredPodID,
-			},
-		})
-	}
-	return result, nil
 }

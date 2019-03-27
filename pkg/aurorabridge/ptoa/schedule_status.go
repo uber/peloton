@@ -19,11 +19,8 @@ import (
 )
 
 import (
-	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
-
-	"github.com/uber/peloton/pkg/jobmgr/util/handler"
 )
 
 // NewScheduleStatus converts Peloton v1 PodState enum
@@ -89,15 +86,14 @@ func NewScheduleStatus(s pod.PodState) (*api.ScheduleStatus, error) {
 	}
 }
 
-// convertTaskStateStringToScheduleStatus converts Peloton v0 TaskState enum
+// convertPodStateStringToScheduleStatus converts Peloton v0 TaskState enum
 // string to Aurora ScheduleStatus enum, used by conversion from Peloton
 // PodEvent to Aurora TaskEvent.
-func convertTaskStateStringToScheduleStatus(s string) (*api.ScheduleStatus, error) {
-	v, ok := task.TaskState_value[s]
+func convertPodStateStringToScheduleStatus(s string) (*api.ScheduleStatus, error) {
+	v, ok := pod.PodState_value[s]
 	if !ok {
 		return nil, fmt.Errorf("unknown task state: %q", s)
 	}
-	t := task.TaskState(v)
-	p := handler.ConvertTaskStateToPodState(t)
+	p := pod.PodState(v)
 	return NewScheduleStatus(p)
 }

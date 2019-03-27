@@ -40,8 +40,6 @@ import (
 	activermtaskmocks "github.com/uber/peloton/pkg/jobmgr/task/activermtask/mocks"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
 
-	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/pkg/common/util"
 	cachedtest "github.com/uber/peloton/pkg/jobmgr/cached/test"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
@@ -190,23 +188,21 @@ func (suite *TaskHandlerTestSuite) TestGetTasks_Batch_Job() {
 	taskInfoMap := make(map[uint32]*task.TaskInfo)
 	taskInfoMap[instanceID] = lastTaskInfo
 	suite.testJobConfig.Type = job.JobType_BATCH
+	mesosTaskID := testTaskID
+	prevMesosTaskID := testPrevTaskID
 
-	var events []*pod.PodEvent
-	event := &pod.PodEvent{
-		PodId: &v1alphapeloton.PodID{
-			Value: testTaskID,
+	var events []*task.PodEvent
+	event := &task.PodEvent{
+		TaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
 		},
-		PrevPodId: &v1alphapeloton.PodID{
-			Value: testPrevTaskID,
+		PrevTaskId: &mesos.TaskID{
+			Value: &prevMesosTaskID,
 		},
-		Version: &v1alphapeloton.EntityVersion{
-			Value: "1",
-		},
-		DesiredVersion: &v1alphapeloton.EntityVersion{
-			Value: "1",
-		},
-		ActualState:  task.TaskState_FAILED.String(),
-		DesiredState: task.TaskState_SUCCEEDED.String(),
+		ConfigVersion:        1,
+		DesiredConfigVersion: 1,
+		ActualState:          task.TaskState_FAILED.String(),
+		GoalState:            task.TaskState_SUCCEEDED.String(),
 	}
 	events = append(events, event)
 
@@ -243,20 +239,21 @@ func (suite *TaskHandlerTestSuite) TestGetTasks_Service_Job() {
 	taskInfoMap := make(map[uint32]*task.TaskInfo)
 	taskInfoMap[instanceID] = lastTaskInfo
 	suite.testJobConfig.Type = job.JobType_SERVICE
+	mesosTaskID := testTaskID
+	prevMesosTaskID := testPrevTaskID
 
-	var events []*pod.PodEvent
-	event := &pod.PodEvent{
-		PodId: &v1alphapeloton.PodID{
-			Value: testTaskID,
+	var events []*task.PodEvent
+	event := &task.PodEvent{
+		TaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
 		},
-		Version: &v1alphapeloton.EntityVersion{
-			Value: "1",
+		PrevTaskId: &mesos.TaskID{
+			Value: &prevMesosTaskID,
 		},
-		DesiredVersion: &v1alphapeloton.EntityVersion{
-			Value: "1",
-		},
-		ActualState:  task.TaskState_RUNNING.String(),
-		DesiredState: task.TaskState_SUCCEEDED.String(),
+		ConfigVersion:        1,
+		DesiredConfigVersion: 1,
+		ActualState:          task.TaskState_RUNNING.String(),
+		GoalState:            task.TaskState_SUCCEEDED.String(),
 	}
 	events = append(events, event)
 
@@ -1247,22 +1244,20 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsWithRunID() {
 		RunId:      testRunID,
 	}
 
+	mesosTaskID := testRunID
 	run, err := util.ParseRunID(testRunID)
 	suite.NoError(err)
+	prevMesosTaskID := fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1)
 
-	events := []*pod.PodEvent{
+	events := []*task.PodEvent{
 		{
-			PodId: &v1alphapeloton.PodID{
-				Value: testRunID,
+			TaskId: &mesos.TaskID{
+				Value: &mesosTaskID,
 			},
-			Version: &v1alphapeloton.EntityVersion{
-				Value: "1",
-			},
-			DesiredVersion: &v1alphapeloton.EntityVersion{
-				Value: "1",
-			},
-			PrevPodId: &v1alphapeloton.PodID{
-				Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
+			ConfigVersion:        1,
+			DesiredConfigVersion: 1,
+			PrevTaskId: &mesos.TaskID{
+				Value: &prevMesosTaskID,
 			},
 		},
 	}
@@ -1285,46 +1280,40 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsForAllRuns() {
 
 	run, err := util.ParseRunID(testRunID)
 	suite.NoError(err)
-	prevRunID := fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1)
+	mesosTaskID := testRunID
+	prevMesosTask1 := fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1)
+	prevMesosTask2 := fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, 0)
 
 	tt := []struct {
 		RunID  string
-		Events []*pod.PodEvent
+		Events []*task.PodEvent
 	}{
 		{
 			RunID: "",
-			Events: []*pod.PodEvent{
+			Events: []*task.PodEvent{
 				{
-					PodId: &v1alphapeloton.PodID{
-						Value: testRunID,
+					TaskId: &mesos.TaskID{
+						Value: &mesosTaskID,
 					},
-					Version: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					DesiredVersion: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					PrevPodId: &v1alphapeloton.PodID{
-						Value: prevRunID,
+					ConfigVersion:        1,
+					DesiredConfigVersion: 1,
+					PrevTaskId: &mesos.TaskID{
+						Value: &prevMesosTask1,
 					},
 				},
 			},
 		},
 		{
-			RunID: prevRunID,
-			Events: []*pod.PodEvent{
+			RunID: prevMesosTask1,
+			Events: []*task.PodEvent{
 				{
-					PodId: &v1alphapeloton.PodID{
-						Value: prevRunID,
+					TaskId: &mesos.TaskID{
+						Value: &prevMesosTask1,
 					},
-					Version: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					DesiredVersion: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					PrevPodId: &v1alphapeloton.PodID{
-						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, 0),
+					ConfigVersion:        1,
+					DesiredConfigVersion: 1,
+					PrevTaskId: &mesos.TaskID{
+						Value: &prevMesosTask2,
 					},
 				},
 			},
@@ -1351,67 +1340,58 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsFiveRunsLimitToThree() {
 		InstanceId: testInstanceCount,
 		Limit:      3,
 	}
-
+	mesosTaskID := testRunID
 	run, err := util.ParseRunID(testRunID)
 	suite.NoError(err)
+	prevMesosTaskID1 := fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1)
+	prevMesosTaskID2 := fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2)
+	prevMesosTaskID3 := fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-3)
 
 	tt := []struct {
 		RunID  string
-		Events []*pod.PodEvent
+		Events []*task.PodEvent
 	}{
 		{
 			RunID: "",
-			Events: []*pod.PodEvent{
+			Events: []*task.PodEvent{
 				{
-					PodId: &v1alphapeloton.PodID{
-						Value: testRunID,
+					TaskId: &mesos.TaskID{
+						Value: &mesosTaskID,
 					},
-					Version: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					DesiredVersion: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					PrevPodId: &v1alphapeloton.PodID{
-						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
+					ConfigVersion:        1,
+					DesiredConfigVersion: 1,
+					PrevTaskId: &mesos.TaskID{
+						Value: &prevMesosTaskID1,
 					},
 				},
 			},
 		},
 		{
-			RunID: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
-			Events: []*pod.PodEvent{
+			RunID: prevMesosTaskID1,
+			Events: []*task.PodEvent{
 				{
-					PodId: &v1alphapeloton.PodID{
-						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
+					TaskId: &mesos.TaskID{
+						Value: &prevMesosTaskID1,
 					},
-					Version: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					DesiredVersion: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					PrevPodId: &v1alphapeloton.PodID{
-						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
+					ConfigVersion:        1,
+					DesiredConfigVersion: 1,
+					PrevTaskId: &mesos.TaskID{
+						Value: &prevMesosTaskID2,
 					},
 				},
 			},
 		},
 		{
-			RunID: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
-			Events: []*pod.PodEvent{
+			RunID: prevMesosTaskID2,
+			Events: []*task.PodEvent{
 				{
-					PodId: &v1alphapeloton.PodID{
-						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
+					TaskId: &mesos.TaskID{
+						Value: &prevMesosTaskID2,
 					},
-					Version: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					DesiredVersion: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					PrevPodId: &v1alphapeloton.PodID{
-						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-3),
+					ConfigVersion:        1,
+					DesiredConfigVersion: 1,
+					PrevTaskId: &mesos.TaskID{
+						Value: &prevMesosTaskID3,
 					},
 				},
 			},
@@ -1439,66 +1419,58 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsThreeRunsLimitToFive() {
 		Limit:      10,
 	}
 
+	mesosTaskID := testRunID
 	run, err := util.ParseRunID(testRunID)
 	suite.NoError(err)
+	prevMesosTaskID1 := fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1)
+	prevMesosTaskID2 := fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2)
+	prevMesosTaskID3 := fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, 0)
 
 	tt := []struct {
 		RunID  string
-		Events []*pod.PodEvent
+		Events []*task.PodEvent
 	}{
 		{
 			RunID: "",
-			Events: []*pod.PodEvent{
+			Events: []*task.PodEvent{
 				{
-					PodId: &v1alphapeloton.PodID{
-						Value: testRunID,
+					TaskId: &mesos.TaskID{
+						Value: &mesosTaskID,
 					},
-					Version: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					DesiredVersion: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					PrevPodId: &v1alphapeloton.PodID{
-						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
+					ConfigVersion:        1,
+					DesiredConfigVersion: 1,
+					PrevTaskId: &mesos.TaskID{
+						Value: &prevMesosTaskID1,
 					},
 				},
 			},
 		},
 		{
-			RunID: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
-			Events: []*pod.PodEvent{
+			RunID: prevMesosTaskID1,
+			Events: []*task.PodEvent{
 				{
-					PodId: &v1alphapeloton.PodID{
-						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-1),
+					TaskId: &mesos.TaskID{
+						Value: &prevMesosTaskID1,
 					},
-					Version: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					DesiredVersion: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					PrevPodId: &v1alphapeloton.PodID{
-						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
+					ConfigVersion:        1,
+					DesiredConfigVersion: 1,
+					PrevTaskId: &mesos.TaskID{
+						Value: &prevMesosTaskID2,
 					},
 				},
 			},
 		},
 		{
-			RunID: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
-			Events: []*pod.PodEvent{
+			RunID: prevMesosTaskID2,
+			Events: []*task.PodEvent{
 				{
-					PodId: &v1alphapeloton.PodID{
-						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, run-2),
+					TaskId: &mesos.TaskID{
+						Value: &prevMesosTaskID2,
 					},
-					Version: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					DesiredVersion: &v1alphapeloton.EntityVersion{
-						Value: "1",
-					},
-					PrevPodId: &v1alphapeloton.PodID{
-						Value: fmt.Sprintf("%s-%d-%d", testJob, testInstanceCount, 0),
+					ConfigVersion:        1,
+					DesiredConfigVersion: 1,
+					PrevTaskId: &mesos.TaskID{
+						Value: &prevMesosTaskID3,
 					},
 				},
 			},
@@ -1543,10 +1515,11 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsJobVersionParseError() {
 		RunId:      testRunID,
 	}
 
-	events := []*pod.PodEvent{
+	mesosTaskID := testRunID
+	events := []*task.PodEvent{
 		{
-			PodId: &v1alphapeloton.PodID{
-				Value: testRunID,
+			TaskId: &mesos.TaskID{
+				Value: &mesosTaskID,
 			},
 		},
 	}
@@ -1568,14 +1541,13 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsDesiredJobVersionParseError()
 		RunId:      testRunID,
 	}
 
-	events := []*pod.PodEvent{
+	mesosTaskID := testRunID
+	events := []*task.PodEvent{
 		{
-			PodId: &v1alphapeloton.PodID{
-				Value: testRunID,
+			TaskId: &mesos.TaskID{
+				Value: &mesosTaskID,
 			},
-			Version: &v1alphapeloton.EntityVersion{
-				Value: "1",
-			},
+			ConfigVersion: 1,
 		},
 	}
 	suite.mockedTaskStore.EXPECT().
@@ -1595,20 +1567,18 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsPrevPodIDParseError() {
 		InstanceId: testInstanceCount,
 		RunId:      testRunID,
 	}
+	mesosTaskID := testRunID
+	prevMesosTaskID := "invalid-id"
 
-	events := []*pod.PodEvent{
+	events := []*task.PodEvent{
 		{
-			PodId: &v1alphapeloton.PodID{
-				Value: testRunID,
+			TaskId: &mesos.TaskID{
+				Value: &mesosTaskID,
 			},
-			Version: &v1alphapeloton.EntityVersion{
-				Value: "1",
-			},
-			DesiredVersion: &v1alphapeloton.EntityVersion{
-				Value: "1",
-			},
-			PrevPodId: &v1alphapeloton.PodID{
-				Value: "invalid-id",
+			ConfigVersion:        1,
+			DesiredConfigVersion: 1,
+			PrevTaskId: &mesos.TaskID{
+				Value: &prevMesosTaskID,
 			},
 		},
 	}
@@ -1633,28 +1603,27 @@ func (suite *TaskHandlerTestSuite) TestGetPodEventsNoEvents() {
 
 	suite.mockedTaskStore.EXPECT().
 		GetPodEvents(gomock.Any(), testJob, uint32(testInstanceCount), testRunID).
-		Return([]*pod.PodEvent{}, nil)
+		Return([]*task.PodEvent{}, nil)
 	_, err := suite.handler.GetPodEvents(context.Background(), request)
 	suite.NoError(err)
 }
 
 func (suite *TaskHandlerTestSuite) TestBrowseSandboxPreviousTaskRun() {
-	var events []*pod.PodEvent
-	event := &pod.PodEvent{
-		PodId: &v1alphapeloton.PodID{
-			Value: testTaskID,
+	mesosTaskID := testTaskID
+	prevMesosTaskID := testPrevTaskID
+
+	var events []*task.PodEvent
+	event := &task.PodEvent{
+		TaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
 		},
-		PrevPodId: &v1alphapeloton.PodID{
-			Value: testPrevTaskID,
+		PrevTaskId: &mesos.TaskID{
+			Value: &prevMesosTaskID,
 		},
-		Version: &v1alphapeloton.EntityVersion{
-			Value: "1",
-		},
-		DesiredVersion: &v1alphapeloton.EntityVersion{
-			Value: "1",
-		},
-		ActualState:  task.TaskState_FAILED.String(),
-		DesiredState: task.TaskState_SUCCEEDED.String(),
+		ConfigVersion:        1,
+		DesiredConfigVersion: 1,
+		ActualState:          task.TaskState_FAILED.String(),
+		GoalState:            task.TaskState_SUCCEEDED.String(),
 	}
 	events = append(events, event)
 
@@ -1735,27 +1704,25 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListSandboxFileFailure() {
 	frameworkID := "1234"
 	mesosAgentDir := "mesosAgentDir"
 	instanceID := uint32(0)
+	mesosTaskID := testTaskID
+	prevMesosTaskID := testPrevTaskID
 
 	suite.handler.mesosAgentWorkDir = mesosAgentDir
 
-	var events []*pod.PodEvent
-	event := &pod.PodEvent{
-		PodId: &v1alphapeloton.PodID{
-			Value: testTaskID,
+	var events []*task.PodEvent
+	event := &task.PodEvent{
+		TaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
 		},
-		PrevPodId: &v1alphapeloton.PodID{
-			Value: testPrevTaskID,
+		PrevTaskId: &mesos.TaskID{
+			Value: &prevMesosTaskID,
 		},
-		Hostname: hostName,
-		AgentId:  agentID,
-		Version: &v1alphapeloton.EntityVersion{
-			Value: "1",
-		},
-		DesiredVersion: &v1alphapeloton.EntityVersion{
-			Value: "1",
-		},
-		ActualState:  task.TaskState_RUNNING.String(),
-		DesiredState: task.TaskState_SUCCEEDED.String(),
+		Hostname:             hostName,
+		AgentID:              agentID,
+		ConfigVersion:        1,
+		DesiredConfigVersion: 1,
+		ActualState:          task.TaskState_RUNNING.String(),
+		GoalState:            task.TaskState_SUCCEEDED.String(),
 	}
 	events = append(events, event)
 
@@ -1800,27 +1767,25 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxGetMesosMasterInfoFailure() 
 	agentID := "peloton-test-agent"
 	frameworkID := "1234"
 	mesosAgentDir := "mesosAgentDir"
+	mesosTaskID := testTaskID
+	prevMesosTaskID := testPrevTaskID
 
 	suite.handler.mesosAgentWorkDir = mesosAgentDir
 
-	var events []*pod.PodEvent
-	event := &pod.PodEvent{
-		PodId: &v1alphapeloton.PodID{
-			Value: testTaskID,
+	var events []*task.PodEvent
+	event := &task.PodEvent{
+		TaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
 		},
-		PrevPodId: &v1alphapeloton.PodID{
-			Value: testPrevTaskID,
+		PrevTaskId: &mesos.TaskID{
+			Value: &prevMesosTaskID,
 		},
-		Hostname: hostName,
-		AgentId:  agentID,
-		Version: &v1alphapeloton.EntityVersion{
-			Value: "1",
-		},
-		DesiredVersion: &v1alphapeloton.EntityVersion{
-			Value: "1",
-		},
-		ActualState:  task.TaskState_RUNNING.String(),
-		DesiredState: task.TaskState_SUCCEEDED.String(),
+		Hostname:             hostName,
+		AgentID:              agentID,
+		ConfigVersion:        1,
+		DesiredConfigVersion: 1,
+		ActualState:          task.TaskState_RUNNING.String(),
+		GoalState:            task.TaskState_SUCCEEDED.String(),
 	}
 	events = append(events, event)
 
@@ -1869,27 +1834,25 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccess() {
 	agentID := "peloton-test-agent"
 	frameworkID := "1234"
 	mesosAgentDir := "mesosAgentDir"
+	mesosTaskID := testTaskID
+	prevMesosTaskID := testPrevTaskID
 
 	suite.handler.mesosAgentWorkDir = mesosAgentDir
 
-	var events []*pod.PodEvent
-	event := &pod.PodEvent{
-		PodId: &v1alphapeloton.PodID{
-			Value: testTaskID,
+	var events []*task.PodEvent
+	event := &task.PodEvent{
+		TaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
 		},
-		PrevPodId: &v1alphapeloton.PodID{
-			Value: testPrevTaskID,
+		PrevTaskId: &mesos.TaskID{
+			Value: &prevMesosTaskID,
 		},
-		Hostname: hostName,
-		AgentId:  agentID,
-		Version: &v1alphapeloton.EntityVersion{
-			Value: "1",
-		},
-		DesiredVersion: &v1alphapeloton.EntityVersion{
-			Value: "1",
-		},
-		ActualState:  task.TaskState_RUNNING.String(),
-		DesiredState: task.TaskState_SUCCEEDED.String(),
+		Hostname:             hostName,
+		AgentID:              agentID,
+		ConfigVersion:        1,
+		DesiredConfigVersion: 1,
+		ActualState:          task.TaskState_RUNNING.String(),
+		GoalState:            task.TaskState_SUCCEEDED.String(),
 	}
 	events = append(events, event)
 
@@ -1957,27 +1920,25 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccessAgentIP() {
 	agentID := "peloton-test-agent"
 	frameworkID := "1234"
 	mesosAgentDir := "mesosAgentDir"
+	mesosTaskID := testTaskID
+	prevMesosTaskID := testPrevTaskID
 
 	suite.handler.mesosAgentWorkDir = mesosAgentDir
 
-	var events []*pod.PodEvent
-	event := &pod.PodEvent{
-		PodId: &v1alphapeloton.PodID{
-			Value: testTaskID,
+	var events []*task.PodEvent
+	event := &task.PodEvent{
+		TaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
 		},
-		PrevPodId: &v1alphapeloton.PodID{
-			Value: testPrevTaskID,
+		PrevTaskId: &mesos.TaskID{
+			Value: &prevMesosTaskID,
 		},
-		Hostname: hostName,
-		AgentId:  agentID,
-		Version: &v1alphapeloton.EntityVersion{
-			Value: "1",
-		},
-		DesiredVersion: &v1alphapeloton.EntityVersion{
-			Value: "1",
-		},
-		ActualState:  task.TaskState_RUNNING.String(),
-		DesiredState: task.TaskState_SUCCEEDED.String(),
+		Hostname:             hostName,
+		AgentID:              agentID,
+		ConfigVersion:        1,
+		DesiredConfigVersion: 1,
+		ActualState:          task.TaskState_RUNNING.String(),
+		GoalState:            task.TaskState_SUCCEEDED.String(),
 	}
 	events = append(events, event)
 
