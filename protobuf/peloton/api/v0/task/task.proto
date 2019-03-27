@@ -370,6 +370,9 @@ enum TaskState {
 
   // The task is to be deleted after termination
   DELETED     = 16;
+
+  // Placement engine is reserving host for the task
+  RESERVED    = 17;
 }
 
 /**

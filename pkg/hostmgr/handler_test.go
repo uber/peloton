@@ -208,7 +208,6 @@ type HostMgrHandlerTestSuite struct {
 	handler                *ServiceHandler
 	frameworkID            *mesos.FrameworkID
 	mesosDetector          *hostmgr_mesos_mocks.MockMasterDetector
-	reserver               reserver.Reserver
 	maintenanceQueue       *qm.MockMaintenanceQueue
 	drainingMachines       []*mesos.MachineID
 	downMachines           []*mesos.MachineID
@@ -2545,6 +2544,8 @@ func (suite *HostMgrHandlerTestSuite) TestGetCompletedReservations() {
 	reservations, err := handler.GetCompletedReservations(
 		context.Background(),
 		&hostsvc.GetCompletedReservationRequest{})
+
+	suite.Equal(mockReserver, handler.GetReserver())
 	suite.NoError(err)
 	suite.NotNil(reservations.CompletedReservations)
 	suite.Equal(len(reservations.CompletedReservations), 1)
@@ -2562,6 +2563,8 @@ func (suite *HostMgrHandlerTestSuite) TestGetCompletedReservationsError() {
 		Return(nil, errors.New("error"))
 	reservations, err := handler.GetCompletedReservations(context.Background(),
 		&hostsvc.GetCompletedReservationRequest{})
+
+	suite.Equal(mockReserver, handler.GetReserver())
 	suite.NoError(err)
 	suite.Nil(reservations.CompletedReservations)
 	suite.Equal(reservations.GetError().GetNotFound().Message, "error")
@@ -2917,5 +2920,27 @@ func (suite *HostMgrHandlerTestSuite) TestGetMesosAgentInfo() {
 		} else {
 			suite.Equal(tc.err, resp.GetError(), tc.name)
 		}
+	}
+}
+
+// Test toHostStatus to convert HostStatus to string
+func (suite *HostMgrHandlerTestSuite) TestToHostStatus() {
+	statuses := []summary.HostStatus{
+		summary.ReadyHost,
+		summary.PlacingHost,
+		summary.ReservedHost,
+		summary.HeldHost,
+		100,
+	}
+	expectedStatuses := []string{
+		"ready",
+		"placing",
+		"reserved",
+		"held",
+		"unknown",
+	}
+
+	for i, status := range statuses {
+		suite.Equal(expectedStatuses[i], toHostStatus(status))
 	}
 }

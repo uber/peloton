@@ -3087,7 +3087,7 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 	// testing sorting by state
 	tasks, _, err = taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
 		Pagination: &query.PaginationSpec{
-			Limit: 17,
+			Limit: jobConfig.InstanceCount,
 			OrderBy: []*query.OrderBy{
 				{
 					Order: query.OrderBy_DESC,
@@ -3106,7 +3106,7 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 	// testing sorting by time
 	tasks, _, err = taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
 		Pagination: &query.PaginationSpec{
-			Limit: 17,
+			Limit: jobConfig.InstanceCount,
 			OrderBy: []*query.OrderBy{
 				{
 					Order: query.OrderBy_DESC,

@@ -457,16 +457,22 @@ func (h *ServiceHandler) DequeueGangs(
 		for _, task := range gang.GetTasks() {
 			h.metrics.DequeueGangSuccess.Inc(1)
 
-			// Moving task to Placing state
+			// Moving task to Placing state or Reserved state
 			if h.rmTracker.GetTask(task.Id) != nil {
-				// Checking if placement backoff is enabled if yes add the
-				// backoff otherwise just dot he transition
-				if h.config.RmTaskConfig.EnablePlacementBackoff {
-					//Adding backoff
-					h.rmTracker.GetTask(task.Id).AddBackoff()
+				if task.ReadyForHostReservation {
+					err = h.rmTracker.GetTask(task.Id).TransitTo(
+						t.TaskState_RESERVED.String())
+				} else {
+					// Checking if placement backoff is enabled if yes add the
+					// backoff otherwise just do the transition
+					if h.config.RmTaskConfig.EnablePlacementBackoff {
+						//Adding backoff
+						h.rmTracker.GetTask(task.Id).AddBackoff()
+					}
+					err = h.rmTracker.GetTask(task.Id).TransitTo(
+						t.TaskState_PLACING.String())
 				}
-				err = h.rmTracker.GetTask(task.Id).TransitTo(
-					t.TaskState_PLACING.String())
+
 				if err != nil {
 					log.WithError(err).WithField(
 						"task_id", task.Id.Value).
@@ -518,7 +524,10 @@ func (h *ServiceHandler) SetPlacements(
 	for _, placement := range req.GetPlacements() {
 		newPlacement := h.transitTasksInPlacement(
 			placement,
-			t.TaskState_PLACING,
+			[]t.TaskState{
+				t.TaskState_PLACING,
+				t.TaskState_RESERVED,
+			},
 			t.TaskState_PLACED,
 			_reasonPlacementReceived)
 		h.rmTracker.SetPlacement(newPlacement)
@@ -670,7 +679,9 @@ func (h *ServiceHandler) GetPlacements(
 		}
 		placement := item.(*resmgr.Placement)
 		newPlacement := h.transitTasksInPlacement(placement,
-			t.TaskState_PLACED,
+			[]t.TaskState{
+				t.TaskState_PLACED,
+			},
 			t.TaskState_LAUNCHING,
 			_reasonDequeuedForLaunch)
 		placements = append(placements, newPlacement)
@@ -685,11 +696,11 @@ func (h *ServiceHandler) GetPlacements(
 }
 
 // transitTasksInPlacement transitions tasks to new state if the current state
-// matches the expected state. Those tasks which couldn't be transitioned are
+// matches the expected states. Those tasks which couldn't be transitioned are
 // removed from the placement. The will tried to place again in the next cycle.
 func (h *ServiceHandler) transitTasksInPlacement(
 	placement *resmgr.Placement,
-	expectedState t.TaskState,
+	expectedStates []t.TaskState,
 	newState t.TaskState,
 	reason string) *resmgr.Placement {
 	invalidTasks := make(map[string]*peloton.TaskID)
@@ -700,11 +711,12 @@ func (h *ServiceHandler) transitTasksInPlacement(
 			continue
 		}
 		state := rmTask.GetCurrentState().State
-		if state != expectedState {
+		if !util.ContainsTaskState(expectedStates, state) {
 			log.WithFields(log.Fields{
 				"task_id":        task.GetPelotonTaskID().GetValue(),
-				"expected_state": expectedState.String(),
+				"expected_state": expectedStates,
 				"actual_state":   state.String(),
+				"new_state":      newState.String(),
 			}).Error("Failed to transit tasks in placement: " +
 				"task is not in expected state")
 			invalidTasks[task.GetPelotonTaskID().GetValue()] = task.GetPelotonTaskID()

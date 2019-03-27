@@ -342,6 +342,12 @@ func TestContains(t *testing.T) {
 	assert.False(t, Contains(list, "d"))
 }
 
+func TestContainsTaskState(t *testing.T) {
+	list := []task.TaskState{task.TaskState_PLACING, task.TaskState_READY, task.TaskState_DELETED}
+	assert.True(t, ContainsTaskState(list, task.TaskState_READY))
+	assert.False(t, ContainsTaskState(list, task.TaskState_FAILED))
+}
+
 // TestCreateHostInfo tests the HostInfo from Mesos Agent Info
 func TestCreateHostInfo(t *testing.T) {
 	// Testing if AgentInfo is nil

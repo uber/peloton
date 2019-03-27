@@ -632,7 +632,7 @@ func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
 
 		suite.Equal(
 			tt.offerID,
-			s.hostOfferID,
+			s.GetHostOfferID(),
 			"test case is %s", ttName)
 
 		if match.Result != hostsvc.HostFilterResult_MATCH {
@@ -1145,6 +1145,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 	s.statusPlacingOfferExpiration = now.Add(-10 * time.Minute)
 	invalidCacheStatus := s.CasStatus(PlacingHost, ReadyHost)
 	suite.NotNil(invalidCacheStatus)
+	suite.Contains(invalidCacheStatus.Error(), "Invalid status")
 
 	// Setting placing offers, without resetting readyCount (represents outstanding unreserved offers) to zero
 	s.CasStatus(s.status, PlacingHost)

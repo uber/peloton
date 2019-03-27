@@ -163,6 +163,9 @@ type HostSummary interface {
 	// GetHostStatus returns the HostStatus of the host
 	GetHostStatus() HostStatus
 
+	// GetHostOfferID returns the hostOfferID of the host
+	GetHostOfferID() string
+
 	// HoldForTasks holds the host for the task specified.
 	// If an error is returned, hostsummary would guarantee that
 	// the host is not on held for the task
@@ -795,6 +798,11 @@ func (a *hostSummary) GetHostStatus() HostStatus {
 	a.Lock()
 	defer a.Unlock()
 	return a.status
+}
+
+// GetHostOfferID returns the hostOffID of the host
+func (a *hostSummary) GetHostOfferID() string {
+	return a.hostOfferID
 }
 
 // HoldForTasks holds the host for the task specified

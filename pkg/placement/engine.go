@@ -16,7 +16,6 @@ package placement
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -28,7 +27,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/pkg/common/async"
-	"github.com/uber/peloton/pkg/common/queue"
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/hosts"
 	tally_metrics "github.com/uber/peloton/pkg/placement/metrics"
@@ -36,6 +34,7 @@ import (
 	"github.com/uber/peloton/pkg/placement/offers"
 	"github.com/uber/peloton/pkg/placement/reserver"
 	"github.com/uber/peloton/pkg/placement/tasks"
+	"github.com/uber/peloton/pkg/placement/util"
 )
 
 const (
@@ -96,25 +95,25 @@ func NewEngine(
 		hostsService: hostsService,
 	}
 	result.daemon = async.NewDaemon("Placement Engine", result)
-	result.reserver = reserver.NewReserver(scope, config, hostsService)
+	result.reserver = reserver.NewReserver(scope, config, hostsService, taskService)
 	return result
 }
 
 type engine struct {
-	config           *config.PlacementConfig
-	metrics          *tally_metrics.Metrics
-	pool             *async.Pool
-	offerService     offers.Service
-	taskService      tasks.Service
-	strategy         plugins.Strategy
-	daemon           async.Daemon
-	reservationQueue queue.Queue
-	reserver         reserver.Reserver
-	hostsService     hosts.Service
+	config       *config.PlacementConfig
+	metrics      *tally_metrics.Metrics
+	pool         *async.Pool
+	offerService offers.Service
+	taskService  tasks.Service
+	strategy     plugins.Strategy
+	daemon       async.Daemon
+	reserver     reserver.Reserver
+	hostsService hosts.Service
 }
 
 func (e *engine) Start() {
 	e.daemon.Start()
+	e.reserver.Start()
 	e.metrics.Running.Update(1)
 }
 
@@ -129,13 +128,16 @@ func (e *engine) Run(ctx context.Context) error {
 			return ctx.Err()
 		case <-timer.C:
 		}
+
 		delay := e.Place(ctx)
+
 		timer.Reset(delay)
 	}
 }
 
 func (e *engine) Stop() {
 	e.daemon.Stop()
+	e.reserver.Stop()
 	e.metrics.Running.Update(0)
 }
 
@@ -153,12 +155,22 @@ func (e *engine) Place(ctx context.Context) time.Duration {
 		return _noTasksTimeoutPenalty
 	}
 
+	// process host reservation assignments
+	err := e.reserver.ProcessHostReservation(
+		ctx,
+		assignments,
+	)
+	if err != nil {
+		log.WithError(err).Info("error in processing host reservations")
+	}
+
 	// process revocable assignments
 	e.processAssignments(
 		ctx,
 		assignments,
 		func(assignment *models.Assignment) bool {
-			return assignment.GetTask().GetTask().GetRevocable()
+			return assignment.GetTask().GetTask().GetRevocable() &&
+				!assignment.GetTask().GetTask().ReadyForHostReservation
 		})
 
 	// process non-revocable assignments
@@ -166,14 +178,10 @@ func (e *engine) Place(ctx context.Context) time.Duration {
 		ctx,
 		assignments,
 		func(assignment *models.Assignment) bool {
-			return !assignment.GetTask().GetTask().GetRevocable()
+			return !assignment.GetTask().GetTask().GetRevocable() &&
+				!assignment.GetTask().GetTask().ReadyForHostReservation
 		})
 
-	// We need to process the completed reservations
-	err := e.processCompletedReservations(ctx)
-	if err != nil {
-		log.WithError(err).Info("error in processing completed reservations")
-	}
 	return time.Duration(0)
 }
 
@@ -207,42 +215,6 @@ func (e *engine) processAssignments(
 		// Wait for all batches to be processed
 		e.pool.WaitUntilProcessed()
 	}
-}
-
-// processCompletedReservations will be processing completed reservations
-// and it will set the placements in resmgr
-func (e *engine) processCompletedReservations(ctx context.Context) error {
-	reservations, err := e.reserver.GetCompletedReservation(ctx)
-	if err != nil {
-		return err
-	}
-	if len(reservations) == 0 {
-		return errors.New("no valid reservations")
-	}
-
-	placements := make([]*resmgr.Placement, len(reservations))
-	for _, res := range reservations {
-		selectedPorts := e.assignPorts(
-			&models.HostOffers{Offer: res.HostOffers[0]},
-			[]*models.Task{{Task: res.Task}})
-		placement := &resmgr.Placement{
-			Hostname: res.HostOffers[0].Hostname,
-			Tasks:    []*peloton.TaskID{res.GetTask().GetId()},
-			TaskIDs: []*resmgr.Placement_Task{
-				{
-					PelotonTaskID: res.GetTask().GetId(),
-					MesosTaskID:   res.GetTask().GetTaskId(),
-				},
-			},
-			Type:    e.config.TaskType,
-			AgentId: res.HostOffers[0].AgentId,
-			Ports:   selectedPorts,
-		}
-		placements = append(placements, placement)
-	}
-
-	e.taskService.SetPlacements(ctx, placements, nil)
-	return nil
 }
 
 func (e *engine) placeAssignmentGroup(
@@ -323,39 +295,6 @@ func (e *engine) returnStarvedAssignments(
 		a.Reason = reason
 	}
 	e.taskService.SetPlacements(ctx, nil, failedAssignments)
-}
-
-func (e *engine) assignPorts(offer *models.HostOffers, tasks []*models.Task) []uint32 {
-	availablePortRanges := map[*models.PortRange]struct{}{}
-	for _, resource := range offer.GetOffer().GetResources() {
-		if resource.GetName() != "ports" {
-			continue
-		}
-		for _, portRange := range resource.GetRanges().GetRange() {
-			availablePortRanges[models.NewPortRange(portRange)] = struct{}{}
-		}
-	}
-	var selectedPorts []uint32
-	for _, taskEntity := range tasks {
-		assignedPorts := uint32(0)
-		neededPorts := taskEntity.GetTask().NumPorts
-		depletedRanges := []*models.PortRange{}
-		for portRange := range availablePortRanges {
-			ports := portRange.TakePorts(neededPorts - assignedPorts)
-			assignedPorts += uint32(len(ports))
-			selectedPorts = append(selectedPorts, ports...)
-			if portRange.NumPorts() == 0 {
-				depletedRanges = append(depletedRanges, portRange)
-			}
-			if assignedPorts >= neededPorts {
-				break
-			}
-		}
-		for _, portRange := range depletedRanges {
-			delete(availablePortRanges, portRange)
-		}
-	}
-	return selectedPorts
 }
 
 // filters the assignments into three groups
@@ -496,7 +435,7 @@ func (e *engine) createPlacement(assigned []*models.Assignment) []*resmgr.Placem
 	// For each offer create a placement with all the tasks assigned to it.
 	var resPlacements []*resmgr.Placement
 	for offer, tasks := range offersToTasks {
-		selectedPorts := e.assignPorts(offer, tasks)
+		selectedPorts := util.AssignPorts(offer, tasks)
 		placement := &resmgr.Placement{
 			Hostname:    offer.GetOffer().Hostname,
 			AgentId:     offer.GetOffer().AgentId,

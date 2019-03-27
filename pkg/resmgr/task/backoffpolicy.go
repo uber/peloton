@@ -25,8 +25,10 @@ type Policy interface {
 	// GetNextBackoffDuration returns the next backoff duration
 	// based on policy implementation
 	GetNextBackoffDuration(task *resmgr.Task, config *Config) float64
-	// IsCycleCompleted returns true/false based on backoff policy cycle.
+	// IsCycleCompleted returns true when one placement cycle has been completed
 	IsCycleCompleted(task *resmgr.Task, config *Config) bool
+	// allCyclesCompleted returns true when all the placement cycles have been completed
+	allCyclesCompleted(task *resmgr.Task, config *Config) bool
 }
 
 // exponentialPolicy implements the Policy interface. It calculates the next
@@ -44,23 +46,34 @@ func (p exponentialPolicy) GetNextBackoffDuration(task *resmgr.Task, config *Con
 	if task == nil || config == nil {
 		return 0
 	}
-	// if PlacementRetryCycle or PlacementRetryBackoff is 0
+	// if PlacementAttemptsPerCycle or PlacementRetryBackoff is 0
 	// then next timeout period will be 0
 
-	if config.PlacementRetryCycle == 0 || config.PlacementRetryBackoff.Seconds() == 0 {
+	if config.PlacementAttemptsPerCycle == 0 || config.PlacementRetryBackoff.Seconds() == 0 {
 		return 0
 	}
 	// exponentialPolicy multiply the number of retries with backoff period
 	// till it reaches to end of the cycle. After cycle is finished
 	// backoff will start all over again
-	p.timeOut = math.Mod(task.PlacementRetryCount,
-		config.PlacementRetryCycle) * config.PlacementRetryBackoff.Seconds()
+	p.timeOut = math.Mod(task.PlacementAttemptCount,
+		config.PlacementAttemptsPerCycle) * config.PlacementRetryBackoff.Seconds()
 	return p.timeOut
 }
 
-// IsCycleCompleted returns true/false based on backoff policy cycle.
+// IsCycleCompleted returns true/false to indicate if a placement cycle is complete based on backoff policy cycle.
 func (p exponentialPolicy) IsCycleCompleted(task *resmgr.Task, config *Config) bool {
-	// Backoff cycle will return true retry count reaches to placement retry cycle.
+	// Backoff cycle will return true when attempts in a cycle reaches to placement attempts.
+	// else it returns false.
+	if task.PlacementAttemptCount > 0 && math.Mod(task.PlacementAttemptCount,
+		config.PlacementAttemptsPerCycle) == 0 {
+		return true
+	}
+	return false
+}
+
+//  returns true/false to indicate if all placement cycles have been exhausted
+func (p exponentialPolicy) allCyclesCompleted(task *resmgr.Task, config *Config) bool {
+	// Backoff cycle will return true when cycle retry count reaches to placement retry cycle.
 	// else it returns false.
 	if task.PlacementRetryCount > 0 && math.Mod(task.PlacementRetryCount,
 		config.PlacementRetryCycle) == 0 {

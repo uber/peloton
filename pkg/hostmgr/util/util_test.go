@@ -64,17 +64,16 @@ func TestMesosOffersToHostOffers(t *testing.T) {
 	offers := createUnreservedMesosOffers(2)
 	var offerList []*mesos.Offer
 
-	hostOfferMap := make(map[string][]*mesos.Offer)
-	hostOfferMap["agent"] = offerList
-	hostOffer := MesosOffersToHostOffers(hostOfferMap)
-	assert.Equal(t, len(hostOffer), 0)
+	hostOfferID := "uniq_offer_id"
+	offerList = make([]*mesos.Offer, 0)
+	hostOffer := MesosOffersToHostOffer(hostOfferID, offerList)
+	assert.Nil(t, hostOffer)
 
 	for _, o := range offers {
 		offerList = append(offerList, o)
 	}
-	hostOfferMap["agent"] = offerList
-	hostOffer = MesosOffersToHostOffers(hostOfferMap)
-	assert.Equal(t, len(hostOffer), 1)
+	hostOffer = MesosOffersToHostOffer(hostOfferID, offerList)
+	assert.NotNil(t, hostOffer)
 }
 
 func TestIsSlackResourceType(t *testing.T) {

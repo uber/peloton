@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
@@ -33,6 +34,8 @@ import (
 	"github.com/uber/peloton/pkg/placement/hosts"
 	tally_metrics "github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/tasks"
+	"github.com/uber/peloton/pkg/placement/util"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -70,6 +73,9 @@ type Reserver interface {
 	// Reserve reserves the task to host in hostmanager
 	Reserve(ctx context.Context) (time.Duration, error)
 
+	// Places the assignments which are ready for host reservation into reservationQueue
+	ProcessHostReservation(ctx context.Context, assignments []*models.Assignment) error
+
 	// EnqueueReservation enqueues the hostsvc.reservation to
 	// the reservation queue
 	EnqueueReservation(reservation *hostsvc.Reservation) error
@@ -89,10 +95,12 @@ type reserver struct {
 	// hostService for accessing the host manager for getting host list
 	// as well as reserving host
 	hostService hosts.Service
+	// taskService for placing task on reserved host
+	taskService tasks.Service
 	// daemon object for making reserver a daemon process
 	daemon async.Daemon
-	// reservation queue for getting the tasks from placement engine
-	// to make the reservation
+	// reservation queue of type resmgr.task which placement engine enqueues the tasks from
+	// resourcemanager for reserver to make the reservation
 	reservationQueue queue.Queue
 	// completed reservation queue
 	completedReservationQueue queue.Queue
@@ -108,14 +116,16 @@ type reserver struct {
 func NewReserver(
 	metrics *tally_metrics.Metrics,
 	cfg *config.PlacementConfig,
-	hostsService hosts.Service) Reserver {
+	hostsService hosts.Service,
+	taskService tasks.Service) Reserver {
 	reserver := &reserver{
 		config:      cfg,
 		hostService: hostsService,
+		taskService: taskService,
 		metrics:     metrics,
 		reservationQueue: queue.NewQueue(
 			_reservationQueue,
-			reflect.TypeOf(resmgr.Task{}),
+			reflect.TypeOf(hostsvc.Reservation{}),
 			_maxReservationQueueSize,
 		),
 		completedReservationQueue: queue.NewQueue(
@@ -159,6 +169,13 @@ func (r *reserver) Run(ctx context.Context) error {
 		if err != nil {
 			log.WithError(err).Error("error finding completed reservation")
 		}
+
+		// We need to process the completed reservations
+		err = r.processCompletedReservations(ctx)
+		if err != nil {
+			log.WithError(err).Info("error in processing completed reservations")
+		}
+
 		timer.Reset(delay)
 	}
 }
@@ -176,17 +193,23 @@ func (r *reserver) Stop() {
 //   3. choose one random host from the list
 //   4. reserve the host in host manager
 func (r *reserver) Reserve(ctx context.Context) (time.Duration, error) {
-	// Get Tasks from the reservation queue
+	// Get reservation from the reservation queue
 	item, err := r.reservationQueue.Dequeue(1 * time.Second)
 	if err != nil {
 		return _noTasksTimeoutPenalty, errors.New("No items in reservation queue")
 	}
-	task, ok := item.(*resmgr.Task)
-	if !ok || task.GetId() == nil {
-		return _noTasksTimeoutPenalty, fmt.Errorf("Not a valid task %s", task.GetId())
+	reservation, ok := item.(*hostsvc.Reservation)
+	if !ok || reservation.GetTask() == nil || reservation.GetTask().GetId() == nil {
+		return _noTasksTimeoutPenalty, fmt.Errorf("not a valid task %s",
+			reservation.GetTask())
 	}
 	// storing the tasks
+	task := reservation.GetTask()
 	r.tasks[task.GetId().Value] = task
+
+	log.WithFields(log.Fields{
+		"task": task.Id.Value,
+	}).Debug("Reserving host for task")
 
 	hostFilter := r.getHostFilter(task)
 	// Find the hosts list from hostmanager matching filter
@@ -212,6 +235,12 @@ func (r *reserver) Reserve(ctx context.Context) (time.Duration, error) {
 	}
 	//Updating the task to hosts map
 	r.reservations[task.GetId().Value] = hostToReserve
+
+	log.WithFields(log.Fields{
+		"host": hostToReserve[0].GetHost().Hostname,
+		"task": task.Id.Value,
+	}).Info("Host reserved for task")
+
 	return time.Duration(0), nil
 }
 
@@ -269,6 +298,28 @@ func (r *reserver) getHostFilter(task *resmgr.Task) *hostsvc.HostFilter {
 	return result
 }
 
+// ProcessHostReservation places the assignments which are ready for host reservation
+// into reservationQueue
+func (r *reserver) ProcessHostReservation(
+	ctx context.Context,
+	assignments []*models.Assignment) error {
+
+	for _, assignment := range assignments {
+		if assignment.Task.GetTask().GetReadyForHostReservation() {
+			log.WithField("assignment", assignment).
+				Debug("process host reservation")
+			err := r.EnqueueReservation(&hostsvc.Reservation{
+				Task: assignment.Task.GetTask(),
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // GetReservationQueue gets the reszervation queue
 func (r *reserver) GetReservationQueue() queue.Queue {
 	return r.reservationQueue
@@ -292,13 +343,17 @@ func (r *reserver) GetCompletedReservation(ctx context.Context,
 		// this should never happen
 		return reservations, errors.New("invalid item in queue")
 	}
-	reservations = append(reservations, res)
+
+	if res != nil {
+		reservations = append(reservations, res)
+	}
+
 	return reservations, nil
 }
 
 // enqueueCompletedReservation gets out the completed reservations from
 // hosts service and if any, enqueues them into completed reservation
-// queue so that the  handler can create placements out of them.
+// queue so that the handler can create placements out of them.
 func (r *reserver) enqueueCompletedReservation(ctx context.Context) error {
 	// Call hosts service to find the reservation
 	reservations, err := r.hostService.GetCompletedReservation(ctx)
@@ -315,7 +370,7 @@ func (r *reserver) enqueueCompletedReservation(ctx context.Context) error {
 		// by looking at the offers length
 		// if offers length is zero that means
 		// we need to reserve
-		if len(res.HostOffers) == 0 {
+		if res.HostOffer == nil {
 			err := r.reserveAgain(res.GetTask())
 			if err != nil {
 				log.WithError(err).
@@ -341,11 +396,53 @@ func (r *reserver) enqueueCompletedReservation(ctx context.Context) error {
 	return nil
 }
 
+// processCompletedReservations will be processing completed reservations
+// and it will set the placements in resmgr
+func (r *reserver) processCompletedReservations(ctx context.Context) error {
+	reservations, err := r.GetCompletedReservation(ctx)
+	if err != nil {
+		return err
+	}
+	if len(reservations) == 0 {
+		return errors.New("no valid reservations")
+	}
+
+	placements := make([]*resmgr.Placement, 0, len(reservations))
+	for _, res := range reservations {
+		selectedPorts := util.AssignPorts(
+			&models.HostOffers{Offer: res.HostOffer},
+			[]*models.Task{{Task: res.Task}})
+		placement := &resmgr.Placement{
+			Hostname: res.HostOffer.Hostname,
+			Tasks:    []*peloton.TaskID{res.GetTask().GetId()},
+			TaskIDs: []*resmgr.Placement_Task{
+				{
+					PelotonTaskID: res.GetTask().GetId(),
+					MesosTaskID:   res.GetTask().GetTaskId(),
+				},
+			},
+			Type:        r.config.TaskType,
+			AgentId:     res.HostOffer.AgentId,
+			Ports:       selectedPorts,
+			HostOfferID: res.HostOffer.Id,
+		}
+		placements = append(placements, placement)
+	}
+
+	log.WithField("placements", placements).
+		Debug("Process completed reservations")
+	r.taskService.SetPlacements(ctx, placements, nil)
+	return nil
+}
+
 func (r *reserver) reserveAgain(task *resmgr.Task) error {
-	// cleanig the reservation
+	// cleaning the reservation
 	r.cleanReservation(task)
-	// enquing the task again for the reservation
-	err := r.GetReservationQueue().Enqueue(task)
+	// enqueuing the task again for the reservation
+	err := r.reservationQueue.Enqueue(
+		&hostsvc.Reservation{
+			Task: task,
+		})
 	if err != nil {
 		return err
 	}
@@ -363,7 +460,7 @@ func (r *reserver) EnqueueReservation(reservation *hostsvc.Reservation) error {
 	if reservation == nil {
 		return errors.New("invalid reservation")
 	}
-	err := r.GetReservationQueue().Enqueue(reservation)
+	err := r.reservationQueue.Enqueue(reservation)
 	if err != nil {
 		return err
 	}

@@ -163,6 +163,7 @@ func (rmTask *RMTask) initStateMachine() error {
 					From: state.State(task.TaskState_READY.String()),
 					To: []state.State{
 						state.State(task.TaskState_PLACING.String()),
+						state.State(task.TaskState_RESERVED.String()),
 						// It may happen that placement engine returns
 						// just after resmgr timeout and task is still
 						// in ready
@@ -180,6 +181,21 @@ func (rmTask *RMTask) initStateMachine() error {
 					From: state.State(task.TaskState_PLACING.String()),
 					To: []state.State{
 						state.State(task.TaskState_READY.String()),
+						state.State(task.TaskState_PLACED.String()),
+						state.State(task.TaskState_KILLED.String()),
+						// This transition is required when the task is
+						// preempted while its being placed by the Placement
+						// engine. If preempted it'll go back to PENDING
+						// state and relinquish its resource allocation from
+						// the resource pool.
+						state.State(task.TaskState_PENDING.String()),
+					},
+					Callback: nil,
+				}).
+			AddRule(
+				&state.Rule{
+					From: state.State(task.TaskState_RESERVED.String()),
+					To: []state.State{
 						state.State(task.TaskState_PLACED.String()),
 						state.State(task.TaskState_KILLED.String()),
 						// This transition is required when the task is
@@ -275,6 +291,15 @@ func (rmTask *RMTask) initStateMachine() error {
 					},
 					Timeout:  rmTask.config.LaunchingTimeout,
 					Callback: rmTask.timeoutCallbackFromLaunching,
+				}).
+			AddTimeoutRule(
+				&state.TimeoutRule{
+					From: state.State(task.TaskState_RESERVED.String()),
+					To: []state.State{
+						state.State(task.TaskState_PENDING.String()),
+					},
+					Timeout:  rmTask.config.ReservingTimeout,
+					Callback: rmTask.timeoutCallbackFromReserving,
 				}).
 			Build()
 	if err != nil {
@@ -383,8 +408,14 @@ func (rmTask *RMTask) AddBackoff() error {
 	// Adding the placement timeout values based on policy
 	rmTask.Task().PlacementTimeoutSeconds = rmTask.config.PlacingTimeout.Seconds() +
 		rmTask.policy.GetNextBackoffDuration(rmTask.Task(), rmTask.config)
-	// Adding the placement retry count based on backoff policy
-	rmTask.Task().PlacementRetryCount++
+
+	// Adding the placement attempt/retry count based on backoff policy
+	if rmTask.Task().PlacementAttemptCount < rmTask.config.PlacementAttemptsPerCycle {
+		rmTask.Task().PlacementAttemptCount++
+	} else {
+		rmTask.Task().PlacementAttemptCount = 1
+		rmTask.Task().PlacementRetryCount++
+	}
 
 	// If there is no Timeout rule for PLACING state we should error out
 	rule, ok := rmTask.stateMachine.GetTimeOutRules()[state.State(task.TaskState_PLACING.String())]
@@ -397,6 +428,7 @@ func (rmTask *RMTask) AddBackoff() error {
 	log.WithFields(log.Fields{
 		"task_id":           rmTask.Task().Id.Value,
 		"retry_count":       rmTask.Task().PlacementRetryCount,
+		"attempt_count":     rmTask.Task().PlacementAttemptCount,
 		"placement_timeout": rmTask.Task().PlacementTimeoutSeconds,
 	}).Info("Adding backoff to task")
 	return nil
@@ -493,6 +525,18 @@ func (rmTask *RMTask) hasFinishedPlacementCycle() bool {
 	return rmTask.policy.IsCycleCompleted(rmTask.Task(), rmTask.config)
 }
 
+// Returns true if all the placement cycles are completed
+// otherwise false. The task is ready for host reservation when
+// all the placement cycles have been exhausted
+// NB: Acquire lock before calling
+func (rmTask *RMTask) hasFinishedAllPlacementCycles() bool {
+	// Checking if placement backoff is enabled
+	if !rmTask.config.EnablePlacementBackoff {
+		return false
+	}
+	return rmTask.policy.allCyclesCompleted(rmTask.Task(), rmTask.config)
+}
+
 // pushTaskForReadmission pushes the pending task for readmission to pending
 // queue
 // NB: Acquire lock on rm task before calling
@@ -517,7 +561,8 @@ func (rmTask *RMTask) pushTaskForReadmission() error {
 }
 
 // pushTaskForPlacementAgain pushes the task to ready queue as the
-// placement cycle is not completed for this task.
+// placement cycle is not completed for this task or task is ready
+// for host reservation
 // NB: Acquire lock on rm task before calling
 func (rmTask *RMTask) pushTaskForPlacementAgain() error {
 	var tasks []*resmgr.Task
@@ -575,6 +620,22 @@ func (rmTask *RMTask) timeoutCallbackFromPlacing(t *state.Transition) error {
 		return nil
 	}
 
+	// the task is ready for host reservation
+	if rmTask.task.ReadyForHostReservation {
+		log.WithFields(log.Fields{
+			"task_id":    rmTask.Task().GetTaskId().GetValue(),
+			"from_state": t.From,
+			"to_state":   t.To,
+		}).Info("Task is pushed back to ready queue for host reservation")
+
+		// We need to push it to ready queue to get host reserved in placement
+		err := rmTask.pushTaskForPlacementAgain()
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
 	log.WithFields(log.Fields{
 		"task_id":    rmTask.Task().GetTaskId().GetValue(),
 		"from_state": t.From,
@@ -588,6 +649,34 @@ func (rmTask *RMTask) timeoutCallbackFromPlacing(t *state.Transition) error {
 
 	log.WithField("task_id", rmTask.Task().GetTaskId().GetValue()).
 		Debug("Enqueue again due to timeout")
+	return nil
+}
+
+func (rmTask *RMTask) resetHostReservation() {
+	rmTask.task.PlacementRetryCount = 0
+	rmTask.task.PlacementAttemptCount = 0
+	rmTask.task.ReadyForHostReservation = false
+}
+
+// timeoutCallback is the callback for the resource manager task
+// which moving after timeout from reserved state to pending state
+func (rmTask *RMTask) timeoutCallbackFromReserving(t *state.Transition) error {
+	if rmTask == nil {
+		return errTaskNotPresent
+	}
+
+	rmTask.resetHostReservation()
+	err := rmTask.pushTaskForReadmission()
+	if err != nil {
+		return err
+	}
+
+	log.WithFields(log.Fields{
+		"task_id":    rmTask.Task().GetTaskId().Value,
+		"from_state": t.From,
+		"to_state":   t.To,
+	}).Info("Task is pushed back to pending queue")
+
 	return nil
 }
 
@@ -609,6 +698,12 @@ func (rmTask *RMTask) timeoutCallbackFromLaunching(t *state.Transition) error {
 func (rmTask *RMTask) preTimeoutCallback(t *state.Transition) error {
 	if rmTask == nil {
 		return errTaskNotPresent
+	}
+
+	if rmTask.config.EnableHostReservation && rmTask.hasFinishedAllPlacementCycles() {
+		rmTask.task.ReadyForHostReservation = true
+		t.To = state.State(task.TaskState_READY.String())
+		return nil
 	}
 
 	if rmTask.hasFinishedPlacementCycle() {

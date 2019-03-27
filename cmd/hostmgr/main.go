@@ -569,7 +569,7 @@ func main() {
 	)
 
 	// Create new hostmgr internal service handler.
-	hostmgr.NewServiceHandler(
+	serviceHandler := hostmgr.NewServiceHandler(
 		dispatcher,
 		rootScope,
 		schedulerClient,
@@ -628,6 +628,7 @@ func main() {
 		reconciler,
 		recoveryHandler,
 		drainer,
+		serviceHandler.GetReserver(),
 	)
 	server.Start()
 

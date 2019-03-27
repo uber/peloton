@@ -33,11 +33,11 @@ func (suite *BackoffPolicyTestSuite) TestGetNextDuration() {
 	InitPolicyFactory()
 
 	config := &Config{
-		LaunchingTimeout:      1 * time.Minute,
-		PlacingTimeout:        1 * time.Minute,
-		PolicyName:            ExponentialBackOffPolicy,
-		PlacementRetryCycle:   3,
-		PlacementRetryBackoff: 30 * time.Second,
+		LaunchingTimeout:          1 * time.Minute,
+		PlacingTimeout:            1 * time.Minute,
+		PolicyName:                ExponentialBackOffPolicy,
+		PlacementAttemptsPerCycle: 3,
+		PlacementRetryBackoff:     30 * time.Second,
 	}
 	policy, err := GetFactory().CreateBackOffPolicy(config)
 	suite.NoError(err)
@@ -45,7 +45,7 @@ func (suite *BackoffPolicyTestSuite) TestGetNextDuration() {
 	timeout := policy.GetNextBackoffDuration(nil, config)
 	suite.EqualValues(timeout, 0)
 	timeout = policy.GetNextBackoffDuration(&resmgr.Task{
-		PlacementRetryCount:     1,
+		PlacementAttemptCount:   1,
 		PlacementTimeoutSeconds: 60,
 	}, nil)
 	suite.EqualValues(timeout, 0)
@@ -54,11 +54,11 @@ func (suite *BackoffPolicyTestSuite) TestGetNextDuration() {
 		PlacementRetryCount:     1,
 		PlacementTimeoutSeconds: 60,
 	}, &Config{
-		LaunchingTimeout:      1 * time.Minute,
-		PlacingTimeout:        1 * time.Minute,
-		PolicyName:            ExponentialBackOffPolicy,
-		PlacementRetryCycle:   0,
-		PlacementRetryBackoff: 30 * time.Second,
+		LaunchingTimeout:          1 * time.Minute,
+		PlacingTimeout:            1 * time.Minute,
+		PolicyName:                ExponentialBackOffPolicy,
+		PlacementAttemptsPerCycle: 0,
+		PlacementRetryBackoff:     30 * time.Second,
 	})
 	suite.EqualValues(timeout, 0)
 
@@ -66,32 +66,63 @@ func (suite *BackoffPolicyTestSuite) TestGetNextDuration() {
 		PlacementRetryCount:     1,
 		PlacementTimeoutSeconds: 60,
 	}, &Config{
-		LaunchingTimeout:      1 * time.Minute,
-		PlacingTimeout:        1 * time.Minute,
-		PolicyName:            ExponentialBackOffPolicy,
-		PlacementRetryCycle:   3,
-		PlacementRetryBackoff: 0 * time.Second,
+		LaunchingTimeout:          1 * time.Minute,
+		PlacingTimeout:            1 * time.Minute,
+		PolicyName:                ExponentialBackOffPolicy,
+		PlacementAttemptsPerCycle: 3,
+		PlacementRetryBackoff:     0 * time.Second,
 	})
 	suite.EqualValues(timeout, 0)
 
 	timeout = policy.GetNextBackoffDuration(&resmgr.Task{
-		PlacementRetryCount:     1,
+		PlacementAttemptCount:   1,
 		PlacementTimeoutSeconds: 60,
 	}, config)
 	suite.EqualValues(timeout, 30)
 	timeout = policy.GetNextBackoffDuration(&resmgr.Task{
-		PlacementRetryCount:     2,
+		PlacementAttemptCount:   2,
 		PlacementTimeoutSeconds: 60,
 	}, config)
 	suite.EqualValues(timeout, 60)
 	timeout = policy.GetNextBackoffDuration(&resmgr.Task{
-		PlacementRetryCount:     3,
+		PlacementAttemptCount:   3,
 		PlacementTimeoutSeconds: 60,
 	}, config)
 	suite.EqualValues(timeout, 0)
 }
 
 func (suite *BackoffPolicyTestSuite) TestCycleCompleted() {
+	InitPolicyFactory()
+
+	config := &Config{
+		LaunchingTimeout:          1 * time.Minute,
+		PlacingTimeout:            1 * time.Minute,
+		PolicyName:                ExponentialBackOffPolicy,
+		PlacementAttemptsPerCycle: 3,
+		PlacementRetryBackoff:     30 * time.Second,
+	}
+	policy, err := GetFactory().CreateBackOffPolicy(config)
+	suite.NoError(err)
+	suite.NotNil(policy)
+	isCompleted := policy.IsCycleCompleted(&resmgr.Task{
+		PlacementAttemptCount: 0,
+	}, config)
+	suite.EqualValues(isCompleted, false)
+	isCompleted = policy.IsCycleCompleted(&resmgr.Task{
+		PlacementAttemptCount: 1,
+	}, config)
+	suite.EqualValues(isCompleted, false)
+	isCompleted = policy.IsCycleCompleted(&resmgr.Task{
+		PlacementAttemptCount: 2,
+	}, config)
+	suite.EqualValues(isCompleted, false)
+	isCompleted = policy.IsCycleCompleted(&resmgr.Task{
+		PlacementAttemptCount: 3,
+	}, config)
+	suite.EqualValues(isCompleted, true)
+}
+
+func (suite *BackoffPolicyTestSuite) TestAllCycleCompleted() {
 	InitPolicyFactory()
 
 	config := &Config{
@@ -104,19 +135,19 @@ func (suite *BackoffPolicyTestSuite) TestCycleCompleted() {
 	policy, err := GetFactory().CreateBackOffPolicy(config)
 	suite.NoError(err)
 	suite.NotNil(policy)
-	isCompleted := policy.IsCycleCompleted(&resmgr.Task{
+	isCompleted := policy.allCyclesCompleted(&resmgr.Task{
 		PlacementRetryCount: 0,
 	}, config)
 	suite.EqualValues(isCompleted, false)
-	isCompleted = policy.IsCycleCompleted(&resmgr.Task{
+	isCompleted = policy.allCyclesCompleted(&resmgr.Task{
 		PlacementRetryCount: 1,
 	}, config)
 	suite.EqualValues(isCompleted, false)
-	isCompleted = policy.IsCycleCompleted(&resmgr.Task{
+	isCompleted = policy.allCyclesCompleted(&resmgr.Task{
 		PlacementRetryCount: 2,
 	}, config)
 	suite.EqualValues(isCompleted, false)
-	isCompleted = policy.IsCycleCompleted(&resmgr.Task{
+	isCompleted = policy.allCyclesCompleted(&resmgr.Task{
 		PlacementRetryCount: 3,
 	}, config)
 	suite.EqualValues(isCompleted, true)

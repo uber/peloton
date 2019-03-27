@@ -498,6 +498,16 @@ func Contains(list []string, item string) bool {
 	return false
 }
 
+// ContainsTaskState checks whether a TaskState contains in a list of TaskStates
+func ContainsTaskState(list []task.TaskState, item task.TaskState) bool {
+	for _, name := range list {
+		if name == item {
+			return true
+		}
+	}
+	return false
+}
+
 // CreateHostInfo takes the agent Info and create the hostsvc.HostInfo
 func CreateHostInfo(hostname string,
 	agentInfo *mesos.AgentInfo) *hostsvc.HostInfo {

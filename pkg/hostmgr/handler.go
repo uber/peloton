@@ -155,6 +155,11 @@ func validateHostFilter(
 	return nil
 }
 
+// GetReserver returns the reserver object
+func (h *ServiceHandler) GetReserver() reserver.Reserver {
+	return h.reserver
+}
+
 // DisableKillTasks toggles the flag to disable send kill tasks request
 // to mesos master
 func (h *ServiceHandler) DisableKillTasks(

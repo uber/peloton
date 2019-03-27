@@ -217,10 +217,12 @@ func (r *reserver) Reserve(ctx context.Context) (time.Duration, error) {
 	}
 
 	hsummary, hInfo := r.addHostReservation(reservation.GetHosts())
-
 	if hsummary == nil && hInfo == nil {
 		// we need to add this reservation as failed reservation
-		err := r.completedReservationQueue.Enqueue(reservation)
+		err := r.completedReservationQueue.Enqueue(
+			&hostsvc.CompletedReservation{
+				Task: reservation.Task,
+			})
 		if err != nil {
 			log.WithError(err).
 				WithField("reservation", reservation).
@@ -308,6 +310,13 @@ func (r *reserver) FindCompletedReservations(ctx context.Context,
 		if hostResources.Contains(taskResources) {
 			err := r.returnReservation(res, host)
 			if err != nil {
+				log.WithFields(
+					log.Fields{
+						"reservation": res,
+						"host":        host}).
+					WithError(err).
+					Debug("fail to reserve host")
+
 				failedReservations[host] = res
 				continue
 			}
@@ -316,7 +325,7 @@ func (r *reserver) FindCompletedReservations(ctx context.Context,
 	return failedReservations
 }
 
-// returnReservation moves the host status to Reserve to Placing
+// returnReservation moves the host status from Reserve to Placing
 // gets the host offers and make it part of the reservation
 func (r *reserver) returnReservation(res *hostsvc.Reservation, host string) error {
 	s, err := r.offerPool.GetHostSummary(host)
@@ -324,6 +333,7 @@ func (r *reserver) returnReservation(res *hostsvc.Reservation, host string) erro
 		return err
 	}
 	err = s.CasStatus(summary.ReservedHost, summary.PlacingHost)
+
 	if err != nil {
 		return err
 	}
@@ -338,18 +348,22 @@ func (r *reserver) returnReservation(res *hostsvc.Reservation, host string) erro
 		r.createCompletedReservation(
 			res,
 			host,
-			util.MesosOffersToHostOffers(mesosOfferMap)),
+			util.MesosOffersToHostOffer(s.GetHostOfferID(), mesosOffers)),
 		host)
 	if err != nil {
 		return err
 	}
+
+	log.WithField("reservation", res).
+		WithField("host", host).
+		Debug("host reservation completed")
 	return nil
 }
 
 func (r *reserver) createCompletedReservation(
 	reservation *hostsvc.Reservation,
 	host string,
-	offers []*hostsvc.HostOffer) *hostsvc.CompletedReservation {
+	offer *hostsvc.HostOffer) *hostsvc.CompletedReservation {
 	var hInfo *hostsvc.HostInfo
 	for _, hostInfo := range reservation.GetHosts() {
 		if hostInfo.Hostname == host {
@@ -357,9 +371,9 @@ func (r *reserver) createCompletedReservation(
 		}
 	}
 	return &hostsvc.CompletedReservation{
-		Task:       reservation.GetTask(),
-		Host:       hInfo,
-		HostOffers: offers,
+		Task:      reservation.GetTask(),
+		Host:      hInfo,
+		HostOffer: offer,
 	}
 }
 
@@ -417,7 +431,7 @@ func (r *reserver) makeHostAvailable(host string) error {
 func (r *reserver) completeHostReservation(res *hostsvc.CompletedReservation,
 	host string) error {
 	if res == nil {
-		return errors.New("Invalid completed Reservation")
+		return errors.New("invalid completed Reservation")
 	}
 	err := r.completedReservationQueue.Enqueue(res)
 	if err != nil {

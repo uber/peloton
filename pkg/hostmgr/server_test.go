@@ -29,6 +29,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/offer"
 	offer_mocks "github.com/uber/peloton/pkg/hostmgr/offer/mocks"
 	reconciler_mocks "github.com/uber/peloton/pkg/hostmgr/reconcile/mocks"
+	reserver_mocks "github.com/uber/peloton/pkg/hostmgr/reserver/mocks"
 
 	"github.com/golang/mock/gomock"
 	log "github.com/sirupsen/logrus"
@@ -63,8 +64,8 @@ type ServerTestSuite struct {
 
 	reconciler *reconciler_mocks.MockTaskReconciler
 	drainer    *host_mocks.MockDrainer
-
-	server *Server
+	reserver   *reserver_mocks.MockReserver
+	server     *Server
 }
 
 func (suite *ServerTestSuite) SetupTest() {
@@ -77,6 +78,7 @@ func (suite *ServerTestSuite) SetupTest() {
 	suite.reconciler = reconciler_mocks.NewMockTaskReconciler(suite.ctrl)
 	suite.recoveryHandler = recovery_mocks.NewMockRecoveryHandler(suite.ctrl)
 	suite.drainer = host_mocks.NewMockDrainer(suite.ctrl)
+	suite.reserver = reserver_mocks.NewMockReserver(suite.ctrl)
 
 	suite.server = &Server{
 		ID:   _ID,
@@ -92,6 +94,7 @@ func (suite *ServerTestSuite) SetupTest() {
 		mesosInbound:    suite.mInbound,
 		recoveryHandler: suite.recoveryHandler,
 		drainer:         suite.drainer,
+		reserver:        suite.reserver,
 		// Add outbound when we need it.
 
 		reconciler: suite.reconciler,
@@ -122,6 +125,7 @@ func (suite *ServerTestSuite) TestNewServer() {
 		suite.reconciler,
 		suite.recoveryHandler,
 		suite.drainer,
+		suite.reserver,
 	)
 	suite.ctrl.Finish()
 	suite.NotNil(s)
@@ -195,6 +199,7 @@ func (suite *ServerTestSuite) TestUnelectedStopHandler() {
 		suite.eventHandler.EXPECT().Stop(),
 		suite.recoveryHandler.EXPECT().Stop(),
 		suite.drainer.EXPECT().Stop(),
+		suite.reserver.EXPECT().Stop(),
 	)
 
 	suite.server.ensureStateRound()
@@ -216,6 +221,7 @@ func (suite *ServerTestSuite) TestUnelectedStopConnectionAndHandler() {
 		suite.eventHandler.EXPECT().Stop(),
 		suite.recoveryHandler.EXPECT().Stop(),
 		suite.drainer.EXPECT().Stop(),
+		suite.reserver.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false).AnyTimes(),
 	)
 
@@ -253,6 +259,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 		suite.eventHandler.EXPECT().Stop(),
 		suite.recoveryHandler.EXPECT().Stop(),
 		suite.drainer.EXPECT().Stop(),
+		suite.reserver.EXPECT().Stop(),
 
 		// Detect leader and start loop successfully.
 		suite.detector.EXPECT().HostPort().Return(_hostPort),
@@ -270,8 +277,8 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 		suite.eventHandler.EXPECT().Start(),
 		suite.recoveryHandler.EXPECT().Start(),
 		suite.drainer.EXPECT().Start(),
+		suite.reserver.EXPECT().Start(),
 	)
-
 	suite.server.ensureStateRound()
 	suite.ctrl.Finish()
 	suite.Zero(suite.server.currentBackoffNano.Load())
@@ -291,6 +298,7 @@ func (suite *ServerTestSuite) TestElectedRestartHandlers() {
 		suite.eventHandler.EXPECT().Start(),
 		suite.recoveryHandler.EXPECT().Start(),
 		suite.drainer.EXPECT().Start(),
+		suite.reserver.EXPECT().Start(),
 	)
 
 	suite.server.ensureStateRound()
@@ -325,8 +333,8 @@ func (suite *ServerTestSuite) TestElectedRestartConnectionAndHandler() {
 		suite.eventHandler.EXPECT().Start(),
 		suite.recoveryHandler.EXPECT().Start(),
 		suite.drainer.EXPECT().Start(),
+		suite.reserver.EXPECT().Start(),
 	)
-
 	suite.server.ensureStateRound()
 	suite.ctrl.Finish()
 	suite.Zero(suite.server.currentBackoffNano.Load())

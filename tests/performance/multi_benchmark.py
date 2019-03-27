@@ -35,7 +35,7 @@ PERF_TEST_CONDUCTED = [
     ('JOB_STATELESS_CREATE', '_job_stateless_create.csv'),
     ('JOB_STATELESS_UPDATE', '_job_stateless_update.csv'),
     ('JOB_PARALLEL_STATELESS_UPDATE',
-    '_job_parallel_stateless_update.csv'),
+     '_job_parallel_stateless_update.csv'),
 ]
 
 NUM_TASKS = [10000, 50000]

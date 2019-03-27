@@ -16,24 +16,18 @@ package placement
 
 import (
 	"context"
-	"errors"
-	"sort"
 	"testing"
 	"time"
 
-	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
-	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
 	"github.com/uber/peloton/pkg/common/async"
 	"github.com/uber/peloton/pkg/placement/config"
-	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
 	offers_mock "github.com/uber/peloton/pkg/placement/offers/mocks"
 	"github.com/uber/peloton/pkg/placement/plugins/batch"
 	"github.com/uber/peloton/pkg/placement/plugins/mocks"
-	reserver_mocks "github.com/uber/peloton/pkg/placement/reserver/mocks"
 	tasks_mock "github.com/uber/peloton/pkg/placement/tasks/mocks"
 	"github.com/uber/peloton/pkg/placement/testutil"
 
@@ -43,11 +37,7 @@ import (
 )
 
 const (
-	_testReason      = "Test Placement Reason"
-	_portRange1Begin = 31000
-	_portRange1End   = 31001
-	_portRange2Begin = 31002
-	_portRange2End   = 31009
+	_testReason = "Test Placement Reason"
 )
 
 func setupEngine(t *testing.T) (
@@ -441,6 +431,75 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 	assert.Equal(t, time.Duration(0), delay)
 }
 
+func TestEnginePlaceReservedTasks(t *testing.T) {
+	ctrl, engine, mockOfferService, mockTaskService, _ := setupEngine(t)
+	defer ctrl.Finish()
+	createTasks := 25
+	createHosts := 10
+
+	engine.config.MaxPlacementDuration = time.Second
+	deadline := time.Now().Add(time.Second)
+
+	var assignments []*models.Assignment
+	for i := 0; i < createTasks; i++ {
+		assignment := testutil.SetupAssignment(deadline, 1)
+		assignment.GetTask().GetTask().Resource.CpuLimit = 5
+		assignments = append(assignments, assignment)
+	}
+	assignments[0].GetTask().Task.ReadyForHostReservation = true
+	assignments[10].GetTask().Task.ReadyForHostReservation = true
+
+	var hosts []*models.HostOffers
+	for i := 0; i < createHosts; i++ {
+		hosts = append(hosts, testutil.SetupHostOffers())
+	}
+
+	mockOfferService.EXPECT().Acquire(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+	).Return(hosts, _testReason).MinTimes(1)
+	mockOfferService.EXPECT().Release(
+		gomock.Any(),
+		gomock.Any()).
+		Return()
+
+	mockTaskService.EXPECT().
+		Dequeue(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Times(1).
+		Return(assignments)
+	mockTaskService.EXPECT().SetPlacements(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any()).
+		Return()
+
+	// Test assignments ready for host reservation
+	engine.strategy = batch.New()
+	engine.Place(context.Background())
+	engine.pool.WaitUntilProcessed()
+
+	var success, failed int
+	for _, assignment := range assignments {
+		if !assignment.GetTask().Task.ReadyForHostReservation {
+			if assignment.GetHost() != nil {
+				success++
+			} else {
+				failed++
+			}
+		}
+	}
+
+	assert.Equal(t, 2, engine.reserver.GetReservationQueue().Length())
+	assert.Equal(t, createTasks-2, success)
+	assert.Equal(t, 0, failed)
+}
+
 func TestEngineFindUsedOffers(t *testing.T) {
 	ctrl, engine, _, _, _ := setupEngine(t)
 	defer ctrl.Finish()
@@ -560,73 +619,6 @@ func TestEngineCreatePlacement(t *testing.T) {
 	assert.Equal(t, 3, len(placements[0].GetPorts()))
 }
 
-func TestEngineAssignPortsAllFromASingleRange(t *testing.T) {
-	ctrl, engine, _, _, _ := setupEngine(t)
-	defer ctrl.Finish()
-
-	now := time.Now()
-	deadline := now.Add(30 * time.Second)
-	assignment1 := testutil.SetupAssignment(deadline, 1)
-	assignment2 := testutil.SetupAssignment(deadline, 1)
-	tasks := []*models.Task{
-		assignment1.GetTask(),
-		assignment2.GetTask(),
-	}
-	offer := testutil.SetupHostOffers()
-
-	ports := engine.assignPorts(offer, tasks)
-	assert.Equal(t, 6, len(ports))
-	assert.Equal(t, uint32(31000), ports[0])
-	assert.Equal(t, uint32(31001), ports[1])
-	assert.Equal(t, uint32(31002), ports[2])
-	assert.Equal(t, uint32(31003), ports[3])
-	assert.Equal(t, uint32(31004), ports[4])
-	assert.Equal(t, uint32(31005), ports[5])
-}
-
-func TestEngineAssignPortsFromMultipleRanges(t *testing.T) {
-	ctrl, engine, _, _, _ := setupEngine(t)
-	defer ctrl.Finish()
-
-	now := time.Now()
-	deadline := now.Add(30 * time.Second)
-	assignment1 := testutil.SetupAssignment(deadline, 1)
-	assignment2 := testutil.SetupAssignment(deadline, 1)
-	tasks := []*models.Task{
-		assignment1.GetTask(),
-		assignment2.GetTask(),
-	}
-	host := testutil.SetupHostOffers()
-	*host.GetOffer().Resources[4].Ranges.Range[0].End = uint64(_portRange1End)
-	begin, end := uint64(_portRange2Begin), uint64(_portRange2End)
-	host.GetOffer().Resources[4].Ranges.Range = append(
-		host.GetOffer().Resources[4].Ranges.Range, &mesos_v1.Value_Range{
-			Begin: &begin,
-			End:   &end,
-		})
-
-	ports := engine.assignPorts(host, tasks)
-	intPorts := make([]int, len(ports))
-	for i := range ports {
-		intPorts[i] = int(ports[i])
-	}
-	sort.Ints(intPorts)
-	assert.Equal(t, 6, len(ports))
-
-	// range 1 (31000-31001) and range 2 (31002-31009)
-	// ports selected from both ranges
-	if intPorts[0] == _portRange1Begin {
-		for i := 0; i < len(intPorts); i++ {
-			assert.Equal(t, intPorts[i], 31000+i)
-		}
-	} else {
-		// ports selected from range2 only
-		for i := 0; i < len(intPorts); i++ {
-			assert.Equal(t, intPorts[i], _portRange2Begin+i)
-		}
-	}
-}
-
 func TestEngineFindUnusedOffers(t *testing.T) {
 	ctrl, engine, _, _, _ := setupEngine(t)
 	defer ctrl.Finish()
@@ -657,58 +649,4 @@ func TestEngineFindUnusedOffers(t *testing.T) {
 	unused := engine.findUnusedHosts(assignments, retryable, offers)
 	assert.Equal(t, 1, len(unused))
 	assert.Equal(t, host2, unused[0])
-}
-
-// TestProcessCompletedReservations tests the process completed reservations
-// functions.
-func TestProcessCompletedReservations(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockOfferService := offers_mock.NewMockService(ctrl)
-	mockTaskService := tasks_mock.NewMockService(ctrl)
-	mockStrategy := mocks.NewMockStrategy(ctrl)
-	mockReserver := reserver_mocks.NewMockReserver(ctrl)
-	engine := &engine{
-		config: &config.PlacementConfig{
-			Strategy: config.Batch,
-		},
-		metrics:      metrics.NewMetrics(tally.NoopScope),
-		offerService: mockOfferService,
-		taskService:  mockTaskService,
-		strategy:     mockStrategy,
-		reserver:     mockReserver,
-	}
-	// Testing the scenario where GetCompletedReservation returns error
-	mockReserver.EXPECT().GetCompletedReservation(gomock.Any()).Return(nil, errors.New("error"))
-	err := engine.processCompletedReservations(context.Background())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "error")
-
-	// Testing the scenario where GetCompletedReservation returns with no reservations
-	var reservations []*hostsvc.CompletedReservation
-	mockReserver.EXPECT().GetCompletedReservation(gomock.Any()).Return(reservations, nil)
-	err = engine.processCompletedReservations(context.Background())
-	assert.Contains(t, err.Error(), "no valid reservations")
-
-	// Testing the scenario where GetCompletedReservation returns with valid reservations
-	host := "host"
-	reservations = append(reservations, &hostsvc.CompletedReservation{
-		HostOffers: []*hostsvc.HostOffer{
-			{
-				Hostname: host,
-				AgentId: &mesos_v1.AgentID{
-					Value: &host,
-				},
-			},
-		},
-		Task: &resmgr.Task{
-			Id: &peloton.TaskID{
-				Value: "task1",
-			},
-		},
-	})
-	mockReserver.EXPECT().GetCompletedReservation(gomock.Any()).Return(reservations, nil)
-	mockTaskService.EXPECT().SetPlacements(gomock.Any(), gomock.Any(), gomock.Any())
-	err = engine.processCompletedReservations(context.Background())
-	assert.NoError(t, err)
 }

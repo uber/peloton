@@ -24,19 +24,28 @@ resmgr:
   entitlement_calculation_period: 60s
   task_reconciliation_period: 1h
   task:
+    # Timeout for rm task in statemachine from placing to ready state
     placing_timeout: 10m
+    # Timeout for rm task in statemachine from launching to ready state
     launching_timeout: 20m
+    # Timeout for rm task in statemachine from reserved to pending state
+    reserving_timeout: 30m
     # This is the backoff period how much it will backoff
     # in each cycle.
     placement_retry_backoff: 5m
-    # This is the cycle which is going to repeat
-    # after these many attempts.
+    # This is number of cycles which placement is going to repeat and
+    # unplaced tasks after that are qualified for host reservation.
     placement_retry_cycle: 3
+    # This is number of retry attempts in each placement
+    # retry cycle.
+    placement_attempts_percycle: 3
     # This is the policy name for the backoff
     # which is going to dictate the backoff
     backoff_policy_name: exponential-policy
     # This flag enable/disable the placement backoff
     enable_placement_backoff: true
+    # This flag will enable/disable host reservation of tasks
+    enable_host_reservation: true
   preemption:
     task_preemption_period: 60s
     sustained_over_allocation_count: 5

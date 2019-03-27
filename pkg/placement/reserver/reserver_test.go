@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
@@ -25,11 +26,14 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
+	"github.com/uber/peloton/pkg/common/queue"
 	queue_mocks "github.com/uber/peloton/pkg/common/queue/mocks"
 	"github.com/uber/peloton/pkg/placement/config"
 	hosts_mock "github.com/uber/peloton/pkg/placement/hosts/mocks"
 	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
+	tasks_mock "github.com/uber/peloton/pkg/placement/tasks/mocks"
+	"github.com/uber/peloton/pkg/placement/testutil"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
@@ -41,6 +45,7 @@ type ReserverTestSuite struct {
 	suite.Suite
 	mockCtrl    *gomock.Controller
 	hostService *hosts_mock.MockService
+	taskService *tasks_mock.MockService
 	reserver    Reserver
 }
 
@@ -58,6 +63,7 @@ func (suite *ReserverTestSuite) SetupTest() {
 		metrics,
 		config,
 		suite.hostService,
+		suite.taskService,
 	)
 }
 
@@ -88,7 +94,10 @@ func (suite *ReserverTestSuite) TestReservation() {
 
 	// Adding task to reservation queue which is simulating the behavior
 	// for placement engine got the task from Resource Manager
-	suite.reserver.GetReservationQueue().Enqueue(task)
+	suite.reserver.EnqueueReservation(
+		&hostsvc.Reservation{
+			Task: task,
+		})
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), float64(0))
 	suite.NoError(err)
@@ -110,11 +119,14 @@ func (suite *ReserverTestSuite) TestReservationNoTasks() {
 func (suite *ReserverTestSuite) TestReservationInvalidTask() {
 	task := createResMgrTask()
 	task.Id = nil
-	suite.reserver.GetReservationQueue().Enqueue(task)
+	suite.reserver.EnqueueReservation(
+		&hostsvc.Reservation{
+			Task: task,
+		})
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), _noTasksTimeoutPenalty.Seconds())
 	require.Error(suite.T(), err)
-	suite.Contains(err.Error(), "Not a valid task")
+	suite.Contains(err.Error(), "not a valid task")
 }
 
 // TestReservationErrorinAcquire simulates the error in Acquire call
@@ -125,7 +137,10 @@ func (suite *ReserverTestSuite) TestReservationErrorinAcquire() {
 		GetHosts(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, errors.New("error in acquire hosts"))
 
-	suite.reserver.GetReservationQueue().Enqueue(task)
+	suite.reserver.EnqueueReservation(
+		&hostsvc.Reservation{
+			Task: task,
+		})
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), _noHostsTimeoutPenalty.Seconds())
 	require.Error(suite.T(), err)
@@ -145,25 +160,75 @@ func (suite *ReserverTestSuite) TestReservationErrorInReservation() {
 	suite.hostService.EXPECT().ReserveHost(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(errors.New("error in reserve hosts"))
 
-	suite.reserver.GetReservationQueue().Enqueue(task)
+	suite.reserver.EnqueueReservation(
+		&hostsvc.Reservation{
+			Task: task,
+		})
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), _noHostsTimeoutPenalty.Seconds())
 	require.Error(suite.T(), err)
 	suite.Contains(err.Error(), "error in reserve hosts")
 }
 
+// TestProcessHostReservation tests the tasks ready for host reserveration will get queued in reservationQueue
+// but won't get placed
+func (suite *ReserverTestSuite) TestProcessHostReservation() {
+	createTasks := 25
+	createHosts := 10
+
+	deadline := time.Now().Add(time.Second)
+
+	var assignments []*models.Assignment
+	for i := 0; i < createTasks; i++ {
+		assignment := testutil.SetupAssignment(deadline, 1)
+		assignment.GetTask().GetTask().Resource.CpuLimit = 5
+		assignments = append(assignments, assignment)
+	}
+	assignments[10].Task.Task.JobId = &peloton.JobID{Value: "hostreservation_10"}
+	assignments[10].Task.Task.ReadyForHostReservation = true
+
+	var hosts []*models.HostOffers
+	for i := 0; i < createHosts; i++ {
+		hosts = append(hosts, testutil.SetupHostOffers())
+	}
+
+	// Test host can be reserved
+	err := suite.reserver.ProcessHostReservation(context.Background(), assignments)
+	suite.NoError(err)
+
+	suite.Equal(1, suite.reserver.GetReservationQueue().Length())
+	item, _ := suite.reserver.GetReservationQueue().Dequeue(1 * time.Second)
+	reservation, _ := item.(*hostsvc.Reservation)
+	task := reservation.Task
+	suite.Equal(true, task.ReadyForHostReservation)
+	suite.Equal("hostreservation_10", task.JobId.Value)
+
+	// test Enqueue error during host reservation
+	reserver, reserverQueue, _ := suite.getReserver()
+	reserverQueue.EXPECT().Enqueue(gomock.Any()).Return(errors.New("error"))
+	err = reserver.ProcessHostReservation(context.Background(), assignments)
+	suite.Error(err)
+}
+
 // TestGetCompletedReservation tests the completed reservation call
 func (suite *ReserverTestSuite) TestGetCompletedReservation() {
 	reserver, _, completedQueue := suite.getReserver()
+
+	// Testing if queue returns time out error
+	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(nil, queue.DequeueTimeOutError{})
+	res, err := reserver.GetCompletedReservation(context.Background())
+	suite.NoError(err)
+	suite.Equal(0, len(res))
+
 	// Testing if queue returns error
 	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(nil, errors.New("error"))
-	_, err := reserver.GetCompletedReservation(context.Background())
+	_, err = reserver.GetCompletedReservation(context.Background())
 	suite.Error(err)
 	suite.Equal("error", err.Error())
 
 	// testing if queue have a valid completed reservation
 	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(suite.getCompletedReservation(), nil)
-	res, err := reserver.GetCompletedReservation(context.Background())
+	res, err = reserver.GetCompletedReservation(context.Background())
 	suite.NoError(err)
 	suite.Equal(len(res), 1)
 
@@ -205,13 +270,51 @@ func (suite *ReserverTestSuite) TestFindCompletedReservation() {
 	suite.NoError(err)
 }
 
+// TestProcessCompletedReservations tests the process completed reservations
+// functions.
+func (suite *ReserverTestSuite) TestProcessCompletedReservations() {
+	reserver, _, completedQueue := suite.getReserver()
+
+	// Testing the scenario where GetCompletedReservation returns error
+	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(nil, errors.New("error"))
+	err := reserver.processCompletedReservations(context.Background())
+	suite.Error(err)
+	suite.Contains(err.Error(), "error")
+
+	// Testing the scenario where GetCompletedReservation returns with no reservations
+	var reservation *hostsvc.CompletedReservation
+	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(reservation, nil)
+	err = reserver.processCompletedReservations(context.Background())
+	suite.Contains(err.Error(), "no valid reservations")
+
+	// Testing the scenario where GetCompletedReservation returns with valid reservations
+	host := "host"
+	reservation = &hostsvc.CompletedReservation{
+		HostOffer: &hostsvc.HostOffer{
+			Hostname: host,
+			AgentId: &mesos_v1.AgentID{
+				Value: &host,
+			},
+		},
+		Task: &resmgr.Task{
+			Id: &peloton.TaskID{
+				Value: "task1",
+			},
+		},
+	}
+	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(reservation, nil)
+	suite.taskService.EXPECT().SetPlacements(gomock.Any(), gomock.Any(), gomock.Any())
+	err = reserver.processCompletedReservations(context.Background())
+	suite.NoError(err)
+}
+
 // testing requeue when reservation failed.
 func (suite *ReserverTestSuite) TestReserveAgain() {
 	reserver, reserveQueue, _ := suite.getReserver()
 	// testing the valid completed reservation
 	var res []*hostsvc.CompletedReservation
 	res = append(res, suite.getCompletedReservation())
-	res[0].HostOffers = []*hostsvc.HostOffer{}
+	res[0].HostOffer = nil
 	suite.hostService.EXPECT().GetCompletedReservation(gomock.Any()).Return(res, nil)
 	reserveQueue.EXPECT().Enqueue(gomock.Any()).Return(nil)
 	err := reserver.enqueueCompletedReservation(context.Background())
@@ -229,15 +332,15 @@ func (suite *ReserverTestSuite) TestEnqueueReservation() {
 	reserver, reserveQueue, _ := suite.getReserver()
 	err := reserver.EnqueueReservation(nil)
 	suite.Error(err)
-	suite.Equal(err.Error(), "invalid reservation")
+	suite.Equal("invalid reservation", err.Error())
 
 	reserveQueue.EXPECT().Enqueue(gomock.Any()).Return(errors.New("error"))
-	err = reserver.EnqueueReservation(&hostsvc.Reservation{})
+	err = reserver.EnqueueReservation(&hostsvc.Reservation{Task: &resmgr.Task{}})
 	suite.Error(err)
-	suite.Equal(err.Error(), "error")
+	suite.Equal("error", err.Error())
 
 	reserveQueue.EXPECT().Enqueue(gomock.Any()).Return(nil)
-	err = reserver.EnqueueReservation(&hostsvc.Reservation{})
+	err = reserver.EnqueueReservation(&hostsvc.Reservation{Task: &resmgr.Task{}})
 	suite.NoError(err)
 }
 
@@ -247,11 +350,13 @@ func (suite *ReserverTestSuite) getReserver() (*reserver, *queue_mocks.MockQueue
 	metrics := metrics.NewMetrics(tally.NoopScope)
 
 	suite.hostService = hosts_mock.NewMockService(suite.mockCtrl)
+	suite.taskService = tasks_mock.NewMockService(suite.mockCtrl)
 	config := &config.PlacementConfig{}
 	return &reserver{
 		metrics:                   metrics,
 		config:                    config,
 		hostService:               suite.hostService,
+		taskService:               suite.taskService,
 		reservationQueue:          reserverQueue,
 		completedReservationQueue: completedQueue,
 		reservations:              make(map[string][]*models.Host),
@@ -262,12 +367,10 @@ func (suite *ReserverTestSuite) getReserver() (*reserver, *queue_mocks.MockQueue
 func (suite *ReserverTestSuite) getCompletedReservation() *hostsvc.CompletedReservation {
 	host := "host"
 	return &hostsvc.CompletedReservation{
-		HostOffers: []*hostsvc.HostOffer{
-			{
-				Hostname: host,
-				AgentId: &mesos_v1.AgentID{
-					Value: &host,
-				},
+		HostOffer: &hostsvc.HostOffer{
+			Hostname: host,
+			AgentId: &mesos_v1.AgentID{
+				Value: &host,
 			},
 		},
 		Task: &resmgr.Task{

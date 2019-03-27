@@ -22,11 +22,15 @@ type Config struct {
 	LaunchingTimeout time.Duration `yaml:"launching_timeout"`
 	// Timeout for rm task in statemachine from placing to ready state
 	PlacingTimeout time.Duration `yaml:"placing_timeout"`
+	// Timeout for rm task in statemachine from reserved to pending state
+	ReservingTimeout time.Duration `yaml:"reserving_timeout"`
 	// This is the backoff period how much it will backoff
-	// in each cycle.
+	// in each retry attempt.
 	PlacementRetryBackoff time.Duration `yaml:"placement_retry_backoff"`
-	// This is the cycle which is going to repeat
-	// after these many attempts.
+	// This is number of retry attempts in each placement retry cycle.
+	PlacementAttemptsPerCycle float64 `yaml:"placement_attempts_percycle"`
+	// This is number of cycles which placement is going to repeat and
+	// unplaced tasks after that are qualified for host reservation.
 	PlacementRetryCycle float64 `yaml:"placement_retry_cycle"`
 	// This is the policy name for the backoff
 	// which is going to dictate the backoff
@@ -35,4 +39,6 @@ type Config struct {
 	EnablePlacementBackoff bool `yaml:"enable_placement_backoff"`
 	// This flag will enable/disable SLA tracking of tasks
 	EnableSLATracking bool `yaml:"enable_sla_tracking"`
+	// This flag will enable/disable host reservation of tasks
+	EnableHostReservation bool `yaml:"enable_host_reservation"`
 }

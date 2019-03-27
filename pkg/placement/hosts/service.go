@@ -82,6 +82,9 @@ func (s *service) GetHosts(
 	ctx context.Context,
 	task *resmgr.Task,
 	filter *hostsvc.HostFilter) (hosts []*models.Host, err error) {
+	ctx, cancelFunc := context.WithTimeout(ctx, _timeout)
+	defer cancelFunc()
+
 	req := &hostsvc.GetHostsRequest{
 		Filter: filter,
 	}
@@ -168,6 +171,10 @@ func (s *service) ReserveHost(ctx context.Context,
 	if task == nil {
 		return errNoValidTask
 	}
+
+	ctx, cancelFunc := context.WithTimeout(ctx, _timeout)
+	defer cancelFunc()
+
 	req := &hostsvc.ReserveHostsRequest{
 		Reservation: &hostsvc.Reservation{
 			Task:  task,
@@ -187,7 +194,7 @@ func (s *service) ReserveHost(ctx context.Context,
 
 // HostInfoToHostModel returns the array of models.Host to hostsvc.HostInfo
 func HostInfoToHostModel(hostModels []*models.Host) []*hostsvc.HostInfo {
-	hInfos := make([]*hostsvc.HostInfo, len(hostModels))
+	hInfos := make([]*hostsvc.HostInfo, 0, len(hostModels))
 	for _, hModel := range hostModels {
 		hInfos = append(hInfos, hModel.Host)
 	}
@@ -197,11 +204,14 @@ func HostInfoToHostModel(hostModels []*models.Host) []*hostsvc.HostInfo {
 // GetCompletedReservation gets the completed reservation from host manager
 func (s *service) GetCompletedReservation(ctx context.Context,
 ) ([]*hostsvc.CompletedReservation, error) {
+	ctx, cancelFunc := context.WithTimeout(ctx, _timeout)
+	defer cancelFunc()
 
 	completedResp, err := s.hostManager.GetCompletedReservations(
 		ctx,
 		&hostsvc.GetCompletedReservationRequest{},
 	)
+
 	if err != nil {
 		return nil, err
 	}

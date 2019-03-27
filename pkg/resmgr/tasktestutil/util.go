@@ -47,12 +47,13 @@ func ValidateStateTransitions(rmtask *rm_task.RMTask,
 // for the tests. It is a TEST task config.
 func CreateTaskConfig() *rm_task.Config {
 	return &rm_task.Config{
-		LaunchingTimeout:       1 * time.Minute,
-		PlacingTimeout:         1 * time.Minute,
-		PolicyName:             rm_task.ExponentialBackOffPolicy,
-		PlacementRetryBackoff:  30 * time.Second,
-		PlacementRetryCycle:    1,
-		EnablePlacementBackoff: true,
+		LaunchingTimeout:          1 * time.Minute,
+		PlacingTimeout:            1 * time.Minute,
+		PolicyName:                rm_task.ExponentialBackOffPolicy,
+		PlacementRetryBackoff:     30 * time.Second,
+		PlacementRetryCycle:       3,
+		PlacementAttemptsPerCycle: 3,
+		EnablePlacementBackoff:    true,
 	}
 }
 

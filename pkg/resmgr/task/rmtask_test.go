@@ -168,7 +168,7 @@ func (s *RMTaskTestSuite) createTask(instance int) *resmgr.Task {
 	}
 }
 
-func (s *RMTaskTestSuite) createTask0(placementRetryCount float64) *resmgr.Task {
+func (s *RMTaskTestSuite) createTask0(cycleCount, attemptCount float64) *resmgr.Task {
 	uuidStr := "uuidstr-1"
 	jobID := "job1"
 	instance := 1
@@ -189,7 +189,8 @@ func (s *RMTaskTestSuite) createTask0(placementRetryCount float64) *resmgr.Task 
 		},
 		Preemptible:             true,
 		PlacementTimeoutSeconds: 60,
-		PlacementRetryCount:     placementRetryCount,
+		PlacementRetryCount:     cycleCount,
+		PlacementAttemptCount:   attemptCount,
 	}
 }
 
@@ -228,7 +229,7 @@ func (s *RMTaskTestSuite) getResourceConfig() []*resp.ResourceConfig {
 func (s *RMTaskTestSuite) pendingGang0() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
 	gang.Tasks = []*resmgr.Task{
-		s.createTask0(1),
+		s.createTask0(0, 1),
 	}
 
 	return &gang
@@ -279,7 +280,7 @@ func (s *RMTaskTestSuite) TestCreateRMTasks() {
 
 	rmTask, err = CreateRMTask(
 		tally.NoopScope,
-		s.createTask0(1),
+		s.createTask0(1, 2),
 		nil,
 		respool,
 		&Config{
@@ -293,6 +294,7 @@ func (s *RMTaskTestSuite) TestCreateRMTasks() {
 
 	s.NoError(err)
 	s.EqualValues(1, rmTask.Task().PlacementRetryCount)
+	s.EqualValues(2, rmTask.Task().PlacementAttemptCount)
 	s.EqualValues(2, rmTask.Task().PlacementTimeoutSeconds)
 }
 
@@ -379,12 +381,13 @@ func (s *RMTaskTestSuite) TestPendingBackoff() {
 		nil,
 		node,
 		&Config{
-			LaunchingTimeout:       1 * time.Minute,
-			PlacingTimeout:         2 * time.Second,
-			PlacementRetryCycle:    3,
-			PlacementRetryBackoff:  1 * time.Second,
-			PolicyName:             ExponentialBackOffPolicy,
-			EnablePlacementBackoff: true,
+			LaunchingTimeout:          1 * time.Minute,
+			PlacingTimeout:            2 * time.Second,
+			PlacementAttemptsPerCycle: 3,
+			PlacementRetryCycle:       3,
+			PlacementRetryBackoff:     1 * time.Second,
+			PolicyName:                ExponentialBackOffPolicy,
+			EnablePlacementBackoff:    true,
 		})
 
 	pool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
@@ -399,7 +402,7 @@ func (s *RMTaskTestSuite) TestPendingBackoff() {
 	// method is run asynchronously.
 	time.Sleep(2 * time.Second)
 	s.EqualValues(rmtask.GetCurrentState().State, task.TaskState_READY)
-	rmtask.task.PlacementRetryCount = 2
+	rmtask.task.PlacementAttemptCount = 2
 	rmtask.AddBackoff()
 	err = rmtask.TransitTo(task.TaskState_PLACING.String())
 	s.NoError(err)
@@ -408,6 +411,95 @@ func (s *RMTaskTestSuite) TestPendingBackoff() {
 	time.Sleep(5 * time.Second)
 	// Third Backoff and transition it should go to Pending state
 	s.EqualValues(rmtask.GetCurrentState().State, task.TaskState_PENDING)
+}
+
+func (s *RMTaskTestSuite) TestHostReservation() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	node.SetNonSlackEntitlement(s.getEntitlement())
+
+	s.tracker.AddTask(
+		s.pendingGang0().Tasks[0],
+		nil,
+		node,
+		&Config{
+			LaunchingTimeout:          1 * time.Minute,
+			PlacingTimeout:            2 * time.Second,
+			PlacementAttemptsPerCycle: 3,
+			PlacementRetryCycle:       3,
+			PlacementRetryBackoff:     1 * time.Second,
+			PolicyName:                ExponentialBackOffPolicy,
+			EnablePlacementBackoff:    true,
+			EnableHostReservation:     true,
+		})
+
+	pool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	pool.EnqueueGang(s.pendingGang0())
+	rmTask := s.tracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	err = rmTask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo("mesos_task_id",
+		*s.pendingGang0().Tasks[0].TaskId.Value))
+	s.NoError(err)
+
+	s.EqualValues(false, rmTask.Task().ReadyForHostReservation)
+
+	// There is a race condition in the test due to the Scheduler.scheduleTasks
+	// method is run asynchronously.
+	// After third cycles, state transits to Ready state and is ready for host reservation
+	time.Sleep(2 * time.Second)
+	s.EqualValues(task.TaskState_READY, rmTask.GetCurrentState().State)
+	rmTask.task.PlacementRetryCount = 3
+	rmTask.task.PlacementAttemptCount = 3
+	rmTask.TransitTo(task.TaskState_PLACING.String())
+	s.NoError(err)
+	s.taskScheduler.Stop()
+	// Testing the timeout hence sleep
+	time.Sleep(5 * time.Second)
+	s.EqualValues(true, rmTask.Task().ReadyForHostReservation)
+	s.EqualValues(task.TaskState_READY, rmTask.GetCurrentState().State)
+}
+
+func (s *RMTaskTestSuite) TestHostReservationStateTransistion() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	node.SetNonSlackEntitlement(s.getEntitlement())
+
+	s.tracker.AddTask(
+		s.pendingGang0().Tasks[0],
+		nil,
+		node,
+		&Config{
+			LaunchingTimeout:          1 * time.Minute,
+			PlacingTimeout:            2 * time.Second,
+			PlacementAttemptsPerCycle: 3,
+			PlacementRetryCycle:       3,
+			PlacementRetryBackoff:     1 * time.Second,
+			PolicyName:                ExponentialBackOffPolicy,
+			EnablePlacementBackoff:    true,
+			EnableHostReservation:     true,
+		})
+
+	pool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	pool.EnqueueGang(s.pendingGang0())
+	rmTask := s.tracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	err = rmTask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo("mesos_task_id",
+		*s.pendingGang0().Tasks[0].TaskId.Value))
+	s.NoError(err)
+
+	err = rmTask.TransitTo(task.TaskState_READY.String())
+	s.NoError(err)
+
+	// Task can transit from READY to RESERVED
+	err = rmTask.TransitTo(task.TaskState_RESERVED.String())
+	s.NoError(err)
+	rule := rmTask.stateMachine.GetTimeOutRules()[statemachine.State(task.TaskState_RESERVED.String())]
+	s.Equal(rmTask.config.ReservingTimeout, rule.Timeout)
+	s.Nil(rule.PreCallback)
+	s.NotNil(rule.Callback)
+
+	err = rmTask.TransitTo(task.TaskState_PLACED.String())
+	s.NoError(err)
 }
 
 func (s *RMTaskTestSuite) TestBackOffDisabled() {
@@ -454,6 +546,34 @@ func (s *RMTaskTestSuite) TestBackOffDisabled() {
 	time.Sleep(5 * time.Second)
 	// Third Backoff and transition it should go to READY state
 	s.EqualValues(rmtask.GetCurrentState().State, task.TaskState_READY)
+}
+
+func (s *RMTaskTestSuite) TestReservingTimeout() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	node.SetNonSlackEntitlement(s.getEntitlement())
+
+	s.tracker.AddTask(
+		s.pendingGang0().Tasks[0],
+		nil,
+		node,
+		&Config{
+			ReservingTimeout: 1 * time.Second,
+		})
+	s.NoError(err)
+	rmtask := s.tracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo("mesos_task_id",
+		*s.pendingGang0().Tasks[0].TaskId.Value))
+	s.NoError(err)
+
+	err = rmtask.TransitTo(task.TaskState_READY.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_RESERVED.String())
+	s.taskScheduler.Stop()
+
+	// Testing the reserving timeout hence sleep
+	time.Sleep(3 * time.Second)
+	s.EqualValues(task.TaskState_PENDING, rmtask.GetCurrentState().State)
 }
 
 func (s *RMTaskTestSuite) TestLaunchingTimeout() {
@@ -645,11 +765,73 @@ func (s *RMTaskTestSuite) TestRMTaskCallBackNilChecks() {
 			rmTask.preTimeoutCallback,
 			errTaskIsNotPresent,
 		},
+		{
+			rmTask.timeoutCallbackFromReserving,
+			errTaskIsNotPresent,
+		},
 	}
 
 	for _, t := range tt {
 		s.Error(t.f(nil), t.err.Error())
 	}
+}
+
+func (s *RMTaskTestSuite) TestRMTaskPreTimeoutCallback() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	rmTask, err := CreateRMTask(
+		tally.NoopScope,
+		s.createTask(1),
+		nil,
+		node,
+		&Config{
+			LaunchingTimeout:          2 * time.Second,
+			PlacingTimeout:            2 * time.Second,
+			PlacementRetryCycle:       3,
+			PlacementAttemptsPerCycle: 3,
+			PlacementRetryBackoff:     1 * time.Second,
+			PolicyName:                ExponentialBackOffPolicy,
+			EnablePlacementBackoff:    true,
+			EnableHostReservation:     false,
+		})
+
+	// Host reservation is disabled and attempts are not exhausted
+	rmTask.task.ReadyForHostReservation = false
+	rmTask.task.PlacementRetryCount = 3
+	rmTask.task.PlacementAttemptCount = 1
+	transition := statemachine.Transition{}
+	rmTask.preTimeoutCallback(&transition)
+	s.Equal(false, rmTask.task.ReadyForHostReservation)
+	s.Equal(statemachine.State(task.TaskState_READY.String()), transition.To)
+
+	// Host reservation is disabled and attempts are exhausted
+	rmTask.task.ReadyForHostReservation = false
+	rmTask.task.PlacementRetryCount = 3
+	rmTask.task.PlacementAttemptCount = 3
+	transition = statemachine.Transition{}
+	rmTask.preTimeoutCallback(&transition)
+	s.Equal(false, rmTask.task.ReadyForHostReservation)
+	s.Equal(statemachine.State(task.TaskState_PENDING.String()), transition.To)
+
+	// Host reservation is enabled and retries are not exhausted
+	rmTask.config.EnableHostReservation = true
+	rmTask.task.ReadyForHostReservation = false
+	rmTask.task.PlacementRetryCount = 2
+	rmTask.task.PlacementAttemptCount = 3
+	transition = statemachine.Transition{}
+	rmTask.preTimeoutCallback(&transition)
+	s.Equal(false, rmTask.task.ReadyForHostReservation)
+	s.Equal(statemachine.State(task.TaskState_PENDING.String()), transition.To)
+
+	// Host reservation is enabled and retries are exhausted
+	rmTask.config.EnableHostReservation = true
+	rmTask.task.ReadyForHostReservation = false
+	rmTask.task.PlacementRetryCount = 3
+	rmTask.task.PlacementAttemptCount = 3
+	transition = statemachine.Transition{}
+	rmTask.preTimeoutCallback(&transition)
+	s.Equal(true, rmTask.task.ReadyForHostReservation)
+	s.Equal(statemachine.State(task.TaskState_READY.String()), transition.To)
 }
 
 func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskNotInPlacing() {
@@ -835,7 +1017,7 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToPending() {
 		sm statemachine.StateMachine) error {
 		rmTask, err := CreateRMTask(
 			tally.NoopScope,
-			s.createTask0(3),
+			s.createTask0(0, 3),
 			nil,
 			mnode,
 			config,
@@ -877,12 +1059,13 @@ func (s *RMTaskTestSuite) TestRMTaskRequeueUnPlacedTaskInPlacingToPending() {
 	err := runWithMockNode(
 		mockNode,
 		&Config{
-			LaunchingTimeout:       2 * time.Second,
-			PlacingTimeout:         2 * time.Second,
-			PlacementRetryCycle:    3,
-			PlacementRetryBackoff:  1 * time.Second,
-			PolicyName:             ExponentialBackOffPolicy,
-			EnablePlacementBackoff: true,
+			LaunchingTimeout:          2 * time.Second,
+			PlacingTimeout:            2 * time.Second,
+			PlacementRetryCycle:       3,
+			PlacementAttemptsPerCycle: 3,
+			PlacementRetryBackoff:     1 * time.Second,
+			PolicyName:                ExponentialBackOffPolicy,
+			EnablePlacementBackoff:    true,
 		},
 		mockStateMachine)
 	s.NoError(err, "placing to pending requeue should not fail")

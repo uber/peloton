@@ -152,6 +152,40 @@ func (suite *ReserverTestSuite) TestReservation() {
 	suite.NoError(err)
 }
 
+// Testing reservation with multiple hosts if that fulfills
+func (suite *ReserverTestSuite) TestReservationWithMultipleHosts() {
+	reservation := &hostsvc.Reservation{
+		Task: createResMgrTask(),
+		Hosts: []*hostsvc.HostInfo{
+			{
+				Hostname: "host1",
+			},
+			{
+				Hostname: "host2",
+			},
+		},
+	}
+
+	suite.reserver.EnqueueReservation(context.Background(), reservation)
+	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
+	gomock.InOrder(
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(nil, errors.New("Error")),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(nil, errors.New("Error")),
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+			Return(summary, nil),
+		summary.EXPECT().GetHostStatus().
+			Return(sum.ReadyHost).Times(2),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).
+			Return(nil),
+	)
+	_, err := suite.reserver.Reserve(context.Background())
+	suite.NoError(err)
+	reserver := suite.reserver.(*reserver)
+	suite.Equal(reservation, reserver.reservations["host1"])
+}
+
 // Testing reservation when ther is no host available
 func (suite *ReserverTestSuite) TestNoHostReservation() {
 	reservation := createReservation()
@@ -184,6 +218,7 @@ func (suite *ReserverTestSuite) TestHostSummaryReservationError() {
 		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
 			Return(nil, errors.New("Error")),
 	)
+
 	_, err = suite.reserver.Reserve(context.Background())
 	suite.Error(err)
 	suite.Contains(err.Error(), "reservation failed")
@@ -211,6 +246,7 @@ func (suite *ReserverTestSuite) TestFindCompletedReservations() {
 			Return(nil),
 		summary.EXPECT().GetOffers(gomock.Any()).
 			Return(suite.createUnreservedMesosOffers(2)),
+		summary.EXPECT().GetHostOfferID().Return("hostOfferID"),
 	)
 	_, err := suite.reserver.Reserve(context.Background())
 	suite.NoError(err)
@@ -219,6 +255,7 @@ func (suite *ReserverTestSuite) TestFindCompletedReservations() {
 	item, err := suite.reserver.DequeueCompletedReservation(
 		context.Background(),
 		1)
+
 	suite.NoError(err)
 	suite.NotNil(item)
 }
@@ -229,7 +266,6 @@ func (suite *ReserverTestSuite) TestDequeueCompletedReservations() {
 		1)
 	require.Error(suite.T(), err)
 	suite.Equal(err.Error(), errNoCompletedReservation.Error())
-
 }
 
 // Testing to find the completed reservation however gets the error in reservation
@@ -395,6 +431,54 @@ func (suite *ReserverTestSuite) TestCancelReservationNil() {
 	suite.NoError(err)
 }
 
+// Testing complete host reservation call
+func (suite *ReserverTestSuite) TestCompleteHostReservation() {
+	reserver := suite.reserver.(*reserver)
+
+	err := reserver.completeHostReservation(nil, "host1")
+	suite.Contains(err.Error(), "invalid completed Reservation")
+
+	reservation := createReservation()
+	completedReservation := &hostsvc.CompletedReservation{
+		Host: &hostsvc.HostInfo{Hostname: "host1"},
+	}
+	reserver.reservations["host1"] = reservation
+	err = reserver.completeHostReservation(completedReservation, "host1")
+	suite.NoError(err)
+	suite.Equal(0, len(reserver.reservations))
+	suite.Equal(1, reserver.completedReservationQueue.Length())
+	item, err := reserver.completedReservationQueue.Dequeue(_maxwaitTime)
+	suite.NoError(err)
+	suite.Equal(completedReservation, item)
+}
+
+// Testing return host reservation call
+func (suite *ReserverTestSuite) TestReturnReservation() {
+	reserver := suite.reserver.(*reserver)
+	reservation := createReservation()
+	suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).
+		Return(nil, errors.New("error"))
+	err := reserver.returnReservation(reservation, "host1")
+	suite.Error(err)
+
+	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
+
+	gomock.InOrder(
+		suite.mockPool.EXPECT().GetHostSummary(gomock.Any()).Return(summary, nil).Times(1),
+		summary.EXPECT().CasStatus(gomock.Any(), gomock.Any()).Return(nil),
+		summary.EXPECT().GetOffers(gomock.Any()).Return(suite.createUnreservedMesosOffers(2)),
+		summary.EXPECT().GetHostOfferID().Return("hostOfferID"),
+	)
+	err = reserver.returnReservation(reservation, "host1")
+	suite.NoError(err)
+	suite.Equal(1, reserver.completedReservationQueue.Length())
+	item, err := reserver.completedReservationQueue.Dequeue(_maxwaitTime)
+	suite.NoError(err)
+	compeletedReservation := item.(*hostsvc.CompletedReservation)
+	suite.Equal("host1", compeletedReservation.Host.Hostname)
+	suite.Equal("hostOfferID", compeletedReservation.HostOffer.Id.Value)
+}
+
 // This tests when we could not update the status of the host to placing
 func (suite *ReserverTestSuite) TestMakeHostAvailableError() {
 	reservation := createReservation()
@@ -481,7 +565,7 @@ func (suite *ReserverTestSuite) TestCompleteHostReservationError() {
 }
 
 // Testing the scenario when getting resources from host offers failed
-func (suite *ReserverTestSuite) TestgetResourcesFromHostOffersFailed() {
+func (suite *ReserverTestSuite) TestGetResourcesFromHostOffersFailed() {
 	reservation := createReservation()
 	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)

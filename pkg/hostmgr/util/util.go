@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"github.com/uber/peloton/pkg/common"
@@ -32,33 +33,29 @@ func LabelKeyToEnvVarName(labelKey string) string {
 	return strings.ToUpper(strings.Replace(labelKey, ".", "_", 1))
 }
 
-// MesosOffersToHostOffers takes the Mesos Offer and returns the Host Offer
-func MesosOffersToHostOffers(hostoffers map[string][]*mesos.Offer) []*hostsvc.HostOffer {
-	hostOffers := make([]*hostsvc.HostOffer, 0, len(hostoffers))
-	for hostname, offers := range hostoffers {
-		if len(offers) <= 0 {
-			log.WithField("host", hostname).
-				Warn("Empty offer slice from host")
-			continue
-		}
-
-		var resources []*mesos.Resource
-		var attributes []*mesos.Attribute
-		for _, offer := range offers {
-			resources = append(resources, offer.GetResources()...)
-			attributes = append(attributes, offer.GetAttributes()...)
-		}
-
-		hostOffer := hostsvc.HostOffer{
-			Hostname:   hostname,
-			AgentId:    offers[0].GetAgentId(),
-			Attributes: attributes,
-			Resources:  resources,
-		}
-
-		hostOffers = append(hostOffers, &hostOffer)
+// MesosOffersToHostOffer takes the Mesos Offers of a host and returns the Host Offer
+func MesosOffersToHostOffer(hostOfferID string, mesosOffers []*mesos.Offer) *hostsvc.HostOffer {
+	if len(mesosOffers) <= 0 {
+		log.Warn("Empty offer slice from host")
+		return nil
 	}
-	return hostOffers
+
+	var resources []*mesos.Resource
+	var attributes []*mesos.Attribute
+	for _, offer := range mesosOffers {
+		resources = append(resources, offer.GetResources()...)
+		attributes = append(attributes, offer.GetAttributes()...)
+	}
+
+	var hostOffer = hostsvc.HostOffer{
+		Id:         &peloton.HostOfferID{Value: hostOfferID},
+		Hostname:   *mesosOffers[0].Hostname,
+		AgentId:    mesosOffers[0].AgentId,
+		Attributes: attributes,
+		Resources:  resources,
+	}
+
+	return &hostOffer
 }
 
 // IsSlackResourceType validates is given resource type is supported slack resource.

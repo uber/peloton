@@ -71,9 +71,9 @@ message CompletedReservation {
     HostInfo host = 1;
     // resmgr task for which we need to reserve
     resmgr.Task task = 2;
-    // list of offers which needs to be filled
+    // an offer which needs to be filled
     // once reservation is fulfilled
-    repeated HostOffer hostOffers = 3;
+    HostOffer hostOffer = 3;
 }
 
 /**
