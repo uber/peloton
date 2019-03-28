@@ -3,10 +3,11 @@ import time
 import grpc
 
 from tests.integration.aurorabridge_test.client import Client
-from tests.integration.stateless_job import query_jobs
+from tests.integration.stateless_job import list_jobs, StatelessJob
 from tests.integration.conftest import (
-  setup_minicluster,
-  teardown_minicluster)
+    setup_minicluster,
+    teardown_minicluster,
+)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -45,9 +46,8 @@ def client():
     _delete_jobs()
 
 
-def _delete_jobs(respool_path='/AuroraBridge',
-                 timeout_secs=20):
-    jobs = query_jobs(respool_path)
+def _delete_jobs(timeout_secs=20):
+    jobs = _list_jobs()
 
     for job in jobs:
         job.delete(force_delete=True)
@@ -56,7 +56,7 @@ def _delete_jobs(respool_path='/AuroraBridge',
     deadline = time.time() + timeout_secs
     while time.time() < deadline:
         try:
-            jobs = query_jobs(respool_path)
+            jobs = _list_jobs()
             if len(jobs) == 0:
                 return
             time.sleep(2)
@@ -72,3 +72,7 @@ def _delete_jobs(respool_path='/AuroraBridge',
             raise
 
     assert False, 'timed out waiting for jobs to be deleted'
+
+
+def _list_jobs():
+    return [StatelessJob(job_id=s.job_id.value) for s in list_jobs()]
