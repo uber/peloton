@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/uber-go/atomic"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/yarpcerrors"
 	"golang.org/x/net/context/ctxhttp"
@@ -42,6 +43,12 @@ func (e ErrNoLeader) Error() string {
 	return fmt.Sprintf("%s has no active leader", string(e))
 }
 
+const (
+	// outboundError is a metric to represent the number of outbound
+	// errors occurred on request to Mesos Master.
+	outboundError = "host_manager_mesos_outbound_errors"
+)
+
 var (
 	errOutboundAlreadyStarted = yarpcerrors.InternalErrorf("Outbound already started")
 	errOutboundNotStarted     = yarpcerrors.InternalErrorf("Outbound not started")
@@ -49,10 +56,14 @@ var (
 )
 
 type outboundConfig struct {
-	keepAlive time.Duration
+	keepAlive       time.Duration
+	MaxConnsPerHost int
 }
 
-var defaultConfig = outboundConfig{keepAlive: 30 * time.Second}
+var defaultConfig = outboundConfig{
+	keepAlive:       30 * time.Second,
+	MaxConnsPerHost: 1024,
+}
 
 // OutboundOption customizes the behavior of a Mesos HTTP outbound.
 type OutboundOption func(*outboundConfig)
@@ -67,6 +78,14 @@ func KeepAlive(t time.Duration) OutboundOption {
 	}
 }
 
+// MaxConnectionsPerHost defines the max connections per host
+// Default value is 1024
+func MaxConnectionsPerHost(conns int) OutboundOption {
+	return func(c *outboundConfig) {
+		c.MaxConnsPerHost = conns
+	}
+}
+
 // LeaderDetector provides current leader's hostport.
 type LeaderDetector interface {
 	// Current leader's hostport, or empty string if no leader.
@@ -76,6 +95,7 @@ type LeaderDetector interface {
 // NewOutbound builds a new HTTP outbound that sends requests to the given
 // URL.
 func NewOutbound(
+	parent tally.Scope,
 	detector LeaderDetector,
 	urlTemplate url.URL,
 	defaultHeaders http.Header,
@@ -93,11 +113,11 @@ func NewOutbound(
 	// TODO: Use option pattern with varargs instead
 	return transport.Outbounds{
 		Unary: &outbound{
-			Client:      client,
-			detector:    detector,
-			started:     atomic.NewBool(false),
-			urlTemplate: urlTemplate,
-
+			Client:         client,
+			detector:       detector,
+			started:        atomic.NewBool(false),
+			urlTemplate:    urlTemplate,
+			scope:          parent,
 			defaultHeaders: defaultHeaders,
 		},
 	}
@@ -108,6 +128,7 @@ type outbound struct {
 	detector    LeaderDetector
 	started     *atomic.Bool
 	urlTemplate url.URL
+	scope       tally.Scope
 
 	defaultHeaders http.Header
 }
@@ -173,6 +194,7 @@ func (o *outbound) Call(
 
 	response, err := ctxhttp.Do(ctx, o.Client, request)
 	if err != nil {
+		o.scope.Counter(outboundError).Inc(1)
 		if err == context.DeadlineExceeded {
 			return nil, yarpcerrors.DeadlineExceededErrorf(
 				"Outbound service timeout: service: %s, procedure: %s, timeout: %v",

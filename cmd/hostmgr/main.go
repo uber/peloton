@@ -331,19 +331,23 @@ func main() {
 
 	// TODO: update Mesos url when leading mesos master changes
 	mOutbound := mhttp.NewOutbound(
+		rootScope,
 		mesosMasterDetector,
 		driver.Endpoint(),
 		authHeader,
+		mhttp.MaxConnectionsPerHost(cfg.Mesos.Framework.MaxConnectionsToMesosMaster),
 	)
 
 	// MasterOperatorClient API outbound
 	mOperatorOutbound := mhttp.NewOutbound(
+		rootScope,
 		mesosMasterDetector,
 		url.URL{
 			Scheme: "http",
 			Path:   common.MesosMasterOperatorEndPoint,
 		},
 		authHeader,
+		mhttp.MaxConnectionsPerHost(cfg.Mesos.Framework.MaxConnectionsToMesosMaster),
 	)
 
 	// All leader discovery metrics share a scope (and will be tagged

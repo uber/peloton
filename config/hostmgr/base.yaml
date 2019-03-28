@@ -72,6 +72,7 @@ mesos:
     principal: "peloton"
     # ~100 weeks to failover
     failover_timeout: 60000000
+    max_connections_to_mesos_master: 1024
 
 election:
   root: "/peloton"
