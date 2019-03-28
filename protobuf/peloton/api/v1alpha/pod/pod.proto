@@ -371,6 +371,12 @@ message TerminationStatus {
 
      // Task was killed due to deadline tracker exceeding task timeout
      TERMINATION_STATUS_REASON_DEADLINE_TIMEOUT_EXCEEDED = 5;
+
+     // Task was killed for update
+     TERMINATION_STATUS_REASON_KILLED_FOR_UPDATE = 6;
+
+     // Task was killed for restart
+     TERMINATION_STATUS_REASON_KILLED_FOR_RESTART = 7;
    }
 
   // Reason for termination.

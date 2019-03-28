@@ -123,6 +123,9 @@ func (s *updateStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommon
 		// when updating a task, failure count due to old version should be reset
 		jobmgrcommon.FailureCountField: uint32(0),
 		jobmgrcommon.ReasonField:       "",
+		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_UPDATE,
+		},
 	}
 }
 
@@ -142,6 +145,9 @@ func (s *rollbackStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcomm
 		// when updating a task, failure count due to old version should be reset
 		jobmgrcommon.FailureCountField: uint32(0),
 		jobmgrcommon.ReasonField:       "",
+		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_UPDATE,
+		},
 	}
 }
 
@@ -160,6 +166,9 @@ func (s *restartStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommo
 		jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
 		jobmgrcommon.MessageField:              _restartTaskMessage,
 		jobmgrcommon.ReasonField:               "",
+		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART,
+		},
 	}
 }
 
@@ -235,6 +244,9 @@ func (s *stopStrategy) GetRuntimeDiff(jobConfig *pbjob.JobConfig) jobmgrcommon.R
 		jobmgrcommon.GoalStateField:            pbtask.TaskState_KILLED,
 		jobmgrcommon.MessageField:              _stopTaskMessage,
 		jobmgrcommon.ReasonField:               "",
+		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+		},
 	}
 }
 
