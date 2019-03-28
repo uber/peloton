@@ -201,9 +201,14 @@ func (s *stopStrategy) IsInstanceComplete(desiredConfigVersion uint64, runtime *
 	// 1. runtime desired configuration is set to desiredConfigVersion
 	// runtime configuration does not matter as it will be set to
 	// runtime desired configuration  when it starts
-	if util.IsPelotonStateTerminal(runtime.GetState()) &&
-		util.IsPelotonStateTerminal(runtime.GetGoalState()) {
-		return runtime.GetDesiredConfigVersion() == desiredConfigVersion
+	// 2. runtime desired configuration is set to desiredConfigVersion,
+	// but goal state is not terminal. It means, user may start the
+	// task again via task level API. If this case is not handled,
+	// the stop workflow can get stuck.
+	if runtime.GetDesiredConfigVersion() == desiredConfigVersion {
+		return (util.IsPelotonStateTerminal(runtime.GetState()) &&
+			util.IsPelotonStateTerminal(runtime.GetGoalState())) ||
+			!util.IsPelotonStateTerminal(runtime.GetGoalState())
 	}
 
 	return false

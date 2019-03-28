@@ -763,7 +763,7 @@ func TestStopStrategyIsInstanceComplete(t *testing.T) {
 				Healthy:              pbtask.HealthState_HEALTHY,
 			},
 			desiredConfigVersion: 2,
-			completed:            false,
+			completed:            true,
 		},
 		{
 			taskRuntime: &pbtask.RuntimeInfo{
@@ -774,7 +774,7 @@ func TestStopStrategyIsInstanceComplete(t *testing.T) {
 				Healthy:              pbtask.HealthState_DISABLED,
 			},
 			desiredConfigVersion: 2,
-			completed:            false,
+			completed:            true,
 		},
 		{
 			taskRuntime: &pbtask.RuntimeInfo{
