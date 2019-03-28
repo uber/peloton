@@ -39,6 +39,7 @@ type JobIndexObjectTestSuite struct {
 	config                                *job.JobConfig
 	configNoInst                          *job.JobConfig
 	runtime                               *job.RuntimeInfo
+	sla                                   *job.SlaConfig
 	configMarshaled                       string
 	labelsMarshaled                       string
 	runtimeMarshaled                      string
@@ -48,6 +49,7 @@ type JobIndexObjectTestSuite struct {
 func (s *JobIndexObjectTestSuite) SetupTest() {
 	s.buildConfig()
 	s.buildRuntime()
+	s.buildSLA()
 }
 
 func TestJobIndexObjectSuite(t *testing.T) {
@@ -123,12 +125,12 @@ func (s *JobIndexObjectTestSuite) TestCreateDeleteJobIndex() {
 		tc.expectedObj.JobID = tc.id
 
 		// verify newJobIndexObject
-		obj, err := newJobIndexObject(jobID, tc.config, tc.runtime)
+		obj, err := newJobIndexObject(jobID, tc.config, tc.runtime, nil)
 		s.NoError(err)
 		obj.UpdateTime = time.Time{}
 		s.Equal(tc.expectedObj, obj, tc.description)
 
-		err = db.Create(ctx, jobID, tc.config, tc.runtime)
+		err = db.Create(ctx, jobID, tc.config, tc.runtime, nil)
 		s.NoError(err)
 
 		obj, err = db.Get(ctx, jobID)
@@ -154,7 +156,7 @@ func (s *JobIndexObjectTestSuite) TestGetSummary() {
 	ctx := context.Background()
 
 	jobID := &peloton.JobID{Value: uuid.New()}
-	err := db.Create(ctx, jobID, s.config, s.runtime)
+	err := db.Create(ctx, jobID, s.config, s.runtime, s.sla)
 	summary, err := db.GetSummary(ctx, jobID)
 	s.NoError(err)
 
@@ -168,6 +170,7 @@ func (s *JobIndexObjectTestSuite) TestGetSummary() {
 		RespoolID:     s.config.RespoolID,
 		Runtime:       s.runtime,
 		Labels:        s.config.Labels,
+		SLA:           s.sla,
 	}
 	s.Equal(expectedSummary, summary)
 }
@@ -242,7 +245,7 @@ func (s *JobIndexObjectTestSuite) TestUpdateJobIndex() {
 		jobID := &peloton.JobID{Value: uuid.New()}
 		tc.expectedObj.JobID = jobID.Value
 
-		err = db.Create(ctx, jobID, nil, nil)
+		err = db.Create(ctx, jobID, nil, nil, nil)
 		s.NoError(err)
 
 		err = db.Update(ctx, jobID, tc.newConfig, tc.newRuntime)
@@ -283,7 +286,7 @@ func (s *JobIndexObjectTestSuite) TestJobIndexOpsClientFail() {
 	ctx := context.Background()
 	jobID := &peloton.JobID{Value: uuid.New()}
 
-	err := indexOps.Create(ctx, jobID, s.config, s.runtime)
+	err := indexOps.Create(ctx, jobID, s.config, s.runtime, s.sla)
 	s.Error(err)
 	s.Equal("create failed", err.Error())
 
@@ -307,7 +310,7 @@ func (s *JobIndexObjectTestSuite) TestJobIndexOpsClientFail() {
 // TestToJobSummary tests converting JobIndexObject to JobSummary
 func (s *JobIndexObjectTestSuite) TestToJobSummary() {
 	jobID := &peloton.JobID{Value: uuid.New()}
-	obj, err := newJobIndexObject(jobID, s.config, s.runtime)
+	obj, err := newJobIndexObject(jobID, s.config, s.runtime, s.sla)
 	s.NoError(err)
 
 	expectedSummary := &job.JobSummary{
@@ -320,15 +323,64 @@ func (s *JobIndexObjectTestSuite) TestToJobSummary() {
 		RespoolID:     s.config.RespoolID,
 		Runtime:       s.runtime,
 		Labels:        s.config.Labels,
+		SLA:           s.sla,
 	}
-	s.Equal(expectedSummary, obj.ToJobSummary())
+	summary, err := obj.ToJobSummary()
+	s.NoError(err)
+	s.Equal(expectedSummary, summary)
 
 	// bad runtime and labels
 	obj.RuntimeInfo = "foo"
 	obj.Labels = "bar"
 	expectedSummary.Runtime = nil
 	expectedSummary.Labels = nil
-	s.Equal(expectedSummary, obj.ToJobSummary())
+	summary, err = obj.ToJobSummary()
+	s.Error(err)
+}
+
+// Tests the failure scenarios for new job index object
+func (s *JobIndexObjectTestSuite) TestNewJobIndexObject_Errors() {
+
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+
+	testcases := []struct {
+		description string
+		config      *job.JobConfig
+		runtime     *job.RuntimeInfo
+		sla         *job.SlaConfig
+		expectedObj *JobIndexObject
+	}{
+		{
+			description: "Bad Runtime: Creation Time",
+			runtime: &job.RuntimeInfo{
+				CreationTime: "dummy_value",
+			},
+		},
+		{
+			description: "Bad Runtime: Start Time",
+			runtime: &job.RuntimeInfo{
+				StartTime: "dummy_value",
+			},
+		},
+		{
+			description: "Bad Runtime: Completion Time",
+			runtime: &job.RuntimeInfo{
+				CompletionTime: "dummy_value",
+			},
+		},
+	}
+
+	for _, t := range testcases {
+		_, err := newJobIndexObject(
+			jobID,
+			t.config,
+			t.runtime,
+			t.sla,
+		)
+		s.Error(err)
+	}
 }
 
 func (s *JobIndexObjectTestSuite) buildConfig() {
@@ -395,4 +447,13 @@ func (s *JobIndexObjectTestSuite) buildRuntime() {
 	s.createTime, _ = time.Parse(time.RFC3339Nano, rt.CreationTime)
 	s.startTime, _ = time.Parse(time.RFC3339Nano, rt.StartTime)
 	s.completionTime, _ = time.Parse(time.RFC3339Nano, rt.CompletionTime)
+}
+
+func (s *JobIndexObjectTestSuite) buildSLA() {
+	s.sla = &job.SlaConfig{
+		Priority:                    uint32(1),
+		Preemptible:                 false,
+		Revocable:                   false,
+		MaximumUnavailableInstances: uint32(1),
+	}
 }

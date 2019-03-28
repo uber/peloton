@@ -89,6 +89,8 @@ type JobIndexObject struct {
 	CompletionTime time.Time `column:"name=completion_time"`
 	// Time when job was updated
 	UpdateTime time.Time `column:"name=update_time"`
+	// Sla of the job
+	SLA string `column:"name=sla"`
 }
 
 // JobIndexOps provides methods for manipulating job_index table.
@@ -99,6 +101,7 @@ type JobIndexOps interface {
 		id *peloton.JobID,
 		config *job.JobConfig,
 		runtime *job.RuntimeInfo,
+		slaConfig *job.SlaConfig,
 	) error
 
 	// Get retrieves a row from the table.
@@ -126,7 +129,8 @@ var _ JobIndexOps = (*jobIndexOps)(nil)
 func newJobIndexObject(
 	id *peloton.JobID,
 	config *job.JobConfig,
-	runtime *job.RuntimeInfo) (*JobIndexObject, error) {
+	runtime *job.RuntimeInfo,
+	slaConfig *job.SlaConfig) (*JobIndexObject, error) {
 
 	obj := &JobIndexObject{JobID: id.GetValue()}
 	jobLog := log.WithField("object", "JobIndex").
@@ -147,6 +151,7 @@ func newJobIndexObject(
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to marshal labels")
 		}
+
 		obj.JobType = uint32(config.GetType())
 
 		obj.Name = config.GetName()
@@ -158,10 +163,19 @@ func newJobIndexObject(
 		obj.Labels = string(labelBuffer)
 	}
 
+	if slaConfig != nil {
+		slaBuffer, err := json.Marshal(slaConfig)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to marshal job sla config")
+		}
+
+		obj.SLA = string(slaBuffer)
+	}
+
 	if runtime != nil {
 		runtimeBuffer, err := json.Marshal(runtime)
 		if err != nil {
-			return nil, errors.Wrap(err, "Failed to marshal job runtime")
+			return nil, errors.Wrap(err, "failed to marshal job runtime")
 		}
 
 		obj.RuntimeInfo = string(runtimeBuffer)
@@ -170,41 +184,40 @@ func newJobIndexObject(
 
 		if runtime.GetCreationTime() != "" {
 			t, err := time.Parse(time.RFC3339Nano, runtime.GetCreationTime())
-			if err == nil {
-				obj.CreationTime = t
-			} else {
-				jobLog.WithField("runtime", runtime).
-					WithError(err).
-					Info("Fail to parse creationTime")
+			if err != nil {
+				jobLog.WithError(err).Error("fail to parse creationTime")
+				return nil, err
 			}
+
+			obj.CreationTime = t
 		}
+
 		if runtime.GetStartTime() != "" {
 			t, err := time.Parse(time.RFC3339Nano, runtime.GetStartTime())
-			if err == nil {
-				obj.StartTime = t
-			} else {
-				jobLog.WithField("runtime", runtime).
-					WithError(err).
-					Info("Fail to parse startTime")
+			if err != nil {
+				jobLog.WithError(err).Error("fail to parse startTime")
+				return nil, err
 			}
+
+			obj.StartTime = t
 		}
 
 		if runtime.GetCompletionTime() != "" {
 			t, err := time.Parse(time.RFC3339Nano, runtime.GetCompletionTime())
-			if err == nil {
-				obj.CompletionTime = t
-			} else {
-				jobLog.WithField("runtime", runtime).
-					WithError(err).
-					Info("Fail to parse completionTime")
+			if err != nil {
+				jobLog.WithError(err).Error("fail to parse completionTime")
+				return nil, err
 			}
+
+			obj.CompletionTime = t
 		}
 	}
+
 	return obj, nil
 }
 
 // ToJobSummary generates a JobSummary from the JobIndexObject
-func (j *JobIndexObject) ToJobSummary() *job.JobSummary {
+func (j *JobIndexObject) ToJobSummary() (*job.JobSummary, error) {
 	summary := &job.JobSummary{
 		Id:            &peloton.JobID{Value: j.JobID},
 		Name:          j.Name,
@@ -214,21 +227,32 @@ func (j *JobIndexObject) ToJobSummary() *job.JobSummary {
 		Type:          job.JobType(j.JobType),
 		RespoolID:     &peloton.ResourcePoolID{Value: j.RespoolID},
 	}
+
 	err := json.Unmarshal([]byte(j.RuntimeInfo), &summary.Runtime)
 	if err != nil {
-		log.WithField("job_id", j.JobID).
-			WithField("runtime_info", j.RuntimeInfo).
-			WithError(err).
-			Info("JobIndexObject: failed to unmarshal runtime info")
+		log.WithFields(log.Fields{
+			"job_id": j.JobID,
+		}).WithError(err).Info("JobIndexObject: failed to unmarshal runtime info")
+		return nil, err
 	}
+
 	err = json.Unmarshal([]byte(j.Labels), &summary.Labels)
 	if err != nil {
-		log.WithField("job_id", j.JobID).
-			WithField("labels", j.Labels).
-			WithError(err).
-			Info("JobIndexObject: failed to unmarshal labels")
+		log.WithFields(log.Fields{
+			"job_id": j.JobID,
+		}).WithError(err).Info("JobIndexObject: failed to unmarshal labels")
+		return nil, err
 	}
-	return summary
+
+	err = json.Unmarshal([]byte(j.SLA), &summary.SLA)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"job_id": j.JobID,
+		}).WithError(err).Info("JobIndexObject: failed to unmarshal sla config")
+		return nil, err
+	}
+
+	return summary, nil
 }
 
 // jobIndexOps implements JobIndexOps using a particular Store
@@ -247,16 +271,20 @@ func (d *jobIndexOps) Create(
 	id *peloton.JobID,
 	config *job.JobConfig,
 	runtime *job.RuntimeInfo,
+	slaConfig *job.SlaConfig,
 ) error {
-	obj, err := newJobIndexObject(id, config, runtime)
+
+	obj, err := newJobIndexObject(id, config, runtime, slaConfig)
 	if err != nil {
 		d.store.metrics.OrmJobMetrics.JobIndexCreateFail.Inc(1)
 		return errors.Wrap(err, "Failed to construct JobIndexObject")
 	}
+
 	if err = d.store.oClient.Create(ctx, obj); err != nil {
 		d.store.metrics.OrmJobMetrics.JobIndexCreateFail.Inc(1)
 		return err
 	}
+
 	d.store.metrics.OrmJobMetrics.JobIndexCreate.Inc(1)
 	return nil
 }
@@ -266,13 +294,16 @@ func (d *jobIndexOps) Get(
 	ctx context.Context,
 	id *peloton.JobID,
 ) (*JobIndexObject, error) {
+
 	jobIndexObject := &JobIndexObject{
 		JobID: id.GetValue(),
 	}
+
 	if err := d.store.oClient.Get(ctx, jobIndexObject); err != nil {
 		d.store.metrics.OrmJobMetrics.JobIndexGetFail.Inc(1)
 		return nil, err
 	}
+
 	d.store.metrics.OrmJobMetrics.JobIndexGet.Inc(1)
 	return jobIndexObject, nil
 }
@@ -282,11 +313,14 @@ func (d *jobIndexOps) GetSummary(
 	ctx context.Context,
 	id *peloton.JobID,
 ) (*job.JobSummary, error) {
+
 	jobIndexObject, err := d.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	return jobIndexObject.ToJobSummary(), nil
+
+	jobSummary, err := jobIndexObject.ToJobSummary()
+	return jobSummary, nil
 }
 
 // Update updates a JobIndexObject in db
@@ -299,15 +333,18 @@ func (d *jobIndexOps) Update(
 	if config == nil && runtime == nil {
 		return nil
 	}
-	obj, err := newJobIndexObject(id, config, runtime)
+
+	obj, err := newJobIndexObject(id, config, runtime, nil)
 	if err != nil {
 		d.store.metrics.OrmJobMetrics.JobIndexUpdateFail.Inc(1)
 		return errors.Wrap(err, "Failed to construct JobIndexObject")
 	}
+
 	fields := []string{}
 	if config != nil {
 		fields = append(fields, _configFields...)
 	}
+
 	if runtime != nil {
 		fields = append(fields, _runtimeFields...)
 	}
@@ -321,6 +358,7 @@ func (d *jobIndexOps) Update(
 		d.store.metrics.OrmJobMetrics.JobIndexUpdateFail.Inc(1)
 		return err
 	}
+
 	d.store.metrics.OrmJobMetrics.JobIndexUpdate.Inc(1)
 	return nil
 }

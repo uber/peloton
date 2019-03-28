@@ -377,14 +377,9 @@ func ConvertJobConfigToJobSpec(config *job.JobConfig) *stateless.JobSpec {
 		Description:   config.GetDescription(),
 		Labels:        ConvertLabels(config.GetLabels()),
 		InstanceCount: config.GetInstanceCount(),
-		Sla: &stateless.SlaSpec{
-			Priority:                    config.GetSLA().GetPriority(),
-			Preemptible:                 config.GetSLA().GetPreemptible(),
-			Revocable:                   config.GetSLA().GetRevocable(),
-			MaximumUnavailableInstances: config.GetSLA().GetMaximumUnavailableInstances(),
-		},
-		DefaultSpec:  ConvertTaskConfigToPodSpec(config.GetDefaultConfig()),
-		InstanceSpec: instanceSpec,
+		Sla:           ConvertSLAConfigToSLASpec(config.GetSLA()),
+		DefaultSpec:   ConvertTaskConfigToPodSpec(config.GetDefaultConfig()),
+		InstanceSpec:  instanceSpec,
 		RespoolId: &v1alphapeloton.ResourcePoolID{
 			Value: config.GetRespoolID().GetValue()},
 	}
@@ -478,6 +473,27 @@ func ConvertJobSummary(
 		RespoolId: &v1alphapeloton.ResourcePoolID{
 			Value: summary.GetRespoolID().GetValue()},
 		Status: ConvertRuntimeInfoToJobStatus(summary.GetRuntime(), updateInfo),
+		Sla:    ConvertSLAConfigToSLASpec(summary.GetSLA()),
+	}
+}
+
+// ConvertSLAConfigToSLASpec convert job's sla config to sla spec
+func ConvertSLAConfigToSLASpec(slaConfig *job.SlaConfig) *stateless.SlaSpec {
+	return &stateless.SlaSpec{
+		Priority:                    slaConfig.GetPriority(),
+		Preemptible:                 slaConfig.GetPreemptible(),
+		Revocable:                   slaConfig.GetRevocable(),
+		MaximumUnavailableInstances: slaConfig.GetMaximumUnavailableInstances(),
+	}
+}
+
+// ConvertSLASpecToSLAConfig converts job's sla spec to sla config
+func ConvertSLASpecToSLAConfig(slaSpec *stateless.SlaSpec) *job.SlaConfig {
+	return &job.SlaConfig{
+		Priority:                    slaSpec.GetPriority(),
+		Preemptible:                 slaSpec.GetPreemptible(),
+		Revocable:                   slaSpec.GetRevocable(),
+		MaximumUnavailableInstances: slaSpec.GetMaximumUnavailableInstances(),
 	}
 }
 
@@ -614,12 +630,7 @@ func ConvertJobSpecToJobConfig(spec *stateless.JobSpec) (*job.JobConfig, error) 
 	}
 
 	if spec.GetSla() != nil {
-		result.SLA = &job.SlaConfig{
-			Priority:                    spec.GetSla().GetPriority(),
-			Preemptible:                 spec.GetSla().GetPreemptible(),
-			Revocable:                   spec.GetSla().GetRevocable(),
-			MaximumUnavailableInstances: spec.GetSla().GetMaximumUnavailableInstances(),
-		}
+		result.SLA = ConvertSLASpecToSLAConfig(spec.GetSla())
 	}
 
 	if spec.GetDefaultSpec() != nil {

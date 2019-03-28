@@ -281,6 +281,9 @@ message JobSummary
 
   // Job runtime information
   RuntimeInfo runtime = 9;
+
+  // Job sla information
+  SlaConfig sla = 10;
 }
 
 /**

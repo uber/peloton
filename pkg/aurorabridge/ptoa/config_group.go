@@ -24,14 +24,14 @@ import (
 // NewConfigGroup gets new config group for provided instance ranges and
 // aurora task config
 func NewConfigGroup(
-	jobInfo *stateless.JobInfo,
+	jobSummary *stateless.JobSummary,
 	podSpec *pod.PodSpec,
 	instanceIDList []uint32,
 ) (*api.ConfigGroup, error) {
 
 	ranges := NewRange(util.ConvertInstanceIDListToInstanceRange(instanceIDList))
 
-	taskConfig, err := NewTaskConfig(jobInfo, podSpec)
+	taskConfig, err := NewTaskConfig(jobSummary, podSpec)
 	if err != nil {
 		return nil, err
 	}

@@ -164,15 +164,13 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummaryFailure() {
 
 	suite.jobClient.EXPECT().
 		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
-			SummaryOnly: false,
+			SummaryOnly: true,
 			JobId:       jobID,
 		}).
 		Return(&statelesssvc.GetJobResponse{
-			JobInfo: &stateless.JobInfo{
-				Spec: &stateless.JobSpec{
-					Name:          atop.NewJobName(jobKey),
-					InstanceCount: instanceCount,
-				},
+			Summary: &stateless.JobSummary{
+				Name:          atop.NewJobName(jobKey),
+				InstanceCount: instanceCount,
 			},
 		}, nil)
 
@@ -199,15 +197,13 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
 	)
 	suite.jobClient.EXPECT().
 		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
-			SummaryOnly: false,
+			SummaryOnly: true,
 			JobId:       jobID,
 		}).
 		Return(&statelesssvc.GetJobResponse{
-			JobInfo: &stateless.JobInfo{
-				Spec: &stateless.JobSpec{
-					Name:          atop.NewJobName(jobKey),
-					InstanceCount: uint32(1),
-				},
+			Summary: &stateless.JobSummary{
+				Name:          atop.NewJobName(jobKey),
+				InstanceCount: uint32(1),
 			},
 		}, nil)
 
@@ -1077,6 +1073,25 @@ func (suite *ServiceHandlerTestSuite) expectGetJob(
 		}, nil)
 }
 
+func (suite *ServiceHandlerTestSuite) expectGetJobSummary(
+	jobKey *api.JobKey,
+	jobID *peloton.JobID,
+	instanceCount uint32,
+) {
+	suite.expectGetJobIDFromJobName(jobKey, jobID)
+	suite.jobClient.EXPECT().
+		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			SummaryOnly: true,
+			JobId:       jobID,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			Summary: &stateless.JobSummary{
+				Name:          atop.NewJobName(jobKey),
+				InstanceCount: instanceCount,
+			},
+		}, nil)
+}
+
 func (suite *ServiceHandlerTestSuite) expectQueryPods(
 	jobID *peloton.JobID,
 	podNames []*peloton.PodName,
@@ -1126,7 +1141,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismSucc
 	entityVersion := fixture.PelotonEntityVersion()
 	labels := fixture.DefaultPelotonJobLabels(jobKey)
 
-	suite.expectGetJob(jobKey, jobID, 1000)
+	suite.expectGetJobSummary(jobKey, jobID, 1000)
 
 	var podNames []*peloton.PodName
 	for i := 0; i < 1000; i++ {
@@ -1170,7 +1185,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismFail
 	entityVersion := fixture.PelotonEntityVersion()
 	labels := fixture.DefaultPelotonJobLabels(jobKey)
 
-	suite.expectGetJob(jobKey, jobID, 1000)
+	suite.expectGetJobSummary(jobKey, jobID, 1000)
 
 	var podNames []*peloton.PodName
 	for i := 0; i < 1000; i++ {
@@ -1236,7 +1251,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 
 	// Sets up jobKey to jobID mapping, and returns a basic JobInfo
 	// for the specific jobID
-	suite.expectGetJob(jobKey, jobID, 2)
+	suite.expectGetJobSummary(jobKey, jobID, 2)
 
 	// Sets up GetPodEvents queries for all the pods (pod 0 and 1) from
 	// all the runs (run 1, 2, 3) - PodEvent will be used to construct

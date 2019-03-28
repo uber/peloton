@@ -617,10 +617,12 @@ func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, configAddOn *
 		j.invalidateCache()
 		return err
 	}
+
 	if err := j.jobFactory.jobIndexOps.Create(
 		ctx, j.ID(),
 		config,
 		j.runtime,
+		j.config.GetSLA(),
 	); err != nil {
 		j.invalidateCache()
 		return err
@@ -750,17 +752,19 @@ func (j *job) RollingCreate(
 		j.invalidateCache()
 		return err
 	}
+
 	if err := j.jobFactory.jobIndexOps.Create(
 		ctx,
 		j.id,
 		config,
 		j.runtime,
+		j.config.GetSLA(),
 	); err != nil {
 		j.invalidateCache()
 		return err
 	}
-	j.workflows[updateID.GetValue()] = newWorkflow
 
+	j.workflows[updateID.GetValue()] = newWorkflow
 	runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
 	return nil
 }

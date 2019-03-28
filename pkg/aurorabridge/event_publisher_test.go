@@ -298,11 +298,9 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_GetTaskStateChangeError
 	suite.jobClient.EXPECT().
 		GetJob(gomock.Any(), gomock.Any()).
 		Return(&statelesssvc.GetJobResponse{
-			JobInfo: &stateless.JobInfo{
+			Summary: &stateless.JobSummary{
 				JobId: jobID,
-				Spec: &stateless.JobSpec{
-					Name: atop.NewJobName(fixture.AuroraJobKey()),
-				},
+				Name:  atop.NewJobName(fixture.AuroraJobKey()),
 			},
 		}, nil)
 
@@ -314,13 +312,9 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_GetTaskStateChangeError
 	suite.jobClient.EXPECT().
 		GetJob(gomock.Any(), gomock.Any()).
 		Return(&statelesssvc.GetJobResponse{
-			JobInfo: &stateless.JobInfo{
-				JobId: &peloton.JobID{
-					Value: "58f45b58-7eaf-459a-94cd-39526500525c",
-				},
-				Spec: &stateless.JobSpec{
-					Name: atop.NewJobName(fixture.AuroraJobKey()),
-				},
+			Summary: &stateless.JobSummary{
+				JobId: jobID,
+				Name:  atop.NewJobName(fixture.AuroraJobKey()),
 			},
 		}, nil)
 
@@ -388,13 +382,11 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_ReceivePods() {
 		suite.jobClient.EXPECT().
 			GetJob(gomock.Any(), gomock.Any()).
 			Return(&statelesssvc.GetJobResponse{
-				JobInfo: &stateless.JobInfo{
+				Summary: &stateless.JobSummary{
 					JobId: &peloton.JobID{
 						Value: jobID,
 					},
-					Spec: &stateless.JobSpec{
-						Name: atop.NewJobName(fixture.AuroraJobKey()),
-					},
+					Name: atop.NewJobName(fixture.AuroraJobKey()),
 				},
 			}, nil)
 

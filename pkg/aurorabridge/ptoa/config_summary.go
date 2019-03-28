@@ -27,13 +27,13 @@ import (
 // NewConfigSummary returns aurora config summary for provided list of
 // peloton pod infos
 func NewConfigSummary(
-	jobInfo *stateless.JobInfo,
+	jobSummary *stateless.JobSummary,
 	podInfos []*pod.PodInfo,
 ) (*api.ConfigSummary, error) {
 	podInfosByVersion := make(map[string][]*pod.PodInfo)
 	var configGroups []*api.ConfigGroup
 
-	jobKey, err := NewJobKey(jobInfo.GetSpec().GetName())
+	jobKey, err := NewJobKey(jobSummary.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func NewConfigSummary(
 		}
 
 		configGroup, err := NewConfigGroup(
-			jobInfo,
+			jobSummary,
 			pods[0].GetSpec(),
 			instanceIDList,
 		)

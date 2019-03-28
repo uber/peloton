@@ -276,6 +276,9 @@ message JobSummary
 
   // Job runtime status
   JobStatus status = 9;
+
+  // Job SLA Spec
+  SlaSpec sla = 10;
 }
 
 // QuerySpec specifies the list of query criteria for jobs. All

@@ -54,7 +54,7 @@ func NewJobSpecFromJobUpdateRequest(
 		Revision:      nil, // Unused.
 		Name:          NewJobName(r.GetTaskConfig().GetJob()),
 		Owner:         r.GetTaskConfig().GetOwner().GetUser(),
-		OwningTeam:    "",  // Unused.
+		OwningTeam:    r.GetTaskConfig().GetOwner().GetUser(),
 		LdapGroups:    nil, // Unused.
 		Description:   "",  // Unused.
 		Labels:        l,

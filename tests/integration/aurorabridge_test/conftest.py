@@ -37,6 +37,10 @@ def client():
 
     yield client
 
+    # add 10 second sleep to let lucene index build
+    # remove this hack, once we migrate to ListJobs
+    time.sleep(10)
+
     # Delete all jobs
     _delete_jobs()
 

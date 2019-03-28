@@ -35,10 +35,8 @@ func TestNewConfigSumamry_Success(t *testing.T) {
 	jobKey := fixture.AuroraJobKey()
 	jobID := fixture.PelotonJobID()
 
-	jobInfo := &stateless.JobInfo{
-		Spec: &stateless.JobSpec{
-			Name: atop.NewJobName(jobKey),
-		},
+	jobSummary := &stateless.JobSummary{
+		Name: atop.NewJobName(jobKey),
 	}
 
 	var podInfos []*pod.PodInfo
@@ -76,7 +74,7 @@ func TestNewConfigSumamry_Success(t *testing.T) {
 	}
 
 	configSummary, err := NewConfigSummary(
-		jobInfo,
+		jobSummary,
 		podInfos,
 	)
 	assert.NoError(t, err)
@@ -92,10 +90,8 @@ func TestNewConfigSummary_InvalidTaskID(t *testing.T) {
 	podID := fmt.Sprintf("%s-%d", podName, 1)
 	entityVersion := fixture.PelotonEntityVersion()
 
-	jobInfo := &stateless.JobInfo{
-		Spec: &stateless.JobSpec{
-			Name: atop.NewJobName(jobKey),
-		},
+	jobSummary := &stateless.JobSummary{
+		Name: atop.NewJobName(jobKey),
 	}
 
 	podInfos := []*pod.PodInfo{{
@@ -112,7 +108,7 @@ func TestNewConfigSummary_InvalidTaskID(t *testing.T) {
 			Version: entityVersion,
 		},
 	}}
-	_, err := NewConfigSummary(jobInfo, podInfos)
+	_, err := NewConfigSummary(jobSummary, podInfos)
 	assert.Error(t, err)
 }
 
@@ -124,10 +120,8 @@ func TestNewConfigSummary_ConfigGroupError(t *testing.T) {
 	podID := fmt.Sprintf("%s-%d", podName, 1)
 	entityVersion := fixture.PelotonEntityVersion()
 
-	jobInfo := &stateless.JobInfo{
-		Spec: &stateless.JobSpec{
-			Name: atop.NewJobName(jobKey),
-		},
+	jobSummary := &stateless.JobSummary{
+		Name: atop.NewJobName(jobKey),
 	}
 
 	podInfos := []*pod.PodInfo{{
@@ -145,6 +139,6 @@ func TestNewConfigSummary_ConfigGroupError(t *testing.T) {
 			Version: entityVersion,
 		},
 	}}
-	_, err := NewConfigSummary(jobInfo, podInfos)
+	_, err := NewConfigSummary(jobSummary, podInfos)
 	assert.Error(t, err)
 }

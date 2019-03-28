@@ -34,11 +34,9 @@ func TestNewJobSummary(t *testing.T) {
 
 	ml := label.NewAuroraMetadataLabels(metadata)
 
-	j := &stateless.JobInfo{
-		Spec: &stateless.JobSpec{
-			Name:          atop.NewJobName(jobKey),
-			InstanceCount: instanceCount,
-		},
+	j := &stateless.JobSummary{
+		Name:          atop.NewJobName(jobKey),
+		InstanceCount: instanceCount,
 	}
 	p := &pod.PodSpec{
 		Labels:     ml,
@@ -82,12 +80,10 @@ func TestNewJobConfiguration(t *testing.T) {
 
 	ml := label.NewAuroraMetadataLabels(metadata)
 
-	j := &stateless.JobInfo{
-		Spec: &stateless.JobSpec{
-			Name:          atop.NewJobName(jobKey),
-			InstanceCount: instanceCount,
-			Owner:         "owner",
-		},
+	j := &stateless.JobSummary{
+		Name:          atop.NewJobName(jobKey),
+		InstanceCount: instanceCount,
+		Owner:         "owner",
 		Status: &stateless.JobStatus{
 			PodStats: map[string]uint32{
 				pod.PodState_POD_STATE_PENDING.String():  pendingInstances,

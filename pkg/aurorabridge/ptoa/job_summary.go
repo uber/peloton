@@ -52,12 +52,12 @@ var _failedPodStates = []string{
 
 // NewJobSummary creates a JobSummary object.
 func NewJobSummary(
-	jobInfo *stateless.JobInfo,
+	jobSummary *stateless.JobSummary,
 	podSpec *pod.PodSpec,
 ) (*api.JobSummary, error) {
-	stats := newJobStats(jobInfo.GetStatus())
+	stats := newJobStats(jobSummary.GetStatus())
 
-	job, err := NewJobConfiguration(jobInfo, podSpec, false)
+	job, err := NewJobConfiguration(jobSummary, podSpec, false)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func NewJobSummary(
 
 // NewJobConfiguration creates a JobConfiguration object.
 func NewJobConfiguration(
-	jobInfo *stateless.JobInfo,
+	jobSummary *stateless.JobSummary,
 	podSpec *pod.PodSpec,
 	activeOnly bool,
 ) (*api.JobConfiguration, error) {
@@ -79,7 +79,7 @@ func NewJobConfiguration(
 	if activeOnly {
 		// activeOnly is set to true when called from getJobs endpoint
 		for _, activeState := range _activePodStates {
-			instanceCount += int32(jobInfo.GetStatus().GetPodStats()[activeState])
+			instanceCount += int32(jobSummary.GetStatus().GetPodStats()[activeState])
 		}
 	} else {
 		// for getJobSummary endpoint (activeOnly = false)
@@ -88,17 +88,17 @@ func NewJobConfiguration(
 		// We return current instance count here only. Reference:
 		// https://github.com/apache/aurora/blob/master/src/main/java/org/apache/aurora/scheduler/thrift/ReadOnlySchedulerImpl.java#L465
 		// TODO(kevinxu): Need to match Aurora's behavior?
-		instanceCount = int32(jobInfo.GetSpec().GetInstanceCount())
+		instanceCount = int32(jobSummary.GetInstanceCount())
 	}
 
-	auroraOwner := NewIdentity(jobInfo.GetSpec().GetOwner())
+	auroraOwner := NewIdentity(jobSummary.GetOwner())
 
-	jobKey, err := NewJobKey(jobInfo.GetSpec().GetName())
+	jobKey, err := NewJobKey(jobSummary.GetName())
 	if err != nil {
 		return nil, err
 	}
 
-	taskConfig, err := NewTaskConfig(jobInfo, podSpec)
+	taskConfig, err := NewTaskConfig(jobSummary, podSpec)
 	if err != nil {
 		return nil, err
 	}

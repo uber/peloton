@@ -310,8 +310,9 @@ func (e *eventPublisher) getTaskStateChange(
 		JobId: &peloton.JobID{
 			Value: jobID,
 		},
+		SummaryOnly: true,
 	}
-	jobInfo, err := e.jobClient.GetJob(ctx, jobReq)
+	jobSummary, err := e.jobClient.GetJob(ctx, jobReq)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to get job info")
 	}
@@ -348,7 +349,7 @@ func (e *eventPublisher) getTaskStateChange(
 
 	// Get ScheduledTask
 	task, err := ptoa.NewScheduledTask(
-		jobInfo.GetJobInfo(),
+		jobSummary.GetSummary(),
 		podInfo.GetCurrent(),
 		podEvents.GetEvents(),
 	)

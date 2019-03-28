@@ -36,14 +36,12 @@ func TestNewTaskConfig(t *testing.T) {
 
 	ml := label.NewAuroraMetadataLabels(metadata)
 
-	j := &stateless.JobInfo{
-		Spec: &stateless.JobSpec{
-			Name: atop.NewJobName(jobKey),
-			Sla: &stateless.SlaSpec{
-				Priority: 6,
-			},
-			Owner: "owner",
+	j := &stateless.JobSummary{
+		Name: atop.NewJobName(jobKey),
+		Sla: &stateless.SlaSpec{
+			Priority: 6,
 		},
+		Owner: "owner",
 	}
 	p := &pod.PodSpec{
 		Labels:     ml,

@@ -58,10 +58,8 @@ func TestNewScheduledTask(t *testing.T) {
 	kl := label.NewAuroraJobKey(jobKey)
 
 	// pod 1
-	j := &stateless.JobInfo{
-		Spec: &stateless.JobSpec{
-			Name: atop.NewJobName(jobKey),
-		},
+	j := &stateless.JobSummary{
+		Name: atop.NewJobName(jobKey),
 	}
 	p1 := &pod.PodInfo{
 		Spec: &pod.PodSpec{

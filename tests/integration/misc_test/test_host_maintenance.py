@@ -158,6 +158,7 @@ def test__host_maintenance_lifecycle(host_affinity_job, maintenance):
 #                    preemption queue is not polled. On resmgr recovery, the
 #                    draining process should resume and host should transition
 #                    to DOWN
+@pytest.mark.skip(reason="flaky integration test")
 def test__host_draining_resumes_on_resmgr_recovery(host_affinity_job,
                                                    maintenance,
                                                    jobmgr,

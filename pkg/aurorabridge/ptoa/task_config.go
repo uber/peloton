@@ -30,22 +30,22 @@ import (
 
 // NewTaskConfig returns aurora task config for a provided peloton pod spec
 func NewTaskConfig(
-	jobInfo *stateless.JobInfo,
+	jobSummary *stateless.JobSummary,
 	podSpec *pod.PodSpec,
 ) (*api.TaskConfig, error) {
 	if len(podSpec.GetContainers()) == 0 {
 		return nil, fmt.Errorf("pod spec does not contain containers")
 	}
 
-	auroraTier := NewTaskTier(jobInfo.GetSpec().GetSla())
-	auroraOwner := NewIdentity(jobInfo.GetSpec().GetOwner())
+	auroraTier := NewTaskTier(jobSummary.GetSla())
+	auroraOwner := NewIdentity(jobSummary.GetOwner())
 
 	var auroraPriority *int32
-	if sla := jobInfo.GetSpec().GetSla(); sla != nil {
+	if sla := jobSummary.GetSla(); sla != nil {
 		auroraPriority = ptr.Int32(int32(sla.GetPriority()))
 	}
 
-	auroraJobKey, err := NewJobKey(jobInfo.GetSpec().GetName())
+	auroraJobKey, err := NewJobKey(jobSummary.GetName())
 	if err != nil {
 		return nil, err
 	}

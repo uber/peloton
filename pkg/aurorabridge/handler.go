@@ -143,7 +143,10 @@ func (h *ServiceHandler) getJobSummary(
 		// TODO(kevinxu): Need to inspect InstanceSpec as well?
 		podSpec := jobInfo.GetSpec().GetDefaultSpec()
 
-		s, err := ptoa.NewJobSummary(jobInfo, podSpec)
+		s, err := ptoa.NewJobSummary(
+			convertJobInfoToJobSummary(jobInfo),
+			podSpec,
+		)
 		if err != nil {
 			return nil, auroraErrorf("new job summary: %s", err)
 		}
@@ -219,7 +222,7 @@ func (h *ServiceHandler) getTasksWithoutConfigs(
 
 	// TODO(kevinxu): Factor out to seperate function.
 	for _, jobID := range jobIDs {
-		jobInfo, err := h.getJobInfo(ctx, jobID)
+		jobSummary, err := h.getJobInfoSummary(ctx, jobID)
 		if err != nil {
 			if yarpcerrors.IsNotFound(err) {
 				continue
@@ -231,7 +234,7 @@ func (h *ServiceHandler) getTasksWithoutConfigs(
 		pods, err := h.queryPods(
 			ctx,
 			jobID,
-			jobInfo.GetSpec().GetInstanceCount(),
+			jobSummary.GetInstanceCount(),
 		)
 		if err != nil {
 			return nil, auroraErrorf(
@@ -240,13 +243,14 @@ func (h *ServiceHandler) getTasksWithoutConfigs(
 
 		ts, err := h.getScheduledTasks(
 			ctx,
-			jobInfo,
+			jobSummary,
 			pods,
 			&taskFilter{statuses: query.GetStatuses()},
 		)
 		if err != nil {
 			return nil, auroraErrorf("get tasks without configs: %s", err)
 		}
+
 		tasks = append(tasks, ts...)
 	}
 
@@ -275,7 +279,7 @@ func (f *taskFilter) include(t *api.ScheduledTask) bool {
 // pool.
 func (h *ServiceHandler) getScheduledTasks(
 	ctx context.Context,
-	jobInfo *stateless.JobInfo,
+	jobSummary *stateless.JobSummary,
 	podInfos []*pod.PodInfo,
 	filter *taskFilter,
 ) ([]*api.ScheduledTask, error) {
@@ -330,7 +334,7 @@ func (h *ServiceHandler) getScheduledTasks(
 			if i >= 1 {
 				t, err = ptoa.NewScheduledTaskForPrevRun(podEvents)
 			} else {
-				t, err = ptoa.NewScheduledTask(jobInfo, podInfo, podEvents)
+				t, err = ptoa.NewScheduledTask(jobSummary, podInfo, podEvents)
 			}
 
 			if err != nil {
@@ -400,21 +404,21 @@ func (h *ServiceHandler) getConfigSummary(
 		return nil, auroraErrorf("unable to get jobID from jobKey: %s", err)
 	}
 
-	jobInfo, err := h.getJobInfo(ctx, jobID)
+	jobSummary, err := h.getJobInfoSummary(ctx, jobID)
 	if err != nil {
-		return nil, auroraErrorf("unable to get jobInfo from jobID: %s", err)
+		return nil, auroraErrorf("unable to get jobSummary from jobID: %s", err)
 	}
 
 	podInfos, err := h.queryPods(
 		ctx,
 		jobID,
-		jobInfo.GetSpec().GetInstanceCount())
+		jobSummary.GetInstanceCount())
 	if err != nil {
 		return nil, auroraErrorf("unable to query pods using jobID: %s", err)
 	}
 
 	configSummary, err := ptoa.NewConfigSummary(
-		jobInfo,
+		jobSummary,
 		podInfos)
 	if err != nil {
 		return nil, auroraErrorf("unable to get config summary from podInfos: %s", err)
@@ -492,7 +496,10 @@ func (h *ServiceHandler) getJobs(
 		// TODO(kevinxu): Need to inspect InstanceSpec as well?
 		podSpec := jobInfo.GetSpec().GetDefaultSpec()
 
-		c, err := ptoa.NewJobConfiguration(jobInfo, podSpec, true)
+		c, err := ptoa.NewJobConfiguration(
+			convertJobInfoToJobSummary(jobInfo),
+			podSpec,
+			true)
 		if err != nil {
 			return nil, auroraErrorf("new job configuration: %s", err)
 		}
@@ -1929,5 +1936,22 @@ func max(a, b int32) int32 {
 func dummyResult() *api.Result {
 	return &api.Result{
 		GetTierConfigResult: &api.GetTierConfigResult{},
+	}
+}
+
+// Converts job info to job summary
+func convertJobInfoToJobSummary(
+	jobInfo *stateless.JobInfo,
+) *stateless.JobSummary {
+
+	return &stateless.JobSummary{
+		JobId:         jobInfo.GetJobId(),
+		Name:          jobInfo.GetSpec().GetName(),
+		Owner:         jobInfo.GetSpec().GetOwner(),
+		InstanceCount: jobInfo.GetSpec().GetInstanceCount(),
+		Sla:           jobInfo.GetSpec().GetSla(),
+		Labels:        jobInfo.GetSpec().GetLabels(),
+		RespoolId:     jobInfo.GetSpec().GetRespoolId(),
+		Status:        jobInfo.GetStatus(),
 	}
 }
