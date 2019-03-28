@@ -3,6 +3,7 @@ import os
 import pytest
 import time
 import grpc
+import requests
 
 from docker import Client
 from tools.minicluster.main import setup, teardown
@@ -104,6 +105,9 @@ class Container(object):
             self._cli.start(name)
             log.info('%s started', name)
 
+        if self._names[0] in MESOS_MASTER:
+            wait_for_mesos_master_leader()
+
     def stop(self):
         for name in self._names:
             self._cli.stop(name, timeout=0)
@@ -113,6 +117,29 @@ class Container(object):
         for name in self._names:
             self._cli.restart(name, timeout=0)
             log.info('%s restarted', name)
+
+        if self._names[0] in MESOS_MASTER:
+            wait_for_mesos_master_leader()
+
+
+def wait_for_mesos_master_leader(url='http://127.0.0.1:5050/state.json',
+                                 timeout_secs=20):
+    """
+    util method to wait for mesos master leader elected
+    """
+
+    deadline = time.time() + timeout_secs
+    while time.time() < deadline:
+        try:
+            resp = requests.get(url)
+            if resp.status_code != 200:
+                time.sleep(2)
+                continue
+            return
+        except Exception:
+            pass
+
+    assert False, 'timed out waiting for mesos master leader'
 
 
 def setup_minicluster():
