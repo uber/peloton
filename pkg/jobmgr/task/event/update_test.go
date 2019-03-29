@@ -1092,6 +1092,32 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskRunningStatusUpdate() {
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
+// TestProcessOrphanTaskKillError tests getting an error on trying to kill orphan task
+func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskKillError() {
+	defer suite.ctrl.Finish()
+
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	taskInfo := createTestTaskInfo(task.TaskState_FAILED)
+	// generates new mesos task id that is different with the one in the
+	// task status update.
+	dbMesosTaskID := fmt.Sprintf("%s-%d-%s", _jobID, _instanceID, uuid.NewUUID().String())
+	taskInfo.GetRuntime().MesosTaskId = &mesos.TaskID{Value: &dbMesosTaskID}
+	orphanTaskID := &mesos.TaskID{
+		Value: &[]string{_mesosTaskID}[0],
+	}
+
+	suite.mockTaskStore.EXPECT().
+		GetTaskByID(context.Background(), _pelotonTaskID).
+		Return(taskInfo, nil)
+	suite.mockHostMgrClient.EXPECT().KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
+		TaskIds: []*mesos.TaskID{orphanTaskID},
+	}).
+		Return(nil, fmt.Errorf("fake db error")).
+		Times(_numOrphanTaskKillAttempts)
+
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+}
+
 // Test processing orphan task LOST status update.
 func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskLostStatusUpdate() {
 	defer suite.ctrl.Finish()

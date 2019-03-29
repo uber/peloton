@@ -45,6 +45,14 @@ import (
 const (
 	// Mesos event message that indicates duplicate task ID
 	_msgMesosDuplicateID = "Task has duplicate ID"
+
+	// _numOrphanTaskKillAttempts is number of attempts to
+	// kill orphan task in case of error from host manager
+	_numOrphanTaskKillAttempts = 3
+
+	// _waitForRetryOnError is the time between successive retries
+	// to kill orphan task in case of error from host manager
+	_waitForRetryOnErrorOrphanTaskKill = 5 * time.Millisecond
 )
 
 // Declare a Now function so that we can mock it in unit tests.
@@ -148,6 +156,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	if err != nil {
 		return err
 	}
+
 	if isOrphanTask {
 		p.metrics.SkipOrphanTasksTotal.Inc(1)
 		taskInfo := &pb_task.TaskInfo{
@@ -157,7 +166,16 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 				AgentID:     event.MesosTaskStatus.GetAgentId(),
 			},
 		}
-		return jobmgr_task.KillOrphanTask(ctx, p.hostmgrClient, taskInfo)
+
+		// Kill the orphan task
+		for i := 0; i < _numOrphanTaskKillAttempts; i++ {
+			err = jobmgr_task.KillOrphanTask(ctx, p.hostmgrClient, taskInfo)
+			if err == nil {
+				return nil
+			}
+			time.Sleep(_waitForRetryOnErrorOrphanTaskKill)
+		}
+		return nil
 	}
 
 	// whether to skip or not if instance state is similar before and after
@@ -474,10 +492,10 @@ func (p *statusUpdate) isOrphanTaskEvent(
 	if event.isMesosStatus && dbTaskID !=
 		event.mesosTaskStatus.GetTaskId().GetValue() {
 		log.WithFields(log.Fields{
-			"orphan_task_id":    event.mesosTaskStatus.GetTaskId().GetValue(),
-			"db_task_id":        dbTaskID,
-			"db_task_runtime":   taskInfo.GetRuntime(),
-			"task_status_event": event.mesosTaskStatus,
+			"orphan_task_id":        event.mesosTaskStatus.GetTaskId().GetValue(),
+			"db_task_id":            dbTaskID,
+			"db_task_runtime_state": taskInfo.GetRuntime().GetState().String(),
+			"mesos_event_state":     event.state.String(),
 		}).Info("received status update for orphan mesos task")
 		return true, nil, nil
 	}
