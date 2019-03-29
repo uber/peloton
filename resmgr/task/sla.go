@@ -151,14 +151,12 @@ func NewTransitionObserver(
 	enabled bool,
 	scope tally.Scope,
 	respoolPath string,
-	jobID string,
 ) TransitionObserver {
 	tags := make(map[string]string)
 	if enabled {
 		// These tags don't change during the lifetime of the observer.
 		tags = map[string]string{
 			_respoolPath: respoolPath,
-			_jobID:       jobID,
 		}
 	}
 
