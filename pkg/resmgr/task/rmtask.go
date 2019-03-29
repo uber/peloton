@@ -99,7 +99,6 @@ func CreateRMTask(
 			taskConfig.EnableSLATracking,
 			scope,
 			respool.GetPath(),
-			t.GetJobId().GetValue(),
 		),
 	}
 
