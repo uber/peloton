@@ -41,3 +41,6 @@ var BridgePodLabel = &peloton.Label{
 	Key:   "aurora_bridge_pod",
 	Value: "com.uber.peloton.internal.aurorabridge_pod",
 }
+
+// QueryJobsLimit specifies Limit parameter passed to QueryJobs request
+const QueryJobsLimit = 1000

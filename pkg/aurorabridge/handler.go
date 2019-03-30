@@ -1687,6 +1687,10 @@ func (h *ServiceHandler) queryJobSummaries(
 	req := &statelesssvc.QueryJobsRequest{
 		Spec: &stateless.QuerySpec{
 			Labels: labels,
+			Pagination: &pbquery.PaginationSpec{
+				Limit:    common.QueryJobsLimit,
+				MaxLimit: common.QueryJobsLimit,
+			},
 		},
 	}
 	resp, err := h.jobClient.QueryJobs(ctx, req)

@@ -791,6 +791,10 @@ func (suite *ServiceHandlerTestSuite) expectQueryJobsWithLabels(
 			&statelesssvc.QueryJobsRequest{
 				Spec: &stateless.QuerySpec{
 					Labels: labels,
+					Pagination: &pbquery.PaginationSpec{
+						Limit:    common.QueryJobsLimit,
+						MaxLimit: common.QueryJobsLimit,
+					},
 				},
 			}).
 		Return(&statelesssvc.QueryJobsResponse{Records: summaries}, nil)
@@ -1002,6 +1006,10 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyFi
 			&statelesssvc.QueryJobsRequest{
 				Spec: &stateless.QuerySpec{
 					Labels: labels,
+					Pagination: &pbquery.PaginationSpec{
+						Limit:    common.QueryJobsLimit,
+						MaxLimit: common.QueryJobsLimit,
+					},
 				},
 			}).
 		Return(&statelesssvc.QueryJobsResponse{Records: summaries}, nil)
@@ -1038,6 +1046,10 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyEr
 			&statelesssvc.QueryJobsRequest{
 				Spec: &stateless.QuerySpec{
 					Labels: labels,
+					Pagination: &pbquery.PaginationSpec{
+						Limit:    common.QueryJobsLimit,
+						MaxLimit: common.QueryJobsLimit,
+					},
 				},
 			}).
 		Return(nil, errors.New("failed to get job summary"))
@@ -1847,6 +1859,10 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 		QueryJobs(suite.ctx, &statelesssvc.QueryJobsRequest{
 			Spec: &stateless.QuerySpec{
 				Labels: labels,
+				Pagination: &pbquery.PaginationSpec{
+					Limit:    common.QueryJobsLimit,
+					MaxLimit: common.QueryJobsLimit,
+				},
 			},
 		}).
 		Return(&statelesssvc.QueryJobsResponse{
