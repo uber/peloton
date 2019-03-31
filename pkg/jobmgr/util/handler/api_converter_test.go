@@ -1545,6 +1545,31 @@ func (suite *apiConverterTestSuite) TestConvertTaskEventsToPodEvents() {
 	suite.Equal(expectedPodEvents, podEvents)
 }
 
+// TestConvertTaskStatsToPodStats tests conversion
+// from v0 task stats to v1alpha pod stats
+func (suite *apiConverterTestSuite) TestConvertTaskStatsToPodStats() {
+	taskStats := make(map[string]uint32)
+	taskStats["SUCCEEDED"] = 1
+	taskStats["RUNNING"] = 3
+	taskStats["FAILED"] = 2
+	taskStats["INITIALIZED"] = 1
+	taskStats["PENDING"] = 2
+	taskStats["LAUNCHING"] = 6
+	taskStats["LAUNCHED"] = 15
+	taskStats["STARTING"] = 7
+	taskStats["LOST"] = 11
+	taskStats["PREEMPTING"] = 12
+	taskStats["KILLED"] = 14
+	taskStats["KILLING"] = 17
+	taskStats["DELETED"] = 16
+
+	podStatePrefix := "POD_STATE_"
+	podStats := ConvertTaskStatsToPodStats(taskStats)
+	for k, v := range taskStats {
+		suite.Equal(v, podStats[podStatePrefix+k])
+	}
+}
+
 func TestAPIConverter(t *testing.T) {
 	suite.Run(t, new(apiConverterTestSuite))
 }

@@ -1612,7 +1612,7 @@ func convertCacheToJobStatus(
 	}
 	result.State = stateless.JobState(runtime.GetState())
 	result.CreationTime = runtime.GetCreationTime()
-	result.PodStats = runtime.TaskStats
+	result.PodStats = handlerutil.ConvertTaskStatsToPodStats(runtime.TaskStats)
 	result.DesiredState = stateless.JobState(runtime.GetGoalState())
 	result.Version = jobutil.GetJobEntityVersion(
 		runtime.GetConfigurationVersion(),

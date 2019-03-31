@@ -437,7 +437,7 @@ func ConvertRuntimeInfoToJobStatus(
 	}
 	result.State = stateless.JobState(runtime.GetState())
 	result.CreationTime = runtime.GetCreationTime()
-	result.PodStats = convertTaskStatsToPodStats(runtime.TaskStats)
+	result.PodStats = ConvertTaskStatsToPodStats(runtime.TaskStats)
 	result.DesiredState = stateless.JobState(runtime.GetGoalState())
 	result.Version = jobutil.GetJobEntityVersion(
 		runtime.GetConfigurationVersion(),
@@ -946,6 +946,17 @@ func ConvertTaskEventsToPodEvents(taskEvents []*task.PodEvent) []*pod.PodEvent {
 	return result
 }
 
+// ConvertTaskStatsToPodStats converts v0 task stats to v1alpha pod stats
+func ConvertTaskStatsToPodStats(taskStats map[string]uint32) map[string]uint32 {
+	result := make(map[string]uint32)
+	for stateStr, num := range taskStats {
+		taskState := task.TaskState(task.TaskState_value[stateStr])
+		result[ConvertTaskStateToPodState(taskState).String()] = num
+	}
+
+	return result
+}
+
 func convertV1AlphaPaginationSpecToV0PaginationSpec(
 	pagination *query.PaginationSpec,
 ) *pelotonv0query.PaginationSpec {
@@ -1000,14 +1011,4 @@ func convertTaskTerminationStatusToPodTerminationStatus(
 		ExitCode: termStatus.GetExitCode(),
 		Signal:   termStatus.GetSignal(),
 	}
-}
-
-func convertTaskStatsToPodStats(taskStats map[string]uint32) map[string]uint32 {
-	result := make(map[string]uint32)
-	for stateStr, num := range taskStats {
-		taskState := task.TaskState(task.TaskState_value[stateStr])
-		result[ConvertTaskStateToPodState(taskState).String()] = num
-	}
-
-	return result
 }
