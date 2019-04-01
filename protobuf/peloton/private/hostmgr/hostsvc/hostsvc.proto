@@ -402,6 +402,9 @@ service InternalHostService
   // Return all the outstanding offers present in offer pool.
   rpc GetOutstandingOffers(GetOutstandingOffersRequest) returns (GetOutstandingOffersResponse);
 
+  // Toggles the switch to disable the kill tasks
+  rpc DisableKillTasks(DisableKillTasksRequest) returns (DisableKillTasksResponse);
+
   // Return all the hosts with available resources matching the query, used in cli only.
   rpc GetHostsByQuery(GetHostsByQueryRequest) returns (GetHostsByQueryResponse);
 
@@ -611,6 +614,12 @@ message OfferOperationsResponse {
 
 message AcquireHostOffersRequest {
   HostFilter filter = 1;
+}
+
+message DisableKillTasksRequest{
+}
+
+message DisableKillTasksResponse{
 }
 
 // GetHostsRequest is the request which is been

@@ -191,3 +191,16 @@ func printGetHostsResponse(resp *hostsvc.GetHostsByQueryResponse) {
 		}
 	}
 }
+
+// DisableKillTasksAction disable the kill task request to mesos master
+func (c *Client) DisableKillTasksAction() error {
+
+	_, err := c.hostMgrClient.DisableKillTasks(c.ctx, &hostsvc.DisableKillTasksRequest{})
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(tabWriter, "Disabled kill tasks request\n")
+	tabWriter.Flush()
+	return nil
+}

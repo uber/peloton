@@ -55,6 +55,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"go.uber.org/atomic"
 	"go.uber.org/multierr"
 	"go.uber.org/yarpc"
 )
@@ -97,6 +98,7 @@ type ServiceHandler struct {
 	slackResourceTypes     []string
 	maintenanceHostInfoMap host.MaintenanceHostInfoMap
 	taskStateManager       taskStateManager.StateManager
+	disableKillTasks       atomic.Bool
 }
 
 // NewServiceHandler creates a new ServiceHandler.
@@ -149,6 +151,20 @@ func validateHostFilter(
 		}
 	}
 	return nil
+}
+
+// DisableKillTasks toggles the flag to disable send kill tasks request
+// to mesos master
+func (h *ServiceHandler) DisableKillTasks(
+	ctx context.Context,
+	body *hostsvc.DisableKillTasksRequest,
+) (*hostsvc.DisableKillTasksResponse, error) {
+
+	h.disableKillTasks.Store(true)
+	log.Info("Disabled the kill tasks request to mesos master. ",
+		"To enable restart host manager")
+
+	return &hostsvc.DisableKillTasksResponse{}, nil
 }
 
 // GetOutstandingOffers returns all the offers present in offer pool.
@@ -1029,6 +1045,10 @@ func (h *ServiceHandler) killTasks(
 	*hostsvc.InvalidTaskIDs, *hostsvc.KillFailure) {
 	if len(taskIds) == 0 {
 		return &hostsvc.InvalidTaskIDs{Message: "Empty task ids"}, nil
+	}
+
+	if h.disableKillTasks.Load() {
+		return nil, &hostsvc.KillFailure{Message: "Kill tasks request is disabled"}
 	}
 
 	var wg sync.WaitGroup

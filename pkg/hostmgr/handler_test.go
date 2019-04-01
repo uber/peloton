@@ -2389,6 +2389,15 @@ func (suite *HostMgrHandlerTestSuite) TestGetHosts() {
 	suite.Equal(len(acquiredResp.Hosts), 2)
 }
 
+// Tests disable kill tasks request to mesos master
+func (suite *HostMgrHandlerTestSuite) TestDisableKillTasks() {
+	defer suite.ctrl.Finish()
+
+	_, err := suite.handler.DisableKillTasks(rootCtx, &hostsvc.DisableKillTasksRequest{})
+	suite.NoError(err)
+	suite.True(suite.handler.disableKillTasks.Load())
+}
+
 // TestGetHostsInvalidFilters tests if the filter is invalid it would return error
 func (suite *HostMgrHandlerTestSuite) TestGetHostsInvalidFilters() {
 	defer suite.ctrl.Finish()

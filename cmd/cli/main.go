@@ -31,7 +31,7 @@ import (
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/util"
 
-	"gopkg.in/alecthomas/kingpin.v2"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
@@ -613,6 +613,9 @@ var (
 
 	// command for list status update events present in the event stream
 	eventStream = hostmgr.Command("events", "list all the task status update events present in event stream")
+
+	// command to disable the kill tasks request to mesos master
+	disableKillTasks = hostmgr.Command("disable-kill-tasks", "disable the kill task request to mesos master")
 )
 
 // TaskRangeValue allows us to define a new target type for kingpin to allow specifying ranges of tasks with from:to syntax as a TaskRangeFlag
@@ -872,6 +875,8 @@ func main() {
 		err = client.OffersGetAction()
 	case getHosts.FullCommand():
 		err = client.HostsGetAction(*getHostsCPU, *getHostsGPU, *getHostsCmpLess, *getHostsHostnames)
+	case disableKillTasks.FullCommand():
+		err = client.DisableKillTasksAction()
 	case podGetEvents.FullCommand():
 		err = client.PodGetEventsAction(*podGetEventsJobName, *podGetEventsInstanceID, *podGetEventsRunID, *podGetEventsLimit)
 	case podGetCache.FullCommand():

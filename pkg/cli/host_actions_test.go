@@ -269,6 +269,21 @@ func (suite *hostmgrActionsInternalTestSuite) TestGetHostsByQuery() {
 	suite.NoError(err)
 }
 
+func (suite *hostmgrActionsInternalTestSuite) TestDisableKillTasks() {
+	c := Client{
+		Debug:         false,
+		hostMgrClient: suite.mockHostMgr,
+		dispatcher:    nil,
+		ctx:           suite.ctx,
+	}
+
+	suite.mockHostMgr.EXPECT().
+		DisableKillTasks(gomock.Any(), gomock.Any()).
+		Return(&hostmgrsvc.DisableKillTasksResponse{}, nil)
+
+	suite.NoError(c.DisableKillTasksAction())
+}
+
 func (suite *hostmgrActionsInternalTestSuite) TestGetHostsByQueryLessThan() {
 	c := Client{
 		Debug:         false,
