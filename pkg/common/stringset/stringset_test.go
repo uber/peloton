@@ -97,3 +97,46 @@ func TestStringSet_ToSlice(t *testing.T) {
 		assert.True(t, testSet.Contains(item))
 	}
 }
+
+func TestStringSet_Intersect(t *testing.T) {
+	testSet := &stringSet{
+		m: make(map[string]bool),
+	}
+
+	testSet1 := &stringSet{
+		m: make(map[string]bool),
+	}
+
+	testItems := []string{
+		"testitem1",
+		"testitem2",
+	}
+
+	// Add testItems to testSet
+	for _, item := range testItems {
+		testSet.m[item] = true
+	}
+
+	testItems1 := []string{
+		"testitem1",
+		"testitem2",
+		"testitem3",
+	}
+
+	// Add testItems1 to testSet1
+	for _, item := range testItems1 {
+		testSet1.m[item] = true
+	}
+
+	// Intersect the two stringSet
+	intersection := testSet.Intersect(testSet1)
+
+	items := intersection.ToSlice()
+
+	for _, item := range items {
+		if item == "testitem3" {
+			assert.False(t, testSet.Contains(item))
+		}
+		assert.True(t, testSet.Contains(item))
+	}
+}
