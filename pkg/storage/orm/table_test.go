@@ -72,6 +72,31 @@ func (suite *ORMTestSuite) TestSetObjectFromRow() {
 	suite.Equal(e.ID, testRow[0].Value)
 	suite.Equal(e.Name, testRow[1].Value)
 	suite.Equal(e.Data, testRow[2].Value)
+
+	// error case where one of the columns in that row is nil
+	var testRowNil = []base.Column{
+		{
+			Name:  "id",
+			Value: uint64(1),
+		},
+		{
+			Name:  "name",
+			Value: "random name",
+		},
+		{
+			Name: "data",
+			// When the value in DB column is set to null, this is returned
+			// by gocql
+			Value: (*string)(nil),
+		},
+	}
+
+	e = &ValidObject{}
+	table.SetObjectFromRow(e, testRowNil)
+	suite.Equal(testRowNil[0].Value, e.ID)
+	suite.Equal(testRowNil[1].Value, e.Name)
+	// Expect 0 value of the type which in this case is "" for string
+	suite.Equal("", e.Data)
 }
 
 // TestGetRowFromObject tests building a row (list of base.Column) from base
