@@ -39,6 +39,13 @@ class Client(object):
             *args)
         return res.result.getJobUpdateSummariesResult
 
+    def get_job_update_details(self, *args):
+        res = self._send(
+            ReadOnlyScheduler,
+            ReadOnlyScheduler.getJobUpdateDetails,
+            *args)
+        return res.result.getJobUpdateDetailsResult
+
     def get_job_summary(self, *args):
         res = self._send(
             ReadOnlyScheduler,

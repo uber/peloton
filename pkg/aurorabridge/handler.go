@@ -991,6 +991,9 @@ func (h *ServiceHandler) startJobUpdate(
 	if request.GetSettings().GetBlockIfNoPulsesAfterMs() > 0 {
 		d.AppendUpdateAction(opaquedata.StartPulsed)
 	}
+	if message != nil {
+		d.StartJobUpdateMessage = *message
+	}
 	od, err := d.Serialize()
 	if err != nil {
 		return nil, auroraErrorf("serialize opaque data: %s", err)

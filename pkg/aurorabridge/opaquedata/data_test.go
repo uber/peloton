@@ -22,6 +22,7 @@ func TestSerializeAndDeserializeData(t *testing.T) {
 			{Key: ptr.String("some key"), Value: ptr.String("some value")},
 			{Key: ptr.String("another key"), Value: ptr.String("another value")},
 		},
+		StartJobUpdateMessage: "some-start-job-update-msg",
 	}
 	od, err := input.Serialize()
 	require.NoError(t, err)

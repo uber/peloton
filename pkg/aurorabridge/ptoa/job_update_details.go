@@ -17,12 +17,13 @@ package ptoa
 import (
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
 	"github.com/uber/peloton/pkg/aurorabridge/common"
 	"github.com/uber/peloton/pkg/aurorabridge/opaquedata"
+
 	"go.uber.org/thriftrw/ptr"
 )
 
@@ -43,8 +44,11 @@ func NewJobUpdateDetails(
 		return nil, fmt.Errorf("deserialize opaque data: %s", err)
 	}
 
+	workflowEvents := workflow.GetEvents()
 	var updateEvents []*api.JobUpdateEvent
-	for _, pe := range workflow.GetEvents() {
+	for i := range workflowEvents {
+		// Assuming peloton workflow events are sorted in descending order
+		pe := workflowEvents[len(workflowEvents)-1-i]
 		ae, err := NewJobUpdateEvent(pe, d)
 		if err != nil {
 			return nil, fmt.Errorf("new job update event: %s", err)
@@ -60,19 +64,22 @@ func NewJobUpdateDetails(
 		return nil, err
 	}
 
-	var instanceEvents []*api.JobInstanceUpdateEvent
+	var instanceUpdateEvents []*api.JobInstanceUpdateEvent
 	for _, events := range workflow.GetInstanceEvents() {
 		id := events.GetInstanceId()
-		for _, pe := range events.GetEvents() {
+		instanceEvents := events.GetEvents()
+		for i := range instanceEvents {
+			// Assuming peloton instance events are sorted in descending order
+			pe := instanceEvents[len(instanceEvents)-1-i]
 			ae, err := NewJobInstanceUpdateEvent(id, pe, d)
 			if err != nil {
 				return nil, fmt.Errorf("new job instance update event: %s", err)
 			}
-			instanceEvents = append(instanceEvents, ae)
+			instanceUpdateEvents = append(instanceUpdateEvents, ae)
 		}
 	}
-	// Sorted by descending timestamp for all instances combined.
-	sort.Sort(sort.Reverse(jobInstanceUpdateEventsByTimestamp(instanceEvents)))
+	// Sorted by ascending timestamp for all instances combined.
+	sort.Sort(JobInstanceUpdateEventsByTimestamp(instanceUpdateEvents))
 
 	return &api.JobUpdateDetails{
 		Update: &api.JobUpdate{
@@ -80,7 +87,7 @@ func NewJobUpdateDetails(
 			Instructions: jobUpdateInstructions,
 		},
 		UpdateEvents:   updateEvents,
-		InstanceEvents: instanceEvents,
+		InstanceEvents: instanceUpdateEvents,
 	}, nil
 }
 
@@ -152,42 +159,4 @@ func JoinRollbackJobUpdateDetails(d1, d2 *api.JobUpdateDetails) *api.JobUpdateDe
 		UpdateEvents:   updateEvents,
 		InstanceEvents: instanceEvents,
 	}
-}
-
-// WorkflowsByMaxTS sorts stateless.WorkflowInfo by timestamp of latest event
-type WorkflowsByMaxTS []*stateless.WorkflowInfo
-
-func (w WorkflowsByMaxTS) Len() int      { return len(w) }
-func (w WorkflowsByMaxTS) Swap(i, j int) { w[i], w[j] = w[j], w[i] }
-func (w WorkflowsByMaxTS) Less(i, j int) bool {
-	wi := w[i]
-	wj := w[j]
-
-	// Ideally events should exist for both workflows,
-	// but in case any of the workflow does not contain
-	// any events, return false to keep the original
-	// ordering when used with stable sort.
-	if len(wi.GetEvents()) == 0 {
-		return false
-	}
-	if len(wj.GetEvents()) == 0 {
-		return false
-	}
-
-	// According to pkg/storage/cassandra/migrations/0022_add_job_update_events.up.cql
-	// events returned should be sorted by descending create timestamp
-	wiLatestEvent := wi.GetEvents()[0]
-	wjLatestEvent := wj.GetEvents()[0]
-
-	wiLatestTS, err := time.Parse(time.RFC3339, wiLatestEvent.GetTimestamp())
-	if err != nil {
-		return false
-	}
-
-	wjLatestTS, err := time.Parse(time.RFC3339, wjLatestEvent.GetTimestamp())
-	if err != nil {
-		return false
-	}
-
-	return wiLatestTS.Unix() < wjLatestTS.Unix()
 }

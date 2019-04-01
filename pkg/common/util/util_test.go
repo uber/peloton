@@ -548,3 +548,22 @@ func TestCreateMesosTaskID(t *testing.T) {
 		assert.Equal(t, mesosTaskID.GetValue(), test.result)
 	}
 }
+
+// ConvertTimestampToUnixSecondsSuccess tests ConvertTimestampToUnixSeconds
+// success case
+func ConvertTimestampToUnixSecondsSuccess(t *testing.T) {
+	ts := "2019-03-28T00:30:06Z"
+	u, err := ConvertTimestampToUnixSeconds(ts)
+
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1553733006), u)
+}
+
+// ConvertTimestampToUnixSecondsFailure tests ConvertTimestampToUnixSeconds
+// failure case
+func ConvertTimestampToUnixSecondsFailure(t *testing.T) {
+	ts := "2019-03-28T00:30:06"
+	_, err := ConvertTimestampToUnixSeconds(ts)
+
+	assert.Error(t, err)
+}

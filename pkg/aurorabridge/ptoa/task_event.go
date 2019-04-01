@@ -15,10 +15,10 @@
 package ptoa
 
 import (
-	"time"
-
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
+	"github.com/uber/peloton/pkg/aurorabridge/common"
 
 	"go.uber.org/thriftrw/ptr"
 )
@@ -27,7 +27,7 @@ const _auroraSchedulerName = "peloton"
 
 // NewTaskEvent converts Peloton PodEvent to Aurora TaskEvent.
 func NewTaskEvent(e *pod.PodEvent) (*api.TaskEvent, error) {
-	t, err := time.Parse(time.RFC3339, e.GetTimestamp())
+	ts, err := common.ConvertTimestampToUnixMS(e.GetTimestamp())
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +37,7 @@ func NewTaskEvent(e *pod.PodEvent) (*api.TaskEvent, error) {
 	}
 
 	return &api.TaskEvent{
-		Timestamp: ptr.Int64(t.Unix() * 1000),
+		Timestamp: ts,
 		Message:   ptr.String(e.GetMessage()),
 		Status:    s,
 		// TODO(kevinxu): does it need to be "Aurora"?

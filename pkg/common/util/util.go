@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
@@ -569,4 +570,15 @@ func RemoveSecretVolumesFromJobConfig(cfg *job.JobConfig) []*mesos.Volume {
 		_ = RemoveSecretVolumesFromConfig(config)
 	}
 	return secretVolumes
+}
+
+// ConvertTimestampToUnixSeconds converts timestamp string in RFC3339 format
+// to the unix time in seconds.
+func ConvertTimestampToUnixSeconds(timestamp string) (int64, error) {
+	ts, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		return 0, err
+	}
+
+	return ts.Unix(), nil
 }

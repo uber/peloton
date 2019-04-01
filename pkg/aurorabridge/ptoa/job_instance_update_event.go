@@ -16,11 +16,13 @@ package ptoa
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
+	"github.com/uber/peloton/pkg/aurorabridge/common"
 	"github.com/uber/peloton/pkg/aurorabridge/opaquedata"
+
 	"go.uber.org/thriftrw/ptr"
 )
 
@@ -37,24 +39,14 @@ func NewJobInstanceUpdateEvent(
 		return nil, fmt.Errorf("unable to get job update action for instance update event %s", err)
 	}
 
-	t, err := time.Parse(time.RFC3339, e.GetTimestamp())
+	ts, err := common.ConvertTimestampToUnixMS(e.GetTimestamp())
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse instance update event timestamp %s", err)
 	}
-	t64 := t.UnixNano() / int64(time.Millisecond)
 
 	return &api.JobInstanceUpdateEvent{
 		InstanceId:  ptr.Int32(int32(instanceID)),
-		TimestampMs: ptr.Int64(t64),
+		TimestampMs: ts,
 		Action:      jobUpdateAction,
 	}, nil
-}
-
-// jobInstanceUpdateEventsByTimestamp sorts instance update events by timestamp.
-type jobInstanceUpdateEventsByTimestamp []*api.JobInstanceUpdateEvent
-
-func (s jobInstanceUpdateEventsByTimestamp) Len() int      { return len(s) }
-func (s jobInstanceUpdateEventsByTimestamp) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
-func (s jobInstanceUpdateEventsByTimestamp) Less(i, j int) bool {
-	return s[i].GetTimestampMs() < s[j].GetTimestampMs()
 }

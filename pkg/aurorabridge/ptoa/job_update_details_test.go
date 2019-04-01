@@ -3,10 +3,13 @@ package ptoa
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
 	"github.com/uber/peloton/pkg/aurorabridge/fixture"
+	"github.com/uber/peloton/pkg/aurorabridge/opaquedata"
+
+	"github.com/stretchr/testify/require"
 	"go.uber.org/thriftrw/ptr"
 )
 
@@ -113,12 +116,12 @@ func TestNewJobUpdateDetailsInstanceEvents(t *testing.T) {
 			InstanceId: 1,
 			Events: []*stateless.WorkflowEvent{
 				{
-					Timestamp: "2019-03-08T00:12:00Z",
-					State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
-				},
-				{
 					Timestamp: "2019-03-08T00:13:00Z",
 					State:     stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED,
+				},
+				{
+					Timestamp: "2019-03-08T00:12:00Z",
+					State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
 				},
 			},
 		},
@@ -127,13 +130,8 @@ func TestNewJobUpdateDetailsInstanceEvents(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []*api.JobInstanceUpdateEvent{
 		{
-			InstanceId:  ptr.Int32(1),
-			TimestampMs: ptr.Int64(1552003980000),
-			Action:      api.JobUpdateActionInstanceUpdated.Ptr(),
-		},
-		{
-			InstanceId:  ptr.Int32(1),
-			TimestampMs: ptr.Int64(1552003920000),
+			InstanceId:  ptr.Int32(0),
+			TimestampMs: ptr.Int64(1552003800000),
 			Action:      api.JobUpdateActionInstanceUpdating.Ptr(),
 		},
 		{
@@ -142,9 +140,59 @@ func TestNewJobUpdateDetailsInstanceEvents(t *testing.T) {
 			Action:      api.JobUpdateActionInstanceUpdated.Ptr(),
 		},
 		{
-			InstanceId:  ptr.Int32(0),
-			TimestampMs: ptr.Int64(1552003800000),
+			InstanceId:  ptr.Int32(1),
+			TimestampMs: ptr.Int64(1552003920000),
 			Action:      api.JobUpdateActionInstanceUpdating.Ptr(),
 		},
+		{
+			InstanceId:  ptr.Int32(1),
+			TimestampMs: ptr.Int64(1552003980000),
+			Action:      api.JobUpdateActionInstanceUpdated.Ptr(),
+		},
 	}, d.GetInstanceEvents())
+}
+
+func TestNewJobUpdateDetailsUpdateEvents(t *testing.T) {
+	k := fixture.AuroraJobKey()
+	w := fixture.PelotonWorkflowInfo("")
+
+	op, err := opaquedata.Deserialize(w.OpaqueData)
+	require.NoError(t, err)
+	op.StartJobUpdateMessage = "job-update-message"
+	w.OpaqueData, err = op.Serialize()
+	require.NoError(t, err)
+
+	w.Events = []*stateless.WorkflowEvent{
+		{
+			Timestamp: "2019-03-08T00:11:00Z",
+			State:     stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED,
+		},
+		{
+			Timestamp: "2019-03-08T00:10:00Z",
+			State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+		},
+		{
+			Timestamp: "2019-03-08T00:09:00Z",
+			State:     stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
+		},
+	}
+
+	d, err := NewJobUpdateDetails(k, nil, w)
+	require.NoError(t, err)
+	require.Equal(t, []*api.JobUpdateEvent{
+		{
+			Status:      api.JobUpdateStatusRollingForward.Ptr(),
+			TimestampMs: ptr.Int64(1552003740000),
+			Message:     ptr.String("job-update-message"),
+		},
+		{
+			Status:      api.JobUpdateStatusRollingForward.Ptr(),
+			TimestampMs: ptr.Int64(1552003800000),
+			Message:     ptr.String("job-update-message"),
+		},
+		{
+			Status:      api.JobUpdateStatusRolledForward.Ptr(),
+			TimestampMs: ptr.Int64(1552003860000),
+		},
+	}, d.GetUpdateEvents())
 }

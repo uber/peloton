@@ -78,3 +78,24 @@ def test__failed_update(client):
         res.key,
         {api.JobUpdateStatus.ROLLING_FORWARD},
         api.JobUpdateStatus.FAILED)
+
+
+def test__start_job_update_with_msg(client):
+    update_msg = 'update msg 1'
+    job_key = start_job_update(client, 'test_dc_labrat.yaml', update_msg)
+
+    res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
+
+    assert len(res.detailsList) == 1
+
+    # verify events are sorted ascending
+    assert len(res.detailsList[0].updateEvents) > 0
+    update_events_ts = [e.timestampMs for e in res.detailsList[0].updateEvents]
+    assert update_events_ts == sorted(update_events_ts)
+    assert len(res.detailsList[0].instanceEvents) > 0
+    instance_events_ts = [e.timestampMs for e in res.detailsList[0].instanceEvents]
+    assert instance_events_ts == sorted(instance_events_ts)
+
+    assert res.detailsList[0].updateEvents[0].status == api.JobUpdateStatus.ROLLING_FORWARD
+    assert res.detailsList[0].updateEvents[0].message == update_msg
+    assert res.detailsList[0].updateEvents[-1].status == api.JobUpdateStatus.ROLLED_FORWARD

@@ -28,9 +28,10 @@ const (
 // be used when converting Peloton objects into Aurora objects to reconstruct
 // Aurora states which do not exist in Peloton.
 type Data struct {
-	UpdateID       string          `json:"update_id,omitempty"`
-	UpdateActions  []UpdateAction  `json:"update_actions,omitempty"`
-	UpdateMetadata []*api.Metadata `json:"update_metadata,omitempty"`
+	UpdateID              string          `json:"update_id,omitempty"`
+	UpdateActions         []UpdateAction  `json:"update_actions,omitempty"`
+	UpdateMetadata        []*api.Metadata `json:"update_metadata,omitempty"`
+	StartJobUpdateMessage string          `json:"start_job_update_msg,omitempty"`
 }
 
 // AppendUpdateAction appends a to d's update actions.
