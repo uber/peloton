@@ -8,11 +8,12 @@ from tests.integration.aurorabridge_test.util import (
     wait_for_rolled_back,
 )
 
-# disable auto rollback given its flaky behavior
-pytestmark = [pytest.mark.aurorabridge,
+pytestmark = [pytest.mark.default,
+              pytest.mark.aurorabridge,
               pytest.mark.random_order(disabled=True)]
 
 
+@pytest.mark.skip(reason="pending host to task map fix at resmgr")
 def test__simple_auto_rolled_back(client):
     """
     Create a job, then issue a bad config update and validate

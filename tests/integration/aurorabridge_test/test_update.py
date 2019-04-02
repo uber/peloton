@@ -7,6 +7,7 @@ from tests.integration.aurorabridge_test.util import (
     get_update_status,
     start_job_update,
     wait_for_update_status,
+    wait_for_rolled_forward,
 )
 
 pytestmark = [pytest.mark.default,
@@ -96,6 +97,46 @@ def test__start_job_update_with_msg(client):
     instance_events_ts = [e.timestampMs for e in res.detailsList[0].instanceEvents]
     assert instance_events_ts == sorted(instance_events_ts)
 
-    assert res.detailsList[0].updateEvents[0].status == api.JobUpdateStatus.ROLLING_FORWARD
+    assert res.detailsList[0].updateEvents[0].status == \
+        api.JobUpdateStatus.ROLLING_FORWARD
     assert res.detailsList[0].updateEvents[0].message == update_msg
-    assert res.detailsList[0].updateEvents[-1].status == api.JobUpdateStatus.ROLLED_FORWARD
+    assert res.detailsList[0].updateEvents[-1].status == \
+        api.JobUpdateStatus.ROLLED_FORWARD
+
+
+def test__simple_update_with_no_diff(client):
+    """
+    test simple update use case where second update has no config
+    change, thereby new workflow created will have no impact
+    """
+    res = client.start_job_update(
+        get_job_update_request('test_dc_labrat_large_job.yaml'),
+        'start job update test/dc/labrat_large_job')
+    wait_for_rolled_forward(client, res.key)
+    job_key = res.key.job
+
+    res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
+    assert len(res.detailsList[0].updateEvents) > 0
+    assert len(res.detailsList[0].instanceEvents) > 0
+
+    # Do update with same config, which will yield no impact
+    res = client.start_job_update(
+        get_job_update_request('test_dc_labrat_large_job.yaml'),
+        'start job update test/dc/labrat_large_job')
+    wait_for_rolled_forward(client, res.key)
+    job_key = res.key.job
+
+    res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
+    assert len(res.detailsList[0].updateEvents) > 0
+    assert res.detailsList[0].instanceEvents is None
+
+    # Do another update with same config, which will yield no impact
+    res = client.start_job_update(
+        get_job_update_request('test_dc_labrat_large_job.yaml'),
+        'start job update test/dc/labrat_large_job')
+    wait_for_rolled_forward(client, res.key)
+    job_key = res.key.job
+
+    res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
+    assert len(res.detailsList[0].updateEvents) > 0
+    assert res.detailsList[0].instanceEvents is None

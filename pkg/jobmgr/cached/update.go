@@ -1143,12 +1143,44 @@ func labelsChangeCheck(
 	return false
 }
 
+// portsConfigChangeCheck returns true if the ports have changed
+func portsConfigChangeCheck(
+	prevPorts []*pbtask.PortConfig,
+	newPorts []*pbtask.PortConfig) bool {
+	if len(prevPorts) != len(newPorts) {
+		return true
+	}
+
+	for _, newPort := range newPorts {
+		found := false
+		for _, prevPort := range prevPorts {
+			if newPort.GetName() == prevPort.GetName() &&
+				newPort.GetValue() == prevPort.GetValue() &&
+				newPort.GetEnvName() == prevPort.GetEnvName() {
+				found = true
+				break
+			}
+		}
+
+		// ports not found
+		if found == false {
+			return true
+		}
+	}
+
+	// all old ports found in new config as well
+	return false
+}
+
 // taskConfigChange returns true if the task config (other than the name)
 // has changed.
 func taskConfigChange(
 	prevTaskConfig *pbtask.TaskConfig,
 	newTaskConfig *pbtask.TaskConfig) bool {
-	if prevTaskConfig == nil || newTaskConfig == nil {
+	if prevTaskConfig == nil ||
+		newTaskConfig == nil ||
+		labelsChangeCheck(prevTaskConfig.GetLabels(), newTaskConfig.GetLabels()) ||
+		portsConfigChangeCheck(prevTaskConfig.GetPorts(), newTaskConfig.GetPorts()) {
 		return true
 	}
 
@@ -1157,10 +1189,25 @@ func taskConfigChange(
 	prevTaskConfig.Name = ""
 	newTaskConfig.Name = ""
 
+	oldLabels := prevTaskConfig.GetLabels()
+	newLabels := newTaskConfig.GetLabels()
+	prevTaskConfig.Labels = nil
+	newTaskConfig.Labels = nil
+
+	oldPorts := prevTaskConfig.GetPorts()
+	newPorts := newTaskConfig.GetPorts()
+	prevTaskConfig.Ports = nil
+	newTaskConfig.Ports = nil
+
 	changed := !proto.Equal(prevTaskConfig, newTaskConfig)
 
 	prevTaskConfig.Name = oldName
 	newTaskConfig.Name = newName
+	prevTaskConfig.Labels = oldLabels
+	newTaskConfig.Labels = newLabels
+	prevTaskConfig.Ports = oldPorts
+	newTaskConfig.Ports = newPorts
+
 	return changed
 }
 

@@ -102,6 +102,13 @@ class Client(object):
             *args)
         # pauseJobUpdate has no result
 
+    def rollback_job_update(self, *args):
+        self._send(
+            AuroraSchedulerManager,
+            AuroraSchedulerManager.rollbackJobUpdate,
+            *args)
+        # rollbackJobUpdate has no result
+
     def _send(self, service, method, *args):
         req = method.request(*args)
         res = requests.post(

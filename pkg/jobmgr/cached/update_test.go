@@ -796,6 +796,83 @@ func (suite *UpdateTestSuite) TestUpdateGetInstancesCurrent() {
 	suite.True(reflect.DeepEqual(instances, suite.update.instancesCurrent))
 }
 
+// Tests task config labels check
+func (suite *UpdateTestSuite) TestTaskConfigChangeLabelsCheck() {
+	prevTaskConfig := &pbtask.TaskConfig{
+		Labels: []*peloton.Label{
+			&peloton.Label{
+				Key:   "key1",
+				Value: "value1",
+			},
+			&peloton.Label{
+				Key:   "key2",
+				Value: "value2",
+			},
+		},
+	}
+
+	newTaskConfig := &pbtask.TaskConfig{
+		Labels: []*peloton.Label{
+			&peloton.Label{
+				Key:   "key2",
+				Value: "value2",
+			},
+			&peloton.Label{
+				Key:   "key1",
+				Value: "value1",
+			},
+		},
+	}
+	suite.False(taskConfigChange(prevTaskConfig, newTaskConfig))
+
+	newTaskConfig.Labels = append(newTaskConfig.GetLabels(), &peloton.Label{
+		Key:   "key11",
+		Value: "value11",
+	})
+	suite.True(taskConfigChange(prevTaskConfig, newTaskConfig))
+}
+
+// Tests task config port config check
+func (suite *UpdateTestSuite) TestTaskConfigChangePortsConfigCheck() {
+	prevTaskConfig := &pbtask.TaskConfig{
+		Ports: []*pbtask.PortConfig{
+			&pbtask.PortConfig{
+				Name:    "name1",
+				Value:   1111,
+				EnvName: "env1",
+			},
+			&pbtask.PortConfig{
+				Name:    "name2",
+				Value:   2222,
+				EnvName: "env2",
+			},
+		},
+	}
+
+	newTaskConfig := &pbtask.TaskConfig{
+		Ports: []*pbtask.PortConfig{
+			&pbtask.PortConfig{
+				Name:    "name2",
+				Value:   2222,
+				EnvName: "env2",
+			},
+			&pbtask.PortConfig{
+				Name:    "name1",
+				Value:   1111,
+				EnvName: "env1",
+			},
+		},
+	}
+	suite.False(taskConfigChange(prevTaskConfig, newTaskConfig))
+
+	newTaskConfig.Ports = append(newTaskConfig.GetPorts(), &pbtask.PortConfig{
+		Name:    "name1",
+		Value:   3333,
+		EnvName: "env1",
+	})
+	suite.True(taskConfigChange(prevTaskConfig, newTaskConfig))
+}
+
 func (suite *UpdateTestSuite) TestUpdateRecover_RollingForward() {
 	instancesTotal := []uint32{0, 1, 2, 3, 4}
 	instancesDone := []uint32{0, 1}

@@ -2,7 +2,7 @@ taskConfig:
     job:
         role: test
         environment: dc
-        name: labrat
+        name: labrat_large_job
     owner:
         user: 'testuser'
     isService: true
@@ -10,21 +10,14 @@ taskConfig:
     tier: preemptible
     production: false
     resources:
-        - numCpus: 0.25
+        - numCpus: 1
         - ramMb: 128
         - diskMb: 128
-        - namedPort: "http"
-        - namedPort: "grpc"
     metadata:
         - key: test_key_1
           value: test_value_1
         - key: test_key_2
           value: test_value_2
-    constraints:
-        - name: host
-          constraint:
-            limit:
-                limit: 1
     executorConfig:
         name: AuroraExecutor
         data: |-
@@ -91,7 +84,7 @@ taskConfig:
                         }
                     ],
                     "resources": {
-                        "cpu": 0.25,
+                        "cpu": 1,
                         "disk": 134217728,
                         "gpu": 0,
                         "ram": 134217728
@@ -99,9 +92,9 @@ taskConfig:
                 },
                 "tier": "preemptible"
             }
-instanceCount: 3
+instanceCount: 10
 settings:
-    updateGroupSize: 1
+    updateGroupSize: 2
     minWaitInInstanceRunningMs: 45000
     maxFailedInstances: 1
     maxPerInstanceFailures: 1
