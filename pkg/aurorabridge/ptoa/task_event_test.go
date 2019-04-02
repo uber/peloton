@@ -17,7 +17,6 @@ package ptoa
 import (
 	"testing"
 
-	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
@@ -50,7 +49,7 @@ func TestNewTaskEventErrorTimestamp(t *testing.T) {
 	podEvent := &pod.PodEvent{
 		Timestamp:   "blah",
 		Message:     message,
-		ActualState: task.TaskState_RUNNING.String(),
+		ActualState: pod.PodState_POD_STATE_RUNNING.String(),
 	}
 
 	taskEvent, err := NewTaskEvent(podEvent)

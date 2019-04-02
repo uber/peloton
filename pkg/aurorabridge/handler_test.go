@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/pborman/uuid"
-	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	jobmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
@@ -1228,7 +1227,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismFail
 						PodId:       podID,
 						Timestamp:   "2019-01-03T22:14:58Z",
 						Message:     "",
-						ActualState: task.TaskState_RUNNING.String(),
+						ActualState: pod.PodState_POD_STATE_RUNNING.String(),
 						Hostname:    "peloton-host-0",
 					},
 				},

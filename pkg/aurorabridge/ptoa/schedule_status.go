@@ -86,7 +86,7 @@ func NewScheduleStatus(s pod.PodState) (*api.ScheduleStatus, error) {
 	}
 }
 
-// convertPodStateStringToScheduleStatus converts Peloton v0 TaskState enum
+// convertPodStateStringToScheduleStatus converts Peloton v1 PodState enum
 // string to Aurora ScheduleStatus enum, used by conversion from Peloton
 // PodEvent to Aurora TaskEvent.
 func convertPodStateStringToScheduleStatus(s string) (*api.ScheduleStatus, error) {

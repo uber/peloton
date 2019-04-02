@@ -1503,7 +1503,7 @@ func (suite *apiConverterTestSuite) TestConvertTaskEventsToPodEvents() {
 			Hostname:             "test-host",
 			Message:              "test-message",
 			Reason:               "test-reason",
-			Healthy:              "Healthy",
+			Healthy:              "HEALTHY",
 			PrevTaskId: &mesos.TaskID{
 				Value: &testPrevMesosTaskID,
 			},
@@ -1531,7 +1531,7 @@ func (suite *apiConverterTestSuite) TestConvertTaskEventsToPodEvents() {
 			Hostname: "test-host",
 			Message:  "test-message",
 			Reason:   "test-reason",
-			Healthy:  "Healthy",
+			Healthy:  "HEALTH_STATE_HEALTHY",
 			PrevPodId: &v1alphapeloton.PodID{
 				Value: testPrevMesosTaskID,
 			},

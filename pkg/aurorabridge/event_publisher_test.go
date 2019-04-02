@@ -27,15 +27,14 @@ import (
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	"github.com/uber/peloton/.gen/peloton/api/v0/task"
-	stateless "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	jobmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	podmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc/mocks"
-	watch "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
 	watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
 	watchmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc/mocks"
 
@@ -416,7 +415,7 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_ReceivePods() {
 				Events: []*pod.PodEvent{
 					{
 						PodId:       podSummary.GetStatus().GetPodId(),
-						ActualState: task.TaskState_RUNNING.String(),
+						ActualState: pod.PodState_POD_STATE_RUNNING.String(),
 						Timestamp:   "2019-01-03T22:14:58Z",
 					},
 				},

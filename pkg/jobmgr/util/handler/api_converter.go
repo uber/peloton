@@ -937,7 +937,7 @@ func ConvertTaskEventsToPodEvents(taskEvents []*task.PodEvent) []*pod.PodEvent {
 			PrevPodId: &v1alphapeloton.PodID{
 				Value: prevPodID,
 			},
-			Healthy: e.GetHealthy(),
+			Healthy: pod.HealthState(task.HealthState_value[e.GetHealthy()]).String(),
 			DesiredPodId: &v1alphapeloton.PodID{
 				Value: desiredPodID,
 			},

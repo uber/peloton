@@ -119,7 +119,7 @@ def test__health_check_detects_unhealthy_tasks():
 
     def task_has_unhealthy_events():
         for pod_event in job.get_pod(0).get_pod_events():
-            if pod_event.healthy == 'UNHEALTHY':
+            if pod_event.healthy == 'HEALTH_STATE_UNHEALTHY':
                 return True
 
     job.wait_for_condition(task_has_unhealthy_events)
@@ -135,7 +135,7 @@ def test__health_check_detects_healthy_tasks():
 
     def task_has_healthy_events():
         for pod_event in job.get_pod(0).get_pod_events():
-            if pod_event.healthy == 'HEALTHY':
+            if pod_event.healthy == 'HEALTH_STATE_HEALTHY':
                 return True
 
     job.wait_for_condition(task_has_healthy_events)

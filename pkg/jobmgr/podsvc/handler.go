@@ -830,8 +830,8 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 		agentID := podEvents[0].GetAgentId()
 		podInfo := &pbpod.PodInfo{
 			Status: &pbpod.PodStatus{
-				State: handlerutil.ConvertTaskStateToPodState(
-					pbtask.TaskState(pbtask.TaskState_value[podEvents[0].GetActualState()]),
+				State: pbpod.PodState(
+					pbpod.PodState_value[podEvents[0].GetActualState()],
 				),
 				DesiredState: pbpod.PodState(
 					pbpod.PodState_value[podEvents[0].GetDesiredState()],
