@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/uber/peloton/pkg/aurorabridge/common"
 	"github.com/uber/peloton/pkg/aurorabridge/ptoa"
 
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
@@ -168,7 +169,11 @@ func (e *eventPublisher) ensureWatchPodRunning() {
 			stream, err = e.watchClient.Watch(
 				ctx,
 				&watchsvc.WatchRequest{
-					PodFilter: &watch.PodFilter{},
+					PodFilter: &watch.PodFilter{
+						Labels: []*peloton.Label{
+							common.BridgePodLabel,
+						},
+					},
 				},
 			)
 			if err != nil {

@@ -43,6 +43,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber/peloton/pkg/aurorabridge/atop"
+	"github.com/uber/peloton/pkg/aurorabridge/common"
 	"github.com/uber/peloton/pkg/aurorabridge/fixture"
 	"github.com/uber/peloton/pkg/common/util"
 	"go.uber.org/goleak"
@@ -128,7 +129,11 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_AuroraBridgeLeaderStart
 
 	suite.watchClient.EXPECT().
 		Watch(gomock.Any(), &watchsvc.WatchRequest{
-			PodFilter: &watch.PodFilter{},
+			PodFilter: &watch.PodFilter{
+				Labels: []*peloton.Label{
+					common.BridgePodLabel,
+				},
+			},
 		}).Return(suite.stream, nil)
 
 	suite.stream.EXPECT().
@@ -159,7 +164,11 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_JobManagerLeaderChange(
 
 	suite.watchClient.EXPECT().
 		Watch(gomock.Any(), &watchsvc.WatchRequest{
-			PodFilter: &watch.PodFilter{},
+			PodFilter: &watch.PodFilter{
+				Labels: []*peloton.Label{
+					common.BridgePodLabel,
+				},
+			},
 		}).Return(suite.stream, nil)
 
 	suite.stream.EXPECT().
@@ -173,7 +182,11 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_JobManagerLeaderChange(
 
 	suite.watchClient.EXPECT().
 		Watch(gomock.Any(), &watchsvc.WatchRequest{
-			PodFilter: &watch.PodFilter{},
+			PodFilter: &watch.PodFilter{
+				Labels: []*peloton.Label{
+					common.BridgePodLabel,
+				},
+			},
 		}).Return(suite.stream, nil)
 
 	suite.stream.EXPECT().
@@ -209,7 +222,11 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_StreamError() {
 
 	suite.watchClient.EXPECT().
 		Watch(gomock.Any(), &watchsvc.WatchRequest{
-			PodFilter: &watch.PodFilter{},
+			PodFilter: &watch.PodFilter{
+				Labels: []*peloton.Label{
+					common.BridgePodLabel,
+				},
+			},
 		}).Return(suite.stream, nil)
 
 	suite.stream.EXPECT().
@@ -223,7 +240,11 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_StreamError() {
 
 	suite.watchClient.EXPECT().
 		Watch(gomock.Any(), &watchsvc.WatchRequest{
-			PodFilter: &watch.PodFilter{},
+			PodFilter: &watch.PodFilter{
+				Labels: []*peloton.Label{
+					common.BridgePodLabel,
+				},
+			},
 		}).Return(suite.stream, nil)
 
 	suite.stream.EXPECT().
@@ -277,7 +298,11 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_GetTaskStateChangeError
 
 	suite.watchClient.EXPECT().
 		Watch(gomock.Any(), &watchsvc.WatchRequest{
-			PodFilter: &watch.PodFilter{},
+			PodFilter: &watch.PodFilter{
+				Labels: []*peloton.Label{
+					common.BridgePodLabel,
+				},
+			},
 		}).Return(suite.stream, nil).
 		AnyTimes()
 
@@ -363,7 +388,11 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_ReceivePods() {
 
 	suite.watchClient.EXPECT().
 		Watch(gomock.Any(), &watchsvc.WatchRequest{
-			PodFilter: &watch.PodFilter{},
+			PodFilter: &watch.PodFilter{
+				Labels: []*peloton.Label{
+					common.BridgePodLabel,
+				},
+			},
 		}).Return(suite.stream, nil)
 
 	// generates 9 pod summaries
