@@ -43,6 +43,8 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
+var _updateDeleteJobErr = yarpcerrors.InvalidArgumentErrorf("job is going to be deleted")
+
 // Job in the cache.
 // TODO there a lot of methods in this interface. To determine if
 // this can be broken up into smaller pieces.
@@ -843,6 +845,12 @@ func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.Runtim
 		return nil, err
 	}
 
+	if j.runtime.GetGoalState() == pbjob.JobState_DELETED &&
+		jobRuntime.GetGoalState() != j.runtime.GetGoalState() {
+		return nil, _updateDeleteJobErr
+
+	}
+
 	if j.runtime.GetRevision().GetVersion() !=
 		jobRuntime.GetRevision().GetVersion() {
 		return nil, jobmgrcommon.UnexpectedVersionError
@@ -995,7 +1003,9 @@ func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, configAddOn *m
 	if jobInfo.GetRuntime() != nil {
 		updatedRuntime, err = j.getUpdatedJobRuntimeCache(ctx, jobInfo.GetRuntime(), req)
 		if err != nil {
-			j.invalidateCache()
+			if err != _updateDeleteJobErr {
+				j.invalidateCache()
+			}
 			return err
 		}
 		if updatedRuntime != nil {
@@ -1170,6 +1180,11 @@ func (j *job) getUpdatedJobRuntimeCache(
 
 	if j.runtime != nil {
 		newRuntime = j.validateAndMergeRuntime(runtime, req)
+		if j.runtime.GetGoalState() == pbjob.JobState_DELETED &&
+			newRuntime != nil &&
+			j.runtime.GetGoalState() != newRuntime.GetGoalState() {
+			return nil, _updateDeleteJobErr
+		}
 	}
 
 	return newRuntime, nil
@@ -1850,6 +1865,10 @@ func (j *job) updateJobRuntime(
 ) error {
 	if err := j.populateRuntime(ctx); err != nil {
 		return err
+	}
+
+	if j.runtime.GetGoalState() == pbjob.JobState_DELETED {
+		return _updateDeleteJobErr
 	}
 
 	if err := j.validateWorkflowOverwrite(

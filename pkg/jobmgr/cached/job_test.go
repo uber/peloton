@@ -156,22 +156,6 @@ func initializeCurrentRuntime(state pbtask.TaskState) *pbtask.RuntimeInfo {
 	return runtime
 }
 
-func initializeCurrentRuntimes(instanceCount uint32, state pbtask.TaskState) map[uint32]*pbtask.RuntimeInfo {
-	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-	for i := uint32(0); i < instanceCount; i++ {
-		runtime := &pbtask.RuntimeInfo{
-			State: state,
-			Revision: &peloton.ChangeLog{
-				CreatedAt: uint64(time.Now().UnixNano()),
-				UpdatedAt: uint64(time.Now().UnixNano()),
-				Version:   1,
-			},
-		}
-		runtimes[i] = runtime
-	}
-	return runtimes
-}
-
 func initializeTaskInfos(instanceCount uint32, state pbtask.TaskState) map[uint32]*pbtask.TaskInfo {
 	var labels []*peloton.Label
 
@@ -682,6 +666,30 @@ func (suite *JobTestSuite) TestJobCompareAndSetRuntimeUpdateRuntimeFailure() {
 	_, err := suite.job.CompareAndSetRuntime(context.Background(), jobRuntime)
 	suite.Error(err)
 	suite.Nil(suite.job.runtime)
+}
+
+// TestJobCompareAndSetRuntimeWithGoalStateDeleted tests replace job runtime
+// which fails due to job goal state is deleted
+func (suite *JobTestSuite) TestJobCompareAndSetRuntimeWithGoalStateDeleted() {
+	jobRuntime := &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_RUNNING,
+		GoalState: pbjob.JobState_RUNNING,
+		Revision: &peloton.ChangeLog{
+			Version: 1,
+		},
+	}
+
+	suite.job.runtime = &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_RUNNING,
+		GoalState: pbjob.JobState_DELETED,
+		Revision: &peloton.ChangeLog{
+			Version: 1,
+		},
+	}
+
+	_, err := suite.job.CompareAndSetRuntime(context.Background(), jobRuntime)
+	suite.Error(err)
+	suite.checkListenersNotCalled()
 }
 
 // TestJobUpdateConfig tests update job which new config
@@ -2472,6 +2480,106 @@ func (suite *JobTestSuite) TestJobCreateWorkflowUpdateRuntimeFailure() {
 		suite.jobStore.EXPECT().
 			UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
 			Return(yarpcerrors.InternalErrorf("test error")),
+	)
+
+	updateID, newEntityVersion, err := suite.job.CreateWorkflow(
+		context.Background(),
+		workflowType,
+		updateConfig,
+		entityVersion,
+		WithConfig(
+			jobConfig,
+			prevConfig,
+			configAddOn,
+		),
+		WithInstanceToProcess(
+			instancesAdded,
+			instancesUpdated,
+			instnacesRemoved,
+		),
+	)
+
+	// still return the update id, since the update may actually persisted in
+	// job runtime.
+	// do not add update in job.workflows because if the update is not persisted
+	// in job runtime, there is no way to clean it up.
+	suite.NotNil(updateID)
+	suite.Error(err)
+	suite.Nil(newEntityVersion)
+	suite.Nil(suite.job.workflows[updateID.GetValue()])
+}
+
+// TestJobCreateWorkflowOnDeletedJobError tests the failure case of
+// creating workflow for a deleted job
+func (suite *JobTestSuite) TestJobCreateWorkflowOnDeletedJobError() {
+	var instancesAdded []uint32
+	var instnacesRemoved []uint32
+	instancesUpdated := []uint32{0, 1, 2}
+
+	suite.job.runtime.GoalState = pbjob.JobState_DELETED
+	workflowType := models.WorkflowType_UPDATE
+	updateConfig := &pbupdate.UpdateConfig{
+		BatchSize: 10,
+	}
+	entityVersion := jobutil.GetJobEntityVersion(
+		suite.job.runtime.GetConfigurationVersion(),
+		suite.job.runtime.GetDesiredStateVersion(),
+		suite.job.runtime.GetWorkflowVersion(),
+	)
+	prevConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{Version: 1},
+	}
+	jobConfig := prevConfig
+	configAddOn := &models.ConfigAddOn{}
+
+	for _, i := range instancesUpdated {
+		suite.updateStore.EXPECT().
+			AddWorkflowEvent(
+				gomock.Any(),
+				gomock.Any(),
+				i,
+				workflowType,
+				pbupdate.State_INITIALIZED).Return(nil)
+	}
+
+	gomock.InOrder(
+		suite.jobStore.EXPECT().
+			GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
+			Return(prevConfig.GetChangeLog().GetVersion(), nil),
+
+		suite.jobStore.EXPECT().
+			UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any(), configAddOn).
+			Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig, _ *models.ConfigAddOn) {
+				suite.Equal(
+					config.GetChangeLog().GetVersion(),
+					prevConfig.GetChangeLog().GetVersion()+1)
+			}).
+			Return(nil),
+		suite.jobIndexOps.EXPECT().
+			Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+			Return(nil),
+		suite.updateStore.EXPECT().
+			AddJobUpdateEvent(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				pbupdate.State_INITIALIZED).
+			Return(nil),
+		suite.updateStore.EXPECT().
+			CreateUpdate(gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, updateInfo *models.UpdateModel) {
+				suite.Equal(updateInfo.GetJobConfigVersion(),
+					prevConfig.GetChangeLog().GetVersion()+1)
+				suite.Equal(updateInfo.GetPrevJobConfigVersion(), prevConfig.GetChangeLog().GetVersion())
+				suite.Equal(updateInfo.GetState(), pbupdate.State_INITIALIZED)
+				suite.Equal(updateInfo.GetJobID(), suite.jobID)
+				suite.Equal(updateInfo.GetInstancesAdded(), instancesAdded)
+				suite.Equal(updateInfo.GetInstancesUpdated(), instancesUpdated)
+				suite.Equal(updateInfo.GetInstancesRemoved(), instnacesRemoved)
+				suite.Equal(updateInfo.GetType(), workflowType)
+				suite.Equal(updateInfo.GetUpdateConfig(), updateConfig)
+			}).
+			Return(nil),
 	)
 
 	updateID, newEntityVersion, err := suite.job.CreateWorkflow(
