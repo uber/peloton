@@ -140,3 +140,114 @@ func TestStringSet_Intersect(t *testing.T) {
 		assert.True(t, testSet.Contains(item))
 	}
 }
+
+func TestStringSet_Intersect_VoidIntersect(t *testing.T) {
+	testSet := &stringSet{
+		m: make(map[string]bool),
+	}
+
+	testSet1 := &stringSet{
+		m: make(map[string]bool),
+	}
+
+	testItems := []string{
+		"testitem1",
+		"testitem2",
+	}
+
+	// Add testItems to testSet
+	for _, item := range testItems {
+		testSet.m[item] = true
+	}
+
+	testItems1 := []string{
+		"testitem1",
+		"testitem2",
+	}
+
+	// Add testItems1 to testSet1
+	for _, item := range testItems1 {
+		testSet1.m[item] = true
+	}
+
+	// Intersect the two stringSet
+	intersection := testSet.Intersect(testSet1)
+
+	items := intersection.ToSlice()
+
+	if ok := len(items) == 0; ok {
+		assert.True(t, ok)
+	}
+}
+
+func TestStringSet_Intersect_VoidIntersect_Second(t *testing.T) {
+	testSet := &stringSet{
+		m: make(map[string]bool),
+	}
+
+	testSet1 := &stringSet{
+		m: make(map[string]bool),
+	}
+
+	testItems := []string{}
+
+	// Add testItems to testSet
+	for _, item := range testItems {
+		testSet.m[item] = true
+	}
+
+	testItems1 := []string{}
+
+	// Add testItems1 to testSet1
+	for _, item := range testItems1 {
+		testSet1.m[item] = true
+	}
+
+	// Intersect the two stringSet
+	intersection := testSet.Intersect(testSet1)
+
+	items := intersection.ToSlice()
+
+	if ok := len(items) == 0; ok {
+		assert.True(t, ok)
+	}
+}
+
+func TestStringSet_Intersect_VoidIntersect_Third(t *testing.T) {
+	testSet := &stringSet{
+		m: make(map[string]bool),
+	}
+
+	testSet1 := &stringSet{
+		m: make(map[string]bool),
+	}
+
+	testItems := []string{
+		"testitem1",
+		"testitem2",
+	}
+
+	// Add testItems to testSet
+	for _, item := range testItems {
+		testSet.m[item] = true
+	}
+
+	testItems1 := []string{
+		"testitem3",
+		"testitem4",
+	}
+
+	// Add testItems1 to testSet1
+	for _, item := range testItems1 {
+		testSet1.m[item] = true
+	}
+
+	// Intersect the two stringSet
+	intersection := testSet.Intersect(testSet1)
+
+	items := intersection.ToSlice()
+
+	if ok := len(items) == 0; ok {
+		assert.True(t, ok)
+	}
+}
