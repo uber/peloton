@@ -61,12 +61,20 @@ func (q *deadlineQueue) nextDeadline() time.Time {
 	return q.pq.NextDeadline()
 }
 
-func (q *deadlineQueue) popIfReady() QueueItem {
+// pop QueueItem if its deadline is equal or after the deadline provided
+func (q *deadlineQueue) popIfReady(deadline time.Time) QueueItem {
 	if q.pq.Len() == 0 {
 		return nil
 	}
 
 	qi := heap.Pop(q.pq).(QueueItem)
+	if qi.Deadline().After(deadline) {
+		// deadline has not been met, push the item
+		// back to queue
+		heap.Push(q.pq, qi)
+		return nil
+	}
+
 	q.mtx.queuePopDelay.Record(time.Since(qi.Deadline()))
 	qi.SetDeadline(time.Time{})
 	q.mtx.queueLength.Update(float64(q.pq.Len()))
@@ -133,7 +141,10 @@ func (q *deadlineQueue) Dequeue(stopChan <-chan struct{}) QueueItem {
 		select {
 		case <-timerChan:
 			q.Lock()
-			r := q.popIfReady()
+			// several goroutines may get the same deadline in nextDeadline,
+			// and try to pop the item around the same item. Need to double
+			// check if the item is ready to pop
+			r := q.popIfReady(deadline)
 			q.Unlock()
 
 			if r != nil {

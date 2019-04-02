@@ -70,7 +70,11 @@ func TestTimeoutQueueOrdering(t *testing.T) {
 		}
 
 		for _, v := range expect {
-			p := q.popIfReady().(*testQueueItem)
+			// this should be noop, since the item to be popped
+			// has not met the deadline provided
+			assert.Nil(t, q.popIfReady(v.Deadline().Add(-1*time.Second)))
+
+			p := q.popIfReady(v.Deadline()).(*testQueueItem)
 			assert.Equal(t, v.value, p.value)
 		}
 	}
