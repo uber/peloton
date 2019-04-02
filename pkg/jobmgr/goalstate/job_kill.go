@@ -83,12 +83,6 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	// Only enqueue the job into goal state if any of the
-	// non terminated tasks need to be killed.
-	if len(runtimeDiffNonTerminatedTasks) > 0 {
-		EnqueueJobWithDefaultDelay(jobID, goalStateDriver, cachedJob)
-	}
-
 	jobState := calculateJobState(
 		ctx,
 		cachedJob,
@@ -113,6 +107,13 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 			WithField("job_id", id).
 			Error("failed to update job runtime during job kill")
 		return err
+	}
+
+	// Only enqueue the job into goal state:
+	// 1. any of the non terminated tasks need to be killed.
+	// 2. job state is already KILLED
+	if len(runtimeDiffNonTerminatedTasks) > 0 || util.IsPelotonJobStateTerminal(jobState) {
+		EnqueueJobWithDefaultDelay(jobID, goalStateDriver, cachedJob)
 	}
 
 	log.WithField("job_id", id).

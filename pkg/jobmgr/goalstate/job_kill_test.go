@@ -381,6 +381,11 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreated_StatelessJob() {
 		GoalState: pbjob.JobState_DELETED,
 	}
 
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return().
+		AnyTimes()
+
 	suite.cachedJob.EXPECT().
 		GetJobType().
 		Return(pbjob.JobType_SERVICE).
@@ -456,6 +461,11 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 		State:     pbjob.JobState_INITIALIZED,
 		GoalState: pbjob.JobState_KILLED,
 	}
+
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return().
+		AnyTimes()
 
 	suite.cachedJob.EXPECT().
 		GetJobType().
@@ -582,6 +592,11 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob_AllTerminated() {
 		State:     pbjob.JobState_INITIALIZED,
 		GoalState: pbjob.JobState_KILLED,
 	}
+
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return().
+		AnyTimes()
 
 	suite.cachedJob.EXPECT().
 		GetJobType().
