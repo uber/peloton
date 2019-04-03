@@ -131,3 +131,8 @@ const (
 	// task configuration, when no specific is available.
 	DefaultTaskConfigID = -1
 )
+
+const (
+	// AppLogField is the log field key for app name
+	AppLogField = "app"
+)

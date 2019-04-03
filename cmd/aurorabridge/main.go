@@ -93,7 +93,14 @@ func main() {
 	app.HelpFlag.Short('h')
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	log.SetFormatter(&log.JSONFormatter{})
+	log.SetFormatter(
+		&logging.LogFieldFormatter{
+			Formatter: &log.JSONFormatter{},
+			Fields: log.Fields{
+				common.AppLogField: app.Name,
+			},
+		},
+	)
 
 	var cfg Config
 	if err := config.Parse(&cfg, *cfgFiles...); err != nil {

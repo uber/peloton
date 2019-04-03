@@ -214,8 +214,14 @@ func main() {
 	app.HelpFlag.Short('h')
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	log.SetFormatter(&logging.SecretsFormatter{
-		JSONFormatter: &log.JSONFormatter{}})
+	log.SetFormatter(
+		&logging.LogFieldFormatter{
+			Formatter: &logging.SecretsFormatter{Formatter: &log.JSONFormatter{}},
+			Fields: log.Fields{
+				common.AppLogField: app.Name,
+			},
+		},
+	)
 
 	initialLevel := log.InfoLevel
 	if *debug {

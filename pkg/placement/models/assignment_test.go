@@ -70,7 +70,7 @@ func TestAssignment_SetOffer(t *testing.T) {
 	assert.Equal(t, host, assignment.GetHost())
 }
 
-func TestTest(t *testing.T) {
+func TestAssignment_LogFields(t *testing.T) {
 	log.SetFormatter(&log.JSONFormatter{})
 	initialLevel := log.DebugLevel
 	log.SetLevel(initialLevel)

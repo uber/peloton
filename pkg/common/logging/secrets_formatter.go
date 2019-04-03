@@ -29,7 +29,7 @@ import (
 // SecretsFormatter scrubs sensitive information from logs and formats logs into
 // parsable json.
 type SecretsFormatter struct {
-	*log.JSONFormatter
+	log.Formatter
 }
 
 const redactedStr = "REDACTED"
@@ -94,5 +94,5 @@ func (f *SecretsFormatter) Format(entry *log.Entry) ([]byte, error) {
 			entry.Data[k] = newList
 		}
 	}
-	return f.JSONFormatter.Format(entry)
+	return f.Formatter.Format(entry)
 }

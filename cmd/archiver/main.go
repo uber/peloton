@@ -20,6 +20,7 @@ import (
 
 	archiverConfig "github.com/uber/peloton/pkg/archiver/config"
 	"github.com/uber/peloton/pkg/archiver/engine"
+	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/buildversion"
 	"github.com/uber/peloton/pkg/common/config"
 	"github.com/uber/peloton/pkg/common/health"
@@ -127,7 +128,14 @@ func main() {
 	app.HelpFlag.Short('h')
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	log.SetFormatter(&log.JSONFormatter{})
+	log.SetFormatter(
+		&logging.LogFieldFormatter{
+			Formatter: &log.JSONFormatter{},
+			Fields: log.Fields{
+				common.AppLogField: app.Name,
+			},
+		},
+	)
 
 	initialLevel := log.InfoLevel
 	if *debug {
