@@ -1,13 +1,9 @@
-import time
 import pytest
 
 from tests.integration.job import IntegrationTestConfig, Job, \
     with_constraint, with_instance_count
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
-from tools.minicluster.minicluster import run_mesos_agent, \
-    teardown_mesos_agent
-from tools.minicluster.main import config as mc_config
 
 # Mark test module so that we can run tests by tags
 pytestmark = [pytest.mark.default,
@@ -46,21 +42,6 @@ def test__host_limit():
 
     job.stop()
     job.wait_for_state(goal_state='KILLED')
-
-
-@pytest.fixture
-def exclusive_host(request):
-    def clean_up():
-        teardown_mesos_agent(mc_config, 0, is_exclusive=True)
-        run_mesos_agent(mc_config, 0, 0)
-        time.sleep(5)
-
-    # Remove agent #0 and instead create exclusive agent #0
-    teardown_mesos_agent(mc_config, 0)
-    run_mesos_agent(mc_config, 0, 3, is_exclusive=True,
-                    exclusive_label_value='exclusive-test-label')
-    time.sleep(5)
-    request.addfinalizer(clean_up)
 
 
 # Test placement of job without exclusive constraint and verify that the tasks

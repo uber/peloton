@@ -402,9 +402,10 @@ class StatelessJob(object):
         """
         return self.job_id
 
-    def wait_for_all_pods_running(self):
+    def wait_for_all_pods_running(self, num_pods=None):
         """
-        Waits for all pods in the job in RUNNING state
+        Waits for all (or specified number of) pods in the job to be
+        in RUNNING state
         """
         attempts = 0
         start = time.time()
@@ -417,8 +418,10 @@ class StatelessJob(object):
                     if pod_state == pod.POD_STATE_RUNNING:
                         count += 1
 
-                if count == self.job_spec.instance_count:
-                    log.info('%s job has %s running pods', self.job_id, count)
+                log.info('%s job has %s running pods', self.job_id, count)
+                expected = self.job_spec.instance_count \
+                    if num_pods is None else num_pods
+                if count == expected:
                     break
             except Exception as e:
                 log.warn(e)

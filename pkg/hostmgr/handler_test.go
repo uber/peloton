@@ -143,11 +143,22 @@ func generateOfferWithResource(
 				Build(),
 		)
 	}
+	hostnameAttr := "name"
+	textType := mesos.Value_TEXT
 	return &mesos.Offer{
 		Id:        &mesos.OfferID{Value: &offerID},
 		AgentId:   &mesos.AgentID{Value: &agentID},
 		Hostname:  &hostname,
 		Resources: resources,
+		Attributes: []*mesos.Attribute{
+			&mesos.Attribute{
+				Name: &hostnameAttr,
+				Text: &mesos.Value_Text{
+					Value: &hostname,
+				},
+				Type: &textType,
+			},
+		},
 	}
 }
 
@@ -709,6 +720,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 	suite.Nil(acquiredResp.GetError())
 	acquiredHostOffers := acquiredResp.GetHostOffers()
 	suite.Equal(1, len(acquiredHostOffers))
+	suite.Equal(1, len(acquiredHostOffers[0].GetAttributes()))
 
 	suite.Equal(
 		int64(1),

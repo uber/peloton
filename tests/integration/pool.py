@@ -36,15 +36,19 @@ class Pool(object):
             request = respool.CreateRequest(
                 config=self.config.respool_config,
             )
-            deadline = time.time() + self.config.rpc_timeout_sec
-            while time.time() < deadline:
+            attempts = 0
+            while attempts < self.config.max_retry_attempts:
+                attempts += 1
                 resp = self.client.respool_svc.CreateResourcePool(
                     request,
                     metadata=self.client.resmgr_metadata,
                     timeout=self.config.rpc_timeout_sec,
                 )
                 if resp.HasField('error'):
-                    time.sleep(0.5)
+                    log.debug('failed to create respool %s (%s)',
+                              respool_name,
+                              resp.error)
+                    time.sleep(self.config.sleep_time_sec)
                     continue
                 break
             else:

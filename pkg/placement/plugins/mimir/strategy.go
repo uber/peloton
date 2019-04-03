@@ -154,19 +154,48 @@ func (mimir *mimir) PlaceOnce(
 }
 
 // Filters is an implementation of the placement.Strategy interface.
-func (mimir *mimir) Filters(assignments []*models.Assignment) map[*hostsvc.HostFilter][]*models.Assignment {
-	assignmentsCopy := make([]*models.Assignment, 0, len(assignments))
+func (mimir *mimir) Filters(
+	assignments []*models.Assignment,
+) map[*hostsvc.HostFilter][]*models.Assignment {
+	// Batch assignments by their scheduling constraints. For each batch,
+	// create a host filter that uses those scheduling constraints.
+	assignmentsByConstraint := make(map[string][]*models.Assignment)
+	for _, assignment := range assignments {
+		// String() function on protobuf message is nil-safe.
+		s := assignment.GetTask().GetTask().GetConstraint().String()
+		batch := assignmentsByConstraint[s]
+		batch = append(batch, assignment)
+		assignmentsByConstraint[s] = batch
+	}
+	result := make(map[*hostsvc.HostFilter][]*models.Assignment)
+	for _, batch := range assignmentsByConstraint {
+		if f := mimir.getFilterForEquivalentAssignments(batch); f != nil {
+			result[f] = batch
+		}
+	}
+	return result
+}
+
+// Constructs host-filter for a set of assignments that have the same
+// scheduling constraints and revocability. Resource constraints in the
+// filter are set to maximum resource requirements of all assignments.
+func (mimir *mimir) getFilterForEquivalentAssignments(
+	assignments []*models.Assignment,
+) *hostsvc.HostFilter {
+	if len(assignments) == 0 {
+		return nil
+	}
 	var maxCPU, maxGPU, maxMemory, maxDisk, maxPorts float64
 	var revocable bool
 	var hostHints []*hostsvc.FilterHint_Host
 	for _, assignment := range assignments {
-		assignmentsCopy = append(assignmentsCopy, assignment)
 		resmgrTask := assignment.GetTask().GetTask()
 		maxCPU = math.Max(maxCPU, resmgrTask.Resource.CpuLimit)
 		maxGPU = math.Max(maxGPU, resmgrTask.Resource.GpuLimit)
 		maxMemory = math.Max(maxMemory, resmgrTask.Resource.MemLimitMb)
 		maxDisk = math.Max(maxDisk, resmgrTask.Resource.DiskLimitMb)
 		maxPorts = math.Max(maxPorts, float64(resmgrTask.NumPorts))
+		// All assignments have the same value for revocability
 		revocable = resmgrTask.Revocable
 		if len(resmgrTask.GetDesiredHost()) != 0 {
 			hostHints = append(hostHints, &hostsvc.FilterHint_Host{
@@ -181,26 +210,27 @@ func (mimir *mimir) Filters(assignments []*models.Assignment) map[*hostsvc.HostF
 	if float64(maxOffers) > neededOffers {
 		maxOffers = int(neededOffers)
 	}
-	return map[*hostsvc.HostFilter][]*models.Assignment{
-		{
-			ResourceConstraint: &hostsvc.ResourceConstraint{
-				NumPorts: uint32(maxPorts),
-				Minimum: &task.ResourceConfig{
-					CpuLimit:    maxCPU,
-					GpuLimit:    maxGPU,
-					MemLimitMb:  maxMemory,
-					DiskLimitMb: maxDisk,
-				},
-				Revocable: revocable,
+	filter := &hostsvc.HostFilter{
+		ResourceConstraint: &hostsvc.ResourceConstraint{
+			NumPorts: uint32(maxPorts),
+			Minimum: &task.ResourceConfig{
+				CpuLimit:    maxCPU,
+				GpuLimit:    maxGPU,
+				MemLimitMb:  maxMemory,
+				DiskLimitMb: maxDisk,
 			},
-			Quantity: &hostsvc.QuantityControl{
-				MaxHosts: uint32(maxOffers),
-			},
-			Hint: &hostsvc.FilterHint{
-				HostHint: hostHints,
-			},
-		}: assignmentsCopy,
+			Revocable: revocable,
+		},
+		// All assignments have the same constraint
+		SchedulingConstraint: assignments[0].GetTask().GetTask().Constraint,
+		Quantity: &hostsvc.QuantityControl{
+			MaxHosts: uint32(maxOffers),
+		},
+		Hint: &hostsvc.FilterHint{
+			HostHint: hostHints,
+		},
 	}
+	return filter
 }
 
 // ConcurrencySafe is an implementation of the placement.Strategy interface.

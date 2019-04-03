@@ -292,6 +292,9 @@ func (h *ServiceHandler) AcquireHostOffers(
 	}
 
 	for hostname, hostOffer := range result {
+		// ClaimForPlace returns offers grouped by host. Thus every
+		// offer in hostOffer should have the same value for
+		// host-specific information such as AgentId, Attributes etc.
 		offers := hostOffer.Offers
 		if len(offers) <= 0 {
 			log.WithField("host", hostname).
@@ -300,17 +303,15 @@ func (h *ServiceHandler) AcquireHostOffers(
 		}
 
 		var resources []*mesos.Resource
-		var attributes []*mesos.Attribute
 		for _, offer := range offers {
 			resources = append(resources, offer.GetResources()...)
-			attributes = append(attributes, offer.GetAttributes()...)
 		}
 
 		// create the peloton host offer
 		pHostOffer := hostsvc.HostOffer{
 			Hostname:   hostname,
 			AgentId:    offers[0].GetAgentId(),
-			Attributes: attributes,
+			Attributes: offers[0].GetAttributes(),
 			Resources:  resources,
 			Id:         &peloton.HostOfferID{Value: hostOffer.ID},
 		}

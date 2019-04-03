@@ -4,8 +4,12 @@ import time
 from tests.integration.job import Job, kill_jobs, with_constraint, with_instance_count, \
     with_job_name, with_labels
 from tests.integration.common import IntegrationTestConfig
+from tests.integration.stateless_job import StatelessJob
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
+from peloton_client.pbgen.peloton.api.v1alpha import peloton_pb2 as \
+    peloton_pb2_v1alpha
+from peloton_client.pbgen.peloton.api.v1alpha.pod import pod_pb2
 
 # Mark test module so that we can run tests by tags
 pytestmark = [pytest.mark.default,
@@ -138,3 +142,62 @@ def test__create_2_stateless_jobs_with_task_to_task_anti_affinity_between_jobs()
 
     # Ensure that the tasks run on 2 different hosts
     assert len(hosts) == 2
+
+
+# Test placement of stateless job without exclusive constraint
+# and verify that the tasks don't run on exclusive host
+def test__placement_non_exclusive_job(exclusive_host):
+    # We have 1 exclusive host and 2 non-exclusive hosts. Set number of
+    # instances to be a few more than what can run simulatenously
+    # on 2 non-exclusive hosts
+    job = StatelessJob(
+        job_file='test_stateless_job_cpus_large_spec.yaml')
+    job.job_spec.instance_count = 10
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+    job.wait_for_all_pods_running(num_pods=5)
+
+    job.stop()
+    job.wait_for_terminated()
+
+    # check that none of them ran on exclusive host
+    pod_summaries = job.list_pods()
+    for s in pod_summaries:
+        if s.status.host:
+            assert "exclusive" not in s.status.host
+
+
+# Test placement of stateless job with exclusive constraint
+# and verify that the tasks run only on exclusive host
+def test__placement_exclusive_job(exclusive_host):
+    excl_constraint = pod_pb2.Constraint(
+        type=1,  # Label constraint
+        label_constraint=pod_pb2.LabelConstraint(
+            kind=2,  # Host
+            condition=2,  # Equal
+            requirement=1,
+            label=peloton_pb2_v1alpha.Label(
+                key="peloton/exclusive",
+                value="exclusive-test-label",
+            ),
+        ),
+    )
+    # We have 1 exclusive host and 2 non-exclusive hosts. Set number of
+    # instances to be a few more than what can run simulatenously on
+    # a single exclusive host
+    job = StatelessJob(
+        job_file='test_stateless_job_cpus_large_spec.yaml')
+    job.job_spec.default_spec.constraint.CopyFrom(excl_constraint)
+    job.job_spec.instance_count = 6
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+    job.wait_for_all_pods_running(num_pods=4)
+
+    job.stop()
+    job.wait_for_terminated()
+
+    # check that all of them ran on exclusive host
+    pod_summaries = job.list_pods()
+    for s in pod_summaries:
+        if s.status.host:
+            assert "exclusive" in s.status.host

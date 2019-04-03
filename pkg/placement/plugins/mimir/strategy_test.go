@@ -18,13 +18,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/algorithms"
 	"github.com/uber/peloton/pkg/placement/testutil"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func setupStrategy() *mimir {
@@ -160,25 +164,101 @@ func TestMimirFilters(t *testing.T) {
 	strategy := setupStrategy()
 
 	deadline := time.Now().Add(30 * time.Second)
+	hostConstraint := &task.Constraint{
+		Type: task.Constraint_LABEL_CONSTRAINT,
+		LabelConstraint: &task.LabelConstraint{
+			Kind:      task.LabelConstraint_HOST,
+			Condition: task.LabelConstraint_CONDITION_EQUAL,
+			Label: &peloton.Label{
+				Key:   "peloton/exclusive",
+				Value: "ml",
+			},
+			Requirement: 1,
+		},
+	}
 	assignments := []*models.Assignment{
 		testutil.SetupAssignment(deadline, 1),
+		testutil.SetupAssignment(deadline, 1),
+		testutil.SetupAssignment(deadline, 1),
+		testutil.SetupAssignment(deadline, 1),
 	}
-	taskTypeToExpectedMaxHosts := map[resmgr.TaskType]uint32{
-		resmgr.TaskType_BATCH:     1,
-		resmgr.TaskType_STATELESS: 1,
-		resmgr.TaskType_DAEMON:    1,
-		resmgr.TaskType_STATEFUL:  1,
+	// assignment[0] requires 1 port, default resources, no constraints
+	// assignment[1] requires 2 ports, default resources and default constraint
+	// assignment[2] requires 3 ports, 8 cpu, 16 gpu, 4096 disk,
+	// excl-host constraint
+	// assignment[3] requires 1 port, default resources, excl-host constraint
+	assignments[0].GetTask().GetTask().NumPorts = 1
+	assignments[0].GetTask().GetTask().Constraint = nil
+
+	assignments[1].GetTask().GetTask().NumPorts = 2
+
+	assignments[2].GetTask().GetTask().NumPorts = 3
+	assignments[2].GetTask().GetTask().Resource.CpuLimit = 8.0
+	assignments[2].GetTask().GetTask().Resource.GpuLimit = 16.0
+	assignments[2].GetTask().GetTask().Resource.DiskLimitMb = 4096.0
+	assignments[2].GetTask().GetTask().Constraint = hostConstraint
+
+	assignments[3].GetTask().GetTask().NumPorts = 1
+	assignments[3].GetTask().GetTask().Constraint = hostConstraint
+
+	taskTypes := []resmgr.TaskType{
+		resmgr.TaskType_BATCH,
+		resmgr.TaskType_STATELESS,
+		resmgr.TaskType_DAEMON,
+		resmgr.TaskType_STATEFUL,
 	}
-	for taskType, expectedMaxHosts := range taskTypeToExpectedMaxHosts {
+	for _, taskType := range taskTypes {
 		strategy.config.TaskType = taskType
-		for filter := range strategy.Filters(assignments) {
+
+		results := strategy.Filters(assignments)
+		assert.Equal(t, 3, len(results))
+
+		for filter, batch := range results {
 			assert.NotNil(t, filter)
-			assert.Equal(t, expectedMaxHosts, filter.GetQuantity().GetMaxHosts())
-			assert.Equal(t, uint32(3), filter.GetResourceConstraint().GetNumPorts())
-			assert.Equal(t, 32.0, filter.GetResourceConstraint().GetMinimum().GetCpuLimit())
-			assert.Equal(t, 10.0, filter.GetResourceConstraint().GetMinimum().GetGpuLimit())
-			assert.Equal(t, 4096.0, filter.GetResourceConstraint().GetMinimum().GetMemLimitMb())
-			assert.Equal(t, 1024.0, filter.GetResourceConstraint().GetMinimum().GetDiskLimitMb())
+
+			switch filter.ResourceConstraint.NumPorts {
+			case 1:
+				// assignment[0]
+				assert.Equal(t, 1, len(batch))
+				assert.Nil(t, filter.SchedulingConstraint)
+				res := filter.GetResourceConstraint().GetMinimum()
+				assert.Equal(t, 32.0, res.GetCpuLimit())
+				assert.Equal(t, 10.0, res.GetGpuLimit())
+				assert.Equal(t, 4096.0, res.GetMemLimitMb())
+				assert.Equal(t, 1024.0, res.GetDiskLimitMb())
+				assert.Equal(t, uint32(1), filter.GetQuantity().GetMaxHosts())
+				assert.EqualValues(t, assignments[0:1], batch)
+
+			case 2:
+				// assignment[1]
+				assert.Equal(t, 1, len(batch))
+				assert.Equal(
+					t,
+					batch[0].GetTask().GetTask().Constraint,
+					filter.SchedulingConstraint)
+				res := filter.GetResourceConstraint().GetMinimum()
+				assert.Equal(t, 32.0, res.GetCpuLimit())
+				assert.Equal(t, 10.0, res.GetGpuLimit())
+				assert.Equal(t, 4096.0, res.GetMemLimitMb())
+				assert.Equal(t, 1024.0, res.GetDiskLimitMb())
+				assert.Equal(t, uint32(1), filter.GetQuantity().GetMaxHosts())
+				assert.EqualValues(t, assignments[1:2], batch)
+
+			case 3:
+				// assignment[2], assignment[3]
+				assert.Equal(t, 2, len(batch))
+				assert.Equal(t, hostConstraint, filter.SchedulingConstraint)
+				res := filter.GetResourceConstraint().GetMinimum()
+				assert.Equal(t, 32.0, res.GetCpuLimit())
+				assert.Equal(t, 16.0, res.GetGpuLimit())
+				assert.Equal(t, 4096.0, res.GetMemLimitMb())
+				assert.Equal(t, 4096.0, res.GetDiskLimitMb())
+				assert.Equal(t, uint32(2), filter.GetQuantity().GetMaxHosts())
+				assert.EqualValues(t, assignments[2:4], batch)
+
+			default:
+				assert.Fail(t, "Unexpected value for NumPorts")
+			}
 		}
 	}
 }
