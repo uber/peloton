@@ -3450,9 +3450,15 @@ func (s *Store) getJobSummaryFromResultMap(
 				// start archiving older jobs and no longer hit this case.
 				summary, err := s.getJobSummaryFromConfig(ctx, summary.Id)
 				if err != nil {
-					return nil, err
+					// no need to throw error here, continue with the rest of
+					// the entries. This is most likely a partially created job
+					// that will be cleaned up by goalstate engine
+					log.WithError(err).
+						WithField("jobID", id.String()).
+						Info("failed to get summary from config")
+				} else {
+					summaryResults = append(summaryResults, summary)
 				}
-				summaryResults = append(summaryResults, summary)
 				continue
 			}
 			summary.Name = name

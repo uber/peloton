@@ -31,6 +31,7 @@ import (
 	datastore "github.com/uber/peloton/pkg/storage/cassandra/api"
 	datastoremocks "github.com/uber/peloton/pkg/storage/cassandra/api/mocks"
 	datastoreimpl "github.com/uber/peloton/pkg/storage/cassandra/impl"
+	qb "github.com/uber/peloton/pkg/storage/querybuilder"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -142,6 +143,21 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobSummary() {
 	_, err = suite.store.getJobSummaryFromConfig(
 		context.Background(), suite.testJobID)
 	suite.Error(err)
+
+	result := make(map[string]interface{})
+	jobID, err := qb.ParseUUID(suite.testJobID.GetValue())
+	suite.NoError(err)
+	result["job_id"] = jobID
+
+	// if name is set to "", we will try to get the summary by querying the
+	// job_config table. In case there is a Data Store error in this query, it
+	// should not prevent the rest of the jobs to be returned. So it should only
+	// log the error and move on to the next entry.
+	result["name"] = ""
+	results := []map[string]interface{}{result}
+	_, err = suite.store.getJobSummaryFromResultMap(
+		context.Background(), results)
+	suite.NoError(err)
 }
 
 // TestDataStoreFailureGetJob tests datastore failures in getting job
