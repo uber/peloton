@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package job
+package entityversion
 
 import (
 	"fmt"
@@ -65,16 +65,17 @@ func ParseJobEntityVersion(
 // GetPodEntityVersion builds the pod entity version from its components
 func GetPodEntityVersion(configVersion uint64) *v1alphapeloton.EntityVersion {
 	return &v1alphapeloton.EntityVersion{
-		Value: fmt.Sprintf("%d", configVersion),
+		Value: fmt.Sprintf("%d-0-0", configVersion),
 	}
 }
 
-// ParsePodEntityVersion parses pod entity version into components
-func ParsePodEntityVersion(
+// GetConfigVersion parses pod/job entity version to
+// get the job config version
+func GetConfigVersion(
 	entityVersion *v1alphapeloton.EntityVersion,
 ) (configVersion uint64, err error) {
 	results := strings.Split(entityVersion.GetValue(), "-")
-	if len(results) != 1 {
+	if len(results) != 3 {
 		err = yarpcerrors.InvalidArgumentErrorf("entityVersion has wrong format")
 		return
 	}

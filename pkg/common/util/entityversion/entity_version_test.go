@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package job
+package entityversion
 
 import (
 	"testing"
@@ -83,10 +83,10 @@ func TestGetPodEntityVersion(t *testing.T) {
 		entityVersion string
 	}{
 		{
-			configVersion: 1, entityVersion: "1",
+			configVersion: 1, entityVersion: "1-0-0",
 		},
 		{
-			configVersion: 10, entityVersion: "10",
+			configVersion: 10, entityVersion: "10-0-0",
 		},
 	}
 
@@ -105,10 +105,10 @@ func TestParsePodEntityVersion(t *testing.T) {
 		hasError        bool
 	}{
 		{
-			entityVersion: "1", configVersion: 1, hasError: false,
+			entityVersion: "1-0-0", configVersion: 1, hasError: false,
 		},
 		{
-			entityVersion: "10", configVersion: 10, hasError: false,
+			entityVersion: "10-0-0", configVersion: 10, hasError: false,
 		},
 		{
 			entityVersion: "a", configVersion: 0, hasError: true,
@@ -116,7 +116,7 @@ func TestParsePodEntityVersion(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		configVersion, err := ParsePodEntityVersion(&v1alphapeloton.EntityVersion{
+		configVersion, err := GetConfigVersion(&v1alphapeloton.EntityVersion{
 			Value: test.entityVersion,
 		})
 		if test.hasError {

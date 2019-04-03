@@ -25,6 +25,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 
 	"github.com/uber/peloton/pkg/common/util"
+	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 	"github.com/uber/peloton/pkg/storage/objects/base"
 
 	"github.com/gocql/gocql"
@@ -242,12 +243,9 @@ func (d *podEventsOps) GetAll(
 		}
 		podEvent.Timestamp =
 			podEventsObjectValue.UpdateTime.Time().Format(time.RFC3339)
-		podEvent.Version = &v1alphapeloton.EntityVersion{
-			Value: fmt.Sprintf("%d", podEventsObjectValue.ConfigVersion),
-		}
-		podEvent.DesiredVersion = &v1alphapeloton.EntityVersion{
-			Value: fmt.Sprintf("%d", podEventsObjectValue.DesiredConfigVersion),
-		}
+		podEvent.Version = versionutil.GetPodEntityVersion(podEventsObjectValue.ConfigVersion)
+		podEvent.DesiredVersion = versionutil.GetPodEntityVersion(podEventsObjectValue.DesiredConfigVersion)
+
 		podEvent.ActualState = podEventsObjectValue.ActualState
 		podEvent.DesiredState = podEventsObjectValue.GoalState
 		podEvent.Message = podEventsObjectValue.Message

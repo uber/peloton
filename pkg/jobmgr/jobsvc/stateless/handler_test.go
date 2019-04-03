@@ -40,11 +40,11 @@ import (
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/util"
+	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	"github.com/uber/peloton/pkg/jobmgr/jobsvc"
 	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
-	jobutil "github.com/uber/peloton/pkg/jobmgr/util/job"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	respoolmocks "github.com/uber/peloton/.gen/peloton/api/v0/respool/mocks"
@@ -256,7 +256,7 @@ func (suite *statelessHandlerTestSuite) TestGetJobConfigVersionSuccess() {
 	resp, err := suite.handler.GetJob(context.Background(),
 		&statelesssvc.GetJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(version, 1, 1),
+			Version: versionutil.GetJobEntityVersion(version, 1, 1),
 		})
 	suite.NoError(err)
 	suite.NotNil(resp)
@@ -282,7 +282,7 @@ func (suite *statelessHandlerTestSuite) TestGetJobConfigVersionError() {
 	resp, err := suite.handler.GetJob(context.Background(),
 		&statelesssvc.GetJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(version, 1, 1),
+			Version: versionutil.GetJobEntityVersion(version, 1, 1),
 		})
 	suite.Error(err)
 	suite.Nil(resp)
@@ -565,10 +565,10 @@ func (suite *statelessHandlerTestSuite) TestGetJobCacheWithUpdateSuccess() {
 		instancesCurrent)
 	suite.Equal(
 		resp.GetStatus().GetWorkflowStatus().GetPrevVersion().GetValue(),
-		"1")
+		"1-0-0")
 	suite.Equal(
 		resp.GetStatus().GetWorkflowStatus().GetVersion().GetValue(),
-		"2")
+		"2-0-0")
 }
 
 // TestGetJobCacheGetJobFail test the failure case of getting job cache due to
@@ -1063,14 +1063,14 @@ func (suite *statelessHandlerTestSuite) TestReplaceJobSuccess() {
 			&pbupdate.UpdateConfig{
 				BatchSize: batchSize,
 			},
-			jobutil.GetJobEntityVersion(configVersion, desiredStateVersion, workflowVersion),
+			versionutil.GetJobEntityVersion(configVersion, desiredStateVersion, workflowVersion),
 			gomock.Any(),
 		).
 		Return(
 			&peloton.UpdateID{
 				Value: testUpdateID,
 			},
-			jobutil.GetJobEntityVersion(configVersion+1, desiredStateVersion, workflowVersion+1),
+			versionutil.GetJobEntityVersion(configVersion+1, desiredStateVersion, workflowVersion+1),
 			nil)
 
 	suite.goalStateDriver.EXPECT().
@@ -1081,7 +1081,7 @@ func (suite *statelessHandlerTestSuite) TestReplaceJobSuccess() {
 		context.Background(),
 		&statelesssvc.ReplaceJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(configVersion, desiredStateVersion, workflowVersion),
+			Version: versionutil.GetJobEntityVersion(configVersion, desiredStateVersion, workflowVersion),
 			Spec:    &stateless.JobSpec{},
 			UpdateSpec: &stateless.UpdateSpec{
 				BatchSize: batchSize,
@@ -1090,7 +1090,7 @@ func (suite *statelessHandlerTestSuite) TestReplaceJobSuccess() {
 		},
 	)
 	suite.NoError(err)
-	suite.Equal(resp.GetVersion(), jobutil.GetJobEntityVersion(configVersion+1, desiredStateVersion, workflowVersion+1))
+	suite.Equal(resp.GetVersion(), versionutil.GetJobEntityVersion(configVersion+1, desiredStateVersion, workflowVersion+1))
 }
 
 // TestCreateJobFailNonLeader tests the failure case of creating job
@@ -2704,12 +2704,12 @@ func (suite *statelessHandlerTestSuite) TestStopJobSuccess() {
 		context.Background(),
 		&statelesssvc.StopJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion, testWorkflowVersion),
+			Version: versionutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion, testWorkflowVersion),
 		})
 	suite.NoError(err)
 	suite.Equal(
 		resp.GetVersion(),
-		jobutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion+1, testWorkflowVersion))
+		versionutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion+1, testWorkflowVersion))
 }
 
 // TestStopJobNonLeaderFailure tests the failure case of stop
@@ -2762,7 +2762,7 @@ func (suite *statelessHandlerTestSuite) TestStopJobInvalidEntityVersionFailure()
 		context.Background(),
 		&statelesssvc.StopJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion+1, testWorkflowVersion),
+			Version: versionutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion+1, testWorkflowVersion),
 		})
 	suite.Error(err)
 	suite.Nil(resp)
@@ -2829,12 +2829,12 @@ func (suite *statelessHandlerTestSuite) TestStopJobSuccessWithCompareAndSetRunti
 		context.Background(),
 		&statelesssvc.StopJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion, testWorkflowVersion),
+			Version: versionutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion, testWorkflowVersion),
 		})
 	suite.NoError(err)
 	suite.Equal(
 		resp.GetVersion(),
-		jobutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion+1, testWorkflowVersion))
+		versionutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion+1, testWorkflowVersion))
 }
 
 // TestStopJobGetRuntimeFailure tests the failure case of stopping job
@@ -2859,7 +2859,7 @@ func (suite *statelessHandlerTestSuite) TestStopJobGetRuntimeFailure() {
 		context.Background(),
 		&statelesssvc.StopJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion, testWorkflowVersion),
+			Version: versionutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion, testWorkflowVersion),
 		})
 	suite.Error(err)
 	suite.Nil(resp)
@@ -2905,7 +2905,7 @@ func (suite *statelessHandlerTestSuite) TestStopJobCompareAndSetRuntimeFailure()
 		context.Background(),
 		&statelesssvc.StopJobRequest{
 			JobId: &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(
+			Version: versionutil.GetJobEntityVersion(
 				testConfigurationVersion,
 				testDesiredStateVersion,
 				testWorkflowVersion,
@@ -3853,12 +3853,12 @@ func (suite *statelessHandlerTestSuite) TestStartJobSuccess() {
 		context.Background(),
 		&statelesssvc.StartJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(configVersion, desiredStateVersion, workflowVersion),
+			Version: versionutil.GetJobEntityVersion(configVersion, desiredStateVersion, workflowVersion),
 		})
 	suite.NoError(err)
 	suite.Equal(
 		resp.GetVersion(),
-		jobutil.GetJobEntityVersion(configVersion, desiredStateVersion+1, workflowVersion))
+		versionutil.GetJobEntityVersion(configVersion, desiredStateVersion+1, workflowVersion))
 }
 
 // TestStartJobGetRuntimeFailure tests the failure case of starting job
@@ -3882,7 +3882,7 @@ func (suite *statelessHandlerTestSuite) TestStartJobGetRuntimeFailure() {
 		context.Background(),
 		&statelesssvc.StartJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(configVersion, desiredStateVersion, workflowVersion),
+			Version: versionutil.GetJobEntityVersion(configVersion, desiredStateVersion, workflowVersion),
 		})
 	suite.Error(err)
 	suite.Nil(resp)
@@ -3927,7 +3927,7 @@ func (suite *statelessHandlerTestSuite) TestStartJobCompareAndSetRuntimeFailure(
 		context.Background(),
 		&statelesssvc.StartJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(configVersion, desiredStateVersion, workflowVersion),
+			Version: versionutil.GetJobEntityVersion(configVersion, desiredStateVersion, workflowVersion),
 		})
 	suite.Error(err)
 	suite.Nil(resp)
@@ -3962,7 +3962,7 @@ func (suite *statelessHandlerTestSuite) TestStartJobInvalidEntityVersionError() 
 		context.Background(),
 		&statelesssvc.StartJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(configVersion+1, desiredStateVersion, workflowVersion),
+			Version: versionutil.GetJobEntityVersion(configVersion+1, desiredStateVersion, workflowVersion),
 		})
 	suite.Error(err)
 	suite.Nil(resp)
@@ -4021,12 +4021,12 @@ func (suite *statelessHandlerTestSuite) TestStartJobConcurrencyErrorRetry() {
 		context.Background(),
 		&statelesssvc.StartJobRequest{
 			JobId:   &v1alphapeloton.JobID{Value: testJobID},
-			Version: jobutil.GetJobEntityVersion(configVersion, desiredStateVersion, workflowVersion),
+			Version: versionutil.GetJobEntityVersion(configVersion, desiredStateVersion, workflowVersion),
 		})
 	suite.NoError(err)
 	suite.Equal(
 		resp.GetVersion(),
-		jobutil.GetJobEntityVersion(configVersion, desiredStateVersion+1, workflowVersion))
+		versionutil.GetJobEntityVersion(configVersion, desiredStateVersion+1, workflowVersion))
 }
 
 func TestStatelessServiceHandler(t *testing.T) {

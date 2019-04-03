@@ -29,6 +29,7 @@ import (
 
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/util"
+	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
@@ -36,7 +37,7 @@ import (
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
 	goalstateutil "github.com/uber/peloton/pkg/jobmgr/util/goalstate"
 	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
-	jobutil "github.com/uber/peloton/pkg/jobmgr/util/job"
+
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 	"github.com/uber/peloton/pkg/storage"
 
@@ -857,7 +858,7 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 		pID = prevPodID
 
 		if !statusOnly {
-			configVersion, err := jobutil.ParsePodEntityVersion(
+			configVersion, err := versionutil.GetConfigVersion(
 				podInfo.GetStatus().GetVersion(),
 			)
 			if err != nil {

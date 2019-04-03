@@ -30,10 +30,10 @@ import (
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/taskconfig"
+	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 	stringsutil "github.com/uber/peloton/pkg/common/util/strings"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	goalstateutil "github.com/uber/peloton/pkg/jobmgr/util/goalstate"
-	jobutil "github.com/uber/peloton/pkg/jobmgr/util/job"
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 
 	"github.com/golang/protobuf/proto"
@@ -1542,7 +1542,7 @@ func (j *job) CreateWorkflow(
 	j.workflows[updateID.GetValue()] = newWorkflow
 
 	// entity version is changed due to change in config version
-	newEntityVersion := jobutil.GetJobEntityVersion(
+	newEntityVersion := versionutil.GetJobEntityVersion(
 		j.runtime.GetConfigurationVersion(),
 		j.runtime.GetDesiredStateVersion(),
 		j.runtime.GetWorkflowVersion(),
@@ -1587,7 +1587,7 @@ func (j *job) PauseWorkflow(
 		return nil, nil, err
 	}
 
-	newEntityVersion := jobutil.GetJobEntityVersion(
+	newEntityVersion := versionutil.GetJobEntityVersion(
 		j.runtime.GetConfigurationVersion(),
 		j.runtime.GetDesiredStateVersion(),
 		j.runtime.GetWorkflowVersion(),
@@ -1624,7 +1624,7 @@ func (j *job) ResumeWorkflow(
 		return nil, nil, err
 	}
 
-	newEntityVersion := jobutil.GetJobEntityVersion(
+	newEntityVersion := versionutil.GetJobEntityVersion(
 		j.runtime.GetConfigurationVersion(),
 		j.runtime.GetDesiredStateVersion(),
 		j.runtime.GetWorkflowVersion(),
@@ -1661,7 +1661,7 @@ func (j *job) AbortWorkflow(
 		return nil, nil, err
 	}
 
-	newEntityVersion := jobutil.GetJobEntityVersion(
+	newEntityVersion := versionutil.GetJobEntityVersion(
 		j.runtime.GetConfigurationVersion(),
 		j.runtime.GetDesiredStateVersion(),
 		j.runtime.GetWorkflowVersion(),
@@ -2110,7 +2110,7 @@ func (j *job) ValidateEntityVersion(
 		return err
 	}
 
-	curEntityVersion := jobutil.GetJobEntityVersion(
+	curEntityVersion := versionutil.GetJobEntityVersion(
 		j.runtime.GetConfigurationVersion(),
 		j.runtime.GetDesiredStateVersion(),
 		j.runtime.GetWorkflowVersion())
@@ -2130,7 +2130,7 @@ func (j *job) updateWorkflowVersion(
 	if err := j.ValidateEntityVersion(ctx, version); err != nil {
 		return err
 	}
-	_, _, workflowVersion, err := jobutil.ParseJobEntityVersion(version)
+	_, _, workflowVersion, err := versionutil.ParseJobEntityVersion(version)
 	if err != nil {
 		return err
 	}

@@ -35,13 +35,13 @@ import (
 	"github.com/uber/peloton/pkg/common"
 	leadermocks "github.com/uber/peloton/pkg/common/leader/mocks"
 	"github.com/uber/peloton/pkg/common/util"
+	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 	taskutil "github.com/uber/peloton/pkg/common/util/task"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	cachedtest "github.com/uber/peloton/pkg/jobmgr/cached/test"
 	goalstatemocks "github.com/uber/peloton/pkg/jobmgr/goalstate/mocks"
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
-	jobutil "github.com/uber/peloton/pkg/jobmgr/util/job"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
 	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
@@ -1948,7 +1948,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccess() {
 		).
 		Return(
 			&peloton.UpdateID{Value: uuid.New()},
-			jobutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
+			versionutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
 			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
@@ -2028,7 +2028,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobSuccessWithRange() {
 		).
 		Return(
 			&peloton.UpdateID{Value: uuid.New()},
-			jobutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
+			versionutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
 			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
@@ -2110,7 +2110,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobOutsideOfRangeSuccess() {
 		).
 		Return(
 			&peloton.UpdateID{Value: uuid.New()},
-			jobutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
+			versionutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
 			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
@@ -2342,7 +2342,7 @@ func (suite *JobHandlerTestSuite) TestRestartJobGetCachedConfigFailure() {
 		).
 		Return(
 			&peloton.UpdateID{Value: uuid.New()},
-			jobutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
+			versionutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
 			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
@@ -2456,7 +2456,7 @@ func (suite *JobHandlerTestSuite) TestStartJobSuccess() {
 		).
 		Return(
 			&peloton.UpdateID{Value: uuid.New()},
-			jobutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
+			versionutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
 			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().
@@ -2525,7 +2525,7 @@ func (suite *JobHandlerTestSuite) TestStopJobSuccess() {
 		).
 		Return(
 			&peloton.UpdateID{Value: uuid.New()},
-			jobutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
+			versionutil.GetJobEntityVersion(configurationVersion+1, desiredStateVersion, workflowVersion),
 			nil)
 
 	suite.mockedGoalStateDriver.EXPECT().

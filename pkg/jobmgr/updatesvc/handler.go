@@ -25,6 +25,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/common"
+	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
 	jobutil "github.com/uber/peloton/pkg/jobmgr/util/job"
@@ -175,7 +176,7 @@ func (h *serviceHandler) CreateUpdate(
 		ctx,
 		models.WorkflowType_UPDATE,
 		req.GetUpdateConfig(),
-		jobutil.GetJobEntityVersion(
+		versionutil.GetJobEntityVersion(
 			jobRuntime.GetConfigurationVersion(),
 			jobRuntime.GetDesiredStateVersion(),
 			jobRuntime.GetWorkflowVersion()),
@@ -315,7 +316,7 @@ func (h *serviceHandler) PauseUpdate(
 
 	if _, _, err = cachedJob.PauseWorkflow(
 		ctx,
-		jobutil.GetJobEntityVersion(
+		versionutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),
 			runtime.GetDesiredStateVersion(),
 			runtime.GetWorkflowVersion()),
@@ -355,7 +356,7 @@ func (h *serviceHandler) ResumeUpdate(
 
 	if _, _, err = cachedJob.ResumeWorkflow(
 		ctx,
-		jobutil.GetJobEntityVersion(
+		versionutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),
 			runtime.GetDesiredStateVersion(),
 			runtime.GetWorkflowVersion()),
@@ -439,7 +440,7 @@ func (h *serviceHandler) AbortUpdate(ctx context.Context,
 
 	if _, _, err = cachedJob.AbortWorkflow(
 		ctx,
-		jobutil.GetJobEntityVersion(
+		versionutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),
 			runtime.GetDesiredStateVersion(),
 			runtime.GetWorkflowVersion()),

@@ -800,11 +800,11 @@ func (suite *UpdateTestSuite) TestUpdateGetInstancesCurrent() {
 func (suite *UpdateTestSuite) TestTaskConfigChangeLabelsCheck() {
 	prevTaskConfig := &pbtask.TaskConfig{
 		Labels: []*peloton.Label{
-			&peloton.Label{
+			{
 				Key:   "key1",
 				Value: "value1",
 			},
-			&peloton.Label{
+			{
 				Key:   "key2",
 				Value: "value2",
 			},
@@ -813,11 +813,11 @@ func (suite *UpdateTestSuite) TestTaskConfigChangeLabelsCheck() {
 
 	newTaskConfig := &pbtask.TaskConfig{
 		Labels: []*peloton.Label{
-			&peloton.Label{
+			{
 				Key:   "key2",
 				Value: "value2",
 			},
-			&peloton.Label{
+			{
 				Key:   "key1",
 				Value: "value1",
 			},
@@ -836,12 +836,12 @@ func (suite *UpdateTestSuite) TestTaskConfigChangeLabelsCheck() {
 func (suite *UpdateTestSuite) TestTaskConfigChangePortsConfigCheck() {
 	prevTaskConfig := &pbtask.TaskConfig{
 		Ports: []*pbtask.PortConfig{
-			&pbtask.PortConfig{
+			{
 				Name:    "name1",
 				Value:   1111,
 				EnvName: "env1",
 			},
-			&pbtask.PortConfig{
+			{
 				Name:    "name2",
 				Value:   2222,
 				EnvName: "env2",
@@ -851,12 +851,12 @@ func (suite *UpdateTestSuite) TestTaskConfigChangePortsConfigCheck() {
 
 	newTaskConfig := &pbtask.TaskConfig{
 		Ports: []*pbtask.PortConfig{
-			&pbtask.PortConfig{
+			{
 				Name:    "name2",
 				Value:   2222,
 				EnvName: "env2",
 			},
-			&pbtask.PortConfig{
+			{
 				Name:    "name1",
 				Value:   1111,
 				EnvName: "env1",

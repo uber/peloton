@@ -27,15 +27,16 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/update/svc"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
+	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
+	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
+	goalstatemocks "github.com/uber/peloton/pkg/jobmgr/goalstate/mocks"
+	storemocks "github.com/uber/peloton/pkg/storage/mocks"
+
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
-	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
-	goalstatemocks "github.com/uber/peloton/pkg/jobmgr/goalstate/mocks"
-	jobutil "github.com/uber/peloton/pkg/jobmgr/util/job"
-	storemocks "github.com/uber/peloton/pkg/storage/mocks"
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
@@ -168,7 +169,7 @@ func (suite *UpdateSvcTestSuite) TestCreateSuccess() {
 		).
 		Return(
 			suite.updateID,
-			jobutil.GetJobEntityVersion(
+			versionutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion()+1,
 				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion()),
@@ -213,7 +214,7 @@ func (suite *UpdateSvcTestSuite) TestAddInstancesSuccess() {
 			gomock.Any(),
 		).
 		Return(suite.updateID,
-			jobutil.GetJobEntityVersion(
+			versionutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion()+1,
 				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion(),
@@ -262,7 +263,7 @@ func (suite *UpdateSvcTestSuite) TestUpdateLabelsSuccess() {
 			gomock.Any(),
 		).
 		Return(suite.updateID,
-			jobutil.GetJobEntityVersion(
+			versionutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion(),
 				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion()+1),
@@ -469,7 +470,7 @@ func (suite *UpdateSvcTestSuite) TestCreateReduceInstanceCount() {
 		).
 		Return(
 			suite.updateID,
-			jobutil.GetJobEntityVersion(
+			versionutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion()+1,
 				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion()),
@@ -974,7 +975,7 @@ func (suite *UpdateSvcTestSuite) TestAbort() {
 		AbortWorkflow(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(
 			suite.updateID,
-			jobutil.GetJobEntityVersion(
+			versionutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion(),
 				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion()+1),
@@ -1015,7 +1016,7 @@ func (suite *UpdateSvcTestSuite) TestPauseSuccess() {
 		PauseWorkflow(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(
 			suite.updateID,
-			jobutil.GetJobEntityVersion(
+			versionutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion(),
 				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion()+1),
@@ -1092,7 +1093,7 @@ func (suite *UpdateSvcTestSuite) TestResumeSuccess() {
 		ResumeWorkflow(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(
 			suite.updateID,
-			jobutil.GetJobEntityVersion(
+			versionutil.GetJobEntityVersion(
 				suite.jobRuntime.GetConfigurationVersion(),
 				suite.jobRuntime.GetDesiredStateVersion(),
 				suite.jobRuntime.GetWorkflowVersion()+1),

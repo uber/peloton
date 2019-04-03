@@ -34,6 +34,7 @@ import (
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/util"
+	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
 	jobconfig "github.com/uber/peloton/pkg/jobmgr/job/config"
@@ -675,7 +676,7 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 		&pbupdate.UpdateConfig{
 			BatchSize: batchSize,
 		},
-		jobutil.GetJobEntityVersion(
+		versionutil.GetJobEntityVersion(
 			runtime.GetConfigurationVersion(),
 			runtime.GetDesiredStateVersion(),
 			runtime.GetWorkflowVersion()),

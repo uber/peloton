@@ -28,7 +28,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/common/util"
-	jobutil "github.com/uber/peloton/pkg/jobmgr/util/job"
+	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -158,8 +158,8 @@ func ConvertTaskRuntimeToPodStatus(runtime *task.RuntimeInfo) *pod.PodStatus {
 		Reason:         runtime.GetReason(),
 		FailureCount:   runtime.GetFailureCount(),
 		VolumeId:       &v1alphapeloton.VolumeID{Value: runtime.GetVolumeID().GetValue()},
-		Version:        jobutil.GetPodEntityVersion(runtime.GetConfigVersion()),
-		DesiredVersion: jobutil.GetPodEntityVersion(runtime.GetDesiredConfigVersion()),
+		Version:        versionutil.GetPodEntityVersion(runtime.GetConfigVersion()),
+		DesiredVersion: versionutil.GetPodEntityVersion(runtime.GetDesiredConfigVersion()),
 		AgentId:        runtime.GetAgentID(),
 		Revision: &v1alphapeloton.Revision{
 			Version:   runtime.GetRevision().GetVersion(),
@@ -395,12 +395,12 @@ func ConvertUpdateModelToWorkflowStatus(
 		return nil
 	}
 
-	entityVersion := jobutil.GetJobEntityVersion(
+	entityVersion := versionutil.GetJobEntityVersion(
 		updateInfo.GetJobConfigVersion(),
 		runtime.GetDesiredStateVersion(),
 		runtime.GetWorkflowVersion(),
 	)
-	prevVersion := jobutil.GetJobEntityVersion(
+	prevVersion := versionutil.GetJobEntityVersion(
 		updateInfo.GetPrevJobConfigVersion(),
 		runtime.GetDesiredStateVersion(),
 		runtime.GetWorkflowVersion(),
@@ -439,7 +439,7 @@ func ConvertRuntimeInfoToJobStatus(
 	result.CreationTime = runtime.GetCreationTime()
 	result.PodStats = ConvertTaskStatsToPodStats(runtime.TaskStats)
 	result.DesiredState = stateless.JobState(runtime.GetGoalState())
-	result.Version = jobutil.GetJobEntityVersion(
+	result.Version = versionutil.GetJobEntityVersion(
 		runtime.GetConfigurationVersion(),
 		runtime.GetDesiredStateVersion(),
 		runtime.GetWorkflowVersion(),
@@ -447,7 +447,7 @@ func ConvertRuntimeInfoToJobStatus(
 	result.WorkflowStatus = ConvertUpdateModelToWorkflowStatus(runtime, updateInfo)
 
 	for configVersion, taskStats := range runtime.GetTaskConfigVersionStats() {
-		entityVersion := jobutil.GetJobEntityVersion(
+		entityVersion := versionutil.GetJobEntityVersion(
 			configVersion,
 			runtime.GetDesiredStateVersion(),
 			runtime.GetWorkflowVersion(),
@@ -913,9 +913,9 @@ func ConvertTaskEventsToPodEvents(taskEvents []*task.PodEvent) []*pod.PodEvent {
 		podID := e.GetTaskId().GetValue()
 		prevPodID := e.GetPrevTaskId().GetValue()
 		desiredPodID := e.GetDesriedTaskId().GetValue()
-		entityVersion := jobutil.GetPodEntityVersion(e.GetConfigVersion())
+		entityVersion := versionutil.GetPodEntityVersion(e.GetConfigVersion())
 
-		desiredEntityVersion := jobutil.GetPodEntityVersion(e.GetDesiredConfigVersion())
+		desiredEntityVersion := versionutil.GetPodEntityVersion(e.GetDesiredConfigVersion())
 
 		result = append(result, &pod.PodEvent{
 			PodId: &v1alphapeloton.PodID{
