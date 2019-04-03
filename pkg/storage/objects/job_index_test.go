@@ -139,6 +139,7 @@ func (s *JobIndexObjectTestSuite) TestCreateDeleteJobIndex() {
 		if tc.runtime != nil {
 			s.WithinDuration(time.Now(), obj.UpdateTime, delta)
 		}
+
 		obj.UpdateTime = time.Time{}
 		s.Equal(tc.expectedObj, obj, tc.description)
 
@@ -154,10 +155,17 @@ func (s *JobIndexObjectTestSuite) TestCreateDeleteJobIndex() {
 func (s *JobIndexObjectTestSuite) TestGetSummary() {
 	db := NewJobIndexOps(testStore)
 	ctx := context.Background()
-
 	jobID := &peloton.JobID{Value: uuid.New()}
-	err := db.Create(ctx, jobID, s.config, s.runtime, s.sla)
+
+	err := db.Create(ctx, jobID, s.config, s.runtime, nil)
+	s.NoError(err)
+
 	summary, err := db.GetSummary(ctx, jobID)
+	s.NoError(err)
+	s.Nil(summary.GetSLA())
+
+	err = db.Create(ctx, jobID, s.config, s.runtime, s.sla)
+	summary, err = db.GetSummary(ctx, jobID)
 	s.NoError(err)
 
 	expectedSummary := &job.JobSummary{

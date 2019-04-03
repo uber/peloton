@@ -244,12 +244,14 @@ func (j *JobIndexObject) ToJobSummary() (*job.JobSummary, error) {
 		return nil, err
 	}
 
-	err = json.Unmarshal([]byte(j.SLA), &summary.SLA)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"job_id": j.JobID,
-		}).WithError(err).Info("JobIndexObject: failed to unmarshal sla config")
-		return nil, err
+	if len(j.SLA) != 0 {
+		err = json.Unmarshal([]byte(j.SLA), &summary.SLA)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"job_id": j.JobID,
+			}).WithError(err).Info("JobIndexObject: failed to unmarshal sla config")
+			return nil, err
+		}
 	}
 
 	return summary, nil
