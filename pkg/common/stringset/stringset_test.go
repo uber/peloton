@@ -15,6 +15,7 @@
 package stringset
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -98,156 +99,55 @@ func TestStringSet_ToSlice(t *testing.T) {
 	}
 }
 
+var flagtests = []struct {
+	name      string
+	testdata1 []string
+	testdata2 []string
+	out       []string
+}{
+	{"both sets void", []string{}, []string{}, []string{}},
+	{"first set void", []string{}, []string{"testitem1", "testitem2"}, []string{}},
+	{"second set void", []string{"testitem2", "testitem1"}, []string{}, []string{}},
+	{"intersect all first set", []string{"testitem1"}, []string{"testitem1", "testitem2"}, []string{"testitem1"}},
+	{"intersect all second set", []string{"testitem1", "testitem2"}, []string{"testitem1"}, []string{"testitem1"}},
+	{"interscet subset of first set", []string{"testitem1", "testitem2", "testitem3"}, []string{"testitem1", "testitem2"}, []string{"testitem1", "testitem2"}},
+	{"interscet subset of second set", []string{"testitem1", "testitem2"}, []string{"testitem1", "testitem2", "testitem3"}, []string{"testitem1", "testitem2"}},
+}
+
 func TestStringSet_Intersect(t *testing.T) {
-	testSet := &stringSet{
-		m: make(map[string]bool),
-	}
 
-	testSet1 := &stringSet{
-		m: make(map[string]bool),
-	}
+	for _, tt := range flagtests {
+		t.Run(tt.name, func(t *testing.T) {
 
-	testItems := []string{
-		"testitem1",
-		"testitem2",
-	}
+			// Creates first testSet
+			testSet1 := &stringSet{
+				m: make(map[string]bool),
+			}
 
-	// Add testItems to testSet
-	for _, item := range testItems {
-		testSet.m[item] = true
-	}
+			// Add testItems to testSet1
+			for _, item := range tt.testdata1 {
+				testSet1.m[item] = true
+			}
 
-	testItems1 := []string{
-		"testitem1",
-		"testitem2",
-		"testitem3",
-	}
+			// Creates second testSet
+			testSet2 := &stringSet{
+				m: make(map[string]bool),
+			}
 
-	// Add testItems1 to testSet1
-	for _, item := range testItems1 {
-		testSet1.m[item] = true
-	}
+			// Add testItems to testSet2
+			for _, item := range tt.testdata2 {
+				testSet2.m[item] = true
+			}
+			s := testSet1.Intersect(testSet2)
+			slice := s.ToSlice()
+			sort.Strings(slice)
+			sort.Strings(tt.out)
 
-	// Intersect the two stringSet
-	intersection := testSet.Intersect(testSet1)
-
-	items := intersection.ToSlice()
-
-	for _, item := range items {
-		if item == "testitem3" {
-			assert.False(t, testSet.Contains(item))
-		}
-		assert.True(t, testSet.Contains(item))
-	}
-}
-
-func TestStringSet_Intersect_VoidIntersect(t *testing.T) {
-	testSet := &stringSet{
-		m: make(map[string]bool),
-	}
-
-	testSet1 := &stringSet{
-		m: make(map[string]bool),
-	}
-
-	testItems := []string{
-		"testitem1",
-		"testitem2",
-	}
-
-	// Add testItems to testSet
-	for _, item := range testItems {
-		testSet.m[item] = true
-	}
-
-	testItems1 := []string{
-		"testitem1",
-		"testitem2",
-	}
-
-	// Add testItems1 to testSet1
-	for _, item := range testItems1 {
-		testSet1.m[item] = true
-	}
-
-	// Intersect the two stringSet
-	intersection := testSet.Intersect(testSet1)
-
-	items := intersection.ToSlice()
-
-	if ok := len(items) == 0; ok {
-		assert.True(t, ok)
-	}
-}
-
-func TestStringSet_Intersect_VoidIntersect_Second(t *testing.T) {
-	testSet := &stringSet{
-		m: make(map[string]bool),
-	}
-
-	testSet1 := &stringSet{
-		m: make(map[string]bool),
-	}
-
-	testItems := []string{}
-
-	// Add testItems to testSet
-	for _, item := range testItems {
-		testSet.m[item] = true
-	}
-
-	testItems1 := []string{}
-
-	// Add testItems1 to testSet1
-	for _, item := range testItems1 {
-		testSet1.m[item] = true
-	}
-
-	// Intersect the two stringSet
-	intersection := testSet.Intersect(testSet1)
-
-	items := intersection.ToSlice()
-
-	if ok := len(items) == 0; ok {
-		assert.True(t, ok)
-	}
-}
-
-func TestStringSet_Intersect_VoidIntersect_Third(t *testing.T) {
-	testSet := &stringSet{
-		m: make(map[string]bool),
-	}
-
-	testSet1 := &stringSet{
-		m: make(map[string]bool),
-	}
-
-	testItems := []string{
-		"testitem1",
-		"testitem2",
-	}
-
-	// Add testItems to testSet
-	for _, item := range testItems {
-		testSet.m[item] = true
-	}
-
-	testItems1 := []string{
-		"testitem3",
-		"testitem4",
-	}
-
-	// Add testItems1 to testSet1
-	for _, item := range testItems1 {
-		testSet1.m[item] = true
-	}
-
-	// Intersect the two stringSet
-	intersection := testSet.Intersect(testSet1)
-
-	items := intersection.ToSlice()
-
-	if ok := len(items) == 0; ok {
-		assert.True(t, ok)
+			for i := range slice {
+				if slice[i] != tt.out[i] {
+					t.Errorf("got %q, want %q", slice[i], tt.out[i])
+				}
+			}
+		})
 	}
 }
