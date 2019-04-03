@@ -47,7 +47,7 @@ func NewJobUpdateSummary(
 	numEvents := len(w.GetEvents())
 	if numEvents > 0 {
 		createTime, err = common.ConvertTimestampToUnixMS(
-			w.GetEvents()[0].GetTimestamp())
+			w.GetEvents()[numEvents-1].GetTimestamp())
 		if err != nil {
 			return nil, err
 		}
@@ -55,7 +55,7 @@ func NewJobUpdateSummary(
 	}
 	if numEvents > 1 {
 		lastModifiedTime, err = common.ConvertTimestampToUnixMS(
-			w.GetEvents()[numEvents-1].GetTimestamp())
+			w.GetEvents()[0].GetTimestamp())
 		if err != nil {
 			return nil, err
 		}

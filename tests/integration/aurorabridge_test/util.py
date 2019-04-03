@@ -193,7 +193,8 @@ def get_task_status(client, job_key, instances=None):
 
     assert res.tasks is not None
 
-    return [t.status for t in res.tasks if not instances or t.assignedTask.instanceId in instances]
+    return [t.status for t in res.tasks if not instances or
+            t.assignedTask.instanceId in instances]
 
 
 def get_job_update_request(config_path):
@@ -246,3 +247,27 @@ def get_mesos_maser_state(url='http://127.0.0.1:5050/state.json'):
     resp = requests.get(url)
     resp.raise_for_status()
     return resp.json()
+
+
+def verify_events_sorted(events):
+    assert len(events) > 0
+    events_ts = [e.timestampMs for e in events]
+    assert events_ts == sorted(events_ts)
+
+
+def verify_first_and_last_job_update_status(events, first, last):
+    assert events[0].status == first
+    assert events[-1].status == last
+
+
+def verify_task_config(client, job_key, metadata_dict):
+    res = client.get_tasks_without_configs(api.TaskQuery(
+        jobKeys={job_key},
+        statuses={api.ScheduleStatus.RUNNING}))
+
+    for t in res.tasks:
+        for m in t.assignedTask.task.metadata:
+            if m.key in metadata_dict:
+                assert m.value == metadata_dict[m.key]
+            else:
+                assert False, 'unexpected metadata {}'.format(m)

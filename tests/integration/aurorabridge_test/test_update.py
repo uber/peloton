@@ -140,3 +140,42 @@ def test__simple_update_with_no_diff(client):
     res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
     assert len(res.detailsList[0].updateEvents) > 0
     assert res.detailsList[0].instanceEvents is None
+
+
+def test__simple_update_with_diff(client):
+    """
+    test simple update use case where second update has config
+    change, here all the instances will move to new config
+    """
+    res = client.start_job_update(
+        get_job_update_request('test_dc_labrat_large_job.yaml'),
+        'start job update test/dc/labrat_large_job')
+    wait_for_rolled_forward(client, res.key)
+    job_key = res.key.job
+
+    res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
+    assert len(res.detailsList[0].updateEvents) > 0
+    assert len(res.detailsList[0].instanceEvents) > 0
+
+    # Do update with labels changed
+    res = client.start_job_update(
+        get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml'),
+        'start job update test/dc/labrat_large_job')
+    wait_for_rolled_forward(client, res.key)
+    job_key = res.key.job
+
+    res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
+    assert len(res.detailsList[0].updateEvents) > 0
+    assert len(res.detailsList[0].instanceEvents) > 0
+
+    # TODO: validate task config change
+
+    res = client.start_job_update(
+        get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml'),
+        'start job update test/dc/labrat_large_job')
+    wait_for_rolled_forward(client, res.key)
+    job_key = res.key.job
+
+    res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
+    assert len(res.detailsList[0].updateEvents) > 0
+    assert res.detailsList[0].instanceEvents is None

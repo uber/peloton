@@ -27,8 +27,8 @@ func TestNewJobUpdateSummary_Timestamps(t *testing.T) {
 		}, {
 			"two events",
 			[]*stateless.WorkflowEvent{
-				{Timestamp: "2019-02-04T16:43:20Z"},
 				{Timestamp: "2019-02-04T18:25:10Z"},
+				{Timestamp: "2019-02-04T16:43:20Z"},
 			},
 			1549298600000,
 			1549304710000,

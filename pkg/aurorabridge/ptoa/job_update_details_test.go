@@ -26,8 +26,8 @@ func TestJoinRollbackJobUpdateDetails(t *testing.T) {
 			},
 		},
 		UpdateEvents: []*api.JobUpdateEvent{
-			{Status: api.JobUpdateStatusAborted.Ptr()},
 			{Status: api.JobUpdateStatusRollingForward.Ptr()},
+			{Status: api.JobUpdateStatusAborted.Ptr()},
 		},
 		InstanceEvents: []*api.JobInstanceUpdateEvent{
 			{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceUpdating.Ptr()},
@@ -46,12 +46,12 @@ func TestJoinRollbackJobUpdateDetails(t *testing.T) {
 			},
 		},
 		UpdateEvents: []*api.JobUpdateEvent{
-			{Status: api.JobUpdateStatusRolledBack.Ptr()},
 			{Status: api.JobUpdateStatusRollingBack.Ptr()},
+			{Status: api.JobUpdateStatusRolledBack.Ptr()},
 		},
 		InstanceEvents: []*api.JobInstanceUpdateEvent{
-			{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceRolledBack.Ptr()},
 			{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceRollingBack.Ptr()},
+			{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceRolledBack.Ptr()},
 		},
 	}
 
@@ -67,17 +67,17 @@ func TestJoinRollbackJobUpdateDetails(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t,
 				[]*api.JobUpdateEvent{
-					{Status: api.JobUpdateStatusRolledBack.Ptr()},
-					{Status: api.JobUpdateStatusRollingBack.Ptr()},
 					{Status: api.JobUpdateStatusRollingForward.Ptr()},
+					{Status: api.JobUpdateStatusRollingBack.Ptr()},
+					{Status: api.JobUpdateStatusRolledBack.Ptr()},
 				},
 				tc.result.GetUpdateEvents())
 
 			require.Equal(t,
 				[]*api.JobInstanceUpdateEvent{
-					{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceRolledBack.Ptr()},
-					{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceRollingBack.Ptr()},
 					{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceUpdating.Ptr()},
+					{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceRollingBack.Ptr()},
+					{InstanceId: ptr.Int32(0), Action: api.JobUpdateActionInstanceRolledBack.Ptr()},
 				},
 				tc.result.GetInstanceEvents())
 
