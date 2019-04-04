@@ -133,5 +133,5 @@ def load_config(config, dir=''):
         os.path.dirname(os.path.abspath(__file__)) + dir, config
     )
     with open(config_file, "r") as f:
-        config = yaml.load(f)
+        config = yaml.safe_load(f)
     return config
