@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/query"
@@ -3350,9 +3350,10 @@ func (s *Store) GetUpdatesForJob(
 	jobID string,
 ) ([]*peloton.UpdateID, error) {
 	var updateIDs []*peloton.UpdateID
+	var updateList []*SortUpdateInfoTS
 
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("update_id").From(updatesByJobView).
+	stmt := queryBuilder.Select("*").From(updatesByJobView).
 		Where(qb.Eq{"job_id": jobID})
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
@@ -3374,8 +3375,19 @@ func (s *Store) GetUpdatesForJob(
 			return nil, err
 		}
 
-		updateIDs = append(updateIDs,
-			&peloton.UpdateID{Value: record.UpdateID.String()})
+		// sort as per the job configuration version
+		updateInfo := &SortUpdateInfoTS{
+			updateID:   &peloton.UpdateID{Value: record.UpdateID.String()},
+			createTime: record.CreationTime,
+		}
+
+		updateList = append(updateList, updateInfo)
+	}
+
+	sort.Sort(sort.Reverse(SortedUpdateListTS(updateList)))
+
+	for _, update := range updateList {
+		updateIDs = append(updateIDs, update.updateID)
 	}
 
 	s.metrics.UpdateMetrics.UpdateGetForJob.Inc(1)
@@ -3545,4 +3557,22 @@ func (u SortedUpdateList) Len() int      { return len(u) }
 func (u SortedUpdateList) Swap(i, j int) { u[i], u[j] = u[j], u[i] }
 func (u SortedUpdateList) Less(i, j int) bool {
 	return u[i].jobConfigVersion < u[j].jobConfigVersion
+}
+
+// SortUpdateInfoTS is the structure used by the sortable interface for
+// updates, where the sorting will be done according to the update create
+// timestamp for a given job.
+type SortUpdateInfoTS struct {
+	updateID   *peloton.UpdateID
+	createTime time.Time
+}
+
+// SortedUpdateListTS implements a sortable interface for updates according
+// to the create time for a given job.
+type SortedUpdateListTS []*SortUpdateInfoTS
+
+func (u SortedUpdateListTS) Len() int      { return len(u) }
+func (u SortedUpdateListTS) Swap(i, j int) { u[i], u[j] = u[j], u[i] }
+func (u SortedUpdateListTS) Less(i, j int) bool {
+	return u[i].createTime.UnixNano() < u[j].createTime.UnixNano()
 }

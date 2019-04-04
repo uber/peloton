@@ -132,12 +132,12 @@ func (u *updateEntity) GetActionList(
 
 	log.WithFields(
 		log.Fields{
-			"update_id":       u.id.GetValue(),
-			"current_state":   updateState.State.String(),
-			"goal_state":      updateGoalState.State.String(),
-			"instances_total": len(updateGoalState.Instances),
-			"instances_done":  len(updateState.Instances),
-			"update_action":   actionStr,
+			"update_id":           u.id.GetValue(),
+			"current_state":       updateState.State.String(),
+			"goal_state":          updateGoalState.State.String(),
+			"instances_total":     len(updateGoalState.Instances),
+			"instances_processed": len(updateState.Instances),
+			"update_action":       actionStr,
 		}).Info("running update action")
 
 	if actionStr != ClearUpdateAction && actionStr != ReloadUpdateAction {

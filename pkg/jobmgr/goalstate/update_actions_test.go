@@ -319,6 +319,10 @@ func (suite *UpdateActionsTestSuite) TestUpdateRollingForwardComplete() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
+		ID().
+		Return(&peloton.JobID{Value: uuid.New()})
+
+	suite.cachedJob.EXPECT().
 		AddWorkflow(suite.updateID).
 		Return(suite.cachedUpdate)
 
@@ -330,12 +334,33 @@ func (suite *UpdateActionsTestSuite) TestUpdateRollingForwardComplete() {
 		Times(2)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE)
+
+	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return(instancesFailed)
+		Return(instancesFailed).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesAdded().
+		Return(make([]uint32, 1)).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesUpdated().
+		Return(make([]uint32, 1)).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return(make([]uint32, 1)).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return(instancesDone)
+		Return(instancesDone).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		WriteProgress(
@@ -367,6 +392,10 @@ func (suite *UpdateActionsTestSuite) TestUpdateRollingBackwardComplete() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
+		ID().
+		Return(&peloton.JobID{Value: uuid.New()})
+
+	suite.cachedJob.EXPECT().
 		AddWorkflow(suite.updateID).
 		Return(suite.cachedUpdate)
 
@@ -378,12 +407,33 @@ func (suite *UpdateActionsTestSuite) TestUpdateRollingBackwardComplete() {
 		Times(2)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE)
+
+	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return(instancesFailed)
+		Return(instancesFailed).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesAdded().
+		Return(instancesFailed).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesUpdated().
+		Return(instancesFailed).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return(instancesFailed).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return(instancesDone)
+		Return(instancesDone).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		WriteProgress(

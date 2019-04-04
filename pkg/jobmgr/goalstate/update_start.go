@@ -39,6 +39,7 @@ func fetchWorkflowAndJobFromCache(
 ) (cachedWorkflow cached.Update, cachedJob cached.Job, err error) {
 	// first fetch the job
 	cachedJob = goalStateDriver.jobFactory.GetJob(jobID)
+
 	if cachedJob == nil {
 		// if job has been untracked, cancel the update and then enqueue into
 		// goal state to untrack it.
@@ -47,16 +48,19 @@ func fetchWorkflowAndJobFromCache(
 				"job_id":    jobID.GetValue(),
 				"update_id": updateID.GetValue(),
 			}).Info("job has been deleted, so canceling the update as well")
+
 		cachedJob = goalStateDriver.jobFactory.AddJob(jobID)
 		err = cachedJob.AddWorkflow(updateID).Cancel(ctx, nil)
 		if err == nil {
 			goalStateDriver.EnqueueUpdate(jobID, updateID, time.Now())
 		}
+
 		// clean up the job since it is untracked before
 		goalStateDriver.EnqueueJob(jobID, time.Now())
 		cachedJob = nil
 		return
 	}
+
 	cachedWorkflow = cachedJob.AddWorkflow(updateID)
 	return
 }
@@ -115,16 +119,17 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 	updateEnt := entity.(*updateEntity)
 	goalStateDriver := updateEnt.driver
 
-	log.WithField("update_id", updateEnt.id.GetValue()).
-		Info("update starting")
-
 	// fetch the update and job from the cache
 	cachedWorkflow, cachedJob, err := fetchWorkflowAndJobFromCache(
 		ctx, updateEnt.jobID, updateEnt.id, goalStateDriver)
 	if err != nil || cachedWorkflow == nil || cachedJob == nil {
+		log.WithFields(log.Fields{
+			"update_id": updateEnt.id.GetValue(),
+		}).WithError(err).Info("unable to start update")
 		goalStateDriver.mtx.updateMetrics.UpdateRunFail.Inc(1)
 		return err
 	}
+
 	if cachedWorkflow.GetState().State == update.State_INVALID {
 		return UpdateReload(ctx, entity)
 	}
@@ -211,8 +216,16 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	goalStateDriver.EnqueueUpdate(jobID, updateEnt.id, time.Now())
+	log.WithFields(log.Fields{
+		"update_id":         updateEnt.id.GetValue(),
+		"job_id":            cachedJob.ID().GetValue(),
+		"update_type":       cachedWorkflow.GetWorkflowType().String(),
+		"instances_added":   len(cachedWorkflow.GetInstancesAdded()),
+		"instances_removed": len(cachedWorkflow.GetInstancesRemoved()),
+		"instances_updated": len(cachedWorkflow.GetInstancesUpdated()),
+	}).Info("update starting")
 
+	goalStateDriver.EnqueueUpdate(jobID, updateEnt.id, time.Now())
 	goalStateDriver.mtx.updateMetrics.UpdateStart.Inc(1)
 	return nil
 }

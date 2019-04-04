@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
@@ -174,6 +174,11 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
@@ -189,27 +194,32 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(instancesTotal)
+		Return(instancesTotal).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil).Times(2)
+		Return(nil).Times(3)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return([]uint32{})
+		Return([]uint32{}).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return([]uint32{})
+		Return([]uint32{}).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
-		Return(instancesTotal)
+		Return(instancesTotal).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
@@ -338,6 +348,11 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateWithStartTasksOn() {
 		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
 		ID().
 		Return(suite.updateID).
 		AnyTimes()
@@ -362,27 +377,32 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateWithStartTasksOn() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(instancesTotal)
+		Return(instancesTotal).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil).Times(2)
+		Return(nil).Times(3)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return([]uint32{})
+		Return([]uint32{}).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return([]uint32{})
+		Return([]uint32{}).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
-		Return(instancesTotal)
+		Return(instancesTotal).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
@@ -561,6 +581,11 @@ func (suite *UpdateRunTestSuite) TestRunningInPlaceUpdate() {
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
@@ -576,27 +601,32 @@ func (suite *UpdateRunTestSuite) TestRunningInPlaceUpdate() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(instancesTotal)
+		Return(instancesTotal).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil).Times(2)
+		Return(nil).Times(3)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return([]uint32{})
+		Return([]uint32{}).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return([]uint32{})
+		Return([]uint32{}).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
-		Return(instancesTotal)
+		Return(instancesTotal).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
@@ -745,6 +775,11 @@ func (suite *UpdateRunTestSuite) TestCompletedUpdate() {
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
@@ -752,19 +787,23 @@ func (suite *UpdateRunTestSuite) TestCompletedUpdate() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
-		Return(instancesTotal)
+		Return(instancesTotal).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
-		Return(instancesTotal)
+		Return(instancesTotal).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetGoalState().
@@ -776,15 +815,18 @@ func (suite *UpdateRunTestSuite) TestCompletedUpdate() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return([]uint32{})
+		Return([]uint32{}).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return(instancesRemaining)
+		Return(instancesRemaining).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
@@ -1054,6 +1096,11 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddInstances() {
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
@@ -1078,27 +1125,32 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
-		Return(newSlice(oldInstanceNumber, newInstanceNumber))
+		Return(newSlice(oldInstanceNumber, newInstanceNumber)).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil).Times(2)
+		Return(nil).Times(3)
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
@@ -1209,6 +1261,11 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddShrinkInstances() {
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
@@ -1233,27 +1290,32 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddShrinkInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
-		Return(newSlice(oldInstanceNumber, newInstanceNumber))
+		Return(newSlice(oldInstanceNumber, newInstanceNumber)).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil).Times(2)
+		Return(nil).Times(3)
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
@@ -1379,6 +1441,11 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
@@ -1415,27 +1482,32 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
-		Return(newSlice(0, batchSize))
+		Return(newSlice(0, batchSize)).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(newSlice(0, instanceNumber))
+		Return(newSlice(0, instanceNumber)).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil).Times(2)
+		Return(nil).Times(3)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
@@ -1537,6 +1609,11 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
@@ -1544,7 +1621,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetGoalState().
@@ -1555,23 +1633,27 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(newSlice(0, instanceNumber))
+		Return(newSlice(0, instanceNumber)).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil).Times(2)
+		Return(nil).Times(3)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), gomock.Any()).
@@ -1685,6 +1767,11 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() 
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
@@ -1692,7 +1779,8 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() 
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetGoalState().
@@ -1703,23 +1791,27 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() 
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(newSlice(0, instanceNumber))
+		Return(newSlice(0, instanceNumber)).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil).Times(2)
+		Return(nil).Times(3)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), gomock.Any()).
@@ -1855,27 +1947,32 @@ func (suite *UpdateRunTestSuite) TestUpdateRunKilledJobAddInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
-		Return(newSlice(oldInstanceNumber, newInstanceNumber))
+		Return(newSlice(oldInstanceNumber, newInstanceNumber)).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
-		Return(newSlice(oldInstanceNumber, newInstanceNumber))
+		Return(newSlice(oldInstanceNumber, newInstanceNumber)).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil).Times(2)
+		Return(nil).Times(3)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().
@@ -2202,6 +2299,11 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstances() {
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
@@ -2217,27 +2319,32 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(instancesTotal).Times(2)
+		Return(instancesTotal).Times(3)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), gomock.Any()).
@@ -2998,6 +3105,11 @@ func (suite *UpdateRunTestSuite) TestRunningUpdatePartialFailure() {
 		Return(suite.cachedUpdate)
 
 	suite.cachedUpdate.EXPECT().
+		GetWorkflowType().
+		Return(models.WorkflowType_UPDATE).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
@@ -3013,27 +3125,32 @@ func (suite *UpdateRunTestSuite) TestRunningUpdatePartialFailure() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
-		Return([]uint32{})
+		Return([]uint32{}).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesDone().
-		Return([]uint32{})
+		Return([]uint32{}).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
-		Return(instancesTotal)
+		Return(instancesTotal).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
-		Return(nil)
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(instancesTotal)
+		Return(instancesTotal).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
-		Return(nil).Times(2)
+		Return(nil).Times(3)
 
 	suite.cachedUpdate.EXPECT().
 		GetUpdateConfig().

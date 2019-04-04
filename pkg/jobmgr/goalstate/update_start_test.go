@@ -341,6 +341,10 @@ func (suite *UpdateStartTestSuite) TestUpdateContainsUnchangedInstance() {
 		AddWorkflow(suite.updateID).
 		Return(suite.cachedUpdate)
 
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(&peloton.JobID{Value: uuid.New()})
+
 	suite.cachedUpdate.EXPECT().
 		GetState().
 		Return(&cached.UpdateStateVector{
@@ -363,7 +367,23 @@ func (suite *UpdateStartTestSuite) TestUpdateContainsUnchangedInstance() {
 
 	suite.cachedUpdate.EXPECT().
 		GetWorkflowType().
-		Return(models.WorkflowType_RESTART)
+		Return(models.WorkflowType_RESTART).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesAdded().
+		Return(nil).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesUpdated().
+		Return(nil).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetGoalState().
@@ -468,6 +488,10 @@ func (suite *UpdateStartTestSuite) TestUpdateStart_NoUnchangedInstance() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
+		ID().
+		Return(&peloton.JobID{Value: uuid.New()})
+
+	suite.cachedJob.EXPECT().
 		AddWorkflow(suite.updateID).
 		Return(suite.cachedUpdate)
 
@@ -493,7 +517,23 @@ func (suite *UpdateStartTestSuite) TestUpdateStart_NoUnchangedInstance() {
 
 	suite.cachedUpdate.EXPECT().
 		GetWorkflowType().
-		Return(models.WorkflowType_RESTART)
+		Return(models.WorkflowType_RESTART).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesAdded().
+		Return(nil).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesUpdated().
+		Return(nil).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetGoalState().
@@ -570,7 +610,23 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdate() {
 
 	suite.cachedUpdate.EXPECT().
 		GetWorkflowType().
-		Return(models.WorkflowType_UPDATE)
+		Return(models.WorkflowType_UPDATE).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesAdded().
+		Return(nil).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesUpdated().
+		Return(nil).
+		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		GetInstancesRemoved().
+		Return(nil).
+		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
 		GetState().

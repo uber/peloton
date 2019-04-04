@@ -34,7 +34,7 @@ import (
 
 	"github.com/golang/protobuf/ptypes"
 	"go.uber.org/yarpc/yarpcerrors"
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
 )
 
 const (
@@ -926,6 +926,7 @@ func printListUpdatesResponse(
 			if err := printUpdateInfo(u); err != nil {
 				return err
 			}
+			fmt.Printf("\n\n\n")
 		}
 	}
 

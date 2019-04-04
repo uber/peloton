@@ -242,6 +242,8 @@ func (h *serviceHandler) CreateJob(
 func (h *serviceHandler) ReplaceJob(
 	ctx context.Context,
 	req *svc.ReplaceJobRequest) (resp *svc.ReplaceJobResponse, err error) {
+	var updateID *peloton.UpdateID
+
 	defer func() {
 		jobID := req.GetJobId().GetValue()
 		specVersion := req.GetSpec().GetRevision().GetVersion()
@@ -261,6 +263,7 @@ func (h *serviceHandler) ReplaceJob(
 			WithField("spec_version", specVersion).
 			WithField("entity_version", entityVersion).
 			WithField("response", resp).
+			WithField("update_id", updateID.GetValue()).
 			Info("JobSVC.ReplaceJob succeeded")
 	}()
 

@@ -233,6 +233,10 @@ func (t *taskEntity) GetActionList(
 		WithField("instance_id", t.instanceID).
 		WithField("current_state", taskState.State.String()).
 		WithField("goal_state", taskGoalState.State.String()).
+		WithField("current_config_version", taskState.ConfigVersion).
+		WithField("desired_config_version", taskGoalState.ConfigVersion).
+		WithField("current_pod_run_id", taskState.MesosTaskID.GetValue()).
+		WithField("desired_pod_run_id", taskGoalState.MesosTaskID.GetValue()).
 		WithField("task_action", actionStr).
 		Info("running task action")
 

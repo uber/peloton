@@ -1245,7 +1245,7 @@ func (h *ServiceHandler) RollbackJobUpdate(
 				"message": message,
 			},
 			"result": result,
-		}).Debug("RollbackJobUpdate")
+		}).Debug("RollbackJobUpdate success")
 	}()
 	return newResponse(result, err), nil
 }
