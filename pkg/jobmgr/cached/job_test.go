@@ -2521,7 +2521,7 @@ func (suite *JobTestSuite) TestJobCreateWorkflowOnDeletedJobError() {
 	updateConfig := &pbupdate.UpdateConfig{
 		BatchSize: 10,
 	}
-	entityVersion := jobutil.GetJobEntityVersion(
+	entityVersion := versionutil.GetJobEntityVersion(
 		suite.job.runtime.GetConfigurationVersion(),
 		suite.job.runtime.GetDesiredStateVersion(),
 		suite.job.runtime.GetWorkflowVersion(),
