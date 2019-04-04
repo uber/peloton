@@ -15,6 +15,8 @@
 package handler
 
 import (
+	"reflect"
+
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pelotonv0query "github.com/uber/peloton/.gen/peloton/api/v0/query"
@@ -175,12 +177,17 @@ func ConvertTaskRuntimeToPodStatus(runtime *task.RuntimeInfo) *pod.PodStatus {
 }
 
 // ConvertTaskConfigToPodSpec converts v0 task.TaskConfig to v1alpha pod.PodSpec
-func ConvertTaskConfigToPodSpec(taskConfig *task.TaskConfig) *pod.PodSpec {
+func ConvertTaskConfigToPodSpec(taskConfig *task.TaskConfig, jobID string, instanceID uint32) *pod.PodSpec {
 	result := &pod.PodSpec{
-		PodName:                &v1alphapeloton.PodName{Value: taskConfig.GetName()},
 		Controller:             taskConfig.GetController(),
 		KillGracePeriodSeconds: taskConfig.GetKillGracePeriodSeconds(),
 		Revocable:              taskConfig.GetRevocable(),
+	}
+
+	if len(jobID) != 0 {
+		result.PodName = &v1alphapeloton.PodName{
+			Value: util.CreatePelotonTaskID(jobID, instanceID),
+		}
 	}
 
 	if taskConfig.GetConstraint() != nil {
@@ -210,18 +217,31 @@ func ConvertTaskConfigToPodSpec(taskConfig *task.TaskConfig) *pod.PodSpec {
 		}
 	}
 
-	container := &pod.ContainerSpec{
-		Name: taskConfig.GetName(),
-		Resource: &pod.ResourceSpec{
+	container := &pod.ContainerSpec{}
+	if len(taskConfig.GetName()) != 0 {
+		container.Name = taskConfig.GetName()
+	}
+
+	if taskConfig.GetResource() != nil {
+		container.Resource = &pod.ResourceSpec{
 			CpuLimit:    taskConfig.GetResource().GetCpuLimit(),
 			MemLimitMb:  taskConfig.GetResource().GetMemLimitMb(),
 			DiskLimitMb: taskConfig.GetResource().GetDiskLimitMb(),
 			FdLimit:     taskConfig.GetResource().GetFdLimit(),
 			GpuLimit:    taskConfig.GetResource().GetGpuLimit(),
-		},
-		Container: taskConfig.GetContainer(),
-		Command:   taskConfig.GetCommand(),
-		Executor:  taskConfig.GetExecutor(),
+		}
+	}
+
+	if taskConfig.GetContainer() != nil {
+		container.Container = taskConfig.GetContainer()
+	}
+
+	if taskConfig.GetCommand() != nil {
+		container.Command = taskConfig.GetCommand()
+	}
+
+	if taskConfig.GetExecutor() != nil {
+		container.Executor = taskConfig.GetExecutor()
 	}
 
 	if taskConfig.GetPorts() != nil {
@@ -254,7 +274,9 @@ func ConvertTaskConfigToPodSpec(taskConfig *task.TaskConfig) *pod.PodSpec {
 		}
 	}
 
-	result.Containers = []*pod.ContainerSpec{container}
+	if !reflect.DeepEqual(*container, pod.ContainerSpec{}) {
+		result.Containers = []*pod.ContainerSpec{container}
+	}
 
 	return result
 }
@@ -360,7 +382,7 @@ func ConvertV1SecretsToV0Secrets(secrets []*v1alphapeloton.Secret) []*peloton.Se
 func ConvertJobConfigToJobSpec(config *job.JobConfig) *stateless.JobSpec {
 	instanceSpec := make(map[uint32]*pod.PodSpec)
 	for instID, taskConfig := range config.GetInstanceConfig() {
-		instanceSpec[instID] = ConvertTaskConfigToPodSpec(taskConfig)
+		instanceSpec[instID] = ConvertTaskConfigToPodSpec(taskConfig, "", instID)
 	}
 
 	return &stateless.JobSpec{
@@ -378,7 +400,7 @@ func ConvertJobConfigToJobSpec(config *job.JobConfig) *stateless.JobSpec {
 		Labels:        ConvertLabels(config.GetLabels()),
 		InstanceCount: config.GetInstanceCount(),
 		Sla:           ConvertSLAConfigToSLASpec(config.GetSLA()),
-		DefaultSpec:   ConvertTaskConfigToPodSpec(config.GetDefaultConfig()),
+		DefaultSpec:   ConvertTaskConfigToPodSpec(config.GetDefaultConfig(), "", 0),
 		InstanceSpec:  instanceSpec,
 		RespoolId: &v1alphapeloton.ResourcePoolID{
 			Value: config.GetRespoolID().GetValue()},
@@ -681,7 +703,6 @@ func ConvertPodSpecToTaskConfig(spec *pod.PodSpec) (*task.TaskConfig, error) {
 	}
 
 	result := &task.TaskConfig{
-		Name:                   spec.GetPodName().GetValue(),
 		Controller:             spec.GetController(),
 		KillGracePeriodSeconds: spec.GetKillGracePeriodSeconds(),
 		Revocable:              spec.GetRevocable(),
@@ -694,6 +715,8 @@ func ConvertPodSpecToTaskConfig(spec *pod.PodSpec) (*task.TaskConfig, error) {
 		result.Command = mainContainer.GetCommand()
 		result.Executor = mainContainer.GetExecutor()
 	}
+
+	result.Name = mainContainer.GetName()
 
 	if spec.GetLabels() != nil {
 		var labels []*peloton.Label
@@ -891,14 +914,12 @@ func ConvertTaskInfosToPodInfos(taskInfos []*task.TaskInfo) []*pod.PodInfo {
 	var podInfos []*pod.PodInfo
 	for _, taskInfo := range taskInfos {
 		podInfo := &pod.PodInfo{
-			Spec:   ConvertTaskConfigToPodSpec(taskInfo.GetConfig()),
-			Status: ConvertTaskRuntimeToPodStatus(taskInfo.GetRuntime()),
-		}
-		podInfo.Spec.PodName = &v1alphapeloton.PodName{
-			Value: util.CreatePelotonTaskID(
+			Spec: ConvertTaskConfigToPodSpec(
+				taskInfo.GetConfig(),
 				taskInfo.GetJobId().GetValue(),
 				taskInfo.GetInstanceId(),
 			),
+			Status: ConvertTaskRuntimeToPodStatus(taskInfo.GetRuntime()),
 		}
 		podInfos = append(podInfos, podInfo)
 	}
