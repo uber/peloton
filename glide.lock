@@ -1,5 +1,5 @@
-hash: 7f194152b258c489aedea6bb3db85296fd2dab645830b9d76a74fbcdadce7d61
-updated: 2019-03-14T12:23:23.244602-07:00
+hash: 9803ceefbaf96124d8b1eadec4cabc13593ccfc38bb47c5084c8a7b1669fc58a
+updated: 2019-04-04T16:02:09.864067-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -7,14 +7,18 @@ imports:
   - parse
 - name: github.com/alecthomas/units
   version: 2efee857e7cfd4f3d0138cc3cbb1b4966962b93a
+- name: github.com/anmitsu/go-shlex
+  version: 648efa622239a2f6ff949fed78ee37b48d499ba4
 - name: github.com/apache/thrift
-  version: 53dd39833a08ce33582e5ff31fa18bb4735d6731
+  version: b2a4d4ae21c789b689dd162deb819665567f481c
   subpackages:
   - lib/go/thrift
 - name: github.com/beorn7/perks
   version: 4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9
   subpackages:
   - quantile
+- name: github.com/BurntSushi/toml
+  version: 3012a1dbe2e4bd1391d42b32f0577cb7bbc7f005
 - name: github.com/cactus/go-statsd-client
   version: 138b925ccdf617776955904ba7759fce64406cec
   subpackages:
@@ -37,6 +41,8 @@ imports:
   - store/zookeeper
 - name: github.com/evalphobia/logrus_sentry
   version: b78b27461c8163c45abf4ab3a8330d2b1ee9456a
+- name: github.com/fatih/structtag
+  version: 76ae1d6d2117609598c7d4e8f3e938145f204e8f
 - name: github.com/gemnasium/migrate
   version: 603c58f2c1d0882d7d5b24791e6e5af5ab392e44
   subpackages:
@@ -57,15 +63,40 @@ imports:
 - name: github.com/gogo/protobuf
   version: 100ba4e885062801d56799d78530b73b178a78f3
   subpackages:
+  - gogoproto
   - jsonpb
+  - plugin/compare
+  - plugin/defaultcheck
+  - plugin/description
+  - plugin/embedcheck
+  - plugin/enumstringer
+  - plugin/equal
+  - plugin/face
+  - plugin/gostring
+  - plugin/marshalto
+  - plugin/oneofcheck
+  - plugin/populate
+  - plugin/size
+  - plugin/stringer
+  - plugin/testgen
+  - plugin/union
+  - plugin/unmarshal
   - proto
+  - protoc-gen-gogo/descriptor
+  - protoc-gen-gogo/generator
+  - protoc-gen-gogo/grpc
+  - protoc-gen-gogo/plugin
+  - protoc-gen-gogoslick
   - sortkeys
   - types
+  - vanity
+  - vanity/command
 - name: github.com/golang/mock
   version: 51421b967af1f557f93a59e0057aaf15ca02e29c
   subpackages:
   - gomock
   - mockgen
+  - mockgen/model
 - name: github.com/golang/protobuf
   version: 8ee79997227bf9b34611aee7946ae64735e6fd93
   subpackages:
@@ -86,8 +117,12 @@ imports:
   version: 7554cd9344cec97297fa6649b055a8c98c2a1e55
 - name: github.com/hashicorp/go-multierror
   version: ed905158d87462226a13fe39ddf685ea65f1c11f
-- name: github.com/jmoiron/sqlx
-  version: cac998c4f0959c19c638c523e374fa8e4e0bcfe3
+- name: github.com/jessevdk/go-flags
+  version: c6ca198ec95c841fdb89fc0de7496fed11ab854e
+- name: github.com/kisielk/errcheck
+  version: e14f8d59a22d460d56c5ee92507cd94c78fbf274
+  subpackages:
+  - internal/errcheck
 - name: github.com/lann/builder
   version: f22ce00fd9394014049dad11c244859432bd6820
 - name: github.com/lann/ps
@@ -147,6 +182,10 @@ imports:
   - model
 - name: github.com/prometheus/procfs
   version: fcdb11ccb4389efb1b210b7ffb623ab71c5fdd60
+- name: github.com/samuel/go-thrift
+  version: e8b6b52668fe9c972220addc130edf46a9b466b1
+  subpackages:
+  - parser
 - name: github.com/samuel/go-zookeeper
   version: 059fe7f9753e88663c3437e6e633ad7a95c118b6
   repo: https://github.com/nomis52/go-zookeeper.git
@@ -164,8 +203,6 @@ imports:
   - mock
   - require
   - suite
-- name: github.com/uber-common/bark
-  version: 8841a0f8e7ca869284ccb29c08a14cf3f4310f46
 - name: github.com/uber-go/atomic
   version: 1ea20fb1cbb1cc08cbd0d913a96dead89aa18289
 - name: github.com/uber-go/automaxprocs
@@ -185,10 +222,11 @@ imports:
   - prometheus
   - statsd
 - name: github.com/uber/tchannel-go
-  version: 162ecb0dc97845a0c42aae3899651dba111085e5
+  version: 4e23485fd5de65e8676619a55e711eea7437041e
   subpackages:
   - internal/argreader
   - relay
+  - thrift/thrift-gen
   - tnet
   - tos
   - trand
@@ -200,8 +238,10 @@ imports:
   subpackages:
   - internal/runtime
   - maxprocs
+- name: go.uber.org/dig
+  version: 7ff117f761a3f1b3eb521945c17a1091438eb6de
 - name: go.uber.org/fx
-  version: 9c82e1daccdcbd27387a1f044bd3dc6d3f878bf4
+  version: 3de044da969b90ad0a3e4a7867a74662f645f3f9
 - name: go.uber.org/goleak
   version: b12bb1eedf12e90b75899bf8a73ce2d8fc4d9938
   subpackages:
@@ -209,21 +249,44 @@ imports:
 - name: go.uber.org/multierr
   version: 3c4937480c32f4c13a875a1829af76c98ca3d40a
 - name: go.uber.org/net/metrics
-  version: 1e19de5b971489a45d178e12a0f72a78c70e300e
+  version: 0327310766f9da183152db859680ae0345c31957
   subpackages:
   - bucket
   - push
   - tallypush
 - name: go.uber.org/thriftrw
-  version: c8df431918b3a030ed15f475ef2247d235f081a8
+  version: 09aadc27c679160ef322113d1daf634b643825d9
   subpackages:
+  - ast
+  - compile
+  - gen
+  - idl
+  - idl/internal
+  - internal/concurrent
+  - internal/curry
+  - internal/envelope
+  - internal/envelope/exception
+  - internal/frame
+  - internal/goast
+  - internal/multiplex
+  - internal/plugin
+  - internal/plugin/builtin/pluginapigen
+  - internal/process
+  - internal/semver
+  - plugin
+  - plugin/api
   - protocol
   - protocol/binary
   - ptr
+  - thriftreflect
   - version
   - wire
+- name: go.uber.org/tools
+  version: ce2550dad7144b81ae2f67dc5e55597643f6902b
+  subpackages:
+  - update-license
 - name: go.uber.org/yarpc
-  version: 124245f8b772089faceae70bdbc6e7b9f3bcdf0f
+  version: d7168bf2dc382eb7e5c016992a63bf1a3eac3c7d
   subpackages:
   - api/backoff
   - api/encoding
@@ -270,6 +333,10 @@ imports:
   subpackages:
   - bcrypt
   - blowfish
+- name: golang.org/x/lint
+  version: d0100b6bd8b389f0385611eb39152c4d7c3a7905
+  subpackages:
+  - golint
 - name: golang.org/x/net
   version: 891ebc4b82d6e74f468c533b06f983c7be918a96
   subpackages:
@@ -297,6 +364,24 @@ imports:
   - transform
   - unicode/bidi
   - unicode/norm
+- name: golang.org/x/tools
+  version: 923d25813098b2ffdf1b4bb7ee4ec425fef796a9
+  repo: https://github.com/golang/tools
+  subpackages:
+  - cmd/stringer
+  - go/ast/astutil
+  - go/ast/inspector
+  - go/buildutil
+  - go/gcexportdata
+  - go/internal/cgo
+  - go/internal/gcimporter
+  - go/internal/packagesdriver
+  - go/loader
+  - go/packages
+  - go/types/typeutil
+  - internal/fastwalk
+  - internal/gopathwalk
+  - internal/semver
 - name: google.golang.org/genproto
   version: b0a3dcfcd1a9bd48e63634bd8802960804cf8315
   subpackages:
@@ -354,4 +439,28 @@ imports:
   version: b24eb346a94c3ba12c1da1e564dbac1b498a77ce
 - name: gopkg.in/yaml.v2
   version: a5b47d31c556af34a302ce5d659e6fea44d90de0
+- name: honnef.co/go/tools
+  version: d36bf90409063c0fe4fecdc07cc71e25b59a4050
+  subpackages:
+  - arg
+  - callgraph
+  - callgraph/static
+  - cmd/staticcheck
+  - config
+  - deprecated
+  - functions
+  - internal/sharedcheck
+  - lint
+  - lint/lintdsl
+  - lint/lintutil
+  - lint/lintutil/format
+  - simple
+  - ssa
+  - ssa/ssautil
+  - ssautil
+  - staticcheck
+  - staticcheck/vrp
+  - stylecheck
+  - unused
+  - version
 testImports: []

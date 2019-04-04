@@ -12,8 +12,6 @@ import:
   - proto
   - protoc
   - protoc-gen-go
-- package: go.uber.org/fx
-- package: github.com/jmoiron/sqlx
 - package: github.com/pborman/uuid
   version: master
 - package: golang.org/x/net
@@ -37,7 +35,7 @@ import:
   subpackages:
   - internal/stack
 - package: go.uber.org/yarpc
-  version: 1.28.0
+  version: ^1.37.0
   subpackages:
   - internal/protoplugin
 - package: github.com/cactus/go-statsd-client
@@ -54,8 +52,6 @@ import:
   version: 0a9835d809fb647a62611d30cb792e0b5dd65b11
 - package: gopkg.in/yaml.v2
   version: a5b47d31c556af34a302ce5d659e6fea44d90de0
-- package: github.com/uber-common/bark
-  version: 8841a0f8e7ca869284ccb29c08a14cf3f4310f46
 - package: github.com/gemnasium/migrate
   version: v1.4.1
 - package: github.com/docker/leadership
@@ -66,8 +62,6 @@ import:
   repo: https://github.com/craimbert/libkv.git
 - package: github.com/gocql/gocql
   version: 56a164ee9f3135e9cfe725a6d25939f24cb2d044
-- package: github.com/alecthomas/template
-- package: github.com/alecthomas/units
 - package: github.com/gogo/protobuf
   version: v0.4
   subpackages:
@@ -77,7 +71,7 @@ import:
 - package: github.com/evalphobia/logrus_sentry
   version: b78b27461c8163c45abf4ab3a8330d2b1ee9456a
 - package: github.com/golang/mock
-  version: ^v1.0.0
+  version: ^1
   subpackages:
   - mockgen
 - package: github.com/uber-go/automaxprocs
@@ -99,3 +93,9 @@ import:
   version: dev
 - package: golang.org/x/crypto
   version: a1f597ede03a7bef967a422b5b3a5bd08805a01e
+
+# packages below needed for proto gen files
+- package: go.uber.org/fx
+  version: ^1
+- package: go.uber.org/dig
+  version: ^1.7
