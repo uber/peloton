@@ -50,6 +50,7 @@ message DeleteVolumeRequest {
 message DeleteVolumeResponse {}
 
 // Volume Manager service interface
+// Deprecated
 service VolumeService
 {
   // List associated volumes for given job.

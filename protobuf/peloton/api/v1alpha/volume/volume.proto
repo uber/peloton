@@ -9,7 +9,58 @@ option java_package = "peloton.api.v1alpha.volume";
 
 import "peloton/api/v1alpha/peloton.proto";
 
+// Volume configuration.
+message VolumeSpec {
+  // Volume's name. Must be unique within a pod.
+  string name = 1;
+
+  // Type of the volume
+  enum VolumeType {
+    // Invalid volume type
+    VOLUME_TYPE_INVALID = 0;
+    // Empty directory for the pod.
+    VOLUME_TYPE_EMPTY_DIR = 1;
+    // Host path mapped into the pod.
+    VOLUME_TYPE_HOST_PATH = 2;
+  }
+
+  // Type of the volume for the pod.
+  VolumeType type = 2;
+
+  // Represents an empty directory for a pod.
+  // This is available only for the Kubelet runtime.
+  message EmptyDirVolumeSource {
+    // What type of storage medium should back this directory.
+    // The default is "" which means to use the node's default medium.
+    // Must be an empty string (default) or Memory.
+    string medium = 1;
+
+    // Total amount of local storage required for this EmptyDir volume.
+    // The size limit is also applicable for memory medium.
+    // The maximum usage on memory medium EmptyDir would be the minimum value
+    // between the value specified here and the sum of memory limits of all
+    // containers in a pod. The default is nil which means that the limit is undefined.
+    uint32 size_in_mb = 2;
+  }
+
+  // EmptyDir represents a temporary directory that shares a pod's lifetime.
+  EmptyDirVolumeSource empty_dir = 3;
+
+  // Represents a host path mapped into a pod.
+  message HostPathVolumeSource {
+    // Path of the directory on the host.
+    string path = 1;
+  }
+
+  // HostPath represents a pre-existing file or directory on the host
+  // machine that is directly exposed to the container.
+  HostPathVolumeSource host_path = 4;
+
+  // TBD add secrets
+}
+
 // States of a persistent volume
+// Deprecated
 enum VolumeState {
   // Reserved for future compatibility of new states.
   VOLUME_STATE_INVALID = 0;
@@ -25,6 +76,7 @@ enum VolumeState {
 }
 
 // Persistent volume information.
+// Deprecated
 message PersistentVolumeInfo {
   // ID of the persistent volume.
   peloton.VolumeID volume_id = 1;

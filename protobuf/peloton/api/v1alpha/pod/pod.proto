@@ -1,4 +1,9 @@
-// This file defines the Pod related messages in Peloton API
+// This file defines the Pod related messages in Peloton API.
+// The Pod APIs are heavily dependent on the API provided by
+// the runtime running in the host which brings up the containers
+// on the host. Hence, they look very similar to the pod/container
+// specification and status provided by Kubelet and Mesos (with Default
+// and Thermos executors) which are the host runtimes supported in Peloton.
 
 syntax = "proto3";
 
@@ -9,7 +14,9 @@ option java_package = "peloton.api.v1alpha.pod";
 
 import "mesos/v1/mesos.proto";
 import "peloton/api/v1alpha/peloton.proto";
+import "peloton/api/v1alpha/pod/apachemesos/apachemesos.proto";
 import "peloton/api/v1alpha/query/query.proto";
+import "peloton/api/v1alpha/volume/volume.proto";
 
 
 // Resource configuration for a container.
@@ -31,27 +38,64 @@ message ResourceSpec {
   double gpu_limit = 5;
 }
 
+// CommandSpec describes a command to be run in the container.
+message CommandSpec {
+  // value is the command line to execute inside the container.
+  string value = 1;
+
+  // Arguments to the command.
+  repeated string arguments = 2;
+}
+
+// HTTPGetSpec describes an action based on HTTP Get request.
+message HTTPGetSpec {
+
+  // HTTPHeader describes a custom HTTP header to be used in the HTTP request.
+  message HTTPHeader {
+    // The header field name
+    string name = 1;
+
+    // The header field value
+    string value = 2;
+  }
+
+  // The scheme to use for connecting to the host.
+  // Currently http and https are supported.
+  string scheme = 1;
+
+  // Port to send the HTTP GET.
+  uint32 port = 2;
+
+  // The request path on the HTTP server.
+  string path = 3;
+
+  // Custom HTTP headers to set in the request.
+  // HTTP allows repeated headers.
+  repeated HTTPHeader http_headers = 4;
+}
+
 // Health check configuration for a container
 message HealthCheckSpec {
   // Whether the health check is enabled.
   bool enabled = 1;
 
   // Start time wait in seconds.
-  // Zero or empty value would use default value of 15 from Mesos.
+  // Default value is 15.
   uint32 initial_interval_secs = 2;
 
   // Interval in seconds between two health checks.
-  // Zero or empty value would use default value of 10 from Mesos.
+  // Default value is 10.
   uint32 interval_secs = 3;
 
   // Max number of consecutive failures before failing health check.
-  // Zero or empty value would use default value of 3 from Mesos.
+  // Default value is 3.
   uint32 max_consecutive_failures = 4;
 
   // Health check command timeout in seconds.
-  // Zero or empty value would use default value of 20 from Mesos.
+  // Default value is 20.
   uint32 timeout_secs = 5;
 
+  // Type of health check to run
   enum HealthCheckType {
     // Reserved for future compatibility of new types.
     HEALTH_CHECK_TYPE_UNKNOWN = 0;
@@ -61,11 +105,9 @@ message HealthCheckSpec {
 
     // HTTP endpoint based health check
     HEALTH_CHECK_TYPE_HTTP = 2;
-
-    // gRPC based health check
-    HEALTH_CHECK_TYPE_GRPC = 3;
   }
 
+  // Deprecated.
   message CommandCheck {
     // Health check command to be executed.
     // Note that this command by default inherits all environment varibles from
@@ -76,6 +118,7 @@ message HealthCheckSpec {
     bool unshare_environments = 2;
   }
 
+  // Deprecated.
   message HTTPCheck {
     // HTTP health check to be executed.
     // Sends a GET request to scheme://<host>:port/path. Host is not
@@ -91,13 +134,29 @@ message HealthCheckSpec {
     string path = 3;
   }
 
+  // Type of health check to run
   HealthCheckType type = 6;
 
   // Only applicable when type is `COMMAND`.
+  // Deprecated
   CommandCheck command_check = 7;
 
   // Only applicable when type is 'HTTP'.
+  // Deprecated
   HTTPCheck http_check = 8;
+
+  // Minimum consecutive successes for the health check to be
+  // considered successful after a failure. Defaults to 1.
+  // Only available in the Kubelet runtime.
+  uint32 success_threshold = 9;
+
+  // Command to run in the container to do the health check.
+  // Only applicable when type is `COMMAND`.
+  CommandSpec command = 10;
+
+  // HTTP Get request to perform.
+  // Only applicable when type is 'HTTP'.
+  HTTPGetSpec http_get = 11;
 }
 
 
@@ -169,7 +228,7 @@ message LabelConstraint {
   // Determines which constraint there should be on the number of occurrences of the label.
   Condition condition = 2;
   // The label which this defines a constraint on:
-  // For Kind == HOST, each attribute on Mesos agent is transformed to a label,
+  // For Kind == HOST, each attribute on host agent is transformed to a label,
   // with `hostname` as a special label which is always inferred from agent
   // hostname and set.
   peloton.Label label = 3;
@@ -194,12 +253,36 @@ message PreemptionPolicy {
 }
 
 // Persistent volume configuration for a pod.
+// Deprecated
 message PersistentVolumeSpec {
     // Volume mount path inside container.
     string container_path = 1;
 
     // Volume size in MB.
     uint32 size_mb = 2;
+}
+
+// Environment represents an environment variable present in a container.
+message Environment {
+  // Name of the environment variable.
+  string name = 1;
+
+  // Value of the environment variable.
+  string value = 2;
+
+  // TBD add secret environment variables
+}
+
+// VolumeMount describes a mounting of a Volume within a container.
+message VolumeMount {
+  // This must match the Name of a Volume in the PodSpec.
+  string name = 1;
+
+  // Mounted read-only if true, read-write otherwise (false or unspecified).
+  bool read_only = 2;
+
+  // Path within the container at which the volume should be mounted.
+  string mount_path = 3;
 }
 
 // A single application container running inside a pod
@@ -213,12 +296,15 @@ message ContainerSpec {
   ResourceSpec resource = 2;
 
   // Container config of the container
+  // Deprecated.
   mesos.v1.ContainerInfo container = 3;
 
   // Command line config of the container
+  // Deprecated.
   mesos.v1.CommandInfo command = 4;
 
   // Custom executor config of the task.
+  // Deprecated.
   mesos.v1.ExecutorInfo executor = 8;
 
   // Liveness health check config of the container
@@ -230,6 +316,18 @@ message ContainerSpec {
 
   // List of network ports to be allocated for the pod
   repeated PortSpec ports = 7;
+
+  // Entrypoint command.
+  CommandSpec entrypoint = 9;
+
+  // List of environment variables to set in the container.
+  repeated Environment environment = 10;
+
+  // Image name.
+  string image = 11;
+
+  // Pod volumes to mount into the container's filesystem.
+  repeated VolumeMount volume_mounts = 12;
 }
 
 // Pod configuration for a given job instance
@@ -264,6 +362,7 @@ message PodSpec {
   RestartPolicy restart_policy = 6;
 
   // Persistent volume config of the pod.
+  // Deprecated
   PersistentVolumeSpec volume = 7;
 
   // Preemption policy of the pod
@@ -282,6 +381,13 @@ message PodSpec {
 
   // revocable represents pod to use physical or slack resources.
   bool revocable = 11;
+
+  // List of volumes that can be mounted by containers belonging to the pod.
+  repeated volume.VolumeSpec volumes = 12;
+
+  // Extra configuration specific to the Mesos runtime.
+  // Experimental and is subject to change.
+  apachemesos.PodSpec mesos_spec = 13;
 }
 
 // Runtime states of a container in a pod
@@ -328,14 +434,10 @@ enum HealthState {
   // then the health state is UNKNOWN.
   HEALTH_STATE_UNKNOWN = 2;
 
-  // In a Mesos event, If the healthy field is true and
-  // the reason field is REASON_TASK_HEALTH_CHECK_STATUS_UPDATED
-  // the health state of the container is HEALTHY
+  // The container passes the health check.
   HEALTH_STATE_HEALTHY = 3;
 
-  // In a Mesos event, If the healthy field is false and
-  // the reason field is REASON_TASK_HEALTH_CHECK_STATUS_UPDATED
-  // the health state of the container is UNHEALTHY
+  // The container failed to pass the health check.
   HEALTH_STATE_UNHEALTHY = 4;
 }
 
@@ -462,7 +564,7 @@ enum PodState {
   POD_STATE_LAUNCHED = 7;
 
   // Either init containers are starting/running or the main containers
-  // in the pod are being started by Mesos agent
+  // in the pod are being started.
   POD_STATE_STARTING = 8;
 
   // All containers in the pod are running
@@ -525,13 +627,13 @@ message PodStatus {
   string message = 9;
 
   // The reason that explains the current state of a pod.
-  // See Mesos TaskStatus.Reason for more details.
   string reason = 10;
 
   // The number of times the pod has failed after retries.
   uint32 failure_count = 11;
 
   // persistent volume id
+  // Deprecated
   peloton.VolumeID volume_id = 12;
 
   // The entity version currently used by the pod.
@@ -545,6 +647,7 @@ message PodStatus {
   peloton.EntityVersion desired_version = 14;
 
   // the id of mesos agent on the host to be launched.
+  // Deprecated.
   mesos.v1.AgentID agent_id = 15;
 
   // Revision of the current pod status.
@@ -565,6 +668,9 @@ message PodStatus {
   // The name of the host where the pod should be running on upon restart.
   // It is used for best effort in-place update/restart.
   string desiredHost = 20;
+
+  // The identifier for the host runtime agent.
+  string host_id = 21;
 }
 
 // Info of a pod in a Job
