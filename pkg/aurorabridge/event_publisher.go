@@ -28,6 +28,7 @@ import (
 
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	pod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	watch "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
 	watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
@@ -49,6 +50,14 @@ const (
 	// time to retry on creating
 	// watch stream again after failure
 	watchFailureBackoff = 2 * time.Second
+
+	// podBuckets defines number of buckets to create for pods
+	// summaries to publish
+	podBuckets = 25
+
+	// podBucketSize defines number of pod summaries to buffer without
+	// blocking the watch stream to add more pods.
+	podBucketSize = 1000
 )
 
 // EventPublisher sets up a watch on pod state change event and then
@@ -83,6 +92,10 @@ type eventPublisher struct {
 	// is running to receive the pod state changes.
 	isWatchPodRunning atomic.Bool
 
+	// isPublisherWorkersRunning ensures the pod event publisher workers
+	// are spawed once only for entire lifecycle
+	isPublisherWorkersRunning atomic.Bool
+
 	// publish events is a flag to determine whether to publish task state
 	// change events to kafka or not
 	publishEvents bool
@@ -92,6 +105,10 @@ type eventPublisher struct {
 
 	// http client to post pod state changes on kafka-rest-proxy
 	client *http.Client
+
+	// the buckets for pods, each bucket persists pod events for same pod
+	// in order they were received from watch stream
+	buckets []chan *pod.PodSummary
 }
 
 // NewEventPublisher return event publisher to stream pod state changes
@@ -124,6 +141,19 @@ func (e *eventPublisher) Start() {
 		return
 	}
 
+	if !e.isPublisherWorkersRunning.Swap(true) {
+		e.buckets = make([]chan *pod.PodSummary, podBuckets)
+
+		for i := 0; i < podBuckets; i++ {
+			e.buckets[i] = make(chan *pod.PodSummary, podBucketSize)
+			go func(bucket chan *pod.PodSummary) {
+				for pod := range bucket {
+					e.publishEvent(pod.GetPodName(), pod.GetStatus().GetPodId())
+				}
+			}(e.buckets[i])
+		}
+	}
+
 	log.Info("Start event publisher")
 	e.elected.Store(true)
 	go e.ensureWatchPodRunning()
@@ -142,8 +172,15 @@ func (e *eventPublisher) Stop() {
 
 	if e.isEnsureWatchPodRunning.Load() {
 		e.stopEnsureWatchPod <- struct{}{}
-		log.Info("Stop event publisher")
 	}
+
+	if e.isPublisherWorkersRunning.Swap(false) {
+		for i := 0; i < podBuckets; i++ {
+			close(e.buckets[i])
+		}
+	}
+
+	log.Info("Stop event publisher")
 }
 
 // ensures that the watch pod is always running
@@ -223,10 +260,17 @@ func (e *eventPublisher) watchPod(
 			return
 		}
 
-		// TODO (varung): Group pods per task in a bucket and syncronize
-		// their publish in ascending timestamp order
 		for _, pod := range msg.GetPods() {
-			go e.publishEvent(pod.GetPodName(), pod.GetStatus().GetPodId())
+			_, instanceID, err := util.ParseTaskID(pod.GetPodName().GetValue())
+			if err != nil {
+				log.WithField("pod_name", pod.GetPodName().GetValue()).
+					WithError(err).
+					Error("failed for parse pod_name")
+				continue
+			}
+
+			index := instanceID % uint32(podBuckets)
+			e.buckets[index] <- pod
 		}
 
 		select {
