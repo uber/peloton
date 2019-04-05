@@ -49,7 +49,8 @@ func UpdateAbortIfNeeded(ctx context.Context, entity goalstate.Entity) error {
 
 	// maybe abort a workflow of a terminated job, reenenque job goal
 	// state engine to untrack
-	if util.IsPelotonJobStateTerminal(runtime.GetState()) {
+	if util.IsPelotonJobStateTerminal(runtime.GetState()) &&
+		util.IsPelotonJobStateTerminal(runtime.GetGoalState()) {
 		goalStateDriver.EnqueueJob(updateEnt.jobID, time.Now())
 	}
 
@@ -157,7 +158,8 @@ func UpdateUntrack(ctx context.Context, entity goalstate.Entity) error {
 
 	// update can be applied to a terminated job,
 	// need to remove job from cache upon completion
-	if util.IsPelotonJobStateTerminal(runtime.GetState()) {
+	if util.IsPelotonJobStateTerminal(runtime.GetState()) &&
+		util.IsPelotonJobStateTerminal(runtime.GetGoalState()) {
 		goalStateDriver.EnqueueJob(jobID, time.Now())
 	}
 

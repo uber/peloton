@@ -137,6 +137,58 @@ func (suite *UpdateActionsTestSuite) TestUpdateCheckIfAbortedRunUpdate() {
 	suite.NoError(UpdateAbortIfNeeded(context.Background(), suite.updateEnt))
 }
 
+// TestUpdateAbortIfNeededUntrackTerminatedJob tests that UpdateAbortIfNeeded
+// would untrack a terminated job
+func (suite *UpdateActionsTestSuite) TestUpdateAbortIfNeededTerminatedJob() {
+	jobRuntime := &pbjob.RuntimeInfo{
+		UpdateID:  suite.updateID,
+		State:     pbjob.JobState_KILLED,
+		GoalState: pbjob.JobState_KILLED,
+	}
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateEnt.id).
+		Return(suite.cachedUpdate)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	suite.NoError(UpdateAbortIfNeeded(context.Background(), suite.updateEnt))
+}
+
+// TestUpdateAbortIfNeededTerminatedJobToBeRestarted tests that UpdateAbortIfNeeded
+// would not untrack a terminated job that would restart
+func (suite *UpdateActionsTestSuite) TestUpdateAbortIfNeededTerminatedJobToBeRestarted() {
+	jobRuntime := &pbjob.RuntimeInfo{
+		UpdateID:  suite.updateID,
+		State:     pbjob.JobState_KILLED,
+		GoalState: pbjob.JobState_RUNNING,
+	}
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		AddWorkflow(suite.updateEnt.id).
+		Return(suite.cachedUpdate)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	suite.NoError(UpdateAbortIfNeeded(context.Background(), suite.updateEnt))
+}
+
 // TestUpdateCheckIfAbortedUpdateAbort tests that the current update in the
 // goal state engine and the job runtime are not the same
 func (suite *UpdateActionsTestSuite) TestUpdateCheckIfAbortedUpdateAbort() {
@@ -490,12 +542,62 @@ func (suite *UpdateActionsTestSuite) TestUpdateUntrack() {
 	suite.NoError(err)
 }
 
-// TestUpdateUntrack_TerminalJob tests untracking an update would untrack
-// a terminated job
+// TestUpdateUntrackTerminatedJobToBeRestarted tests untracking an update would untrack
+// a terminated job that would be started again
+func (suite *UpdateActionsTestSuite) TestUpdateUntrackTerminatedJobToBeRestarted() {
+	jobRuntime := &pbjob.RuntimeInfo{
+		UpdateID:  suite.updateID,
+		State:     pbjob.JobState_FAILED,
+		GoalState: pbjob.JobState_RUNNING,
+	}
+	updateInfo := &models.UpdateModel{
+		State: pbupdate.State_INITIALIZED,
+	}
+
+	prevUpdateIDs := []*peloton.UpdateID{
+		{Value: uuid.NewRandom().String()},
+		{Value: uuid.NewRandom().String()},
+	}
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	suite.updateGoalStateEngine.EXPECT().
+		Delete(gomock.Any()).
+		Do(func(updateEntity goalstate.Entity) {
+			suite.Equal(suite.jobID.GetValue(), updateEntity.GetID())
+		})
+
+	suite.cachedJob.EXPECT().
+		ClearWorkflow(suite.updateID).
+		Return()
+
+	suite.updateStore.EXPECT().
+		GetUpdatesForJob(gomock.Any(), suite.jobID.GetValue()).
+		Return(prevUpdateIDs, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdateProgress(gomock.Any(), gomock.Any()).
+		Return(updateInfo, nil)
+	suite.updateGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any())
+
+	err := UpdateUntrack(context.Background(), suite.updateEnt)
+	suite.NoError(err)
+}
+
+// TestUpdateUntrackTerminatedJob tests untracking an update would untrack
+// a terminated job that would not be started again
 func (suite *UpdateActionsTestSuite) TestUpdateUntrackTerminatedJob() {
 	jobRuntime := &pbjob.RuntimeInfo{
-		UpdateID: suite.updateID,
-		State:    pbjob.JobState_KILLED,
+		UpdateID:  suite.updateID,
+		State:     pbjob.JobState_FAILED,
+		GoalState: pbjob.JobState_KILLED,
 	}
 	updateInfo := &models.UpdateModel{
 		State: pbupdate.State_INITIALIZED,

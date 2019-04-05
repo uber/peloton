@@ -79,8 +79,6 @@ var (
 	_isoVersionsJobRules = map[job.JobState]map[job.JobState]JobAction{
 		job.JobState_RUNNING: {
 			job.JobState_INITIALIZED:   CreateTasksAction,
-			job.JobState_SUCCEEDED:     JobStateInvalidAction,
-			job.JobState_FAILED:        JobStateInvalidAction,
 			job.JobState_KILLING:       JobStateInvalidAction,
 			job.JobState_UNINITIALIZED: RecoverAction,
 		},
