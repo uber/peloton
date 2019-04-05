@@ -65,6 +65,15 @@ def parse_arguments(args):
         dest='output_file_prefix',
         help='the output file prefix to store a list finished perf results',
     )
+
+    # Run a mini test suite
+    parser.add_argument(
+        '--mini',
+        action='store_true',
+        default=False,
+        help='run a mini test suite',
+    )
+
     return parser.parse_args(args)
 
 
@@ -114,35 +123,30 @@ def main():
     peloton_version = cluster_config['Peloton Version']
     records = []
 
-    for num_tasks in NUM_TASKS:
-        for sleep_time in SLEEP_TIME_SEC:
-            for instance_config in USE_INSTANCE_CONFIG:
-                try:
-                    job = pf_client.get_batch_job()
-                    pf_client.create_job(job, num_tasks,
-                                         instance_config, sleep_time)
-                    succeeded, start, completion = \
-                        pf_client.monitoring_job(job)
-                except Exception as e:
-                    msg = "TaskNum %s && SleepTime %s && InstanceConfig %s" % (
-                        num_tasks, sleep_time, instance_config)
-                    print "test create job: job creation failed: %s (%s)" % (
-                        e, msg)
-                    continue
-                record = {
-                    'TaskNum': num_tasks,
-                    'Sleep(s)': sleep_time,
-                    'UseInsConf': instance_config,
-                    'Cores': agent_num,
-                }
-                if succeeded:
-                    record.update({
-                        'Start(s)': start,
-                        'Exec(s)': completion,
-                    })
-
-                print(record)
-                records.append(record)
+    if args.mini:
+        print "Running mini test suite"
+        # Run one test to spin 50k tasks, no instance config and 10 sec sleep
+        record = run_one_test(pf_client, 50000, False, 10, agent_num)
+        records.append(record)
+    else:
+        for num_tasks in NUM_TASKS:
+            for sleep_time in SLEEP_TIME_SEC:
+                for instance_config in USE_INSTANCE_CONFIG:
+                    try:
+                        record = run_one_test(
+                            pf_client,
+                            num_tasks,
+                            instance_config,
+                            sleep_time,
+                            agent_num)
+                    except Exception as e:
+                        msg = "TaskNum %s && " % (num_tasks) \
+                            + "SleepTime %s && " % (sleep_time) \
+                            + "InstanceConfig %s" % (instance_config)
+                        print "test create job: " \
+                            + "job creation failed: %s (%s)" % (e, msg)
+                        continue
+                    records.append(record)
 
     df = pd.DataFrame(
         records,
@@ -155,6 +159,9 @@ def main():
 
     # write results to '$base_path$_job_create.csv'.
     df.to_csv(output_csv_files_list[0], sep='\t')
+
+    if args.mini:
+        return
 
     t = PerformanceTest(pf_client, peloton_version)
 
@@ -203,6 +210,25 @@ def main():
     # pupdate_df = t.perf_test_stateless_parallel_updates()
     # if pupdate_df is not None:
     #     pupdate_df.to_csv(output_csv_files_list[5], sep='\t')
+
+
+def run_one_test(pf_client, num_tasks, instance_config, sleep_time, agent_num):
+    job = pf_client.get_batch_job()
+    pf_client.create_job(job, num_tasks, instance_config, sleep_time)
+    succeeded, start, completion = pf_client.monitoring_job(job)
+    record = {
+        'TaskNum': num_tasks,
+        'Sleep(s)': sleep_time,
+        'UseInsConf': instance_config,
+        'Cores': agent_num,
+    }
+    if succeeded:
+        record.update({
+            'Start(s)': start,
+            'Exec(s)': completion,
+        })
+    print record
+    return record
 
 
 class perfCounter():

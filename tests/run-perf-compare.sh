@@ -58,6 +58,7 @@ if [[ -z "${COMMIT_HASH}" ]]; then
   COMMIT_HASH=`make commit-hash`
 fi
 
+
 [[ $(uname) == Darwin || -n $JENKINS_HOME ]] && docker_cmd='docker' || docker_cmd='sudo docker'
 
 cur_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -106,7 +107,7 @@ run_perf_test()
   # so that vcluster teardown is run even if the benchmark fails.
   rc=0
   tests/performance/multi_benchmark.py \
-  -i "CONF_${vcluster_name}" \
+  ${MINI_TEST_SUITE} -i "CONF_${vcluster_name}" \
   -o ${outfile} || rc=$?
   tools/vcluster/main.py ${vcluster_args} teardown
 
