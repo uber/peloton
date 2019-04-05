@@ -19,4 +19,5 @@ event_publisher:
   # This is invalid value and must be set in production.yaml file
   kafka_url: localhost:1111
   publish_events: false
-  grpc_msg_size: 4194304
+  # 16mb - increase size to workaround update instance event blowing up
+  grpc_msg_size: 16777216

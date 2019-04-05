@@ -113,9 +113,8 @@ def test__simple_update_with_no_diff(client):
         get_job_update_request('test_dc_labrat_large_job.yaml'),
         'start job update test/dc/labrat_large_job')
     wait_for_rolled_forward(client, res.key)
-    job_key = res.key.job
 
-    res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
+    res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
     assert len(res.detailsList[0].updateEvents) > 0
     assert len(res.detailsList[0].instanceEvents) > 0
 
@@ -124,9 +123,8 @@ def test__simple_update_with_no_diff(client):
         get_job_update_request('test_dc_labrat_large_job.yaml'),
         'start job update test/dc/labrat_large_job')
     wait_for_rolled_forward(client, res.key)
-    job_key = res.key.job
 
-    res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
+    res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
     assert len(res.detailsList[0].updateEvents) > 0
     assert res.detailsList[0].instanceEvents is None
 
@@ -135,9 +133,8 @@ def test__simple_update_with_no_diff(client):
         get_job_update_request('test_dc_labrat_large_job.yaml'),
         'start job update test/dc/labrat_large_job')
     wait_for_rolled_forward(client, res.key)
-    job_key = res.key.job
 
-    res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
+    res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
     assert len(res.detailsList[0].updateEvents) > 0
     assert res.detailsList[0].instanceEvents is None
 
@@ -151,9 +148,8 @@ def test__simple_update_with_diff(client):
         get_job_update_request('test_dc_labrat_large_job.yaml'),
         'start job update test/dc/labrat_large_job')
     wait_for_rolled_forward(client, res.key)
-    job_key = res.key.job
 
-    res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
+    res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
     assert len(res.detailsList[0].updateEvents) > 0
     assert len(res.detailsList[0].instanceEvents) > 0
 
@@ -162,9 +158,8 @@ def test__simple_update_with_diff(client):
         get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml'),
         'start job update test/dc/labrat_large_job')
     wait_for_rolled_forward(client, res.key)
-    job_key = res.key.job
 
-    res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
+    res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
     assert len(res.detailsList[0].updateEvents) > 0
     assert len(res.detailsList[0].instanceEvents) > 0
 
@@ -174,8 +169,7 @@ def test__simple_update_with_diff(client):
         get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml'),
         'start job update test/dc/labrat_large_job')
     wait_for_rolled_forward(client, res.key)
-    job_key = res.key.job
 
-    res = client.get_job_update_details(None, api.JobUpdateQuery(jobKey=job_key))
+    res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
     assert len(res.detailsList[0].updateEvents) > 0
     assert res.detailsList[0].instanceEvents is None

@@ -157,16 +157,13 @@ func main() {
 			Fatal("Could not create zk service discovery")
 	}
 
-	clientSendOption := grpc.ClientMaxSendMsgSize(cfg.EventPublisher.GRPCMsgSize)
-	serverSendOption := grpc.ServerMaxSendMsgSize(cfg.EventPublisher.GRPCMsgSize)
 	clientRecvOption := grpc.ClientMaxRecvMsgSize(cfg.EventPublisher.GRPCMsgSize)
 	serverRecvOption := grpc.ServerMaxRecvMsgSize(cfg.EventPublisher.GRPCMsgSize)
 
 	t := grpc.NewTransport(
-		clientSendOption,
-		serverSendOption,
 		clientRecvOption,
-		serverRecvOption)
+		serverRecvOption,
+	)
 
 	outbounds := yarpc.Outbounds{
 		common.PelotonJobManager: transport.Outbounds{
