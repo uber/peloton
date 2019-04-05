@@ -16,10 +16,11 @@ package atop
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"sort"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
@@ -200,6 +201,13 @@ func encodeTaskConfig(t *api.TaskConfig) ([]byte, error) {
 	sort.Stable(common.ResourceByType(t.Resources))
 	sort.Stable(common.ConstraintByName(t.Constraints))
 	sort.Stable(common.MesosFetcherURIByValue(t.MesosFetcherUris))
+
+	if len(t.GetExecutorConfig().GetData()) != 0 {
+		var dat map[string]interface{}
+		json.Unmarshal([]byte(t.GetExecutorConfig().GetData()), &dat)
+		data, _ := json.MarshalIndent(dat, "", "")
+		t.ExecutorConfig.Data = ptr.String(string(data))
+	}
 
 	w, err := t.ToWire()
 	if err != nil {

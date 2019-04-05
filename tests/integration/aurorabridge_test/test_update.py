@@ -120,7 +120,7 @@ def test__simple_update_with_no_diff(client):
 
     # Do update with same config, which will yield no impact
     res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_large_job.yaml'),
+        get_job_update_request('test_dc_labrat_large_job_diff_executor.yaml'),
         'start job update test/dc/labrat_large_job')
     wait_for_rolled_forward(client, res.key)
 
