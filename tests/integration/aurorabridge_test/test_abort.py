@@ -5,6 +5,7 @@ from tests.integration.aurorabridge_test.util import (
     get_job_update_request,
     wait_for_update_status,
     get_update_status,
+    wait_for_rolled_forward,
 )
 
 pytestmark = [pytest.mark.default,
@@ -17,6 +18,45 @@ pytestmark = [pytest.mark.default,
 # - Create an update, do manual rollback with pulsed and abort it.
 # - Create an update, do manual rollback, pause it and then abort it.
 # - Abort an update, after 1st instance is RUNNING.
+
+
+def test__deploy_on_aborted_update(client):
+    """
+    Deploy an update, and abort half-way. Then re-deploy
+    same update. Updated instances should not restart again.
+    """
+    res = client.start_job_update(
+        get_job_update_request('test_dc_labrat_large_job.yaml'),
+        'start job update test/dc/labrat_large_job')
+
+    # Few instances start
+    time.sleep(5)
+
+    client.abort_job_update(res.key, 'abort update')
+    wait_for_update_status(
+        client,
+        res.key,
+        {api.JobUpdateStatus.ROLLING_FORWARD},
+        api.JobUpdateStatus.ABORTED)
+
+    # Not all instances were created
+    res = client.get_tasks_without_configs(api.TaskQuery(jobKeys={res.key.job}))
+    assert len(res.tasks) < 10
+
+    # deploy same update, should impact remaining instances
+    res = client.start_job_update(
+        get_job_update_request('test_dc_labrat_large_job_diff_executor.yaml'),
+        'start job update test/dc/labrat_large_job_diff_executor')
+    wait_for_rolled_forward(client, res.key)
+
+    # All instances are created
+    res = client.get_tasks_without_configs(api.TaskQuery(jobKeys={res.key.job}))
+    assert len(res.tasks) == 10
+
+    # No instances should have ancestor id, thereby validating
+    # instances created in previous update are not restarted/redeployed
+    for task in res.tasks:
+        assert task.ancestorId is None
 
 
 def test__rolling_forward_abort(client):
