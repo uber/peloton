@@ -30,5 +30,3 @@ if [ "$(uname)" == "Darwin" ]; then
 else
     install_protoc_dev_server
 fi
-
-pip install -r requirements.txt

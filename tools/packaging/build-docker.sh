@@ -32,7 +32,8 @@ export PATH=$PATH:$GOBIN
 
 # TODO(gabe) always do a glide install on the host before building an image
 make install
-cp ~/.pip/pip.conf ./docker/.
+# TODO Why do we need to copy pip.conf?
+cp ~/.pip/pip.conf ./docker/. || echo "No pip conf found"
 rm -rf env
 ${docker_cmd} build --build-arg GIT_REPO=. --no-cache -t "${image_name}" .
 echo "Built ${image_name}"

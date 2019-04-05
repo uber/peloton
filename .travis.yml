@@ -1,0 +1,23 @@
+dist: xenial
+
+language: go
+
+go:
+  - 1.11.4
+
+services:
+  - docker
+
+go_import_path: github.com/uber/peloton
+
+jobs:
+  include:
+    - stage: "Tests"
+      name: "Unit Tests"
+      install:
+      - scripts/bootstrap.sh
+      - make devtools install
+      script: make test
+#    - name: "Integration tests"
+#      script: make integ-test
+
