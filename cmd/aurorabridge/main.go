@@ -86,6 +86,11 @@ var (
 			"(set $PORT to override)").
 		Envar("GRPC_PORT").
 		Int()
+
+	respoolPath = app.Flag(
+		"respool-path", "Aurora Bridge Resource Pool path").
+		Envar("RESPOOL_PATH").
+		String()
 )
 
 func main() {
@@ -121,6 +126,10 @@ func main() {
 
 	if *grpcPort != 0 {
 		cfg.GRPCPort = *grpcPort
+	}
+
+	if len(*respoolPath) > 0 {
+		cfg.RespoolLoader.RespoolPath = *respoolPath
 	}
 
 	initialLevel := log.InfoLevel

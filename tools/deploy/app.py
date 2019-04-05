@@ -121,6 +121,7 @@ class App(object):
         self.task_preemption_period = '60s'
         self.enable_sla_tracking = False
         self.enable_preemption = False
+        self.respool_path = None
 
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
@@ -271,6 +272,10 @@ class App(object):
                     self.enable_revocable_resources
             if self.bin_packing:
                 env_vars['BIN_PACKING'] = self.bin_packing
+
+        if self.name == 'aurorabridge':
+            if self.respool_path:
+                env_vars['RESPOOL_PATH'] = self.respool_path
 
     def get_app_path(self):
         """
