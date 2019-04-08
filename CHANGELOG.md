@@ -1,6 +1,102 @@
 # Changelog for Peloton
-0.8.3 (unreleased)
+0.8.4 (unreleased)
 ------------------
+
+0.8.3
+------------------
+* 2019-04-08    Revert "Fix race condition in deadlineQueue.Dequeue"                                   rcharles@uber.com
+* 2019-04-08    Allow passing respool path through aurorabridge flag                                   kevinxu@uber.com
+* 2019-04-06    Add debugging log messages at job manager                                              varung@uber.com
+* 2019-04-05    Introduce a mini flag in perf test to run just one test                                adityacb@uber.com
+* 2019-04-05    Sort recursively executor config keys                                                  varung@uber.com
+* 2019-04-05    Break job and update enqueue cycle                                                     zhixin@uber.com
+* 2019-04-05    Update yarpc package                                                                   zhixin@uber.com
+* 2019-04-04    Increase grpc msg size for bridge grpc client                                          kevinxu@uber.com
+* 2019-04-04    Fix ConvertTaskConfigToPodSpec - do not add fields that are not present in TaskConfig to PodSpec sachins@uber.com
+* 2019-04-04    Add buckets to syncronize the pod events                                               varung@uber.com
+* 2019-04-03    Fix broken 'TestJobCreateWorkflowOnDeletedJobError'                                    sachins@uber.com
+* 2019-04-03    Add LogFieldFormatter to add default log fields                                        zhixin@uber.com
+* 2019-04-03    Disable job operations after job deletion                                              zhixin@uber.com
+* 2019-04-03    Allow stateless.GetJob to accept pod entity version                                    zhixin@uber.com
+* 2019-04-03    Add check for nil SLA in GetJobSummary                                                 varung@uber.com
+* 2019-04-03    Fix job query for partially created job                                                adityacb@uber.com
+* 2019-04-02    Add aurorabridge pod filter                                                            varung@uber.com
+* 2019-04-02    Add tests for manual rollback                                                          varung@uber.com
+* 2019-04-02    Fix bugs in v1alpha GetPodEvents                                                       sachins@uber.com
+* 2019-04-02    Enqueue job to job goal state engine if job state is already KILLED                    varung@uber.com
+* 2019-04-02    Fix QueryJobs handler to populate the correct pod stats                                sachins@uber.com
+* 2019-04-02    Fix race condition in deadlineQueue.Dequeue                                            zhixin@uber.com
+* 2019-04-01    Fix v1alpha GetPodEvents handler to populate pod states instead of task states         sachins@uber.com
+* 2019-04-01    Add labels and port config check for task config change                                varung@uber.com
+* 2019-04-01    Fix ORM panic when reading a column that is null                                       adityacb@uber.com
+* 2019-04-01    Include update message in opaquedata                                                   kevinxu@uber.com
+* 2019-04-01    Add switch disable kill tasks request from host manager to mesos master                varung@uber.com
+* 2019-04-01    Do not block eventstream when kill of orphan task fails                                apoorvaj@uber.com
+* 2019-03-30    Increase QueryJobs request limit                                                       kevinxu@uber.com
+* 2019-03-29    Add termination status for update and restart                                          zhixin@uber.com
+* 2019-03-29    Fix job level stop and pod level start conflict                                        zhixin@uber.com
+* 2019-03-28    Remove job_id tag from SLA metrics                                                     rcharles@uber.com
+* 2019-03-28    Use ListJobs for job deletion in aurorabridge integration tests                        kevinxu@uber.com
+* 2019-03-28    Add upper bound on http client connection from host manager to mesos master            varung@uber.com
+* 2019-03-27    Wait for mesos master leader elected in integration tests                              varung@uber.com
+* 2019-03-27    Add SLASpec to JobSummary                                                              varung@uber.com
+* 2019-03-27    Correct the logic to check IsCycleCompleted in backoffpolicy                           aihuaxu@uber.com
+* 2019-03-26    Fix max_tolerable_instance_failures and max_instances_retries for aurora bridge        kevinxu@uber.com
+* 2019-03-26    Bootstrap kafka integration to publish pod events                                      varung@uber.com
+* 2019-03-26    Set StartPods flag in UpdateSpec                                                       kevinxu@uber.com
+* 2019-03-26    Add aurorabridge abort integ test                                                      varung@uber.com
+* 2019-03-25    Add failed update aurora bridge integration test                                       varung@uber.com
+* 2019-03-25    Support exclusive placement of tasks to host                                           amitbose@uber.com
+* 2019-03-25    Add basic auth in peloton                                                              zhixin@uber.com
+* 2019-03-25    Error out on pinned instances                                                          kevinxu@uber.com
+* 2019-03-25    Fix uninitialized job recovery                                                         zhixin@uber.com
+* 2019-03-25    Add integration test for updating not fully created job                                zhixin@uber.com
+* 2019-03-24    Add script to patch v0 api for generated grpc stub                                     yunpeng@uber.com
+* 2019-03-22    Workaround bridge client not detecting leadership change                               kevinxu@uber.com
+* 2019-03-22    Add support for filtering in the pod watch API                                         apoorvaj@uber.com
+* 2019-03-22    Start update affected pods if StartPods flag is set                                    zhixin@uber.com
+* 2019-03-22    Remove check of INITIALIZED state upon job update                                      zhixin@uber.com
+* 2019-03-21    Generate gRPC stub for peloton                                                         yunpeng@uber.com
+* 2019-03-21    Introduced kubernetes in docker for minicluster                                        pourchet@uber.com
+* 2019-03-21    Fix performance benchmarking script                                                    avyas@uber.com
+* 2019-03-20    Store task labels in the cache                                                         apoorvaj@uber.com
+* 2019-03-20    Fix pod state mapping in bridge                                                        kevinxu@uber.com
+* 2019-03-20    Fix minicluster script for teardown.                                                   kevinxu@uber.com
+* 2019-03-20    Improve performance for integration test runtime                                       pourchet@uber.com
+* 2019-03-20    Add common pod level label for all bridge jobs                                         pourchet@uber.com
+* 2019-03-20    Convert task stats to pod stats correctly                                              pourchet@uber.com
+* 2019-03-20    Attempt to make binary encoded TaskConfig consistent across deploys.                   pourchet@uber.com
+* 2019-03-20    Add changelog for release 0.8.2.1                                                      pourchet@uber.com
+* 2019-03-20    Fix workflow fields population                                                         pourchet@uber.com
+* 2019-03-20    Fixing minicluster script with -a option                                               pourchet@uber.com
+* 2019-03-20    add --net=host parameter to development guide                                          pourchet@uber.com
+* 2019-03-20    Add compatibility labels for Aurora metadata.                                          pourchet@uber.com
+* 2019-03-20    Redundant glide install to fix test flakiness                                          pourchet@uber.com
+* 2019-03-20    Add in-place update integration test                                                   pourchet@uber.com
+* 2019-03-20    Slight refactor of minicluster code                                                    pourchet@uber.com
+* 2019-03-16    InstanceCount from GetJobs endpoint should only include running instances.             kevinxu@uber.com
+* 2019-03-15    Fix `ConvertJobSpecToJobConfig` - add missing 'MaximumUnavailableInstances' field      sachins@uber.com
+* 2019-03-14    Skip env_name validation when custom executor is used                                  kevinxu@uber.com
+* 2019-03-13    Fix KillTasks to kill all tasks when instances is passed as None                       kevinxu@uber.com
+* 2019-03-13    [vcluster] Fix reading the prod config for `placement_stateless`                       avyas@uber.com
+* 2019-03-12    Fix GetJobUpdateDiffResult nil cases                                                   kevinxu@uber.com
+* 2019-03-12    Fixes regarding GetJobUpdateDetails endpoint                                           kevinxu@uber.com
+* 2019-03-12    Update vcluster to use `peloton_apps_config_path` for setup only                       avyas@uber.com
+* 2019-03-12    Add support to watch task deletion event                                               apoorvaj@uber.com
+* 2019-03-12    Include instance events in GetJobUpdateDetails                                         codyg@uber.com
+* 2019-03-12    Fix the restart integration tests after the restart-spec change is now released        apoorvaj@uber.com
+* 2019-03-12    Reduce the number of instances per peloton daemon in minicluster                       apoorvaj@uber.com
+* 2019-03-12    Implement Watch API for pod                                                            kevinxu@uber.com
+* 2019-03-12    PE tries to place a task on desired host until a certain deadline                      zhixin@uber.com
+* 2019-03-12    Remove held on task when task is killed while not launched                             zhixin@uber.com
+* 2019-03-11    Periodically clean up hosts in HeldHost state                                          zhixin@uber.com
+* 2019-03-11    Add partially created service job state determiner                                     varung@uber.com
+* 2019-03-11    Adjust resource settings for aurorabridge integration tests in read path               kevinxu@uber.com
+* 2019-03-11    Launch with invalid offer error is a system error and tasks should be restarted if they receive system error apoorvaj@uber.com
+* 2019-03-08    Fix vcluster's use of peloton cluster config path                                      avyas@uber.com
+* 2019-03-08    Clean up markdown files in /docs for readthedocs.io                                    min@uber.com
+* 2019-03-08    Move to all golang packages to /pkg dir                                                min@uber.com
+* 2019-03-07    Fix performance compare script to use production config                                avyas@uber.com
 
 0.8.2.1
 ------------------
@@ -127,7 +223,7 @@
 * 2019-01-23    Follow up changes for getTasksWithoutConfigs                                          kevinxu@uber.com
 * 2019-01-23    Implement KillTasks                                                                   codyg@uber.com
 * 2019-01-23    Changelog for release-0.8.1                                                           sachins@uber.com
-* 2019-01-23    Unify stateless handler non leader handle and error                                   zhixin@uber.com                                                      
+* 2019-01-23    Unify stateless handler non leader handle and error                                   zhixin@uber.com
 
 0.8.1
 ------------------
@@ -1173,4 +1269,3 @@
 - 2017-12-01    Add yaml files for performance tests                                                   @Apoorva Jindal
 - 2017-11-30    Remove smoketest tag from preemption integ test                                        @Anant Vyas
 - 2017-11-21    Porting storage changes from master to release                                         @Apoorva Jindal
-
