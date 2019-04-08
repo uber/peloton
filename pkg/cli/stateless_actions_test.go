@@ -900,22 +900,24 @@ func (suite *statelessActionsTestSuite) TestStatelessRestartJobActionFailure() {
 func (suite *statelessActionsTestSuite) TestStatelessListUpdatesAction() {
 	suite.statelessClient.EXPECT().
 		ListJobWorkflows(suite.ctx, &svc.ListJobWorkflowsRequest{
-			JobId: &v1alphapeloton.JobID{Value: testJobID},
+			JobId:        &v1alphapeloton.JobID{Value: testJobID},
+			UpdatesLimit: 1,
 		}).
 		Return(&svc.ListJobWorkflowsResponse{}, nil)
 
-	suite.NoError(suite.client.StatelessListUpdatesAction(testJobID))
+	suite.NoError(suite.client.StatelessListUpdatesAction(testJobID, 1))
 }
 
 // TestStatelessListUpdatesActionError tests the failure case of list updates
 func (suite *statelessActionsTestSuite) TestStatelessListUpdatesActionError() {
 	suite.statelessClient.EXPECT().
 		ListJobWorkflows(suite.ctx, &svc.ListJobWorkflowsRequest{
-			JobId: &v1alphapeloton.JobID{Value: testJobID},
+			JobId:        &v1alphapeloton.JobID{Value: testJobID},
+			UpdatesLimit: 1,
 		}).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.Error(suite.client.StatelessListUpdatesAction(testJobID))
+	suite.Error(suite.client.StatelessListUpdatesAction(testJobID, 1))
 }
 
 // TestStatelessWorkflowEventsAction tests the success path

@@ -2335,7 +2335,9 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	workflowEvents, err := store.GetWorkflowEvents(
 		context.Background(),
 		updateID,
-		0)
+		0,
+		0,
+	)
 	suite.NoError(err)
 	suite.Equal(0, len(workflowEvents))
 
@@ -2440,7 +2442,9 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	workflowEvents, err = store.GetWorkflowEvents(
 		context.Background(),
 		updateID,
-		0)
+		0,
+		0,
+	)
 	suite.NoError(err)
 	suite.Equal(1, len(workflowEvents))
 
@@ -2507,16 +2511,30 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	workflowEvents, err = store.GetWorkflowEvents(
 		context.Background(),
 		updateID,
-		0)
+		0,
+		0,
+	)
 	suite.NoError(err)
 	suite.Equal(2, len(workflowEvents))
+
+	// get only one workflow event
+	workflowEvents, err = store.GetWorkflowEvents(
+		context.Background(),
+		updateID,
+		0,
+		1,
+	)
+	suite.NoError(err)
+	suite.Equal(1, len(workflowEvents))
 
 	suite.NoError(store.deleteWorkflowEvents(context.Background(), updateID, 0))
 
 	workflowEvents, err = store.GetWorkflowEvents(
 		context.Background(),
 		updateID,
-		0)
+		0,
+		0,
+	)
 	suite.NoError(err)
 	suite.Equal(0, len(workflowEvents))
 
@@ -2634,7 +2652,9 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	workflowEvents, err = store.GetWorkflowEvents(
 		context.Background(),
 		updateID,
-		0)
+		0,
+		0,
+	)
 	suite.NoError(err)
 	suite.Equal(0, len(workflowEvents))
 

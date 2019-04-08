@@ -2936,11 +2936,18 @@ func (s *Store) AddWorkflowEvent(
 func (s *Store) GetWorkflowEvents(
 	ctx context.Context,
 	updateID *peloton.UpdateID,
-	instanceID uint32) ([]*stateless.WorkflowEvent, error) {
+	instanceID uint32,
+	limit uint64,
+) ([]*stateless.WorkflowEvent, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(podWorkflowEventsTable).
 		Where(qb.Eq{"update_id": updateID.GetValue()}).
 		Where(qb.Eq{"instance_id": int(instanceID)})
+
+	if limit > 0 {
+		stmt = stmt.Limit(limit)
+	}
+
 	result, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		s.metrics.WorkflowMetrics.WorkflowEventsGetFail.Inc(1)

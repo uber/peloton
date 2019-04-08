@@ -346,7 +346,7 @@ func (suite *MockDatastoreTestSuite) TestWorkflowEventsFailures() {
 	err = suite.store.deleteWorkflowEvents(context.Background(), updateID, 0)
 	suite.Error(err)
 
-	_, err = suite.store.GetWorkflowEvents(context.Background(), updateID, 0)
+	_, err = suite.store.GetWorkflowEvents(context.Background(), updateID, 0, 0)
 	suite.Error(err)
 }
 

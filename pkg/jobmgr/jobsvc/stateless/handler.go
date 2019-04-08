@@ -1025,7 +1025,9 @@ func (h *serviceHandler) GetWorkflowEvents(
 	workflowEvents, err := h.updateStore.GetWorkflowEvents(
 		ctx,
 		jobRuntime.GetUpdateID(),
-		req.GetInstanceId())
+		req.GetInstanceId(),
+		req.GetLimit(),
+	)
 	if err != nil {
 		return nil, errors.Wrap(err,
 			fmt.Sprintf("failed to get workflow events for an update %s",
@@ -1316,7 +1318,9 @@ func (h *serviceHandler) ListJobWorkflows(
 		if req.GetInstanceEvents() {
 			instanceWorkflowEvents, err = h.getInstanceWorkflowEvents(
 				ctx,
-				updateModel)
+				updateModel,
+				req.GetInstanceEventsLimit(),
+			)
 			if err != nil {
 				return nil, errors.Wrap(err, "fail to get instance workflow events")
 			}
@@ -1340,13 +1344,16 @@ func (h *serviceHandler) ListJobWorkflows(
 func (h *serviceHandler) getInstanceWorkflowEvents(
 	ctx context.Context,
 	updateModel *models.UpdateModel,
+	limit uint64,
 ) ([]*stateless.WorkflowInfoInstanceWorkflowEvents, error) {
 
 	f := func(ctx context.Context, instance_id interface{}) (interface{}, error) {
 		workflowEvents, err := h.updateStore.GetWorkflowEvents(
 			ctx,
 			updateModel.GetUpdateID(),
-			instance_id.(uint32))
+			instance_id.(uint32),
+			limit,
+		)
 		if err != nil {
 			return nil, errors.Wrap(err,
 				fmt.Sprintf("failed to get workflow events for update %s, instance %d",

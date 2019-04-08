@@ -346,8 +346,9 @@ var (
 	statelessStopEntityVersion = statelessStop.Arg("entityVersion",
 		"entity version for concurrency control").Required().String()
 
-	statelessListUpdates     = stateless.Command("list-updates", "list updates")
-	statelessListUpdatesName = statelessListUpdates.Arg("job", "job identifier").Required().String()
+	statelessListUpdates      = stateless.Command("list-updates", "list updates")
+	statelessListUpdatesName  = statelessListUpdates.Arg("job", "job identifier").Required().String()
+	statelessListUpdatesLimit = statelessListUpdates.Flag("limit", "max number of job updates to return").Default("10").Uint32()
 
 	statelessStart              = stateless.Command("start", "start job")
 	statelessStartJobID         = statelessStart.Arg("job", "job identifier").Required().String()
@@ -965,7 +966,10 @@ func main() {
 			*statelessRestartInPlace,
 		)
 	case statelessListUpdates.FullCommand():
-		err = client.StatelessListUpdatesAction(*statelessListUpdatesName)
+		err = client.StatelessListUpdatesAction(
+			*statelessListUpdatesName,
+			*statelessListUpdatesLimit,
+		)
 	case workflowEvents.FullCommand():
 		err = client.StatelessWorkflowEventsAction(
 			*workflowEventsJob,

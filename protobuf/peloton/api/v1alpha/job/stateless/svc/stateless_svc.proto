@@ -326,6 +326,10 @@ message GetWorkflowEventsRequest {
 
   // The instance to get workflow events.
   uint32 instance_id = 2;
+
+  // Limits the number of workflow events.
+  // If limit is 0, then all events are fetched.
+  uint64 limit = 3;
 }
 
 // Response message for JobService.GetWorkflowEvents
@@ -411,6 +415,10 @@ message ListJobWorkflowsRequest {
   // Flag to indicate whether to fetch instance workflow events
   // for that job update.
   bool instance_events = 3;
+
+  // Limits the number of events per instance.
+  // If limit is 0, then all events are fetched.
+  uint64 instance_events_limit = 4;
 }
 
 // Response message for JobService.ListJobWorkflows method.

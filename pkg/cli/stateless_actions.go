@@ -893,11 +893,15 @@ func (c *Client) StatelessRestartJobAction(
 }
 
 // StatelessListUpdatesAction lists updates of a job
-func (c *Client) StatelessListUpdatesAction(jobID string) error {
+func (c *Client) StatelessListUpdatesAction(
+	jobID string,
+	updatesLimit uint32,
+) error {
 	resp, err := c.statelessClient.ListJobWorkflows(
 		c.ctx,
 		&statelesssvc.ListJobWorkflowsRequest{
-			JobId: &v1alphapeloton.JobID{Value: jobID},
+			JobId:        &v1alphapeloton.JobID{Value: jobID},
+			UpdatesLimit: updatesLimit,
 		},
 	)
 
