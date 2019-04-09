@@ -214,7 +214,10 @@ def generate_test_results(base_version, current_version, base_results,
     # Aggregates data source with its function operation.
     for i, combo in enumerate(zip(operations, base_results, current_results)):
         func, f1, f2 = combo
-        results[i] = func(base_version, current_version, f1, f2)
+        try:
+            results[i] = func(base_version, current_version, f1, f2)
+        except Exception as e:
+            results[i] = "<p>Report generation failed: %s</p>" % e
     return results
 
 
