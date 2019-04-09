@@ -91,7 +91,7 @@ class Update(object):
                 # if config version is incorrect and caller does not specify a
                 # config version, get config version from job runtime
                 # and try again.
-                if e.code() == grpc.StatusCode.INVALID_ARGUMENT \
+                if e.code() == grpc.StatusCode.ABORTED \
                         and e.details() == INVALID_VERSION_ERR_MESSAGE \
                         and config_version is None:
                     continue

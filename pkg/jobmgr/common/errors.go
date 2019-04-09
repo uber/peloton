@@ -16,10 +16,15 @@ package common
 
 import "go.uber.org/yarpc/yarpcerrors"
 
+/*
+ * IMPORTANT: errors in this file are treated as part of API and user can have
+ * dependency on it. Any modification on this file will be an API change.
+ */
+
 // UnexpectedVersionError is used when an operation fails because existing version
 // is different from the version of object passed in
 var UnexpectedVersionError = yarpcerrors.AbortedErrorf("operation aborted due to unexpected version")
 
 // InvalidEntityVersionError is used when the entity version provided is different
 // from the entity version passed in
-var InvalidEntityVersionError = yarpcerrors.InvalidArgumentErrorf("unexpected entity version")
+var InvalidEntityVersionError = yarpcerrors.AbortedErrorf("unexpected entity version")

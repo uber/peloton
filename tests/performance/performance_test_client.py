@@ -351,7 +351,7 @@ class StatelessJob(Job):
                 )
             except grpc.RpcError as e:
                 # if entity version is incorrect, just retry
-                if e.code() == grpc.StatusCode.INVALID_ARGUMENT \
+                if e.code() == grpc.StatusCode.ABORTED \
                   and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details():
                     continue
                 raise
@@ -408,7 +408,7 @@ class StatelessJob(Job):
                 )
             except grpc.RpcError as e:
                 # if entity version is incorrect, just retry
-                if e.code() == grpc.StatusCode.INVALID_ARGUMENT \
+                if e.code() == grpc.StatusCode.ABORTED \
                   and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details():
                     continue
                 raise

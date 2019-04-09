@@ -47,6 +47,12 @@ message HostOfferID {
 
 // An opaque token associated with an entity object used to implement
 // optimistic concurrency control.
+// For API taking EntityVersion, it would return an yarpc error with
+// CodeAborted and message "unexpected entity version", if the entity version
+// provided does not match the internal version of the entity affected
+// (i.e. there is a write-after-read confliect), unless otherwise specified.
+// Upon receiving the error, caller is expected to read the entity status
+// and its entity version again, and re-perform the operation if needed.
 message EntityVersion {
   string value = 1;
 }

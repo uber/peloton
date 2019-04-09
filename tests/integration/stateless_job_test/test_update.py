@@ -198,7 +198,7 @@ def test__create_update_bad_version(stateless_job):
     try:
         update.create(entity_version='1-2-3')
     except grpc.RpcError as e:
-        assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
+        assert e.code() == grpc.StatusCode.ABORTED
         assert INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details()
         return
     raise Exception("entity version mismatch error not received")
@@ -216,7 +216,7 @@ def test__pause_update_bad_version(stateless_job):
     try:
         update.pause(entity_version='1-2-3')
     except grpc.RpcError as e:
-        assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
+        assert e.code() == grpc.StatusCode.ABORTED
         assert INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details()
         return
     raise Exception("entity version mismatch error not received")
@@ -235,7 +235,7 @@ def test__resume_update_bad_version(stateless_job):
     try:
         update.resume(entity_version='1-2-3')
     except grpc.RpcError as e:
-        assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
+        assert e.code() == grpc.StatusCode.ABORTED
         assert INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details()
         return
     raise Exception("entity version mismatch error not received")
@@ -253,7 +253,7 @@ def test__abort_update_bad_version(stateless_job):
     try:
         update.abort(entity_version='1-2-3')
     except grpc.RpcError as e:
-        assert e.code() == grpc.StatusCode.INVALID_ARGUMENT
+        assert e.code() == grpc.StatusCode.ABORTED
         assert INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details()
         return
     raise Exception("entity version mismatch error not received")

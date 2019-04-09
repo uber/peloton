@@ -91,7 +91,7 @@ class StatelessUpdate(object):
                 # if config version is incorrect and caller does not specify a
                 # config version, get config version from job runtime
                 # and try again.
-                if e.code() == grpc.StatusCode.INVALID_ARGUMENT \
+                if e.code() == grpc.StatusCode.ABORTED \
                         and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details() \
                         and entity_version is None:
                     job_entity_version = entity_version or \
@@ -125,7 +125,7 @@ class StatelessUpdate(object):
                 # if config version is incorrect and caller does not specify a
                 # config version, get config version from job runtime
                 # and try again.
-                if e.code() == grpc.StatusCode.INVALID_ARGUMENT \
+                if e.code() == grpc.StatusCode.ABORTED \
                         and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details() \
                         and entity_version is None:
                     job_entity_version = entity_version or \
@@ -168,7 +168,7 @@ class StatelessUpdate(object):
                 # if config version is incorrect and caller does not specify a
                 # config version, get config version from job runtime
                 # and try again.
-                if e.code() == grpc.StatusCode.INVALID_ARGUMENT \
+                if e.code() == grpc.StatusCode.ABORTED \
                         and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details() \
                         and entity_version is None:
                     job_entity_version = entity_version or \
@@ -202,7 +202,7 @@ class StatelessUpdate(object):
                 # if config version is incorrect and caller does not specify a
                 # config version, get config version from job runtime
                 # and try again.
-                if e.code() == grpc.StatusCode.INVALID_ARGUMENT \
+                if e.code() == grpc.StatusCode.ABORTED \
                         and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details() \
                         and entity_version is None:
                     job_entity_version = entity_version or \
