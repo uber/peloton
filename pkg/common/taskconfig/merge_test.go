@@ -19,6 +19,7 @@ import (
 
 	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/stretchr/testify/assert"
@@ -167,4 +168,98 @@ func TestRetainBaseSecretsInInstanceConfig(t *testing.T) {
 	}}
 	cfg = retainBaseSecretsInInstanceConfig(defaultConfig, instanceConfig)
 	assert.Equal(t, len(cfg.GetContainer().GetVolumes()), 2)
+}
+
+// TestMergeNoInstanceSpec checks MergePodSpec simply returns default spec
+// when instance spec is not provided.
+func TestMergeNoInstanceSpec(t *testing.T) {
+	defaultSpec := &pod.PodSpec{
+		Containers: []*pod.ContainerSpec{
+			{
+				Resource: &pod.ResourceSpec{
+					CpuLimit:    0.8,
+					MemLimitMb:  800,
+					DiskLimitMb: 1500,
+					FdLimit:     1000,
+				},
+			},
+		},
+	}
+
+	assert.Equal(t, defaultSpec, MergePodSpec(defaultSpec, nil))
+}
+
+// TestMergeNoDefaultSpec checks MergePodSpec simply returns instance spec
+// when default spec is not provided.
+func TestMergeNoDefaultSpec(t *testing.T) {
+	instanceSpec := &pod.PodSpec{
+		Containers: []*pod.ContainerSpec{
+			{
+				Resource: &pod.ResourceSpec{
+					CpuLimit:    0.8,
+					MemLimitMb:  800,
+					DiskLimitMb: 1500,
+					FdLimit:     1000,
+				},
+			},
+		},
+	}
+
+	assert.Equal(t, instanceSpec, MergePodSpec(nil, instanceSpec))
+	assert.Equal(t, (*pod.PodSpec)(nil), MergePodSpec(nil, nil))
+}
+
+// TestMergeSpecOverride checks MergePodSpec successfully returning
+// merged pod spec when both default and instance spec are provided.
+func TestMergeSpecOverride(t *testing.T) {
+	defaultSpec := &pod.PodSpec{
+		Containers: []*pod.ContainerSpec{
+			{
+				Resource: &pod.ResourceSpec{
+					CpuLimit:    0.8,
+					MemLimitMb:  800,
+					DiskLimitMb: 1500,
+					FdLimit:     1000,
+				},
+			},
+		},
+		Controller: false,
+	}
+	instanceSpec := &pod.PodSpec{
+		Containers: []*pod.ContainerSpec{
+			{
+				Resource: &pod.ResourceSpec{
+					CpuLimit:    1,
+					MemLimitMb:  100,
+					DiskLimitMb: 2000,
+					FdLimit:     3000,
+				},
+			},
+		},
+		Controller: true,
+	}
+
+	assert.Equal(t,
+		instanceSpec.Containers[0].Resource,
+		MergePodSpec(defaultSpec, instanceSpec).Containers[0].Resource,
+	)
+	assert.Equal(t,
+		instanceSpec.Controller,
+		MergePodSpec(defaultSpec, instanceSpec).Controller,
+	)
+}
+
+// TestMergeSpecOverride checks MergePodSpec successfully returning
+// merged pod spec when kill_grace_period_seconds (int field) exists
+// in both default and instance specs.
+func TestMergeSpecOverrideGracePeriod(t *testing.T) {
+	cfg := MergePodSpec(
+		&pod.PodSpec{KillGracePeriodSeconds: uint32(20)},
+		&pod.PodSpec{KillGracePeriodSeconds: uint32(30)})
+	assert.Equal(t, uint32(30), cfg.GetKillGracePeriodSeconds())
+
+	cfg = MergePodSpec(
+		&pod.PodSpec{KillGracePeriodSeconds: uint32(20)},
+		&pod.PodSpec{KillGracePeriodSeconds: uint32(0)})
+	assert.Equal(t, uint32(20), cfg.GetKillGracePeriodSeconds())
 }

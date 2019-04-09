@@ -18,6 +18,7 @@ import (
 	"reflect"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/gogo/protobuf/proto"
@@ -37,10 +38,36 @@ func Merge(base *task.TaskConfig, override *task.TaskConfig) *task.TaskConfig {
 	}
 
 	merged := &task.TaskConfig{}
+	merge(*base, *override, merged)
 
-	baseVal := reflect.ValueOf(*base)
-	overrideVal := reflect.ValueOf(*override)
+	return retainBaseSecretsInInstanceConfig(base, merged)
+}
+
+// MergePodSpec returns the merged v1 pod spec between a base and an override. The
+// merge will only happen of top-level fields, not recursively.
+// If any of the arguments is nil, no merge will happen, and the non-nil
+// argument (if exists) is returned.
+func MergePodSpec(base *pod.PodSpec, override *pod.PodSpec) *pod.PodSpec {
+	if override == nil {
+		return base
+	}
+
+	if base == nil {
+		return override
+	}
+
+	merged := &pod.PodSpec{}
+	merge(*base, *override, merged)
+
+	// TODO(kevinxu): Support retaining secret volumes from base pod spec
+	return merged
+}
+
+func merge(base interface{}, override interface{}, merged interface{}) {
+	baseVal := reflect.ValueOf(base)
+	overrideVal := reflect.ValueOf(override)
 	mergedVal := reflect.ValueOf(merged).Elem()
+
 	for i := 0; i < baseVal.NumField(); i++ {
 		field := overrideVal.Field(i)
 
@@ -74,7 +101,6 @@ func Merge(base *task.TaskConfig, override *task.TaskConfig) *task.TaskConfig {
 			}
 		}
 	}
-	return retainBaseSecretsInInstanceConfig(base, merged)
 }
 
 // retainBaseSecretsInInstanceConfig ensures that instance config retains all
@@ -91,10 +117,10 @@ func Merge(base *task.TaskConfig, override *task.TaskConfig) *task.TaskConfig {
 func retainBaseSecretsInInstanceConfig(defaultConfig *task.TaskConfig,
 	instanceConfig *task.TaskConfig) *task.TaskConfig {
 	// if default config doesn't have secrets, just return
-	if defaultConfig == nil ||
-		!util.ConfigHasSecretVolumes(defaultConfig) {
+	if !util.ConfigHasSecretVolumes(defaultConfig) {
 		return instanceConfig
 	}
+
 	clonedDefaultConfig := proto.Clone(defaultConfig).(*task.TaskConfig)
 	secretVolumes := util.RemoveSecretVolumesFromConfig(
 		clonedDefaultConfig)
@@ -105,6 +131,7 @@ func retainBaseSecretsInInstanceConfig(defaultConfig *task.TaskConfig,
 		}
 		return instanceConfig
 	}
+
 	instanceConfig.GetContainer().Volumes = secretVolumes
 	return instanceConfig
 }
