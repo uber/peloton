@@ -36,6 +36,21 @@ func NewPodSpec(
 	t *api.TaskConfig,
 	c ThermosExecutorConfig,
 ) (*pod.PodSpec, error) {
+	// Taking aurora TaskConfig struct from JobUpdateRequest, and
+	// serialize it using Thrift binary protocol. The resulting
+	// byte array will be attached to ExecutorInfo.Data.
+	//
+	// After task placement, jobmgr will deserialize the byte array,
+	// combine it with placement info, and generates aurora AssignedTask
+	// struct, which will be eventually be consumed by thermos executor.
+	//
+	// Leaving encodeTaskConfig at the top since it has the side-effect
+	// of sorting all the "list" fields.
+	executorData, err := encodeTaskConfig(t)
+	if err != nil {
+		return nil, fmt.Errorf("encode task config: %s", err)
+	}
+
 	jobKeyLabel := label.NewAuroraJobKey(t.GetJob())
 	metadataLabels := label.NewAuroraMetadataLabels(t.GetMetadata())
 
@@ -47,18 +62,6 @@ func NewPodSpec(
 	constraint, err := NewConstraint(jobKeyLabel, t.GetConstraints())
 	if err != nil {
 		return nil, fmt.Errorf("new constraint: %s", err)
-	}
-
-	// Taking aurora TaskConfig struct from JobUpdateRequest, and
-	// serialize it using Thrift binary protocol. The resulting
-	// byte array will be attached to ExecutorInfo.Data.
-	//
-	// After task placement, jobmgr will deserialize the byte array,
-	// combine it with placement info, and generates aurora AssignedTask
-	// struct, which will be eventually be consumed by thermos executor.
-	executorData, err := encodeTaskConfig(t)
-	if err != nil {
-		return nil, fmt.Errorf("encode task config: %s", err)
 	}
 
 	return &pod.PodSpec{
