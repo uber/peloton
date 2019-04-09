@@ -359,3 +359,39 @@ func EnqueueJobUpdate(
 	}
 	return nil
 }
+
+// JobKillAndDelete terminates each task in job, and makes
+// sure tasks would not get restarted. It deletes the job
+// if all tasks are in terminated states.
+func JobKillAndDelete(
+	ctx context.Context,
+	entity goalstate.Entity,
+) error {
+	jobEnt := entity.(*jobEntity)
+	goalStateDriver := entity.(*jobEntity).driver
+
+	cachedJob := goalStateDriver.jobFactory.GetJob(jobEnt.id)
+	if cachedJob == nil {
+		return nil
+	}
+
+	jobState, _, err :=
+		killJob(ctx, cachedJob, goalStateDriver)
+	if err != nil {
+		return err
+	}
+
+	// job is in terminal state now, can safely delete the job
+	if util.IsPelotonJobStateTerminal(jobState) {
+		log.WithField("job_id", cachedJob.ID()).
+			Info("all tasks are killed, deleting the job")
+		return JobDelete(ctx, entity)
+	}
+
+	log.WithFields(log.Fields{
+		"job_id": cachedJob.ID(),
+		"state":  jobState.String(),
+	}).Info("some tasks are not killed, waiting to kill before deleting")
+
+	return nil
+}

@@ -21,6 +21,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
@@ -850,4 +851,93 @@ func (suite *jobActionsTestSuite) TestEnqueueJobUpdateStatelessTerminalUpdate() 
 		}, nil)
 
 	suite.NoError(EnqueueJobUpdate(context.Background(), suite.jobEnt))
+}
+
+// TestJobKillAndDeleteTerminatedJobWithRunningTasks tests delete
+// a terminated job with tasks that may still be started
+func (suite *jobActionsTestSuite) TestJobKillAndDeleteTerminatedJobWithRunningTasks() {
+	instanceCount := uint32(2)
+	cachedTasks := make(map[uint32]cached.Task)
+	mockTasks := make(map[uint32]*cachedmocks.MockTask)
+	for i := uint32(0); i < instanceCount; i++ {
+		cachedTask := cachedmocks.NewMockTask(suite.ctrl)
+		mockTasks[i] = cachedTask
+		cachedTasks[i] = cachedTask
+	}
+
+	jobRuntime := &job.RuntimeInfo{
+		State:     job.JobState_SUCCEEDED,
+		GoalState: job.JobState_DELETED,
+	}
+
+	runtimes := make(map[uint32]*task.RuntimeInfo)
+	runtimes[0] = &task.RuntimeInfo{
+		State:     task.TaskState_SUCCEEDED,
+		GoalState: task.TaskState_RUNNING,
+	}
+	runtimes[1] = &task.RuntimeInfo{
+		State:     task.TaskState_SUCCEEDED,
+		GoalState: task.TaskState_RUNNING,
+	}
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetAllTasks().
+		Return(cachedTasks).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context,
+			jobInfo *job.JobInfo,
+			_ *models.ConfigAddOn,
+			_ cached.UpdateRequest) {
+			suite.Equal(jobInfo.Runtime.State, job.JobState_KILLED)
+		}).
+		Return(nil)
+
+	for i := uint32(0); i < instanceCount; i++ {
+		mockTasks[i].EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(runtimes[i], nil).
+			AnyTimes()
+	}
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.cachedJob.EXPECT().
+		GetJobType().
+		Return(job.JobType_SERVICE)
+
+	suite.cachedJob.EXPECT().
+		Delete(gomock.Any()).
+		Return(nil)
+
+	suite.taskGoalStateEngine.EXPECT().
+		Delete(gomock.Any()).
+		Times(int(instanceCount))
+
+	suite.jobGoalStateEngine.EXPECT().
+		Delete(suite.jobEnt)
+
+	suite.jobFactory.EXPECT().
+		ClearJob(suite.jobID)
+
+	err := JobKillAndDelete(context.Background(), suite.jobEnt)
+	suite.NoError(err)
 }

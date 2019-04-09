@@ -168,6 +168,8 @@ func (suite JobKillTestSuite) TestJobKill() {
 		DesiredStateVersion: desiredStateVersion,
 	}
 
+	suite.cachedJob.EXPECT().ID().Return(suite.jobID).AnyTimes()
+
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob).
@@ -207,10 +209,6 @@ func (suite JobKillTestSuite) TestJobKill() {
 		GetJobType().
 		Return(pbjob.JobType_BATCH)
 
-	suite.cachedJob.EXPECT().
-		GetConfig(gomock.Any()).
-		Return(suite.cachedConfig, nil)
-
 	suite.taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return().
@@ -231,28 +229,6 @@ func (suite JobKillTestSuite) TestJobKillNoJob() {
 		Return(nil)
 	err := JobKill(context.Background(), suite.jobEnt)
 	suite.NoError(err)
-}
-
-// TestJobKillNoTasks tests when a job has no tasks and GetConfig failed
-func (suite JobKillTestSuite) TestJobKillNoTasksAndGetConfigErr() {
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).
-		Return(suite.cachedJob).AnyTimes()
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(&pbjob.RuntimeInfo{
-			GoalState:           pbjob.JobState_KILLED,
-			StateVersion:        1,
-			DesiredStateVersion: 2,
-		}, nil)
-	suite.cachedJob.EXPECT().
-		GetAllTasks().
-		Return(nil)
-	suite.cachedJob.EXPECT().
-		GetConfig(gomock.Any()).
-		Return(nil, errors.New(""))
-	err := JobKill(context.Background(), suite.jobEnt)
-	suite.Error(err)
 }
 
 // TestJobKillNoRumtimes tests when task doesn't has runtime
@@ -303,6 +279,8 @@ func (suite JobKillTestSuite) TestJobKillPatchFailed() {
 		GoalState: pbtask.TaskState_SUCCEEDED,
 	}
 
+	suite.cachedJob.EXPECT().ID().Return(suite.jobID).AnyTimes()
+
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob).AnyTimes()
@@ -322,9 +300,6 @@ func (suite JobKillTestSuite) TestJobKillPatchFailed() {
 	cachedTask1.EXPECT().
 		GetRuntime(gomock.Any()).
 		Return(runtimes[1], nil)
-	suite.cachedJob.EXPECT().
-		GetConfig(gomock.Any()).
-		Return(suite.cachedConfig, nil)
 	suite.taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
@@ -355,6 +330,136 @@ func (suite JobKillTestSuite) TestJobKillNoJobRuntime() {
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
 		Return(nil, errors.New(""))
+
+	err := JobKill(context.Background(), suite.jobEnt)
+	suite.Error(err)
+}
+
+// TestJobKillUpdateRuntimeFails tests killing a fully created job
+// fails due to job runtime update failure
+func (suite JobKillTestSuite) TestJobKillUpdateRuntimeFails() {
+	instanceCount := uint32(5)
+	stateVersion := uint64(1)
+	desiredStateVersion := uint64(2)
+
+	cachedTasks := make(map[uint32]cached.Task)
+	mockTasks := make(map[uint32]*cachedmocks.MockTask)
+	for i := uint32(0); i < instanceCount; i++ {
+		cachedTask := cachedmocks.NewMockTask(suite.ctrl)
+		mockTasks[i] = cachedTask
+		cachedTasks[i] = cachedTask
+	}
+
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
+	runtimes[0] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
+	}
+	runtimes[1] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
+	}
+	runtimes[2] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_INITIALIZED,
+		GoalState: pbtask.TaskState_SUCCEEDED,
+	}
+	runtimes[3] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_INITIALIZED,
+		GoalState: pbtask.TaskState_SUCCEEDED,
+	}
+	runtimes[4] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_FAILED,
+		GoalState: pbtask.TaskState_RUNNING,
+	}
+
+	termStatus := &pbtask.TerminationStatus{
+		Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+	}
+	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiffs[0] = map[string]interface{}{
+		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:           "Task stop API request",
+		jobmgrcommon.ReasonField:            "",
+		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
+	}
+	runtimeDiffs[1] = map[string]interface{}{
+		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:           "Task stop API request",
+		jobmgrcommon.ReasonField:            "",
+		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
+	}
+	runtimeDiffs[2] = map[string]interface{}{
+		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:           "Task stop API request",
+		jobmgrcommon.ReasonField:            "",
+		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
+	}
+	runtimeDiffs[3] = map[string]interface{}{
+		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:           "Task stop API request",
+		jobmgrcommon.ReasonField:            "",
+		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
+	}
+	runtimeDiffs[4] = map[string]interface{}{
+		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:           "Task stop API request",
+		jobmgrcommon.ReasonField:            "",
+		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
+	}
+
+	jobRuntime := &pbjob.RuntimeInfo{
+		State:               pbjob.JobState_RUNNING,
+		GoalState:           pbjob.JobState_SUCCEEDED,
+		StateVersion:        stateVersion,
+		DesiredStateVersion: desiredStateVersion,
+	}
+
+	suite.cachedJob.EXPECT().ID().Return(suite.jobID).AnyTimes()
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetAllTasks().
+		Return(cachedTasks).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	for i := uint32(0); i < instanceCount; i++ {
+		mockTasks[i].EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(runtimes[i], nil)
+	}
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), runtimeDiffs).
+		Return(nil)
+
+	suite.taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return().
+		Times(int(instanceCount - 1)) // one of the instance is not in terminal state
+
+	suite.cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context,
+			jobInfo *pbjob.JobInfo,
+			_ *models.ConfigAddOn,
+			_ cached.UpdateRequest) {
+			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_KILLING)
+			suite.Equal(jobInfo.Runtime.StateVersion, desiredStateVersion)
+		}).
+		Return(errors.New("test error"))
 
 	err := JobKill(context.Background(), suite.jobEnt)
 	suite.Error(err)
@@ -425,14 +530,6 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreated_StatelessJob() {
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
-
-	suite.cachedJob.EXPECT().
-		GetConfig(gomock.Any()).
-		Return(suite.cachedConfig, nil)
-
-	suite.cachedJob.EXPECT().
-		IsPartiallyCreated(gomock.Any()).
-		Return(true)
 
 	err := JobKill(context.Background(), suite.jobEnt)
 	suite.NoError(err)
@@ -506,14 +603,6 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	suite.cachedJob.EXPECT().
-		GetConfig(gomock.Any()).
-		Return(suite.cachedConfig, nil)
-
-	suite.cachedJob.EXPECT().
-		IsPartiallyCreated(gomock.Any()).
-		Return(true)
-
 	err := JobKill(context.Background(), suite.jobEnt)
 	suite.NoError(err)
 
@@ -526,10 +615,6 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob).AnyTimes()
-
-	suite.cachedJob.EXPECT().
-		GetConfig(gomock.Any()).
-		Return(suite.cachedConfig, nil)
 
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
@@ -554,10 +639,6 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
-
-	suite.cachedJob.EXPECT().
-		IsPartiallyCreated(gomock.Any()).
-		Return(true)
 
 	err = JobKill(context.Background(), suite.jobEnt)
 	suite.NoError(err)
@@ -635,14 +716,6 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob_AllTerminated() {
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
-
-	suite.cachedJob.EXPECT().
-		GetConfig(gomock.Any()).
-		Return(suite.cachedConfig, nil)
-
-	suite.cachedJob.EXPECT().
-		IsPartiallyCreated(gomock.Any()).
-		Return(true)
 
 	err := JobKill(context.Background(), suite.jobEnt)
 	suite.NoError(err)

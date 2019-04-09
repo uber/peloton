@@ -56,20 +56,23 @@ const (
 	DeleteJobAction JobAction = "delete"
 	// ReloadRuntimeAction reloads the job runtime into the cache
 	ReloadRuntimeAction JobAction = "reload"
+	// KillAndDeleteJobAction kills a job and deletes it if possible
+	KillAndDeleteJobAction JobAction = "kill_and_delete"
 )
 
 // _jobActionsMaps maps the JobAction string to the Action function.
 var (
 	_jobActionsMaps = map[JobAction]goalstate.ActionExecute{
-		NoJobAction:           nil,
-		CreateTasksAction:     JobCreateTasks,
-		KillAction:            JobKill,
-		UntrackAction:         JobUntrack,
-		JobStateInvalidAction: JobStateInvalid,
-		RecoverAction:         JobRecover,
-		StartTasksAction:      JobStart,
-		DeleteJobAction:       JobDelete,
-		ReloadRuntimeAction:   JobReloadRuntime,
+		NoJobAction:            nil,
+		CreateTasksAction:      JobCreateTasks,
+		KillAction:             JobKill,
+		UntrackAction:          JobUntrack,
+		JobStateInvalidAction:  JobStateInvalid,
+		RecoverAction:          JobRecover,
+		StartTasksAction:       JobStart,
+		DeleteJobAction:        JobDelete,
+		ReloadRuntimeAction:    JobReloadRuntime,
+		KillAndDeleteJobAction: JobKillAndDelete,
 	}
 )
 
@@ -116,9 +119,10 @@ var (
 			job.JobState_INITIALIZED:   KillAction,
 			job.JobState_PENDING:       KillAction,
 			job.JobState_RUNNING:       KillAction,
-			job.JobState_FAILED:        DeleteJobAction,
-			job.JobState_KILLED:        DeleteJobAction,
 			job.JobState_KILLING:       KillAction,
+			job.JobState_FAILED:        KillAndDeleteJobAction,
+			job.JobState_KILLED:        KillAndDeleteJobAction,
+			job.JobState_SUCCEEDED:     KillAndDeleteJobAction,
 		},
 	}
 )

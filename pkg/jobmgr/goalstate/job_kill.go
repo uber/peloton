@@ -27,7 +27,9 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // JobKill will stop all tasks in the job.
@@ -41,78 +43,16 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	// Get job runtime and update job state to killing
-	jobRuntime, err := cachedJob.GetRuntime(ctx)
+	jobState, nonTerminalTaskKilled, err :=
+		killJob(ctx, cachedJob, goalStateDriver)
 	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id).
-			Error("failed to get job runtime during job kill")
-		return err
-	}
-
-	// Update task runtimes in DB and cache to kill task
-	runtimeDiffNonTerminatedTasks, _, runtimeDiffAll, err :=
-		createRuntimeDiffForKill(ctx, cachedJob)
-	if err != nil {
-		return err
-	}
-
-	config, err := cachedJob.GetConfig(ctx)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id).
-			Error("Failed to get job config")
-		return err
-	}
-
-	err = cachedJob.PatchTasks(ctx, runtimeDiffAll)
-
-	// Schedule non terminated tasks in goal state engine.
-	// This should happen even if PatchTasks fail, so if part of
-	// the tasks are updated successfully, those tasks can be
-	// terminated. Otherwise, those tasks would not be enqueued
-	// into goal state engine in JobKill retry.
-	for instanceID := range runtimeDiffNonTerminatedTasks {
-		goalStateDriver.EnqueueTask(jobID, instanceID, time.Now())
-	}
-
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id).
-			Error("failed to update task runtimes to kill a job")
-		return err
-	}
-
-	jobState := calculateJobState(
-		ctx,
-		cachedJob,
-		config,
-		jobRuntime,
-		runtimeDiffNonTerminatedTasks,
-	)
-	// update job sate as well as state version,
-	// once state version == desired state version,
-	// goal state engine knows that the all the tasks
-	// are being sent to task goal state engine to kill and
-	// no further action is needed.
-	err = cachedJob.Update(ctx, &job.JobInfo{
-		Runtime: &job.RuntimeInfo{
-			State:        jobState,
-			StateVersion: jobRuntime.DesiredStateVersion,
-		},
-	}, nil,
-		cached.UpdateCacheAndDB)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id).
-			Error("failed to update job runtime during job kill")
 		return err
 	}
 
 	// Only enqueue the job into goal state:
 	// 1. any of the non terminated tasks need to be killed.
 	// 2. job state is already KILLED
-	if len(runtimeDiffNonTerminatedTasks) > 0 || util.IsPelotonJobStateTerminal(jobState) {
+	if nonTerminalTaskKilled || util.IsPelotonJobStateTerminal(jobState) {
 		EnqueueJobWithDefaultDelay(jobID, goalStateDriver, cachedJob)
 	}
 
@@ -144,6 +84,12 @@ func createRuntimeDiffForKill(
 	tasks := cachedJob.GetAllTasks()
 	for instanceID, cachedTask := range tasks {
 		runtime, err := cachedTask.GetRuntime(ctx)
+
+		// runtime not created yet, ignore the task
+		if yarpcerrors.IsNotFound(err) {
+			continue
+		}
+
 		if err != nil {
 			log.WithError(err).
 				WithField("job_id", cachedJob.ID().Value).
@@ -184,18 +130,11 @@ func createRuntimeDiffForKill(
 func calculateJobState(
 	ctx context.Context,
 	cachedJob cached.Job,
-	config jobmgrcommon.JobConfig,
 	jobRuntime *job.RuntimeInfo,
 	runtimeDiffNonTerminatedTasks map[uint32]jobmgrcommon.RuntimeDiff) job.JobState {
-	// If not all instances have been created,
-	// and all instances to be killed are already in terminal state,
-	// then directly update the job state to KILLED.
-	// Partially create batch job can be killed only on INITIALIZED state.
-	// Partially created stateless job can be killed on
-	// INITIALIZED & PENDING states.
-	if len(runtimeDiffNonTerminatedTasks) == 0 &&
-		cachedJob.IsPartiallyCreated(config) {
-
+	// if no non-terminal instance is killed, check if the job
+	// should directly enter KILLED state
+	if len(runtimeDiffNonTerminatedTasks) == 0 {
 		if cachedJob.GetJobType() == job.JobType_BATCH &&
 			jobRuntime.GetState() != job.JobState_INITIALIZED {
 			return job.JobState_KILLING
@@ -211,4 +150,68 @@ func calculateJobState(
 	}
 
 	return job.JobState_KILLING
+}
+
+// killJob kills all tasks in the job, and returns
+// 1. the new job state after the kill
+// 2. whether any non-terminated task is killed
+func killJob(
+	ctx context.Context,
+	cachedJob cached.Job,
+	goalStateDriver Driver,
+) (newState job.JobState, taskKilled bool, err error) {
+	// Get job runtime and update job state to killing
+	jobRuntime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get job runtime during job kill")
+		return
+	}
+
+	// Update task runtimes in DB and cache to kill task
+	runtimeDiffNonTerminatedTasks, _, runtimeDiffAll, err :=
+		createRuntimeDiffForKill(ctx, cachedJob)
+	if err != nil {
+		return
+	}
+
+	err = cachedJob.PatchTasks(ctx, runtimeDiffAll)
+
+	// Schedule non terminated tasks in goal state engine.
+	// This should happen even if PatchTasks fail, so if part of
+	// the tasks are updated successfully, those tasks can be
+	// terminated. Otherwise, those tasks would not be enqueued
+	// into goal state engine in JobKill retry.
+	for instanceID := range runtimeDiffNonTerminatedTasks {
+		goalStateDriver.EnqueueTask(cachedJob.ID(), instanceID, time.Now())
+	}
+
+	if err != nil {
+		err = errors.Wrap(err, "failed to update task runtimes to kill a job")
+		return
+	}
+
+	jobState := calculateJobState(
+		ctx,
+		cachedJob,
+		jobRuntime,
+		runtimeDiffNonTerminatedTasks,
+	)
+	// update job state as well as state version,
+	// once state version == desired state version,
+	// goal state engine knows that the all the tasks
+	// are being sent to task goal state engine to kill and
+	// no further action is needed.
+	err = cachedJob.Update(ctx, &job.JobInfo{
+		Runtime: &job.RuntimeInfo{
+			State:        jobState,
+			StateVersion: jobRuntime.DesiredStateVersion,
+		},
+	}, nil,
+		cached.UpdateCacheAndDB)
+	if err != nil {
+		err = errors.Wrap(err, "failed to update job runtime during job kill")
+		return
+	}
+
+	return jobState, len(runtimeDiffNonTerminatedTasks) > 0, err
 }
