@@ -498,6 +498,13 @@ func (suite *apiConverterTestSuite) TestConvertTaskConstraintsToPodConstraintsAn
 	}
 	taskConstraints := []*task.Constraint{
 		{
+			// make sure the nil fields are preserved
+			Type: task.Constraint_LABEL_CONSTRAINT,
+			LabelConstraint: &task.LabelConstraint{
+				Kind: task.LabelConstraint_HOST,
+			},
+		},
+		{
 			Type: task.Constraint_LABEL_CONSTRAINT,
 			LabelConstraint: &task.LabelConstraint{
 				Kind: task.LabelConstraint_HOST,
@@ -570,6 +577,12 @@ func (suite *apiConverterTestSuite) TestConvertTaskConstraintsToPodConstraintsAn
 	}
 
 	podConstraints := []*pod.Constraint{
+		{
+			Type: pod.Constraint_CONSTRAINT_TYPE_LABEL,
+			LabelConstraint: &pod.LabelConstraint{
+				Kind: pod.LabelConstraint_LABEL_CONSTRAINT_KIND_HOST,
+			},
+		},
 		{
 			Type: pod.Constraint_CONSTRAINT_TYPE_LABEL,
 			LabelConstraint: &pod.LabelConstraint{

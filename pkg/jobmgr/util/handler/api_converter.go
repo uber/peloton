@@ -299,28 +299,42 @@ func ConvertLabels(labels []*peloton.Label) []*v1alphapeloton.Label {
 func ConvertTaskConstraintsToPodConstraints(constraints []*task.Constraint) []*pod.Constraint {
 	var podConstraints []*pod.Constraint
 	for _, constraint := range constraints {
-		podConstraints = append(podConstraints, &pod.Constraint{
+		podConstraint := &pod.Constraint{
 			Type: pod.Constraint_Type(constraint.GetType()),
-			LabelConstraint: &pod.LabelConstraint{
+		}
+
+		if constraint.GetLabelConstraint() != nil {
+			podConstraint.LabelConstraint = &pod.LabelConstraint{
 				Kind: pod.LabelConstraint_Kind(
 					constraint.GetLabelConstraint().GetKind(),
 				),
 				Condition: pod.LabelConstraint_Condition(
 					constraint.GetLabelConstraint().GetCondition(),
 				),
-				Label: &v1alphapeloton.Label{
+				Requirement: constraint.GetLabelConstraint().GetRequirement(),
+			}
+
+			if constraint.GetLabelConstraint().GetLabel() != nil {
+				podConstraint.LabelConstraint.Label = &v1alphapeloton.Label{
 					Key:   constraint.GetLabelConstraint().GetLabel().GetKey(),
 					Value: constraint.GetLabelConstraint().GetLabel().GetValue(),
-				},
-				Requirement: constraint.GetLabelConstraint().GetRequirement(),
-			},
-			AndConstraint: &pod.AndConstraint{
+				}
+			}
+		}
+
+		if constraint.GetAndConstraint() != nil {
+			podConstraint.AndConstraint = &pod.AndConstraint{
 				Constraints: ConvertTaskConstraintsToPodConstraints(constraint.GetAndConstraint().GetConstraints()),
-			},
-			OrConstraint: &pod.OrConstraint{
+			}
+		}
+
+		if constraint.GetOrConstraint() != nil {
+			podConstraint.OrConstraint = &pod.OrConstraint{
 				Constraints: ConvertTaskConstraintsToPodConstraints(constraint.GetOrConstraint().GetConstraints()),
-			},
-		})
+			}
+		}
+
+		podConstraints = append(podConstraints, podConstraint)
 	}
 	return podConstraints
 }
@@ -822,10 +836,6 @@ func ConvertPodConstraintsToTaskConstraints(
 		}
 
 		if podConstraint.GetLabelConstraint() != nil {
-			label := &peloton.Label{
-				Key:   podConstraint.GetLabelConstraint().GetLabel().GetKey(),
-				Value: podConstraint.GetLabelConstraint().GetLabel().GetValue(),
-			}
 			taskConstraint.LabelConstraint = &task.LabelConstraint{
 				Kind: task.LabelConstraint_Kind(
 					podConstraint.GetLabelConstraint().GetKind(),
@@ -833,8 +843,14 @@ func ConvertPodConstraintsToTaskConstraints(
 				Condition: task.LabelConstraint_Condition(
 					podConstraint.GetLabelConstraint().GetCondition(),
 				),
-				Label:       label,
 				Requirement: podConstraint.GetLabelConstraint().GetRequirement(),
+			}
+
+			if podConstraint.GetLabelConstraint().GetLabel() != nil {
+				taskConstraint.LabelConstraint.Label = &peloton.Label{
+					Key:   podConstraint.GetLabelConstraint().GetLabel().GetKey(),
+					Value: podConstraint.GetLabelConstraint().GetLabel().GetValue(),
+				}
 			}
 		}
 
