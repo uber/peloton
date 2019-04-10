@@ -1,0 +1,92 @@
+taskConfig:
+  job:
+    role: test
+    environment: dc
+    name: labrat_large_job
+  isService: true
+  priority: 0
+  tier: preemptible
+  production: false
+  resources:
+    - numCpus: 1
+    - ramMb: 128
+    - diskMb: 256
+  executorConfig:
+    name: AuroraExecutor
+    data:
+      '{
+                "cluster": "peloton",
+                "cron_collision_policy": "KILL_EXISTING",
+                "enable_hooks": false,
+                "environment": "dc",
+                "executor_config": {
+                    "data": "",
+                    "name": "AuroraExecutor"
+                },
+                "health_check_config": {
+                    "health_checker": {
+                        "shell": {
+                            "shell_command": "exit 1"
+                        }
+                    },
+                    "initial_interval_secs": 15.0,
+                    "interval_secs": 10.0,
+                    "max_consecutive_failures": 0,
+                    "min_consecutive_successes": 1,
+                    "timeout_secs": 1.0
+                },
+                "lifecycle": {
+                    "http": {
+                        "graceful_shutdown_endpoint": "/quitquitquit",
+                        "graceful_shutdown_wait_secs": 5,
+                        "port": "health",
+                        "shutdown_endpoint": "/abortabortabort",
+                        "shutdown_wait_secs": 5
+                    }
+                },
+                "max_task_failures": 1,
+                "metadata": [],
+                "name": "labrat",
+                "priority": 0,
+                "production": false,
+                "role": "test",
+                "service": true,
+                "task": {
+                    "constraints": [
+                        {
+                            "order": [
+                                "hello"
+                            ]
+                        }
+                    ],
+                    "finalization_wait": 30,
+                    "max_concurrency": 0,
+                    "max_failures": 1,
+                    "name": "hello",
+                    "processes": [
+                        {
+                            "cmdline": "exit 1",
+                            "daemon": false,
+                            "ephemeral": false,
+                            "final": false,
+                            "max_failures": 1,
+                            "min_duration": 5,
+                            "name": "hello"
+                        }
+                    ],
+                    "resources": {
+                        "cpu": 1,
+                        "disk": 268435456,
+                        "gpu": 0,
+                        "ram": 134217728
+                    }
+                },
+                "tier": "preemptible"
+            }'
+instanceCount: 10
+settings:
+  updateGroupSize: 1
+  minWaitInInstanceRunningMs: 45000
+  maxFailedInstances: 5
+  maxPerInstanceFailures: 0
+  rollbackOnFailure: true

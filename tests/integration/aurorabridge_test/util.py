@@ -8,7 +8,7 @@ from tests.integration.util import load_config
 TEST_CONFIG_DIR = '/aurorabridge_test/test_configs'
 
 
-def wait_for_rolled_forward(client, job_update_key):
+def wait_for_rolled_forward(client, job_update_key, timeout_secs=120):
     '''Wait for job update to be in "ROLLED_FORWARD" state, triggers
     assertion failure if timed out.
 
@@ -21,7 +21,19 @@ def wait_for_rolled_forward(client, job_update_key):
         client,
         job_update_key,
         {api.JobUpdateStatus.ROLLING_FORWARD},
-        api.JobUpdateStatus.ROLLED_FORWARD)
+        api.JobUpdateStatus.ROLLED_FORWARD,
+        timeout_secs,
+    )
+
+
+def wait_for_auto_rolling_back(client, job_update_key, timeout_secs=120):
+    wait_for_update_status(
+        client,
+        job_update_key,
+        {api.JobUpdateStatus.ROLLING_FORWARD, api.JobUpdateStatus.FAILED},
+        api.JobUpdateStatus.ROLLING_BACK,
+        timeout_secs,
+    )
 
 
 def wait_for_rolled_back(client, job_update_key, timeout_secs=120):
@@ -30,7 +42,7 @@ def wait_for_rolled_back(client, job_update_key, timeout_secs=120):
         job_update_key,
         {api.JobUpdateStatus.ROLLING_FORWARD, api.JobUpdateStatus.ROLLING_BACK},
         api.JobUpdateStatus.ROLLED_BACK,
-        timeout_secs=timeout_secs,
+        timeout_secs,
     )
 
 
