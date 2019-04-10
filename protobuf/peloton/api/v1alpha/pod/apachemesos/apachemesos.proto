@@ -77,7 +77,8 @@ message PodSpec {
       EXECUTOR_TYPE_CUSTOM = 2;
     }
 
-    // Executor type
+    // Executor type. This is mandatory field, and if not provided,
+    // executor type is set to EXECUTOR_TYPE_INVALID.
     ExecutorType type = 1;
 
     // The executor identifier
@@ -98,6 +99,8 @@ message PodSpec {
 
   // If shell is set to true, then the command will be launched via shell.
   // TBD After this is supported by Kubelet runtime, move to pod.CommandSpec.
+  // This is a mandatory field to be provided if the additional mesos specification
+  // is provided as part of the pod specification.
   bool shell = 4;
 
   // The executor configuration

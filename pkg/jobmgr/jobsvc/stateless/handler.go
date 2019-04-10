@@ -184,6 +184,11 @@ func (h *serviceHandler) CreateJob(
 		return nil, errors.Wrap(err, "failed to convert job spec")
 	}
 
+	log.WithField("job_spec", jobSpec).
+		WithField("job_config", jobConfig).
+		WithField("job_id", pelotonJobID.GetValue()).
+		Info("compare job spec and configs in create")
+
 	// Validate job config with default task configs
 	err = jobconfig.ValidateConfig(
 		jobConfig,
@@ -298,6 +303,11 @@ func (h *serviceHandler) ReplaceJob(
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to convert job spec")
 	}
+
+	log.WithField("job_spec", req.GetSpec()).
+		WithField("job_config", jobConfig).
+		WithField("job_id", jobUUID).
+		Info("compare job spec and configs in update")
 
 	err = jobconfig.ValidateConfig(
 		jobConfig,

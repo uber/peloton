@@ -17,6 +17,7 @@ package api
 import (
 	"reflect"
 
+	mesosv1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pelotonv0query "github.com/uber/peloton/.gen/peloton/api/v0/query"
@@ -26,7 +27,9 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/apachemesos"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/query"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/volume"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/common/util"
@@ -167,6 +170,7 @@ func ConvertTaskRuntimeToPodStatus(runtime *task.RuntimeInfo) *pod.PodStatus {
 		Version:        versionutil.GetPodEntityVersion(runtime.GetConfigVersion()),
 		DesiredVersion: versionutil.GetPodEntityVersion(runtime.GetDesiredConfigVersion()),
 		AgentId:        runtime.GetAgentID(),
+		HostId:         runtime.GetAgentID().GetValue(),
 		Revision: &v1alphapeloton.Revision{
 			Version:   runtime.GetRevision().GetVersion(),
 			CreatedAt: runtime.GetRevision().GetCreatedAt(),
@@ -238,14 +242,17 @@ func ConvertTaskConfigToPodSpec(taskConfig *task.TaskConfig, jobID string, insta
 
 	if taskConfig.GetContainer() != nil {
 		container.Container = taskConfig.GetContainer()
+		ConvertMesosContainerToPodSpec(taskConfig.GetContainer(), result, container)
 	}
 
 	if taskConfig.GetCommand() != nil {
 		container.Command = taskConfig.GetCommand()
+		ConvertMesosCommandToPodSpec(taskConfig.GetCommand(), result, container)
 	}
 
 	if taskConfig.GetExecutor() != nil {
 		container.Executor = taskConfig.GetExecutor()
+		ConvertMesosExecutorInfoToPodSpec(taskConfig.GetExecutor(), result, container)
 	}
 
 	if taskConfig.GetPorts() != nil {
@@ -707,6 +714,427 @@ func ConvertJobSpecToJobConfig(spec *stateless.JobSpec) (*job.JobConfig, error) 
 	return result, nil
 }
 
+// FindVolumeInPodSpec finds a volume of given name in the
+// volume spec present in the pod spec
+func FindVolumeInPodSpec(spec *pod.PodSpec, name string) *volume.VolumeSpec {
+	for _, volume := range spec.GetVolumes() {
+		if volume.GetName() == name {
+			return volume
+		}
+	}
+	return nil
+}
+
+// ConvertMesosContainerToPodSpec converts the mesos container info to PodSpec
+func ConvertMesosContainerToPodSpec(
+	containerInfo *mesosv1.ContainerInfo, // input
+	spec *pod.PodSpec, // output
+	container *pod.ContainerSpec, //output
+) {
+	if containerInfo == nil {
+		return
+	}
+
+	if spec.GetMesosSpec() == nil {
+		spec.MesosSpec = &apachemesos.PodSpec{}
+	}
+
+	// populate container type
+	switch containerInfo.GetType() {
+	case mesosv1.ContainerInfo_DOCKER:
+		spec.MesosSpec.Type = apachemesos.PodSpec_CONTAINER_TYPE_DOCKER
+	case mesosv1.ContainerInfo_MESOS:
+		spec.MesosSpec.Type = apachemesos.PodSpec_CONTAINER_TYPE_MESOS
+	}
+
+	// Populate volumes
+	var volumeSpecs []*volume.VolumeSpec
+	var volumeMounts []*pod.VolumeMount
+
+	for _, v := range containerInfo.GetVolumes() {
+		// TBD original name is lost, store it with v0 api
+		volumeSpec := FindVolumeInPodSpec(spec, v.GetHostPath())
+		if volumeSpec == nil {
+			volumeSpec = &volume.VolumeSpec{
+				HostPath: &volume.VolumeSpec_HostPathVolumeSource{
+					Path: v.GetHostPath(),
+				},
+				Type: volume.VolumeSpec_VOLUME_TYPE_HOST_PATH,
+				Name: v.GetHostPath(),
+			}
+			volumeSpecs = append(volumeSpecs, volumeSpec)
+		}
+
+		readOnly := false
+		if v.GetMode() == mesosv1.Volume_RO {
+			readOnly = true
+		}
+
+		volumeMount := &pod.VolumeMount{
+			Name:      v.GetHostPath(),
+			ReadOnly:  readOnly,
+			MountPath: v.GetContainerPath(),
+		}
+		volumeMounts = append(volumeMounts, volumeMount)
+	}
+
+	if len(volumeSpecs) > 0 {
+		spec.Volumes = volumeSpecs
+	}
+
+	if len(volumeMounts) > 0 {
+		container.VolumeMounts = volumeMounts
+	}
+
+	// Populate container type specific info
+	if containerInfo.GetType() == mesosv1.ContainerInfo_DOCKER {
+		dockerInfo := containerInfo.GetDocker()
+
+		var parameters []*apachemesos.PodSpec_DockerParameter
+		for _, parameter := range dockerInfo.GetParameters() {
+			p := &apachemesos.PodSpec_DockerParameter{
+				Key:   parameter.GetKey(),
+				Value: parameter.GetValue(),
+			}
+			parameters = append(parameters, p)
+		}
+
+		if len(parameters) > 0 {
+			spec.MesosSpec.DockerParameters = parameters
+		}
+
+		if len(dockerInfo.GetImage()) > 0 {
+			container.Image = dockerInfo.GetImage()
+		}
+	} else {
+		if len(containerInfo.GetMesos().GetImage().GetDocker().GetName()) > 0 {
+			container.Image = containerInfo.GetMesos().GetImage().GetDocker().GetName()
+		}
+	}
+}
+
+// ConvertPodSpecToMesosContainer converts pod spec to mesos container info
+func ConvertPodSpecToMesosContainer(spec *pod.PodSpec) *mesosv1.ContainerInfo {
+	if len(spec.GetContainers()) == 0 {
+		return nil
+	}
+
+	mainContainer := spec.GetContainers()[0]
+	if mainContainer.GetContainer() != nil {
+		return mainContainer.GetContainer()
+	}
+
+	if len(mainContainer.GetImage()) == 0 {
+		// Container being launched without an image
+		return nil
+	}
+
+	containerInfo := &mesosv1.ContainerInfo{}
+	mesosPodSpec := spec.GetMesosSpec()
+
+	// populate ContainerType
+	if mesosPodSpec.GetType() == apachemesos.PodSpec_CONTAINER_TYPE_MESOS {
+		containerType := mesosv1.ContainerInfo_MESOS
+		containerInfo.Type = &containerType
+	} else if mesosPodSpec.GetType() == apachemesos.PodSpec_CONTAINER_TYPE_DOCKER {
+		containerType := mesosv1.ContainerInfo_DOCKER
+		containerInfo.Type = &containerType
+	}
+
+	// Populate volumes
+	var volumes []*mesosv1.Volume
+	for _, volumeMount := range mainContainer.GetVolumeMounts() {
+		volumeSpec := FindVolumeInPodSpec(spec, volumeMount.GetName())
+		if volumeSpec.GetType() != volume.VolumeSpec_VOLUME_TYPE_HOST_PATH ||
+			volumeSpec.GetHostPath() == nil {
+			// unsupported volume
+			continue
+		}
+
+		mode := mesosv1.Volume_RW
+		if volumeMount.GetReadOnly() {
+			mode = mesosv1.Volume_RO
+		}
+		mountPath := volumeMount.GetMountPath()
+		containerPath := volumeSpec.GetHostPath().GetPath()
+
+		mesosVolume := &mesosv1.Volume{
+			Mode:          &mode,
+			ContainerPath: &mountPath,
+			HostPath:      &containerPath,
+		}
+
+		volumes = append(volumes, mesosVolume)
+	}
+
+	if len(volumes) > 0 {
+		containerInfo.Volumes = volumes
+	}
+
+	// Populate container type specific info
+	cached := true
+	image := mainContainer.GetImage()
+	if len(image) > 0 {
+		if containerInfo.GetType() == mesosv1.ContainerInfo_DOCKER {
+			var parameters []*mesosv1.Parameter
+
+			for _, parameter := range mesosPodSpec.GetDockerParameters() {
+				key := parameter.GetKey()
+				value := parameter.GetValue()
+				mesosParameter := &mesosv1.Parameter{
+					Key:   &key,
+					Value: &value,
+				}
+				parameters = append(parameters, mesosParameter)
+			}
+
+			hostNetwork := mesosv1.ContainerInfo_DockerInfo_HOST
+
+			containerInfo.Docker = &mesosv1.ContainerInfo_DockerInfo{
+				Image:      &image,
+				Network:    &hostNetwork,
+				Parameters: parameters,
+			}
+		} else {
+			imageType := mesosv1.Image_DOCKER
+			containerInfo.Mesos = &mesosv1.ContainerInfo_MesosInfo{
+				Image: &mesosv1.Image{
+					Type: &imageType,
+					Docker: &mesosv1.Image_Docker{
+						Name: &image,
+					},
+					Cached: &cached,
+				},
+			}
+		}
+	}
+
+	return containerInfo
+}
+
+// ConvertMesosCommandToPodSpec converts the mesos command info to pod spec
+func ConvertMesosCommandToPodSpec(
+	commandInfo *mesosv1.CommandInfo, //input
+	spec *pod.PodSpec, //output
+	container *pod.ContainerSpec, // output
+) {
+	if commandInfo == nil {
+		return
+	}
+
+	if spec.GetMesosSpec() == nil {
+		spec.MesosSpec = &apachemesos.PodSpec{}
+	}
+
+	// populate uris
+	var uris []*apachemesos.PodSpec_URI
+	for _, uri := range commandInfo.GetUris() {
+		u := &apachemesos.PodSpec_URI{
+			Value:      uri.GetValue(),
+			Executable: uri.GetExecutable(),
+			Extract:    uri.GetExtract(),
+			Cache:      uri.GetCache(),
+			OutputFile: uri.GetOutputFile(),
+		}
+		uris = append(uris, u)
+	}
+
+	if len(uris) > 0 {
+		spec.MesosSpec.Uris = uris
+	}
+
+	// populate environment
+	if commandInfo.GetEnvironment() != nil {
+		var environments []*pod.Environment
+		for _, env := range commandInfo.GetEnvironment().GetVariables() {
+			if env.GetType() != mesosv1.Environment_Variable_VALUE {
+				// unsupported type
+				continue
+			}
+
+			e := &pod.Environment{
+				Name:  env.GetName(),
+				Value: env.GetValue(),
+			}
+			environments = append(environments, e)
+		}
+		container.Environment = environments
+	}
+
+	// populate shell
+	if commandInfo.Shell != nil {
+		spec.MesosSpec.Shell = commandInfo.GetShell()
+	}
+
+	// populate entrypoint
+	container.Entrypoint = &pod.CommandSpec{}
+	if len(commandInfo.GetValue()) > 0 {
+		container.Entrypoint.Value = commandInfo.GetValue()
+	}
+
+	if len(commandInfo.GetArguments()) > 0 {
+		container.Entrypoint.Arguments = commandInfo.GetArguments()
+	}
+}
+
+// ConvertPodSpecToMesosCommand converts pod spec to mesos command info
+func ConvertPodSpecToMesosCommand(spec *pod.PodSpec) *mesosv1.CommandInfo {
+	if len(spec.GetContainers()) == 0 {
+		return nil
+	}
+
+	mainContainer := spec.GetContainers()[0]
+	if mainContainer.GetCommand() != nil {
+		return mainContainer.GetCommand()
+	}
+
+	commandInfo := &mesosv1.CommandInfo{}
+	mesosPodSpec := spec.GetMesosSpec()
+
+	// populate uris
+	var uris []*mesosv1.CommandInfo_URI
+
+	for _, uri := range mesosPodSpec.GetUris() {
+		uriValue := uri.GetValue()
+		uriExecutable := uri.GetExecutable()
+		uriExtract := uri.GetExtract()
+		uriCache := uri.GetCache()
+		uriOutputFile := uri.GetOutputFile()
+		mesosUri := &mesosv1.CommandInfo_URI{
+			Value:      &uriValue,
+			Executable: &uriExecutable,
+			Extract:    &uriExtract,
+			Cache:      &uriCache,
+			OutputFile: &uriOutputFile,
+		}
+		uris = append(uris, mesosUri)
+	}
+
+	if len(uris) > 0 {
+		commandInfo.Uris = uris
+	}
+
+	// populate environment
+	var environments []*mesosv1.Environment_Variable
+
+	for _, env := range mainContainer.GetEnvironment() {
+		envName := env.GetName()
+		envValue := env.GetValue()
+		envType := mesosv1.Environment_Variable_VALUE
+		mesosEnv := &mesosv1.Environment_Variable{
+			Name:  &envName,
+			Value: &envValue,
+			Type:  &envType,
+		}
+		environments = append(environments, mesosEnv)
+	}
+
+	if len(environments) > 0 {
+		environment := &mesosv1.Environment{
+			Variables: environments,
+		}
+		commandInfo.Environment = environment
+	}
+
+	// populate shell
+	if mesosPodSpec != nil {
+		commandShell := mesosPodSpec.GetShell()
+		commandInfo.Shell = &commandShell
+	}
+
+	// populate command
+	if len(mainContainer.GetEntrypoint().GetValue()) > 0 {
+		commandValue := mainContainer.GetEntrypoint().GetValue()
+		commandInfo.Value = &commandValue
+	}
+
+	// populate arguments
+	if len(mainContainer.GetEntrypoint().GetArguments()) > 0 {
+		commandInfo.Arguments = mainContainer.GetEntrypoint().GetArguments()
+	}
+
+	return commandInfo
+}
+
+// ConvertMesosExecutorInfoToPodSpec converts mesos executor info to pod spec
+func ConvertMesosExecutorInfoToPodSpec(
+	executorInfo *mesosv1.ExecutorInfo, // input
+	spec *pod.PodSpec, // output
+	container *pod.ContainerSpec, //output
+) {
+	if executorInfo == nil {
+		return
+	}
+
+	if spec.GetMesosSpec() == nil {
+		spec.MesosSpec = &apachemesos.PodSpec{}
+	}
+
+	spec.MesosSpec.ExecutorSpec = &apachemesos.PodSpec_ExecutorSpec{}
+
+	// populate the executor type
+	switch executorInfo.GetType() {
+	case mesosv1.ExecutorInfo_UNKNOWN:
+		spec.MesosSpec.ExecutorSpec.Type = apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_INVALID
+	case mesosv1.ExecutorInfo_DEFAULT:
+		spec.MesosSpec.ExecutorSpec.Type = apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_DEFAULT
+	case mesosv1.ExecutorInfo_CUSTOM:
+		spec.MesosSpec.ExecutorSpec.Type = apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_CUSTOM
+	}
+
+	// ppopulate the executor ID
+	if executorInfo.GetExecutorId() != nil {
+		spec.MesosSpec.ExecutorSpec.ExecutorId = executorInfo.GetExecutorId().GetValue()
+	}
+
+	// populate the executor data
+	if len(executorInfo.GetData()) > 0 {
+		spec.MesosSpec.ExecutorSpec.Data = executorInfo.GetData()
+	}
+}
+
+// ConvertPodSpecToMesosExecutorInfo converts pod spec to mesos executor info
+func ConvertPodSpecToMesosExecutorInfo(spec *pod.PodSpec) *mesosv1.ExecutorInfo {
+	if len(spec.GetContainers()) == 0 {
+		return nil
+	}
+
+	mainContainer := spec.GetContainers()[0]
+	if mainContainer.GetExecutor() != nil {
+		return mainContainer.GetExecutor()
+	}
+
+	executorInfo := &mesosv1.ExecutorInfo{}
+	mesosExecutorSpec := spec.GetMesosSpec().GetExecutorSpec()
+	if mesosExecutorSpec == nil {
+		return nil
+	}
+
+	// populate the executor type
+	executorType := mesosv1.ExecutorInfo_UNKNOWN
+	if mesosExecutorSpec.GetType() == apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_CUSTOM {
+		executorType = mesosv1.ExecutorInfo_CUSTOM
+	} else if mesosExecutorSpec.GetType() == apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_DEFAULT {
+		executorType = mesosv1.ExecutorInfo_DEFAULT
+	}
+	executorInfo.Type = &executorType
+
+	// ppopulate the executor ID
+	executorID := mesosExecutorSpec.GetExecutorId()
+	if len(mesosExecutorSpec.GetExecutorId()) > 0 {
+		executorInfo.ExecutorId = &mesosv1.ExecutorID{
+			Value: &executorID,
+		}
+	}
+
+	// populate the executor data
+	if len(mesosExecutorSpec.GetData()) > 0 {
+		executorInfo.Data = mesosExecutorSpec.GetData()
+	}
+
+	return executorInfo
+}
+
 // ConvertPodSpecToTaskConfig converts a pod spec to task config
 func ConvertPodSpecToTaskConfig(spec *pod.PodSpec) (*task.TaskConfig, error) {
 	if len(spec.GetContainers()) > 1 {
@@ -728,9 +1156,9 @@ func ConvertPodSpecToTaskConfig(spec *pod.PodSpec) (*task.TaskConfig, error) {
 	var mainContainer *pod.ContainerSpec
 	if len(spec.GetContainers()) > 0 {
 		mainContainer = spec.GetContainers()[0]
-		result.Container = mainContainer.GetContainer()
-		result.Command = mainContainer.GetCommand()
-		result.Executor = mainContainer.GetExecutor()
+		result.Container = ConvertPodSpecToMesosContainer(spec)
+		result.Command = ConvertPodSpecToMesosCommand(spec)
+		result.Executor = ConvertPodSpecToMesosExecutorInfo(spec)
 	}
 
 	result.Name = mainContainer.GetName()

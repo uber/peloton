@@ -28,8 +28,10 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/apachemesos"
 	v1alphaquery "github.com/uber/peloton/.gen/peloton/api/v1alpha/query"
 	v1alpharespool "github.com/uber/peloton/.gen/peloton/api/v1alpha/respool"
+	v1alphavolume "github.com/uber/peloton/.gen/peloton/api/v1alpha/volume"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/common/util"
@@ -202,6 +204,7 @@ func (suite *apiConverterTestSuite) TestConvertTaskRuntimeToPodStatus() {
 		AgentId: &mesos.AgentID{
 			Value: &testAgentID,
 		},
+		HostId: testAgentID,
 		Revision: &v1alphapeloton.Revision{
 			Version:   taskRuntime.GetRevision().GetVersion(),
 			CreatedAt: taskRuntime.GetRevision().GetCreatedAt(),
@@ -223,154 +226,328 @@ func (suite *apiConverterTestSuite) TestConvertTaskRuntimeToPodStatus() {
 // TestTaskConfigToPodSpecAndViceVersa tests conversion from
 // v0 task.TaskConfig to v1alpha pod.PodSpec and vice versa
 func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa() {
-	taskName := "test-task"
-	label := &peloton.Label{
-		Key:   "test-key",
-		Value: "test-value",
-	}
-	containerType := mesos.ContainerInfo_MESOS
-	testCmd := "echo test"
-	portName := "test-port"
-	portValue := uint32(5292)
-	executorType := mesos.ExecutorInfo_CUSTOM
-	executorIDValue := "executor_id"
-	executorID := mesos.ExecutorID{
-		Value: &executorIDValue,
-	}
-	jobID := uuid.New()
-	instanceID := uint32(0)
-
-	taskConfig := &task.TaskConfig{
-		Name:   taskName,
-		Labels: []*peloton.Label{label},
-		Resource: &task.ResourceConfig{
-			CpuLimit:    4,
-			MemLimitMb:  200,
-			DiskLimitMb: 400,
-			FdLimit:     100,
-			GpuLimit:    10,
+	tt := []struct {
+		containerType    mesos.ContainerInfo_Type
+		podContainerType apachemesos.PodSpec_ContainerType
+		executorType     mesos.ExecutorInfo_Type
+		podExecutorType  apachemesos.PodSpec_ExecutorSpec_ExecutorType
+	}{
+		{
+			containerType:    mesos.ContainerInfo_MESOS,
+			podContainerType: apachemesos.PodSpec_CONTAINER_TYPE_MESOS,
+			executorType:     mesos.ExecutorInfo_CUSTOM,
+			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_CUSTOM,
 		},
-		Container: &mesos.ContainerInfo{
-			Type: &containerType,
+		{
+			containerType:    mesos.ContainerInfo_DOCKER,
+			podContainerType: apachemesos.PodSpec_CONTAINER_TYPE_DOCKER,
+			executorType:     mesos.ExecutorInfo_DEFAULT,
+			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_DEFAULT,
 		},
-		Command: &mesos.CommandInfo{
-			Value: &testCmd,
+		{
+			containerType:    mesos.ContainerInfo_MESOS,
+			podContainerType: apachemesos.PodSpec_CONTAINER_TYPE_MESOS,
+			executorType:     mesos.ExecutorInfo_UNKNOWN,
+			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_INVALID,
 		},
-		Executor: &mesos.ExecutorInfo{
-			Type:       &executorType,
-			ExecutorId: &executorID,
-		},
-		HealthCheck: &task.HealthCheckConfig{
-			Enabled:      false,
-			CommandCheck: &task.HealthCheckConfig_CommandCheck{},
-			HttpCheck: &task.HealthCheckConfig_HTTPCheck{
-				Scheme: "http",
-				Port:   uint32(100),
-				Path:   "/health",
-			},
-		},
-		Ports: []*task.PortConfig{
-			{
-				Name:  portName,
-				Value: portValue,
-			},
-		},
-		Constraint: &task.Constraint{
-			Type: task.Constraint_LABEL_CONSTRAINT,
-			LabelConstraint: &task.LabelConstraint{
-				Label: label,
-			},
-			AndConstraint: &task.AndConstraint{},
-			OrConstraint:  &task.OrConstraint{},
-		},
-		RestartPolicy: &task.RestartPolicy{
-			MaxFailures: 5,
-		},
-		Volume: &task.PersistentVolumeConfig{
-			ContainerPath: "test/container/path",
-			SizeMB:        100,
-		},
-		PreemptionPolicy: &task.PreemptionPolicy{
-			Type:          task.PreemptionPolicy_TYPE_NON_PREEMPTIBLE,
-			KillOnPreempt: false,
-		},
-		Controller:             false,
-		KillGracePeriodSeconds: 5,
-		Revocable:              false,
 	}
 
-	podSpec := &pod.PodSpec{
-		PodName: &v1alphapeloton.PodName{
-			Value: util.CreatePelotonTaskID(jobID, instanceID),
-		},
-		Labels: []*v1alphapeloton.Label{
-			{
-				Key:   label.GetKey(),
-				Value: label.GetValue(),
+	for _, test := range tt {
+		taskName := "test-task"
+		label := &peloton.Label{
+			Key:   "test-key",
+			Value: "test-value",
+		}
+
+		testCmd := "echo test"
+		testImage := "test-image"
+
+		var volumes []*mesos.Volume
+		volumeMode := mesos.Volume_RO
+		containerPath := "/container/path"
+		hostPath := "/host/path"
+		volume := &mesos.Volume{
+			Mode:          &volumeMode,
+			ContainerPath: &containerPath,
+			HostPath:      &hostPath,
+		}
+		volumes = append(volumes, volume)
+
+		var podVolumes []*v1alphavolume.VolumeSpec
+		podVolume := &v1alphavolume.VolumeSpec{
+			Name: hostPath,
+			Type: v1alphavolume.VolumeSpec_VOLUME_TYPE_HOST_PATH,
+			HostPath: &v1alphavolume.VolumeSpec_HostPathVolumeSource{
+				Path: hostPath,
 			},
-		},
-		Containers: []*pod.ContainerSpec{
-			{
-				Name: taskName,
-				Resource: &pod.ResourceSpec{
-					CpuLimit:    taskConfig.GetResource().GetCpuLimit(),
-					MemLimitMb:  taskConfig.GetResource().GetMemLimitMb(),
-					DiskLimitMb: taskConfig.GetResource().GetDiskLimitMb(),
-					FdLimit:     taskConfig.GetResource().GetFdLimit(),
-					GpuLimit:    taskConfig.GetResource().GetGpuLimit(),
+		}
+		podVolumes = append(podVolumes, podVolume)
+
+		var containerVolumeMounts []*pod.VolumeMount
+		containerVolumeMount := &pod.VolumeMount{
+			Name:      hostPath,
+			ReadOnly:  true,
+			MountPath: containerPath,
+		}
+		containerVolumeMounts = append(containerVolumeMounts, containerVolumeMount)
+
+		var dockerParameters []*mesos.Parameter
+		dockerKey := "docker-key"
+		dockerValue := "docker-value"
+		dockerParameter := &mesos.Parameter{
+			Key:   &dockerKey,
+			Value: &dockerValue,
+		}
+		dockerParameters = append(dockerParameters, dockerParameter)
+
+		var podDockerParameters []*apachemesos.PodSpec_DockerParameter
+		podDockerParameter := &apachemesos.PodSpec_DockerParameter{
+			Key:   dockerKey,
+			Value: dockerValue,
+		}
+		podDockerParameters = append(podDockerParameters, podDockerParameter)
+
+		var uris []*mesos.CommandInfo_URI
+		uriValue := "uri-path"
+		uriExecutable := true
+		uriExtract := true
+		uriCache := true
+		uriOutputFile := "uri-file"
+		uri := &mesos.CommandInfo_URI{
+			Value:      &uriValue,
+			Executable: &uriExecutable,
+			Extract:    &uriExtract,
+			Cache:      &uriCache,
+			OutputFile: &uriOutputFile,
+		}
+		uris = append(uris, uri)
+
+		var podUris []*apachemesos.PodSpec_URI
+		podUri := &apachemesos.PodSpec_URI{
+			Value:      uriValue,
+			Executable: uriExecutable,
+			Extract:    uriExtract,
+			Cache:      uriCache,
+			OutputFile: uriOutputFile,
+		}
+		podUris = append(podUris, podUri)
+
+		var envVars []*mesos.Environment_Variable
+		envName := "env"
+		envValue := "staging"
+		envType := mesos.Environment_Variable_VALUE
+		envVar := &mesos.Environment_Variable{
+			Name:  &envName,
+			Value: &envValue,
+			Type:  &envType,
+		}
+		envVars = append(envVars, envVar)
+
+		var podEnvironments []*pod.Environment
+		podEnvironment := &pod.Environment{
+			Name:  envName,
+			Value: envValue,
+		}
+		podEnvironments = append(podEnvironments, podEnvironment)
+
+		shellCmd := true
+		arguments := []string{"-v", "-j"}
+
+		portName := "test-port"
+		portValue := uint32(5292)
+
+		executorIDValue := "executor_id"
+		executorID := mesos.ExecutorID{
+			Value: &executorIDValue,
+		}
+
+		jobID := uuid.New()
+		instanceID := uint32(0)
+
+		taskConfig := &task.TaskConfig{
+			Name:   taskName,
+			Labels: []*peloton.Label{label},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    4,
+				MemLimitMb:  200,
+				DiskLimitMb: 400,
+				FdLimit:     100,
+				GpuLimit:    10,
+			},
+			Container: &mesos.ContainerInfo{
+				Type:    &test.containerType,
+				Volumes: volumes,
+			},
+			Command: &mesos.CommandInfo{
+				Uris: uris,
+				Environment: &mesos.Environment{
+					Variables: envVars,
 				},
-				Container: taskConfig.GetContainer(),
-				Command:   taskConfig.GetCommand(),
-				Executor:  taskConfig.GetExecutor(),
-				LivenessCheck: &pod.HealthCheckSpec{
-					Enabled:      taskConfig.GetHealthCheck().GetEnabled(),
-					CommandCheck: &pod.HealthCheckSpec_CommandCheck{},
-					HttpCheck: &pod.HealthCheckSpec_HTTPCheck{
-						Scheme: taskConfig.GetHealthCheck().GetHttpCheck().GetScheme(),
-						Port:   taskConfig.GetHealthCheck().GetHttpCheck().GetPort(),
-						Path:   taskConfig.GetHealthCheck().GetHttpCheck().GetPath(),
-					},
-				},
-				Ports: []*pod.PortSpec{
-					{
-						Name:    taskConfig.GetPorts()[0].GetName(),
-						Value:   taskConfig.GetPorts()[0].GetValue(),
-						EnvName: taskConfig.GetPorts()[0].GetEnvName(),
-					},
+				Shell:     &shellCmd,
+				Value:     &testCmd,
+				Arguments: arguments,
+			},
+			Executor: &mesos.ExecutorInfo{
+				Type:       &test.executorType,
+				ExecutorId: &executorID,
+			},
+			HealthCheck: &task.HealthCheckConfig{
+				Enabled:      false,
+				CommandCheck: &task.HealthCheckConfig_CommandCheck{},
+				HttpCheck: &task.HealthCheckConfig_HTTPCheck{
+					Scheme: "http",
+					Port:   uint32(100),
+					Path:   "/health",
 				},
 			},
-		},
-		Constraint: &pod.Constraint{
-			Type: pod.Constraint_CONSTRAINT_TYPE_LABEL,
-			LabelConstraint: &pod.LabelConstraint{
-				Label: &v1alphapeloton.Label{
+			Ports: []*task.PortConfig{
+				{
+					Name:  portName,
+					Value: portValue,
+				},
+			},
+			Constraint: &task.Constraint{
+				Type: task.Constraint_LABEL_CONSTRAINT,
+				LabelConstraint: &task.LabelConstraint{
+					Label: label,
+				},
+				AndConstraint: &task.AndConstraint{},
+				OrConstraint:  &task.OrConstraint{},
+			},
+			RestartPolicy: &task.RestartPolicy{
+				MaxFailures: 5,
+			},
+			Volume: &task.PersistentVolumeConfig{
+				ContainerPath: "test/container/path",
+				SizeMB:        100,
+			},
+			PreemptionPolicy: &task.PreemptionPolicy{
+				Type:          task.PreemptionPolicy_TYPE_NON_PREEMPTIBLE,
+				KillOnPreempt: false,
+			},
+			Controller:             false,
+			KillGracePeriodSeconds: 5,
+			Revocable:              false,
+		}
+
+		if test.containerType == mesos.ContainerInfo_MESOS {
+			imageType := mesos.Image_DOCKER
+			cachedImage := true
+			taskConfig.Container.Mesos = &mesos.ContainerInfo_MesosInfo{
+				Image: &mesos.Image{
+					Type: &imageType,
+					Docker: &mesos.Image_Docker{
+						Name: &testImage,
+					},
+					Cached: &cachedImage,
+				},
+			}
+		} else if test.containerType == mesos.ContainerInfo_DOCKER {
+			hostNetwork := mesos.ContainerInfo_DockerInfo_HOST
+			taskConfig.Container.Docker = &mesos.ContainerInfo_DockerInfo{
+				Image:      &testImage,
+				Parameters: dockerParameters,
+				Network:    &hostNetwork,
+			}
+		}
+
+		podSpec := &pod.PodSpec{
+			PodName: &v1alphapeloton.PodName{
+				Value: util.CreatePelotonTaskID(jobID, instanceID),
+			},
+			Labels: []*v1alphapeloton.Label{
+				{
 					Key:   label.GetKey(),
 					Value: label.GetValue(),
 				},
 			},
-			AndConstraint: &pod.AndConstraint{},
-			OrConstraint:  &pod.OrConstraint{},
-		},
-		RestartPolicy: &pod.RestartPolicy{
-			MaxFailures: taskConfig.GetRestartPolicy().GetMaxFailures(),
-		},
-		Volume: &pod.PersistentVolumeSpec{
-			ContainerPath: taskConfig.GetVolume().GetContainerPath(),
-			SizeMb:        taskConfig.GetVolume().GetSizeMB(),
-		},
-		PreemptionPolicy: &pod.PreemptionPolicy{
-			KillOnPreempt: false,
-		},
-		Controller:             false,
-		KillGracePeriodSeconds: 5,
-		Revocable:              false,
+			Containers: []*pod.ContainerSpec{
+				{
+					Name: taskName,
+					Resource: &pod.ResourceSpec{
+						CpuLimit:    taskConfig.GetResource().GetCpuLimit(),
+						MemLimitMb:  taskConfig.GetResource().GetMemLimitMb(),
+						DiskLimitMb: taskConfig.GetResource().GetDiskLimitMb(),
+						FdLimit:     taskConfig.GetResource().GetFdLimit(),
+						GpuLimit:    taskConfig.GetResource().GetGpuLimit(),
+					},
+					Container: taskConfig.GetContainer(),
+					Command:   taskConfig.GetCommand(),
+					Executor:  taskConfig.GetExecutor(),
+					LivenessCheck: &pod.HealthCheckSpec{
+						Enabled:      taskConfig.GetHealthCheck().GetEnabled(),
+						CommandCheck: &pod.HealthCheckSpec_CommandCheck{},
+						HttpCheck: &pod.HealthCheckSpec_HTTPCheck{
+							Scheme: taskConfig.GetHealthCheck().GetHttpCheck().GetScheme(),
+							Port:   taskConfig.GetHealthCheck().GetHttpCheck().GetPort(),
+							Path:   taskConfig.GetHealthCheck().GetHttpCheck().GetPath(),
+						},
+					},
+					Ports: []*pod.PortSpec{
+						{
+							Name:    taskConfig.GetPorts()[0].GetName(),
+							Value:   taskConfig.GetPorts()[0].GetValue(),
+							EnvName: taskConfig.GetPorts()[0].GetEnvName(),
+						},
+					},
+					Entrypoint: &pod.CommandSpec{
+						Value:     testCmd,
+						Arguments: arguments,
+					},
+					Environment:  podEnvironments,
+					Image:        testImage,
+					VolumeMounts: containerVolumeMounts,
+				},
+			},
+			Constraint: &pod.Constraint{
+				Type: pod.Constraint_CONSTRAINT_TYPE_LABEL,
+				LabelConstraint: &pod.LabelConstraint{
+					Label: &v1alphapeloton.Label{
+						Key:   label.GetKey(),
+						Value: label.GetValue(),
+					},
+				},
+				AndConstraint: &pod.AndConstraint{},
+				OrConstraint:  &pod.OrConstraint{},
+			},
+			RestartPolicy: &pod.RestartPolicy{
+				MaxFailures: taskConfig.GetRestartPolicy().GetMaxFailures(),
+			},
+			Volume: &pod.PersistentVolumeSpec{
+				ContainerPath: taskConfig.GetVolume().GetContainerPath(),
+				SizeMb:        taskConfig.GetVolume().GetSizeMB(),
+			},
+			PreemptionPolicy: &pod.PreemptionPolicy{
+				KillOnPreempt: false,
+			},
+			Controller:             false,
+			KillGracePeriodSeconds: 5,
+			Revocable:              false,
+			Volumes:                podVolumes,
+			MesosSpec: &apachemesos.PodSpec{
+				Type:  test.podContainerType,
+				Uris:  podUris,
+				Shell: shellCmd,
+				ExecutorSpec: &apachemesos.PodSpec_ExecutorSpec{
+					Type:       test.podExecutorType,
+					ExecutorId: executorIDValue,
+				},
+			},
+		}
+
+		if test.containerType == mesos.ContainerInfo_DOCKER {
+			podSpec.MesosSpec.DockerParameters = podDockerParameters
+		}
+
+		suite.Equal(podSpec, ConvertTaskConfigToPodSpec(taskConfig, jobID, instanceID))
+
+		podSpec.Containers[0].Container = nil
+		podSpec.Containers[0].Command = nil
+		podSpec.Containers[0].Executor = nil
+		convertedTaskConfig, err := ConvertPodSpecToTaskConfig(podSpec)
+		suite.NoError(err)
+		suite.Equal(taskConfig, convertedTaskConfig)
 	}
-
-	suite.Equal(podSpec, ConvertTaskConfigToPodSpec(taskConfig, jobID, instanceID))
-
-	convertedTaskConfig, err := ConvertPodSpecToTaskConfig(podSpec)
-	suite.NoError(err)
-	suite.Equal(taskConfig, convertedTaskConfig)
 }
 
 // TestConvertTaskConfigToPodSpecOnlyLabels tests the

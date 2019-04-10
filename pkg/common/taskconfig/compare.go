@@ -229,14 +229,38 @@ func HasContainerSpecChanged(
 
 	oldPorts := prevContainer.GetPorts()
 	newPorts := newContainer.GetPorts()
+	oldEntrypoint := prevContainer.GetEntrypoint()
+	newEntrypoint := newContainer.GetEntrypoint()
+	oldEnvironment := prevContainer.GetEnvironment()
+	newEnvironment := newContainer.GetEnvironment()
+	oldImage := prevContainer.GetImage()
+	newImage := newContainer.GetImage()
+	oldVolume := prevContainer.GetVolumeMounts()
+	newVolume := newContainer.GetVolumeMounts()
 
 	defer func() {
 		prevContainer.Ports = oldPorts
 		newContainer.Ports = newPorts
+		prevContainer.Entrypoint = oldEntrypoint
+		newContainer.Entrypoint = newEntrypoint
+		prevContainer.Environment = oldEnvironment
+		newContainer.Environment = newEnvironment
+		prevContainer.Image = oldImage
+		newContainer.Image = newImage
+		prevContainer.VolumeMounts = oldVolume
+		newContainer.VolumeMounts = newVolume
 	}()
 
 	prevContainer.Ports = nil
 	newContainer.Ports = nil
+	prevContainer.Entrypoint = nil
+	newContainer.Entrypoint = nil
+	prevContainer.Environment = nil
+	newContainer.Environment = nil
+	prevContainer.Image = ""
+	newContainer.Image = ""
+	prevContainer.VolumeMounts = nil
+	newContainer.VolumeMounts = nil
 
 	return !proto.Equal(prevContainer, newContainer)
 }
@@ -287,6 +311,10 @@ func HasPodSpecChanged(
 	newInitContainers := newPod.GetInitContainers()
 	oldContainers := prevPod.GetContainers()
 	newContainers := newPod.GetContainers()
+	oldVolumes := prevPod.GetVolumes()
+	newVolumes := newPod.GetVolumes()
+	oldMesosSpec := prevPod.GetMesosSpec()
+	newMesosSpec := newPod.GetMesosSpec()
 
 	defer func() {
 		prevPod.PodName = oldPodName
@@ -297,6 +325,10 @@ func HasPodSpecChanged(
 		newPod.InitContainers = newInitContainers
 		prevPod.Containers = oldContainers
 		newPod.Containers = newContainers
+		prevPod.Volumes = oldVolumes
+		newPod.Volumes = newVolumes
+		prevPod.MesosSpec = oldMesosSpec
+		newPod.MesosSpec = newMesosSpec
 	}()
 
 	prevPod.PodName = nil
@@ -307,6 +339,10 @@ func HasPodSpecChanged(
 	newPod.InitContainers = nil
 	prevPod.Containers = nil
 	newPod.Containers = nil
+	prevPod.Volumes = nil
+	newPod.Volumes = nil
+	prevPod.MesosSpec = nil
+	newPod.MesosSpec = nil
 
 	return !proto.Equal(prevPod, newPod)
 }
