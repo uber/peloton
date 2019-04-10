@@ -1344,7 +1344,7 @@ func (h *serviceHandler) ListJobWorkflows(
 func (h *serviceHandler) getInstanceWorkflowEvents(
 	ctx context.Context,
 	updateModel *models.UpdateModel,
-	limit uint64,
+	limit uint32,
 ) ([]*stateless.WorkflowInfoInstanceWorkflowEvents, error) {
 
 	f := func(ctx context.Context, instance_id interface{}) (interface{}, error) {

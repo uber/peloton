@@ -772,7 +772,7 @@ func (suite *statelessHandlerTestSuite) TestGetWorkflowEvents() {
 		GetRuntime(gomock.Any()).
 		Return(jobRuntime, nil)
 	suite.updateStore.EXPECT().
-		GetWorkflowEvents(gomock.Any(), jobRuntime.GetUpdateID(), uint32(0), uint64(0)).
+		GetWorkflowEvents(gomock.Any(), jobRuntime.GetUpdateID(), uint32(0), uint32(0)).
 		Return(nil, errors.New("unable to get workflow events from DB"))
 	_, err := suite.handler.GetWorkflowEvents(context.Background(), getWorkflowEventsReq)
 	suite.Error(err)
@@ -784,7 +784,7 @@ func (suite *statelessHandlerTestSuite) TestGetWorkflowEvents() {
 		GetRuntime(gomock.Any()).
 		Return(jobRuntime, nil)
 	suite.updateStore.EXPECT().
-		GetWorkflowEvents(gomock.Any(), jobRuntime.GetUpdateID(), uint32(0), uint64(0)).
+		GetWorkflowEvents(gomock.Any(), jobRuntime.GetUpdateID(), uint32(0), uint32(0)).
 		Return(events, nil)
 	workflowEvents, err := suite.handler.GetWorkflowEvents(context.Background(), getWorkflowEventsReq)
 	suite.NoError(err)
@@ -825,7 +825,7 @@ func (suite *statelessHandlerTestSuite) TestGetWorkflowEventsWithLimit() {
 		GetRuntime(gomock.Any()).
 		Return(jobRuntime, nil)
 	suite.updateStore.EXPECT().
-		GetWorkflowEvents(gomock.Any(), jobRuntime.GetUpdateID(), uint32(0), uint64(1)).
+		GetWorkflowEvents(gomock.Any(), jobRuntime.GetUpdateID(), uint32(0), uint32(1)).
 		Return(events, nil)
 	workflowEvents, err := suite.handler.GetWorkflowEvents(context.Background(), getWorkflowEventsReq)
 	suite.NoError(err)
@@ -3265,7 +3265,7 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsSuccess() {
 			gomock.Any(),
 			&peloton.UpdateID{Value: testUpdateID1},
 			uint32(0),
-			uint64(0),
+			uint32(0),
 		).
 		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
 
@@ -3274,7 +3274,7 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsSuccess() {
 			gomock.Any(),
 			&peloton.UpdateID{Value: testUpdateID1},
 			uint32(1),
-			uint64(0),
+			uint32(0),
 		).
 		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
 
@@ -3298,7 +3298,7 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsSuccess() {
 		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
 
 	suite.updateStore.EXPECT().
-		GetWorkflowEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID2}, uint32(1), uint64(0)).
+		GetWorkflowEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID2}, uint32(1), uint32(0)).
 		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
 
 	resp, err := suite.handler.ListJobWorkflows(context.Background(), &statelesssvc.ListJobWorkflowsRequest{
@@ -3398,7 +3398,7 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsGetUpdatesLimitInsta
 			gomock.Any(),
 			&peloton.UpdateID{Value: testUpdateID1},
 			uint32(0),
-			uint64(1),
+			uint32(1),
 		).
 		Return([]*stateless.WorkflowEvent{workflowEvent1}, nil)
 
@@ -3407,7 +3407,7 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsGetUpdatesLimitInsta
 			gomock.Any(),
 			&peloton.UpdateID{Value: testUpdateID1},
 			uint32(1),
-			uint64(1),
+			uint32(1),
 		).
 		Return([]*stateless.WorkflowEvent{workflowEvent2}, nil)
 
@@ -3435,7 +3435,7 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsGetUpdatesLimitInsta
 			gomock.Any(),
 			&peloton.UpdateID{Value: testUpdateID2},
 			uint32(1),
-			uint64(1),
+			uint32(1),
 		).
 		Return([]*stateless.WorkflowEvent{workflowEvent1}, nil)
 

@@ -219,7 +219,7 @@ type UpdateStore interface {
 		ctx context.Context,
 		updateID *peloton.UpdateID,
 		instanceID uint32,
-		limit uint64,
+		limit uint32,
 	) ([]*stateless.WorkflowEvent, error)
 
 	// AddJobUpdateEvent adds an update state change event for a job
