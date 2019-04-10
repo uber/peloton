@@ -2,6 +2,10 @@
 0.8.4 (unreleased)
 ------------------
 
+0.8.3.1
+------------------
+* 2019-04-10    Add PodConfigurationStateStats in job status                                           zhixin@uber.com.
+
 0.8.3
 ------------------
 * 2019-04-08    Revert "Fix race condition in deadlineQueue.Dequeue"                                   rcharles@uber.com
