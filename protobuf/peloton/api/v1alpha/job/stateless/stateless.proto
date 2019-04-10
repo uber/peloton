@@ -195,10 +195,17 @@ message WorkflowStatus {
   WorkflowState prev_state = 11;
 }
 
-
 // The current runtime status of a Job.
 message JobStatus
 {
+  // PodStateStats indicates the number of tasks of a particular state in a job
+  message PodStateStats
+  {
+    // The map key is pod state, the value
+    // is number of pods running in that state.
+    map<string, uint32> state_stats = 1;
+  }
+
   // Revision of the current job status. Version in the revision is incremented
   // every time job status changes. Thus, it can be used to order the different
   // job status updates.
@@ -227,12 +234,19 @@ message JobStatus
   // Status of ongoing update/restart workflow.
   WorkflowStatus workflow_status = 7;
 
+  // DEPRECATED, will remove in the next release
   // The number of tasks grouped by which configuration version they are on.
   // The map key is the job configuration version and the map value is the
   // number of tasks using that particular job configuration version.
   // The job configuration version in the map key can be fed as the value of
   // the entity version in the GetJobRequest to fetch the job configuration.
   map<string, uint32> pod_configuration_version_stats = 8;
+
+  // The number of pods grouped by which entity version and the state
+  // they are on.
+  // The map key is the entity version (which can be used to fetch
+  // the job configuration) and the map value is PodStateStats.
+  map<string, PodStateStats> pod_stats_by_configuration_version = 9;
 }
 
 // Information of a job, such as job spec and status

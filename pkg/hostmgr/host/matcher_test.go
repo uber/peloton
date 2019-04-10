@@ -477,7 +477,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterExclusiveHosts() {
 	exclAttrValue := "web-tier"
 	textType := mesos.Value_TEXT
 	response.GetAgents()[0].GetAgentInfo().Attributes = []*mesos.Attribute{
-		&mesos.Attribute{
+		{
 			Name: &exclAttrName,
 			Text: &mesos.Value_Text{
 				Value: &exclAttrValue,

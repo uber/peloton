@@ -2333,7 +2333,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineStatelessJobRuntimeState()
 		}, nil).
 		Times(int(instanceCount))
 
-	jobState, _, taskConfigCount, _, _ := determineJobRuntimeStateAndCounts(
+	jobState, _, configVersionStateStats, _, _ := determineJobRuntimeStateAndCounts(
 		context.Background(),
 		jobRuntime,
 		stateCounts,
@@ -2343,8 +2343,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineStatelessJobRuntimeState()
 	)
 
 	suite.Equal(jobState, pbjob.JobState_RUNNING)
-	suite.Equal(len(taskConfigCount), 1)
-	suite.Equal(taskConfigCount[configVersion], instanceCount)
+	suite.Equal(len(configVersionStateStats), 1)
+	suite.Equal(
+		configVersionStateStats[configVersion][pbtask.TaskState_RUNNING.String()],
+		instanceCount)
 }
 
 // TestJobEvaluateMaxRunningInstances tests

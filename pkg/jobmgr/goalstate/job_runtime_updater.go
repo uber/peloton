@@ -484,9 +484,9 @@ func determineJobRuntimeStateAndCounts(
 	config jobmgrcommon.JobConfig,
 	goalStateDriver *driver,
 	cachedJob cached.Job,
-) (job.JobState, map[string]uint32, map[uint64]uint32, transitionType,
+) (job.JobState, map[string]uint32, map[uint64]map[string]uint32, transitionType,
 	error) {
-	var configVersionCounts map[uint64]uint32
+	var configVersionStateStats map[uint64]map[string]uint32
 
 	prevState := jobRuntime.GetState()
 	jobStateDeterminer := jobStateDeterminerFactory(
@@ -508,7 +508,7 @@ func determineJobRuntimeStateAndCounts(
 		config.GetType(),
 		jobState,
 		goalStateDriver.jobRuntimeCalculationViaCache) {
-		jobState, currStateCounts, configVersionCounts, err =
+		jobState, currStateCounts, configVersionStateStats, err =
 			recalculateJobStateAndCountsFromCache(
 				ctx,
 				jobRuntime,
@@ -532,7 +532,7 @@ func determineJobRuntimeStateAndCounts(
 		goalStateDriver.mtx.jobMetrics.JobDeleted.Inc(1)
 	}
 
-	return jobState, currStateCounts, configVersionCounts, getTransitionType(jobState,
+	return jobState, currStateCounts, configVersionStateStats, getTransitionType(jobState,
 		prevState), nil
 }
 
@@ -604,7 +604,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	// determineJobRuntimeStateAndCounts would handle both
 	// totalInstanceCount > config.GetInstanceCount() and
 	// partially created job
-	jobState, currStateCounts, configVersionCounts, transition, err :=
+	jobState, currStateCounts, configVersionStateStats, transition, err :=
 		determineJobRuntimeStateAndCounts(
 			ctx, jobRuntime, stateCounts, config, goalStateDriver, cachedJob)
 	if err != nil {
@@ -640,8 +640,12 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 
 	jobRuntimeUpdate.ResourceUsage = cachedJob.GetResourceUsage()
 
-	if len(configVersionCounts) > 0 {
-		jobRuntimeUpdate.TaskConfigVersionStats = configVersionCounts
+	if len(configVersionStateStats) > 0 {
+		jobRuntimeUpdate.TaskStatsByConfigurationVersion = make(map[uint64]*job.RuntimeInfo_TaskStateStats)
+		for configVersion, stateCounts := range configVersionStateStats {
+			jobRuntimeUpdate.TaskStatsByConfigurationVersion[configVersion] =
+				&job.RuntimeInfo_TaskStateStats{StateStats: stateCounts}
+		}
 	}
 
 	// add to active jobs list BEFORE writing state to job runtime table.
@@ -750,11 +754,11 @@ func recalculateJobStateAndCountsFromCache(
 	jobState job.JobState,
 	stateCounts map[string]uint32,
 	config jobmgrcommon.JobConfig,
-) (job.JobState, map[string]uint32, map[uint64]uint32, error) {
+) (job.JobState, map[string]uint32, map[uint64]map[string]uint32, error) {
 
 	tasks := cachedJob.GetAllTasks()
 	stateCountsFromCache := make(map[string]uint32)
-	configVersionCounts := make(map[uint64]uint32)
+	configVersionStateCounts := make(map[uint64]map[string]uint32)
 	// initialize the stateCounts, mark each task state count to be zero
 	for _, taskStatus := range allTaskStates {
 		stateCountsFromCache[taskStatus.String()] = 0
@@ -765,13 +769,16 @@ func recalculateJobStateAndCountsFromCache(
 		state := task.CurrentState().State.String()
 		stateCountsFromCache[state]++
 
-		// update the configuration version map for stateless jobs
+		// update the configuration version state map for stateless jobs
 		if jobType == job.JobType_SERVICE {
 			runtime, err := task.GetRuntime(ctx)
 			if err != nil {
 				return job.JobState_UNKNOWN, nil, nil, err
 			}
-			configVersionCounts[runtime.GetConfigVersion()]++
+			if _, ok := configVersionStateCounts[runtime.GetConfigVersion()]; !ok {
+				configVersionStateCounts[runtime.GetConfigVersion()] = make(map[string]uint32)
+			}
+			configVersionStateCounts[runtime.GetConfigVersion()][runtime.GetState().String()]++
 		}
 	}
 
@@ -779,7 +786,7 @@ func recalculateJobStateAndCountsFromCache(
 	// present in cache. In this case, return the original state
 	if _, ok := stateCountsFromCache[task.TaskState_UNKNOWN.String()]; ok {
 		if stateCountsFromCache[task.TaskState_UNKNOWN.String()] > 0 {
-			return jobState, stateCounts, configVersionCounts, nil
+			return jobState, stateCounts, configVersionStateCounts, nil
 		}
 	}
 
@@ -787,7 +794,7 @@ func recalculateJobStateAndCountsFromCache(
 	jobStateDeterminer := jobStateDeterminerFactory(
 		jobRuntime, stateCountsFromCache, cachedJob, config)
 	jobState, err := jobStateDeterminer.getState(ctx, jobRuntime)
-	return jobState, stateCountsFromCache, configVersionCounts, err
+	return jobState, stateCountsFromCache, configVersionStateCounts, err
 }
 
 // shouldRecalculateJobStateFromCache is true if the job state needs to be recalculated
