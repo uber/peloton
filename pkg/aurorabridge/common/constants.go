@@ -44,3 +44,6 @@ var BridgePodLabel = &peloton.Label{
 
 // QueryJobsLimit specifies Limit parameter passed to QueryJobs request
 const QueryJobsLimit = 1000
+
+// InstanceEventsLimit specifies the limit on number of events per instance
+const InstanceEventsLimit = 100
