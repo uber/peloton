@@ -325,6 +325,7 @@ message QuerySpec {
   // the list is empty.
   repeated JobState jobStates = 4;
 
+  // DEPRECATED: this field is not used in the query and will be removed
   // The resource pool to query the jobs. Will match jobs from all
   // resource pools if unset.
   respool.ResourcePoolPath respool = 5;
