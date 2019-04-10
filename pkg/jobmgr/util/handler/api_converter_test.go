@@ -995,8 +995,13 @@ func (suite *apiConverterTestSuite) TestConvertRuntimeInfoToJobStatus() {
 	podStats["POD_STATE_FAILED"] = 2
 	creationTime := "now"
 	entityVersion := "2-2-2"
-	taskConfigStates := make(map[uint64]uint32)
-	taskConfigStates[_configVersion] = 5
+	taskConfigStateStats := make(map[uint64]*job.RuntimeInfo_TaskStateStats)
+	taskConfigStateStats[_configVersion] = &job.RuntimeInfo_TaskStateStats{
+		StateStats: map[string]uint32{
+			task.TaskState_RUNNING.String(): 1,
+			task.TaskState_PENDING.String(): 2,
+		},
+	}
 
 	runtime := &job.RuntimeInfo{
 		State:        job.JobState_RUNNING,
@@ -1007,12 +1012,12 @@ func (suite *apiConverterTestSuite) TestConvertRuntimeInfoToJobStatus() {
 			UpdatedAt: 3,
 			UpdatedBy: "peloton",
 		},
-		TaskStats:              taskStats,
-		GoalState:              job.JobState_RUNNING,
-		ConfigurationVersion:   _configVersion,
-		WorkflowVersion:        _workflowVersion,
-		DesiredStateVersion:    _desiredStateVersion,
-		TaskConfigVersionStats: taskConfigStates,
+		TaskStats:                       taskStats,
+		GoalState:                       job.JobState_RUNNING,
+		ConfigurationVersion:            _configVersion,
+		WorkflowVersion:                 _workflowVersion,
+		DesiredStateVersion:             _desiredStateVersion,
+		TaskStatsByConfigurationVersion: taskConfigStateStats,
 	}
 
 	jobConfigVersion := uint64(3)
@@ -1046,8 +1051,10 @@ func (suite *apiConverterTestSuite) TestConvertRuntimeInfoToJobStatus() {
 	suite.Equal(podStats, jobStatus.GetPodStats())
 	suite.Equal(stateless.JobState_JOB_STATE_RUNNING, jobStatus.GetDesiredState())
 	suite.Equal(entityVersion, jobStatus.GetVersion().GetValue())
-	suite.Equal(1, len(jobStatus.GetPodConfigurationVersionStats()))
-	suite.Equal(uint32(5), jobStatus.GetPodConfigurationVersionStats()[entityVersion])
+	suite.Equal(1, len(jobStatus.GetPodStatsByConfigurationVersion()))
+	stateStats := jobStatus.GetPodStatsByConfigurationVersion()[versionutil.GetPodEntityVersion(_configVersion).GetValue()].GetStateStats()
+	suite.Equal(uint32(1), stateStats[pod.PodState_POD_STATE_RUNNING.String()])
+	suite.Equal(uint32(2), stateStats[pod.PodState_POD_STATE_PENDING.String()])
 	suite.Equal(workflowStatus, jobStatus.GetWorkflowStatus())
 }
 
@@ -1063,7 +1070,7 @@ func (suite *apiConverterTestSuite) TestConvertJobSummary() {
 
 	creationTime := "now"
 	entityVersion := "2-2-2"
-	taskConfigStats := make(map[string]uint32)
+	podConfigStateStats := make(map[string]*stateless.JobStatus_PodStateStats)
 
 	runtime := &job.RuntimeInfo{
 		State:        job.JobState_RUNNING,
@@ -1112,13 +1119,13 @@ func (suite *apiConverterTestSuite) TestConvertJobSummary() {
 			UpdatedAt: runtime.GetRevision().GetUpdatedAt(),
 			UpdatedBy: runtime.GetRevision().GetUpdatedBy(),
 		},
-		State:                        stateless.JobState(runtime.GetState()),
-		CreationTime:                 runtime.GetCreationTime(),
-		PodStats:                     podStats,
-		PodConfigurationVersionStats: taskConfigStats,
-		DesiredState:                 stateless.JobState(runtime.GetGoalState()),
-		Version:                      &v1alphapeloton.EntityVersion{Value: entityVersion},
-		WorkflowStatus:               workflowStatus,
+		State:                          stateless.JobState(runtime.GetState()),
+		CreationTime:                   runtime.GetCreationTime(),
+		PodStats:                       podStats,
+		PodStatsByConfigurationVersion: podConfigStateStats,
+		DesiredState:                   stateless.JobState(runtime.GetGoalState()),
+		Version:                        &v1alphapeloton.EntityVersion{Value: entityVersion},
+		WorkflowStatus:                 workflowStatus,
 	}
 
 	summary := &job.JobSummary{

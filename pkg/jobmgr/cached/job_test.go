@@ -791,13 +791,17 @@ func (suite *JobTestSuite) TestJobUpdateConfigIncorectChangeLog() {
 func (suite *JobTestSuite) TestJobUpdateRuntimeAndConfig() {
 	instanceCount := uint32(10)
 	configVersion := uint64(1)
-	configVersionStats := make(map[uint64]uint32)
-	configVersionStats[configVersion] = instanceCount
+	configStateStats := make(map[uint64]*pbjob.RuntimeInfo_TaskStateStats)
+	configStateStats[configVersion] = &pbjob.RuntimeInfo_TaskStateStats{
+		StateStats: map[string]uint32{
+			pbjob.JobState_RUNNING.String(): instanceCount,
+		},
+	}
 
 	jobRuntime := &pbjob.RuntimeInfo{
-		State:                  pbjob.JobState_RUNNING,
-		GoalState:              pbjob.JobState_SUCCEEDED,
-		TaskConfigVersionStats: configVersionStats,
+		State:                           pbjob.JobState_RUNNING,
+		GoalState:                       pbjob.JobState_SUCCEEDED,
+		TaskStatsByConfigurationVersion: configStateStats,
 	}
 
 	jobConfig := &pbjob.JobConfig{
@@ -852,8 +856,12 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndConfig() {
 	suite.Equal(suite.job.runtime.State, jobRuntime.State)
 	suite.Equal(suite.job.runtime.GoalState, jobRuntime.GoalState)
 	suite.Equal(suite.job.config.instanceCount, instanceCount)
-	suite.Equal(len(suite.job.runtime.TaskConfigVersionStats), 1)
-	suite.Equal(suite.job.runtime.TaskConfigVersionStats[configVersion], instanceCount)
+	suite.Equal(len(suite.job.runtime.GetTaskStatsByConfigurationVersion()), 1)
+	suite.Equal(
+		suite.job.runtime.
+			GetTaskStatsByConfigurationVersion()[configVersion].
+			GetStateStats()[pbjob.JobState_RUNNING.String()],
+		instanceCount)
 }
 
 // Test the case job update config when there is no config in cache,

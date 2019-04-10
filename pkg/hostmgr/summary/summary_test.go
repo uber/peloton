@@ -652,7 +652,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 	exclHostOffer := suite.createUnreservedMesosOffer("excl-offer-id")
 	exclAttrName := "peloton/exclusive"
 	exclHostOffer.Attributes = []*mesos.Attribute{
-		&mesos.Attribute{
+		{
 			Name: &exclAttrName,
 		},
 	}

@@ -167,12 +167,22 @@ enum JobState {
   DELETED = 9;
 }
 
-
 /**
  *  Job RuntimeInfo provides the current runtime status of a Job
  */
 message RuntimeInfo
 {
+  /**
+   * TaskStateStats indicates the number of tasks of a particular state
+   * in a job
+   */
+  message TaskStateStats
+  {
+    // The map key is task state, the value
+    // is number of tasks running in that state.
+    map<string, uint32> stateStats = 1;
+  }
+
   // State of the job
   JobState state = 1;
 
@@ -228,10 +238,16 @@ message RuntimeInfo
   // The desired state version that should be used by the runtime.
   uint64 desiredStateVersion = 14;
 
+  // DEPRECATED, will remove in the next release
   // The number of tasks grouped by which configuration version they are on.
   // The map key is the job configuration version and the map value is the
   // number of tasks using that particular job configuration version.
   map<uint64, uint32> taskConfigVersionStats = 15;
+
+  // The number of tasks grouped by which configuration version and the state
+  // they are on.
+  // The map key is the job configuration version and the map value is TaskStateStats.
+  map<uint64, TaskStateStats> taskStatsByConfigurationVersion = 16;
 }
 
 /**
