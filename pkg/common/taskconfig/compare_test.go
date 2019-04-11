@@ -181,8 +181,31 @@ func TestHasTaskConfigChanged(t *testing.T) {
 		},
 	}
 
-	assert.False(t, HasTaskConfigChanged(t1, t2))
-	assert.True(t, HasTaskConfigChanged(t1, t3))
+	testCases := []struct {
+		name    string
+		taskA   *task.TaskConfig
+		taskB   *task.TaskConfig
+		changed bool
+	}{
+		{
+			"labels with different order should be the same",
+			t1,
+			t2,
+			false,
+		},
+		{
+			"ports with different value should be different",
+			t1,
+			t3,
+			true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.changed, HasTaskConfigChanged(tc.taskA, tc.taskB))
+		})
+	}
 }
 
 // TestHasContainerSpecChanged checks ContainerSpec comparision util function
@@ -280,12 +303,6 @@ func TestHasPodSpecChanged(t *testing.T) {
 			{Name: "container-1"},
 		},
 	}
-
-	assert.False(t, HasPodSpecChanged(p1, p2))
-	assert.True(t, HasPodSpecChanged(p1, p3))
-	assert.True(t, HasPodSpecChanged(p1, p4))
-	assert.True(t, HasPodSpecChanged(p1, p5))
-
 	p6 := &pod.PodSpec{
 		PodName: &v1peloton.PodName{Value: "pod-1"},
 		Labels: []*v1peloton.Label{
@@ -319,6 +336,53 @@ func TestHasPodSpecChanged(t *testing.T) {
 		},
 	}
 
-	assert.True(t, HasPodSpecChanged(p6, p7))
-	assert.True(t, HasPodSpecChanged(p6, p8))
+	testCases := []struct {
+		name    string
+		podA    *pod.PodSpec
+		podB    *pod.PodSpec
+		changed bool
+	}{
+		{
+			"labels with different order should be the same",
+			p1,
+			p2,
+			false,
+		},
+		{
+			"containers with different order should be different",
+			p1,
+			p3,
+			true,
+		},
+		{
+			"labels with different values should be different",
+			p1,
+			p4,
+			true,
+		},
+		{
+			"containers with different number of containers should be different",
+			p1,
+			p5,
+			true,
+		},
+		{
+			"init containers with different order should be different",
+			p6,
+			p7,
+			true,
+		},
+		{
+			"init containers with different number of containers should be different",
+			p6,
+			p8,
+			true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.changed, HasPodSpecChanged(tc.podA, tc.podB))
+		})
+	}
 }
