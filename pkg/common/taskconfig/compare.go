@@ -28,7 +28,7 @@ type label interface {
 	GetValue() string
 }
 
-func isLabelChanged(
+func hasLabelsChanged(
 	prevLabels []label,
 	newLabels []label) bool {
 	for _, label := range newLabels {
@@ -51,8 +51,8 @@ func isLabelChanged(
 	return false
 }
 
-// IsPelotonLabelChanged returns true if v0 peloton labels have changed
-func IsPelotonLabelChanged(
+// HasPelotonLabelsChanged returns true if v0 peloton labels have changed
+func HasPelotonLabelsChanged(
 	prevLabels []*peloton.Label,
 	newLabels []*peloton.Label) bool {
 	if len(prevLabels) != len(newLabels) {
@@ -69,11 +69,11 @@ func IsPelotonLabelChanged(
 		nlabel = append(nlabel, l)
 	}
 
-	return isLabelChanged(plabel, nlabel)
+	return hasLabelsChanged(plabel, nlabel)
 }
 
-// IsPelotonV1LabelChanged returns true if v1 peloton labels have changed
-func IsPelotonV1LabelChanged(
+// HasPelotonV1LabelsChanged returns true if v1 peloton labels have changed
+func HasPelotonV1LabelsChanged(
 	prevLabels []*v1peloton.Label,
 	newLabels []*v1peloton.Label) bool {
 	if len(prevLabels) != len(newLabels) {
@@ -90,7 +90,7 @@ func IsPelotonV1LabelChanged(
 		nlabel = append(nlabel, l)
 	}
 
-	return isLabelChanged(plabel, nlabel)
+	return hasLabelsChanged(plabel, nlabel)
 }
 
 type port interface {
@@ -99,7 +99,7 @@ type port interface {
 	GetEnvName() string
 }
 
-func isPortChanged(
+func hasPortsChanged(
 	prevPorts []port,
 	newPorts []port) bool {
 	for _, newPort := range newPorts {
@@ -123,8 +123,8 @@ func isPortChanged(
 	return false
 }
 
-// IsPortConfigChanged returns true if the port configs have changed
-func IsPortConfigChanged(
+// HasPortConfigsChanged returns true if the port configs have changed
+func HasPortConfigsChanged(
 	prevPorts []*task.PortConfig,
 	newPorts []*task.PortConfig) bool {
 	if len(prevPorts) != len(newPorts) {
@@ -141,11 +141,11 @@ func IsPortConfigChanged(
 		nport = append(nport, p)
 	}
 
-	return isPortChanged(pport, nport)
+	return hasPortsChanged(pport, nport)
 }
 
-// IsPortSpecChanged returns true if the port specs have changed
-func IsPortSpecChanged(
+// HasPortSpecsChanged returns true if the port specs have changed
+func HasPortSpecsChanged(
 	prevPorts []*pod.PortSpec,
 	newPorts []*pod.PortSpec) bool {
 	if len(prevPorts) != len(newPorts) {
@@ -162,19 +162,19 @@ func IsPortSpecChanged(
 		nport = append(nport, p)
 	}
 
-	return isPortChanged(pport, nport)
+	return hasPortsChanged(pport, nport)
 }
 
-// IsTaskConfigChanged returns true if the task config (other than the name)
+// HasTaskConfigChanged returns true if the task config (other than the name)
 // has changed.
-func IsTaskConfigChanged(
+func HasTaskConfigChanged(
 	prevTaskConfig *task.TaskConfig,
 	newTaskConfig *task.TaskConfig,
 ) bool {
 	if prevTaskConfig == nil ||
 		newTaskConfig == nil ||
-		IsPelotonLabelChanged(prevTaskConfig.GetLabels(), newTaskConfig.GetLabels()) ||
-		IsPortConfigChanged(prevTaskConfig.GetPorts(), newTaskConfig.GetPorts()) {
+		HasPelotonLabelsChanged(prevTaskConfig.GetLabels(), newTaskConfig.GetLabels()) ||
+		HasPortConfigsChanged(prevTaskConfig.GetPorts(), newTaskConfig.GetPorts()) {
 		return true
 	}
 
@@ -205,8 +205,8 @@ func IsTaskConfigChanged(
 	return changed
 }
 
-// IsContainerSpecChanged returns ture if the container spec has changed.
-func IsContainerSpecChanged(
+// HasContainerSpecChanged returns ture if the container spec has changed.
+func HasContainerSpecChanged(
 	prevContainer *pod.ContainerSpec,
 	newContainer *pod.ContainerSpec) bool {
 	if prevContainer == nil && newContainer == nil {
@@ -215,7 +215,7 @@ func IsContainerSpecChanged(
 
 	if prevContainer == nil ||
 		newContainer == nil ||
-		IsPortSpecChanged(prevContainer.GetPorts(), newContainer.GetPorts()) {
+		HasPortSpecsChanged(prevContainer.GetPorts(), newContainer.GetPorts()) {
 		return true
 	}
 
@@ -232,14 +232,14 @@ func IsContainerSpecChanged(
 	return changed
 }
 
-// IsPodSpecChanged returns true if the pod spec (other than the name)
+// HasPodSpecChanged returns true if the pod spec (other than the name)
 // has changed.
-func IsPodSpecChanged(
+func HasPodSpecChanged(
 	prevPodSpec *pod.PodSpec,
 	newPodSpec *pod.PodSpec) bool {
 	if prevPodSpec == nil ||
 		newPodSpec == nil ||
-		IsPelotonV1LabelChanged(prevPodSpec.GetLabels(), newPodSpec.GetLabels()) {
+		HasPelotonV1LabelsChanged(prevPodSpec.GetLabels(), newPodSpec.GetLabels()) {
 		return true
 	}
 
@@ -248,7 +248,7 @@ func IsPodSpecChanged(
 	}
 
 	for i := 0; i < len(prevPodSpec.GetInitContainers()); i++ {
-		if IsContainerSpecChanged(
+		if HasContainerSpecChanged(
 			prevPodSpec.GetInitContainers()[i],
 			newPodSpec.GetInitContainers()[i]) {
 			return true
@@ -260,7 +260,7 @@ func IsPodSpecChanged(
 	}
 
 	for i := 0; i < len(prevPodSpec.GetContainers()); i++ {
-		if IsContainerSpecChanged(
+		if HasContainerSpecChanged(
 			prevPodSpec.GetContainers()[i],
 			newPodSpec.GetContainers()[i]) {
 			return true

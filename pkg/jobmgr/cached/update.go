@@ -914,7 +914,7 @@ func hasInstanceConfigChanged(
 	newTaskConfig := taskconfig.Merge(
 		newJobConfig.GetDefaultConfig(),
 		newJobConfig.GetInstanceConfig()[instID])
-	return taskconfig.IsTaskConfigChanged(prevTaskConfig, newTaskConfig), nil
+	return taskconfig.HasTaskConfigChanged(prevTaskConfig, newTaskConfig), nil
 }
 
 // GetInstancesToProcessForUpdate determines the instances which have been updated in a given
@@ -945,7 +945,7 @@ func GetInstancesToProcessForUpdate(
 		return
 	}
 
-	jobLabelsChanged := taskconfig.IsPelotonLabelChanged(
+	hasJobLabelsChanged := taskconfig.HasPelotonLabelsChanged(
 		prevJobConfig.GetLabels(),
 		newJobConfig.GetLabels(),
 	)
@@ -955,7 +955,7 @@ func GetInstancesToProcessForUpdate(
 			// new instance added
 			instancesAdded = append(instancesAdded, instID)
 		} else {
-			changed := jobLabelsChanged
+			changed := hasJobLabelsChanged
 
 			if !changed {
 				changed, err = hasInstanceConfigChanged(

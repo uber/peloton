@@ -25,8 +25,8 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 )
 
-// TestIsPelotonLabelChanged checks peloton Label compare
-func TestIsPelotonLabelChanged(t *testing.T) {
+// TestHasPelotonLabelsChanged checks peloton Label comparision util function
+func TestHasPelotonLabelsChanged(t *testing.T) {
 	l1 := []*peloton.Label{
 		{Key: "key1", Value: "value1"},
 		{Key: "key2", Value: "value2"},
@@ -49,14 +49,14 @@ func TestIsPelotonLabelChanged(t *testing.T) {
 		{Key: "key11", Value: "value11"},
 	}
 
-	assert.False(t, IsPelotonLabelChanged(l1, l2))
-	assert.True(t, IsPelotonLabelChanged(l1, l3))
-	assert.True(t, IsPelotonLabelChanged(l1, l4))
-	assert.True(t, IsPelotonLabelChanged(l1, l5))
+	assert.False(t, HasPelotonLabelsChanged(l1, l2))
+	assert.True(t, HasPelotonLabelsChanged(l1, l3))
+	assert.True(t, HasPelotonLabelsChanged(l1, l4))
+	assert.True(t, HasPelotonLabelsChanged(l1, l5))
 }
 
-// TestIsPelotonV1LabelChanged checks v1 peloton Label compare
-func TestIsPelotonV1LabelChanged(t *testing.T) {
+// TestHasPelotonV1LabelsChanged checks v1 peloton Label comparision util function
+func TestHasPelotonV1LabelsChanged(t *testing.T) {
 	l1 := []*v1peloton.Label{
 		{Key: "key1", Value: "value1"},
 		{Key: "key2", Value: "value2"},
@@ -79,14 +79,14 @@ func TestIsPelotonV1LabelChanged(t *testing.T) {
 		{Key: "key11", Value: "value11"},
 	}
 
-	assert.False(t, IsPelotonV1LabelChanged(l1, l2))
-	assert.True(t, IsPelotonV1LabelChanged(l1, l3))
-	assert.True(t, IsPelotonV1LabelChanged(l1, l4))
-	assert.True(t, IsPelotonV1LabelChanged(l1, l5))
+	assert.False(t, HasPelotonV1LabelsChanged(l1, l2))
+	assert.True(t, HasPelotonV1LabelsChanged(l1, l3))
+	assert.True(t, HasPelotonV1LabelsChanged(l1, l4))
+	assert.True(t, HasPelotonV1LabelsChanged(l1, l5))
 }
 
-// TestIsPortConfigChanged checks PortConfig compare
-func TestIsPortConfigChanged(t *testing.T) {
+// TestHasPortConfigsChanged checks PortConfig comparision util function
+func TestHasPortConfigsChanged(t *testing.T) {
 	p1 := []*task.PortConfig{
 		{Name: "name1", Value: 1111, EnvName: "env1"},
 		{Name: "name2", Value: 2222, EnvName: "env2"},
@@ -109,14 +109,14 @@ func TestIsPortConfigChanged(t *testing.T) {
 		{Name: "name1", Value: 1111, EnvName: "env1"},
 	}
 
-	assert.False(t, IsPortConfigChanged(p1, p2))
-	assert.True(t, IsPortConfigChanged(p1, p3))
-	assert.True(t, IsPortConfigChanged(p1, p4))
-	assert.True(t, IsPortConfigChanged(p1, p5))
+	assert.False(t, HasPortConfigsChanged(p1, p2))
+	assert.True(t, HasPortConfigsChanged(p1, p3))
+	assert.True(t, HasPortConfigsChanged(p1, p4))
+	assert.True(t, HasPortConfigsChanged(p1, p5))
 }
 
-// TestIsPortSpecChanged checks PortSpec compare
-func TestIsPortSpecChanged(t *testing.T) {
+// TestHasPortSpecsChanged checks PortSpec comparision util function
+func TestHasPortSpecsChanged(t *testing.T) {
 	p1 := []*pod.PortSpec{
 		{Name: "name1", Value: 1111, EnvName: "env1"},
 		{Name: "name2", Value: 2222, EnvName: "env2"},
@@ -139,14 +139,14 @@ func TestIsPortSpecChanged(t *testing.T) {
 		{Name: "name1", Value: 1111, EnvName: "env1"},
 	}
 
-	assert.False(t, IsPortSpecChanged(p1, p2))
-	assert.True(t, IsPortSpecChanged(p1, p3))
-	assert.True(t, IsPortSpecChanged(p1, p4))
-	assert.True(t, IsPortSpecChanged(p1, p5))
+	assert.False(t, HasPortSpecsChanged(p1, p2))
+	assert.True(t, HasPortSpecsChanged(p1, p3))
+	assert.True(t, HasPortSpecsChanged(p1, p4))
+	assert.True(t, HasPortSpecsChanged(p1, p5))
 }
 
-// TestIsTaskConfigChanged checks TaskConfig compare
-func TestIsTaskConfigChanged(t *testing.T) {
+// TestHasTaskConfigChanged checks TaskConfig comparision util function
+func TestHasTaskConfigChanged(t *testing.T) {
 	t1 := &task.TaskConfig{
 		Name: "task-1",
 		Labels: []*peloton.Label{
@@ -181,12 +181,12 @@ func TestIsTaskConfigChanged(t *testing.T) {
 		},
 	}
 
-	assert.False(t, IsTaskConfigChanged(t1, t2))
-	assert.True(t, IsTaskConfigChanged(t1, t3))
+	assert.False(t, HasTaskConfigChanged(t1, t2))
+	assert.True(t, HasTaskConfigChanged(t1, t3))
 }
 
-// TestIsContainerSpecChanged checks ContainerSpec compare
-func TestIsContainerSpecChanged(t *testing.T) {
+// TestHasContainerSpecChanged checks ContainerSpec comparision util function
+func TestHasContainerSpecChanged(t *testing.T) {
 	oldContainer := &pod.ContainerSpec{
 		Name: "container",
 		Ports: []*pod.PortSpec{
@@ -218,14 +218,14 @@ func TestIsContainerSpecChanged(t *testing.T) {
 		},
 	}
 
-	assert.False(t, IsContainerSpecChanged(nil, nil))
-	assert.True(t, IsContainerSpecChanged(oldContainer, nil))
-	assert.True(t, IsContainerSpecChanged(nil, newContainer))
-	assert.False(t, IsContainerSpecChanged(oldContainer, newContainer))
+	assert.False(t, HasContainerSpecChanged(nil, nil))
+	assert.True(t, HasContainerSpecChanged(oldContainer, nil))
+	assert.True(t, HasContainerSpecChanged(nil, newContainer))
+	assert.False(t, HasContainerSpecChanged(oldContainer, newContainer))
 }
 
-// TestIsPodSpecChanged checks PodSpec compare
-func TestIsPodSpecChanged(t *testing.T) {
+// TestHasPodSpecChanged checks PodSpec comparision util function
+func TestHasPodSpecChanged(t *testing.T) {
 	p1 := &pod.PodSpec{
 		PodName: &v1peloton.PodName{Value: "pod-1"},
 		Labels: []*v1peloton.Label{
@@ -281,10 +281,10 @@ func TestIsPodSpecChanged(t *testing.T) {
 		},
 	}
 
-	assert.False(t, IsPodSpecChanged(p1, p2))
-	assert.True(t, IsPodSpecChanged(p1, p3))
-	assert.True(t, IsPodSpecChanged(p1, p4))
-	assert.True(t, IsPodSpecChanged(p1, p5))
+	assert.False(t, HasPodSpecChanged(p1, p2))
+	assert.True(t, HasPodSpecChanged(p1, p3))
+	assert.True(t, HasPodSpecChanged(p1, p4))
+	assert.True(t, HasPodSpecChanged(p1, p5))
 
 	p6 := &pod.PodSpec{
 		PodName: &v1peloton.PodName{Value: "pod-1"},
@@ -319,6 +319,6 @@ func TestIsPodSpecChanged(t *testing.T) {
 		},
 	}
 
-	assert.True(t, IsPodSpecChanged(p6, p7))
-	assert.True(t, IsPodSpecChanged(p6, p8))
+	assert.True(t, HasPodSpecChanged(p6, p7))
+	assert.True(t, HasPodSpecChanged(p6, p8))
 }
