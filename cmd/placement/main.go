@@ -17,9 +17,8 @@ package main
 import (
 	"os"
 
-	"github.com/uber/peloton/.gen/peloton/private/resmgr"
-	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/algorithms"
-
+	"github.com/uber/peloton/pkg/auth"
+	auth_impl "github.com/uber/peloton/pkg/auth/impl"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/async"
 	"github.com/uber/peloton/pkg/common/buildversion"
@@ -29,6 +28,8 @@ import (
 	"github.com/uber/peloton/pkg/common/metrics"
 	"github.com/uber/peloton/pkg/common/rpc"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/peer"
+	"github.com/uber/peloton/pkg/middleware/inbound"
+	"github.com/uber/peloton/pkg/middleware/outbound"
 	"github.com/uber/peloton/pkg/placement"
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/hosts"
@@ -37,9 +38,11 @@ import (
 	"github.com/uber/peloton/pkg/placement/plugins"
 	"github.com/uber/peloton/pkg/placement/plugins/batch"
 	mimir_strategy "github.com/uber/peloton/pkg/placement/plugins/mimir"
+	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/algorithms"
 	"github.com/uber/peloton/pkg/placement/tasks"
 
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
 	log "github.com/sirupsen/logrus"
@@ -134,6 +137,20 @@ var (
 		Default("BATCH").
 		Envar("TASK_TYPE").
 		String()
+
+	authType = app.Flag(
+		"auth-type",
+		"Define the auth type used, default to NOOP").
+		Default("NOOP").
+		Envar("AUTH_TYPE").
+		Enum("NOOP", "BASIC")
+
+	authConfigFile = app.Flag(
+		"auth-config-file",
+		"config file for the auth feature, which is specific to the auth type used").
+		Default("").
+		Envar("AUTH_CONFIG_FILE").
+		String()
 )
 
 func main() {
@@ -207,6 +224,13 @@ func main() {
 	if *taskType != "" {
 		overridePlacementStrategy(*taskType, &cfg)
 	}
+
+	// Parse and setup peloton auth
+	if len(*authType) != 0 {
+		cfg.Auth.AuthType = auth.Type(*authType)
+		cfg.Auth.Path = *authConfigFile
+	}
+
 	log.WithField("placement_task_type", cfg.Placement.TaskType).
 		WithField("strategy", cfg.Placement.Strategy).
 		Info("Placement engine type")
@@ -272,6 +296,22 @@ func main() {
 		},
 	}
 
+	securityManager, err := auth_impl.CreateNewSecurityManager(&cfg.Auth)
+	if err != nil {
+		log.WithError(err).
+			Fatal("Could not enable security feature")
+	}
+
+	authInboundMiddleware := inbound.NewAuthInboundMiddleware(securityManager)
+
+	securityClient, err := auth_impl.CreateNewSecurityClient(&cfg.Auth)
+	if err != nil {
+		log.WithError(err).
+			Fatal("Could not establish secure inter-component communication")
+	}
+
+	authOutboundMiddleware := outbound.NewAuthOutboundMiddleware(securityClient)
+
 	// Create both HTTP and GRPC inbounds
 	inbounds := rpc.NewInbounds(
 		cfg.Placement.HTTPPort,
@@ -286,6 +326,16 @@ func main() {
 		Outbounds: outbounds,
 		Metrics: yarpc.MetricsConfig{
 			Tally: rootScope,
+		},
+		InboundMiddleware: yarpc.InboundMiddleware{
+			Unary:  authInboundMiddleware,
+			Oneway: authInboundMiddleware,
+			Stream: authInboundMiddleware,
+		},
+		OutboundMiddleware: yarpc.OutboundMiddleware{
+			Unary:  authOutboundMiddleware,
+			Oneway: authOutboundMiddleware,
+			Stream: authOutboundMiddleware,
 		},
 	})
 

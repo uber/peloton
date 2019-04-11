@@ -298,6 +298,8 @@ def start_and_wait(
         # used to migrate the schema;used inside host manager
         "AUTO_MIGRATE": config["auto_migrate"],
         "CLUSTER": "minicluster",
+        'AUTH_TYPE': os.getenv('AUTH_TYPE', 'NOOP'),
+        'AUTH_CONFIG_FILE': os.getenv('AUTH_CONFIG_FILE'),
     }
     if len(ports) > 1:
         env["GRPC_PORT"] = ports[1]
@@ -341,7 +343,12 @@ def run_peloton_resmgr(config):
         ports = [port + i * 10 for port in config["peloton_resmgr_ports"]]
         name = config["peloton_resmgr_container"] + repr(i)
         utils.remove_existing_container(name)
-        start_and_wait("resmgr", name, ports, config)
+        start_and_wait(
+            "resmgr",
+            name,
+            ports,
+            config,
+        )
 
 
 #
@@ -386,8 +393,6 @@ def run_peloton_jobmgr(config):
             extra_env={
                 "MESOS_AGENT_WORK_DIR": config["work_dir"],
                 "JOB_TYPE": os.getenv("JOB_TYPE", "BATCH"),
-                'AUTH_TYPE': os.getenv('AUTH_TYPE', 'NOOP'),
-                'AUTH_CONFIG_FILE': os.getenv('AUTH_CONFIG_FILE'),
             },
         )
 
@@ -421,7 +426,9 @@ def run_peloton_placement(config):
             name,
             ports,
             config,
-            extra_env={"TASK_TYPE": task_type},
+            extra_env={
+                "TASK_TYPE": task_type,
+            },
         )
         i = i + 1
 
@@ -434,4 +441,9 @@ def run_peloton_archiver(config):
         ports = [port + i * 10 for port in config["peloton_archiver_ports"]]
         name = config["peloton_archiver_container"] + repr(i)
         utils.remove_existing_container(name)
-        start_and_wait("archiver", name, ports, config)
+        start_and_wait(
+            "archiver",
+            name,
+            ports,
+            config,
+        )

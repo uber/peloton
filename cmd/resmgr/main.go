@@ -19,6 +19,8 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
+	"github.com/uber/peloton/pkg/auth"
+	auth_impl "github.com/uber/peloton/pkg/auth/impl"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/buildversion"
 	"github.com/uber/peloton/pkg/common/config"
@@ -28,6 +30,8 @@ import (
 	"github.com/uber/peloton/pkg/common/metrics"
 	"github.com/uber/peloton/pkg/common/rpc"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/peer"
+	"github.com/uber/peloton/pkg/middleware/inbound"
+	"github.com/uber/peloton/pkg/middleware/outbound"
 	"github.com/uber/peloton/pkg/resmgr"
 	"github.com/uber/peloton/pkg/resmgr/entitlement"
 	maintenance "github.com/uber/peloton/pkg/resmgr/host"
@@ -140,6 +144,20 @@ var (
 		Default("false").
 		Envar("ENABLE_SLA_TRACKING").
 		Bool()
+
+	authType = app.Flag(
+		"auth-type",
+		"Define the auth type used, default to NOOP").
+		Default("NOOP").
+		Envar("AUTH_TYPE").
+		Enum("NOOP", "BASIC")
+
+	authConfigFile = app.Flag(
+		"auth-config-file",
+		"config file for the auth feature, which is specific to the auth type used").
+		Default("").
+		Envar("AUTH_CONFIG_FILE").
+		String()
 )
 
 func getConfig(cfgFiles ...string) Config {
@@ -201,6 +219,12 @@ func getConfig(cfgFiles ...string) Config {
 	}
 	if *enableSLATracking {
 		cfg.ResManager.RmTaskConfig.EnableSLATracking = *enableSLATracking
+	}
+
+	// Parse and setup peloton auth
+	if len(*authType) != 0 {
+		cfg.Auth.AuthType = auth.Type(*authType)
+		cfg.Auth.Path = *authConfigFile
 	}
 
 	log.
@@ -282,12 +306,38 @@ func main() {
 		},
 	}
 
+	securityManager, err := auth_impl.CreateNewSecurityManager(&cfg.Auth)
+	if err != nil {
+		log.WithError(err).
+			Fatal("Could not enable security feature")
+	}
+
+	authInboundMiddleware := inbound.NewAuthInboundMiddleware(securityManager)
+
+	securityClient, err := auth_impl.CreateNewSecurityClient(&cfg.Auth)
+	if err != nil {
+		log.WithError(err).
+			Fatal("Could not establish secure inter-component communication")
+	}
+
+	authOutboundMiddleware := outbound.NewAuthOutboundMiddleware(securityClient)
+
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:      common.PelotonResourceManager,
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
 		Metrics: yarpc.MetricsConfig{
 			Tally: rootScope,
+		},
+		InboundMiddleware: yarpc.InboundMiddleware{
+			Unary:  authInboundMiddleware,
+			Oneway: authInboundMiddleware,
+			Stream: authInboundMiddleware,
+		},
+		OutboundMiddleware: yarpc.OutboundMiddleware{
+			Unary:  authOutboundMiddleware,
+			Oneway: authOutboundMiddleware,
+			Stream: authOutboundMiddleware,
 		},
 	})
 

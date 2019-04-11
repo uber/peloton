@@ -1,3 +1,17 @@
+// Copyright (c) 2019 Uber Technologies, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package basic
 
 import (
@@ -22,7 +36,8 @@ func (suite *SecurityManagerTestSuite) SetupTest() {
 
 func (suite *SecurityManagerTestSuite) TestCreateBasicSecurityManagerSuccess() {
 	role1 := &roleConfig{
-		Role: "admin",
+		Role:   "admin",
+		Accept: []string{_matchAllRule},
 	}
 	role2 := &roleConfig{
 		Role: "default",
@@ -42,9 +57,10 @@ func (suite *SecurityManagerTestSuite) TestCreateBasicSecurityManagerSuccess() {
 		Password: "password3",
 	}
 
-	config := &managerConfig{
-		Users: []*userConfig{user1, user2, user3},
-		Roles: []*roleConfig{role1, role2},
+	config := &authConfig{
+		Users:        []*userConfig{user1, user2, user3},
+		Roles:        []*roleConfig{role1, role2},
+		InternalUser: user1.Username,
 	}
 
 	m, err := newBasicSecurityManager(config)
@@ -64,7 +80,7 @@ func (suite *SecurityManagerTestSuite) TestCreateBasicSecurityManagerMultiDefaul
 		Role: role1.Role,
 	}
 
-	config := &managerConfig{
+	config := &authConfig{
 		Users: []*userConfig{user1, user2},
 		Roles: []*roleConfig{role1},
 	}
@@ -91,7 +107,7 @@ func (suite *SecurityManagerTestSuite) TestCreateBasicSecurityManagerDuplicatedR
 		Role: role2.Role,
 	}
 
-	config := &managerConfig{
+	config := &authConfig{
 		Users: []*userConfig{user1, user2},
 		Roles: []*roleConfig{role1, role2},
 	}
@@ -117,7 +133,7 @@ func (suite *SecurityManagerTestSuite) TestCreateBasicSecurityManagerDuplicatedU
 		Password: "password2",
 	}
 
-	config := &managerConfig{
+	config := &authConfig{
 		Users: []*userConfig{user1, user2},
 		Roles: []*roleConfig{role1},
 	}
@@ -143,7 +159,7 @@ func (suite *SecurityManagerTestSuite) TestCreateBasicSecurityManagerUndefinedRo
 		Password: "password2",
 	}
 
-	config := &managerConfig{
+	config := &authConfig{
 		Users: []*userConfig{user1, user2},
 		Roles: []*roleConfig{role1},
 	}
@@ -163,7 +179,7 @@ func (suite *SecurityManagerTestSuite) TestCreateBasicSecurityManagerMissingUser
 		Role:     role.Role,
 		Password: "password1",
 	}
-	config := &managerConfig{
+	config := &authConfig{
 		Users: []*userConfig{user},
 		Roles: []*roleConfig{role},
 	}
@@ -177,7 +193,7 @@ func (suite *SecurityManagerTestSuite) TestCreateBasicSecurityManagerMissingUser
 		Role:     role.Role,
 		Username: "user1",
 	}
-	config = &managerConfig{
+	config = &authConfig{
 		Users: []*userConfig{user},
 		Roles: []*roleConfig{role},
 	}
@@ -191,7 +207,7 @@ func (suite *SecurityManagerTestSuite) TestCreateBasicSecurityManagerMissingUser
 		Username: "user1",
 		Password: "password1",
 	}
-	config = &managerConfig{
+	config = &authConfig{
 		Users: []*userConfig{user},
 		Roles: []*roleConfig{role},
 	}
@@ -249,7 +265,8 @@ func (suite *SecurityManagerTestSuite) TestAuthenticateUser() {
 
 func (suite *SecurityManagerTestSuite) TestAuthenticateDefaultUserWhenNonDefinedErr() {
 	role1 := &roleConfig{
-		Role: "admin",
+		Role:   "admin",
+		Accept: []string{_matchAllRule},
 	}
 
 	user1 := &userConfig{
@@ -263,9 +280,10 @@ func (suite *SecurityManagerTestSuite) TestAuthenticateDefaultUserWhenNonDefined
 		Password: "password2",
 	}
 
-	config := &managerConfig{
-		Users: []*userConfig{user1, user2},
-		Roles: []*roleConfig{role1},
+	config := &authConfig{
+		Users:        []*userConfig{user1, user2},
+		Roles:        []*roleConfig{role1},
+		InternalUser: user1.Username,
 	}
 
 	// no default user defined
@@ -391,6 +409,13 @@ func (t *testToken) Get(k string) (string, bool) {
 	}
 
 	return "", false
+}
+
+func (t *testToken) Items() map[string]string {
+	return map[string]string{
+		_usernameHeaderKey: t.username,
+		_passwordHeaderKey: t.password,
+	}
 }
 
 func TestSecurityManagerTestSuite(t *testing.T) {

@@ -12,22 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package basic
+package auth
 
-type authConfig struct {
-	Users        []*userConfig
-	Roles        []*roleConfig
-	InternalUser string `yaml:"internal_user"`
-}
-
-type userConfig struct {
-	Role     string
-	Username string
-	Password string
-}
-
-type roleConfig struct {
-	Role   string
-	Accept []string
-	Reject []string
+// Config is auth specific configuration
+type Config struct {
+	// AuthType is the type of auth
+	AuthType Type `yaml:"auth_type"`
+	// Path is the path to the config file for auth
+	Path string `yaml:"path"`
 }

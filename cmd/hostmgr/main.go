@@ -22,6 +22,8 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
+	"github.com/uber/peloton/pkg/auth"
+	auth_impl "github.com/uber/peloton/pkg/auth/impl"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/background"
 	"github.com/uber/peloton/pkg/common/backoff"
@@ -44,13 +46,15 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/queue"
 	"github.com/uber/peloton/pkg/hostmgr/reconcile"
 	"github.com/uber/peloton/pkg/hostmgr/task"
+	"github.com/uber/peloton/pkg/middleware/inbound"
+	"github.com/uber/peloton/pkg/middleware/outbound"
 	"github.com/uber/peloton/pkg/storage/stores"
 
 	log "github.com/sirupsen/logrus"
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
-	kingpin "gopkg.in/alecthomas/kingpin.v2"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
@@ -176,6 +180,20 @@ var (
 		"bin_packing", "Bin Packing enable/disable, by default disabled.").
 		Envar("BIN_PACKING").
 		String()
+
+	authType = app.Flag(
+		"auth-type",
+		"Define the auth type used, default to NOOP").
+		Default("NOOP").
+		Envar("AUTH_TYPE").
+		Enum("NOOP", "BASIC")
+
+	authConfigFile = app.Flag(
+		"auth-config-file",
+		"config file for the auth feature, which is specific to the auth type used").
+		Default("").
+		Envar("AUTH_CONFIG_FILE").
+		String()
 )
 
 func main() {
@@ -231,6 +249,12 @@ func main() {
 
 	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
 		cfg.Storage.Cassandra.CassandraConn.ContactPoints = *cassandraHosts
+	}
+
+	// Parse and setup peloton auth
+	if len(*authType) != 0 {
+		cfg.Auth.AuthType = auth.Type(*authType)
+		cfg.Auth.Path = *authConfigFile
 	}
 
 	log.WithField("config", cfg).Info("Loaded Host Manager configuration")
@@ -388,12 +412,38 @@ func main() {
 		},
 	}
 
+	securityManager, err := auth_impl.CreateNewSecurityManager(&cfg.Auth)
+	if err != nil {
+		log.WithError(err).
+			Fatal("Could not enable security feature")
+	}
+
+	authInboundMiddleware := inbound.NewAuthInboundMiddleware(securityManager)
+
+	securityClient, err := auth_impl.CreateNewSecurityClient(&cfg.Auth)
+	if err != nil {
+		log.WithError(err).
+			Fatal("Could not establish secure inter-component communication")
+	}
+
+	authOutboundMiddleware := outbound.NewAuthOutboundMiddleware(securityClient)
+
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:      common.PelotonHostManager,
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
 		Metrics: yarpc.MetricsConfig{
 			Tally: rootScope,
+		},
+		InboundMiddleware: yarpc.InboundMiddleware{
+			Unary:  authInboundMiddleware,
+			Oneway: authInboundMiddleware,
+			Stream: authInboundMiddleware,
+		},
+		OutboundMiddleware: yarpc.OutboundMiddleware{
+			Unary:  authOutboundMiddleware,
+			Oneway: authOutboundMiddleware,
+			Stream: authOutboundMiddleware,
 		},
 	})
 

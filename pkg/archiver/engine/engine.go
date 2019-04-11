@@ -26,10 +26,13 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/query"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/pkg/archiver/config"
+	auth_impl "github.com/uber/peloton/pkg/auth/impl"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/backoff"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/util"
+	"github.com/uber/peloton/pkg/middleware/inbound"
+	"github.com/uber/peloton/pkg/middleware/outbound"
 
 	"github.com/golang/protobuf/ptypes"
 	log "github.com/sirupsen/logrus"
@@ -106,8 +109,19 @@ func New(
 		return nil, err
 	}
 
-	t := grpc.NewTransport()
+	securityManager, err := auth_impl.CreateNewSecurityManager(&cfg.Auth)
+	if err != nil {
+		return nil, err
+	}
+	authInboundMiddleware := inbound.NewAuthInboundMiddleware(securityManager)
 
+	securityClient, err := auth_impl.CreateNewSecurityClient(&cfg.Auth)
+	if err != nil {
+		return nil, err
+	}
+	authOutboundMiddleware := outbound.NewAuthOutboundMiddleware(securityClient)
+
+	t := grpc.NewTransport()
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:     config.PelotonArchiver,
 		Inbounds: inbounds,
@@ -118,6 +132,16 @@ func New(
 		},
 		Metrics: yarpc.MetricsConfig{
 			Tally: scope,
+		},
+		InboundMiddleware: yarpc.InboundMiddleware{
+			Oneway: authInboundMiddleware,
+			Unary:  authInboundMiddleware,
+			Stream: authInboundMiddleware,
+		},
+		OutboundMiddleware: yarpc.OutboundMiddleware{
+			Oneway: authOutboundMiddleware,
+			Unary:  authOutboundMiddleware,
+			Stream: authOutboundMiddleware,
 		},
 	})
 

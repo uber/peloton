@@ -15,6 +15,7 @@
 package main
 
 import (
+	"github.com/uber/peloton/pkg/auth"
 	"github.com/uber/peloton/pkg/common/health"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/logging"
@@ -31,4 +32,5 @@ type Config struct {
 	Election     leader.ElectionConfig `yaml:"election"`
 	Health       health.Config         `yaml:"health"`
 	SentryConfig logging.SentryConfig  `yaml:"sentry"`
+	Auth         auth.Config           `yaml:"auth"`
 }

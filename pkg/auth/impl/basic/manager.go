@@ -1,3 +1,17 @@
+// Copyright (c) 2019 Uber Technologies, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package basic
 
 import (
@@ -143,7 +157,7 @@ func NewBasicSecurityManager(configPath string) (*SecurityManager, error) {
 }
 
 // helper method to create SecurityManager which makes test easier
-func newBasicSecurityManager(mConfig *managerConfig) (*SecurityManager, error) {
+func newBasicSecurityManager(mConfig *authConfig) (*SecurityManager, error) {
 	if err := validateConfig(mConfig); err != nil {
 		return nil, err
 	}
@@ -159,16 +173,16 @@ func newBasicSecurityManager(mConfig *managerConfig) (*SecurityManager, error) {
 	}, nil
 }
 
-func parseConfig(configPath string) (*managerConfig, error) {
-	mConfig := &managerConfig{}
+func parseConfig(configPath string) (*authConfig, error) {
+	mConfig := &authConfig{}
 	if err := config.Parse(mConfig, configPath); err != nil {
 		return nil, err
 	}
 	return mConfig, nil
 }
 
-func validateConfig(config *managerConfig) error {
-	roleSet := make(map[string]struct{})
+func validateConfig(config *authConfig) error {
+	roleConfigs := make(map[string]*roleConfig)
 	// check if rules are valid
 	for _, roleConfig := range config.Roles {
 		for _, acceptRule := range roleConfig.Accept {
@@ -182,24 +196,24 @@ func validateConfig(config *managerConfig) error {
 			}
 		}
 
-		if _, ok := roleSet[roleConfig.Role]; ok {
+		if _, ok := roleConfigs[roleConfig.Role]; ok {
 			return yarpcerrors.InvalidArgumentErrorf(
 				"same Role defined more than once. Role:%s",
 				roleConfig.Role,
 			)
 		}
-		roleSet[roleConfig.Role] = struct{}{}
+		roleConfigs[roleConfig.Role] = roleConfig
 	}
 
 	var defaultUserCount int
-	userSet := make(map[string]struct{})
+	userConfigs := make(map[string]*userConfig)
 	for _, userConfig := range config.Users {
 		if len(userConfig.Role) == 0 {
 			return yarpcerrors.InvalidArgumentErrorf("no Role specified for user")
 		}
 
 		// check if user has a Role that is defined in Roles
-		if _, ok := roleSet[userConfig.Role]; !ok {
+		if _, ok := roleConfigs[userConfig.Role]; !ok {
 			return yarpcerrors.InvalidArgumentErrorf(
 				"user: %s has undefined Role: %s",
 				userConfig.Username,
@@ -224,15 +238,44 @@ func validateConfig(config *managerConfig) error {
 			return yarpcerrors.InvalidArgumentErrorf("more than one default user specified")
 		}
 
-		if _, ok := userSet[userConfig.Username]; ok {
+		if _, ok := userConfigs[userConfig.Username]; ok {
 			return yarpcerrors.InvalidArgumentErrorf(
 				"same user defined more than once. user:%s",
 				userConfig.Username,
 			)
 		}
-		userSet[userConfig.Username] = struct{}{}
+		userConfigs[userConfig.Username] = userConfig
 	}
+
+	// validate internal user configs
+	internalUserConfig, ok := userConfigs[config.InternalUser]
+	if !ok {
+		return yarpcerrors.InvalidArgumentErrorf("undefined internal user")
+	}
+
+	internalUserRoleConfig, ok := roleConfigs[internalUserConfig.Role]
+	if !ok {
+		return yarpcerrors.InvalidArgumentErrorf("undefined role for internal user")
+	}
+
+	if !isRootRole(internalUserRoleConfig) {
+		return yarpcerrors.InvalidArgumentErrorf(
+			"role for internal user must accept * and reject no method")
+	}
+
 	return nil
+}
+
+func isRootRole(config *roleConfig) bool {
+	if !(len(config.Accept) == 1 && config.Accept[0] == _matchAllRule) {
+		return false
+	}
+
+	if len(config.Reject) != 0 {
+		return false
+	}
+
+	return true
 }
 
 // check if the rule is valid,
@@ -299,7 +342,7 @@ func isValidMethod(method string) bool {
 	return true
 }
 
-func constructRoles(mConfig *managerConfig) map[string]*role {
+func constructRoles(mConfig *authConfig) map[string]*role {
 	result := make(map[string]*role)
 	for _, roleConfig := range mConfig.Roles {
 		accepts := make(map[string][]string)
@@ -334,7 +377,7 @@ func constructRoles(mConfig *managerConfig) map[string]*role {
 	return result
 }
 
-func constructUsers(mConfig *managerConfig, roles map[string]*role) (
+func constructUsers(mConfig *authConfig, roles map[string]*role) (
 	defaultUser *user,
 	users map[string]*user,
 	err error,

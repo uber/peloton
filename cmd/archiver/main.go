@@ -20,6 +20,7 @@ import (
 
 	archiverConfig "github.com/uber/peloton/pkg/archiver/config"
 	"github.com/uber/peloton/pkg/archiver/engine"
+	"github.com/uber/peloton/pkg/auth"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/buildversion"
 	"github.com/uber/peloton/pkg/common/config"
@@ -118,6 +119,20 @@ var (
 		"kafka topic used by archiver to stream completed jobs").
 		Envar("KAFKA_TOPIC").
 		String()
+
+	authType = app.Flag(
+		"auth-type",
+		"Define the auth type used, default to NOOP").
+		Default("NOOP").
+		Envar("AUTH_TYPE").
+		Enum("NOOP", "BASIC")
+
+	authConfigFile = app.Flag(
+		"auth-config-file",
+		"config file for the auth feature, which is specific to the auth type used").
+		Default("").
+		Envar("AUTH_CONFIG_FILE").
+		String()
 )
 
 func main() {
@@ -211,6 +226,12 @@ func main() {
 	// Archiver does not depend on leader election
 	if len(*zkServers) > 0 {
 		cfg.Election.ZKServers = *zkServers
+	}
+
+	// Parse and setup peloton auth
+	if len(*authType) != 0 {
+		cfg.Auth.AuthType = auth.Type(*authType)
+		cfg.Auth.Path = *authConfigFile
 	}
 
 	log.WithField("config", cfg).

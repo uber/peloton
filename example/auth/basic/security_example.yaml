@@ -29,3 +29,8 @@ roles:
   - 'peloton.api.v0.respool.ResourcePoolService:*'
   - 'peloton.api.v0.volume.svc.VolumeService:*'
   - 'peloton.api.v1alpha.watch.svc.WatchService:*'
+
+# user used for inter-component communication,
+# the user must have a role that accept any call (*)
+# and reject no call (a.k.a root role)
+internal_user: peloton

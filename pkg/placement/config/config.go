@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/pkg/auth"
 	"github.com/uber/peloton/pkg/common/health"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/logging"
@@ -42,6 +43,7 @@ type Config struct {
 	Health       health.Config         `yaml:"health"`
 	Storage      config.Config         `yaml:"storage"`
 	SentryConfig logging.SentryConfig  `yaml:"sentry"`
+	Auth         auth.Config           `yaml:"auth"`
 }
 
 // PlacementStrategy determines the placement strategy that the placement

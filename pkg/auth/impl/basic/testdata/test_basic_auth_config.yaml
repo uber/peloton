@@ -25,3 +25,5 @@ roles:
 - role: role3
   accept:
   - 'peloton.api.v1alpha.job.stateless.svc.JobService:*'
+
+internal_user: user2

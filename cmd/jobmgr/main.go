@@ -52,6 +52,7 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/volumesvc"
 	"github.com/uber/peloton/pkg/jobmgr/watchsvc"
 	"github.com/uber/peloton/pkg/middleware/inbound"
+	"github.com/uber/peloton/pkg/middleware/outbound"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 	"github.com/uber/peloton/pkg/storage/stores"
 
@@ -303,6 +304,12 @@ func main() {
 			secretsCfg.CassandraPassword
 	}
 
+	// Parse and setup peloton auth
+	if len(*authType) != 0 {
+		cfg.Auth.AuthType = auth.Type(*authType)
+		cfg.Auth.Path = *authConfigFile
+	}
+
 	log.WithField("config", cfg).Info("Loaded Job Manager configuration")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
@@ -381,20 +388,22 @@ func main() {
 		},
 	}
 
-	securityManager, err := auth_impl.CreateNewSecurityManager(
-		auth.Type(*authType),
-		*authConfigFile,
-	)
+	securityManager, err := auth_impl.CreateNewSecurityManager(&cfg.Auth)
 	if err != nil {
 		log.WithError(err).
 			Fatal("Could not enable security feature")
 	}
-	log.WithFields(log.Fields{
-		"auth_type":        *authType,
-		"auth_config_file": authConfigFile,
-	}).Info("Loaded auth config")
 
-	authInboundManager := inbound.NewAuthInboundMiddleware(securityManager)
+	authInboundMiddleware := inbound.NewAuthInboundMiddleware(securityManager)
+
+	securityClient, err := auth_impl.CreateNewSecurityClient(&cfg.Auth)
+	if err != nil {
+		log.WithError(err).
+			Fatal("Could not establish secure inter-component communication")
+	}
+
+	authOutboundMiddleware := outbound.NewAuthOutboundMiddleware(securityClient)
+
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:      common.PelotonJobManager,
 		Inbounds:  inbounds,
@@ -402,7 +411,16 @@ func main() {
 		Metrics: yarpc.MetricsConfig{
 			Tally: rootScope,
 		},
-		InboundMiddleware: getInboundMiddleware(authInboundManager),
+		InboundMiddleware: yarpc.InboundMiddleware{
+			Unary:  authInboundMiddleware,
+			Stream: authInboundMiddleware,
+			Oneway: authInboundMiddleware,
+		},
+		OutboundMiddleware: yarpc.OutboundMiddleware{
+			Unary:  authOutboundMiddleware,
+			Stream: authOutboundMiddleware,
+			Oneway: authOutboundMiddleware,
+		},
 	})
 
 	// Declare background works
@@ -629,12 +647,4 @@ func main() {
 		cfg.Metrics.RuntimeMetrics.CollectInterval)()
 
 	select {}
-}
-
-func getInboundMiddleware(middleware inbound.DispatcherInboundMiddleWare) yarpc.InboundMiddleware {
-	return yarpc.InboundMiddleware{
-		Unary:  middleware,
-		Oneway: middleware,
-		Stream: middleware,
-	}
 }
