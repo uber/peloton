@@ -172,6 +172,15 @@ func IsUpdateStateTerminal(state pbupdate.State) bool {
 	return false
 }
 
+// IsUpdateStateActive returns true if the update is in active state
+func IsUpdateStateActive(state pbupdate.State) bool {
+	switch state {
+	case pbupdate.State_ROLLING_FORWARD, pbupdate.State_ROLLING_BACKWARD:
+		return true
+	}
+	return false
+}
+
 // update structure holds the information about a given job update in the cache
 type update struct {
 	// Mutex to acquire before accessing any update information in cache
@@ -817,7 +826,6 @@ func (u *update) clearCache() {
 	u.instancesAdded = nil
 	u.instancesUpdated = nil
 	u.instancesRemoved = nil
-	u.workflowType = models.WorkflowType_UNKNOWN
 }
 
 // GetUpdateProgress iterates through instancesToCheck and check if they are running and

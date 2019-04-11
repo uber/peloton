@@ -1503,9 +1503,57 @@ func (j *job) CreateWorkflow(
 		return nil, nil, err
 	}
 
+	var currentUpdate *models.UpdateModel
+	var err error
+	if currentUpdate, err = j.getCurrentUpdate(ctx); err != nil {
+		return nil, nil, err
+	}
+
 	opts := &workflowOpts{}
 	for _, option := range options {
 		option.apply(opts)
+	}
+
+	if j.isWorkflowNoop(
+		ctx,
+		opts.prevJobConfig,
+		opts.jobConfig,
+		updateConfig,
+		workflowType,
+		currentUpdate,
+	) {
+		if opts.opaqueData.GetData() != currentUpdate.GetOpaqueData().GetData() {
+			// update workflow version first, so the change to opaque data would cause
+			// an entity version change.
+			// This is needed as user behavior may depend on opaque data, peloton needs to
+			// make sure user takes the correct action based on update-to-date opaque data.
+			j.runtime.WorkflowVersion++
+			newRuntime := j.mergeRuntime(&pbjob.RuntimeInfo{WorkflowVersion: j.runtime.GetWorkflowVersion()})
+			if err := j.jobFactory.jobStore.UpdateJobRuntime(ctx, j.id, newRuntime); err != nil {
+				j.invalidateCache()
+				return currentUpdate.GetUpdateID(),
+					nil,
+					errors.Wrap(err, "fail to update job runtime when create workflow")
+			}
+
+			// TODO: move this under update cache object
+			currentUpdate.OpaqueData = &peloton.OpaqueData{Data: opts.opaqueData.GetData()}
+			if err := j.
+				jobFactory.
+				updateStore.
+				ModifyUpdate(ctx, currentUpdate); err != nil {
+				return nil, nil, errors.Wrap(err, "fail to modify update opaque data")
+			}
+		}
+
+		// nothing changed, directly return
+		return currentUpdate.GetUpdateID(),
+			versionutil.GetJobEntityVersion(
+				j.runtime.GetConfigurationVersion(),
+				j.runtime.GetDesiredStateVersion(),
+				j.runtime.GetWorkflowVersion(),
+			),
+			nil
 	}
 
 	newConfig, err := j.compareAndSetConfig(ctx, opts.jobConfig, opts.configAddOn)
@@ -1572,6 +1620,97 @@ func (j *job) CreateWorkflow(
 		Debug("workflow is created")
 
 	return updateID, newEntityVersion, err
+}
+
+func (j *job) getCurrentUpdate(ctx context.Context) (*models.UpdateModel, error) {
+	if err := j.populateRuntime(ctx); err != nil {
+		return nil, err
+	}
+
+	if len(j.runtime.GetUpdateID().GetValue()) == 0 {
+		return nil, nil
+	}
+
+	return j.jobFactory.updateStore.GetUpdate(ctx, j.runtime.GetUpdateID())
+}
+
+// isWorkflowNoop checks if the new workflow to be created
+// is a noop and can be safely ignored.
+// The function checks if there is an active update
+// with the same job config and update config.
+func (j *job) isWorkflowNoop(
+	ctx context.Context,
+	prevJobConfig *pbjob.JobConfig,
+	targetJobConfig *pbjob.JobConfig,
+	updateConfig *pbupdate.UpdateConfig,
+	workflowType models.WorkflowType,
+	currentUpdate *models.UpdateModel,
+) bool {
+	if currentUpdate == nil {
+		return false
+	}
+
+	// only check for active update
+	if !IsUpdateStateActive(currentUpdate.GetState()) {
+		return false
+	}
+
+	if currentUpdate.GetType() != workflowType {
+		return false
+	}
+
+	if !isJobConfigEqual(prevJobConfig, targetJobConfig) {
+		return false
+	}
+
+	if !isUpdateConfigEqual(currentUpdate.GetUpdateConfig(), updateConfig) {
+		return false
+	}
+
+	return true
+}
+
+func isJobConfigEqual(
+	prevJobConfig *pbjob.JobConfig,
+	targetJobConfig *pbjob.JobConfig,
+) bool {
+	if prevJobConfig.GetInstanceCount() != targetJobConfig.GetInstanceCount() {
+		return false
+	}
+
+	if taskconfig.HasPelotonLabelsChanged(prevJobConfig.GetLabels(), targetJobConfig.GetLabels()) {
+		return false
+	}
+
+	for i := uint32(0); i < prevJobConfig.GetInstanceCount(); i++ {
+		prevTaskConfig := taskconfig.Merge(
+			prevJobConfig.GetDefaultConfig(),
+			prevJobConfig.GetInstanceConfig()[i])
+		targetTaskConfig := taskconfig.Merge(
+			targetJobConfig.GetDefaultConfig(),
+			targetJobConfig.GetInstanceConfig()[i])
+		if taskconfig.HasTaskConfigChanged(prevTaskConfig, targetTaskConfig) {
+			return false
+		}
+	}
+
+	prevJobConfigCopy := *prevJobConfig
+	targetJobConfigCopy := *targetJobConfig
+
+	prevJobConfigCopy.ChangeLog = nil
+	targetJobConfigCopy.ChangeLog = nil
+
+	prevJobConfigCopy.Labels = nil
+	targetJobConfigCopy.Labels = nil
+
+	return proto.Equal(&prevJobConfigCopy, &targetJobConfigCopy)
+}
+
+func isUpdateConfigEqual(
+	prevUpdateConfig *pbupdate.UpdateConfig,
+	targetUpdateConfig *pbupdate.UpdateConfig,
+) bool {
+	return proto.Equal(prevUpdateConfig, targetUpdateConfig)
 }
 
 func (j *job) PauseWorkflow(

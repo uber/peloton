@@ -3284,9 +3284,13 @@ func (s *Store) ModifyUpdate(
 		Set("instances_total", updateInfo.GetInstancesTotal()).
 		Set("job_config_version", updateInfo.GetJobConfigVersion()).
 		Set("job_config_prev_version", updateInfo.GetPrevJobConfigVersion()).
-		Set("update_time", time.Now().UTC()).
-		Where(qb.Eq{"update_id": updateInfo.GetUpdateID().GetValue()})
+		Set("update_time", time.Now().UTC())
 
+	if updateInfo.GetOpaqueData() != nil {
+		stmt = stmt.Set("opaque_data", updateInfo.GetOpaqueData().GetData())
+	}
+
+	stmt = stmt.Where(qb.Eq{"update_id": updateInfo.GetUpdateID().GetValue()})
 	if err := s.applyStatement(
 		ctx,
 		stmt,

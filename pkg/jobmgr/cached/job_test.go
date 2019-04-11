@@ -2026,6 +2026,135 @@ func (suite *JobTestSuite) TestJobCompareAndSetConfigInvalidConfigVersion() {
 	suite.Nil(newConfig)
 }
 
+// TestJobCreateWorkflowWithSameConfigSuccess tests create a workflow
+// with same config succeeds and is noop
+func (suite *JobTestSuite) TestJobCreateWorkflowWithSameConfigSuccess() {
+	opaque := "test"
+	updateID := &peloton.UpdateID{Value: uuid.NewRandom().String()}
+
+	workflowType := models.WorkflowType_UPDATE
+	updateConfig := &pbupdate.UpdateConfig{
+		BatchSize: 10,
+	}
+	suite.job.runtime.UpdateID = updateID
+	oldConfigVersion := suite.job.runtime.GetConfigurationVersion()
+	oldWorkflowVersion := suite.job.runtime.GetWorkflowVersion()
+	desiredStateVersion := suite.job.runtime.GetDesiredStateVersion()
+	entityVersion := versionutil.GetJobEntityVersion(
+		oldConfigVersion,
+		desiredStateVersion,
+		oldWorkflowVersion,
+	)
+	prevConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{},
+		ChangeLog:     &peloton.ChangeLog{Version: 1},
+	}
+	jobConfig := prevConfig
+	configAddOn := &models.ConfigAddOn{}
+	updateModel := &models.UpdateModel{
+		UpdateID:     updateID,
+		State:        pbupdate.State_ROLLING_FORWARD,
+		Type:         workflowType,
+		UpdateConfig: updateConfig,
+		OpaqueData:   &peloton.OpaqueData{Data: opaque},
+	}
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), updateID).
+		Return(updateModel, nil)
+
+	updateID, newEntityVersion, err := suite.job.CreateWorkflow(
+		context.Background(),
+		workflowType,
+		updateConfig,
+		entityVersion,
+		WithConfig(
+			jobConfig,
+			prevConfig,
+			configAddOn,
+		),
+		WithOpaqueData(&peloton.OpaqueData{Data: opaque}),
+	)
+
+	suite.NotNil(updateID)
+	suite.NoError(err)
+	suite.Nil(suite.job.workflows[updateID.GetValue()])
+	suite.Equal(newEntityVersion, versionutil.GetJobEntityVersion(
+		oldConfigVersion,
+		desiredStateVersion,
+		oldWorkflowVersion,
+	))
+}
+
+// TestJobCreateWorkflowWithDifferntOpaqueDateSuccess tests create a workflow
+// with same config but different opaque data succeeds
+func (suite *JobTestSuite) TestJobCreateWorkflowWithDifferentOpaqueDateSuccess() {
+	opaque := "test"
+	updatedOpaque := "test2"
+	updateID := &peloton.UpdateID{Value: uuid.NewRandom().String()}
+
+	workflowType := models.WorkflowType_UPDATE
+	updateConfig := &pbupdate.UpdateConfig{
+		BatchSize: 10,
+	}
+	suite.job.runtime.UpdateID = updateID
+	oldConfigVersion := suite.job.runtime.GetConfigurationVersion()
+	oldWorkflowVersion := suite.job.runtime.GetWorkflowVersion()
+	desiredStateVersion := suite.job.runtime.GetDesiredStateVersion()
+	entityVersion := versionutil.GetJobEntityVersion(
+		oldConfigVersion,
+		desiredStateVersion,
+		oldWorkflowVersion,
+	)
+	prevConfig := &pbjob.JobConfig{
+		DefaultConfig: &pbtask.TaskConfig{},
+		ChangeLog:     &peloton.ChangeLog{Version: 1},
+	}
+	jobConfig := prevConfig
+	configAddOn := &models.ConfigAddOn{}
+	updateModel := &models.UpdateModel{
+		UpdateID:     updateID,
+		State:        pbupdate.State_ROLLING_FORWARD,
+		Type:         workflowType,
+		UpdateConfig: updateConfig,
+		OpaqueData:   &peloton.OpaqueData{Data: opaque},
+	}
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), updateID).
+		Return(updateModel, nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		Return(nil)
+
+	suite.updateStore.EXPECT().
+		ModifyUpdate(gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	updateID, newEntityVersion, err := suite.job.CreateWorkflow(
+		context.Background(),
+		workflowType,
+		updateConfig,
+		entityVersion,
+		WithConfig(
+			jobConfig,
+			prevConfig,
+			configAddOn,
+		),
+		WithOpaqueData(&peloton.OpaqueData{Data: updatedOpaque}),
+	)
+
+	suite.NotNil(updateID)
+	suite.NoError(err)
+	suite.Nil(suite.job.workflows[updateID.GetValue()])
+	suite.Equal(newEntityVersion, versionutil.GetJobEntityVersion(
+		oldConfigVersion,
+		desiredStateVersion,
+		oldWorkflowVersion+1,
+	))
+}
+
 // TestJobCreateWorkflowSuccess tests the success case of
 // creating workflow
 func (suite *JobTestSuite) TestJobCreateWorkflowSuccess() {
