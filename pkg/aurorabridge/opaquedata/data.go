@@ -6,6 +6,8 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
+	"github.com/pborman/uuid"
 )
 
 // UpdateAction is an Aurora update action which has no equivalent in Peloton.
@@ -32,6 +34,25 @@ type Data struct {
 	UpdateActions         []UpdateAction  `json:"update_actions,omitempty"`
 	UpdateMetadata        []*api.Metadata `json:"update_metadata,omitempty"`
 	StartJobUpdateMessage string          `json:"start_job_update_msg,omitempty"`
+}
+
+// NewDataFromJobUpdateRequest creates opaquedata.Data from aurora
+// JobUpdateRequest
+func NewDataFromJobUpdateRequest(
+	request *api.JobUpdateRequest,
+	message *string,
+) *Data {
+	d := &Data{
+		UpdateID:       uuid.New(),
+		UpdateMetadata: request.GetMetadata(),
+	}
+	if request.GetSettings().GetBlockIfNoPulsesAfterMs() > 0 {
+		d.AppendUpdateAction(StartPulsed)
+	}
+	if message != nil {
+		d.StartJobUpdateMessage = *message
+	}
+	return d
 }
 
 // AppendUpdateAction appends a to d's update actions.

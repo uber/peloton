@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"testing"
 
@@ -53,10 +54,11 @@ type ServiceHandlerTestSuite struct {
 
 	ctx context.Context
 
-	ctrl          *gomock.Controller
-	jobClient     *jobmocks.MockJobServiceYARPCClient
-	podClient     *podmocks.MockPodServiceYARPCClient
-	respoolLoader *aurorabridgemocks.MockRespoolLoader
+	ctrl           *gomock.Controller
+	jobClient      *jobmocks.MockJobServiceYARPCClient
+	listPodsStream *jobmocks.MockJobServiceServiceListPodsYARPCClient
+	podClient      *podmocks.MockPodServiceYARPCClient
+	respoolLoader  *aurorabridgemocks.MockRespoolLoader
 
 	config        ServiceHandlerConfig
 	thermosConfig atop.ThermosExecutorConfig
@@ -69,6 +71,7 @@ func (suite *ServiceHandlerTestSuite) SetupTest() {
 
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.jobClient = jobmocks.NewMockJobServiceYARPCClient(suite.ctrl)
+	suite.listPodsStream = jobmocks.NewMockJobServiceServiceListPodsYARPCClient(suite.ctrl)
 	suite.podClient = podmocks.NewMockPodServiceYARPCClient(suite.ctrl)
 	suite.respoolLoader = aurorabridgemocks.NewMockRespoolLoader(suite.ctrl)
 
@@ -447,6 +450,8 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobNoPulseSucces
 
 	suite.expectGetJobVersion(id, curv)
 
+	suite.expectListPods(id, []*pod.PodSummary{})
+
 	suite.jobClient.EXPECT().
 		ReplaceJob(
 			suite.ctx,
@@ -480,6 +485,8 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobWithPulseSucc
 
 	suite.expectGetJobVersion(id, curv)
 
+	suite.expectListPods(id, []*pod.PodSummary{})
+
 	suite.jobClient.EXPECT().
 		ReplaceJob(
 			suite.ctx,
@@ -511,26 +518,11 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobConflict() {
 
 	suite.expectGetJobVersion(id, curv)
 
+	suite.expectListPods(id, []*pod.PodSummary{})
+
 	suite.jobClient.EXPECT().
 		ReplaceJob(suite.ctx, gomock.Any()).
 		Return(nil, yarpcerrors.AbortedErrorf(""))
-
-	resp, err := suite.handler.StartJobUpdate(suite.ctx, req, ptr.String("some message"))
-	suite.NoError(err)
-	suite.Equal(api.ResponseCodeInvalidRequest, resp.GetResponseCode())
-}
-
-// Ensures StartJobUpdate errors out when seeing pinned instances request
-func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_PinnedInstancesError() {
-	req := fixture.AuroraJobUpdateRequest()
-	req.Settings = &api.JobUpdateSettings{
-		UpdateOnlyTheseInstances: []*api.Range{
-			{
-				First: ptr.Int32(0),
-				Last:  ptr.Int32(0),
-			},
-		},
-	}
 
 	resp, err := suite.handler.StartJobUpdate(suite.ctx, req, ptr.String("some message"))
 	suite.NoError(err)
@@ -2027,4 +2019,781 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_UpdateStatusFilter
 	suite.Equal(
 		api.JobUpdateStatusRolledForward,
 		result[0].GetUpdate().GetSummary().GetState().GetStatus())
+}
+
+// expectListPods sets up expect for ListPods API based on input JobID
+// and a list of PodSummary.
+func (suite *ServiceHandlerTestSuite) expectListPods(
+	jobID *peloton.JobID,
+	pods []*pod.PodSummary,
+) {
+	suite.jobClient.EXPECT().
+		ListPods(gomock.Any(), &statelesssvc.ListPodsRequest{
+			JobId: jobID,
+		}).
+		Return(suite.listPodsStream, nil)
+
+	for _, p := range pods {
+		suite.listPodsStream.EXPECT().
+			Recv().
+			Return(&statelesssvc.ListPodsResponse{
+				Pods: []*pod.PodSummary{p},
+			}, nil)
+	}
+
+	suite.listPodsStream.EXPECT().
+		Recv().
+		Return(nil, io.EOF)
+}
+
+// TestListPods tests listPods util function to return result correctly.
+func (suite *ServiceHandlerTestSuite) TestListPods() {
+	id := fixture.PelotonJobID()
+	pods := []*pod.PodSummary{
+		{
+			PodName: &peloton.PodName{Value: "pod-0"},
+		},
+		{
+			PodName: &peloton.PodName{Value: "pod-1"},
+		},
+		{
+			PodName: &peloton.PodName{Value: "pod-2"},
+		},
+	}
+
+	suite.expectListPods(id, pods)
+
+	ps, err := suite.handler.listPods(suite.ctx, id)
+	suite.NoError(err)
+	suite.Equal(pods, ps)
+}
+
+// TestListPods tests getCurrentPods() util function using job spec with
+// default spec only.
+func (suite *ServiceHandlerTestSuite) TestGetCurrentPods_WithDefaultSpecOnly() {
+	id := fixture.PelotonJobID()
+	entityVersion1 := &peloton.EntityVersion{Value: "1-0-0"}
+	entityVersion2 := &peloton.EntityVersion{Value: "2-0-0"}
+	entityVersion3 := &peloton.EntityVersion{Value: "3-0-0"}
+	podSpec1 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v1",
+				Value: "v1v",
+			},
+		},
+	}
+	podSpec2 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v2",
+				Value: "v2v",
+			},
+		},
+	}
+	podSpec3 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v3",
+				Value: "v3v",
+			},
+		},
+	}
+
+	suite.expectListPods(id, []*pod.PodSummary{
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 0),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_RUNNING,
+				Version: entityVersion3,
+			},
+		},
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 1),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_FAILED,
+				Version: entityVersion1,
+			},
+		},
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 2),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_PENDING,
+				Version: entityVersion2,
+			},
+		},
+	})
+
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion1,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec: podSpec1,
+				},
+			}}, nil)
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion2,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec: podSpec2,
+				},
+			}}, nil)
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion3,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec: podSpec3,
+				},
+			}}, nil)
+
+	podStates, err := suite.handler.getCurrentPods(suite.ctx, id)
+	suite.NoError(err)
+	suite.Equal(map[uint32]*podStateSpec{
+		0: {
+			state:   pod.PodState_POD_STATE_RUNNING,
+			podSpec: podSpec3,
+		},
+		1: {
+			state:   pod.PodState_POD_STATE_FAILED,
+			podSpec: podSpec1,
+		},
+		2: {
+			state:   pod.PodState_POD_STATE_PENDING,
+			podSpec: podSpec2,
+		},
+	}, podStates)
+}
+
+// TestListPods tests getCurrentPods() util function using job spec with
+// both default spec and instance spec.
+func (suite *ServiceHandlerTestSuite) TestGetCurrentPods_WithInstanceSpec() {
+	id := fixture.PelotonJobID()
+	entityVersion1 := &peloton.EntityVersion{Value: "1-0-0"}
+	entityVersion2 := &peloton.EntityVersion{Value: "2-0-0"}
+	entityVersion3 := &peloton.EntityVersion{Value: "3-0-0"}
+	podSpec1 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v1",
+				Value: "v1v",
+			},
+		},
+	}
+	podSpec2 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v2",
+				Value: "v2v",
+			},
+		},
+	}
+	podSpec3 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v3",
+				Value: "v3v",
+			},
+		},
+	}
+
+	suite.expectListPods(id, []*pod.PodSummary{
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 0),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_RUNNING,
+				Version: entityVersion3,
+			},
+		},
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 1),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_FAILED,
+				Version: entityVersion1,
+			},
+		},
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 2),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_PENDING,
+				Version: entityVersion2,
+			},
+		},
+	})
+
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion1,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec:  podSpec1,
+					InstanceSpec: map[uint32]*pod.PodSpec{1: podSpec2},
+				},
+			},
+		}, nil)
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion2,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec:  podSpec2,
+					InstanceSpec: map[uint32]*pod.PodSpec{0: podSpec1},
+				},
+			},
+		}, nil)
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion3,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec:  podSpec3,
+					InstanceSpec: map[uint32]*pod.PodSpec{1: podSpec3},
+				},
+			},
+		}, nil)
+
+	podStates, err := suite.handler.getCurrentPods(suite.ctx, id)
+	suite.NoError(err)
+	suite.Equal(map[uint32]*podStateSpec{
+		0: {
+			state:   pod.PodState_POD_STATE_RUNNING,
+			podSpec: podSpec3,
+		},
+		1: {
+			state:   pod.PodState_POD_STATE_FAILED,
+			podSpec: podSpec2,
+		},
+		2: {
+			state:   pod.PodState_POD_STATE_PENDING,
+			podSpec: podSpec2,
+		},
+	}, podStates)
+}
+
+// TestListPods tests getCurrentPods() util function when failed to query
+// job spec.
+func (suite *ServiceHandlerTestSuite) TestGetCurrentPods_Fail() {
+	id := fixture.PelotonJobID()
+	entityVersion1 := &peloton.EntityVersion{Value: "1-0-0"}
+	entityVersion2 := &peloton.EntityVersion{Value: "2-0-0"}
+	entityVersion3 := &peloton.EntityVersion{Value: "3-0-0"}
+
+	suite.expectListPods(id, []*pod.PodSummary{
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 0),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_RUNNING,
+				Version: entityVersion3,
+			},
+		},
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 1),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_FAILED,
+				Version: entityVersion1,
+			},
+		},
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 2),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_PENDING,
+				Version: entityVersion2,
+			},
+		},
+	})
+
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion1,
+		}).
+		Return(
+			&statelesssvc.GetJobResponse{},
+			errors.New("failed to get job"),
+		).
+		AnyTimes()
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion2,
+		}).
+		Return(
+			&statelesssvc.GetJobResponse{},
+			errors.New("failed to get job"),
+		).
+		AnyTimes()
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion3,
+		}).
+		Return(
+			&statelesssvc.GetJobResponse{},
+			errors.New("failed to get job"),
+		).
+		AnyTimes()
+
+	_, err := suite.handler.getCurrentPods(suite.ctx, id)
+	suite.Error(err)
+}
+
+// TestCreateJobSpecForUpdate_NoPinned tests createJobSpecForUpdate()
+// util function update request with no pinned instances.
+func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_NoPinned() {
+	req := fixture.AuroraJobUpdateRequest()
+	req.Settings = &api.JobUpdateSettings{} // no pinned instances
+	id := fixture.PelotonJobID()
+	spec := &stateless.JobSpec{
+		Name: atop.NewJobName(req.GetTaskConfig().GetJob()),
+		DefaultSpec: &pod.PodSpec{
+			Labels: []*peloton.Label{
+				{
+					Key:   "label-key",
+					Value: "label-value",
+				},
+			},
+		},
+	}
+
+	suite.expectListPods(id, []*pod.PodSummary{})
+
+	newSpec, err := suite.handler.createJobSpecForUpdate(suite.ctx, req, id, spec)
+	suite.NoError(err)
+	suite.Equal(spec, newSpec)
+}
+
+// TestCreateJobSpecForUpdate_WithPinned tests createJobSpecForUpdate()
+// util function update request with pinned instances.
+func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned() {
+	req := fixture.AuroraJobUpdateRequest()
+	req.Settings = &api.JobUpdateSettings{
+		UpdateOnlyTheseInstances: []*api.Range{
+			{First: ptr.Int32(0), Last: ptr.Int32(0)},
+		},
+	}
+	req.InstanceCount = ptr.Int32(3)
+
+	id := fixture.PelotonJobID()
+	podSpec := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "label-key",
+				Value: "label-value",
+			},
+		},
+	}
+
+	spec := &stateless.JobSpec{
+		Name:        atop.NewJobName(req.GetTaskConfig().GetJob()),
+		DefaultSpec: podSpec,
+	}
+	entityVersion1 := &peloton.EntityVersion{Value: "1-0-0"}
+	entityVersion2 := &peloton.EntityVersion{Value: "2-0-0"}
+	entityVersion3 := &peloton.EntityVersion{Value: "3-0-0"}
+	podSpec1 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v1",
+				Value: "v1v",
+			},
+		},
+	}
+	podSpec2 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v2",
+				Value: "v2v",
+			},
+		},
+	}
+	podSpec3 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v3",
+				Value: "v3v",
+			},
+		},
+	}
+
+	suite.expectListPods(id, []*pod.PodSummary{
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 0),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_RUNNING,
+				Version: entityVersion3,
+			},
+		},
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 1),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_FAILED,
+				Version: entityVersion1,
+			},
+		},
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 2),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_PENDING,
+				Version: entityVersion2,
+			},
+		},
+	})
+
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion1,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec: podSpec1,
+				},
+			},
+		}, nil)
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion2,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec: podSpec2,
+				},
+			},
+		}, nil)
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion3,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec: podSpec3,
+				},
+			},
+		}, nil)
+
+	newSpec, err := suite.handler.createJobSpecForUpdate(suite.ctx, req, id, spec)
+	suite.NoError(err)
+	suite.Equal(&stateless.JobSpec{
+		Name: atop.NewJobName(req.GetTaskConfig().GetJob()),
+		InstanceSpec: map[uint32]*pod.PodSpec{
+			0: podSpec,
+			1: podSpec1,
+			2: podSpec2,
+		},
+	}, newSpec)
+}
+
+// TestCreateJobSpecForUpdate_WithPinned_AddInstance tests
+// createJobSpecForUpdate() util function update request with pinned instances
+// and added instance.
+func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned_AddInstance() {
+	req := fixture.AuroraJobUpdateRequest()
+	req.Settings = &api.JobUpdateSettings{
+		UpdateOnlyTheseInstances: []*api.Range{
+			{First: ptr.Int32(0), Last: ptr.Int32(0)},
+		},
+	}
+	req.InstanceCount = ptr.Int32(4)
+
+	id := fixture.PelotonJobID()
+	podSpec := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "label-key",
+				Value: "label-value",
+			},
+		},
+	}
+
+	spec := &stateless.JobSpec{
+		Name:        atop.NewJobName(req.GetTaskConfig().GetJob()),
+		DefaultSpec: podSpec,
+	}
+	entityVersion1 := &peloton.EntityVersion{Value: "1-0-0"}
+	entityVersion2 := &peloton.EntityVersion{Value: "2-0-0"}
+	entityVersion3 := &peloton.EntityVersion{Value: "3-0-0"}
+	podSpec1 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v1",
+				Value: "v1v",
+			},
+		},
+	}
+	podSpec2 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v2",
+				Value: "v2v",
+			},
+		},
+	}
+	podSpec3 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v3",
+				Value: "v3v",
+			},
+		},
+	}
+
+	suite.expectListPods(id, []*pod.PodSummary{
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 0),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_RUNNING,
+				Version: entityVersion3,
+			},
+		},
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 1),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_FAILED,
+				Version: entityVersion1,
+			},
+		},
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 2),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_PENDING,
+				Version: entityVersion2,
+			},
+		},
+	})
+
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion1,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec: podSpec1,
+				},
+			},
+		}, nil)
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion2,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec: podSpec2,
+				},
+			},
+		}, nil)
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion3,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec: podSpec3,
+				},
+			},
+		}, nil)
+
+	newSpec, err := suite.handler.createJobSpecForUpdate(suite.ctx, req, id, spec)
+	suite.NoError(err)
+	suite.Equal(&stateless.JobSpec{
+		Name: atop.NewJobName(req.GetTaskConfig().GetJob()),
+		InstanceSpec: map[uint32]*pod.PodSpec{
+			0: podSpec,
+			1: podSpec1,
+			2: podSpec2,
+			3: podSpec,
+		},
+	}, newSpec)
+}
+
+// TestCreateJobSpecForUpdate_WithPinned_AddInstance tests
+// createJobSpecForUpdate() util function update request with pinned instances
+// and removed instance.
+func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned_RemoveInstance() {
+	req := fixture.AuroraJobUpdateRequest()
+	req.Settings = &api.JobUpdateSettings{
+		UpdateOnlyTheseInstances: []*api.Range{
+			{First: ptr.Int32(0), Last: ptr.Int32(0)},
+		},
+	}
+	req.InstanceCount = ptr.Int32(2)
+
+	id := fixture.PelotonJobID()
+	podSpec := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "label-key",
+				Value: "label-value",
+			},
+		},
+	}
+
+	spec := &stateless.JobSpec{
+		Name:        atop.NewJobName(req.GetTaskConfig().GetJob()),
+		DefaultSpec: podSpec,
+	}
+	entityVersion1 := &peloton.EntityVersion{Value: "1-0-0"}
+	entityVersion2 := &peloton.EntityVersion{Value: "2-0-0"}
+	entityVersion3 := &peloton.EntityVersion{Value: "3-0-0"}
+	podSpec1 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v1",
+				Value: "v1v",
+			},
+		},
+	}
+	podSpec2 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v2",
+				Value: "v2v",
+			},
+		},
+	}
+	podSpec3 := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{
+				Key:   "v3",
+				Value: "v3v",
+			},
+		},
+	}
+
+	suite.expectListPods(id, []*pod.PodSummary{
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 0),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_RUNNING,
+				Version: entityVersion3,
+			},
+		},
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 1),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_FAILED,
+				Version: entityVersion1,
+			},
+		},
+		{
+			PodName: &peloton.PodName{
+				Value: util.CreatePelotonTaskID(id.GetValue(), 2),
+			},
+			Status: &pod.PodStatus{
+				State:   pod.PodState_POD_STATE_PENDING,
+				Version: entityVersion2,
+			},
+		},
+	})
+
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion1,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec: podSpec1,
+				},
+			},
+		}, nil)
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion2,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec: podSpec2,
+				},
+			},
+		}, nil)
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   id,
+			Version: entityVersion3,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					DefaultSpec: podSpec3,
+				},
+			},
+		}, nil)
+
+	newSpec, err := suite.handler.createJobSpecForUpdate(suite.ctx, req, id, spec)
+	suite.NoError(err)
+	suite.Equal(&stateless.JobSpec{
+		Name: atop.NewJobName(req.GetTaskConfig().GetJob()),
+		InstanceSpec: map[uint32]*pod.PodSpec{
+			0: podSpec,
+			1: podSpec1,
+		},
+	}, newSpec)
 }

@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/pborman/uuid"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -925,131 +924,6 @@ func (h *ServiceHandler) StartJobUpdate(
 	return newResponse(result, err), nil
 }
 
-func (h *ServiceHandler) createJob(
-	ctx context.Context,
-	req *statelesssvc.CreateJobRequest,
-) *auroraError {
-	if _, err := h.jobClient.CreateJob(ctx, req); err != nil {
-		if yarpcerrors.IsAlreadyExists(err) {
-			return auroraErrorf(
-				"create job: %s", err).
-				code(api.ResponseCodeInvalidRequest)
-		}
-		return auroraErrorf("create job: %s", err)
-	}
-	return nil
-}
-
-func (h *ServiceHandler) replaceJob(
-	ctx context.Context,
-	req *statelesssvc.ReplaceJobRequest,
-) *auroraError {
-	if _, err := h.jobClient.ReplaceJob(ctx, req); err != nil {
-		if yarpcerrors.IsAborted(err) {
-			// Upgrade conflict.
-			return auroraErrorf(
-				"replace job: %s", err).
-				code(api.ResponseCodeInvalidRequest)
-		}
-		return auroraErrorf("replace job: %s", err)
-	}
-	return nil
-}
-
-func (h *ServiceHandler) startJobUpdate(
-	ctx context.Context,
-	request *api.JobUpdateRequest,
-	message *string,
-) (*api.Result, *auroraError) {
-
-	if len(request.GetSettings().GetUpdateOnlyTheseInstances()) > 0 {
-		h.metrics.PinnedInstancesUnsupported.Inc(1)
-		return nil, auroraErrorf("pinned instances not supported").
-			code(api.ResponseCodeInvalidRequest)
-	}
-
-	respoolID, err := h.respoolLoader.Load(ctx)
-	if err != nil {
-		return nil, auroraErrorf("load respool: %s", err)
-	}
-
-	jobKey := request.GetTaskConfig().GetJob()
-
-	jobSpec, err := atop.NewJobSpecFromJobUpdateRequest(
-		request,
-		respoolID,
-		h.config.ThermosExecutor,
-	)
-	if err != nil {
-		return nil, auroraErrorf("new job spec: %s", err)
-	}
-
-	d := &opaquedata.Data{
-		UpdateID:       uuid.New(),
-		UpdateMetadata: request.GetMetadata(),
-	}
-	if request.GetSettings().GetBlockIfNoPulsesAfterMs() > 0 {
-		d.AppendUpdateAction(opaquedata.StartPulsed)
-	}
-	if message != nil {
-		d.StartJobUpdateMessage = *message
-	}
-	od, err := d.Serialize()
-	if err != nil {
-		return nil, auroraErrorf("serialize opaque data: %s", err)
-	}
-
-	createReq := &statelesssvc.CreateJobRequest{
-		Spec:       jobSpec,
-		CreateSpec: atop.NewCreateSpec(request.GetSettings()),
-		OpaqueData: od,
-	}
-
-	id, err := h.getJobID(ctx, jobKey)
-	if err != nil {
-		if !yarpcerrors.IsNotFound(err) {
-			return nil, auroraErrorf("get job id: %s", err)
-		}
-		// Job does not exist. Create it.
-		if aerr := h.createJob(ctx, createReq); aerr != nil {
-			return nil, aerr
-		}
-	} else {
-		// Job already exists. Replace it.
-		v, err := h.getCurrentJobVersion(ctx, id)
-		if err != nil {
-			if !yarpcerrors.IsNotFound(err) {
-				return nil, auroraErrorf("get current job version: %s", err)
-			}
-			// Job was present in name->id index, but did not exist. Create it.
-			if aerr := h.createJob(ctx, createReq); aerr != nil {
-				return nil, aerr
-			}
-		} else {
-			replaceReq := &statelesssvc.ReplaceJobRequest{
-				JobId:      id,
-				Spec:       jobSpec,
-				UpdateSpec: atop.NewUpdateSpec(request.GetSettings()),
-				Version:    v,
-				OpaqueData: od,
-			}
-			if aerr := h.replaceJob(ctx, replaceReq); aerr != nil {
-				return nil, aerr
-			}
-		}
-	}
-
-	return &api.Result{
-		StartJobUpdateResult: &api.StartJobUpdateResult{
-			Key: &api.JobUpdateKey{
-				Job: jobKey,
-				ID:  ptr.String(d.UpdateID),
-			},
-			UpdateSummary: nil, // TODO(codyg): Should we set this?
-		},
-	}, nil
-}
-
 // PauseJobUpdate pauses the specified job update. Can be resumed by resumeUpdate call.
 func (h *ServiceHandler) PauseJobUpdate(
 	ctx context.Context,
@@ -1774,17 +1648,6 @@ func (h *ServiceHandler) getJobIDsFromTaskQuery(
 		return nil, errors.Wrapf(err, "get job ids")
 	}
 	return ids, nil
-}
-
-func (h *ServiceHandler) getCurrentJobVersion(
-	ctx context.Context,
-	id *peloton.JobID,
-) (*peloton.EntityVersion, error) {
-	summary, err := h.getJobInfoSummary(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return summary.GetStatus().GetVersion(), nil
 }
 
 // matchJobUpdateID matches a jobID workflow against updateID. Returns the entity

@@ -6,8 +6,9 @@ from tests.integration.aurorabridge_test.util import (
     get_job_update_request,
     get_update_status,
     start_job_update,
-    wait_for_update_status,
+    wait_for_killed,
     wait_for_rolled_forward,
+    wait_for_update_status,
 )
 
 pytestmark = [pytest.mark.default,
@@ -178,3 +179,214 @@ def test__simple_update_with_diff(client):
     res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
     assert len(res.detailsList[0].updateEvents) > 0
     assert res.detailsList[0].instanceEvents is None
+
+
+def test__update_with_pinned_instances(client):
+    """
+    test simple update use case where second update has config
+    change for specfic instances, and verify only affected
+    instances are updated/restarted.
+    """
+    # start a regular update
+    res = client.start_job_update(
+        get_job_update_request('test_dc_labrat_large_job.yaml'),
+        'start job update test/dc/labrat_large_job')
+    wait_for_rolled_forward(client, res.key)
+    job_key = res.key.job
+
+    res = client.get_tasks_without_configs(api.TaskQuery(
+        jobKeys={job_key},
+        statuses={api.ScheduleStatus.RUNNING}
+    ))
+    assert len(res.tasks) == 10
+    for t in res.tasks:
+        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        assert run_id == '1'
+        assert len(t.assignedTask.task.metadata) == 2
+        for m in t.assignedTask.task.metadata:
+            if m.key == 'test_key_1':
+                assert m.value == 'test_value_1'
+            elif m.key == 'test_key_2':
+                assert m.value == 'test_value_2'
+            else:
+                assert False, 'unexpected metadata %s' % m
+
+    # start a update with updateOnlyTheseInstances parameter
+    update_instances = [0, 2, 3, 7, 9]
+    pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
+    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
+
+    res = client.start_job_update(
+        pinned_req,
+        'start job update test/dc/labrat_large_job with pinned instances')
+    wait_for_rolled_forward(client, res.key)
+    job_key = res.key.job
+
+    res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
+    assert len(res.detailsList) == 1
+    assert len(res.detailsList[0].instanceEvents) > 0
+    for ie in res.detailsList[0].instanceEvents:
+        assert ie.instanceId in update_instances
+
+    res = client.get_tasks_without_configs(api.TaskQuery(
+        jobKeys={job_key},
+        statuses={api.ScheduleStatus.RUNNING}
+    ))
+    assert len(res.tasks) == 10
+    for t in res.tasks:
+        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        if t.assignedTask.instanceId in update_instances:
+            assert run_id == '2'
+            assert len(t.assignedTask.task.metadata) == 2
+            for m in t.assignedTask.task.metadata:
+                if m.key == 'test_key_11':
+                    assert m.value == 'test_value_11'
+                elif m.key == 'test_key_22':
+                    assert m.value == 'test_value_22'
+                else:
+                    assert False, 'unexpected metadata %s for affected instances' % m
+        else:
+            assert run_id == '1'
+            assert len(t.assignedTask.task.metadata) == 2
+            for m in t.assignedTask.task.metadata:
+                if m.key == 'test_key_1':
+                    assert m.value == 'test_value_1'
+                elif m.key == 'test_key_2':
+                    assert m.value == 'test_value_2'
+                else:
+                    assert False, 'unexpected metadata %s for unaffected instances' % m
+
+    # start a regular update again should affect instances updated in
+    # previous request
+    res = client.start_job_update(
+        get_job_update_request('test_dc_labrat_large_job_diff_executor.yaml'),
+        'start job update test/dc/labrat_large_job again (with executor data order diff)')
+    wait_for_rolled_forward(client, res.key)
+    job_key = res.key.job
+
+    res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
+    assert len(res.detailsList) == 1
+    assert len(res.detailsList[0].instanceEvents) > 0
+    for ie in res.detailsList[0].instanceEvents:
+        assert ie.instanceId in update_instances
+
+    res = client.get_tasks_without_configs(api.TaskQuery(
+        jobKeys={job_key},
+        statuses={api.ScheduleStatus.RUNNING}
+    ))
+    assert len(res.tasks) == 10
+    for t in res.tasks:
+        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        assert len(t.assignedTask.task.metadata) == 2
+        for m in t.assignedTask.task.metadata:
+            if m.key == 'test_key_1':
+                assert m.value == 'test_value_1'
+            elif m.key == 'test_key_2':
+                assert m.value == 'test_value_2'
+            else:
+                assert False, 'unexpected metadata %s' % m
+
+        if t.assignedTask.instanceId in update_instances:
+            assert run_id == '3'
+        else:
+            assert run_id == '1'
+
+
+def test__update_with_pinned_instances__stopped_instances(client):
+    """
+    test simple update use case where second update has config
+    change for specific instances, and verify only affected
+    instances are updated/restarted, and that unaffected stopped instances
+    should not be started.
+    """
+    all_instances = set([i for i in xrange(10)])
+
+    # start a regular update
+    res = client.start_job_update(
+        get_job_update_request('test_dc_labrat_large_job.yaml'),
+        'start job update test/dc/labrat_large_job')
+    wait_for_rolled_forward(client, res.key)
+    job_key = res.key.job
+
+    res = client.get_tasks_without_configs(api.TaskQuery(
+        jobKeys={job_key},
+        statuses={api.ScheduleStatus.RUNNING}
+    ))
+    assert len(res.tasks) == len(all_instances)
+    for t in res.tasks:
+        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        assert run_id == '1'
+        assert len(t.assignedTask.task.metadata) == 2
+        for m in t.assignedTask.task.metadata:
+            if m.key == 'test_key_1':
+                assert m.value == 'test_value_1'
+            elif m.key == 'test_key_2':
+                assert m.value == 'test_value_2'
+            else:
+                assert False, 'unexpected metadata %s' % m
+
+    # stop subset of instances
+    stop_instances = set([1, 6])
+    client.kill_tasks(
+        job_key,
+        stop_instances,
+        'killing instance 1, 6 for job test/dc/labrat_large_job')
+    wait_for_killed(client, job_key, stop_instances)
+    res = client.get_tasks_without_configs(api.TaskQuery(
+        jobKeys={job_key},
+        statuses={api.ScheduleStatus.RUNNING}
+    ))
+    assert len(res.tasks) == len(all_instances - stop_instances)
+    for t in res.tasks:
+        assert t.assignedTask.instanceId in (all_instances - stop_instances)
+
+    # start a update with updateOnlyTheseInstances parameter
+    update_instances = set([0, 2, 3, 7, 9])
+    pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
+    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
+
+    res = client.start_job_update(
+        pinned_req,
+        'start job update test/dc/labrat_large_job with pinned instances')
+    wait_for_rolled_forward(client, res.key)
+    job_key = res.key.job
+
+    res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
+    assert len(res.detailsList) == 1
+    assert len(res.detailsList[0].instanceEvents) > 0
+    for ie in res.detailsList[0].instanceEvents:
+        assert ie.instanceId in update_instances
+
+    res = client.get_tasks_without_configs(api.TaskQuery(
+        jobKeys={job_key},
+        statuses={api.ScheduleStatus.RUNNING}
+    ))
+    assert len(res.tasks) == len(all_instances - stop_instances)
+
+    # expect instance 0, 2, 3, 7, 9 to be updated to newer version, with run id 2
+    # expect instance 1, 6 remain at stopped
+    # expect instance 4, 5, 8 remain at original version, with run id 1
+    for t in res.tasks:
+        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        if t.assignedTask.instanceId in update_instances:
+            assert run_id == '2'
+            assert len(t.assignedTask.task.metadata) == 2
+            for m in t.assignedTask.task.metadata:
+                if m.key == 'test_key_11':
+                    assert m.value == 'test_value_11'
+                elif m.key == 'test_key_22':
+                    assert m.value == 'test_value_22'
+                else:
+                    assert False, 'unexpected metadata %s for affected instances' % m
+        elif t.assignedTask.instanceId in (all_instances - stop_instances):
+            assert run_id == '1'
+            assert len(t.assignedTask.task.metadata) == 2
+            for m in t.assignedTask.task.metadata:
+                if m.key == 'test_key_1':
+                    assert m.value == 'test_value_1'
+                elif m.key == 'test_key_2':
+                    assert m.value == 'test_value_2'
+                else:
+                    assert False, 'unexpected metadata %s for unaffected instances' % m
+        else:
+            assert False, 'unexpected instance id %s: should be stopped' % t.assignedTask.instanceId

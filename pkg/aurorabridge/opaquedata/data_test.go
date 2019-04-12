@@ -3,12 +3,12 @@ package opaquedata
 import (
 	"testing"
 
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/thriftrw/ptr"
-
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
-	"github.com/uber/peloton/.gen/thrift/aurora/api"
 )
 
 func TestSerializeAndDeserializeData(t *testing.T) {
@@ -111,4 +111,28 @@ func TestContainsUpdateAction(t *testing.T) {
 			assert.Equal(t, tc.want, d.ContainsUpdateAction(tc.input))
 		})
 	}
+}
+
+func TestNewDataFromJobUpdateRequest(t *testing.T) {
+	md := []*api.Metadata{
+		{
+			Key:   ptr.String("md-key"),
+			Value: ptr.String("md-value"),
+		},
+	}
+	req := &api.JobUpdateRequest{
+		Metadata: md,
+		Settings: &api.JobUpdateSettings{
+			BlockIfNoPulsesAfterMs: ptr.Int32(1000),
+		},
+	}
+	req.Metadata = md
+	msg := ptr.String("job-update-msg")
+
+	d := NewDataFromJobUpdateRequest(req, msg)
+	assert.NotEmpty(t, d.UpdateID)
+	assert.Equal(t, md, d.UpdateMetadata)
+	assert.Len(t, d.UpdateActions, 1)
+	assert.Equal(t, StartPulsed, d.UpdateActions[0])
+	assert.Equal(t, *msg, d.StartJobUpdateMessage)
 }
