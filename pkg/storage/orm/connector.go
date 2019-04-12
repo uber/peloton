@@ -47,6 +47,12 @@ type Connector interface {
 		keys []base.Column,
 	) ([][]base.Column, error)
 
+	GetAllIter(
+		ctx context.Context,
+		e *base.Definition,
+		keys []base.Column,
+	) (Iterator, error)
+
 	// Update updates a row in the DB for the base object
 	Update(
 		ctx context.Context,
@@ -57,4 +63,17 @@ type Connector interface {
 
 	// Delete deletes a row from the DB for the base object
 	Delete(ctx context.Context, e *base.Definition, keys []base.Column) error
+}
+
+// Iterator allows the caller to iterate over the results of a query.
+type Iterator interface {
+	// Next fetches the next row of the result. On reaching the end of
+	// results, it returns nil. Error is returned if there is a failure
+	// during iteration. Next should not be called once error is returned
+	// or Close is called.
+	Next() ([]base.Column, error)
+
+	// Close indicates that iterator is no longer required and so any
+	// clean-up actions may be performed.
+	Close()
 }

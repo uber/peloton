@@ -84,6 +84,9 @@ func NewCassandraConnector(
 	}, nil
 }
 
+// ensure that implementation (cassandraConnector) satisfies the interface
+var _ orm.Connector = (*cassandraConnector)(nil)
+
 // buildResultRow is used to allocate memory for the row to be populated by
 // Cassandra read operation based on what object fields are being read
 func buildResultRow(e *base.Definition, columns []string) []interface{} {
@@ -321,27 +324,42 @@ func (c *cassandraConnector) GetAll(
 	e *base.Definition,
 	keyCols []base.Column,
 ) (rows [][]base.Column, errors error) {
+	iter, err := c.GetAllIter(ctx, e, keyCols)
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+	for {
+		row, errors := iter.Next()
+		if errors != nil {
+			return nil, errors
+		}
+		if row != nil {
+			rows = append(rows, row)
+		} else {
+			return rows, nil
+		}
+	}
+}
+
+// GetAllIter gives an iterator to fetch all rows from DB
+func (c *cassandraConnector) GetAllIter(
+	ctx context.Context,
+	e *base.Definition,
+	keyCols []base.Column,
+) (iter orm.Iterator, err error) {
 	colNamesToRead := e.GetColumnsToRead()
 
 	q, err := c.buildSelectQuery(ctx, e, keyCols, colNamesToRead)
 	if err != nil {
 		return nil, err
 	}
-	defer c.sendLatency(ctx, "execute_latency", time.Duration(q.Latency()))
 
-	// execute query and get Iterator
-	iter := q.Iter()
-	defer func() {
-		errors = iter.Close()
-	}()
+	// execute query and get iterator
+	cqlIter := q.Iter()
+	c.sendLatency(ctx, "execute_latency", time.Duration(q.Latency()))
 
-	for result := buildResultRow(e, colNamesToRead); iter.Scan(result...); {
-		rows = append(rows, getRowFromResult(e, colNamesToRead, result))
-	}
-
-	// translate the read result into a row ([]base.Column)
-	c.metrics.ExecuteSuccess.Inc(1)
-	return rows, nil
+	return newIterator(e, colNamesToRead, &c.metrics, cqlIter), nil
 }
 
 // Delete deletes a record from DB using primary keys
@@ -420,4 +438,48 @@ func (c *cassandraConnector) Update(
 
 	c.metrics.ExecuteSuccess.Inc(1)
 	return nil
+}
+
+// cassandraIterator implements interface Iterator for Cassandra
+type cassandraIterator struct {
+	cqlIter        *gocql.Iter
+	tableDef       *base.Definition
+	colNamesToRead []string
+	metrics        *impl.Metrics
+}
+
+// ensure that implementation (cassandraIterator) satisfies the interface
+var _ orm.Iterator = (*cassandraIterator)(nil)
+
+func newIterator(
+	e *base.Definition,
+	cols []string,
+	m *impl.Metrics,
+	cqlIter *gocql.Iter,
+) *cassandraIterator {
+	return &cassandraIterator{
+		cqlIter:        cqlIter,
+		tableDef:       e,
+		metrics:        m,
+		colNamesToRead: cols,
+	}
+}
+
+func (iter *cassandraIterator) Close() {
+	iter.cqlIter.Close()
+}
+
+func (iter *cassandraIterator) Next() ([]base.Column, error) {
+	result := buildResultRow(iter.tableDef, iter.colNamesToRead)
+	if iter.cqlIter.Scan(result...) {
+		row := getRowFromResult(iter.tableDef, iter.colNamesToRead, result)
+		return row, nil
+	}
+	// Either end-of-results or error
+	if errors := iter.cqlIter.Close(); errors != nil {
+		iter.metrics.ExecuteFail.Inc(1)
+		return nil, errors
+	}
+	iter.metrics.ExecuteSuccess.Inc(1)
+	return nil, nil
 }

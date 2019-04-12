@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package orm
+package orm_test
 
 import (
 	"github.com/uber/peloton/pkg/storage/objects/base"
+	"github.com/uber/peloton/pkg/storage/orm"
 )
 
 // ValidObject is a representation of the orm annotations
@@ -51,13 +52,13 @@ type InvalidObject3 struct {
 // This is meant to test that only entities annotated in a certain format will
 // be successfully converted to orm tables
 func (suite *ORMTestSuite) TestTableFromObject() {
-	_, err := TableFromObject(&ValidObject{})
+	_, err := orm.TableFromObject(&ValidObject{})
 	suite.NoError(err)
 
 	tt := []base.Object{
 		&InvalidObject1{}, &InvalidObject2{}, &InvalidObject3{}}
 	for _, t := range tt {
-		_, err := TableFromObject(t)
+		_, err := orm.TableFromObject(t)
 		suite.Error(err)
 	}
 }
@@ -65,7 +66,7 @@ func (suite *ORMTestSuite) TestTableFromObject() {
 // TestSetObjectFromRow tests setting base object from a row
 func (suite *ORMTestSuite) TestSetObjectFromRow() {
 	e := &ValidObject{}
-	table, err := TableFromObject(e)
+	table, err := orm.TableFromObject(e)
 	suite.NoError(err)
 
 	table.SetObjectFromRow(e, testRow)
@@ -107,7 +108,7 @@ func (suite *ORMTestSuite) TestGetRowFromObject() {
 		Name: "test",
 		Data: "testdata",
 	}
-	table, err := TableFromObject(e)
+	table, err := orm.TableFromObject(e)
 	suite.NoError(err)
 
 	row := table.GetRowFromObject(e)
@@ -126,7 +127,7 @@ func (suite *ORMTestSuite) TestGetKeyRowFromObject() {
 		Name: "test",
 		Data: "junk",
 	}
-	table, err := TableFromObject(e)
+	table, err := orm.TableFromObject(e)
 	suite.NoError(err)
 
 	keyRow := table.GetKeyRowFromObject(e)
@@ -143,7 +144,7 @@ func (suite *ORMTestSuite) TestGetPartitionKeyRowFromObject() {
 		Name: "test",
 		Data: "junk",
 	}
-	table, err := TableFromObject(e)
+	table, err := orm.TableFromObject(e)
 	suite.NoError(err)
 
 	keyRow := table.GetPartitionKeyRowFromObject(e)

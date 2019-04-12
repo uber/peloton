@@ -32,8 +32,12 @@ type Client interface {
 	Create(ctx context.Context, e base.Object) error
 	// Get gets the storage object from the database
 	Get(ctx context.Context, e base.Object) error
-	// Get gets all the storage objects for the partition key from the database
+	// GetAll gets all the storage objects for the partition key from the
+	// database
 	GetAll(ctx context.Context, e base.Object) ([]base.Object, error)
+	// GetAllIter provides an iterative way to fetch all storage objects
+	// for the partition key
+	GetAllIter(ctx context.Context, e base.Object) (Iterator, error)
 	// Update updates the storage object in the database
 	// The fields to be updated can be specified as fieldsToUpdate which is
 	// a variable list of field names and is to be optionally specified by
@@ -150,6 +154,26 @@ func (c *client) GetAll(
 	}
 
 	return table.BuildObjectsFromRows(e, rows), nil
+}
+
+// GetAllIter fetches a list of base objects for the given partition key
+// using an iterator. The base object provided must contain the value of
+// its partition key
+func (c *client) GetAllIter(
+	ctx context.Context,
+	e base.Object,
+) (Iterator, error) {
+
+	// lookup if a table exists for this object, return error if not found
+	table, err := c.getTable(e)
+	if err != nil {
+		return nil, err
+	}
+
+	// build a partition key row from storage object
+	keyRow := table.GetPartitionKeyRowFromObject(e)
+
+	return c.connector.GetAllIter(ctx, &table.Definition, keyRow)
 }
 
 // Update updates the storage object in the database

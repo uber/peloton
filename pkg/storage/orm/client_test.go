@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package orm
+package orm_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/uber/peloton/pkg/storage/objects/base"
+	"github.com/uber/peloton/pkg/storage/orm"
 	ormmocks "github.com/uber/peloton/pkg/storage/orm/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -137,10 +138,10 @@ func TestORMTestSuite(t *testing.T) {
 func (suite *ORMTestSuite) TestNewClient() {
 	defer suite.ctrl.Finish()
 	conn := ormmocks.NewMockConnector(suite.ctrl)
-	_, err := NewClient(conn, &ValidObject{})
+	_, err := orm.NewClient(conn, &ValidObject{})
 	suite.NoError(err)
 
-	_, err = NewClient(conn, &InvalidObject1{})
+	_, err = orm.NewClient(conn, &InvalidObject1{})
 	suite.Error(err)
 }
 
@@ -154,7 +155,7 @@ func (suite *ORMTestSuite) TestClientCreate() {
 			suite.ensureRowsEqual(row, testRow)
 		}).Return(nil)
 
-	client, err := NewClient(conn, &ValidObject{})
+	client, err := orm.NewClient(conn, &ValidObject{})
 	suite.NoError(err)
 
 	err = client.Create(suite.ctx, testValidObject)
@@ -181,7 +182,7 @@ func (suite *ORMTestSuite) TestClientGet() {
 			suite.Equal(e.ID, row[0].Value)
 		}).Return(testRow, nil)
 
-	client, err := NewClient(conn, &ValidObject{})
+	client, err := orm.NewClient(conn, &ValidObject{})
 	suite.NoError(err)
 
 	// Do a get on the ValidObject instance and verify that the expected
@@ -214,7 +215,7 @@ func (suite *ORMTestSuite) TestClientGetAll() {
 			suite.Equal(e.ID, row[0].Value)
 		}).Return(testRows, nil)
 
-	client, err := NewClient(conn, &ValidObject{})
+	client, err := orm.NewClient(conn, &ValidObject{})
 	suite.NoError(err)
 
 	// Do a get on the ValidObject instance and verify that the list of objects
@@ -231,6 +232,44 @@ func (suite *ORMTestSuite) TestClientGetAll() {
 	}
 
 	_, err = client.GetAll(suite.ctx, &InvalidObject1{})
+	suite.Error(err)
+}
+
+// TestClientGetAllIter tests client GetAllIter operation on valid and
+// invalid entities
+func (suite *ORMTestSuite) TestClientGetAllIter() {
+	defer suite.ctrl.Finish()
+	conn := ormmocks.NewMockConnector(suite.ctrl)
+	iter := ormmocks.NewMockIterator(suite.ctrl)
+
+	// ValidObject instance with only primary key set
+	e := &ValidObject{
+		ID: uint64(1),
+	}
+
+	conn.EXPECT().GetAllIter(suite.ctx, gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ *base.Definition,
+			row []base.Column) {
+			suite.Equal("id", row[0].Name)
+			suite.Equal(e.ID, row[0].Value)
+		}).Return(iter, nil)
+	iter.EXPECT().Next().Return(testRow, nil)
+
+	client, err := orm.NewClient(conn, &ValidObject{})
+	suite.NoError(err)
+
+	// Do a get on the ValidObject instance and verify that a valid iterator
+	// is returned
+	it, err := client.GetAllIter(suite.ctx, e)
+	suite.NoError(err)
+	suite.Equal(iter, it)
+
+	// Fetch a result object from the iterator
+	res, err := it.Next()
+	suite.NoError(err)
+	suite.Equal(testRow, res)
+
+	_, err = client.GetAllIter(suite.ctx, &InvalidObject1{})
 	suite.Error(err)
 }
 
@@ -253,7 +292,7 @@ func (suite *ORMTestSuite) TestClientUpdate() {
 			suite.Equal(uint64(1), keyRow[0].Value)
 		}).Return(nil)
 
-	client, err := NewClient(conn, &ValidObject{})
+	client, err := orm.NewClient(conn, &ValidObject{})
 	suite.NoError(err)
 
 	// Update Data and Name fields in testValidObject
@@ -286,7 +325,7 @@ func (suite *ORMTestSuite) TestClientDelete() {
 			suite.ensureRowsEqual(row, keyRow)
 		}).Return(nil)
 
-	client, err := NewClient(conn, &ValidObject{})
+	client, err := orm.NewClient(conn, &ValidObject{})
 	suite.NoError(err)
 
 	err = client.Delete(suite.ctx, testValidObject)

@@ -312,6 +312,68 @@ func (suite *CassandraConnSuite) TestCreateGetAll() {
 	}
 }
 
+// TestCreateGetAllIter tests the GetAllIter operation
+func (suite *CassandraConnSuite) TestCreateGetAllIter() {
+	// Definition stores schema information about an Object
+	obj := &base.Definition{
+		Name: testTableName2,
+		Key: &base.PrimaryKey{
+			PartitionKeys: []string{"id"},
+			ClusteringKeys: []*base.ClusteringKey{
+				{
+					Name:       "ck",
+					Descending: true,
+				},
+			},
+		},
+		// Column name to data type mapping of the object
+		ColumnToType: map[string]reflect.Type{
+			"id":   reflect.TypeOf(1),
+			"ck":   reflect.TypeOf(1),
+			"data": reflect.TypeOf("data"),
+			"name": reflect.TypeOf("name"),
+		},
+	}
+
+	// create the test rows in C*
+	for _, row := range testRowsWithCK {
+		err := connector.Create(context.Background(), obj, row)
+		suite.NoError(err)
+	}
+
+	// read the row from C* test table for given keys using iterator
+	iter, err := connector.GetAllIter(context.Background(), obj, keyRow)
+	suite.NoError(err)
+
+	numRows := 0
+	for {
+		row, err := iter.Next()
+		suite.NoError(err)
+
+		if row == nil {
+			iter.Close()
+			suite.Equal(2, numRows)
+			break
+		}
+		numRows++
+		for _, col := range row {
+			if col.Name == "ck" {
+				ck := col.Value.(*int)
+				suite.True(*ck == 10 || *ck == 20)
+			} else if col.Name == "name" {
+				testStr := "test"
+				suite.Equal(col.Value, &testStr)
+			} else if col.Name == "data" {
+				data := col.Value.(*string)
+				suite.True(*data == "testdata20" || *data == "testdata10")
+			} else {
+				id := col.Value.(*int)
+				suite.Equal(*id, 1)
+			}
+		}
+	}
+}
+
 // TestCreateIfNotExists tests the CreateIfNotExists operation
 func (suite *CassandraConnSuite) TestCreateIfNotExists() {
 	// Definition stores schema information about an Object
