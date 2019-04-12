@@ -1058,6 +1058,106 @@ func (suite *statelessHandlerTestSuite) TestQueryJobsGetRespoolIdFail() {
 	suite.Error(err)
 }
 
+// TestQueryJobsErrorGettingUpdate tests the success case of querying jobs
+// inspite of error while getting job update from store
+func (suite *statelessHandlerTestSuite) TestQueryJobsErrorGettingUpdate() {
+	pagination := &v1alphaquery.PaginationSpec{
+		Offset: 0,
+		Limit:  10,
+		OrderBy: []*v1alphaquery.OrderBy{
+			{
+				Order:    v1alphaquery.OrderBy_ORDER_BY_ASC,
+				Property: &v1alphaquery.PropertyPath{Value: "creation_time"},
+			},
+		},
+		MaxLimit: 100,
+	}
+	labels := []*v1alphapeloton.Label{{Key: "k1", Value: "v1"}}
+	keywords := []string{"key1", "key2"}
+	jobstates := []stateless.JobState{stateless.JobState_JOB_STATE_RUNNING}
+	respoolPath := &v1alpharespool.ResourcePoolPath{
+		Value: "/testPath",
+	}
+	owner := "owner1"
+	name := "test"
+	respoolID := &peloton.ResourcePoolID{Value: "321d565e-28da-457d-8434-f6bb7faa0e95"}
+	updateID := &peloton.UpdateID{Value: "322e122e-28da-457d-8434-f6bb7faa0e95"}
+	jobSummary := &pbjob.JobSummary{
+		Name:  name,
+		Owner: owner,
+		Runtime: &pbjob.RuntimeInfo{
+			State:    pbjob.JobState_RUNNING,
+			UpdateID: updateID,
+		},
+		Labels: []*peloton.Label{{
+			Key:   labels[0].GetKey(),
+			Value: labels[0].GetValue(),
+		}},
+	}
+	timestamp, err := ptypes.TimestampProto(time.Now())
+	suite.NoError(err)
+	spec := &stateless.QuerySpec{
+		Pagination: pagination,
+		Labels:     labels,
+		Keywords:   keywords,
+		JobStates:  jobstates,
+		Respool:    respoolPath,
+		Owner:      owner,
+		Name:       name,
+		CreationTimeRange: &v1alphapeloton.TimeRange{
+			Max: timestamp,
+		},
+		CompletionTimeRange: &v1alphapeloton.TimeRange{
+			Max: timestamp,
+		},
+	}
+	totalResult := uint32(1)
+
+	suite.respoolClient.EXPECT().
+		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+			Path: &respool.ResourcePoolPath{Value: respoolPath.GetValue()},
+		}).
+		Return(&respool.LookupResponse{Id: respoolID}, nil)
+
+	suite.jobStore.EXPECT().
+		QueryJobs(gomock.Any(), respoolID, gomock.Any(), true).
+		Return(nil, []*pbjob.JobSummary{jobSummary}, totalResult, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), updateID).
+		Return(nil, fmt.Errorf("test error"))
+
+	resp, err := suite.handler.QueryJobs(
+		context.Background(),
+		&statelesssvc.QueryJobsRequest{
+			Spec: spec,
+		},
+	)
+	suite.NotNil(resp)
+	suite.Equal(resp.GetPagination(), &v1alphaquery.Pagination{
+		Offset: pagination.GetOffset(),
+		Limit:  pagination.GetLimit(),
+		Total:  totalResult,
+	})
+	suite.Equal(resp.GetSpec(), spec)
+	suite.Equal(resp.GetRecords()[0].GetOwner(), jobSummary.GetOwner())
+	suite.Equal(resp.GetRecords()[0].GetOwningTeam(), jobSummary.GetOwningTeam())
+	suite.Equal(
+		resp.GetRecords()[0].GetLabels()[0].GetKey(),
+		jobSummary.GetLabels()[0].GetKey(),
+	)
+	suite.Equal(
+		resp.GetRecords()[0].GetLabels()[0].GetValue(),
+		jobSummary.GetLabels()[0].GetValue(),
+	)
+	suite.Equal(
+		resp.GetRecords()[0].GetStatus().GetState(),
+		stateless.JobState_JOB_STATE_RUNNING,
+	)
+	suite.Nil(resp.GetRecords()[0].GetStatus().GetWorkflowStatus())
+	suite.NoError(err)
+}
+
 // TestReplaceJobSuccess tests the success case of replacing job
 func (suite *statelessHandlerTestSuite) TestReplaceJobSuccess() {
 	configVersion := uint64(1)
@@ -1758,7 +1858,7 @@ func (suite *statelessHandlerTestSuite) TestListJobsGetSummaryDBError() {
 }
 
 // TestListJobsGetUpdateError tests getting DB error when fetching
-// the updae info from DB in the ListJobs API invocation
+// the update info from DB in the ListJobs API invocation
 func (suite *statelessHandlerTestSuite) TestListJobsGetUpdateError() {
 	jobs := []*pbjob.JobSummary{
 		{

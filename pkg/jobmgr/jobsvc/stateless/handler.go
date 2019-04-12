@@ -1188,7 +1188,7 @@ func (h *serviceHandler) QueryJobs(
 			Path: &respool.ResourcePoolPath{Value: req.GetSpec().GetRespool().GetValue()},
 		})
 		if err != nil {
-			return nil, errors.Wrap(err, "fail to get respool id")
+			return nil, errors.Wrap(err, "failed to get respool id")
 		}
 		respoolID = respoolResp.GetId()
 	}
@@ -1202,24 +1202,24 @@ func (h *serviceHandler) QueryJobs(
 		querySpec,
 		true)
 	if err != nil {
-		return nil, errors.Wrap(err, "fail to get job summary")
+		return nil, errors.Wrap(err, "failed to get job summaries")
 	}
 
 	var statelessJobSummaries []*stateless.JobSummary
 	for _, jobSummary := range jobSummaries {
-		var statelessJobLabels []*v1alphapeloton.Label
-		for _, label := range jobSummary.GetLabels() {
-			statelessJobLabels = append(statelessJobLabels, &v1alphapeloton.Label{
-				Key:   label.GetKey(),
-				Value: label.GetValue(),
-			})
-		}
-
 		var updateModel *models.UpdateModel
 		if len(jobSummary.GetRuntime().GetUpdateID().GetValue()) > 0 {
 			updateModel, err = h.updateStore.GetUpdate(ctx, jobSummary.GetRuntime().GetUpdateID())
 			if err != nil {
-				return nil, errors.Wrap(err, "fail to get update")
+				log.WithFields(
+					log.Fields{
+						"job_id":    jobSummary.GetId().GetValue(),
+						"update_id": jobSummary.GetRuntime().GetUpdateID().GetValue(),
+					}).
+					WithError(err).
+					Error("failed to get update")
+
+				updateModel = nil
 			}
 		}
 
