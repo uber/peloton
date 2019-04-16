@@ -47,3 +47,6 @@ const QueryJobsLimit = 1000
 
 // InstanceEventsLimit specifies the limit on number of events per instance
 const InstanceEventsLimit = 100
+
+// UpdatesLimit specifies the limit on number of updates to include per job
+const UpdatesLimit = 10

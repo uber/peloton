@@ -1786,6 +1786,7 @@ func (h *ServiceHandler) listWorkflows(
 	req := &statelesssvc.ListJobWorkflowsRequest{
 		JobId:               jobID,
 		InstanceEvents:      includeInstanceEvents,
+		UpdatesLimit:        common.UpdatesLimit,
 		InstanceEventsLimit: common.InstanceEventsLimit,
 	}
 	resp, err := h.jobClient.ListJobWorkflows(ctx, req)

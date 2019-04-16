@@ -1735,6 +1735,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummaries_Success() {
 	suite.jobClient.EXPECT().
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               id,
+			UpdatesLimit:        common.UpdatesLimit,
 			InstanceEventsLimit: common.InstanceEventsLimit,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
@@ -1758,6 +1759,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummaries_Error() {
 	suite.jobClient.EXPECT().
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               id,
+			UpdatesLimit:        common.UpdatesLimit,
 			InstanceEventsLimit: common.InstanceEventsLimit,
 		}).
 		Return(nil, errors.New("some error"))
@@ -1779,6 +1781,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Error() {
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               id,
 			InstanceEvents:      true,
+			UpdatesLimit:        common.UpdatesLimit,
 			InstanceEventsLimit: common.InstanceEventsLimit,
 		}).
 		Return(nil, errors.New("some error"))
@@ -1819,6 +1822,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_WorkflowsNotFound(
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               id,
 			InstanceEvents:      true,
+			UpdatesLimit:        common.UpdatesLimit,
 			InstanceEventsLimit: common.InstanceEventsLimit,
 		}).
 		Return(nil, yarpcerrors.NotFoundErrorf("workflows not found"))
@@ -1884,6 +1888,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               summaries[0].JobId,
 			InstanceEvents:      true,
+			UpdatesLimit:        common.UpdatesLimit,
 			InstanceEventsLimit: common.InstanceEventsLimit,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
@@ -1894,6 +1899,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               summaries[1].JobId,
 			InstanceEvents:      true,
+			UpdatesLimit:        common.UpdatesLimit,
 			InstanceEventsLimit: common.InstanceEventsLimit,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
@@ -1941,6 +1947,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_JoinRollbacksByUpd
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               id,
 			InstanceEvents:      true,
+			UpdatesLimit:        common.UpdatesLimit,
 			InstanceEventsLimit: common.InstanceEventsLimit,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
@@ -1983,6 +1990,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_UpdateStatusFilter
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               id,
 			InstanceEvents:      true,
+			UpdatesLimit:        common.UpdatesLimit,
 			InstanceEventsLimit: common.InstanceEventsLimit,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
