@@ -78,6 +78,7 @@ func InitServiceHandler(
 		jobStore:        jobStore,
 		taskStore:       taskStore,
 		jobIndexOps:     ormobjects.NewJobIndexOps(ormStore),
+		jobConfigOps:    ormobjects.NewJobConfigOps(ormStore),
 		secretInfoOps:   ormobjects.NewSecretInfoOps(ormStore),
 		respoolClient:   respool.NewResourceManagerYARPCClient(d.ClientConfig(clientName)),
 		resmgrClient:    resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(clientName)),
@@ -97,6 +98,7 @@ type serviceHandler struct {
 	jobStore        storage.JobStore
 	taskStore       storage.TaskStore
 	jobIndexOps     ormobjects.JobIndexOps
+	jobConfigOps    ormobjects.JobConfigOps
 	secretInfoOps   ormobjects.SecretInfoOps
 	respoolClient   respool.ResourceManagerYARPCClient
 	resmgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
@@ -192,7 +194,7 @@ func (h *serviceHandler) Create(
 	configAddOn := &models.ConfigAddOn{
 		SystemLabels: systemLabels,
 	}
-	err = cachedJob.Create(ctx, jobConfig, configAddOn, "peloton")
+	err = cachedJob.Create(ctx, jobConfig, configAddOn)
 	// if err is not nil, still enqueue to goal state engine,
 	// because job may be partially created. Goal state engine
 	// knows if the job can be recovered
@@ -249,7 +251,15 @@ func (h *serviceHandler) Update(
 	}
 
 	newConfig := req.GetConfig()
-	oldConfig, oldConfigAddOn, err := h.jobStore.GetJobConfig(ctx, jobID.GetValue())
+
+	oldConfig, oldConfigAddOn, err := h.jobConfigOps.Get(
+		ctx,
+		jobID,
+		jobRuntime.GetConfigurationVersion())
+	if err != nil {
+		h.metrics.JobUpdateFail.Inc(1)
+		return nil, err
+	}
 
 	if err != nil {
 		log.WithError(err).
@@ -350,7 +360,31 @@ func (h *serviceHandler) Get(
 	log.WithField("request", req).Debug("JobManager.Get called")
 	h.metrics.JobAPIGet.Inc(1)
 
-	jobConfig, _, err := h.jobStore.GetJobConfig(ctx, req.GetId().GetValue())
+	jobRuntime, err := handler.GetJobRuntimeWithoutFillingCache(
+		ctx,
+		req.Id,
+		h.jobFactory,
+		h.jobStore,
+	)
+	if err != nil {
+		h.metrics.JobGetFail.Inc(1)
+		log.WithError(err).
+			WithField("job_id", req.Id.Value).
+			Debug("failed to get runtime")
+		return &job.GetResponse{
+			Error: &job.GetResponse_Error{
+				GetRuntimeFail: &apierrors.JobGetRuntimeFail{
+					Id:      req.Id,
+					Message: err.Error(),
+				},
+			},
+		}, nil
+	}
+
+	jobConfig, _, err := h.jobConfigOps.Get(
+		ctx,
+		req.GetId(),
+		jobRuntime.GetConfigurationVersion())
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
@@ -371,23 +405,6 @@ func (h *serviceHandler) Get(
 	// Secret ID and Path should be returned using the peloton.Secret
 	// proto message.
 	secretVolumes := util.RemoveSecretVolumesFromJobConfig(jobConfig)
-
-	jobRuntime, err := handler.GetJobRuntimeWithoutFillingCache(
-		ctx, req.Id, h.jobFactory, h.jobStore)
-	if err != nil {
-		h.metrics.JobGetFail.Inc(1)
-		log.WithError(err).
-			WithField("job_id", req.Id.Value).
-			Debug("failed to get runtime")
-		return &job.GetResponse{
-			Error: &job.GetResponse_Error{
-				GetRuntimeFail: &apierrors.JobGetRuntimeFail{
-					Id:      req.Id,
-					Message: err.Error(),
-				},
-			},
-		}, nil
-	}
 
 	h.metrics.JobGet.Inc(1)
 	resp := &job.GetResponse{
@@ -413,20 +430,23 @@ func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (
 		return nil, yarpcerrors.UnavailableErrorf("Job Refresh API not suppported on non-leader")
 	}
 
-	jobConfig, configAddOn, err := h.jobStore.GetJobConfig(ctx, req.GetId().GetValue())
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", req.GetId().GetValue()).
-			Error("failed to get job config in refresh job")
-		h.metrics.JobRefreshFail.Inc(1)
-		return &job.RefreshResponse{}, yarpcerrors.NotFoundErrorf("job not found")
-	}
-
 	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.GetId().GetValue())
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", req.GetId().GetValue()).
 			Error("failed to get job runtime in refresh job")
+		h.metrics.JobRefreshFail.Inc(1)
+		return &job.RefreshResponse{}, yarpcerrors.NotFoundErrorf("job not found")
+	}
+
+	jobConfig, configAddOn, err := h.jobConfigOps.Get(
+		ctx,
+		req.GetId(),
+		jobRuntime.GetConfigurationVersion())
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", req.GetId().GetValue()).
+			Error("failed to get job config in refresh job")
 		h.metrics.JobRefreshFail.Inc(1)
 		return &job.RefreshResponse{}, yarpcerrors.NotFoundErrorf("job not found")
 	}
@@ -642,11 +662,12 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 		return nil, 0, err
 	}
 
-	jobConfig, configAddOn, err := h.jobStore.GetJobConfigWithVersion(
+	jobConfig, configAddOn, err := h.jobConfigOps.Get(
 		ctx,
-		jobID.GetValue(),
+		jobID,
 		runtime.GetConfigurationVersion(),
 	)
+
 	if err != nil {
 		return nil, 0, err
 	}

@@ -61,8 +61,6 @@ type JobStore interface {
 	GetJobConfigWithVersion(ctx context.Context, jobID string, version uint64) (*job.JobConfig, *models.ConfigAddOn, error)
 	// QueryJobs queries for all jobs which match the query in the QuerySpec
 	QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec, summaryOnly bool) ([]*job.JobInfo, []*job.JobSummary, uint32, error)
-	// UpdateJobConfig updates the job configuration of an existing job
-	UpdateJobConfig(ctx context.Context, id *peloton.JobID, Config *job.JobConfig, configAddOn *models.ConfigAddOn) error
 	// DeleteJob deletes the job configuration, runtime
 	// and all tasks in DB of a given job
 	DeleteJob(ctx context.Context, jobID string) error

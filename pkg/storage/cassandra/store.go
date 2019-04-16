@@ -481,25 +481,6 @@ func (s *Store) GetMaxJobConfigVersion(
 	return 0, nil
 }
 
-// UpdateJobConfig updates a job with the job id and the config value
-// TODO(zhixin): consider remove the function signature
-func (s *Store) UpdateJobConfig(
-	ctx context.Context,
-	id *peloton.JobID,
-	jobConfig *job.JobConfig,
-	configAddOn *models.ConfigAddOn) error {
-	if err := s.CreateJobConfig(
-		ctx,
-		id,
-		jobConfig,
-		configAddOn,
-		jobConfig.GetChangeLog().GetVersion(),
-		"<missing owner>"); err != nil {
-		return err
-	}
-	return nil
-}
-
 // GetJobConfig returns a job config given the job id
 // TODO(zhixin): GetJobConfig takes version as param when write through cache is implemented
 func (s *Store) GetJobConfig(

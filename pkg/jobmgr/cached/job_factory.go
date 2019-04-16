@@ -63,6 +63,7 @@ type jobFactory struct {
 	updateStore    storage.UpdateStore           // storage update store object
 	volumeStore    storage.PersistentVolumeStore // storage volume store object
 	jobIndexOps    ormobjects.JobIndexOps        // DB ops for job_index table
+	jobConfigOps   ormobjects.JobConfigOps       // DB ops for job_config table
 	jobNameToIDOps ormobjects.JobNameToIDOps     // DB ops for job_name_to_id table
 	mtx            *Metrics                      // cache metrics
 	// Tob/task listeners. This list is immutable after object is created.
@@ -88,6 +89,7 @@ func InitJobFactory(
 		updateStore:    updateStore,
 		volumeStore:    volumeStore,
 		jobIndexOps:    ormobjects.NewJobIndexOps(ormStore),
+		jobConfigOps:   ormobjects.NewJobConfigOps(ormStore),
 		jobNameToIDOps: ormobjects.NewJobNameToIDOps(ormStore),
 		mtx:            NewMetrics(parentScope.SubScope("cache")),
 		listeners:      listeners,

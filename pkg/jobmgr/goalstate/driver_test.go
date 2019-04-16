@@ -32,6 +32,7 @@ import (
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	launchermocks "github.com/uber/peloton/pkg/jobmgr/task/launcher/mocks"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
+	ormStore "github.com/uber/peloton/pkg/storage/objects"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -122,6 +123,7 @@ func (suite *DriverTestSuite) TestNewDriver() {
 		suite.taskStore,
 		volumeStore,
 		updateStore,
+		&ormStore.Store{},
 		suite.jobFactory,
 		taskLauncher,
 		job.JobType_SERVICE,

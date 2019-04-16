@@ -367,9 +367,9 @@ func processUpdate(
 		return nil
 	}
 
-	jobConfig, _, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
+	jobConfig, _, err := goalStateDriver.jobConfigOps.Get(
 		ctx,
-		cachedJob.ID().GetValue(),
+		cachedJob.ID(),
 		cachedUpdate.GetGoalState().JobVersion)
 	if err != nil {
 		return err

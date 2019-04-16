@@ -472,6 +472,7 @@ func main() {
 		store, // store implements TaskStore
 		store, // store implements VolumeStore
 		store, // store implements UpdateStore
+		ormStore,
 		jobFactory,
 		launcher.GetLauncher(),
 		job.JobType(job.JobType_value[*jobType]),

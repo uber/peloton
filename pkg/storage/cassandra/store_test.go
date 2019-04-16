@@ -2093,7 +2093,6 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 func (suite *CassandraStoreTestSuite) TestJobConfig() {
 	var jobStore = store
 	oldInstanceCount := 20
-	newInstanceCount := 50
 
 	// CreateJob should create the default job runtime
 	var jobID = peloton.JobID{Value: uuid.New()}
@@ -2135,21 +2134,12 @@ func (suite *CassandraStoreTestSuite) TestJobConfig() {
 	}
 	suite.Equal(true, found)
 
-	// update instance count
-	jobConfig.InstanceCount = uint32(newInstanceCount)
-	jobConfig.ChangeLog.Version = uint64(2)
-	err = jobStore.UpdateJobConfig(context.Background(), &jobID, jobConfig, &models.ConfigAddOn{})
-	suite.NoError(err)
-
 	// in production, cachedJob would take care of job runtime update
 	jobRuntime.Revision.Version = uint64(2)
 	jobRuntime.ConfigurationVersion = uint64(2)
 	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, jobRuntime)
 	suite.NoError(err)
 
-	jobConfig, _, err = jobStore.GetJobConfig(context.Background(), jobID.GetValue())
-	suite.NoError(err)
-	suite.Equal(uint32(newInstanceCount), jobConfig.InstanceCount)
 }
 
 func (suite *CassandraStoreTestSuite) TestGetJobConfigOfDifferentVersions() {
