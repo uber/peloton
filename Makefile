@@ -249,6 +249,10 @@ integ-test: get-gokind
 	ls -la $(shell pwd)/bin
 	PATH="$(PATH):$(shell pwd)/bin" ./tests/run-integration-tests.sh
 
+aurorabridge-integ-test: get-gokind
+	ls -la $(shell pwd)/bin
+	PATH="$(PATH):$(shell pwd)/bin" ./tests/run-aurorabridge-integration-tests.sh
+
 # launch peloton with PELOTON={any value}, default to none
 minicluster: $(GOKIND)
 	PELOTON=$(PELOTON) ./scripts/minicluster.sh setup
