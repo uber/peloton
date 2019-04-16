@@ -46,7 +46,4 @@ type Config struct {
 
 	// Period to run host drainer
 	HostDrainerPeriod time.Duration `yaml:"host_drainer_period"`
-
-	// RecoveryConfig to recover jobs on resmgr restart
-	RecoveryConfig *common.RecoveryConfig `yaml:"recovery"`
 }

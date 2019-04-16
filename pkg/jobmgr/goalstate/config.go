@@ -92,9 +92,6 @@ type Config struct {
 	// Default to 1h.
 	MaxTaskBackoff time.Duration `yaml:"max_task_backoff"`
 
-	// RecoveryConfig to recover jobs on jobmgr restart
-	RecoveryConfig *RecoveryConfig `yaml:"recovery"`
-
 	// RateLimiterConfig defines rate limiter config
 	RateLimiterConfig RateLimiterConfig `yaml:"rate_limit"`
 }
@@ -113,13 +110,6 @@ type TokenBucketConfig struct {
 	// Burst for the token bucket rate limit algorithm,
 	// If Burst <=0, there would be no rate limit
 	Burst int
-}
-
-// RecoveryConfig is the container for recovery related config
-type RecoveryConfig struct {
-	// RecoverFromActiveJobs tells the recovery code to use the active_jobs
-	// table for recovery instead of materialized view
-	RecoverFromActiveJobs bool `yaml:"recover_from_active_jobs"`
 }
 
 // normalize configuration by setting unassigned fields to default values.

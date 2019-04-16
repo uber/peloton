@@ -28,6 +28,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -64,8 +65,9 @@ type RecoverBatchTasks func(
 // jobRecoverySummary is used to track the skipped failure cases from
 // recoverJobsBatch.
 type jobRecoverySummary struct {
-	missingJobRuntime bool
-	missingJobConfig  bool
+	missingJobRuntime    bool
+	missingJobConfig     bool
+	terminalRecoveredJob bool
 }
 
 func createTaskBatches(config *job.JobConfig) []TasksBatch {
@@ -161,12 +163,16 @@ func recoverJobsBatch(
 	errChan chan<- error,
 	summaryChan chan<- jobRecoverySummary,
 	f RecoverBatchTasks) {
+
+	var deleteWg sync.WaitGroup
+	defer deleteWg.Wait()
+
 	for _, jobID := range batch.jobs {
 		jobRuntime, err := jobStore.GetJobRuntime(ctx, jobID.GetValue())
 		if err != nil {
 			log.WithField("job_id", jobID.Value).
 				WithError(err).
-				Error("failed to load job runtime")
+				Info("failed to load job runtime")
 			// mv_jobs_by_state is a materialized view created on job_runtime table
 			// The job ids here are queried on the materialized view by state.
 			// There have been situations where job is deleted from job_runtime but
@@ -176,13 +182,16 @@ func recoverJobsBatch(
 			// of bailing out of the recovery code.
 
 			summaryChan <- jobRecoverySummary{missingJobRuntime: true}
-			continue
-		}
 
-		// Do not process jobs in terminal state and have no update
-		if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) &&
-			util.IsPelotonJobStateTerminal(jobRuntime.GetGoalState()) &&
-			len(jobRuntime.GetUpdateID().GetValue()) == 0 {
+			if yarpcerrors.IsNotFound(err) {
+				// Delete the job from active_jobs table and move on to the next
+				// job for recovery
+				deleteWg.Add(1)
+				go func(jobID peloton.JobID) {
+					defer deleteWg.Done()
+					deleteFromActiveJobs(ctx, &jobID, jobStore)
+				}(jobID)
+			}
 			continue
 		}
 
@@ -190,7 +199,7 @@ func recoverJobsBatch(
 		if err != nil {
 			log.WithField("job_id", jobID.Value).
 				WithError(err).
-				Error("Failed to load job config")
+				Info("Failed to load job config")
 			// There have been situations where job is deleted from job_config
 			// but still present in the job_runtime. So if you call GetJobConfig
 			// here, it will get an error. In this case, we should log the
@@ -198,6 +207,34 @@ func recoverJobsBatch(
 			// recovery code.
 
 			summaryChan <- jobRecoverySummary{missingJobConfig: true}
+
+			if yarpcerrors.IsNotFound(err) {
+				// Delete the job from active_jobs table and move on to the next
+				// job for recovery
+				deleteWg.Add(1)
+				go func(jobID peloton.JobID) {
+					defer deleteWg.Done()
+					deleteFromActiveJobs(ctx, &jobID, jobStore)
+				}(jobID)
+			}
+			continue
+		}
+
+		// Do not process jobs in terminal state and have no update
+		if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) &&
+			util.IsPelotonJobStateTerminal(jobRuntime.GetGoalState()) {
+			// Delete this job from active_jobs table ONLY if it is a terminal
+			// BATCH job
+			if jobConfig.GetType() == job.JobType_BATCH {
+				summaryChan <- jobRecoverySummary{terminalRecoveredJob: true}
+				log.WithField("job_id", jobID).
+					Info("delete terminal batch job from active_jobs")
+				deleteWg.Add(1)
+				go func(jobID peloton.JobID) {
+					defer deleteWg.Done()
+					deleteFromActiveJobs(ctx, &jobID, jobStore)
+				}(jobID)
+			}
 			continue
 		}
 
@@ -212,50 +249,6 @@ func recoverJobsBatch(
 	}
 }
 
-// populateMissingActiveJobs will find out which jobIDs are present in
-// materialzied view, but absent from active_jobs table and then add them to
-// the active_jobs table.
-func populateMissingActiveJobs(
-	ctx context.Context,
-	jobStore storage.JobStore,
-	jobIDsFromMV []peloton.JobID,
-	activeJobIDs []peloton.JobID,
-	mtx *Metrics,
-) {
-	// get jobs that are in jobIDsFromMV but not in activeJobIDs
-	// Add these jobs to active_jobs table
-
-	jobIDsMap := make(map[string]bool)
-	for _, jobID := range activeJobIDs {
-		jobIDsMap[jobID.GetValue()] = true
-	}
-	// All jobs in jobIDsFromMV should be already present in jobIDsMap
-	// If a job is not present, add it to active_jobs table.
-	for _, jobID := range jobIDsFromMV {
-		if _, ok := jobIDsMap[jobID.GetValue()]; !ok {
-			// Just add the job to active_jobs table irrespective of job state
-			// This code is for temporary migration and will be deleted in
-			// subsequent releases, so keeping the logic simple.
-			// adding terminal jobs to active_jobs table will result in them
-			// getting deleted as part of active jobs cleanup action and will
-			// not have any adverse effect on jobmgr
-			log.WithField("job_id", jobID).
-				Info("Add missing job to active_jobs")
-			if err := jobStore.AddActiveJob(
-				ctx, &peloton.JobID{Value: jobID.GetValue()}); err != nil {
-				// Do not error out in recovery because this is not a critical
-				// operation and we should continue with recovery despite this
-				// error.
-				log.WithField("job_id", jobID).
-					WithError(err).Info("Failed to add job to active_jobs")
-				mtx.activeJobsBackfillFail.Inc(1)
-			} else {
-				mtx.activeJobsBackfill.Inc(1)
-			}
-		}
-	}
-}
-
 // getDereferencedJobIDsList dereferences the jobIDs list
 func getDereferencedJobIDsList(jobIDs []*peloton.JobID) []peloton.JobID {
 	result := []peloton.JobID{}
@@ -265,74 +258,33 @@ func getDereferencedJobIDsList(jobIDs []*peloton.JobID) []peloton.JobID {
 	return result
 }
 
-// RecoverJobsByState is the handler to start a job recovery.
-func RecoverJobsByState(
+// RecoverActiveJobs is the handler to start a job recovery.
+func RecoverActiveJobs(
 	ctx context.Context,
 	parentScope tally.Scope,
 	jobStore storage.JobStore,
-	jobStates []job.JobState,
 	f RecoverBatchTasks,
-	recoverFromActiveJobs,
-	backfillFromMV bool,
 ) error {
 
-	log.WithField("job_states", jobStates).Info("job states to recover")
 	mtx := NewMetrics(parentScope.SubScope("recovery"))
-
-	jobsIDs, err := jobStore.GetJobsByStates(ctx, jobStates)
-	if err != nil {
-		log.WithError(err).
-			Error("failed to fetch jobs in recovery")
-		return err
-	}
 
 	activeJobIDs, err := jobStore.GetActiveJobs(ctx)
 	if err != nil {
-		// Monitor logs to make sure you no longer see this log.
-		// We will start returning error here once we switch recovery to use
-		// active_jobs table.
 		log.WithError(err).
 			Error("GetActiveJobs failed")
+		return err
 	}
+
 	activeJobIDsCopy := getDereferencedJobIDsList(activeJobIDs)
 
-	mtx.activeJobsMV.Update(float64(len(jobsIDs)))
 	mtx.activeJobs.Update(float64(len(activeJobIDsCopy)))
 
-	if len(jobsIDs) != len(activeJobIDsCopy) {
-		// Monitor logs to make sure you no longer see this log. Once we get
-		// active_jobs populated by goalstate engine, we should never see this
-		// log and at that time we are ready to switch recovery to use
-		// active_jobs table
+	log.WithFields(log.Fields{
+		"total_active_jobs": len(activeJobIDsCopy),
+		"job_ids":           activeJobIDsCopy,
+	}).Info("jobs to recover")
 
-		log.WithFields(log.Fields{
-			"total_jobs_from_mv": len(jobsIDs),
-			"total_active_jobs":  len(activeJobIDs),
-		}).Error("active_jobs not equal to jobs in mv_job_by_state")
-
-		if backfillFromMV {
-			// Backfill the missing jobs into active_jobs table.
-			go populateMissingActiveJobs(
-				ctx, jobStore, jobsIDs, activeJobIDsCopy, mtx)
-		}
-	}
-
-	if recoverFromActiveJobs {
-		// if this flag is set, recover from active_jobs list instead of MV
-		//jobsIDs = getDereferencedJobIDsList(activeJobIDs)
-		log.WithFields(log.Fields{
-			"total_active_jobs": len(activeJobIDsCopy),
-			"job_ids":           jobsIDs,
-		}).Info("jobs to recover")
-	} else {
-		log.WithFields(log.Fields{
-			"total_jobs":            len(jobsIDs),
-			"job_ids":               jobsIDs,
-			"job_states_to_recover": jobStates,
-		}).Info("jobs to recover")
-	}
-
-	jobBatches := createJobBatches(jobsIDs)
+	jobBatches := createJobBatches(activeJobIDsCopy)
 	var bwg sync.WaitGroup
 	finished := make(chan bool)
 	errChan := make(chan error, len(jobBatches))
@@ -357,6 +309,9 @@ func RecoverJobsByState(
 		}
 		if summary.missingJobConfig {
 			mtx.missingJobConfig.Inc(1)
+		}
+		if summary.terminalRecoveredJob {
+			mtx.terminalRecoveredJob.Inc(1)
 		}
 	}
 
@@ -387,5 +342,20 @@ func RecoverJobsByState(
 		case result := <-summaryChan:
 			handleRecoverySummary(result)
 		}
+	}
+}
+
+// deleteFromActiveJobs best effort deletes a job from the active_jobs
+// There is no harm if this delete fails because we are not going to recover
+// this job any way. So we should log a failure here and continue recovery
+func deleteFromActiveJobs(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	jobStore storage.JobStore,
+) {
+	if err := jobStore.DeleteActiveJob(ctx, jobID); err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.GetValue()).
+			Info("DeleteActiveJob failed")
 	}
 }

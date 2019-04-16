@@ -127,7 +127,6 @@ func (suite *recoveryTestSuite) SetupTest() {
 				PlacingTimeout:   1 * time.Minute,
 				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			},
-			RecoveryConfig: &rc.RecoveryConfig{},
 		}, suite.mockHostmgrClient)
 
 	suite.NoError(suite.resourceTree.Start())
@@ -342,24 +341,14 @@ func (suite *recoveryTestSuite) createTasks(jobID *peloton.JobID, numTasks uint3
 
 func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	// Create jobs. each with different number of tasks
-	jobs := make([]peloton.JobID, 4)
+	jobs := make([]*peloton.JobID, 4)
 	for i := 0; i < 4; i++ {
-		jobs[i] = peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
+		jobs[i] = &peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
 	}
-
-	// create 4 jobs ( 2 JobState_RUNNING, 2 JobState_PENDING)
-	suite.mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Eq([]job.JobState{
-		job.JobState_INITIALIZED,
-		job.JobState_PENDING,
-		job.JobState_RUNNING,
-		job.JobState_UNKNOWN,
-	})).Return(jobs, nil)
 
 	suite.mockJobStore.EXPECT().
 		GetActiveJobs(gomock.Any()).
-		Return([]*peloton.JobID{}, nil)
-	suite.mockJobStore.EXPECT().
-		AddActiveJob(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		Return(jobs, nil)
 
 	suite.mockJobStore.EXPECT().
 		GetJobRuntime(context.Background(), jobs[0].GetValue()).
@@ -370,13 +359,13 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobs[0].GetValue()).
-		Return(suite.createJob(&jobs[0], 10, 1), &models.ConfigAddOn{}, nil)
+		Return(suite.createJob(jobs[0], 10, 1), &models.ConfigAddOn{}, nil)
 	suite.mockTaskStore.EXPECT().
-		GetTasksForJobByRange(context.Background(), &jobs[0], &task.InstanceRange{
+		GetTasksForJobByRange(context.Background(), jobs[0], &task.InstanceRange{
 			From: 0,
 			To:   10,
 		}).
-		Return(suite.createTasks(&jobs[0], 9, task.TaskState_INITIALIZED), nil)
+		Return(suite.createTasks(jobs[0], 9, task.TaskState_INITIALIZED), nil)
 
 	suite.mockJobStore.EXPECT().
 		GetJobRuntime(context.Background(), jobs[1].GetValue()).
@@ -387,13 +376,13 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobs[1].GetValue()).
-		Return(suite.createJob(&jobs[1], 10, 10), &models.ConfigAddOn{}, nil)
+		Return(suite.createJob(jobs[1], 10, 10), &models.ConfigAddOn{}, nil)
 	suite.mockTaskStore.EXPECT().
-		GetTasksForJobByRange(context.Background(), &jobs[1], &task.InstanceRange{
+		GetTasksForJobByRange(context.Background(), jobs[1], &task.InstanceRange{
 			From: 0,
 			To:   10,
 		}).
-		Return(suite.createTasks(&jobs[1], 9, task.TaskState_PENDING), nil)
+		Return(suite.createTasks(jobs[1], 9, task.TaskState_PENDING), nil)
 
 	suite.mockJobStore.EXPECT().
 		GetJobRuntime(context.Background(), jobs[2].GetValue()).
@@ -404,13 +393,13 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobs[2].GetValue()).
-		Return(suite.createJob(&jobs[2], 10, 1), &models.ConfigAddOn{}, nil)
+		Return(suite.createJob(jobs[2], 10, 1), &models.ConfigAddOn{}, nil)
 	suite.mockTaskStore.EXPECT().
-		GetTasksForJobByRange(context.Background(), &jobs[2], &task.InstanceRange{
+		GetTasksForJobByRange(context.Background(), jobs[2], &task.InstanceRange{
 			From: 0,
 			To:   10,
 		}).
-		Return(suite.createTasks(&jobs[2], 9, task.TaskState_RUNNING), nil)
+		Return(suite.createTasks(jobs[2], 9, task.TaskState_RUNNING), nil)
 
 	suite.mockJobStore.EXPECT().
 		GetJobRuntime(context.Background(), jobs[3].GetValue()).
@@ -421,13 +410,13 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobs[3].GetValue()).
-		Return(suite.createJob(&jobs[3], 10, 1), &models.ConfigAddOn{}, nil)
+		Return(suite.createJob(jobs[3], 10, 1), &models.ConfigAddOn{}, nil)
 	suite.mockTaskStore.EXPECT().
-		GetTasksForJobByRange(context.Background(), &jobs[3], &task.InstanceRange{
+		GetTasksForJobByRange(context.Background(), jobs[3], &task.InstanceRange{
 			From: 0,
 			To:   10,
 		}).
-		Return(suite.createTasks(&jobs[3], 9, task.TaskState_LAUNCHED), nil)
+		Return(suite.createTasks(jobs[3], 9, task.TaskState_LAUNCHED), nil)
 
 	suite.recovery.Start()
 	<-suite.recovery.finished
@@ -458,22 +447,14 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 
 func (suite *recoveryTestSuite) TestNonRunningJobError() {
 	// Create jobs. each with different number of tasks
-	jobs := make([]peloton.JobID, 1)
+	jobs := make([]*peloton.JobID, 1)
 	for i := 0; i < 1; i++ {
-		jobs[i] = peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
+		jobs[i] = &peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
 	}
-	suite.mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Eq([]job.JobState{
-		job.JobState_INITIALIZED,
-		job.JobState_PENDING,
-		job.JobState_RUNNING,
-		job.JobState_UNKNOWN,
-	})).Return(jobs, nil)
 
 	suite.mockJobStore.EXPECT().
 		GetActiveJobs(gomock.Any()).
-		Return([]*peloton.JobID{}, nil)
-	suite.mockJobStore.EXPECT().
-		AddActiveJob(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		Return(jobs, nil)
 
 	suite.mockJobStore.EXPECT().
 		GetJobRuntime(context.Background(), jobs[0].GetValue()).
@@ -482,7 +463,7 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 			GoalState: job.JobState_SUCCEEDED,
 		}, nil)
 
-	jobConfig := suite.createJob(&jobs[0], 10, 1)
+	jobConfig := suite.createJob(jobs[0], 10, 1)
 	// Adding the invalid resource pool ID to simulate failure
 	jobConfig.RespoolID = &peloton.ResourcePoolID{Value: "respool10"}
 
@@ -491,10 +472,10 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.mockTaskStore.EXPECT().
-		GetTasksForJobByRange(context.Background(), &jobs[0], &task.InstanceRange{
+		GetTasksForJobByRange(context.Background(), jobs[0], &task.InstanceRange{
 			From: 0,
 			To:   10,
-		}).Return(suite.createTasks(&jobs[0], 10, task.TaskState_PENDING), nil)
+		}).Return(suite.createTasks(jobs[0], 10, task.TaskState_PENDING), nil)
 
 	suite.recovery.Start()
 	<-suite.recovery.finished
@@ -516,16 +497,16 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 
 func (suite *recoveryTestSuite) TestAddRunningTasksError() {
 	// Create jobs. each with different number of tasks
-	jobs := make([]peloton.JobID, 1)
+	jobs := make([]*peloton.JobID, 1)
 	for i := 0; i < 1; i++ {
-		jobs[i] = peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
+		jobs[i] = &peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
 	}
 
-	jobConfig := suite.createJob(&jobs[0], 10, 1)
+	jobConfig := suite.createJob(jobs[0], 10, 1)
 	// Adding the invalid resource pool ID to simulate failure
 	jobConfig.RespoolID = &peloton.ResourcePoolID{Value: "respool10"}
 
-	tasks := suite.createTasks(&jobs[0], 10, task.TaskState_PENDING)
+	tasks := suite.createTasks(jobs[0], 10, task.TaskState_PENDING)
 	var taskInfos []*task.TaskInfo
 
 	for _, info := range tasks {
@@ -541,14 +522,14 @@ func (suite *recoveryTestSuite) TestAddRunningTasksError() {
 func (suite *recoveryTestSuite) TestAddRunningTasks() {
 	suite.T().SkipNow()
 	// Create jobs. each with different number of tasks
-	jobs := make([]peloton.JobID, 1)
+	jobs := make([]*peloton.JobID, 1)
 	for i := 0; i < 1; i++ {
-		jobs[i] = peloton.JobID{Value: uuid.New()}
+		jobs[i] = &peloton.JobID{Value: uuid.New()}
 	}
 
-	jobConfig := suite.createJob(&jobs[0], 10, 1)
+	jobConfig := suite.createJob(jobs[0], 10, 1)
 
-	tasks := suite.createTasks(&jobs[0], 10, task.TaskState_RUNNING)
+	tasks := suite.createTasks(jobs[0], 10, task.TaskState_RUNNING)
 	var taskInfos []*task.TaskInfo
 
 	for _, info := range tasks {

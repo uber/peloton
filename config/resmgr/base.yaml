@@ -51,8 +51,6 @@ resmgr:
     sustained_over_allocation_count: 5
     enabled: true
   host_drainer_period: 300s
-  recovery:
-    recover_from_active_jobs: false
 
 election:
   root: "/peloton"

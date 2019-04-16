@@ -73,19 +73,15 @@ func (suite *DriverTestSuite) SetupTest() {
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.goalStateDriver = &driver{
-		jobEngine:    suite.jobGoalStateEngine,
-		taskEngine:   suite.taskGoalStateEngine,
-		updateEngine: suite.updateGoalStateEngine,
-		jobStore:     suite.jobStore,
-		taskStore:    suite.taskStore,
-		jobFactory:   suite.jobFactory,
-		mtx:          NewMetrics(tally.NoopScope),
-		jobScope:     tally.NoopScope,
-		cfg: &Config{
-			RecoveryConfig: &RecoveryConfig{
-				RecoverFromActiveJobs: false,
-			},
-		},
+		jobEngine:                     suite.jobGoalStateEngine,
+		taskEngine:                    suite.taskGoalStateEngine,
+		updateEngine:                  suite.updateGoalStateEngine,
+		jobStore:                      suite.jobStore,
+		taskStore:                     suite.taskStore,
+		jobFactory:                    suite.jobFactory,
+		mtx:                           NewMetrics(tally.NoopScope),
+		jobScope:                      tally.NoopScope,
+		cfg:                           &Config{},
 		jobType:                       job.JobType_BATCH,
 		jobRuntimeCalculationViaCache: false,
 	}
@@ -228,47 +224,10 @@ func (suite *DriverTestSuite) TestIsScheduledTask() {
 	))
 }
 
-// TestRecoverJobStates will fail if a new job state is added without putting
-// an explicit check here that the new state does not need to be recovered.
-func (suite *DriverTestSuite) TestRecoverJobStates() {
-	// Jobs which should not be recovered.
-	var jobStatesNotRecover = []job.JobState{
-		job.JobState_SUCCEEDED,
-		job.JobState_FAILED,
-		job.JobState_KILLED,
-		job.JobState_DELETED,
-	}
-
-	jobStatesToRecover := append(serviceJobStatesToRecover, batchJobStatesToRecover...)
-	jobKnownStates := append(jobStatesNotRecover, jobStatesToRecover...)
-	for _, state := range job.JobState_name {
-		found := false
-		for _, notRecover := range jobKnownStates {
-			if notRecover.String() == state {
-				found = true
-			}
-		}
-		suite.True(found)
-	}
-}
-
 func (suite *DriverTestSuite) prepareTestSyncDB(jobType job.JobType) {
-	var jobIDList []peloton.JobID
-	jobIDList = append(jobIDList, *suite.jobID)
-
 	jobConfig := &job.JobConfig{
 		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 		InstanceCount: 1,
-	}
-
-	if jobType == job.JobType_BATCH {
-		suite.jobStore.EXPECT().
-			GetJobsByStates(gomock.Any(), batchJobStatesToRecover).
-			Return(jobIDList, nil)
-	} else if jobType == job.JobType_SERVICE {
-		suite.jobStore.EXPECT().
-			GetJobsByStates(gomock.Any(), serviceJobStatesToRecover).
-			Return(jobIDList, nil)
 	}
 
 	suite.jobStore.EXPECT().
@@ -381,8 +340,6 @@ func (suite *DriverTestSuite) TestSyncFromDBForServiceCluster() {
 func (suite *DriverTestSuite) TestSyncFromDBWithMaxRunningInstancesSLA() {
 	instanceID1 := uint32(0)
 	instanceID2 := uint32(1)
-	var jobIDList []peloton.JobID
-	jobIDList = append(jobIDList, *suite.jobID)
 
 	jobConfig := &job.JobConfig{
 		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
@@ -392,9 +349,6 @@ func (suite *DriverTestSuite) TestSyncFromDBWithMaxRunningInstancesSLA() {
 		},
 	}
 
-	suite.jobStore.EXPECT().
-		GetJobsByStates(gomock.Any(), gomock.Any()).
-		Return(jobIDList, nil)
 	suite.jobStore.EXPECT().
 		GetActiveJobs(gomock.Any()).
 		Return([]*peloton.JobID{suite.jobID}, nil)
@@ -467,17 +421,10 @@ func (suite *DriverTestSuite) TestSyncFromDBWithMaxRunningInstancesSLA() {
 // TestInitializedJobSyncFromDB tests syncing job manager with
 // jobs in INITIALIZED job state.
 func (suite *DriverTestSuite) TestInitializedJobSyncFromDB() {
-	var jobIDList []peloton.JobID
-	jobIDList = append(jobIDList, *suite.jobID)
-
 	jobConfig := &job.JobConfig{
 		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 		InstanceCount: 1,
 	}
-
-	suite.jobStore.EXPECT().
-		GetJobsByStates(gomock.Any(), gomock.Any()).
-		Return(jobIDList, nil)
 
 	suite.jobStore.EXPECT().
 		GetActiveJobs(gomock.Any()).
@@ -540,8 +487,6 @@ func (suite *DriverTestSuite) TestSyncFromDBRecoverUpdate() {
 	updateID := &peloton.UpdateID{Value: uuid.New()}
 	instanceID1 := uint32(0)
 	instanceID2 := uint32(1)
-	var jobIDList []peloton.JobID
-	jobIDList = append(jobIDList, *suite.jobID)
 
 	jobConfig := &job.JobConfig{
 		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
@@ -551,9 +496,6 @@ func (suite *DriverTestSuite) TestSyncFromDBRecoverUpdate() {
 		},
 	}
 
-	suite.jobStore.EXPECT().
-		GetJobsByStates(gomock.Any(), gomock.Any()).
-		Return(jobIDList, nil)
 	suite.jobStore.EXPECT().
 		GetActiveJobs(gomock.Any()).
 		Return([]*peloton.JobID{suite.jobID}, nil)
@@ -633,14 +575,11 @@ func (suite *DriverTestSuite) TestEngineStartStop() {
 	cachedUpdate := cachedmocks.NewMockUpdate(suite.ctrl)
 
 	// Test start
-	var jobIDList []peloton.JobID
 
 	suite.jobGoalStateEngine.EXPECT().Start()
 	suite.taskGoalStateEngine.EXPECT().Start()
 	suite.updateGoalStateEngine.EXPECT().Start()
-	suite.jobStore.EXPECT().
-		GetJobsByStates(gomock.Any(), gomock.Any()).
-		Return(jobIDList, nil)
+
 	suite.jobStore.EXPECT().
 		GetActiveJobs(gomock.Any()).
 		Return([]*peloton.JobID{}, nil)

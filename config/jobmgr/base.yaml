@@ -24,8 +24,6 @@ job_manager:
   goal_state:
     job_batch_runtime_update_interval: 10s
     job_service_runtime_update_interval: 1s
-    recovery:
-      recover_from_active_jobs: false
   task_launcher:
     placement_dequeue_limit: 10
     get_placements_timeout_ms: 100

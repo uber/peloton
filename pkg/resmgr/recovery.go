@@ -152,14 +152,11 @@ func (r *RecoveryHandler) Start() error {
 
 	defer r.metrics.RecoveryTimer.Start().Stop()
 
-	err := cmn_recovery.RecoverJobsByState(
+	err := cmn_recovery.RecoverActiveJobs(
 		ctx,
 		r.scope,
 		r.jobStore,
-		jobStates,
 		r.requeueTasksInRange,
-		r.config.RecoveryConfig.RecoverFromActiveJobs,
-		true, // Back fill missing active jobs during recovery
 	)
 	if err != nil {
 		r.metrics.RecoveryFail.Inc(1)
