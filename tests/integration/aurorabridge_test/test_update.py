@@ -394,6 +394,7 @@ def test__update_with_pinned_instances__stopped_instances(client):
                 % t.assignedTask.instanceId
 
 
+@pytest.mark.skip(reason="Events are not acked correctly")
 def test__simple_update_with_restart_component(
         client,
         jobmgr,
@@ -408,22 +409,21 @@ def test__simple_update_with_restart_component(
         'start job update test/dc/labrat_large_job')
 
     # wait for sometime for jobmgr goal state engine to kick-in
-    time.sleep(10)
+    time.sleep(5)
     jobmgr.restart()
 
     # wait for sometime to enqueue gangs
-    time.sleep(10)
+    time.sleep(5)
 
     # clear any admission and queues
     resmgr.restart()
-    time.sleep(10)
 
     # wait for sometime to acquire host lock
-    time.sleep(20)
+    time.sleep(10)
 
     # clear host `placing` lock
     hostmgr.restart()
-    time.sleep(10)
+    time.sleep(5)
 
     # restart mesos master to jumble up host manager state
     mesos_master.restart()

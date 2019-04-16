@@ -484,7 +484,7 @@ class Job(object):
             assert True
 
         if attempts == self.config.max_retry_attempts:
-            log.info('% max attempts reached to wait for goal state',
+            log.info('%s max attempts reached to wait for goal state',
                      self.job_id)
             log.info('current_state:%s', state)
             assert False
