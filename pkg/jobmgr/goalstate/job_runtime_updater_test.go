@@ -2345,7 +2345,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestDetermineStatelessJobRuntimeState()
 	suite.Equal(jobState, pbjob.JobState_RUNNING)
 	suite.Equal(len(configVersionStateStats), 1)
 	suite.Equal(
-		configVersionStateStats[configVersion][pbtask.TaskState_RUNNING.String()],
+		configVersionStateStats[configVersion].GetStateStats()[pbtask.TaskState_RUNNING.String()],
 		instanceCount)
 }
 

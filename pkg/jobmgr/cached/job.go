@@ -1263,7 +1263,7 @@ func (j *job) mergeRuntime(newRuntime *pbjob.RuntimeInfo) *pbjob.RuntimeInfo {
 		runtime.TaskStats = newRuntime.GetTaskStats()
 	}
 
-	if len(newRuntime.GetTaskStatsByConfigurationVersion()) > 0 {
+	if newRuntime.GetTaskStatsByConfigurationVersion() != nil {
 		runtime.TaskStatsByConfigurationVersion = newRuntime.GetTaskStatsByConfigurationVersion()
 	}
 

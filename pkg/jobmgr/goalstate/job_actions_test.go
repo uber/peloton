@@ -16,6 +16,7 @@ package goalstate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -137,8 +138,24 @@ func (suite *jobActionsTestSuite) TestUntrackJobStateless() {
 			Type: job.JobType_SERVICE,
 		}, nil)
 
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{
+			State:     job.JobState_KILLED,
+			GoalState: job.JobState_KILLED,
+		}, nil)
+
+	// enough call to verify JobUntrack calls JobRuntimeUpdater
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(nil, errors.New("test error"))
+
 	err := JobUntrack(context.Background(), suite.jobEnt)
-	suite.NoError(err)
+	suite.Error(err)
 }
 
 // Test JobStateInvalid workflow is as expected
@@ -649,27 +666,25 @@ func (suite *jobActionsTestSuite) TestJobReloadRuntimeJobNotFound() {
 			Return(nil, yarpcerrors.NotFoundErrorf("test error")),
 
 		suite.jobFactory.EXPECT().
-			GetJob(suite.jobID).
+			AddJob(suite.jobID).
 			Return(suite.cachedJob),
 
 		suite.cachedJob.EXPECT().
 			GetConfig(gomock.Any()).
 			Return(&job.JobConfig{
-				Type: job.JobType_BATCH,
+				Type: job.JobType_SERVICE,
 			}, nil),
 
 		suite.cachedJob.EXPECT().
-			GetAllTasks().
-			Return(taskMap),
-
-		suite.taskGoalStateEngine.EXPECT().
-			Delete(gomock.Any()),
+			Update(
+				gomock.Any(),
+				&job.JobInfo{Runtime: &job.RuntimeInfo{State: job.JobState_PENDING}},
+				nil,
+				cached.UpdateCacheAndDB).
+			Return(nil),
 
 		suite.jobGoalStateEngine.EXPECT().
-			Delete(gomock.Any()),
-
-		suite.jobFactory.EXPECT().
-			ClearJob(suite.jobID),
+			Enqueue(gomock.Any(), gomock.Any()),
 	)
 
 	suite.NoError(JobReloadRuntime(context.Background(), suite.jobEnt))

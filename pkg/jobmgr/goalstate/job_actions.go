@@ -49,8 +49,10 @@ func JobUntrack(ctx context.Context, entity goalstate.Entity) error {
 			return err
 		}
 	} else if jobConfig.GetType() == job.JobType_SERVICE {
-		// service jobs are always active and never untracked
-		return nil
+		// service jobs are always active and never untracked.
+		// Call runtime updater, because job runtime can change
+		// when an update is running on the job.
+		return JobRuntimeUpdater(ctx, entity)
 	}
 
 	// First clean from goal state
@@ -298,7 +300,9 @@ func JobReloadRuntime(
 
 	jobRuntime, err := goalStateDriver.jobStore.GetJobRuntime(ctx, jobEnt.GetID())
 	if yarpcerrors.IsNotFound(err) {
-		return JobUntrack(ctx, entity)
+		// runtime is not created, see if config is created and the job is
+		// recoverable.
+		return JobRecover(ctx, entity)
 	}
 
 	err = cachedJob.Update(
