@@ -214,7 +214,8 @@ def test__update_with_pinned_instances(client):
     # start a update with updateOnlyTheseInstances parameter
     update_instances = [0, 2, 3, 7, 9]
     pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
-    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
+    pinned_req.settings.updateOnlyTheseInstances = \
+        set([api.Range(first=i, last=i) for i in update_instances])
 
     res = client.start_job_update(
         pinned_req,
@@ -343,7 +344,8 @@ def test__update_with_pinned_instances__stopped_instances(client):
     # start a update with updateOnlyTheseInstances parameter
     update_instances = set([0, 2, 3, 7, 9])
     pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
-    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
+    pinned_req.settings.updateOnlyTheseInstances = \
+        set([api.Range(first=i, last=i) for i in update_instances])
 
     res = client.start_job_update(
         pinned_req,
@@ -389,4 +391,42 @@ def test__update_with_pinned_instances__stopped_instances(client):
                 else:
                     assert False, 'unexpected metadata %s for unaffected instances' % m
         else:
-            assert False, 'unexpected instance id %s: should be stopped' % t.assignedTask.instanceId
+            assert False, 'unexpected instance id %s: should be stopped' \
+                % t.assignedTask.instanceId
+
+
+def test__simple_update_with_restart_component(
+        client,
+        jobmgr,
+        resmgr,
+        hostmgr,
+        mesos_master):
+    """
+    Start an update, and restart jobmgr, resmgr, hostmgr & mesos master.
+    """
+    res = client.start_job_update(
+        get_job_update_request('test_dc_labrat_large_job.yaml'),
+        'start job update test/dc/labrat_large_job')
+
+    # wait for sometime for jobmgr goal state engine to kick-in
+    time.sleep(10)
+    jobmgr.restart()
+
+    # wait for sometime to enqueue gangs
+    time.sleep(10)
+
+    # clear any admission and queues
+    resmgr.restart()
+    time.sleep(10)
+
+    # wait for sometime to acquire host lock
+    time.sleep(20)
+
+    # clear host `placing` lock
+    hostmgr.restart()
+    time.sleep(10)
+
+    # restart mesos master to jumble up host manager state
+    mesos_master.restart()
+
+    wait_for_rolled_forward(client, res.key)

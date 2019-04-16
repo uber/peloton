@@ -25,6 +25,7 @@ file.lock
 *coverage*
 .cache
 .idea
+.pytest_cache
 *.pyc
 *.egg-info
 *.orig
