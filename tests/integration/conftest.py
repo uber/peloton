@@ -172,8 +172,12 @@ def teardown_minicluster(dump_logs=False):
         # dump logs only if tests have failed in the current module
         if dump_logs:
             try:
+                # TODO (varung): enable PE and mesos-master logs if needed
                 cli = Client(base_url='unix://var/run/docker.sock')
                 log.info(cli.logs('peloton-jobmgr0'))
+                log.info(cli.logs('peloton-resmgr0'))
+                log.info(cli.logs('peloton-hostmgr0'))
+                log.info(cli.logs('peloton-aurorabridge0'))
             except Exception as e:
                 log.info(e)
 

@@ -31,7 +31,9 @@ if [[ -z "${TAGS}" ]]; then
 fi
 
 # set up minicluster with SERVICE type for tests under aurorabridge_job/
-PATH=$PATH:$(pwd)/bin JOB_TYPE=SERVICE pytest -p no:random-order -p no:repeat -vsrx --durations=0 tests/integration/aurorabridge_test  --junit-xml=integration-test-report.xml  -m "$TAGS"
+# Run aurora bridge integration tests in random order
+# Run each aurora bridge integration tests twice, to allineate flakiness
+PATH=$PATH:$(pwd)/bin JOB_TYPE=SERVICE pytest -vsrx --count=2 --durations=0 tests/integration/aurorabridge_test  --junit-xml=integration-test-report.xml  -m "$TAGS"
 
 deactivate
 
