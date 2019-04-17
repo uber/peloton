@@ -67,6 +67,13 @@ class Client(object):
             *args)
         return res.result.scheduleStatusResult
 
+    def get_config_summary(self, *args):
+        res = self._send(
+            ReadOnlyScheduler,
+            ReadOnlyScheduler.getConfigSummary,
+            *args)
+        return res.result.configSummaryResult
+
     def kill_tasks(self, *args):
         self._send(
             AuroraSchedulerManager,

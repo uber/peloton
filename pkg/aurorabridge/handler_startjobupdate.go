@@ -212,7 +212,6 @@ func (h *ServiceHandler) createJobSpecForUpdateInternal(
 	// TODO(kevinxu): Implement optimization logic so that we don't have
 	// to attach pod spec for every instance.
 	newJobSpec := proto.Clone(jobSpec).(*stateless.JobSpec)
-	newJobSpec.DefaultSpec = nil
 	newJobSpec.InstanceSpec = make(map[uint32]*pod.PodSpec)
 	newPodSpec := jobSpec.GetDefaultSpec()
 
@@ -352,7 +351,7 @@ func (h *ServiceHandler) getSpecChangedInstances(
 			return nil, nil
 		}
 
-		if !isPodSpecWithoutBridgeUpdateLabelChanged(
+		if !common.IsPodSpecWithoutBridgeUpdateLabelChanged(
 			podStates[instanceID].podSpec,
 			newPodSpec) {
 			return nil, nil
@@ -564,55 +563,11 @@ func getPodSpecForInstance(
 	)
 }
 
-// isPodSpecWithoutBridgeUpdateLabelChanged check if two PodSpec without
-// "bridge update label" are changed.
-func isPodSpecWithoutBridgeUpdateLabelChanged(
-	prevSpec *pod.PodSpec,
-	newSpec *pod.PodSpec,
-) bool {
-	// Make copy of pod specs so that they can be call concurrently
-	// from multiple go routines.
-	prevPodSpec := proto.Clone(prevSpec).(*pod.PodSpec)
-	newPodSpec := proto.Clone(newSpec).(*pod.PodSpec)
-
-	prevLabels := prevPodSpec.GetLabels()
-	newLabels := newPodSpec.GetLabels()
-
-	defer func() {
-		prevPodSpec.Labels = prevLabels
-		newPodSpec.Labels = newLabels
-	}()
-
-	removeBridgeUpdateLabel(prevPodSpec)
-	removeBridgeUpdateLabel(newPodSpec)
-
-	return taskconfig.HasPodSpecChanged(prevPodSpec, newPodSpec)
-}
-
-// removeBridgeUpdateLabel removes "bridge update label" from pod spec and
-// returns the label value.
-func removeBridgeUpdateLabel(podSpec *pod.PodSpec) string {
-	labels := podSpec.GetLabels()
-	newLabels := make([]*peloton.Label, 0, len(labels))
-	var updateLabelValue string
-
-	for _, label := range labels {
-		if label.GetKey() == common.BridgeUpdateLabelKey {
-			updateLabelValue = label.GetValue()
-			continue
-		}
-		newLabels = append(newLabels, label)
-	}
-
-	podSpec.Labels = newLabels
-	return updateLabelValue
-}
-
 // changeBridgeUpdateLabel returns a copy of current pod spec with
 // "bridge update label" added or modified.
 func (h *ServiceHandler) changeBridgeUpdateLabel(curPodSpec *pod.PodSpec) *pod.PodSpec {
 	newPodSpec := proto.Clone(curPodSpec).(*pod.PodSpec)
-	curValue := removeBridgeUpdateLabel(newPodSpec)
+	curValue := common.RemoveBridgeUpdateLabel(newPodSpec)
 
 	var newValue string
 	for {

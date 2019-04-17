@@ -240,6 +240,20 @@ def start_job_update(client, config_path, update_message=''):
     return res.key.job
 
 
+def get_running_tasks(client, job_key):
+    '''Calls getTasksWithoutConfigs endpoint to get currently running tasks.
+
+    Args:
+        client: aurora client object
+        job_key: aurora job key
+    '''
+    res = client.get_tasks_without_configs(api.TaskQuery(
+        jobKeys={job_key},
+        statuses={api.ScheduleStatus.RUNNING}
+    ))
+    return res.tasks
+
+
 def _to_tuple(job_key):
     return (job_key.role, job_key.environment, job_key.name)
 
@@ -285,3 +299,11 @@ def verify_task_config(client, job_key, metadata_dict):
                 assert m.value == metadata_dict[m.key]
             else:
                 assert False, 'unexpected metadata {}'.format(m)
+
+
+def expand_instance_range(instances):
+    ins = []
+    for range in instances:
+        for i in xrange(range.first, range.last + 1):
+            ins.append(i)
+    return sorted(ins)

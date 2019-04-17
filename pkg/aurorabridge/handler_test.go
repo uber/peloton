@@ -2543,7 +2543,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned() {
 	newSpec, err := suite.handler.createJobSpecForUpdate(suite.ctx, req, id, spec)
 	suite.NoError(err)
 	suite.Equal(&stateless.JobSpec{
-		Name: atop.NewJobName(req.GetTaskConfig().GetJob()),
+		Name:        atop.NewJobName(req.GetTaskConfig().GetJob()),
+		DefaultSpec: podSpec,
 		InstanceSpec: map[uint32]*pod.PodSpec{
 			0: podSpec,
 			1: podSpec1,
@@ -2676,7 +2677,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned_AddI
 	newSpec, err := suite.handler.createJobSpecForUpdate(suite.ctx, req, id, spec)
 	suite.NoError(err)
 	suite.Equal(&stateless.JobSpec{
-		Name: atop.NewJobName(req.GetTaskConfig().GetJob()),
+		Name:        atop.NewJobName(req.GetTaskConfig().GetJob()),
+		DefaultSpec: podSpec,
 		InstanceSpec: map[uint32]*pod.PodSpec{
 			0: podSpec,
 			1: podSpec1,
@@ -2810,7 +2812,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned_Remo
 	newSpec, err := suite.handler.createJobSpecForUpdate(suite.ctx, req, id, spec)
 	suite.NoError(err)
 	suite.Equal(&stateless.JobSpec{
-		Name: atop.NewJobName(req.GetTaskConfig().GetJob()),
+		Name:        atop.NewJobName(req.GetTaskConfig().GetJob()),
+		DefaultSpec: podSpec,
 		InstanceSpec: map[uint32]*pod.PodSpec{
 			0: podSpec,
 			1: podSpec1,
@@ -3047,6 +3050,7 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_UpdateO
 		specChangeInstances,
 	)
 	suite.Equal(&stateless.JobSpec{
+		DefaultSpec: jobSpec.GetDefaultSpec(),
 		InstanceSpec: map[uint32]*pod.PodSpec{
 			0: {
 				Labels: []*peloton.Label{
@@ -3123,6 +3127,7 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_BridgeU
 		specChangeInstances,
 	)
 	suite.Equal(&stateless.JobSpec{
+		DefaultSpec: jobSpec.GetDefaultSpec(),
 		InstanceSpec: map[uint32]*pod.PodSpec{
 			0: {
 				Labels: []*peloton.Label{
@@ -3205,6 +3210,7 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_SpecCha
 		specChangeInstances,
 	)
 	suite.Equal(&stateless.JobSpec{
+		DefaultSpec: jobSpec.GetDefaultSpec(),
 		InstanceSpec: map[uint32]*pod.PodSpec{
 			0: {
 				Labels: []*peloton.Label{
@@ -3285,6 +3291,7 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_KeepSpe
 		specChangeInstances,
 	)
 	suite.Equal(&stateless.JobSpec{
+		DefaultSpec: jobSpec.GetDefaultSpec(),
 		InstanceSpec: map[uint32]*pod.PodSpec{
 			0: {
 				Labels: []*peloton.Label{
@@ -3413,78 +3420,6 @@ func (suite *ServiceHandlerTestSuite) TestGetSpecChangedInstances() {
 	suite.Equal(map[uint32]struct{}{
 		1: {},
 	}, si)
-}
-
-// TestRemoveBridgeUpdateLabel tests removeBridgeUpdateLabel util method.
-func TestRemoveBridgeUpdateLabel(t *testing.T) {
-	p1 := &pod.PodSpec{
-		Labels: []*peloton.Label{
-			{Key: "k1", Value: "v1"},
-			{Key: "k2", Value: "v2"},
-		},
-	}
-	p2 := &pod.PodSpec{
-		Labels: []*peloton.Label{
-			{Key: "k2", Value: "v2"},
-			{Key: "k1", Value: "v1"},
-			{Key: common.BridgeUpdateLabelKey, Value: "123456"},
-		},
-	}
-
-	v1 := removeBridgeUpdateLabel(p1)
-	assert.Empty(t, v1)
-	assert.Equal(t, &pod.PodSpec{
-		Labels: []*peloton.Label{
-			{Key: "k1", Value: "v1"},
-			{Key: "k2", Value: "v2"},
-		},
-	}, p1)
-
-	v2 := removeBridgeUpdateLabel(p2)
-	assert.Equal(t, "123456", v2)
-	assert.Equal(t, &pod.PodSpec{
-		Labels: []*peloton.Label{
-			{Key: "k2", Value: "v2"},
-			{Key: "k1", Value: "v1"},
-		},
-	}, p2)
-}
-
-// TestIsPodSpecWithoutBridgeUpdateLabelChanged tests
-// isPodSpecWithoutBridgeUpdateLabelChanged util method.
-func TestIsPodSpecWithoutBridgeUpdateLabelChanged(t *testing.T) {
-	p1 := &pod.PodSpec{
-		Labels: []*peloton.Label{
-			{Key: "k1", Value: "v1"},
-			{Key: "k2", Value: "v2"},
-		},
-	}
-	p2 := &pod.PodSpec{
-		Labels: []*peloton.Label{
-			{Key: "k2", Value: "v2"},
-			{Key: "k1", Value: "v1"},
-			{Key: common.BridgeUpdateLabelKey, Value: "123456"},
-		},
-	}
-	p3 := &pod.PodSpec{
-		Labels: []*peloton.Label{
-			{Key: common.BridgeUpdateLabelKey, Value: "654321"},
-			{Key: "k2", Value: "v2"},
-			{Key: "k1", Value: "v1"},
-		},
-	}
-	p4 := &pod.PodSpec{
-		Labels: []*peloton.Label{
-			{Key: "k2", Value: "v3"},
-			{Key: "k1", Value: "v1"},
-			{Key: common.BridgeUpdateLabelKey, Value: "123456"},
-		},
-	}
-
-	assert.False(t, isPodSpecWithoutBridgeUpdateLabelChanged(p1, p2))
-	assert.False(t, isPodSpecWithoutBridgeUpdateLabelChanged(p1, p3))
-	assert.False(t, isPodSpecWithoutBridgeUpdateLabelChanged(p2, p3))
-	assert.True(t, isPodSpecWithoutBridgeUpdateLabelChanged(p1, p4))
 }
 
 // TestChangeBridgeUpdateLabel tests changeBridgeUpdateLabel

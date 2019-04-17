@@ -8,8 +8,7 @@ from tests.integration.aurorabridge_test.util import (
 )
 
 pytestmark = [pytest.mark.default,
-              pytest.mark.aurorabridge,
-              pytest.mark.random_order(disabled=True)]
+              pytest.mark.aurorabridge]
 
 
 def test__update_with_pinned_instances(client):
