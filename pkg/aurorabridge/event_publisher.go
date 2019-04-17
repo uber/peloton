@@ -72,6 +72,11 @@ type EventPublisher interface {
 	Stop()
 }
 
+type podEvent struct {
+	pod       *pod.PodSummary
+	timestamp string
+}
+
 type eventPublisher struct {
 	jobClient   statelesssvc.JobServiceYARPCClient
 	podClient   podsvc.PodServiceYARPCClient
@@ -108,7 +113,7 @@ type eventPublisher struct {
 
 	// the buckets for pods, each bucket persists pod events for same pod
 	// in order they were received from watch stream
-	buckets []chan *pod.PodSummary
+	buckets []chan *podEvent
 }
 
 // NewEventPublisher return event publisher to stream pod state changes
@@ -142,13 +147,17 @@ func (e *eventPublisher) Start() {
 	}
 
 	if !e.isPublisherWorkersRunning.Swap(true) {
-		e.buckets = make([]chan *pod.PodSummary, podBuckets)
+		e.buckets = make([]chan *podEvent, podBuckets)
 
 		for i := 0; i < podBuckets; i++ {
-			e.buckets[i] = make(chan *pod.PodSummary, podBucketSize)
-			go func(bucket chan *pod.PodSummary) {
-				for pod := range bucket {
-					e.publishEvent(pod.GetPodName(), pod.GetStatus().GetPodId())
+			e.buckets[i] = make(chan *podEvent, podBucketSize)
+			go func(bucket chan *podEvent) {
+				for podEvent := range bucket {
+					if podEvent.pod.GetStatus().GetState() == pod.PodState_POD_STATE_DELETED {
+						// pod is deleted, skip
+						continue
+					}
+					e.publishEvent(podEvent.pod, podEvent.timestamp)
 				}
 			}(e.buckets[i])
 		}
@@ -270,7 +279,10 @@ func (e *eventPublisher) watchPod(
 			}
 
 			index := instanceID % uint32(podBuckets)
-			e.buckets[index] <- pod
+			e.buckets[index] <- &podEvent{
+				pod:       pod,
+				timestamp: time.Now().UTC().Format(time.RFC3339),
+			}
 		}
 
 		select {
@@ -307,8 +319,11 @@ type taskStateChange struct {
 
 // publishes the pod state change event to kafka
 func (e *eventPublisher) publishEvent(
-	podName *peloton.PodName,
-	podID *peloton.PodID) {
+	podSummary *pod.PodSummary,
+	receivedTimestamp string,
+) {
+	podName := podSummary.GetPodName()
+	podID := podSummary.GetStatus().GetPodId()
 
 	logFields := log.WithFields(log.Fields{
 		"pod_id":     podName.GetValue(),
@@ -317,9 +332,7 @@ func (e *eventPublisher) publishEvent(
 
 	logFields.Debug("received pod state change event")
 
-	task, err := e.getTaskStateChange(
-		podName,
-		podID)
+	task, err := e.getTaskStateChange(podSummary, receivedTimestamp)
 	if err != nil {
 		logFields.WithError(err).Error("unable to get task state change")
 		return
@@ -341,9 +354,10 @@ func (e *eventPublisher) publishEvent(
 
 // gets task state event to publish
 func (e *eventPublisher) getTaskStateChange(
-	podName *peloton.PodName,
-	podID *peloton.PodID,
+	podSummary *pod.PodSummary,
+	receivedTimestamp string,
 ) (*taskStateChange, error) {
+	podName := podSummary.GetPodName()
 
 	// Get JobInfo
 	ctx, cancelFunc := context.WithTimeout(
@@ -380,28 +394,16 @@ func (e *eventPublisher) getTaskStateChange(
 		return nil, errors.Wrap(err, "unable to get pod info")
 	}
 
-	// Get PodEvents
-	// Kafka Consumer for pod state changes access only most recent event.
-	// If fetching pod events turns out to be expensive operation then
-	// construct in in-memory using pod status to prevent DB read.
-	ctx, cancelFunc = context.WithTimeout(
-		context.Background(),
-		rpcTimeout)
-	defer cancelFunc()
-	eventReq := &podsvc.GetPodEventsRequest{
-		PodName: podName,
-		PodId:   podID,
-	}
-	podEvents, err := e.podClient.GetPodEvents(ctx, eventReq)
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to fetch pod events")
+	// Construct PodEvent from received PodSummary
+	podEvents := []*pod.PodEvent{
+		convertPodStatusToPodEvent(podSummary.GetStatus(), receivedTimestamp),
 	}
 
 	// Get ScheduledTask
 	task, err := ptoa.NewScheduledTask(
 		jobSummary.GetSummary(),
 		podInfo.GetCurrent(),
-		podEvents.GetEvents(),
+		podEvents,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to get scheduled task")
@@ -430,4 +432,26 @@ func (e *eventPublisher) postToKafkaRestProxy(message []byte) error {
 	}
 
 	return nil
+}
+
+// convertPodStatusToPodEvent converts PodStatus object to PodEvent.
+func convertPodStatusToPodEvent(
+	podStatus *pod.PodStatus,
+	receivedTimestamp string,
+) *pod.PodEvent {
+	return &pod.PodEvent{
+		PodId:          podStatus.GetPodId(),
+		ActualState:    podStatus.GetState().String(),
+		DesiredState:   podStatus.GetDesiredState().String(),
+		Timestamp:      receivedTimestamp,
+		Version:        podStatus.GetVersion(),
+		DesiredVersion: podStatus.GetDesiredVersion(),
+		AgentId:        podStatus.GetAgentId().GetValue(),
+		Hostname:       podStatus.GetHost(),
+		Message:        podStatus.GetMessage(),
+		Reason:         podStatus.GetReason(),
+		PrevPodId:      podStatus.GetPrevPodId(),
+		Healthy:        "", // TODO(kxu): to be filled
+		DesiredPodId:   podStatus.GetDesiredPodId(),
+	}
 }

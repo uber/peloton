@@ -277,7 +277,6 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_GetTaskStateChangeError
 		goleak.VerifyNoLeaks(suite.T())
 	}()
 
-	pods := []*pod.PodSummary{}
 	jobID := &peloton.JobID{
 		Value: "58f45b58-7eaf-459a-94cd-39526500525c",
 	}
@@ -288,14 +287,16 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_GetTaskStateChangeError
 		Value: "58f45b58-7eaf-459a-94cd-39526500525c-0-0",
 	}
 
-	p := &pod.PodSummary{
-		PodName: podName,
-		Status: &pod.PodStatus{
-			PodId: podID,
+	pods := []*pod.PodSummary{
+		{
+			PodName: podName,
+			Status: &pod.PodStatus{
+				PodId: podID,
+			},
 		},
 	}
-	pods = append(pods, p)
 
+	// Setup watch stream
 	suite.watchClient.EXPECT().
 		Watch(gomock.Any(), &watchsvc.WatchRequest{
 			PodFilter: &watch.PodFilter{
@@ -311,7 +312,7 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_GetTaskStateChangeError
 		Return(&watchsvc.WatchResponse{
 			Pods: pods,
 		}, nil).
-		Times(3)
+		Times(2)
 
 	// Error on getting job info
 	suite.jobClient.EXPECT().
@@ -332,35 +333,7 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_GetTaskStateChangeError
 		GetPod(gomock.Any(), gomock.Any()).
 		Return(nil, errors.New("unable to get pod info"))
 
-	// Error on getting pod events
-	suite.jobClient.EXPECT().
-		GetJob(gomock.Any(), gomock.Any()).
-		Return(&statelesssvc.GetJobResponse{
-			Summary: &stateless.JobSummary{
-				JobId: jobID,
-				Name:  atop.NewJobName(fixture.AuroraJobKey()),
-			},
-		}, nil)
-
-	suite.podClient.EXPECT().
-		GetPod(gomock.Any(), gomock.Any()).
-		Return(&podsvc.GetPodResponse{
-			Current: &pod.PodInfo{
-				Spec: &pod.PodSpec{
-					PodName:    podName,
-					Labels:     []*peloton.Label{},
-					Containers: []*pod.ContainerSpec{{}},
-				},
-				Status: &pod.PodStatus{
-					State: pod.PodState_POD_STATE_RUNNING,
-				},
-			},
-		}, nil)
-
-	suite.podClient.EXPECT().
-		GetPodEvents(gomock.Any(), gomock.Any()).
-		Return(nil, errors.New("unable to get pod info"))
-
+	// Close watch stream
 	suite.stream.EXPECT().
 		Recv().
 		Return(&watchsvc.WatchResponse{}, nil).
@@ -434,18 +407,6 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_ReceivePods() {
 						AgentId: &mesos.AgentID{
 							Value: ptr.String(hostID),
 						},
-					},
-				},
-			}, nil)
-
-		suite.podClient.EXPECT().
-			GetPodEvents(gomock.Any(), gomock.Any()).
-			Return(&podsvc.GetPodEventsResponse{
-				Events: []*pod.PodEvent{
-					{
-						PodId:       podSummary.GetStatus().GetPodId(),
-						ActualState: pod.PodState_POD_STATE_RUNNING.String(),
-						Timestamp:   "2019-01-03T22:14:58Z",
 					},
 				},
 			}, nil)
