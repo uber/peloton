@@ -233,12 +233,17 @@ func (c *Client) PodStopAction(podName string) error {
 }
 
 // PodGetAction is the action for getting the info of the pod
-func (c *Client) PodGetAction(podName string, statusOnly bool) error {
+func (c *Client) PodGetAction(
+	podName string,
+	statusOnly bool,
+	currentOnly bool,
+) error {
 	resp, err := c.podClient.GetPod(
 		c.ctx,
 		&podsvc.GetPodRequest{
-			PodName:    &v1alphapeloton.PodName{Value: podName},
-			StatusOnly: statusOnly,
+			PodName:     &v1alphapeloton.PodName{Value: podName},
+			StatusOnly:  statusOnly,
+			CurrentOnly: currentOnly,
 		},
 	)
 	if err != nil {

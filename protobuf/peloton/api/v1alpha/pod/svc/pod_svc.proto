@@ -50,6 +50,9 @@ message GetPodRequest {
 
   // If set to true, only return the pod status and not the configuration.
   bool status_only = 2;
+
+  // If set to true, only return current run of the pod.
+  bool current_only = 3;
 }
 
 // Response message for PodService.GetPod method

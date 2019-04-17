@@ -1290,9 +1290,96 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 	suite.NoError(err)
 	suite.NotNil(response)
 	suite.Equal(request.GetPodName(), response.GetCurrent().GetSpec().GetPodName())
+	suite.NotEmpty(response.GetPrevious())
 	for _, info := range response.GetPrevious() {
 		suite.Equal(request.GetPodName(), info.GetSpec().GetPodName())
 	}
+}
+
+// TestGetPodCurrentOnly tests the success case of getting pod info with
+// current_only flag set to true
+func (suite *podHandlerTestSuite) TestGetPodCurrentOnly() {
+	request := &svc.GetPodRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+		CurrentOnly: true,
+	}
+	pelotonJob := &peloton.JobID{Value: testJobID}
+	var configVersion uint64 = 1
+	testLabels := []*peloton.Label{
+		{
+			Key:   "testKey",
+			Value: "testValue",
+		},
+	}
+	testPorts := []*pbtask.PortConfig{
+		{
+			Name:  "port name",
+			Value: 8080,
+		},
+	}
+	testConstraint := &pbtask.Constraint{
+		Type: pbtask.Constraint_LABEL_CONSTRAINT,
+		LabelConstraint: &pbtask.LabelConstraint{
+			Kind: pbtask.LabelConstraint_TASK,
+		},
+	}
+	mesosTaskID := testPodID
+	prevMesosTaskID := testPrevPodID
+	events := []*pbtask.PodEvent{
+		{
+			TaskId: &mesos.TaskID{
+				Value: &mesosTaskID,
+			},
+			ActualState: "RUNNING",
+			GoalState:   "RUNNING",
+			PrevTaskId: &mesos.TaskID{
+				Value: &prevMesosTaskID,
+			},
+			ConfigVersion: configVersion,
+		},
+	}
+
+	gomock.InOrder(
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), pelotonJob, uint32(testInstanceID)).
+			Return(
+				&pbtask.RuntimeInfo{
+					State:         pbtask.TaskState_RUNNING,
+					GoalState:     pbtask.TaskState_RUNNING,
+					ConfigVersion: configVersion,
+				}, nil),
+
+		suite.podStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				pelotonJob,
+				uint32(testInstanceID),
+				configVersion,
+			).Return(
+			&pbtask.TaskConfig{
+				Name:       testPodName,
+				Labels:     testLabels,
+				Ports:      testPorts,
+				Constraint: testConstraint,
+			}, &models.ConfigAddOn{},
+			nil,
+		),
+
+		suite.podStore.EXPECT().
+			GetPodEvents(
+				gomock.Any(),
+				testJobID,
+				uint32(testInstanceID),
+			).Return(events, nil),
+	)
+
+	response, err := suite.handler.GetPod(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+	suite.Equal(request.GetPodName(), response.GetCurrent().GetSpec().GetPodName())
+	suite.Empty(response.GetPrevious())
 
 }
 

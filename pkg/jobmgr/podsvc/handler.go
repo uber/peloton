@@ -438,7 +438,7 @@ func (h *serviceHandler) GetPod(
 	podEvents := handlerutil.ConvertTaskEventsToPodEvents(taskEvents)
 
 	var prevPodInfos []*pbpod.PodInfo
-	if len(podEvents) != 0 {
+	if !req.GetCurrentOnly() && len(podEvents) != 0 {
 		prevPodInfos, err = h.getPodInfoForAllPodRuns(
 			ctx,
 			jobID,
