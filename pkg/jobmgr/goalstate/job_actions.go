@@ -399,3 +399,33 @@ func JobKillAndDelete(
 
 	return nil
 }
+
+// JobKillAndUntrack kills all of the pods in the job, makes sure they would
+// not start again and untrack the job if possible
+func JobKillAndUntrack(ctx context.Context, entity goalstate.Entity) error {
+	jobEnt := entity.(*jobEntity)
+	goalStateDriver := entity.(*jobEntity).driver
+
+	cachedJob := goalStateDriver.jobFactory.GetJob(jobEnt.id)
+	if cachedJob == nil {
+		return nil
+	}
+
+	runtimeDiffNonTerminatedTasks, err :=
+		stopTasks(ctx, cachedJob, goalStateDriver)
+	if err != nil {
+		return err
+	}
+
+	if len(runtimeDiffNonTerminatedTasks) == 0 {
+		log.WithField("job_id", cachedJob.ID()).
+			Info("all tasks are killed, untrack the job")
+		return JobUntrack(ctx, entity)
+	}
+
+	log.WithFields(log.Fields{
+		"job_id": cachedJob.ID(),
+	}).Info("some tasks are not killed, waiting to kill before untracking")
+
+	return nil
+}

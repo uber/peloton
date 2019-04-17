@@ -183,7 +183,7 @@ func TestEngineJobSuggestAction(t *testing.T) {
 		cached.JobStateVector{State: job.JobState_KILLED, StateVersion: 0},
 		cached.JobStateVector{State: job.JobState_KILLED, StateVersion: 0},
 	)
-	assert.Equal(t, UntrackAction, a)
+	assert.Equal(t, KillAndUntrackAction, a)
 
 	a = jobEnt.suggestJobAction(
 		cached.JobStateVector{State: job.JobState_KILLED, StateVersion: 0},

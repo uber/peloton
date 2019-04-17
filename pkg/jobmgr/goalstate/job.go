@@ -38,6 +38,8 @@ const (
 	KillAction JobAction = "job_kill"
 	// UntrackAction deletes the job and all its tasks
 	UntrackAction JobAction = "untrack"
+	// KillAndUntrackAction kills all tasks and untrack the job when possible
+	KillAndUntrackAction JobAction = "kill_untrack"
 	// JobStateInvalidAction is executed for an unexpected/invalid job goal state,
 	// state combination and it prints a sentry error
 	JobStateInvalidAction JobAction = "state_invalid"
@@ -67,6 +69,7 @@ var (
 		CreateTasksAction:      JobCreateTasks,
 		KillAction:             JobKill,
 		UntrackAction:          JobUntrack,
+		KillAndUntrackAction:   JobKillAndUntrack,
 		JobStateInvalidAction:  JobStateInvalid,
 		RecoverAction:          JobRecover,
 		StartTasksAction:       JobStart,
@@ -94,10 +97,10 @@ var (
 			job.JobState_UNINITIALIZED: RecoverAction,
 		},
 		job.JobState_KILLED: {
-			job.JobState_SUCCEEDED:     UntrackAction,
-			job.JobState_FAILED:        UntrackAction,
-			job.JobState_KILLED:        UntrackAction,
-			job.JobState_UNINITIALIZED: UntrackAction,
+			job.JobState_SUCCEEDED:     KillAndUntrackAction,
+			job.JobState_FAILED:        KillAndUntrackAction,
+			job.JobState_KILLED:        KillAndUntrackAction,
+			job.JobState_UNINITIALIZED: KillAndUntrackAction,
 			// TODO: revisit the rules after new job kill
 			// code is checked in
 			job.JobState_INITIALIZED: KillAction,
@@ -201,7 +204,9 @@ func (j *jobEntity) GetActionList(
 			Execute: EnqueueJobUpdate,
 		})
 
-	if actionStr != UntrackAction && actionStr != RecoverAction {
+	if actionStr != UntrackAction &&
+		actionStr != KillAndUntrackAction &&
+		actionStr != RecoverAction {
 		// These should always be run
 		actions = append(actions, goalstate.Action{
 			Name:    string(RuntimeUpdateAction),

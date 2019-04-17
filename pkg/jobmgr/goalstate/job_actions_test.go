@@ -956,3 +956,70 @@ func (suite *jobActionsTestSuite) TestJobKillAndDeleteTerminatedJobWithRunningTa
 	err := JobKillAndDelete(context.Background(), suite.jobEnt)
 	suite.NoError(err)
 }
+
+// TestJobKillAndUntrackTerminatedJobWithNonTerminatedTasks tests untracks
+// a terminated job with tasks that may still be started
+func (suite *jobActionsTestSuite) TestJobKillAndUntrackTerminatedJobWithNonTerminatedTasks() {
+	instanceCount := uint32(2)
+	cachedTasks := make(map[uint32]cached.Task)
+	mockTasks := make(map[uint32]*cachedmocks.MockTask)
+	for i := uint32(0); i < instanceCount; i++ {
+		cachedTask := cachedmocks.NewMockTask(suite.ctrl)
+		mockTasks[i] = cachedTask
+		cachedTasks[i] = cachedTask
+	}
+
+	runtimes := make(map[uint32]*task.RuntimeInfo)
+	runtimes[0] = &task.RuntimeInfo{
+		State:     task.TaskState_FAILED,
+		GoalState: task.TaskState_RUNNING,
+	}
+	runtimes[1] = &task.RuntimeInfo{
+		State:     task.TaskState_FAILED,
+		GoalState: task.TaskState_RUNNING,
+	}
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(suite.jobID).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetAllTasks().
+		Return(cachedTasks).
+		AnyTimes()
+
+	for i := uint32(0); i < instanceCount; i++ {
+		mockTasks[i].EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(runtimes[i], nil).
+			AnyTimes()
+	}
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&job.JobConfig{
+			Type: job.JobType_SERVICE,
+		}, nil)
+
+	// enough to verity JobRuntimeUpdater is called
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(nil, errors.New("test error"))
+
+	err := JobKillAndUntrack(context.Background(), suite.jobEnt)
+	suite.Error(err)
+}
