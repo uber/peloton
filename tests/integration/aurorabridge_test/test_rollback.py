@@ -56,7 +56,6 @@ def test__simple_auto_rolled_back(client):
                 assert False, 'unexpected resource {}'.format(r)
 
 
-@pytest.mark.skip(reason="succeeded job is not deleted")
 def test__job_create_manual_rollback(client):
     """
     Start a job update, and half-way to a manual rollback
