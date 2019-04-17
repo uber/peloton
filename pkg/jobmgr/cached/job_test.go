@@ -2895,6 +2895,35 @@ func (suite *JobTestSuite) TestJobCreateWorkflowOnDeletedJobError() {
 	suite.Nil(suite.job.workflows[updateID.GetValue()])
 }
 
+// TestJobCreateWorkflowOnTerminatingJobError tests the failure case of
+// creating workflow for a job actively being terminated
+func (suite *JobTestSuite) TestJobCreateWorkflowOnTerminatingJobError() {
+	suite.job.runtime.State = pbjob.JobState_KILLING
+	suite.job.runtime.GoalState = pbjob.JobState_KILLED
+
+	updateConfig := &pbupdate.UpdateConfig{
+		BatchSize:  10,
+		StartTasks: true,
+	}
+	entityVersion := versionutil.GetJobEntityVersion(
+		suite.job.runtime.GetConfigurationVersion(),
+		suite.job.runtime.GetDesiredStateVersion(),
+		suite.job.runtime.GetWorkflowVersion(),
+	)
+
+	updateID, newEntityVersion, err := suite.job.CreateWorkflow(
+		context.Background(),
+		models.WorkflowType_UPDATE,
+		updateConfig,
+		entityVersion,
+	)
+
+	suite.Nil(updateID)
+	suite.Error(err)
+	suite.Nil(newEntityVersion)
+	suite.Nil(suite.job.workflows[updateID.GetValue()])
+}
+
 // TestResumeWorkflowSuccess tests the success case
 // of resuming a workflow
 func (suite *JobTestSuite) TestResumeWorkflowSuccess() {

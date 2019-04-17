@@ -2957,6 +2957,52 @@ func (suite *statelessHandlerTestSuite) TestStopJobCompareAndSetRuntimeFailure()
 	suite.Nil(resp)
 }
 
+// TestStopJobUpdateWithStartTasksRunningFailure tests the failure
+// case of stopping job due to an update with StartTasks set is running
+func (suite *statelessHandlerTestSuite) TestStopJobUpdateWithStartTasksRunningFailure() {
+	jobRuntime := &pbjob.RuntimeInfo{
+		State:                pbjob.JobState_RUNNING,
+		GoalState:            pbjob.JobState_RUNNING,
+		ConfigurationVersion: testConfigurationVersion,
+		DesiredStateVersion:  testDesiredStateVersion,
+		WorkflowVersion:      testWorkflowVersion,
+		UpdateID:             &peloton.UpdateID{Value: testUpdateID},
+	}
+
+	suite.candidate.EXPECT().IsLeader().Return(true)
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(&peloton.JobID{Value: testJobID}).
+		AnyTimes()
+
+	suite.jobFactory.EXPECT().
+		AddJob(&peloton.JobID{Value: testJobID}).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
+		Return(&models.UpdateModel{
+			State: pbupdate.State_ROLLING_FORWARD,
+			UpdateConfig: &pbupdate.UpdateConfig{
+				StartTasks: true,
+			},
+		}, nil)
+
+	resp, err := suite.handler.StopJob(
+		context.Background(),
+		&statelesssvc.StopJobRequest{
+			JobId:   &v1alphapeloton.JobID{Value: testJobID},
+			Version: versionutil.GetJobEntityVersion(testConfigurationVersion, testDesiredStateVersion, testWorkflowVersion),
+		})
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
 // TestRestartJobSuccess tests the success case of restarting a job
 func (suite *statelessHandlerTestSuite) TestRestartJobSuccess() {
 	entityVersion := &v1alphapeloton.EntityVersion{Value: "1-1-1"}

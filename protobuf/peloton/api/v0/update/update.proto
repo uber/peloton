@@ -50,6 +50,8 @@ message UpdateConfig {
   // It is best effort, and has no guarantee of success.
   bool inPlace = 8;
 
+  // Experimental: this flag is for experimental purpose and
+  // will be removed in the future release.
   // If set to true, peloton would start tasks updated
   // if the tasks are killed previously.
   // By default, killed tasks would remain killed, and

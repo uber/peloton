@@ -716,6 +716,18 @@ func (h *serviceHandler) StopJob(
 			return nil, jobmgrcommon.InvalidEntityVersionError
 		}
 
+		if len(jobRuntime.GetUpdateID().GetValue()) > 0 {
+			updateModel, err := h.updateStore.GetUpdate(ctx, jobRuntime.GetUpdateID())
+			if err != nil {
+				return nil, errors.Wrap(err, "fail to get update")
+			}
+			if updateModel.GetUpdateConfig().GetStartTasks() &&
+				cached.IsUpdateStateActive(updateModel.GetState()) {
+				return nil,
+					yarpcerrors.AbortedErrorf("job has active update with start_pods set, cannot stop the job now")
+			}
+		}
+
 		jobRuntime.GoalState = pbjob.JobState_KILLED
 		jobRuntime.DesiredStateVersion++
 

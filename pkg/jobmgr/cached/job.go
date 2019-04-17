@@ -30,6 +30,7 @@ import (
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/taskconfig"
+	"github.com/uber/peloton/pkg/common/util"
 	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 	stringsutil "github.com/uber/peloton/pkg/common/util/strings"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
@@ -1543,6 +1544,14 @@ func (j *job) CreateWorkflow(
 
 	if err := j.ValidateEntityVersion(ctx, entityVersion); err != nil {
 		return nil, nil, err
+	}
+
+	if util.IsPelotonJobStateTerminal(j.runtime.GetGoalState()) &&
+		!util.IsPelotonJobStateTerminal(j.runtime.GetState()) &&
+		updateConfig.GetStartTasks() {
+		return nil,
+			nil,
+			yarpcerrors.AbortedErrorf("job is being terminated, cannot update with start_pods set now")
 	}
 
 	var currentUpdate *models.UpdateModel

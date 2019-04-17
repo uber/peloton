@@ -363,7 +363,7 @@ message UpdateSpec {
   // and the update is marked successful even if all of the instances
   // fail.
   uint32 max_tolerable_instance_failures = 4;
-
+  
   // If set to true, indicates that the update should start
   // in the paused state, requiring an explicit resume to roll forward.
   bool start_paused = 5;
@@ -373,6 +373,8 @@ message UpdateSpec {
   // It is best effort, and has no guarantee of success.
   bool in_place = 6;
 
+  // Experimental: this flag is for experimental purpose and
+  // will be removed in the future release.
   // When set to true, peloton would start pods updated,
   // if the pods are killed previously.
   // By default, killed pods would remain killed, and
