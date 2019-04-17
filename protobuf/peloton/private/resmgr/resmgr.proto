@@ -124,8 +124,15 @@ message Task {
  *  so that Job Manager can launch the tasks on the host.
  */
 message Placement {
+  // Task to be placed
+  message Task {
+    api.v0.peloton.TaskID pelotonTaskID = 1;
+    mesos.v1.TaskID mesosTaskID = 2;
+  }
+
   // The list of tasks to be placed
-  repeated api.v0.peloton.TaskID tasks = 1;
+  // DEPRECATED in favor of taskIDs
+  repeated api.v0.peloton.TaskID tasks = 1 [deprecated=true];
 
   // The name of the host where the tasks are placed
   string hostname = 2;
@@ -146,6 +153,9 @@ message Placement {
 
   // The unique offer id of the offers on the host where the tasks are placed
   api.v0.peloton.HostOfferID hostOfferID = 7;
+
+  // The list of tasks to be placed
+  repeated Task taskIDs = 8;
 }
 
 /*

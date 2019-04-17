@@ -17,6 +17,7 @@ package tasks
 import (
 	"context"
 	"errors"
+	"github.com/uber/peloton/.gen/mesos/v1"
 	"testing"
 	"time"
 
@@ -147,9 +148,10 @@ func TestTaskService_SetPlacements(t *testing.T) {
 	placements := []*resmgr.Placement{
 		{
 			Hostname: "hostname",
-			Tasks: []*peloton.TaskID{
+			TaskIDs: []*resmgr.Placement_Task{
 				{
-					Value: "taskid",
+					PelotonTaskID: &peloton.TaskID{Value: "taskid"},
+					MesosTaskID:   &mesos_v1.TaskID{Value: &[]string{"mesostaskid"}[0]},
 				},
 			},
 		},

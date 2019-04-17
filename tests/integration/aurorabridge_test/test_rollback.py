@@ -15,7 +15,6 @@ pytestmark = [pytest.mark.default,
               pytest.mark.aurorabridge]
 
 
-@pytest.mark.skip(reason="pending host to task map fix at resmgr")
 def test__simple_auto_rolled_back(client):
     """
     Create a job, then issue a bad config update and validate
@@ -32,7 +31,7 @@ def test__simple_auto_rolled_back(client):
     res = client.start_job_update(
         get_job_update_request('test_dc_labrat_bad_config.yaml'),
         'rollout bad config')
-    wait_for_rolled_back(client, res.key)
+    wait_for_rolled_back(client, res.key, timeout_secs=150)
 
     # validate job is rolled back to previous config
     res = client.get_tasks_without_configs(api.TaskQuery(
@@ -51,6 +50,8 @@ def test__simple_auto_rolled_back(client):
                 assert r.ramMb == 128
             elif r.diskMb > 0:
                 assert r.diskMb == 128
+            elif r.namedPort:
+                assert r.namedPort in ["grpc", "http"]
             else:
                 assert False, 'unexpected resource {}'.format(r)
 

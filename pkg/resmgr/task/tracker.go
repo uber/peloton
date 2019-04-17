@@ -17,6 +17,7 @@ package task
 import (
 	"sync"
 
+	"github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
@@ -87,8 +88,17 @@ type tracker struct {
 	// Map of peloton task ID to the resource manager task
 	tasks map[string]*RMTask
 
-	// Maps hostname -> task type -> task id -> rm task
+	// Maps hostname -> task type -> mesos task id -> rm task
 	placements map[string]map[resmgr.TaskType]map[string]*RMTask
+
+	// Map of mesos task ID to rm task
+	// Orphan tasks are those whose resources are not released but
+	// are no longer tracked by the tracker (since the RMTask in tracker
+	// was replaced by a RMTask with new mesos task id). When we receive a
+	// terminal event for a task that is not present in the tracker,
+	// we use this map to release held resources, if any.
+	// TODO: Move `placements` and `orphanTasks` out of tracker
+	orphanTasks map[string]*RMTask
 
 	scope   tally.Scope
 	metrics *Metrics
@@ -116,11 +126,12 @@ func InitTaskTracker(
 
 	scope := parent.SubScope("tracker")
 	rmtracker = &tracker{
-		tasks:      make(map[string]*RMTask),
-		placements: map[string]map[resmgr.TaskType]map[string]*RMTask{},
-		metrics:    NewMetrics(scope),
-		scope:      scope,
-		counters:   make(map[task.TaskState]float64),
+		tasks:       make(map[string]*RMTask),
+		placements:  map[string]map[resmgr.TaskType]map[string]*RMTask{},
+		orphanTasks: make(map[string]*RMTask),
+		metrics:     NewMetrics(scope),
+		scope:       scope,
+		counters:    make(map[task.TaskState]float64),
 	}
 
 	// Checking placement back off is enabled , if yes then initialize
@@ -164,9 +175,18 @@ func (tr *tracker) AddTask(
 	tr.lock.Lock()
 	defer tr.lock.Unlock()
 
-	tr.tasks[rmTask.task.Id.Value] = rmTask
+	if prevRMTask, ok := tr.tasks[rmTask.task.GetId().GetValue()]; ok &&
+		prevRMTask.task.GetTaskId().GetValue() != rmTask.task.GetTaskId().GetValue() {
+		// If EnqueueGangs request for a new run of the task is received
+		// before the terminal event for the last run is processed by resmgr
+		// mark the prev RMTask as an orphan task so that we can release
+		// resources when the terminal event is processed
+		tr.orphanTasks[prevRMTask.task.GetTaskId().GetValue()] = prevRMTask
+	}
+
+	tr.tasks[rmTask.task.GetId().GetValue()] = rmTask
 	if rmTask.task.Hostname != "" {
-		tr.setPlacement(rmTask.task.Id, rmTask.task.Hostname)
+		tr.setPlacement(rmTask.task.GetTaskId(), rmTask.task.GetHostname())
 	}
 	tr.metrics.TasksCountInTracker.Update(float64(tr.GetSize()))
 	return nil
@@ -190,41 +210,53 @@ func (tr *tracker) getTask(t *peloton.TaskID) *RMTask {
 	return nil
 }
 
-func (tr *tracker) setPlacement(t *peloton.TaskID, hostname string) {
-	rmTask, ok := tr.tasks[t.Value]
+// setPlacement writes the host:task mapping for the given hostname and mesos-task-id
+// in the placements map of the tracker. Before writing to placements map it checks
+// if the task is present in the tracker. If not present, the mapping is not set
+func (tr *tracker) setPlacement(t *mesos_v1.TaskID, hostname string) {
+	taskID, err := util.ParseTaskIDFromMesosTaskID(t.GetValue())
+	if err != nil {
+		log.WithError(err).
+			Error("error while setting placement")
+		return
+	}
+
+	rmTask, ok := tr.tasks[taskID]
 	if !ok {
 		return
 	}
-	tr.clearPlacement(rmTask)
+
 	rmTask.task.Hostname = hostname
 	if _, exists := tr.placements[hostname]; !exists {
 		tr.placements[hostname] = map[resmgr.TaskType]map[string]*RMTask{}
 	}
-	if _, exists := tr.placements[hostname][rmTask.task.Type]; !exists {
-		tr.placements[hostname][rmTask.task.Type] = map[string]*RMTask{}
+	if _, exists := tr.placements[hostname][rmTask.task.GetType()]; !exists {
+		tr.placements[hostname][rmTask.task.GetType()] = map[string]*RMTask{}
 	}
-	if _, exists := tr.placements[hostname][rmTask.task.Type][t.Value]; !exists {
-		tr.placements[hostname][rmTask.task.Type][t.Value] = rmTask
+	if _, exists := tr.placements[hostname][rmTask.task.GetType()][t.GetValue()]; !exists {
+		tr.placements[hostname][rmTask.task.GetType()][t.GetValue()] = rmTask
 	}
 }
 
 // clearPlacement will remove the task from the placements map.
-func (tr *tracker) clearPlacement(rmTask *RMTask) {
-	hostName := rmTask.task.Hostname
-	if hostName == "" {
+func (tr *tracker) clearPlacement(
+	hostname string,
+	taskType resmgr.TaskType,
+	mesosTaskID string,
+) {
+	if hostname == "" {
 		return
 	}
 
-	placements := tr.placements[hostName]
-	taskType := rmTask.task.Type
+	placements := tr.placements[hostname]
 
-	delete(placements[taskType], rmTask.task.Id.Value)
+	delete(placements[taskType], mesosTaskID)
 	if len(placements[taskType]) == 0 {
 		delete(placements, taskType)
 	}
 
-	if len(tr.placements[rmTask.task.Hostname]) == 0 {
-		delete(tr.placements, rmTask.task.Hostname)
+	if len(tr.placements[hostname]) == 0 {
+		delete(tr.placements, hostname)
 	}
 }
 
@@ -232,8 +264,8 @@ func (tr *tracker) clearPlacement(rmTask *RMTask) {
 func (tr *tracker) SetPlacement(placement *resmgr.Placement) {
 	tr.lock.Lock()
 	defer tr.lock.Unlock()
-	for _, t := range placement.GetTasks() {
-		tr.setPlacement(t, placement.GetHostname())
+	for _, t := range placement.GetTaskIDs() {
+		tr.setPlacement(t.GetMesosTaskID(), placement.GetHostname())
 	}
 }
 
@@ -250,7 +282,11 @@ func (tr *tracker) DeleteTask(t *peloton.TaskID) {
 // before we use this.
 func (tr *tracker) deleteTask(t *peloton.TaskID) {
 	if rmTask, exists := tr.tasks[t.Value]; exists {
-		tr.clearPlacement(rmTask)
+		tr.clearPlacement(
+			rmTask.task.GetHostname(),
+			rmTask.task.GetType(),
+			rmTask.task.GetTaskId().GetValue(),
+		)
 	}
 	delete(tr.tasks, t.Value)
 	tr.metrics.TasksCountInTracker.Update(float64(tr.GetSize()))
@@ -308,9 +344,38 @@ func (tr *tracker) markItDone(t *RMTask, mesosTaskID string) error {
 	tID := t.Task().GetId()
 
 	// Checking mesos ID again if that has not changed
-	if *t.Task().TaskId.Value != mesosTaskID {
-		return errors.Errorf("for task %s: mesos id %s in tracker is different id %s from event",
-			tID.Value, *t.Task().TaskId.Value, mesosTaskID)
+	if t.Task().GetTaskId().GetValue() != mesosTaskID {
+		// If the mesos ID has changed, clear the placement.
+		// This can happen when jobmgr processes the mesos event faster than resmgr
+		// causing EnqueueGangs to be called before the task termination event
+		// is processed by resmgr.
+		if _, ok := tr.orphanTasks[mesosTaskID]; !ok {
+			// If the mesos task ID is not a known orphan task then
+			// it means there are no resources held for this task.
+			// We can simply return here
+			return nil
+		}
+
+		tr.clearPlacement(
+			tr.orphanTasks[mesosTaskID].task.GetHostname(),
+			tr.orphanTasks[mesosTaskID].task.GetType(),
+			mesosTaskID,
+		)
+
+		err := t.respool.SubtractFromAllocation(scalar.GetTaskAllocation(tr.orphanTasks[mesosTaskID].Task()))
+		if err != nil {
+			err = errors.Wrap(err, "failed to release held resources for task "+tID.GetValue())
+		}
+
+		delete(tr.orphanTasks, mesosTaskID)
+
+		log.WithFields(log.Fields{
+			"orphan_task":        mesosTaskID,
+			"resources_released": err == nil,
+			"error":              err,
+		}).Debug("Orphan task deleted")
+
+		return err
 	}
 
 	// We need to skip the tasks from resource counting which are in pending and
@@ -382,13 +447,18 @@ func (tr *tracker) Clear() {
 	tr.lock.Lock()
 	defer tr.lock.Unlock()
 
-	// Cleaning the tasks
+	// Clearing the tasks
 	for k := range tr.tasks {
 		delete(tr.tasks, k)
 	}
-	// Cleaning the placements
+	// Clearing the placements
 	for k := range tr.placements {
 		delete(tr.placements, k)
+	}
+
+	// Clearing the orphan tasks
+	for k := range tr.orphanTasks {
+		delete(tr.orphanTasks, k)
 	}
 }
 

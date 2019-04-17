@@ -551,9 +551,12 @@ func TestEngineCreatePlacement(t *testing.T) {
 		assignment1.GetTask().GetTask().GetType(),
 		placements[0].GetType())
 	assert.Equal(t,
-		[]*peloton.TaskID{
-			assignment1.GetTask().GetTask().GetId(),
-		}, placements[0].GetTasks())
+		[]*resmgr.Placement_Task{
+			{
+				PelotonTaskID: assignment1.GetTask().GetTask().GetId(),
+				MesosTaskID:   assignment1.GetTask().GetTask().GetTaskId(),
+			},
+		}, placements[0].GetTaskIDs())
 	assert.Equal(t, 3, len(placements[0].GetPorts()))
 }
 

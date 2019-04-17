@@ -871,15 +871,17 @@ func (suite *LauncherTestSuite) TestGenerateAssignedTaskError() {
 
 // createPlacementMultipleTasks creates the placement with multiple tasks
 func createPlacementMultipleTasks(tasks map[string]*LaunchableTaskInfo, hostOffer *hostsvc.HostOffer) *resmgr.Placement {
-	var TasksIds []*peloton.TaskID
+	var placementTasks []*resmgr.Placement_Task
 
 	for id := range tasks {
-		TasksIds = append(TasksIds, &peloton.TaskID{Value: id})
+		placementTasks = append(placementTasks, &resmgr.Placement_Task{
+			PelotonTaskID: &peloton.TaskID{Value: id},
+		})
 	}
 	placement := &resmgr.Placement{
 		AgentId:  hostOffer.AgentId,
 		Hostname: hostOffer.Hostname,
-		Tasks:    TasksIds,
+		TaskIDs:  placementTasks,
 		Ports:    []uint32{testPort},
 	}
 	return placement
@@ -888,16 +890,18 @@ func createPlacementMultipleTasks(tasks map[string]*LaunchableTaskInfo, hostOffe
 // createPlacements creates the placement
 func createPlacements(t *LaunchableTaskInfo,
 	hostOffer *hostsvc.HostOffer) *resmgr.Placement {
-	TasksIds := make([]*peloton.TaskID, 1)
+	placementTasks := make([]*resmgr.Placement_Task, 1)
 
 	taskID := &peloton.TaskID{
 		Value: t.JobId.Value + "-" + fmt.Sprint(t.InstanceId),
 	}
-	TasksIds[0] = taskID
+	placementTasks[0] = &resmgr.Placement_Task{
+		PelotonTaskID: taskID,
+	}
 	placement := &resmgr.Placement{
 		AgentId:  hostOffer.AgentId,
 		Hostname: hostOffer.Hostname,
-		Tasks:    TasksIds,
+		TaskIDs:  placementTasks,
 		Ports:    []uint32{testPort},
 	}
 

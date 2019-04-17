@@ -151,7 +151,7 @@ func generateOfferWithResource(
 		Hostname:  &hostname,
 		Resources: resources,
 		Attributes: []*mesos.Attribute{
-			&mesos.Attribute{
+			{
 				Name: &hostnameAttr,
 				Text: &mesos.Value_Text{
 					Value: &hostname,

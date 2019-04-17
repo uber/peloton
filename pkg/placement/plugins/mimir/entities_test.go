@@ -29,7 +29,7 @@ import (
 func TestEntityMapper_Convert(t *testing.T) {
 	task := testutil.SetupAssignment(time.Now(), 1).GetTask().GetTask()
 	entity := TaskToEntity(task, false)
-	assert.Equal(t, "id", entity.Name)
+	assert.Equal(t, task.GetId().GetValue(), entity.Name)
 	assert.Equal(t, 1, entity.Relations.Count(labels.NewLabel("relationKey", "relationValue")))
 	assert.NotNil(t, entity.Ordering)
 

@@ -228,9 +228,15 @@ func (e *engine) processCompletedReservations(ctx context.Context) error {
 		placement := &resmgr.Placement{
 			Hostname: res.HostOffers[0].Hostname,
 			Tasks:    []*peloton.TaskID{res.GetTask().GetId()},
-			Type:     e.config.TaskType,
-			AgentId:  res.HostOffers[0].AgentId,
-			Ports:    selectedPorts,
+			TaskIDs: []*resmgr.Placement_Task{
+				{
+					PelotonTaskID: res.GetTask().GetId(),
+					MesosTaskID:   res.GetTask().GetTaskId(),
+				},
+			},
+			Type:    e.config.TaskType,
+			AgentId: res.HostOffers[0].AgentId,
+			Ports:   selectedPorts,
 		}
 		placements = append(placements, placement)
 	}
@@ -317,14 +323,6 @@ func (e *engine) returnStarvedAssignments(
 		a.Reason = reason
 	}
 	e.taskService.SetPlacements(ctx, nil, failedAssignments)
-}
-
-func (e *engine) getTaskIDs(tasks []*models.Task) []*peloton.TaskID {
-	var taskIDs []*peloton.TaskID
-	for _, task := range tasks {
-		taskIDs = append(taskIDs, task.GetTask().Id)
-	}
-	return taskIDs
 }
 
 func (e *engine) assignPorts(offer *models.HostOffers, tasks []*models.Task) []uint32 {
@@ -498,13 +496,13 @@ func (e *engine) createPlacement(assigned []*models.Assignment) []*resmgr.Placem
 	// For each offer create a placement with all the tasks assigned to it.
 	var resPlacements []*resmgr.Placement
 	for offer, tasks := range offersToTasks {
-		taskIDs := e.getTaskIDs(tasks)
 		selectedPorts := e.assignPorts(offer, tasks)
 		placement := &resmgr.Placement{
 			Hostname:    offer.GetOffer().Hostname,
 			AgentId:     offer.GetOffer().AgentId,
 			Type:        e.config.TaskType,
-			Tasks:       taskIDs,
+			Tasks:       getTasks(tasks),
+			TaskIDs:     getPlacementTasks(tasks),
 			Ports:       selectedPorts,
 			HostOfferID: offer.GetOffer().GetId(),
 		}
@@ -544,4 +542,23 @@ func (e *engine) pastDeadline(now time.Time, assignments []*models.Assignment) b
 		}
 	}
 	return true
+}
+
+func getTasks(tasks []*models.Task) []*peloton.TaskID {
+	var taskIDs []*peloton.TaskID
+	for _, task := range tasks {
+		taskIDs = append(taskIDs, task.GetTask().GetId())
+	}
+	return taskIDs
+}
+
+func getPlacementTasks(tasks []*models.Task) []*resmgr.Placement_Task {
+	var placementTasks []*resmgr.Placement_Task
+	for _, task := range tasks {
+		placementTasks = append(placementTasks, &resmgr.Placement_Task{
+			PelotonTaskID: task.GetTask().GetId(),
+			MesosTaskID:   task.GetTask().GetTaskId(),
+		})
+	}
+	return placementTasks
 }

@@ -34,7 +34,9 @@ import (
 	"github.com/uber/peloton/pkg/resmgr/respool"
 	"github.com/uber/peloton/pkg/resmgr/scalar"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -83,6 +85,10 @@ func (suite *TrackerTestSuite) setup(conf *Config, invalid bool) {
 
 func (suite *TrackerTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
+}
+
+func (suite *TrackerTestSuite) TearDownTest() {
+	suite.tracker.Clear()
 }
 
 func (suite *TrackerTestSuite) addTaskToTracker(task *resmgr.Task) {
@@ -139,12 +145,13 @@ func (suite *TrackerTestSuite) getResourceConfig() []*resp.ResourceConfig {
 }
 
 func (suite *TrackerTestSuite) createTask(instance int) *resmgr.Task {
-	taskID := fmt.Sprintf("job1-%d", instance)
-	mesosID := "mesosTaskID"
+	jobID := uuid.New()
+	taskID := fmt.Sprintf("%s-%d", jobID, instance)
+	mesosID := fmt.Sprintf("%s-%d-1", jobID, instance)
 	return &resmgr.Task{
 		Name:     taskID,
 		Priority: 0,
-		JobId:    &peloton.JobID{Value: "job1"},
+		JobId:    &peloton.JobID{Value: jobID},
 		Id:       &peloton.TaskID{Value: taskID},
 		Hostname: suite.hostname,
 		Resource: &task.ResourceConfig{
@@ -179,11 +186,15 @@ func (suite *TrackerTestSuite) TestTransition() {
 }
 
 func (suite *TrackerTestSuite) TestSetPlacement() {
-	oldHostname := suite.hostname
 	for i := 0; i < 5; i++ {
 		newHostname := fmt.Sprintf("new-hostname-%v", i)
 		suite.tracker.SetPlacement(&resmgr.Placement{
-			Tasks:    []*peloton.TaskID{suite.task.Id},
+			TaskIDs: []*resmgr.Placement_Task{
+				{
+					PelotonTaskID: suite.task.GetId(),
+					MesosTaskID:   suite.task.GetTaskId(),
+				},
+			},
 			Hostname: newHostname,
 		})
 
@@ -191,23 +202,22 @@ func (suite *TrackerTestSuite) TestSetPlacement() {
 		suite.Equal(1, len(result))
 		suite.Equal(1, len(result[newHostname]))
 		suite.Equal(suite.task, result[newHostname][0].task)
-
-		result = suite.tracker.TasksByHosts([]string{oldHostname}, suite.task.Type)
-		suite.Equal(0, len(result))
 	}
 }
 
 func (suite *TrackerTestSuite) TestSetPlacementHost() {
 	suite.tracker.Clear()
-	var tasks []*peloton.TaskID
+	var tasks []*resmgr.Placement_Task
 	for i := 0; i < 5; i++ {
-		taskID := fmt.Sprintf("job1-%d", i)
-		t := &peloton.TaskID{Value: taskID}
-		tasks = append(tasks, t)
-		suite.addTaskToTracker(suite.createTask(i))
+		rmTask := suite.createTask(i)
+		tasks = append(tasks, &resmgr.Placement_Task{
+			PelotonTaskID: rmTask.GetId(),
+			MesosTaskID:   rmTask.GetTaskId(),
+		})
+		suite.addTaskToTracker(rmTask)
 	}
 	suite.tracker.SetPlacement(&resmgr.Placement{
-		Tasks:    tasks,
+		TaskIDs:  tasks,
 		Hostname: suite.hostname,
 	})
 	result := suite.tracker.TasksByHosts([]string{suite.hostname}, suite.task.Type)
@@ -231,7 +241,7 @@ func (suite *TrackerTestSuite) TestClear() {
 func (suite *TrackerTestSuite) TestAddResources() {
 	res := suite.respool.GetTotalAllocatedResources()
 	suite.Equal(res.GetCPU(), float64(0))
-	suite.tracker.AddResources(&peloton.TaskID{Value: "job1-1"})
+	suite.tracker.AddResources(suite.task.GetId())
 	res = suite.respool.GetTotalAllocatedResources()
 	suite.Equal(res.GetCPU(), float64(1))
 }
@@ -253,7 +263,7 @@ func (suite *TrackerTestSuite) TestGetTaskStates() {
 	result = suite.tracker.GetActiveTasks("", "", states)
 	suite.Equal(1, len(result))
 
-	result = suite.tracker.GetActiveTasks("job1", "", states)
+	result = suite.tracker.GetActiveTasks(suite.task.GetJobId().GetValue(), "", states)
 	suite.Equal(1, len(result))
 
 	result = suite.tracker.GetActiveTasks("foo", "", states)
@@ -262,15 +272,17 @@ func (suite *TrackerTestSuite) TestGetTaskStates() {
 
 func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	suite.tracker.Clear()
+	var tasks []*resmgr.Task
 	for i := 0; i < 5; i++ {
-		suite.addTaskToTracker(suite.createTask(i))
+		t := suite.createTask(i)
+		tasks = append(tasks, t)
+		suite.addTaskToTracker(t)
 	}
 	// Task 1
 	// Trying to remove the first Task which is in initialized state
 	// As initialized task can not be subtracted from allocation so
 	// no change in respool allocation
-	taskID := fmt.Sprintf("job1-%d", 1)
-	t := &peloton.TaskID{Value: taskID}
+	t := tasks[0].GetId()
 
 	rmTask := suite.tracker.GetTask(t)
 
@@ -286,7 +298,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 
 	suite.Equal(res, resources)
 
-	deleteTask := &peloton.TaskID{Value: taskID}
+	deleteTask := tasks[0].GetId()
 	suite.tracker.MarkItDone(deleteTask, *rmTask.task.TaskId.Value)
 
 	res = rmTask.respool.GetTotalAllocatedResources()
@@ -296,8 +308,8 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	// Trying to remove the Second Task which is in Pending state
 	// As pending task can not be subtracted from allocation so
 	// no change in respool allocation
-	taskID = fmt.Sprintf("job1-%d", 2)
-	t = &peloton.TaskID{Value: taskID}
+
+	t = tasks[1].GetId()
 
 	rmTask = suite.tracker.GetTask(t)
 
@@ -308,7 +320,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	err := rmTask.TransitTo(task.TaskState_PENDING.String())
 	suite.NoError(err)
 
-	deleteTask = &peloton.TaskID{Value: taskID}
+	deleteTask = tasks[1].GetId()
 	suite.tracker.MarkItDone(deleteTask, *rmTask.task.TaskId.Value)
 
 	res = rmTask.respool.GetTotalAllocatedResources()
@@ -319,8 +331,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	// Trying to remove the Third Task which is in Ready state
 	// As READY task should subtracted from allocation so
 	// so respool allocation is zero
-	taskID = fmt.Sprintf("job1-%d", 3)
-	t = &peloton.TaskID{Value: taskID}
+	t = tasks[2].GetId()
 	rmTask = suite.tracker.GetTask(t)
 	rmTask.respool.AddToAllocation(scalar.GetTaskAllocation(rmTask.Task()))
 
@@ -332,7 +343,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	err = rmTask.TransitTo(task.TaskState_READY.String())
 	suite.NoError(err)
 
-	deleteTask = &peloton.TaskID{Value: taskID}
+	deleteTask = tasks[2].GetId()
 	suite.tracker.MarkItDone(deleteTask, *rmTask.task.TaskId.Value)
 
 	res = rmTask.respool.GetTotalAllocatedResources()
@@ -349,34 +360,53 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 }
 
 func (suite *TrackerTestSuite) TestMarkItDone_WithDifferentMesosTaskID() {
-	taskID := fmt.Sprintf("job1-%d", 1)
-	t := &peloton.TaskID{Value: taskID}
-
-	rmTask := suite.tracker.GetTask(t)
+	rmTask := suite.tracker.GetTask(suite.task.GetId())
 	suite.NotNil(rmTask)
 
 	// transit to a timeout state
 	rmTask.TransitTo(task.TaskState_LAUNCHING.String())
 
-	err := suite.tracker.MarkItDone(t, "MesosDifferentTaskID")
+	err := suite.tracker.MarkItDone(suite.task.GetId(), "MesosDifferentTaskID")
+	suite.NoError(err)
+}
 
-	suite.Error(err)
+// TestMarkItDoneOrphanTask tests the action of MarkItDone for an orphan RMTask
+func (suite *TrackerTestSuite) TestMarkItDoneOrphanTask() {
+	testTracker := &tracker{
+		tasks:         make(map[string]*RMTask),
+		placements:    map[string]map[resmgr.TaskType]map[string]*RMTask{},
+		orphanTasks:   make(map[string]*RMTask),
+		metrics:       NewMetrics(tally.NoopScope),
+		counters:      make(map[task.TaskState]float64),
+		hostMgrClient: suite.mockHostmgr,
+		scope:         tally.NoopScope,
+	}
+	t := suite.createTask(1)
+	testTracker.AddTask(t, suite.eventStreamHandler, suite.respool, &Config{})
+
+	tt := proto.Clone(t).(*resmgr.Task)
+
+	orphanRMTask, err := CreateRMTask(tally.NoopScope, tt, suite.eventStreamHandler, suite.respool, &Config{})
+	suite.NoError(err)
+	testTracker.orphanTasks["MesosDifferentTaskID"] = orphanRMTask
+
+	err = testTracker.MarkItDone(t.GetId(), "MesosDifferentTaskID")
+	suite.NoError(err)
+
+	suite.Nil(testTracker.orphanTasks["MesosDifferentTaskID"])
 }
 
 func (suite *TrackerTestSuite) TestMarkItDone_StateMachine() {
 	suite.addTaskToTrackerWithTimeoutConfig(suite.createTask(1), &Config{
 		LaunchingTimeout: 1 * time.Second,
 	})
-	taskID := fmt.Sprintf("job1-%d", 1)
-	t := &peloton.TaskID{Value: taskID}
-
-	rmTask := suite.tracker.GetTask(t)
+	rmTask := suite.tracker.GetTask(suite.task.GetId())
 	suite.NotNil(rmTask)
 
 	// transit to a timeout state
 	rmTask.TransitTo(task.TaskState_LAUNCHING.String())
 
-	suite.tracker.MarkItDone(t, *rmTask.Task().TaskId.Value)
+	suite.tracker.MarkItDone(suite.task.GetId(), *rmTask.Task().TaskId.Value)
 
 	// wait for LaunchingTimeout
 	time.Sleep(1 * time.Second)
@@ -387,20 +417,16 @@ func (suite *TrackerTestSuite) TestMarkItDone_StateMachine() {
 }
 
 func (suite *TrackerTestSuite) TestMarkItInvalid() {
-
-	taskID := fmt.Sprintf("job1-%d", 1)
-	t := &peloton.TaskID{Value: taskID}
-
-	rmTask := suite.tracker.GetTask(t)
+	rmTask := suite.tracker.GetTask(suite.task.GetId())
 	suite.NotNil(rmTask)
 
 	// transit to a timeout state
 	rmTask.TransitTo(task.TaskState_LAUNCHING.String())
 
-	err := suite.tracker.MarkItInvalid(t, "MesosDifferentTaskID")
-	suite.Error(err)
+	err := suite.tracker.MarkItInvalid(suite.task.GetId(), "MesosDifferentTaskID")
+	suite.NoError(err)
 
-	err = suite.tracker.MarkItInvalid(t, *rmTask.Task().TaskId.Value)
+	err = suite.tracker.MarkItInvalid(suite.task.GetId(), *rmTask.Task().TaskId.Value)
 	suite.NoError(err)
 }
 
@@ -437,19 +463,16 @@ func (suite *TrackerTestSuite) TestBackoffDisabled() {
 		EnablePlacementBackoff: false,
 	}, false)
 
-	taskID := fmt.Sprintf("job1-%d", 1)
-	t := &peloton.TaskID{Value: taskID}
-
-	rmTask := suite.tracker.GetTask(t)
+	rmTask := suite.tracker.GetTask(suite.task.GetId())
 	suite.NotNil(rmTask)
 
 	// transit to a timeout state
 	rmTask.TransitTo(task.TaskState_LAUNCHING.String())
 
-	err := suite.tracker.MarkItInvalid(t, "MesosDifferentTaskID")
-	suite.Error(err)
+	err := suite.tracker.MarkItInvalid(suite.task.GetId(), "MesosDifferentTaskID")
+	suite.NoError(err)
 
-	err = suite.tracker.MarkItInvalid(t, *rmTask.Task().TaskId.Value)
+	err = suite.tracker.MarkItInvalid(suite.task.GetId(), *rmTask.Task().TaskId.Value)
 	suite.NoError(err)
 	suite.tracker.Clear()
 }
@@ -461,10 +484,7 @@ func (suite *TrackerTestSuite) TestInitializeError() {
 		EnablePlacementBackoff: true,
 		PlacingTimeout:         -1 * time.Minute,
 	}, true)
-	taskID := fmt.Sprintf("job1-%d", 1)
-	t := &peloton.TaskID{Value: taskID}
-
-	rmTask := suite.tracker.GetTask(t)
+	rmTask := suite.tracker.GetTask(suite.task.GetId())
 	suite.NotNil(rmTask)
 	suite.tracker.Clear()
 }
@@ -488,13 +508,15 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 	testTracker := &tracker{
 		tasks:         make(map[string]*RMTask),
 		placements:    map[string]map[resmgr.TaskType]map[string]*RMTask{},
+		orphanTasks:   make(map[string]*RMTask),
 		metrics:       NewMetrics(tally.NoopScope),
 		counters:      make(map[task.TaskState]float64),
 		hostMgrClient: suite.mockHostmgr,
 		scope:         tally.NoopScope,
 	}
+	t := suite.createTask(1)
 	testTracker.AddTask(
-		suite.createTask(1),
+		t,
 		suite.eventStreamHandler,
 		suite.respool, &Config{
 			PolicyName: ExponentialBackOffPolicy,
@@ -532,7 +554,7 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 	})
 
 	// set the mock state machine for the task
-	tesTask := testTracker.GetTask(&peloton.TaskID{Value: "job1-1"})
+	tesTask := testTracker.GetTask(t.GetId())
 	tesTask.stateMachine = mSm
 
 	wg := sync.WaitGroup{}
@@ -577,7 +599,12 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 		// call SetPlacement which acquires Lock on tracker(see #3
 		// in test comments)
 		testTracker.SetPlacement(&resmgr.Placement{
-			Tasks:    []*peloton.TaskID{{Value: "job1-1"}},
+			TaskIDs: []*resmgr.Placement_Task{
+				{
+					PelotonTaskID: suite.task.GetId(),
+					MesosTaskID:   suite.task.GetTaskId(),
+				},
+			},
 			Hostname: "hostname",
 		})
 		fmt.Println("SetPlacement returned")

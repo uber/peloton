@@ -249,7 +249,6 @@ func (h *ServiceHandler) enqueueGang(
 	var failedTask *resmgrsvc.EnqueueGangsFailure_FailedTask
 	var err error
 	failedTasks := make(map[string]bool)
-	isGangRequeued := false
 	for _, task := range gang.GetTasks() {
 		if !(h.isTaskPresent(task)) {
 			// If the task is not present in the tracker
@@ -260,8 +259,7 @@ func (h *ServiceHandler) enqueueGang(
 			// This is the already present task,
 			// We need to check if it has same mesos
 			// id or different mesos task id.
-			failedTask, err = h.requeueTask(task)
-			isGangRequeued = true
+			failedTask, err = h.requeueTask(task, respool)
 		}
 
 		// If there is any failure we need to add those tasks to
@@ -273,9 +271,6 @@ func (h *ServiceHandler) enqueueGang(
 	}
 
 	if len(failed) == 0 {
-		if isGangRequeued {
-			return nil, nil
-		}
 		err = h.addingGangToPendingQueue(gang, respool)
 		// if there is error , we need to mark all tasks in gang failed.
 		if err != nil {
@@ -384,8 +379,11 @@ func (h *ServiceHandler) addTask(newTask *resmgr.Task, respool respool.ResPool,
 // If task has same mesos task id => return error
 // If task has different mesos task id then check state and based on the state
 // act accordingly
-func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) (*resmgrsvc.EnqueueGangsFailure_FailedTask, error) {
-	rmTask := h.rmTracker.GetTask(requeuedTask.Id)
+func (h *ServiceHandler) requeueTask(
+	requeuedTask *resmgr.Task,
+	respool respool.ResPool,
+) (*resmgrsvc.EnqueueGangsFailure_FailedTask, error) {
+	rmTask := h.rmTracker.GetTask(requeuedTask.GetId())
 	if rmTask == nil {
 		return &resmgrsvc.EnqueueGangsFailure_FailedTask{
 			Task:      requeuedTask,
@@ -402,33 +400,12 @@ func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) (*resmgrsvc.Enqu
 	}
 	currentTaskState := rmTask.GetCurrentState().State
 
-	// If state is Launching, Launched or Running then only
-	// put task to ready queue with update of
-	// mesos task id otherwise ignore
+	// If state is Launching, Launched or Running
+	// replace the task in the tracker and requeue
 	if h.isTaskInTransitRunning(currentTaskState) {
-		// Updating the New Mesos Task ID
-		rmTask.Task().TaskId = requeuedTask.TaskId
-		// Transitioning back to Ready State
-		rmTask.TransitTo(t.TaskState_READY.String(),
-			statemachine.WithReason("waiting for placement (task updated with new mesos task id)"),
-			statemachine.WithInfo(mesosTaskID, *requeuedTask.TaskId.Value))
-		// Adding to ready Queue
-		gang := &resmgrsvc.Gang{
-			Tasks: []*resmgr.Task{rmTask.Task()},
-		}
-		err := rmtask.GetScheduler().EnqueueGang(gang)
-		if err != nil {
-			log.WithField("gang", gang).Error(errGangNotEnqueued.Error())
-			return &resmgrsvc.EnqueueGangsFailure_FailedTask{
-				Task:      requeuedTask,
-				Message:   errSameTaskPresent.Error(),
-				Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_INTERNAL,
-			}, err
-		}
-		log.WithField("gang", gang).Debug(errEnqueuedAgain.Error())
-		return nil, nil
-
+		return h.addTask(requeuedTask, respool)
 	}
+
 	// TASK should not be in any other state other then
 	// LAUNCHING, RUNNING or LAUNCHED
 	// Logging error if this happens.
@@ -649,18 +626,26 @@ func (h *ServiceHandler) removeTasksFromPlacements(
 		return placement
 	}
 	var newTasks []*peloton.TaskID
+	var newTaskIDs []*resmgr.Placement_Task
 
 	log.WithFields(log.Fields{
 		"tasks_to_remove": tasks,
-		"orig_tasks":      placement.GetTasks(),
+		"orig_tasks":      placement.GetTaskIDs(),
 	}).Debug("Removing Tasks")
 
 	for _, pt := range placement.GetTasks() {
-		if _, ok := tasks[pt.Value]; !ok {
+		if _, ok := tasks[pt.GetValue()]; !ok {
 			newTasks = append(newTasks, pt)
 		}
 	}
+
+	for _, pt := range placement.GetTaskIDs() {
+		if _, ok := tasks[pt.GetPelotonTaskID().GetValue()]; !ok {
+			newTaskIDs = append(newTaskIDs, pt)
+		}
+	}
 	placement.Tasks = newTasks
+	placement.TaskIDs = newTaskIDs
 	return placement
 }
 
@@ -710,21 +695,21 @@ func (h *ServiceHandler) transitTasksInPlacement(
 	newState t.TaskState,
 	reason string) *resmgr.Placement {
 	invalidTasks := make(map[string]*peloton.TaskID)
-	for _, taskID := range placement.Tasks {
-		rmTask := h.rmTracker.GetTask(taskID)
+	for _, task := range placement.GetTaskIDs() {
+		rmTask := h.rmTracker.GetTask(task.GetPelotonTaskID())
 		if rmTask == nil {
-			invalidTasks[taskID.Value] = taskID
+			invalidTasks[task.GetPelotonTaskID().GetValue()] = task.GetPelotonTaskID()
 			continue
 		}
 		state := rmTask.GetCurrentState().State
 		if state != expectedState {
 			log.WithFields(log.Fields{
-				"task_id":        taskID.GetValue(),
+				"task_id":        task.GetPelotonTaskID().GetValue(),
 				"expected_state": expectedState.String(),
 				"actual_state":   state.String(),
 			}).Error("Failed to transit tasks in placement: " +
 				"task is not in expected state")
-			invalidTasks[taskID.Value] = taskID
+			invalidTasks[task.GetPelotonTaskID().GetValue()] = task.GetPelotonTaskID()
 		} else {
 			err := rmTask.TransitTo(
 				newState.String(),
@@ -732,9 +717,9 @@ func (h *ServiceHandler) transitTasksInPlacement(
 			)
 			if err != nil {
 				log.WithError(err).
-					WithField("task_id", taskID.GetValue()).
+					WithField("task_id", task.GetPelotonTaskID().GetValue()).
 					Info("Failed to transit tasks in placement")
-				invalidTasks[taskID.Value] = taskID
+				invalidTasks[task.GetPelotonTaskID().GetValue()] = task.GetPelotonTaskID()
 			}
 		}
 	}
@@ -789,11 +774,13 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 
 	if *(rmTask.Task().TaskId.Value) !=
 		*(event.MesosTaskStatus.TaskId.Value) {
-		log.WithFields(log.Fields{
-			"task_id": rmTask.Task().TaskId.Value,
-			"event":   event,
-		}).Info("could not be updated due to" +
-			"different mesos task ID")
+		err = h.rmTracker.MarkItDone(taskID, event.GetMesosTaskStatus().GetTaskId().GetValue())
+		if err != nil {
+			log.WithField("event", event).WithError(err).Error(
+				"Error while marking task as done in tracker")
+			return
+		}
+
 		return
 	}
 

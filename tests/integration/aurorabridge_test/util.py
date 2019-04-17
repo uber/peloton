@@ -24,12 +24,14 @@ def wait_for_rolled_forward(client, job_update_key):
         api.JobUpdateStatus.ROLLED_FORWARD)
 
 
-def wait_for_rolled_back(client, job_update_key):
+def wait_for_rolled_back(client, job_update_key, timeout_secs=120):
     wait_for_update_status(
         client,
         job_update_key,
         {api.JobUpdateStatus.ROLLING_FORWARD, api.JobUpdateStatus.ROLLING_BACK},
-        api.JobUpdateStatus.ROLLED_BACK)
+        api.JobUpdateStatus.ROLLED_BACK,
+        timeout_secs=timeout_secs,
+    )
 
 
 def wait_for_update_status(

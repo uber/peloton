@@ -23,16 +23,22 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 	"github.com/uber/peloton/pkg/placement/models"
+
+	"github.com/pborman/uuid"
 )
 
 // SetupAssignment creates an assignment.
 func SetupAssignment(deadline time.Time, maxRounds int) *models.Assignment {
 	relationKey := "relationKey"
 	relationValue := "relationValue"
+	taskID := uuid.New()
 	resmgrTask := &resmgr.Task{
 		Name: "task",
 		Id: &peloton.TaskID{
-			Value: "id",
+			Value: taskID,
+		},
+		TaskId: &mesos_v1.TaskID{
+			Value: &[]string{taskID + "-1"}[0],
 		},
 		Labels: &mesos_v1.Labels{
 			Labels: []*mesos_v1.Label{

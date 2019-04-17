@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
@@ -33,6 +34,7 @@ import (
 	rm_task "github.com/uber/peloton/pkg/resmgr/task"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -40,7 +42,6 @@ import (
 const (
 	hostname      = "testHostname"
 	drainerPeriod = 1 * time.Second
-	taskName      = "testTask"
 )
 
 type DrainerTestSuite struct {
@@ -83,10 +84,14 @@ func (suite *DrainerTestSuite) SetupTest() {
 		drainingHosts:   stringset.New(),
 	}
 
+	jobID := uuid.New()
+	taskID := fmt.Sprintf("%s-%d", jobID, 0)
+	mesosTaskID := fmt.Sprintf("%s-%d-1", jobID, 0)
 	t := &resmgr.Task{
-		Name:     taskName,
-		JobId:    &peloton.JobID{Value: "job1"},
-		Id:       &peloton.TaskID{Value: taskName},
+		Name:     taskID,
+		JobId:    &peloton.JobID{Value: jobID},
+		Id:       &peloton.TaskID{Value: taskID},
+		TaskId:   &mesos_v1.TaskID{Value: &mesosTaskID},
 		Hostname: hostname,
 	}
 
@@ -165,10 +170,13 @@ func (suite *DrainerTestSuite) TestDrainCycle() {
 	for i := 0; i < 2; i++ {
 		// add tasks to tracker
 		hostname := fmt.Sprintf("hostname-%d", i)
+		jobID := uuid.New()
+		taskID := fmt.Sprintf("%s-%d", jobID, i)
 		suite.addTaskToTracker(&resmgr.Task{
-			Name:     taskName,
-			JobId:    &peloton.JobID{Value: "job1"},
-			Id:       &peloton.TaskID{Value: taskName},
+			Name:     taskID,
+			JobId:    &peloton.JobID{Value: jobID},
+			Id:       &peloton.TaskID{Value: taskID},
+			TaskId:   &mesos_v1.TaskID{Value: &[]string{fmt.Sprintf("%s-%d-1", jobID, i)}[0]},
 			Hostname: hostname,
 		})
 		hosts := []string{hostname}

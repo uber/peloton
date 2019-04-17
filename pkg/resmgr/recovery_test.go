@@ -43,6 +43,7 @@ import (
 	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -542,7 +543,7 @@ func (suite *recoveryTestSuite) TestAddRunningTasks() {
 	// Create jobs. each with different number of tasks
 	jobs := make([]peloton.JobID, 1)
 	for i := 0; i < 1; i++ {
-		jobs[i] = peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
+		jobs[i] = peloton.JobID{Value: uuid.New()}
 	}
 
 	jobConfig := suite.createJob(&jobs[0], 10, 1)
@@ -583,7 +584,7 @@ func (suite *recoveryTestSuite) TestAddRunningTasks() {
 
 	node, err := suite.resourceTree.Get(&peloton.ResourcePoolID{Value: "respool21"})
 	t := &resmgr.Task{
-		Id: &peloton.TaskID{Value: "job1-1"},
+		Id: &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobs[0].GetValue(), 1)},
 	}
 	rmTask, err := rm_task.CreateRMTask(
 		tally.NoopScope,

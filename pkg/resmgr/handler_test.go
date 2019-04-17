@@ -333,7 +333,7 @@ func (s *HandlerTestSuite) TestRequeueTaskNotPresent() {
 		task.TaskState_PLACED,
 		task.TaskState_LAUNCHING})
 	s.rmTaskTracker.DeleteTask(s.pendingGang0().Tasks[0].Id)
-	failed, err := s.handler.requeueTask(s.pendingGang0().Tasks[0])
+	failed, err := s.handler.requeueTask(s.pendingGang0().Tasks[0], node)
 	s.Error(err)
 	s.NotNil(failed)
 	s.EqualValues(failed.Errorcode, resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_INTERNAL)
@@ -515,12 +515,14 @@ func (s *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	}
 	handler.eventStreamHandler = s.handler.eventStreamHandler
 
+	placements := s.getPlacements()
 	setReq := &resmgrsvc.SetPlacementsRequest{
-		Placements: s.getPlacements(),
+		Placements: placements,
 	}
 	for _, placement := range setReq.Placements {
-		for _, taskID := range placement.Tasks {
-			rmTask := handler.rmTracker.GetTask(taskID)
+		for i, t := range placement.GetTaskIDs() {
+			s.Equal(placement.Tasks[i], t.GetPelotonTaskID())
+			rmTask := handler.rmTracker.GetTask(t.GetPelotonTaskID())
 			tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
 				task.TaskState_PENDING,
 				task.TaskState_READY,
@@ -538,7 +540,7 @@ func (s *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	getResp, err := handler.GetPlacements(s.context, getReq)
 	s.NoError(err)
 	s.Nil(getResp.GetError())
-	s.Equal(s.getPlacements(), getResp.GetPlacements())
+	s.Equal(placements, getResp.GetPlacements())
 }
 
 func (s *HandlerTestSuite) TestTransitTasksInPlacement() {
@@ -615,8 +617,9 @@ func (s *HandlerTestSuite) TestGetTasksByHosts() {
 	hostnames := make([]string, 0, len(setReq.Placements))
 	for _, placement := range setReq.Placements {
 		hostnames = append(hostnames, placement.Hostname)
-		for _, taskID := range placement.Tasks {
-			rmTask := s.handler.rmTracker.GetTask(taskID)
+		for i, t := range placement.GetTaskIDs() {
+			s.Equal(placement.Tasks[i], t.GetPelotonTaskID())
+			rmTask := s.handler.rmTracker.GetTask(t.GetPelotonTaskID())
 			tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
 				task.TaskState_PENDING,
 				task.TaskState_READY,
@@ -644,22 +647,19 @@ func (s *HandlerTestSuite) TestGetTasksByHosts() {
 }
 
 func (s *HandlerTestSuite) TestRemoveTasksFromPlacement() {
-	_, tasks := s.createRMTasks()
+	rmTasks, tasks := s.createRMTasks()
 	placement := &resmgr.Placement{
-		Tasks:    tasks,
+		TaskIDs:  getPlacementTasks(rmTasks),
 		Hostname: fmt.Sprintf("host-%d", 1),
 	}
-	s.Equal(len(placement.Tasks), 5)
+	s.Equal(len(placement.GetTaskIDs()), 5)
 	taskstoremove := make(map[string]*peloton.TaskID)
 	for j := 0; j < 2; j++ {
-		taskID := &peloton.TaskID{
-			Value: fmt.Sprintf("task-1-%d", j),
-		}
-		taskstoremove[taskID.Value] = taskID
+		taskstoremove[tasks[j].GetValue()] = tasks[j]
 	}
 	newPlacement := s.handler.removeTasksFromPlacements(placement, taskstoremove)
 	s.NotNil(newPlacement)
-	s.Equal(len(newPlacement.Tasks), 3)
+	s.Equal(len(newPlacement.GetTaskIDs()), 3)
 }
 
 func (s *HandlerTestSuite) TestRemoveTasksFromGang() {
@@ -849,8 +849,7 @@ func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 		maxOffset: &c,
 		rmTracker: rm_task.GetTracker(),
 	}
-	jobID := "test"
-	uuidStr := uuid.NewUUID().String()
+	jobID := uuid.New()
 	var events []*pb_eventstream.Event
 	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil,
 		&pb_respool.ResourcePoolConfig{
@@ -860,7 +859,7 @@ func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 		}, s.cfg)
 	for i := 0; i < 100; i++ {
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
+		mesosTaskID := fmt.Sprintf("%s-%d-1", jobID, i)
 		state := mesos_v1.TaskState_TASK_FINISHED
 		status := &mesos_v1.TaskStatus{
 			TaskId: &mesos_v1.TaskID{
@@ -905,11 +904,11 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 	var c uint64
 	s.handler.maxOffset = &c
 
-	uuidStr := uuid.NewUUID().String()
+	jobID := uuid.New()
 	var events []*pb_eventstream.Event
 
 	for i := 0; i < 1; i++ {
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", uuidStr, i, uuidStr)
+		mesosTaskID := fmt.Sprintf("%s-%d-1", jobID, i)
 		state := mesos_v1.TaskState_TASK_FINISHED
 		status := &mesos_v1.TaskStatus{
 			TaskId: &mesos_v1.TaskID{
@@ -947,10 +946,10 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 		}, s.cfg)
 
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", uuidStr, 0, uuidStr)
+	mesosTaskID := fmt.Sprintf("%s-%d-1", jobID, 0)
 	t := &resmgr.Task{
 		Id: &peloton.TaskID{
-			Value: fmt.Sprintf("%s-%d", uuidStr, 0),
+			Value: fmt.Sprintf("%s-%d", jobID, 0),
 		},
 		TaskId: &mesos_v1.TaskID{
 			Value: &mesosTaskID,
@@ -976,10 +975,10 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 	s.Nil(response.Error)
 
 	// Testing wrong mesos task id
-	wmesosTaskID := fmt.Sprintf("%s-%d-%s", "job1", 0, uuidStr)
+	wmesosTaskID := fmt.Sprintf("%s-%d-%s", "job1", 0, jobID)
 	t = &resmgr.Task{
 		Id: &peloton.TaskID{
-			Value: fmt.Sprintf("%s-%d", uuidStr, 0),
+			Value: fmt.Sprintf("%s-%d", jobID, 0),
 		},
 		TaskId: &mesos_v1.TaskID{
 			Value: &wmesosTaskID,
@@ -999,6 +998,7 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 	s.NoError(err)
 
 	tracker.EXPECT().GetTask(gomock.Any()).Return(wrmTask)
+	tracker.EXPECT().MarkItDone(gomock.Any(), gomock.Any()).Return(nil)
 	response, _ = s.handler.NotifyTaskUpdates(context.Background(), req)
 	s.EqualValues(uint64(1000), response.PurgeOffset)
 	s.Nil(response.Error)
@@ -1100,8 +1100,9 @@ func (s *HandlerTestSuite) TestGetActiveTasks() {
 		Placements: s.getPlacements(),
 	}
 	for _, placement := range setReq.Placements {
-		for _, taskID := range placement.Tasks {
-			rmTask := s.handler.rmTracker.GetTask(taskID)
+		for i, t := range placement.GetTaskIDs() {
+			s.Equal(placement.Tasks[i], t.GetPelotonTaskID())
+			rmTask := s.handler.rmTracker.GetTask(t.GetPelotonTaskID())
 			tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
 				task.TaskState_PENDING,
 				task.TaskState_READY,
@@ -1773,19 +1774,31 @@ func (s *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 	s.NoError(err, "create resource pool shouldn't fail")
 
 	for i := 0; i < 10; i++ {
-		var tasks []*peloton.TaskID
+		jobID := uuid.New()
+		var placementTasks []*resmgr.Placement_Task
+		var pelotonTasks []*peloton.TaskID
 		for j := 0; j < 5; j++ {
-			task := &peloton.TaskID{
-				Value: fmt.Sprintf("task-%d-%d", i, j),
+			pelotonTask := &peloton.TaskID{
+				Value: fmt.Sprintf("%s-%d", jobID, j),
 			}
-			tasks = append(tasks, task)
+			pelotonTasks = append(pelotonTasks, pelotonTask)
+
+			mesosTask := &mesos_v1.TaskID{Value: &[]string{fmt.Sprintf("%s-%d-1", jobID, j)}[0]}
+
+			placementTasks = append(placementTasks, &resmgr.Placement_Task{
+				PelotonTaskID: pelotonTask,
+				MesosTaskID:   mesosTask,
+			})
+
 			s.rmTaskTracker.AddTask(&resmgr.Task{
-				Id: task,
+				Id:     pelotonTask,
+				TaskId: mesosTask,
 			}, nil, resp, tasktestutil.CreateTaskConfig())
 		}
 
 		placement := &resmgr.Placement{
-			Tasks:    tasks,
+			Tasks:    pelotonTasks,
+			TaskIDs:  placementTasks,
 			Hostname: fmt.Sprintf("host-%d", i),
 		}
 		placements = append(placements, placement)
@@ -1796,6 +1809,7 @@ func (s *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
 	var tasks []*peloton.TaskID
 	var rmTasks []*resmgr.Task
+	jobID := uuid.New()
 	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil,
 		&pb_respool.ResourcePoolConfig{
 			Name:      "respool1",
@@ -1804,9 +1818,8 @@ func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
 			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 		}, s.cfg)
 	for j := 0; j < 5; j++ {
-		mesosTaskID := "mesosID"
 		taskID := &peloton.TaskID{
-			Value: fmt.Sprintf("task-1-%d", j),
+			Value: fmt.Sprintf("%s-%d", jobID, j),
 		}
 		tasks = append(tasks, taskID)
 		rmTask := &resmgr.Task{
@@ -1818,7 +1831,7 @@ func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
 				MemLimitMb:  100,
 			},
 			TaskId: &mesos_v1.TaskID{
-				Value: &mesosTaskID,
+				Value: &[]string{taskID.GetValue() + "-1"}[0],
 			},
 		}
 		s.rmTaskTracker.AddTask(rmTask, nil, resp,
@@ -1844,4 +1857,15 @@ func (s *HandlerTestSuite) createUpdateTasksStateRequest(
 	return &resmgrsvc.UpdateTasksStateRequest{
 		TaskStates: taskList,
 	}
+}
+
+func getPlacementTasks(rmTasks []*resmgr.Task) []*resmgr.Placement_Task {
+	var placementTasks []*resmgr.Placement_Task
+	for _, rmTask := range rmTasks {
+		placementTasks = append(placementTasks, &resmgr.Placement_Task{
+			PelotonTaskID: rmTask.GetId(),
+			MesosTaskID:   rmTask.GetTaskId(),
+		})
+	}
+	return placementTasks
 }

@@ -159,10 +159,14 @@ func (p *processor) process() {
 }
 
 func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Placement) {
-	tasks := placement.GetTasks()
+	var tasks []*peloton.TaskID
+	for _, t := range placement.GetTaskIDs() {
+		tasks = append(tasks, t.GetPelotonTaskID())
+	}
+
 	lauchableTasks, skippedTasks, err := p.taskLauncher.GetLaunchableTasks(
 		ctx,
-		placement.GetTasks(),
+		tasks,
 		placement.GetHostname(),
 		placement.GetAgentId(),
 		placement.GetPorts(),
