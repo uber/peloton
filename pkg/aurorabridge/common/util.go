@@ -16,6 +16,8 @@ package common
 
 import (
 	"fmt"
+	"math/rand"
+	"strconv"
 
 	"github.com/uber/peloton/pkg/common/util"
 
@@ -30,4 +32,18 @@ func ConvertTimestampToUnixMS(timestamp string) (*int64, error) {
 		return nil, fmt.Errorf("unable to parse timestamp %s", err)
 	}
 	return ptr.Int64(u * 1000), nil
+}
+
+// Random defines an interface for generating random number.
+type Random interface {
+	IntnStr(n int) string
+}
+
+// RandomImpl implements Random interface and proxies calls to functions
+// in math/rand package.
+type RandomImpl struct{}
+
+// IntnStr proxies call to rand.IntnStr() function and converts it to string.
+func (r RandomImpl) IntnStr(n int) string {
+	return strconv.Itoa(rand.Intn(n))
 }

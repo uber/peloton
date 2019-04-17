@@ -28,6 +28,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 )
 
 const (
@@ -509,6 +510,21 @@ func TestTaskTerminalState(t *testing.T) {
 	for s := range task.TaskState_name {
 		_, isTerm := taskTerminalStates[task.TaskState(s)]
 		assert.Equal(t, isTerm, IsPelotonStateTerminal(task.TaskState(s)))
+	}
+}
+
+// Test check for pod state being terminal
+func TestPodTerminalState(t *testing.T) {
+	podTerminalStates := map[pod.PodState]bool{
+		pod.PodState_POD_STATE_FAILED:    true,
+		pod.PodState_POD_STATE_KILLED:    true,
+		pod.PodState_POD_STATE_SUCCEEDED: true,
+		pod.PodState_POD_STATE_LOST:      true,
+		pod.PodState_POD_STATE_DELETED:   true,
+	}
+	for s := range pod.PodState_name {
+		_, isTerm := podTerminalStates[pod.PodState(s)]
+		assert.Equal(t, isTerm, IsPelotonPodStateTerminal(pod.PodState(s)))
 	}
 }
 

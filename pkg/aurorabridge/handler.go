@@ -52,6 +52,7 @@ type ServiceHandler struct {
 	jobClient     statelesssvc.JobServiceYARPCClient
 	podClient     podsvc.PodServiceYARPCClient
 	respoolLoader RespoolLoader
+	random        common.Random
 }
 
 // NewServiceHandler creates a new ServiceHandler.
@@ -61,6 +62,7 @@ func NewServiceHandler(
 	jobClient statelesssvc.JobServiceYARPCClient,
 	podClient podsvc.PodServiceYARPCClient,
 	respoolLoader RespoolLoader,
+	random common.Random,
 ) (*ServiceHandler, error) {
 
 	config.normalize()
@@ -74,6 +76,7 @@ func NewServiceHandler(
 		jobClient:     jobClient,
 		podClient:     podClient,
 		respoolLoader: respoolLoader,
+		random:        random,
 	}, nil
 }
 

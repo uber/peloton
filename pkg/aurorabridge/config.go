@@ -27,7 +27,7 @@ type ServiceHandlerConfig struct {
 	GetJobUpdateWorkers           int `yaml:"get_job_update_workers"`
 	GetTasksWithoutConfigsWorkers int `yaml:"get_tasks_without_configs_workers"`
 	StopPodWorkers                int `yaml:"stop_pod_workers"`
-	GetCurrentPodsWorkers         int `yaml:"get_current_pods_workers"`
+	CreateJobSpecForUpdateWorkers int `yaml:"create_job_spec_for_update_workers"`
 
 	// getTasksWithoutConfigs task querying depth. It limits the number
 	// of pods to be included in the return result - return pods from
@@ -52,8 +52,8 @@ func (c *ServiceHandlerConfig) normalize() {
 	if c.StopPodWorkers == 0 {
 		c.StopPodWorkers = 25
 	}
-	if c.GetCurrentPodsWorkers == 0 {
-		c.GetCurrentPodsWorkers = 25
+	if c.CreateJobSpecForUpdateWorkers == 0 {
+		c.CreateJobSpecForUpdateWorkers = 25
 	}
 	if c.PodRunsDepth <= 0 {
 		c.PodRunsDepth = 1

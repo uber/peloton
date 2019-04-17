@@ -42,7 +42,7 @@ func hasLabelsChanged(
 		}
 
 		// label not found
-		if found == false {
+		if !found {
 			return true
 		}
 	}
@@ -114,7 +114,7 @@ func hasPortsChanged(
 		}
 
 		// ports not found
-		if found == false {
+		if !found {
 			return true
 		}
 	}
@@ -178,58 +178,67 @@ func HasTaskConfigChanged(
 		return true
 	}
 
-	oldName := prevTaskConfig.GetName()
-	newName := newTaskConfig.GetName()
-	prevTaskConfig.Name = ""
-	newTaskConfig.Name = ""
+	prevTask := proto.Clone(prevTaskConfig).(*task.TaskConfig)
+	newTask := proto.Clone(newTaskConfig).(*task.TaskConfig)
 
-	oldLabels := prevTaskConfig.GetLabels()
-	newLabels := newTaskConfig.GetLabels()
-	prevTaskConfig.Labels = nil
-	newTaskConfig.Labels = nil
+	oldName := prevTask.GetName()
+	newName := newTask.GetName()
+	oldLabels := prevTask.GetLabels()
+	newLabels := newTask.GetLabels()
+	oldPorts := prevTask.GetPorts()
+	newPorts := newTask.GetPorts()
 
-	oldPorts := prevTaskConfig.GetPorts()
-	newPorts := newTaskConfig.GetPorts()
-	prevTaskConfig.Ports = nil
-	newTaskConfig.Ports = nil
+	defer func() {
+		prevTask.Name = oldName
+		newTask.Name = newName
+		prevTask.Labels = oldLabels
+		newTask.Labels = newLabels
+		prevTask.Ports = oldPorts
+		newTask.Ports = newPorts
+	}()
 
-	changed := !proto.Equal(prevTaskConfig, newTaskConfig)
+	prevTask.Name = ""
+	newTask.Name = ""
+	prevTask.Labels = nil
+	newTask.Labels = nil
+	prevTask.Ports = nil
+	newTask.Ports = nil
 
-	prevTaskConfig.Name = oldName
-	newTaskConfig.Name = newName
-	prevTaskConfig.Labels = oldLabels
-	newTaskConfig.Labels = newLabels
-	prevTaskConfig.Ports = oldPorts
-	newTaskConfig.Ports = newPorts
-
-	return changed
+	return !proto.Equal(prevTask, newTask)
 }
 
-// HasContainerSpecChanged returns ture if the container spec has changed.
+// HasContainerSpecChanged returns true if the container spec has changed.
 func HasContainerSpecChanged(
-	prevContainer *pod.ContainerSpec,
-	newContainer *pod.ContainerSpec) bool {
-	if prevContainer == nil && newContainer == nil {
+	prevContainerSpec *pod.ContainerSpec,
+	newContainerSpec *pod.ContainerSpec) bool {
+	if prevContainerSpec == nil && newContainerSpec == nil {
 		return false
 	}
 
-	if prevContainer == nil ||
-		newContainer == nil ||
-		HasPortSpecsChanged(prevContainer.GetPorts(), newContainer.GetPorts()) {
+	if prevContainerSpec == nil ||
+		newContainerSpec == nil ||
+		HasPortSpecsChanged(prevContainerSpec.GetPorts(), newContainerSpec.GetPorts()) {
 		return true
 	}
 
+	// TODO(kevinxu): we can avoid clone here if we don't expose it as
+	//  public method, and make its internal caller clones ContainerSpec
+	//  before calling this function.
+	prevContainer := proto.Clone(prevContainerSpec).(*pod.ContainerSpec)
+	newContainer := proto.Clone(newContainerSpec).(*pod.ContainerSpec)
+
 	oldPorts := prevContainer.GetPorts()
 	newPorts := newContainer.GetPorts()
+
+	defer func() {
+		prevContainer.Ports = oldPorts
+		newContainer.Ports = newPorts
+	}()
+
 	prevContainer.Ports = nil
 	newContainer.Ports = nil
 
-	changed := !proto.Equal(prevContainer, newContainer)
-
-	prevContainer.Ports = oldPorts
-	newContainer.Ports = newPorts
-
-	return changed
+	return !proto.Equal(prevContainer, newContainer)
 }
 
 // HasPodSpecChanged returns true if the pod spec (other than the name)
@@ -267,36 +276,37 @@ func HasPodSpecChanged(
 		}
 	}
 
-	oldPodName := prevPodSpec.GetPodName()
-	newPodName := newPodSpec.GetPodName()
-	prevPodSpec.PodName = nil
-	newPodSpec.PodName = nil
+	prevPod := proto.Clone(prevPodSpec).(*pod.PodSpec)
+	newPod := proto.Clone(newPodSpec).(*pod.PodSpec)
 
-	oldLabels := prevPodSpec.GetLabels()
-	newLabels := newPodSpec.GetLabels()
-	prevPodSpec.Labels = nil
-	newPodSpec.Labels = nil
+	oldPodName := prevPod.GetPodName()
+	newPodName := newPod.GetPodName()
+	oldLabels := prevPod.GetLabels()
+	newLabels := newPod.GetLabels()
+	oldInitContainers := prevPod.GetInitContainers()
+	newInitContainers := newPod.GetInitContainers()
+	oldContainers := prevPod.GetContainers()
+	newContainers := newPod.GetContainers()
 
-	oldInitContainers := prevPodSpec.GetInitContainers()
-	newInitContainers := newPodSpec.GetInitContainers()
-	prevPodSpec.InitContainers = nil
-	newPodSpec.InitContainers = nil
+	defer func() {
+		prevPod.PodName = oldPodName
+		newPod.PodName = newPodName
+		prevPod.Labels = oldLabels
+		newPod.Labels = newLabels
+		prevPod.InitContainers = oldInitContainers
+		newPod.InitContainers = newInitContainers
+		prevPod.Containers = oldContainers
+		newPod.Containers = newContainers
+	}()
 
-	oldContainers := prevPodSpec.GetContainers()
-	newContainers := newPodSpec.GetContainers()
-	prevPodSpec.Containers = nil
-	newPodSpec.Containers = nil
+	prevPod.PodName = nil
+	newPod.PodName = nil
+	prevPod.Labels = nil
+	newPod.Labels = nil
+	prevPod.InitContainers = nil
+	newPod.InitContainers = nil
+	prevPod.Containers = nil
+	newPod.Containers = nil
 
-	changed := !proto.Equal(prevPodSpec, newPodSpec)
-
-	prevPodSpec.PodName = oldPodName
-	newPodSpec.PodName = newPodName
-	prevPodSpec.Labels = oldLabels
-	newPodSpec.Labels = newLabels
-	prevPodSpec.InitContainers = oldInitContainers
-	newPodSpec.InitContainers = newInitContainers
-	prevPodSpec.Containers = oldContainers
-	newPodSpec.Containers = newContainers
-
-	return changed
+	return !proto.Equal(prevPod, newPod)
 }

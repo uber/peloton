@@ -312,6 +312,19 @@ func IsPelotonStateTerminal(state task.TaskState) bool {
 	}
 }
 
+// IsPelotonPodStateTerminal returns true if pod state is
+// terminal otherwise false
+func IsPelotonPodStateTerminal(state pod.PodState) bool {
+	switch state {
+	case pod.PodState_POD_STATE_SUCCEEDED, pod.PodState_POD_STATE_FAILED,
+		pod.PodState_POD_STATE_KILLED, pod.PodState_POD_STATE_LOST,
+		pod.PodState_POD_STATE_DELETED:
+		return true
+	default:
+		return false
+	}
+}
+
 // IsPelotonJobStateTerminal returns true if job state is terminal
 // otherwise false
 func IsPelotonJobStateTerminal(state job.JobState) bool {

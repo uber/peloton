@@ -27,6 +27,7 @@ import (
 	"github.com/uber/peloton/.gen/thrift/aurora/api/readonlyschedulerserver"
 
 	"github.com/uber/peloton/pkg/aurorabridge"
+	bridgecommon "github.com/uber/peloton/pkg/aurorabridge/common"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/buildversion"
 	"github.com/uber/peloton/pkg/common/config"
@@ -254,6 +255,7 @@ func main() {
 		jobClient,
 		podClient,
 		respoolLoader,
+		bridgecommon.RandomImpl{},
 	)
 	if err != nil {
 		log.Fatalf("Unable to create service handler: %v", err)
