@@ -179,6 +179,7 @@ def test__simple_update_with_diff(client):
     assert res.detailsList[0].instanceEvents is None
 
 
+@pytest.mark.skip("mesos task events are not acked correctly")
 def test__simple_update_with_restart_component(
         client,
         jobmgr,
