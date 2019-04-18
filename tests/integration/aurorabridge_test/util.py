@@ -176,7 +176,7 @@ def wait_for_task_status(
             all_match = True
             for s in statuses:
                 if s != status:
-                    assert s in allowed_intermediate_statuses
+                    assert s in allowed_intermediate_statuses, 'unexpected status: {}'.format(s)
                     all_match = False
             if all_match:
                 return
@@ -207,8 +207,19 @@ def get_task_status(client, job_key, instances=None):
 
     assert res.tasks is not None
 
-    return [t.status for t in res.tasks if not instances or
-            t.assignedTask.instanceId in instances]
+    tasks_per_instance = {}
+    for t in res.tasks:
+        instance_id = t.assignedTask.instanceId
+        if instance_id not in tasks_per_instance:
+            tasks_per_instance[instance_id] = []
+
+        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        tasks_per_instance[instance_id].append((run_id, t.status))
+
+    # grab task status from latest pod run
+    return [max(statuses)[1]
+            for iid, statuses in tasks_per_instance.iteritems()
+            if instances is None or iid in instances]
 
 
 def get_job_update_request(config_path):
@@ -224,16 +235,24 @@ def get_job_update_request(config_path):
     return api.JobUpdateRequest.from_primitive(config_dump)
 
 
-def start_job_update(client, config_path, update_message=''):
+def start_job_update(client, config, update_message=''):
     '''Starts a job update and waits for the update to be in "ROLLED_FORWARD"
     state and all tasks in the job are in "RUNNING" state.
 
     Args:
         client: aurora client object
-        config_path: path to yaml file containing JobUpdateRequest
+        config: string path to yaml file containing JobUpdateRequest or
+                     JobUpdateRequest object itself
         update_message: optional message to be passed to the update
+
+    Returns:
+        aurora JobKey
     '''
-    req = get_job_update_request(config_path)
+    if isinstance(config, basestring):
+        req = get_job_update_request(config)
+    else:
+        req = config
+
     res = client.start_job_update(req, update_message)
     wait_for_rolled_forward(client, res.key)
     wait_for_running(client, res.key.job)
@@ -255,7 +274,7 @@ def get_running_tasks(client, job_key):
 
 
 def _to_tuple(job_key):
-    return (job_key.role, job_key.environment, job_key.name)
+    return job_key.role, job_key.environment, job_key.name
 
 
 def remove_duplicate_keys(job_keys):

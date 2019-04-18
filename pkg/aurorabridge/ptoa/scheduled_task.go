@@ -29,7 +29,7 @@ import (
 // NewScheduledTask creates a ScheduledTask object.
 func NewScheduledTask(
 	jobSummary *stateless.JobSummary,
-	podInfo *pod.PodInfo,
+	podSpec *pod.PodSpec,
 	podEvents []*pod.PodEvent,
 ) (*api.ScheduledTask, error) {
 
@@ -37,31 +37,20 @@ func NewScheduledTask(
 		return nil, fmt.Errorf("job summary is nil")
 	}
 
-	if podInfo == nil {
-		return nil, fmt.Errorf("pod info is nil")
+	if podSpec == nil {
+		return nil, fmt.Errorf("pod spec is nil")
 	}
 
 	if len(podEvents) == 0 {
 		return nil, fmt.Errorf("pod events is empty")
 	}
 
-	return newScheduledTask(jobSummary, podInfo, podEvents)
-}
-
-// NewScheduledTaskForPrevRun creates a ScheduledTask object for pods from previous run.
-func NewScheduledTaskForPrevRun(
-	podEvents []*pod.PodEvent,
-) (*api.ScheduledTask, error) {
-	if len(podEvents) == 0 {
-		return nil, fmt.Errorf("pod events is empty")
-	}
-
-	return newScheduledTask(nil, nil, podEvents)
+	return newScheduledTask(jobSummary, podSpec, podEvents)
 }
 
 func newScheduledTask(
 	jobSummary *stateless.JobSummary,
-	podInfo *pod.PodInfo,
+	podSpec *pod.PodSpec,
 	podEvents []*pod.PodEvent,
 ) (*api.ScheduledTask, error) {
 	auroraTaskID := podEvents[0].GetPodId().GetValue()
@@ -99,29 +88,25 @@ func newScheduledTask(
 	}
 
 	var auroraSlaveID *string
-	var auroraTaskConfig *api.TaskConfig
+	if agentID := podEvents[0].GetAgentId(); agentID != "" {
+		auroraSlaveID = ptr.String(agentID)
+	}
+
+	auroraTaskConfig, err := NewTaskConfig(jobSummary, podSpec)
+	if err != nil {
+		return nil, fmt.Errorf("new task config: %s", err)
+	}
+
 	var auroraAssignedPorts map[string]int32
-
-	if jobSummary != nil && podInfo != nil {
-		if agentID := podInfo.GetStatus().GetAgentId().GetValue(); agentID != "" {
-			auroraSlaveID = &agentID
+	c := podSpec.GetContainers()
+	if len(c) == 0 {
+		return nil, fmt.Errorf("pod spec does not have any containers")
+	}
+	for _, p := range c[0].GetPorts() {
+		if auroraAssignedPorts == nil {
+			auroraAssignedPorts = make(map[string]int32)
 		}
-
-		auroraTaskConfig, err = NewTaskConfig(jobSummary, podInfo.GetSpec())
-		if err != nil {
-			return nil, fmt.Errorf("new task config: %s", err)
-		}
-
-		c := podInfo.GetSpec().GetContainers()
-		if len(c) == 0 {
-			return nil, fmt.Errorf("pod spec does not have any containers")
-		}
-		for _, p := range c[0].GetPorts() {
-			if auroraAssignedPorts == nil {
-				auroraAssignedPorts = make(map[string]int32)
-			}
-			auroraAssignedPorts[p.GetName()] = int32(p.GetValue())
-		}
+		auroraAssignedPorts[p.GetName()] = int32(p.GetValue())
 	}
 
 	return &api.ScheduledTask{
@@ -133,10 +118,10 @@ func newScheduledTask(
 			AssignedPorts: auroraAssignedPorts,
 			SlaveId:       auroraSlaveID,
 		},
-		Status:     auroraStatus,
-		TaskEvents: auroraTaskEvents,
-		AncestorId: ancestorID,
-		//FailureCount: nil,
+		Status:       auroraStatus,
+		TaskEvents:   auroraTaskEvents,
+		AncestorId:   ancestorID,
+		FailureCount: nil, // TODO(kxu): to be filled
 	}, nil
 }
 

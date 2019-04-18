@@ -18,7 +18,9 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 
+	v0peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -269,6 +271,16 @@ func (f *taskFilter) include(t *api.ScheduledTask) bool {
 	return true
 }
 
+type getScheduledTaskInput struct {
+	podName    *peloton.PodName
+	podID      *peloton.PodID
+	instanceID uint32
+
+	// For current run
+	jobSummary *stateless.JobSummary
+	podSpec    *pod.PodSpec
+}
+
 // getScheduledTasks generates a list of Aurora ScheduledTask in a worker
 // pool.
 func (h *ServiceHandler) getScheduledTasks(
@@ -277,70 +289,151 @@ func (h *ServiceHandler) getScheduledTasks(
 	podInfos []*pod.PodInfo,
 	filter *taskFilter,
 ) ([]*api.ScheduledTask, error) {
+	jobID := jobSummary.GetJobId()
 
 	var inputs []interface{}
 	for _, p := range podInfos {
-		inputs = append(inputs, p)
-	}
+		podSpec := p.GetSpec()
+		podID := p.GetStatus().GetPodId()
+		podName := podSpec.GetPodName()
 
-	f := func(ctx context.Context, input interface{}) (interface{}, error) {
-		podInfo, ok := input.(*pod.PodInfo)
-		if !ok {
-			return nil, fmt.Errorf("failed to cast input to pod info")
+		runID, err := util.ParseRunID(podID.GetValue())
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse pod id: %s", err)
 		}
 
-		var ts []*api.ScheduledTask
-		podName := podInfo.GetSpec().GetPodName()
+		_, instanceID, err := util.ParseTaskID(podName.GetValue())
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse pod name: %s", err)
+		}
 
 		// when PodRunsDepth set to 1, query only current run pods, when set
 		// to larger than 1, will query current plus previous run pods
-		for i := 0; i < h.config.PodRunsDepth; i++ {
-			var ancestorID *string
-			var podID *peloton.PodID
-
-			if len(ts) > 0 {
-				if ancestorID = ts[len(ts)-1].AncestorId; ancestorID == nil {
-					// No more ancestor tasks
-					break
-				}
-			}
-
-			if ancestorID != nil {
-				podID = &peloton.PodID{Value: *ancestorID}
-			}
-
-			podEvents, err := h.getPodEvents(
-				ctx,
-				podName,
-				podID,
-			)
-			if err != nil {
-				return nil, fmt.Errorf(
-					"get pod events for pod %q with pod id %q: %s",
-					podName.GetValue(), podID.GetValue(), err)
-			}
-			if len(podEvents) == 0 {
+		for i := uint64(0); i < uint64(h.config.PodRunsDepth); i++ {
+			newRunID := runID - i
+			if newRunID == 0 {
+				// No more previous run pods
 				break
 			}
 
-			var t *api.ScheduledTask
-
-			if i >= 1 {
-				t, err = ptoa.NewScheduledTaskForPrevRun(podEvents)
-			} else {
-				t, err = ptoa.NewScheduledTask(jobSummary, podInfo, podEvents)
+			newPodID := &peloton.PodID{
+				Value: util.CreateMesosTaskID(&v0peloton.JobID{
+					Value: jobID.GetValue(),
+				}, instanceID, newRunID).GetValue(),
 			}
 
+			taskInput := &getScheduledTaskInput{
+				podName:    podName,
+				instanceID: instanceID,
+			}
+
+			if i == 0 {
+				// Attach for current run, leave podID to nil so that
+				// current run will be queried
+				taskInput.jobSummary = jobSummary
+				taskInput.podSpec = podSpec
+			} else {
+				// Attach for previous run
+				taskInput.podID = newPodID
+			}
+
+			inputs = append(inputs, taskInput)
+		}
+	}
+
+	lock := &sync.Mutex{}
+	jobInfoVersionMap := make(map[string]*stateless.JobInfo)
+
+	getJobInfoForVersion := func(podVersion string) (*stateless.JobInfo, error) {
+		lock.Lock()
+		defer lock.Unlock()
+
+		var jobInfo *stateless.JobInfo
+		var err error
+
+		jobInfo, ok := jobInfoVersionMap[podVersion]
+		if !ok {
+			jobInfo, err = h.getFullJobInfoByVersion(
+				ctx,
+				jobID,
+				&peloton.EntityVersion{Value: podVersion},
+			)
+			if err != nil {
+				return nil, fmt.Errorf("get job info by version: %s", err)
+			}
+
+			jobInfoVersionMap[podVersion] = jobInfo
+		}
+
+		return jobInfo, nil
+	}
+
+	f := func(ctx context.Context, input interface{}) (interface{}, error) {
+		taskInput, ok := input.(*getScheduledTaskInput)
+		if !ok {
+			return nil, fmt.Errorf("failed to cast to get scheduled task input")
+		}
+
+		podName := taskInput.podName
+		podID := taskInput.podID
+		instanceID := taskInput.instanceID
+
+		podEvents, err := h.getPodEvents(
+			ctx,
+			podName,
+			podID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"get pod events for pod %q with pod id %q: %s",
+				podName.GetValue(), podID.GetValue(), err)
+		}
+		if len(podEvents) == 0 {
+			return nil, nil
+		}
+
+		var t *api.ScheduledTask
+
+		if taskInput.jobSummary != nil && taskInput.podSpec != nil {
+			// For current pod run
+			t, err = ptoa.NewScheduledTask(
+				taskInput.jobSummary,
+				taskInput.podSpec,
+				podEvents,
+			)
 			if err != nil {
 				return nil, fmt.Errorf(
 					"new scheduled task: %s", err)
 			}
+		} else {
+			// For previous pod run
+			podVersion := podEvents[0].GetVersion().GetValue()
+			if len(podVersion) == 0 {
+				return nil, fmt.Errorf(
+					"cannot find pod version for pod: %s",
+					podID.GetValue())
+			}
 
-			if filter.include(t) {
-				ts = append(ts, t)
+			prevJobInfo, err := getJobInfoForVersion(podVersion)
+			if err != nil {
+				return nil, fmt.Errorf("get job info for version: %s", err)
+			}
+
+			prevJobSummary := convertJobInfoToJobSummary(prevJobInfo)
+			prevPodSpec := getPodSpecForInstance(prevJobInfo.GetSpec(), instanceID)
+
+			t, err = ptoa.NewScheduledTask(prevJobSummary, prevPodSpec, podEvents)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"new scheduled task: %s", err)
 			}
 		}
-		return ts, nil
+
+		if !filter.include(t) {
+			return nil, nil
+		}
+
+		return t, nil
 	}
 
 	outputs, err := concurrency.Map(
@@ -354,7 +447,11 @@ func (h *ServiceHandler) getScheduledTasks(
 
 	var tasks []*api.ScheduledTask
 	for _, o := range outputs {
-		tasks = append(tasks, o.([]*api.ScheduledTask)...)
+		t := o.(*api.ScheduledTask)
+		if t == nil {
+			continue
+		}
+		tasks = append(tasks, t)
 	}
 	return tasks, nil
 }

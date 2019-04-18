@@ -28,9 +28,9 @@ import (
 
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
-	pod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
-	watch "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
 	watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 	"github.com/uber/peloton/pkg/common/util"
@@ -402,7 +402,7 @@ func (e *eventPublisher) getTaskStateChange(
 	// Get ScheduledTask
 	task, err := ptoa.NewScheduledTask(
 		jobSummary.GetSummary(),
-		podInfo.GetCurrent(),
+		podInfo.GetCurrent().GetSpec(),
 		podEvents,
 	)
 	if err != nil {

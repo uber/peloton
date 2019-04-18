@@ -18,7 +18,6 @@ import (
 	"sort"
 	"testing"
 
-	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
@@ -60,21 +59,11 @@ func TestNewScheduledTask(t *testing.T) {
 	j := &stateless.JobSummary{
 		Name: atop.NewJobName(jobKey),
 	}
-	p1 := &pod.PodInfo{
-		Spec: &pod.PodSpec{
-			PodName: podName1,
-			Labels:  append([]*peloton.Label{kl}, ml...),
-			Containers: []*pod.ContainerSpec{
-				{},
-			},
-		},
-		Status: &pod.PodStatus{
-			PodId: podID1,
-			Host:  host,
-			State: pod.PodState_POD_STATE_RUNNING,
-			AgentId: &mesos.AgentID{
-				Value: ptr.String(hostID),
-			},
+	p1 := &pod.PodSpec{
+		PodName: podName1,
+		Labels:  append([]*peloton.Label{kl}, ml...),
+		Containers: []*pod.ContainerSpec{
+			{},
 		},
 	}
 	pe1 := []*pod.PodEvent{
@@ -85,6 +74,7 @@ func TestNewScheduledTask(t *testing.T) {
 			ActualState: pod.PodState_POD_STATE_RUNNING.String(),
 			PrevPodId:   nil,
 			Hostname:    host,
+			AgentId:     hostID,
 		},
 		{
 			PodId:       podID1,
@@ -93,6 +83,7 @@ func TestNewScheduledTask(t *testing.T) {
 			ActualState: pod.PodState_POD_STATE_STARTING.String(),
 			PrevPodId:   nil,
 			Hostname:    host,
+			AgentId:     hostID,
 		},
 		{
 			PodId:       podID1,
@@ -101,6 +92,7 @@ func TestNewScheduledTask(t *testing.T) {
 			ActualState: pod.PodState_POD_STATE_LAUNCHED.String(),
 			PrevPodId:   nil,
 			Hostname:    host,
+			AgentId:     hostID,
 		},
 		{
 			PodId:       podID1,
@@ -108,7 +100,6 @@ func TestNewScheduledTask(t *testing.T) {
 			Message:     "Task sent for placement",
 			ActualState: pod.PodState_POD_STATE_PENDING.String(),
 			PrevPodId:   nil,
-			Hostname:    host,
 		},
 		{
 			PodId:       podID1,
@@ -116,7 +107,6 @@ func TestNewScheduledTask(t *testing.T) {
 			Message:     "",
 			ActualState: pod.PodState_POD_STATE_INITIALIZED.String(),
 			PrevPodId:   nil,
-			Hostname:    host,
 		},
 	}
 
@@ -172,37 +162,27 @@ func TestNewScheduledTask(t *testing.T) {
 	}, s)
 
 	// pod 2
-	p2 := &pod.PodInfo{
-		Spec: &pod.PodSpec{
-			PodName: podName2,
-			Labels:  append([]*peloton.Label{kl}, ml...),
-			Containers: []*pod.ContainerSpec{
-				{
-					Ports: []*pod.PortSpec{
-						{
-							Name:  "http",
-							Value: 12345,
-						},
-						{
-							Name:  "tchannel",
-							Value: 54321,
-						},
+	p2 := &pod.PodSpec{
+		PodName: podName2,
+		Labels:  append([]*peloton.Label{kl}, ml...),
+		Containers: []*pod.ContainerSpec{
+			{
+				Ports: []*pod.PortSpec{
+					{
+						Name:  "http",
+						Value: 12345,
 					},
-					Resource: &pod.ResourceSpec{
-						CpuLimit:    1.5,
-						MemLimitMb:  1024,
-						DiskLimitMb: 128,
-						GpuLimit:    2.0,
+					{
+						Name:  "tchannel",
+						Value: 54321,
 					},
 				},
-			},
-		},
-		Status: &pod.PodStatus{
-			PodId: podID2,
-			Host:  host,
-			State: pod.PodState_POD_STATE_KILLED,
-			AgentId: &mesos.AgentID{
-				Value: ptr.String(hostID),
+				Resource: &pod.ResourceSpec{
+					CpuLimit:    1.5,
+					MemLimitMb:  1024,
+					DiskLimitMb: 128,
+					GpuLimit:    2.0,
+				},
 			},
 		},
 	}
@@ -214,6 +194,7 @@ func TestNewScheduledTask(t *testing.T) {
 			ActualState: pod.PodState_POD_STATE_KILLED.String(),
 			PrevPodId:   &peloton.PodID{Value: *ancestorID2},
 			Hostname:    host,
+			AgentId:     hostID,
 		},
 		{
 			PodId:       podID2,
@@ -222,6 +203,7 @@ func TestNewScheduledTask(t *testing.T) {
 			ActualState: pod.PodState_POD_STATE_KILLING.String(),
 			PrevPodId:   &peloton.PodID{Value: *ancestorID2},
 			Hostname:    host,
+			AgentId:     hostID,
 		},
 		{
 			PodId:       podID2,
@@ -230,6 +212,7 @@ func TestNewScheduledTask(t *testing.T) {
 			ActualState: pod.PodState_POD_STATE_RUNNING.String(),
 			PrevPodId:   &peloton.PodID{Value: *ancestorID2},
 			Hostname:    host,
+			AgentId:     hostID,
 		},
 		{
 			PodId:       podID2,
@@ -238,6 +221,7 @@ func TestNewScheduledTask(t *testing.T) {
 			ActualState: pod.PodState_POD_STATE_RUNNING.String(),
 			PrevPodId:   &peloton.PodID{Value: *ancestorID2},
 			Hostname:    host,
+			AgentId:     hostID,
 		},
 		{
 			PodId:       podID2,
@@ -246,6 +230,7 @@ func TestNewScheduledTask(t *testing.T) {
 			ActualState: pod.PodState_POD_STATE_STARTING.String(),
 			PrevPodId:   &peloton.PodID{Value: *ancestorID2},
 			Hostname:    host,
+			AgentId:     hostID,
 		},
 		{
 			PodId:       podID2,
@@ -254,6 +239,7 @@ func TestNewScheduledTask(t *testing.T) {
 			ActualState: pod.PodState_POD_STATE_LAUNCHED.String(),
 			PrevPodId:   &peloton.PodID{Value: *ancestorID2},
 			Hostname:    host,
+			AgentId:     hostID,
 		},
 		{
 			PodId:       podID2,
@@ -261,7 +247,6 @@ func TestNewScheduledTask(t *testing.T) {
 			Message:     "Task sent for placement",
 			ActualState: pod.PodState_POD_STATE_PENDING.String(),
 			PrevPodId:   &peloton.PodID{Value: *ancestorID2},
-			Hostname:    host,
 		},
 		{
 			PodId:       podID2,
@@ -269,7 +254,6 @@ func TestNewScheduledTask(t *testing.T) {
 			Message:     "",
 			ActualState: pod.PodState_POD_STATE_INITIALIZED.String(),
 			PrevPodId:   &peloton.PodID{Value: *ancestorID2},
-			Hostname:    host,
 		},
 	}
 

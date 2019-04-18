@@ -1101,6 +1101,7 @@ func (suite *ServiceHandlerTestSuite) expectGetJobSummary(
 		}).
 		Return(&statelesssvc.GetJobResponse{
 			Summary: &stateless.JobSummary{
+				JobId:         jobID,
 				Name:          atop.NewJobName(jobKey),
 				InstanceCount: instanceCount,
 			},
@@ -1262,11 +1263,30 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 	}
 	jobID := fixture.PelotonJobID()
 	entityVersion := fixture.PelotonEntityVersion()
+	podVersion := &peloton.EntityVersion{Value: "1-0-0"}
 	labels := fixture.DefaultPelotonJobLabels(jobKey)
 
 	// Sets up jobKey to jobID mapping, and returns a basic JobInfo
 	// for the specific jobID
 	suite.expectGetJobSummary(jobKey, jobID, 2)
+
+	// Only expect to be called once when querying for previous pod run
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId:   jobID,
+			Version: podVersion,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				JobId: jobID,
+				Spec: &stateless.JobSpec{
+					Name: atop.NewJobName(jobKey),
+					DefaultSpec: &pod.PodSpec{
+						Containers: []*pod.ContainerSpec{{}},
+					},
+				},
+			},
+		}, nil)
 
 	// Sets up GetPodEvents queries for all the pods (pod 0 and 1) from
 	// all the runs (run 1, 2, 3) - PodEvent will be used to construct
@@ -1367,6 +1387,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 				Message:     "",
 				ActualState: e.taskState.String(),
 				Hostname:    "peloton-host-0",
+				Version:     podVersion,
 			},
 		}
 
@@ -1397,7 +1418,7 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 	for p := range expectedPodNames {
 		podNames = append(podNames, &peloton.PodName{Value: p})
 	}
-	suite.expectQueryPods(jobID, podNames, labels, entityVersion, 2)
+	suite.expectQueryPods(jobID, podNames, labels, entityVersion, 3)
 
 	resp, err := suite.handler.GetTasksWithoutConfigs(suite.ctx, query)
 	suite.NoError(err)
