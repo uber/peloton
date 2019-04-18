@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"strconv"
 	"testing"
@@ -45,6 +44,7 @@ import (
 	"github.com/uber/peloton/pkg/aurorabridge/opaquedata"
 
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 	"go.uber.org/thriftrw/ptr"
@@ -2546,7 +2546,6 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned() {
 		Name:        atop.NewJobName(req.GetTaskConfig().GetJob()),
 		DefaultSpec: podSpec,
 		InstanceSpec: map[uint32]*pod.PodSpec{
-			0: podSpec,
 			1: podSpec1,
 			2: podSpec2,
 		},
@@ -2680,10 +2679,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned_AddI
 		Name:        atop.NewJobName(req.GetTaskConfig().GetJob()),
 		DefaultSpec: podSpec,
 		InstanceSpec: map[uint32]*pod.PodSpec{
-			0: podSpec,
 			1: podSpec1,
 			2: podSpec2,
-			3: podSpec,
 		},
 	}, newSpec)
 }
@@ -2815,7 +2812,6 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned_Remo
 		Name:        atop.NewJobName(req.GetTaskConfig().GetJob()),
 		DefaultSpec: podSpec,
 		InstanceSpec: map[uint32]*pod.PodSpec{
-			0: podSpec,
 			1: podSpec1,
 		},
 	}, newSpec)
@@ -3000,12 +2996,13 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_WipeOut
 // and others are kept with original spec.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_UpdateOnly() {
 	instances := int32(3)
-	jobSpec := &stateless.JobSpec{
-		DefaultSpec: &pod.PodSpec{
-			Labels: []*peloton.Label{
-				{Key: "k2", Value: "v2"},
-			},
+	podSpec := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{Key: "k2", Value: "v2"},
 		},
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: podSpec,
 	}
 	podStates := map[uint32]*podStateSpec{
 		0: {
@@ -3038,7 +3035,7 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_UpdateO
 		1: {},
 	}
 	specChangeInstances := map[uint32]struct{}{
-		1: {},
+		1: {}, 2: {}, 3: {},
 	}
 
 	newJobSpec := suite.handler.createJobSpecForUpdateInternal(
@@ -3050,16 +3047,11 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_UpdateO
 		specChangeInstances,
 	)
 	suite.Equal(&stateless.JobSpec{
-		DefaultSpec: jobSpec.GetDefaultSpec(),
+		DefaultSpec: podSpec,
 		InstanceSpec: map[uint32]*pod.PodSpec{
 			0: {
 				Labels: []*peloton.Label{
 					{Key: "k1", Value: "v1"},
-				},
-			},
-			1: {
-				Labels: []*peloton.Label{
-					{Key: "k2", Value: "v2"},
 				},
 			},
 			2: {
@@ -3075,13 +3067,14 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_UpdateO
 // createJobSpecForUpdateInternal returns job spec which includes
 // "bridge update label" when a force instance start is needed.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_BridgeUpdateLabel() {
-	instances := int32(3)
-	jobSpec := &stateless.JobSpec{
-		DefaultSpec: &pod.PodSpec{
-			Labels: []*peloton.Label{
-				{Key: "k2", Value: "v2"},
-			},
+	instances := int32(4)
+	podSpec := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{Key: "k2", Value: "v2"},
 		},
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: podSpec,
 	}
 	podStates := map[uint32]*podStateSpec{
 		0: {
@@ -3109,14 +3102,25 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_BridgeU
 				},
 			},
 		},
+		3: {
+			state: pod.PodState_POD_STATE_KILLED,
+			podSpec: &pod.PodSpec{
+				Labels: []*peloton.Label{
+					{Key: "k2", Value: "v2"},
+					{Key: common.BridgeUpdateLabelKey, Value: "1"},
+				},
+			},
+		},
 	}
 	terminalInstances := map[uint32]struct{}{
-		1: {}, 2: {},
+		1: {}, 2: {}, 3: {},
 	}
 	updateInstances := map[uint32]struct{}{
 		1: {}, 2: {},
 	}
-	specChangeInstances := map[uint32]struct{}{}
+	specChangeInstances := map[uint32]struct{}{
+		0: {},
+	}
 
 	newJobSpec := suite.handler.createJobSpecForUpdateInternal(
 		instances,
@@ -3127,7 +3131,7 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_BridgeU
 		specChangeInstances,
 	)
 	suite.Equal(&stateless.JobSpec{
-		DefaultSpec: jobSpec.GetDefaultSpec(),
+		DefaultSpec: podSpec,
 		InstanceSpec: map[uint32]*pod.PodSpec{
 			0: {
 				Labels: []*peloton.Label{
@@ -3146,6 +3150,12 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_BridgeU
 					{Key: common.BridgeUpdateLabelKey, Value: _randIntStr},
 				},
 			},
+			3: {
+				Labels: []*peloton.Label{
+					{Key: "k2", Value: "v2"},
+					{Key: common.BridgeUpdateLabelKey, Value: "1"},
+				},
+			},
 		},
 	}, newJobSpec)
 }
@@ -3155,12 +3165,13 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_BridgeU
 // "bridge update label" when pod spec is changed.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_SpecChangeSwipeLabel() {
 	instances := int32(3)
-	jobSpec := &stateless.JobSpec{
-		DefaultSpec: &pod.PodSpec{
-			Labels: []*peloton.Label{
-				{Key: "k2", Value: "v2"},
-			},
+	podSpec := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{Key: "k2", Value: "v2"},
 		},
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: podSpec,
 	}
 	podStates := map[uint32]*podStateSpec{
 		0: {
@@ -3198,7 +3209,7 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_SpecCha
 		1: {}, 2: {},
 	}
 	specChangeInstances := map[uint32]struct{}{
-		1: {}, 2: {},
+		0: {}, 1: {}, 2: {},
 	}
 
 	newJobSpec := suite.handler.createJobSpecForUpdateInternal(
@@ -3210,22 +3221,12 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_SpecCha
 		specChangeInstances,
 	)
 	suite.Equal(&stateless.JobSpec{
-		DefaultSpec: jobSpec.GetDefaultSpec(),
+		DefaultSpec: podSpec,
 		InstanceSpec: map[uint32]*pod.PodSpec{
 			0: {
 				Labels: []*peloton.Label{
 					{Key: "k1", Value: "v1"},
 					{Key: common.BridgeUpdateLabelKey, Value: "1"},
-				},
-			},
-			1: {
-				Labels: []*peloton.Label{
-					{Key: "k2", Value: "v2"},
-				},
-			},
-			2: {
-				Labels: []*peloton.Label{
-					{Key: "k2", Value: "v2"},
 				},
 			},
 		},
@@ -3237,13 +3238,14 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_SpecCha
 // pod spec if the instance has no config change and is not terminated.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_KeepSpec() {
 	instances := int32(3)
-	jobSpec := &stateless.JobSpec{
-		DefaultSpec: &pod.PodSpec{
-			Labels: []*peloton.Label{
-				{Key: "k2", Value: "v2"},
-				{Key: "k1", Value: "v1"},
-			},
+	podSpec := &pod.PodSpec{
+		Labels: []*peloton.Label{
+			{Key: "k2", Value: "v2"},
+			{Key: "k1", Value: "v1"},
 		},
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: podSpec,
 	}
 	podStates := map[uint32]*podStateSpec{
 		0: {
@@ -3279,7 +3281,7 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_KeepSpe
 		1: {}, 2: {},
 	}
 	specChangeInstances := map[uint32]struct{}{
-		2: {},
+		0: {}, 2: {},
 	}
 
 	newJobSpec := suite.handler.createJobSpecForUpdateInternal(
@@ -3291,13 +3293,15 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_KeepSpe
 		specChangeInstances,
 	)
 	suite.Equal(&stateless.JobSpec{
-		DefaultSpec: jobSpec.GetDefaultSpec(),
+		DefaultSpec: podSpec,
 		InstanceSpec: map[uint32]*pod.PodSpec{
+			// instance not to be updated
 			0: {
 				Labels: []*peloton.Label{
 					{Key: "k1", Value: "v1"},
 				},
 			},
+			// instance does not have config change, keep original
 			1: {
 				Labels: []*peloton.Label{
 					{Key: "k1", Value: "v1"},
@@ -3305,16 +3309,98 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_KeepSpe
 					{Key: common.BridgeUpdateLabelKey, Value: "1"},
 				},
 			},
-			2: {
-				Labels: []*peloton.Label{
-					{Key: "k2", Value: "v2"},
-					{Key: "k1", Value: "v1"},
-				},
-			},
+			// instance 2 expected to use the new config
 		},
 	}, newJobSpec)
 }
 
+// TestGetInstanceSpecLabelOnly check getInstanceSpecLabelOnly extracts
+// instance spec correctly.
+func TestGetInstanceSpecLabelOnly(t *testing.T) {
+	testCases := []struct {
+		name   string
+		pod    *pod.PodSpec
+		expect *pod.PodSpec
+	}{
+		{
+			"test with pod spec with labels only",
+			&pod.PodSpec{
+				Labels: []*peloton.Label{
+					{Key: "k1", Value: "v1"},
+				},
+			},
+			&pod.PodSpec{
+				Labels: []*peloton.Label{
+					{Key: "k1", Value: "v1"},
+				},
+			},
+		},
+		{
+			"test with pod spec with labels and one boolean field",
+			&pod.PodSpec{
+				Labels: []*peloton.Label{
+					{Key: "k1", Value: "v1"},
+				},
+				Controller: true,
+			},
+			&pod.PodSpec{
+				Labels: []*peloton.Label{
+					{Key: "k1", Value: "v1"},
+				},
+				Controller: true,
+			},
+		},
+		{
+			"test with pod spec with labels and multiple boolean fields",
+			&pod.PodSpec{
+				Labels: []*peloton.Label{
+					{Key: "k1", Value: "v1"},
+				},
+				Controller: false,
+				Revocable:  true,
+			},
+			&pod.PodSpec{
+				Labels: []*peloton.Label{
+					{Key: "k1", Value: "v1"},
+				},
+				Controller: false,
+				Revocable:  true,
+			},
+		},
+		{
+			"test with pod spec with redundant fields",
+			&pod.PodSpec{
+				PodName: &peloton.PodName{Value: "pod-1"},
+				Containers: []*pod.ContainerSpec{
+					{
+						Resource: &pod.ResourceSpec{CpuLimit: 100},
+						Image:    "test-image",
+					},
+				},
+				Labels: []*peloton.Label{
+					{Key: "k1", Value: "v1"},
+				},
+				Controller: false,
+				Revocable:  true,
+			},
+			&pod.PodSpec{
+				Labels: []*peloton.Label{
+					{Key: "k1", Value: "v1"},
+				},
+				Controller: false,
+				Revocable:  true,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expect, getInstanceSpecLabelOnly(tc.pod))
+		})
+	}
+}
+
+// TestGetTerminalInstances tests getTerminalInstances util function.
 func TestGetTerminalInstances(t *testing.T) {
 	req := &api.JobUpdateRequest{
 		InstanceCount: ptr.Int32(3),
@@ -3371,12 +3457,8 @@ func (suite *ServiceHandlerTestSuite) TestGetUpdateInstances_PinnedInstances() {
 
 // TestGetSpecChangedInstances tests getSpecChangedInstances util function.
 func (suite *ServiceHandlerTestSuite) TestGetSpecChangedInstances() {
-	updateInstances := map[uint32]struct{}{
-		0: {},
-		1: {},
-		2: {},
-	}
-	newPodSpec := &pod.PodSpec{
+	instances := int32(3)
+	genPodSpec := &pod.PodSpec{
 		Labels: []*peloton.Label{
 			{Key: "k1", Value: "v1"},
 			{Key: "k2", Value: "v2"},
@@ -3412,9 +3494,9 @@ func (suite *ServiceHandlerTestSuite) TestGetSpecChangedInstances() {
 
 	si, err := suite.handler.getSpecChangedInstances(
 		suite.ctx,
-		updateInstances,
+		instances,
 		podStates,
-		newPodSpec,
+		genPodSpec,
 	)
 	suite.NoError(err)
 	suite.Equal(map[uint32]struct{}{
