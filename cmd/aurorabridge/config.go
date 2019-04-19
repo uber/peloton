@@ -16,6 +16,7 @@ package main
 
 import (
 	"github.com/uber/peloton/pkg/aurorabridge"
+	auth "github.com/uber/peloton/pkg/auth"
 	"github.com/uber/peloton/pkg/common/health"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/logging"
@@ -34,4 +35,5 @@ type Config struct {
 	RespoolLoader  aurorabridge.RespoolLoaderConfig  `yaml:"respool_loader"`
 	ServiceHandler aurorabridge.ServiceHandlerConfig `yaml:"service_handler"`
 	EventPublisher aurorabridge.EventPublisherConfig `yaml:"event_publisher"`
+	Auth           auth.Config                       `yaml:"auth"`
 }

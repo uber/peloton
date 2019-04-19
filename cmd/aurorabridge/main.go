@@ -25,6 +25,7 @@ import (
 	watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/auroraschedulermanagerserver"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/readonlyschedulerserver"
+	auth_impl "github.com/uber/peloton/pkg/auth/impl"
 
 	"github.com/uber/peloton/pkg/aurorabridge"
 	bridgecommon "github.com/uber/peloton/pkg/aurorabridge/common"
@@ -37,6 +38,8 @@ import (
 	"github.com/uber/peloton/pkg/common/metrics"
 	"github.com/uber/peloton/pkg/common/rpc"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/peer"
+	"github.com/uber/peloton/pkg/middleware/inbound"
+	"github.com/uber/peloton/pkg/middleware/outbound"
 
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc"
@@ -191,12 +194,38 @@ func main() {
 		},
 	}
 
+	securityManager, err := auth_impl.CreateNewSecurityManager(&cfg.Auth)
+	if err != nil {
+		log.WithError(err).
+			Fatal("Could not enable security feature")
+	}
+
+	authInboundMiddleware := inbound.NewAuthInboundMiddleware(securityManager)
+
+	securityClient, err := auth_impl.CreateNewSecurityClient(&cfg.Auth)
+	if err != nil {
+		log.WithError(err).
+			Fatal("Could not establish secure inter-component communication")
+	}
+
+	authOutboundMiddleware := outbound.NewAuthOutboundMiddleware(securityClient)
+
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:      common.PelotonAuroraBridge,
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
 		Metrics: yarpc.MetricsConfig{
 			Tally: rootScope,
+		},
+		InboundMiddleware: yarpc.InboundMiddleware{
+			Unary:  authInboundMiddleware,
+			Stream: authInboundMiddleware,
+			Oneway: authInboundMiddleware,
+		},
+		OutboundMiddleware: yarpc.OutboundMiddleware{
+			Unary:  authOutboundMiddleware,
+			Stream: authOutboundMiddleware,
+			Oneway: authOutboundMiddleware,
 		},
 	})
 
