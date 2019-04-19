@@ -114,6 +114,14 @@ func JobRecover(ctx context.Context, entity goalstate.Entity) error {
 			return err
 		}
 
+		// delete from job_index
+		if err := goalStateDriver.jobIndexOps.Delete(
+			ctx,
+			cachedJob.ID(),
+		); err != nil {
+			return err
+		}
+
 		// remove the update
 		if err := goalStateDriver.updateStore.DeleteUpdate(
 			ctx,

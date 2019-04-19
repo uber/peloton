@@ -1963,6 +1963,9 @@ func (suite *JobTestSuite) TestDelete() {
 // TestDelete tests failure deleting a job
 func (suite *JobTestSuite) TestDeleteFailure() {
 	// DeleteJob failure
+	suite.jobIndexOps.EXPECT().
+		Delete(gomock.Any(), suite.jobID).
+		Return(nil)
 	suite.jobStore.EXPECT().
 		DeleteJob(gomock.Any(), suite.jobID.GetValue()).
 		Return(yarpcerrors.InternalErrorf("DeleteJob error"))
@@ -1971,9 +1974,6 @@ func (suite *JobTestSuite) TestDeleteFailure() {
 	suite.Equal("DeleteJob error", yarpcerrors.ErrorMessage(err))
 
 	// jobIndexOp failure
-	suite.jobStore.EXPECT().
-		DeleteJob(gomock.Any(), suite.jobID.GetValue()).
-		Return(nil)
 	suite.jobIndexOps.EXPECT().
 		Delete(gomock.Any(), suite.jobID).
 		Return(yarpcerrors.InternalErrorf("jobIndexOps error"))

@@ -177,6 +177,7 @@ func NewDriver(
 		volumeStore:                   volumeStore,
 		updateStore:                   updateStore,
 		jobConfigOps:                  ormobjects.NewJobConfigOps(ormStore),
+		jobIndexOps:                   ormobjects.NewJobIndexOps(ormStore),
 		jobFactory:                    jobFactory,
 		taskLauncher:                  taskLauncher,
 		mtx:                           NewMetrics(scope),
@@ -229,6 +230,7 @@ type driver struct {
 	volumeStore  storage.PersistentVolumeStore
 	updateStore  storage.UpdateStore
 	jobConfigOps ormobjects.JobConfigOps // DB ops for job_config table
+	jobIndexOps  ormobjects.JobIndexOps  // DB ops for job_index table
 
 	// jobFactory is the in-memory cache object fpr jobs and tasks
 	jobFactory cached.JobFactory

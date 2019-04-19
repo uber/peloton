@@ -2376,17 +2376,22 @@ func (j *job) Delete(ctx context.Context) error {
 	// It is possible to receive a timeout error although the delete was
 	// successful. Hence, invalidate the cache irrespective of whether an error
 	// occurred or not
-	defer j.invalidateCache()
+	defer func() {
+		j.Lock()
+		defer j.Unlock()
+
+		j.invalidateCache()
+	}()
+
+	// delete from job_index
+	if err := j.jobFactory.jobIndexOps.Delete(ctx, j.ID()); err != nil {
+		return err
+	}
 
 	if err := j.jobFactory.jobStore.DeleteJob(
 		ctx,
 		j.ID().GetValue(),
 	); err != nil {
-		return err
-	}
-
-	// delete from job_index
-	if err := j.jobFactory.jobIndexOps.Delete(ctx, j.ID()); err != nil {
 		return err
 	}
 

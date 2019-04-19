@@ -32,6 +32,7 @@ import (
 	goalstatemocks "github.com/uber/peloton/pkg/common/goalstate/mocks"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
+	ormmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -56,6 +57,7 @@ type jobActionsTestSuite struct {
 	cachedTask            *cachedmocks.MockTask
 	jobStore              *storemocks.MockJobStore
 	updateStore           *storemocks.MockUpdateStore
+	jobIndexOps           *ormmocks.MockJobIndexOps
 }
 
 func (suite *jobActionsTestSuite) SetupTest() {
@@ -67,6 +69,7 @@ func (suite *jobActionsTestSuite) SetupTest() {
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
 	suite.updateGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.jobIndexOps = ormmocks.NewMockJobIndexOps(suite.ctrl)
 
 	suite.goalStateDriver = &driver{
 		updateStore:  suite.updateStore,
@@ -75,6 +78,7 @@ func (suite *jobActionsTestSuite) SetupTest() {
 		jobEngine:    suite.jobGoalStateEngine,
 		taskEngine:   suite.taskGoalStateEngine,
 		jobFactory:   suite.jobFactory,
+		jobIndexOps:  suite.jobIndexOps,
 		mtx:          NewMetrics(tally.NoopScope),
 		cfg:          &Config{},
 	}
@@ -263,6 +267,10 @@ func (suite *jobActionsTestSuite) TestJobRecoverActionFailToRecover() {
 
 	suite.jobStore.EXPECT().
 		DeleteJob(gomock.Any(), suite.jobID.GetValue()).
+		Return(nil)
+
+	suite.jobIndexOps.EXPECT().
+		Delete(gomock.Any(), suite.jobID).
 		Return(nil)
 
 	suite.jobStore.EXPECT().
