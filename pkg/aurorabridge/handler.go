@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	v0peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
@@ -858,11 +859,17 @@ func (h *ServiceHandler) KillTasks(
 
 	result, err := h.killTasks(ctx, job, instances, message)
 	defer func() {
+		var instancesArr []string
+		for instanceID := range instances {
+			instancesArr = append(instancesArr, string(instanceID))
+		}
+		instancesStr := strings.Join(instancesArr, ",")
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
 					"job":       job,
-					"instances": instances,
+					"instances": instancesStr,
 					"message":   message,
 				},
 				"code":  err.responseCode,
@@ -874,11 +881,10 @@ func (h *ServiceHandler) KillTasks(
 		log.WithFields(log.Fields{
 			"params": log.Fields{
 				"job":       job,
-				"instances": instances,
+				"instances": instancesStr,
 				"message":   message,
 			},
-			"result": result,
-		}).Debug("KillTasks success")
+		}).Info("KillTasks success")
 	}()
 	return newResponse(result, err), nil
 }
@@ -1007,11 +1013,12 @@ func (h *ServiceHandler) StartJobUpdate(
 
 		log.WithFields(log.Fields{
 			"params": log.Fields{
-				"request": request,
 				"message": message,
+				"request": request, // TODO (varung): remove post PRR or as necessary
 			},
-			"result": result,
-		}).Debug("StartJobUpdate success")
+			"update_id":        result.GetStartJobUpdateResult().GetKey().GetID(),
+			"job_update_state": result.GetStartJobUpdateResult().GetUpdateSummary().GetState().String(),
+		}).Info("StartJobUpdate success")
 	}()
 	return newResponse(result, err), nil
 }
@@ -1039,11 +1046,11 @@ func (h *ServiceHandler) PauseJobUpdate(
 
 		log.WithFields(log.Fields{
 			"params": log.Fields{
-				"key":     key,
-				"message": message,
+				"job":       key.GetJob(),
+				"update_id": key.GetID(),
+				"message":   message,
 			},
-			"result": result,
-		}).Debug("PauseJobUpdate success")
+		}).Info("PauseJobUpdate success")
 	}()
 	return newResponse(result, err), nil
 }
@@ -1095,11 +1102,11 @@ func (h *ServiceHandler) ResumeJobUpdate(
 
 		log.WithFields(log.Fields{
 			"params": log.Fields{
-				"key":     key,
-				"message": message,
+				"job":       key.GetJob(),
+				"update_id": key.GetID(),
+				"message":   message,
 			},
-			"result": result,
-		}).Debug("ResumeJobUpdate success")
+		}).Info("ResumeJobUpdate success")
 	}()
 	return newResponse(result, err), nil
 }
@@ -1151,11 +1158,11 @@ func (h *ServiceHandler) AbortJobUpdate(
 
 		log.WithFields(log.Fields{
 			"params": log.Fields{
-				"key":     key,
-				"message": message,
+				"job":       key.GetJob(),
+				"update_id": key.GetID(),
+				"message":   message,
 			},
-			"result": result,
-		}).Debug("AbortJobUpdate success")
+		}).Info("AbortJobUpdate success")
 	}()
 	return newResponse(result, err), nil
 }
@@ -1207,11 +1214,11 @@ func (h *ServiceHandler) RollbackJobUpdate(
 
 		log.WithFields(log.Fields{
 			"params": log.Fields{
-				"key":     key,
-				"message": message,
+				"job":       key.GetJob(),
+				"update_id": key.GetID(),
+				"message":   message,
 			},
-			"result": result,
-		}).Debug("RollbackJobUpdate success")
+		}).Info("RollbackJobUpdate success")
 	}()
 	return newResponse(result, err), nil
 }
@@ -1316,10 +1323,11 @@ func (h *ServiceHandler) PulseJobUpdate(
 
 		log.WithFields(log.Fields{
 			"params": log.Fields{
-				"key": key,
+				"job":       key.GetJob(),
+				"update_id": key.GetID(),
 			},
-			"result": result,
-		}).Debug("PulseJobUpdate success")
+			"result": result.GetPulseJobUpdateResult().GetStatus().String(),
+		}).Info("PulseJobUpdate success")
 	}()
 	return newResponse(result, err), nil
 }
