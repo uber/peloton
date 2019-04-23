@@ -386,7 +386,7 @@ def test__auto_rollback_with_pinned_instances__remove_instances(client):
                                                         for i in update_instances])
     pinned_req.instanceCount = 8
     pinned_req.settings.maxFailedInstances = 3
-    pinned_req.settings.updateGroupSize = 2
+    pinned_req.settings.updateGroupSize = 1
 
     res = client.start_job_update(
         pinned_req,
