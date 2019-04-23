@@ -95,9 +95,6 @@ type Task interface {
 	// GetLabels returns the task labels
 	GetLabels(ctx context.Context) ([]*peloton.Label, error)
 
-	// GetLastRuntimeUpdateTime returns the last time the task runtime was updated.
-	GetLastRuntimeUpdateTime() time.Time
-
 	// CurrentState of the task.
 	CurrentState() TaskStateVector
 
@@ -149,8 +146,6 @@ type task struct {
 	runtime *pbtask.RuntimeInfo // task runtime information
 
 	config *taskConfigCache // task configuration information
-
-	lastRuntimeUpdateTime time.Time // last time at which the task runtime information was updated
 }
 
 func (t *task) ID() uint32 {
@@ -347,7 +342,6 @@ func (t *task) CreateTask(ctx context.Context, runtime *pbtask.RuntimeInfo, owne
 	}
 
 	t.runtime = runtime
-	t.lastRuntimeUpdateTime = time.Now()
 	runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
 	labelsCopy = t.copyLabelsInCache()
 	return nil
@@ -422,7 +416,6 @@ func (t *task) PatchTask(ctx context.Context, diff jobmgrcommon.RuntimeDiff) err
 
 	// Store the new runtime in cache
 	t.runtime = newRuntimePtr
-	t.lastRuntimeUpdateTime = time.Now()
 	runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
 	labelsCopy = t.copyLabelsInCache()
 	return nil
@@ -496,7 +489,6 @@ func (t *task) CompareAndSetTask(
 
 	// Store the new runtime in cache
 	t.runtime = runtime
-	t.lastRuntimeUpdateTime = time.Now()
 	runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
 	labelsCopy = t.copyLabelsInCache()
 	return runtimeCopy, nil
@@ -647,12 +639,6 @@ func (t *task) GetLabels(ctx context.Context) ([]*peloton.Label, error) {
 	}
 
 	return t.copyLabelsInCache(), nil
-}
-
-func (t *task) GetLastRuntimeUpdateTime() time.Time {
-	t.RLock()
-	defer t.RUnlock()
-	return t.lastRuntimeUpdateTime
 }
 
 func (t *task) CurrentState() TaskStateVector {

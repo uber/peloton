@@ -78,6 +78,9 @@ func TestTaskStopShutdownExecutor(t *testing.T) {
 		State:       pbtask.TaskState_RUNNING,
 		MesosTaskId: taskID,
 		AgentID:     agentID,
+		Revision: &peloton.ChangeLog{
+			UpdatedAt: uint64(time.Now().Add(-_defaultShutdownExecutorTimeout).UnixNano()),
+		},
 	}
 
 	jobFactory.EXPECT().
@@ -88,9 +91,6 @@ func TestTaskStopShutdownExecutor(t *testing.T) {
 
 	cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(runtime, nil)
-
-	cachedTask.EXPECT().
-		GetLastRuntimeUpdateTime().Return(time.Now().Add(-_defaultShutdownExecutorTimeout))
 
 	hostMock.EXPECT().
 		ShutdownExecutors(gomock.Any(), gomock.Any()).
@@ -146,6 +146,9 @@ func TestTaskStopNoTimeout(t *testing.T) {
 		State:       pbtask.TaskState_RUNNING,
 		MesosTaskId: taskID,
 		AgentID:     agentID,
+		Revision: &peloton.ChangeLog{
+			UpdatedAt: uint64(time.Now().UnixNano()),
+		},
 	}
 
 	jobFactory.EXPECT().
@@ -156,9 +159,6 @@ func TestTaskStopNoTimeout(t *testing.T) {
 
 	cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(runtime, nil)
-
-	cachedTask.EXPECT().
-		GetLastRuntimeUpdateTime().Return(time.Now())
 
 	cachedTask.EXPECT().
 		JobID().Return(jobID)

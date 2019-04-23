@@ -212,6 +212,9 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.taskRuntime.FailureCount = 2
+	suite.taskRuntime.Revision = &peloton.ChangeLog{
+		UpdatedAt: uint64(time.Now().Add(-3 * time.Minute).UnixNano()),
+	}
 	suite.cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
 	suite.taskConfig = &pbtask.TaskConfig{
@@ -227,10 +230,6 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 
 	suite.cachedJob.EXPECT().
 		ID().Return(suite.jobID)
-
-	suite.cachedTask.EXPECT().
-		GetLastRuntimeUpdateTime().
-		Return(time.Now().Add(-3 * time.Minute))
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
@@ -279,6 +278,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
+	suite.taskRuntime.Revision = &peloton.ChangeLog{UpdatedAt: uint64(time.Now().UnixNano())}
 	suite.cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
 	suite.taskStore.EXPECT().GetTaskConfig(
@@ -303,10 +303,6 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 
 	suite.cachedJob.EXPECT().
 		ID().Return(suite.jobID)
-
-	suite.cachedTask.EXPECT().
-		GetLastRuntimeUpdateTime().
-		Return(time.Now())
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
@@ -395,6 +391,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestLostTaskRetry() {
 		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
+	suite.lostTaskRuntime.Revision = &peloton.ChangeLog{UpdatedAt: uint64(time.Now().UnixNano())}
 	suite.cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(suite.lostTaskRuntime, nil)
 	suite.taskStore.EXPECT().GetTaskConfig(
@@ -419,10 +416,6 @@ func (suite *TaskTerminatedRetryTestSuite) TestLostTaskRetry() {
 
 	suite.cachedJob.EXPECT().
 		ID().Return(suite.jobID)
-
-	suite.cachedTask.EXPECT().
-		GetLastRuntimeUpdateTime().
-		Return(time.Now())
 
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
@@ -508,6 +501,9 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryUpdateTerminat
 		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
+	suite.taskRuntime.Revision = &peloton.ChangeLog{
+		UpdatedAt: uint64(time.Now().Add(-3 * time.Minute).UnixNano()),
+	}
 	suite.cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
 	suite.taskStore.EXPECT().GetTaskConfig(
@@ -531,9 +527,6 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryUpdateTerminat
 	suite.cachedJob.EXPECT().
 		ID().
 		Return(suite.jobID)
-	suite.cachedTask.EXPECT().
-		GetLastRuntimeUpdateTime().
-		Return(time.Now().Add(-3 * time.Minute))
 	suite.updateGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()

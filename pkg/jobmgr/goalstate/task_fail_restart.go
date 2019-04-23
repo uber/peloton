@@ -40,7 +40,7 @@ const (
 func rescheduleTask(
 	ctx context.Context,
 	cachedJob cached.Job,
-	cachedTask cached.Task,
+	instanceID uint32,
 	taskRuntime *task.RuntimeInfo,
 	taskConfig *task.TaskConfig,
 	goalStateDriver *driver,
@@ -57,7 +57,6 @@ func rescheduleTask(
 
 	var runtimeDiff jobmgrcommon.RuntimeDiff
 	scheduleDelay := getScheduleDelay(
-		cachedTask,
 		taskRuntime,
 		goalStateDriver.cfg.InitialTaskBackoff,
 		goalStateDriver.cfg.MaxTaskBackoff,
@@ -69,12 +68,12 @@ func rescheduleTask(
 		// should have been scheduled. Reinit the task right away.
 		runtimeDiff = taskutil.RegenerateMesosTaskIDDiff(
 			jobID,
-			cachedTask.ID(),
+			instanceID,
 			taskRuntime,
 			healthState)
 		runtimeDiff[jobmgrcommon.MessageField] = _rescheduleMessage
 		log.WithField("job_id", jobID).
-			WithField("instance_id", cachedTask.ID()).
+			WithField("instance_id", instanceID).
 			Debug("restarting terminated task")
 	} else if taskRuntime.GetMessage() != _throttleMessage {
 		// only update the message when the throttled task enters
@@ -86,13 +85,13 @@ func rescheduleTask(
 
 	if len(runtimeDiff) != 0 {
 		err := cachedJob.PatchTasks(ctx,
-			map[uint32]jobmgrcommon.RuntimeDiff{cachedTask.ID(): runtimeDiff})
+			map[uint32]jobmgrcommon.RuntimeDiff{instanceID: runtimeDiff})
 		if err != nil {
 			return err
 		}
 	}
 
-	goalStateDriver.EnqueueTask(jobID, cachedTask.ID(), time.Now().Add(scheduleDelay))
+	goalStateDriver.EnqueueTask(jobID, instanceID, time.Now().Add(scheduleDelay))
 	EnqueueJobWithDefaultDelay(jobID, goalStateDriver, cachedJob)
 
 	return nil
@@ -103,7 +102,6 @@ func rescheduleTask(
 // zero or negative value means no delay,
 // and the task should be rescheduled immediately
 func getScheduleDelay(
-	cachedTask cached.Task,
 	taskRuntime *task.RuntimeInfo,
 	initialTaskBackOff time.Duration,
 	maxTaskBackOff time.Duration,
@@ -114,7 +112,7 @@ func getScheduleDelay(
 	}
 
 	backOff := getBackoff(taskRuntime, initialTaskBackOff, maxTaskBackOff)
-	ddl := cachedTask.GetLastRuntimeUpdateTime().Add(backOff)
+	ddl := time.Unix(0, int64(taskRuntime.GetRevision().GetUpdatedAt())).Add(backOff)
 
 	return ddl.Sub(time.Now())
 }
@@ -185,7 +183,7 @@ func TaskFailRetry(ctx context.Context, entity goalstate.Entity) error {
 	return rescheduleTask(
 		ctx,
 		cachedJob,
-		cachedTask,
+		taskEnt.instanceID,
 		runtime,
 		taskConfig,
 		goalStateDriver,

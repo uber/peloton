@@ -105,6 +105,9 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskLaunchTimeout() {
 		pb_task.TaskState_LAUNCHED,
 		pb_task.TaskState_SUCCEEDED,
 		oldMesosTaskID)
+	runtime.Revision = &peloton.ChangeLog{
+		UpdatedAt: uint64(time.Now().Add(-suite.goalStateDriver.cfg.LaunchTimeout).UnixNano()),
+	}
 	config := &pb_task.TaskConfig{}
 
 	for i := 0; i < 2; i++ {
@@ -116,9 +119,6 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskLaunchTimeout() {
 
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(runtime, nil)
-
-		suite.cachedTask.EXPECT().
-			GetLastRuntimeUpdateTime().Return(time.Now().Add(-suite.goalStateDriver.cfg.LaunchTimeout))
 
 		suite.jobFactory.EXPECT().
 			GetJob(suite.jobID).Return(suite.cachedJob)
@@ -185,9 +185,6 @@ func (suite *TestTaskLaunchRetrySuite) TestLaunchedTaskSendLaunchInfoResMgr() {
 		GetTask(suite.instanceID).Return(suite.cachedTask)
 
 	suite.cachedTask.EXPECT().
-		GetLastRuntimeUpdateTime().Return(time.Now())
-
-	suite.cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	suite.resmgrClient.EXPECT().
@@ -217,9 +214,6 @@ func (suite *TestTaskLaunchRetrySuite) TestLaunchRetryError() {
 		GetTask(suite.instanceID).Return(suite.cachedTask)
 
 	suite.cachedTask.EXPECT().
-		GetLastRuntimeUpdateTime().Return(time.Now())
-
-	suite.cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	suite.resmgrClient.EXPECT().
@@ -240,6 +234,9 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeout() {
 		pb_task.TaskState_STARTING,
 		pb_task.TaskState_SUCCEEDED,
 		oldMesosTaskID)
+	runtime.Revision = &peloton.ChangeLog{
+		UpdatedAt: uint64(time.Now().Add(-suite.goalStateDriver.cfg.LaunchTimeout).UnixNano()),
+	}
 	config := &pb_task.TaskConfig{}
 
 	suite.jobFactory.EXPECT().
@@ -250,9 +247,6 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeout() {
 
 	suite.taskStore.EXPECT().GetTaskConfig(
 		gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(config, &models.ConfigAddOn{}, nil).Times(2)
-
-	suite.cachedTask.EXPECT().
-		GetLastRuntimeUpdateTime().Return(time.Now().Add(-suite.goalStateDriver.cfg.LaunchTimeout))
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
@@ -307,9 +301,6 @@ func (suite *TestTaskLaunchRetrySuite) TestStartingTaskReenqueue() {
 
 	suite.cachedJob.EXPECT().
 		GetTask(suite.instanceID).Return(suite.cachedTask)
-
-	suite.cachedTask.EXPECT().
-		GetLastRuntimeUpdateTime().Return(time.Now())
 
 	suite.cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(runtime, nil)
@@ -368,5 +359,8 @@ func (suite *TestTaskLaunchRetrySuite) getRunTime(
 		State:       state,
 		MesosTaskId: mesosID,
 		GoalState:   goalState,
+		Revision: &peloton.ChangeLog{
+			UpdatedAt: uint64(time.Now().UnixNano()),
+		},
 	}
 }

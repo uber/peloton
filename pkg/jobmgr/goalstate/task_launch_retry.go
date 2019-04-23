@@ -88,7 +88,9 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 
 	switch cachedRuntime.State {
 	case task.TaskState_LAUNCHED:
-		if time.Now().Sub(cachedTask.GetLastRuntimeUpdateTime()) < goalStateDriver.cfg.LaunchTimeout {
+		if time.Now().Sub(
+			time.Unix(0, int64(cachedRuntime.GetRevision().GetUpdatedAt())),
+		) < goalStateDriver.cfg.LaunchTimeout {
 			// LAUNCHED not times out, just send it to resource manager
 			return sendLaunchInfoToResMgr(
 				ctx,
@@ -98,7 +100,9 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 		}
 		goalStateDriver.mtx.taskMetrics.TaskLaunchTimeout.Inc(1)
 	case task.TaskState_STARTING:
-		if time.Now().Sub(cachedTask.GetLastRuntimeUpdateTime()) < goalStateDriver.cfg.StartTimeout {
+		if time.Now().Sub(
+			time.Unix(0, int64(cachedRuntime.GetRevision().GetUpdatedAt())),
+		) < goalStateDriver.cfg.StartTimeout {
 			// the job is STARTING on mesos, enqueue the task in case the start timeout
 			goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID,
 				time.Now().Add(goalStateDriver.cfg.StartTimeout))

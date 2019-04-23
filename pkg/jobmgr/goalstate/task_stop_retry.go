@@ -39,7 +39,7 @@ func TaskExecutorShutdown(ctx context.Context, entity goalstate.Entity) error {
 
 	// It is possible that jobmgr crashes or leader election changes when the task waiting on timeout
 	// Need to reenqueue the task after jobmgr recovers.
-	if time.Now().Sub(cachedTask.GetLastRuntimeUpdateTime()) < _defaultShutdownExecutorTimeout {
+	if time.Now().Sub(time.Unix(0, int64(runtime.GetRevision().GetUpdatedAt()))) < _defaultShutdownExecutorTimeout {
 		goalStateDriver.EnqueueTask(cachedTask.JobID(), cachedTask.ID(), time.Now().Add(_defaultShutdownExecutorTimeout))
 		return nil
 	}
