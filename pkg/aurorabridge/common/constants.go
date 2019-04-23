@@ -46,10 +46,6 @@ var BridgePodLabel = &peloton.Label{
 // a forced PodSpec change.
 const BridgeUpdateLabelKey = "aurora_bridge_update"
 
-// BridgeUpdateLabelMaxValue is the maximum value BridgeUpdateLabel can
-// be, actual value will be chosen as rand.IntnStr()
-const BridgeUpdateLabelMaxValue = 99999
-
 // QueryJobsLimit specifies Limit parameter passed to QueryJobs request
 const QueryJobsLimit = 1000
 

@@ -51,7 +51,7 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-const _randIntStr = "20602"
+const _randomUUID = "ca22d714-b063-41cf-b563-a6ba8ef8681d"
 
 type ServiceHandlerTestSuite struct {
 	suite.Suite
@@ -82,8 +82,8 @@ func (suite *ServiceHandlerTestSuite) SetupTest() {
 	suite.random = commonmocks.NewMockRandom(suite.ctrl)
 
 	suite.random.EXPECT().
-		IntnStr(gomock.Any()).
-		Return(_randIntStr).
+		RandomUUID().
+		Return(_randomUUID).
 		AnyTimes()
 
 	suite.config = ServiceHandlerConfig{
@@ -3162,13 +3162,13 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_BridgeU
 			1: {
 				Labels: []*peloton.Label{
 					{Key: "k2", Value: "v2"},
-					{Key: common.BridgeUpdateLabelKey, Value: _randIntStr},
+					{Key: common.BridgeUpdateLabelKey, Value: _randomUUID},
 				},
 			},
 			2: {
 				Labels: []*peloton.Label{
 					{Key: "k2", Value: "v2"},
-					{Key: common.BridgeUpdateLabelKey, Value: _randIntStr},
+					{Key: common.BridgeUpdateLabelKey, Value: _randomUUID},
 				},
 			},
 			3: {

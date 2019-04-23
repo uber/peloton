@@ -16,8 +16,6 @@ package common
 
 import (
 	"fmt"
-	"math/rand"
-	"strconv"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
@@ -26,6 +24,7 @@ import (
 	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/pborman/uuid"
 	"go.uber.org/thriftrw/ptr"
 )
 
@@ -39,18 +38,18 @@ func ConvertTimestampToUnixMS(timestamp string) (*int64, error) {
 	return ptr.Int64(u * 1000), nil
 }
 
-// Random defines an interface for generating random number.
+// Random defines an interface for generating random string.
 type Random interface {
-	IntnStr(n int) string
+	RandomUUID() string
 }
 
-// RandomImpl implements Random interface and proxies calls to functions
-// in math/rand package.
+// RandomImpl implements Random interface
 type RandomImpl struct{}
 
-// IntnStr proxies call to rand.IntnStr() function and converts it to string.
-func (r RandomImpl) IntnStr(n int) string {
-	return strconv.Itoa(rand.Intn(n))
+// RandomUUID proxies call to uuid.New() function and returns a random UUID
+// string
+func (r RandomImpl) RandomUUID() string {
+	return uuid.New()
 }
 
 // RemoveBridgeUpdateLabel removes "bridge update label" from pod spec and

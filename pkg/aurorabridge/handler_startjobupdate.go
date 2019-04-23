@@ -625,7 +625,7 @@ func (h *ServiceHandler) changeBridgeUpdateLabel(curPodSpec *pod.PodSpec) *pod.P
 
 	var newValue string
 	for {
-		newValue = h.random.IntnStr(common.BridgeUpdateLabelMaxValue)
+		newValue = h.random.RandomUUID()
 		if newValue != curValue {
 			break
 		}
