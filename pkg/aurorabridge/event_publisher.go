@@ -153,8 +153,9 @@ func (e *eventPublisher) Start() {
 			e.buckets[i] = make(chan *podEvent, podBucketSize)
 			go func(bucket chan *podEvent) {
 				for podEvent := range bucket {
-					if podEvent.pod.GetStatus().GetState() == pod.PodState_POD_STATE_DELETED {
-						// pod is deleted, skip
+					if podEvent.pod.GetStatus().GetState() == pod.PodState_POD_STATE_DELETED ||
+						podEvent.pod.GetStatus().GetState() == pod.PodState_POD_STATE_INITIALIZED {
+						// pod is initialized or deleted, skip
 						continue
 					}
 					e.publishEvent(podEvent.pod, podEvent.timestamp)
