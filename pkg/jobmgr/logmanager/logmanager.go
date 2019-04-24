@@ -18,6 +18,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/uber/peloton/pkg/common"
 )
 
 const (
@@ -60,12 +62,31 @@ type filePath struct {
 func (l *logManager) ListSandboxFilesPaths(
 	mesosAgentWorDir, frameworkID, hostname, port,
 	agentID, taskID string) ([]string, error) {
-	slaveBrowseURL := getSlaveFileBrowseEndpointURL(mesosAgentWorDir,
-		frameworkID, hostname, port, agentID, taskID)
+	slaveBrowseURL := getSlaveFileBrowseEndpointURL(
+		mesosAgentWorDir,
+		frameworkID,
+		hostname,
+		port,
+		agentID,
+		taskID)
 
 	result, err := listTaskLogFiles(l.client, slaveBrowseURL)
 	if err != nil {
-		return result, err
+		// If listing the files for sandbox with executorID == taskID
+		// failed, indicates that task was launched by thermos executor
+		// and thermos executor ID has a prefix of `thermos`
+		slaveBrowseURL := getSlaveFileBrowseEndpointURL(
+			mesosAgentWorDir,
+			frameworkID,
+			hostname,
+			port,
+			agentID,
+			common.PelotonAuroraBridgeExecutorIDPrefix+taskID)
+
+		result, err = listTaskLogFiles(l.client, slaveBrowseURL)
+		if err != nil {
+			return result, err
+		}
 	}
 
 	return result, nil
@@ -73,8 +94,12 @@ func (l *logManager) ListSandboxFilesPaths(
 
 func getSlaveFileBrowseEndpointURL(mesosAgentWorDir, frameworkID,
 	hostname, port, agentID, taskID string) string {
-	sandboxDir := fmt.Sprintf(_slaveSandboxDir, mesosAgentWorDir,
-		agentID, frameworkID, taskID)
+	sandboxDir := fmt.Sprintf(
+		_slaveSandboxDir,
+		mesosAgentWorDir,
+		agentID,
+		frameworkID,
+		taskID)
 	return fmt.Sprintf(_slaveFileBrowseURL, hostname, port, sandboxDir)
 }
 

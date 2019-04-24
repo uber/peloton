@@ -124,6 +124,9 @@ const (
 	// that indicates to Peloton that the agent will be used exclusively
 	// for certain workloads only.
 	PelotonExclusiveAttributeName = "peloton/exclusive"
+	// PelotonAuroraBridgeExecutorIDPrefix is the prefix for the executor ID
+	// for tasks launched through thermos executor
+	PelotonAuroraBridgeExecutorIDPrefix = "thermos-"
 )
 
 const (
