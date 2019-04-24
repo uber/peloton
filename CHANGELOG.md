@@ -1,6 +1,70 @@
 # Changelog for Peloton
-0.8.4 (unreleased)
+
+0.8.5 (unreleased)
 ------------------
+
+0.8.4
+------------------
+* 2019-04-24    Adjust resource limit for revocable job to reduce QoS preemption                       varung@uber.com
+* 2019-04-24    Fix thermos executor log read                                                          varung@uber.com
+* 2019-04-24    Remove GetLastRuntimeUpdateTime for timeout                                            zhixin@uber.com
+* 2019-04-23    Change "bridge update label" to use UUID string                                        kevinxu@uber.com
+* 2019-04-23    Specify resmgr config overrides for development environment                            sachins@uber.com
+* 2019-04-23    Add script to enable auth in cluster                                                   zhixin@uber.com
+* 2019-04-23    Fix flaky test__auto_rollback_with_pinned_instances__remove_instances                  sachins@uber.com
+* 2019-04-23    Do not publish event if pod state is INITIALIZED                                       varung@uber.com
+* 2019-04-23    Improve aurora bridge write api logging                                                varung@uber.com
+* 2019-04-22    Remove unused SecretMetrics                                                            zhixin@uber.com
+* 2019-04-19    Implement TaskConfig for getTasksWithoutConfigs previous runs                          kevinxu@uber.com
+* 2019-04-19    Add more aurorabridge integration tests to test auto-rollback of pinned instances      sachins@uber.com
+* 2019-04-19    Reduce host pruning period from 10m to 2m                                              varung@uber.com
+* 2019-04-19    Clean up job index table in `JobRecover` for deleted jobs                              sachins@uber.com
+* 2019-04-19    QueryJobs API should not fail when update-fetch from store fails for one of the jobs   sachins@uber.com
+* 2019-04-19    Add aurorabridge integration tests to test auto-rollback of pinned instances           sachins@uber.com
+* 2019-04-18    Add auth for aurora bridge as internal component                                       varung@uber.com
+* 2019-04-18    Pinned instance job spec creation optimizations                                        kevinxu@uber.com
+* 2019-04-18    Cannot update with start_pods set when job is being killed and vice versa              zhixin@uber.com
+* 2019-04-18    Skip test__simple_update_with_restart_component due to flakiness                       varung@uber.com
+* 2019-04-17    Fix for getConfigSummary endpoint when pinned instance is used                         kevinxu@uber.com
+* 2019-04-17    Use PodStatus to generate published pod events                                         kevinxu@uber.com
+* 2019-04-17    Kill all tasks in job before untrack                                                   zhixin@uber.com
+* 2019-04-17    Part I: Start using ORM for job_config                                                 adityacb@uber.com
+* 2019-04-17    Remove skip for test_update.py::test__simple_update_with_restart_component             varung@uber.com
+* 2019-04-17    Implement hack label for pinned instances                                              kevinxu@uber.com
+* 2019-04-17    Add integration test to abort an auto-rollback and start a new update                  sachins@uber.com
+* 2019-04-17    Call job runtime updater for stateless JobUntrackCall JobRuntimeUpdater upon JobUntrack for stateless job zhixin@uber.com
+* 2019-04-17    Remove skip for test_rollback.py::test__job_create_manual_rollback                     varung@uber.com
+* 2019-04-17    Change key of host-to-tasks map to mesos-task-id from peloton-task-id                  sachins@uber.com
+* 2019-04-16    Add flag to only return current pod_info for GetPod API                                kevinxu@uber.com
+* 2019-04-16    Fix formatting issue with job.py::wait_for_terminated                                  varung@uber.com
+* 2019-04-16    Add randomization, run tests twice and dump daemon logs                                varung@uber.com
+* 2019-04-16    Add ORM method for iterative get-all                                                   amitbose@uber.com
+* 2019-04-16    Limit number of updates to query per job for aurorabridge                              kevinxu@uber.com
+* 2019-04-16    Create separate CI for aurora bridge                                                   varung@uber.com
+* 2019-04-16    Add integration test to restart different peloton daemons for on-going job update      varung@uber.com
+* 2019-04-15    Add travis config file                                                                 amitbose@uber.com
+* 2019-04-15    Duplicate active update is a noop                                                      zhixin@uber.com
+* 2019-04-15    Add auth support in all peloton components                                             zhixin@uber.com
+* 2019-04-15    Mimir placement plugin host filtering                                                  amitbose@uber.com
+* 2019-04-12    Specify InvalidEntityVersionError to be part of API                                    zhixin@uber.com
+* 2019-04-11    Implement pinned instance pod spec reading and attaching                               kevinxu@uber.com
+* 2019-04-11    Convert TaskConfig / PodSpec compare unit test to table test                           kevinxu@uber.com
+* 2019-04-11    Grammar fix for compare util functions                                                 kevinxu@uber.com
+* 2019-04-11    Deprecate respool path in QuerySpec which is not used in JobQuery                      zhixin@uber.com
+* 2019-04-10    Set per-instance instance event limit for ListJobWorkflows call                        kevinxu@uber.com
+* 2019-04-10    Sort TaskConfig list fields before converting to PodSpec                               kevinxu@uber.com
+* 2019-04-10    Change GetWorkflowEventsRequest.limit and ListJobWorkflowsRequest.instance_events_limit to uint32 type sachins@uber.com
+* 2019-04-10    Add PodSpec diff util function                                                         kevinxu@uber.com
+* 2019-04-10    Add CHANGELOG for 0.8.3.1                                                              zhixin@uber.com
+* 2019-04-10    Add PodConfigurationStateStats in job status                                           zhixin@uber.com
+* 2019-04-10    Deprecate Mesos references in the v1alpha API                                          apoorvaj@uber.com
+* 2019-04-09    Kill a terminated job to prevent restart before delete                                 zhixin@uber.com
+* 2019-04-09    Add util method for merging default and instance PodSpec                               kevinxu@uber.com
+* 2019-04-09    Add v0 <=> v1 task constraint nil field check                                          kevinxu@uber.com
+* 2019-04-09    Don't fail perf report generation if a test fails                                      amitbose@uber.com
+* 2019-04-08    Add integration test to redeploy update after abort                                    varung@uber.com
+* 2019-04-08    Add Changelog for release 0.8.3                                                        rcharles@uber.com
+* 2019-04-08    Add option to specify limit while requesting workflow events                           sachins@uber.com
 
 0.8.3.1
 ------------------
