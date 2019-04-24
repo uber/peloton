@@ -23,4 +23,6 @@ resmgr:
     task_preemption_period: 10s
   host_drainer_period: 10s
   task:
-    enable_sla_tracking: true
+    placing_timeout: 20s
+    launching_timeout: 30s
+    placement_retry_backoff: 10s
