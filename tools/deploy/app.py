@@ -122,8 +122,8 @@ class App(object):
         self.enable_sla_tracking = False
         self.enable_preemption = False
         self.respool_path = None
-        self.auth_type = None
-        self.auth_config_file = None
+        self.auth_type = 'NOOP'
+        self.auth_config_file = ''
 
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
@@ -181,10 +181,8 @@ class App(object):
             'PELOTON_SECRET_FILE': getattr(
                 self.cluster, 'peloton_secret_file', ''),
             'ENABLE_SECRETS': self.enable_secrets,
-            'AUTH_TYPE': getattr(
-                self, 'auth_type', ''),
-            'AUTH_CONFIG_FILE': getattr(
-                self, 'auth_config_file', ''),
+            'AUTH_TYPE': self.auth_type,
+            'AUTH_CONFIG_FILE': self.auth_config_file,
         }
 
         self.add_app_specific_vars(env_vars)
