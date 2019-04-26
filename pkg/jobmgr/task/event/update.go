@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/mesos/v1"
 	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
@@ -29,12 +29,12 @@ import (
 	"github.com/uber/peloton/pkg/common/eventstream"
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
-	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
 	jobmgr_task "github.com/uber/peloton/pkg/jobmgr/task"
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 	"github.com/uber/peloton/pkg/storage"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -195,20 +195,21 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		}
 	}
 
-	runtimeDiff := make(map[string]interface{})
+	newRuntime := proto.Clone(taskInfo.GetRuntime()).(*pb_task.RuntimeInfo)
+
+	// Persist the reason and message for mesos updates
+	newRuntime.Message = updateEvent.statusMsg
+	newRuntime.Reason = ""
+
 	// Persist healthy field if health check is enabled
 	if taskInfo.GetConfig().GetHealthCheck() != nil {
 		reason := event.GetMesosTaskStatus().GetReason()
 		healthy := event.GetMesosTaskStatus().GetHealthy()
-		p.persistHealthyField(updateEvent.state, reason, healthy, runtimeDiff)
+		p.persistHealthyField(updateEvent.state, reason, healthy, newRuntime)
 	}
 
 	// Update FailureCount
-	updateFailureCount(updateEvent.state, taskInfo.GetRuntime(), runtimeDiff)
-
-	// Persist the reason and message for mesos updates
-	runtimeDiff[jobmgrcommon.MessageField] = updateEvent.statusMsg
-	runtimeDiff[jobmgrcommon.ReasonField] = ""
+	updateFailureCount(updateEvent.state, taskInfo.GetRuntime(), newRuntime)
 
 	switch updateEvent.state {
 	case pb_task.TaskState_FAILED:
@@ -220,9 +221,9 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 				Info("ignoring duplicate task id failure")
 			return nil
 		}
-		runtimeDiff[jobmgrcommon.ReasonField] = reason.String()
-		runtimeDiff[jobmgrcommon.StateField] = updateEvent.state
-		runtimeDiff[jobmgrcommon.MessageField] = msg
+		newRuntime.Reason = reason.String()
+		newRuntime.State = updateEvent.state
+		newRuntime.Message = msg
 		termStatus := &pb_task.TerminationStatus{
 			Reason: pb_task.TerminationStatus_TERMINATION_STATUS_REASON_FAILED,
 		}
@@ -240,10 +241,10 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 				WithField("error", err).
 				Debug("Failed to extract termination signal from message")
 		}
-		runtimeDiff[jobmgrcommon.TerminationStatusField] = termStatus
+		newRuntime.TerminationStatus = termStatus
 
 	case pb_task.TaskState_LOST:
-		runtimeDiff[jobmgrcommon.ReasonField] = event.GetMesosTaskStatus().GetReason().String()
+		newRuntime.Reason = event.GetMesosTaskStatus().GetReason().String()
 		if util.IsPelotonStateTerminal(taskInfo.GetRuntime().GetState()) {
 			// Skip LOST status update if current state is terminal state.
 			log.WithFields(log.Fields{
@@ -261,8 +262,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 				"db_task_runtime":   taskInfo.GetRuntime(),
 				"task_status_event": event.GetMesosTaskStatus(),
 			}).Debug("mark stopped task as killed due to LOST")
-			runtimeDiff[jobmgrcommon.StateField] = pb_task.TaskState_KILLED
-			runtimeDiff[jobmgrcommon.MessageField] = "Stopped task LOST event: " + updateEvent.statusMsg
+			newRuntime.State = pb_task.TaskState_KILLED
+			newRuntime.Message = "Stopped task LOST event: " + updateEvent.statusMsg
 			break
 		}
 
@@ -270,7 +271,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0 {
 			// Do not reschedule stateful task. Storage layer will decide
 			// whether to start or replace this task.
-			runtimeDiff[jobmgrcommon.StateField] = pb_task.TaskState_LOST
+			newRuntime.State = pb_task.TaskState_LOST
 			break
 		}
 
@@ -280,11 +281,9 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			"task_status_event": event.GetMesosTaskStatus(),
 		}).Info("reschedule lost task if needed")
 
-		runtimeDiff[jobmgrcommon.StateField] = pb_task.TaskState_LOST
-		runtimeDiff[jobmgrcommon.MessageField] =
-			"Task LOST: " + updateEvent.statusMsg
-		runtimeDiff[jobmgrcommon.ReasonField] =
-			event.GetMesosTaskStatus().GetReason().String()
+		newRuntime.State = pb_task.TaskState_LOST
+		newRuntime.Message = "Task LOST: " + updateEvent.statusMsg
+		newRuntime.Reason = event.GetMesosTaskStatus().GetReason().String()
 
 		// Calculate resource usage for TaskState_LOST using time.Now() as
 		// completion time
@@ -294,22 +293,22 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			now().UTC().Format(time.RFC3339Nano))
 
 	default:
-		runtimeDiff[jobmgrcommon.StateField] = updateEvent.state
+		newRuntime.State = updateEvent.state
 	}
 
 	// Update task start and completion timestamps
-	if runtimeDiff[jobmgrcommon.StateField].(pb_task.TaskState) == pb_task.TaskState_RUNNING {
+	if newRuntime.GetState() == pb_task.TaskState_RUNNING {
 		if updateEvent.state != taskInfo.GetRuntime().GetState() {
 			// StartTime is set at the time of first RUNNING event
 			// CompletionTime may have been set (e.g. task has been set),
 			// which could make StartTime larger than CompletionTime.
 			// Reset CompletionTime every time a task transits to RUNNING state.
-			runtimeDiff[jobmgrcommon.StartTimeField] = now().UTC().Format(time.RFC3339Nano)
-			runtimeDiff[jobmgrcommon.CompletionTimeField] = ""
+			newRuntime.StartTime = now().UTC().Format(time.RFC3339Nano)
+			newRuntime.CompletionTime = ""
 			// when task is RUNNING, reset the desired host field. Therefore,
 			// the task would be scheduled onto a different host when the task
 			// restarts (e.g due to health check or fail retry)
-			runtimeDiff[jobmgrcommon.DesiredHostField] = ""
+			newRuntime.DesiredHost = ""
 
 			if len(taskInfo.GetRuntime().GetDesiredHost()) != 0 {
 				p.metrics.TasksInPlacePlacementTotal.Inc(1)
@@ -317,14 +316,11 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 					p.metrics.TasksInPlacePlacementSuccess.Inc(1)
 				}
 			}
-			// when task starts running, there is no need to keep desired host field around.
-			// it would be set again upon in-place update using the current running host.
-			runtimeDiff[jobmgrcommon.DesiredHostField] = ""
 		}
 
-	} else if util.IsPelotonStateTerminal(runtimeDiff[jobmgrcommon.StateField].(pb_task.TaskState)) {
+	} else if util.IsPelotonStateTerminal(newRuntime.GetState()) {
 		completionTime := now().UTC().Format(time.RFC3339Nano)
-		runtimeDiff[jobmgrcommon.CompletionTimeField] = completionTime
+		newRuntime.CompletionTime = completionTime
 
 		currTaskResourceUsage = getCurrTaskResourceUsage(
 			updateEvent.taskID, updateEvent.state, taskInfo.GetConfig().GetResource(),
@@ -339,17 +335,17 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			for k, v := range currTaskResourceUsage {
 				aggregateTaskResourceUsage[k] += v
 			}
-			runtimeDiff[jobmgrcommon.ResourceUsageField] = aggregateTaskResourceUsage
+			newRuntime.ResourceUsage = aggregateTaskResourceUsage
 		}
 	}
 	// Update the task update times in job cache and then update the task runtime in cache and DB
 	cachedJob := p.jobFactory.AddJob(taskInfo.GetJobId())
 	cachedJob.SetTaskUpdateTime(event.MesosTaskStatus.Timestamp)
-	err = cachedJob.PatchTasks(
-		ctx,
-		map[uint32]jobmgrcommon.RuntimeDiff{taskInfo.GetInstanceId(): runtimeDiff},
-	)
+	cachedTask, err := cachedJob.AddTask(ctx, taskInfo.GetInstanceId())
 	if err != nil {
+		return err
+	}
+	if _, err := cachedTask.CompareAndSetTask(ctx, newRuntime, cachedJob.GetJobType()); err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{
 				"task_id": updateEvent.taskID,
@@ -587,22 +583,22 @@ func (p *statusUpdate) persistHealthyField(
 	state pb_task.TaskState,
 	reason mesos_v1.TaskStatus_Reason,
 	healthy bool,
-	runtimeDiff map[string]interface{}) {
+	newRuntime *pb_task.RuntimeInfo) {
 
 	switch {
 	case util.IsPelotonStateTerminal(state):
 		// Set healthy to INVALID for all terminal state
-		runtimeDiff[jobmgrcommon.HealthyField] = pb_task.HealthState_INVALID
+		newRuntime.Healthy = pb_task.HealthState_INVALID
 	case state == pb_task.TaskState_RUNNING:
 		// Only record the health check result when
 		// the reason for the event is TASK_HEALTH_CHECK_STATUS_UPDATED
 		if reason == mesos_v1.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED {
-			runtimeDiff[jobmgrcommon.ReasonField] = reason
+			newRuntime.Reason = reason.String()
 			if healthy {
-				runtimeDiff[jobmgrcommon.HealthyField] = pb_task.HealthState_HEALTHY
+				newRuntime.Healthy = pb_task.HealthState_HEALTHY
 				p.metrics.TasksHealthyTotal.Inc(1)
 			} else {
-				runtimeDiff[jobmgrcommon.HealthyField] = pb_task.HealthState_UNHEALTHY
+				newRuntime.Healthy = pb_task.HealthState_UNHEALTHY
 				p.metrics.TasksUnHealthyTotal.Inc(1)
 			}
 		}
@@ -612,7 +608,7 @@ func (p *statusUpdate) persistHealthyField(
 func updateFailureCount(
 	eventState pb_task.TaskState,
 	runtime *pb_task.RuntimeInfo,
-	runtimeDiff map[string]interface{}) {
+	newRuntime *pb_task.RuntimeInfo) {
 
 	if !util.IsPelotonStateTerminal(eventState) {
 		return
@@ -626,16 +622,16 @@ func updateFailureCount(
 	switch {
 
 	case eventState == pb_task.TaskState_FAILED:
-		runtimeDiff[jobmgrcommon.FailureCountField] = uint32(runtime.GetFailureCount() + 1)
+		newRuntime.FailureCount = runtime.GetFailureCount() + 1
 
 	case eventState == pb_task.TaskState_SUCCEEDED &&
 		runtime.GetGoalState() == pb_task.TaskState_RUNNING:
-		runtimeDiff[jobmgrcommon.FailureCountField] = uint32(runtime.GetFailureCount() + 1)
+		newRuntime.FailureCount = runtime.GetFailureCount() + 1
 
 	case eventState == pb_task.TaskState_KILLED &&
 		runtime.GetGoalState() != pb_task.TaskState_KILLED:
 		// This KILLED event is unexpected
-		runtimeDiff[jobmgrcommon.FailureCountField] = uint32(runtime.GetFailureCount() + 1)
+		newRuntime.FailureCount = runtime.GetFailureCount() + 1
 	}
 }
 

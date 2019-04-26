@@ -24,6 +24,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
@@ -36,8 +37,6 @@ import (
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
 	eventsmocks "github.com/uber/peloton/pkg/jobmgr/task/event/mocks"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
-
-	"go.uber.org/yarpc/yarpcerrors"
 )
 
 var uuidStr = uuid.New()
@@ -49,6 +48,7 @@ type BucketEventProcessorTestSuite struct {
 	ctrl            *gomock.Controller
 	jobFactory      *cachedmocks.MockJobFactory
 	cachedJob       *cachedmocks.MockJob
+	cachedTask      *cachedmocks.MockTask
 	goalStateDriver *goalstatemocks.MockDriver
 	taskStore       *storemocks.MockTaskStore
 	handler         *statusUpdate
@@ -63,6 +63,7 @@ func (suite *BucketEventProcessorTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
+	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.statusProcessor = eventsmocks.NewMockStatusProcessor(suite.ctrl)
@@ -100,7 +101,9 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_MesosEvents
 			context.Background(), pelotonTaskID).Return(taskInfo, nil).Times(3)
 		suite.jobFactory.EXPECT().AddJob(jobID).Return(suite.cachedJob).Times(3)
 		suite.cachedJob.EXPECT().SetTaskUpdateTime(gomock.Any()).Return().Times(3)
-		suite.cachedJob.EXPECT().PatchTasks(context.Background(), gomock.Any()).Return(nil).Times(3)
+		suite.cachedJob.EXPECT().AddTask(gomock.Any(), i).Return(suite.cachedTask, nil).Times(3)
+		suite.cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).Times(3)
+		suite.cachedTask.EXPECT().CompareAndSetTask(context.Background(), gomock.Any(), job.JobType_BATCH).Return(nil, nil).Times(3)
 		suite.goalStateDriver.EXPECT().EnqueueTask(jobID, i, gomock.Any()).Return().Times(3)
 		suite.cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return().Times(3)
 		suite.cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).Times(3)
