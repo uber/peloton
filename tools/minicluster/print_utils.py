@@ -10,16 +10,16 @@ class bcolors:
 
 
 def okblue(message):
-    print bcolors.OKBLUE + message + bcolors.ENDC
+    print(bcolors.OKBLUE + message + bcolors.ENDC)
 
 
 def okgreen(message):
-    print bcolors.OKGREEN + message + bcolors.ENDC
+    print(bcolors.OKGREEN + message + bcolors.ENDC)
 
 
 def fail(message):
-    print bcolors.FAIL + message + bcolors.ENDC
+    print(bcolors.FAIL + message + bcolors.ENDC)
 
 
 def warn(message):
-    print bcolors.WARNING + message + bcolors.ENDC
+    print(bcolors.WARNING + message + bcolors.ENDC)
