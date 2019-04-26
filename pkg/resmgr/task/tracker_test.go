@@ -270,6 +270,45 @@ func (suite *TrackerTestSuite) TestGetTaskStates() {
 	suite.Equal(0, len(result))
 }
 
+// TestGetActiveTasksOrphanTasks tests fetching the task state map for orphan tasks
+func (suite *TrackerTestSuite) TestGetActiveTasksOrphanTasks() {
+	tr := suite.tracker.(*tracker)
+
+	// move tasks to orphan tasks
+	for _, rmTask := range tr.tasks {
+		tr.orphanTasks[rmTask.task.GetTaskId().GetValue()] = rmTask
+	}
+
+	rmTask := suite.tracker.GetTask(suite.task.GetId())
+	err := rmTask.TransitTo(task.TaskState_PENDING.String())
+	suite.NoError(err)
+
+	// remove all other tasks from tracker
+	for k := range tr.tasks {
+		delete(tr.tasks, k)
+	}
+
+	result := suite.tracker.GetActiveTasks("", "", nil)
+	suite.Equal(1, len(result))
+
+	result = suite.tracker.GetActiveTasks("foo", "", nil)
+	suite.Equal(0, len(result))
+
+	result = suite.tracker.GetActiveTasks("", "bar", nil)
+	suite.Equal(0, len(result))
+
+	result = suite.tracker.GetActiveTasks("", "", []string{task.TaskState_PLACING.String()})
+	suite.Equal(0, len(result))
+
+	result = suite.tracker.GetActiveTasks(suite.task.GetJobId().GetValue(), "", nil)
+	suite.Len(result, len(tr.orphanTasks))
+	for _, tasks := range result {
+		for _, t := range tasks {
+			suite.Equal(tr.orphanTasks[t.task.GetTaskId().GetValue()], t)
+		}
+	}
+}
+
 func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	suite.tracker.Clear()
 	var tasks []*resmgr.Task

@@ -468,30 +468,21 @@ func (tr *tracker) GetActiveTasks(
 	jobID string,
 	respoolID string,
 	states []string) map[string][]*RMTask {
-	taskStates := make(map[string][]*RMTask)
-
 	tr.lock.RLock()
 	defer tr.lock.RUnlock()
 
-	for _, t := range tr.tasks {
-		// filter by jobID
-		if jobID != "" && t.Task().GetJobId().GetValue() != jobID {
-			continue
-		}
+	taskStates := make(map[string][]*RMTask)
 
-		// filter by resource pool ID
-		if respoolID != "" && t.Respool().ID() != respoolID {
-			continue
-		}
-
+	for _, t := range filterTasks(tr.tasks, jobID, respoolID, states) {
 		taskState := t.GetCurrentState().State.String()
-		// filter by task states
-		if len(states) > 0 && !util.Contains(states, taskState) {
-			continue
-		}
-
 		taskStates[taskState] = append(taskStates[taskState], t)
 	}
+
+	for _, t := range filterTasks(tr.orphanTasks, jobID, respoolID, states) {
+		taskState := t.GetCurrentState().State.String()
+		taskStates[taskState] = append(taskStates[taskState], t)
+	}
+
 	return taskStates
 }
 
@@ -519,4 +510,36 @@ func (tr *tracker) UpdateCounters(from task.TaskState, to task.TaskState) {
 	for state, gauge := range tr.metrics.TaskStatesGauge {
 		gauge.Update(tr.counters[state])
 	}
+}
+
+// filterTasks filters the tasks based on the jobID, respoolID and states filters
+func filterTasks(
+	tasks map[string]*RMTask,
+	jobID string,
+	respoolID string,
+	states []string,
+) []*RMTask {
+	var result []*RMTask
+
+	for _, t := range tasks {
+		// filter by jobID
+		if jobID != "" && t.Task().GetJobId().GetValue() != jobID {
+			continue
+		}
+
+		// filter by resource pool ID
+		if respoolID != "" && t.Respool().ID() != respoolID {
+			continue
+		}
+
+		// filter by task states
+		if len(states) > 0 &&
+			!util.Contains(states, t.GetCurrentState().State.String()) {
+			continue
+		}
+
+		result = append(result, t)
+	}
+
+	return result
 }

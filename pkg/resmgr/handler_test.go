@@ -149,6 +149,7 @@ func (s *HandlerTestSuite) SetupTest() {
 func (s *HandlerTestSuite) TearDownTest() {
 	s.NoError(s.resTree.Stop())
 	s.NoError(rm_task.GetScheduler().Stop())
+	s.rmTaskTracker.Clear()
 }
 
 func TestResManagerHandler(t *testing.T) {
@@ -515,7 +516,7 @@ func (s *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	}
 	handler.eventStreamHandler = s.handler.eventStreamHandler
 
-	placements := s.getPlacements()
+	placements := s.getPlacements(10, 5)
 	setReq := &resmgrsvc.SetPlacementsRequest{
 		Placements: placements,
 	}
@@ -548,7 +549,7 @@ func (s *HandlerTestSuite) TestTransitTasksInPlacement() {
 	tracker := task_mocks.NewMockTracker(s.ctrl)
 	s.handler.rmTracker = tracker
 
-	placements := s.getPlacements()
+	placements := s.getPlacements(10, 5)
 
 	tracker.EXPECT().GetTask(gomock.Any()).Return(nil).Times(5)
 
@@ -591,7 +592,7 @@ func (s *HandlerTestSuite) TestTransitTasksInPlacement() {
 	})
 
 	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask).Times(5)
-	placements = s.getPlacements()
+	placements = s.getPlacements(10, 5)
 	p = s.handler.transitTasksInPlacement(placements[0],
 		task.TaskState_RUNNING,
 		task.TaskState_LAUNCHING,
@@ -599,7 +600,7 @@ func (s *HandlerTestSuite) TestTransitTasksInPlacement() {
 	s.EqualValues(len(p.Tasks), 0)
 
 	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask).Times(5)
-	placements = s.getPlacements()
+	placements = s.getPlacements(10, 5)
 	p = s.handler.transitTasksInPlacement(placements[0],
 		task.TaskState_PLACED,
 		task.TaskState_RUNNING,
@@ -612,7 +613,7 @@ func (s *HandlerTestSuite) TestTransitTasksInPlacement() {
 
 func (s *HandlerTestSuite) TestGetTasksByHosts() {
 	setReq := &resmgrsvc.SetPlacementsRequest{
-		Placements: s.getPlacements(),
+		Placements: s.getPlacements(10, 5),
 	}
 	hostnames := make([]string, 0, len(setReq.Placements))
 	for _, placement := range setReq.Placements {
@@ -1097,7 +1098,7 @@ func (s *HandlerTestSuite) TestHandleRunningEventError() {
 
 func (s *HandlerTestSuite) TestGetActiveTasks() {
 	setReq := &resmgrsvc.SetPlacementsRequest{
-		Placements: s.getPlacements(),
+		Placements: s.getPlacements(10, 5),
 	}
 	for _, placement := range setReq.Placements {
 		for i, t := range placement.GetTaskIDs() {
@@ -1106,7 +1107,8 @@ func (s *HandlerTestSuite) TestGetActiveTasks() {
 			tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
 				task.TaskState_PENDING,
 				task.TaskState_READY,
-				task.TaskState_PLACING})
+				task.TaskState_PLACING,
+			})
 		}
 	}
 	setResp, err := s.handler.SetPlacements(s.context, setReq)
@@ -1121,7 +1123,39 @@ func (s *HandlerTestSuite) TestGetActiveTasks() {
 	for _, tasks := range res.GetTasksByState() {
 		totalTasks += len(tasks.GetTaskEntry())
 	}
-	s.Equal(54, totalTasks)
+	s.Equal(50, totalTasks)
+}
+
+func (s *HandlerTestSuite) TestGetActiveTasksValidateResponseFields() {
+	placements := s.getPlacements(1, 1)
+	setReq := &resmgrsvc.SetPlacementsRequest{
+		Placements: placements,
+	}
+
+	rmTask := s.handler.rmTracker.GetTask(
+		placements[0].GetTaskIDs()[0].GetPelotonTaskID(),
+	)
+	tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
+		task.TaskState_PENDING,
+		task.TaskState_READY,
+		task.TaskState_PLACING,
+	})
+	setResp, err := s.handler.SetPlacements(s.context, setReq)
+	s.NoError(err)
+	s.Nil(setResp.GetError())
+
+	req := &resmgrsvc.GetActiveTasksRequest{}
+	res, err := s.handler.GetActiveTasks(context.Background(), req)
+	s.NoError(err)
+	s.NotNil(res)
+	s.Len(res.GetTasksByState(), 1)
+	for _, tasks := range res.GetTasksByState() {
+		s.Len(tasks.GetTaskEntry(), 1)
+		t := tasks.GetTaskEntry()[0]
+		s.Equal(placements[0].GetTaskIDs()[0].GetMesosTaskID().GetValue(), t.GetTaskID())
+		s.Equal(task.TaskState_PLACED.String(), t.GetTaskState())
+		s.Equal(placements[0].GetHostname(), t.GetHostname())
+	}
 }
 
 func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
@@ -1760,7 +1794,7 @@ func (s *HandlerTestSuite) assertSetFailedPlacement(gangs []*resmgrsvc.Gang) {
 	s.Nil(setPlacementResp.GetError())
 }
 
-func (s *HandlerTestSuite) getPlacements() []*resmgr.Placement {
+func (s *HandlerTestSuite) getPlacements(numJobs int, numTasks int) []*resmgr.Placement {
 	var placements []*resmgr.Placement
 	resp, err := respool.NewRespool(
 		tally.NoopScope,
@@ -1773,11 +1807,11 @@ func (s *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 	)
 	s.NoError(err, "create resource pool shouldn't fail")
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < numJobs; i++ {
 		jobID := uuid.New()
 		var placementTasks []*resmgr.Placement_Task
 		var pelotonTasks []*peloton.TaskID
-		for j := 0; j < 5; j++ {
+		for j := 0; j < numTasks; j++ {
 			pelotonTask := &peloton.TaskID{
 				Value: fmt.Sprintf("%s-%d", jobID, j),
 			}

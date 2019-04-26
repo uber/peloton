@@ -99,7 +99,7 @@ class Task(object):
         """
         for state, entries in tasks_by_state.iteritems():
             for e in entries.taskEntry:
-                if e.taskID == "{}-{}".format(self.job.job_id, self.instance_id):
+                if e.taskID == self.mesos_task_id:
                     return state
         return ""
 

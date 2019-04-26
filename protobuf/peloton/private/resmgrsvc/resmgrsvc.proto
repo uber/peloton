@@ -307,12 +307,11 @@ message NotifyTaskUpdatesResponse {
   uint64 purgeOffset = 2;
 }
 
-// GetTasksByHostsRequest will always returns the currently running tasks
 message GetTasksByHostsRequest {
   repeated string hostnames = 1;
 
   // Task Type to identify which kind of tasks need to
-  // be dequeued, if this is left out all tasks wil be returned.
+  // be dequeued, if this is left out all tasks will be returned.
   TaskType type = 2;
 }
 
@@ -345,13 +344,21 @@ message GetActiveTasksResponse {
     string message = 1;
   }
   message TaskEntry {
+    // Mesos task ID of the task.
     string taskID = 1;
+    // State of the task.
     string taskState = 2;
+    // Reason for the task being the current state.
     string reason = 3;
+    // Last time the state was updated
     string lastUpdateTime = 4;
+    // Depending on the state of the task, this can either mean the
+    // host where the task has been placed OR where the task is running.
+    // This field will not be set for tasks in PENDING and PLACING states.
+    string hostname = 5;
   }
   message TaskEntries {
-    repeated TaskEntry taskEntry= 1;
+    repeated TaskEntry taskEntry = 1;
   }
 
   Error error = 1;

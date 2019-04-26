@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	activeTaskListFormatHeader = "TaskID\tState\tReason\tLast Update Time\n"
-	activeTaskListFormatBody   = "%s\t%s\t%s\t%s\n"
+	activeTaskListFormatHeader = "TaskID\tState\tHostname\tReason\tLast Update Time\n"
+	activeTaskListFormatBody   = "%s\t%s\t%s\t%s\t%s\n"
 )
 
 // ResMgrGetActiveTasks fetches the active tasks from resource manager.
@@ -79,8 +79,10 @@ func printActiveTasksResponse(r *resmgrsvc.GetActiveTasksResponse, debug bool) {
 						activeTaskListFormatBody,
 						task.GetTaskID(),
 						task.GetTaskState(),
+						task.GetHostname(),
 						task.GetReason(),
-						task.GetLastUpdateTime())
+						task.GetLastUpdateTime(),
+					)
 				}
 			}
 		}
