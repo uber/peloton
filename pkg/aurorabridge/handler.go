@@ -1499,11 +1499,18 @@ func (h *ServiceHandler) getFilteredJobUpdateDetails(
 	var idOrder []string
 	for i, w := range workflows {
 		j := i + 1
-
 		var prevWorkflow *stateless.WorkflowInfo
 		if j < len(workflows) {
 			prevWorkflow = workflows[j]
 		}
+
+		// TODO(kevinxu): skip no-op update to match aurora's behavior.
+		// NOTE: If the update is no-op, aurora's behavior is to skip creating
+		// the update.
+		//if len(w.GetInstancesAdded())+len(w.GetInstancesUpdated())+
+		//	len(w.GetInstancesRemoved()) == 0 {
+		//	continue
+		//}
 
 		d, err := ptoa.NewJobUpdateDetails(k, prevWorkflow, w)
 		if err != nil {

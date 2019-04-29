@@ -30,7 +30,7 @@ func NewJobUpdateInstructions(
 	workflow *stateless.WorkflowInfo,
 ) (*api.JobUpdateInstructions, error) {
 
-	var initialState []*api.InstanceTaskConfig
+	initialState := make([]*api.InstanceTaskConfig, 0)
 
 	if prevWorkflow != nil {
 		d, err := opaquedata.Deserialize(prevWorkflow.GetOpaqueData())
