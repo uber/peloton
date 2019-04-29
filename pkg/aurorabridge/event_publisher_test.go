@@ -16,6 +16,7 @@ package aurorabridge
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -37,10 +38,12 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
 	watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
 	watchmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc/mocks"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber/peloton/pkg/aurorabridge/atop"
 	"github.com/uber/peloton/pkg/aurorabridge/common"
@@ -471,4 +474,55 @@ func contains(s []string, e string) bool {
 		}
 	}
 	return false
+}
+
+// TestModifyTaskStateChangeJSON tests modifyTaskStateChangeJSON util function
+func TestModifyTaskStateChangeJSON(t *testing.T) {
+	dockerContainer := &api.Container{
+		Docker: &api.DockerContainer{
+			Image: ptr.String("image"),
+			Parameters: []*api.DockerParameter{
+				{
+					Name:  ptr.String("name"),
+					Value: ptr.String("value"),
+				},
+			},
+		},
+	}
+	stateChange1 := &taskStateChange{
+		Task: &api.ScheduledTask{
+			AssignedTask: &api.AssignedTask{
+				Task: &api.TaskConfig{
+					Container: dockerContainer,
+				},
+			},
+		},
+	}
+	stateChange2 := &taskStateChange{
+		Task: &api.ScheduledTask{
+			AssignedTask: &api.AssignedTask{
+				Task: &api.TaskConfig{
+					IsService: ptr.Bool(true),
+				},
+			},
+		},
+	}
+
+	// Expect "container" object to be modified
+	msg1, err := json.Marshal(stateChange1)
+	assert.NoError(t, err)
+	assert.Equal(t, `{"task":{"assignedTask":{"task":{"container":{"docker":{"image":"image","parameters":[{"name":"name","value":"value"}]}}}}}}`, string(msg1))
+
+	fmsg1, err := modifyTaskStateChangeJSON(msg1)
+	assert.NoError(t, err)
+	assert.Equal(t, `{"task":{"assignedTask":{"task":{"container":{"setField":"DOCKER","value":{"image":"image","parameters":[{"name":"name","value":"value"}]}}}}}}`, string(fmsg1))
+
+	// Since container does not exist, expect no change in json string
+	msg2, err := json.Marshal(stateChange2)
+	assert.NoError(t, err)
+	assert.Equal(t, `{"task":{"assignedTask":{"task":{"isService":true}}}}`, string(msg2))
+
+	fmsg2, err := modifyTaskStateChangeJSON(msg2)
+	assert.NoError(t, err)
+	assert.Equal(t, `{"task":{"assignedTask":{"task":{"isService":true}}}}`, string(fmsg2))
 }

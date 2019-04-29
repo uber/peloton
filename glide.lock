@@ -1,5 +1,5 @@
-hash: 9803ceefbaf96124d8b1eadec4cabc13593ccfc38bb47c5084c8a7b1669fc58a
-updated: 2019-04-04T16:02:09.864067-07:00
+hash: 57a13d751d82f7bf55ec9de20877499ae104a2b4a4ee9e863fbec2bd8d9316f5
+updated: 2019-04-29T15:27:30.064851-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -117,6 +117,8 @@ imports:
   version: 7554cd9344cec97297fa6649b055a8c98c2a1e55
 - name: github.com/hashicorp/go-multierror
   version: ed905158d87462226a13fe39ddf685ea65f1c11f
+- name: github.com/Jeffail/gabs
+  version: 74ef14cf8f407ee3ca8ec01bb6f52d6104edea80
 - name: github.com/jessevdk/go-flags
   version: c6ca198ec95c841fdb89fc0de7496fed11ab854e
 - name: github.com/kisielk/errcheck
@@ -255,7 +257,7 @@ imports:
   - push
   - tallypush
 - name: go.uber.org/thriftrw
-  version: 09aadc27c679160ef322113d1daf634b643825d9
+  version: 8c0d4168d718dcf453a5a9538725f6e4ecf6ee3d
   subpackages:
   - ast
   - compile

@@ -16,6 +16,7 @@ package common
 
 import (
 	"fmt"
+	"hash/fnv"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
@@ -94,4 +95,11 @@ func IsPodSpecWithoutBridgeUpdateLabelChanged(
 	RemoveBridgeUpdateLabel(newPodSpec)
 
 	return taskconfig.HasPodSpecChanged(prevPodSpec, newPodSpec)
+}
+
+// Hash creates 32-bit FNV-1a hash for string
+func Hash(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
 }

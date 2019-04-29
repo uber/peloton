@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/Jeffail/gabs"
 	"io"
 	"net/http"
 	"time"
@@ -271,15 +272,8 @@ func (e *eventPublisher) watchPod(
 		}
 
 		for _, pod := range msg.GetPods() {
-			_, instanceID, err := util.ParseTaskID(pod.GetPodName().GetValue())
-			if err != nil {
-				log.WithField("pod_name", pod.GetPodName().GetValue()).
-					WithError(err).
-					Error("failed for parse pod_name")
-				continue
-			}
-
-			index := instanceID % uint32(podBuckets)
+			podName := pod.GetPodName().GetValue()
+			index := common.Hash(podName) % uint32(podBuckets)
 			e.buckets[index] <- &podEvent{
 				pod:       pod,
 				timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -314,8 +308,8 @@ func (e *eventPublisher) receivePod(
 }
 
 type taskStateChange struct {
-	Task     *api.ScheduledTask  `json:"task"`
-	OldState *api.ScheduleStatus `json:"oldState"`
+	Task     *api.ScheduledTask  `json:"task,omitempty"`
+	OldState *api.ScheduleStatus `json:"oldState,omitempty"`
 }
 
 // publishes the pod state change event to kafka
@@ -345,7 +339,15 @@ func (e *eventPublisher) publishEvent(
 		return
 	}
 
-	if err := e.postToKafkaRestProxy(message); err != nil {
+	// Modify json string to match aurora
+	fixedMessage, err := modifyTaskStateChangeJSON(message)
+	if err != nil {
+		logFields.WithError(err).Error("unable to fix task state change json string")
+		// fallback to original message if failed to fix
+		fixedMessage = message
+	}
+
+	if err := e.postToKafkaRestProxy(fixedMessage); err != nil {
 		logFields.WithError(err).Error("unable to write to kafka")
 		return
 	}
@@ -414,6 +416,85 @@ func (e *eventPublisher) getTaskStateChange(
 		Task:     task,
 		OldState: task.GetStatus().Ptr(), // dummy value
 	}, nil
+}
+
+// modifyTaskStateChangeJSON fixes json serialization difference between
+// thriftrw implementation and aurora. Specifically,
+//
+// thriftrw serializes TaskStateChange object into json string:
+// {
+//    "task": {
+//        "assignedTask": {
+//            "task": {
+//                "container": {
+//                    "docker": {
+//                        "image": "image",
+//                        "parameters": [{
+//                            "name": "name",
+//                            "value": "value"
+//                        }]
+//                    }
+//                }
+//            }
+//        }
+//    }
+// }
+//
+// aurora serializes the object into json string:
+// {
+//    "task": {
+//        "assignedTask": {
+//            "task": {
+//                "container": {
+//                    "setField": "DOCKER",
+//                    "value": {
+//                        "image": "image",
+//                        "parameters": [{
+//                            "name": "name",
+//                            "value": "value"
+//                        }]
+//                    }
+//                }
+//            }
+//        }
+//    }
+// }
+func modifyTaskStateChangeJSON(data []byte) ([]byte, error) {
+	// Deserialize json string into gabs container
+	taskStateChange, err := gabs.ParseJSON(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse aurora container object inside TaskConfig
+	container := taskStateChange.Path("task.assignedTask.task.container")
+	dockerContainer := container.Path("docker")
+	mesosContainer := container.Path("mesos")
+
+	var containerValue *gabs.Container
+	var containerType string
+	if dockerContainer != nil {
+		containerValue = dockerContainer
+		containerType = "DOCKER"
+	} else if mesosContainer != nil {
+		containerValue = mesosContainer
+		containerType = "MESOS"
+	} else {
+		// nothing to fix, return original
+		return data, nil
+	}
+
+	// Create a new json object to overwrite existing
+	newContainer, err := taskStateChange.ObjectP("task.assignedTask.task.container")
+	if err != nil {
+		return nil, err
+	}
+
+	newContainer.Set(containerType, "setField")
+	newContainer.Set(containerValue.Data(), "value")
+
+	// Serialize modified json object into string
+	return taskStateChange.Bytes(), nil
 }
 
 // post to kafka rest proxy

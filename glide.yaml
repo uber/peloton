@@ -35,7 +35,7 @@ import:
   subpackages:
   - internal/stack
 - package: go.uber.org/yarpc
-  version: ^1.37.0
+  version: v1.37.0
   subpackages:
   - internal/protoplugin
 - package: github.com/cactus/go-statsd-client
@@ -90,9 +90,11 @@ import:
   version: 8dea3dc473e90c8179e519d91302d0597c0ca1d1
   repo: https://github.com/grpc/grpc-go
 - package: go.uber.org/thriftrw
-  version: dev
+  version: ^v1.18.0
 - package: golang.org/x/crypto
   version: a1f597ede03a7bef967a422b5b3a5bd08805a01e
+- package: github.com/Jeffail/gabs
+  version: v1.2.0
 
 # packages below needed for proto gen files
 - package: go.uber.org/fx
