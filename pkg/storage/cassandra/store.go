@@ -105,6 +105,10 @@ const (
 	// _defaultPodEventsLimit is default number of pod events
 	// to read if not provided for jobID + instanceID
 	_defaultPodEventsLimit = 100
+
+	// Default context timeout for the method to cleanup old
+	// job updates from the storage
+	_jobUpdatesCleanupTimeout = 120 * time.Second
 )
 
 // Config is the config for cassandra Store
@@ -2789,8 +2793,14 @@ func (s *Store) CreateUpdate(
 
 	// best effort to clean up previous updates for the job
 	go func() {
-		if err := s.cleanupPreviousUpdatesForJob(
+		cleanupCtx, cleanupCancel := context.WithTimeout(
 			ctx,
+			_jobUpdatesCleanupTimeout,
+		)
+		defer cleanupCancel()
+
+		if err := s.cleanupPreviousUpdatesForJob(
+			cleanupCtx,
 			updateInfo.GetJobID()); err != nil {
 			log.WithError(err).
 				WithField("job_id", updateInfo.GetJobID().GetValue()).
