@@ -26,6 +26,24 @@ def wait_for_rolled_forward(client, job_update_key, timeout_secs=120):
     )
 
 
+def wait_for_rolling_forward(client, job_update_key, timeout_secs=120):
+    '''Wait for job update to be in "ROLLING_FORWARD" state, triggers
+    assertion failure if timed out.
+
+    Args:
+        client: aurora client object
+        job_update_key: aurora JobUpdateKey struct specifying the update to
+            wait for
+    '''
+    wait_for_update_status(
+        client,
+        job_update_key,
+        {},
+        api.JobUpdateStatus.ROLLING_FORWARD,
+        timeout_secs,
+    )
+
+
 def wait_for_auto_rolling_back(client, job_update_key, timeout_secs=120):
     wait_for_update_status(
         client,
@@ -106,13 +124,15 @@ def get_update_status(client, job_update_key):
     return summary.state.status
 
 
-def wait_for_running(client, job_key):
+def wait_for_running(client, job_key, instances=None):
     '''Wait for all tasks in a specific job to be in "RUNNING" state, triggers
     assertion failure if timed out.
 
     Args:
         client: aurora client object
         job_key: aurora JobKey struct specifying the job to wait for
+        instances: a list of instance ids to wait for, wait for all instances
+            passed as None
     '''
     wait_for_task_status(
         client,
@@ -123,7 +143,8 @@ def wait_for_running(client, job_key):
             api.ScheduleStatus.ASSIGNED,
             api.ScheduleStatus.STARTING,
         ]),
-        api.ScheduleStatus.RUNNING)
+        api.ScheduleStatus.RUNNING,
+        instances=instances)
 
 
 def wait_for_killed(client, job_key, instances=None):
@@ -173,6 +194,12 @@ def wait_for_task_status(
         deadline = time.time() + timeout_secs
         while time.time() < deadline:
             statuses = get_task_status(client, job_key, instances=instances)
+
+            # not all expected instance statuses are returned
+            if instances and len(statuses) != len(instances):
+                time.sleep(2)
+                continue
+
             all_match = True
             for s in statuses:
                 if s != status:
@@ -185,6 +212,36 @@ def wait_for_task_status(
         assert False, 'timed out waiting for {status}, last statuses: {latest}'.format(
             status=api.ScheduleStatus.name_of(status),
             latest=map(lambda s: api.ScheduleStatus.name_of(s), statuses))
+    finally:
+        # wait so that PodStats is consistent with result returned by
+        # getTasksWithoutConfigs
+        time.sleep(1)
+
+
+def wait_for_task_removed(client, job_key, timeout_secs=120, instances=None):
+    '''Wait for all tasks in a job to be removed, triggers assertion failure
+    if timed out.
+
+    Args:
+        client: aurora client object
+        job_key: aurora JobKey struct specifying the job to wait for
+        timeout_secs: timeout in seconds, triggers assertion failure if
+            timed out
+        instances: a list of instance ids to wait for, wait for all instances
+            passed as None
+    '''
+    try:
+        deadline = time.time() + timeout_secs
+        while time.time() < deadline:
+            statuses = get_task_status(client, job_key, instances=instances)
+
+            if not statuses:
+                return
+
+            time.sleep(2)
+
+        assert False, 'timed out waiting for tasks to be removed: {instances}'.format(
+            instances=instances)
     finally:
         # wait so that PodStats is consistent with result returned by
         # getTasksWithoutConfigs
