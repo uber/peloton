@@ -77,6 +77,9 @@ message UpdateModel {
 
   // the previous update state
   api.v0.peloton.OpaqueData opaque_data = 18;
+
+  // time at which the update state completed
+  string completionTime = 19;
 }
 
 /**

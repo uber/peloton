@@ -454,6 +454,7 @@ func ConvertUpdateModelToWorkflowStatus(
 		PrevVersion:           prevVersion,
 		CreationTime:          updateInfo.GetCreationTime(),
 		UpdateTime:            updateInfo.GetUpdateTime(),
+		CompletionTime:        updateInfo.GetCompletionTime(),
 	}
 }
 

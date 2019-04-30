@@ -64,7 +64,6 @@ const (
 	// DB table names
 	activeJobsTable        = "active_jobs"
 	jobConfigTable         = "job_config"
-	jobNameToIDTable       = "job_name_to_id"
 	jobRuntimeTable        = "job_runtime"
 	jobIndexTable          = "job_index"
 	taskConfigTable        = "task_config"
@@ -3122,7 +3121,9 @@ func (s *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
 			CreationTime:         record.CreationTime.Format(time.RFC3339Nano),
 			UpdateTime:           record.UpdateTime.Format(time.RFC3339Nano),
 			OpaqueData:           &peloton.OpaqueData{Data: record.OpaqueData},
+			CompletionTime:       record.CompletionTime,
 		}
+
 		s.metrics.UpdateMetrics.UpdateGet.Inc(1)
 		return updateInfo, nil
 	}
@@ -3220,7 +3221,6 @@ func (s *Store) deleteJobConfigVersion(
 func (s *Store) WriteUpdateProgress(
 	ctx context.Context,
 	updateInfo *models.UpdateModel) error {
-
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(updatesTable).
 		Set("update_state", updateInfo.GetState().String()).
@@ -3232,6 +3232,10 @@ func (s *Store) WriteUpdateProgress(
 
 	if updateInfo.GetOpaqueData() != nil {
 		stmt = stmt.Set("opaque_data", updateInfo.GetOpaqueData().GetData())
+	}
+
+	if len(updateInfo.GetCompletionTime()) != 0 {
+		stmt = stmt.Set("completion_time", updateInfo.GetCompletionTime())
 	}
 
 	stmt = stmt.Where(qb.Eq{"update_id": updateInfo.GetUpdateID().GetValue()})
@@ -3336,6 +3340,7 @@ func (s *Store) GetUpdateProgress(ctx context.Context, id *peloton.UpdateID) (
 			InstancesFailed:  uint32(record.InstancesFailed),
 			InstancesCurrent: record.GetProcessingInstances(),
 			UpdateTime:       record.UpdateTime.Format(time.RFC3339Nano),
+			CompletionTime:   record.CompletionTime,
 		}
 
 		s.metrics.UpdateMetrics.UpdateGetProgess.Inc(1)

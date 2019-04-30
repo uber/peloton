@@ -193,6 +193,10 @@ message WorkflowStatus {
 
   // Previous runtime state of the workflow.
   WorkflowState prev_state = 11;
+
+  // The time when the workflow completed. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string completion_time = 12;
 }
 
 // The current runtime status of a Job.

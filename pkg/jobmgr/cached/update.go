@@ -17,6 +17,7 @@ package cached
 import (
 	"context"
 	"sync"
+	"time"
 
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
@@ -477,17 +478,20 @@ func (u *update) writeProgress(
 		}
 	}
 
-	if err := u.jobFactory.updateStore.WriteUpdateProgress(
-		ctx,
-		&models.UpdateModel{
-			UpdateID:         u.id,
-			PrevState:        prevState,
-			State:            state,
-			InstancesDone:    uint32(len(instancesDone)),
-			InstancesFailed:  uint32(len(instancesFailed)),
-			InstancesCurrent: instancesCurrent,
-			OpaqueData:       opaqueData,
-		}); err != nil {
+	updateModel := &models.UpdateModel{
+		UpdateID:         u.id,
+		PrevState:        prevState,
+		State:            state,
+		InstancesDone:    uint32(len(instancesDone)),
+		InstancesFailed:  uint32(len(instancesFailed)),
+		InstancesCurrent: instancesCurrent,
+		OpaqueData:       opaqueData,
+	}
+
+	if IsUpdateStateTerminal(state) {
+		updateModel.CompletionTime = time.Now().Format(time.RFC3339)
+	}
+	if err := u.jobFactory.updateStore.WriteUpdateProgress(ctx, updateModel); err != nil {
 		// clear the cache on DB error to avoid cache inconsistency
 		u.clearCache()
 		return err

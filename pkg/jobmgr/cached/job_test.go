@@ -3295,6 +3295,7 @@ func (suite *JobTestSuite) TestAbortWorkflowSuccess() {
 			Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
 				suite.Equal(updateInfo.GetState(), pbupdate.State_ABORTED)
 				suite.Equal(updateInfo.GetOpaqueData().GetData(), opaque)
+				suite.NotEmpty(updateInfo.GetCompletionTime())
 			}).
 			Return(nil),
 	)
@@ -3397,6 +3398,7 @@ func (suite *JobTestSuite) TestAbortWorkflowNotExistInCacheSuccess() {
 			WriteUpdateProgress(gomock.Any(), gomock.Any()).
 			Do(func(ctx context.Context, updateInfo *models.UpdateModel) {
 				suite.Equal(updateInfo.GetState(), pbupdate.State_ABORTED)
+				suite.NotEmpty(updateInfo.GetCompletionTime())
 			}).
 			Return(nil),
 	)

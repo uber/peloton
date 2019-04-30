@@ -163,6 +163,7 @@ type UpdateRecord struct {
 	CreationTime         time.Time         `cql:"creation_time"`
 	UpdateTime           time.Time         `cql:"update_time"`
 	OpaqueData           string            `cql:"opaque_data"`
+	CompletionTime       string            `cql:"completion_time"`
 }
 
 // GetUpdateConfig unmarshals and returns the configuration of the job update.

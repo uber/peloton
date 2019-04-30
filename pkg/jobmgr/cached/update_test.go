@@ -660,6 +660,7 @@ func (suite *UpdateTestSuite) TestCancelValid() {
 		Do(func(_ context.Context, updateModel *models.UpdateModel) {
 			suite.Equal(suite.updateID, updateModel.UpdateID)
 			suite.Equal(pbupdate.State_ABORTED, updateModel.State)
+			suite.NotEmpty(updateModel.GetCompletionTime())
 			suite.Equal(uint32(len(instancesDone)), updateModel.InstancesDone)
 			suite.Equal(instancesCurrent, updateModel.InstancesCurrent)
 			suite.Equal(opaque, updateModel.GetOpaqueData().GetData())
