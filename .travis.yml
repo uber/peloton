@@ -17,7 +17,6 @@ jobs:
       install:
       - scripts/bootstrap.sh
       - make devtools install
-      script: make test
+      script: make test lint
 #    - name: "Integration tests"
 #      script: make integ-test
-

@@ -9,6 +9,7 @@
 .tmp/
 .build/
 .arcconfig
+.arclint
 docker/pip.conf
 /pbgen
 /vendor
