@@ -3459,27 +3459,6 @@ func (s *Store) getJobSummaryFromResultMap(
 		}
 		summary.Id = &peloton.JobID{Value: id.String()}
 		if name, ok := value["name"].(string); ok {
-			if name == "" {
-				// In case of an older job, the "name" column is not populated
-				// in jobIndexTable. This is a rudimentary assumption,
-				// unfortunately because jobIndexTable doesn't have versioning.
-				// In this case, get summary from jobconfig
-				// and move on to the next job entry.
-				// TODO (adityacb): remove this code block when we
-				// start archiving older jobs and no longer hit this case.
-				summary, err := s.getJobSummaryFromConfig(ctx, summary.Id)
-				if err != nil {
-					// no need to throw error here, continue with the rest of
-					// the entries. This is most likely a partially created job
-					// that will be cleaned up by goalstate engine
-					log.WithError(err).
-						WithField("jobID", id.String()).
-						Info("failed to get summary from config")
-				} else {
-					summaryResults = append(summaryResults, summary)
-				}
-				continue
-			}
 			summary.Name = name
 		}
 		if runtimeInfo, ok := value["runtime_info"].(string); ok {

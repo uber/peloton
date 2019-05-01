@@ -131,6 +131,8 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.respoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.listJobsServer = statelesssvcmocks.NewMockJobServiceServiceListJobsYARPCServer(suite.ctrl)
 	suite.listPodsServer = statelesssvcmocks.NewMockJobServiceServiceListPodsYARPCServer(suite.ctrl)
+	suite.listJobsServer.EXPECT().Context().Return(context.Background()).AnyTimes()
+	suite.listPodsServer.EXPECT().Context().Return(context.Background()).AnyTimes()
 	suite.activeRMTasks = activermtaskmocks.NewMockActiveRMTasks(suite.ctrl)
 	suite.handler = &serviceHandler{
 		jobFactory:      suite.jobFactory,

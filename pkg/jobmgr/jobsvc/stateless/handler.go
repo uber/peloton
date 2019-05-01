@@ -1080,7 +1080,7 @@ func (h *serviceHandler) ListPods(
 	}
 
 	taskRuntimes, err := h.taskStore.GetTaskRuntimesForJobByRange(
-		context.Background(),
+		stream.Context(),
 		&peloton.JobID{Value: req.GetJobId().GetValue()},
 		instanceRange,
 	)
@@ -1252,7 +1252,7 @@ func (h *serviceHandler) ListJobs(
 		log.Debug("JobSVC.ListJobs succeeded")
 	}()
 
-	jobSummaries, err := h.jobStore.GetAllJobsInJobIndex(context.Background())
+	jobSummaries, err := h.jobStore.GetAllJobsInJobIndex(stream.Context())
 	if err != nil {
 		return err
 	}
@@ -1262,7 +1262,7 @@ func (h *serviceHandler) ListJobs(
 
 		if len(jobSummary.GetRuntime().GetUpdateID().GetValue()) > 0 {
 			updateInfo, err = h.updateStore.GetUpdate(
-				context.Background(),
+				stream.Context(),
 				jobSummary.GetRuntime().GetUpdateID(),
 			)
 			if err != nil {
