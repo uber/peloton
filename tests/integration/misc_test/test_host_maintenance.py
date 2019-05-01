@@ -8,15 +8,18 @@ from tests.integration.host import (
     complete_maintenance,
     wait_for_host_state,
     is_host_in_state,
-    draining_period_sec)
+    draining_period_sec,
+)
 from tests.integration.conftest import Container
 
 from peloton_client.pbgen.peloton.api.v0.host import host_pb2 as hpb
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 
-pytestmark = [pytest.mark.default,
-              pytest.mark.preemption,
-              pytest.mark.random_order(disabled=True)]
+pytestmark = [
+    pytest.mark.default,
+    pytest.mark.preemption,
+    pytest.mark.random_order(disabled=True),
+]
 
 log = logging.getLogger(__name__)
 
@@ -54,11 +57,12 @@ def maintenance(request):
         for h in draining_hosts:
             wait_for_host_state(h, hpb.HOST_STATE_DOWN)
         stop(draining_hosts)
+
     request.addfinalizer(clean_up)
 
     response = dict()
-    response['start'] = start
-    response['stop'] = stop
+    response["start"] = start
+    response["stop"] = stop
     return response
 
 
@@ -86,27 +90,30 @@ def test__start_maintenance_kill_tasks(host_affinity_job, maintenance):
     test_host = get_host_in_state(hpb.HOST_STATE_UP)
 
     # Set host affinity of the job to the selected host
-    host_affinity_job.job_config.defaultConfig.\
-        constraint.labelConstraint.label.value = test_host
+    host_affinity_job.job_config.defaultConfig.constraint.labelConstraint.label.value = (
+        test_host
+    )
 
     host_affinity_job.create()
-    host_affinity_job.wait_for_state(goal_state='RUNNING')
+    host_affinity_job.wait_for_state(goal_state="RUNNING")
 
     def all_running():
         return all(
-            t.state == task.RUNNING for t in host_affinity_job.get_tasks().values()
+            t.state == task.RUNNING
+            for t in host_affinity_job.get_tasks().values()
         )
 
     host_affinity_job.wait_for_condition(all_running)
 
     constraint = host_affinity_job.job_config.defaultConfig.constraint
     test_host = constraint.labelConstraint.label.value
-    resp = maintenance['start']([test_host])
+    resp = maintenance["start"]([test_host])
     assert resp
 
     def all_pending():
         return all(
-            t.state == task.PENDING for t in host_affinity_job.get_tasks().values()
+            t.state == task.PENDING
+            for t in host_affinity_job.get_tasks().values()
         )
 
     # Wait for tasks to be killed and restarted
@@ -126,13 +133,14 @@ def test__host_maintenance_lifecycle(host_affinity_job, maintenance):
     test_host = get_host_in_state(hpb.HOST_STATE_UP)
 
     # Set host affinity of the job to the selected host
-    host_affinity_job.job_config.defaultConfig.\
-        constraint.labelConstraint.label.value = test_host
+    host_affinity_job.job_config.defaultConfig.constraint.labelConstraint.label.value = (
+        test_host
+    )
 
     host_affinity_job.create()
 
     # Start maintenance on the selected host
-    resp = maintenance['start']([test_host])
+    resp = maintenance["start"]([test_host])
     assert resp
 
     assert is_host_in_state(test_host, hpb.HOST_STATE_DRAINING)
@@ -141,7 +149,7 @@ def test__host_maintenance_lifecycle(host_affinity_job, maintenance):
     wait_for_host_state(test_host, hpb.HOST_STATE_DOWN)
 
     # Complete maintenance on the test hosts
-    resp = maintenance['stop']([test_host])
+    resp = maintenance["stop"]([test_host])
     assert resp
 
     # Host should no longer be DOWN
@@ -159,30 +167,31 @@ def test__host_maintenance_lifecycle(host_affinity_job, maintenance):
 #                    draining process should resume and host should transition
 #                    to DOWN
 @pytest.mark.skip(reason="flaky integration test")
-def test__host_draining_resumes_on_resmgr_recovery(host_affinity_job,
-                                                   maintenance,
-                                                   jobmgr,
-                                                   resmgr):
+def test__host_draining_resumes_on_resmgr_recovery(
+    host_affinity_job, maintenance, jobmgr, resmgr
+):
     # Pick a host that is UP and start maintenance on it
     test_host = get_host_in_state(hpb.HOST_STATE_UP)
 
     # Set host affinity of the job to the selected host
-    host_affinity_job.job_config.defaultConfig.\
-        constraint.labelConstraint.label.value = test_host
+    host_affinity_job.job_config.defaultConfig.constraint.labelConstraint.label.value = (
+        test_host
+    )
 
     host_affinity_job.create()
-    host_affinity_job.wait_for_state(goal_state='RUNNING')
+    host_affinity_job.wait_for_state(goal_state="RUNNING")
 
     def all_running():
         return all(
-            t.state == task.RUNNING for t in host_affinity_job.get_tasks().values()
+            t.state == task.RUNNING
+            for t in host_affinity_job.get_tasks().values()
         )
 
     host_affinity_job.wait_for_condition(all_running)
 
     constraint = host_affinity_job.job_config.defaultConfig.constraint
     test_host = constraint.labelConstraint.label.value
-    resp = maintenance['start']([test_host])
+    resp = maintenance["start"]([test_host])
     assert resp
 
     # Stop jobmgr to ensure tasks are not killed
@@ -205,23 +214,24 @@ def test__host_draining_resumes_on_resmgr_recovery(host_affinity_job,
 #                    draining process should resume and host should transition
 #                    to DOWN
 @pytest.mark.skip(reason="flaky integration test")
-def test__host_draining_resumes_on_hostmgr_recovery(host_affinity_job,
-                                                    maintenance,
-                                                    resmgr,
-                                                    hostmgr):
+def test__host_draining_resumes_on_hostmgr_recovery(
+    host_affinity_job, maintenance, resmgr, hostmgr
+):
     # Pick a host that is UP and start maintenance on it
     test_host = get_host_in_state(hpb.HOST_STATE_UP)
 
     # Set host affinity of the job to the selected host
-    host_affinity_job.job_config.defaultConfig.\
-        constraint.labelConstraint.label.value = test_host
+    host_affinity_job.job_config.defaultConfig.constraint.labelConstraint.label.value = (
+        test_host
+    )
 
     host_affinity_job.create()
-    host_affinity_job.wait_for_state(goal_state='RUNNING')
+    host_affinity_job.wait_for_state(goal_state="RUNNING")
 
     def all_running():
         return all(
-            t.state == task.RUNNING for t in host_affinity_job.get_tasks().values()
+            t.state == task.RUNNING
+            for t in host_affinity_job.get_tasks().values()
         )
 
     host_affinity_job.wait_for_condition(all_running)
@@ -231,7 +241,7 @@ def test__host_draining_resumes_on_hostmgr_recovery(host_affinity_job,
     # Stop resmgr to ensure maintenance queue is not polled
     resmgr.stop()
 
-    resp = maintenance['start']([test_host])
+    resp = maintenance["start"]([test_host])
     assert resp
 
     hostmgr.restart()

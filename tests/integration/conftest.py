@@ -7,8 +7,7 @@ import requests
 
 from docker import Client
 from tools.minicluster.main import setup, teardown, config as mc_config
-from tools.minicluster.minicluster import run_mesos_agent, \
-    teardown_mesos_agent
+from tools.minicluster.minicluster import run_mesos_agent, teardown_mesos_agent
 from job import Job
 from job import query_jobs as batch_query_jobs
 from job import kill_jobs as batch_kill_jobs
@@ -18,7 +17,12 @@ from stateless_job import delete_jobs as stateless_delete_jobs
 from m3.client import M3
 from m3.emitter import BatchedEmitter
 from peloton_client.pbgen.peloton.api.v0.job import job_pb2
-from conf_util import TERMINAL_JOB_STATES, ACTIVE_JOB_STATES, MESOS_MASTER, MESOS_AGENTS
+from conf_util import (
+    TERMINAL_JOB_STATES,
+    ACTIVE_JOB_STATES,
+    MESOS_MASTER,
+    MESOS_AGENTS,
+)
 import conf_util as util
 
 log = logging.getLogger(__name__)
@@ -81,31 +85,31 @@ def pytest_runtest_makereport(item, call):
 
 def pytest_sessionfinish(session, exitstatus):
     emitter = BatchedEmitter()
-    m3 = M3(application_identifier='peloton',
-            emitter=emitter,
-            environment='production',
-            default_tags={
-                'result': 'watchdog', 'cluster': os.getenv('CLUSTER')},
-            )
+    m3 = M3(
+        application_identifier="peloton",
+        emitter=emitter,
+        environment="production",
+        default_tags={"result": "watchdog", "cluster": os.getenv("CLUSTER")},
+    )
     if collect_metrics.failed > 0:
-        m3.gauge('watchdog_result', 1)
+        m3.gauge("watchdog_result", 1)
     else:
-        m3.gauge('watchdog_result', 0)
-    m3.gauge('total_tests', collect_metrics.failed + collect_metrics.passed)
-    m3.gauge('failed_tests', collect_metrics.failed)
-    m3.gauge('passed_tests', collect_metrics.passed)
-    m3.gauge('duration_tests', collect_metrics.duration)
+        m3.gauge("watchdog_result", 0)
+    m3.gauge("total_tests", collect_metrics.failed + collect_metrics.passed)
+    m3.gauge("failed_tests", collect_metrics.failed)
+    m3.gauge("passed_tests", collect_metrics.passed)
+    m3.gauge("duration_tests", collect_metrics.duration)
 
 
 class Container(object):
     def __init__(self, names):
-        self._cli = Client(base_url='unix://var/run/docker.sock')
+        self._cli = Client(base_url="unix://var/run/docker.sock")
         self._names = names
 
     def start(self):
         for name in self._names:
             self._cli.start(name)
-            log.info('%s started', name)
+            log.info("%s started", name)
 
         if self._names[0] in MESOS_MASTER:
             wait_for_mesos_master_leader()
@@ -113,19 +117,20 @@ class Container(object):
     def stop(self):
         for name in self._names:
             self._cli.stop(name, timeout=0)
-            log.info('%s stopped', name)
+            log.info("%s stopped", name)
 
     def restart(self):
         for name in self._names:
             self._cli.restart(name, timeout=0)
-            log.info('%s restarted', name)
+            log.info("%s restarted", name)
 
         if self._names[0] in MESOS_MASTER:
             wait_for_mesos_master_leader()
 
 
-def wait_for_mesos_master_leader(url='http://127.0.0.1:5050/state.json',
-                                 timeout_secs=20):
+def wait_for_mesos_master_leader(
+    url="http://127.0.0.1:5050/state.json", timeout_secs=20
+):
     """
     util method to wait for mesos master leader elected
     """
@@ -141,18 +146,18 @@ def wait_for_mesos_master_leader(url='http://127.0.0.1:5050/state.json',
         except Exception:
             pass
 
-    assert False, 'timed out waiting for mesos master leader'
+    assert False, "timed out waiting for mesos master leader"
 
 
 def setup_minicluster():
     """
     setup minicluster
     """
-    log.info('setup cluster')
-    if os.getenv('CLUSTER', ''):
-        log.info('cluster mode')
+    log.info("setup cluster")
+    if os.getenv("CLUSTER", ""):
+        log.info("cluster mode")
     else:
-        log.info('local minicluster mode')
+        log.info("local minicluster mode")
         setup(enable_peloton=True)
         time.sleep(5)
 
@@ -161,23 +166,23 @@ def teardown_minicluster(dump_logs=False):
     """
     teardown minicluster
     """
-    log.info('\nteardown cluster')
-    if os.getenv('CLUSTER', ''):
-        log.info('cluster mode, no teardown actions')
-    elif os.getenv('NO_TEARDOWN', ''):
-        log.info('skip teardown')
+    log.info("\nteardown cluster")
+    if os.getenv("CLUSTER", ""):
+        log.info("cluster mode, no teardown actions")
+    elif os.getenv("NO_TEARDOWN", ""):
+        log.info("skip teardown")
     else:
-        log.info('tearing down')
+        log.info("tearing down")
 
         # dump logs only if tests have failed in the current module
         if dump_logs:
             try:
                 # TODO (varung): enable PE and mesos-master logs if needed
-                cli = Client(base_url='unix://var/run/docker.sock')
-                log.info(cli.logs('peloton-jobmgr0'))
-                log.info(cli.logs('peloton-resmgr0'))
-                log.info(cli.logs('peloton-hostmgr0'))
-                log.info(cli.logs('peloton-aurorabridge0'))
+                cli = Client(base_url="unix://var/run/docker.sock")
+                log.info(cli.logs("peloton-jobmgr0"))
+                log.info(cli.logs("peloton-resmgr0"))
+                log.info(cli.logs("peloton-hostmgr0"))
+                log.info(cli.logs("peloton-aurorabridge0"))
             except Exception as e:
                 log.info(e)
 
@@ -257,11 +262,11 @@ def hostmgr():
 
 @pytest.fixture
 def long_running_job(request):
-    job = Job(job_file='long_running_job.yaml')
+    job = Job(job_file="long_running_job.yaml")
 
     # teardown
     def kill_long_running_job():
-        print "\nstopping long running job"
+        print("\nstopping long running job")
         job.stop()
 
     request.addfinalizer(kill_long_running_job)
@@ -275,7 +280,7 @@ def stateless_job(request):
 
     # teardown
     def kill_stateless_job():
-        print "\nstopping stateless job"
+        print("\nstopping stateless job")
         job.stop()
 
     request.addfinalizer(kill_stateless_job)
@@ -285,11 +290,11 @@ def stateless_job(request):
 
 @pytest.fixture
 def host_affinity_job(request):
-    job = Job(job_file='test_job_host_affinity_constraint.yaml')
+    job = Job(job_file="test_job_host_affinity_constraint.yaml")
 
     # Kill job
     def kill_host_affinity_job():
-        print "\nstopping host affinity job"
+        print("\nstopping host affinity job")
         job.stop()
 
     request.addfinalizer(kill_host_affinity_job)
@@ -335,30 +340,31 @@ def create_jobs(request):
     jobs_by_state = util.create_job_config_by_state()
     salt = jobs_by_state[0]
     jobs_dict = jobs_by_state[1]
-    log.info('Create jobs')
+    log.info("Create jobs")
     respoolID = None
 
     for state in TERMINAL_JOB_STATES:
         jobs = jobs_dict[state]
         for job in jobs:
             job.create()
-            if state == 'FAILED':
-                job.wait_for_state(goal_state='FAILED',
-                                   failed_state='SUCCEEDED')
+            if state == "FAILED":
+                job.wait_for_state(
+                    goal_state="FAILED", failed_state="SUCCEEDED"
+                )
             else:
                 job.wait_for_state(goal_state=state)
             if respoolID is None:
                 respoolID = job.get_config().respoolID
 
     def stop_jobs():
-        log.info('Stop jobs')
+        log.info("Stop jobs")
         for state in TERMINAL_JOB_STATES:
             jobs = jobs_dict[state]
             for job in jobs:
                 state = job_pb2.JobState.Name(job.get_runtime().state)
                 if state in ACTIVE_JOB_STATES:
                     job.stop()
-                    job.wait_for_state(goal_state='KILLED')
+                    job.wait_for_state(goal_state="KILLED")
 
     request.addfinalizer(stop_jobs)
 
@@ -390,18 +396,18 @@ def task_test_fixture(request):
         mixed_task_states = True
     else:
         mixed_task_states = False
-    test_config = util.generate_job_config(file_name='test_task.yaml',
-                                           task_states=task_states)
+    test_config = util.generate_job_config(
+        file_name="test_task.yaml", task_states=task_states
+    )
     # Create job with customized tasks.
     job = Job(job_config=test_config)
     job.create()
-    log.info('Job for task query is created: %s', job.job_id)
+    log.info("Job for task query is created: %s", job.job_id)
 
     # Determine terminating state.
-    job_state = task_states[0][0] if not mixed_task_states else 'FAILED'
-    if job_state == 'FAILED':
-        job.wait_for_state(goal_state='FAILED',
-                           failed_state='SUCCEEDED')
+    job_state = task_states[0][0] if not mixed_task_states else "FAILED"
+    if job_state == "FAILED":
+        job.wait_for_state(goal_state="FAILED", failed_state="SUCCEEDED")
     else:
         job.wait_for_state(goal_state=job_state)
 
@@ -409,7 +415,8 @@ def task_test_fixture(request):
         state = job_pb2.JobState.Name(job.get_runtime().state)
         if state in ACTIVE_JOB_STATES:
             job.stop()
-            job.wait_for_state(goal_state='KILLED')
+            job.wait_for_state(goal_state="KILLED")
+
     request.addfinalizer(stop_job)
 
     return job.job_id
@@ -431,7 +438,12 @@ def exclusive_host(request):
 
     # Remove agent #0 and instead create exclusive agent #0
     teardown_mesos_agent(mc_config, 0)
-    run_mesos_agent(mc_config, 0, 3, is_exclusive=True,
-                    exclusive_label_value='exclusive-test-label')
+    run_mesos_agent(
+        mc_config,
+        0,
+        3,
+        is_exclusive=True,
+        exclusive_label_value="exclusive-test-label",
+    )
     time.sleep(5)
     request.addfinalizer(clean_up)

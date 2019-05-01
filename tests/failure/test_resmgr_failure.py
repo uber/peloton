@@ -5,7 +5,6 @@ from tests.integration import pool as tpool
 
 
 class TestResMgrFailure(object):
-
     def test_resmgr_failover(self, failure_tester):
         """
         Test res-manager fails over to follower when leader is
@@ -20,8 +19,9 @@ class TestResMgrFailure(object):
 
         # verify that we can do operations on new leader
         rp1 = self._get_test_pool(failure_tester, name="test_resmgr_failover")
-        retry_call(rp1.ensure_exists, tries=10, delay=5,
-                   logger=failure_tester.log)
+        retry_call(
+            rp1.ensure_exists, tries=10, delay=5, logger=failure_tester.log
+        )
         rp1.delete()
 
     def test_resmgr_restart_job_succeeds(self, failure_tester):
@@ -29,7 +29,7 @@ class TestResMgrFailure(object):
         Restart res-manager leader after creating a job and verify that
         the job runs to completion.
         """
-        job = failure_tester.job(job_file='test_job_no_container.yaml')
+        job = failure_tester.job(job_file="test_job_no_container.yaml")
         job.job_config.instanceCount = 8
         job.create()
 

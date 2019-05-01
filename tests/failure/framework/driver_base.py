@@ -78,8 +78,9 @@ class ClusterDriverABC(object):
         pass
 
     @abstractmethod
-    def match_zk_info(self, component_instance_id,
-                      component_instance_info, zk_node_info):
+    def match_zk_info(
+        self, component_instance_id, component_instance_info, zk_node_info
+    ):
         """
         Check if a component instance matches the provided Zookeeper node data.
         :param component_instance_id: Component instance-identifier. This is

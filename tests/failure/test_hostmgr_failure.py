@@ -1,11 +1,11 @@
 from retry import retry
 
 from peloton_client.pbgen.peloton.api.v0.host.svc import (
-    host_svc_pb2 as host_svc)
+    host_svc_pb2 as host_svc,
+)
 
 
 class TestHostMgrFailure(object):
-
     def test_hostmgr_failover(self, failure_tester):
         """
         Test host-manager fails over to follower when leader is
@@ -32,7 +32,7 @@ class TestHostMgrFailure(object):
         Restart host-manager leader after creating a job and verify that
         the job runs to completion.
         """
-        job = failure_tester.job(job_file='test_job_no_container.yaml')
+        job = failure_tester.job(job_file="test_job_no_container.yaml")
         job.create()
 
         # Restart immediately, so that tasks will be in various
@@ -48,5 +48,6 @@ class TestHostMgrFailure(object):
         resp = failure_tester.client.host_svc.QueryHosts(
             req,
             metadata=failure_tester.client.hostmgr_metadata,
-            timeout=failure_tester.integ_config.rpc_timeout_sec)
+            timeout=failure_tester.integ_config.rpc_timeout_sec,
+        )
         return resp.host_infos

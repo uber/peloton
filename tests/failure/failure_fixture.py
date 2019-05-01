@@ -13,6 +13,7 @@ class FailureFixture(object):
     operate on the framework. In addition, the fixture provides
     helper functions to make writing tests easier.
     """
+
     # Number of attempts to make while waiting for a condition
     MAX_RETRY_ATTEMPTS = 180
 
@@ -22,8 +23,11 @@ class FailureFixture(object):
         self.log = logging.getLogger(__name__)
         self.log.level = logging.INFO
         sh = logging.StreamHandler()
-        sh.setFormatter(logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        sh.setFormatter(
+            logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
+        )
         self.log.addHandler(sh)
 
         self.mesos_master = components.MesosMaster()
@@ -37,7 +41,8 @@ class FailureFixture(object):
         self.stateless_pe = components.StatelessPlacementEngine()
 
         self.integ_config = tjob.IntegrationTestConfig(
-            max_retry_attempts=self.MAX_RETRY_ATTEMPTS)
+            max_retry_attempts=self.MAX_RETRY_ATTEMPTS
+        )
 
     def setup(self):
         """
@@ -65,8 +70,8 @@ class FailureFixture(object):
         Create the spec for a job with some defaults.
         :param kwargs: Keyword arguments for job spec
         """
-        kwargs.setdefault('config', self.integ_config)
-        kwargs.setdefault('client', self.client)
+        kwargs.setdefault("config", self.integ_config)
+        kwargs.setdefault("client", self.client)
         return tjob.Job(**kwargs)
 
     def wait_for_condition(self, condition):
@@ -74,8 +79,9 @@ class FailureFixture(object):
         Wait for a condition to be true.
         :param condition: Function that is evalauted
         """
-        wait_for_condition(message='', condition=condition,
-                           config=self.integ_config)
+        wait_for_condition(
+            message="", condition=condition, config=self.integ_config
+        )
 
     def wait_for_leader_change(self, comp, old_leader):
         """
@@ -83,14 +89,19 @@ class FailureFixture(object):
         :param comp: Component to check
         :param old_leader: Zookeeper data for old leader
         """
-        self.log.info("%s: waiting for leader change. Old leader %s",
-                      comp.name, old_leader)
+        self.log.info(
+            "%s: waiting for leader change. Old leader %s",
+            comp.name,
+            old_leader,
+        )
 
         def leader_changed():
             new_leader = self.fw.get_leader_info(comp)
             self.log.debug("%s: leader info %s", comp.name, new_leader)
             if new_leader != old_leader:
-                self.log.info("%s: leader changed to %s",
-                              comp.name, new_leader)
+                self.log.info(
+                    "%s: leader changed to %s", comp.name, new_leader
+                )
                 return True
+
         self.wait_for_condition(leader_changed)

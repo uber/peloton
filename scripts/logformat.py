@@ -8,13 +8,13 @@ while True:
     try:
         fields = json.loads(line)
     except Exception:
-        print line
+        print(line)
         continue
 
-    msg = fields.get('msg')
-    time = fields.get('time')
+    msg = fields.get("msg")
+    time = fields.get("time")
     if msg and time:
-        print '%s %s' % (time, msg)
+        print("%s %s" % (time, msg))
     else:
-        print line
+        print(line)
     sys.stdout.flush()

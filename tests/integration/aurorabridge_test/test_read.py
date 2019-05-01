@@ -14,33 +14,29 @@ from tests.integration.aurorabridge_test.util import (
     wait_for_rolled_forward,
 )
 
-pytestmark = [pytest.mark.default,
-              pytest.mark.aurorabridge]
+pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
 
 
 def test__get_jobs__get_job_summary(client):
     # Verify no jobs are returned before jobs are created.
-    res = client.get_job_summary('')
+    res = client.get_job_summary("")
     assert len(res.summaries) == 0
 
-    res = client.get_jobs('')
+    res = client.get_jobs("")
     assert len(res.configs) == 0
 
     # Create two jobs under same role.
     test_dc_labrat_key = start_job_update(
-        client,
-        'test_dc_labrat_read.yaml',
-        'start job update test/dc/labrat')
+        client, "test_dc_labrat_read.yaml", "start job update test/dc/labrat"
+    )
     test_dc_labrat_0_key = start_job_update(
-        client,
-        'test_dc_labrat0.yaml',
-        'start job update test/dc/labrat0')
+        client, "test_dc_labrat0.yaml", "start job update test/dc/labrat0"
+    )
 
     # Different role should not show up.
     start_job_update(
-        client,
-        'test2_dc2_labrat2.yaml',
-        'start job update test2/dc2/labrat2')
+        client, "test2_dc2_labrat2.yaml", "start job update test2/dc2/labrat2"
+    )
 
     # Add some wait time for lucene index to build
     time.sleep(10)
@@ -49,17 +45,20 @@ def test__get_jobs__get_job_summary(client):
     client.kill_tasks(
         test_dc_labrat_0_key,
         {0},
-        'killing instance 0 for task test/dc/labrat0')
+        "killing instance 0 for task test/dc/labrat0",
+    )
     wait_for_killed(client, test_dc_labrat_0_key, {0})
 
     # Ensure get_job_summary returns both jobs under role=test.
     res = client.get_job_summary(test_dc_labrat_key.role)
-    assert len(res.summaries) == 2, '{jobs}'.format(
-        jobs=[s.job.key for s in res.summaries])
+    assert len(res.summaries) == 2, "{jobs}".format(
+        jobs=[s.job.key for s in res.summaries]
+    )
 
     assert_keys_equal(
         [s.job.key for s in res.summaries],
-        [test_dc_labrat_key, test_dc_labrat_0_key])
+        [test_dc_labrat_key, test_dc_labrat_0_key],
+    )
 
     for s in res.summaries:
         if s.job.key == test_dc_labrat_0_key:
@@ -74,7 +73,8 @@ def test__get_jobs__get_job_summary(client):
 
     assert_keys_equal(
         [c.taskConfig.job for c in res.configs],
-        [test_dc_labrat_key, test_dc_labrat_0_key])
+        [test_dc_labrat_key, test_dc_labrat_0_key],
+    )
 
     for c in res.configs:
         if c.key == test_dc_labrat_0_key:
@@ -86,9 +86,8 @@ def test__get_jobs__get_job_summary(client):
 def test__get_tasks_without_configs(client):
     # Create job.
     job_key = start_job_update(
-        client,
-        'test_dc_labrat_read.yaml',
-        'start job update test/dc/labrat')
+        client, "test_dc_labrat_read.yaml", "start job update test/dc/labrat"
+    )
 
     # Add some wait time for lucene index to build
     time.sleep(10)
@@ -114,21 +113,21 @@ def test__get_tasks_without_configs(client):
         assert t.assignedTask.instanceId in (0, 1)
 
         # ScheduledTask.AssignedTask.TaskConfig
-        assert 'test' == t.assignedTask.task.job.role
-        assert 'dc' == t.assignedTask.task.job.environment
-        assert 'labrat' == t.assignedTask.task.job.name
-        assert 'testuser' == t.assignedTask.task.owner.user
+        assert "test" == t.assignedTask.task.job.role
+        assert "dc" == t.assignedTask.task.job.environment
+        assert "labrat" == t.assignedTask.task.job.name
+        assert "testuser" == t.assignedTask.task.owner.user
         assert t.assignedTask.task.isService
         assert 5 == t.assignedTask.task.priority
-        assert 'preemptible' == t.assignedTask.task.tier
+        assert "preemptible" == t.assignedTask.task.tier
         assert 2 == len(t.assignedTask.task.metadata)
         for m in t.assignedTask.task.metadata:
-            if 'test_key_1' == m.key:
-                assert 'test_value_1' == m.value
-            elif 'test_key_2' == m.key:
-                assert 'test_value_2' == m.value
+            if "test_key_1" == m.key:
+                assert "test_value_1" == m.value
+            elif "test_key_2" == m.key:
+                assert "test_value_2" == m.value
             else:
-                assert False, 'unexpected metadata {}'.format(m)
+                assert False, "unexpected metadata {}".format(m)
         assert 3 == len(t.assignedTask.task.resources)
         for r in t.assignedTask.task.resources:
             if r.numCpus > 0:
@@ -138,16 +137,19 @@ def test__get_tasks_without_configs(client):
             elif r.diskMb > 0:
                 assert 128 == r.diskMb
             else:
-                assert False, 'unexpected resource {}'.format(r)
+                assert False, "unexpected resource {}".format(r)
         assert 1 == len(t.assignedTask.task.constraints)
-        assert 'host' == list(t.assignedTask.task.constraints)[0].name
-        assert 1 == list(t.assignedTask.task.constraints)[0].constraint.limit.limit
+        assert "host" == list(t.assignedTask.task.constraints)[0].name
+        assert (
+            1
+            == list(t.assignedTask.task.constraints)[0].constraint.limit.limit
+        )
 
         host_counts[t.assignedTask.slaveHost] += 1
 
     # Ensure the host limit is enforced.
     for host, count in host_counts.iteritems():
-        assert count == 1, '{host} has more than 1 task'.format(host=host)
+        assert count == 1, "{host} has more than 1 task".format(host=host)
 
 
 def test__get_tasks_without_configs_task_queries(client):
@@ -157,70 +159,61 @@ def test__get_tasks_without_configs_task_queries(client):
 
     # Create jobs.
     test_dc_labrat_key = start_job_update(
-        client,
-        'test_dc_labrat_read.yaml',
-        'start job update test/dc/labrat')
+        client, "test_dc_labrat_read.yaml", "start job update test/dc/labrat"
+    )
     test_dc_labrat_0_key = start_job_update(
-        client,
-        'test_dc_labrat0.yaml',
-        'start job update test/dc/labrat0')
+        client, "test_dc_labrat0.yaml", "start job update test/dc/labrat0"
+    )
     test_dc_0_labrat_1_key = start_job_update(
-        client,
-        'test_dc0_labrat1.yaml',
-        'start job update test/dc0/labrat1')
+        client, "test_dc0_labrat1.yaml", "start job update test/dc0/labrat1"
+    )
     test_dc_labrat_1_key = start_job_update(
-        client,
-        'test_dc_labrat1.yaml',
-        'start job update test/dc/labrat1')
+        client, "test_dc_labrat1.yaml", "start job update test/dc/labrat1"
+    )
     test2_dc2_labrat2_key = start_job_update(
-        client,
-        'test2_dc2_labrat2.yaml',
-        'start job update test2/dc2/labrat2')
+        client, "test2_dc2_labrat2.yaml", "start job update test2/dc2/labrat2"
+    )
 
     # Add some wait time for lucene index to build
     time.sleep(10)
 
     # Kill one of the jobs.
     client.kill_tasks(
-        test_dc_labrat_1_key,
-        None,
-        'killing all tasks test/dc/labrat1')
+        test_dc_labrat_1_key, None, "killing all tasks test/dc/labrat1"
+    )
     wait_for_killed(client, test_dc_labrat_1_key)
 
     for message, query, expected_job_keys in [
         (
-            'query job keys',
-            api.TaskQuery(jobKeys={
-                test_dc_labrat_key,
-                test_dc_labrat_0_key,
-                test2_dc2_labrat2_key,
-            }),
-            [
-                test_dc_labrat_key,
-                test_dc_labrat_0_key,
-                test2_dc2_labrat2_key,
-            ],
-        ), (
-            'query role + env + name',
+            "query job keys",
+            api.TaskQuery(
+                jobKeys={
+                    test_dc_labrat_key,
+                    test_dc_labrat_0_key,
+                    test2_dc2_labrat2_key,
+                }
+            ),
+            [test_dc_labrat_key, test_dc_labrat_0_key, test2_dc2_labrat2_key],
+        ),
+        (
+            "query role + env + name",
             api.TaskQuery(
                 role=test_dc_labrat_key.role,
                 environment=test_dc_labrat_key.environment,
                 jobName=test_dc_labrat_key.name,
             ),
             [test_dc_labrat_key],
-        ), (
-            'query role + env',
+        ),
+        (
+            "query role + env",
             api.TaskQuery(
                 role=test_dc_labrat_key.role,
                 environment=test_dc_labrat_key.environment,
             ),
-            [
-                test_dc_labrat_key,
-                test_dc_labrat_0_key,
-                test_dc_labrat_1_key,
-            ],
-        ), (
-            'query role',
+            [test_dc_labrat_key, test_dc_labrat_0_key, test_dc_labrat_1_key],
+        ),
+        (
+            "query role",
             api.TaskQuery(role=test_dc_labrat_key.role),
             [
                 test_dc_labrat_key,
@@ -228,18 +221,15 @@ def test__get_tasks_without_configs_task_queries(client):
                 test_dc_labrat_1_key,
                 test_dc_0_labrat_1_key,
             ],
-        ), (
-            'query role + statuses',
+        ),
+        (
+            "query role + statuses",
             api.TaskQuery(
                 role=test_dc_labrat_key.role,
                 statuses={api.ScheduleStatus.RUNNING},
             ),
-            [
-                test_dc_labrat_key,
-                test_dc_labrat_0_key,
-                test_dc_0_labrat_1_key,
-            ],
-        )
+            [test_dc_labrat_key, test_dc_labrat_0_key, test_dc_0_labrat_1_key],
+        ),
     ]:
         res = client.get_tasks_without_configs(query)
         # Expect 3 tasks per job key.
@@ -247,7 +237,8 @@ def test__get_tasks_without_configs_task_queries(client):
         assert_keys_equal(
             remove_duplicate_keys(t.assignedTask.task.job for t in res.tasks),
             expected_job_keys,
-            message=message)
+            message=message,
+        )
 
 
 def test__get_config_summary__with_pinned_instances(client):
@@ -261,20 +252,26 @@ def test__get_config_summary__with_pinned_instances(client):
     # start a regular update
     job_key = start_job_update(
         client,
-        'test_dc_labrat_large_job.yaml',
-        'start job update test/dc/labrat_large_job')
+        "test_dc_labrat_large_job.yaml",
+        "start job update test/dc/labrat_large_job",
+    )
 
     tasks = get_running_tasks(client, job_key)
     assert len(tasks) == 10
 
     # start a update with updateOnlyTheseInstances parameter
     update_instances = set([0, 2, 3, 7, 9])
-    pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
-    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
+    pinned_req = get_job_update_request(
+        "test_dc_labrat_large_job_diff_labels.yaml"
+    )
+    pinned_req.settings.updateOnlyTheseInstances = set(
+        [api.Range(first=i, last=i) for i in update_instances]
+    )
 
     res = client.start_job_update(
         pinned_req,
-        'start job update test/dc/labrat_large_job with pinned instances')
+        "start job update test/dc/labrat_large_job with pinned instances",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -290,26 +287,26 @@ def test__get_config_summary__with_pinned_instances(client):
             # instances updated in the second update
             assert len(group.config.metadata) == 2
             for m in group.config.metadata:
-                if m.key == 'test_key_11':
-                    assert m.value == 'test_value_11'
-                elif m.key == 'test_key_22':
-                    assert m.value == 'test_value_22'
+                if m.key == "test_key_11":
+                    assert m.value == "test_value_11"
+                elif m.key == "test_key_22":
+                    assert m.value == "test_value_22"
                 else:
-                    assert False, 'unexpected metadata %s' % m
+                    assert False, "unexpected metadata %s" % m
 
         elif instances == all_instances - update_instances:
             # instances updated from the first update
             assert len(group.config.metadata) == 2
             for m in group.config.metadata:
-                if m.key == 'test_key_1':
-                    assert m.value == 'test_value_1'
-                elif m.key == 'test_key_2':
-                    assert m.value == 'test_value_2'
+                if m.key == "test_key_1":
+                    assert m.value == "test_value_1"
+                elif m.key == "test_key_2":
+                    assert m.value == "test_value_2"
                 else:
-                    assert False, 'unexpected metadata %s' % m
+                    assert False, "unexpected metadata %s" % m
 
         else:
-            assert False, 'unexpected instance range: %s' % group.instances
+            assert False, "unexpected instance range: %s" % group.instances
 
 
 def test__get_tasks_without_configs__previous_run(client):
@@ -318,91 +315,72 @@ def test__get_tasks_without_configs__previous_run(client):
     1. start a regular update (version 1) on all instances
     2. start a another update (version 2) on all instances
     """
-    req1 = get_job_update_request('test_dc_labrat_large_job.yaml')
+    req1 = get_job_update_request("test_dc_labrat_large_job.yaml")
     req1.settings.updateGroupSize = 10
 
-    req2 = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
+    req2 = get_job_update_request("test_dc_labrat_large_job_diff_labels.yaml")
     req2.settings.updateGroupSize = 10
 
     # start a regular update
     job_key = start_job_update(
-        client,
-        req1,
-        'start job update test/dc/labrat_large_job')
+        client, req1, "start job update test/dc/labrat_large_job"
+    )
 
     res = client.get_tasks_without_configs(api.TaskQuery(jobKeys={job_key}))
     assert len(res.tasks) == 10
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
-        assert run_id == '1'
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
+        assert run_id == "1"
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s' % m
+                assert False, "unexpected metadata %s" % m
 
     # start 6 new updates (assuming pod_runs_depth is 6), expect run id 1
     # to be excluded
-    start_job_update(
-        client,
-        req2,
-        'start job update test/dc/labrat_large_job')
-    start_job_update(
-        client,
-        req1,
-        'start job update test/dc/labrat_large_job')
-    start_job_update(
-        client,
-        req2,
-        'start job update test/dc/labrat_large_job')
-    start_job_update(
-        client,
-        req1,
-        'start job update test/dc/labrat_large_job')
-    start_job_update(
-        client,
-        req2,
-        'start job update test/dc/labrat_large_job')
-    start_job_update(
-        client,
-        req1,
-        'start job update test/dc/labrat_large_job')
+    start_job_update(client, req2, "start job update test/dc/labrat_large_job")
+    start_job_update(client, req1, "start job update test/dc/labrat_large_job")
+    start_job_update(client, req2, "start job update test/dc/labrat_large_job")
+    start_job_update(client, req1, "start job update test/dc/labrat_large_job")
+    start_job_update(client, req2, "start job update test/dc/labrat_large_job")
+    start_job_update(client, req1, "start job update test/dc/labrat_large_job")
 
     res = client.get_tasks_without_configs(api.TaskQuery(jobKeys={job_key}))
     assert len(res.tasks) == 10 * 6
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         assert len(t.assignedTask.task.metadata) == 2
 
-        if run_id in ('7'):
+        if run_id in ("7"):
             assert t.status == api.ScheduleStatus.RUNNING
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_1':
-                    assert m.value == 'test_value_1'
-                elif m.key == 'test_key_2':
-                    assert m.value == 'test_value_2'
+                if m.key == "test_key_1":
+                    assert m.value == "test_value_1"
+                elif m.key == "test_key_2":
+                    assert m.value == "test_value_2"
                 else:
-                    assert False, 'unexpected metadata %s' % m
-        elif run_id in ('6', '4', '2'):
+                    assert False, "unexpected metadata %s" % m
+        elif run_id in ("6", "4", "2"):
             assert t.status == api.ScheduleStatus.KILLED
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_11':
-                    assert m.value == 'test_value_11'
-                elif m.key == 'test_key_22':
-                    assert m.value == 'test_value_22'
+                if m.key == "test_key_11":
+                    assert m.value == "test_value_11"
+                elif m.key == "test_key_22":
+                    assert m.value == "test_value_22"
                 else:
-                    assert False, 'unexpected metadata %s' % m
-        elif run_id in ('5', '3'):
+                    assert False, "unexpected metadata %s" % m
+        elif run_id in ("5", "3"):
             assert t.status == api.ScheduleStatus.KILLED
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_1':
-                    assert m.value == 'test_value_1'
-                elif m.key == 'test_key_2':
-                    assert m.value == 'test_value_2'
+                if m.key == "test_key_1":
+                    assert m.value == "test_value_1"
+                elif m.key == "test_key_2":
+                    assert m.value == "test_value_2"
                 else:
-                    assert False, 'unexpected metadata %s' % m
+                    assert False, "unexpected metadata %s" % m
         else:
-            assert False, 'unexpected run id: %d' % run_id
+            assert False, "unexpected run id: %d" % run_id

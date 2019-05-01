@@ -10,32 +10,36 @@ from workflow import Workflow
 from google.protobuf import json_format
 
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
-from peloton_client.pbgen.peloton.api.v0.update.svc import \
-    update_svc_pb2 as update_svc
+from peloton_client.pbgen.peloton.api.v0.update.svc import (
+    update_svc_pb2 as update_svc,
+)
 from peloton_client.pbgen.peloton.api.v0.update import update_pb2 as update
 from peloton_client.pbgen.peloton.api.v0.job.job_pb2 import JobConfig
 
 log = logging.getLogger(__name__)
 
-INVALID_VERSION_ERR_MESSAGE = 'invalid job configuration version'
+INVALID_VERSION_ERR_MESSAGE = "invalid job configuration version"
 
 
 class Update(object):
     """
     Update represents a peloton job update
     """
-    def __init__(self, job,
-                 updated_job_file=None,
-                 client=None,
-                 config=None,
-                 pool=None,
-                 batch_size=None,
-                 updated_job_config=None,
-                 roll_back_on_failure=None,
-                 max_instance_attempts=None,
-                 max_failure_instances=None,
-                 start_paused=None,
-                 ):
+
+    def __init__(
+        self,
+        job,
+        updated_job_file=None,
+        client=None,
+        config=None,
+        pool=None,
+        batch_size=None,
+        updated_job_config=None,
+        roll_back_on_failure=None,
+        max_instance_attempts=None,
+        max_failure_instances=None,
+        start_paused=None,
+    ):
 
         self.config = config or IntegrationTestConfig()
         self.client = client or Client()
@@ -67,8 +71,9 @@ class Update(object):
 
         while True:
             job_config_version = self.job.get_runtime().configurationVersion
-            self.updated_job_config.changeLog.version = config_version or \
-                job_config_version
+            self.updated_job_config.changeLog.version = (
+                config_version or job_config_version
+            )
 
             request = update_svc.CreateUpdateRequest(
                 jobId=peloton.JobID(value=self.job.job_id),
@@ -79,7 +84,7 @@ class Update(object):
                     maxInstanceAttempts=self.max_instance_attempts,
                     maxFailureInstances=self.max_failure_instances,
                     startPaused=self.start_paused,
-                )
+                ),
             )
             try:
                 resp = self.client.update_svc.CreateUpdate(
@@ -91,18 +96,20 @@ class Update(object):
                 # if config version is incorrect and caller does not specify a
                 # config version, get config version from job runtime
                 # and try again.
-                if e.code() == grpc.StatusCode.ABORTED \
-                        and e.details() == INVALID_VERSION_ERR_MESSAGE \
-                        and config_version is None:
+                if (
+                    e.code() == grpc.StatusCode.ABORTED
+                    and e.details() == INVALID_VERSION_ERR_MESSAGE
+                    and config_version is None
+                ):
                     continue
                 raise
             break
 
         assert resp.updateID.value
-        self.workflow = Workflow(resp.updateID.value,
-                                 client=self.client,
-                                 config=self.config)
-        log.info('created update %s', self.workflow.workflow_id)
+        self.workflow = Workflow(
+            resp.updateID.value, client=self.client, config=self.config
+        )
+        log.info("created update %s", self.workflow.workflow_id)
 
     def abort(self):
         """
@@ -110,14 +117,15 @@ class Update(object):
         """
         return self.workflow.abort()
 
-    def wait_for_state(self, goal_state='SUCCEEDED', failed_state='ABORTED'):
+    def wait_for_state(self, goal_state="SUCCEEDED", failed_state="ABORTED"):
         """
         Waits for the update to reach a particular state
         :param goal_state: The state to reach
         :param failed_state: The failed state of the update
         """
-        self.workflow.wait_for_state(goal_state=goal_state,
-                                     failed_state=failed_state)
+        self.workflow.wait_for_state(
+            goal_state=goal_state, failed_state=failed_state
+        )
 
     def pause(self):
         """

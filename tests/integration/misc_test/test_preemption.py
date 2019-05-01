@@ -5,9 +5,11 @@ from tests.integration.common import IntegrationTestConfig
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 from tests.integration.pool import Pool
 
-pytestmark = [pytest.mark.default,
-              pytest.mark.preemption,
-              pytest.mark.random_order(disabled=True)]
+pytestmark = [
+    pytest.mark.default,
+    pytest.mark.preemption,
+    pytest.mark.random_order(disabled=True),
+]
 
 
 def respool(request, pool_file):
@@ -23,12 +25,12 @@ def respool(request, pool_file):
 
 @pytest.fixture(scope="function", autouse=True)
 def respool_a(request):
-    return respool(request, pool_file='test_preemption_pool_A.yaml')
+    return respool(request, pool_file="test_preemption_pool_A.yaml")
 
 
 @pytest.fixture(scope="function", autouse=True)
 def respool_b(request):
-    return respool(request, pool_file='test_preemption_pool_B.yaml')
+    return respool(request, pool_file="test_preemption_pool_B.yaml")
 
 
 # Tests task preemption with the following scenario:
@@ -52,13 +54,16 @@ def respool_b(request):
 #                                6 of them should be preempted to make space
 #                                for tasks in respool_b
 
+
 def test__preemption_tasks_reschedules_task(respool_a, respool_b):
-    p_job_a = Job(job_file='test_preemptible_job.yaml', pool=respool_a,
-                  config=IntegrationTestConfig(max_retry_attempts=100,
-                                               sleep_time_sec=5))
+    p_job_a = Job(
+        job_file="test_preemptible_job.yaml",
+        pool=respool_a,
+        config=IntegrationTestConfig(max_retry_attempts=100, sleep_time_sec=5),
+    )
 
     p_job_a.create()
-    p_job_a.wait_for_state(goal_state='RUNNING')
+    p_job_a.wait_for_state(goal_state="RUNNING")
 
     # we should have all 12 tasks in running state
     def all_running():
@@ -76,9 +81,13 @@ def test__preemption_tasks_reschedules_task(respool_a, respool_b):
                 count += 1
         return count == 6
 
-    p_job_b = Job(job_file='test_preemptible_job.yaml', pool=respool_b,
-                  config=IntegrationTestConfig(max_retry_attempts=100,
-                                               sleep_time_sec=10))
+    p_job_b = Job(
+        job_file="test_preemptible_job.yaml",
+        pool=respool_b,
+        config=IntegrationTestConfig(
+            max_retry_attempts=100, sleep_time_sec=10
+        ),
+    )
     # starting the second job should change the entitlement calculation
     p_job_b.create()
 
@@ -86,7 +95,7 @@ def test__preemption_tasks_reschedules_task(respool_a, respool_b):
     p_job_a.wait_for_condition(task_preempted)
 
     # p_job_b should succeed
-    p_job_b.wait_for_state(goal_state='SUCCEEDED')
+    p_job_b.wait_for_state(goal_state="SUCCEEDED")
 
     kill_jobs([p_job_a, p_job_b])
 
@@ -101,36 +110,45 @@ def test__preemption_tasks_reschedules_task(respool_a, respool_b):
 # 6. np_job2 should start running
 def test_non_preemptible_job(respool_a):
     # start non-preemptible job using all of CPU reservation.
-    np_job_a_1 = Job(job_file='test_non_preemptible_job.yaml', pool=respool_a,
-                     config=IntegrationTestConfig(max_retry_attempts=100))
+    np_job_a_1 = Job(
+        job_file="test_non_preemptible_job.yaml",
+        pool=respool_a,
+        config=IntegrationTestConfig(max_retry_attempts=100),
+    )
     np_job_a_1.create()
-    np_job_a_1.wait_for_state(goal_state='RUNNING')
+    np_job_a_1.wait_for_state(goal_state="RUNNING")
 
     # the resource pools CPU allocation should be equal to the reservation.
     pool_info = np_job_a_1.pool.pool_info()
-    assert get_reservation('cpu', pool_info) == \
-        get_allocation('cpu', pool_info)
+    assert get_reservation("cpu", pool_info) == get_allocation(
+        "cpu", pool_info
+    )
 
     # start another non-preemptible job which should not be admitted as all
     # the reservation(CPU) of the resource pool is used up.
-    np_job_a_2 = Job(job_file='test_non_preemptible_job.yaml', pool=respool_a,
-                     config=IntegrationTestConfig(max_retry_attempts=100,
-                                                  sleep_time_sec=5))
+    np_job_a_2 = Job(
+        job_file="test_non_preemptible_job.yaml",
+        pool=respool_a,
+        config=IntegrationTestConfig(max_retry_attempts=100, sleep_time_sec=5),
+    )
     np_job_a_2.create()
-    np_job_a_2.wait_for_state(goal_state='PENDING')
+    np_job_a_2.wait_for_state(goal_state="PENDING")
 
     # start preemptible job which should start running.
-    p_job_a = Job(job_file='test_job.yaml', pool=respool_a,
-                  config=IntegrationTestConfig(max_retry_attempts=100))
+    p_job_a = Job(
+        job_file="test_job.yaml",
+        pool=respool_a,
+        config=IntegrationTestConfig(max_retry_attempts=100),
+    )
     p_job_a.create()
-    p_job_a.wait_for_state(goal_state='RUNNING')
+    p_job_a.wait_for_state(goal_state="RUNNING")
 
     # stop the first non-preemptible job.
     np_job_a_1.stop()
-    np_job_a_1.wait_for_state(goal_state='KILLED')
+    np_job_a_1.wait_for_state(goal_state="KILLED")
 
     # make sure the second one completes.
-    np_job_a_2.wait_for_state(goal_state='RUNNING')
+    np_job_a_2.wait_for_state(goal_state="RUNNING")
 
     kill_jobs([np_job_a_2, p_job_a])
 
@@ -149,13 +167,20 @@ def test_non_preemptible_job(respool_a):
 # 7. preemptible job in respool_b should start running.
 def test__preemption_non_preemptible_task(respool_a, respool_b):
     # Create 2 Jobs : 1 preemptible and 1 non-preemptible in respool A
-    p_job_a = Job(job_file='test_preemptible_job.yaml', pool=respool_a,
-                  config=IntegrationTestConfig(max_retry_attempts=100,
-                                               sleep_time_sec=10))
+    p_job_a = Job(
+        job_file="test_preemptible_job.yaml",
+        pool=respool_a,
+        config=IntegrationTestConfig(
+            max_retry_attempts=100, sleep_time_sec=10
+        ),
+    )
     p_job_a.update_instance_count(6)
 
-    np_job_a = Job(job_file='test_preemptible_job.yaml', pool=respool_a,
-                   config=IntegrationTestConfig())
+    np_job_a = Job(
+        job_file="test_preemptible_job.yaml",
+        pool=respool_a,
+        config=IntegrationTestConfig(),
+    )
     np_job_a.job_config.sla.preemptible = False
     np_job_a.update_instance_count(6)
 
@@ -165,30 +190,34 @@ def test__preemption_non_preemptible_task(respool_a, respool_b):
     # non preemptible job takes 6 reserved CPUs
     np_job_a.create()
 
-    p_job_a.wait_for_state('RUNNING')
-    np_job_a.wait_for_state('RUNNING')
+    p_job_a.wait_for_state("RUNNING")
+    np_job_a.wait_for_state("RUNNING")
 
     # pool allocation is more than reservation
     pool_info = np_job_a.pool.pool_info()
-    assert get_reservation('cpu', pool_info) < get_allocation('cpu', pool_info)
+    assert get_reservation("cpu", pool_info) < get_allocation("cpu", pool_info)
 
     # Create another job in respool B
-    p_job_b = Job(job_file='test_preemptible_job.yaml', pool=respool_b,
-                  config=IntegrationTestConfig(max_retry_attempts=100,
-                                               sleep_time_sec=10))
+    p_job_b = Job(
+        job_file="test_preemptible_job.yaml",
+        pool=respool_b,
+        config=IntegrationTestConfig(
+            max_retry_attempts=100, sleep_time_sec=10
+        ),
+    )
     p_job_b.update_instance_count(6)
 
     p_job_b.create()
 
     # p_job_b should remain PENDING since all resources are used by
     # p_job_a
-    p_job_b.wait_for_state('PENDING')
+    p_job_b.wait_for_state("PENDING")
 
     # p_job_a should be preempted and go back to PENDING
-    p_job_a.wait_for_state(goal_state='PENDING')
+    p_job_a.wait_for_state(goal_state="PENDING")
 
     # np_job_a should keep RUNNING
-    np_job_a.wait_for_state('RUNNING')
+    np_job_a.wait_for_state("RUNNING")
 
     def all_tasks_running():
         count = 0
@@ -202,19 +231,21 @@ def test__preemption_non_preemptible_task(respool_a, respool_b):
 
     # pool A allocation is equal to reservation
     pool_info = np_job_a.pool.pool_info()
-    assert get_reservation('cpu', pool_info) == \
-        get_allocation('cpu', pool_info)
+    assert get_reservation("cpu", pool_info) == get_allocation(
+        "cpu", pool_info
+    )
 
     # pool B allocation is equal to reservation
     pool_info = p_job_b.pool.pool_info()
-    assert get_reservation('cpu', pool_info) == \
-        get_allocation('cpu', pool_info)
+    assert get_reservation("cpu", pool_info) == get_allocation(
+        "cpu", pool_info
+    )
 
     # wait for p_job_b to finish
-    p_job_b.wait_for_state('SUCCEEDED')
+    p_job_b.wait_for_state("SUCCEEDED")
 
     # make sure p_job_a starts running
-    p_job_a.wait_for_state('RUNNING')
+    p_job_a.wait_for_state("RUNNING")
 
     kill_jobs([p_job_a, np_job_a, p_job_b])
 
@@ -225,13 +256,16 @@ def test__preemption_non_preemptible_task(respool_a, respool_b):
 # it is killed.
 # TODO: avyas@ This is a short term fix
 def test__preemption_spark_goalstate(respool_a, respool_b):
-    p_job_a = Job(job_file='test_preemptible_job_preemption_policy.yaml',
-                  pool=respool_a,
-                  config=IntegrationTestConfig(max_retry_attempts=100,
-                                               sleep_time_sec=10))
+    p_job_a = Job(
+        job_file="test_preemptible_job_preemption_policy.yaml",
+        pool=respool_a,
+        config=IntegrationTestConfig(
+            max_retry_attempts=100, sleep_time_sec=10
+        ),
+    )
 
     p_job_a.create()
-    p_job_a.wait_for_state(goal_state='RUNNING')
+    p_job_a.wait_for_state(goal_state="RUNNING")
 
     # we should have all 12 tasks in running state
     def all_running():
@@ -251,8 +285,11 @@ def test__preemption_spark_goalstate(respool_a, respool_b):
                 preempted_task_set[t] = True
         return count == 6
 
-    p_job_b = Job(job_file='test_preemptible_job.yaml', pool=respool_b,
-                  config=IntegrationTestConfig())
+    p_job_b = Job(
+        job_file="test_preemptible_job.yaml",
+        pool=respool_b,
+        config=IntegrationTestConfig(),
+    )
     # starting the second job should change the entitlement calculation
     p_job_b.create()
 
@@ -282,13 +319,16 @@ def test__preemption_spark_goalstate(respool_a, respool_b):
 # 7. check the instance_id of tasks which were preempted and not preempted to
 #    assert the preemption config at task level.
 def test__preemption_task_level(respool_a, respool_b):
-    p_job_a = Job(job_file='test_preemptible_job_preemption_override.yaml',
-                  pool=respool_a,
-                  config=IntegrationTestConfig(max_retry_attempts=100,
-                                               sleep_time_sec=10))
+    p_job_a = Job(
+        job_file="test_preemptible_job_preemption_override.yaml",
+        pool=respool_a,
+        config=IntegrationTestConfig(
+            max_retry_attempts=100, sleep_time_sec=10
+        ),
+    )
 
     p_job_a.create()
-    p_job_a.wait_for_state(goal_state='RUNNING')
+    p_job_a.wait_for_state(goal_state="RUNNING")
 
     # we should have all 12 tasks in running state
     def all_running():
@@ -319,8 +359,11 @@ def test__preemption_task_level(respool_a, respool_b):
 
         return running_count == 6 and preempted_count == 6
 
-    p_job_b = Job(job_file='test_preemptible_job.yaml', pool=respool_b,
-                  config=IntegrationTestConfig())
+    p_job_b = Job(
+        job_file="test_preemptible_job.yaml",
+        pool=respool_b,
+        config=IntegrationTestConfig(),
+    )
     # starting the second job should change the entitlement calculation and
     # start preempting tasks from p_job_a
     p_job_b.create()
@@ -333,7 +376,7 @@ def test__preemption_task_level(respool_a, respool_b):
     assert running_task_set == expected_running_tasks
 
     # wait for p_job_b to start running
-    p_job_b.wait_for_state('RUNNING')
+    p_job_b.wait_for_state("RUNNING")
 
     kill_jobs([p_job_a, p_job_b])
 

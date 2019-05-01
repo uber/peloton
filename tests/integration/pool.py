@@ -5,7 +5,7 @@ from client import Client
 from peloton_client.pbgen.peloton.api.v0.respool import respool_pb2 as respool
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 
-RESPOOL_ROOT = '/'
+RESPOOL_ROOT = "/"
 log = logging.getLogger(__name__)
 
 
@@ -13,6 +13,7 @@ class Pool(object):
     """
     Pool represents a peloton resource pool
     """
+
     def __init__(self, config, client=None):
         self.config = config
         self.client = client or Client()
@@ -25,17 +26,15 @@ class Pool(object):
         """
         respool_name = self.config.respool_config.name
         request = respool.LookupRequest(
-            path=respool.ResourcePoolPath(value=RESPOOL_ROOT + respool_name),
+            path=respool.ResourcePoolPath(value=RESPOOL_ROOT + respool_name)
         )
         resp = self.client.respool_svc.LookupResourcePoolID(
             request,
             metadata=self.client.resmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        if resp.id.value is None or resp.id.value == u'':
-            request = respool.CreateRequest(
-                config=self.config.respool_config,
-            )
+        if resp.id.value is None or resp.id.value == u"":
+            request = respool.CreateRequest(config=self.config.respool_config)
             attempts = 0
             while attempts < self.config.max_retry_attempts:
                 attempts += 1
@@ -44,20 +43,22 @@ class Pool(object):
                     metadata=self.client.resmgr_metadata,
                     timeout=self.config.rpc_timeout_sec,
                 )
-                if resp.HasField('error'):
-                    log.debug('failed to create respool %s (%s)',
-                              respool_name,
-                              resp.error)
+                if resp.HasField("error"):
+                    log.debug(
+                        "failed to create respool %s (%s)",
+                        respool_name,
+                        resp.error,
+                    )
                     time.sleep(self.config.sleep_time_sec)
                     continue
                 break
             else:
                 assert False, resp
             id = resp.result.value
-            log.info('created respool %s (%s)', respool_name, id)
+            log.info("created respool %s (%s)", respool_name, id)
         else:
             id = resp.id.value
-            log.info('found respool %s (%s)', respool_name, id)
+            log.info("found respool %s (%s)", respool_name, id)
 
         assert id
         self.id = id
@@ -68,16 +69,14 @@ class Pool(object):
         :return: the resource pool info
         """
         assert self.id, "No resource pool ID defined"
-        request = respool.GetRequest(
-            id=peloton.ResourcePoolID(value=self.id),
-        )
+        request = respool.GetRequest(id=peloton.ResourcePoolID(value=self.id))
         resp = self.client.respool_svc.GetResourcePool(
             request,
             metadata=self.client.resmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
 
-        assert not resp.HasField('error'), resp
+        assert not resp.HasField("error"), resp
 
         return resp.poolinfo
 
@@ -92,7 +91,7 @@ class Pool(object):
         respool_name = self.config.respool_config.name
 
         request = respool.DeleteRequest(
-            path=respool.ResourcePoolPath(value=RESPOOL_ROOT + respool_name),
+            path=respool.ResourcePoolPath(value=RESPOOL_ROOT + respool_name)
         )
         resp = self.client.respool_svc.DeleteResourcePool(
             request,
@@ -100,5 +99,5 @@ class Pool(object):
             timeout=self.config.rpc_timeout_sec,
         )
 
-        assert not resp.HasField('error'), resp
-        log.info('deleted respool: %s', respool_name)
+        assert not resp.HasField("error"), resp
+        log.info("deleted respool: %s", respool_name)

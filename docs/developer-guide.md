@@ -256,3 +256,16 @@ $ ln -s /peloton-install /workspace/src/$(make project-name)
 ```
 $ gdb peloton-install/bin/peloton-[hostmgr|jobmgr|resmgr|placement] <PID>
 ```
+
+## Style, format, linting
+
+### Go formatting
+
+We use the standard `go fmt` tool to format the Go source code. All Go code must be run
+through this auto formatter before being merged.
+
+### Python formatting
+
+We use autopep8 (which should be installed by default once you
+setup your virtualenv) to format our python files. The configuration
+for this formatter is at /.pep8 from the repo root.

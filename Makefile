@@ -139,6 +139,7 @@ clean:
 
 format fmt: ## Runs "gofmt $(FMT_FLAGS) -w" to reformat all Go files
 	@gofmt -s -w $(FMT_SRC)
+	./env/bin/autopep8 --exclude "./tools/deploy/aurora/api,./tools/deploy/aurora/schema" -i -r ./tools ./tests ./scripts
 
 comma:= ,
 semicolon:= ;
@@ -333,9 +334,10 @@ failure-test-vcluster:
 LINT_SKIP_ERRORF=grep -v -e "not a string in call to Errorf"
 FILTER_LINT := $(if $(LINT_EXCLUDES), grep -v $(foreach file, $(LINT_EXCLUDES),-e $(file)),cat) | $(LINT_SKIP_ERRORF)
 # Runs all Go code through "go vet", "golint", and ensures files are formatted using "gofmt"
-lint: format
+lint:
 	@echo "Running lint"
 	@# Skip the last line of the vet output if it contains "exit status"
+	@cat /dev/null > vet.log
 	@go vet $(ALL_PKGS) 2>&1 | sed '/exit status 1/d' | $(FILTER_LINT) > vet.log || true
 	@if [ -s "vet.log" ] ; then \
 	    (echo "Go Vet Failures" | cat - vet.log | tee -a $(PHAB_COMMENT) && false) \
@@ -346,6 +348,9 @@ lint: format
 	@if [ -s "vet.log" ] ; then \
 	    (echo "Go Fmt Failures, run 'make fmt'" | cat - vet.log | tee -a $(PHAB_COMMENT) && false) \
 	fi;
+
+	@cat /dev/null > vet.log
+	./env/bin/autopep8 --exit-code --exclude "./tools/deploy/aurora/api,./tools/deploy/aurora/schema" -d -r ./tools ./tests ./scripts
 
 jenkins: devtools gens mockgens lint
 	@chmod -R 777 $(dir $(GEN_DIR)) $(dir $(VENDOR_MOCKS)) $(dir $(LOCAL_MOCKS)) ./vendor_mocks

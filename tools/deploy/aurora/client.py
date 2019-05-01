@@ -13,7 +13,7 @@ from aurora.api.AuroraSchedulerManager import Client
 
 log = logging.getLogger(__name__)
 
-MEMBER_PREFIX = 'member_'
+MEMBER_PREFIX = "member_"
 DEFAULT_AURORA_PORT = 8081
 
 
@@ -34,35 +34,37 @@ class AuroraClient(object):
     """
 
     @classmethod
-    def create(
-            cls, host, port=DEFAULT_AURORA_PORT, encoding='json'):
+    def create(cls, host, port=DEFAULT_AURORA_PORT, encoding="json"):
         """
            Parses a host name and sets up Torando and Thrift client
         """
         # To recieve and send binary thrift to the Aurora master we need to set
         # headers appropriately.
-        transport = THttpClient('http://%s:%s/api' % (host, str(port)))
+        transport = THttpClient("http://%s:%s/api" % (host, str(port)))
 
         # Set aurora credentials in transport header if the environment
         # variables have been set
-        if os.getenv('AURORA_USERNAME') and os.getenv('AURORA_PASSWORD'):
-            username = os.getenv('AURORA_USERNAME')
-            password = os.getenv('AURORA_PASSWORD')
+        if os.getenv("AURORA_USERNAME") and os.getenv("AURORA_PASSWORD"):
+            username = os.getenv("AURORA_USERNAME")
+            password = os.getenv("AURORA_PASSWORD")
             credentials = base64.encodestring(
-                '%s:%s' % (username, password)).replace('\n', '')
+                "%s:%s" % (username, password)
+            ).replace("\n", "")
             auth_header = "Basic %s" % credentials
-            transport.setCustomHeaders({'Authorization': auth_header})
+            transport.setCustomHeaders({"Authorization": auth_header})
 
-        if encoding == 'binary':
-            transport.setCustomHeaders({
-                'Content-Type': 'application/vnd.apache.thrift.binary',
-                'Accept': 'application/vnd.apache.thrift.binary',
-            })
+        if encoding == "binary":
+            transport.setCustomHeaders(
+                {
+                    "Content-Type": "application/vnd.apache.thrift.binary",
+                    "Accept": "application/vnd.apache.thrift.binary",
+                }
+            )
             protocol = TBinaryProtocol(transport)
-        elif encoding == 'json':
+        elif encoding == "json":
             protocol = TJSONProtocol(transport)
         else:
-            raise Exception('Unknown encoding %s' % encoding)
+            raise Exception("Unknown encoding %s" % encoding)
 
         client = Client(protocol)
         return client
@@ -87,9 +89,11 @@ class AuroraClientZK(object):
 
 
     """
+
     @classmethod
     def create(
-            cls, zk_endpoints, encoding='json', zk_path='/aurora/scheduler'):
+        cls, zk_endpoints, encoding="json", zk_path="/aurora/scheduler"
+    ):
         """
            Parses a host name and port to a ZK cluster, resolve the current
            Aurora master, and sets up Thrift client for Aurora scheduler.
@@ -125,7 +129,7 @@ class AuroraClientZK(object):
         """
 
         # Resolve the Aurora master from Zookeeper
-        zk_client = KazooClient(','.join(zk_endpoints))
+        zk_client = KazooClient(",".join(zk_endpoints))
         leader_node_name = None
         try:
             zk_client.start()
@@ -135,23 +139,24 @@ class AuroraClientZK(object):
 
             if not leader_node_name:
                 raise AuroraClientZKError(
-                    'leader name is not defined %s' % zk_endpoints)
+                    "leader name is not defined %s" % zk_endpoints
+                )
 
             leader_node_info = zk_client.get(
-                '%s/%s' % (zk_path, leader_node_name)
+                "%s/%s" % (zk_path, leader_node_name)
             )
             instance = json.loads(leader_node_info[0])
-            additional_endpoints = instance.get('additionalEndpoints', [])
-            for proto in ['https', 'http']:
+            additional_endpoints = instance.get("additionalEndpoints", [])
+            for proto in ["https", "http"]:
                 if proto in additional_endpoints:
                     endpoint = additional_endpoints[proto]
-                    host = endpoint.get('host', None)
-                    port = endpoint.get('port', None)
+                    host = endpoint.get("host", None)
+                    port = endpoint.get("port", None)
                     if host and port:
                         return AuroraClient.create(host, port, encoding)
 
             raise AuroraClientZKError(
-                'Failed to resolve Aurora endpoint from %s' % zk_endpoints
+                "Failed to resolve Aurora endpoint from %s" % zk_endpoints
             )
         finally:
             zk_client.stop()
@@ -161,4 +166,5 @@ class AuroraClientZKError(Exception):
     """
     Exception for resolving AuroraClient from Zookeeper cluster.
     """
+
     pass

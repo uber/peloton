@@ -4,10 +4,7 @@ import grpc
 
 from tests.integration.aurorabridge_test.client import Client
 from tests.integration.stateless_job import list_jobs, StatelessJob
-from tests.integration.conftest import (
-    setup_minicluster,
-    teardown_minicluster,
-)
+from tests.integration.conftest import setup_minicluster, teardown_minicluster
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -67,7 +64,7 @@ def _delete_jobs(timeout_secs=20):
                 continue
             raise
 
-    assert False, 'timed out waiting for jobs to be deleted'
+    assert False, "timed out waiting for jobs to be deleted"
 
 
 def _list_jobs():

@@ -12,28 +12,22 @@ from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 from peloton_client.pbgen.peloton.api.v0.respool import respool_pb2 as respool
 from peloton_client.pbgen.peloton.api.v0.update import update_pb2
 from peloton_client.pbgen.peloton.api.v0.update.svc import (
-    update_svc_pb2 as update_svc)
-
-from config_generator import (
-    create_pool_config,
+    update_svc_pb2 as update_svc,
 )
 
-from color_print import (
-    print_okblue,
-    print_fail,
-)
+from config_generator import create_pool_config
+
+from color_print import print_okblue, print_fail
 
 default_timeout = 60
 
-RESPOOL_PATH = 'DefaultResPool'
+RESPOOL_PATH = "DefaultResPool"
 
 
 @retry(tries=10, delay=10)
 def create_respool_for_new_peloton(
-        config,
-        zk_server,
-        agent_num,
-        respool_name=RESPOOL_PATH):
+    config, zk_server, agent_num, respool_name=RESPOOL_PATH
+):
     """
     Create A respool for a cluster according the cluster size
     type config: dict
@@ -43,37 +37,30 @@ def create_respool_for_new_peloton(
     rtype: string
 
     """
-    client = PelotonClient(
-        name='peloton-client',
-        zk_servers=zk_server
-    )
+    client = PelotonClient(name="peloton-client", zk_servers=zk_server)
 
     # Respool size should be 90% of the cluster size
     # CPU, Memory and Disk values are the announced
     # resource value of every Mesos slave
-    resource_config = config.get('mesos-slave').get('resource')
+    resource_config = config.get("mesos-slave").get("resource")
 
     respool_config = create_pool_config(
         name=respool_name,
-        cpu=agent_num * resource_config.get('cpuLimit') * 0.9,
-        memory=agent_num * resource_config.get('memLimitMb') * 0.9,
-        disk=agent_num * resource_config.get('diskLimitMb') * 0.9,
+        cpu=agent_num * resource_config.get("cpuLimit") * 0.9,
+        memory=agent_num * resource_config.get("memLimitMb") * 0.9,
+        disk=agent_num * resource_config.get("diskLimitMb") * 0.9,
     )
 
-    request = respool.CreateRequest(
-        config=respool_config,
-    )
+    request = respool.CreateRequest(config=respool_config)
     resp = client.respool_svc.CreateResourcePool(
-        request,
-        metadata=client.resmgr_metadata,
-        timeout=default_timeout,
+        request, metadata=client.resmgr_metadata, timeout=default_timeout
     )
-    if resp.HasField('error'):
+    if resp.HasField("error"):
         print_fail(
-            'Failed to create resource pool %s: %s' % (
-                respool_name, resp))
+            "Failed to create resource pool %s: %s" % (respool_name, resp)
+        )
         raise Exception("Resource pool creation failed")
-    print_okblue('Created resource pool %s' % respool_name)
+    print_okblue("Created resource pool %s" % respool_name)
     return resp.result.value
 
 
@@ -90,8 +77,7 @@ class PelotonClientHelper(object):
         self.zk_servers = zk_servers
         # Generate PelotonClient
         self.client = PelotonClient(
-            name='peloton-client',
-            zk_servers=zk_servers,
+            name="peloton-client", zk_servers=zk_servers
         )
         if not respool_path:
             return
@@ -101,7 +87,7 @@ class PelotonClientHelper(object):
 
     def lookup_pool(self, respool_path):
         request = respool.LookupRequest(
-            path=respool.ResourcePoolPath(value=respool_path),
+            path=respool.ResourcePoolPath(value=respool_path)
         )
         try:
             resp = self.client.respool_svc.LookupResourcePoolID(
@@ -110,17 +96,22 @@ class PelotonClientHelper(object):
                 timeout=default_timeout,
             )
             return resp.id.value
-        except Exception, e:
+        except Exception as e:
             print_fail(
-                'Failed to get resource pool by path  %s: %s' % (
-                    respool_path, str(e)
-                )
+                "Failed to get resource pool by path  %s: %s"
+                % (respool_path, str(e))
             )
             raise
 
-    def get_job_config_spec(self, label, name,
-                            num_instance, default_task_config,
-                            instance_config=None, **extra):
+    def get_job_config_spec(
+        self,
+        label,
+        name,
+        num_instance,
+        default_task_config,
+        instance_config=None,
+        **extra
+    ):
         """
         Creates a job.JobConfig object
         :param label: the label value of the job
@@ -141,33 +132,31 @@ class PelotonClientHelper(object):
         """
         return job.JobConfig(
             name=name,
-            type=extra.get('job_type', job.SERVICE),
+            type=extra.get("job_type", job.SERVICE),
             labels=[
-                peloton.Label(
-                    key='cluster_name',
-                    value=label,
-                ),
-                peloton.Label(
-                    key='module_name',
-                    value=name,
-                ),
+                peloton.Label(key="cluster_name", value=label),
+                peloton.Label(key="module_name", value=name),
             ],
-            owningTeam=extra.get('owningTeam', 'compute'),
-            description=extra.get('description', 'compute task'),
+            owningTeam=extra.get("owningTeam", "compute"),
+            description=extra.get("description", "compute task"),
             instanceCount=num_instance,
             defaultConfig=default_task_config,
             instanceConfig=instance_config,
             # sla is required by resmgr
-            sla=job.SlaConfig(
-                priority=1,
-                preemptible=True,
-            ),
+            sla=job.SlaConfig(priority=1, preemptible=True),
             respoolID=peloton.ResourcePoolID(value=self.respool_id),
-            changeLog=extra.get('change_log', None))
+            changeLog=extra.get("change_log", None),
+        )
 
-    def create_job(self, label, name,
-                   num_instance, default_task_config,
-                   instance_config=None, **extra):
+    def create_job(
+        self,
+        label,
+        name,
+        num_instance,
+        default_task_config,
+        instance_config=None,
+        **extra
+    ):
         """
         :param label: the label value of the job
         :param name: the name of the job
@@ -189,8 +178,14 @@ class PelotonClientHelper(object):
         """
         request = job.CreateRequest(
             config=self.get_job_config_spec(
-                label, name, num_instance, default_task_config,
-                instance_config=instance_config, **extra))
+                label,
+                name,
+                num_instance,
+                default_task_config,
+                instance_config=instance_config,
+                **extra
+            )
+        )
 
         try:
             resp = self.client.job_svc.Create(
@@ -198,10 +193,10 @@ class PelotonClientHelper(object):
                 metadata=self.client.jobmgr_metadata,
                 timeout=default_timeout,
             )
-            print_okblue('Create job response : %s' % resp)
+            print_okblue("Create job response : %s" % resp)
             return resp
-        except Exception, e:
-            print_fail('Exception calling Create job :%s' % str(e))
+        except Exception as e:
+            print_fail("Exception calling Create job :%s" % str(e))
             raise
 
     def get_job(self, job_id):
@@ -211,9 +206,7 @@ class PelotonClientHelper(object):
 
         :rtype: Response
         """
-        request = job.GetRequest(
-            id=peloton.JobID(value=job_id),
-        )
+        request = job.GetRequest(id=peloton.JobID(value=job_id))
         try:
             resp = self.client.job_svc.Get(
                 request,
@@ -221,8 +214,8 @@ class PelotonClientHelper(object):
                 timeout=default_timeout,
             )
             return resp
-        except Exception, e:
-            print_fail('Exception calling Get job :%s' % str(e))
+        except Exception as e:
+            print_fail("Exception calling Get job :%s" % str(e))
             raise
 
     def get_jobs_by_label(self, label, name, job_states):
@@ -240,22 +233,12 @@ class PelotonClientHelper(object):
         request = job.QueryRequest(
             respoolID=peloton.ResourcePoolID(value=self.respool_id),
             spec=job.QuerySpec(
-                pagination=query.PaginationSpec(
-                    offset=0,
-                    limit=100,
-                ),
+                pagination=query.PaginationSpec(offset=0, limit=100),
                 labels=[
-                    peloton.Label(
-                        key='cluster_name',
-                        value=label,
-                    ),
-                    peloton.Label(
-                        key='module_name',
-                        value=name,
-                    ),
+                    peloton.Label(key="cluster_name", value=label),
+                    peloton.Label(key="module_name", value=name),
                 ],
                 jobStates=job_states,
-
             ),
         )
         try:
@@ -267,8 +250,8 @@ class PelotonClientHelper(object):
             ids = [record.id.value for record in records]
             return ids
 
-        except Exception, e:
-            print_fail('Exception calling Get job :%s' % str(e))
+        except Exception as e:
+            print_fail("Exception calling Get job :%s" % str(e))
             raise
 
     def get_job_status(self, job_id):
@@ -282,9 +265,7 @@ class PelotonClientHelper(object):
 
         rtype: job.StopResponse
         """
-        request = task.StopRequest(
-            jobId=peloton.JobID(value=job_id),
-        )
+        request = task.StopRequest(jobId=peloton.JobID(value=job_id))
         try:
             print_okblue("Killing all tasks of Job %s" % job_id)
             resp = self.client.task_svc.Stop(
@@ -293,8 +274,8 @@ class PelotonClientHelper(object):
                 timeout=default_timeout,
             )
             return resp
-        except Exception, e:
-            print_fail('Exception calling List Tasks :%s' % str(e))
+        except Exception as e:
+            print_fail("Exception calling List Tasks :%s" % str(e))
             raise
 
     def delete_job(self, job_id):
@@ -304,9 +285,7 @@ class PelotonClientHelper(object):
 
         rtype: job.DeleteResponse
         """
-        request = job.DeleteRequest(
-            id=peloton.JobID(value=job_id),
-        )
+        request = job.DeleteRequest(id=peloton.JobID(value=job_id))
         try:
             print_okblue("Deleting job %s" % job_id)
             resp = self.client.job_svc.Delete(
@@ -315,8 +294,8 @@ class PelotonClientHelper(object):
                 timeout=default_timeout,
             )
             return resp
-        except Exception, e:
-            print_fail('Exception calling delete job :%s' % str(e))
+        except Exception as e:
+            print_fail("Exception calling delete job :%s" % str(e))
             raise
 
     def update_job(self, job_id, new_job_config):
@@ -329,8 +308,7 @@ class PelotonClientHelper(object):
         rtype: job.UpdateResponse
         """
         request = job.UpdateRequest(
-            id=peloton.JobID(value=job_id),
-            config=new_job_config,
+            id=peloton.JobID(value=job_id), config=new_job_config
         )
         try:
             print_okblue("Updating Job %s" % job_id)
@@ -340,8 +318,8 @@ class PelotonClientHelper(object):
                 timeout=default_timeout,
             )
             return resp
-        except Exception, e:
-            print_fail('Exception calling Update Job: %s' % str(e))
+        except Exception as e:
+            print_fail("Exception calling Update Job: %s" % str(e))
             raise
 
     def update_stateless_job(self, job_id, new_job_config):
@@ -356,7 +334,7 @@ class PelotonClientHelper(object):
         request = update_svc.CreateUpdateRequest(
             jobId=peloton.JobID(value=job_id),
             jobConfig=new_job_config,
-            updateConfig=update_pb2.UpdateConfig()
+            updateConfig=update_pb2.UpdateConfig(),
         )
         try:
             print_okblue("Updating Job %s" % job_id)
@@ -366,8 +344,8 @@ class PelotonClientHelper(object):
                 timeout=default_timeout,
             )
             return resp
-        except Exception, e:
-            print_fail('Exception calling Update Stateless Job: %s' % str(e))
+        except Exception as e:
+            print_fail("Exception calling Update Stateless Job: %s" % str(e))
             raise
 
     def get_tasks(self, job_id):
@@ -377,9 +355,7 @@ class PelotonClientHelper(object):
 
         rtype: job.ListResponse
         """
-        request = task.ListRequest(
-            jobId=peloton.JobID(value=job_id),
-        )
+        request = task.ListRequest(jobId=peloton.JobID(value=job_id))
         try:
             resp = self.client.task_svc.List(
                 request,
@@ -387,8 +363,8 @@ class PelotonClientHelper(object):
                 timeout=default_timeout,
             ).result.value
             return resp
-        except Exception, e:
-            print_fail('Exception calling List Tasks :%s' % str(e))
+        except Exception as e:
+            print_fail("Exception calling List Tasks :%s" % str(e))
             raise
 
     def start_task(self, job_id, instance_id):
@@ -402,10 +378,10 @@ class PelotonClientHelper(object):
         rtype: task.StartResponse
         """
         rng = task.InstanceRange(to=instance_id + 1)
-        setattr(rng, 'from', instance_id)
+        setattr(rng, "from", instance_id)
         request = task.StartRequest(
-            jobId=peloton.JobID(value=job_id),
-            ranges=[rng])
+            jobId=peloton.JobID(value=job_id), ranges=[rng]
+        )
         try:
             print_okblue("Starting task %d of Job %s" % (instance_id, job_id))
             resp = self.client.task_svc.Start(
@@ -414,8 +390,8 @@ class PelotonClientHelper(object):
                 timeout=default_timeout,
             )
             return resp
-        except Exception, e:
-            print_fail('Exception calling Start Tasks :%s' % str(e))
+        except Exception as e:
+            print_fail("Exception calling Start Tasks :%s" % str(e))
             raise
 
     def stop_task(self, job_id, instance_id):
@@ -429,10 +405,10 @@ class PelotonClientHelper(object):
         rtype: task.StopResponse
         """
         rng = task.InstanceRange(to=instance_id + 1)
-        setattr(rng, 'from', instance_id)
+        setattr(rng, "from", instance_id)
         request = task.StopRequest(
-            jobId=peloton.JobID(value=job_id),
-            ranges=[rng])
+            jobId=peloton.JobID(value=job_id), ranges=[rng]
+        )
         try:
             print_okblue("Stopping task %d of Job %s" % (instance_id, job_id))
             resp = self.client.task_svc.Stop(
@@ -441,8 +417,8 @@ class PelotonClientHelper(object):
                 timeout=default_timeout,
             )
             return resp
-        except Exception, e:
-            print_fail('Exception calling Stop Tasks :%s' % str(e))
+        except Exception as e:
+            print_fail("Exception calling Stop Tasks :%s" % str(e))
             raise
 
     def monitering(self, job_id, target_status, stable_timeout=600):
@@ -466,7 +442,8 @@ class PelotonClientHelper(object):
 
         stable_timestamp = datetime.datetime.now()
         while datetime.datetime.now() - stable_timestamp < datetime.timedelta(
-                seconds=stable_timeout):
+            seconds=stable_timeout
+        ):
             job_runtime = self.get_job_status(job_id)
             task_stats = dict(job_runtime.taskStats)
             data.append(task_stats)

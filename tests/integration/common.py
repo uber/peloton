@@ -10,8 +10,13 @@ log = logging.getLogger(__name__)
 
 # IntegrationTestConfig is the default integration test config
 class IntegrationTestConfig(object):
-    def __init__(self, pool_file='test_respool.yaml', max_retry_attempts=60,
-                 sleep_time_sec=1, rpc_timeout_sec=10):
+    def __init__(
+        self,
+        pool_file="test_respool.yaml",
+        max_retry_attempts=60,
+        sleep_time_sec=1,
+        rpc_timeout_sec=10,
+    ):
         respool_config_dump = load_test_config(pool_file)
         respool_config = respool.ResourcePoolConfig()
         json_format.ParseDict(respool_config_dump, respool_config)
@@ -32,7 +37,7 @@ def wait_for_condition(message, condition, config):
     assert isinstance(config, IntegrationTestConfig)
 
     attempts, result, start_time = 0, False, time.time()
-    log.info('%s waiting for condition %s', message, condition.__name__)
+    log.info("%s waiting for condition %s", message, condition.__name__)
     while attempts < config.max_retry_attempts:
         try:
             result = condition()
@@ -44,12 +49,18 @@ def wait_for_condition(message, condition, config):
         attempts += 1
 
     if attempts == config.max_retry_attempts:
-        log.info('max attempts reached to wait for condition')
-        log.info('condition: %s', condition.__name__)
+        log.info("max attempts reached to wait for condition")
+        log.info("condition: %s", condition.__name__)
         assert False
 
     elapsed_time = time.time() - start_time
-    log.info('%s waited on condition %s for %s seconds', message,
-             condition.__name__, elapsed_time)
+    log.info(
+        "%s waited on condition %s for %s seconds",
+        message,
+        condition.__name__,
+        elapsed_time,
+    )
     assert result, "Given condition %s isn't met for %s" % (
-        condition.__name__, message)
+        condition.__name__,
+        message,
+    )

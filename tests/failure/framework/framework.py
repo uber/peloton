@@ -22,6 +22,7 @@ class FailureFramework(object):
     - Specifying a percentage, e.g. "50%"
     - Specifying a role, e.g. "leader"
     """
+
     def __init__(self):
         self._client = None
 
@@ -131,8 +132,9 @@ class FailureFramework(object):
         cts = self.driver.find(component.name, running_only=False)
         ct_ids = self._select_instances(component, cts, selector)
         for ct in ct_ids:
-            log.info("Restarting component %s: instance %s",
-                     component.name, ct)
+            log.info(
+                "Restarting component %s: instance %s", component.name, ct
+            )
             self.driver.stop(ct)
             self.driver.start(ct)
         return len(cts)
@@ -165,7 +167,7 @@ class FailureFramework(object):
             else:
                 log.warn("No leader info for %s", component.name)
         else:
-            m = re.match(r'^(?P<num>[0-9]+)(?P<perc>%*)$', selector)
+            m = re.match(r"^(?P<num>[0-9]+)(?P<perc>%*)$", selector)
             if m:
                 count = int(m.group("num"))
                 if m.group("perc"):

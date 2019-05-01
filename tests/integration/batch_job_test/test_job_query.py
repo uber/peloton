@@ -10,9 +10,11 @@ from peloton_client.google.protobuf import timestamp_pb2
 from tests.integration.conf_util import NUM_JOBS_PER_STATE
 
 # Mark test module so that we can run tests by tags
-pytestmark = [pytest.mark.default,
-              pytest.mark.jobquery,
-              pytest.mark.random_order(disabled=True)]
+pytestmark = [
+    pytest.mark.default,
+    pytest.mark.jobquery,
+    pytest.mark.random_order(disabled=True),
+]
 
 
 """
@@ -33,14 +35,10 @@ Raises:
 def query_by_spec(respool_id=None, spec=None):
     client = Client()
     request = job_pb2.QueryRequest(
-        respoolID=respool_id,
-        spec=spec,
-        summaryOnly=True,
+        respoolID=respool_id, spec=spec, summaryOnly=True
     )
     resp = client.job_svc.Query(
-        request,
-        metadata=client.jobmgr_metadata,
-        timeout=10,
+        request, metadata=client.jobmgr_metadata, timeout=10
     )
     return resp
 
@@ -59,30 +57,34 @@ creation time in desc order with pagination
 def test__query_active_jobs(create_jobs):
     salt = create_jobs[0]
     respoolID = create_jobs[1]
-    running_jobs = create_jobs[2]['RUNNING']
+    running_jobs = create_jobs[2]["RUNNING"]
 
     spec_active_jobs = job_pb2.QuerySpec(
         keywords=[salt],
         jobStates=[
-            job_pb2.JobState.Value('RUNNING'),
-            job_pb2.JobState.Value('PENDING'),
-            job_pb2.JobState.Value('INITIALIZED'),
+            job_pb2.JobState.Value("RUNNING"),
+            job_pb2.JobState.Value("PENDING"),
+            job_pb2.JobState.Value("INITIALIZED"),
         ],
         pagination=query.PaginationSpec(
             offset=0,
             limit=500,
             maxLimit=1000,
-            orderBy=[query.OrderBy(
-                order=query.OrderBy.Order.Value('DESC'),
-                property=query.PropertyPath(value='creation_time'),
-            )],
+            orderBy=[
+                query.OrderBy(
+                    order=query.OrderBy.Order.Value("DESC"),
+                    property=query.PropertyPath(value="creation_time"),
+                )
+            ],
         ),
     )
     resp = query_by_spec(respoolID, spec=spec_active_jobs)
     assert len(resp.results) == NUM_JOBS_PER_STATE
     # test descending order, the last created active job should show up first
-    assert resp.results[0].name == running_jobs[NUM_JOBS_PER_STATE -
-                                                1].get_info().config.name
+    assert (
+        resp.results[0].name
+        == running_jobs[NUM_JOBS_PER_STATE - 1].get_info().config.name
+    )
 
 
 """
@@ -94,25 +96,27 @@ creation time in desc order with pagination
 def test__query_completed_jobs(create_jobs):
     salt = create_jobs[0]
     respoolID = create_jobs[1]
-    failed_jobs = create_jobs[2]['FAILED']
+    failed_jobs = create_jobs[2]["FAILED"]
 
     # name is structured as "TestJob-<6 letter salt>-<count>"
     # we will use <salt> to restrict the query scope.
     spec_completed_jobs = job_pb2.QuerySpec(
         keywords=[salt],
         jobStates=[
-            job_pb2.JobState.Value('SUCCEEDED'),
-            job_pb2.JobState.Value('KILLED'),
-            job_pb2.JobState.Value('FAILED'),
+            job_pb2.JobState.Value("SUCCEEDED"),
+            job_pb2.JobState.Value("KILLED"),
+            job_pb2.JobState.Value("FAILED"),
         ],
         pagination=query.PaginationSpec(
             offset=0,
             limit=500,
             maxLimit=1000,
-            orderBy=[query.OrderBy(
-                order=query.OrderBy.Order.Value('DESC'),
-                property=query.PropertyPath(value='completion_time'),
-            )],
+            orderBy=[
+                query.OrderBy(
+                    order=query.OrderBy.Order.Value("DESC"),
+                    property=query.PropertyPath(value="completion_time"),
+                )
+            ],
         ),
     )
     resp = query_by_spec(respoolID, spec=spec_completed_jobs)
@@ -124,8 +128,11 @@ def test__query_completed_jobs(create_jobs):
     # test descending order, the job that completed last should show up first
     # in this case it should be the last job in the failed jobs list
 
-    assert resp.results[0].name == failed_jobs[NUM_JOBS_PER_STATE -
-                                               1].get_info().config.name
+    assert (
+        resp.results[0].name
+        == failed_jobs[NUM_JOBS_PER_STATE - 1].get_info().config.name
+    )
+
 
 # test pagination
 
@@ -135,31 +142,18 @@ def test__query_pagination(create_jobs):
     salt = create_jobs[0]
     respoolID = create_jobs[1]
 
-    pagination = query.PaginationSpec(
-        offset=0,
-        limit=2,
-        maxLimit=5,
-    )
-    spec_pagination = job_pb2.QuerySpec(
-        keywords=[salt],
-        pagination=pagination,
-    )
+    pagination = query.PaginationSpec(offset=0, limit=2, maxLimit=5)
+    spec_pagination = job_pb2.QuerySpec(keywords=[salt], pagination=pagination)
     resp = query_by_spec(respoolID, spec=spec_pagination)
     assert len(resp.results) == 2
 
     pagination.maxLimit = 2
-    spec_pagination = job_pb2.QuerySpec(
-        keywords=[salt],
-        pagination=pagination,
-    )
+    spec_pagination = job_pb2.QuerySpec(keywords=[salt], pagination=pagination)
     resp = query_by_spec(respoolID, spec=spec_pagination)
     assert len(resp.results) == 2
 
     pagination.offset = 1
-    spec_pagination = job_pb2.QuerySpec(
-        keywords=[salt],
-        pagination=pagination,
-    )
+    spec_pagination = job_pb2.QuerySpec(keywords=[salt], pagination=pagination)
     resp = query_by_spec(respoolID, spec=spec_pagination)
     assert len(resp.results) == 1
 
@@ -168,48 +162,51 @@ def test__query_pagination(create_jobs):
 
 
 def test__query_job_by_name(create_jobs):
-    running_jobs = create_jobs[2]['RUNNING']
+    running_jobs = create_jobs[2]["RUNNING"]
 
     spec_by_name = job_pb2.QuerySpec(
-        name=running_jobs[0].get_info().config.name,
+        name=running_jobs[0].get_info().config.name
     )
     resp = query_by_spec(spec=spec_by_name)
     assert len(resp.results) == NUM_JOBS_PER_STATE
+
 
 # test job query by owner
 
 
 def test__query_job_by_owner(create_jobs):
     respoolID = create_jobs[1]
-    running_jobs = create_jobs[2]['RUNNING']
+    running_jobs = create_jobs[2]["RUNNING"]
 
     spec_by_owner = job_pb2.QuerySpec(
-        owner=running_jobs[0].get_info().config.owningTeam,
+        owner=running_jobs[0].get_info().config.owningTeam
     )
     resp = query_by_spec(respoolID, spec_by_owner)
     # We should find NUM_JOBS_PER_STATE number of jobs for each of the
     # three states (RUNNING, FAILED, SUCCEEDED) for this owner
     assert len(resp.results) == 3 * NUM_JOBS_PER_STATE
 
+
 # test job query by keyword
 
 
 def test__query_job_by_keyword(create_jobs):
     respoolID = create_jobs[1]
-    running_jobs = create_jobs[2]['RUNNING']
+    running_jobs = create_jobs[2]["RUNNING"]
 
     spec_by_keyword = job_pb2.QuerySpec(
-        keywords=[running_jobs[0].get_info().config.name],
+        keywords=[running_jobs[0].get_info().config.name]
     )
     resp = query_by_spec(respoolID, spec_by_keyword)
     assert len(resp.results) == NUM_JOBS_PER_STATE
+
 
 # test job query by owner and name
 
 
 def test__query_job_by_owner_by_name(create_jobs):
     respoolID = create_jobs[1]
-    running_jobs = create_jobs[2]['RUNNING']
+    running_jobs = create_jobs[2]["RUNNING"]
 
     spec_by_owner_name = job_pb2.QuerySpec(
         owner=running_jobs[0].get_info().config.owningTeam,
@@ -218,22 +215,22 @@ def test__query_job_by_owner_by_name(create_jobs):
     resp = query_by_spec(respoolID, spec_by_owner_name)
     assert len(resp.results) == NUM_JOBS_PER_STATE
 
+
 # test job query by name and label
 
 
 def test__query_job_by_name_by_label(create_jobs):
     respoolID = create_jobs[1]
-    running_jobs = create_jobs[2]['RUNNING']
+    running_jobs = create_jobs[2]["RUNNING"]
 
     # query by name and label
     spec_by_label = job_pb2.QuerySpec(
         name=running_jobs[0].get_info().config.name,
-        labels=[
-            peloton.Label(key="testKey0", value="testVal0"),
-        ]
+        labels=[peloton.Label(key="testKey0", value="testVal0")],
     )
     resp = query_by_spec(respoolID, spec_by_label)
     assert len(resp.results) == NUM_JOBS_PER_STATE
+
 
 # test job query with bad query spec. Expect empty results
 
@@ -241,9 +238,7 @@ def test__query_job_by_name_by_label(create_jobs):
 def test__query_job_negative(create_jobs):
     respoolID = create_jobs[1]
     # query by name and label
-    spec_by_name = job_pb2.QuerySpec(
-        name='deadbeef',
-    )
+    spec_by_name = job_pb2.QuerySpec(name="deadbeef")
     resp = query_by_spec(respoolID, spec_by_name)
     assert len(resp.results) == 0
 
@@ -257,14 +252,8 @@ def test__query_time_range(create_jobs):
     dt = datetime.today() - timedelta(days=1)
     min_time.FromDatetime(dt)
     max_time.GetCurrentTime()
-    time_range = peloton.TimeRange(
-        min=min_time,
-        max=max_time,
-    )
-    spec = job_pb2.QuerySpec(
-        keywords=[salt],
-        completionTimeRange=time_range,
-    )
+    time_range = peloton.TimeRange(min=min_time, max=max_time)
+    spec = job_pb2.QuerySpec(keywords=[salt], completionTimeRange=time_range)
     resp = query_by_spec(respoolID, spec=spec)
     # This is a query with keyword for jobs completed
     # over last one day. This should yield
@@ -272,10 +261,7 @@ def test__query_time_range(create_jobs):
     # FAILED states, both of which will have completion time
     assert len(resp.results) == 2 * NUM_JOBS_PER_STATE
 
-    spec = job_pb2.QuerySpec(
-        keywords=[salt],
-        creationTimeRange=time_range,
-    )
+    spec = job_pb2.QuerySpec(keywords=[salt], creationTimeRange=time_range)
     resp = query_by_spec(respoolID, spec=spec)
     # This is a query with keyword for jobs completed
     # over last one day. This should yield
@@ -285,13 +271,7 @@ def test__query_time_range(create_jobs):
 
     # use min_time as max and max_time as min
     # This should result in error in response
-    bad_time_range = peloton.TimeRange(
-        max=min_time,
-        min=max_time,
-    )
-    spec = job_pb2.QuerySpec(
-        keywords=[salt],
-        creationTimeRange=bad_time_range,
-    )
+    bad_time_range = peloton.TimeRange(max=min_time, min=max_time)
+    spec = job_pb2.QuerySpec(keywords=[salt], creationTimeRange=bad_time_range)
     resp = query_by_spec(respoolID, spec=spec)
-    assert resp.HasField('error')
+    assert resp.HasField("error")

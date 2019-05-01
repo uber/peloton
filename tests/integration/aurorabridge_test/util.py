@@ -5,41 +5,23 @@ import requests
 from tests.integration.aurorabridge_test.client import api
 from tests.integration.util import load_config
 
-TEST_CONFIG_DIR = '/aurorabridge_test/test_configs'
+TEST_CONFIG_DIR = "/aurorabridge_test/test_configs"
 
 
 def wait_for_rolled_forward(client, job_update_key, timeout_secs=120):
-    '''Wait for job update to be in "ROLLED_FORWARD" state, triggers
+    """Wait for job update to be in "ROLLED_FORWARD" state, triggers
     assertion failure if timed out.
 
     Args:
         client: aurora client object
         job_update_key: aurora JobUpdateKey struct specifying the update to
             wait for
-    '''
+    """
     wait_for_update_status(
         client,
         job_update_key,
         {api.JobUpdateStatus.ROLLING_FORWARD},
         api.JobUpdateStatus.ROLLED_FORWARD,
-        timeout_secs,
-    )
-
-
-def wait_for_rolling_forward(client, job_update_key, timeout_secs=120):
-    '''Wait for job update to be in "ROLLING_FORWARD" state, triggers
-    assertion failure if timed out.
-
-    Args:
-        client: aurora client object
-        job_update_key: aurora JobUpdateKey struct specifying the update to
-            wait for
-    '''
-    wait_for_update_status(
-        client,
-        job_update_key,
-        {},
-        api.JobUpdateStatus.ROLLING_FORWARD,
         timeout_secs,
     )
 
@@ -58,19 +40,23 @@ def wait_for_rolled_back(client, job_update_key, timeout_secs=120):
     wait_for_update_status(
         client,
         job_update_key,
-        {api.JobUpdateStatus.ROLLING_FORWARD, api.JobUpdateStatus.ROLLING_BACK},
+        {
+            api.JobUpdateStatus.ROLLING_FORWARD,
+            api.JobUpdateStatus.ROLLING_BACK,
+        },
         api.JobUpdateStatus.ROLLED_BACK,
         timeout_secs,
     )
 
 
 def wait_for_update_status(
-        client,
-        job_update_key,
-        allowed_intermediate_statuses,
-        status,
-        timeout_secs=120):
-    '''Wait for job update to be in specific state, triggers assertion
+    client,
+    job_update_key,
+    allowed_intermediate_statuses,
+    status,
+    timeout_secs=120,
+):
+    """Wait for job update to be in specific state, triggers assertion
     failure if timed out.
 
     Args:
@@ -83,29 +69,34 @@ def wait_for_update_status(
         status: target update state to wait for
         timeout_secs: timeout in seconds, triggers assertion failure if
             timed out
-    '''
+    """
 
     deadline = time.time() + timeout_secs
     while time.time() < deadline:
         latest = get_update_status(client, job_update_key)
         if latest == status:
             return
-        assert latest in allowed_intermediate_statuses, \
-            '{latest} not in {allowed}'.format(
-                latest=api.JobUpdateStatus.name_of(latest),
-                allowed=[
-                    api.JobUpdateStatus.name_of(s)
-                    for s in allowed_intermediate_statuses
-                ])
+        assert (
+            latest in allowed_intermediate_statuses
+        ), "{latest} not in {allowed}".format(
+            latest=api.JobUpdateStatus.name_of(latest),
+            allowed=[
+                api.JobUpdateStatus.name_of(s)
+                for s in allowed_intermediate_statuses
+            ],
+        )
         time.sleep(2)
 
-    assert False, 'timed out waiting for {status}, last status: {latest}'.format(
+    assert (
+        False
+    ), "timed out waiting for {status}, last status: {latest}".format(
         status=api.JobUpdateStatus.name_of(status),
-        latest=api.JobUpdateStatus.name_of(latest))
+        latest=api.JobUpdateStatus.name_of(latest),
+    )
 
 
 def get_update_status(client, job_update_key):
-    '''Querying current job update status.
+    """Querying current job update status.
 
     Args:
         client: aurora client object
@@ -114,8 +105,10 @@ def get_update_status(client, job_update_key):
 
     Returns:
         aurora JobUpdateStatus enum
-    '''
-    res = client.get_job_update_summaries(api.JobUpdateQuery(key=job_update_key))
+    """
+    res = client.get_job_update_summaries(
+        api.JobUpdateQuery(key=job_update_key)
+    )
     assert len(res.updateSummaries) == 1
 
     summary = res.updateSummaries[0]
@@ -124,31 +117,31 @@ def get_update_status(client, job_update_key):
     return summary.state.status
 
 
-def wait_for_running(client, job_key, instances=None):
-    '''Wait for all tasks in a specific job to be in "RUNNING" state, triggers
+def wait_for_running(client, job_key):
+    """Wait for all tasks in a specific job to be in "RUNNING" state, triggers
     assertion failure if timed out.
 
     Args:
         client: aurora client object
         job_key: aurora JobKey struct specifying the job to wait for
-        instances: a list of instance ids to wait for, wait for all instances
-            passed as None
-    '''
+    """
     wait_for_task_status(
         client,
         job_key,
-        set([
-            api.ScheduleStatus.INIT,
-            api.ScheduleStatus.PENDING,
-            api.ScheduleStatus.ASSIGNED,
-            api.ScheduleStatus.STARTING,
-        ]),
+        set(
+            [
+                api.ScheduleStatus.INIT,
+                api.ScheduleStatus.PENDING,
+                api.ScheduleStatus.ASSIGNED,
+                api.ScheduleStatus.STARTING,
+            ]
+        ),
         api.ScheduleStatus.RUNNING,
-        instances=instances)
+    )
 
 
 def wait_for_killed(client, job_key, instances=None):
-    '''Wait for all tasks in a specific job to be in "KILLED" state, triggers
+    """Wait for all tasks in a specific job to be in "KILLED" state, triggers
     assertion failure if timed out.
 
     Args:
@@ -156,26 +149,25 @@ def wait_for_killed(client, job_key, instances=None):
         job_key: aurora JobKey struct specifying the job to wait for
         instances: a list of instance ids to wait for, wait for all instances
             passed as None
-    '''
+    """
     wait_for_task_status(
         client,
         job_key,
-        set([
-            api.ScheduleStatus.RUNNING,
-            api.ScheduleStatus.KILLING,
-        ]),
+        set([api.ScheduleStatus.RUNNING, api.ScheduleStatus.KILLING]),
         api.ScheduleStatus.KILLED,
-        instances=instances)
+        instances=instances,
+    )
 
 
 def wait_for_task_status(
-        client,
-        job_key,
-        allowed_intermediate_statuses,
-        status,
-        timeout_secs=120,
-        instances=None):
-    '''Wait for all tasks in a job to be in specific state, triggers assertion
+    client,
+    job_key,
+    allowed_intermediate_statuses,
+    status,
+    timeout_secs=120,
+    instances=None,
+):
+    """Wait for all tasks in a job to be in specific state, triggers assertion
     failure if timed out.
 
     Args:
@@ -189,59 +181,28 @@ def wait_for_task_status(
             timed out
         instances: a list of instance ids to wait for, wait for all instances
             passed as None
-    '''
+    """
     try:
         deadline = time.time() + timeout_secs
         while time.time() < deadline:
             statuses = get_task_status(client, job_key, instances=instances)
-
-            # not all expected instance statuses are returned
-            if instances and len(statuses) != len(instances):
-                time.sleep(2)
-                continue
-
             all_match = True
             for s in statuses:
                 if s != status:
-                    assert s in allowed_intermediate_statuses, 'unexpected status: {}'.format(s)
+                    assert (
+                        s in allowed_intermediate_statuses
+                    ), "unexpected status: {}".format(s)
                     all_match = False
             if all_match:
                 return
             time.sleep(2)
 
-        assert False, 'timed out waiting for {status}, last statuses: {latest}'.format(
+        assert (
+            False
+        ), "timed out waiting for {status}, last statuses: {latest}".format(
             status=api.ScheduleStatus.name_of(status),
-            latest=map(lambda s: api.ScheduleStatus.name_of(s), statuses))
-    finally:
-        # wait so that PodStats is consistent with result returned by
-        # getTasksWithoutConfigs
-        time.sleep(1)
-
-
-def wait_for_task_removed(client, job_key, timeout_secs=120, instances=None):
-    '''Wait for all tasks in a job to be removed, triggers assertion failure
-    if timed out.
-
-    Args:
-        client: aurora client object
-        job_key: aurora JobKey struct specifying the job to wait for
-        timeout_secs: timeout in seconds, triggers assertion failure if
-            timed out
-        instances: a list of instance ids to wait for, wait for all instances
-            passed as None
-    '''
-    try:
-        deadline = time.time() + timeout_secs
-        while time.time() < deadline:
-            statuses = get_task_status(client, job_key, instances=instances)
-
-            if not statuses:
-                return
-
-            time.sleep(2)
-
-        assert False, 'timed out waiting for tasks to be removed: {instances}'.format(
-            instances=instances)
+            latest=map(lambda s: api.ScheduleStatus.name_of(s), statuses),
+        )
     finally:
         # wait so that PodStats is consistent with result returned by
         # getTasksWithoutConfigs
@@ -249,7 +210,7 @@ def wait_for_task_removed(client, job_key, timeout_secs=120, instances=None):
 
 
 def get_task_status(client, job_key, instances=None):
-    '''Querying current task status for job.
+    """Querying current task status for job.
 
     Args:
         client: aurora client object
@@ -259,7 +220,7 @@ def get_task_status(client, job_key, instances=None):
 
     Returns:
         a list of ScheduleStatus enum representing the state for all tasks
-    '''
+    """
     res = client.get_tasks_without_configs(api.TaskQuery(jobKeys=[job_key]))
 
     assert res.tasks is not None
@@ -270,30 +231,32 @@ def get_task_status(client, job_key, instances=None):
         if instance_id not in tasks_per_instance:
             tasks_per_instance[instance_id] = []
 
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         tasks_per_instance[instance_id].append((run_id, t.status))
 
     # grab task status from latest pod run
-    return [max(statuses)[1]
-            for iid, statuses in tasks_per_instance.iteritems()
-            if instances is None or iid in instances]
+    return [
+        max(statuses)[1]
+        for iid, statuses in tasks_per_instance.iteritems()
+        if instances is None or iid in instances
+    ]
 
 
 def get_job_update_request(config_path):
-    '''Load aurora JobUpdateRequest struct from yaml file.
+    """Load aurora JobUpdateRequest struct from yaml file.
 
     Args:
         config_path: path to yaml file containing JobUpdateRequest
 
     Returns:
         aurora JobUpdateRequest struct
-    '''
+    """
     config_dump = load_config(config_path, TEST_CONFIG_DIR)
     return api.JobUpdateRequest.from_primitive(config_dump)
 
 
-def start_job_update(client, config, update_message=''):
-    '''Starts a job update and waits for the update to be in "ROLLED_FORWARD"
+def start_job_update(client, config, update_message=""):
+    """Starts a job update and waits for the update to be in "ROLLED_FORWARD"
     state and all tasks in the job are in "RUNNING" state.
 
     Args:
@@ -304,7 +267,7 @@ def start_job_update(client, config, update_message=''):
 
     Returns:
         aurora JobKey
-    '''
+    """
     if isinstance(config, basestring):
         req = get_job_update_request(config)
     else:
@@ -317,16 +280,15 @@ def start_job_update(client, config, update_message=''):
 
 
 def get_running_tasks(client, job_key):
-    '''Calls getTasksWithoutConfigs endpoint to get currently running tasks.
+    """Calls getTasksWithoutConfigs endpoint to get currently running tasks.
 
     Args:
         client: aurora client object
         job_key: aurora job key
-    '''
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    """
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     return res.tasks
 
 
@@ -336,18 +298,16 @@ def _to_tuple(job_key):
 
 def remove_duplicate_keys(job_keys):
     # Convert JobKeys to tuples and back to leverage set deduplication.
-    return [
-        api.JobKey(*t) for t in
-        {_to_tuple(k) for k in job_keys}
-    ]
+    return [api.JobKey(*t) for t in {_to_tuple(k) for k in job_keys}]
 
 
-def assert_keys_equal(actual, expected, message=''):
-    assert sorted(actual, key=_to_tuple) == sorted(expected, key=_to_tuple), \
-        message
+def assert_keys_equal(actual, expected, message=""):
+    assert sorted(actual, key=_to_tuple) == sorted(
+        expected, key=_to_tuple
+    ), message
 
 
-def get_mesos_maser_state(url='http://127.0.0.1:5050/state.json'):
+def get_mesos_maser_state(url="http://127.0.0.1:5050/state.json"):
     resp = requests.get(url)
     resp.raise_for_status()
     return resp.json()
@@ -365,16 +325,16 @@ def verify_first_and_last_job_update_status(events, first, last):
 
 
 def verify_task_config(client, job_key, metadata_dict):
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
 
     for t in res.tasks:
         for m in t.assignedTask.task.metadata:
             if m.key in metadata_dict:
                 assert m.value == metadata_dict[m.key]
             else:
-                assert False, 'unexpected metadata {}'.format(m)
+                assert False, "unexpected metadata {}".format(m)
 
 
 def expand_instance_range(instances):

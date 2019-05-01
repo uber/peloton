@@ -4,10 +4,12 @@ import time
 from tests.integration.stateless_job import StatelessJob
 from peloton_client.pbgen.peloton.api.v1alpha.pod import pod_pb2 as pod
 
-pytestmark = [pytest.mark.default,
-              pytest.mark.stateless,
-              pytest.mark.revocable,
-              pytest.mark.random_order(disabled=True)]
+pytestmark = [
+    pytest.mark.default,
+    pytest.mark.stateless,
+    pytest.mark.revocable,
+    pytest.mark.random_order(disabled=True),
+]
 
 
 # 1) Resource Pool Memory: 1000 (reservation), 2000 (limit)
@@ -19,21 +21,25 @@ pytestmark = [pytest.mark.default,
 # Since cluster capacity is 2000, it will preempt revocable job for itself.
 def test__preempt_revocable_job_to_run_non_revocable_job():
     non_revocable_job1 = StatelessJob(
-        job_file='test_stateless_preemptible_job_memory_large_spec.yaml')
+        job_file="test_stateless_preemptible_job_memory_large_spec.yaml"
+    )
     non_revocable_job1.create()
-    non_revocable_job1.wait_for_state(goal_state='RUNNING')
+    non_revocable_job1.wait_for_state(goal_state="RUNNING")
     non_revocable_job1.wait_for_all_pods_running()
 
-    revocable_job = StatelessJob(job_file='test_stateless_job_revocable_spec.yaml')
+    revocable_job = StatelessJob(
+        job_file="test_stateless_job_revocable_spec.yaml"
+    )
     revocable_job.create()
-    revocable_job.wait_for_state(goal_state='RUNNING')
+    revocable_job.wait_for_state(goal_state="RUNNING")
     revocable_job.wait_for_all_pods_running()
 
     # launch second non-revocable job which will pre-empt revocable job
     non_revocable_job2 = StatelessJob(
-        job_file='test_stateless_job_memory_large_spec.yaml')
+        job_file="test_stateless_job_memory_large_spec.yaml"
+    )
     non_revocable_job2.create()
-    non_revocable_job2.wait_for_state(goal_state='RUNNING')
+    non_revocable_job2.wait_for_state(goal_state="RUNNING")
     non_revocable_job2.wait_for_all_pods_running()
 
     # no revocable job tasks should be running
@@ -60,9 +66,10 @@ def test__preempt_revocable_job_to_run_non_revocable_job():
 # Revocable Job Memory request: 100MB * 3(instances) = 300MB
 def test__revocable_job_slack_limit():
     revocable_job = StatelessJob(
-        job_file='test_stateless_job_revocable_slack_limit_spec.yaml')
+        job_file="test_stateless_job_revocable_slack_limit_spec.yaml"
+    )
     revocable_job.create()
-    revocable_job.wait_for_state(goal_state='RUNNING')
+    revocable_job.wait_for_state(goal_state="RUNNING")
 
     # 2 tasks are running out of 3
     def partial_tasks_running():
@@ -87,19 +94,23 @@ def test__revocable_job_slack_limit():
 # Kill any non_revocable job, and it will satisfy revocable job
 def test__stop_nonrevocable_job_to_free_resources_for_revocable_job():
     non_revocable_job1 = StatelessJob(
-        job_file='test_stateless_job_memory_large_spec.yaml')
+        job_file="test_stateless_job_memory_large_spec.yaml"
+    )
     non_revocable_job1.create()
-    non_revocable_job1.wait_for_state('RUNNING')
+    non_revocable_job1.wait_for_state("RUNNING")
 
     non_revocable_job2 = StatelessJob(
-        job_file='test_stateless_preemptible_job_memory_large_spec.yaml')
+        job_file="test_stateless_preemptible_job_memory_large_spec.yaml"
+    )
     non_revocable_job2.create()
-    non_revocable_job2.wait_for_state('RUNNING')
+    non_revocable_job2.wait_for_state("RUNNING")
 
     non_revocable_job1.wait_for_all_pods_running()
     non_revocable_job2.wait_for_all_pods_running()
 
-    revocable_job = StatelessJob(job_file='test_stateless_job_revocable_spec.yaml')
+    revocable_job = StatelessJob(
+        job_file="test_stateless_job_revocable_spec.yaml"
+    )
     revocable_job.create()
 
     # no tasks should be running
@@ -135,19 +146,25 @@ def test__stop_nonrevocable_job_to_free_resources_for_revocable_job():
 # Non-Revocable Job cpus: 5 (constrained by resource pool reservation)
 # Revocable Job cpus: 5 * 2 = 10
 def test__create_revocable_job():
-    revocable_job1 = StatelessJob(job_file='test_stateless_job_revocable_spec.yaml')
+    revocable_job1 = StatelessJob(
+        job_file="test_stateless_job_revocable_spec.yaml"
+    )
     revocable_job1.create()
-    revocable_job1.wait_for_state(goal_state='RUNNING')
+    revocable_job1.wait_for_state(goal_state="RUNNING")
     revocable_job1.wait_for_all_pods_running()
 
-    revocable_job2 = StatelessJob(job_file='test_stateless_job_revocable_spec.yaml')
+    revocable_job2 = StatelessJob(
+        job_file="test_stateless_job_revocable_spec.yaml"
+    )
     revocable_job2.create()
-    revocable_job2.wait_for_state(goal_state='RUNNING')
+    revocable_job2.wait_for_state(goal_state="RUNNING")
     revocable_job2.wait_for_all_pods_running()
 
-    non_revocable_job = StatelessJob(job_file='test_stateless_job_cpus_large_spec.yaml')
+    non_revocable_job = StatelessJob(
+        job_file="test_stateless_job_cpus_large_spec.yaml"
+    )
     non_revocable_job.create()
-    non_revocable_job.wait_for_state(goal_state='RUNNING')
+    non_revocable_job.wait_for_state(goal_state="RUNNING")
     non_revocable_job.wait_for_all_pods_running()
 
     # cleanup jobs from jobmgr
@@ -163,9 +180,11 @@ def test__create_revocable_job():
 # Non-Revocable tasks.
 # Launch 2 revocable jobs, one will starve due to memory
 def test__revocable_tasks_move_to_revocable_queue():
-    revocable_job1 = StatelessJob(job_file='test_stateless_job_revocable_spec.yaml')
+    revocable_job1 = StatelessJob(
+        job_file="test_stateless_job_revocable_spec.yaml"
+    )
     revocable_job1.create()
-    revocable_job1.wait_for_state(goal_state='RUNNING')
+    revocable_job1.wait_for_state(goal_state="RUNNING")
     revocable_job1.wait_for_all_pods_running()
 
     # 1 task is running out of 3
@@ -178,16 +197,17 @@ def test__revocable_tasks_move_to_revocable_queue():
         return count == 1
 
     revocable_job2 = StatelessJob(
-        job_file='test_stateless_job_revocable_slack_limit_spec.yaml')
+        job_file="test_stateless_job_revocable_slack_limit_spec.yaml"
+    )
     revocable_job2.create()
 
     # sleep for 5 seconds to make sure job has enough time
     time.sleep(5)
     revocable_job2.wait_for_condition(partial_tasks_running)
 
-    non_revocable_job = StatelessJob(job_file='test_stateless_job_spec.yaml')
+    non_revocable_job = StatelessJob(job_file="test_stateless_job_spec.yaml")
     non_revocable_job.create()
-    non_revocable_job.wait_for_state('RUNNING')
+    non_revocable_job.wait_for_state("RUNNING")
     non_revocable_job.wait_for_all_pods_running()
 
     # cleanup jobs from jobmgr

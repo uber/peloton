@@ -8,12 +8,18 @@ from pool import Pool
 
 from google.protobuf import json_format
 
-from peloton_client.pbgen.peloton.api.v1alpha.job.stateless.stateless_pb2 import JobSpec
-from peloton_client.pbgen.peloton.api.v1alpha.job.stateless.svc import \
-    stateless_svc_pb2 as stateless_svc
-from peloton_client.pbgen.peloton.api.v1alpha import peloton_pb2 as v1alpha_peloton
-from peloton_client.pbgen.peloton.api.v1alpha.job.stateless import \
-    stateless_pb2 as stateless
+from peloton_client.pbgen.peloton.api.v1alpha.job.stateless.stateless_pb2 import (
+    JobSpec,
+)
+from peloton_client.pbgen.peloton.api.v1alpha.job.stateless.svc import (
+    stateless_svc_pb2 as stateless_svc,
+)
+from peloton_client.pbgen.peloton.api.v1alpha import (
+    peloton_pb2 as v1alpha_peloton,
+)
+from peloton_client.pbgen.peloton.api.v1alpha.job.stateless import (
+    stateless_pb2 as stateless,
+)
 from stateless_job import INVALID_ENTITY_VERSION_ERR_MESSAGE
 
 log = logging.getLogger(__name__)
@@ -23,18 +29,21 @@ class StatelessUpdate(object):
     """
     StatelessUpdate represents a peloton stateless job update
     """
-    def __init__(self, job,
-                 updated_job_file=None,
-                 client=None,
-                 config=None,
-                 pool=None,
-                 batch_size=None,
-                 updated_job_spec=None,
-                 roll_back_on_failure=None,
-                 max_instance_attempts=None,
-                 max_failure_instances=None,
-                 start_paused=None,
-                 ):
+
+    def __init__(
+        self,
+        job,
+        updated_job_file=None,
+        client=None,
+        config=None,
+        pool=None,
+        batch_size=None,
+        updated_job_spec=None,
+        roll_back_on_failure=None,
+        max_instance_attempts=None,
+        max_failure_instances=None,
+        start_paused=None,
+    ):
 
         self.config = config or IntegrationTestConfig()
         self.client = client or Client()
@@ -63,14 +72,18 @@ class StatelessUpdate(object):
         respool_id = self.pool.ensure_exists()
         self.updated_job_spec.respool_id.value = respool_id
 
-        job_entity_version = entity_version or \
-            self.job.entity_version or \
-            self.job.get_status().version.value
+        job_entity_version = (
+            entity_version
+            or self.job.entity_version
+            or self.job.get_status().version.value
+        )
 
         while True:
             request = stateless_svc.ReplaceJobRequest(
                 job_id=v1alpha_peloton.JobID(value=self.job.job_id),
-                version=v1alpha_peloton.EntityVersion(value=job_entity_version),
+                version=v1alpha_peloton.EntityVersion(
+                    value=job_entity_version
+                ),
                 spec=self.updated_job_spec,
                 update_spec=stateless.UpdateSpec(
                     batch_size=self.batch_size,
@@ -79,7 +92,7 @@ class StatelessUpdate(object):
                     max_tolerable_instance_failures=self.max_failure_instances,
                     start_paused=self.start_paused,
                     in_place=in_place,
-                )
+                ),
             )
             try:
                 resp = self.client.stateless_svc.ReplaceJob(
@@ -91,29 +104,39 @@ class StatelessUpdate(object):
                 # if config version is incorrect and caller does not specify a
                 # config version, get config version from job runtime
                 # and try again.
-                if e.code() == grpc.StatusCode.ABORTED \
-                        and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details() \
-                        and entity_version is None:
-                    job_entity_version = entity_version or \
-                             self.job.get_status().version.value
+                if (
+                    e.code() == grpc.StatusCode.ABORTED
+                    and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details()
+                    and entity_version is None
+                ):
+                    job_entity_version = (
+                        entity_version or self.job.get_status().version.value
+                    )
                     continue
                 raise
             break
         self.job.entity_version = resp.version.value
-        log.info('job spec replaced with new entity version: %s', self.job.entity_version)
+        log.info(
+            "job spec replaced with new entity version: %s",
+            self.job.entity_version,
+        )
 
     def abort(self, entity_version=None):
         """
         aborts the given update
         """
-        job_entity_version = entity_version or \
-            self.job.entity_version or \
-            self.job.get_status().version.value
+        job_entity_version = (
+            entity_version
+            or self.job.entity_version
+            or self.job.get_status().version.value
+        )
 
         while True:
             request = stateless_svc.AbortJobWorkflowRequest(
                 job_id=v1alpha_peloton.JobID(value=self.job.job_id),
-                version=v1alpha_peloton.EntityVersion(value=job_entity_version),
+                version=v1alpha_peloton.EntityVersion(
+                    value=job_entity_version
+                ),
             )
             try:
                 resp = self.client.stateless_svc.AbortJobWorkflow(
@@ -125,38 +148,46 @@ class StatelessUpdate(object):
                 # if config version is incorrect and caller does not specify a
                 # config version, get config version from job runtime
                 # and try again.
-                if e.code() == grpc.StatusCode.ABORTED \
-                        and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details() \
-                        and entity_version is None:
-                    job_entity_version = entity_version or \
-                                         self.job.get_status().version.value
+                if (
+                    e.code() == grpc.StatusCode.ABORTED
+                    and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details()
+                    and entity_version is None
+                ):
+                    job_entity_version = (
+                        entity_version or self.job.get_status().version.value
+                    )
                     continue
                 raise
             break
         self.job.entity_version = resp.version.value
-        log.info('job workflow aborted: %s', self.job.entity_version)
+        log.info("job workflow aborted: %s", self.job.entity_version)
 
-    def wait_for_state(self, goal_state='SUCCEEDED', failed_state='ABORTED'):
+    def wait_for_state(self, goal_state="SUCCEEDED", failed_state="ABORTED"):
         """
         Waits for the update to reach a particular state
         :param goal_state: The state to reach
         :param failed_state: The failed state of the update
         """
-        self.job.wait_for_workflow_state(goal_state=goal_state,
-                                         failed_state=failed_state)
+        self.job.wait_for_workflow_state(
+            goal_state=goal_state, failed_state=failed_state
+        )
 
     def pause(self, entity_version=None):
         """
         pause the given update
         """
-        job_entity_version = entity_version or \
-            self.job.entity_version or \
-            self.job.get_status().version.value
+        job_entity_version = (
+            entity_version
+            or self.job.entity_version
+            or self.job.get_status().version.value
+        )
 
         while True:
             request = stateless_svc.PauseJobWorkflowRequest(
                 job_id=v1alpha_peloton.JobID(value=self.job.job_id),
-                version=v1alpha_peloton.EntityVersion(value=job_entity_version),
+                version=v1alpha_peloton.EntityVersion(
+                    value=job_entity_version
+                ),
             )
             try:
                 resp = self.client.stateless_svc.PauseJobWorkflow(
@@ -168,29 +199,36 @@ class StatelessUpdate(object):
                 # if config version is incorrect and caller does not specify a
                 # config version, get config version from job runtime
                 # and try again.
-                if e.code() == grpc.StatusCode.ABORTED \
-                        and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details() \
-                        and entity_version is None:
-                    job_entity_version = entity_version or \
-                                         self.job.get_status().version.value
+                if (
+                    e.code() == grpc.StatusCode.ABORTED
+                    and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details()
+                    and entity_version is None
+                ):
+                    job_entity_version = (
+                        entity_version or self.job.get_status().version.value
+                    )
                     continue
                 raise
             break
         self.job.entity_version = resp.version.value
-        log.info('job workflow paused: %s', self.job.entity_version)
+        log.info("job workflow paused: %s", self.job.entity_version)
 
     def resume(self, entity_version=None):
         """
         resume the given update
         """
-        job_entity_version = entity_version or \
-            self.job.entity_version or \
-            self.job.get_status().version.value
+        job_entity_version = (
+            entity_version
+            or self.job.entity_version
+            or self.job.get_status().version.value
+        )
 
         while True:
             request = stateless_svc.ResumeJobWorkflowRequest(
                 job_id=v1alpha_peloton.JobID(value=self.job.job_id),
-                version=v1alpha_peloton.EntityVersion(value=job_entity_version),
+                version=v1alpha_peloton.EntityVersion(
+                    value=job_entity_version
+                ),
             )
             try:
                 resp = self.client.stateless_svc.ResumeJobWorkflow(
@@ -202,13 +240,16 @@ class StatelessUpdate(object):
                 # if config version is incorrect and caller does not specify a
                 # config version, get config version from job runtime
                 # and try again.
-                if e.code() == grpc.StatusCode.ABORTED \
-                        and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details() \
-                        and entity_version is None:
-                    job_entity_version = entity_version or \
-                                         self.job.get_status().version.value
+                if (
+                    e.code() == grpc.StatusCode.ABORTED
+                    and INVALID_ENTITY_VERSION_ERR_MESSAGE in e.details()
+                    and entity_version is None
+                ):
+                    job_entity_version = (
+                        entity_version or self.job.get_status().version.value
+                    )
                     continue
                 raise
             break
         self.job.entity_version = resp.version.value
-        log.info('job workflow resumed: %s', self.job.entity_version)
+        log.info("job workflow resumed: %s", self.job.entity_version)

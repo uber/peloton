@@ -1,5 +1,4 @@
 class TestJobMgrFailure(object):
-
     def test_jobmgr_failover(self, failure_tester):
         """
         Test job-manager fails over to follower when leader is
@@ -12,7 +11,7 @@ class TestJobMgrFailure(object):
         failure_tester.wait_for_leader_change(failure_tester.jobmgr, leader1)
 
         # verify that we can create jobs after failover
-        job = failure_tester.job(job_file='test_job_no_container.yaml')
+        job = failure_tester.job(job_file="test_job_no_container.yaml")
         job.job_config.instanceCount = 10
         job.create()
 
@@ -23,7 +22,7 @@ class TestJobMgrFailure(object):
         Restart job-manager leader after creating a job and verify that
         the job runs to completion.
         """
-        job = failure_tester.job(job_file='test_job_no_container.yaml')
+        job = failure_tester.job(job_file="test_job_no_container.yaml")
         job.create()
 
         # Restart immediately, so that tasks will be in various

@@ -21,34 +21,35 @@ log = logging.getLogger(__name__)
 
 # Options to mutate the job config
 
+
 def with_labels(labels):
     def apply(job_config):
         for lk, lv in labels.iteritems():
-            job_config.defaultConfig.labels.extend([
-                peloton.Label(
-                    key=lk,
-                    value=lv,
-                )],)
+            job_config.defaultConfig.labels.extend(
+                [peloton.Label(key=lk, value=lv)]
+            )
+
     return apply
 
 
 def with_constraint(constraint):
     def apply(job_config):
-        job_config.defaultConfig.constraint.CopyFrom(
-            constraint
-        )
+        job_config.defaultConfig.constraint.CopyFrom(constraint)
+
     return apply
 
 
 def with_instance_count(count):
     def apply(job_config):
         job_config.instanceCount = count
+
     return apply
 
 
 def with_job_name(name):
     def apply(job_config):
         job_config.name = name
+
     return apply
 
 
@@ -57,14 +58,16 @@ class Job(object):
     Job represents a peloton job
     """
 
-    def __init__(self, job_file='test_job.yaml',
-                 client=None,
-                 config=None,
-                 pool=None,
-                 job_config=None,
-                 options=[],
-                 job_id=None,
-                 ):
+    def __init__(
+        self,
+        job_file="test_job.yaml",
+        client=None,
+        config=None,
+        pool=None,
+        job_config=None,
+        options=[],
+        job_id=None,
+    ):
 
         self.config = config or IntegrationTestConfig()
         self.client = client or Client()
@@ -92,18 +95,16 @@ class Job(object):
         # wait for job manager leader
         self.wait_for_leader()
 
-        request = job.CreateRequest(
-                    config=self.job_config,
-                )
+        request = job.CreateRequest(config=self.job_config)
         resp = self.client.job_svc.Create(
             request,
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        assert not resp.HasField('error'), resp
+        assert not resp.HasField("error"), resp
         assert resp.jobId.value
         self.job_id = resp.jobId.value
-        log.info('created job %s', self.job_id)
+        log.info("created job %s", self.job_id)
 
     def update(self, new_job_file):
         """
@@ -115,19 +116,18 @@ class Job(object):
         json_format.ParseDict(job_config_dump, new_job_config)
 
         request = job.UpdateRequest(
-            id=peloton.JobID(value=self.job_id),
-            config=new_job_config,
+            id=peloton.JobID(value=self.job_id), config=new_job_config
         )
         resp = self.client.job_svc.Update(
             request,
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        assert not resp.HasField('error')
+        assert not resp.HasField("error")
 
         # update the config
         self.job_config = new_job_config
-        log.info('updated job %s', self.job_id)
+        log.info("updated job %s", self.job_id)
 
     def start(self, ranges=None):
         """
@@ -136,16 +136,18 @@ class Job(object):
         :return: task start response from the API
         """
         request = task.StartRequest(
-            jobId=peloton.JobID(value=self.job_id),
-            ranges=ranges,
+            jobId=peloton.JobID(value=self.job_id), ranges=ranges
         )
         response = self.client.task_svc.Start(
             request,
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        log.info('starting tasks in job {0} with ranges {1}'
-                 .format(self.job_id, ranges))
+        log.info(
+            "starting tasks in job {0} with ranges {1}".format(
+                self.job_id, ranges
+            )
+        )
         return response
 
     def stop(self, ranges=None):
@@ -155,16 +157,18 @@ class Job(object):
         :return: task stop response from the API
         """
         request = task.StopRequest(
-            jobId=peloton.JobID(value=self.job_id),
-            ranges=ranges,
+            jobId=peloton.JobID(value=self.job_id), ranges=ranges
         )
         response = self.client.task_svc.Stop(
             request,
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        log.info('stopping tasks in job {0} with ranges {1}'
-                 .format(self.job_id, ranges))
+        log.info(
+            "stopping tasks in job {0} with ranges {1}".format(
+                self.job_id, ranges
+            )
+        )
         return response
 
     def delete(self):
@@ -172,17 +176,15 @@ class Job(object):
         Deletes a job
         :return: delete job response from the API
         """
-        request = job.DeleteRequest(
-            id=peloton.JobID(value=self.job_id),
-        )
+        request = job.DeleteRequest(id=peloton.JobID(value=self.job_id))
         response = self.client.job_svc.Delete(
             request,
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        assert not response.HasField('error')
+        assert not response.HasField("error")
 
-        log.info('deleting job {0}'.format(self.job_id))
+        log.info("deleting job {0}".format(self.job_id))
         return response
 
     class WorkflowResp:
@@ -191,15 +193,15 @@ class Job(object):
         including update, restart, stop and start.
         """
 
-        def __init__(self, workflow_id, resource_version,
-                     client=None, config=None):
+        def __init__(
+            self, workflow_id, resource_version, client=None, config=None
+        ):
             self.workflow = Workflow(workflow_id, client=client, config=config)
             self.resource_version = resource_version
 
-    def rolling_start(self,
-                      ranges=None,
-                      resource_version=None,
-                      batch_size=None):
+    def rolling_start(
+        self, ranges=None, resource_version=None, batch_size=None
+    ):
         """
         Starts a job or certain tasks in a rolling fashion based on the ranges
         and batch size
@@ -224,14 +226,16 @@ class Job(object):
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        return Job.WorkflowResp(resp.updateID.value, resp.resourceVersion,
-                                client=self.client,
-                                config=self.config)
+        return Job.WorkflowResp(
+            resp.updateID.value,
+            resp.resourceVersion,
+            client=self.client,
+            config=self.config,
+        )
 
-    def rolling_stop(self,
-                     ranges=None,
-                     resource_version=None,
-                     batch_size=None):
+    def rolling_stop(
+        self, ranges=None, resource_version=None, batch_size=None
+    ):
         """
         Stops a job or certain tasks in a rolling fashion based on the ranges
         and batch size
@@ -256,14 +260,16 @@ class Job(object):
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        return Job.WorkflowResp(resp.updateID.value, resp.resourceVersion,
-                                client=self.client,
-                                config=self.config)
+        return Job.WorkflowResp(
+            resp.updateID.value,
+            resp.resourceVersion,
+            client=self.client,
+            config=self.config,
+        )
 
-    def rolling_restart(self,
-                        ranges=None,
-                        resource_version=None,
-                        batch_size=None):
+    def rolling_restart(
+        self, ranges=None, resource_version=None, batch_size=None
+    ):
         """
         Restart a job or certain tasks in a rolling fashion based on the ranges
         and batch size
@@ -288,23 +294,24 @@ class Job(object):
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        return Job.WorkflowResp(resp.updateID.value, resp.resourceVersion,
-                                client=self.client,
-                                config=self.config)
+        return Job.WorkflowResp(
+            resp.updateID.value,
+            resp.resourceVersion,
+            client=self.client,
+            config=self.config,
+        )
 
     def get_info(self):
         """
         :return: The job info
         """
-        request = job.GetRequest(
-            id=peloton.JobID(value=self.job_id),
-        )
+        request = job.GetRequest(id=peloton.JobID(value=self.job_id))
         resp = self.client.job_svc.Get(
             request,
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        assert not resp.HasField('error')
+        assert not resp.HasField("error")
         return resp.jobInfo
 
     def get_runtime(self):
@@ -339,16 +346,15 @@ class Job(object):
         :return: The task info for the instance id
         """
         request = task.GetRequest(
-            jobId=peloton.JobID(value=self.job_id),
-            instanceId=instance_id,
+            jobId=peloton.JobID(value=self.job_id), instanceId=instance_id
         )
         resp = self.client.task_svc.Get(
             request,
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        assert not resp.HasField('notFound')
-        assert not resp.HasField('outOfRange')
+        assert not resp.HasField("notFound")
+        assert not resp.HasField("outOfRange")
         return resp.result
 
     def get_task_runs(self, instance_id):
@@ -357,16 +363,15 @@ class Job(object):
         :return: Returns all active and completed tasks of the given instance
         """
         request = task.GetRequest(
-            jobId=peloton.JobID(value=self.job_id),
-            instanceId=instance_id,
+            jobId=peloton.JobID(value=self.job_id), instanceId=instance_id
         )
         resp = self.client.task_svc.Get(
             request,
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        assert not resp.HasField('notFound')
-        assert not resp.HasField('outOfRange')
+        assert not resp.HasField("notFound")
+        assert not resp.HasField("outOfRange")
         return resp.results
 
     def browse_task_sandbox(self, instance_id, task_id):
@@ -378,29 +383,27 @@ class Job(object):
         request = task.BrowseSandboxRequest(
             jobId=peloton.JobID(value=self.job_id),
             instanceId=instance_id,
-            taskId=task_id
+            taskId=task_id,
         )
         resp = self.client.task_svc.BrowseSandbox(
             request,
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        assert not resp.HasField('error')
+        assert not resp.HasField("error")
         return resp
 
     def list_tasks(self):
         """
         :return: The map of instance ID to task info for all matching tasks
         """
-        request = task.ListRequest(
-            jobId=peloton.JobID(value=self.job_id),
-        )
+        request = task.ListRequest(jobId=peloton.JobID(value=self.job_id))
         resp = self.client.task_svc.List(
             request,
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        assert not resp.HasField('notFound')
+        assert not resp.HasField("notFound")
         return resp.result
 
     def get_pod_events(self, instance_id):
@@ -408,8 +411,7 @@ class Job(object):
         :return: A list of all of the pod events of a given task
         """
         request = task.GetPodEventsRequest(
-            jobId=peloton.JobID(value=self.job_id),
-            instanceId=instance_id
+            jobId=peloton.JobID(value=self.job_id), instanceId=instance_id
         )
         resp = self.client.task_svc.GetPodEvents(
             request,
@@ -430,7 +432,7 @@ class Job(object):
                         count += 1
 
                 if count == len(task_infos):
-                    log.info('%s job has %s running tasks', self.job_id, count)
+                    log.info("%s job has %s running tasks", self.job_id, count)
                     break
             except Exception as e:
                 log.warn(e)
@@ -439,26 +441,26 @@ class Job(object):
             attempts += 1
 
         if attempts == self.config.max_retry_attempts:
-            log.info('max attempts reached to wait for all tasks running')
+            log.info("max attempts reached to wait for all tasks running")
             assert False
 
         end = time.time()
         elapsed = end - start
-        log.info('%s job has all running tasks in %s seconds', self.job_id, elapsed)
+        log.info(
+            "%s job has all running tasks in %s seconds", self.job_id, elapsed
+        )
 
     def wait_for_terminated(self):
         """
         Waits for the job to be terminated
         """
-        state = ''
+        state = ""
         attempts = 0
-        log.info('%s waiting for terminal state', self.job_id)
+        log.info("%s waiting for terminal state", self.job_id)
         terminated = False
         while attempts < self.config.max_retry_attempts:
             try:
-                request = job.GetRequest(
-                    id=peloton.JobID(value=self.job_id),
-                )
+                request = job.GetRequest(id=peloton.JobID(value=self.job_id))
                 resp = self.client.job_svc.Get(
                     request,
                     metadata=self.client.jobmgr_metadata,
@@ -467,10 +469,11 @@ class Job(object):
                 runtime = resp.jobInfo.runtime
                 new_state = job.JobState.Name(runtime.state)
                 if state != new_state:
-                    log.info('%s transitioned to state %s', self.job_id,
-                             new_state)
+                    log.info(
+                        "%s transitioned to state %s", self.job_id, new_state
+                    )
                 state = new_state
-                if state in ['SUCCEEDED', 'FAILED', 'KILLED']:
+                if state in ["SUCCEEDED", "FAILED", "KILLED"]:
                     terminated = True
                     break
                 log.debug(format_stats(runtime.taskStats))
@@ -480,31 +483,30 @@ class Job(object):
                 time.sleep(self.config.sleep_time_sec)
                 attempts += 1
         if terminated:
-            log.info('%s job terminated', self.job_id)
+            log.info("%s job terminated", self.job_id)
             assert True
 
         if attempts == self.config.max_retry_attempts:
-            log.info('%s max attempts reached to wait for goal state',
-                     self.job_id)
-            log.info('current_state:%s', state)
+            log.info(
+                "%s max attempts reached to wait for goal state", self.job_id
+            )
+            log.info("current_state:%s", state)
             assert False
 
-    def wait_for_state(self, goal_state='SUCCEEDED', failed_state='FAILED'):
+    def wait_for_state(self, goal_state="SUCCEEDED", failed_state="FAILED"):
         """
         Waits for the job to reach a particular state
         :param goal_state: The state to reach
         :param failed_state: The failed state of the job
         """
-        state = ''
+        state = ""
         attempts = 0
         start = time.time()
-        log.info('%s waiting for state %s', self.job_id, goal_state)
+        log.info("%s waiting for state %s", self.job_id, goal_state)
         state_transition_failure = False
         while attempts < self.config.max_retry_attempts:
             try:
-                request = job.GetRequest(
-                    id=peloton.JobID(value=self.job_id),
-                )
+                request = job.GetRequest(id=peloton.JobID(value=self.job_id))
                 resp = self.client.job_svc.Get(
                     request,
                     metadata=self.client.jobmgr_metadata,
@@ -513,8 +515,9 @@ class Job(object):
                 runtime = resp.jobInfo.runtime
                 new_state = job.JobState.Name(runtime.state)
                 if state != new_state:
-                    log.info('%s transitioned to state %s', self.job_id,
-                             new_state)
+                    log.info(
+                        "%s transitioned to state %s", self.job_id, new_state
+                    )
                 state = new_state
                 if state == goal_state:
                     break
@@ -535,23 +538,38 @@ class Job(object):
 
         if state_transition_failure:
             task_failure = self._get_task_failure()
-            log.info('%s goal_state:%s current_state:%s attempts: %s',
-                     self.job_id, goal_state, state, str(attempts))
+            log.info(
+                "%s goal_state:%s current_state:%s attempts: %s",
+                self.job_id,
+                goal_state,
+                state,
+                str(attempts),
+            )
             for t, failure in task_failure.iteritems():
-                log.info('%s task id:%s failed for reason:%s message:%s',
-                         self.job_id, t, failure["reason"], failure["message"])
+                log.info(
+                    "%s task id:%s failed for reason:%s message:%s",
+                    self.job_id,
+                    t,
+                    failure["reason"],
+                    failure["message"],
+                )
             assert False
 
         if attempts == self.config.max_retry_attempts:
-            log.info('%s max attempts reached to wait for goal state',
-                     self.job_id)
-            log.info('%s goal_state:%s current_state:%s', self.job_id,
-                     goal_state, state)
+            log.info(
+                "%s max attempts reached to wait for goal state", self.job_id
+            )
+            log.info(
+                "%s goal_state:%s current_state:%s",
+                self.job_id,
+                goal_state,
+                state,
+            )
             assert False
 
         end = time.time()
         elapsed = end - start
-        log.info('%s state transition took %s seconds', self.job_id, elapsed)
+        log.info("%s state transition took %s seconds", self.job_id, elapsed)
         assert state == goal_state
 
     def wait_for_condition(self, condition):
@@ -559,7 +577,9 @@ class Job(object):
         Waits for a particular condition to be met with the job
         :param condition: The condition to meet
         """
-        wait_for_condition(message=self.job_id, condition=condition, config=self.config)
+        wait_for_condition(
+            message=self.job_id, condition=condition, config=self.config
+        )
 
     def wait_for_leader(self):
         """
@@ -570,7 +590,7 @@ class Job(object):
         while attempts < self.config.max_retry_attempts:
             try:
                 request = job.DeleteRequest(
-                    id=peloton.JobID(value="dummy_job_id"),
+                    id=peloton.JobID(value="dummy_job_id")
                 )
                 self.client.job_svc.Delete(
                     request,
@@ -620,13 +640,9 @@ def query_jobs():
     Query all batch jobs`
     """
     client = Client()
-    request = job.QueryRequest(
-        summaryOnly=True,
-    )
+    request = job.QueryRequest(summaryOnly=True)
     resp = client.job_svc.Query(
-        request,
-        metadata=client.jobmgr_metadata,
-        timeout=10,
+        request, metadata=client.jobmgr_metadata, timeout=10
     )
 
     jobs = []
@@ -654,7 +670,9 @@ def kill_jobs(jobs):
 
 
 def format_stats(stats):
-    return ' '.join((
-        '%s: %s' % (name.lower(), stats[name])
-        for name in job.JobState.keys()
-    ))
+    return " ".join(
+        (
+            "%s: %s" % (name.lower(), stats[name])
+            for name in job.JobState.keys()
+        )
+    )

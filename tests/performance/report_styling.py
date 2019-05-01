@@ -6,9 +6,9 @@ import pandas as pd
 # Style performance report table's column layout.
 ##########################################################
 
-TABLE_ID = [('border', 1), ('class', "dataframe wide")]
+TABLE_ID = [("border", 1), ("class", "dataframe wide")]
 
-CREATE_TABLE_HEADER_TEMPLATE = '''
+CREATE_TABLE_HEADER_TEMPLATE = """
     <tr style="text-align: right;">
       <th class="blank level0" rowspan="2"></th>
       <th class="col_heading level0 col0" rowspan="2">Cores</th>
@@ -31,10 +31,10 @@ CREATE_TABLE_HEADER_TEMPLATE = '''
       <th class="col_heading level1 col4">Start Time(s)</th>
       <th class="col_heading level1 col5">Duration (in sec)</th>
     </tr>
-'''
+"""
 
 
-GET_TABLE_HEADER_TEMPLATE = '''
+GET_TABLE_HEADER_TEMPLATE = """
     <tr style="text-align: right;">
       <th class="blank level0" rowspan="3"></th>
       <th class="col_heading level0 col0" rowspan="3">TaskNum</th>
@@ -70,9 +70,9 @@ GET_TABLE_HEADER_TEMPLATE = '''
       <th class="col_heading level2 col7">Counts (Success)</th>
       <th class="col_heading level2 col8">Counts (Failure)</th>
     </tr>
-    '''
+    """
 
-UPDATE_TABLE_HEADER_TEMPLATE = '''
+UPDATE_TABLE_HEADER_TEMPLATE = """
     <tr style="text-align: right;">
         <th class="blank level0" rowspan="2"></th>
         <th class="col_heading level0 col0" rowspan="2">
@@ -99,15 +99,15 @@ UPDATE_TABLE_HEADER_TEMPLATE = '''
           Duration (in sec)
         </th>
     </tr>
-'''
+"""
 
 HEADER = {
-    'create': CREATE_TABLE_HEADER_TEMPLATE,
-    'get': GET_TABLE_HEADER_TEMPLATE,
-    'update': UPDATE_TABLE_HEADER_TEMPLATE
+    "create": CREATE_TABLE_HEADER_TEMPLATE,
+    "get": GET_TABLE_HEADER_TEMPLATE,
+    "update": UPDATE_TABLE_HEADER_TEMPLATE,
 }
 
-CSS_STYLE = '''
+CSS_STYLE = """
     h2 {
         text-align: center;
         font-family: Helvetica, Arial, sans-serif;
@@ -152,7 +152,7 @@ CSS_STYLE = '''
     .results {
       background-color: #F0FFF0;
     }
-'''
+"""
 
 """
 Update the report table with improved layout.
@@ -168,11 +168,11 @@ Returns:
 """
 
 
-def update_column_groupings(colored_df, df_type, base_version,
-                            current_version):
+def update_column_groupings(
+    colored_df, df_type, base_version, current_version
+):
     df_id = TABLE_ID
-    header = _fill_version_info(
-        HEADER[df_type], base_version, current_version)
+    header = _fill_version_info(HEADER[df_type], base_version, current_version)
     css_style = CSS_STYLE
     soup = BeautifulSoup(colored_df)
 
@@ -212,17 +212,21 @@ Return:
 def apply_bgcolor(df, df_type, col_name):
     def _results_style(row, df_type, col_name):
         col_val = float(row[col_name])
-        if df_type == 'get':
+        if df_type == "get":
             col_val = col_val * (-1)
 
         if col_val > 10:
-            return pd.Series('background-color: #ea2323', row.index)  # red
+            return pd.Series("background-color: #ea2323", row.index)  # red
         else:
-            return pd.Series('', row.index)
+            return pd.Series("", row.index)
 
     df_style = df.style.apply(
-        _results_style, df_type=df_type, col_name=col_name, axis=1,
-        subset=[col_name])
+        _results_style,
+        df_type=df_type,
+        col_name=col_name,
+        axis=1,
+        subset=[col_name],
+    )
     rendered = df_style.render()
 
     return rendered
@@ -238,7 +242,8 @@ and "Current (<version>)".
 def enrich_table_layout(df, col_name, df_type, base_version, current_version):
     colored_dataframe = apply_bgcolor(df, df_type, col_name)
     style_results = update_column_groupings(
-        colored_dataframe, df_type, base_version, current_version)
+        colored_dataframe, df_type, base_version, current_version
+    )
     return style_results
 
 

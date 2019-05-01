@@ -1,19 +1,13 @@
 import pytest
-import time
 
 from tests.integration.aurorabridge_test.client import api
 from tests.integration.aurorabridge_test.util import (
     get_job_update_request,
     wait_for_killed,
-    wait_for_rolled_back,
     wait_for_rolled_forward,
-    wait_for_rolling_forward,
-    wait_for_task_removed,
-    wait_for_task_status,
 )
 
-pytestmark = [pytest.mark.default,
-              pytest.mark.aurorabridge]
+pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
 
 
 def test__update_with_pinned_instances(client):
@@ -27,36 +21,41 @@ def test__update_with_pinned_instances(client):
     """
     # start a regular update
     res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_large_job.yaml'),
-        'start job update test/dc/labrat_large_job')
+        get_job_update_request("test_dc_labrat_large_job.yaml"),
+        "start job update test/dc/labrat_large_job",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == 10
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
-        assert run_id == '1'
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
+        assert run_id == "1"
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s' % m
+                assert False, "unexpected metadata %s" % m
 
     # start a update with updateOnlyTheseInstances parameter
     update_instances = [0, 2, 3, 7, 9]
-    pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
-    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
+    pinned_req = get_job_update_request(
+        "test_dc_labrat_large_job_diff_labels.yaml"
+    )
+    pinned_req.settings.updateOnlyTheseInstances = set(
+        [api.Range(first=i, last=i) for i in update_instances]
+    )
 
     res = client.start_job_update(
         pinned_req,
-        'start job update test/dc/labrat_large_job with pinned instances')
+        "start job update test/dc/labrat_large_job with pinned instances",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -66,39 +65,43 @@ def test__update_with_pinned_instances(client):
     for ie in res.detailsList[0].instanceEvents:
         assert ie.instanceId in update_instances
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == 10
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         if t.assignedTask.instanceId in update_instances:
-            assert run_id == '2'
+            assert run_id == "2"
             assert len(t.assignedTask.task.metadata) == 2
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_11':
-                    assert m.value == 'test_value_11'
-                elif m.key == 'test_key_22':
-                    assert m.value == 'test_value_22'
+                if m.key == "test_key_11":
+                    assert m.value == "test_value_11"
+                elif m.key == "test_key_22":
+                    assert m.value == "test_value_22"
                 else:
-                    assert False, 'unexpected metadata %s for affected instances' % m
+                    assert False, (
+                        "unexpected metadata %s for affected instances" % m
+                    )
         else:
-            assert run_id == '1'
+            assert run_id == "1"
             assert len(t.assignedTask.task.metadata) == 2
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_1':
-                    assert m.value == 'test_value_1'
-                elif m.key == 'test_key_2':
-                    assert m.value == 'test_value_2'
+                if m.key == "test_key_1":
+                    assert m.value == "test_value_1"
+                elif m.key == "test_key_2":
+                    assert m.value == "test_value_2"
                 else:
-                    assert False, 'unexpected metadata %s for unaffected instances' % m
+                    assert False, (
+                        "unexpected metadata %s for unaffected instances" % m
+                    )
 
     # start a regular update again should affect instances updated in
     # previous request
     res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_large_job_diff_executor.yaml'),
-        'start job update test/dc/labrat_large_job again (with executor data order diff)')
+        get_job_update_request("test_dc_labrat_large_job_diff_executor.yaml"),
+        "start job update test/dc/labrat_large_job again (with executor data order diff)",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -108,26 +111,25 @@ def test__update_with_pinned_instances(client):
     for ie in res.detailsList[0].instanceEvents:
         assert ie.instanceId in update_instances
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == 10
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s' % m
+                assert False, "unexpected metadata %s" % m
 
         if t.assignedTask.instanceId in update_instances:
-            assert run_id == '3'
+            assert run_id == "3"
         else:
-            assert run_id == '1'
+            assert run_id == "1"
 
 
 def test__update_with_pinned_instances__add_remove_instance(client):
@@ -144,40 +146,44 @@ def test__update_with_pinned_instances__add_remove_instance(client):
     all_instances = set(range(8))
 
     # start a regular update
-    req = get_job_update_request('test_dc_labrat_large_job.yaml')
+    req = get_job_update_request("test_dc_labrat_large_job.yaml")
     req.instanceCount = 8
     res = client.start_job_update(
-        req,
-        'start job update test/dc/labrat_large_job')
+        req, "start job update test/dc/labrat_large_job"
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == 8
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
-        assert run_id == '1'
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
+        assert run_id == "1"
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s' % m
+                assert False, "unexpected metadata %s" % m
 
     # start a update with updateOnlyTheseInstances parameter,
     # and add instances
     update_instances = set([0, 2, 3, 8, 9])
-    pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
-    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
+    pinned_req = get_job_update_request(
+        "test_dc_labrat_large_job_diff_labels.yaml"
+    )
+    pinned_req.settings.updateOnlyTheseInstances = set(
+        [api.Range(first=i, last=i) for i in update_instances]
+    )
 
     res = client.start_job_update(
         pinned_req,
-        'start job update test/dc/labrat_large_job with pinned instances')
+        "start job update test/dc/labrat_large_job with pinned instances",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -187,45 +193,49 @@ def test__update_with_pinned_instances__add_remove_instance(client):
     for ie in res.detailsList[0].instanceEvents:
         assert ie.instanceId in update_instances
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == 10
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         if t.assignedTask.instanceId in update_instances:
             if t.assignedTask.instanceId in all_instances:
-                assert run_id == '2'
+                assert run_id == "2"
             else:
-                assert run_id == '1'
+                assert run_id == "1"
 
             assert len(t.assignedTask.task.metadata) == 2
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_11':
-                    assert m.value == 'test_value_11'
-                elif m.key == 'test_key_22':
-                    assert m.value == 'test_value_22'
+                if m.key == "test_key_11":
+                    assert m.value == "test_value_11"
+                elif m.key == "test_key_22":
+                    assert m.value == "test_value_22"
                 else:
-                    assert False, 'unexpected metadata %s for affected instances' % m
+                    assert False, (
+                        "unexpected metadata %s for affected instances" % m
+                    )
         else:
-            assert run_id == '1'
+            assert run_id == "1"
             assert len(t.assignedTask.task.metadata) == 2
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_1':
-                    assert m.value == 'test_value_1'
-                elif m.key == 'test_key_2':
-                    assert m.value == 'test_value_2'
+                if m.key == "test_key_1":
+                    assert m.value == "test_value_1"
+                elif m.key == "test_key_2":
+                    assert m.value == "test_value_2"
                 else:
-                    assert False, 'unexpected metadata %s for unaffected instances' % m
+                    assert False, (
+                        "unexpected metadata %s for unaffected instances" % m
+                    )
 
     # start a regular update again should affect instances updated in
     # previous request, and remove instances
-    req = get_job_update_request('test_dc_labrat_large_job_diff_executor.yaml')
+    req = get_job_update_request("test_dc_labrat_large_job_diff_executor.yaml")
     req.instanceCount = 8
     res = client.start_job_update(
         req,
-        'start job update test/dc/labrat_large_job again (with executor data order diff)')
+        "start job update test/dc/labrat_large_job again (with executor data order diff)",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -235,26 +245,25 @@ def test__update_with_pinned_instances__add_remove_instance(client):
     for ie in res.detailsList[0].instanceEvents:
         assert ie.instanceId in update_instances
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == 8
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s' % m
+                assert False, "unexpected metadata %s" % m
 
         if t.assignedTask.instanceId in (update_instances & all_instances):
-            assert run_id == '3'
+            assert run_id == "3"
         else:
-            assert run_id == '1'
+            assert run_id == "1"
 
 
 def test__update_with_pinned_instances__stopped_instances(client):
@@ -270,51 +279,56 @@ def test__update_with_pinned_instances__stopped_instances(client):
 
     # start a regular update
     res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_large_job.yaml'),
-        'start job update test/dc/labrat_large_job')
+        get_job_update_request("test_dc_labrat_large_job.yaml"),
+        "start job update test/dc/labrat_large_job",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances)
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
-        assert run_id == '1'
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
+        assert run_id == "1"
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s' % m
+                assert False, "unexpected metadata %s" % m
 
     # stop subset of instances
     stop_instances = set([1, 6])
     client.kill_tasks(
         job_key,
         stop_instances,
-        'killing instance 1, 6 for job test/dc/labrat_large_job')
+        "killing instance 1, 6 for job test/dc/labrat_large_job",
+    )
     wait_for_killed(client, job_key, stop_instances)
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances - stop_instances)
     for t in res.tasks:
         assert t.assignedTask.instanceId in (all_instances - stop_instances)
 
     # start a update with updateOnlyTheseInstances parameter
     update_instances = set([0, 2, 3, 7, 9])
-    pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
-    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
+    pinned_req = get_job_update_request(
+        "test_dc_labrat_large_job_diff_labels.yaml"
+    )
+    pinned_req.settings.updateOnlyTheseInstances = set(
+        [api.Range(first=i, last=i) for i in update_instances]
+    )
 
     res = client.start_job_update(
         pinned_req,
-        'start job update test/dc/labrat_large_job with pinned instances')
+        "start job update test/dc/labrat_large_job with pinned instances",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -324,39 +338,45 @@ def test__update_with_pinned_instances__stopped_instances(client):
     for ie in res.detailsList[0].instanceEvents:
         assert ie.instanceId in update_instances
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances - stop_instances)
 
     # expect instance 0, 2, 3, 7, 9 to be updated to newer version, with run id 2
     # expect instance 1, 6 remain at stopped
     # expect instance 4, 5, 8 remain at original version, with run id 1
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         if t.assignedTask.instanceId in update_instances:
-            assert run_id == '2'
+            assert run_id == "2"
             assert len(t.assignedTask.task.metadata) == 2
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_11':
-                    assert m.value == 'test_value_11'
-                elif m.key == 'test_key_22':
-                    assert m.value == 'test_value_22'
+                if m.key == "test_key_11":
+                    assert m.value == "test_value_11"
+                elif m.key == "test_key_22":
+                    assert m.value == "test_value_22"
                 else:
-                    assert False, 'unexpected metadata %s for affected instances' % m
+                    assert False, (
+                        "unexpected metadata %s for affected instances" % m
+                    )
         elif t.assignedTask.instanceId in (all_instances - stop_instances):
-            assert run_id == '1'
+            assert run_id == "1"
             assert len(t.assignedTask.task.metadata) == 2
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_1':
-                    assert m.value == 'test_value_1'
-                elif m.key == 'test_key_2':
-                    assert m.value == 'test_value_2'
+                if m.key == "test_key_1":
+                    assert m.value == "test_value_1"
+                elif m.key == "test_key_2":
+                    assert m.value == "test_value_2"
                 else:
-                    assert False, 'unexpected metadata %s for unaffected instances' % m
+                    assert False, (
+                        "unexpected metadata %s for unaffected instances" % m
+                    )
         else:
-            assert False, 'unexpected instance id %s: should be stopped' % t.assignedTask.instanceId
+            assert False, (
+                "unexpected instance id %s: should be stopped"
+                % t.assignedTask.instanceId
+            )
 
 
 def test__update_with_pinned_instances__start_stopped_instances(client):
@@ -374,39 +394,39 @@ def test__update_with_pinned_instances__start_stopped_instances(client):
 
     # start a regular update
     res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_large_job.yaml'),
-        'start job update test/dc/labrat_large_job')
+        get_job_update_request("test_dc_labrat_large_job.yaml"),
+        "start job update test/dc/labrat_large_job",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances)
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
-        assert run_id == '1'
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
+        assert run_id == "1"
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s' % m
+                assert False, "unexpected metadata %s" % m
 
     # stop subset of instances
     stop_instances = set([2, 8])
     client.kill_tasks(
         job_key,
         stop_instances,
-        'killing instance 2, 8 for job test/dc/labrat_large_job')
+        "killing instance 2, 8 for job test/dc/labrat_large_job",
+    )
     wait_for_killed(client, job_key, stop_instances)
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances - stop_instances)
     for t in res.tasks:
         assert t.assignedTask.instanceId in (all_instances - stop_instances)
@@ -414,12 +434,17 @@ def test__update_with_pinned_instances__start_stopped_instances(client):
     # start a update with updateOnlyTheseInstances parameter
     # expect stopped instances to be started, others unchanged
     update_instances = set([2, 3, 5, 8])
-    pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_executor.yaml')
-    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
+    pinned_req = get_job_update_request(
+        "test_dc_labrat_large_job_diff_executor.yaml"
+    )
+    pinned_req.settings.updateOnlyTheseInstances = set(
+        [api.Range(first=i, last=i) for i in update_instances]
+    )
 
     res = client.start_job_update(
         pinned_req,
-        'start job update test/dc/labrat_large_job with pinned instances')
+        "start job update test/dc/labrat_large_job with pinned instances",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -429,34 +454,38 @@ def test__update_with_pinned_instances__start_stopped_instances(client):
     for ie in res.detailsList[0].instanceEvents:
         assert ie.instanceId in (update_instances & stop_instances)
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances)
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         if t.assignedTask.instanceId in stop_instances:
-            assert run_id == '2'
+            assert run_id == "2"
         elif t.assignedTask.instanceId in (all_instances - stop_instances):
-            assert run_id == '1'
+            assert run_id == "1"
         else:
-            assert False, 'unexpected instance id %s' % t.assignedTask.instanceId
+            assert False, (
+                "unexpected instance id %s" % t.assignedTask.instanceId
+            )
 
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s for affected instances' % m
+                assert False, (
+                    "unexpected metadata %s for affected instances" % m
+                )
 
     # start the regular update again same as the first one
     # expect no change for all instances
     res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_large_job.yaml'),
-        'start third job update test/dc/labrat_large_job')
+        get_job_update_request("test_dc_labrat_large_job.yaml"),
+        "start third job update test/dc/labrat_large_job",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -464,28 +493,31 @@ def test__update_with_pinned_instances__start_stopped_instances(client):
     assert len(res.detailsList) == 1
     assert res.detailsList[0].instanceEvents is None
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances)
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         if t.assignedTask.instanceId in stop_instances:
-            assert run_id == '2'
+            assert run_id == "2"
         elif t.assignedTask.instanceId in (all_instances - stop_instances):
-            assert run_id == '1'
+            assert run_id == "1"
         else:
-            assert False, 'unexpected instance id %s' % t.assignedTask.instanceId
+            assert False, (
+                "unexpected instance id %s" % t.assignedTask.instanceId
+            )
 
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s for affected instances' % m
+                assert False, (
+                    "unexpected metadata %s for affected instances" % m
+                )
 
 
 def test__update_with_pinned_instances__start_stopped_instances_all(client):
@@ -503,39 +535,39 @@ def test__update_with_pinned_instances__start_stopped_instances_all(client):
 
     # start a regular update
     res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_large_job.yaml'),
-        'start job update test/dc/labrat_large_job')
+        get_job_update_request("test_dc_labrat_large_job.yaml"),
+        "start job update test/dc/labrat_large_job",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances)
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
-        assert run_id == '1'
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
+        assert run_id == "1"
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s' % m
+                assert False, "unexpected metadata %s" % m
 
     # stop all instances
     stop_instances = set([i for i in xrange(10)])
     client.kill_tasks(
         job_key,
         stop_instances,
-        'killing all instances for job test/dc/labrat_large_job')
+        "killing all instances for job test/dc/labrat_large_job",
+    )
     wait_for_killed(client, job_key, stop_instances)
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == 0
 
     # start a update without updateOnlyTheseInstances parameter
@@ -543,8 +575,9 @@ def test__update_with_pinned_instances__start_stopped_instances_all(client):
     update_instances = set([i for i in xrange(10)])
 
     res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_large_job_diff_executor.yaml'),
-        'start second job update test/dc/labrat_large_job')
+        get_job_update_request("test_dc_labrat_large_job_diff_executor.yaml"),
+        "start second job update test/dc/labrat_large_job",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -554,29 +587,31 @@ def test__update_with_pinned_instances__start_stopped_instances_all(client):
     for ie in res.detailsList[0].instanceEvents:
         assert ie.instanceId in (update_instances & stop_instances)
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances)
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
-        assert run_id == '2'
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
+        assert run_id == "2"
 
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s for affected instances' % m
+                assert False, (
+                    "unexpected metadata %s for affected instances" % m
+                )
 
     # start the regular update again same as the first one
     # expect no change for all instances
     res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_large_job.yaml'),
-        'start third job update test/dc/labrat_large_job')
+        get_job_update_request("test_dc_labrat_large_job.yaml"),
+        "start third job update test/dc/labrat_large_job",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -584,28 +619,31 @@ def test__update_with_pinned_instances__start_stopped_instances_all(client):
     assert len(res.detailsList) == 1
     assert res.detailsList[0].instanceEvents is None
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances)
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         if t.assignedTask.instanceId in stop_instances:
-            assert run_id == '2'
+            assert run_id == "2"
         elif t.assignedTask.instanceId in (all_instances - stop_instances):
-            assert run_id == '1'
+            assert run_id == "1"
         else:
-            assert False, 'unexpected instance id %s' % t.assignedTask.instanceId
+            assert False, (
+                "unexpected instance id %s" % t.assignedTask.instanceId
+            )
 
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s for affected instances' % m
+                assert False, (
+                    "unexpected metadata %s for affected instances" % m
+                )
 
 
 def test__update_with_pinned_instances__deploy_stopped_instances(client):
@@ -624,39 +662,39 @@ def test__update_with_pinned_instances__deploy_stopped_instances(client):
 
     # start a regular update
     res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_large_job.yaml'),
-        'start job update test/dc/labrat_large_job')
+        get_job_update_request("test_dc_labrat_large_job.yaml"),
+        "start job update test/dc/labrat_large_job",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances)
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
-        assert run_id == '1'
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
+        assert run_id == "1"
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s' % m
+                assert False, "unexpected metadata %s" % m
 
     # stop subset of instances
     stop_instances = set([2, 8])
     client.kill_tasks(
         job_key,
         stop_instances,
-        'killing instance 2, 8 for job test/dc/labrat_large_job')
+        "killing instance 2, 8 for job test/dc/labrat_large_job",
+    )
     wait_for_killed(client, job_key, stop_instances)
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances - stop_instances)
     for t in res.tasks:
         assert t.assignedTask.instanceId in (all_instances - stop_instances)
@@ -664,12 +702,17 @@ def test__update_with_pinned_instances__deploy_stopped_instances(client):
     # start a update with updateOnlyTheseInstances parameter
     # expect stopped instances to be started
     update_instances = set([2, 3, 5, 8])
-    pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
-    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
+    pinned_req = get_job_update_request(
+        "test_dc_labrat_large_job_diff_labels.yaml"
+    )
+    pinned_req.settings.updateOnlyTheseInstances = set(
+        [api.Range(first=i, last=i) for i in update_instances]
+    )
 
     res = client.start_job_update(
         pinned_req,
-        'start second job update test/dc/labrat_large_job with pinned instances and label diff')
+        "start second job update test/dc/labrat_large_job with pinned instances and label diff",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -679,40 +722,46 @@ def test__update_with_pinned_instances__deploy_stopped_instances(client):
     for ie in res.detailsList[0].instanceEvents:
         assert ie.instanceId in update_instances
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances)
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         assert len(t.assignedTask.task.metadata) == 2
         if t.assignedTask.instanceId in update_instances:
-            assert run_id == '2'
+            assert run_id == "2"
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_11':
-                    assert m.value == 'test_value_11'
-                elif m.key == 'test_key_22':
-                    assert m.value == 'test_value_22'
+                if m.key == "test_key_11":
+                    assert m.value == "test_value_11"
+                elif m.key == "test_key_22":
+                    assert m.value == "test_value_22"
                 else:
-                    assert False, 'unexpected metadata %s for affected instances' % m
+                    assert False, (
+                        "unexpected metadata %s for affected instances" % m
+                    )
         elif t.assignedTask.instanceId in (all_instances - update_instances):
-            assert run_id == '1'
+            assert run_id == "1"
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_1':
-                    assert m.value == 'test_value_1'
-                elif m.key == 'test_key_2':
-                    assert m.value == 'test_value_2'
+                if m.key == "test_key_1":
+                    assert m.value == "test_value_1"
+                elif m.key == "test_key_2":
+                    assert m.value == "test_value_2"
                 else:
-                    assert False, 'unexpected metadata %s for affected instances' % m
+                    assert False, (
+                        "unexpected metadata %s for affected instances" % m
+                    )
         else:
-            assert False, 'unexpected instance id %s' % t.assignedTask.instanceId
+            assert False, (
+                "unexpected instance id %s" % t.assignedTask.instanceId
+            )
 
     # start the regular update again same as the first one
     # expect changes only for instances updated by previous update
     res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_large_job_diff_executor.yaml'),
-        'start third job update test/dc/labrat_large_job')
+        get_job_update_request("test_dc_labrat_large_job_diff_executor.yaml"),
+        "start third job update test/dc/labrat_large_job",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -722,28 +771,31 @@ def test__update_with_pinned_instances__deploy_stopped_instances(client):
     for ie in res.detailsList[0].instanceEvents:
         assert ie.instanceId in update_instances
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances)
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         assert len(t.assignedTask.task.metadata) == 2
         if t.assignedTask.instanceId in update_instances:
-            assert run_id == '3'
+            assert run_id == "3"
         elif t.assignedTask.instanceId in (all_instances - update_instances):
-            assert run_id == '1'
+            assert run_id == "1"
         else:
-            assert False, 'unexpected instance id %s' % t.assignedTask.instanceId
+            assert False, (
+                "unexpected instance id %s" % t.assignedTask.instanceId
+            )
 
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s for affected instances' % m
+                assert False, (
+                    "unexpected metadata %s for affected instances" % m
+                )
 
 
 def test__update_with_pinned_instances__deploy_stopped_instances_mixed(client):
@@ -764,39 +816,39 @@ def test__update_with_pinned_instances__deploy_stopped_instances_mixed(client):
 
     # start a regular update
     res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_large_job.yaml'),
-        'start job update test/dc/labrat_large_job')
+        get_job_update_request("test_dc_labrat_large_job.yaml"),
+        "start job update test/dc/labrat_large_job",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances)
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
-        assert run_id == '1'
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
+        assert run_id == "1"
         assert len(t.assignedTask.task.metadata) == 2
         for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
+            if m.key == "test_key_1":
+                assert m.value == "test_value_1"
+            elif m.key == "test_key_2":
+                assert m.value == "test_value_2"
             else:
-                assert False, 'unexpected metadata %s' % m
+                assert False, "unexpected metadata %s" % m
 
     # stop subset of instances
     stop_instances = set([2, 8])
     client.kill_tasks(
         job_key,
         stop_instances,
-        'killing instance 2, 8 for job test/dc/labrat_large_job')
+        "killing instance 2, 8 for job test/dc/labrat_large_job",
+    )
     wait_for_killed(client, job_key, stop_instances)
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances - stop_instances)
     for t in res.tasks:
         assert t.assignedTask.instanceId in (all_instances - stop_instances)
@@ -805,12 +857,17 @@ def test__update_with_pinned_instances__deploy_stopped_instances_mixed(client):
     # expected only instances which targeted by updateOnlyTheseInstances
     # to be updated, within which stopped ones are started.
     update_instances = set([3, 5, 8])
-    pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
-    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
+    pinned_req = get_job_update_request(
+        "test_dc_labrat_large_job_diff_labels.yaml"
+    )
+    pinned_req.settings.updateOnlyTheseInstances = set(
+        [api.Range(first=i, last=i) for i in update_instances]
+    )
 
     res = client.start_job_update(
         pinned_req,
-        'start second job update test/dc/labrat_large_job with pinned instances and label diff')
+        "start second job update test/dc/labrat_large_job with pinned instances and label diff",
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -820,46 +877,60 @@ def test__update_with_pinned_instances__deploy_stopped_instances_mixed(client):
     for ie in res.detailsList[0].instanceEvents:
         assert ie.instanceId in update_instances
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
-    assert len(res.tasks) == len((all_instances - stop_instances) | update_instances)
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
+    assert len(res.tasks) == len(
+        (all_instances - stop_instances) | update_instances
+    )
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         assert len(t.assignedTask.task.metadata) == 2
         if t.assignedTask.instanceId in update_instances:
-            assert run_id == '2'
+            assert run_id == "2"
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_11':
-                    assert m.value == 'test_value_11'
-                elif m.key == 'test_key_22':
-                    assert m.value == 'test_value_22'
+                if m.key == "test_key_11":
+                    assert m.value == "test_value_11"
+                elif m.key == "test_key_22":
+                    assert m.value == "test_value_22"
                 else:
-                    assert False, 'unexpected metadata %s for affected instances' % m
-        elif t.assignedTask.instanceId in (all_instances - stop_instances - update_instances):
-            assert run_id == '1'
+                    assert False, (
+                        "unexpected metadata %s for affected instances" % m
+                    )
+        elif t.assignedTask.instanceId in (
+            all_instances - stop_instances - update_instances
+        ):
+            assert run_id == "1"
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_1':
-                    assert m.value == 'test_value_1'
-                elif m.key == 'test_key_2':
-                    assert m.value == 'test_value_2'
+                if m.key == "test_key_1":
+                    assert m.value == "test_value_1"
+                elif m.key == "test_key_2":
+                    assert m.value == "test_value_2"
                 else:
-                    assert False, 'unexpected metadata %s for affected instances' % m
+                    assert False, (
+                        "unexpected metadata %s for affected instances" % m
+                    )
         else:
-            assert False, 'unexpected instance id %s: should be stopped' % t.assignedTask.instanceId
+            assert False, (
+                "unexpected instance id %s: should be stopped"
+                % t.assignedTask.instanceId
+            )
 
     # start the regular update again same as the first one, targeting
     # subset of instances.
     # expect instance start / updated iff the instance has different config
     # or instance is stopped.
     update_2_instances = set([2, 3, 8, 9])
-    pinned_req_2 = get_job_update_request('test_dc_labrat_large_job_diff_executor.yaml')
-    pinned_req_2.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_2_instances])
+    pinned_req_2 = get_job_update_request(
+        "test_dc_labrat_large_job_diff_executor.yaml"
+    )
+    pinned_req_2.settings.updateOnlyTheseInstances = set(
+        [api.Range(first=i, last=i) for i in update_2_instances]
+    )
 
     res = client.start_job_update(
-        pinned_req_2,
-        'start third job update test/dc/labrat_large_job')
+        pinned_req_2, "start third job update test/dc/labrat_large_job"
+    )
     wait_for_rolled_forward(client, res.key)
     job_key = res.key.job
 
@@ -869,7 +940,10 @@ def test__update_with_pinned_instances__deploy_stopped_instances_mixed(client):
     for ie in res.detailsList[0].instanceEvents:
         # exclude instances that are previously running and still on
         # the first update
-        assert ie.instanceId in (update_2_instances - (all_instances - update_instances - stop_instances))
+        assert ie.instanceId in (
+            update_2_instances
+            - (all_instances - update_instances - stop_instances)
+        )
 
     # Expected instances for each corresponding state:
     #
@@ -918,264 +992,67 @@ def test__update_with_pinned_instances__deploy_stopped_instances_mixed(client):
     assert v1r3, "expect instances to be in version 1 run id 3"
     assert v2r2, "expect instances to be in version 2 run id 2"
 
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
+    )
     assert len(res.tasks) == len(all_instances)
     for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
         assert len(t.assignedTask.task.metadata) == 2
 
         if t.assignedTask.instanceId in v1r1:
             # version 1, run 1
-            assert run_id == '1'
+            assert run_id == "1"
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_1':
-                    assert m.value == 'test_value_1'
-                elif m.key == 'test_key_2':
-                    assert m.value == 'test_value_2'
+                if m.key == "test_key_1":
+                    assert m.value == "test_value_1"
+                elif m.key == "test_key_2":
+                    assert m.value == "test_value_2"
                 else:
-                    assert False, 'unexpected metadata %s for affected instances' % m
+                    assert False, (
+                        "unexpected metadata %s for affected instances" % m
+                    )
 
         elif t.assignedTask.instanceId in v1r2:
             # version 1, run 2
-            assert run_id == '2'
+            assert run_id == "2"
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_1':
-                    assert m.value == 'test_value_1'
-                elif m.key == 'test_key_2':
-                    assert m.value == 'test_value_2'
+                if m.key == "test_key_1":
+                    assert m.value == "test_value_1"
+                elif m.key == "test_key_2":
+                    assert m.value == "test_value_2"
                 else:
-                    assert False, 'unexpected metadata %s for affected instances' % m
+                    assert False, (
+                        "unexpected metadata %s for affected instances" % m
+                    )
 
         elif t.assignedTask.instanceId in v1r3:
             # version 1, run 3
-            assert run_id == '3'
+            assert run_id == "3"
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_1':
-                    assert m.value == 'test_value_1'
-                elif m.key == 'test_key_2':
-                    assert m.value == 'test_value_2'
+                if m.key == "test_key_1":
+                    assert m.value == "test_value_1"
+                elif m.key == "test_key_2":
+                    assert m.value == "test_value_2"
                 else:
-                    assert False, 'unexpected metadata %s for affected instances' % m
+                    assert False, (
+                        "unexpected metadata %s for affected instances" % m
+                    )
 
         elif t.assignedTask.instanceId in v2r2:
             # version 2, run 2
-            assert run_id == '2'
+            assert run_id == "2"
             for m in t.assignedTask.task.metadata:
-                if m.key == 'test_key_11':
-                    assert m.value == 'test_value_11'
-                elif m.key == 'test_key_22':
-                    assert m.value == 'test_value_22'
+                if m.key == "test_key_11":
+                    assert m.value == "test_value_11"
+                elif m.key == "test_key_22":
+                    assert m.value == "test_value_22"
                 else:
-                    assert False, 'unexpected metadata %s for affected instances' % m
+                    assert False, (
+                        "unexpected metadata %s for affected instances" % m
+                    )
 
         else:
-            assert False, 'unexpected instance id %s' % t.assignedTask.instanceId
-
-
-def test__update_with_pinned_instances__manual_rollback(client):
-    """
-    test basic pinned instance deployment with manual rollback:
-    1. start a regular update (version 1) on all instances
-    2. start another update (version 2) targeting subset of instances, while
-       updating, trigger a manual rollback, expect job config is rolled back
-    """
-    # start a regular update
-    res = client.start_job_update(
-        get_job_update_request('test_dc_labrat_large_job.yaml'),
-        'start job update test/dc/labrat_large_job')
-    wait_for_rolled_forward(client, res.key)
-    job_key = res.key.job
-
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
-    assert len(res.tasks) == 10
-    for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
-        assert run_id == '1'
-        assert len(t.assignedTask.task.metadata) == 2
-        for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
-            else:
-                assert False, 'unexpected metadata %s' % m
-
-    # start a update with updateOnlyTheseInstances parameter
-    update_instances = [0, 2, 3, 7, 9]
-    pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
-    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
-
-    res = client.start_job_update(
-        pinned_req,
-        'start job update test/dc/labrat_large_job with pinned instances')
-    job_update_key = res.key
-
-    time.sleep(2)   # wait additional time for some instances to start updating
-    wait_for_rolling_forward(client, job_update_key)
-
-    # start a manual rollback
-    client.rollback_job_update(job_update_key)
-    wait_for_rolled_back(client, job_update_key)
-
-    res = client.get_job_update_details(None, api.JobUpdateQuery(key=job_update_key))
-    assert len(res.detailsList) == 1
-    assert len(res.detailsList[0].instanceEvents) > 0
-    for ie in res.detailsList[0].instanceEvents:
-        assert ie.instanceId in update_instances
-
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
-    assert len(res.tasks) == 10
-    for t in res.tasks:
-        assert len(t.assignedTask.task.metadata) == 2
-        for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
-            else:
-                assert False, 'unexpected metadata %s' % m
-
-
-def test__update_with_pinned_instances__add_remove_instance__manual_rollback(client):
-    """
-    test pinned instance deployment with add / remove instances:
-    1. start a regular update (version 1) on all 6 instances
-    2. start another update (version 2) to increase instance count to 10,
-       targeting the update to subset of existing instances as well as new
-       instances, trigger a manual rollback after first 2 of the new instances
-       are running, verify instance count and job config are rolled back
-    3. start another update (version 2) to decrease instance count to 2,
-       targeting the update to subset of existing instances as well as to be
-       removed instances, trigger a manual rollback after 2 of the existing
-       instances are removed, verify instance count and job config are rolled
-       back
-    """
-    all_instances = set(range(6))
-
-    # start a regular update
-    req = get_job_update_request('test_dc_labrat_large_job.yaml')
-    req.instanceCount = len(all_instances)
-    res = client.start_job_update(
-        req,
-        'start job update test/dc/labrat_large_job')
-    wait_for_rolled_forward(client, res.key)
-    job_key = res.key.job
-
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
-    assert len(res.tasks) == len(all_instances)
-    for t in res.tasks:
-        _, _, run_id = t.assignedTask.taskId.rsplit('-', 2)
-        assert run_id == '1'
-        assert len(t.assignedTask.task.metadata) == 2
-        for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
-            else:
-                assert False, 'unexpected metadata %s' % m
-
-    # start a update with updateOnlyTheseInstances parameter, add instances
-    update_instances = set([4, 5, 6, 7, 8, 9])
-    pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
-    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
-
-    res = client.start_job_update(
-        pinned_req,
-        'start job update test/dc/labrat_large_job with pinned instances')
-    job_key = res.key.job
-    job_update_key = res.key
-
-    # wait for at least instance 6 and 7 are added
-    wait_for_rolling_forward(client, job_update_key)
-    wait_for_task_status(
-        client,
-        job_key,
-        set([
-            api.ScheduleStatus.INIT,
-            api.ScheduleStatus.PENDING,
-            api.ScheduleStatus.ASSIGNED,
-            api.ScheduleStatus.STARTING,
-        ]),
-        api.ScheduleStatus.RUNNING,
-        instances={6, 7})
-
-    client.rollback_job_update(job_update_key)
-    wait_for_rolled_back(client, job_update_key)
-
-    # start a manual rollback
-    res = client.get_job_update_details(None, api.JobUpdateQuery(key=job_update_key))
-    assert len(res.detailsList) == 1
-    assert len(res.detailsList[0].instanceEvents) > 0
-    for ie in res.detailsList[0].instanceEvents:
-        assert ie.instanceId in update_instances
-
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
-    assert len(res.tasks) == len(all_instances)
-    for t in res.tasks:
-        assert t.assignedTask.instanceId in all_instances
-        assert len(t.assignedTask.task.metadata) == 2
-        for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
-            else:
-                assert False, 'unexpected metadata %s' % m
-
-    # start a update with updateOnlyTheseInstances parameter, remove instances
-    update_instances = set([0, 2, 3, 4, 5])
-    pinned_req = get_job_update_request('test_dc_labrat_large_job_diff_labels.yaml')
-    pinned_req.instanceCount = 2
-    pinned_req.settings.updateOnlyTheseInstances = set([api.Range(first=i, last=i) for i in update_instances])
-
-    res = client.start_job_update(
-        pinned_req,
-        'start job update test/dc/labrat_large_job with pinned instances')
-    job_key = res.key.job
-    job_update_key = res.key
-
-    # wait for at least instance 2 and 3 are removed
-    wait_for_rolling_forward(client, job_update_key)
-    wait_for_task_removed(client, job_key, instances={2, 3})
-
-    client.rollback_job_update(job_update_key)
-    wait_for_rolled_back(client, job_update_key)
-
-    # start a manual rollback
-    res = client.get_job_update_details(None, api.JobUpdateQuery(key=job_update_key))
-    assert len(res.detailsList) == 1
-    assert len(res.detailsList[0].instanceEvents) > 0
-    for ie in res.detailsList[0].instanceEvents:
-        assert ie.instanceId in update_instances
-
-    res = client.get_tasks_without_configs(api.TaskQuery(
-        jobKeys={job_key},
-        statuses={api.ScheduleStatus.RUNNING}
-    ))
-    assert len(res.tasks) == len(all_instances)
-    for t in res.tasks:
-        assert t.assignedTask.instanceId in all_instances
-        assert len(t.assignedTask.task.metadata) == 2
-        for m in t.assignedTask.task.metadata:
-            if m.key == 'test_key_1':
-                assert m.value == 'test_value_1'
-            elif m.key == 'test_key_2':
-                assert m.value == 'test_value_2'
-            else:
-                assert False, 'unexpected metadata %s' % m
+            assert False, (
+                "unexpected instance id %s" % t.assignedTask.instanceId
+            )

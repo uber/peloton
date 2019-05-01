@@ -19,28 +19,31 @@ class PelotonClientWrapper(PelotonClient):
     created by minicluster cannot be directly addressed with
     the information found in Zookeeper.
     """
+
     def _on_job_mgr_leader_change(self, data, stat, event):
         data = self._patch_leader_ip("job_mgr", data)
         super(PelotonClientWrapper, self)._on_job_mgr_leader_change(
-            data, stat, event)
+            data, stat, event
+        )
 
     def _on_res_mgr_leader_change(self, data, stat, event):
         data = self._patch_leader_ip("res_mgr", data)
         super(PelotonClientWrapper, self)._on_res_mgr_leader_change(
-            data, stat, event)
+            data, stat, event
+        )
 
     def _on_host_mgr_leader_change(self, data, stat, event):
         data = self._patch_leader_ip("host_mgr", data)
         super(PelotonClientWrapper, self)._on_host_mgr_leader_change(
-            data, stat, event)
+            data, stat, event
+        )
 
     def _patch_leader_ip(self, comp_name, data):
         if data.startswith("{"):
             try:
                 leader = json.loads(data)
                 leader["ip"] = "localhost"
-                log.info("Patching %s leader with %s",
-                         comp_name, leader)
+                log.info("Patching %s leader with %s", comp_name, leader)
                 data = json.dumps(leader)
             except Exception as e:
                 log.warn("Failed to patch leader data: %s", e)
@@ -57,6 +60,7 @@ class MiniClusterDriver(driver_base.ClusterDriverABC):
     Component instance information: String that contains the name
     of the Docker container as returned by Docker REST APIs.
     """
+
     # Docker error to indicate that a start/stop operation was
     # ignored because the container was already started/stopped
     ERROR_NOT_MODIFIED = 304
@@ -87,7 +91,7 @@ class MiniClusterDriver(driver_base.ClusterDriverABC):
         for c in containers:
             for n in c["Names"]:
                 if n.startswith("/" + cont_name):
-                    ids[c['Id']] = n
+                    ids[c["Id"]] = n
         return ids
 
     def start(self, cid):
@@ -105,24 +109,29 @@ class MiniClusterDriver(driver_base.ClusterDriverABC):
                 raise
 
     def execute(self, cid, *cmd_and_args):
-        ex = minicluster.cli.exec_create(cid, " ".join(cmd_and_args),
-                                              stdout=True, stderr=True)
+        ex = minicluster.cli.exec_create(
+            cid, " ".join(cmd_and_args), stdout=True, stderr=True
+        )
         minicluster.cli.exec_start(ex, tty=True)
 
     def match_zk_info(self, cid, cinfo, zk_node_info):
         return cinfo == "/" + zk_node_info["hostname"]
 
     def get_peloton_client(self, name):
-        return PelotonClientWrapper(name=name,
-                                    zk_servers="localhost:8192")
+        return PelotonClientWrapper(name=name, zk_servers="localhost:8192")
 
     def info(self):
         res = [("Docker containers", "")]
         for comp_name in self.component_name_map:
             cids = self.find(comp_name, running_only=False)
             res.append(
-                (comp_name,
-                 ", ".join(["%s (%s)" % (k, v) for k, v in cids.iteritems()])))
+                (
+                    comp_name,
+                    ", ".join(
+                        ["%s (%s)" % (k, v) for k, v in cids.iteritems()]
+                    ),
+                )
+            )
         return res
 
     def _resolve_component_name(self, comp_name):

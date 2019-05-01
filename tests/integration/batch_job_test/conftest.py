@@ -1,7 +1,5 @@
 import pytest
-from tests.integration.conftest import (
-      setup_minicluster,
-      teardown_minicluster)
+from tests.integration.conftest import setup_minicluster, teardown_minicluster
 
 
 @pytest.fixture(scope="session", autouse=True)

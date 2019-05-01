@@ -8,12 +8,12 @@ def assert_pod_id_equal(old_pod_infos, new_pod_infos):
     new_pod_dict = {}
 
     for old_pod_info in old_pod_infos:
-        split_index = old_pod_info.status.pod_id.value.rfind('-')
+        split_index = old_pod_info.status.pod_id.value.rfind("-")
         pod_name = old_pod_info.status.pod_id.value[:split_index]
         old_pod_dict[pod_name] = old_pod_info.status.pod_id.value
 
     for new_pod_info in new_pod_infos:
-        split_index = new_pod_info.status.pod_id.value.rfind('-')
+        split_index = new_pod_info.status.pod_id.value.rfind("-")
         pod_name = new_pod_info.status.pod_id.value[:split_index]
         new_pod_dict[pod_name] = new_pod_info.status.pod_id.value
 
@@ -25,16 +25,20 @@ def assert_pod_spec_changed(old_pod_spec, new_pod_spec):
     """
     assert that the command in the pod spec is different
     """
-    assert old_pod_spec.containers[0].command.value != \
-        new_pod_spec.containers[0].command.value
+    assert (
+        old_pod_spec.containers[0].command.value
+        != new_pod_spec.containers[0].command.value
+    )
 
 
 def assert_pod_spec_equal(old_pod_spec, new_pod_spec):
     """
     assert that the command in the pod spec is same
     """
-    assert old_pod_spec.containers[0].command.value == \
-        new_pod_spec.containers[0].command.value
+    assert (
+        old_pod_spec.containers[0].command.value
+        == new_pod_spec.containers[0].command.value
+    )
 
 
 def assert_pod_id_changed(old_pod_infos, new_pod_infos):
@@ -47,12 +51,12 @@ def assert_pod_id_changed(old_pod_infos, new_pod_infos):
     new_pod_dict = {}
 
     for old_pod_info in old_pod_infos:
-        split_index = old_pod_info.status.pod_id.value.rfind('-')
+        split_index = old_pod_info.status.pod_id.value.rfind("-")
         pod_name = old_pod_info.status.pod_id.value[:split_index]
         old_pod_dict[pod_name] = old_pod_info.status.pod_id.value
 
     for new_pod_info in new_pod_infos:
-        split_index = new_pod_info.status.pod_id.value.rfind('-')
+        split_index = new_pod_info.status.pod_id.value.rfind("-")
         pod_name = new_pod_info.status.pod_id.value[:split_index]
         new_pod_dict[pod_name] = new_pod_info.status.pod_id.value
 

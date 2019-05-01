@@ -51,9 +51,9 @@ KB = 1024
 MB = 1024 * KB
 GB = 1024 * MB
 
-AURORA_ROLE = 'peloton'
-AURORA_ENVIRONMENT = 'production'
-AURORA_USER = 'peloton'
+AURORA_ROLE = "peloton"
+AURORA_ENVIRONMENT = "production"
+AURORA_USER = "peloton"
 
 
 MAX_WAIT_TIME_SECONDS = 600
@@ -68,15 +68,16 @@ def combine_messages(response):
     :return: Messages from the details in the response, or an empty string if
         there were no messages.
     """
-    return ', '.join([
-        d.message or 'Unknown error' for d in (response.details or [])
-    ])
+    return ", ".join(
+        [d.message or "Unknown error" for d in (response.details or [])]
+    )
 
 
 class Role(Enum):
     """
     The role of a Peloton app instance
     """
+
     UNKNOWN = 1
     LEADER = 2
     FOLLOWER = 3
@@ -89,7 +90,7 @@ class Instance(object):
     """
 
     def __init__(self, task, role):
-        assert(task.assignedTask)
+        assert task.assignedTask
         self.instance_id = task.assignedTask.instanceId
         self.host = task.assignedTask.slaveHost
         self.state = task.status
@@ -118,12 +119,12 @@ class App(object):
         self.enable_revocable_resources = None
         self.bin_packing = None
         self.stream_only_mode = True
-        self.task_preemption_period = '60s'
+        self.task_preemption_period = "60s"
         self.enable_sla_tracking = False
         self.enable_preemption = False
         self.respool_path = None
-        self.auth_type = 'NOOP'
-        self.auth_config_file = ''
+        self.auth_type = "NOOP"
+        self.auth_config_file = ""
 
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
@@ -133,12 +134,10 @@ class App(object):
         self.prod_yaml_location = self.cluster.cfg_file
 
         if self.num_instances < 1:
-            raise Exception('App %s has no instances' % self.name)
+            raise Exception("App %s has no instances" % self.name)
 
         self.job_key = JobKey(
-            role=AURORA_ROLE,
-            environment=AURORA_ENVIRONMENT,
-            name=self.name,
+            role=AURORA_ROLE, environment=AURORA_ENVIRONMENT, name=self.name
         )
 
         # Generate the new job config for this app
@@ -151,72 +150,79 @@ class App(object):
         """
         Returns the docker params for a given Peloton application
         """
-        mesos_zk_path = 'zk://%s/%s' % (
-            ','.join(self.cluster.zookeeper), self.cluster.mesos_zk_path)
-        peloton_zk_endpoints = '\n'.join(self.cluster.zookeeper)
+        mesos_zk_path = "zk://%s/%s" % (
+            ",".join(self.cluster.zookeeper),
+            self.cluster.mesos_zk_path,
+        )
+        peloton_zk_endpoints = "\n".join(self.cluster.zookeeper)
 
         # add common variables
         env_vars = {
-            'ENVIRONMENT': 'production',
-            'CONFIG_DIR': './config',
-            'APP': self.name,
+            "ENVIRONMENT": "production",
+            "CONFIG_DIR": "./config",
+            "APP": self.name,
             # TODO: fix Peloton code to only take self.cluster.mesos_zk_path
-            'MESOS_ZK_PATH': mesos_zk_path,
-            'ENABLE_DEBUG_LOGGING': self.enable_debug_logging,
-            'ELECTION_ZK_SERVERS': peloton_zk_endpoints,
-            'USE_CASSANDRA': self.cluster.cassandra_contact_points is not None,
-            'CASSANDRA_HOSTS': '\n'.join(
-                self.cluster.cassandra_contact_points),
-            'CASSANDRA_STORE': self.cluster.cassandra_keyspace,
-            'CASSANDRA_PORT': self.cluster.cassandra_port,
-            'CLUSTER': self.cluster.name,
-            'DATACENTER': getattr(self.cluster, 'datacenter', ''),
-            'MESOS_AGENT_WORK_DIR': self.cluster.mesos_agent_work_dir,
-            'AUTO_MIGRATE': self.cluster.auto_migrate,
-            'ENABLE_SENTRY_LOGGING': self.cluster.enable_sentry_logging,
-            'SECRET_CONFIG_DIR': getattr(
-                self.cluster, 'secret_config_dir', ''),
-            'MESOS_SECRET_FILE': getattr(
-                self.cluster, 'mesos_secret_file', ''),
-            'PELOTON_SECRET_FILE': getattr(
-                self.cluster, 'peloton_secret_file', ''),
-            'ENABLE_SECRETS': self.enable_secrets,
-            'AUTH_TYPE': self.auth_type,
-            'AUTH_CONFIG_FILE': self.auth_config_file,
+            "MESOS_ZK_PATH": mesos_zk_path,
+            "ENABLE_DEBUG_LOGGING": self.enable_debug_logging,
+            "ELECTION_ZK_SERVERS": peloton_zk_endpoints,
+            "USE_CASSANDRA": self.cluster.cassandra_contact_points is not None,
+            "CASSANDRA_HOSTS": "\n".join(
+                self.cluster.cassandra_contact_points
+            ),
+            "CASSANDRA_STORE": self.cluster.cassandra_keyspace,
+            "CASSANDRA_PORT": self.cluster.cassandra_port,
+            "CLUSTER": self.cluster.name,
+            "DATACENTER": getattr(self.cluster, "datacenter", ""),
+            "MESOS_AGENT_WORK_DIR": self.cluster.mesos_agent_work_dir,
+            "AUTO_MIGRATE": self.cluster.auto_migrate,
+            "ENABLE_SENTRY_LOGGING": self.cluster.enable_sentry_logging,
+            "SECRET_CONFIG_DIR": getattr(
+                self.cluster, "secret_config_dir", ""
+            ),
+            "MESOS_SECRET_FILE": getattr(
+                self.cluster, "mesos_secret_file", ""
+            ),
+            "PELOTON_SECRET_FILE": getattr(
+                self.cluster, "peloton_secret_file", ""
+            ),
+            "ENABLE_SECRETS": self.enable_secrets,
+            "AUTH_TYPE": self.auth_type,
+            "AUTH_CONFIG_FILE": self.auth_config_file,
         }
 
         self.add_app_specific_vars(env_vars)
 
         name = self.name
-        if name.startswith('placement_'):
-            name = 'placement'
+        if name.startswith("placement_"):
+            name = "placement"
 
         # base64 encode the prod config and add it to the PRODUCTION_CONFIG
         # environment variable inside the container
         prod_config_path = self.get_app_path().format(name)
         with open(prod_config_path, "rb") as config_file:
-            env_vars['PRODUCTION_CONFIG'] = base64.b64encode(
-                config_file.read())
+            env_vars["PRODUCTION_CONFIG"] = base64.b64encode(
+                config_file.read()
+            )
 
         params = [
-            DockerParameter(name='env', value='%s=%s' % (key, val))
+            DockerParameter(name="env", value="%s=%s" % (key, val))
             for key, val in env_vars.iteritems()
         ]
 
-        volumes = [
-            ('/var/log/peloton', '/var/log/peloton', 'rw')
-        ]
+        volumes = [("/var/log/peloton", "/var/log/peloton", "rw")]
 
         # Mount langley secrets if secret dir is specified.
-        if getattr(self.cluster, 'secret_config_dir', ''):
-            volumes.append((
-                self.cluster.secret_config_dir,
-                self.cluster.secret_config_dir,
-                'ro'
-            ))
+        if getattr(self.cluster, "secret_config_dir", ""):
+            volumes.append(
+                (
+                    self.cluster.secret_config_dir,
+                    self.cluster.secret_config_dir,
+                    "ro",
+                )
+            )
 
         params.extend(
-            DockerParameter(name='volume', value='%s:%s:%s' % (src, dst, mode))
+            DockerParameter(name="volume", value="%s:%s:%s" % (src, dst, mode))
             for src, dst, mode in volumes
         )
 
@@ -226,78 +232,78 @@ class App(object):
         """
         Adds env variables specific to the application
         """
-        if self.name == 'placement_stateful':
-            env_vars['TASK_TYPE'] = 'STATEFUL'
-            env_vars['APP'] = 'placement'
+        if self.name == "placement_stateful":
+            env_vars["TASK_TYPE"] = "STATEFUL"
+            env_vars["APP"] = "placement"
 
-        if self.name == 'placement_stateless':
-            env_vars['TASK_TYPE'] = 'STATELESS'
-            env_vars['APP'] = 'placement'
+        if self.name == "placement_stateless":
+            env_vars["TASK_TYPE"] = "STATELESS"
+            env_vars["APP"] = "placement"
 
-        if self.name == 'jobmgr':
-            env_vars['JOB_TYPE'] = getattr(self, "job_type", "BATCH")
-            env_vars['JOB_RUNTIME_CALCULATION_VIA_CACHE'] = getattr(
-                self,
-                "job_runtime_calculation_via_cache", False,)
-
-        if self.name == 'archiver':
-            env_vars['ENABLE_ARCHIVER'] = self.enable_archiver
-            env_vars['STREAM_ONLY_MODE'] = self.stream_only_mode
-            env_vars['POD_EVENTS_CLEANUP'] = self.pod_events_cleanup
-            env_vars['ARCHIVE_AGE'] = self.archive_age
-            env_vars['ARCHIVE_INTERVAL'] = self.archive_interval
-            env_vars['ARCHIVE_STEP_SIZE'] = self.archive_step_size
-            env_vars['KAFKA_TOPIC'] = self.kafka_topic
-
-        if self.name == 'resmgr':
-            env_vars['TASK_PREEMPTION_PERIOD'] = getattr(
-                self,
-                "task_preemption_period", '60s',
-            )
-            env_vars['ENABLE_SLA_TRACKING'] = getattr(
-                self,
-                "enable_sla_tracking", False,
-            )
-            env_vars['ENABLE_PREEMPTION'] = getattr(
-                self,
-                "enable_preemption",
-                False,
+        if self.name == "jobmgr":
+            env_vars["JOB_TYPE"] = getattr(self, "job_type", "BATCH")
+            env_vars["JOB_RUNTIME_CALCULATION_VIA_CACHE"] = getattr(
+                self, "job_runtime_calculation_via_cache", False
             )
 
-        if self.name == 'hostmgr':
+        if self.name == "archiver":
+            env_vars["ENABLE_ARCHIVER"] = self.enable_archiver
+            env_vars["STREAM_ONLY_MODE"] = self.stream_only_mode
+            env_vars["POD_EVENTS_CLEANUP"] = self.pod_events_cleanup
+            env_vars["ARCHIVE_AGE"] = self.archive_age
+            env_vars["ARCHIVE_INTERVAL"] = self.archive_interval
+            env_vars["ARCHIVE_STEP_SIZE"] = self.archive_step_size
+            env_vars["KAFKA_TOPIC"] = self.kafka_topic
+
+        if self.name == "resmgr":
+            env_vars["TASK_PREEMPTION_PERIOD"] = getattr(
+                self, "task_preemption_period", "60s"
+            )
+            env_vars["ENABLE_SLA_TRACKING"] = getattr(
+                self, "enable_sla_tracking", False
+            )
+            env_vars["ENABLE_PREEMPTION"] = getattr(
+                self, "enable_preemption", False
+            )
+
+        if self.name == "hostmgr":
             if self.scarce_resource_types:
-                env_vars['SCARCE_RESOURCE_TYPES'] = ','.join(
-                    self.scarce_resource_types)
+                env_vars["SCARCE_RESOURCE_TYPES"] = ",".join(
+                    self.scarce_resource_types
+                )
             if self.slack_resource_types:
-                env_vars['SLACK_RESOURCE_TYPES'] = ','.join(
-                    self.slack_resource_types)
+                env_vars["SLACK_RESOURCE_TYPES"] = ",".join(
+                    self.slack_resource_types
+                )
             if self.enable_revocable_resources:
-                env_vars['ENABLE_REVOCABLE_RESOURCES'] = \
-                    self.enable_revocable_resources
+                env_vars[
+                    "ENABLE_REVOCABLE_RESOURCES"
+                ] = self.enable_revocable_resources
             if self.bin_packing:
-                env_vars['BIN_PACKING'] = self.bin_packing
+                env_vars["BIN_PACKING"] = self.bin_packing
 
-        if self.name == 'aurorabridge':
+        if self.name == "aurorabridge":
             if self.respool_path:
-                env_vars['RESPOOL_PATH'] = self.respool_path
+                env_vars["RESPOOL_PATH"] = self.respool_path
 
     def get_app_path(self):
         """
         Returns the formatted path for app config
         """
         dirname = os.path.dirname(self.prod_yaml_location)
-        path = os.path.join(dirname, "../..",
-                            "config", "{}", "production.yaml")
+        path = os.path.join(
+            dirname, "../..", "config", "{}", "production.yaml"
+        )
         return path
 
     def get_docker_image(self):
         """
         Returns the docker image path for a Peloton app
         """
-        return '%s/%s:%s' % (
+        return "%s/%s:%s" % (
             self.cluster.docker_registry,
             self.cluster.docker_repository,
-            self.cluster.version
+            self.cluster.version,
         )
 
     def get_executor_config(self):
@@ -305,18 +311,20 @@ class App(object):
         Returns the Thermos executor config for a Peloton app
         """
 
-        host_logdir = '/var/log/peloton/%s' % self.name
-        sandbox_logdir = '$MESOS_DIRECTORY/sandbox/.logs/%s/0' % self.name
-        cmdline = ' && '.join([
-            'rm -rf %s' % host_logdir,
-            'ln -s %s %s' % (sandbox_logdir, host_logdir),
-            '/bin/entrypoint.sh'
-        ])
+        host_logdir = "/var/log/peloton/%s" % self.name
+        sandbox_logdir = "$MESOS_DIRECTORY/sandbox/.logs/%s/0" % self.name
+        cmdline = " && ".join(
+            [
+                "rm -rf %s" % host_logdir,
+                "ln -s %s %s" % (sandbox_logdir, host_logdir),
+                "/bin/entrypoint.sh",
+            ]
+        )
         entrypoint_process = ThermosProcess(
             name=self.name,
             cmdline=cmdline,
             logger=ThermosLogger(
-                mode=LoggerMode('rotate'),
+                mode=LoggerMode("rotate"),
                 rotate=RotatePolicy(log_size=1 * GB, backups=10),
             ),
         )
@@ -324,31 +332,25 @@ class App(object):
             name=self.name,
             processes=[entrypoint_process],
             resources=Resources(
-                cpu=self.cpu_limit,
-                ram=self.mem_limit,
-                disk=self.disk_limit,
+                cpu=self.cpu_limit, ram=self.mem_limit, disk=self.disk_limit
             ),
         )
         health_check_config = HealthCheckConfig(
             health_checker=HealthCheckerConfig(
                 http=HttpHealthChecker(
-                    endpoint='/health',
-                    expected_response='OK',
-                    expected_response_code=200
-                ),
+                    endpoint="/health",
+                    expected_response="OK",
+                    expected_response_code=200,
+                )
             ),
             initial_interval_secs=15,
             interval_secs=10,
             max_consecutive_failures=4,
-            timeout_secs=1
+            timeout_secs=1,
         )
         announce = Announcer()
         if self.http_port is not None:
-            announce = Announcer(
-                portmap={
-                    'health': self.http_port
-                },
-            )
+            announce = Announcer(portmap={"health": self.http_port})
         thermos_job = ThermosJob(
             name=self.name,
             role=AURORA_ROLE,
@@ -361,8 +363,7 @@ class App(object):
             announce=announce,
         )
         executor_config = ExecutorConfig(
-            name=AURORA_EXECUTOR_NAME,
-            data=thermos_job.json_dumps()
+            name=AURORA_EXECUTOR_NAME, data=thermos_job.json_dumps()
         )
 
         return executor_config
@@ -378,17 +379,13 @@ class App(object):
             mesos=None,
             docker=DockerContainer(
                 image=self.get_docker_image(),
-                parameters=self.get_docker_params()
-            )
+                parameters=self.get_docker_params(),
+            ),
         )
 
         host_limit = Constraint(
             name=self.cluster.constraint,
-            constraint=TaskConstraint(
-                limit=LimitConstraint(
-                    limit=1,
-                )
-            )
+            constraint=TaskConstraint(limit=LimitConstraint(limit=1)),
         )
 
         task_config = TaskConfig(
@@ -401,13 +398,15 @@ class App(object):
             priority=0,
             maxTaskFailures=0,
             production=False,
-            tier='preemptible',
-            resources=set([
-                Resource(numCpus=self.cpu_limit),
-                Resource(ramMb=self.mem_limit / MB),
-                Resource(diskMb=self.disk_limit / MB),
-            ]),
-            contactEmail='peloton-oncall-group@uber.com',
+            tier="preemptible",
+            resources=set(
+                [
+                    Resource(numCpus=self.cpu_limit),
+                    Resource(ramMb=self.mem_limit / MB),
+                    Resource(diskMb=self.disk_limit / MB),
+                ]
+            ),
+            contactEmail="peloton-oncall-group@uber.com",
             executorConfig=self.get_executor_config(),
             container=container,
             constraints=set([host_limit]),
@@ -502,8 +501,10 @@ class App(object):
                     all_running = False
                     break
 
-            print 'Wait for %s %s instances running: %d / %d' % (
-                self.name, role.name, all_running, len(instances))
+            print(
+                "Wait for %s %s instances running: %d / %d"
+                % (self.name, role.name, all_running, len(instances))
+            )
 
             if all_running and len(instances) == num_instances:
                 return True
@@ -523,8 +524,7 @@ class App(object):
             taskConfig=job_config.taskConfig,
             instanceCount=self.num_instances,
             settings=JobUpdateSettings(
-                updateGroupSize=1,
-                maxPerInstanceFailures=3
+                updateGroupSize=1, maxPerInstanceFailures=3
             ),
         )
         if instance_ids:
@@ -533,8 +533,7 @@ class App(object):
             )
 
         resp = self.client.startJobUpdate(
-            req,
-            'Update %s instances for %s' % (len(instances), self.name)
+            req, "Update %s instances for %s" % (len(instances), self.name)
         )
         if resp.responseCode == ResponseCode.INVALID_REQUEST:
             if resp.result is None:
@@ -545,21 +544,24 @@ class App(object):
             status = update_summary.state.status
             if status == JobUpdateStatus.ROLLING_FORWARD:
                 # Abort the current update
-                print 'Aborting the update for %s (id=%s)' % (
-                    self.name, update_key.id)
+                print(
+                    "Aborting the update for %s (id=%s)"
+                    % (self.name, update_key.id)
+                )
                 self.client.abortJobUpdate(
-                    update_key, 'Abort by a new deploy session')
+                    update_key, "Abort by a new deploy session"
+                )
                 self.wait_for_update_done(update_key)
 
                 # Restart the job update
                 resp = self.client.startJobUpdate(
                     req,
-                    'Update %s instances for %s' % (len(instances), self.name)
+                    "Update %s instances for %s" % (len(instances), self.name),
                 )
             else:
                 raise Exception(
-                    'Invalid Request for job update (status=%s)' % (
-                        status, JobUpdateStatus._VALUES_TO_NAMES[status])
+                    "Invalid Request for job update (status=%s)"
+                    % (status, JobUpdateStatus._VALUES_TO_NAMES[status])
                 )
 
         if resp.responseCode != ResponseCode.OK:
@@ -567,7 +569,7 @@ class App(object):
 
         if resp.result is None:
             # No change for the job update
-            print resp.details[0].message
+            print(resp.details[0].message)
             return True
 
         update_key = resp.result.startJobUpdateResult.key
@@ -579,16 +581,14 @@ class App(object):
         """
 
         query = JobUpdateQuery(
-            role=AURORA_ROLE,
-            key=update_key,
-            jobKey=self.job_key
+            role=AURORA_ROLE, key=update_key, jobKey=self.job_key
         )
 
         start_time = time()
         while time() < start_time + MAX_WAIT_TIME_SECONDS:
             resp = self.client.getJobUpdateSummaries(query)
             if resp.responseCode != ResponseCode.OK:
-                print combine_messages(resp)
+                print(combine_messages(resp))
                 sleep(WAIT_INTERVAL_SECONDS)
                 continue
 
@@ -596,27 +596,34 @@ class App(object):
 
             if len(result.updateSummaries) != 1:
                 raise Exception(
-                    'Got multiple update summaries: %s' %
-                    str(result.updateSummaries)
+                    "Got multiple update summaries: %s"
+                    % str(result.updateSummaries)
                 )
 
             if result.updateSummaries[0].key != update_key:
                 raise Exception(
-                    'Mismatch update key, expect %s, received %s' %
-                    (update_key, result.updateSummaries[0].key)
+                    "Mismatch update key, expect %s, received %s"
+                    % (update_key, result.updateSummaries[0].key)
                 )
 
             status = result.updateSummaries[0].state.status
-            print 'Updating %s instances %s (status=%s)' % (
-                self.name, instance_ids,
-                JobUpdateStatus._VALUES_TO_NAMES[status])
+            print(
+                "Updating %s instances %s (status=%s)"
+                % (
+                    self.name,
+                    instance_ids,
+                    JobUpdateStatus._VALUES_TO_NAMES[status],
+                )
+            )
 
             if status == JobUpdateStatus.ROLLED_FORWARD:
                 return True
-            elif status in [JobUpdateStatus.ROLLED_BACK,
-                            JobUpdateStatus.ABORTED,
-                            JobUpdateStatus.ERROR,
-                            JobUpdateStatus.FAILED]:
+            elif status in [
+                JobUpdateStatus.ROLLED_BACK,
+                JobUpdateStatus.ABORTED,
+                JobUpdateStatus.ERROR,
+                JobUpdateStatus.FAILED,
+            ]:
                 return False
             else:
                 # Wait for 5 seconds
@@ -634,8 +641,10 @@ class App(object):
 
         if self.current_job_config is None:
             # Create the new Job in Aurora and check the response code
-            print 'Creating new job for %s with %s instances' % (
-                self.name, self.num_instances)
+            print(
+                "Creating new job for %s with %s instances"
+                % (self.name, self.num_instances)
+            )
 
             resp = self.client.createJob(self.desired_job_config)
             if resp.responseCode != ResponseCode.OK:
@@ -658,21 +667,29 @@ class App(object):
 
             if role == Role.LEADER and len(instances) > 1:
                 raise Exception(
-                    'Found %d leaders for %s' % (len(instances), self.name)
+                    "Found %d leaders for %s" % (len(instances), self.name)
                 )
 
             if len(instances) == 0:
-                print 'No %s %s instances to update' % (self.name, role.name)
+                print("No %s %s instances to update" % (self.name, role.name))
                 continue
 
-            print 'Start updating %d %s %s instances' % (
-                len(instances), self.name, role.name)
+            print(
+                "Start updating %d %s %s instances"
+                % (len(instances), self.name, role.name)
+            )
 
             retval = self.update_instances(instances, self.desired_job_config)
 
-            print 'Finish updating %d %s %s instances -- %s' % (
-                len(instances), self.name, role.name,
-                'SUCCEED' if retval else 'FAILED')
+            print(
+                "Finish updating %d %s %s instances -- %s"
+                % (
+                    len(instances),
+                    self.name,
+                    role.name,
+                    "SUCCEED" if retval else "FAILED",
+                )
+            )
 
             if not retval or not callback(self):
                 # Rollback the update by the caller
@@ -683,11 +700,12 @@ class App(object):
         new_total = self.num_instances > cur_total
 
         if new_total > 0:
-            print 'Start adding %d new %s instances' % (new_total, self.name)
+            print("Start adding %d new %s instances" % (new_total, self.name))
             retval = self.update_instances([], self.desired_job_config)
-            print 'Finish adding %d new %s instances -- %s' % (
-                new_total, self.name,
-                'SUCCEED' if retval else 'FAILED')
+            print(
+                "Finish adding %d new %s instances -- %s"
+                % (new_total, self.name, "SUCCEED" if retval else "FAILED")
+            )
 
             if not retval or not callback(self):
                 # Rollback the update by the caller
@@ -732,23 +750,16 @@ class CronApp(App):
         Returns the Thermos executor config for a Peloton app
         """
         if self.working_dir is not None:
-            cmd = ' && '.join([
-                'cd ' + self.working_dir,
-                self.cmdline])
+            cmd = " && ".join(["cd " + self.working_dir, self.cmdline])
         else:
             cmd = self.cmdline
 
-        entrypoint_process = ThermosProcess(
-            name=self.name,
-            cmdline=cmd,
-        )
+        entrypoint_process = ThermosProcess(name=self.name, cmdline=cmd)
         thermos_task = ThermosTask(
             name=self.name,
             processes=[entrypoint_process],
             resources=Resources(
-                cpu=self.cpu_limit,
-                ram=self.mem_limit,
-                disk=self.disk_limit,
+                cpu=self.cpu_limit, ram=self.mem_limit, disk=self.disk_limit
             ),
         )
         thermos_job = ThermosJob(
@@ -762,8 +773,7 @@ class CronApp(App):
             cron_schedule=self.cron_schedule[1:],
         )
         executor_config = ExecutorConfig(
-            name=AURORA_EXECUTOR_NAME,
-            data=thermos_job.json_dumps()
+            name=AURORA_EXECUTOR_NAME, data=thermos_job.json_dumps()
         )
         return executor_config
 
@@ -778,17 +788,13 @@ class CronApp(App):
             mesos=None,
             docker=DockerContainer(
                 image=self.get_docker_image(),
-                parameters=self.get_docker_params()
-            )
+                parameters=self.get_docker_params(),
+            ),
         )
 
         host_limit = Constraint(
             name=self.cluster.constraint,
-            constraint=TaskConstraint(
-                limit=LimitConstraint(
-                    limit=1,
-                )
-            )
+            constraint=TaskConstraint(limit=LimitConstraint(limit=1)),
         )
 
         task_config = TaskConfig(
@@ -801,13 +807,15 @@ class CronApp(App):
             priority=0,
             maxTaskFailures=0,
             production=False,
-            tier='preemptible',
-            resources=set([
-                Resource(numCpus=self.cpu_limit),
-                Resource(ramMb=self.mem_limit / MB),
-                Resource(diskMb=self.disk_limit / MB),
-            ]),
-            contactEmail='peloton-oncall-group@uber.com',
+            tier="preemptible",
+            resources=set(
+                [
+                    Resource(numCpus=self.cpu_limit),
+                    Resource(ramMb=self.mem_limit / MB),
+                    Resource(diskMb=self.disk_limit / MB),
+                ]
+            ),
+            contactEmail="peloton-oncall-group@uber.com",
             executorConfig=self.get_executor_config(),
             container=container,
             constraints=set([host_limit]),
@@ -861,4 +869,4 @@ class CronApp(App):
             return
         resp = self.client.scheduleCronJob(self.current_job_config)
         if resp.responseCode != ResponseCode.OK:
-            print "Failed to rollback watchdog configuration (%s)" % (resp)
+            print("Failed to rollback watchdog configuration (%s)" % (resp))

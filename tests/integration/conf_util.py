@@ -14,21 +14,25 @@ from util import load_test_config
 # Constants
 #########################################
 # general configs.
-CONFIG_FILES = ['test_job.yaml', 'test_task.yaml']
-MESOS_MASTER = ['peloton-mesos-master']
-MESOS_AGENTS = ['peloton-mesos-agent0', 'peloton-mesos-agent1', 'peloton-mesos-agent2']
-JOB_MGRS = ['peloton-jobmgr0']
-RES_MGRS = ['peloton-resmgr0']
-HOST_MGRS = ['peloton-hostmgr0']
-PLACEMENT_ENGINES = ['peloton-placement0', 'peloton-placement1']
+CONFIG_FILES = ["test_job.yaml", "test_task.yaml"]
+MESOS_MASTER = ["peloton-mesos-master"]
+MESOS_AGENTS = [
+    "peloton-mesos-agent0",
+    "peloton-mesos-agent1",
+    "peloton-mesos-agent2",
+]
+JOB_MGRS = ["peloton-jobmgr0"]
+RES_MGRS = ["peloton-resmgr0"]
+HOST_MGRS = ["peloton-hostmgr0"]
+PLACEMENT_ENGINES = ["peloton-placement0", "peloton-placement1"]
 
 # job_query related constants.
 NUM_JOBS_PER_STATE = 1
-TERMINAL_JOB_STATES = ['SUCCEEDED', 'RUNNING', 'FAILED']
-ACTIVE_JOB_STATES = ['PENDING', 'RUNNING', 'INITIALIZED']
+TERMINAL_JOB_STATES = ["SUCCEEDED", "RUNNING", "FAILED"]
+ACTIVE_JOB_STATES = ["PENDING", "RUNNING", "INITIALIZED"]
 
 # task_query related constants.
-TASK_STATES = ['SUCCEEDED', 'FAILED', 'RUNNING']
+TASK_STATES = ["SUCCEEDED", "FAILED", "RUNNING"]
 DEFAUILT_TASKS_COUNT = len(TASK_STATES)
 
 log = logging.getLogger(__name__)
@@ -51,11 +55,12 @@ Returns:
 """
 
 
-def generate_job_config(file_name, job_name=None, job_owner=None, job_state=None,
-                        task_states=None):
+def generate_job_config(
+    file_name, job_name=None, job_owner=None, job_state=None, task_states=None
+):
     job_config = _load_job_cfg_proto(file_name)
 
-    if file_name == 'test_job.yaml':
+    if file_name == "test_job.yaml":
         # Create job_config for `job_query`.
         job_config.name = job_name
         job_config.owningTeam = job_owner
@@ -93,16 +98,18 @@ Returns:
 """
 
 
-def create_task_cfg(task_state='SUCCEEDED', task_name=None):
+def create_task_cfg(task_state="SUCCEEDED", task_name=None):
     assert task_state in TASK_STATES
     commands = {
-        'SUCCEEDED': "echo 'succeeded instance task' & sleep 1",
-        'RUNNING': "echo 'running instance task' & sleep 100",
-        'FAILED': "echo 'failed instance task' & exit(2)"
+        "SUCCEEDED": "echo 'succeeded instance task' & sleep 1",
+        "RUNNING": "echo 'running instance task' & sleep 100",
+        "FAILED": "echo 'failed instance task' & exit(2)",
     }
 
-    return task.TaskConfig(command=mesos.CommandInfo(
-        shell=True, value=commands.get(task_state)), name=task_name)
+    return task.TaskConfig(
+        command=mesos.CommandInfo(shell=True, value=commands.get(task_state)),
+        name=task_name,
+    )
 
 
 #########################################
@@ -132,20 +139,25 @@ Returns:
 
 
 def create_job_config_by_state(_num_jobs_per_state=NUM_JOBS_PER_STATE):
-    salt = ''.join(random.choice(string.ascii_uppercase + string.digits)
-                   for _ in range(6))
-    name = 'TestJob-' + salt
-    owner = 'compute-' + salt
+    salt = "".join(
+        random.choice(string.ascii_uppercase + string.digits) for _ in range(6)
+    )
+    name = "TestJob-" + salt
+    owner = "compute-" + salt
     jobs_by_state = defaultdict(list)
 
     # create three jobs per state with this owner and name
     for state in TERMINAL_JOB_STATES:
         for i in xrange(_num_jobs_per_state):
-            job = Job(job_config=generate_job_config(
-                file_name='test_job.yaml',
-                # job name will be in format: TestJob-<salt>-<inst-id>-<state>
-                job_name=name + '-' + str(i) + '-' + state,
-                job_owner=owner, job_state=state))
+            job = Job(
+                job_config=generate_job_config(
+                    file_name="test_job.yaml",
+                    # job name will be in format: TestJob-<salt>-<inst-id>-<state>
+                    job_name=name + "-" + str(i) + "-" + state,
+                    job_owner=owner,
+                    job_state=state,
+                )
+            )
             jobs_by_state[state].append(job)
     return salt, jobs_by_state
 
@@ -170,7 +182,7 @@ def create_task_configs_by_state(task_states):
     tasks, index = {}, 0
     for state, num in task_states:
         for i in range(index, index + num):
-            tasks[i] = create_task_cfg(state, task_name='task-'+str(i))
+            tasks[i] = create_task_cfg(state, task_name="task-" + str(i))
         index += num
 
     return tasks
@@ -191,6 +203,9 @@ Returns:
 def _create_sla_cfg(curr, tasks_count=DEFAUILT_TASKS_COUNT):
     assert isinstance(curr, job.SlaConfig)
 
-    updated_sla = job.SlaConfig(priority=curr.priority, preemptible=curr.preemptible,
-                                maximumRunningInstances=tasks_count)
+    updated_sla = job.SlaConfig(
+        priority=curr.priority,
+        preemptible=curr.preemptible,
+        maximumRunningInstances=tasks_count,
+    )
     return updated_sla

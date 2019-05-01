@@ -125,22 +125,29 @@ def run_mesos(config):
     print_utils.okgreen("started container %s" % master_container)
 
     # Run mesos slaves
-    cli.pull(config['mesos_slave_image'])
-    for i in range(0, config['num_agents']):
+    cli.pull(config["mesos_slave_image"])
+    for i in range(0, config["num_agents"]):
         run_mesos_agent(config, i, i)
-    for i in range(0, config.get('num_exclusive_agents', 0)):
+    for i in range(0, config.get("num_exclusive_agents", 0)):
         run_mesos_agent(
             config,
-            i, config['num_agents'] + i,
+            i,
+            config["num_agents"] + i,
             is_exclusive=True,
-            exclusive_label_value=config.get('exclusive_label_value', ''))
+            exclusive_label_value=config.get("exclusive_label_value", ""),
+        )
 
 
 #
 # Run a mesos agent
 #
-def run_mesos_agent(config, agent_index, port_offset, is_exclusive=False,
-                    exclusive_label_value=''):
+def run_mesos_agent(
+    config,
+    agent_index,
+    port_offset,
+    is_exclusive=False,
+    exclusive_label_value="",
+):
     prefix = config["mesos_agent_container"]
     attributes = config["attributes"]
     if is_exclusive:
@@ -157,8 +164,7 @@ def run_mesos_agent(config, agent_index, port_offset, is_exclusive=False,
             port_bindings={config["default_agent_port"]: port},
             binds=[
                 work_dir + "/files:/files",
-                work_dir
-                + "/mesos_config/etc_mesos-slave:/etc/mesos-slave",
+                work_dir + "/mesos_config/etc_mesos-slave:/etc/mesos-slave",
                 "/var/run/docker.sock:/var/run/docker.sock",
             ],
             privileged=True,
@@ -298,8 +304,8 @@ def start_and_wait(
         # used to migrate the schema;used inside host manager
         "AUTO_MIGRATE": config["auto_migrate"],
         "CLUSTER": "minicluster",
-        'AUTH_TYPE': os.getenv('AUTH_TYPE', 'NOOP'),
-        'AUTH_CONFIG_FILE': os.getenv('AUTH_CONFIG_FILE'),
+        "AUTH_TYPE": os.getenv("AUTH_TYPE", "NOOP"),
+        "AUTH_CONFIG_FILE": os.getenv("AUTH_CONFIG_FILE"),
     }
     if len(ports) > 1:
         env["GRPC_PORT"] = ports[1]
@@ -343,12 +349,7 @@ def run_peloton_resmgr(config):
         ports = [port + i * 10 for port in config["peloton_resmgr_ports"]]
         name = config["peloton_resmgr_container"] + repr(i)
         utils.remove_existing_container(name)
-        start_and_wait(
-            "resmgr",
-            name,
-            ports,
-            config,
-        )
+        start_and_wait("resmgr", name, ports, config)
 
 
 #
@@ -426,9 +427,7 @@ def run_peloton_placement(config):
             name,
             ports,
             config,
-            extra_env={
-                "TASK_TYPE": task_type,
-            },
+            extra_env={"TASK_TYPE": task_type},
         )
         i = i + 1
 
@@ -441,9 +440,4 @@ def run_peloton_archiver(config):
         ports = [port + i * 10 for port in config["peloton_archiver_ports"]]
         name = config["peloton_archiver_container"] + repr(i)
         utils.remove_existing_container(name)
-        start_and_wait(
-            "archiver",
-            name,
-            ports,
-            config,
-        )
+        start_and_wait("archiver", name, ports, config)
