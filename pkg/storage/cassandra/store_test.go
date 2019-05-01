@@ -876,22 +876,11 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
 		context.Background(), allResults)
 	suite.NoError(err)
 
-	// tamper allResults to make name "" and force summary to be retrieved from jobconfig
-	allResults[0]["name"] = ""
-	summaryResultFromJobConfig, err := store.getJobSummaryFromResultMap(
-		context.Background(), allResults)
-	suite.NoError(err)
 
 	suite.Equal(1, len(summaryResultFromLucene))
-	suite.Equal(1, len(summaryResultFromJobConfig))
-
 	suite.Equal("GetJobSummary", summaryResultFromLucene[0].GetName())
 	suite.Equal("owner", summaryResultFromLucene[0].GetOwningTeam())
 	suite.Equal("owner", summaryResultFromLucene[0].GetOwner())
-
-	suite.Equal("GetJobSummary", summaryResultFromJobConfig[0].GetName())
-	suite.Equal("owner", summaryResultFromJobConfig[0].GetOwningTeam())
-	suite.Equal("owner", summaryResultFromJobConfig[0].GetOwner())
 
 	// tamper allResults to make job_id not UUID and look for error.
 	allResults[0]["job_id"] = "junk"
