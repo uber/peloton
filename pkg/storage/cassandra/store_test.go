@@ -876,7 +876,6 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
 		context.Background(), allResults)
 	suite.NoError(err)
 
-
 	suite.Equal(1, len(summaryResultFromLucene))
 	suite.Equal("GetJobSummary", summaryResultFromLucene[0].GetName())
 	suite.Equal("owner", summaryResultFromLucene[0].GetOwningTeam())

@@ -3,6 +3,10 @@
 0.8.5 (unreleased)
 ------------------
 
+0.8.4.1
+------------------
+* 2019-05-02    Remove job name refill logic in GetAllJobsInJobIndex                                   zhixin@uber.com.
+
 0.8.4
 ------------------
 * 2019-04-24    Adjust resource limit for revocable job to reduce QoS preemption                       varung@uber.com
