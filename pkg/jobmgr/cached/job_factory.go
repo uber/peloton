@@ -215,8 +215,9 @@ func (f *jobFactory) publishMetrics() map[pbtask.TaskState]map[pbtask.TaskState]
 
 	// Iterate through jobs, tasks and count
 	jobs := f.GetAllJobs()
+	var totalThrottledTasks int
 	for _, j := range jobs {
-		stateCount := j.GetStateCount()
+		stateCount, throttledTasks := j.GetStateCount()
 		for currentState, goalStateMap := range stateCount {
 			for goalState, count := range goalStateMap {
 				if _, ok := tCount[currentState]; !ok {
@@ -224,12 +225,15 @@ func (f *jobFactory) publishMetrics() map[pbtask.TaskState]map[pbtask.TaskState]
 					tCount[currentState] = map[pbtask.TaskState]int{}
 				}
 				tCount[currentState][goalState] += count
+
 			}
 		}
+		totalThrottledTasks = totalThrottledTasks + throttledTasks
 	}
 
 	// Publish
 	f.mtx.scope.Gauge("jobs_count").Update(float64(len(jobs)))
+	f.mtx.scope.Gauge("throttled_tasks").Update(float64(totalThrottledTasks))
 	for s, sm := range tCount {
 		for gs, tc := range sm {
 			f.mtx.scope.Tagged(map[string]string{"state": s.String(), "goal_state": gs.String()}).Gauge("tasks_count").Update(float64(tc))

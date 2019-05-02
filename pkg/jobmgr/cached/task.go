@@ -92,6 +92,10 @@ type Task interface {
 	// GetRuntime returns the task run time
 	GetRuntime(ctx context.Context) (*pbtask.RuntimeInfo, error)
 
+	// GetCacheRuntime returns the task run time stored in the cache.
+	// It returns nil if the is no runtime in the cache.
+	GetCacheRuntime() *pbtask.RuntimeInfo
+
 	// GetLabels returns the task labels
 	GetLabels(ctx context.Context) ([]*peloton.Label, error)
 
@@ -600,6 +604,18 @@ func (t *task) GetRuntime(ctx context.Context) (*pbtask.RuntimeInfo, error) {
 
 	runtime := proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
 	return runtime, nil
+}
+
+func (t *task) GetCacheRuntime() *pbtask.RuntimeInfo {
+	t.RLock()
+	defer t.RUnlock()
+
+	if t.runtime == nil {
+		return nil
+	}
+
+	runtime := proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
+	return runtime
 }
 
 // copyLabelsInCache returns a copy of the labels in the cache.

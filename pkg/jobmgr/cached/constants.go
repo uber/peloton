@@ -33,7 +33,7 @@ const (
 	_defaultMaxParallelBatches = 1000
 
 	// time duration at which cache metrics are computed
-	_defaultMetricsUpdateTick = 5 * time.Minute
+	_defaultMetricsUpdateTick = 1 * time.Minute
 
 	// UpdateCacheOnly updates only the cache. It should be used only during
 	// recovery. Also, it requires passing the complete runtime information.

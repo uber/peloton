@@ -21,6 +21,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 
+	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/goalstate"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
@@ -31,7 +32,6 @@ import (
 
 const (
 	_rescheduleMessage = "Rescheduled after task terminated"
-	_throttleMessage   = "Task throttled due to failure"
 )
 
 // rescheduleTask patch the new job runtime and enqueue the task into goalstate engine
@@ -75,11 +75,11 @@ func rescheduleTask(
 		log.WithField("job_id", jobID).
 			WithField("instance_id", instanceID).
 			Debug("restarting terminated task")
-	} else if taskRuntime.GetMessage() != _throttleMessage {
+	} else if taskRuntime.GetMessage() != common.TaskThrottleMessage {
 		// only update the message when the throttled task enters
 		// this func for the first time
 		runtimeDiff = jobmgrcommon.RuntimeDiff{
-			jobmgrcommon.MessageField: _throttleMessage,
+			jobmgrcommon.MessageField: common.TaskThrottleMessage,
 		}
 	}
 

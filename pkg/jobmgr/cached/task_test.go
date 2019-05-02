@@ -810,6 +810,28 @@ func (suite *TaskTestSuite) TestReplaceTask_StaleRuntime() {
 	suite.checkListenersNotCalled()
 }
 
+func (suite *TaskTestSuite) TestGetCacheRuntime() {
+	tt := []struct {
+		runtime       *pbtask.RuntimeInfo
+		expectedState pbtask.TaskState
+	}{
+		{
+			runtime:       &pbtask.RuntimeInfo{State: pbtask.TaskState_RUNNING},
+			expectedState: pbtask.TaskState_RUNNING,
+		},
+		{
+			runtime:       nil,
+			expectedState: pbtask.TaskState_UNKNOWN,
+		},
+	}
+
+	for _, t := range tt {
+		task := suite.initializeTask(
+			suite.taskStore, suite.jobID, suite.instanceID, t.runtime)
+		suite.Equal(t.expectedState, task.GetCacheRuntime().GetState())
+	}
+}
+
 func (suite *TaskTestSuite) TestValidateState() {
 	mesosIDWithRunID1 := "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1"
 	mesosIDWithRunID2 := "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2"

@@ -34,6 +34,8 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+
+	"github.com/uber/peloton/pkg/common"
 )
 
 const (
@@ -310,6 +312,15 @@ func IsPelotonStateTerminal(state task.TaskState) bool {
 	default:
 		return false
 	}
+}
+
+// IsTaskThrottled returns true if a task is currently
+// throttled due to repeated failures
+func IsTaskThrottled(state task.TaskState, message string) bool {
+	if IsPelotonStateTerminal(state) && message == common.TaskThrottleMessage {
+		return true
+	}
+	return false
 }
 
 // IsPelotonPodStateTerminal returns true if pod state is

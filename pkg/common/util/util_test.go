@@ -29,6 +29,8 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+
+	"github.com/uber/peloton/pkg/common"
 )
 
 const (
@@ -510,6 +512,34 @@ func TestTaskTerminalState(t *testing.T) {
 	for s := range task.TaskState_name {
 		_, isTerm := taskTerminalStates[task.TaskState(s)]
 		assert.Equal(t, isTerm, IsPelotonStateTerminal(task.TaskState(s)))
+	}
+}
+
+func TestTaskThrottled(t *testing.T) {
+	tests := []struct {
+		state   task.TaskState
+		message string
+		result  bool
+	}{
+		{
+			state:   task.TaskState_KILLED,
+			message: common.TaskThrottleMessage,
+			result:  true,
+		},
+		{
+			state:   task.TaskState_KILLED,
+			message: "not throttled",
+			result:  false,
+		},
+		{
+			state:   task.TaskState_RUNNING,
+			message: common.TaskThrottleMessage,
+			result:  false,
+		},
+	}
+
+	for _, test := range tests {
+		assert.Equal(t, test.result, IsTaskThrottled(test.state, test.message))
 	}
 }
 

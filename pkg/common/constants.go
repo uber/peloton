@@ -139,3 +139,8 @@ const (
 	// AppLogField is the log field key for app name
 	AppLogField = "app"
 )
+
+const (
+	// TaskThrottleMessage indicates that the task is throttled due to repeated failures.
+	TaskThrottleMessage = "Task throttled due to failure"
+)

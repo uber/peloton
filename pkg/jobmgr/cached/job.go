@@ -196,8 +196,9 @@ type Job interface {
 	Delete(ctx context.Context) error
 
 	// GetStateCount returns the state/goal state count of all
-	// tasks in a job
-	GetStateCount() map[pbtask.TaskState]map[pbtask.TaskState]int
+	// tasks in a job as well as the total number of throttled
+	// tasks in stateless jobs
+	GetStateCount() (map[pbtask.TaskState]map[pbtask.TaskState]int, int)
 }
 
 // WorkflowOps defines operations on workflow
@@ -1993,8 +1994,9 @@ func (j *job) ClearWorkflow(updateID *peloton.UpdateID) {
 	delete(j.workflows, updateID.GetValue())
 }
 
-func (j *job) GetStateCount() map[pbtask.TaskState]map[pbtask.TaskState]int {
+func (j *job) GetStateCount() (map[pbtask.TaskState]map[pbtask.TaskState]int, int) {
 	result := make(map[pbtask.TaskState]map[pbtask.TaskState]int)
+	var throttledTasks int
 
 	j.RLock()
 	defer j.RUnlock()
@@ -2006,9 +2008,14 @@ func (j *job) GetStateCount() map[pbtask.TaskState]map[pbtask.TaskState]int {
 			result[curState] = make(map[pbtask.TaskState]int)
 		}
 		result[curState][goalState]++
+		if j.config != nil && j.config.GetType() == pbjob.JobType_SERVICE &&
+			util.IsPelotonStateTerminal(curState) &&
+			util.IsTaskThrottled(curState, t.GetCacheRuntime().GetMessage()) {
+			throttledTasks++
+		}
 	}
 
-	return result
+	return result, throttledTasks
 }
 
 // copyJobAndTaskConfig copies the provided job config and
