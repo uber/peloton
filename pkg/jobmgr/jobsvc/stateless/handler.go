@@ -1266,7 +1266,15 @@ func (h *serviceHandler) ListJobs(
 				jobSummary.GetRuntime().GetUpdateID(),
 			)
 			if err != nil {
-				return err
+				log.WithFields(
+					log.Fields{
+						"job_id":    jobSummary.GetId().GetValue(),
+						"update_id": jobSummary.GetRuntime().GetUpdateID().GetValue(),
+					}).
+					WithError(err).
+					Error("failed to get update")
+
+				updateInfo = nil
 			}
 		}
 

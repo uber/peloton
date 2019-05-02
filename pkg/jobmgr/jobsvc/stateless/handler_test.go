@@ -1881,11 +1881,25 @@ func (suite *statelessHandlerTestSuite) TestListJobsGetUpdateError() {
 		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
 		Return(nil, fmt.Errorf("fake db error"))
 
+	suite.listJobsServer.EXPECT().
+		Send(gomock.Any()).
+		Do(func(resp *statelesssvc.ListJobsResponse) {
+			suite.Equal(1, len(resp.GetJobs()))
+			job := resp.GetJobs()[0]
+			suite.Equal("testjob", job.GetName())
+			suite.Equal(stateless.JobState_JOB_STATE_RUNNING, job.GetStatus().GetState())
+			suite.Equal(
+				stateless.WorkflowState_WORKFLOW_STATE_INVALID,
+				job.GetStatus().GetWorkflowStatus().GetState(),
+			)
+		}).
+		Return(nil)
+
 	err := suite.handler.ListJobs(
 		&statelesssvc.ListJobsRequest{},
 		suite.listJobsServer,
 	)
-	suite.Error(err)
+	suite.NoError(err)
 }
 
 // TestListJobsSendError tests getting an error during Send to
