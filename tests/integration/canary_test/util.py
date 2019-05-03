@@ -96,7 +96,8 @@ def patch_jobs(active_jobs=None, desired_jobs=None):
                 if len(resp.instances_removed) > 0 or \
                    len(resp.instances_updated) > 0 or \
                    len(resp.instances_added) > 0:
-                    pytest.exit("canary test run was aborted, since job are dirty!!")
+                    pytest.exit(
+                        "canary test run was aborted, since jobs are dirty!!")
 
                 jobs[job_name] = j.get_job_id()
         else:
