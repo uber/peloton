@@ -236,6 +236,37 @@ func (suite *UpdateTestSuite) TestValidWriteProgress() {
 	suite.Equal(instanceFailed, suite.update.instancesFailed)
 }
 
+// TestWriteDuplicateProgress tests writing the same progress in
+// DB would not trigger a DB write
+func (suite *UpdateTestSuite) TestWriteDuplicateProgress() {
+	state := pbupdate.State_ROLLING_FORWARD
+	instancesDone := []uint32{0, 1, 2, 3}
+	instancesCurrent := []uint32{4, 5}
+	instanceFailed := []uint32{6, 7}
+
+	suite.update.instancesCurrent = []uint32{3, 6}
+
+	suite.update.workflowType = models.WorkflowType_UPDATE
+	suite.update.state = pbupdate.State_ROLLING_FORWARD
+	suite.update.instancesCurrent = instancesCurrent
+	suite.update.instancesDone = instancesDone
+	suite.update.instancesFailed = instanceFailed
+
+	err := suite.update.WriteProgress(
+		context.Background(),
+		state,
+		instancesDone,
+		instanceFailed,
+		instancesCurrent,
+	)
+
+	suite.NoError(err)
+	suite.Equal(state, suite.update.state)
+	suite.Equal(instancesCurrent, suite.update.instancesCurrent)
+	suite.Equal(instancesDone, suite.update.instancesDone)
+	suite.Equal(instanceFailed, suite.update.instancesFailed)
+}
+
 // TestWriteProgressAbortedUpdate tests WriteProgress invalidates
 // progress update after it reaches terminated state
 func (suite *UpdateTestSuite) TestWriteProgressAbortedUpdate() {
