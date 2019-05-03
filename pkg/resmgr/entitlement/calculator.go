@@ -58,7 +58,7 @@ type Calculator struct {
 	// This atomic boolean helps to identify if previous run is
 	// complete or still not done
 	isRunning uat.Bool
-	metrics   *Metrics
+	metrics   *metrics
 }
 
 // NewCalculator initializes the entitlement Calculator
@@ -76,7 +76,7 @@ func NewCalculator(
 		hostMgrClient:        hostMgrClient,
 		clusterCapacity:      make(map[string]float64),
 		clusterSlackCapacity: make(map[string]float64),
-		metrics:              NewMetrics(parent.SubScope("Calculator")),
+		metrics:              newMetrics(parent.SubScope("Calculator")),
 	}
 }
 
@@ -88,7 +88,7 @@ func (c *Calculator) Start() error {
 	if c.runningState == res_common.RunningStateRunning {
 		log.Warn("Entitlement Calculator is already running, " +
 			"no action will be performed")
-		c.metrics.EntitlementCalculationMissed.Inc(1)
+		c.metrics.calculationDuplicate.Inc(1)
 		return nil
 	}
 
@@ -104,7 +104,8 @@ func (c *Calculator) Start() error {
 		defer ticker.Stop()
 		for {
 			if err := c.calculateEntitlement(context.Background()); err != nil {
-				log.Error(err)
+				c.metrics.calculationFailed.Inc(1)
+				log.WithError(err)
 			}
 
 			select {
@@ -121,17 +122,16 @@ func (c *Calculator) Start() error {
 	return nil
 }
 
-// calculateEntitlement calculates the entitlement
+// calculateEntitlement runs one entitlement calculation cycle.
 func (c *Calculator) calculateEntitlement(ctx context.Context) error {
 	log.Info("calculating entitlement")
 	// Checking is previous transitions are complete
 	isRunning := c.isRunning.Load()
 	if isRunning {
-		log.Debug("previous instance of entitlement " +
-			"Calculator is running, skipping this run")
-		return errors.New("previous instance of entitlement " +
-			"Calculator is running, skipping this run")
+		return errors.New("calculation already running")
 	}
+
+	defer c.metrics.calculationDuration.Start().Stop()
 
 	// Changing value by that we block rest
 	// of the runs
@@ -143,14 +143,12 @@ func (c *Calculator) calculateEntitlement(ctx context.Context) error {
 		Value: common.RootResPoolID,
 	})
 	if err != nil {
-		log.WithError(err)
-		log.Error("Root resource pool is not found")
-		return err
+		return errors.Wrapf(err, "failed to get root resource pool")
 	}
 
 	// Updating cluster capacity
 	if err = c.updateClusterCapacity(ctx, rootResPool); err != nil {
-		return err
+		return errors.Wrapf(err, "failed to update cluster capacity")
 	}
 	// Invoking the demand calculation
 	rootResPool.CalculateDemand()
@@ -168,20 +166,21 @@ func (c *Calculator) calculateEntitlement(ctx context.Context) error {
 	return nil
 }
 
-// getChildShare returns the combined share of the childrens
+// getChildShare returns the combined share of all the children of the provided
+// resource pool.
 func (c *Calculator) getChildShare(resp respool.ResPool, kind string) float64 {
 	if resp == nil {
 		return 0
 	}
 
-	childs := resp.Children()
+	children := resp.Children()
 
-	totalshare := float64(0)
-	for e := childs.Front(); e != nil; e = e.Next() {
+	totalShare := float64(0)
+	for e := children.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
-		totalshare += n.Resources()[kind].Share
+		totalShare += n.Resources()[kind].Share
 	}
-	return totalshare
+	return totalShare
 }
 
 // demandExist returns true if demand exists for any resource kind
@@ -202,7 +201,7 @@ func (c *Calculator) updateClusterCapacity(
 	// Calling the hostmgr for getting total capacity of the cluster
 	totalResources, slackTotalResources, err := c.getTotalCapacity(ctx)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to get total cluster capacity")
 	}
 
 	rootResourcePoolConfig := rootResPool.ResourcePoolConfig()

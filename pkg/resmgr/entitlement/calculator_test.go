@@ -58,7 +58,7 @@ func (s *EntitlementCalculatorTestSuite) SetupTest() {
 		stopChan:             make(chan struct{}, 1),
 		clusterCapacity:      make(map[string]float64),
 		clusterSlackCapacity: make(map[string]float64),
-		metrics:              NewMetrics(tally.NoopScope),
+		metrics:              newMetrics(tally.NoopScope),
 	}
 	s.initRespoolTree()
 	s.resTree.Start()
@@ -114,7 +114,7 @@ func (s *EntitlementCalculatorTestSuite) TestPeriodicCalculationWhenStarted() {
 		calculationPeriod: 10 * time.Millisecond,
 		stopChan:          make(chan struct{}, 1),
 		clusterCapacity:   make(map[string]float64),
-		metrics:           NewMetrics(tally.NoopScope),
+		metrics:           newMetrics(tally.NoopScope),
 		hostMgrClient:     mockHostMgr,
 	}
 	s.NoError(calculator.Start())
@@ -916,7 +916,7 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 		clusterCapacity:      make(map[string]float64),
 		clusterSlackCapacity: make(map[string]float64),
 		hostMgrClient:        mockHostMgr,
-		metrics:              NewMetrics(tally.NoopScope),
+		metrics:              newMetrics(tally.NoopScope),
 	}
 
 	resTree.Start()

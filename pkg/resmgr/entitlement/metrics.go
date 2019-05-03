@@ -16,16 +16,27 @@ package entitlement
 
 import "github.com/uber-go/tally"
 
-// Metrics is a placeholder for all metrics in task.
-type Metrics struct {
-	EntitlementCalculationMissed tally.Counter
+// metrics tracks entitlement calculation metrics.
+type metrics struct {
+	// Tracks if multiple entitle calculation goroutines were attempted to be
+	// started.
+	calculationDuplicate tally.Counter
+	// Tracks the failure count of the calculation cycle.
+	calculationFailed tally.Counter
+	// Tracks the duration of the calculation cycle.
+	calculationDuration tally.Timer
 }
 
-// NewMetrics returns a new instance of task.Metrics.
-func NewMetrics(scope tally.Scope) *Metrics {
-	calculatorScope := scope.SubScope("Entitlement")
-	return &Metrics{
-		EntitlementCalculationMissed: calculatorScope.Counter(
-			"calculation_missed"),
+// newMetrics returns a new instance of task.metrics.
+func newMetrics(scope tally.Scope) *metrics {
+	cScope := scope.SubScope("entitlement")
+
+	return &metrics{
+		calculationDuplicate: cScope.Counter(
+			"calculation_duplicate"),
+		calculationFailed: cScope.Counter(
+			"calculation_failed"),
+		calculationDuration: cScope.Timer(
+			"calculation_duration"),
 	}
 }
