@@ -43,6 +43,10 @@ func (t *basicToken) Items() map[string]string {
 	return t.items
 }
 
+func (t *basicToken) Del(k string) {
+	delete(t.items, k)
+}
+
 // NewBasicSecurityClient returns SecurityClient
 func NewBasicSecurityClient(configPath string) (*SecurityClient, error) {
 	cConfig, err := parseConfig(configPath)

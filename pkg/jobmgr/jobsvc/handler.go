@@ -35,9 +35,10 @@ import (
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/util"
 	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
+	yarpcutil "github.com/uber/peloton/pkg/common/util/yarpc"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
-	jobconfig "github.com/uber/peloton/pkg/jobmgr/job/config"
+	"github.com/uber/peloton/pkg/jobmgr/job/config"
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
 	"github.com/uber/peloton/pkg/jobmgr/util/handler"
 	jobutil "github.com/uber/peloton/pkg/jobmgr/util/job"
@@ -114,7 +115,35 @@ type serviceHandler struct {
 // enqueues the tasks for scheduling
 func (h *serviceHandler) Create(
 	ctx context.Context,
-	req *job.CreateRequest) (*job.CreateResponse, error) {
+	req *job.CreateRequest) (resp *job.CreateResponse, err error) {
+	defer func() {
+		jobID := req.GetId().GetValue()
+		instanceCount := req.GetConfig().GetInstanceCount()
+		headers := yarpcutil.GetHeaders(ctx)
+
+		if err != nil || resp.GetError() != nil {
+			entry := log.WithField("job_id", jobID).
+				WithField("instance_count", instanceCount).
+				WithField("headers", headers)
+
+			if err != nil {
+				entry = entry.WithError(err)
+			}
+
+			if resp.GetError() != nil {
+				entry = entry.WithField("create_error", resp.GetError().String())
+			}
+
+			entry.Warn("JobManager.CreateJob failed")
+			return
+		}
+
+		log.WithField("job_id", jobID).
+			WithField("response", resp).
+			WithField("instance_count", instanceCount).
+			WithField("headers", headers).
+			Info("JobSVC.CreateJob succeeded")
+	}()
 
 	h.metrics.JobAPICreate.Inc(1)
 
@@ -157,8 +186,6 @@ func (h *serviceHandler) Create(
 			},
 		}, nil
 	}
-
-	log.WithField("config", jobConfig).Infof("JobManager.Create called")
 
 	// Validate job config with default task configs
 	err = jobconfig.ValidateConfig(jobConfig, h.jobSvcCfg.MaxTasksPerJob)
@@ -224,7 +251,35 @@ func (h *serviceHandler) Create(
 // performs the appropriate action based on the change
 func (h *serviceHandler) Update(
 	ctx context.Context,
-	req *job.UpdateRequest) (*job.UpdateResponse, error) {
+	req *job.UpdateRequest) (resp *job.UpdateResponse, err error) {
+	defer func() {
+		jobID := req.GetId().GetValue()
+		headers := yarpcutil.GetHeaders(ctx)
+		configVersion := req.GetConfig().GetChangeLog().GetVersion()
+
+		if err != nil || resp.GetError() != nil {
+			entry := log.WithField("job_id", jobID).
+				WithField("headers", headers).
+				WithField("config_version", configVersion)
+
+			if err != nil {
+				entry = entry.WithError(err)
+			}
+
+			if resp.GetError() != nil {
+				entry = entry.WithField("update_error", resp.GetError().String())
+			}
+
+			entry.Warn("JobManager.Update failed")
+			return
+		}
+
+		log.WithField("job_id", jobID).
+			WithField("response", resp).
+			WithField("config_version", configVersion).
+			WithField("headers", headers).
+			Info("JobManager.Update succeeded")
+	}()
 
 	h.metrics.JobAPIUpdate.Inc(1)
 
@@ -355,9 +410,33 @@ func (h *serviceHandler) Update(
 // Get returns a job config for a given job ID
 func (h *serviceHandler) Get(
 	ctx context.Context,
-	req *job.GetRequest) (*job.GetResponse, error) {
+	req *job.GetRequest) (resp *job.GetResponse, err error) {
+	defer func() {
+		jobID := req.GetId().GetValue()
+		headers := yarpcutil.GetHeaders(ctx)
 
-	log.WithField("request", req).Debug("JobManager.Get called")
+		if err != nil || resp.GetError() != nil {
+			entry := log.WithField("job_id", jobID).
+				WithField("headers", headers)
+
+			if err != nil {
+				entry = entry.WithError(err)
+			}
+
+			if resp.GetError() != nil {
+				entry = entry.WithField("get_error", resp.GetError().String())
+			}
+
+			entry.Warn("JobManager.Get failed")
+			return
+		}
+
+		log.WithField("job_id", jobID).
+			WithField("response", resp).
+			WithField("headers", headers).
+			Debug("JobManager.Get succeeded")
+	}()
+
 	h.metrics.JobAPIGet.Inc(1)
 
 	jobRuntime, err := handler.GetJobRuntimeWithoutFillingCache(
@@ -407,7 +486,7 @@ func (h *serviceHandler) Get(
 	secretVolumes := util.RemoveSecretVolumesFromJobConfig(jobConfig)
 
 	h.metrics.JobGet.Inc(1)
-	resp := &job.GetResponse{
+	resp = &job.GetResponse{
 		JobInfo: &job.JobInfo{
 			Id:      req.GetId(),
 			Config:  jobConfig,
@@ -415,14 +494,29 @@ func (h *serviceHandler) Get(
 		},
 		Secrets: jobmgrtask.CreateSecretsFromVolumes(secretVolumes),
 	}
-	log.WithField("response", resp).Debug("JobManager.Get returned")
 	return resp, nil
 }
 
 // Refresh loads the task runtime state from DB, updates the cache,
 // and enqueues it to goal state for evaluation.
-func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (*job.RefreshResponse, error) {
-	log.WithField("request", req).Debug("JobManager.Refresh called")
+func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (resp *job.RefreshResponse, err error) {
+	defer func() {
+		jobID := req.GetId().GetValue()
+		headers := yarpcutil.GetHeaders(ctx)
+
+		if err != nil {
+			log.WithField("job_id", jobID).
+				WithField("headers", headers).
+				WithError(err).
+				Warn("JobManager.Refresh failed")
+			return
+		}
+
+		log.WithField("job_id", jobID).
+			WithField("headers", headers).
+			Debug("JobManager.Refresh succeeded")
+	}()
+
 	h.metrics.JobAPIRefresh.Inc(1)
 
 	if !h.candidate.IsLeader() {
@@ -466,15 +560,35 @@ func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (
 // Query returns a list of jobs matching the given query
 // List/Query API should not use cachedJob
 // because we would not clean up the cache for untracked job
-func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job.QueryResponse, error) {
-	log.WithField("request", req).Info("JobManager.Query called")
+func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (resp *job.QueryResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+
+		if err != nil || resp.GetError() != nil {
+			entry := log.WithField("headers", headers)
+
+			if err != nil {
+				entry = entry.WithError(err)
+			}
+
+			if resp.GetError() != nil {
+				entry = entry.WithField("query_error", resp.GetError().String())
+			}
+			entry.Warn("JobManager.Query failed")
+			return
+		}
+
+		log.WithField("headers", headers).
+			WithField("response", resp).
+			Debug("JobManager.Query succeeded")
+	}()
+
 	h.metrics.JobAPIQuery.Inc(1)
 	callStart := time.Now()
 
 	jobConfigs, jobSummary, total, err := h.jobStore.QueryJobs(ctx, req.GetRespoolID(), req.GetSpec(), req.GetSummaryOnly())
 	if err != nil {
 		h.metrics.JobQueryFail.Inc(1)
-		log.WithError(err).Error("Query job failed with error")
 		return &job.QueryResponse{
 			Error: &job.QueryResponse_Error{
 				Err: &apierrors.UnknownError{
@@ -486,7 +600,7 @@ func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job
 	}
 
 	h.metrics.JobQuery.Inc(1)
-	resp := &job.QueryResponse{
+	resp = &job.QueryResponse{
 		Records: jobConfigs,
 		Results: jobSummary,
 		Pagination: &query.Pagination{
@@ -498,14 +612,36 @@ func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job
 	}
 	callDuration := time.Since(callStart)
 	h.metrics.JobQueryHandlerDuration.Record(callDuration)
-	log.WithField("response", resp).Debug("JobManager.Query returned")
 	return resp, nil
 }
 
 // Delete removes jobs metadata from storage for a terminal job
 func (h *serviceHandler) Delete(
 	ctx context.Context,
-	req *job.DeleteRequest) (*job.DeleteResponse, error) {
+	req *job.DeleteRequest) (resp *job.DeleteResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		jobID := req.GetId().GetValue()
+
+		if err != nil || resp.GetError() != nil {
+			entry := log.WithField("job_id", jobID).
+				WithField("headers", headers)
+
+			if err != nil {
+				entry = entry.WithError(err)
+			}
+
+			if resp.GetError() != nil {
+				entry = entry.WithField("delete_error", resp.GetError().String())
+			}
+			entry.Warn("JobManager.Delete failed")
+			return
+		}
+
+		log.WithField("job_id", jobID).
+			WithField("headers", headers).
+			Info("JobManager.Delete succeeded")
+	}()
 
 	h.metrics.JobAPIDelete.Inc(1)
 
@@ -556,7 +692,23 @@ func (h *serviceHandler) Delete(
 
 func (h *serviceHandler) Restart(
 	ctx context.Context,
-	req *job.RestartRequest) (*job.RestartResponse, error) {
+	req *job.RestartRequest) (resp *job.RestartResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		jobID := req.GetId().GetValue()
+
+		if err != nil {
+			log.WithField("job_id", jobID).
+				WithField("headers", headers).
+				WithError(err).
+				Warn("JobManager.Restart failed")
+			return
+		}
+
+		log.WithField("job_id", jobID).
+			WithField("headers", headers).
+			Info("JobManager.Restart succeeded")
+	}()
 
 	h.metrics.JobAPIRestart.Inc(1)
 
@@ -583,7 +735,24 @@ func (h *serviceHandler) Restart(
 
 func (h *serviceHandler) Start(
 	ctx context.Context,
-	req *job.StartRequest) (*job.StartResponse, error) {
+	req *job.StartRequest) (resp *job.StartResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		jobID := req.GetId().GetValue()
+
+		if err != nil {
+			log.WithField("job_id", jobID).
+				WithField("headers", headers).
+				WithError(err).
+				Warn("JobManager.Start failed")
+			return
+		}
+
+		log.WithField("job_id", jobID).
+			WithField("headers", headers).
+			Info("JobManager.Start succeeded")
+	}()
+
 	h.metrics.JobAPIStart.Inc(1)
 
 	updateID, resourceVersion, err := h.createNonUpdateWorkflow(
@@ -609,7 +778,24 @@ func (h *serviceHandler) Start(
 
 func (h *serviceHandler) Stop(
 	ctx context.Context,
-	req *job.StopRequest) (*job.StopResponse, error) {
+	req *job.StopRequest) (resp *job.StopResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		jobID := req.GetId().GetValue()
+
+		if err != nil {
+			log.WithField("job_id", jobID).
+				WithField("headers", headers).
+				WithError(err).
+				Warn("JobManager.Stop failed")
+			return
+		}
+
+		log.WithField("job_id", jobID).
+			WithField("headers", headers).
+			Info("JobManager.Stop succeeded")
+	}()
+
 	h.metrics.JobAPIStop.Inc(1)
 
 	updateID, resourceVersion, err := h.createNonUpdateWorkflow(
@@ -738,7 +924,24 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 
 func (h *serviceHandler) GetCache(
 	ctx context.Context,
-	req *job.GetCacheRequest) (*job.GetCacheResponse, error) {
+	req *job.GetCacheRequest) (resp *job.GetCacheResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		jobID := req.GetId().GetValue()
+
+		if err != nil {
+			log.WithField("job_id", jobID).
+				WithField("headers", headers).
+				WithError(err).
+				Warn("JobManager.GetCache failed")
+			return
+		}
+
+		log.WithField("job_id", jobID).
+			WithField("headers", headers).
+			Debug("JobManager.GetCache succeeded")
+	}()
+
 	cachedJob := h.jobFactory.GetJob(req.GetId())
 	if cachedJob == nil {
 		return nil,
@@ -774,7 +977,20 @@ func (h *serviceHandler) GetCache(
 // between active_jobs table and mv_job_by_state materialzied view
 func (h *serviceHandler) GetActiveJobs(
 	ctx context.Context,
-	req *job.GetActiveJobsRequest) (*job.GetActiveJobsResponse, error) {
+	req *job.GetActiveJobsRequest) (resp *job.GetActiveJobsResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+
+		if err != nil {
+			log.WithField("headers", headers).
+				WithError(err).
+				Warn("JobManager.GetActiveJobs failed")
+			return
+		}
+
+		log.WithField("headers", headers).
+			Debug("JobManager.GetActiveJobs succeeded")
+	}()
 
 	jobIDs, err := h.jobStore.GetActiveJobs(ctx)
 	if err != nil {

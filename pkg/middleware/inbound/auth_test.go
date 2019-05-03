@@ -27,7 +27,10 @@ import (
 	"go.uber.org/yarpc/api/transport/transporttest"
 )
 
-const _testService = "peloton.api.v1alpha.job.stateless.svc.TestService"
+const (
+	_testService       = "peloton.api.v1alpha.job.stateless.svc.TestService"
+	_passwordHeaderKey = "password"
+)
 
 type AuthInboundMiddlewareSuite struct {
 	suite.Suite
@@ -44,7 +47,10 @@ func (suite *AuthInboundMiddlewareSuite) SetupTest() {
 	suite.s = auth_mocks.NewMockSecurityManager(suite.ctrl)
 	suite.u = auth_mocks.NewMockUser(suite.ctrl)
 	suite.m = NewAuthInboundMiddleware(suite.s)
-	suite.r = &transport.Request{Service: _testService}
+	suite.r = &transport.Request{
+		Service: _testService,
+		Headers: transport.HeadersFromMap(map[string]string{_passwordHeaderKey: "password"}),
+	}
 }
 
 func (suite *AuthInboundMiddlewareSuite) TearDownTest() {
@@ -54,6 +60,7 @@ func (suite *AuthInboundMiddlewareSuite) TearDownTest() {
 func (suite *AuthInboundMiddlewareSuite) TestHandleSuccess() {
 	h := transporttest.NewMockUnaryHandler(suite.ctrl)
 	suite.s.EXPECT().Authenticate(gomock.Any()).Return(suite.u, nil)
+	suite.s.EXPECT().RedactToken(gomock.Any()).Return()
 	suite.u.EXPECT().IsPermitted(gomock.Any()).Return(true)
 	h.EXPECT().Handle(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	suite.NoError(suite.m.Handle(context.Background(), suite.r, nil, h))
@@ -68,6 +75,7 @@ func (suite *AuthInboundMiddlewareSuite) TestHandleAuthenticateFail() {
 func (suite *AuthInboundMiddlewareSuite) TestHandlePermitCheckFail() {
 	h := transporttest.NewMockUnaryHandler(suite.ctrl)
 	suite.s.EXPECT().Authenticate(gomock.Any()).Return(suite.u, nil)
+	suite.s.EXPECT().RedactToken(gomock.Any()).Return()
 	suite.u.EXPECT().IsPermitted(gomock.Any()).Return(false)
 	suite.Error(suite.m.Handle(context.Background(), suite.r, nil, h))
 }
@@ -75,6 +83,7 @@ func (suite *AuthInboundMiddlewareSuite) TestHandlePermitCheckFail() {
 func (suite *AuthInboundMiddlewareSuite) TestHandleHandlerFail() {
 	h := transporttest.NewMockUnaryHandler(suite.ctrl)
 	suite.s.EXPECT().Authenticate(gomock.Any()).Return(suite.u, nil)
+	suite.s.EXPECT().RedactToken(gomock.Any()).Return()
 	suite.u.EXPECT().IsPermitted(gomock.Any()).Return(true)
 	h.EXPECT().Handle(gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("test error"))
 	suite.Error(suite.m.Handle(context.Background(), suite.r, nil, h))
@@ -83,6 +92,7 @@ func (suite *AuthInboundMiddlewareSuite) TestHandleHandlerFail() {
 func (suite *AuthInboundMiddlewareSuite) TestHandleOnewaySuccess() {
 	h := transporttest.NewMockOnewayHandler(suite.ctrl)
 	suite.s.EXPECT().Authenticate(gomock.Any()).Return(suite.u, nil)
+	suite.s.EXPECT().RedactToken(gomock.Any()).Return()
 	suite.u.EXPECT().IsPermitted(gomock.Any()).Return(true)
 	h.EXPECT().HandleOneway(gomock.Any(), gomock.Any()).Return(nil)
 	suite.NoError(suite.m.HandleOneway(context.Background(), suite.r, h))
@@ -97,6 +107,7 @@ func (suite *AuthInboundMiddlewareSuite) TestHandleOnewayAuthenticateFail() {
 func (suite *AuthInboundMiddlewareSuite) TestHandleOnewayPermitCheckFail() {
 	h := transporttest.NewMockOnewayHandler(suite.ctrl)
 	suite.s.EXPECT().Authenticate(gomock.Any()).Return(suite.u, nil)
+	suite.s.EXPECT().RedactToken(gomock.Any()).Return()
 	suite.u.EXPECT().IsPermitted(gomock.Any()).Return(false)
 	suite.Error(suite.m.HandleOneway(context.Background(), suite.r, h))
 }
@@ -104,6 +115,7 @@ func (suite *AuthInboundMiddlewareSuite) TestHandleOnewayPermitCheckFail() {
 func (suite *AuthInboundMiddlewareSuite) TestHandleOnewayHandlerFail() {
 	h := transporttest.NewMockOnewayHandler(suite.ctrl)
 	suite.s.EXPECT().Authenticate(gomock.Any()).Return(suite.u, nil)
+	suite.s.EXPECT().RedactToken(gomock.Any()).Return()
 	suite.u.EXPECT().IsPermitted(gomock.Any()).Return(true)
 	h.EXPECT().HandleOneway(gomock.Any(), gomock.Any()).Return(errors.New("test error"))
 	suite.Error(suite.m.HandleOneway(context.Background(), suite.r, h))
@@ -119,6 +131,7 @@ func (suite *AuthInboundMiddlewareSuite) TestHandleStreamSuccess() {
 		Return(&transport.StreamRequest{Meta: &transport.RequestMeta{Service: _testService}}).
 		MinTimes(1)
 	suite.s.EXPECT().Authenticate(gomock.Any()).Return(suite.u, nil)
+	suite.s.EXPECT().RedactToken(gomock.Any()).Return()
 	suite.u.EXPECT().IsPermitted(gomock.Any()).Return(true)
 	h.EXPECT().HandleStream(gomock.Any()).Return(nil)
 	suite.NoError(suite.m.HandleStream(ss, h))
@@ -147,6 +160,7 @@ func (suite *AuthInboundMiddlewareSuite) TestHandleStreamPermitCheckFail() {
 		Return(&transport.StreamRequest{Meta: &transport.RequestMeta{Service: _testService}}).
 		MinTimes(1)
 	suite.s.EXPECT().Authenticate(gomock.Any()).Return(suite.u, nil)
+	suite.s.EXPECT().RedactToken(gomock.Any()).Return()
 	suite.u.EXPECT().IsPermitted(gomock.Any()).Return(false)
 	suite.Error(suite.m.HandleStream(ss, h))
 }
@@ -161,6 +175,7 @@ func (suite *AuthInboundMiddlewareSuite) TestHandleStreamHandlerFail() {
 		Return(&transport.StreamRequest{Meta: &transport.RequestMeta{Service: _testService}}).
 		MinTimes(1)
 	suite.s.EXPECT().Authenticate(gomock.Any()).Return(suite.u, nil)
+	suite.s.EXPECT().RedactToken(gomock.Any()).Return()
 	suite.u.EXPECT().IsPermitted(gomock.Any()).Return(true)
 	h.EXPECT().HandleStream(gomock.Any()).Return(errors.New("test error"))
 	suite.Error(suite.m.HandleStream(ss, h))

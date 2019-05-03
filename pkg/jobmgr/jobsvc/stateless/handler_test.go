@@ -1741,6 +1741,8 @@ func (suite *statelessHandlerTestSuite) TestListPodsSuccess() {
 			suite.Equal(task.GetStatus().GetPodId().GetValue(), tasks[1].MesosTaskId.GetValue())
 		}).Return(nil)
 
+	suite.listJobsServer.EXPECT().Context().Return(context.Background()).AnyTimes()
+
 	err := suite.handler.ListPods(
 		&statelesssvc.ListPodsRequest{
 			JobId: &v1alphapeloton.JobID{Value: testJobID},
@@ -1758,6 +1760,8 @@ func (suite *statelessHandlerTestSuite) TestListPodsTaskGetError() {
 			gomock.Any(),
 		).
 		Return(nil, fmt.Errorf("fake db error"))
+
+	suite.listJobsServer.EXPECT().Context().Return(context.Background()).AnyTimes()
 
 	err := suite.handler.ListPods(
 		&statelesssvc.ListPodsRequest{
@@ -1790,6 +1794,8 @@ func (suite *statelessHandlerTestSuite) TestListPodsSendError() {
 	suite.listPodsServer.EXPECT().
 		Send(gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
+
+	suite.listJobsServer.EXPECT().Context().Return(context.Background()).AnyTimes()
 
 	err := suite.handler.ListPods(
 		&statelesssvc.ListPodsRequest{
@@ -1838,6 +1844,8 @@ func (suite *statelessHandlerTestSuite) TestListJobsSuccess() {
 		}).
 		Return(nil)
 
+	suite.listJobsServer.EXPECT().Context().Return(context.Background()).AnyTimes()
+
 	err := suite.handler.ListJobs(
 		&statelesssvc.ListJobsRequest{},
 		suite.listJobsServer,
@@ -1851,6 +1859,8 @@ func (suite *statelessHandlerTestSuite) TestListJobsGetSummaryDBError() {
 	suite.jobStore.EXPECT().
 		GetAllJobsInJobIndex(gomock.Any()).
 		Return(nil, fmt.Errorf("fake db error"))
+
+	suite.listJobsServer.EXPECT().Context().Return(context.Background()).AnyTimes()
 
 	err := suite.handler.ListJobs(
 		&statelesssvc.ListJobsRequest{},
@@ -1894,6 +1904,7 @@ func (suite *statelessHandlerTestSuite) TestListJobsGetUpdateError() {
 			)
 		}).
 		Return(nil)
+	suite.listJobsServer.EXPECT().Context().Return(context.Background()).AnyTimes()
 
 	err := suite.handler.ListJobs(
 		&statelesssvc.ListJobsRequest{},
@@ -1930,6 +1941,8 @@ func (suite *statelessHandlerTestSuite) TestListJobsSendError() {
 	suite.listJobsServer.EXPECT().
 		Send(gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
+
+	suite.listJobsServer.EXPECT().Context().Return(context.Background()).AnyTimes()
 
 	err := suite.handler.ListJobs(
 		&statelesssvc.ListJobsRequest{},

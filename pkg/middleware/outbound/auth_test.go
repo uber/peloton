@@ -118,3 +118,7 @@ func (t *testToken) Get(k string) (string, bool) {
 func (t *testToken) Items() map[string]string {
 	return t.items
 }
+
+func (t *testToken) Del(k string) {
+	delete(t.items, k)
+}

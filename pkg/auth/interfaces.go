@@ -29,6 +29,7 @@ const (
 // Token is used by SecurityManager to authenticate a user
 type Token interface {
 	Get(k string) (string, bool)
+	Del(k string)
 	// Items returns all of the items in the token.
 	// The returned map should not be modified, it is
 	// the caller's responsibility to copy before write.
@@ -40,6 +41,13 @@ type SecurityManager interface {
 	// Authenticate with the token provided,
 	// return User if authentication succeeds
 	Authenticate(token Token) (User, error)
+	// RedactToken redact token passed in by
+	// removing sensitive info, so the info would
+	// not be leaked into other components and get
+	// leaked/logged accidentally.
+	// It would be called after auth is done, before
+	// passing the token to other components
+	RedactToken(token Token)
 }
 
 // User includes authorization related methods

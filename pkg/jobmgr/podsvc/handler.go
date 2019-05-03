@@ -30,6 +30,7 @@ import (
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/util"
 	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
+	yarpcutil "github.com/uber/peloton/pkg/common/util/yarpc"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
@@ -37,7 +38,6 @@ import (
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
 	goalstateutil "github.com/uber/peloton/pkg/jobmgr/util/goalstate"
 	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
-
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 	"github.com/uber/peloton/pkg/storage"
 
@@ -95,8 +95,10 @@ func (h *serviceHandler) StartPod(
 	req *svc.StartPodRequest,
 ) (resp *svc.StartPodResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.StartPod failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -105,6 +107,7 @@ func (h *serviceHandler) StartPod(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Info("PodSVC.StartPod succeeded")
 	}()
 
@@ -260,8 +263,10 @@ func (h *serviceHandler) StopPod(
 	req *svc.StopPodRequest,
 ) (resp *svc.StopPodResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.StopPod failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -270,6 +275,7 @@ func (h *serviceHandler) StopPod(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Info("PodSVC.StopPod succeeded")
 	}()
 
@@ -325,8 +331,10 @@ func (h *serviceHandler) RestartPod(
 	req *svc.RestartPodRequest,
 ) (resp *svc.RestartPodResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.RestartPod failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -335,6 +343,7 @@ func (h *serviceHandler) RestartPod(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Info("PodSVC.RestartPod succeeded")
 	}()
 
@@ -380,8 +389,10 @@ func (h *serviceHandler) GetPod(
 	req *svc.GetPodRequest,
 ) (resp *svc.GetPodResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.GetPod failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -390,6 +401,7 @@ func (h *serviceHandler) GetPod(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Debug("PodSVC.GetPod succeeded")
 	}()
 
@@ -462,8 +474,10 @@ func (h *serviceHandler) GetPodEvents(
 	req *svc.GetPodEventsRequest,
 ) (resp *svc.GetPodEventsResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.GetPodEvents failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -472,6 +486,7 @@ func (h *serviceHandler) GetPodEvents(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Debug("PodSVC.GetPodEvents succeeded")
 	}()
 	jobID, instanceID, err := util.ParseTaskID(req.GetPodName().GetValue())
@@ -498,8 +513,10 @@ func (h *serviceHandler) BrowsePodSandbox(
 	req *svc.BrowsePodSandboxRequest,
 ) (resp *svc.BrowsePodSandboxResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.BrowsePodSandbox failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -508,6 +525,7 @@ func (h *serviceHandler) BrowsePodSandbox(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Debug("PodSVC.BrowsePodSandbox succeeded")
 	}()
 
@@ -584,8 +602,10 @@ func (h *serviceHandler) RefreshPod(
 	req *svc.RefreshPodRequest,
 ) (resp *svc.RefreshPodResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.RefreshPod failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -594,6 +614,7 @@ func (h *serviceHandler) RefreshPod(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Info("PodSVC.RefreshPod succeeded")
 	}()
 
@@ -631,8 +652,10 @@ func (h *serviceHandler) GetPodCache(
 	req *svc.GetPodCacheRequest,
 ) (resp *svc.GetPodCacheResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.GetPodCache failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -641,6 +664,7 @@ func (h *serviceHandler) GetPodCache(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Debug("PodSVC.GetPodCache succeeded")
 	}()
 
@@ -684,8 +708,10 @@ func (h *serviceHandler) DeletePodEvents(
 	req *svc.DeletePodEventsRequest,
 ) (resp *svc.DeletePodEventsResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.DeletePodEvents failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -694,6 +720,7 @@ func (h *serviceHandler) DeletePodEvents(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Info("PodSVC.DeletePodEvents succeeded")
 	}()
 

@@ -32,6 +32,7 @@ import (
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/util"
+	yarpcutil "github.com/uber/peloton/pkg/common/util/yarpc"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
@@ -115,7 +116,32 @@ type serviceHandler struct {
 
 func (m *serviceHandler) Get(
 	ctx context.Context,
-	body *task.GetRequest) (*task.GetResponse, error) {
+	body *task.GetRequest) (resp *task.GetResponse, err error) {
+
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil || resp.GetNotFound() != nil || resp.GetOutOfRange() == nil {
+			entry := log.WithField("request", body).
+				WithField("headers", headers)
+
+			if err != nil {
+				entry = entry.WithError(err)
+			}
+			if resp.GetNotFound() != nil {
+				entry = entry.WithField("not_found_err", resp.GetNotFound().GetMessage())
+			}
+			if resp.GetOutOfRange() != nil {
+				entry = entry.WithField("out_of_range_err", resp.GetOutOfRange().GetInstanceCount())
+			}
+
+			entry.Warn("TaskManager.Get failed")
+			return
+		}
+
+		log.WithField("req", body).
+			WithField("headers", headers).
+			Debug("TaskManager.Get succeeded")
+	}()
 
 	m.metrics.TaskAPIGet.Inc(1)
 	jobConfig, err := handlerutil.GetJobConfigWithoutFillingCache(
@@ -173,7 +199,28 @@ func (m *serviceHandler) Get(
 // for a pod (a job's instance).
 func (m *serviceHandler) GetPodEvents(
 	ctx context.Context,
-	body *task.GetPodEventsRequest) (*task.GetPodEventsResponse, error) {
+	body *task.GetPodEventsRequest) (resp *task.GetPodEventsResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil || resp.GetError() != nil {
+			entry := log.WithField("request", body).
+				WithField("headers", headers)
+
+			if err != nil {
+				entry = entry.WithError(err)
+			}
+			if resp.GetError() != nil {
+				entry = entry.WithField("resp_error", resp.GetError().GetMessage())
+			}
+			entry.Warn("TaskManager.GetPodEvents failed")
+			return
+		}
+
+		log.WithField("request", body).
+			WithField("headers", headers).
+			Debug("TaskManager.GetPodEvents succeeded")
+	}()
+
 	// Limit defines the number of run id's to return, if the req is asking for
 	// a specific run id then limit is 1.
 	limit := body.GetLimit()
@@ -228,7 +275,22 @@ func (m *serviceHandler) GetPodEvents(
 func (m *serviceHandler) DeletePodEvents(
 	ctx context.Context,
 	body *task.DeletePodEventsRequest,
-) (*task.DeletePodEventsResponse, error) {
+) (resp *task.DeletePodEventsResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil {
+			log.WithField("request", body).
+				WithField("headers", headers).
+				WithError(err).
+				Warn("TaskManager.DeletePodEvents failed")
+			return
+		}
+
+		log.WithField("request", body).
+			WithField("headers", headers).
+			Info("TaskManager.DeletePodEvents succeeded")
+	}()
+
 	if err := m.taskStore.DeletePodEvents(
 		ctx,
 		body.GetJobId().GetValue(),
@@ -245,9 +307,28 @@ func (m *serviceHandler) DeletePodEvents(
 // because we would not clean up the cache for untracked job
 func (m *serviceHandler) List(
 	ctx context.Context,
-	body *task.ListRequest) (*task.ListResponse, error) {
+	body *task.ListRequest) (resp *task.ListResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil || resp.GetNotFound() != nil {
+			entry := log.WithField("request", body).
+				WithField("headers", headers)
 
-	log.WithField("request", body).Debug("TaskSVC.List called")
+			if err != nil {
+				entry = entry.WithError(err)
+			}
+
+			if resp.GetNotFound() != nil {
+				entry = entry.WithField("not_found_err", resp.GetNotFound().GetMessage())
+			}
+			entry.Warn("TaskManager.List failed")
+			return
+		}
+
+		log.WithField("request", body).
+			WithField("headers", headers).
+			Debug("TaskManager.List succeeded")
+	}()
 
 	m.metrics.TaskAPIList.Inc(1)
 
@@ -269,7 +350,7 @@ func (m *serviceHandler) List(
 
 	m.fillReasonForPendingTasksFromResMgr(ctx, body.GetJobId(), convertTaskMapToSlice(result))
 	m.metrics.TaskList.Inc(1)
-	resp := &task.ListResponse{
+	resp = &task.ListResponse{
 		Result: &task.ListResponse_Result{
 			Value: result,
 		},
@@ -280,8 +361,21 @@ func (m *serviceHandler) List(
 
 // Refresh loads the task runtime state from DB, updates the cache,
 // and enqueues it to goal state for evaluation.
-func (m *serviceHandler) Refresh(ctx context.Context, req *task.RefreshRequest) (*task.RefreshResponse, error) {
-	log.WithField("request", req).Debug("TaskSVC.Refresh called")
+func (m *serviceHandler) Refresh(ctx context.Context, req *task.RefreshRequest) (resp *task.RefreshResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil {
+			log.WithField("request", req).
+				WithField("headers", headers).
+				WithError(err).
+				Warn("TaskManager.Refresh failed")
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("headers", headers).
+			Info("TaskManager.Refresh succeeded")
+	}()
 
 	m.metrics.TaskAPIRefresh.Inc(1)
 
@@ -381,7 +475,28 @@ func (m *serviceHandler) getTaskInfosByRangesFromDB(
 // Start implements TaskManager.Start, tries to start terminal tasks in a given job.
 func (m *serviceHandler) Start(
 	ctx context.Context,
-	body *task.StartRequest) (*task.StartResponse, error) {
+	body *task.StartRequest) (resp *task.StartResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil || resp.GetError() != nil {
+			entry := log.WithField("request", body).
+				WithField("headers", headers)
+
+			if err != nil {
+				entry = entry.WithError(err)
+			}
+			if resp.GetError() != nil {
+				entry = entry.WithField("start_error", resp.GetError().String())
+			}
+
+			entry.Warn("TaskManager.Start failed")
+			return
+		}
+
+		log.WithField("request", body).
+			WithField("headers", headers).
+			Info("TaskManager.Start succeeded")
+	}()
 
 	m.metrics.TaskAPIStart.Inc(1)
 	ctx, cancelFunc := context.WithTimeout(
@@ -652,9 +767,29 @@ func (m *serviceHandler) stopJob(
 // Stop implements TaskManager.Stop, tries to stop tasks in a given job.
 func (m *serviceHandler) Stop(
 	ctx context.Context,
-	body *task.StopRequest) (*task.StopResponse, error) {
+	body *task.StopRequest) (resp *task.StopResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil || resp.GetError() != nil {
+			entry := log.WithField("request", body).
+				WithField("headers", headers)
 
-	log.WithField("request", body).Info("TaskManager.Stop called")
+			if err != nil {
+				entry = entry.WithError(err)
+			}
+			if resp.GetError() != nil {
+				entry = entry.WithField("stop_error", resp.GetError().String())
+			}
+
+			entry.Warn("TaskManager.Stop failed")
+			return
+		}
+
+		log.WithField("request", body).
+			WithField("headers", headers).
+			Info("TaskManager.Stop succeeded")
+	}()
+
 	m.metrics.TaskAPIStop.Inc(1)
 	ctx, cancelFunc := context.WithTimeout(
 		ctx,
@@ -772,8 +907,31 @@ func (m *serviceHandler) Stop(
 
 func (m *serviceHandler) Restart(
 	ctx context.Context,
-	req *task.RestartRequest) (*task.RestartResponse, error) {
-	log.WithField("request", req).Debug("TaskSVC.Restart called")
+	req *task.RestartRequest) (resp *task.RestartResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil || resp.GetNotFound() != nil || resp.GetOutOfRange() != nil {
+			entry := log.WithField("request", req).
+				WithField("headers", headers)
+
+			if err != nil {
+				entry = entry.WithError(err)
+			}
+			if resp.GetNotFound() != nil {
+				entry = entry.WithField("not_found_error", resp.GetNotFound().GetMessage())
+			}
+			if resp.GetOutOfRange() != nil {
+				entry = entry.WithField("out_of_range_error", resp.GetOutOfRange().String())
+			}
+
+			entry.Warn("TaskManager.Restart failed")
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("headers", headers).
+			Info("TaskManager.Restart succeeded")
+	}()
 
 	m.metrics.TaskAPIRestart.Inc(1)
 
@@ -841,12 +999,33 @@ func (m *serviceHandler) getRuntimeDiffsForRestart(
 
 // List/Query API should not use cachedJob
 // because we would not clean up the cache for untracked job
-func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*task.QueryResponse, error) {
-	log.WithField("request", req).Info("TaskSVC.Query called")
+func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (resp *task.QueryResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil || resp.GetError() != nil {
+			entry := log.WithField("request", req).
+				WithField("headers", headers)
+
+			if err != nil {
+				entry = entry.WithError(err)
+			}
+			if resp.GetError() != nil {
+				entry = entry.WithField("restart_error", resp.GetError().String())
+			}
+
+			entry.Warn("TaskManager.Query failed")
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("headers", headers).
+			Debug("TaskManager.Query succeeded")
+	}()
+
 	m.metrics.TaskAPIQuery.Inc(1)
 	callStart := time.Now()
 
-	_, err := handlerutil.GetJobRuntimeWithoutFillingCache(
+	_, err = handlerutil.GetJobRuntimeWithoutFillingCache(
 		ctx, req.JobId, m.jobFactory, m.jobStore)
 	if err != nil {
 		log.WithError(err).
@@ -878,7 +1057,7 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 
 	m.fillReasonForPendingTasksFromResMgr(ctx, req.GetJobId(), result)
 	m.metrics.TaskQuery.Inc(1)
-	resp := &task.QueryResponse{
+	resp = &task.QueryResponse{
 		Records: result,
 		Pagination: &query.Pagination{
 			Offset: req.GetSpec().GetPagination().GetOffset(),
@@ -894,7 +1073,22 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 
 func (m *serviceHandler) GetCache(
 	ctx context.Context,
-	req *task.GetCacheRequest) (*task.GetCacheResponse, error) {
+	req *task.GetCacheRequest) (resp *task.GetCacheResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil {
+			log.WithField("request", req).
+				WithField("headers", headers).
+				WithError(err).
+				Warn("TaskManager.GetCache failed")
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("headers", headers).
+			Debug("TaskManager.GetCache succeeded")
+	}()
+
 	cachedJob := m.jobFactory.GetJob(req.JobId)
 	if cachedJob == nil {
 		return nil,
@@ -1045,8 +1239,28 @@ func (m *serviceHandler) getSandboxPathInfo(
 // BrowseSandbox returns the list of sandbox files path, with agent name, agent id and mesos master name & port.
 func (m *serviceHandler) BrowseSandbox(
 	ctx context.Context,
-	req *task.BrowseSandboxRequest) (*task.BrowseSandboxResponse, error) {
-	log.WithField("req", req).Debug("TaskSVC.BrowseSandbox called")
+	req *task.BrowseSandboxRequest) (resp *task.BrowseSandboxResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil || resp.GetError() != nil {
+			entry := log.WithField("request", req).
+				WithField("headers", headers)
+
+			if err != nil {
+				entry = entry.WithError(err)
+			}
+			if resp.GetError() != nil {
+				entry = entry.WithField("browse_sandbox_err", resp.GetError().String())
+			}
+			entry.Warn("TaskManager.BrowseSandbox failed")
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("headers", headers).
+			Debug("TaskManager.BrowseSandbox succeeded")
+	}()
+
 	m.metrics.TaskAPIListLogs.Inc(1)
 
 	jobConfig, err := handlerutil.GetJobConfigWithoutFillingCache(

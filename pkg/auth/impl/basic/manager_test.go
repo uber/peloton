@@ -418,6 +418,16 @@ func (t *testToken) Items() map[string]string {
 	}
 }
 
+func (t *testToken) Del(k string) {
+	if k == _usernameHeaderKey {
+		t.username = ""
+	}
+
+	if k == _passwordHeaderKey {
+		t.password = ""
+	}
+}
+
 func TestSecurityManagerTestSuite(t *testing.T) {
 	suite.Run(t, new(SecurityManagerTestSuite))
 }

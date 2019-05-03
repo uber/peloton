@@ -38,6 +38,7 @@ import (
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/util"
 	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
+	yarpcutil "github.com/uber/peloton/pkg/common/util/yarpc"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
@@ -128,11 +129,13 @@ func (h *serviceHandler) CreateJob(
 		jobID := req.GetJobId().GetValue()
 		specVersion := req.GetSpec().GetRevision().GetVersion()
 		instanceCount := req.GetSpec().GetInstanceCount()
+		headers := yarpcutil.GetHeaders(ctx)
 
 		if err != nil {
 			log.WithField("job_id", jobID).
 				WithField("spec_version", specVersion).
 				WithField("instance_count", instanceCount).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.CreateJob failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -143,6 +146,7 @@ func (h *serviceHandler) CreateJob(
 			WithField("spec_version", specVersion).
 			WithField("response", resp).
 			WithField("instance_count", instanceCount).
+			WithField("headers", headers).
 			Info("JobSVC.CreateJob succeeded")
 	}()
 
@@ -249,11 +253,13 @@ func (h *serviceHandler) ReplaceJob(
 		jobID := req.GetJobId().GetValue()
 		specVersion := req.GetSpec().GetRevision().GetVersion()
 		entityVersion := req.GetVersion().GetValue()
+		headers := yarpcutil.GetHeaders(ctx)
 
 		if err != nil {
 			log.WithField("job_id", jobID).
 				WithField("spec_version", specVersion).
 				WithField("entity_version", entityVersion).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.ReplaceJob failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -265,6 +271,7 @@ func (h *serviceHandler) ReplaceJob(
 			WithField("entity_version", entityVersion).
 			WithField("response", resp).
 			WithField("update_id", updateID.GetValue()).
+			WithField("headers", headers).
 			Info("JobSVC.ReplaceJob succeeded")
 	}()
 
@@ -374,8 +381,10 @@ func (h *serviceHandler) RestartJob(
 	ctx context.Context,
 	req *svc.RestartJobRequest) (resp *svc.RestartJobResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.RestartJob failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -384,6 +393,7 @@ func (h *serviceHandler) RestartJob(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Info("JobSVC.RestartJob succeeded")
 	}()
 
@@ -473,8 +483,10 @@ func (h *serviceHandler) PauseJobWorkflow(
 	ctx context.Context,
 	req *svc.PauseJobWorkflowRequest) (resp *svc.PauseJobWorkflowResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.PauseJobWorkflow failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -483,6 +495,7 @@ func (h *serviceHandler) PauseJobWorkflow(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Info("JobSVC.PauseJobWorkflow succeeded")
 	}()
 
@@ -515,8 +528,10 @@ func (h *serviceHandler) ResumeJobWorkflow(
 	ctx context.Context,
 	req *svc.ResumeJobWorkflowRequest) (resp *svc.ResumeJobWorkflowResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.ResumeJobWorkflow failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -525,6 +540,7 @@ func (h *serviceHandler) ResumeJobWorkflow(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Info("JobSVC.ResumeJobWorkflow succeeded")
 	}()
 
@@ -561,8 +577,10 @@ func (h *serviceHandler) AbortJobWorkflow(
 	ctx context.Context,
 	req *svc.AbortJobWorkflowRequest) (resp *svc.AbortJobWorkflowResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.AbortJobWorkflow failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -571,6 +589,7 @@ func (h *serviceHandler) AbortJobWorkflow(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Info("JobSVC.AbortJobWorkflow succeeded")
 	}()
 
@@ -608,8 +627,11 @@ func (h *serviceHandler) StartJob(
 	req *svc.StartJobRequest,
 ) (resp *svc.StartJobResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.StartJob failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -618,6 +640,7 @@ func (h *serviceHandler) StartJob(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Info("JobSVC.StartJob succeeded")
 	}()
 
@@ -679,8 +702,11 @@ func (h *serviceHandler) StopJob(
 	req *svc.StopJobRequest,
 ) (resp *svc.StopJobResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.StopJob failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -689,6 +715,7 @@ func (h *serviceHandler) StopJob(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Info("JobSVC.StopJob succeeded")
 	}()
 
@@ -761,8 +788,11 @@ func (h *serviceHandler) DeleteJob(
 	req *svc.DeleteJobRequest,
 ) (resp *svc.DeleteJobResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.DeleteJob failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -770,6 +800,7 @@ func (h *serviceHandler) DeleteJob(
 		}
 
 		log.WithField("request", req).
+			WithField("headers", headers).
 			Info("JobSVC.DeleteJob succeeded")
 	}()
 
@@ -882,8 +913,10 @@ func (h *serviceHandler) GetJob(
 	ctx context.Context,
 	req *svc.GetJobRequest) (resp *svc.GetJobResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("StatelessJobSvc.GetJob failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -891,6 +924,7 @@ func (h *serviceHandler) GetJob(
 		}
 
 		log.WithField("req", req).
+			WithField("headers", headers).
 			Debug("StatelessJobSvc.GetJob succeeded")
 	}()
 
@@ -969,8 +1003,10 @@ func (h *serviceHandler) GetJobIDFromJobName(
 	ctx context.Context,
 	req *svc.GetJobIDFromJobNameRequest) (resp *svc.GetJobIDFromJobNameResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("StatelessJobSvc.GetJobIDFromJobName failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -978,6 +1014,7 @@ func (h *serviceHandler) GetJobIDFromJobName(
 		}
 
 		log.WithField("req", req).
+			WithField("headers", headers).
 			Debug("StatelessJobSvc.GetJobIDFromJobName succeeded")
 	}()
 
@@ -1006,9 +1043,11 @@ func (h *serviceHandler) GetJobIDFromJobName(
 func (h *serviceHandler) GetWorkflowEvents(
 	ctx context.Context,
 	req *svc.GetWorkflowEventsRequest) (resp *svc.GetWorkflowEventsResponse, err error) {
+	headers := yarpcutil.GetHeaders(ctx)
 	defer func() {
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("StatelessJobSvc.GetWorkflowEvents failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -1016,6 +1055,7 @@ func (h *serviceHandler) GetWorkflowEvents(
 		}
 
 		log.WithField("req", req).
+			WithField("headers", headers).
 			Debug("StatelessJobSvc.GetWorkflowEvents succeeded")
 	}()
 
@@ -1060,15 +1100,18 @@ func (h *serviceHandler) ListPods(
 	var instanceRange *task.InstanceRange
 
 	defer func() {
+		headers := yarpcutil.GetHeaders(stream.Context())
 		if err != nil {
 			log.WithError(err).
 				WithField("job_id", req.GetJobId().GetValue()).
+				WithField("headers", headers).
 				Warn("JobSVC.ListPods failed")
 			err = handlerutil.ConvertToYARPCError(err)
 			return
 		}
 
 		log.WithField("job_id", req.GetJobId().GetValue()).
+			WithField("headers", headers).
 			Debug("JobSVC.ListPods succeeded")
 	}()
 
@@ -1113,8 +1156,10 @@ func (h *serviceHandler) QueryPods(
 	req *svc.QueryPodsRequest,
 ) (resp *svc.QueryPodsResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.QueryPods failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -1122,6 +1167,7 @@ func (h *serviceHandler) QueryPods(
 		}
 
 		log.WithField("request", req).
+			WithField("headers", headers).
 			WithField("num_of_results", len(resp.GetPods())).
 			Debug("JobSVC.QueryPods succeeded")
 	}()
@@ -1169,8 +1215,10 @@ func (h *serviceHandler) QueryJobs(
 	ctx context.Context,
 	req *svc.QueryJobsRequest) (resp *svc.QueryJobsResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.QueryJobs failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -1178,6 +1226,7 @@ func (h *serviceHandler) QueryJobs(
 		}
 
 		log.WithField("request", req).
+			WithField("headers", headers).
 			WithField("num_of_results", len(resp.GetRecords())).
 			Debug("JobSVC.QueryJobs succeeded")
 	}()
@@ -1242,8 +1291,10 @@ func (h *serviceHandler) ListJobs(
 	req *svc.ListJobsRequest,
 	stream svc.JobServiceServiceListJobsYARPCServer) (err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(stream.Context())
 		if err != nil {
 			log.WithError(err).
+				WithField("headers", headers).
 				Warn("JobSVC.ListJobs failed")
 			err = handlerutil.ConvertToYARPCError(err)
 			return
@@ -1296,8 +1347,10 @@ func (h *serviceHandler) ListJobWorkflows(
 	ctx context.Context,
 	req *svc.ListJobWorkflowsRequest) (resp *svc.ListJobWorkflowsResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.ListJobWorkflows failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -1305,6 +1358,7 @@ func (h *serviceHandler) ListJobWorkflows(
 		}
 
 		log.WithField("request", req).
+			WithField("headers", headers).
 			WithField("num_of_workflows", len(resp.GetWorkflowInfos())).
 			Debug("JobSVC.ListJobWorkflows succeeded")
 	}()
@@ -1426,10 +1480,12 @@ func (h *serviceHandler) GetReplaceJobDiff(
 	defer func() {
 		jobID := req.GetJobId().GetValue()
 		entityVersion := req.GetVersion().GetValue()
+		headers := yarpcutil.GetHeaders(ctx)
 
 		if err != nil {
 			log.WithField("job_id", jobID).
 				WithField("entity_version", entityVersion).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.GetReplaceJobDiff failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -1437,6 +1493,7 @@ func (h *serviceHandler) GetReplaceJobDiff(
 		}
 
 		log.WithField("job_id", jobID).
+			WithField("headers", headers).
 			WithField("entity_version", entityVersion).
 			Debug("JobSVC.GetReplaceJobDiff succeeded")
 	}()
@@ -1502,8 +1559,10 @@ func (h *serviceHandler) RefreshJob(
 	ctx context.Context,
 	req *svc.RefreshJobRequest) (resp *svc.RefreshJobResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.RefreshJob failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -1512,6 +1571,7 @@ func (h *serviceHandler) RefreshJob(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Info("JobSVC.RefreshJob succeeded")
 	}()
 
@@ -1549,8 +1609,10 @@ func (h *serviceHandler) GetJobCache(
 	ctx context.Context,
 	req *svc.GetJobCacheRequest) (resp *svc.GetJobCacheResponse, err error) {
 	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
 		if err != nil {
 			log.WithField("request", req).
+				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.GetJobCache failed")
 			err = handlerutil.ConvertToYARPCError(err)
@@ -1559,6 +1621,7 @@ func (h *serviceHandler) GetJobCache(
 
 		log.WithField("request", req).
 			WithField("response", resp).
+			WithField("headers", headers).
 			Debug("JobSVC.GetJobCache succeeded")
 	}()
 

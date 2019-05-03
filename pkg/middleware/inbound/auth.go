@@ -18,10 +18,11 @@ import (
 	"context"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/uber/peloton/pkg/auth"
 	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/yarpcerrors"
+
+	log "github.com/sirupsen/logrus"
 )
 
 var permissionDeniedErrorStr = "not permitted to call %s in %s"
@@ -30,8 +31,6 @@ const (
 	// _pelotonServicePrefix is the prefix which all peloton
 	// services have
 	_pelotonServicePrefix = "peloton"
-
-	_usernameHeaderKey = "username"
 )
 
 // AuthInboundMiddleware is the inbound middleware for auth
@@ -84,7 +83,15 @@ func (m *AuthInboundMiddleware) HandleStream(s *transport.ServerStream, h transp
 	return h.HandleStream(s)
 }
 
-func (m *AuthInboundMiddleware) isPermitted(headers transport.Headers, service string, procedure string) (bool, error) {
+func (m *AuthInboundMiddleware) isPermitted(headers transport.Headers, service string, procedure string) (permitted bool, err error) {
+	defer func() {
+		if !permitted {
+			log.WithFields(log.Fields{
+				"headers": headers,
+			}).Info("procedure called not permitted for user")
+		}
+	}()
+
 	// check the service name and authenticate only peloton services.
 	// Other services such as Mesos callback (service name: Scheduler)
 	// cannot be authenticated by peloton auth mechanism for now.
@@ -92,16 +99,12 @@ func (m *AuthInboundMiddleware) isPermitted(headers transport.Headers, service s
 		return true, nil
 	}
 
-	username, _ := headers.Get(_usernameHeaderKey)
-	log.WithFields(log.Fields{
-		"username":  username,
-		"procedure": procedure,
-	}).Info("procedure called by user")
-
 	user, err := m.Authenticate(headers)
 	if err != nil {
 		return false, err
 	}
+
+	m.RedactToken(headers)
 
 	return user.IsPermitted(procedure), nil
 }

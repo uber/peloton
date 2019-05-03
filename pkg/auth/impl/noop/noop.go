@@ -26,6 +26,11 @@ func (m *SecurityManager) Authenticate(token auth.Token) (auth.User, error) {
 	return &noopUser{}, nil
 }
 
+// RedactToken is noop
+func (m *SecurityManager) RedactToken(token auth.Token) {
+	return
+}
+
 type noopUser struct{}
 
 // IsPermitted always return true
@@ -55,6 +60,10 @@ func (t *noopToken) Get(k string) (string, bool) {
 
 func (t *noopToken) Items() map[string]string {
 	return nil
+}
+
+func (t *noopToken) Del(k string) {
+	return
 }
 
 // NewNoopSecurityClient returns SecurityClient

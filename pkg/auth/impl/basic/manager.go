@@ -99,6 +99,11 @@ func (m *SecurityManager) Authenticate(token auth.Token) (auth.User, error) {
 	return user, nil
 }
 
+// RedactToken removes password info from the token
+func (m *SecurityManager) RedactToken(token auth.Token) {
+	token.Del(_passwordHeaderKey)
+}
+
 // IsPermitted returns if a procedure is permitted for user
 func (u *user) IsPermitted(procedure string) bool {
 	// procedure is permitted if it is accepted by
