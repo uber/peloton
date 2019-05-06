@@ -14,17 +14,104 @@
 
 package aurorabridge
 
-import "github.com/uber-go/tally"
+import (
+	"github.com/uber-go/tally"
+	"github.com/uber/peloton/.gen/thrift/aurora/api"
+)
+
+const (
+	ProcedureAbortJobUpdate         = "auroraschedulermanager__abortjobupdate"
+	ProcedureGetConfigSummary       = "readonlyscheduler__getconfigsummary"
+	ProcedureGetJobSummary          = "readonlyscheduler__getjobsummary"
+	ProcedureGetJobUpdateDetails    = "readonlyscheduler__getjobupdatedetails"
+	ProcedureGetJobUpdateDiff       = "readonlyscheduler__getjobupdatediff"
+	ProcedureGetJobUpdateSummaries  = "readonlyscheduler__getjobupdatesummaries"
+	ProcedureGetJobs                = "readonlyscheduler__getjobs"
+	ProcedureGetTasksWithoutConfigs = "readonlyscheduler__gettaskswithoutconfigs"
+	ProcedureGetTierConfigs         = "readonlyscheduler__gettierconfigs"
+	ProcedureKillTasks              = "auroraschedulermanager__killtasks"
+	ProcedurePauseJobUpdate         = "auroraschedulermanager__pausejobupdate"
+	ProcedurePulseJobUpdate         = "auroraschedulermanager__pulsejobupdate"
+	ProcedureResumeJobUpdate        = "auroraschedulermanager__resumejobupdate"
+	ProcedureRollbackJobUpdate      = "auroraschedulermanager__rollbackjobupdate"
+	ProcedureStartJobUpdate         = "auroraschedulermanager__startjobupdate"
+)
+
+var _procedures = []string{
+	ProcedureAbortJobUpdate,
+	ProcedureGetConfigSummary,
+	ProcedureGetJobSummary,
+	ProcedureGetJobUpdateDetails,
+	ProcedureGetJobUpdateDiff,
+	ProcedureGetJobUpdateSummaries,
+	ProcedureGetJobs,
+	ProcedureGetTasksWithoutConfigs,
+	ProcedureGetTierConfigs,
+	ProcedureKillTasks,
+	ProcedurePauseJobUpdate,
+	ProcedurePulseJobUpdate,
+	ProcedureResumeJobUpdate,
+	ProcedureRollbackJobUpdate,
+	ProcedureStartJobUpdate,
+}
+
+var _responseCodeToText = map[api.ResponseCode]string{
+	api.ResponseCodeInvalidRequest:   "invalid-request",
+	api.ResponseCodeOk:               "ok",
+	api.ResponseCodeError:            "error",
+	api.ResponseCodeWarning:          "warning",
+	api.ResponseCodeAuthFailed:       "auth-failed",
+	api.ResponseCodeJobUpdatingError: "job-updating-error",
+	api.ResponseCodeErrorTransient:   "error-transient",
+}
+
+type ResponseCodeMetrics struct {
+	ResponseCodes map[api.ResponseCode]tally.Counter
+}
+
+type ResponseCodeLatencyMetrics struct {
+	ResponseCodes map[api.ResponseCode]tally.Timer
+}
+
+type PerProcedureMetrics struct {
+	ResponseCode        *ResponseCodeMetrics
+	ResponseCodeLatency *ResponseCodeLatencyMetrics
+}
 
 // Metrics is the struct containing all metrics relevant for aurora api parrity
 type Metrics struct {
-	PinnedInstancesUnsupported tally.Counter
+	Procedures map[string]*PerProcedureMetrics
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
 // initialized and rooted at the given tally.Scope
 func NewMetrics(scope tally.Scope) *Metrics {
-	return &Metrics{
-		PinnedInstancesUnsupported: scope.Counter("pinned_instances_unsupported"),
+	m := &Metrics{
+		Procedures: map[string]*PerProcedureMetrics{},
 	}
+	for _, procedure := range _procedures {
+		responseCodeMetrics := &ResponseCodeMetrics{
+			ResponseCodes: make(map[api.ResponseCode]tally.Counter),
+		}
+		responseCodeLatencyMetrics := &ResponseCodeLatencyMetrics{
+			ResponseCodes: make(map[api.ResponseCode]tally.Timer),
+		}
+		for _, responseCode := range api.ResponseCode_Values() {
+			responseCodeText, exists := _responseCodeToText[responseCode]
+			if !exists {
+				responseCodeText = "unknown-error"
+			}
+			tag := map[string]string{
+				"procedure":    procedure,
+				"responsecode": responseCodeText,
+			}
+			responseCodeMetrics.ResponseCodes[responseCode] = scope.Tagged(tag).Counter("calls")
+			responseCodeLatencyMetrics.ResponseCodes[responseCode] = scope.Tagged(tag).Timer("call_latency")
+		}
+		m.Procedures[procedure] = &PerProcedureMetrics{
+			ResponseCode:        responseCodeMetrics,
+			ResponseCodeLatency: responseCodeLatencyMetrics,
+		}
+	}
+	return m
 }

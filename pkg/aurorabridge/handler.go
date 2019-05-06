@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	v0peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
@@ -89,8 +90,23 @@ func (h *ServiceHandler) GetJobSummary(
 	role *string,
 ) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.getJobSummary(ctx, role)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedureGetJobSummary].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedureGetJobSummary].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
@@ -109,7 +125,8 @@ func (h *ServiceHandler) GetJobSummary(
 			"result": result,
 		}).Debug("GetJobSummary success")
 	}()
-	return newResponse(result, err), nil
+
+	return resp, nil
 }
 
 func (h *ServiceHandler) getJobSummary(
@@ -173,8 +190,23 @@ func (h *ServiceHandler) GetTasksWithoutConfigs(
 	query *api.TaskQuery,
 ) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.getTasksWithoutConfigs(ctx, query)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedureGetTasksWithoutConfigs].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedureGetTasksWithoutConfigs].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
@@ -193,7 +225,8 @@ func (h *ServiceHandler) GetTasksWithoutConfigs(
 			"result": result,
 		}).Debug("GetTasksWithoutConfigs success")
 	}()
-	return newResponse(result, err), nil
+
+	return resp, nil
 }
 
 func (h *ServiceHandler) getTasksWithoutConfigs(
@@ -462,8 +495,23 @@ func (h *ServiceHandler) GetConfigSummary(
 	ctx context.Context,
 	job *api.JobKey) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.getConfigSummary(ctx, job)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedureGetConfigSummary].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedureGetConfigSummary].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
@@ -482,7 +530,8 @@ func (h *ServiceHandler) GetConfigSummary(
 			"result": result,
 		}).Debug("GetConfigSummary success")
 	}()
-	return newResponse(result, err), nil
+
+	return resp, nil
 }
 
 func (h *ServiceHandler) getConfigSummary(
@@ -529,8 +578,23 @@ func (h *ServiceHandler) GetJobs(
 	ownerRole *string,
 ) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.getJobs(ctx, ownerRole)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedureGetJobs].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedureGetJobs].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
@@ -549,7 +613,8 @@ func (h *ServiceHandler) GetJobs(
 			"result": result,
 		}).Debug("GetJobs success")
 	}()
-	return newResponse(result, err), nil
+
+	return resp, nil
 }
 
 func (h *ServiceHandler) getJobs(
@@ -612,8 +677,23 @@ func (h *ServiceHandler) GetJobUpdateSummaries(
 	query *api.JobUpdateQuery,
 ) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.getJobUpdateSummaries(ctx, query)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedureGetJobUpdateSummaries].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedureGetJobUpdateSummaries].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
@@ -632,7 +712,8 @@ func (h *ServiceHandler) GetJobUpdateSummaries(
 			"result": result,
 		}).Debug("GetJobUpdateSummaries success")
 	}()
-	return newResponse(result, err), nil
+
+	return resp, nil
 }
 
 func (h *ServiceHandler) getJobUpdateSummaries(
@@ -664,8 +745,23 @@ func (h *ServiceHandler) GetJobUpdateDetails(
 	query *api.JobUpdateQuery,
 ) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.getJobUpdateDetails(ctx, key, query)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedureGetJobUpdateDetails].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedureGetJobUpdateDetails].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
@@ -686,7 +782,8 @@ func (h *ServiceHandler) GetJobUpdateDetails(
 			"result": result,
 		}).Debug("GetJobUpdateDetails success")
 	}()
-	return newResponse(result, err), nil
+
+	return resp, nil
 }
 
 func (h *ServiceHandler) getJobUpdateDetails(
@@ -719,8 +816,23 @@ func (h *ServiceHandler) GetJobUpdateDiff(
 	ctx context.Context,
 	request *api.JobUpdateRequest) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.getJobUpdateDiff(ctx, request)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedureGetJobUpdateDiff].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedureGetJobUpdateDiff].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
@@ -739,7 +851,8 @@ func (h *ServiceHandler) GetJobUpdateDiff(
 			"result": result,
 		}).Debug("GetJobUpdateDiff success")
 	}()
-	return newResponse(result, err), nil
+
+	return resp, nil
 }
 
 func (h *ServiceHandler) getJobUpdateDiff(
@@ -819,7 +932,8 @@ func (h *ServiceHandler) GetTierConfigs(
 	ctx context.Context,
 ) (*api.Response, error) {
 
-	return newResponse(&api.Result{
+	startTime := time.Now()
+	result := &api.Result{
 		GetTierConfigResult: &api.GetTierConfigResult{
 			DefaultTierName: ptr.String(common.Preemptible),
 			Tiers: []*api.TierConfig{
@@ -846,7 +960,28 @@ func (h *ServiceHandler) GetTierConfigs(
 				},
 			},
 		},
-	}, nil), nil
+	}
+	resp := newResponse(result, nil)
+
+	defer func() {
+		h.metrics.
+			Procedures[ProcedureGetTierConfigs].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedureGetTierConfigs].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
+		log.WithFields(log.Fields{
+			"result": result,
+		}).Debug("GetTierConfigs success")
+	}()
+
+	return resp, nil
 }
 
 // KillTasks initiates a kill on tasks.
@@ -857,8 +992,23 @@ func (h *ServiceHandler) KillTasks(
 	message *string,
 ) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.killTasks(ctx, job, instances, message)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedureKillTasks].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedureKillTasks].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		var instancesArr []string
 		for instanceID := range instances {
 			instancesArr = append(instancesArr, string(instanceID))
@@ -886,7 +1036,7 @@ func (h *ServiceHandler) KillTasks(
 			},
 		}).Info("KillTasks success")
 	}()
-	return newResponse(result, err), nil
+	return resp, nil
 }
 
 func (h *ServiceHandler) killTasks(
@@ -997,8 +1147,23 @@ func (h *ServiceHandler) StartJobUpdate(
 	message *string,
 ) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.startJobUpdate(ctx, request, message)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedureStartJobUpdate].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedureStartJobUpdate].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
@@ -1020,7 +1185,8 @@ func (h *ServiceHandler) StartJobUpdate(
 			"job_update_state": result.GetStartJobUpdateResult().GetUpdateSummary().GetState().String(),
 		}).Info("StartJobUpdate success")
 	}()
-	return newResponse(result, err), nil
+
+	return resp, nil
 }
 
 // PauseJobUpdate pauses the specified job update. Can be resumed by resumeUpdate call.
@@ -1030,8 +1196,23 @@ func (h *ServiceHandler) PauseJobUpdate(
 	message *string,
 ) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.pauseJobUpdate(ctx, key, message)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedurePauseJobUpdate].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedurePauseJobUpdate].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
@@ -1052,7 +1233,8 @@ func (h *ServiceHandler) PauseJobUpdate(
 			},
 		}).Info("PauseJobUpdate success")
 	}()
-	return newResponse(result, err), nil
+
+	return resp, nil
 }
 
 func (h *ServiceHandler) pauseJobUpdate(
@@ -1086,8 +1268,23 @@ func (h *ServiceHandler) ResumeJobUpdate(
 	message *string,
 ) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.resumeJobUpdate(ctx, key, message)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedureResumeJobUpdate].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedureResumeJobUpdate].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
@@ -1108,7 +1305,8 @@ func (h *ServiceHandler) ResumeJobUpdate(
 			},
 		}).Info("ResumeJobUpdate success")
 	}()
-	return newResponse(result, err), nil
+
+	return resp, nil
 }
 
 func (h *ServiceHandler) resumeJobUpdate(
@@ -1142,8 +1340,23 @@ func (h *ServiceHandler) AbortJobUpdate(
 	message *string,
 ) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.abortJobUpdate(ctx, key, message)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedureAbortJobUpdate].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedureAbortJobUpdate].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
@@ -1164,7 +1377,8 @@ func (h *ServiceHandler) AbortJobUpdate(
 			},
 		}).Info("AbortJobUpdate success")
 	}()
-	return newResponse(result, err), nil
+
+	return resp, nil
 }
 
 func (h *ServiceHandler) abortJobUpdate(
@@ -1198,8 +1412,23 @@ func (h *ServiceHandler) RollbackJobUpdate(
 	message *string,
 ) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.rollbackJobUpdate(ctx, key, message)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedureRollbackJobUpdate].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedureRollbackJobUpdate].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
@@ -1220,7 +1449,8 @@ func (h *ServiceHandler) RollbackJobUpdate(
 			},
 		}).Info("RollbackJobUpdate success")
 	}()
-	return newResponse(result, err), nil
+
+	return resp, nil
 }
 
 // _validRollbackStatuses enumerates the statuses which a job update must be in
@@ -1308,8 +1538,23 @@ func (h *ServiceHandler) PulseJobUpdate(
 	key *api.JobUpdateKey,
 ) (*api.Response, error) {
 
+	startTime := time.Now()
 	result, err := h.pulseJobUpdate(ctx, key)
+	resp := newResponse(result, err)
+
 	defer func() {
+		h.metrics.
+			Procedures[ProcedurePulseJobUpdate].
+			ResponseCode.
+			ResponseCodes[resp.GetResponseCode()].
+			Inc(1)
+
+		h.metrics.
+			Procedures[ProcedurePulseJobUpdate].
+			ResponseCodeLatency.
+			ResponseCodes[resp.GetResponseCode()].
+			Record(time.Since(startTime))
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"params": log.Fields{
@@ -1329,7 +1574,8 @@ func (h *ServiceHandler) PulseJobUpdate(
 			"result": result.GetPulseJobUpdateResult().GetStatus().String(),
 		}).Info("PulseJobUpdate success")
 	}()
-	return newResponse(result, err), nil
+
+	return resp, nil
 }
 
 // _validPulseStatuses enumerates the statuses which a job update must be in
