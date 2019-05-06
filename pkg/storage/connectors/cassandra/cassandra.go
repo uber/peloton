@@ -38,15 +38,28 @@ const (
 	useCasWrite = true
 )
 
+const (
+	// operation tags for metrics
+	create  = "create"
+	cas     = "cas"
+	get     = "get"
+	getIter = "get_iter"
+	update  = "update"
+	del     = "delete"
+)
+
 type cassandraConnector struct {
 	// implements orm.Connector interface
 	orm.Connector
 	// Session is the gocql session created for this connector
 	Session *gocql.Session
-	// metrics are the storage specific metrics
-	metrics impl.Metrics
 	// scope is the storage scope for metrics
 	scope tally.Scope
+	// scope is the storage scope for success metrics
+	executeSuccessScope tally.Scope
+	// scope is the storage scope for failure metrics
+	executeFailScope tally.Scope
+
 	// Conf is the Cassandra connector config for this cluster
 	Conf *pelotoncassandra.Config
 	// retryPolicy defines a DB query retry policy for this connector
@@ -72,13 +85,17 @@ func NewCassandraConnector(
 	}
 
 	// create a storeScope for the keyspace StoreName
-	storeScope := scope.Tagged(map[string]string{"store": config.StoreName})
+	storeScope := scope.SubScope("cql").Tagged(
+		map[string]string{"store": config.StoreName})
 
 	return &cassandraConnector{
 		Session: session,
-		metrics: impl.NewMetrics(storeScope),
 		scope:   storeScope,
-		Conf:    config,
+		executeSuccessScope: storeScope.Tagged(
+			map[string]string{"result": "success"}),
+		executeFailScope: storeScope.Tagged(
+			map[string]string{"result": "fail"}),
+		Conf: config,
 		retryPolicy: backoff.NewRetryPolicy(
 			_defaultRetryAttempts, _defaultRetryTimeout),
 	}, nil
@@ -86,6 +103,32 @@ func NewCassandraConnector(
 
 // ensure that implementation (cassandraConnector) satisfies the interface
 var _ orm.Connector = (*cassandraConnector)(nil)
+
+// getGocqlErrorTag gets a error tag for metrics based on gocql error
+// We cannot just use err.Error() as a tag because it contains invalid
+// characters like = : etc. which will be rejected by M3
+func getGocqlErrorTag(err error) string {
+	switch err.(type) {
+	case *gocql.RequestErrReadFailure:
+		return "read_failure"
+	case *gocql.RequestErrWriteFailure:
+		return "write_failure"
+	case *gocql.RequestErrAlreadyExists:
+		return "already_exists"
+	case *gocql.RequestErrReadTimeout:
+		return "read_timeout"
+	case *gocql.RequestErrWriteTimeout:
+		return "write_timeout"
+	case *gocql.RequestErrUnavailable:
+		return "unavailable"
+	case *gocql.RequestErrFunctionFailure:
+		return "function_failure"
+	case *gocql.RequestErrUnprepared:
+		return "unprepared"
+	default:
+		return "unknown"
+	}
+}
 
 // buildResultRow is used to allocate memory for the row to be populated by
 // Cassandra read operation based on what object fields are being read
@@ -194,13 +237,6 @@ func splitColumnNameValue(row []base.Column) (
 	return colNames, colValues
 }
 
-// TODO add retry and conversion of gocql errors to yarpcerrors
-
-func (c *cassandraConnector) sendLatency(
-	ctx context.Context, name string, d time.Duration) {
-	c.scope.Timer(name).Record(d)
-}
-
 // Create creates a new row in DB if it already doesn't exist. Uses CAS write.
 func (c *cassandraConnector) CreateIfNotExists(
 	ctx context.Context,
@@ -241,13 +277,17 @@ func (c *cassandraConnector) create(
 		return err
 	}
 
+	operation := create
+	if casWrite {
+		operation = cas
+	}
+
 	q := c.Session.Query(stmt, colValues...).WithContext(ctx)
-	defer c.sendLatency(ctx, "execute_latency", time.Duration(q.Latency()))
 
 	if casWrite {
 		applied, err := q.MapScanCAS(map[string]interface{}{})
 		if err != nil {
-			c.metrics.ExecuteFail.Inc(1)
+			sendCounters(c.executeFailScope, e.Name, operation, err)
 			return err
 		}
 		if !applied {
@@ -255,12 +295,13 @@ func (c *cassandraConnector) create(
 		}
 	} else {
 		if err := q.Exec(); err != nil {
-			c.metrics.ExecuteFail.Inc(1)
+			sendCounters(c.executeFailScope, e.Name, operation, err)
 			return err
 		}
 	}
 
-	c.metrics.ExecuteSuccess.Inc(1)
+	sendLatency(c.scope, e.Name, operation, time.Duration(q.Latency()))
+	sendCounters(c.executeSuccessScope, e.Name, operation, nil)
 	return nil
 }
 
@@ -303,18 +344,19 @@ func (c *cassandraConnector) Get(
 	if err != nil {
 		return nil, err
 	}
-	defer c.sendLatency(ctx, "execute_latency", time.Duration(q.Latency()))
 
 	// build a result row
 	result := buildResultRow(e, colNamesToRead)
 
 	if err := q.Scan(result...); err != nil {
-		c.metrics.ExecuteFail.Inc(1)
+		sendCounters(c.executeFailScope, e.Name, get, err)
 		return nil, err
 	}
 
+	sendLatency(c.scope, e.Name, get, time.Duration(q.Latency()))
+	sendCounters(c.executeSuccessScope, e.Name, get, nil)
+
 	// translate the read result into a row ([]base.Column)
-	c.metrics.ExecuteSuccess.Inc(1)
 	return getRowFromResult(e, colNamesToRead, result), nil
 }
 
@@ -357,9 +399,15 @@ func (c *cassandraConnector) GetAllIter(
 
 	// execute query and get iterator
 	cqlIter := q.Iter()
-	c.sendLatency(ctx, "execute_latency", time.Duration(q.Latency()))
+	sendLatency(c.scope, e.Name, getIter, time.Duration(q.Latency()))
 
-	return newIterator(e, colNamesToRead, &c.metrics, cqlIter), nil
+	return newIterator(
+		e,
+		colNamesToRead,
+		c.executeSuccessScope,
+		c.executeFailScope,
+		cqlIter,
+	), nil
 }
 
 // Delete deletes a record from DB using primary keys
@@ -384,14 +432,14 @@ func (c *cassandraConnector) Delete(
 	}
 
 	q := c.Session.Query(stmt, keyColValues...).WithContext(ctx)
-	defer c.sendLatency(ctx, "execute_latency", time.Duration(q.Latency()))
 
 	if err := q.Exec(); err != nil {
-		c.metrics.ExecuteFail.Inc(1)
+		sendCounters(c.executeFailScope, e.Name, del, err)
 		return err
 	}
 
-	c.metrics.ExecuteSuccess.Inc(1)
+	sendLatency(c.scope, e.Name, del, time.Duration(q.Latency()))
+	sendCounters(c.executeSuccessScope, e.Name, del, nil)
 	return nil
 }
 
@@ -429,14 +477,14 @@ func (c *cassandraConnector) Update(
 
 	q := c.Session.Query(
 		stmt, updateVals...).WithContext(ctx)
-	defer c.sendLatency(ctx, "execute_latency", time.Duration(q.Latency()))
 
 	if err := q.Exec(); err != nil {
-		c.metrics.ExecuteFail.Inc(1)
+		sendCounters(c.executeFailScope, e.Name, update, err)
 		return err
 	}
 
-	c.metrics.ExecuteSuccess.Inc(1)
+	sendLatency(c.scope, e.Name, update, time.Duration(q.Latency()))
+	sendCounters(c.executeSuccessScope, e.Name, update, nil)
 	return nil
 }
 
@@ -445,7 +493,8 @@ type cassandraIterator struct {
 	cqlIter        *gocql.Iter
 	tableDef       *base.Definition
 	colNamesToRead []string
-	metrics        *impl.Metrics
+	successScope   tally.Scope
+	failScope      tally.Scope
 }
 
 // ensure that implementation (cassandraIterator) satisfies the interface
@@ -454,13 +503,15 @@ var _ orm.Iterator = (*cassandraIterator)(nil)
 func newIterator(
 	e *base.Definition,
 	cols []string,
-	m *impl.Metrics,
+	successScope tally.Scope,
+	failScope tally.Scope,
 	cqlIter *gocql.Iter,
 ) *cassandraIterator {
 	return &cassandraIterator{
 		cqlIter:        cqlIter,
 		tableDef:       e,
-		metrics:        m,
+		successScope:   successScope,
+		failScope:      failScope,
 		colNamesToRead: cols,
 	}
 }
@@ -477,9 +528,40 @@ func (iter *cassandraIterator) Next() ([]base.Column, error) {
 	}
 	// Either end-of-results or error
 	if errors := iter.cqlIter.Close(); errors != nil {
-		iter.metrics.ExecuteFail.Inc(1)
+		sendCounters(iter.failScope, iter.tableDef.Name, getIter, errors)
 		return nil, errors
 	}
-	iter.metrics.ExecuteSuccess.Inc(1)
+	sendCounters(iter.successScope, iter.tableDef.Name, getIter, nil)
 	return nil, nil
+}
+
+// helper function to record call latency metric
+func sendLatency(
+	scope tally.Scope,
+	table, operation string,
+	d time.Duration,
+) {
+	s := scope.Tagged(map[string]string{
+		"table":     table,
+		"operation": operation,
+	})
+	s.Timer("execute_latency").Record(d)
+}
+
+// helper function to record cql query success/failure metrics
+func sendCounters(
+	scope tally.Scope,
+	table, operation string,
+	err error,
+) {
+	errMsg := "none"
+	if err != nil {
+		errMsg = getGocqlErrorTag(err)
+	}
+	s := scope.Tagged(map[string]string{
+		"table":     table,
+		"operation": operation,
+		"error":     errMsg,
+	})
+	s.Counter("execute").Inc(1)
 }
