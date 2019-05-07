@@ -594,6 +594,7 @@ func (h *ServiceHandler) returnFailedPlacement(
 		if err := rmTask.RequeueUnPlaced(reason); err != nil {
 			errs = multierror.Append(errs, err)
 		}
+		h.metrics.PlacementFailed.Inc(1)
 	}
 	return errs.ErrorOrNil()
 }

@@ -252,6 +252,7 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 			"rule_from ":        curState,
 			"rule_to":           to,
 			"meta_info_noindex": sm.GetMetaInfo(),
+			"reason":            sm.reason,
 		}).Info("Stopping state timeout recovery")
 		sm.timer.Stop()
 	}
@@ -273,6 +274,7 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 				"current_state ":    curState,
 				"to_state":          to,
 				"meta_info_noindex": sm.GetMetaInfo(),
+				"reason":            sm.reason,
 			}).Error("callback failed for task")
 			return err
 		}
@@ -287,6 +289,7 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 				"current_state ":    curState,
 				"to_state":          to,
 				"meta_info_noindex": sm.GetMetaInfo(),
+				"reason":            sm.reason,
 			}).Error("transition callback failed for task")
 			return err
 		}
@@ -298,6 +301,7 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 			"rule_from":         curState,
 			"rule_to":           to,
 			"meta_info_noindex": sm.GetMetaInfo(),
+			"reason":            sm.reason,
 		}).Info("Task transitioned to timeout state")
 		if rule.Timeout != 0 {
 			log.WithFields(log.Fields{
@@ -305,6 +309,7 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 				"rule_from": curState,
 				"rule_to":   to,
 				"timeout":   rule.Timeout.String(),
+				"reason":    sm.reason,
 			}).Info("Starting timer to recover state if needed")
 			err := sm.timer.Start(rule.Timeout)
 			if err != nil {
@@ -329,6 +334,7 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 		"from_state ":       curState,
 		"to_state":          to,
 		"meta_info_noindex": sm.GetMetaInfo(),
+		"reason":            sm.reason,
 	}).Info("Task transitioned successfully")
 	return nil
 }
@@ -436,6 +442,7 @@ func (sm *statemachine) rollbackState() error {
 			"rule_from":         sm.current,
 			"rule_to":           "",
 			"meta_info_noindex": sm.GetMetaInfo(),
+			"reason":            sm.reason,
 		}).Info("Calling PreCallback")
 
 		// Call the precall back function, which should fil the t.To state
@@ -448,6 +455,7 @@ func (sm *statemachine) rollbackState() error {
 				"rule_to":           t.To,
 				"current_state":     sm.current,
 				"meta_info_noindex": sm.GetMetaInfo(),
+				"reason":            sm.reason,
 			}).Info("pre call back returned error")
 			return err
 		}
@@ -459,6 +467,7 @@ func (sm *statemachine) rollbackState() error {
 				"rule_to":           t.To,
 				"current_state":     sm.current,
 				"meta_info_noindex": sm.GetMetaInfo(),
+				"reason":            sm.reason,
 			}).Info("pre call back did not return to_state")
 			return errors.New("pre call back failed")
 		}
@@ -470,6 +479,7 @@ func (sm *statemachine) rollbackState() error {
 		"rule_to":           t.To,
 		"current_state":     sm.current,
 		"meta_info_noindex": sm.GetMetaInfo(),
+		"reason":            sm.reason,
 	}).Info("Transitioning from Timeout")
 
 	// Doing actual transition
@@ -487,6 +497,7 @@ func (sm *statemachine) rollbackState() error {
 				"rule_to":           rule.To,
 				"current_state":     sm.current,
 				"meta_info_noindex": sm.GetMetaInfo(),
+				"reason":            sm.reason,
 			}).Error("Error in call back")
 			return err
 		}
@@ -502,6 +513,7 @@ func (sm *statemachine) rollbackState() error {
 				"rule_to":           rule.To,
 				"current_state":     sm.current,
 				"meta_info_noindex": sm.GetMetaInfo(),
+				"reason":            sm.reason,
 			}).Error("Error in transition callback")
 			return err
 		}

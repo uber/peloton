@@ -49,6 +49,7 @@ type Metrics struct {
 	RecoveryTimer               tally.Timer
 
 	PlacementQueueLen tally.Gauge
+	PlacementFailed   tally.Counter
 
 	Elected tally.Gauge
 }
@@ -93,7 +94,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		RecoveryEnqueueFailedCount:  failScope.Counter("enqueue_task_count"),
 		RecoveryEnqueueSuccessCount: successScope.Counter("enqueue_task_count"),
 		RecoveryTimer:               recovery.Timer("running_tasks"),
-		PlacementQueueLen:           placement.Gauge("placement_queue_length"),
+
+		PlacementQueueLen: placement.Gauge("placement_queue_length"),
+		PlacementFailed:   placement.Counter("fail"),
 
 		Elected: serverScope.Gauge("elected"),
 	}
