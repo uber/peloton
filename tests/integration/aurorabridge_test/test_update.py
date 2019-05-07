@@ -203,6 +203,62 @@ def test__simple_update_with_diff(client):
     assert res.detailsList[0].instanceEvents is None
 
 
+def test__override_rolling_forward_update(client):
+    """
+    Override an on-going update without config change, will abort current update
+    and start latest one.
+    """
+    res = client.start_job_update(
+        get_job_update_request("test_dc_labrat_large_job.yaml"),
+        "start job update test/dc/labrat_large_job",
+    )
+
+    res = client.start_job_update(
+        get_job_update_request("test_dc_labrat_large_job.yaml"),
+        "start job update test/dc/labrat_large_job",
+    )
+    wait_for_rolled_forward(client, res.key)
+
+    res = client.get_job_update_details(
+        None, api.JobUpdateQuery(jobKey=res.key.job)
+    )
+
+    assert len(res.detailsList) == 2
+    # Previous rolling_forward update is aborted
+    assert (
+        res.detailsList[1].updateEvents[-1].status
+        == api.JobUpdateStatus.ABORTED
+    )
+
+
+def test__override_rolling_forward_update_with_diff(client):
+    """
+    Override an on-going update with config change, will abort current update
+    and start latest one.
+    """
+    res = client.start_job_update(
+        get_job_update_request("test_dc_labrat_large_job.yaml"),
+        "start job update test/dc/labrat_large_job",
+    )
+
+    res = client.start_job_update(
+        get_job_update_request("test_dc_labrat_large_job_diff_labels.yaml"),
+        "start job update test/dc/labrat_large_job_diff_labels",
+    )
+    wait_for_rolled_forward(client, res.key)
+
+    res = client.get_job_update_details(
+        None, api.JobUpdateQuery(jobKey=res.key.job)
+    )
+
+    assert len(res.detailsList) == 2
+    # Previous rolling_forward update is aborted
+    assert (
+        res.detailsList[1].updateEvents[-1].status
+        == api.JobUpdateStatus.ABORTED
+    )
+
+
 @pytest.mark.skip("mesos task events are not acked correctly")
 def test__simple_update_with_restart_component(
     client, jobmgr, resmgr, hostmgr, mesos_master
