@@ -230,6 +230,7 @@ mockgens: build-mockgen gens $(GOMOCK)
 	$(call local_mockgen,.gen/peloton/api/v1alpha/job/stateless/svc,JobServiceYARPCClient;JobServiceServiceListJobsYARPCClient;JobServiceServiceListPodsYARPCClient;JobServiceServiceListJobsYARPCServer;JobServiceServiceListPodsYARPCServer)
 	$(call local_mockgen,.gen/peloton/api/v1alpha/watch/svc,WatchServiceYARPCClient;WatchServiceServiceWatchYARPCClient;WatchServiceServiceWatchYARPCServer)
 	$(call local_mockgen,.gen/peloton/private/hostmgr/hostsvc,InternalHostServiceYARPCClient)
+	$(call local_mockgen,.gen/peloton/private/jobmgrsvc,JobManagerServiceYARPCClient)
 	$(call local_mockgen,.gen/peloton/private/resmgrsvc,ResourceManagerServiceYARPCClient)
 	$(call vendor_mockgen,go.uber.org/yarpc/encoding/json/outbound.go)
 

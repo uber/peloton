@@ -31,6 +31,8 @@ import (
 	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	v1alphapod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	v1alphaquery "github.com/uber/peloton/.gen/peloton/api/v1alpha/query"
+	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
+	jobmgrsvcmocks "github.com/uber/peloton/.gen/peloton/private/jobmgrsvc/mocks"
 
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
 	"github.com/uber/peloton/pkg/jobmgr/util/handler"
@@ -60,17 +62,20 @@ type statelessActionsTestSuite struct {
 	ctrl            *gomock.Controller
 	statelessClient *mocks.MockJobServiceYARPCClient
 	resClient       *respoolmocks.MockResourceManagerYARPCClient
+	jobmgrClient    *jobmgrsvcmocks.MockJobManagerServiceYARPCClient
 }
 
 func (suite *statelessActionsTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.statelessClient = mocks.NewMockJobServiceYARPCClient(suite.ctrl)
 	suite.resClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
+	suite.jobmgrClient = jobmgrsvcmocks.NewMockJobManagerServiceYARPCClient(suite.ctrl)
 	suite.ctx = context.Background()
 	suite.respoolID = &v1alphapeloton.ResourcePoolID{Value: uuid.New()}
 	suite.client = Client{
 		Debug:           false,
 		statelessClient: suite.statelessClient,
+		jobmgrClient:    suite.jobmgrClient,
 		resClient:       suite.resClient,
 		dispatcher:      nil,
 		ctx:             suite.ctx,
@@ -82,18 +87,18 @@ func (suite *statelessActionsTestSuite) TearDownTest() {
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessGetCacheActionSuccess() {
-	suite.statelessClient.EXPECT().
-		GetJobCache(suite.ctx, &svc.GetJobCacheRequest{
+	suite.jobmgrClient.EXPECT().
+		GetJobCache(suite.ctx, &jobmgrsvc.GetJobCacheRequest{
 			JobId: &v1alphapeloton.JobID{Value: testJobID},
 		}).
-		Return(&svc.GetJobCacheResponse{}, nil)
+		Return(&jobmgrsvc.GetJobCacheResponse{}, nil)
 
 	suite.NoError(suite.client.StatelessGetCacheAction(testJobID))
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessGetCacheActionError() {
-	suite.statelessClient.EXPECT().
-		GetJobCache(suite.ctx, &svc.GetJobCacheRequest{
+	suite.jobmgrClient.EXPECT().
+		GetJobCache(suite.ctx, &jobmgrsvc.GetJobCacheRequest{
 			JobId: &v1alphapeloton.JobID{Value: testJobID},
 		}).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
@@ -102,18 +107,18 @@ func (suite *statelessActionsTestSuite) TestStatelessGetCacheActionError() {
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessRefreshAction() {
-	suite.statelessClient.EXPECT().
-		RefreshJob(suite.ctx, &svc.RefreshJobRequest{
+	suite.jobmgrClient.EXPECT().
+		RefreshJob(suite.ctx, &jobmgrsvc.RefreshJobRequest{
 			JobId: &v1alphapeloton.JobID{Value: testJobID},
 		}).
-		Return(&svc.RefreshJobResponse{}, nil)
+		Return(&jobmgrsvc.RefreshJobResponse{}, nil)
 
 	suite.NoError(suite.client.StatelessRefreshAction(testJobID))
 }
 
 func (suite *statelessActionsTestSuite) TestStatelessRefreshActionError() {
-	suite.statelessClient.EXPECT().
-		RefreshJob(suite.ctx, &svc.RefreshJobRequest{
+	suite.jobmgrClient.EXPECT().
+		RefreshJob(suite.ctx, &jobmgrsvc.RefreshJobRequest{
 			JobId: &v1alphapeloton.JobID{Value: testJobID},
 		}).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))

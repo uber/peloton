@@ -38,6 +38,7 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
 	"github.com/uber/peloton/pkg/jobmgr/jobsvc"
+	"github.com/uber/peloton/pkg/jobmgr/jobsvc/private"
 	"github.com/uber/peloton/pkg/jobmgr/jobsvc/stateless"
 	"github.com/uber/peloton/pkg/jobmgr/logmanager"
 	"github.com/uber/peloton/pkg/jobmgr/podsvc"
@@ -561,6 +562,17 @@ func main() {
 		candidate,
 		common.PelotonResourceManager, // TODO: to be removed
 		cfg.JobManager.JobSvcCfg,
+	)
+
+	private.InitPrivateJobServiceHandler(
+		dispatcher,
+		store,
+		store,
+		store,
+		ormStore,
+		jobFactory,
+		goalStateDriver,
+		candidate,
 	)
 
 	stateless.InitV1AlphaJobServiceHandler(

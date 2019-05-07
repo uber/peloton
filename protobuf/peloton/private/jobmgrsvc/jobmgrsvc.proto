@@ -1,0 +1,49 @@
+/**
+ *  Internal API for Peloton Job Manager
+ */
+
+syntax = "proto3";
+
+package peloton.private.jobmgr;
+
+option go_package = "peloton/private/jobmgrsvc";
+
+import "peloton/api/v1alpha/peloton.proto";
+import "peloton/api/v1alpha/job/stateless/stateless.proto";
+
+// Request message for JobService.RefreshJob method.
+message RefreshJobRequest {
+  // The job ID to look up the job.
+  api.v1alpha.peloton.JobID job_id = 1;
+}
+
+// Response message for JobService.RefreshJob method.
+// Return errors:
+//   NOT_FOUND:         if the job ID is not found.
+message RefreshJobResponse {}
+
+// Request message for JobService.GetJobCache method.
+message GetJobCacheRequest {
+  // The job ID to look up the job.
+  api.v1alpha.peloton.JobID job_id = 1;
+}
+
+// Response message for JobService.GetJobCache method.
+// Return errors:
+//   NOT_FOUND:         if the job ID is not found.
+message GetJobCacheResponse {
+  // The job configuration in cache of the matching job.
+  api.v1alpha.job.stateless.JobSpec spec = 1;
+
+  // The job runtime in cache of the matching job.
+  api.v1alpha.job.stateless.JobStatus status = 2;
+}
+
+service JobManagerService {
+  // RefreshJob allows user to load job runtime status from the database
+  // and re-execute the action associated with current state.
+  rpc RefreshJob(RefreshJobRequest) returns (RefreshJobResponse);
+
+  // GetJobCache gets the job state in the cache.
+  rpc GetJobCache(GetJobCacheRequest) returns(GetJobCacheResponse);
+}

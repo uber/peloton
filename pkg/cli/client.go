@@ -33,6 +33,7 @@ import (
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
 	hostmgr_svc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
 	"github.com/uber/peloton/pkg/cli/middleware"
@@ -53,6 +54,7 @@ type Client struct {
 	volumeClient    volume_svc.VolumeServiceYARPCClient
 	hostMgrClient   hostmgr_svc.InternalHostServiceYARPCClient
 	hostClient      hostsvc.HostServiceYARPCClient
+	jobmgrClient    jobmgrsvc.JobManagerServiceYARPCClient
 	dispatcher      *yarpc.Dispatcher
 	ctx             context.Context
 	cancelFunc      context.CancelFunc
@@ -144,6 +146,9 @@ func New(
 			dispatcher.ClientConfig(common.PelotonJobManager),
 		),
 		watchClient: watchsvc.NewWatchServiceYARPCClient(
+			dispatcher.ClientConfig(common.PelotonJobManager),
+		),
+		jobmgrClient: jobmgrsvc.NewJobManagerServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonJobManager),
 		),
 		dispatcher: dispatcher,

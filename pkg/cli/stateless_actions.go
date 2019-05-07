@@ -29,6 +29,7 @@ import (
 	v1alphapod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	v1alphaquery "github.com/uber/peloton/.gen/peloton/api/v1alpha/query"
 	v1alpharespool "github.com/uber/peloton/.gen/peloton/api/v1alpha/respool"
+	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
 
@@ -60,9 +61,9 @@ const (
 
 // StatelessGetCacheAction get cache of stateless job
 func (c *Client) StatelessGetCacheAction(jobID string) error {
-	resp, err := c.statelessClient.GetJobCache(
+	resp, err := c.jobmgrClient.GetJobCache(
 		c.ctx,
-		&statelesssvc.GetJobCacheRequest{
+		&jobmgrsvc.GetJobCacheRequest{
 			JobId: &v1alphapeloton.JobID{Value: jobID},
 		})
 	if err != nil {
@@ -80,9 +81,9 @@ func (c *Client) StatelessGetCacheAction(jobID string) error {
 
 // StatelessRefreshAction refreshes a job
 func (c *Client) StatelessRefreshAction(jobID string) error {
-	resp, err := c.statelessClient.RefreshJob(
+	resp, err := c.jobmgrClient.RefreshJob(
 		c.ctx,
-		&statelesssvc.RefreshJobRequest{
+		&jobmgrsvc.RefreshJobRequest{
 			JobId: &v1alphapeloton.JobID{Value: jobID},
 		})
 	if err != nil {
