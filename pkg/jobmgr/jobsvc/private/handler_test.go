@@ -16,16 +16,19 @@ package private
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	pbupdate "github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
+	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 
 	leadermocks "github.com/uber/peloton/pkg/common/leader/mocks"
@@ -98,6 +101,81 @@ func (suite *privateHandlerTestSuite) TearDownTest() {
 
 func TestPrivateServiceHandler(t *testing.T) {
 	suite.Run(t, new(privateHandlerTestSuite))
+}
+
+// TestGetThrottledPods tests getting the list of throttled pods
+func (suite *privateHandlerTestSuite) TestGetThrottledPods() {
+	totalJobs := 3
+	totalTasks := 3
+	cachedJobs := make(map[string]cached.Job)
+	cachedMockJobs := make([]*cachedmocks.MockJob, totalJobs)
+	cachedConfigs := make([]*cachedmocks.MockJobConfigCache, totalJobs)
+	cachedTasks := make(map[uint32]cached.Task)
+	cachedMockTasks := make([]*cachedmocks.MockTask, totalTasks)
+
+	for i := 0; i < totalJobs; i++ {
+		cachedJob := cachedmocks.NewMockJob(suite.ctrl)
+		cachedJobs[strconv.Itoa(i)] = cachedJob
+		cachedMockJobs[i] = cachedJob
+		cachedConfigs[i] = cachedmocks.NewMockJobConfigCache(suite.ctrl)
+	}
+
+	for i := 0; i < totalTasks; i++ {
+		cachedTask := cachedmocks.NewMockTask(suite.ctrl)
+		cachedTasks[uint32(i)] = cachedTask
+		cachedMockTasks[i] = cachedTask
+	}
+
+	suite.jobFactory.EXPECT().
+		GetAllJobs().
+		Return(cachedJobs)
+
+	cachedMockJobs[0].EXPECT().
+		GetConfig(gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	for i := 1; i < totalJobs; i++ {
+		cachedMockJobs[i].EXPECT().
+			GetConfig(gomock.Any()).
+			Return(cachedConfigs[i], nil)
+	}
+
+	cachedConfigs[1].EXPECT().
+		GetType().
+		Return(pbjob.JobType_BATCH)
+
+	cachedConfigs[2].EXPECT().
+		GetType().
+		Return(pbjob.JobType_SERVICE)
+
+	cachedMockJobs[2].EXPECT().
+		GetAllTasks().
+		Return(cachedTasks)
+
+	cachedMockTasks[0].EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	cachedMockTasks[1].EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbtask.RuntimeInfo{
+			State:   pbtask.TaskState_KILLED,
+			Message: "not throttled",
+		}, nil)
+
+	cachedMockTasks[2].EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&pbtask.RuntimeInfo{
+			State:   pbtask.TaskState_KILLED,
+			Message: common.TaskThrottleMessage,
+		}, nil)
+
+	resp, err := suite.handler.GetThrottledPods(
+		context.Background(),
+		&jobmgrsvc.GetThrottledPodsRequest{},
+	)
+	suite.NoError(err)
+	suite.Equal(1, len(resp.GetThrottledPods()))
 }
 
 // TestRefreshJobSuccess tests the case of successfully refreshing job

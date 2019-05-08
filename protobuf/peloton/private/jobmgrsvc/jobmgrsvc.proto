@@ -11,6 +11,15 @@ option go_package = "peloton/private/jobmgrsvc";
 import "peloton/api/v1alpha/peloton.proto";
 import "peloton/api/v1alpha/job/stateless/stateless.proto";
 
+
+// Request message for JobService.GetThrottledPods method.
+message GetThrottledPodsRequest{}
+
+// Response message for JobService.GetThrottledPods method.
+message GetThrottledPodsResponse {
+  repeated api.v1alpha.peloton.PodName throttled_pods = 1;
+}
+
 // Request message for JobService.RefreshJob method.
 message RefreshJobRequest {
   // The job ID to look up the job.
@@ -40,6 +49,9 @@ message GetJobCacheResponse {
 }
 
 service JobManagerService {
+  // Get the list of throttled tasks in the system
+  rpc GetThrottledPods(GetThrottledPodsRequest) returns(GetThrottledPodsResponse);
+
   // RefreshJob allows user to load job runtime status from the database
   // and re-execute the action associated with current state.
   rpc RefreshJob(RefreshJobRequest) returns (RefreshJobResponse);

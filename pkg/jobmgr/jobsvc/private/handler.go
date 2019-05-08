@@ -25,6 +25,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 
 	"github.com/uber/peloton/pkg/common/leader"
+	"github.com/uber/peloton/pkg/common/util"
 	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 	yarpcutil "github.com/uber/peloton/pkg/common/util/yarpc"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
@@ -77,6 +78,70 @@ func InitPrivateJobServiceHandler(
 		candidate:       candidate,
 	}
 	d.Register(jobmgrsvc.BuildJobManagerServiceYARPCProcedures(handler))
+}
+
+func (h *serviceHandler) GetThrottledPods(
+	ctx context.Context,
+	req *jobmgrsvc.GetThrottledPodsRequest,
+) (resp *jobmgrsvc.GetThrottledPodsResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil {
+			log.WithField("request", req).
+				WithField("headers", headers).
+				WithError(err).
+				Info("JobSVC.GetThrottledTasks failed")
+			err = yarpcutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("headers", headers).
+			Debug("JobSVC.GetThrottledTasks succeeded")
+	}()
+
+	var throttledPods []*v1alphapeloton.PodName
+	cachedJobs := h.jobFactory.GetAllJobs()
+
+	for jobID, cachedJob := range cachedJobs {
+		cachedConfig, tmpErr := cachedJob.GetConfig(ctx)
+		if tmpErr != nil {
+			log.WithError(tmpErr).
+				WithField("job_id", jobID).
+				Info("Failed to get job config during fetching throttled pods")
+			continue
+		}
+
+		if cachedConfig.GetType() != pbjob.JobType_SERVICE {
+			continue
+		}
+
+		cachedTasks := cachedJob.GetAllTasks()
+		for instID, cachedTask := range cachedTasks {
+			runtime, tmpErr := cachedTask.GetRuntime(ctx)
+			if tmpErr != nil {
+				log.WithError(tmpErr).
+					WithFields(log.Fields{
+						"job_id":      jobID,
+						"instance_id": instID,
+					}).
+					Info("Failed to get task runtime during fetching throttled pods")
+				continue
+			}
+
+			if util.IsTaskThrottled(runtime.GetState(), runtime.GetMessage()) {
+				podName := &v1alphapeloton.PodName{
+					Value: util.CreatePelotonTaskID(jobID, instID),
+				}
+				throttledPods = append(throttledPods, podName)
+			}
+		}
+	}
+
+	resp = &jobmgrsvc.GetThrottledPodsResponse{
+		ThrottledPods: throttledPods,
+	}
+	return
 }
 
 func (h *serviceHandler) RefreshJob(

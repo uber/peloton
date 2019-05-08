@@ -478,6 +478,10 @@ var (
 	taskRestartJobName        = taskRestart.Arg("job", "job identifier").Required().String()
 	taskRestartInstanceRanges = taskRangeListFlag(taskRestart.Flag("range", "restart range of instances (specify multiple times) (from:to syntax, default ALL)").Default(":").Short('r'))
 
+	// Top level job manager state commmand
+	jobMgr              = app.Command("jobmgr", "fetch job manager state")
+	jobMgrThrottledPods = jobMgr.Command("throttled-pods", "(private only) fetch throttled pods in job manager cache")
+
 	// Top level resource manager state command
 	resMgr      = app.Command("resmgr", "fetch resource manager state")
 	resMgrTasks = resMgr.Command("tasks", "fetch resource manager task state")
@@ -829,6 +833,8 @@ func main() {
 		err = client.HostMaintenanceCompleteAction(*hostMaintenanceCompleteHostnames)
 	case hostQuery.FullCommand():
 		err = client.HostQueryAction(*hostQueryStates)
+	case jobMgrThrottledPods.FullCommand():
+		err = client.JobMgrGetThrottledPods()
 	case resMgrActiveTasks.FullCommand():
 		err = client.ResMgrGetActiveTasks(*resMgrActiveTasksGetJobName, *resMgrActiveTasksGetRespoolID, *resMgrActiveTasksGetStates)
 	case resMgrPendingTasks.FullCommand():
