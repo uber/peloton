@@ -101,7 +101,7 @@ func (h *serviceHandler) StartPod(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.StartPod failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -269,7 +269,7 @@ func (h *serviceHandler) StopPod(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.StopPod failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -337,7 +337,7 @@ func (h *serviceHandler) RestartPod(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.RestartPod failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -395,7 +395,7 @@ func (h *serviceHandler) GetPod(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.GetPod failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -480,7 +480,7 @@ func (h *serviceHandler) GetPodEvents(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.GetPodEvents failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -519,7 +519,7 @@ func (h *serviceHandler) BrowsePodSandbox(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.BrowsePodSandbox failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -608,7 +608,7 @@ func (h *serviceHandler) RefreshPod(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.RefreshPod failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -658,7 +658,7 @@ func (h *serviceHandler) GetPodCache(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.GetPodCache failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -714,7 +714,7 @@ func (h *serviceHandler) DeletePodEvents(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("PodSVC.DeletePodEvents failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 

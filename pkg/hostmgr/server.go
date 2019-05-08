@@ -246,16 +246,16 @@ func (s *Server) ensureStopped() {
 // This function ensures desire states based on whether current
 // server is elected, and whether actively connected to Mesos.
 func (s *Server) ensureStateRound() {
+	// Update metrics
+	s.metrics.Elected.Update(btof(s.elected.Load()))
+	s.metrics.MesosConnected.Update(btof(s.mesosInbound.IsRunning()))
+	s.metrics.HandlersRunning.Update(btof(s.handlersRunning.Load()))
+
 	if !s.elected.Load() {
 		s.ensureStopped()
 	} else {
 		s.ensureRunning()
 	}
-
-	// Update metrics
-	s.metrics.Elected.Update(btof(s.elected.Load()))
-	s.metrics.MesosConnected.Update(btof(s.mesosInbound.IsRunning()))
-	s.metrics.HandlersRunning.Update(btof(s.handlersRunning.Load()))
 }
 
 func (s *Server) stopHandlers() {

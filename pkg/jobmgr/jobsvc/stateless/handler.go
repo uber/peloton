@@ -138,7 +138,7 @@ func (h *serviceHandler) CreateJob(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.CreateJob failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -262,7 +262,7 @@ func (h *serviceHandler) ReplaceJob(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.ReplaceJob failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -387,7 +387,7 @@ func (h *serviceHandler) RestartJob(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.RestartJob failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -489,7 +489,7 @@ func (h *serviceHandler) PauseJobWorkflow(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.PauseJobWorkflow failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -534,7 +534,7 @@ func (h *serviceHandler) ResumeJobWorkflow(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.ResumeJobWorkflow failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -583,7 +583,7 @@ func (h *serviceHandler) AbortJobWorkflow(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.AbortJobWorkflow failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -634,7 +634,7 @@ func (h *serviceHandler) StartJob(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.StartJob failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -709,7 +709,7 @@ func (h *serviceHandler) StopJob(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.StopJob failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -795,7 +795,7 @@ func (h *serviceHandler) DeleteJob(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.DeleteJob failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -919,7 +919,7 @@ func (h *serviceHandler) GetJob(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("StatelessJobSvc.GetJob failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -1009,7 +1009,7 @@ func (h *serviceHandler) GetJobIDFromJobName(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("StatelessJobSvc.GetJobIDFromJobName failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -1050,7 +1050,7 @@ func (h *serviceHandler) GetWorkflowEvents(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("StatelessJobSvc.GetWorkflowEvents failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -1106,7 +1106,7 @@ func (h *serviceHandler) ListPods(
 				WithField("job_id", req.GetJobId().GetValue()).
 				WithField("headers", headers).
 				Warn("JobSVC.ListPods failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -1162,7 +1162,7 @@ func (h *serviceHandler) QueryPods(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.QueryPods failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -1221,7 +1221,7 @@ func (h *serviceHandler) QueryJobs(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.QueryJobs failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -1296,7 +1296,7 @@ func (h *serviceHandler) ListJobs(
 			log.WithError(err).
 				WithField("headers", headers).
 				Warn("JobSVC.ListJobs failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -1353,7 +1353,7 @@ func (h *serviceHandler) ListJobWorkflows(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.ListJobWorkflows failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -1488,7 +1488,7 @@ func (h *serviceHandler) GetReplaceJobDiff(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.GetReplaceJobDiff failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -1565,7 +1565,7 @@ func (h *serviceHandler) RefreshJob(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.RefreshJob failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -1615,7 +1615,7 @@ func (h *serviceHandler) GetJobCache(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.GetJobCache failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 

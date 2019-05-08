@@ -29,6 +29,7 @@ type Metrics struct {
 	LaunchTasksInvalidOffers tally.Counter
 
 	AcquireHostOffers        tally.Counter
+	AcquireHostOffersFail    tally.Counter
 	AcquireHostOffersInvalid tally.Counter
 	AcquireHostOffersCount   tally.Counter
 
@@ -43,9 +44,12 @@ type Metrics struct {
 	ShutdownExecutorsInvalid tally.Counter
 	ShutdownExecutorsFail    tally.Counter
 
-	ReleaseHostOffers        tally.Counter
-	ReleaseHostOffersInvalid tally.Counter
-	ReleaseHostsCount        tally.Counter
+	ReleaseHostOffers     tally.Counter
+	ReleaseHostOffersFail tally.Counter
+	ReleaseHostsCount     tally.Counter
+
+	GetMesosMasterHostPort     tally.Counter
+	GetMesosMasterHostPortFail tally.Counter
 
 	Elected         tally.Gauge
 	MesosConnected  tally.Gauge
@@ -86,6 +90,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		OfferOperationsInvalidOffers: scope.Counter("offer_operations_invalid_offers"),
 
 		AcquireHostOffers:        scope.Counter("acquire_host_offers"),
+		AcquireHostOffersFail:    scope.Counter("acquire_host_offers_fail"),
 		AcquireHostOffersInvalid: scope.Counter("acquire_host_offers_invalid"),
 		AcquireHostOffersCount:   scope.Counter("acquire_host_offers_count"),
 
@@ -100,9 +105,12 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		ShutdownExecutorsInvalid: scope.Counter("shutdown_executors_invalid"),
 		ShutdownExecutorsFail:    scope.Counter("shutdown_executors_fail"),
 
-		ReleaseHostOffers:        scope.Counter("release_host_offers"),
-		ReleaseHostOffersInvalid: scope.Counter("release_host_offers_invalid"),
-		ReleaseHostsCount:        scope.Counter("release_hosts_count"),
+		ReleaseHostOffers:     scope.Counter("release_host_offers"),
+		ReleaseHostOffersFail: scope.Counter("release_host_offers_fail"),
+		ReleaseHostsCount:     scope.Counter("release_hosts_count"),
+
+		GetMesosMasterHostPort:     scope.Counter("get_mesos_master_host_port"),
+		GetMesosMasterHostPortFail: scope.Counter("get_mesos_master_host_port_fail"),
 
 		Elected:         serverScope.Gauge("elected"),
 		MesosConnected:  serverScope.Gauge("mesos_connected"),

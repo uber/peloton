@@ -16,7 +16,6 @@ package hostmgr
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -36,6 +35,7 @@ import (
 	"github.com/uber/peloton/pkg/common/reservation"
 	"github.com/uber/peloton/pkg/common/stringset"
 	"github.com/uber/peloton/pkg/common/util"
+	yarpcutil "github.com/uber/peloton/pkg/common/util/yarpc"
 	"github.com/uber/peloton/pkg/hostmgr/config"
 	"github.com/uber/peloton/pkg/hostmgr/factory/operation"
 	"github.com/uber/peloton/pkg/hostmgr/factory/task"
@@ -53,11 +53,13 @@ import (
 	hmutil "github.com/uber/peloton/pkg/hostmgr/util"
 	"github.com/uber/peloton/pkg/storage"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/atomic"
 	"go.uber.org/multierr"
-	"go.uber.org/yarpc"
+	yarpc "go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -259,34 +261,49 @@ func (h *ServiceHandler) GetStatusUpdateEvents(
 func (h *ServiceHandler) AcquireHostOffers(
 	ctx context.Context,
 	body *hostsvc.AcquireHostOffersRequest,
-) (*hostsvc.AcquireHostOffersResponse, error) {
+) (response *hostsvc.AcquireHostOffersResponse, err error) {
 
-	log.WithField("request", body).Debug("AcquireHostOffers called.")
+	defer func() {
+		if err != nil {
+			err = yarpcutil.ConvertToYARPCError(err)
+			return
+		}
+
+		h.metrics.AcquireHostOffers.Inc(1)
+		h.metrics.AcquireHostOffersCount.Inc(int64(len(response.HostOffers)))
+	}()
 
 	if invalid := validateHostFilter(body.GetFilter()); invalid != nil {
-		log.WithField("filter", body.GetFilter()).Warn("Invalid Filter")
+		err = yarpcerrors.InvalidArgumentErrorf("invalid filter")
 		h.metrics.AcquireHostOffersInvalid.Inc(1)
+
+		log.WithField("filter", body.GetFilter()).
+			Warn("Invalid Filter")
+
 		return &hostsvc.AcquireHostOffersResponse{
 			Error: &hostsvc.AcquireHostOffersResponse_Error{
 				InvalidHostFilter: invalid,
 			},
-		}, nil
+		}, errors.Wrap(err, "invalid filter")
 	}
 
 	result, resultCount, err := h.offerPool.ClaimForPlace(body.GetFilter())
 	if err != nil {
-		log.WithError(err).Warn("ClaimForPlace failed")
-		h.metrics.AcquireHostOffersInvalid.Inc(1)
+		h.metrics.AcquireHostOffersFail.Inc(1)
+		log.WithField("filter", body.GetFilter()).
+			WithError(err).
+			Warn("ClaimForPlace failed")
+
 		return &hostsvc.AcquireHostOffersResponse{
 			Error: &hostsvc.AcquireHostOffersResponse_Error{
 				Failure: &hostsvc.AcquireHostOffersFailure{
 					Message: err.Error(),
 				},
 			},
-		}, nil
+		}, errors.Wrap(err, "claim for place failed")
 	}
 
-	response := hostsvc.AcquireHostOffersResponse{
+	response = &hostsvc.AcquireHostOffersResponse{
 		HostOffers:         []*hostsvc.HostOffer{},
 		FilterResultCounts: resultCount,
 	}
@@ -317,15 +334,14 @@ func (h *ServiceHandler) AcquireHostOffers(
 		}
 
 		response.HostOffers = append(response.HostOffers, &pHostOffer)
+		log.WithFields(log.Fields{
+			"hostname":      hostname,
+			"agent_id":      offers[0].GetAgentId().GetValue(),
+			"host_offer_id": hostOffer.ID,
+		}).Info("Acquired Host")
 	}
 
-	h.metrics.AcquireHostOffers.Inc(1)
-	h.metrics.AcquireHostOffersCount.Inc(int64(len(response.HostOffers)))
-
-	log.
-		WithField("response", response).
-		Debug("AcquireHostOffers returned")
-	return &response, nil
+	return response, nil
 }
 
 // GetHosts implements InternalHostService.GetHosts.
@@ -333,11 +349,26 @@ func (h *ServiceHandler) AcquireHostOffers(
 // and constraints passed in the request through hostsvc.HostFilter
 func (h *ServiceHandler) GetHosts(
 	ctx context.Context,
-	body *hostsvc.GetHostsRequest) (*hostsvc.GetHostsResponse, error) {
-	log.WithField("request", body).Debug("GetHosts called.")
+	body *hostsvc.GetHostsRequest,
+) (response *hostsvc.GetHostsResponse, err error) {
+
+	var hosts []*hostsvc.HostInfo
+	defer func() {
+		if err != nil {
+			h.metrics.GetHostsInvalid.Inc(1)
+			err = yarpcerrors.Newf(yarpcerrors.CodeInternal, err.Error())
+			return
+		}
+
+		log.WithField("body", body).Debug("GetHosts called")
+
+		h.metrics.GetHosts.Inc(1)
+		h.metrics.GetHostsCount.Inc(int64(len(hosts)))
+	}()
 
 	if invalid := validateHostFilter(body.GetFilter()); invalid != nil {
-		return h.processGetHostsFailure(invalid), nil
+		response = h.processGetHostsFailure(invalid)
+		return response, errors.New("invalid host filter")
 	}
 
 	matcher := host.NewMatcher(
@@ -346,67 +377,79 @@ func (h *ServiceHandler) GetHosts(
 		func(resourceType string) bool {
 			return hmutil.IsSlackResourceType(resourceType, h.slackResourceTypes)
 		})
-	result, err := matcher.GetMatchingHosts()
-	if err != nil {
-		return h.processGetHostsFailure(err), nil
+	result, matchErr := matcher.GetMatchingHosts()
+	if matchErr != nil {
+		response = h.processGetHostsFailure(matchErr)
+		return response, errors.New(matchErr.GetMessage())
 	}
 
-	hosts := make([]*hostsvc.HostInfo, 0, len(result))
 	for hostname, agentInfo := range result {
 		hosts = append(hosts, util.CreateHostInfo(hostname, agentInfo))
 	}
 
-	h.metrics.GetHosts.Inc(1)
-	h.metrics.GetHostsCount.Inc(int64(len(hosts)))
-
-	log.WithField("hosts", hosts).Debug("GetHosts returned")
-	return &hostsvc.GetHostsResponse{
+	response = &hostsvc.GetHostsResponse{
 		Hosts: hosts,
-	}, nil
+	}
+
+	return response, nil
 }
 
 // processGetHostsFailure process the GetHostsFailure and returns the
 // error in respose otherwise with empty error
 func (h *ServiceHandler) processGetHostsFailure(
 	err interface{},
-) *hostsvc.GetHostsResponse {
-	resp := &hostsvc.GetHostsResponse{
+) (resp *hostsvc.GetHostsResponse) {
+
+	resp = &hostsvc.GetHostsResponse{
 		Error: &hostsvc.GetHostsResponse_Error{},
 	}
-	h.metrics.GetHostsInvalid.Inc(1)
+
 	if filter, ok := err.(*hostsvc.InvalidHostFilter); ok {
 		log.WithField("error", filter.Message).Warn("no matching hosts")
 		resp.Error.InvalidHostFilter = filter
 	}
+
 	if hostFailure, ok := err.(*hostsvc.GetHostsFailure); ok {
 		log.WithField("error", hostFailure.Message).Warn("no matching hosts")
 		resp.Error.Failure = hostFailure
 	}
+
 	return resp
 }
 
 // ReleaseHostOffers implements InternalHostService.ReleaseHostOffers.
 func (h *ServiceHandler) ReleaseHostOffers(
 	ctx context.Context,
-	body *hostsvc.ReleaseHostOffersRequest) (
-	*hostsvc.ReleaseHostOffersResponse, error) {
+	body *hostsvc.ReleaseHostOffersRequest,
+) (response *hostsvc.ReleaseHostOffersResponse, err error) {
 
-	log.WithField("request", body).Debug("ReleaseHostOffers called.")
-	response := hostsvc.ReleaseHostOffersResponse{}
+	defer func() {
+		if err != nil {
+			h.metrics.ReleaseHostOffersFail.Inc(1)
+			err = yarpcutil.ConvertToYARPCError(err)
+			return
+		}
+
+		h.metrics.ReleaseHostOffers.Inc(1)
+		h.metrics.ReleaseHostsCount.Inc(int64(len(body.GetHostOffers())))
+	}()
 
 	for _, hostOffer := range body.GetHostOffers() {
 		hostname := hostOffer.GetHostname()
 		if err := h.offerPool.ReturnUnusedOffers(hostname); err != nil {
-			log.WithError(err).WithField("hostoffer", hostOffer).
+			log.WithField("hostoffer", hostOffer).
+				WithError(err).
 				Warn("Cannot return unused offer on host.")
-			h.metrics.ReleaseHostOffersInvalid.Inc(1)
 		}
+
+		log.WithFields(log.Fields{
+			"hostname":      hostname,
+			"agent_id":      hostOffer.GetAgentId().GetValue(),
+			"host_offer_id": hostOffer.GetId().GetValue(),
+		}).Info("Released Host")
 	}
 
-	h.metrics.ReleaseHostOffers.Inc(1)
-	h.metrics.ReleaseHostsCount.Inc(int64(len(body.GetHostOffers())))
-
-	return &response, nil
+	return &hostsvc.ReleaseHostOffersResponse{}, nil
 }
 
 // validateOfferOperation ensures offer operations sequences are valid.
@@ -660,25 +703,32 @@ func (h *ServiceHandler) persistVolumeInfo(
 // LaunchTasks implements InternalHostService.LaunchTasks.
 func (h *ServiceHandler) LaunchTasks(
 	ctx context.Context,
-	req *hostsvc.LaunchTasksRequest) (
-	*hostsvc.LaunchTasksResponse,
-	error) {
-	log.WithField("request", req).Debug("LaunchTasks called.")
+	req *hostsvc.LaunchTasksRequest,
+) (response *hostsvc.LaunchTasksResponse, err error) {
+
+	defer func() {
+		if err != nil {
+			err = yarpcutil.ConvertToYARPCError(err)
+			return
+		}
+	}()
 
 	if err := validateLaunchTasks(req); err != nil {
+		err = yarpcerrors.InvalidArgumentErrorf("%s", err)
 		log.WithFields(log.Fields{
 			"hostname":       req.GetHostname(),
 			"host_offer_id":  req.GetId(),
 			"mesos_agent_id": req.GetAgentId(),
 		}).WithError(err).Error("validate launch tasks failed")
 		h.metrics.LaunchTasksInvalid.Inc(1)
+
 		return &hostsvc.LaunchTasksResponse{
 			Error: &hostsvc.LaunchTasksResponse_Error{
 				InvalidArgument: &hostsvc.InvalidArgument{
 					Message: err.Error(),
 				},
 			},
-		}, nil
+		}, errors.Wrap(err, "validate launch tasks failed")
 	}
 
 	hostToTaskIDs := make(map[string][]*peloton.TaskID)
@@ -723,13 +773,14 @@ func (h *ServiceHandler) LaunchTasks(
 			"offer_resources": scalar.FromOfferMap(offers),
 		}).WithError(err).Error("claim for launch failed")
 		h.metrics.LaunchTasksInvalidOffers.Inc(1)
+
 		return &hostsvc.LaunchTasksResponse{
 			Error: &hostsvc.LaunchTasksResponse_Error{
 				InvalidOffers: &hostsvc.InvalidOffers{
 					Message: err.Error(),
 				},
 			},
-		}, nil
+		}, errors.Wrap(err, "claim for launch failed")
 	}
 
 	var offerIds []*mesos.OfferID
@@ -775,8 +826,9 @@ func (h *ServiceHandler) LaunchTasks(
 							Message: "not enough resource to run task: " + err.Error(),
 						},
 					},
-				}, nil
+				}, errors.Wrap(err, "not enough resource to run task")
 			}
+
 			return &hostsvc.LaunchTasksResponse{
 				Error: &hostsvc.LaunchTasksResponse_Error{
 					InvalidArgument: &hostsvc.InvalidArgument{
@@ -786,7 +838,7 @@ func (h *ServiceHandler) LaunchTasks(
 						},
 					},
 				},
-			}, nil
+			}, errors.New("cannot get mesos task info")
 		}
 
 		mesosTask.AgentId = req.GetAgentId()
@@ -812,10 +864,6 @@ func (h *ServiceHandler) LaunchTasks(
 		},
 	}
 
-	log.WithFields(log.Fields{
-		"call": msg,
-	}).Debug("Launching tasks to Mesos.")
-
 	// TODO: add retry / put back offer and tasks in failure scenarios
 	msid := h.frameworkInfoProvider.GetMesosStreamID(ctx)
 	err = h.schedulerClient.Call(msid, msg)
@@ -834,15 +882,26 @@ func (h *ServiceHandler) LaunchTasks(
 					Message: err.Error(),
 				},
 			},
-		}, nil
+		}, errors.Wrap(err, "task launch failed")
 	}
 
 	h.metrics.LaunchTasks.Inc(int64(len(mesosTasks)))
+
+	var taskIDs []string
+	for _, task := range mesosTasks {
+		taskIDs = append(taskIDs, task.GetTaskId().GetValue())
+	}
+
+	var offerIDs []string
+	for _, offer := range offerIds {
+		offerIDs = append(offerIDs, offer.GetValue())
+	}
+
 	log.WithFields(log.Fields{
-		"tasks":         len(mesosTasks),
-		"offers":        len(offerIds),
+		"tasks":         taskIDs,
+		"offers":        offerIDs,
 		"host_offer_id": req.GetId().GetValue(),
-	}).Debug("Tasks launched.")
+	}).Info("Tasks launched.")
 
 	return &hostsvc.LaunchTasksResponse{}, nil
 }
@@ -870,20 +929,30 @@ func validateLaunchTasks(request *hostsvc.LaunchTasksRequest) error {
 // ShutdownExecutors implements InternalHostService.ShutdownExecutors.
 func (h *ServiceHandler) ShutdownExecutors(
 	ctx context.Context,
-	body *hostsvc.ShutdownExecutorsRequest) (
-	*hostsvc.ShutdownExecutorsResponse, error) {
-	log.WithField("request", body).Debug("ShutdownExecutor called.")
+	body *hostsvc.ShutdownExecutorsRequest,
+) (response *hostsvc.ShutdownExecutorsResponse, err error) {
+
+	defer func() {
+		log.WithField("request", body).Debug("ShutdownExecutor called.")
+		if err != nil {
+			err = yarpcutil.ConvertToYARPCError(err)
+			return
+		}
+	}()
+
 	shutdownExecutors := body.GetExecutors()
 
-	if err := validateShutdownExecutors(body); err != nil {
+	if err = validateShutdownExecutors(body); err != nil {
+		err = yarpcerrors.InvalidArgumentErrorf("%s", err)
 		h.metrics.ShutdownExecutorsInvalid.Inc(1)
+
 		return &hostsvc.ShutdownExecutorsResponse{
 			Error: &hostsvc.ShutdownExecutorsResponse_Error{
 				InvalidExecutors: &hostsvc.InvalidExecutors{
 					Message: err.Error(),
 				},
 			},
-		}, nil
+		}, errors.Wrap(err, "invalid shutdown executor request")
 	}
 
 	var wg sync.WaitGroup
@@ -892,8 +961,10 @@ func (h *ServiceHandler) ShutdownExecutors(
 	var errs []string
 	for _, shutdownExecutor := range shutdownExecutors {
 		wg.Add(1)
+
 		go func(shutdownExecutor *hostsvc.ExecutorOnAgent) {
 			defer wg.Done()
+
 			executorID := shutdownExecutor.GetExecutorId()
 			agentID := shutdownExecutor.GetAgentId()
 
@@ -923,11 +994,18 @@ func (h *ServiceHandler) ShutdownExecutors(
 				errs = append(errs, err.Error())
 				return
 			}
+
 			h.metrics.ShutdownExecutors.Inc(1)
+			log.WithFields(log.Fields{
+				"executor_id": executorID,
+				"agent_id":    agentID,
+			}).Info("Shutdown executor request sent")
 		}(shutdownExecutor)
 	}
 	wg.Wait()
+
 	if len(failedExecutors) > 0 {
+		err = errors.New("unable to shutdown executors")
 		return &hostsvc.ShutdownExecutorsResponse{
 			Error: &hostsvc.ShutdownExecutorsResponse_Error{
 				ShutdownFailure: &hostsvc.ShutdownFailure{
@@ -935,7 +1013,7 @@ func (h *ServiceHandler) ShutdownExecutors(
 					Executors: failedExecutors,
 				},
 			},
-		}, nil
+		}, err
 	}
 
 	return &hostsvc.ShutdownExecutorsResponse{}, nil
@@ -964,6 +1042,15 @@ func (h *ServiceHandler) KillAndReserveTasks(
 	ctx context.Context,
 	body *hostsvc.KillAndReserveTasksRequest,
 ) (*hostsvc.KillAndReserveTasksResponse, error) {
+
+	var err error
+	defer func() {
+		if err != nil {
+			err = yarpcutil.ConvertToYARPCError(err)
+			return
+		}
+	}()
+
 	var taskIDs []*mesos.TaskID
 	heldHostToTaskIDs := make(map[string][]*peloton.TaskID)
 
@@ -991,6 +1078,8 @@ func (h *ServiceHandler) KillAndReserveTasks(
 	// then kill the tasks
 	invalidTaskIDs, killFailure := h.killTasks(ctx, taskIDs)
 	if invalidTaskIDs == nil && killFailure == nil {
+		err = errors.New("unable to kill tasks")
+
 		return &hostsvc.KillAndReserveTasksResponse{}, nil
 	}
 
@@ -1024,11 +1113,19 @@ func (h *ServiceHandler) KillTasks(
 	body *hostsvc.KillTasksRequest) (
 	*hostsvc.KillTasksResponse, error) {
 
-	log.WithField("request", body).Debug("KillTasks called.")
+	var err error
+	defer func() {
+		if err != nil {
+			err = yarpcutil.ConvertToYARPCError(err)
+			return
+		}
+	}()
 
 	invalidTaskIDs, killFailure := h.killTasks(ctx, body.GetTaskIds())
 
 	if invalidTaskIDs != nil || killFailure != nil {
+		err = errors.New("unable to kill tasks")
+
 		return &hostsvc.KillTasksResponse{
 			Error: &hostsvc.KillTasksResponse_Error{
 				InvalidTaskIDs: invalidTaskIDs,
@@ -1044,6 +1141,7 @@ func (h *ServiceHandler) killTasks(
 	ctx context.Context,
 	taskIds []*mesos.TaskID) (
 	*hostsvc.InvalidTaskIDs, *hostsvc.KillFailure) {
+
 	if len(taskIds) == 0 {
 		return &hostsvc.InvalidTaskIDs{Message: "Empty task ids"}, nil
 	}
@@ -1058,8 +1156,10 @@ func (h *ServiceHandler) killTasks(
 	var errs []string
 	for _, taskID := range taskIds {
 		wg.Add(1)
+
 		go func(taskID *mesos.TaskID) {
 			defer wg.Done()
+
 			callType := sched.Call_KILL
 			msg := &sched.Call{
 				FrameworkId: h.frameworkInfoProvider.GetFrameworkID(ctx),
@@ -1145,8 +1245,20 @@ func (h *ServiceHandler) DestroyVolumes(
 // ClusterCapacity fetches the allocated resources to the framework
 func (h *ServiceHandler) ClusterCapacity(
 	ctx context.Context,
-	body *hostsvc.ClusterCapacityRequest) (
-	*hostsvc.ClusterCapacityResponse, error) {
+	body *hostsvc.ClusterCapacityRequest,
+) (response *hostsvc.ClusterCapacityResponse, err error) {
+
+	defer func() {
+		if err != nil {
+			h.metrics.ClusterCapacityFail.Inc(1)
+			err = yarpcutil.ConvertToYARPCError(err)
+			return
+		}
+
+		h.metrics.ClusterCapacity.Inc(1)
+		h.metrics.RefreshClusterCapacityGauges(response)
+	}()
+
 	frameWorkID := h.frameworkInfoProvider.GetFrameworkID(ctx)
 	if len(frameWorkID.GetValue()) == 0 {
 		return &hostsvc.ClusterCapacityResponse{
@@ -1161,21 +1273,21 @@ func (h *ServiceHandler) ClusterCapacity(
 	allocatedResources, _, err := h.operatorMasterClient.
 		GetTasksAllocation(frameWorkID.GetValue())
 	if err != nil {
-		h.metrics.ClusterCapacityFail.Inc(1)
 		log.WithError(err).Error("error making cluster capacity request")
+
 		return &hostsvc.ClusterCapacityResponse{
 			Error: &hostsvc.ClusterCapacityResponse_Error{
 				ClusterUnavailable: &hostsvc.ClusterUnavailable{
 					Message: err.Error(),
 				},
 			},
-		}, nil
+		}, errors.Wrap(err, "error making cluster capacity request")
 	}
 
 	agentMap := host.GetAgentMap()
 	if agentMap == nil || len(agentMap.RegisteredAgents) == 0 {
-		h.metrics.ClusterCapacityFail.Inc(1)
 		log.Error("error getting host agentmap")
+
 		return &hostsvc.ClusterCapacityResponse{
 			Error: &hostsvc.ClusterCapacityResponse_Error{
 				ClusterUnavailable: &hostsvc.ClusterUnavailable{
@@ -1193,16 +1305,17 @@ func (h *ServiceHandler) ClusterCapacity(
 	// cluster capacity will be over estimated.
 	quotaResources, err := h.operatorMasterClient.GetQuota(h.roleName)
 	if err != nil {
-		h.metrics.ClusterCapacityFail.Inc(1)
 		log.WithError(err).Error("error getting quota")
+
 		return &hostsvc.ClusterCapacityResponse{
 			Error: &hostsvc.ClusterCapacityResponse_Error{
 				ClusterUnavailable: &hostsvc.ClusterUnavailable{
 					Message: err.Error(),
 				},
 			},
-		}, nil
+		}, errors.Wrap(err, "error getting quota")
 	}
+
 	if err == nil && quotaResources != nil {
 		nonRevocableClusterCapacity = scalar.FromMesosResources(quotaResources)
 		if nonRevocableClusterCapacity.GetCPU() <= 0 {
@@ -1226,33 +1339,43 @@ func (h *ServiceHandler) ClusterCapacity(
 	physicalAllocated := scalar.FromMesosResources(nonRevocableAllocated)
 	slackAllocated := scalar.FromMesosResources(revocableAllocated)
 
-	clusterCapacityResponse := &hostsvc.ClusterCapacityResponse{
+	response = &hostsvc.ClusterCapacityResponse{
 		Resources:               toHostSvcResources(&physicalAllocated),
 		AllocatedSlackResources: toHostSvcResources(&slackAllocated),
 		PhysicalResources:       toHostSvcResources(&nonRevocableClusterCapacity),
 		PhysicalSlackResources:  toHostSvcResources(&agentMap.SlackCapacity),
 	}
 
-	h.metrics.ClusterCapacity.Inc(1)
-	h.metrics.RefreshClusterCapacityGauges(clusterCapacityResponse)
-	return clusterCapacityResponse, nil
+	return response, nil
 }
 
 // GetMesosMasterHostPort returns the Leader Mesos Master hostname and port.
 func (h *ServiceHandler) GetMesosMasterHostPort(
 	ctx context.Context,
-	body *hostsvc.MesosMasterHostPortRequest) (*hostsvc.MesosMasterHostPortResponse, error) {
+	body *hostsvc.MesosMasterHostPortRequest,
+) (response *hostsvc.MesosMasterHostPortResponse, err error) {
+
+	defer func() {
+		if err != nil {
+			h.metrics.GetMesosMasterHostPortFail.Inc(1)
+			err = yarpcutil.ConvertToYARPCError(err)
+			return
+		}
+
+		h.metrics.GetMesosMasterHostPort.Inc(1)
+	}()
 
 	mesosMasterInfo := strings.Split(h.mesosDetector.HostPort(), ":")
 	if len(mesosMasterInfo) != 2 {
-		return nil, errors.New("unable to fetch leader mesos master hostname & port")
+		err = errors.New("unable to fetch leader mesos master hostname & port")
+		return nil, err
 	}
-	mesosMasterHostPortResponse := &hostsvc.MesosMasterHostPortResponse{
+	response = &hostsvc.MesosMasterHostPortResponse{
 		Hostname: mesosMasterInfo[0],
 		Port:     mesosMasterInfo[1],
 	}
 
-	return mesosMasterHostPortResponse, nil
+	return response, nil
 }
 
 // ReserveHosts reserves the host for a specified task in the request.
