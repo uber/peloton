@@ -23,7 +23,6 @@ type Metrics struct {
 	ProcessDuration     tally.Timer
 
 	GetJobRuntimeFailure tally.Gauge
-	GetUpdateFailure     tally.Gauge
 }
 
 func NewMetrics(scope tally.Scope) *Metrics {
@@ -42,6 +41,5 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		ProcessDuration: progressScope.Timer("duration"),
 
 		GetJobRuntimeFailure: progressScope.Gauge("job_runtime_failure"),
-		GetUpdateFailure:     progressScope.Gauge("update_failure"),
 	}
 }

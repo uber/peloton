@@ -2726,12 +2726,12 @@ func (s *Store) CreateUpdate(
 	ctx context.Context,
 	updateInfo *models.UpdateModel,
 ) error {
-	creationTime, err := time.Parse(time.RFC3339, updateInfo.GetCreationTime())
+	creationTime, err := time.Parse(time.RFC3339Nano, updateInfo.GetCreationTime())
 	if err != nil {
 		return errors.Wrap(yarpcerrors.InvalidArgumentErrorf(err.Error()), "fail to parse creationTime")
 	}
 
-	updateTime, err := time.Parse(time.RFC3339, updateInfo.GetUpdateTime())
+	updateTime, err := time.Parse(time.RFC3339Nano, updateInfo.GetUpdateTime())
 	if err != nil {
 		return errors.Wrap(yarpcerrors.InvalidArgumentErrorf(err.Error()), "fail to parse updateTime")
 	}
@@ -3233,7 +3233,7 @@ func (s *Store) deleteJobConfigVersion(
 func (s *Store) WriteUpdateProgress(
 	ctx context.Context,
 	updateInfo *models.UpdateModel) error {
-	updateTime, err := time.Parse(time.RFC3339, updateInfo.GetUpdateTime())
+	updateTime, err := time.Parse(time.RFC3339Nano, updateInfo.GetUpdateTime())
 	if err != nil {
 		return errors.Wrap(yarpcerrors.InvalidArgumentErrorf(err.Error()), "fail to parse updateTime")
 	}
@@ -3282,7 +3282,7 @@ func (s *Store) WriteUpdateProgress(
 func (s *Store) ModifyUpdate(
 	ctx context.Context,
 	updateInfo *models.UpdateModel) error {
-	updateTime, err := time.Parse(time.RFC3339, updateInfo.GetUpdateTime())
+	updateTime, err := time.Parse(time.RFC3339Nano, updateInfo.GetUpdateTime())
 	if err != nil {
 		return errors.Wrap(yarpcerrors.InvalidArgumentErrorf(err.Error()), "fail to parse updateTime")
 	}

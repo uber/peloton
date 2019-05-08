@@ -281,8 +281,8 @@ func (u *update) Create(
 		InstancesTotal:       uint32(len(instanceUpdated) + len(instanceAdded) + len(instanceRemoved)),
 		Type:                 workflowType,
 		OpaqueData:           opaqueData,
-		CreationTime:         time.Now().Format(time.RFC3339),
-		UpdateTime:           time.Now().Format(time.RFC3339),
+		CreationTime:         time.Now().Format(time.RFC3339Nano),
+		UpdateTime:           time.Now().Format(time.RFC3339Nano),
 	}
 
 	// write initialized workflow state for instances on create update
@@ -334,7 +334,7 @@ func (u *update) Modify(
 		InstancesFailed:      uint32(len(u.instancesFailed)),
 		InstancesCurrent:     u.instancesCurrent,
 		InstancesTotal:       uint32(len(instancesUpdated) + len(instancesAdded) + len(instancesRemoved)),
-		UpdateTime:           now.Format(time.RFC3339),
+		UpdateTime:           now.Format(time.RFC3339Nano),
 	}
 
 	// write current workflow state for all instances on modify update
@@ -508,11 +508,11 @@ func (u *update) writeProgress(
 		InstancesFailed:  uint32(len(instancesFailed)),
 		InstancesCurrent: instancesCurrent,
 		OpaqueData:       opaqueData,
-		UpdateTime:       now.Format(time.RFC3339),
+		UpdateTime:       now.Format(time.RFC3339Nano),
 	}
 
 	if IsUpdateStateTerminal(state) {
-		updateModel.CompletionTime = now.Format(time.RFC3339)
+		updateModel.CompletionTime = now.Format(time.RFC3339Nano)
 	}
 	if err := u.jobFactory.updateStore.WriteUpdateProgress(ctx, updateModel); err != nil {
 		// clear the cache on DB error to avoid cache inconsistency
@@ -693,7 +693,7 @@ func (u *update) Rollback(
 		PrevJobConfigVersion: currentConfig.GetChangeLog().GetVersion(),
 		InstancesDone:        0,
 		InstancesFailed:      0,
-		UpdateTime:           time.Now().Format(time.RFC3339),
+		UpdateTime:           time.Now().Format(time.RFC3339Nano),
 	}
 
 	// writes ROLLING_BACKWARD workflow state for all instances in an update
@@ -877,7 +877,7 @@ func (u *update) populateCache(updateModel *models.UpdateModel) {
 	u.instancesTotal = append(updateModel.GetInstancesUpdated(), updateModel.GetInstancesAdded()...)
 	u.instancesTotal = append(u.instancesTotal, updateModel.GetInstancesRemoved()...)
 	u.WorkflowStrategy = getWorkflowStrategy(updateModel.GetState(), updateModel.GetType())
-	u.lastUpdateTime, _ = time.Parse(time.RFC3339, updateModel.GetUpdateTime())
+	u.lastUpdateTime, _ = time.Parse(time.RFC3339Nano, updateModel.GetUpdateTime())
 }
 
 func (u *update) clearCache() {
