@@ -66,6 +66,7 @@ type jobFactory struct {
 	jobConfigOps   ormobjects.JobConfigOps       // DB ops for job_config table
 	jobNameToIDOps ormobjects.JobNameToIDOps     // DB ops for job_name_to_id table
 	mtx            *Metrics                      // cache metrics
+	taskMetrics    *TaskMetrics                  // task metrics
 	// Tob/task listeners. This list is immutable after object is created.
 	// So it can read without a lock.
 	listeners []JobTaskListener
@@ -92,6 +93,7 @@ func InitJobFactory(
 		jobConfigOps:   ormobjects.NewJobConfigOps(ormStore),
 		jobNameToIDOps: ormobjects.NewJobNameToIDOps(ormStore),
 		mtx:            NewMetrics(parentScope.SubScope("cache")),
+		taskMetrics:    NewTaskMetrics(parentScope.SubScope("task")),
 		listeners:      listeners,
 	}
 }

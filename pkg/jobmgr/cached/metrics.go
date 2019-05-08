@@ -30,3 +30,24 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		scope: scope,
 	}
 }
+
+// TaskMetrics contains counters for task that are managed by cache.
+type TaskMetrics struct {
+	TimeToAssignNonRevocable tally.Timer
+	TimeToAssignRevocable    tally.Timer
+
+	TimeToRunNonRevocable tally.Timer
+	TimeToRunRevocable    tally.Timer
+}
+
+// NewTaskMetrics returns a new TaskMetrics struct, with all metrics
+// initialized and rooted at the given tally.Scope
+func NewTaskMetrics(scope tally.Scope) *TaskMetrics {
+	return &TaskMetrics{
+		TimeToAssignNonRevocable: scope.Timer("time_to_assign_non_revocable"),
+		TimeToAssignRevocable:    scope.Timer("time_to_assign_revocable"),
+
+		TimeToRunNonRevocable: scope.Timer("time_to_run_non_revocable"),
+		TimeToRunRevocable:    scope.Timer("time_to_run_revocable"),
+	}
+}

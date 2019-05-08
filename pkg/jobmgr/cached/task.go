@@ -135,6 +135,7 @@ func newTask(jobID *peloton.JobID, id uint32, jobFactory *jobFactory, jobType pb
 type taskConfigCache struct {
 	configVersion uint64           // the current configuration version
 	labels        []*peloton.Label // task labels
+	revocable     bool             // whether task uses revocable resources
 }
 
 // task structure holds the information about a given task in the cache.
@@ -150,6 +151,8 @@ type task struct {
 	runtime *pbtask.RuntimeInfo // task runtime information
 
 	config *taskConfigCache // task configuration information
+
+	initializedAt time.Time // Task intialization timestamp
 }
 
 func (t *task) ID() uint32 {
@@ -301,6 +304,7 @@ func (t *task) updateConfig(ctx context.Context, configVersion uint64) error {
 	t.config = &taskConfigCache{
 		configVersion: configVersion,
 		labels:        taskConfig.GetLabels(),
+		revocable:     taskConfig.GetRevocable(),
 	}
 	return nil
 }
@@ -344,6 +348,7 @@ func (t *task) CreateTask(ctx context.Context, runtime *pbtask.RuntimeInfo, owne
 		t.cleanTaskCache()
 		return err
 	}
+	t.logStateTransitionMetrics(runtime)
 
 	t.runtime = runtime
 	runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
@@ -417,6 +422,7 @@ func (t *task) PatchTask(ctx context.Context, diff jobmgrcommon.RuntimeDiff) err
 		t.cleanTaskCache()
 		return err
 	}
+	t.logStateTransitionMetrics(newRuntimePtr)
 
 	// Store the new runtime in cache
 	t.runtime = newRuntimePtr
@@ -490,6 +496,7 @@ func (t *task) CompareAndSetTask(
 		t.cleanTaskCache()
 		return nil, err
 	}
+	t.logStateTransitionMetrics(runtime)
 
 	// Store the new runtime in cache
 	t.runtime = runtime
@@ -676,6 +683,43 @@ func (t *task) GoalState() TaskStateVector {
 		State:         t.runtime.GetGoalState(),
 		ConfigVersion: t.runtime.GetDesiredConfigVersion(),
 		MesosTaskID:   t.runtime.GetDesiredMesosTaskId(),
+	}
+}
+
+func (t *task) logStateTransitionMetrics(runtime *pbtask.RuntimeInfo) {
+	if runtime.GetState() == pbtask.TaskState_INITIALIZED {
+		t.initializedAt = time.Now()
+		return
+	}
+
+	if t.runtime != nil && t.runtime.GetState() == runtime.GetState() {
+		// Ignore if there is no change in state
+		return
+	}
+	if t.initializedAt.IsZero() {
+		// If initialization time is not set then we cannot calculate
+		// time-to-assign or time-to-run
+		return
+	}
+	revocable := false
+	if t.config != nil {
+		revocable = t.config.revocable
+	}
+
+	tt := time.Since(t.initializedAt)
+	switch runtime.GetState() {
+	case pbtask.TaskState_LAUNCHED:
+		if revocable {
+			t.jobFactory.taskMetrics.TimeToAssignRevocable.Record(tt)
+		} else {
+			t.jobFactory.taskMetrics.TimeToAssignNonRevocable.Record(tt)
+		}
+	case pbtask.TaskState_RUNNING:
+		if revocable {
+			t.jobFactory.taskMetrics.TimeToRunRevocable.Record(tt)
+		} else {
+			t.jobFactory.taskMetrics.TimeToRunNonRevocable.Record(tt)
+		}
 	}
 }
 

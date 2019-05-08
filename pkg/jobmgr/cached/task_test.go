@@ -65,6 +65,8 @@ type TaskTestSuite struct {
 	instanceID uint32
 	taskStore  *storemocks.MockTaskStore
 	listeners  []*FakeTaskListener
+
+	testTaskScope tally.TestScope
 }
 
 func (suite *TaskTestSuite) SetupTest() {
@@ -77,6 +79,8 @@ func (suite *TaskTestSuite) SetupTest() {
 	suite.listeners = append(suite.listeners,
 		new(FakeTaskListener),
 		new(FakeTaskListener))
+
+	suite.testTaskScope = tally.NewTestScope("", nil)
 }
 
 func (suite *TaskTestSuite) TearDownTest() {
@@ -98,10 +102,11 @@ func (suite *TaskTestSuite) initializeTask(
 		jobID:   jobID,
 		runtime: runtime,
 		jobFactory: &jobFactory{
-			mtx:       NewMetrics(tally.NoopScope),
-			taskStore: taskStore,
-			running:   true,
-			jobs:      map[string]*job{},
+			mtx:         NewMetrics(tally.NoopScope),
+			taskMetrics: NewTaskMetrics(suite.testTaskScope),
+			taskStore:   taskStore,
+			running:     true,
+			jobs:        map[string]*job{},
 		},
 		jobType: pbjob.JobType_BATCH,
 	}
@@ -149,7 +154,7 @@ func (suite *TaskTestSuite) TestCreateRuntime() {
 	tt := suite.initializeTask(suite.taskStore, suite.jobID,
 		suite.instanceID, nil)
 	version := uint64(3)
-	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime := initializeTaskRuntime(pbtask.TaskState_INITIALIZED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	runtime.ConfigVersion = version
 
@@ -173,6 +178,7 @@ func (suite *TaskTestSuite) TestCreateRuntime() {
 
 	err := tt.CreateTask(context.Background(), runtime, "team10")
 	suite.Nil(err)
+	suite.False(tt.initializedAt.IsZero())
 	suite.checkListeners(tt, tt.jobType)
 }
 
@@ -273,8 +279,11 @@ func (suite *TaskTestSuite) TestPatchTask_WithInitializedState() {
 		}).
 		Return(nil)
 
+	oldTime := time.Now()
 	err := tt.PatchTask(context.Background(), diff)
 	suite.Nil(err)
+	suite.False(tt.initializedAt.IsZero())
+	suite.NotEqual(oldTime, tt.initializedAt)
 	suite.checkListeners(tt, pbjob.JobType_BATCH)
 }
 
@@ -1062,4 +1071,93 @@ func (suite *TaskTestSuite) TestGetLabelsConfigDBError() {
 
 	_, err := tt.GetLabels(context.Background())
 	suite.NotNil(err)
+}
+
+// TestStateTransitionMetrics tests calculation of metrics like
+// time-to-assign and time-ro-run
+func (suite *TaskTestSuite) TestStateTransitionMetrics() {
+	testcases := []struct {
+		revocable bool
+		toState   pbtask.TaskState
+		metric    string
+	}{
+		{
+			revocable: true,
+			toState:   pbtask.TaskState_LAUNCHED,
+			metric:    "time_to_assign_revocable+",
+		},
+		{
+			revocable: false,
+			toState:   pbtask.TaskState_LAUNCHED,
+			metric:    "time_to_assign_non_revocable+",
+		},
+		{
+			revocable: true,
+			toState:   pbtask.TaskState_RUNNING,
+			metric:    "time_to_run_revocable+",
+		},
+		{
+			revocable: false,
+			toState:   pbtask.TaskState_RUNNING,
+			metric:    "time_to_run_non_revocable+",
+		},
+	}
+
+	for _, usePatch := range []bool{true, false} {
+		for _, tc := range testcases {
+			runtime := initializeTaskRuntime(pbtask.TaskState_INITIALIZED, 0)
+			tt := suite.initializeTask(suite.taskStore, suite.jobID,
+				suite.instanceID, runtime)
+			tt.initializedAt = time.Now()
+
+			msg := fmt.Sprintf("%s (usePatch: %v)", tc.metric, usePatch)
+
+			taskConfig := &pbtask.TaskConfig{Revocable: tc.revocable}
+			suite.taskStore.EXPECT().
+				GetTaskConfig(
+					gomock.Any(),
+					suite.jobID,
+					suite.instanceID,
+					gomock.Any()).
+				Return(taskConfig, nil, nil)
+			suite.taskStore.EXPECT().
+				CreateTaskRuntime(
+					gomock.Any(),
+					suite.jobID,
+					suite.instanceID,
+					gomock.Any(),
+					gomock.Any(),
+					gomock.Any()).
+				Return(nil)
+			suite.taskStore.EXPECT().
+				UpdateTaskRuntime(
+					gomock.Any(),
+					suite.jobID,
+					suite.instanceID,
+					gomock.Any(),
+					gomock.Any()).
+				Return(nil)
+
+			err := tt.CreateTask(context.Background(), runtime, "")
+			suite.NoError(err, msg)
+
+			if usePatch {
+				diff := jobmgrcommon.RuntimeDiff{
+					jobmgrcommon.StateField: tc.toState,
+				}
+				err = tt.PatchTask(context.Background(), diff)
+			} else {
+				runtime.State = tc.toState
+				_, err = tt.CompareAndSetTask(
+					context.Background(),
+					runtime,
+					tt.jobType)
+			}
+			suite.NoError(err, msg)
+
+			tmr, ok := suite.testTaskScope.Snapshot().Timers()[tc.metric]
+			suite.True(ok, msg)
+			suite.Equal(1, len(tmr.Values()), msg)
+		}
+	}
 }
