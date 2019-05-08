@@ -1,7 +1,9 @@
 import pytest
 import time
+import random
 from tests.integration.aurorabridge_test.client import api
 from tests.integration.aurorabridge_test.util import (
+    start_job_update,
     get_job_update_request,
     wait_for_update_status,
     get_update_status,
@@ -12,7 +14,6 @@ pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
 
 # TODO (varung):
 # - Create an update, let it auto rollback and abort it.
-# - Create an update, do manual rollback and abort it.
 # - Create an update, do manual rollback with pulsed and abort it.
 # - Create an update, do manual rollback, pause it and then abort it.
 # - Abort an update, after 1st instance is RUNNING.
@@ -140,3 +141,108 @@ def test__pulsed_update_abort(client):
         {api.JobUpdateStatus.ROLL_FORWARD_AWAITING_PULSE},
         api.JobUpdateStatus.ABORTED,
     )
+
+
+def test__manual_rollback_abort(client):
+    """
+    - Create Job
+    - Start an update
+    - Perform manual rollback on rolling_forward update
+    - Abort rolling_back update
+    - Stateless job will actually have two updates, but bridge will dedupe
+      last two updates (as manual rollback was done)
+    - Validate that task config for each instance
+    """
+    # Create a job and wait for it to complete
+    start_job_update(
+        client,
+        "test_dc_labrat_large_job.yaml",
+        "start job update test/dc/labrat_large_job",
+    )
+
+    # Do update on previously created job
+    res = client.start_job_update(
+        get_job_update_request("test_dc_labrat_large_job_diff_labels.yaml"),
+        "start job update test/dc/labrat_large_job_diff_labels",
+    )
+    job_update_key = res.key
+    job_key = res.key.job
+
+    # wait for few instances running
+    time.sleep(10)
+
+    # rollback update
+    client.rollback_job_update(job_update_key)
+
+    # wait for sometime to trigger manual rollback
+    time.sleep(5)
+
+    # abort the manual rollback
+    client.abort_job_update(job_update_key, "abort update")
+
+    # 2 updates must be present for this job
+    res = client.get_job_update_details(
+        None, api.JobUpdateQuery(jobKey=job_key)
+    )
+    assert len(res.detailsList) == 2
+
+    # first event is rolling forward
+    assert (
+        res.detailsList[0].updateEvents[0].status
+        == api.JobUpdateStatus.ROLLING_FORWARD
+    )
+
+    # second last element is rolling back, after manual rollback is triggered
+    assert (
+        res.detailsList[0].updateEvents[-2].status
+        == api.JobUpdateStatus.ROLLING_BACK
+    )
+
+    # most recent event is aborted, once manual rollback is aborted
+    assert (
+        res.detailsList[0].updateEvents[-1].status
+        == api.JobUpdateStatus.ABORTED
+    )
+
+    # wait for all tasks to be running after invoking abort
+    count = 0
+    while count < 6:
+        res = client.get_tasks_without_configs(
+            api.TaskQuery(jobKeys={job_key}, statuses={
+                          api.ScheduleStatus.RUNNING})
+        )
+        if len(res.tasks) == 10:
+            break
+
+        count = count + 1
+        time.sleep(10)
+
+    # run-id == 1: Job Create
+    # run-id == 2: Job Update with diff labels
+    # run-id == 3: Update rollback to previous version
+    for t in res.tasks:
+        _, _, run_id = t.assignedTask.taskId.rsplit("-", 2)
+        if run_id == "1" or run_id == "3":
+            for m in t.assignedTask.task.metadata:
+                if m.key == "test_key_1":
+                    assert m.value == "test_value_1"
+                elif m.key == "test_key_2":
+                    assert m.value == "test_value_2"
+                else:
+                    assert False, (
+                        "unexpected metadata %s for affected instances" % m
+                    )
+        elif run_id == "2":
+            for m in t.assignedTask.task.metadata:
+                if m.key == "test_key_11":
+                    assert m.value == "test_value_11"
+                elif m.key == "test_key_22":
+                    assert m.value == "test_value_22"
+                else:
+                    assert False, (
+                        "unexpected metadata %s for affected instances" % m
+                    )
+        else:
+            assert False, (
+                "unexpected run id %s" % t.assignedTask.taskId
+            )
