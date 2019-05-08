@@ -23,6 +23,7 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/task/placement"
 	"github.com/uber/peloton/pkg/jobmgr/task/preemptor"
 	"github.com/uber/peloton/pkg/jobmgr/watchsvc"
+	"github.com/uber/peloton/pkg/jobmgr/workflow/progress"
 )
 
 // Config is JobManager specific configuration
@@ -55,6 +56,9 @@ type Config struct {
 
 	// Watch API specific configuration
 	Watch watchsvc.Config `yaml:"watch"`
+
+	// WorkflowProgressCheck specific configuration
+	WorkflowProgressCheck progress.Config `yaml:"workflow_progress_check"`
 
 	// Period in sec for updating active cache
 	ActiveTaskUpdatePeriod time.Duration `yaml:"active_task_update_period"`

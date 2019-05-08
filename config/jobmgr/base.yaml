@@ -44,6 +44,12 @@ job_manager:
   active_task_update_period: 300s
   # being deprecated
   job_runtime_calculation_via_cache: false
+  workflow_progress_check:
+    # check all the workflow progress every 30 min
+    workflow_progress_check_period: 30m
+    # if a workflow is not updated for 30min,
+    # consider it to be stale
+    stale_workflow_threshold: 30m
 election:
   root: "/peloton"
 

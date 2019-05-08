@@ -52,6 +52,7 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/updatesvc"
 	"github.com/uber/peloton/pkg/jobmgr/volumesvc"
 	"github.com/uber/peloton/pkg/jobmgr/watchsvc"
+	"github.com/uber/peloton/pkg/jobmgr/workflow/progress"
 	"github.com/uber/peloton/pkg/middleware/inbound"
 	"github.com/uber/peloton/pkg/middleware/outbound"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
@@ -62,7 +63,7 @@ import (
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
-	kingpin "gopkg.in/alecthomas/kingpin.v2"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
@@ -439,7 +440,6 @@ func main() {
 			Period: time.Duration(cfg.JobManager.ActiveTaskUpdatePeriod),
 		},
 	)
-
 	watchProcessor := watchsvc.InitV1AlphaWatchServiceHandler(
 		dispatcher,
 		rootScope,
@@ -455,6 +455,17 @@ func main() {
 		rootScope,
 		[]cached.JobTaskListener{watchsvc.NewWatchListener(watchProcessor)},
 	)
+
+	// Register WorkflowProgressCheck
+	workflowCheck := &progress.WorkflowProgressCheck{
+		JobFactory: jobFactory,
+		Metrics:    progress.NewMetrics(rootScope),
+		Config:     &cfg.JobManager.WorkflowProgressCheck,
+	}
+	if err := workflowCheck.Register(backgroundManager); err != nil {
+		log.WithError(err).
+			Fatal("fail to register workflowCheck in backgroundManager")
+	}
 
 	// TODO: We need to cleanup the client names
 	launcher.InitTaskLauncher(

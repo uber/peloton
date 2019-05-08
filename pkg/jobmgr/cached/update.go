@@ -135,6 +135,9 @@ type Update interface {
 	// IsTaskInFailed returns true if a given task is in the
 	// instancesFailed list for the given update, else returns false
 	IsTaskInFailed(instanceID uint32) bool
+
+	// GetLastUpdateTime return the last update time of update object
+	GetLastUpdateTime() time.Time
 }
 
 // UpdateStateVector is used to the represent the state and goal state
@@ -221,6 +224,8 @@ type update struct {
 
 	jobVersion     uint64 // job configuration version
 	jobPrevVersion uint64 // previous job configuration version
+
+	lastUpdateTime time.Time // last update time of update object
 }
 
 func (u *update) ID() *peloton.UpdateID {
@@ -276,6 +281,8 @@ func (u *update) Create(
 		InstancesTotal:       uint32(len(instanceUpdated) + len(instanceAdded) + len(instanceRemoved)),
 		Type:                 workflowType,
 		OpaqueData:           opaqueData,
+		CreationTime:         time.Now().Format(time.RFC3339),
+		UpdateTime:           time.Now().Format(time.RFC3339),
 	}
 
 	// write initialized workflow state for instances on create update
@@ -313,6 +320,7 @@ func (u *update) Modify(
 		return err
 	}
 
+	now := time.Now()
 	updateModel := &models.UpdateModel{
 		UpdateID:             u.id,
 		JobConfigVersion:     u.jobVersion,
@@ -326,6 +334,7 @@ func (u *update) Modify(
 		InstancesFailed:      uint32(len(u.instancesFailed)),
 		InstancesCurrent:     u.instancesCurrent,
 		InstancesTotal:       uint32(len(instancesUpdated) + len(instancesAdded) + len(instancesRemoved)),
+		UpdateTime:           now.Format(time.RFC3339),
 	}
 
 	// write current workflow state for all instances on modify update
@@ -353,6 +362,7 @@ func (u *update) Modify(
 	u.instancesRemoved = instancesRemoved
 	u.instancesTotal = append(instancesUpdated, instancesAdded...)
 	u.instancesTotal = append(u.instancesTotal, instancesRemoved...)
+	u.lastUpdateTime = now
 
 	log.WithField("update_id", u.id.GetValue()).
 		WithField("instances_total", len(u.instancesTotal)).
@@ -489,6 +499,7 @@ func (u *update) writeProgress(
 		return nil
 	}
 
+	now := time.Now()
 	updateModel := &models.UpdateModel{
 		UpdateID:         u.id,
 		PrevState:        prevState,
@@ -497,10 +508,11 @@ func (u *update) writeProgress(
 		InstancesFailed:  uint32(len(instancesFailed)),
 		InstancesCurrent: instancesCurrent,
 		OpaqueData:       opaqueData,
+		UpdateTime:       now.Format(time.RFC3339),
 	}
 
 	if IsUpdateStateTerminal(state) {
-		updateModel.CompletionTime = time.Now().Format(time.RFC3339)
+		updateModel.CompletionTime = now.Format(time.RFC3339)
 	}
 	if err := u.jobFactory.updateStore.WriteUpdateProgress(ctx, updateModel); err != nil {
 		// clear the cache on DB error to avoid cache inconsistency
@@ -524,6 +536,7 @@ func (u *update) writeProgress(
 	u.instancesFailed = instancesFailed
 	u.state = state
 	u.instancesDone = instancesDone
+	u.lastUpdateTime = now
 	return nil
 }
 
@@ -680,6 +693,7 @@ func (u *update) Rollback(
 		PrevJobConfigVersion: currentConfig.GetChangeLog().GetVersion(),
 		InstancesDone:        0,
 		InstancesFailed:      0,
+		UpdateTime:           time.Now().Format(time.RFC3339),
 	}
 
 	// writes ROLLING_BACKWARD workflow state for all instances in an update
@@ -863,6 +877,7 @@ func (u *update) populateCache(updateModel *models.UpdateModel) {
 	u.instancesTotal = append(updateModel.GetInstancesUpdated(), updateModel.GetInstancesAdded()...)
 	u.instancesTotal = append(u.instancesTotal, updateModel.GetInstancesRemoved()...)
 	u.WorkflowStrategy = getWorkflowStrategy(updateModel.GetState(), updateModel.GetType())
+	u.lastUpdateTime, _ = time.Parse(time.RFC3339, updateModel.GetUpdateTime())
 }
 
 func (u *update) clearCache() {
@@ -1088,6 +1103,13 @@ func (u *update) writeWorkflowEvents(
 	}
 
 	return nil
+}
+
+func (u *update) GetLastUpdateTime() time.Time {
+	u.RLock()
+	defer u.RUnlock()
+
+	return u.lastUpdateTime
 }
 
 // writeWorkflowProgressForInstances writes workflow progress for instances,

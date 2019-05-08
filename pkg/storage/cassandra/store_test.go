@@ -2334,6 +2334,8 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			InstancesAdded:       instancesAdded,
 			Type:                 models.WorkflowType_UPDATE,
 			OpaqueData:           &peloton.OpaqueData{Data: opaque},
+			CreationTime:         time.Now().Format(time.RFC3339),
+			UpdateTime:           time.Now().Format(time.RFC3339),
 		},
 	))
 
@@ -2379,6 +2381,8 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			InstancesAdded:       instancesAdded,
 			Type:                 models.WorkflowType_UPDATE,
 			OpaqueData:           &peloton.OpaqueData{Data: opaque},
+			CreationTime:         time.Now().Format(time.RFC3339),
+			UpdateTime:           time.Now().Format(time.RFC3339),
 		},
 	)
 	suite.Error(err)
@@ -2443,6 +2447,7 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			InstancesFailed:  instancesFailed,
 			InstancesCurrent: instanceCurrent,
 			OpaqueData:       &peloton.OpaqueData{Data: opaqueNew},
+			UpdateTime:       time.Now().Format(time.RFC3339),
 		},
 	)
 	suite.NoError(err)
@@ -2538,6 +2543,8 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 				PrevJobConfigVersion: jobPrevVersion,
 				State:                state,
 				InstancesTotal:       instancesTotal,
+				CreationTime:         time.Now().Format(time.RFC3339),
+				UpdateTime:           time.Now().Format(time.RFC3339),
 			},
 		))
 	}
@@ -2566,6 +2573,8 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			InstancesTotal:       instancesTotal,
 			InstancesAdded:       instancesAdded,
 			Type:                 models.WorkflowType_UPDATE,
+			CreationTime:         time.Now().Format(time.RFC3339),
+			UpdateTime:           time.Now().Format(time.RFC3339),
 		},
 	))
 
@@ -2606,6 +2615,8 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 			InstancesTotal:       instancesTotal,
 			InstancesRemoved:     instancesRemoved,
 			Type:                 models.WorkflowType_UPDATE,
+			CreationTime:         time.Now().Format(time.RFC3339),
+			UpdateTime:           time.Now().Format(time.RFC3339),
 		},
 	))
 
@@ -2713,6 +2724,8 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 			InstancesUpdated:     instancesUpdated,
 			InstancesAdded:       instancesAdded,
 			Type:                 models.WorkflowType_UPDATE,
+			CreationTime:         time.Now().Format(time.RFC3339),
+			UpdateTime:           time.Now().Format(time.RFC3339),
 		},
 	))
 
@@ -2738,6 +2751,7 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 			InstancesRemoved:     instancesAdded,
 			State:                update.State_ROLLING_BACKWARD,
 			PrevState:            state,
+			UpdateTime:           time.Now().Format(time.RFC3339),
 		},
 	),
 	)

@@ -2726,6 +2726,16 @@ func (s *Store) CreateUpdate(
 	ctx context.Context,
 	updateInfo *models.UpdateModel,
 ) error {
+	creationTime, err := time.Parse(time.RFC3339, updateInfo.GetCreationTime())
+	if err != nil {
+		return errors.Wrap(yarpcerrors.InvalidArgumentErrorf(err.Error()), "fail to parse creationTime")
+	}
+
+	updateTime, err := time.Parse(time.RFC3339, updateInfo.GetUpdateTime())
+	if err != nil {
+		return errors.Wrap(yarpcerrors.InvalidArgumentErrorf(err.Error()), "fail to parse updateTime")
+	}
+
 	updateConfigBuffer, err := proto.Marshal(updateInfo.GetUpdateConfig())
 	if err != nil {
 		log.WithError(err).
@@ -2757,7 +2767,8 @@ func (s *Store) CreateUpdate(
 			"job_config_version",
 			"job_config_prev_version",
 			"opaque_data",
-			"creation_time").
+			"creation_time",
+			"update_time").
 		Values(
 			updateInfo.GetUpdateID().GetValue(),
 			updateInfo.GetType().String(),
@@ -2775,7 +2786,8 @@ func (s *Store) CreateUpdate(
 			updateInfo.GetJobConfigVersion(),
 			updateInfo.GetPrevJobConfigVersion(),
 			updateInfo.GetOpaqueData().GetData(),
-			time.Now()).
+			creationTime.UTC(),
+			updateTime.UTC()).
 		IfNotExist()
 
 	if err := s.applyStatement(
@@ -3221,6 +3233,11 @@ func (s *Store) deleteJobConfigVersion(
 func (s *Store) WriteUpdateProgress(
 	ctx context.Context,
 	updateInfo *models.UpdateModel) error {
+	updateTime, err := time.Parse(time.RFC3339, updateInfo.GetUpdateTime())
+	if err != nil {
+		return errors.Wrap(yarpcerrors.InvalidArgumentErrorf(err.Error()), "fail to parse updateTime")
+	}
+
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(updatesTable).
 		Set("update_state", updateInfo.GetState().String()).
@@ -3228,7 +3245,7 @@ func (s *Store) WriteUpdateProgress(
 		Set("instances_done", updateInfo.GetInstancesDone()).
 		Set("instances_failed", updateInfo.GetInstancesFailed()).
 		Set("instances_current", updateInfo.GetInstancesCurrent()).
-		Set("update_time", time.Now().UTC())
+		Set("update_time", updateTime.UTC())
 
 	if updateInfo.GetOpaqueData() != nil {
 		stmt = stmt.Set("opaque_data", updateInfo.GetOpaqueData().GetData())
@@ -3265,6 +3282,10 @@ func (s *Store) WriteUpdateProgress(
 func (s *Store) ModifyUpdate(
 	ctx context.Context,
 	updateInfo *models.UpdateModel) error {
+	updateTime, err := time.Parse(time.RFC3339, updateInfo.GetUpdateTime())
+	if err != nil {
+		return errors.Wrap(yarpcerrors.InvalidArgumentErrorf(err.Error()), "fail to parse updateTime")
+	}
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(updatesTable).
@@ -3279,7 +3300,7 @@ func (s *Store) ModifyUpdate(
 		Set("instances_total", updateInfo.GetInstancesTotal()).
 		Set("job_config_version", updateInfo.GetJobConfigVersion()).
 		Set("job_config_prev_version", updateInfo.GetPrevJobConfigVersion()).
-		Set("update_time", time.Now().UTC())
+		Set("update_time", updateTime.UTC())
 
 	if updateInfo.GetOpaqueData() != nil {
 		stmt = stmt.Set("opaque_data", updateInfo.GetOpaqueData().GetData())

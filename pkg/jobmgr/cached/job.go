@@ -1590,6 +1590,7 @@ func (j *job) CreateWorkflow(
 
 			// TODO: move this under update cache object
 			currentUpdate.OpaqueData = &peloton.OpaqueData{Data: opts.opaqueData.GetData()}
+			currentUpdate.UpdateTime = time.Now().Format(time.RFC3339)
 			if err := j.
 				jobFactory.
 				updateStore.
