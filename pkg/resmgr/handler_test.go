@@ -282,7 +282,8 @@ func (s *HandlerTestSuite) TestRequeue() {
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED,
-		task.TaskState_LAUNCHING})
+		task.TaskState_LAUNCHING,
+		task.TaskState_LAUNCHED})
 
 	// Testing to see if we can send same task in the enqueue
 	// request then it should error out
@@ -294,8 +295,7 @@ func (s *HandlerTestSuite) TestRequeue() {
 		resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST)
 
 	// Testing to see if we can send different Mesos taskID
-	// in the enqueue request then it should move task to
-	// ready state and ready queue
+	// in the enqueue request
 	uuidStr := "uuidstr-2"
 	jobID := "job1"
 	instance := 1
@@ -309,8 +309,6 @@ func (s *HandlerTestSuite) TestRequeue() {
 	s.NoError(err)
 	s.Nil(enqResp.GetError())
 	s.Nil(enqResp.GetError().GetFailure().GetFailed())
-
-	s.assertTasksAdmitted(gangs)
 }
 
 // TestRequeueTaskNotPresent tests the requeue but if the task is been
@@ -934,6 +932,9 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 	}
 
 	tracker.EXPECT().GetTask(gomock.Any()).Return(nil)
+	tracker.EXPECT().
+		GetOrphanTask(events[0].GetMesosTaskStatus().GetTaskId().GetValue()).
+		Return(nil)
 	response, _ = s.handler.NotifyTaskUpdates(context.Background(), req)
 
 	s.EqualValues(uint64(1000), response.PurgeOffset)
@@ -999,7 +1000,9 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 	s.NoError(err)
 
 	tracker.EXPECT().GetTask(gomock.Any()).Return(wrmTask)
-	tracker.EXPECT().MarkItDone(gomock.Any(), gomock.Any()).Return(nil)
+	tracker.EXPECT().
+		GetOrphanTask(events[0].GetMesosTaskStatus().GetTaskId().GetValue()).
+		Return(nil)
 	response, _ = s.handler.NotifyTaskUpdates(context.Background(), req)
 	s.EqualValues(uint64(1000), response.PurgeOffset)
 	s.Nil(response.Error)

@@ -164,7 +164,7 @@ func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Plac
 		tasks = append(tasks, t.GetPelotonTaskID())
 	}
 
-	lauchableTasks, skippedTasks, err := p.taskLauncher.GetLaunchableTasks(
+	launchableTasks, skippedTasks, err := p.taskLauncher.GetLaunchableTasks(
 		ctx,
 		tasks,
 		placement.GetHostname(),
@@ -172,18 +172,23 @@ func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Plac
 		placement.GetPorts(),
 	)
 	if err != nil {
-		err = p.taskLauncher.TryReturnOffers(ctx, err, placement)
-		if err != nil {
-			log.WithError(err).WithFields(log.Fields{
+		log.WithError(err).
+			WithFields(log.Fields{
 				"placement":   placement,
 				"tasks_total": len(tasks),
 			}).Error("Failed to get launchable tasks")
+
+		err = p.taskLauncher.TryReturnOffers(ctx, err, placement)
+		if err != nil {
+			log.WithError(err).
+				WithField("placement", placement).
+				Error("Failed to return offers for placement")
 		}
 		return
 	}
 
-	launchableTaskInfos, skippedTasks1 := p.createTaskInfos(ctx, lauchableTasks)
-	skippedTasks = append(skippedTasks, skippedTasks1...)
+	launchableTaskInfos, tasksToSkip := p.createTaskInfos(ctx, launchableTasks)
+	skippedTasks = append(skippedTasks, tasksToSkip...)
 
 	if len(launchableTaskInfos) > 0 {
 
@@ -192,13 +197,11 @@ func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Plac
 		// in getting secrets.
 		launchableTasks, skippedTaskInfos :=
 			p.taskLauncher.CreateLaunchableTasks(ctx, launchableTaskInfos)
-		// enqueue skipped tasks back to resmgr to launch again, instead of
-		// waiting for resmgr timeout
-		p.enqueueTasksToResMgr(ctx, skippedTaskInfos)
+		p.processSkippedLaunches(ctx, skippedTaskInfos)
 
 		if err = p.taskLauncher.ProcessPlacement(ctx,
 			launchableTasks, placement); err != nil {
-			p.enqueueTasksToResMgr(ctx, launchableTaskInfos)
+			p.processSkippedLaunches(ctx, launchableTaskInfos)
 			return
 		}
 
@@ -210,6 +213,23 @@ func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Plac
 	// a channel/network error. We will retry when we can reconnect to
 	// resource-manager
 	p.KillResManagerTasks(ctx, skippedTasks)
+}
+
+// processSkippedLaunches tries to kill the tasks in resmgr and
+// if the kill goes through enqueue the task into resmgr
+func (p *processor) processSkippedLaunches(
+	ctx context.Context,
+	taskInfoMap map[string]*launcher.LaunchableTaskInfo,
+) {
+	var skippedTaskIDs []*peloton.TaskID
+	for id := range taskInfoMap {
+		skippedTaskIDs = append(skippedTaskIDs, &peloton.TaskID{Value: id})
+	}
+	// kill and enqueue skipped tasks back to resmgr to launch again, instead of
+	// waiting for resmgr timeout
+	if err := p.KillResManagerTasks(ctx, skippedTaskIDs); err == nil {
+		p.enqueueTasksToResMgr(ctx, taskInfoMap)
+	}
 }
 
 func (p *processor) enqueueTaskToGoalState(taskInfos map[string]*launcher.LaunchableTaskInfo) {

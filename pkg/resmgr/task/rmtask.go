@@ -525,6 +525,7 @@ func (rmTask *RMTask) pushTaskForPlacementAgain() error {
 		Tasks: append(tasks, rmTask.task),
 	}
 
+	rmTask.task.Hostname = ""
 	err := GetScheduler().EnqueueGang(gang)
 	if err != nil {
 		return errors.Wrapf(err, "failed to enqueue gang")

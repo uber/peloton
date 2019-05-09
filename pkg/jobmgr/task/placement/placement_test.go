@@ -289,6 +289,72 @@ func (suite *PlacementTestSuite) TestTaskPlacementGetTaskError() {
 	suite.pp.processPlacement(context.Background(), p)
 }
 
+// TestTaskPlacementKillSkippedTasksError tests ProcessPlacement
+// action when the resmgr kill for skipped tasks fails
+func (suite *PlacementTestSuite) TestTaskPlacementKillSkippedTasksError() {
+	testTask, testRuntimeDiff := createTestTask(0) // taskinfo
+	rs := createResources(float64(1))
+	hostOffer := createHostOffer(0, rs)
+	p := createPlacements(testTask, hostOffer)
+
+	taskID := &peloton.TaskID{
+		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
+	}
+
+	var tasks []*peloton.TaskID
+	for _, t := range p.GetTaskIDs() {
+		tasks = append(tasks, t.GetPelotonTaskID())
+	}
+
+	gomock.InOrder(
+		suite.taskLauncher.EXPECT().
+			GetLaunchableTasks(gomock.Any(), tasks, p.Hostname, p.AgentId, p.Ports).
+			Return(
+				map[string]*launcher.LaunchableTask{
+					taskID.Value: {
+						RuntimeDiff: testRuntimeDiff,
+						Config:      testTask.Config,
+					},
+				},
+				nil,
+				nil),
+		suite.jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().
+			AddTask(gomock.Any(), uint32(0)).
+			Return(suite.cachedTask, nil),
+		suite.cachedTask.EXPECT().
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
+		suite.cachedJob.EXPECT().
+			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
+		suite.cachedTask.EXPECT().
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
+		suite.taskLauncher.EXPECT().
+			CreateLaunchableTasks(gomock.Any(), gomock.Any()).
+			Return(nil, map[string]*launcher.LaunchableTaskInfo{
+				taskID.GetValue(): {},
+			}),
+		suite.resMgrClient.EXPECT().
+			KillTasks(gomock.Any(), &resmgrsvc.KillTasksRequest{
+				Tasks: []*peloton.TaskID{taskID},
+			}).Return(nil, fmt.Errorf("fake kill error")),
+		suite.taskLauncher.EXPECT().
+			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+		suite.goalStateDriver.EXPECT().
+			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
+		suite.jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
+		suite.goalStateDriver.EXPECT().
+			JobRuntimeDuration(job.JobType_BATCH).
+			Return(1*time.Second),
+		suite.goalStateDriver.EXPECT().
+			EnqueueJob(testTask.JobId, gomock.Any()).Return(),
+	)
+
+	suite.pp.processPlacement(context.Background(), p)
+}
+
 func (suite *PlacementTestSuite) TestTaskPlacementKilledTask() {
 	testTask, runtimeDiff := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
@@ -509,9 +575,15 @@ func (suite *PlacementTestSuite) TestTaskPlacementError() {
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.taskLauncher.EXPECT().
-			CreateLaunchableTasks(gomock.Any(), gomock.Any()).Return(nil, nil),
+			CreateLaunchableTasks(gomock.Any(), gomock.Any()).
+			Return([]*hostsvc.LaunchableTask{{Id: taskID}}, nil),
 		suite.taskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake launch error")),
+		suite.resMgrClient.EXPECT().
+			KillTasks(gomock.Any(), &resmgrsvc.KillTasksRequest{
+				Tasks: []*peloton.TaskID{taskID},
+			}).
+			Return(&resmgrsvc.KillTasksResponse{}, nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
@@ -569,7 +641,13 @@ func (suite *PlacementTestSuite) TestTaskPlacementPlacementResMgrError() {
 		suite.taskLauncher.EXPECT().
 			CreateLaunchableTasks(gomock.Any(), gomock.Any()).Return(nil, nil),
 		suite.taskLauncher.EXPECT().
-			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake launch error")),
+			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(fmt.Errorf("fake launch error")),
+		suite.resMgrClient.EXPECT().
+			KillTasks(gomock.Any(), &resmgrsvc.KillTasksRequest{
+				Tasks: []*peloton.TaskID{taskID},
+			}).
+			Return(&resmgrsvc.KillTasksResponse{}, nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().

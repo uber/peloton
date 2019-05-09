@@ -400,15 +400,13 @@ func (h *ServiceHandler) requeueTask(
 	}
 	currentTaskState := rmTask.GetCurrentState().State
 
-	// If state is Launching, Launched or Running
+	// If state is Launched or Running
 	// replace the task in the tracker and requeue
 	if h.isTaskInTransitRunning(currentTaskState) {
 		return h.addTask(requeuedTask, respool)
 	}
 
-	// TASK should not be in any other state other then
-	// LAUNCHING, RUNNING or LAUNCHED
-	// Logging error if this happens.
+	// TASK should not be in any other state other than RUNNING or LAUNCHED
 	log.WithFields(log.Fields{
 		"task":              rmTask.Task().Id.Value,
 		"current_state":     currentTaskState.String(),
@@ -425,10 +423,9 @@ func (h *ServiceHandler) requeueTask(
 }
 
 // isTaskInTransitRunning return TRUE if the task state is in
-// LAUNCHING, RUNNING or LAUNCHED state else it returns FALSE
+// RUNNING or LAUNCHED state else it returns FALSE
 func (h *ServiceHandler) isTaskInTransitRunning(state t.TaskState) bool {
-	if state == t.TaskState_LAUNCHING ||
-		state == t.TaskState_LAUNCHED ||
+	if state == t.TaskState_LAUNCHED ||
 		state == t.TaskState_RUNNING {
 		return true
 	}
@@ -755,12 +752,14 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 		return
 	}
 
+	mesosTask := event.GetMesosTaskStatus().GetTaskId().GetValue()
 	ptID, err := util.ParseTaskIDFromMesosTaskID(
-		*(event.MesosTaskStatus.TaskId.Value))
+		mesosTask,
+	)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"event":         event,
-			"mesos_task_id": *(event.MesosTaskStatus.TaskId.Value),
+			"mesos_task_id": mesosTask,
 		}).Error("Could not parse mesos task ID")
 		return
 	}
@@ -769,19 +768,14 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 		Value: ptID,
 	}
 	rmTask := h.rmTracker.GetTask(taskID)
-	if rmTask == nil {
-		return
+
+	if rmTask == nil ||
+		(rmTask.Task().GetTaskId().GetValue() != mesosTask) {
+		// It might be an orphan task event
+		rmTask = h.rmTracker.GetOrphanTask(mesosTask)
 	}
 
-	if *(rmTask.Task().TaskId.Value) !=
-		*(event.MesosTaskStatus.TaskId.Value) {
-		err = h.rmTracker.MarkItDone(taskID, event.GetMesosTaskStatus().GetTaskId().GetValue())
-		if err != nil {
-			log.WithField("event", event).WithError(err).Error(
-				"Error while marking task as done in tracker")
-			return
-		}
-
+	if rmTask == nil {
 		return
 	}
 

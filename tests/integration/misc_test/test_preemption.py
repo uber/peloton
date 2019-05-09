@@ -119,10 +119,8 @@ def test_non_preemptible_job(respool_a):
     np_job_a_1.wait_for_state(goal_state="RUNNING")
 
     # the resource pools CPU allocation should be equal to the reservation.
-    pool_info = np_job_a_1.pool.pool_info()
-    assert get_reservation("cpu", pool_info) == get_allocation(
-        "cpu", pool_info
-    )
+    assert np_job_a_1.pool.get_reservation(
+        "cpu") == np_job_a_1.pool.get_allocation("cpu")
 
     # start another non-preemptible job which should not be admitted as all
     # the reservation(CPU) of the resource pool is used up.
@@ -194,8 +192,8 @@ def test__preemption_non_preemptible_task(respool_a, respool_b):
     np_job_a.wait_for_state("RUNNING")
 
     # pool allocation is more than reservation
-    pool_info = np_job_a.pool.pool_info()
-    assert get_reservation("cpu", pool_info) < get_allocation("cpu", pool_info)
+    assert np_job_a.pool.get_reservation(
+        "cpu") < np_job_a.pool.get_allocation("cpu")
 
     # Create another job in respool B
     p_job_b = Job(
@@ -230,16 +228,12 @@ def test__preemption_non_preemptible_task(respool_a, respool_b):
     p_job_b.wait_for_condition(all_tasks_running)
 
     # pool A allocation is equal to reservation
-    pool_info = np_job_a.pool.pool_info()
-    assert get_reservation("cpu", pool_info) == get_allocation(
-        "cpu", pool_info
-    )
+    assert np_job_a.pool.get_reservation(
+        "cpu") == np_job_a.pool.get_allocation("cpu")
 
     # pool B allocation is equal to reservation
-    pool_info = p_job_b.pool.pool_info()
-    assert get_reservation("cpu", pool_info) == get_allocation(
-        "cpu", pool_info
-    )
+    assert p_job_b.pool.get_reservation(
+        "cpu") == p_job_b.pool.get_allocation("cpu")
 
     # wait for p_job_b to finish
     p_job_b.wait_for_state("SUCCEEDED")
@@ -379,20 +373,3 @@ def test__preemption_task_level(respool_a, respool_b):
     p_job_b.wait_for_state("RUNNING")
 
     kill_jobs([p_job_a, p_job_b])
-
-
-def get_reservation(type, pool_info):
-    res = 0
-    for r in pool_info.config.resources:
-        if r.kind == type:
-            res = r.reservation
-            break
-    return res
-
-
-def get_allocation(type, pool_info):
-    alloc = -1
-    for u in pool_info.usage:
-        if u.kind == type:
-            alloc = u.allocation
-    return alloc

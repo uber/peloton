@@ -78,6 +78,9 @@ type Tracker interface {
 
 	// UpdateCounters updates the counters for each state
 	UpdateCounters(from task.TaskState, to task.TaskState)
+
+	// GetOrphanTask gets the orphan RMTask for the given mesos-task-id
+	GetOrphanTask(mesosTaskID string) *RMTask
 }
 
 // tracker is the rmtask tracker
@@ -349,33 +352,7 @@ func (tr *tracker) markItDone(t *RMTask, mesosTaskID string) error {
 		// This can happen when jobmgr processes the mesos event faster than resmgr
 		// causing EnqueueGangs to be called before the task termination event
 		// is processed by resmgr.
-		if _, ok := tr.orphanTasks[mesosTaskID]; !ok {
-			// If the mesos task ID is not a known orphan task then
-			// it means there are no resources held for this task.
-			// We can simply return here
-			return nil
-		}
-
-		tr.clearPlacement(
-			tr.orphanTasks[mesosTaskID].task.GetHostname(),
-			tr.orphanTasks[mesosTaskID].task.GetType(),
-			mesosTaskID,
-		)
-
-		err := t.respool.SubtractFromAllocation(scalar.GetTaskAllocation(tr.orphanTasks[mesosTaskID].Task()))
-		if err != nil {
-			err = errors.Wrap(err, "failed to release held resources for task "+tID.GetValue())
-		}
-
-		delete(tr.orphanTasks, mesosTaskID)
-
-		log.WithFields(log.Fields{
-			"orphan_task":        mesosTaskID,
-			"resources_released": err == nil,
-			"error":              err,
-		}).Debug("Orphan task deleted")
-
-		return err
+		return tr.deleteOrphanTask(mesosTaskID)
 	}
 
 	// We need to skip the tasks from resource counting which are in pending and
@@ -510,6 +487,52 @@ func (tr *tracker) UpdateCounters(from task.TaskState, to task.TaskState) {
 	for state, gauge := range tr.metrics.TaskStatesGauge {
 		gauge.Update(tr.counters[state])
 	}
+}
+
+// GetOrphanTask gets the orphan RMTask for the given mesos-task-id
+func (tr *tracker) GetOrphanTask(mesosTaskID string) *RMTask {
+	tr.lock.RLock()
+	defer tr.lock.RUnlock()
+
+	if rmTask, ok := tr.orphanTasks[mesosTaskID]; ok {
+		return rmTask
+	}
+	return nil
+}
+
+// deleteOrphanTask is a helper that cleans up the task from the
+// host-to-tasks map and releases the resources held by the task
+func (tr *tracker) deleteOrphanTask(mesosTaskID string) error {
+	rmTask, ok := tr.orphanTasks[mesosTaskID]
+	if !ok {
+		// If the mesos task ID is not a known orphan task then
+		// it means there are no resources held for this task.
+		// We can simply return here
+		return nil
+	}
+
+	tr.clearPlacement(
+		rmTask.task.GetHostname(),
+		rmTask.task.GetType(),
+		mesosTaskID,
+	)
+
+	err := rmTask.respool.SubtractFromAllocation(scalar.GetTaskAllocation(rmTask.task))
+	if err != nil {
+		log.WithField("mesos_task", mesosTaskID).
+			WithField("resources", rmTask.task.GetResource()).
+			WithError(err).
+			Error("failed to release held resources for task")
+		err = errors.Wrapf(err, "failed to release held resources for task %s", mesosTaskID)
+	}
+
+	delete(tr.orphanTasks, mesosTaskID)
+
+	log.WithFields(log.Fields{
+		"orphan_task": mesosTaskID,
+	}).Debug("Orphan task deleted")
+
+	return err
 }
 
 // filterTasks filters the tasks based on the jobID, respoolID and states filters

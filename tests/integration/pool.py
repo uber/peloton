@@ -101,3 +101,18 @@ class Pool(object):
 
         assert not resp.HasField("error"), resp
         log.info("deleted respool: %s", respool_name)
+
+    def get_reservation(self, type):
+        res = 0
+        for r in self.pool_info().config.resources:
+            if r.kind == type:
+                res = r.reservation
+                break
+        return res
+
+    def get_allocation(self, type):
+        alloc = -1
+        for u in self.pool_info().usage:
+            if u.kind == type:
+                alloc = u.allocation
+        return alloc

@@ -652,3 +652,41 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 	// a deadlock would cause this to wait indefinitely
 	wg.Wait()
 }
+
+// TestGetOrphanTask tests getting an orphan rm task
+func (suite *TrackerTestSuite) TestGetOrphanTask() {
+	tr := suite.tracker.(*tracker)
+
+	// move tasks to orphan tasks
+	for _, rmTask := range tr.tasks {
+		tr.orphanTasks[rmTask.task.GetTaskId().GetValue()] = rmTask
+	}
+
+	// remove all other tasks from tracker
+	for k := range tr.tasks {
+		delete(tr.tasks, k)
+	}
+
+	for _, rmTask := range tr.orphanTasks {
+		suite.Equal(rmTask, tr.GetOrphanTask(rmTask.Task().GetTaskId().GetValue()))
+	}
+}
+
+// TestGetOrphanTaskNoTask tests getting an unknown orphan rm Task
+func (suite *TrackerTestSuite) TestGetOrphanTaskNoTask() {
+	tr := suite.tracker.(*tracker)
+
+	var mesosTasks []string
+	// move tasks to orphan tasks
+	for _, rmTask := range tr.tasks {
+		tr.orphanTasks[rmTask.task.GetTaskId().GetValue()] = rmTask
+		mesosTasks = append(mesosTasks, rmTask.task.GetTaskId().GetValue())
+	}
+
+	// remove all other tasks from tracker
+	for k := range tr.tasks {
+		delete(tr.tasks, k)
+	}
+
+	suite.Nil(suite.tracker.GetOrphanTask("unknown-task"))
+}
