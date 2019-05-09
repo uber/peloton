@@ -76,7 +76,8 @@ build-mockgen:
 
 get-gokind:
 	mkdir -p bin
-	GOBIN=$(shell pwd)/bin go get sigs.k8s.io/kind
+	# comment out until find a fix for https://github.com/kubernetes-sigs/kind/issues/509
+	# GOBIN=$(shell pwd)/bin go get sigs.k8s.io/kind
 
 # NOTE: `glide install` is flaky, so run it 3 times at most to ensure this doesn't fail
 # tests regularly for no reason.

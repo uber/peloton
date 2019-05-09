@@ -89,7 +89,7 @@ func (h *serviceHandler) RefreshJob(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.RefreshJob failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
@@ -139,7 +139,7 @@ func (h *serviceHandler) GetJobCache(
 				WithField("headers", headers).
 				WithError(err).
 				Warn("JobSVC.GetJobCache failed")
-			err = handlerutil.ConvertToYARPCError(err)
+			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 

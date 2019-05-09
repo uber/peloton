@@ -104,7 +104,7 @@ def setup(
 # Tear down a personal cluster
 # TODO (wu): use docker labels when launching containers
 #            and then remove all containers with that label
-def teardown():
+def teardown(enable_k8s=False):
     # 1 - Remove jobmgr instances
     for i in range(0, config["peloton_jobmgr_instance_count"]):
         name = config["peloton_jobmgr_container"] + repr(i)
@@ -136,7 +136,8 @@ def teardown():
         utils.remove_existing_container(name)
 
     minicluster.teardown_mesos(config)
-    minicluster.teardown_k8s()
+    if enable_k8s:
+        minicluster.teardown_k8s()
 
     utils.remove_existing_container(config["cassandra_container"])
 
@@ -266,7 +267,7 @@ def main():
             enable_k8s=args.enable_k8s,
         )
     elif command == "teardown":
-        teardown()
+        teardown(enable_k8s=args.enable_k8s)
     else:
         # Should never get here.  argparser should prevent it.
         print_utils.fail("Unknown command: %s" % command)
