@@ -25,6 +25,8 @@ import (
 // ServiceHandlerConfig defines ServiceHandler configuration.
 type ServiceHandlerConfig struct {
 	GetJobUpdateWorkers           int `yaml:"get_job_update_workers"`
+	GetJobsWorkers                int `yaml:"get_jobs_workers"`
+	GetJobSummaryWorkers          int `yaml:"get_job_summary_workers"`
 	GetTasksWithoutConfigsWorkers int `yaml:"get_tasks_without_configs_workers"`
 	StopPodWorkers                int `yaml:"stop_pod_workers"`
 	CreateJobSpecForUpdateWorkers int `yaml:"create_job_spec_for_update_workers"`
@@ -39,12 +41,27 @@ type ServiceHandlerConfig struct {
 	// the number of pods returned.
 	PodRunsDepth int `yaml:"pod_runs_depth"`
 
+	// QueryJobsLimit specifies Limit parameter passed to QueryJobs request
+	QueryJobsLimit uint32 `yaml:"query_jobs_limit"`
+
+	// InstanceEventsLimit specifies the limit on number of events per instance
+	InstanceEventsLimit uint32 `yaml:"instance_events_limit"`
+
+	// UpdatesLimit specifies the limit on number of updates to include per job
+	UpdatesLimit uint32 `yaml:"updates_limit"`
+
 	ThermosExecutor atop.ThermosExecutorConfig `yaml:"thermos_executor"`
 }
 
 func (c *ServiceHandlerConfig) normalize() {
 	if c.GetJobUpdateWorkers == 0 {
 		c.GetJobUpdateWorkers = 25
+	}
+	if c.GetJobsWorkers == 0 {
+		c.GetJobsWorkers = 25
+	}
+	if c.GetJobSummaryWorkers == 0 {
+		c.GetJobSummaryWorkers = 25
 	}
 	if c.GetTasksWithoutConfigsWorkers == 0 {
 		c.GetTasksWithoutConfigsWorkers = 25
@@ -57,6 +74,15 @@ func (c *ServiceHandlerConfig) normalize() {
 	}
 	if c.PodRunsDepth <= 0 {
 		c.PodRunsDepth = 1
+	}
+	if c.QueryJobsLimit == 0 {
+		c.QueryJobsLimit = 1000
+	}
+	if c.InstanceEventsLimit == 0 {
+		c.InstanceEventsLimit = 100
+	}
+	if c.UpdatesLimit == 0 {
+		c.UpdatesLimit = 10
 	}
 }
 

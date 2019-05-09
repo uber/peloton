@@ -144,15 +144,19 @@ func (h *ServiceHandler) getJobSummary(
 		return nil, auroraErrorf("get job ids from task query: %s", err)
 	}
 
-	summaries := []*api.JobSummary{}
+	var inputs []interface{}
+	for _, j := range jobIDs {
+		inputs = append(inputs, j)
+	}
 
-	for _, jobID := range jobIDs {
+	f := func(ctx context.Context, input interface{}) (interface{}, error) {
+		jobID := input.(*peloton.JobID)
 		jobInfo, err := h.getJobInfo(ctx, jobID)
 		if err != nil {
 			if yarpcerrors.IsNotFound(err) {
-				continue
+				return nil, nil
 			}
-			return nil, auroraErrorf("get job info for job id %q: %s",
+			return nil, fmt.Errorf("get job info for job id %q: %s",
 				jobID.GetValue(), err)
 		}
 
@@ -170,10 +174,31 @@ func (h *ServiceHandler) getJobSummary(
 			podSpec,
 		)
 		if err != nil {
-			return nil, auroraErrorf("new job summary: %s", err)
+			return nil, fmt.Errorf("new job summary: %s", err)
 		}
 
-		summaries = append(summaries, s)
+		return s, nil
+	}
+
+	outputs, err := concurrency.Map(
+		ctx,
+		concurrency.MapperFunc(f),
+		inputs,
+		h.config.GetJobSummaryWorkers)
+	if err != nil {
+		return nil, auroraErrorf(err.Error())
+	}
+
+	summaries := []*api.JobSummary{}
+	for _, o := range outputs {
+		if o == nil {
+			continue
+		}
+		summary := o.(*api.JobSummary)
+		if summary == nil {
+			continue
+		}
+		summaries = append(summaries, summary)
 	}
 
 	return &api.Result{
@@ -632,15 +657,19 @@ func (h *ServiceHandler) getJobs(
 		return nil, auroraErrorf("get job ids from task query: %s", err)
 	}
 
-	configs := []*api.JobConfiguration{}
+	var inputs []interface{}
+	for _, j := range jobIDs {
+		inputs = append(inputs, j)
+	}
 
-	for _, jobID := range jobIDs {
+	f := func(ctx context.Context, input interface{}) (interface{}, error) {
+		jobID := input.(*peloton.JobID)
 		jobInfo, err := h.getJobInfo(ctx, jobID)
 		if err != nil {
 			if yarpcerrors.IsNotFound(err) {
-				continue
+				return nil, nil
 			}
-			return nil, auroraErrorf("get job info for job id %q: %s",
+			return nil, fmt.Errorf("get job info for job id %q: %s",
 				jobID.GetValue(), err)
 		}
 
@@ -658,10 +687,32 @@ func (h *ServiceHandler) getJobs(
 			podSpec,
 			true)
 		if err != nil {
-			return nil, auroraErrorf("new job configuration: %s", err)
+			return nil, fmt.Errorf("new job configuration: %s", err)
 		}
 
-		configs = append(configs, c)
+		return c, nil
+	}
+
+	outputs, err := concurrency.Map(
+		ctx,
+		concurrency.MapperFunc(f),
+		inputs,
+		h.config.GetJobsWorkers)
+	if err != nil {
+		return nil, auroraErrorf(err.Error())
+	}
+
+	configs := []*api.JobConfiguration{}
+	for _, o := range outputs {
+		if o == nil {
+			continue
+		}
+
+		config := o.(*api.JobConfiguration)
+		if config == nil {
+			continue
+		}
+		configs = append(configs, config)
 	}
 
 	return &api.Result{
@@ -1918,8 +1969,8 @@ func (h *ServiceHandler) queryJobSummaries(
 		Spec: &stateless.QuerySpec{
 			Labels: labels,
 			Pagination: &pbquery.PaginationSpec{
-				Limit:    common.QueryJobsLimit,
-				MaxLimit: common.QueryJobsLimit,
+				Limit:    h.config.QueryJobsLimit,
+				MaxLimit: h.config.QueryJobsLimit,
 			},
 		},
 	}
@@ -2139,8 +2190,8 @@ func (h *ServiceHandler) listWorkflows(
 	req := &statelesssvc.ListJobWorkflowsRequest{
 		JobId:               jobID,
 		InstanceEvents:      includeInstanceEvents,
-		UpdatesLimit:        common.UpdatesLimit,
-		InstanceEventsLimit: common.InstanceEventsLimit,
+		UpdatesLimit:        h.config.UpdatesLimit,
+		InstanceEventsLimit: h.config.InstanceEventsLimit,
 	}
 	resp, err := h.jobClient.ListJobWorkflows(ctx, req)
 	if err != nil {

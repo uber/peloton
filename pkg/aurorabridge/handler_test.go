@@ -47,6 +47,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/goleak"
 	"go.uber.org/thriftrw/ptr"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -95,6 +96,7 @@ func (suite *ServiceHandlerTestSuite) SetupTest() {
 			Path: "/usr/share/aurora/bin/thermos_executor.pex",
 		},
 	}
+	suite.config.normalize()
 	handler, err := NewServiceHandler(
 		suite.config,
 		tally.NoopScope,
@@ -115,47 +117,184 @@ func TestServiceHandler(t *testing.T) {
 	suite.Run(t, &ServiceHandlerTestSuite{})
 }
 
-// Tests for success scenario for GetJobSummary
+// TestGetJobSummary tests for success scenario for GetJobSummary
 func (suite *ServiceHandlerTestSuite) TestGetJobSummary() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	role := "role1"
 	jobKey := fixture.AuroraJobKey()
-	jobID := fixture.PelotonJobID()
 	labels := fixture.DefaultPelotonJobLabels(jobKey)
 	instanceCount := uint32(1)
-	podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
+	jobs := 500
+
+	var jobIDs []*peloton.JobID
+	for i := 0; i < jobs; i++ {
+		jobIDs = append(jobIDs, fixture.PelotonJobID())
+	}
 
 	ql := append(
 		label.BuildPartialAuroraJobKeyLabels(role, "", ""),
 		common.BridgeJobLabel,
 	)
-	suite.expectQueryJobsWithLabels(ql, []*peloton.JobID{jobID}, jobKey)
+	suite.expectQueryJobsWithLabels(ql, jobIDs, jobKey)
 
-	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
-			SummaryOnly: false,
-			JobId:       jobID,
-		}).
-		Return(&statelesssvc.GetJobResponse{
-			JobInfo: &stateless.JobInfo{
-				Spec: &stateless.JobSpec{
-					Name:          atop.NewJobName(jobKey),
-					InstanceCount: instanceCount,
-					DefaultSpec: &pod.PodSpec{
-						PodName:    podName,
-						Labels:     labels,
-						Containers: []*pod.ContainerSpec{{}},
+	for _, jobID := range jobIDs {
+		podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
+		suite.jobClient.EXPECT().
+			GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+				SummaryOnly: false,
+				JobId:       jobID,
+			}).
+			Return(&statelesssvc.GetJobResponse{
+				JobInfo: &stateless.JobInfo{
+					Spec: &stateless.JobSpec{
+						Name:          atop.NewJobName(jobKey),
+						InstanceCount: instanceCount,
+						DefaultSpec: &pod.PodSpec{
+							PodName:    podName,
+							Labels:     labels,
+							Containers: []*pod.ContainerSpec{{}},
+						},
 					},
 				},
-			},
-		}, nil)
+			}, nil)
+	}
 
 	resp, err := suite.handler.GetJobSummary(suite.ctx, &role)
 	suite.NoError(err)
-	suite.Len(resp.GetResult().GetJobSummaryResult().GetSummaries(), 1)
+	suite.Len(resp.GetResult().GetJobSummaryResult().GetSummaries(), jobs)
+}
+
+// TestGetJobSummarySkipNotFoundJobs tests GetJobSummary endpoint when some
+// jobs have NotFound error returned by Peloton GetJob API, GetJobs should not
+// return an error, but instead exclude those jobs from the result.
+func (suite *ServiceHandlerTestSuite) TestGetJobSummarySkipNotFoundJobs() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
+	role := "role1"
+	jobKey := fixture.AuroraJobKey()
+	labels := fixture.DefaultPelotonJobLabels(jobKey)
+	instanceCount := uint32(1)
+	jobs := 500
+	jobsNotFound := map[int]struct{}{
+		250: {}, 270: {}, 300: {},
+	}
+
+	var jobIDs []*peloton.JobID
+	for i := 0; i < jobs; i++ {
+		jobIDs = append(jobIDs, fixture.PelotonJobID())
+	}
+
+	ql := append(
+		label.BuildPartialAuroraJobKeyLabels(role, "", ""),
+		common.BridgeJobLabel,
+	)
+	suite.expectQueryJobsWithLabels(ql, jobIDs, jobKey)
+
+	for i, jobID := range jobIDs {
+		podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
+		if _, ok := jobsNotFound[i]; !ok {
+			suite.jobClient.EXPECT().
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+					SummaryOnly: false,
+					JobId:       jobID,
+				}).
+				Return(&statelesssvc.GetJobResponse{
+					JobInfo: &stateless.JobInfo{
+						Spec: &stateless.JobSpec{
+							Name:          atop.NewJobName(jobKey),
+							InstanceCount: instanceCount,
+							DefaultSpec: &pod.PodSpec{
+								PodName:    podName,
+								Labels:     labels,
+								Containers: []*pod.ContainerSpec{{}},
+							},
+						},
+					},
+				}, nil)
+		} else {
+			suite.jobClient.EXPECT().
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+					SummaryOnly: false,
+					JobId:       jobID,
+				}).
+				Return(nil, yarpcerrors.NotFoundErrorf("job id not found"))
+		}
+	}
+
+	resp, err := suite.handler.GetJobSummary(suite.ctx, &role)
+	suite.NoError(err)
+	suite.Len(resp.GetResult().GetJobSummaryResult().GetSummaries(), jobs-len(jobsNotFound))
+}
+
+// TestGetJobSummaryFailure tests GetJobSummary endpoint when some jobs have
+// errors returned by Peloton GetJob API, GetJobSummary should error out and
+// not returning any results.
+func (suite *ServiceHandlerTestSuite) TestGetJobSummaryFailure() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
+	role := "role1"
+	jobKey := fixture.AuroraJobKey()
+	labels := fixture.DefaultPelotonJobLabels(jobKey)
+	instanceCount := uint32(1)
+	jobs := 500
+	jobsError := map[int]struct{}{
+		250: {}, 270: {}, 300: {},
+	}
+
+	var jobIDs []*peloton.JobID
+	for i := 0; i < jobs; i++ {
+		jobIDs = append(jobIDs, fixture.PelotonJobID())
+	}
+
+	ql := append(
+		label.BuildPartialAuroraJobKeyLabels(role, "", ""),
+		common.BridgeJobLabel,
+	)
+	suite.expectQueryJobsWithLabels(ql, jobIDs, jobKey)
+
+	for i, jobID := range jobIDs {
+		podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
+		if _, ok := jobsError[i]; !ok {
+			suite.jobClient.EXPECT().
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+					SummaryOnly: false,
+					JobId:       jobID,
+				}).
+				Return(&statelesssvc.GetJobResponse{
+					JobInfo: &stateless.JobInfo{
+						Spec: &stateless.JobSpec{
+							Name:          atop.NewJobName(jobKey),
+							InstanceCount: instanceCount,
+							DefaultSpec: &pod.PodSpec{
+								PodName:    podName,
+								Labels:     labels,
+								Containers: []*pod.ContainerSpec{{}},
+							},
+						},
+					},
+				}, nil).
+				MaxTimes(1)
+		} else {
+			suite.jobClient.EXPECT().
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+					SummaryOnly: false,
+					JobId:       jobID,
+				}).
+				Return(nil, yarpcerrors.InvalidArgumentErrorf("job error")).
+				MaxTimes(1)
+		}
+	}
+
+	resp, err := suite.handler.GetJobSummary(suite.ctx, &role)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
 }
 
 // Tests for failure scenario for get config summary
 func (suite *ServiceHandlerTestSuite) TestGetConfigSummaryFailure() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	jobID := fixture.PelotonJobID()
 	jobKey := fixture.AuroraJobKey()
 	instanceCount := uint32(2)
@@ -163,7 +302,7 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummaryFailure() {
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 
 	suite.jobClient.EXPECT().
-		QueryPods(suite.ctx, &statelesssvc.QueryPodsRequest{
+		QueryPods(gomock.Any(), &statelesssvc.QueryPodsRequest{
 			JobId: jobID,
 			Spec: &pod.QuerySpec{
 				Pagination: &pbquery.PaginationSpec{
@@ -177,7 +316,7 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummaryFailure() {
 		Return(nil, errors.New("unable to query pods"))
 
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			SummaryOnly: true,
 			JobId:       jobID,
 		}).
@@ -196,6 +335,8 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummaryFailure() {
 }
 
 func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	jobID := fixture.PelotonJobID()
 	jobKey := fixture.AuroraJobKey()
 	entityVersion := fixture.PelotonEntityVersion()
@@ -210,7 +351,7 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
 		1,
 	)
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			SummaryOnly: true,
 			JobId:       jobID,
 		}).
@@ -229,13 +370,19 @@ func (suite *ServiceHandlerTestSuite) TestGetConfigSummarySuccess() {
 	suite.Equal(1, len(resp.GetResult().GetConfigSummaryResult().GetSummary().GetGroups()))
 }
 
-// Tests for success scenario for GetJobs
+// TestGetJobs tests for success scenario for GetJobs.
 func (suite *ServiceHandlerTestSuite) TestGetJobs() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	role := "role1"
 	jobKey := fixture.AuroraJobKey()
-	jobID := fixture.PelotonJobID()
 	instanceCount := uint32(1)
-	podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
+	jobs := 500
+
+	var jobIDs []*peloton.JobID
+	for i := 0; i < jobs; i++ {
+		jobIDs = append(jobIDs, fixture.PelotonJobID())
+	}
 
 	mdLabel := label.NewAuroraMetadataLabels(fixture.AuroraMetadata())
 	jkLabel := label.NewAuroraJobKey(jobKey)
@@ -244,34 +391,169 @@ func (suite *ServiceHandlerTestSuite) TestGetJobs() {
 		label.BuildPartialAuroraJobKeyLabels(role, "", ""),
 		common.BridgeJobLabel,
 	)
-	suite.expectQueryJobsWithLabels(ql, []*peloton.JobID{jobID}, jobKey)
+	suite.expectQueryJobsWithLabels(ql, jobIDs, jobKey)
 
-	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
-			SummaryOnly: false,
-			JobId:       jobID,
-		}).
-		Return(&statelesssvc.GetJobResponse{
-			JobInfo: &stateless.JobInfo{
-				Spec: &stateless.JobSpec{
-					Name:          atop.NewJobName(jobKey),
-					InstanceCount: instanceCount,
-					DefaultSpec: &pod.PodSpec{
-						PodName:    podName,
-						Labels:     append([]*peloton.Label{jkLabel}, mdLabel...),
-						Containers: []*pod.ContainerSpec{{}},
+	for _, jobID := range jobIDs {
+		podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
+		suite.jobClient.EXPECT().
+			GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+				SummaryOnly: false,
+				JobId:       jobID,
+			}).
+			Return(&statelesssvc.GetJobResponse{
+				JobInfo: &stateless.JobInfo{
+					Spec: &stateless.JobSpec{
+						Name:          atop.NewJobName(jobKey),
+						InstanceCount: instanceCount,
+						DefaultSpec: &pod.PodSpec{
+							PodName:    podName,
+							Labels:     append([]*peloton.Label{jkLabel}, mdLabel...),
+							Containers: []*pod.ContainerSpec{{}},
+						},
 					},
 				},
-			},
-		}, nil)
+			}, nil)
+	}
 
 	resp, err := suite.handler.GetJobs(suite.ctx, &role)
 	suite.NoError(err)
-	suite.Len(resp.GetResult().GetGetJobsResult().GetConfigs(), 1)
+	suite.Len(resp.GetResult().GetGetJobsResult().GetConfigs(), jobs)
+}
+
+// TestGetJobsSkipNotFoundJobs tests GetJobs endpoint when some jobs have
+// NotFound error returned by Peloton GetJob API, GetJobs should not return an
+// error, but instead exclude those jobs from the result.
+func (suite *ServiceHandlerTestSuite) TestGetJobsSkipNotFoundJobs() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
+	role := "role1"
+	jobKey := fixture.AuroraJobKey()
+	instanceCount := uint32(1)
+	jobs := 500
+	jobsNotFound := map[int]struct{}{
+		250: {}, 270: {}, 300: {},
+	}
+
+	var jobIDs []*peloton.JobID
+	for i := 0; i < jobs; i++ {
+		jobIDs = append(jobIDs, fixture.PelotonJobID())
+	}
+
+	mdLabel := label.NewAuroraMetadataLabels(fixture.AuroraMetadata())
+	jkLabel := label.NewAuroraJobKey(jobKey)
+
+	ql := append(
+		label.BuildPartialAuroraJobKeyLabels(role, "", ""),
+		common.BridgeJobLabel,
+	)
+	suite.expectQueryJobsWithLabels(ql, jobIDs, jobKey)
+
+	for i, jobID := range jobIDs {
+		podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
+		if _, ok := jobsNotFound[i]; !ok {
+			suite.jobClient.EXPECT().
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+					SummaryOnly: false,
+					JobId:       jobID,
+				}).
+				Return(&statelesssvc.GetJobResponse{
+					JobInfo: &stateless.JobInfo{
+						Spec: &stateless.JobSpec{
+							Name:          atop.NewJobName(jobKey),
+							InstanceCount: instanceCount,
+							DefaultSpec: &pod.PodSpec{
+								PodName:    podName,
+								Labels:     append([]*peloton.Label{jkLabel}, mdLabel...),
+								Containers: []*pod.ContainerSpec{{}},
+							},
+						},
+					},
+				}, nil)
+		} else {
+			suite.jobClient.EXPECT().
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+					SummaryOnly: false,
+					JobId:       jobID,
+				}).
+				Return(nil, yarpcerrors.NotFoundErrorf("job id not found"))
+		}
+	}
+
+	resp, err := suite.handler.GetJobs(suite.ctx, &role)
+	suite.NoError(err)
+	suite.Len(resp.GetResult().GetGetJobsResult().GetConfigs(), jobs-len(jobsNotFound))
+}
+
+// TestGetJobsFailure tests GetJobs endpoint when some jobs have errors
+// returned by Peloton GetJob API, GetJobs should error out and not returning
+// any results.
+func (suite *ServiceHandlerTestSuite) TestGetJobsFailure() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
+	role := "role1"
+	jobKey := fixture.AuroraJobKey()
+	instanceCount := uint32(1)
+	jobs := 500
+	jobsError := map[int]struct{}{
+		250: {}, 270: {}, 300: {},
+	}
+
+	var jobIDs []*peloton.JobID
+	for i := 0; i < jobs; i++ {
+		jobIDs = append(jobIDs, fixture.PelotonJobID())
+	}
+
+	mdLabel := label.NewAuroraMetadataLabels(fixture.AuroraMetadata())
+	jkLabel := label.NewAuroraJobKey(jobKey)
+
+	ql := append(
+		label.BuildPartialAuroraJobKeyLabels(role, "", ""),
+		common.BridgeJobLabel,
+	)
+	suite.expectQueryJobsWithLabels(ql, jobIDs, jobKey)
+
+	for i, jobID := range jobIDs {
+		podName := &peloton.PodName{Value: jobID.GetValue() + "-0"}
+		if _, ok := jobsError[i]; !ok {
+			suite.jobClient.EXPECT().
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+					SummaryOnly: false,
+					JobId:       jobID,
+				}).
+				Return(&statelesssvc.GetJobResponse{
+					JobInfo: &stateless.JobInfo{
+						Spec: &stateless.JobSpec{
+							Name:          atop.NewJobName(jobKey),
+							InstanceCount: instanceCount,
+							DefaultSpec: &pod.PodSpec{
+								PodName:    podName,
+								Labels:     append([]*peloton.Label{jkLabel}, mdLabel...),
+								Containers: []*pod.ContainerSpec{{}},
+							},
+						},
+					},
+				}, nil).
+				MaxTimes(1)
+		} else {
+			suite.jobClient.EXPECT().
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+					SummaryOnly: false,
+					JobId:       jobID,
+				}).
+				Return(nil, yarpcerrors.InvalidArgumentErrorf("job error")).
+				MaxTimes(1)
+		}
+	}
+
+	resp, err := suite.handler.GetJobs(suite.ctx, &role)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
 }
 
 // Tests get job update diff
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	respoolID := fixture.PelotonResourcePoolID()
 	jobUpdateRequest := fixture.AuroraJobUpdateRequest()
 	jobID := fixture.PelotonJobID()
@@ -300,13 +582,13 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff() {
 		},
 	}
 
-	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 	suite.expectGetJobVersion(jobID, entityVersion)
 	suite.jobClient.EXPECT().
 		GetReplaceJobDiff(
-			suite.ctx,
+			gomock.Any(),
 			&statelesssvc.GetReplaceJobDiffRequest{
 				JobId:   jobID,
 				Version: entityVersion,
@@ -329,6 +611,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff() {
 
 // Tests the failure scenarios for get job update diff
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiffFailure() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	respoolID := fixture.PelotonResourcePoolID()
 	jobUpdateRequest := fixture.AuroraJobUpdateRequest()
 	jobID := fixture.PelotonJobID()
@@ -340,14 +624,14 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiffFailure() {
 		suite.config.ThermosExecutor,
 	)
 
-	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 	suite.expectGetJobVersion(jobID, entityVersion)
 
 	suite.jobClient.EXPECT().
 		GetReplaceJobDiff(
-			suite.ctx,
+			gomock.Any(),
 			&statelesssvc.GetReplaceJobDiffRequest{
 				JobId:   jobID,
 				Version: entityVersion,
@@ -363,13 +647,15 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiffFailure() {
 }
 
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff_JobNotFound() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	respoolID := fixture.PelotonResourcePoolID()
 	k := fixture.AuroraJobKey()
 
-	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
 
 	suite.jobClient.EXPECT().
-		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
+		GetJobIDFromJobName(gomock.Any(), &statelesssvc.GetJobIDFromJobNameRequest{
 			JobName: atop.NewJobName(k),
 		}).
 		Return(nil, yarpcerrors.NotFoundErrorf("job not found"))
@@ -392,6 +678,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff_JobNotFound() {
 }
 
 func (suite *ServiceHandlerTestSuite) TestGetTierConfigs() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	resp, err := suite.handler.GetTierConfigs(suite.ctx)
 	suite.NoError(err)
 	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
@@ -399,21 +687,23 @@ func (suite *ServiceHandlerTestSuite) TestGetTierConfigs() {
 
 // Ensures StartJobUpdate creates jobs which don't exist.
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobSuccess() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	respoolID := fixture.PelotonResourcePoolID()
 	req := fixture.AuroraJobUpdateRequest()
 	k := req.GetTaskConfig().GetJob()
 	name := atop.NewJobName(k)
 
-	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
 
 	suite.jobClient.EXPECT().
-		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
+		GetJobIDFromJobName(gomock.Any(), &statelesssvc.GetJobIDFromJobNameRequest{
 			JobName: name,
 		}).
 		Return(nil, yarpcerrors.NotFoundErrorf(""))
 
 	suite.jobClient.EXPECT().
-		CreateJob(suite.ctx, gomock.Any()).
+		CreateJob(gomock.Any(), gomock.Any()).
 		Return(&statelesssvc.CreateJobResponse{}, nil)
 
 	resp, err := suite.handler.StartJobUpdate(suite.ctx, req, ptr.String("some message"))
@@ -427,20 +717,22 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobSuccess() {
 // Ensures StartJobUpdate returns an INVALID_REQUEST error if there is a conflict
 // when trying to create a job which doesn't exist.
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobConflict() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	respoolID := fixture.PelotonResourcePoolID()
 	req := fixture.AuroraJobUpdateRequest()
 	name := atop.NewJobName(req.GetTaskConfig().GetJob())
 
-	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
 
 	suite.jobClient.EXPECT().
-		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
+		GetJobIDFromJobName(gomock.Any(), &statelesssvc.GetJobIDFromJobNameRequest{
 			JobName: name,
 		}).
 		Return(nil, yarpcerrors.NotFoundErrorf(""))
 
 	suite.jobClient.EXPECT().
-		CreateJob(suite.ctx, gomock.Any()).
+		CreateJob(gomock.Any(), gomock.Any()).
 		Return(nil, yarpcerrors.AlreadyExistsErrorf(""))
 
 	resp, err := suite.handler.StartJobUpdate(suite.ctx, req, ptr.String("some message"))
@@ -450,13 +742,15 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobConflict() {
 
 // Ensures StartJobUpdate replaces jobs which already exist with no pulse.
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobNoPulseSuccess() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	respoolID := fixture.PelotonResourcePoolID()
 	req := fixture.AuroraJobUpdateRequest()
 	k := req.GetTaskConfig().GetJob()
 	curv := fixture.PelotonEntityVersion()
 	id := fixture.PelotonJobID()
 
-	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(k, id)
 
@@ -466,7 +760,7 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobNoPulseSucces
 
 	suite.jobClient.EXPECT().
 		ReplaceJob(
-			suite.ctx,
+			gomock.Any(),
 			mockutil.MatchReplaceJobRequestUpdateActions(nil)).
 		Return(&statelesssvc.ReplaceJobResponse{}, nil)
 
@@ -480,6 +774,8 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobNoPulseSucces
 
 // Ensures StartJobUpdate replaces jobs which already exist with pulse.
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobWithPulseSuccess() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	respoolID := fixture.PelotonResourcePoolID()
 	req := &api.JobUpdateRequest{
 		TaskConfig: fixture.AuroraTaskConfig(),
@@ -491,7 +787,7 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobWithPulseSucc
 	curv := fixture.PelotonEntityVersion()
 	id := fixture.PelotonJobID()
 
-	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(k, id)
 
@@ -501,7 +797,7 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobWithPulseSucc
 
 	suite.jobClient.EXPECT().
 		ReplaceJob(
-			suite.ctx,
+			gomock.Any(),
 			mockutil.MatchReplaceJobRequestUpdateActions([]opaquedata.UpdateAction{
 				opaquedata.StartPulsed,
 			})).
@@ -518,13 +814,15 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobWithPulseSucc
 // Ensures StartJobUpdate returns an INVALID_REQUEST error if there is a conflict
 // when trying to replace a job which has changed version.
 func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobConflict() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	respoolID := fixture.PelotonResourcePoolID()
 	req := fixture.AuroraJobUpdateRequest()
 	k := req.GetTaskConfig().GetJob()
 	curv := fixture.PelotonEntityVersion()
 	id := fixture.PelotonJobID()
 
-	suite.respoolLoader.EXPECT().Load(suite.ctx).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(k, id)
 
@@ -533,7 +831,7 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobConflict() {
 	suite.expectListPods(id, []*pod.PodSummary{})
 
 	suite.jobClient.EXPECT().
-		ReplaceJob(suite.ctx, gomock.Any()).
+		ReplaceJob(gomock.Any(), gomock.Any()).
 		Return(nil, yarpcerrors.AbortedErrorf(""))
 
 	resp, err := suite.handler.StartJobUpdate(suite.ctx, req, ptr.String("some message"))
@@ -543,6 +841,8 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobConflict() {
 
 // Ensures PauseJobUpdate successfully maps to PauseJobWorkflow.
 func (suite *ServiceHandlerTestSuite) TestPauseJobUpdate_Success() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 	v := fixture.PelotonEntityVersion()
@@ -552,7 +852,7 @@ func (suite *ServiceHandlerTestSuite) TestPauseJobUpdate_Success() {
 	suite.expectGetJobAndWorkflow(id, k.GetID(), v)
 
 	suite.jobClient.EXPECT().
-		PauseJobWorkflow(suite.ctx, &statelesssvc.PauseJobWorkflowRequest{
+		PauseJobWorkflow(gomock.Any(), &statelesssvc.PauseJobWorkflowRequest{
 			JobId:   id,
 			Version: v,
 		}).
@@ -565,6 +865,8 @@ func (suite *ServiceHandlerTestSuite) TestPauseJobUpdate_Success() {
 
 // Ensures PauseJobUpdate returns INVALID_REQUEST if update id does not match workflow.
 func (suite *ServiceHandlerTestSuite) TestPauseJobUpdate_InvalidUpdateID() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 	v := fixture.PelotonEntityVersion()
@@ -580,6 +882,8 @@ func (suite *ServiceHandlerTestSuite) TestPauseJobUpdate_InvalidUpdateID() {
 
 // Ensures ResumeJobUpdate successfully maps to ResumeJobWorkflow.
 func (suite *ServiceHandlerTestSuite) TestResumeJobUpdate_Success() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 	v := fixture.PelotonEntityVersion()
@@ -589,7 +893,7 @@ func (suite *ServiceHandlerTestSuite) TestResumeJobUpdate_Success() {
 	suite.expectGetJobAndWorkflow(id, k.GetID(), v)
 
 	suite.jobClient.EXPECT().
-		ResumeJobWorkflow(suite.ctx, &statelesssvc.ResumeJobWorkflowRequest{
+		ResumeJobWorkflow(gomock.Any(), &statelesssvc.ResumeJobWorkflowRequest{
 			JobId:   id,
 			Version: v,
 		}).
@@ -602,6 +906,8 @@ func (suite *ServiceHandlerTestSuite) TestResumeJobUpdate_Success() {
 
 // Ensures ResumeJobUpdate returns INVALID_REQUEST if update id does not match workflow.
 func (suite *ServiceHandlerTestSuite) TestResumeJobUpdate_InvalidUpdateID() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 	v := fixture.PelotonEntityVersion()
@@ -617,6 +923,8 @@ func (suite *ServiceHandlerTestSuite) TestResumeJobUpdate_InvalidUpdateID() {
 
 // Ensures AbortJobUpdate successfully maps to AbortJobWorkflow.
 func (suite *ServiceHandlerTestSuite) TestAbortJobUpdate_Success() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 	v := fixture.PelotonEntityVersion()
@@ -626,7 +934,7 @@ func (suite *ServiceHandlerTestSuite) TestAbortJobUpdate_Success() {
 	suite.expectGetJobAndWorkflow(id, k.GetID(), v)
 
 	suite.jobClient.EXPECT().
-		AbortJobWorkflow(suite.ctx, &statelesssvc.AbortJobWorkflowRequest{
+		AbortJobWorkflow(gomock.Any(), &statelesssvc.AbortJobWorkflowRequest{
 			JobId:   id,
 			Version: v,
 		}).
@@ -639,6 +947,8 @@ func (suite *ServiceHandlerTestSuite) TestAbortJobUpdate_Success() {
 
 // Ensures AbortJobUpdate returns INVALID_REQUEST if update id does not match workflow.
 func (suite *ServiceHandlerTestSuite) TestAbortJobUpdate_InvalidUpdateID() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 	v := fixture.PelotonEntityVersion()
@@ -654,6 +964,8 @@ func (suite *ServiceHandlerTestSuite) TestAbortJobUpdate_InvalidUpdateID() {
 
 // Ensures PulseJobUpdate calls ResumeJobWorkflow if the update is awaiting pulse.
 func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_ResumesIfAwaitingPulse() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 	v := fixture.PelotonEntityVersion()
@@ -672,7 +984,7 @@ func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_ResumesIfAwaitingPulse(
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId: id,
 		}).
 		Return(&statelesssvc.GetJobResponse{
@@ -690,7 +1002,7 @@ func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_ResumesIfAwaitingPulse(
 		}, nil)
 
 	suite.jobClient.EXPECT().
-		ResumeJobWorkflow(suite.ctx, &statelesssvc.ResumeJobWorkflowRequest{
+		ResumeJobWorkflow(gomock.Any(), &statelesssvc.ResumeJobWorkflowRequest{
 			JobId:      id,
 			Version:    v,
 			OpaqueData: newOD,
@@ -705,6 +1017,8 @@ func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_ResumesIfAwaitingPulse(
 
 // Ensures PulseJobUpdate no-ops if update is not awaiting pulse.
 func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_NoopsIfNotAwaitingPulse() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 	v := fixture.PelotonEntityVersion()
@@ -716,7 +1030,7 @@ func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_NoopsIfNotAwaitingPulse
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId: id,
 		}).
 		Return(&statelesssvc.GetJobResponse{
@@ -737,6 +1051,8 @@ func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_NoopsIfNotAwaitingPulse
 
 // Ensures PulseJobUpdate returns INVALID_REQUEST if update id does not match workflow.
 func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_InvalidUpdateID() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 	v := fixture.PelotonEntityVersion()
@@ -752,10 +1068,12 @@ func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_InvalidUpdateID() {
 
 // Tests error handling for PulseJobUpdate.
 func (suite *ServiceHandlerTestSuite) TestPulseJobUpdate_NotFoundJobIsInvalidRequest() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobUpdateKey()
 
 	suite.jobClient.EXPECT().
-		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
+		GetJobIDFromJobName(gomock.Any(), &statelesssvc.GetJobIDFromJobNameRequest{
 			JobName: atop.NewJobName(k.GetJob()),
 		}).
 		Return(nil, yarpcerrors.NotFoundErrorf(""))
@@ -790,13 +1108,13 @@ func (suite *ServiceHandlerTestSuite) expectQueryJobsWithLabels(
 	}
 
 	suite.jobClient.EXPECT().
-		QueryJobs(suite.ctx,
+		QueryJobs(gomock.Any(),
 			&statelesssvc.QueryJobsRequest{
 				Spec: &stateless.QuerySpec{
 					Labels: labels,
 					Pagination: &pbquery.PaginationSpec{
-						Limit:    common.QueryJobsLimit,
-						MaxLimit: common.QueryJobsLimit,
+						Limit:    suite.config.QueryJobsLimit,
+						MaxLimit: suite.config.QueryJobsLimit,
 					},
 				},
 			}).
@@ -805,7 +1123,7 @@ func (suite *ServiceHandlerTestSuite) expectQueryJobsWithLabels(
 
 func (suite *ServiceHandlerTestSuite) expectGetJobVersion(id *peloton.JobID, v *peloton.EntityVersion) {
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			SummaryOnly: true,
 			JobId:       id,
 		}).
@@ -828,7 +1146,7 @@ func (suite *ServiceHandlerTestSuite) expectGetJobAndWorkflow(
 	suite.NoError(err)
 
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId: jobID,
 		}).
 		Return(&statelesssvc.GetJobResponse{
@@ -846,6 +1164,8 @@ func (suite *ServiceHandlerTestSuite) expectGetJobAndWorkflow(
 // TestGetJobIDsFromTaskQuery_JobKeysOnly checks getJobIDsFromTaskQuery
 // returns result when input query only contains JobKeys.
 func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_JobKeysOnly() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	jobKey1 := &api.JobKey{
 		Role:        ptr.String("role1"),
 		Environment: ptr.String("env1"),
@@ -879,6 +1199,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_JobKeysOnly() {
 // returns error when the query fails and input query only consists
 // of JobKeys.
 func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_JobKeysOnlyError() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	jobKey := &api.JobKey{
 		Role:        ptr.String("role1"),
 		Environment: ptr.String("env1"),
@@ -888,7 +1210,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_JobKeysOnlyErro
 
 	// when GetJobIDFromJobName returns error
 	suite.jobClient.EXPECT().
-		GetJobIDFromJobName(suite.ctx,
+		GetJobIDFromJobName(gomock.Any(),
 			&statelesssvc.GetJobIDFromJobNameRequest{
 				JobName: atop.NewJobName(jobKey),
 			}).
@@ -900,7 +1222,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_JobKeysOnlyErro
 
 	// when GetJobIDFromJobName returns not found error
 	suite.jobClient.EXPECT().
-		GetJobIDFromJobName(suite.ctx,
+		GetJobIDFromJobName(gomock.Any(),
 			&statelesssvc.GetJobIDFromJobNameRequest{
 				JobName: atop.NewJobName(jobKey),
 			}).
@@ -912,6 +1234,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_JobKeysOnlyErro
 }
 
 func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_FullJobKey() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	role := "role1"
 	env := "env1"
 	name := "name1"
@@ -940,6 +1264,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_FullJobKey() {
 // returns result when input query only contains partial job key parameters -
 // role, environment, and/or job_name.
 func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKey() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	role := "role1"
 	env := "env1"
 	jobID1 := fixture.PelotonJobID()
@@ -971,6 +1297,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKey()
 // partial job key parameters - role, environment, and/or job_name,
 // meanwhile jobs that does not contain expected labels are filtered out.
 func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyFilterUnexpected() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	role := "role1"
 	env := "env1"
 	jobID1 := fixture.PelotonJobID()
@@ -1005,13 +1333,13 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyFi
 	})
 
 	suite.jobClient.EXPECT().
-		QueryJobs(suite.ctx,
+		QueryJobs(gomock.Any(),
 			&statelesssvc.QueryJobsRequest{
 				Spec: &stateless.QuerySpec{
 					Labels: labels,
 					Pagination: &pbquery.PaginationSpec{
-						Limit:    common.QueryJobsLimit,
-						MaxLimit: common.QueryJobsLimit,
+						Limit:    suite.config.QueryJobsLimit,
+						MaxLimit: suite.config.QueryJobsLimit,
 					},
 				},
 			}).
@@ -1036,6 +1364,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyFi
 // returns error when the query fails and input query only contains partial
 // job key parameters - role, environment, and/or job_name.
 func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyError() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	role := "role1"
 	name := "name1"
 
@@ -1045,13 +1375,13 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyEr
 	)
 
 	suite.jobClient.EXPECT().
-		QueryJobs(suite.ctx,
+		QueryJobs(gomock.Any(),
 			&statelesssvc.QueryJobsRequest{
 				Spec: &stateless.QuerySpec{
 					Labels: labels,
 					Pagination: &pbquery.PaginationSpec{
-						Limit:    common.QueryJobsLimit,
-						MaxLimit: common.QueryJobsLimit,
+						Limit:    suite.config.QueryJobsLimit,
+						MaxLimit: suite.config.QueryJobsLimit,
 					},
 				},
 			}).
@@ -1074,7 +1404,7 @@ func (suite *ServiceHandlerTestSuite) expectGetJob(
 ) {
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			SummaryOnly: false,
 			JobId:       jobID,
 		}).
@@ -1095,7 +1425,7 @@ func (suite *ServiceHandlerTestSuite) expectGetJobSummary(
 ) {
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			SummaryOnly: true,
 			JobId:       jobID,
 		}).
@@ -1133,7 +1463,7 @@ func (suite *ServiceHandlerTestSuite) expectQueryPods(
 	}
 
 	suite.jobClient.EXPECT().
-		QueryPods(suite.ctx, &statelesssvc.QueryPodsRequest{
+		QueryPods(gomock.Any(), &statelesssvc.QueryPodsRequest{
 			JobId: jobID,
 			Spec: &pod.QuerySpec{
 				PodStates: nil,
@@ -1151,6 +1481,8 @@ func (suite *ServiceHandlerTestSuite) expectQueryPods(
 // TestGetTasksWithoutConfigs_ParallelismSuccess tests parallelism for
 // GetTasksWithoutConfig success scenario
 func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismSuccess() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	query := fixture.AuroraTaskQuery()
 	jobKey := query.GetJobKeys()[0]
 	jobID := fixture.PelotonJobID()
@@ -1195,6 +1527,8 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismSucc
 // TestGetTasksWithoutConfigs_ParallelismFailure tests parallelism for
 // GetTasksWithoutConfig failure scenario
 func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_ParallelismFailure() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	query := fixture.AuroraTaskQuery()
 	jobKey := query.GetJobKeys()[0]
 	jobID := fixture.PelotonJobID()
@@ -1256,6 +1590,8 @@ type podRun struct {
 // TestGetTasksWithoutConfigs_QueryPreviousRuns tests GetTasksWithoutConfig
 // returns pods from previous runs correctly based on PodRunsDepth config
 func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRuns() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	query := fixture.AuroraTaskQuery()
 	jobKey := query.GetJobKeys()[0]
 	query.Statuses = map[api.ScheduleStatus]struct{}{
@@ -1435,6 +1771,8 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 
 // Ensures that KillTasks maps to StopPods correctly.
 func (suite *ServiceHandlerTestSuite) TestKillTasks_Success() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobKey()
 	id := fixture.PelotonJobID()
 	instances := fixture.AuroraInstanceSet(50, 100)
@@ -1442,7 +1780,7 @@ func (suite *ServiceHandlerTestSuite) TestKillTasks_Success() {
 	suite.expectGetJobIDFromJobName(k, id)
 
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId:       id,
 			SummaryOnly: true,
 		}).
@@ -1480,6 +1818,8 @@ func pickN(m map[int32]struct{}, n int) map[int32]struct{} {
 
 // Ensures that if a StopPod request fails, the concurrency exits gracefully.
 func (suite *ServiceHandlerTestSuite) TestKillTasks_StopPodError() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobKey()
 	id := fixture.PelotonJobID()
 	instances := fixture.AuroraInstanceSet(50, 100)
@@ -1487,7 +1827,7 @@ func (suite *ServiceHandlerTestSuite) TestKillTasks_StopPodError() {
 	suite.expectGetJobIDFromJobName(k, id)
 
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId:       id,
 			SummaryOnly: true,
 		}).
@@ -1532,6 +1872,8 @@ func (suite *ServiceHandlerTestSuite) TestKillTasks_StopPodError() {
 // Ensures that if the context is cancelled externally, the concurrency exits
 // gracefully.
 func (suite *ServiceHandlerTestSuite) TestKillTasks_CancelledContextError() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobKey()
 	id := fixture.PelotonJobID()
 	instances := fixture.AuroraInstanceSet(50, 100)
@@ -1560,6 +1902,8 @@ func (suite *ServiceHandlerTestSuite) TestKillTasks_CancelledContextError() {
 // Ensures that if all instances are specified in KillTasks, then StopJob
 // is used instead of individual StopPods.
 func (suite *ServiceHandlerTestSuite) TestKillTasks_StopAll() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobKey()
 	id := fixture.PelotonJobID()
 	v := fixture.PelotonEntityVersion()
@@ -1586,7 +1930,7 @@ func (suite *ServiceHandlerTestSuite) TestKillTasks_StopAll() {
 		suite.expectGetJobIDFromJobName(k, id)
 
 		suite.jobClient.EXPECT().
-			GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+			GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 				JobId:       id,
 				SummaryOnly: true,
 			}).
@@ -1600,7 +1944,7 @@ func (suite *ServiceHandlerTestSuite) TestKillTasks_StopAll() {
 			}, nil)
 
 		suite.jobClient.EXPECT().
-			StopJob(suite.ctx, &statelesssvc.StopJobRequest{
+			StopJob(gomock.Any(), &statelesssvc.StopJobRequest{
 				JobId:   id,
 				Version: v,
 			}).
@@ -1614,6 +1958,8 @@ func (suite *ServiceHandlerTestSuite) TestKillTasks_StopAll() {
 
 // Ensures that RollbackJobUpdate calls ReplaceJob using the previous JobSpec.
 func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 
@@ -1644,7 +1990,7 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId: id,
 		}).
 		Return(&statelesssvc.GetJobResponse{
@@ -1664,7 +2010,7 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
 		}, nil)
 
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId:   id,
 			Version: prevVersion,
 		}).
@@ -1675,7 +2021,7 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
 		}, nil)
 
 	suite.jobClient.EXPECT().
-		ReplaceJob(suite.ctx, &statelesssvc.ReplaceJobRequest{
+		ReplaceJob(gomock.Any(), &statelesssvc.ReplaceJobRequest{
 			JobId:   id,
 			Version: curVersion,
 			Spec:    prevSpec,
@@ -1696,6 +2042,8 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
 // Ensures RollbackJobUpdate returns INVALID_REQUEST if the update id does not
 // match the current workflow.
 func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_InvalidUpdateID() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 
@@ -1707,7 +2055,7 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_InvalidUpdateID() {
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId: id,
 		}).
 		Return(&statelesssvc.GetJobResponse{
@@ -1727,6 +2075,8 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_InvalidUpdateID() {
 // Ensures RollbackJobUpdate returns INVALID_REQUEST if the update was already
 // rolled back.
 func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_UpdateAlreadyRolledBack() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 
@@ -1739,7 +2089,7 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_UpdateAlreadyRolledB
 	suite.expectGetJobIDFromJobName(k.GetJob(), id)
 
 	suite.jobClient.EXPECT().
-		GetJob(suite.ctx, &statelesssvc.GetJobRequest{
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
 			JobId: id,
 		}).
 		Return(&statelesssvc.GetJobResponse{
@@ -1760,6 +2110,8 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_UpdateAlreadyRolledB
 // GetJobUpdateDetails correctly. More detailed testing can be found in
 // GetJobUpdateDetails tests.
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummaries_Success() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobKey()
 	id := fixture.PelotonJobID()
 
@@ -1768,8 +2120,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummaries_Success() {
 	suite.jobClient.EXPECT().
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               id,
-			UpdatesLimit:        common.UpdatesLimit,
-			InstanceEventsLimit: common.InstanceEventsLimit,
+			UpdatesLimit:        suite.config.UpdatesLimit,
+			InstanceEventsLimit: suite.config.InstanceEventsLimit,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{fixture.PelotonWorkflowInfo("")},
@@ -1784,6 +2136,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummaries_Success() {
 
 // Very simple test checking GetJobUpdateSummaries error.
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummaries_Error() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobKey()
 	id := fixture.PelotonJobID()
 
@@ -1792,8 +2146,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummaries_Error() {
 	suite.jobClient.EXPECT().
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               id,
-			UpdatesLimit:        common.UpdatesLimit,
-			InstanceEventsLimit: common.InstanceEventsLimit,
+			UpdatesLimit:        suite.config.UpdatesLimit,
+			InstanceEventsLimit: suite.config.InstanceEventsLimit,
 		}).
 		Return(nil, errors.New("some error"))
 
@@ -1805,6 +2159,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateSummaries_Error() {
 
 // Very simple test checking GetJobUpdateDetails error.
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Error() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobKey()
 	id := fixture.PelotonJobID()
 
@@ -1814,8 +2170,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Error() {
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               id,
 			InstanceEvents:      true,
-			UpdatesLimit:        common.UpdatesLimit,
-			InstanceEventsLimit: common.InstanceEventsLimit,
+			UpdatesLimit:        suite.config.UpdatesLimit,
+			InstanceEventsLimit: suite.config.InstanceEventsLimit,
 		}).
 		Return(nil, errors.New("some error"))
 
@@ -1828,10 +2184,12 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_Error() {
 // Ensures that a NOT_FOUND error from Peloton job query results in an empty
 // response.
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_JobNotFound() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobKey()
 
 	suite.jobClient.EXPECT().
-		GetJobIDFromJobName(suite.ctx, &statelesssvc.GetJobIDFromJobNameRequest{
+		GetJobIDFromJobName(gomock.Any(), &statelesssvc.GetJobIDFromJobNameRequest{
 			JobName: atop.NewJobName(k),
 		}).
 		Return(nil, yarpcerrors.NotFoundErrorf("job not found"))
@@ -1846,6 +2204,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_JobNotFound() {
 // Ensures that a NOT_FOUND error from Peloton workflow query results in an
 // empty response.
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_WorkflowsNotFound() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobKey()
 	id := fixture.PelotonJobID()
 
@@ -1855,8 +2215,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_WorkflowsNotFound(
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               id,
 			InstanceEvents:      true,
-			UpdatesLimit:        common.UpdatesLimit,
-			InstanceEventsLimit: common.InstanceEventsLimit,
+			UpdatesLimit:        suite.config.UpdatesLimit,
+			InstanceEventsLimit: suite.config.InstanceEventsLimit,
 		}).
 		Return(nil, yarpcerrors.NotFoundErrorf("workflows not found"))
 
@@ -1870,6 +2230,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_WorkflowsNotFound(
 // Ensures that querying GetJobUpdateDetails by role returns the workflow
 // history for all jobs under that role.
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	role := "some-role"
 
 	labels := []*peloton.Label{
@@ -1888,12 +2250,12 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 	}
 
 	suite.jobClient.EXPECT().
-		QueryJobs(suite.ctx, &statelesssvc.QueryJobsRequest{
+		QueryJobs(gomock.Any(), &statelesssvc.QueryJobsRequest{
 			Spec: &stateless.QuerySpec{
 				Labels: labels,
 				Pagination: &pbquery.PaginationSpec{
-					Limit:    common.QueryJobsLimit,
-					MaxLimit: common.QueryJobsLimit,
+					Limit:    suite.config.QueryJobsLimit,
+					MaxLimit: suite.config.QueryJobsLimit,
 				},
 			},
 		}).
@@ -1921,8 +2283,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               summaries[0].JobId,
 			InstanceEvents:      true,
-			UpdatesLimit:        common.UpdatesLimit,
-			InstanceEventsLimit: common.InstanceEventsLimit,
+			UpdatesLimit:        suite.config.UpdatesLimit,
+			InstanceEventsLimit: suite.config.InstanceEventsLimit,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{wf0, wf1, wf2},
@@ -1932,8 +2294,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               summaries[1].JobId,
 			InstanceEvents:      true,
-			UpdatesLimit:        common.UpdatesLimit,
-			InstanceEventsLimit: common.InstanceEventsLimit,
+			UpdatesLimit:        suite.config.UpdatesLimit,
+			InstanceEventsLimit: suite.config.InstanceEventsLimit,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{
@@ -1961,6 +2323,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 
 // Ensures that update+rollback workflows which share an UpdateID are joined.
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_JoinRollbacksByUpdateID() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobKey()
 	id := fixture.PelotonJobID()
 
@@ -1980,8 +2344,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_JoinRollbacksByUpd
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               id,
 			InstanceEvents:      true,
-			UpdatesLimit:        common.UpdatesLimit,
-			InstanceEventsLimit: common.InstanceEventsLimit,
+			UpdatesLimit:        suite.config.UpdatesLimit,
+			InstanceEventsLimit: suite.config.InstanceEventsLimit,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{
@@ -2014,6 +2378,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_JoinRollbacksByUpd
 // Ensures that any updates which don't match the query's UpdateStatuses
 // are filtered out.
 func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_UpdateStatusFilter() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	k := fixture.AuroraJobKey()
 	id := fixture.PelotonJobID()
 
@@ -2023,8 +2389,8 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_UpdateStatusFilter
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
 			JobId:               id,
 			InstanceEvents:      true,
-			UpdatesLimit:        common.UpdatesLimit,
-			InstanceEventsLimit: common.InstanceEventsLimit,
+			UpdatesLimit:        suite.config.UpdatesLimit,
+			InstanceEventsLimit: suite.config.InstanceEventsLimit,
 		}).
 		Return(&statelesssvc.ListJobWorkflowsResponse{
 			WorkflowInfos: []*stateless.WorkflowInfo{
@@ -2089,6 +2455,8 @@ func (suite *ServiceHandlerTestSuite) expectListPods(
 
 // TestListPods tests listPods util function to return result correctly.
 func (suite *ServiceHandlerTestSuite) TestListPods() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	id := fixture.PelotonJobID()
 	pods := []*pod.PodSummary{
 		{
@@ -2112,6 +2480,8 @@ func (suite *ServiceHandlerTestSuite) TestListPods() {
 // TestListPods tests getCurrentPods() util function using job spec with
 // default spec only.
 func (suite *ServiceHandlerTestSuite) TestGetCurrentPods_WithDefaultSpecOnly() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	id := fixture.PelotonJobID()
 	entityVersion1 := &peloton.EntityVersion{Value: "1-0-0"}
 	entityVersion2 := &peloton.EntityVersion{Value: "2-0-0"}
@@ -2226,6 +2596,8 @@ func (suite *ServiceHandlerTestSuite) TestGetCurrentPods_WithDefaultSpecOnly() {
 // TestListPods tests getCurrentPods() util function using job spec with
 // both default spec and instance spec.
 func (suite *ServiceHandlerTestSuite) TestGetCurrentPods_WithInstanceSpec() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	id := fixture.PelotonJobID()
 	entityVersion1 := &peloton.EntityVersion{Value: "1-0-0"}
 	entityVersion2 := &peloton.EntityVersion{Value: "2-0-0"}
@@ -2346,6 +2718,8 @@ func (suite *ServiceHandlerTestSuite) TestGetCurrentPods_WithInstanceSpec() {
 // TestListPods tests getCurrentPods() util function when failed to query
 // job spec.
 func (suite *ServiceHandlerTestSuite) TestGetCurrentPods_Fail() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	id := fixture.PelotonJobID()
 	entityVersion1 := &peloton.EntityVersion{Value: "1-0-0"}
 	entityVersion2 := &peloton.EntityVersion{Value: "2-0-0"}
@@ -2419,6 +2793,8 @@ func (suite *ServiceHandlerTestSuite) TestGetCurrentPods_Fail() {
 // TestCreateJobSpecForUpdate_NoPinned tests createJobSpecForUpdate()
 // util function update request with no pinned instances.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_NoPinned() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	req := fixture.AuroraJobUpdateRequest()
 	req.Settings = &api.JobUpdateSettings{} // no pinned instances
 	id := fixture.PelotonJobID()
@@ -2444,6 +2820,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_NoPinned() {
 // TestCreateJobSpecForUpdate_WithPinned tests createJobSpecForUpdate()
 // util function update request with pinned instances.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	req := fixture.AuroraJobUpdateRequest()
 	req.Settings = &api.JobUpdateSettings{
 		UpdateOnlyTheseInstances: []*api.Range{
@@ -2577,6 +2955,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned() {
 // createJobSpecForUpdate() util function update request with pinned instances
 // and added instance.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned_AddInstance() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	req := fixture.AuroraJobUpdateRequest()
 	req.Settings = &api.JobUpdateSettings{
 		UpdateOnlyTheseInstances: []*api.Range{
@@ -2710,6 +3090,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned_AddI
 // createJobSpecForUpdate() util function update request with pinned instances
 // and removed instance.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned_RemoveInstance() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	req := fixture.AuroraJobUpdateRequest()
 	req.Settings = &api.JobUpdateSettings{
 		UpdateOnlyTheseInstances: []*api.Range{
@@ -2842,6 +3224,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdate_WithPinned_Remo
 // createJobSpecForUpdateInternal returns job spec with default spec only
 // if update covers all instances and all of them has spec change.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_WipeOut() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	instances := int32(3)
 	jobSpec := &stateless.JobSpec{
 		DefaultSpec: &pod.PodSpec{
@@ -2900,6 +3284,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_WipeOut
 // if update covers all instances, all of them has spec change, and has
 // added instances.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_WipeOut_AddInstance() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	instances := int32(4)
 	jobSpec := &stateless.JobSpec{
 		DefaultSpec: &pod.PodSpec{
@@ -2958,6 +3344,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_WipeOut
 // if update covers all instances, all of them has spec change, and has
 // removed instances.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_WipeOut_RemoveInstance() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	instances := int32(2)
 	jobSpec := &stateless.JobSpec{
 		DefaultSpec: &pod.PodSpec{
@@ -3016,6 +3404,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_WipeOut
 // with instances within updateInstances map are updated with new spec,
 // and others are kept with original spec.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_UpdateOnly() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	instances := int32(3)
 	podSpec := &pod.PodSpec{
 		Labels: []*peloton.Label{
@@ -3088,6 +3478,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_UpdateO
 // createJobSpecForUpdateInternal returns job spec which includes
 // "bridge update label" when a force instance start is needed.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_BridgeUpdateLabel() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	instances := int32(4)
 	podSpec := &pod.PodSpec{
 		Labels: []*peloton.Label{
@@ -3185,6 +3577,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_BridgeU
 // createJobSpecForUpdateInternal returns job spec which removes
 // "bridge update label" when pod spec is changed.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_SpecChangeSwipeLabel() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	instances := int32(3)
 	podSpec := &pod.PodSpec{
 		Labels: []*peloton.Label{
@@ -3258,6 +3652,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_SpecCha
 // createJobSpecForUpdateInternal returns job spec which keeps the original
 // pod spec if the instance has no config change and is not terminated.
 func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_KeepSpec() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	instances := int32(3)
 	podSpec := &pod.PodSpec{
 		Labels: []*peloton.Label{
@@ -3338,6 +3734,8 @@ func (suite *ServiceHandlerTestSuite) TestCreateJobSpecForUpdateInternal_KeepSpe
 // TestGetInstanceSpecLabelOnly check getInstanceSpecLabelOnly extracts
 // instance spec correctly.
 func TestGetInstanceSpecLabelOnly(t *testing.T) {
+	defer goleak.VerifyNoLeaks(t)
+
 	testCases := []struct {
 		name   string
 		pod    *pod.PodSpec
@@ -3423,6 +3821,8 @@ func TestGetInstanceSpecLabelOnly(t *testing.T) {
 
 // TestGetTerminalInstances tests getTerminalInstances util function.
 func TestGetTerminalInstances(t *testing.T) {
+	defer goleak.VerifyNoLeaks(t)
+
 	req := &api.JobUpdateRequest{
 		InstanceCount: ptr.Int32(3),
 	}
@@ -3443,6 +3843,8 @@ func TestGetTerminalInstances(t *testing.T) {
 // is not set and new pod spec is different from all currently running pod
 // specs, getUpdateInstances should return all the instance ids.
 func (suite *ServiceHandlerTestSuite) TestGetUpdateInstances_AllInstances() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	req := &api.JobUpdateRequest{
 		InstanceCount: ptr.Int32(3),
 	}
@@ -3460,6 +3862,8 @@ func (suite *ServiceHandlerTestSuite) TestGetUpdateInstances_AllInstances() {
 // currently running pod specs, getUpdateInstances should return only the
 // instance ids specified by UpdateOnlyTheseInstances.
 func (suite *ServiceHandlerTestSuite) TestGetUpdateInstances_PinnedInstances() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	req := &api.JobUpdateRequest{
 		InstanceCount: ptr.Int32(3),
 		Settings: &api.JobUpdateSettings{
@@ -3478,6 +3882,8 @@ func (suite *ServiceHandlerTestSuite) TestGetUpdateInstances_PinnedInstances() {
 
 // TestGetSpecChangedInstances tests getSpecChangedInstances util function.
 func (suite *ServiceHandlerTestSuite) TestGetSpecChangedInstances() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	instances := int32(3)
 	genPodSpec := &pod.PodSpec{
 		Labels: []*peloton.Label{
@@ -3527,6 +3933,8 @@ func (suite *ServiceHandlerTestSuite) TestGetSpecChangedInstances() {
 
 // TestChangeBridgeUpdateLabel tests changeBridgeUpdateLabel
 func (suite *ServiceHandlerTestSuite) TestChangeBridgeUpdateLabel() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
 	p1v := "12345"
 	p1 := &pod.PodSpec{
 		Labels: []*peloton.Label{
