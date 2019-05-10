@@ -320,10 +320,12 @@ func (c *Calculator) distributeUnclaimedResources(
 			totalChildShare := c.getChildShare(resp, kind)
 			for e := childs.Front(); e != nil; e = e.Next() {
 				n := e.Value.(respool.ResPool)
-				value := float64(n.Resources()[kind].Share *
-					entitlement.Get(kind))
-				value = float64(value / totalChildShare)
-				value += assignments[n.ID()].Get(kind)
+				nshare := n.Resources()[kind].Share
+				value := assignments[n.ID()].Get(kind)
+				if nshare > 0 {
+					value += float64(nshare / totalChildShare *
+						entitlement.Get(kind))
+				}
 
 				// We need to cap the limit here for free resources
 				// as we can not give more then limit to resource pool

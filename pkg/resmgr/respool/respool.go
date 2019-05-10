@@ -36,7 +36,10 @@ import (
 const (
 	// ToDo (varung): Move this to resource manager config
 	// Represents the default slack limit at Cluster level
-	_defaultSlackLimit = 20
+	_defaultSlackLimit  = 20
+	_defaultReservation = 0
+	_defaultLimit       = 0
+	_defaultShare       = 1
 )
 
 // node represents a node in a tree

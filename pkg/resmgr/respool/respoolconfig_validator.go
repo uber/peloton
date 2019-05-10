@@ -276,17 +276,65 @@ func ValidateResourcePool(_ Tree,
 		resPoolConfig.Policy = DefaultResPoolSchedulingPolicy
 	}
 
+	resconfigSet := map[string]bool{
+		common.CPU:    false,
+		common.GPU:    false,
+		common.MEMORY: false,
+		common.DISK:   false,
+	}
 	cResources := resPoolConfig.Resources
 	for _, cResource := range cResources {
-		// check child resource {limit} is not less than child {reservation}
+		kind := cResource.Kind
+		configed, ok := resconfigSet[kind]
+		if !ok {
+			return errors.Errorf("resource pool config has unknown resource type %s", kind)
+		}
+		if configed {
+			return errors.Errorf("resource pool config has multiple configurations for resource type %s", kind)
+		}
+		resconfigSet[kind] = true
+		if cResource.Reservation < 0 {
+			return errors.Errorf("resource pool config resource values can not be negative "+
+				"%s: Reservation %v",
+				cResource.Kind,
+				cResource.Reservation)
+		}
+		if cResource.Share < 0 {
+			return errors.Errorf("resource pool config resource values can not be negative "+
+				"%s: Share %v",
+				cResource.Kind,
+				cResource.Share)
+		}
 		if cResource.Limit < cResource.Reservation {
 			return errors.Errorf(
 				"resource %s, reservation %v exceeds limit %v",
 				cResource.Kind,
 				cResource.Reservation,
-				cResource.Limit,
-			)
+				cResource.Limit)
 		}
+	}
+
+	resUpdated := false
+	for k, set := range resconfigSet {
+		if !set {
+			log.WithFields(log.Fields{
+				"Respool":     ID.Value,
+				"Kind":        k,
+				"Reservation": _defaultReservation,
+				"Limit":       _defaultLimit,
+				"Share":       _defaultShare,
+			}).Info("Resource not configured set to default value")
+			cResources = append(cResources, &respool.ResourceConfig{
+				Kind:        k,
+				Reservation: _defaultReservation,
+				Limit:       _defaultLimit,
+				Share:       _defaultShare,
+			})
+			resUpdated = true
+		}
+	}
+	if resUpdated {
+		resPoolConfig.Resources = cResources
 	}
 	return nil
 }

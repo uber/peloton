@@ -190,40 +190,6 @@ func (s *resPoolConfigValidatorSuite) getResPools() map[string]*pb_respool.Resou
 	}
 }
 
-func (s *resPoolConfigValidatorSuite) TestValidateReservationsExceedLimit() {
-	mockResourcePoolID := &peloton.ResourcePoolID{Value: "respool33"}
-	mockParentPoolID := &peloton.ResourcePoolID{Value: "respool11"}
-
-	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Parent: mockParentPoolID,
-		Resources: []*pb_respool.ResourceConfig{
-			{
-				Reservation: 50,
-				Kind:        "cpu",
-				Limit:       10,
-				Share:       2,
-			},
-		},
-		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
-		Name:   mockResourcePoolID.Value,
-	}
-
-	resourcePoolConfigData := ResourcePoolConfigData{
-		ID:                 mockResourcePoolID,
-		ResourcePoolConfig: mockResourcePoolConfig,
-	}
-
-	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
-	_, err := rv.Register(
-		[]ResourcePoolConfigValidatorFunc{ValidateResourcePool})
-
-	s.NoError(err)
-
-	err = rv.Validate(resourcePoolConfigData)
-
-	s.EqualError(err, "resource cpu, reservation 50 exceeds limit 10")
-}
-
 func (s *resPoolConfigValidatorSuite) TestNewValidator() {
 	v, err := NewResourcePoolConfigValidator(s.resourceTree)
 	s.NoError(err)
@@ -786,6 +752,135 @@ func (s *resPoolConfigValidatorSuite) TestValidateControllerLimit() {
 		} else {
 			s.NoError(err)
 		}
+	}
+}
+
+func (s *resPoolConfigValidatorSuite) TestValidateNoConfigResources() {
+	mockResourcePoolID := &peloton.ResourcePoolID{Value: "respool33"}
+	mockParentPoolID := &peloton.ResourcePoolID{Value: "respool11"}
+
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Parent:    mockParentPoolID,
+		Resources: []*pb_respool.ResourceConfig{},
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+		Name:      mockResourcePoolID.Value,
+	}
+
+	resourcePoolConfigData := ResourcePoolConfigData{
+		ID:                 mockResourcePoolID,
+		ResourcePoolConfig: mockResourcePoolConfig,
+	}
+
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
+	_, err := rv.Register(
+		[]ResourcePoolConfigValidatorFunc{ValidateResourcePool})
+
+	s.NoError(err)
+
+	err = rv.Validate(resourcePoolConfigData)
+	s.NoError(err)
+	kinds := []string{}
+	var reserves, limits, shares []float64
+	for _, v := range mockResourcePoolConfig.Resources {
+		kinds = append(kinds, v.Kind)
+		reserves = append(reserves, v.Reservation)
+		limits = append(limits, v.Limit)
+		shares = append(shares, v.Share)
+	}
+
+	s.Equal(4, len(mockResourcePoolConfig.Resources))
+	s.ElementsMatch(kinds, []string{common.CPU, common.MEMORY, common.DISK, common.GPU})
+	s.ElementsMatch(reserves, []float64{0, 0, 0, 0})
+	s.ElementsMatch(limits, []float64{0, 0, 0, 0})
+	s.ElementsMatch(shares, []float64{1, 1, 1, 1})
+}
+
+func (s *resPoolConfigValidatorSuite) validateOnWrongResources(resources []*pb_respool.ResourceConfig) error {
+	mockParentPoolID := &peloton.ResourcePoolID{Value: "respoolp"}
+	mockResourcePoolID := &peloton.ResourcePoolID{Value: "respoolc"}
+
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Parent:    mockParentPoolID,
+		Resources: resources,
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+		Name:      mockResourcePoolID.Value,
+	}
+
+	resourcePoolConfigData := ResourcePoolConfigData{
+		ID:                 mockResourcePoolID,
+		ResourcePoolConfig: mockResourcePoolConfig,
+	}
+
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
+	_, err := rv.Register(
+		[]ResourcePoolConfigValidatorFunc{ValidateResourcePool})
+
+	s.NoError(err)
+
+	return rv.Validate(resourcePoolConfigData)
+}
+
+func (s *resPoolConfigValidatorSuite) TestValidateResourcePoolOnWrongResources() {
+	var test = []struct {
+		resources []*pb_respool.ResourceConfig
+		//f ResourcePoolConfigValidatorFunc
+		expectedErr string
+	}{
+		{
+			resources: []*pb_respool.ResourceConfig{
+				{
+					Reservation: -5,
+					Kind:        "cpu",
+					Limit:       10,
+					Share:       2,
+				},
+			},
+			expectedErr: "resource pool config resource values can not be negative cpu: Reservation -5",
+		},
+		{
+			resources: []*pb_respool.ResourceConfig{
+				{
+					Reservation: 5,
+					Kind:        "cpu",
+					Limit:       10,
+					Share:       2,
+				},
+				{
+					Reservation: 6,
+					Kind:        "cpu",
+					Limit:       10,
+					Share:       2,
+				},
+			},
+			expectedErr: "resource pool config has multiple configurations for resource type cpu",
+		},
+		{
+			resources: []*pb_respool.ResourceConfig{
+				{
+					Reservation: 50,
+					Kind:        "cpu",
+					Limit:       10,
+					Share:       2,
+				},
+			},
+			expectedErr: "resource cpu, reservation 50 exceeds limit 10",
+		},
+		{
+			resources: []*pb_respool.ResourceConfig{
+				{
+					Reservation: 5,
+					Kind:        "aaa",
+					Limit:       10,
+					Share:       2,
+				},
+			},
+			expectedErr: "resource pool config has unknown resource type aaa",
+		},
+	}
+	for _, t := range test {
+		err := s.validateOnWrongResources(t.resources)
+		s.Error(err)
+		s.Equal(err.Error(), t.expectedErr)
 	}
 }
 

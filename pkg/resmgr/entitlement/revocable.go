@@ -243,11 +243,11 @@ func (c *Calculator) distributeUnclaimedSlackResources(
 			totalChildShare := c.getChildShare(resp, kind)
 			for e := childs.Front(); e != nil; e = e.Next() {
 				n := e.Value.(respool.ResPool)
-				value := float64(n.Resources()[kind].Share *
-					slackEntitlement.Get(kind))
-				value = float64(value / totalChildShare)
-
-				value += slackAssignments[n.ID()].Get(kind)
+				nshare := n.Resources()[kind].Share
+				value := slackAssignments[n.ID()].Get(kind)
+				if nshare > 0 {
+					value += float64(nshare / totalChildShare * slackEntitlement.Get(kind))
+				}
 				slackAssignments[n.ID()].Set(kind, value)
 				log.WithFields(log.Fields{
 					"respool_name":           n.Name(),
