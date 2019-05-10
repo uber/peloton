@@ -397,6 +397,7 @@ func main() {
 	}
 
 	authInboundMiddleware := inbound.NewAuthInboundMiddleware(securityManager)
+	yarpcMetricsMiddleware := &inbound.YAPRCMetricsInboundMiddleware{Scope: rootScope.SubScope("yarpc")}
 
 	securityClient, err := auth_impl.CreateNewSecurityClient(&cfg.Auth)
 	if err != nil {
@@ -414,9 +415,9 @@ func main() {
 			Tally: rootScope,
 		},
 		InboundMiddleware: yarpc.InboundMiddleware{
-			Unary:  authInboundMiddleware,
-			Stream: authInboundMiddleware,
-			Oneway: authInboundMiddleware,
+			Unary:  yarpc.UnaryInboundMiddleware(authInboundMiddleware, yarpcMetricsMiddleware),
+			Stream: yarpc.StreamInboundMiddleware(authInboundMiddleware, yarpcMetricsMiddleware),
+			Oneway: yarpc.OnewayInboundMiddleware(authInboundMiddleware, yarpcMetricsMiddleware),
 		},
 		OutboundMiddleware: yarpc.OutboundMiddleware{
 			Unary:  authOutboundMiddleware,
