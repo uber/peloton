@@ -1,7 +1,7 @@
 {
    "libraries":[
       {
-         "file":"/usr/lib/libload_qos_controller-1.6.2.so",
+         "file":"/usr/lib/libload_qos_controller-1.6.0.so",
          "modules":[
             {
                "name":"org_apache_mesos_LoadQoSController",
@@ -19,7 +19,7 @@
          ]
       },
       {
-         "file":"/usr/lib/libfixed_resource_estimator-1.6.2.so",
+         "file":"/usr/lib/libfixed_resource_estimator-1.6.0.so",
          "modules":{
             "name":"org_apache_mesos_FixedResourceEstimator",
             "parameters":{

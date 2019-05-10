@@ -19,8 +19,8 @@ zookeeper:
 mesos-master:
   docker_registry: ''
   image_path: mesosphere/mesos-master
-  version: 1.6.2
-  image: mesosphere/mesos-master:1.6.2
+  version: 1.6.0-rc1
+  image: mesosphere/mesos-master:1.6.0-rc1
   instance_count: 3
   ports:
     - MESOS_PORT
@@ -58,8 +58,8 @@ mesos-master:
 mesos-slave:
   docker_registry: ''
   image_path: mesosphere/mesos-slave
-  version: 1.6.2
-  image: mesosphere/mesos-slave:1.6.2
+  version: 1.6.0-rc1
+  image: mesosphere/mesos-slave:1.6.0-rc1
   instance_count: 500
   ports:
     - MESOS_PORT
