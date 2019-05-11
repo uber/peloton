@@ -286,8 +286,6 @@ func (c *Client) StatelessReplaceJobAction(
 	inPlace bool,
 	startPods bool,
 ) error {
-	// TODO: implement cli override check and get entity version
-	// form job after stateless.Get is ready
 	var jobSpec stateless.JobSpec
 
 	// read the job configuration
@@ -307,6 +305,29 @@ func (c *Client) StatelessReplaceJobAction(
 	if respoolID == nil {
 		return fmt.Errorf("unable to find resource pool ID for "+
 			":%s", respoolPath)
+	}
+
+	// Get the entity version if not provided as input.
+	// The assumption is that the customer has ensured that
+	// there is no other ongoing write API request going on.
+	// In case the entityversion changes between Get and Replace,
+	// then let the Replace request fail.
+	if len(entityVersion) == 0 {
+		getRequest := statelesssvc.GetJobRequest{
+			JobId: &v1alphapeloton.JobID{
+				Value: jobID,
+			},
+			SummaryOnly: true,
+		}
+
+		getResponse, err := c.statelessClient.GetJob(
+			c.ctx,
+			&getRequest)
+		if err != nil {
+			return err
+		}
+
+		entityVersion = getResponse.GetSummary().GetStatus().GetVersion().GetValue()
 	}
 
 	// set the resource pool id

@@ -271,7 +271,7 @@ var (
 	statelessReplaceResPoolPath = statelessReplace.Arg("respool", "complete path of the "+
 		"resource pool starting from the root").Required().String()
 	statelessReplaceEntityVersion = statelessReplace.Arg("entityVersion",
-		"entity version for concurrency control").Required().String()
+		"entity version for concurrency control (uses the latest version if not provided)").String()
 	statelessReplaceOverride = statelessReplace.Flag("override",
 		"override the existing update").Default("false").Short('o').Bool()
 	statelessReplaceMaxInstanceRetries = statelessReplace.Flag(

@@ -343,6 +343,16 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionSuccess() {
 		}, nil)
 
 	suite.statelessClient.EXPECT().
+		GetJob(gomock.Any(), gomock.Any()).
+		Return(&svc.GetJobResponse{
+			Summary: &stateless.JobSummary{
+				Status: &stateless.JobStatus{
+					Version: &v1alphapeloton.EntityVersion{Value: testEntityVersion},
+				},
+			},
+		}, nil)
+
+	suite.statelessClient.EXPECT().
 		ReplaceJob(gomock.Any(), gomock.Any()).
 		Return(&svc.ReplaceJobResponse{
 			Version: &v1alphapeloton.EntityVersion{Value: testEntityVersion},
@@ -353,7 +363,7 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionSuccess() {
 		testStatelessSpecConfig,
 		batchSize,
 		respoolPath,
-		testEntityVersion,
+		"",
 		override,
 		maxInstanceRetries,
 		maxTolerableInstanceFailures,
@@ -397,6 +407,51 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionLookupResou
 		rollbackOnFailure,
 		startPaused,
 		"",
+		inPlace,
+		startPods,
+	))
+}
+
+// TestStatelessReplaceJobActionGetJobFail tests the failure case of replace
+// job due to get job fails
+func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionGetJobFail() {
+	batchSize := uint32(1)
+	respoolPath := "/testPath"
+	override := false
+	maxInstanceRetries := uint32(2)
+	maxTolerableInstanceFailures := uint32(1)
+	rollbackOnFailure := false
+	startPaused := true
+	inPlace := false
+	startPods := false
+	opaque := "test"
+
+	suite.resClient.EXPECT().
+		LookupResourcePoolID(gomock.Any(), &respool.LookupRequest{
+			Path: &respool.ResourcePoolPath{
+				Value: respoolPath,
+			},
+		}).
+		Return(&respool.LookupResponse{
+			Id: &peloton.ResourcePoolID{Value: uuid.New()},
+		}, nil)
+
+	suite.statelessClient.EXPECT().
+		GetJob(gomock.Any(), gomock.Any()).
+		Return(nil, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessReplaceJobAction(
+		testJobID,
+		testStatelessSpecConfig,
+		batchSize,
+		respoolPath,
+		"",
+		override,
+		maxInstanceRetries,
+		maxTolerableInstanceFailures,
+		rollbackOnFailure,
+		startPaused,
+		opaque,
 		inPlace,
 		startPods,
 	))
