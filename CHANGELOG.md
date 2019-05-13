@@ -1,7 +1,47 @@
 # Changelog for Peloton
 
-0.8.5 (unreleased)
+0.8.6 (unreleased)
 ------------------
+
+0.8.5
+------------------
+* 2019-05-13    Enable stateless performance tests.                                                    sachins@uber.com
+* 2019-05-10    Add a CLI command to fetch list of throttled tasks in the system                       apoorvaj@uber.com
+* 2019-05-10    Collect yarpc error code metrics                                                       zhixin@uber.com
+* 2019-05-10    Fix corner cases where respool creation crashes resmgr                                 yizhang@uber.com
+* 2019-05-10    Revert "Bump up mesos agent to 1.6.2"                                                  sachins@uber.com
+* 2019-05-09    Counters for task state transition times                                               amitbose@uber.com
+* 2019-05-09    Make GetJobs / GetJobSummary calls to jobmgr parallel                                  kevinxu@uber.com
+* 2019-05-09    Fix resource leak issues in resource manager                                           sachins@uber.com
+* 2019-05-09    Comment out go get kind to fix integration test                                        zhixin@uber.com
+* 2019-05-09    Fix update time format                                                                 zhixin@uber.com
+* 2019-05-08    Add yarpc errors to host manager private apis                                          varung@uber.com
+* 2019-05-08    Add aurora bridge integration test to abort a manual rollback                          varung@uber.com
+* 2019-05-08    Implememnt workflow progress check                                                     zhixin@uber.com
+* 2019-05-08    Add private API for job manager                                                        apoorvaj@uber.com
+* 2019-05-07    Add integration test for override rolling forward update                               varung@uber.com
+* 2019-05-07    Add metrics to track number of failed placements                                       avyas@uber.com
+* 2019-05-07    Add more metrics for entitlement calcuation                                            avyas@uber.com
+* 2019-05-06    Add granular ORM metrics for latency and gocql failures                                adityacb@uber.com
+* 2019-05-06    Add custom endpoint metrics for aurorabridge                                           kevinxu@uber.com
+* 2019-05-06    Change update state in DB only if update state changes                                 zhixin@uber.com
+* 2019-05-03    Emit a metric to measure number of throttled tasks in the system                       apoorvaj@uber.com
+* 2019-05-03    Fix lint errror with canary util.py                                                    varung@uber.com
+* 2019-05-03    Log only write API and rejected requests with Info level                               zhixin@uber.com
+* 2019-05-03    Add failfast for Canary Tests                                                          varung@uber.com
+* 2019-05-02    ListJobs API should not fail when update-fetch from store fails for one of the jobs    sachins@uber.com
+* 2019-05-02    Remove job name refill logic in GetAllJobsInJobIndex                                   zhixin@uber.com
+* 2019-05-01    Added python lint checking                                                             pourchet@uber.com
+* 2019-05-01    Add workflow completion time                                                           zhixin@uber.com
+* 2019-04-30    Add pinned instance + manual rollback integration tests                                kevinxu@uber.com
+* 2019-04-30    Removed .arclint from repo, and added it to .gitignore                                 pourchet@uber.com
+* 2019-04-29    Bump up mesos agent to 1.6.2                                                           varung@uber.com
+* 2019-04-29    Fix event publisher json serialization format to match aurora                          kevinxu@uber.com
+* 2019-04-29    Bebavior fixes for getJobUpdateDetails endpoint.                                       kevinxu@uber.com
+* 2019-04-29    Create a new context to cleanup previous job updates                                   apoorvaj@uber.com
+* 2019-04-26    Add `hostname` field to `GetActiveTasksResponse.TaskEntry`                             sachins@uber.com
+* 2019-04-26    Use CompareAndSet to update task runtime in event stream                               zhixin@uber.com
+* 2019-04-25    Fix deploy script to select NOOP auth as default                                       zhixin@uber.com
 
 0.8.4
 ------------------
