@@ -26,6 +26,37 @@ message RefreshJobRequest {
   api.v1alpha.peloton.JobID job_id = 1;
 }
 
+// Request message for JobService.QueryJobCache method.
+message QueryJobCacheRequest {
+  // CacheQuerySpec specifies the list of query criteria for jobs,
+  // which can be served by cache directly
+  message CacheQuerySpec {
+    // List of labels to query the jobs. Will match all jobs if the
+    // list is empty.
+    repeated api.v1alpha.peloton.Label labels = 1;
+    // Query jobs by name. This is case sensitive and will
+    // look for jobs with name matching the name string.
+    // Will match all jobs if name is unset.
+    string name = 2;
+  }
+
+  // spec used to query job cache
+  CacheQuerySpec spec = 1;
+}
+
+// Response message for JobService.QueryJobCache method.
+message QueryJobCacheResponse {
+  message JobCache {
+    // The job identifier of the result.
+    api.v1alpha.peloton.JobID job_id = 1;
+    // The name of the job
+    string name = 2;
+  }
+
+  // List of job cache query result returned by server.
+  repeated JobCache result = 1;
+}
+
 // Response message for JobService.RefreshJob method.
 // Return errors:
 //   NOT_FOUND:         if the job ID is not found.
@@ -58,4 +89,7 @@ service JobManagerService {
 
   // GetJobCache gets the job state in the cache.
   rpc GetJobCache(GetJobCacheRequest) returns(GetJobCacheResponse);
+
+  // QueryJobCache query jobs in the cache
+  rpc QueryJobCache(QueryJobCacheRequest) returns (QueryJobCacheResponse);
 }

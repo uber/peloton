@@ -131,6 +131,8 @@ type Driver interface {
 	Start()
 	// Stop is used to clean all items and then stop the goal state engine.
 	Stop()
+	// Started returns true if goal state engine has finished start process
+	Started() bool
 }
 
 // NewDriver returns a new goal state driver object.
@@ -463,6 +465,10 @@ func (d *driver) Start() {
 
 	atomic.StoreInt32(&d.running, int32(running))
 	log.Info("goalstate driver started")
+}
+
+func (d *driver) Started() bool {
+	return driverState(d.runningState()) == running
 }
 
 func (d *driver) Stop() {

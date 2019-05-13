@@ -41,6 +41,10 @@ type JobConfig interface {
 	GetSLA() *pbjob.SlaConfig
 	// GetChangeLog returns the changeLog in the job config stored in the cache
 	GetChangeLog() *peloton.ChangeLog
+	// GetLabels returns the labels of the job stored in the cache
+	GetLabels() []*peloton.Label
+	// GetName returns the name of the job stored in the cache
+	GetName() string
 }
 
 // RuntimeDiff to be applied to the runtime struct.

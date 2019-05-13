@@ -244,6 +244,92 @@ func (h *serviceHandler) GetJobCache(
 	}, nil
 }
 
+func (h *serviceHandler) QueryJobCache(
+	ctx context.Context,
+	req *jobmgrsvc.QueryJobCacheRequest,
+) (resp *jobmgrsvc.QueryJobCacheResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil {
+			log.WithField("request", req).
+				WithField("headers", headers).
+				WithError(err).
+				Warn("JobSVC.QueryJobCache failed")
+			err = yarpcutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("num_of_results", len(resp.GetResult())).
+			WithField("headers", headers).
+			Info("JobSVC.QueryJobCache succeeded")
+	}()
+
+	if !h.goalStateDriver.Started() {
+		return nil, yarpcerrors.UnavailableErrorf(
+			"QueryJobCache is not available until goal state driver finish start process")
+	}
+
+	var result []*jobmgrsvc.QueryJobCacheResponse_JobCache
+	jobs := h.jobFactory.GetAllJobs()
+
+	for _, job := range jobs {
+		cachedConfig, err := job.GetConfig(ctx)
+
+		// job may be removed from db but not yet cleaned
+		// up from job factory
+		if err != nil && !yarpcerrors.IsNotFound(err) {
+			return nil, err
+		}
+
+		if nameMatch(cachedConfig.GetName(), req.GetSpec().GetName()) &&
+			labelMatch(handlerutil.ConvertLabels(cachedConfig.GetLabels()), req.GetSpec().GetLabels()) {
+			result = append(result, &jobmgrsvc.QueryJobCacheResponse_JobCache{
+				JobId: &v1alphapeloton.JobID{Value: job.ID().GetValue()},
+				Name:  cachedConfig.GetName(),
+			})
+		}
+	}
+
+	return &jobmgrsvc.QueryJobCacheResponse{Result: result}, nil
+}
+
+// nameMatch returns true if queryName not set, or jobName
+// and queryName are the same
+func nameMatch(jobName string, queryName string) bool {
+	if len(queryName) == 0 {
+		return true
+	}
+
+	return jobName == queryName
+}
+
+// labelMatch returns if jobLabels contains all elements in queryLables
+func labelMatch(jobLabels []*v1alphapeloton.Label, queryLabels []*v1alphapeloton.Label) bool {
+	if len(queryLabels) == 0 {
+		return true
+	}
+
+	labelMap := constructLabelsMap(jobLabels)
+	for _, l := range queryLabels {
+		if v, ok := labelMap[l.GetKey()]; !ok {
+			return false
+		} else if v != l.GetValue() {
+			return false
+		}
+	}
+
+	return true
+}
+
+func constructLabelsMap(labels []*v1alphapeloton.Label) map[string]string {
+	result := make(map[string]string)
+	for _, label := range labels {
+		result[label.GetKey()] = label.GetValue()
+	}
+	return result
+}
+
 func convertCacheToJobStatus(
 	runtime *pbjob.RuntimeInfo,
 ) *stateless.JobStatus {

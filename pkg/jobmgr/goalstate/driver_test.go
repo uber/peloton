@@ -645,7 +645,9 @@ func (suite *DriverTestSuite) TestEngineStartStop() {
 		GetActiveJobs(gomock.Any()).
 		Return([]*peloton.JobID{}, nil)
 
+	suite.False(suite.goalStateDriver.Started())
 	suite.goalStateDriver.Start()
+	suite.True(suite.goalStateDriver.Started())
 
 	// Test stop
 	taskMap := make(map[uint32]cached.Task)
@@ -668,4 +670,5 @@ func (suite *DriverTestSuite) TestEngineStartStop() {
 	suite.updateGoalStateEngine.EXPECT().Delete(gomock.Any())
 
 	suite.goalStateDriver.Stop()
+	suite.False(suite.goalStateDriver.Started())
 }

@@ -1555,6 +1555,8 @@ func (suite *JobTestSuite) TestJobGetConfigDBError() {
 
 func (suite *JobTestSuite) TestJobGetConfigSuccess() {
 	suite.job.config = nil
+	testName := "testName"
+	testLabels := []*peloton.Label{{Key: "key1", Value: "val1"}, {Key: "key2", Value: "val2"}}
 	// Test the case there is no config cache and db returns no err
 	jobConfig := &pbjob.JobConfig{
 		InstanceCount: 10,
@@ -1562,6 +1564,8 @@ func (suite *JobTestSuite) TestJobGetConfigSuccess() {
 		ChangeLog: &peloton.ChangeLog{
 			Version: suite.job.runtime.ConfigurationVersion,
 		},
+		Name:   testName,
+		Labels: testLabels,
 	}
 
 	suite.jobConfigOps.EXPECT().Get(
@@ -1572,7 +1576,11 @@ func (suite *JobTestSuite) TestJobGetConfigSuccess() {
 
 	config, err := suite.job.GetConfig(context.Background())
 	suite.NoError(err)
+
 	suite.Equal(config.GetInstanceCount(), jobConfig.GetInstanceCount())
+	suite.Equal(config.GetName(), jobConfig.GetName())
+	suite.Equal(config.GetLabels(), jobConfig.GetLabels())
+
 	suite.Nil(config.GetSLA())
 
 	// Test the case there is config cache after the first call to

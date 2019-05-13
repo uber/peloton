@@ -22,6 +22,7 @@ import (
 	jobmgrsvcmocks "github.com/uber/peloton/.gen/peloton/private/jobmgrsvc/mocks"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -70,4 +71,24 @@ func (suite *jobmgrActionsTestSuite) TestGetThrottledPodsFailure() {
 		GetThrottledPods(gomock.Any(), gomock.Any()).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 	suite.Error(suite.client.JobMgrGetThrottledPods())
+}
+
+// TestQueryJobCacheSuccess tests the success case of querying
+// job from cache
+func (suite *jobmgrActionsTestSuite) TestQueryJobCacheSuccess() {
+	suite.jobmgrClient.
+		EXPECT().
+		QueryJobCache(gomock.Any(), gomock.Any()).
+		Return(&jobmgrsvc.QueryJobCacheResponse{}, nil)
+	suite.NoError(suite.client.JobMgrQueryJobCache("key1=val1,key2=val2", "testName"))
+}
+
+// TestQueryJobCacheFailure tests the failure case of querying
+// job from cache
+func (suite *jobmgrActionsTestSuite) TestQueryJobCacheFailure() {
+	suite.jobmgrClient.
+		EXPECT().
+		QueryJobCache(gomock.Any(), gomock.Any()).
+		Return(nil, errors.New("test error"))
+	suite.Error(suite.client.JobMgrQueryJobCache("key1=val1,key2=val2", "testName"))
 }

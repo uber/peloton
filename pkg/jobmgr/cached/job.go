@@ -288,6 +288,8 @@ type cachedConfig struct {
 	changeLog         *peloton.ChangeLog      // ChangeLog in the job configuration
 	respoolID         *peloton.ResourcePoolID // Resource Pool ID in the job configuration
 	hasControllerTask bool                    // if the job contains any task which is controller task
+	labels            []*peloton.Label        // Label of the job
+	name              string                  // Name of the job
 }
 
 // job structure holds the information about a given active job
@@ -1200,6 +1202,16 @@ func (j *job) populateJobConfigCache(config *pbjob.JobConfig) {
 	if config.GetRespoolID() != nil {
 		j.config.respoolID = config.GetRespoolID()
 	}
+
+	if config.GetLabels() != nil {
+		var copy []*peloton.Label
+		for _, l := range config.GetLabels() {
+			copy = append(copy, &peloton.Label{Key: l.GetKey(), Value: l.GetValue()})
+		}
+		j.config.labels = copy
+	}
+
+	j.config.name = config.GetName()
 
 	j.config.hasControllerTask = hasControllerTask(config)
 
@@ -2189,6 +2201,14 @@ func (c *cachedConfig) GetSLA() *pbjob.SlaConfig {
 
 func (c *cachedConfig) HasControllerTask() bool {
 	return c.hasControllerTask
+}
+
+func (c *cachedConfig) GetLabels() []*peloton.Label {
+	return c.labels
+}
+
+func (c *cachedConfig) GetName() string {
+	return c.name
 }
 
 // HasControllerTask returns if a job has controller task in it,

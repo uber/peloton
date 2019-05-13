@@ -16,6 +16,7 @@ package private
 
 import (
 	"context"
+	"github.com/uber/peloton/pkg/jobmgr/util/handler"
 	"strconv"
 	"testing"
 
@@ -437,4 +438,130 @@ func (suite *privateHandlerTestSuite) TestGetJobCacheNotFound() {
 	suite.Error(err)
 	suite.Nil(resp)
 	suite.True(yarpcerrors.IsNotFound(err))
+}
+
+// TestQueryJobCacheSuccess tests the success case of querying
+// job cache
+func (suite *privateHandlerTestSuite) TestQueryJobCacheSuccess() {
+	job1 := cachedmocks.NewMockJob(suite.ctrl)
+	job2 := cachedmocks.NewMockJob(suite.ctrl)
+	job3 := cachedmocks.NewMockJob(suite.ctrl)
+	job4 := cachedmocks.NewMockJob(suite.ctrl)
+
+	labels1 := []*peloton.Label{{Key: "key1", Value: "val1"}}
+	labels2 := []*peloton.Label{{Key: "key2", Value: "val2"}}
+	jobName1 := "jobName1"
+	jobName2 := "jobName2"
+
+	job1.EXPECT().ID().Return(&peloton.JobID{Value: "job1"}).AnyTimes()
+	job2.EXPECT().ID().Return(&peloton.JobID{Value: "job2"}).AnyTimes()
+	job3.EXPECT().ID().Return(&peloton.JobID{Value: "job3"}).AnyTimes()
+	job4.EXPECT().ID().Return(&peloton.JobID{Value: "job4"}).AnyTimes()
+
+	suite.goalStateDriver.EXPECT().Started().Return(true).AnyTimes()
+	suite.jobFactory.EXPECT().GetAllJobs().Return(map[string]cached.Job{
+		job1.ID().GetValue(): job1,
+		job2.ID().GetValue(): job2,
+		job3.ID().GetValue(): job3,
+		job4.ID().GetValue(): job4,
+	}).AnyTimes()
+
+	//job1 has labels1, name1
+	//job2 has labels1, name2
+	//job3 has labels2, name1
+	//job4 has labels2, name2
+	job1.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&pbjob.JobConfig{
+			Name:   jobName1,
+			Labels: labels1,
+		}, nil).AnyTimes()
+	job2.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&pbjob.JobConfig{
+			Name:   jobName2,
+			Labels: labels1,
+		}, nil).AnyTimes()
+	job3.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&pbjob.JobConfig{
+			Name:   jobName1,
+			Labels: labels2,
+		}, nil).AnyTimes()
+	job4.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&pbjob.JobConfig{
+			Name:   jobName2,
+			Labels: labels2,
+		}, nil).AnyTimes()
+
+	result, err := suite.handler.QueryJobCache(
+		context.Background(),
+		&jobmgrsvc.QueryJobCacheRequest{
+			Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
+				Labels: handler.ConvertLabels(labels1),
+			},
+		})
+	suite.NoError(err)
+	suite.Len(result.GetResult(), 2)
+
+	result, err = suite.handler.QueryJobCache(
+		context.Background(),
+		&jobmgrsvc.QueryJobCacheRequest{
+			Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
+				Labels: handler.ConvertLabels(labels2),
+			},
+		})
+	suite.NoError(err)
+	suite.Len(result.GetResult(), 2)
+
+	result, err = suite.handler.QueryJobCache(
+		context.Background(),
+		&jobmgrsvc.QueryJobCacheRequest{
+			Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
+				Name: jobName1,
+			},
+		})
+	suite.NoError(err)
+	suite.Len(result.GetResult(), 2)
+
+	result, err = suite.handler.QueryJobCache(
+		context.Background(),
+		&jobmgrsvc.QueryJobCacheRequest{
+			Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
+				Name: jobName2,
+			},
+		})
+	suite.NoError(err)
+	suite.Len(result.GetResult(), 2)
+
+	result, err = suite.handler.QueryJobCache(
+		context.Background(),
+		&jobmgrsvc.QueryJobCacheRequest{},
+	)
+	suite.NoError(err)
+	suite.Len(result.GetResult(), 4)
+
+	result, err = suite.handler.QueryJobCache(
+		context.Background(),
+		&jobmgrsvc.QueryJobCacheRequest{
+			Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
+				Labels: handler.ConvertLabels(labels1),
+				Name:   jobName1,
+			},
+		})
+	suite.NoError(err)
+	suite.Len(result.GetResult(), 1)
+}
+
+// TestQueryJobCacheGoalStateEngineNotStartedFailure tests the case
+// cache query fails due to goal state engine not started
+func (suite *privateHandlerTestSuite) TestQueryJobCacheGoalStateEngineNotStartedFailure() {
+	suite.goalStateDriver.EXPECT().Started().Return(false)
+	result, err := suite.handler.QueryJobCache(
+		context.Background(),
+		&jobmgrsvc.QueryJobCacheRequest{},
+	)
+	suite.Nil(result)
+	suite.Error(err)
 }

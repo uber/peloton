@@ -482,6 +482,10 @@ var (
 	jobMgr              = app.Command("jobmgr", "fetch job manager state")
 	jobMgrThrottledPods = jobMgr.Command("throttled-pods", "(private only) fetch throttled pods in job manager cache")
 
+	jobMgrQueryJobCache       = jobMgr.Command("query-job-cache", "(private only) query jobs in cache")
+	jobMgrQueryJobCacheLabels = jobMgrQueryJobCache.Flag("labels", "labels").Default("").Short('l').String()
+	jobMgrQueryJobCacheName   = jobMgrQueryJobCache.Flag("name", "name of the job to return").Default("").Short('n').String()
+
 	// Top level resource manager state command
 	resMgr      = app.Command("resmgr", "fetch resource manager state")
 	resMgrTasks = resMgr.Command("tasks", "fetch resource manager task state")
@@ -835,6 +839,8 @@ func main() {
 		err = client.HostQueryAction(*hostQueryStates)
 	case jobMgrThrottledPods.FullCommand():
 		err = client.JobMgrGetThrottledPods()
+	case jobMgrQueryJobCache.FullCommand():
+		err = client.JobMgrQueryJobCache(*jobMgrQueryJobCacheLabels, *jobMgrQueryJobCacheName)
 	case resMgrActiveTasks.FullCommand():
 		err = client.ResMgrGetActiveTasks(*resMgrActiveTasksGetJobName, *resMgrActiveTasksGetRespoolID, *resMgrActiveTasksGetStates)
 	case resMgrPendingTasks.FullCommand():
