@@ -16,12 +16,13 @@ package taskconfig
 
 import (
 	"reflect"
-
-	"github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
-	"github.com/uber/peloton/pkg/common/util"
+	"strings"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/util"
 )
 
 // Merge returns the merged task config between a base and an override. The
@@ -67,9 +68,13 @@ func merge(base interface{}, override interface{}, merged interface{}) {
 	baseVal := reflect.ValueOf(base)
 	overrideVal := reflect.ValueOf(override)
 	mergedVal := reflect.ValueOf(merged).Elem()
+	baseValType := baseVal.Type()
 
 	for i := 0; i < baseVal.NumField(); i++ {
 		field := overrideVal.Field(i)
+		if strings.HasPrefix(baseValType.Field(i).Name, common.ReservedProtobufFieldPrefix) {
+			continue
+		}
 
 		switch field.Kind() {
 		case reflect.Bool:

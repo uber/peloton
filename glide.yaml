@@ -7,7 +7,7 @@ excludeDirs:
 - pbgen
 import:
 - package: github.com/golang/protobuf
-  version: 8ee79997227bf9b34611aee7946ae64735e6fd93
+  version: ^1.3.1
   subpackages:
   - proto
   - protoc
@@ -35,7 +35,7 @@ import:
   subpackages:
   - internal/stack
 - package: go.uber.org/yarpc
-  version: v1.37.0
+  version: ^1.37.4
   subpackages:
   - internal/protoplugin
 - package: github.com/cactus/go-statsd-client
@@ -87,7 +87,7 @@ import:
   subpackages:
   - lib/go/thrift
 - package: google.golang.org/grpc
-  version: 8dea3dc473e90c8179e519d91302d0597c0ca1d1
+  version: ^1.20.1
   repo: https://github.com/grpc/grpc-go
 - package: go.uber.org/thriftrw
   version: ^v1.18.0

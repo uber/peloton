@@ -2061,7 +2061,7 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	suite.NoError(err)
 	idFound := false
 	for _, id := range jobIds {
-		if id == jobID {
+		if id.GetValue() == jobID.GetValue() {
 			idFound = true
 		}
 	}

@@ -1,5 +1,5 @@
-hash: 57a13d751d82f7bf55ec9de20877499ae104a2b4a4ee9e863fbec2bd8d9316f5
-updated: 2019-04-29T15:27:30.064851-07:00
+hash: 75e17fa879b15638dc562a9c2dbe63792888a413e45deac057f9b01df4357d94
+updated: 2019-05-13T17:13:56.189958-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -92,13 +92,13 @@ imports:
   - vanity
   - vanity/command
 - name: github.com/golang/mock
-  version: 51421b967af1f557f93a59e0057aaf15ca02e29c
+  version: 9fa652df1129bef0e734c9cf9bf6dbae9ef3b9fa
   subpackages:
   - gomock
   - mockgen
   - mockgen/model
 - name: github.com/golang/protobuf
-  version: 8ee79997227bf9b34611aee7946ae64735e6fd93
+  version: b5d812f8a3706043e23a9cd5babf2e5423744d30
   subpackages:
   - proto
   - protoc
@@ -234,7 +234,7 @@ imports:
   - trand
   - typed
 - name: go.uber.org/atomic
-  version: 1ea20fb1cbb1cc08cbd0d913a96dead89aa18289
+  version: df976f2515e274675050de7b3f42545de80594fd
 - name: go.uber.org/automaxprocs
   version: 6fecebd30e89df4ebcb6ca6dc1d0a5c8d2aa10a0
   subpackages:
@@ -288,7 +288,7 @@ imports:
   subpackages:
   - update-license
 - name: go.uber.org/yarpc
-  version: d7168bf2dc382eb7e5c016992a63bf1a3eac3c7d
+  version: 82e7aaa589e0250ba028b902bc4dd88743d49dff
   subpackages:
   - api/backoff
   - api/encoding
@@ -323,7 +323,7 @@ imports:
   - yarpcconfig
   - yarpcerrors
 - name: go.uber.org/zap
-  version: ff33455a0e382e8a81d14dd7c922020b6b5e7982
+  version: 27376062155ad36be76b0f12cf1572a221d3a48c
   subpackages:
   - buffer
   - internal/bufferpool
@@ -389,23 +389,29 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: 8dea3dc473e90c8179e519d91302d0597c0ca1d1
+  version: 25c4f928eaa6d96443009bd842389fb4fa48664e
   repo: https://github.com/grpc/grpc-go
   subpackages:
   - balancer
   - balancer/base
   - balancer/roundrobin
+  - binarylog/grpc_binarylog_v1
   - codes
   - connectivity
   - credentials
+  - credentials/internal
   - encoding
   - encoding/proto
   - grpclog
   - internal
   - internal/backoff
+  - internal/balancerload
+  - internal/binarylog
   - internal/channelz
   - internal/envconfig
   - internal/grpcrand
+  - internal/grpcsync
+  - internal/syscall
   - internal/transport
   - keepalive
   - metadata

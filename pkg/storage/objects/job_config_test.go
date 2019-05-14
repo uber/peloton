@@ -63,8 +63,8 @@ func (s *JobConfigObjectTestSuite) TestCreateGetDeleteJobConfig() {
 	config, configAddOn, err := jobConfigOps.Get(ctx, s.jobID, version)
 	s.NoError(err)
 
-	s.Equal(config, s.config)
-	s.Equal(configAddOn, s.configAddOn)
+	s.True(proto.Equal(config, s.config))
+	s.True(proto.Equal(configAddOn, s.configAddOn))
 
 	err = jobConfigOps.Delete(ctx, s.jobID, version)
 	s.NoError(err)

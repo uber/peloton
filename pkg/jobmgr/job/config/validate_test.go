@@ -18,13 +18,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"reflect"
+	"strings"
 	"testing"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
-
+	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/stretchr/testify/assert"
@@ -433,6 +434,13 @@ func TestValidateTaskConfigWithInvalidFieldType(t *testing.T) {
 	taskConfig := &task.TaskConfig{}
 	val := reflect.ValueOf(taskConfig).Elem()
 	for i := 0; i < val.NumField(); i++ {
+		if strings.HasPrefix(
+			val.Type().Field(i).Name,
+			common.ReservedProtobufFieldPrefix,
+		) {
+			continue
+		}
+
 		kind := val.Field(i).Kind()
 		assert.True(t,
 			kind == reflect.String || kind == reflect.
@@ -507,65 +515,81 @@ func getConfig(config string, t *testing.T) *job.JobConfig {
 }
 
 func TestValidateStatelessJobConfig(t *testing.T) {
-	testMap := map[job.SlaConfig]error{
+	testCases := []struct {
+		job.SlaConfig
+		error
+	}{
 		{
-			MaximumRunningInstances: 1,
-		}: errIncorrectMaxInstancesSLA,
+			SlaConfig: job.SlaConfig{MaximumRunningInstances: 1},
+			error:     errIncorrectMaxInstancesSLA,
+		},
 		{
-			MinimumRunningInstances: 1,
-		}: errIncorrectMinInstancesSLA,
+			SlaConfig: job.SlaConfig{MinimumRunningInstances: 1},
+			error:     errIncorrectMinInstancesSLA,
+		},
 		{
-			MaxRunningTime: 1,
-		}: errIncorrectMaxRunningTimeSLA,
+			SlaConfig: job.SlaConfig{MaxRunningTime: 1},
+			error:     errIncorrectMaxRunningTimeSLA,
+		},
 		{
-			Revocable:   true,
-			Preemptible: false,
-		}: errIncorrectRevocableSLA,
-		{}: nil,
+			SlaConfig: job.SlaConfig{Revocable: true, Preemptible: false},
+			error:     errIncorrectRevocableSLA,
+		},
+		{},
 	}
-	for slaConfig, errExp := range testMap {
+
+	for _, testCase := range testCases {
 		jobConfig := job.JobConfig{
 			Name:          fmt.Sprintf("TestJob_1"),
 			InstanceCount: 10,
 			DefaultConfig: &task.TaskConfig{},
-			SLA:           &slaConfig,
+			SLA:           &testCase.SlaConfig,
 		}
 		err := validateStatelessJobConfig(&jobConfig)
-		assert.Equal(t, err, errExp)
+		assert.Equal(t, err, testCase.error)
 	}
 
 }
 
 func TestValidateStatelessTaskConfig(t *testing.T) {
-	testMap := map[task.PreemptionPolicy]error{
+	testCases := []struct {
+		task.PreemptionPolicy
+		error
+	}{
 		{
-			KillOnPreempt: true,
-		}: errKillOnPreemptNotFalse,
+			PreemptionPolicy: task.PreemptionPolicy{KillOnPreempt: true},
+			error:            errKillOnPreemptNotFalse,
+		},
 		{
-			KillOnPreempt: false,
-		}: nil,
+			PreemptionPolicy: task.PreemptionPolicy{KillOnPreempt: false},
+		},
 	}
-	for pp, errExp := range testMap {
+
+	for _, testCase := range testCases {
 		taskConfig := task.TaskConfig{
-			PreemptionPolicy: &pp,
+			PreemptionPolicy: &testCase.PreemptionPolicy,
 		}
 		err := validateStatelessTaskConfig(&taskConfig)
-		assert.Equal(t, err, errExp)
+		assert.Equal(t, err, testCase.error)
 	}
 }
 
 func TestValidateBatchTaskConfig(t *testing.T) {
-	testMap := map[task.HealthCheckConfig]error{
+	testCases := []struct {
+		task.HealthCheckConfig
+		error
+	}{
 		{
-			Enabled: true,
-		}: errIncorrectHealthCheck,
+			HealthCheckConfig: task.HealthCheckConfig{Enabled: true},
+			error:             errIncorrectHealthCheck,
+		},
 	}
-	for hc, errExp := range testMap {
+	for _, testCase := range testCases {
 		taskConfig := task.TaskConfig{
-			HealthCheck: &hc,
+			HealthCheck: &testCase.HealthCheckConfig,
 		}
 		err := validateBatchTaskConfig(&taskConfig)
-		assert.Equal(t, err, errExp)
+		assert.Equal(t, err, testCase.error)
 	}
 }
 
