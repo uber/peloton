@@ -30,7 +30,6 @@ import (
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/eventstream"
-	"github.com/uber/peloton/pkg/common/lifecycle"
 	"github.com/uber/peloton/pkg/common/queue"
 	"github.com/uber/peloton/pkg/common/statemachine"
 	"github.com/uber/peloton/pkg/common/util"
@@ -65,10 +64,6 @@ const _eventStreamBufferSize = 1000
 
 // ServiceHandler implements peloton.private.resmgr.ResourceManagerService
 type ServiceHandler struct {
-	// lifecycle manager
-	lifeCycle  lifecycle.LifeCycle
-	dispatcher *yarpc.Dispatcher
-
 	// the handler config
 	config Config
 
@@ -104,7 +99,6 @@ func NewServiceHandler(
 
 	var maxOffset uint64
 	handler := &ServiceHandler{
-		lifeCycle:   lifecycle.NewLifeCycle(),
 		metrics:     NewMetrics(parent.SubScope("resmgr")),
 		resPoolTree: tree,
 		placements: queue.NewQueue(
@@ -117,7 +111,6 @@ func NewServiceHandler(
 		maxOffset:       &maxOffset,
 		config:          conf,
 		scope:           parent,
-		dispatcher:      d,
 		eventStreamHandler: initEventStreamHandler(
 			d,
 			_eventStreamBufferSize,
@@ -125,29 +118,9 @@ func NewServiceHandler(
 		hostmgrClient: hostmgrClient,
 	}
 
+	d.Register(resmgrsvc.BuildResourceManagerServiceYARPCProcedures(handler))
+
 	return handler
-}
-
-// Start will start resource manager service handler.
-func (h *ServiceHandler) Start() error {
-	if !h.lifeCycle.Start() {
-		log.Warn("Resource manager handler is already started, no" +
-			" action will be performed")
-		return nil
-	}
-
-	log.Info("Registering the resource manager procedures")
-
-	h.dispatcher.Register(
-		resmgrsvc.BuildResourceManagerServiceYARPCProcedures(h),
-	)
-	return nil
-}
-
-// Stop will stop resource manager.
-func (h *ServiceHandler) Stop() error {
-	log.Debug("stop is no-op for resource manager handler")
-	return nil
 }
 
 func initEventStreamHandler(d *yarpc.Dispatcher, bufferSize int, parentScope tally.Scope) *eventstream.Handler {

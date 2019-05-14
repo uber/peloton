@@ -72,7 +72,7 @@ func newSLASpec(t *api.TaskConfig, maxFailedInstances int32) *stateless.SlaSpec 
 
 	switch t.GetTier() {
 	case common.Preemptible:
-		preemptible = true
+		preemptible = false
 		revocable = false
 	case common.Revocable:
 		preemptible = true
@@ -82,6 +82,9 @@ func newSLASpec(t *api.TaskConfig, maxFailedInstances int32) *stateless.SlaSpec 
 		revocable = false
 	}
 
+	// Map aurora's preemptible task to Peloton non-revocable + non-preemptible
+	// task, such that tasks use resources <= reservation (not elastic resources)
+	// and are not subject to preemption
 	return &stateless.SlaSpec{
 		Priority:                    uint32(t.GetPriority()),
 		Preemptible:                 preemptible,

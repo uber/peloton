@@ -22,7 +22,6 @@ import (
 	pb_respool "github.com/uber/peloton/.gen/peloton/api/v0/respool"
 
 	"github.com/uber/peloton/pkg/common"
-	"github.com/uber/peloton/pkg/common/lifecycle"
 	rc "github.com/uber/peloton/pkg/resmgr/common"
 	res "github.com/uber/peloton/pkg/resmgr/respool"
 	"github.com/uber/peloton/pkg/resmgr/respool/mocks"
@@ -76,30 +75,18 @@ func (s *resPoolHandlerTestSuite) TearDownSuite() {
 
 func (s *resPoolHandlerTestSuite) SetupTest() {
 	s.context = context.Background()
-	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:      common.PelotonResourceManager,
-		Inbounds:  nil,
-		Outbounds: nil,
-		Metrics: yarpc.MetricsConfig{
-			Tally: tally.NoopScope,
-		},
-	})
 
 	s.handler = &ServiceHandler{
 		resPoolTree:            s.resourceTree,
-		dispatcher:             dispatcher,
 		metrics:                res.NewMetrics(tally.NoopScope),
 		store:                  s.mockResPoolStore,
 		resPoolConfigValidator: s.resourcePoolConfigValidator,
-		lifeCycle:              lifecycle.NewLifeCycle(),
 	}
-	s.NoError(s.handler.Start())
 	s.NoError(s.resourceTree.Start())
 }
 
 func (s *resPoolHandlerTestSuite) TearDownTest() {
 	s.NoError(s.resourceTree.Stop())
-	s.NoError(s.handler.Stop())
 }
 
 // Returns resource configs
@@ -232,8 +219,17 @@ func (s *resPoolHandlerTestSuite) getResPools() map[string]*pb_respool.ResourceP
 }
 
 func (s *resPoolHandlerTestSuite) TestNewServiceHandler() {
-	handler := NewServiceHandler(
-		nil,
+	dispatcher := yarpc.NewDispatcher(yarpc.Config{
+		Name:      common.PelotonResourceManager,
+		Inbounds:  nil,
+		Outbounds: nil,
+		Metrics: yarpc.MetricsConfig{
+			Tally: tally.NoopScope,
+		},
+	})
+
+	handler := InitServiceHandler(
+		dispatcher,
 		tally.NoopScope,
 		s.resourceTree,
 		s.mockResPoolStore,
@@ -574,11 +570,9 @@ func (s *resPoolHandlerTestSuite) getMockHandlerWithResTreeAndRespool() (*Servic
 	resTree := mocks.NewMockTree(s.mockCtrl)
 	return &ServiceHandler{
 		resPoolTree:            resTree,
-		dispatcher:             nil,
 		metrics:                res.NewMetrics(tally.NoopScope),
 		store:                  s.mockResPoolStore,
 		resPoolConfigValidator: s.resourcePoolConfigValidator,
-		lifeCycle:              lifecycle.NewLifeCycle(),
 	}, resTree, mocks.NewMockResPool(s.mockCtrl)
 }
 
@@ -877,11 +871,9 @@ func (s *resPoolHandlerTestSuite) TestDeleteblahblah() {
 
 		handler := &ServiceHandler{
 			resPoolTree:            resTree,
-			dispatcher:             nil,
 			metrics:                res.NewMetrics(tally.NoopScope),
 			store:                  s.mockResPoolStore,
 			resPoolConfigValidator: s.resourcePoolConfigValidator,
-			lifeCycle:              lifecycle.NewLifeCycle(),
 		}
 		t.expectedFunctions(resTree, respool)
 

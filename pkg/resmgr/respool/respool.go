@@ -315,11 +315,15 @@ func NewRespool(
 
 // ID returns the resource pool UUID.
 func (n *resPool) ID() string {
+	n.RLock()
+	defer n.RUnlock()
 	return n.id
 }
 
 // Name returns the resource pool name.
 func (n *resPool) Name() string {
+	n.RLock()
+	defer n.RUnlock()
 	return n.poolConfig.Name
 }
 
@@ -333,17 +337,17 @@ func (n *resPool) Parent() ResPool {
 // SetParent will be setting the parent for the resource pool.
 func (n *resPool) SetParent(parent ResPool) {
 	n.Lock()
+	defer n.Unlock()
 	n.parent = parent
 	// calculate path again.
 	n.path = n.calculatePath()
-	n.Unlock()
 }
 
 // SetChildren will be setting the children for the resource pool.
 func (n *resPool) SetChildren(children *list.List) {
 	n.Lock()
+	defer n.Unlock()
 	n.children = children
-	n.Unlock()
 }
 
 // Children will be getting the children for the resource pool.
@@ -805,7 +809,7 @@ func (n *resPool) SetEntitlement(res *scalar.Resources) {
 	defer n.Unlock()
 	n.entitlement = res
 	log.WithFields(log.Fields{
-		"respool_id":  n.ID(),
+		"respool_id":  n.id,
 		"entitlement": res,
 	}).Debug("Setting Entitlement")
 }
@@ -817,7 +821,7 @@ func (n *resPool) SetSlackEntitlement(res *scalar.Resources) {
 	defer n.Unlock()
 	n.slackEntitlement = res
 	log.WithFields(log.Fields{
-		"respool_id":        n.ID(),
+		"respool_id":        n.id,
 		"slack_entitlement": res,
 	}).Debug("Setting Slack Entitlement")
 }
@@ -907,7 +911,7 @@ func (n *resPool) SubtractFromAllocation(allocation *scalar.Allocation) error {
 	n.allocation = newAllocation
 
 	log.WithFields(log.Fields{
-		"respool_id": n.ID(),
+		"respool_id": n.id,
 		"total_alloc": n.allocation.GetByType(
 			scalar.TotalAllocation),
 		"non_preemptible_alloc": n.allocation.GetByType(
@@ -930,7 +934,7 @@ func (n *resPool) IsRoot() bool {
 }
 
 func (n *resPool) isRoot() bool {
-	return n.ID() == common.RootResPoolID
+	return n.id == common.RootResPoolID
 }
 
 // GetPath returns the fully qualified path of the resource pool
@@ -952,9 +956,9 @@ func (n *resPool) calculatePath() string {
 		return ResourcePoolPathDelimiter
 	}
 	if n.parent == nil || n.parent.IsRoot() {
-		return ResourcePoolPathDelimiter + n.Name()
+		return ResourcePoolPathDelimiter + n.poolConfig.Name
 	}
-	return n.parent.GetPath() + ResourcePoolPathDelimiter + n.Name()
+	return n.parent.GetPath() + ResourcePoolPathDelimiter + n.poolConfig.Name
 }
 
 // AddToAllocation adds resources to the allocation
@@ -966,7 +970,7 @@ func (n *resPool) AddToAllocation(allocation *scalar.Allocation) error {
 	n.allocation = n.allocation.Add(allocation)
 
 	log.WithFields(log.Fields{
-		"respool_id": n.ID(),
+		"respool_id": n.id,
 		"total_alloc": n.allocation.GetByType(
 			scalar.TotalAllocation),
 		"non_preemptible_alloc": n.allocation.GetByType(
@@ -989,7 +993,7 @@ func (n *resPool) AddToDemand(res *scalar.Resources) error {
 	n.demand = n.demand.Add(res)
 
 	log.WithFields(log.Fields{
-		"respool_id": n.ID(),
+		"respool_id": n.id,
 		"demand":     n.demand,
 	}).Debug("Current Demand after Adding resources")
 
@@ -1005,7 +1009,7 @@ func (n *resPool) AddToSlackDemand(res *scalar.Resources) error {
 	n.slackDemand = n.slackDemand.Add(res)
 
 	log.WithFields(log.Fields{
-		"respool_id": n.ID(),
+		"respool_id": n.id,
 		"demand":     n.slackDemand,
 	}).Debug("Current Demand after Adding resources")
 
@@ -1025,7 +1029,7 @@ func (n *resPool) SubtractFromDemand(res *scalar.Resources) error {
 	n.demand = newDemand
 
 	log.
-		WithField("respool_id", n.ID()).
+		WithField("respool_id", n.id).
 		WithField("demand", n.demand).
 		Debug("Current Demand " +
 			"after removing resources")
@@ -1046,7 +1050,7 @@ func (n *resPool) SubtractFromSlackDemand(res *scalar.Resources) error {
 	n.slackDemand = newDemand
 
 	log.WithFields(log.Fields{
-		"respool_id":   n.ID(),
+		"respool_id":   n.id,
 		"slack_demand": n.slackDemand,
 	}).Debug("Current Demand after removing resources")
 

@@ -257,38 +257,3 @@ def test__override_rolling_forward_update_with_diff(client):
         res.detailsList[1].updateEvents[-1].status
         == api.JobUpdateStatus.ABORTED
     )
-
-
-@pytest.mark.skip("mesos task events are not acked correctly")
-def test__simple_update_with_restart_component(
-    client, jobmgr, resmgr, hostmgr, mesos_master
-):
-    """
-    Start an update, and restart jobmgr, resmgr, hostmgr & mesos master.
-    """
-    res = client.start_job_update(
-        get_job_update_request("test_dc_labrat_large_job.yaml"),
-        "start job update test/dc/labrat_large_job",
-    )
-
-    # wait for sometime for jobmgr goal state engine to kick-in
-    time.sleep(5)
-    jobmgr.restart()
-
-    # wait for sometime to enqueue gangs
-    time.sleep(5)
-
-    # clear any admission and queues
-    resmgr.restart()
-
-    # wait for sometime to acquire host lock
-    time.sleep(10)
-
-    # clear host `placing` lock
-    hostmgr.restart()
-    time.sleep(5)
-
-    # restart mesos master to jumble up host manager state
-    mesos_master.restart()
-
-    wait_for_rolled_forward(client, res.key)

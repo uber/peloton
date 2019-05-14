@@ -30,5 +30,5 @@ func NewTaskTier(s *stateless.SlaSpec) *string {
 		}
 		return ptr.String(common.Preemptible)
 	}
-	return ptr.String(common.Preferred)
+	return ptr.String(common.Preemptible)
 }

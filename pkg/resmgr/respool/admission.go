@@ -87,7 +87,7 @@ func entitlementAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 
 	neededResources := scalar.GetGangResources(gang)
 	log.WithFields(log.Fields{
-		"respool_id":         pool.ID(),
+		"respool_id":         pool.id,
 		"entitlement":        currentEntitlement,
 		"allocation":         currentAllocation,
 		"resources_required": neededResources,
@@ -118,7 +118,7 @@ func controllerAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 	neededResources := scalar.GetGangResources(gang)
 
 	log.WithFields(log.Fields{
-		"respool_id":         pool.ID(),
+		"respool_id":         pool.id,
 		"controller_limit":   controllerLimit,
 		"controller_alloc":   controllerAllocation,
 		"resources_required": neededResources,
@@ -151,7 +151,7 @@ func reservationAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 	reservation := pool.reservation
 
 	log.WithFields(log.Fields{
-		"respool_id":            pool.ID(),
+		"respool_id":            pool.id,
 		"reservation":           reservation,
 		"non_preemptible_alloc": npAllocation,
 		"resources_required":    neededResources,
@@ -315,8 +315,8 @@ func (ac admissionController) validateGang(
 	// Now we perform the cleanup of the invalid gang and if required requeue
 	// the gang with the valid tasks back to the queue.
 	log.WithFields(log.Fields{
-		"respool_name": pool.Name(),
-		"respool_id":   pool.ID(),
+		"respool_name": pool.poolConfig.Name,
+		"respool_id":   pool.id,
 		"gang":         gang,
 		"queue_type":   qt,
 	}).Info("Tasks are invalidated for this gang")
@@ -328,8 +328,8 @@ func (ac admissionController) validateGang(
 		qt,
 		gang); err != nil {
 		log.WithFields(log.Fields{
-			"respool_name": pool.Name(),
-			"respool_id":   pool.ID(),
+			"respool_name": pool.poolConfig.Name,
+			"respool_id":   pool.id,
 			"gang":         gang,
 			"queue_type":   qt,
 		}).WithError(err).Error("failed to remove from queue post validateGang")
@@ -346,8 +346,8 @@ func (ac admissionController) validateGang(
 			qt,
 			gang); err != nil {
 			log.WithFields(log.Fields{
-				"respool_name": pool.Name(),
-				"respool_id":   pool.ID(),
+				"respool_name": pool.poolConfig.Name,
+				"respool_id":   pool.id,
 				"gang":         gang,
 				"queue_type":   qt,
 			}).WithError(err).Error("failed to add gang (with valid tasks) " +

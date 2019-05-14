@@ -23,6 +23,7 @@ import (
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
 	"github.com/uber/peloton/pkg/aurorabridge/atop"
+	"github.com/uber/peloton/pkg/aurorabridge/common"
 	"github.com/uber/peloton/pkg/aurorabridge/fixture"
 	"github.com/uber/peloton/pkg/aurorabridge/label"
 
@@ -54,7 +55,7 @@ func TestNewTaskConfig(t *testing.T) {
 		Job:       jobKey,
 		Owner:     &api.Identity{User: ptr.String("owner")},
 		IsService: ptr.Bool(true),
-		Tier:      ptr.String("preferred"),
+		Tier:      ptr.String(common.Preemptible),
 		Metadata:  metadata,
 		Priority:  ptr.Int32(6),
 	}, c)

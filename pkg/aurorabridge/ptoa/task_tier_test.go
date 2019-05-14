@@ -43,12 +43,6 @@ func TestNewTaskTier(t *testing.T) {
 			false,
 			"preemptible",
 		},
-		{
-			"preferred tier",
-			false,
-			false,
-			"preferred",
-		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -274,9 +274,13 @@ func (p *Preemptor) processResourcePool(respoolID string) error {
 		Subtract(resourcePool.GetSlackEntitlement())
 
 	log.WithFields(log.Fields{
-		"respool_id":                  respoolID,
-		"non_slack_resources_to_free": nonSlackResourcesToFree.String(),
-		"slack_resources_to_free":     slackResourcesToFree.String(),
+		"respool_id":                      respoolID,
+		"non_slack_resources_allocation":  resourcePool.GetNonSlackAllocatedResources().String(),
+		"non_slack_resources_entitlement": resourcePool.GetNonSlackEntitlement().String(),
+		"non_slack_resources_to_free":     nonSlackResourcesToFree.String(),
+		"slack_resources_to_free":         slackResourcesToFree.String(),
+		"slack_resources_allocation":      resourcePool.GetSlackAllocatedResources().String(),
+		"slack_resources_entitlement":     resourcePool.GetSlackEntitlement().String(),
 	}).Info("Resource to free from resource pool")
 
 	p.metrics(resourcePool).NonSlackTotalResourcesToFree.Inc(nonSlackResourcesToFree)
@@ -289,10 +293,15 @@ func (p *Preemptor) processResourcePool(respoolID string) error {
 
 	p.metrics(resourcePool).TasksToEvict.Update(float64(len(tasks)))
 	if len(tasks) > 0 {
+		var taskIDs []string
+		for _, task := range tasks {
+			taskIDs = append(taskIDs, task.Task().GetTaskId().GetValue())
+		}
+
 		log.WithFields(log.Fields{
 			"respool_id":                  respoolID,
 			"tasks_to_evict_len":          len(tasks),
-			"tasks_to_evict":              tasks,
+			"tasks_to_evict":              taskIDs,
 			"non_slack_resources_to_free": nonSlackResourcesToFree.String(),
 			"slack_resources_to_free":     slackResourcesToFree.String(),
 		}).Info("Resources to free and tasks to evict")

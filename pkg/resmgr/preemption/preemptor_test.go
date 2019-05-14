@@ -695,11 +695,13 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolEnqueueGangError() {
 	mockResPool.
 		EXPECT().
 		GetNonSlackEntitlement().
-		Return(_entitlement)
+		Return(_entitlement).
+		AnyTimes()
 	mockResPool.
 		EXPECT().
 		GetNonSlackAllocatedResources().
-		Return(_allocation.GetByType(scalar.NonSlackAllocation))
+		Return(_allocation.GetByType(scalar.NonSlackAllocation)).
+		AnyTimes()
 	mockResPool.
 		EXPECT().
 		GetSlackEntitlement().

@@ -22,7 +22,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 
 	"github.com/uber/peloton/pkg/common"
-	"github.com/uber/peloton/pkg/common/lifecycle"
 	rc "github.com/uber/peloton/pkg/resmgr/common"
 	res "github.com/uber/peloton/pkg/resmgr/respool"
 	"github.com/uber/peloton/pkg/resmgr/scalar"
@@ -49,18 +48,14 @@ type ServiceHandler struct {
 
 	store storage.ResourcePoolStore
 
-	metrics    *res.Metrics
-	dispatcher *yarpc.Dispatcher
+	metrics *res.Metrics
 
 	resPoolTree            res.Tree
 	resPoolConfigValidator res.Validator
-
-	// lifecycle manager
-	lifeCycle lifecycle.LifeCycle
 }
 
-// NewServiceHandler returns a new handler for ResourcePoolService.
-func NewServiceHandler(
+// InitServiceHandler returns a new handler for ResourcePoolService.
+func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	tree res.Tree,
@@ -81,14 +76,16 @@ func NewServiceHandler(
 		)
 	}
 
-	return &ServiceHandler{
+	handler := &ServiceHandler{
 		metrics:                metrics,
-		dispatcher:             d,
 		resPoolTree:            tree,
 		resPoolConfigValidator: resPoolConfigValidator,
-		lifeCycle:              lifecycle.NewLifeCycle(),
 		store:                  store,
 	}
+
+	d.Register(respool.BuildResourceManagerYARPCProcedures(handler))
+
+	return handler
 }
 
 // CreateResourcePool will create resource pool.
@@ -611,29 +608,4 @@ func (h *ServiceHandler) Query(
 	}
 	log.WithField("response", resp).Debug("Query returned")
 	return resp, nil
-}
-
-// Start will start resource pool handler.
-func (h *ServiceHandler) Start() error {
-	if !h.lifeCycle.Start() {
-		log.Warn("Resource pool handler is already started, no" +
-			" action will be performed")
-		return nil
-	}
-
-	log.Info("Registering the respool procedures")
-	h.dispatcher.Register(respool.BuildResourceManagerYARPCProcedures(h))
-	return nil
-}
-
-// Stop will stop resource manager.
-func (h *ServiceHandler) Stop() error {
-	if !h.lifeCycle.Stop() {
-		log.Warn("Resource pool handler is already stopped, no" +
-			" action will be performed")
-		return nil
-	}
-
-	log.Info("Resource pool handler Stopped")
-	return nil
 }

@@ -43,8 +43,6 @@ type Server struct {
 
 	// the processes which need to start with the leader
 	resTree               ServerProcess
-	resMgrHandler         ServerProcess
-	resPoolHandler        ServerProcess
 	entitlementCalculator ServerProcess
 	recoveryHandler       ServerProcess
 	reconciler            ServerProcess
@@ -62,8 +60,6 @@ func NewServer(
 	grpcPort int,
 	tree ServerProcess,
 	recoveryHandler ServerProcess,
-	resMgrHandler ServerProcess,
-	resPoolHandler ServerProcess,
 	entitlementCalculator ServerProcess,
 	reconciler ServerProcess,
 	preemptor ServerProcess,
@@ -72,8 +68,6 @@ func NewServer(
 		ID:                    leader.NewID(httpPort, grpcPort),
 		role:                  common.ResourceManagerRole,
 		resTree:               tree,
-		resMgrHandler:         resMgrHandler,
-		resPoolHandler:        resPoolHandler,
 		getTaskScheduler:      task.GetScheduler,
 		entitlementCalculator: entitlementCalculator,
 		recoveryHandler:       recoveryHandler,
@@ -108,23 +102,6 @@ func (s *Server) GainedLeadershipCallback() error {
 		log.
 			WithError(err).
 			Error("Failed to start recovery handler")
-		return err
-	}
-
-	// Start accepting resource manager requests
-	if err := s.resMgrHandler.Start(); err != nil {
-		// If we can not recover then we need to do suicide
-		log.
-			WithError(err).
-			Error("Failed to start recovery handler")
-		return err
-	}
-
-	// Start accepting resource pool requests
-	if err := s.resPoolHandler.Start(); err != nil {
-		log.
-			WithError(err).
-			Error("Failed to start respool service handler")
 		return err
 	}
 
@@ -202,16 +179,6 @@ func (s *Server) LostLeadershipCallback() error {
 
 	if err := s.recoveryHandler.Stop(); err != nil {
 		log.Errorf("Failed to stop recovery handler")
-		return err
-	}
-
-	if err := s.resPoolHandler.Stop(); err != nil {
-		log.WithError(err).Error("Failed to stop respool service handler")
-		return err
-	}
-
-	if err := s.resMgrHandler.Stop(); err != nil {
-		log.WithError(err).Error("Failed to stop resource manager handler")
 		return err
 	}
 

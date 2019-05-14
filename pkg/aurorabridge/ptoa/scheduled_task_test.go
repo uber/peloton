@@ -120,7 +120,7 @@ func TestNewScheduledTask(t *testing.T) {
 			Task: &api.TaskConfig{
 				Job:       jobKey,
 				IsService: ptr.Bool(true),
-				Tier:      ptr.String("preferred"),
+				Tier:      ptr.String(common.Preemptible),
 				Metadata:  metadata,
 			},
 			InstanceId: ptr.Int32(0),
@@ -274,7 +274,7 @@ func TestNewScheduledTask(t *testing.T) {
 					"tchannel": {},
 				},
 				IsService: ptr.Bool(true),
-				Tier:      ptr.String("preferred"),
+				Tier:      ptr.String(common.Preemptible),
 				Metadata:  metadata,
 				Resources: []*api.Resource{
 					{NumCpus: ptr.Float64(1.5)},

@@ -355,7 +355,7 @@ func main() {
 		*cfg.ResManager.PreemptionConfig)
 
 	// Initialize resource pool service handlers
-	respoolHandler := respoolsvc.NewServiceHandler(
+	respoolsvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
 		tree,
@@ -436,8 +436,6 @@ func main() {
 		cfg.ResManager.GRPCPort,
 		tree,
 		recoveryHandler,
-		serviceHandler,
-		respoolHandler,
 		calculator,
 		reconciler,
 		preemptor,
@@ -464,6 +462,7 @@ func main() {
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Unable to start rpc server: %v", err)
 	}
+	defer dispatcher.Stop()
 
 	log.WithFields(log.Fields{
 		"http_port": cfg.ResManager.HTTPPort,
