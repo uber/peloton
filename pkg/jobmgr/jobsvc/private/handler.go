@@ -262,7 +262,7 @@ func (h *serviceHandler) QueryJobCache(
 		log.WithField("request", req).
 			WithField("num_of_results", len(resp.GetResult())).
 			WithField("headers", headers).
-			Info("JobSVC.QueryJobCache succeeded")
+			Debug("JobSVC.QueryJobCache succeeded")
 	}()
 
 	if !h.goalStateDriver.Started() {
