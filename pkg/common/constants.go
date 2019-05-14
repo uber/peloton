@@ -144,3 +144,9 @@ const (
 	// TaskThrottleMessage indicates that the task is throttled due to repeated failures.
 	TaskThrottleMessage = "Task throttled due to failure"
 )
+
+const (
+	// ReservedProtobufFieldPrefix represents the field prefixes in protobuf generated
+	// code that is private to generated code, and should not be used by peloton.
+	ReservedProtobufFieldPrefix = "XXX_"
+)
