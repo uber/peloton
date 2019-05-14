@@ -27,6 +27,7 @@ STABLE_RELEASE=`git describe --abbrev=0 --tags`
 DOCKER_IMAGE ?= uber/peloton
 DC ?= all
 GEN_DIR = .gen
+UNAME = $(shell uname | tr '[:upper:]' '[:lower:]')
 
 GOCOV = $(go get github.com/axw/gocov/gocov)
 GOCOV_XML = $(go get github.com/AlekSi/gocov-xml)
@@ -76,8 +77,8 @@ build-mockgen:
 
 get-gokind:
 	mkdir -p bin
-	# comment out until find a fix for https://github.com/kubernetes-sigs/kind/issues/509
-	# GOBIN=$(shell pwd)/bin go get sigs.k8s.io/kind
+	wget -O $(shell pwd)/bin/kind https://github.com/kubernetes-sigs/kind/releases/download/0.2.1/kind-$(UNAME)-amd64
+	chmod a+x $(shell pwd)/bin/kind
 
 # NOTE: `glide install` is flaky, so run it 3 times at most to ensure this doesn't fail
 # tests regularly for no reason.
