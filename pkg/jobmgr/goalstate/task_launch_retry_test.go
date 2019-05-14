@@ -226,7 +226,7 @@ func (suite *TestTaskLaunchRetrySuite) TestLaunchRetryError() {
 	suite.Equal(err.Error(), "error")
 }
 
-func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeout() {
+func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeoutForBatchJob() {
 	oldMesosTaskID := &mesos_v1.TaskID{
 		Value: &[]string{uuid.New()}[0],
 	}
@@ -250,6 +250,12 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeout() {
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&pb_job.JobConfig{
+			Type: pb_job.JobType_BATCH,
+		}, nil)
 
 	suite.cachedJob.EXPECT().
 		GetTask(suite.instanceID).Return(suite.cachedTask)
@@ -291,6 +297,55 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeout() {
 		suite.getTaskEntity(suite.jobID, suite.instanceID)))
 }
 
+// TestTaskStartTimeoutForServiceJob tests the case that a job of type service
+// get stuck at starting state.
+func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeoutForServiceJob() {
+	oldMesosTaskID := &mesos_v1.TaskID{
+		Value: &[]string{uuid.New()}[0],
+	}
+	runtime := suite.getRunTime(
+		pb_task.TaskState_STARTING,
+		pb_task.TaskState_RUNNING,
+		oldMesosTaskID)
+	runtime.Revision = &peloton.ChangeLog{
+		UpdatedAt: uint64(time.Now().Add(-suite.goalStateDriver.cfg.LaunchTimeout).UnixNano()),
+	}
+	config := &pb_task.TaskConfig{}
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(suite.cachedTask)
+
+	suite.taskStore.EXPECT().GetTaskConfig(
+		gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(config, &models.ConfigAddOn{}, nil).Times(2)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&pb_job.JobConfig{
+			Type: pb_job.JobType_SERVICE,
+		}, nil)
+
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).Return(suite.cachedTask)
+
+	suite.cachedTask.EXPECT().
+		GetRuntime(gomock.Any()).Return(runtime, nil)
+
+	suite.cachedTask.EXPECT().
+		GetRuntime(gomock.Any()).Return(runtime, nil)
+
+	suite.jobConfig.EXPECT().GetType().Return(pb_job.JobType_BATCH)
+
+	suite.NoError(TaskLaunchRetry(
+		context.Background(),
+		suite.getTaskEntity(suite.jobID, suite.instanceID)))
+}
+
 func (suite *TestTaskLaunchRetrySuite) TestStartingTaskReenqueue() {
 	runtime := suite.getRunTime(
 		pb_task.TaskState_STARTING,
@@ -301,6 +356,12 @@ func (suite *TestTaskLaunchRetrySuite) TestStartingTaskReenqueue() {
 
 	suite.cachedJob.EXPECT().
 		GetTask(suite.instanceID).Return(suite.cachedTask)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(&pb_job.JobConfig{
+			Type: pb_job.JobType_BATCH,
+		}, nil)
 
 	suite.cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(runtime, nil)

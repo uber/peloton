@@ -19,6 +19,7 @@ import (
 	"time"
 
 	mesosv1 "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
@@ -100,6 +101,15 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 		}
 		goalStateDriver.mtx.taskMetrics.TaskLaunchTimeout.Inc(1)
 	case task.TaskState_STARTING:
+		cachedConfig, err := cachedJob.GetConfig(ctx)
+		if err != nil {
+			return err
+		}
+
+		if cachedConfig.GetType() == job.JobType_SERVICE {
+			return nil
+		}
+
 		if time.Now().Sub(
 			time.Unix(0, int64(cachedRuntime.GetRevision().GetUpdatedAt())),
 		) < goalStateDriver.cfg.StartTimeout {
