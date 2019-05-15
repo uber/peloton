@@ -750,6 +750,26 @@ def query_jobs(respool_path=None):
     return jobs
 
 
+def get_job_from_job_name(job_name):
+    """
+    Get the job id from job name.
+    """
+    client = Client()
+    request = stateless_svc.GetJobIDFromJobNameRequest(
+        job_name=job_name
+    )
+    try:
+        resp = client.stateless_svc.GetJobIDFromJobName(
+            request, metadata=client.jobmgr_metadata, timeout=600
+        )
+    except grpc.RpcError as e:
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return None
+        raise
+
+    return StatelessJob(job_id=resp.job_id[0].value)
+
+
 def list_jobs():
     """
     return all jobs in the cluster
