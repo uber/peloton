@@ -196,6 +196,16 @@ func processFailedUpdate(
 	// the update itself is not a rollback
 	if cachedUpdate.GetUpdateConfig().RollbackOnFailure &&
 		!isUpdateRollback(cachedUpdate) {
+		// write the progress first, because when rollback happens,
+		// workflow does not know the newly finished/failed instances.
+		cachedUpdate.WriteProgress(
+			ctx,
+			cachedUpdate.GetState().State,
+			instancesDone,
+			instancesFailed,
+			instancesCurrent,
+		)
+
 		if err := cachedJob.RollbackWorkflow(ctx); err != nil {
 			log.WithFields(log.Fields{
 				"update_id": cachedUpdate.ID().GetValue(),

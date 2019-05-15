@@ -2799,7 +2799,17 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRolledBack() {
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
-		})
+		}).
+		Times(2)
+
+	suite.cachedUpdate.EXPECT().
+		WriteProgress(
+			gomock.Any(),
+			pbupdate.State_ROLLING_FORWARD,
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Return(nil)
 
 	suite.cachedJob.EXPECT().
 		RollbackWorkflow(gomock.Any()).
@@ -2949,7 +2959,17 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRolledBackFail() {
 		GetState().
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
-		})
+		}).
+		Times(2)
+
+	suite.cachedUpdate.EXPECT().
+		WriteProgress(
+			gomock.Any(),
+			pbupdate.State_ROLLING_FORWARD,
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Return(nil)
 
 	suite.cachedJob.EXPECT().
 		RollbackWorkflow(gomock.Any()).
