@@ -70,6 +70,9 @@ type Server struct {
 	elected         atomic.Bool
 	handlersRunning atomic.Bool
 
+	// isLeader is set once leadership callback completes
+	isLeader bool
+
 	recoveryHandler RecoveryHandler
 
 	drainer host.Drainer
@@ -129,23 +132,47 @@ func (s *Server) Stop() {
 // GainedLeadershipCallback is the callback when the current node
 // becomes the leader
 func (s *Server) GainedLeadershipCallback() error {
+	s.Lock()
+	defer s.Unlock()
+
 	log.WithFields(log.Fields{"role": s.role}).Info("Gained leadership")
 	s.elected.Store(true)
+	s.isLeader = true
+
 	return nil
 }
 
 // LostLeadershipCallback is the callback when the current node lost
 // leadership
 func (s *Server) LostLeadershipCallback() error {
+	s.Lock()
+	defer s.Unlock()
+
 	log.WithField("role", s.role).Info("Lost leadership")
 	s.elected.Store(false)
+	s.isLeader = false
+
 	return nil
+}
+
+// HasGainedLeadership returns true iff once GainedLeadershipCallback
+// completes
+func (s *Server) HasGainedLeadership() bool {
+	s.Lock()
+	defer s.Unlock()
+
+	return s.isLeader
 }
 
 // ShutDownCallback is the callback to shut down gracefully if possible.
 func (s *Server) ShutDownCallback() error {
+	s.Lock()
+	defer s.Unlock()
+
 	log.WithFields(log.Fields{"role": s.role}).Info("Quitting election")
 	s.elected.Store(false)
+	s.isLeader = false
+
 	return nil
 }
 

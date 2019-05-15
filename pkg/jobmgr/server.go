@@ -48,6 +48,9 @@ type Server struct {
 	statusUpdate       event.StatusUpdate
 	backgroundManager  background.Manager
 	watchProcessor     watchsvc.WatchProcessor
+
+	// isLeader is set once leadership callback completes
+	isLeader bool
 }
 
 // NewServer creates a job manager Server instance.
@@ -79,9 +82,14 @@ func NewServer(
 // GainedLeadershipCallback is the callback when the current node
 // becomes the leader
 func (s *Server) GainedLeadershipCallback() error {
+	s.Lock()
+	defer s.Unlock()
+
+	defer func() {
+		s.isLeader = true
+	}()
 
 	log.WithFields(log.Fields{"role": s.role}).Info("Gained leadership")
-
 	s.jobFactory.Start()
 
 	// goalstateDriver will perform recovery of jobs from DB as
@@ -103,8 +111,11 @@ func (s *Server) GainedLeadershipCallback() error {
 // LostLeadershipCallback is the callback when the current node lost
 // leadership
 func (s *Server) LostLeadershipCallback() error {
+	s.Lock()
+	defer s.Unlock()
 
 	log.WithField("role", s.role).Info("Lost leadership")
+	s.isLeader = false
 
 	s.statusUpdate.Stop()
 	s.placementProcessor.Stop()
@@ -118,10 +129,22 @@ func (s *Server) LostLeadershipCallback() error {
 	return nil
 }
 
+// HasGainedLeadership returns true iff once GainedLeadershipCallback
+// completes
+func (s *Server) HasGainedLeadership() bool {
+	s.Lock()
+	defer s.Unlock()
+
+	return s.isLeader
+}
+
 // ShutDownCallback is the callback to shut down gracefully if possible
 func (s *Server) ShutDownCallback() error {
+	s.Lock()
+	defer s.Unlock()
 
 	log.WithFields(log.Fields{"role": s.role}).Info("Quitting election")
+	s.isLeader = false
 
 	s.statusUpdate.Stop()
 	s.placementProcessor.Stop()

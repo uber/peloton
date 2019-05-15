@@ -321,6 +321,7 @@ func main() {
 	}
 
 	authOutboundMiddleware := outbound.NewAuthOutboundMiddleware(securityClient)
+	leaderCheckMiddleware := &inbound.LeaderCheckInboundMiddleware{}
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:      common.PelotonResourceManager,
@@ -330,9 +331,9 @@ func main() {
 			Tally: rootScope,
 		},
 		InboundMiddleware: yarpc.InboundMiddleware{
-			Unary:  authInboundMiddleware,
-			Oneway: authInboundMiddleware,
-			Stream: authInboundMiddleware,
+			Unary:  yarpc.UnaryInboundMiddleware(authInboundMiddleware, leaderCheckMiddleware),
+			Oneway: yarpc.OnewayInboundMiddleware(authInboundMiddleware, leaderCheckMiddleware),
+			Stream: yarpc.StreamInboundMiddleware(authInboundMiddleware, leaderCheckMiddleware),
 		},
 		OutboundMiddleware: yarpc.OutboundMiddleware{
 			Unary:  authOutboundMiddleware,
@@ -441,6 +442,8 @@ func main() {
 		preemptor,
 		drainer,
 	)
+	// Set nomination for leader check middleware
+	leaderCheckMiddleware.SetNomination(server)
 
 	candidate, err := leader.NewCandidate(
 		cfg.Election,

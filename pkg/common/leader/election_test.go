@@ -50,6 +50,11 @@ func (x *testComponent) ShutDownCallback() error {
 	x.events <- "shutdown"
 	return nil
 }
+func (x *testComponent) HasGainedLeadership() bool {
+	log.Info("HasGainedLeadership called")
+	x.events <- "has_gained_leadership"
+	return true
+}
 func (x *testComponent) GetID() string { return x.host + ":" + x.port }
 
 type testLock struct {

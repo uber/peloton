@@ -21,6 +21,10 @@ type Nomination interface {
 	// becomes the leader
 	GainedLeadershipCallback() error
 
+	// HasGainedLeadership returns true iff once GainedLeadershipCallback
+	// completes
+	HasGainedLeadership() bool
+
 	// ShutDownCallback is the callback to shut down gracefully if
 	// possible
 	ShutDownCallback() error

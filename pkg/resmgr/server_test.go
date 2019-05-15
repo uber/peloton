@@ -147,9 +147,11 @@ func TestServer_GainedLeadershipCallback(t *testing.T) {
 	for _, test := range tt {
 		if test.wantErr == nil {
 			assert.NoError(t, test.s.GainedLeadershipCallback())
+			assert.True(t, test.s.HasGainedLeadership())
 			continue
 		}
 		assert.EqualError(t, test.wantErr, test.s.GainedLeadershipCallback().Error())
+		assert.False(t, test.s.HasGainedLeadership())
 	}
 }
 
@@ -258,6 +260,7 @@ func TestServer_LostLeadershipCallback(t *testing.T) {
 			continue
 		}
 		assert.EqualError(t, test.wantErr, test.s.LostLeadershipCallback().Error())
+		assert.False(t, test.s.HasGainedLeadership())
 	}
 }
 
@@ -299,4 +302,5 @@ func TestServer_ShutDownCallback(t *testing.T) {
 	)
 
 	assert.NoError(t, s.ShutDownCallback())
+	assert.False(t, s.HasGainedLeadership())
 }
