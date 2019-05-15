@@ -2500,6 +2500,23 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.NoError(err)
 	suite.Equal(2, len(workflowEvents))
 
+	// Add ROLLING_FORWARD event again which will be dedupe
+	suite.NoError(store.AddWorkflowEvent(
+		context.Background(),
+		updateID,
+		0,
+		models.WorkflowType_UPDATE,
+		update.State_ROLLING_FORWARD))
+
+	workflowEvents, err = store.GetWorkflowEvents(
+		context.Background(),
+		updateID,
+		0,
+		0,
+	)
+	suite.NoError(err)
+	suite.Equal(2, len(workflowEvents))
+
 	// get only one workflow event
 	workflowEvents, err = store.GetWorkflowEvents(
 		context.Background(),
@@ -2776,6 +2793,21 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 		jobUpdateEvents[0].GetState())
 	suite.Equal(stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
 		jobUpdateEvents[1].GetState())
+
+	// Add ROLLING_BACKWARD job update event again,
+	// which will be dedupe
+	suite.NoError(store.AddJobUpdateEvent(
+		context.Background(),
+		updateID,
+		models.WorkflowType_UPDATE,
+		update.State_ROLLING_BACKWARD,
+	))
+
+	jobUpdateEvents, err = store.GetJobUpdateEvents(
+		context.Background(),
+		updateID)
+	suite.NoError(err)
+	suite.Equal(2, len(jobUpdateEvents))
 
 	// delete update
 	suite.NoError(store.DeleteUpdate(
