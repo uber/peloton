@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 
@@ -88,10 +89,12 @@ func TestStartStop(t *testing.T) {
 
 // TestPublishMetrics tests publishing metrics from the job factory.
 func TestPublishMetrics(t *testing.T) {
+	testTaskScope := tally.NewTestScope("", nil)
 	f := &jobFactory{
-		jobs:    map[string]*job{},
-		mtx:     NewMetrics(tally.NoopScope),
-		running: true,
+		jobs:        map[string]*job{},
+		mtx:         NewMetrics(tally.NoopScope),
+		running:     true,
+		taskMetrics: NewTaskMetrics(testTaskScope),
 	}
 
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f5222"}
@@ -101,6 +104,7 @@ func TestPublishMetrics(t *testing.T) {
 			State:     pbtask.TaskState_RUNNING,
 			GoalState: pbtask.TaskState_RUNNING,
 			Revision:  &peloton.ChangeLog{Version: 1},
+			Host:      "host1",
 		},
 	}
 	taskInfos[1] = &pbtask.TaskInfo{
@@ -108,6 +112,7 @@ func TestPublishMetrics(t *testing.T) {
 			State:     pbtask.TaskState_PENDING,
 			GoalState: pbtask.TaskState_RUNNING,
 			Revision:  &peloton.ChangeLog{Version: 1},
+			Host:      "host1",
 		},
 	}
 	taskInfos[2] = &pbtask.TaskInfo{
@@ -118,6 +123,9 @@ func TestPublishMetrics(t *testing.T) {
 		},
 	}
 	j := f.AddJob(jobID)
+	j.(*job).config = &cachedConfig{
+		placementStrategy: pbjob.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB,
+	}
 	j.ReplaceTasks(taskInfos, true)
 
 	jobID = &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f111"}
@@ -130,9 +138,10 @@ func TestPublishMetrics(t *testing.T) {
 	}
 	taskInfos[1] = &pbtask.TaskInfo{
 		Runtime: &pbtask.RuntimeInfo{
-			State:     pbtask.TaskState_PENDING,
+			State:     pbtask.TaskState_RUNNING,
 			GoalState: pbtask.TaskState_RUNNING,
 			Revision:  &peloton.ChangeLog{Version: 1},
+			Host:      "host2",
 		},
 	}
 	taskInfos[2] = &pbtask.TaskInfo{
@@ -143,6 +152,9 @@ func TestPublishMetrics(t *testing.T) {
 		},
 	}
 	j = f.AddJob(jobID)
+	j.(*job).config = &cachedConfig{
+		placementStrategy: pbjob.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB,
+	}
 	j.ReplaceTasks(taskInfos, true)
 
 	j.AddWorkflow(&peloton.UpdateID{
@@ -152,16 +164,20 @@ func TestPublishMetrics(t *testing.T) {
 	stateCount := f.publishMetrics()
 	assert.Equal(t,
 		stateCount[pbtask.TaskState_RUNNING][pbtask.TaskState_RUNNING],
-		1)
+		2)
 	assert.Equal(t,
 		stateCount[pbtask.TaskState_PENDING][pbtask.TaskState_RUNNING],
-		2)
+		1)
 	assert.Equal(t,
 		stateCount[pbtask.TaskState_INITIALIZED][pbtask.TaskState_DELETED],
 		2)
 	assert.Equal(t,
 		stateCount[pbtask.TaskState_PENDING][pbtask.TaskState_SUCCEEDED],
 		1)
+
+	sm, ok := testTaskScope.Snapshot().Gauges()["mean_spread_quotient+"]
+	assert.True(t, ok)
+	assert.Equal(t, 1.5, sm.Value())
 }
 
 // BenchmarkPublishMetrics benchmarks the time needed to call publishMetrics

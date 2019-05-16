@@ -125,7 +125,8 @@ func TestConvertTaskToResMgrTask(t *testing.T) {
 	}
 
 	jobConfig := &job.JobConfig{
-		SLA: &job.SlaConfig{},
+		SLA:               &job.SlaConfig{},
+		PlacementStrategy: job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB,
 	}
 	for _, taskInfo := range taskInfos {
 		rmTask := ConvertTaskToResMgrTask(taskInfo, jobConfig)
@@ -139,6 +140,10 @@ func TestConvertTaskToResMgrTask(t *testing.T) {
 		} else {
 			assert.Empty(t, rmTask.GetHostname())
 		}
+		assert.Equal(
+			t,
+			job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB,
+			rmTask.GetPlacementStrategy())
 	}
 }
 

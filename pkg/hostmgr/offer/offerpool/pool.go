@@ -237,7 +237,7 @@ type offerPool struct {
 	metrics *Metrics
 
 	volumeStore storage.PersistentVolumeStore
-	// indicate if bin packing is enabled/disabled
+	// The default ranker for hosts during filtering
 	binPackingRanker binpacking.Ranker
 
 	// taskHeldIndex --- key: task id,
@@ -276,7 +276,9 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
 	// on the results we will optimize this.
 	var sortedSummaryList []interface{}
 	if !matcher.HasEnoughHosts() {
-		sortedSummaryList = p.getRankedHostSummaryList(p.hostOfferIndex)
+		sortedSummaryList = p.getRankedHostSummaryList(
+			hostFilter.GetHint().GetRankHint(),
+			p.hostOfferIndex)
 	}
 	for _, s := range sortedSummaryList {
 		matcher.tryMatch(s.(summary.HostSummary).GetHostname(), s.(summary.HostSummary))
@@ -303,8 +305,23 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
 }
 
 func (p *offerPool) getRankedHostSummaryList(
+	rankHint hostsvc.FilterHint_Ranking,
 	offerIndex map[string]summary.HostSummary) []interface{} {
-	return p.binPackingRanker.GetRankedHostList(offerIndex)
+
+	ranker := p.binPackingRanker
+	switch rankHint {
+	case hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM:
+		// FirstFit ranker iterates over the offerIndex map and returns the
+		// summary for each entry. We rely on Golang's randomized map
+		// iteration order to get a random sequence of host summaries.
+		ranker = binpacking.GetRankerByName(binpacking.FirstFit)
+
+	case hostsvc.FilterHint_FILTER_HINT_RANKING_LEAST_AVAILABLE_FIRST:
+		// DeFrag orders hosts from lowest offered resources to most
+		// offered resources
+		ranker = binpacking.GetRankerByName(binpacking.DeFrag)
+	}
+	return ranker.GetRankedHostList(offerIndex)
 }
 
 // ClaimForLaunch takes offers from pool (removes from hostsummary) for launch.

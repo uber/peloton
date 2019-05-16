@@ -26,22 +26,26 @@ const (
 	FirstFit = "FIRST_FIT"
 )
 
-// RankerFunc type of func which returns Ranker interface
-type RankerFunc func() Ranker
+// map of ranker name to Ranker. Not thread-safe -> should be
+// updated at initialization only; only reads are safe after
+// initialization.
+var rankers = make(map[string]Ranker)
 
-// map of ranker name to Init Ranker Func
-var rankers = make(map[string]RankerFunc)
-
-// Register registers the ranker and keep it in the
+// register creates a ranker and keeps it in the
 // ranker map.
-func Register(name string, ranker RankerFunc) {
-	log.Infof("Registering %s Ranker", name)
-	if ranker == nil {
-		log.Errorf("ranker does not exist")
+func register(name string, rankerFunc func() Ranker) {
+	log.WithField("name", name).Info("Registering ranker")
+	if rankerFunc == nil {
+		log.WithField("name", name).Error("invalid ranker creator function")
 		return
 	}
 	if _, registered := rankers[name]; registered {
-		log.Errorf("ranker already registered")
+		log.WithField("name", name).Error("ranker already registered")
+		return
+	}
+	ranker := rankerFunc()
+	if ranker == nil {
+		log.WithField("name", name).Error("nil ranker created")
 		return
 	}
 	rankers[name] = ranker
@@ -49,16 +53,20 @@ func Register(name string, ranker RankerFunc) {
 
 // Init registers all the rankers
 func Init() {
-	Register(DeFrag, NewDeFragRanker)
-	Register(FirstFit, NewFirstFitRanker)
+	register(DeFrag, NewDeFragRanker)
+	register(FirstFit, NewFirstFitRanker)
 }
 
-// CreateRanker creates and returns the ranker specified
-func CreateRanker(name string) Ranker {
-	ranker, ok := rankers[name]
-	if !ok {
-		log.Errorf("Ranker is not registered")
-		return nil
+// GetRankerByName returns a ranker with specified name
+func GetRankerByName(name string) Ranker {
+	return rankers[name]
+}
+
+// GetRankers returns all registered rankers
+func GetRankers() []Ranker {
+	result := make([]Ranker, 0, len(rankers))
+	for _, r := range rankers {
+		result = append(result, r)
 	}
-	return ranker()
+	return result
 }

@@ -268,7 +268,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		suite.volumeStore, /* volumeStore */
 		[]string{},        /*scarce_resource_types*/
 		[]string{},        /*slack_resource_types*/
-		bin_packing.CreateRanker("FIRST_FIT"),
+		bin_packing.GetRankerByName("FIRST_FIT"),
 		time.Duration(30*time.Second),
 	)
 

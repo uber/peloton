@@ -106,21 +106,22 @@ func ConvertTaskToResMgrTask(
 	}
 
 	resmgrTask := &resmgr.Task{
-		Id:           taskID,
-		JobId:        taskInfo.GetJobId(),
-		TaskId:       taskInfo.GetRuntime().GetMesosTaskId(),
-		Name:         taskInfo.GetConfig().GetName(),
-		Preemptible:  preemptible,
-		Priority:     slaConfig.GetPriority(),
-		MinInstances: minInstances,
-		Resource:     taskInfo.GetConfig().GetResource(),
-		Constraint:   taskInfo.GetConfig().GetConstraint(),
-		NumPorts:     uint32(numPorts),
-		Type:         getTaskType(taskInfo.GetConfig(), jobConfig.GetType()),
-		Labels:       util.ConvertLabels(taskInfo.GetConfig().GetLabels()),
-		Controller:   taskInfo.GetConfig().GetController(),
-		Revocable:    taskInfo.GetConfig().GetRevocable(),
-		DesiredHost:  taskInfo.GetRuntime().GetDesiredHost(),
+		Id:                taskID,
+		JobId:             taskInfo.GetJobId(),
+		TaskId:            taskInfo.GetRuntime().GetMesosTaskId(),
+		Name:              taskInfo.GetConfig().GetName(),
+		Preemptible:       preemptible,
+		Priority:          slaConfig.GetPriority(),
+		MinInstances:      minInstances,
+		Resource:          taskInfo.GetConfig().GetResource(),
+		Constraint:        taskInfo.GetConfig().GetConstraint(),
+		NumPorts:          uint32(numPorts),
+		Type:              getTaskType(taskInfo.GetConfig(), jobConfig.GetType()),
+		Labels:            util.ConvertLabels(taskInfo.GetConfig().GetLabels()),
+		Controller:        taskInfo.GetConfig().GetController(),
+		Revocable:         taskInfo.GetConfig().GetRevocable(),
+		DesiredHost:       taskInfo.GetRuntime().GetDesiredHost(),
+		PlacementStrategy: jobConfig.GetPlacementStrategy(),
 	}
 
 	taskState := taskInfo.GetRuntime().GetState()

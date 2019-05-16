@@ -9,6 +9,7 @@ package peloton.private.resmgr;
 option go_package = "peloton/private/resmgr";
 
 import "mesos/v1/mesos.proto";
+import "peloton/api/v0/job/job.proto";
 import "peloton/api/v0/peloton.proto";
 import "peloton/api/v0/task/task.proto";
 
@@ -123,6 +124,9 @@ message Task {
 
   // Flag to indicate the task is ready for host reservation
   bool readyForHostReservation = 20;
+
+  // Preference for placing tasks of the job on hosts.
+  api.v0.job.PlacementStrategy placementStrategy = 21;
 }
 
 /**

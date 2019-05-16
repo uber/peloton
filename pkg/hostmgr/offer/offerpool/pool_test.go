@@ -202,8 +202,10 @@ func (suite *OfferPoolTestSuite) SetupTest() {
 		metrics:                    NewMetrics(tally.NoopScope),
 		mSchedulerClient:           suite.schedulerClient,
 		mesosFrameworkInfoProvider: suite.provider,
-		binPackingRanker:           binpacking.CreateRanker(binpacking.DeFrag),
+		binPackingRanker:           binpacking.GetRankerByName(binpacking.DeFrag),
 	}
+	// reset the ranker state before use
+	suite.pool.binPackingRanker.RefreshRanking(nil)
 
 	suite.pool.timedOffers.Range(func(key interface{}, value interface{}) bool {
 		suite.pool.timedOffers.Delete(key)
@@ -224,7 +226,7 @@ func (suite *OfferPoolTestSuite) TestSlackResourceTypes() {
 		nil,
 		[]string{"GPU", "DUMMY"},
 		[]string{common.MesosCPU, "DUMMY"},
-		binpacking.CreateRanker("DEFRAG"),
+		binpacking.GetRankerByName(binpacking.DeFrag),
 		time.Duration(30*time.Second),
 	)
 	suite.True(hmutil.IsSlackResourceType(
@@ -931,23 +933,46 @@ func (suite *OfferPoolTestSuite) TestOfferSorting() {
 	suite.pool.AddOffers(context.Background(),
 		[]*mesos.Offer{offer2, offer3, offer1, offer0, offer4})
 
-	sortedList := suite.pool.getRankedHostSummaryList(suite.pool.hostOfferIndex)
+	rankHints := []hostsvc.FilterHint_Ranking{
+		hostsvc.FilterHint_FILTER_HINT_RANKING_INVALID,
+		hostsvc.FilterHint_FILTER_HINT_RANKING_LEAST_AVAILABLE_FIRST,
+		hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM,
+	}
+	for _, rh := range rankHints {
+		sortedList := suite.pool.getRankedHostSummaryList(
+			rh,
+			suite.pool.hostOfferIndex)
 
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[0].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 1})
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[1].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[2].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[3].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
-	suite.EqualValues(hmutil.GetResourcesFromOffers(
-		sortedList[4].(summary.HostSummary).GetOffers(summary.All)),
-		scalar.Resources{CPU: 2, Mem: 2, Disk: 2, GPU: 4})
+		if rh == hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM {
+			hosts := []string{
+				hostName0,
+				hostName1,
+				hostName2,
+				hostName3,
+				hostName4}
+			for _, s := range sortedList {
+				h := s.(summary.HostSummary).GetHostname()
+				suite.Contains(hosts, h)
+			}
+			continue
+		}
+		suite.EqualValues(hmutil.GetResourcesFromOffers(
+			sortedList[0].(summary.HostSummary).GetOffers(summary.All)),
+			scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 1})
+		suite.EqualValues(hmutil.GetResourcesFromOffers(
+			sortedList[1].(summary.HostSummary).GetOffers(summary.All)),
+			scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
+		suite.EqualValues(hmutil.GetResourcesFromOffers(
+			sortedList[2].(summary.HostSummary).GetOffers(summary.All)),
+			scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
+		suite.EqualValues(hmutil.GetResourcesFromOffers(
+			sortedList[3].(summary.HostSummary).GetOffers(summary.All)),
+			scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
+		suite.EqualValues(hmutil.GetResourcesFromOffers(
+			sortedList[4].(summary.HostSummary).GetOffers(summary.All)),
+			scalar.Resources{CPU: 2, Mem: 2, Disk: 2, GPU: 4})
+	}
+
 }
 
 func (suite *OfferPoolTestSuite) createOffer(

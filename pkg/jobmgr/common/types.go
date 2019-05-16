@@ -45,6 +45,8 @@ type JobConfig interface {
 	GetLabels() []*peloton.Label
 	// GetName returns the name of the job stored in the cache
 	GetName() string
+	// GetPlacementStrategy returns the placement strategy
+	GetPlacementStrategy() pbjob.PlacementStrategy
 }
 
 // RuntimeDiff to be applied to the runtime struct.

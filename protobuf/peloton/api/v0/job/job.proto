@@ -84,6 +84,24 @@ message SlaConfig {
 
 
 /**
+ *  Preferences for placement of tasks on hosts. Satisfying
+ *  these preferences is best-effort only - task constraints,
+ *  resource utilization of the system and other system configuration
+ *  settings may prevent satisfying these preferences.
+ */
+enum PlacementStrategy {
+  // Use the system default.
+  PLACEMENT_STRATEGY_INVALID = 0;
+
+  // Place as many tasks of the job as possible on a single host.
+  PLACEMENT_STRATEGY_PACK_HOST = 1;
+
+  // Place as few tasks of a job as possible on a single host.
+  PLACEMENT_STRATEGY_SPREAD_JOB = 2;
+}
+
+
+/**
  *  Job configuration
  */
 message JobConfig {
@@ -126,6 +144,9 @@ message JobConfig {
 
   // Owner of the job
   string owner = 13;
+
+  // Preference for placing tasks of the job on hosts.
+  PlacementStrategy placementStrategy = 14;
 }
 
 

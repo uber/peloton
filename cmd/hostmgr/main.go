@@ -56,7 +56,7 @@ import (
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
-	"gopkg.in/alecthomas/kingpin.v2"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
@@ -535,7 +535,13 @@ func main() {
 	}
 
 	bin_packing.Init()
-	log.Infof(" %s Bin Packing is enabled", cfg.HostManager.BinPacking)
+	log.WithField("ranker_name", cfg.HostManager.BinPacking).
+		Info("Bin packing is enabled")
+	defaultRanker := bin_packing.GetRankerByName(cfg.HostManager.BinPacking)
+	if defaultRanker == nil {
+		log.WithField("ranker_name", cfg.HostManager.BinPacking).
+			Fatal("Ranker not found")
+	}
 	offer.InitEventHandler(
 		dispatcher,
 		rootScope,
@@ -548,7 +554,7 @@ func main() {
 		cfg.HostManager.HeldHostPruningPeriodSec,
 		cfg.HostManager.ScarceResourceTypes,
 		cfg.HostManager.SlackResourceTypes,
-		bin_packing.CreateRanker(cfg.HostManager.BinPacking),
+		defaultRanker,
 		cfg.HostManager.BinPackingRefreshIntervalSec,
 		cfg.HostManager.HostPlacingOfferStatusTimeout,
 	)

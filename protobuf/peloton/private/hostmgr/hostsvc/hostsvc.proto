@@ -139,7 +139,22 @@ message FilterHint {
         api.v0.peloton.TaskID taskID = 2;
     }
 
+    // Ways in which to rank hosts to return
+    enum Ranking {
+      // Use system default ranking
+      FILTER_HINT_RANKING_INVALID = 0;
+
+      // Rank hosts randomly
+      FILTER_HINT_RANKING_RANDOM = 1;
+
+      // Rank hosts with least available resources first
+      FILTER_HINT_RANKING_LEAST_AVAILABLE_FIRST = 2;
+    }
+
     repeated Host hostHint = 1;
+
+    // Hint for ranking hosts
+    Ranking rankHint = 2;
 }
 
 /**

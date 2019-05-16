@@ -196,12 +196,24 @@ type Job interface {
 	Delete(ctx context.Context) error
 
 	// GetTaskStateCount returns the state/goal state count of all
-	// tasks in a job and the total number of throttled tasks in
-	// stateless jobs.
-	GetTaskStateCount() (map[pbtask.TaskState]map[pbtask.TaskState]int, int)
+	// tasks in a job, the total number of throttled tasks in
+	// stateless jobs and the spread counts of a job
+	GetTaskStateCount() (
+		map[pbtask.TaskState]map[pbtask.TaskState]int,
+		int,
+		JobSpreadCounts)
 
 	// GetWorkflowStateCount returns the state count of all workflows in the cache
 	GetWorkflowStateCount() map[pbupdate.State]int
+}
+
+// JobSpreadCounts contains task and host counts for jobs that use
+// "spread" placement strategy. Counts are set to zero for
+// invalid/inapplicable cases.
+type JobSpreadCounts struct {
+	// Number of tasks in a job that have been placed and
+	// the number of unique hosts for those placements
+	taskCount, hostCount int
 }
 
 // WorkflowOps defines operations on workflow
@@ -293,6 +305,7 @@ type cachedConfig struct {
 	hasControllerTask bool                    // if the job contains any task which is controller task
 	labels            []*peloton.Label        // Label of the job
 	name              string                  // Name of the job
+	placementStrategy pbjob.PlacementStrategy // Placement strategy
 }
 
 // job structure holds the information about a given active job
@@ -1220,6 +1233,7 @@ func (j *job) populateJobConfigCache(config *pbjob.JobConfig) {
 
 	j.config.jobType = config.GetType()
 	j.jobType = j.config.jobType
+	j.config.placementStrategy = config.GetPlacementStrategy()
 }
 
 // getUpdatedJobRuntimeCache validates the runtime input and
@@ -2013,8 +2027,11 @@ func (j *job) ClearWorkflow(updateID *peloton.UpdateID) {
 func (j *job) GetTaskStateCount() (
 	taskCount map[pbtask.TaskState]map[pbtask.TaskState]int,
 	throttledTasks int,
+	spread JobSpreadCounts,
 ) {
 	taskCount = make(map[pbtask.TaskState]map[pbtask.TaskState]int)
+
+	spreadHosts := make(map[string]struct{})
 
 	j.RLock()
 	defer j.RUnlock()
@@ -2026,12 +2043,22 @@ func (j *job) GetTaskStateCount() (
 			taskCount[curState] = make(map[pbtask.TaskState]int)
 		}
 		taskCount[curState][goalState]++
-		if j.config != nil && j.config.GetType() == pbjob.JobType_SERVICE &&
-			util.IsPelotonStateTerminal(curState) &&
-			util.IsTaskThrottled(curState, t.GetCacheRuntime().GetMessage()) {
-			throttledTasks++
+		if j.config != nil {
+			if j.config.GetType() == pbjob.JobType_SERVICE &&
+				util.IsPelotonStateTerminal(curState) &&
+				util.IsTaskThrottled(curState, t.GetCacheRuntime().GetMessage()) {
+				throttledTasks++
+			}
+			if j.config.placementStrategy == pbjob.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB {
+				runtime := t.GetCacheRuntime()
+				if runtime.GetHost() != "" {
+					spreadHosts[runtime.GetHost()] = struct{}{}
+					spread.taskCount++
+				}
+			}
 		}
 	}
+	spread.hostCount = len(spreadHosts)
 
 	return
 }
@@ -2228,6 +2255,10 @@ func (c *cachedConfig) GetLabels() []*peloton.Label {
 
 func (c *cachedConfig) GetName() string {
 	return c.name
+}
+
+func (c *cachedConfig) GetPlacementStrategy() pbjob.PlacementStrategy {
+	return c.placementStrategy
 }
 
 // HasControllerTask returns if a job has controller task in it,

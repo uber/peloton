@@ -38,6 +38,8 @@ type TaskMetrics struct {
 
 	TimeToRunNonRevocable tally.Timer
 	TimeToRunRevocable    tally.Timer
+
+	MeanSpreadQuotient tally.Gauge
 }
 
 // NewTaskMetrics returns a new TaskMetrics struct, with all metrics
@@ -49,5 +51,7 @@ func NewTaskMetrics(scope tally.Scope) *TaskMetrics {
 
 		TimeToRunNonRevocable: scope.Timer("time_to_run_non_revocable"),
 		TimeToRunRevocable:    scope.Timer("time_to_run_revocable"),
+
+		MeanSpreadQuotient: scope.Gauge("mean_spread_quotient"),
 	}
 }

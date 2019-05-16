@@ -40,11 +40,12 @@ type RefreshTestSuite struct {
 }
 
 func TestRefreshTestSuite(t *testing.T) {
+	binpacking.Init()
 	suite.Run(t, new(RefreshTestSuite))
 }
 
 func (suite *RefreshTestSuite) SetupTest() {
-	suite.defragRanker = binpacking.NewDeFragRanker()
+	suite.defragRanker = binpacking.GetRankerByName(binpacking.DeFrag)
 	suite.offerIndex = CreateOfferIndex()
 	suite.pool = &offerPool{
 		hostOfferIndex:   suite.offerIndex,
@@ -52,6 +53,7 @@ func (suite *RefreshTestSuite) SetupTest() {
 		metrics:          NewMetrics(tally.NoopScope),
 		binPackingRanker: suite.defragRanker,
 	}
+	suite.defragRanker.RefreshRanking(nil)
 }
 
 func (suite *RefreshTestSuite) TestRefresh() {

@@ -15,6 +15,8 @@
 package offerpool
 
 import (
+	"github.com/uber/peloton/pkg/hostmgr/binpacking"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/atomic"
 )
@@ -37,9 +39,10 @@ func NewRefresher(pool Pool) Refresher {
 }
 
 // Refresh refreshes the bin packed list, we need to run refresh
-// asynchronously to reduce the performance panality,
+// asynchronously to reduce the performance penalty.
 func (h *refresher) Refresh(_ *atomic.Bool) {
-	log.Debug("Running Refresh")
-	h.offerPool.GetBinPackingRanker().RefreshRanking(
-		h.offerPool.GetHostOfferIndex())
+	log.Debug("Running bin-packing ranker refresh")
+	for _, ranker := range binpacking.GetRankers() {
+		ranker.RefreshRanking(h.offerPool.GetHostOfferIndex())
+	}
 }

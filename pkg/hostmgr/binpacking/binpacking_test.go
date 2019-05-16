@@ -32,25 +32,42 @@ func (suite *BinPackingTestSuite) SetupTest() {
 	Init()
 }
 
+// TestInit tests the Init() function
 func (suite *BinPackingTestSuite) TestInit() {
-	suite.EqualValues(rankers[DeFrag]().Name(), DeFrag)
-	suite.EqualValues(rankers[FirstFit]().Name(), FirstFit)
+	suite.Equal(2, len(rankers))
+	suite.NotNil(rankers[DeFrag])
+	suite.Equal(rankers[DeFrag].Name(), DeFrag)
+	suite.NotNil(rankers[FirstFit])
+	suite.Equal(rankers[FirstFit].Name(), FirstFit)
 }
 
+// TestRegister tests the register() function
 func (suite *BinPackingTestSuite) TestRegister() {
 	rankers[DeFrag] = nil
-	Register(DeFrag, nil)
+	register(DeFrag, nil)
 	suite.Nil(rankers[DeFrag])
-	Register(DeFrag, NewDeFragRanker)
+	register(DeFrag, NewDeFragRanker)
 	suite.Nil(rankers[DeFrag])
 	delete(rankers, DeFrag)
-	Register(DeFrag, NewDeFragRanker)
+	register(DeFrag, NewDeFragRanker)
 	suite.NotNil(rankers[DeFrag])
 }
 
-func (suite *BinPackingTestSuite) TestCreateRanker() {
-	ranker := CreateRanker(DeFrag)
-	suite.EqualValues(ranker.Name(), DeFrag)
-	ranker = CreateRanker("Not_existing")
+// TestGetRankerByName tests the GetRankerByName() function
+func (suite *BinPackingTestSuite) TestGetRankerByName() {
+	ranker := GetRankerByName(DeFrag)
+	suite.NotNil(ranker)
+	suite.Equal(ranker.Name(), DeFrag)
+
+	ranker = GetRankerByName("Not_existing")
 	suite.Nil(ranker)
+}
+
+// TestGetRankers tests the GetRankers() function
+func (suite *BinPackingTestSuite) TestGetRankers() {
+	result := GetRankers()
+	suite.Equal(2, len(result))
+	expectedNames := []string{DeFrag, FirstFit}
+	suite.Contains(expectedNames, result[0].Name())
+	suite.Contains(expectedNames, result[1].Name())
 }

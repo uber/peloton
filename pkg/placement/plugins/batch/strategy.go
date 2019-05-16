@@ -17,8 +17,10 @@ package batch
 import (
 	log "github.com/sirupsen/logrus"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesosv1 "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/plugins"
@@ -35,23 +37,29 @@ type batch struct{}
 
 // PlaceOnce is an implementation of the placement.Strategy interface.
 func (batch *batch) PlaceOnce(unassigned []*models.Assignment, hosts []*models.HostOffers) {
-	for _, host := range hosts {
-		log.WithFields(log.Fields{
-			"unassigned": unassigned,
-			"hosts":      hosts,
-		}).Debug("PlaceOnce batch strategy called")
-
-		unassigned = batch.fillOffer(host, unassigned)
+	// All tasks are identical in their requirements, including
+	// placementHint (see method Filters())). So just looking at
+	// the first one is sufficient.
+	if len(unassigned) == 0 {
+		return
+	}
+	ph := unassigned[0].GetTask().GetTask().GetPlacementStrategy()
+	if ph == job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB {
+		unassigned = batch.spreadTasksOnHost(unassigned, hosts)
+	} else {
+		// the default host assignment strategy is PACK
+		unassigned = batch.packTasksOnHost(unassigned, hosts)
 	}
 
 	log.WithFields(log.Fields{
-		"unassigned": unassigned,
-		"hosts":      hosts,
-		"strategy":   "batch",
+		"unassigned":     unassigned,
+		"hosts":          hosts,
+		"placement_hint": ph.String(),
+		"strategy":       "batch",
 	}).Info("PlaceOnce batch strategy returned")
 }
 
-func (batch *batch) availablePorts(resources []*mesos_v1.Resource) uint64 {
+func (batch *batch) availablePorts(resources []*mesosv1.Resource) uint64 {
 	var ports uint64
 	for _, resource := range resources {
 		if resource.GetName() != "ports" {
@@ -62,6 +70,47 @@ func (batch *batch) availablePorts(resources []*mesos_v1.Resource) uint64 {
 		}
 	}
 	return ports
+}
+
+// Assign hosts to tasks by trying to pack as many tasks as possible
+// on a single host. Returns any tasks that could not be assigned to
+// a host.
+func (batch *batch) packTasksOnHost(
+	unassigned []*models.Assignment,
+	hosts []*models.HostOffers,
+) []*models.Assignment {
+	for _, host := range hosts {
+		log.WithFields(log.Fields{
+			"unassigned": unassigned,
+			"hosts":      hosts,
+		}).Debug("PlaceOnce batch strategy called")
+
+		unassigned = batch.fillOffer(host, unassigned)
+	}
+	return unassigned
+}
+
+// Assign exactly one task to a host, and return all tasks that
+// could not be assigned (in case there are fewer hosts than tasks).
+// Note that all task have identical resource and scheduling
+// constraints, and each host satisifies these constraints.
+// So a simple index-by-index assignment is just fine.
+func (batch *batch) spreadTasksOnHost(
+	unassigned []*models.Assignment,
+	hosts []*models.HostOffers,
+) []*models.Assignment {
+	numTasks := len(hosts)
+	if len(unassigned) < numTasks {
+		numTasks = len(unassigned)
+	}
+	next := 0
+	for ; next < numTasks; next++ {
+		unassigned[next].SetHost(hosts[next])
+	}
+	if next < len(unassigned) {
+		return unassigned[next:]
+	}
+	return nil
 }
 
 // fillOffer assigns in sequence as many tasks as possible to the given offers in a host,
@@ -99,15 +148,23 @@ func (batch *batch) fillOffer(host *models.HostOffers, unassigned []*models.Assi
 }
 
 func (batch *batch) getHostFilter(assignment *models.Assignment) *hostsvc.HostFilter {
+	rmTask := assignment.GetTask().GetTask()
 	result := &hostsvc.HostFilter{
 		ResourceConstraint: &hostsvc.ResourceConstraint{
-			Minimum:   assignment.GetTask().GetTask().Resource,
-			NumPorts:  assignment.GetTask().GetTask().NumPorts,
-			Revocable: assignment.GetTask().GetTask().Revocable,
+			Minimum:   rmTask.Resource,
+			NumPorts:  rmTask.NumPorts,
+			Revocable: rmTask.Revocable,
 		},
+		Hint: &hostsvc.FilterHint{},
 	}
-	if constraint := assignment.GetTask().GetTask().Constraint; constraint != nil {
+	if constraint := rmTask.Constraint; constraint != nil {
 		result.SchedulingConstraint = constraint
+	}
+	// To spread out tasks over hosts, request host-manager
+	// to rank hosts randomly instead of a predictable order such
+	// as most-loaded.
+	if rmTask.GetPlacementStrategy() == job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB {
+		result.Hint.RankHint = hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM
 	}
 	return result
 }
@@ -137,6 +194,7 @@ func (batch *batch) Filters(assignments []*models.Assignment) map[*hostsvc.HostF
 			Quantity: &hostsvc.QuantityControl{
 				MaxHosts: uint32(len(assignments)),
 			},
+			Hint: filter.GetHint(),
 		}
 		result[filterWithQuantity] = assignments
 	}

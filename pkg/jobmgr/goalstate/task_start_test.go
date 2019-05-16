@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	job2 "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
@@ -145,6 +145,10 @@ func (suite *TaskStartTestSuite) TestTaskStartStateless() {
 		GetType().
 		Return(job2.JobType_SERVICE).
 		AnyTimes()
+
+	suite.cachedConfig.EXPECT().
+		GetPlacementStrategy().
+		Return(job2.PlacementStrategy_PLACEMENT_STRATEGY_INVALID)
 
 	suite.taskStore.EXPECT().
 		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)).
@@ -564,6 +568,10 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithoutVolume() {
 	suite.cachedConfig.EXPECT().
 		GetRespoolID().
 		Return(jobConfig.RespoolID)
+
+	suite.cachedConfig.EXPECT().
+		GetPlacementStrategy().
+		Return(job2.PlacementStrategy_PLACEMENT_STRATEGY_INVALID)
 
 	suite.taskStore.EXPECT().
 		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)).

@@ -18,12 +18,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/testutil"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestBatchPlace(t *testing.T) {
+func TestBatchPlacePackLoadedHost(t *testing.T) {
 	assignments := []*models.Assignment{
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
@@ -41,7 +44,7 @@ func TestBatchPlace(t *testing.T) {
 	assert.Nil(t, assignments[2].GetHost())
 }
 
-func TestBatchPlaceOneFreeHost(t *testing.T) {
+func TestBatchPlaceOncePackFreeHost(t *testing.T) {
 	assignments := []*models.Assignment{
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
@@ -57,6 +60,29 @@ func TestBatchPlaceOneFreeHost(t *testing.T) {
 
 	assert.Equal(t, offers[0], assignments[0].GetHost())
 	assert.Equal(t, offers[0], assignments[1].GetHost())
+}
+
+func TestBatchPlaceOnceSpread(t *testing.T) {
+	assignments := make([]*models.Assignment, 0)
+	for i := 0; i < 5; i++ {
+		a := testutil.SetupAssignment(time.Now().Add(10*time.Second), 1)
+		a.GetTask().GetTask().Resource.CpuLimit = 5
+		a.GetTask().GetTask().PlacementStrategy = job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB
+		assignments = append(assignments, a)
+	}
+	offers := []*models.HostOffers{
+		testutil.SetupHostOffers(),
+		testutil.SetupHostOffers(),
+		testutil.SetupHostOffers(),
+	}
+	strategy := New()
+	strategy.PlaceOnce(assignments, offers)
+
+	assert.Equal(t, offers[0], assignments[0].GetHost())
+	assert.Equal(t, offers[1], assignments[1].GetHost())
+	assert.Equal(t, offers[2], assignments[2].GetHost())
+	assert.Nil(t, assignments[3].GetHost())
+	assert.Nil(t, assignments[4].GetHost())
 }
 
 func TestBatchFiltersWithResources(t *testing.T) {
@@ -103,6 +129,41 @@ func TestBatchFiltersWithPorts(t *testing.T) {
 			assert.Equal(t, 2, len(batch))
 		case 2:
 			assert.Equal(t, 1, len(batch))
+		}
+	}
+}
+
+func TestBatchFiltersWithPlacementHint(t *testing.T) {
+	assignments := make([]*models.Assignment, 0)
+	for i := 0; i < 5; i++ {
+		a := testutil.SetupAssignment(time.Now().Add(10*time.Second), 1)
+		a.GetTask().GetTask().NumPorts = 2
+		if i < 2 {
+			a.GetTask().GetTask().PlacementStrategy = job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB
+			a.GetTask().GetTask().NumPorts = 1
+		}
+		assignments = append(assignments, a)
+	}
+	strategy := New()
+
+	filters := strategy.Filters(assignments)
+
+	assert.Equal(t, 2, len(filters))
+	for filter, batch := range filters {
+		assert.Equal(t, uint32(len(batch)), filter.GetQuantity().GetMaxHosts())
+		switch filter.ResourceConstraint.NumPorts {
+		case 1:
+			assert.Equal(t, 2, len(batch))
+			assert.Equal(
+				t,
+				hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM,
+				filter.GetHint().GetRankHint())
+		case 2:
+			assert.Equal(t, 3, len(batch))
+			assert.Equal(
+				t,
+				hostsvc.FilterHint_FILTER_HINT_RANKING_INVALID,
+				filter.GetHint().GetRankHint())
 		}
 	}
 }

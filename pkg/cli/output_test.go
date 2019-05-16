@@ -15,13 +15,13 @@
 package cli
 
 import (
-	"github.com/pkg/errors"
 	"testing"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -46,7 +46,9 @@ func TestMarshallResponse(t *testing.T) {
 	expected := "{\n  \"jobInfo\": {\n    \"config\": {\n" +
 		"      \"description\": \"test job\",\n      \"instanceCount\": 1,\n " +
 		"     \"name\": \"test job\",\n      \"owner\": \"\",\n   " +
-		"   \"owningTeam\": \"test team\",\n      \"type\": \"BATCH\"\n   " +
+		"   \"owningTeam\": \"test team\",\n      " +
+		"\"placementStrategy\": \"PLACEMENT_STRATEGY_INVALID\",\n      " +
+		"\"type\": \"BATCH\"\n   " +
 		" },\n    \"id\": {\n      \"value\": \"481d565e-28da-457d-8434-f6bb7faa0e95\"\n   " +
 		" }\n  }\n}"
 	assert.Equal(t, expected, string(ret))
@@ -55,7 +57,9 @@ func TestMarshallResponse(t *testing.T) {
 	assert.Nil(t, err)
 	expected = "jobInfo:\n  config:\n    description: test job\n    " +
 		"instanceCount: 1\n    name: test job\n    owner: \"\"\n    " +
-		"owningTeam: test team\n    type: BATCH\n  id:\n    " +
+		"owningTeam: test team\n" +
+		"    placementStrategy: PLACEMENT_STRATEGY_INVALID\n" +
+		"    type: BATCH\n  id:\n    " +
 		"value: 481d565e-28da-457d-8434-f6bb7faa0e95\n"
 	assert.Equal(t, expected, string(ret))
 }
