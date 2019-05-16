@@ -76,6 +76,14 @@ def canary_tester(request):
         FILE_LOCK.release()
 
 
+@pytest.fixture(scope="module", autouse=True)
+def setup_cluster(request):
+    """
+    override parent module fixture
+    """
+    pass
+
+
 @pytest.fixture
 def canary_job(request):
     """

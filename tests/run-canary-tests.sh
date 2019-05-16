@@ -38,10 +38,6 @@ fi
 
 export PYTHONPATH
 
-if [[ -z "${TAGS}" ]]; then
-  TAGS='default'
-fi
-
-PATH=$PATH:$(pwd)/bin CLUSTER="${CLUSTER}" ELECTION_ZK_SERVERS="${ZOOKEEPER}" FAILFAST="${FAILFAST}" JOB_TYPE=SERVICE pytest -vrsx -n=3 --count=3 --random-order-seed="$(((RANDOM % 1000) + 1))" tests/integration/canary_test --junit-xml=integration-test-report.xml
+PATH=$PATH:$(pwd)/bin CLUSTER="${CLUSTER}" ELECTION_ZK_SERVERS="${ZOOKEEPER}" FAILFAST="${FAILFAST}" JOB_TYPE=SERVICE pytest -vrsx --count=3 --durations=0 --random-order-seed="$(((RANDOM % 1000) + 1))" tests/integration/canary_test --junit-xml=integration-test-report.xml
 
 deactivate

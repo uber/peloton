@@ -87,7 +87,7 @@ def patch_jobs(active_jobs=None, desired_jobs=None):
 
             # failfast is not None then do not run canary test
             # until dirty jobs are restored manually.
-            if os.getenv('FAILFAST') is None:
+            if os.getenv("FAILFAST") == "NO":
                 # job exists -> update to desired state
                 patch_job(j, job_spec)
                 jobs[job_name] = j.get_job_id()
