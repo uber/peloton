@@ -4629,14 +4629,19 @@ func (suite *JobTestSuite) TestGetStateCount() {
 		jobType: pbjob.JobType_SERVICE,
 	}
 
-	stateCount, throttledTasks := suite.job.GetStateCount()
+	testUpdate := newUpdate(&peloton.UpdateID{Value: testUpdateID}, nil)
+	testUpdate.state = pbupdate.State_ROLLING_FORWARD
+	suite.job.workflows[testUpdateID] = testUpdate
+
+	taskCount, throttledTasks, updateCount := suite.job.GetStateCount()
 	suite.Equal(
-		stateCount[pbtask.TaskState_PENDING][pbtask.TaskState_SUCCEEDED],
+		taskCount[pbtask.TaskState_PENDING][pbtask.TaskState_SUCCEEDED],
 		2)
 	suite.Equal(
-		stateCount[pbtask.TaskState_KILLED][pbtask.TaskState_DELETED],
+		taskCount[pbtask.TaskState_KILLED][pbtask.TaskState_DELETED],
 		1)
 	suite.Equal(throttledTasks, 1)
+	suite.Equal(updateCount[pbupdate.State_ROLLING_FORWARD], 1)
 }
 
 // TestJobRollingCreateSuccess tests job

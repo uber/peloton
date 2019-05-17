@@ -153,6 +153,7 @@ func NewDriver(
 	scope := parentScope.SubScope("goalstate")
 	jobScope := scope.SubScope("job")
 	taskScope := scope.SubScope("task")
+	workflowScope := scope.SubScope("workflow")
 
 	return &driver{
 		jobEngine: goalstate.NewEngine(
@@ -169,7 +170,7 @@ func NewDriver(
 			cfg.NumWorkerUpdateThreads,
 			cfg.FailureRetryDelay,
 			cfg.MaxRetryDelay,
-			jobScope),
+			workflowScope),
 		hostmgrClient: hostsvc.NewInternalHostServiceYARPCClient(
 			d.ClientConfig(common.PelotonHostManager)),
 		resmgrClient: resmgrsvc.NewResourceManagerServiceYARPCClient(

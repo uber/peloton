@@ -145,6 +145,10 @@ func TestPublishMetrics(t *testing.T) {
 	j = f.AddJob(jobID)
 	j.ReplaceTasks(taskInfos, true)
 
+	j.AddWorkflow(&peloton.UpdateID{
+		Value: "update0",
+	})
+
 	stateCount := f.publishMetrics()
 	assert.Equal(t,
 		stateCount[pbtask.TaskState_RUNNING][pbtask.TaskState_RUNNING],

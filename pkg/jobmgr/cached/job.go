@@ -196,9 +196,9 @@ type Job interface {
 	Delete(ctx context.Context) error
 
 	// GetStateCount returns the state/goal state count of all
-	// tasks in a job as well as the total number of throttled
-	// tasks in stateless jobs
-	GetStateCount() (map[pbtask.TaskState]map[pbtask.TaskState]int, int)
+	// tasks in a job, the total number of throttled tasks in
+	// stateless jobs and the update state count for all jobs
+	GetStateCount() (map[pbtask.TaskState]map[pbtask.TaskState]int, int, map[pbupdate.State]int)
 }
 
 // WorkflowOps defines operations on workflow
@@ -2007,9 +2007,13 @@ func (j *job) ClearWorkflow(updateID *peloton.UpdateID) {
 	delete(j.workflows, updateID.GetValue())
 }
 
-func (j *job) GetStateCount() (map[pbtask.TaskState]map[pbtask.TaskState]int, int) {
-	result := make(map[pbtask.TaskState]map[pbtask.TaskState]int)
-	var throttledTasks int
+func (j *job) GetStateCount() (
+	taskCount map[pbtask.TaskState]map[pbtask.TaskState]int,
+	throttledTasks int,
+	workflowCount map[pbupdate.State]int,
+) {
+	taskCount = make(map[pbtask.TaskState]map[pbtask.TaskState]int)
+	workflowCount = make(map[pbupdate.State]int)
 
 	j.RLock()
 	defer j.RUnlock()
@@ -2017,10 +2021,10 @@ func (j *job) GetStateCount() (map[pbtask.TaskState]map[pbtask.TaskState]int, in
 	for _, t := range j.tasks {
 		curState := t.CurrentState().State
 		goalState := t.GoalState().State
-		if _, ok := result[curState]; !ok {
-			result[curState] = make(map[pbtask.TaskState]int)
+		if _, ok := taskCount[curState]; !ok {
+			taskCount[curState] = make(map[pbtask.TaskState]int)
 		}
-		result[curState][goalState]++
+		taskCount[curState][goalState]++
 		if j.config != nil && j.config.GetType() == pbjob.JobType_SERVICE &&
 			util.IsPelotonStateTerminal(curState) &&
 			util.IsTaskThrottled(curState, t.GetCacheRuntime().GetMessage()) {
@@ -2028,7 +2032,12 @@ func (j *job) GetStateCount() (map[pbtask.TaskState]map[pbtask.TaskState]int, in
 		}
 	}
 
-	return result, throttledTasks
+	for _, u := range j.workflows {
+		curState := u.GetState().State
+		workflowCount[curState]++
+	}
+
+	return
 }
 
 // copyJobAndTaskConfig copies the provided job config and
