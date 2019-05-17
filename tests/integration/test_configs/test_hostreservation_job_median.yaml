@@ -1,0 +1,31 @@
+changeLog: null
+name: Test_HostReserve_Median_Job
+owningTeam: team6
+ldapGroups:
+- money
+- team6
+- otto
+description: "Start a job with 3 tasks which request median memories"
+labels:
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
+instanceCount: 3
+sla:
+  priority: 22
+  preemptible: true
+defaultConfig:
+  resource:
+    cpuLimit: 0.1
+    memLimitMb: 1536
+    diskLimitMb: 0.1
+    fdLimit: 1
+  healthCheck: null
+  ports: []
+  container: null
+  command:
+    shell: true
+    value: 'echo "Job $PELOTON_JOB_ID instance $PELOTON_INSTANCE_ID: $PELOTON_TASK_ID" && sleep 240'

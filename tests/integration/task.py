@@ -6,6 +6,7 @@ from peloton_client.pbgen.peloton.private.resmgrsvc import (
     resmgrsvc_pb2 as resmgr,
 )
 
+logging.basicConfig()
 log = logging.getLogger(__name__)
 
 
@@ -74,8 +75,6 @@ class Task(object):
             except Exception as e:
                 log.warn(e)
             finally:
-                if state_transition_failure:
-                    break
                 time.sleep(self.job.config.sleep_time_sec)
                 attempts += 1
 

@@ -1,0 +1,27 @@
+changeLog: null
+name: TestPelotonResPool_hostreservation
+owningTeam: team6
+ldapGroups:
+- money
+- team6
+- otto
+description: "A dummy test respool for peloton integration tests host reservation"
+resources:
+- kind: cpu
+  reservation: 5
+  limit: 10
+  share: 1
+- kind: memory
+  reservation: 6144
+  limit: 6144
+  share: 2
+- kind: disk
+  reservation: 20000
+  limit: 30000
+  share: 1
+- kind: gpu
+  reservation: 0
+  limit: 0
+  share: 1
+parent:
+  value: root

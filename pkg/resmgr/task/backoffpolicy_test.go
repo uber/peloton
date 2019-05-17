@@ -126,29 +126,29 @@ func (suite *BackoffPolicyTestSuite) TestAllCycleCompleted() {
 	InitPolicyFactory()
 
 	config := &Config{
-		LaunchingTimeout:      1 * time.Minute,
-		PlacingTimeout:        1 * time.Minute,
-		PolicyName:            ExponentialBackOffPolicy,
-		PlacementRetryCycle:   3,
-		PlacementRetryBackoff: 30 * time.Second,
+		LaunchingTimeout:          1 * time.Minute,
+		PlacingTimeout:            1 * time.Minute,
+		PolicyName:                ExponentialBackOffPolicy,
+		PlacementRetryCycle:       3,
+		PlacementAttemptsPerCycle: 3,
+		PlacementRetryBackoff:     30 * time.Second,
 	}
 	policy, err := GetFactory().CreateBackOffPolicy(config)
 	suite.NoError(err)
 	suite.NotNil(policy)
 	isCompleted := policy.allCyclesCompleted(&resmgr.Task{
-		PlacementRetryCount: 0,
+		PlacementRetryCount:   0,
+		PlacementAttemptCount: 2,
 	}, config)
 	suite.EqualValues(isCompleted, false)
 	isCompleted = policy.allCyclesCompleted(&resmgr.Task{
-		PlacementRetryCount: 1,
+		PlacementRetryCount:   1,
+		PlacementAttemptCount: 3,
 	}, config)
 	suite.EqualValues(isCompleted, false)
 	isCompleted = policy.allCyclesCompleted(&resmgr.Task{
-		PlacementRetryCount: 2,
-	}, config)
-	suite.EqualValues(isCompleted, false)
-	isCompleted = policy.allCyclesCompleted(&resmgr.Task{
-		PlacementRetryCount: 3,
+		PlacementRetryCount:   2,
+		PlacementAttemptCount: 3,
 	}, config)
 	suite.EqualValues(isCompleted, true)
 }

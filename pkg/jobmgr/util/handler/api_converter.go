@@ -72,6 +72,8 @@ func ConvertTaskStateToPodState(state task.TaskState) pod.PodState {
 		return pod.PodState_POD_STATE_KILLED
 	case task.TaskState_DELETED:
 		return pod.PodState_POD_STATE_DELETED
+	case task.TaskState_RESERVED:
+		return pod.PodState_POD_STATE_RESERVED
 	}
 	return pod.PodState_POD_STATE_INVALID
 }
@@ -113,6 +115,8 @@ func ConvertPodStateToTaskState(state pod.PodState) task.TaskState {
 		return task.TaskState_KILLED
 	case pod.PodState_POD_STATE_DELETED:
 		return task.TaskState_DELETED
+	case pod.PodState_POD_STATE_RESERVED:
+		return task.TaskState_RESERVED
 	}
 	return task.TaskState_UNKNOWN
 }

@@ -77,6 +77,7 @@ func (suite *apiConverterTestSuite) TestConvertTaskStateToPodStateAndViceVersa()
 		task.TaskState_KILLING,
 		task.TaskState_KILLED,
 		task.TaskState_DELETED,
+		task.TaskState_RESERVED,
 	}
 
 	podStates := []pod.PodState{
@@ -97,6 +98,7 @@ func (suite *apiConverterTestSuite) TestConvertTaskStateToPodStateAndViceVersa()
 		pod.PodState_POD_STATE_KILLING,
 		pod.PodState_POD_STATE_KILLED,
 		pod.PodState_POD_STATE_DELETED,
+		pod.PodState_POD_STATE_RESERVED,
 	}
 
 	for i, taskState := range taskStates {

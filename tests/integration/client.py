@@ -5,6 +5,9 @@ from peloton_client.client import PelotonClient
 from peloton_client.pbgen.peloton.private.resmgrsvc import (
     resmgrsvc_pb2_grpc as resmgr_grpc,
 )
+from peloton_client.pbgen.peloton.private.hostmgr.hostsvc import (
+    hostsvc_pb2_grpc as hostmgr_grpc,
+)
 
 from util import load_config
 
@@ -43,6 +46,13 @@ class Client(object):
 # Only implements the resource manager service as of yet.
 def with_private_stubs(client):
     rm_loc = urlparse(client.rm_url).netloc
-    channel = PelotonClient.resmgr_channel_pool[rm_loc]
-    client.resmgr_svc = resmgr_grpc.ResourceManagerServiceStub(channel=channel)
+    rm_channel = PelotonClient.resmgr_channel_pool[rm_loc]
+    client.resmgr_svc = resmgr_grpc.ResourceManagerServiceStub(
+        channel=rm_channel)
+
+    hm_loc = urlparse(client.hm_url).netloc
+    hm_channel = PelotonClient.hostmgr_channel_pool[hm_loc]
+    client.hostmgr_svc = hostmgr_grpc.InternalHostServiceStub(
+        channel=hm_channel)
+
     return client

@@ -448,7 +448,7 @@ func (s *RMTaskTestSuite) TestHostReservation() {
 	// After third cycles, state transits to Ready state and is ready for host reservation
 	time.Sleep(2 * time.Second)
 	s.EqualValues(task.TaskState_READY, rmTask.GetCurrentState().State)
-	rmTask.task.PlacementRetryCount = 3
+	rmTask.task.PlacementRetryCount = 2
 	rmTask.task.PlacementAttemptCount = 3
 	rmTask.TransitTo(task.TaskState_PLACING.String())
 	s.NoError(err)
@@ -816,7 +816,7 @@ func (s *RMTaskTestSuite) TestRMTaskPreTimeoutCallback() {
 	// Host reservation is enabled and retries are not exhausted
 	rmTask.config.EnableHostReservation = true
 	rmTask.task.ReadyForHostReservation = false
-	rmTask.task.PlacementRetryCount = 2
+	rmTask.task.PlacementRetryCount = 1
 	rmTask.task.PlacementAttemptCount = 3
 	transition = statemachine.Transition{}
 	rmTask.preTimeoutCallback(&transition)
@@ -826,7 +826,7 @@ func (s *RMTaskTestSuite) TestRMTaskPreTimeoutCallback() {
 	// Host reservation is enabled and retries are exhausted
 	rmTask.config.EnableHostReservation = true
 	rmTask.task.ReadyForHostReservation = false
-	rmTask.task.PlacementRetryCount = 3
+	rmTask.task.PlacementRetryCount = 2
 	rmTask.task.PlacementAttemptCount = 3
 	transition = statemachine.Transition{}
 	rmTask.preTimeoutCallback(&transition)

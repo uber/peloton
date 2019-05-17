@@ -75,8 +75,10 @@ func (p exponentialPolicy) IsCycleCompleted(task *resmgr.Task, config *Config) b
 func (p exponentialPolicy) allCyclesCompleted(task *resmgr.Task, config *Config) bool {
 	// Backoff cycle will return true when cycle retry count reaches to placement retry cycle.
 	// else it returns false.
-	if task.PlacementRetryCount > 0 && math.Mod(task.PlacementRetryCount,
-		config.PlacementRetryCycle) == 0 {
+	numAttempts := task.PlacementRetryCount*config.PlacementAttemptsPerCycle + task.PlacementAttemptCount
+	if numAttempts > 0 &&
+		math.Mod(numAttempts,
+			config.PlacementRetryCycle*config.PlacementAttemptsPerCycle) == 0 {
 		return true
 	}
 	return false

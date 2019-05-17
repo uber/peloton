@@ -590,6 +590,9 @@ enum PodState {
 
   // The pod is to be deleted after termination
   POD_STATE_DELETED = 16;
+
+  // The pod is to be reserved on a node
+  POD_STATE_RESERVED = 17;
 }
 
 // Runtime status of a pod instance in a Job
