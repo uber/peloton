@@ -24,10 +24,7 @@ import (
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
-	pbupdate "github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/private/models"
-	"github.com/uber/peloton/pkg/jobmgr/cached"
-
 	goalstatemocks "github.com/uber/peloton/pkg/common/goalstate/mocks"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
@@ -140,22 +137,10 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoJob() {
 	suite.Nil(err)
 }
 
-//TestTaskTerminatedRetryNoJobRuntime tests restart when the job has no runtime
-func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoJobRuntime() {
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).Return(suite.cachedJob)
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).Return(nil, fmt.Errorf(""))
-	err := TaskTerminatedRetry(context.Background(), suite.taskEnt)
-	suite.Error(err)
-}
-
 // TestTaskFailRetryStatelessNoTask tests restart when the task is not in cache
 func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTask() {
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(nil, fmt.Errorf("fake db error"))
 	err := TaskTerminatedRetry(context.Background(), suite.taskEnt)
@@ -166,8 +151,6 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTask() {
 func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTaskRuntime() {
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
@@ -180,8 +163,6 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTaskRuntime(
 func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTaskConfig() {
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
@@ -198,8 +179,6 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTaskConfig()
 
 // TestTaskFailRetryStatelessNoTask tests restart when no update
 func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
-	jobRuntime := &pbjob.RuntimeInfo{}
-
 	suite.cachedTask.EXPECT().
 		ID().
 		Return(uint32(0)).
@@ -207,8 +186,6 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).Return(jobRuntime, nil)
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.taskRuntime.FailureCount = 2
@@ -261,10 +238,6 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 
 // TestTaskTerminatedRetryNoFailure tests restart when there is no failure
 func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
-	updateConfig := pbupdate.UpdateConfig{
-		MaxInstanceAttempts: uint32(3),
-	}
-
 	suite.taskRuntime.FailureCount = 0
 
 	suite.cachedTask.EXPECT().
@@ -274,8 +247,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
+
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.taskRuntime.Revision = &peloton.ChangeLog{UpdatedAt: uint64(time.Now().UnixNano())}
@@ -286,21 +258,6 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 		suite.jobID,
 		suite.instanceID,
 		gomock.Any()).Return(suite.taskConfig, &models.ConfigAddOn{}, nil)
-
-	suite.cachedJob.EXPECT().
-		AddWorkflow(suite.updateID).
-		Return(suite.cachedUpdate)
-	suite.cachedUpdate.EXPECT().
-		GetState().
-		Return(&cached.UpdateStateVector{
-			State: pbupdate.State_ROLLING_FORWARD,
-		}).
-		Times(2)
-	suite.cachedUpdate.EXPECT().IsTaskInUpdateProgress(
-		suite.instanceID).Return(true)
-	suite.cachedUpdate.EXPECT().
-		GetUpdateConfig().Return(&updateConfig)
-
 	suite.cachedJob.EXPECT().
 		ID().Return(suite.jobID)
 
@@ -332,52 +289,8 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 	suite.Nil(err)
 }
 
-// TestTaskTooManyFailuresNoRetry tests not retry on a task with too many failures
-func (suite *TaskTerminatedRetryTestSuite) TestTaskTooManyFailuresNoRetry() {
-	updateConfig := pbupdate.UpdateConfig{
-		MaxInstanceAttempts: uint32(3),
-	}
-	suite.taskRuntime.FailureCount = 5
-
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).Return(suite.cachedJob)
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
-	suite.cachedJob.EXPECT().
-		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
-	suite.cachedTask.EXPECT().
-		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
-	suite.taskStore.EXPECT().GetTaskConfig(
-		gomock.Any(),
-		suite.jobID,
-		suite.instanceID,
-		gomock.Any()).Return(suite.taskConfig, &models.ConfigAddOn{}, nil)
-	suite.cachedJob.EXPECT().
-		AddWorkflow(suite.updateID).
-		Return(suite.cachedUpdate)
-	suite.cachedUpdate.EXPECT().
-		GetState().
-		Return(&cached.UpdateStateVector{
-			State: pbupdate.State_ROLLING_FORWARD,
-		}).
-		Times(2)
-	suite.cachedUpdate.EXPECT().IsTaskInUpdateProgress(
-		suite.instanceID).Return(true)
-	suite.cachedUpdate.EXPECT().
-		GetUpdateConfig().Return(&updateConfig)
-	suite.cachedJob.EXPECT().
-		ID().
-		Return(suite.jobID)
-	err := TaskTerminatedRetry(context.Background(), suite.taskEnt)
-	suite.Nil(err)
-}
-
 // TestLostTaskRetry tests that a lost task is retried
 func (suite *TaskTerminatedRetryTestSuite) TestLostTaskRetry() {
-	updateConfig := pbupdate.UpdateConfig{
-		MaxInstanceAttempts: uint32(3),
-	}
-
 	suite.lostTaskRuntime.FailureCount = 0
 
 	suite.cachedTask.EXPECT().
@@ -387,8 +300,6 @@ func (suite *TaskTerminatedRetryTestSuite) TestLostTaskRetry() {
 
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
 	suite.cachedJob.EXPECT().
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.lostTaskRuntime.Revision = &peloton.ChangeLog{UpdatedAt: uint64(time.Now().UnixNano())}
@@ -401,138 +312,8 @@ func (suite *TaskTerminatedRetryTestSuite) TestLostTaskRetry() {
 		gomock.Any()).Return(suite.taskConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
-		AddWorkflow(suite.updateID).
-		Return(suite.cachedUpdate)
-	suite.cachedUpdate.EXPECT().
-		GetState().
-		Return(&cached.UpdateStateVector{
-			State: pbupdate.State_ROLLING_FORWARD,
-		}).
-		Times(2)
-	suite.cachedUpdate.EXPECT().IsTaskInUpdateProgress(
-		suite.instanceID).Return(true)
-	suite.cachedUpdate.EXPECT().
-		GetUpdateConfig().Return(&updateConfig)
-
-	suite.cachedJob.EXPECT().
 		ID().Return(suite.jobID)
 
-	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
-			runtimeDiff := runtimeDiffs[suite.instanceID]
-			suite.True(
-				runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != suite.mesosTaskID)
-			suite.True(
-				runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == suite.mesosTaskID)
-			suite.True(
-				runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
-		}).
-		Return(nil)
-
-	suite.cachedJob.EXPECT().
-		GetJobType().Return(pbjob.JobType_BATCH)
-
-	suite.taskGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-
-	suite.jobGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-
-	err := TaskTerminatedRetry(context.Background(), suite.taskEnt)
-	suite.Nil(err)
-}
-
-// TestLostTaskTooManyFailures tests that lost task with too many update
-// failures is not retried
-func (suite *TaskTerminatedRetryTestSuite) TestLostTaskTooManyFailures() {
-	updateConfig := pbupdate.UpdateConfig{
-		MaxInstanceAttempts: uint32(3),
-	}
-	suite.lostTaskRuntime.FailureCount = 5
-
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).Return(suite.cachedJob)
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
-	suite.cachedJob.EXPECT().
-		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
-	suite.cachedTask.EXPECT().
-		GetRuntime(gomock.Any()).Return(suite.lostTaskRuntime, nil)
-	suite.taskStore.EXPECT().GetTaskConfig(
-		gomock.Any(),
-		suite.jobID,
-		suite.instanceID,
-		gomock.Any()).Return(suite.taskConfig, &models.ConfigAddOn{}, nil)
-	suite.cachedJob.EXPECT().
-		AddWorkflow(suite.updateID).
-		Return(suite.cachedUpdate)
-	suite.cachedUpdate.EXPECT().
-		GetState().
-		Return(&cached.UpdateStateVector{
-			State: pbupdate.State_ROLLING_FORWARD,
-		}).
-		Times(2)
-	suite.cachedUpdate.EXPECT().IsTaskInUpdateProgress(
-		suite.instanceID).Return(true)
-	suite.cachedUpdate.EXPECT().
-		GetUpdateConfig().Return(&updateConfig)
-	suite.cachedJob.EXPECT().
-		ID().
-		Return(suite.jobID)
-	err := TaskTerminatedRetry(context.Background(), suite.taskEnt)
-	suite.Nil(err)
-}
-
-// TestTaskTerminatedRetryUpdateTerminated tests restart when update is terminal
-func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryUpdateTerminated() {
-	suite.taskRuntime.FailureCount = 2
-
-	suite.cachedTask.EXPECT().
-		ID().
-		Return(uint32(0)).
-		AnyTimes()
-
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).Return(suite.cachedJob)
-	suite.cachedJob.EXPECT().
-		GetRuntime(gomock.Any()).Return(suite.jobRuntime, nil)
-	suite.cachedJob.EXPECT().
-		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
-	suite.taskRuntime.Revision = &peloton.ChangeLog{
-		UpdatedAt: uint64(time.Now().Add(-3 * time.Minute).UnixNano()),
-	}
-	suite.cachedTask.EXPECT().
-		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
-	suite.taskStore.EXPECT().GetTaskConfig(
-		gomock.Any(),
-		suite.jobID,
-		suite.instanceID,
-		gomock.Any()).Return(suite.taskConfig, &models.ConfigAddOn{}, nil)
-
-	suite.cachedJob.EXPECT().
-		AddWorkflow(suite.updateID).
-		Return(suite.cachedUpdate)
-	suite.cachedUpdate.EXPECT().
-		GetState().
-		Return(&cached.UpdateStateVector{
-			State: pbupdate.State_SUCCEEDED,
-		}).
-		Times(2)
-	suite.cachedUpdate.EXPECT().
-		ID().
-		Return(suite.updateID)
-	suite.cachedJob.EXPECT().
-		ID().
-		Return(suite.jobID)
-	suite.updateGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-	suite.cachedJob.EXPECT().
-		ID().
-		Return(suite.jobID)
 	suite.cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
