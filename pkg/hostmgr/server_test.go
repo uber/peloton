@@ -30,6 +30,7 @@ import (
 	offer_mocks "github.com/uber/peloton/pkg/hostmgr/offer/mocks"
 	reconciler_mocks "github.com/uber/peloton/pkg/hostmgr/reconcile/mocks"
 	reserver_mocks "github.com/uber/peloton/pkg/hostmgr/reserver/mocks"
+	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
 
 	"github.com/golang/mock/gomock"
 	log "github.com/sirupsen/logrus"
@@ -62,10 +63,12 @@ type ServerTestSuite struct {
 	mInbound          *mhttp_mocks.MockInbound
 	recoveryHandler   *recovery_mocks.MockRecoveryHandler
 
-	reconciler *reconciler_mocks.MockTaskReconciler
-	drainer    *host_mocks.MockDrainer
-	reserver   *reserver_mocks.MockReserver
-	server     *Server
+	reconciler     *reconciler_mocks.MockTaskReconciler
+	drainer        *host_mocks.MockDrainer
+	reserver       *reserver_mocks.MockReserver
+	watchProcessor *watchmocks.MockWatchProcessor
+
+	server *Server
 }
 
 func (suite *ServerTestSuite) SetupTest() {
@@ -79,6 +82,7 @@ func (suite *ServerTestSuite) SetupTest() {
 	suite.recoveryHandler = recovery_mocks.NewMockRecoveryHandler(suite.ctrl)
 	suite.drainer = host_mocks.NewMockDrainer(suite.ctrl)
 	suite.reserver = reserver_mocks.NewMockReserver(suite.ctrl)
+	suite.watchProcessor = watchmocks.NewMockWatchProcessor(suite.ctrl)
 
 	suite.server = &Server{
 		ID:   _ID,
@@ -102,7 +106,8 @@ func (suite *ServerTestSuite) SetupTest() {
 		minBackoff: _minBackoff,
 		maxBackoff: _maxBackoff,
 
-		metrics: metrics.NewMetrics(suite.testScope),
+		metrics:        metrics.NewMetrics(suite.testScope),
+		watchProcessor: suite.watchProcessor,
 	}
 	suite.server.Start()
 }
@@ -126,6 +131,7 @@ func (suite *ServerTestSuite) TestNewServer() {
 		suite.recoveryHandler,
 		suite.drainer,
 		suite.reserver,
+		suite.watchProcessor,
 	)
 	suite.ctrl.Finish()
 	suite.NotNil(s)
@@ -142,6 +148,7 @@ func (suite *ServerTestSuite) TestGainedLeadershipCallback() {
 // Test gained leadership callback
 func (suite *ServerTestSuite) TestLostLeadershipCallback() {
 	suite.mInbound.EXPECT().IsRunning().Return(false).AnyTimes()
+	suite.watchProcessor.EXPECT().StopEventClients()
 	suite.server.handlersRunning.Store(false)
 	suite.server.LostLeadershipCallback()
 	suite.ctrl.Finish()

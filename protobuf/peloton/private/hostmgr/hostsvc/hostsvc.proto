@@ -409,7 +409,11 @@ service InternalHostService
   rpc GetHostsByQuery(GetHostsByQueryRequest) returns (GetHostsByQueryResponse);
 
   // Return all the outstanding status update events present in the event stream.
-  rpc GetStatusUpdateEvents(GetStatusUpdateEventsRequest) returns(GetStatusUpdateEventsResponse);
+  rpc WatchEvent(WatchEventRequest) returns (stream WatchEventResponse);
+
+  // Cancel a watch. The watch stream will get an error indicating
+  // watch was cancelled and the stream will be closed.
+  rpc CancelWatchEvent(CancelWatchRequest) returns (CancelWatchResponse);
 
   // Get the hosts in DRAINING state. This method is called by Resource Manager
   // to get hosts which are to be drained.
@@ -504,28 +508,38 @@ message GetHostsByQueryResponse {
 }
 
 /**
- * Request to get all pending status update events
+ * Request object to watch request by client
  */
-message GetStatusUpdateEventsRequest {}
+message WatchEventRequest {}
 
 /**
- * Responds all pending status update events.
+ * Responds to all pending status update events.
  */
-message GetStatusUpdateEventsResponse {
-  message Error {
-    string message = 1;
-  }
+message WatchEventResponse {
 
-  repeated eventstream.Event events = 1;
+    // Unique identifier for the watch session
+    string watch_id = 1;
+    repeated eventstream.Event events = 2;
 
-  Error error = 2;
 }
+
+// CancelRequest is request for method WatchService.Cancel
+message CancelWatchRequest
+{
+    // ID of the watch session to cancel.
+    string watch_id = 1;
+}
+
+// CancelRequest is response for method WatchService.Cancel
+// Return errors:
+//    NOT_FOUND: Watch ID not found
+message CancelWatchResponse {}
 
 /**
  * NoOffersError represents on outstanding offers are present.
  */
 message NoOffersError {
-  string message = 1;
+    string message = 1;
 }
 
 /**

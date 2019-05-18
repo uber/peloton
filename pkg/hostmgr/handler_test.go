@@ -34,6 +34,7 @@ import (
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
+	hostsvcmocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/uber/peloton/pkg/common/queue"
 	"github.com/uber/peloton/pkg/common/reservation"
 	"github.com/uber/peloton/pkg/common/util"
@@ -50,6 +51,8 @@ import (
 	reserver_mocks "github.com/uber/peloton/pkg/hostmgr/reserver/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
 	task_state_mocks "github.com/uber/peloton/pkg/hostmgr/task/mocks"
+	"github.com/uber/peloton/pkg/hostmgr/watchevent"
+	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
 	storage_mocks "github.com/uber/peloton/pkg/storage/mocks"
 
 	"github.com/gogo/protobuf/proto"
@@ -58,6 +61,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 	"golang.org/x/net/context"
 )
 
@@ -198,6 +202,7 @@ func generateLaunchableTasks(numTasks int) []*hostsvc.LaunchableTask {
 type HostMgrHandlerTestSuite struct {
 	suite.Suite
 
+	ctx                    context.Context
 	ctrl                   *gomock.Controller
 	testScope              tally.TestScope
 	schedulerClient        *mpb_mocks.MockSchedulerClient
@@ -213,6 +218,8 @@ type HostMgrHandlerTestSuite struct {
 	downMachines           []*mesos.MachineID
 	maintenanceHostInfoMap *hm.MockMaintenanceHostInfoMap
 	taskStateManager       *task_state_mocks.MockStateManager
+	watchProcessor         *watchmocks.MockWatchProcessor
+	watchEventServer       *hostsvcmocks.MockInternalHostServiceServiceWatchEventYARPCServer
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupSuite() {
@@ -236,6 +243,7 @@ func (suite *HostMgrHandlerTestSuite) SetupSuite() {
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupTest() {
+	suite.ctx = context.Background()
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.testScope = tally.NewTestScope("", map[string]string{})
 	suite.schedulerClient = mpb_mocks.NewMockSchedulerClient(suite.ctrl)
@@ -266,7 +274,8 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 
 	suite.maintenanceQueue = qm.NewMockMaintenanceQueue(suite.ctrl)
 	suite.maintenanceHostInfoMap = hm.NewMockMaintenanceHostInfoMap(suite.ctrl)
-
+	suite.watchProcessor = watchmocks.NewMockWatchProcessor(suite.ctrl)
+	suite.watchEventServer = hostsvcmocks.NewMockInternalHostServiceServiceWatchEventYARPCServer(suite.ctrl)
 	suite.handler = &ServiceHandler{
 		schedulerClient:        suite.schedulerClient,
 		operatorMasterClient:   suite.masterOperatorClient,
@@ -278,6 +287,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		maintenanceQueue:       suite.maintenanceQueue,
 		maintenanceHostInfoMap: suite.maintenanceHostInfoMap,
 		taskStateManager:       suite.taskStateManager,
+		watchProcessor:         suite.watchProcessor,
 	}
 	suite.handler.reserver = reserver.NewReserver(
 		metrics.NewMetrics(suite.testScope),
@@ -564,34 +574,6 @@ func (suite *HostMgrHandlerTestSuite) TestGetHostsByQueryNoHosts() {
 	suite.pool.AddOffers(context.Background(), offers)
 	resp, _ := suite.handler.GetHostsByQuery(rootCtx, req)
 	suite.Equal(0, len(resp.Hosts))
-}
-
-func (suite *HostMgrHandlerTestSuite) TestStatusUpdateEvents() {
-	defer suite.ctrl.Finish()
-
-	suite.taskStateManager.EXPECT().GetStatusUpdateEvents().
-		Return(nil, nil)
-	resp, _ := suite.handler.GetStatusUpdateEvents(rootCtx,
-		&hostsvc.GetStatusUpdateEventsRequest{})
-	suite.Equal(0, len(resp.GetEvents()))
-
-	suite.taskStateManager.EXPECT().GetStatusUpdateEvents().
-		Return(nil, errors.New("error on getting status update events"))
-	resp, err := suite.handler.GetStatusUpdateEvents(rootCtx,
-		&hostsvc.GetStatusUpdateEventsRequest{})
-	suite.Error(err)
-	suite.Nil(resp)
-
-	var events []*pb_eventstream.Event
-	for i := 0; i < 5; i++ {
-		events = append(events, createEvent(uuid.New(), i+1))
-	}
-
-	suite.taskStateManager.EXPECT().GetStatusUpdateEvents().
-		Return(events, nil)
-	resp, _ = suite.handler.GetStatusUpdateEvents(rootCtx,
-		&hostsvc.GetStatusUpdateEventsRequest{})
-	suite.Equal(5, len(resp.Events))
 }
 
 // This checks the happy case of acquire -> release -> acquire
@@ -2943,4 +2925,173 @@ func (suite *HostMgrHandlerTestSuite) TestToHostStatus() {
 	for i, status := range statuses {
 		suite.Equal(expectedStatuses[i], toHostStatus(status))
 	}
+}
+
+// TestWatchEvent sets up a watch client, and verifies the responses
+// are streamed back correctly based on the input, finally the
+// test cancels the watch stream.
+func (suite *HostMgrHandlerTestSuite) TestWatchEvent() {
+	watchID := watchevent.NewWatchID()
+	eventClient := &watchevent.EventClient{
+		// do not set buffer size for input to make sure the
+		// tests sends all the events before sending stop
+		// signal
+		Input:  make(chan *pb_eventstream.Event),
+		Signal: make(chan watchevent.StopSignal, 1),
+	}
+
+	suite.watchProcessor.EXPECT().NewEventClient().
+		Return(watchID, eventClient, nil)
+	suite.watchProcessor.EXPECT().StopEventClient(watchID)
+
+	event := &pb_eventstream.Event{}
+
+	suite.watchEventServer.EXPECT().
+		Send(&hostsvc.WatchEventResponse{
+			WatchId: watchID,
+			Events:  nil,
+		}).
+		Return(nil)
+	suite.watchEventServer.EXPECT().
+		Send(&hostsvc.WatchEventResponse{
+			WatchId: watchID,
+			Events:  []*pb_eventstream.Event{event},
+		}).
+		Return(nil)
+
+	req := &hostsvc.WatchEventRequest{}
+
+	go func() {
+		eventClient.Input <- event
+		// cancelling  watch event
+		eventClient.Signal <- watchevent.StopSignalCancel
+	}()
+
+	err := suite.handler.WatchEvent(req, suite.watchEventServer)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsCancelled(err))
+}
+
+// TestWatchEvent_MaxClientReached checks Watch will return resource-exhausted
+// error when NewEventClient reached max client.
+func (suite *HostMgrHandlerTestSuite) TestWatchEvent_MaxClientReached() {
+	suite.watchProcessor.EXPECT().NewEventClient().
+		Return("", nil, yarpcerrors.ResourceExhaustedErrorf("max client reached"))
+
+	req := &hostsvc.WatchEventRequest{}
+	err := suite.handler.WatchEvent(req, suite.watchEventServer)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsResourceExhausted(err))
+}
+
+// TestWatchEvent_InitSendError tests for error case of initial response.
+func (suite *HostMgrHandlerTestSuite) TestWatchEvent_InitSendError() {
+	watchID := watchevent.NewWatchID()
+	eventClient := &watchevent.EventClient{
+		// do not set buffer size for input to make sure the
+		// tests sends all the events before sending stop
+		// signal
+		Input:  make(chan *pb_eventstream.Event),
+		Signal: make(chan watchevent.StopSignal, 1),
+	}
+
+	suite.watchProcessor.EXPECT().NewEventClient().
+		Return(watchID, eventClient, nil)
+	suite.watchProcessor.EXPECT().StopEventClient(watchID)
+
+	sendErr := errors.New("message:transport is closing")
+
+	// initial response
+	suite.watchEventServer.EXPECT().
+		Send(&hostsvc.WatchEventResponse{
+			WatchId: watchID,
+			Events:  nil,
+		}).
+		Return(sendErr)
+
+	req := &hostsvc.WatchEventRequest{}
+
+	err := suite.handler.WatchEvent(req, suite.watchEventServer)
+	suite.Error(err)
+	suite.Equal(sendErr, err)
+}
+
+// TestWatchEvent_InitSendError tests for error case of subsequent response
+// after initial one.
+func (suite *HostMgrHandlerTestSuite) TestWatchEvent_SendError() {
+	watchID := watchevent.NewWatchID()
+	eventClient := &watchevent.EventClient{
+		// do not set buffer size for input to make sure the
+		// tests sends all the events before sending stop
+		// signal
+		Input:  make(chan *pb_eventstream.Event),
+		Signal: make(chan watchevent.StopSignal, 1),
+	}
+
+	suite.watchProcessor.EXPECT().NewEventClient().
+		Return(watchID, eventClient, nil)
+	suite.watchProcessor.EXPECT().StopEventClient(watchID)
+
+	// initial response
+	event := &pb_eventstream.Event{}
+
+	suite.watchEventServer.EXPECT().
+		Send(&hostsvc.WatchEventResponse{
+			WatchId: watchID,
+			Events:  nil,
+		}).
+		Return(nil)
+
+	sendErr := errors.New("message:transport is closing")
+
+	// subsequent response
+	suite.watchEventServer.EXPECT().
+		Send(&hostsvc.WatchEventResponse{
+			WatchId: watchID,
+			Events:  []*pb_eventstream.Event{event},
+		}).
+		Return(sendErr)
+
+	req := &hostsvc.WatchEventRequest{}
+
+	go func() {
+		eventClient.Input <- event
+		eventClient.Signal <- watchevent.StopSignalCancel
+	}()
+
+	err := suite.handler.WatchEvent(req, suite.watchEventServer)
+	suite.Error(err)
+	suite.Equal(sendErr, err)
+}
+
+// TestCancelWatchEvent tests Cancel request are proxied to watch processor correctly.
+func (suite *HostMgrHandlerTestSuite) TestCancel() {
+	watchID := watchevent.NewWatchID()
+
+	suite.watchProcessor.EXPECT().StopEventClient(watchID).Return(nil)
+
+	resp, err := suite.handler.CancelWatchEvent(suite.ctx, &hostsvc.CancelWatchRequest{
+		WatchId: watchID,
+	})
+	suite.NotNil(resp)
+	suite.NoError(err)
+}
+
+// TestCancelWatchEvent_NotFoundTaskEvent tests Cancel response returns not-found error, when
+// an invalid  watch-id is passed in.
+func (suite *HostMgrHandlerTestSuite) TestCancel_NotFoundTask() {
+	watchID := watchevent.NewWatchID()
+
+	err := yarpcerrors.NotFoundErrorf("watch_id %s not exist for task watch client", watchID)
+
+	suite.watchProcessor.EXPECT().
+		StopEventClient(watchID).
+		Return(err)
+
+	resp, err := suite.handler.CancelWatchEvent(suite.ctx, &hostsvc.CancelWatchRequest{
+		WatchId: watchID,
+	})
+	suite.Nil(resp)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsNotFound(err))
 }

@@ -33,6 +33,7 @@ import (
 	hostmgr_mesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
+	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
 	storage_mocks "github.com/uber/peloton/pkg/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -68,6 +69,7 @@ type stateManagerTestSuite struct {
 	store           *storage_mocks.MockFrameworkInfoStore
 	driver          hostmgr_mesos.SchedulerDriver
 	schedulerClient *mpb_mocks.MockSchedulerClient
+	watchProcessor  *watchmocks.MockWatchProcessor
 }
 
 func (s *stateManagerTestSuite) SetupTest() {
@@ -90,6 +92,7 @@ func (s *stateManagerTestSuite) SetupTest() {
 		},
 	})
 	s.schedulerClient = mpb_mocks.NewMockSchedulerClient(s.ctrl)
+	s.watchProcessor = watchmocks.NewMockWatchProcessor(s.ctrl)
 
 	s.resMgrClient = res_mocks.NewMockResourceManagerServiceYARPCClient(s.ctrl)
 	s.testScope = tally.NewTestScope("", map[string]string{})
@@ -146,6 +149,7 @@ func (s *stateManagerTestSuite) createNewStateManager(ackConcurrency int) StateM
 	return NewStateManager(
 		s.dispatcher,
 		s.schedulerClient,
+		s.watchProcessor,
 		10,
 		ackConcurrency,
 		s.resMgrClient,
@@ -207,7 +211,8 @@ func (s *stateManagerTestSuite) TestInitStateManager() {
 func (s *stateManagerTestSuite) TestAddTaskStatusUpdate() {
 	s.stateManager = s.createNewStateManager(10)
 	var events []*pb_eventstream.Event
-	event := &pb_eventstream.Event{
+	var event *pb_eventstream.Event
+	event = &pb_eventstream.Event{
 		Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
 		MesosTaskStatus: s.taskStatusUpdate.GetUpdate().GetStatus(),
 	}
@@ -221,13 +226,10 @@ func (s *stateManagerTestSuite) TestAddTaskStatusUpdate() {
 		Return(&resmgrsvc.NotifyTaskUpdatesResponse{
 			PurgeOffset: 1,
 		}, nil)
+	s.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
 
 	s.stateManager.Update(s.context, s.taskStatusUpdate)
 	s.stateManager.UpdateCounters(nil)
-
-	events, err := s.stateManager.GetStatusUpdateEvents()
-	s.Equal(1, len(events))
-	s.NoError(err)
 
 	time.Sleep(500 * time.Millisecond)
 }

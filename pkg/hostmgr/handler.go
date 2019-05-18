@@ -27,6 +27,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
+	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"github.com/uber/peloton/pkg/common"
@@ -51,6 +52,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/summary"
 	taskStateManager "github.com/uber/peloton/pkg/hostmgr/task"
 	hmutil "github.com/uber/peloton/pkg/hostmgr/util"
+	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 	"github.com/uber/peloton/pkg/storage"
 
 	"github.com/pkg/errors"
@@ -100,13 +102,14 @@ type ServiceHandler struct {
 	slackResourceTypes     []string
 	maintenanceHostInfoMap host.MaintenanceHostInfoMap
 	taskStateManager       taskStateManager.StateManager
+	watchProcessor         watchevent.WatchProcessor
 	disableKillTasks       atomic.Bool
 }
 
 // NewServiceHandler creates a new ServiceHandler.
 func NewServiceHandler(
 	d *yarpc.Dispatcher,
-	parent tally.Scope,
+	metrics *metrics.Metrics,
 	schedulerClient mpb.SchedulerClient,
 	masterOperatorClient mpb.MasterOperatorClient,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
@@ -117,12 +120,12 @@ func NewServiceHandler(
 	maintenanceQueue mqueue.MaintenanceQueue,
 	slackResourceTypes []string,
 	maintenanceHostInfoMap host.MaintenanceHostInfoMap,
-	taskStateManager taskStateManager.StateManager) *ServiceHandler {
+	taskStateManager taskStateManager.StateManager, watchProcessor watchevent.WatchProcessor) *ServiceHandler {
 
 	handler := &ServiceHandler{
 		schedulerClient:        schedulerClient,
 		operatorMasterClient:   masterOperatorClient,
-		metrics:                metrics.NewMetrics(parent),
+		metrics:                metrics,
 		offerPool:              offer.GetEventHandler().GetOfferPool(),
 		frameworkInfoProvider:  frameworkInfoProvider,
 		volumeStore:            volumeStore,
@@ -132,6 +135,7 @@ func NewServiceHandler(
 		slackResourceTypes:     slackResourceTypes,
 		maintenanceHostInfoMap: maintenanceHostInfoMap,
 		taskStateManager:       taskStateManager,
+		watchProcessor:         watchProcessor,
 	}
 	// Creating Reserver object for handler
 	handler.reserver = reserver.NewReserver(
@@ -245,21 +249,123 @@ func (h *ServiceHandler) GetHostsByQuery(
 	}, nil
 }
 
-// GetStatusUpdateEvents returns all the outstanding status update
-// events
-func (h *ServiceHandler) GetStatusUpdateEvents(
-	ctx context.Context,
-	body *hostsvc.GetStatusUpdateEventsRequest,
-) (*hostsvc.GetStatusUpdateEventsResponse, error) {
+// Watch creates a watch to get notified about changes to mesos task update event.
+// Changed objects are streamed back to the caller till the watch is
+// cancelled.
+func (h *ServiceHandler) WatchEvent(
+	req *hostsvc.WatchEventRequest,
+	stream hostsvc.InternalHostServiceServiceWatchEventYARPCServer,
+) error {
+	// Create watch for mesos task update
 
-	events, err := h.taskStateManager.GetStatusUpdateEvents()
+	log.WithField("request", req).
+		Debug("starting new event watch")
+
+	watchID, eventClient, err := h.watchProcessor.NewEventClient()
 	if err != nil {
+		log.WithError(err).
+			Warn("failed to create  watch client")
+		return err
+	}
+
+	defer func() {
+		h.watchProcessor.StopEventClient(watchID)
+	}()
+
+	initResp := &hostsvc.WatchEventResponse{
+		WatchId: watchID,
+	}
+	if err := stream.Send(initResp); err != nil {
+		log.WithField("watch_id", watchID).
+			WithError(err).
+			Warn("failed to send initial response for  watch event")
+		return err
+	}
+
+	for {
+		select {
+		case event := <-eventClient.Input:
+			resp := &hostsvc.WatchEventResponse{
+				WatchId: watchID,
+				Events:  []*pb_eventstream.Event{event},
+			}
+			if err := stream.Send(resp); err != nil {
+				log.WithField("watch_id", watchID).
+					WithError(err).
+					Warn("failed to send response for  watch event")
+				return err
+			}
+		case s := <-eventClient.Signal:
+			log.WithFields(log.Fields{
+				"watch_id": watchID,
+				"signal":   s,
+			}).Debug("received signal")
+
+			err := handleSignal(
+				watchID,
+				s,
+				map[watchevent.StopSignal]tally.Counter{
+					watchevent.StopSignalCancel:   h.metrics.WatchEventCancel,
+					watchevent.StopSignalOverflow: h.metrics.WatchEventOverflow,
+				},
+			)
+
+			if !yarpcerrors.IsCancelled(err) {
+				log.WithField("watch_id", watchID).
+					WithError(err).
+					Warn("watch stopped due to signal")
+			}
+
+			return err
+		}
+	}
+
+}
+
+// handleSignal converts StopSignal to appropriate yarpcerror
+func handleSignal(
+	watchID string,
+	s watchevent.StopSignal,
+	metrics map[watchevent.StopSignal]tally.Counter,
+) error {
+	c := metrics[s]
+	if c != nil {
+		c.Inc(1)
+	}
+
+	switch s {
+	case watchevent.StopSignalCancel:
+		return yarpcerrors.CancelledErrorf("watch cancelled: %s", watchID)
+	case watchevent.StopSignalOverflow:
+		return yarpcerrors.InternalErrorf("event overflow: %s", watchID)
+	default:
+		return yarpcerrors.InternalErrorf("unexpected signal: %s", s)
+	}
+}
+
+// Cancel cancels a watch. The watch stream will get an error indicating
+// watch was cancelled and the stream will be closed.
+func (h *ServiceHandler) CancelWatchEvent(
+	ctx context.Context,
+	req *hostsvc.CancelWatchRequest,
+) (*hostsvc.CancelWatchResponse, error) {
+	watchID := req.GetWatchId()
+
+	err := h.watchProcessor.StopEventClient(watchID)
+	if err != nil {
+		if yarpcerrors.IsNotFound(err) {
+			h.metrics.WatchCancelNotFound.Inc(1)
+		}
+
+		log.WithField("watch_id", watchID).
+			WithError(err).
+			Warn("failed to stop task client")
+
 		return nil, err
 	}
 
-	return &hostsvc.GetStatusUpdateEventsResponse{
-		Events: events,
-	}, nil
+	return &hostsvc.CancelWatchResponse{}, nil
+
 }
 
 // AcquireHostOffers implements InternalHostService.AcquireHostOffers.

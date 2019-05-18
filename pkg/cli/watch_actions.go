@@ -1,4 +1,3 @@
-// Copyright (c) 2019 Uber Technologies, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,9 +21,41 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
 	watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"go.uber.org/yarpc/yarpcerrors"
 )
+
+// WatchHostManagerEvents is the action for starting a watch stream for host manager events
+func (c *Client) WatchHostManagerEvents() error {
+	stream, err := c.hostMgrClient.WatchEvent(
+		c.ctx,
+		&hostsvc.WatchEventRequest{},
+	)
+	if err != nil {
+		fmt.Println("watch stream for the host manager failed")
+		return nil
+	}
+
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			fmt.Println("watch stream has ended")
+			return err
+		}
+
+		out, err := marshallResponse(defaultResponseFormat, resp)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("%v\n", string(out))
+		tabWriter.Flush()
+	}
+}
 
 // WatchPod is the action for starting a watch stream for pod, specified
 // by job id and pod names.

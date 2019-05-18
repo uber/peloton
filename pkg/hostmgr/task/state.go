@@ -38,6 +38,7 @@ import (
 	"github.com/uber/peloton/pkg/common/eventstream"
 	hostmgr_mesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
+	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 )
 
 const (
@@ -54,10 +55,6 @@ type StateManager interface {
 
 	// EventPurged is for implementing PurgedEventsProcessor interface.
 	EventPurged(events []*cirbuf.CircularBufferItem)
-
-	// GetStatusUpdateEvents returns all the outstanding status update events
-	// from the event stream
-	GetStatusUpdateEvents() ([]*pb_eventstream.Event, error)
 }
 
 type stateManager struct {
@@ -66,6 +63,7 @@ type stateManager struct {
 	updateAckConcurrency int
 	ackChannel           chan *mesos.TaskStatus // Buffers the mesos task status updates to be acknowledged
 	ackStatusMap         sync.Map
+	watchProcessor       watchevent.WatchProcessor
 
 	eventStreamHandler *eventstream.Handler
 	metrics            *Metrics
@@ -130,6 +128,7 @@ func initEventStreamHandler(
 func NewStateManager(
 	d *yarpc.Dispatcher,
 	schedulerClient mpb.SchedulerClient,
+	watchProcessor watchevent.WatchProcessor,
 	updateBufferSize int,
 	updateAckConcurrency int,
 	resmgrClient resmgrsvc.ResourceManagerServiceYARPCClient,
@@ -138,6 +137,7 @@ func NewStateManager(
 	stateManagerScope := parentScope.SubScope("taskStateManager")
 	handler := &stateManager{
 		schedulerclient:      schedulerClient,
+		watchProcessor:       watchProcessor,
 		updateAckConcurrency: updateAckConcurrency,
 		ackChannel:           make(chan *mesos.TaskStatus, updateBufferSize),
 		metrics:              NewMetrics(stateManagerScope),
@@ -211,13 +211,19 @@ func (f *eventForwarder) notifyResourceManager(
 // Update is the Mesos callback on mesos state updates
 func (m *stateManager) Update(ctx context.Context, body *sched.Event) error {
 	var err error
+	var event *pb_eventstream.Event
+	defer func() {
+		if err == nil {
+			m.watchProcessor.NotifyEventChange(event)
+		}
+	}()
 	taskUpdate := body.GetUpdate()
 	m.metrics.taskUpdateCounter.Inc(1)
 	taskStateCounter := m.metrics.scope.Counter(
 		"task_state_" + taskUpdate.GetStatus().GetState().String())
 	taskStateCounter.Inc(1)
 
-	event := &pb_eventstream.Event{
+	event = &pb_eventstream.Event{
 		MesosTaskStatus: taskUpdate.GetStatus(),
 		Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
 	}
@@ -243,17 +249,6 @@ func (m *stateManager) UpdateCounters(_ *uatomic.Bool) {
 		return true
 	})
 	m.metrics.taskAckMapSize.Update(length)
-}
-
-// GetStatusUpdateEvents returns all the outstanding status update events
-// from the event stream
-// This method is primarily for deubbing purpose
-func (m *stateManager) GetStatusUpdateEvents() ([]*pb_eventstream.Event, error) {
-	events, err := m.eventStreamHandler.GetEvents()
-	if err != nil {
-		return nil, err
-	}
-	return events, nil
 }
 
 // startAsyncProcessTaskUpdates concurrently process task status update events

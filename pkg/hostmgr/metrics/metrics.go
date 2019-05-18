@@ -72,12 +72,21 @@ type Metrics struct {
 	MarkHostsDrained     tally.Counter
 	MarkHostsDrainedFail tally.Counter
 
+	WatchEventCancel   tally.Counter
+	WatchEventOverflow tally.Counter
+
+	WatchCancelNotFound tally.Counter
+
+	// Time takes to acquire lock in watch processor
+	WatchProcessorLockDuration tally.Timer
+
 	scope tally.Scope
 }
 
 // NewMetrics returns a new instance of hostmgr.Metrics.
 func NewMetrics(scope tally.Scope) *Metrics {
 	serverScope := scope.SubScope("server")
+	watchEventScope := scope.SubScope("watch")
 	return &Metrics{
 		LaunchTasks:              scope.Counter("launch_tasks"),
 		LaunchTasksFail:          scope.Counter("launch_tasks_fail"),
@@ -127,6 +136,11 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		MarkHostsDrained:     scope.Counter("mark_hosts_drained"),
 		MarkHostsDrainedFail: scope.Counter("mark_hosts_drained_fail"),
+
+		WatchEventCancel:           watchEventScope.Counter("watch_event_cancel"),
+		WatchEventOverflow:         watchEventScope.Counter("watch_event_overflow"),
+		WatchCancelNotFound:        watchEventScope.Counter("watch_cancel_not_found"),
+		WatchProcessorLockDuration: watchEventScope.Timer("watch_processor_lock_duration"),
 
 		scope: scope,
 	}

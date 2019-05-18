@@ -29,6 +29,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/offer"
 	"github.com/uber/peloton/pkg/hostmgr/reconcile"
 	"github.com/uber/peloton/pkg/hostmgr/reserver"
+	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -83,6 +84,9 @@ type Server struct {
 
 	// ticker controls connection state check loop
 	ticker *time.Ticker
+
+	// watch processor control all the client connection listening for the events
+	watchProcessor watchevent.WatchProcessor
 }
 
 // NewServer creates a host manager Server instance.
@@ -96,7 +100,8 @@ func NewServer(
 	reconciler reconcile.TaskReconciler,
 	recoveryHandler RecoveryHandler,
 	drainer host.Drainer,
-	reserver reserver.Reserver) *Server {
+	reserver reserver.Reserver,
+	watchProcessor watchevent.WatchProcessor) *Server {
 
 	s := &Server{
 		ID:                   leader.NewID(httpPort, grpcPort),
@@ -113,6 +118,7 @@ func NewServer(
 		drainer:              drainer,
 		reserver:             reserver,
 		metrics:              metrics.NewMetrics(parent),
+		watchProcessor:       watchProcessor,
 	}
 	log.Info("Hostmgr server started.")
 	return s
@@ -151,6 +157,7 @@ func (s *Server) LostLeadershipCallback() error {
 	log.WithField("role", s.role).Info("Lost leadership")
 	s.elected.Store(false)
 	s.isLeader = false
+	s.watchProcessor.StopEventClients()
 
 	return nil
 }
@@ -172,6 +179,7 @@ func (s *Server) ShutDownCallback() error {
 	log.WithFields(log.Fields{"role": s.role}).Info("Quitting election")
 	s.elected.Store(false)
 	s.isLeader = false
+	s.watchProcessor.StopEventClients()
 
 	return nil
 }

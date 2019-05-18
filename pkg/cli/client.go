@@ -99,7 +99,8 @@ func New(
 				Unary: t.NewSingleOutbound(resmgrURL.Host),
 			},
 			common.PelotonHostManager: transport.Outbounds{
-				Unary: t.NewSingleOutbound(hostmgrURL.Host),
+				Unary:  t.NewSingleOutbound(hostmgrURL.Host),
+				Stream: t.NewSingleOutbound(hostmgrURL.Host),
 			},
 		},
 		OutboundMiddleware: yarpc.OutboundMiddleware{

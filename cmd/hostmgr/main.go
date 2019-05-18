@@ -42,10 +42,12 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/peer"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/transport/mhttp"
+	hostmetric "github.com/uber/peloton/pkg/hostmgr/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/offer"
 	"github.com/uber/peloton/pkg/hostmgr/queue"
 	"github.com/uber/peloton/pkg/hostmgr/reconcile"
 	"github.com/uber/peloton/pkg/hostmgr/task"
+	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 	"github.com/uber/peloton/pkg/middleware/inbound"
 	"github.com/uber/peloton/pkg/middleware/outbound"
 	"github.com/uber/peloton/pkg/storage/stores"
@@ -552,6 +554,9 @@ func main() {
 	)
 
 	maintenanceQueue := queue.NewMaintenanceQueue()
+	metric := hostmetric.NewMetrics(rootScope)
+	watchevent.InitWatchProcessor(cfg.HostManager.Watch, metric)
+	watchProcessor := watchevent.GetWatchProcessor()
 
 	// Initializing TaskStateManager will start to record task status
 	// update back to storage.  TODO(zhitao): This is
@@ -561,6 +566,7 @@ func main() {
 	taskStateManager := task.NewStateManager(
 		dispatcher,
 		schedulerClient,
+		watchProcessor,
 		cfg.HostManager.TaskUpdateBufferSize,
 		cfg.HostManager.TaskUpdateAckConcurrency,
 		resmgrsvc.NewResourceManagerServiceYARPCClient(
@@ -571,7 +577,7 @@ func main() {
 	// Create new hostmgr internal service handler.
 	serviceHandler := hostmgr.NewServiceHandler(
 		dispatcher,
-		rootScope,
+		metric,
 		schedulerClient,
 		masterOperatorClient,
 		driver,
@@ -583,6 +589,7 @@ func main() {
 		cfg.HostManager.SlackResourceTypes,
 		maintenanceHostInfoMap,
 		taskStateManager,
+		watchProcessor,
 	)
 
 	hostsvc.InitServiceHandler(
@@ -629,6 +636,7 @@ func main() {
 		recoveryHandler,
 		drainer,
 		serviceHandler.GetReserver(),
+		watchProcessor,
 	)
 	server.Start()
 

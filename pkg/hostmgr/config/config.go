@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/uber/peloton/pkg/hostmgr/reconcile"
+	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 )
 
 // Config is Host Manager specific configuration
@@ -78,4 +79,7 @@ type Config struct {
 	BinPacking string `yaml:"bin_packing"`
 	// Bin Packing Refresh Interval
 	BinPackingRefreshIntervalSec time.Duration `yaml:"bin_packing_refresh_interval"`
+
+	// Watch API specific configuration
+	Watch watchevent.Config `yaml:"watch"`
 }

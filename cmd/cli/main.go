@@ -621,8 +621,8 @@ var (
 	getHostsCmpLess   = getHosts.Flag("less", "list hosts with resources less than cpu and/or gpu cores specified (default to greater than and equal to if not specified)").Short('l').Default("false").Bool()
 	getHostsHostnames = getHosts.Flag("hosts", "filter the hosts based on the comma separated hostnames provided").String()
 
-	// command for list status update events present in the event stream
-	eventStream = hostmgr.Command("events", "list all the task status update events present in event stream")
+	// command to watch mesos events update present in the event stream
+	watchHostMgr = hostmgr.Command("watch_events", "watch mesos event update received from mesos")
 
 	// command to disable the kill tasks request to mesos master
 	disableKillTasks = hostmgr.Command("disable-kill-tasks", "disable the kill task request to mesos master")
@@ -901,8 +901,8 @@ func main() {
 		err = client.PodRefreshAction(*podRefreshPodName)
 	case podStart.FullCommand():
 		err = client.PodStartAction(*podStartPodName)
-	case eventStream.FullCommand():
-		err = client.EventStreamAction()
+	case watchHostMgr.FullCommand():
+		err = client.WatchHostManagerEvents()
 	case statelessListJobs.FullCommand():
 		err = client.StatelessListJobsAction()
 	case statelessListPods.FullCommand():

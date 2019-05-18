@@ -12,33 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cli
+package watchevent
 
-import (
-	"fmt"
-
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+const (
+	_defaultBufferSize int = 100
+	_defaultMaxClient  int = 1000
 )
 
-// EventStreamAction prints all task status update events present in the event stream.
-func (c *Client) EventStreamAction() error {
+// Config for Watch API
+type Config struct {
+	// Size of per-client internal buffer
+	BufferSize int `yaml:"buffer_size"`
 
-	resp, err := c.hostMgrClient.GetStatusUpdateEvents(
-		c.ctx,
-		&hostsvc.GetStatusUpdateEventsRequest{})
+	// Maximum number of concurrent watch clients
+	MaxClient int `yaml:"max_client"`
+}
 
-	if err != nil {
-		fmt.Fprintf(tabWriter, err.Error())
-		tabWriter.Flush()
-		return nil
+func (c *Config) normalize() {
+	if c.BufferSize <= 0 {
+		c.BufferSize = _defaultBufferSize
 	}
-
-	if len(resp.GetEvents()) == 0 {
-		fmt.Fprintf(tabWriter, "no status update events present in event stream\n")
-		tabWriter.Flush()
-		return nil
+	if c.MaxClient <= 0 {
+		c.MaxClient = _defaultMaxClient
 	}
-
-	printResponseJSON(resp)
-	return nil
 }
