@@ -19,6 +19,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 
@@ -59,6 +60,23 @@ func makeWaitForEventsRequest(
 	}
 }
 
+func makeEvent(uid, tid string) *pb_eventstream.Event {
+	var b []byte
+	if uid == "" {
+		b = []byte(uuid.NewRandom())
+	} else {
+		b = []byte(uuid.Parse(uid))
+	}
+	ev := &pb_eventstream.Event{
+		Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+		MesosTaskStatus: &mesos.TaskStatus{Uuid: b},
+	}
+	if tid != "" {
+		ev.MesosTaskStatus.TaskId = &mesos.TaskID{Value: &tid}
+	}
+	return ev
+}
+
 func TestGetEvents(t *testing.T) {
 	var testScope = tally.NewTestScope("", map[string]string{})
 	bufferSize := 100
@@ -75,10 +93,7 @@ func TestGetEvents(t *testing.T) {
 
 	// Add partial events to the buffer
 	for i := 0; i < bufferSize/2; i++ {
-		eventStreamHandler.AddEvent(&pb_eventstream.Event{
-			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
-			MesosTaskStatus: &mesos.TaskStatus{},
-		})
+		eventStreamHandler.AddEvent(makeEvent("", ""))
 		assert.Equal(t, int64(i+1), testScope.Snapshot().Counters()["EventStreamHandler.api.addEvent+"].Value())
 		assert.Equal(t, int64(i+1), testScope.Snapshot().Counters()["EventStreamHandler.addEvent+result=success"].Value())
 	}
@@ -87,10 +102,7 @@ func TestGetEvents(t *testing.T) {
 
 	// Add some data into the circular buffer
 	for i := 0; i < bufferSize; i++ {
-		eventStreamHandler.AddEvent(&pb_eventstream.Event{
-			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
-			MesosTaskStatus: &mesos.TaskStatus{},
-		})
+		eventStreamHandler.AddEvent(makeEvent("", ""))
 	}
 
 	items, _ = eventStreamHandler.GetEvents()
@@ -116,10 +128,7 @@ func TestInitStream(t *testing.T) {
 	assert.Equal(t, eventStreamHandler.streamID, response.StreamID)
 
 	for i := 0; i < 10; i++ {
-		eventStreamHandler.AddEvent(&pb_eventstream.Event{
-			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
-			MesosTaskStatus: &mesos.TaskStatus{},
-		})
+		eventStreamHandler.AddEvent(makeEvent("", ""))
 	}
 	eventStreamHandler.circularBuffer.MoveTail(6)
 
@@ -148,10 +157,7 @@ func TestWaitForEvent(t *testing.T) {
 
 	// Add some data into the circular buffer
 	for i := 0; i < bufferSize; i++ {
-		eventStreamHandler.AddEvent(&pb_eventstream.Event{
-			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
-			MesosTaskStatus: &mesos.TaskStatus{},
-		})
+		eventStreamHandler.AddEvent(makeEvent("", ""))
 		assert.Equal(t, int64(i+1), testScope.Snapshot().Counters()["EventStreamHandler.api.addEvent+"].Value())
 		assert.Equal(t, int64(i+1), testScope.Snapshot().Counters()["EventStreamHandler.addEvent+result=success"].Value())
 	}
@@ -225,10 +231,7 @@ func TestPurgeData(t *testing.T) {
 
 	// Add some data into the circular buffer
 	for i := 0; i < bufferSize; i++ {
-		eventStreamHandler.AddEvent(&pb_eventstream.Event{
-			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
-			MesosTaskStatus: &mesos.TaskStatus{},
-		})
+		eventStreamHandler.AddEvent(makeEvent("", ""))
 	}
 
 	// jobMgr consumes some data, with purgeOffset 120
@@ -272,10 +275,7 @@ func TestPurgeData(t *testing.T) {
 
 	// add more data until 300, rolled over the buffer
 	for i := 0; i < 300-bufferSize; i++ {
-		eventStreamHandler.AddEvent(&pb_eventstream.Event{
-			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
-			MesosTaskStatus: &mesos.TaskStatus{},
-		})
+		eventStreamHandler.AddEvent(makeEvent("", ""))
 	}
 	head, tail = eventStreamHandler.circularBuffer.GetRange()
 	assert.Equal(t, 300, int(head))
@@ -302,4 +302,54 @@ func TestPurgeData(t *testing.T) {
 	for i := 0; i < len(collector.data); i++ {
 		assert.Equal(t, i, int(collector.data[i].SequenceID))
 	}
+}
+
+func TestDeDupeEvent(t *testing.T) {
+	testScope := tally.NewTestScope("", map[string]string{})
+	const bufferSize = 2
+	var collector PurgeEventCollector
+	handler := NewEventStreamHandler(bufferSize, []string{"jobMgr", "resMgr"}, &collector, testScope)
+	streamID := handler.streamID
+
+	var uids [bufferSize]string
+	var events [bufferSize]*pb_eventstream.Event
+	for i := 0; i < bufferSize; i++ {
+		uids[i] = uuid.New()
+		events[i] = makeEvent(uids[i], "")
+		err := handler.AddEvent(events[i])
+		assert.Nil(t, err)
+	}
+	assert.Equal(t, int64(2), testScope.Snapshot().Counters()["EventStreamHandler.api.addEvent+"].Value())
+	assert.Equal(t, int64(0), testScope.Snapshot().Counters()["EventStreamHandler.api.addEventDeDupe+"].Value())
+	assert.Equal(t, 2, len(handler.eventIndex))
+
+	// add a dupe is not an error
+	err := handler.AddEvent(makeEvent(uids[0], ""))
+	assert.Nil(t, err)
+	assert.Equal(t, int64(1), testScope.Snapshot().Counters()["EventStreamHandler.api.addEventDeDupe+"].Value())
+	assert.Equal(t, 2, len(handler.eventIndex))
+
+	// jobmgr consume event 0, but nothing is purged yet
+	request := makeWaitForEventsRequest("jobMgr", streamID, 1, 1, 1)
+	response, _ := handler.WaitForEvents(context.Background(), request)
+	assert.Equal(t, 1, len(response.Events))
+	assert.Equal(t, 2, len(handler.eventIndex))
+
+	// add a dupe again
+	err = handler.AddEvent(makeEvent(uids[0], ""))
+	assert.Nil(t, err)
+	assert.Equal(t, int64(2), testScope.Snapshot().Counters()["EventStreamHandler.api.addEventDeDupe+"].Value())
+	assert.Equal(t, 2, len(handler.eventIndex))
+
+	// event 0 is purged after resmgr consumes it
+	request = makeWaitForEventsRequest("resMgr", streamID, 1, 1, 1)
+	response, _ = handler.WaitForEvents(context.Background(), request)
+	assert.Equal(t, 1, len(response.Events))
+	assert.Equal(t, 1, len(handler.eventIndex))
+
+	// event 0 is not a dupe anymore
+	err = handler.AddEvent(makeEvent(uids[0], ""))
+	assert.Nil(t, err)
+	assert.Equal(t, int64(2), testScope.Snapshot().Counters()["EventStreamHandler.api.addEventDeDupe+"].Value())
+	assert.Equal(t, 2, len(handler.eventIndex))
 }

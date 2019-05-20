@@ -44,9 +44,12 @@ type Handler struct {
 	// clients that the stream expects them to consume
 	expectedClients []string
 	circularBuffer  *cirbuf.CircularBuffer
+	// uuid of events in circularBuffer.
+	// TODO: we probably should keep the recently acked events in a LRU cache.
+	eventIndex map[string]struct{}
 	//  Tracks the purge offset per client
-	clientPurgeOffsets   map[string]uint64
-	purgedEventProcessor PurgedEventsProcessor
+	clientPurgeOffsets    map[string]uint64
+	purgedEventsProcessor PurgedEventsProcessor
 
 	metrics *HandlerMetrics
 }
@@ -55,15 +58,16 @@ type Handler struct {
 func NewEventStreamHandler(
 	bufferSize int,
 	expectedClients []string,
-	purgedEventProcessor PurgedEventsProcessor,
+	purgedEventsProcessor PurgedEventsProcessor,
 	parentScope tally.Scope) *Handler {
 	handler := Handler{
-		streamID:             uuid.New(),
-		circularBuffer:       cirbuf.NewCircularBuffer(bufferSize),
-		clientPurgeOffsets:   make(map[string]uint64),
-		purgedEventProcessor: purgedEventProcessor,
-		expectedClients:      expectedClients,
-		metrics:              NewHandlerMetrics(parentScope.SubScope("EventStreamHandler")),
+		streamID:              uuid.New(),
+		circularBuffer:        cirbuf.NewCircularBuffer(bufferSize),
+		eventIndex:            make(map[string]struct{}),
+		clientPurgeOffsets:    make(map[string]uint64),
+		purgedEventsProcessor: purgedEventsProcessor,
+		expectedClients:       expectedClients,
+		metrics:               NewHandlerMetrics(parentScope.SubScope("EventStreamHandler")),
 	}
 	handler.metrics.Capacity.Update(float64(handler.circularBuffer.Capacity()))
 	for _, client := range expectedClients {
@@ -92,10 +96,22 @@ func (h *Handler) AddEvent(event *pb_eventstream.Event) error {
 	log.WithFields(log.Fields{
 		"Type": event.Type,
 	}).Debug("Adding eventstream event")
+
+	h.Lock()
+	defer h.Unlock()
+
+	uid := uuid.UUID(event.GetMesosTaskStatus().GetUuid()).String()
+	if _, ok := h.eventIndex[uid]; ok {
+		h.metrics.AddEventDeDupe.Inc(1)
+		return nil
+	}
 	item, err := h.circularBuffer.AddItem(event)
 	if err != nil {
 		h.metrics.AddEventFail.Inc(1)
 		return err
+	}
+	if uid != "" {
+		h.eventIndex[uid] = struct{}{}
 	}
 	h.metrics.AddEventSuccess.Inc(1)
 	head, tail := h.circularBuffer.GetRange()
@@ -252,9 +268,8 @@ func (h *Handler) WaitForEvents(
 // to the minPurgeOffset
 func (h *Handler) purgeEvents(clientName string, purgeOffset uint64) {
 	h.clientPurgeOffsets[clientName] = purgeOffset
-	var minPurgeOffset uint64
 	var clientWithMinPurgeOffset string
-	minPurgeOffset = math.MaxUint64
+	var minPurgeOffset uint64 = math.MaxUint64
 	for c, p := range h.clientPurgeOffsets {
 		if minPurgeOffset > p {
 			minPurgeOffset = p
@@ -268,8 +283,15 @@ func (h *Handler) purgeEvents(clientName string, purgeOffset uint64) {
 			log.WithField("min_purge_offset", minPurgeOffset).Error("Invalid minPurgeOffset")
 			h.metrics.PurgeEventError.Inc(1)
 		} else {
-			if h.purgedEventProcessor != nil {
-				h.purgedEventProcessor.EventPurged(purgedItems)
+			for _, item := range purgedItems {
+				if event, ok := item.Value.(*pb_eventstream.Event); ok {
+					uid := uuid.UUID(event.GetMesosTaskStatus().GetUuid()).String()
+					delete(h.eventIndex, uid)
+				}
+			}
+
+			if h.purgedEventsProcessor != nil {
+				h.purgedEventsProcessor.EventPurged(purgedItems)
 			}
 		}
 	} else {

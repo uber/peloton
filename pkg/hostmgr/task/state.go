@@ -32,7 +32,7 @@ import (
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
-	"github.com/google/uuid"
+	"github.com/pborman/uuid"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/cirbuf"
 	"github.com/uber/peloton/pkg/common/eventstream"
@@ -107,13 +107,13 @@ func initResMgrEventForwarder(
 // to push task status update events.
 func initEventStreamHandler(
 	d *yarpc.Dispatcher,
-	purgedEventProcessor eventstream.PurgedEventsProcessor,
+	purgedEventsProcessor eventstream.PurgedEventsProcessor,
 	bufferSize int,
 	scope tally.Scope) *eventstream.Handler {
 	eventStreamHandler := eventstream.NewEventStreamHandler(
 		bufferSize,
 		[]string{common.PelotonJobManager, common.PelotonResourceManager},
-		purgedEventProcessor,
+		purgedEventsProcessor,
 		scope,
 	)
 
@@ -257,18 +257,17 @@ func (m *stateManager) startAsyncProcessTaskUpdates() {
 	for i := 0; i < m.updateAckConcurrency; i++ {
 		go func() {
 			for taskStatus := range m.ackChannel {
-				if uuid, err := uuid.FromBytes(taskStatus.GetUuid()); err == nil {
-					// once acked, delete from map
-					// if ack failed at mesos master then agent will re-send
-					m.ackStatusMap.Delete(uuid)
+				uid := uuid.UUID(taskStatus.GetUuid()).String()
+				// once acked, delete from map
+				// if ack failed at mesos master then agent will re-send
+				m.ackStatusMap.Delete(uid)
 
-					if err := m.acknowledgeTaskUpdate(
-						context.Background(),
-						taskStatus); err != nil {
-						log.WithField("task_status", *taskStatus).
-							WithError(err).
-							Error("Failed to acknowledgeTaskUpdate")
-					}
+				if err := m.acknowledgeTaskUpdate(
+					context.Background(),
+					taskStatus); err != nil {
+					log.WithField("task_status", *taskStatus).
+						WithError(err).
+						Error("Failed to acknowledgeTaskUpdate")
 				}
 			}
 		}()
@@ -306,17 +305,17 @@ func (m *stateManager) EventPurged(events []*cirbuf.CircularBufferItem) {
 	for _, e := range events {
 		event, ok := e.Value.(*pb_eventstream.Event)
 		if ok {
-			uuid, err := uuid.FromBytes(event.GetMesosTaskStatus().GetUuid())
-			if err == nil {
-				// if ack for status update is pending, ignore it
-				_, ok := m.ackStatusMap.Load(uuid)
+			uid := uuid.UUID(event.GetMesosTaskStatus().GetUuid()).String()
+			// if ack for status update is pending, ignore it
+			if uid != "" {
+				_, ok := m.ackStatusMap.Load(uid)
 				if ok {
 					m.metrics.taskUpdateAckDeDupe.Inc(1)
 					continue
 				}
-				m.ackStatusMap.Store(uuid, struct{}{})
-				m.ackChannel <- event.GetMesosTaskStatus()
+				m.ackStatusMap.Store(uid, struct{}{})
 			}
+			m.ackChannel <- event.GetMesosTaskStatus()
 		}
 	}
 }

@@ -24,7 +24,6 @@ import (
 
 	"github.com/uber/peloton/pkg/common/lifecycle"
 
-	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/private/eventstream"
 
 	"go.uber.org/yarpc"
@@ -148,13 +147,7 @@ func TestHappyCase(t *testing.T) {
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", i*batchSize+j)
-			handler.AddEvent(&eventstream.Event{
-				Type: eventstream.Event_MESOS_TASK_STATUS,
-				MesosTaskStatus: &mesos.TaskStatus{
-					TaskId: &mesos.TaskID{
-						Value: &id,
-					}},
-			})
+			handler.AddEvent(makeEvent("", id))
 			time.Sleep(addEventSleepInterval)
 		}
 	}
@@ -184,13 +177,7 @@ func TestHappyCase(t *testing.T) {
 	for i := batches; i < 2*batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", i*batchSize+j)
-			handler.AddEvent(&eventstream.Event{
-				Type: eventstream.Event_MESOS_TASK_STATUS,
-				MesosTaskStatus: &mesos.TaskStatus{
-					TaskId: &mesos.TaskID{
-						Value: &id,
-					}},
-			})
+			handler.AddEvent(makeEvent("", id))
 			time.Sleep(addEventSleepInterval)
 		}
 	}
@@ -239,13 +226,7 @@ func TestStreamIDChange(t *testing.T) {
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", count)
-			handler.AddEvent(&eventstream.Event{
-				Type: eventstream.Event_MESOS_TASK_STATUS,
-				MesosTaskStatus: &mesos.TaskStatus{
-					TaskId: &mesos.TaskID{
-						Value: &id,
-					}},
-			})
+			handler.AddEvent(makeEvent("", id))
 			count++
 			time.Sleep(addEventSleepInterval)
 		}
@@ -257,13 +238,7 @@ func TestStreamIDChange(t *testing.T) {
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", count)
-			handler.AddEvent(&eventstream.Event{
-				Type: eventstream.Event_MESOS_TASK_STATUS,
-				MesosTaskStatus: &mesos.TaskStatus{
-					TaskId: &mesos.TaskID{
-						Value: &id,
-					}},
-			})
+			handler.AddEvent(makeEvent("", id))
 			count++
 			time.Sleep(addEventSleepInterval)
 		}
@@ -320,13 +295,7 @@ func TestMockRPCError(t *testing.T) {
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", count)
-			handler.AddEvent(&eventstream.Event{
-				Type: eventstream.Event_MESOS_TASK_STATUS,
-				MesosTaskStatus: &mesos.TaskStatus{
-					TaskId: &mesos.TaskID{
-						Value: &id,
-					}},
-			})
+			handler.AddEvent(makeEvent("", id))
 			count++
 			time.Sleep(addEventSleepInterval)
 		}
@@ -338,13 +307,7 @@ func TestMockRPCError(t *testing.T) {
 
 	for i := 0; i < delta; i++ {
 		id := fmt.Sprintf("%d", count)
-		handler.AddEvent(&eventstream.Event{
-			Type: eventstream.Event_MESOS_TASK_STATUS,
-			MesosTaskStatus: &mesos.TaskStatus{
-				TaskId: &mesos.TaskID{
-					Value: &id,
-				}},
-		})
+		handler.AddEvent(makeEvent("", id))
 		count++
 		time.Sleep(addEventSleepInterval)
 	}
@@ -355,13 +318,7 @@ func TestMockRPCError(t *testing.T) {
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", count)
-			handler.AddEvent(&eventstream.Event{
-				Type: eventstream.Event_MESOS_TASK_STATUS,
-				MesosTaskStatus: &mesos.TaskStatus{
-					TaskId: &mesos.TaskID{
-						Value: &id,
-					}},
-			})
+			handler.AddEvent(makeEvent("", id))
 			count++
 			time.Sleep(addEventSleepInterval)
 		}
@@ -420,13 +377,7 @@ func TestClientFailover(t *testing.T) {
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", count)
-			handler.AddEvent(&eventstream.Event{
-				Type: eventstream.Event_MESOS_TASK_STATUS,
-				MesosTaskStatus: &mesos.TaskStatus{
-					TaskId: &mesos.TaskID{
-						Value: &id,
-					}},
-			})
+			handler.AddEvent(makeEvent("", id))
 			count++
 			time.Sleep(addEventSleepInterval)
 		}
@@ -439,13 +390,7 @@ func TestClientFailover(t *testing.T) {
 	delta := 20
 	for i := 0; i < delta; i++ {
 		id := fmt.Sprintf("%d", count)
-		handler.AddEvent(&eventstream.Event{
-			Type: eventstream.Event_MESOS_TASK_STATUS,
-			MesosTaskStatus: &mesos.TaskStatus{
-				TaskId: &mesos.TaskID{
-					Value: &id,
-				}},
-		})
+		handler.AddEvent(makeEvent("", id))
 		count++
 		time.Sleep(addEventSleepInterval)
 	}
@@ -458,13 +403,7 @@ func TestClientFailover(t *testing.T) {
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", count)
-			handler.AddEvent(&eventstream.Event{
-				Type: eventstream.Event_MESOS_TASK_STATUS,
-				MesosTaskStatus: &mesos.TaskStatus{
-					TaskId: &mesos.TaskID{
-						Value: &id,
-					}},
-			})
+			handler.AddEvent(makeEvent("", id))
 			count++
 			time.Sleep(addEventSleepInterval)
 		}
