@@ -296,7 +296,7 @@ func (suite *podActionsTestSuite) TestClientPodGetSuccess() {
 		GetPod(gomock.Any(), gomock.Any()).
 		Return(&podsvc.GetPodResponse{}, nil)
 
-	suite.NoError(suite.client.PodGetAction(testPodName, false, false))
+	suite.NoError(suite.client.PodGetAction(testPodName, false, uint32(2)))
 }
 
 // TestClientPodGetFailure tests the failure case of getting pod info
@@ -305,7 +305,7 @@ func (suite *podActionsTestSuite) TestClientPodGetFailure() {
 		GetPod(gomock.Any(), gomock.Any()).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.Error(suite.client.PodGetAction(testPodName, false, false))
+	suite.Error(suite.client.PodGetAction(testPodName, false, uint32(2)))
 }
 
 // TestClientPodDeleteEventsSuccess tests the success case of deleting pod events

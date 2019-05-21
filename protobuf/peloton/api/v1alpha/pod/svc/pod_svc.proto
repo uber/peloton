@@ -52,7 +52,7 @@ message GetPodRequest {
   bool status_only = 2;
 
   // If set to true, only return current run of the pod.
-  bool current_only = 3;
+  uint32 limit = 4;
 }
 
 // Response message for PodService.GetPod method

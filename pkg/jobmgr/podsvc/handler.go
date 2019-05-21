@@ -442,21 +442,15 @@ func (h *serviceHandler) GetPod(
 		Status: podStatus,
 	}
 
-	taskEvents, err := h.podStore.GetPodEvents(ctx, jobID, instanceID)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get current pod events")
-	}
-
-	podEvents := handlerutil.ConvertTaskEventsToPodEvents(taskEvents)
-
 	var prevPodInfos []*pbpod.PodInfo
-	if !req.GetCurrentOnly() && len(podEvents) != 0 {
+	if req.GetLimit() != 1 {
 		prevPodInfos, err = h.getPodInfoForAllPodRuns(
 			ctx,
 			jobID,
 			instanceID,
-			podEvents[0].GetPrevPodId(),
+			podStatus.GetPrevPodId(),
 			req.GetStatusOnly(),
+			req.GetLimit(),
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get pod info for previous runs")
@@ -841,6 +835,7 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 	instanceID uint32,
 	podID *v1alphapeloton.PodID,
 	statusOnly bool,
+	limit uint32,
 ) ([]*pbpod.PodInfo, error) {
 	var podInfos []*pbpod.PodInfo
 
@@ -854,6 +849,10 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 		podEvents := handlerutil.ConvertTaskEventsToPodEvents(taskEvents)
 
 		if len(podEvents) == 0 {
+			break
+		}
+
+		if limit > 0 && uint32(len(podInfos)) >= (limit-1) {
 			break
 		}
 

@@ -1236,6 +1236,9 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 					State:         pbtask.TaskState_RUNNING,
 					GoalState:     pbtask.TaskState_RUNNING,
 					ConfigVersion: configVersion,
+					PrevMesosTaskId: &mesos.TaskID{
+						Value: &prevMesosTaskID,
+					},
 				}, nil),
 
 		suite.podStore.EXPECT().
@@ -1253,13 +1256,6 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 			}, &models.ConfigAddOn{},
 			nil,
 		),
-
-		suite.podStore.EXPECT().
-			GetPodEvents(
-				gomock.Any(),
-				testJobID,
-				uint32(testInstanceID),
-			).Return(events, nil),
 
 		suite.podStore.EXPECT().
 			GetPodEvents(
@@ -1297,13 +1293,76 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 }
 
 // TestGetPodCurrentOnly tests the success case of getting pod info with
-// current_only flag set to true
+// limit set to 1
 func (suite *podHandlerTestSuite) TestGetPodCurrentOnly() {
 	request := &svc.GetPodRequest{
 		PodName: &v1alphapeloton.PodName{
 			Value: testPodName,
 		},
-		CurrentOnly: true,
+		Limit: uint32(1),
+	}
+	pelotonJob := &peloton.JobID{Value: testJobID}
+	var configVersion uint64 = 1
+	testLabels := []*peloton.Label{
+		{
+			Key:   "testKey",
+			Value: "testValue",
+		},
+	}
+	testPorts := []*pbtask.PortConfig{
+		{
+			Name:  "port name",
+			Value: 8080,
+		},
+	}
+	testConstraint := &pbtask.Constraint{
+		Type: pbtask.Constraint_LABEL_CONSTRAINT,
+		LabelConstraint: &pbtask.LabelConstraint{
+			Kind: pbtask.LabelConstraint_TASK,
+		},
+	}
+
+	gomock.InOrder(
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), pelotonJob, uint32(testInstanceID)).
+			Return(
+				&pbtask.RuntimeInfo{
+					State:         pbtask.TaskState_RUNNING,
+					GoalState:     pbtask.TaskState_RUNNING,
+					ConfigVersion: configVersion,
+				}, nil),
+
+		suite.podStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				pelotonJob,
+				uint32(testInstanceID),
+				configVersion,
+			).Return(
+			&pbtask.TaskConfig{
+				Name:       testPodName,
+				Labels:     testLabels,
+				Ports:      testPorts,
+				Constraint: testConstraint,
+			}, &models.ConfigAddOn{},
+			nil,
+		),
+	)
+
+	response, err := suite.handler.GetPod(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(response)
+	suite.Equal(request.GetPodName(), response.GetCurrent().GetSpec().GetPodName())
+	suite.Empty(response.GetPrevious())
+}
+
+// TestGetPodSuccessLimit tests the success case of getting pod info with a limit
+func (suite *podHandlerTestSuite) TestGetPodSuccessLimit() {
+	request := &svc.GetPodRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+		Limit: 2,
 	}
 	pelotonJob := &peloton.JobID{Value: testJobID}
 	var configVersion uint64 = 1
@@ -1341,6 +1400,17 @@ func (suite *podHandlerTestSuite) TestGetPodCurrentOnly() {
 		},
 	}
 
+	prevEvents := []*pbtask.PodEvent{
+		{
+			TaskId: &mesos.TaskID{
+				Value: &prevMesosTaskID,
+			},
+			ActualState:   "RUNNING",
+			GoalState:     "RUNNING",
+			ConfigVersion: configVersion,
+		},
+	}
+
 	gomock.InOrder(
 		suite.podStore.EXPECT().
 			GetTaskRuntime(gomock.Any(), pelotonJob, uint32(testInstanceID)).
@@ -1349,6 +1419,9 @@ func (suite *podHandlerTestSuite) TestGetPodCurrentOnly() {
 					State:         pbtask.TaskState_RUNNING,
 					GoalState:     pbtask.TaskState_RUNNING,
 					ConfigVersion: configVersion,
+					PrevMesosTaskId: &mesos.TaskID{
+						Value: &prevMesosTaskID,
+					},
 				}, nil),
 
 		suite.podStore.EXPECT().
@@ -1372,15 +1445,34 @@ func (suite *podHandlerTestSuite) TestGetPodCurrentOnly() {
 				gomock.Any(),
 				testJobID,
 				uint32(testInstanceID),
+				testPrevPodID,
 			).Return(events, nil),
+
+		suite.podStore.EXPECT().
+			GetTaskConfig(
+				gomock.Any(),
+				pelotonJob,
+				uint32(testInstanceID),
+				configVersion,
+			),
+
+		suite.podStore.EXPECT().
+			GetPodEvents(
+				gomock.Any(),
+				testJobID,
+				uint32(testInstanceID),
+				testPrevPodID,
+			).Return(prevEvents, nil),
 	)
 
 	response, err := suite.handler.GetPod(context.Background(), request)
 	suite.NoError(err)
 	suite.NotNil(response)
 	suite.Equal(request.GetPodName(), response.GetCurrent().GetSpec().GetPodName())
-	suite.Empty(response.GetPrevious())
-
+	suite.NotEmpty(response.GetPrevious())
+	for _, info := range response.GetPrevious() {
+		suite.Equal(request.GetPodName(), info.GetSpec().GetPodName())
+	}
 }
 
 // TestGetPodInvalidPodName tests PodName
@@ -1443,52 +1535,6 @@ func (suite *podHandlerTestSuite) TestGetPodTaskConfigFailure() {
 	suite.Error(err)
 }
 
-// TestGetPodPodEventsFailure tests failure to get pod info due to
-// error while getting pod events
-func (suite *podHandlerTestSuite) TestGetPodPodEventsFailure() {
-	request := &svc.GetPodRequest{
-		PodName: &v1alphapeloton.PodName{
-			Value: testPodName,
-		},
-	}
-	pelotonJob := &peloton.JobID{Value: testJobID}
-	var configVersion uint64 = 1
-
-	gomock.InOrder(
-		suite.podStore.EXPECT().
-			GetTaskRuntime(gomock.Any(), pelotonJob, uint32(testInstanceID)).
-			Return(
-				&pbtask.RuntimeInfo{
-					State:         pbtask.TaskState_RUNNING,
-					GoalState:     pbtask.TaskState_RUNNING,
-					ConfigVersion: configVersion,
-				}, nil),
-
-		suite.podStore.EXPECT().
-			GetTaskConfig(
-				gomock.Any(),
-				pelotonJob,
-				uint32(testInstanceID),
-				configVersion,
-			).Return(
-			&pbtask.TaskConfig{
-				Name: testPodName,
-			}, &models.ConfigAddOn{},
-			nil,
-		),
-
-		suite.podStore.EXPECT().
-			GetPodEvents(
-				gomock.Any(),
-				testJobID,
-				uint32(testInstanceID),
-			).Return(nil, yarpcerrors.InternalErrorf("test error")),
-	)
-
-	_, err := suite.handler.GetPod(context.Background(), request)
-	suite.Error(err)
-}
-
 // TestGetPodFailureToGetPreviousPodEvents tests failure to get pod info due to
 // error while getting events for previous runs of the pod
 func (suite *podHandlerTestSuite) TestGetPodFailureToGetPreviousPodEvents() {
@@ -1499,20 +1545,7 @@ func (suite *podHandlerTestSuite) TestGetPodFailureToGetPreviousPodEvents() {
 	}
 	pelotonJob := &peloton.JobID{Value: testJobID}
 	var configVersion uint64 = 1
-	mesosTaskID := testPodID
 	prevMesosTaskID := testPrevPodID
-	events := []*pbtask.PodEvent{
-		{
-			TaskId: &mesos.TaskID{
-				Value: &mesosTaskID,
-			},
-			ActualState: "RUNNING",
-			GoalState:   "RUNNING",
-			PrevTaskId: &mesos.TaskID{
-				Value: &prevMesosTaskID,
-			},
-		},
-	}
 
 	gomock.InOrder(
 		suite.podStore.EXPECT().
@@ -1522,6 +1555,9 @@ func (suite *podHandlerTestSuite) TestGetPodFailureToGetPreviousPodEvents() {
 					State:         pbtask.TaskState_RUNNING,
 					GoalState:     pbtask.TaskState_RUNNING,
 					ConfigVersion: configVersion,
+					PrevMesosTaskId: &mesos.TaskID{
+						Value: &prevMesosTaskID,
+					},
 				}, nil),
 
 		suite.podStore.EXPECT().
@@ -1536,13 +1572,6 @@ func (suite *podHandlerTestSuite) TestGetPodFailureToGetPreviousPodEvents() {
 			}, &models.ConfigAddOn{},
 			nil,
 		),
-
-		suite.podStore.EXPECT().
-			GetPodEvents(
-				gomock.Any(),
-				testJobID,
-				uint32(testInstanceID),
-			).Return(events, nil),
 
 		suite.podStore.EXPECT().
 			GetPodEvents(

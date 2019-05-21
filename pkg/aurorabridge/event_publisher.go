@@ -389,8 +389,8 @@ func (e *eventPublisher) getTaskStateChange(
 		rpcTimeout)
 	defer cancelFunc()
 	infoReq := &podsvc.GetPodRequest{
-		PodName:     podName,
-		CurrentOnly: true,
+		PodName: podName,
+		Limit:   1,
 	}
 	podInfo, err := e.podClient.GetPod(ctx, infoReq)
 	if err != nil {

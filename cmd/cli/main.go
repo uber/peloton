@@ -397,10 +397,10 @@ var (
 	podStop        = pod.Command("stop", "stop a pod")
 	podStopPodName = podStop.Arg("name", "pod name").Required().String()
 
-	podGet            = pod.Command("get", "get pod info")
-	podGetPodName     = podGet.Arg("name", "pod name").Required().String()
-	podGetStatusOnly  = podGet.Flag("statusonly", "get pod status only(not spec)").Default("false").Bool()
-	podGetCurrentOnly = podGet.Flag("currentonly", "get pod info from current run only").Default("false").Bool()
+	podGet           = pod.Command("get", "get pod info")
+	podGetPodName    = podGet.Arg("name", "pod name").Required().String()
+	podGetStatusOnly = podGet.Flag("statusonly", "get pod status only(not spec)").Default("false").Bool()
+	podGetLimit      = podGet.Flag("limit", "get a subset of the previous pod runs (0 implies to get all the runs)").Default("0").Uint32()
 
 	podDeleteEvents        = pod.Command("delete-events", "delete pod events")
 	podDeleteEventsPodName = podDeleteEvents.Arg("name", "pod name").Required().String()
@@ -994,7 +994,7 @@ func main() {
 	case podStop.FullCommand():
 		err = client.PodStopAction(*podStopPodName)
 	case podGet.FullCommand():
-		err = client.PodGetAction(*podGetPodName, *podGetStatusOnly, *podGetCurrentOnly)
+		err = client.PodGetAction(*podGetPodName, *podGetStatusOnly, *podGetLimit)
 	case podDeleteEvents.FullCommand():
 		err = client.PodDeleteEvents(*podDeleteEventsPodName, *podDeleteEventsPodID)
 	case statelessGet.FullCommand():

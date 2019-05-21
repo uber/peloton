@@ -236,14 +236,14 @@ func (c *Client) PodStopAction(podName string) error {
 func (c *Client) PodGetAction(
 	podName string,
 	statusOnly bool,
-	currentOnly bool,
+	limit uint32,
 ) error {
 	resp, err := c.podClient.GetPod(
 		c.ctx,
 		&podsvc.GetPodRequest{
-			PodName:     &v1alphapeloton.PodName{Value: podName},
-			StatusOnly:  statusOnly,
-			CurrentOnly: currentOnly,
+			PodName:    &v1alphapeloton.PodName{Value: podName},
+			StatusOnly: statusOnly,
+			Limit:      limit,
 		},
 	)
 	if err != nil {
