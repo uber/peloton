@@ -227,7 +227,7 @@ func (f *jobFactory) publishMetrics() map[pbtask.TaskState]map[pbtask.TaskState]
 	jobs := f.GetAllJobs()
 	var totalThrottledTasks int
 	for _, j := range jobs {
-		taskStateCount, throttledTasks, workflowStateCount := j.GetStateCount()
+		taskStateCount, throttledTasks := j.GetTaskStateCount()
 		for currentState, goalStateMap := range taskStateCount {
 			for goalState, count := range goalStateMap {
 				if _, ok := tCount[currentState]; !ok {
@@ -241,6 +241,7 @@ func (f *jobFactory) publishMetrics() map[pbtask.TaskState]map[pbtask.TaskState]
 
 		totalThrottledTasks = totalThrottledTasks + throttledTasks
 
+		workflowStateCount := j.GetWorkflowStateCount()
 		for currentState, count := range workflowStateCount {
 			workflowCount[currentState] += count
 		}

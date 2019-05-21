@@ -195,10 +195,13 @@ type Job interface {
 	// Delete deletes the job from DB and clears the cache
 	Delete(ctx context.Context) error
 
-	// GetStateCount returns the state/goal state count of all
-	// tasks in a job, the total number of throttled tasks in
-	// stateless jobs and the update state count for all jobs
-	GetStateCount() (map[pbtask.TaskState]map[pbtask.TaskState]int, int, map[pbupdate.State]int)
+	// GetTaskStateCount returns the state/goal state count of all
+	// tasks in a job and the total number of throttled tasks in
+	// stateless jobs.
+	GetTaskStateCount() (map[pbtask.TaskState]map[pbtask.TaskState]int, int)
+
+	// GetWorkflowStateCount returns the state count of all workflows in the cache
+	GetWorkflowStateCount() map[pbupdate.State]int
 }
 
 // WorkflowOps defines operations on workflow
@@ -2007,13 +2010,11 @@ func (j *job) ClearWorkflow(updateID *peloton.UpdateID) {
 	delete(j.workflows, updateID.GetValue())
 }
 
-func (j *job) GetStateCount() (
+func (j *job) GetTaskStateCount() (
 	taskCount map[pbtask.TaskState]map[pbtask.TaskState]int,
 	throttledTasks int,
-	workflowCount map[pbupdate.State]int,
 ) {
 	taskCount = make(map[pbtask.TaskState]map[pbtask.TaskState]int)
-	workflowCount = make(map[pbupdate.State]int)
 
 	j.RLock()
 	defer j.RUnlock()
@@ -2032,12 +2033,21 @@ func (j *job) GetStateCount() (
 		}
 	}
 
+	return
+}
+
+func (j *job) GetWorkflowStateCount() map[pbupdate.State]int {
+	workflowCount := make(map[pbupdate.State]int)
+
+	j.RLock()
+	defer j.RUnlock()
+
 	for _, u := range j.workflows {
 		curState := u.GetState().State
 		workflowCount[curState]++
 	}
 
-	return
+	return workflowCount
 }
 
 // copyJobAndTaskConfig copies the provided job config and

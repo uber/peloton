@@ -4633,7 +4633,8 @@ func (suite *JobTestSuite) TestGetStateCount() {
 	testUpdate.state = pbupdate.State_ROLLING_FORWARD
 	suite.job.workflows[testUpdateID] = testUpdate
 
-	taskCount, throttledTasks, updateCount := suite.job.GetStateCount()
+	taskCount, throttledTasks := suite.job.GetTaskStateCount()
+	updateCount := suite.job.GetWorkflowStateCount()
 	suite.Equal(
 		taskCount[pbtask.TaskState_PENDING][pbtask.TaskState_SUCCEEDED],
 		2)
