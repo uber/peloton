@@ -50,6 +50,18 @@ def parse_arguments():
         help="the path of the resource pool",
     )
 
+    parser.add_argument(
+        "--auth-type",
+        dest="auth_type",
+        help="auth type of the physical Peloton cluster",
+    )
+
+    parser.add_argument(
+        "--auth-config-file",
+        dest="auth_config_file",
+        help="auth config file used to talk to the physical Peloton cluster",
+    )
+
     subparsers = parser.add_subparsers(help="command help", dest="command")
 
     # Subparser for the 'mesos' command
@@ -208,7 +220,12 @@ def main():
     config = load_config(args.config_file)
 
     vcluster = VCluster(
-        config, args.label_name, args.zookeeper_server, args.respool_path
+        config,
+        args.label_name,
+        args.zookeeper_server,
+        args.respool_path,
+        auth_type=args.auth_type,
+        auth_file=args.auth_file,
     )
 
     command = args.command

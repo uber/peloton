@@ -3,8 +3,9 @@ from deepdiff import DeepDiff
 import datetime
 from retry import retry
 import time
+import yaml
 
-from peloton_client.client import PelotonClient
+from peloton_client.client import PelotonClient, AuthConfig, AuthType
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 from peloton_client.pbgen.peloton.api.v0.job import job_pb2 as job
 from peloton_client.pbgen.peloton.api.v0.query import query_pb2 as query
@@ -69,15 +70,28 @@ class PelotonClientHelper(object):
     PelotonClientHelper is using PelotonClient for Peloton operation
     """
 
-    def __init__(self, zk_servers, respool_path=None):
+    def __init__(
+            self,
+            zk_servers,
+            respool_path=None,
+            auth_type='NOOP',
+            auth_file=''):
         """
         :param zk_servers: dns address of the physical zk dns
         :type client: PelotonClient
         """
         self.zk_servers = zk_servers
+
+        auth_config = AuthConfig()
+        if auth_type == 'BASIC':
+            auth_config.auth_type = AuthType.basic
+            with open(auth_file, "r") as f:
+                config = yaml.load(f, Loader=yaml.FullLoader)
+                auth_config.data = config
+
         # Generate PelotonClient
         self.client = PelotonClient(
-            name="peloton-client", zk_servers=zk_servers
+            name="peloton-client", zk_servers=zk_servers, auth_config=auth_config,
         )
         if not respool_path:
             return

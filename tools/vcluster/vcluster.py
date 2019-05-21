@@ -19,7 +19,15 @@ class VCluster(object):
         "jobmgr",
     ]
 
-    def __init__(self, config, label_name, zk_server, respool_path):
+    def __init__(
+            self,
+            config,
+            label_name,
+            zk_server,
+            respool_path,
+            auth_type='NOOP',
+            auth_file='',
+    ):
         """
         param config:             vcluster configuration
         param label_name:         Label of the virtual cluster
@@ -36,7 +44,8 @@ class VCluster(object):
         self.zk_server = zk_server
         self.respool_path = respool_path
 
-        self.peloton_helper = PelotonClientHelper(zk_server, respool_path)
+        self.peloton_helper = PelotonClientHelper(
+            zk_server, respool_path, auth_type=auth_type, auth_file=auth_file)
 
         self.zookeeper = Zookeeper(
             self.label_name, self.config, self.peloton_helper
