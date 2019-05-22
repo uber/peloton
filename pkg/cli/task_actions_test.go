@@ -25,6 +25,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
 	pberr "github.com/uber/peloton/.gen/peloton/api/v0/errors"
@@ -108,6 +109,11 @@ func (suite *taskActionsTestSuite) getListResult(
 					Host:           "mesos-slave-01",
 					Message:        "",
 					Reason:         "",
+					TerminationStatus: &task.TerminationStatus{
+						Reason:   task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+						ExitCode: 0,
+						Signal:   "",
+					},
 				},
 			},
 		},
@@ -200,6 +206,23 @@ func (suite *taskActionsTestSuite) withMockTaskListResponse(
 
 	suite.mockTask.EXPECT().List(suite.ctx, gomock.Eq(req)).
 		Return(resp, err)
+}
+
+func (suite *taskActionsTestSuite) TestClientTaskListPrint() {
+	c := Client{
+		Debug:      false,
+		taskClient: suite.mockTask,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+	taskListResponse := &task.ListResponse{
+		Result: suite.getListResult(jobID),
+	}
+
+	assert.NotPanics(suite.T(), func() { printTaskListResponse(taskListResponse, c.Debug) })
 }
 
 func (suite *taskActionsTestSuite) getQueryResult(

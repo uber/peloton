@@ -30,8 +30,8 @@ import (
 
 const (
 	taskListFormatHeader = "Instance\tName\tState\tHealthy\tStart Time\tRun Time\t" +
-		"Host\tMessage\tReason\t\n"
-	taskListFormatBody    = "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
+		"Host\tMessage\tReason\tTermination Status\t\n"
+	taskListFormatBody    = "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
 	podEventsFormatHeader = "Mesos Task Id\tDesired Mesos Task Id\tActual State\tGoal State\tConfig Version\tDesired Config Version\tHealthy\tHost\tMessage\tReason\tUpdate Time\t\n"
 	podEventsFormatBody   = "%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t\n"
 )
@@ -364,6 +364,12 @@ func printTask(t *task.TaskInfo) {
 			uint(duration.Seconds())%60,
 		)
 	}
+	termStatusStr := ""
+	termStatus := runtime.GetTerminationStatus()
+	if termStatus != nil {
+		termStatusStr = termStatus.GetReason().String()
+		termStatusStr = strings.TrimPrefix(termStatusStr, "TERMINATION_STATUS_REASON_")
+	}
 
 	// Print the task record
 	fmt.Fprintf(
@@ -378,6 +384,7 @@ func printTask(t *task.TaskInfo) {
 		runtime.GetHost(),
 		runtime.GetMessage(),
 		runtime.GetReason(),
+		termStatusStr,
 	)
 }
 

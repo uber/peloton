@@ -39,6 +39,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/yarpc/yarpcerrors"
 	"gopkg.in/yaml.v2"
@@ -1124,10 +1125,8 @@ func (suite *statelessActionsTestSuite) TestStatelessQueryPodsActionInvalidSortO
 	))
 }
 
-// TestClientListPodsSuccess tests a successful execution of ListPods action
-func (suite *statelessActionsTestSuite) TestClientListPodsSuccess() {
-	stream := mocks.NewMockJobServiceServiceListPodsYARPCClient(suite.ctrl)
-	pods := &svc.ListPodsResponse{
+func getListPodsResponse() svc.ListPodsResponse {
+	return svc.ListPodsResponse{
 		Pods: []*v1alphapod.PodSummary{
 			{
 				PodName: &v1alphapeloton.PodName{
@@ -1145,12 +1144,30 @@ func (suite *statelessActionsTestSuite) TestClientListPodsSuccess() {
 							},
 							StartTime: time.Now().Format(time.RFC3339Nano),
 						},
+						{
+							Name:  "test-container2",
+							State: v1alphapod.ContainerState_CONTAINER_STATE_RUNNING,
+							Healthy: &v1alphapod.HealthStatus{
+								State: v1alphapod.HealthState_HEALTH_STATE_HEALTHY,
+							},
+							StartTime: time.Now().Format(time.RFC3339Nano),
+							TerminationStatus: &v1alphapod.TerminationStatus{
+								Reason:   v1alphapod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+								ExitCode: 0,
+								Signal:   "",
+							},
+						},
 					},
 				},
 			},
 		},
 	}
+}
 
+// TestClientListPodsSuccess tests a successful execution of ListPods action
+func (suite *statelessActionsTestSuite) TestClientListPodsSuccess() {
+	stream := mocks.NewMockJobServiceServiceListPodsYARPCClient(suite.ctrl)
+	pods := getListPodsResponse()
 	suite.statelessClient.EXPECT().
 		ListPods(gomock.Any(), gomock.Any()).
 		Return(stream, nil)
@@ -1158,7 +1175,7 @@ func (suite *statelessActionsTestSuite) TestClientListPodsSuccess() {
 	gomock.InOrder(
 		stream.EXPECT().
 			Recv().
-			Return(pods, nil),
+			Return(&pods, nil),
 		stream.EXPECT().
 			Recv().
 			Return(nil, io.EOF),
@@ -1173,13 +1190,20 @@ func (suite *statelessActionsTestSuite) TestClientListPodsSuccess() {
 	))
 }
 
+// Test that the printPod works correctly
+func (suite *statelessActionsTestSuite) TestClientPrintStatelessListPodsResponse() {
+	podsResponse := getListPodsResponse()
+	for _, pod := range podsResponse.GetPods() {
+		assert.NotPanics(suite.T(), func() { printPod(pod.GetStatus(), pod.GetPodName()) })
+	}
+}
+
 // TestClientListPodsActionError tests ListPods action getting an error on
 // ininvoking the ListPods API
 func (suite *statelessActionsTestSuite) TestClientListPodsActionError() {
 	suite.statelessClient.EXPECT().
 		ListPods(gomock.Any(), gomock.Any()).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
-
 	suite.Error(suite.client.StatelessListPodsAction(testJobID, nil))
 }
 

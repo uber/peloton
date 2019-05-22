@@ -51,8 +51,8 @@ const (
 	workflowEventsV1AlphaFormatBody   = "%s\t%s\t%s\n"
 
 	queryPodsFormatHeader = "Pod ID\tName\tState\tContainer Name\tContainer State\tHealthy\tStart Time\tRun Time\t" +
-		"Host\tMessage\tReason\t\n"
-	queryPodsFormatBody = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
+		"Host\tMessage\tReason\tTermination Status\t\n"
+	queryPodsFormatBody = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
 
 	podListFormatHeader = "Name\tPod ID\tState\tHealthy\tStart Time\t" +
 		"Host\tMessage\tReason\t\n"
@@ -366,6 +366,7 @@ func (c *Client) StatelessReplaceJobAction(
 
 // StatelessListJobsAction prints summary of all jobs using the ListJobs API
 func (c *Client) StatelessListJobsAction() error {
+	defer tabWriter.Flush()
 	stream, err := c.statelessClient.ListJobs(
 		c.ctx,
 		&statelesssvc.ListJobsRequest{},
@@ -375,7 +376,6 @@ func (c *Client) StatelessListJobsAction() error {
 	}
 
 	fmt.Fprint(tabWriter, statelessJobSummaryFormatHeader)
-	tabWriter.Flush()
 	for {
 		resp, err := stream.Recv()
 		if err == io.EOF {
@@ -387,7 +387,6 @@ func (c *Client) StatelessListJobsAction() error {
 		}
 
 		printListJobsResponse(resp)
-		tabWriter.Flush()
 	}
 }
 
@@ -632,6 +631,7 @@ func (c *Client) StatelessListPodsAction(
 	jobID string,
 	instanceRange *task.InstanceRange,
 ) error {
+	defer tabWriter.Flush()
 	idInstanceRange := &v1alphapod.InstanceIDRange{
 		From: instanceRange.GetFrom(),
 		To:   instanceRange.GetTo(),
@@ -650,8 +650,6 @@ func (c *Client) StatelessListPodsAction(
 	}
 
 	fmt.Fprint(tabWriter, queryPodsFormatHeader)
-	tabWriter.Flush()
-
 	for {
 		resp, err := stream.Recv()
 		if err == io.EOF {
@@ -661,7 +659,6 @@ func (c *Client) StatelessListPodsAction(
 			return err
 		}
 		printStatelessListPodsResponse(resp)
-		tabWriter.Flush()
 	}
 }
 
@@ -1064,7 +1061,12 @@ func printPod(status *v1alphapod.PodStatus, podName *v1alphapeloton.PodName) {
 				uint(duration.Seconds())%60,
 			)
 		}
-
+		termStatusStr := ""
+		termStatus := container.GetTerminationStatus()
+		if termStatus != nil {
+			termStatusStr = termStatus.GetReason().String()
+			termStatusStr = strings.TrimPrefix(termStatusStr, "TERMINATION_STATUS_REASON_")
+		}
 		// Print the container record
 		fmt.Fprintf(
 			tabWriter,
@@ -1080,6 +1082,7 @@ func printPod(status *v1alphapod.PodStatus, podName *v1alphapeloton.PodName) {
 			status.GetHost(),
 			container.GetMessage(),
 			container.GetReason(),
+			termStatusStr,
 		)
 	}
 }
