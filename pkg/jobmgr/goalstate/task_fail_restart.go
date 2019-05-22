@@ -125,10 +125,18 @@ func getBackoff(
 		return time.Duration(0)
 	}
 
-	// backOff = _initialTaskBackOff * 2 ^ (failureCount - 1)
-	backOff := time.Duration(float64(initialTaskBackOff.Nanoseconds()) *
-		math.Pow(2, float64(taskRuntime.GetFailureCount()-1)))
+	// rawBackOff = _initialTaskBackOff * 2 ^ (failureCount - 1)
+	rawBackOff := float64(initialTaskBackOff.Nanoseconds()) *
+		math.Pow(2, float64(taskRuntime.GetFailureCount()-1))
 
+	// type time.Duration is internally int64,
+	// have to make sure rawBackOff does not overflow when
+	// convert to int64, otherwise a negative value would return.
+	if rawBackOff > math.MaxInt64 {
+		return maxTaskBackOff
+	}
+
+	backOff := time.Duration(rawBackOff)
 	if backOff > maxTaskBackOff {
 		return maxTaskBackOff
 	}

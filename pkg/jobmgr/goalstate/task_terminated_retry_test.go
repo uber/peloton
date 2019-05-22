@@ -17,6 +17,7 @@ package goalstate
 import (
 	"context"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -340,4 +341,20 @@ func (suite *TaskTerminatedRetryTestSuite) TestLostTaskRetry() {
 
 	err := TaskTerminatedRetry(context.Background(), suite.taskEnt)
 	suite.Nil(err)
+}
+
+// TestGetBackoffOverflow tests getBackoff function would not overflow
+// when failure count is huge
+func (suite *TaskTerminatedRetryTestSuite) TestGetBackoffOverflow() {
+	maxFails := uint32(math.MaxUint32)
+
+	for i := maxFails; i > 0; i = i / 2 {
+		backOff := getBackoff(
+			&pbtask.RuntimeInfo{FailureCount: i},
+			30*time.Second,
+			60*time.Minute,
+		)
+		suite.True(backOff >= time.Duration(0))
+		suite.True(backOff <= 60*time.Minute)
+	}
 }
