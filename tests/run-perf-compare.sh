@@ -58,18 +58,6 @@ if [[ -z "${COMMIT_HASH}" ]]; then
   COMMIT_HASH=`make commit-hash`
 fi
 
-# log params
-if [[ -z "${PELTON_AUTH_TYPE}" ]]; then
-  echo "using auth type:${PELTON_AUTH_TYPE}"
-else
-  echo "no auth type specified"
-fi
-if [[ -z "${PELTON_AUTH_CONFIG_FILE}" ]]; then
-  echo "loading auth config file from ${PELTON_AUTH_CONFIG_FILE}"
-else
-  echo "no auth config file specified"
-fi
-
 [[ $(uname) == Darwin || -n $JENKINS_HOME ]] && docker_cmd='docker' || docker_cmd='sudo docker'
 
 cur_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

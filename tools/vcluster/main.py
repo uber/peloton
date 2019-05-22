@@ -225,7 +225,7 @@ def main():
         args.zookeeper_server,
         args.respool_path,
         auth_type=args.auth_type,
-        auth_file=args.auth_file,
+        auth_file=args.auth_config_file,
     )
 
     command = args.command
