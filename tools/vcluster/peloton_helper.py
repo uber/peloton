@@ -91,7 +91,7 @@ class PelotonClientHelper(object):
 
         # Generate PelotonClient
         self.client = PelotonClient(
-            name="peloton-client", zk_servers=zk_servers, auth_config=auth_config,
+            name="peloton-client", zk_servers=zk_servers, auth=auth_config,
         )
         if not respool_path:
             return
