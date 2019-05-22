@@ -28,6 +28,12 @@ type Metrics struct {
 	activeJobsBackfill tally.Counter
 	// counter to track failure to backfill to active_jobs table
 	activeJobsBackfillFail tally.Counter
+	// counter to track recovery failure case when the job is present in
+	// mv_jobs_by_state but not in job_runtime
+	missingJobRuntime tally.Counter
+	// counter to track recovery failure case when the job is present in
+	// job_runtime but not in job_config
+	missingJobConfig tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct.
@@ -37,5 +43,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		activeJobsMV:           scope.Gauge("active_jobs_mv"),
 		activeJobsBackfill:     scope.Counter("active_jobs_backfill"),
 		activeJobsBackfillFail: scope.Counter("active_jobs_backfill_fail"),
+		missingJobRuntime:      scope.Counter("missing_job_runtime"),
+		missingJobConfig:       scope.Counter("missing_job_config"),
 	}
 }

@@ -126,7 +126,11 @@ func createJob(ctx context.Context, state pb_job.JobState, goalState pb_job.JobS
 	return jobID, nil
 }
 
-func createPartiallyCreatedJob(ctx context.Context, goalState pb_job.JobState) (*peloton.JobID, error) {
+func createPartiallyCreatedJob(
+	ctx context.Context,
+	state pb_job.JobState,
+	goalState pb_job.JobState,
+) (*peloton.JobID, error) {
 	var jobID = &peloton.JobID{Value: uuid.New()}
 	var sla = pb_job.SlaConfig{
 		Priority:                22,
@@ -172,6 +176,20 @@ func createPartiallyCreatedJob(ctx context.Context, goalState pb_job.JobState) (
 	err := csStore.CreateJobRuntime(ctx, jobID, &initialJobRuntime)
 	if err != nil {
 		return nil, err
+	}
+
+	if state != pb_job.JobState_UNINITIALIZED &&
+		state != pb_job.JobState_UNKNOWN {
+		jobRuntime, err := csStore.GetJobRuntime(ctx, jobID.GetValue())
+		if err != nil {
+			return nil, err
+		}
+
+		jobRuntime.State = state
+		err = csStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return jobID, nil
@@ -385,119 +403,20 @@ func TestRecoveryAfterJobDelete(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TestRecoveryErrors tests RecoverJobsByState errors
-func TestRecoveryErrors(t *testing.T) {
+// TestRecoveryJobsByStateError tests GetJobsByStates error
+func TestRecoveryJobsByStateError(t *testing.T) {
 	jobStatesPending := []pb_job.JobState{
 		pb_job.JobState_PENDING,
 	}
-	jobRuntime := pb_job.RuntimeInfo{
-		State: pb_job.JobState_PENDING,
-	}
-	jobID := &peloton.JobID{Value: uuid.New()}
 
 	ctrl := gomock.NewController(t)
 	ctx := context.Background()
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 
-	//Test GetJobsByStates error
 	mockJobStore.EXPECT().
 		GetJobsByStates(ctx, jobStatesPending).
 		Return(nil, fmt.Errorf("Fake GetJobsByStates error"))
 	err := RecoverJobsByState(
-		ctx,
-		scope,
-		mockJobStore,
-		jobStatesPending,
-		recoverPendingTask,
-		false,
-		false,
-	)
-	assert.Error(t, err)
-
-	// Test GetJobConfig error
-	jobIDs := []peloton.JobID{*jobID}
-	mockJobStore.EXPECT().
-		GetJobsByStates(ctx, jobStatesPending).
-		Return(jobIDs, nil)
-
-	mockJobStore.EXPECT().
-		GetActiveJobs(ctx).
-		Return([]*peloton.JobID{jobID}, nil)
-
-	mockJobStore.EXPECT().
-		GetJobRuntime(ctx, jobID.GetValue()).
-		Return(&jobRuntime, nil)
-
-	mockJobStore.EXPECT().
-		GetJobConfig(ctx, jobID.GetValue()).
-		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
-
-	err = RecoverJobsByState(
-		ctx,
-		scope,
-		mockJobStore,
-		jobStatesPending,
-		recoverPendingTask,
-		false,
-		false,
-	)
-	assert.Error(t, err)
-
-	// Test active jobs != jobs in MV
-	jobIDs = []peloton.JobID{*jobID}
-	mockJobStore.EXPECT().
-		GetJobsByStates(ctx, jobStatesPending).
-		Return(jobIDs, nil)
-
-	// if active jobs returns an empty list, the recovery process should
-	// move on without error, and we should see the missing job to be added
-	// to the active jobs table
-	mockJobStore.EXPECT().
-		GetActiveJobs(ctx).
-		Return([]*peloton.JobID{}, nil)
-
-	mockJobStore.EXPECT().AddActiveJob(ctx, jobID).Return(nil)
-
-	mockJobStore.EXPECT().
-		GetJobRuntime(ctx, jobID.GetValue()).
-		Return(&jobRuntime, nil)
-
-	mockJobStore.EXPECT().
-		GetJobConfig(ctx, jobID.GetValue()).
-		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
-
-	err = RecoverJobsByState(
-		ctx,
-		scope,
-		mockJobStore,
-		jobStatesPending,
-		recoverPendingTask,
-		false,
-		false,
-	)
-	assert.Error(t, err)
-
-	// Test active jobs != jobs in MV
-	jobIDs = []peloton.JobID{*jobID}
-	mockJobStore.EXPECT().
-		GetJobsByStates(ctx, jobStatesPending).
-		Return(jobIDs, nil)
-	// if active jobs returns a list different than the one fron MV, we should
-	// see the missing jobs being added to active jobs list
-	mockJobStore.EXPECT().
-		GetActiveJobs(ctx).
-		Return([]*peloton.JobID{{Value: uuid.New()}}, nil)
-	mockJobStore.EXPECT().AddActiveJob(ctx, jobID).Return(nil)
-
-	mockJobStore.EXPECT().
-		GetJobRuntime(ctx, jobID.GetValue()).
-		Return(&jobRuntime, nil)
-
-	mockJobStore.EXPECT().
-		GetJobConfig(ctx, jobID.GetValue()).
-		Return(nil, &models.ConfigAddOn{}, fmt.Errorf("Fake GetJobConfig error"))
-
-	err = RecoverJobsByState(
 		ctx,
 		scope,
 		mockJobStore,
@@ -545,9 +464,11 @@ func TestJobRecoveryWithUninitializedState(t *testing.T) {
 	ctx := context.Background()
 
 	// these two jobs cannot be recovered
-	_, err = createPartiallyCreatedJob(ctx, pb_job.JobState_RUNNING)
+	_, err = createPartiallyCreatedJob(ctx, pb_job.JobState_UNINITIALIZED,
+		pb_job.JobState_RUNNING)
 	assert.NoError(t, err)
-	_, err = createPartiallyCreatedJob(ctx, pb_job.JobState_RUNNING)
+	_, err = createPartiallyCreatedJob(ctx, pb_job.JobState_UNINITIALIZED,
+		pb_job.JobState_RUNNING)
 	assert.NoError(t, err)
 
 	// Although the state is UNINITIALIZED, config is persisted in db,
@@ -568,6 +489,36 @@ func TestJobRecoveryWithUninitializedState(t *testing.T) {
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(receivedPendingJobID))
+}
+
+// TestJobRecoveryWithMissingJobConfig tests job recovery won't throw an error
+// if the job presents in job_runtime (not in UNINITIALIZED state), but missing
+// in job_config table.
+func TestJobRecoveryWithMissingJobConfig(t *testing.T) {
+	var err error
+
+	ctx := context.Background()
+
+	// these two jobs cannot be recovered
+	_, err = createPartiallyCreatedJob(ctx, pb_job.JobState_INITIALIZED,
+		pb_job.JobState_RUNNING)
+	assert.NoError(t, err)
+	_, err = createPartiallyCreatedJob(ctx, pb_job.JobState_INITIALIZED,
+		pb_job.JobState_RUNNING)
+	assert.NoError(t, err)
+
+	receivedPendingJobID = nil
+	err = RecoverJobsByState(
+		ctx,
+		scope,
+		csStore,
+		[]pb_job.JobState{pb_job.JobState_INITIALIZED},
+		recoverAllTask,
+		false,
+		false,
+	)
+	assert.NoError(t, err)
+	assert.Len(t, receivedPendingJobID, 0)
 }
 
 // TestPopulateMissingActiveJobs tests back fill of jobs missing from active

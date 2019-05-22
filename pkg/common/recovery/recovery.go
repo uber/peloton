@@ -28,7 +28,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
-	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -61,6 +60,13 @@ type RecoverBatchTasks func(
 	jobRuntime *job.RuntimeInfo,
 	batch TasksBatch,
 	errChan chan<- error)
+
+// jobRecoverySummary is used to track the skipped failure cases from
+// recoverJobsBatch.
+type jobRecoverySummary struct {
+	missingJobRuntime bool
+	missingJobConfig  bool
+}
 
 func createTaskBatches(config *job.JobConfig) []TasksBatch {
 	// check job config
@@ -153,6 +159,7 @@ func recoverJobsBatch(
 	jobStore storage.JobStore,
 	batch JobsBatch,
 	errChan chan<- error,
+	summaryChan chan<- jobRecoverySummary,
 	f RecoverBatchTasks) {
 	for _, jobID := range batch.jobs {
 		jobRuntime, err := jobStore.GetJobRuntime(ctx, jobID.GetValue())
@@ -168,11 +175,7 @@ func recoverJobsBatch(
 			// In this case, we should log the job_id and skip to next job_id instead
 			// of bailing out of the recovery code.
 
-			// TODO (adityacb): create a recovery summary to be
-			// returned at the end of this call.
-			// That way, the caller has a better idea of recovery
-			// stats and error counts and the caller can then
-			// increment specific metrics.
+			summaryChan <- jobRecoverySummary{missingJobRuntime: true}
 			continue
 		}
 
@@ -185,18 +188,17 @@ func recoverJobsBatch(
 
 		jobConfig, configAddOn, err := jobStore.GetJobConfig(ctx, jobID.GetValue())
 		if err != nil {
-			// config is not found and job state is uninitialized,
-			// which means job is partially created and cannot be recovered.
-			if yarpcerrors.IsNotFound(err) &&
-				jobRuntime.GetState() == job.JobState_UNINITIALIZED {
-				continue
-			}
-
 			log.WithField("job_id", jobID.Value).
 				WithError(err).
 				Error("Failed to load job config")
-			errChan <- err
-			return
+			// There have been situations where job is deleted from job_config
+			// but still present in the job_runtime. So if you call GetJobConfig
+			// here, it will get an error. In this case, we should log the
+			// failure case and skip to next job_id instead of failing the
+			// recovery code.
+
+			summaryChan <- jobRecoverySummary{missingJobConfig: true}
+			continue
 		}
 
 		err = recoverJob(ctx, jobID.Value, jobConfig, configAddOn, jobRuntime, f)
@@ -334,36 +336,56 @@ func RecoverJobsByState(
 	var bwg sync.WaitGroup
 	finished := make(chan bool)
 	errChan := make(chan error, len(jobBatches))
+	summaryChan := make(chan jobRecoverySummary, len(jobBatches))
 	for _, batch := range jobBatches {
 		bwg.Add(1)
 		go func(batch JobsBatch) {
 			defer bwg.Done()
-			recoverJobsBatch(ctx, jobStore, batch, errChan, f)
+			recoverJobsBatch(ctx, jobStore, batch, errChan, summaryChan, f)
 		}(batch)
 	}
 
 	go func() {
 		bwg.Wait()
 		close(finished)
+		close(summaryChan)
 	}()
+
+	handleRecoverySummary := func(summary jobRecoverySummary) {
+		if summary.missingJobRuntime {
+			mtx.missingJobRuntime.Inc(1)
+		}
+		if summary.missingJobConfig {
+			mtx.missingJobConfig.Inc(1)
+		}
+	}
 
 	// wait for all goroutines to finish successfully or
 	// exit early
-	select {
-	case <-finished:
-		// If the last goroutine threw an error then both cases of the select
-		// statement are satisfied. To ensure this error doesnt go uncaught, we
-		// need to check the length of errChan here
-		if len(errChan) != 0 {
-			err = <-errChan
-			log.WithError(err).Error("recovery failed")
-			return err
-		}
-	case err := <-errChan:
-		if err != nil {
-			log.WithError(err).Error("recovery failed")
-			return err
+	for {
+		select {
+		case <-finished:
+			// If the last goroutine threw an error then both cases of the select
+			// statement are satisfied. To ensure this error doesnt go uncaught, we
+			// need to check the length of errChan here
+			if len(errChan) != 0 {
+				err = <-errChan
+				log.WithError(err).Error("recovery failed")
+				return err
+			}
+			if len(summaryChan) != 0 {
+				for summary := range summaryChan {
+					handleRecoverySummary(summary)
+				}
+			}
+			return nil
+		case err := <-errChan:
+			if err != nil {
+				log.WithError(err).Error("recovery failed")
+				return err
+			}
+		case result := <-summaryChan:
+			handleRecoverySummary(result)
 		}
 	}
-	return nil
 }
