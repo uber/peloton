@@ -20,7 +20,14 @@ work_dir = os.path.dirname(os.path.abspath(__file__))
 # Delete the kind cluster.
 def teardown_k8s():
     k8s = kind.Kind(PELOTON_K8S_NAME)
-    return k8s.teardown()
+    try:
+        return k8s.teardown()
+    except OSError as e:
+        if e.errno == 2:
+            print_utils.warn("kubernetes was not running")
+            return True
+        else:
+            raise
 
 
 def teardown_mesos_agent(config, agent_index, is_exclusive=False):
@@ -252,7 +259,7 @@ def create_cassandra_store(config):
         # by api design, exec_start needs to be called after exec_create
         # to run 'docker exec'
         resp = cli.exec_start(exec_id=setup_exe)
-        if resp is "":
+        if resp == "":
             resp = cli.exec_start(exec_id=show_exe)
             if "CREATE KEYSPACE peloton_test WITH" in resp:
                 print_utils.okgreen("cassandra store is created")
