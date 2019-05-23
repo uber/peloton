@@ -63,6 +63,7 @@ import (
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
+	"golang.org/x/time/rate"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -210,6 +211,38 @@ var (
 		Default("").
 		Envar("AUTH_CONFIG_FILE").
 		String()
+
+	taskKillRateLimit = app.Flag(
+		"task-kill-rate-limit",
+		"Define the rate limit of calling task kil from goal state engine",
+	).
+		Default("0").
+		Envar("TASK_KILL_RATE_LIMIT").
+		Float64()
+
+	taskKillBurstLimit = app.Flag(
+		"task-kill-burst-limit",
+		"Define the burst limit of calling task kill from goal state engine",
+	).
+		Default("0").
+		Envar("TASK_KILL_BURST_LIMIT").
+		Int()
+
+	executorShutdownRateLimit = app.Flag(
+		"executor-shutdown-rate-limit",
+		"Define the rate limit of calling executor shutdown from goal state engine",
+	).
+		Default("0").
+		Envar("EXECUTOR_SHUTDOWN_RATE_LIMIT").
+		Float64()
+
+	executorShutdownBurstLimit = app.Flag(
+		"executor-shutdown-burst-limit",
+		"Define the burst limit of calling executor shutdown from goal state engine",
+	).
+		Default("0").
+		Envar("EXECUTOR_SHUTDOWN_BURST_LIMIT").
+		Int()
 )
 
 func main() {
@@ -310,6 +343,23 @@ func main() {
 	if len(*authType) != 0 {
 		cfg.Auth.AuthType = auth.Type(*authType)
 		cfg.Auth.Path = *authConfigFile
+	}
+
+	// Parse rate limit config
+	if *taskKillRateLimit != 0 {
+		cfg.JobManager.GoalState.RateLimiterConfig.TaskKill.Rate = rate.Limit(*taskKillRateLimit)
+	}
+
+	if *taskKillBurstLimit != 0 {
+		cfg.JobManager.GoalState.RateLimiterConfig.TaskKill.Burst = *taskKillBurstLimit
+	}
+
+	if *executorShutdownRateLimit != 0 {
+		cfg.JobManager.GoalState.RateLimiterConfig.ExecutorShutdown.Rate = rate.Limit(*executorShutdownRateLimit)
+	}
+
+	if *executorShutdownBurstLimit != 0 {
+		cfg.JobManager.GoalState.RateLimiterConfig.ExecutorShutdown.Burst = *executorShutdownBurstLimit
 	}
 
 	log.WithField("config", cfg).Info("Loaded Job Manager configuration")

@@ -245,6 +245,18 @@ class App(object):
             env_vars["JOB_RUNTIME_CALCULATION_VIA_CACHE"] = getattr(
                 self, "job_runtime_calculation_via_cache", False
             )
+            env_vars["TASK_KILL_RATE_LIMIT"] = getattr(
+                self, "task_kill_rate_limit", 0.0
+            )
+            env_vars["TASK_KILL_BURST_LIMIT"] = getattr(
+                self, "task_kill_burst_limit", 0
+            )
+            env_vars["EXECUTOR_SHUTDOWN_RATE_LIMIT"] = getattr(
+                self, "executor_shutdown_rate_limit", 0.0
+            )
+            env_vars["EXECUTOR_SHUTDOWN_BURST_LIMIT"] = getattr(
+                self, "executor_shutdown_burst_limit", 0
+            )
 
         if self.name == "archiver":
             env_vars["ENABLE_ARCHIVER"] = self.enable_archiver

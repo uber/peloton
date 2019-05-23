@@ -1,5 +1,5 @@
-hash: 75e17fa879b15638dc562a9c2dbe63792888a413e45deac057f9b01df4357d94
-updated: 2019-05-13T17:13:56.189958-07:00
+hash: 177acce71dca0c36f83baac95e14f419dc8d218c0ccd121a08e9290ee2784070
+updated: 2019-05-17T14:51:35.05166-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -135,11 +135,11 @@ imports:
   - prometheus
   - prometheus/promhttp
 - name: github.com/m3db/prometheus_client_model
-  version: 8b2299a4bf7d7fc10835527021716d4b4a6e8700
+  version: d3fff8420252ef63bffb96f689d1a85096c97321
   subpackages:
   - go
 - name: github.com/m3db/prometheus_common
-  version: 25aaa3dff79bb48116615ebe1dea6a494b74ce77
+  version: d550673fc477123acb69017380567e8fafc765fc
   subpackages:
   - expfmt
   - internal/bitbucket.org/ww/goautoneg
@@ -214,7 +214,7 @@ imports:
   subpackages:
   - internal/mapstructure
 - name: github.com/uber-go/tally
-  version: e9a67ec1839e1f6e5133dbcca2f57bec12fdeda2
+  version: f331b65108ed41d0a83a6ce650c1ea9c0fe2878f
   subpackages:
   - m3
   - m3/customtransports
@@ -257,7 +257,7 @@ imports:
   - push
   - tallypush
 - name: go.uber.org/thriftrw
-  version: 8c0d4168d718dcf453a5a9538725f6e4ecf6ee3d
+  version: f3ff6fef5b56823cf763aebc81b42b8cbd1082c1
   subpackages:
   - ast
   - compile
@@ -366,6 +366,8 @@ imports:
   - transform
   - unicode/bidi
   - unicode/norm
+- name: golang.org/x/time
+  version: 9d24e82272b4f38b78bc8cff74fa936d31ccd8ef
 - name: golang.org/x/tools
   version: 923d25813098b2ffdf1b4bb7ee4ec425fef796a9
   repo: https://github.com/golang/tools

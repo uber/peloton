@@ -14,7 +14,11 @@
 
 package goalstate
 
-import "time"
+import (
+	"time"
+
+	"golang.org/x/time/rate"
+)
 
 const (
 	_defaultMaxRetryDelay            = 60 * time.Minute
@@ -90,6 +94,25 @@ type Config struct {
 
 	// RecoveryConfig to recover jobs on jobmgr restart
 	RecoveryConfig *RecoveryConfig `yaml:"recovery"`
+
+	// RateLimiterConfig defines rate limiter config
+	RateLimiterConfig RateLimiterConfig `yaml:"rate_limit"`
+}
+type RateLimiterConfig struct {
+	// ExecutorShutdown rate limit config for executor shutdown call to hostmgr
+	ExecutorShutdown TokenBucketConfig `yaml:"executor_shutdown"`
+	// TaskKill rate limit config for task stop call to hostmgr
+	TaskKill TokenBucketConfig `yaml:"task_kill"`
+}
+
+// TokenBucketConfig is the config for rate limiting
+type TokenBucketConfig struct {
+	// Rate for the token bucket rate limit algorithm,
+	// If Rate <=0, there would be no rate limit
+	Rate rate.Limit
+	// Burst for the token bucket rate limit algorithm,
+	// If Burst <=0, there would be no rate limit
+	Burst int
 }
 
 // RecoveryConfig is the container for recovery related config
@@ -139,5 +162,13 @@ func (c *Config) normalize() {
 
 	if c.MaxTaskBackoff == 0 {
 		c.MaxTaskBackoff = _defaultMaxTaskBackoff
+	}
+
+	if c.RateLimiterConfig.TaskKill.Rate <= 0 || c.RateLimiterConfig.TaskKill.Burst <= 0 {
+		c.RateLimiterConfig.TaskKill.Rate = rate.Inf
+	}
+
+	if c.RateLimiterConfig.ExecutorShutdown.Rate <= 0 || c.RateLimiterConfig.ExecutorShutdown.Burst <= 0 {
+		c.RateLimiterConfig.ExecutorShutdown.Rate = rate.Inf
 	}
 }
