@@ -49,5 +49,11 @@ func TaskExecutorShutdown(ctx context.Context, entity goalstate.Entity) error {
 		WithField("instance_id", taskEnt.instanceID).
 		Info("task kill timed out, try to shutdown executor")
 
-	return jobmgrtask.ShutdownMesosExecutor(ctx, goalStateDriver.hostmgrClient, runtime.GetMesosTaskId(), runtime.GetAgentID())
+	return jobmgrtask.ShutdownMesosExecutor(
+		ctx,
+		goalStateDriver.hostmgrClient,
+		runtime.GetMesosTaskId(),
+		runtime.GetAgentID(),
+		goalStateDriver.executorShutShutdownRateLimiter,
+	)
 }

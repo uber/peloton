@@ -34,6 +34,8 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/yarpc/yarpcerrors"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -183,7 +185,7 @@ func (suite *JobmgrTaskUtilTestSuite) TestKillTaskInvalidTaskIDs() {
 	}
 	suite.mockHostMgr.EXPECT().KillTasks(
 		gomock.Any(), suite.buildKillTasksReq()).Return(resp, nil)
-	err := KillTask(suite.ctx, suite.mockHostMgr, taskID, "")
+	err := KillTask(suite.ctx, suite.mockHostMgr, taskID, "", nil)
 	suite.Error(err)
 	suite.Equal(err.Error(), randomErrorStr)
 }
@@ -202,9 +204,17 @@ func (suite *JobmgrTaskUtilTestSuite) TestKillTaskKillFailure() {
 	}
 	suite.mockHostMgr.EXPECT().KillTasks(
 		gomock.Any(), suite.buildKillTasksReq()).Return(resp, nil)
-	err := KillTask(suite.ctx, suite.mockHostMgr, taskID, "")
+	err := KillTask(suite.ctx, suite.mockHostMgr, taskID, "", nil)
 	suite.Error(err)
 	suite.Equal(err.Error(), randomErrorStr)
+}
+
+// TestKillTaskRateLimit tests task kill fails due to rate limit reached
+func (suite *JobmgrTaskUtilTestSuite) TestKillTaskRateLimit() {
+	taskID := &mesos.TaskID{Value: &suite.mesosTaskID}
+	err := KillTask(suite.ctx, suite.mockHostMgr, taskID, "", rate.NewLimiter(0, 0))
+	suite.Error(err)
+	suite.True(yarpcerrors.IsResourceExhausted(err))
 }
 
 func (suite *JobmgrTaskUtilTestSuite,
@@ -232,11 +242,27 @@ func (suite *JobmgrTaskUtilTestSuite) TestShutdownExecutorShutdownFailure() {
 	}
 	suite.mockHostMgr.EXPECT().ShutdownExecutors(
 		suite.ctx, suite.buildShutdownExecutorsReq()).Return(resp, nil)
-	err := ShutdownMesosExecutor(suite.ctx, suite.mockHostMgr,
+	err := ShutdownMesosExecutor(
+		suite.ctx,
+		suite.mockHostMgr,
 		&mesos.TaskID{Value: &suite.mesosTaskID},
-		&mesos.AgentID{Value: &suite.mesosTaskID})
+		&mesos.AgentID{Value: &suite.mesosTaskID},
+		nil)
 	suite.Error(err)
 	suite.Equal(err.Error(), randomErrorStr)
+}
+
+// TestExecutorShutdownRateLimit tests executor shutdown fails due to
+// rate limit
+func (suite *JobmgrTaskUtilTestSuite) TestExecutorShutdownRateLimit() {
+	err := ShutdownMesosExecutor(
+		suite.ctx,
+		suite.mockHostMgr,
+		&mesos.TaskID{Value: &suite.mesosTaskID},
+		&mesos.AgentID{Value: &suite.mesosTaskID},
+		rate.NewLimiter(0, 0))
+	suite.Error(err)
+	suite.True(yarpcerrors.IsResourceExhausted(err))
 }
 
 // TestShutdownExecutorInvalidExecutors tests InvalidExecutors error in
@@ -253,9 +279,12 @@ func (suite *JobmgrTaskUtilTestSuite) TestShutdownExecutorInvalidExecutors() {
 	}
 	suite.mockHostMgr.EXPECT().ShutdownExecutors(
 		suite.ctx, suite.buildShutdownExecutorsReq()).Return(resp, nil)
-	err := ShutdownMesosExecutor(suite.ctx, suite.mockHostMgr,
+	err := ShutdownMesosExecutor(
+		suite.ctx,
+		suite.mockHostMgr,
 		&mesos.TaskID{Value: &suite.mesosTaskID},
-		&mesos.AgentID{Value: &suite.mesosTaskID})
+		&mesos.AgentID{Value: &suite.mesosTaskID},
+		nil)
 	suite.Error(err)
 	suite.Equal(err.Error(), randomErrorStr)
 }
