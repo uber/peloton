@@ -175,6 +175,7 @@ func stopMesosTask(ctx context.Context, taskEnt *taskEntity, runtime *task.Runti
 		goalStateDriver.hostmgrClient,
 		runtime.GetMesosTaskId(),
 		runtime.GetDesiredHost(),
+		goalStateDriver.taskKillRateLimiter,
 	)
 	if err != nil {
 		return err

@@ -33,6 +33,8 @@ import (
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -93,9 +95,9 @@ func KillOrphanTask(
 	if !util.IsPelotonStateTerminal(state) && mesosTaskID != nil {
 		var err error
 		if state == task.TaskState_KILLING {
-			err = ShutdownMesosExecutor(ctx, hostmgrClient, mesosTaskID, agentID)
+			err = ShutdownMesosExecutor(ctx, hostmgrClient, mesosTaskID, agentID, nil)
 		} else {
-			err = KillTask(ctx, hostmgrClient, mesosTaskID, "")
+			err = KillTask(ctx, hostmgrClient, mesosTaskID, "", nil)
 		}
 		if err != nil {
 			log.WithError(err).
@@ -113,6 +115,7 @@ func KillTask(
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
 	taskID *mesos_v1.TaskID,
 	hostToReserve string,
+	rateLimiter *rate.Limiter,
 ) error {
 	newCtx := ctx
 	_, ok := ctx.Deadline()
@@ -123,16 +126,22 @@ func KillTask(
 	}
 
 	if len(hostToReserve) != 0 {
-		return killAndReserveHost(newCtx, hostmgrClient, taskID, hostToReserve)
+		return killAndReserveHost(newCtx, hostmgrClient, taskID, hostToReserve, rateLimiter)
 	}
 
-	return killHost(newCtx, hostmgrClient, taskID)
+	return killHost(newCtx, hostmgrClient, taskID, rateLimiter)
 }
 
 func killHost(
 	ctx context.Context,
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
-	taskID *mesos_v1.TaskID) error {
+	taskID *mesos_v1.TaskID,
+	rateLimiter *rate.Limiter,
+) error {
+	if rateLimiter != nil && !rateLimiter.Allow() {
+		return yarpcerrors.ResourceExhaustedErrorf("rate limit reached for kill task")
+	}
+
 	req := &hostsvc.KillTasksRequest{
 		TaskIds: []*mesos_v1.TaskID{taskID},
 	}
@@ -157,7 +166,12 @@ func killAndReserveHost(
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
 	mesosTaskID *mesos_v1.TaskID,
 	hostToReserve string,
+	rateLimiter *rate.Limiter,
 ) error {
+	if rateLimiter != nil && !rateLimiter.Allow() {
+		return yarpcerrors.ResourceExhaustedErrorf("rate limit reached for kill and reserve task")
+	}
+
 	taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID.GetValue())
 	if err != nil {
 		return err
@@ -189,7 +203,12 @@ func ShutdownMesosExecutor(
 	ctx context.Context,
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
 	taskID *mesos_v1.TaskID,
-	agentID *mesos_v1.AgentID) error {
+	agentID *mesos_v1.AgentID,
+	rateLimiter *rate.Limiter,
+) error {
+	if rateLimiter != nil && !rateLimiter.Allow() {
+		return yarpcerrors.ResourceExhaustedErrorf("rate limit reached for executor shutdown")
+	}
 
 	req := &hostsvc.ShutdownExecutorsRequest{
 		Executors: []*hostsvc.ExecutorOnAgent{

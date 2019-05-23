@@ -1,5 +1,5 @@
-hash: 9803ceefbaf96124d8b1eadec4cabc13593ccfc38bb47c5084c8a7b1669fc58a
-updated: 2019-04-04T16:02:09.864067-07:00
+hash: 177acce71dca0c36f83baac95e14f419dc8d218c0ccd121a08e9290ee2784070
+updated: 2019-05-17T14:51:35.05166-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -92,13 +92,13 @@ imports:
   - vanity
   - vanity/command
 - name: github.com/golang/mock
-  version: 51421b967af1f557f93a59e0057aaf15ca02e29c
+  version: 9fa652df1129bef0e734c9cf9bf6dbae9ef3b9fa
   subpackages:
   - gomock
   - mockgen
   - mockgen/model
 - name: github.com/golang/protobuf
-  version: 8ee79997227bf9b34611aee7946ae64735e6fd93
+  version: b5d812f8a3706043e23a9cd5babf2e5423744d30
   subpackages:
   - proto
   - protoc
@@ -117,6 +117,8 @@ imports:
   version: 7554cd9344cec97297fa6649b055a8c98c2a1e55
 - name: github.com/hashicorp/go-multierror
   version: ed905158d87462226a13fe39ddf685ea65f1c11f
+- name: github.com/Jeffail/gabs
+  version: 74ef14cf8f407ee3ca8ec01bb6f52d6104edea80
 - name: github.com/jessevdk/go-flags
   version: c6ca198ec95c841fdb89fc0de7496fed11ab854e
 - name: github.com/kisielk/errcheck
@@ -133,11 +135,11 @@ imports:
   - prometheus
   - prometheus/promhttp
 - name: github.com/m3db/prometheus_client_model
-  version: 8b2299a4bf7d7fc10835527021716d4b4a6e8700
+  version: d3fff8420252ef63bffb96f689d1a85096c97321
   subpackages:
   - go
 - name: github.com/m3db/prometheus_common
-  version: 25aaa3dff79bb48116615ebe1dea6a494b74ce77
+  version: d550673fc477123acb69017380567e8fafc765fc
   subpackages:
   - expfmt
   - internal/bitbucket.org/ww/goautoneg
@@ -212,7 +214,7 @@ imports:
   subpackages:
   - internal/mapstructure
 - name: github.com/uber-go/tally
-  version: e9a67ec1839e1f6e5133dbcca2f57bec12fdeda2
+  version: f331b65108ed41d0a83a6ce650c1ea9c0fe2878f
   subpackages:
   - m3
   - m3/customtransports
@@ -232,7 +234,7 @@ imports:
   - trand
   - typed
 - name: go.uber.org/atomic
-  version: 1ea20fb1cbb1cc08cbd0d913a96dead89aa18289
+  version: df976f2515e274675050de7b3f42545de80594fd
 - name: go.uber.org/automaxprocs
   version: 6fecebd30e89df4ebcb6ca6dc1d0a5c8d2aa10a0
   subpackages:
@@ -255,7 +257,7 @@ imports:
   - push
   - tallypush
 - name: go.uber.org/thriftrw
-  version: 09aadc27c679160ef322113d1daf634b643825d9
+  version: f3ff6fef5b56823cf763aebc81b42b8cbd1082c1
   subpackages:
   - ast
   - compile
@@ -286,7 +288,7 @@ imports:
   subpackages:
   - update-license
 - name: go.uber.org/yarpc
-  version: d7168bf2dc382eb7e5c016992a63bf1a3eac3c7d
+  version: 82e7aaa589e0250ba028b902bc4dd88743d49dff
   subpackages:
   - api/backoff
   - api/encoding
@@ -321,7 +323,7 @@ imports:
   - yarpcconfig
   - yarpcerrors
 - name: go.uber.org/zap
-  version: ff33455a0e382e8a81d14dd7c922020b6b5e7982
+  version: 27376062155ad36be76b0f12cf1572a221d3a48c
   subpackages:
   - buffer
   - internal/bufferpool
@@ -364,6 +366,8 @@ imports:
   - transform
   - unicode/bidi
   - unicode/norm
+- name: golang.org/x/time
+  version: 9d24e82272b4f38b78bc8cff74fa936d31ccd8ef
 - name: golang.org/x/tools
   version: 923d25813098b2ffdf1b4bb7ee4ec425fef796a9
   repo: https://github.com/golang/tools
@@ -387,23 +391,29 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: 8dea3dc473e90c8179e519d91302d0597c0ca1d1
+  version: 25c4f928eaa6d96443009bd842389fb4fa48664e
   repo: https://github.com/grpc/grpc-go
   subpackages:
   - balancer
   - balancer/base
   - balancer/roundrobin
+  - binarylog/grpc_binarylog_v1
   - codes
   - connectivity
   - credentials
+  - credentials/internal
   - encoding
   - encoding/proto
   - grpclog
   - internal
   - internal/backoff
+  - internal/balancerload
+  - internal/binarylog
   - internal/channelz
   - internal/envconfig
   - internal/grpcrand
+  - internal/grpcsync
+  - internal/syscall
   - internal/transport
   - keepalive
   - metadata

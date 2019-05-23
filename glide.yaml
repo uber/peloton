@@ -93,6 +93,9 @@ import:
   version: dev
 - package: golang.org/x/crypto
   version: a1f597ede03a7bef967a422b5b3a5bd08805a01e
+- package: github.com/Jeffail/gabs
+  version: v1.2.0
+- package: golang.org/x/time
 
 # packages below needed for proto gen files
 - package: go.uber.org/fx

@@ -37,6 +37,7 @@ import (
 	"github.com/uber-go/tally"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 	"go.uber.org/yarpc"
+	"golang.org/x/time/rate"
 )
 
 // _sleepRetryCheckRunningState is the duration to wait during stop/start while waiting for
@@ -181,6 +182,12 @@ func NewDriver(
 		jobType:                       jobType,
 		jobRuntimeCalculationViaCache: jobRuntimeCalculationViaCache,
 		jobScope:                      jobScope,
+		taskKillRateLimiter: rate.NewLimiter(
+			cfg.RateLimiterConfig.TaskKill.Rate,
+			cfg.RateLimiterConfig.TaskKill.Burst),
+		executorShutShutdownRateLimiter: rate.NewLimiter(
+			cfg.RateLimiterConfig.ExecutorShutdown.Rate,
+			cfg.RateLimiterConfig.ExecutorShutdown.Burst),
 	}
 }
 
@@ -241,6 +248,12 @@ type driver struct {
 	jobRuntimeCalculationViaCache bool
 	// job scope for goalstate driver
 	jobScope tally.Scope
+
+	// rate limiter for goal state engine initiated task stop
+	taskKillRateLimiter *rate.Limiter
+
+	//  rate limiter for goal state engine initiated executor shutdown
+	executorShutShutdownRateLimiter *rate.Limiter
 }
 
 func (d *driver) EnqueueJob(jobID *peloton.JobID, deadline time.Time) {
