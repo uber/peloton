@@ -44,6 +44,45 @@ func (w *asyncWorkerQueueItem) Run(ctx context.Context) {
 type asyncWorkerQueue struct {
 	queue  queue.DeadlineQueue // goal state engine's deadline queue
 	engine *engine             // backpointer to goal state engine
+
+	// jobChan is used to sync between asyncWorkerQueue.Dequeue,
+	// because queue.DeadlineQueue is not concurrency safe.
+	// asyncWorkerQueue.Run would continue to enqueue into the
+	// channel, and asyncWorkerQueue.Dequeue would read from the
+	// channel.
+	jobChan chan queue.QueueItem
+}
+
+func newAsyncWorkerQueue(
+	ddlQueue queue.DeadlineQueue,
+	engine *engine,
+) *asyncWorkerQueue {
+
+	return &asyncWorkerQueue{
+		queue:  ddlQueue,
+		engine: engine,
+	}
+}
+
+func (q *asyncWorkerQueue) Run(stopChan chan struct{}) {
+	q.jobChan = make(chan queue.QueueItem)
+
+	go func() {
+		for {
+			queueItem := q.queue.Dequeue(stopChan)
+			if queueItem == nil {
+				q.jobChan <- nil
+				return
+			}
+			select {
+			case q.jobChan <- queueItem:
+				continue
+			case <-stopChan:
+				close(q.jobChan)
+				return
+			}
+		}
+	}()
 }
 
 func (q *asyncWorkerQueue) Enqueue(job async.Job) {
@@ -52,8 +91,8 @@ func (q *asyncWorkerQueue) Enqueue(job async.Job) {
 	return
 }
 
-func (q *asyncWorkerQueue) Dequeue(stopChan <-chan struct{}) async.Job {
-	queueItem := q.queue.Dequeue(stopChan)
+func (q *asyncWorkerQueue) Dequeue() async.Job {
+	queueItem := <-q.jobChan
 	if queueItem == nil {
 		return nil
 	}
@@ -99,10 +138,7 @@ func NewEngine(
 		mtx:               NewMetrics(parentScope),
 	}
 
-	asyncQueue := &asyncWorkerQueue{
-		queue:  queue.NewDeadlineQueue(queue.NewQueueMetrics(parentScope)),
-		engine: e,
-	}
+	asyncQueue := newAsyncWorkerQueue(queue.NewDeadlineQueue(queue.NewQueueMetrics(parentScope)), e)
 
 	pool := async.NewPool(
 		async.PoolOptions{MaxWorkers: numWorkerThreads},

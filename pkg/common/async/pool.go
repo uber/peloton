@@ -34,11 +34,10 @@ type PoolOptions struct {
 // but not run until it reached the front of the queue and a worker is free.
 type Pool struct {
 	sync.Mutex
-	options    PoolOptions
-	queue      Queue
-	numWorkers int
-	jobs       sync.WaitGroup
-	stopChan   chan struct{}
+	options  PoolOptions
+	queue    Queue
+	jobs     sync.WaitGroup
+	stopChan chan struct{}
 }
 
 // NewPool returns a new pool, provided the PoolOptions and the queue.
@@ -52,30 +51,11 @@ func NewPool(o PoolOptions, queue Queue) *Pool {
 	}
 
 	p := &Pool{
-		options:    o,
-		queue:      queue,
-		numWorkers: o.MaxWorkers,
+		options: o,
+		queue:   queue,
 	}
 
 	return p
-}
-
-// SetMaxWorkers to the number provided. If smaller than the current value, it
-// will lazily close existing workers. If greater, new workers will be created.
-// If 0 or less is given, DefaultMaxWorkers will be used instead.
-func (p *Pool) SetMaxWorkers(num int) {
-	if num <= 0 {
-		num = DefaultMaxWorkers
-	}
-
-	p.Lock()
-	p.options.MaxWorkers = num
-	if p.numWorkers > p.options.MaxWorkers {
-		go p.stopWorkers()
-	} else if p.numWorkers < p.options.MaxWorkers {
-		go p.addWorkers()
-	}
-	p.Unlock()
 }
 
 // Enqueue a job in the pool.
@@ -100,8 +80,9 @@ func (p *Pool) Start() {
 		p.Unlock()
 		return
 	}
-
 	p.stopChan = make(chan struct{})
+
+	p.queue.Run(p.stopChan)
 	p.Unlock()
 
 	// Spawn initial workers.
@@ -115,62 +96,20 @@ func (p *Pool) Start() {
 // amd finally cleans up the stop channel
 func (p *Pool) Stop() {
 	p.Lock()
+	defer p.Unlock()
+
 	if p.stopChan == nil {
-		p.Unlock()
 		return
 	}
 
-	p.options.MaxWorkers = 0
-	p.Unlock()
-	p.stopWorkers()
-
-	p.Lock()
-	defer p.Unlock()
 	close(p.stopChan)
 	p.stopChan = nil
-}
-
-// addWorkers add more workers in the pool to achieve goal state of Max Workers in the pool.
-func (p *Pool) addWorkers() {
-	for {
-		p.Lock()
-		// Validate Running workers >= Assigned Workers.
-		if p.numWorkers >= p.options.MaxWorkers {
-			p.Unlock()
-			break
-		} else {
-			p.numWorkers++
-			go p.runWorker()
-		}
-		p.Unlock()
-	}
-}
-
-// stopWorkers stops running workers to achieve goal state of Max Workers in the pool.
-func (p *Pool) stopWorkers() {
-	for {
-		p.Lock()
-		// Validate Running workers <= Assigned Workers.
-		if p.numWorkers <= p.options.MaxWorkers {
-			p.Unlock()
-			break
-		} else {
-			// Send best effort stopChan to terminate worker,
-			// if received then a running worker is terminated.
-			select {
-			case p.stopChan <- struct{}{}:
-				p.numWorkers--
-			default:
-			}
-		}
-		p.Unlock()
-	}
 }
 
 // runWorker starts a worker go routine to process jobs from FIFO queue.
 func (p *Pool) runWorker() {
 	for {
-		job := p.queue.Dequeue(p.stopChan)
+		job := p.queue.Dequeue()
 		if job == nil {
 			return
 		}

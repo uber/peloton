@@ -23,6 +23,8 @@ func TestEnqueueManyAreAllRead(t *testing.T) {
 	q := newQueue()
 	c := 100
 
+	q.Run(make(chan struct{}))
+
 	test := func() {
 		for i := 0; i < c; i++ {
 			q.Enqueue(JobFunc(func(ctx context.Context) {}))
@@ -41,6 +43,8 @@ func TestEnqueueManyAreAllRead(t *testing.T) {
 func TestEnqueueManyConcurrentlyAreAllRead(t *testing.T) {
 	q := newQueue()
 	c := 100
+
+	q.Run(make(chan struct{}))
 
 	test := func() {
 		for i := 0; i < c; i++ {
