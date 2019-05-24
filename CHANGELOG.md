@@ -3,7 +3,7 @@
 0.8.7 (unreleased)
 ------------------
 
-0.8.6
+0.8.6, 0.8.6.1
 ------------------
 * 2019-05-23    Placement hints for batch jobs                                                         amitbose@uber.com
 * 2019-05-22    Skip recovery if job not present in job_config table                                   kevinxu@uber.com
