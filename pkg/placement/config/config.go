@@ -58,10 +58,13 @@ type PlacementConfig struct {
 	// GRPC port which hostmgr is listening on
 	GRPCPort int `yaml:"grpc_port"`
 
+	// TaskDequeuePeriod is the period at which tasks are dequeued to be placed.
+	TaskDequeuePeriod time.Duration `yaml:"task_dequeue_period"`
+
 	// TaskDequeueLimit is the max number of tasks to dequeue in a request
 	TaskDequeueLimit int `yaml:"task_dequeue_limit"`
 
-	// TaskDequeueTimeOut is th etimeout for the ready queue in resmgr
+	// TaskDequeueTimeOut is the timeout for the ready queue in resmgr
 	TaskDequeueTimeOut int `yaml:"task_dequeue_timeout"`
 
 	// OfferDequeueLimit is the max Number of HostOffers to dequeue in

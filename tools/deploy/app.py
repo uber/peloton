@@ -240,6 +240,12 @@ class App(object):
             env_vars["TASK_TYPE"] = "STATELESS"
             env_vars["APP"] = "placement"
 
+        if self.name == "placement":
+            if getattr(self, "task_dequeue_limit", ""):
+                env_vars["TASK_DEQUEUE_LIMIT"] = self.task_dequeue_limit
+            if getattr(self, "task_dequeue_period", ""):
+                env_vars["TASK_DEQUEUE_PERIOD"] = self.task_dequeue_period
+
         if self.name == "jobmgr":
             env_vars["JOB_TYPE"] = getattr(self, "job_type", "BATCH")
             env_vars["JOB_RUNTIME_CALCULATION_VIA_CACHE"] = getattr(
