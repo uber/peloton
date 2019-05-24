@@ -35,7 +35,9 @@ type Metrics struct {
 	// tasks being launched
 	TaskLaunchDispatchesFail tally.Counter
 
-	TaskQueueDepth tally.Gauge
+	// TasksDequeued is gauge which measures the number of tasks dequeued by the
+	// placement engine in a single placement cycle.
+	TasksDequeued tally.Gauge
 
 	// OfferStarved indicates the number of times the scheduler
 	// attempted to get an Offer to request a task launch, but was
@@ -116,9 +118,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		Running:      scope.Gauge("running"),
 		OfferStarved: scope.Counter("offer_starved"),
 
-		TaskQueueDepth:           taskScope.Gauge("queue_depth"),
 		TaskLaunchDispatches:     taskSuccessScope.Counter("launch_dispatch"),
 		TaskLaunchDispatchesFail: taskFailScope.Counter("launch_dispatch"),
+		TasksDequeued:            taskScope.Gauge("dequeued"),
 
 		SetPlacementSuccess: placementSuccessScope.Counter("set"),
 		SetPlacementFail:    placementFailScope.Counter("set"),

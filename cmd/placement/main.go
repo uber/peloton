@@ -16,6 +16,7 @@ package main
 
 import (
 	"os"
+	"time"
 
 	"github.com/uber/peloton/pkg/auth"
 	auth_impl "github.com/uber/peloton/pkg/auth/impl"
@@ -138,6 +139,17 @@ var (
 		Envar("TASK_TYPE").
 		String()
 
+	taskDequeueLimit = app.Flag(
+		"task-dequeue-limit", "Number of tasks to dequeue").
+		Envar("TASK_DEQUEUE_LIMIT").
+		Int()
+
+	taskDequeuePeriod = app.Flag(
+		"task-dequeue-period", "Period at which tasks are dequeued to be placed in seconds").
+		Envar("TASK_DEQUEUE_PERIOD").
+		Default("0").
+		Int()
+
 	authType = app.Flag(
 		"auth-type",
 		"Define the auth type used, default to NOOP").
@@ -223,6 +235,14 @@ func main() {
 
 	if *taskType != "" {
 		overridePlacementStrategy(*taskType, &cfg)
+	}
+
+	if *taskDequeueLimit != 0 {
+		cfg.Placement.TaskDequeueLimit = *taskDequeueLimit
+	}
+
+	if *taskDequeuePeriod != 0 {
+		cfg.Placement.TaskDequeuePeriod = time.Duration(*taskDequeuePeriod) * time.Second
 	}
 
 	// Parse and setup peloton auth

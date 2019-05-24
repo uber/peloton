@@ -9,7 +9,6 @@ import print_utils
 import kind
 import utils
 
-
 PELOTON_K8S_NAME = "peloton-k8s"
 
 zk_url = None
@@ -149,11 +148,11 @@ def run_mesos(config):
 # Run a mesos agent
 #
 def run_mesos_agent(
-    config,
-    agent_index,
-    port_offset,
-    is_exclusive=False,
-    exclusive_label_value="",
+        config,
+        agent_index,
+        port_offset,
+        is_exclusive=False,
+        exclusive_label_value="",
 ):
     prefix = config["mesos_agent_container"]
     attributes = config["attributes"]
@@ -278,7 +277,7 @@ def create_cassandra_store(config):
 # Starts a container and waits for it to come up
 #
 def start_and_wait(
-    application_name, container_name, ports, config, extra_env=None
+        application_name, container_name, ports, config, extra_env=None
 ):
     # TODO: It's very implicit that the first port is the HTTP port, perhaps we
     # should split it out even more.
@@ -434,7 +433,9 @@ def run_peloton_placement(config):
             name,
             ports,
             config,
-            extra_env={"TASK_TYPE": task_type},
+            extra_env={
+                "TASK_TYPE": task_type,
+            },
         )
         i = i + 1
 

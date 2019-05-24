@@ -106,6 +106,8 @@ func (s *service) Dequeue(
 		numberOfTasks += len(gang.GetTasks())
 	}
 
+	s.metrics.TasksDequeued.Update(float64(numberOfTasks))
+
 	if numberOfTasks == 0 {
 		log.WithFields(log.Fields{
 			"num_tasks": numberOfTasks,

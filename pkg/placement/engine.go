@@ -118,7 +118,12 @@ func (e *engine) Start() {
 }
 
 func (e *engine) Run(ctx context.Context) error {
-	timer := time.NewTimer(time.Duration(0))
+	log.WithField("dequeue_period", e.config.TaskDequeuePeriod.String()).
+		WithField("dequeue_timeout", e.config.TaskDequeueTimeOut).
+		WithField("dequeue_limit", e.config.TaskDequeueLimit).
+		WithField("no_task_delay", _noTasksTimeoutPenalty).
+		Info("Engine started")
+	timer := time.NewTimer(e.config.TaskDequeuePeriod)
 	for {
 		select {
 		case <-ctx.Done():
@@ -130,7 +135,7 @@ func (e *engine) Run(ctx context.Context) error {
 		}
 
 		delay := e.Place(ctx)
-
+		log.WithField("delay", delay.String()).Debug("Placement delay")
 		timer.Reset(delay)
 	}
 }
@@ -144,6 +149,7 @@ func (e *engine) Stop() {
 // Place will let the coordinator do one placement round.
 // Returns the delay to start next round of placing.
 func (e *engine) Place(ctx context.Context) time.Duration {
+	log.Debug("Beginning placement cycle")
 	// Try and get some tasks/assignments
 	assignments := e.taskService.Dequeue(
 		ctx,
@@ -182,7 +188,8 @@ func (e *engine) Place(ctx context.Context) time.Duration {
 				!assignment.GetTask().GetTask().ReadyForHostReservation
 		})
 
-	return time.Duration(0)
+	// TODO: Dynamically adjust this based on some signal
+	return e.config.TaskDequeuePeriod
 }
 
 // processAssignments processes assignments by creating correct host filters and
