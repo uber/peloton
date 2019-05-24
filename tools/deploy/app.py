@@ -235,6 +235,17 @@ class App(object):
             env_vars['JOB_RUNTIME_CALCULATION_VIA_CACHE'] = getattr(
                 self,
                 "job_runtime_calculation_via_cache", False,)
+        if self.name == "placement":
+            if getattr(self, "task_dequeue_limit", ""):
+                env_vars["TASK_DEQUEUE_LIMIT"] = self.task_dequeue_limit
+            if getattr(self, "task_dequeue_period", ""):
+                env_vars["TASK_DEQUEUE_PERIOD"] = self.task_dequeue_period
+
+        if self.name == "jobmgr":
+            env_vars["JOB_TYPE"] = getattr(self, "job_type", "BATCH")
+            env_vars["JOB_RUNTIME_CALCULATION_VIA_CACHE"] = getattr(
+                self, "job_runtime_calculation_via_cache", False
+            )
             env_vars["TASK_KILL_RATE_LIMIT"] = getattr(
                 self, "task_kill_rate_limit", 0.0
             )

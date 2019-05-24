@@ -16,6 +16,7 @@ package main
 
 import (
 	"os"
+	"time"
 
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/algorithms"
@@ -134,6 +135,17 @@ var (
 		Default("BATCH").
 		Envar("TASK_TYPE").
 		String()
+
+	taskDequeueLimit = app.Flag(
+		"task-dequeue-limit", "Number of tasks to dequeue").
+		Envar("TASK_DEQUEUE_LIMIT").
+		Int()
+
+	taskDequeuePeriod = app.Flag(
+		"task-dequeue-period", "Period at which tasks are dequeued to be placed in seconds").
+		Envar("TASK_DEQUEUE_PERIOD").
+		Default("0").
+		Int()
 )
 
 func main() {
@@ -207,6 +219,14 @@ func main() {
 	if *taskType != "" {
 		overridePlacementStrategy(*taskType, &cfg)
 	}
+	if *taskDequeueLimit != 0 {
+		cfg.Placement.TaskDequeueLimit = *taskDequeueLimit
+	}
+
+	if *taskDequeuePeriod != 0 {
+		cfg.Placement.TaskDequeuePeriod = time.Duration(*taskDequeuePeriod) * time.Second
+	}
+
 	log.WithField("placement_task_type", cfg.Placement.TaskType).
 		WithField("strategy", cfg.Placement.Strategy).
 		Info("Placement engine type")
