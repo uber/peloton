@@ -3,6 +3,11 @@
 0.8.6 (unreleased)
 ------------------
 
+0.8.5.1
+------------------
+* 2019-05-25    [placement] Make placement period configurable                                         avyas@uber.com
+* 2019-05-25    Add rate limit for task kill and executor shutdown in goal state engine                zhixin@uber.com
+
 0.8.5
 ------------------
 * 2019-05-13    Enable stateless performance tests.                                                    sachins@uber.com
