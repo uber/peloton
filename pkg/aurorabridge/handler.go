@@ -29,6 +29,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	pbquery "github.com/uber/peloton/.gen/peloton/api/v1alpha/query"
+	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 	"github.com/uber/peloton/pkg/common/util"
 
@@ -48,12 +49,20 @@ import (
 
 var errUnimplemented = errors.New("rpc is unimplemented")
 
+// jobCache is an internal struct used to capture job id and name
+// of the a specific job. Mostly used as the job query return result.
+type jobCache struct {
+	JobId *peloton.JobID
+	Name  string
+}
+
 // ServiceHandler implements a partial Aurora API. Various unneeded methods have
 // been left intentionally unimplemented.
 type ServiceHandler struct {
 	config        ServiceHandlerConfig
 	metrics       *Metrics
 	jobClient     statelesssvc.JobServiceYARPCClient
+	jobmgrClient  jobmgrsvc.JobManagerServiceYARPCClient
 	podClient     podsvc.PodServiceYARPCClient
 	respoolLoader RespoolLoader
 	random        common.Random
@@ -64,6 +73,7 @@ func NewServiceHandler(
 	config ServiceHandlerConfig,
 	parent tally.Scope,
 	jobClient statelesssvc.JobServiceYARPCClient,
+	jobmgrClient jobmgrsvc.JobManagerServiceYARPCClient,
 	podClient podsvc.PodServiceYARPCClient,
 	respoolLoader RespoolLoader,
 	random common.Random,
@@ -78,6 +88,7 @@ func NewServiceHandler(
 		config:        config,
 		metrics:       NewMetrics(parent.SubScope("aurorabridge").SubScope("api")),
 		jobClient:     jobClient,
+		jobmgrClient:  jobmgrClient,
 		podClient:     podClient,
 		respoolLoader: respoolLoader,
 		random:        random,
@@ -1711,7 +1722,7 @@ func (h *ServiceHandler) queryJobUpdates(
 		statuses: query.GetUpdateStatuses(),
 	}
 
-	jobs, err := h.getJobSummariesFromJobUpdateQuery(ctx, query)
+	jobs, err := h.getJobCacheFromJobUpdateQuery(ctx, query)
 	if err != nil {
 		if yarpcerrors.IsNotFound(err) {
 			return nil, nil
@@ -1726,7 +1737,7 @@ func (h *ServiceHandler) queryJobUpdates(
 
 	f := func(ctx context.Context, input interface{}) (interface{}, error) {
 		return h.getFilteredJobUpdateDetails(
-			ctx, input.(*stateless.JobSummary), filter, includeInstanceEvents)
+			ctx, input.(*jobCache), filter, includeInstanceEvents)
 	}
 
 	outputs, err := concurrency.Map(
@@ -1770,17 +1781,16 @@ func (f *updateFilter) include(s *api.JobUpdateSummary) bool {
 // the filter.
 func (h *ServiceHandler) getFilteredJobUpdateDetails(
 	ctx context.Context,
-	job *stateless.JobSummary,
+	job *jobCache,
 	filter *updateFilter,
 	includeInstanceEvents bool,
 ) ([]*api.JobUpdateDetails, error) {
-
-	k, err := ptoa.NewJobKey(job.GetName())
+	k, err := ptoa.NewJobKey(job.Name)
 	if err != nil {
 		return nil, fmt.Errorf("new job key: %s", err)
 	}
 
-	workflows, err := h.listWorkflows(ctx, job.GetJobId(), includeInstanceEvents)
+	workflows, err := h.listWorkflows(ctx, job.JobId, includeInstanceEvents)
 	if err != nil {
 		if yarpcerrors.IsNotFound(err) {
 			return nil, nil
@@ -1841,7 +1851,7 @@ func (h *ServiceHandler) getFilteredJobUpdateDetails(
 		default:
 			// Nothing to do here but make noise and ignore the update.
 			log.WithFields(log.Fields{
-				"job_id":  job.GetJobId(),
+				"job_id":  job.JobId,
 				"details": details,
 			}).Error("Invariant violation: expected exactly 1 or 2 updates with same update id")
 			continue
@@ -1858,18 +1868,31 @@ func (h *ServiceHandler) getFilteredJobUpdateDetails(
 // Aurora's JobUpdateQuery.
 //
 // Returns a yarpc NOT_FOUND error if no jobs match the query.
-func (h *ServiceHandler) getJobSummariesFromJobUpdateQuery(
+func (h *ServiceHandler) getJobCacheFromJobUpdateQuery(
 	ctx context.Context,
 	q *api.JobUpdateQuery,
-) ([]*stateless.JobSummary, error) {
+) ([]*jobCache, error) {
 
 	if q.IsSetKey() {
-		return h.getJobSummaries(ctx, q.GetKey().GetJob())
+		return h.getJobCacheFromJobKey(ctx, q.GetKey().GetJob())
 	}
 	if q.IsSetJobKey() {
-		return h.getJobSummaries(ctx, q.GetJobKey())
+		return h.getJobCacheFromJobKey(ctx, q.GetJobKey())
 	}
-	return h.queryJobSummaries(ctx, q.GetRole(), "", "")
+
+	jobmgrJobCaches, err := h.queryJobCache(ctx, q.GetRole(), "", "")
+	if err != nil {
+		return nil, err
+	}
+
+	var jobCaches []*jobCache
+	for _, c := range jobmgrJobCaches {
+		jobCaches = append(jobCaches, &jobCache{
+			JobId: c.JobId,
+			Name:  c.Name,
+		})
+	}
+	return jobCaches, nil
 }
 
 // getJobID maps k to a job id.
@@ -1878,7 +1901,7 @@ func (h *ServiceHandler) getJobSummariesFromJobUpdateQuery(
 // is deleted, we cannot rely on not-found error to determine the
 // existence of a job.
 //
-// TODO: To be deprecated in favor of getJobSummaries.
+// TODO: To be deprecated in favor of getJobCacheFromJobKey.
 // Aggregator expects job key environment to be set in response of
 // GetJobUpdateDetails to filter by deployment_id. On filtering via job key
 // role, original peloton job name is not known to set job key environment.
@@ -1930,11 +1953,12 @@ func (h *ServiceHandler) queryJobIDs(
 	return jobIDs, nil
 }
 
-// getJobSummaries returns Peloton JobSummary based on Aurora JobKey passed in.
-func (h *ServiceHandler) getJobSummaries(
+// getJobCacheFromJobKey returns jobCache struct based on Aurora JobKey
+// passed in.
+func (h *ServiceHandler) getJobCacheFromJobKey(
 	ctx context.Context,
 	k *api.JobKey,
-) ([]*stateless.JobSummary, error) {
+) ([]*jobCache, error) {
 	req := &statelesssvc.GetJobIDFromJobNameRequest{
 		JobName: atop.NewJobName(k),
 	}
@@ -1945,7 +1969,7 @@ func (h *ServiceHandler) getJobSummaries(
 	}
 
 	// results are sorted chronologically, return the latest one
-	return []*stateless.JobSummary{
+	return []*jobCache{
 		{
 			JobId: resp.GetJobId()[0],
 			Name:  atop.NewJobName(k),
@@ -2005,6 +2029,29 @@ func (h *ServiceHandler) queryJobSummaries(
 	}
 
 	return summaries, nil
+}
+
+// queryJobCache calls jobmgr's private QueryJobCache API, passes the querying
+// labels for role, env and name parameters, and returns a list of JobCache
+// objects.
+func (h *ServiceHandler) queryJobCache(
+	ctx context.Context,
+	role, env, name string,
+) ([]*jobmgrsvc.QueryJobCacheResponse_JobCache, error) {
+	labels := append(
+		label.BuildPartialAuroraJobKeyLabels(role, env, name),
+		common.BridgeJobLabel,
+	)
+	req := &jobmgrsvc.QueryJobCacheRequest{
+		Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
+			Labels: labels,
+		},
+	}
+	resp, err := h.jobmgrClient.QueryJobCache(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetResult(), nil
 }
 
 // getJobIDsFromTaskQuery queries peloton job ids based on aurora TaskQuery.

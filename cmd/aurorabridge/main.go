@@ -23,6 +23,7 @@ import (
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
+	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/auroraschedulermanagerserver"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/readonlyschedulerserver"
 	auth_impl "github.com/uber/peloton/pkg/auth/impl"
@@ -253,6 +254,9 @@ func main() {
 	jobClient := statelesssvc.NewJobServiceYARPCClient(
 		dispatcher.ClientConfig(common.PelotonJobManager))
 
+	jobmgrClient := jobmgrsvc.NewJobManagerServiceYARPCClient(
+		dispatcher.ClientConfig(common.PelotonJobManager))
+
 	podClient := podsvc.NewPodServiceYARPCClient(
 		dispatcher.ClientConfig(common.PelotonJobManager))
 
@@ -303,6 +307,7 @@ func main() {
 		cfg.ServiceHandler,
 		rootScope,
 		jobClient,
+		jobmgrClient,
 		podClient,
 		respoolLoader,
 		bridgecommon.RandomImpl{},

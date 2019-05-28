@@ -31,6 +31,8 @@ import (
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	podmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc/mocks"
 	pbquery "github.com/uber/peloton/.gen/peloton/api/v1alpha/query"
+	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
+	jobmgrmocks "github.com/uber/peloton/.gen/peloton/private/jobmgrsvc/mocks"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 	commonmocks "github.com/uber/peloton/pkg/aurorabridge/common/mocks"
 	aurorabridgemocks "github.com/uber/peloton/pkg/aurorabridge/mocks"
@@ -61,6 +63,7 @@ type ServiceHandlerTestSuite struct {
 
 	ctrl           *gomock.Controller
 	jobClient      *jobmocks.MockJobServiceYARPCClient
+	jobmgrClient   *jobmgrmocks.MockJobManagerServiceYARPCClient
 	listPodsStream *jobmocks.MockJobServiceServiceListPodsYARPCClient
 	podClient      *podmocks.MockPodServiceYARPCClient
 	respoolLoader  *aurorabridgemocks.MockRespoolLoader
@@ -77,6 +80,7 @@ func (suite *ServiceHandlerTestSuite) SetupTest() {
 
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.jobClient = jobmocks.NewMockJobServiceYARPCClient(suite.ctrl)
+	suite.jobmgrClient = jobmgrmocks.NewMockJobManagerServiceYARPCClient(suite.ctrl)
 	suite.listPodsStream = jobmocks.NewMockJobServiceServiceListPodsYARPCClient(suite.ctrl)
 	suite.podClient = podmocks.NewMockPodServiceYARPCClient(suite.ctrl)
 	suite.respoolLoader = aurorabridgemocks.NewMockRespoolLoader(suite.ctrl)
@@ -101,6 +105,7 @@ func (suite *ServiceHandlerTestSuite) SetupTest() {
 		suite.config,
 		tally.NoopScope,
 		suite.jobClient,
+		suite.jobmgrClient,
 		suite.podClient,
 		suite.respoolLoader,
 		suite.random,
@@ -2244,23 +2249,19 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 		{Role: &role, Environment: ptr.String("env-2"), Name: ptr.String("job-2")},
 	}
 
-	summaries := []*stateless.JobSummary{
-		{JobId: fixture.PelotonJobID(), Name: atop.NewJobName(keys[0]), Labels: labels},
-		{JobId: fixture.PelotonJobID(), Name: atop.NewJobName(keys[1]), Labels: labels},
+	jobCache := []*jobmgrsvc.QueryJobCacheResponse_JobCache{
+		{JobId: fixture.PelotonJobID(), Name: atop.NewJobName(keys[0])},
+		{JobId: fixture.PelotonJobID(), Name: atop.NewJobName(keys[1])},
 	}
 
-	suite.jobClient.EXPECT().
-		QueryJobs(gomock.Any(), &statelesssvc.QueryJobsRequest{
-			Spec: &stateless.QuerySpec{
+	suite.jobmgrClient.EXPECT().
+		QueryJobCache(gomock.Any(), &jobmgrsvc.QueryJobCacheRequest{
+			Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
 				Labels: labels,
-				Pagination: &pbquery.PaginationSpec{
-					Limit:    suite.config.QueryJobsLimit,
-					MaxLimit: suite.config.QueryJobsLimit,
-				},
 			},
 		}).
-		Return(&statelesssvc.QueryJobsResponse{
-			Records: summaries,
+		Return(&jobmgrsvc.QueryJobCacheResponse{
+			Result: jobCache,
 		}, nil)
 
 	wf0 := fixture.PelotonWorkflowInfo("2018-10-02T15:00:00Z")
@@ -2281,7 +2282,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 
 	suite.jobClient.EXPECT().
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
-			JobId:               summaries[0].JobId,
+			JobId:               jobCache[0].JobId,
 			InstanceEvents:      true,
 			UpdatesLimit:        suite.config.UpdatesLimit,
 			InstanceEventsLimit: suite.config.InstanceEventsLimit,
@@ -2292,7 +2293,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_QueryByRoleSuccess
 
 	suite.jobClient.EXPECT().
 		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
-			JobId:               summaries[1].JobId,
+			JobId:               jobCache[1].JobId,
 			InstanceEvents:      true,
 			UpdatesLimit:        suite.config.UpdatesLimit,
 			InstanceEventsLimit: suite.config.InstanceEventsLimit,
