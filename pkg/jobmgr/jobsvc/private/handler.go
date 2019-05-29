@@ -278,7 +278,12 @@ func (h *serviceHandler) QueryJobCache(
 
 		// job may be removed from db but not yet cleaned
 		// up from job factory
-		if err != nil && !yarpcerrors.IsNotFound(err) {
+		if err != nil && yarpcerrors.IsNotFound(err) {
+			continue
+		}
+
+		// for other kind of error, directly return from handler
+		if err != nil {
 			return nil, err
 		}
 
