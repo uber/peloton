@@ -85,7 +85,10 @@ func PelotonWorkflowInfo(eventTimestamp string) *stateless.WorkflowInfo {
 	}
 
 	return &stateless.WorkflowInfo{
-		Status:     &stateless.WorkflowStatus{State: s},
+		Status: &stateless.WorkflowStatus{
+			State: s,
+			Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+		},
 		OpaqueData: PelotonOpaqueData(),
 		Events: []*stateless.WorkflowEvent{
 			{

@@ -12,7 +12,9 @@ from tests.integration.aurorabridge_test.util import (
     start_job_update,
     wait_for_killed,
     wait_for_rolled_forward,
+    delete_jobs,
 )
+from tests.integration.stateless_job import list_jobs, StatelessJob
 
 pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
 
@@ -384,3 +386,70 @@ def test__get_tasks_without_configs__previous_run(client):
                     assert False, "unexpected metadata %s" % m
         else:
             assert False, "unexpected run id: %d" % run_id
+
+
+def test__get_job_update_details__filter_non_update_workflow(client):
+    """
+    test getJobUpdateDetails endpoint for filtering non-update workflows
+    """
+    req1 = get_job_update_request("test_dc_labrat_large_job.yaml")
+    req1.settings.updateGroupSize = 10
+
+    req2 = get_job_update_request("test_dc_labrat_large_job_diff_labels.yaml")
+    req2.settings.updateGroupSize = 10
+
+    # start a regular update
+    job_key = start_job_update(
+        client, req1, "start job update test/dc/labrat_large_job")
+
+    # trigger an unexpected restart through peloton api
+    jobs = list_jobs()
+    assert len(jobs) == 1
+
+    job = StatelessJob(job_id=jobs[0].job_id.value)
+    job.restart(batch_size=10)
+    job.wait_for_workflow_state(goal_state="SUCCEEDED")     # wait for restart
+
+    # start a new update
+    start_job_update(client, req2, "start job update test/dc/labrat_large_job")
+
+    # verify getJobUpdateDetails response
+    res = client.get_job_update_details(
+        None, api.JobUpdateQuery(role=job_key.role))
+    assert len(res.detailsList) == 2
+
+    for i, detail in enumerate(res.detailsList):
+        if i == 0:
+            assert len(detail.update.instructions.initialState) > 0
+            for initial in detail.update.instructions.initialState:
+                assert initial.task.metadata, 'Expect metadata to be present'
+        else:
+            assert len(detail.update.instructions.initialState) == 0
+
+
+def test__get_job_update_details__deleted_job(client):
+    """
+    test JobMgr's private API - QueryJobCache (used by getJobUpdateDetails)
+    won't crash if the job is deleted.
+    """
+    # start first update
+    req1 = get_job_update_request("test_dc_labrat_large_job.yaml")
+    req1.settings.updateGroupSize = 10
+
+    job_key = start_job_update(
+        client, req1, "start job update test/dc/labrat_large_job")
+
+    # force delete job
+    delete_jobs()
+
+    # start second update
+    req2 = get_job_update_request("test_dc_labrat_large_job_diff_labels.yaml")
+    req2.settings.updateGroupSize = 10
+
+    job_key = start_job_update(
+        client, req2, "start job update test/dc/labrat_large_job")
+
+    # verify getJobUpdateDetails response
+    res = client.get_job_update_details(
+        None, api.JobUpdateQuery(role=job_key.role))
+    assert len(res.detailsList) == 1

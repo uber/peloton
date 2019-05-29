@@ -57,7 +57,8 @@ def load_config():
         os.path.dirname(os.path.abspath(__file__)), "config.yaml"
     )
     with open(config_file, "r") as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+        #config = yaml.load(f, Loader=yaml.FullLoader)
+        config = yaml.load(f)
     return config
 
 

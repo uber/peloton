@@ -32,7 +32,11 @@ func NewJobUpdateInstructions(
 
 	initialState := make([]*api.InstanceTaskConfig, 0)
 
-	if prevWorkflow != nil {
+	// Skip populating initialState if
+	// 1. Current workflow is the first update (i.e. no prevWorkflow)
+	// 2. OpaqueData is empty - we do not expect this case to happen, but
+	//    if it does, skip to avoid crashing aggregator
+	if prevWorkflow != nil && len(prevWorkflow.GetOpaqueData().GetData()) > 0 {
 		d, err := opaquedata.Deserialize(prevWorkflow.GetOpaqueData())
 		if err != nil {
 			return nil, fmt.Errorf("deserialize opaque data: %s", err)

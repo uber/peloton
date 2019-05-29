@@ -2353,11 +2353,14 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_JoinRollbacksByUpd
 				{
 					Status: &stateless.WorkflowStatus{
 						State: stateless.WorkflowState_WORKFLOW_STATE_ABORTED,
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
 					},
 					OpaqueData: od1,
-				}, {
+				},
+				{
 					Status: &stateless.WorkflowStatus{
 						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
 					},
 					OpaqueData: od2,
 				},
@@ -2398,11 +2401,13 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_UpdateStatusFilter
 				{
 					Status: &stateless.WorkflowStatus{
 						State: stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED,
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
 					},
 					OpaqueData: fixture.PelotonOpaqueData(),
 				}, {
 					Status: &stateless.WorkflowStatus{
 						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
 					},
 					OpaqueData: fixture.PelotonOpaqueData(),
 				},
@@ -2427,6 +2432,60 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_UpdateStatusFilter
 	suite.Equal(
 		api.JobUpdateStatusRolledForward,
 		result[0].GetUpdate().GetSummary().GetState().GetStatus())
+}
+
+// TestGetJobUpdateDetails_FilterNonUpdateWorkflow
+func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDetails_FilterNonUpdateWorkflow() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
+	k := fixture.AuroraJobKey()
+	id := fixture.PelotonJobID()
+
+	suite.expectGetJobIDFromJobName(k, id)
+
+	suite.jobClient.EXPECT().
+		ListJobWorkflows(gomock.Any(), &statelesssvc.ListJobWorkflowsRequest{
+			JobId:               id,
+			InstanceEvents:      true,
+			UpdatesLimit:        suite.config.UpdatesLimit,
+			InstanceEventsLimit: suite.config.InstanceEventsLimit,
+		}).
+		Return(&statelesssvc.ListJobWorkflowsResponse{
+			WorkflowInfos: []*stateless.WorkflowInfo{
+				{
+					Status: &stateless.WorkflowStatus{
+						State: stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED,
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+					},
+					OpaqueData: fixture.PelotonOpaqueData(),
+				},
+				{
+					Status: &stateless.WorkflowStatus{
+						State: stateless.WorkflowState_WORKFLOW_STATE_SUCCEEDED,
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_RESTART,
+					},
+					OpaqueData: fixture.PelotonOpaqueData(),
+				},
+				{
+					Status: &stateless.WorkflowStatus{
+						State: stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+						Type:  stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+					},
+					OpaqueData: fixture.PelotonOpaqueData(),
+				},
+			},
+		}, nil)
+
+	resp, err := suite.handler.GetJobUpdateDetails(
+		suite.ctx,
+		nil,
+		&api.JobUpdateQuery{JobKey: k})
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+
+	// The RESTART workflow should be filtered out
+	result := resp.GetResult().GetGetJobUpdateDetailsResult().GetDetailsList()
+	suite.Len(result, 2)
 }
 
 // expectListPods sets up expect for ListPods API based on input JobID

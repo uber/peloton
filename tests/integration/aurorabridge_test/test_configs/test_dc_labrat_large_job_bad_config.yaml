@@ -90,3 +90,8 @@ settings:
   maxFailedInstances: 5
   maxPerInstanceFailures: 0
   rollbackOnFailure: true
+metadata:
+  - key: test_update_key_1
+    value: test_update_value_1
+  - key: test_update_key_2
+    value: test_update_value_2

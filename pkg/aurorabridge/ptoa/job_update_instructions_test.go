@@ -17,6 +17,7 @@ package ptoa
 import (
 	"testing"
 
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
@@ -84,4 +85,30 @@ func TestNewJobUpdateInstructions_NoPrevWorkflow(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, instructions.GetInitialState())
 	assert.Empty(t, instructions.GetInitialState())
+}
+
+// TestNewJobUpdateInstructions_EmptyOpaqueData checks NewJobUpdateInstructions
+// util function should not include InitialState if OpaqueData in prevWorkflow
+// is empty.
+func TestNewJobUpdateInstructions_EmptyOpaqueData(t *testing.T) {
+	prevWorkflow := fixture.PelotonWorkflowInfo("")
+	prevWorkflow.OpaqueData = &peloton.OpaqueData{Data: ""}
+
+	workflow := fixture.PelotonWorkflowInfo("")
+	workflow.InstancesAdded = []*pod.InstanceIDRange{{From: 0, To: 2}}
+	workflow.InstancesUpdated = []*pod.InstanceIDRange{{From: 4, To: 6}}
+	workflow.InstancesRemoved = []*pod.InstanceIDRange{{From: 8, To: 10}}
+
+	instructions, err := NewJobUpdateInstructions(prevWorkflow, workflow)
+	assert.NoError(t, err)
+	assert.Equal(t, &api.JobUpdateInstructions{
+		InitialState: []*api.InstanceTaskConfig{},
+		DesiredState: &api.InstanceTaskConfig{
+			Instances: []*api.Range{
+				{First: ptr.Int32(4), Last: ptr.Int32(6)},
+				{First: ptr.Int32(0), Last: ptr.Int32(2)},
+			},
+		},
+		Settings: NewJobUpdateSettings(nil),
+	}, instructions)
 }
