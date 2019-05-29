@@ -3267,12 +3267,19 @@ func (s *Store) WriteUpdateProgress(
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(updatesTable).
-		Set("update_state", updateInfo.GetState().String()).
-		Set("update_prev_state", updateInfo.GetPrevState().String()).
-		Set("instances_done", updateInfo.GetInstancesDone()).
-		Set("instances_failed", updateInfo.GetInstancesFailed()).
-		Set("instances_current", updateInfo.GetInstancesCurrent()).
 		Set("update_time", updateTime.UTC())
+
+	// updateInfo can either have updateTime set only, or
+	// set State, PreState and other fields altogether.
+	// For now, there is no better way to differentiate which fields
+	// are set especially for slice fields.
+	if updateInfo.GetState() != update.State_INVALID {
+		stmt = stmt.Set("update_state", updateInfo.GetState().String()).
+			Set("update_prev_state", updateInfo.GetPrevState().String()).
+			Set("instances_done", updateInfo.GetInstancesDone()).
+			Set("instances_failed", updateInfo.GetInstancesFailed()).
+			Set("instances_current", updateInfo.GetInstancesCurrent())
+	}
 
 	if updateInfo.GetOpaqueData() != nil {
 		stmt = stmt.Set("opaque_data", updateInfo.GetOpaqueData().GetData())

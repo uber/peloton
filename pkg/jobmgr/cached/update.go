@@ -488,7 +488,13 @@ func (u *update) writeProgress(
 		}
 	}
 
-	// no change in state, skip the update
+	now := time.Now()
+	// Only change UpdateTime if no state changes.
+	// It is necessary because UpdateTime is used to check
+	// if a workflow is stale (i.e. not updated for a long period of time).
+	// For example, if a workflow is run with bad config that results in
+	// instances crash loop, the state would not be changed. However,
+	// the workflow should not be considered as stale.
 	if !u.updateStateChanged(
 		state,
 		prevState,
@@ -496,10 +502,14 @@ func (u *update) writeProgress(
 		instancesFailed,
 		instancesCurrent,
 	) {
+		// ignore error here, since UpdateTime is informational,
+		u.jobFactory.updateStore.WriteUpdateProgress(
+			ctx,
+			&models.UpdateModel{UpdateTime: now.Format(time.RFC3339Nano)})
+		u.lastUpdateTime = now
 		return nil
 	}
 
-	now := time.Now()
 	updateModel := &models.UpdateModel{
 		UpdateID:         u.id,
 		PrevState:        prevState,

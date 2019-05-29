@@ -2684,6 +2684,119 @@ func (suite *CassandraStoreTestSuite) TestUpdate() {
 	suite.True(yarpcerrors.IsNotFound(err))
 }
 
+// TestWriteUpdateProgressChangUpdateTimeOnly tests the case the WriteUpdateProgress
+// only changes updateTime without touching other fields.
+func (suite *CassandraStoreTestSuite) TestWriteUpdateProgressChangUpdateTimeOnly() {
+	// the job identifier
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+
+	// the update identifier
+	updateID := &peloton.UpdateID{
+		Value: uuid.New(),
+	}
+
+	// the update configuration
+	updateConfig := &update.UpdateConfig{
+		BatchSize: 5,
+	}
+
+	// job config versions
+	jobVersion := uint64(5)
+	jobPrevVersion := uint64(4)
+
+	// opaque data
+	opaque := "test"
+
+	// update state
+	state := update.State_INITIALIZED
+	instancesTotal := uint32(60)
+	numOfInstancesAdded := 30
+	instancesAdded := make([]uint32, 0)
+	instancesUpdated := make([]uint32, 0)
+	for i := 0; i < int(instancesTotal); i++ {
+		if i < numOfInstancesAdded {
+			instancesAdded = append(instancesAdded, uint32(i))
+		} else {
+			instancesUpdated = append(instancesUpdated, uint32(i))
+		}
+	}
+
+	// get a non-existent update
+	_, err := store.GetUpdate(
+		context.Background(),
+		updateID,
+	)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsNotFound(err))
+
+	// get progress of a non-existent update
+	_, err = store.GetUpdateProgress(
+		context.Background(),
+		updateID,
+	)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsNotFound(err))
+
+	// make sure job has no updates
+	updateList, err := store.GetUpdatesForJob(context.Background(), jobID.GetValue())
+	suite.NoError(err)
+	suite.Equal(len(updateList), 0)
+
+	// no workflow events present for an update
+	workflowEvents, err := store.GetWorkflowEvents(
+		context.Background(),
+		updateID,
+		0,
+		0,
+	)
+	suite.NoError(err)
+	suite.Equal(0, len(workflowEvents))
+
+	creationTime := time.Unix(0, 0).UTC()
+	updateModel := &models.UpdateModel{
+		UpdateID:             updateID,
+		JobID:                jobID,
+		UpdateConfig:         updateConfig,
+		JobConfigVersion:     jobVersion,
+		PrevJobConfigVersion: jobPrevVersion,
+		State:                state,
+		InstancesTotal:       instancesTotal,
+		InstancesUpdated:     instancesUpdated,
+		InstancesAdded:       instancesAdded,
+		Type:                 models.WorkflowType_UPDATE,
+		OpaqueData:           &peloton.OpaqueData{Data: opaque},
+		CreationTime:         creationTime.Format(time.RFC3339Nano),
+		UpdateTime:           creationTime.Format(time.RFC3339Nano),
+	}
+
+	// create a new update
+	suite.NoError(store.CreateUpdate(
+		context.Background(),
+		updateModel,
+	))
+
+	updateTime := time.Unix(100, 0).UTC()
+	suite.NoError(store.WriteUpdateProgress(
+		context.Background(),
+		&models.UpdateModel{
+			UpdateID:   updateID,
+			UpdateTime: updateTime.Format(time.RFC3339Nano),
+		},
+	))
+
+	updateProgress, err := store.GetUpdateProgress(context.Background(), updateID)
+	suite.NoError(err)
+
+	// updateTime is changed
+	suite.Equal(updateProgress.GetUpdateTime(), updateTime.Format(time.RFC3339Nano))
+	// other fields are equal
+	updateModel.UpdateTime = ""
+	updateProgress.UpdateTime = ""
+	proto.Equal(updateModel, updateProgress)
+}
+
 // TestModifyUpdate tests ModifyUpdate call
 func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 	// the job identifier

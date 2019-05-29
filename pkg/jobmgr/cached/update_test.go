@@ -252,6 +252,15 @@ func (suite *UpdateTestSuite) TestWriteDuplicateProgress() {
 	suite.update.instancesDone = instancesDone
 	suite.update.instancesFailed = instanceFailed
 
+	suite.updateStore.EXPECT().
+		WriteUpdateProgress(gomock.Any(), gomock.Any()).
+		Do(func(
+			ctx context.Context,
+			updateInfo *models.UpdateModel) {
+			suite.NotEmpty(updateInfo.GetUpdateTime())
+			suite.Equal(updateInfo.GetState(), pbupdate.State_INVALID)
+		}).Return(nil)
+
 	err := suite.update.WriteProgress(
 		context.Background(),
 		state,
