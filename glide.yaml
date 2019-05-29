@@ -35,7 +35,7 @@ import:
   subpackages:
   - internal/stack
 - package: go.uber.org/yarpc
-  version: ^1.37.4
+  version: v1.37.0
   subpackages:
   - internal/protoplugin
 - package: github.com/cactus/go-statsd-client
@@ -87,7 +87,7 @@ import:
   subpackages:
   - lib/go/thrift
 - package: google.golang.org/grpc
-  version: ^1.20.1
+  version: v1.15.0
   repo: https://github.com/grpc/grpc-go
 - package: go.uber.org/thriftrw
   version: ^v1.18.0
