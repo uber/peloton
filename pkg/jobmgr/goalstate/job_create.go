@@ -16,7 +16,6 @@ package goalstate
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
@@ -26,10 +25,13 @@ import (
 
 	"github.com/uber/peloton/pkg/common/goalstate"
 	"github.com/uber/peloton/pkg/common/taskconfig"
+	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
+
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	jobmgr_task "github.com/uber/peloton/pkg/jobmgr/task"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -90,14 +92,7 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	if err != nil {
-		// Have this check so ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST
-		// would not cause alert
-		// TODO: remove this check once
-		// ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST is handled correctly
-		if !strings.Contains(err.Error(),
-			resmgrsvc.EnqueueGangsFailure_ErrorCode_name[int32(resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST)]) {
-			goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
-		}
+		goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
 		return err
 	}
 
@@ -134,13 +129,13 @@ func sendTasksToResMgr(
 	if len(tasks) == 0 {
 		return nil
 	}
-
 	// Send tasks to resource manager
-	err := jobmgr_task.EnqueueGangs(
+	response, err := jobmgr_task.EnqueueGangs(
 		ctx,
 		tasks,
 		jobConfig,
 		goalStateDriver.resmgrClient)
+
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).
@@ -148,31 +143,75 @@ func sendTasksToResMgr(
 		return err
 	}
 
-	// Move all task states to pending
-	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
-	for _, tt := range tasks {
-		instID := tt.GetInstanceId()
-		runtimeDiff := jobmgrcommon.RuntimeDiff{
-			jobmgrcommon.StateField:   task.TaskState_PENDING,
-			jobmgrcommon.MessageField: "Task sent for placement",
+	requestedIDs := []uint32{}
+	for _, t := range tasks {
+		requestedIDs = append(requestedIDs, t.GetInstanceId())
+	}
+
+	if response.GetError() == nil {
+		log.WithField("job_id", jobID.GetValue()).
+			WithField("count", len(tasks)).
+			Debug("Enqueued tasks as gangs to Resource Manager")
+		return transitTasksToPending(ctx, jobID, requestedIDs, goalStateDriver)
+	}
+
+	if response.GetError().GetFailure() == nil {
+		responseErr := response.GetError().String()
+		log.WithField("job_id", jobID.GetValue()).
+			WithField("response_error", responseErr).
+			Info("resource manager enqueue gangs failed")
+		return yarpcerrors.InternalErrorf("resource manager enqueue gangs failed %v", responseErr)
+	}
+
+	failed := response.GetError().GetFailure().GetFailed()
+	unenquedInstIDs := map[uint32]struct{}{}
+	existInstIDs := []uint32{}
+	for _, t := range failed {
+		tid := t.GetTask().GetId().GetValue()
+		jid, instID, err := util.ParseTaskID(tid)
+		if err != nil {
+			log.WithError(err).
+				WithField("task_id", tid).
+				Error("failed to parse the task id in JobCreateTasks")
+			continue
 		}
-		runtimeDiffs[instID] = runtimeDiff
+
+		if jid != jobID.GetValue() {
+			log.WithField("task_id", tid).
+				WithField("job_id", jobID.GetValue()).
+				Error("task id does not match expected job id")
+			continue
+		}
+
+		if t.Errorcode == resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST {
+			existInstIDs = append(existInstIDs, instID)
+			continue
+		}
+		unenquedInstIDs[uint32(instID)] = struct{}{}
 	}
 
-	cachedJob := goalStateDriver.jobFactory.GetJob(jobID)
-	if cachedJob == nil {
-		// job has been untracked.
-		return nil
+	// EnqueueGangs failed tasks are all previously enqueued tasks, meaning all gangs have been enqueued
+	if len(unenquedInstIDs) == 0 {
+		return transitTasksToPending(ctx, jobID, requestedIDs, goalStateDriver)
 	}
 
-	err = cachedJob.PatchTasks(ctx, runtimeDiffs)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			Error("failed to update task runtime to pending")
-		return err
+	// EnqueueGangs partially failed, but transit enqueued tasks to PENDING
+	var enquedIDs []uint32
+	for _, t := range tasks {
+		tid := t.GetInstanceId()
+		if _, ok := unenquedInstIDs[tid]; !ok {
+			enquedIDs = append(enquedIDs, tid)
+		}
 	}
-	return nil
+	log.WithFields(log.Fields{
+		"job_id":        jobID.GetValue(),
+		"request_count": len(tasks),
+		"failed_count":  len(failed),
+		"exist_count":   len(existInstIDs),
+	}).Info("Resource manager enqueued tasks with failures")
+
+	_ = transitTasksToPending(ctx, jobID, enquedIDs, goalStateDriver)
+	return yarpcerrors.InternalErrorf("resource manager enqueue gang failed tasks %v", len(unenquedInstIDs))
 }
 
 // recoverTasks recovers partially created jobs.
@@ -303,4 +342,36 @@ func createAndEnqueueTasks(
 		return sendTasksToResMgr(ctx, jobID, uTasks, jobConfig, goalStateDriver)
 	}
 	return sendTasksToResMgr(ctx, jobID, tasks, jobConfig, goalStateDriver)
+}
+
+// transitTasksToPending moves tasks state to PENDING
+func transitTasksToPending(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	instanceIDs []uint32,
+	goalStateDriver *driver) error {
+	if len(instanceIDs) == 0 {
+		return nil
+	}
+
+	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	for _, instID := range instanceIDs {
+		runtimeDiff := jobmgrcommon.RuntimeDiff{
+			jobmgrcommon.StateField:   task.TaskState_PENDING,
+			jobmgrcommon.MessageField: "Task sent for placement",
+		}
+		runtimeDiffs[instID] = runtimeDiff
+	}
+
+	cachedJob := goalStateDriver.jobFactory.GetJob(jobID)
+	if cachedJob == nil {
+		// job has been untracked.
+		return nil
+	}
+
+	err := cachedJob.PatchTasks(ctx, runtimeDiffs)
+	if err != nil {
+		return errors.Wrap(err, "failed to update task runtime to pending")
+	}
+	return nil
 }

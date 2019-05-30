@@ -22,14 +22,17 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
 	"github.com/uber/peloton/pkg/common/goalstate"
+	"github.com/uber/peloton/pkg/common/util"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	jobmgr_task "github.com/uber/peloton/pkg/jobmgr/task"
 	"github.com/uber/peloton/pkg/jobmgr/task/launcher"
 	"github.com/uber/peloton/pkg/storage"
 
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -210,14 +213,36 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	// TODO: Investigate how to create proper gangs for scheduling (currently, task are treat independently)
-	err = jobmgr_task.EnqueueGangs(
+	response, err := jobmgr_task.EnqueueGangs(
 		ctx,
 		[]*task.TaskInfo{taskInfo},
 		cachedConfig,
 		goalStateDriver.resmgrClient)
-	if err != nil {
-		return err
+
+	// Parse the EnqueueGangs response to determine if the task is successfully enqueued
+	// or has been previously enqueued, and should transition to PENDING state.
+	enqueued := func(res *resmgrsvc.EnqueueGangsResponse, e error) bool {
+		if e == nil && res.GetError() == nil {
+			return true
+		}
+
+		if res.GetError().GetFailure().GetFailed() != nil {
+			failed := response.GetError().GetFailure().GetFailed()
+			if len(failed) == 1 && failed[0].Errorcode ==
+				resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST {
+				jid, instID, err := util.ParseTaskID(failed[0].Task.GetId().GetValue())
+				if err == nil || jid == taskEnt.jobID.GetValue() || instID == taskEnt.instanceID {
+					return true
+				}
+			}
+		}
+		return false
+	}(response, err)
+
+	if !enqueued {
+		return yarpcerrors.InternalErrorf("failed to enqueue task into resource manager %v", taskID)
 	}
+
 	// Update task state to PENDING
 	runtime := taskInfo.GetRuntime()
 	if runtime.GetState() != task.TaskState_PENDING {

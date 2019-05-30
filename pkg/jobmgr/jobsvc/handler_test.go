@@ -884,7 +884,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 			}).
 			Return(nil, errors.New("Resmgr Error")),
 	)
-	err := jobmgrtask.EnqueueGangs(
+	_, err := jobmgrtask.EnqueueGangs(
 		suite.handler.rootCtx,
 		tasksInfo,
 		suite.testJobConfig,

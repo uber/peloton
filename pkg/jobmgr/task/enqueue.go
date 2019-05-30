@@ -18,7 +18,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
@@ -26,6 +25,7 @@ import (
 
 	taskutil "github.com/uber/peloton/pkg/common/util/task"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // EnqueueGangs enqueues all tasks organized in gangs to respool in resmgr.
@@ -33,7 +33,7 @@ func EnqueueGangs(
 	ctx context.Context,
 	tasks []*task.TaskInfo,
 	jobConfig jobmgrcommon.JobConfig,
-	client resmgrsvc.ResourceManagerServiceYARPCClient) error {
+	client resmgrsvc.ResourceManagerServiceYARPCClient) (*resmgrsvc.EnqueueGangsResponse, error) {
 	ctxWithTimeout, cancelFunc := context.WithTimeout(ctx, 10*time.Second)
 	defer cancelFunc()
 
@@ -48,16 +48,7 @@ func EnqueueGangs(
 		log.WithError(err).WithFields(log.Fields{
 			"request": request,
 		}).Error("resource manager enqueue gangs failed")
-		return err
+		err = yarpcerrors.InternalErrorf("resource manager enqueue gangs failed %v", err.Error())
 	}
-	if response.GetError() != nil {
-		log.WithFields(log.Fields{
-			"resp_error": response.GetError().String(),
-			"request":    request,
-		}).Error("resource manager enqueue gangs response error")
-		return errors.New(response.GetError().String())
-	}
-	log.WithField("count", len(tasks)).
-		Debug("Enqueued tasks as gangs to Resource Manager")
-	return nil
+	return response, err
 }

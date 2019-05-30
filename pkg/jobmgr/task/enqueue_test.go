@@ -150,7 +150,6 @@ func (suite *TaskUtilTestSuite) TestEnqueueGangsFailure() {
 	}
 	gangs := taskutil.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
 	var expectedGangs []*resmgrsvc.Gang
-	var err error
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().EnqueueGangs(
 			gomock.Any(),
@@ -165,7 +164,7 @@ func (suite *TaskUtilTestSuite) TestEnqueueGangsFailure() {
 			}).
 			Return(nil, errors.New("Resmgr Error")),
 	)
-	err = EnqueueGangs(
+	_, err := EnqueueGangs(
 		context.Background(),
 		tasksInfo,
 		suite.testJobConfig,

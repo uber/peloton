@@ -23,6 +23,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/models"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
@@ -32,6 +33,7 @@ import (
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
 	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
+	taskutil "github.com/uber/peloton/pkg/common/util/task"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 
 	"github.com/golang/mock/gomock"
@@ -490,4 +492,164 @@ func (suite *JobCreateTestSuite) TestJobRecoverMaxRunningInstances() {
 
 	err := JobCreateTasks(context.Background(), suite.jobEnt)
 	suite.NoError(err)
+}
+
+func (suite *JobCreateTestSuite) TestJobCreateExistTasks() {
+	emptyTaskInfo := make(map[uint32]*pbtask.TaskInfo)
+	maxRunningInstances := 4
+	suite.jobConfig = &pbjob.JobConfig{
+		OwningTeam:    "team6",
+		LdapGroups:    []string{"team1", "team2", "team3"},
+		InstanceCount: uint32(maxRunningInstances),
+		Type:          pbjob.JobType_BATCH,
+	}
+	suite.jobConfig.SLA = &pbjob.SlaConfig{
+		MaximumRunningInstances: uint32(maxRunningInstances),
+	}
+
+	resmgrTasks := []*resmgr.Task{}
+	for i := 0; i < maxRunningInstances; i++ {
+		taskInfo := &pbtask.TaskInfo{
+			Runtime: &pbtask.RuntimeInfo{
+				State:     pbtask.TaskState_INITIALIZED,
+				GoalState: pbtask.TaskState_SUCCEEDED,
+			},
+			InstanceId: uint32(i),
+			JobId:      suite.jobID,
+		}
+		resmgrTasks = append(resmgrTasks, taskutil.ConvertTaskToResMgrTask(taskInfo, suite.jobConfig))
+	}
+
+	wrongTask := &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_INITIALIZED,
+			GoalState: pbtask.TaskState_SUCCEEDED,
+		},
+		InstanceId: uint32(0),
+		JobId:      &peloton.JobID{Value: uuid.NewRandom().String()},
+	}
+	resmgrTasks = append(resmgrTasks, taskutil.ConvertTaskToResMgrTask(wrongTask, suite.jobConfig))
+
+	failedGangs := []*resmgrsvc.EnqueueGangsFailure_FailedTask{
+		{
+			Task:      resmgrTasks[0],
+			Message:   "task0 failed due to gang fail",
+			Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_FAILED_DUE_TO_GANG_FAILED,
+		},
+		{
+			Task:      resmgrTasks[1],
+			Message:   "task1 failed due to already exist",
+			Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST,
+		},
+		{
+			Task:      resmgrTasks[2],
+			Message:   "task2 failed due to gang fail",
+			Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_FAILED_DUE_TO_GANG_FAILED,
+		},
+		{
+			Task:      resmgrTasks[3],
+			Message:   "task3 failed due to already exist",
+			Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST,
+		},
+		{
+			Task:      resmgrTasks[4],
+			Message:   "task4 wrong task failed due to gang failure",
+			Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST,
+		},
+	}
+	resmgrResponse := &resmgrsvc.EnqueueGangsResponse{
+		Error: &resmgrsvc.EnqueueGangsResponse_Error{
+			Failure: &resmgrsvc.EnqueueGangsFailure{
+				Failed: failedGangs,
+			},
+		},
+	}
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		Times(2)
+
+	suite.cachedJob.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.taskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.jobID).
+		Return(emptyTaskInfo, nil)
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.resmgrClient.EXPECT().
+		EnqueueGangs(gomock.Any(), gomock.Any()).
+		Return(resmgrResponse, nil)
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			instIDs := []uint32{}
+			suite.Equal(len(runtimeDiffs), 2)
+			for i, runtimeDiff := range runtimeDiffs {
+				suite.Equal(runtimeDiff[jobmgrcommon.StateField], pbtask.TaskState_PENDING)
+				instIDs = append(instIDs, i)
+			}
+			suite.ElementsMatch(instIDs, []uint32{uint32(1), uint32(3)})
+		}).
+		Return(nil)
+
+	err := JobCreateTasks(context.Background(), suite.jobEnt)
+	suite.Error(err)
+}
+
+func (suite *JobCreateTestSuite) TestJobCreateResmgrFailureResponse() {
+	emptyTaskInfo := make(map[uint32]*pbtask.TaskInfo)
+	resmgrResponse := &resmgrsvc.EnqueueGangsResponse{
+		Error: &resmgrsvc.EnqueueGangsResponse_Error{
+			NotFound: &resmgrsvc.ResourcePoolNotFound{
+				Id:      nil,
+				Message: "resource pool ID can't be nil",
+			},
+		},
+	}
+
+	suite.taskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.jobID).
+		Return(emptyTaskInfo, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
+		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		CreateTaskConfigs(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.resmgrClient.EXPECT().
+		EnqueueGangs(gomock.Any(), gomock.Any()).
+		Return(resmgrResponse, nil)
+
+	err := JobCreateTasks(context.Background(), suite.jobEnt)
+	suite.Error(err)
 }
