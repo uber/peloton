@@ -19,7 +19,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/pkg/placement/config"
@@ -162,7 +161,7 @@ func (mimir *mimir) Filters(
 	assignmentsByConstraint := make(map[string][]*models.Assignment)
 	for _, assignment := range assignments {
 		// String() function on protobuf message is nil-safe.
-		s := assignment.GetTask().GetTask().GetConstraint().String()
+		s := assignment.GetConstraint().String()
 		batch := assignmentsByConstraint[s]
 		batch = append(batch, assignment)
 		assignmentsByConstraint[s] = batch
@@ -185,50 +184,17 @@ func (mimir *mimir) getFilterForEquivalentAssignments(
 	if len(assignments) == 0 {
 		return nil
 	}
-	var maxCPU, maxGPU, maxMemory, maxDisk, maxPorts float64
-	var revocable bool
-	var hostHints []*hostsvc.FilterHint_Host
-	for _, assignment := range assignments {
-		resmgrTask := assignment.GetTask().GetTask()
-		maxCPU = math.Max(maxCPU, resmgrTask.Resource.CpuLimit)
-		maxGPU = math.Max(maxGPU, resmgrTask.Resource.GpuLimit)
-		maxMemory = math.Max(maxMemory, resmgrTask.Resource.MemLimitMb)
-		maxDisk = math.Max(maxDisk, resmgrTask.Resource.DiskLimitMb)
-		maxPorts = math.Max(maxPorts, float64(resmgrTask.NumPorts))
-		// All assignments have the same value for revocability
-		revocable = resmgrTask.Revocable
-		if len(resmgrTask.GetDesiredHost()) != 0 {
-			hostHints = append(hostHints, &hostsvc.FilterHint_Host{
-				Hostname: resmgrTask.GetDesiredHost(),
-				TaskID:   resmgrTask.GetId(),
-			})
-		}
-	}
+
 	maxOffers := mimir.config.OfferDequeueLimit
 	factor := _offersFactor[mimir.config.TaskType]
 	neededOffers := math.Ceil(float64(len(assignments)) * factor)
 	if float64(maxOffers) > neededOffers {
 		maxOffers = int(neededOffers)
 	}
-	filter := &hostsvc.HostFilter{
-		ResourceConstraint: &hostsvc.ResourceConstraint{
-			NumPorts: uint32(maxPorts),
-			Minimum: &task.ResourceConfig{
-				CpuLimit:    maxCPU,
-				GpuLimit:    maxGPU,
-				MemLimitMb:  maxMemory,
-				DiskLimitMb: maxDisk,
-			},
-			Revocable: revocable,
-		},
-		// All assignments have the same constraint
-		SchedulingConstraint: assignments[0].GetTask().GetTask().Constraint,
-		Quantity: &hostsvc.QuantityControl{
-			MaxHosts: uint32(maxOffers),
-		},
-		Hint: &hostsvc.FilterHint{
-			HostHint: hostHints,
-		},
+
+	filter := (models.Assignments(assignments)).MergeHostFilters()
+	filter.Quantity = &hostsvc.QuantityControl{
+		MaxHosts: uint32(maxOffers),
 	}
 	return filter
 }

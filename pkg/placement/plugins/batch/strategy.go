@@ -115,7 +115,6 @@ func (batch *batch) spreadTasksOnHost(
 
 // fillOffer assigns in sequence as many tasks as possible to the given offers in a host,
 // and returns a list of tasks not assigned to that host.
-
 func (batch *batch) fillOffer(host *models.HostOffers, unassigned []*models.Assignment) []*models.Assignment {
 	remainPorts := batch.availablePorts(host.GetOffer().GetResources())
 	remain := scalar.FromMesosResources(host.GetOffer().GetResources())
@@ -147,43 +146,15 @@ func (batch *batch) fillOffer(host *models.HostOffers, unassigned []*models.Assi
 	return nil
 }
 
-func (batch *batch) getHostFilter(assignment *models.Assignment) *hostsvc.HostFilter {
-	rmTask := assignment.GetTask().GetTask()
-	result := &hostsvc.HostFilter{
-		ResourceConstraint: &hostsvc.ResourceConstraint{
-			Minimum:   rmTask.Resource,
-			NumPorts:  rmTask.NumPorts,
-			Revocable: rmTask.Revocable,
-		},
-		Hint: &hostsvc.FilterHint{},
-	}
-	if constraint := rmTask.Constraint; constraint != nil {
-		result.SchedulingConstraint = constraint
-	}
-	// To spread out tasks over hosts, request host-manager
-	// to rank hosts randomly instead of a predictable order such
-	// as most-loaded.
-	if rmTask.GetPlacementStrategy() == job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB {
-		result.Hint.RankHint = hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM
-	}
-	return result
-}
-
 // Filters is an implementation of the placement.Strategy interface.
-func (batch *batch) Filters(assignments []*models.Assignment) map[*hostsvc.HostFilter][]*models.Assignment {
-	groups := map[string]*hostsvc.HostFilter{}
-	filters := map[*hostsvc.HostFilter][]*models.Assignment{}
-	for _, assignment := range assignments {
-		filter := batch.getHostFilter(assignment)
-		// String() function on protobuf message should be nil-safe.
-		s := filter.String()
-		if _, exists := groups[s]; !exists {
-			groups[s] = filter
-		}
-		batch := filters[groups[s]]
-		batch = append(batch, assignment)
-		filters[groups[s]] = batch
-	}
+func (batch *batch) Filters(
+	assignments []*models.Assignment,
+) map[*hostsvc.HostFilter][]*models.Assignment {
+	filters := (models.Assignments(assignments)).GroupByHostFilter(
+		func(a *models.Assignment) *hostsvc.HostFilter {
+			return a.GetSimpleHostFilter()
+		},
+	)
 
 	// Add quantity control to hostfilter.
 	result := map[*hostsvc.HostFilter][]*models.Assignment{}
@@ -198,7 +169,6 @@ func (batch *batch) Filters(assignments []*models.Assignment) map[*hostsvc.HostF
 		}
 		result[filterWithQuantity] = assignments
 	}
-
 	return result
 }
 
