@@ -197,12 +197,22 @@ func (j *jobEntity) GetActionList(
 		})
 	}
 
+	if actionStr == DeleteJobAction ||
+		actionStr == KillAndDeleteJobAction {
+		return context.Background(), nil, actions
+	}
+
 	// Run this action always.
 	actions = append(actions,
 		goalstate.Action{
 			Name:    "EnqueueJobUpdate",
 			Execute: EnqueueJobUpdate,
 		})
+
+	actions = append(actions, goalstate.Action{
+		Name:    string(DeleteFromActiveJobsAction),
+		Execute: DeleteJobFromActiveJobs,
+	})
 
 	if actionStr != UntrackAction &&
 		actionStr != KillAndUntrackAction &&
@@ -217,12 +227,6 @@ func (j *jobEntity) GetActionList(
 			Name:    string(EvaluateSLAAction),
 			Execute: JobEvaluateMaxRunningInstancesSLA,
 		})
-
-		actions = append(actions, goalstate.Action{
-			Name:    string(DeleteFromActiveJobsAction),
-			Execute: DeleteJobFromActiveJobs,
-		})
-
 	}
 
 	return context.Background(), nil, actions

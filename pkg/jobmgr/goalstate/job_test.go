@@ -98,13 +98,13 @@ func TestJobGetActionList(t *testing.T) {
 		cached.JobStateVector{State: job.JobState_SUCCEEDED},
 		cached.JobStateVector{State: job.JobState_SUCCEEDED},
 	)
-	assert.Equal(t, 2, len(actions))
+	assert.Equal(t, 3, len(actions))
 
 	_, _, actions = jobEnt.GetActionList(
 		cached.JobStateVector{State: job.JobState_UNINITIALIZED},
 		cached.JobStateVector{State: job.JobState_SUCCEEDED},
 	)
-	assert.Equal(t, 2, len(actions))
+	assert.Equal(t, 3, len(actions))
 
 	_, _, actions = jobEnt.GetActionList(
 		cached.JobStateVector{State: job.JobState_RUNNING},

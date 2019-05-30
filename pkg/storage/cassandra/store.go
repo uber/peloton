@@ -1993,6 +1993,10 @@ func (s *Store) deletePodEventsOnDeleteJob(
 	instanceCount := uint32(0)
 	jobConfig, _, err := s.GetJobConfig(ctx, jobID)
 	if err != nil {
+		// if the config is not found, then the job has already been deleted.
+		if yarpcerrors.IsNotFound(err) {
+			return nil
+		}
 		return err
 	}
 

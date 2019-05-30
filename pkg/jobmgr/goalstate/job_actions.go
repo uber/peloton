@@ -123,13 +123,15 @@ func JobRecover(ctx context.Context, entity goalstate.Entity) error {
 		}
 
 		// remove the update
-		if err := goalStateDriver.updateStore.DeleteUpdate(
-			ctx,
-			runtime.GetUpdateID(),
-			cachedJob.ID(),
-			runtime.GetConfigurationVersion(),
-		); err != nil {
-			return err
+		if len(runtime.GetUpdateID().GetValue()) != 0 {
+			if err := goalStateDriver.updateStore.DeleteUpdate(
+				ctx,
+				runtime.GetUpdateID(),
+				cachedJob.ID(),
+				runtime.GetConfigurationVersion(),
+			); err != nil {
+				return err
+			}
 		}
 
 		if err := goalStateDriver.jobStore.DeleteJob(
