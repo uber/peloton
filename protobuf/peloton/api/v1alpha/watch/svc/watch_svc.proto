@@ -66,8 +66,8 @@ message WatchRequest
 //    INVALID_ARGUMENT: Requested start-revision is newer than server revision
 //    RESOURCE_EXHAUSTED: Number of concurrent watches exceeded
 //    CANCELLED: Watch cancelled by user
-//    DEADLINE_EXCEEDED: Client not reading events fast enough, causing
-//                       internal queue to overflow
+//    ABORTED: Client not reading events fast enough, causing internal queue
+//             to overflow
 message WatchResponse {
   // Unique identifier for the watch session
   string watch_id = 1;

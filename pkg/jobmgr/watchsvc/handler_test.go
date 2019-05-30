@@ -160,6 +160,65 @@ func (suite *WatchServiceHandlerTestSuite) TestTaskWatch() {
 	suite.True(yarpcerrors.IsCancelled(err))
 }
 
+// TestTaskWatch sets up a watch client, and verifies the responses
+// are streamed back correctly based on the input, finally it simulates
+// a buffer overflow signal and verifies the client received the aborted
+// status code.
+func (suite *WatchServiceHandlerTestSuite) TestTaskWatch_Overflow() {
+	watchID := NewWatchID(ClientTypeTask)
+	taskClient := &TaskClient{
+		// do not set buffer size for input to make sure the
+		// tests sends all the events before sending stop
+		// signal
+		Input:  make(chan *pod.PodSummary),
+		Signal: make(chan StopSignal, 1),
+	}
+
+	suite.processor.EXPECT().NewTaskClient(gomock.Any()).
+		Return(watchID, taskClient, nil)
+	suite.processor.EXPECT().StopTaskClient(watchID)
+
+	pods := []*pod.PodSummary{
+		{
+			PodName: &peloton.PodName{Value: "pod-0"},
+		},
+		{
+			PodName: &peloton.PodName{Value: "pod-1"},
+		},
+	}
+
+	suite.watchServer.EXPECT().
+		Send(&watchsvc.WatchResponse{
+			WatchId: watchID,
+			Pods:    nil,
+		}).
+		Return(nil)
+	for _, p := range pods {
+		suite.watchServer.EXPECT().
+			Send(&watchsvc.WatchResponse{
+				WatchId: watchID,
+				Pods:    []*pod.PodSummary{p},
+			}).
+			Return(nil)
+	}
+
+	req := &watchsvc.WatchRequest{
+		PodFilter: &watch.PodFilter{},
+	}
+
+	go func() {
+		for _, p := range pods {
+			taskClient.Input <- p
+		}
+		// simulate buffer overflow
+		taskClient.Signal <- StopSignalOverflow
+	}()
+
+	err := suite.handler.Watch(req, suite.watchServer)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsAborted(err))
+}
+
 // TestTaskWatch_MaxClientReached checks Watch will return resource-exhausted
 // error when NewTaskClient reached max client.
 func (suite *WatchServiceHandlerTestSuite) TestTaskWatch_MaxClientReached() {

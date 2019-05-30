@@ -159,7 +159,7 @@ func handleSignal(
 	case StopSignalCancel:
 		return yarpcerrors.CancelledErrorf("watch cancelled: %s", watchID)
 	case StopSignalOverflow:
-		return yarpcerrors.InternalErrorf("event overflow: %s", watchID)
+		return yarpcerrors.AbortedErrorf("event overflow: %s", watchID)
 	default:
 		return yarpcerrors.InternalErrorf("unexpected signal: %s", s)
 	}
