@@ -379,7 +379,7 @@ def test__restart_running_job_with_batch_size(stateless_job, in_place):
 
 
 # test restarting a killed job with batch size,
-def test__restart_killed_job_with_batch_size(stateless_job):
+def test__restart_killed_job_with_batch_size(stateless_job, in_place):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state="RUNNING")
 
@@ -389,7 +389,7 @@ def test__restart_killed_job_with_batch_size(stateless_job):
 
     # TODO add back batch size after API update in peloton client
     # stateless_job.restart(batch_size=1)
-    stateless_job.restart()
+    stateless_job.restart(in_place=in_place)
 
     stateless_job.wait_for_all_pods_running()
 
@@ -414,7 +414,7 @@ def test__restart_running_job(stateless_job, in_place):
 
 
 # test restarting killed job without batch size,
-def test__restart_killed_job(stateless_job):
+def test__restart_killed_job(stateless_job, in_place):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state="RUNNING")
     old_pod_infos = stateless_job.query_pods()
@@ -422,7 +422,7 @@ def test__restart_killed_job(stateless_job):
     stateless_job.stop()
     stateless_job.wait_for_state(goal_state="KILLED")
 
-    stateless_job.restart()
+    stateless_job.restart(in_place=in_place)
 
     stateless_job.wait_for_all_pods_running()
 
@@ -464,11 +464,11 @@ def test__restart_partial_job(stateless_job, in_place):
 
 
 # test restarting job during jobmgr restart
-def test__restart_restart_jobmgr(stateless_job, jobmgr):
+def test__restart_restart_jobmgr(stateless_job, jobmgr, in_place):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state="RUNNING")
     old_pod_infos = stateless_job.query_pods()
-    stateless_job.restart()
+    stateless_job.restart(in_place=in_place)
 
     jobmgr.restart()
     stateless_job.wait_for_workflow_state(goal_state="SUCCEEDED")
@@ -480,12 +480,12 @@ def test__restart_restart_jobmgr(stateless_job, jobmgr):
 
 
 # test restarting a job with wrong entity version
-def test__restart_bad_version(stateless_job):
+def test__restart_bad_version(stateless_job, in_place):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state="RUNNING")
 
     try:
-        stateless_job.restart(entity_version="1-2-3")
+        stateless_job.restart(entity_version="1-2-3", in_place=in_place)
     except grpc.RpcError as e:
         assert e.code() == grpc.StatusCode.ABORTED
         return
