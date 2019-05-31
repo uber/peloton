@@ -371,7 +371,6 @@ func (s *RMTaskTestSuite) TestReadyBackoff() {
 }
 
 func (s *RMTaskTestSuite) TestPendingBackoff() {
-
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
 	node.SetNonSlackEntitlement(s.getEntitlement())
@@ -413,6 +412,58 @@ func (s *RMTaskTestSuite) TestPendingBackoff() {
 	s.EqualValues(rmtask.GetCurrentState().State, task.TaskState_PENDING)
 }
 
+// TestReservationInBackOff tests the host reservation flag is set properly
+func (s *RMTaskTestSuite) TestReservationInBackOff() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	rmTask, err := CreateRMTask(
+		tally.NoopScope,
+		s.createTask(1),
+		nil,
+		node,
+		&Config{
+			LaunchingTimeout:          1 * time.Minute,
+			PlacingTimeout:            2 * time.Second,
+			PlacementAttemptsPerCycle: 3,
+			PlacementRetryCycle:       3,
+			PlacementRetryBackoff:     1 * time.Second,
+			PolicyName:                ExponentialBackOffPolicy,
+			EnablePlacementBackoff:    true,
+			EnableHostReservation:     false,
+		},
+	)
+	s.NoError(err)
+
+	// enumerate different test scenarios
+	var testSettings = []struct {
+		enablePlacementBackoff  bool
+		enableHostReservation   bool
+		readyForHostReservation bool
+	}{
+		{false, false, false},
+		{false, true, false},
+		{true, false, false},
+		{true, true, true},
+	}
+
+	for _, testSetting := range testSettings {
+		rmTask.config.EnablePlacementBackoff = testSetting.enablePlacementBackoff
+		rmTask.config.EnableHostReservation = testSetting.enableHostReservation
+
+		rmTask.task.PlacementRetryCount = 2
+		rmTask.task.PlacementAttemptCount = 1
+		rmTask.AddBackoff()
+		s.EqualValues(2, rmTask.task.PlacementRetryCount)
+		s.EqualValues(2, rmTask.task.PlacementAttemptCount)
+		s.False(rmTask.task.ReadyForHostReservation)
+
+		rmTask.AddBackoff()
+		s.EqualValues(2, rmTask.task.PlacementRetryCount)
+		s.EqualValues(3, rmTask.task.PlacementAttemptCount)
+		s.EqualValues(testSetting.readyForHostReservation, rmTask.task.ReadyForHostReservation)
+	}
+}
+
 func (s *RMTaskTestSuite) TestHostReservation() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
@@ -449,7 +500,8 @@ func (s *RMTaskTestSuite) TestHostReservation() {
 	time.Sleep(2 * time.Second)
 	s.EqualValues(task.TaskState_READY, rmTask.GetCurrentState().State)
 	rmTask.task.PlacementRetryCount = 2
-	rmTask.task.PlacementAttemptCount = 3
+	rmTask.task.PlacementAttemptCount = 2
+	rmTask.AddBackoff()
 	rmTask.TransitTo(task.TaskState_PLACING.String())
 	s.NoError(err)
 	s.taskScheduler.Stop()
@@ -797,40 +849,23 @@ func (s *RMTaskTestSuite) TestRMTaskPreTimeoutCallback() {
 
 	// Host reservation is disabled and attempts are not exhausted
 	rmTask.task.ReadyForHostReservation = false
-	rmTask.task.PlacementRetryCount = 3
-	rmTask.task.PlacementAttemptCount = 1
+	rmTask.task.PlacementAttemptCount = 2
 	transition := statemachine.Transition{}
 	rmTask.preTimeoutCallback(&transition)
-	s.Equal(false, rmTask.task.ReadyForHostReservation)
 	s.Equal(statemachine.State(task.TaskState_READY.String()), transition.To)
 
 	// Host reservation is disabled and attempts are exhausted
 	rmTask.task.ReadyForHostReservation = false
-	rmTask.task.PlacementRetryCount = 3
 	rmTask.task.PlacementAttemptCount = 3
 	transition = statemachine.Transition{}
 	rmTask.preTimeoutCallback(&transition)
-	s.Equal(false, rmTask.task.ReadyForHostReservation)
 	s.Equal(statemachine.State(task.TaskState_PENDING.String()), transition.To)
 
-	// Host reservation is enabled and retries are not exhausted
+	// Host reservation is enabled and host is ready for host reservation
 	rmTask.config.EnableHostReservation = true
-	rmTask.task.ReadyForHostReservation = false
-	rmTask.task.PlacementRetryCount = 1
-	rmTask.task.PlacementAttemptCount = 3
+	rmTask.task.ReadyForHostReservation = true
 	transition = statemachine.Transition{}
 	rmTask.preTimeoutCallback(&transition)
-	s.Equal(false, rmTask.task.ReadyForHostReservation)
-	s.Equal(statemachine.State(task.TaskState_PENDING.String()), transition.To)
-
-	// Host reservation is enabled and retries are exhausted
-	rmTask.config.EnableHostReservation = true
-	rmTask.task.ReadyForHostReservation = false
-	rmTask.task.PlacementRetryCount = 2
-	rmTask.task.PlacementAttemptCount = 3
-	transition = statemachine.Transition{}
-	rmTask.preTimeoutCallback(&transition)
-	s.Equal(true, rmTask.task.ReadyForHostReservation)
 	s.Equal(statemachine.State(task.TaskState_READY.String()), transition.To)
 }
 

@@ -417,6 +417,11 @@ func (rmTask *RMTask) AddBackoff() error {
 		rmTask.Task().PlacementRetryCount++
 	}
 
+	// Mark task ready for host reservation when placement cycles are exhausted
+	if rmTask.config.EnableHostReservation && rmTask.hasFinishedAllPlacementCycles() {
+		rmTask.Task().ReadyForHostReservation = true
+	}
+
 	// If there is no Timeout rule for PLACING state we should error out
 	rule, ok := rmTask.stateMachine.GetTimeOutRules()[state.State(task.TaskState_PLACING.String())]
 	if !ok {
@@ -700,8 +705,9 @@ func (rmTask *RMTask) preTimeoutCallback(t *state.Transition) error {
 		return errTaskNotPresent
 	}
 
-	if rmTask.config.EnableHostReservation && rmTask.hasFinishedAllPlacementCycles() {
-		rmTask.task.ReadyForHostReservation = true
+	// Put such task with many placement retries in ready state so placement
+	// engine starts to reserve host in next cycle
+	if rmTask.task.ReadyForHostReservation {
 		t.To = state.State(task.TaskState_READY.String())
 		return nil
 	}
