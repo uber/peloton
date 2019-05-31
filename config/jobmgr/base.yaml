@@ -58,3 +58,27 @@ metrics:
   runtime_metrics:
     enabled: true
     interval: 10s
+
+rate_limit:
+  enabled: false
+  methods:
+    # order of the entries matters here.
+    # a procedure will try to match each entry from top to bottom,
+    # and the first satisfied config will be used.
+  - name: 'peloton.api.v1alpha.job.stateless.svc.JobService:GetJob'
+    rate: 100
+    burst: 100
+  - name: 'peloton.api.v1alpha.job.stateless.svc.JobService:Get*'
+    rate: 100
+    burst: 100
+  - name: 'peloton.api.v1alpha.job.stateless.svc.JobService:Browse*'
+    rate: 100
+    burst: 100
+  - name: 'peloton.api.v1alpha.job.stateless.svc.JobService:List*'
+    rate: -1 # if either burst or rate is < 0, no rate limit
+
+  # if a user calls a method not listed in methods list,
+  # it would fall through to this branch
+  default:
+    rate: 100
+    burst: 100

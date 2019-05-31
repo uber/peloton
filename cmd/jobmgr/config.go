@@ -21,16 +21,18 @@ import (
 	"github.com/uber/peloton/pkg/common/logging"
 	"github.com/uber/peloton/pkg/common/metrics"
 	"github.com/uber/peloton/pkg/jobmgr"
+	"github.com/uber/peloton/pkg/middleware/inbound"
 	storage "github.com/uber/peloton/pkg/storage/config"
 )
 
 // Config holds all config to run a peloton-jobmgr server.
 type Config struct {
-	Metrics      metrics.Config        `yaml:"metrics"`
-	Storage      storage.Config        `yaml:"storage"`
-	Election     leader.ElectionConfig `yaml:"election"`
-	JobManager   jobmgr.Config         `yaml:"job_manager"`
-	Health       health.Config         `yaml:"health"`
-	SentryConfig logging.SentryConfig  `yaml:"sentry"`
-	Auth         auth.Config           `yaml:"auth"`
+	Metrics      metrics.Config          `yaml:"metrics"`
+	Storage      storage.Config          `yaml:"storage"`
+	Election     leader.ElectionConfig   `yaml:"election"`
+	JobManager   jobmgr.Config           `yaml:"job_manager"`
+	Health       health.Config           `yaml:"health"`
+	SentryConfig logging.SentryConfig    `yaml:"sentry"`
+	Auth         auth.Config             `yaml:"auth"`
+	RateLimit    inbound.RateLimitConfig `yaml:"rate_limit"`
 }
