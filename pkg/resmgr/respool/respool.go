@@ -315,8 +315,6 @@ func NewRespool(
 
 // ID returns the resource pool UUID.
 func (n *resPool) ID() string {
-	n.RLock()
-	defer n.RUnlock()
 	return n.id
 }
 
