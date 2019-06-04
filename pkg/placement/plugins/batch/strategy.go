@@ -17,7 +17,6 @@ package batch
 import (
 	log "github.com/sirupsen/logrus"
 
-	mesosv1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
@@ -43,7 +42,8 @@ func (batch *batch) PlaceOnce(unassigned []*models.Assignment, hosts []*models.H
 	if len(unassigned) == 0 {
 		return
 	}
-	ph := unassigned[0].GetTask().GetTask().GetPlacementStrategy()
+
+	ph := models.Assignments(unassigned).GetPlacementStrategy()
 	if ph == job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB {
 		unassigned = batch.spreadTasksOnHost(unassigned, hosts)
 	} else {
@@ -57,19 +57,6 @@ func (batch *batch) PlaceOnce(unassigned []*models.Assignment, hosts []*models.H
 		"placement_hint": ph.String(),
 		"strategy":       "batch",
 	}).Info("PlaceOnce batch strategy returned")
-}
-
-func (batch *batch) availablePorts(resources []*mesosv1.Resource) uint64 {
-	var ports uint64
-	for _, resource := range resources {
-		if resource.GetName() != "ports" {
-			continue
-		}
-		for _, portRange := range resource.GetRanges().GetRange() {
-			ports += portRange.GetEnd() - portRange.GetBegin() + 1
-		}
-	}
-	return ports
 }
 
 // Assign hosts to tasks by trying to pack as many tasks as possible
@@ -116,32 +103,16 @@ func (batch *batch) spreadTasksOnHost(
 // fillOffer assigns in sequence as many tasks as possible to the given offers in a host,
 // and returns a list of tasks not assigned to that host.
 func (batch *batch) fillOffer(host *models.HostOffers, unassigned []*models.Assignment) []*models.Assignment {
-	remainPorts := batch.availablePorts(host.GetOffer().GetResources())
-	remain := scalar.FromMesosResources(host.GetOffer().GetResources())
-	for i, placement := range unassigned {
-		resmgrTask := placement.GetTask().GetTask()
-		usedPorts := uint64(resmgrTask.GetNumPorts())
-		if usedPorts > remainPorts {
-			log.WithFields(log.Fields{
-				"resmgr_task":         resmgrTask,
-				"num_available_ports": remainPorts,
-			}).Debug("Insufficient ports resources.")
-			return unassigned[i:]
-		}
-
-		usage := scalar.FromResourceConfig(placement.GetTask().GetTask().GetResource())
-		trySubtract, ok := remain.TrySubtract(usage)
+	portsLeft := host.GetAvailablePortCount()
+	resLeft := scalar.FromMesosResources(host.GetOffer().GetResources())
+	for i, assignment := range unassigned {
+		var ok bool
+		resLeft, portsLeft, ok = assignment.Fits(resLeft, portsLeft)
 		if !ok {
-			log.WithFields(log.Fields{
-				"remain": remain,
-				"usage":  usage,
-			}).Debug("Insufficient resources remain")
 			return unassigned[i:]
 		}
 
-		remainPorts -= usedPorts
-		remain = trySubtract
-		placement.SetHost(host)
+		assignment.SetHost(host)
 	}
 	return nil
 }

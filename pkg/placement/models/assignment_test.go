@@ -23,9 +23,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	peloton_api_v0_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
+
+	"github.com/uber/peloton/pkg/hostmgr/scalar"
 )
 
 func setupAssignmentVariables() (
@@ -37,6 +40,11 @@ func setupAssignmentVariables() (
 	*Assignment) {
 	resmgrTask := &resmgr.Task{
 		Name: "task",
+		Resource: &peloton_api_v0_task.ResourceConfig{
+			CpuLimit:   1.0,
+			MemLimitMb: 1.0,
+		},
+		NumPorts: 10,
 	}
 	hostOffer := &hostsvc.HostOffer{
 		Hostname: "hostname",
@@ -121,5 +129,32 @@ func TestAssignment(t *testing.T) {
 		filter := assignments.MergeHostFilters()
 		require.Nil(t, filter.SchedulingConstraint)
 		require.Equal(t, uint32(2), filter.Quantity.MaxHosts)
+	})
+
+	t.Run("fits", func(t *testing.T) {
+		_, _, _, _, _, a1 := setupAssignmentVariables()
+		resLeft := scalar.Resources{
+			CPU: 1.0,
+			Mem: 2.0,
+		}
+		portsLeft := uint64(20)
+		resLeft, portsLeft, fit := a1.Fits(resLeft, portsLeft)
+		require.True(t, fit)
+		require.Equal(t, uint64(10), portsLeft)
+		require.Equal(t, float64(0), resLeft.CPU)
+		require.Equal(t, float64(1), resLeft.Mem)
+
+		resLeft, portsLeft, fit = a1.Fits(resLeft, portsLeft)
+		require.False(t, fit)
+		require.Equal(t, uint64(10), portsLeft)
+		require.Equal(t, float64(0), resLeft.CPU)
+		require.Equal(t, float64(1), resLeft.Mem)
+
+		portsLeft = 5
+		resLeft, portsLeft, fit = a1.Fits(resLeft, portsLeft)
+		require.False(t, fit)
+		require.Equal(t, uint64(5), portsLeft)
+		require.Equal(t, float64(0), resLeft.CPU)
+		require.Equal(t, float64(1), resLeft.Mem)
 	})
 }

@@ -31,7 +31,8 @@ func NewHostOffers(hostOffer *hostsvc.HostOffer, tasks []*resmgr.Task, claimed t
 	}
 }
 
-// HostOffers represents a Peloton host and the tasks running on it and a Mimir placement group also be obtained from it.
+// HostOffers represents a Peloton host and the tasks running
+// on it and a Mimir placement group also be obtained from it.
 type HostOffers struct {
 	// host offer of the host.
 	Offer *hostsvc.HostOffer `json:"offer"`
@@ -72,4 +73,19 @@ func (host *HostOffers) Data() interface{} {
 // Age will return the age of the host, which is the time since it was dequeued from the host manager.
 func (host *HostOffers) Age(now time.Time) time.Duration {
 	return now.Sub(host.Claimed)
+}
+
+// GetAvailablePortCount returns the total number of ports available in
+// this host's offers.
+func (host *HostOffers) GetAvailablePortCount() uint64 {
+	var ports uint64
+	for _, resource := range host.GetOffer().GetResources() {
+		if resource.GetName() != "ports" {
+			continue
+		}
+		for _, portRange := range resource.GetRanges().GetRange() {
+			ports += portRange.GetEnd() - portRange.GetBegin() + 1
+		}
+	}
+	return ports
 }

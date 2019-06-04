@@ -17,10 +17,14 @@ package models
 import (
 	"math"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	peloton_api_v0_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+
+	"github.com/uber/peloton/pkg/hostmgr/scalar"
 )
 
 // Assignment represents the assignment of a task to a host.
@@ -75,6 +79,38 @@ func (a *Assignment) SetReason(reason string) {
 // assignment.
 func (a *Assignment) GetConstraint() *peloton_api_v0_task.Constraint {
 	return a.GetTask().GetTask().GetConstraint()
+}
+
+// GetUsage returns the resource and port usage of this assignment.
+func (a *Assignment) GetUsage() (res scalar.Resources, ports uint64) {
+	res = scalar.FromResourceConfig(a.GetTask().GetTask().GetResource())
+	ports = uint64(a.GetTask().GetTask().GetNumPorts())
+	return
+}
+
+// Fits returns true if the given resources fit in the assignment.
+func (a *Assignment) Fits(
+	resLeft scalar.Resources,
+	portsLeft uint64,
+) (scalar.Resources, uint64, bool) {
+	resNeeded, portsUsed := a.GetUsage()
+	if portsLeft < portsUsed {
+		log.WithFields(log.Fields{
+			"resmgr_task":         a.GetTask().GetTask(),
+			"num_available_ports": portsLeft,
+		}).Debug("Insufficient ports resources.")
+		return resLeft, portsLeft, false
+	}
+
+	remains, ok := resLeft.TrySubtract(resNeeded)
+	if !ok {
+		log.WithFields(log.Fields{
+			"remain": resLeft,
+			"usage":  resNeeded,
+		}).Debug("Insufficient resources remain")
+		return resLeft, portsLeft, false
+	}
+	return remains, portsLeft - portsUsed, true
 }
 
 // GetHostHints returns the host hints for the host manager service
@@ -183,8 +219,7 @@ func (as Assignments) GroupByHostFilter(
 }
 
 // MergeHostFilters merges the filters of all the assignment into a
-// single
-// HostFilter that encapsulates all of their resource constraints.
+// single HostFilter that encapsulates all of their resource constraints.
 // It also takes care of aggregating all of the hints into that
 // filter, as well as a SchedulingConstraint and a Quantity.
 // Returns nil if the length of the assignment list is 0.
@@ -194,4 +229,10 @@ func (as Assignments) MergeHostFilters() *hostsvc.HostFilter {
 		filter = a.MergeHostFilter(filter)
 	}
 	return filter
+}
+
+// GetPlacementStrategy returns the placement strategy for this list
+// of assignments.
+func (as Assignments) GetPlacementStrategy() job.PlacementStrategy {
+	return as[0].GetTask().GetTask().GetPlacementStrategy()
 }
