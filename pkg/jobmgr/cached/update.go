@@ -505,7 +505,7 @@ func (u *update) writeProgress(
 		// ignore error here, since UpdateTime is informational,
 		u.jobFactory.updateStore.WriteUpdateProgress(
 			ctx,
-			&models.UpdateModel{UpdateTime: now.Format(time.RFC3339Nano)})
+			&models.UpdateModel{UpdateID: u.id, UpdateTime: now.Format(time.RFC3339Nano)})
 		u.lastUpdateTime = now
 		return nil
 	}
