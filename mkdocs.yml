@@ -8,5 +8,6 @@ nav:
     - Developer Guide: developer-guide.md
     - Operation Guide: operation-guide.md
     - CLI Reference: cli-reference.md
+    - UI Guide: ui-guide.md
     - API Reference: api-reference.md
 theme: readthedocs

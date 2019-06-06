@@ -11,7 +11,9 @@ resource sharing, hierarchical max-min fairness, resource overcommit,
 workload preemption, etc. Peloton is also Cloud agnostic and can be run
 in on-premise datacenters or in the Cloud.
 
-For more details, please see [the Peloton Blog post](https://eng.uber.com/peloton/) and [Peloton online documentation](https://peloton.readthedocs.io/en/latest/).
+For more details, please see the Peloton [Blog
+Post](https://eng.uber.com/peloton/) and
+[Documentation](https://peloton.readthedocs.io/en/latest/).
 
 ## Features
 
