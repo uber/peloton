@@ -13,3 +13,144 @@
 // limitations under the License.
 
 package objects
+
+import (
+	"context"
+	"time"
+
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+
+	"github.com/uber/peloton/pkg/storage/objects/base"
+
+	"github.com/gogo/protobuf/proto"
+	"github.com/pkg/errors"
+)
+
+// init adds a JobRuntimeObject instance to the global list of storage objects
+func init() {
+	Objs = append(Objs, &JobRuntimeObject{})
+}
+
+// JobRuntimeObject corresponds to a row in job_config table.
+type JobRuntimeObject struct {
+	// DB specific annotations
+	base.Object `cassandra:"name=job_runtime, primaryKey=((job_id))"`
+
+	// JobID of the job
+	JobID string `column:"name=job_id"`
+	// RuntimeInfo of the job
+	RuntimeInfo []byte `column:"name=runtime_info"`
+	// Current state of the job
+	State string `column:"name=state"`
+	// Update time of the job
+	UpdateTime time.Time `column:"name=update_time"`
+}
+
+// JobRuntimeOps provides methods for manipulating job_config table.
+type JobRuntimeOps interface {
+	// Upsert inserts/updates a row in the table.
+	Upsert(
+		ctx context.Context,
+		id *peloton.JobID,
+		runtime *job.RuntimeInfo,
+	) error
+
+	// Get retrieves a row from the table.
+	Get(
+		ctx context.Context,
+		id *peloton.JobID,
+	) (*job.RuntimeInfo, error)
+
+	// Delete removes an object from the table.
+	Delete(
+		ctx context.Context,
+		id *peloton.JobID,
+	) error
+}
+
+// ensure that default implementation (jobRuntimeOps) satisfies the interface
+var _ JobRuntimeOps = (*jobRuntimeOps)(nil)
+
+// newJobRuntimeObject creates a JobRuntimeObject from job runtime
+func newJobRuntimeObject(
+	id *peloton.JobID,
+	runtime *job.RuntimeInfo,
+) (*JobRuntimeObject, error) {
+	obj := &JobRuntimeObject{JobID: id.GetValue()}
+
+	runtimeBuffer, err := proto.Marshal(runtime)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to marshal jobRuntime")
+	}
+
+	obj.RuntimeInfo = runtimeBuffer
+	obj.State = runtime.GetState().String()
+	obj.UpdateTime = time.Now().UTC()
+	return obj, nil
+}
+
+// jobRuntimeOps implements jobRuntimeOps using a particular Store
+type jobRuntimeOps struct {
+	store *Store
+}
+
+// NewJobRuntimeOps constructs a jobRuntimeOps object for provided Store.
+func NewJobRuntimeOps(s *Store) JobRuntimeOps {
+	return &jobRuntimeOps{store: s}
+}
+
+// Upsert creates/updates a JobRuntimeObject in db
+func (d *jobRuntimeOps) Upsert(
+	ctx context.Context,
+	id *peloton.JobID,
+	runtime *job.RuntimeInfo,
+) error {
+
+	obj, err := newJobRuntimeObject(id, runtime)
+	if err != nil {
+		return errors.Wrap(err, "Failed to construct JobRuntimeObject")
+	}
+
+	if err := d.store.oClient.Create(ctx, obj); err != nil {
+		return errors.Wrap(err, "DB Create failed")
+	}
+
+	return nil
+}
+
+// Get gets a JobRuntimeObject from db
+func (d *jobRuntimeOps) Get(
+	ctx context.Context,
+	id *peloton.JobID,
+) (*job.RuntimeInfo, error) {
+	obj := &JobRuntimeObject{
+		JobID: id.GetValue(),
+	}
+
+	if err := d.store.oClient.Get(ctx, obj); err != nil {
+		return nil, errors.Wrap(err, "DB Get failed")
+	}
+
+	runtime := &job.RuntimeInfo{}
+	if err := proto.Unmarshal(obj.RuntimeInfo, runtime); err != nil {
+		return nil, errors.Wrap(err, "Failed to unmarshal job runtime")
+	}
+
+	return runtime, nil
+}
+
+// Delete deletes a JobRuntimeObject from db
+func (d *jobRuntimeOps) Delete(
+	ctx context.Context,
+	id *peloton.JobID,
+) error {
+	obj := &JobRuntimeObject{
+		JobID: id.GetValue(),
+	}
+	if err := d.store.oClient.Delete(ctx, obj); err != nil {
+		return errors.Wrap(err, "DB Delete failed")
+	}
+
+	return nil
+}
