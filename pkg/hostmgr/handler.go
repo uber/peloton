@@ -241,6 +241,7 @@ func (h *ServiceHandler) GetHostsByQuery(
 			Hostname:  hostname,
 			Resources: nonRevocable,
 			Status:    toHostStatus(hostSummary.GetHostStatus()),
+			HeldTasks: hostSummary.GetHeldTask(),
 		})
 	}
 

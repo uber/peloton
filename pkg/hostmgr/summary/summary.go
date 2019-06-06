@@ -179,6 +179,9 @@ type HostSummary interface {
 	// ReturnPlacingHost is called when the host in PLACING state is not used,
 	// and is returned by placement engine
 	ReturnPlacingHost() error
+
+	// GetHeldTask returns a slice of task that puts the host in held
+	GetHeldTask() []*peloton.TaskID
 }
 
 type offerIDgenerator func() string
@@ -833,7 +836,19 @@ func (a *hostSummary) HoldForTask(id *peloton.TaskID) error {
 	}).Debug("hold task")
 
 	return nil
+}
 
+// GetHeldTask returns a slice of task that puts the host in held
+func (a *hostSummary) GetHeldTask() []*peloton.TaskID {
+	a.Lock()
+	a.Unlock()
+
+	var result []*peloton.TaskID
+	for taskID := range a.heldTasks {
+		result = append(result, &peloton.TaskID{Value: taskID})
+	}
+
+	return result
 }
 
 // ReleaseHoldForTasks release the hold of host for the task specified

@@ -1359,6 +1359,8 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() 
 			s.HoldForTask(heldTask)
 		}
 
+		suite.Len(s.GetHeldTask(), len(tt.heldTasks))
+
 		_, err := s.ClaimForLaunch(offers[0].GetId().GetValue(), tt.claimTasks...)
 		if err != nil {
 			suite.Equal(err.Error(), tt.err.Error(), tt.name)

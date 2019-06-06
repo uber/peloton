@@ -517,6 +517,9 @@ message GetHostsByQueryResponse {
     repeated mesos.v1.Resource resources = 2;
     // host status - ready, placing, reserved
     string status = 3;
+    // list of tasks the host is held for, if the
+    // host is held for in-place update
+    repeated api.v0.peloton.TaskID held_tasks = 4;
   }
 
   repeated Host hosts = 1;

@@ -31,8 +31,8 @@ const (
 	hostQueryFormatHeader = "Hostname\tIP\tState\n"
 	hostQueryFormatBody   = "%s\t%s\t%s\n"
 	hostSeparator         = ","
-	getHostsFormatHeader  = "Hostname\tCPU\tGPU\tMEM\tDisk\tState\t\n"
-	getHostsFormatBody    = "%s\t%.2f\t%.2f\t%.2f MB\t%.2f MB\t%s\t\n"
+	getHostsFormatHeader  = "Hostname\tCPU\tGPU\tMEM\tDisk\tState\t Task Hold\n"
+	getHostsFormatBody    = "%s\t%.2f\t%.2f\t%.2f MB\t%.2f MB\t%s\t%s\n"
 )
 
 // HostMaintenanceStartAction is the action for starting host maintenance. StartMaintenance puts the host(s)
@@ -180,6 +180,7 @@ func printGetHostsResponse(resp *hostsvc.GetHostsByQueryResponse) {
 		fmt.Fprint(tabWriter, getHostsFormatHeader)
 		for _, host := range hosts {
 			resource := scalar.FromMesosResources(host.GetResources())
+
 			fmt.Fprintf(tabWriter,
 				getHostsFormatBody,
 				host.GetHostname(),
@@ -187,9 +188,25 @@ func printGetHostsResponse(resp *hostsvc.GetHostsByQueryResponse) {
 				resource.GetGPU(),
 				resource.GetMem(),
 				resource.GetDisk(),
-				host.GetStatus())
+				host.GetStatus(),
+				getTaskHeldString(host),
+			)
 		}
 	}
+}
+
+func getTaskHeldString(host *hostsvc.GetHostsByQueryResponse_Host) string {
+	var taskHeldStr string
+	for _, taskHeld := range host.GetHeldTasks() {
+		taskHeldStr = taskHeldStr + taskHeld.GetValue() + " "
+	}
+
+	// remove the last space
+	if len(taskHeldStr) != 0 {
+		taskHeldStr = taskHeldStr[:len(taskHeldStr)-1]
+	}
+
+	return taskHeldStr
 }
 
 // DisableKillTasksAction disable the kill task request to mesos master
