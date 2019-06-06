@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package mimir
+package v0_mimir
 
 import (
 	"strings"
@@ -22,6 +22,8 @@ import (
 	"github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+
+	common "github.com/uber/peloton/pkg/placement/plugins/mimir/common"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/labels"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/metrics"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/orderings"
@@ -40,14 +42,15 @@ func TaskToEntity(task *resmgr.Task, isLaunched bool) *placement.Entity {
 	var order []placement.Ordering
 	// if the task has a desired host, add the host as the highest priority when picking group
 	if len(task.GetDesiredHost()) != 0 {
-		order = append(order, orderings.Negate(orderings.Label(nil, labels.NewLabel(HostName, task.DesiredHost))))
+		label := labels.NewLabel(common.HostNameLabel, task.DesiredHost)
+		order = append(order, orderings.Negate(orderings.Label(nil, label)))
 	}
 
 	order = append(order,
-		orderings.Negate(orderings.Metric(orderings.GroupSource, DiskFree)),
-		orderings.Negate(orderings.Metric(orderings.GroupSource, MemoryFree)),
-		orderings.Negate(orderings.Metric(orderings.GroupSource, CPUFree)),
-		orderings.Negate(orderings.Metric(orderings.GroupSource, GPUFree)),
+		orderings.Negate(orderings.Metric(orderings.GroupSource, common.DiskFree)),
+		orderings.Negate(orderings.Metric(orderings.GroupSource, common.MemoryFree)),
+		orderings.Negate(orderings.Metric(orderings.GroupSource, common.CPUFree)),
+		orderings.Negate(orderings.Metric(orderings.GroupSource, common.GPUFree)),
 	)
 
 	entity.Ordering = orderings.Concatenate(order...)
@@ -124,15 +127,15 @@ func makeAffinityRequirements(constraint *task.Constraint) placement.Requirement
 func makeMetricRequirements(task *resmgr.Task) []placement.Requirement {
 	resource := task.GetResource()
 	cpuRequirement := requirements.NewMetricRequirement(
-		CPUFree, requirements.GreaterThanEqual, resource.GetCpuLimit()*100.0)
+		common.CPUFree, requirements.GreaterThanEqual, resource.GetCpuLimit()*100.0)
 	memoryRequirement := requirements.NewMetricRequirement(
-		MemoryFree, requirements.GreaterThanEqual, resource.GetMemLimitMb()*metrics.MiB)
+		common.MemoryFree, requirements.GreaterThanEqual, resource.GetMemLimitMb()*metrics.MiB)
 	diskRequirement := requirements.NewMetricRequirement(
-		DiskFree, requirements.GreaterThanEqual, resource.GetDiskLimitMb()*metrics.MiB)
+		common.DiskFree, requirements.GreaterThanEqual, resource.GetDiskLimitMb()*metrics.MiB)
 	gpuRequirement := requirements.NewMetricRequirement(
-		GPUFree, requirements.GreaterThanEqual, resource.GetGpuLimit()*100.0)
+		common.GPUFree, requirements.GreaterThanEqual, resource.GetGpuLimit()*100.0)
 	portRequirement := requirements.NewMetricRequirement(
-		PortsFree, requirements.GreaterThanEqual, float64(task.GetNumPorts()))
+		common.PortsFree, requirements.GreaterThanEqual, float64(task.GetNumPorts()))
 	return []placement.Requirement{
 		cpuRequirement, memoryRequirement, diskRequirement, gpuRequirement, portRequirement,
 	}
@@ -147,9 +150,9 @@ func addRelations(labels *mesos_v1.Labels, relations *labels.Bag) {
 
 func addMetrics(task *resmgr.Task, metricSet *metrics.Set) {
 	resource := task.GetResource()
-	metricSet.Set(CPUReserved, resource.GetCpuLimit()*100.0)
-	metricSet.Set(GPUReserved, resource.GetGpuLimit()*100)
-	metricSet.Set(MemoryReserved, resource.GetMemLimitMb()*metrics.MiB)
-	metricSet.Set(DiskReserved, resource.GetDiskLimitMb()*metrics.MiB)
-	metricSet.Set(PortsReserved, float64(task.GetNumPorts()))
+	metricSet.Set(common.CPUReserved, resource.GetCpuLimit()*100.0)
+	metricSet.Set(common.GPUReserved, resource.GetGpuLimit()*100)
+	metricSet.Set(common.MemoryReserved, resource.GetMemLimitMb()*metrics.MiB)
+	metricSet.Set(common.DiskReserved, resource.GetDiskLimitMb()*metrics.MiB)
+	metricSet.Set(common.PortsReserved, float64(task.GetNumPorts()))
 }

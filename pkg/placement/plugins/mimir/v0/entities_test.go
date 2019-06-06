@@ -12,32 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package mimir
+package v0_mimir_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 
+	common "github.com/uber/peloton/pkg/placement/plugins/mimir/common"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/labels"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/metrics"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/requirements"
-	"github.com/uber/peloton/pkg/placement/testutil"
+	"github.com/uber/peloton/pkg/placement/plugins/mimir/v0"
+	"github.com/uber/peloton/pkg/placement/testutil/v0"
 )
 
 func TestEntityMapper_Convert(t *testing.T) {
-	task := testutil.SetupAssignment(time.Now(), 1).GetTask().GetTask()
-	entity := TaskToEntity(task, false)
+	task := v0_testutil.SetupRMTask()
+	entity := v0_mimir.TaskToEntity(task, false)
 	assert.Equal(t, task.GetId().GetValue(), entity.Name)
 	assert.Equal(t, 1, entity.Relations.Count(labels.NewLabel("relationKey", "relationValue")))
 	assert.NotNil(t, entity.Ordering)
 
-	assert.Equal(t, 3200.0, entity.Metrics.Get(CPUReserved))
-	assert.Equal(t, 1000.0, entity.Metrics.Get(GPUReserved))
-	assert.Equal(t, 4096.0*metrics.MiB, entity.Metrics.Get(MemoryReserved))
-	assert.Equal(t, 1024.0*metrics.MiB, entity.Metrics.Get(DiskReserved))
-	assert.Equal(t, 3.0, entity.Metrics.Get(PortsReserved))
+	assert.Equal(t, 3200.0, entity.Metrics.Get(common.CPUReserved))
+	assert.Equal(t, 1000.0, entity.Metrics.Get(common.GPUReserved))
+	assert.Equal(t, 4096.0*metrics.MiB, entity.Metrics.Get(common.MemoryReserved))
+	assert.Equal(t, 1024.0*metrics.MiB, entity.Metrics.Get(common.DiskReserved))
+	assert.Equal(t, 3.0, entity.Metrics.Get(common.PortsReserved))
 
 	and1, ok := entity.Requirement.(*requirements.AndRequirement)
 	assert.True(t, ok)
@@ -75,15 +76,15 @@ func TestEntityMapper_Convert(t *testing.T) {
 		assert.NotNil(t, requirement)
 		assert.Equal(t, requirements.GreaterThanEqual, requirement.Comparison)
 		switch requirement.MetricType {
-		case CPUFree:
+		case common.CPUFree:
 			assert.Equal(t, 3200.0, requirement.Value)
-		case GPUFree:
+		case common.GPUFree:
 			assert.Equal(t, 1000.0, requirement.Value)
-		case MemoryFree:
+		case common.MemoryFree:
 			assert.Equal(t, 4096.0*metrics.MiB, requirement.Value)
-		case DiskFree:
+		case common.DiskFree:
 			assert.Equal(t, 1024.0*metrics.MiB, requirement.Value)
-		case PortsFree:
+		case common.PortsFree:
 			assert.Equal(t, 3.0, requirement.Value)
 		}
 	}

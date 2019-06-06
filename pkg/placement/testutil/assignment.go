@@ -17,85 +17,15 @@ package testutil
 import (
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
-	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
-	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 	"github.com/uber/peloton/pkg/placement/models"
-
-	"github.com/pborman/uuid"
+	"github.com/uber/peloton/pkg/placement/testutil/v0"
 )
 
 // SetupAssignment creates an assignment.
 func SetupAssignment(deadline time.Time, maxRounds int) *models.Assignment {
-	relationKey := "relationKey"
-	relationValue := "relationValue"
-	taskID := uuid.New()
-	resmgrTask := &resmgr.Task{
-		Name: "task",
-		Id: &peloton.TaskID{
-			Value: taskID,
-		},
-		TaskId: &mesos_v1.TaskID{
-			Value: &[]string{taskID + "-1"}[0],
-		},
-		Labels: &mesos_v1.Labels{
-			Labels: []*mesos_v1.Label{
-				{
-					Key:   &relationKey,
-					Value: &relationValue,
-				},
-			},
-		},
-		Resource: &task.ResourceConfig{
-			CpuLimit:    32.0,
-			GpuLimit:    10.0,
-			MemLimitMb:  4096.0,
-			DiskLimitMb: 1024.0,
-			FdLimit:     32,
-		},
-		NumPorts: 3,
-		Constraint: &task.Constraint{
-			Type: task.Constraint_OR_CONSTRAINT,
-			OrConstraint: &task.OrConstraint{
-				Constraints: []*task.Constraint{
-					{
-						Type: task.Constraint_AND_CONSTRAINT,
-						AndConstraint: &task.AndConstraint{
-							Constraints: []*task.Constraint{
-								{
-									Type: task.Constraint_LABEL_CONSTRAINT,
-									LabelConstraint: &task.LabelConstraint{
-										Kind:      task.LabelConstraint_HOST,
-										Condition: task.LabelConstraint_CONDITION_LESS_THAN,
-										Label: &peloton.Label{
-											Key:   "key1",
-											Value: "value1",
-										},
-										Requirement: 1,
-									},
-								},
-								{
-									Type: task.Constraint_LABEL_CONSTRAINT,
-									LabelConstraint: &task.LabelConstraint{
-										Kind:      task.LabelConstraint_TASK,
-										Condition: task.LabelConstraint_CONDITION_LESS_THAN,
-										Label: &peloton.Label{
-											Key:   "key2",
-											Value: "value2",
-										},
-										Requirement: 1,
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		Type: resmgr.TaskType_BATCH,
-	}
+	resmgrTask := v0_testutil.SetupRMTask()
 	resmgrGang := &resmgrsvc.Gang{
 		Tasks: []*resmgr.Task{
 			resmgrTask,

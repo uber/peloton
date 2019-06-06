@@ -20,6 +20,8 @@ import (
 
 	"github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+
+	common "github.com/uber/peloton/pkg/placement/plugins/mimir/common"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/labels"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/metrics"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/placement"
@@ -39,24 +41,24 @@ func makeMetrics(resources []*mesos_v1.Resource) *metrics.Set {
 		value := resource.GetScalar().GetValue()
 		switch name := resource.GetName(); name {
 		case "cpus":
-			result.Add(CPUAvailable, value*100.0)
-			result.Set(CPUFree, 0.0)
+			result.Add(common.CPUAvailable, value*100.0)
+			result.Set(common.CPUFree, 0.0)
 		case "gpus":
-			result.Add(GPUAvailable, value*100.0)
-			result.Set(GPUFree, 0.0)
+			result.Add(common.GPUAvailable, value*100.0)
+			result.Set(common.GPUFree, 0.0)
 		case "mem":
-			result.Add(MemoryAvailable, value*metrics.MiB)
-			result.Set(MemoryFree, 0.0)
+			result.Add(common.MemoryAvailable, value*metrics.MiB)
+			result.Set(common.MemoryFree, 0.0)
 		case "disk":
-			result.Add(DiskAvailable, value*metrics.MiB)
-			result.Set(DiskFree, 0.0)
+			result.Add(common.DiskAvailable, value*metrics.MiB)
+			result.Set(common.DiskFree, 0.0)
 		case "ports":
 			ports := uint64(0)
 			for _, r := range resource.GetRanges().GetRange() {
 				ports += r.GetEnd() - r.GetBegin() + 1
 			}
-			result.Add(PortsAvailable, float64(ports))
-			result.Set(PortsFree, 0.0)
+			result.Add(common.PortsAvailable, float64(ports))
+			result.Set(common.PortsFree, 0.0)
 		}
 	}
 	// Compute the derived metrics, e.g. the free metrics from the available and reserved metrics.
@@ -93,6 +95,6 @@ func makeLabels(hostOffer *hostsvc.HostOffer) *labels.Bag {
 		names = append(names, value)
 		result.Add(labels.NewLabel(names...))
 	}
-	result.Add(labels.NewLabel(HostName, hostOffer.GetHostname()))
+	result.Add(labels.NewLabel(common.HostNameLabel, hostOffer.GetHostname()))
 	return result
 }
