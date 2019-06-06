@@ -24,6 +24,7 @@ import (
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/plugins"
+	common "github.com/uber/peloton/pkg/placement/plugins/mimir/common"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/algorithms"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/placement"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/v0"
@@ -84,7 +85,7 @@ func (mimir *mimir) convertHosts(hosts []*models.HostOffers) (
 	for i, host := range hosts {
 		data := host.Data()
 		if data == nil {
-			group := OfferToGroup(host.GetOffer())
+			group := v0_mimir.OfferToGroup(host.GetOffer())
 			entities := placement.Entities{}
 			for _, task := range host.GetTasks() {
 				entity := v0_mimir.TaskToEntity(task, true)
@@ -140,12 +141,12 @@ func (mimir *mimir) GetTaskPlacements(
 
 	for _, assignment := range assignments {
 		if assignment.AssignedGroup != nil {
-			log.WithField("group", dumpGroup(assignment.AssignedGroup)).
-				WithField("entity", dumpEntity(assignment.Entity)).
+			log.WithField("group", common.DumpGroup(assignment.AssignedGroup)).
+				WithField("entity", common.DumpEntity(assignment.Entity)).
 				WithField("transcript", assignment.Transcript.String()).
 				Debug("Placed Mimir assignment")
 		} else {
-			log.WithField("entity", dumpEntity(assignment.Entity)).
+			log.WithField("entity", common.DumpEntity(assignment.Entity)).
 				WithField("transcript", assignment.Transcript.String()).
 				Debug("Did not place Mimir assignment")
 		}

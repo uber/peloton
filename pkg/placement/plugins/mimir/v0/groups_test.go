@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package mimir
+package v0_mimir
 
 import (
 	"testing"
@@ -22,11 +22,11 @@ import (
 	common "github.com/uber/peloton/pkg/placement/plugins/mimir/common"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/labels"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/metrics"
-	"github.com/uber/peloton/pkg/placement/testutil"
+	"github.com/uber/peloton/pkg/placement/testutil/v0"
 )
 
 func TestGroupMapper_Convert(t *testing.T) {
-	offer := testutil.SetupHostOffers().GetOffer()
+	offer := v0_testutil.SetupHostOffer()
 	group := OfferToGroup(offer)
 	assert.Equal(t, "hostname", group.Name)
 	assert.Equal(t, 4800.0, group.Metrics.Get(common.CPUAvailable))

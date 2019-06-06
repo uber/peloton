@@ -19,6 +19,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
+
 	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/testutil/v0"
 )

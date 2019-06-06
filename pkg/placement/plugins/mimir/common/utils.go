@@ -31,11 +31,11 @@ type Group struct {
 	Entities  map[string]*Entity `json:"entities"`
 }
 
-// dumpGroup converts a Mimir group into a group who's structure we can log.
-func dumpGroup(group *placement.Group) *Group {
+// DumpGroup converts a Mimir group into a group who's structure we can log.
+func DumpGroup(group *placement.Group) *Group {
 	entities := map[string]*Entity{}
 	for name, entity := range group.Entities {
-		entities[name] = dumpEntity(entity)
+		entities[name] = DumpEntity(entity)
 	}
 	return &Group{
 		Name:      group.Name,
@@ -53,8 +53,8 @@ type Entity struct {
 	Metrics   map[string]float64 `json:"metrics"`
 }
 
-// dumpEntity converts a Mimir entity into an entity who's structure we can log.
-func dumpEntity(entity *placement.Entity) *Entity {
+// DumpEntity converts a Mimir entity into an entity who's structure we can log.
+func DumpEntity(entity *placement.Entity) *Entity {
 	return &Entity{
 		Name:      entity.Name,
 		Relations: dumpLabelBag(entity.Relations),
