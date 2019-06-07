@@ -37,14 +37,14 @@ func TestBatchPlacePackLoadedHost(t *testing.T) {
 		testutil.SetupHostOffers(),
 	}
 	strategy := New()
-	strategy.PlaceOnce(assignments, offers)
+	placements := strategy.GetTaskPlacements(assignments, offers)
 
-	assert.Equal(t, offers[0], assignments[0].GetHost())
-	assert.Equal(t, offers[1], assignments[1].GetHost())
-	assert.Nil(t, assignments[2].GetHost())
+	assert.Equal(t, 0, placements[0])
+	assert.Equal(t, 1, placements[1])
+	assert.Equal(t, -1, placements[2])
 }
 
-func TestBatchPlaceOncePackFreeHost(t *testing.T) {
+func TestBatchGetTaskPlacementsPackFreeHost(t *testing.T) {
 	assignments := []*models.Assignment{
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
@@ -56,13 +56,12 @@ func TestBatchPlaceOncePackFreeHost(t *testing.T) {
 		testutil.SetupHostOffers(),
 	}
 	strategy := New()
-	strategy.PlaceOnce(assignments, offers)
-
-	assert.Equal(t, offers[0], assignments[0].GetHost())
-	assert.Equal(t, offers[0], assignments[1].GetHost())
+	placements := strategy.GetTaskPlacements(assignments, offers)
+	assert.Equal(t, 0, placements[0])
+	assert.Equal(t, 0, placements[1])
 }
 
-func TestBatchPlaceOnceSpread(t *testing.T) {
+func TestBatchGetTaskPlacementsSpread(t *testing.T) {
 	assignments := make([]*models.Assignment, 0)
 	for i := 0; i < 5; i++ {
 		a := testutil.SetupAssignment(time.Now().Add(10*time.Second), 1)
@@ -76,13 +75,13 @@ func TestBatchPlaceOnceSpread(t *testing.T) {
 		testutil.SetupHostOffers(),
 	}
 	strategy := New()
-	strategy.PlaceOnce(assignments, offers)
+	placements := strategy.GetTaskPlacements(assignments, offers)
 
-	assert.Equal(t, offers[0], assignments[0].GetHost())
-	assert.Equal(t, offers[1], assignments[1].GetHost())
-	assert.Equal(t, offers[2], assignments[2].GetHost())
-	assert.Nil(t, assignments[3].GetHost())
-	assert.Nil(t, assignments[4].GetHost())
+	assert.Equal(t, 0, placements[0])
+	assert.Equal(t, 1, placements[1])
+	assert.Equal(t, 2, placements[2])
+	assert.Equal(t, -1, placements[3])
+	assert.Equal(t, -1, placements[4])
 }
 
 func TestBatchFiltersWithResources(t *testing.T) {

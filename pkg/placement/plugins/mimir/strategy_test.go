@@ -53,10 +53,10 @@ func TestMimirPlace(t *testing.T) {
 		testutil.SetupHostOffers(),
 	}
 	strategy := setupStrategy()
-	strategy.PlaceOnce(assignments, offers)
+	placements := strategy.GetTaskPlacements(assignments, offers)
 
-	assert.Equal(t, offers[0], assignments[0].GetHost())
-	assert.Nil(t, assignments[1].GetHost())
+	assert.Equal(t, 0, placements[0])
+	assert.Equal(t, -1, placements[1])
 }
 
 // TestMimirPlacePreferHostWithMoreResource tests the case that
@@ -87,8 +87,8 @@ func TestMimirPlacePreferHostWithMoreResource(t *testing.T) {
 
 	// the host will choose host with more free resources
 	strategy := setupStrategy()
-	strategy.PlaceOnce(assignments, offers)
-	assert.Equal(t, hostWithEnoughResources, assignments[0].GetHost())
+	placements := strategy.GetTaskPlacements(assignments, offers)
+	assert.Equal(t, 1, placements[0])
 }
 
 // TestMimirPlacePreferHostWithDesiredHost tests that the task
@@ -122,8 +122,8 @@ func TestMimirPlacePreferHostWithDesiredHost(t *testing.T) {
 	// even if it has less resource
 	assignments[0].Task.Task.DesiredHost = hostWithScarceResources.GetOffer().GetHostname()
 	strategy := setupStrategy()
-	strategy.PlaceOnce(assignments, offers)
-	assert.Equal(t, hostWithScarceResources, assignments[0].GetHost())
+	placements := strategy.GetTaskPlacements(assignments, offers)
+	assert.Equal(t, 0, placements[0])
 }
 
 // TestMimirPlaceIgnoreDesiredHostWhenNoEnoughResource tests that the task
@@ -156,8 +156,8 @@ func TestMimirPlaceIgnoreDesiredHostWhenNoEnoughResource(t *testing.T) {
 	// But it could not as it does not have enough resources for the task.
 	strategy := setupStrategy()
 	assignments[0].Task.Task.DesiredHost = hostWithScarceResources.GetOffer().GetHostname()
-	strategy.PlaceOnce(assignments, offers)
-	assert.Equal(t, hostWithEnoughResources, assignments[0].GetHost())
+	placements := strategy.GetTaskPlacements(assignments, offers)
+	assert.Equal(t, 1, placements[0])
 }
 
 func TestMimirFilters(t *testing.T) {

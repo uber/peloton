@@ -269,8 +269,14 @@ func (e *engine) placeAssignmentGroup(
 
 		e.metrics.OfferGet.Inc(1)
 
-		// PlaceOnce the tasks on the hosts by delegating to the placement strategy.
-		e.strategy.PlaceOnce(assignments, hosts)
+		// Delegate to the placement strategy to get the placements for these
+		// tasks onto these hosts.
+		placements := e.strategy.GetTaskPlacements(assignments, hosts)
+		for assignmentIdx, hostIdx := range placements {
+			if hostIdx != -1 {
+				assignments[assignmentIdx].SetHost(hosts[hostIdx])
+			}
+		}
 
 		// Filter the assignments according to if they got assigned,
 		// should be retried or were unassigned.

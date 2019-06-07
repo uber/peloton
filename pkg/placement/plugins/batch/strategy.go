@@ -34,47 +34,69 @@ func New() plugins.Strategy {
 // batch is the batch placement strategy which just fills up offers with tasks one at a time.
 type batch struct{}
 
-// PlaceOnce is an implementation of the placement.Strategy interface.
-func (batch *batch) PlaceOnce(unassigned []*models.Assignment, hosts []*models.HostOffers) {
+// GetTaskPlacements is an implementation of the placement.Strategy interface.
+func (batch *batch) GetTaskPlacements(
+	unassigned []*models.Assignment,
+	hosts []*models.HostOffers,
+) map[int]int {
 	// All tasks are identical in their requirements, including
 	// placementHint (see method Filters())). So just looking at
 	// the first one is sufficient.
 	if len(unassigned) == 0 {
-		return
+		return map[int]int{}
 	}
 
+	var placements map[int]int
 	ph := models.Assignments(unassigned).GetPlacementStrategy()
 	if ph == job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB {
-		unassigned = batch.spreadTasksOnHost(unassigned, hosts)
+		placements = batch.spreadTasksOnHost(unassigned, hosts)
 	} else {
 		// the default host assignment strategy is PACK
-		unassigned = batch.packTasksOnHost(unassigned, hosts)
+		placements = batch.packTasksOnHost(unassigned, hosts)
+	}
+
+	var leftOver []*models.Assignment
+	for assignmentIdx, assignment := range unassigned {
+		if _, isAssigned := placements[assignmentIdx]; !isAssigned {
+			placements[assignmentIdx] = -1
+			leftOver = append(leftOver, assignment)
+		}
 	}
 
 	log.WithFields(log.Fields{
-		"unassigned":     unassigned,
-		"hosts":          hosts,
-		"placement_hint": ph.String(),
-		"strategy":       "batch",
-	}).Info("PlaceOnce batch strategy returned")
+		"failed_assignments": leftOver,
+		"hosts":              hosts,
+		"placement_hint":     ph.String(),
+		"strategy":           "batch",
+	}).Info("GetTaskPlacements batch strategy returned")
+	return placements
 }
 
 // Assign hosts to tasks by trying to pack as many tasks as possible
 // on a single host. Returns any tasks that could not be assigned to
 // a host.
+// The output is a map[AssignmentIndex]HostIndex, as defined by the
+// GetTaskPlacements function signature.
 func (batch *batch) packTasksOnHost(
 	unassigned []*models.Assignment,
 	hosts []*models.HostOffers,
-) []*models.Assignment {
-	for _, host := range hosts {
+) map[int]int {
+	placements := map[int]int{}
+	totalAssignedCount := 0
+	for hostIdx, host := range hosts {
 		log.WithFields(log.Fields{
 			"unassigned": unassigned,
 			"hosts":      hosts,
-		}).Debug("PlaceOnce batch strategy called")
+		}).Debug("GetTaskPlacements batch strategy called")
 
-		unassigned = batch.fillOffer(host, unassigned)
+		assignedCount := batch.getTasksForHost(host, unassigned[totalAssignedCount:])
+		for assignmentIdx := 0; assignmentIdx < assignedCount; assignmentIdx++ {
+			placementIdx := totalAssignedCount + assignmentIdx
+			placements[placementIdx] = hostIdx
+		}
+		totalAssignedCount += assignedCount
 	}
-	return unassigned
+	return placements
 }
 
 // Assign exactly one task to a host, and return all tasks that
@@ -82,39 +104,45 @@ func (batch *batch) packTasksOnHost(
 // Note that all task have identical resource and scheduling
 // constraints, and each host satisifies these constraints.
 // So a simple index-by-index assignment is just fine.
+// The output is a map[AssignmentIndex]HostIndex, as defined by the
+// GetTaskPlacements function signature.
 func (batch *batch) spreadTasksOnHost(
 	unassigned []*models.Assignment,
 	hosts []*models.HostOffers,
-) []*models.Assignment {
+) map[int]int {
 	numTasks := len(hosts)
 	if len(unassigned) < numTasks {
 		numTasks = len(unassigned)
 	}
-	next := 0
-	for ; next < numTasks; next++ {
-		unassigned[next].SetHost(hosts[next])
+
+	placements := map[int]int{}
+	for i := 0; i < numTasks; i++ {
+		placements[i] = i
 	}
-	if next < len(unassigned) {
-		return unassigned[next:]
-	}
-	return nil
+	return placements
 }
 
-// fillOffer assigns in sequence as many tasks as possible to the given offers in a host,
-// and returns a list of tasks not assigned to that host.
-func (batch *batch) fillOffer(host *models.HostOffers, unassigned []*models.Assignment) []*models.Assignment {
+// getTasksForHost tries to fit in sequence as many tasks as possible
+// to the given offers in a host, and returns the indices of the
+// tasks that fit on that host. getTasksForHost does not call mutate its
+// inputs in any way.
+// NOTE: getTasksForHost stops at the first task that failed to fit on
+// the host.
+// TODO (pourchet): Is the above note a bug? Or is it deliberate?
+func (batch *batch) getTasksForHost(
+	host *models.HostOffers,
+	unassigned []*models.Assignment,
+) int {
 	portsLeft := host.GetAvailablePortCount()
 	resLeft := scalar.FromMesosResources(host.GetOffer().GetResources())
 	for i, assignment := range unassigned {
 		var ok bool
 		resLeft, portsLeft, ok = assignment.Fits(resLeft, portsLeft)
 		if !ok {
-			return unassigned[i:]
+			return i
 		}
-
-		assignment.SetHost(host)
 	}
-	return nil
+	return len(unassigned)
 }
 
 // Filters is an implementation of the placement.Strategy interface.

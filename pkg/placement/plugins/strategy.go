@@ -22,9 +22,13 @@ import (
 // Strategy is a placment strategy that will do all the placement logic of
 // assigning tasks to offers.
 type Strategy interface {
-	// PlaceOnce takes a list of assignments without any assigned offers and
-	// will assign offers to the task in each assignment.
-	PlaceOnce(assignments []*models.Assignment, hosts []*models.HostOffers)
+	// GetTaskPlacements takes a list of assignments without any assigned offers and
+	// will assign offers to the task in each assignment. This assignment is
+	// returned as a map from task index to host index.
+	// So for instance: map[int]int{2: 3} means that assignments[2] should
+	// be assigned to hosts[3].
+	// Tasks that could not be placed should map to an index of -1.
+	GetTaskPlacements(assignments []*models.Assignment, hosts []*models.HostOffers) map[int]int
 
 	// Filters will take a list of assignments and group them into groups that
 	// should use the same host filter to acquire offers from the host manager.
@@ -32,7 +36,7 @@ type Strategy interface {
 
 	// ConcurrencySafe returns true iff the strategy is concurrency safe. If
 	// the strategy is concurrency safe then it is safe for multiple
-	// go-routines to run the PlaceOnce method concurrently, else only one
-	// go-routine is allowed to run the PlaceOnce method at a time.
+	// go-routines to run the GetTaskPlacements method concurrently, else only one
+	// go-routine is allowed to run the GetTaskPlacements method at a time.
 	ConcurrencySafe() bool
 }

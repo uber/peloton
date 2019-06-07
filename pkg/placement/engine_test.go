@@ -276,12 +276,12 @@ func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
 	assignments := []*models.Assignment{assignment}
 
 	mockStrategy.EXPECT().
-		PlaceOnce(
+		GetTaskPlacements(
 			gomock.Any(),
 			gomock.Any(),
 		).
 		Times(5).
-		Return()
+		Return(map[int]int{})
 
 	mockTaskService.EXPECT().
 		SetPlacements(
@@ -318,11 +318,11 @@ func TestEnginePlaceTaskExceedMaxPlacementDeadlineGetsPlaced(t *testing.T) {
 	assignments := []*models.Assignment{assignment}
 
 	mockStrategy.EXPECT().
-		PlaceOnce(
+		GetTaskPlacements(
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Return()
+		Return(map[int]int{})
 
 	mockTaskService.EXPECT().
 		SetPlacements(
@@ -383,11 +383,11 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 		)
 
 	mockStrategy.EXPECT().
-		PlaceOnce(
+		GetTaskPlacements(
 			gomock.Any(),
 			gomock.Any()).
 		AnyTimes().
-		Return()
+		Return(map[int]int{})
 
 	mockStrategy.EXPECT().
 		Filters(
