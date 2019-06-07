@@ -16,6 +16,7 @@ package placement
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -27,6 +28,8 @@ import (
 	"github.com/uber/peloton/pkg/placement/models"
 	offers_mock "github.com/uber/peloton/pkg/placement/offers/mocks"
 	"github.com/uber/peloton/pkg/placement/plugins/batch"
+	"github.com/uber/peloton/pkg/placement/plugins/mimir"
+	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/algorithms"
 	"github.com/uber/peloton/pkg/placement/plugins/mocks"
 	tasks_mock "github.com/uber/peloton/pkg/placement/tasks/mocks"
 	"github.com/uber/peloton/pkg/placement/testutil"
@@ -40,7 +43,21 @@ const (
 	_testReason = "Test Placement Reason"
 )
 
-func setupEngine(t *testing.T) (
+type option func(placementConfig *config.PlacementConfig)
+
+func withTaskType(taskType resmgr.TaskType) func(placementConfig *config.PlacementConfig) {
+	return func(placementConfig *config.PlacementConfig) {
+		placementConfig.TaskType = taskType
+	}
+}
+
+func withStrategy(strategy config.PlacementStrategy) func(placementConfig *config.PlacementConfig) {
+	return func(placementConfig *config.PlacementConfig) {
+		placementConfig.Strategy = strategy
+	}
+}
+
+func setupEngine(t *testing.T, options ...option) (
 	*gomock.Controller,
 	*engine, *offers_mock.MockService,
 	*tasks_mock.MockService,
@@ -74,6 +91,11 @@ func setupEngine(t *testing.T) (
 			Stateful:  25 * time.Second,
 		},
 	}
+
+	for _, option := range options {
+		option(config)
+	}
+
 	pool := async.NewPool(async.PoolOptions{}, nil)
 	pool.Start()
 
@@ -105,7 +127,7 @@ func TestEnginePlaceNoTasksToPlace(t *testing.T) {
 			nil,
 		)
 
-	delay := engine.Place(context.Background())
+	_, delay := engine.Place(context.Background(), nil)
 	assert.True(t, delay > time.Duration(0))
 }
 
@@ -156,7 +178,7 @@ func TestEnginePlaceMultipleTasks(t *testing.T) {
 		Return()
 
 	engine.strategy = batch.New()
-	engine.Place(context.Background())
+	engine.Place(context.Background(), nil)
 	engine.pool.WaitUntilProcessed()
 
 	var success, failed int
@@ -172,6 +194,74 @@ func TestEnginePlaceMultipleTasks(t *testing.T) {
 	assert.Equal(t, 0, failed)
 }
 
+func TestEnginePlaceInPlaceUpdateTasks(t *testing.T) {
+	ctrl, engine, mockOfferService, mockTaskService, _ := setupEngine(
+		t,
+		withTaskType(resmgr.TaskType_STATELESS),
+		withStrategy(config.Mimir),
+	)
+
+	defer ctrl.Finish()
+	createTasks := 24
+	createHosts := 12
+
+	engine.config.MaxPlacementDuration = time.Second
+	// set a long enough deadline, so in one run of Place,
+	// the assignment would not pass deadline for getting
+	// placed on the desired host
+	deadline := time.Now().Add(10 * time.Minute)
+
+	var assignments []*models.Assignment
+	for i := 0; i < createTasks; i++ {
+		assignment := testutil.SetupAssignment(deadline, 2)
+		assignment.GetTask().GetTask().Resource.CpuLimit = 1
+		// half of the tasks have a desired host that can be placed on,
+		// the other half have a desired host that cannot have the task get placed
+		if i < createTasks/2 {
+			assignment.GetTask().GetTask().DesiredHost = fmt.Sprintf("hostname-%d", i)
+		} else {
+			assignment.GetTask().GetTask().DesiredHost = fmt.Sprintf("nonexist-%d", i)
+		}
+		assignments = append(assignments, assignment)
+	}
+
+	var hosts []*models.HostOffers
+	for i := 0; i < createHosts; i++ {
+		host := testutil.SetupHostOffers()
+		host.Offer.Hostname = fmt.Sprintf("hostname-%d", i)
+		hosts = append(hosts, host)
+	}
+
+	mockOfferService.EXPECT().Acquire(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+	).Return(hosts, _testReason).MinTimes(1)
+
+	mockTaskService.EXPECT().
+		Dequeue(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Times(1).
+		Return(assignments)
+	mockTaskService.EXPECT().SetPlacements(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any()).
+		Return()
+
+	engine.config.Concurrency = 1
+	placer := algorithms.NewPlacer(4, 300)
+	engine.strategy = mimir.New(placer, engine.config)
+	unfulfilledAssignment, _ := engine.Place(context.Background(), nil)
+	engine.pool.WaitUntilProcessed()
+
+	// half of the tasks cannot get fulfilled
+	assert.Len(t, unfulfilledAssignment, createTasks/2)
+}
 func TestEnginePlaceSubsetOfTasksDueToInsufficientResources(t *testing.T) {
 	ctrl, engine, mockOfferService, mockTaskService, _ := setupEngine(t)
 	defer ctrl.Finish()
@@ -220,7 +310,7 @@ func TestEnginePlaceSubsetOfTasksDueToInsufficientResources(t *testing.T) {
 		Return().AnyTimes()
 
 	engine.strategy = batch.New()
-	engine.Place(context.Background())
+	engine.Place(context.Background(), nil)
 	engine.pool.WaitUntilProcessed()
 
 	var success, failed int
@@ -267,11 +357,12 @@ func TestEnginePlaceNoHostsMakesTaskExceedDeadline(t *testing.T) {
 func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
 	ctrl, engine, mockOfferService, mockTaskService, mockStrategy := setupEngine(t)
 	defer ctrl.Finish()
+	maxRounds := 5
 	engine.config.MaxPlacementDuration = 1 * time.Second
 
 	host := testutil.SetupHostOffers()
 	offers := []*models.HostOffers{host}
-	assignment := testutil.SetupAssignment(time.Now().Add(1*time.Second), 5)
+	assignment := testutil.SetupAssignment(time.Now().Add(1*time.Second), maxRounds)
 	assignment.SetHost(host)
 	assignments := []*models.Assignment{assignment}
 
@@ -280,8 +371,13 @@ func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
 			gomock.Any(),
 			gomock.Any(),
 		).
-		Times(5).
+		Times(maxRounds).
 		Return(map[int]int{})
+
+	mockStrategy.EXPECT().
+		ConcurrencySafe().
+		Return(true).
+		Times(maxRounds - 1)
 
 	mockTaskService.EXPECT().
 		SetPlacements(
@@ -427,7 +523,7 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 		).AnyTimes().
 		Return()
 
-	delay := engine.Place(context.Background())
+	_, delay := engine.Place(context.Background(), nil)
 	assert.Equal(t, time.Duration(0), delay)
 }
 
@@ -481,7 +577,7 @@ func TestEnginePlaceReservedTasks(t *testing.T) {
 
 	// Test assignments ready for host reservation
 	engine.strategy = batch.New()
-	engine.Place(context.Background())
+	engine.Place(context.Background(), nil)
 	engine.pool.WaitUntilProcessed()
 
 	var success, failed int

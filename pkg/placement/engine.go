@@ -17,6 +17,7 @@ package placement
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -123,6 +124,9 @@ func (e *engine) Run(ctx context.Context) error {
 		WithField("dequeue_limit", e.config.TaskDequeueLimit).
 		WithField("no_task_delay", _noTasksTimeoutPenalty).
 		Info("Engine started")
+
+	var unfulfilledAssignment []*models.Assignment
+	var delay time.Duration
 	timer := time.NewTimer(e.config.TaskDequeuePeriod)
 	for {
 		select {
@@ -134,7 +138,7 @@ func (e *engine) Run(ctx context.Context) error {
 		case <-timer.C:
 		}
 
-		delay := e.Place(ctx)
+		unfulfilledAssignment, delay = e.Place(ctx, unfulfilledAssignment)
 		log.WithField("delay", delay.String()).Debug("Placement delay")
 		timer.Reset(delay)
 	}
@@ -147,18 +151,26 @@ func (e *engine) Stop() {
 }
 
 // Place will let the coordinator do one placement round.
-// Returns the delay to start next round of placing.
-func (e *engine) Place(ctx context.Context) time.Duration {
+// It accepts unfulfilled assignment from last round, and
+// try to process them in the current round.
+// Returns the slice of assignment that cannot be fulfilled and
+// the delay to start next round of placing.
+func (e *engine) Place(
+	ctx context.Context,
+	lastRoundAssignment []*models.Assignment,
+) ([]*models.Assignment, time.Duration) {
 	log.Debug("Beginning placement cycle")
+
 	// Try and get some tasks/assignments
+	dequeLimit := e.config.TaskDequeueLimit - len(lastRoundAssignment)
 	assignments := e.taskService.Dequeue(
 		ctx,
 		e.config.TaskType,
-		e.config.TaskDequeueLimit,
+		dequeLimit,
 		e.config.TaskDequeueTimeOut)
 
 	if len(assignments) == 0 {
-		return _noTasksTimeoutPenalty
+		return nil, _noTasksTimeoutPenalty
 	}
 
 	// process host reservation assignments
@@ -170,8 +182,12 @@ func (e *engine) Place(ctx context.Context) time.Duration {
 		log.WithError(err).Info("error in processing host reservations")
 	}
 
+	// add unfulfilledAssignment from last round and process
+	// them in this round
+	assignments = append(assignments, lastRoundAssignment...)
+
 	// process revocable assignments
-	e.processAssignments(
+	unfulfilledAssignment := e.processAssignments(
 		ctx,
 		assignments,
 		func(assignment *models.Assignment) bool {
@@ -180,24 +196,27 @@ func (e *engine) Place(ctx context.Context) time.Duration {
 		})
 
 	// process non-revocable assignments
-	e.processAssignments(
-		ctx,
-		assignments,
-		func(assignment *models.Assignment) bool {
-			return !assignment.GetTask().GetTask().GetRevocable() &&
-				!assignment.GetTask().GetTask().ReadyForHostReservation
-		})
+	unfulfilledAssignment = append(
+		unfulfilledAssignment,
+		e.processAssignments(
+			ctx,
+			assignments,
+			func(assignment *models.Assignment) bool {
+				return !assignment.GetTask().GetTask().GetRevocable() &&
+					!assignment.GetTask().GetTask().ReadyForHostReservation
+			})...)
 
 	// TODO: Dynamically adjust this based on some signal
-	return e.config.TaskDequeuePeriod
+	return unfulfilledAssignment, e.config.TaskDequeuePeriod
 }
 
 // processAssignments processes assignments by creating correct host filters and
 // then finding host to place them on.
+// It returns assignments that cannot be fulfilled.
 func (e *engine) processAssignments(
 	ctx context.Context,
 	assignments []*models.Assignment,
-	f func(*models.Assignment) bool) {
+	f func(*models.Assignment) bool) []*models.Assignment {
 	var result []*models.Assignment
 
 	for _, assignment := range assignments {
@@ -206,28 +225,35 @@ func (e *engine) processAssignments(
 		}
 	}
 	if len(result) == 0 {
-		return
+		return nil
 	}
 
+	unfulfilledAssignment := &concurrencySafeAssignmentSlice{}
 	filters := e.strategy.Filters(result)
 	for f, b := range filters {
 		filter, batch := f, b
 		// Run the placement of each batch in parallel
 		e.pool.Enqueue(async.JobFunc(func(context.Context) {
-			e.placeAssignmentGroup(ctx, filter, batch)
+			unfulfilledAssignment.append(e.placeAssignmentGroup(ctx, filter, batch)...)
 		}))
 	}
 
 	if !e.strategy.ConcurrencySafe() {
 		// Wait for all batches to be processed
 		e.pool.WaitUntilProcessed()
+		return unfulfilledAssignment.get()
 	}
+
+	return unfulfilledAssignment.get()
 }
 
+// placeAssignmentGroup try to place the assignments,
+// and return a slice of assignments that cannot be fulfilled,
+// which need to be tried in the next round.
 func (e *engine) placeAssignmentGroup(
 	ctx context.Context,
 	filter *hostsvc.HostFilter,
-	assignments []*models.Assignment) {
+	assignments []*models.Assignment) []*models.Assignment {
 	for len(assignments) > 0 {
 		log.WithFields(log.Fields{
 			"filter":          filter,
@@ -264,7 +290,7 @@ func (e *engine) placeAssignmentGroup(
 				"assignments": assignments,
 			}).Info("failed to place tasks due to offer starvation")
 			e.returnStarvedAssignments(ctx, assignments, reason)
-			return
+			return nil
 		}
 
 		e.metrics.OfferGet.Inc(1)
@@ -294,7 +320,54 @@ func (e *engine) placeAssignmentGroup(
 		}).Debug("Finshed one round placing assignment group")
 		// Set placements and return unused offers and failed tasks
 		e.cleanup(ctx, assigned, retryable, unassigned, hosts)
+
+		if len(retryable) != 0 && e.shouldPlaceRetryableInNextRun(retryable) {
+			log.WithFields(log.Fields{
+				"retryable": retryable,
+			}).Info("tasks are retried in the next run of placement")
+			return retryable
+		}
 	}
+
+	return nil
+}
+
+// returns if the retryable assignments should be retried in the run.
+// Otherwise they would continue to be processed in the processAssignments loop.
+func (e *engine) shouldPlaceRetryableInNextRun(retryable []*models.Assignment) bool {
+	// if a strategy is concurrency safe there is no need to process retryable assignments
+	// in the next run, because placement engine would not be blocked by any of the retryable
+	// assignments.
+	if e.strategy.ConcurrencySafe() {
+		return false
+	}
+
+	// If all retryable assignment are:
+	// 1. tasks which cannot find a host to run on, or
+	// 2. tasks which have a desired host, but is not placed on the desired host
+	// handle the retryable tasks in the next round of placeAssignmentGroup,
+	// because these tasks may need to wait for a long time for the hosts
+	// to be available, and should not block other assignments to be placed.
+	count := 0
+	for _, assignment := range retryable {
+		if assignment.GetHost() == nil {
+			count++
+			continue
+		}
+
+		if len(assignment.GetTask().GetTask().GetDesiredHost()) != 0 &&
+			assignment.GetTask().GetTask().GetDesiredHost() !=
+				assignment.GetHost().GetOffer().GetHostname() {
+			count++
+			continue
+		}
+	}
+
+	if count == len(retryable) {
+		return true
+	}
+
+	return false
 }
 
 // returns the starved assignments back to the task service
@@ -513,4 +586,21 @@ func getPlacementTasks(tasks []*models.Task) []*resmgr.Placement_Task {
 		})
 	}
 	return placementTasks
+}
+
+type concurrencySafeAssignmentSlice struct {
+	sync.RWMutex
+	slice []*models.Assignment
+}
+
+func (s *concurrencySafeAssignmentSlice) append(a ...*models.Assignment) {
+	s.Lock()
+	s.slice = append(s.slice, a...)
+	s.Unlock()
+}
+
+func (s *concurrencySafeAssignmentSlice) get() []*models.Assignment {
+	s.RLock()
+	defer s.RUnlock()
+	return s.slice
 }

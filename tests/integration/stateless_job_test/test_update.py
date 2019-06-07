@@ -1,6 +1,7 @@
 import pytest
 import grpc
 import time
+import logging
 
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 from peloton_client.pbgen.peloton.api.v1alpha.job.stateless import (
@@ -30,6 +31,8 @@ pytestmark = [
     pytest.mark.update,
     pytest.mark.random_order(disabled=True),
 ]
+
+log = logging.getLogger(__name__)
 
 UPDATE_STATELESS_JOB_SPEC = "test_update_stateless_job_spec.yaml"
 UPDATE_STATELESS_JOB_ADD_INSTANCES_SPEC = (
@@ -918,6 +921,7 @@ def test_start_job_with_active_update(stateless_job, in_place):
         updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
         batch_size=1,
     )
+
     update.create(in_place=in_place)
     stateless_job.start()
 
@@ -1011,3 +1015,50 @@ def test__create_update_before_job_fully_created(stateless_job, in_place):
         stateless_job.get_spec().default_spec.containers[0].command.value
         == "while :; do echo updated; sleep 10; done"
     )
+
+
+# test__in_place_update_success_rate tests that in-place update
+# should succeed when every daemon is in healthy state.
+# It starts a job with 30 instances, and start the in-place update
+# without batch size, then it tests if any pod is running on unexpected
+# host.
+def test__in_place_update_success_rate(stateless_job):
+    stateless_job.job_spec.instance_count = 30
+    stateless_job.create()
+    stateless_job.wait_for_all_pods_running()
+    old_pod_infos = stateless_job.query_pods()
+
+    job_spec_dump = load_test_config(UPDATE_STATELESS_JOB_SPEC)
+    updated_job_spec = JobSpec()
+    json_format.ParseDict(job_spec_dump, updated_job_spec)
+
+    updated_job_spec.instance_count = 30
+    update = StatelessUpdate(stateless_job,
+                             updated_job_spec=updated_job_spec,
+                             batch_size=0)
+    update.create(in_place=True)
+    update.wait_for_state(goal_state='SUCCEEDED')
+
+    new_pod_infos = stateless_job.query_pods()
+
+    old_pod_dict = {}
+    new_pod_dict = {}
+
+    for old_pod_info in old_pod_infos:
+        split_index = old_pod_info.status.pod_id.value.rfind('-')
+        pod_name = old_pod_info.status.pod_id.value[:split_index]
+        old_pod_dict[pod_name] = old_pod_info.status.host
+
+    for new_pod_info in new_pod_infos:
+        split_index = new_pod_info.status.pod_id.value.rfind('-')
+        pod_name = new_pod_info.status.pod_id.value[:split_index]
+        new_pod_dict[pod_name] = new_pod_info.status.host
+
+    count = 0
+    for pod_name, pod_id in old_pod_dict.items():
+        if new_pod_dict[pod_name] != old_pod_dict[pod_name]:
+            log.info("%s, prev:%s, cur:%s", pod_name,
+                     old_pod_dict[pod_name], new_pod_dict[pod_name])
+            count = count + 1
+    log.info("total mismatch: %d", count)
+    assert count == 0

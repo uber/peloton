@@ -551,6 +551,7 @@ class StatelessJob(object):
         # so the function signature can be shared between the apis
         goal_state = "WORKFLOW_STATE_" + goal_state
         failed_state = "WORKFLOW_STATE_" + failed_state
+        instance_completed = 0
         while attempts < self.config.max_retry_attempts:
             try:
                 request = stateless_svc.GetJobRequest(
@@ -578,11 +579,18 @@ class StatelessJob(object):
                     state_transition_failure = True
             except Exception as e:
                 log.warn(e)
+                attempts += 1
+            else:
+                # for workflow, we only begin to count attempts when no progress is made
+                if instance_completed == status.num_instances_completed + status.num_instances_failed:
+                    attempts += 1
+                else:
+                    instance_completed = status.num_instances_completed + status.num_instances_failed
+                    attempts = 0
             finally:
                 if state_transition_failure:
                     break
                 time.sleep(self.config.sleep_time_sec)
-                attempts += 1
 
         if state_transition_failure:
             log.info(
