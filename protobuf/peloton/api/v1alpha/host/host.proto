@@ -6,6 +6,8 @@ package peloton.api.v1alpha.host;
 
 import "peloton/api/v1alpha/peloton.proto";
 
+import "mesos/v1/mesos.proto";
+
 
 enum HostState {
     HOST_STATE_INVALID = 0;
@@ -65,4 +67,8 @@ message HostSummary {
 
   // Available port ranges.
   repeated PortRange available_ports = 4;
+
+  // offers
+  map<string,mesos.v1.Offer>  Offers = 5;
+
 }

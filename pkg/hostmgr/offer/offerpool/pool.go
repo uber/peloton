@@ -37,6 +37,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
+	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 )
 
 // Pool caches a set of offers received from Mesos master. It is
@@ -157,7 +158,8 @@ func NewOfferPool(
 	scarceResourceTypes []string,
 	slackResourceTypes []string,
 	binPackingRanker binpacking.Ranker,
-	hostPlacingOfferStatusTimeout time.Duration) Pool {
+	hostPlacingOfferStatusTimeout time.Duration,
+	processor watchevent.WatchProcessor) Pool {
 
 	// GPU is only supported scarce resource type.
 	if !reflect.DeepEqual(supportedScarceResourceTypes, scarceResourceTypes) {
@@ -190,6 +192,8 @@ func NewOfferPool(
 		metrics: metrics,
 
 		binPackingRanker: binPackingRanker,
+
+		watchProcessor: processor,
 	}
 
 	return p
@@ -235,6 +239,8 @@ type offerPool struct {
 	// taskHeldIndex --- key: task id,
 	// value: host held for the task
 	taskHeldIndex sync.Map
+
+	watchProcessor watchevent.WatchProcessor
 }
 
 // ClaimForPlace obtains offers from pool conforming to given constraints.
@@ -428,7 +434,8 @@ func (p *offerPool) AddOffers(
 				p.scarceResourceTypes,
 				hostname,
 				p.slackResourceTypes,
-				p.hostPlacingOfferStatusTimeout)
+				p.hostPlacingOfferStatusTimeout,
+				p.watchProcessor)
 			p.hostOfferIndex[hostname] = hs
 		}
 	}

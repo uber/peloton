@@ -30,6 +30,7 @@ import (
 	common_config "github.com/uber/peloton/pkg/common/config"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/util"
+	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
@@ -625,7 +626,8 @@ var (
 	getHostsHostnames = getHosts.Flag("hosts", "filter the hosts based on the comma separated hostnames provided").String()
 
 	// command to watch mesos events update present in the event stream
-	watchHostMgr = hostmgr.Command("watch_events", "watch mesos event update received from mesos")
+	watchEventMesosUpdate = hostmgr.Command("events-mesos-update", "watch mesos event update received from mesos")
+	watchEventHostSummary = hostmgr.Command("events-host-summary", "watch mesos event update received from mesos")
 
 	// command to disable the kill tasks request to mesos master
 	disableKillTasks = hostmgr.Command("disable-kill-tasks", "disable the kill task request to mesos master")
@@ -906,8 +908,10 @@ func main() {
 		err = client.PodRefreshAction(*podRefreshPodName)
 	case podStart.FullCommand():
 		err = client.PodStartAction(*podStartPodName)
-	case watchHostMgr.FullCommand():
-		err = client.WatchHostManagerEvents()
+	case watchEventHostSummary.FullCommand():
+		err = client.WatchHostSummaryEvent(string(watchevent.HostSummary))
+	case watchEventMesosUpdate.FullCommand():
+		err = client.WatchEventStreamEvents(string(watchevent.EventStream))
 	case statelessListJobs.FullCommand():
 		err = client.StatelessListJobsAction()
 	case statelessListPods.FullCommand():

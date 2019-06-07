@@ -17,6 +17,7 @@ package hostmgr
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"sort"
 	"strings"
 	"sync"
@@ -30,6 +31,7 @@ import (
 	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	halphapb "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
@@ -205,7 +207,9 @@ type HostMgrHandlerTestSuite struct {
 	maintenanceHostInfoMap *hm.MockMaintenanceHostInfoMap
 	taskStateManager       *task_state_mocks.MockStateManager
 	watchProcessor         *watchmocks.MockWatchProcessor
-	watchEventServer       *hostsvcmocks.MockInternalHostServiceServiceWatchEventYARPCServer
+	watchEventStreamServer *hostsvcmocks.MockInternalHostServiceServiceWatchEventStreamEventYARPCServer
+	watchHostSummaryServer *hostsvcmocks.MockInternalHostServiceServiceWatchHostSummaryEventYARPCServer
+	topicsSupported        []watchevent.Topic
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupSuite() {
@@ -237,6 +241,10 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	suite.provider = hostmgr_mesos_mocks.NewMockFrameworkInfoProvider(suite.ctrl)
 	suite.mesosDetector = hostmgr_mesos_mocks.NewMockMasterDetector(suite.ctrl)
 	suite.taskStateManager = task_state_mocks.NewMockStateManager(suite.ctrl)
+	suite.watchProcessor = watchmocks.NewMockWatchProcessor(suite.ctrl)
+	suite.watchEventStreamServer = hostsvcmocks.NewMockInternalHostServiceServiceWatchEventStreamEventYARPCServer(suite.ctrl)
+	suite.watchHostSummaryServer = hostsvcmocks.NewMockInternalHostServiceServiceWatchHostSummaryEventYARPCServer(suite.ctrl)
+	suite.topicsSupported = []watchevent.Topic{watchevent.EventStream, watchevent.HostSummary}
 
 	mockValidValue := new(string)
 	*mockValidValue = _frameworkID
@@ -254,12 +262,11 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		[]string{}, /*slack_resource_types*/
 		bin_packing.GetRankerByName("FIRST_FIT"),
 		time.Duration(30*time.Second),
+		suite.watchProcessor,
 	)
 
 	suite.maintenanceQueue = qm.NewMockMaintenanceQueue(suite.ctrl)
 	suite.maintenanceHostInfoMap = hm.NewMockMaintenanceHostInfoMap(suite.ctrl)
-	suite.watchProcessor = watchmocks.NewMockWatchProcessor(suite.ctrl)
-	suite.watchEventServer = hostsvcmocks.NewMockInternalHostServiceServiceWatchEventYARPCServer(suite.ctrl)
 	suite.handler = &ServiceHandler{
 		schedulerClient:        suite.schedulerClient,
 		operatorMasterClient:   suite.masterOperatorClient,
@@ -566,6 +573,9 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 	defer suite.ctrl.Finish()
 
 	numHosts := 5
+	for i := 0; i < numHosts; i++ {
+		suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
+	}
 	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
 
 	suite.checkResourcesGauges(numHosts, "ready")
@@ -600,6 +610,9 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 		},
 	}
 
+	for i := 0; i < numHosts*2; i++ {
+		suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
+	}
 	acquiredResp, err = suite.handler.AcquireHostOffers(
 		rootCtx,
 		acquireReq,
@@ -680,6 +693,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 
 	// only create one host offer in this test.
 	numHosts := 1
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
 	acquiredResp, err := suite.acquireHostOffers(numHosts)
 	suite.NoError(err)
 	suite.Nil(acquiredResp.GetError())
@@ -719,6 +733,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 	launchReq.Tasks = generateLaunchableTasks(1)
 
 	gomock.InOrder(
+		suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()),
 		// Set expectations on provider
 		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 			suite.frameworkID),
@@ -777,6 +792,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOnNonHeldTask() {
 	defer suite.ctrl.Finish()
 
 	numHosts := 1
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
 	acquiredResp, err := suite.acquireHostOffers(numHosts)
 	suite.NoError(err)
 	suite.Nil(acquiredResp.GetError())
@@ -795,7 +811,8 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOnNonHeldTask() {
 		Tasks:    []*hostsvc.LaunchableTask{launchabelTask},
 		Id:       acquiredHostOffers[0].GetId(),
 	}
-
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
 	// launch on host0 but host1 is held for the task
 	suite.pool.AddOffers(context.Background(), generateOffers(2))
 	hs1, err := suite.pool.GetHostSummary("hostname-1")
@@ -807,6 +824,8 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOnNonHeldTask() {
 	suite.Equal(hs1.GetHostStatus(), summary.HeldHost)
 
 	gomock.InOrder(
+		// set expectation on watch processor
+		suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()),
 		// Set expectations on provider
 		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 			suite.frameworkID),
@@ -1107,6 +1126,8 @@ func (suite *HostMgrHandlerTestSuite) TestKillAndReserveTaskKillFailure() {
 	defer suite.ctrl.Finish()
 
 	numHosts := 2
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
 	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
 
 	t1 := "t1"
@@ -1120,6 +1141,9 @@ func (suite *HostMgrHandlerTestSuite) TestKillAndReserveTaskKillFailure() {
 	}
 	killedTaskIds := make(map[string]bool)
 	mockMutex := &sync.Mutex{}
+	// set expectation on watch processor
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
 
 	// Set expectations on provider
 	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
@@ -1175,6 +1199,9 @@ func (suite *HostMgrHandlerTestSuite) TestKillAndReserveTask() {
 	defer suite.ctrl.Finish()
 
 	numHosts := 2
+	// set expectation on watch processor
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
 	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
 
 	t1 := "t1"
@@ -1255,7 +1282,7 @@ func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 	}
 	killedTaskIds := make(map[string]bool)
 	mockMutex := &sync.Mutex{}
-
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 	suite.pool.AddOffers(context.Background(), generateOffers(1))
 	// simulate hold for mesosT1 on h1
 	suite.NoError(
@@ -2056,6 +2083,8 @@ func (suite *HostMgrHandlerTestSuite) withHostOffers(numHosts int) []*hostsvc.
 
 // Test LaunchTasks errors
 func (suite *HostMgrHandlerTestSuite) TestLaunchTasksInvalidOfferError() {
+	// set expectation on watch processor
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
 	acquiredHostOffers := suite.withHostOffers(1)
 
 	tt := []struct {
@@ -2103,6 +2132,8 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchTasksInvalidOfferError() {
 }
 
 func (suite *HostMgrHandlerTestSuite) TestLaunchTasksInvalidArgError() {
+	// set expectation on watch processor
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
 	acquiredHostOffers := suite.withHostOffers(1)
 	tt := []struct {
 		test string
@@ -2173,11 +2204,15 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchTasksInvalidArgError() {
 }
 
 func (suite *HostMgrHandlerTestSuite) TestLaunchTasksSchedulerError() {
+	// set expectation on watch processor
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
 	acquiredHostOffers := suite.withHostOffers(1)
 
 	// Test framework client error
 	errString := "fake scheduler call error"
 	gomock.InOrder(
+		// set expectation on watch Processor
+		suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()),
 		// Set expectations on provider
 		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 			suite.frameworkID),
@@ -2212,6 +2247,9 @@ func (suite *HostMgrHandlerTestSuite) TestReleaseHostsHeldForTasks() {
 	defer suite.ctrl.Finish()
 
 	numOffers := 2
+	// set expectation on watch Processor
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
 	offers := suite.pool.AddOffers(context.Background(), generateOffers(numOffers))
 
 	host1 := offers[0].GetHostname()
@@ -2339,39 +2377,40 @@ func (suite *HostMgrHandlerTestSuite) TestToHostStatus() {
 	}
 }
 
-// TestWatchEvent sets up a watch client, and verifies the responses
+// WatchEventStreamEvent sets up a watch client, and verifies the responses
 // are streamed back correctly based on the input, finally the
 // test cancels the watch stream.
-func (suite *HostMgrHandlerTestSuite) TestWatchEvent() {
-	watchID := watchevent.NewWatchID()
+func (suite *HostMgrHandlerTestSuite) TestWatchEventStreamEvent() {
+	watchID := watchevent.NewWatchID(watchevent.EventStream)
 	eventClient := &watchevent.EventClient{
 		// do not set buffer size for input to make sure the
 		// tests sends all the events before sending stop
 		// signal
-		Input:  make(chan *pb_eventstream.Event),
+		Input:  make(chan interface{}),
 		Signal: make(chan watchevent.StopSignal, 1),
 	}
 
-	suite.watchProcessor.EXPECT().NewEventClient().
+	suite.watchProcessor.EXPECT().NewEventClient(gomock.Any()).
 		Return(watchID, eventClient, nil)
 	suite.watchProcessor.EXPECT().StopEventClient(watchID)
 
 	event := &pb_eventstream.Event{}
 
-	suite.watchEventServer.EXPECT().
-		Send(&hostsvc.WatchEventResponse{
+	suite.watchEventStreamServer.EXPECT().
+		Send(&hostsvc.WatchEventStreamEventResponse{
 			WatchId: watchID,
-			Events:  nil,
-		}).
-		Return(nil)
-	suite.watchEventServer.EXPECT().
-		Send(&hostsvc.WatchEventResponse{
-			WatchId: watchID,
-			Events:  []*pb_eventstream.Event{event},
+			Topic:   string(watchevent.EventStream),
 		}).
 		Return(nil)
 
-	req := &hostsvc.WatchEventRequest{}
+	suite.watchEventStreamServer.EXPECT().
+		Send(&hostsvc.WatchEventStreamEventResponse{
+			WatchId:         watchID,
+			Topic:           string(watchevent.EventStream),
+			MesosTaskUpdate: event,
+		}).Return(nil)
+
+	req := &hostsvc.WatchEventRequest{Topic: string(watchevent.EventStream)}
 
 	go func() {
 		eventClient.Input <- event
@@ -2379,7 +2418,54 @@ func (suite *HostMgrHandlerTestSuite) TestWatchEvent() {
 		eventClient.Signal <- watchevent.StopSignalCancel
 	}()
 
-	err := suite.handler.WatchEvent(req, suite.watchEventServer)
+	err := suite.handler.WatchEventStreamEvent(req, suite.watchEventStreamServer)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsCancelled(err))
+}
+
+// TestWatchHostSummaryEvent sets up a watch client, and verifies the responses
+// are streamed back correctly based on the input, finally the
+// test cancels the watch stream.
+func (suite *HostMgrHandlerTestSuite) TestWatchHostSummaryEvent() {
+	watchID := watchevent.NewWatchID(watchevent.HostSummary)
+	eventClient := &watchevent.EventClient{
+		// do not set buffer size for input to make sure the
+		// tests sends all the events before sending stop
+		// signal
+		Input:  make(chan interface{}),
+		Signal: make(chan watchevent.StopSignal, 1),
+	}
+
+	suite.watchProcessor.EXPECT().NewEventClient(gomock.Any()).
+		Return(watchID, eventClient, nil)
+	suite.watchProcessor.EXPECT().StopEventClient(watchID)
+
+	event := &halphapb.HostSummary{}
+
+	suite.watchHostSummaryServer.EXPECT().
+		Send(&hostsvc.WatchHostSummaryEventResponse{
+			WatchId: watchID,
+			Topic:   string(watchevent.HostSummary),
+		}).
+		Return(nil)
+
+	suite.watchHostSummaryServer.EXPECT().
+		Send(&hostsvc.WatchHostSummaryEventResponse{
+			WatchId:          watchID,
+			Topic:            string(watchevent.HostSummary),
+			HostSummaryEvent: event,
+		}).
+		Return(nil)
+
+	req := &hostsvc.WatchEventRequest{Topic: string(watchevent.HostSummary)}
+
+	go func() {
+		eventClient.Input <- event
+		// cancelling  watch event
+		eventClient.Signal <- watchevent.StopSignalCancel
+	}()
+
+	err := suite.handler.WatchHostSummaryEvent(req, suite.watchHostSummaryServer)
 	suite.Error(err)
 	suite.True(yarpcerrors.IsCancelled(err))
 }
@@ -2387,98 +2473,274 @@ func (suite *HostMgrHandlerTestSuite) TestWatchEvent() {
 // TestWatchEvent_MaxClientReached checks Watch will return resource-exhausted
 // error when NewEventClient reached max client.
 func (suite *HostMgrHandlerTestSuite) TestWatchEvent_MaxClientReached() {
-	suite.watchProcessor.EXPECT().NewEventClient().
-		Return("", nil, yarpcerrors.ResourceExhaustedErrorf("max client reached"))
+	suite.watchProcessor.EXPECT().NewEventClient(gomock.Any()).
+		Return("", nil, yarpcerrors.ResourceExhaustedErrorf("max client reached")).Times(2)
 
-	req := &hostsvc.WatchEventRequest{}
-	err := suite.handler.WatchEvent(req, suite.watchEventServer)
+	// testing eventstream for max client
+	req := &hostsvc.WatchEventRequest{Topic: string(watchevent.EventStream)}
+	err := suite.handler.WatchEventStreamEvent(req, suite.watchEventStreamServer)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsResourceExhausted(err))
+
+	// testing eventstream for max client
+	req = &hostsvc.WatchEventRequest{Topic: string(watchevent.HostSummary)}
+	err = suite.handler.WatchHostSummaryEvent(req, suite.watchHostSummaryServer)
 	suite.Error(err)
 	suite.True(yarpcerrors.IsResourceExhausted(err))
 }
 
-// TestWatchEvent_InitSendError tests for error case of initial response.
-func (suite *HostMgrHandlerTestSuite) TestWatchEvent_InitSendError() {
-	watchID := watchevent.NewWatchID()
+// TestWatchEvent_WrongTopic  checks Watch will return InvalidArgument
+// error , topic provided is not supported.
+func (suite *HostMgrHandlerTestSuite) TestWatchEvent_WrongTopic() {
+	suite.watchProcessor.EXPECT().NewEventClient(gomock.Any()).
+		Return("", nil, yarpcerrors.InvalidArgumentErrorf("topicId %s provided  not supported", gomock.Any())).Times(2)
+
+	// Test Watch EventStream Api
+	req := &hostsvc.WatchEventRequest{Topic: string(watchevent.INVALID)}
+	err := suite.handler.WatchEventStreamEvent(req, suite.watchEventStreamServer)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+
+	// Test HostSummary Api
+	req = &hostsvc.WatchEventRequest{Topic: string(watchevent.INVALID)}
+	err = suite.handler.WatchHostSummaryEvent(req, suite.watchHostSummaryServer)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+}
+
+// TestWatchEventStreamEvent_InitSendError tests for error case of initial response.
+func (suite *HostMgrHandlerTestSuite) TestWatchEventStreamEvent_InitSendError() {
+	watchID := watchevent.NewWatchID(watchevent.EventStream)
 	eventClient := &watchevent.EventClient{
 		// do not set buffer size for input to make sure the
 		// tests sends all the events before sending stop
 		// signal
-		Input:  make(chan *pb_eventstream.Event),
+		Input:  make(chan interface{}),
 		Signal: make(chan watchevent.StopSignal, 1),
 	}
 
-	suite.watchProcessor.EXPECT().NewEventClient().
+	suite.watchProcessor.EXPECT().NewEventClient(gomock.Any()).
 		Return(watchID, eventClient, nil)
 	suite.watchProcessor.EXPECT().StopEventClient(watchID)
 
 	sendErr := errors.New("message:transport is closing")
 
 	// initial response
-	suite.watchEventServer.EXPECT().
-		Send(&hostsvc.WatchEventResponse{
+	suite.watchEventStreamServer.EXPECT().
+		Send(&hostsvc.WatchEventStreamEventResponse{
 			WatchId: watchID,
-			Events:  nil,
+			Topic:   string(watchevent.EventStream),
 		}).
 		Return(sendErr)
 
-	req := &hostsvc.WatchEventRequest{}
+	req := &hostsvc.WatchEventRequest{Topic: string(watchevent.EventStream)}
 
-	err := suite.handler.WatchEvent(req, suite.watchEventServer)
+	err := suite.handler.WatchEventStreamEvent(req, suite.watchEventStreamServer)
 	suite.Error(err)
 	suite.Equal(sendErr, err)
 }
 
-// TestWatchEvent_InitSendError tests for error case of subsequent response
-// after initial one.
-func (suite *HostMgrHandlerTestSuite) TestWatchEvent_SendError() {
-	watchID := watchevent.NewWatchID()
+//TestWatchHostSummaryEvent_InitSendError tests for error case of initial response.
+func (suite *HostMgrHandlerTestSuite) TestWatchHostSummaryEvent_InitSendError() {
+	watchID := watchevent.NewWatchID(watchevent.HostSummary)
 	eventClient := &watchevent.EventClient{
 		// do not set buffer size for input to make sure the
 		// tests sends all the events before sending stop
 		// signal
-		Input:  make(chan *pb_eventstream.Event),
+		Input:  make(chan interface{}),
 		Signal: make(chan watchevent.StopSignal, 1),
 	}
 
-	suite.watchProcessor.EXPECT().NewEventClient().
+	suite.watchProcessor.EXPECT().NewEventClient(gomock.Any()).
+		Return(watchID, eventClient, nil)
+	suite.watchProcessor.EXPECT().StopEventClient(watchID)
+
+	sendErr := errors.New("message:transport is closing")
+
+	// initial response
+	suite.watchHostSummaryServer.EXPECT().
+		Send(&hostsvc.WatchHostSummaryEventResponse{
+			WatchId: watchID,
+			Topic:   string(watchevent.HostSummary),
+		}).
+		Return(sendErr)
+
+	req := &hostsvc.WatchEventRequest{Topic: string(watchevent.HostSummary)}
+
+	err := suite.handler.WatchHostSummaryEvent(req, suite.watchHostSummaryServer)
+	suite.Error(err)
+	suite.Equal(sendErr, err)
+}
+
+// TestWatchEventStreamEvent_SendError tests for error case of subsequent response
+// after initial one.
+func (suite *HostMgrHandlerTestSuite) TestWatchEventStreamEvent_SendError() {
+	watchID := watchevent.NewWatchID(watchevent.EventStream)
+	eventClient := &watchevent.EventClient{
+		// do not set buffer size for input to make sure the
+		// tests sends all the events before sending stop
+		// signal
+		Input:  make(chan interface{}),
+		Signal: make(chan watchevent.StopSignal, 1),
+	}
+
+	suite.watchProcessor.EXPECT().NewEventClient(gomock.Any()).
 		Return(watchID, eventClient, nil)
 	suite.watchProcessor.EXPECT().StopEventClient(watchID)
 
 	// initial response
 	event := &pb_eventstream.Event{}
 
-	suite.watchEventServer.EXPECT().
-		Send(&hostsvc.WatchEventResponse{
+	suite.watchEventStreamServer.EXPECT().
+		Send(&hostsvc.WatchEventStreamEventResponse{
 			WatchId: watchID,
-			Events:  nil,
+			Topic:   string(watchevent.EventStream),
 		}).
 		Return(nil)
 
 	sendErr := errors.New("message:transport is closing")
 
-	// subsequent response
-	suite.watchEventServer.EXPECT().
-		Send(&hostsvc.WatchEventResponse{
-			WatchId: watchID,
-			Events:  []*pb_eventstream.Event{event},
-		}).
-		Return(sendErr)
+	suite.watchEventStreamServer.EXPECT().
+		Send(&hostsvc.WatchEventStreamEventResponse{
+			WatchId:         watchID,
+			Topic:           string(watchevent.EventStream),
+			MesosTaskUpdate: event,
+		}).Return(sendErr)
 
-	req := &hostsvc.WatchEventRequest{}
-
+	req := &hostsvc.WatchEventRequest{Topic: string(watchevent.EventStream)}
 	go func() {
 		eventClient.Input <- event
 		eventClient.Signal <- watchevent.StopSignalCancel
 	}()
 
-	err := suite.handler.WatchEvent(req, suite.watchEventServer)
+	err := suite.handler.WatchEventStreamEvent(req, suite.watchEventStreamServer)
 	suite.Error(err)
 	suite.Equal(sendErr, err)
+
+}
+
+// TestWatchEventStreamEvent_WrongTopicByProcessor tests for error case of subsequent response
+// after initial one.
+func (suite *HostMgrHandlerTestSuite) TestWatchEventStreamEvent_WrongTopicByProcessor() {
+	watchID := watchevent.NewWatchID(watchevent.EventStream)
+	eventClient := &watchevent.EventClient{
+		// do not set buffer size for input to make sure the
+		// tests sends all the events before sending stop
+		// signal
+		Input:  make(chan interface{}),
+		Signal: make(chan watchevent.StopSignal, 1),
+	}
+
+	suite.watchProcessor.EXPECT().NewEventClient(gomock.Any()).
+		Return(watchID, eventClient, nil)
+	suite.watchProcessor.EXPECT().StopEventClient(watchID)
+
+	// wrong event to eventstream api
+	event := &halphapb.HostSummary{}
+
+	suite.watchEventStreamServer.EXPECT().
+		Send(&hostsvc.WatchEventStreamEventResponse{
+			WatchId: watchID,
+			Topic:   string(watchevent.EventStream),
+		}).
+		Return(nil)
+
+	req := &hostsvc.WatchEventRequest{Topic: string(watchevent.EventStream)}
+	go func() {
+		eventClient.Input <- event
+		eventClient.Signal <- watchevent.StopSignalCancel
+	}()
+
+	err := suite.handler.WatchEventStreamEvent(req, suite.watchEventStreamServer)
+	suite.Error(err)
+}
+
+// TestWatchHostSummaryEvent_SendError tests for error case of subsequent response
+// after initial one.
+func (suite *HostMgrHandlerTestSuite) TestWatchHostSummaryEvent_SendError() {
+	watchID := watchevent.NewWatchID(watchevent.HostSummary)
+	eventClient := &watchevent.EventClient{
+		// do not set buffer size for input to make sure the
+		// tests sends all the events before sending stop
+		// signal
+		Input:  make(chan interface{}),
+		Signal: make(chan watchevent.StopSignal, 1),
+	}
+
+	suite.watchProcessor.EXPECT().NewEventClient(gomock.Any()).
+		Return(watchID, eventClient, nil)
+	suite.watchProcessor.EXPECT().StopEventClient(watchID)
+
+	// initial response
+	event := &halphapb.HostSummary{}
+
+	suite.watchHostSummaryServer.EXPECT().
+		Send(&hostsvc.WatchHostSummaryEventResponse{
+			WatchId: watchID,
+			Topic:   string(watchevent.HostSummary),
+		}).
+		Return(nil)
+
+	sendErr := errors.New("message:transport is closing")
+
+	suite.watchHostSummaryServer.EXPECT().
+		Send(&hostsvc.WatchHostSummaryEventResponse{
+			WatchId:          watchID,
+			Topic:            string(watchevent.HostSummary),
+			HostSummaryEvent: event,
+		}).Return(sendErr)
+
+	req := &hostsvc.WatchEventRequest{Topic: string(watchevent.HostSummary)}
+	go func() {
+		eventClient.Input <- event
+		eventClient.Signal <- watchevent.StopSignalCancel
+	}()
+
+	err := suite.handler.WatchHostSummaryEvent(req, suite.watchHostSummaryServer)
+	suite.Error(err)
+	suite.Equal(sendErr, err)
+
+}
+
+// TestWatchHostSummaryEvent_WrongTopicByProcessor tests for error case of wrong event send by watch processor
+func (suite *HostMgrHandlerTestSuite) TestWatchHostSummaryEvent_WrongTopicByProcessor() {
+	watchID := watchevent.NewWatchID(watchevent.HostSummary)
+	eventClient := &watchevent.EventClient{
+		// do not set buffer size for input to make sure the
+		// tests sends all the events before sending stop
+		// signal
+		Input:  make(chan interface{}),
+		Signal: make(chan watchevent.StopSignal, 1),
+	}
+
+	suite.watchProcessor.EXPECT().NewEventClient(gomock.Any()).
+		Return(watchID, eventClient, nil)
+	suite.watchProcessor.EXPECT().StopEventClient(watchID)
+
+	// sending eventstream event to host summary watch api
+	event := &pb_eventstream.Event{}
+
+	suite.watchHostSummaryServer.EXPECT().
+		Send(&hostsvc.WatchHostSummaryEventResponse{
+			WatchId: watchID,
+			Topic:   string(watchevent.HostSummary),
+		}).
+		Return(nil)
+
+	req := &hostsvc.WatchEventRequest{Topic: string(watchevent.HostSummary)}
+	go func() {
+		eventClient.Input <- event
+		eventClient.Signal <- watchevent.StopSignalCancel
+	}()
+
+	err := suite.handler.WatchHostSummaryEvent(req, suite.watchHostSummaryServer)
+	suite.Error(err)
+
 }
 
 // TestCancelWatchEvent tests Cancel request are proxied to watch processor correctly.
 func (suite *HostMgrHandlerTestSuite) TestCancel() {
-	watchID := watchevent.NewWatchID()
+	watchID := watchevent.NewWatchID(suite.topicsSupported[rand.Intn(len(suite.topicsSupported))])
 
 	suite.watchProcessor.EXPECT().StopEventClient(watchID).Return(nil)
 
@@ -2492,7 +2754,7 @@ func (suite *HostMgrHandlerTestSuite) TestCancel() {
 // TestCancelWatchEvent_NotFoundTaskEvent tests Cancel response returns not-found error, when
 // an invalid  watch-id is passed in.
 func (suite *HostMgrHandlerTestSuite) TestCancel_NotFoundTask() {
-	watchID := watchevent.NewWatchID()
+	watchID := watchevent.NewWatchID(suite.topicsSupported[rand.Intn(len(suite.topicsSupported))])
 
 	err := yarpcerrors.NotFoundErrorf("watch_id %s not exist for task watch client", watchID)
 

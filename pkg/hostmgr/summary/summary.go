@@ -22,6 +22,7 @@ import (
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	halphapb "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"github.com/uber/peloton/pkg/common/constraints"
@@ -29,6 +30,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	hmutil "github.com/uber/peloton/pkg/hostmgr/util"
+	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/pborman/uuid"
@@ -228,6 +230,8 @@ type hostSummary struct {
 	// key is the task id, value is the expiration time
 	// of the hold
 	heldTasks map[string]time.Time
+	// watchProcessor
+	watchProcessor watchevent.WatchProcessor
 }
 
 // New returns a zero initialized hostSummary
@@ -236,6 +240,7 @@ func New(
 	hostname string,
 	slackResourceTypes []string,
 	hostPlacingOfferStatusTimeout time.Duration,
+	processor watchevent.WatchProcessor,
 ) HostSummary {
 	return &hostSummary{
 		unreservedOffers:    make(map[string]*mesos.Offer),
@@ -251,6 +256,8 @@ func New(
 		hostname: hostname,
 
 		offerIDgenerator: uuidOfferID,
+
+		watchProcessor: processor,
 	}
 }
 
@@ -495,7 +502,6 @@ func (a *hostSummary) AddMesosOffers(
 	offers []*mesos.Offer) HostStatus {
 	a.Lock()
 	defer a.Unlock()
-
 	for _, offer := range offers {
 		// filter out revocable resources whose type we don't recognize
 		offerID := offer.GetId().GetValue()
@@ -612,10 +618,17 @@ func (a *hostSummary) CasStatus(old, new HostStatus) error {
 	return a.casStatusLockFree(old, new)
 }
 
+// Notify the client whenever there is a change in host summary object
+func (a *hostSummary) notifyEvent() {
+	a.watchProcessor.NotifyEventChange(a.createHostSummaryObject())
+}
+
 // casStatus atomically and lock-freely sets the status to new value
 // if current value is old, otherwise returns error. This should wrapped
 // around locking
 func (a *hostSummary) casStatusLockFree(old, new HostStatus) error {
+	defer a.notifyEvent()
+
 	if a.status != old {
 		return InvalidHostStatus{a.status}
 	}
@@ -917,4 +930,13 @@ func (a *hostSummary) getResetStatus() HostStatus {
 	}
 
 	return newStatus
+}
+
+// create host summary object
+func (a *hostSummary) createHostSummaryObject() *halphapb.HostSummary {
+	obj := &halphapb.HostSummary{
+		Hostname: a.GetHostname(),
+		Offers:   a.unreservedOffers,
+	}
+	return obj
 }

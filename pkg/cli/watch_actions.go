@@ -26,14 +26,45 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-// WatchHostManagerEvents is the action for starting a watch stream for host manager events
-func (c *Client) WatchHostManagerEvents() error {
-	stream, err := c.hostMgrClient.WatchEvent(
+// WatchEventStreamEvents is the action for starting a watch stream for mesos task update events
+func (c *Client) WatchEventStreamEvents(topicToWatch string) error {
+	stream, err := c.hostMgrClient.WatchEventStreamEvent(
 		c.ctx,
-		&hostsvc.WatchEventRequest{},
+		&hostsvc.WatchEventRequest{Topic: topicToWatch},
 	)
 	if err != nil {
-		fmt.Println("watch stream for the host manager failed")
+		fmt.Println("watch stream for the eventstream has  failed")
+		return nil
+	}
+
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			fmt.Println("watch stream has ended")
+			return err
+		}
+
+		out, err := marshallResponse(defaultResponseFormat, resp)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("%v\n", string(out))
+		tabWriter.Flush()
+	}
+}
+
+// WatchHostSummaryEvent is the action for starting a watch stream for host summary events
+func (c *Client) WatchHostSummaryEvent(topicToWatch string) error {
+	stream, err := c.hostMgrClient.WatchHostSummaryEvent(
+		c.ctx,
+		&hostsvc.WatchEventRequest{Topic: topicToWatch},
+	)
+	if err != nil {
+		fmt.Println("watch stream for the host summary event failed")
 		return nil
 	}
 

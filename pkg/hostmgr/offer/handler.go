@@ -30,6 +30,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/offer/offerpool"
 	"github.com/uber/peloton/pkg/hostmgr/prune"
+	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 )
 
 const (
@@ -81,7 +82,8 @@ func InitEventHandler(
 	slackResourceTypes []string,
 	ranker binpacking.Ranker,
 	binPackingRefreshIntervalSec time.Duration,
-	hostPlacingOfferStatusTimeout time.Duration) {
+	hostPlacingOfferStatusTimeout time.Duration,
+	processor watchevent.WatchProcessor) {
 
 	if handler != nil {
 		log.Warning("Offer event handler has already been initialized")
@@ -97,6 +99,7 @@ func InitEventHandler(
 		slackResourceTypes,
 		ranker,
 		hostPlacingOfferStatusTimeout,
+		processor,
 	)
 
 	placingHostPruner := prune.NewPlacingHostPruner(

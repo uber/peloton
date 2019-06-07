@@ -16,6 +16,7 @@ package watchevent
 
 import (
 	"context"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -24,16 +25,19 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	halphapb "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
 type WatchProcessorTestSuite struct {
 	suite.Suite
-	ctx       context.Context
-	config    Config
-	metrics   *hostMetric.Metrics
-	processor WatchProcessor
+	ctx              context.Context
+	config           Config
+	metrics          *hostMetric.Metrics
+	processor        WatchProcessor
+	topicsSupported  []Topic
+	topicEventObject []interface{}
 }
 
 func (suite *WatchProcessorTestSuite) SetupTest() {
@@ -45,6 +49,8 @@ func (suite *WatchProcessorTestSuite) SetupTest() {
 		MaxClient:  2,
 	}
 	suite.processor = NewWatchProcessor(suite.config, suite.metrics)
+	suite.topicsSupported = []Topic{EventStream, HostSummary}
+	suite.topicEventObject = []interface{}{&pb_eventstream.Event{}, &halphapb.HostSummary{}}
 }
 
 func TestWatchProcessor(t *testing.T) {
@@ -60,37 +66,39 @@ func (suite *WatchProcessorTestSuite) TestInitWatchProcessor() {
 
 // TestEventClient tests basic setup and teardown of task watch client
 func (suite *WatchProcessorTestSuite) TestEventClient() {
-	watchID, c, err := suite.processor.NewEventClient()
-	suite.NoError(err)
-	suite.NotEmpty(watchID)
-	suite.NotNil(c)
+	for _, topic := range suite.topicsSupported {
+		watchID, c, err := suite.processor.NewEventClient(topic)
+		suite.NoError(err)
+		suite.NotEmpty(watchID)
+		suite.NotNil(c)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	var stopSignal StopSignal
+		var wg sync.WaitGroup
+		wg.Add(1)
+		var stopSignal StopSignal
 
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-c.Input:
-			case stopSignal = <-c.Signal:
-				return
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-c.Input:
+				case stopSignal = <-c.Signal:
+					return
+				}
 			}
-		}
-	}()
+		}()
 
-	err = suite.processor.StopEventClient(watchID)
-	wg.Wait()
+		err = suite.processor.StopEventClient(watchID)
+		wg.Wait()
 
-	suite.NoError(err)
-	suite.Equal(StopSignalCancel, stopSignal)
+		suite.NoError(err)
+		suite.Equal(StopSignalCancel, stopSignal)
+	}
 }
 
 // TestEventClient_StopNonexistentClient tests an error will be thrown if
 // tearing down a client with unknown watch id.
 func (suite *WatchProcessorTestSuite) TestEventClient_StopNonexistentClient() {
-	watchID, c, err := suite.processor.NewEventClient()
+	watchID, c, err := suite.processor.NewEventClient(suite.topicsSupported[0])
 	suite.NoError(err)
 	suite.NotEmpty(watchID)
 	suite.NotNil(c)
@@ -102,28 +110,27 @@ func (suite *WatchProcessorTestSuite) TestEventClient_StopNonexistentClient() {
 
 // Test stop all clients on losing leadership
 func (suite *WatchProcessorTestSuite) TestEventClient_StopAllClients() {
-	watchID1, c, err := suite.processor.NewEventClient()
-	suite.NoError(err)
-	suite.NotEmpty(watchID1)
-	suite.NotNil(c)
-
-	watchID2, c, err := suite.processor.NewEventClient()
-	suite.NoError(err)
-	suite.NotEmpty(watchID2)
-	suite.NotNil(c)
-
+	watchIdList := []string{}
+	for _, topic := range suite.topicsSupported {
+		watchID1, c, err := suite.processor.NewEventClient(topic)
+		suite.NoError(err)
+		suite.NotEmpty(watchID1)
+		suite.NotNil(c)
+		watchIdList = append(watchIdList, watchID1)
+	}
 	suite.processor.StopEventClients()
 
 	// all clients are alredy stopped
-	suite.Error(suite.processor.StopEventClient(watchID1))
-	suite.Error(suite.processor.StopEventClient(watchID2))
+	for _, watchId := range watchIdList {
+		suite.Error(suite.processor.StopEventClient(watchId))
+	}
 }
 
 // TestEventClient_MaxClientReached tests an error will be thrown when
 // creating a new client if max number of clients is reached.
 func (suite *WatchProcessorTestSuite) TestEventClient_MaxClientReached() {
 	for i := 0; i < 3; i++ {
-		watchID, c, err := suite.processor.NewEventClient()
+		watchID, c, err := suite.processor.NewEventClient(suite.topicsSupported[rand.Intn(len(suite.topicsSupported))])
 		if i < 2 {
 			suite.NoError(err)
 			suite.NotEmpty(watchID)
@@ -139,34 +146,36 @@ func (suite *WatchProcessorTestSuite) TestEventClient_MaxClientReached() {
 // sent to the client and the client will be closed if the client buffer is
 // overflown.
 func (suite *WatchProcessorTestSuite) TestEventClient_EventOverflow() {
-	watchID, c, err := suite.processor.NewEventClient()
-	suite.NoError(err)
-	suite.NotEmpty(watchID)
-	suite.NotNil(c)
+	for index, topic := range suite.topicsSupported {
+		watchID, c, err := suite.processor.NewEventClient(topic)
+		suite.NoError(err)
+		suite.NotEmpty(watchID)
+		suite.NotNil(c)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	var stopSignal StopSignal
+		var wg sync.WaitGroup
+		wg.Add(1)
+		var stopSignal StopSignal
 
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case stopSignal = <-c.Signal:
-				return
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case stopSignal = <-c.Signal:
+					return
+				}
 			}
+		}()
+
+		// send number of events equal to buffer size
+		for i := 0; i < 10; i++ {
+			suite.processor.NotifyEventChange(suite.topicEventObject[index])
 		}
-	}()
+		time.Sleep(1 * time.Second)
+		suite.Equal(StopSignalUnknown, stopSignal)
 
-	// send number of events equal to buffer size
-	for i := 0; i < 10; i++ {
-		suite.processor.NotifyEventChange(&pb_eventstream.Event{})
+		// trigger buffer overflow
+		suite.processor.NotifyEventChange(suite.topicEventObject[index])
+		wg.Wait()
+		suite.Equal(StopSignalOverflow, stopSignal)
 	}
-	time.Sleep(1 * time.Second)
-	suite.Equal(StopSignalUnknown, stopSignal)
-
-	// trigger buffer overflow
-	suite.processor.NotifyEventChange(&pb_eventstream.Event{})
-	wg.Wait()
-	suite.Equal(StopSignalOverflow, stopSignal)
 }

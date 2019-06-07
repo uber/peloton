@@ -17,9 +17,11 @@ package binpacking
 import (
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
 	hmutil "github.com/uber/peloton/pkg/hostmgr/util"
+	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -27,7 +29,9 @@ import (
 type FirstFitRankerTestSuite struct {
 	suite.Suite
 	firstfitRanker Ranker
+	ctrl           *gomock.Controller
 	offerIndex     map[string]summary.HostSummary
+	watchProcessor *watchmocks.MockWatchProcessor
 }
 
 func TestFirstFitRankerTestSuite(t *testing.T) {
@@ -35,8 +39,10 @@ func TestFirstFitRankerTestSuite(t *testing.T) {
 }
 
 func (suite *FirstFitRankerTestSuite) SetupTest() {
+	suite.ctrl = gomock.NewController(suite.T())
 	suite.firstfitRanker = NewFirstFitRanker()
-	suite.offerIndex = CreateOfferIndex()
+	suite.watchProcessor = watchmocks.NewMockWatchProcessor(suite.ctrl)
+	suite.offerIndex = CreateOfferIndex(suite.watchProcessor)
 }
 
 func (suite *FirstFitRankerTestSuite) TestName() {
@@ -72,7 +78,7 @@ func (suite *FirstFitRankerTestSuite) TestGetRankedHostList() {
 	}
 	// Checking by adding new host to ranker it does not effect any thing
 	// for the firstfit ranker
-	AddHostToIndex(5, suite.offerIndex)
+	AddHostToIndex(5, suite.offerIndex, suite.watchProcessor)
 	sortedListNew := suite.firstfitRanker.GetRankedHostList(suite.offerIndex)
 	suite.EqualValues(len(sortedListNew), 6)
 	suite.firstfitRanker.RefreshRanking(suite.offerIndex)

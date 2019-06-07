@@ -564,6 +564,11 @@ func main() {
 		log.WithField("ranker_name", cfg.HostManager.BinPacking).
 			Fatal("Ranker not found")
 	}
+
+	metric := hostmetric.NewMetrics(rootScope)
+	watchevent.InitWatchProcessor(cfg.HostManager.Watch, metric)
+	watchProcessor := watchevent.GetWatchProcessor()
+
 	offer.InitEventHandler(
 		dispatcher,
 		rootScope,
@@ -578,12 +583,10 @@ func main() {
 		defaultRanker,
 		cfg.HostManager.BinPackingRefreshIntervalSec,
 		cfg.HostManager.HostPlacingOfferStatusTimeout,
+		watchProcessor,
 	)
 
 	maintenanceQueue := queue.NewMaintenanceQueue()
-	metric := hostmetric.NewMetrics(rootScope)
-	watchevent.InitWatchProcessor(cfg.HostManager.Watch, metric)
-	watchProcessor := watchevent.GetWatchProcessor()
 
 	// Initializing TaskStateManager will start to record task status
 	// update back to storage.  TODO(zhitao): This is

@@ -31,6 +31,7 @@ import (
 	constraint_mocks "github.com/uber/peloton/pkg/common/constraints/mocks"
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
+	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
 
 	"github.com/golang/mock/gomock"
 	log "github.com/sirupsen/logrus"
@@ -85,11 +86,11 @@ var (
 
 type HostOfferSummaryTestSuite struct {
 	suite.Suite
-
-	offer   *mesos.Offer
-	labels1 *mesos.Labels
-	labels2 *mesos.Labels
-	ctrl    *gomock.Controller
+	offer          *mesos.Offer
+	labels1        *mesos.Labels
+	labels2        *mesos.Labels
+	ctrl           *gomock.Controller
+	watchProcessor *watchmocks.MockWatchProcessor
 }
 
 func (suite *HostOfferSummaryTestSuite) SetupSuite() {
@@ -113,6 +114,7 @@ func (suite *HostOfferSummaryTestSuite) SetupSuite() {
 
 func (suite *HostOfferSummaryTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
+	suite.watchProcessor = watchmocks.NewMockWatchProcessor(suite.ctrl)
 }
 
 func (suite *HostOfferSummaryTestSuite) TearDownTest() {
@@ -583,7 +585,6 @@ func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
 			offerID:       emptyOfferID,
 		},
 	}
-
 	for ttName, tt := range testTable {
 		offers := suite.createUnreservedMesosOffers(5)
 		s := New(
@@ -591,10 +592,11 @@ func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
 			offers[0].GetHostname(),
 			supportedSlackResourceTypes,
 			time.Duration(30*time.Second),
+			suite.watchProcessor,
 		).(*hostSummary)
 		s.offerIDgenerator = seqIDGenerator(tt.offerID)
 		s.status = tt.initialStatus
-
+		suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 		suite.Equal(tt.initialStatus, s.AddMesosOffers(context.Background(), offers))
 
 		filter := &hostsvc.HostFilter{
@@ -765,6 +767,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 	for ttName, tt := range testTable {
 		ctrl := gomock.NewController(suite.T())
 		mockEvaluator := constraint_mocks.NewMockEvaluator(ctrl)
+		mockProcessor := watchmocks.NewMockWatchProcessor(ctrl)
 
 		offer0 := offer
 		if len(tt.initialOffers) > 0 {
@@ -774,10 +777,9 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 			nil,
 			offer0.GetHostname(),
 			supportedSlackResourceTypes,
-			time.Duration(30*time.Second)).(*hostSummary)
+			time.Duration(30*time.Second), mockProcessor).(*hostSummary)
 		s.status = tt.initialStatus
 		s.offerIDgenerator = seqIDGenerator(tt.offerID)
-
 		suite.Equal(
 			tt.initialStatus,
 			s.AddMesosOffers(context.Background(),
@@ -820,7 +822,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 					gomock.Eq(lv)).
 				Return(tt.evaluateRes, tt.evaluateErr)
 		}
-
+		mockProcessor.EXPECT().NotifyEventChange(gomock.Any())
 		match := s.TryMatch(filter, mockEvaluator)
 		suite.Equal(tt.wantResult, match.Result,
 			"test case is %s", ttName)
@@ -907,12 +909,12 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchHostOnHeld() {
 	for ttName, tt := range testTable {
 		ctrl := gomock.NewController(suite.T())
 		mockEvaluator := constraint_mocks.NewMockEvaluator(ctrl)
-
+		mockProcessor := watchmocks.NewMockWatchProcessor(ctrl)
 		s := New(
 			nil,
 			offer.GetHostname(),
 			supportedSlackResourceTypes,
-			time.Duration(30*time.Second)).(*hostSummary)
+			time.Duration(30*time.Second), mockProcessor).(*hostSummary)
 		s.status = tt.initialStatus
 		s.offerIDgenerator = seqIDGenerator(tt.offerID)
 
@@ -944,7 +946,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchHostOnHeld() {
 					gomock.Eq(lv)).
 				Return(tt.evaluateRes, tt.evaluateErr)
 		}
-
+		mockProcessor.EXPECT().NotifyEventChange(gomock.Any())
 		match := s.TryMatch(filter, mockEvaluator)
 		suite.Equal(tt.wantResult, match.Result,
 			"test case is %s", ttName)
@@ -968,7 +970,6 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 	now := time.Now()
 	offers := suite.createUnreservedMesosOffers(5)
 	hostname := offers[0].GetHostname()
-
 	testTable := []struct {
 		initialStatus                HostStatus
 		statusPlacingOfferExpiration time.Time
@@ -998,13 +999,12 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 			msg:                          "HostSummary in PlacingOffer status, has timed out",
 		},
 	}
-
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 	for _, tt := range testTable {
-		s := New(nil, hostname, supportedSlackResourceTypes, time.Duration(30*time.Second)).(*hostSummary)
+		s := New(nil, hostname, supportedSlackResourceTypes, time.Duration(30*time.Second), suite.watchProcessor).(*hostSummary)
 		s.status = tt.initialStatus
 		s.statusPlacingOfferExpiration = tt.statusPlacingOfferExpiration
 		s.AddMesosOffers(context.Background(), offers)
-
 		reset, _, _ := s.ResetExpiredPlacingOfferStatus(now)
 		suite.Equal(tt.resetExpected, reset, tt.msg)
 		suite.Equal(s.readyCount.Load(), int32(tt.readyCount), tt.msg)
@@ -1013,7 +1013,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 		}
 	}
 
-	s := New(nil, hostname, supportedSlackResourceTypes, time.Duration(30*time.Second)).(*hostSummary)
+	s := New(nil, hostname, supportedSlackResourceTypes, time.Duration(30*time.Second), suite.watchProcessor).(*hostSummary)
 	s.AddMesosOffers(context.Background(), offers)
 	s.statusPlacingOfferExpiration = now.Add(-10 * time.Minute)
 	invalidCacheStatus := s.CasStatus(PlacingHost, ReadyHost)
@@ -1130,12 +1130,12 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredHeldOfferStatus() {
 	}
 
 	for _, tt := range testTable {
-		s := New(nil, "host1", supportedSlackResourceTypes, time.Duration(30*time.Second)).(*hostSummary)
+		s := New(nil, "host1", supportedSlackResourceTypes, time.Duration(30*time.Second), suite.watchProcessor).(*hostSummary)
 		s.status = tt.initialStatus
 		for _, task := range tt.tasksHeld {
 			s.heldTasks[task.taskHeld.GetValue()] = task.statusHeldHostExpiration
 		}
-
+		suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 		reset, _, taskExpired := s.ResetExpiredHostHeldStatus(now)
 		suite.Equal(tt.newStatus, s.status, tt.msg)
 		suite.Equal(tt.resetExpected, reset, tt.msg)
@@ -1219,7 +1219,7 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() 
 			nil,
 			offers[0].GetHostname(),
 			supportedSlackResourceTypes,
-			time.Duration(30*time.Second)).(*hostSummary)
+			time.Duration(30*time.Second), suite.watchProcessor).(*hostSummary)
 		s.AddMesosOffers(context.Background(), offers)
 		suite.Equal(s.readyCount.Load(), int32(len(offers)))
 		s.status = tt.initialStatus
@@ -1228,9 +1228,8 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() 
 		for _, heldTask := range tt.heldTasks {
 			s.HoldForTask(heldTask)
 		}
-
 		suite.Len(s.GetHeldTask(), len(tt.heldTasks))
-
+		suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 		_, err := s.ClaimForLaunch(offers[0].GetId().GetValue(), tt.claimTasks...)
 		if err != nil {
 			suite.Equal(err.Error(), tt.err.Error(), tt.name)
@@ -1250,11 +1249,12 @@ func (suite *HostOfferSummaryTestSuite) TestHoldAndReleaseTask() {
 	defer suite.ctrl.Finish()
 
 	hostname0 := "hostname-0"
-	hs0 := New(nil, hostname0, supportedSlackResourceTypes, time.Duration(30*time.Second)).(*hostSummary)
+	hs0 := New(nil, hostname0, supportedSlackResourceTypes, time.Duration(30*time.Second), suite.watchProcessor).(*hostSummary)
 
 	hostname1 := "hostname-1"
-	hs1 := New(nil, hostname1, supportedSlackResourceTypes, time.Duration(30*time.Second)).(*hostSummary)
+	hs1 := New(nil, hostname1, supportedSlackResourceTypes, time.Duration(30*time.Second), suite.watchProcessor).(*hostSummary)
 
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 	t1 := &peloton.TaskID{Value: "t1"}
 	t2 := &peloton.TaskID{Value: "t2"}
 	t3 := &peloton.TaskID{Value: "t3"}
@@ -1276,7 +1276,8 @@ func (suite *HostOfferSummaryTestSuite) TestHoldAndReleaseTask() {
 func (suite *HostOfferSummaryTestSuite) TestReturnPlacingHost() {
 	defer suite.ctrl.Finish()
 
-	hs := New(nil, _testAgent, supportedSlackResourceTypes, time.Duration(30*time.Second)).(*hostSummary)
+	hs := New(nil, _testAgent, supportedSlackResourceTypes, time.Duration(30*time.Second), suite.watchProcessor).(*hostSummary)
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 	// host in ready state, should fail the call
 	suite.Error(hs.ReturnPlacingHost())
 

@@ -16,13 +16,14 @@ package watchevent
 
 import (
 	"fmt"
-	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"sync"
 
-	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	halphapb "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
+	"github.com/uber/peloton/.gen/peloton/private/eventstream"
 
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
+	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
@@ -57,7 +58,7 @@ func (s StopSignal) String() string {
 type WatchProcessor interface {
 	// NewEventClient creates a new watch client for mesos task event changes.
 	// Returns the watch id and a new instance of EventClient.
-	NewEventClient() (string, *EventClient, error)
+	NewEventClient(topic Topic) (string, *EventClient, error)
 
 	// StopEventClients stops all the event clients on leadership change.
 	StopEventClients()
@@ -68,24 +69,35 @@ type WatchProcessor interface {
 
 	// NotifyEventChange receives mesos task event, and notifies all the clients
 	// which are interested in the event.
-	NotifyEventChange(event *pb_eventstream.Event)
+	NotifyEventChange(event interface{})
 }
 
 // watchProcessor is an implementation of WatchProcessor interface.
 type watchProcessor struct {
 	sync.Mutex
-	bufferSize   int
-	maxClient    int
-	eventClients map[string]*EventClient
-	metrics      *metrics.Metrics
+	bufferSize        int
+	maxClient         int
+	eventClients      map[string]*EventClient
+	topicEventClients map[Topic]map[string]bool
+	metrics           *metrics.Metrics
 }
+
+// Topic define the event object type processor supported
+type Topic string
+
+// List of topic currently supported by watch processor
+const (
+	EventStream Topic = "eventstream"
+	HostSummary Topic = "hostSummary"
+	INVALID     Topic = ""
+)
 
 var processor *watchProcessor
 var onceInitWatchProcessor sync.Once
 
 // EventClient represents a client which interested in task event changes.
 type EventClient struct {
-	Input  chan *pb_eventstream.Event
+	Input  chan interface{}
 	Signal chan StopSignal
 }
 
@@ -97,10 +109,11 @@ func NewWatchProcessor(
 ) *watchProcessor {
 	cfg.normalize()
 	return &watchProcessor{
-		bufferSize:   cfg.BufferSize,
-		maxClient:    cfg.MaxClient,
-		eventClients: make(map[string]*EventClient),
-		metrics:      watchEventMetric,
+		bufferSize:        cfg.BufferSize,
+		maxClient:         cfg.MaxClient,
+		eventClients:      make(map[string]*EventClient),
+		topicEventClients: make(map[Topic]map[string]bool),
+		metrics:           watchEventMetric,
 	}
 }
 
@@ -121,13 +134,37 @@ func GetWatchProcessor() WatchProcessor {
 
 // NewWatchID creates a new watch id UUID string for the specific
 // watch client
-func NewWatchID() string {
-	return fmt.Sprintf("%s_%s", "event", uuid.New())
+func NewWatchID(topic Topic) string {
+	return fmt.Sprintf("%s_%s_%s", topic, "watch", uuid.New())
+}
+
+// Retrieve the topic from the event object received during NotifyEventChange
+func GetTopicFromTheEvent(event interface{}) Topic {
+	switch event.(type) {
+	case *eventstream.Event:
+		return EventStream
+	case *halphapb.HostSummary:
+		return HostSummary
+	default:
+		return INVALID
+	}
+}
+
+// Map the string receive from input to a right topic
+func GetTopicFromInput(topic string) Topic {
+	switch topic {
+	case "eventstream":
+		return EventStream
+	case "hostSummary":
+		return HostSummary
+	default:
+		return INVALID
+	}
 }
 
 // NewEventClient creates a new watch client for task event changes.
 // Returns the watch id and a new instance of EventClient.
-func (p *watchProcessor) NewEventClient() (string, *EventClient, error) {
+func (p *watchProcessor) NewEventClient(topic Topic) (string, *EventClient, error) {
 	p.Lock()
 	defer p.Unlock()
 
@@ -135,13 +172,17 @@ func (p *watchProcessor) NewEventClient() (string, *EventClient, error) {
 		return "", nil, yarpcerrors.ResourceExhaustedErrorf("max client reached")
 	}
 
-	watchID := NewWatchID()
+	watchID := NewWatchID(topic)
 	p.eventClients[watchID] = &EventClient{
-		Input: make(chan *pb_eventstream.Event, p.bufferSize),
+		Input: make(chan interface{}, p.bufferSize),
 		// Make buffer size 1 so that sender is not blocked when sending
 		// the Signal
 		Signal: make(chan StopSignal, 1),
 	}
+	if p.topicEventClients[topic] == nil {
+		p.topicEventClients[topic] = make(map[string]bool)
+	}
+	p.topicEventClients[topic][watchID] = true
 
 	log.WithField("watch_id", watchID).Info("task watch client created")
 	return watchID, p.eventClients[watchID], nil
@@ -183,6 +224,9 @@ func (p *watchProcessor) stopEventClient(
 
 	c.Signal <- Signal
 	delete(p.eventClients, watchID)
+	for _, watchIdMap := range p.topicEventClients {
+		delete(watchIdMap, watchID)
+	}
 
 	return nil
 }
@@ -190,19 +234,29 @@ func (p *watchProcessor) stopEventClient(
 // NotifyTaskChange receives mesos task update event, and notifies all the clients
 // which are interested in the task update event.
 func (p *watchProcessor) NotifyEventChange(
-	event *pb_eventstream.Event) {
+	event interface{}) {
 	sw := p.metrics.WatchProcessorLockDuration.Start()
 	p.Lock()
 	defer p.Unlock()
 	sw.Stop()
 
-	for watchID, c := range p.eventClients {
-		select {
-		case c.Input <- event:
-		default:
-			log.WithField("watch_id", watchID).
-				Warn("event overflow for task watch client")
-			p.stopEventClient(watchID, StopSignalOverflow)
+	// get topic  of the event
+	topic := GetTopicFromTheEvent(event)
+	if topic == "" {
+		log.WithFields(log.Fields{
+			"event": event,
+			"topic": string(topic),
+		}).Warn("topic  not supported, please register topic to the watch processor")
+
+	} else {
+		for watchID := range p.topicEventClients[topic] {
+			select {
+			case p.eventClients[watchID].Input <- event:
+			default:
+				log.WithField("watch_id", watchID).
+					Warn("event overflow for task watch client")
+				p.stopEventClient(watchID, StopSignalOverflow)
+			}
 		}
 	}
 }

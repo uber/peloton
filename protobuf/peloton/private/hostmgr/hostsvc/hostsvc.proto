@@ -13,6 +13,7 @@ import "mesos/v1/mesos.proto";
 import "mesos/v1/master/master.proto";
 import "peloton/api/v0/peloton.proto";
 import "peloton/api/v0/task/task.proto";
+import "peloton/api/v1alpha/host/host.proto";
 import "peloton/private/resmgr/resmgr.proto";
 import "peloton/private/eventstream/eventstream.proto";
 
@@ -424,7 +425,11 @@ service InternalHostService
   rpc GetHostsByQuery(GetHostsByQueryRequest) returns (GetHostsByQueryResponse);
 
   // Return all the outstanding status update events present in the event stream.
-  rpc WatchEvent(WatchEventRequest) returns (stream WatchEventResponse);
+  rpc WatchEventStreamEvent(WatchEventRequest) returns (stream WatchEventStreamEventResponse);
+
+
+  // Return all the host summary event updates from the host manage
+  rpc WatchHostSummaryEvent(WatchEventRequest) returns (stream WatchHostSummaryEventResponse);
 
   // Cancel a watch. The watch stream will get an error indicating
   // watch was cancelled and the stream will be closed.
@@ -534,17 +539,30 @@ message GetHostsByQueryResponse {
 /**
  * Request object to watch request by client
  */
-message WatchEventRequest {}
+message WatchEventRequest {
+    string topic = 1;
+}
 
 /**
  * Responds to all pending status update events.
  */
-message WatchEventResponse {
+message WatchEventStreamEventResponse {
 
     // Unique identifier for the watch session
     string watch_id = 1;
-    repeated eventstream.Event events = 2;
+    string topic = 2;
+    eventstream.Event mesos_task_update = 3;
+}
 
+/**
+ * Responds to all host summary update events.
+ */
+message WatchHostSummaryEventResponse {
+
+    // Unique identifier for the watch session
+    string watch_id = 1;
+    string topic = 2;
+    api.v1alpha.host.HostSummary  hostSummaryEvent  = 3;
 }
 
 // CancelRequest is request for method WatchService.Cancel

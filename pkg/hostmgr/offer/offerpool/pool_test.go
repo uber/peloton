@@ -41,6 +41,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/summary"
 	hostmgr_summary_mocks "github.com/uber/peloton/pkg/hostmgr/summary/mocks"
 	hmutil "github.com/uber/peloton/pkg/hostmgr/util"
+	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
 )
 
 const (
@@ -78,6 +79,22 @@ func (suite *OfferPoolTestSuite) GetTimedOfferLen() int {
 	return length
 }
 
+// Added custom TestReporter to avoid fatalf on the goroutines which makes the
+// main goroutine to hang unexpectedly.
+//https://github.com/golang/mock/issues/139
+
+type goroutineReporter struct {
+	T *testing.T
+}
+
+func (r goroutineReporter) Errorf(format string, args ...interface{}) {
+	r.T.Errorf(format, args...)
+}
+
+func (r goroutineReporter) Fatalf(format string, args ...interface{}) {
+	panic(fmt.Sprintf(format, args...))
+}
+
 type OfferPoolTestSuite struct {
 	suite.Suite
 
@@ -90,6 +107,7 @@ type OfferPoolTestSuite struct {
 	agent2Offers         []*mesos.Offer
 	agent3Offers         []*mesos.Offer
 	agent4Offers         []*mesos.Offer
+	watchProcessor       *watchmocks.MockWatchProcessor
 }
 
 func (suite *OfferPoolTestSuite) SetupSuite() {
@@ -115,11 +133,11 @@ func (suite *OfferPoolTestSuite) SetupSuite() {
 }
 
 func (suite *OfferPoolTestSuite) SetupTest() {
-	suite.ctrl = gomock.NewController(suite.T())
-
+	suite.ctrl = gomock.NewController(goroutineReporter{})
 	suite.schedulerClient = mpb_mocks.NewMockSchedulerClient(suite.ctrl)
 	suite.masterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.ctrl)
 	suite.provider = hostmgr_mesos_mocks.NewMockFrameworkInfoProvider(suite.ctrl)
+	suite.watchProcessor = watchmocks.NewMockWatchProcessor(suite.ctrl)
 
 	suite.pool = &offerPool{
 		hostOfferIndex:             make(map[string]summary.HostSummary),
@@ -128,6 +146,7 @@ func (suite *OfferPoolTestSuite) SetupTest() {
 		mSchedulerClient:           suite.schedulerClient,
 		mesosFrameworkInfoProvider: suite.provider,
 		binPackingRanker:           binpacking.GetRankerByName(binpacking.DeFrag),
+		watchProcessor:             suite.watchProcessor,
 	}
 	// reset the ranker state before use
 	suite.pool.binPackingRanker.RefreshRanking(nil)
@@ -152,6 +171,7 @@ func (suite *OfferPoolTestSuite) TestSlackResourceTypes() {
 		[]string{common.MesosCPU, "DUMMY"},
 		binpacking.GetRankerByName(binpacking.DeFrag),
 		time.Duration(30*time.Second),
+		suite.watchProcessor,
 	)
 	suite.True(hmutil.IsSlackResourceType(
 		common.MesosCPU,
@@ -168,6 +188,7 @@ func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 		"")
 	suite.Error(err)
 	suite.EqualError(err, "cannot find input hostname dummyTestAgent")
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 
 	// Add unreserved offers, and do ClaimForPlace.
 	suite.pool.AddOffers(context.Background(), suite.agent1Offers)
@@ -349,6 +370,7 @@ func (suite *OfferPoolTestSuite) TestOffersWithUnavailability() {
 			},
 		},
 	}
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 
 	gomock.InOrder(
 		suite.provider.
@@ -447,7 +469,7 @@ func (suite *OfferPoolTestSuite) TestAddGetRemoveOffers() {
 	nAgents := 10
 	wg := sync.WaitGroup{}
 	wg.Add(nOffers)
-
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 	for i := 0; i < nOffers; i++ {
 		go func(i int) {
 			defer wg.Done()
@@ -947,6 +969,8 @@ func (suite *OfferPoolTestSuite) TestGetHostHeldForTask() {
 	offer1 := suite.createOffer(hostname1,
 		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
 
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
+
 	suite.pool.AddOffers(context.Background(),
 		[]*mesos.Offer{offer0, offer1})
 
@@ -984,6 +1008,8 @@ func (suite *OfferPoolTestSuite) TestGetHostHeldWhenTaskHeldOnMultipleHosts() {
 	offer1 := suite.createOffer(hostname1,
 		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
 
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
+
 	suite.pool.AddOffers(context.Background(),
 		[]*mesos.Offer{offer0, offer1})
 
@@ -1005,6 +1031,8 @@ func (suite *OfferPoolTestSuite) TestClaimForPlaceWithFilterHint() {
 	hostname2 := "hostname2"
 	offer2 := suite.createOffer(hostname2,
 		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 4})
+
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 
 	suite.pool.AddOffers(context.Background(),
 		[]*mesos.Offer{offer0, offer1, offer2})

@@ -26,9 +26,9 @@ import (
 	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	halphapb "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/constraints"
 	"github.com/uber/peloton/pkg/common/queue"
@@ -55,7 +55,7 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/atomic"
 	"go.uber.org/multierr"
-	yarpc "go.uber.org/yarpc"
+	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
@@ -240,19 +240,24 @@ func (h *ServiceHandler) GetHostsByQuery(
 	}, nil
 }
 
-// Watch creates a watch to get notified about changes to mesos task update event.
+// WatchHostSummaryEvent creates a watch to get notified about changes to Host Summary event.
 // Changed objects are streamed back to the caller till the watch is
 // cancelled.
-func (h *ServiceHandler) WatchEvent(
+func (h *ServiceHandler) WatchHostSummaryEvent(
 	req *hostsvc.WatchEventRequest,
-	stream hostsvc.InternalHostServiceServiceWatchEventYARPCServer,
+	stream hostsvc.InternalHostServiceServiceWatchHostSummaryEventYARPCServer,
 ) error {
-	// Create watch for mesos task update
+	// Create watch for host summary event
 
 	log.WithField("request", req).
 		Debug("starting new event watch")
 
-	watchID, eventClient, err := h.watchProcessor.NewEventClient()
+	topic := watchevent.GetTopicFromInput(req.GetTopic())
+	if topic != watchevent.HostSummary {
+		return yarpcerrors.InvalidArgumentErrorf("Invalid topic expected hostSummary")
+	}
+	watchID, eventClient, err := h.watchProcessor.NewEventClient(topic)
+
 	if err != nil {
 		log.WithError(err).
 			Warn("failed to create  watch client")
@@ -263,8 +268,9 @@ func (h *ServiceHandler) WatchEvent(
 		h.watchProcessor.StopEventClient(watchID)
 	}()
 
-	initResp := &hostsvc.WatchEventResponse{
+	initResp := &hostsvc.WatchHostSummaryEventResponse{
 		WatchId: watchID,
+		Topic:   req.GetTopic(),
 	}
 	if err := stream.Send(initResp); err != nil {
 		log.WithField("watch_id", watchID).
@@ -276,10 +282,106 @@ func (h *ServiceHandler) WatchEvent(
 	for {
 		select {
 		case event := <-eventClient.Input:
-			resp := &hostsvc.WatchEventResponse{
-				WatchId: watchID,
-				Events:  []*pb_eventstream.Event{event},
+			topicOfEvent := watchevent.GetTopicFromTheEvent(event)
+
+			if topicOfEvent != watchevent.HostSummary {
+				log.Warn("watch processor sends wrong event, expected hostSummary received different object")
+				return errors.New("watch processor sends different topic than required")
 			}
+			resp := &hostsvc.WatchHostSummaryEventResponse{
+				WatchId:          watchID,
+				Topic:            req.GetTopic(),
+				HostSummaryEvent: event.(*halphapb.HostSummary),
+			}
+
+			if err := stream.Send(resp); err != nil {
+				log.WithField("watch_id", watchID).
+					WithError(err).
+					Warn("failed to send response for  watch event")
+				return err
+			}
+		case s := <-eventClient.Signal:
+			log.WithFields(log.Fields{
+				"watch_id": watchID,
+				"signal":   s,
+			}).Debug("received signal")
+
+			err := handleSignal(
+				watchID,
+				s,
+				map[watchevent.StopSignal]tally.Counter{
+					watchevent.StopSignalCancel:   h.metrics.WatchEventCancel,
+					watchevent.StopSignalOverflow: h.metrics.WatchEventOverflow,
+				},
+			)
+
+			if !yarpcerrors.IsCancelled(err) {
+				log.WithField("watch_id", watchID).
+					WithError(err).
+					Warn("watch stopped due to signal")
+			}
+
+			return err
+		}
+	}
+}
+
+// WatchEventStreamEvent creates a watch to get notified about changes to mesos task update event.
+// Changed objects are streamed back to the caller till the watch is
+// cancelled.
+
+func (h *ServiceHandler) WatchEventStreamEvent(
+	req *hostsvc.WatchEventRequest,
+	stream hostsvc.InternalHostServiceServiceWatchEventStreamEventYARPCServer,
+) error {
+	// Create watch for mesos task update
+
+	log.WithField("request", req).
+		Debug("starting new event watch")
+
+	topic := watchevent.GetTopicFromInput(req.GetTopic())
+
+	if topic != watchevent.EventStream {
+		return yarpcerrors.InvalidArgumentErrorf("Invalid topic expected eventstream")
+	}
+	watchID, eventClient, err := h.watchProcessor.NewEventClient(topic)
+	if err != nil {
+		log.WithError(err).
+			Warn("failed to create  watch client")
+		return err
+	}
+
+	defer func() {
+		h.watchProcessor.StopEventClient(watchID)
+	}()
+
+	initResp := &hostsvc.WatchEventStreamEventResponse{
+		WatchId: watchID,
+		Topic:   req.GetTopic(),
+	}
+	if err := stream.Send(initResp); err != nil {
+		log.WithField("watch_id", watchID).
+			WithError(err).
+			Warn("failed to send initial response for  watch event")
+		return err
+	}
+
+	for {
+		select {
+		case event := <-eventClient.Input:
+
+			topicOfEvent := watchevent.GetTopicFromTheEvent(event)
+
+			if topicOfEvent != watchevent.EventStream {
+				log.Warn("watch processor not sending right event, expected eventstream, received different object")
+				return errors.New("watch processor sending different topic than required")
+			}
+			resp := &hostsvc.WatchEventStreamEventResponse{
+				WatchId:         watchID,
+				Topic:           req.GetTopic(),
+				MesosTaskUpdate: event.(*pb_eventstream.Event),
+			}
+
 			if err := stream.Send(resp); err != nil {
 				log.WithField("watch_id", watchID).
 					WithError(err).
