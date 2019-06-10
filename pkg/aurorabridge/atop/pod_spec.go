@@ -59,6 +59,11 @@ func NewPodSpec(
 		jobKeyLabel,
 	}, metadataLabels...)
 
+	gpuLimit, err := label.GetUdeployGpuLimit(t.GetMetadata())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse udeploy gpu limit label: %s", err)
+	}
+
 	constraint, err := NewConstraint(jobKeyLabel, t.GetConstraints())
 	if err != nil {
 		return nil, fmt.Errorf("new constraint: %s", err)
@@ -70,7 +75,7 @@ func NewPodSpec(
 		InitContainers: nil, // Unused.
 		Containers: []*pod.ContainerSpec{{
 			Name:           "", // Unused.
-			Resource:       newResourceSpec(t.GetResources()),
+			Resource:       newResourceSpec(t.GetResources(), gpuLimit),
 			Container:      newMesosContainerInfo(t.GetContainer()),
 			Command:        NewThermosCommandInfo(c),
 			Executor:       NewThermosExecutorInfo(c, executorData),
@@ -88,7 +93,7 @@ func NewPodSpec(
 	}, nil
 }
 
-func newResourceSpec(rs []*api.Resource) *pod.ResourceSpec {
+func newResourceSpec(rs []*api.Resource, gpuLimit *float64) *pod.ResourceSpec {
 	if len(rs) == 0 {
 		return nil
 	}
@@ -109,6 +114,11 @@ func newResourceSpec(rs []*api.Resource) *pod.ResourceSpec {
 		}
 		// Note: Aurora API does not include fd_limit.
 	}
+
+	if gpuLimit != nil {
+		result.GpuLimit = *gpuLimit
+	}
+
 	return result
 }
 

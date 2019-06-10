@@ -17,6 +17,7 @@ package atop
 import (
 	"testing"
 
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
 	"github.com/stretchr/testify/assert"
@@ -164,4 +165,58 @@ func TestEncodeTaskConfig_Consistency(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, b1, b2)
+}
+
+// TestNewResourceSpec tests newResourceSpec
+func TestNewResourceSpec(t *testing.T) {
+	// Empty resource expect nil ResourceSpec
+	rs := []*api.Resource{}
+	r := newResourceSpec(rs, nil)
+	assert.Nil(t, r)
+
+	// Check regular ResourceSpec conversion
+	rs = []*api.Resource{
+		{
+			NumCpus: ptr.Float64(2.5),
+		},
+		{
+			RamMb: ptr.Int64(256),
+		},
+		{
+			DiskMb: ptr.Int64(32),
+		},
+		{
+			NumGpus: ptr.Int64(2),
+		},
+	}
+	r = newResourceSpec(rs, nil)
+	assert.Equal(t, &pod.ResourceSpec{
+		CpuLimit:    float64(2.5),
+		MemLimitMb:  float64(256),
+		DiskLimitMb: float64(32),
+		GpuLimit:    float64(2),
+	}, r)
+
+	// Check ResourceSpec conversion, with gpu limit passed in
+	rs = []*api.Resource{
+		{
+			NumCpus: ptr.Float64(2.5),
+		},
+		{
+			RamMb: ptr.Int64(256),
+		},
+		{
+			DiskMb: ptr.Int64(32),
+		},
+		{
+			NumGpus: ptr.Int64(2),
+		},
+	}
+	r = newResourceSpec(rs, ptr.Float64(3))
+	assert.Equal(t, &pod.ResourceSpec{
+		CpuLimit:    float64(2.5),
+		MemLimitMb:  float64(256),
+		DiskLimitMb: float64(32),
+		GpuLimit:    float64(3),
+	}, r)
 }

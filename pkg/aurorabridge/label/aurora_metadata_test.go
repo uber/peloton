@@ -60,3 +60,34 @@ func TestAuroraMetadata(t *testing.T) {
 	output := ParseAuroraMetadata(l)
 	assert.Equal(t, input, output)
 }
+
+// TestGetUdeployGpuLimit tests GetUdeployGpuLimit function
+func TestGetUdeployGpuLimit(t *testing.T) {
+	// Expect success
+	m1 := []*api.Metadata{
+		{
+			Key:   ptr.String(_auroraGpuResourceKey),
+			Value: ptr.String("2"),
+		},
+	}
+	g, err := GetUdeployGpuLimit(m1)
+	assert.NoError(t, err)
+	assert.NotNil(t, g)
+	assert.Equal(t, float64(2), *g)
+
+	// Expect empty label to return nil
+	m2 := []*api.Metadata{}
+	g, err = GetUdeployGpuLimit(m2)
+	assert.NoError(t, err)
+	assert.Nil(t, g)
+
+	// Expect invalid value to fail
+	m3 := []*api.Metadata{
+		{
+			Key:   ptr.String(_auroraGpuResourceKey),
+			Value: ptr.String("blah"),
+		},
+	}
+	_, err = GetUdeployGpuLimit(m3)
+	assert.Error(t, err)
+}

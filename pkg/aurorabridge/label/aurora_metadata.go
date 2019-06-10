@@ -15,6 +15,7 @@
 package label
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -26,6 +27,9 @@ import (
 const (
 	// Used for simulating the Aurora's behavior when creating labels in Mesos
 	_auroraLabelPrefix = "org.apache.aurora.metadata."
+
+	// Used by uDeploy to specify gpu resources requested by the service
+	_auroraGpuResourceKey = "udeploy_num_gpus"
 )
 
 // NewAuroraMetadataLabels generates a list of labels using Aurora's
@@ -39,6 +43,22 @@ func NewAuroraMetadataLabels(md []*api.Metadata) []*peloton.Label {
 		})
 	}
 	return l
+}
+
+// GetUdeployGpuLimit extracts uDeploy specific label used for requesting GPU
+// resources, and returns it as float pointer. Nil pointer is returned if the
+// label does not exist.
+func GetUdeployGpuLimit(md []*api.Metadata) (*float64, error) {
+	for _, m := range md {
+		if m.GetKey() == _auroraGpuResourceKey {
+			numGpus, err := strconv.ParseFloat(m.GetValue(), 64)
+			if err != nil {
+				return nil, err
+			}
+			return ptr.Float64(numGpus), nil
+		}
+	}
+	return nil, nil
 }
 
 // ParseAuroraMetadata converts Peloton label to a list of
