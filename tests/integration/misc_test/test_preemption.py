@@ -151,97 +151,97 @@ def test_non_preemptible_job(respool_a):
     kill_jobs([np_job_a_2, p_job_a])
 
 
-# Tests preemption of preemptible task
-# Scenario
-# 1. respool_a = Reservation(cpu=6), Entitlement(cpu=12)
-# 2. start a preemptible and non-preemptible job in resource pool a
-# 3. allocation(respool_a) > reservation(respool_a)
-# 4. create respool_b = Reservation(cpu=6), Entitlement(0)
-# 5. create preemptible job in respool_b, this should increase the
-#    entitlement of respool_b and decrease entitlement of respool_a.
-#    Entitlement(cpu=6) for both resource pools.
-# 6. preemptible job in respool_a should be preempted, since
-#    allocation>entitlement
-# 7. preemptible job in respool_b should start running.
-def test__preemption_non_preemptible_task(respool_a, respool_b):
-    # Create 2 Jobs : 1 preemptible and 1 non-preemptible in respool A
-    p_job_a = Job(
-        job_file="test_preemptible_job.yaml",
-        pool=respool_a,
-        config=IntegrationTestConfig(
-            max_retry_attempts=100, sleep_time_sec=10
-        ),
-    )
-    p_job_a.update_instance_count(6)
-
-    np_job_a = Job(
-        job_file="test_preemptible_job.yaml",
-        pool=respool_a,
-        config=IntegrationTestConfig(),
-    )
-    np_job_a.job_config.sla.preemptible = False
-    np_job_a.update_instance_count(6)
-
-    # preemptible job takes 6 CPUs
-    p_job_a.create()
-
-    # non preemptible job takes 6 reserved CPUs
-    np_job_a.create()
-
-    p_job_a.wait_for_state("RUNNING")
-    np_job_a.wait_for_state("RUNNING")
-
-    # pool allocation is more than reservation
-    assert np_job_a.pool.get_reservation(
-        "cpu") < np_job_a.pool.get_allocation("cpu")
-
-    # Create another job in respool B
-    p_job_b = Job(
-        job_file="test_preemptible_job.yaml",
-        pool=respool_b,
-        config=IntegrationTestConfig(
-            max_retry_attempts=100, sleep_time_sec=10
-        ),
-    )
-    p_job_b.update_instance_count(6)
-
-    p_job_b.create()
-
-    # p_job_b should remain PENDING since all resources are used by
-    # p_job_a
-    p_job_b.wait_for_state("PENDING")
-
-    # p_job_a should be preempted and go back to PENDING
-    p_job_a.wait_for_state(goal_state="PENDING")
-
-    # np_job_a should keep RUNNING
-    np_job_a.wait_for_state("RUNNING")
-
-    def all_tasks_running():
-        count = 0
-        for t in np_job_a.get_tasks().values():
-            if t.state == task.RUNNING:
-                count += 1
-        return count == 6
-
-    # p_job_b should start running
-    p_job_b.wait_for_condition(all_tasks_running)
-
-    # pool A allocation is equal to reservation
-    assert np_job_a.pool.get_reservation(
-        "cpu") == np_job_a.pool.get_allocation("cpu")
-
-    # pool B allocation is equal to reservation
-    assert p_job_b.pool.get_reservation(
-        "cpu") == p_job_b.pool.get_allocation("cpu")
-
-    # wait for p_job_b to finish
-    p_job_b.wait_for_state("SUCCEEDED")
-
-    # make sure p_job_a starts running
-    p_job_a.wait_for_state("RUNNING")
-
-    kill_jobs([p_job_a, np_job_a, p_job_b])
+# # Tests preemption of preemptible task
+# # Scenario
+# # 1. respool_a = Reservation(cpu=6), Entitlement(cpu=12)
+# # 2. start a preemptible and non-preemptible job in resource pool a
+# # 3. allocation(respool_a) > reservation(respool_a)
+# # 4. create respool_b = Reservation(cpu=6), Entitlement(0)
+# # 5. create preemptible job in respool_b, this should increase the
+# #    entitlement of respool_b and decrease entitlement of respool_a.
+# #    Entitlement(cpu=6) for both resource pools.
+# # 6. preemptible job in respool_a should be preempted, since
+# #    allocation>entitlement
+# # 7. preemptible job in respool_b should start running.
+# def test__preemption_non_preemptible_task(respool_a, respool_b):
+#     # Create 2 Jobs : 1 preemptible and 1 non-preemptible in respool A
+#     p_job_a = Job(
+#         job_file="test_preemptible_job.yaml",
+#         pool=respool_a,
+#         config=IntegrationTestConfig(
+#             max_retry_attempts=100, sleep_time_sec=10
+#         ),
+#     )
+#     p_job_a.update_instance_count(6)
+#
+#     np_job_a = Job(
+#         job_file="test_preemptible_job.yaml",
+#         pool=respool_a,
+#         config=IntegrationTestConfig(),
+#     )
+#     np_job_a.job_config.sla.preemptible = False
+#     np_job_a.update_instance_count(6)
+#
+#     # preemptible job takes 6 CPUs
+#     p_job_a.create()
+#
+#     # non preemptible job takes 6 reserved CPUs
+#     np_job_a.create()
+#
+#     p_job_a.wait_for_state("RUNNING")
+#     np_job_a.wait_for_state("RUNNING")
+#
+#     # pool allocation is more than reservation
+#     assert np_job_a.pool.get_reservation(
+#         "cpu") < np_job_a.pool.get_allocation("cpu")
+#
+#     # Create another job in respool B
+#     p_job_b = Job(
+#         job_file="test_preemptible_job.yaml",
+#         pool=respool_b,
+#         config=IntegrationTestConfig(
+#             max_retry_attempts=100, sleep_time_sec=10
+#         ),
+#     )
+#     p_job_b.update_instance_count(6)
+#
+#     p_job_b.create()
+#
+#     # p_job_b should remain PENDING since all resources are used by
+#     # p_job_a
+#     p_job_b.wait_for_state("PENDING")
+#
+#     # p_job_a should be preempted and go back to PENDING
+#     p_job_a.wait_for_state(goal_state="PENDING")
+#
+#     # np_job_a should keep RUNNING
+#     np_job_a.wait_for_state("RUNNING")
+#
+#     def all_tasks_running():
+#         count = 0
+#         for t in np_job_a.get_tasks().values():
+#             if t.state == task.RUNNING:
+#                 count += 1
+#         return count == 6
+#
+#     # p_job_b should start running
+#     p_job_b.wait_for_condition(all_tasks_running)
+#
+#     # pool A allocation is equal to reservation
+#     assert np_job_a.pool.get_reservation(
+#         "cpu") == np_job_a.pool.get_allocation("cpu")
+#
+#     # pool B allocation is equal to reservation
+#     assert p_job_b.pool.get_reservation(
+#         "cpu") == p_job_b.pool.get_allocation("cpu")
+#
+#     # wait for p_job_b to finish
+#     p_job_b.wait_for_state("SUCCEEDED")
+#
+#     # make sure p_job_a starts running
+#     p_job_a.wait_for_state("RUNNING")
+#
+#     kill_jobs([p_job_a, np_job_a, p_job_b])
 
 
 # Spark driver depends on the task goalstate to detetermine if the task was

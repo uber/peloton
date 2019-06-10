@@ -484,6 +484,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateHealthy() {
 				GetTaskByID(context.Background(), _pelotonTaskID).
 				Return(taskInfo, nil),
 			suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob),
+			cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).MaxTimes(2),
 			cachedJob.EXPECT().SetTaskUpdateTime(event.MesosTaskStatus.Timestamp).Return(),
 			cachedJob.EXPECT().AddTask(gomock.Any(), _instanceID).Return(cachedTask, nil),
 			cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
@@ -691,6 +692,7 @@ func (suite *TaskUpdaterTestSuite) doTestProcessTaskFailedStatusUpdate(
 		Return(taskInfo, nil)
 	suite.jobFactory.EXPECT().
 		AddJob(_pelotonJobID).Return(cachedJob)
+	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	cachedJob.EXPECT().
 		SetTaskUpdateTime(gomock.Any()).Return()
 	cachedJob.EXPECT().AddTask(gomock.Any(), _instanceID).Return(cachedTask, nil)
@@ -732,6 +734,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 		Return(taskInfo, nil)
 	suite.jobFactory.EXPECT().
 		AddJob(_pelotonJobID).Return(cachedJob)
+	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	cachedJob.EXPECT().
 		SetTaskUpdateTime(gomock.Any()).Return()
 	cachedJob.EXPECT().AddTask(gomock.Any(), _instanceID).Return(cachedTask, nil)
@@ -840,6 +843,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailureCountUpdate() {
 			Return(taskInfo, nil)
 		suite.jobFactory.EXPECT().
 			AddJob(_pelotonJobID).Return(cachedJob)
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 		cachedJob.EXPECT().
 			SetTaskUpdateTime(gomock.Any()).Return()
 		cachedJob.EXPECT().AddTask(gomock.Any(), _instanceID).Return(cachedTask, nil)
@@ -881,6 +885,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateNoRetryForStat
 		Return(taskInfo, nil)
 	suite.jobFactory.EXPECT().
 		AddJob(_pelotonJobID).Return(cachedJob)
+	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	cachedJob.EXPECT().
 		SetTaskUpdateTime(gomock.Any()).Return()
 	cachedJob.EXPECT().AddTask(gomock.Any(), _instanceID).Return(cachedTask, nil)
@@ -923,6 +928,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 			Return(taskInfo, nil),
 		suite.jobFactory.EXPECT().
 			AddJob(_pelotonJobID).Return(cachedJob),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		cachedJob.EXPECT().
 			SetTaskUpdateTime(gomock.Any()).Return(),
 		cachedJob.EXPECT().AddTask(gomock.Any(), _instanceID).Return(cachedTask, nil),
@@ -974,6 +980,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateResourceUsageError() {
 				Return(taskInfo, nil),
 			suite.jobFactory.EXPECT().
 				AddJob(_pelotonJobID).Return(cachedJob),
+			cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 			cachedJob.EXPECT().
 				SetTaskUpdateTime(gomock.Any()).Return(),
 			cachedJob.EXPECT().AddTask(gomock.Any(), _instanceID).Return(cachedTask, nil),
@@ -996,6 +1003,42 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateResourceUsageError() {
 	}
 }
 
+// Test service job would not update resource usage upon terminal state event
+func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateWithTerminalStateEventForServiceJob() {
+	defer suite.ctrl.Finish()
+
+	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
+	cachedTask := cachedmocks.NewMockTask(suite.ctrl)
+	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_KILLED)
+
+	gomock.InOrder(
+		suite.mockTaskStore.EXPECT().
+			GetTaskByID(context.Background(), _pelotonTaskID).
+			Return(taskInfo, nil),
+		suite.jobFactory.EXPECT().
+			AddJob(_pelotonJobID).Return(cachedJob),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_SERVICE),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_SERVICE),
+		cachedJob.EXPECT().
+			SetTaskUpdateTime(gomock.Any()).Return(),
+		cachedJob.EXPECT().AddTask(gomock.Any(), _instanceID).Return(cachedTask, nil),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_SERVICE),
+		cachedTask.EXPECT().CompareAndSetTask(context.Background(), gomock.Any(), job.JobType_SERVICE).Return(nil, nil),
+		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_SERVICE),
+		suite.goalStateDriver.EXPECT().
+			JobRuntimeDuration(job.JobType_SERVICE).
+			Return(1*time.Second),
+		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
+		cachedJob.EXPECT().UpdateResourceUsage(nil),
+	)
+
+	suite.NoError(suite.updater.ProcessStatusUpdate(
+		context.Background(), event))
+}
+
 // Test processing task status update when there is a task with resource usage
 // map as nil. This could happen for in-flight tasks created before the feature
 // was introduced
@@ -1016,6 +1059,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateResourceUsageNil() {
 			Return(taskInfo, nil),
 		suite.jobFactory.EXPECT().
 			AddJob(_pelotonJobID).Return(cachedJob),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		cachedJob.EXPECT().
 			SetTaskUpdateTime(gomock.Any()).Return(),
 		cachedJob.EXPECT().AddTask(gomock.Any(), _instanceID).Return(cachedTask, nil),
@@ -1290,6 +1334,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessLostEventStatusUpdate() {
 			GetTaskByID(context.Background(), _pelotonTaskID).
 			Return(taskInfo, nil),
 		suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		cachedJob.EXPECT().SetTaskUpdateTime(event.MesosTaskStatus.Timestamp).Return(),
 		cachedJob.EXPECT().AddTask(gomock.Any(), _instanceID).Return(cachedTask, nil),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),

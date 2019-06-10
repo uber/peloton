@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/uber/peloton/.gen/mesos/v1"
+	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
@@ -296,6 +297,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		newRuntime.State = updateEvent.state
 	}
 
+	cachedJob := p.jobFactory.AddJob(taskInfo.GetJobId())
 	// Update task start and completion timestamps
 	if newRuntime.GetState() == pb_task.TaskState_RUNNING {
 		if updateEvent.state != taskInfo.GetRuntime().GetState() {
@@ -318,28 +320,34 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			}
 		}
 
-	} else if util.IsPelotonStateTerminal(newRuntime.GetState()) {
+	} else if util.IsPelotonStateTerminal(newRuntime.GetState()) &&
+		cachedJob.GetJobType() == pbjob.JobType_BATCH {
+		// only update resource count when a batch job is in terminal state
 		completionTime := now().UTC().Format(time.RFC3339Nano)
 		newRuntime.CompletionTime = completionTime
 
 		currTaskResourceUsage = getCurrTaskResourceUsage(
 			updateEvent.taskID, updateEvent.state, taskInfo.GetConfig().GetResource(),
 			taskInfo.GetRuntime().GetStartTime(), completionTime)
+
+		if len(currTaskResourceUsage) > 0 {
+			// current task resource usage was updated by this event, so we should
+			// add it to aggregated resource usage for the task and update runtime
+			aggregateTaskResourceUsage := taskInfo.GetRuntime().GetResourceUsage()
+			if len(aggregateTaskResourceUsage) > 0 {
+				for k, v := range currTaskResourceUsage {
+					aggregateTaskResourceUsage[k] += v
+				}
+				newRuntime.ResourceUsage = aggregateTaskResourceUsage
+			}
+		}
+	} else if cachedJob.GetJobType() == pbjob.JobType_SERVICE {
+		// for service job, reset resource usage
+		currTaskResourceUsage = nil
+		newRuntime.ResourceUsage = nil
 	}
 
-	if len(currTaskResourceUsage) > 0 {
-		// current task resource usage was updated by this event, so we should
-		// add it to aggregated resource usage for the task and update runtime
-		aggregateTaskResourceUsage := taskInfo.GetRuntime().GetResourceUsage()
-		if len(aggregateTaskResourceUsage) > 0 {
-			for k, v := range currTaskResourceUsage {
-				aggregateTaskResourceUsage[k] += v
-			}
-			newRuntime.ResourceUsage = aggregateTaskResourceUsage
-		}
-	}
 	// Update the task update times in job cache and then update the task runtime in cache and DB
-	cachedJob := p.jobFactory.AddJob(taskInfo.GetJobId())
 	cachedJob.SetTaskUpdateTime(event.MesosTaskStatus.Timestamp)
 	cachedTask, err := cachedJob.AddTask(ctx, taskInfo.GetInstanceId())
 	if err != nil {
