@@ -44,6 +44,7 @@ import (
 	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 	"github.com/uber/peloton/pkg/storage"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -65,7 +66,7 @@ var (
 func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
-	jobStore storage.JobStore,
+	ormStore *ormobjects.Store,
 	taskStore storage.TaskStore,
 	updateStore storage.UpdateStore,
 	frameworkInfoStore storage.FrameworkInfoStore,
@@ -79,7 +80,8 @@ func InitServiceHandler(
 
 	handler := &serviceHandler{
 		taskStore:          taskStore,
-		jobStore:           jobStore,
+		jobConfigOps:       ormobjects.NewJobConfigOps(ormStore),
+		jobRuntimeOps:      ormobjects.NewJobRuntimeOps(ormStore),
 		updateStore:        updateStore,
 		frameworkInfoStore: frameworkInfoStore,
 		metrics:            NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
@@ -99,7 +101,8 @@ func InitServiceHandler(
 // serviceHandler implements peloton.api.task.TaskManager
 type serviceHandler struct {
 	taskStore          storage.TaskStore
-	jobStore           storage.JobStore
+	jobConfigOps       ormobjects.JobConfigOps
+	jobRuntimeOps      ormobjects.JobRuntimeOps
 	updateStore        storage.UpdateStore
 	frameworkInfoStore storage.FrameworkInfoStore
 	metrics            *Metrics
@@ -145,7 +148,7 @@ func (m *serviceHandler) Get(
 
 	m.metrics.TaskAPIGet.Inc(1)
 	jobConfig, err := handlerutil.GetJobConfigWithoutFillingCache(
-		ctx, body.JobId, m.jobFactory, m.jobStore)
+		ctx, body.JobId, m.jobFactory, m.jobConfigOps)
 	if err != nil {
 		log.WithField("job_id", body.JobId.Value).
 			WithError(err).
@@ -384,7 +387,7 @@ func (m *serviceHandler) Refresh(ctx context.Context, req *task.RefreshRequest) 
 		return nil, yarpcerrors.UnavailableErrorf("Task Refresh API not suppported on non-leader")
 	}
 
-	jobConfig, _, err := m.jobStore.GetJobConfig(ctx, req.GetJobId().GetValue())
+	jobConfig, _, err := m.jobConfigOps.GetCurrentVersion(ctx, req.GetJobId())
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", req.GetJobId().GetValue()).
@@ -1026,7 +1029,7 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (res
 	callStart := time.Now()
 
 	_, err = handlerutil.GetJobRuntimeWithoutFillingCache(
-		ctx, req.JobId, m.jobFactory, m.jobStore)
+		ctx, req.JobId, m.jobFactory, m.jobRuntimeOps)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", req.JobId.GetValue()).
@@ -1264,7 +1267,7 @@ func (m *serviceHandler) BrowseSandbox(
 	m.metrics.TaskAPIListLogs.Inc(1)
 
 	jobConfig, err := handlerutil.GetJobConfigWithoutFillingCache(
-		ctx, req.JobId, m.jobFactory, m.jobStore)
+		ctx, req.JobId, m.jobFactory, m.jobConfigOps)
 	if err != nil {
 		log.WithField("job_id", req.JobId.Value).
 			WithError(err).

@@ -24,7 +24,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
-	storemocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -34,13 +34,14 @@ import (
 type HandlerCacheTestSuite struct {
 	suite.Suite
 
-	ctrl        *gomock.Controller
-	jobStore    *storemocks.MockJobStore
-	jobFactory  *cachedmocks.MockJobFactory
-	cachedJob   *cachedmocks.MockJob
-	jobID       *peloton.JobID
-	runtimeInfo *job.RuntimeInfo
-	config      *job.JobConfig
+	ctrl          *gomock.Controller
+	jobConfigOps  *objectmocks.MockJobConfigOps
+	jobRuntimeOps *objectmocks.MockJobRuntimeOps
+	jobFactory    *cachedmocks.MockJobFactory
+	cachedJob     *cachedmocks.MockJob
+	jobID         *peloton.JobID
+	runtimeInfo   *job.RuntimeInfo
+	config        *job.JobConfig
 }
 
 func TestHandlerCache(t *testing.T) {
@@ -49,7 +50,8 @@ func TestHandlerCache(t *testing.T) {
 
 func (suite *HandlerCacheTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
-	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
+	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
+	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.jobID = &peloton.JobID{Value: uuid.New()}
@@ -70,7 +72,10 @@ func (suite *HandlerCacheTestSuite) TestGetJobRuntime_CacheHit() {
 	suite.cachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(suite.runtimeInfo, nil)
 	runtime, err := GetJobRuntimeWithoutFillingCache(
-		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)
+		context.Background(),
+		suite.jobID,
+		suite.jobFactory,
+		suite.jobRuntimeOps)
 	suite.NoError(err)
 	suite.Equal(runtime.GetState(), suite.runtimeInfo.GetState())
 }
@@ -80,27 +85,36 @@ func (suite *HandlerCacheTestSuite) TestGetJobRuntime_CacheHitWithErr() {
 	suite.cachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(nil, fmt.Errorf("cache err"))
 	runtime, err := GetJobRuntimeWithoutFillingCache(
-		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)
+		context.Background(),
+		suite.jobID,
+		suite.jobFactory,
+		suite.jobRuntimeOps)
 	suite.Error(err)
 	suite.Nil(runtime)
 }
 
 func (suite *HandlerCacheTestSuite) TestGetJobRuntime_CacheMiss() {
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(nil)
-	suite.jobStore.EXPECT().GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobRuntimeOps.EXPECT().Get(gomock.Any(), suite.jobID).
 		Return(suite.runtimeInfo, nil)
 	runtime, err := GetJobRuntimeWithoutFillingCache(
-		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)
+		context.Background(),
+		suite.jobID,
+		suite.jobFactory,
+		suite.jobRuntimeOps)
 	suite.NoError(err)
 	suite.Equal(runtime.GetState(), suite.runtimeInfo.GetState())
 }
 
 func (suite *HandlerCacheTestSuite) TestGetJobRuntime_CacheMissWithErr() {
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(nil)
-	suite.jobStore.EXPECT().GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobRuntimeOps.EXPECT().Get(gomock.Any(), suite.jobID).
 		Return(nil, fmt.Errorf("db error"))
 	runtime, err := GetJobRuntimeWithoutFillingCache(
-		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)
+		context.Background(),
+		suite.jobID,
+		suite.jobFactory,
+		suite.jobRuntimeOps)
 	suite.Error(err)
 	suite.Nil(runtime)
 }
@@ -110,7 +124,7 @@ func (suite *HandlerCacheTestSuite) TestGetJobConfig_CacheHit() {
 	suite.cachedJob.EXPECT().GetConfig(gomock.Any()).
 		Return(suite.config, nil)
 	config, err := GetJobConfigWithoutFillingCache(
-		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)
+		context.Background(), suite.jobID, suite.jobFactory, suite.jobConfigOps)
 	suite.NoError(err)
 	suite.Equal(suite.config.GetInstanceCount(), config.GetInstanceCount())
 }
@@ -120,27 +134,27 @@ func (suite *HandlerCacheTestSuite) TestGetJobConfig_CacheHitWithErr() {
 	suite.cachedJob.EXPECT().GetConfig(gomock.Any()).
 		Return(nil, fmt.Errorf("cache err"))
 	config, err := GetJobConfigWithoutFillingCache(
-		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)
+		context.Background(), suite.jobID, suite.jobFactory, suite.jobConfigOps)
 	suite.Error(err)
 	suite.Nil(config)
 }
 
 func (suite *HandlerCacheTestSuite) TestGetJobConfig_CacheMiss() {
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(nil)
-	suite.jobStore.EXPECT().GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobConfigOps.EXPECT().GetCurrentVersion(gomock.Any(), suite.jobID).
 		Return(suite.config, &models.ConfigAddOn{}, nil)
 	config, err := GetJobConfigWithoutFillingCache(
-		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)
+		context.Background(), suite.jobID, suite.jobFactory, suite.jobConfigOps)
 	suite.NoError(err)
 	suite.Equal(suite.config.GetInstanceCount(), config.GetInstanceCount())
 }
 
 func (suite *HandlerCacheTestSuite) TestGetJobConfig_CacheMissWithErr() {
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(nil)
-	suite.jobStore.EXPECT().GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobConfigOps.EXPECT().GetCurrentVersion(gomock.Any(), suite.jobID).
 		Return(nil, nil, fmt.Errorf("db error"))
 	config, err := GetJobConfigWithoutFillingCache(
-		context.Background(), suite.jobID, suite.jobFactory, suite.jobStore)
+		context.Background(), suite.jobID, suite.jobFactory, suite.jobConfigOps)
 	suite.Error(err)
 	suite.Nil(config)
 }

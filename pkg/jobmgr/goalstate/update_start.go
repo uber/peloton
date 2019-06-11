@@ -136,9 +136,9 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 
 	jobID := cachedWorkflow.JobID()
 	// fetch the job configuration first
-	jobConfig, configAddOn, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
+	jobConfig, configAddOn, err := goalStateDriver.jobConfigOps.Get(
 		ctx,
-		jobID.GetValue(),
+		jobID,
 		cachedWorkflow.GetGoalState().JobVersion)
 	if err != nil {
 		goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)
@@ -163,9 +163,9 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 		// to ensure that these list of instances remain the same
 		// while the update is non-terminal.
 
-		prevJobConfig, _, err := goalStateDriver.jobStore.GetJobConfigWithVersion(
+		prevJobConfig, _, err := goalStateDriver.jobConfigOps.Get(
 			ctx,
-			jobID.GetValue(),
+			jobID,
 			cachedWorkflow.GetState().JobVersion,
 		)
 		if err != nil {

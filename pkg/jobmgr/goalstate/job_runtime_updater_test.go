@@ -33,6 +33,7 @@ import (
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
@@ -54,6 +55,7 @@ type JobRuntimeUpdaterTestSuite struct {
 
 	ctrl                          *gomock.Controller
 	jobStore                      *storemocks.MockJobStore
+	jobConfigOps                  *objectmocks.MockJobConfigOps
 	taskStore                     *storemocks.MockTaskStore
 	updateStore                   *storemocks.MockUpdateStore
 	jobGoalStateEngine            *goalstatemocks.MockEngine
@@ -80,6 +82,7 @@ func (suite *JobRuntimeUpdaterTestSuite) SetupTest() {
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
+	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
 
 	suite.resmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
@@ -96,6 +99,7 @@ func (suite *JobRuntimeUpdaterTestSuite) SetupTest() {
 		updateEngine:                  suite.updateGoalStateEngine,
 		jobStore:                      suite.jobStore,
 		taskStore:                     suite.taskStore,
+		jobConfigOps:                  suite.jobConfigOps,
 		updateStore:                   suite.updateStore,
 		jobFactory:                    suite.jobFactory,
 		resmgrClient:                  suite.resmgrClient,
@@ -2402,8 +2406,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 		Return(suite.cachedConfig, nil).
 		Times(2)
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobConfigOps.EXPECT().
+		GetCurrentVersion(gomock.Any(), suite.jobID).
 		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.taskStore.EXPECT().
@@ -2450,8 +2454,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 		AddJob(suite.jobID).
 		Return(suite.cachedJob)
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobConfigOps.EXPECT().
+		GetCurrentVersion(gomock.Any(), suite.jobID).
 		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
@@ -2475,8 +2479,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 		AddJob(suite.jobID).
 		Return(suite.cachedJob)
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobConfigOps.EXPECT().
+		GetCurrentVersion(gomock.Any(), suite.jobID).
 		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().

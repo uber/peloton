@@ -22,7 +22,7 @@ import (
 
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
-	"github.com/uber/peloton/pkg/storage"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 )
 
 // GetJobConfigWithoutFillingCache returns models.JobConfig without filling in
@@ -34,13 +34,13 @@ func GetJobConfigWithoutFillingCache(
 	ctx context.Context,
 	id *peloton.JobID,
 	factory cached.JobFactory,
-	store storage.JobStore) (jobmgrcommon.JobConfig, error) {
+	jobConfigOps ormobjects.JobConfigOps) (jobmgrcommon.JobConfig, error) {
 	cachedJob := factory.GetJob(id)
 	if cachedJob != nil {
 		return cachedJob.GetConfig(ctx)
 	}
 
-	jobConfig, _, err := store.GetJobConfig(ctx, id.GetValue())
+	jobConfig, _, err := jobConfigOps.GetCurrentVersion(ctx, id)
 	return jobConfig, err
 }
 
@@ -53,11 +53,11 @@ func GetJobRuntimeWithoutFillingCache(
 	ctx context.Context,
 	id *peloton.JobID,
 	factory cached.JobFactory,
-	store storage.JobStore) (*job.RuntimeInfo, error) {
+	jobRuntimeOps ormobjects.JobRuntimeOps) (*job.RuntimeInfo, error) {
 	cachedJob := factory.GetJob(id)
 	if cachedJob != nil {
 		return cachedJob.GetRuntime(ctx)
 	}
 
-	return store.GetJobRuntime(ctx, id.GetValue())
+	return jobRuntimeOps.Get(ctx, id)
 }

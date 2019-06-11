@@ -134,7 +134,8 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 		return nil
 	}
 
-	jobConfig, _, err := goalStateDriver.jobStore.GetJobConfig(ctx, jobID.GetValue())
+	jobConfig, _, err :=
+		goalStateDriver.jobConfigOps.GetCurrentVersion(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).

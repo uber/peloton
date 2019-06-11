@@ -39,6 +39,7 @@ import (
 	logmanagermocks "github.com/uber/peloton/pkg/jobmgr/logmanager/mocks"
 	activermtaskmocks "github.com/uber/peloton/pkg/jobmgr/task/activermtask/mocks"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/uber/peloton/pkg/common/util"
 	cachedtest "github.com/uber/peloton/pkg/jobmgr/cached/test"
@@ -69,14 +70,15 @@ type TaskHandlerTestSuite struct {
 	testJobRuntime *job.RuntimeInfo
 	taskInfos      map[uint32]*task.TaskInfo
 
-	ctrl                     *gomock.Controller
-	mockedCandidate          *leadermocks.MockCandidate
-	mockedResmgrClient       *resmocks.MockResourceManagerServiceYARPCClient
-	mockedJobFactory         *cachedmocks.MockJobFactory
-	mockedCachedJob          *cachedmocks.MockJob
-	mockedCachedTask         *cachedmocks.MockTask
-	mockedGoalStateDrive     *goalstatemocks.MockDriver
-	mockedJobStore           *storemocks.MockJobStore
+	ctrl                 *gomock.Controller
+	mockedCandidate      *leadermocks.MockCandidate
+	mockedResmgrClient   *resmocks.MockResourceManagerServiceYARPCClient
+	mockedJobFactory     *cachedmocks.MockJobFactory
+	mockedCachedJob      *cachedmocks.MockJob
+	mockedCachedTask     *cachedmocks.MockTask
+	mockedGoalStateDrive *goalstatemocks.MockDriver
+	jobConfigOps         *objectmocks.MockJobConfigOps
+
 	mockedTaskStore          *storemocks.MockTaskStore
 	mockedUpdateStore        *storemocks.MockUpdateStore
 	mockedFrameworkInfoStore *storemocks.MockFrameworkInfoStore
@@ -113,7 +115,7 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 	suite.taskInfos = taskInfos
 
 	suite.ctrl = gomock.NewController(suite.T())
-	suite.mockedJobStore = storemocks.NewMockJobStore(suite.ctrl)
+	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
 	suite.mockedJobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.mockedCachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.mockedCachedTask = cachedmocks.NewMockTask(suite.ctrl)
@@ -128,7 +130,7 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 	suite.mockedTask = cachedmocks.NewMockTask(suite.ctrl)
 	suite.mockedActiveRMTasks = activermtaskmocks.NewMockActiveRMTasks(suite.ctrl)
 
-	suite.handler.jobStore = suite.mockedJobStore
+	suite.handler.jobConfigOps = suite.jobConfigOps
 	suite.handler.taskStore = suite.mockedTaskStore
 	suite.handler.updateStore = suite.mockedUpdateStore
 	suite.handler.jobFactory = suite.mockedJobFactory
@@ -2004,8 +2006,8 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccessAgentIP() {
 
 func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
-	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID.GetValue()).
+	suite.jobConfigOps.EXPECT().
+		GetCurrentVersion(gomock.Any(), suite.testJobID).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 	suite.mockedTaskStore.EXPECT().
 		GetTasksForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
@@ -2032,15 +2034,15 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 	suite.NoError(err)
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
-	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID.GetValue()).
+	suite.jobConfigOps.EXPECT().
+		GetCurrentVersion(gomock.Any(), suite.testJobID).
 		Return(nil, nil, fmt.Errorf("fake db error"))
 	_, err = suite.handler.Refresh(context.Background(), request)
 	suite.Error(err)
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
-	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID.GetValue()).
+	suite.jobConfigOps.EXPECT().
+		GetCurrentVersion(gomock.Any(), suite.testJobID).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 	suite.mockedTaskStore.EXPECT().
 		GetTasksForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
@@ -2051,8 +2053,8 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 	suite.Error(err)
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
-	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID.GetValue()).
+	suite.jobConfigOps.EXPECT().
+		GetCurrentVersion(gomock.Any(), suite.testJobID).
 		Return(suite.testJobConfig, &models.ConfigAddOn{}, nil)
 	suite.mockedTaskStore.EXPECT().
 		GetTasksForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{

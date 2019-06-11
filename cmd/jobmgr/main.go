@@ -658,7 +658,7 @@ func main() {
 	tasksvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
-		store, // store implements JobStore
+		ormStore,
 		store, // store implements TaskStore
 		store, // store implements UpdateStore
 		store, // store implements FrameworkInfoStore

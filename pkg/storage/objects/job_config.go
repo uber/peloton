@@ -64,6 +64,12 @@ type JobConfigOps interface {
 		version uint64,
 	) error
 
+	// GetCurrentVersion retrieves current version of job_config
+	GetCurrentVersion(
+		ctx context.Context,
+		id *peloton.JobID,
+	) (*job.JobConfig, *models.ConfigAddOn, error)
+
 	// Get retrieves a row from the table.
 	Get(
 		ctx context.Context,
@@ -162,12 +168,16 @@ func newJobConfigObject(
 
 // jobConfigOps implements jobConfigOps using a particular Store
 type jobConfigOps struct {
-	store *Store
+	store         *Store
+	jobRuntimeOps JobRuntimeOps
 }
 
 // NewJobConfigOps constructs a jobConfigOps object for provided Store.
 func NewJobConfigOps(s *Store) JobConfigOps {
-	return &jobConfigOps{store: s}
+	return &jobConfigOps{
+		store:         s,
+		jobRuntimeOps: NewJobRuntimeOps(s),
+	}
 }
 
 // Create creates a JobConfigObject in db
@@ -194,13 +204,25 @@ func (d *jobConfigOps) Create(
 	return nil
 }
 
+// GetCurrentVersion gets the latest version JobConfigObject from DB
+func (d *jobConfigOps) GetCurrentVersion(
+	ctx context.Context,
+	id *peloton.JobID,
+) (*job.JobConfig, *models.ConfigAddOn, error) {
+	// Get latest version from job runtime
+	runtime, err := d.jobRuntimeOps.Get(ctx, id)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "Failed to get Job Runtime")
+	}
+	return d.Get(ctx, id, runtime.GetConfigurationVersion())
+}
+
 // Get gets a JobConfigObject from db
 func (d *jobConfigOps) Get(
 	ctx context.Context,
 	id *peloton.JobID,
 	version uint64,
 ) (*job.JobConfig, *models.ConfigAddOn, error) {
-
 	obj := &JobConfigObject{
 		JobID:   id.GetValue(),
 		Version: version,

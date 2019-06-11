@@ -1101,10 +1101,6 @@ func (suite *UpdateTestSuite) TestUpdateRecoverRemoveInstances() {
 			Type:                 models.WorkflowType_UPDATE,
 		}, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(newJobConfig, &models.ConfigAddOn{}, nil).AnyTimes()
-
 	for i := uint32(0); i < instanceCount; i++ {
 		taskRuntime := &pbtask.RuntimeInfo{
 			State:   pbtask.TaskState_RUNNING,
