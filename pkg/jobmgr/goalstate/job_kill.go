@@ -179,16 +179,23 @@ func killJob(
 		jobRuntime,
 		runtimeDiffNonTerminatedTasks,
 	)
+
+	runtimeUpdate := &job.RuntimeInfo{
+		State:        jobState,
+		StateVersion: jobRuntime.DesiredStateVersion,
+	}
+
+	if util.IsPelotonJobStateTerminal(jobState) {
+		runtimeUpdate.CompletionTime = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+
 	// update job state as well as state version,
 	// once state version == desired state version,
 	// goal state engine knows that the all the tasks
 	// are being sent to task goal state engine to kill and
 	// no further action is needed.
 	err = cachedJob.Update(ctx, &job.JobInfo{
-		Runtime: &job.RuntimeInfo{
-			State:        jobState,
-			StateVersion: jobRuntime.DesiredStateVersion,
-		},
+		Runtime: runtimeUpdate,
 	}, nil,
 		cached.UpdateCacheAndDB)
 	if err != nil {

@@ -679,6 +679,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_KILLING() {
 			suite.Equal(jobInfo.Runtime.TaskStats[pbtask.TaskState_SUCCEEDED.String()], instanceCount/4)
 			stateCounts[pbtask.TaskState_KILLING.String()] = instanceCount / 4
 			suite.Equal(jobInfo.Runtime.TaskStats[pbtask.TaskState_KILLED.String()], instanceCount/2)
+			suite.Empty(jobInfo.Runtime.GetCompletionTime())
 		}).Return(nil)
 
 	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)

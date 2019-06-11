@@ -736,6 +736,9 @@ func setCompletionTime(
 			completionTime = formatTime(lastTaskUpdateTime, time.RFC3339Nano)
 		}
 		jobRuntimeUpdate.CompletionTime = completionTime
+	} else {
+		// in case job moves from terminal state to non-terminal state
+		jobRuntimeUpdate.CompletionTime = ""
 	}
 	return jobRuntimeUpdate
 }

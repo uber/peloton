@@ -703,6 +703,7 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob_AllTerminated() {
 			jobInfo *pbjob.JobInfo,
 			_ *models.ConfigAddOn,
 			_ cached.UpdateRequest) {
+			suite.NotEmpty(jobInfo.GetRuntime().GetCompletionTime())
 			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_KILLED)
 		}).
 		Return(nil)
