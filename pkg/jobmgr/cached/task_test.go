@@ -659,6 +659,8 @@ func (suite *TaskTestSuite) TestCompareAndSetTaskVersionError() {
 		pbjob.JobType_BATCH,
 	)
 	suite.NotNil(err)
+	suite.Nil(tt.runtime)
+	suite.Nil(tt.config)
 	suite.Equal(err, jobmgrcommon.UnexpectedVersionError)
 	suite.checkListenersNotCalled()
 }

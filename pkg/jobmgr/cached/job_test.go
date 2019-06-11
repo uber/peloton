@@ -582,6 +582,8 @@ func (suite *JobTestSuite) TestJobCompareAndSetRuntimeUnexpectedVersionError() {
 	}
 
 	_, err := suite.job.CompareAndSetRuntime(context.Background(), jobRuntime)
+	suite.Nil(suite.job.runtime)
+	suite.Nil(suite.job.config)
 	suite.Error(err)
 	suite.checkListenersNotCalled()
 }

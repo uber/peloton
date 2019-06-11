@@ -465,6 +465,7 @@ func (t *task) CompareAndSetTask(
 	// validate that the input version is the same as the version in cache
 	if runtime.GetRevision().GetVersion() !=
 		t.runtime.GetRevision().GetVersion() {
+		t.cleanTaskCache()
 		return nil, jobmgrcommon.UnexpectedVersionError
 	}
 

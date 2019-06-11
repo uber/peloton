@@ -889,6 +889,7 @@ func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.Runtim
 
 	if j.runtime.GetRevision().GetVersion() !=
 		jobRuntime.GetRevision().GetVersion() {
+		j.invalidateCache()
 		return nil, jobmgrcommon.UnexpectedVersionError
 	}
 
