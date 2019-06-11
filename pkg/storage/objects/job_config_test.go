@@ -19,7 +19,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/gocql/gocql"
 	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
@@ -31,6 +30,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 type JobConfigObjectTestSuite struct {
@@ -71,8 +71,7 @@ func (s *JobConfigObjectTestSuite) TestCreateGetDeleteJobConfig() {
 
 	_, _, err = jobConfigOps.Get(ctx, s.jobID, version)
 	s.Error(err)
-	s.Equal(err, gocql.ErrNotFound)
-
+	s.True(yarpcerrors.IsNotFound(err))
 }
 
 // TestGetCurrentVersion tests getting current version of JobConfigObject
@@ -128,7 +127,7 @@ func (s *JobConfigObjectTestSuite) TestCreateGetDeleteJobConfigFail() {
 
 	_, _, err = configOps.GetCurrentVersion(ctx, s.jobID)
 	s.Error(err)
-	s.Equal("Failed to get Job Runtime: DB Get failed: get failed", err.Error())
+	s.Equal("Failed to get Job Runtime: get failed", err.Error())
 
 	err = configOps.Delete(ctx, s.jobID, version)
 	s.Error(err)

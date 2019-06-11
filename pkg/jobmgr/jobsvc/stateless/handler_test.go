@@ -110,6 +110,7 @@ type statelessHandlerTestSuite struct {
 	jobIndexOps     *objectmocks.MockJobIndexOps
 	jobConfigOps    *objectmocks.MockJobConfigOps
 	jobNameToIDOps  *objectmocks.MockJobNameToIDOps
+	jobRuntimeOps   *objectmocks.MockJobRuntimeOps
 	secretInfoOps   *objectmocks.MockSecretInfoOps
 	activeRMTasks   *activermtaskmocks.MockActiveRMTasks
 }
@@ -126,6 +127,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.jobIndexOps = objectmocks.NewMockJobIndexOps(suite.ctrl)
 	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
+	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.ctrl)
 	suite.jobNameToIDOps = objectmocks.NewMockJobNameToIDOps(suite.ctrl)
 	suite.secretInfoOps = objectmocks.NewMockSecretInfoOps(suite.ctrl)
 	suite.respoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
@@ -143,6 +145,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 		taskStore:       suite.taskStore,
 		jobIndexOps:     suite.jobIndexOps,
 		jobConfigOps:    suite.jobConfigOps,
+		jobRuntimeOps:   suite.jobRuntimeOps,
 		jobNameToIDOps:  suite.jobNameToIDOps,
 		secretInfoOps:   suite.secretInfoOps,
 		respoolClient:   suite.respoolClient,
@@ -299,10 +302,10 @@ func (suite *statelessHandlerTestSuite) TestGetJobConfigVersionError() {
 func (suite *statelessHandlerTestSuite) TestGetJobSuccess() {
 	instanceCount := uint32(5)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(
+	suite.jobRuntimeOps.EXPECT().
+		Get(
 			gomock.Any(),
-			testJobID,
+			testPelotonJobID,
 		).
 		Return(&pbjob.RuntimeInfo{
 			State:    pbjob.JobState_RUNNING,
@@ -367,10 +370,10 @@ func (suite *statelessHandlerTestSuite) TestGetJobSuccess() {
 // configuration, runtime and workflow information with DB error
 // when trying to fetch job configuration
 func (suite *statelessHandlerTestSuite) TestGetJobConfigGetError() {
-	suite.jobStore.EXPECT().
-		GetJobRuntime(
+	suite.jobRuntimeOps.EXPECT().
+		Get(
 			gomock.Any(),
-			testJobID,
+			testPelotonJobID,
 		).
 		Return(&pbjob.RuntimeInfo{}, nil)
 
@@ -395,10 +398,10 @@ func (suite *statelessHandlerTestSuite) TestGetJobConfigGetError() {
 // configuration, runtime and workflow information with DB error
 // when trying to fetch job runtime
 func (suite *statelessHandlerTestSuite) TestGetJobRuntimeGetError() {
-	suite.jobStore.EXPECT().
-		GetJobRuntime(
+	suite.jobRuntimeOps.EXPECT().
+		Get(
 			gomock.Any(),
-			testJobID,
+			testPelotonJobID,
 		).
 		Return(nil, fmt.Errorf("fake db error"))
 
@@ -417,10 +420,10 @@ func (suite *statelessHandlerTestSuite) TestGetJobRuntimeGetError() {
 func (suite *statelessHandlerTestSuite) TestGetJobUpdateGetError() {
 	instanceCount := uint32(5)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(
+	suite.jobRuntimeOps.EXPECT().
+		Get(
 			gomock.Any(),
-			testJobID,
+			testPelotonJobID,
 		).
 		Return(&pbjob.RuntimeInfo{
 			State:    pbjob.JobState_RUNNING,
@@ -625,8 +628,8 @@ func (suite *statelessHandlerTestSuite) TestRefreshJobSuccess() {
 		IsLeader().
 		Return(true)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), testJobID).
+	suite.jobRuntimeOps.EXPECT().
+		Get(gomock.Any(), testPelotonJobID).
 		Return(jobRuntime, nil)
 
 	suite.jobConfigOps.EXPECT().
@@ -857,10 +860,10 @@ func (suite *statelessHandlerTestSuite) TestRefreshJobGetConfigFail() {
 		IsLeader().
 		Return(true)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(
+	suite.jobRuntimeOps.EXPECT().
+		Get(
 			gomock.Any(),
-			testJobID,
+			testPelotonJobID,
 		).
 		Return(&pbjob.RuntimeInfo{}, nil)
 
@@ -882,8 +885,8 @@ func (suite *statelessHandlerTestSuite) TestRefreshJobGetRuntimeFail() {
 		IsLeader().
 		Return(true)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), testJobID).
+	suite.jobRuntimeOps.EXPECT().
+		Get(gomock.Any(), testPelotonJobID).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
 	resp, err := suite.handler.RefreshJob(context.Background(), &statelesssvc.RefreshJobRequest{
@@ -3429,8 +3432,8 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsSuccess() {
 		GetJobUpdateEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}).
 		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), testJobID).
+	suite.jobRuntimeOps.EXPECT().
+		Get(gomock.Any(), testPelotonJobID).
 		Return(&pbjob.RuntimeInfo{
 			State:    pbjob.JobState_RUNNING,
 			UpdateID: &peloton.UpdateID{Value: testUpdateID},
@@ -3562,8 +3565,8 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsGetUpdatesLimitInsta
 		GetJobUpdateEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}).
 		Return([]*stateless.WorkflowEvent{workflowEvent2}, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), testJobID).
+	suite.jobRuntimeOps.EXPECT().
+		Get(gomock.Any(), testPelotonJobID).
 		Return(&pbjob.RuntimeInfo{
 			State:    pbjob.JobState_RUNNING,
 			UpdateID: &peloton.UpdateID{Value: testUpdateID},
@@ -3647,8 +3650,8 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsGetUpdatesFailure() 
 		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), testJobID).
+	suite.jobRuntimeOps.EXPECT().
+		Get(gomock.Any(), testPelotonJobID).
 		Return(&pbjob.RuntimeInfo{
 			State:    pbjob.JobState_RUNNING,
 			UpdateID: &peloton.UpdateID{Value: testUpdateID},
@@ -3674,10 +3677,10 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsGetRuntimeFailure() 
 			{Value: testUpdateID2},
 		}, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(
+	suite.jobRuntimeOps.EXPECT().
+		Get(
 			gomock.Any(),
-			testJobID,
+			testPelotonJobID,
 		).
 		Return(nil, fmt.Errorf("fake db error"))
 
@@ -4057,8 +4060,8 @@ func (suite *statelessHandlerTestSuite) TestQueryPodsSuccess() {
 	}
 
 	gomock.InOrder(
-		suite.jobStore.EXPECT().
-			GetJobRuntime(gomock.Any(), testJobID).
+		suite.jobRuntimeOps.EXPECT().
+			Get(gomock.Any(), testPelotonJobID).
 			Return(&pbjob.RuntimeInfo{}, nil),
 
 		suite.jobConfigOps.EXPECT().
@@ -4110,10 +4113,10 @@ func (suite *statelessHandlerTestSuite) TestQueryPodsFailureJobRuntimeError() {
 		},
 	}
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(
+	suite.jobRuntimeOps.EXPECT().
+		Get(
 			gomock.Any(),
-			testJobID,
+			testPelotonJobID,
 		).
 		Return(&pbjob.RuntimeInfo{}, nil)
 
@@ -4141,8 +4144,8 @@ func (suite *statelessHandlerTestSuite) TestQueryPodsFailureQueryTasksError() {
 	}
 
 	gomock.InOrder(
-		suite.jobStore.EXPECT().
-			GetJobRuntime(gomock.Any(), testJobID).
+		suite.jobRuntimeOps.EXPECT().
+			Get(gomock.Any(), testPelotonJobID).
 			Return(&pbjob.RuntimeInfo{}, nil),
 
 		suite.jobConfigOps.EXPECT().

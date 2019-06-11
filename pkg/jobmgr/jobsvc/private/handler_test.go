@@ -69,6 +69,7 @@ type privateHandlerTestSuite struct {
 	taskStore       *storemocks.MockTaskStore
 	jobIndexOps     *objectmocks.MockJobIndexOps
 	jobConfigOps    *objectmocks.MockJobConfigOps
+	jobRuntimeOps   *objectmocks.MockJobRuntimeOps
 }
 
 func (suite *privateHandlerTestSuite) SetupTest() {
@@ -83,6 +84,7 @@ func (suite *privateHandlerTestSuite) SetupTest() {
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.jobIndexOps = objectmocks.NewMockJobIndexOps(suite.ctrl)
 	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
+	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.ctrl)
 	suite.handler = &serviceHandler{
 		jobFactory:      suite.jobFactory,
 		candidate:       suite.candidate,
@@ -92,6 +94,7 @@ func (suite *privateHandlerTestSuite) SetupTest() {
 		taskStore:       suite.taskStore,
 		jobIndexOps:     suite.jobIndexOps,
 		jobConfigOps:    suite.jobConfigOps,
+		jobRuntimeOps:   suite.jobRuntimeOps,
 		rootCtx:         context.Background(),
 	}
 }
@@ -193,8 +196,8 @@ func (suite *privateHandlerTestSuite) TestRefreshJobSuccess() {
 		IsLeader().
 		Return(true)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), testJobID).
+	suite.jobRuntimeOps.EXPECT().
+		Get(context.Background(), testPelotonJobID).
 		Return(jobRuntime, nil)
 
 	suite.jobConfigOps.EXPECT().
@@ -242,11 +245,8 @@ func (suite *privateHandlerTestSuite) TestRefreshJobGetConfigFail() {
 		IsLeader().
 		Return(true)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(
-			gomock.Any(),
-			testJobID,
-		).
+	suite.jobRuntimeOps.EXPECT().
+		Get(gomock.Any(), testPelotonJobID).
 		Return(&pbjob.RuntimeInfo{}, nil)
 
 	suite.jobConfigOps.EXPECT().
@@ -267,8 +267,8 @@ func (suite *privateHandlerTestSuite) TestRefreshJobGetRuntimeFail() {
 		IsLeader().
 		Return(true)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), testJobID).
+	suite.jobRuntimeOps.EXPECT().
+		Get(context.Background(), testPelotonJobID).
 		Return(nil, yarpcerrors.InternalErrorf("test error"))
 
 	resp, err := suite.handler.RefreshJob(context.Background(), &jobmgrsvc.RefreshJobRequest{

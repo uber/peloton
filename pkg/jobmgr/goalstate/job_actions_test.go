@@ -58,6 +58,7 @@ type jobActionsTestSuite struct {
 	jobStore              *storemocks.MockJobStore
 	updateStore           *storemocks.MockUpdateStore
 	jobIndexOps           *ormmocks.MockJobIndexOps
+	jobRuntimeOps         *ormmocks.MockJobRuntimeOps
 }
 
 func (suite *jobActionsTestSuite) SetupTest() {
@@ -70,17 +71,19 @@ func (suite *jobActionsTestSuite) SetupTest() {
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
 	suite.updateGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.jobIndexOps = ormmocks.NewMockJobIndexOps(suite.ctrl)
+	suite.jobRuntimeOps = ormmocks.NewMockJobRuntimeOps(suite.ctrl)
 
 	suite.goalStateDriver = &driver{
-		updateStore:  suite.updateStore,
-		updateEngine: suite.updateGoalStateEngine,
-		jobStore:     suite.jobStore,
-		jobEngine:    suite.jobGoalStateEngine,
-		taskEngine:   suite.taskGoalStateEngine,
-		jobFactory:   suite.jobFactory,
-		jobIndexOps:  suite.jobIndexOps,
-		mtx:          NewMetrics(tally.NoopScope),
-		cfg:          &Config{},
+		updateStore:   suite.updateStore,
+		updateEngine:  suite.updateGoalStateEngine,
+		jobStore:      suite.jobStore,
+		jobEngine:     suite.jobGoalStateEngine,
+		taskEngine:    suite.taskGoalStateEngine,
+		jobFactory:    suite.jobFactory,
+		jobIndexOps:   suite.jobIndexOps,
+		jobRuntimeOps: suite.jobRuntimeOps,
+		mtx:           NewMetrics(tally.NoopScope),
+		cfg:           &Config{},
 	}
 	suite.goalStateDriver.cfg.normalize()
 
@@ -580,8 +583,8 @@ func (suite *jobActionsTestSuite) TestJobReloadRuntimeSuccess() {
 			AddJob(suite.jobID).
 			Return(suite.cachedJob),
 
-		suite.jobStore.EXPECT().
-			GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+		suite.jobRuntimeOps.EXPECT().
+			Get(context.Background(), suite.jobID).
 			Return(jobRuntime, nil),
 
 		suite.cachedJob.EXPECT().
@@ -609,8 +612,8 @@ func (suite *jobActionsTestSuite) TestJobReloadGetJobRuntimeFailure() {
 			AddJob(suite.jobID).
 			Return(suite.cachedJob),
 
-		suite.jobStore.EXPECT().
-			GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+		suite.jobRuntimeOps.EXPECT().
+			Get(context.Background(), suite.jobID).
 			Return(nil, yarpcerrors.InternalErrorf("test error")),
 
 		suite.cachedJob.EXPECT().
@@ -641,8 +644,8 @@ func (suite *jobActionsTestSuite) TestJobReloadRuntimeUpdateFailure() {
 			AddJob(suite.jobID).
 			Return(suite.cachedJob),
 
-		suite.jobStore.EXPECT().
-			GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+		suite.jobRuntimeOps.EXPECT().
+			Get(context.Background(), suite.jobID).
 			Return(jobRuntime, nil),
 
 		suite.cachedJob.EXPECT().
@@ -669,8 +672,8 @@ func (suite *jobActionsTestSuite) TestJobReloadRuntimeJobNotFound() {
 			AddJob(suite.jobID).
 			Return(suite.cachedJob),
 
-		suite.jobStore.EXPECT().
-			GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+		suite.jobRuntimeOps.EXPECT().
+			Get(context.Background(), suite.jobID).
 			Return(nil, yarpcerrors.NotFoundErrorf("test error")),
 
 		suite.jobFactory.EXPECT().

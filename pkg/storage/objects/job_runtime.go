@@ -113,7 +113,7 @@ func (d *jobRuntimeOps) Upsert(
 	}
 
 	if err := d.store.oClient.Create(ctx, obj); err != nil {
-		return errors.Wrap(err, "DB Create failed")
+		return err
 	}
 
 	return nil
@@ -129,7 +129,7 @@ func (d *jobRuntimeOps) Get(
 	}
 
 	if err := d.store.oClient.Get(ctx, obj); err != nil {
-		return nil, errors.Wrap(err, "DB Get failed")
+		return nil, err
 	}
 
 	runtime := &job.RuntimeInfo{}
@@ -149,7 +149,7 @@ func (d *jobRuntimeOps) Delete(
 		JobID: id.GetValue(),
 	}
 	if err := d.store.oClient.Delete(ctx, obj); err != nil {
-		return errors.Wrap(err, "DB Delete failed")
+		return err
 	}
 
 	return nil

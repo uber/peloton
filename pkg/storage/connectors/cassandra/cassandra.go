@@ -108,6 +108,12 @@ var _ orm.Connector = (*cassandraConnector)(nil)
 // We cannot just use err.Error() as a tag because it contains invalid
 // characters like = : etc. which will be rejected by M3
 func getGocqlErrorTag(err error) string {
+	if yarpcerrors.IsAlreadyExists(err) {
+		return "already_exists"
+	}
+	if yarpcerrors.IsNotFound(err) {
+		return "not_found"
+	}
 	switch err.(type) {
 	case *gocql.RequestErrReadFailure:
 		return "read_failure"
@@ -349,6 +355,9 @@ func (c *cassandraConnector) Get(
 	result := buildResultRow(e, colNamesToRead)
 
 	if err := q.Scan(result...); err != nil {
+		if err == gocql.ErrNotFound {
+			err = yarpcerrors.NotFoundErrorf(err.Error())
+		}
 		sendCounters(c.executeFailScope, e.Name, get, err)
 		return nil, err
 	}

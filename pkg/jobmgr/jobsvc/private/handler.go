@@ -47,6 +47,7 @@ type serviceHandler struct {
 	taskStore       storage.TaskStore
 	jobIndexOps     ormobjects.JobIndexOps
 	jobConfigOps    ormobjects.JobConfigOps
+	jobRuntimeOps   ormobjects.JobRuntimeOps
 	jobNameToIDOps  ormobjects.JobNameToIDOps
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
@@ -72,6 +73,7 @@ func InitPrivateJobServiceHandler(
 		taskStore:       taskStore,
 		jobIndexOps:     ormobjects.NewJobIndexOps(ormStore),
 		jobConfigOps:    ormobjects.NewJobConfigOps(ormStore),
+		jobRuntimeOps:   ormobjects.NewJobRuntimeOps(ormStore),
 		jobNameToIDOps:  ormobjects.NewJobNameToIDOps(ormStore),
 		jobFactory:      jobFactory,
 		goalStateDriver: goalStateDriver,
@@ -171,7 +173,7 @@ func (h *serviceHandler) RefreshJob(
 
 	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
 
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.GetJobId().GetValue())
+	jobRuntime, err := h.jobRuntimeOps.Get(ctx, pelotonJobID)
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to get job runtime")
 	}

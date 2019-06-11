@@ -33,6 +33,7 @@ import (
 	launchermocks "github.com/uber/peloton/pkg/jobmgr/task/launcher/mocks"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
 	ormStore "github.com/uber/peloton/pkg/storage/objects"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -52,6 +53,8 @@ type DriverTestSuite struct {
 	taskGoalStateEngine   *goalstatemocks.MockEngine
 	jobStore              *storemocks.MockJobStore
 	taskStore             *storemocks.MockTaskStore
+	jobConfigOps          *objectmocks.MockJobConfigOps
+	jobRuntimeOps         *objectmocks.MockJobRuntimeOps
 	jobFactory            *cachedmocks.MockJobFactory
 	goalStateDriver       *driver
 	cachedJob             *cachedmocks.MockJob
@@ -71,6 +74,8 @@ func (suite *DriverTestSuite) SetupTest() {
 	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
+	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
+	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.goalStateDriver = &driver{
 		jobEngine:                     suite.jobGoalStateEngine,
@@ -78,6 +83,8 @@ func (suite *DriverTestSuite) SetupTest() {
 		updateEngine:                  suite.updateGoalStateEngine,
 		jobStore:                      suite.jobStore,
 		taskStore:                     suite.taskStore,
+		jobConfigOps:                  suite.jobConfigOps,
+		jobRuntimeOps:                 suite.jobRuntimeOps,
 		jobFactory:                    suite.jobFactory,
 		mtx:                           NewMetrics(tally.NoopScope),
 		jobScope:                      tally.NoopScope,
@@ -234,15 +241,15 @@ func (suite *DriverTestSuite) prepareTestSyncDB(jobType job.JobType) {
 		GetActiveJobs(gomock.Any()).
 		Return([]*peloton.JobID{suite.jobID}, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobRuntimeOps.EXPECT().
+		Get(gomock.Any(), suite.jobID).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_RUNNING,
 			GoalState: job.JobState_SUCCEEDED,
 		}, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobConfigOps.EXPECT().
+		Get(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().
@@ -353,15 +360,15 @@ func (suite *DriverTestSuite) TestSyncFromDBWithMaxRunningInstancesSLA() {
 		GetActiveJobs(gomock.Any()).
 		Return([]*peloton.JobID{suite.jobID}, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobRuntimeOps.EXPECT().
+		Get(gomock.Any(), suite.jobID).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_RUNNING,
 			GoalState: job.JobState_SUCCEEDED,
 		}, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobConfigOps.EXPECT().
+		Get(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().
@@ -430,15 +437,15 @@ func (suite *DriverTestSuite) TestInitializedJobSyncFromDB() {
 		GetActiveJobs(gomock.Any()).
 		Return([]*peloton.JobID{suite.jobID}, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobRuntimeOps.EXPECT().
+		Get(gomock.Any(), suite.jobID).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_INITIALIZED,
 			GoalState: job.JobState_SUCCEEDED,
 		}, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobConfigOps.EXPECT().
+		Get(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().
@@ -500,16 +507,16 @@ func (suite *DriverTestSuite) TestSyncFromDBRecoverUpdate() {
 		GetActiveJobs(gomock.Any()).
 		Return([]*peloton.JobID{suite.jobID}, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobRuntimeOps.EXPECT().
+		Get(gomock.Any(), suite.jobID).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_RUNNING,
 			GoalState: job.JobState_SUCCEEDED,
 			UpdateID:  updateID,
 		}, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobConfigOps.EXPECT().
+		Get(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().

@@ -65,6 +65,7 @@ type serviceHandler struct {
 	taskStore       storage.TaskStore
 	jobIndexOps     ormobjects.JobIndexOps
 	jobConfigOps    ormobjects.JobConfigOps
+	jobRuntimeOps   ormobjects.JobRuntimeOps
 	jobNameToIDOps  ormobjects.JobNameToIDOps
 	secretInfoOps   ormobjects.SecretInfoOps
 	respoolClient   respool.ResourceManagerYARPCClient
@@ -107,6 +108,7 @@ func InitV1AlphaJobServiceHandler(
 		taskStore:      taskStore,
 		jobIndexOps:    ormobjects.NewJobIndexOps(ormStore),
 		jobConfigOps:   ormobjects.NewJobConfigOps(ormStore),
+		jobRuntimeOps:  ormobjects.NewJobRuntimeOps(ormStore),
 		jobNameToIDOps: ormobjects.NewJobNameToIDOps(ormStore),
 		secretInfoOps:  ormobjects.NewSecretInfoOps(ormStore),
 		respoolClient: respool.NewResourceManagerYARPCClient(
@@ -938,10 +940,12 @@ func (h *serviceHandler) GetJob(
 		return h.getJobConfigurationWithVersion(ctx, req.GetJobId(), req.GetVersion())
 	}
 
+	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
+
 	// Get the latest configuration and runtime
-	jobRuntime, err := h.jobStore.GetJobRuntime(
+	jobRuntime, err := h.jobRuntimeOps.Get(
 		ctx,
-		req.GetJobId().GetValue(),
+		pelotonJobID,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get job status")
@@ -949,7 +953,7 @@ func (h *serviceHandler) GetJob(
 
 	jobConfig, _, err := h.jobConfigOps.Get(
 		ctx,
-		&peloton.JobID{Value: req.GetJobId().GetValue()},
+		pelotonJobID,
 		jobRuntime.GetConfigurationVersion(),
 	)
 	if err != nil {
@@ -1174,14 +1178,14 @@ func (h *serviceHandler) QueryPods(
 
 	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
 
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.GetJobId().GetValue())
+	jobRuntime, err := h.jobRuntimeOps.Get(ctx, pelotonJobID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to find job runtime")
 	}
 
 	_, _, err = h.jobConfigOps.Get(
 		ctx,
-		&peloton.JobID{Value: req.GetJobId().GetValue()},
+		pelotonJobID,
 		jobRuntime.GetConfigurationVersion())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to find job")
@@ -1377,8 +1381,9 @@ func (h *serviceHandler) ListJobWorkflows(
 	}
 
 	var updateInfos []*stateless.WorkflowInfo
+	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
 
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.GetJobId().GetValue())
+	jobRuntime, err := h.jobRuntimeOps.Get(ctx, pelotonJobID)
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to get job runtime")
 	}
@@ -1582,14 +1587,14 @@ func (h *serviceHandler) RefreshJob(
 
 	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
 
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.GetJobId().GetValue())
+	jobRuntime, err := h.jobRuntimeOps.Get(ctx, pelotonJobID)
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to get job runtime")
 	}
 
 	jobConfig, configAddOn, err := h.jobConfigOps.Get(
 		ctx,
-		&peloton.JobID{Value: req.GetJobId().GetValue()},
+		pelotonJobID,
 		jobRuntime.GetConfigurationVersion())
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to get job config")

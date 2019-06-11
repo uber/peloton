@@ -142,6 +142,7 @@ func NewDriver(
 		updateStore:                   updateStore,
 		jobConfigOps:                  ormobjects.NewJobConfigOps(ormStore),
 		jobIndexOps:                   ormobjects.NewJobIndexOps(ormStore),
+		jobRuntimeOps:                 ormobjects.NewJobRuntimeOps(ormStore),
 		jobFactory:                    jobFactory,
 		taskLauncher:                  taskLauncher,
 		mtx:                           NewMetrics(scope),
@@ -195,12 +196,13 @@ type driver struct {
 	resmgrClient  resmgrsvc.ResourceManagerServiceYARPCClient
 
 	// jobStore, taskStore and volumeStore are the objects to the storage interface.
-	jobStore     storage.JobStore
-	taskStore    storage.TaskStore
-	volumeStore  storage.PersistentVolumeStore
-	updateStore  storage.UpdateStore
-	jobConfigOps ormobjects.JobConfigOps // DB ops for job_config table
-	jobIndexOps  ormobjects.JobIndexOps  // DB ops for job_index table
+	jobStore      storage.JobStore
+	taskStore     storage.TaskStore
+	volumeStore   storage.PersistentVolumeStore
+	updateStore   storage.UpdateStore
+	jobConfigOps  ormobjects.JobConfigOps  // DB ops for job_config table
+	jobRuntimeOps ormobjects.JobRuntimeOps // DB ops for job_runtime table
+	jobIndexOps   ormobjects.JobIndexOps   // DB ops for job_index table
 
 	// jobFactory is the in-memory cache object fpr jobs and tasks
 	jobFactory cached.JobFactory
@@ -391,6 +393,8 @@ func (d *driver) syncFromDB(ctx context.Context) error {
 		ctx,
 		d.jobScope,
 		d.jobStore,
+		d.jobConfigOps,
+		d.jobRuntimeOps,
 		d.recoverTasks,
 	); err != nil {
 		return err

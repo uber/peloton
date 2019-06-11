@@ -25,7 +25,6 @@ import (
 	"github.com/uber/peloton/pkg/storage/cassandra/impl"
 	"github.com/uber/peloton/pkg/storage/objects/base"
 
-	"github.com/gocql/gocql"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc/yarpcerrors"
@@ -192,7 +191,7 @@ func (suite *CassandraConnSuite) TestCreateGetDelete() {
 	// read the row from C* test table for given keys
 	row, err = connector.Get(context.Background(), obj, keyRow)
 	suite.Error(err)
-	suite.Equal(err, gocql.ErrNotFound)
+	suite.True(yarpcerrors.IsNotFound(err))
 
 	// delete this row again from C*. It is a noop for C*
 	// this should not result in error.

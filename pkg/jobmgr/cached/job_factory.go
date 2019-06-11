@@ -66,6 +66,7 @@ type jobFactory struct {
 	volumeStore    storage.PersistentVolumeStore // storage volume store object
 	jobIndexOps    ormobjects.JobIndexOps        // DB ops for job_index table
 	jobConfigOps   ormobjects.JobConfigOps       // DB ops for job_config table
+	jobRuntimeOps  ormobjects.JobRuntimeOps      // DB ops for job_runtime table
 	jobNameToIDOps ormobjects.JobNameToIDOps     // DB ops for job_name_to_id table
 	mtx            *Metrics                      // cache metrics
 	taskMetrics    *TaskMetrics                  // task metrics
@@ -93,6 +94,7 @@ func InitJobFactory(
 		volumeStore:    volumeStore,
 		jobIndexOps:    ormobjects.NewJobIndexOps(ormStore),
 		jobConfigOps:   ormobjects.NewJobConfigOps(ormStore),
+		jobRuntimeOps:  ormobjects.NewJobRuntimeOps(ormStore),
 		jobNameToIDOps: ormobjects.NewJobNameToIDOps(ormStore),
 		mtx:            NewMetrics(parentScope.SubScope("cache")),
 		taskMetrics:    NewTaskMetrics(parentScope.SubScope("task")),

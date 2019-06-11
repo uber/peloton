@@ -39,6 +39,7 @@ import (
 	"github.com/uber/peloton/pkg/resmgr/respool"
 	"github.com/uber/peloton/pkg/resmgr/respool/respoolsvc"
 	"github.com/uber/peloton/pkg/resmgr/task"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 	"github.com/uber/peloton/pkg/storage/stores"
 
 	log "github.com/sirupsen/logrus"
@@ -270,6 +271,12 @@ func main() {
 	mux.HandleFunc(buildversion.Get, buildversion.Handler(version))
 
 	store := stores.MustCreateStore(&cfg.Storage, rootScope)
+	ormStore, ormErr := ormobjects.NewCassandraStore(
+		&cfg.Storage.Cassandra,
+		rootScope)
+	if ormErr != nil {
+		log.WithError(ormErr).Fatal("Failed to create ORM store for Cassandra")
+	}
 
 	// Create both HTTP and GRPC inbounds
 	inbounds := rpc.NewInbounds(
@@ -426,6 +433,8 @@ func main() {
 		rootScope,
 		store, // store implements JobStore
 		store, // store implements TaskStore
+		ormobjects.NewJobConfigOps(ormStore),
+		ormobjects.NewJobRuntimeOps(ormStore),
 		serviceHandler,
 		tree,
 		cfg.ResManager,

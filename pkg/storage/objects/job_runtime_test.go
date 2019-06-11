@@ -17,11 +17,9 @@ package objects
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
-	"github.com/gocql/gocql"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	ormmocks "github.com/uber/peloton/pkg/storage/orm/mocks"
@@ -30,6 +28,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 type JobRuntimeObjectTestSuite struct {
@@ -64,8 +63,7 @@ func (s *JobRuntimeObjectTestSuite) TestUpsertGetDeleteJobRuntime() {
 
 	_, err = jobRuntimeOps.Get(ctx, s.jobID)
 	s.Error(err)
-
-	s.Equal(err.Error(), fmt.Sprintf("DB Get failed: %s", gocql.ErrNotFound))
+	s.True(yarpcerrors.IsNotFound(err))
 }
 
 // TestCreateGetDeleteJobRuntimeFail tests failure cases due to ORM Client errors
@@ -88,15 +86,15 @@ func (s *JobRuntimeObjectTestSuite) TestCreateGetDeleteJobRuntimeFail() {
 
 	err := runtimeOps.Upsert(ctx, s.jobID, s.runtime)
 	s.Error(err)
-	s.Equal("DB Create failed: create failed", err.Error())
+	s.Equal("create failed", err.Error())
 
 	_, err = runtimeOps.Get(ctx, s.jobID)
 	s.Error(err)
-	s.Equal("DB Get failed: get failed", err.Error())
+	s.Equal("get failed", err.Error())
 
 	err = runtimeOps.Delete(ctx, s.jobID)
 	s.Error(err)
-	s.Equal("DB Delete failed: delete failed", err.Error())
+	s.Equal("delete failed", err.Error())
 }
 
 func (s *JobRuntimeObjectTestSuite) buildRuntime() {

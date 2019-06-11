@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gocql/gocql"
 	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
@@ -32,6 +31,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 type JobIndexObjectTestSuite struct {
@@ -147,7 +147,7 @@ func (s *JobIndexObjectTestSuite) TestCreateDeleteJobIndex() {
 		s.NoError(err)
 		_, err = db.Get(ctx, jobID)
 		s.Error(err)
-		s.Equal(err, gocql.ErrNotFound)
+		s.True(yarpcerrors.IsNotFound(err))
 	}
 }
 

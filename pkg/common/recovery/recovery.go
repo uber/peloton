@@ -25,6 +25,7 @@ import (
 
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/storage"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -159,6 +160,8 @@ func recoverJob(
 func recoverJobsBatch(
 	ctx context.Context,
 	jobStore storage.JobStore,
+	jobConfigOps ormobjects.JobConfigOps,
+	jobRuntimeOps ormobjects.JobRuntimeOps,
 	batch JobsBatch,
 	errChan chan<- error,
 	summaryChan chan<- jobRecoverySummary,
@@ -168,7 +171,7 @@ func recoverJobsBatch(
 	defer deleteWg.Wait()
 
 	for _, jobID := range batch.jobs {
-		jobRuntime, err := jobStore.GetJobRuntime(ctx, jobID.GetValue())
+		jobRuntime, err := jobRuntimeOps.Get(ctx, &jobID)
 		if err != nil {
 			log.WithField("job_id", jobID.Value).
 				WithError(err).
@@ -177,7 +180,7 @@ func recoverJobsBatch(
 			// The job ids here are queried on the materialized view by state.
 			// There have been situations where job is deleted from job_runtime but
 			// the materialized view does not get updated and the job still shows up.
-			// so if you call GetJobRuntime for such a job, it will get a error.
+			// so if you get job_runtime for such a job, it will get a error.
 			// In this case, we should log the job_id and skip to next job_id instead
 			// of bailing out of the recovery code.
 
@@ -195,7 +198,11 @@ func recoverJobsBatch(
 			continue
 		}
 
-		jobConfig, configAddOn, err := jobStore.GetJobConfig(ctx, jobID.GetValue())
+		jobConfig, configAddOn, err := jobConfigOps.Get(
+			ctx,
+			&jobID,
+			jobRuntime.GetConfigurationVersion(),
+		)
 		if err != nil {
 			log.WithField("job_id", jobID.Value).
 				WithError(err).
@@ -263,6 +270,8 @@ func RecoverActiveJobs(
 	ctx context.Context,
 	parentScope tally.Scope,
 	jobStore storage.JobStore,
+	jobConfigOps ormobjects.JobConfigOps,
+	jobRuntimeOps ormobjects.JobRuntimeOps,
 	f RecoverBatchTasks,
 ) error {
 
@@ -293,7 +302,16 @@ func RecoverActiveJobs(
 		bwg.Add(1)
 		go func(batch JobsBatch) {
 			defer bwg.Done()
-			recoverJobsBatch(ctx, jobStore, batch, errChan, summaryChan, f)
+			recoverJobsBatch(
+				ctx,
+				jobStore,
+				jobConfigOps,
+				jobRuntimeOps,
+				batch,
+				errChan,
+				summaryChan,
+				f,
+			)
 		}(batch)
 	}
 

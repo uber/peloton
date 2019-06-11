@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 
 	"github.com/uber/peloton/pkg/common/goalstate"
@@ -308,7 +309,10 @@ func JobReloadRuntime(
 
 	cachedJob := goalStateDriver.jobFactory.AddJob(jobEnt.id)
 
-	jobRuntime, err := goalStateDriver.jobStore.GetJobRuntime(ctx, jobEnt.GetID())
+	jobRuntime, err := goalStateDriver.jobRuntimeOps.Get(
+		ctx,
+		&peloton.JobID{Value: jobEnt.GetID()},
+	)
 	if yarpcerrors.IsNotFound(err) {
 		// runtime is not created, see if config is created and the job is
 		// recoverable.

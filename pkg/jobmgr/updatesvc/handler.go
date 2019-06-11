@@ -30,6 +30,7 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
 	jobutil "github.com/uber/peloton/pkg/jobmgr/util/job"
 	"github.com/uber/peloton/pkg/storage"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
@@ -41,13 +42,14 @@ import (
 func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
-	jobStore storage.JobStore,
+	ormStore *ormobjects.Store,
 	updateStore storage.UpdateStore,
 	goalStateDriver goalstate.Driver,
 	jobFactory cached.JobFactory,
 ) {
 	handler := &serviceHandler{
-		jobStore:        jobStore,
+		jobConfigOps:    ormobjects.NewJobConfigOps(ormStore),
+		jobRuntimeOps:   ormobjects.NewJobRuntimeOps(ormStore),
 		updateStore:     updateStore,
 		goalStateDriver: goalStateDriver,
 		jobFactory:      jobFactory,
@@ -59,7 +61,8 @@ func InitServiceHandler(
 
 // serviceHandler implements peloton.api.update.svc
 type serviceHandler struct {
-	jobStore        storage.JobStore
+	jobConfigOps    ormobjects.JobConfigOps
+	jobRuntimeOps   ormobjects.JobRuntimeOps
 	updateStore     storage.UpdateStore
 	goalStateDriver goalstate.Driver
 	jobFactory      cached.JobFactory
@@ -113,6 +116,7 @@ func (h *serviceHandler) CreateUpdate(
 	h.metrics.UpdateAPICreate.Inc(1)
 
 	jobID := req.GetJobId()
+	pelotonJobID := &peloton.JobID{Value: jobID.GetValue()}
 	jobUUID := uuid.Parse(jobID.GetValue())
 	if jobUUID == nil {
 		// job uuid is not a uuid
@@ -126,7 +130,7 @@ func (h *serviceHandler) CreateUpdate(
 	}
 
 	// Validate that the job does exist
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID.GetValue())
+	jobRuntime, err := h.jobRuntimeOps.Get(ctx, pelotonJobID)
 	if err != nil {
 		h.metrics.UpdateCreateFail.Inc(1)
 		return nil, yarpcerrors.NotFoundErrorf("job not found")
@@ -141,7 +145,11 @@ func (h *serviceHandler) CreateUpdate(
 	jobConfig := req.GetJobConfig()
 
 	// Get previous job configuration
-	prevJobConfig, prevConfigAddOn, err := h.jobStore.GetJobConfig(ctx, jobID.GetValue())
+	prevJobConfig, prevConfigAddOn, err := h.jobConfigOps.Get(
+		ctx,
+		pelotonJobID,
+		jobRuntime.GetConfigurationVersion(),
+	)
 	if err != nil {
 		h.metrics.UpdateCreateFail.Inc(1)
 		return nil, err

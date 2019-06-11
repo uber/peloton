@@ -526,7 +526,7 @@ func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (
 		return nil, yarpcerrors.UnavailableErrorf("Job Refresh API not suppported on non-leader")
 	}
 
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.GetId().GetValue())
+	jobRuntime, err := h.jobRuntimeOps.Get(ctx, req.GetId())
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", req.GetId().GetValue()).

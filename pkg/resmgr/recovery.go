@@ -33,6 +33,7 @@ import (
 	"github.com/uber/peloton/pkg/resmgr/respool"
 	rmtask "github.com/uber/peloton/pkg/resmgr/task"
 	"github.com/uber/peloton/pkg/storage"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -87,6 +88,8 @@ type RecoveryHandler struct {
 	scope           tally.Scope
 	jobStore        storage.JobStore
 	taskStore       storage.TaskStore
+	jobConfigOps    ormobjects.JobConfigOps
+	jobRuntimeOps   ormobjects.JobRuntimeOps
 	handler         *ServiceHandler
 	config          Config
 	hostmgrClient   hostsvc.InternalHostServiceYARPCClient
@@ -106,6 +109,8 @@ func NewRecovery(
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
+	jobConfigOps ormobjects.JobConfigOps,
+	jobRuntimeOps ormobjects.JobRuntimeOps,
 	handler *ServiceHandler,
 	tree respool.Tree,
 	config Config,
@@ -117,6 +122,8 @@ func NewRecovery(
 		config:        config,
 		jobStore:      jobStore,
 		taskStore:     taskStore,
+		jobConfigOps:  jobConfigOps,
+		jobRuntimeOps: jobRuntimeOps,
 		handler:       handler,
 		hostmgrClient: hostmgrClient,
 		tracker:       rmtask.GetTracker(),
@@ -156,6 +163,8 @@ func (r *RecoveryHandler) Start() error {
 		ctx,
 		r.scope,
 		r.jobStore,
+		r.jobConfigOps,
+		r.jobRuntimeOps,
 		r.requeueTasksInRange,
 	)
 	if err != nil {

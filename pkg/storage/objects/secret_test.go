@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gocql/gocql"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 type SecretInfoObjectTestSuite struct {
@@ -82,5 +82,5 @@ func (suite *SecretInfoObjectTestSuite) TestSecretInfoOps() {
 	// Not found error, because secret is deleted.
 	_, err = db.GetSecret(ctx, secretID)
 	suite.Error(err)
-	suite.Equal(err, gocql.ErrNotFound)
+	suite.True(yarpcerrors.IsNotFound(err))
 }

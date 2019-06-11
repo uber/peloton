@@ -695,7 +695,7 @@ func main() {
 	updatesvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
-		store, // store implements JobStore
+		ormStore,
 		store, // store implements UpdateStore
 		goalStateDriver,
 		jobFactory,

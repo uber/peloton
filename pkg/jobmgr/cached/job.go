@@ -853,8 +853,11 @@ func (j *job) createJobRuntime(ctx context.Context, config *pbjob.JobConfig, upd
 	// Init the task stats to reflect that all tasks are in initialized state
 	initialJobRuntime.TaskStats[pbtask.TaskState_INITIALIZED.String()] = config.InstanceCount
 
-	err := j.jobFactory.jobStore.CreateJobRuntime(ctx, j.id, initialJobRuntime)
-	if err != nil {
+	if err := j.jobFactory.jobRuntimeOps.Upsert(
+		ctx,
+		j.ID(),
+		initialJobRuntime,
+	); err != nil {
 		return err
 	}
 	j.runtime = initialJobRuntime
@@ -1109,9 +1112,9 @@ func (j *job) getUpdatedJobConfigCache(
 	req UpdateRequest) (*pbjob.JobConfig, error) {
 	if req == UpdateCacheAndDB {
 		if j.config == nil {
-			runtime, err := j.jobFactory.jobStore.GetJobRuntime(
+			runtime, err := j.jobFactory.jobRuntimeOps.Get(
 				ctx,
-				j.ID().GetValue(),
+				j.ID(),
 			)
 			if err != nil {
 				return nil, err
@@ -2365,7 +2368,7 @@ func (j *job) RecalculateResourceUsage(ctx context.Context) {
 
 func (j *job) populateRuntime(ctx context.Context) error {
 	if j.runtime == nil {
-		runtime, err := j.jobFactory.jobStore.GetJobRuntime(ctx, j.ID().GetValue())
+		runtime, err := j.jobFactory.jobRuntimeOps.Get(ctx, j.ID())
 		if err != nil {
 			return err
 		}

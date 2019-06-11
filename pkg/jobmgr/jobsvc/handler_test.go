@@ -94,6 +94,7 @@ type JobHandlerTestSuite struct {
 	mockedJobIndexOps     *objectmocks.MockJobIndexOps
 	mockedSecretInfoOps   *objectmocks.MockSecretInfoOps
 	mockedJobConfigOps    *objectmocks.MockJobConfigOps
+	mockedJobRuntimeOps   *objectmocks.MockJobRuntimeOps
 }
 
 // helper to initialize mocks in JobHandlerTestSuite
@@ -112,11 +113,13 @@ func (suite *JobHandlerTestSuite) initializeMocks() {
 	suite.mockedJobIndexOps = objectmocks.NewMockJobIndexOps(suite.ctrl)
 	suite.mockedSecretInfoOps = objectmocks.NewMockSecretInfoOps(suite.ctrl)
 	suite.mockedJobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
+	suite.mockedJobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.ctrl)
 
 	suite.handler.jobStore = suite.mockedJobStore
 	suite.handler.taskStore = suite.mockedTaskStore
 	suite.handler.jobIndexOps = suite.mockedJobIndexOps
 	suite.handler.jobConfigOps = suite.mockedJobConfigOps
+	suite.handler.jobRuntimeOps = suite.mockedJobRuntimeOps
 	suite.handler.secretInfoOps = suite.mockedSecretInfoOps
 	suite.handler.jobFactory = suite.mockedJobFactory
 	suite.handler.goalStateDriver = suite.mockedGoalStateDriver
@@ -1814,8 +1817,8 @@ func (suite *JobHandlerTestSuite) TestJobRefresh() {
 	}
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
-	suite.mockedJobStore.EXPECT().
-		GetJobRuntime(context.Background(), id.GetValue()).
+	suite.mockedJobRuntimeOps.EXPECT().
+		Get(context.Background(), id).
 		Return(jobRuntime, nil)
 	suite.mockedJobConfigOps.EXPECT().
 		Get(context.Background(), id, gomock.Any()).
@@ -1829,8 +1832,8 @@ func (suite *JobHandlerTestSuite) TestJobRefresh() {
 	suite.NoError(err)
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
-	suite.mockedJobStore.EXPECT().
-		GetJobRuntime(context.Background(), id.GetValue()).
+	suite.mockedJobRuntimeOps.EXPECT().
+		Get(context.Background(), id).
 		Return(jobRuntime, nil)
 	suite.mockedJobConfigOps.EXPECT().
 		Get(context.Background(), id, gomock.Any()).
@@ -1839,8 +1842,8 @@ func (suite *JobHandlerTestSuite) TestJobRefresh() {
 	suite.Error(err)
 
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
-	suite.mockedJobStore.EXPECT().
-		GetJobRuntime(context.Background(), id.GetValue()).
+	suite.mockedJobRuntimeOps.EXPECT().
+		Get(context.Background(), id).
 		Return(nil, fmt.Errorf("fake db error"))
 	_, err = suite.handler.Refresh(suite.context, &job.RefreshRequest{Id: id})
 	suite.Error(err)
