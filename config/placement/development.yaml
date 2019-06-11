@@ -11,7 +11,7 @@ election:
 placement:
   max_placement_duration: 30s
   max_durations:
-    batch: 15s
+    batch: 120s
 metrics:
   multi_reporter: true
   prometheus:

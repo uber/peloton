@@ -138,11 +138,6 @@ func (suite *BackoffPolicyTestSuite) TestAllCycleCompleted() {
 	suite.NotNil(policy)
 	isCompleted := policy.allCyclesCompleted(&resmgr.Task{
 		PlacementRetryCount:   0,
-		PlacementAttemptCount: 0,
-	}, config)
-	suite.EqualValues(isCompleted, false)
-	isCompleted = policy.allCyclesCompleted(&resmgr.Task{
-		PlacementRetryCount:   0,
 		PlacementAttemptCount: 2,
 	}, config)
 	suite.EqualValues(isCompleted, false)
