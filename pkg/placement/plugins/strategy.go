@@ -16,6 +16,7 @@ package plugins
 
 import (
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/pkg/common/scalar"
 	"github.com/uber/peloton/pkg/placement/models"
 )
 
@@ -39,4 +40,29 @@ type Strategy interface {
 	// go-routines to run the GetTaskPlacements method concurrently, else only one
 	// go-routine is allowed to run the GetTaskPlacements method at a time.
 	ConcurrencySafe() bool
+}
+
+// HostFilter is the interface that is needed to construct API calls to
+// HostManager to acquire host offers/leases.
+type HostFilter interface {
+	// Returns the minimum number of ports that each host needs.
+	GetMinPorts() uint64
+
+	// Returns the minimum number of FDs that each host needs.
+	GetMinFDs() uint32
+
+	// Returns the maximum number of hosts required.
+	GetMaxHosts() uint32
+
+	// GetHostHints returns a map from task/pod ID
+	// to preferred hostname.
+	GetHostHints() map[string]string
+
+	// TODO: Revocability
+	GetMinResources() scalar.Resources
+
+	// TODO: Constraint
+	// GetConstraint() *peloton_api_v0_task.Constraint
+
+	// TODO: RankingHint
 }
