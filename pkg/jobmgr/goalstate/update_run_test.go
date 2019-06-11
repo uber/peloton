@@ -2412,10 +2412,11 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstances() {
 		Do(func(_ context.Context, runtimes map[uint32]jobmgrcommon.RuntimeDiff) {
 			suite.Equal(2, len(runtimes))
 			for _, runtime := range runtimes {
-				suite.Equal(runtime[jobmgrcommon.GoalStateField],
-					pbtask.TaskState_DELETED)
-				suite.Equal(runtime[jobmgrcommon.DesiredConfigVersionField],
-					newJobConfigVer)
+				suite.Equal(pbtask.TaskState_DELETED, runtime[jobmgrcommon.GoalStateField])
+				suite.Equal(newJobConfigVer, runtime[jobmgrcommon.DesiredConfigVersionField])
+				suite.Equal(&pbtask.TerminationStatus{
+					Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_UPDATE,
+				}, runtime[jobmgrcommon.TerminationStatusField])
 			}
 		}).
 		Return(nil)

@@ -631,7 +631,10 @@ func removeInstancesInUpdate(
 			jobmgrcommon.GoalStateField:            pbtask.TaskState_DELETED,
 			jobmgrcommon.DesiredConfigVersionField: jobConfig.GetChangeLog().GetVersion(),
 			jobmgrcommon.MessageField:              "Task Count reduced via API",
-			jobmgrcommon.FailureCountField:         uint32(0),
+			jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
+				Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_UPDATE,
+			},
+			jobmgrcommon.FailureCountField: uint32(0),
 		}
 	}
 
