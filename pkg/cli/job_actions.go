@@ -35,7 +35,7 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"go.uber.org/multierr"
 	"go.uber.org/yarpc/yarpcerrors"
-	"gopkg.in/cheggaaa/pb.v1"
+	"gopkg.in/cheggaaa/pb.v2"
 	"gopkg.in/yaml.v2"
 )
 
