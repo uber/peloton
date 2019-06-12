@@ -15,12 +15,9 @@
 package models
 
 import (
-	"math"
-
 	log "github.com/sirupsen/logrus"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
-	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	peloton_api_v0_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
@@ -165,40 +162,6 @@ func (a *Assignment) GetFullHostFilter() *hostsvc.HostFilter {
 	return filter
 }
 
-// MergeHostFilter returns a new host filter that matches this assignment's
-// filter as well as the previous filter. resulting filter is the union
-// of the new and current filters either of the filters.
-// This method assumes that the SchedulingConstraint is the same for this
-// assignment and the passed in filter.
-func (a *Assignment) MergeHostFilter(
-	filter *hostsvc.HostFilter,
-) *hostsvc.HostFilter {
-	if filter == nil {
-		return a.GetFullHostFilter()
-	}
-
-	resmgrTask := a.GetTask().GetTask()
-	filter.Quantity.MaxHosts++
-	filter.Hint.HostHint = append(filter.Hint.HostHint,
-		a.GetHostHints()...)
-	filter.ResourceConstraint.NumPorts = uint32(
-		math.Max(float64(resmgrTask.NumPorts),
-			float64(filter.ResourceConstraint.NumPorts)),
-	)
-
-	filter.ResourceConstraint.Minimum = &task.ResourceConfig{
-		CpuLimit: math.Max(resmgrTask.GetResource().GetCpuLimit(),
-			filter.ResourceConstraint.GetMinimum().GetCpuLimit()),
-		GpuLimit: math.Max(resmgrTask.GetResource().GetGpuLimit(),
-			filter.ResourceConstraint.GetMinimum().GetGpuLimit()),
-		MemLimitMb: math.Max(resmgrTask.GetResource().GetMemLimitMb(),
-			filter.ResourceConstraint.GetMinimum().GetMemLimitMb()),
-		DiskLimitMb: math.Max(resmgrTask.GetResource().GetDiskLimitMb(),
-			filter.ResourceConstraint.GetMinimum().GetDiskLimitMb()),
-	}
-	return filter
-}
-
 // GroupByHostFilter groups the assignments according to the result of
 // a function that takes in an assignment.
 func (as Assignments) GroupByHostFilter(
@@ -216,19 +179,6 @@ func (as Assignments) GroupByHostFilter(
 		filters[filter] = append(filters[filter], a)
 	}
 	return filters
-}
-
-// MergeHostFilters merges the filters of all the assignment into a
-// single HostFilter that encapsulates all of their resource constraints.
-// It also takes care of aggregating all of the hints into that
-// filter, as well as a SchedulingConstraint and a Quantity.
-// Returns nil if the length of the assignment list is 0.
-func (as Assignments) MergeHostFilters() *hostsvc.HostFilter {
-	var filter *hostsvc.HostFilter
-	for _, a := range as {
-		filter = a.MergeHostFilter(filter)
-	}
-	return filter
 }
 
 // GetPlacementStrategy returns the placement strategy for this list

@@ -181,12 +181,16 @@ func TestMimirFilters(t *testing.T) {
 		testutil.SetupAssignment(deadline, 1),
 		testutil.SetupAssignment(deadline, 1),
 		testutil.SetupAssignment(deadline, 1),
+		testutil.SetupAssignment(deadline, 1),
+		testutil.SetupAssignment(deadline, 1),
 	}
 	// assignment[0] requires 1 port, default resources, no constraints
 	// assignment[1] requires 2 ports, default resources and default constraint
 	// assignment[2] requires 3 ports, 8 cpu, 16 gpu, 4096 disk,
 	// excl-host constraint
-	// assignment[3] requires 1 port, default resources, excl-host constraint
+	// assignment[3] requires 4 port, default resources, excl-host constraint
+	// assignment[4] requires 4 port, default resources, excl-host constraint
+	// assignment[5] requires 4 port, default resources, excl-host constraint
 	assignments[0].GetTask().GetTask().NumPorts = 1
 	assignments[0].GetTask().GetTask().Constraint = nil
 
@@ -198,8 +202,14 @@ func TestMimirFilters(t *testing.T) {
 	assignments[2].GetTask().GetTask().Resource.DiskLimitMb = 4096.0
 	assignments[2].GetTask().GetTask().Constraint = hostConstraint
 
-	assignments[3].GetTask().GetTask().NumPorts = 1
+	assignments[3].GetTask().GetTask().NumPorts = 4
 	assignments[3].GetTask().GetTask().Constraint = hostConstraint
+
+	assignments[4].GetTask().GetTask().NumPorts = 4
+	assignments[4].GetTask().GetTask().Constraint = hostConstraint
+
+	assignments[5].GetTask().GetTask().NumPorts = 4
+	assignments[5].GetTask().GetTask().Constraint = hostConstraint
 
 	taskTypes := []resmgr.TaskType{
 		resmgr.TaskType_BATCH,
@@ -211,7 +221,7 @@ func TestMimirFilters(t *testing.T) {
 		strategy.config.TaskType = taskType
 
 		results := strategy.Filters(assignments)
-		assert.Equal(t, 3, len(results))
+		assert.Equal(t, 4, len(results))
 
 		for filter, batch := range results {
 			assert.NotNil(t, filter)
@@ -245,17 +255,27 @@ func TestMimirFilters(t *testing.T) {
 				assert.EqualValues(t, assignments[1:2], batch)
 
 			case 3:
-				// assignment[2], assignment[3]
-				assert.Equal(t, 2, len(batch))
+				// assignment[2]
+				assert.Equal(t, 1, len(batch))
 				assert.Equal(t, hostConstraint, filter.SchedulingConstraint)
 				res := filter.GetResourceConstraint().GetMinimum()
-				assert.Equal(t, 32.0, res.GetCpuLimit())
+				assert.Equal(t, 8.0, res.GetCpuLimit())
 				assert.Equal(t, 16.0, res.GetGpuLimit())
 				assert.Equal(t, 4096.0, res.GetMemLimitMb())
 				assert.Equal(t, 4096.0, res.GetDiskLimitMb())
-				assert.Equal(t, uint32(2), filter.GetQuantity().GetMaxHosts())
-				assert.EqualValues(t, assignments[2:4], batch)
-
+				assert.Equal(t, uint32(1), filter.GetQuantity().GetMaxHosts())
+				assert.EqualValues(t, assignments[2:3], batch)
+			case 4:
+				// assignment[3], assignment[4], assignment[5]
+				assert.Equal(t, 3, len(batch))
+				assert.Equal(t, hostConstraint, filter.SchedulingConstraint)
+				res := filter.GetResourceConstraint().GetMinimum()
+				assert.Equal(t, 32.0, res.GetCpuLimit())
+				assert.Equal(t, 10.0, res.GetGpuLimit())
+				assert.Equal(t, 4096.0, res.GetMemLimitMb())
+				assert.Equal(t, 1024.0, res.GetDiskLimitMb())
+				assert.Equal(t, uint32(3), filter.GetQuantity().GetMaxHosts())
+				assert.EqualValues(t, assignments[3:6], batch)
 			default:
 				assert.Fail(t, "Unexpected value for NumPorts")
 			}

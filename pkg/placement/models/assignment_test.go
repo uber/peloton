@@ -122,15 +122,6 @@ func TestAssignment(t *testing.T) {
 		require.Equal(t, uint32(1), fullFilter.Quantity.MaxHosts)
 	})
 
-	t.Run("merge filter", func(t *testing.T) {
-		_, _, _, _, _, a1 := setupAssignmentVariables()
-		_, _, _, _, _, a2 := setupAssignmentVariables()
-		assignments := Assignments([]*Assignment{a1, a2})
-		filter := assignments.MergeHostFilters()
-		require.Nil(t, filter.SchedulingConstraint)
-		require.Equal(t, uint32(2), filter.Quantity.MaxHosts)
-	})
-
 	t.Run("fits", func(t *testing.T) {
 		_, _, _, _, _, a1 := setupAssignmentVariables()
 		resLeft := scalar.Resources{

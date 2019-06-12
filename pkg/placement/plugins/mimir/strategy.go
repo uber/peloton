@@ -163,50 +163,50 @@ func (mimir *mimir) GetTaskPlacements(
 }
 
 // Filters is an implementation of the placement.Strategy interface.
+// Constructs host-filter for a set of assignments that have the same
+// scheduling constraints, resource constraints and revocability.
 func (mimir *mimir) Filters(
 	assignments []*models.Assignment,
 ) map[*hostsvc.HostFilter][]*models.Assignment {
-	// Batch assignments by their scheduling constraints. For each batch,
-	// create a host filter that uses those scheduling constraints.
-	assignmentsByConstraint := make(map[string][]*models.Assignment)
-	for _, assignment := range assignments {
-		// String() function on protobuf message is nil-safe.
-		s := assignment.GetConstraint().String()
-		batch := assignmentsByConstraint[s]
-		batch = append(batch, assignment)
-		assignmentsByConstraint[s] = batch
-	}
-	result := make(map[*hostsvc.HostFilter][]*models.Assignment)
-	for _, batch := range assignmentsByConstraint {
-		if f := mimir.getFilterForEquivalentAssignments(batch); f != nil {
-			result[f] = batch
-		}
-	}
-	return result
-}
-
-// Constructs host-filter for a set of assignments that have the same
-// scheduling constraints and revocability. Resource constraints in the
-// filter are set to maximum resource requirements of all assignments.
-func (mimir *mimir) getFilterForEquivalentAssignments(
-	assignments []*models.Assignment,
-) *hostsvc.HostFilter {
 	if len(assignments) == 0 {
 		return nil
 	}
 
-	maxOffers := mimir.config.OfferDequeueLimit
+	filters := (models.Assignments(assignments)).GroupByHostFilter(
+		func(a *models.Assignment) *hostsvc.HostFilter {
+			return a.GetSimpleHostFilter()
+		},
+	)
+
+	result := map[*hostsvc.HostFilter][]*models.Assignment{}
 	factor := _offersFactor[mimir.config.TaskType]
-	neededOffers := math.Ceil(float64(len(assignments)) * factor)
-	if float64(maxOffers) > neededOffers {
-		maxOffers = int(neededOffers)
+	for filter, assigns := range filters {
+		maxOffers := mimir.config.OfferDequeueLimit
+		neededOffers := math.Ceil(float64(len(assigns)) * factor)
+		if float64(maxOffers) > neededOffers {
+			maxOffers = int(neededOffers)
+		}
+
+		filterWithQuantity := &hostsvc.HostFilter{
+			ResourceConstraint:   filter.GetResourceConstraint(),
+			SchedulingConstraint: filter.GetSchedulingConstraint(),
+			Quantity: &hostsvc.QuantityControl{
+				MaxHosts: uint32(maxOffers),
+			},
+			Hint: filter.GetHint(),
+		}
+
+		for _, assign := range assignments {
+			filterWithQuantity.Hint.HostHint = append(
+				filterWithQuantity.Hint.HostHint,
+				assign.GetHostHints()...,
+			)
+		}
+
+		result[filterWithQuantity] = assigns
 	}
 
-	filter := (models.Assignments(assignments)).MergeHostFilters()
-	filter.Quantity = &hostsvc.QuantityControl{
-		MaxHosts: uint32(maxOffers),
-	}
-	return filter
+	return result
 }
 
 // ConcurrencySafe is an implementation of the placement.Strategy interface.
