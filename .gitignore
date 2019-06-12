@@ -38,7 +38,6 @@ cover
 jenkins.xml
 .cache
 /env/
-.gen
 bin-linux/
 .vscode/
 /env_docs/
