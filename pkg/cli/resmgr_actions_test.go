@@ -19,7 +19,9 @@ import (
 	"fmt"
 	"testing"
 
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
@@ -168,4 +170,78 @@ func (suite *resmgrActionsTestSuite) TestClientGetPendingTasks() {
 		Return(resp, nil)
 	err = c.ResMgrGetPendingTasks("respool-1", 10)
 	suite.NoError(err)
+}
+
+// TestClientGetOrphanTasks tests getting orphan tasks
+func (suite *resmgrActionsTestSuite) TestClientGetOrphanTasks() {
+	c := Client{
+		Debug:        false,
+		resMgrClient: suite.mockRes,
+		dispatcher:   nil,
+		ctx:          suite.ctx,
+	}
+
+	orphanTasks := []*resmgr.Task{
+		{
+			TaskId: &mesos_v1.TaskID{
+				Value: &[]string{"test-task-1"}[0],
+			},
+			Hostname: "test-host-1",
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				GpuLimit:    0,
+				DiskLimitMb: 1024,
+				MemLimitMb:  512,
+				FdLimit:     2,
+			},
+		},
+		{
+			TaskId: &mesos_v1.TaskID{
+				Value: &[]string{"test-task-2"}[0],
+			},
+			Hostname: "test-host-2",
+			Resource: &task.ResourceConfig{
+				CpuLimit:    4,
+				GpuLimit:    3,
+				DiskLimitMb: 512,
+				MemLimitMb:  1024,
+				FdLimit:     0,
+			},
+		},
+	}
+	tt := []struct {
+		debug bool
+		resp  *resmgrsvc.GetOrphanTasksResponse
+		err   error
+	}{
+		{
+			resp: &resmgrsvc.GetOrphanTasksResponse{
+				OrphanTasks: orphanTasks,
+			},
+			err: nil,
+		},
+		{
+			resp: nil,
+			err:  fmt.Errorf("fake res error"),
+		},
+		{
+			debug: true,
+			resp: &resmgrsvc.GetOrphanTasksResponse{
+				OrphanTasks: orphanTasks,
+			},
+			err: nil,
+		},
+	}
+
+	for _, t := range tt {
+		c.Debug = t.debug
+		suite.mockRes.EXPECT().
+			GetOrphanTasks(gomock.Any(), gomock.Any()).
+			Return(t.resp, t.err)
+		if t.err != nil {
+			suite.Error(c.ResMgrGetOrphanTasks(""))
+		} else {
+			suite.NoError(c.ResMgrGetOrphanTasks(""))
+		}
+	}
 }

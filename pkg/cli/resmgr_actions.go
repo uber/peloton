@@ -25,6 +25,8 @@ import (
 const (
 	activeTaskListFormatHeader = "TaskID\tState\tHostname\tReason\tLast Update Time\n"
 	activeTaskListFormatBody   = "%s\t%s\t%s\t%s\t%s\n"
+	orphanTasksFormatHeader    = "TaskID\tHostname\tCPU\tGPU\tMemoryMB\tDiskMB\tFD\t\n"
+	orphanTasksFormatBody      = "%s\t%s\t%v\t%v\t%v\t%v\t%v\t\n"
 )
 
 // ResMgrGetActiveTasks fetches the active tasks from resource manager.
@@ -45,13 +47,13 @@ func (c *Client) ResMgrGetActiveTasks(jobID string, respoolID string, states str
 	if err != nil {
 		return err
 	}
+
 	printActiveTasksResponse(resp, c.Debug)
 	return nil
 }
 
 // ResMgrGetPendingTasks fetches the pending tasks from resource manager.
 func (c *Client) ResMgrGetPendingTasks(respoolID string, limit uint32) error {
-
 	var request = &resmgrsvc.GetPendingTasksRequest{
 		RespoolID: &peloton.ResourcePoolID{Value: respoolID},
 		Limit:     limit,
@@ -60,7 +62,23 @@ func (c *Client) ResMgrGetPendingTasks(respoolID string, limit uint32) error {
 	if err != nil {
 		return err
 	}
+
 	printPendingTasksResponse(resp, c.Debug)
+	return nil
+}
+
+// ResMgrGetOrphanTasks fetches the orphan tasks from resource manager.
+func (c *Client) ResMgrGetOrphanTasks(respoolID string) error {
+	request := &resmgrsvc.GetOrphanTasksRequest{
+		RespoolID: respoolID,
+	}
+
+	resp, err := c.resMgrClient.GetOrphanTasks(c.ctx, request)
+	if err != nil {
+		return err
+	}
+
+	printOrphanTasksResponse(resp, c.Debug)
 	return nil
 }
 
@@ -100,6 +118,53 @@ func printPendingTasksResponse(r *resmgrsvc.GetPendingTasksResponse, debug bool)
 		} else {
 			fmt.Fprint(tabWriter, "Unable to marshall response\n")
 		}
+	}
+	tabWriter.Flush()
+}
+
+func printOrphanTasksResponse(r *resmgrsvc.GetOrphanTasksResponse, debug bool) {
+	if debug {
+		printResponseJSON(r)
+	} else {
+		var (
+			totalCPU  float64
+			totalGPU  float64
+			totalMem  float64
+			totalDisk float64
+			totalFd   uint32
+		)
+
+		fmt.Fprint(tabWriter, orphanTasksFormatHeader)
+		for _, t := range r.GetOrphanTasks() {
+			heldResource := t.GetResource()
+			fmt.Fprintf(
+				tabWriter,
+				orphanTasksFormatBody,
+				t.GetTaskId().GetValue(),
+				t.GetHostname(),
+				heldResource.GetCpuLimit(),
+				heldResource.GetGpuLimit(),
+				heldResource.GetMemLimitMb(),
+				heldResource.GetDiskLimitMb(),
+				heldResource.GetFdLimit(),
+			)
+			totalCPU += heldResource.GetCpuLimit()
+			totalGPU += heldResource.GetGpuLimit()
+			totalMem += heldResource.GetMemLimitMb()
+			totalDisk += heldResource.GetDiskLimitMb()
+			totalFd += heldResource.GetFdLimit()
+		}
+		fmt.Fprintf(
+			tabWriter,
+			orphanTasksFormatBody,
+			"Total",
+			"",
+			totalCPU,
+			totalGPU,
+			totalMem,
+			totalDisk,
+			totalFd,
+		)
 	}
 	tabWriter.Flush()
 }

@@ -503,6 +503,9 @@ var (
 	resMgrPendingTasksGetLimit = resMgrPendingTasks.Flag("limit",
 		"maximum number of gangs to return").Default("100").Uint32()
 
+	resMgrOrphanTasks          = resMgrTasks.Command("orphan", "fetch orphan tasks in resource manager")
+	resMgrOrphanTasksRespoolID = resMgrOrphanTasks.Flag("respool", "resource pool identifier").Default("").String()
+
 	// Top level resource pool command
 	resPool = app.Command("respool", "manage resource pools")
 
@@ -846,6 +849,8 @@ func main() {
 	case resMgrPendingTasks.FullCommand():
 		err = client.ResMgrGetPendingTasks(*resMgrPendingTasksGetRespoolID,
 			uint32(*resMgrPendingTasksGetLimit))
+	case resMgrOrphanTasks.FullCommand():
+		err = client.ResMgrGetOrphanTasks(*resMgrOrphanTasksRespoolID)
 	case resPoolCreate.FullCommand():
 		err = client.ResPoolCreateAction(*resPoolCreatePath, *resPoolCreateConfig)
 	case respoolUpdate.FullCommand():

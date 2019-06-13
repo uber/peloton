@@ -81,6 +81,9 @@ type Tracker interface {
 
 	// GetOrphanTask gets the orphan RMTask for the given mesos-task-id
 	GetOrphanTask(mesosTaskID string) *RMTask
+
+	// GetOrphanTasks returns orphan tasks
+	GetOrphanTasks(respoolID string) []*RMTask
 }
 
 // tracker is the rmtask tracker
@@ -185,6 +188,7 @@ func (tr *tracker) AddTask(
 		// mark the prev RMTask as an orphan task so that we can release
 		// resources when the terminal event is processed
 		tr.orphanTasks[prevRMTask.task.GetTaskId().GetValue()] = prevRMTask
+		tr.metrics.OrphanTasks.Update(float64(len(tr.orphanTasks)))
 	}
 
 	tr.tasks[rmTask.task.GetId().GetValue()] = rmTask
@@ -437,6 +441,8 @@ func (tr *tracker) Clear() {
 	for k := range tr.orphanTasks {
 		delete(tr.orphanTasks, k)
 	}
+	// publish metrics
+	tr.metrics.OrphanTasks.Update(float64(len(tr.orphanTasks)))
 }
 
 // GetActiveTasks returns task to states map, if jobID or respoolID is provided,
@@ -500,6 +506,14 @@ func (tr *tracker) GetOrphanTask(mesosTaskID string) *RMTask {
 	return nil
 }
 
+// GetOrphanTasks returns all orphan tasks known to resource manager
+func (tr *tracker) GetOrphanTasks(respoolID string) []*RMTask {
+	tr.lock.RLock()
+	defer tr.lock.RUnlock()
+
+	return filterTasks(tr.orphanTasks, "", respoolID, nil)
+}
+
 // deleteOrphanTask is a helper that cleans up the task from the
 // host-to-tasks map and releases the resources held by the task
 func (tr *tracker) deleteOrphanTask(mesosTaskID string) error {
@@ -532,6 +546,7 @@ func (tr *tracker) deleteOrphanTask(mesosTaskID string) error {
 		"orphan_task": mesosTaskID,
 	}).Debug("Orphan task deleted")
 
+	tr.metrics.OrphanTasks.Update(float64(len(tr.orphanTasks)))
 	return err
 }
 

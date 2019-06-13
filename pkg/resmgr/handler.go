@@ -787,9 +787,10 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 		"current_state": taskState.String(),
 		"mesos_task_id": rmTask.Task().TaskId.Value,
 	}).Info("Task is completed and removed from tracker")
+
+	// publish metrics
 	rmtask.GetTracker().UpdateCounters(
 		t.TaskState_RUNNING, taskState)
-
 }
 
 func (h *ServiceHandler) acknowledgeEvent(offset uint64) {
@@ -1157,4 +1158,19 @@ func (h *ServiceHandler) UpdateTasksState(
 		}
 	}
 	return &resmgrsvc.UpdateTasksStateResponse{}, nil
+}
+
+// GetOrphanTasks returns the list of orphan tasks
+func (h *ServiceHandler) GetOrphanTasks(
+	ctx context.Context,
+	req *resmgrsvc.GetOrphanTasksRequest,
+) (*resmgrsvc.GetOrphanTasksResponse, error) {
+	var orphanTasks []*resmgr.Task
+	for _, rmTask := range h.rmTracker.GetOrphanTasks(req.GetRespoolID()) {
+		orphanTasks = append(orphanTasks, rmTask.Task())
+	}
+
+	return &resmgrsvc.GetOrphanTasksResponse{
+		OrphanTasks: orphanTasks,
+	}, nil
 }

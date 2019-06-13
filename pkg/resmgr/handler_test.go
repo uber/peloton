@@ -18,16 +18,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pb_respool "github.com/uber/peloton/.gen/peloton/api/v0/respool"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	hostsvc_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
@@ -46,6 +46,7 @@ import (
 	"github.com/uber/peloton/pkg/resmgr/tasktestutil"
 	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
@@ -58,7 +59,7 @@ const (
 	timeout = 1 * time.Second
 )
 
-type HandlerTestSuite struct {
+type handlerTestSuite struct {
 	suite.Suite
 
 	ctrl    *gomock.Controller
@@ -72,7 +73,7 @@ type HandlerTestSuite struct {
 	cfg rc.PreemptionConfig
 }
 
-func (s *HandlerTestSuite) SetupSuite() {
+func (s *handlerTestSuite) SetupSuite() {
 	s.ctrl = gomock.NewController(s.T())
 
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.ctrl)
@@ -135,28 +136,28 @@ func (s *HandlerTestSuite) SetupSuite() {
 		tally.Scope(tally.NoopScope))
 }
 
-func (s *HandlerTestSuite) TearDownSuite() {
+func (s *handlerTestSuite) TearDownSuite() {
 	s.ctrl.Finish()
 	s.rmTaskTracker.Clear()
 }
 
-func (s *HandlerTestSuite) SetupTest() {
+func (s *handlerTestSuite) SetupTest() {
 	s.context = context.Background()
 	s.NoError(s.resTree.Start())
 	s.NoError(rm_task.GetScheduler().Start())
 }
 
-func (s *HandlerTestSuite) TearDownTest() {
+func (s *handlerTestSuite) TearDownTest() {
 	s.NoError(s.resTree.Stop())
 	s.NoError(rm_task.GetScheduler().Stop())
 	s.rmTaskTracker.Clear()
 }
 
 func TestResManagerHandler(t *testing.T) {
-	suite.Run(t, new(HandlerTestSuite))
+	suite.Run(t, new(handlerTestSuite))
 }
 
-func (s *HandlerTestSuite) TestNewServiceHandler() {
+func (s *handlerTestSuite) TestNewServiceHandler() {
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:      common.PelotonResourceManager,
 		Inbounds:  nil,
@@ -183,7 +184,7 @@ func (s *HandlerTestSuite) TestNewServiceHandler() {
 	s.NotNil(streamHandler)
 }
 
-func (s *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
+func (s *handlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
 	gangs := s.pendingGangs()
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
@@ -200,7 +201,7 @@ func (s *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
 	s.assertTasksAdmitted(gangs)
 }
 
-func (s *HandlerTestSuite) TestDequeueGangsOnReservedTasks() {
+func (s *handlerTestSuite) TestDequeueGangsOnReservedTasks() {
 	gangs := make([]*resmgrsvc.Gang, 3)
 	gangs[0] = s.pendingGang0()
 	gangs[1] = s.reservingGang0()
@@ -221,7 +222,7 @@ func (s *HandlerTestSuite) TestDequeueGangsOnReservedTasks() {
 	s.assertTasksAdmitted(gangs)
 }
 
-func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacement() {
+func (s *handlerTestSuite) TestReEnqueueGangThatFailedPlacement() {
 	gangs := s.pendingGangs()
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
@@ -246,7 +247,7 @@ func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacement() {
 
 // Tests that the tasks should move back to PENDING state(and the pending queue)
 // after they have been tried to be placed a configured number of times.
-func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacementManyTimes() {
+func (s *handlerTestSuite) TestReEnqueueGangThatFailedPlacementManyTimes() {
 	// setup the resource pool with enough entitlement
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
@@ -280,7 +281,7 @@ func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacementManyTimes() {
 
 // This tests the requeue of the same task with same mesos task id as well
 // as the different mesos task id
-func (s *HandlerTestSuite) TestRequeue() {
+func (s *handlerTestSuite) TestRequeue() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
 	var gangs []*resmgrsvc.Gang
@@ -321,7 +322,7 @@ func (s *HandlerTestSuite) TestRequeue() {
 	jobID := "job1"
 	instance := 1
 	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
-	gangs[0].Tasks[0].TaskId = &mesos_v1.TaskID{
+	gangs[0].Tasks[0].TaskId = &mesos.TaskID{
 		Value: &mesosTaskID,
 	}
 	enqReq.Gangs = gangs
@@ -334,7 +335,7 @@ func (s *HandlerTestSuite) TestRequeue() {
 
 // TestRequeueTaskNotPresent tests the requeue but if the task is been
 // removed from the tracker then result should be failed
-func (s *HandlerTestSuite) TestRequeueTaskNotPresent() {
+func (s *handlerTestSuite) TestRequeueTaskNotPresent() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
 
@@ -359,7 +360,7 @@ func (s *HandlerTestSuite) TestRequeueTaskNotPresent() {
 	s.EqualValues(failed.Errorcode, resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_INTERNAL)
 }
 
-func (s *HandlerTestSuite) TestRequeueFailures() {
+func (s *handlerTestSuite) TestRequeueFailures() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
@@ -391,7 +392,7 @@ func (s *HandlerTestSuite) TestRequeueFailures() {
 	jobID := "job1"
 	instance := 1
 	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
-	enqReq.Gangs[0].Tasks[0].TaskId = &mesos_v1.TaskID{
+	enqReq.Gangs[0].Tasks[0].TaskId = &mesos.TaskID{
 		Value: &mesosTaskID,
 	}
 	tasktestutil.ValidateStateTransitions(rmtask, []task.TaskState{
@@ -404,7 +405,7 @@ func (s *HandlerTestSuite) TestRequeueFailures() {
 		resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_INTERNAL)
 }
 
-func (s *HandlerTestSuite) TestAddingToPendingQueue() {
+func (s *handlerTestSuite) TestAddingToPendingQueue() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
 
@@ -426,7 +427,7 @@ func (s *HandlerTestSuite) TestAddingToPendingQueue() {
 	s.EqualValues(err.Error(), errGangNotEnqueued.Error())
 }
 
-func (s *HandlerTestSuite) TestAddingToPendingQueueFailure() {
+func (s *handlerTestSuite) TestAddingToPendingQueueFailure() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
 
@@ -450,7 +451,7 @@ func (s *HandlerTestSuite) TestAddingToPendingQueueFailure() {
 }
 
 // test Setting failed placement
-func (s *HandlerTestSuite) TestSetFailedPlacement() {
+func (s *handlerTestSuite) TestSetFailedPlacement() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
 
@@ -488,7 +489,7 @@ func (s *HandlerTestSuite) TestSetFailedPlacement() {
 	}
 }
 
-func (s *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {
+func (s *handlerTestSuite) TestEnqueueGangsResPoolNotFound() {
 	tt := []struct {
 		respoolID      *peloton.ResourcePoolID
 		wantErrMessage string
@@ -518,12 +519,12 @@ func (s *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {
 	}
 }
 
-func (s *HandlerTestSuite) TestEnqueueGangsFailure() {
+func (s *handlerTestSuite) TestEnqueueGangsFailure() {
 	// TODO: Mock ResPool.Enqueue task to simulate task enqueue failures
 	s.True(true)
 }
 
-func (s *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
+func (s *handlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	handler := &ServiceHandler{
 		metrics:     NewMetrics(tally.NoopScope),
 		resPoolTree: nil,
@@ -564,7 +565,7 @@ func (s *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	s.Equal(placements, getResp.GetPlacements())
 }
 
-func (s *HandlerTestSuite) TestTransitTasksInPlacement() {
+func (s *handlerTestSuite) TestTransitTasksInPlacement() {
 
 	tracker := task_mocks.NewMockTracker(s.ctrl)
 	s.handler.rmTracker = tracker
@@ -637,7 +638,7 @@ func (s *HandlerTestSuite) TestTransitTasksInPlacement() {
 	s.rmTaskTracker.Clear()
 }
 
-func (s *HandlerTestSuite) TestGetTasksByHosts() {
+func (s *handlerTestSuite) TestGetTasksByHosts() {
 	setReq := &resmgrsvc.SetPlacementsRequest{
 		Placements: s.getPlacements(10, 5),
 	}
@@ -673,7 +674,7 @@ func (s *HandlerTestSuite) TestGetTasksByHosts() {
 	}
 }
 
-func (s *HandlerTestSuite) TestRemoveTasksFromPlacement() {
+func (s *handlerTestSuite) TestRemoveTasksFromPlacement() {
 	rmTasks, tasks := s.createRMTasks()
 	placement := &resmgr.Placement{
 		TaskIDs:  getPlacementTasks(rmTasks),
@@ -689,7 +690,7 @@ func (s *HandlerTestSuite) TestRemoveTasksFromPlacement() {
 	s.Equal(len(newPlacement.GetTaskIDs()), 3)
 }
 
-func (s *HandlerTestSuite) TestRemoveTasksFromGang() {
+func (s *handlerTestSuite) TestRemoveTasksFromGang() {
 	rmtasks, _ := s.createRMTasks()
 	gang := &resmgrsvc.Gang{
 		Tasks: rmtasks,
@@ -703,7 +704,7 @@ func (s *HandlerTestSuite) TestRemoveTasksFromGang() {
 	s.Equal(len(newGang.Tasks), 3)
 }
 
-func (s *HandlerTestSuite) TestKillTasks() {
+func (s *handlerTestSuite) TestKillTasks() {
 	s.rmTaskTracker.Clear()
 	_, tasks := s.createRMTasks()
 
@@ -760,7 +761,7 @@ func (s *HandlerTestSuite) TestKillTasks() {
 }
 
 // TestUpdateTasksState tests the update tasks by state
-func (s *HandlerTestSuite) TestUpdateTasksState() {
+func (s *handlerTestSuite) TestUpdateTasksState() {
 	s.rmTaskTracker.Clear()
 	// Creating the New set of Tasks and add them to the tracker
 	rmTasks, _ := s.createRMTasks()
@@ -769,7 +770,7 @@ func (s *HandlerTestSuite) TestUpdateTasksState() {
 	testTable := []struct {
 		updateStateRequestTask *resmgr.Task
 		updatedTaskState       task.TaskState
-		mesosTaskID            *mesos_v1.TaskID
+		mesosTaskID            *mesos.TaskID
 		expectedState          task.TaskState
 		expectedTask           string
 		msg                    string
@@ -803,7 +804,7 @@ func (s *HandlerTestSuite) TestUpdateTasksState() {
 			msg:                    "Testing RMtask with invalid mesos task id with Terminal state",
 			updateStateRequestTask: rmTasks[0],
 			updatedTaskState:       task.TaskState_KILLED,
-			mesosTaskID: &mesos_v1.TaskID{
+			mesosTaskID: &mesos.TaskID{
 				Value: &invalidMesosID,
 			},
 			expectedState: task.TaskState_UNKNOWN,
@@ -813,7 +814,7 @@ func (s *HandlerTestSuite) TestUpdateTasksState() {
 			msg:                    "Testing RMtask with invalid mesos task id.",
 			updateStateRequestTask: rmTasks[0],
 			updatedTaskState:       task.TaskState_UNKNOWN,
-			mesosTaskID: &mesos_v1.TaskID{
+			mesosTaskID: &mesos.TaskID{
 				Value: &invalidMesosID,
 			},
 			expectedState: task.TaskState_UNKNOWN,
@@ -866,7 +867,7 @@ func (s *HandlerTestSuite) TestUpdateTasksState() {
 	}
 }
 
-func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
+func (s *handlerTestSuite) TestNotifyTaskStatusUpdate() {
 	var c uint64
 	rm_task.InitTaskTracker(
 		tally.NoopScope,
@@ -887,9 +888,9 @@ func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 		}, s.cfg)
 	for i := 0; i < 100; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-1", jobID, i)
-		state := mesos_v1.TaskState_TASK_FINISHED
-		status := &mesos_v1.TaskStatus{
-			TaskId: &mesos_v1.TaskID{
+		state := mesos.TaskState_TASK_FINISHED
+		status := &mesos.TaskStatus{
+			TaskId: &mesos.TaskID{
 				Value: &mesosTaskID,
 			},
 			State: &state,
@@ -911,7 +912,7 @@ func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
-			TaskId: &mesos_v1.TaskID{
+			TaskId: &mesos.TaskID{
 				Value: &mesosTaskID,
 			},
 		}, nil, resp, tasktestutil.CreateTaskConfig())
@@ -924,7 +925,7 @@ func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 	assert.Nil(s.T(), response.Error)
 }
 
-func (s *HandlerTestSuite) TestHandleEventError() {
+func (s *handlerTestSuite) TestHandleEventError() {
 	tracker := task_mocks.NewMockTracker(s.ctrl)
 	s.handler.rmTracker = tracker
 
@@ -936,9 +937,9 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 
 	for i := 0; i < 1; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-1", jobID, i)
-		state := mesos_v1.TaskState_TASK_FINISHED
-		status := &mesos_v1.TaskStatus{
-			TaskId: &mesos_v1.TaskID{
+		state := mesos.TaskState_TASK_FINISHED
+		status := &mesos.TaskStatus{
+			TaskId: &mesos.TaskID{
 				Value: &mesosTaskID,
 			},
 			State: &state,
@@ -981,7 +982,7 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 		Id: &peloton.TaskID{
 			Value: fmt.Sprintf("%s-%d", jobID, 0),
 		},
-		TaskId: &mesos_v1.TaskID{
+		TaskId: &mesos.TaskID{
 			Value: &mesosTaskID,
 		},
 	}
@@ -1010,7 +1011,7 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 		Id: &peloton.TaskID{
 			Value: fmt.Sprintf("%s-%d", jobID, 0),
 		},
-		TaskId: &mesos_v1.TaskID{
+		TaskId: &mesos.TaskID{
 			Value: &wmesosTaskID,
 		},
 	}
@@ -1045,7 +1046,7 @@ func (s *HandlerTestSuite) TestHandleEventError() {
 	s.handler.rmTracker = rm_task.GetTracker()
 }
 
-func (s *HandlerTestSuite) TestHandleRunningEventError() {
+func (s *handlerTestSuite) TestHandleRunningEventError() {
 	tracker := task_mocks.NewMockTracker(s.ctrl)
 	s.handler.rmTracker = tracker
 
@@ -1057,9 +1058,9 @@ func (s *HandlerTestSuite) TestHandleRunningEventError() {
 
 	for i := 0; i < 1; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", uuidStr, i, uuidStr)
-		state := mesos_v1.TaskState_TASK_RUNNING
-		status := &mesos_v1.TaskStatus{
-			TaskId: &mesos_v1.TaskID{
+		state := mesos.TaskState_TASK_RUNNING
+		status := &mesos.TaskStatus{
+			TaskId: &mesos.TaskID{
 				Value: &mesosTaskID,
 			},
 			State: &state,
@@ -1092,7 +1093,7 @@ func (s *HandlerTestSuite) TestHandleRunningEventError() {
 		Id: &peloton.TaskID{
 			Value: fmt.Sprintf("%s-%d", uuidStr, 0),
 		},
-		TaskId: &mesos_v1.TaskID{
+		TaskId: &mesos.TaskID{
 			Value: &mesosTaskID,
 		},
 	}
@@ -1127,7 +1128,7 @@ func (s *HandlerTestSuite) TestHandleRunningEventError() {
 
 }
 
-func (s *HandlerTestSuite) TestGetActiveTasks() {
+func (s *handlerTestSuite) TestGetActiveTasks() {
 	setReq := &resmgrsvc.SetPlacementsRequest{
 		Placements: s.getPlacements(10, 5),
 	}
@@ -1157,7 +1158,7 @@ func (s *HandlerTestSuite) TestGetActiveTasks() {
 	s.Equal(50, totalTasks)
 }
 
-func (s *HandlerTestSuite) TestGetActiveTasksValidateResponseFields() {
+func (s *handlerTestSuite) TestGetActiveTasksValidateResponseFields() {
 	placements := s.getPlacements(1, 1)
 	setReq := &resmgrsvc.SetPlacementsRequest{
 		Placements: placements,
@@ -1189,7 +1190,7 @@ func (s *HandlerTestSuite) TestGetActiveTasksValidateResponseFields() {
 	}
 }
 
-func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
+func (s *handlerTestSuite) TestGetPreemptibleTasks() {
 	defer s.handler.rmTracker.Clear()
 
 	mockPreemptionQueue := mocks.NewMockQueue(s.ctrl)
@@ -1253,7 +1254,7 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 	s.Equal(5, len(res.PreemptionCandidates))
 }
 
-func (s *HandlerTestSuite) TestGetPreemptibleTasksError() {
+func (s *handlerTestSuite) TestGetPreemptibleTasksError() {
 	tracker := task_mocks.NewMockTracker(s.ctrl)
 	mockPreemptionQueue := mocks.NewMockQueue(s.ctrl)
 	s.handler.preemptionQueue = mockPreemptionQueue
@@ -1350,7 +1351,7 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasksError() {
 	s.handler.rmTracker = rm_task.GetTracker()
 }
 
-func (s *HandlerTestSuite) TestAddTaskError() {
+func (s *handlerTestSuite) TestAddTaskError() {
 	tracker := task_mocks.NewMockTracker(s.ctrl)
 	s.handler.rmTracker = tracker
 
@@ -1374,7 +1375,7 @@ func (s *HandlerTestSuite) TestAddTaskError() {
 	s.handler.rmTracker = rm_task.GetTracker()
 }
 
-func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {
+func (s *handlerTestSuite) TestRequeueInvalidatedTasks() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
@@ -1420,7 +1421,7 @@ func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {
 	s.EqualValues(rmtask.GetCurrentState().State, task.TaskState_READY)
 }
 
-func (s *HandlerTestSuite) TestGetPendingTasks() {
+func (s *handlerTestSuite) TestGetPendingTasks() {
 	respoolID := &peloton.ResourcePoolID{Value: "respool3"}
 	limit := uint32(1)
 
@@ -1511,10 +1512,35 @@ func (s *HandlerTestSuite) TestGetPendingTasks() {
 	}
 }
 
+func (s *handlerTestSuite) TestGetOrphanTasks() {
+	rmTasks, _ := s.createRMTasks()
+	for _, t := range rmTasks {
+		rmTask := s.rmTaskTracker.GetTask(t.GetId())
+		s.NoError(rmTask.TransitTo(task.TaskState_RUNNING.String()))
+		newTask := proto.Clone(t).(*resmgr.Task)
+		oldTaskID := t.GetTaskId().GetValue()
+		newTask.TaskId.Value = &[]string{oldTaskID[:len(oldTaskID)-1] + "2"}[0]
+		s.NoError(s.rmTaskTracker.AddTask(newTask, nil, rmTask.Respool(), tasktestutil.CreateTaskConfig()))
+	}
+
+	resp, err := s.handler.GetOrphanTasks(s.context, &resmgrsvc.GetOrphanTasksRequest{})
+	s.NoError(err)
+	s.Len(resp.GetOrphanTasks(), len(rmTasks))
+
+	rmTaskMap := make(map[string]*resmgr.Task)
+	for _, t := range rmTasks {
+		rmTaskMap[t.GetTaskId().GetValue()] = t
+	}
+
+	for _, t := range resp.GetOrphanTasks() {
+		s.Equal(rmTaskMap[t.GetTaskId().GetValue()], t)
+	}
+}
+
 // Test helpers
 // -----------------
 
-func (s *HandlerTestSuite) getEntitlement() *scalar.Resources {
+func (s *handlerTestSuite) getEntitlement() *scalar.Resources {
 	return &scalar.Resources{
 		CPU:    100,
 		MEMORY: 1000,
@@ -1523,7 +1549,7 @@ func (s *HandlerTestSuite) getEntitlement() *scalar.Resources {
 	}
 }
 
-func (s *HandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
+func (s *handlerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
 
 	rootID := peloton.ResourcePoolID{Value: "root"}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
@@ -1580,7 +1606,7 @@ func (s *HandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConf
 	}
 }
 
-func (s *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
+func (s *handlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
 	uuidStr := "uuidstr-1"
 	jobID := "job1"
@@ -1598,7 +1624,7 @@ func (s *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
-			TaskId: &mesos_v1.TaskID{
+			TaskId: &mesos.TaskID{
 				Value: &mesosTaskID,
 			},
 			Preemptible:             true,
@@ -1609,7 +1635,7 @@ func (s *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 	return &gang
 }
 
-func (s *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
+func (s *handlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
 	uuidStr := "uuidstr-1"
 	jobID := "job1"
@@ -1628,7 +1654,7 @@ func (s *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 				MemLimitMb:  100,
 			},
 			Preemptible: true,
-			TaskId: &mesos_v1.TaskID{
+			TaskId: &mesos.TaskID{
 				Value: &mesosTaskID,
 			},
 			PlacementTimeoutSeconds: 60,
@@ -1638,7 +1664,7 @@ func (s *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 	return &gang
 }
 
-func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
+func (s *handlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
 	uuidStr := "uuidstr-1"
 	jobID := "job1"
@@ -1657,7 +1683,7 @@ func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
-			TaskId: &mesos_v1.TaskID{
+			TaskId: &mesos.TaskID{
 				Value: &mesosTaskID,
 			},
 			Preemptible:             true,
@@ -1676,7 +1702,7 @@ func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
-			TaskId: &mesos_v1.TaskID{
+			TaskId: &mesos.TaskID{
 				Value: &mesosTaskID,
 			},
 			Preemptible:             true,
@@ -1687,7 +1713,7 @@ func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 	return &gang
 }
 
-func (s *HandlerTestSuite) reservingGang0() *resmgrsvc.Gang {
+func (s *handlerTestSuite) reservingGang0() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
 	uuidStr := "uuidstr-10"
 	jobID := "job10"
@@ -1705,7 +1731,7 @@ func (s *HandlerTestSuite) reservingGang0() *resmgrsvc.Gang {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
-			TaskId: &mesos_v1.TaskID{
+			TaskId: &mesos.TaskID{
 				Value: &mesosTaskID,
 			},
 			Preemptible:             true,
@@ -1718,7 +1744,7 @@ func (s *HandlerTestSuite) reservingGang0() *resmgrsvc.Gang {
 	return &gang
 }
 
-func (s *HandlerTestSuite) reservingGang1() *resmgrsvc.Gang {
+func (s *handlerTestSuite) reservingGang1() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
 	uuidStr := "uuidstr-11"
 	jobID := "job11"
@@ -1736,7 +1762,7 @@ func (s *HandlerTestSuite) reservingGang1() *resmgrsvc.Gang {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
-			TaskId: &mesos_v1.TaskID{
+			TaskId: &mesos.TaskID{
 				Value: &mesosTaskID,
 			},
 			Preemptible:             true,
@@ -1749,7 +1775,7 @@ func (s *HandlerTestSuite) reservingGang1() *resmgrsvc.Gang {
 	return &gang
 }
 
-func (s *HandlerTestSuite) pendingGangWithoutPlacement() *resmgrsvc.Gang {
+func (s *handlerTestSuite) pendingGangWithoutPlacement() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
 	uuidStr := "uuidstr-1"
 	jobID := "job9"
@@ -1767,7 +1793,7 @@ func (s *HandlerTestSuite) pendingGangWithoutPlacement() *resmgrsvc.Gang {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
-			TaskId: &mesos_v1.TaskID{
+			TaskId: &mesos.TaskID{
 				Value: &mesosTaskID,
 			},
 			Preemptible:             true,
@@ -1779,13 +1805,13 @@ func (s *HandlerTestSuite) pendingGangWithoutPlacement() *resmgrsvc.Gang {
 	return &gang
 }
 
-func (s *HandlerTestSuite) pendingGangsWithoutPlacement() []*resmgrsvc.Gang {
+func (s *handlerTestSuite) pendingGangsWithoutPlacement() []*resmgrsvc.Gang {
 	gangs := make([]*resmgrsvc.Gang, 1)
 	gangs[0] = s.pendingGangWithoutPlacement()
 	return gangs
 }
 
-func (s *HandlerTestSuite) pendingGangs() []*resmgrsvc.Gang {
+func (s *handlerTestSuite) pendingGangs() []*resmgrsvc.Gang {
 	gangs := make([]*resmgrsvc.Gang, 3)
 	gangs[0] = s.pendingGang0()
 	gangs[1] = s.pendingGang1()
@@ -1793,7 +1819,7 @@ func (s *HandlerTestSuite) pendingGangs() []*resmgrsvc.Gang {
 	return gangs
 }
 
-func (s *HandlerTestSuite) expectedGangs() []*resmgrsvc.Gang {
+func (s *handlerTestSuite) expectedGangs() []*resmgrsvc.Gang {
 	gangs := make([]*resmgrsvc.Gang, 3)
 	gangs[0] = s.pendingGang2()
 	gangs[1] = s.pendingGang1()
@@ -1801,7 +1827,7 @@ func (s *HandlerTestSuite) expectedGangs() []*resmgrsvc.Gang {
 	return gangs
 }
 
-func (s *HandlerTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
+func (s *handlerTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
 
 	resConfigs := []*pb_respool.ResourceConfig{
 		{
@@ -1833,7 +1859,7 @@ func (s *HandlerTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
 }
 
 // asserts that the tasks have been admitted and move to PLACING after dequeue
-func (s *HandlerTestSuite) assertTasksAdmitted(gangs []*resmgrsvc.Gang) {
+func (s *handlerTestSuite) assertTasksAdmitted(gangs []*resmgrsvc.Gang) {
 	// There is a race condition in the test due to the Scheduler.scheduleTasks
 	// method is run asynchronously.
 	// TODO Fix
@@ -1878,7 +1904,7 @@ func (s *HandlerTestSuite) assertTasksAdmitted(gangs []*resmgrsvc.Gang) {
 }
 
 // asserts the failed placements call
-func (s *HandlerTestSuite) assertSetFailedPlacement(gangs []*resmgrsvc.Gang) {
+func (s *handlerTestSuite) assertSetFailedPlacement(gangs []*resmgrsvc.Gang) {
 	var failedPlacements []*resmgrsvc.SetPlacementsRequest_FailedPlacement
 	for _, gang := range gangs {
 		failedPlacements = append(
@@ -1895,7 +1921,7 @@ func (s *HandlerTestSuite) assertSetFailedPlacement(gangs []*resmgrsvc.Gang) {
 	s.Nil(setPlacementResp.GetError())
 }
 
-func (s *HandlerTestSuite) getPlacements(numJobs int, numTasks int) []*resmgr.Placement {
+func (s *handlerTestSuite) getPlacements(numJobs int, numTasks int) []*resmgr.Placement {
 	var placements []*resmgr.Placement
 	resp, err := respool.NewRespool(
 		tally.NoopScope,
@@ -1918,7 +1944,7 @@ func (s *HandlerTestSuite) getPlacements(numJobs int, numTasks int) []*resmgr.Pl
 			}
 			pelotonTasks = append(pelotonTasks, pelotonTask)
 
-			mesosTask := &mesos_v1.TaskID{Value: &[]string{fmt.Sprintf("%s-%d-1", jobID, j)}[0]}
+			mesosTask := &mesos.TaskID{Value: &[]string{fmt.Sprintf("%s-%d-1", jobID, j)}[0]}
 
 			placementTasks = append(placementTasks, &resmgr.Placement_Task{
 				PelotonTaskID: pelotonTask,
@@ -1941,7 +1967,7 @@ func (s *HandlerTestSuite) getPlacements(numJobs int, numTasks int) []*resmgr.Pl
 	return placements
 }
 
-func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
+func (s *handlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
 	var tasks []*peloton.TaskID
 	var rmTasks []*resmgr.Task
 	jobID := uuid.New()
@@ -1965,7 +1991,7 @@ func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
-			TaskId: &mesos_v1.TaskID{
+			TaskId: &mesos.TaskID{
 				Value: &[]string{taskID.GetValue() + "-1"}[0],
 			},
 		}
@@ -1978,7 +2004,7 @@ func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
 
 // createUpdateTasksStateRequest creates UpdateTaskstate Request
 // based on the resource manager task specified
-func (s *HandlerTestSuite) createUpdateTasksStateRequest(
+func (s *handlerTestSuite) createUpdateTasksStateRequest(
 	rmTask *resmgr.Task,
 ) *resmgrsvc.UpdateTasksStateRequest {
 	taskList := make([]*resmgrsvc.UpdateTasksStateRequest_UpdateTaskStateEntry, 0, 1)

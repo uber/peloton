@@ -690,3 +690,24 @@ func (suite *TrackerTestSuite) TestGetOrphanTaskNoTask() {
 
 	suite.Nil(suite.tracker.GetOrphanTask("unknown-task"))
 }
+
+// TestGetOrphanTasks tests getting all orphan rm tasks
+func (suite *TrackerTestSuite) TestGetOrphanTasks() {
+	tr := suite.tracker.(*tracker)
+
+	var mesosTasks []string
+	// move tasks to orphan tasks
+	for _, rmTask := range tr.tasks {
+		tr.orphanTasks[rmTask.task.GetTaskId().GetValue()] = rmTask
+		mesosTasks = append(mesosTasks, rmTask.task.GetTaskId().GetValue())
+	}
+
+	// remove all other tasks from tracker
+	for k := range tr.tasks {
+		delete(tr.tasks, k)
+	}
+
+	for _, t := range suite.tracker.GetOrphanTasks("") {
+		suite.Equal(tr.orphanTasks[t.Task().GetTaskId().GetValue()], t)
+	}
+}

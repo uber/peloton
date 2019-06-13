@@ -34,6 +34,8 @@ type Metrics struct {
 
 	ReconciliationSuccess tally.Counter
 	ReconciliationFail    tally.Counter
+
+	OrphanTasks tally.Gauge
 }
 
 // NewMetrics returns a new instance of task.Metrics.
@@ -79,5 +81,6 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		LeakedResources:       scalar.NewGaugeMaps(leakScope),
 		ReconciliationSuccess: successScope.Counter("run"),
 		ReconciliationFail:    failScope.Counter("run"),
+		OrphanTasks:           scope.Gauge("orphan_tasks"),
 	}
 }

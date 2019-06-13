@@ -113,6 +113,12 @@ service ResourceManagerService {
    * tasks in the request have been moved to corresponding state.
    */
   rpc UpdateTasksState(UpdateTasksStateRequest) returns (UpdateTasksStateResponse);
+
+  /**
+   * GetOrphanTasks returns the list of orphan tasks in resource manager.
+   * This API is for debug purpose only.
+  */
+  rpc GetOrphanTasks(GetOrphanTasksRequest) returns (GetOrphanTasksResponse);
 }
 
 message GetPreemptibleTasksFailure {
@@ -445,3 +451,14 @@ message UpdateTasksStateRequest {
 
 // UpdateTasksStateResponse is the response message for UpdateTasksState
 message UpdateTasksStateResponse {}
+
+// GetOrphanTasksRequest is the request message for GetOrphanTasks
+message GetOrphanTasksRequest {
+  // optional respoolID to filter out tasks
+  string respoolID = 1;
+}
+
+// GetOrphanTasksResponse is the response message for GetOrphanTasksResponse
+message GetOrphanTasksResponse {
+  repeated resmgr.Task orphanTasks = 1;
+}
