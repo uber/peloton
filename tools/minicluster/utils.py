@@ -39,6 +39,19 @@ def remove_existing_container(name):
 
 
 #
+# Stop container by name
+#
+def stop_container(name):
+    try:
+        cli.stop(name, timeout=5)
+        print_utils.okblue("stopped container %s" % name)
+    except Exception as e:
+        if "No such container" in str(e):
+            return
+        raise e
+
+
+#
 # Run health check for peloton apps
 #
 def wait_for_up(app, port):

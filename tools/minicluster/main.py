@@ -105,36 +105,43 @@ def setup(
 # Tear down a personal cluster
 # TODO (wu): use docker labels when launching containers
 #            and then remove all containers with that label
-def teardown():
+def teardown(stop=False):
+    if stop:
+        # Stop existing container
+        func = utils.stop_container
+    else:
+        # Remove existing container
+        func = utils.remove_existing_container
+
     # 1 - Remove jobmgr instances
     for i in range(0, config["peloton_jobmgr_instance_count"]):
         name = config["peloton_jobmgr_container"] + repr(i)
-        utils.remove_existing_container(name)
+        func(name)
 
     # 2 - Remove placement engine instances
     for i in range(0, len(config["peloton_placement_instances"])):
         name = config["peloton_placement_container"] + repr(i)
-        utils.remove_existing_container(name)
+        func(name)
 
     # 3 - Remove resmgr instances
     for i in range(0, config["peloton_resmgr_instance_count"]):
         name = config["peloton_resmgr_container"] + repr(i)
-        utils.remove_existing_container(name)
+        func(name)
 
     # 4 - Remove hostmgr instances
     for i in range(0, config["peloton_hostmgr_instance_count"]):
         name = config["peloton_hostmgr_container"] + repr(i)
-        utils.remove_existing_container(name)
+        func(name)
 
     # 5 - Remove archiver instances
     for i in range(0, config["peloton_archiver_instance_count"]):
         name = config["peloton_archiver_container"] + repr(i)
-        utils.remove_existing_container(name)
+        func(name)
 
     # 6 - Remove aurorabridge instances
     for i in range(0, config["peloton_aurorabridge_instance_count"]):
         name = config["peloton_aurorabridge_container"] + repr(i)
-        utils.remove_existing_container(name)
+        func(name)
 
     minicluster.teardown_mesos(config)
     minicluster.teardown_k8s()
