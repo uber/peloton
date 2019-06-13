@@ -18,7 +18,6 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
-	peloton_api_v0_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
@@ -70,12 +69,6 @@ func (a *Assignment) GetReason() string {
 // SetReason sets the reason for the failed assignment
 func (a *Assignment) SetReason(reason string) {
 	a.Reason = reason
-}
-
-// GetConstraint returns the stringified scheduling constraint of that
-// assignment.
-func (a *Assignment) GetConstraint() *peloton_api_v0_task.Constraint {
-	return a.GetTask().GetTask().GetConstraint()
 }
 
 // GetUsage returns the resource and port usage of this assignment.

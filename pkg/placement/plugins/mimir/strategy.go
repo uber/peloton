@@ -27,7 +27,6 @@ import (
 	common "github.com/uber/peloton/pkg/placement/plugins/mimir/common"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/algorithms"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/placement"
-	"github.com/uber/peloton/pkg/placement/plugins/mimir/v0"
 )
 
 var _offersFactor = map[resmgr.TaskType]float64{
@@ -62,13 +61,7 @@ func (mimir *mimir) convertAssignments(
 	assignments := make([]*placement.Assignment, 0, len(pelotonAssignments))
 	entitiesToAssignments := make(map[*placement.Entity]*models.Assignment, len(pelotonAssignments))
 	for _, p := range pelotonAssignments {
-		data := p.GetTask().Data()
-		if data == nil {
-			entity := v0_mimir.TaskToEntity(p.GetTask().GetTask(), false)
-			p.GetTask().SetData(entity)
-			data = entity
-		}
-		entity := data.(*placement.Entity)
+		entity := p.ToMimirEntity()
 		assignments = append(assignments, placement.NewAssignment(entity))
 		entitiesToAssignments[entity] = p
 	}
@@ -83,20 +76,7 @@ func (mimir *mimir) convertHosts(hosts []*models.HostOffers) (
 	groups := make([]*placement.Group, 0, len(hosts))
 	groupsToHosts := make(map[*placement.Group]int, len(hosts))
 	for i, host := range hosts {
-		data := host.Data()
-		if data == nil {
-			group := v0_mimir.OfferToGroup(host.GetOffer())
-			entities := placement.Entities{}
-			for _, task := range host.GetTasks() {
-				entity := v0_mimir.TaskToEntity(task, true)
-				entities.Add(entity)
-			}
-			group.Entities = entities
-			group.Update()
-			host.SetData(group)
-			data = group
-		}
-		group := data.(*placement.Group)
+		group := host.ToMimirGroup()
 		groupsToHosts[group] = i
 		groups = append(groups, group)
 	}

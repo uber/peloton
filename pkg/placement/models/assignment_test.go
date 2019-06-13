@@ -103,7 +103,7 @@ func TestAssignment(t *testing.T) {
 
 	t.Run("nil constraint", func(t *testing.T) {
 		_, _, _, _, _, assignment := setupAssignmentVariables()
-		constraint := assignment.GetConstraint()
+		constraint := assignment.GetTask().GetTask().GetConstraint()
 		require.Nil(t, constraint)
 	})
 

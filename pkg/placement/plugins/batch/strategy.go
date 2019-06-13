@@ -20,7 +20,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/plugins"
 )
@@ -133,8 +132,7 @@ func (batch *batch) getTasksForHost(
 	host *models.HostOffers,
 	unassigned []*models.Assignment,
 ) int {
-	portsLeft := host.GetAvailablePortCount()
-	resLeft := scalar.FromMesosResources(host.GetOffer().GetResources())
+	resLeft, portsLeft := host.GetAvailableResources()
 	for i, assignment := range unassigned {
 		var ok bool
 		resLeft, portsLeft, ok = assignment.Fits(resLeft, portsLeft)

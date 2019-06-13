@@ -18,6 +18,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/pkg/common/scalar"
 	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/placement"
 )
 
 // Strategy is a placment strategy that will do all the placement logic of
@@ -65,4 +66,33 @@ type HostFilter interface {
 	// GetConstraint() *peloton_api_v0_task.Constraint
 
 	// TODO: RankingHint
+}
+
+// Task is the interface that the Strategy takes in and tries to place on
+// Hosts.
+type Task interface {
+	// Tries to fit the task on the host resources passed in as arguments.
+	// Returns as last argument whether or not that operation succeeded.
+	// Also returns the new resources after this task was fitted onto the host.
+	// NOTE: The resources returned are same as the ones passed in if the "fit"
+	// failed.
+	Fits(resourcesLeft scalar.Resources, portsLeft uint64) (scalar.Resources, uint64, bool)
+
+	// Sets the placement failure reason for this task.
+	SetReason(string)
+
+	// Returns the mimir entity representing this task.
+	ToMimirEntity() *placement.Entity
+
+	// TODO: HostFilter-relevant methods need to be defined here.
+}
+
+// Host is the interface that the host offers or leases must satisfy in order
+// to be used by the placement strategy.
+type Host interface {
+	// Returns the free resources on this host.
+	GetAvailableResources() (res scalar.Resources, ports uint64)
+
+	// Returns the mimir group representing the host lease or offer.
+	ToMimirGroup() *placement.Group
 }
