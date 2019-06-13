@@ -565,8 +565,8 @@ func (suite *JobCreateTestSuite) TestJobCreateExistTasks() {
 		},
 	}
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobConfigOps.EXPECT().
+		GetCurrentVersion(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().
@@ -626,8 +626,8 @@ func (suite *JobCreateTestSuite) TestJobCreateResmgrFailureResponse() {
 		GetTasksForJob(gomock.Any(), suite.jobID).
 		Return(emptyTaskInfo, nil)
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID.GetValue()).
+	suite.jobConfigOps.EXPECT().
+		GetCurrentVersion(gomock.Any(), suite.jobID).
 		Return(suite.jobConfig, &models.ConfigAddOn{}, nil)
 
 	suite.jobFactory.EXPECT().
