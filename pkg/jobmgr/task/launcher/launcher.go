@@ -108,7 +108,7 @@ type Launcher interface {
 	// were skipped, for example because they were not found.
 	GetLaunchableTasks(
 		ctx context.Context,
-		tasks []*peloton.TaskID,
+		tasks []*mesos.TaskID,
 		hostname string,
 		agentID *mesos.AgentID,
 		selectedPorts []uint32,
@@ -240,10 +240,11 @@ func (l *launcher) isLauncherRetryableError(err error) bool {
 // each launchable task.
 func (l *launcher) GetLaunchableTasks(
 	ctx context.Context,
-	tasks []*peloton.TaskID,
+	tasks []*mesos.TaskID,
 	hostname string,
 	agentID *mesos.AgentID,
-	selectedPorts []uint32) (
+	selectedPorts []uint32,
+) (
 	map[string]*LaunchableTask,
 	[]*peloton.TaskID,
 	error) {
@@ -253,15 +254,24 @@ func (l *launcher) GetLaunchableTasks(
 	skippedTasks := make([]*peloton.TaskID, 0)
 	getTaskInfoStart := time.Now()
 
-	for _, taskID := range tasks {
-		id, instanceID, err := util.ParseTaskID(taskID.GetValue())
+	for _, mtaskID := range tasks {
+		id, instanceID, err := util.ParseJobAndInstanceID(mtaskID.GetValue())
+		if err != nil {
+			log.WithField("mesos_task_id", mtaskID.GetValue()).
+				WithError(err).
+				Error("Failed to parse mesos task id")
+			continue
+		}
+
 		jobID := &peloton.JobID{Value: id}
+		ptaskID := &peloton.TaskID{Value: util.CreatePelotonTaskID(id, instanceID)}
 
 		cachedJob := l.jobFactory.GetJob(jobID)
 		if cachedJob == nil {
-			skippedTasks = append(skippedTasks, taskID)
+			skippedTasks = append(skippedTasks, ptaskID)
 			continue
 		}
+
 		cachedTask, err := cachedJob.AddTask(ctx, uint32(instanceID))
 		if err != nil {
 			log.WithError(err).
@@ -282,10 +292,20 @@ func (l *launcher) GetLaunchableTasks(
 			continue
 		}
 
+		if cachedRuntime.GetMesosTaskId().GetValue() != mtaskID.GetValue() {
+			log.WithFields(log.Fields{
+				"job_id":        jobID.GetValue(),
+				"instance_id":   uint32(instanceID),
+				"mesos_task_id": mtaskID.GetValue(),
+			}).Info("skipping launch of old run")
+			skippedTasks = append(skippedTasks, ptaskID)
+			continue
+		}
+
 		// TODO: We need to add batch api's for getting all tasks in one shot
 		taskConfig, configAddOn, err := l.taskStore.GetTaskConfig(ctx, jobID, uint32(instanceID), cachedRuntime.GetConfigVersion())
 		if err != nil {
-			log.WithError(err).WithField("task_id", taskID.GetValue()).
+			log.WithError(err).WithField("task_id", ptaskID.GetValue()).
 				Error("not able to get task configuration")
 			continue
 		}
@@ -299,7 +319,7 @@ func (l *launcher) GetLaunchableTasks(
 					Value: uuid.New(),
 				}
 				log.WithFields(log.Fields{
-					"task_id":       taskID,
+					"task_id":       ptaskID,
 					"hostname":      hostname,
 					"new_volume_id": newVolumeID,
 				}).Info("generates new volume id for task")
@@ -328,7 +348,7 @@ func (l *launcher) GetLaunchableTasks(
 					// This should never happen.
 					log.WithFields(log.Fields{
 						"selected_ports": selectedPorts,
-						"task_id":        taskID,
+						"task_id":        ptaskID,
 					}).Error("placement contains less selected ports than required.")
 					return nil, nil, errors.New("invalid placement")
 				}
@@ -341,7 +361,7 @@ func (l *launcher) GetLaunchableTasks(
 		runtimeDiff[jobmgrcommon.MessageField] = "Add hostname and ports"
 		runtimeDiff[jobmgrcommon.ReasonField] = "REASON_UPDATE_OFFER"
 
-		launchableTasks[taskID.GetValue()] = &LaunchableTask{
+		launchableTasks[ptaskID.GetValue()] = &LaunchableTask{
 			RuntimeDiff: runtimeDiff,
 			Config:      taskConfig,
 			ConfigAddOn: configAddOn,
@@ -454,7 +474,7 @@ func (l *launcher) CreateLaunchableTasks(
 				launchableTaskInfo.Config.Labels,
 				label)
 		}
-		// Add volume info into launchable task if task config has volume.
+
 		launchableTask := hostsvc.LaunchableTask{
 			TaskId: launchableTaskInfo.Runtime.GetMesosTaskId(),
 			Config: launchableTaskInfo.Config,
@@ -465,6 +485,8 @@ func (l *launcher) CreateLaunchableTasks(
 			),
 			},
 		}
+
+		// Add volume info into launchable task if task config has volume.
 		if launchableTaskInfo.Config.GetVolume() != nil {
 			diskResource := util.NewMesosResourceBuilder().
 				WithName("disk").

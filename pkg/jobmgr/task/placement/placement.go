@@ -23,6 +23,7 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
@@ -159,9 +160,9 @@ func (p *processor) process() {
 }
 
 func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Placement) {
-	var tasks []*peloton.TaskID
+	var tasks []*mesos.TaskID
 	for _, t := range placement.GetTaskIDs() {
-		tasks = append(tasks, t.GetPelotonTaskID())
+		tasks = append(tasks, t.GetMesosTaskID())
 	}
 
 	launchableTasks, skippedTasks, err := p.taskLauncher.GetLaunchableTasks(
@@ -293,42 +294,42 @@ func (p *processor) createTaskInfos(
 			// Skip launching of deleted tasks.
 			skippedTasks = append(skippedTasks, &peloton.TaskID{Value: taskID})
 			log.WithField("task_id", taskID).Info("skipping launch of killed task")
-		} else {
-			retry := 0
-			for retry < maxRetryCount {
-				err = cachedJob.PatchTasks(ctx,
-					map[uint32]jobmgrcommon.RuntimeDiff{
-						uint32(instanceID): launchableTask.RuntimeDiff,
-					})
-				if err == nil {
-					runtime, _ := cachedTask.GetRuntime(ctx)
-					taskInfos[taskID] = &launcher.LaunchableTaskInfo{
-						TaskInfo: &task.TaskInfo{
-							Runtime:    runtime,
-							Config:     launchableTask.Config,
-							InstanceId: uint32(instanceID),
-							JobId:      jobID,
-						},
-						ConfigAddOn: launchableTask.ConfigAddOn,
-					}
-					break
+			continue
+		}
+		retry := 0
+		for retry < maxRetryCount {
+			err = cachedJob.PatchTasks(ctx,
+				map[uint32]jobmgrcommon.RuntimeDiff{
+					uint32(instanceID): launchableTask.RuntimeDiff,
+				})
+			if err == nil {
+				runtime, _ := cachedTask.GetRuntime(ctx)
+				taskInfos[taskID] = &launcher.LaunchableTaskInfo{
+					TaskInfo: &task.TaskInfo{
+						Runtime:    runtime,
+						Config:     launchableTask.Config,
+						InstanceId: uint32(instanceID),
+						JobId:      jobID,
+					},
+					ConfigAddOn: launchableTask.ConfigAddOn,
 				}
-				if common.IsTransientError(err) {
-					// TBD add a max retry to bail out after a few retries.
-					log.WithError(err).WithFields(log.Fields{
-						"job_id":      id,
-						"instance_id": instanceID,
-					}).Warn("retrying update task runtime on transient error")
-				} else {
-					log.WithError(err).WithFields(log.Fields{
-						"job_id":      id,
-						"instance_id": instanceID,
-					}).Error("cannot process placement due to non-transient db error")
-					delete(taskInfos, taskID)
-					break
-				}
-				retry++
+				break
 			}
+			if common.IsTransientError(err) {
+				// TBD add a max retry to bail out after a few retries.
+				log.WithError(err).WithFields(log.Fields{
+					"job_id":      id,
+					"instance_id": instanceID,
+				}).Warn("retrying update task runtime on transient error")
+			} else {
+				log.WithError(err).WithFields(log.Fields{
+					"job_id":      id,
+					"instance_id": instanceID,
+				}).Error("cannot process placement due to non-transient db error")
+				delete(taskInfos, taskID)
+				break
+			}
+			retry++
 		}
 	}
 	return taskInfos, skippedTasks

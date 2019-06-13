@@ -220,23 +220,28 @@ func (suite *PlacementTestSuite) TestTaskPlacementNoError() {
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
 
-	var tasks []*peloton.TaskID
+	var tasks []*mesos.TaskID
 	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetPelotonTaskID())
+		tasks = append(tasks, t.GetMesosTaskID())
 	}
 
 	gomock.InOrder(
 		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), tasks, p.Hostname, p.AgentId, p.Ports).
-			Return(
-				map[string]*launcher.LaunchableTask{
-					taskID.Value: {
-						RuntimeDiff: testRuntimeDiff,
-						Config:      testTask.Config,
-					},
+			GetLaunchableTasks(
+				gomock.Any(),
+				tasks,
+				p.Hostname,
+				p.AgentId,
+				p.Ports,
+			).Return(
+			map[string]*launcher.LaunchableTask{
+				taskID.Value: {
+					RuntimeDiff: testRuntimeDiff,
+					Config:      testTask.Config,
 				},
-				nil,
-				nil),
+			},
+			nil,
+			nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
@@ -273,15 +278,20 @@ func (suite *PlacementTestSuite) TestTaskPlacementGetTaskError() {
 	hostOffer := createHostOffer(0, rs)
 	p := createPlacements(testTask, hostOffer)
 
-	var tasks []*peloton.TaskID
+	var tasks []*mesos.TaskID
 	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetPelotonTaskID())
+		tasks = append(tasks, t.GetMesosTaskID())
 	}
 
 	gomock.InOrder(
 		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), tasks, p.Hostname, p.AgentId, p.Ports).
-			Return(nil, nil, fmt.Errorf("fake launch error")),
+			GetLaunchableTasks(
+				gomock.Any(),
+				tasks,
+				p.Hostname,
+				p.AgentId,
+				p.Ports,
+			).Return(nil, nil, fmt.Errorf("fake launch error")),
 		suite.taskLauncher.EXPECT().
 			TryReturnOffers(gomock.Any(), gomock.Any(), p).Return(nil),
 	)
@@ -301,23 +311,28 @@ func (suite *PlacementTestSuite) TestTaskPlacementKillSkippedTasksError() {
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
 
-	var tasks []*peloton.TaskID
+	var tasks []*mesos.TaskID
 	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetPelotonTaskID())
+		tasks = append(tasks, t.GetMesosTaskID())
 	}
 
 	gomock.InOrder(
 		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), tasks, p.Hostname, p.AgentId, p.Ports).
-			Return(
-				map[string]*launcher.LaunchableTask{
-					taskID.Value: {
-						RuntimeDiff: testRuntimeDiff,
-						Config:      testTask.Config,
-					},
+			GetLaunchableTasks(
+				gomock.Any(),
+				tasks,
+				p.Hostname,
+				p.AgentId,
+				p.Ports,
+			).Return(
+			map[string]*launcher.LaunchableTask{
+				taskID.Value: {
+					RuntimeDiff: testRuntimeDiff,
+					Config:      testTask.Config,
 				},
-				nil,
-				nil),
+			},
+			nil,
+			nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
@@ -367,25 +382,30 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledTask() {
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
 
-	var tasks []*peloton.TaskID
+	var tasks []*mesos.TaskID
 	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetPelotonTaskID())
+		tasks = append(tasks, t.GetMesosTaskID())
 	}
 
 	req := &resmgrsvc.KillTasksRequest{Tasks: []*peloton.TaskID{taskID}}
 	resp := &resmgrsvc.KillTasksResponse{}
 	gomock.InOrder(
 		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), tasks, p.Hostname, p.AgentId, p.Ports).
-			Return(
-				map[string]*launcher.LaunchableTask{
-					taskID.Value: {
-						RuntimeDiff: runtimeDiff,
-						Config:      testTask.Config,
-					},
+			GetLaunchableTasks(
+				gomock.Any(),
+				tasks,
+				p.Hostname,
+				p.AgentId,
+				p.Ports,
+			).Return(
+			map[string]*launcher.LaunchableTask{
+				taskID.Value: {
+					RuntimeDiff: runtimeDiff,
+					Config:      testTask.Config,
 				},
-				nil,
-				nil),
+			},
+			nil,
+			nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
@@ -425,18 +445,23 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledJob() {
 		},
 	}
 
-	var tasks []*peloton.TaskID
+	var tasks []*mesos.TaskID
 	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetPelotonTaskID())
+		tasks = append(tasks, t.GetMesosTaskID())
 	}
 
 	gomock.InOrder(
 		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), tasks, p.Hostname, p.AgentId, p.Ports).
-			Return(
-				nil,
-				[]*peloton.TaskID{taskID},
-				nil),
+			GetLaunchableTasks(
+				gomock.Any(),
+				tasks,
+				p.Hostname,
+				p.AgentId,
+				p.Ports,
+			).Return(
+			nil,
+			[]*peloton.TaskID{taskID},
+			nil),
 		suite.resMgrClient.EXPECT().
 			KillTasks(gomock.Any(), req).
 			Return(resp, nil),
@@ -456,9 +481,9 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledRunningTask() {
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
 
-	var tasks []*peloton.TaskID
+	var tasks []*mesos.TaskID
 	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetPelotonTaskID())
+		tasks = append(tasks, t.GetMesosTaskID())
 	}
 
 	expectedRuntime := make(map[uint32]*task.RuntimeInfo)
@@ -468,16 +493,21 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledRunningTask() {
 	resp := &resmgrsvc.KillTasksResponse{}
 	gomock.InOrder(
 		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), tasks, p.Hostname, p.AgentId, p.Ports).
-			Return(
-				map[string]*launcher.LaunchableTask{
-					taskID.Value: {
-						RuntimeDiff: runtimeDiff,
-						Config:      testTask.Config,
-					},
+			GetLaunchableTasks(
+				gomock.Any(),
+				tasks,
+				p.Hostname,
+				p.AgentId,
+				p.Ports,
+			).Return(
+			map[string]*launcher.LaunchableTask{
+				taskID.Value: {
+					RuntimeDiff: runtimeDiff,
+					Config:      testTask.Config,
 				},
-				nil,
-				nil),
+			},
+			nil,
+			nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
@@ -505,23 +535,28 @@ func (suite *PlacementTestSuite) TestTaskPlacementDBError() {
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
 
-	var tasks []*peloton.TaskID
+	var tasks []*mesos.TaskID
 	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetPelotonTaskID())
+		tasks = append(tasks, t.GetMesosTaskID())
 	}
 
 	gomock.InOrder(
 		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), tasks, p.Hostname, p.AgentId, p.Ports).
-			Return(
-				map[string]*launcher.LaunchableTask{
-					taskID.Value: {
-						RuntimeDiff: runtimeDiff,
-						Config:      testTask.Config,
-					},
+			GetLaunchableTasks(
+				gomock.Any(),
+				tasks,
+				p.Hostname,
+				p.AgentId,
+				p.Ports,
+			).Return(
+			map[string]*launcher.LaunchableTask{
+				taskID.Value: {
+					RuntimeDiff: runtimeDiff,
+					Config:      testTask.Config,
 				},
-				nil,
-				nil),
+			},
+			nil,
+			nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
@@ -546,23 +581,28 @@ func (suite *PlacementTestSuite) TestTaskPlacementError() {
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
 
-	var tasks []*peloton.TaskID
+	var tasks []*mesos.TaskID
 	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetPelotonTaskID())
+		tasks = append(tasks, t.GetMesosTaskID())
 	}
 
 	gomock.InOrder(
 		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), tasks, p.Hostname, p.AgentId, p.Ports).
-			Return(
-				map[string]*launcher.LaunchableTask{
-					taskID.Value: {
-						RuntimeDiff: runtimeDiff,
-						Config:      testTask.Config,
-					},
+			GetLaunchableTasks(
+				gomock.Any(),
+				tasks,
+				p.Hostname,
+				p.AgentId,
+				p.Ports,
+			).Return(
+			map[string]*launcher.LaunchableTask{
+				taskID.Value: {
+					RuntimeDiff: runtimeDiff,
+					Config:      testTask.Config,
 				},
-				nil,
-				nil),
+			},
+			nil,
+			nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
@@ -611,23 +651,28 @@ func (suite *PlacementTestSuite) TestTaskPlacementPlacementResMgrError() {
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
 
-	var tasks []*peloton.TaskID
+	var tasks []*mesos.TaskID
 	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetPelotonTaskID())
+		tasks = append(tasks, t.GetMesosTaskID())
 	}
 
 	gomock.InOrder(
 		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(gomock.Any(), tasks, p.Hostname, p.AgentId, p.Ports).
-			Return(
-				map[string]*launcher.LaunchableTask{
-					taskID.Value: {
-						RuntimeDiff: runtimeDiff,
-						Config:      testTask.Config,
-					},
+			GetLaunchableTasks(
+				gomock.Any(),
+				tasks,
+				p.Hostname,
+				p.AgentId,
+				p.Ports,
+			).Return(
+			map[string]*launcher.LaunchableTask{
+				taskID.Value: {
+					RuntimeDiff: runtimeDiff,
+					Config:      testTask.Config,
 				},
-				nil,
-				nil),
+			},
+			nil,
+			nil),
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
@@ -769,9 +814,13 @@ func (suite *PlacementTestSuite) TestTaskPlacementProcessorProcessNormal() {
 		GetPlacements(gomock.Any(), gomock.Any()).
 		Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil)
 	suite.taskLauncher.EXPECT().
-		GetLaunchableTasks(gomock.Any(), gomock.Any(),
-			gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil, nil, fmt.Errorf("test err"))
+		GetLaunchableTasks(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Return(nil, nil, fmt.Errorf("test err"))
 	suite.taskLauncher.EXPECT().
 		TryReturnOffers(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(fmt.Errorf("test err"))

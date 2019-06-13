@@ -51,7 +51,7 @@ import (
 )
 
 const (
-	taskIDFmt            = _testJobID + "-%d-%s"
+	taskIDFmt            = _testJobID + "-%d-%d"
 	testPort             = uint32(100)
 	testSecretPath       = "/tmp/secret"
 	testSecretStr        = "test-data"
@@ -118,7 +118,7 @@ func (suite *LauncherTestSuite) TearDownTest() {
 }
 
 func createTestTask(instanceID int) *LaunchableTaskInfo {
-	var tid = fmt.Sprintf(taskIDFmt, instanceID, uuid.NewUUID().String())
+	tid := fmt.Sprintf(taskIDFmt, instanceID, 2)
 
 	return &LaunchableTaskInfo{
 		TaskInfo: &task.TaskInfo{
@@ -186,29 +186,31 @@ func getAssignedTaskData(t *testing.T) []byte {
 func (suite *LauncherTestSuite) TestGetLaunchableTasks() {
 	// generate 25 test tasks
 	numTasks := 25
-	var tasks []*peloton.TaskID
+	var tasks []*mesos.TaskID
 	var selectedPorts []uint32
 	taskInfos := make(map[string]*LaunchableTaskInfo)
+
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
 		taskID := &peloton.TaskID{
-			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+			Value: util.CreatePelotonTaskID(tmp.GetJobId().GetValue(), tmp.InstanceId),
 		}
-		tasks = append(tasks, taskID)
-		taskInfos[taskID.Value] = tmp
+		tasks = append(tasks, tmp.GetRuntime().GetMesosTaskId())
+		taskInfos[taskID.GetValue()] = tmp
 		selectedPorts = append(selectedPorts, testPort+uint32(i))
 	}
-	unknownTasks := []*peloton.TaskID{
-		{Value: "bcabcabc-bcab-bcab-bcab-bcabcabcabca-0"},
-		{Value: "abcabcab-bcab-bcab-bcab-bcabcabcabca-1"},
+	unknownTasks := []*mesos.TaskID{
+		{Value: &[]string{"bcabcabc-bcab-bcab-bcab-bcabcabcabca-0-0"}[0]},
+		{Value: &[]string{"abcabcab-bcab-bcab-bcab-bcabcabcabca-1-0"}[0]},
 	}
 	rs := createResources(1)
 	hostOffer := createHostOffer(0, rs)
 
 	for i := 0; i < numTasks; i++ {
-		taskID := tasks[i].GetValue()
-		jobID, instanceID, err := util.ParseTaskID(taskID)
+		mtaskID := tasks[i].GetValue()
+		jobID, instanceID, err := util.ParseJobAndInstanceID(mtaskID)
 		suite.NoError(err)
+		ptaskID := util.CreatePelotonTaskID(jobID, instanceID)
 		suite.jobFactory.EXPECT().
 			GetJob(&peloton.JobID{Value: jobID}).Return(suite.cachedJob)
 		suite.cachedJob.EXPECT().
@@ -216,12 +218,13 @@ func (suite *LauncherTestSuite) TestGetLaunchableTasks() {
 			Return(suite.cachedTask, nil)
 		suite.mockTaskStore.EXPECT().
 			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
-			Return(taskInfos[tasks[i].GetValue()].GetConfig(), &models.ConfigAddOn{}, nil)
+			Return(taskInfos[ptaskID].GetConfig(), &models.ConfigAddOn{}, nil)
 		suite.cachedTask.EXPECT().
-			GetRuntime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
+			GetRuntime(gomock.Any()).Return(taskInfos[ptaskID].GetRuntime(), nil)
 	}
+
 	for _, taskID := range unknownTasks {
-		jobID, _, err := util.ParseTaskID(taskID.GetValue())
+		jobID, _, err := util.ParseJobAndInstanceID(taskID.GetValue())
 		suite.NoError(err)
 		suite.jobFactory.EXPECT().
 			GetJob(&peloton.JobID{Value: jobID}).Return(nil)
@@ -229,8 +232,12 @@ func (suite *LauncherTestSuite) TestGetLaunchableTasks() {
 
 	tasks = append(tasks, unknownTasks...)
 	launchableTasks, skippedTasks, err := suite.taskLauncher.GetLaunchableTasks(
-		context.Background(), tasks, hostOffer.Hostname,
-		hostOffer.AgentId, selectedPorts)
+		context.Background(),
+		tasks,
+		hostOffer.Hostname,
+		hostOffer.AgentId,
+		selectedPorts,
+	)
 	suite.NoError(err)
 	for _, launchableTask := range launchableTasks {
 		runtimeDiff := launchableTask.RuntimeDiff
@@ -238,17 +245,51 @@ func (suite *LauncherTestSuite) TestGetLaunchableTasks() {
 		suite.Equal(hostOffer.Hostname, runtimeDiff[jobmgrcommon.HostField])
 		suite.Equal(hostOffer.AgentId, runtimeDiff[jobmgrcommon.AgentIDField])
 	}
-	suite.EqualValues(unknownTasks, skippedTasks)
+	suite.Len(skippedTasks, len(unknownTasks))
+	for i, t := range skippedTasks {
+		suite.Equal(unknownTasks[i].GetValue(), fmt.Sprintf("%s-%d", t.GetValue(), 0))
+	}
 }
+
+// TestGetLaunchableTasksSkipOldRun tests the case of skipping an older run of a task
+func (suite *LauncherTestSuite) TestGetLaunchableTasksSkipOldRun() {
+	instanceID := 0
+	testLaunchableTask := createTestTask(instanceID)
+	jobID := testLaunchableTask.GetJobId().GetValue()
+	taskID := fmt.Sprintf("%s-%d-%d", jobID, instanceID, 0)
+	rs := createResources(1)
+	hostOffer := createHostOffer(0, rs)
+
+	suite.jobFactory.EXPECT().
+		GetJob(&peloton.JobID{Value: jobID}).Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), uint32(instanceID)).
+		Return(suite.cachedTask, nil)
+	suite.cachedTask.EXPECT().
+		GetRuntime(gomock.Any()).Return(testLaunchableTask.GetRuntime(), nil)
+
+	launchableTasks, skippedTasks, err := suite.taskLauncher.GetLaunchableTasks(
+		context.Background(),
+		[]*mesos.TaskID{{Value: &taskID}},
+		hostOffer.Hostname,
+		hostOffer.AgentId,
+		nil,
+	)
+	suite.NoError(err)
+	suite.Empty(launchableTasks)
+	suite.Len(skippedTasks, 1)
+	suite.Equal(taskID, fmt.Sprintf("%s-%d", skippedTasks[0].GetValue(), 0))
+}
+
 func (suite *LauncherTestSuite) TestGetLaunchableTasksStateful() {
-	unknownTasks := []*peloton.TaskID{
-		{Value: "bcabcabc-bcab-bcab-bcab-bcabcabcabca-0"},
-		{Value: "abcabcab-bcab-bcab-bcab-bcabcabcabca-1"},
+	unknownTasks := []*mesos.TaskID{
+		{Value: &[]string{"bcabcabc-bcab-bcab-bcab-bcabcabcabca-0-0"}[0]},
+		{Value: &[]string{"abcabcab-bcab-bcab-bcab-bcabcabcabca-1-0"}[0]},
 	}
 
 	// generate 25 test tasks
 	numTasks := 25
-	var tasks []*peloton.TaskID
+	var tasks []*mesos.TaskID
 	var selectedPorts []uint32
 	taskInfos := make(map[string]*LaunchableTaskInfo)
 	for i := 0; i < numTasks; i++ {
@@ -260,8 +301,8 @@ func (suite *LauncherTestSuite) TestGetLaunchableTasksStateful() {
 		taskID := &peloton.TaskID{
 			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
 		}
-		tasks = append(tasks, taskID)
-		taskInfos[taskID.Value] = tmp
+		tasks = append(tasks, tmp.GetRuntime().GetMesosTaskId())
+		taskInfos[taskID.GetValue()] = tmp
 		selectedPorts = append(selectedPorts, testPort+uint32(i))
 	}
 	rs := createResources(1)
@@ -269,8 +310,9 @@ func (suite *LauncherTestSuite) TestGetLaunchableTasksStateful() {
 
 	for i := 0; i < numTasks; i++ {
 		taskID := tasks[i].GetValue()
-		jobID, instanceID, err := util.ParseTaskID(taskID)
+		jobID, instanceID, err := util.ParseJobAndInstanceID(taskID)
 		suite.NoError(err)
+		ptaskID := util.CreatePelotonTaskID(jobID, instanceID)
 		suite.jobFactory.EXPECT().
 			GetJob(&peloton.JobID{Value: jobID}).Return(suite.cachedJob)
 		suite.cachedJob.EXPECT().
@@ -278,12 +320,12 @@ func (suite *LauncherTestSuite) TestGetLaunchableTasksStateful() {
 			Return(suite.cachedTask, nil)
 		suite.mockTaskStore.EXPECT().
 			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
-			Return(taskInfos[tasks[i].GetValue()].GetConfig(), &models.ConfigAddOn{}, nil)
+			Return(taskInfos[ptaskID].GetConfig(), &models.ConfigAddOn{}, nil)
 		suite.cachedTask.EXPECT().
-			GetRuntime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
+			GetRuntime(gomock.Any()).Return(taskInfos[ptaskID].GetRuntime(), nil)
 	}
 	for _, taskID := range unknownTasks {
-		jobID, _, err := util.ParseTaskID(taskID.GetValue())
+		jobID, _, err := util.ParseJobAndInstanceID(taskID.GetValue())
 		suite.NoError(err)
 		suite.jobFactory.EXPECT().
 			GetJob(&peloton.JobID{Value: jobID}).Return(nil)
@@ -291,8 +333,12 @@ func (suite *LauncherTestSuite) TestGetLaunchableTasksStateful() {
 
 	tasks = append(tasks, unknownTasks...)
 	launchableTasks, skippedTasks, err := suite.taskLauncher.GetLaunchableTasks(
-		context.Background(), tasks, hostOffer.Hostname,
-		hostOffer.AgentId, selectedPorts)
+		context.Background(),
+		tasks,
+		hostOffer.Hostname,
+		hostOffer.AgentId,
+		selectedPorts,
+	)
 	suite.NoError(err)
 	for _, launchableTask := range launchableTasks {
 		runtimeDiff := launchableTask.RuntimeDiff
@@ -301,7 +347,10 @@ func (suite *LauncherTestSuite) TestGetLaunchableTasksStateful() {
 		suite.Equal(hostOffer.AgentId, runtimeDiff[jobmgrcommon.AgentIDField])
 		suite.NotNil(runtimeDiff[jobmgrcommon.VolumeIDField], "Volume ID should not be null")
 	}
-	suite.EqualValues(unknownTasks, skippedTasks)
+	suite.Len(skippedTasks, len(unknownTasks))
+	for i, t := range skippedTasks {
+		suite.Equal(unknownTasks[i].GetValue(), fmt.Sprintf("%s-%d", t.GetValue(), 0))
+	}
 }
 
 // This test ensures that multiple tasks can be launched in hostmgr

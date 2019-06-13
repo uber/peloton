@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"time"
 
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
@@ -61,7 +62,7 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 
 	launchableTasks, _, err := goalStateDriver.taskLauncher.GetLaunchableTasks(
 		ctx,
-		[]*peloton.TaskID{pelotonTaskID},
+		[]*mesos.TaskID{taskInfo.GetRuntime().GetMesosTaskId()},
 		taskInfo.GetRuntime().GetHost(),
 		taskInfo.GetRuntime().GetAgentID(),
 		nil,
@@ -90,7 +91,7 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		return nil
 	}
 
-	launchableTask := launchableTasks[pelotonTaskID.Value]
+	launchableTask := launchableTasks[pelotonTaskID.GetValue()]
 	// safety check, should not happen
 	if launchableTask == nil {
 		log.WithFields(log.Fields{
