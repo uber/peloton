@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	mesosv1 "github.com/uber/peloton/.gen/mesos/v1"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
@@ -57,7 +57,7 @@ func initializeLabel(key string, value string) *peloton.Label {
 	}
 }
 
-type TaskTestSuite struct {
+type taskTestSuite struct {
 	suite.Suite
 
 	ctrl       *gomock.Controller
@@ -69,7 +69,7 @@ type TaskTestSuite struct {
 	testTaskScope tally.TestScope
 }
 
-func (suite *TaskTestSuite) SetupTest() {
+func (suite *taskTestSuite) SetupTest() {
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
 
 	suite.instanceID = uint32(1)
@@ -83,17 +83,17 @@ func (suite *TaskTestSuite) SetupTest() {
 	suite.testTaskScope = tally.NewTestScope("", nil)
 }
 
-func (suite *TaskTestSuite) TearDownTest() {
+func (suite *taskTestSuite) TearDownTest() {
 	suite.listeners = nil
 	suite.ctrl.Finish()
 }
 
 func TestTask(t *testing.T) {
-	suite.Run(t, new(TaskTestSuite))
+	suite.Run(t, new(taskTestSuite))
 }
 
 // initializeTask initializes a test task to be used in the unit test
-func (suite *TaskTestSuite) initializeTask(
+func (suite *taskTestSuite) initializeTask(
 	taskStore *storemocks.MockTaskStore,
 	jobID *peloton.JobID, instanceID uint32,
 	runtime *pbtask.RuntimeInfo) *task {
@@ -128,7 +128,7 @@ func (suite *TaskTestSuite) initializeTask(
 }
 
 // checkListeners verifies that listeners received the correct data
-func (suite *TaskTestSuite) checkListeners(tt *task, jobType pbjob.JobType) {
+func (suite *taskTestSuite) checkListeners(tt *task, jobType pbjob.JobType) {
 	suite.NotZero(len(suite.listeners))
 	for i, l := range suite.listeners {
 		msg := fmt.Sprintf("Listener %d", i)
@@ -140,7 +140,7 @@ func (suite *TaskTestSuite) checkListeners(tt *task, jobType pbjob.JobType) {
 }
 
 // checkListenersNotCalled verifies that listeners did not get invoked
-func (suite *TaskTestSuite) checkListenersNotCalled() {
+func (suite *taskTestSuite) checkListenersNotCalled() {
 	suite.NotZero(len(suite.listeners))
 	for i, l := range suite.listeners {
 		msg := fmt.Sprintf("Listener %d", i)
@@ -150,7 +150,7 @@ func (suite *TaskTestSuite) checkListenersNotCalled() {
 }
 
 // TestTaskCreateRuntime tests creating task runtime without any DB errors
-func (suite *TaskTestSuite) TestCreateRuntime() {
+func (suite *taskTestSuite) TestCreateRuntime() {
 	tt := suite.initializeTask(suite.taskStore, suite.jobID,
 		suite.instanceID, nil)
 	version := uint64(3)
@@ -183,7 +183,7 @@ func (suite *TaskTestSuite) TestCreateRuntime() {
 }
 
 // TestTaskPatchTask tests updating the task runtime without any DB errors
-func (suite *TaskTestSuite) TestPatchTask() {
+func (suite *taskTestSuite) TestPatchTask() {
 	var labels []*peloton.Label
 
 	version := uint64(3)
@@ -236,13 +236,13 @@ func (suite *TaskTestSuite) TestPatchTask() {
 }
 
 // TestTaskPatchTask tests updating the task runtime without any DB errors
-func (suite *TaskTestSuite) TestPatchTask_WithInitializedState() {
+func (suite *taskTestSuite) TestPatchTask_WithInitializedState() {
 	var labels []*peloton.Label
 
 	labels = append(labels, initializeLabel("key", "value"))
 	runtime := initializeTaskRuntime(pbtask.TaskState_INITIALIZED, 2)
 	currentMesosTaskID := "acf6e6d4-51be-4b60-8900-683f11252848" + "-1-1"
-	runtime.MesosTaskId = &mesosv1.TaskID{
+	runtime.MesosTaskId = &mesos.TaskID{
 		Value: &currentMesosTaskID,
 	}
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
@@ -255,7 +255,7 @@ func (suite *TaskTestSuite) TestPatchTask_WithInitializedState() {
 	mesosTaskID := "acf6e6d4-51be-4b60-8900-683f11252848" + "-1-2"
 	diff := jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.StateField: pbtask.TaskState_INITIALIZED,
-		jobmgrcommon.MesosTaskIDField: &mesosv1.TaskID{
+		jobmgrcommon.MesosTaskIDField: &mesos.TaskID{
 			Value: &mesosTaskID,
 		},
 	}
@@ -289,7 +289,7 @@ func (suite *TaskTestSuite) TestPatchTask_WithInitializedState() {
 
 // TestPatchTask_KillInitializedTask tests updating the case of
 // trying to kill initialized task
-func (suite *TaskTestSuite) TestPatchTask_KillInitializedTask() {
+func (suite *taskTestSuite) TestPatchTask_KillInitializedTask() {
 	var labels []*peloton.Label
 
 	labels = append(labels, initializeLabel("key", "value"))
@@ -331,7 +331,7 @@ func (suite *TaskTestSuite) TestPatchTask_KillInitializedTask() {
 
 // TestTaskPatchTask_NoRuntimeInCache tests updating task runtime when
 // the runtime in cache is nil
-func (suite *TaskTestSuite) TestPatchTask_NoRuntimeInCache() {
+func (suite *taskTestSuite) TestPatchTask_NoRuntimeInCache() {
 	var labels []*peloton.Label
 
 	labels = append(labels, initializeLabel("key", "value"))
@@ -384,7 +384,7 @@ func (suite *TaskTestSuite) TestPatchTask_NoRuntimeInCache() {
 }
 
 // TestPatchTask_DBError tests updating the task runtime with DB errors
-func (suite *TaskTestSuite) TestPatchTask_DBError() {
+func (suite *taskTestSuite) TestPatchTask_DBError() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
@@ -410,7 +410,7 @@ func (suite *TaskTestSuite) TestPatchTask_DBError() {
 
 // TestPatchTaskGetConfigDBError tests updating the task runtime
 // with a DB error when getting the task config
-func (suite *TaskTestSuite) TestPatchTaskGetConfigDBError() {
+func (suite *taskTestSuite) TestPatchTaskGetConfigDBError() {
 	version := uint64(3)
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
@@ -456,7 +456,7 @@ func (suite *TaskTestSuite) TestPatchTaskGetConfigDBError() {
 	suite.checkListenersNotCalled()
 }
 
-func (suite *TaskTestSuite) TestCompareAndSetNilRuntime() {
+func (suite *taskTestSuite) TestCompareAndSetNilRuntime() {
 	var labels []*peloton.Label
 
 	labels = append(labels, initializeLabel("key", "value"))
@@ -477,7 +477,7 @@ func (suite *TaskTestSuite) TestCompareAndSetNilRuntime() {
 
 // TestCompareAndSetTask tests changing the task runtime
 // using compare and set
-func (suite *TaskTestSuite) TestCompareAndSetTask() {
+func (suite *taskTestSuite) TestCompareAndSetTask() {
 	var labels []*peloton.Label
 
 	labels = append(labels, initializeLabel("key", "value"))
@@ -534,7 +534,7 @@ func (suite *TaskTestSuite) TestCompareAndSetTask() {
 
 // TestCompareAndSetTaskFailValidation tests changing the task runtime
 // using compare and set but the new runtime fails validation
-func (suite *TaskTestSuite) TestCompareAndSetTaskFailValidation() {
+func (suite *taskTestSuite) TestCompareAndSetTaskFailValidation() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
@@ -554,7 +554,7 @@ func (suite *TaskTestSuite) TestCompareAndSetTaskFailValidation() {
 
 // TestCompareAndSetTaskLoadRuntime tests changing the task runtime
 // using compare and set and runtime needs to be reloaded from DB
-func (suite *TaskTestSuite) TestCompareAndSetTaskLoadRuntime() {
+func (suite *taskTestSuite) TestCompareAndSetTaskLoadRuntime() {
 	var labels []*peloton.Label
 
 	labels = append(labels, initializeLabel("key", "value"))
@@ -619,7 +619,7 @@ func (suite *TaskTestSuite) TestCompareAndSetTaskLoadRuntime() {
 
 // TestCompareAndSetTaskLoadRuntimeDBError tests changing the task runtime
 // using compare and set and runtime reload from DB yields error
-func (suite *TaskTestSuite) TestCompareAndSetTaskLoadRuntimeDBError() {
+func (suite *taskTestSuite) TestCompareAndSetTaskLoadRuntimeDBError() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
@@ -644,7 +644,7 @@ func (suite *TaskTestSuite) TestCompareAndSetTaskLoadRuntimeDBError() {
 
 // TestCompareAndSetTaskVersionError tests changing the task runtime
 // using compare and set but with a version error
-func (suite *TaskTestSuite) TestCompareAndSetTaskVersionError() {
+func (suite *taskTestSuite) TestCompareAndSetTaskVersionError() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
@@ -667,7 +667,7 @@ func (suite *TaskTestSuite) TestCompareAndSetTaskVersionError() {
 
 // TestCompareAndSetTaskDBError tests changing the task runtime
 // using compare and set but getting a DB error in the write
-func (suite *TaskTestSuite) TestCompareAndSetTaskDBError() {
+func (suite *taskTestSuite) TestCompareAndSetTaskDBError() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
@@ -706,7 +706,7 @@ func (suite *TaskTestSuite) TestCompareAndSetTaskDBError() {
 
 // TestCompareAndSetTaskConfigDBError tests changing the task runtime
 // using compare and set but getting an error while fetching the task config
-func (suite *TaskTestSuite) TestCompareAndSetTaskConfigDBError() {
+func (suite *taskTestSuite) TestCompareAndSetTaskConfigDBError() {
 	version := uint64(3)
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
@@ -755,7 +755,7 @@ func (suite *TaskTestSuite) TestCompareAndSetTaskConfigDBError() {
 }
 
 // TestReplaceTask tests replacing runtime in the cache only
-func (suite *TaskTestSuite) TestReplaceTask() {
+func (suite *taskTestSuite) TestReplaceTask() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
@@ -771,7 +771,7 @@ func (suite *TaskTestSuite) TestReplaceTask() {
 
 // TestReplaceTask_NoExistingCache tests replacing cache when
 // there is no existing cache
-func (suite *TaskTestSuite) TestReplaceTask_NoExistingCache() {
+func (suite *taskTestSuite) TestReplaceTask_NoExistingCache() {
 	var labels []*peloton.Label
 
 	labels = append(labels, initializeLabel("key", "value"))
@@ -807,7 +807,7 @@ func (suite *TaskTestSuite) TestReplaceTask_NoExistingCache() {
 }
 
 // TestReplaceTask_StaleRuntime tests replacing with stale runtime
-func (suite *TaskTestSuite) TestReplaceTask_StaleRuntime() {
+func (suite *taskTestSuite) TestReplaceTask_StaleRuntime() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
@@ -821,7 +821,7 @@ func (suite *TaskTestSuite) TestReplaceTask_StaleRuntime() {
 	suite.checkListenersNotCalled()
 }
 
-func (suite *TaskTestSuite) TestGetCacheRuntime() {
+func (suite *taskTestSuite) TestGetCacheRuntime() {
 	tt := []struct {
 		runtime       *pbtask.RuntimeInfo
 		expectedState pbtask.TaskState
@@ -843,7 +843,7 @@ func (suite *TaskTestSuite) TestGetCacheRuntime() {
 	}
 }
 
-func (suite *TaskTestSuite) TestValidateState() {
+func (suite *taskTestSuite) TestValidateState() {
 	mesosIDWithRunID1 := "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1"
 	mesosIDWithRunID2 := "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2"
 
@@ -873,20 +873,20 @@ func (suite *TaskTestSuite) TestValidateState() {
 		},
 		{
 			curRuntime: &pbtask.RuntimeInfo{
-				MesosTaskId: &mesosv1.TaskID{Value: &mesosIDWithRunID2},
+				MesosTaskId: &mesos.TaskID{Value: &mesosIDWithRunID2},
 			},
 			newRuntime: &pbtask.RuntimeInfo{
-				MesosTaskId: &mesosv1.TaskID{Value: &mesosIDWithRunID1},
+				MesosTaskId: &mesos.TaskID{Value: &mesosIDWithRunID1},
 			},
 			expectedResult: false,
 			message:        "runID in mesos id cannot decrease",
 		},
 		{
 			curRuntime: &pbtask.RuntimeInfo{
-				DesiredMesosTaskId: &mesosv1.TaskID{Value: &mesosIDWithRunID2},
+				DesiredMesosTaskId: &mesos.TaskID{Value: &mesosIDWithRunID2},
 			},
 			newRuntime: &pbtask.RuntimeInfo{
-				DesiredMesosTaskId: &mesosv1.TaskID{Value: &mesosIDWithRunID1},
+				DesiredMesosTaskId: &mesos.TaskID{Value: &mesosIDWithRunID1},
 			},
 			expectedResult: false,
 			message:        "runID in desired mesos id cannot decrease",
@@ -976,7 +976,7 @@ func TestGetResourceManagerProcessingStates(t *testing.T) {
 }
 
 // TestDeleteTask tests that listeners receive an event when a task is deleted
-func (suite *TaskTestSuite) TestDeleteTask() {
+func (suite *taskTestSuite) TestDeleteTask() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_DELETED, 2)
 	runtime.GoalState = pbtask.TaskState_DELETED
 	tt := suite.initializeTask(suite.taskStore, suite.jobID,
@@ -988,7 +988,7 @@ func (suite *TaskTestSuite) TestDeleteTask() {
 
 // TestDeleteTaskNoRuntime tests that listeners receive no event
 // when a task with no runtime is deleted
-func (suite *TaskTestSuite) TestDeleteTaskNoRuntime() {
+func (suite *taskTestSuite) TestDeleteTaskNoRuntime() {
 	tt := suite.initializeTask(suite.taskStore, suite.jobID,
 		suite.instanceID, nil)
 	tt.runtime = nil
@@ -999,7 +999,7 @@ func (suite *TaskTestSuite) TestDeleteTaskNoRuntime() {
 
 // TestDeleteTaskNoRuntime tests that listeners receive no event
 // when a task with no runtime is deleted
-func (suite *TaskTestSuite) TestDeleteRunningTask() {
+func (suite *taskTestSuite) TestDeleteRunningTask() {
 	runtime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 2)
 	tt := suite.initializeTask(suite.taskStore, suite.jobID,
 		suite.instanceID, runtime)
@@ -1009,7 +1009,7 @@ func (suite *TaskTestSuite) TestDeleteRunningTask() {
 }
 
 // TestGetLabels tests getting labels from the cache
-func (suite *TaskTestSuite) TestGetLabels() {
+func (suite *taskTestSuite) TestGetLabels() {
 	var labels []*peloton.Label
 
 	labels = append(labels, initializeLabel("key", "value"))
@@ -1042,7 +1042,7 @@ func (suite *TaskTestSuite) TestGetLabels() {
 
 // TestGetLabelsRuntimeDBError tests getting a DB error
 // when fetching the task runtime
-func (suite *TaskTestSuite) TestGetLabelsRuntimeDBError() {
+func (suite *taskTestSuite) TestGetLabelsRuntimeDBError() {
 	tt := suite.initializeTask(suite.taskStore, suite.jobID,
 		suite.instanceID, nil)
 
@@ -1056,7 +1056,7 @@ func (suite *TaskTestSuite) TestGetLabelsRuntimeDBError() {
 
 // TestGetLabelsConfigDBError tests getting a DB error
 // when fetching the task config
-func (suite *TaskTestSuite) TestGetLabelsConfigDBError() {
+func (suite *taskTestSuite) TestGetLabelsConfigDBError() {
 	version := uint64(3)
 	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
 	runtime.ConfigVersion = version
@@ -1077,7 +1077,7 @@ func (suite *TaskTestSuite) TestGetLabelsConfigDBError() {
 
 // TestStateTransitionMetrics tests calculation of metrics like
 // time-to-assign and time-ro-run
-func (suite *TaskTestSuite) TestStateTransitionMetrics() {
+func (suite *taskTestSuite) TestStateTransitionMetrics() {
 	testcases := []struct {
 		revocable bool
 		toState   pbtask.TaskState
@@ -1162,4 +1162,35 @@ func (suite *TaskTestSuite) TestStateTransitionMetrics() {
 			suite.Equal(1, len(tmr.Values()), msg)
 		}
 	}
+}
+
+// TestStateSummary tests getting the state summary of a task
+func (suite *taskTestSuite) TestStateSummary() {
+	mesosTaskID := "test-mesos-task"
+	desiredMesosTaskID := "mesos-task"
+	runtime := &pbtask.RuntimeInfo{
+		State:                pbtask.TaskState_PENDING,
+		GoalState:            pbtask.TaskState_RUNNING,
+		Healthy:              pbtask.HealthState_HEALTH_UNKNOWN,
+		ConfigVersion:        1,
+		DesiredConfigVersion: 2,
+		MesosTaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
+		},
+		DesiredMesosTaskId: &mesos.TaskID{
+			Value: &desiredMesosTaskID,
+		},
+	}
+
+	t := suite.initializeTask(
+		suite.taskStore,
+		suite.jobID,
+		suite.instanceID,
+		runtime,
+	)
+
+	stateSummary := t.StateSummary()
+	suite.Equal(runtime.GetState(), stateSummary.CurrentState)
+	suite.Equal(runtime.GetGoalState(), stateSummary.GoalState)
+	suite.Equal(runtime.GetHealthy(), stateSummary.HealthState)
 }

@@ -30,9 +30,9 @@ type JobMetrics struct {
 	JobDeleted      tally.Counter
 	JobInvalidState tally.Counter
 
-	JobRuntimeUpdated                tally.Counter
-	JobRuntimeUpdateFailed           tally.Counter
-	JobMaxRunningInstancesExcceeding tally.Counter
+	JobRuntimeUpdated               tally.Counter
+	JobRuntimeUpdateFailed          tally.Counter
+	JobMaxRunningInstancesExceeding tally.Counter
 
 	JobRecalculateFromCache tally.Counter
 }
@@ -82,17 +82,17 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	updateScope := scope.SubScope("update")
 
 	jobMetrics := &JobMetrics{
-		JobCreate:                        jobScope.Counter("create"),
-		JobCreateFailed:                  jobScope.Counter("create_failed"),
-		JobRecoveryDuration:              jobScope.Gauge("recovery_duration"),
-		JobSucceeded:                     jobScope.Counter("job_succeeded"),
-		JobKilled:                        jobScope.Counter("job_killed"),
-		JobFailed:                        jobScope.Counter("job_failed"),
-		JobDeleted:                       jobScope.Counter("job_deleted"),
-		JobInvalidState:                  jobScope.Counter("invalid_state"),
-		JobRuntimeUpdated:                jobScope.Counter("runtime_update_success"),
-		JobRuntimeUpdateFailed:           jobScope.Counter("runtime_update_fail"),
-		JobMaxRunningInstancesExcceeding: jobScope.Counter("max_running_instances_exceeded"),
+		JobCreate:                       jobScope.Counter("create"),
+		JobCreateFailed:                 jobScope.Counter("create_failed"),
+		JobRecoveryDuration:             jobScope.Gauge("recovery_duration"),
+		JobSucceeded:                    jobScope.Counter("job_succeeded"),
+		JobKilled:                       jobScope.Counter("job_killed"),
+		JobFailed:                       jobScope.Counter("job_failed"),
+		JobDeleted:                      jobScope.Counter("job_deleted"),
+		JobInvalidState:                 jobScope.Counter("invalid_state"),
+		JobRuntimeUpdated:               jobScope.Counter("runtime_update_success"),
+		JobRuntimeUpdateFailed:          jobScope.Counter("runtime_update_fail"),
+		JobMaxRunningInstancesExceeding: jobScope.Counter("max_running_instances_exceeded"),
 		JobRecalculateFromCache: jobScope.Counter(
 			"job_recalculate_from_cache"),
 	}

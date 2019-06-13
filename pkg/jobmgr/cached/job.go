@@ -158,6 +158,10 @@ type Job interface {
 	// GetConfig returns the current config of the job
 	GetConfig(ctx context.Context) (jobmgrcommon.JobConfig, error)
 
+	// GetCachedConfig returns the job config if
+	// present in the cache. Returns nil otherwise.
+	GetCachedConfig() jobmgrcommon.JobConfig
+
 	// GetJobType returns the job type in the job config stored in the cache
 	// The type can be nil when we read it. It should be only used for
 	// non-critical purpose (e.g calculate delay).
@@ -199,7 +203,7 @@ type Job interface {
 	// tasks in a job, the total number of throttled tasks in
 	// stateless jobs and the spread counts of a job
 	GetTaskStateCount() (
-		map[pbtask.TaskState]map[pbtask.TaskState]int,
+		map[TaskStateSummary]int,
 		int,
 		JobSpreadCounts)
 
@@ -1479,6 +1483,16 @@ func (j *job) GetLastTaskUpdateTime() float64 {
 	return j.lastTaskUpdateTime
 }
 
+func (j *job) GetCachedConfig() jobmgrcommon.JobConfig {
+	j.RLock()
+	defer j.RUnlock()
+	if j == nil || j.config == nil {
+		return nil
+	}
+
+	return j.config
+}
+
 // Option to create a workflow
 type Option interface {
 	apply(*workflowOpts)
@@ -2029,11 +2043,11 @@ func (j *job) ClearWorkflow(updateID *peloton.UpdateID) {
 }
 
 func (j *job) GetTaskStateCount() (
-	taskCount map[pbtask.TaskState]map[pbtask.TaskState]int,
+	taskCount map[TaskStateSummary]int,
 	throttledTasks int,
 	spread JobSpreadCounts,
 ) {
-	taskCount = make(map[pbtask.TaskState]map[pbtask.TaskState]int)
+	taskCount = make(map[TaskStateSummary]int)
 
 	spreadHosts := make(map[string]struct{})
 
@@ -2041,16 +2055,14 @@ func (j *job) GetTaskStateCount() (
 	defer j.RUnlock()
 
 	for _, t := range j.tasks {
-		curState := t.CurrentState().State
-		goalState := t.GoalState().State
-		if _, ok := taskCount[curState]; !ok {
-			taskCount[curState] = make(map[pbtask.TaskState]int)
-		}
-		taskCount[curState][goalState]++
+		stateSummary := t.StateSummary()
+
+		taskCount[stateSummary]++
+
 		if j.config != nil {
 			if j.config.GetType() == pbjob.JobType_SERVICE &&
-				util.IsPelotonStateTerminal(curState) &&
-				util.IsTaskThrottled(curState, t.GetCacheRuntime().GetMessage()) {
+				util.IsPelotonStateTerminal(stateSummary.CurrentState) &&
+				util.IsTaskThrottled(stateSummary.CurrentState, t.GetCacheRuntime().GetMessage()) {
 				throttledTasks++
 			}
 			if j.config.placementStrategy == pbjob.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB {

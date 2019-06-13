@@ -49,6 +49,7 @@ func TestAddAndGetAndClearJob(t *testing.T) {
 	assert.Nil(t, f.GetJob(jobID))
 
 	j := f.AddJob(jobID)
+
 	assert.NotNil(t, j)
 
 	assert.Equal(t, j, f.GetJob(jobID))
@@ -105,6 +106,7 @@ func TestPublishMetrics(t *testing.T) {
 			GoalState: pbtask.TaskState_RUNNING,
 			Revision:  &peloton.ChangeLog{Version: 1},
 			Host:      "host1",
+			Healthy:   pbtask.HealthState_HEALTHY,
 		},
 	}
 	taskInfos[1] = &pbtask.TaskInfo{
@@ -113,6 +115,7 @@ func TestPublishMetrics(t *testing.T) {
 			GoalState: pbtask.TaskState_RUNNING,
 			Revision:  &peloton.ChangeLog{Version: 1},
 			Host:      "host1",
+			Healthy:   pbtask.HealthState_HEALTH_UNKNOWN,
 		},
 	}
 	taskInfos[2] = &pbtask.TaskInfo{
@@ -120,12 +123,20 @@ func TestPublishMetrics(t *testing.T) {
 			State:     pbtask.TaskState_INITIALIZED,
 			GoalState: pbtask.TaskState_DELETED,
 			Revision:  &peloton.ChangeLog{Version: 1},
+			Healthy:   pbtask.HealthState_HEALTH_UNKNOWN,
 		},
 	}
 	j := f.AddJob(jobID)
-	j.(*job).config = &cachedConfig{
+	cachedJob := j.(*job)
+	cachedJob.config = &cachedConfig{
 		placementStrategy: pbjob.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB,
+		jobType:           pbjob.JobType_SERVICE,
+		sla: &pbjob.SlaConfig{
+			MaximumUnavailableInstances: 2,
+		},
 	}
+	cachedJob.runtime = &pbjob.RuntimeInfo{}
+	cachedJob.jobType = pbjob.JobType_SERVICE
 	j.ReplaceTasks(taskInfos, true)
 
 	jobID = &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f111"}
@@ -134,6 +145,7 @@ func TestPublishMetrics(t *testing.T) {
 			State:     pbtask.TaskState_PENDING,
 			GoalState: pbtask.TaskState_SUCCEEDED,
 			Revision:  &peloton.ChangeLog{Version: 1},
+			Healthy:   pbtask.HealthState_HEALTH_UNKNOWN,
 		},
 	}
 	taskInfos[1] = &pbtask.TaskInfo{
@@ -142,6 +154,7 @@ func TestPublishMetrics(t *testing.T) {
 			GoalState: pbtask.TaskState_RUNNING,
 			Revision:  &peloton.ChangeLog{Version: 1},
 			Host:      "host2",
+			Healthy:   pbtask.HealthState_HEALTH_UNKNOWN,
 		},
 	}
 	taskInfos[2] = &pbtask.TaskInfo{
@@ -149,12 +162,26 @@ func TestPublishMetrics(t *testing.T) {
 			State:     pbtask.TaskState_INITIALIZED,
 			GoalState: pbtask.TaskState_DELETED,
 			Revision:  &peloton.ChangeLog{Version: 1},
+			Healthy:   pbtask.HealthState_HEALTH_UNKNOWN,
 		},
 	}
-	j = f.AddJob(jobID)
-	j.(*job).config = &cachedConfig{
-		placementStrategy: pbjob.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB,
+	taskInfos[3] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_UNKNOWN,
+			GoalState: pbtask.TaskState_DELETED,
+			Revision:  &peloton.ChangeLog{Version: 1},
+		},
 	}
+
+	j = f.AddJob(jobID)
+	cachedJob = j.(*job)
+	cachedJob.config = &cachedConfig{
+		placementStrategy: pbjob.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB,
+		sla: &pbjob.SlaConfig{
+			MaximumUnavailableInstances: 0,
+		},
+	}
+	cachedJob.runtime = &pbjob.RuntimeInfo{}
 	j.ReplaceTasks(taskInfos, true)
 
 	j.AddWorkflow(&peloton.UpdateID{
@@ -306,6 +333,7 @@ func createJobFactoryWithMockTasks(
 	for i := 0; i < numberOfJob; i++ {
 		jobID := &peloton.JobID{Value: uuid.New()}
 		cachedJob := f.AddJob(jobID)
+		cachedJob.(*job).jobType = pbjob.JobType_SERVICE
 		for j := uint32(0); j < uint32(numberOfTaskPerJob); j++ {
 			cachedTask := newTask(jobID, j, f, cachedJob.GetJobType())
 			// randomly populate the states

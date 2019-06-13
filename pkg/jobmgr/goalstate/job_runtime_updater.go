@@ -169,7 +169,7 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 				"max_running_instances":   maxRunningInstances,
 				"job_id":                  id,
 			}).Info("scheduled instances exceed max running instances")
-			goalStateDriver.mtx.jobMetrics.JobMaxRunningInstancesExcceeding.Inc(int64(currentScheduledInstances - maxRunningInstances))
+			goalStateDriver.mtx.jobMetrics.JobMaxRunningInstancesExceeding.Inc(int64(currentScheduledInstances - maxRunningInstances))
 		}
 		log.WithField("current_scheduled_tasks", currentScheduledInstances).
 			WithField("job_id", id).

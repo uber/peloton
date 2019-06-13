@@ -70,7 +70,7 @@ type jobFactory struct {
 	jobNameToIDOps ormobjects.JobNameToIDOps     // DB ops for job_name_to_id table
 	mtx            *Metrics                      // cache metrics
 	taskMetrics    *TaskMetrics                  // task metrics
-	// Tob/task listeners. This list is immutable after object is created.
+	// Job/task listeners. This list is immutable after object is created.
 	// So it can read without a lock.
 	listeners []JobTaskListener
 	// channel to indicate that the job factory needs to stop
@@ -228,20 +228,36 @@ func (f *jobFactory) publishMetrics() map[pbtask.TaskState]map[pbtask.TaskState]
 	// Iterate through jobs, tasks and count
 	jobs := f.GetAllJobs()
 	var (
-		totalThrottledTasks int
-		spreadQuotientSum   float64
-		spreadQuotientCount int64
+		totalThrottledTasks  int
+		spreadQuotientSum    float64
+		spreadQuotientCount  int64
+		slaViolatedJobIDs    []string
+		unavailableInstances uint32
+		unknownInstances     uint32
 	)
 	for _, j := range jobs {
 		taskStateCount, throttledTasks, spread := j.GetTaskStateCount()
-		for currentState, goalStateMap := range taskStateCount {
-			for goalState, count := range goalStateMap {
-				if _, ok := tCount[currentState]; !ok {
-					// should not reach here, just for safety
-					tCount[currentState] = map[pbtask.TaskState]int{}
-				}
-				tCount[currentState][goalState] += count
+		for stateSummary, count := range taskStateCount {
+			currentState := stateSummary.CurrentState
+			goalState := stateSummary.GoalState
+			healthState := stateSummary.HealthState
 
+			tCount[currentState][goalState] += count
+
+			if currentState == pbtask.TaskState_UNKNOWN ||
+				goalState == pbtask.TaskState_UNKNOWN {
+				unknownInstances = unknownInstances + uint32(count)
+				continue
+			}
+
+			if goalState == pbtask.TaskState_RUNNING {
+				if currentState == pbtask.TaskState_RUNNING {
+					switch healthState {
+					case pbtask.HealthState_DISABLED, pbtask.HealthState_HEALTHY:
+						continue
+					}
+				}
+				unavailableInstances = unavailableInstances + uint32(count)
 			}
 		}
 
@@ -257,10 +273,36 @@ func (f *jobFactory) publishMetrics() map[pbtask.TaskState]map[pbtask.TaskState]
 			spreadQuotientSum +=
 				(float64(spread.taskCount) / float64(spread.hostCount))
 		}
+
+		// SLA is currently defined only for stateless jobs
+		if j.GetJobType() != pbjob.JobType_SERVICE {
+			continue
+		}
+
+		jobConfig := j.GetCachedConfig()
+		if jobConfig == nil {
+			log.WithField("job_id", j.ID().GetValue()).
+				Debug("job config not present in cache, skipping SLA metrics for job")
+			continue
+		}
+
+		if unknownInstances > 0 {
+			log.WithFields(log.Fields{
+				"job_id":                j.ID().GetValue(),
+				"num_unknown_instances": unknownInstances,
+			}).Debug("job has instances in unknown state")
+		}
+
+		if unavailableInstances > jobConfig.GetSLA().GetMaximumUnavailableInstances() {
+			log.WithField("job_id", j.ID().GetValue()).
+				Info("job sla violated")
+			slaViolatedJobIDs = append(slaViolatedJobIDs, j.ID().GetValue())
+		}
 	}
 
 	// Publish
 	f.mtx.scope.Gauge("jobs_count").Update(float64(len(jobs)))
+	f.mtx.scope.Gauge("sla_violated_jobs").Update(float64(len(slaViolatedJobIDs)))
 	f.mtx.scope.Gauge("throttled_tasks").Update(float64(totalThrottledTasks))
 	if spreadQuotientCount > 0 {
 		f.taskMetrics.MeanSpreadQuotient.

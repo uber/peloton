@@ -4646,11 +4646,17 @@ func (suite *JobTestSuite) TestGetStateCount() {
 	taskCount, throttledTasks, _ := suite.job.GetTaskStateCount()
 	updateCount := suite.job.GetWorkflowStateCount()
 	suite.Equal(
-		taskCount[pbtask.TaskState_PENDING][pbtask.TaskState_SUCCEEDED],
-		2)
+		taskCount[TaskStateSummary{
+			CurrentState: pbtask.TaskState_PENDING,
+			GoalState:    pbtask.TaskState_SUCCEEDED,
+			HealthState:  pbtask.HealthState_INVALID,
+		}], 2)
 	suite.Equal(
-		taskCount[pbtask.TaskState_KILLED][pbtask.TaskState_DELETED],
-		1)
+		taskCount[TaskStateSummary{
+			CurrentState: pbtask.TaskState_KILLED,
+			GoalState:    pbtask.TaskState_DELETED,
+			HealthState:  pbtask.HealthState_INVALID,
+		}], 1)
 	suite.Equal(throttledTasks, 1)
 	suite.Equal(updateCount[pbupdate.State_ROLLING_FORWARD], 1)
 }
@@ -4977,4 +4983,47 @@ func (suite *JobTestSuite) TestGetTaskSpreadCounts() {
 		suite.Equal(int(tc.numTasksPlaced), spread.taskCount)
 		suite.Equal(int(tc.numHosts), spread.hostCount)
 	}
+}
+
+// TestGetCachedConfig tests getting the config for
+// the job when the job is present in the cache
+func (suite *JobTestSuite) TestGetCachedConfig() {
+	cachedConfig := suite.job.GetCachedConfig()
+	suite.Equal(
+		suite.job.config.GetSLA().GetMaximumUnavailableInstances(),
+		cachedConfig.GetSLA().GetMaximumUnavailableInstances(),
+	)
+	suite.Equal(
+		suite.job.config.GetSLA().GetRevocable(),
+		cachedConfig.GetSLA().GetRevocable(),
+	)
+	suite.Equal(
+		suite.job.config.GetSLA().GetPreemptible(),
+		cachedConfig.GetSLA().GetPreemptible(),
+	)
+	suite.Equal(
+		suite.job.config.GetSLA().GetMaximumRunningInstances(),
+		cachedConfig.GetSLA().GetMaximumRunningInstances(),
+	)
+	suite.Equal(
+		suite.job.config.GetSLA().GetMaxRunningTime(),
+		cachedConfig.GetSLA().GetMaxRunningTime(),
+	)
+	suite.Equal(
+		suite.job.config.GetSLA().GetPriority(),
+		cachedConfig.GetSLA().GetPriority(),
+	)
+	suite.Equal(suite.job.config.GetRespoolID(), cachedConfig.GetRespoolID())
+	suite.Equal(suite.job.config.GetInstanceCount(), cachedConfig.GetInstanceCount())
+	suite.Equal(suite.job.config.GetType(), cachedConfig.GetType())
+	suite.Equal(suite.job.config.GetName(), cachedConfig.GetName())
+	suite.Equal(suite.job.config.GetLabels(), cachedConfig.GetLabels())
+	suite.Equal(suite.job.config.GetChangeLog(), cachedConfig.GetChangeLog())
+}
+
+// TestGetCachedConfigNilConfig tests getting cached
+// job config when the job is not in cache
+func (suite *JobTestSuite) TestGetCachedConfigNilConfig() {
+	suite.job.config = nil
+	suite.Nil(suite.job.GetCachedConfig())
 }
