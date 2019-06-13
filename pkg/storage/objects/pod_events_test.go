@@ -32,6 +32,7 @@ type PodEventsObjectTestSuite struct {
 }
 
 func (s *PodEventsObjectTestSuite) SetupTest() {
+	setupTestStore()
 }
 
 func TestPodEventsObjectSuite(t *testing.T) {

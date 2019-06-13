@@ -17,25 +17,30 @@ package objects
 import (
 	"fmt"
 
-	"github.com/uber/peloton/pkg/storage/cassandra"
-
 	"github.com/uber-go/tally"
 )
 
-// Store is the ORM store to use for tests
+// testStore is the ORM store to use for tests
 var testStore *Store
 
 // Create and initialize a store for object tests
-func setupTestStore() (*Store, error) {
-	return NewCassandraStore(
-		cassandra.MigrateForTest(),
-		tally.NewTestScope("", map[string]string{}))
-}
+func setupTestStore() {
+	conf := GenerateTestCassandraConfig()
 
-func init() {
-	s, err := setupTestStore()
+	if testStore != nil { // && testSession != nil {
+		return
+	}
+
+	MigrateSchema(conf)
+
+	s, err := NewCassandraStore(
+		conf,
+		tally.NewTestScope(
+			"", map[string]string{}),
+	)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to setup test store: %v", err))
 	}
+
 	testStore = s
 }

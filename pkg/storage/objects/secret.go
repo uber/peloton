@@ -18,7 +18,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/pkg/storage/objects/base"
 )
@@ -106,8 +105,8 @@ func newSecretObject(
 	jobID string,
 	now time.Time,
 	secretID, secretString, secretPath string,
-) (*SecretInfoObject, error) {
-	secretInfoObj := &SecretInfoObject{
+) *SecretInfoObject {
+	return &SecretInfoObject{
 		SecretID:     secretID,
 		JobID:        jobID,
 		Version:      secretVersion0,
@@ -116,7 +115,6 @@ func newSecretObject(
 		Path:         secretPath,
 		CreationTime: now,
 	}
-	return secretInfoObj, nil
 }
 
 // ToProto returns the unmarshaled *peloton.Secret
@@ -137,12 +135,9 @@ func (s *secretInfoOps) CreateSecret(
 	now time.Time,
 	secretID, secretString, secretPath string,
 ) error {
-	obj, err := newSecretObject(jobID, now, secretID, secretString, secretPath)
-	if err != nil {
-		s.store.metrics.OrmJobMetrics.SecretInfoCreateFail.Inc(1)
-		return errors.Wrap(err, "Failed to construct SecretInfoObject")
-	}
-	if err = s.store.oClient.Create(ctx, obj); err != nil {
+	obj := newSecretObject(jobID, now, secretID, secretString, secretPath)
+
+	if err := s.store.oClient.Create(ctx, obj); err != nil {
 		s.store.metrics.OrmJobMetrics.SecretInfoCreateFail.Inc(1)
 		return err
 	}

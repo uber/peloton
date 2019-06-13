@@ -143,9 +143,6 @@ func (suite *JobHandlerTestSuite) setupMocks(
 	}, nil).AnyTimes()
 	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(&job.RuntimeInfo{State: job.JobState_PENDING}, nil).AnyTimes()
-	suite.mockedJobStore.EXPECT().
-		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
-		Return(nil).AnyTimes()
 	suite.mockedJobConfigOps.EXPECT().
 		Create(
 			context.Background(),

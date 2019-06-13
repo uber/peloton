@@ -30,6 +30,7 @@ type SecretInfoObjectTestSuite struct {
 }
 
 func (suite *SecretInfoObjectTestSuite) SetupTest() {
+	setupTestStore()
 }
 
 func TestSecretObjectSuite(t *testing.T) {

@@ -39,6 +39,7 @@ import (
 	"github.com/uber/peloton/pkg/resmgr/respool"
 	"github.com/uber/peloton/pkg/resmgr/respool/respoolsvc"
 	"github.com/uber/peloton/pkg/resmgr/task"
+	"github.com/uber/peloton/pkg/storage/cassandra"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 	"github.com/uber/peloton/pkg/storage/stores"
 
@@ -272,7 +273,7 @@ func main() {
 
 	store := stores.MustCreateStore(&cfg.Storage, rootScope)
 	ormStore, ormErr := ormobjects.NewCassandraStore(
-		&cfg.Storage.Cassandra,
+		cassandra.ToOrmConfig(&cfg.Storage.Cassandra),
 		rootScope)
 	if ormErr != nil {
 		log.WithError(ormErr).Fatal("Failed to create ORM store for Cassandra")

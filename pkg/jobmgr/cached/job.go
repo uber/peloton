@@ -642,7 +642,7 @@ func (j *job) Create(
 
 	// both config and runtime are created, move the state to INITIALIZED
 	j.runtime.State = pbjob.JobState_INITIALIZED
-	if err := j.jobFactory.jobStore.UpdateJobRuntime(
+	if err := j.jobFactory.jobRuntimeOps.Upsert(
 		ctx,
 		j.id,
 		j.runtime); err != nil {
@@ -777,7 +777,7 @@ func (j *job) RollingCreate(
 
 	// both config and runtime are created, move the state to PENDING
 	j.runtime.State = pbjob.JobState_PENDING
-	if err := j.jobFactory.jobStore.UpdateJobRuntime(
+	if err := j.jobFactory.jobRuntimeOps.Upsert(
 		ctx,
 		j.id,
 		j.runtime); err != nil {
@@ -908,7 +908,7 @@ func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.Runtim
 		UpdatedAt: uint64(time.Now().UnixNano()),
 	}
 
-	if err := j.jobFactory.jobStore.UpdateJobRuntime(
+	if err := j.jobFactory.jobRuntimeOps.Upsert(
 		ctx,
 		j.id,
 		&newRuntime,
@@ -1082,7 +1082,7 @@ func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, configAddOn *m
 		}
 
 		if updatedRuntime != nil {
-			err := j.jobFactory.jobStore.UpdateJobRuntime(ctx, j.ID(), updatedRuntime)
+			err := j.jobFactory.jobRuntimeOps.Upsert(ctx, j.ID(), updatedRuntime)
 			if err != nil {
 				j.invalidateCache()
 				return err
@@ -1628,7 +1628,7 @@ func (j *job) CreateWorkflow(
 			// make sure user takes the correct action based on update-to-date opaque data.
 			j.runtime.WorkflowVersion++
 			newRuntime := j.mergeRuntime(&pbjob.RuntimeInfo{WorkflowVersion: j.runtime.GetWorkflowVersion()})
-			if err := j.jobFactory.jobStore.UpdateJobRuntime(ctx, j.id, newRuntime); err != nil {
+			if err := j.jobFactory.jobRuntimeOps.Upsert(ctx, j.id, newRuntime); err != nil {
 				j.invalidateCache()
 				return currentUpdate.GetUpdateID(),
 					nil,
@@ -2172,7 +2172,7 @@ func (j *job) updateJobRuntime(
 		newWorkflow.GetUpdateConfig().GetStartTasks() {
 		runtime.GoalState = pbjob.JobState_RUNNING
 	}
-	if err := j.jobFactory.jobStore.UpdateJobRuntime(
+	if err := j.jobFactory.jobRuntimeOps.Upsert(
 		ctx,
 		j.id,
 		runtime,
@@ -2447,7 +2447,7 @@ func (j *job) updateWorkflowVersion(
 	runtimeDiff := &pbjob.RuntimeInfo{WorkflowVersion: workflowVersion + 1}
 	newRuntime := j.mergeRuntime(runtimeDiff)
 
-	if err := j.jobFactory.jobStore.UpdateJobRuntime(ctx, j.id, newRuntime); err != nil {
+	if err := j.jobFactory.jobRuntimeOps.Upsert(ctx, j.id, newRuntime); err != nil {
 		j.runtime = nil
 		return err
 	}

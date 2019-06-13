@@ -21,17 +21,12 @@ import (
 	"reflect"
 	"time"
 
-	pelotoncassandra "github.com/uber/peloton/pkg/storage/cassandra"
-	"github.com/uber/peloton/pkg/storage/cassandra/impl"
 	"github.com/uber/peloton/pkg/storage/objects/base"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc/yarpcerrors"
 )
-
-// C* config
-var config *pelotoncassandra.Config
 
 // C* connector
 var connector *cassandraConnector
@@ -114,8 +109,8 @@ var keyRow = []base.Column{
 // Initialize C* session and create a test table
 func init() {
 	rand.Seed(time.Now().UnixNano())
-	config = &pelotoncassandra.Config{
-		CassandraConn: &impl.CassandraConn{
+	config := &Config{
+		CassandraConn: &CassandraConn{
 			ContactPoints: []string{"127.0.0.1"},
 			Port:          9043,
 			CQLVersion:    "3.4.2",
@@ -124,7 +119,7 @@ func init() {
 		StoreName: "peloton_test",
 	}
 
-	session, err := impl.CreateStoreSession(
+	session, err := CreateStoreSession(
 		config.CassandraConn, config.StoreName)
 	if err != nil {
 		log.Fatal(err)

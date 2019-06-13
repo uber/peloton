@@ -52,16 +52,25 @@ var mutex = &sync.Mutex{}
 var scope = tally.Scope(tally.NoopScope)
 
 func init() {
-	conf := cassandra.MigrateForTest()
+	conf := ormobjects.GenerateTestCassandraConfig()
+	ormobjects.MigrateSchema(conf)
+
 	var err error
-	csStore, err = cassandra.NewStore(conf, scope)
+	csStore, err = cassandra.NewStore(
+		cassandra.GenerateTestCassandraConfig(),
+		scope)
 	if err != nil {
 		log.Fatal(err)
 	}
-	ormStore, ormErr := ormobjects.NewCassandraStore(conf, scope)
+
+	ormStore, ormErr := ormobjects.NewCassandraStore(
+		conf,
+		scope,
+	)
 	if ormErr != nil {
 		log.Fatal(ormErr)
 	}
+
 	jobConfigOps = ormobjects.NewJobConfigOps(ormStore)
 	jobRuntimeOps = ormobjects.NewJobRuntimeOps(ormStore)
 }

@@ -41,6 +41,7 @@ import (
 	"github.com/uber/peloton/pkg/common/taskconfig"
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/storage"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 	qb "github.com/uber/peloton/pkg/storage/querybuilder"
 
 	"github.com/gocql/gocql"
@@ -72,6 +73,8 @@ type CassandraStoreTestSuite struct {
 
 var store *Store
 var testScope = tally.NewTestScope("", map[string]string{})
+var jobConfigOps ormobjects.JobConfigOps
+var jobRuntimeOps ormobjects.JobRuntimeOps
 
 // This test vector borrowed from gzip test suite to simulate a checksum
 // error during ucompressing data
@@ -85,32 +88,33 @@ var badCheckSumData = []byte{
 }
 
 func init() {
-	conf := MigrateForTest()
+	conf := ormobjects.GenerateTestCassandraConfig()
+	ormobjects.MigrateSchema(conf)
+
 	var err error
-	store, err = NewStore(conf, testScope)
+	store, err = NewStore(
+		GenerateTestCassandraConfig(),
+		testScope,
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	ormStore, ormErr := ormobjects.NewCassandraStore(
+		conf,
+		testScope,
+	)
+	if ormErr != nil {
+		log.Fatal(ormErr)
+	}
+
+	jobConfigOps = ormobjects.NewJobConfigOps(ormStore)
+	jobRuntimeOps = ormobjects.NewJobRuntimeOps(ormStore)
 }
 
 func TestCassandraStore(t *testing.T) {
 	suite.Run(t, new(CassandraStoreTestSuite))
 	assert.True(t, testScope.Snapshot().Counters()["execute.execute+result=success,store=peloton_test"].Value() > 0)
-}
-
-func (suite *CassandraStoreTestSuite) TestMigrateString() {
-	conf := MigrateForTest()
-	conf.CassandraConn.Username = "user"
-	conf.CassandraConn.Password = "password"
-	expectedStr := fmt.Sprintf("cassandra://%v:%v@%v:%v/%v",
-		conf.CassandraConn.Username,
-		conf.CassandraConn.Password,
-		conf.CassandraConn.ContactPoints[0],
-		conf.CassandraConn.Port,
-		conf.StoreName)
-	expectedStr = strings.Replace(expectedStr, " ", "", -1)
-	connStr := conf.MigrateString()
-	suite.Equal(connStr, expectedStr)
 }
 
 // TestGetTaskIDsForJobAndState tests reading task IDs for given job and state
@@ -119,7 +123,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskIDsForJobAndState() {
 	taskStore = store
 	var jobID = peloton.JobID{Value: uuid.New()}
 	runtimes := make(map[uint32]*task.RuntimeInfo)
-	jobConfig := createJobConfig()
+	jobConfig := buildJobConfig()
 	jobConfig.InstanceCount = 10
 	jobConfig.InstanceConfig = map[uint32]*task.TaskConfig{}
 
@@ -169,7 +173,13 @@ func (suite *CassandraStoreTestSuite) createJob(
 		UpdatedAt: uint64(now.UnixNano()),
 		Version:   1,
 	}
-	if err := store.CreateJobConfig(ctx, id, jobConfig, configAddOn, jobConfig.GetChangeLog().GetVersion(), owner); err != nil {
+	if err := jobConfigOps.Create(
+		ctx,
+		id,
+		jobConfig,
+		configAddOn,
+		jobConfig.GetChangeLog().GetVersion(),
+	); err != nil {
 		return err
 	}
 
@@ -197,7 +207,7 @@ func (suite *CassandraStoreTestSuite) createJob(
 	initialJobRuntime.TaskStats[task.TaskState_INITIALIZED.String()] = jobConfig.InstanceCount
 
 	// Create the initial job runtime record
-	err := store.CreateJobRuntime(ctx, id, &initialJobRuntime)
+	err := jobRuntimeOps.Upsert(ctx, id, &initialJobRuntime)
 	if err != nil {
 		return err
 	}
@@ -390,6 +400,61 @@ func (suite *CassandraStoreTestSuite) TestCompression() {
 	suite.Equal(buf, uncompressedBuf)
 }
 
+// TestMigrateString tests MigrateString functionality
+func (suite *CassandraStoreTestSuite) TestMigrateString() {
+	conf := GenerateTestCassandraConfig()
+	conf.CassandraConn.Username = "user"
+	conf.CassandraConn.Password = "password"
+	expectedStr := fmt.Sprintf("cassandra://%v:%v@%v:%v/%v",
+		conf.CassandraConn.Username,
+		conf.CassandraConn.Password,
+		conf.CassandraConn.ContactPoints[0],
+		conf.CassandraConn.Port,
+		conf.StoreName)
+	expectedStr = strings.Replace(expectedStr, " ", "", -1)
+	connStr := conf.MigrateString()
+	suite.Equal(connStr, expectedStr)
+}
+
+// TestGetMaxJobConfigVersion tests get latest job version from job_config
+func (suite *CassandraStoreTestSuite) TestGetMaxJobConfigVersion() {
+	var jobStore storage.JobStore
+	jobStore = store
+
+	jobID := peloton.JobID{Value: uuid.New()}
+	var jobConfig = job.JobConfig{
+		Name:          "TestMaxJobVersion",
+		InstanceCount: 10,
+		Type:          job.JobType_BATCH,
+		Description:   fmt.Sprintf("test max version"),
+	}
+	err := suite.createJob(
+		context.Background(),
+		&jobID,
+		&jobConfig,
+		&models.ConfigAddOn{},
+		"uber")
+	suite.NoError(err)
+
+	version, err := jobStore.GetMaxJobConfigVersion(
+		context.Background(),
+		jobID.GetValue(),
+	)
+	suite.NoError(err)
+	suite.Equal(uint64(1), version)
+}
+
+// TestGetAllJobsInJobIndex tests getting all jobs in the job_index table
+func (suite *CassandraStoreTestSuite) TestGetAllJobsInJobIndex() {
+	var jobStore storage.JobStore
+	jobStore = store
+
+	_, err := jobStore.GetAllJobsInJobIndex(
+		context.Background(),
+	)
+	suite.NoError(err)
+}
+
 func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	var jobStore storage.JobStore
 	jobStore = store
@@ -439,11 +504,11 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 		suite.NoError(err)
 
 		// Update job runtime to different values
-		runtime, err := jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
+		runtime, err := jobRuntimeOps.Get(context.Background(), &jobID)
 		suite.NoError(err)
 
 		runtime.State = job.JobState(i + 1)
-		err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
+		err = jobRuntimeOps.Upsert(context.Background(), &jobID, runtime)
 		suite.NoError(err)
 	}
 
@@ -546,8 +611,6 @@ func (suite *CassandraStoreTestSuite) queryJobs(
 }
 
 func (suite *CassandraStoreTestSuite) TestJobQueryStaleLuceneIndex() {
-	var jobStore storage.JobStore
-	jobStore = store
 	jobID := peloton.JobID{Value: uuid.New()}
 	configAddOn := &models.ConfigAddOn{}
 	var jobConfig = job.JobConfig{
@@ -559,13 +622,13 @@ func (suite *CassandraStoreTestSuite) TestJobQueryStaleLuceneIndex() {
 	err := suite.createJob(context.Background(), &jobID, &jobConfig, configAddOn, "uber")
 	suite.NoError(err)
 
-	runtime, err := jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
+	runtime, err := jobRuntimeOps.Get(context.Background(), &jobID)
 	suite.NoError(err)
 
 	// set job creation time to two days ago
 	creationTime := time.Now().AddDate(0, 0, -5).UTC().Format(time.RFC3339Nano)
 	runtime.CreationTime = creationTime
-	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
+	err = jobRuntimeOps.Upsert(context.Background(), &jobID, runtime)
 	suite.NoError(err)
 	err = updateJobIndex(context.Background(), &jobID, nil, runtime)
 	suite.NoError(err)
@@ -582,7 +645,7 @@ func (suite *CassandraStoreTestSuite) TestJobQueryStaleLuceneIndex() {
 
 	// Set runtime state to succeeded and update the job_index
 	runtime.State = job.JobState_SUCCEEDED
-	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
+	err = jobRuntimeOps.Upsert(context.Background(), &jobID, runtime)
 	suite.NoError(err)
 	err = updateJobIndex(context.Background(), &jobID, nil, runtime)
 	suite.NoError(err)
@@ -965,11 +1028,11 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		suite.NoError(err)
 
 		// Update job runtime to different values
-		runtime, err := jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
+		runtime, err := jobRuntimeOps.Get(context.Background(), &jobID)
 		suite.NoError(err)
 
 		runtime.State = job.JobState(i + 1)
-		err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
+		err = jobRuntimeOps.Upsert(context.Background(), &jobID, runtime)
 		suite.NoError(err)
 
 		err = updateJobIndex(context.Background(), &jobID, nil, runtime)
@@ -1225,10 +1288,10 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 
 	// Query for multiple states
 	for i := 0; i < records; i++ {
-		runtime, err := jobStore.GetJobRuntime(context.Background(), jobIDs[i].GetValue())
+		runtime, err := jobRuntimeOps.Get(context.Background(), jobIDs[i])
 		suite.NoError(err)
 		runtime.State = job.JobState(i)
-		store.UpdateJobRuntime(context.Background(), jobIDs[i], runtime)
+		jobRuntimeOps.Upsert(context.Background(), jobIDs[i], runtime)
 	}
 
 	suite.refreshLuceneIndex()
@@ -1253,133 +1316,6 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	for _, jobID := range jobIDs {
 		suite.NoError(jobStore.DeleteJob(context.Background(), jobID.GetValue()))
 		suite.NoError(deleteJobIndex(context.Background(), jobID))
-	}
-}
-
-func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
-	var jobStore storage.JobStore
-	jobStore = store
-	var originalJobs []*job.JobConfig
-	var records = 1
-	var keys = []string{"testKey0", "testKey1", "testKey2", "key0"}
-	var vals = []string{"testVal0", "testVal1", "testVal2", "val0"}
-	// Wait for 5 * 50ms for DB to be cleaned up
-	var maxAttempts = 5
-	for i := 0; i < records; i++ {
-		var jobID = peloton.JobID{Value: uuid.New()}
-		configAddOn := &models.ConfigAddOn{
-			SystemLabels: []*peloton.Label{
-				{
-					Key:   "peloton.job_id",
-					Value: jobID.GetValue(),
-				},
-			},
-		}
-		var sla = job.SlaConfig{
-			Priority:                22,
-			MaximumRunningInstances: 3,
-			Preemptible:             false,
-		}
-		var taskConfig = task.TaskConfig{
-			Resource: &task.ResourceConfig{
-				CpuLimit:    0.8,
-				MemLimitMb:  800,
-				DiskLimitMb: 1500,
-				FdLimit:     1000 + uint32(i),
-			},
-		}
-		var labels = []*peloton.Label{
-			{Key: keys[0], Value: vals[0]},
-			{Key: keys[1], Value: vals[1]},
-			{Key: keys[2], Value: vals[2]},
-		}
-		// Add some special label to job0 and job1
-		if i < 2 {
-			labels = append(labels, &peloton.Label{Key: keys[3], Value: vals[3]})
-		}
-
-		// Add owner to job0 and job1
-		var owner = "team6"
-		if i < 2 {
-			owner = "money"
-		}
-		instanceConfig := make(map[uint32]*task.TaskConfig)
-		instanceConfig[0] = &taskConfig
-		instanceConfig[1] = &taskConfig
-		instanceConfig[2] = &taskConfig
-		var jobconfig = job.JobConfig{
-			Name:           jobID.GetValue(),
-			OwningTeam:     owner,
-			LdapGroups:     []string{"money", "team6", "otto"},
-			SLA:            &sla,
-			InstanceConfig: instanceConfig,
-			InstanceCount:  3,
-			Labels:         labels,
-		}
-		originalJobs = append(originalJobs, &jobconfig)
-		err := suite.createJob(context.Background(), &jobID, &jobconfig, configAddOn, "uber")
-		suite.NoError(err)
-
-		// Create job with same job id would be no op
-		jobconfig.Labels = nil
-		jobconfig.Name = "random"
-		err = suite.createJob(context.Background(), &jobID, &jobconfig, configAddOn, "uber2")
-		suite.Error(err)
-
-		// refresh lucene
-		suite.refreshLuceneIndex()
-		spec := &job.QuerySpec{
-			Name: jobID.GetValue(),
-		}
-		// query jobs should result in 1 entry after delete
-		_, _ = suite.queryJobs(spec, 1, 1)
-
-		var jobconf *job.JobConfig
-		jobconf, _, err = jobStore.GetJobConfig(context.Background(), jobID.GetValue())
-		suite.NoError(err)
-		suite.Equal(jobconf.Name, jobID.GetValue())
-		suite.Equal(len(jobconf.Labels), 4)
-		taskConfigs, addOn, noErr := store.GetTaskConfigs(context.Background(), &jobID, []uint32{0, 1, 2}, 1)
-		suite.Equal(len(taskConfigs), 3)
-		suite.NoError(noErr)
-		suite.Len(addOn.SystemLabels, len(configAddOn.SystemLabels))
-		for i := 0; i < len(addOn.SystemLabels); i++ {
-			suite.Equal(configAddOn.SystemLabels[i].Key, addOn.SystemLabels[i].Key)
-			suite.Equal(configAddOn.SystemLabels[i].Value, addOn.SystemLabels[i].Value)
-		}
-
-		suite.NoError(jobStore.DeleteJob(context.Background(), jobID.GetValue()))
-		suite.NoError(deleteJobIndex(context.Background(), &jobID))
-
-		for i := 0; i < maxAttempts; i++ {
-			jobconf, addOn, err = jobStore.GetJobConfig(context.Background(), jobID.GetValue())
-			if err != nil {
-				break
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-		suite.True(yarpcerrors.IsNotFound(err))
-		suite.Nil(jobconf)
-
-		var jobRuntime *job.RuntimeInfo
-		for i = 0; i < maxAttempts; i++ {
-			jobRuntime, err = jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
-			if err != nil {
-				break
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-		suite.True(yarpcerrors.IsNotFound(err))
-		suite.Nil(jobRuntime)
-
-		tasks, err := store.GetTasksForJob(context.Background(), &jobID)
-		suite.Len(tasks, 0)
-		suite.NoError(err)
-
-		// refresh lucene
-		suite.refreshLuceneIndex()
-		// query jobs should result in 0 entries after delete
-		_, _ = suite.queryJobs(spec, 0, 0)
 	}
 }
 
@@ -1419,7 +1355,7 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 	for i := 0; i < nJobs; i++ {
 		var jobID = peloton.JobID{Value: uuid.New()}
 		jobIDs = append(jobIDs, &jobID)
-		jobConfig := createJobConfig()
+		jobConfig := buildJobConfig()
 		jobConfig.Name = fmt.Sprintf("TestAddTasks_%d", i)
 		jobs = append(jobs, jobConfig)
 		err := suite.createJob(context.Background(), &jobID, jobConfig, configAddOn, "uber")
@@ -1514,46 +1450,6 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 	suite.Error(err)
 	suite.Nil(task)
 }
-
-/* Disable the test as we need to temporary disable LWT for C* writes. See T1176379
-
-func (suite *CassandraStoreTestSuite) TestUpdateTaskConcurrently() {
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	before := time.Now()
-
-	suite.NoError(store.createTaskConfig(context.Background(), jobID, 0, &task.TaskConfig{}, 0))
-	suite.NoError(store.CreateTaskRuntime(context.Background(), jobID, 0, &task.RuntimeInfo{}, ""))
-
-	c := 25
-
-	var wg sync.WaitGroup
-	wg.Add(c)
-	// Let `c` number of go-routines race around updating the jobID, and see that
-	// eventually exactly `c` writes was done.
-	for i := 0; i < c; i++ {
-		go func() {
-			for {
-				info, err := store.getTask(context.Background(), jobID.GetValue(), 0)
-				suite.NoError(err)
-				if err := store.UpdateTaskRuntime(context.Background(), jobID, 0, info.Runtime); err == nil {
-					wg.Done()
-					return
-				} else if !yarpcerrors.IsAlreadyExists(err) {
-					suite.Fail(err.Error())
-				}
-			}
-		}()
-	}
-
-	wg.Wait()
-
-	info, err := store.getTask(context.Background(), jobID.GetValue(), 0)
-	suite.NoError(err)
-
-	suite.Equal(uint64(c), info.GetRuntime().GetRevision().GetVersion())
-	suite.True(info.GetRuntime().GetRevision().UpdatedAt >= uint64(before.UnixNano()))
-}
-*/
 
 func (suite *CassandraStoreTestSuite) TestTaskVersionMigration() {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
@@ -1676,7 +1572,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateSummary() {
 	taskStore = store
 	var jobID = peloton.JobID{Value: uuid.New()}
 	configAddOn := &models.ConfigAddOn{}
-	jobConfig := createJobConfig()
+	jobConfig := buildJobConfig()
 	jobConfig.InstanceCount = uint32(2 * len(task.TaskState_name))
 	err := suite.createJob(context.Background(), &jobID, jobConfig, configAddOn, "user1")
 	suite.Nil(err)
@@ -1714,7 +1610,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskByRange() {
 	taskStore = store
 	var jobID = peloton.JobID{Value: uuid.New()}
 	configAddOn := &models.ConfigAddOn{}
-	jobConfig := createJobConfig()
+	jobConfig := buildJobConfig()
 	jobConfig.InstanceCount = uint32(100)
 	err := suite.createJob(context.Background(), &jobID, jobConfig, configAddOn, "user1")
 	suite.Nil(err)
@@ -1777,7 +1673,10 @@ func (suite *CassandraStoreTestSuite) TestActiveJobsForRecovery() {
 func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, to int) {
 	var taskStore storage.TaskStore
 	taskStore = store
-	jobConfig, _, err := store.GetJobConfig(context.Background(), jobID.GetValue())
+	jobConfig, _, err := jobConfigOps.GetCurrentVersion(
+		context.Background(),
+		jobID,
+	)
 	suite.NoError(err)
 
 	if to > int(jobConfig.InstanceCount) {
@@ -1829,7 +1728,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskRuntimesForJobByRange() {
 	var jobID = peloton.JobID{Value: uuid.New()}
 	configAddOn := &models.ConfigAddOn{}
 	runtimes := make(map[uint32]*task.RuntimeInfo)
-	jobConfig := createJobConfig()
+	jobConfig := buildJobConfig()
 	jobConfig.InstanceCount = 5
 	jobConfig.InstanceConfig = map[uint32]*task.TaskConfig{}
 
@@ -2016,177 +1915,6 @@ func (suite *CassandraStoreTestSuite) TestDeleteResourcePool() {
 	suite.Nil(err)
 	err = resourcePoolStore.DeleteResourcePool(context.Background(), resourcePoolID)
 	suite.Nil(err)
-}
-
-func (suite *CassandraStoreTestSuite) TestJobRuntime() {
-	var jobStore = store
-	nTasks := 20
-
-	// Test invalid jobID error
-	_, err := jobStore.GetJobRuntime(
-		context.Background(),
-		"dummy_jobID")
-	suite.Error(err)
-
-	// CreateJob should create the default job runtime
-	var jobID = peloton.JobID{Value: uuid.New()}
-	configAddOn := &models.ConfigAddOn{}
-	jobConfig := createJobConfig()
-	jobConfig.InstanceCount = uint32(nTasks)
-	err = suite.createJob(context.Background(), &jobID, jobConfig, configAddOn, "uber")
-	suite.NoError(err)
-
-	runtime, err := jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
-	suite.NoError(err)
-	suite.Equal(job.JobState_INITIALIZED, runtime.State)
-	suite.Equal(1, len(runtime.TaskStats))
-	suite.Equal(jobConfig.InstanceCount, runtime.TaskStats[task.TaskState_INITIALIZED.String()])
-
-	// update job runtime
-	runtime.State = job.JobState_RUNNING
-	runtime.TaskStats[task.TaskState_PENDING.String()] = 5
-	runtime.TaskStats[task.TaskState_PLACED.String()] = 5
-	runtime.TaskStats[task.TaskState_RUNNING.String()] = 5
-	runtime.TaskStats[task.TaskState_SUCCEEDED.String()] = 5
-
-	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
-	suite.NoError(err)
-
-	runtime, err = jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
-	suite.NoError(err)
-	suite.Equal(job.JobState_RUNNING, runtime.State)
-	suite.Equal(5, len(runtime.TaskStats))
-
-	jobIds, err := store.GetJobsByStates(context.Background(), []job.JobState{job.JobState_RUNNING})
-	suite.NoError(err)
-	idFound := false
-	for _, id := range jobIds {
-		if id.GetValue() == jobID.GetValue() {
-			idFound = true
-		}
-	}
-	suite.True(idFound)
-
-	jobIds, err = store.GetJobsByStates(context.Background(), []job.JobState{120})
-	suite.NoError(err)
-	suite.Equal(0, len(jobIds))
-
-	// job not found test
-	_, err = store.getTaskRuntimeRecord(
-		context.Background(), uuid.New(), 0)
-	suite.Error(err)
-	suite.True(yarpcerrors.IsNotFound(err))
-}
-
-func (suite *CassandraStoreTestSuite) TestJobConfig() {
-	var jobStore = store
-	oldInstanceCount := 20
-
-	// CreateJob should create the default job runtime
-	var jobID = peloton.JobID{Value: uuid.New()}
-	configAddOn := &models.ConfigAddOn{
-		SystemLabels: []*peloton.Label{
-			{
-				Key:   "peloton.job_id",
-				Value: jobID.GetValue(),
-			},
-		},
-	}
-	jobConfig := createJobConfig()
-	jobConfig.InstanceCount = uint32(oldInstanceCount)
-	err := suite.createJob(context.Background(), &jobID, jobConfig, configAddOn, "uber")
-	suite.NoError(err)
-
-	jobRuntime, err := jobStore.GetJobRuntime(context.Background(), jobID.GetValue())
-	suite.NoError(err)
-	suite.Equal(jobConfig.InstanceCount, jobRuntime.TaskStats[task.TaskState_INITIALIZED.String()])
-
-	jobConfig, addOn, err := jobStore.GetJobConfig(context.Background(), jobID.GetValue())
-	suite.NoError(err)
-	suite.Equal(uint32(oldInstanceCount), jobConfig.InstanceCount)
-	suite.Len(addOn.SystemLabels, len(configAddOn.SystemLabels))
-	for i := 0; i < len(configAddOn.SystemLabels); i++ {
-		suite.Equal(configAddOn.SystemLabels[i].Key, addOn.SystemLabels[i].Key)
-		suite.Equal(configAddOn.SystemLabels[i].Value, addOn.SystemLabels[i].Value)
-	}
-
-	// test getting all jobs in the index
-	jobs, err := jobStore.GetAllJobsInJobIndex(context.Background())
-	suite.NoError(err)
-	var found bool
-	for _, job := range jobs {
-		if job.GetId().GetValue() == jobID.GetValue() {
-			found = true
-			break
-		}
-	}
-	suite.Equal(true, found)
-
-	// in production, cachedJob would take care of job runtime update
-	jobRuntime.Revision.Version = uint64(2)
-	jobRuntime.ConfigurationVersion = uint64(2)
-	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, jobRuntime)
-	suite.NoError(err)
-
-}
-
-func (suite *CassandraStoreTestSuite) TestGetJobConfigOfDifferentVersions() {
-	var jobStore = store
-	oldInstanceCount := 20
-	newInstanceCount := 50
-
-	// CreateJob should create the default job runtime
-	var jobID = peloton.JobID{Value: uuid.New()}
-	configAddOn := &models.ConfigAddOn{
-		SystemLabels: []*peloton.Label{
-			{
-				Key:   "peloton.job_id",
-				Value: jobID.GetValue(),
-			},
-		},
-	}
-	jobConfig := createJobConfig()
-	jobConfig.InstanceCount = uint32(oldInstanceCount)
-	jobConfig.ChangeLog = &peloton.ChangeLog{
-		Version: 0,
-	}
-	err := jobStore.CreateJobConfig(
-		context.Background(),
-		&jobID,
-		jobConfig,
-		configAddOn,
-		jobConfig.GetChangeLog().GetVersion(),
-		"test-owner")
-	suite.NoError(err)
-
-	jobConfig.ChangeLog.Version = 1
-	jobConfig.InstanceCount = uint32(newInstanceCount)
-	err = jobStore.CreateJobConfig(
-		context.Background(),
-		&jobID,
-		jobConfig,
-		configAddOn,
-		jobConfig.GetChangeLog().GetVersion(),
-		"test-owner")
-	suite.NoError(err)
-
-	jobConfig, addOn, err := jobStore.GetJobConfigWithVersion(context.Background(), jobID.GetValue(), 0)
-	suite.NoError(err)
-	suite.Equal(uint32(oldInstanceCount), jobConfig.InstanceCount)
-	suite.Len(addOn.SystemLabels, len(configAddOn.SystemLabels))
-	for i := 0; i < len(configAddOn.SystemLabels); i++ {
-		suite.Equal(configAddOn.SystemLabels[i].Key, addOn.SystemLabels[i].Key)
-		suite.Equal(configAddOn.SystemLabels[i].Value, addOn.SystemLabels[i].Value)
-	}
-
-	jobConfig, addOn, err = jobStore.GetJobConfigWithVersion(context.Background(), jobID.GetValue(), 1)
-	suite.NoError(err)
-	suite.Equal(uint32(newInstanceCount), jobConfig.InstanceCount)
-	suite.Len(addOn.SystemLabels, len(configAddOn.SystemLabels))
-	for i := 0; i < len(configAddOn.SystemLabels); i++ {
-		suite.Equal(configAddOn.SystemLabels[i].Key, addOn.SystemLabels[i].Key)
-		suite.Equal(configAddOn.SystemLabels[i].Value, addOn.SystemLabels[i].Value)
-	}
 }
 
 func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
@@ -2946,7 +2674,7 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 	suite.Equal(0, len(jobUpdateEvents))
 }
 
-func createJobConfig() *job.JobConfig {
+func buildJobConfig() *job.JobConfig {
 	var sla = job.SlaConfig{
 		Priority:                22,
 		MaximumRunningInstances: 6,
@@ -3055,7 +2783,7 @@ func (suite *CassandraStoreTestSuite) TestTaskQueryFilter() {
 	var jobID = peloton.JobID{Value: uuid.New()}
 	configAddOn := &models.ConfigAddOn{}
 	runtimes := make(map[uint32]*task.RuntimeInfo)
-	jobConfig := createJobConfig()
+	jobConfig := buildJobConfig()
 	jobConfig.InstanceCount = 100
 	jobConfig.InstanceConfig = map[uint32]*task.TaskConfig{}
 
@@ -3152,7 +2880,7 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 	var jobID = peloton.JobID{Value: uuid.New()}
 	configAddOn := &models.ConfigAddOn{}
 	runtimes := make(map[uint32]*task.RuntimeInfo)
-	jobConfig := createJobConfig()
+	jobConfig := buildJobConfig()
 	jobConfig.InstanceCount = uint32(len(task.TaskState_name))
 	err := suite.createJob(context.Background(), &jobID, jobConfig, configAddOn, "user1")
 	suite.Nil(err)
@@ -3343,7 +3071,7 @@ func (suite *CassandraStoreTestSuite) TestQueryTasksSortByNameReasonEmptyName() 
 
 	configAddOn := &models.ConfigAddOn{}
 	runtimes := make(map[uint32]*task.RuntimeInfo)
-	jobConfig := createJobConfig()
+	jobConfig := buildJobConfig()
 	jobConfig.InstanceCount = 100
 	jobConfig.InstanceConfig = map[uint32]*task.TaskConfig{}
 
@@ -3399,7 +3127,7 @@ func (suite *CassandraStoreTestSuite) createTasksForSortBy(jobID peloton.JobID) 
 
 	configAddOn := &models.ConfigAddOn{}
 	runtimes := make(map[uint32]*task.RuntimeInfo)
-	jobConfig := createJobConfig()
+	jobConfig := buildJobConfig()
 	jobConfig.InstanceCount = 100
 	jobConfig.InstanceConfig = map[uint32]*task.TaskConfig{}
 
@@ -3633,7 +3361,7 @@ func TestLess(t *testing.T) {
 
 	orderByList := []*query.OrderBy{&stateOrder}
 
-	jobConfig := createJobConfig()
+	jobConfig := buildJobConfig()
 	taskInfo0 := createTaskInfo(jobConfig, &peloton.JobID{Value: uuid.New()}, 0)
 	taskInfo2 := createTaskInfo(jobConfig, &peloton.JobID{Value: uuid.New()}, 2)
 
@@ -3786,7 +3514,7 @@ func (suite *CassandraStoreTestSuite) TestCreateTaskRuntimeForServiceJob() {
 	taskStore := store
 	var jobID = peloton.JobID{Value: uuid.New()}
 	configAddOn := &models.ConfigAddOn{}
-	jobConfig := createJobConfig()
+	jobConfig := buildJobConfig()
 	jobConfig.InstanceCount = 1
 	jobConfig.Type = job.JobType_SERVICE
 

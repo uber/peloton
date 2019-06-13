@@ -31,6 +31,7 @@ import (
 	datastore "github.com/uber/peloton/pkg/storage/cassandra/api"
 	datastoremocks "github.com/uber/peloton/pkg/storage/cassandra/api/mocks"
 	datastoreimpl "github.com/uber/peloton/pkg/storage/cassandra/impl"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 	qb "github.com/uber/peloton/pkg/storage/querybuilder"
 
 	"github.com/golang/mock/gomock"
@@ -52,6 +53,8 @@ type MockDatastoreTestSuite struct {
 	ctrl            *gomock.Controller
 	mockedDataStore *datastoremocks.MockDataStore
 	store           *Store
+	jobConfigOps    *objectmocks.MockJobConfigOps
+	jobRuntimeOps   *objectmocks.MockJobRuntimeOps
 }
 
 func (suite *MockDatastoreTestSuite) SetupTest() {
@@ -61,12 +64,16 @@ func (suite *MockDatastoreTestSuite) SetupTest() {
 
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.mockedDataStore = datastoremocks.NewMockDataStore(suite.ctrl)
+	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
+	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.ctrl)
 
 	suite.store = &Store{
-		DataStore:   suite.mockedDataStore,
-		metrics:     storage.NewMetrics(testScope.SubScope("storage")),
-		Conf:        &Config{},
-		retryPolicy: nil,
+		DataStore:     suite.mockedDataStore,
+		jobConfigOps:  suite.jobConfigOps,
+		jobRuntimeOps: suite.jobRuntimeOps,
+		metrics:       storage.NewMetrics(testScope.SubScope("storage")),
+		Conf:          &Config{},
+		retryPolicy:   nil,
 	}
 
 	queryBuilder := &datastoreimpl.QueryBuilder{}
@@ -90,35 +97,10 @@ func (suite *MockDatastoreTestSuite) TestDataStoreDeleteJob() {
 		Value: uuid.New(),
 	}
 
-	// Failure test for GetJobConfig
-	suite.mockedDataStore.EXPECT().Execute(ctx, gomock.Any()).
-		Return(nil, errors.New("my-error"))
+	// Failure test for get job_config
+	suite.jobConfigOps.EXPECT().GetCurrentVersion(ctx, gomock.Any()).
+		Return(nil, nil, errors.New("my-error"))
 	suite.Error(suite.store.DeleteJob(ctx, jobID.GetValue()))
-}
-
-// TestDataStoreFailureGetJobConfig tests datastore failures in getting job cfg
-func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobConfig() {
-	_, _, err := suite.store.GetJobConfigWithVersion(
-		context.Background(), suite.testJobID.GetValue(), 0)
-	suite.Error(err)
-
-	_, _, err = suite.store.GetJobConfig(
-		context.Background(), suite.testJobID.GetValue())
-	suite.Error(err)
-
-}
-
-// TestDataStoreFailureGetJobRuntime tests datastore failures in getting
-// job runtime
-func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobRuntime() {
-	suite.Error(suite.store.CreateJobRuntime(
-		context.Background(),
-		suite.testJobID,
-		&job.RuntimeInfo{}))
-
-	_, err := suite.store.GetJobRuntime(
-		context.Background(), suite.testJobID.GetValue())
-	suite.Error(err)
 }
 
 // TestGetFrameworkID tests the fetch for framework ID
@@ -137,10 +119,6 @@ func (suite *MockDatastoreTestSuite) TestGetStreamID() {
 // job summary
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobSummary() {
 	_, err := suite.store.getJobSummaryFromIndex(
-		context.Background(), suite.testJobID)
-	suite.Error(err)
-
-	_, err = suite.store.getJobSummaryFromConfig(
 		context.Background(), suite.testJobID)
 	suite.Error(err)
 

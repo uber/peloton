@@ -45,6 +45,8 @@ import (
 	"github.com/uber/peloton/pkg/storage"
 	"github.com/uber/peloton/pkg/storage/cassandra/api"
 	"github.com/uber/peloton/pkg/storage/cassandra/impl"
+	ormcassandra "github.com/uber/peloton/pkg/storage/connectors/cassandra"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 	qb "github.com/uber/peloton/pkg/storage/querybuilder"
 
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
@@ -128,6 +130,50 @@ type Config struct {
 	MaxUpdatesPerJob int `yaml:"max_updates_job"`
 }
 
+// GenerateTestCassandraConfig generates a test config for local C* client
+// This is meant for sharing testing code only, not for production
+func GenerateTestCassandraConfig() *Config {
+	return &Config{
+		CassandraConn: &impl.CassandraConn{
+			ContactPoints: []string{"127.0.0.1"},
+			Port:          9043,
+			CQLVersion:    "3.4.2",
+			MaxGoRoutines: 1000,
+		},
+		StoreName:  "peloton_test",
+		Migrations: "migrations",
+	}
+}
+
+// ToOrmConfig is needed to generate ORM config from legacy config so that the
+// ORM code doesn't depend on legacy storage code and can be imported into the
+// legacy code
+func ToOrmConfig(c *Config) *ormcassandra.Config {
+	return &ormcassandra.Config{
+		CassandraConn: &ormcassandra.CassandraConn{
+			ContactPoints:      c.CassandraConn.ContactPoints,
+			Port:               c.CassandraConn.Port,
+			Username:           c.CassandraConn.Username,
+			Password:           c.CassandraConn.Password,
+			Consistency:        c.CassandraConn.Consistency,
+			ConnectionsPerHost: c.CassandraConn.ConnectionsPerHost,
+			Timeout:            c.CassandraConn.Timeout,
+			SocketKeepalive:    c.CassandraConn.SocketKeepalive,
+			ProtoVersion:       c.CassandraConn.ProtoVersion,
+			TTL:                c.CassandraConn.TTL,
+			LocalDCOnly:        c.CassandraConn.LocalDCOnly,
+			DataCenter:         c.CassandraConn.DataCenter,
+			PageSize:           c.CassandraConn.PageSize,
+			RetryCount:         c.CassandraConn.RetryCount,
+			HostPolicy:         c.CassandraConn.HostPolicy,
+			TimeoutLimit:       c.CassandraConn.TimeoutLimit,
+			CQLVersion:         c.CassandraConn.CQLVersion,
+			MaxGoRoutines:      c.CassandraConn.MaxGoRoutines,
+		},
+		StoreName: c.StoreName,
+	}
+}
+
 type luceneClauses []string
 
 // AutoMigrate migrates the db schemas for cassandra
@@ -170,10 +216,12 @@ func (c *Config) MigrateString() string {
 // TODO: Break this up into different files (and or structs) that implement
 // each of these interfaces to keep code modular.
 type Store struct {
-	DataStore   api.DataStore
-	metrics     *storage.Metrics
-	Conf        *Config
-	retryPolicy backoff.RetryPolicy
+	DataStore     api.DataStore
+	jobConfigOps  ormobjects.JobConfigOps
+	jobRuntimeOps ormobjects.JobRuntimeOps
+	metrics       *storage.Metrics
+	Conf          *Config
+	retryPolicy   backoff.RetryPolicy
 }
 
 // NewStore creates a Store
@@ -183,8 +231,21 @@ func NewStore(config *Config, scope tally.Scope) (*Store, error) {
 		log.Errorf("Failed to NewStore, err=%v", err)
 		return nil, err
 	}
+	ormStore, ormErr := ormobjects.NewCassandraStore(
+		ToOrmConfig(config),
+		scope)
+	if ormErr != nil {
+		log.WithError(ormErr).Fatal("Failed to create ORM store for Cassandra")
+	}
+
 	return &Store{
-		DataStore:   dataStore,
+		DataStore: dataStore,
+
+		// DO NOT ADD MORE ORM Objects here. These are added here for
+		// supporting Job.Query() which cannot be fully moved to ORM
+		jobConfigOps:  ormobjects.NewJobConfigOps(ormStore),
+		jobRuntimeOps: ormobjects.NewJobRuntimeOps(ormStore),
+
 		metrics:     storage.NewMetrics(scope.SubScope("storage")),
 		Conf:        config,
 		retryPolicy: backoff.NewRetryPolicy(5, 50*time.Millisecond),
@@ -335,63 +396,6 @@ func uncompress(buffer []byte) ([]byte, error) {
 	return uncompressed, nil
 }
 
-// CreateJobConfig creates a job config in db
-func (s *Store) CreateJobConfig(
-	ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig,
-	configAddOn *models.ConfigAddOn, version uint64, owner string) error {
-	jobID := id.GetValue()
-
-	configBuffer, err := proto.Marshal(jobConfig)
-	if err != nil {
-		log.WithError(err).Error("Failed to marshal jobConfig")
-		s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
-		return err
-	}
-
-	configBuffer, err = compress(configBuffer)
-	if err != nil {
-		s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
-		return err
-	}
-
-	addOnBuffer, err := proto.Marshal(configAddOn)
-	if err != nil {
-		log.WithError(err).Error("Failed to marshal configAddOn")
-		s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
-		return err
-	}
-
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Insert(jobConfigTable).
-		Columns(
-			"job_id",
-			"version",
-			"creation_time",
-			"config",
-			"config_addon").
-		Values(
-			jobID,
-			version,
-			time.Now().UTC(),
-			configBuffer,
-			addOnBuffer).
-		IfNotExist()
-	err = s.applyStatement(ctx, stmt, jobID)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id.GetValue()).
-			Error("createJobConfig failed")
-		s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
-		return err
-	}
-
-	// TODO: Create TaskConfig here. This requires the task configs to be
-	// flattened at this point, see jobmgr.
-
-	s.metrics.JobMetrics.JobCreateConfig.Inc(1)
-	return nil
-}
-
 // CreateTaskConfig creates the task configuration
 func (s *Store) CreateTaskConfig(
 	ctx context.Context,
@@ -447,20 +451,6 @@ func (s *Store) CreateTaskConfig(
 	return nil
 }
 
-// CreateJobRuntime creates runtime for a job
-func (s *Store) CreateJobRuntime(
-	ctx context.Context,
-	id *peloton.JobID,
-	initialRuntime *job.RuntimeInfo) error {
-	err := s.doUpdateJobRuntime(ctx, id, initialRuntime)
-	if err != nil {
-		s.metrics.JobMetrics.JobCreateRuntimeFail.Inc(1)
-		return err
-	}
-	s.metrics.JobMetrics.JobCreateRuntime.Inc(1)
-	return nil
-}
-
 // GetMaxJobConfigVersion returns the maximum version of configs of a given job
 func (s *Store) GetMaxJobConfigVersion(
 	ctx context.Context,
@@ -484,96 +474,6 @@ func (s *Store) GetMaxJobConfigVersion(
 		}
 	}
 	return 0, nil
-}
-
-// GetJobConfig returns a job config given the job id
-// TODO(zhixin): GetJobConfig takes version as param when write through cache is implemented
-func (s *Store) GetJobConfig(
-	ctx context.Context,
-	jobID string) (*job.JobConfig, *models.ConfigAddOn, error) {
-	r, err := s.GetJobRuntime(ctx, jobID)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// ConfigurationVersion will be 0 for old jobs created before the
-	// migration to using of ConfigurationVersion. In this case, just
-	// copy over ConfigVersion to ConfigurationVersion.
-	if r.ConfigurationVersion == uint64(0) {
-		r.ConfigurationVersion = uint64(r.ConfigVersion)
-	}
-
-	return s.GetJobConfigWithVersion(ctx, jobID, r.GetConfigurationVersion())
-}
-
-// GetJobConfigWithVersion fetches the job configuration for a given
-// job of a given version
-func (s *Store) GetJobConfigWithVersion(ctx context.Context,
-	jobID string,
-	version uint64,
-) (*job.JobConfig, *models.ConfigAddOn, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("config", "config_addon").From(jobConfigTable).
-		Where(qb.Eq{"job_id": jobID, "version": version})
-	stmtString, _, _ := stmt.ToSQL()
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		log.Errorf("Fail to execute stmt %v, err=%v", stmtString, err)
-		s.metrics.JobMetrics.JobGetFail.Inc(1)
-		return nil, nil, err
-	}
-
-	if len(allResults) > 1 {
-		s.metrics.JobMetrics.JobGetFail.Inc(1)
-		return nil, nil,
-			yarpcerrors.FailedPreconditionErrorf(
-				"found %d jobs %v for job id %v",
-				len(allResults), allResults, jobID)
-	}
-	for _, value := range allResults {
-		var record JobConfigRecord
-		err := FillObject(value, &record, reflect.TypeOf(record))
-		if err != nil {
-			log.WithError(err).
-				Error("Failed to Fill into JobRecord")
-			s.metrics.JobMetrics.JobGetFail.Inc(1)
-			return nil, nil, err
-		}
-
-		var configAddOn *models.ConfigAddOn
-		if configAddOn, err = record.GetConfigAddOn(); err != nil {
-			log.WithError(err).
-				Error("Failed to Fill into ConfigAddOn")
-			s.metrics.JobMetrics.JobGetFail.Inc(1)
-			return nil, nil, err
-		}
-		s.metrics.JobMetrics.JobGet.Inc(1)
-
-		jobConfig, err := record.GetJobConfig()
-		if err != nil {
-			s.metrics.JobMetrics.JobGetFail.Inc(1)
-			return nil, nil, err
-		}
-		if jobConfig.GetChangeLog().GetVersion() < 1 {
-			// Older job which does not have changelog.
-			// TODO (zhixin): remove this after no more job in the system
-			// does not have a changelog version.
-			v, err := s.GetMaxJobConfigVersion(ctx, jobID)
-			if err != nil {
-				s.metrics.JobMetrics.JobGetFail.Inc(1)
-				return nil, nil, err
-			}
-			jobConfig.ChangeLog = &peloton.ChangeLog{
-				CreatedAt: uint64(time.Now().UnixNano()),
-				UpdatedAt: uint64(time.Now().UnixNano()),
-				Version:   v,
-			}
-		}
-		return jobConfig, configAddOn, nil
-	}
-	s.metrics.JobMetrics.JobNotFound.Inc(1)
-	return nil, nil, yarpcerrors.NotFoundErrorf(
-		"job:%s not found", jobID)
 }
 
 // WithTimeRangeFilter will take timerange and time_field (creation_time|completion_time) as
@@ -853,7 +753,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 			Value: id.String(),
 		}
 
-		jobRuntime, err := s.GetJobRuntime(ctx, jobID.GetValue())
+		jobRuntime, err := s.jobRuntimeOps.Get(ctx, jobID)
 		if err != nil {
 			log.WithError(err).
 				WithField("job_id", id.String()).
@@ -861,7 +761,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 			continue
 		}
 		// TODO (chunyang.shen): use job/task cache to get JobConfig T1760469
-		jobConfig, _, err := s.GetJobConfig(ctx, jobID.GetValue())
+		jobConfig, _, err := s.jobConfigOps.GetCurrentVersion(ctx, jobID)
 		if err != nil {
 			log.WithField("labels", spec.GetLabels()).
 				WithField("job_id", id.String()).
@@ -1991,7 +1891,10 @@ func (s *Store) deletePodEventsOnDeleteJob(
 	jobID string) error {
 	queryBuilder := s.DataStore.NewQuery()
 	instanceCount := uint32(0)
-	jobConfig, _, err := s.GetJobConfig(ctx, jobID)
+	jobConfig, _, err := s.jobConfigOps.GetCurrentVersion(
+		ctx,
+		&peloton.JobID{Value: jobID},
+	)
 	if err != nil {
 		// if the config is not found, then the job has already been deleted.
 		if yarpcerrors.IsNotFound(err) {
@@ -2350,53 +2253,6 @@ func (s *Store) GetAllResourcePools(ctx context.Context) (map[string]*respool.Re
 	return resultMap, nil
 }
 
-// GetJobRuntime returns the job runtime info
-func (s *Store) GetJobRuntime(ctx context.Context, jobID string) (*job.RuntimeInfo, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(jobRuntimeTable).
-		Where(qb.Eq{"job_id": jobID})
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID).
-			Error("GetJobRuntime failed")
-		s.metrics.JobMetrics.JobGetRuntimeFail.Inc(1)
-		return nil, err
-	}
-
-	for _, value := range allResults {
-		var record JobRuntimeRecord
-		err := FillObject(value, &record, reflect.TypeOf(record))
-		if err != nil {
-			log.WithError(err).
-				WithField("job_id", jobID).
-				WithField("value", value).
-				Error("Failed to get JobRuntimeRecord from record")
-			s.metrics.JobMetrics.JobGetRuntimeFail.Inc(1)
-			return nil, err
-		}
-		runtime, err := record.GetJobRuntime()
-		if err != nil {
-			return nil, err
-		}
-
-		if runtime.GetRevision().GetVersion() < 1 {
-			// Older job which does not have changelog.
-			// TODO (zhixin): remove this after no more job in the system
-			// does not have a changelog version.
-			runtime.Revision = &peloton.ChangeLog{
-				CreatedAt: uint64(time.Now().UnixNano()),
-				UpdatedAt: uint64(time.Now().UnixNano()),
-				Version:   1,
-			}
-		}
-		return runtime, nil
-	}
-	s.metrics.JobMetrics.JobNotFound.Inc(1)
-	return nil, yarpcerrors.NotFoundErrorf(
-		"job:%s not found", jobID)
-}
-
 // GetAllJobsInJobIndex returns the job summaries of all the jobs
 // in the job index table.
 func (s *Store) GetAllJobsInJobIndex(ctx context.Context) ([]*job.JobSummary, error) {
@@ -2451,49 +2307,6 @@ func (s *Store) getJobSummaryFromIndex(
 			"found %d jobs %v for job id %v", len(allResults), allResults, id)
 	}
 	return summary[0], nil
-}
-
-// UpdateJobRuntime updates the job runtime info
-func (s *Store) UpdateJobRuntime(
-	ctx context.Context,
-	id *peloton.JobID,
-	runtime *job.RuntimeInfo) error {
-	if err := s.doUpdateJobRuntime(ctx, id, runtime); err != nil {
-		s.metrics.JobMetrics.JobUpdateRuntimeFail.Inc(1)
-		return err
-	}
-	s.metrics.JobMetrics.JobUpdateRuntime.Inc(1)
-	return nil
-}
-
-// doUpdateJobRuntime create/updates job runtime info in DB
-func (s *Store) doUpdateJobRuntime(
-	ctx context.Context,
-	id *peloton.JobID,
-	runtime *job.RuntimeInfo) error {
-	runtimeBuffer, err := proto.Marshal(runtime)
-	if err != nil {
-		log.WithField("job_id", id.GetValue()).
-			WithError(err).
-			Error("Failed to update job runtime")
-		return err
-	}
-
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Update(jobRuntimeTable).
-		Set("state", runtime.GetState().String()).
-		Set("update_time", time.Now().UTC()).
-		Set("runtime_info", runtimeBuffer).
-		Where(qb.Eq{"job_id": id.GetValue()})
-
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
-		log.WithField("job_id", id.GetValue()).
-			WithError(err).
-			Error("Failed to update job runtime")
-		return err
-	}
-
-	return nil
 }
 
 // Less function holds the task sorting logic
@@ -3552,31 +3365,6 @@ func (s *Store) getJobSummaryFromResultMap(
 		summaryResults = append(summaryResults, summary)
 	}
 	return summaryResults, nil
-}
-
-func (s *Store) getJobSummaryFromConfig(ctx context.Context, id *peloton.JobID) (*job.JobSummary, error) {
-	summary := &job.JobSummary{}
-	jobConfig, _, err := s.GetJobConfig(ctx, id.GetValue())
-	if err != nil {
-		log.WithError(err).
-			Info("failed to get jobconfig")
-		return nil, err
-	}
-	summary.Name = jobConfig.GetName()
-	summary.Id = id
-	summary.Type = jobConfig.GetType()
-	summary.Owner = jobConfig.GetOwningTeam()
-	summary.OwningTeam = jobConfig.GetOwningTeam()
-	summary.Labels = jobConfig.GetLabels()
-	summary.InstanceCount = jobConfig.GetInstanceCount()
-	summary.RespoolID = jobConfig.GetRespoolID()
-	summary.Runtime, err = s.GetJobRuntime(ctx, id.GetValue())
-	if err != nil {
-		log.WithError(err).
-			Info("failed to get job runtime")
-		return nil, err
-	}
-	return summary, nil
 }
 
 // SortedTaskInfoList makes TaskInfo implement sortable interface

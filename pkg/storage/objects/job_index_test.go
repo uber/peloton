@@ -47,6 +47,7 @@ type JobIndexObjectTestSuite struct {
 }
 
 func (s *JobIndexObjectTestSuite) SetupTest() {
+	setupTestStore()
 	s.buildConfig()
 	s.buildRuntime()
 	s.buildSLA()

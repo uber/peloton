@@ -38,6 +38,7 @@ type JobRuntimeObjectTestSuite struct {
 }
 
 func (s *JobRuntimeObjectTestSuite) SetupTest() {
+	setupTestStore()
 	s.buildRuntime()
 }
 

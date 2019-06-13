@@ -376,8 +376,8 @@ func (suite *JobTestSuite) TestJobDBError() {
 			GoalState: pbjob.JobState_SUCCEEDED,
 		}, nil)
 	// Test updating job runtime in DB and cache
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.State, jobRuntime.State)
 			suite.Equal(runtime.GoalState, jobRuntime.GoalState)
@@ -399,8 +399,8 @@ func (suite *JobTestSuite) TestJobDBError() {
 	suite.checkListeners()
 
 	// Test error in DB while update job runtime
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(dbError)
 	jobRuntime.State = pbjob.JobState_SUCCEEDED
 	err = suite.job.Update(
@@ -428,8 +428,8 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeWithNoCache() {
 			GoalState: pbjob.JobState_SUCCEEDED,
 		}, nil)
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.State, jobRuntime.State)
 			suite.Equal(runtime.GoalState, jobRuntime.GoalState)
@@ -493,8 +493,8 @@ func (suite *JobTestSuite) TestJobCompareAndSetRuntimeWithCache() {
 	suite.Equal(suite.job.runtime.State, jobRuntime.GetState())
 	suite.Equal(suite.job.runtime.GoalState, jobRuntime.GetGoalState())
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.State, jobRuntime.GetState())
 			suite.Equal(runtime.GoalState, jobRuntime.GetGoalState())
@@ -537,8 +537,8 @@ func (suite *JobTestSuite) TestJobUpdateCompareAndSetRuntimeMixedUsage() {
 		Revision:  revision,
 	}
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.State, jobRuntimeUpdate.State)
 		}).
@@ -616,8 +616,8 @@ func (suite *JobTestSuite) TestJobCompareAndSetRuntimeNoCache() {
 			Revision:  revision,
 		}, nil)
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.State, jobRuntime.State)
 			suite.Equal(runtime.GoalState, jobRuntime.GoalState)
@@ -643,7 +643,7 @@ func (suite *JobTestSuite) TestJobUpdateCompareAndSetRuntimeNilInput() {
 }
 
 // TestJobCompareAndSetRuntimeUpdateRuntimeFailure tests replace
-// job runtime failed due to UpdateJobRuntime failure
+// job runtime failed due to job_runtime update failure
 func (suite *JobTestSuite) TestJobCompareAndSetRuntimeUpdateRuntimeFailure() {
 	revision := &peloton.ChangeLog{
 		Version: 1,
@@ -665,8 +665,8 @@ func (suite *JobTestSuite) TestJobCompareAndSetRuntimeUpdateRuntimeFailure() {
 			Revision:  revision,
 		}, nil)
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.State, jobRuntime.State)
 			suite.Equal(runtime.GoalState, jobRuntime.GoalState)
@@ -747,8 +747,8 @@ func (suite *JobTestSuite) TestJobUpdateConfig() {
 		}).
 		Return(nil)
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(nil)
 	suite.jobIndexOps.EXPECT().
 		Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
@@ -864,8 +864,8 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndConfig() {
 		}).
 		Return(nil)
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.State, jobRuntime.State)
 			suite.Equal(runtime.GoalState, jobRuntime.GoalState)
@@ -1143,8 +1143,8 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndRecoverRuntime() {
 	suite.jobRuntimeOps.EXPECT().
 		Get(context.Background(), suite.jobID).
 		Return(&initialRuntime, nil)
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.State, pbjob.JobState_SUCCEEDED)
 			suite.Equal(runtime.ConfigurationVersion, uint64(1))
@@ -1209,8 +1209,8 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndRecoverConfig() {
 	suite.jobRuntimeOps.EXPECT().
 		Get(context.Background(), suite.jobID).
 		Return(&initialRuntime, nil)
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.State, pbjob.JobState_SUCCEEDED)
 			suite.Equal(runtime.ConfigurationVersion, uint64(1))
@@ -1275,8 +1275,8 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndRecoverConfigPlusRuntime() {
 	suite.jobRuntimeOps.EXPECT().
 		Get(context.Background(), suite.jobID).
 		Return(&initialRuntime, nil)
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.State, pbjob.JobState_SUCCEEDED)
 			suite.Equal(runtime.ConfigurationVersion, uint64(1))
@@ -1348,8 +1348,8 @@ func (suite *JobTestSuite) TestJobUpdateRuntimePlusConfigAndRecover() {
 	suite.jobStore.EXPECT().
 		GetMaxJobConfigVersion(gomock.Any(), suite.jobID.GetValue()).
 		Return(initialConfig.ChangeLog.Version, nil)
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.State, pbjob.JobState_SUCCEEDED)
 		}).
@@ -1495,8 +1495,8 @@ func (suite *JobTestSuite) TestJobCreate() {
 		}).
 		Return(nil)
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.GetState(), pbjob.JobState_INITIALIZED)
 		}).Return(nil)
@@ -2231,8 +2231,8 @@ func (suite *JobTestSuite) TestJobCreateWorkflowWithDifferentOpaqueDateSuccess()
 		GetUpdate(gomock.Any(), updateID).
 		Return(updateModel, nil)
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Return(nil)
 
 	suite.updateStore.EXPECT().
@@ -2350,8 +2350,8 @@ func (suite *JobTestSuite) TestJobCreateWorkflowSuccess() {
 			}).
 			Return(nil),
 
-		suite.jobStore.EXPECT().
-			UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		suite.jobRuntimeOps.EXPECT().
+			Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 			Return(nil),
 		suite.jobIndexOps.EXPECT().
 			Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
@@ -2475,8 +2475,8 @@ func (suite *JobTestSuite) TestJobCreateWorkflowWithStartTasksForStoppedJobSucce
 			}).
 			Return(nil),
 
-		suite.jobStore.EXPECT().
-			UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		suite.jobRuntimeOps.EXPECT().
+			Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 				suite.Equal(runtime.GetGoalState(), pbjob.JobState_RUNNING)
 			}).
@@ -2771,8 +2771,8 @@ func (suite *JobTestSuite) TestJobCreateWorkflowUpdateRuntimeFailure() {
 			}).
 			Return(nil),
 
-		suite.jobStore.EXPECT().
-			UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		suite.jobRuntimeOps.EXPECT().
+			Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 			Return(yarpcerrors.InternalErrorf("test error")),
 	)
 
@@ -2965,8 +2965,8 @@ func (suite *JobTestSuite) TestResumeWorkflowSuccess() {
 	}
 
 	gomock.InOrder(
-		suite.jobStore.EXPECT().
-			UpdateJobRuntime(gomock.Any(), suite.job.ID(), gomock.Any()).
+		suite.jobRuntimeOps.EXPECT().
+			Upsert(gomock.Any(), suite.job.ID(), gomock.Any()).
 			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 				suite.Equal(runtime.GetConfigurationVersion(), oldConfigVersion)
 				suite.Equal(runtime.GetWorkflowVersion(), oldWorkflowVersion+1)
@@ -3058,8 +3058,8 @@ func (suite *JobTestSuite) TestResumeWorkflowNotExistInCacheSuccess() {
 	suite.job.runtime.UpdateID = updateID
 
 	gomock.InOrder(
-		suite.jobStore.EXPECT().
-			UpdateJobRuntime(gomock.Any(), suite.job.ID(), gomock.Any()).
+		suite.jobRuntimeOps.EXPECT().
+			Upsert(gomock.Any(), suite.job.ID(), gomock.Any()).
 			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 				suite.Equal(runtime.GetConfigurationVersion(), oldConfigVersion)
 				suite.Equal(runtime.GetWorkflowVersion(), oldWorkflowVersion+1)
@@ -3130,8 +3130,8 @@ func (suite *JobTestSuite) TestPauseWorkflowSuccess() {
 	}
 
 	gomock.InOrder(
-		suite.jobStore.EXPECT().
-			UpdateJobRuntime(gomock.Any(), suite.job.ID(), gomock.Any()).
+		suite.jobRuntimeOps.EXPECT().
+			Upsert(gomock.Any(), suite.job.ID(), gomock.Any()).
 			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 				suite.Equal(runtime.GetConfigurationVersion(), oldConfigVersion)
 				suite.Equal(runtime.GetWorkflowVersion(), oldWorkflowVersion+1)
@@ -3221,8 +3221,8 @@ func (suite *JobTestSuite) TestPauseWorkflowNotExistInCacheSuccess() {
 	suite.job.runtime.UpdateID = updateID
 
 	gomock.InOrder(
-		suite.jobStore.EXPECT().
-			UpdateJobRuntime(gomock.Any(), suite.job.ID(), gomock.Any()).
+		suite.jobRuntimeOps.EXPECT().
+			Upsert(gomock.Any(), suite.job.ID(), gomock.Any()).
 			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 				suite.Equal(runtime.GetConfigurationVersion(), oldConfigVersion)
 				suite.Equal(runtime.GetWorkflowVersion(), oldWorkflowVersion+1)
@@ -3292,8 +3292,8 @@ func (suite *JobTestSuite) TestAbortWorkflowSuccess() {
 	}
 
 	gomock.InOrder(
-		suite.jobStore.EXPECT().
-			UpdateJobRuntime(gomock.Any(), suite.job.ID(), gomock.Any()).
+		suite.jobRuntimeOps.EXPECT().
+			Upsert(gomock.Any(), suite.job.ID(), gomock.Any()).
 			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 				suite.Equal(runtime.GetConfigurationVersion(), oldConfigVersion)
 				suite.Equal(runtime.GetWorkflowVersion(), oldWorkflowVersion+1)
@@ -3388,8 +3388,8 @@ func (suite *JobTestSuite) TestAbortWorkflowNotExistInCacheSuccess() {
 	suite.job.runtime.UpdateID = updateID
 
 	gomock.InOrder(
-		suite.jobStore.EXPECT().
-			UpdateJobRuntime(gomock.Any(), suite.job.ID(), gomock.Any()).
+		suite.jobRuntimeOps.EXPECT().
+			Upsert(gomock.Any(), suite.job.ID(), gomock.Any()).
 			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 				suite.Equal(runtime.GetConfigurationVersion(), oldConfigVersion)
 				suite.Equal(runtime.GetWorkflowVersion(), oldWorkflowVersion+1)
@@ -3630,8 +3630,8 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccess() {
 			suite.Empty(updateInfo.GetInstancesCurrent())
 		}).Return(nil)
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.ConfigurationVersion, jobVersion+1)
 		}).
@@ -4119,8 +4119,8 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 				suite.Empty(updateInfo.GetInstancesCurrent())
 			}).Return(nil),
 
-		suite.jobStore.EXPECT().
-			UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		suite.jobRuntimeOps.EXPECT().
+			Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 			Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 				suite.Equal(runtime.ConfigurationVersion, newMaxJobVersion+1)
 			}).
@@ -4255,8 +4255,8 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeUpdateDBWri
 			suite.Empty(updateInfo.GetInstancesCurrent())
 		}).Return(nil)
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.ConfigurationVersion, jobVersion+1)
 		}).
@@ -4273,8 +4273,8 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeUpdateDBWri
 			UpdateID:             &peloton.UpdateID{Value: testUpdateID},
 		}, nil)
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.ConfigurationVersion, newMaxJobVersion)
 		}).
@@ -4409,8 +4409,8 @@ func (suite *JobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeDBWriteSucc
 			suite.Empty(updateInfo.GetInstancesCurrent())
 		}).Return(nil)
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.ConfigurationVersion, jobVersion+1)
 		}).
@@ -4778,8 +4778,8 @@ func (suite *JobTestSuite) TestJobRollingCreateSuccess() {
 		CreateUpdate(gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	suite.jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+	suite.jobRuntimeOps.EXPECT().
+		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.Equal(runtime.GetState(), pbjob.JobState_PENDING)
 		}).Return(nil)
@@ -4882,7 +4882,7 @@ func (suite *JobTestSuite) TestJobRollingCreateAddActiveJobFailure() {
 
 // TestJobRollingCreateJobRuntimeFailure
 // tests job rolling create in cache and db fails due to
-// CreateJobRuntime fails
+// job_runtime create fails
 func (suite *JobTestSuite) TestJobRollingCreateJobRuntimeFailure() {
 	jobConfig := &pbjob.JobConfig{
 		InstanceCount: 10,

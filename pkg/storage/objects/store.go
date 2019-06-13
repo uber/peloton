@@ -15,12 +15,19 @@
 package objects
 
 import (
+	"fmt"
+	"os"
+	"path"
+	"strings"
+
 	pelotonstore "github.com/uber/peloton/pkg/storage"
-	"github.com/uber/peloton/pkg/storage/cassandra"
-	escassandra "github.com/uber/peloton/pkg/storage/connectors/cassandra"
+	"github.com/uber/peloton/pkg/storage/connectors/cassandra"
 	"github.com/uber/peloton/pkg/storage/objects/base"
 	"github.com/uber/peloton/pkg/storage/orm"
 
+	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
+	"github.com/gemnasium/migrate/migrate"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 )
 
@@ -40,7 +47,7 @@ func NewCassandraStore(
 	config *cassandra.Config,
 	scope tally.Scope,
 ) (*Store, error) {
-	connector, err := escassandra.NewCassandraConnector(config, scope)
+	connector, err := cassandra.NewCassandraConnector(config, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -54,4 +61,55 @@ func NewCassandraStore(
 		oClient: oclient,
 		metrics: pelotonstore.NewMetrics(scope),
 	}, nil
+}
+
+// GenerateTestCassandraConfig generates a test config for local C* client
+// This is meant for sharing testing code only, not for production
+func GenerateTestCassandraConfig() *cassandra.Config {
+	return &cassandra.Config{
+		CassandraConn: &cassandra.CassandraConn{
+			ContactPoints: []string{"127.0.0.1"},
+			Port:          9043,
+			CQLVersion:    "3.4.2",
+			MaxGoRoutines: 1000,
+		},
+		StoreName:  "peloton_test",
+		Migrations: "migrations",
+	}
+}
+
+// MigrateSchema will migrate DB schema on the peloton_test keyspace.
+func MigrateSchema(conf *cassandra.Config) {
+	dir, err := os.Getwd()
+	if err != nil {
+		log.Fatalf("failed to get PWD, err=%v", err)
+	}
+
+	for !strings.HasSuffix(path.Clean(dir), "/peloton") && len(dir) > 1 {
+		dir = path.Join(dir, "..")
+	}
+
+	conf.Migrations = path.Join(
+		dir, "pkg", "storage", "cassandra", conf.Migrations)
+	log.Infof("pwd=%v migration path=%v", dir, conf.Migrations)
+
+	connStr := fmt.Sprintf(
+		"cassandra://%v:%v/%v?protocol=4&disable_init_host_lookup",
+		conf.CassandraConn.ContactPoints[0],
+		conf.CassandraConn.Port,
+		conf.StoreName)
+	connStr = strings.Replace(connStr, " ", "", -1)
+
+	errs, ok := migrate.DownSync(connStr, conf.Migrations)
+	if !ok {
+		log.Fatalf("DownSync failed with errors: %v", errs)
+	}
+	log.Infof("DownSync complete")
+
+	errs, ok = migrate.UpSync(connStr, conf.Migrations)
+	if !ok {
+		log.Fatalf("UpSync failed with errors: %v", errs)
+	}
+
+	log.Infof("UpSync complete")
 }

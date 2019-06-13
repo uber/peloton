@@ -43,6 +43,7 @@ type JobConfigObjectTestSuite struct {
 }
 
 func (s *JobConfigObjectTestSuite) SetupTest() {
+	setupTestStore()
 	s.buildConfig()
 }
 

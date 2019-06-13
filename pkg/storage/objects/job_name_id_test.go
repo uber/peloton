@@ -32,6 +32,7 @@ type JobNameToIDObjectTestSuite struct {
 }
 
 func (s *JobNameToIDObjectTestSuite) SetupTest() {
+	setupTestStore()
 }
 
 func TestJobNameToIDObjectSuite(t *testing.T) {
