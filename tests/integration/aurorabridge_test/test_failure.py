@@ -12,7 +12,8 @@ from tests.integration.aurorabridge_test.util import (
 )
 
 pytestmark = [pytest.mark.default,
-              pytest.mark.aurorabridge]
+              pytest.mark.aurorabridge,
+              pytest.mark.skip]
 
 log = logging.getLogger(__name__)
 
