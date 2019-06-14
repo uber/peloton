@@ -20,6 +20,7 @@ import (
 
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/pkg/common/background"
+	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 
 	log "github.com/sirupsen/logrus"
@@ -103,7 +104,8 @@ func (u *WorkflowProgressCheck) Check() {
 		}
 
 		lastUpdateTime := cachedWorkflow.GetLastUpdateTime()
-		if time.Now().Sub(lastUpdateTime) > u.Config.StaleWorkflowThreshold {
+		if time.Now().Sub(lastUpdateTime) > u.Config.StaleWorkflowThreshold &&
+			!isWorkflowStaleDueToTaskThrottling(ctx, cachedJob, cachedWorkflow) {
 			log.WithFields(log.Fields{
 				"job_id":           cachedJob.ID().GetValue(),
 				"update_id":        runtime.GetUpdateID().GetValue(),
@@ -120,4 +122,38 @@ func (u *WorkflowProgressCheck) Check() {
 	u.Metrics.TotalStaleWorkflow.Update(float64(totalStaleWorkflow))
 
 	u.Metrics.GetJobRuntimeFailure.Update(float64(getJobRuntimeFailure))
+}
+
+// when a task fails, it would be restarted but is subject
+// to throttling. As a result, the workflow may not
+// see progress updated within the StaleWorkflowThreshold.
+// This function checks if the staleness is solely due
+// to task throttling. It is true if every task that is being
+// processed by the workflow is subject to throttling.
+func isWorkflowStaleDueToTaskThrottling(
+	ctx context.Context,
+	cachedJob cached.Job,
+	cachedWorkflow cached.Update,
+) bool {
+	for _, instID := range cachedWorkflow.GetInstancesCurrent() {
+		cachedTask := cachedJob.GetTask(instID)
+		if cachedTask == nil {
+			continue
+		}
+
+		taskRuntime, err := cachedTask.GetRuntime(ctx)
+		if err != nil {
+			log.WithField("job_id", cachedJob.ID().GetValue()).
+				WithField("instance_id", instID).
+				WithError(err).
+				Info("failed to get task runtime to check workflow progress")
+			continue
+		}
+
+		if !util.IsTaskThrottled(taskRuntime.GetState(), taskRuntime.GetMessage()) {
+			return false
+		}
+	}
+
+	return true
 }
