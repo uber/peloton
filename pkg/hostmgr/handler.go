@@ -1234,6 +1234,11 @@ func (h *ServiceHandler) KillTasks(
 	}()
 
 	invalidTaskIDs, killFailure := h.killTasks(ctx, body.GetTaskIds())
+	// release all tasks even if some kill fails, because it is not certain
+	// if the kill request does go through.
+	// Worst case for releasing host when a task is not killed is in-place update
+	// fails to place the task on the desired host.
+	h.releaseHostsHeldForTasks(parseTaskIDsFromMesosTaskIDs(body.GetTaskIds()))
 
 	if invalidTaskIDs != nil || killFailure != nil {
 		err = errors.New("unable to kill tasks")
@@ -1700,9 +1705,21 @@ func (h *ServiceHandler) ReleaseHostsHeldForTasks(
 	ctx context.Context,
 	req *hostsvc.ReleaseHostsHeldForTasksRequest,
 ) (*hostsvc.ReleaseHostsHeldForTasksResponse, error) {
+	if err := h.releaseHostsHeldForTasks(req.GetIds()); err != nil {
+		return &hostsvc.ReleaseHostsHeldForTasksResponse{
+			Error: &hostsvc.ReleaseHostsHeldForTasksResponse_Error{
+				Message: err.Error(),
+			},
+		}, nil
+	}
+
+	return &hostsvc.ReleaseHostsHeldForTasksResponse{}, nil
+}
+
+func (h *ServiceHandler) releaseHostsHeldForTasks(taskIDs []*peloton.TaskID) error {
 	var errs []error
 	hostHeldForTasks := make(map[string][]*peloton.TaskID)
-	for _, taskID := range req.GetIds() {
+	for _, taskID := range taskIDs {
 		hostname := h.offerPool.GetHostHeldForTask(taskID)
 		if len(hostname) != 0 {
 			hostHeldForTasks[hostname] = append(hostHeldForTasks[hostname], taskID)
@@ -1716,14 +1733,10 @@ func (h *ServiceHandler) ReleaseHostsHeldForTasks(
 	}
 
 	if len(errs) == 0 {
-		return &hostsvc.ReleaseHostsHeldForTasksResponse{}, nil
+		return nil
 	}
 
-	return &hostsvc.ReleaseHostsHeldForTasksResponse{
-		Error: &hostsvc.ReleaseHostsHeldForTasksResponse_Error{
-			Message: multierr.Combine(errs...).Error(),
-		},
-	}, nil
+	return multierr.Combine(errs...)
 }
 
 // Helper function to convert scalar.Resource into hostsvc format.
@@ -1761,4 +1774,18 @@ func toHostStatus(hostStatus summary.HostStatus) string {
 		status = "unknown"
 	}
 	return status
+}
+
+func parseTaskIDsFromMesosTaskIDs(ids []*mesos.TaskID) []*peloton.TaskID {
+	var result []*peloton.TaskID
+	for _, id := range ids {
+		if taskID, err := util.ParseTaskIDFromMesosTaskID(id.GetValue()); err == nil {
+			result = append(result, &peloton.TaskID{Value: taskID})
+		} else {
+			log.WithError(err).
+				Error("unexpected mesos task id")
+		}
+	}
+
+	return result
 }

@@ -1062,3 +1062,38 @@ def test__in_place_update_success_rate(stateless_job):
             count = count + 1
     log.info("total mismatch: %d", count)
     assert count == 0
+
+
+# test__in_place_kill_job_release_host tests the case of killing
+# an ongoing in-place update would release hosts, so the second
+# update can get completed
+def test__in_place_kill_job_release_host():
+    job1 = StatelessJob(
+        job_file="test_stateless_job_spec.yaml",
+        config=IntegrationTestConfig(max_retry_attempts=30000),
+    )
+    job1.create()
+    job1.wait_for_state(goal_state="RUNNING")
+
+    job2 = StatelessJob(
+        job_file="test_stateless_job_spec.yaml",
+        config=IntegrationTestConfig(max_retry_attempts=30000),
+    )
+    job2.create()
+    job2.wait_for_state(goal_state="RUNNING")
+
+    update1 = StatelessUpdate(job1,
+                              updated_job_file=UPDATE_STATELESS_JOB_SPEC,
+                              batch_size=0)
+    update1.create(in_place=True)
+    # stop the update
+    job1.stop()
+
+    update2 = StatelessUpdate(job2,
+                              updated_job_file=UPDATE_STATELESS_JOB_SPEC,
+                              batch_size=0)
+    update2.create()
+
+    # both updates should complete
+    update1.wait_for_state(goal_state="SUCCEEDED")
+    update2.wait_for_state(goal_state="SUCCEEDED")

@@ -1363,17 +1363,26 @@ func (suite *HostMgrHandlerTestSuite) TestKillAndReserveTask() {
 func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 	defer suite.ctrl.Finish()
 
-	t1 := "t1"
-	t2 := "t2"
+	mesosT1 := "4bcb00af-0075-48de-baad-382818558ca8-0-1"
+	mesosT2 := "4bcb00af-0075-48de-baad-382818558ca8-1-1"
+	pelotonT1 := "4bcb00af-0075-48de-baad-382818558ca8-0"
+	h1 := "hostname-0"
 	taskIDs := []*mesos.TaskID{
-		{Value: &t1},
-		{Value: &t2},
+		{Value: &mesosT1},
+		{Value: &mesosT2},
 	}
 	killReq := &hostsvc.KillTasksRequest{
 		TaskIds: taskIDs,
 	}
 	killedTaskIds := make(map[string]bool)
 	mockMutex := &sync.Mutex{}
+
+	suite.pool.AddOffers(context.Background(), generateOffers(1))
+	// simulate hold for mesosT1 on h1
+	suite.NoError(
+		suite.handler.offerPool.
+			HoldForTasks(h1, []*peloton.TaskID{{Value: pelotonT1}}),
+	)
 
 	// Set expectations on provider
 	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
@@ -1404,16 +1413,23 @@ func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 		Return(nil).
 		Times(2)
 
+	// host held before kill
+	suite.Equal(
+		h1,
+		suite.handler.offerPool.GetHostHeldForTask(&peloton.TaskID{Value: pelotonT1}),
+	)
 	resp, err := suite.handler.KillTasks(rootCtx, killReq)
 	suite.NoError(err)
 	suite.Nil(resp.GetError())
 	suite.Equal(
-		map[string]bool{"t1": true, "t2": true},
+		map[string]bool{mesosT1: true, mesosT2: true},
 		killedTaskIds)
 
 	suite.Equal(
 		int64(2),
 		suite.testScope.Snapshot().Counters()["kill_tasks+"].Value())
+	// host released after kill
+	suite.Empty(suite.handler.offerPool.GetHostHeldForTask(&peloton.TaskID{Value: pelotonT1}))
 }
 
 // Test some failure cases of killing task

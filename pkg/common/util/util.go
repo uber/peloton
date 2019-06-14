@@ -443,9 +443,6 @@ func ParseTaskIDFromMesosTaskID(mesosTaskID string) (string, error) {
 
 	_, _, err := ParseTaskID(pelotonTaskID)
 	if err != nil {
-		log.WithError(err).
-			WithField("mesos_task_id", mesosTaskID).
-			Error("Invalid mesos task ID, cannot parse jobID / instance")
 		return "", err
 	}
 	return pelotonTaskID, nil
