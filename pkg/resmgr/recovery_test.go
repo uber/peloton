@@ -607,6 +607,32 @@ func (suite *recoveryTestSuite) TestAddRunningTasks() {
 	suite.Equal(val, 0)
 }
 
+// TestLoadTasksInRange tests classifying the tasks of the job as running and non-running
+func (suite *recoveryTestSuite) TestLoadTasksInRange() {
+	jobID := &peloton.JobID{Value: uuid.New()}
+
+	tasks := make(map[uint32]*task.TaskInfo)
+	for s := range task.TaskState_name {
+		tasks[uint32(s)] = suite.createTasks(jobID, 1, task.TaskState(s))[0]
+	}
+
+	suite.mockTaskStore.EXPECT().
+		GetTasksForJobByRange(gomock.Any(), jobID, &task.InstanceRange{
+			From: 0,
+			To:   uint32(len(tasks)),
+		}).Return(tasks, nil)
+
+	nonRunningTasks, runningTasks, err := suite.recovery.loadTasksInRange(
+		context.Background(),
+		jobID.GetValue(),
+		0,
+		uint32(len(tasks)),
+	)
+	suite.NoError(err)
+	suite.Len(runningTasks, len(runningTaskStates))
+	suite.Len(nonRunningTasks, len(tasks)-len(runningTaskStates)-len(taskStatesToSkip))
+}
+
 func (suite *recoveryTestSuite) TestLoadTasksInRangeError() {
 	_, _, err := suite.recovery.loadTasksInRange(context.Background(), "", 100, 0)
 	suite.Error(err)

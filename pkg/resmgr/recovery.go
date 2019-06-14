@@ -60,6 +60,14 @@ var (
 		task.TaskState_LOST:        true,
 		task.TaskState_INITIALIZED: true,
 	}
+	// runningTaskStates are the task states which are 'running' on the underlying system (such as Mesos).
+	runningTaskStates = map[task.TaskState]bool{
+		task.TaskState_LAUNCHED:   true,
+		task.TaskState_STARTING:   true,
+		task.TaskState_RUNNING:    true,
+		task.TaskState_KILLING:    true,
+		task.TaskState_PREEMPTING: true,
+	}
 )
 
 /*
@@ -341,6 +349,11 @@ func (r *RecoveryHandler) addTaskToTracker(
 	return nil
 }
 
+func isTaskRunning(state task.TaskState) bool {
+	_, ok := runningTaskStates[state]
+	return ok
+}
+
 func (r *RecoveryHandler) loadTasksInRange(
 	ctx context.Context,
 	jobID string,
@@ -376,8 +389,7 @@ func (r *RecoveryHandler) loadTasksInRange(
 				"task_id":    taskID,
 				"task_state": taskInfo.GetRuntime().GetState().String(),
 			}).Debugf("found task for recovery")
-			if taskInfo.GetRuntime().GetState() == task.TaskState_RUNNING ||
-				taskInfo.GetRuntime().GetState() == task.TaskState_LAUNCHED {
+			if isTaskRunning(taskInfo.GetRuntime().GetState()) {
 				runningTasks = append(runningTasks, taskInfo)
 			} else {
 				nonRunningTasks = append(nonRunningTasks, taskInfo)
