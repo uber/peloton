@@ -1,0 +1,119 @@
+// This file defines the Host related messages used by internal hostmgr service
+
+syntax = "proto3";
+
+package peloton.private.hostmgr.v1alpha.hostmgr;
+
+import "peloton/api/v1alpha/peloton.proto";
+import "peloton/api/v1alpha/pod/pod.proto";
+import "peloton/api/v1alpha/host/host.proto";
+
+
+// HostFilterResult describes result of filtering hosts.
+enum HostFilterResult {
+    // Filter is invalid.
+    HOST_FILTER_INVALID = 0;
+
+    // Host is matched by filter and returned in HostLease.
+    HOST_FILTER_MATCH = 1;
+
+    // Host has enough total resources but offered resources
+    // is insufficient (signal for fragmentation).
+    HOST_FILTER_INSUFFICIENT_RESOURCES = 2;
+
+    // Host is filtered out because of mismatched pod -> host constraint.
+    HOST_FILTER_MISMATCH_CONSTRAINTS = 3;
+
+    // Host has GPU so reserved for GPU only pod.
+    HOST_FILTER_MISMATCH_GPU = 4;
+
+    // Host is in mismatch status (i.e, another placement engine) has a hold of
+    // the host.
+    HOST_FILTER_MISMATCH_STATUS = 5;
+
+    // Host is filtered out because maxHosts limit is reached.
+    HOST_FILTER_MISMATCH_MAX_HOST_LIMIT = 6;
+}
+
+// A unique lease ID created when a host is locked for placement.
+message LeaseID {
+  string value = 1;
+}
+
+// The structure holding lease_id and corresponding host_summary.
+message HostLease {
+  // Summary of available host resources and metadata.
+  api.v1alpha.host.HostSummary host_summary = 1;
+
+  // The lease_id assigned to this host after it is locked for placement.
+  hostmgr.LeaseID lease_id = 2;
+}
+
+// FilterHint includes hints provided to host manager to decide which hosts to
+// return for filtering hosts. The hint is provided as an optimization and host
+// manager can ignore them if hint cannot be satisfied.
+message FilterHint {
+    // Hint for which host to return.
+    message Host {
+        // Return the host if it satisfies constraints.
+        string hostname = 1;
+
+        // Indicates for which pod the host is for.
+        api.v1alpha.peloton.PodID pod_id = 2;
+    }
+
+    repeated Host host_hint = 1;
+}
+
+// ResourceConstraint describes a condition for which aggregated resources from
+// a host must meet in order for it to be returned in `AcquireHosts`.
+message ResourceConstraint {
+  // Minimum amount of resources.
+  // NOTE: gpu resources are specially protected in the following way:
+  //   - if `gpuLimit` is specified, only hosts with enough gpu resources are
+  //     returned.
+  //   - if `gpuLimit` is not specified, only hosts without gpu resource will be
+  //     returned.
+
+  api.v1alpha.pod.ResourceSpec minimum = 1;
+
+  // Number of dynamic ports available.
+  uint32 num_ports = 2;
+}
+
+// HostFilter can be used to control whether a given host should be returned to
+// placement engine to use.
+message HostFilter {
+  // Resource constraint which must be satisfied.
+  ResourceConstraint resource_constraint = 1;
+
+  // Attribute based affinity/anti-affinity scheduling constraints.
+  // Only constraint with kind == HOST will be considered.
+  api.v1alpha.pod.Constraint scheduling_constraint = 2;
+
+  // Optional maximum number of hosts to return. Default zero value is no-op.
+  uint32 max_hosts = 3;
+
+  // Provides hint to about which hosts should return, host manager may ignore
+  // the hint.
+  FilterHint hint = 4;
+}
+
+// LaunchablePod describes the pod to be launched by host manager. It includes
+// PodID and PodSpec.
+message LaunchablePod {
+  // PodID for the pod to be launched.
+  api.v1alpha.peloton.PodID pod_id = 1;
+
+  // PodSpec for the pod to be launched.
+  api.v1alpha.pod.PodSpec spec = 2;
+}
+
+// Resource allocation for a resource to be consumed by resmgr.
+message Resource {
+  // Type of the resource.
+  string kind = 1;
+
+  // capacity of the resource.
+  double capacity = 2;
+}

@@ -1,0 +1,18 @@
+// Peloton Event
+
+syntax = "proto3";
+
+package peloton.private.eventstream.v1alpha.event;
+
+option go_package = "peloton/private/eventstream/v1alpha/event";
+
+import "peloton/api/v1alpha/pod/pod.proto";
+
+message Event {
+  // offset is the sequence id of the event.
+  uint64 offset = 1;
+
+  // pod_event is an event for a pod sent from hostmgr as part of the event
+  // stream.
+  api.v1alpha.pod.PodEvent pod_event = 2;
+}

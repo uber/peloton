@@ -1,0 +1,64 @@
+// Event stream Service API
+
+syntax = "proto3";
+
+package peloton.private.eventstream.v1alpha.eventstreamsvc;
+
+option go_package = "peloton/private/eventstream/v1alpha/eventstreamsvc";
+
+import "peloton/private/eventstream/v1alpha/event/event.proto";
+
+
+// InitStreamRequest initializes a stream on server side.
+message InitStreamRequest {
+  string client_name = 1;
+}
+
+// InitStreamResponse contains the initial server side parameters for the
+// connection.
+message InitStreamResponse {
+  // stream_id is created by the server and will change when server restarts.
+  string stream_id = 1;
+
+  // min offset of the event in the server side circular buffer.
+  uint64 min_offset = 2;
+
+  // previous purge offset for the client, if there is any stored on the server
+  // the client can use previous_purge_offset as the begin offset for the next
+  // WaitForEventsRequest.
+  uint64 previous_purge_offset = 3;
+}
+
+// WaitForEventsRequest is used by client to pass the stream_id and the offsets
+// from which client would like to receive the event stream from the event
+// stream.
+message WaitForEventsRequest {
+  // Current stream_id
+  string stream_id = 1;
+
+  // The offset that the client has processed, which can be purged on the
+  // server.
+  uint64 purge_offset = 2;
+
+  // The begin offset of the intended data.
+  uint64 begin_offset = 3;
+
+  // The max number of events limit for current request.
+  int32  limit = 4;
+
+  // Name of the client.
+  string client_name = 5;
+}
+
+// WaitForEventsResponse contains the list of events requested by client.
+message WaitForEventsResponse {
+  repeated peloton.private.eventstream.v1alpha.event.Event events = 1;
+}
+
+service EventStreamService {
+  // InitStream returns details about how to consume the stream.
+  rpc InitStream(InitStreamRequest) returns (InitStreamResponse);
+
+  // Wait for some pod events.
+  rpc WaitForEvents(WaitForEventsRequest) returns (WaitForEventsResponse);
+}

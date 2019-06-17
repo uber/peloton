@@ -12,10 +12,10 @@ import "mesos/v1/mesos.proto";
 import "peloton/api/v0/task/task.proto";
 
 message Event {
-  // offset is the sequence id of the event
+  // offset is the sequence id of the event.
   uint64 offset = 1;
 
-  // Describes the type of event
+  // Describes the type of event.
   enum Type {
     UNKNOWN_EVENT_TYPE = 0;
     MESOS_TASK_STATUS = 1;
@@ -29,9 +29,9 @@ message Event {
 
 
 service EventStreamService {
-  // Client calls CreateStream to learn about information to consume the stream
+  // Client calls CreateStream to learn about information to consume the stream.
   rpc InitStream(InitStreamRequest) returns (InitStreamResponse);
-  // Wait for some task events
+  // Wait for some task events.
   rpc WaitForEvents(WaitForEventsRequest) returns (WaitForEventsResponse);
 }
 
@@ -62,13 +62,13 @@ message InvalidPurgeOffset {
     uint64 beginOffset = 2;
 }
 
-// Client need to call this to init a stream on server side
+// Client need to call this to init a stream on server side.
 message InitStreamRequest {
   string clientName = 1;
 }
 
 // InitStreamResponse pass back the streamID and the minOffset of the events
-// on server side
+// on server side.
 message InitStreamResponse {
   message Error {
     ClientUnsupported clientUnsupported = 1;

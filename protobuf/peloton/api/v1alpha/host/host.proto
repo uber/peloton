@@ -4,20 +4,24 @@ syntax = "proto3";
 
 package peloton.api.v1alpha.host;
 
+import "peloton/api/v1alpha/peloton.proto";
+
+
 enum HostState {
     HOST_STATE_INVALID = 0;
 
     // Reserved for future compatibility of new states.
     HOST_STATE_UNKNOWN = 1;
 
-    // The host is healthy
+    // The host is healthy.
     HOST_STATE_UP = 2;
 
     // The tasks running on the host are being rescheduled.
-    // There will be no further placement of tasks on the host
+    // There will be no further placement of tasks on the host.
     HOST_STATE_DRAINING = 3;
 
-    // There are no tasks running on the host and is ready to be put into maintenance.
+    // There are no tasks running on the host and is ready to be put into
+    // maintenance.
     HOST_STATE_DRAINED = 4;
 
     // The host is in maintenance.
@@ -25,12 +29,26 @@ enum HostState {
 }
 
 message HostInfo {
-    // The hostname of the host
+    // The hostname of the host.
     string hostname = 1;
 
-    // The IP address of the host
+    // The IP address of the host.
     string ip = 2;
 
-    // The current state of the host
+    // The current state of the host.
     HostState state = 3;
+}
+
+
+// HostSummary describes the resources available on a host for placement along
+// with metadata like host labels.
+message HostSummary {
+  // The hostname of the host.
+  string hostname = 1;
+
+  // Resources available for placement on the host.
+  peloton.Resources resources = 2;
+
+  // Host Labels.
+  repeated peloton.Label labels = 3;
 }

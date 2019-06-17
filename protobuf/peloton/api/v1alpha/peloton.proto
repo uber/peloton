@@ -1,5 +1,5 @@
 // This file defines the common types in Peloton API that are imported
-// by different subpackages. 
+// by different subpackages.
 
 syntax = "proto3";
 
@@ -15,7 +15,8 @@ message JobID {
   string value = 1;
 }
 
-// A unique name assigned to a pod. By default, the pod name is in the format of JobID-<InstanceID>.
+// A unique name assigned to a pod. By default, the pod name is in the format of
+// JobID-<InstanceID>.
 message PodName {
   string value = 1;
 }
@@ -69,13 +70,13 @@ message Revision {
   // Clients can use this to guide against race conditions using MVCC.
   uint64 version = 1;
 
-  // The timestamp when the entity info is created
+  // The timestamp when the entity info is created.
   uint64 created_at = 2;
 
-  // The timestamp when the entity info is updated
+  // The timestamp when the entity info is updated.
   uint64 updated_at = 3;
 
-  // The user or service that updated the entity info
+  // The user or service that updated the entity info.
   string updated_by = 4;
 }
 
@@ -92,21 +93,37 @@ message TimeRange {
   google.protobuf.Timestamp max = 2;
 }
 
-// Secret is used to store secrets per job and contains
-// ID, absolute container mount path and base64 encoded secret data
+// Secret is used to store secrets per job and contains ID, absolute container
+// mount path and base64 encoded secret data.
 message Secret {
   message Value
   {
-    // Secret data as byte array
+    // Secret data as byte array.
     bytes data = 1;
   }
 
-  // UUID of the secret
+  // UUID of the secret.
   SecretID secret_id = 1;
 
-  // Path at which the secret file will be mounted in the container
+  // Path at which the secret file will be mounted in the container.
   string path = 2;
 
-  // Secret value
+  // Secret value.
   Value value = 3;
+}
+
+
+// Resources describe the resources on a host.
+message Resources {
+  // Number of CPU cores.
+  double cpu = 1;
+
+  // Memory in MB.
+  double memMb = 2;
+
+  // Disk in MB.
+  double diskMb = 3;
+
+  // Number of GPU cores.
+  double gpu = 4;
 }

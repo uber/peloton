@@ -22,19 +22,19 @@ import "peloton/api/v1alpha/volume/volume.proto";
 // Resource configuration for a container.
 message ResourceSpec {
 
-  // CPU limit in number of CPU cores
+  // CPU limit in number of CPU cores.
   double cpu_limit = 1;
 
-  // Memory limit in MB
+  // Memory limit in MB.
   double mem_limit_mb = 2;
 
-  // Disk limit in MB
+  // Disk limit in MB.
   double disk_limit_mb = 3;
 
-  // File descriptor limit
+  // File descriptor limit.
   uint32 fd_limit = 4;
 
-  // GPU limit in number of GPUs
+  // GPU limit in number of GPUs.
   double gpu_limit = 5;
 }
 
@@ -74,7 +74,7 @@ message HTTPGetSpec {
   repeated HTTPHeader http_headers = 4;
 }
 
-// Health check configuration for a container
+// Health check configuration for a container.
 message HealthCheckSpec {
   // Whether the health check is enabled.
   bool enabled = 1;
@@ -95,7 +95,7 @@ message HealthCheckSpec {
   // Default value is 20.
   uint32 timeout_secs = 5;
 
-  // Type of health check to run
+  // Type of health check to run.
   enum HealthCheckType {
     // Reserved for future compatibility of new types.
     HEALTH_CHECK_TYPE_UNKNOWN = 0;
@@ -134,7 +134,7 @@ message HealthCheckSpec {
     string path = 3;
   }
 
-  // Type of health check to run
+  // Type of health check to run.
   HealthCheckType type = 6;
 
   // Only applicable when type is `COMMAND`.
@@ -160,7 +160,7 @@ message HealthCheckSpec {
 }
 
 
-// Network port configuration for a container
+// Network port configuration for a container.
 message PortSpec {
 
   // Name of the network port, e.g. http, tchannel. Required field.
@@ -170,8 +170,8 @@ message PortSpec {
   // by the scheduler
   uint32 value = 2;
 
-  // Environment variable name to be exported when running a container for this port.
-  // Required field for dynamic port.
+  // Environment variable name to be exported when running a container for this
+  // port. Required field for dynamic port.
   string env_name = 3;
 }
 
@@ -204,8 +204,8 @@ message OrConstraint {
   repeated Constraint constraints = 1;
 }
 
-// LabelConstraint represents a constraint on the number of occurrences of a given
-// label from the set of host labels or pod labels present on the host.
+// LabelConstraint represents a constraint on the number of occurrences of a
+// given label from the set of host labels or pod labels present on the host.
 message LabelConstraint {
   // Condition represents a constraint on the number of occurrences of the label.
   enum Condition {
@@ -243,7 +243,7 @@ message RestartPolicy {
   uint32 max_failures = 1;
 }
 
-// Preemption policy for a pod
+// Preemption policy for a pod.
 message PreemptionPolicy {
   // This policy defines if the pod should be restarted after it is
   // preempted. If set to true the pod will not be rescheduled
@@ -285,7 +285,7 @@ message VolumeMount {
   string mount_path = 3;
 }
 
-// A single application container running inside a pod
+// A single application container running inside a pod.
 message ContainerSpec {
   // Name of the container.
   // Each container in a pod must have a unique name.
@@ -390,37 +390,37 @@ message PodSpec {
   apachemesos.PodSpec mesos_spec = 13;
 }
 
-// Runtime states of a container in a pod
+// Runtime states of a container in a pod.
 enum ContainerState {
   // Invalid state.
   CONTAINER_STATE_INVALID = 0;
 
-  // The container has not been created yet
+  // The container has not been created yet.
   CONTAINER_STATE_PENDING = 1;
 
-  // The container has been launched
+  // The container has been launched.
   CONTAINER_STATE_LAUNCHED = 2;
 
-  // The container is being started on a host
+  // The container is being started on a host.
   CONTAINER_STATE_STARTING = 3;
 
-  // The container is running on a host
+  // The container is running on a host.
   CONTAINER_STATE_RUNNING = 4;
 
-  // The container terminated with an exit code of zero
+  // The container terminated with an exit code of zero.
   CONTAINER_STATE_SUCCEEDED = 5;
 
-  // The container terminated with a non-zero exit code
+  // The container terminated with a non-zero exit code.
   CONTAINER_STATE_FAILED = 6;
 
-  // The container is being killed
+  // The container is being killed.
   CONTAINER_STATE_KILLING = 7;
 
-  // Execution of the container was terminated by the system
+  // Execution of the container was terminated by the system.
   CONTAINER_STATE_KILLED = 8;
 }
 
-// HealthState is the health check state of a container
+// HealthState is the health check state of a container.
 enum HealthState {
   // Default value.
   HEALTH_STATE_INVALID = 0;
@@ -441,12 +441,12 @@ enum HealthState {
   HEALTH_STATE_UNHEALTHY = 4;
 }
 
-// The result of the health check
+// The result of the health check.
 message HealthStatus {
-  // The health check state
+  // The health check state.
   HealthState state = 1;
 
-  // The output of the health check run
+  // The output of the health check run.
   string output = 2;
 }
 
@@ -491,15 +491,15 @@ message TerminationStatus {
   string signal = 3;
 }
 
-// Runtime status of a container in a pod
+// Runtime status of a container in a pod.
 message ContainerStatus {
   // Name of the container
   string name = 1;
 
-  // Runtime state of the container
+  // Runtime state of the container.
   ContainerState state = 2;
 
-  // Dynamic ports reserved on the host while this container is running
+  // Dynamic ports reserved on the host while this container is running.
   map<string, uint32> ports = 3;
 
   // The message that explains the current state of a container such as why
@@ -514,10 +514,10 @@ message ContainerStatus {
   // The number of times the container has failed after retries.
   uint32 failure_count = 6;
 
-  // The result of the health check
+  // The result of the health check.
   HealthStatus healthy = 7;
 
-  // The image the container is running
+  // The image the container is running.
   string image = 8;
 
   // The time when the container starts to run. Will be unset if the
@@ -535,72 +535,72 @@ message ContainerStatus {
   TerminationStatus terminationStatus = 11;
 }
 
-// Runtime states of a pod instance
+// Runtime states of a pod instance.
 enum PodState {
   // Invalid state.
   POD_STATE_INVALID = 0;
 
-  // The pod is being initialized
+  // The pod is being initialized.
   POD_STATE_INITIALIZED = 1;
 
-  // The pod is pending and waiting for resources
+  // The pod is pending and waiting for resources.
   POD_STATE_PENDING = 2;
 
-  // The pod has been allocated with resources and ready for placement
+  // The pod has been allocated with resources and ready for placement.
   POD_STATE_READY = 3;
 
   // The pod is being placed to a host based on its resource
-  // requirements and constraints
+  // requirements and constraints.
   POD_STATE_PLACING = 4;
 
   // The pod has been assigned to a host matching the resource
-  // requirements and constraints
+  // requirements and constraints.
   POD_STATE_PLACED = 5;
 
-  // The pod is taken from resmgr to be launched
+  // The pod is taken from resmgr to be launched.
   POD_STATE_LAUNCHING = 6;
 
-  // The pod is being launched in Job manager
+  // The pod is being launched in Job manager.
   POD_STATE_LAUNCHED = 7;
 
   // Either init containers are starting/running or the main containers
   // in the pod are being started.
   POD_STATE_STARTING = 8;
 
-  // All containers in the pod are running
+  // All containers in the pod are running.
   POD_STATE_RUNNING = 9;
 
-  // All containers in the pod terminated with an exit code of zero
+  // All containers in the pod terminated with an exit code of zero.
   POD_STATE_SUCCEEDED = 10;
 
-  // At least on container in the pod terminated with a non-zero exit code
+  // At least on container in the pod terminated with a non-zero exit code.
   POD_STATE_FAILED = 11;
 
-  // The pod is lost
+  // The pod is lost.
   POD_STATE_LOST = 12;
 
-  // The pod is being killed
+  // The pod is being killed.
   POD_STATE_KILLING = 13;
 
-  // At least one of the containers in the pod was terminated by the system
+  // At least one of the containers in the pod was terminated by the system.
   POD_STATE_KILLED = 14;
 
-  // The pod is being preempted by another one on the node
+  // The pod is being preempted by another one on the node.
   POD_STATE_PREEMPTING = 15;
 
-  // The pod is to be deleted after termination
+  // The pod is to be deleted after termination.
   POD_STATE_DELETED = 16;
 
-  // The pod is to be reserved on a node
+  // The pod is to be reserved on a node.
   POD_STATE_RESERVED = 17;
 }
 
-// Runtime status of a pod instance in a Job
+// Runtime status of a pod instance in a Job.
 message PodStatus {
-  // Runtime state of the pod
+  // Runtime state of the pod.
   PodState state = 1;
 
-  // The current pod ID for this pod
+  // The current pod ID for this pod.
   peloton.PodID pod_id = 2;
 
   // The time when the pod starts to run. Will be unset if the
@@ -613,7 +613,7 @@ message PodStatus {
   // RFC3339 form with UTC timezone.
   string completion_time = 4;
 
-  // The name of the host where the pod is running
+  // The name of the host where the pod is running.
   string host = 5;
 
   // Status of the init containers.
@@ -635,8 +635,8 @@ message PodStatus {
   // The number of times the pod has failed after retries.
   uint32 failure_count = 11;
 
-  // persistent volume id
-  // Deprecated
+  // persistent volume id.
+  // Deprecated.
   peloton.VolumeID volume_id = 12;
 
   // The entity version currently used by the pod.
@@ -662,10 +662,10 @@ message PodStatus {
   // The resource usage for this pod. The map key is each resource kind
   // in string format and the map value is the number of unit-seconds
   // of that resource used by the job. Example: if a pod that uses 1 CPU
-  // and finishes in 10 seconds, this map will contain <"cpu":10>
+  // and finishes in 10 seconds, this map will contain <"cpu":10>.
   map<string, double> resource_usage = 18;
 
-  // The desired pod ID for this pod
+  // The desired pod ID for this pod.
   peloton.PodID desired_pod_id = 19;
 
   // The name of the host where the pod should be running on upon restart.
@@ -676,21 +676,21 @@ message PodStatus {
   string host_id = 21;
 }
 
-// Info of a pod in a Job
+// Info of a pod in a Job.
 message PodInfo {
-  // Configuration of the pod
+  // Configuration of the pod.
   PodSpec spec = 1;
 
-  // Runtime status of the pod
+  // Runtime status of the pod.
   PodStatus status = 2;
 }
 
-// Summary information about a pod
+// Summary information about a pod.
 message PodSummary {
-  // Name of the pod
+  // Name of the pod.
   peloton.PodName pod_name = 1;
 
-  // Runtime status of the pod
+  // Runtime status of the pod.
   PodStatus status = 3;
 }
 
@@ -723,13 +723,13 @@ message QuerySpec {
 
 // Pod events of a particular run of a job instance.
 message PodEvent {
-  // The current pod ID
+  // The current pod ID.
   peloton.PodID pod_id = 1;
 
-  // Actual state of a pod
+  // Actual state of a pod.
   string actual_state = 2;
 
-  // Goal State of a pod
+  // Goal State of a pod.
   string desired_state = 3;
 
   // The time when the event was created. The time is represented in
@@ -742,24 +742,30 @@ message PodEvent {
   // The desired entity version that should be used by the pod.
   peloton.EntityVersion desired_version = 6;
 
-  // The agentID for the pod
+  // The agentID for the pod.
   string agent_id = 7;
 
-  // The host on which the pod is running
+  // The host on which the pod is running.
   string hostname = 8;
 
   // Short human friendly message explaining state.
   string message = 9;
 
-  // The short reason for the pod event
+  // The short reason for the pod event.
   string reason = 10;
 
-  // The previous pod ID
+  // The previous pod ID.
   peloton.PodID prev_pod_id = 11;
 
-  // The health check result of the pod
+  // The health check result of the pod.
   string healthy = 12;
 
-  // The desired pod ID
+  // The desired pod ID.
   peloton.PodID desired_pod_id = 13;
+
+  // Status of the containers.
+  repeated ContainerStatus container_status = 14;
+
+  // Status of the init containers.
+  repeated ContainerStatus init_container_status = 15;
 }

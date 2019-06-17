@@ -1,0 +1,104 @@
+// Private HostMgr Service API v1alpha
+
+syntax = "proto3";
+
+package peloton.private.hostmgr.v1alpha.svc;
+
+option go_package = "peloton/private/hostmgr/v1alpha/svc";
+
+import "peloton/private/hostmgr/v1alpha/hostmgr.proto";
+import "peloton/api/v1alpha/peloton.proto";
+import "peloton/private/eventstream/v1alpha/event/event.proto";
+
+
+// AcquireHostsRequest contains host filter used to acquire hosts for placement
+// based on filter constraints.
+message AcquireHostsRequest {
+  hostmgr.HostFilter filter = 1;
+}
+
+// AcquireHostsResponse contains the list of host leases acquired as a result of
+// the filtering operation.
+message AcquireHostsResponse {
+  // The list of hosts that have been acquired for placement.
+  repeated hostmgr.HostLease hosts = 1;
+
+  // Used for debugging purpose.
+  // key: HostFilterResult's string form, value: count.
+  map<string, uint32> filter_result_counts = 2;
+}
+
+// LaunchPodsRequest contains the lease_id of acquired host and list of pods to
+// be launched on that host.
+message LaunchPodsRequest {
+  // The lease_id of the acquired host on which pods should be launched.
+  hostmgr.LeaseID lease_id = 1;
+
+  // The hostname of the acquired host on which pods should be launched.
+  string hostname = 2;
+
+  // List of pods to be launched which contains podID and podSpec for each pod.
+  repeated hostmgr.LaunchablePod pods = 3;
+}
+
+// LaunchPodsResponse is a placeholder response structure.
+message LaunchPodsResponse {}
+
+// KillPodsRequest contains the list of podIDs to be killed.
+message KillPodsRequest {
+  // List of podIDs to be killed.
+  repeated api.v1alpha.peloton.PodID pod_ids = 1;
+}
+
+// KillPodsResponse is a placeholder response structure.
+message KillPodsResponse {}
+
+// ClusterCapacityRequest is a request for getting cluster capacity.
+message ClusterCapacityRequest {}
+
+// ClusterCapacityResponse is the response structure describing the
+// cluster capacity.
+message ClusterCapacityResponse {
+  // Resources allocated.
+  repeated hostmgr.Resource allocation = 1;
+
+  // Represents total cluster capacity.
+  repeated hostmgr.Resource capacity = 2;
+
+  // Represents alloacted slack resources.
+  repeated hostmgr.Resource slack_allocation = 3;
+
+  // Represents total slack capacity of the cluster.
+  repeated hostmgr.Resource slack_capacity = 4;
+}
+
+// Request to get all outstanding podevents in the event stream.
+message GetEventsRequest {}
+
+// Response of all outstanding podevents in the event stream.
+message GetEventsResponse {
+	repeated peloton.private.eventstream.v1alpha.event.Event events = 1;
+}
+
+// HostManagerService interface to be used by JobManager, PlacementEngine and
+// ResourceManager for scheduling and managing pods and hosts in the cluster.
+service HostManagerService
+{
+  // AcquireHosts acquires a set of hosts from the host manager. Each host will
+  // only be used by one client at a given time.
+  rpc AcquireHosts(AcquireHostsRequest) returns (AcquireHostsResponse);
+
+  // LaunchPods launches pods on the cluster.
+  rpc LaunchPods(LaunchPodsRequest) returns (LaunchPodsResponse);
+
+  // KillPods kills pods on the cluster.
+  rpc KillPods(KillPodsRequest) returns (KillPodsResponse);
+
+  // ClusterCapacity fetches the actual capacity and allocated resources from
+  // the framework.
+  rpc ClusterCapacity(ClusterCapacityRequest) returns (ClusterCapacityResponse);
+
+  // GetEvents returns all the outstanding podevents in the event stream.
+	// For debug purpose only.
+  rpc GetEvents(GetEventsRequest) returns(GetEventsResponse);
+}
