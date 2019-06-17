@@ -111,6 +111,12 @@ var (
 		Default("").
 		Envar("AUTH_CONFIG_FILE").
 		String()
+
+	enableInPlace = app.Flag(
+		"enable-inplace-update", "enable in-place update").
+		Default("false").
+		Envar("ENABLE_INPLACE_UPDATE").
+		Bool()
 )
 
 func main() {
@@ -156,6 +162,10 @@ func main() {
 	if len(*authType) != 0 {
 		cfg.Auth.AuthType = auth.Type(*authType)
 		cfg.Auth.Path = *authConfigFile
+	}
+
+	if *enableInPlace {
+		cfg.ServiceHandler.EnableInPlace = true
 	}
 
 	initialLevel := log.InfoLevel

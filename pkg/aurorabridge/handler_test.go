@@ -99,6 +99,7 @@ func (suite *ServiceHandlerTestSuite) SetupTest() {
 		ThermosExecutor: atop.ThermosExecutorConfig{
 			Path: "/usr/share/aurora/bin/thermos_executor.pex",
 		},
+		EnableInPlace: true,
 	}
 	suite.config.normalize()
 	handler, err := NewServiceHandler(
@@ -1975,6 +1976,7 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
 		BatchSize:         1,
 		StartPaused:       true,
 		RollbackOnFailure: true,
+		InPlace:           true,
 	}
 
 	prevSpec := &stateless.JobSpec{
@@ -2034,6 +2036,7 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
 				BatchSize:         1,
 				StartPaused:       false,
 				RollbackOnFailure: false,
+				InPlace:           true,
 			},
 			OpaqueData: newOD,
 		}).

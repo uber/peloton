@@ -51,6 +51,9 @@ type ServiceHandlerConfig struct {
 	UpdatesLimit uint32 `yaml:"updates_limit"`
 
 	ThermosExecutor atop.ThermosExecutorConfig `yaml:"thermos_executor"`
+
+	// Enable Peloton inplace update
+	EnableInPlace bool `yaml:"enable-inplace-update"`
 }
 
 func (c *ServiceHandlerConfig) normalize() {

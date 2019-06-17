@@ -126,7 +126,7 @@ func (h *ServiceHandler) startJobUpdate(
 	replaceReq := &statelesssvc.ReplaceJobRequest{
 		JobId:      id,
 		Spec:       updateJobSpec,
-		UpdateSpec: atop.NewUpdateSpec(request.GetSettings()),
+		UpdateSpec: atop.NewUpdateSpec(request.GetSettings(), h.config.EnableInPlace),
 		Version:    v,
 		OpaqueData: od,
 	}

@@ -125,6 +125,7 @@ class App(object):
         self.respool_path = None
         self.auth_type = "NOOP"
         self.auth_config_file = ""
+        self.enable_inplace_update = False
 
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
@@ -303,6 +304,8 @@ class App(object):
         if self.name == "aurorabridge":
             if self.respool_path:
                 env_vars["RESPOOL_PATH"] = self.respool_path
+            if self.enable_inplace_update:
+                env_vars["ENABLE_INPLACE_UPDATE"] = "true"
 
     def get_app_path(self):
         """

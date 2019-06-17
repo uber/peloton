@@ -20,11 +20,15 @@ import (
 )
 
 // NewUpdateSpec creates a new UpdateSpec.
-func NewUpdateSpec(s *api.JobUpdateSettings) *stateless.UpdateSpec {
+func NewUpdateSpec(
+	s *api.JobUpdateSettings,
+	inPlace bool,
+) *stateless.UpdateSpec {
 	return &stateless.UpdateSpec{
 		BatchSize:         uint32(s.GetUpdateGroupSize()),
 		RollbackOnFailure: s.GetRollbackOnFailure(),
 		StartPods:         true,
+		InPlace:           inPlace,
 
 		// In Peloton max_instances_retries means number of times
 		// an instance will be retried before failing the instance,

@@ -7,7 +7,7 @@ import (
 
 // NewCreateSpec creates a new CreateSpec.
 func NewCreateSpec(s *api.JobUpdateSettings) *stateless.CreateSpec {
-	u := NewUpdateSpec(s)
+	u := NewUpdateSpec(s, false)
 	return &stateless.CreateSpec{
 		BatchSize:                    u.BatchSize,
 		MaxInstanceRetries:           u.MaxInstanceRetries,
