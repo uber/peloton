@@ -257,9 +257,9 @@ def create_cassandra_store(config):
         )
         # by api design, exec_start needs to be called after exec_create
         # to run 'docker exec'
-        resp = cli.exec_start(exec_id=setup_exe)
+        resp = (cli.exec_start(exec_id=setup_exe)).decode("utf-8")
         if resp == "":
-            resp = cli.exec_start(exec_id=show_exe)
+            resp = (cli.exec_start(exec_id=show_exe)).decode("utf-8")
             if "CREATE KEYSPACE peloton_test WITH" in resp:
                 print_utils.okgreen("cassandra store is created")
                 return
