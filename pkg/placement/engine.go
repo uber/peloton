@@ -171,7 +171,7 @@ func (e *engine) Place(
 		dequeLimit,
 		e.config.TaskDequeueTimeOut)
 
-	if len(assignments) == 0 {
+	if len(assignments)+len(lastRoundAssignment) == 0 {
 		return nil, _noTasksTimeoutPenalty
 	}
 
