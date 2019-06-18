@@ -13,7 +13,9 @@ image_name="peloton-build"
 # make sure we did a glide install before running the build
 
 if [[ $DISTRIBUTION == all ]] ; then
-  DISTRIBUTION="trusty jessie"
+  # there is an issue for packaging in trusty,
+  # remove trusty for now
+  DISTRIBUTION="jessie"
   echo "Building debs for all supported distributions ($DISTRIBUTION); set \$DISTRIBUTION to override"
 fi
 

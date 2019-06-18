@@ -3,7 +3,7 @@ INSTALL_DIR="$(mktemp -d)"
 OUTPUT_DIR=/output
 SRC_DIR="${SRC_DIR:-/peloton}"
 PROTOC_VERSION="3.5.1"
-GO_VERSION="1.10"
+GO_VERSION="1.11.4"
 
 install_golang() {
     echo 'start installing golang '$GO_VERSION
