@@ -17,10 +17,6 @@ package batch
 import (
 	log "github.com/sirupsen/logrus"
 
-	"github.com/uber/peloton/.gen/peloton/api/v0/job"
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
-	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/plugins"
 )
 
@@ -35,38 +31,36 @@ type batch struct{}
 
 // GetTaskPlacements is an implementation of the placement.Strategy interface.
 func (batch *batch) GetTaskPlacements(
-	unassigned []*models.Assignment,
-	hosts []*models.HostOffers,
+	unassigned []plugins.Task,
+	hosts []plugins.Host,
 ) map[int]int {
 	// All tasks are identical in their requirements, including
-	// placementHint (see method Filters())). So just looking at
+	// placementHint (see method GroupTasksByPlacementNeeds())). So just looking at
 	// the first one is sufficient.
 	if len(unassigned) == 0 {
 		return map[int]int{}
 	}
 
 	var placements map[int]int
-	ph := models.Assignments(unassigned).GetPlacementStrategy()
-	if ph == job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB {
+	if unassigned[0].NeedsSpread() {
 		placements = batch.spreadTasksOnHost(unassigned, hosts)
 	} else {
-		// the default host assignment strategy is PACK
+		// the default host task strategy is PACK
 		placements = batch.packTasksOnHost(unassigned, hosts)
 	}
 
-	var leftOver []*models.Assignment
-	for assignmentIdx, assignment := range unassigned {
-		if _, isAssigned := placements[assignmentIdx]; !isAssigned {
-			placements[assignmentIdx] = -1
-			leftOver = append(leftOver, assignment)
+	var leftOver []interface{}
+	for taskIdx, task := range unassigned {
+		if _, isAssigned := placements[taskIdx]; !isAssigned {
+			placements[taskIdx] = -1
+			leftOver = append(leftOver, task)
 		}
 	}
 
 	log.WithFields(log.Fields{
-		"failed_assignments": leftOver,
-		"hosts":              hosts,
-		"placement_hint":     ph.String(),
-		"strategy":           "batch",
+		"failed_tasks": leftOver,
+		"hosts":        hosts,
+		"strategy":     "batch",
 	}).Info("GetTaskPlacements batch strategy returned")
 	return placements
 }
@@ -74,11 +68,11 @@ func (batch *batch) GetTaskPlacements(
 // Assign hosts to tasks by trying to pack as many tasks as possible
 // on a single host. Returns any tasks that could not be assigned to
 // a host.
-// The output is a map[AssignmentIndex]HostIndex, as defined by the
+// The output is a map[taskIndex]HostIndex, as defined by the
 // GetTaskPlacements function signature.
 func (batch *batch) packTasksOnHost(
-	unassigned []*models.Assignment,
-	hosts []*models.HostOffers,
+	unassigned []plugins.Task,
+	hosts []plugins.Host,
 ) map[int]int {
 	placements := map[int]int{}
 	totalAssignedCount := 0
@@ -89,8 +83,8 @@ func (batch *batch) packTasksOnHost(
 		}).Debug("GetTaskPlacements batch strategy called")
 
 		assignedCount := batch.getTasksForHost(host, unassigned[totalAssignedCount:])
-		for assignmentIdx := 0; assignmentIdx < assignedCount; assignmentIdx++ {
-			placementIdx := totalAssignedCount + assignmentIdx
+		for taskIdx := 0; taskIdx < assignedCount; taskIdx++ {
+			placementIdx := totalAssignedCount + taskIdx
 			placements[placementIdx] = hostIdx
 		}
 		totalAssignedCount += assignedCount
@@ -102,12 +96,12 @@ func (batch *batch) packTasksOnHost(
 // could not be assigned (in case there are fewer hosts than tasks).
 // Note that all task have identical resource and scheduling
 // constraints, and each host satisifies these constraints.
-// So a simple index-by-index assignment is just fine.
-// The output is a map[AssignmentIndex]HostIndex, as defined by the
+// So a simple index-by-index task is just fine.
+// The output is a map[taskIndex]HostIndex, as defined by the
 // GetTaskPlacements function signature.
 func (batch *batch) spreadTasksOnHost(
-	unassigned []*models.Assignment,
-	hosts []*models.HostOffers,
+	unassigned []plugins.Task,
+	hosts []plugins.Host,
 ) map[int]int {
 	numTasks := len(hosts)
 	if len(unassigned) < numTasks {
@@ -129,13 +123,13 @@ func (batch *batch) spreadTasksOnHost(
 // the host.
 // TODO (pourchet): Is the above note a bug? Or is it deliberate?
 func (batch *batch) getTasksForHost(
-	host *models.HostOffers,
-	unassigned []*models.Assignment,
+	host plugins.Host,
+	unassigned []plugins.Task,
 ) int {
 	resLeft, portsLeft := host.GetAvailableResources()
-	for i, assignment := range unassigned {
+	for i, task := range unassigned {
 		var ok bool
-		resLeft, portsLeft, ok = assignment.Fits(resLeft, portsLeft)
+		resLeft, portsLeft, ok = task.Fits(resLeft, portsLeft)
 		if !ok {
 			return i
 		}
@@ -143,30 +137,20 @@ func (batch *batch) getTasksForHost(
 	return len(unassigned)
 }
 
-// Filters is an implementation of the placement.Strategy interface.
-func (batch *batch) Filters(
-	assignments []*models.Assignment,
-) map[*hostsvc.HostFilter][]*models.Assignment {
-	filters := (models.Assignments(assignments)).GroupByHostFilter(
-		func(a *models.Assignment) *hostsvc.HostFilter {
-			return a.GetSimpleHostFilter()
-		},
-	)
-
-	// Add quantity control to hostfilter.
-	result := map[*hostsvc.HostFilter][]*models.Assignment{}
-	for filter, assignments := range filters {
-		filterWithQuantity := &hostsvc.HostFilter{
-			ResourceConstraint:   filter.GetResourceConstraint(),
-			SchedulingConstraint: filter.GetSchedulingConstraint(),
-			Quantity: &hostsvc.QuantityControl{
-				MaxHosts: uint32(len(assignments)),
-			},
-			Hint: filter.GetHint(),
-		}
-		result[filterWithQuantity] = assignments
+// GroupTasksByPlacementNeeds is an implementation of the placement.Strategy interface.
+func (batch *batch) GroupTasksByPlacementNeeds(
+	tasks []plugins.Task,
+) []*plugins.TasksByPlacementNeeds {
+	if len(tasks) == 0 {
+		return nil
 	}
-	return result
+
+	// No alteration of the task needs.
+	tasksByNeeds := plugins.GroupByPlacementNeeds(tasks)
+	for _, group := range tasksByNeeds {
+		group.PlacementNeeds.MaxHosts = uint32(len(group.Tasks))
+	}
+	return tasksByNeeds
 }
 
 // ConcurrencySafe is an implementation of the placement.Strategy interface.

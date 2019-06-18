@@ -19,10 +19,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/pkg/placement/config"
-	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/plugins"
 	common "github.com/uber/peloton/pkg/placement/plugins/mimir/common"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/algorithms"
@@ -53,22 +51,22 @@ type mimir struct {
 }
 
 func (mimir *mimir) convertAssignments(
-	pelotonAssignments []*models.Assignment) (
+	tasks []plugins.Task) (
 	[]*placement.Assignment,
-	map[*placement.Entity]*models.Assignment) {
+	map[*placement.Entity]int) {
 	// Convert the Peloton assignments to mimir assignments and keep a map
 	// from entities to Peloton assignments.
-	assignments := make([]*placement.Assignment, 0, len(pelotonAssignments))
-	entitiesToAssignments := make(map[*placement.Entity]*models.Assignment, len(pelotonAssignments))
-	for _, p := range pelotonAssignments {
+	assignments := make([]*placement.Assignment, 0, len(tasks))
+	entitiesToAssignments := make(map[*placement.Entity]int, len(tasks))
+	for idx, p := range tasks {
 		entity := p.ToMimirEntity()
 		assignments = append(assignments, placement.NewAssignment(entity))
-		entitiesToAssignments[entity] = p
+		entitiesToAssignments[entity] = idx
 	}
 	return assignments, entitiesToAssignments
 }
 
-func (mimir *mimir) convertHosts(hosts []*models.HostOffers) (
+func (mimir *mimir) convertHosts(hosts []plugins.Host) (
 	[]*placement.Group,
 	map[*placement.Group]int,
 ) {
@@ -84,15 +82,17 @@ func (mimir *mimir) convertHosts(hosts []*models.HostOffers) (
 }
 
 func (mimir *mimir) getPlacements(
+	tasks []plugins.Task,
 	assignments []*placement.Assignment,
-	entitiesToAssignments map[*placement.Entity]*models.Assignment,
+	entitiesToAssignments map[*placement.Entity]int,
 	groupsToHosts map[*placement.Group]int,
 ) map[int]int {
 	placements := map[int]int{}
 	for i, assignment := range assignments {
-		pelotonAssignment := entitiesToAssignments[assignment.Entity]
+		taskIdx := entitiesToAssignments[assignment.Entity]
+		task := tasks[taskIdx]
 		if assignment.Failed {
-			pelotonAssignment.SetReason(assignment.Transcript.String())
+			task.SetReason(assignment.Transcript.String())
 			placements[i] = -1
 			continue
 		}
@@ -104,15 +104,15 @@ func (mimir *mimir) getPlacements(
 
 // GetTaskPlacements is an implementation of the placement.Strategy interface.
 func (mimir *mimir) GetTaskPlacements(
-	pelotonAssignments []*models.Assignment,
-	hosts []*models.HostOffers,
+	tasks []plugins.Task,
+	hosts []plugins.Host,
 ) map[int]int {
-	assignments, entitiesToAssignments := mimir.convertAssignments(pelotonAssignments)
+	assignments, entitiesToAssignments := mimir.convertAssignments(tasks)
 	groups, groupsToHosts := mimir.convertHosts(hosts)
 	scopeSet := placement.NewScopeSet(groups)
 
 	log.WithFields(log.Fields{
-		"peloton_assignments": pelotonAssignments,
+		"peloton_assignments": tasks,
 		"peloton_hosts":       hosts,
 	}).Debug("GetTaskPlacements Mimir strategy called")
 
@@ -132,61 +132,44 @@ func (mimir *mimir) GetTaskPlacements(
 		}
 	}
 
-	placements := mimir.getPlacements(assignments, entitiesToAssignments, groupsToHosts)
+	placements := mimir.getPlacements(tasks, assignments, entitiesToAssignments, groupsToHosts)
 
 	log.WithFields(log.Fields{
 		"placements":  placements,
-		"assignments": pelotonAssignments,
+		"assignments": tasks,
 		"hosts":       hosts,
 	}).Debug("GetTaskPlacements Mimir strategy returned")
 	return placements
 }
 
-// Filters is an implementation of the placement.Strategy interface.
+// GroupTasksByPlacementNeeds is an implementation of the placement.Strategy interface.
 // Constructs host-filter for a set of assignments that have the same
 // scheduling constraints, resource constraints and revocability.
-func (mimir *mimir) Filters(
-	assignments []*models.Assignment,
-) map[*hostsvc.HostFilter][]*models.Assignment {
-	if len(assignments) == 0 {
+func (mimir *mimir) GroupTasksByPlacementNeeds(
+	tasks []plugins.Task,
+) []*plugins.TasksByPlacementNeeds {
+	if len(tasks) == 0 {
 		return nil
 	}
 
-	filters := (models.Assignments(assignments)).GroupByHostFilter(
-		func(a *models.Assignment) *hostsvc.HostFilter {
-			return a.GetSimpleHostFilter()
-		},
-	)
-
-	result := map[*hostsvc.HostFilter][]*models.Assignment{}
+	tasksByNeeds := plugins.GroupByPlacementNeeds(tasks)
 	factor := _offersFactor[mimir.config.TaskType]
-	for filter, assigns := range filters {
+	for _, group := range tasksByNeeds {
 		maxOffers := mimir.config.OfferDequeueLimit
-		neededOffers := math.Ceil(float64(len(assigns)) * factor)
+		neededOffers := math.Ceil(float64(len(group.Tasks)) * factor)
 		if float64(maxOffers) > neededOffers {
 			maxOffers = int(neededOffers)
 		}
+		group.PlacementNeeds.MaxHosts = uint32(maxOffers)
 
-		filterWithQuantity := &hostsvc.HostFilter{
-			ResourceConstraint:   filter.GetResourceConstraint(),
-			SchedulingConstraint: filter.GetSchedulingConstraint(),
-			Quantity: &hostsvc.QuantityControl{
-				MaxHosts: uint32(maxOffers),
-			},
-			Hint: filter.GetHint(),
+		for _, taskIdx := range group.Tasks {
+			task := tasks[taskIdx]
+			if hostname := task.PreferredHost(); hostname != "" {
+				group.PlacementNeeds.HostHints[task.ID()] = hostname
+			}
 		}
-
-		for _, assign := range assignments {
-			filterWithQuantity.Hint.HostHint = append(
-				filterWithQuantity.Hint.HostHint,
-				assign.GetHostHints()...,
-			)
-		}
-
-		result[filterWithQuantity] = assigns
 	}
-
-	return result
+	return tasksByNeeds
 }
 
 // ConcurrencySafe is an implementation of the placement.Strategy interface.

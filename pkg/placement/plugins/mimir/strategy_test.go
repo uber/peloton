@@ -25,7 +25,9 @@ import (
 
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/plugins"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/algorithms"
+	"github.com/uber/peloton/pkg/placement/plugins/v0"
 	"github.com/uber/peloton/pkg/placement/testutil"
 
 	"github.com/stretchr/testify/assert"
@@ -49,11 +51,12 @@ func TestMimirPlace(t *testing.T) {
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 	}
-	offers := []*models.HostOffers{
+	offers := []plugins.Host{
 		testutil.SetupHostOffers(),
 	}
 	strategy := setupStrategy()
-	placements := strategy.GetTaskPlacements(assignments, offers)
+	tasks := models.AssignmentsToTasks(assignments)
+	placements := strategy.GetTaskPlacements(tasks, offers)
 
 	assert.Equal(t, 0, placements[0])
 	assert.Equal(t, -1, placements[1])
@@ -81,13 +84,14 @@ func TestMimirPlacePreferHostWithMoreResource(t *testing.T) {
 	}
 	hostWithScarceResources.Offer.Hostname = "hostname2"
 
-	offers := []*models.HostOffers{
+	offers := []plugins.Host{
 		hostWithScarceResources, hostWithEnoughResources,
 	}
 
 	// the host will choose host with more free resources
 	strategy := setupStrategy()
-	placements := strategy.GetTaskPlacements(assignments, offers)
+	tasks := models.AssignmentsToTasks(assignments)
+	placements := strategy.GetTaskPlacements(tasks, offers)
 	assert.Equal(t, 1, placements[0])
 }
 
@@ -114,7 +118,7 @@ func TestMimirPlacePreferHostWithDesiredHost(t *testing.T) {
 	}
 	hostWithScarceResources.Offer.Hostname = "hostname2"
 
-	offers := []*models.HostOffers{
+	offers := []plugins.Host{
 		hostWithScarceResources, hostWithEnoughResources,
 	}
 
@@ -122,7 +126,8 @@ func TestMimirPlacePreferHostWithDesiredHost(t *testing.T) {
 	// even if it has less resource
 	assignments[0].Task.Task.DesiredHost = hostWithScarceResources.GetOffer().GetHostname()
 	strategy := setupStrategy()
-	placements := strategy.GetTaskPlacements(assignments, offers)
+	tasks := models.AssignmentsToTasks(assignments)
+	placements := strategy.GetTaskPlacements(tasks, offers)
 	assert.Equal(t, 0, placements[0])
 }
 
@@ -148,7 +153,7 @@ func TestMimirPlaceIgnoreDesiredHostWhenNoEnoughResource(t *testing.T) {
 	}
 	hostWithScarceResources.Offer.Hostname = "hostname2"
 
-	offers := []*models.HostOffers{
+	offers := []plugins.Host{
 		hostWithScarceResources, hostWithEnoughResources,
 	}
 
@@ -156,7 +161,8 @@ func TestMimirPlaceIgnoreDesiredHostWhenNoEnoughResource(t *testing.T) {
 	// But it could not as it does not have enough resources for the task.
 	strategy := setupStrategy()
 	assignments[0].Task.Task.DesiredHost = hostWithScarceResources.GetOffer().GetHostname()
-	placements := strategy.GetTaskPlacements(assignments, offers)
+	tasks := models.AssignmentsToTasks(assignments)
+	placements := strategy.GetTaskPlacements(tasks, offers)
 	assert.Equal(t, 1, placements[0])
 }
 
@@ -220,10 +226,13 @@ func TestMimirFilters(t *testing.T) {
 	for _, taskType := range taskTypes {
 		strategy.config.TaskType = taskType
 
-		results := strategy.Filters(assignments)
-		assert.Equal(t, 4, len(results))
+		tasks := models.AssignmentsToTasks(assignments)
+		tasksByNeeds := strategy.GroupTasksByPlacementNeeds(tasks)
+		assert.Equal(t, 4, len(tasksByNeeds))
 
-		for filter, batch := range results {
+		for _, group := range tasksByNeeds {
+			filter := v0_plugins.PlacementNeedsToHostFilter(group.PlacementNeeds)
+			batch := group.Tasks
 			assert.NotNil(t, filter)
 
 			switch filter.ResourceConstraint.NumPorts {
@@ -237,14 +246,14 @@ func TestMimirFilters(t *testing.T) {
 				assert.Equal(t, 4096.0, res.GetMemLimitMb())
 				assert.Equal(t, 1024.0, res.GetDiskLimitMb())
 				assert.Equal(t, uint32(1), filter.GetQuantity().GetMaxHosts())
-				assert.EqualValues(t, assignments[0:1], batch)
+				assert.EqualValues(t, []int{0}, batch)
 
 			case 2:
 				// assignment[1]
 				assert.Equal(t, 1, len(batch))
 				assert.Equal(
 					t,
-					batch[0].GetTask().GetTask().Constraint,
+					assignments[batch[0]].GetTask().GetTask().Constraint,
 					filter.SchedulingConstraint)
 				res := filter.GetResourceConstraint().GetMinimum()
 				assert.Equal(t, 32.0, res.GetCpuLimit())
@@ -252,7 +261,7 @@ func TestMimirFilters(t *testing.T) {
 				assert.Equal(t, 4096.0, res.GetMemLimitMb())
 				assert.Equal(t, 1024.0, res.GetDiskLimitMb())
 				assert.Equal(t, uint32(1), filter.GetQuantity().GetMaxHosts())
-				assert.EqualValues(t, assignments[1:2], batch)
+				assert.EqualValues(t, []int{1}, batch)
 
 			case 3:
 				// assignment[2]
@@ -264,7 +273,7 @@ func TestMimirFilters(t *testing.T) {
 				assert.Equal(t, 4096.0, res.GetMemLimitMb())
 				assert.Equal(t, 4096.0, res.GetDiskLimitMb())
 				assert.Equal(t, uint32(1), filter.GetQuantity().GetMaxHosts())
-				assert.EqualValues(t, assignments[2:3], batch)
+				assert.EqualValues(t, []int{2}, batch)
 			case 4:
 				// assignment[3], assignment[4], assignment[5]
 				assert.Equal(t, 3, len(batch))
@@ -275,7 +284,7 @@ func TestMimirFilters(t *testing.T) {
 				assert.Equal(t, 4096.0, res.GetMemLimitMb())
 				assert.Equal(t, 1024.0, res.GetDiskLimitMb())
 				assert.Equal(t, uint32(3), filter.GetQuantity().GetMaxHosts())
-				assert.EqualValues(t, assignments[3:6], batch)
+				assert.EqualValues(t, []int{3, 4, 5}, batch)
 			default:
 				assert.Fail(t, "Unexpected value for NumPorts")
 			}

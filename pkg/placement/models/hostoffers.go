@@ -22,6 +22,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
+	"github.com/uber/peloton/pkg/placement/plugins"
 )
 
 // NewHostOffers will create a placement host from a host manager host and all the resource manager tasks on it.
@@ -47,6 +48,9 @@ type HostOffers struct {
 	data interface{}
 	lock sync.Mutex
 }
+
+// Make sure that that HostOffers satisfies the plugins interface.
+var _ plugins.Host = &HostOffers{}
 
 // GetOffer returns the host offer of the host.
 func (host *HostOffers) GetOffer() *hostsvc.HostOffer {

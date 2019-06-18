@@ -27,6 +27,7 @@ import (
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/models"
 	offers_mock "github.com/uber/peloton/pkg/placement/offers/mocks"
+	"github.com/uber/peloton/pkg/placement/plugins"
 	"github.com/uber/peloton/pkg/placement/plugins/batch"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/algorithms"
@@ -486,14 +487,18 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 		Return(map[int]int{})
 
 	mockStrategy.EXPECT().
-		Filters(
+		GroupTasksByPlacementNeeds(
 			gomock.Any()).
-		Return(map[*hostsvc.HostFilter][]*models.Assignment{nil: {assignment}})
+		Return([]*plugins.TasksByPlacementNeeds{
+			{PlacementNeeds: plugins.PlacementNeeds{}, Tasks: []int{0}},
+		})
 
 	mockStrategy.EXPECT().
-		Filters(
+		GroupTasksByPlacementNeeds(
 			gomock.Any()).
-		Return(map[*hostsvc.HostFilter][]*models.Assignment{nil: {assignment2}})
+		Return([]*plugins.TasksByPlacementNeeds{
+			{PlacementNeeds: plugins.PlacementNeeds{}, Tasks: []int{0}},
+		})
 
 	mockStrategy.EXPECT().
 		ConcurrencySafe().

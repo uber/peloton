@@ -22,17 +22,19 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
-	"github.com/uber/peloton/pkg/placement/plugins"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+
 	"github.com/uber/peloton/pkg/common/async"
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/hosts"
 	tally_metrics "github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/offers"
+	"github.com/uber/peloton/pkg/placement/plugins"
+	"github.com/uber/peloton/pkg/placement/plugins/v0"
 	"github.com/uber/peloton/pkg/placement/reserver"
 	"github.com/uber/peloton/pkg/placement/tasks"
 	"github.com/uber/peloton/pkg/placement/util"
@@ -215,24 +217,28 @@ func (e *engine) Place(
 // It returns assignments that cannot be fulfilled.
 func (e *engine) processAssignments(
 	ctx context.Context,
-	assignments []*models.Assignment,
+	unassigned []*models.Assignment,
 	f func(*models.Assignment) bool) []*models.Assignment {
-	var result []*models.Assignment
 
-	for _, assignment := range assignments {
+	assignments := []*models.Assignment{}
+	for _, assignment := range unassigned {
 		if f(assignment) {
-			result = append(result, assignment)
+			assignments = append(assignments, assignment)
 		}
 	}
-	if len(result) == 0 {
+	if len(assignments) == 0 {
 		return nil
 	}
 
 	unfulfilledAssignment := &concurrencySafeAssignmentSlice{}
-	filters := e.strategy.Filters(result)
-	for f, b := range filters {
-		filter, batch := f, b
-		// Run the placement of each batch in parallel
+	tasks := models.AssignmentsToTasks(assignments)
+	tasksByNeeds := e.strategy.GroupTasksByPlacementNeeds(tasks)
+	for _, group := range tasksByNeeds {
+		batch := []*models.Assignment{}
+		for _, idx := range group.Tasks {
+			batch = append(batch, assignments[idx])
+		}
+		filter := v0_plugins.PlacementNeedsToHostFilter(group.PlacementNeeds)
 		e.pool.Enqueue(async.JobFunc(func(context.Context) {
 			unfulfilledAssignment.append(e.placeAssignmentGroup(ctx, filter, batch)...)
 		}))
@@ -262,7 +268,7 @@ func (e *engine) placeAssignmentGroup(
 		}).Info("placing assignment group")
 
 		// Get hosts with available resources and tasks currently running.
-		hosts, reason := e.offerService.Acquire(
+		offers, reason := e.offerService.Acquire(
 			ctx,
 			e.config.FetchOfferTasks,
 			e.config.TaskType,
@@ -270,9 +276,9 @@ func (e *engine) placeAssignmentGroup(
 
 		existing := e.findUsedHosts(assignments)
 		now := time.Now()
-		for !e.pastDeadline(now, assignments) && len(hosts)+len(existing) == 0 {
+		for !e.pastDeadline(now, assignments) && len(offers)+len(existing) == 0 {
 			time.Sleep(_noOffersTimeoutPenalty)
-			hosts, reason = e.offerService.Acquire(
+			offers, reason = e.offerService.Acquire(
 				ctx,
 				e.config.FetchOfferTasks,
 				e.config.TaskType,
@@ -280,11 +286,11 @@ func (e *engine) placeAssignmentGroup(
 			now = time.Now()
 		}
 
-		// Add any hosts still assigned to any task so the offers will eventually be returned or used in a placement.
-		hosts = append(hosts, existing...)
+		// Add any offers still assigned to any task so the offers will eventually be returned or used in a placement.
+		offers = append(offers, existing...)
 
-		// We were starved for hosts
-		if len(hosts) == 0 {
+		// We were starved for offers
+		if len(offers) == 0 {
 			log.WithFields(log.Fields{
 				"filter":      filter,
 				"assignments": assignments,
@@ -295,12 +301,22 @@ func (e *engine) placeAssignmentGroup(
 
 		e.metrics.OfferGet.Inc(1)
 
+		tasks := []plugins.Task{}
+		for _, a := range assignments {
+			tasks = append(tasks, a)
+		}
+
+		hosts := []plugins.Host{}
+		for _, o := range offers {
+			hosts = append(hosts, o)
+		}
+
 		// Delegate to the placement strategy to get the placements for these
-		// tasks onto these hosts.
-		placements := e.strategy.GetTaskPlacements(assignments, hosts)
+		// tasks onto these offers.
+		placements := e.strategy.GetTaskPlacements(tasks, hosts)
 		for assignmentIdx, hostIdx := range placements {
 			if hostIdx != -1 {
-				assignments[assignmentIdx].SetHost(hosts[hostIdx])
+				assignments[assignmentIdx].SetHost(offers[hostIdx])
 			}
 		}
 
@@ -316,10 +332,10 @@ func (e *engine) placeAssignmentGroup(
 			"assigned":   assigned,
 			"retryable":  retryable,
 			"unassigned": unassigned,
-			"hosts":      hosts,
+			"hosts":      offers,
 		}).Debug("Finshed one round placing assignment group")
 		// Set placements and return unused offers and failed tasks
-		e.cleanup(ctx, assigned, retryable, unassigned, hosts)
+		e.cleanup(ctx, assigned, retryable, unassigned, offers)
 
 		if len(retryable) != 0 && e.shouldPlaceRetryableInNextRun(retryable) {
 			log.WithFields(log.Fields{

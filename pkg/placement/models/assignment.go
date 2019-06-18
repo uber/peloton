@@ -19,9 +19,25 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
+	"github.com/uber/peloton/pkg/placement/plugins"
 )
+
+const (
+	_defaultMaxHosts = 1
+)
+
+var _ plugins.Task = &Assignment{}
+
+// AssignmentsToTasks converts a slice of assignments into a slice
+// of tasks for plugin use.
+func AssignmentsToTasks(assignments []*Assignment) []plugins.Task {
+	tasks := []plugins.Task{}
+	for _, a := range assignments {
+		tasks = append(tasks, a)
+	}
+	return tasks
+}
 
 // Assignment represents the assignment of a task to a host.
 // One host can be used in multiple assignments.
@@ -30,9 +46,6 @@ type Assignment struct {
 	Task       *Task       `json:"task"`
 	Reason     string
 }
-
-// Assignments is a list of Assignments.
-type Assignments []*Assignment
 
 // NewAssignment will create a new empty assignment from a task.
 func NewAssignment(task *Task) *Assignment {
@@ -103,79 +116,43 @@ func (a *Assignment) Fits(
 	return remains, portsLeft - portsUsed, true
 }
 
-// GetHostHints returns the host hints for the host manager service
-// that matches this assignment.
-func (a *Assignment) GetHostHints() []*hostsvc.FilterHint_Host {
-	resmgrTask := a.GetTask().GetTask()
-	if len(resmgrTask.GetDesiredHost()) == 0 {
-		return nil
-	}
-	return []*hostsvc.FilterHint_Host{
-		{
-			Hostname: resmgrTask.GetDesiredHost(),
-			TaskID:   resmgrTask.GetId(),
-		},
-	}
+// ID returns the id of the task that the assignment represents.
+func (a *Assignment) ID() string {
+	return a.GetTask().GetTask().GetId().GetValue()
 }
 
-// GetSimpleHostFilter returns the simplest host filter that matches
-// this assignment. It includes a ResourceConstraint and a
-// SchedulingConstraint.
-func (a *Assignment) GetSimpleHostFilter() *hostsvc.HostFilter {
+// NeedsSpread returns whether this task was asked to be spread
+// onto the hosts in its gang.
+func (a *Assignment) NeedsSpread() bool {
+	spreadStrat := job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB
+	return a.GetTask().GetTask().GetPlacementStrategy() == spreadStrat
+}
+
+// PreferredHost returns the host preference for this task.
+func (a *Assignment) PreferredHost() string {
+	return a.GetTask().GetTask().GetDesiredHost()
+}
+
+// GetPlacementNeeds returns the placement needs of this task.
+func (a *Assignment) GetPlacementNeeds() plugins.PlacementNeeds {
 	rmTask := a.GetTask().GetTask()
-	result := &hostsvc.HostFilter{
-		ResourceConstraint: &hostsvc.ResourceConstraint{
-			Minimum:   rmTask.Resource,
-			NumPorts:  rmTask.NumPorts,
-			Revocable: rmTask.Revocable,
-		},
-		Hint: &hostsvc.FilterHint{},
+	needs := plugins.PlacementNeeds{
+		Resources:  scalar.FromResourceConfig(rmTask.GetResource()),
+		Ports:      uint64(rmTask.GetNumPorts()),
+		Revocable:  rmTask.Revocable,
+		FDs:        rmTask.GetResource().GetFdLimit(),
+		MaxHosts:   _defaultMaxHosts,
+		HostHints:  map[string]string{},
+		Constraint: rmTask.Constraint,
 	}
-	if constraint := rmTask.Constraint; constraint != nil {
-		result.SchedulingConstraint = constraint
+	if a.PreferredHost() != "" {
+		needs.HostHints[a.ID()] = a.PreferredHost()
 	}
 	// To spread out tasks over hosts, request host-manager
 	// to rank hosts randomly instead of a predictable order such
 	// as most-loaded.
 	if rmTask.GetPlacementStrategy() == job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB {
-		result.Hint.RankHint = hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM
+		needs.RankHint = hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM
 	}
-	return result
-}
-
-// GetFullHostFilter returns the full host filter complete with quantity
-// and hints.
-func (a *Assignment) GetFullHostFilter() *hostsvc.HostFilter {
-	filter := a.GetSimpleHostFilter()
-	filter.Quantity = &hostsvc.QuantityControl{MaxHosts: 1}
-	filter.Hint = &hostsvc.FilterHint{
-		RankHint: filter.Hint.RankHint,
-		HostHint: a.GetHostHints(),
-	}
-	return filter
-}
-
-// GroupByHostFilter groups the assignments according to the result of
-// a function that takes in an assignment.
-func (as Assignments) GroupByHostFilter(
-	fn func(a *Assignment) *hostsvc.HostFilter,
-) map[*hostsvc.HostFilter]Assignments {
-	groups := map[string]*hostsvc.HostFilter{}
-	filters := map[*hostsvc.HostFilter]Assignments{}
-	for _, a := range as {
-		filter := fn(a)
-		s := filter.String()
-		if _, exists := groups[s]; !exists {
-			groups[s] = filter
-		}
-		filter = groups[s]
-		filters[filter] = append(filters[filter], a)
-	}
-	return filters
-}
-
-// GetPlacementStrategy returns the placement strategy for this list
-// of assignments.
-func (as Assignments) GetPlacementStrategy() job.PlacementStrategy {
-	return as[0].GetTask().GetTask().GetPlacementStrategy()
+	return needs
 }

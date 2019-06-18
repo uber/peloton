@@ -107,19 +107,19 @@ func TestAssignment(t *testing.T) {
 		require.Nil(t, constraint)
 	})
 
-	t.Run("host filter", func(t *testing.T) {
+	t.Run("placement needs", func(t *testing.T) {
 		_, _, _, _, _, assignment := setupAssignmentVariables()
 		assignment.GetTask().GetTask().PlacementStrategy = job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB
-		simpleFilter := assignment.GetSimpleHostFilter()
-		require.Nil(t, simpleFilter.SchedulingConstraint)
-		require.Equal(t, hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM, simpleFilter.Hint.RankHint)
+		needs := assignment.GetPlacementNeeds()
+		require.Nil(t, needs.Constraint)
+		require.Equal(t, hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM, needs.RankHint)
 
 		_, _, _, _, _, assignment = setupAssignmentVariables()
 		assignment.GetTask().GetTask().PlacementStrategy = job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB
-		fullFilter := assignment.GetFullHostFilter()
-		require.Nil(t, fullFilter.SchedulingConstraint)
-		require.Equal(t, hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM, fullFilter.Hint.RankHint)
-		require.Equal(t, uint32(1), fullFilter.Quantity.MaxHosts)
+		needs = assignment.GetPlacementNeeds()
+		require.Nil(t, needs.Constraint)
+		require.Equal(t, hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM, needs.RankHint)
+		require.Equal(t, uint32(1), needs.MaxHosts)
 	})
 
 	t.Run("fits", func(t *testing.T) {

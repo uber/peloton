@@ -15,9 +15,7 @@
 package plugins
 
 import (
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"github.com/uber/peloton/pkg/common/scalar"
-	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/placement"
 )
 
@@ -30,11 +28,13 @@ type Strategy interface {
 	// So for instance: map[int]int{2: 3} means that assignments[2] should
 	// be assigned to hosts[3].
 	// Tasks that could not be placed should map to an index of -1.
-	GetTaskPlacements(assignments []*models.Assignment, hosts []*models.HostOffers) map[int]int
+	GetTaskPlacements(tasks []Task, hosts []Host) map[int]int
 
-	// Filters will take a list of assignments and group them into groups that
+	// GroupTasksByPlacementNeeds will take a list of assignments and group them into groups that
 	// should use the same host filter to acquire offers from the host manager.
-	Filters(assignments []*models.Assignment) map[*hostsvc.HostFilter][]*models.Assignment
+	// Returns a list of TasksByPlacementNeedss, which group the tasks that share the same
+	// placement needs.
+	GroupTasksByPlacementNeeds(tasks []Task) []*TasksByPlacementNeeds
 
 	// ConcurrencySafe returns true iff the strategy is concurrency safe. If
 	// the strategy is concurrency safe then it is safe for multiple
@@ -43,48 +43,65 @@ type Strategy interface {
 	ConcurrencySafe() bool
 }
 
-// HostFilter is the interface that is needed to construct API calls to
+// PlacementNeeds is the struct that is needed to construct API calls to
 // HostManager to acquire host offers/leases.
-type HostFilter interface {
-	// Returns the minimum number of ports that each host needs.
-	GetMinPorts() uint64
+type PlacementNeeds struct {
+	// The minimum available resources for each host.
+	Resources scalar.Resources
 
-	// Returns the minimum number of FDs that each host needs.
-	GetMinFDs() uint32
+	// The minimum number of ports that each host needs.
+	Ports uint64
 
-	// Returns the maximum number of hosts required.
-	GetMaxHosts() uint32
+	// IsRevocable returns whether or not the host filter is for
+	// revocable resources.
+	Revocable bool
 
-	// GetHostHints returns a map from task/pod ID
-	// to preferred hostname.
-	GetHostHints() map[string]string
+	// The minimum number of FDs that each host needs.
+	FDs uint32
 
-	// TODO: Revocability
-	GetMinResources() scalar.Resources
+	// The maximum number of hosts required.
+	MaxHosts uint32
+
+	// A map from task/pod ID to preferred hostname.
+	HostHints map[string]string
 
 	// TODO: Constraint
-	// GetConstraint() *peloton_api_v0_task.Constraint
+	Constraint interface{}
 
 	// TODO: RankingHint
+	RankHint interface{}
 }
 
 // Task is the interface that the Strategy takes in and tries to place on
 // Hosts.
 type Task interface {
+	// Returns the ID of the task.
+	ID() string
+
 	// Tries to fit the task on the host resources passed in as arguments.
 	// Returns as last argument whether or not that operation succeeded.
 	// Also returns the new resources after this task was fitted onto the host.
 	// NOTE: The resources returned are same as the ones passed in if the "fit"
 	// failed.
-	Fits(resourcesLeft scalar.Resources, portsLeft uint64) (scalar.Resources, uint64, bool)
+	Fits(resLeft scalar.Resources, portsLeft uint64) (scalar.Resources, uint64, bool)
 
 	// Sets the placement failure reason for this task.
+	// TODO: Remove this, it should definitely not be here.
 	SetReason(string)
 
 	// Returns the mimir entity representing this task.
+	// TODO: Remove this, it should definitely not be here.
 	ToMimirEntity() *placement.Entity
 
-	// TODO: HostFilter-relevant methods need to be defined here.
+	// Returns whether or not this task should be spread on hosts, instead of packed.
+	// TODO: Remove this, it should definitely not be here.
+	NeedsSpread() bool
+
+	// Returns the preferred hostname for this task.
+	PreferredHost() string
+
+	// A task inherently has its own PlacementNeeds.
+	GetPlacementNeeds() PlacementNeeds
 }
 
 // Host is the interface that the host offers or leases must satisfy in order
