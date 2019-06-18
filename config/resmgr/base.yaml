@@ -45,7 +45,7 @@ resmgr:
     # This flag enable/disable the placement backoff
     enable_placement_backoff: true
     # This flag will enable/disable host reservation of tasks
-    enable_host_reservation: true
+    enable_host_reservation: false
   preemption:
     task_preemption_period: 60s
     sustained_over_allocation_count: 5

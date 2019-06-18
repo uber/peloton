@@ -28,3 +28,4 @@ resmgr:
     reserving_timeout: 10m
     placement_retry_backoff: 10s
     placement_retry_cycle: 1
+    enable_host_reservation: false

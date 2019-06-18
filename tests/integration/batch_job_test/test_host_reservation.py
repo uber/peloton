@@ -10,6 +10,7 @@ from peloton_client.pbgen.peloton.private.hostmgr.hostsvc import hostsvc_pb2 as 
 
 # Mark test module so that we can run tests by tags
 pytestmark = [
+    pytest.mark.skip(reason="host reservation feature is turned off"),
     pytest.mark.default,
     pytest.mark.reserve,
 ]
