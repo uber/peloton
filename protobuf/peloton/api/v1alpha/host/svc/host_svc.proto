@@ -26,24 +26,36 @@ message QueryHostsResponse {
 // Request message for HostService.StartMaintenance method.
 message StartMaintenanceRequest {
     // List of hosts to be put into maintenance
-    repeated string hostnames = 1;
+    repeated string hostnames = 1 [deprecated=true];
+
+    // Host to be put into maintenance
+    string hostname = 2;
 }
+
 
 // Response message for HostService.StartMaintenance method.
 // Return errors:
-//   NOT_FOUND:   if the hosts are not found.
-message StartMaintenanceResponse {}
+//   NOT_FOUND:   if the host is not found.
+message StartMaintenanceResponse {
+    // Host successfully submitted for maintenance
+    string hostname = 1;
+}
 
 // Request message for HostService.CompleteMaintenance method.
 message CompleteMaintenanceRequest {
     // List of hosts put be brought back up
-    repeated string hostnames = 1;
+    repeated string hostnames = 1 [deprecated=true];
+    // Host to be removed from maintenance and brought back up
+    string hostname = 2;
 }
 
 // Response message for HostService.CompleteMaintenance method.
 // Return errors:
-//   NOT_FOUND:   if the hosts are not found.
-message CompleteMaintenanceResponse {}
+//   NOT_FOUND:   if the host is not found.
+message CompleteMaintenanceResponse {
+    // Host successfully submitted for maintenance completion
+    string hostname = 1;
+}
 
 // HostService defines the host related methods such as query hosts, start maintenance,
 // complete maintenance etc.
