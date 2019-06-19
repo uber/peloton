@@ -1,7 +1,56 @@
 # Changelog for Peloton
 
-0.8.8 (unreleased)
+0.8.9 (unreleased)
 ------------------
+
+0.8.8
+------------------
+* 2019-06-19    Disable host reservation feature by default                                            aihuaxu@uber.com
+* 2019-06-18    Count number of lastRoundAssignment before exiting                                     kevinxu@uber.com
+* 2019-06-18    Fix debian package make                                                                zhixin@uber.com
+* 2019-06-18    Placement Engine: More abstraction for plugins libs                                    pourchet@uber.com
+* 2019-06-17    Add flag in aurorabridge to enable inplace update                                      kevinxu@uber.com
+* 2019-06-17    [P2K merge] Hostmgr & EventStream v1alpha private API                                  yiran@uber.com
+* 2019-06-17    [ORM] refactor and remove dead code for job_config and job_runtime                     adityacb@uber.com
+* 2019-06-17    Add in-place update integration test for multiple component restarts                   zhixin@uber.com
+* 2019-06-17    Release task on held upon kill                                                         zhixin@uber.com
+* 2019-06-14    WorkflowProgressCheck not mark workflow as stale if it is due to throttling            zhixin@uber.com
+* 2019-06-14    Fix resource manager recovery                                                          sachins@uber.com
+* 2019-06-14    Fix issue of RMTask with older run waiting to be launched                              sachins@uber.com
+* 2019-06-13    Placement Engine: Abstract methods into interfaces Task and Host                       pourchet@uber.com
+* 2019-06-13    Disable bridge failure tests                                                           kevinxu@uber.com
+* 2019-06-13    Add API and metrics for orphan RM tasks                                                sachins@uber.com
+* 2019-06-13    Add job SLA metrics                                                                    sachins@uber.com
+* 2019-06-12    Change to use docker.log(stream=True) when dumping the peloton logs                    kevinxu@uber.com
+* 2019-06-12    [ORM] migrate job_config and job_runtime to ORM                                        adityacb@uber.com
+* 2019-06-12    Fix broken tests in job_create_test.go                                                 sachins@uber.com
+* 2019-06-12    Placement Engine: Added the HostFilter interface                                       pourchet@uber.com
+* 2019-06-12    mimir strategy filter group assignments by resource constraint                         zhixin@uber.com
+* 2019-06-12    Refactor jobmgr task enqueue to not resend existing tasks for enqeueu to resmgr        yizhang@uber.com
+* 2019-06-12    [ORM] Migrate job_config to ORM                                                        adityacb@uber.com
+* 2019-06-11    Task stuck in PE would not block other task placement                                  zhixin@uber.com
+* 2019-06-11    Invalidate cache upon unexpected version error                                         zhixin@uber.com
+* 2019-06-11    Fix job completion time issues                                                         zhixin@uber.com
+* 2019-06-11    Set termination status for instances removed by update                                 sachins@uber.com
+* 2019-06-11    Store.DeleteJob should not error out if job is already deleted                         sachins@uber.com
+* 2019-06-11    Revert "Task is not getting reserved when max_duration in placement is less than placement timeout in resmgr" adityacb@uber.com
+* 2019-06-10    [ORM] Support job_runtime table in ORM                                                 adityacb@uber.com
+* 2019-06-10    Implement uDeploy-specific GPU limit label in AuroraBridge                             kevinxu@uber.com
+* 2019-06-10    Calculate resource usage for batch job only                                            zhixin@uber.com
+* 2019-06-10    Placement Engine: Moves v0/mesos mimir functions to a separate package (part 2)        pourchet@uber.com
+* 2019-06-10    Changed placement strategy plugin interface                                            pourchet@uber.com
+* 2019-06-09    Add a page on Peloton UI Errrors in Peloton documentation                              yuweit@uber.com
+* 2019-06-07    Pass update id in WriteUpdateProgress                                                  zhixin@uber.com
+* 2019-06-07    Add endpoint to debug in-place update                                                  zhixin@uber.com
+* 2019-06-06    Placement Engine: Moves v0/mesos mimir functions to a separate package                 pourchet@uber.com
+* 2019-06-06    Task is not getting reserved when max_duration in placement is less than placement timeout in resmgr aihuaxu@uber.com
+* 2019-06-05    Fix read lock issue with respool.ID()                                                  varung@uber.com
+* 2019-06-04    Small refactor to placement engine                                                     pourchet@uber.com
+* 2019-06-03    Add integ tests for hostmgr internal v0 API                                            adityacb@uber.com
+* 2019-05-31    Add changelog for 0.8.7                                                                avyas@uber.com
+* 2019-05-31    Add in-place flag for exisitng restart/update test                                     zhixin@uber.com
+* 2019-05-31    Add RateLimit middleware                                                               zhixin@uber.com
+* 2019-05-31    dedupe task status in circulrBuffer                                                    binz@uber.com
 
 0.8.7
 ------------------
