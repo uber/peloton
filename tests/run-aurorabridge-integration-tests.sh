@@ -32,8 +32,7 @@ fi
 
 # set up minicluster with SERVICE type for tests under aurorabridge_job/
 # Run aurora bridge integration tests in random order
-# Run each aurora bridge integration tests twice, to allineate flakiness
-PATH=$PATH:$(pwd)/bin JOB_TYPE=SERVICE pytest -vsrx --count=2 --durations=0 tests/integration/aurorabridge_test  --junit-xml=integration-test-report.xml  -m "$TAGS"
+PATH=$PATH:$(pwd)/bin JOB_TYPE=SERVICE pytest -vsrx --count=1 --durations=0 tests/integration/aurorabridge_test  --junit-xml=integration-test-report.xml  -m "$TAGS"
 
 deactivate
 
