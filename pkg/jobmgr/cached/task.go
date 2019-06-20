@@ -519,6 +519,23 @@ func (t *task) DeleteTask() {
 	// There is no state to clean up as of now.
 	// If the goal state was set to DELETED, then let the
 	// listeners know that the task has been deleted.
+
+	var runtimeCopy *pbtask.RuntimeInfo
+	var labelsCopy []*peloton.Label
+
+	// notify listeners after dropping the lock
+	defer func() {
+		if runtimeCopy != nil {
+			t.jobFactory.notifyTaskRuntimeChanged(
+				t.jobID,
+				t.id,
+				t.jobType,
+				runtimeCopy,
+				labelsCopy,
+			)
+		}
+	}()
+
 	t.RLock()
 	defer t.RUnlock()
 
@@ -530,16 +547,9 @@ func (t *task) DeleteTask() {
 		return
 	}
 
-	runtimeCopy := proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
+	runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
 	runtimeCopy.State = pbtask.TaskState_DELETED
-	labelsCopy := t.copyLabelsInCache()
-	t.jobFactory.notifyTaskRuntimeChanged(
-		t.jobID,
-		t.id,
-		t.jobType,
-		runtimeCopy,
-		labelsCopy,
-	)
+	labelsCopy = t.copyLabelsInCache()
 }
 
 // ReplaceTask replaces runtime and config in cache with runtime input.
