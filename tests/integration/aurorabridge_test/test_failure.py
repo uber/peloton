@@ -50,6 +50,9 @@ def test__simple_update_with_restart_component(
     # restart mesos master to jumble up host manager state
     mesos_master.restart()
 
+    # Sleep to ensure lucene index converges
+    time.sleep(10)
+
     wait_for_rolled_forward(client, res.key)
     res = client.get_tasks_without_configs(api.TaskQuery(
         jobKeys={res.key.job},
@@ -91,6 +94,9 @@ def test__simple_update_events_purge(
     time.sleep(random.randint(1, 5))
     resmgr.restart()
 
+    # Sleep to ensure lucene index converges
+    time.sleep(10)
+
     wait_for_rolled_forward(client, res.key)
     res = client.get_tasks_without_configs(api.TaskQuery(
         jobKeys={res.key.job},
@@ -128,6 +134,9 @@ def test__simple_update_tasks_reconcile(
     hostmgr.restart()
     time.sleep(random.randint(1, 5))
     mesos_master.restart()
+
+    # Sleep to ensure lucene index converges
+    time.sleep(10)
 
     wait_for_rolled_forward(client, res.key)
     res = client.get_tasks_without_configs(api.TaskQuery(
